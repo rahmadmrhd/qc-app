@@ -1,4 +1,4 @@
-import { requireConfig_ } from '@gas/core/config';
+import { redirectUri_, requireConfig_ } from '@gas/core/config';
 import { normalizeEmail_ } from '@gas/core/email';
 import { platform_ } from '@gas/core/platform';
 
@@ -22,7 +22,7 @@ export function createLoginUrl_(): string {
   platform.cachePut(`oauth:state:${state}`, '1', LOGIN_STATE_TTL_SECONDS);
   return `${GOOGLE_AUTH_URL}?${toQueryString_({
     client_id: requireConfig_('OAUTH_CLIENT_ID'),
-    redirect_uri: requireConfig_('OAUTH_REDIRECT_URI'),
+    redirect_uri: redirectUri_(),
     response_type: 'code',
     scope: 'openid email',
     state,
@@ -74,7 +74,7 @@ export function exchangeCodeForEmail_(code: string): ExchangeResult {
     code,
     client_id: clientId,
     client_secret: requireConfig_('OAUTH_CLIENT_SECRET'),
-    redirect_uri: requireConfig_('OAUTH_REDIRECT_URI'),
+    redirect_uri: redirectUri_(),
     grant_type: 'authorization_code',
   });
   if (response.status !== 200) {
