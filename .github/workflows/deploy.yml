@@ -1,0 +1,121 @@
+name: Deploy GAS
+
+# Build gas/dist lalu push ke Apps Script. Target:
+#   dev  = push ke @HEAD saja (dipakai URL /dev); tidak membuat versi.
+#   exec = push, lalu membuat versi baru pada deployment tetap (gas/deployment.json, URL /exec).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'dev = push saja (/dev); exec = push + versi baru (/exec, hanya dari branch main)'
+        type: choice
+        options: [dev, exec]
+        default: dev
+  # PR yang di-merge: base dev -> target dev, base main -> target exec.
+  pull_request:
+    types: [closed]
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # PR yang ditutup tanpa merge tidak men-deploy apa pun.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Satu deploy pada satu waktu untuk SELURUH target: dev dan exec menulis ke project Apps Script yang
+    # sama, dan versi /exec dibuat dari @HEAD. Bila dibiarkan paralel, push dev bisa terselip di antara
+    # push dan pembuatan versi exec sehingga kode dev terbit di /exec. Deploy berjalan tidak dibatalkan.
+    concurrency:
+      group: deploy-gas
+      cancel-in-progress: false
+    # Environment per target: tempat menaruh secret, membatasi branch yang boleh deploy, dan (opsional)
+    # meminta persetujuan. Lihat docs/ci-cd.md.
+    environment: gas-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'exec' || 'dev') }}
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'exec' || 'dev') }}
+    steps:
+      # Berjalan sebelum checkout dan sebelum kredensial ada. Dispatch manual hanya dari ref tepercaya:
+      # kode pada branch lain bisa mengubah scripts/push.ts dan membaca token clasp.
+      - name: Pastikan dispatch dari ref tepercaya
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/main) ;;
+            refs/heads/dev)
+              if [ "${TARGET}" = "exec" ]; then
+                echo "::error::Target exec hanya boleh dijalankan dari branch main (dipilih: ${GITHUB_REF_NAME})."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Deploy manual hanya boleh dari branch main atau dev (dipilih: ${GITHUB_REF_NAME})."
+              exit 1
+              ;;
+          esac
+
+      # PR: commit hasil merge. Manual: commit dari branch yang dipilih.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # clasp dipanggil scripts/push.ts dan scripts/deploy.ts lewat PATH.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pasang clasp
+        run: npm install -g @google/clasp@3.4.1
+
+      - name: Pasang dependensi
+        run: bun install --frozen-lockfile
+
+      # Gerbang sebelum menyentuh Apps Script.
+      - name: Check
+        run: bun run check
+
+      - name: Build
+        run: bun run build
+
+      - name: Login clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Secret CLASPRC_JSON belum diisi (lihat docs/ci-cd.md)."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+
+      - name: Push ke Apps Script (@HEAD, /dev)
+        run: bun run scripts/push.ts
+
+      - name: Buat versi baru pada deployment tetap (/exec)
+        if: env.TARGET == 'exec'
+        run: bun run scripts/deploy.ts
+
+      - name: Ringkasan
+        if: success()
+        run: |
+          {
+            echo "### Deploy GAS: ${TARGET}"
+            echo
+            if [ "${TARGET}" = "exec" ]; then
+              echo "Kode di-push dan versi baru dibuat pada deployment tetap (URL /exec)."
+              echo "Jalankan fungsi \`setup\` di editor Apps Script bila rilis ini mengubah skema sheet."
+            else
+              echo "Kode di-push ke @HEAD (URL /dev). Versi /exec tidak berubah."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Jangan tinggalkan kredensial di runner.
+      - name: Hapus kredensial clasp
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"

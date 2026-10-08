@@ -1,0 +1,35 @@
+name: Test
+
+# Berjalan saat PR dibuka. `reopened` dan `synchronize` ikut agar commit susulan pada PR juga teruji.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Pasang dependensi
+        run: bun install --frozen-lockfile
+
+      # typecheck + Biome + semua test (shared, gas, web, scripts)
+      - name: Check
+        run: bun run check
+
+      # build gas/dist + verifikasi (penanda boot, tanpa mock, tanpa import/export)
+      - name: Build
+        run: bun run build
