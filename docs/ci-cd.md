@@ -19,6 +19,10 @@ Catatan:
 - Deploy dari PR memakai event `pull_request_target`, bukan `pull_request`. Alasannya: pada `pull_request`, GITHUB_REF selalu `refs/pull/N/merge`, sehingga aturan environment "Selected branches" selalu menolaknya ("Branch refs/pull/N/merge is not allowed to deploy"). `pull_request_target` berjalan pada ref branch tujuan (`dev` atau `main`) dan memakai file workflow dari branch tujuan itu, jadi perubahan pada `deploy.yml` baru berlaku setelah masuk ke `dev`/`main`. Job hanya berjalan setelah PR di-merge dan hanya meng-checkout commit hasil merge; jangan menambah langkah yang meng-checkout head PR yang belum di-merge.
 - Workflow dengan pemicu manual (`workflow_dispatch`) baru muncul di tab Actions setelah file `deploy.yml` ada di branch default (`main`).
 
+### Mengubah pemicu workflow deploy
+
+Karena `pull_request_target` membaca `deploy.yml` dari branch tujuan **sebelum** PR di-merge, PR yang mengubah pemicu `deploy.yml` tidak memicu deploy dari merge-nya sendiri; perubahan baru berlaku mulai merge berikutnya. Untuk membuktikan pemicu baru bekerja, merge satu PR kecil sesudahnya dan periksa tab Actions: harus muncul run **Deploy GAS** dengan event `pull_request_target`.
+
 ## Menyiapkan secret `CLASPRC_JSON`
 
 Workflow deploy memakai kredensial `clasp` milik akun Google pemilik script.
