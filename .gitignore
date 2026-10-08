@@ -19,3 +19,6 @@ web/dist/
 .DS_Store
 Thumbs.db
 coverage/
+
+# scratch eksekusi rencana (ledger)
+.superpowers/
