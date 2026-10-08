@@ -1,6 +1,11 @@
 import { missingConfigKeys_ } from '@gas/core/config';
 import { openTable_ } from '@gas/core/db';
-import { AUDIT_TABLE, ROLES_TABLE, USERS_TABLE } from '@gas/modules/access/repo';
+import {
+  AUDIT_TABLE,
+  migrateAuditDetail_,
+  ROLES_TABLE,
+  USERS_TABLE,
+} from '@gas/modules/access/repo';
 
 export function runSetup_(): string {
   const lines: string[] = [];
@@ -18,5 +23,7 @@ export function runSetup_(): string {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
   }
+  const migrated = migrateAuditDetail_();
+  if (migrated > 0) lines.push(`audit_log: ${migrated} baris lama dimigrasi ke before/after.`);
   return lines.join('\n');
 }

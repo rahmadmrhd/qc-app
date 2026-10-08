@@ -4,6 +4,7 @@ import type { PartialPermissionMap } from '@shared/permissions';
 import { isLevel, isModuleKey } from '@shared/permissions';
 import type {
   DeleteRoleInput,
+  ListAuditInput,
   SaveRoleInput,
   SaveUserInput,
   SetUserStatusInput,
@@ -54,6 +55,19 @@ export function validateSaveRole_(raw: unknown): SaveRoleInput {
   const permissions = readPermissions_(reader.raw('permissions'), reader);
   reader.done();
   return id ? { id, name, description, permissions } : { name, description, permissions };
+}
+
+/** Input boleh kosong (null/{}); hasilnya selalu lengkap: halaman >= 1, aksi dan kata kunci berupa teks. */
+export function validateListAudit_(raw: unknown): Required<ListAuditInput> {
+  const reader = readObject_(raw ?? {});
+  const action = reader.str('action', { max: 40 });
+  const query = reader.str('query', { max: 100 });
+  const page = reader.raw('page') ?? 1;
+  if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) {
+    reader.fail('page', 'Halaman tidak valid');
+  }
+  reader.done();
+  return { page: page as number, action, query };
 }
 
 export function validateDeleteRole_(raw: unknown): DeleteRoleInput {

@@ -1,5 +1,6 @@
 import type {
   DeleteRoleInput,
+  ListAuditInput,
   SaveRoleInput,
   SaveUserInput,
   SetUserStatusInput,
@@ -12,7 +13,15 @@ export const accessKeys = {
   all: ['access'] as const,
   users: ['access', 'users'] as const,
   roles: ['access', 'roles'] as const,
+  audit: ['access', 'audit'] as const,
 };
+
+export function auditQueryOptions(input: ListAuditInput) {
+  return queryOptions({
+    queryKey: [...accessKeys.audit, input] as const,
+    queryFn: () => rpc('access.audit.list', input),
+  });
+}
 
 export function usersQueryOptions() {
   return queryOptions({

@@ -3,7 +3,9 @@ import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
 import { sanitizePermissions } from '@shared/permissions';
 import type {
+  AuditPageDto,
   DeleteRoleInput,
+  ListAuditInput,
   RoleDto,
   SaveRoleInput,
   SaveUserInput,
@@ -18,6 +20,7 @@ import {
   deleteRole_,
   insertRole_,
   insertUser_,
+  listAuditRecords_,
   listRoles_,
   listUsers_,
   updateRole_,
@@ -50,12 +53,50 @@ function toRoleDto_(role: NewRoleRecord, users: readonly NewUserRecord[]): RoleD
   };
 }
 
+const AUDIT_PAGE_SIZE = 50;
+
+/** Terbaru dahulu; filter aksi persis dan kata kunci (target/pelaku) tidak peka huruf besar. */
+export function listAudit_(params: ListAuditInput): AuditPageDto {
+  const page = params.page ?? 1;
+  const action = params.action ?? '';
+  const query = (params.query ?? '').toLowerCase();
+  const matched = listAuditRecords_()
+    .filter((record) => action === '' || record.action === action)
+    .filter(
+      (record) =>
+        query === '' ||
+        record.target.toLowerCase().includes(query) ||
+        record.actor.toLowerCase().includes(query),
+    )
+    .sort((a, b) => (a.ts === b.ts ? b.rowNumber - a.rowNumber : a.ts < b.ts ? 1 : -1));
+  const start = (page - 1) * AUDIT_PAGE_SIZE;
+  return {
+    entries: matched.slice(start, start + AUDIT_PAGE_SIZE).map((record) => ({
+      id: String(record.rowNumber),
+      ts: record.ts,
+      actor: record.actor,
+      action: record.action,
+      target: record.target,
+      before: record.before,
+      after: record.after,
+    })),
+    total: matched.length,
+    page,
+    pageSize: AUDIT_PAGE_SIZE,
+  };
+}
+
 function nowIso_(): string {
   return new Date(platform_().now()).toISOString();
 }
 
+/** Snapshot audit: hanya field bisnis (metadata baris sudah ada di ts/actor). roleIds tetap berupa id. */
 function userSnapshot_(user: NewUserRecord): Record<string, unknown> {
-  return { name: user.name, status: user.status, roleIds: user.roleIds };
+  return { email: user.email, name: user.name, status: user.status, roleIds: [...user.roleIds] };
+}
+
+function roleSnapshot_(role: NewRoleRecord): Record<string, unknown> {
+  return { name: role.name, description: role.description, permissions: { ...role.permissions } };
 }
 
 export function listUserDtos_(): UserDto[] {
@@ -111,7 +152,8 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
         actor: actor.email,
         action: 'user.update',
         target: email,
-        detail: { before: userSnapshot_(existing), after: userSnapshot_(updated) },
+        before: userSnapshot_(existing),
+        after: userSnapshot_(updated),
       });
       invalidateAccessCache_();
       return toUserDto_(updated);
@@ -133,7 +175,8 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       actor: actor.email,
       action: 'user.create',
       target: email,
-      detail: userSnapshot_(created),
+      before: null,
+      after: userSnapshot_(created),
     });
     invalidateAccessCache_();
     return toUserDto_(created);
@@ -160,7 +203,8 @@ export function setUserStatus_(input: SetUserStatusInput, actor: UserContext): U
       actor: actor.email,
       action: input.status === 'active' ? 'user.activate' : 'user.deactivate',
       target: existing.email,
-      detail: null,
+      before: userSnapshot_(existing),
+      after: userSnapshot_(updated),
     });
     invalidateAccessCache_();
     return toUserDto_(updated);
@@ -195,7 +239,8 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         actor: actor.email,
         action: 'role.update',
         target: updated.name,
-        detail: { before: existing.permissions, after: permissions },
+        before: roleSnapshot_(existing),
+        after: roleSnapshot_(updated),
       });
       invalidateAccessCache_();
       return toRoleDto_(updated, users);
@@ -216,7 +261,8 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
       actor: actor.email,
       action: 'role.create',
       target: created.name,
-      detail: permissions,
+      before: null,
+      after: roleSnapshot_(created),
     });
     invalidateAccessCache_();
     return toRoleDto_(created, users);
@@ -235,7 +281,8 @@ export function removeRole_(input: DeleteRoleInput, actor: UserContext): { id: s
       actor: actor.email,
       action: 'role.delete',
       target: role.name,
-      detail: role.permissions,
+      before: roleSnapshot_(role),
+      after: null,
     });
     invalidateAccessCache_();
     return { id: role.id };

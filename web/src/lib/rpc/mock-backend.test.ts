@@ -27,6 +27,23 @@ test('email tidak terdaftar ditolak saat login mock', () => {
   });
 });
 
+test('log audit demo tersedia untuk akses lihat dan terbaru dahulu', async () => {
+  const result = await call('access.audit.list', {}, tokenOf('access.viewer@qc.local'));
+  expect(result.ok).toBe(true);
+  const { entries, total } = result.data;
+  expect(total).toBeGreaterThanOrEqual(3);
+  expect(entries.map((entry: { action: string }) => entry.action)).toEqual(
+    expect.arrayContaining(['user.create', 'user.update', 'role.delete']),
+  );
+  const stamps = entries.map((entry: { ts: string }) => entry.ts);
+  expect(stamps).toEqual([...stamps].sort().reverse());
+});
+
+test('user tanpa akses modul access ditolak melihat log audit', async () => {
+  const result = await call('access.audit.list', {}, tokenOf('qc.staff@qc.local'));
+  expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+
 test('user tanpa akses manage mendapat FORBIDDEN saat menyimpan user', async () => {
   const input = { email: 'x@qc.local', name: 'X', status: 'active', roleIds: [] };
   const result = await call('access.users.save', input, tokenOf('qc.staff@qc.local'));

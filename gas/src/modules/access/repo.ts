@@ -17,7 +17,7 @@ export const ROLES_TABLE: TableSchema = {
 
 export const AUDIT_TABLE: TableSchema = {
   sheetName: 'audit_log',
-  columns: ['ts', 'actor', 'action', 'target', 'detail'],
+  columns: ['ts', 'actor', 'action', 'target', 'before', 'after'],
 };
 
 export interface UserRecord {
@@ -50,7 +50,10 @@ export interface AuditEntry {
   actor: string;
   action: string;
   target: string;
-  detail: unknown;
+  /** Snapshot sebelum perubahan; null untuk aksi create. */
+  before: unknown;
+  /** Snapshot sesudah perubahan; null untuk aksi delete. */
+  after: unknown;
 }
 
 function parseJson_(text: string): unknown {
@@ -166,6 +169,62 @@ export function appendAudit_(entry: AuditEntry): void {
     actor: entry.actor,
     action: entry.action,
     target: entry.target,
-    detail: JSON.stringify(entry.detail ?? null),
+    before: JSON.stringify(entry.before ?? null),
+    after: JSON.stringify(entry.after ?? null),
   });
+}
+
+function isPlainObject_(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export interface AuditRecord {
+  rowNumber: number;
+  ts: string;
+  actor: string;
+  action: string;
+  target: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+function parseSnapshot_(text: string): Record<string, unknown> | null {
+  const value = parseJson_(text);
+  return isPlainObject_(value) ? value : null;
+}
+
+export function listAuditRecords_(): AuditRecord[] {
+  return readTable_(AUDIT_TABLE).rows.map(({ rowNumber, data }) => ({
+    rowNumber,
+    ts: data.ts ?? '',
+    actor: data.actor ?? '',
+    action: data.action ?? '',
+    target: data.target ?? '',
+    before: parseSnapshot_(data.before ?? ''),
+    after: parseSnapshot_(data.after ?? ''),
+  }));
+}
+
+/**
+ * Migrasi sekali jalan (aman diulang): isi kolom `detail` lama dipindah ke `before`/`after`,
+ * lalu `detail` dikosongkan. Detail berbentuk {before, after} dipecah; selain itu masuk ke `after`.
+ */
+export function migrateAuditDetail_(): number {
+  let migrated = 0;
+  for (const { rowNumber, data } of readTable_(AUDIT_TABLE).rows) {
+    const detail = (data.detail ?? '').trim();
+    if (detail === '') continue;
+    const parsed = parseJson_(detail);
+    const split =
+      isPlainObject_(parsed) &&
+      Object.prototype.hasOwnProperty.call(parsed, 'before') &&
+      Object.prototype.hasOwnProperty.call(parsed, 'after');
+    updateRow_(AUDIT_TABLE, rowNumber, {
+      before: split ? JSON.stringify(parsed.before ?? null) : 'null',
+      after: split ? JSON.stringify(parsed.after ?? null) : detail,
+      detail: '',
+    });
+    migrated++;
+  }
+  return migrated;
 }

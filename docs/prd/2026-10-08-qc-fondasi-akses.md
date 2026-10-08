@@ -90,7 +90,8 @@ Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) diteta
 | FR-M4 | Daftar role. | Nama, deskripsi, ringkasan level per modul, jumlah user. |
 | FR-M5 | Tambah / ubah role. | Form nama (unik), deskripsi, dan matriks modul × level. |
 | FR-M6 | Hapus role. | Ditolak (`CONFLICT`) bila role masih dipakai user. |
-| FR-M7 | Audit log. | Setiap perubahan user/role tercatat: waktu, pelaku, aksi, target, detail perubahan. |
+| FR-M7 | Audit log. | Setiap perubahan user/role tercatat: waktu, pelaku, aksi, target, serta snapshot lengkap `before` dan `after` (create: before kosong; delete: after kosong) agar dapat ditampilkan sebagai diff. |
+| FR-M8 | Halaman Log Audit (`#/access/audit`). | Butuh `access:view`. Tabel terbaru-dahulu (50/halaman) dengan filter aksi dan kata kunci target/pelaku; satu entri dibuka sebagai form baca-saja yang menandai field ditambah (hijau), diubah (kuning, nilai lama dicoret), dan dihapus (merah), dengan penanda teks selain warna. RPC `access.audit.list`. |
 
 ### 4.4 Shell Aplikasi
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -189,7 +190,7 @@ Baris 1 = header; pemetaan kolom berdasarkan nama header. Sheet dibuat otomatis 
 |---|---|
 | `users` | `id`, `email` (lowercase, unik), `name`, `status` (`active`/`inactive`), `role_ids` (JSON array), `created_at`, `updated_at`, `updated_by` |
 | `roles` | `id`, `name` (unik), `description`, `permissions` (JSON, mis. `{"item":"edit"}`), `created_at`, `updated_at`, `updated_by` |
-| `audit_log` | `ts`, `actor`, `action`, `target`, `detail` (JSON) |
+| `audit_log` | `ts`, `actor`, `action`, `target`, `before` (JSON), `after` (JSON) |
 
 Relasi disimpan sebagai kolom JSON (bukan sheet relasi) agar tidak perlu join antar-sheet dan setiap simpan cukup menulis satu baris.
 

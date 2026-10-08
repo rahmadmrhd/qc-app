@@ -1,6 +1,7 @@
 import type { RouteTable } from '@gas/core/router';
 import { expectNull_ } from '@gas/core/validate';
 import {
+  listAudit_,
   listRoleDtos_,
   listUserDtos_,
   removeRole_,
@@ -10,6 +11,7 @@ import {
 } from './service';
 import {
   validateDeleteRole_,
+  validateListAudit_,
   validateSaveRole_,
   validateSaveUser_,
   validateSetUserStatus_,
@@ -21,7 +23,8 @@ type AccessMethod =
   | 'access.users.setStatus'
   | 'access.roles.list'
   | 'access.roles.save'
-  | 'access.roles.delete';
+  | 'access.roles.delete'
+  | 'access.audit.list';
 
 export function accessRoutes_(): Pick<RouteTable, AccessMethod> {
   return {
@@ -54,6 +57,11 @@ export function accessRoutes_(): Pick<RouteTable, AccessMethod> {
       permission: { module: 'access', level: 'manage' },
       validate: validateDeleteRole_,
       handler: (input, ctx) => removeRole_(input, ctx.user),
+    },
+    'access.audit.list': {
+      permission: { module: 'access', level: 'view' },
+      validate: validateListAudit_,
+      handler: (input) => listAudit_(input),
     },
   };
 }

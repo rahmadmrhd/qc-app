@@ -2,7 +2,7 @@ import { setPlatform_ } from '@gas/core/platform';
 import { handleRpc_ } from '@gas/core/router';
 import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
-import { insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { appendAudit_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
 import { getRoutes_ } from '@gas/routes';
 import { role, user } from '@gas-test/access-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
@@ -88,6 +88,53 @@ function ensureMockBackend(): void {
       roleIds: ['role-qc'],
     }),
   );
+  seedMockAudit();
+}
+
+/** Contoh catatan audit agar halaman Log Audit tidak kosong saat `bun run dev`. */
+function seedMockAudit(): void {
+  const actor = MOCK_ADMIN_EMAIL;
+  const qcUser = { email: 'qc.staff@qc.local', name: 'Siti QC', status: 'active' };
+  appendAudit_({
+    ts: '2026-10-07T08:00:00.000Z',
+    actor,
+    action: 'user.create',
+    target: qcUser.email,
+    before: null,
+    after: { ...qcUser, roleIds: ['role-qc'] },
+  });
+  appendAudit_({
+    ts: '2026-10-07T09:30:00.000Z',
+    actor,
+    action: 'user.update',
+    target: qcUser.email,
+    before: { ...qcUser, roleIds: ['role-qc'] },
+    after: { ...qcUser, name: 'Siti Rahma', roleIds: ['role-qc', 'role-wh'] },
+  });
+  appendAudit_({
+    ts: '2026-10-07T10:15:00.000Z',
+    actor,
+    action: 'role.update',
+    target: 'QC Staff',
+    before: {
+      name: 'QC Staff',
+      description: 'Petugas QC',
+      permissions: { item: 'edit', stock: 'view' },
+    },
+    after: {
+      name: 'QC Staff',
+      description: 'Petugas QC',
+      permissions: { item: 'edit', handover: 'edit', stock: 'view' },
+    },
+  });
+  appendAudit_({
+    ts: '2026-10-07T11:00:00.000Z',
+    actor,
+    action: 'role.delete',
+    target: 'Magang',
+    before: { name: 'Magang', description: 'Sementara', permissions: { item: 'view' } },
+    after: null,
+  });
 }
 
 export function mockLogin(

@@ -74,6 +74,34 @@ export interface DeleteRoleInput {
   id: string;
 }
 
+/** Snapshot field bisnis pada satu sisi perubahan; null = tidak ada (before pada create, after pada delete). */
+export type AuditSnapshot = Record<string, unknown> | null;
+
+export interface AuditEntryDto {
+  id: string;
+  ts: string;
+  actor: string;
+  action: string;
+  target: string;
+  before: AuditSnapshot;
+  after: AuditSnapshot;
+}
+
+export interface ListAuditInput {
+  page?: number;
+  /** Aksi persis, mis. `user.update`; kosong = semua. */
+  action?: string;
+  /** Kata kunci pada target atau pelaku. */
+  query?: string;
+}
+
+export interface AuditPageDto {
+  entries: AuditEntryDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -82,6 +110,7 @@ export interface RpcContract {
   'access.roles.list': { input: null; output: RoleDto[] };
   'access.roles.save': { input: SaveRoleInput; output: RoleDto };
   'access.roles.delete': { input: DeleteRoleInput; output: { id: string } };
+  'access.audit.list': { input: ListAuditInput; output: AuditPageDto };
 }
 
 export type RpcMethod = keyof RpcContract;

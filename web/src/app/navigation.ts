@@ -2,7 +2,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
-import { House, ShieldCheck, Users } from 'lucide-react';
+import { History, House, ShieldCheck, Users } from 'lucide-react';
 import { can } from '@/modules/auth/permissions';
 
 export interface NavItem {
@@ -32,6 +32,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Roles',
         to: '/access/roles',
         icon: ShieldCheck,
+        permission: { module: 'access', level: 'view' },
+      },
+      {
+        label: 'Log Audit',
+        to: '/access/audit',
+        icon: History,
         permission: { module: 'access', level: 'view' },
       },
     ],
