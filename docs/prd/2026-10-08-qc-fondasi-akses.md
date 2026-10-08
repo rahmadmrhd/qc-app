@@ -98,6 +98,7 @@ Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) diteta
 | FR-S1 | Layout utama. | Sidebar (menu sesuai akses), header berisi nama/email user dan logout, responsif di layar ponsel. |
 | FR-S2 | Beranda. | Kartu modul yang dapat diakses user; modul yang belum dibangun ditandai "Segera hadir". |
 | FR-S3 | Halaman status. | Login, belum terdaftar, 403, 404, dan error umum (menampilkan `requestId` untuk dilaporkan). |
+| FR-S4 | Tema tampilan. | Pengguna dapat memilih Terang, Gelap, atau Ikuti sistem dari tombol di header (dan halaman login); pilihan tersimpan di perangkat, diterapkan sebelum render pertama (tanpa kedipan), dan notifikasi (toast) mengikuti tema. |
 
 ## 5. Kebutuhan Non-Fungsional
 
