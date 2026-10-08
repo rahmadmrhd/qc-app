@@ -79,7 +79,7 @@ Pengguna memakai **akun Gmail pribadi atau campuran domain** (bukan satu domain 
 | FR-P4 | Server menolak aksi di bawah level yang dibutuhkan. | Panggilan RPC langsung dengan level kurang mengembalikan error `FORBIDDEN`. |
 | FR-P5 | UI menyesuaikan dengan permission. | Menu, halaman, dan tombol aksi yang tidak diizinkan disembunyikan/dinonaktifkan; membuka URL halaman terlarang menampilkan halaman 403. |
 
-Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) ditetapkan di PRD modul masing-masing. Pedoman umum: `view` = membaca, `edit` = menambah/mengubah, `manage` = menghapus, menyetujui, dan pengaturan modul.
+Level yang tersedia per modul ditetapkan di `MODULE_LEVELS` (`shared/permissions.ts`) dan dapat ditambah atau dikurangi sesuai fitur modul: saat ini `access` = none/view/manage (tidak ada `edit`, karena semua aksi tulis butuh `manage`) dan `stock` = none/view; server menolak level di luar daftar. Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) ditetapkan di PRD modul masing-masing. Pedoman umum: `view` = membaca, `edit` = menambah/mengubah, `manage` = menghapus, menyetujui, dan pengaturan modul.
 
 ### 4.3 Pengelolaan Akses (modul `access`)
 | ID | Kebutuhan | Kriteria penerimaan |

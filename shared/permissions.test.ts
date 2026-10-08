@@ -3,6 +3,10 @@ import {
   emptyPermissions,
   fullPermissions,
   hasLevel,
+  isLevelAllowed,
+  LEVEL_HINTS,
+  levelHint,
+  levelsFor,
   mergePermissions,
   sanitizePermissions,
 } from './permissions';
@@ -55,5 +59,32 @@ describe('sanitizePermissions', () => {
       item: 'edit',
     });
     expect(sanitizePermissions(null)).toEqual({});
+  });
+});
+
+describe('level per modul', () => {
+  test('tiap modul hanya menawarkan level yang bermakna', () => {
+    expect(levelsFor('access')).toEqual(['none', 'view', 'manage']);
+    expect(levelsFor('stock')).toEqual(['none', 'view']);
+    expect(levelsFor('item')).toEqual(['none', 'view', 'edit', 'manage']);
+  });
+
+  test('isLevelAllowed menolak level di luar daftar modul', () => {
+    expect(isLevelAllowed('access', 'edit')).toBe(false);
+    expect(isLevelAllowed('access', 'manage')).toBe(true);
+    expect(isLevelAllowed('stock', 'manage')).toBe(false);
+  });
+
+  test('sanitizePermissions menurunkan level tak tersedia ke level terdekat di bawahnya', () => {
+    expect(sanitizePermissions({ access: 'edit', stock: 'manage', item: 'edit' })).toEqual({
+      access: 'view',
+      stock: 'view',
+      item: 'edit',
+    });
+  });
+
+  test('levelHint memakai keterangan khusus modul bila ada, bila tidak keterangan umum', () => {
+    expect(levelHint('access', 'manage')).not.toBe(levelHint('item', 'manage'));
+    expect(levelHint('item', 'view')).toBe(LEVEL_HINTS.view);
   });
 });

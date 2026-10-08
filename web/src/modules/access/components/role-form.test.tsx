@@ -1,3 +1,4 @@
+import { LEVEL_HINTS } from '@shared/permissions';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -16,6 +17,38 @@ test('nama wajib diisi', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText('Wajib diisi')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('menampilkan arti level yang dipilih di tiap modul', async () => {
+  render(
+    <RoleForm
+      defaultValues={toRoleFormDefaults()}
+      onSubmit={async () => undefined}
+      onCancel={() => undefined}
+    />,
+  );
+  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(4);
+  const itemGroup = screen.getByRole('group', { name: 'Level Data Item' });
+  await userEvent.click(within(itemGroup).getByRole('button', { name: 'Kelola' }));
+  expect(screen.getByText(LEVEL_HINTS.manage)).toBeInTheDocument();
+  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(3);
+});
+
+test('tiap modul hanya menampilkan level yang bermakna baginya', () => {
+  render(
+    <RoleForm
+      defaultValues={toRoleFormDefaults()}
+      onSubmit={async () => undefined}
+      onCancel={() => undefined}
+    />,
+  );
+  const names = (module: string) =>
+    within(screen.getByRole('group', { name: `Level ${module}` }))
+      .getAllByRole('button')
+      .map((button) => button.textContent);
+  expect(names('Pengaturan Akses')).toEqual(['Tidak ada', 'Lihat', 'Kelola']);
+  expect(names('Monitoring Stok')).toEqual(['Tidak ada', 'Lihat']);
+  expect(names('Data Item')).toEqual(['Tidak ada', 'Lihat', 'Ubah', 'Kelola']);
 });
 
 test('matriks level per modul dikirim lengkap', async () => {

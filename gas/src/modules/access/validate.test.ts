@@ -63,3 +63,22 @@ test('validateSaveRole_ menolak modul atau level yang tidak dikenal', () => {
   );
   expect(error.fields?.permissions).toContain('item');
 });
+
+test('validateSaveRole_ menolak level yang tidak tersedia untuk modulnya', () => {
+  const error = captureAppError(() =>
+    validateSaveRole_({
+      name: 'X',
+      description: '',
+      permissions: { access: 'edit', stock: 'view' },
+    }),
+  );
+  expect(error.code).toBe('VALIDATION');
+  expect(error.fields?.permissions).toContain('access');
+  expect(
+    validateSaveRole_({
+      name: 'X',
+      description: '',
+      permissions: { access: 'manage', stock: 'view' },
+    }).permissions,
+  ).toEqual({ access: 'manage', stock: 'view' });
+});

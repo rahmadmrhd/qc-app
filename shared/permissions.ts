@@ -18,6 +18,37 @@ export const LEVEL_LABELS: Record<Level, string> = {
   manage: 'Kelola',
 };
 
+/**
+ * Level yang bermakna per modul, urut dari terendah; `none` selalu ada. Sesuaikan saat fitur modul
+ * bertambah: level di luar daftar tidak muncul di form role dan ditolak server.
+ */
+export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
+  access: ['none', 'view', 'manage'],
+  item: ['none', 'view', 'edit', 'manage'],
+  handover: ['none', 'view', 'edit', 'manage'],
+  stock: ['none', 'view'],
+};
+
+/** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
+export const LEVEL_HINTS: Record<Level, string> = {
+  none: 'Modul tidak terlihat dan tidak dapat diakses.',
+  view: 'Hanya membaca data.',
+  edit: 'Membaca serta menambah atau mengubah data.',
+  manage: 'Semua akses Ubah, ditambah menghapus, menyetujui, dan pengaturan modul.',
+};
+
+export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level, string>>>> = {
+  access: {
+    view: 'Melihat daftar user, role, dan log audit.',
+    manage: 'Melihat, serta menambah, mengubah, dan menonaktifkan user dan role.',
+  },
+  stock: { view: 'Melihat monitoring stok yang belum QC.' },
+};
+
+export function levelHint(module: ModuleKey, level: Level): string {
+  return MODULE_LEVEL_HINTS[module]?.[level] ?? LEVEL_HINTS[level];
+}
+
 export type PermissionMap = Record<ModuleKey, Level>;
 export type PartialPermissionMap = Partial<Record<ModuleKey, Level>>;
 
@@ -27,6 +58,24 @@ export function isModuleKey(value: unknown): value is ModuleKey {
 
 export function isLevel(value: unknown): value is Level {
   return typeof value === 'string' && (LEVELS as readonly string[]).includes(value);
+}
+
+export function levelsFor(module: ModuleKey): readonly Level[] {
+  return MODULE_LEVELS[module];
+}
+
+export function isLevelAllowed(module: ModuleKey, level: Level): boolean {
+  return MODULE_LEVELS[module].includes(level);
+}
+
+/** Level tertinggi yang tersedia di modul dan tidak melebihi `level`; dipakai untuk data lama. */
+function clampLevel(module: ModuleKey, level: Level): Level {
+  const ceiling = LEVELS.indexOf(level);
+  let result: Level = 'none';
+  for (const candidate of MODULE_LEVELS[module]) {
+    if (LEVELS.indexOf(candidate) <= ceiling) result = candidate;
+  }
+  return result;
 }
 
 export function levelRank(level: Level): number {
@@ -51,12 +100,14 @@ export function fullPermissions(): PermissionMap {
   return permissionsWith('manage');
 }
 
-/** Ambil hanya pasangan modul→level yang valid dan bukan `none`. */
+/** Ambil hanya pasangan modul→level yang valid dan bukan `none`; level yang tak tersedia di modul diturunkan. */
 export function sanitizePermissions(raw: unknown): PartialPermissionMap {
   const result: PartialPermissionMap = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return result;
   for (const [key, value] of Object.entries(raw)) {
-    if (isModuleKey(key) && isLevel(value) && value !== 'none') result[key] = value;
+    if (!isModuleKey(key) || !isLevel(value)) continue;
+    const level = clampLevel(key, value);
+    if (level !== 'none') result[key] = level;
   }
   return result;
 }

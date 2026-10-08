@@ -1,7 +1,7 @@
 import type { ObjectReader } from '@gas/core/validate';
 import { readObject_ } from '@gas/core/validate';
 import type { PartialPermissionMap } from '@shared/permissions';
-import { isLevel, isModuleKey } from '@shared/permissions';
+import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 import type {
   DeleteRoleInput,
   ListAuditInput,
@@ -40,6 +40,10 @@ function readPermissions_(value: unknown, reader: ObjectReader): PartialPermissi
   for (const [key, level] of Object.entries(value)) {
     if (!isModuleKey(key) || !isLevel(level)) {
       reader.fail('permissions', `Level untuk "${key}" tidak valid`);
+      continue;
+    }
+    if (!isLevelAllowed(key, level)) {
+      reader.fail('permissions', `Level "${level}" tidak tersedia untuk modul "${key}"`);
       continue;
     }
     result[key] = level;

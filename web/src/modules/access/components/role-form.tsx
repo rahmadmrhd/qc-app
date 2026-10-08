@@ -1,4 +1,4 @@
-import { LEVEL_LABELS, LEVELS, MODULE_LABELS, MODULES } from '@shared/permissions';
+import { LEVEL_LABELS, levelHint, levelsFor, MODULE_LABELS, MODULES } from '@shared/permissions';
 import { useForm } from '@tanstack/react-form';
 import { FieldError } from '@/components/field-error';
 import { Button } from '@/components/ui/button';
@@ -63,38 +63,42 @@ export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: Rol
       </form.Field>
       <form.Field name="permissions">
         {(field) => (
-          <fieldset className="space-y-2">
+          <fieldset className="space-y-3">
             <legend className="text-sm font-medium">Akses per modul</legend>
-            {MODULES.map((module) => (
-              <div
-                key={module}
-                className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <span className="text-sm">{MODULE_LABELS[module]}</span>
-                <fieldset
-                  aria-label={`Level ${MODULE_LABELS[module]}`}
-                  className="m-0 flex min-w-0 flex-wrap gap-1 border-0 p-0"
-                >
-                  {LEVELS.map((level) => {
-                    const active = field.state.value[module] === level;
-                    return (
-                      <Button
-                        key={level}
-                        type="button"
-                        size="sm"
-                        variant={active ? 'default' : 'outline'}
-                        aria-pressed={active}
-                        onClick={() =>
-                          field.handleChange({ ...field.state.value, [module]: level })
-                        }
-                      >
-                        {LEVEL_LABELS[level]}
-                      </Button>
-                    );
-                  })}
-                </fieldset>
-              </div>
-            ))}
+            {MODULES.map((module) => {
+              const current = field.state.value[module] ?? 'none';
+              const levels = levelsFor(module);
+              return (
+                <div key={module} className="space-y-2 rounded-lg border p-3">
+                  <p className="text-sm font-medium">{MODULE_LABELS[module]}</p>
+                  <fieldset
+                    aria-label={`Level ${MODULE_LABELS[module]}`}
+                    className="m-0 grid min-w-0 gap-1 rounded-md bg-muted p-1"
+                    style={{ gridTemplateColumns: `repeat(${levels.length}, minmax(0, 1fr))` }}
+                  >
+                    {levels.map((level) => {
+                      const active = current === level;
+                      return (
+                        <Button
+                          key={level}
+                          type="button"
+                          size="sm"
+                          variant={active ? 'default' : 'ghost'}
+                          aria-pressed={active}
+                          className="h-8 px-1 text-xs"
+                          onClick={() =>
+                            field.handleChange({ ...field.state.value, [module]: level })
+                          }
+                        >
+                          {LEVEL_LABELS[level]}
+                        </Button>
+                      );
+                    })}
+                  </fieldset>
+                  <p className="text-xs text-muted-foreground">{levelHint(module, current)}</p>
+                </div>
+              );
+            })}
           </fieldset>
         )}
       </form.Field>
