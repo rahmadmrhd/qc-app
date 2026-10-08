@@ -72,7 +72,7 @@ export function updateRow_(schema: TableSchema, rowNumber: number, data: RowData
   const range = sheet.getRange(rowNumber, 1, 1, header.length);
   const current = range.getValues()[0] ?? [];
   const next = header.map((name, column) => {
-    if (name && Object.hasOwn(data, name)) return toCell_(data[name] ?? '');
+    if (name && Object.prototype.hasOwnProperty.call(data, name)) return toCell_(data[name] ?? '');
     const existing = current[column];
     return typeof existing === 'string' ? toCell_(existing) : (existing ?? '');
   });
