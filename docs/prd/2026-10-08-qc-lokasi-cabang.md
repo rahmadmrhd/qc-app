@@ -48,7 +48,7 @@ User memiliki satu atau lebih role; role berisi level per modul (`none` < `view`
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
 | FR-L1 | Daftar lokasi. | Halaman **Lokasi** di menu Pengaturan Akses: tabel kode, nama, status. Butuh `access:view`. |
-| FR-L2 | Tambah dan ubah lokasi. | Field `code` (unik, huruf besar/angka/tanda hubung, maks. 20) dan `name` (wajib, maks. 100). Butuh `access:manage`. Kode tidak dapat diubah setelah dibuat. |
+| FR-L2 | Tambah dan ubah lokasi. | Field `code` (unik, huruf besar/angka/tanda hubung, maks. 10) dan `name` (wajib, maks. 100). Butuh `access:manage`. Kode tidak dapat diubah setelah dibuat. |
 | FR-L3 | Nonaktifkan dan aktifkan lokasi. | Lokasi **tidak dapat dihapus**. Lokasi nonaktif tidak muncul di pemilih header dan tidak bisa menjadi tujuan penulisan; data historisnya tetap ada. |
 | FR-L4 | Kode dan nama unik. | Kode atau nama yang sudah dipakai (tanpa membedakan huruf besar) ditolak dengan `CONFLICT` dan pesan di field terkait. |
 
@@ -102,7 +102,7 @@ User memiliki satu atau lebih role; role berisi level per modul (`none` < `view`
 | NFR-L1 | Keamanan | Pemeriksaan lokasi hanya di server. Pilihan header, `localStorage`, dan input tidak dipercaya. |
 | NFR-L2 | Kompatibilitas | Migrasi tidak mengubah hak user mana pun; aman diulang. |
 | NFR-L3 | Kinerja | Konteks user per permintaan tetap dari cache; perhitungan izin per lokasi tidak membaca sheet tambahan pada jalur panas. |
-| NFR-L4 | Skala | Dirancang untuk hingga sekitar 20 lokasi per instalasi (lihat pertanyaan terbuka); lebih banyak tetap berfungsi tetapi pemilih tanpa pencarian. |
+| NFR-L4 | Skala | Saat ini kurang dari 5 lokasi; dirancang nyaman hingga sekitar 10. Lebih banyak tetap berfungsi, tetapi pemilih header tidak memiliki pencarian (ditambahkan bila perlu). |
 | NFR-L5 | Aksesibilitas | Pemilih lokasi dan bagian Penugasan dapat dioperasikan dengan keyboard dan memiliki label; perubahan tidak hanya ditandai warna. |
 
 ## 6. Arsitektur & Keputusan Teknis
@@ -154,7 +154,7 @@ Idempoten; tidak ada lokasi yang perlu dibuat agar aplikasi tetap berfungsi sepe
 | Admin salah menaruh penugasan (mis. role ber-`access` pada lokasi tertentu) dan mengira berlaku | Hak tidak sesuai harapan | Form Penugasan menjelaskan bahwa Pengaturan Akses hanya dari "Semua lokasi"; keterangan hak efektif di UI. |
 | Migrasi gagal setengah jalan | User kehilangan role sementara | Migrasi per baris, urutan: isi `assignments` lebih dahulu baru kosongkan `role_ids`; idempoten. |
 | Pembacaan `users` makin lebar (JSON `assignments`) | Respons lebih lambat | Konteks user di-cache; penugasan tetap satu sel per user. |
-| Pemilih header membingungkan bila lokasi banyak | UX | Batas rancangan ±20 lokasi; tambahkan pencarian bila terlampaui. |
+| Pemilih header membingungkan bila lokasi bertambah banyak | UX | Saat ini < 5 lokasi, daftar sederhana cukup; tambahkan pencarian bila melewati sekitar 10. |
 
 ## 9. Definition of Done
 - [ ] Sheet `locations` dan kolom `assignments` terbuat otomatis oleh `setup`; user lama tetap punya hak yang sama.
@@ -166,7 +166,7 @@ Idempoten; tidak ada lokasi yang perlu dibuat agar aplikasi tetap berfungsi sepe
 - [ ] `bun run check` hijau; checklist E2E diperbarui dan lulus.
 - [ ] `docs/adding-a-module.md` menjelaskan cara membuat modul berlokasi.
 
-## 10. Pertanyaan Terbuka
-1. Perkiraan jumlah lokasi (asumsi ≤ 20)? Bila jauh lebih banyak, pemilih header perlu pencarian sejak awal.
-2. Format kode lokasi (asumsi huruf besar/angka/tanda hubung, mis. `JKT-01`) sudah sesuai?
-3. Apakah user "Semua lokasi" juga harus muncul di setiap lokasi yang dibuat setelahnya (asumsi: ya, otomatis)?
+## 10. Pertanyaan yang Sudah Dijawab
+1. **Jumlah lokasi:** saat ini kurang dari 5; pemilih header tanpa pencarian sudah cukup.
+2. **Kode lokasi:** huruf besar, angka, dan tanda hubung (mis. `JKT-01`), maksimal 10 karakter.
+3. **Penugasan "Semua lokasi":** otomatis berlaku juga di lokasi yang dibuat kemudian.
