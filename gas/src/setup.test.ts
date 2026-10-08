@@ -76,3 +76,98 @@ test('memigrasi audit_log lama: detail dipindah ke after, detail before/after di
   expect(cell(3, 'after')).toBe('null');
   expect([1, 2, 3].map((row) => cell(row, 'detail'))).toEqual(['', '', '']);
 });
+
+function legacyAuditPlatform() {
+  const platform = createMemoryPlatform({
+    properties: {
+      SPREADSHEET_ID: 'x',
+      OAUTH_CLIENT_ID: 'a',
+      OAUTH_CLIENT_SECRET: 'b',
+      OAUTH_REDIRECT_URI: 'c',
+      SESSION_SECRET: 'd',
+      ADMIN_EMAIL: 'e@gmail.com',
+    },
+  });
+  setPlatform_(platform);
+  return platform;
+}
+
+function auditCells(platform: ReturnType<typeof legacyAuditPlatform>, row: number) {
+  const rows = platform.db.sheet('audit_log').rows;
+  const header = rows[0] ?? [];
+  const cell = (name: string): unknown => rows[row]?.[header.indexOf(name)];
+  return { before: cell('before'), after: cell('after'), detail: cell('detail') };
+}
+
+test('migrasi audit_log lama: role.delete memindahkan detail ke before dan membungkus peta permission', () => {
+  const platform = legacyAuditPlatform();
+  platform.db
+    .insertSheet('audit_log')
+    .rows.push(
+      ['ts', 'actor', 'action', 'target', 'detail'],
+      ['t1', 'e@gmail.com', 'role.delete', 'Magang', '{"item":"manage"}'],
+      ['t2', 'e@gmail.com', 'role.create', 'Gudang', '{"stock":"view"}'],
+      [
+        't3',
+        'e@gmail.com',
+        'role.update',
+        'QC',
+        '{"before":{"item":"edit"},"after":{"item":"manage"}}',
+      ],
+      ['t4', 'e@gmail.com', 'user.create', 'a@gmail.com', '{"name":"A"}'],
+    );
+  runSetup_();
+  expect(auditCells(platform, 1)).toMatchObject({
+    before: '{"permissions":{"item":"manage"}}',
+    after: 'null',
+  });
+  expect(auditCells(platform, 2)).toMatchObject({
+    before: 'null',
+    after: '{"permissions":{"stock":"view"}}',
+  });
+  expect(auditCells(platform, 3)).toMatchObject({
+    before: '{"permissions":{"item":"edit"}}',
+    after: '{"permissions":{"item":"manage"}}',
+  });
+  expect(auditCells(platform, 4)).toMatchObject({ before: 'null', after: '{"name":"A"}' });
+});
+
+test('migrasi memperbaiki baris role yang sudah terlanjur dimigrasi salah, dan aman diulang', () => {
+  const platform = legacyAuditPlatform();
+  platform.db
+    .insertSheet('audit_log')
+    .rows.push(
+      ['ts', 'actor', 'action', 'target', 'before', 'after', 'detail'],
+      ['t1', 'e@gmail.com', 'role.delete', 'Magang', 'null', '{"item":"manage"}', ''],
+      [
+        't2',
+        'e@gmail.com',
+        'role.delete',
+        'Baru',
+        '{"name":"Baru","description":"","permissions":{}}',
+        'null',
+        '',
+      ],
+    );
+  runSetup_();
+  const first = JSON.stringify(platform.db.sheet('audit_log').rows);
+  expect(auditCells(platform, 1)).toMatchObject({
+    before: '{"permissions":{"item":"manage"}}',
+    after: 'null',
+  });
+  expect(auditCells(platform, 2).before).toBe('{"name":"Baru","description":"","permissions":{}}');
+  runSetup_();
+  expect(JSON.stringify(platform.db.sheet('audit_log').rows)).toBe(first);
+});
+
+test('migrasi tidak menimpa sel before/after yang berisi JSON rusak', () => {
+  const platform = legacyAuditPlatform();
+  platform.db
+    .insertSheet('audit_log')
+    .rows.push(
+      ['ts', 'actor', 'action', 'target', 'before', 'after', 'detail'],
+      ['t1', 'e@gmail.com', 'user.update', 'a@gmail.com', '{rusak', '{"name":"B"}', ''],
+    );
+  runSetup_();
+  expect(auditCells(platform, 1)).toMatchObject({ before: '{rusak', after: '{"name":"B"}' });
+});

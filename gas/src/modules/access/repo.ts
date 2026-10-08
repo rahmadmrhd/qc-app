@@ -205,25 +205,70 @@ export function listAuditRecords_(): AuditRecord[] {
   }));
 }
 
+function hasKey_(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+/** Snapshot role baru selalu punya `name`/`permissions`; peta level mentah (format lama) dibungkus. */
+function wrapRoleSnapshot_(value: unknown): unknown {
+  if (!isPlainObject_(value) || hasKey_(value, 'name') || hasKey_(value, 'permissions')) {
+    return value;
+  }
+  return { permissions: value };
+}
+
 /**
- * Migrasi sekali jalan (aman diulang): isi kolom `detail` lama dipindah ke `before`/`after`,
- * lalu `detail` dikosongkan. Detail berbentuk {before, after} dipecah; selain itu masuk ke `after`.
+ * Samakan bentuk baris audit lama dengan format baru. Aman diulang: baris berformat baru tidak berubah.
+ * role.delete lama menyimpan peta level di detail (kini `before`); role.* lama menyimpan peta mentah.
+ */
+function normalizeLegacyAudit_(
+  action: string,
+  before: unknown,
+  after: unknown,
+): { before: unknown; after: unknown } {
+  let prev = before;
+  let next = after;
+  if (action === 'role.delete' && prev === null && next !== null) {
+    prev = next;
+    next = null;
+  }
+  if (action.indexOf('role.') === 0) {
+    prev = wrapRoleSnapshot_(prev);
+    next = wrapRoleSnapshot_(next);
+  }
+  return { before: prev, after: next };
+}
+
+/**
+ * Migrasi (aman diulang): isi kolom `detail` lama dipindah ke `before`/`after` lalu `detail`
+ * dikosongkan; detail {before, after} dipecah. Bentuk snapshot disesuaikan per aksi (lihat
+ * normalizeLegacyAudit_), termasuk memperbaiki baris yang sudah terlanjur dimigrasi dengan bentuk lama.
  */
 export function migrateAuditDetail_(): number {
   let migrated = 0;
   for (const { rowNumber, data } of readTable_(AUDIT_TABLE).rows) {
     const detail = (data.detail ?? '').trim();
-    if (detail === '') continue;
-    const parsed = parseJson_(detail);
-    const split =
-      isPlainObject_(parsed) &&
-      Object.prototype.hasOwnProperty.call(parsed, 'before') &&
-      Object.prototype.hasOwnProperty.call(parsed, 'after');
-    updateRow_(AUDIT_TABLE, rowNumber, {
-      before: split ? JSON.stringify(parsed.before ?? null) : 'null',
-      after: split ? JSON.stringify(parsed.after ?? null) : detail,
-      detail: '',
-    });
+    let before: unknown = parseJson_(data.before ?? '');
+    let after: unknown = parseJson_(data.after ?? '');
+    if (detail !== '') {
+      const parsed = parseJson_(detail);
+      const split = isPlainObject_(parsed) && hasKey_(parsed, 'before') && hasKey_(parsed, 'after');
+      before = split ? (parsed.before ?? null) : null;
+      after = split ? (parsed.after ?? null) : parsed;
+    }
+    // JSON rusak jangan ditimpa `null`: datanya tak terbaca, tetapi masih bisa dipulihkan manual.
+    const unreadable = (text: string | undefined, value: unknown): boolean =>
+      (text ?? '').trim() !== '' && (text ?? '').trim() !== 'null' && value === null;
+    if (detail === '' && (unreadable(data.before, before) || unreadable(data.after, after))) {
+      continue;
+    }
+    const next = normalizeLegacyAudit_(data.action ?? '', before ?? null, after ?? null);
+    const beforeText = JSON.stringify(next.before);
+    const afterText = JSON.stringify(next.after);
+    if (detail === '' && beforeText === (data.before ?? '') && afterText === (data.after ?? '')) {
+      continue;
+    }
+    updateRow_(AUDIT_TABLE, rowNumber, { before: beforeText, after: afterText, detail: '' });
     migrated++;
   }
   return migrated;

@@ -1,7 +1,7 @@
 import type { AuditEntryDto } from '@shared/rpc';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { z } from 'zod';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
   auditActionLabel,
   formatAuditTime,
 } from '@/modules/access/lib/audit-actions';
+import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { auditQueryOptions, rolesQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 
@@ -52,19 +53,13 @@ function AuditPage() {
     auditQueryOptions({ page: search.page, action: search.action, query: search.q }),
   );
   const [selected, setSelected] = useState<AuditEntryDto | null>(null);
-  const [text, setText] = useState(search.q ?? '');
-
   // Kata kunci dikirim ke server; tunda agar tidak memanggil RPC pada setiap ketukan.
-  useEffect(() => {
-    if (text === (search.q ?? '')) return;
-    const timer = setTimeout(() => {
-      void navigate({
-        search: (prev) => ({ ...prev, q: text || undefined, page: undefined }),
-        replace: true,
-      });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [text, search.q, navigate]);
+  const [text, setText] = useUrlSyncedText(search.q ?? '', (value) => {
+    void navigate({
+      search: (prev) => ({ ...prev, q: value || undefined, page: undefined }),
+      replace: true,
+    });
+  });
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
   const page = result.page;
