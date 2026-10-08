@@ -77,21 +77,39 @@ export function renderHtmlPage_(html: string): GoogleAppsScript.HTML.HtmlOutput 
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-export function renderErrorPage_(message: string): GoogleAppsScript.HTML.HtmlOutput {
-  const escaped = message.replace(
-    /[&<>"]/g,
-    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch,
-  );
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+};
+
+function escapeHtml_(text: string): string {
+  return text.replace(/[&<>"]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
+}
+
+/** Rincian error hanya ditampilkan bila `detail` diberikan (pemanggil memastikan hanya untuk pemilik script). */
+export function renderErrorPage_(
+  message: string,
+  detail?: string,
+): GoogleAppsScript.HTML.HtmlOutput {
+  const detailHtml = detail
+    ? `<pre style="white-space:pre-wrap;background:#f4f4f4;padding:1rem">${escapeHtml_(detail)}</pre>`
+    : '';
   return HtmlService.createHtmlOutput(
-    `<main style="font-family:sans-serif;padding:2rem"><h1>QC App</h1><p>${escaped}</p></main>`,
+    `<main style="font-family:sans-serif;padding:2rem"><h1>QC App</h1><p>${escapeHtml_(message)}</p>${detailHtml}</main>`,
   ).setTitle('QC App');
+}
+
+/** True bila yang mengakses adalah pemilik script (mis. lewat URL /dev). Anonim selalu false. */
+export function isScriptOwner_(): boolean {
+  const active = Session.getActiveUser().getEmail();
+  return active !== '' && active === Session.getEffectiveUser().getEmail();
 }
 
 /** `setup` hanya boleh dijalankan pemilik script dari editor, bukan lewat google.script.run. */
 export function assertScriptOwner_(): void {
-  const active = Session.getActiveUser().getEmail();
-  const owner = Session.getEffectiveUser().getEmail();
-  if (!active || active !== owner) {
+  if (!isScriptOwner_()) {
     throw new Error('setup hanya boleh dijalankan oleh pemilik script dari editor Apps Script.');
   }
 }

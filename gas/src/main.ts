@@ -1,6 +1,7 @@
 import {
   assertScriptOwner_,
   installGasPlatform_,
+  isScriptOwner_,
   loadIndexHtml_,
   renderErrorPage_,
   renderHtmlPage_,
@@ -16,10 +17,12 @@ export function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.HTML.H
   try {
     return renderHtmlPage_(injectBoot_(loadIndexHtml_(), buildBootData_(e.parameter ?? {})));
   } catch (error) {
-    platform_().logError(
-      `doGet gagal: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    platform_().logError(`doGet gagal: ${detail}`);
+    return renderErrorPage_(
+      'Aplikasi belum dapat dibuka. Hubungi admin.',
+      isScriptOwner_() ? detail : undefined,
     );
-    return renderErrorPage_('Aplikasi belum dapat dibuka. Hubungi admin.');
   }
 }
 
