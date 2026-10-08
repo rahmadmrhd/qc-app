@@ -12,7 +12,15 @@ on:
         options: [dev, exec]
         default: dev
   # PR yang di-merge: base dev -> target dev, base main -> target exec.
-  pull_request:
+  #
+  # Sengaja `pull_request_target`, bukan `pull_request`: pada `pull_request` GITHUB_REF selalu
+  # `refs/pull/N/merge`, yang tidak pernah cocok dengan aturan environment "Selected branches".
+  # `pull_request_target` berjalan pada ref branch tujuan (refs/heads/dev atau refs/heads/main), memakai
+  # file workflow dari branch tujuan, dan menerima secret walau PR berasal dari fork.
+  # Aman karena job hanya jalan setelah PR di-merge (lihat `if`) dan hanya meng-checkout
+  # merge_commit_sha, yaitu kode yang sudah masuk ke branch terlindungi. Jangan pernah menambahkan
+  # langkah yang meng-checkout head PR yang belum di-merge pada workflow ini.
+  pull_request_target:
     types: [closed]
     branches: [dev, main]
 
@@ -59,7 +67,7 @@ jobs:
       # PR: commit hasil merge. Manual: commit dari branch yang dipilih.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || github.sha }}
 
       - uses: oven-sh/setup-bun@v2
         with:
