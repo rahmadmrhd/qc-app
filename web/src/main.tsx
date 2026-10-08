@@ -6,12 +6,13 @@ import { readBoot, resolveInitialSession } from '@/app/boot';
 import { restoreHashFromTop, syncTopUrl } from '@/app/gas-location';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { createAppRouter } from '@/app/router';
+import { readLoginNonce } from '@/modules/auth/nonce';
 import { clearToken, initSession, readStoredToken } from '@/modules/auth/session';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
 async function start() {
-  initSession(resolveInitialSession(readBoot(), readStoredToken()));
+  initSession(resolveInitialSession(readBoot(), readStoredToken(), readLoginNonce()));
   await restoreHashFromTop();
 
   const router = createAppRouter(queryClient);

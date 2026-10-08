@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { newLoginNonce, withNonce, writeLoginNonce } from '../nonce';
 
 export interface LoginPanelProps {
   loginUrl: string | null;
@@ -38,7 +39,16 @@ export function LoginPanel({ loginUrl, authError, authErrorEmail, children }: Lo
         ) : null}
         {loginUrl ? (
           <Button asChild className="w-full">
-            <a href={loginUrl} target="_top" rel="noopener">
+            <a
+              href={loginUrl}
+              target="_top"
+              rel="noopener"
+              onClick={(event) => {
+                const nonce = newLoginNonce();
+                writeLoginNonce(nonce);
+                event.currentTarget.href = withNonce(loginUrl, nonce);
+              }}
+            >
               Masuk dengan Google
             </a>
           </Button>

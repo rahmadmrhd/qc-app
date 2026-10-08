@@ -139,7 +139,10 @@ function UsersPage() {
             <UserForm
               key={editing === 'new' ? 'new' : editing.id}
               mode={editing === 'new' ? 'create' : 'edit'}
-              defaultValues={toUserFormDefaults(editing === 'new' ? undefined : editing)}
+              defaultValues={toUserFormDefaults(
+                editing === 'new' ? undefined : editing,
+                roles.map((role) => role.id),
+              )}
               roles={roles}
               submitError={submitError}
               onSubmit={handleSubmit}

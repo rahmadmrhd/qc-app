@@ -34,6 +34,8 @@ export interface Platform {
   now(): number;
   httpPostForm(url: string, form: Record<string, string>): HttpResponseLike;
   withLock<T>(fn: () => T): T;
+  /** Paksa penulisan sheet yang tertunda selesai (dipanggil sebelum lock dilepas). */
+  flush(): void;
   spreadsheet(): SpreadsheetLike;
   logError(message: string): void;
 }

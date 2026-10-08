@@ -46,9 +46,11 @@ function createGasPlatform_(): Platform {
       try {
         return fn();
       } finally {
+        SpreadsheetApp.flush();
         lock.releaseLock();
       }
     },
+    flush: () => SpreadsheetApp.flush(),
     spreadsheet: () => {
       if (!spreadsheet) {
         const id = properties.getProperty('SPREADSHEET_ID')?.trim();

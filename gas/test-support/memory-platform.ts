@@ -162,6 +162,7 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     withLock<T>(fn: () => T): T {
       return fn();
     },
+    flush: () => undefined,
     spreadsheet: () => db,
     logError: (message) => {
       errors.push(message);

@@ -105,7 +105,7 @@ Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) diteta
 | ID | Kategori | Kebutuhan |
 |---|---|---|
 | NFR-1 | Keamanan | Web app di-deploy **Execute as: Me**, **Access: Anyone**. Spreadsheet dan Drive tidak di-share ke user. Secret (client secret, session secret) hanya di Script Properties, tidak pernah dikirim ke klien. |
-| NFR-2 | Keamanan | Hanya `doGet` dan `api` yang dapat dipanggil dari klien; fungsi lain berakhiran `_`. Error tak terduga tidak membocorkan stack trace ke klien. |
+| NFR-2 | Keamanan | Hanya `doGet` dan `api` yang dapat dipanggil dari klien; fungsi lain berakhiran `_`. Pengecualian: fungsi murni di `shared/` (mis. `hasLevel`, `mergePermissions`) tetap tanpa akhiran karena dipakai bersama FE dan tidak menyentuh data maupun API GAS. Error tak terduga tidak membocorkan stack trace ke klien. |
 | NFR-3 | Keamanan | Login memakai parameter `state` sekali-pakai (anti-CSRF); `id_token` divalidasi `iss`, `aud`, `exp`, `email_verified`. |
 | NFR-4 | Integritas data | Operasi tulis memakai `LockService` agar aman terhadap penyimpanan bersamaan. |
 | NFR-5 | Performa | Muat awal aplikasi ≤ 4 detik pada koneksi kantor; panggilan RPC baca tipikal ≤ 3 detik. Konteks user di-cache untuk menghindari pembacaan sheet berulang. |

@@ -94,6 +94,8 @@ export type AuthErrorCode = 'NOT_WHITELISTED' | 'LOGIN_FAILED';
 export interface BootData {
   loginUrl?: string;
   sessionToken?: string;
+  /** Nonce browser yang dikembalikan server; FE hanya menerima sessionToken bila cocok dengan nonce tersimpan. */
+  nonce?: string;
   authError?: AuthErrorCode;
   email?: string;
 }

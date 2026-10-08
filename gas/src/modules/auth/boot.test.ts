@@ -29,7 +29,7 @@ function tokenResponse(): HttpResponseLike {
 }
 
 function freshState(): string {
-  return new URL(createLoginUrl_()).searchParams.get('state') ?? '';
+  return `${new URL(createLoginUrl_()).searchParams.get('state') ?? ''}.nonce1`;
 }
 
 beforeEach(() => {
@@ -59,6 +59,15 @@ test('callback valid untuk email terdaftar menghasilkan sessionToken', () => {
   const boot = buildBootData_({ code: 'kode', state: freshState() });
   expect(verifySessionToken_(boot.sessionToken)?.email).toBe('budi@gmail.com');
   expect(boot.authError).toBeUndefined();
+  expect(boot.loginUrl).toStartWith('https://accounts.google.com/');
+  expect(boot.nonce).toBe('nonce1');
+});
+
+test('state tanpa nonce (tidak terikat ke browser) ditolak tanpa memanggil Google', () => {
+  const bare = new URL(createLoginUrl_()).searchParams.get('state') ?? '';
+  platform.httpCalls.length = 0;
+  expect(buildBootData_({ code: 'kode', state: bare }).authError).toBe('LOGIN_FAILED');
+  expect(platform.httpCalls).toHaveLength(0);
 });
 
 test('callback valid untuk email tidak terdaftar menghasilkan NOT_WHITELISTED', () => {

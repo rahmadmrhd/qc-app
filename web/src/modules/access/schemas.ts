@@ -26,9 +26,18 @@ export const roleFormSchema = z.object({
 export type RoleFormInput = z.input<typeof roleFormSchema>;
 export type RoleFormOutput = z.output<typeof roleFormSchema>;
 
-export function toUserFormDefaults(user?: UserDto): UserFormInput {
+/** `knownRoleIds`: role yang masih ada — role basi dibuang agar user tetap bisa disimpan. */
+export function toUserFormDefaults(
+  user?: UserDto,
+  knownRoleIds?: readonly string[],
+): UserFormInput {
   return user
-    ? { email: user.email, name: user.name, status: user.status, roleIds: [...user.roleIds] }
+    ? {
+        email: user.email,
+        name: user.name,
+        status: user.status,
+        roleIds: user.roleIds.filter((id) => !knownRoleIds || knownRoleIds.includes(id)),
+      }
     : { email: '', name: '', status: 'active', roleIds: [] };
 }
 

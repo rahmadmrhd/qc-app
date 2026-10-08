@@ -5,9 +5,14 @@ export function readBoot(): BootData {
   return window.__BOOT__ ?? {};
 }
 
-export function resolveInitialSession(boot: BootData, storedToken: string | null): SessionState {
+export function resolveInitialSession(
+  boot: BootData,
+  storedToken: string | null,
+  storedNonce: string | null = null,
+): SessionState {
   const loginUrl = boot.loginUrl ?? null;
-  if (boot.sessionToken) {
+  // Token dari callback hanya sah bila nonce-nya cocok dengan yang dibuat browser ini (anti login-CSRF).
+  if (boot.sessionToken && boot.nonce && boot.nonce === storedNonce) {
     return { token: boot.sessionToken, loginUrl, authError: null, authErrorEmail: null };
   }
   if (boot.authError === 'NOT_WHITELISTED') {

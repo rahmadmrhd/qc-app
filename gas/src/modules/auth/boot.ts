@@ -10,7 +10,9 @@ export function buildBootData_(params: Record<string, string | undefined>): Boot
   const isCallback = Boolean(params.code || params.error);
   if (!isCallback) return { loginUrl: createLoginUrl_() };
 
-  const stateOk = consumeLoginState_(params.state);
+  // state = <state-server>.<nonce-browser>; nonce mengikat callback ke browser yang memulai login.
+  const [serverState, nonce] = (params.state ?? '').split('.');
+  const stateOk = Boolean(nonce) && consumeLoginState_(serverState);
   if (!stateOk || params.error || !params.code) {
     return { authError: 'LOGIN_FAILED', loginUrl: createLoginUrl_() };
   }
@@ -23,7 +25,7 @@ export function buildBootData_(params: Record<string, string | undefined>): Boot
   if (!loadUserContext_(result.email)) {
     return { authError: 'NOT_WHITELISTED', email: result.email, loginUrl: createLoginUrl_() };
   }
-  return { sessionToken: signSessionToken_(result.email) };
+  return { sessionToken: signSessionToken_(result.email), nonce, loginUrl: createLoginUrl_() };
 }
 
 export function injectBoot_(html: string, boot: BootData): string {

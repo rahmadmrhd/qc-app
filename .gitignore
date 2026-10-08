@@ -22,3 +22,6 @@ coverage/
 
 # scratch eksekusi rencana (ledger)
 .superpowers/
+
+# cache generator TanStack Router
+web/.tanstack/

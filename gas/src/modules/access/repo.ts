@@ -64,7 +64,10 @@ function parseJson_(text: string): unknown {
 function parseStringArray_(text: string): string[] {
   const value = parseJson_(text);
   return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
+    ? value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter((item) => item !== '')
     : [];
 }
 

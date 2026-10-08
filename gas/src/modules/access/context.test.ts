@@ -82,3 +82,10 @@ test('hasil di-cache dan diperbarui setelah invalidateAccessCache_', () => {
   invalidateAccessCache_();
   expect(loadUserContext_('budi@gmail.com')).toBeNull();
 });
+
+test('role_ids berspasi di sheet (hasil edit manual) tetap dikenali', () => {
+  platform.db
+    .sheet('users')
+    .rows.push(['u9', 'spasi@gmail.com', 'Spasi', 'active', '[" r-view "]', '', '', '']);
+  expect(loadUserContext_('spasi@gmail.com')?.permissions.item).toBe('view');
+});

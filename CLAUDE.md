@@ -19,6 +19,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 ## Aturan kode GAS (ditegakkan `scripts/build-gas.ts`)
 - File di-transpile per file dan `import`/`export` dihapus: semua file berbagi SATU global scope.
 - Semua fungsi top-level di `gas/src` WAJIB berakhiran `_` (agar tidak bisa dipanggil via `google.script.run`), kecuali `doGet`, `api`, `setup`.
+- Pengecualian terdokumentasi: fungsi murni di `shared/` tidak berakhiran `_` (tidak menyentuh data/API GAS; lihat PRD NFR-2).
 - Nama top-level unik di seluruh `gas/src` + `shared/`. Dilarang: `export default`, re-export, import alias/namespace/dynamic, class, enum.
 - Tidak ada kode top-level yang memakai global file lain saat load — bungkus dalam fungsi (lihat `getRoutes_`).
 - Akses API GAS hanya lewat `platform_()`; implementasi asli di `core/gas-platform.ts`.

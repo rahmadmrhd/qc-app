@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { resolveInitialSession } from './boot';
 
 test('sessionToken dari boot dipakai dan menggantikan token lama', () => {
-  expect(resolveInitialSession({ sessionToken: 'baru' }, 'lama')).toEqual({
+  expect(resolveInitialSession({ sessionToken: 'baru', nonce: 'n1' }, 'lama', 'n1')).toEqual({
     token: 'baru',
     loginUrl: null,
     authError: null,
@@ -43,4 +43,18 @@ test('tanpa token sama sekali, LOGIN_FAILED ditampilkan', () => {
     authError: null,
     authErrorEmail: null,
   });
+});
+
+test('sessionToken dengan nonce yang tidak cocok (login-CSRF) ditolak dan token tersimpan dipertahankan', () => {
+  const session = resolveInitialSession(
+    { sessionToken: 'penyerang', nonce: 'x', loginUrl: 'u' },
+    'milik-saya',
+    'n1',
+  );
+  expect(session.token).toBe('milik-saya');
+});
+
+test('sessionToken tanpa nonce tersimpan di browser ini ditolak', () => {
+  const session = resolveInitialSession({ sessionToken: 't', nonce: 'n1' }, null, null);
+  expect(session.token).toBeNull();
 });
