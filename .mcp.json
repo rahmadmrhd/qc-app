@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "clasp": { "command": "cmd", "args": ["/c", "clasp", "mcp"] },
+    "shadcn": {
+      "command": "cmd",
+      "args": ["/c", "bunx", "--bun", "shadcn@latest", "mcp", "--cwd", "web"]
+    }
+  }
+}
