@@ -174,7 +174,7 @@ Konsekuensi build per file: nama top-level harus unik antar file; tidak boleh ad
 - Validasi form di FE dengan zod; server memvalidasi ulang.
 
 ### 6.5 Autentikasi (OAuth Authorization Code, sisi server)
-1. `doGet(e)` tanpa `code`: buat `state` acak (CacheService, 10 menit), render `index.html` dengan `window.__BOOT__ = { loginUrl }` yang disisipkan lewat penggantian placeholder `<!--BOOT-->` (bukan template `<? ?>`), JSON di-escape.
+1. `doGet(e)` tanpa `code`: buat `state` acak (CacheService, 6 jam — agar link login di halaman yang lama terbuka tetap berlaku), render `index.html` dengan `window.__BOOT__ = { loginUrl }` yang disisipkan lewat penggantian placeholder `<!--BOOT-->` (bukan template `<? ?>`), JSON di-escape.
 2. Tombol login: `<a href={loginUrl} target="_top">`, scope `openid email`, `prompt=select_account`.
 3. Callback `/exec?code&state`: validasi & hapus `state` → tukar `code` di `oauth2.googleapis.com/token` → validasi `id_token` → cek whitelist → sisipkan `__BOOT__ = { sessionToken }` atau `{ authError: 'NOT_WHITELISTED' | 'LOGIN_FAILED' }`.
 4. FE menyimpan token di `localStorage`, membersihkan URL via `google.script.history.replace`.
