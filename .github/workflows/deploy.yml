@@ -25,18 +25,36 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Satu deploy per target pada satu waktu; deploy yang sedang jalan tidak dibatalkan.
+    # Satu deploy pada satu waktu untuk SELURUH target: dev dan exec menulis ke project Apps Script yang
+    # sama, dan versi /exec dibuat dari @HEAD. Bila dibiarkan paralel, push dev bisa terselip di antara
+    # push dan pembuatan versi exec sehingga kode dev terbit di /exec. Deploy berjalan tidak dibatalkan.
     concurrency:
-      group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'exec' || 'dev') }}
+      group: deploy-gas
       cancel-in-progress: false
+    # Environment per target: tempat menaruh secret, membatasi branch yang boleh deploy, dan (opsional)
+    # meminta persetujuan. Lihat docs/ci-cd.md.
+    environment: gas-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'exec' || 'dev') }}
     env:
       TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'exec' || 'dev') }}
     steps:
-      - name: Pastikan exec hanya dari main
-        if: env.TARGET == 'exec' && github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      # Berjalan sebelum checkout dan sebelum kredensial ada. Dispatch manual hanya dari ref tepercaya:
+      # kode pada branch lain bisa mengubah scripts/push.ts dan membaca token clasp.
+      - name: Pastikan dispatch dari ref tepercaya
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "::error::Target exec hanya boleh dijalankan dari branch main (dipilih: ${GITHUB_REF_NAME})."
-          exit 1
+          case "${GITHUB_REF}" in
+            refs/heads/main) ;;
+            refs/heads/dev)
+              if [ "${TARGET}" = "exec" ]; then
+                echo "::error::Target exec hanya boleh dijalankan dari branch main (dipilih: ${GITHUB_REF_NAME})."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Deploy manual hanya boleh dari branch main atau dev (dipilih: ${GITHUB_REF_NAME})."
+              exit 1
+              ;;
+          esac
 
       # PR: commit hasil merge. Manual: commit dari branch yang dipilih.
       - uses: actions/checkout@v4
