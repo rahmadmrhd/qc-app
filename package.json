@@ -1,0 +1,22 @@
+{
+  "name": "qc",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "gas"
+  ],
+  "scripts": {
+    "build:gas": "bun run scripts/build-gas.ts",
+    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test",
+    "check": "bun run typecheck && bun run lint && bun run test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
