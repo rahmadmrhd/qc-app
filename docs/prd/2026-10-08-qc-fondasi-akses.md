@@ -207,7 +207,7 @@ Relasi disimpan sebagai kolom JSON (bukan sheet relasi) agar tidak perlu join an
 | `SPREADSHEET_ID` | ID spreadsheet database |
 | `OAUTH_CLIENT_ID` | Client ID OAuth (tipe Web) |
 | `OAUTH_CLIENT_SECRET` | Client secret OAuth |
-| `OAUTH_REDIRECT_URI` | URL `/exec` deployment tetap |
+| `OAUTH_REDIRECT_URI` | Opsional (override); bila kosong dipakai URL web app yang sedang berjalan (`/dev` atau `/exec`). Kedua URL didaftarkan sekali di Google Cloud |
 | `SESSION_SECRET` | String acak ≥ 32 byte |
 | `ADMIN_EMAIL` | Email super admin |
 

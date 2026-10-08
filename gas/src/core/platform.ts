@@ -24,6 +24,8 @@ export interface HttpResponseLike {
 /** Semua akses ke API GAS lewat antarmuka ini agar logika server bisa diuji tanpa GAS. */
 export interface Platform {
   getProperty(key: string): string | null;
+  /** URL web app yang sedang melayani permintaan (/dev atau /exec); '' bila tidak tersedia. */
+  scriptUrl(): string;
   cacheGet(key: string): string | null;
   cachePut(key: string, value: string, ttlSeconds: number): void;
   cacheRemove(key: string): void;
