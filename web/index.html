@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QC App</title>
+    <script>
+      // Terapkan tema tersimpan sebelum render pertama agar tidak berkedip. Harus selaras dengan modules/theme/theme.ts.
+      (() => {
+        let dark = false;
+        try {
+          const saved = localStorage.getItem('qc.theme');
+          const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
+          dark = saved === 'dark' || ((saved === null || saved === 'system') && systemDark);
+        } catch {
+          dark = false;
+        }
+        if (dark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+    <script>
+      // Diisi server (GAS) saat melayani halaman; lihat gas/src/modules/auth/boot.ts.
+      window.__BOOT__ = '__QC_BOOT__';
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

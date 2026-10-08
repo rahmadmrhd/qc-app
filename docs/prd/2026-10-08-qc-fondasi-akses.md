@@ -79,7 +79,7 @@ Pengguna memakai **akun Gmail pribadi atau campuran domain** (bukan satu domain 
 | FR-P4 | Server menolak aksi di bawah level yang dibutuhkan. | Panggilan RPC langsung dengan level kurang mengembalikan error `FORBIDDEN`. |
 | FR-P5 | UI menyesuaikan dengan permission. | Menu, halaman, dan tombol aksi yang tidak diizinkan disembunyikan/dinonaktifkan; membuka URL halaman terlarang menampilkan halaman 403. |
 
-Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) ditetapkan di PRD modul masing-masing. Pedoman umum: `view` = membaca, `edit` = menambah/mengubah, `manage` = menghapus, menyetujui, dan pengaturan modul.
+Level yang tersedia per modul ditetapkan di `MODULE_LEVELS` (`shared/permissions.ts`) dan dapat ditambah atau dikurangi sesuai fitur modul: saat ini `access` = none/view/manage (tidak ada `edit`, karena semua aksi tulis butuh `manage`) dan `stock` = none/view; server menolak level di luar daftar. Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) ditetapkan di PRD modul masing-masing. Pedoman umum: `view` = membaca, `edit` = menambah/mengubah, `manage` = menghapus, menyetujui, dan pengaturan modul.
 
 ### 4.3 Pengelolaan Akses (modul `access`)
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -90,7 +90,8 @@ Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) diteta
 | FR-M4 | Daftar role. | Nama, deskripsi, ringkasan level per modul, jumlah user. |
 | FR-M5 | Tambah / ubah role. | Form nama (unik), deskripsi, dan matriks modul × level. |
 | FR-M6 | Hapus role. | Ditolak (`CONFLICT`) bila role masih dipakai user. |
-| FR-M7 | Audit log. | Setiap perubahan user/role tercatat: waktu, pelaku, aksi, target, detail perubahan. |
+| FR-M7 | Audit log. | Setiap perubahan user/role tercatat: waktu, pelaku, aksi, target, serta snapshot lengkap `before` dan `after` (create: before kosong; delete: after kosong) agar dapat ditampilkan sebagai diff. |
+| FR-M8 | Halaman Log Audit (`#/access/audit`). | Butuh `access:view`. Tabel terbaru-dahulu (50/halaman) dengan filter aksi dan kata kunci target/pelaku; satu entri dibuka sebagai form baca-saja yang menandai field ditambah (hijau), diubah (kuning, nilai lama dicoret), dan dihapus (merah), dengan penanda teks selain warna. RPC `access.audit.list`. |
 
 ### 4.4 Shell Aplikasi
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -98,13 +99,14 @@ Makna rinci tiap level per modul (mis. apa arti `manage` di Serah Terima) diteta
 | FR-S1 | Layout utama. | Sidebar (menu sesuai akses), header berisi nama/email user dan logout, responsif di layar ponsel. |
 | FR-S2 | Beranda. | Kartu modul yang dapat diakses user; modul yang belum dibangun ditandai "Segera hadir". |
 | FR-S3 | Halaman status. | Login, belum terdaftar, 403, 404, dan error umum (menampilkan `requestId` untuk dilaporkan). |
+| FR-S4 | Tema tampilan. | Pengguna dapat memilih Terang, Gelap, atau Ikuti sistem dari tombol di header (dan halaman login); pilihan tersimpan di perangkat, diterapkan sebelum render pertama (tanpa kedipan), dan notifikasi (toast) mengikuti tema. |
 
 ## 5. Kebutuhan Non-Fungsional
 
 | ID | Kategori | Kebutuhan |
 |---|---|---|
 | NFR-1 | Keamanan | Web app di-deploy **Execute as: Me**, **Access: Anyone**. Spreadsheet dan Drive tidak di-share ke user. Secret (client secret, session secret) hanya di Script Properties, tidak pernah dikirim ke klien. |
-| NFR-2 | Keamanan | Hanya `doGet` dan `api` yang dapat dipanggil dari klien; fungsi lain berakhiran `_`. Error tak terduga tidak membocorkan stack trace ke klien. |
+| NFR-2 | Keamanan | Hanya `doGet` dan `api` yang dapat dipanggil dari klien; fungsi lain berakhiran `_`. Pengecualian: fungsi murni di `shared/` (mis. `hasLevel`, `mergePermissions`) tetap tanpa akhiran karena dipakai bersama FE dan tidak menyentuh data maupun API GAS. Error tak terduga tidak membocorkan stack trace ke klien. |
 | NFR-3 | Keamanan | Login memakai parameter `state` sekali-pakai (anti-CSRF); `id_token` divalidasi `iss`, `aud`, `exp`, `email_verified`. |
 | NFR-4 | Integritas data | Operasi tulis memakai `LockService` agar aman terhadap penyimpanan bersamaan. |
 | NFR-5 | Performa | Muat awal aplikasi ≤ 4 detik pada koneksi kantor; panggilan RPC baca tipikal ≤ 3 detik. Konteks user di-cache untuk menghindari pembacaan sheet berulang. |
@@ -174,7 +176,7 @@ Konsekuensi build per file: nama top-level harus unik antar file; tidak boleh ad
 - Validasi form di FE dengan zod; server memvalidasi ulang.
 
 ### 6.5 Autentikasi (OAuth Authorization Code, sisi server)
-1. `doGet(e)` tanpa `code`: buat `state` acak (CacheService, 10 menit), render `index.html` dengan `window.__BOOT__ = { loginUrl }` yang disisipkan lewat penggantian placeholder `<!--BOOT-->` (bukan template `<? ?>`), JSON di-escape.
+1. `doGet(e)` tanpa `code`: buat `state` acak (CacheService, 6 jam — agar link login di halaman yang lama terbuka tetap berlaku), render `index.html` dengan `window.__BOOT__ = { loginUrl }` yang disisipkan lewat penggantian penanda string `'__QC_BOOT__'` di skrip inline (bukan komentar HTML, karena HtmlService membuang komentar; bukan template `<? ?>`), JSON di-escape.
 2. Tombol login: `<a href={loginUrl} target="_top">`, scope `openid email`, `prompt=select_account`.
 3. Callback `/exec?code&state`: validasi & hapus `state` → tukar `code` di `oauth2.googleapis.com/token` → validasi `id_token` → cek whitelist → sisipkan `__BOOT__ = { sessionToken }` atau `{ authError: 'NOT_WHITELISTED' | 'LOGIN_FAILED' }`.
 4. FE menyimpan token di `localStorage`, membersihkan URL via `google.script.history.replace`.
@@ -188,7 +190,7 @@ Baris 1 = header; pemetaan kolom berdasarkan nama header. Sheet dibuat otomatis 
 |---|---|
 | `users` | `id`, `email` (lowercase, unik), `name`, `status` (`active`/`inactive`), `role_ids` (JSON array), `created_at`, `updated_at`, `updated_by` |
 | `roles` | `id`, `name` (unik), `description`, `permissions` (JSON, mis. `{"item":"edit"}`), `created_at`, `updated_at`, `updated_by` |
-| `audit_log` | `ts`, `actor`, `action`, `target`, `detail` (JSON) |
+| `audit_log` | `ts`, `actor`, `action`, `target`, `before` (JSON), `after` (JSON) |
 
 Relasi disimpan sebagai kolom JSON (bukan sheet relasi) agar tidak perlu join antar-sheet dan setiap simpan cukup menulis satu baris.
 
