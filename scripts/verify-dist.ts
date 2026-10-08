@@ -8,8 +8,11 @@ if (!(await index.exists())) {
   problems.push('gas/dist/index.html tidak ada');
 } else {
   const html = await index.text();
-  const bootCount = html.split('<!--BOOT-->').length - 1;
-  if (bootCount !== 1) problems.push(`placeholder <!--BOOT--> muncul ${bootCount} kali (harus 1)`);
+  const bootCount = ["'__QC_BOOT__'", '"__QC_BOOT__"'].reduce(
+    (sum, marker) => sum + html.split(marker).length - 1,
+    0,
+  );
+  if (bootCount !== 1) problems.push(`penanda __QC_BOOT__ muncul ${bootCount} kali (harus 1)`);
   if (/<script[^>]+\bsrc=/i.test(html))
     problems.push('index.html masih memuat <script src> eksternal');
   if (/<link[^>]+rel=["']?stylesheet/i.test(html)) {

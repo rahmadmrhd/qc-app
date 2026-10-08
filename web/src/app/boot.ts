@@ -2,7 +2,9 @@ import type { BootData } from '@shared/rpc';
 import type { SessionState } from '@/modules/auth/session';
 
 export function readBoot(): BootData {
-  return window.__BOOT__ ?? {};
+  const boot: unknown = window.__BOOT__;
+  // Saat dev (tanpa server) nilainya masih berupa string penanda.
+  return boot && typeof boot === 'object' ? (boot as BootData) : {};
 }
 
 export function resolveInitialSession(

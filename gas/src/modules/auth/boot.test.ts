@@ -6,7 +6,7 @@ import { insertUser_ } from '@gas/modules/access/repo';
 import { user } from '@gas-test/access-fixtures';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { BOOT_PLACEHOLDER, buildBootData_, injectBoot_ } from './boot';
+import { BOOT_MARKER, buildBootData_, injectBoot_ } from './boot';
 import { createLoginUrl_ } from './oauth';
 
 const NOW = Date.parse('2026-10-08T00:00:00.000Z');
@@ -100,18 +100,30 @@ test('user membatalkan izin di Google (parameter error) menghasilkan LOGIN_FAILE
   );
 });
 
-test('injectBoot_ menyisipkan script dan meng-escape karakter berbahaya', () => {
-  const html = `<head>${BOOT_PLACEHOLDER}</head>`;
-  const result = injectBoot_(html, { email: '</script><script>alert(1)</script>' });
-  expect(result).toStartWith('<head><script>window.__BOOT__=');
+const PAGE = `<head><script>window.__BOOT__ = '${BOOT_MARKER}';</script></head>`;
+
+test('injectBoot_ mengganti penanda dengan objek JSON dan meng-escape karakter berbahaya', () => {
+  const result = injectBoot_(PAGE, { email: '</script><script>alert(1)</script>' });
+  expect(result).toStartWith('<head><script>window.__BOOT__ = {');
+  expect(result).not.toContain(BOOT_MARKER);
   expect(result).not.toContain('</script><script>alert');
-  expect(result).toContain('\\u003c/script>');
+  expect(result).toContain('\u003c/script>');
+});
+
+test('injectBoot_ tidak bergantung pada komentar HTML (yang dibuang HtmlService) dan menerima kutip ganda', () => {
+  const page = `<!doctype html><html><head><script>window.__BOOT__ = "${BOOT_MARKER}";</script></head></html>`;
+  expect(injectBoot_(page, { loginUrl: 'u' })).toContain('window.__BOOT__ = {"loginUrl":"u"};');
+});
+
+test('injectBoot_ memperlakukan karakter $ pada data sebagai teks biasa', () => {
+  const result = injectBoot_(PAGE, { email: "a$&b$'c" });
+  expect(result).toContain("a$&b$'c");
 });
 
 test('injectBoot_ meng-escape pemisah baris Unicode tetapi tidak merusak teks biasa', () => {
   const lineSeparator = String.fromCharCode(0x2028);
   const paragraphSeparator = String.fromCharCode(0x2029);
-  const result = injectBoot_(BOOT_PLACEHOLDER, {
+  const result = injectBoot_(PAGE, {
     email: `a${lineSeparator}b${paragraphSeparator}c tahun 2028 dan 2029`,
   });
   expect(result).not.toContain(lineSeparator);
@@ -119,7 +131,7 @@ test('injectBoot_ meng-escape pemisah baris Unicode tetapi tidak merusak teks bi
   expect(result).toContain('tahun 2028 dan 2029');
 });
 
-test('injectBoot_ gagal bila placeholder tidak ada atau ganda', () => {
+test('injectBoot_ gagal bila penanda tidak ada atau ganda', () => {
   expect(() => injectBoot_('<head></head>', {})).toThrow(/BOOT/);
-  expect(() => injectBoot_(`${BOOT_PLACEHOLDER}${BOOT_PLACEHOLDER}`, {})).toThrow(/BOOT/);
+  expect(() => injectBoot_(`${PAGE}${PAGE}`, {})).toThrow(/BOOT/);
 });

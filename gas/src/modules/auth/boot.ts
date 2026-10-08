@@ -4,7 +4,8 @@ import { loadUserContext_ } from '@gas/modules/access/context';
 import type { BootData } from '@shared/rpc';
 import { consumeLoginState_, createLoginUrl_, exchangeCodeForEmail_ } from './oauth';
 
-export const BOOT_PLACEHOLDER = '<!--BOOT-->';
+/** Penanda berupa string di dalam skrip inline — komentar HTML dibuang HtmlService, string JS tidak. */
+export const BOOT_MARKER = '__QC_BOOT__';
 
 export function buildBootData_(params: Record<string, string | undefined>): BootData {
   const isCallback = Boolean(params.code || params.error);
@@ -28,14 +29,28 @@ export function buildBootData_(params: Record<string, string | undefined>): Boot
   return { sessionToken: signSessionToken_(result.email), nonce, loginUrl: createLoginUrl_() };
 }
 
+const BACKSLASH = String.fromCharCode(92);
+
+/** Aman disisipkan ke dalam <script>: tanpa '<' mentah dan tanpa pemisah baris Unicode. */
+function escapeForScript_(json: string): string {
+  return json
+    .split('<')
+    .join(`${BACKSLASH}u003c`)
+    .split(String.fromCharCode(0x2028))
+    .join(`${BACKSLASH}u2028`)
+    .split(String.fromCharCode(0x2029))
+    .join(`${BACKSLASH}u2029`);
+}
+
 export function injectBoot_(html: string, boot: BootData): string {
-  const parts = html.split(BOOT_PLACEHOLDER);
-  if (parts.length !== 2) {
-    throw new Error(`Placeholder ${BOOT_PLACEHOLDER} harus ada tepat satu kali di index.html`);
+  const quotedMarkers = [`'${BOOT_MARKER}'`, `"${BOOT_MARKER}"`];
+  const found = quotedMarkers.filter((marker) => html.includes(marker));
+  const count = quotedMarkers.reduce((sum, marker) => sum + html.split(marker).length - 1, 0);
+  if (count !== 1 || found.length !== 1 || !found[0]) {
+    throw new Error(
+      `Penanda BOOT (${BOOT_MARKER}) harus ada tepat satu kali di index.html, ditemukan ${count}`,
+    );
   }
-  const json = JSON.stringify(boot)
-    .replace(/</g, '\\u003c')
-    .replace(new RegExp(String.fromCharCode(0x2028), 'g'), '\\u2028')
-    .replace(new RegExp(String.fromCharCode(0x2029), 'g'), '\\u2029');
-  return `${parts[0]}<script>window.__BOOT__=${json};</script>${parts[1]}`;
+  // split/join (bukan String.replace) agar karakter '$' pada data tidak ditafsirkan sebagai pola.
+  return html.split(found[0]).join(escapeForScript_(JSON.stringify(boot)));
 }
