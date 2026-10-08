@@ -12,7 +12,8 @@ if (!config.deploymentId) {
   process.exit(1);
 }
 
-const description = `deploy ${new Date().toISOString()}`;
+// Tanpa spasi: pembungkus clasp.cmd di Windows memecah argumen yang mengandung spasi.
+const description = `deploy-${new Date().toISOString()}`;
 await $`clasp deploy --deploymentId ${config.deploymentId} --description ${description}`.cwd(
   GAS_DIR,
 );
