@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build output (dihasilkan oleh build, di-push oleh clasp)
+gas/dist/
+web/dist/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+.clasprc.json
+
+# local tooling
+.claude/settings.local.json
+
+# logs & misc
+*.log
+.DS_Store
+Thumbs.db
+coverage/
