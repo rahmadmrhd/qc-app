@@ -2,12 +2,23 @@ import { expect, test } from 'vitest';
 import { describeError } from './describe-error';
 import { RpcError } from './rpc-error';
 
-test('menggabungkan pesan dengan detail field', () => {
+test('menggabungkan pesan dengan detail field yang berbeda', () => {
+  expect(
+    describeError(
+      new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+        email: 'Wajib diisi',
+        name: 'Wajib diisi',
+      }),
+    ),
+  ).toBe('Input tidak valid: Wajib diisi');
+});
+
+test('tidak mengulang detail field yang sama dengan pesan', () => {
   expect(
     describeError(
       new RpcError('CONFLICT', 'Email sudah terdaftar', 'r1', { email: 'Email sudah terdaftar' }),
     ),
-  ).toBe('Email sudah terdaftar: Email sudah terdaftar');
+  ).toBe('Email sudah terdaftar');
 });
 
 test('error INTERNAL dari server menyertakan kode request', () => {
