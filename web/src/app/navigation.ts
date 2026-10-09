@@ -2,7 +2,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
-import { History, House, MapPin, ShieldCheck, Users } from 'lucide-react';
+import { History, House, MapPin, Package, ShieldCheck, Users } from 'lucide-react';
 import { canAnywhere } from '@/modules/auth/permissions';
 
 export interface NavItem {
@@ -20,6 +20,17 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: 'Umum', items: [{ label: 'Beranda', to: '/', icon: House }] },
+  {
+    label: 'Data',
+    items: [
+      {
+        label: 'Data Item',
+        to: '/item',
+        icon: Package,
+        permission: { module: 'item', level: 'view' },
+      },
+    ],
+  },
   {
     label: 'Pengaturan Akses',
     items: [
