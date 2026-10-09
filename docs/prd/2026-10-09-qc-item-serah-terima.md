@@ -189,9 +189,9 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 ## 9. Definition of Done
 **Fase A**
 - [ ] `setup` membuat folder Drive dan sheet `files`; izin Drive tercantum di `appsscript.json`.
-- [ ] Upload, ambil, dan tampil gambar bekerja dengan pemeriksaan izin dan batas ukuran.
-- [ ] Editor Markdown (tulis, pratinjau, sisip gambar lewat tombol/paste/seret) dan render aman dites.
-- [ ] Modul `qc` ada di form Role; `item` global dari semua penugasan; tes `resolveAccess` diperbarui.
+- [x] Upload, ambil, dan tampil gambar bekerja dengan pemeriksaan izin dan batas ukuran.
+- [x] Editor Markdown (tulis, pratinjau, sisip gambar lewat tombol/paste/seret) dan render aman dites.
+- [x] Modul `qc` ada di form Role; `item` global dari semua penugasan; tes `resolveAccess` diperbarui.
 
 **Fase B**
 - [ ] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.

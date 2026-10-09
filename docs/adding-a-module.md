@@ -28,20 +28,20 @@ Tambahkan DTO, input, dan entri `RpcContract`, mis. `'item.list': { input: null;
 
 ## Modul berlokasi (izin per lokasi)
 
-Modul `item`, `handover`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `shared/assignments.ts`); `access` global. Untuk modul berlokasi:
+Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `shared/assignments.ts`). `access` global dan hanya dari penugasan "Semua lokasi"; `item` global bersama (levelnya tertinggi dari **semua** penugasan berlaku, `SHARED_MODULES`). Untuk modul berlokasi:
 
 1. **Rute GAS** wajib menandai `scope: 'location'`:
 
    ```ts
-   'item.list': {
-     permission: { module: 'item', level: 'view', scope: 'location' },
-     validate: validateListItems_,   // input memuat `locationIds: string[]`
-     handler: (input, ctx) => listItems_(ctx.locationIds),
+   'handover.list': {
+     permission: { module: 'handover', level: 'view', scope: 'location' },
+     validate: validateListHandovers_,   // input memuat `locationIds: string[]`
+     handler: (input, ctx) => listHandovers_(ctx.locationIds),
    },
-   'item.save': {
-     permission: { module: 'item', level: 'edit', scope: 'location' },
-     validate: validateSaveItem_,    // input memuat `locationId: string`
-     handler: (input, ctx) => saveItem_(input, ctx.locationIds[0]),
+   'handover.save': {
+     permission: { module: 'handover', level: 'edit', scope: 'location' },
+     validate: validateSaveHandover_,    // input memuat `locationId: string`
+     handler: (input, ctx) => saveHandover_(input, ctx.locationIds[0]),
    },
    ```
 
@@ -50,3 +50,12 @@ Modul `item`, `handover`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di 
 3. **Frontend**: baca dengan `useActiveLocations().selectedIds`; form tulis memakai `LocationField` (`web/src/modules/location/location-field.tsx`); menu memakai `permission: { module, level, scope: 'location' }` pada `NAV_GROUPS`; guard route memakai `requirePermission` (memeriksa minimal satu lokasi).
 4. **Tabel**: tampilkan kolom **Lokasi** bila `selectedIds.length > 1` (PRD FR-C5); dengan satu lokasi terpilih kolom itu tidak perlu.
 5. **Tes**: tambahkan kasus lokasi terlarang, tak dikenal, dan nonaktif untuk method baru.
+6. **Izin alternatif**: bila method boleh diakses oleh salah satu dari beberapa izin (mis. WH atau QC), pakai `permission: { anyOf: [ ... ] }`. Semua alternatif harus sama lingkupnya (semua global atau semua `scope: 'location'`); tiap lokasi yang diminta cukup memenuhi satu alternatif, dan satu lokasi yang gagal menolak seluruh permintaan.
+
+## Gambar dan Markdown
+
+- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat RPC `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**.
+- **Memiliki berkas**: saat entitas (mis. item) disimpan, panggil `attachFiles_(ids, 'item', itemId)` (`gas/src/modules/files/service.ts`) **di dalam lock yang sama** dengan penyimpanan entitas. Berkas yang sudah dimiliki entitas lain ditolak `CONFLICT`. Jenis pemilik baru ditambahkan ke `FileOwnerType` di `shared/files.ts`.
+- **Tampil**: `useFileUrl(id)` (cache lama, data URL). Server hanya membaca berkas yang tercatat di sheet `files`; klien tidak pernah mengirim Drive id.
+- **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
+- **Drive** hanya diakses lewat `platform_()` (`driveCreateFolder`, `driveCreateFile`, `driveReadFile`); jangan memanggil `DriveApp` langsung.
