@@ -14,10 +14,9 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { describeError } from '@/lib/rpc/describe-error';
-import { RpcError } from '@/lib/rpc/rpc-error';
 import { cn } from '@/lib/utils';
 import { isAcceptedImage } from '@/modules/files/image';
+import { uploadErrorMessage } from '@/modules/files/upload-error';
 import { useUploadImage } from '@/modules/files/use-upload-image';
 import type { EditResult, TextSelection } from './edit-ops';
 import { altTextFromFileName, insertAtCursor, prefixLines, wrapSelection } from './edit-ops';
@@ -57,12 +56,6 @@ export interface MarkdownEditorProps {
 }
 
 type Tab = 'write' | 'preview';
-
-function uploadErrorMessage(error: unknown): string {
-  if (error instanceof RpcError) return describeError(error);
-  if (error instanceof Error) return error.message;
-  return 'Gagal mengunggah gambar';
-}
 
 export function MarkdownEditor({
   id,
