@@ -168,3 +168,26 @@ test('rute: upload butuh item edit, baca butuh item view, dan lintas peran ditol
     error: { code: 'FORBIDDEN' },
   });
 });
+
+test('unggahan ke Drive berjalan di luar lock; hanya pencatatan sheet di dalam lock', () => {
+  let inLock = false;
+  const lock = platform.withLock;
+  platform.withLock = (fn) => {
+    inLock = true;
+    try {
+      return lock(fn);
+    } finally {
+      inLock = false;
+    }
+  };
+  const flags: boolean[] = [];
+  const create = platform.driveCreateFile;
+  platform.driveCreateFile = (...args) => {
+    flags.push(inLock);
+    return create(...args);
+  };
+  uploadFile_(validateUploadFile_(upload()), admin);
+  uploadFile_(validateUploadFile_(upload()), admin);
+  expect(flags).toEqual([false, false]);
+  expect(listFiles_()).toHaveLength(2);
+});

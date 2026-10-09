@@ -202,6 +202,8 @@ export function MarkdownEditor({
           onPaste={(event) => {
             const files = [...(event.clipboardData?.files ?? [])];
             if (files.length === 0) return;
+            // Menyalin sel Excel/Word menaruh gambar sekaligus teks biasa: biarkan teks menempel normal.
+            if ((event.clipboardData?.types ?? []).includes('text/plain')) return;
             event.preventDefault();
             void insertImages(files);
           }}

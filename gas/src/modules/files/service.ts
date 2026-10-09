@@ -37,11 +37,13 @@ function toFileDto_(file: NewFileRecord): FileDto {
 }
 
 export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto {
-  return platform_().withLock(() => {
-    const platform = platform_();
-    const id = platform.uuid();
-    const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
-    const driveId = platform.driveCreateFile(driveFolderId_(), name, input.mime, input.base64);
+  const platform = platform_();
+  const folderId = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim() || ensureDriveFolder_();
+  const id = platform.uuid();
+  const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
+  // I/O Drive (unggah ~1 MB) di luar lock agar tidak menahan penulisan lain; hanya sheet di dalam lock.
+  const driveId = platform.driveCreateFile(folderId, name, input.mime, input.base64);
+  return platform.withLock(() => {
     const record: NewFileRecord = {
       id,
       driveId,

@@ -129,3 +129,22 @@ test('melebihi batas karakter ditandai', () => {
   expect(screen.getByText('20001/20000')).toHaveClass('text-destructive');
   expect(textarea()).toHaveAttribute('aria-invalid', 'true');
 });
+
+test('menempel dari Excel/Word (ada teks biasa di papan klip) tetap menempel teks, bukan gambar', () => {
+  render(<Harness />);
+  const passed = fireEvent.paste(textarea(), {
+    clipboardData: { files: [png('tabel.png')], types: ['text/plain', 'text/html', 'Files'] },
+  });
+  expect(passed).toBe(true);
+  expect(uploadMock).not.toHaveBeenCalled();
+});
+
+test('menempel gambar murni (tanpa teks biasa) tetap diunggah', async () => {
+  uploadMock.mockResolvedValue('f9');
+  render(<Harness />);
+  const blocked = fireEvent.paste(textarea(), {
+    clipboardData: { files: [png('salin.png')], types: ['text/html', 'Files'] },
+  });
+  expect(blocked).toBe(false);
+  await waitFor(() => expect(textarea().value).toContain('![salin](qcfile:f9)'));
+});
