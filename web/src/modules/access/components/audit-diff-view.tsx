@@ -16,6 +16,15 @@ const FIELD_LABELS: Record<string, string> = {
   permissions: 'Akses per modul',
   code: 'Kode',
   assignments: 'Penugasan',
+  brand: 'Merk',
+  model: 'Tipe',
+  isCountryLock: 'Country lock',
+  aliases: 'Nama lain',
+  stickers: 'Stiker',
+  accessories: 'Kelengkapan',
+  attachments: 'Gambar lampiran',
+  detailLength: 'Panjang detail (karakter)',
+  detailHash: 'Isi detail',
 };
 
 const STATUS_LABELS: Record<string, string> = { active: 'Aktif', inactive: 'Nonaktif' };
@@ -51,6 +60,7 @@ const KIND_STYLES: Record<Exclude<ChangeKind, 'unchanged'>, KindStyle> = {
 function formatScalar(key: string, value: unknown): string {
   if (value === undefined || value === null || value === '') return '—';
   if (key === 'status' && typeof value === 'string') return STATUS_LABELS[value] ?? value;
+  if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
   return String(value);
 }
 
@@ -134,7 +144,9 @@ function ChildItem({
   const isPermission = fieldKey === 'permissions';
   const label = isPermission
     ? (MODULE_LABELS[child.label as keyof typeof MODULE_LABELS] ?? child.label)
-    : (roleNames.get(child.label) ?? child.label);
+    : fieldKey === 'attachments'
+      ? `Gambar …${child.label.slice(-6)}`
+      : (roleNames.get(child.label) ?? child.label);
   const level = (value: unknown) =>
     typeof value === 'string' ? (LEVEL_LABELS[value as keyof typeof LEVEL_LABELS] ?? value) : '';
   const style = child.kind === 'unchanged' ? null : KIND_STYLES[child.kind];
@@ -212,7 +224,9 @@ function FieldRow({
         )
       ) : (
         <p className="break-words text-sm">
-          {field.kind === 'changed' ? (
+          {field.key === 'detailHash' ? (
+            <Ins>Isi Markdown diubah</Ins>
+          ) : field.kind === 'changed' ? (
             <>
               <Del>{formatScalar(field.key, field.before)}</Del> →{' '}
               <Ins>{formatScalar(field.key, field.after)}</Ins>
@@ -256,7 +270,10 @@ export function AuditDiffView({
   roleNames = new Map(),
   locationNames = new Map(),
 }: AuditDiffViewProps) {
-  const fields = diffSnapshots(before, after);
+  // Hash isi detail hanya berguna sebagai penanda "berubah"; selain itu disembunyikan.
+  const fields = diffSnapshots(before, after).filter(
+    (field) => field.key !== 'detailHash' || field.kind === 'changed',
+  );
   return (
     <div className="space-y-3">
       <Legend />

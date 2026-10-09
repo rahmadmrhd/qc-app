@@ -11,6 +11,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'location.update': 'Lokasi diubah',
   'location.activate': 'Lokasi diaktifkan',
   'location.deactivate': 'Lokasi dinonaktifkan',
+  'item.create': 'Item dibuat',
+  'item.update': 'Item diubah',
+  'item.activate': 'Item diaktifkan',
+  'item.deactivate': 'Item dinonaktifkan',
 };
 
 export function auditActionLabel(action: string): string {

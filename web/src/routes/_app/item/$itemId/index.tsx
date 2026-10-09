@@ -1,5 +1,47 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { toast } from 'sonner';
+import { describeError } from '@/lib/rpc/describe-error';
+import { can, requirePermission } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { ItemDetailView } from '@/modules/item/components/item-detail-view';
+import { itemQueryOptions, useSetItemStatus } from '@/modules/item/queries';
 
 export const Route = createFileRoute('/_app/item/$itemId/')({
-  component: () => null,
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
+  component: ItemDetailPage,
 });
+
+function ItemDetailPage() {
+  const { itemId } = Route.useParams();
+  const navigate = useNavigate();
+  const me = useMe();
+  const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
+  const setStatus = useSetItemStatus();
+
+  function toggleStatus() {
+    const status = item.status === 'active' ? 'inactive' : 'active';
+    setStatus.mutate(
+      { id: item.id, status },
+      {
+        onSuccess: () =>
+          toast.success(status === 'active' ? 'Item diaktifkan' : 'Item dinonaktifkan'),
+        onError: (error) => toast.error(describeError(error)),
+      },
+    );
+  }
+
+  return (
+    <ItemDetailView
+      item={item}
+      canEdit={can(me, 'item', 'edit')}
+      canManage={can(me, 'item', 'manage')}
+      statusPending={setStatus.isPending}
+      onBack={() => void navigate({ to: '/item' })}
+      onEdit={() => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
+      onToggleStatus={toggleStatus}
+    />
+  );
+}
