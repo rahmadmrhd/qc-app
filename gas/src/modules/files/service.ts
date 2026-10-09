@@ -3,7 +3,7 @@ import { platform_ } from '@gas/core/platform';
 import type { UserContext } from '@gas/modules/access/context';
 import { nowIso_ } from '@gas/modules/access/service';
 import type { FileOwnerType } from '@shared/files';
-import { base64ByteLength } from '@shared/files';
+import { base64ByteLength, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/rpc';
 import type { FileRecord, NewFileRecord } from './repo';
 import { insertFile_, listFiles_, updateFile_ } from './repo';
@@ -45,27 +45,43 @@ function toFileDto_(file: NewFileRecord): FileDto {
 
 export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto {
   const platform = platform_();
+  // Batas berkas yatim per user: yang belum ditautkan ke entitas tidak boleh menumpuk tanpa batas.
+  const pending = listFiles_().filter(
+    (file) => file.createdBy === actor.email && file.ownerType === '',
+  ).length;
+  if (pending >= MAX_UNATTACHED_UPLOADS) {
+    throw appError_(
+      'CONFLICT',
+      'Terlalu banyak gambar yang belum dipakai. Simpan item yang sedang diedit terlebih dulu.',
+    );
+  }
   const folderId = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim() || ensureDriveFolder_();
   const id = platform.uuid();
   const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
   // I/O Drive (unggah ~1 MB) di luar lock agar tidak menahan penulisan lain; hanya sheet di dalam lock.
   const driveId = platform.driveCreateFile(folderId, name, input.mime, input.base64);
-  return platform.withLock(() => {
-    const record: NewFileRecord = {
-      id,
-      driveId,
-      mime: input.mime,
-      size: base64ByteLength(input.base64),
-      width: input.width,
-      height: input.height,
-      ownerType: '',
-      ownerId: '',
-      createdAt: nowIso_(),
-      createdBy: actor.email,
-    };
-    insertFile_(record);
-    return toFileDto_(record);
-  });
+  try {
+    return platform.withLock(() => {
+      const record: NewFileRecord = {
+        id,
+        driveId,
+        mime: input.mime,
+        size: base64ByteLength(input.base64),
+        width: input.width,
+        height: input.height,
+        ownerType: '',
+        ownerId: '',
+        createdAt: nowIso_(),
+        createdBy: actor.email,
+      };
+      insertFile_(record);
+      return toFileDto_(record);
+    });
+  } catch (error) {
+    // Pencatatan gagal: jangan tinggalkan berkas yatim di Drive.
+    platform.driveTrashFile(driveId);
+    throw error;
+  }
 }
 
 /** Hanya berkas yang tercatat di sheet `files` yang dapat dibaca; Drive id tidak pernah datang dari klien. */

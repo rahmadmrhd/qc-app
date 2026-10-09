@@ -93,6 +93,13 @@ function createGasPlatform_(): Platform {
         return false;
       }
     },
+    driveTrashFile: (fileId) => {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch {
+        // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
+      }
+    },
     logError: (message) => console.error(message),
   };
 }

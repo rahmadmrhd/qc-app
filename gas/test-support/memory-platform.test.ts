@@ -41,3 +41,12 @@ test('driveFolderExists: ada, dihapus, dan di tempat sampah', () => {
   expect(platform.driveFolderExists(folder)).toBe(false);
   expect(platform.driveFolderExists('tidak-ada')).toBe(false);
 });
+
+test('driveTrashFile membuang berkas dan aman dipanggil untuk id yang tidak ada', () => {
+  const platform = createMemoryPlatform();
+  const folder = platform.driveCreateFolder('A');
+  const file = platform.driveCreateFile(folder, 'x.png', 'image/png', 'QUJD');
+  platform.driveTrashFile(file);
+  expect(platform.driveReadFile(file, folder)).toBeNull();
+  expect(() => platform.driveTrashFile('tidak-ada')).not.toThrow();
+});

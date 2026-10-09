@@ -49,6 +49,8 @@ export interface Platform {
   driveReadFile(fileId: string, folderId: string): { mime: string; base64: string } | null;
   /** True bila folder ada dan tidak berada di tempat sampah. */
   driveFolderExists(folderId: string): boolean;
+  /** Membuang berkas Drive (ke tempat sampah); aman bila berkas tidak ada. */
+  driveTrashFile(fileId: string): void;
   logError(message: string): void;
 }
 

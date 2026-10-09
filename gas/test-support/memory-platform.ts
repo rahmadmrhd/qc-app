@@ -204,6 +204,9 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       return file && file.folderId === folderId ? { mime: file.mime, base64: file.base64 } : null;
     },
     driveFolderExists: (folderId) => folders.has(folderId) && !trashedFolders.has(folderId),
+    driveTrashFile: (fileId) => {
+      drive.delete(fileId);
+    },
     logError: (message) => {
       errors.push(message);
     },

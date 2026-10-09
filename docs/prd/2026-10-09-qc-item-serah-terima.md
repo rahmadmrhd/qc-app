@@ -179,7 +179,7 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 |---|---|---|
 | Izin Drive baru memicu persetujuan ulang | Pengguna bingung saat `setup` | Dicatat di dokumen rilis dan `docs/setup-google.md`; dilakukan pemilik script sekali. |
 | Ukuran bundel naik (Markdown) | Halaman lambat/melebihi batas HtmlService | NFR4; pustaka ringan, tanpa editor WYSIWYG berat. |
-| Gambar yatim (diunggah, lalu dokumen tidak disimpan) | Folder Drive membengkak | Diterima di fase ini; metadata `owner_id` kosong memudahkan pembersihan manual kemudian. |
+| Gambar yatim (diunggah, lalu dokumen tidak disimpan) | Folder Drive membengkak | Maks. 50 berkas belum terpakai per user (`MAX_UNATTACHED_UPLOADS`; menautkan berkas ke entitas membebaskan kuota) dan berkas Drive dibuang bila pencatatan sheet gagal. Kedaluwarsa otomatis berkas yatim belum ada; `owner_id` kosong memudahkan pembersihan manual. |
 | XSS lewat Markdown | Pencurian sesi | FA6: tanpa HTML mentah, skema tautan dibatasi, gambar hanya `qcfile:`; tes khusus. |
 | Variasi nama tetap lolos | Customer ganda | Normalisasi + penanda mirip + halaman Customer untuk ganti nama; penggabungan di luar lingkup (dicatat). |
 | Nomor task ganda | Kekacauan rujukan | Dibuat di server di dalam lock; tes konkurensi logis. |

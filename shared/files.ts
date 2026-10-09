@@ -8,6 +8,8 @@ export const MAX_IMAGE_BYTES = 1_048_576;
 /** Batas wajar lebar/tinggi yang diterima server. */
 export const MAX_IMAGE_DIMENSION = 4000;
 export const MARKDOWN_MAX_LENGTH = 20_000;
+/** Batas berkas yang sudah diunggah tetapi belum ditautkan ke entitas, per user (mencegah penumpukan di Drive). */
+export const MAX_UNATTACHED_UPLOADS = 50;
 
 /** Skema rujukan gambar di dalam Markdown: `![alt](qcfile:<id>)`. */
 export const FILE_SCHEME = 'qcfile:';

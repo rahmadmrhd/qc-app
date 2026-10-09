@@ -54,7 +54,7 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 
 ## Gambar dan Markdown
 
-- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat RPC `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**.
+- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat RPC `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `attachFiles_` saat entitas disimpan.
 - **Memiliki berkas**: saat entitas (mis. item) disimpan, panggil `attachFiles_(ids, 'item', itemId)` (`gas/src/modules/files/service.ts`) **di dalam lock yang sama** dengan penyimpanan entitas. Berkas yang sudah dimiliki entitas lain ditolak `CONFLICT`. Jenis pemilik baru ditambahkan ke `FileOwnerType` di `shared/files.ts`.
 - **Tampil**: `useFileUrl(id)` (cache lama, data URL). Server hanya membaca berkas yang tercatat di sheet `files`; klien tidak pernah mengirim Drive id.
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
