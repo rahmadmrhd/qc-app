@@ -177,6 +177,30 @@ function assertKeepsOwnAccess_(
   }
 }
 
+/** Admin non-super tidak boleh mengubah role hingga akses Kelola global miliknya sendiri hilang. */
+function assertRoleEditKeepsOwnAccess_(
+  updated: RoleRecord,
+  roles: readonly RoleRecord[],
+  users: readonly UserRecord[],
+  actor: UserContext,
+): void {
+  if (actor.isSuperAdmin || actor.userId === null) return;
+  if (!hasLevel(actor.permissions.access, 'manage')) return;
+  const self = users.find((user) => user.id === actor.userId);
+  if (!self) return;
+  const rolePermissions = new Map(
+    roles.map(
+      (role) => [role.id, role.id === updated.id ? updated.permissions : role.permissions] as const,
+    ),
+  );
+  if (!hasLevel(resolveAccess(self.assignments, rolePermissions, []).global.access, 'manage')) {
+    throw appError_(
+      'CONFLICT',
+      'Anda tidak dapat menghilangkan akses Kelola Pengaturan Akses milik sendiri',
+    );
+  }
+}
+
 export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
   return platform_().withLock(() => {
     const email = normalizeEmail_(input.email);
@@ -295,6 +319,7 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         updatedAt: now,
         updatedBy: actor.email,
       };
+      assertRoleEditKeepsOwnAccess_(updated, roles, users, actor);
       updateRole_(updated);
       invalidateAccessCache_();
       appendAudit_({

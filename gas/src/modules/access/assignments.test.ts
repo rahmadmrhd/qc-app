@@ -189,3 +189,29 @@ test('migrasi berjalan di dalam lock dan membatalkan cache akses agar tidak meni
   expect(platform.cacheGet('access:version')).not.toBe(versionBefore);
   expect(migrateUserAssignments_()).toBe(0);
 });
+
+test('cache konteks versi lama tanpa locations dihitung ulang, bukan dikembalikan apa adanya', () => {
+  insertUser_(
+    user({
+      id: 'u1',
+      email: 'budi@gmail.com',
+      assignments: [{ locationId: 'l-a', roleIds: ['r-view'] }],
+    }),
+  );
+  loadUserContext_('budi@gmail.com');
+  const version = platform.cacheGet('access:version');
+  const key = `uctx:${version}:budi@gmail.com`;
+  platform.cachePut(
+    key,
+    JSON.stringify({
+      email: 'budi@gmail.com',
+      name: 'Budi',
+      userId: 'u1',
+      isSuperAdmin: false,
+      permissions: {},
+    }),
+    300,
+  );
+  expect(Object.keys(loadUserContext_('budi@gmail.com')?.locations ?? {})).toEqual(['l-a']);
+  expect(JSON.parse(platform.cacheGet(key) ?? '{}').locations).toBeDefined();
+});

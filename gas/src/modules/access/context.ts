@@ -74,7 +74,12 @@ export function loadUserContext_(rawEmail: string): UserContext | null {
   const platform = platform_();
   const key = `uctx:${accessVersion_()}:${email}`;
   const cached = platform.cacheGet(key);
-  if (cached !== null) return cached === 'null' ? null : (JSON.parse(cached) as UserContext);
+  if (cached === 'null') return null;
+  if (cached !== null) {
+    const parsed = JSON.parse(cached) as Partial<UserContext>;
+    // Entri dari versi kode lama (tanpa locations) dihitung ulang agar tidak merusak auth.me setelah deploy.
+    if (parsed.locations !== undefined) return parsed as UserContext;
+  }
   const context = computeUserContext_(email);
   platform.cachePut(key, context ? JSON.stringify(context) : 'null', USER_CONTEXT_TTL_SECONDS);
   return context;

@@ -393,3 +393,37 @@ test('admin non-super tidak dapat menghilangkan akses Kelola global miliknya sen
     ).assignments,
   ).toEqual([]);
 });
+
+test('admin non-super tidak dapat menurunkan role yang memberi Kelola global miliknya sendiri', () => {
+  insertUser_(
+    user({
+      id: 'u-pusat',
+      email: 'pusat@gmail.com',
+      assignments: [{ locationId: null, roleIds: ['r-access'] }],
+    }),
+  );
+  const pusat = contextOf('pusat@gmail.com');
+  const error = captureAppError(() =>
+    saveRole_(
+      { id: 'r-access', name: 'Admin Akses', description: '', permissions: { access: 'view' } },
+      pusat,
+    ),
+  );
+  expect(error.code).toBe('CONFLICT');
+  expect(listRoleDtos_().find((r) => r.id === 'r-access')?.permissions).toEqual({
+    access: 'manage',
+  });
+  // Mengubah hal lain pada role itu tetap boleh, dan super admin tidak dibatasi.
+  expect(
+    saveRole_(
+      { id: 'r-access', name: 'Admin Akses 2', description: '', permissions: { access: 'manage' } },
+      pusat,
+    ).name,
+  ).toBe('Admin Akses 2');
+  expect(
+    saveRole_(
+      { id: 'r-access', name: 'Admin Akses 2', description: '', permissions: { access: 'view' } },
+      admin,
+    ).permissions,
+  ).toEqual({ access: 'view' });
+});
