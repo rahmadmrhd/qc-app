@@ -170,3 +170,22 @@ test('JSON assignments rusak diabaikan tanpa error dan locationId hilang tidak m
   expect(loadUserContext_('tanpa@gmail.com')?.locations).toEqual({});
   expect(loadUserContext_('tanpa@gmail.com')?.permissions.item).toBe('none');
 });
+
+test('migrasi berjalan di dalam lock dan membatalkan cache akses agar tidak menimpa tulisan bersamaan', () => {
+  listUsers_();
+  platform.db
+    .sheet('users')
+    .rows.push(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
+  loadUserContext_('lama@gmail.com');
+  const versionBefore = platform.cacheGet('access:version');
+  let locks = 0;
+  const withLock = platform.withLock;
+  platform.withLock = (fn) => {
+    locks++;
+    return withLock(fn);
+  };
+  expect(migrateUserAssignments_()).toBe(1);
+  expect(locks).toBe(1);
+  expect(platform.cacheGet('access:version')).not.toBe(versionBefore);
+  expect(migrateUserAssignments_()).toBe(0);
+});

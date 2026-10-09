@@ -16,7 +16,7 @@ export interface RequestContext {
 }
 
 export type RoutePermission =
-  | { module: ModuleKey; level: Level; scope?: 'global' }
+  | { module: Exclude<ModuleKey, LocatedModule>; level: Level; scope?: 'global' }
   | { module: LocatedModule; level: Level; scope: 'location' };
 
 export interface RouteDef<M extends RpcMethod = RpcMethod> {

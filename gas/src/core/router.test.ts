@@ -13,7 +13,7 @@ import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcResult } from '@shared/rpc';
 import { appError_ } from './errors';
 import { setPlatform_ } from './platform';
-import type { RequestContext, RouteTable } from './router';
+import type { RequestContext, RoutePermission, RouteTable } from './router';
 import { handleRpc_ } from './router';
 import { signSessionToken_ } from './session';
 import { expectNull_ } from './validate';
@@ -216,4 +216,12 @@ test('super admin boleh di semua lokasi aktif tetapi tidak di lokasi nonaktif', 
 test('rute global tetap memakai izin global dan menerima locationIds kosong', () => {
   const token = signSessionToken_('viewer@gmail.com');
   expect(handleRpc_('access.users.list', 'null', token, routes)).toEqual({ ok: true, data: [] });
+});
+
+test('tipe: modul berlokasi wajib menandai scope location (tidak diam-diam memakai izin global)', () => {
+  // @ts-expect-error modul berlokasi tanpa scope: 'location' harus ditolak compiler
+  const salah: RoutePermission = { module: 'item', level: 'view' };
+  const benar: RoutePermission = { module: 'item', level: 'view', scope: 'location' };
+  const global: RoutePermission = { module: 'access', level: 'view' };
+  expect([salah, benar, global]).toHaveLength(3);
 });

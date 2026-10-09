@@ -1,11 +1,13 @@
 import type { RowData, TableSchema } from '@gas/core/db';
 import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
 import { normalizeEmail_ } from '@gas/core/email';
+import { platform_ } from '@gas/core/platform';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
 import type { LocationStatus, UserStatus } from '@shared/rpc';
+import { invalidateAccessCache_ } from './context';
 
 export const USERS_TABLE: TableSchema = {
   sheetName: 'users',
@@ -353,16 +355,19 @@ export function migrateAuditDetail_(): number {
 
 /** Menyimpan migrasi: `role_ids` lama menjadi satu penugasan "Semua lokasi". Aman diulang. */
 export function migrateUserAssignments_(): number {
-  let migrated = 0;
-  for (const { rowNumber, data } of readTable_(USERS_TABLE).rows) {
-    if ((data.assignments ?? '').trim() !== '') continue;
-    const roleIds = parseStringArray_(data.role_ids ?? '');
-    if (roleIds.length === 0) continue;
-    updateRow_(USERS_TABLE, rowNumber, {
-      assignments: JSON.stringify([{ locationId: null, roleIds }]),
-      role_ids: '',
-    });
-    migrated++;
-  }
-  return migrated;
+  return platform_().withLock(() => {
+    let migrated = 0;
+    for (const { rowNumber, data } of readTable_(USERS_TABLE).rows) {
+      if ((data.assignments ?? '').trim() !== '') continue;
+      const roleIds = parseStringArray_(data.role_ids ?? '');
+      if (roleIds.length === 0) continue;
+      updateRow_(USERS_TABLE, rowNumber, {
+        assignments: JSON.stringify([{ locationId: null, roleIds }]),
+        role_ids: '',
+      });
+      migrated++;
+    }
+    if (migrated > 0) invalidateAccessCache_();
+    return migrated;
+  });
 }
