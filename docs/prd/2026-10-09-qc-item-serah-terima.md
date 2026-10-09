@@ -78,6 +78,7 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 |---|---|---|
 | FI1 | Daftar item: tabel merk, tipe, country lock, status, jumlah gambar. Pencarian dan filter status lewat URL. | Butuh `item: view`. |
 | FI2 | Field item: **merk** (wajib, maks. 60), **tipe** (wajib, maks. 100), **country lock** (ya/tidak), **nama lain/alias** (daftar teks, maks. 10 @ 100), **stiker** (daftar: nama, catatan posisi/ketentuan, gambar contoh opsional; maks. 30), **kelengkapan** (daftar: nama + jumlah per unit ≥ 1; maks. 30), **gambar lampiran** (maks. 10), **detail Markdown** (FA5). | Butuh `item: edit` untuk menambah/mengubah. |
+| FI8 | **Merk adalah tabel master** (`brands`: id, id MySQL, nama, kunci ternormalisasi, status, `sync_rev`), bukan teks bebas. Item menyimpan `brand_id`. Mengetik merk di form item memberi saran dari merk yang ada; merk yang belum ada **dibuat langsung saat item disimpan** (tanpa form tambahan, dengan audit `brand.create`). Halaman **Merk** untuk tambah, **ganti nama** (berlaku ke semua item merk itu; kunci item dihitung ulang; audit `brand.update`), dan nonaktifkan/aktifkan. Merk nonaktif tidak dapat dipakai item baru. Izin memakai modul `item` (view/edit/manage). | Nama merk unik (ternormalisasi); ganti nama yang membuat merk+tipe dua item bentrok ditolak. |
 | FI3 | Merk + tipe unik (dinormalisasi). | Duplikat ditolak `CONFLICT` dengan pesan di field; alias tidak boleh sama dengan merk+tipe item lain. |
 | FI4 | Nonaktifkan dan aktifkan item; tidak ada hapus. | Butuh `item: manage`. Item nonaktif tidak muncul di saran tipe pada task baru; task lama tetap menampilkannya. |
 | FI5 | Halaman detail item baca-saja untuk semua yang punya `item: view`. | Menampilkan semua field, galeri, stiker dan kelengkapan sebagai daftar rapi, dan detail Markdown terender. QC memakainya sebagai acuan kerja. |
@@ -176,7 +177,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 | `handovers` | `id, number, location_id, customer_id, customer_name, note, status, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`) |
 | `handover_lines` | `id, handover_id, item_id, item_label, qty, done_qty, done_at, done_by` |
 
-`key` = merk+tipe (item) atau nama (customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
+`key` = merk+tipe (item) atau nama (merk, customer) atau nama (customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
 `files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).

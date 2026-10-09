@@ -220,6 +220,26 @@ Simpan `nextRev` sebagai kursor. Bila `hasMore` benar, panggil lagi dengan `sinc
 
 ---
 
+## 3b. Sumber daya `brands` (merk)
+
+Master: **dua arah**, polanya sama dengan `items` (`rev`, hasil per entri, konflik `baseRev`/`overwrite`, `active: false` untuk nonaktif, tanpa hapus). Kunci pencocokan: `uid` → `id` → nama ternormalisasi.
+
+```json
+{ "uid": "6f1f…", "id": "3", "name": "Ubiquiti", "active": true, "rev": 12 }
+```
+
+| Field | Aturan |
+|---|---|
+| `uid` | id QC App (UUID); `null` pada push untuk merk baru dari MySQL |
+| `id` | id MySQL (teks); `null` bila belum dipetakan; unik |
+| `name` | wajib, 1–60 karakter, unik (ternormalisasi: "ubiquiti" = "Ubiquiti") |
+| `active` | boolean |
+| `rev` | hanya-baca (pull) |
+
+Metode: `sync.brands.pull` (`sinceRev`, `limit`) dan `sync.brands.push` (`brands[]`, `baseRev`, `overwrite`), bentuk balasan identik dengan `sync.items.*`. **Mengganti nama merk di salah satu sisi** berlaku ke semua item merk itu; `items.merk` pada pull selalu nama merk terkini.
+
+**Hubungan dengan item:** item membawa `merk` (nama). Pada `sync.items.push`, merk dicocokkan menurut nama ternormalisasi; bila belum ada, QC App membuatnya otomatis (sama seperti saat mengetik di form). Push merk sebaiknya dikirim **sebelum** item agar `id` MySQL merk terpetakan.
+
 ## 4. Sumber daya stok (rencana; belum dibangun)
 
 Dokumen ini hanya menetapkan konvensi agar sumber daya stok memakai kerangka yang sama:
