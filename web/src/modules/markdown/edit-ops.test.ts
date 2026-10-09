@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { insertAtCursor, prefixLines, wrapSelection } from './edit-ops';
+import { altTextFromFileName, insertAtCursor, prefixLines, wrapSelection } from './edit-ops';
 
 test('wrapSelection membungkus pilihan dan mempertahankan pilihan pada isinya', () => {
   expect(wrapSelection('halo dunia', { start: 5, end: 10 }, '**')).toEqual({
@@ -44,4 +44,13 @@ test('insertAtCursor mengganti pilihan dan meletakkan kursor sesudah sisipan', (
     selection: { start: 3, end: 3 },
   });
   expect(insertAtCursor('ab', { start: 2, end: 2 }, '!').text).toBe('ab!');
+});
+
+test('altTextFromFileName membuang ekstensi dan karakter yang merusak sintaks gambar', () => {
+  expect(altTextFromFileName('foto kucing.png')).toBe('foto kucing');
+  expect(altTextFromFileName('a\.png')).toBe('a');
+  expect(altTextFromFileName('foto [1] (kecil).jpg')).toBe('foto 1 kecil');
+  expect(altTextFromFileName('.png')).toBe('gambar');
+  expect(altTextFromFileName('')).toBe('gambar');
+  expect(altTextFromFileName('arsip.v2.final.webp')).toBe('arsip.v2.final');
 });

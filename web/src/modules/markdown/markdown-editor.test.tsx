@@ -148,3 +148,78 @@ test('menempel gambar murni (tanpa teks biasa) tetap diunggah', async () => {
   expect(blocked).toBe(false);
   await waitFor(() => expect(textarea().value).toContain('![salin](qcfile:f9)'));
 });
+
+function deferredUpload() {
+  let resolve!: (id: string) => void;
+  uploadMock.mockReturnValue(
+    new Promise<string>((r) => {
+      resolve = r;
+    }),
+  );
+  return (id: string) => resolve(id);
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+test('unggahan yang selesai setelah editor ditutup tidak menyisipkan apa pun', async () => {
+  const finish = deferredUpload();
+  const onChange = vi.fn();
+  const { unmount } = render(<MarkdownEditor id="md" value="a" onChange={onChange} />);
+  fireEvent.change(fileInput(), { target: { files: [png()] } });
+  await screen.findByText('Mengunggah gambar…');
+  unmount();
+  finish('f1');
+  await settle();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('unggahan yang selesai setelah editor dinonaktifkan tidak menyisipkan apa pun', async () => {
+  const finish = deferredUpload();
+  const onChange = vi.fn();
+  const { rerender } = render(<MarkdownEditor id="md" value="a" onChange={onChange} />);
+  fireEvent.change(fileInput(), { target: { files: [png()] } });
+  await screen.findByText('Mengunggah gambar…');
+  rerender(<MarkdownEditor id="md" value="a" onChange={onChange} disabled />);
+  finish('f1');
+  await settle();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('unggahan selesai tidak mencuri fokus dari field lain', async () => {
+  const finish = deferredUpload();
+  render(
+    <>
+      <Harness initial="a" />
+      <input aria-label="lain" />
+    </>,
+  );
+  fireEvent.change(fileInput(), { target: { files: [png()] } });
+  await screen.findByText('Mengunggah gambar…');
+  const other = screen.getByLabelText('lain');
+  other.focus();
+  finish('f1');
+  await waitFor(() => expect(textarea().value).toContain('qcfile:f1'));
+  expect(other).toHaveFocus();
+});
+
+test('tombol toolbar mengembalikan fokus ke textarea', async () => {
+  render(<Harness initial="halo" />);
+  textarea().setSelectionRange(0, 4);
+  await userEvent.click(screen.getByRole('button', { name: 'Miring' }));
+  expect(textarea()).toHaveFocus();
+});
+
+test('aksesibilitas: label form induk dipakai, tabpanel terhubung, penghitung menjadi deskripsi', () => {
+  render(
+    <>
+      <span id="lbl">Detail</span>
+      <MarkdownEditor id="md" labelledBy="lbl" value="abc" onChange={() => undefined} />
+    </>,
+  );
+  const field = screen.getByRole('textbox', { name: 'Detail' });
+  expect(field).toHaveAccessibleDescription('3/20000');
+  const panel = screen.getByRole('tabpanel');
+  const tab = screen.getByRole('tab', { name: 'Tulis' });
+  expect(tab).toHaveAttribute('aria-controls', panel.id);
+  expect(panel).toHaveAttribute('aria-labelledby', tab.id);
+});

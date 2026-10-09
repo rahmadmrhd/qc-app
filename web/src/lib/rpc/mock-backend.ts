@@ -21,8 +21,7 @@ export const MOCK_USERS: MockUser[] = [
   { email: MOCK_ADMIN_EMAIL, label: 'Super Admin' },
   {
     email: 'qc.staff@qc.local',
-    label:
-      'QC Staff (Jakarta: item ubah, serah terima ubah, stok lihat; Bandung: serah terima lihat, stok lihat)',
+    label: 'QC Staff (Jakarta: kerjakan task QC; Bandung: serah terima kelola)',
   },
   { email: 'wh.staff@qc.local', label: 'WH Staff (Bandung saja: serah terima kelola)' },
   { email: 'access.viewer@qc.local', label: 'Pemantau Akses (Semua lokasi: akses lihat)' },

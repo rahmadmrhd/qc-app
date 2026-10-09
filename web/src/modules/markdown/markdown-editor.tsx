@@ -11,7 +11,7 @@ import {
   ListOrdered,
   Quote,
 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { describeError } from '@/lib/rpc/describe-error';
@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { isAcceptedImage } from '@/modules/files/image';
 import { useUploadImage } from '@/modules/files/use-upload-image';
 import type { EditResult, TextSelection } from './edit-ops';
-import { insertAtCursor, prefixLines, wrapSelection } from './edit-ops';
+import { altTextFromFileName, insertAtCursor, prefixLines, wrapSelection } from './edit-ops';
 import { MarkdownView } from './markdown-view';
 
 interface Tool {
@@ -52,6 +52,8 @@ export interface MarkdownEditorProps {
   onChange: (value: string) => void;
   maxLength?: number;
   disabled?: boolean;
+  /** Id elemen label dari form induk; bila ada dipakai sebagai nama field (menggantikan aria-label bawaan). */
+  labelledBy?: string;
 }
 
 type Tab = 'write' | 'preview';
@@ -68,25 +70,37 @@ export function MarkdownEditor({
   onChange,
   maxLength = MARKDOWN_MAX_LENGTH,
   disabled = false,
+  labelledBy,
 }: MarkdownEditorProps) {
   const [tab, setTab] = useState<Tab>('write');
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingSelection = useRef<TextSelection | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const pendingSelection = useRef<{ selection: TextSelection; focus: boolean } | null>(null);
+  const mountedRef = useRef(true);
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
   const valueRef = useRef(value);
   valueRef.current = value;
   const uploadImage = useUploadImage();
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Pulihkan fokus dan pilihan setelah teks berubah lewat toolbar atau sisip gambar.
   useLayoutEffect(() => {
-    const selection = pendingSelection.current;
+    const pending = pendingSelection.current;
     const element = textareaRef.current;
     pendingSelection.current = null;
-    if (selection && element) {
-      element.focus();
-      element.setSelectionRange(selection.start, selection.end);
+    if (pending && element) {
+      if (pending.focus) element.focus();
+      element.setSelectionRange(pending.selection.start, pending.selection.end);
     }
   });
 
@@ -96,9 +110,17 @@ export function MarkdownEditor({
     return { start: element?.selectionStart ?? end, end: element?.selectionEnd ?? end };
   }
 
-  function apply(result: EditResult) {
-    pendingSelection.current = result.selection;
+  function apply(result: EditResult, focus = true) {
+    pendingSelection.current = { selection: result.selection, focus };
     onChange(result.text);
+  }
+
+  /** Fokus hanya dikembalikan bila pengguna masih berada di dalam editor (atau tidak sedang di field mana pun). */
+  function userIsHere(): boolean {
+    const active = document.activeElement;
+    return (
+      active === null || active === document.body || Boolean(rootRef.current?.contains(active))
+    );
   }
 
   async function insertImages(files: File[]) {
@@ -112,9 +134,12 @@ export function MarkdownEditor({
       setUploading((count) => count + 1);
       try {
         const fileId = await uploadImage(file);
-        const alt = file.name.replace(/\.[^.]+$/, '').replace(/[[\]()]/g, '') || 'gambar';
+        // Editor sudah ditutup atau dinonaktifkan selama unggahan: jangan mengubah isi.
+        if (!mountedRef.current || disabledRef.current) return;
+        const alt = altTextFromFileName(file.name);
         apply(
           insertAtCursor(valueRef.current, currentSelection(), `![${alt}](${fileRef(fileId)})\n`),
+          userIsHere(),
         );
       } catch (error) {
         setUploadError(uploadErrorMessage(error));
@@ -127,12 +152,14 @@ export function MarkdownEditor({
   const tooLong = value.length > maxLength;
 
   return (
-    <div className="space-y-2">
+    <div ref={rootRef} className="space-y-2">
       <div className="flex flex-wrap items-center gap-1">
         <div role="tablist" aria-label="Mode editor" className="mr-2 flex gap-1">
           {(['write', 'preview'] as const).map((item) => (
             <Button
               key={item}
+              id={`${id}-tab-${item}`}
+              aria-controls={`${id}-panel`}
               type="button"
               role="tab"
               size="sm"
@@ -189,49 +216,56 @@ export function MarkdownEditor({
         ) : null}
       </div>
 
-      {tab === 'write' ? (
-        <Textarea
-          id={id}
-          ref={textareaRef}
-          aria-label="Isi Markdown"
-          aria-invalid={tooLong}
-          className="min-h-64 font-mono text-sm"
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
-          onPaste={(event) => {
-            const files = [...(event.clipboardData?.files ?? [])];
-            if (files.length === 0) return;
-            // Menyalin sel Excel/Word menaruh gambar sekaligus teks biasa: biarkan teks menempel normal.
-            if ((event.clipboardData?.types ?? []).includes('text/plain')) return;
-            event.preventDefault();
-            void insertImages(files);
-          }}
-          onDragOver={(event) => {
-            if ([...(event.dataTransfer?.types ?? [])].includes('Files')) event.preventDefault();
-          }}
-          onDrop={(event) => {
-            const files = [...(event.dataTransfer?.files ?? [])];
-            if (files.length === 0) return;
-            event.preventDefault();
-            void insertImages(files);
-          }}
-        />
-      ) : (
-        <div className="min-h-64 rounded-md border p-3">
-          {value.trim() === '' ? (
-            <p className="text-sm text-muted-foreground">Belum ada isi.</p>
-          ) : (
-            <MarkdownView source={value} />
-          )}
-        </div>
-      )}
+      <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
+        {tab === 'write' ? (
+          <Textarea
+            id={id}
+            ref={textareaRef}
+            aria-label={labelledBy ? undefined : 'Isi Markdown'}
+            aria-labelledby={labelledBy}
+            aria-describedby={`${id}-count`}
+            aria-invalid={tooLong}
+            className="min-h-64 font-mono text-sm"
+            value={value}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onPaste={(event) => {
+              const files = [...(event.clipboardData?.files ?? [])];
+              if (files.length === 0) return;
+              // Menyalin sel Excel/Word menaruh gambar sekaligus teks biasa: biarkan teks menempel normal.
+              if ((event.clipboardData?.types ?? []).includes('text/plain')) return;
+              event.preventDefault();
+              void insertImages(files);
+            }}
+            onDragOver={(event) => {
+              if ([...(event.dataTransfer?.types ?? [])].includes('Files')) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const files = [...(event.dataTransfer?.files ?? [])];
+              if (files.length === 0) return;
+              event.preventDefault();
+              void insertImages(files);
+            }}
+          />
+        ) : (
+          <div className="min-h-64 rounded-md border p-3">
+            {value.trim() === '' ? (
+              <p className="text-sm text-muted-foreground">Belum ada isi.</p>
+            ) : (
+              <MarkdownView source={value} />
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between gap-2 text-xs">
         <span aria-live="polite" className="text-muted-foreground">
           {uploading > 0 ? 'Mengunggah gambar…' : ''}
         </span>
-        <span className={cn(tooLong ? 'text-destructive' : 'text-muted-foreground')}>
+        <span
+          id={`${id}-count`}
+          className={cn(tooLong ? 'text-destructive' : 'text-muted-foreground')}
+        >
           {value.length}/{maxLength}
         </span>
       </div>

@@ -16,17 +16,18 @@ export function fileQueryOptions(id: string) {
   });
 }
 
+/** Referensi fungsi stabil: React Query hanya menjalankan ulang `select` bila data berubah (string ~1,4 MB). */
+function toDataUrl(data: { mime: string; base64: string }): string {
+  return `data:${data.mime};base64,${data.base64}`;
+}
+
 export function useFileUrl(id: string): {
   url: string | null;
   isLoading: boolean;
   isError: boolean;
 } {
-  const query = useQuery(fileQueryOptions(id));
-  return {
-    url: query.data ? `data:${query.data.mime};base64,${query.data.base64}` : null,
-    isLoading: query.isLoading,
-    isError: query.isError,
-  };
+  const query = useQuery({ ...fileQueryOptions(id), select: toDataUrl });
+  return { url: query.data ?? null, isLoading: query.isLoading, isError: query.isError };
 }
 
 export const useUploadFile = () =>
