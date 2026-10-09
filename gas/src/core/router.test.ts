@@ -225,3 +225,9 @@ test('tipe: modul berlokasi wajib menandai scope location (tidak diam-diam memak
   const global: RoutePermission = { module: 'access', level: 'view' };
   expect([salah, benar, global]).toHaveLength(3);
 });
+
+test('rute berlokasi menolak input yang memuat locationIds dan locationId sekaligus', () => {
+  const error = errorOf(call('item.save', { locationIds: ['l-b'], locationId: 'l-a' }));
+  expect(error.code).toBe('VALIDATION');
+  expect(calls).toEqual([]);
+});

@@ -61,6 +61,7 @@ export function saveLocation_(input: SaveLocationInput, actor: UserContext): Loc
         updatedBy: actor.email,
       };
       updateLocation_(updated);
+      invalidateAccessCache_();
       appendAudit_({
         ts: now,
         actor: actor.email,
@@ -69,7 +70,6 @@ export function saveLocation_(input: SaveLocationInput, actor: UserContext): Loc
         before: locationSnapshot_(existing),
         after: locationSnapshot_(updated),
       });
-      invalidateAccessCache_();
       return toLocationDto_(updated);
     }
 
@@ -83,6 +83,7 @@ export function saveLocation_(input: SaveLocationInput, actor: UserContext): Loc
       updatedBy: actor.email,
     };
     insertLocation_(created);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -91,7 +92,6 @@ export function saveLocation_(input: SaveLocationInput, actor: UserContext): Loc
       before: null,
       after: locationSnapshot_(created),
     });
-    invalidateAccessCache_();
     return toLocationDto_(created);
   });
 }
@@ -109,6 +109,7 @@ export function setLocationStatus_(input: SetLocationStatusInput, actor: UserCon
       updatedBy: actor.email,
     };
     updateLocation_(updated);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -117,7 +118,6 @@ export function setLocationStatus_(input: SetLocationStatusInput, actor: UserCon
       before: locationSnapshot_(existing),
       after: locationSnapshot_(updated),
     });
-    invalidateAccessCache_();
     return toLocationDto_(updated);
   });
 }

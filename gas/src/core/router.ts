@@ -79,6 +79,11 @@ export function handleRpc_(
 function requestedLocationIds_(input: unknown): string[] {
   const source =
     typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+  if (Array.isArray(source.locationIds) && source.locationId !== undefined) {
+    throw appError_('VALIDATION', 'Sebutkan lokasi lewat locationIds atau locationId saja', {
+      locationId: 'Sebutkan lokasi lewat locationIds atau locationId saja',
+    });
+  }
   const raw = Array.isArray(source.locationIds)
     ? source.locationIds
     : typeof source.locationId === 'string'

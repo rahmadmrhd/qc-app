@@ -209,6 +209,7 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
         updatedBy: actor.email,
       };
       updateUser_(updated);
+      invalidateAccessCache_();
       appendAudit_({
         ts: now,
         actor: actor.email,
@@ -217,7 +218,6 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
         before: userSnapshot_(existing),
         after: userSnapshot_(updated),
       });
-      invalidateAccessCache_();
       return toUserDto_(updated);
     }
 
@@ -232,6 +232,7 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       updatedBy: actor.email,
     };
     insertUser_(created);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -240,7 +241,6 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       before: null,
       after: userSnapshot_(created),
     });
-    invalidateAccessCache_();
     return toUserDto_(created);
   });
 }
@@ -260,6 +260,7 @@ export function setUserStatus_(input: SetUserStatusInput, actor: UserContext): U
       updatedBy: actor.email,
     };
     updateUser_(updated);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -268,7 +269,6 @@ export function setUserStatus_(input: SetUserStatusInput, actor: UserContext): U
       before: userSnapshot_(existing),
       after: userSnapshot_(updated),
     });
-    invalidateAccessCache_();
     return toUserDto_(updated);
   });
 }
@@ -296,6 +296,7 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         updatedBy: actor.email,
       };
       updateRole_(updated);
+      invalidateAccessCache_();
       appendAudit_({
         ts: now,
         actor: actor.email,
@@ -304,7 +305,6 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         before: roleSnapshot_(existing),
         after: roleSnapshot_(updated),
       });
-      invalidateAccessCache_();
       return toRoleDto_(updated, users);
     }
 
@@ -318,6 +318,7 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
       updatedBy: actor.email,
     };
     insertRole_(created);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -326,7 +327,6 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
       before: null,
       after: roleSnapshot_(created),
     });
-    invalidateAccessCache_();
     return toRoleDto_(created, users);
   });
 }
@@ -338,6 +338,7 @@ export function removeRole_(input: DeleteRoleInput, actor: UserContext): { id: s
     const usage = listUsers_().filter((user) => usesRole_(user, role.id)).length;
     if (usage > 0) throw appError_('CONFLICT', `Role masih dipakai oleh ${usage} user`);
     deleteRole_(role);
+    invalidateAccessCache_();
     appendAudit_({
       ts: nowIso_(),
       actor: actor.email,
@@ -346,7 +347,6 @@ export function removeRole_(input: DeleteRoleInput, actor: UserContext): { id: s
       before: roleSnapshot_(role),
       after: null,
     });
-    invalidateAccessCache_();
     return { id: role.id };
   });
 }

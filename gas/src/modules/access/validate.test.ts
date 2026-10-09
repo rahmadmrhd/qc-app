@@ -43,8 +43,8 @@ test('validateSaveUser_ menolak penugasan ganda untuk satu lokasi dan entri rusa
       validateSaveUser_({
         ...base,
         assignments: [
-          { locationId: 'l1', roleIds: [] },
-          { locationId: 'l1', roleIds: [] },
+          { locationId: 'l1', roleIds: ['r'] },
+          { locationId: 'l1', roleIds: ['r'] },
         ],
       }),
     ).fields?.assignments,
@@ -54,8 +54,8 @@ test('validateSaveUser_ menolak penugasan ganda untuk satu lokasi dan entri rusa
       validateSaveUser_({
         ...base,
         assignments: [
-          { locationId: null, roleIds: [] },
-          { locationId: null, roleIds: [] },
+          { locationId: null, roleIds: ['r'] },
+          { locationId: null, roleIds: ['r'] },
         ],
       }),
     ).fields?.assignments,
@@ -125,4 +125,15 @@ test('validateSaveRole_ menolak level yang tidak tersedia untuk modulnya', () =>
       permissions: { access: 'manage', stock: 'view' },
     }).permissions,
   ).toEqual({ access: 'manage', stock: 'view' });
+});
+
+test('validateSaveUser_ menolak penugasan tanpa role', () => {
+  const base = { email: 'b@gmail.com', name: 'B', status: 'active' };
+  for (const locationId of [null, 'l1']) {
+    expect(
+      captureAppError(() =>
+        validateSaveUser_({ ...base, assignments: [{ locationId, roleIds: [] }] }),
+      ).fields?.assignments,
+    ).toBe('Penugasan harus punya minimal satu role');
+  }
 });

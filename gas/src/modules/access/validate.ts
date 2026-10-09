@@ -39,6 +39,10 @@ function readAssignmentList_(value: unknown, reader: ObjectReader): Assignment[]
       continue;
     }
     const location = locationId === null ? null : (locationId as string).trim();
+    if ((roleIds as string[]).every((id) => id.trim() === '')) {
+      reader.fail('assignments', 'Penugasan harus punya minimal satu role');
+      continue;
+    }
     const key = assignmentKey(location);
     if (seen.has(key)) {
       reader.fail('assignments', 'Satu lokasi hanya boleh muncul sekali');
