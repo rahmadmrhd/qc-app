@@ -163,6 +163,67 @@ export interface FileContentDto {
   mime: string;
   base64: string;
 }
+export type ItemStatus = 'active' | 'inactive';
+
+export interface ItemStickerDto {
+  name: string;
+  /** Posisi/ketentuan penempelan. */
+  note: string;
+  /** Id berkas contoh (sheet `files`), atau `null`. */
+  fileId: string | null;
+}
+
+export interface ItemAccessoryDto {
+  name: string;
+  /** Jumlah per unit. */
+  qty: number;
+}
+
+export interface ItemSummaryDto {
+  id: string;
+  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
+  externalId: string;
+  brand: string;
+  model: string;
+  isCountryLock: boolean;
+  status: ItemStatus;
+  aliases: string[];
+  imageCount: number;
+  updatedAt: string;
+}
+
+export interface ItemDto extends ItemSummaryDto {
+  stickers: ItemStickerDto[];
+  accessories: ItemAccessoryDto[];
+  /** Id berkas galeri (sheet `files`), urut. */
+  attachments: string[];
+  /** Detail Markdown. */
+  detail: string;
+  createdAt: string;
+  updatedBy: string;
+}
+
+export interface SaveItemInput {
+  id?: string;
+  brand: string;
+  model: string;
+  isCountryLock: boolean;
+  aliases: string[];
+  stickers: ItemStickerDto[];
+  accessories: ItemAccessoryDto[];
+  attachments: string[];
+  detail: string;
+}
+
+export interface GetItemInput {
+  id: string;
+}
+
+export interface SetItemStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -177,6 +238,10 @@ export interface RpcContract {
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
+  'items.list': { input: null; output: ItemSummaryDto[] };
+  'items.get': { input: GetItemInput; output: ItemDto };
+  'items.save': { input: SaveItemInput; output: ItemDto };
+  'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
 }
 
 export type RpcMethod = keyof RpcContract;
