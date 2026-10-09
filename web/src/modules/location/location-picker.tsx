@@ -28,12 +28,13 @@ export function LocationPicker() {
           {label}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="min-w-52">
         <DropdownMenuLabel>Lokasi aktif</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {available.map((location) => (
           <DropdownMenuCheckboxItem
             key={location.id}
+            className="pr-1.5 pl-8 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:right-auto [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:left-2"
             checked={selectedIds.includes(location.id)}
             onCheckedChange={() => toggle(location.id)}
             onSelect={(event) => event.preventDefault()}
