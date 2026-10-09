@@ -23,8 +23,13 @@ export function ImageGalleryField({
 }: ImageGalleryFieldProps) {
   const uploadImage = useUploadImage();
   const inputRef = useRef<HTMLInputElement>(null);
+  // Nilai terbaru, termasuk perubahan yang belum sempat dirender induk; dibaca ulang setelah setiap await.
   const valueRef = useRef(value);
   valueRef.current = value;
+  const commit = (next: string[]) => {
+    valueRef.current = next;
+    onChange(next);
+  };
   const [uploading, setUploading] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,18 +40,15 @@ export function ImageGalleryField({
       return;
     }
     setError(null);
-    // Akumulasi lokal: render ulang induk belum tentu sudah terjadi di antara dua unggahan berturut-turut.
-    let current: readonly string[] = valueRef.current;
     for (const file of images) {
-      if (current.length >= max) {
+      if (valueRef.current.length >= max) {
         setError(`Maksimal ${max} gambar`);
         return;
       }
       setUploading((count) => count + 1);
       try {
         const id = await uploadImage(file);
-        current = [...current, id];
-        onChange([...current]);
+        commit([...valueRef.current, id]);
       } catch (failure) {
         setError(uploadErrorMessage(failure));
       } finally {
@@ -56,14 +58,14 @@ export function ImageGalleryField({
   }
 
   function move(index: number, delta: -1 | 1) {
-    const next = [...value];
+    const next = [...valueRef.current];
     const target = index + delta;
     const moved = next[index];
     const other = next[target];
     if (moved === undefined || other === undefined) return;
     next[index] = other;
     next[target] = moved;
-    onChange(next);
+    commit(next);
   }
 
   return (
@@ -91,7 +93,7 @@ export function ImageGalleryField({
                   variant="ghost"
                   aria-label={`Hapus gambar ${index + 1}`}
                   disabled={disabled}
-                  onClick={() => onChange(value.filter((_, i) => i !== index))}
+                  onClick={() => commit(valueRef.current.filter((_, i) => i !== index))}
                 >
                   <Trash2 aria-hidden="true" />
                 </Button>

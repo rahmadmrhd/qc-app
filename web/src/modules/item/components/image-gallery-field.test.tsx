@@ -64,3 +64,21 @@ test('berkas bukan gambar dan kegagalan unggah ditampilkan sebagai pesan', async
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('terlalu besar'));
   expect(document.querySelectorAll('img')).toHaveLength(0);
 });
+
+test('menghapus gambar selama unggah beruntun tidak dibatalkan oleh unggahan berikutnya', async () => {
+  const resolvers: Array<(id: string) => void> = [];
+  uploadMock.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolvers.push(resolve);
+      }),
+  );
+  render(<Harness initial={['old1', 'old2']} />);
+  fireEvent.change(input(), { target: { files: [png('a.png'), png('b.png')] } });
+  fireEvent.click(screen.getByRole('button', { name: /Hapus gambar 1/ }));
+  resolvers[0]?.('n1');
+  await waitFor(() => expect(resolvers).toHaveLength(2));
+  resolvers[1]?.('n2');
+  await waitFor(() => expect(shown()).toHaveLength(3));
+  expect(document.querySelector('img[src$="old1"]')).toBeNull();
+});

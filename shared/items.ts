@@ -74,18 +74,23 @@ function isFileIdChar(ch: string): boolean {
   );
 }
 
-/** Id berkas dari semua rujukan `](qcfile:<id>)` di Markdown; unik, urutan kemunculan. */
+/**
+ * Id berkas dari setiap kemunculan "qcfile:<id>" di Markdown (bentuk apa pun yang dirender: judul, kurung sudut,
+ * gaya referensi); unik, urutan kemunculan. Sengaja longgar: klaim berlebih berarti simpan ditolak (aman),
+ * klaim kurang berarti berkas milik entitas lain bisa lolos.
+ */
 export function extractFileRefs(markdown: string): string[] {
-  const marker = `](${FILE_SCHEME}`;
   const found: string[] = [];
   let from = 0;
   while (from < markdown.length) {
-    const at = markdown.indexOf(marker, from);
+    const at = markdown.indexOf(FILE_SCHEME, from);
     if (at < 0) break;
-    let end = at + marker.length;
+    let end = at + FILE_SCHEME.length;
     while (end < markdown.length && isFileIdChar(markdown.charAt(end))) end++;
-    const id = markdown.slice(at + marker.length, end);
-    if (id !== '' && markdown.charAt(end) === ')' && !found.includes(id)) found.push(id);
+    const id = markdown.slice(at + FILE_SCHEME.length, end);
+    const before = at > 0 ? markdown.charAt(at - 1) : '';
+    const boundary = before === '' || !isFileIdChar(before);
+    if (boundary && id !== '' && !found.includes(id)) found.push(id);
     from = Math.max(end, at + 1);
   }
   return found;

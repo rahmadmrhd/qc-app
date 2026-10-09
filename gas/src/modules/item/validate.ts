@@ -174,6 +174,17 @@ function readItemDetail_(value: unknown, reader: ObjectReader): string {
   return detail;
 }
 
+function checkItemJsonSize_(
+  field: string,
+  value: unknown[],
+  label: string,
+  reader: ObjectReader,
+): void {
+  if (JSON.stringify(value).length > ITEM_LIMITS.jsonCell) {
+    reader.fail(field, `Data ${label} terlalu besar`);
+  }
+}
+
 export function validateSaveItem_(raw: unknown): SaveItemInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
@@ -186,6 +197,10 @@ export function validateSaveItem_(raw: unknown): SaveItemInput {
   const accessories = readItemAccessories_(reader.raw('accessories'), reader);
   const attachments = readItemAttachments_(reader.raw('attachments'), reader);
   const detail = readItemDetail_(reader.raw('detail'), reader);
+  checkItemJsonSize_('aliases', aliases, 'nama lain', reader);
+  checkItemJsonSize_('stickers', stickers, 'stiker', reader);
+  checkItemJsonSize_('accessories', accessories, 'kelengkapan', reader);
+  checkItemJsonSize_('attachments', attachments, 'gambar', reader);
   reader.done();
   const input = {
     brand,

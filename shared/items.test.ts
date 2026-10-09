@@ -64,16 +64,21 @@ describe('extractFileRefs', () => {
     expect(extractFileRefs(md)).toEqual(['aaa-1', 'bbb_2']);
   });
 
-  test('mengabaikan rujukan yang tidak sah atau bukan gambar qcfile', () => {
+  test('mengambil id dari semua bentuk rujukan yang dirender: judul, kurung sudut, gaya referensi', () => {
     const md = [
-      '![a](https://x.test/a.png)',
-      '![b](qcfile:)',
-      '![c](qcfile:a/b)',
-      '[tautan](qcfile:ccc)',
-      '![d](qcfile:ddd',
-      '![e](QCFILE:eee)',
-    ].join(' ');
-    expect(extractFileRefs(md)).toEqual(['ccc']);
+      '![a](qcfile:aaa "judul")',
+      '![b](<qcfile:bbb>)',
+      '![c]( qcfile:ccc )',
+      '![d][r]',
+      '',
+      '[r]: qcfile:ddd',
+    ].join(String.fromCharCode(10));
+    expect(extractFileRefs(md)).toEqual(['aaa', 'bbb', 'ccc', 'ddd']);
+  });
+
+  test('mengabaikan rujukan kosong, huruf besar, atau skema lain', () => {
+    const md = ['![a](https://x.test/a.png)', '![b](qcfile:)', '![e](QCFILE:eee)'].join(' ');
+    expect(extractFileRefs(md)).toEqual([]);
   });
 
   test('teks tanpa rujukan menghasilkan daftar kosong', () => {

@@ -140,3 +140,9 @@ test('validateGetItem_ dan validateSetItemStatus_', () => {
     status: 'Nilai tidak valid',
   });
 });
+
+test('JSON per kolom melebihi 40.000 karakter ditolak (karakter kontrol membengkak saat di-JSON)', () => {
+  const note = String.fromCharCode(1).repeat(300);
+  const stickers = Array.from({ length: 30 }, (_, i) => ({ name: `s${i}`, note }));
+  expect(fieldsOf({ stickers })?.stickers).toBe('Data stiker terlalu besar');
+});

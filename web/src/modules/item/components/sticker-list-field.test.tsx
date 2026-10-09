@@ -70,3 +70,31 @@ test('tombol tambah dinonaktifkan pada batas 30 stiker', () => {
   render(<Harness initial={thirty} />);
   expect(screen.getByRole('button', { name: 'Tambah stiker' })).toBeDisabled();
 });
+
+test('mengetik atau menghapus baris lain selama unggah tidak tertimpa; gambar jatuh ke baris yang benar', async () => {
+  let resolveUpload: (id: string) => void = () => {};
+  uploadMock.mockReturnValue(
+    new Promise<string>((resolve) => {
+      resolveUpload = resolve;
+    }),
+  );
+  const spy = vi.fn();
+  render(
+    <Harness
+      initial={[
+        { name: 'A', note: '', fileId: null },
+        { name: 'B', note: '', fileId: null },
+      ]}
+      spy={spy}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Gambar contoh stiker 2'), {
+    target: { files: [new File(['x'], 'c.png', { type: 'image/png' })] },
+  });
+  await userEvent.type(screen.getByLabelText('Catatan stiker 2'), 'kanan');
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus stiker 1' }));
+  resolveUpload('img9');
+  await waitFor(() =>
+    expect(spy).toHaveBeenLastCalledWith([{ name: 'B', note: 'kanan', fileId: 'img9' }]),
+  );
+});
