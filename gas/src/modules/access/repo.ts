@@ -1,13 +1,25 @@
 import type { RowData, TableSchema } from '@gas/core/db';
 import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
 import { normalizeEmail_ } from '@gas/core/email';
+import type { Assignment } from '@shared/assignments';
+import { sanitizeAssignments } from '@shared/assignments';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
 import type { LocationStatus, UserStatus } from '@shared/rpc';
 
 export const USERS_TABLE: TableSchema = {
   sheetName: 'users',
-  columns: ['id', 'email', 'name', 'status', 'role_ids', 'created_at', 'updated_at', 'updated_by'],
+  columns: [
+    'id',
+    'email',
+    'name',
+    'status',
+    'role_ids',
+    'created_at',
+    'updated_at',
+    'updated_by',
+    'assignments',
+  ],
 };
 
 export const ROLES_TABLE: TableSchema = {
@@ -31,7 +43,7 @@ export interface UserRecord {
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -91,6 +103,14 @@ function parseStringArray_(text: string): string[] {
     : [];
 }
 
+/** Penugasan dari kolom `assignments`; data lama (hanya `role_ids`) dibaca sebagai penugasan "Semua lokasi". */
+function readAssignments_(data: RowData): Assignment[] {
+  const text = (data.assignments ?? '').trim();
+  if (text !== '') return sanitizeAssignments(parseJson_(text));
+  const legacy = parseStringArray_(data.role_ids ?? '');
+  return legacy.length > 0 ? [{ locationId: null, roleIds: legacy }] : [];
+}
+
 function toUserRecord_(rowNumber: number, data: RowData): UserRecord {
   return {
     rowNumber,
@@ -98,7 +118,7 @@ function toUserRecord_(rowNumber: number, data: RowData): UserRecord {
     email: normalizeEmail_(data.email ?? ''),
     name: (data.name ?? '').trim(),
     status: (data.status ?? '').trim() === 'active' ? 'active' : 'inactive',
-    roleIds: parseStringArray_(data.role_ids ?? ''),
+    assignments: readAssignments_(data),
     createdAt: data.created_at ?? '',
     updatedAt: data.updated_at ?? '',
     updatedBy: data.updated_by ?? '',
@@ -111,7 +131,8 @@ function fromUserRecord_(user: NewUserRecord): RowData {
     email: user.email,
     name: user.name,
     status: user.status,
-    role_ids: JSON.stringify(user.roleIds),
+    role_ids: '',
+    assignments: JSON.stringify(user.assignments),
     created_at: user.createdAt,
     updated_at: user.updatedAt,
     updated_by: user.updatedBy,
@@ -325,6 +346,22 @@ export function migrateAuditDetail_(): number {
       continue;
     }
     updateRow_(AUDIT_TABLE, rowNumber, { before: beforeText, after: afterText, detail: '' });
+    migrated++;
+  }
+  return migrated;
+}
+
+/** Menyimpan migrasi: `role_ids` lama menjadi satu penugasan "Semua lokasi". Aman diulang. */
+export function migrateUserAssignments_(): number {
+  let migrated = 0;
+  for (const { rowNumber, data } of readTable_(USERS_TABLE).rows) {
+    if ((data.assignments ?? '').trim() !== '') continue;
+    const roleIds = parseStringArray_(data.role_ids ?? '');
+    if (roleIds.length === 0) continue;
+    updateRow_(USERS_TABLE, rowNumber, {
+      assignments: JSON.stringify([{ locationId: null, roleIds }]),
+      role_ids: '',
+    });
     migrated++;
   }
   return migrated;

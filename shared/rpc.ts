@@ -1,3 +1,4 @@
+import type { Assignment, LocationPermissionMap } from './assignments';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 
 export const ERROR_CODES = [
@@ -21,11 +22,22 @@ export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: RpcErrorB
 
 export type UserStatus = 'active' | 'inactive';
 
+export interface LocationAccessDto {
+  id: string;
+  code: string;
+  name: string;
+  /** Izin efektif user di lokasi ini (gabungan "Semua lokasi" dan penugasan lokasi). */
+  permissions: LocationPermissionMap;
+}
+
 export interface MeDto {
   email: string;
   name: string;
   isSuperAdmin: boolean;
+  /** Izin GLOBAL: hanya dari penugasan "Semua lokasi" (satu-satunya sumber modul `access`). */
   permissions: PermissionMap;
+  /** Lokasi aktif yang boleh diakses, terurut menurut kode. */
+  locations: LocationAccessDto[];
 }
 
 export interface UserDto {
@@ -33,7 +45,7 @@ export interface UserDto {
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -55,7 +67,7 @@ export interface SaveUserInput {
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
 }
 
 export interface SetUserStatusInput {

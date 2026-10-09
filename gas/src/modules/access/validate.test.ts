@@ -7,34 +7,78 @@ import {
   validateSetUserStatus_,
 } from './validate';
 
-test('validateSaveUser_ menormalisasi email, merapikan nama, dan membuang role duplikat', () => {
+test('validateSaveUser_ menormalisasi email, merapikan nama, dan membuang role duplikat per penugasan', () => {
   expect(
     validateSaveUser_({
       email: ' Budi@Gmail.COM ',
       name: '  Budi ',
       status: 'active',
-      roleIds: ['a', 'a', 'b'],
+      assignments: [{ locationId: null, roleIds: ['a', 'a', 'b'] }],
     }),
-  ).toEqual({ email: 'budi@gmail.com', name: 'Budi', status: 'active', roleIds: ['a', 'b'] });
+  ).toEqual({
+    email: 'budi@gmail.com',
+    name: 'Budi',
+    status: 'active',
+    assignments: [{ locationId: null, roleIds: ['a', 'b'] }],
+  });
 });
 
 test('validateSaveUser_ mengumpulkan semua error field', () => {
   const error = captureAppError(() =>
-    validateSaveUser_({ email: '', name: '', status: 'x', roleIds: 'a' }),
+    validateSaveUser_({ email: '', name: '', status: 'x', assignments: 'a' }),
   );
   expect(error.code).toBe('VALIDATION');
   expect(error.fields).toEqual({
     email: 'Wajib diisi',
     name: 'Wajib diisi',
     status: 'Nilai tidak valid',
-    roleIds: 'Harus berupa daftar teks',
+    assignments: 'Harus berupa daftar penugasan',
   });
+});
+
+test('validateSaveUser_ menolak penugasan ganda untuk satu lokasi dan entri rusak', () => {
+  const base = { email: 'b@gmail.com', name: 'B', status: 'active' };
+  expect(
+    captureAppError(() =>
+      validateSaveUser_({
+        ...base,
+        assignments: [
+          { locationId: 'l1', roleIds: [] },
+          { locationId: 'l1', roleIds: [] },
+        ],
+      }),
+    ).fields?.assignments,
+  ).toBe('Satu lokasi hanya boleh muncul sekali');
+  expect(
+    captureAppError(() =>
+      validateSaveUser_({
+        ...base,
+        assignments: [
+          { locationId: null, roleIds: [] },
+          { locationId: null, roleIds: [] },
+        ],
+      }),
+    ).fields?.assignments,
+  ).toBe('Satu lokasi hanya boleh muncul sekali');
+  for (const entry of [
+    { roleIds: [] },
+    { locationId: '', roleIds: [] },
+    { locationId: 3, roleIds: [] },
+    { locationId: null, roleIds: 'x' },
+    { locationId: null, roleIds: [1] },
+    'teks',
+  ]) {
+    expect(
+      captureAppError(() => validateSaveUser_({ ...base, assignments: [entry] })).fields
+        ?.assignments,
+    ).toBeDefined();
+  }
 });
 
 test('validateSaveUser_ menolak format email salah dan input bukan objek', () => {
   expect(
     captureAppError(() =>
-      validateSaveUser_({ email: 'budi', name: 'B', status: 'active', roleIds: [] }),
+      validateSaveUser_({ email: 'budi', name: 'B', status: 'active', assignments: [] }),
     ).fields,
   ).toEqual({ email: 'Format email tidak valid' });
   expect(captureAppError(() => validateSaveUser_('teks')).fields?._).toBe(

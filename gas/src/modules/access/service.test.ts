@@ -1,12 +1,12 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
-import { role, user } from '@gas-test/access-fixtures';
+import { location, role, user } from '@gas-test/access-fixtures';
 import { captureAppError } from '@gas-test/errors';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { UserContext } from './context';
 import { loadUserContext_ } from './context';
-import { insertRole_, insertUser_ } from './repo';
+import { insertLocation_, insertRole_, insertUser_ } from './repo';
 import {
   listRoleDtos_,
   listUserDtos_,
@@ -15,6 +15,8 @@ import {
   saveUser_,
   setUserStatus_,
 } from './service';
+
+const everywhere = (...roleIds: string[]) => [{ locationId: null, roleIds }];
 
 let platform: MemoryPlatform;
 let admin: UserContext;
@@ -37,13 +39,15 @@ beforeEach(() => {
   insertUser_(
     user({ id: 'u-budi', email: 'budi@gmail.com', name: 'Budi', roleIds: ['r-qc', 'r-access'] }),
   );
+  insertLocation_(location({ id: 'l-a', code: 'A', name: 'Cabang A' }));
+  insertLocation_(location({ id: 'l-mati', code: 'MATI', name: 'Mati', status: 'inactive' }));
   admin = contextOf('admin@gmail.com');
 });
 
 test('membuat user baru, mencatat audit, dan langsung berlaku untuk login', () => {
   expect(loadUserContext_('ani@gmail.com')).toBeNull();
   const created = saveUser_(
-    { email: 'ani@gmail.com', name: 'Ani', status: 'active', roleIds: ['r-qc'] },
+    { email: 'ani@gmail.com', name: 'Ani', status: 'active', assignments: everywhere('r-qc') },
     admin,
   );
   expect(created).toMatchObject({
@@ -58,7 +62,7 @@ test('membuat user baru, mencatat audit, dan langsung berlaku untuk login', () =
 
 test('menolak email yang sudah terdaftar walau beda huruf besar', () => {
   const error = captureAppError(() =>
-    saveUser_({ email: ' BUDI@Gmail.com ', name: 'B', status: 'active', roleIds: [] }, admin),
+    saveUser_({ email: ' BUDI@Gmail.com ', name: 'B', status: 'active', assignments: [] }, admin),
   );
   expect(error).toMatchObject({ code: 'CONFLICT', fields: { email: 'Email sudah terdaftar' } });
 });
@@ -66,18 +70,23 @@ test('menolak email yang sudah terdaftar walau beda huruf besar', () => {
 test('menolak role yang tidak dikenal', () => {
   const error = captureAppError(() =>
     saveUser_(
-      { email: 'ani@gmail.com', name: 'Ani', status: 'active', roleIds: ['r-hilang'] },
+      {
+        email: 'ani@gmail.com',
+        name: 'Ani',
+        status: 'active',
+        assignments: everywhere('r-hilang'),
+      },
       admin,
     ),
   );
   expect(error.code).toBe('VALIDATION');
-  expect(error.fields?.roleIds).toBeDefined();
+  expect(error.fields?.assignments).toBeDefined();
 });
 
 test('email tidak dapat diubah saat edit', () => {
   const error = captureAppError(() =>
     saveUser_(
-      { id: 'u-budi', email: 'baru@gmail.com', name: 'Budi', status: 'active', roleIds: [] },
+      { id: 'u-budi', email: 'baru@gmail.com', name: 'Budi', status: 'active', assignments: [] },
       admin,
     ),
   );
@@ -93,7 +102,7 @@ test('admin tidak bisa menonaktifkan akun sendiri', () => {
         email: 'budi@gmail.com',
         name: 'Budi',
         status: 'inactive',
-        roleIds: ['r-access'],
+        assignments: everywhere('r-access'),
       },
       budi,
     ),
@@ -112,7 +121,7 @@ test('menonaktifkan user lain langsung mencabut aksesnya', () => {
 
 test('nama berawalan = disimpan dan dibaca kembali sebagai teks literal', () => {
   saveUser_(
-    { email: 'ani@gmail.com', name: '=HYPERLINK("http://x")', status: 'active', roleIds: [] },
+    { email: 'ani@gmail.com', name: '=HYPERLINK("http://x")', status: 'active', assignments: [] },
     admin,
   );
   expect(listUserDtos_().find((u) => u.email === 'ani@gmail.com')?.name).toBe(
@@ -161,12 +170,20 @@ function lastAudit(): { action: string; target: string; before: unknown; after: 
 }
 
 test('audit user.create: before kosong, after berisi snapshot lengkap dengan roleIds', () => {
-  saveUser_({ email: 'ani@gmail.com', name: 'Ani', status: 'active', roleIds: ['r-qc'] }, admin);
+  saveUser_(
+    { email: 'ani@gmail.com', name: 'Ani', status: 'active', assignments: everywhere('r-qc') },
+    admin,
+  );
   expect(lastAudit()).toEqual({
     action: 'user.create',
     target: 'ani@gmail.com',
     before: null,
-    after: { email: 'ani@gmail.com', name: 'Ani', status: 'active', roleIds: ['r-qc'] },
+    after: {
+      email: 'ani@gmail.com',
+      name: 'Ani',
+      status: 'active',
+      assignments: { '*': ['r-qc'] },
+    },
   });
 });
 
@@ -177,7 +194,7 @@ test('audit user.update: before dan after memuat semua field, roleIds tetap beru
       email: 'budi@gmail.com',
       name: 'Budi S',
       status: 'active',
-      roleIds: ['r-qc'],
+      assignments: everywhere('r-qc'),
     },
     admin,
   );
@@ -188,9 +205,14 @@ test('audit user.update: before dan after memuat semua field, roleIds tetap beru
       email: 'budi@gmail.com',
       name: 'Budi',
       status: 'active',
-      roleIds: ['r-qc', 'r-access'],
+      assignments: { '*': ['r-qc', 'r-access'] },
     },
-    after: { email: 'budi@gmail.com', name: 'Budi S', status: 'active', roleIds: ['r-qc'] },
+    after: {
+      email: 'budi@gmail.com',
+      name: 'Budi S',
+      status: 'active',
+      assignments: { '*': ['r-qc'] },
+    },
   });
 });
 
@@ -203,13 +225,13 @@ test('audit user.deactivate: snapshot sebelum dan sesudah, bukan null', () => {
       email: 'budi@gmail.com',
       name: 'Budi',
       status: 'active',
-      roleIds: ['r-qc', 'r-access'],
+      assignments: { '*': ['r-qc', 'r-access'] },
     },
     after: {
       email: 'budi@gmail.com',
       name: 'Budi',
       status: 'inactive',
-      roleIds: ['r-qc', 'r-access'],
+      assignments: { '*': ['r-qc', 'r-access'] },
     },
   });
 });
@@ -255,4 +277,119 @@ test('listRoleDtos_ menyertakan jumlah user per role, terurut nama', () => {
     ['Kosong', 0],
     ['QC Staff', 1],
   ]);
+});
+
+test('menyimpan penugasan per lokasi dan menghitung userCount role dari semua penugasan', () => {
+  saveUser_(
+    {
+      email: 'ani@gmail.com',
+      name: 'Ani',
+      status: 'active',
+      assignments: [
+        { locationId: null, roleIds: ['r-qc'] },
+        { locationId: 'l-a', roleIds: ['r-access'] },
+      ],
+    },
+    admin,
+  );
+  const ani = listUserDtos_().find((u) => u.email === 'ani@gmail.com');
+  expect(ani?.assignments).toEqual([
+    { locationId: null, roleIds: ['r-qc'] },
+    { locationId: 'l-a', roleIds: ['r-access'] },
+  ]);
+  expect(listRoleDtos_().find((r) => r.id === 'r-access')?.userCount).toBe(2);
+  expect(lastAudit()).toMatchObject({
+    action: 'user.create',
+    after: { assignments: { '*': ['r-qc'], 'l-a': ['r-access'] } },
+  });
+});
+
+test('menolak lokasi yang tidak dikenal atau tidak aktif pada penugasan baru', () => {
+  for (const locationId of ['tidak-ada', 'l-mati']) {
+    const error = captureAppError(() =>
+      saveUser_(
+        {
+          email: 'ani@gmail.com',
+          name: 'Ani',
+          status: 'active',
+          assignments: [{ locationId, roleIds: ['r-qc'] }],
+        },
+        admin,
+      ),
+    );
+    expect(error).toMatchObject({
+      code: 'VALIDATION',
+      fields: { assignments: 'Lokasi tidak dikenal atau tidak aktif' },
+    });
+  }
+});
+
+test('penugasan lama pada lokasi yang kini nonaktif tetap boleh dipertahankan saat edit', () => {
+  insertUser_(
+    user({
+      id: 'u-lama',
+      email: 'lama@gmail.com',
+      assignments: [{ locationId: 'l-mati', roleIds: ['r-qc'] }],
+    }),
+  );
+  const saved = saveUser_(
+    {
+      id: 'u-lama',
+      email: 'lama@gmail.com',
+      name: 'Lama Baru',
+      status: 'active',
+      assignments: [{ locationId: 'l-mati', roleIds: ['r-qc'] }],
+    },
+    admin,
+  );
+  expect(saved.name).toBe('Lama Baru');
+});
+
+test('admin non-super tidak dapat menghilangkan akses Kelola global miliknya sendiri (FR-AS5)', () => {
+  insertUser_(
+    user({
+      id: 'u-pusat',
+      email: 'pusat@gmail.com',
+      assignments: [{ locationId: null, roleIds: ['r-access'] }],
+    }),
+  );
+  const pusat = contextOf('pusat@gmail.com');
+  const error = captureAppError(() =>
+    saveUser_(
+      {
+        id: 'u-pusat',
+        email: 'pusat@gmail.com',
+        name: 'Pusat',
+        status: 'active',
+        assignments: [{ locationId: 'l-a', roleIds: ['r-access'] }],
+      },
+      pusat,
+    ),
+  );
+  expect(error.code).toBe('CONFLICT');
+  expect(
+    saveUser_(
+      {
+        id: 'u-pusat',
+        email: 'pusat@gmail.com',
+        name: 'Pusat',
+        status: 'active',
+        assignments: [{ locationId: null, roleIds: ['r-access', 'r-qc'] }],
+      },
+      pusat,
+    ).assignments[0]?.roleIds,
+  ).toEqual(['r-access', 'r-qc']);
+  // Super admin boleh mengubah penugasan siapa pun, termasuk miliknya.
+  expect(
+    saveUser_(
+      {
+        id: 'u-pusat',
+        email: 'pusat@gmail.com',
+        name: 'Pusat',
+        status: 'active',
+        assignments: [],
+      },
+      admin,
+    ).assignments,
+  ).toEqual([]);
 });

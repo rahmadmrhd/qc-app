@@ -1,5 +1,7 @@
 import type { ObjectReader } from '@gas/core/validate';
 import { readObject_ } from '@gas/core/validate';
+import type { Assignment } from '@shared/assignments';
+import { assignmentKey } from '@shared/assignments';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 import type {
@@ -14,15 +16,50 @@ import type {
 
 const USER_STATUS_VALUES = ['active', 'inactive'] as const;
 
+/** Nama berbeda dari `readAssignments_` di repo.ts: semua berkas GAS berbagi satu scope global. */
+function readAssignmentList_(value: unknown, reader: ObjectReader): Assignment[] {
+  if (!Array.isArray(value)) {
+    reader.fail('assignments', 'Harus berupa daftar penugasan');
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: Assignment[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      reader.fail('assignments', 'Penugasan tidak valid');
+      continue;
+    }
+    const { locationId, roleIds } = item as { locationId?: unknown; roleIds?: unknown };
+    if (locationId !== null && (typeof locationId !== 'string' || locationId.trim() === '')) {
+      reader.fail('assignments', 'Lokasi penugasan tidak valid');
+      continue;
+    }
+    if (!Array.isArray(roleIds) || !roleIds.every((id) => typeof id === 'string')) {
+      reader.fail('assignments', 'Role penugasan tidak valid');
+      continue;
+    }
+    const location = locationId === null ? null : (locationId as string).trim();
+    const key = assignmentKey(location);
+    if (seen.has(key)) {
+      reader.fail('assignments', 'Satu lokasi hanya boleh muncul sekali');
+      continue;
+    }
+    seen.add(key);
+    const ids = (roleIds as string[]).map((id) => id.trim()).filter((id) => id !== '');
+    result.push({ locationId: location, roleIds: [...new Set(ids)] });
+  }
+  return result;
+}
+
 export function validateSaveUser_(raw: unknown): SaveUserInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
   const email = reader.email('email');
   const name = reader.str('name', { required: true, max: 100 });
   const status = reader.oneOf('status', USER_STATUS_VALUES);
-  const roleIds = reader.stringArray('roleIds');
+  const assignments = readAssignmentList_(reader.raw('assignments'), reader);
   reader.done();
-  return id ? { id, email, name, status, roleIds } : { email, name, status, roleIds };
+  return id ? { id, email, name, status, assignments } : { email, name, status, assignments };
 }
 
 export function validateSetUserStatus_(raw: unknown): SetUserStatusInput {

@@ -5,6 +5,7 @@ import {
   AUDIT_TABLE,
   LOCATIONS_TABLE,
   migrateAuditDetail_,
+  migrateUserAssignments_,
   ROLES_TABLE,
   USERS_TABLE,
 } from '@gas/modules/access/repo';
@@ -33,5 +34,8 @@ export function runSetup_(): string {
   }
   const migrated = migrateAuditDetail_();
   if (migrated > 0) lines.push(`audit_log: ${migrated} baris lama dimigrasi ke before/after.`);
+  const assigned = migrateUserAssignments_();
+  if (assigned > 0)
+    lines.push(`users: ${assigned} user lama dimigrasi ke penugasan "Semua lokasi".`);
   return lines.join('\n');
 }

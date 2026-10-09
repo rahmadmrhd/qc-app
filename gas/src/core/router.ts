@@ -10,6 +10,8 @@ import { verifySessionToken_ } from './session';
 export interface RequestContext {
   requestId: string;
   user: UserContext;
+  /** Lokasi tervalidasi untuk rute berlokasi; kosong untuk rute global. */
+  locationIds: string[];
 }
 
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
@@ -54,7 +56,7 @@ export function handleRpc_(
       throw appError_('VALIDATION', 'Payload bukan JSON yang valid');
     }
 
-    const data = route.handler(route.validate(raw), { requestId, user });
+    const data = route.handler(route.validate(raw), { requestId, user, locationIds: [] });
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error: toErrorBody_(error, requestId) };
