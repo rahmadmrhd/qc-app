@@ -23,7 +23,13 @@ describe('hasLevel', () => {
 describe('mergePermissions', () => {
   test('mengambil level tertinggi per modul dari banyak role', () => {
     const merged = mergePermissions([{ item: 'view', handover: 'edit' }, { item: 'manage' }]);
-    expect(merged).toEqual({ access: 'none', item: 'manage', handover: 'edit', stock: 'none' });
+    expect(merged).toEqual({
+      access: 'none',
+      item: 'manage',
+      handover: 'edit',
+      qc: 'none',
+      stock: 'none',
+    });
   });
 
   test('tanpa role menghasilkan none di semua modul', () => {
@@ -38,7 +44,13 @@ describe('mergePermissions', () => {
       ['x'],
       { stock: 'view' },
     ]);
-    expect(merged).toEqual({ access: 'none', item: 'none', handover: 'none', stock: 'view' });
+    expect(merged).toEqual({
+      access: 'none',
+      item: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'view',
+    });
   });
 });
 
@@ -48,6 +60,7 @@ describe('fullPermissions', () => {
       access: 'manage',
       item: 'manage',
       handover: 'manage',
+      qc: 'manage',
       stock: 'manage',
     });
   });
@@ -67,6 +80,7 @@ describe('level per modul', () => {
     expect(levelsFor('access')).toEqual(['none', 'view', 'manage']);
     expect(levelsFor('stock')).toEqual(['none', 'view']);
     expect(levelsFor('item')).toEqual(['none', 'view', 'edit', 'manage']);
+    expect(levelsFor('qc')).toEqual(['none', 'edit']);
   });
 
   test('isLevelAllowed menolak level di luar daftar modul', () => {
@@ -76,6 +90,7 @@ describe('level per modul', () => {
   });
 
   test('sanitizePermissions menurunkan level tak tersedia ke level terdekat di bawahnya', () => {
+    expect(sanitizePermissions({ qc: 'manage' })).toEqual({ qc: 'edit' });
     expect(sanitizePermissions({ access: 'edit', stock: 'manage', item: 'edit' })).toEqual({
       access: 'view',
       stock: 'view',
@@ -85,6 +100,9 @@ describe('level per modul', () => {
 
   test('levelHint memakai keterangan khusus modul bila ada, bila tidak keterangan umum', () => {
     expect(levelHint('access', 'manage')).not.toBe(levelHint('item', 'manage'));
-    expect(levelHint('item', 'view')).toBe(LEVEL_HINTS.view);
+    expect(levelHint('item', 'none')).toBe(LEVEL_HINTS.none);
+    expect(levelHint('qc', 'edit')).toContain('progres');
+    expect(levelHint('handover', 'manage')).toContain('membatalkan');
+    expect(levelHint('item', 'manage')).toContain('customer');
   });
 });

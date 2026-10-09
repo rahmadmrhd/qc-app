@@ -49,6 +49,9 @@ Di https://console.cloud.google.com (akun yang sama):
 
 Jalankan `setup` sekali lagi — laporan harus "Script Properties lengkap." dan menyebut apakah redirect URI otomatis atau override.
 
+## 7b. Izin Drive (mulai Fase A Data Item)
+Aplikasi menyimpan gambar item di folder Drive privat bernama **QC App Files** (milik akun pemilik script, tidak dibagikan). Manifest `appsscript.json` kini memuat scope `https://www.googleapis.com/auth/drive`. Setelah `bun run push`, jalankan fungsi `setup` dari editor dengan akun pemilik: Google meminta persetujuan izin Drive **sekali**. `setup` lalu membuat folder dan menyimpan id-nya di Script Property `DRIVE_FOLDER_ID` (jangan diubah manual). Berkas dibaca hanya dari folder ini: bila folder dihapus atau dipindah ke tempat sampah, jalankan `setup` lagi (membuat folder baru dan memperbarui properti), tetapi **gambar lama di folder yang hilang tidak lagi terbaca** dan upload baru masuk folder baru.
+
 ## 8. Deploy & coba
 ```bash
 bun run deploy
@@ -64,3 +67,4 @@ Buka URL `/exec`, klik **Masuk dengan Google** dengan akun `ADMIN_EMAIL`, lalu b
 | "Email … belum terdaftar" | Tambahkan email tersebut di menu Users (status Aktif). |
 | URL berubah setelah deploy | Selalu pakai `bun run deploy` (memperbarui deployment ID yang sama), jangan membuat deployment baru. |
 | Paksa semua user logout | Ganti `SESSION_SECRET`. |
+| Unggah gambar gagal "Terjadi kesalahan" setelah update | Izin Drive belum disetujui: jalankan `setup` sekali dari editor (bagian 7b). Lihat **Executions** untuk galat `DriveApp`. |

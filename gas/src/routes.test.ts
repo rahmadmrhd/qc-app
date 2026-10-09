@@ -15,8 +15,12 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'access.users.save',
     'access.users.setStatus',
     'auth.me',
+    'files.get',
+    'files.upload',
   ]);
   expect(routes['auth.me'].permission).toBeUndefined();
+  expect(routes['files.get'].permission).toEqual({ module: 'item', level: 'view' });
+  expect(routes['files.upload'].permission).toEqual({ module: 'item', level: 'edit' });
   for (const method of [
     'access.users.list',
     'access.roles.list',

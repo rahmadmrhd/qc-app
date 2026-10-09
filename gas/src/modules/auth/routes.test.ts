@@ -8,7 +8,7 @@ import { authRoutes_ } from './routes';
 
 beforeEach(() => {
   setPlatform_(createMemoryPlatform({ properties: { ADMIN_EMAIL: 'admin@gmail.com' } }));
-  insertRole_(role({ id: 'r1', name: 'Manager', permissions: { item: 'manage' } }));
+  insertRole_(role({ id: 'r1', name: 'Manager', permissions: { handover: 'manage' } }));
   insertLocation_(location({ id: 'l-b', code: 'BDG', name: 'Bandung' }));
   insertLocation_(location({ id: 'l-j', code: 'JKT', name: 'Jakarta' }));
   insertLocation_(location({ id: 'l-m', code: 'MATI', name: 'Mati', status: 'inactive' }));
@@ -39,7 +39,7 @@ test('auth.me memuat izin global dan lokasi aktif yang boleh diakses, terurut me
         id: 'l-j',
         code: 'JKT',
         name: 'Jakarta',
-        permissions: { item: 'manage', handover: 'none', stock: 'none' },
+        permissions: { handover: 'manage', qc: 'none', stock: 'none' },
       },
     ],
   });
@@ -49,8 +49,8 @@ test('super admin melihat semua lokasi aktif dengan manage', () => {
   const result = me('admin@gmail.com');
   expect(result.locations.map((l) => l.code)).toEqual(['BDG', 'JKT']);
   expect(result.locations[0]?.permissions).toEqual({
-    item: 'manage',
     handover: 'manage',
+    qc: 'manage',
     stock: 'manage',
   });
 });

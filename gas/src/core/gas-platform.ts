@@ -15,6 +15,9 @@ function createGasPlatform_(): Platform {
   let spreadsheet: SpreadsheetLike | null = null;
   return {
     getProperty: (key) => properties.getProperty(key),
+    setProperty: (key, value) => {
+      properties.setProperty(key, value);
+    },
     scriptUrl: () => ScriptApp.getService().getUrl() ?? '',
     cacheGet: (key) => cache.get(key),
     cachePut: (key, value, ttlSeconds) => cache.put(key, value, ttlSeconds),
@@ -59,6 +62,43 @@ function createGasPlatform_(): Platform {
         spreadsheet = SpreadsheetApp.openById(id) as unknown as SpreadsheetLike;
       }
       return spreadsheet;
+    },
+    driveCreateFolder: (name) => DriveApp.createFolder(name).getId(),
+    driveCreateFile: (folderId, name, mime, base64) => {
+      const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime, name);
+      return DriveApp.getFolderById(folderId).createFile(blob).getId();
+    },
+    driveReadFile: (fileId, folderId) => {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        const parents = file.getParents();
+        let inFolder = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === folderId) inFolder = true;
+        }
+        if (!inFolder) return null;
+        const blob = file.getBlob();
+        return {
+          mime: blob.getContentType() ?? '',
+          base64: Utilities.base64Encode(blob.getBytes()),
+        };
+      } catch {
+        return null;
+      }
+    },
+    driveFolderExists: (folderId) => {
+      try {
+        return !DriveApp.getFolderById(folderId).isTrashed();
+      } catch {
+        return false;
+      }
+    },
+    driveTrashFile: (fileId) => {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch {
+        // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
+      }
     },
     logError: (message) => console.error(message),
   };

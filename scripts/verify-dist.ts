@@ -36,6 +36,22 @@ for await (const file of new Bun.Glob('**/*.js').scan({ cwd: GAS_DIST_DIR })) {
   }
 }
 
+const MAX_INDEX_BYTES = 1_500_000;
+const indexFile = Bun.file(path.join(GAS_DIST_DIR, 'index.html'));
+if ((await indexFile.exists()) && indexFile.size > MAX_INDEX_BYTES) {
+  problems.push(`index.html ${indexFile.size} byte melebihi batas ${MAX_INDEX_BYTES}`);
+}
+
+const manifestFile = Bun.file(path.join(GAS_DIST_DIR, 'appsscript.json'));
+if (await manifestFile.exists()) {
+  const manifest = JSON.parse(await manifestFile.text()) as { oauthScopes?: string[] };
+  if (!manifest.oauthScopes?.includes('https://www.googleapis.com/auth/drive')) {
+    problems.push(
+      'appsscript.json tidak memuat scope Drive (https://www.googleapis.com/auth/drive)',
+    );
+  }
+}
+
 if (problems.length > 0) {
   console.error(`verify-dist gagal:\n- ${problems.join('\n- ')}`);
   process.exit(1);

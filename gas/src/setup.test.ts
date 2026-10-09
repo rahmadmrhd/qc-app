@@ -12,7 +12,7 @@ test('melaporkan Script Property yang belum diset dan tidak membuat sheet tanpa 
   expect(platform.db.sheets.size).toBe(0);
 });
 
-test('membuat sheet users, roles, audit_log beserta header', () => {
+test('membuat sheet users, roles, audit_log, locations, files beserta header', () => {
   const platform = createMemoryPlatform({
     properties: {
       SPREADSHEET_ID: 'x',
@@ -25,7 +25,13 @@ test('membuat sheet users, roles, audit_log beserta header', () => {
   });
   setPlatform_(platform);
   expect(runSetup_()).toContain('Script Properties lengkap.');
-  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log', 'locations']);
+  expect([...platform.db.sheets.keys()]).toEqual([
+    'users',
+    'roles',
+    'audit_log',
+    'locations',
+    'files',
+  ]);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
     'ts',
@@ -208,4 +214,23 @@ test('setup memigrasi role_ids lama menjadi penugasan Semua lokasi dan aman diul
   expect(rows[1]?.[header.indexOf('assignments')]).toBe('[{"locationId":null,"roleIds":["r1"]}]');
   expect(rows[1]?.[header.indexOf('role_ids')]).toBe('');
   expect(runSetup_()).not.toContain('dimigrasi ke penugasan');
+});
+
+test('setup membuat folder Drive sekali dan melaporkannya; diulang tidak menggandakan folder', () => {
+  const platform = createMemoryPlatform({
+    properties: {
+      SPREADSHEET_ID: 'x',
+      OAUTH_CLIENT_ID: 'a',
+      OAUTH_CLIENT_SECRET: 'b',
+      OAUTH_REDIRECT_URI: 'c',
+      SESSION_SECRET: 'd',
+      ADMIN_EMAIL: 'e@gmail.com',
+    },
+  });
+  setPlatform_(platform);
+  const first = runSetup_();
+  const second = runSetup_();
+  expect(first).toContain('Folder Drive "QC App Files" siap');
+  expect(platform.folders.size).toBe(1);
+  expect(second).toContain(platform.getProperty('DRIVE_FOLDER_ID') ?? 'x');
 });

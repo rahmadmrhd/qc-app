@@ -85,6 +85,13 @@ export class MemorySpreadsheet implements SpreadsheetLike {
   }
 }
 
+export interface MemoryDriveFile {
+  folderId: string;
+  name: string;
+  mime: string;
+  base64: string;
+}
+
 export interface MemoryPlatformOptions {
   properties?: Record<string, string>;
   now?: () => number;
@@ -98,6 +105,10 @@ export interface MemoryPlatform extends Platform {
   readonly properties: Map<string, string>;
   readonly cache: Map<string, string>;
   readonly errors: string[];
+  readonly folders: Map<string, string>;
+  /** Folder yang ditandai berada di tempat sampah (untuk menguji `driveFolderExists`). */
+  readonly trashedFolders: Set<string>;
+  readonly drive: Map<string, MemoryDriveFile>;
   readonly httpCalls: Array<{ url: string; form: Record<string, string> }>;
 }
 
@@ -136,13 +147,23 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
   const db = new MemorySpreadsheet();
   const errors: string[] = [];
   const httpCalls: Array<{ url: string; form: Record<string, string> }> = [];
+  const folders = new Map<string, string>();
+  const trashedFolders = new Set<string>();
+  let driveSequence = 0;
+  const drive = new Map<string, MemoryDriveFile>();
   return {
     db,
     properties,
     cache,
     errors,
     httpCalls,
+    folders,
+    trashedFolders,
+    drive,
     getProperty: (key) => properties.get(key) ?? null,
+    setProperty: (key, value) => {
+      properties.set(key, value);
+    },
     scriptUrl: () => options.scriptUrl ?? '',
     cacheGet: (key) => cache.get(key) ?? null,
     cachePut: (key, value) => {
@@ -167,6 +188,25 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     },
     flush: () => undefined,
     spreadsheet: () => db,
+    driveCreateFolder: (name) => {
+      const id = `folder-${++driveSequence}`;
+      folders.set(id, name);
+      return id;
+    },
+    driveCreateFile: (folderId, name, mime, base64) => {
+      if (!folders.has(folderId)) throw new Error(`Folder Drive ${folderId} tidak ada`);
+      const id = `file-${++driveSequence}`;
+      drive.set(id, { folderId, name, mime, base64 });
+      return id;
+    },
+    driveReadFile: (fileId, folderId) => {
+      const file = drive.get(fileId);
+      return file && file.folderId === folderId ? { mime: file.mime, base64: file.base64 } : null;
+    },
+    driveFolderExists: (folderId) => folders.has(folderId) && !trashedFolders.has(folderId),
+    driveTrashFile: (fileId) => {
+      drive.delete(fileId);
+    },
     logError: (message) => {
       errors.push(message);
     },

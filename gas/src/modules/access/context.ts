@@ -77,8 +77,10 @@ export function loadUserContext_(rawEmail: string): UserContext | null {
   if (cached === 'null') return null;
   if (cached !== null) {
     const parsed = JSON.parse(cached) as Partial<UserContext>;
-    // Entri dari versi kode lama (tanpa locations) dihitung ulang agar tidak merusak auth.me setelah deploy.
-    if (parsed.locations !== undefined) return parsed as UserContext;
+    // Entri dari versi kode lama (tanpa locations atau modul qc) dihitung ulang agar tidak merusak auth.me setelah deploy.
+    if (parsed.locations !== undefined && parsed.permissions?.qc !== undefined) {
+      return parsed as UserContext;
+    }
   }
   const context = computeUserContext_(email);
   platform.cachePut(key, context ? JSON.stringify(context) : 'null', USER_CONTEXT_TTL_SECONDS);

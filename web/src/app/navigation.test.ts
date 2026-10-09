@@ -19,7 +19,7 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'view', handover: 'none', stock: 'none' },
+    permissions: { access: 'none', item: 'view', handover: 'none', qc: 'none', stock: 'none' },
     locations: [],
   };
   expect(visibleNavGroups(groups, me).map((group) => group.label)).toEqual(['Umum']);
@@ -39,7 +39,7 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
           label: 'Item',
           to: '/',
           icon: House,
-          permission: { module: 'item', level: 'view', scope: 'location' },
+          permission: { module: 'handover', level: 'view', scope: 'location' },
         },
       ],
     },
@@ -48,19 +48,19 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'none', handover: 'none', stock: 'none' },
+    permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
     locations: [
       {
         id: 'l-a',
         code: 'A',
         name: 'A',
-        permissions: { item: 'view', handover: 'none', stock: 'none' },
+        permissions: { handover: 'view', qc: 'none', stock: 'none' },
       },
       {
         id: 'l-b',
         code: 'B',
         name: 'B',
-        permissions: { item: 'none', handover: 'none', stock: 'view' },
+        permissions: { handover: 'none', qc: 'none', stock: 'view' },
       },
     ],
   };

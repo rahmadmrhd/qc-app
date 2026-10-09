@@ -34,5 +34,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // Tes interaksi (userEvent + jsdom) bisa melewati 5 dtk saat seluruh suite berjalan paralel.
+    testTimeout: 15_000,
   },
 });

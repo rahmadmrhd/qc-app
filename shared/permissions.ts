@@ -1,10 +1,11 @@
-export const MODULES = ['access', 'item', 'handover', 'stock'] as const;
+export const MODULES = ['access', 'item', 'handover', 'qc', 'stock'] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   access: 'Pengaturan Akses',
   item: 'Data Item',
   handover: 'Serah Terima QC–WH',
+  qc: 'Pengerjaan QC',
   stock: 'Monitoring Stok',
 };
 
@@ -26,6 +27,7 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   access: ['none', 'view', 'manage'],
   item: ['none', 'view', 'edit', 'manage'],
   handover: ['none', 'view', 'edit', 'manage'],
+  qc: ['none', 'edit'],
   stock: ['none', 'view'],
 };
 
@@ -41,6 +43,19 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   access: {
     view: 'Melihat daftar user, role, dan log audit.',
     manage: 'Melihat, serta menambah, mengubah, dan menonaktifkan user dan role.',
+  },
+  item: {
+    view: 'Melihat katalog item dan daftar customer.',
+    edit: 'Melihat serta menambah dan mengubah item.',
+    manage: 'Semua akses Ubah, ditambah menonaktifkan item dan mengelola customer.',
+  },
+  handover: {
+    view: 'Melihat task serah terima di lokasi penugasan.',
+    edit: 'Melihat serta membuat dan mengubah isi task serah terima.',
+    manage: 'Semua akses Ubah, ditambah membatalkan task.',
+  },
+  qc: {
+    edit: 'Melihat task di lokasi penugasan dan memperbarui progres pengerjaan (qty selesai, tandai selesai).',
   },
   stock: { view: 'Melihat monitoring stok yang belum QC.' },
 };
