@@ -20,6 +20,9 @@ export function LocationField({ id, module, level, value, onChange }: LocationFi
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const options = locationsWith(me, module, level, selectedIds);
+  // Mengubah baris yang sudah ada: lokasinya tetap tampil walau di luar pilihan tulis atau lokasi aktif.
+  const outside = value !== '' && !options.some((location) => location.id === value);
+  const known = outside ? me.locations.find((location) => location.id === value) : undefined;
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>Lokasi</Label>
@@ -32,6 +35,11 @@ export function LocationField({ id, module, level, value, onChange }: LocationFi
         <option value="" disabled>
           Pilih lokasi…
         </option>
+        {outside ? (
+          <option value={value} disabled>
+            {known ? `${known.name} (${known.code})` : '(lokasi tidak tersedia)'}
+          </option>
+        ) : null}
         {options.map((location) => (
           <option key={location.id} value={location.id}>
             {`${location.name} (${location.code})`}

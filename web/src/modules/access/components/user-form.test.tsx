@@ -118,3 +118,20 @@ test('email terkunci saat edit dan pesan error server ditampilkan', () => {
   expect(screen.getByLabelText('Email')).toBeDisabled();
   expect(screen.getByRole('alert')).toHaveTextContent('Email sudah terdaftar');
 });
+
+test('penugasan ke lokasi yang tidak dikenal tetap tampil jelas, tidak berpindah ke opsi lain', () => {
+  renderForm({
+    mode: 'edit',
+    defaultValues: {
+      email: 'a@gmail.com',
+      name: 'A',
+      status: 'active',
+      assignments: [{ locationId: 'hilang', roleIds: ['role-qc'] }],
+    },
+  });
+  const select = screen.getByLabelText('Lokasi penugasan 1');
+  expect(select).toHaveValue('hilang');
+  expect(
+    within(select).getByRole('option', { name: '(lokasi tidak dikenal)' }),
+  ).toBeInTheDocument();
+});

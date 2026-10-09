@@ -116,6 +116,11 @@ export function UserForm({
                     ? `${location.name} (${location.code})`
                     : `${location.name} (${location.code}) — nonaktif`,
               })),
+            ...(current !== '' &&
+            current !== ALL_LOCATIONS_KEY &&
+            !locations.some((location) => location.id === current)
+              ? [{ value: current, label: '(lokasi tidak dikenal)' }]
+              : []),
           ];
           return (
             <fieldset className="space-y-3">

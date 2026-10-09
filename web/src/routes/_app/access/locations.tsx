@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { describeError } from '@/lib/rpc/describe-error';
 import { LocationForm } from '@/modules/access/components/location-form';
 import { LocationsTable } from '@/modules/access/components/locations-table';
+import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import {
   locationsQueryOptions,
   useSaveLocation,
@@ -32,14 +33,17 @@ function LocationsPage() {
   const setStatus = useSetLocationStatus();
   const [editing, setEditing] = useState<LocationDto | 'new' | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ code?: string; name?: string }>({});
 
   function closeDialog() {
     setEditing(null);
     setSubmitError(null);
+    setFieldErrors({});
   }
 
   async function handleSubmit(values: LocationFormOutput) {
     setSubmitError(null);
+    setFieldErrors({});
     try {
       await saveLocation.mutateAsync(
         editing && editing !== 'new' ? { ...values, id: editing.id } : values,
@@ -47,7 +51,9 @@ function LocationsPage() {
       toast.success('Lokasi disimpan');
       closeDialog();
     } catch (error) {
-      setSubmitError(describeError(error));
+      const picked = pickFieldErrors(error, ['code', 'name'] as const);
+      if (Object.keys(picked).length > 0) setFieldErrors(picked);
+      else setSubmitError(describeError(error));
     }
   }
 
@@ -87,6 +93,7 @@ function LocationsPage() {
               mode={editing === 'new' ? 'create' : 'edit'}
               defaultValues={toLocationFormDefaults(editing === 'new' ? undefined : editing)}
               submitError={submitError}
+              fieldErrors={fieldErrors}
               onSubmit={handleSubmit}
               onCancel={closeDialog}
             />

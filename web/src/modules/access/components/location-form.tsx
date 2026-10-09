@@ -10,6 +10,8 @@ export interface LocationFormProps {
   mode: 'create' | 'edit';
   defaultValues: LocationFormInput;
   submitError?: string | null;
+  /** Galat per field dari server (mis. kode sudah dipakai). */
+  fieldErrors?: { code?: string; name?: string };
   onSubmit: (values: LocationFormOutput) => Promise<unknown>;
   onCancel: () => void;
 }
@@ -18,6 +20,7 @@ export function LocationForm({
   mode,
   defaultValues,
   submitError,
+  fieldErrors,
   onSubmit,
   onCancel,
 }: LocationFormProps) {
@@ -54,7 +57,7 @@ export function LocationForm({
               Huruf, angka, dan tanda hubung, maksimal 10 karakter. Tidak dapat diubah setelah
               dibuat.
             </p>
-            <FieldError errors={field.state.meta.errors} />
+            <FieldError errors={[...field.state.meta.errors, fieldErrors?.code]} />
           </div>
         )}
       </form.Field>
@@ -68,7 +71,7 @@ export function LocationForm({
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
             />
-            <FieldError errors={field.state.meta.errors} />
+            <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
           </div>
         )}
       </form.Field>

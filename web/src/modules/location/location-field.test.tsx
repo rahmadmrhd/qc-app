@@ -62,3 +62,33 @@ test('tanpa lokasi yang boleh ditulis, field dinonaktifkan dengan keterangan', (
   expect(screen.getByLabelText('Lokasi')).toBeDisabled();
   expect(screen.getByText('Tidak ada lokasi aktif yang boleh Anda ubah.')).toBeInTheDocument();
 });
+
+test('nilai di luar pilihan tulis tetap tampil sesuai lokasinya (mengubah baris yang sudah ada)', () => {
+  render(
+    <ActiveLocationsProvider>
+      <LocationField id="loc" module="item" level="edit" value="l-b" onChange={() => undefined} />
+    </ActiveLocationsProvider>,
+  );
+  const select = screen.getByLabelText('Lokasi');
+  expect(select).toHaveValue('l-b');
+  expect(within(select).getByRole('option', { name: 'Bandung (BDG)' })).toBeInTheDocument();
+});
+
+test('nilai lokasi yang sudah tidak tersedia ditandai, bukan diganti opsi lain', () => {
+  render(
+    <ActiveLocationsProvider>
+      <LocationField
+        id="loc"
+        module="item"
+        level="edit"
+        value="hilang"
+        onChange={() => undefined}
+      />
+    </ActiveLocationsProvider>,
+  );
+  const select = screen.getByLabelText('Lokasi');
+  expect(select).toHaveValue('hilang');
+  expect(
+    within(select).getByRole('option', { name: '(lokasi tidak tersedia)' }),
+  ).toBeInTheDocument();
+});

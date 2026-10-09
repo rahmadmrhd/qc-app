@@ -52,3 +52,11 @@ test('kode terkunci saat edit dan pesan error server ditampilkan', () => {
   expect(screen.getByLabelText('Kode')).toBeDisabled();
   expect(screen.getByRole('alert')).toHaveTextContent('Nama lokasi sudah dipakai');
 });
+
+test('galat field dari server tampil di bawah field terkait', () => {
+  renderForm({
+    fieldErrors: { code: 'Kode lokasi sudah dipakai', name: 'Nama lokasi sudah dipakai' },
+  });
+  expect(screen.getByText('Kode lokasi sudah dipakai')).toBeInTheDocument();
+  expect(screen.getByText('Nama lokasi sudah dipakai')).toBeInTheDocument();
+});
