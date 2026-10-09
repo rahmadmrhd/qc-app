@@ -2,7 +2,7 @@ import type { UserDto } from '@shared/rpc';
 import { expect, test } from 'vitest';
 import { filterUsers } from './filter-users';
 
-const base = { roleIds: [], createdAt: '', updatedAt: '', updatedBy: '' };
+const base = { assignments: [], createdAt: '', updatedAt: '', updatedBy: '' };
 const users: UserDto[] = [
   { ...base, id: '1', email: 'budi@gmail.com', name: 'Budi Santoso', status: 'active' },
   { ...base, id: '2', email: 'ani@gmail.com', name: 'Ani', status: 'inactive' },

@@ -81,3 +81,52 @@ test('menampilkan legenda warna', () => {
   render(<AuditDiffView before={null} after={{ name: 'A' }} />);
   expect(screen.getByRole('list', { name: 'Keterangan warna' })).toBeInTheDocument();
 });
+
+test('penugasan ditampilkan per lokasi dengan nama lokasi dan role yang ditambah atau dihapus', () => {
+  render(
+    <AuditDiffView
+      before={{ assignments: { '*': ['r1'], 'l-a': ['r1'] } }}
+      after={{ assignments: { '*': ['r1', 'r2'], 'l-b': ['r1'] } }}
+      roleNames={
+        new Map([
+          ['r1', 'Manajer'],
+          ['r2', 'Pemantau'],
+        ])
+      }
+      locationNames={
+        new Map([
+          ['l-a', 'Jakarta'],
+          ['l-b', 'Bandung'],
+        ])
+      }
+    />,
+  );
+  const field = row('assignments');
+  expect(within(field).getByText('Penugasan')).toBeInTheDocument();
+  const items = [...field.querySelectorAll(':scope > ul > li[data-kind]')].map((item) => [
+    item.querySelector('[data-slot="label"]')?.textContent,
+    item.getAttribute('data-kind'),
+  ]);
+  expect(items).toEqual([
+    ['Semua lokasi', 'changed'],
+    ['Bandung', 'added'],
+    ['Jakarta', 'removed'],
+  ]);
+  const everywhere = field.querySelector('li[data-kind="changed"]') as HTMLElement;
+  const roles = [...everywhere.querySelectorAll('li[data-kind]')].map((item) => [
+    item.textContent,
+    item.getAttribute('data-kind'),
+  ]);
+  expect(roles).toEqual([
+    ['Manajer', 'unchanged'],
+    ['Pemantau', 'added'],
+  ]);
+});
+
+test('field lokasi memakai label yang mudah dibaca', () => {
+  render(
+    <AuditDiffView before={null} after={{ code: 'JKT', name: 'Jakarta', status: 'active' }} />,
+  );
+  expect(within(row('code')).getByText('Kode')).toBeInTheDocument();
+  expect(within(row('status')).getByText('Aktif')).toBeInTheDocument();
+});

@@ -33,7 +33,7 @@ function sameValue(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
-function arrayChildren(before: unknown, after: unknown): ChildDiff[] {
+export function diffList(before: unknown, after: unknown): ChildDiff[] {
   const prev = Array.isArray(before) ? before : [];
   const next = Array.isArray(after) ? after : [];
   const children: ChildDiff[] = next.map((item) => ({
@@ -65,7 +65,7 @@ function objectChildren(before: unknown, after: unknown): ChildDiff[] {
 }
 
 function childrenOf(before: unknown, after: unknown): ChildDiff[] | undefined {
-  if (Array.isArray(before) || Array.isArray(after)) return arrayChildren(before, after);
+  if (Array.isArray(before) || Array.isArray(after)) return diffList(before, after);
   if (isPlainObject(before) || isPlainObject(after)) return objectChildren(before, after);
   return undefined;
 }

@@ -1,5 +1,6 @@
 import type { UserContext } from '@gas/modules/access/context';
 import { loadUserContext_ } from '@gas/modules/access/context';
+import type { LocatedModule } from '@shared/assignments';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
 import type { RpcErrorBody, RpcInput, RpcMethod, RpcOutput, RpcResult } from '@shared/rpc';
@@ -10,11 +11,17 @@ import { verifySessionToken_ } from './session';
 export interface RequestContext {
   requestId: string;
   user: UserContext;
+  /** Lokasi tervalidasi untuk rute berlokasi; kosong untuk rute global. */
+  locationIds: string[];
 }
+
+export type RoutePermission =
+  | { module: Exclude<ModuleKey, LocatedModule>; level: Level; scope?: 'global' }
+  | { module: LocatedModule; level: Level; scope: 'location' };
 
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
   /** Tanpa `permission` = cukup login. */
-  permission?: { module: ModuleKey; level: Level };
+  permission?: RoutePermission;
   validate: (raw: unknown) => RpcInput<M>;
   handler: (input: RpcInput<M>, ctx: RequestContext) => RpcOutput<M>;
 }
@@ -38,9 +45,11 @@ export function handleRpc_(
     if (!session) throw appError_('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
     const user = loadUserContext_(session.email);
     if (!user) throw appError_('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
+    const permission = route.permission;
     if (
-      route.permission &&
-      !hasLevel(user.permissions[route.permission.module], route.permission.level)
+      permission &&
+      permission.scope !== 'location' &&
+      !hasLevel(user.permissions[permission.module], permission.level)
     ) {
       throw appError_('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
     }
@@ -54,11 +63,55 @@ export function handleRpc_(
       throw appError_('VALIDATION', 'Payload bukan JSON yang valid');
     }
 
-    const data = route.handler(route.validate(raw), { requestId, user });
+    const input = route.validate(raw);
+    const locationIds =
+      permission && permission.scope === 'location'
+        ? authorizedLocationIds_(input, user, permission)
+        : [];
+    const data = route.handler(input, { requestId, user, locationIds });
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error: toErrorBody_(error, requestId) };
   }
+}
+
+/** Lokasi dari input rute berlokasi: `locationIds` (baca) atau `locationId` (tulis). */
+function requestedLocationIds_(input: unknown): string[] {
+  const source =
+    typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+  if (Array.isArray(source.locationIds) && source.locationId !== undefined) {
+    throw appError_('VALIDATION', 'Sebutkan lokasi lewat locationIds atau locationId saja', {
+      locationId: 'Sebutkan lokasi lewat locationIds atau locationId saja',
+    });
+  }
+  const raw = Array.isArray(source.locationIds)
+    ? source.locationIds
+    : typeof source.locationId === 'string'
+      ? [source.locationId]
+      : [];
+  const ids = raw.every((id) => typeof id === 'string')
+    ? (raw as string[]).map((id) => id.trim())
+    : [];
+  if (ids.length === 0 || ids.some((id) => id === '')) {
+    throw appError_('VALIDATION', 'Lokasi wajib diisi', { locationId: 'Lokasi wajib diisi' });
+  }
+  return [...new Set(ids)];
+}
+
+/** Semua lokasi yang diminta harus aktif dan berlevel cukup; satu gagal menolak seluruh permintaan. */
+function authorizedLocationIds_(
+  input: unknown,
+  user: UserContext,
+  permission: Extract<RoutePermission, { scope: 'location' }>,
+): string[] {
+  const ids = requestedLocationIds_(input);
+  for (const id of ids) {
+    const access = user.locations[id];
+    if (!access || !hasLevel(access[permission.module], permission.level)) {
+      throw appError_('FORBIDDEN', 'Anda tidak memiliki akses ke lokasi ini');
+    }
+  }
+  return ids;
 }
 
 function toErrorBody_(error: unknown, requestId: string): RpcErrorBody {

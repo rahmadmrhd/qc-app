@@ -12,9 +12,11 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useMe } from '@/modules/auth/use-me';
+import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export function AppSidebar() {
   const me = useMe();
+  const { selectedIds } = useActiveLocations();
   const matchRoute = useMatchRoute();
   return (
     <Sidebar collapsible="icon">
@@ -25,7 +27,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {visibleNavGroups(NAV_GROUPS, me).map((group) => (
+        {visibleNavGroups(NAV_GROUPS, me, selectedIds).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

@@ -1,13 +1,27 @@
 import type { RowData, TableSchema } from '@gas/core/db';
 import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
 import { normalizeEmail_ } from '@gas/core/email';
+import { platform_ } from '@gas/core/platform';
+import type { Assignment } from '@shared/assignments';
+import { sanitizeAssignments } from '@shared/assignments';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
-import type { UserStatus } from '@shared/rpc';
+import type { LocationStatus, UserStatus } from '@shared/rpc';
+import { invalidateAccessCache_ } from './context';
 
 export const USERS_TABLE: TableSchema = {
   sheetName: 'users',
-  columns: ['id', 'email', 'name', 'status', 'role_ids', 'created_at', 'updated_at', 'updated_by'],
+  columns: [
+    'id',
+    'email',
+    'name',
+    'status',
+    'role_ids',
+    'created_at',
+    'updated_at',
+    'updated_by',
+    'assignments',
+  ],
 };
 
 export const ROLES_TABLE: TableSchema = {
@@ -20,13 +34,18 @@ export const AUDIT_TABLE: TableSchema = {
   columns: ['ts', 'actor', 'action', 'target', 'before', 'after'],
 };
 
+export const LOCATIONS_TABLE: TableSchema = {
+  sheetName: 'locations',
+  columns: ['id', 'code', 'name', 'status', 'created_at', 'updated_at', 'updated_by'],
+};
+
 export interface UserRecord {
   rowNumber: number;
   id: string;
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -44,6 +63,18 @@ export interface RoleRecord {
   updatedBy: string;
 }
 export type NewRoleRecord = Omit<RoleRecord, 'rowNumber'>;
+
+export interface LocationRecord {
+  rowNumber: number;
+  id: string;
+  code: string;
+  name: string;
+  status: LocationStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type NewLocationRecord = Omit<LocationRecord, 'rowNumber'>;
 
 export interface AuditEntry {
   ts: string;
@@ -74,6 +105,14 @@ function parseStringArray_(text: string): string[] {
     : [];
 }
 
+/** Penugasan dari kolom `assignments`; data lama (hanya `role_ids`) dibaca sebagai penugasan "Semua lokasi". */
+function readAssignments_(data: RowData): Assignment[] {
+  const text = (data.assignments ?? '').trim();
+  if (text !== '') return sanitizeAssignments(parseJson_(text));
+  const legacy = parseStringArray_(data.role_ids ?? '');
+  return legacy.length > 0 ? [{ locationId: null, roleIds: legacy }] : [];
+}
+
 function toUserRecord_(rowNumber: number, data: RowData): UserRecord {
   return {
     rowNumber,
@@ -81,7 +120,7 @@ function toUserRecord_(rowNumber: number, data: RowData): UserRecord {
     email: normalizeEmail_(data.email ?? ''),
     name: (data.name ?? '').trim(),
     status: (data.status ?? '').trim() === 'active' ? 'active' : 'inactive',
-    roleIds: parseStringArray_(data.role_ids ?? ''),
+    assignments: readAssignments_(data),
     createdAt: data.created_at ?? '',
     updatedAt: data.updated_at ?? '',
     updatedBy: data.updated_by ?? '',
@@ -94,7 +133,8 @@ function fromUserRecord_(user: NewUserRecord): RowData {
     email: user.email,
     name: user.name,
     status: user.status,
-    role_ids: JSON.stringify(user.roleIds),
+    role_ids: '',
+    assignments: JSON.stringify(user.assignments),
     created_at: user.createdAt,
     updated_at: user.updatedAt,
     updated_by: user.updatedBy,
@@ -161,6 +201,45 @@ export function updateRole_(role: RoleRecord): void {
 
 export function deleteRole_(role: RoleRecord): void {
   deleteRow_(ROLES_TABLE, role.rowNumber);
+}
+
+function toLocationRecord_(rowNumber: number, data: RowData): LocationRecord {
+  return {
+    rowNumber,
+    id: (data.id ?? '').trim(),
+    code: (data.code ?? '').trim().toUpperCase(),
+    name: (data.name ?? '').trim(),
+    status: (data.status ?? '').trim() === 'active' ? 'active' : 'inactive',
+    createdAt: data.created_at ?? '',
+    updatedAt: data.updated_at ?? '',
+    updatedBy: data.updated_by ?? '',
+  };
+}
+
+function fromLocationRecord_(location: NewLocationRecord): RowData {
+  return {
+    id: location.id,
+    code: location.code,
+    name: location.name,
+    status: location.status,
+    created_at: location.createdAt,
+    updated_at: location.updatedAt,
+    updated_by: location.updatedBy,
+  };
+}
+
+export function listLocations_(): LocationRecord[] {
+  return readTable_(LOCATIONS_TABLE)
+    .rows.map(({ rowNumber, data }) => toLocationRecord_(rowNumber, data))
+    .filter((location) => location.id !== '' && location.code !== '');
+}
+
+export function insertLocation_(location: NewLocationRecord): void {
+  insertRow_(LOCATIONS_TABLE, fromLocationRecord_(location));
+}
+
+export function updateLocation_(location: LocationRecord): void {
+  updateRow_(LOCATIONS_TABLE, location.rowNumber, fromLocationRecord_(location));
 }
 
 export function appendAudit_(entry: AuditEntry): void {
@@ -272,4 +351,23 @@ export function migrateAuditDetail_(): number {
     migrated++;
   }
   return migrated;
+}
+
+/** Menyimpan migrasi: `role_ids` lama menjadi satu penugasan "Semua lokasi". Aman diulang. */
+export function migrateUserAssignments_(): number {
+  return platform_().withLock(() => {
+    let migrated = 0;
+    for (const { rowNumber, data } of readTable_(USERS_TABLE).rows) {
+      if ((data.assignments ?? '').trim() !== '') continue;
+      const roleIds = parseStringArray_(data.role_ids ?? '');
+      if (roleIds.length === 0) continue;
+      updateRow_(USERS_TABLE, rowNumber, {
+        assignments: JSON.stringify([{ locationId: null, roleIds }]),
+        role_ids: '',
+      });
+      migrated++;
+    }
+    if (migrated > 0) invalidateAccessCache_();
+    return migrated;
+  });
 }

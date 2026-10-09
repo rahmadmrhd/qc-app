@@ -1,7 +1,9 @@
 import { normalizeEmail_ } from '@gas/core/email';
 import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
-import { sanitizePermissions } from '@shared/permissions';
+import type { Assignment } from '@shared/assignments';
+import { assignmentKey, resolveAccess } from '@shared/assignments';
+import { hasLevel, sanitizePermissions } from '@shared/permissions';
 import type {
   AuditPageDto,
   DeleteRoleInput,
@@ -14,13 +16,14 @@ import type {
 } from '@shared/rpc';
 import type { UserContext } from './context';
 import { invalidateAccessCache_ } from './context';
-import type { NewRoleRecord, NewUserRecord, RoleRecord, UserRecord } from './repo';
+import type { LocationRecord, NewRoleRecord, NewUserRecord, RoleRecord, UserRecord } from './repo';
 import {
   appendAudit_,
   deleteRole_,
   insertRole_,
   insertUser_,
   listAuditRecords_,
+  listLocations_,
   listRoles_,
   listUsers_,
   updateRole_,
@@ -33,11 +36,18 @@ function toUserDto_(user: NewUserRecord): UserDto {
     email: user.email,
     name: user.name,
     status: user.status,
-    roleIds: [...user.roleIds],
+    assignments: user.assignments.map((entry) => ({
+      locationId: entry.locationId,
+      roleIds: [...entry.roleIds],
+    })),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     updatedBy: user.updatedBy,
   };
+}
+
+function usesRole_(user: NewUserRecord, roleId: string): boolean {
+  return user.assignments.some((entry) => entry.roleIds.includes(roleId));
 }
 
 function toRoleDto_(role: NewRoleRecord, users: readonly NewUserRecord[]): RoleDto {
@@ -46,7 +56,7 @@ function toRoleDto_(role: NewRoleRecord, users: readonly NewUserRecord[]): RoleD
     name: role.name,
     description: role.description,
     permissions: { ...role.permissions },
-    userCount: users.filter((user) => user.roleIds.includes(role.id)).length,
+    userCount: users.filter((user) => usesRole_(user, role.id)).length,
     createdAt: role.createdAt,
     updatedAt: role.updatedAt,
     updatedBy: role.updatedBy,
@@ -86,13 +96,25 @@ export function listAudit_(params: ListAuditInput): AuditPageDto {
   };
 }
 
-function nowIso_(): string {
+export function nowIso_(): string {
   return new Date(platform_().now()).toISOString();
 }
 
-/** Snapshot audit: hanya field bisnis (metadata baris sudah ada di ts/actor). roleIds tetap berupa id. */
+/** Peta lokasi → role (kunci `*` = Semua lokasi); bentuk yang mudah dibandingkan per lokasi pada diff audit. */
+function assignmentsSnapshot_(assignments: readonly Assignment[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const entry of assignments) map[assignmentKey(entry.locationId)] = [...entry.roleIds];
+  return map;
+}
+
+/** Snapshot audit: hanya field bisnis (metadata baris sudah ada di ts/actor). Penugasan memakai id. */
 function userSnapshot_(user: NewUserRecord): Record<string, unknown> {
-  return { email: user.email, name: user.name, status: user.status, roleIds: [...user.roleIds] };
+  return {
+    email: user.email,
+    name: user.name,
+    status: user.status,
+    assignments: assignmentsSnapshot_(user.assignments),
+  };
 }
 
 function roleSnapshot_(role: NewRoleRecord): Record<string, unknown> {
@@ -112,23 +134,86 @@ export function listRoleDtos_(): RoleDto[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function assertAssignmentsValid_(
+  assignments: readonly Assignment[],
+  roles: readonly RoleRecord[],
+  locations: readonly LocationRecord[],
+  existing: UserRecord | undefined,
+): void {
+  const knownRoles = new Set(roles.map((role) => role.id));
+  if (assignments.some((entry) => entry.roleIds.some((id) => !knownRoles.has(id)))) {
+    throw appError_('VALIDATION', 'Ada role yang tidak dikenal', {
+      assignments: 'Ada role yang tidak dikenal',
+    });
+  }
+  const previous = new Set((existing?.assignments ?? []).map((entry) => entry.locationId));
+  for (const entry of assignments) {
+    if (entry.locationId === null) continue;
+    const location = locations.find((item) => item.id === entry.locationId);
+    const usable = location && (location.status === 'active' || previous.has(entry.locationId));
+    if (!usable) {
+      throw appError_('VALIDATION', 'Lokasi tidak dikenal atau tidak aktif', {
+        assignments: 'Lokasi tidak dikenal atau tidak aktif',
+      });
+    }
+  }
+}
+
+/** Admin non-super tidak boleh menyimpan perubahan yang menghilangkan Kelola global miliknya sendiri. */
+function assertKeepsOwnAccess_(
+  assignments: readonly Assignment[],
+  roles: readonly RoleRecord[],
+  existing: UserRecord | undefined,
+  actor: UserContext,
+): void {
+  if (actor.isSuperAdmin || !existing || existing.id !== actor.userId) return;
+  if (!hasLevel(actor.permissions.access, 'manage')) return;
+  const rolePermissions = new Map(roles.map((role) => [role.id, role.permissions] as const));
+  if (!hasLevel(resolveAccess(assignments, rolePermissions, []).global.access, 'manage')) {
+    throw appError_(
+      'CONFLICT',
+      'Anda tidak dapat menghilangkan akses Kelola Pengaturan Akses milik sendiri',
+    );
+  }
+}
+
+/** Admin non-super tidak boleh mengubah role hingga akses Kelola global miliknya sendiri hilang. */
+function assertRoleEditKeepsOwnAccess_(
+  updated: RoleRecord,
+  roles: readonly RoleRecord[],
+  users: readonly UserRecord[],
+  actor: UserContext,
+): void {
+  if (actor.isSuperAdmin || actor.userId === null) return;
+  if (!hasLevel(actor.permissions.access, 'manage')) return;
+  const self = users.find((user) => user.id === actor.userId);
+  if (!self) return;
+  const rolePermissions = new Map(
+    roles.map(
+      (role) => [role.id, role.id === updated.id ? updated.permissions : role.permissions] as const,
+    ),
+  );
+  if (!hasLevel(resolveAccess(self.assignments, rolePermissions, []).global.access, 'manage')) {
+    throw appError_(
+      'CONFLICT',
+      'Anda tidak dapat menghilangkan akses Kelola Pengaturan Akses milik sendiri',
+    );
+  }
+}
+
 export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
   return platform_().withLock(() => {
     const email = normalizeEmail_(input.email);
     const users = listUsers_();
-    const knownRoles = new Set(listRoles_().map((role) => role.id));
-    if (input.roleIds.some((id) => !knownRoles.has(id))) {
-      throw appError_('VALIDATION', 'Ada role yang tidak dikenal', {
-        roleIds: 'Ada role yang tidak dikenal',
-      });
-    }
+    const roles = listRoles_();
+    const existing = input.id ? users.find((user) => user.id === input.id) : undefined;
+    assertAssignmentsValid_(input.assignments, roles, listLocations_(), existing);
     if (users.some((user) => user.email === email && user.id !== input.id)) {
       throw appError_('CONFLICT', 'Email sudah terdaftar', { email: 'Email sudah terdaftar' });
     }
     const now = nowIso_();
 
     if (input.id) {
-      const existing = users.find((user) => user.id === input.id);
       if (!existing) throw appError_('NOT_FOUND', 'User tidak ditemukan');
       if (existing.email !== email) {
         throw appError_('VALIDATION', 'Email tidak dapat diubah', {
@@ -138,15 +223,17 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       if (existing.email === actor.email && input.status === 'inactive') {
         throw appError_('CONFLICT', 'Anda tidak bisa menonaktifkan akun sendiri');
       }
+      assertKeepsOwnAccess_(input.assignments, roles, existing, actor);
       const updated: UserRecord = {
         ...existing,
         name: input.name,
         status: input.status,
-        roleIds: [...input.roleIds],
+        assignments: input.assignments.map((entry) => ({ ...entry, roleIds: [...entry.roleIds] })),
         updatedAt: now,
         updatedBy: actor.email,
       };
       updateUser_(updated);
+      invalidateAccessCache_();
       appendAudit_({
         ts: now,
         actor: actor.email,
@@ -155,7 +242,6 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
         before: userSnapshot_(existing),
         after: userSnapshot_(updated),
       });
-      invalidateAccessCache_();
       return toUserDto_(updated);
     }
 
@@ -164,12 +250,13 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       email,
       name: input.name,
       status: input.status,
-      roleIds: [...input.roleIds],
+      assignments: input.assignments.map((entry) => ({ ...entry, roleIds: [...entry.roleIds] })),
       createdAt: now,
       updatedAt: now,
       updatedBy: actor.email,
     };
     insertUser_(created);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -178,7 +265,6 @@ export function saveUser_(input: SaveUserInput, actor: UserContext): UserDto {
       before: null,
       after: userSnapshot_(created),
     });
-    invalidateAccessCache_();
     return toUserDto_(created);
   });
 }
@@ -198,6 +284,7 @@ export function setUserStatus_(input: SetUserStatusInput, actor: UserContext): U
       updatedBy: actor.email,
     };
     updateUser_(updated);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -206,7 +293,6 @@ export function setUserStatus_(input: SetUserStatusInput, actor: UserContext): U
       before: userSnapshot_(existing),
       after: userSnapshot_(updated),
     });
-    invalidateAccessCache_();
     return toUserDto_(updated);
   });
 }
@@ -233,7 +319,9 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         updatedAt: now,
         updatedBy: actor.email,
       };
+      assertRoleEditKeepsOwnAccess_(updated, roles, users, actor);
       updateRole_(updated);
+      invalidateAccessCache_();
       appendAudit_({
         ts: now,
         actor: actor.email,
@@ -242,7 +330,6 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
         before: roleSnapshot_(existing),
         after: roleSnapshot_(updated),
       });
-      invalidateAccessCache_();
       return toRoleDto_(updated, users);
     }
 
@@ -256,6 +343,7 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
       updatedBy: actor.email,
     };
     insertRole_(created);
+    invalidateAccessCache_();
     appendAudit_({
       ts: now,
       actor: actor.email,
@@ -264,7 +352,6 @@ export function saveRole_(input: SaveRoleInput, actor: UserContext): RoleDto {
       before: null,
       after: roleSnapshot_(created),
     });
-    invalidateAccessCache_();
     return toRoleDto_(created, users);
   });
 }
@@ -273,9 +360,10 @@ export function removeRole_(input: DeleteRoleInput, actor: UserContext): { id: s
   return platform_().withLock(() => {
     const role = listRoles_().find((record) => record.id === input.id);
     if (!role) throw appError_('NOT_FOUND', 'Role tidak ditemukan');
-    const usage = listUsers_().filter((user) => user.roleIds.includes(role.id)).length;
+    const usage = listUsers_().filter((user) => usesRole_(user, role.id)).length;
     if (usage > 0) throw appError_('CONFLICT', `Role masih dipakai oleh ${usage} user`);
     deleteRole_(role);
+    invalidateAccessCache_();
     appendAudit_({
       ts: nowIso_(),
       actor: actor.email,
@@ -284,7 +372,6 @@ export function removeRole_(input: DeleteRoleInput, actor: UserContext): { id: s
       before: roleSnapshot_(role),
       after: null,
     });
-    invalidateAccessCache_();
     return { id: role.id };
   });
 }

@@ -1,3 +1,4 @@
+import { assignmentKey } from '@shared/assignments';
 import type { UserDto } from '@shared/rpc';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
 export interface UsersTableProps {
   users: readonly UserDto[];
   roleNames: ReadonlyMap<string, string>;
+  locationNames: ReadonlyMap<string, string>;
   canManage: boolean;
   currentEmail: string;
   pendingStatusId: string | null;
@@ -23,6 +25,7 @@ export interface UsersTableProps {
 export function UsersTable({
   users,
   roleNames,
+  locationNames,
   canManage,
   currentEmail,
   pendingStatusId,
@@ -36,7 +39,7 @@ export function UsersTable({
           <TableRow>
             <TableHead>Email</TableHead>
             <TableHead>Nama</TableHead>
-            <TableHead>Role</TableHead>
+            <TableHead>Penugasan</TableHead>
             <TableHead>Status</TableHead>
             {canManage ? <TableHead className="text-right">Aksi</TableHead> : null}
           </TableRow>
@@ -57,12 +60,16 @@ export function UsersTable({
                 <TableCell>{user.name}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
-                    {user.roleIds.length === 0 ? (
+                    {user.assignments.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
                     ) : null}
-                    {user.roleIds.map((id) => (
-                      <Badge key={id} variant="outline">
-                        {roleNames.get(id) ?? '(role dihapus)'}
+                    {user.assignments.map((entry) => (
+                      <Badge key={assignmentKey(entry.locationId)} variant="outline">
+                        {`${
+                          entry.locationId === null
+                            ? 'Semua lokasi'
+                            : (locationNames.get(entry.locationId) ?? '(lokasi tidak dikenal)')
+                        }: ${entry.roleIds.map((id) => roleNames.get(id) ?? '(role dihapus)').join(', ')}`}
                       </Badge>
                     ))}
                   </div>

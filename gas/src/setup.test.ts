@@ -25,7 +25,7 @@ test('membuat sheet users, roles, audit_log beserta header', () => {
   });
   setPlatform_(platform);
   expect(runSetup_()).toContain('Script Properties lengkap.');
-  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log']);
+  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log', 'locations']);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
     'ts',
@@ -192,4 +192,20 @@ test('laporan setup menyebut apakah redirect URI otomatis atau override', () => 
   expect(runSetup_()).toContain(
     'Redirect URI OAuth: override dari Script Property (https://script.google.com/macros/s/A/exec)',
   );
+});
+
+test('setup memigrasi role_ids lama menjadi penugasan Semua lokasi dan aman diulang', () => {
+  const platform = legacyAuditPlatform();
+  platform.db
+    .insertSheet('users')
+    .rows.push(
+      ['id', 'email', 'name', 'status', 'role_ids', 'created_at', 'updated_at', 'updated_by'],
+      ['u1', 'a@gmail.com', 'A', 'active', '["r1"]', '', '', ''],
+    );
+  expect(runSetup_()).toContain('1 user lama dimigrasi');
+  const rows = platform.db.sheet('users').rows;
+  const header = rows[0] ?? [];
+  expect(rows[1]?.[header.indexOf('assignments')]).toBe('[{"locationId":null,"roleIds":["r1"]}]');
+  expect(rows[1]?.[header.indexOf('role_ids')]).toBe('');
+  expect(runSetup_()).not.toContain('dimigrasi ke penugasan');
 });

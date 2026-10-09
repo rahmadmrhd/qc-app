@@ -3,7 +3,9 @@ import { openTable_ } from '@gas/core/db';
 import { platform_ } from '@gas/core/platform';
 import {
   AUDIT_TABLE,
+  LOCATIONS_TABLE,
   migrateAuditDetail_,
+  migrateUserAssignments_,
   ROLES_TABLE,
   USERS_TABLE,
 } from '@gas/modules/access/repo';
@@ -26,11 +28,14 @@ export function runSetup_(): string {
     lines.push('Pembuatan sheet dilewati karena SPREADSHEET_ID belum diset.');
     return lines.join('\n');
   }
-  for (const table of [USERS_TABLE, ROLES_TABLE, AUDIT_TABLE]) {
+  for (const table of [USERS_TABLE, ROLES_TABLE, AUDIT_TABLE, LOCATIONS_TABLE]) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
   }
   const migrated = migrateAuditDetail_();
   if (migrated > 0) lines.push(`audit_log: ${migrated} baris lama dimigrasi ke before/after.`);
+  const assigned = migrateUserAssignments_();
+  if (assigned > 0)
+    lines.push(`users: ${assigned} user lama dimigrasi ke penugasan "Semua lokasi".`);
   return lines.join('\n');
 }

@@ -1,8 +1,10 @@
 import type {
   DeleteRoleInput,
   ListAuditInput,
+  SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
+  SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +16,7 @@ export const accessKeys = {
   users: ['access', 'users'] as const,
   roles: ['access', 'roles'] as const,
   audit: ['access', 'audit'] as const,
+  locations: ['access', 'locations'] as const,
 };
 
 export function auditQueryOptions(input: ListAuditInput) {
@@ -34,6 +37,13 @@ export function rolesQueryOptions() {
   return queryOptions({
     queryKey: accessKeys.roles,
     queryFn: () => rpc('access.roles.list', null),
+  });
+}
+
+export function locationsQueryOptions() {
+  return queryOptions({
+    queryKey: accessKeys.locations,
+    queryFn: () => rpc('access.locations.list', null),
   });
 }
 
@@ -59,3 +69,7 @@ export const useSaveRole = () =>
   useAccessMutation((input: SaveRoleInput) => rpc('access.roles.save', input));
 export const useDeleteRole = () =>
   useAccessMutation((input: DeleteRoleInput) => rpc('access.roles.delete', input));
+export const useSaveLocation = () =>
+  useAccessMutation((input: SaveLocationInput) => rpc('access.locations.save', input));
+export const useSetLocationStatus = () =>
+  useAccessMutation((input: SetLocationStatusInput) => rpc('access.locations.setStatus', input));

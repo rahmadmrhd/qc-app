@@ -1,16 +1,21 @@
 import { adminEmail_ } from '@gas/core/config';
 import { normalizeEmail_ } from '@gas/core/email';
 import { platform_ } from '@gas/core/platform';
+import type { LocationPermissionMap } from '@shared/assignments';
+import { fullLocationPermissions, resolveAccess } from '@shared/assignments';
 import type { PermissionMap } from '@shared/permissions';
-import { fullPermissions, mergePermissions } from '@shared/permissions';
-import { findUserByEmail_, listRoles_ } from './repo';
+import { fullPermissions } from '@shared/permissions';
+import { findUserByEmail_, listLocations_, listRoles_ } from './repo';
 
 export interface UserContext {
   email: string;
   name: string;
   userId: string | null;
   isSuperAdmin: boolean;
+  /** Izin global: hanya dari penugasan "Semua lokasi" (sumber tunggal modul `access`). */
   permissions: PermissionMap;
+  /** Izin efektif per lokasi aktif; lokasi tanpa izin apa pun tidak ada. */
+  locations: Record<string, LocationPermissionMap>;
 }
 
 export const USER_CONTEXT_TTL_SECONDS = 300;
@@ -35,24 +40,31 @@ export function invalidateAccessCache_(): void {
 export function computeUserContext_(email: string): UserContext | null {
   const record = findUserByEmail_(email);
   const admin = adminEmail_();
+  const activeLocationIds = listLocations_()
+    .filter((location) => location.status === 'active')
+    .map((location) => location.id);
   if (admin !== '' && email === admin) {
+    const locations: Record<string, LocationPermissionMap> = {};
+    for (const id of activeLocationIds) locations[id] = fullLocationPermissions();
     return {
       email,
       name: record?.name || email,
       userId: record?.id ?? null,
       isSuperAdmin: true,
       permissions: fullPermissions(),
+      locations,
     };
   }
   if (!record || record.status !== 'active') return null;
-  const roleIds = new Set(record.roleIds);
-  const roles = listRoles_().filter((role) => roleIds.has(role.id));
+  const rolePermissions = new Map(listRoles_().map((role) => [role.id, role.permissions] as const));
+  const access = resolveAccess(record.assignments, rolePermissions, activeLocationIds);
   return {
     email,
     name: record.name || email,
     userId: record.id,
     isSuperAdmin: false,
-    permissions: mergePermissions(roles.map((role) => role.permissions)),
+    permissions: access.global,
+    locations: access.byLocation,
   };
 }
 
@@ -62,7 +74,12 @@ export function loadUserContext_(rawEmail: string): UserContext | null {
   const platform = platform_();
   const key = `uctx:${accessVersion_()}:${email}`;
   const cached = platform.cacheGet(key);
-  if (cached !== null) return cached === 'null' ? null : (JSON.parse(cached) as UserContext);
+  if (cached === 'null') return null;
+  if (cached !== null) {
+    const parsed = JSON.parse(cached) as Partial<UserContext>;
+    // Entri dari versi kode lama (tanpa locations) dihitung ulang agar tidak merusak auth.me setelah deploy.
+    if (parsed.locations !== undefined) return parsed as UserContext;
+  }
   const context = computeUserContext_(email);
   platform.cachePut(key, context ? JSON.stringify(context) : 'null', USER_CONTEXT_TTL_SECONDS);
   return context;
