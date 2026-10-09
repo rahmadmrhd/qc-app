@@ -223,3 +223,36 @@ test('ensureDriveFolder_ membuat folder baru bila folder lama dihapus atau ada d
   expect(third).not.toBe(second);
   expect(ensureDriveFolder_()).toBe(third);
 });
+
+test('attachFiles_ atomik: batch yang gagal tidak mengubah pemilik berkas mana pun', () => {
+  const a = uploadFile_(validateUploadFile_(upload()), admin);
+  const b = uploadFile_(validateUploadFile_(upload()), admin);
+  const taken = uploadFile_(validateUploadFile_(upload()), admin);
+  attachFiles_([taken.id], 'item', 'item-lain');
+
+  // berkas tak dikenal di belakang berkas bebas
+  expect(captureAppError(() => attachFiles_([a.id, 'hilang'], 'item', 'item-1')).code).toBe(
+    'VALIDATION',
+  );
+  // berkas milik entitas lain di belakang berkas bebas
+  expect(captureAppError(() => attachFiles_([a.id, b.id, taken.id], 'item', 'item-1')).code).toBe(
+    'CONFLICT',
+  );
+
+  expect(
+    listFiles_().map((f) => [f.id === taken.id ? 'taken' : 'bebas', f.ownerType, f.ownerId]),
+  ).toEqual([
+    ['bebas', '', ''],
+    ['bebas', '', ''],
+    ['taken', 'item', 'item-lain'],
+  ]);
+  // setelah gagal, percobaan ulang yang sah tetap berhasil (tidak CONFLICT karena sisa setengah jalan)
+  attachFiles_([a.id, b.id], 'item', 'item-1');
+  expect(listFiles_().filter((f) => f.ownerId === 'item-1')).toHaveLength(2);
+});
+
+test('attachFiles_ menerima id ganda dalam satu batch', () => {
+  const a = uploadFile_(validateUploadFile_(upload()), admin);
+  attachFiles_([a.id, a.id], 'item', 'item-1');
+  expect(listFiles_().filter((f) => f.ownerId === 'item-1')).toHaveLength(1);
+});

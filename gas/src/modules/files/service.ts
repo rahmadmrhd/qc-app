@@ -5,7 +5,7 @@ import { nowIso_ } from '@gas/modules/access/service';
 import type { FileOwnerType } from '@shared/files';
 import { base64ByteLength } from '@shared/files';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/rpc';
-import type { NewFileRecord } from './repo';
+import type { FileRecord, NewFileRecord } from './repo';
 import { insertFile_, listFiles_, updateFile_ } from './repo';
 
 const DRIVE_FOLDER_PROPERTY = 'DRIVE_FOLDER_ID';
@@ -81,7 +81,7 @@ export function readFile_(input: GetFileInput): FileContentDto {
 
 /**
  * Menetapkan pemilik berkas (dipakai simpan item pada Fase B). Pemanggil wajib memegang lock.
- * Berkas yang sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang.
+ * Berkas yang sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang. Atomik: seluruh batch divalidasi dulu.
  */
 export function attachFiles_(
   ids: readonly string[],
@@ -90,13 +90,16 @@ export function attachFiles_(
 ): void {
   if (ids.length === 0) return;
   const files = listFiles_();
-  for (const id of ids) {
+  // Tahap 1: validasi seluruh batch sebelum menulis apa pun (tanpa setengah jalan bila ada yang gagal).
+  const toClaim: FileRecord[] = [];
+  for (const id of new Set(ids)) {
     const file = files.find((item) => item.id === id);
     if (!file) throw appError_('VALIDATION', 'Ada berkas yang tidak dikenal');
-    if (file.ownerType === '') {
-      updateFile_({ ...file, ownerType, ownerId });
-    } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
+    if (file.ownerType === '') toClaim.push(file);
+    else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError_('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }
   }
+  // Tahap 2: tetapkan pemilik.
+  for (const file of toClaim) updateFile_({ ...file, ownerType, ownerId });
 }
