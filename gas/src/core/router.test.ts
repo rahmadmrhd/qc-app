@@ -13,7 +13,7 @@ import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcResult } from '@shared/rpc';
 import { appError_ } from './errors';
 import { setPlatform_ } from './platform';
-import type { RequestContext, RoutePermission, RouteTable } from './router';
+import type { RequestContext, RoutePermission, RoutePermissionSpec, RouteTable } from './router';
 import { handleRpc_ } from './router';
 import { signSessionToken_ } from './session';
 import { expectNull_ } from './validate';
@@ -65,6 +65,32 @@ const routes = {
       return ctx.locationIds;
     },
   },
+  'task.list': {
+    permission: {
+      anyOf: [
+        { module: 'handover', level: 'view', scope: 'location' },
+        { module: 'qc', level: 'edit', scope: 'location' },
+      ],
+    },
+    validate: (raw: unknown) => raw,
+    handler: (_input: unknown, ctx: RequestContext) => {
+      calls.push('tasks');
+      return ctx.locationIds;
+    },
+  },
+  'report.list': {
+    permission: {
+      anyOf: [
+        { module: 'access', level: 'view' },
+        { module: 'item', level: 'manage' },
+      ],
+    },
+    validate: expectNull_,
+    handler: () => {
+      calls.push('report');
+      return [];
+    },
+  },
 } as unknown as RouteTable;
 
 function errorOf(result: RpcResult<unknown>) {
@@ -97,6 +123,35 @@ beforeEach(() => {
         { locationId: 'l-b', roleIds: ['r-item-manage'] },
         { locationId: 'l-mati', roleIds: ['r-item-manage'] },
       ],
+    }),
+  );
+  insertRole_(
+    role({ id: 'r-ho-view', name: 'Lihat Serah Terima', permissions: { handover: 'view' } }),
+  );
+  insertRole_(role({ id: 'r-qc-edit', name: 'Pengerjaan QC', permissions: { qc: 'edit' } }));
+  insertRole_(role({ id: 'r-item-mgr', name: 'Admin Item', permissions: { item: 'manage' } }));
+  insertUser_(
+    user({
+      id: 'u4',
+      email: 'qc@gmail.com',
+      assignments: [{ locationId: 'l-a', roleIds: ['r-qc-edit'] }],
+    }),
+  );
+  insertUser_(
+    user({
+      id: 'u5',
+      email: 'campur@gmail.com',
+      assignments: [
+        { locationId: 'l-a', roleIds: ['r-ho-view'] },
+        { locationId: 'l-b', roleIds: ['r-qc-edit'] },
+      ],
+    }),
+  );
+  insertUser_(
+    user({
+      id: 'u6',
+      email: 'itemmgr@gmail.com',
+      assignments: [{ locationId: 'l-a', roleIds: ['r-item-mgr'] }],
     }),
   );
 });
@@ -232,4 +287,52 @@ test('rute berlokasi menolak input yang memuat locationIds dan locationId sekali
   const error = errorOf(call('item.save', { locationIds: ['l-b'], locationId: 'l-a' }));
   expect(error.code).toBe('VALIDATION');
   expect(calls).toEqual([]);
+});
+
+test('anyOf lokasi: tiap lokasi cukup memenuhi salah satu alternatif', () => {
+  // campur@: handover view di l-a, qc edit di l-b → keduanya lolos walau alternatifnya berbeda
+  expect(call('task.list', { locationIds: ['l-a', 'l-b'] }, 'campur@gmail.com')).toEqual({
+    ok: true,
+    data: ['l-a', 'l-b'],
+  });
+  expect(call('task.list', { locationId: 'l-a' }, 'qc@gmail.com').ok).toBe(true);
+});
+
+test('anyOf lokasi: satu lokasi yang tidak memenuhi alternatif mana pun menolak seluruh permintaan', () => {
+  expect(errorOf(call('task.list', { locationIds: ['l-a', 'l-b'] }, 'qc@gmail.com')).code).toBe(
+    'FORBIDDEN',
+  );
+  expect(
+    errorOf(call('task.list', { locationIds: ['l-a', 'l-mati'] }, 'campur@gmail.com')).code,
+  ).toBe('FORBIDDEN');
+  expect(calls).toEqual([]);
+});
+
+test('anyOf lokasi tetap mewajibkan lokasi pada input', () => {
+  expect(errorOf(call('task.list', {}, 'qc@gmail.com')).code).toBe('VALIDATION');
+});
+
+test('anyOf global: cukup salah satu izin global terpenuhi', () => {
+  const run = (email: string) =>
+    handleRpc_('report.list', 'null', signSessionToken_(email), routes);
+  expect(run('viewer@gmail.com').ok).toBe(true); // access view
+  expect(run('itemmgr@gmail.com').ok).toBe(true); // item manage dari penugasan lokal (FP2)
+  expect(errorOf(run('plain@gmail.com')).code).toBe('FORBIDDEN');
+});
+
+test('tipe: anyOf tidak boleh mencampur izin global dan lokasi', () => {
+  const sah: RoutePermissionSpec = {
+    anyOf: [
+      { module: 'handover', level: 'view', scope: 'location' },
+      { module: 'qc', level: 'edit', scope: 'location' },
+    ],
+  };
+  const campur: RoutePermissionSpec = {
+    anyOf: [
+      // @ts-expect-error alternatif global dan lokasi tidak boleh dicampur
+      { module: 'access', level: 'view' },
+      { module: 'qc', level: 'edit', scope: 'location' },
+    ],
+  };
+  expect([sah, campur]).toHaveLength(2);
 });

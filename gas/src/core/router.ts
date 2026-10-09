@@ -15,13 +15,23 @@ export interface RequestContext {
   locationIds: string[];
 }
 
-export type RoutePermission =
-  | { module: Exclude<ModuleKey, LocatedModule>; level: Level; scope?: 'global' }
-  | { module: LocatedModule; level: Level; scope: 'location' };
+export type GlobalPermission = {
+  module: Exclude<ModuleKey, LocatedModule>;
+  level: Level;
+  scope?: 'global';
+};
+export type LocationPermission = { module: LocatedModule; level: Level; scope: 'location' };
+export type RoutePermission = GlobalPermission | LocationPermission;
+
+/** `anyOf`: cukup satu alternatif terpenuhi; semua alternatif harus sama lingkupnya (global atau lokasi). */
+export type RoutePermissionSpec =
+  | RoutePermission
+  | { anyOf: readonly [GlobalPermission, ...GlobalPermission[]] }
+  | { anyOf: readonly [LocationPermission, ...LocationPermission[]] };
 
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
   /** Tanpa `permission` = cukup login. */
-  permission?: RoutePermission;
+  permission?: RoutePermissionSpec;
   validate: (raw: unknown) => RpcInput<M>;
   handler: (input: RpcInput<M>, ctx: RequestContext) => RpcOutput<M>;
 }
@@ -45,11 +55,12 @@ export function handleRpc_(
     if (!session) throw appError_('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
     const user = loadUserContext_(session.email);
     if (!user) throw appError_('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
-    const permission = route.permission;
+    const alternatives = alternativesOf_(route.permission);
+    const globalAlternatives = alternatives.filter((item) => !isLocationPermission_(item));
+    const locationAlternatives = alternatives.filter(isLocationPermission_);
     if (
-      permission &&
-      permission.scope !== 'location' &&
-      !hasLevel(user.permissions[permission.module], permission.level)
+      globalAlternatives.length > 0 &&
+      !globalAlternatives.some((item) => hasLevel(user.permissions[item.module], item.level))
     ) {
       throw appError_('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
     }
@@ -65,14 +76,23 @@ export function handleRpc_(
 
     const input = route.validate(raw);
     const locationIds =
-      permission && permission.scope === 'location'
-        ? authorizedLocationIds_(input, user, permission)
+      locationAlternatives.length > 0
+        ? authorizedLocationIds_(input, user, locationAlternatives)
         : [];
     const data = route.handler(input, { requestId, user, locationIds });
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error: toErrorBody_(error, requestId) };
   }
+}
+
+function alternativesOf_(spec: RoutePermissionSpec | undefined): readonly RoutePermission[] {
+  if (!spec) return [];
+  return 'anyOf' in spec ? spec.anyOf : [spec];
+}
+
+function isLocationPermission_(permission: RoutePermission): permission is LocationPermission {
+  return permission.scope === 'location';
 }
 
 /** Lokasi dari input rute berlokasi: `locationIds` (baca) atau `locationId` (tulis). */
@@ -98,16 +118,16 @@ function requestedLocationIds_(input: unknown): string[] {
   return [...new Set(ids)];
 }
 
-/** Semua lokasi yang diminta harus aktif dan berlevel cukup; satu gagal menolak seluruh permintaan. */
+/** Tiap lokasi yang diminta harus aktif dan memenuhi minimal satu alternatif; satu gagal menolak seluruh permintaan. */
 function authorizedLocationIds_(
   input: unknown,
   user: UserContext,
-  permission: Extract<RoutePermission, { scope: 'location' }>,
+  alternatives: readonly LocationPermission[],
 ): string[] {
   const ids = requestedLocationIds_(input);
   for (const id of ids) {
     const access = user.locations[id];
-    if (!access || !hasLevel(access[permission.module], permission.level)) {
+    if (!access || !alternatives.some((item) => hasLevel(access[item.module], item.level))) {
       throw appError_('FORBIDDEN', 'Anda tidak memiliki akses ke lokasi ini');
     }
   }
