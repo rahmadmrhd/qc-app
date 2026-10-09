@@ -1,7 +1,13 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { invalidateAccessCache_ } from '@gas/modules/access/context';
-import { insertRole_, insertUser_, listUsers_, updateUser_ } from '@gas/modules/access/repo';
-import { role, user } from '@gas-test/access-fixtures';
+import {
+  insertLocation_,
+  insertRole_,
+  insertUser_,
+  listUsers_,
+  updateUser_,
+} from '@gas/modules/access/repo';
+import { location, role, user } from '@gas-test/access-fixtures';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcResult } from '@shared/rpc';
@@ -43,6 +49,22 @@ const routes = {
       throw new Error('rahasia internal di stack');
     },
   },
+  'item.list': {
+    permission: { module: 'item', level: 'view', scope: 'location' },
+    validate: (raw: unknown) => raw,
+    handler: (_input: unknown, ctx: RequestContext) => {
+      calls.push('items');
+      return ctx.locationIds;
+    },
+  },
+  'item.save': {
+    permission: { module: 'item', level: 'edit', scope: 'location' },
+    validate: (raw: unknown) => raw,
+    handler: (_input: unknown, ctx: RequestContext) => {
+      calls.push('save');
+      return ctx.locationIds;
+    },
+  },
 } as unknown as RouteTable;
 
 function errorOf(result: RpcResult<unknown>) {
@@ -59,6 +81,22 @@ beforeEach(() => {
   insertRole_(role({ id: 'r-view', name: 'Viewer', permissions: { access: 'view' } }));
   insertUser_(user({ id: 'u1', email: 'viewer@gmail.com', roleIds: ['r-view'] }));
   insertUser_(user({ id: 'u2', email: 'plain@gmail.com' }));
+  insertLocation_(location({ id: 'l-a', code: 'A' }));
+  insertLocation_(location({ id: 'l-b', code: 'B' }));
+  insertLocation_(location({ id: 'l-mati', code: 'MATI', status: 'inactive' }));
+  insertRole_(role({ id: 'r-item-view', name: 'Lihat Item', permissions: { item: 'view' } }));
+  insertRole_(role({ id: 'r-item-manage', name: 'Kelola Item', permissions: { item: 'manage' } }));
+  insertUser_(
+    user({
+      id: 'u3',
+      email: 'staf@gmail.com',
+      assignments: [
+        { locationId: 'l-a', roleIds: ['r-item-view'] },
+        { locationId: 'l-b', roleIds: ['r-item-manage'] },
+        { locationId: 'l-mati', roleIds: ['r-item-manage'] },
+      ],
+    }),
+  );
 });
 
 test('method tak dikenal, termasuk nama properti bawaan objek, menghasilkan NOT_FOUND', () => {
@@ -121,4 +159,61 @@ test('request sukses mengembalikan data dan meneruskan konteks user', () => {
     data: { email: 'viewer@gmail.com' },
   });
   expect(calls).toEqual(['list', 'me']);
+});
+
+const call = (method: string, payload: unknown, email = 'staf@gmail.com') =>
+  handleRpc_(method, JSON.stringify(payload), signSessionToken_(email), routes);
+
+test('rute berlokasi: baca di beberapa lokasi yang diizinkan, id ganda dirapikan', () => {
+  expect(call('item.list', { locationIds: ['l-a', 'l-b', 'l-a'] })).toEqual({
+    ok: true,
+    data: ['l-a', 'l-b'],
+  });
+});
+
+test('rute berlokasi: tulis butuh level di lokasi tujuan, bukan di lokasi lain', () => {
+  expect(call('item.save', { locationId: 'l-b' })).toEqual({ ok: true, data: ['l-b'] });
+  expect(errorOf(call('item.save', { locationId: 'l-a' })).code).toBe('FORBIDDEN');
+});
+
+test('satu lokasi terlarang di antara yang diizinkan menolak seluruh permintaan dan handler tidak jalan', () => {
+  expect(errorOf(call('item.save', { locationIds: ['l-b', 'l-a'] })).code).toBe('FORBIDDEN');
+  expect(calls).toEqual([]);
+});
+
+test('lokasi tak dikenal, nonaktif, dan terlarang menghasilkan FORBIDDEN dengan pesan yang sama', () => {
+  const messages = ['tidak-ada', 'l-mati'].map(
+    (id) => errorOf(call('item.list', { locationIds: [id] })).message,
+  );
+  expect(new Set(messages).size).toBe(1);
+  expect(errorOf(call('item.list', { locationIds: ['l-a'] }, 'plain@gmail.com')).message).toBe(
+    messages[0] ?? '',
+  );
+  expect(calls).toEqual([]);
+});
+
+test('rute berlokasi tanpa lokasi atau bentuk salah menghasilkan VALIDATION', () => {
+  for (const payload of [
+    null,
+    {},
+    { locationIds: [] },
+    { locationIds: [1] },
+    { locationId: '' },
+    { locationIds: 'l-a' },
+  ]) {
+    expect(errorOf(call('item.list', payload)).code).toBe('VALIDATION');
+  }
+  expect(calls).toEqual([]);
+});
+
+test('super admin boleh di semua lokasi aktif tetapi tidak di lokasi nonaktif', () => {
+  expect(call('item.list', { locationIds: ['l-a', 'l-b'] }, 'admin@gmail.com').ok).toBe(true);
+  expect(errorOf(call('item.list', { locationIds: ['l-mati'] }, 'admin@gmail.com')).code).toBe(
+    'FORBIDDEN',
+  );
+});
+
+test('rute global tetap memakai izin global dan menerima locationIds kosong', () => {
+  const token = signSessionToken_('viewer@gmail.com');
+  expect(handleRpc_('access.users.list', 'null', token, routes)).toEqual({ ok: true, data: [] });
 });
