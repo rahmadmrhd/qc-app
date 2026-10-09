@@ -67,3 +67,27 @@ test('super admin melihat semua lokasi aktif dengan manage', async () => {
   const result = await call('auth.me', null, tokenOf(MOCK_ADMIN_EMAIL));
   expect(result.data.locations.map((l: { code: string }) => l.code)).toEqual(['BDG', 'JKT']);
 });
+
+test('lokasi: daftar untuk akses lihat, simpan dan nonaktifkan butuh akses kelola', async () => {
+  const viewer = tokenOf('access.viewer@qc.local');
+  expect(
+    (await call('access.locations.list', null, viewer)).data.map((l: { code: string }) => l.code),
+  ).toEqual(['BDG', 'JKT']);
+  expect(
+    await call('access.locations.save', { code: 'SBY', name: 'Surabaya' }, viewer),
+  ).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const created = await call('access.locations.save', { code: 'sby', name: 'Surabaya' }, admin);
+  expect(created).toMatchObject({ ok: true, data: { code: 'SBY', status: 'active' } });
+  const off = await call(
+    'access.locations.setStatus',
+    { id: created.data.id, status: 'inactive' },
+    admin,
+  );
+  expect(off.data.status).toBe('inactive');
+  const me = await call('auth.me', null, admin);
+  expect(me.data.locations.map((l: { code: string }) => l.code)).not.toContain('SBY');
+});

@@ -81,7 +81,7 @@ export const locationFormSchema = z.object({
     .toUpperCase()
     .min(1, 'Wajib diisi')
     .max(10, 'Maksimal 10 karakter')
-    .regex(/^[A-Z0-9-]+$/, 'Hanya huruf, angka, dan tanda hubung'),
+    .regex(/^[A-Z0-9-]*$/, 'Hanya huruf, angka, dan tanda hubung'),
   name: z.string().trim().min(1, 'Wajib diisi').max(100, 'Maksimal 100 karakter'),
 });
 export type LocationFormInput = z.input<typeof locationFormSchema>;
