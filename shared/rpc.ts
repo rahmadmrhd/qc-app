@@ -138,6 +138,31 @@ export interface SetLocationStatusInput {
   status: LocationStatus;
 }
 
+export interface FileDto {
+  id: string;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+}
+
+export interface UploadFileInput {
+  mime: string;
+  /** Isi gambar dalam base64 baku (tanpa awalan `data:`). */
+  base64: string;
+  width: number;
+  height: number;
+}
+
+export interface GetFileInput {
+  id: string;
+}
+
+export interface FileContentDto {
+  id: string;
+  mime: string;
+  base64: string;
+}
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -150,6 +175,8 @@ export interface RpcContract {
   'access.locations.list': { input: null; output: LocationDto[] };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
+  'files.upload': { input: UploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: FileContentDto };
 }
 
 export type RpcMethod = keyof RpcContract;
