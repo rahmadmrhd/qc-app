@@ -180,7 +180,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 `key` = merk+tipe (item) atau nama (merk, customer) atau nama (customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
-`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
+`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
 
 ### 6.3b Endpoint sinkronisasi
 `doPost` di `gas/src/main.ts` mengurai amplop, memeriksa token, lalu memanggil tabel rute sinkron (`gas/src/modules/sync/`). Sumber daya `items` mendaftar di sana. Metode: `sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.file.get`. Detail di `docs/api/desktop-sync.md`.
@@ -231,6 +231,7 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 
 **Fase B**
 - [x] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.
+- [x] Merk sebagai tabel master: saran, buat langsung saat item disimpan, ganti nama, nonaktif, halaman Merk, audit `brand.*`.
 - [x] Halaman daftar dan detail item; audit dengan diff yang terbaca.
 
 **Fase B2**
