@@ -9,6 +9,8 @@ import {
   ROLES_TABLE,
   USERS_TABLE,
 } from '@gas/modules/access/repo';
+import { FILES_TABLE } from '@gas/modules/files/repo';
+import { DRIVE_FOLDER_NAME, ensureDriveFolder_ } from '@gas/modules/files/service';
 
 export function runSetup_(): string {
   const lines: string[] = [];
@@ -28,7 +30,7 @@ export function runSetup_(): string {
     lines.push('Pembuatan sheet dilewati karena SPREADSHEET_ID belum diset.');
     return lines.join('\n');
   }
-  for (const table of [USERS_TABLE, ROLES_TABLE, AUDIT_TABLE, LOCATIONS_TABLE]) {
+  for (const table of [USERS_TABLE, ROLES_TABLE, AUDIT_TABLE, LOCATIONS_TABLE, FILES_TABLE]) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
   }
@@ -37,5 +39,7 @@ export function runSetup_(): string {
   const assigned = migrateUserAssignments_();
   if (assigned > 0)
     lines.push(`users: ${assigned} user lama dimigrasi ke penugasan "Semua lokasi".`);
+  const folderId = ensureDriveFolder_();
+  lines.push(`Folder Drive "${DRIVE_FOLDER_NAME}" siap (${folderId}).`);
   return lines.join('\n');
 }
