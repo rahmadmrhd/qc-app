@@ -13,11 +13,31 @@ test('Drive palsu: buat folder, simpan berkas, baca kembali', () => {
   const folder = platform.driveCreateFolder('QC App Files');
   expect(platform.folders.get(folder)).toBe('QC App Files');
   const file = platform.driveCreateFile(folder, 'a.png', 'image/png', 'QUJD');
-  expect(platform.driveReadFile(file)).toEqual({ mime: 'image/png', base64: 'QUJD' });
-  expect(platform.driveReadFile('tidak-ada')).toBeNull();
+  expect(platform.driveReadFile(file, folder)).toEqual({ mime: 'image/png', base64: 'QUJD' });
+  expect(platform.driveReadFile('tidak-ada', folder)).toBeNull();
 });
 
 test('Drive palsu menolak folder yang tidak ada', () => {
   const platform = createMemoryPlatform();
   expect(() => platform.driveCreateFile('hilang', 'a.png', 'image/png', 'QUJD')).toThrow();
+});
+
+test('driveReadFile hanya membaca berkas yang berada di folder yang diminta', () => {
+  const platform = createMemoryPlatform();
+  const a = platform.driveCreateFolder('A');
+  const b = platform.driveCreateFolder('B');
+  const file = platform.driveCreateFile(a, 'x.png', 'image/png', 'QUJD');
+  expect(platform.driveReadFile(file, a)).not.toBeNull();
+  expect(platform.driveReadFile(file, b)).toBeNull();
+});
+
+test('driveFolderExists: ada, dihapus, dan di tempat sampah', () => {
+  const platform = createMemoryPlatform();
+  const folder = platform.driveCreateFolder('A');
+  expect(platform.driveFolderExists(folder)).toBe(true);
+  platform.trashedFolders.add(folder);
+  expect(platform.driveFolderExists(folder)).toBe(false);
+  platform.folders.delete(folder);
+  expect(platform.driveFolderExists(folder)).toBe(false);
+  expect(platform.driveFolderExists('tidak-ada')).toBe(false);
 });

@@ -238,3 +238,30 @@ test('item global dari penugasan lokasi tertentu (FP2), tetapi tidak dari lokasi
   expect(loadUserContext_('item@gmail.com')?.permissions.item).toBe('edit');
   expect(loadUserContext_('mati@gmail.com')?.permissions.item).toBe('none');
 });
+
+test('cache konteks yang sudah punya locations tetapi belum memuat modul qc dihitung ulang', () => {
+  insertUser_(
+    user({
+      id: 'u1',
+      email: 'budi@gmail.com',
+      assignments: [{ locationId: 'l-a', roleIds: ['r-view'] }],
+    }),
+  );
+  loadUserContext_('budi@gmail.com');
+  const key = `uctx:${platform.cacheGet('access:version')}:budi@gmail.com`;
+  platform.cachePut(
+    key,
+    JSON.stringify({
+      email: 'budi@gmail.com',
+      name: 'Budi',
+      userId: 'u1',
+      isSuperAdmin: false,
+      permissions: { access: 'none', item: 'none', handover: 'none', stock: 'none' },
+      locations: {},
+    }),
+    300,
+  );
+  const ctx = loadUserContext_('budi@gmail.com');
+  expect(ctx?.permissions.qc).toBe('none');
+  expect(Object.keys(ctx?.locations ?? {})).toEqual(['l-a']);
+});

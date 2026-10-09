@@ -336,3 +336,15 @@ test('tipe: anyOf tidak boleh mencampur izin global dan lokasi', () => {
   };
   expect([sah, campur]).toHaveLength(2);
 });
+
+test('anyOf kosong (hasil cast) gagal tertutup, bukan setara "cukup login"', () => {
+  const kosong = {
+    ...routes,
+    'report.list': {
+      ...(routes as unknown as Record<string, object>)['report.list'],
+      permission: { anyOf: [] },
+    },
+  } as unknown as RouteTable;
+  const token = signSessionToken_('admin@gmail.com');
+  expect(errorOf(handleRpc_('report.list', 'null', token, kosong)).code).toBe('FORBIDDEN');
+});

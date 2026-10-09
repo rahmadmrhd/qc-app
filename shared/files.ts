@@ -34,9 +34,37 @@ const SIGNATURE_PREFIX: Record<ImageMime, string> = {
   'image/webp': 'UklGR',
 };
 
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Dekode `count` byte pertama dari base64 (tanpa atob, yang tidak ada di GAS); null bila terlalu pendek/rusak. */
+function base64Head(base64: string, count: number): number[] | null {
+  const chars = Math.ceil((count * 4) / 3);
+  if (base64.length < chars) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < chars; i += 4) {
+    const group = base64.slice(i, i + 4);
+    let bits = 0;
+    for (let j = 0; j < 4; j++) {
+      const index = BASE64_ALPHABET.indexOf(group[j] ?? 'A');
+      if (index < 0) return null;
+      bits = bits * 64 + index;
+    }
+    bytes.push(Math.floor(bits / 65536) % 256, Math.floor(bits / 256) % 256, bits % 256);
+  }
+  return bytes.slice(0, count);
+}
+
+function bytesAreText(bytes: readonly number[], start: number, text: string): boolean {
+  return [...text].every((ch, index) => bytes[start + index] === ch.charCodeAt(0));
+}
+
 /** Tanda tangan berkas (magic bytes dalam base64) harus cocok dengan MIME yang diklaim. */
 export function matchesImageSignature(mime: ImageMime, base64: string): boolean {
-  return base64.startsWith(SIGNATURE_PREFIX[mime]);
+  if (!base64.startsWith(SIGNATURE_PREFIX[mime])) return false;
+  if (mime !== 'image/webp') return true;
+  // WebP = kontainer RIFF; byte 8–11 harus "WEBP" (WAV/AVI juga berawalan RIFF).
+  const head = base64Head(base64, 12);
+  return head !== null && bytesAreText(head, 0, 'RIFF') && bytesAreText(head, 8, 'WEBP');
 }
 
 export function fileRef(id: string): string {

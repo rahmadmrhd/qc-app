@@ -45,8 +45,10 @@ export interface Platform {
   driveCreateFolder(name: string): string;
   /** Menyimpan berkas (isi base64) ke folder; mengembalikan id berkas Drive. */
   driveCreateFile(folderId: string, name: string, mime: string, base64: string): string;
-  /** Membaca berkas Drive sebagai base64; `null` bila tidak ditemukan atau tidak terbaca. */
-  driveReadFile(fileId: string): { mime: string; base64: string } | null;
+  /** Membaca berkas Drive sebagai base64; `null` bila tidak ditemukan, tidak terbaca, atau bukan anak `folderId`. */
+  driveReadFile(fileId: string, folderId: string): { mime: string; base64: string } | null;
+  /** True bila folder ada dan tidak berada di tempat sampah. */
+  driveFolderExists(folderId: string): boolean;
   logError(message: string): void;
 }
 

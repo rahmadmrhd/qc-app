@@ -11,7 +11,7 @@ import { captureAppError } from '@gas-test/errors';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { MAX_IMAGE_BYTES } from '@shared/files';
-import { listFiles_ } from './repo';
+import { insertFile_, listFiles_ } from './repo';
 import {
   attachFiles_,
   DRIVE_FOLDER_NAME,
@@ -190,4 +190,36 @@ test('unggahan ke Drive berjalan di luar lock; hanya pencatatan sheet di dalam l
   uploadFile_(validateUploadFile_(upload()), admin);
   expect(flags).toEqual([false, false]);
   expect(listFiles_()).toHaveLength(2);
+});
+
+test('readFile_ menolak berkas yang drive_id-nya bukan anak folder aplikasi', () => {
+  const saved = uploadFile_(validateUploadFile_(upload()), admin);
+  const other = platform.driveCreateFolder('Folder Lain');
+  const foreign = platform.driveCreateFile(other, 'luar.png', 'image/png', PNG);
+  insertFile_({
+    id: 'f-luar',
+    driveId: foreign,
+    mime: 'image/png',
+    size: 1,
+    width: 1,
+    height: 1,
+    ownerType: '',
+    ownerId: '',
+    createdAt: '2026-10-09T00:00:00.000Z',
+    createdBy: 'x',
+  });
+  expect(readFile_({ id: saved.id }).base64).toBe(PNG);
+  expect(captureAppError(() => readFile_({ id: 'f-luar' })).code).toBe('NOT_FOUND');
+});
+
+test('ensureDriveFolder_ membuat folder baru bila folder lama dihapus atau ada di tempat sampah', () => {
+  const first = ensureDriveFolder_();
+  platform.trashedFolders.add(first);
+  const second = ensureDriveFolder_();
+  expect(second).not.toBe(first);
+  expect(platform.getProperty('DRIVE_FOLDER_ID')).toBe(second);
+  platform.folders.delete(second);
+  const third = ensureDriveFolder_();
+  expect(third).not.toBe(second);
+  expect(ensureDriveFolder_()).toBe(third);
 });

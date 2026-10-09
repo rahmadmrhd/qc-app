@@ -55,7 +55,12 @@ export function handleRpc_(
     if (!session) throw appError_('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
     const user = loadUserContext_(session.email);
     if (!user) throw appError_('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
-    const alternatives = alternativesOf_(route.permission);
+    const spec = route.permission;
+    // anyOf kosong (hanya mungkin lewat cast) tidak boleh setara "cukup login": gagal tertutup.
+    if (spec && 'anyOf' in spec && spec.anyOf.length === 0) {
+      throw appError_('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
+    }
+    const alternatives = alternativesOf_(spec);
     const globalAlternatives = alternatives.filter((item) => !isLocationPermission_(item));
     const locationAlternatives = alternatives.filter(isLocationPermission_);
     if (

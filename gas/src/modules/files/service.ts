@@ -27,9 +27,16 @@ function driveFolderId_(): string {
   return id;
 }
 
-/** Dipakai `setup`; idempoten dan aman terhadap pemanggilan bersamaan. */
+/** Dipakai `setup`; idempoten. Membuat folder baru bila yang tercatat dihapus atau ada di tempat sampah. */
 export function ensureDriveFolder_(): string {
-  return platform_().withLock(() => driveFolderId_());
+  return platform_().withLock(() => {
+    const platform = platform_();
+    const existing = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim();
+    if (existing && platform.driveFolderExists(existing)) return existing;
+    const id = platform.driveCreateFolder(DRIVE_FOLDER_NAME);
+    platform.setProperty(DRIVE_FOLDER_PROPERTY, id);
+    return id;
+  });
 }
 
 function toFileDto_(file: NewFileRecord): FileDto {
@@ -65,7 +72,9 @@ export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto
 export function readFile_(input: GetFileInput): FileContentDto {
   const record = listFiles_().find((file) => file.id === input.id);
   if (!record) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
-  const content = platform_().driveReadFile(record.driveId);
+  // Hanya berkas di dalam folder aplikasi yang boleh dibaca (pertahanan berlapis bila sheet files diedit manual).
+  const folderId = platform_().getProperty(DRIVE_FOLDER_PROPERTY)?.trim() ?? '';
+  const content = folderId ? platform_().driveReadFile(record.driveId, folderId) : null;
   if (!content) throw appError_('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
   return { id: record.id, mime: record.mime, base64: content.base64 };
 }

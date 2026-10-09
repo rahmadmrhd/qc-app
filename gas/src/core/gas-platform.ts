@@ -68,15 +68,29 @@ function createGasPlatform_(): Platform {
       const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime, name);
       return DriveApp.getFolderById(folderId).createFile(blob).getId();
     },
-    driveReadFile: (fileId) => {
+    driveReadFile: (fileId, folderId) => {
       try {
-        const blob = DriveApp.getFileById(fileId).getBlob();
+        const file = DriveApp.getFileById(fileId);
+        const parents = file.getParents();
+        let inFolder = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === folderId) inFolder = true;
+        }
+        if (!inFolder) return null;
+        const blob = file.getBlob();
         return {
           mime: blob.getContentType() ?? '',
           base64: Utilities.base64Encode(blob.getBytes()),
         };
       } catch {
         return null;
+      }
+    },
+    driveFolderExists: (folderId) => {
+      try {
+        return !DriveApp.getFolderById(folderId).isTrashed();
+      } catch {
+        return false;
       }
     },
     logError: (message) => console.error(message),

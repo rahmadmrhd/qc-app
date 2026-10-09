@@ -52,6 +52,8 @@ describe('matchesImageSignature', () => {
     expect(matchesImageSignature('image/png', 'iVBORw0KGgoAAAANSUhEUg==')).toBe(true);
     expect(matchesImageSignature('image/jpeg', '/9j/4AAQSkZJRg==')).toBe(true);
     expect(matchesImageSignature('image/webp', 'UklGRhwAAABXRUJQ')).toBe(true);
+    expect(matchesImageSignature('image/webp', 'UklGRhwAAABXQVZF')).toBe(false); // WAV: RIFF tetapi bukan WEBP
+    expect(matchesImageSignature('image/webp', 'UklGR')).toBe(false); // terlalu pendek
     expect(matchesImageSignature('image/png', '/9j/4AAQSkZJRg==')).toBe(false);
     expect(matchesImageSignature('image/jpeg', 'PHNjcmlwdD4=')).toBe(false);
   });
