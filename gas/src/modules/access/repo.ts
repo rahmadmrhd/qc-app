@@ -3,7 +3,7 @@ import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
 import { normalizeEmail_ } from '@gas/core/email';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
-import type { UserStatus } from '@shared/rpc';
+import type { LocationStatus, UserStatus } from '@shared/rpc';
 
 export const USERS_TABLE: TableSchema = {
   sheetName: 'users',
@@ -18,6 +18,11 @@ export const ROLES_TABLE: TableSchema = {
 export const AUDIT_TABLE: TableSchema = {
   sheetName: 'audit_log',
   columns: ['ts', 'actor', 'action', 'target', 'before', 'after'],
+};
+
+export const LOCATIONS_TABLE: TableSchema = {
+  sheetName: 'locations',
+  columns: ['id', 'code', 'name', 'status', 'created_at', 'updated_at', 'updated_by'],
 };
 
 export interface UserRecord {
@@ -44,6 +49,18 @@ export interface RoleRecord {
   updatedBy: string;
 }
 export type NewRoleRecord = Omit<RoleRecord, 'rowNumber'>;
+
+export interface LocationRecord {
+  rowNumber: number;
+  id: string;
+  code: string;
+  name: string;
+  status: LocationStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type NewLocationRecord = Omit<LocationRecord, 'rowNumber'>;
 
 export interface AuditEntry {
   ts: string;
@@ -161,6 +178,45 @@ export function updateRole_(role: RoleRecord): void {
 
 export function deleteRole_(role: RoleRecord): void {
   deleteRow_(ROLES_TABLE, role.rowNumber);
+}
+
+function toLocationRecord_(rowNumber: number, data: RowData): LocationRecord {
+  return {
+    rowNumber,
+    id: (data.id ?? '').trim(),
+    code: (data.code ?? '').trim().toUpperCase(),
+    name: (data.name ?? '').trim(),
+    status: (data.status ?? '').trim() === 'active' ? 'active' : 'inactive',
+    createdAt: data.created_at ?? '',
+    updatedAt: data.updated_at ?? '',
+    updatedBy: data.updated_by ?? '',
+  };
+}
+
+function fromLocationRecord_(location: NewLocationRecord): RowData {
+  return {
+    id: location.id,
+    code: location.code,
+    name: location.name,
+    status: location.status,
+    created_at: location.createdAt,
+    updated_at: location.updatedAt,
+    updated_by: location.updatedBy,
+  };
+}
+
+export function listLocations_(): LocationRecord[] {
+  return readTable_(LOCATIONS_TABLE)
+    .rows.map(({ rowNumber, data }) => toLocationRecord_(rowNumber, data))
+    .filter((location) => location.id !== '' && location.code !== '');
+}
+
+export function insertLocation_(location: NewLocationRecord): void {
+  insertRow_(LOCATIONS_TABLE, fromLocationRecord_(location));
+}
+
+export function updateLocation_(location: LocationRecord): void {
+  updateRow_(LOCATIONS_TABLE, location.rowNumber, fromLocationRecord_(location));
 }
 
 export function appendAudit_(entry: AuditEntry): void {

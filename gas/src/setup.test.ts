@@ -25,7 +25,7 @@ test('membuat sheet users, roles, audit_log beserta header', () => {
   });
   setPlatform_(platform);
   expect(runSetup_()).toContain('Script Properties lengkap.');
-  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log']);
+  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log', 'locations']);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
     'ts',

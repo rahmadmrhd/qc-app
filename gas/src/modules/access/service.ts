@@ -86,7 +86,7 @@ export function listAudit_(params: ListAuditInput): AuditPageDto {
   };
 }
 
-function nowIso_(): string {
+export function nowIso_(): string {
   return new Date(platform_().now()).toISOString();
 }
 

@@ -5,8 +5,10 @@ import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 import type {
   DeleteRoleInput,
   ListAuditInput,
+  SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
+  SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/rpc';
 
@@ -72,6 +74,28 @@ export function validateListAudit_(raw: unknown): Required<ListAuditInput> {
   }
   reader.done();
   return { page: page as number, action, query };
+}
+
+const LOCATION_CODE_PATTERN = /^[A-Z0-9-]+$/;
+
+export function validateSaveLocation_(raw: unknown): SaveLocationInput {
+  const reader = readObject_(raw);
+  const id = reader.optionalId('id');
+  const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
+  const name = reader.str('name', { required: true, max: 100 });
+  if (code !== '' && code.length <= 10 && !LOCATION_CODE_PATTERN.test(code)) {
+    reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
+  }
+  reader.done();
+  return id ? { id, code, name } : { code, name };
+}
+
+export function validateSetLocationStatus_(raw: unknown): SetLocationStatusInput {
+  const reader = readObject_(raw);
+  const id = reader.str('id', { required: true });
+  const status = reader.oneOf('status', USER_STATUS_VALUES);
+  reader.done();
+  return { id, status };
 }
 
 export function validateDeleteRole_(raw: unknown): DeleteRoleInput {

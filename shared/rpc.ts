@@ -102,6 +102,30 @@ export interface AuditPageDto {
   pageSize: number;
 }
 
+export type LocationStatus = 'active' | 'inactive';
+
+export interface LocationDto {
+  id: string;
+  /** Kode unik, huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
+  code: string;
+  name: string;
+  status: LocationStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface SaveLocationInput {
+  id?: string;
+  code: string;
+  name: string;
+}
+
+export interface SetLocationStatusInput {
+  id: string;
+  status: LocationStatus;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -111,6 +135,9 @@ export interface RpcContract {
   'access.roles.save': { input: SaveRoleInput; output: RoleDto };
   'access.roles.delete': { input: DeleteRoleInput; output: { id: string } };
   'access.audit.list': { input: ListAuditInput; output: AuditPageDto };
+  'access.locations.list': { input: null; output: LocationDto[] };
+  'access.locations.save': { input: SaveLocationInput; output: LocationDto };
+  'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
 }
 
 export type RpcMethod = keyof RpcContract;
