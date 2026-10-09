@@ -88,6 +88,8 @@ export class MemorySpreadsheet implements SpreadsheetLike {
 export interface MemoryPlatformOptions {
   properties?: Record<string, string>;
   now?: () => number;
+  /** URL web app yang dilaporkan `scriptUrl()`; default kosong. */
+  scriptUrl?: string;
   http?: (url: string, form: Record<string, string>) => HttpResponseLike;
 }
 
@@ -141,6 +143,7 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     errors,
     httpCalls,
     getProperty: (key) => properties.get(key) ?? null,
+    scriptUrl: () => options.scriptUrl ?? '',
     cacheGet: (key) => cache.get(key) ?? null,
     cachePut: (key, value) => {
       cache.set(key, value);

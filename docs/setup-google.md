@@ -37,7 +37,7 @@ Di https://console.cloud.google.com (akun yang sama):
 2. **Google Auth Platform → Branding/OAuth consent screen**: User type **External**, nama aplikasi "QC App", email dukungan.
 3. **Data access / Scopes**: tambahkan `openid` dan `.../auth/userinfo.email` saja.
 4. **Audience**: klik **Publish app** sehingga status **In production** (scope ini tidak memerlukan verifikasi Google).
-5. **Clients → Create client → Web application**. *Authorized redirect URIs*: URL `/exec` dari langkah 5 (persis, tanpa garis miring di akhir).
+5. **Clients → Create client → Web application**. *Authorized redirect URIs*: daftarkan **kedua** URL, persis dan tanpa garis miring di akhir: URL `/exec` dari langkah 5 dan URL `/dev` (sama, tetapi berakhiran `/dev`). Aplikasi memakai URL yang sedang melayani halaman, jadi keduanya cukup didaftarkan sekali dan tidak perlu diubah saat deploy. Google Cloud tidak menyediakan API untuk mengubah daftar ini, hanya Console.
 6. Salin **Client ID** dan **Client secret**.
 
 ## 7. Script Properties (tahap 2)
@@ -45,9 +45,9 @@ Di https://console.cloud.google.com (akun yang sama):
 |---|---|
 | `OAUTH_CLIENT_ID` | Client ID |
 | `OAUTH_CLIENT_SECRET` | Client secret |
-| `OAUTH_REDIRECT_URI` | URL `/exec` dari langkah 5 (sama persis dengan di Google Cloud) |
+| `OAUTH_REDIRECT_URI` | **Opsional, biasanya dikosongkan.** Bila kosong, aplikasi memakai URL web app yang sedang berjalan (`/dev` atau `/exec`). Isi hanya bila ingin memaksa satu URL tertentu (override); nilainya harus persis sama dengan yang terdaftar di Google Cloud. |
 
-Jalankan `setup` sekali lagi — laporan harus "Script Properties lengkap."
+Jalankan `setup` sekali lagi — laporan harus "Script Properties lengkap." dan menyebut apakah redirect URI otomatis atau override.
 
 ## 8. Deploy & coba
 ```bash
@@ -58,7 +58,7 @@ Buka URL `/exec`, klik **Masuk dengan Google** dengan akun `ADMIN_EMAIL`, lalu b
 ## Troubleshooting
 | Gejala | Penyebab & solusi |
 |---|---|
-| Google menampilkan `redirect_uri_mismatch` | `OAUTH_REDIRECT_URI` dan redirect URI di Google Cloud harus identik dengan URL `/exec`. |
+| Google menampilkan `redirect_uri_mismatch` | URL yang dipakai aplikasi tidak terdaftar di Google Cloud. Halaman galat Google menampilkan `redirect_uri` yang dikirim; daftarkan persis nilai itu (mis. URL `/dev` atau `/exec`). Bila `OAUTH_REDIRECT_URI` diisi, nilai itu yang dipakai dan harus identik dengan yang terdaftar; kosongkan agar otomatis. |
 | "Aplikasi belum dapat dibuka. Hubungi admin." | Lihat **Executions** di editor; biasanya Script Property belum lengkap. |
 | "Login gagal" | State login kedaluwarsa (> 6 jam) atau dipakai ulang — klik tombol login sekali lagi. |
 | "Email … belum terdaftar" | Tambahkan email tersebut di menu Users (status Aktif). |

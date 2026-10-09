@@ -1,5 +1,6 @@
 import { missingConfigKeys_ } from '@gas/core/config';
 import { openTable_ } from '@gas/core/db';
+import { platform_ } from '@gas/core/platform';
 import {
   AUDIT_TABLE,
   migrateAuditDetail_,
@@ -14,6 +15,12 @@ export function runSetup_(): string {
     missing.length === 0
       ? 'Script Properties lengkap.'
       : `Script Properties belum diset: ${missing.join(', ')}`,
+  );
+  const override = platform_().getProperty('OAUTH_REDIRECT_URI')?.trim();
+  lines.push(
+    override
+      ? `Redirect URI OAuth: override dari Script Property (${override}).`
+      : 'Redirect URI OAuth: otomatis dari URL web app (daftarkan URL /dev dan /exec di Google Cloud).',
   );
   if (missing.includes('SPREADSHEET_ID')) {
     lines.push('Pembuatan sheet dilewati karena SPREADSHEET_ID belum diset.');

@@ -15,6 +15,7 @@ function createGasPlatform_(): Platform {
   let spreadsheet: SpreadsheetLike | null = null;
   return {
     getProperty: (key) => properties.getProperty(key),
+    scriptUrl: () => ScriptApp.getService().getUrl() ?? '',
     cacheGet: (key) => cache.get(key),
     cachePut: (key, value, ttlSeconds) => cache.put(key, value, ttlSeconds),
     cacheRemove: (key) => cache.remove(key),

@@ -171,3 +171,25 @@ test('migrasi tidak menimpa sel before/after yang berisi JSON rusak', () => {
   runSetup_();
   expect(auditCells(platform, 1)).toMatchObject({ before: '{rusak', after: '{"name":"B"}' });
 });
+
+test('laporan setup menyebut apakah redirect URI otomatis atau override', () => {
+  const base = {
+    SPREADSHEET_ID: 'x',
+    OAUTH_CLIENT_ID: 'a',
+    OAUTH_CLIENT_SECRET: 'b',
+    SESSION_SECRET: 'd',
+    ADMIN_EMAIL: 'e@gmail.com',
+  };
+  setPlatform_(createMemoryPlatform({ properties: base }));
+  const automatic = runSetup_();
+  expect(automatic).toContain('Script Properties lengkap.');
+  expect(automatic).toContain('Redirect URI OAuth: otomatis dari URL web app');
+  setPlatform_(
+    createMemoryPlatform({
+      properties: { ...base, OAUTH_REDIRECT_URI: 'https://script.google.com/macros/s/A/exec' },
+    }),
+  );
+  expect(runSetup_()).toContain(
+    'Redirect URI OAuth: override dari Script Property (https://script.google.com/macros/s/A/exec)',
+  );
+});
