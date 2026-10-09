@@ -85,6 +85,13 @@ export class MemorySpreadsheet implements SpreadsheetLike {
   }
 }
 
+export interface MemoryDriveFile {
+  folderId: string;
+  name: string;
+  mime: string;
+  base64: string;
+}
+
 export interface MemoryPlatformOptions {
   properties?: Record<string, string>;
   now?: () => number;
@@ -98,6 +105,8 @@ export interface MemoryPlatform extends Platform {
   readonly properties: Map<string, string>;
   readonly cache: Map<string, string>;
   readonly errors: string[];
+  readonly folders: Map<string, string>;
+  readonly drive: Map<string, MemoryDriveFile>;
   readonly httpCalls: Array<{ url: string; form: Record<string, string> }>;
 }
 
@@ -136,13 +145,20 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
   const db = new MemorySpreadsheet();
   const errors: string[] = [];
   const httpCalls: Array<{ url: string; form: Record<string, string> }> = [];
+  const folders = new Map<string, string>();
+  const drive = new Map<string, MemoryDriveFile>();
   return {
     db,
     properties,
     cache,
     errors,
     httpCalls,
+    folders,
+    drive,
     getProperty: (key) => properties.get(key) ?? null,
+    setProperty: (key, value) => {
+      properties.set(key, value);
+    },
     scriptUrl: () => options.scriptUrl ?? '',
     cacheGet: (key) => cache.get(key) ?? null,
     cachePut: (key, value) => {
@@ -167,6 +183,21 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     },
     flush: () => undefined,
     spreadsheet: () => db,
+    driveCreateFolder: (name) => {
+      const id = `folder-${folders.size + 1}`;
+      folders.set(id, name);
+      return id;
+    },
+    driveCreateFile: (folderId, name, mime, base64) => {
+      if (!folders.has(folderId)) throw new Error(`Folder Drive ${folderId} tidak ada`);
+      const id = `file-${drive.size + 1}`;
+      drive.set(id, { folderId, name, mime, base64 });
+      return id;
+    },
+    driveReadFile: (fileId) => {
+      const file = drive.get(fileId);
+      return file ? { mime: file.mime, base64: file.base64 } : null;
+    },
     logError: (message) => {
       errors.push(message);
     },
