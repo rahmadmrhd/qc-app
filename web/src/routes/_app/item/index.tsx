@@ -57,9 +57,14 @@ function ItemsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Data Item</h1>
-        {canEdit ? (
-          <Button onClick={() => void navigate({ to: '/item/new' })}>Tambah item</Button>
-        ) : null}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void navigate({ to: '/item/brands' })}>
+            Kelola merk
+          </Button>
+          {canEdit ? (
+            <Button onClick={() => void navigate({ to: '/item/new' })}>Tambah item</Button>
+          ) : null}
+        </div>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input

@@ -110,3 +110,46 @@ test('mode ubah memuat nilai awal', () => {
     within(screen.getByRole('group', { name: 'Gambar lampiran' })).getAllByRole('img'),
   ).toHaveLength(2);
 });
+
+test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan nonaktif', async () => {
+  const brands = [
+    {
+      id: 'b1',
+      externalId: '',
+      name: 'Ubiquiti',
+      status: 'active' as const,
+      itemCount: 1,
+      updatedAt: '',
+    },
+    {
+      id: 'b2',
+      externalId: '',
+      name: 'Lama',
+      status: 'inactive' as const,
+      itemCount: 0,
+      updatedAt: '',
+    },
+  ];
+  render(
+    <ItemForm
+      mode="create"
+      brands={brands}
+      defaultValues={toItemFormDefaults()}
+      onSubmit={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  const options = [...document.querySelectorAll('#item-brand-options option')].map((o) =>
+    o.getAttribute('value'),
+  );
+  expect(options).toEqual(['Ubiquiti']);
+  const input = screen.getByLabelText('Merk');
+  await userEvent.type(input, 'Mikrotik');
+  expect(screen.getByText(/Merk baru "Mikrotik" akan dibuat/)).toBeInTheDocument();
+  await userEvent.clear(input);
+  await userEvent.type(input, 'ubiquiti');
+  expect(screen.getByText(/Memakai merk yang sudah ada: "Ubiquiti"/)).toBeInTheDocument();
+  await userEvent.clear(input);
+  await userEvent.type(input, 'lama');
+  expect(screen.getByText(/dinonaktifkan; aktifkan dulu/)).toBeInTheDocument();
+});

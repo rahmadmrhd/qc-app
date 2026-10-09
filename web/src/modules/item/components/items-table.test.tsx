@@ -8,6 +8,7 @@ const items: ItemSummaryDto[] = [
   {
     id: 'i1',
     externalId: '12',
+    brandId: 'b1',
     brand: 'Ubiquiti',
     model: 'AF 5XHD',
     isCountryLock: true,
@@ -19,6 +20,7 @@ const items: ItemSummaryDto[] = [
   {
     id: 'i2',
     externalId: '',
+    brandId: 'b1',
     brand: 'Mikrotik',
     model: 'hAP ac2',
     isCountryLock: false,

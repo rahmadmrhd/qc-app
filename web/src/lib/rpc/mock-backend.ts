@@ -3,11 +3,12 @@ import { handleRpc_ } from '@gas/core/router';
 import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { insertBrand_ } from '@gas/modules/brand/repo';
 import { insertFile_ } from '@gas/modules/files/repo';
 import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
 import { location, role, user } from '@gas-test/access-fixtures';
-import { item } from '@gas-test/item-fixtures';
+import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
 
@@ -129,6 +130,8 @@ function seedMockItems(platform: ReturnType<typeof createMemoryPlatform>): void 
     createdAt: '2026-10-07T07:00:00.000Z',
     createdBy: MOCK_ADMIN_EMAIL,
   });
+  insertBrand_(brand('Ubiquiti', { externalId: '1' }));
+  insertBrand_(brand('Mikrotik', { externalId: '2' }));
   insertItem_(
     item({
       id: 'item-af5xhd',

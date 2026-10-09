@@ -179,10 +179,33 @@ export interface ItemAccessoryDto {
   qty: number;
 }
 
+export interface BrandDto {
+  id: string;
+  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
+  externalId: string;
+  name: string;
+  status: ItemStatus;
+  /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
+  itemCount: number;
+  updatedAt: string;
+}
+
+export interface SaveBrandInput {
+  id?: string;
+  name: string;
+}
+
+export interface SetBrandStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
 export interface ItemSummaryDto {
   id: string;
   /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
   externalId: string;
+  brandId: string;
+  /** Nama merk (dari tabel merk). */
   brand: string;
   model: string;
   isCountryLock: boolean;
@@ -238,6 +261,9 @@ export interface RpcContract {
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
+  'brands.list': { input: null; output: BrandDto[] };
+  'brands.save': { input: SaveBrandInput; output: BrandDto };
+  'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
   'items.list': { input: null; output: ItemSummaryDto[] };
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };

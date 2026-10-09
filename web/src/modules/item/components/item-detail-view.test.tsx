@@ -16,6 +16,7 @@ import { ItemDetailView } from './item-detail-view';
 const item: ItemDto = {
   id: 'i1',
   externalId: '12',
+  brandId: 'b1',
   brand: 'Ubiquiti',
   model: 'AF 5XHD',
   isCountryLock: true,
@@ -67,6 +68,7 @@ test('bagian kosong menampilkan petunjuk, dan item nonaktif ditandai', () => {
     item: {
       ...item,
       externalId: '',
+      brandId: 'b1',
       aliases: [],
       attachments: [],
       stickers: [],

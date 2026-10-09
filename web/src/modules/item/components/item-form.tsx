@@ -1,3 +1,5 @@
+import { normalizeKey } from '@shared/items';
+import type { BrandDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { FieldError } from '@/components/field-error';
@@ -15,12 +17,41 @@ import { StickerListField } from './sticker-list-field';
 
 export interface ItemFormProps {
   mode: 'create' | 'edit';
+  /** Merk yang sudah ada, untuk saran saat mengetik; merk yang belum ada dibuat saat item disimpan. */
+  brands?: readonly BrandDto[];
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
   fieldErrors?: ItemFieldErrors;
   onSubmit: (values: ItemFormOutput) => Promise<unknown>;
   onCancel: () => void;
+}
+
+/** Petunjuk di bawah isian merk: dipakai ulang, dinonaktifkan, atau akan dibuat baru. */
+function BrandHint({ value, brands }: { value: string; brands: readonly BrandDto[] }) {
+  const key = normalizeKey(value);
+  if (key === '') return null;
+  const match = brands.find((brand) => normalizeKey(brand.name) === key);
+  if (!match) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Merk baru "{value.trim()}" akan dibuat saat item disimpan.
+      </p>
+    );
+  }
+  if (match.status === 'inactive') {
+    return (
+      <p className="text-xs text-destructive">
+        Merk "{match.name}" dinonaktifkan; aktifkan dulu di halaman Merk.
+      </p>
+    );
+  }
+  if (match.name !== value.trim()) {
+    return (
+      <p className="text-xs text-muted-foreground">Memakai merk yang sudah ada: "{match.name}".</p>
+    );
+  }
+  return null;
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -37,6 +68,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 export function ItemForm({
   mode,
+  brands = [],
   defaultValues,
   submitError,
   fieldErrors,
@@ -68,10 +100,20 @@ export function ItemForm({
               <Label htmlFor="item-brand">Merk</Label>
               <Input
                 id="item-brand"
+                list="item-brand-options"
+                autoComplete="off"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
+              <datalist id="item-brand-options">
+                {brands
+                  .filter((brand) => brand.status === 'active')
+                  .map((brand) => (
+                    <option key={brand.id} value={brand.name} />
+                  ))}
+              </datalist>
+              <BrandHint value={field.state.value} brands={brands} />
               <FieldError errors={[...field.state.meta.errors, fieldErrors?.brand]} />
             </div>
           )}

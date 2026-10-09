@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { describeError } from '@/lib/rpc/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { requirePermission } from '@/modules/auth/permissions';
+import { brandsQueryOptions } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
@@ -13,7 +14,10 @@ import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/
 export const Route = createFileRoute('/_app/item/$itemId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
+    Promise.all([
+      context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
+      context.queryClient.ensureQueryData(brandsQueryOptions()),
+    ]),
   component: EditItemPage,
 });
 
@@ -21,6 +25,7 @@ function EditItemPage() {
   const { itemId } = Route.useParams();
   const navigate = useNavigate();
   const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
+  const { data: brands } = useSuspenseQuery(brandsQueryOptions());
   const saveItem = useSaveItem();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
@@ -47,6 +52,7 @@ function EditItemPage() {
       <ItemForm
         key={item.updatedAt}
         mode="edit"
+        brands={brands}
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}
         fieldErrors={fieldErrors}

@@ -9,6 +9,7 @@ import {
   ROLES_TABLE,
   USERS_TABLE,
 } from '@gas/modules/access/repo';
+import { BRANDS_TABLE } from '@gas/modules/brand/repo';
 import { FILES_TABLE } from '@gas/modules/files/repo';
 import { DRIVE_FOLDER_NAME, ensureDriveFolder_ } from '@gas/modules/files/service';
 import { ITEMS_TABLE } from '@gas/modules/item/repo';
@@ -37,6 +38,7 @@ export function runSetup_(): string {
     AUDIT_TABLE,
     LOCATIONS_TABLE,
     FILES_TABLE,
+    BRANDS_TABLE,
     ITEMS_TABLE,
   ]) {
     openTable_(table);

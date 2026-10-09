@@ -119,6 +119,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
   const item: ItemDto = {
     id: 'i1',
     externalId: '12',
+    brandId: 'b1',
     brand: 'Ubiquiti',
     model: 'ES 24',
     isCountryLock: true,

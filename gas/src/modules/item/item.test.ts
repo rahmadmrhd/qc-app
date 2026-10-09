@@ -5,13 +5,14 @@ import { signSessionToken_ } from '@gas/core/session';
 import type { UserContext } from '@gas/modules/access/context';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import { insertRole_, insertUser_, listAuditRecords_ } from '@gas/modules/access/repo';
+import { insertBrand_, listBrands_ } from '@gas/modules/brand/repo';
 import { listFiles_ } from '@gas/modules/files/repo';
 import { uploadFile_ } from '@gas/modules/files/service';
 import { validateUploadFile_ } from '@gas/modules/files/validate';
 import { getRoutes_ } from '@gas/routes';
 import { role, user } from '@gas-test/access-fixtures';
 import { captureAppError } from '@gas-test/errors';
-import { item } from '@gas-test/item-fixtures';
+import { brand, brandNameOf, item } from '@gas-test/item-fixtures';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { hashText } from '@shared/items';
@@ -34,6 +35,15 @@ const baseInput: SaveItemInput = {
   attachments: [],
   detail: '',
 };
+
+/** Memasukkan item fixture beserta merknya (record item hanya menyimpan brandId). */
+function seedItem(record: ReturnType<typeof item>): void {
+  const name = brandNameOf(record.brandId);
+  if (!listBrands_().some((b) => b.id === record.brandId)) {
+    insertBrand_(brand(name, { id: record.brandId }));
+  }
+  insertItem_(record);
+}
 
 const newFile = () =>
   uploadFile_(validateUploadFile_({ mime: 'image/png', base64: PNG, width: 1, height: 1 }), admin)
@@ -103,11 +113,11 @@ test('membuat item: aktif, kolom sinkron kosong, audit create tanpa teks Markdow
 });
 
 test('daftar ringkas terurut merk lalu tipe, memuat nonaktif, tanpa detail Markdown', () => {
-  insertItem_(
+  seedItem(
     item({ id: 'i2', brand: 'Ubiquiti', model: 'B', detail: 'RAHASIA', attachments: ['f1', 'f2'] }),
   );
-  insertItem_(item({ id: 'i1', brand: 'Mikrotik', model: 'Z', status: 'inactive' }));
-  insertItem_(item({ id: 'i3', brand: 'Ubiquiti', model: 'A', isCountryLock: true }));
+  seedItem(item({ id: 'i1', brand: 'Mikrotik', model: 'Z', status: 'inactive' }));
+  seedItem(item({ id: 'i3', brand: 'Ubiquiti', model: 'A', isCountryLock: true }));
   const list = listItemSummaries_();
   expect(list.map((i) => `${i.brand} ${i.model}`)).toEqual([
     'Mikrotik Z',
@@ -121,7 +131,7 @@ test('daftar ringkas terurut merk lalu tipe, memuat nonaktif, tanpa detail Markd
 });
 
 test('getItemDto_ memuat detail lengkap; id tak dikenal NOT_FOUND', () => {
-  insertItem_(
+  seedItem(
     item({
       id: 'i1',
       brand: 'A',
@@ -224,11 +234,12 @@ test('rujukan berkas yang gagal membatalkan seluruh simpan: tidak ada item dan t
   ).toBe('CONFLICT');
 
   expect(JSON.stringify(listFiles_())).toBe(before);
-  expect(listItems_().map((i) => i.brand)).toEqual(['Lain']);
+  expect(listItems_()).toHaveLength(1);
+  expect(listBrands_().map((b) => b.name)).toEqual(['Lain']);
 });
 
 test('mengubah item mempertahankan id MySQL, revisi sinkron, dan waktu dibuat', () => {
-  insertItem_(
+  seedItem(
     item({
       id: 'i1',
       brand: 'Ubiquiti',
@@ -329,4 +340,41 @@ test('rute: view membaca, edit menyimpan, hanya manage menonaktifkan; daftar tan
 
   const list = call('items.list', null, 'lihat@gmail.com');
   expect(list.ok && JSON.stringify(list.data).includes('"detail"')).toBe(false);
+});
+
+test('merk baru dibuat langsung saat item disimpan (audit brand.create); merk sama (kunci ternormalisasi) dipakai ulang', () => {
+  const first = saveItem_({ ...baseInput, brand: 'Ubiquiti' }, admin);
+  expect(listBrands_().map((b) => b.name)).toEqual(['Ubiquiti']);
+  expect(listAuditRecords_().map((r) => r.action)).toEqual(['brand.create', 'item.create']);
+  const second = saveItem_(
+    { ...baseInput, brand: ' ubi-quiti'.replace('-', ''), model: 'AF' },
+    admin,
+  );
+  expect(listBrands_()).toHaveLength(1);
+  expect(second.brandId).toBe(first.brandId);
+  expect(second.brand).toBe('Ubiquiti');
+});
+
+test('merk nonaktif tidak bisa dipakai item baru, tetapi item lama merk itu tetap dapat disimpan', () => {
+  insertBrand_(brand('Lama', { status: 'inactive' }));
+  expect(captureAppError(() => saveItem_({ ...baseInput, brand: 'lama' }, admin)).fields).toEqual({
+    brand: 'Merk dinonaktifkan; aktifkan dulu di halaman Merk',
+  });
+  expect(listItems_()).toHaveLength(0);
+  seedItem(item({ id: 'i1', brand: 'Lama', model: 'X' }));
+  expect(
+    saveItem_({ ...baseInput, id: 'i1', brand: 'Lama', model: 'X', isCountryLock: true }, admin)
+      .isCountryLock,
+  ).toBe(true);
+});
+
+test('galat validasi lain tidak meninggalkan merk yatim', () => {
+  saveItem_({ ...baseInput, brand: 'A', model: 'B' }, admin);
+  const brandsBefore = listBrands_().length;
+  expect(
+    captureAppError(() =>
+      saveItem_({ ...baseInput, brand: 'Baru', model: 'x', attachments: ['hantu'] }, admin),
+    ).code,
+  ).toBe('VALIDATION');
+  expect(listBrands_()).toHaveLength(brandsBefore);
 });

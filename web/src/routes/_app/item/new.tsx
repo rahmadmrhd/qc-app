@@ -1,9 +1,11 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/rpc/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { requirePermission } from '@/modules/auth/permissions';
+import { brandsQueryOptions } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
 import { useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
@@ -11,11 +13,13 @@ import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/
 
 export const Route = createFileRoute('/_app/item/new')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
+  loader: ({ context }) => context.queryClient.ensureQueryData(brandsQueryOptions()),
   component: NewItemPage,
 });
 
 function NewItemPage() {
   const navigate = useNavigate();
+  const { data: brands } = useSuspenseQuery(brandsQueryOptions());
   const saveItem = useSaveItem();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
@@ -39,6 +43,7 @@ function NewItemPage() {
       <h1 className="text-2xl font-semibold">Tambah item</h1>
       <ItemForm
         mode="create"
+        brands={brands}
         defaultValues={toItemFormDefaults()}
         submitError={submitError}
         fieldErrors={fieldErrors}

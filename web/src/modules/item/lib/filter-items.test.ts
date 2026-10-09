@@ -10,6 +10,7 @@ const make = (
 ): ItemSummaryDto => ({
   id,
   externalId: '',
+  brandId: 'b1',
   brand,
   model,
   isCountryLock: false,

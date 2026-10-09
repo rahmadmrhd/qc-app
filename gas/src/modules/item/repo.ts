@@ -7,7 +7,7 @@ export const ITEMS_TABLE: TableSchema = {
   columns: [
     'id',
     'external_id',
-    'brand',
+    'brand_id',
     'model',
     'key',
     'is_country_lock',
@@ -28,7 +28,7 @@ export interface ItemRecord {
   rowNumber: number;
   id: string;
   externalId: string;
-  brand: string;
+  brandId: string;
   model: string;
   key: string;
   isCountryLock: boolean;
@@ -98,7 +98,7 @@ function toItemRecord_(rowNumber: number, data: RowData): ItemRecord {
     rowNumber,
     id: (data.id ?? '').trim(),
     externalId: (data.external_id ?? '').trim(),
-    brand: (data.brand ?? '').trim(),
+    brandId: (data.brand_id ?? '').trim(),
     model: (data.model ?? '').trim(),
     key: (data.key ?? '').trim(),
     isCountryLock: (data.is_country_lock ?? '').trim() === 'true',
@@ -119,7 +119,7 @@ function fromItemRecord_(item: NewItemRecord): RowData {
   return {
     id: item.id,
     external_id: item.externalId,
-    brand: item.brand,
+    brand_id: item.brandId,
     model: item.model,
     key: item.key,
     is_country_lock: item.isCountryLock ? 'true' : 'false',
