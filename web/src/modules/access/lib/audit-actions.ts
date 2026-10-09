@@ -7,6 +7,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'role.create': 'Role dibuat',
   'role.update': 'Role diubah',
   'role.delete': 'Role dihapus',
+  'location.create': 'Lokasi dibuat',
+  'location.update': 'Lokasi diubah',
+  'location.activate': 'Lokasi diaktifkan',
+  'location.deactivate': 'Lokasi dinonaktifkan',
 };
 
 export function auditActionLabel(action: string): string {

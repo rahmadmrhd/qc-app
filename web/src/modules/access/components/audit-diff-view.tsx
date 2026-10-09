@@ -1,10 +1,11 @@
+import { ALL_LOCATIONS_KEY } from '@shared/assignments';
 import { LEVEL_LABELS, MODULE_LABELS } from '@shared/permissions';
 import type { AuditSnapshot } from '@shared/rpc';
 import type { LucideIcon } from 'lucide-react';
 import { Minus, Pencil, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChangeKind, ChildDiff, FieldDiff } from '../lib/audit-diff';
-import { diffSnapshots } from '../lib/audit-diff';
+import { diffList, diffSnapshots } from '../lib/audit-diff';
 
 const FIELD_LABELS: Record<string, string> = {
   email: 'Email',
@@ -13,6 +14,8 @@ const FIELD_LABELS: Record<string, string> = {
   roleIds: 'Role',
   description: 'Deskripsi',
   permissions: 'Akses per modul',
+  code: 'Kode',
+  assignments: 'Penugasan',
 };
 
 const STATUS_LABELS: Record<string, string> = { active: 'Aktif', inactive: 'Nonaktif' };
@@ -79,11 +82,55 @@ function ChildItem({
   fieldKey,
   child,
   roleNames,
+  locationNames,
 }: {
   fieldKey: string;
   child: ChildDiff;
   roleNames: ReadonlyMap<string, string>;
+  locationNames: ReadonlyMap<string, string>;
 }) {
+  if (fieldKey === 'assignments') {
+    const location =
+      child.label === ALL_LOCATIONS_KEY
+        ? 'Semua lokasi'
+        : (locationNames.get(child.label) ?? child.label);
+    const style = child.kind === 'unchanged' ? null : KIND_STYLES[child.kind];
+    const Icon = style?.icon;
+    return (
+      <li
+        data-kind={child.kind}
+        className={cn(
+          'space-y-1 rounded-md border px-2 py-1 text-sm',
+          style ? style.box : 'border-transparent bg-muted/50',
+        )}
+      >
+        <div className="flex items-center gap-1.5">
+          {Icon ? <Icon className="size-3.5 shrink-0" aria-hidden="true" /> : null}
+          {style ? <span className="sr-only">{style.label}: </span> : null}
+          <span data-slot="label" className={child.kind === 'removed' ? 'line-through' : undefined}>
+            {location}
+          </span>
+        </div>
+        <ul className="flex flex-wrap gap-1">
+          {diffList(child.before, child.after).map((roleDiff) => (
+            <li
+              key={roleDiff.label}
+              data-kind={roleDiff.kind}
+              className={cn(
+                'rounded border px-1.5 py-0.5 text-xs',
+                roleDiff.kind === 'unchanged'
+                  ? 'border-transparent bg-muted'
+                  : KIND_STYLES[roleDiff.kind].box,
+                roleDiff.kind === 'removed' ? 'line-through' : '',
+              )}
+            >
+              {roleNames.get(roleDiff.label) ?? roleDiff.label}
+            </li>
+          ))}
+        </ul>
+      </li>
+    );
+  }
   const isPermission = fieldKey === 'permissions';
   const label = isPermission
     ? (MODULE_LABELS[child.label as keyof typeof MODULE_LABELS] ?? child.label)
@@ -130,9 +177,11 @@ function ChildItem({
 function FieldRow({
   field,
   roleNames,
+  locationNames,
 }: {
   field: FieldDiff;
   roleNames: ReadonlyMap<string, string>;
+  locationNames: ReadonlyMap<string, string>;
 }) {
   const style = field.kind === 'unchanged' ? null : KIND_STYLES[field.kind];
   return (
@@ -156,6 +205,7 @@ function FieldRow({
                 fieldKey={field.key}
                 child={child}
                 roleNames={roleNames}
+                locationNames={locationNames}
               />
             ))}
           </ul>
@@ -195,10 +245,17 @@ export interface AuditDiffViewProps {
   after: AuditSnapshot;
   /** Nama role untuk menggantikan id pada field roleIds; id tampil apa adanya bila tidak ada. */
   roleNames?: ReadonlyMap<string, string>;
+  /** Nama lokasi untuk menggantikan id pada field assignments; id tampil apa adanya bila tidak ada. */
+  locationNames?: ReadonlyMap<string, string>;
 }
 
 /** Menampilkan satu entri audit sebagai form baca-saja; field yang ditambah, diubah, atau dihapus diberi warna dan penanda teks. */
-export function AuditDiffView({ before, after, roleNames = new Map() }: AuditDiffViewProps) {
+export function AuditDiffView({
+  before,
+  after,
+  roleNames = new Map(),
+  locationNames = new Map(),
+}: AuditDiffViewProps) {
   const fields = diffSnapshots(before, after);
   return (
     <div className="space-y-3">
@@ -206,7 +263,14 @@ export function AuditDiffView({ before, after, roleNames = new Map() }: AuditDif
       {fields.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tidak ada data perubahan yang tercatat.</p>
       ) : (
-        fields.map((field) => <FieldRow key={field.key} field={field} roleNames={roleNames} />)
+        fields.map((field) => (
+          <FieldRow
+            key={field.key}
+            field={field}
+            roleNames={roleNames}
+            locationNames={locationNames}
+          />
+        ))
       )}
     </div>
   );

@@ -15,6 +15,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - `gas/src/` — backend. `main.ts` (doGet, api, setup), `routes.ts`, `core/`, `modules/<modul>/{repo,context,validate,service,routes}.ts`.
 - `gas/test-support/` — memory platform & fixture (dipakai test dan mock FE; tidak di-build).
 - `web/src/` — `modules/<modul>/` (queries, schemas, components), `routes/` (tipis), `app/` (shell, router, boot), `lib/rpc/`, `modules/theme/` (terang/gelap/sistem).
+- `web/src/modules/location/` — lokasi aktif (konteks, pemilih header multi-select) dan `LocationField` untuk form tulis modul berlokasi.
 
 ## Aturan kode GAS (ditegakkan `scripts/build-gas.ts`)
 - File di-transpile per file dan `import`/`export` dihapus: semua file berbagi SATU global scope.
@@ -39,6 +40,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 2. Validator + handler di `gas/src/modules/<modul>/`, daftarkan di `<modul>/routes.ts` dengan `permission` yang tepat.
 3. `getRoutes_` bertipe `RouteTable` — typecheck gagal bila method belum terdaftar.
 4. FE: `queryOptions`/mutation di `web/src/modules/<modul>/queries.ts`.
+5. Modul berlokasi: tandai `scope: 'location'` pada izin rute dan pakai `ctx.locationIds` (lihat `docs/adding-a-module.md`).
 
 Resep modul baru: `docs/adding-a-module.md`.
 

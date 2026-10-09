@@ -21,7 +21,11 @@ import {
   formatAuditTime,
 } from '@/modules/access/lib/audit-actions';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
-import { auditQueryOptions, rolesQueryOptions } from '@/modules/access/queries';
+import {
+  auditQueryOptions,
+  locationsQueryOptions,
+  rolesQueryOptions,
+} from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 
 const auditSearchSchema = z.object({
@@ -40,6 +44,7 @@ export const Route = createFileRoute('/_app/access/audit')({
         auditQueryOptions({ page: deps.page, action: deps.action, query: deps.q }),
       ),
       context.queryClient.ensureQueryData(rolesQueryOptions()),
+      context.queryClient.ensureQueryData(locationsQueryOptions()),
     ]);
   },
   component: AuditPage,
@@ -49,6 +54,7 @@ function AuditPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
+  const { data: locations } = useSuspenseQuery(locationsQueryOptions());
   const { data: result } = useSuspenseQuery(
     auditQueryOptions({ page: search.page, action: search.action, query: search.q }),
   );
@@ -62,6 +68,7 @@ function AuditPage() {
   });
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
+  const locationNames = new Map(locations.map((l) => [l.id, l.name]));
   const page = result.page;
   const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
 
@@ -140,6 +147,7 @@ function AuditPage() {
                   before={selected.before}
                   after={selected.after}
                   roleNames={roleNames}
+                  locationNames={locationNames}
                 />
               </div>
             </>

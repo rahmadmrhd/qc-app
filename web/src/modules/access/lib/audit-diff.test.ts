@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { diffSnapshots } from './audit-diff';
+import { diffList, diffSnapshots } from './audit-diff';
 
 const kinds = (diffs: ReturnType<typeof diffSnapshots>) =>
   diffs.map((field) => [field.key, field.kind]);
@@ -81,4 +81,27 @@ test('tanpa perubahan: semua unchanged', () => {
 
 test('kedua sisi kosong menghasilkan daftar kosong', () => {
   expect(diffSnapshots(null, null)).toEqual([]);
+});
+
+test('diffList membandingkan dua daftar sebagai himpunan', () => {
+  expect(diffList(['a', 'b'], ['b', 'c']).map((c) => [c.label, c.kind])).toEqual([
+    ['b', 'unchanged'],
+    ['c', 'added'],
+    ['a', 'removed'],
+  ]);
+  expect(diffList(undefined, ['a']).map((c) => [c.label, c.kind])).toEqual([['a', 'added']]);
+  expect(diffList(['a'], undefined).map((c) => [c.label, c.kind])).toEqual([['a', 'removed']]);
+});
+
+test('penugasan: peta lokasi→role dibandingkan per lokasi', () => {
+  const [field] = diffSnapshots(
+    { assignments: { '*': ['r1'], 'l-a': ['r1'] } },
+    { assignments: { '*': ['r1', 'r2'], 'l-b': ['r1'] } },
+  );
+  expect(field?.kind).toBe('changed');
+  expect(field?.children?.map((c) => [c.label, c.kind])).toEqual([
+    ['*', 'changed'],
+    ['l-b', 'added'],
+    ['l-a', 'removed'],
+  ]);
 });

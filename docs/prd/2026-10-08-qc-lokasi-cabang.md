@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft — menunggu review |
+| **Status** | Diimplementasi — menunggu rilis dan verifikasi di deployment |
 | **Tanggal** | 2026-10-08 |
 | **Pemilik** | rahmadm.rhd@gmail.com |
 | **Bergantung pada** | `2026-10-08-qc-fondasi-akses.md` (Sub-project 1, sudah dirilis) |
@@ -158,13 +158,13 @@ Idempoten; tidak ada lokasi yang perlu dibuat agar aplikasi tetap berfungsi sepe
 
 ## 9. Definition of Done
 - [ ] Sheet `locations` dan kolom `assignments` terbuat otomatis oleh `setup`; user lama tetap punya hak yang sama.
-- [ ] Admin dapat membuat, mengubah, dan menonaktifkan lokasi dari UI.
-- [ ] Form User dapat mengatur penugasan; tabel Users merangkumnya.
-- [ ] Pemilih lokasi multi-select di header bekerja sesuai FR-C1–C5.
-- [ ] Panggilan RPC langsung dengan lokasi yang tidak diizinkan ditolak `FORBIDDEN`.
-- [ ] Log Audit menampilkan perubahan penugasan dan lokasi.
+- [x] Admin dapat membuat, mengubah, dan menonaktifkan lokasi dari UI.
+- [x] Form User dapat mengatur penugasan; tabel Users merangkumnya.
+- [x] Pemilih lokasi multi-select di header bekerja sesuai FR-C1–C5.
+- [x] Panggilan RPC langsung dengan lokasi yang tidak diizinkan ditolak `FORBIDDEN`.
+- [x] Log Audit menampilkan perubahan penugasan dan lokasi.
 - [ ] `bun run check` hijau; checklist E2E diperbarui dan lulus.
-- [ ] `docs/adding-a-module.md` menjelaskan cara membuat modul berlokasi.
+- [x] `docs/adding-a-module.md` menjelaskan cara membuat modul berlokasi.
 
 ## 10. Pertanyaan yang Sudah Dijawab
 1. **Jumlah lokasi:** saat ini kurang dari 5; pemilih header tanpa pencarian sudah cukup.
