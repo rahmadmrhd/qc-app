@@ -229,8 +229,8 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - [x] Modul `qc` ada di form Role; `item` global dari semua penugasan; tes `resolveAccess` diperbarui.
 
 **Fase B**
-- [ ] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.
-- [ ] Halaman daftar dan detail item; audit dengan diff yang terbaca.
+- [x] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.
+- [x] Halaman daftar dan detail item; audit dengan diff yang terbaca.
 
 **Fase B2**
 - [ ] `doPost` dan kerangka (token, pembatas percobaan salah, amplop, tabel rute sinkron) dites, termasuk token salah dan pembatasan.

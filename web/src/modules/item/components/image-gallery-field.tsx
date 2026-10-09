@@ -67,7 +67,8 @@ export function ImageGalleryField({
   }
 
   return (
-    <div role="group" aria-label="Gambar lampiran" className="space-y-2">
+    <fieldset className="m-0 min-w-0 space-y-2 border-0 p-0">
+      <legend className="sr-only">Gambar lampiran</legend>
       {value.length > 0 ? (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           {value.map((id, index) => (
@@ -148,6 +149,6 @@ export function ImageGalleryField({
           {error}
         </p>
       ) : null}
-    </div>
+    </fieldset>
   );
 }
