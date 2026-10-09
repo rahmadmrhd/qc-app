@@ -1,10 +1,13 @@
 import type { Level, ModuleKey, PartialPermissionMap, PermissionMap } from './permissions';
 import { mergePermissions } from './permissions';
 
-/** Modul yang izinnya dihitung per lokasi. `access` bersifat global (PRD FR-P7). */
-export const LOCATION_MODULES = ['item', 'handover', 'stock'] as const;
+/** Modul yang izinnya dihitung per lokasi. `access` dan `item` bersifat global (PRD FR-P7, FP2). */
+export const LOCATION_MODULES = ['handover', 'qc', 'stock'] as const;
 export type LocatedModule = (typeof LOCATION_MODULES)[number];
 export type LocationPermissionMap = Record<LocatedModule, Level>;
+
+/** Modul global yang levelnya dihitung dari SEMUA penugasan berlaku, bukan hanya "Semua lokasi". */
+export const SHARED_MODULES = ['item'] as const;
 
 /** Kunci peta/snapshot untuk penugasan "Semua lokasi". */
 export const ALL_LOCATIONS_KEY = '*';
@@ -31,7 +34,7 @@ export function isLocatedModule(module: ModuleKey): module is LocatedModule {
 }
 
 export function fullLocationPermissions(): LocationPermissionMap {
-  return { item: 'manage', handover: 'manage', stock: 'manage' };
+  return { handover: 'manage', qc: 'manage', stock: 'manage' };
 }
 
 function cleanAssignmentIds(value: unknown): string[] {
@@ -81,8 +84,10 @@ function rolePermissionSources(
 }
 
 /**
- * Izin efektif seorang user: global (hanya "Semua lokasi") dan per lokasi aktif
- * (gabungan "Semua lokasi" + penugasan lokasi itu; level tertinggi per modul).
+ * Izin efektif seorang user: global dan per lokasi aktif.
+ * - Per lokasi: gabungan "Semua lokasi" + penugasan lokasi itu (level tertinggi per modul).
+ * - Global: hanya dari "Semua lokasi" (satu-satunya sumber `access`); kecuali `SHARED_MODULES`
+ *   (`item`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif).
  */
 export function resolveAccess(
   assignments: readonly Assignment[],
@@ -91,6 +96,17 @@ export function resolveAccess(
 ): ResolvedAccess {
   const everywhere = assignments.find((entry) => entry.locationId === null);
   const globalSources = rolePermissionSources(everywhere?.roleIds ?? [], rolePermissions);
+  const global = mergePermissions(globalSources);
+
+  const active = new Set(activeLocationIds);
+  const applicable = assignments.filter(
+    (entry) => entry.locationId === null || active.has(entry.locationId),
+  );
+  const shared = mergePermissions(
+    applicable.flatMap((entry) => rolePermissionSources(entry.roleIds, rolePermissions)),
+  );
+  for (const module of SHARED_MODULES) global[module] = shared[module];
+
   const byLocation: Record<string, LocationPermissionMap> = {};
   for (const locationId of activeLocationIds) {
     const local = assignments.find((entry) => entry.locationId === locationId);
@@ -98,12 +114,9 @@ export function resolveAccess(
       ...globalSources,
       ...rolePermissionSources(local?.roleIds ?? [], rolePermissions),
     ]);
-    const entry: LocationPermissionMap = {
-      item: merged.item,
-      handover: merged.handover,
-      stock: merged.stock,
-    };
+    const entry = {} as LocationPermissionMap;
+    for (const module of LOCATION_MODULES) entry[module] = merged[module];
     if (LOCATION_MODULES.some((module) => entry[module] !== 'none')) byLocation[locationId] = entry;
   }
-  return { global: mergePermissions(globalSources), byLocation };
+  return { global, byLocation };
 }

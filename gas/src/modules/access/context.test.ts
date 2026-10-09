@@ -42,6 +42,7 @@ test('user aktif mendapat level tertinggi dari semua role-nya', () => {
     access: 'none',
     item: 'manage',
     handover: 'edit',
+    qc: 'none',
     stock: 'none',
   });
 });
@@ -67,6 +68,7 @@ test('JSON role_ids/permissions yang rusak dan level asing diabaikan tanpa error
     access: 'none',
     item: 'none',
     handover: 'none',
+    qc: 'none',
     stock: 'none',
   });
   expect(loadUserContext_('campur@gmail.com')?.permissions.stock).toBe('view');

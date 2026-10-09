@@ -21,9 +21,9 @@ let platform: MemoryPlatform;
 beforeEach(() => {
   platform = createMemoryPlatform({ properties: { ADMIN_EMAIL: 'admin@gmail.com' } });
   setPlatform_(platform);
-  insertRole_(role({ id: 'r-view', name: 'Viewer', permissions: { item: 'view' } }));
+  insertRole_(role({ id: 'r-view', name: 'Viewer', permissions: { handover: 'view' } }));
   insertRole_(
-    role({ id: 'r-manage', name: 'Manager', permissions: { item: 'manage', stock: 'view' } }),
+    role({ id: 'r-manage', name: 'Manager', permissions: { handover: 'manage', stock: 'view' } }),
   );
   insertRole_(role({ id: 'r-access', name: 'Admin', permissions: { access: 'manage' } }));
   insertLocation_(location({ id: 'l-a', code: 'A' }));
@@ -43,9 +43,9 @@ test('hak berbeda di tiap lokasi untuk satu user (FR-P6)', () => {
     }),
   );
   const ctx = loadUserContext_('budi@gmail.com');
-  expect(ctx?.locations['l-a']).toEqual({ item: 'manage', handover: 'none', stock: 'view' });
-  expect(ctx?.locations['l-b']).toEqual({ item: 'view', handover: 'none', stock: 'none' });
-  expect(ctx?.permissions.item).toBe('view');
+  expect(ctx?.locations['l-a']).toEqual({ handover: 'manage', qc: 'none', stock: 'view' });
+  expect(ctx?.locations['l-b']).toEqual({ handover: 'view', qc: 'none', stock: 'none' });
+  expect(ctx?.permissions.handover).toBe('view');
 });
 
 test('Pengaturan Akses hanya dari Semua lokasi (FR-P7)', () => {
@@ -122,8 +122,8 @@ test('data lama yang hanya punya role_ids tetap berlaku sebagai Semua lokasi seb
     .sheet('users')
     .rows.push(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
   const ctx = loadUserContext_('lama@gmail.com');
-  expect(ctx?.permissions.item).toBe('manage');
-  expect(ctx?.locations['l-a']?.item).toBe('manage');
+  expect(ctx?.permissions.handover).toBe('manage');
+  expect(ctx?.locations['l-a']?.handover).toBe('manage');
   expect(listUsers_().find((u) => u.id === 'u9')?.assignments).toEqual([
     { locationId: null, roleIds: ['r-manage'] },
   ]);
@@ -168,7 +168,7 @@ test('JSON assignments rusak diabaikan tanpa error dan locationId hilang tidak m
     ]);
   expect(loadUserContext_('rusak@gmail.com')?.locations).toEqual({});
   expect(loadUserContext_('tanpa@gmail.com')?.locations).toEqual({});
-  expect(loadUserContext_('tanpa@gmail.com')?.permissions.item).toBe('none');
+  expect(loadUserContext_('tanpa@gmail.com')?.permissions.handover).toBe('none');
 });
 
 test('migrasi berjalan di dalam lock dan membatalkan cache akses agar tidak menimpa tulisan bersamaan', () => {
@@ -214,4 +214,27 @@ test('cache konteks versi lama tanpa locations dihitung ulang, bukan dikembalika
   );
   expect(Object.keys(loadUserContext_('budi@gmail.com')?.locations ?? {})).toEqual(['l-a']);
   expect(JSON.parse(platform.cacheGet(key) ?? '{}').locations).toBeDefined();
+});
+
+test('item global dari penugasan lokasi tertentu (FP2), tetapi tidak dari lokasi nonaktif', () => {
+  insertRole_(role({ id: 'r-item', name: 'Katalog', permissions: { item: 'edit' } }));
+  insertUser_(
+    user({
+      id: 'u-item',
+      email: 'item@gmail.com',
+      assignments: [
+        { locationId: 'l-a', roleIds: ['r-item'] },
+        { locationId: 'l-mati', roleIds: ['r-item'] },
+      ],
+    }),
+  );
+  insertUser_(
+    user({
+      id: 'u-mati',
+      email: 'mati@gmail.com',
+      assignments: [{ locationId: 'l-mati', roleIds: ['r-item'] }],
+    }),
+  );
+  expect(loadUserContext_('item@gmail.com')?.permissions.item).toBe('edit');
+  expect(loadUserContext_('mati@gmail.com')?.permissions.item).toBe('none');
 });

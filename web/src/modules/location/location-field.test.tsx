@@ -14,19 +14,19 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'none', handover: 'none', stock: 'none' },
+    permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
     locations: [
       {
         id: 'l-a',
         code: 'JKT',
         name: 'Jakarta',
-        permissions: { item: 'manage', handover: 'none', stock: 'none' },
+        permissions: { handover: 'manage', qc: 'none', stock: 'none' },
       },
       {
         id: 'l-b',
         code: 'BDG',
         name: 'Bandung',
-        permissions: { item: 'view', handover: 'none', stock: 'none' },
+        permissions: { handover: 'view', qc: 'none', stock: 'none' },
       },
     ],
   };
@@ -36,7 +36,7 @@ test('hanya menawarkan lokasi aktif yang boleh ditulis user', async () => {
   const onChange = vi.fn();
   render(
     <ActiveLocationsProvider>
-      <LocationField id="loc" module="item" level="edit" value="" onChange={onChange} />
+      <LocationField id="loc" module="handover" level="edit" value="" onChange={onChange} />
     </ActiveLocationsProvider>,
   );
   const select = screen.getByLabelText('Lokasi');
@@ -52,11 +52,14 @@ test('hanya menawarkan lokasi aktif yang boleh ditulis user', async () => {
 test('tanpa lokasi yang boleh ditulis, field dinonaktifkan dengan keterangan', () => {
   me = {
     ...me,
-    locations: me.locations.map((l) => ({ ...l, permissions: { ...l.permissions, item: 'view' } })),
+    locations: me.locations.map((l) => ({
+      ...l,
+      permissions: { ...l.permissions, handover: 'view' },
+    })),
   };
   render(
     <ActiveLocationsProvider>
-      <LocationField id="loc" module="item" level="edit" value="" onChange={() => undefined} />
+      <LocationField id="loc" module="handover" level="edit" value="" onChange={() => undefined} />
     </ActiveLocationsProvider>,
   );
   expect(screen.getByLabelText('Lokasi')).toBeDisabled();
@@ -66,7 +69,13 @@ test('tanpa lokasi yang boleh ditulis, field dinonaktifkan dengan keterangan', (
 test('nilai di luar pilihan tulis tetap tampil sesuai lokasinya (mengubah baris yang sudah ada)', () => {
   render(
     <ActiveLocationsProvider>
-      <LocationField id="loc" module="item" level="edit" value="l-b" onChange={() => undefined} />
+      <LocationField
+        id="loc"
+        module="handover"
+        level="edit"
+        value="l-b"
+        onChange={() => undefined}
+      />
     </ActiveLocationsProvider>,
   );
   const select = screen.getByLabelText('Lokasi');
@@ -79,7 +88,7 @@ test('nilai lokasi yang sudah tidak tersedia ditandai, bukan diganti opsi lain',
     <ActiveLocationsProvider>
       <LocationField
         id="loc"
-        module="item"
+        module="handover"
         level="edit"
         value="hilang"
         onChange={() => undefined}

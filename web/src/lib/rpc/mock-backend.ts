@@ -24,7 +24,7 @@ export const MOCK_USERS: MockUser[] = [
     label:
       'QC Staff (Jakarta: item ubah, serah terima ubah, stok lihat; Bandung: serah terima lihat, stok lihat)',
   },
-  { email: 'wh.staff@qc.local', label: 'WH Staff (Bandung saja: serah terima lihat, stok lihat)' },
+  { email: 'wh.staff@qc.local', label: 'WH Staff (Bandung saja: serah terima kelola)' },
   { email: 'access.viewer@qc.local', label: 'Pemantau Akses (Semua lokasi: akses lihat)' },
   { email: 'nonaktif@qc.local', label: 'User nonaktif' },
   { email: 'asing@gmail.com', label: 'Email tidak terdaftar' },
@@ -52,7 +52,7 @@ function ensureMockBackend(): void {
       id: 'role-qc',
       name: 'QC Staff',
       description: 'Petugas QC',
-      permissions: { item: 'edit', handover: 'edit', stock: 'view' },
+      permissions: { item: 'view', handover: 'view', qc: 'edit', stock: 'view' },
     }),
   );
   insertRole_(
@@ -60,7 +60,7 @@ function ensureMockBackend(): void {
       id: 'role-wh',
       name: 'WH Staff',
       description: 'Petugas gudang',
-      permissions: { handover: 'view', stock: 'view' },
+      permissions: { item: 'view', handover: 'manage', stock: 'view' },
     }),
   );
   insertRole_(
@@ -152,7 +152,7 @@ function seedMockAudit(): void {
     after: {
       name: 'QC Staff',
       description: 'Petugas QC',
-      permissions: { item: 'edit', handover: 'edit', stock: 'view' },
+      permissions: { item: 'view', handover: 'view', qc: 'edit', stock: 'view' },
     },
   });
   appendAudit_({

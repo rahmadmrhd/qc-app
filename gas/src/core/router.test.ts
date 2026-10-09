@@ -50,7 +50,7 @@ const routes = {
     },
   },
   'item.list': {
-    permission: { module: 'item', level: 'view', scope: 'location' },
+    permission: { module: 'handover', level: 'view', scope: 'location' },
     validate: (raw: unknown) => raw,
     handler: (_input: unknown, ctx: RequestContext) => {
       calls.push('items');
@@ -58,7 +58,7 @@ const routes = {
     },
   },
   'item.save': {
-    permission: { module: 'item', level: 'edit', scope: 'location' },
+    permission: { module: 'handover', level: 'edit', scope: 'location' },
     validate: (raw: unknown) => raw,
     handler: (_input: unknown, ctx: RequestContext) => {
       calls.push('save');
@@ -84,8 +84,10 @@ beforeEach(() => {
   insertLocation_(location({ id: 'l-a', code: 'A' }));
   insertLocation_(location({ id: 'l-b', code: 'B' }));
   insertLocation_(location({ id: 'l-mati', code: 'MATI', status: 'inactive' }));
-  insertRole_(role({ id: 'r-item-view', name: 'Lihat Item', permissions: { item: 'view' } }));
-  insertRole_(role({ id: 'r-item-manage', name: 'Kelola Item', permissions: { item: 'manage' } }));
+  insertRole_(role({ id: 'r-item-view', name: 'Lihat Item', permissions: { handover: 'view' } }));
+  insertRole_(
+    role({ id: 'r-item-manage', name: 'Kelola Item', permissions: { handover: 'manage' } }),
+  );
   insertUser_(
     user({
       id: 'u3',
@@ -220,9 +222,9 @@ test('rute global tetap memakai izin global dan menerima locationIds kosong', ()
 
 test('tipe: modul berlokasi wajib menandai scope location (tidak diam-diam memakai izin global)', () => {
   // @ts-expect-error modul berlokasi tanpa scope: 'location' harus ditolak compiler
-  const salah: RoutePermission = { module: 'item', level: 'view' };
-  const benar: RoutePermission = { module: 'item', level: 'view', scope: 'location' };
-  const global: RoutePermission = { module: 'access', level: 'view' };
+  const salah: RoutePermission = { module: 'handover', level: 'view' };
+  const benar: RoutePermission = { module: 'handover', level: 'view', scope: 'location' };
+  const global: RoutePermission = { module: 'item', level: 'view' };
   expect([salah, benar, global]).toHaveLength(3);
 });
 

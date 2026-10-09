@@ -52,15 +52,15 @@ test('user tanpa akses manage mendapat FORBIDDEN saat menyimpan user', async () 
 
 test('auth.me memuat izin per lokasi sesuai penugasan (hak berbeda di tiap lokasi)', async () => {
   const result = await call('auth.me', null, tokenOf('qc.staff@qc.local'));
-  expect(result.data.permissions).toMatchObject({ item: 'none', access: 'none' });
+  expect(result.data.permissions).toMatchObject({ access: 'none', item: 'view' });
   const byCode = Object.fromEntries(
     result.data.locations.map((l: { code: string; permissions: unknown }) => [
       l.code,
       l.permissions,
     ]),
   );
-  expect(byCode.JKT).toEqual({ item: 'edit', handover: 'edit', stock: 'view' });
-  expect(byCode.BDG).toEqual({ item: 'none', handover: 'view', stock: 'view' });
+  expect(byCode.JKT).toEqual({ handover: 'view', qc: 'edit', stock: 'view' });
+  expect(byCode.BDG).toEqual({ handover: 'manage', qc: 'none', stock: 'view' });
 });
 
 test('super admin melihat semua lokasi aktif dengan manage', async () => {
