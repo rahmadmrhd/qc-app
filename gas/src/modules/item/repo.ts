@@ -62,7 +62,7 @@ function readItemStrings_(text: string): string[] {
     .filter((entry) => entry !== '');
 }
 
-function readItemStickers_(text: string): ItemStickerDto[] {
+function parseItemStickers_(text: string): ItemStickerDto[] {
   const value = parseItemJson_(text);
   if (!Array.isArray(value)) return [];
   const result: ItemStickerDto[] = [];
@@ -79,7 +79,7 @@ function readItemStickers_(text: string): ItemStickerDto[] {
   return result;
 }
 
-function readItemAccessories_(text: string): ItemAccessoryDto[] {
+function parseItemAccessories_(text: string): ItemAccessoryDto[] {
   const value = parseItemJson_(text);
   if (!Array.isArray(value)) return [];
   const result: ItemAccessoryDto[] = [];
@@ -103,8 +103,8 @@ function toItemRecord_(rowNumber: number, data: RowData): ItemRecord {
     key: (data.key ?? '').trim(),
     isCountryLock: (data.is_country_lock ?? '').trim() === 'true',
     aliases: readItemStrings_(data.aliases ?? ''),
-    stickers: readItemStickers_(data.stickers ?? ''),
-    accessories: readItemAccessories_(data.accessories ?? ''),
+    stickers: parseItemStickers_(data.stickers ?? ''),
+    accessories: parseItemAccessories_(data.accessories ?? ''),
     attachments: readItemStrings_(data.attachments ?? ''),
     detail: data.detail_md ?? '',
     status: (data.status ?? '').trim() === 'inactive' ? 'inactive' : 'active',

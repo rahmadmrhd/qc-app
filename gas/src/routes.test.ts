@@ -17,10 +17,18 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'auth.me',
     'files.get',
     'files.upload',
+    'items.get',
+    'items.list',
+    'items.save',
+    'items.setStatus',
   ]);
   expect(routes['auth.me'].permission).toBeUndefined();
   expect(routes['files.get'].permission).toEqual({ module: 'item', level: 'view' });
   expect(routes['files.upload'].permission).toEqual({ module: 'item', level: 'edit' });
+  expect(routes['items.list'].permission).toEqual({ module: 'item', level: 'view' });
+  expect(routes['items.get'].permission).toEqual({ module: 'item', level: 'view' });
+  expect(routes['items.save'].permission).toEqual({ module: 'item', level: 'edit' });
+  expect(routes['items.setStatus'].permission).toEqual({ module: 'item', level: 'manage' });
   for (const method of [
     'access.users.list',
     'access.roles.list',
