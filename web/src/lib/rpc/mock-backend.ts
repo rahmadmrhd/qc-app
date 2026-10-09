@@ -2,9 +2,9 @@ import { setPlatform_ } from '@gas/core/platform';
 import { handleRpc_ } from '@gas/core/router';
 import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
-import { appendAudit_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
 import { getRoutes_ } from '@gas/routes';
-import { role, user } from '@gas-test/access-fixtures';
+import { location, role, user } from '@gas-test/access-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
 
@@ -21,10 +21,11 @@ export const MOCK_USERS: MockUser[] = [
   { email: MOCK_ADMIN_EMAIL, label: 'Super Admin' },
   {
     email: 'qc.staff@qc.local',
-    label: 'QC Staff (item: ubah, serah terima: ubah, stok: lihat)',
+    label:
+      'QC Staff (Jakarta: item ubah, serah terima ubah, stok lihat; Bandung: serah terima lihat, stok lihat)',
   },
-  { email: 'wh.staff@qc.local', label: 'WH Staff (serah terima: lihat, stok: lihat)' },
-  { email: 'access.viewer@qc.local', label: 'Pemantau Akses (akses: lihat)' },
+  { email: 'wh.staff@qc.local', label: 'WH Staff (Bandung saja: serah terima lihat, stok lihat)' },
+  { email: 'access.viewer@qc.local', label: 'Pemantau Akses (Semua lokasi: akses lihat)' },
   { email: 'nonaktif@qc.local', label: 'User nonaktif' },
   { email: 'asing@gmail.com', label: 'Email tidak terdaftar' },
 ];
@@ -65,11 +66,26 @@ function ensureMockBackend(): void {
   insertRole_(
     role({ id: 'role-access-viewer', name: 'Pemantau Akses', permissions: { access: 'view' } }),
   );
+  insertLocation_(location({ id: 'loc-jkt', code: 'JKT', name: 'Jakarta' }));
+  insertLocation_(location({ id: 'loc-bdg', code: 'BDG', name: 'Bandung' }));
   insertUser_(
-    user({ id: 'user-qc', email: 'qc.staff@qc.local', name: 'Siti QC', roleIds: ['role-qc'] }),
+    user({
+      id: 'user-qc',
+      email: 'qc.staff@qc.local',
+      name: 'Siti QC',
+      assignments: [
+        { locationId: 'loc-jkt', roleIds: ['role-qc'] },
+        { locationId: 'loc-bdg', roleIds: ['role-wh'] },
+      ],
+    }),
   );
   insertUser_(
-    user({ id: 'user-wh', email: 'wh.staff@qc.local', name: 'Andi Gudang', roleIds: ['role-wh'] }),
+    user({
+      id: 'user-wh',
+      email: 'wh.staff@qc.local',
+      name: 'Andi Gudang',
+      assignments: [{ locationId: 'loc-bdg', roleIds: ['role-wh'] }],
+    }),
   );
   insertUser_(
     user({
@@ -96,20 +112,32 @@ function seedMockAudit(): void {
   const actor = MOCK_ADMIN_EMAIL;
   const qcUser = { email: 'qc.staff@qc.local', name: 'Siti QC', status: 'active' };
   appendAudit_({
+    ts: '2026-10-07T07:30:00.000Z',
+    actor,
+    action: 'location.create',
+    target: 'JKT',
+    before: null,
+    after: { code: 'JKT', name: 'Jakarta', status: 'active' },
+  });
+  appendAudit_({
     ts: '2026-10-07T08:00:00.000Z',
     actor,
     action: 'user.create',
     target: qcUser.email,
     before: null,
-    after: { ...qcUser, roleIds: ['role-qc'] },
+    after: { ...qcUser, assignments: { '*': ['role-qc'] } },
   });
   appendAudit_({
     ts: '2026-10-07T09:30:00.000Z',
     actor,
     action: 'user.update',
     target: qcUser.email,
-    before: { ...qcUser, roleIds: ['role-qc'] },
-    after: { ...qcUser, name: 'Siti Rahma', roleIds: ['role-qc', 'role-wh'] },
+    before: { ...qcUser, assignments: { '*': ['role-qc'] } },
+    after: {
+      ...qcUser,
+      name: 'Siti Rahma',
+      assignments: { 'loc-jkt': ['role-qc'], 'loc-bdg': ['role-wh'] },
+    },
   });
   appendAudit_({
     ts: '2026-10-07T10:15:00.000Z',

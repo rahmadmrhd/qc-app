@@ -3,13 +3,14 @@ import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import { History, House, ShieldCheck, Users } from 'lucide-react';
-import { can } from '@/modules/auth/permissions';
+import { canAnywhere } from '@/modules/auth/permissions';
 
 export interface NavItem {
   label: string;
   to: LinkProps['to'];
   icon: LucideIcon;
-  permission?: { module: ModuleKey; level: Level };
+  /** `scope: 'location'` = tampil bila izin cukup di minimal satu lokasi aktif terpilih. */
+  permission?: { module: ModuleKey; level: Level; scope?: 'location' };
 }
 
 export interface NavGroup {
@@ -44,12 +45,23 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export function visibleNavGroups(groups: readonly NavGroup[], me: MeDto): NavGroup[] {
+export function visibleNavGroups(
+  groups: readonly NavGroup[],
+  me: MeDto,
+  activeLocationIds?: readonly string[],
+): NavGroup[] {
   return groups
     .map((group) => ({
       ...group,
       items: group.items.filter(
-        (item) => !item.permission || can(me, item.permission.module, item.permission.level),
+        (item) =>
+          !item.permission ||
+          canAnywhere(
+            me,
+            item.permission.module,
+            item.permission.level,
+            item.permission.scope === 'location' ? activeLocationIds : undefined,
+          ),
       ),
     }))
     .filter((group) => group.items.length > 0);

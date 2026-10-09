@@ -13,6 +13,7 @@ import { UserForm } from '@/modules/access/components/user-form';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
 import {
+  locationsQueryOptions,
   rolesQueryOptions,
   usersQueryOptions,
   useSaveUser,
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/_app/access/users')({
     await Promise.all([
       context.queryClient.ensureQueryData(usersQueryOptions()),
       context.queryClient.ensureQueryData(rolesQueryOptions()),
+      context.queryClient.ensureQueryData(locationsQueryOptions()),
     ]);
   },
   component: UsersPage,
@@ -47,12 +49,14 @@ function UsersPage() {
   const canManage = can(me, 'access', 'manage');
   const { data: users } = useSuspenseQuery(usersQueryOptions());
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
+  const { data: locations } = useSuspenseQuery(locationsQueryOptions());
   const saveUser = useSaveUser();
   const setStatus = useSetUserStatus();
   const [editing, setEditing] = useState<UserDto | 'new' | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
+  const locationNames = new Map(locations.map((location) => [location.id, location.name]));
   const visible = filterUsers(users, { q: search.q ?? '', status: search.status ?? 'all' });
 
   function closeDialog() {
@@ -124,6 +128,7 @@ function UsersPage() {
       <UsersTable
         users={visible}
         roleNames={roleNames}
+        locationNames={locationNames}
         canManage={canManage}
         currentEmail={me.email}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
@@ -144,6 +149,7 @@ function UsersPage() {
                 roles.map((role) => role.id),
               )}
               roles={roles}
+              locations={locations}
               submitError={submitError}
               onSubmit={handleSubmit}
               onCancel={closeDialog}

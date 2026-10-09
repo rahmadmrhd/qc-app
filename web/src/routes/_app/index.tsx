@@ -5,7 +5,7 @@ import { MODULE_LINKS } from '@/app/module-links';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { can } from '@/modules/auth/permissions';
+import { canAnywhere } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 
 export const Route = createFileRoute('/_app/')({ component: HomePage });
@@ -27,7 +27,7 @@ function ModuleCard({ module }: { module: ModuleKey }) {
 
 function HomePage() {
   const me = useMe();
-  const modules = MODULES.filter((module) => can(me, module, 'view'));
+  const modules = MODULES.filter((module) => canAnywhere(me, module, 'view'));
   return (
     <div className="space-y-6">
       <div>
