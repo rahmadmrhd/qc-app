@@ -27,12 +27,22 @@ function driveFolderId_(): string {
   return id;
 }
 
-/** Dipakai `setup`; idempoten. Membuat folder baru bila yang tercatat dihapus atau ada di tempat sampah. */
+/**
+ * Dipakai `setup`; idempoten. Membuat folder **hanya bila `DRIVE_FOLDER_ID` kosong**. Bila terisi tetapi
+ * foldernya tak dapat diakses (dihapus, tempat sampah, atau akun pemilik tak punya akses), melempar galat dan
+ * TIDAK menimpa properti: menimpa akan memutus semua gambar yang sudah tercatat (FS13).
+ */
 export function ensureDriveFolder_(): string {
   return platform_().withLock(() => {
     const platform = platform_();
     const existing = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim();
-    if (existing && platform.driveFolderExists(existing)) return existing;
+    if (existing) {
+      if (platform.driveFolderExists(existing)) return existing;
+      throw appError_(
+        'INTERNAL',
+        `Folder Drive ${existing} tidak dapat diakses (dihapus, ada di tempat sampah, atau akun pemilik script belum punya akses Editor).`,
+      );
+    }
     const id = platform.driveCreateFolder(DRIVE_FOLDER_NAME);
     platform.setProperty(DRIVE_FOLDER_PROPERTY, id);
     return id;

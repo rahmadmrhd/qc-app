@@ -1,4 +1,4 @@
-import { missingConfigKeys_ } from '@gas/core/config';
+import { missingConfigKeys_, syncToken_ } from '@gas/core/config';
 import { openTable_ } from '@gas/core/db';
 import { platform_ } from '@gas/core/platform';
 import {
@@ -13,6 +13,7 @@ import { BRANDS_TABLE } from '@gas/modules/brand/repo';
 import { FILES_TABLE } from '@gas/modules/files/repo';
 import { DRIVE_FOLDER_NAME, ensureDriveFolder_ } from '@gas/modules/files/service';
 import { ITEMS_TABLE } from '@gas/modules/item/repo';
+import { SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
 
 export function runSetup_(): string {
   const lines: string[] = [];
@@ -49,7 +50,27 @@ export function runSetup_(): string {
   const assigned = migrateUserAssignments_();
   if (assigned > 0)
     lines.push(`users: ${assigned} user lama dimigrasi ke penugasan "Semua lokasi".`);
-  const folderId = ensureDriveFolder_();
-  lines.push(`Folder Drive "${DRIVE_FOLDER_NAME}" siap (${folderId}).`);
+  try {
+    const folderId = ensureDriveFolder_();
+    lines.push(`Folder Drive "${DRIVE_FOLDER_NAME}" siap (${folderId}).`);
+  } catch (error) {
+    const property = platform_().getProperty('DRIVE_FOLDER_ID')?.trim() ?? '';
+    lines.push(
+      `Folder Drive TIDAK dapat diakses (${property}). Properti DRIVE_FOLDER_ID tidak diubah. ` +
+        'Periksa: akun pemilik script punya akses Editor ke folder itu dan folder tidak di tempat sampah; ' +
+        'atau kosongkan DRIVE_FOLDER_ID agar folder baru dibuat (gambar lama tidak akan tampil).',
+    );
+    platform_().logError(`setup: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const token = syncToken_();
+  if (token === '') {
+    lines.push('SYNC_API_TOKEN belum diset: sinkronisasi QC Desktop nonaktif.');
+  } else if (token.length < SYNC_TOKEN_MIN_LENGTH) {
+    lines.push(
+      `SYNC_API_TOKEN kurang dari ${SYNC_TOKEN_MIN_LENGTH} karakter: sinkronisasi dinonaktifkan sampai token diperpanjang.`,
+    );
+  } else {
+    lines.push(`SYNC_API_TOKEN terisi (${token.length} karakter).`);
+  }
   return lines.join('\n');
 }

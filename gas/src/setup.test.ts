@@ -236,3 +236,40 @@ test('setup membuat folder Drive sekali dan melaporkannya; diulang tidak menggan
   expect(platform.folders.size).toBe(1);
   expect(second).toContain(platform.getProperty('DRIVE_FOLDER_ID') ?? 'x');
 });
+
+const ALL_PROPERTIES = {
+  SPREADSHEET_ID: 'x',
+  OAUTH_CLIENT_ID: 'a',
+  OAUTH_CLIENT_SECRET: 'b',
+  OAUTH_REDIRECT_URI: 'c',
+  SESSION_SECRET: 'd',
+  ADMIN_EMAIL: 'e@gmail.com',
+};
+
+test('setup tidak menimpa DRIVE_FOLDER_ID yang tidak dapat diakses dan menyebut penyebabnya (FS13)', () => {
+  const platform = createMemoryPlatform({
+    properties: { ...ALL_PROPERTIES, DRIVE_FOLDER_ID: 'folder-hilang' },
+  });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(platform.properties.get('DRIVE_FOLDER_ID')).toBe('folder-hilang');
+  expect(platform.folders.size).toBe(0);
+  expect(report).toContain('TIDAK dapat diakses');
+  expect(report).toContain('folder-hilang');
+});
+
+test('setup melaporkan status SYNC_API_TOKEN: kosong, pendek, dan cukup', () => {
+  const run = (token?: string) => {
+    const platform = createMemoryPlatform({
+      properties:
+        token === undefined ? ALL_PROPERTIES : { ...ALL_PROPERTIES, SYNC_API_TOKEN: token },
+    });
+    setPlatform_(platform);
+    return runSetup_();
+  };
+  expect(run()).toContain('SYNC_API_TOKEN belum diset');
+  expect(run('pendek')).toContain('kurang dari 32 karakter');
+  const ok = run('x'.repeat(40));
+  expect(ok).toContain('SYNC_API_TOKEN terisi');
+  expect(ok).not.toContain('x'.repeat(40));
+});

@@ -212,16 +212,26 @@ test('readFile_ menolak berkas yang drive_id-nya bukan anak folder aplikasi', ()
   expect(captureAppError(() => readFile_({ id: 'f-luar' })).code).toBe('NOT_FOUND');
 });
 
-test('ensureDriveFolder_ membuat folder baru bila folder lama dihapus atau ada di tempat sampah', () => {
+test('ensureDriveFolder_ TIDAK menimpa DRIVE_FOLDER_ID yang tidak dapat diakses (FS13)', () => {
   const first = ensureDriveFolder_();
   platform.trashedFolders.add(first);
-  const second = ensureDriveFolder_();
-  expect(second).not.toBe(first);
-  expect(platform.getProperty('DRIVE_FOLDER_ID')).toBe(second);
-  platform.folders.delete(second);
-  const third = ensureDriveFolder_();
-  expect(third).not.toBe(second);
-  expect(ensureDriveFolder_()).toBe(third);
+  const error = captureAppError(() => ensureDriveFolder_());
+  expect(error.code).toBe('INTERNAL');
+  expect(error.message).toContain('tidak dapat diakses');
+  expect(platform.getProperty('DRIVE_FOLDER_ID')).toBe(first);
+  expect(platform.folders.size).toBe(1);
+  platform.trashedFolders.delete(first);
+  expect(ensureDriveFolder_()).toBe(first);
+});
+
+test('driveFileInfo: berkas anak folder terbaca; folder lain, tak ada, dan id sembarang null', () => {
+  const folder = ensureDriveFolder_();
+  const other = platform.driveCreateFolder('Lain');
+  const inside = platform.driveCreateFile(folder, 'a.png', 'image/png', PNG);
+  const outside = platform.driveCreateFile(other, 'b.png', 'image/png', PNG);
+  expect(platform.driveFileInfo(inside, folder)).toEqual({ mime: 'image/png', size: 16 });
+  expect(platform.driveFileInfo(outside, folder)).toBeNull();
+  expect(platform.driveFileInfo('tidak-ada', folder)).toBeNull();
 });
 
 test('attachFiles_ atomik: batch yang gagal tidak mengubah pemilik berkas mana pun', () => {
