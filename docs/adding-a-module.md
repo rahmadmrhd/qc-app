@@ -59,3 +59,6 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 - **Tampil**: `useFileUrl(id)` (cache lama, data URL). Server hanya membaca berkas yang tercatat di sheet `files`; klien tidak pernah mengirim Drive id.
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
 - **Drive** hanya diakses lewat `platform_()` (`driveCreateFolder`, `driveCreateFile`, `driveReadFile`); jangan memanggil `DriveApp` langsung.
+
+## Sumber daya sinkron
+Bila modul perlu disinkronkan dengan QC Desktop, ikuti bagian 5 `docs/api/desktop-sync.md`. Handler sinkron tidak menerima `UserContext`; penulisan memakai fungsi domain yang sama dengan RPC web (mis. `writeItem_`) agar keunikan, audit, dan `sync_rev` konsisten.

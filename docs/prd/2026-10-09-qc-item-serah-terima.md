@@ -235,10 +235,11 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - [x] Halaman daftar dan detail item; audit dengan diff yang terbaca.
 
 **Fase B2**
-- [ ] `doPost` dan kerangka (token, pembatas percobaan salah, amplop, tabel rute sinkron) dites, termasuk token salah dan pembatasan.
-- [ ] `sync.items.pull` dan `sync.items.push` dengan semua field, hasil per item, dan konflik dua arah; tes kesesuaian terhadap contoh di `docs/api/desktop-sync.md`.
-- [ ] `sync.file.get` terbatas pada folder aplikasi.
-- [ ] `setup` tidak menimpa `DRIVE_FOLDER_ID` yang tidak dapat diakses (FS13).
+- [x] `doPost` dan kerangka (token, pembatas percobaan salah, amplop, tabel rute sinkron) dites, termasuk token salah dan pembatasan.
+- [x] `sync.items.pull` dan `sync.items.push` dengan semua field, hasil per item, dan konflik dua arah; tes kesesuaian terhadap contoh di `docs/api/desktop-sync.md`.
+- [x] `sync.file.get` terbatas pada folder aplikasi.
+- [x] `setup` tidak menimpa `DRIVE_FOLDER_ID` yang tidak dapat diakses (FS13).
+- [x] `sync.brands.pull` dan `sync.brands.push` (merk master dua arah).
 - [ ] Migrasi awal dari MySQL dicoba end-to-end dengan QC Desktop dan hasil pull cocok dengan MySQL.
 - [ ] Tim Desktop menyetujui `docs/api/desktop-sync.md`.
 

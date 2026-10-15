@@ -46,3 +46,12 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 40 | Ketik merk dengan huruf berbeda ("ubiquiti") untuk merk yang ada | Petunjuk memakai merk yang sudah ada; tidak ada merk kedua | FI8 |
 | 41 | Di halaman Merk ganti nama merk yang dipakai beberapa item | Nama di daftar dan detail semua item berubah; ganti ke nama merk lain ditolak; `brand.update` di Log Audit | FI8 |
 | 42 | Nonaktifkan merk lalu buat item baru dengan merk itu | Ditolak: "aktifkan dulu di halaman Merk" | FI8 |
+| 43 | Isi `DRIVE_FOLDER_ID` dengan id folder yang tidak ada lalu jalankan `setup` | Laporan "Folder Drive TIDAK dapat diakses"; properti tidak berubah; tidak ada folder baru | FS13 |
+| 44 | Isi `SYNC_API_TOKEN` 40 karakter lalu `setup` | Laporan "SYNC_API_TOKEN terisi (40 karakter)"; item/merk lama diberi revisi ("N baris diberi revisi sinkron") | FS2, FS11 |
+| 45 | `curl -L --data '{"v":1,"method":"sync.ping","token":"<token>","payload":null}' <URL /exec>` | `{"ok":true,"data":{"apiVersion":1,...,"resources":["brands","items"]}}` | FS1 |
+| 46 | Kirim 10 token salah berturut-turut, lalu satu dengan token benar | Semua `UNAUTHENTICATED`; setelah 10 kali, token benar pun ditolak ±10 menit; setelah itu pulih (kedaluwarsa cache) | FS2 |
+| 47 | `sync.items.pull` dengan `include` penuh dari `sinceRev: 0` sampai `hasMore: false` | Semua item tepat sekali; `images` berisi id Drive; `detail` memakai `drive:` | FS4 |
+| 48 | `sync.items.push` item baru dengan gambar dari folder aplikasi dan Markdown `drive:` | `created`; item muncul di Data Item dengan gambar tampil; audit `sync:desktop` | FS5, FS8, FS10 |
+| 49 | Ulangi push yang sama; ubah detail di web lalu push dengan `baseRev` lama | `unchanged`; lalu `conflict` dengan `current`; Log Audit memuat `item.sync.conflict` | FS5, FS6 |
+| 50 | `sync.file.get` untuk id di folder dan id di luar folder | Isi base64 dan `NOT_FOUND` | FS9 |
+| 51 | Ganti nama merk di web lalu pull item | Semua item merk itu muncul lagi dengan nama baru | FS11 |
