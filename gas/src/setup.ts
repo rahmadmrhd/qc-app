@@ -13,6 +13,7 @@ import { BRANDS_TABLE } from '@gas/modules/brand/repo';
 import { CUSTOMERS_TABLE } from '@gas/modules/customer/repo';
 import { FILES_TABLE } from '@gas/modules/files/repo';
 import { DRIVE_FOLDER_NAME, ensureDriveFolder_ } from '@gas/modules/files/service';
+import { HANDOVER_LINES_TABLE, HANDOVERS_TABLE } from '@gas/modules/handover/repo';
 import { ITEMS_TABLE } from '@gas/modules/item/repo';
 import { assignInitialRevs_, SYNC_STATE_TABLE } from '@gas/modules/sync/state';
 import { SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
@@ -45,6 +46,8 @@ export function runSetup_(): string {
     ITEMS_TABLE,
     SYNC_STATE_TABLE,
     CUSTOMERS_TABLE,
+    HANDOVERS_TABLE,
+    HANDOVER_LINES_TABLE,
   ]) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
