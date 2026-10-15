@@ -7,16 +7,26 @@ import type {
 } from '@gas/core/platform';
 import { base64ByteLength } from '@shared/files';
 
-/** Meniru Google Sheets: apostrof depan = teks literal; string "=" tanpa apostrof dievaluasi jadi formula. */
-function storeCell(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
+const NUMBER_LIKE = /^[+-]?d+(.d+)?([eE][+-]?d+)?$/;
+const DATE_LIKE = /^d{4}-d{2}-d{2}(T[d:.]+Z?)?$/;
+
+/**
+ * Meniru Google Sheets. Sel berformat teks ('@') menyimpan string apa adanya. Selain itu: apostrof depan =
+ * teks literal; string "=" dievaluasi jadi formula; teks mirip angka/tanggal diubah menjadi angka/Date.
+ */
+function storeCell(value: unknown, asText: boolean): unknown {
+  if (typeof value !== 'string' || asText) return value;
   if (value.startsWith("'")) return value.slice(1);
   if (value.startsWith('=')) return '#FORMULA';
+  if (NUMBER_LIKE.test(value)) return Number(value);
+  if (DATE_LIKE.test(value) && !Number.isNaN(Date.parse(value))) return new Date(value);
   return value;
 }
 
 export class MemorySheet implements SheetLike {
   rows: unknown[][];
+  /** Sel ("baris,kolom", 1-based) yang berformat teks. */
+  private readonly textCells = new Set<string>();
 
   constructor(rows: unknown[][] = []) {
     this.rows = rows;
@@ -32,6 +42,16 @@ export class MemorySheet implements SheetLike {
 
   getRange(row: number, column: number, numRows: number, numColumns: number): RangeLike {
     return {
+      setNumberFormat: (format: string) => {
+        for (let r = 0; r < numRows; r++) {
+          for (let c = 0; c < numColumns; c++) {
+            const key = `${row + r},${column + c}`;
+            if (format === '@') this.textCells.add(key);
+            else this.textCells.delete(key);
+          }
+        }
+        return undefined;
+      },
       getValues: () => {
         const out: unknown[][] = [];
         for (let r = 0; r < numRows; r++) {
@@ -48,7 +68,10 @@ export class MemorySheet implements SheetLike {
           while (this.rows.length <= index) this.rows.push([]);
           const target = this.rows[index] ?? [];
           line.forEach((value, c) => {
-            target[column - 1 + c] = storeCell(value);
+            target[column - 1 + c] = storeCell(
+              value,
+              this.textCells.has(`${row + r},${column + c}`),
+            );
           });
           this.rows[index] = target;
         });
@@ -57,7 +80,7 @@ export class MemorySheet implements SheetLike {
   }
 
   appendRow(values: unknown[]): void {
-    this.rows.push(values.map(storeCell));
+    this.rows.push(values.map((value) => storeCell(value, false)));
   }
 
   deleteRow(row: number): void {

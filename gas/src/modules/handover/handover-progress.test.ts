@@ -103,7 +103,8 @@ test('selesai per task: hanya baris yang belum penuh diisi; satu handover.comple
   progress('la', 5);
   const out = call('qc@gmail.com', 'handovers.completeAll', ref);
   expect(out.data).toMatchObject({ status: 'done', doneUnits: 8, totalUnits: 8 });
-  expect(audits()).toEqual(['handover.progress', 'handover.complete']);
+  // Setiap baris yang diisi penuh meninggalkan jejak progres sendiri, lalu satu handover.complete.
+  expect(audits()).toEqual(['handover.progress', 'handover.progress', 'handover.complete']);
   expect(doneOf('lb')).toBe(3);
   expect(call('qc@gmail.com', 'handovers.completeAll', ref).error.code).toBe('CONFLICT');
 });

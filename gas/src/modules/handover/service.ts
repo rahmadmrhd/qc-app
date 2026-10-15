@@ -506,7 +506,7 @@ export function completeLine_(input: CompleteLineInput, actor: ActorRef): Handov
   });
 }
 
-/** Selesai per task: semua baris yang belum penuh diisi penuh; satu audit `handover.complete` (bukan per baris). */
+/** Selesai per task: semua baris yang belum penuh diisi penuh; tiap baris tercatat `handover.progress` dan satu `handover.complete` menutup task. */
 export function completeAll_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_(input);
@@ -514,11 +514,7 @@ export function completeAll_(input: HandoverRefInput, actor: ActorRef): Handover
     const now = nowIso_();
     const names = locationNameMap_();
     const before = handoverSnapshot_(handover, lines, names);
-    for (const line of lines) {
-      if (line.doneQty < line.qty) {
-        updateHandoverLine_({ ...line, doneQty: line.qty, doneAt: now, doneBy: actor.email });
-      }
-    }
+    for (const line of lines) writeProgress_(handover, line, line.qty, actor, now);
     const touched: HandoverRecord = { ...handover, updatedAt: now, updatedBy: actor.email };
     updateHandover_(touched);
     const fresh = loadHandoverForWrite_(input);

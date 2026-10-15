@@ -1,6 +1,8 @@
 export interface RangeLike {
   getValues(): unknown[][];
   setValues(values: unknown[][]): unknown;
+  /** Format angka/teks sel; '@' = teks biasa (nilai tidak ditafsirkan ulang sebagai angka, tanggal, atau formula). */
+  setNumberFormat(format: string): unknown;
 }
 
 export interface SheetLike {
