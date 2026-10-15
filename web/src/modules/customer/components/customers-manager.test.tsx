@@ -61,3 +61,17 @@ test('onRename yang melempar tidak membuat tombol macet; nonaktifkan/aktifkan me
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan Lama' }));
   expect(onToggleStatus).toHaveBeenCalledWith(customers[1]);
 });
+
+test('ganti nama: isian terfokus, Enter menyimpan, Escape membatalkan, galat terhubung (aria)', async () => {
+  const { onRename } = renderManager();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah PT Maju' }));
+  const input = screen.getByLabelText('Nama baru untuk PT Maju');
+  expect(input).toHaveFocus();
+  onRename.mockResolvedValueOnce('Nama customer sudah dipakai');
+  await userEvent.type(input, ' Jaya{Enter}');
+  const alert = await screen.findByRole('alert');
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute('aria-describedby', alert.id);
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByLabelText('Nama baru untuk PT Maju')).toBeNull();
+});

@@ -1,6 +1,6 @@
 import { ITEM_LIMITS } from '@shared/items';
 import type { BrandDto } from '@shared/rpc';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,11 @@ export function BrandsManager({
   const [editName, setEditName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const editRef = useRef<HTMLInputElement>(null);
+  // Mengubah: fokus langsung ke isian agar pengguna keyboard tidak harus mencarinya.
+  useEffect(() => {
+    if (editingId !== null) editRef.current?.focus();
+  }, [editingId]);
 
   /** Galat tak terduga (mis. jaringan) menjadi pesan, bukan membuat `busy` macet. */
   async function saveSafely(input: { id?: string; name: string }): Promise<string | null> {
@@ -81,7 +86,10 @@ export function BrandsManager({
               placeholder="Nama merk baru"
               maxLength={ITEM_LIMITS.brand}
               value={newName}
-              onChange={(event) => setNewName(event.target.value)}
+              onChange={(event) => {
+                setNewName(event.target.value);
+                setNewError(null);
+              }}
             />
             <Button type="submit" disabled={busy || newName.trim() === ''}>
               Tambah merk
@@ -116,19 +124,32 @@ export function BrandsManager({
               <TableRow key={brand.id}>
                 <TableCell className="font-medium">
                   {editingId === brand.id ? (
-                    <div className="space-y-1">
+                    <form
+                      noValidate
+                      className="space-y-1"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (!busy && editName.trim() !== '') void rename(brand.id);
+                      }}
+                    >
                       <Input
+                        ref={editRef}
                         aria-label={`Nama baru untuk ${brand.name}`}
+                        aria-invalid={editError ? true : undefined}
+                        aria-describedby={editError ? 'brand-edit-error' : undefined}
                         maxLength={ITEM_LIMITS.brand}
                         value={editName}
                         onChange={(event) => setEditName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setEditingId(null);
+                        }}
                       />
                       {editError ? (
-                        <p role="alert" className="text-sm text-destructive">
+                        <p id="brand-edit-error" role="alert" className="text-sm text-destructive">
                           {editError}
                         </p>
                       ) : null}
-                    </div>
+                    </form>
                   ) : (
                     brand.name
                   )}

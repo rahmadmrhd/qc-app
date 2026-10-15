@@ -1,6 +1,6 @@
 import { HANDOVER_LIMITS } from '@shared/handover';
 import type { CustomerDto } from '@shared/rpc';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,11 @@ export function CustomersManager({
   // Galat milik satu baris (id), supaya tidak tampil di baris lain.
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const editRef = useRef<HTMLInputElement>(null);
+  // Mengubah: fokus langsung ke isian agar pengguna keyboard tidak harus mencarinya.
+  useEffect(() => {
+    if (editingId !== null) editRef.current?.focus();
+  }, [editingId]);
 
   async function save(id: string) {
     setBusy(true);
@@ -71,19 +76,34 @@ export function CustomersManager({
             <TableRow key={customer.id}>
               <TableCell className="font-medium">
                 {editingId === customer.id ? (
-                  <div className="space-y-1">
+                  <form
+                    noValidate
+                    className="space-y-1"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!busy && name.trim() !== '') void save(customer.id);
+                    }}
+                  >
                     <Input
+                      ref={editRef}
                       aria-label={`Nama baru untuk ${customer.name}`}
+                      aria-invalid={error?.id === customer.id ? true : undefined}
+                      aria-describedby={
+                        error?.id === customer.id ? 'customer-edit-error' : undefined
+                      }
                       maxLength={HANDOVER_LIMITS.customerName}
                       value={name}
                       onChange={(event) => setName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') setEditingId(null);
+                      }}
                     />
                     {error?.id === customer.id ? (
-                      <p role="alert" className="text-sm text-destructive">
+                      <p id="customer-edit-error" role="alert" className="text-sm text-destructive">
                         {error.message}
                       </p>
                     ) : null}
-                  </div>
+                  </form>
                 ) : (
                   customer.name
                 )}
