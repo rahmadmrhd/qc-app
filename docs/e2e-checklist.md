@@ -62,7 +62,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 56 | Ketik tipe di luar katalog | "Tipe tidak ditemukan di katalog"; tautan "Tambah item baru" hanya untuk user `item: edit`; tipe tak dikenal tidak dapat disimpan | FH2, FH3 |
 | 57 | Login QC (`qc: edit`): buka task; ubah qty selesai satu tipe (Tab), "Selesai" per tipe, lalu "Selesaikan semua" (konfirmasi) | Status Baru → Dikerjakan → Selesai; nama dan waktu per baris tampil; audit `handover.progress` dan **satu** `handover.complete` | FQ1–FQ4 |
 | 58 | QC mengisi qty selesai di atas target atau pecahan | Ditolak, pesan "Harus bilangan bulat 0–n"; tidak tersimpan | FQ1 |
-| 59 | Buka task Selesai atau Dibatalkan sebagai WH dan QC | Kontrol ubah/progres/batal tidak tampil; panggilan langsung ke RPC → `CONFLICT` | FH7, FQ6 |
+| 59 | Buka task Dibatalkan sebagai WH dan QC; lalu task Selesai | Dibatalkan: kontrol ubah/progres/batal tidak tampil, RPC langsung → `CONFLICT`. Selesai: Ubah dan koreksi qty tetap ada (menurunkan qty selesai atau menaikkan target membuka lagi), Selesaikan semua dan Batalkan tidak tampil | FH7, FQ6 |
 | 60 | WH ubah task: turunkan qty di bawah qty selesai; hapus baris yang sudah ada progres | Ditolak dengan pesan di bawah daftar baris; baris tanpa progres boleh dihapus; audit `handover.update` | FH7 |
 | 61 | WH (`handover: manage`) batalkan task (konfirmasi); WH `edit` saja | Task Dibatalkan, baca saja, audit `handover.cancel`; WH `edit` tidak melihat tombol Batalkan | FH8 |
 | 62 | User dengan akses lokasi A saja: pilih lokasi lain / buka URL task lokasi B | Tidak ada data lokasi B; detail menampilkan "Task tidak ditemukan di lokasi aktif"; panggilan RPC ke lokasi B → `FORBIDDEN` | FH1, FH6 |

@@ -190,17 +190,16 @@ export function loadHandoverForWrite_(ref: HandoverRefInput): {
   return { handover, lines };
 }
 
-/** Task Selesai/Dibatalkan tidak dapat diubah (WH maupun QC). */
-export function assertHandoverOpen_(
+/**
+ * Hanya task Dibatalkan yang terkunci (WH maupun QC). Selesai hanyalah status turunan dari qty selesai vs target:
+ * WH tetap dapat mengubah isi task (menaikkan qty membuka lagi) dan QC dapat mengoreksi qty selesai.
+ */
+export function assertHandoverNotCancelled_(
   handover: HandoverRecord,
   lines: readonly HandoverLineRecord[],
 ): void {
-  const status = deriveHandoverStatus(handover.status, lines);
-  if (status === 'cancelled') {
+  if (deriveHandoverStatus(handover.status, lines) === 'cancelled') {
     throw appError_('CONFLICT', 'Task sudah dibatalkan dan tidak dapat diubah');
-  }
-  if (status === 'done') {
-    throw appError_('CONFLICT', 'Task sudah selesai dan tidak dapat diubah');
   }
 }
 
@@ -213,7 +212,7 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
     const loaded = input.id
       ? loadHandoverForWrite_({ id: input.id, locationId: input.locationId })
       : null;
-    if (loaded) assertHandoverOpen_(loaded.handover, loaded.lines);
+    if (loaded) assertHandoverNotCancelled_(loaded.handover, loaded.lines);
     if (
       loaded &&
       input.expectedUpdatedAt &&
@@ -486,7 +485,7 @@ function finishProgress_(
 export function setProgress_(input: SetProgressInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
     const line = lines.find((row) => row.id === input.lineId);
     if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
     if (input.doneQty > line.qty) {
@@ -505,7 +504,7 @@ export function completeLine_(input: CompleteLineInput, actor: ActorRef): Handov
   const { id, locationId, lineId } = input;
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_({ id, locationId });
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
     const line = lines.find((row) => row.id === lineId);
     if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
     const now = nowIso_();
@@ -520,7 +519,10 @@ export function completeLine_(input: CompleteLineInput, actor: ActorRef): Handov
 export function completeAll_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
+    if (deriveHandoverStatus(handover.status, lines) === 'done') {
+      throw appError_('CONFLICT', 'Task sudah selesai');
+    }
     const now = nowIso_();
     const names = locationNameMap_();
     const before = handoverSnapshot_(handover, lines, names);

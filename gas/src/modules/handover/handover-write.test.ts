@@ -272,13 +272,16 @@ test('ubah task: task Dibatalkan tidak dapat diubah (CONFLICT)', () => {
   });
 });
 
-test('task Selesai tidak dapat diubah; task milik lokasi lain tidak ditemukan walau user punya izin di lokasi yang diklaim', () => {
+test('task Selesai tetap dapat diubah WH (naikkan qty membuka lagi); task milik lokasi lain tidak ditemukan walau user punya izin di lokasi yang diklaim', () => {
   insertCustomer_(customer('PT Maju'));
   insertHandover_(handover({ id: 'done', number: 'ST-20261015-001', locationId: ENV.locA }));
   insertHandoverLine_(
     handoverLine({ id: 'ld', handoverId: 'done', itemId: ENV.itemA, qty: 2, doneQty: 2 }),
   );
-  expect(save({ id: 'done' }).error).toMatchObject({ code: 'CONFLICT' });
+  const reopened = save({ id: 'done', lines: [{ itemId: ENV.itemA, qty: 5 }] });
+  expect(reopened.ok).toBe(true);
+  expect(reopened.data.status).toBe('in_progress');
+  expect(save({ id: 'done', note: 'catatan baru' }).data.note).toBe('catatan baru');
   insertHandover_(handover({ id: 'inb', number: 'ST-20261015-002', locationId: ENV.locB }));
   insertHandoverLine_(handoverLine({ id: 'lb2', handoverId: 'inb', itemId: ENV.itemA, qty: 2 }));
   // multi@ boleh menulis di A dan B; mengklaim A untuk task milik B → NOT_FOUND
@@ -363,7 +366,9 @@ test('Ubah yang membuat task Selesai (hapus baris terakhir yang belum penuh) men
     before: { status: 'in_progress' },
     after: { status: 'done' },
   });
-  expect(save({ id: 't1', note: 'x' }).error.code).toBe('CONFLICT'); // kini terkunci
+  // Selesai tidak mengunci WH: ubah catatan tetap boleh dan tidak mencatat handover.complete lagi.
+  expect(save({ id: 't1', note: 'x' }).ok).toBe(true);
+  expect(audits().filter((action) => action === 'handover.complete')).toHaveLength(1);
 });
 
 test('Ubah yang tidak membuat task Selesai tidak mencatat handover.complete', () => {

@@ -10,7 +10,13 @@ import { SYNC_ACTOR } from '@shared/sync';
 import { isStaleWrite_, syncFailureResult_ } from './conflict';
 import { paginateByRev_, validateSyncPull_ } from './pull';
 import type { SyncPushEnvelope, WireCheck } from './wire';
-import { asSyncObject_, readSyncBaseRev_, readSyncBool_, readSyncId_ } from './wire';
+import {
+  asSyncObject_,
+  readSyncBaseRev_,
+  readSyncBool_,
+  readSyncId_,
+  rejectUnknownSyncFields_,
+} from './wire';
 
 export interface SyncBrandInput {
   uid?: string;
@@ -32,11 +38,14 @@ export function toWireBrand_(brand: BrandRecord): SyncWireBrand {
   };
 }
 
+const SYNC_BRAND_ENTRY_FIELDS = ['uid', 'id', 'name', 'active', 'baseRev'] as const;
+
 export function checkSyncBrand_(raw: unknown): WireCheck<SyncBrandInput> {
   const source = asSyncObject_(raw);
   if (!source) return { ok: false, fields: { _: 'Entri harus berupa objek' } };
   const fields: Record<string, string> = {};
   const value: SyncBrandInput = {};
+  rejectUnknownSyncFields_(source, SYNC_BRAND_ENTRY_FIELDS, fields);
   const uid = readSyncId_(source, 'uid', fields);
   if (uid !== undefined) value.uid = uid;
   const id = readSyncId_(source, 'id', fields);

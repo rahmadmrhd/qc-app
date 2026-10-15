@@ -58,7 +58,7 @@ function EditHandoverPage() {
   const task = detail.data;
   const editable =
     task !== undefined &&
-    (task.status === 'new' || task.status === 'in_progress') &&
+    task.status !== 'cancelled' &&
     canAt(me, 'handover', 'edit', task.locationId);
   return (
     <div className="max-w-3xl space-y-4">
@@ -74,7 +74,7 @@ function EditHandoverPage() {
         </p>
       ) : !editable ? (
         <p role="alert" className="text-sm text-destructive">
-          Task ini tidak dapat diubah (sudah selesai/dibatalkan atau Anda tidak punya izin ubah).{' '}
+          Task ini tidak dapat diubah (sudah dibatalkan atau Anda tidak punya izin ubah).{' '}
           <Link to="/handover/$handoverId" params={{ handoverId }} className="underline">
             Kembali
           </Link>

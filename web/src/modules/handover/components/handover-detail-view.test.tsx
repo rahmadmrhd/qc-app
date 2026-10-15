@@ -133,16 +133,17 @@ test('tanpa izin: tidak ada kontrol progres, Ubah, maupun Batalkan (WH view saja
   expect(screen.getByText('2 / 5')).toBeInTheDocument(); // progres tampil sebagai teks
 });
 
-test('task Selesai atau Dibatalkan: baca saja dengan keterangan; tidak ada aksi', () => {
+test('task Selesai: Ubah dan koreksi progres tetap tersedia; selesaikan semua dan batalkan tidak', () => {
   renderView({
     handover: { ...base, status: 'done', doneUnits: 8 },
     canProgress: true,
     canEdit: true,
     canCancel: true,
   });
-  expect(screen.getByText('Task sudah selesai dan tidak dapat diubah.')).toBeInTheDocument();
-  expect(screen.queryByLabelText(/Qty selesai/)).toBeNull();
-  expect(screen.queryByRole('button', { name: /Ubah|Batalkan task|Selesaikan semua/ })).toBeNull();
+  expect(screen.queryByText(/tidak dapat diubah/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Qty selesai Ubiquiti ES 24')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Batalkan task|Selesaikan semua/ })).toBeNull();
 });
 
 test('task Dibatalkan: keterangan dibatalkan', () => {

@@ -436,3 +436,16 @@ test('"drive:" di luar target gambar tidak diperiksa ke Drive dan tidak mengubah
   expect(out).toMatchObject({ status: 'created' });
   expect(listItems_()[0]?.detail).toBe('Lihat drive:tidak-ada dan [x](drive:juga-tidak)');
 });
+
+test('field yang tidak dikenal (salah ketik) ditolak per field, bukan diabaikan diam-diam', () => {
+  const [typo, ok] = results([
+    { ...BASE, id: '50', tipe: 'Typo', merek: 'Salah', detaill: 'x' },
+    { ...BASE, id: '51', tipe: 'Ok' },
+  ]);
+  expect(typo).toMatchObject({
+    status: 'invalid',
+    fields: { merek: 'Field tidak dikenal', detaill: 'Field tidak dikenal' },
+  });
+  expect(ok).toMatchObject({ status: 'created' });
+  expect(listItems_().map((i) => i.model)).toEqual(['Ok']);
+});

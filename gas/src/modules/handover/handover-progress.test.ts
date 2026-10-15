@@ -109,14 +109,13 @@ test('selesai per task: hanya baris yang belum penuh diisi; satu handover.comple
   expect(call('qc@gmail.com', 'handovers.completeAll', ref).error.code).toBe('CONFLICT');
 });
 
-test('FQ6: task Selesai atau Dibatalkan tidak dapat diubah QC (CONFLICT dengan pesan jelas)', () => {
+test('FQ2/FQ6: QC dapat mengoreksi qty pada task Selesai (membuka lagi); task Dibatalkan terkunci; Selesai tidak dapat dibatalkan', () => {
   call('qc@gmail.com', 'handovers.completeAll', ref);
-  const done = progress('la', 1);
-  expect(done.error).toMatchObject({
-    code: 'CONFLICT',
-    message: 'Task sudah selesai dan tidak dapat diubah',
-  });
   expect(call('wh@gmail.com', 'handovers.cancel', ref).error.code).toBe('CONFLICT');
+  const reopened = progress('la', 1);
+  expect(reopened.ok).toBe(true);
+  expect(reopened.data.status).toBe('in_progress');
+  expect(doneOf('la')).toBe(1);
 
   insertHandover_(
     handover({ id: 'x', number: 'ST-20261015-002', locationId: ENV.locA, status: 'cancelled' }),

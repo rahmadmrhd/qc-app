@@ -106,12 +106,10 @@ export function HandoverDetailView({
 }: HandoverDetailViewProps) {
   const [confirm, setConfirm] = useState<'complete' | 'cancel' | null>(null);
   const open = handover.status === 'new' || handover.status === 'in_progress';
+  // Selesai hanya status turunan: Ubah dan koreksi progres tetap tersedia; hanya Dibatalkan yang terkunci.
+  const writable = handover.status !== 'cancelled';
   const closedMessage =
-    handover.status === 'done'
-      ? 'Task sudah selesai dan tidak dapat diubah.'
-      : handover.status === 'cancelled'
-        ? 'Task sudah dibatalkan dan tidak dapat diubah.'
-        : null;
+    handover.status === 'cancelled' ? 'Task sudah dibatalkan dan tidak dapat diubah.' : null;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -130,7 +128,7 @@ export function HandoverDetailView({
           <Button variant="outline" onClick={onBack}>
             Kembali ke daftar
           </Button>
-          {open && canEdit ? (
+          {writable && canEdit ? (
             <Button variant="outline" disabled={pending} onClick={onEdit}>
               Ubah
             </Button>
@@ -199,7 +197,7 @@ export function HandoverDetailView({
                 ) : null}
               </div>
               <div className="flex items-start gap-2">
-                {open && canProgress ? (
+                {writable && canProgress ? (
                   <>
                     <ProgressCell
                       key={`${line.id}-${line.doneQty}`}

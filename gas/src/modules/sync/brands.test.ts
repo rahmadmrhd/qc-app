@@ -240,3 +240,8 @@ test('batas jumlah entri dan bentuk payload', () => {
     error: { code: 'VALIDATION' },
   });
 });
+
+test('push merk: field tidak dikenal ditolak per field', () => {
+  const [out] = results([{ id: '1', name: 'Ubiquiti', nama: 'salah' }]);
+  expect(out).toMatchObject({ status: 'invalid', fields: { nama: 'Field tidak dikenal' } });
+});
