@@ -103,19 +103,19 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | FH4 | **Nomor task otomatis** `ST-YYYYMMDD-NNN` (urut per hari). | Dibuat di server dalam lock; tidak pernah ganda. |
 | FH5 | Status task: **Baru** (belum ada progres), **Dikerjakan**, **Selesai** (semua baris penuh), **Dibatalkan**. | Baru/Dikerjakan/Selesai diturunkan dari baris; Dibatalkan disimpan. |
 | FH6 | Daftar task: kolom nomor, customer, lokasi, ringkasan progres (mis. 12/20 unit), status, waktu. Filter status dan pencarian lewat URL; mengikuti **lokasi aktif** header; kolom Lokasi bila lebih dari satu lokasi terpilih. | Butuh `handover: view` atau `qc: edit` di lokasi tersebut. |
-| FH7 | Ubah isi task (WH). | Butuh `handover: edit`. Hanya task yang belum Selesai/Dibatalkan. Qty target tidak boleh di bawah qty selesai; baris yang sudah ada progres tidak dapat dihapus. |
+| FH7 | Ubah isi task (WH). | Butuh `handover: edit`. Task Selesai tetap dapat diubah (status Selesai hanya turunan dari qty selesai vs target, jadi menaikkan qty membuka lagi); hanya task Dibatalkan yang terkunci. Qty target tidak boleh di bawah qty selesai; baris yang sudah ada progres tidak dapat dihapus. |
 | FH8 | Batalkan task (WH). | Butuh `handover: manage`. Task Dibatalkan hanya baca; progres yang sudah tercatat tetap tersimpan di audit. |
 | FH9 | Snapshot nama. | Baris menyimpan salinan "merk tipe" saat dibuat sehingga riwayat tetap terbaca bila item diganti nama. |
 
 ### 4.6 Pengerjaan QC
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FQ1 | QC memperbarui **qty selesai** per baris. | Butuh `qc: edit` di lokasi task. Nilai 0 ≤ selesai ≤ target; bilangan bulat. |
+| FQ1 | QC memperbarui **qty selesai** per baris. | Butuh `qc: edit` di lokasi task. Bilangan bulat ≥ 0 (maks. 100.000). Melebihi target diizinkan: form QC menampilkan peringatan, bukan galat; selesai per tipe/per task tidak menurunkan nilai yang sudah melebihi target. Qty target WH tidak boleh diturunkan di bawah qty selesai. |
 | FQ2 | **Tandai selesai per tipe**: mengisi qty selesai = target pada baris itu. | Satu klik; dapat diurungkan dengan mengubah qty. |
 | FQ3 | **Tandai selesai per task**: semua baris diisi penuh. | Satu klik dengan konfirmasi; mencatat siapa dan kapan. |
 | FQ4 | Setiap perubahan progres mencatat pelaku dan waktu per baris. | Tampil di detail task. |
 | FQ5 | Halaman detail task menautkan tiap tipe ke halaman detail item (FI5). | QC membuka stiker dan kelengkapan acuan tanpa meninggalkan task. |
-| FQ6 | Task Selesai/Dibatalkan tidak dapat diubah QC. | `CONFLICT` dengan pesan jelas. |
+| FQ6 | Task Dibatalkan tidak dapat diubah QC. QC hanya mengisi/mengoreksi qty selesai, selesai per tipe, dan selesai per task; pada task Selesai koreksi qty tetap diizinkan (membuka lagi) agar FQ2 dapat diurungkan. | `CONFLICT` dengan pesan jelas untuk Dibatalkan; selesai per task pada task Selesai → `CONFLICT`. |
 
 ### 4.7 Audit
 | ID | Kebutuhan | Kriteria penerimaan |

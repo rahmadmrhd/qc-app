@@ -229,6 +229,8 @@ export interface ItemDto extends ItemSummaryDto {
 
 export interface SaveItemInput {
   id?: string;
+  /** `updatedAt` item saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT) agar tidak menimpa ubahan orang lain. */
+  expectedUpdatedAt?: string;
   brand: string;
   model: string;
   isCountryLock: boolean;
@@ -333,6 +335,8 @@ export interface SaveHandoverLineInput {
 
 export interface SaveHandoverInput {
   id?: string;
+  /** `updatedAt` task saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT). */
+  expectedUpdatedAt?: string;
   locationId: string;
   /** Nama customer; yang belum ada dibuat saat task disimpan (FC2). */
   customerName: string;

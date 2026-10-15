@@ -92,3 +92,12 @@ test('toHandoverFormDefaults: kosong untuk baru (dengan lokasi awal) dan terisi 
     lines: [{ itemId: 'i1', label: 'Ubiquiti ES 24', qty: 5 }],
   });
 });
+
+test('toSaveHandoverInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
+  const parsed = handoverFormSchema.parse(valid);
+  expect(toSaveHandoverInput(parsed, 'h1', '2026-10-15T00:00:00.000Z')).toMatchObject({
+    id: 'h1',
+    expectedUpdatedAt: '2026-10-15T00:00:00.000Z',
+  });
+  expect('expectedUpdatedAt' in toSaveHandoverInput(parsed)).toBe(false);
+});

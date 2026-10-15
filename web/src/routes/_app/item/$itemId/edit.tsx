@@ -34,7 +34,7 @@ function EditItemPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await saveItem.mutateAsync(toSaveItemInput(values, item.id));
+      await saveItem.mutateAsync(toSaveItemInput(values, item.id, item.updatedAt));
       toast.success('Item disimpan');
       await navigate({ to: '/item/$itemId', params: { itemId: item.id } });
     } catch (error) {

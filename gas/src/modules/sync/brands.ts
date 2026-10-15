@@ -10,7 +10,13 @@ import { SYNC_ACTOR } from '@shared/sync';
 import { isStaleWrite_, syncFailureResult_ } from './conflict';
 import { paginateByRev_, validateSyncPull_ } from './pull';
 import type { SyncPushEnvelope, WireCheck } from './wire';
-import { asSyncObject_, readSyncBaseRev_, readSyncBool_, readSyncId_ } from './wire';
+import {
+  asSyncObject_,
+  readSyncBaseRev_,
+  readSyncBool_,
+  readSyncId_,
+  rejectUnknownSyncFields_,
+} from './wire';
 
 export interface SyncBrandInput {
   uid?: string;
@@ -20,7 +26,10 @@ export interface SyncBrandInput {
   baseRev?: number;
 }
 
-const SYNC_ACTOR_REF = { email: SYNC_ACTOR };
+// Fungsi, bukan konstanta: SYNC_ACTOR berasal dari file lain dan belum ada saat file ini dimuat di GAS.
+function syncActorRef_() {
+  return { email: SYNC_ACTOR };
+}
 
 export function toWireBrand_(brand: BrandRecord): SyncWireBrand {
   return {
@@ -32,11 +41,14 @@ export function toWireBrand_(brand: BrandRecord): SyncWireBrand {
   };
 }
 
+const SYNC_BRAND_ENTRY_FIELDS = ['uid', 'id', 'name', 'active', 'baseRev'] as const;
+
 export function checkSyncBrand_(raw: unknown): WireCheck<SyncBrandInput> {
   const source = asSyncObject_(raw);
   if (!source) return { ok: false, fields: { _: 'Entri harus berupa objek' } };
   const fields: Record<string, string> = {};
   const value: SyncBrandInput = {};
+  rejectUnknownSyncFields_(source, SYNC_BRAND_ENTRY_FIELDS, fields);
   const uid = readSyncId_(source, 'uid', fields);
   if (uid !== undefined) value.uid = uid;
   const id = readSyncId_(source, 'id', fields);
@@ -135,11 +147,11 @@ function upsertBrandInLock_(
     if (entry.name === undefined) {
       return { index, status: 'invalid', fields: { name: 'Wajib diisi untuk merk baru' } };
     }
-    const created = applyBrandSave_({ name: entry.name }, SYNC_ACTOR_REF);
+    const created = applyBrandSave_({ name: entry.name }, syncActorRef_());
     const fresh = listBrands_().find((brand) => brand.id === created.id) as BrandRecord;
     updateBrand_({ ...fresh, externalId: entry.id ?? '' });
     if (entry.active === false)
-      applyBrandStatus_({ id: created.id, status: 'inactive' }, SYNC_ACTOR_REF);
+      applyBrandStatus_({ id: created.id, status: 'inactive' }, syncActorRef_());
     const final = listBrands_().find((brand) => brand.id === created.id) as BrandRecord;
     return { index, status: 'created', uid: final.id, rev: final.syncRev };
   }
@@ -164,8 +176,9 @@ function upsertBrandInLock_(
       status: wantStatus,
     });
   }
-  if (nameChanged) applyBrandSave_({ id: existing.id, name: entry.name as string }, SYNC_ACTOR_REF);
-  if (statusChanged) applyBrandStatus_({ id: existing.id, status: wantStatus }, SYNC_ACTOR_REF);
+  if (nameChanged)
+    applyBrandSave_({ id: existing.id, name: entry.name as string }, syncActorRef_());
+  if (statusChanged) applyBrandStatus_({ id: existing.id, status: wantStatus }, syncActorRef_());
   const fresh = listBrands_().find((brand) => brand.id === existing.id) as BrandRecord;
   if (mapChanged) updateBrand_({ ...fresh, externalId: entry.id as string });
   return { index, status: 'updated', uid: fresh.id, rev: fresh.syncRev };

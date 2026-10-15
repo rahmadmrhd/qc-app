@@ -83,3 +83,14 @@ export function validateSyncPush_(
   }
   return { overwrite: source.overwrite === true, entries };
 }
+
+/** Menandai setiap field entri yang bukan bagian kontrak: salah ketik tidak boleh hilang diam-diam. */
+export function rejectUnknownSyncFields_(
+  source: Record<string, unknown>,
+  allowed: readonly string[],
+  fields: Record<string, string>,
+): void {
+  for (const key of Object.keys(source)) {
+    if (!allowed.includes(key)) fields[key] = 'Field tidak dikenal';
+  }
+}

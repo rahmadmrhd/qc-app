@@ -153,3 +153,21 @@ test('tipe hanya tanda baca ditolak skema form', () => {
   const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: 'A', model: '--' });
   expect(result.success).toBe(false);
 });
+
+test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
+  const parsed = itemFormSchema.parse({
+    brand: 'Ubiquiti',
+    model: 'ES',
+    isCountryLock: false,
+    aliasesText: '',
+    stickers: [],
+    accessories: [],
+    attachments: [],
+    detail: '',
+  });
+  expect(toSaveItemInput(parsed, 'i1', '2026-10-15T00:00:00.000Z')).toMatchObject({
+    id: 'i1',
+    expectedUpdatedAt: '2026-10-15T00:00:00.000Z',
+  });
+  expect('expectedUpdatedAt' in toSaveItemInput(parsed)).toBe(false);
+});

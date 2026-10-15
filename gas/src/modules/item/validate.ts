@@ -201,6 +201,7 @@ function firstErrorReader_(reader: ObjectReader): ObjectReader {
 export function validateSaveItem_(raw: unknown): SaveItemInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const brand = reader.str('brand', { required: true, max: ITEM_LIMITS.brand });
   if (brand !== '' && normalizeKey(brand) === '') {
     reader.fail('brand', 'Merk harus memuat huruf atau angka');
@@ -232,7 +233,7 @@ export function validateSaveItem_(raw: unknown): SaveItemInput {
     attachments,
     detail,
   };
-  return id ? { id, ...input } : input;
+  return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }
 
 export function validateGetItem_(raw: unknown): GetItemInput {

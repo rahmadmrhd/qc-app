@@ -30,7 +30,13 @@ import type { DriveProbe } from './files';
 import { commitDriveFiles_, planDriveFiles_, probeDriveIds_ } from './files';
 import { paginateByRev_, validateSyncPull_ } from './pull';
 import type { SyncPushEnvelope, WireCheck } from './wire';
-import { asSyncObject_, readSyncBaseRev_, readSyncBool_, readSyncId_ } from './wire';
+import {
+  asSyncObject_,
+  readSyncBaseRev_,
+  readSyncBool_,
+  readSyncId_,
+  rejectUnknownSyncFields_,
+} from './wire';
 
 /** Field berat yang hanya dikirim bila diminta lewat `include`. */
 export const SYNC_ITEM_INCLUDABLE = ['detail', 'stickers', 'accessories'] as const;
@@ -112,7 +118,10 @@ export interface SyncItemInput {
   baseRev?: number;
 }
 
-const SYNC_ITEM_ACTOR = { email: SYNC_ACTOR };
+// Fungsi, bukan konstanta: SYNC_ACTOR berasal dari file lain dan belum ada saat file ini dimuat di GAS.
+function syncItemActor_() {
+  return { email: SYNC_ACTOR };
+}
 /** Nama field internal → nama field pada kabel, agar pesan galat sesuai kontrak. */
 const WIRE_FIELD_NAMES: Record<string, string> = {
   brand: 'merk',
@@ -307,11 +316,26 @@ function checkWireAccessories_(
   return out;
 }
 
+const SYNC_ITEM_ENTRY_FIELDS = [
+  'uid',
+  'id',
+  'merk',
+  'tipe',
+  'isCountryLock',
+  'images',
+  'detail',
+  'stickers',
+  'accessories',
+  'active',
+  'baseRev',
+] as const;
+
 export function checkSyncItem_(raw: unknown): WireCheck<SyncItemInput> {
   const source = asSyncObject_(raw);
   if (!source) return { ok: false, fields: { _: 'Entri harus berupa objek' } };
   const fields: Record<string, string> = {};
   const value: SyncItemInput = {};
+  rejectUnknownSyncFields_(source, SYNC_ITEM_ENTRY_FIELDS, fields);
   const uid = readSyncId_(source, 'uid', fields);
   if (uid !== undefined) value.uid = uid;
   const id = readSyncId_(source, 'id', fields);
@@ -555,7 +579,7 @@ function upsertSyncItem_(
   const record = writeItem_(merged, {
     id: ownerId,
     existing,
-    actor: SYNC_ITEM_ACTOR,
+    actor: syncItemActor_(),
     externalId: entry.id,
     status,
   });

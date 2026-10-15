@@ -88,10 +88,10 @@ test('mengubah qty selesai lalu keluar dari isian mengirim nilai baru; nilai tak
   expect(onSetProgress).toHaveBeenCalledWith('l1', 4);
   onSetProgress.mockClear();
   await userEvent.clear(input);
-  await userEvent.type(input, '9'); // di atas target 5
+  await userEvent.type(input, '1.5'); // pecahan
   await userEvent.tab();
   expect(onSetProgress).not.toHaveBeenCalled();
-  expect(screen.getByText('Harus bilangan bulat 0–5')).toBeInTheDocument();
+  expect(screen.getByText('Harus bilangan bulat ≥ 0')).toBeInTheDocument();
   await userEvent.clear(input);
   await userEvent.type(input, '2'); // sama dengan nilai tersimpan
   await userEvent.tab();
@@ -133,16 +133,17 @@ test('tanpa izin: tidak ada kontrol progres, Ubah, maupun Batalkan (WH view saja
   expect(screen.getByText('2 / 5')).toBeInTheDocument(); // progres tampil sebagai teks
 });
 
-test('task Selesai atau Dibatalkan: baca saja dengan keterangan; tidak ada aksi', () => {
+test('task Selesai: Ubah dan koreksi progres tetap tersedia; selesaikan semua dan batalkan tidak', () => {
   renderView({
     handover: { ...base, status: 'done', doneUnits: 8 },
     canProgress: true,
     canEdit: true,
     canCancel: true,
   });
-  expect(screen.getByText('Task sudah selesai dan tidak dapat diubah.')).toBeInTheDocument();
-  expect(screen.queryByLabelText(/Qty selesai/)).toBeNull();
-  expect(screen.queryByRole('button', { name: /Ubah|Batalkan task|Selesaikan semua/ })).toBeNull();
+  expect(screen.queryByText(/tidak dapat diubah/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Qty selesai Ubiquiti ES 24')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Batalkan task|Selesaikan semua/ })).toBeNull();
 });
 
 test('task Dibatalkan: keterangan dibatalkan', () => {
@@ -159,4 +160,15 @@ test('saat pending semua kontrol dinonaktifkan', () => {
 test('task tanpa customer menampilkan "Tanpa customer"', () => {
   renderView({ handover: { ...base, customerId: '', customerName: '' } });
   expect(screen.getByText('Tanpa customer')).toBeInTheDocument();
+});
+
+test('qty selesai di atas target: peringatan (bukan galat) dan tetap terkirim', async () => {
+  const { onSetProgress } = renderView();
+  const input = screen.getByLabelText('Qty selesai Ubiquiti ES 24');
+  await userEvent.clear(input);
+  await userEvent.type(input, '9');
+  expect(screen.getByText('Melebihi target 5 — pastikan jumlahnya benar.')).toBeInTheDocument();
+  await userEvent.tab();
+  expect(onSetProgress).toHaveBeenCalledWith('l1', 9);
+  expect(screen.queryByText(/Harus bilangan bulat/)).toBeNull();
 });

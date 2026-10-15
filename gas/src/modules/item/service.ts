@@ -309,10 +309,15 @@ export function writeItem_(input: SaveItemInput, options: WriteItemOptions): New
   return created;
 }
 
+const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+
 export function saveItem_(input: SaveItemInput, actor: ActorRef): ItemDto {
   return platform_().withLock(() => {
     const existing = input.id ? listItems_().find((item) => item.id === input.id) : undefined;
     if (input.id && !existing) throw appError_('NOT_FOUND', 'Item tidak ditemukan');
+    if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw appError_('CONFLICT', STALE_MESSAGE);
+    }
     const record = writeItem_(input, { existing, actor });
     return toItemDto_(toItemView_(record, brandNameMap_()));
   });

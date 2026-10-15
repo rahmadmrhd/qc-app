@@ -52,10 +52,13 @@ function ProgressCell({
 }) {
   const [text, setText] = useState(String(doneQty));
   const [error, setError] = useState<string | null>(null);
+  const typed = Number(text);
+  // Melebihi target diizinkan (mis. barang lebih dari yang diminta); hanya diberi peringatan.
+  const over = text.trim() !== '' && Number.isInteger(typed) && typed > qty;
   function commit() {
     const value = Number(text);
-    if (text.trim() === '' || !Number.isInteger(value) || value < 0 || value > qty) {
-      setError(`Harus bilangan bulat 0–${qty}`);
+    if (text.trim() === '' || !Number.isInteger(value) || value < 0) {
+      setError('Harus bilangan bulat ≥ 0');
       return;
     }
     setError(null);
@@ -68,7 +71,6 @@ function ProgressCell({
           type="number"
           inputMode="numeric"
           min={0}
-          max={qty}
           className="w-24"
           aria-label={`Qty selesai ${label}`}
           disabled={disabled}
@@ -85,6 +87,11 @@ function ProgressCell({
         <span className="text-sm text-muted-foreground">/ {qty}</span>
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {over && !error ? (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          Melebihi target {qty} — pastikan jumlahnya benar.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -106,12 +113,10 @@ export function HandoverDetailView({
 }: HandoverDetailViewProps) {
   const [confirm, setConfirm] = useState<'complete' | 'cancel' | null>(null);
   const open = handover.status === 'new' || handover.status === 'in_progress';
+  // Selesai hanya status turunan: Ubah dan koreksi progres tetap tersedia; hanya Dibatalkan yang terkunci.
+  const writable = handover.status !== 'cancelled';
   const closedMessage =
-    handover.status === 'done'
-      ? 'Task sudah selesai dan tidak dapat diubah.'
-      : handover.status === 'cancelled'
-        ? 'Task sudah dibatalkan dan tidak dapat diubah.'
-        : null;
+    handover.status === 'cancelled' ? 'Task sudah dibatalkan dan tidak dapat diubah.' : null;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -130,7 +135,7 @@ export function HandoverDetailView({
           <Button variant="outline" onClick={onBack}>
             Kembali ke daftar
           </Button>
-          {open && canEdit ? (
+          {writable && canEdit ? (
             <Button variant="outline" disabled={pending} onClick={onEdit}>
               Ubah
             </Button>
@@ -199,7 +204,7 @@ export function HandoverDetailView({
                 ) : null}
               </div>
               <div className="flex items-start gap-2">
-                {open && canProgress ? (
+                {writable && canProgress ? (
                   <>
                     <ProgressCell
                       key={`${line.id}-${line.doneQty}`}

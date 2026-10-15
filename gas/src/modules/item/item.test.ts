@@ -426,3 +426,29 @@ test('rujukan berkas bermasalah dilaporkan di field yang sesuai (attachments, st
   });
   expect(listItems_()).toHaveLength(1);
 });
+
+test('konkurensi optimistis: expectedUpdatedAt basi → CONFLICT dan item tidak berubah; cocok atau kosong → tersimpan', () => {
+  const first = saveItem_({ ...baseInput, detail: 'awal' }, admin);
+  const stale = captureAppError(() =>
+    saveItem_(
+      {
+        ...baseInput,
+        id: first.id,
+        detail: 'timpa',
+        expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+      },
+      admin,
+    ),
+  );
+  expect(stale.code).toBe('CONFLICT');
+  expect(stale.message).toContain('diubah orang lain');
+  expect(getItemDto_({ id: first.id }).detail).toBe('awal');
+
+  const ok = saveItem_(
+    { ...baseInput, id: first.id, detail: 'cocok', expectedUpdatedAt: first.updatedAt },
+    admin,
+  );
+  expect(ok.detail).toBe('cocok');
+  // Tanpa expectedUpdatedAt (mis. pemanggil lama) tetap diterima.
+  expect(saveItem_({ ...baseInput, id: first.id, detail: 'tanpa' }, admin).detail).toBe('tanpa');
+});

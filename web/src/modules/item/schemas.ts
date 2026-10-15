@@ -143,7 +143,11 @@ export function toItemFormDefaults(item?: ItemDto): ItemFormInput {
   };
 }
 
-export function toSaveItemInput(values: ItemFormOutput, id?: string): SaveItemInput {
+export function toSaveItemInput(
+  values: ItemFormOutput,
+  id?: string,
+  expectedUpdatedAt?: string,
+): SaveItemInput {
   const input: SaveItemInput = {
     brand: values.brand.trim(),
     model: values.model.trim(),
@@ -161,5 +165,5 @@ export function toSaveItemInput(values: ItemFormOutput, id?: string): SaveItemIn
     attachments: [...values.attachments],
     detail: values.detail,
   };
-  return id ? { id, ...input } : input;
+  return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }

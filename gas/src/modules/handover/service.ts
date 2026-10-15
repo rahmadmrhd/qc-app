@@ -190,17 +190,16 @@ export function loadHandoverForWrite_(ref: HandoverRefInput): {
   return { handover, lines };
 }
 
-/** Task Selesai/Dibatalkan tidak dapat diubah (WH maupun QC). */
-export function assertHandoverOpen_(
+/**
+ * Hanya task Dibatalkan yang terkunci (WH maupun QC). Selesai hanyalah status turunan dari qty selesai vs target:
+ * WH tetap dapat mengubah isi task (menaikkan qty membuka lagi) dan QC dapat mengoreksi qty selesai.
+ */
+export function assertHandoverNotCancelled_(
   handover: HandoverRecord,
   lines: readonly HandoverLineRecord[],
 ): void {
-  const status = deriveHandoverStatus(handover.status, lines);
-  if (status === 'cancelled') {
+  if (deriveHandoverStatus(handover.status, lines) === 'cancelled') {
     throw appError_('CONFLICT', 'Task sudah dibatalkan dan tidak dapat diubah');
-  }
-  if (status === 'done') {
-    throw appError_('CONFLICT', 'Task sudah selesai dan tidak dapat diubah');
   }
 }
 
@@ -213,7 +212,17 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
     const loaded = input.id
       ? loadHandoverForWrite_({ id: input.id, locationId: input.locationId })
       : null;
-    if (loaded) assertHandoverOpen_(loaded.handover, loaded.lines);
+    if (loaded) assertHandoverNotCancelled_(loaded.handover, loaded.lines);
+    if (
+      loaded &&
+      input.expectedUpdatedAt &&
+      input.expectedUpdatedAt !== loaded.handover.updatedAt
+    ) {
+      throw appError_(
+        'CONFLICT',
+        'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
+      );
+    }
     const existingLines = loaded?.lines ?? [];
     const items = new Map(listItems_().map((item) => [item.id, item]));
     const brands = brandNameMap_();
@@ -231,7 +240,7 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       if (!current && item.status !== 'active') {
         lineError_(`Baris ${index + 1}: tipe ${label(line.itemId)} dinonaktifkan`);
       }
-      if (current && line.qty < current.doneQty) {
+      if (current && line.qty !== current.qty && line.qty < current.doneQty) {
         lineError_(
           `${current.itemLabel}: qty target tidak boleh di bawah qty selesai (${current.doneQty})`,
         );
@@ -476,13 +485,9 @@ function finishProgress_(
 export function setProgress_(input: SetProgressInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
     const line = lines.find((row) => row.id === input.lineId);
     if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
-    if (input.doneQty > line.qty) {
-      const message = `Harus bilangan bulat 0–${line.qty}`;
-      throw appError_('VALIDATION', message, { doneQty: message });
-    }
     const now = nowIso_();
     const beforeStatus = deriveHandoverStatus(handover.status, lines);
     const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
@@ -495,29 +500,31 @@ export function completeLine_(input: CompleteLineInput, actor: ActorRef): Handov
   const { id, locationId, lineId } = input;
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_({ id, locationId });
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
     const line = lines.find((row) => row.id === lineId);
     if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
     const now = nowIso_();
     const beforeStatus = deriveHandoverStatus(handover.status, lines);
     const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
-    const changed = writeProgress_(handover, line, line.qty, actor, now);
+    // Qty selesai yang sudah melebihi target dibiarkan (tidak diturunkan ke target).
+    const changed = line.doneQty < line.qty && writeProgress_(handover, line, line.qty, actor, now);
     return finishProgress_({ id, locationId }, beforeStatus, beforeSnapshot, changed, actor, now);
   });
 }
 
-/** Selesai per task: semua baris yang belum penuh diisi penuh; satu audit `handover.complete` (bukan per baris). */
+/** Selesai per task: semua baris yang belum penuh diisi penuh; tiap baris tercatat `handover.progress` dan satu `handover.complete` menutup task. */
 export function completeAll_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverOpen_(handover, lines);
+    assertHandoverNotCancelled_(handover, lines);
+    if (deriveHandoverStatus(handover.status, lines) === 'done') {
+      throw appError_('CONFLICT', 'Task sudah selesai');
+    }
     const now = nowIso_();
     const names = locationNameMap_();
     const before = handoverSnapshot_(handover, lines, names);
     for (const line of lines) {
-      if (line.doneQty < line.qty) {
-        updateHandoverLine_({ ...line, doneQty: line.qty, doneAt: now, doneBy: actor.email });
-      }
+      if (line.doneQty < line.qty) writeProgress_(handover, line, line.qty, actor, now);
     }
     const touched: HandoverRecord = { ...handover, updatedAt: now, updatedBy: actor.email };
     updateHandover_(touched);

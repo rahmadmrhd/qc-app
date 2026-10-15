@@ -173,6 +173,7 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 - Pemetaan id MySQL saja (nilai sama) → `updated` **tanpa** kenaikan `rev` dan tanpa audit.
 - Nama merk dibandingkan menurut kunci ternormalisasi (huruf besar/kecil tidak dianggap beda).
 - Pesan `fields` memakai nama field kabel (`merk`, `tipe`, `images`, ...).
+- Field di luar kontrak (mis. salah ketik `merek`) ditolak: entri `invalid` dengan `fields.<nama>` = "Field tidak dikenal". Entri push hanya boleh memuat `uid`, `id`, `merk`, `tipe`, `isCountryLock`, `images`, `detail`, `stickers`, `accessories`, `active`, `baseRev` (merk: `uid`, `id`, `name`, `active`, `baseRev`).
 - Pembuatan, perubahan, dan konflik dicatat di audit atas nama `sync:desktop` (aksi `item.create`, `item.update`, `item.activate`/`item.deactivate`, `item.sync.conflict`).
 - `id` MySQL boleh dikirim sebagai angka; `isCountryLock` dan `active` boleh berupa teks `"true"`/`"false"`.
 

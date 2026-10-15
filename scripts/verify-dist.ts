@@ -1,4 +1,5 @@
 import path from 'node:path';
+import vm from 'node:vm';
 import { GAS_DIST_DIR } from './paths';
 
 const problems: string[] = [];
@@ -33,6 +34,30 @@ for await (const file of new Bun.Glob('**/*.js').scan({ cwd: GAS_DIST_DIR })) {
   const text = await Bun.file(path.join(GAS_DIST_DIR, file)).text();
   if (/^[ \t]*(?:import|export)\b/m.test(text)) {
     problems.push(`${file} masih mengandung import/export`);
+  }
+}
+
+// Muat semua file seperti GAS (satu global scope, tiap file dieksekusi berurutan) dalam urutan maju dan mundur:
+// kode level atas yang memakai global file lain gagal di salah satu urutan (ReferenceError saat dimuat).
+const scripts: Array<{ file: string; code: string }> = [];
+for await (const file of new Bun.Glob('**/*.js').scan({ cwd: GAS_DIST_DIR })) {
+  scripts.push({ file, code: await Bun.file(path.join(GAS_DIST_DIR, file)).text() });
+}
+scripts.sort((a, b) => a.file.localeCompare(b.file));
+for (const [label, order] of [
+  ['maju', scripts],
+  ['mundur', [...scripts].reverse()],
+] as const) {
+  const context = vm.createContext({});
+  for (const script of order) {
+    try {
+      vm.runInContext(script.code, context, { filename: script.file });
+    } catch (error) {
+      problems.push(
+        `${script.file} gagal dimuat (urutan ${label}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      break;
+    }
   }
 }
 
