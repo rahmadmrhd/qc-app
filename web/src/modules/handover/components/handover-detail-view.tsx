@@ -157,7 +157,9 @@ export function HandoverDetailView({
       <dl className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-muted-foreground">Customer</dt>
-          <dd className="font-medium">{handover.customerName}</dd>
+          <dd className="font-medium">
+            {handover.customerName === '' ? 'Tanpa customer' : handover.customerName}
+          </dd>
         </div>
         <div>
           <dt className="text-muted-foreground">Lokasi</dt>

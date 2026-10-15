@@ -77,3 +77,15 @@ test('daftar kosong menampilkan pesan', () => {
   );
   expect(screen.getByText('Tidak ada task yang cocok.')).toBeInTheDocument();
 });
+
+test('task tanpa customer menampilkan strip', () => {
+  render(
+    <HandoversTable
+      handovers={[{ ...rows[0], customerId: '', customerName: '' } as (typeof rows)[number]]}
+      showLocation={false}
+      locationNames={locations}
+      onOpen={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('—')).toBeInTheDocument();
+});

@@ -22,7 +22,6 @@ export const handoverFormSchema = z.object({
   customerName: z
     .string()
     .trim()
-    .min(1, 'Wajib diisi')
     .max(HANDOVER_LIMITS.customerName, `Maksimal ${HANDOVER_LIMITS.customerName} karakter`)
     .refine(
       (value) => value === '' || normalizeKey(value) !== '',

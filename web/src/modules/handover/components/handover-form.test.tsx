@@ -117,3 +117,22 @@ test('mode ubah: lokasi tampil sebagai teks (tidak dapat dipindah)', () => {
   expect(screen.getByText('Lokasi A')).toBeInTheDocument();
   expect(screen.queryByLabelText('Lokasi')).toBeNull();
 });
+
+test('customer tidak wajib: task tanpa customer dapat disimpan dan petunjuk menyebut opsional', async () => {
+  const onSubmit = vi.fn().mockResolvedValue(undefined);
+  render(
+    <HandoverForm
+      mode="create"
+      defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
+      options={options}
+      onSubmit={onSubmit}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(screen.getByText(/Opsional/)).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Cari tipe'), 'ubiquiti');
+  await userEvent.click(await screen.findByRole('option', { name: 'Ubiquiti ES 24' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ customerName: '' });
+});

@@ -101,7 +101,6 @@ test('customer nonaktif ditolak pada task baru (pesan di customerName) tanpa mem
 test('validasi: customer, catatan, baris, qty, duplikat, item tak dikenal atau nonaktif; tidak ada customer yatim', () => {
   const fields = (over: Record<string, unknown>) =>
     save(over).error.fields as Record<string, string>;
-  expect(fields({ customerName: '' }).customerName).toBe('Wajib diisi');
   expect(fields({ customerName: '--' }).customerName).toBe(
     'Nama customer harus memuat huruf atau angka',
   );
@@ -323,4 +322,24 @@ test('batalkan: task Selesai CONFLICT; task lokasi lain NOT_FOUND', () => {
   expect(
     call('multi@gmail.com', 'handovers.cancel', { id: 'inb', locationId: ENV.locA }).error.code,
   ).toBe('NOT_FOUND');
+});
+
+test('customer opsional: task dapat disimpan tanpa customer (tidak membuat customer/audit customer), diisi, lalu dikosongkan lagi', () => {
+  for (const blank of ['', '   ']) {
+    const out = save({ customerName: blank });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ customerId: '', customerName: '' });
+  }
+  expect(listCustomers_()).toHaveLength(0);
+  expect(audits()).toEqual(['handover.create', 'handover.create']);
+  const id = listHandovers_()[0]?.id ?? '';
+  const filled = save({ id, customerName: 'PT Baru' });
+  expect(filled.data.customerName).toBe('PT Baru');
+  const cleared = save({ id, customerName: '' });
+  expect(cleared.data).toMatchObject({ customerId: '', customerName: '' });
+  expect(listCustomers_()).toHaveLength(1); // customer yang sudah dibuat tidak dihapus
+  expect(audits().filter((a) => a === 'handover.update')).toHaveLength(2);
+  expect(save({ customerName: '--' }).error.fields.customerName).toBe(
+    'Nama customer harus memuat huruf atau angka',
+  );
 });

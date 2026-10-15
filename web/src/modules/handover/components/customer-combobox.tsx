@@ -83,6 +83,11 @@ export function CustomerCombobox({
           ))}
         </div>
       ) : null}
+      {key === '' ? (
+        <p className="text-xs text-muted-foreground">
+          Opsional; kosongkan bila tidak ada customer.
+        </p>
+      ) : null}
       {key !== '' && exact && exact.name !== value.trim() ? (
         <p className="text-xs text-muted-foreground">
           Memakai customer yang sudah ada: "{exact.name}".

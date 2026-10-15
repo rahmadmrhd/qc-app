@@ -240,7 +240,11 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       }
     }
 
-    const customer = resolveCustomerByName_(input.customerName, actor, loaded?.handover.customerId);
+    // Customer opsional: nama kosong = tanpa customer (tidak ada yang dibuat).
+    const customer =
+      input.customerName === ''
+        ? null
+        : resolveCustomerByName_(input.customerName, actor, loaded?.handover.customerId);
     const locationNames = locationNameMap_();
     const now = nowIso_();
 
@@ -254,8 +258,8 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
         id: platform_().uuid(),
         number: handoverNumber(dateKeyOf(platform_().now()), sequence),
         locationId: input.locationId,
-        customerId: customer.id,
-        customerName: customer.name,
+        customerId: customer?.id ?? '',
+        customerName: customer?.name ?? '',
         note: input.note,
         status: 'open' as const,
         createdAt: now,
@@ -304,12 +308,15 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
     });
     const nextHandover = {
       ...handover,
-      customerId: customer.id,
-      customerName: customer.name,
+      customerId: customer?.id ?? '',
+      customerName: customer?.name ?? '',
       note: input.note,
     };
     const after = handoverSnapshot_(nextHandover, nextLines, locationNames);
-    if (JSON.stringify(before) === JSON.stringify(after) && customer.id === handover.customerId) {
+    if (
+      JSON.stringify(before) === JSON.stringify(after) &&
+      (customer?.id ?? '') === handover.customerId
+    ) {
       return toHandoverDto_(handover, oldLines, customerNameMap_());
     }
 

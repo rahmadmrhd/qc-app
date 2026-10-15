@@ -1,7 +1,7 @@
 import { appError_ } from '@gas/core/errors';
 import { readObject_ } from '@gas/core/validate';
-import { validateCustomerName_ } from '@gas/modules/customer/validate';
 import { HANDOVER_LIMITS } from '@shared/handover';
+import { normalizeKey } from '@shared/items';
 import type {
   CompleteLineInput,
   GetHandoverInput,
@@ -85,14 +85,10 @@ export function validateSaveHandover_(raw: unknown): SaveHandoverInput {
   const id = reader.optionalId('id');
   const locationId = reader.str('locationId', { required: true, max: 100 });
   const note = reader.str('note', { max: HANDOVER_LIMITS.note });
-  const source = reader.raw('customerName');
-  let customerName = '';
-  try {
-    customerName = validateCustomerName_({ customerName: source }, 'customerName');
-  } catch (error) {
-    const fields = (error as { fields?: Record<string, string> }).fields;
-    if (fields?.customerName) reader.fail('customerName', fields.customerName);
-    else throw error;
+  // Customer opsional: kosong = task tanpa customer.
+  const customerName = reader.str('customerName', { max: HANDOVER_LIMITS.customerName });
+  if (customerName !== '' && normalizeKey(customerName) === '') {
+    reader.fail('customerName', 'Nama customer harus memuat huruf atau angka');
   }
   const { lines, error } = readHandoverLines_(reader.raw('lines'));
   if (error) reader.fail('lines', error);

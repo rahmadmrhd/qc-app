@@ -23,7 +23,8 @@ test('skema menolak: lokasi kosong, customer kosong/tanda baca, catatan > 500, t
       : result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
   };
   expect(issues({ locationId: '' })).toContain('locationId: Pilih lokasi');
-  expect(issues({ customerName: '  ' })).toContain('customerName: Wajib diisi');
+  // customer opsional: kosong/spasi saja sah
+  expect(issues({ customerName: '  ' }).join('|')).not.toContain('customerName');
   expect(issues({ customerName: '--' })).toContain(
     'customerName: Nama customer harus memuat huruf atau angka',
   );
@@ -42,6 +43,12 @@ test('skema menolak: lokasi kosong, customer kosong/tanda baca, catatan > 500, t
       ],
     }),
   ).toContain('lines: Tipe yang sama muncul dua kali');
+});
+
+test('customer boleh kosong dan menjadi teks kosong', () => {
+  const parsed = handoverFormSchema.parse({ ...valid, customerName: '   ' });
+  expect(parsed.customerName).toBe('');
+  expect(toSaveHandoverInput(parsed).customerName).toBe('');
 });
 
 test('toSaveHandoverInput membuang label dan menyertakan id untuk ubah', () => {

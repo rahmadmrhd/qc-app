@@ -155,3 +155,8 @@ test('saat pending semua kontrol dinonaktifkan', () => {
   expect(screen.getByLabelText('Qty selesai Ubiquiti ES 24')).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Selesaikan semua' })).toBeDisabled();
 });
+
+test('task tanpa customer menampilkan "Tanpa customer"', () => {
+  renderView({ handover: { ...base, customerId: '', customerName: '' } });
+  expect(screen.getByText('Tanpa customer')).toBeInTheDocument();
+});

@@ -54,7 +54,7 @@ export function HandoversTable({
           {handovers.map((handover) => (
             <TableRow key={handover.id}>
               <TableCell className="font-medium">{handover.number}</TableCell>
-              <TableCell>{handover.customerName}</TableCell>
+              <TableCell>{handover.customerName === '' ? '—' : handover.customerName}</TableCell>
               {showLocation ? (
                 <TableCell>
                   {locationNames.get(handover.locationId) ?? handover.locationId}
