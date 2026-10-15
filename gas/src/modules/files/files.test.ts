@@ -10,7 +10,7 @@ import { role, user } from '@gas-test/access-fixtures';
 import { captureAppError } from '@gas-test/errors';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { MAX_IMAGE_BYTES, MAX_UNATTACHED_UPLOADS } from '@shared/files';
+import { MAX_IMAGE_BYTES } from '@shared/files';
 import { insertFile_, listFiles_ } from './repo';
 import {
   attachFiles_,

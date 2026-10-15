@@ -98,3 +98,18 @@ test('mengetik atau menghapus baris lain selama unggah tidak tertimpa; gambar ja
     expect(spy).toHaveBeenLastCalledWith([{ name: 'B', note: 'kanan', fileId: 'img9' }]),
   );
 });
+
+test('baris stiker yang bermasalah menurut pesan galat diberi aria-invalid', () => {
+  render(
+    <StickerListField
+      value={[
+        { name: 'A', note: '', fileId: null },
+        { name: '', note: '', fileId: null },
+      ]}
+      onChange={() => undefined}
+      error="Stiker 2: nama wajib diisi"
+    />,
+  );
+  expect(screen.getByLabelText('Nama stiker 2')).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByLabelText('Nama stiker 1')).not.toHaveAttribute('aria-invalid', 'true');
+});

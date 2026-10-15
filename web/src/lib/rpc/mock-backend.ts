@@ -4,10 +4,13 @@ import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
 import { insertBrand_ } from '@gas/modules/brand/repo';
+import { insertCustomer_ } from '@gas/modules/customer/repo';
 import { insertFile_ } from '@gas/modules/files/repo';
+import { insertHandover_, insertHandoverLine_ } from '@gas/modules/handover/repo';
 import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
 import { location, role, user } from '@gas-test/access-fixtures';
+import { customer, handover, handoverLine } from '@gas-test/handover-fixtures';
 import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
@@ -107,6 +110,7 @@ function ensureMockBackend(): void {
     }),
   );
   seedMockItems(platform);
+  seedMockHandovers();
   seedMockAudit();
 }
 
@@ -163,6 +167,69 @@ function seedMockItems(platform: ReturnType<typeof createMemoryPlatform>): void 
     }),
   );
   insertItem_(item({ id: 'item-hap', brand: 'Mikrotik', model: 'hAP ac2', status: 'inactive' }));
+}
+
+/** Customer dan task serah terima contoh: Jakarta (Dikerjakan) dan Bandung (Baru). */
+function seedMockHandovers(): void {
+  insertCustomer_(customer('PT Maju Jaya'));
+  insertCustomer_(customer('Budi Santoso'));
+  insertHandover_(
+    handover({
+      id: 'ho-jkt-1',
+      number: 'ST-20261009-001',
+      locationId: 'loc-jkt',
+      customerId: 'cust-pt-maju-jaya',
+      customerName: 'PT Maju Jaya',
+      note: 'Kirim sebelum Jumat',
+      createdAt: '2026-10-09T02:00:00.000Z',
+      createdBy: 'wh.staff@qc.local',
+      updatedAt: '2026-10-09T05:00:00.000Z',
+      updatedBy: 'qc.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-1',
+      handoverId: 'ho-jkt-1',
+      itemId: 'item-af5xhd',
+      itemLabel: 'Ubiquiti AF 5XHD',
+      qty: 10,
+      doneQty: 4,
+      doneAt: '2026-10-09T05:00:00.000Z',
+      doneBy: 'qc.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-2',
+      handoverId: 'ho-jkt-1',
+      itemId: 'item-es24',
+      itemLabel: 'Ubiquiti ES 24 250W',
+      qty: 6,
+    }),
+  );
+  insertHandover_(
+    handover({
+      id: 'ho-bdg-1',
+      number: 'ST-20261010-001',
+      locationId: 'loc-bdg',
+      customerId: 'cust-budi-santoso',
+      customerName: 'Budi Santoso',
+      createdAt: '2026-10-10T02:00:00.000Z',
+      createdBy: 'wh.staff@qc.local',
+      updatedAt: '2026-10-10T02:00:00.000Z',
+      updatedBy: 'wh.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-3',
+      handoverId: 'ho-bdg-1',
+      itemId: 'item-es24',
+      itemLabel: 'Ubiquiti ES 24 250W',
+      qty: 3,
+    }),
+  );
 }
 
 /** Contoh catatan audit agar halaman Log Audit tidak kosong saat `bun run dev`. */

@@ -3,15 +3,19 @@ import type { ItemStickerDto } from '@shared/rpc';
 import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { rowOfError } from '../lib/row-error';
 import { ImagePicker } from './image-picker';
 
 export interface StickerListFieldProps {
   value: readonly ItemStickerDto[];
   onChange: (rows: ItemStickerDto[]) => void;
+  /** Pesan galat daftar; bila berbentuk "Stiker N: ...", input baris N ditandai `aria-invalid`. */
+  error?: string | undefined;
 }
 
 /** Stiker yang perlu ditempel: nama, catatan posisi/ketentuan, dan gambar contoh opsional. */
-export function StickerListField({ value, onChange }: StickerListFieldProps) {
+export function StickerListField({ value, onChange, error }: StickerListFieldProps) {
+  const invalidRow = rowOfError(error, 'Stiker');
   // Nilai terbaru (tahan balapan dengan unggah gambar) dan kunci stabil per baris agar unggahan yang selesai
   // belakangan jatuh ke baris yang benar walau baris lain dihapus.
   const valueRef = useRef(value);
@@ -57,6 +61,7 @@ export function StickerListField({ value, onChange }: StickerListFieldProps) {
             <div className="flex items-center gap-2">
               <Input
                 aria-label={`Nama stiker ${index + 1}`}
+                aria-invalid={invalidRow === index ? true : undefined}
                 placeholder="Nama stiker"
                 value={row.name}
                 onChange={(event) => update(key, { name: event.target.value })}
@@ -73,6 +78,7 @@ export function StickerListField({ value, onChange }: StickerListFieldProps) {
             </div>
             <Input
               aria-label={`Catatan stiker ${index + 1}`}
+              aria-invalid={invalidRow === index ? true : undefined}
               placeholder="Posisi atau ketentuan penempelan"
               value={row.note}
               onChange={(event) => update(key, { note: event.target.value })}

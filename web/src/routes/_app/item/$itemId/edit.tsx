@@ -51,7 +51,6 @@ function EditItemPage() {
       </h1>
       <ItemForm
         key={item.updatedAt}
-        mode="edit"
         brands={brands}
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}

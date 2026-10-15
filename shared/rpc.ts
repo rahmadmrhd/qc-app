@@ -1,4 +1,5 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 
 export const ERROR_CODES = [
@@ -247,6 +248,112 @@ export interface SetItemStatusInput {
   status: ItemStatus;
 }
 
+export interface CustomerDto {
+  id: string;
+  name: string;
+  status: ItemStatus;
+  updatedAt: string;
+}
+
+export interface RenameCustomerInput {
+  id: string;
+  name: string;
+}
+
+export interface SetCustomerStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+/** Item aktif untuk saran tipe di form task (tanpa detail berat). */
+export interface HandoverOptionItemDto {
+  id: string;
+  brand: string;
+  model: string;
+  aliases: string[];
+}
+
+export interface HandoverOptionCustomerDto {
+  id: string;
+  name: string;
+}
+
+export interface HandoverOptionsDto {
+  items: HandoverOptionItemDto[];
+  customers: HandoverOptionCustomerDto[];
+  /** Nama customer nonaktif: dipakai form untuk memberi petunjuk sebelum simpan ditolak. */
+  inactiveCustomerNames: string[];
+}
+
+export interface HandoverLineDto {
+  id: string;
+  itemId: string;
+  /** Salinan "merk tipe" saat baris dibuat (FH9). */
+  itemLabel: string;
+  qty: number;
+  doneQty: number;
+  doneAt: string;
+  doneBy: string;
+}
+
+export interface HandoverSummaryDto {
+  id: string;
+  number: string;
+  locationId: string;
+  customerId: string;
+  customerName: string;
+  note: string;
+  status: HandoverStatus;
+  lineCount: number;
+  doneUnits: number;
+  totalUnits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HandoverDto extends HandoverSummaryDto {
+  lines: HandoverLineDto[];
+  createdBy: string;
+  updatedBy: string;
+}
+
+export interface ListHandoversInput {
+  locationIds: string[];
+}
+
+export interface GetHandoverInput {
+  id: string;
+  locationIds: string[];
+}
+
+export interface SaveHandoverLineInput {
+  itemId: string;
+  qty: number;
+}
+
+export interface SaveHandoverInput {
+  id?: string;
+  locationId: string;
+  /** Nama customer; yang belum ada dibuat saat task disimpan (FC2). */
+  customerName: string;
+  note: string;
+  lines: SaveHandoverLineInput[];
+}
+
+export interface HandoverRefInput {
+  id: string;
+  locationId: string;
+}
+
+export interface SetProgressInput extends HandoverRefInput {
+  lineId: string;
+  doneQty: number;
+}
+
+export interface CompleteLineInput extends HandoverRefInput {
+  lineId: string;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -264,6 +371,17 @@ export interface RpcContract {
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
+  'customers.list': { input: null; output: CustomerDto[] };
+  'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
+  'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
+  'handovers.options': { input: ListHandoversInput; output: HandoverOptionsDto };
+  'handovers.list': { input: ListHandoversInput; output: HandoverSummaryDto[] };
+  'handovers.get': { input: GetHandoverInput; output: HandoverDto };
+  'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
+  'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
+  'handovers.setProgress': { input: SetProgressInput; output: HandoverDto };
+  'handovers.completeLine': { input: CompleteLineInput; output: HandoverDto };
+  'handovers.completeAll': { input: HandoverRefInput; output: HandoverDto };
   'items.list': { input: null; output: ItemSummaryDto[] };
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };

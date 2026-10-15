@@ -150,3 +150,25 @@ test('JSON per kolom melebihi 40.000 karakter ditolak (karakter kontrol membengk
 test('merk wajib memuat huruf atau angka', () => {
   expect(fieldsOf({ brand: '!!!' })?.brand).toBe('Merk harus memuat huruf atau angka');
 });
+
+test('tipe wajib memuat huruf atau angka (kunci tidak boleh kosong)', () => {
+  expect(fieldsOf({ model: '--' })?.model).toBe('Tipe harus memuat huruf atau angka');
+  expect(validateSaveItem_({ ...base, brand: '小米', model: '手机' }).model).toBe('手机');
+});
+
+test('galat daftar yang dilaporkan adalah yang PERTAMA, bukan yang terakhir', () => {
+  expect(fieldsOf({ stickers: [{ name: '' }, { name: 'x'.repeat(101) }] })?.stickers).toBe(
+    'Stiker 1: nama wajib diisi',
+  );
+  expect(
+    fieldsOf({
+      accessories: [
+        { name: '', qty: 1 },
+        { name: 'ok', qty: 0 },
+      ],
+    })?.accessories,
+  ).toBe('Kelengkapan 1: nama wajib diisi');
+  expect(fieldsOf({ aliases: ['--', 'x'.repeat(101)] })?.aliases).toBe(
+    'Nama lain harus memuat huruf atau angka',
+  );
+});

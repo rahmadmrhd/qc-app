@@ -148,3 +148,8 @@ test('merk hanya tanda baca ditolak skema form', () => {
   const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: '!!!', model: 'X' });
   expect(result.success).toBe(false);
 });
+
+test('tipe hanya tanda baca ditolak skema form', () => {
+  const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: 'A', model: '--' });
+  expect(result.success).toBe(false);
+});

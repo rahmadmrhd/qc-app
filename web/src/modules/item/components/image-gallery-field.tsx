@@ -11,7 +11,8 @@ export interface ImageGalleryFieldProps {
   value: readonly string[];
   onChange: (ids: string[]) => void;
   max?: number;
-  disabled?: boolean;
+  /** Nama item (merk + tipe) untuk teks alternatif gambar. */
+  itemLabel?: string;
 }
 
 /** Galeri gambar lampiran: tambah (kecilkan + unggah), geser urutan, hapus. */
@@ -19,7 +20,7 @@ export function ImageGalleryField({
   value,
   onChange,
   max = ITEM_LIMITS.attachments,
-  disabled = false,
+  itemLabel = '',
 }: ImageGalleryFieldProps) {
   const uploadImage = useUploadImage();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,14 +76,18 @@ export function ImageGalleryField({
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           {value.map((id, index) => (
             <li key={id} className="space-y-1">
-              <ImageThumb id={id} alt={`Gambar ${index + 1}`} className="aspect-square w-full" />
+              <ImageThumb
+                id={id}
+                alt={`Gambar ${index + 1}${itemLabel ? ` ${itemLabel}` : ''}`}
+                className="aspect-square w-full"
+              />
               <div className="flex items-center justify-between gap-1">
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
                   aria-label={`Geser gambar ${index + 1} ke kiri`}
-                  disabled={disabled || index === 0}
+                  disabled={index === 0}
                   onClick={() => move(index, -1)}
                 >
                   <ChevronLeft aria-hidden="true" />
@@ -92,7 +97,6 @@ export function ImageGalleryField({
                   size="sm"
                   variant="ghost"
                   aria-label={`Hapus gambar ${index + 1}`}
-                  disabled={disabled}
                   onClick={() => commit(valueRef.current.filter((_, i) => i !== index))}
                 >
                   <Trash2 aria-hidden="true" />
@@ -102,7 +106,7 @@ export function ImageGalleryField({
                   size="sm"
                   variant="ghost"
                   aria-label={`Geser gambar ${index + 1} ke kanan`}
-                  disabled={disabled || index === value.length - 1}
+                  disabled={index === value.length - 1}
                   onClick={() => move(index, 1)}
                 >
                   <ChevronRight aria-hidden="true" />
@@ -119,7 +123,7 @@ export function ImageGalleryField({
           type="button"
           size="sm"
           variant="outline"
-          disabled={disabled || value.length >= max}
+          disabled={value.length >= max}
           onClick={() => inputRef.current?.click()}
         >
           <ImagePlus aria-hidden="true" />

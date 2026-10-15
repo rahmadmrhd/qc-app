@@ -56,3 +56,18 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 50 | `sync.file.get` untuk id di folder dan id di luar folder | Isi base64 dan `NOT_FOUND` | FS9 |
 | 51 | Ganti nama merk di web lalu pull item | Semua item merk itu muncul lagi dengan nama baru | FS11 |
 | 52 | Dorong 50 item (dan 25 item ber-`detail`) dalam satu `sync.items.push` di deployment; catat lama panggilan | Selesai jauh di bawah 6 menit (target < 2 menit); hasil per item lengkap. Bila lambat, turunkan `SYNC_LIMITS.pushMax` | FS5 |
+| 53 | Login WH (`handover: edit`): Serah Terima → Tambah task; ketik customer baru, cari dua tipe lewat saran ("es24" dan "galaxy samsung" urutan kata terbalik), atur qty → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
+| 54 | Buat task tanpa mengisi customer (opsional), lalu task kedua di hari yang sama dengan ejaan customer berbeda ("pt. maju  jaya") | Task tanpa customer tersimpan (daftar menampilkan "—", detail "Tanpa customer"); task kedua memakai customer yang sama (ejaan resmi), nomor `-002`, tidak ada customer ganda | FC2, FH4 |
+| 55 | Ketik nama customer mirip ("Maju Jaya PT" atau typo) | Petunjuk "Mirip: …, pakai ini?" dapat diklik; tidak memblokir simpan | FC4 |
+| 56 | Ketik tipe di luar katalog | "Tipe tidak ditemukan di katalog"; tautan "Tambah item baru" hanya untuk user `item: edit`; tipe tak dikenal tidak dapat disimpan | FH2, FH3 |
+| 57 | Login QC (`qc: edit`): buka task; ubah qty selesai satu tipe (Tab), "Selesai" per tipe, lalu "Selesaikan semua" (konfirmasi) | Status Baru → Dikerjakan → Selesai; nama dan waktu per baris tampil; audit `handover.progress` dan **satu** `handover.complete` | FQ1–FQ4 |
+| 58 | QC mengisi qty selesai di atas target atau pecahan | Ditolak, pesan "Harus bilangan bulat 0–n"; tidak tersimpan | FQ1 |
+| 59 | Buka task Selesai atau Dibatalkan sebagai WH dan QC | Kontrol ubah/progres/batal tidak tampil; panggilan langsung ke RPC → `CONFLICT` | FH7, FQ6 |
+| 60 | WH ubah task: turunkan qty di bawah qty selesai; hapus baris yang sudah ada progres | Ditolak dengan pesan di bawah daftar baris; baris tanpa progres boleh dihapus; audit `handover.update` | FH7 |
+| 61 | WH (`handover: manage`) batalkan task (konfirmasi); WH `edit` saja | Task Dibatalkan, baca saja, audit `handover.cancel`; WH `edit` tidak melihat tombol Batalkan | FH8 |
+| 62 | User dengan akses lokasi A saja: pilih lokasi lain / buka URL task lokasi B | Tidak ada data lokasi B; detail menampilkan "Task tidak ditemukan di lokasi aktif"; panggilan RPC ke lokasi B → `FORBIDDEN` | FH1, FH6 |
+| 63 | Pilih dua lokasi di header, lalu satu | Daftar menggabungkan task; kolom Lokasi tampil hanya saat lebih dari satu lokasi | FH6 |
+| 64 | Halaman Customer: ganti nama, nonaktifkan; buat task dengan customer nonaktif | Pesan "dinonaktifkan; aktifkan dulu di halaman Customer"; ganti nama ke nama customer lain ditolak | FC5 |
+| 65 | WH tanpa izin `item` membuka form task | Saran tipe dan customer tetap muncul (rute serah terima) | FC3 |
+| 66 | Log Audit: `handover.update` dan `handover.progress` | Baris dibandingkan per entri berwarna, status berlabel Indonesia, qty progres terbaca | FAU1, FAU2 |
+| 67 | Ukuran ponsel (375×812) pada daftar, form, dan detail task | Tidak ada gulir horizontal halaman | NFR6 |

@@ -55,7 +55,7 @@ export function computeUserContext_(email: string): UserContext | null {
       locations,
     };
   }
-  if (!record || record.status !== 'active') return null;
+  if (record?.status !== 'active') return null;
   const rolePermissions = new Map(listRoles_().map((role) => [role.id, role.permissions] as const));
   const access = resolveAccess(record.assignments, rolePermissions, activeLocationIds);
   return {

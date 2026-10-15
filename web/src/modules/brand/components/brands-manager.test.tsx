@@ -84,3 +84,37 @@ test('onSave yang melempar galat menampilkan pesan dan tidak membuat tombol mace
   expect(await screen.findByRole('alert')).toHaveTextContent('Gagal menyimpan merk');
   expect(screen.getByRole('button', { name: 'Tambah merk' })).toBeEnabled();
 });
+
+test('ganti nama: isian terfokus, Enter menyimpan, Escape membatalkan', async () => {
+  const { onSave } = renderManager();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
+  const input = screen.getByLabelText('Nama baru untuk Mikrotik');
+  expect(input).toHaveFocus();
+  await userEvent.clear(input);
+  await userEvent.type(input, 'MikroTik{Enter}');
+  expect(onSave).toHaveBeenCalledWith({ id: 'b1', name: 'MikroTik' });
+  await waitFor(() => expect(screen.queryByLabelText('Nama baru untuk Mikrotik')).toBeNull());
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByLabelText('Nama baru untuk Mikrotik')).toBeNull();
+});
+
+test('galat ganti nama: isian aria-invalid dan terhubung ke pesan; galat form tambah hilang saat mengetik ulang', async () => {
+  const { onSave } = renderManager();
+  onSave.mockResolvedValueOnce('Nama merk sudah dipakai');
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan nama Mikrotik' }));
+  const alert = await screen.findByRole('alert');
+  const input = screen.getByLabelText('Nama baru untuk Mikrotik');
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute('aria-describedby', alert.id);
+  await userEvent.click(screen.getByRole('button', { name: 'Batal ubah Mikrotik' }));
+
+  onSave.mockResolvedValueOnce('Nama merk sudah dipakai');
+  const add = screen.getByLabelText('Nama merk baru');
+  await userEvent.type(add, 'X');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah merk' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Nama merk sudah dipakai');
+  await userEvent.type(add, 'Y');
+  expect(screen.queryByRole('alert')).toBeNull();
+});

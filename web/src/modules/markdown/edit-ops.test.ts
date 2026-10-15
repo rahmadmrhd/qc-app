@@ -48,7 +48,7 @@ test('insertAtCursor mengganti pilihan dan meletakkan kursor sesudah sisipan', (
 
 test('altTextFromFileName membuang ekstensi dan karakter yang merusak sintaks gambar', () => {
   expect(altTextFromFileName('foto kucing.png')).toBe('foto kucing');
-  expect(altTextFromFileName('a\.png')).toBe('a');
+  expect(altTextFromFileName('a.png')).toBe('a');
   expect(altTextFromFileName('foto [1] (kecil).jpg')).toBe('foto 1 kecil');
   expect(altTextFromFileName('.png')).toBe('gambar');
   expect(altTextFromFileName('')).toBe('gambar');

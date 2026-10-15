@@ -47,7 +47,7 @@ test('membuat merk: nama dirapikan, aktif, kolom sinkron kosong, audit brand.cre
 
 test('nama merk kembar (ternormalisasi) ditolak dengan pesan di field name', () => {
   saveBrand_({ name: 'Ubiquiti' }, admin);
-  for (const dup of ['ubiquiti', ' UBIQUITI ', 'Ubi-quiti'.replace('-', '')]) {
+  for (const dup of ['ubiquiti', ' UBIQUITI ', 'Ubiquiti']) {
     expect(captureAppError(() => saveBrand_({ name: dup }, admin)).fields).toEqual({
       name: 'Nama merk sudah dipakai',
     });

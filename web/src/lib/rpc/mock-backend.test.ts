@@ -148,3 +148,33 @@ test('merk demo: daftar memuat jumlah item; mengganti nama merk memperbarui nama
   const items = await call('items.list', null, admin);
   expect(items.data.map((i: { brand: string }) => i.brand)).toContain('MikroTik');
 });
+
+test('serah terima demo: QC melihat task Jakarta dan mengubah progres; WH Bandung tidak melihat task Jakarta; customer diganti nama', async () => {
+  const qc = tokenOf('qc.staff@qc.local');
+  const list = await call('handovers.list', { locationIds: ['loc-jkt'] }, qc);
+  expect(list.ok).toBe(true);
+  expect(list.data.length).toBeGreaterThan(0);
+  const task = list.data[0];
+  const detail = await call('handovers.get', { id: task.id, locationIds: ['loc-jkt'] }, qc);
+  const line = detail.data.lines[0];
+  const updated = await call(
+    'handovers.setProgress',
+    { id: task.id, locationId: 'loc-jkt', lineId: line.id, doneQty: 1 },
+    qc,
+  );
+  expect(updated.data.lines[0].doneQty).toBe(1);
+  const wh = tokenOf('wh.staff@qc.local'); // Bandung saja
+  expect(await call('handovers.list', { locationIds: ['loc-jkt'] }, wh)).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const customers = await call('customers.list', null, admin);
+  expect(customers.data.length).toBeGreaterThan(0);
+  const renamed = await call(
+    'customers.rename',
+    { id: customers.data[0].id, name: 'Nama Baru Demo' },
+    admin,
+  );
+  expect(renamed.data.name).toBe('Nama Baru Demo');
+});

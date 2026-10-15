@@ -12,11 +12,10 @@ export interface ImagePickerProps {
   onChange: (id: string | null) => void;
   /** Dipakai untuk nama aksesibel, mis. "stiker 1". */
   label: string;
-  disabled?: boolean;
 }
 
 /** Satu gambar opsional (mis. contoh stiker): pilih berkas → kecilkan → unggah. */
-export function ImagePicker({ value, onChange, label, disabled = false }: ImagePickerProps) {
+export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
   const uploadImage = useUploadImage();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +45,7 @@ export function ImagePicker({ value, onChange, label, disabled = false }: ImageP
         type="button"
         size="sm"
         variant="outline"
-        disabled={disabled || busy}
+        disabled={busy}
         onClick={() => inputRef.current?.click()}
       >
         <ImagePlus aria-hidden="true" />
@@ -58,7 +57,7 @@ export function ImagePicker({ value, onChange, label, disabled = false }: ImageP
           size="sm"
           variant="ghost"
           aria-label={`Hapus gambar contoh ${label}`}
-          disabled={disabled || busy}
+          disabled={busy}
           onClick={() => onChange(null)}
         >
           <Trash2 aria-hidden="true" />

@@ -59,3 +59,14 @@ export async function requirePermission(
   const me = await queryClient.ensureQueryData(meQueryOptions());
   if (!canAnywhere(me, module, level)) throw redirect({ to: '/forbidden' });
 }
+
+/** Lolos bila SALAH SATU alternatif terpenuhi di minimal satu lokasi (modul berlokasi) atau global. */
+export async function requireAnyPermission(
+  queryClient: QueryClient,
+  alternatives: ReadonlyArray<{ module: ModuleKey; level: Level }>,
+): Promise<void> {
+  const me = await queryClient.ensureQueryData(meQueryOptions());
+  if (!alternatives.some((item) => canAnywhere(me, item.module, item.level))) {
+    throw redirect({ to: '/forbidden' });
+  }
+}

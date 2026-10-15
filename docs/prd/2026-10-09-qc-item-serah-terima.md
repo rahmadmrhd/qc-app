@@ -98,7 +98,7 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
 | FH1 | Task milik **satu lokasi**; dibuat pada lokasi yang dipilih di form (lihat `LocationField`). | Butuh `handover: edit` di lokasi tujuan. |
-| FH2 | Isi task: **customer** (FC2), **catatan** opsional (maks. 500), dan **baris** `item × qty` (qty bilangan bulat 1–100.000; tiap item sekali per task; minimal satu baris). | Tipe dipilih dari saran (FH3); mengetik tipe di luar katalog tidak dapat disimpan. |
+| FH2 | Isi task: **customer** (FC2; **opsional** — kosong = task tanpa customer), **catatan** opsional (maks. 500), dan **baris** `item × qty` (qty bilangan bulat 1–100.000; tiap item sekali per task; minimal satu baris). | Tipe dipilih dari saran (FH3); mengetik tipe di luar katalog tidak dapat disimpan. |
 | FH3 | Auto-suggest tipe. | Cocok ke merk, tipe, dan alias; tidak peka huruf besar; abaikan spasi/tanda baca; toleran typo ringan; urutan kata bebas ("galaxy samsung" menemukan "Samsung Galaxy"). Item nonaktif tidak disarankan. Bila tidak ketemu dan user punya `item: edit`, tersedia tautan "Tambah item baru". |
 | FH4 | **Nomor task otomatis** `ST-YYYYMMDD-NNN` (urut per hari). | Dibuat di server dalam lock; tidak pernah ganda. |
 | FH5 | Status task: **Baru** (belum ada progres), **Dikerjakan**, **Selesai** (semua baris penuh), **Dibatalkan**. | Baru/Dikerjakan/Selesai diturunkan dari baris; Dibatalkan disimpan. |
@@ -244,10 +244,10 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - [ ] Tim Desktop menyetujui `docs/api/desktop-sync.md`.
 
 **Fase C**
-- [ ] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
-- [ ] Task serah terima (buat, ubah, batalkan) dengan nomor otomatis dan auto-suggest tipe.
-- [ ] QC memperbarui qty, menandai selesai per tipe dan per task; status turunan benar.
-- [ ] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
+- [x] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
+- [x] Task serah terima (buat, ubah, batalkan) dengan nomor otomatis dan auto-suggest tipe.
+- [x] QC memperbarui qty, menandai selesai per tipe dan per task; status turunan benar.
+- [x] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
 
 **Semua fase**
 - [ ] `bun run check` hijau, build lolos `verify-dist`, checklist E2E diperbarui dan lulus di deployment.

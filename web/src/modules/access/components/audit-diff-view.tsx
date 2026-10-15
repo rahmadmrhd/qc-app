@@ -25,9 +25,24 @@ const FIELD_LABELS: Record<string, string> = {
   attachments: 'Gambar lampiran',
   detailLength: 'Panjang detail (karakter)',
   detailHash: 'Isi detail',
+  number: 'Nomor',
+  location: 'Lokasi',
+  customer: 'Customer',
+  note: 'Catatan',
+  lines: 'Baris',
+  item: 'Tipe',
+  doneQty: 'Qty selesai',
+  qty: 'Target',
 };
 
-const STATUS_LABELS: Record<string, string> = { active: 'Aktif', inactive: 'Nonaktif' };
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Aktif',
+  inactive: 'Nonaktif',
+  new: 'Baru',
+  in_progress: 'Dikerjakan',
+  done: 'Selesai',
+  cancelled: 'Dibatalkan',
+};
 
 interface KindStyle {
   label: string;
