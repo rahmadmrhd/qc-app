@@ -75,3 +75,12 @@ test('tanpa izin edit/manage tidak ada form tambah, Ubah, maupun Nonaktifkan', (
   expect(screen.queryByLabelText('Nama merk baru')).toBeNull();
   expect(screen.queryByRole('button', { name: /Ubah|Nonaktifkan|Aktifkan/ })).toBeNull();
 });
+
+test('onSave yang melempar galat menampilkan pesan dan tidak membuat tombol macet', async () => {
+  const onSave = vi.fn().mockRejectedValue(new Error('putus'));
+  renderManager({ onSave });
+  await userEvent.type(screen.getByLabelText('Nama merk baru'), 'X');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah merk' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal menyimpan merk');
+  expect(screen.getByRole('button', { name: 'Tambah merk' })).toBeEnabled();
+});

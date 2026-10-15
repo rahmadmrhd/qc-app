@@ -177,7 +177,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 | `handovers` | `id, number, location_id, customer_id, customer_name, note, status, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`) |
 | `handover_lines` | `id, handover_id, item_id, item_label, qty, done_qty, done_at, done_by` |
 
-`key` = merk+tipe (item) atau nama (merk, customer) atau nama (customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
+`key` = merk+tipe (item) atau nama (merk, customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
 `files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).

@@ -94,6 +94,10 @@ export function saveBrand_(input: SaveBrandInput, actor: UserContext): BrandDto 
       return toBrandDto_(created, 0);
     }
 
+    if (existing.name === input.name) {
+      return toBrandDto_(existing, countItemsByBrand_().get(existing.id) ?? 0);
+    }
+
     // Kunci item = merk + tipe, jadi ganti nama menghitung ulang kunci item merk ini; tolak bila bentrok.
     const items = listItems_();
     const own = items.filter((item) => item.brandId === existing.id);

@@ -165,3 +165,10 @@ test('ganti nama merk yang membuat kunci item sama dengan nama lain item lain at
   ).toBe('CONFLICT');
   expect(listBrands_().find((x) => x.id === 'brand-ubiquity')?.name).toBe('Ubiquity');
 });
+
+test('ganti nama ke nama yang persis sama tidak menulis audit', () => {
+  insertBrand_(brand('Alfa'));
+  const before = listAuditRecords_().length;
+  expect(saveBrand_({ id: 'brand-alfa', name: 'Alfa' }, admin).name).toBe('Alfa');
+  expect(listAuditRecords_()).toHaveLength(before);
+});

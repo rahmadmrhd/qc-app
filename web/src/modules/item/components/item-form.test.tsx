@@ -153,3 +153,26 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
   await userEvent.type(input, 'lama');
   expect(screen.getByText(/dinonaktifkan; aktifkan dulu/)).toBeInTheDocument();
 });
+
+test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menyesatkan', () => {
+  const brands = [
+    {
+      id: 'b2',
+      externalId: '',
+      name: 'Lama',
+      status: 'inactive' as const,
+      itemCount: 1,
+      updatedAt: '',
+    },
+  ];
+  render(
+    <ItemForm
+      mode="edit"
+      brands={brands}
+      defaultValues={{ ...toItemFormDefaults(), brand: 'Lama', model: 'X' }}
+      onSubmit={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(screen.queryByText(/aktifkan dulu/)).toBeNull();
+});

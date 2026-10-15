@@ -28,7 +28,16 @@ export interface ItemFormProps {
 }
 
 /** Petunjuk di bawah isian merk: dipakai ulang, dinonaktifkan, atau akan dibuat baru. */
-function BrandHint({ value, brands }: { value: string; brands: readonly BrandDto[] }) {
+function BrandHint({
+  value,
+  brands,
+  initial,
+}: {
+  value: string;
+  brands: readonly BrandDto[];
+  /** Merk item saat form dibuka (edit): item lama boleh tetap bermerk nonaktif. */
+  initial: string;
+}) {
   const key = normalizeKey(value);
   if (key === '') return null;
   const match = brands.find((brand) => normalizeKey(brand.name) === key);
@@ -39,7 +48,7 @@ function BrandHint({ value, brands }: { value: string; brands: readonly BrandDto
       </p>
     );
   }
-  if (match.status === 'inactive') {
+  if (match.status === 'inactive' && normalizeKey(initial) !== key) {
     return (
       <p className="text-xs text-destructive">
         Merk "{match.name}" dinonaktifkan; aktifkan dulu di halaman Merk.
@@ -113,7 +122,7 @@ export function ItemForm({
                     <option key={brand.id} value={brand.name} />
                   ))}
               </datalist>
-              <BrandHint value={field.state.value} brands={brands} />
+              <BrandHint value={field.state.value} brands={brands} initial={defaultValues.brand} />
               <FieldError errors={[...field.state.meta.errors, fieldErrors?.brand]} />
             </div>
           )}

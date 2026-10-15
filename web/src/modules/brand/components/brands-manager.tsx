@@ -39,9 +39,18 @@ export function BrandsManager({
   const [editError, setEditError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** Galat tak terduga (mis. jaringan) menjadi pesan, bukan membuat `busy` macet. */
+  async function saveSafely(input: { id?: string; name: string }): Promise<string | null> {
+    try {
+      return await onSave(input);
+    } catch {
+      return 'Gagal menyimpan merk';
+    }
+  }
+
   async function create() {
     setBusy(true);
-    const error = await onSave({ name: newName });
+    const error = await saveSafely({ name: newName });
     setBusy(false);
     setNewError(error);
     if (error === null) setNewName('');
@@ -49,7 +58,7 @@ export function BrandsManager({
 
   async function rename(id: string) {
     setBusy(true);
-    const error = await onSave({ id, name: editName });
+    const error = await saveSafely({ id, name: editName });
     setBusy(false);
     setEditError(error);
     if (error === null) setEditingId(null);
