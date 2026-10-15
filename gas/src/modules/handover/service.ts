@@ -15,12 +15,14 @@ import {
   progressTotals,
 } from '@shared/handover';
 import type {
+  CompleteLineInput,
   GetHandoverInput,
   HandoverDto,
   HandoverOptionsDto,
   HandoverRefInput,
   HandoverSummaryDto,
   SaveHandoverInput,
+  SetProgressInput,
 } from '@shared/rpc';
 import type { HandoverLineRecord, HandoverRecord, NewHandoverLineRecord } from './repo';
 import {
@@ -374,5 +376,116 @@ export function cancelHandover_(input: HandoverRefInput, actor: ActorRef): Hando
       after: handoverSnapshot_(updated, lines, names),
     });
     return toHandoverDto_(updated, lines, customerNameMap_());
+  });
+}
+
+/** Menulis satu baris progres + audit `handover.progress`; mengembalikan true bila ada perubahan. Dalam lock. */
+function writeProgress_(
+  handover: HandoverRecord,
+  line: HandoverLineRecord,
+  doneQty: number,
+  actor: ActorRef,
+  now: string,
+): boolean {
+  if (line.doneQty === doneQty) return false;
+  updateHandoverLine_({ ...line, doneQty, doneAt: now, doneBy: actor.email });
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action: 'handover.progress',
+    target: `${handover.number} · ${line.itemLabel}`,
+    before: { item: line.itemLabel, doneQty: line.doneQty, qty: line.qty },
+    after: { item: line.itemLabel, doneQty, qty: line.qty },
+  });
+  return true;
+}
+
+/** Setelah perubahan progres: catat `handover.complete` sekali bila task baru saja menjadi Selesai; kembalikan DTO. */
+function finishProgress_(
+  ref: HandoverRefInput,
+  beforeStatus: ReturnType<typeof deriveHandoverStatus>,
+  beforeSnapshot: Record<string, unknown>,
+  changed: boolean,
+  actor: ActorRef,
+  now: string,
+): HandoverDto {
+  const fresh = loadHandoverForWrite_(ref);
+  if (changed) {
+    const touched: HandoverRecord = { ...fresh.handover, updatedAt: now, updatedBy: actor.email };
+    updateHandover_(touched);
+    fresh.handover = touched;
+    const afterStatus = deriveHandoverStatus(touched.status, fresh.lines);
+    if (afterStatus === 'done' && beforeStatus !== 'done') {
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'handover.complete',
+        target: touched.number,
+        before: beforeSnapshot,
+        after: handoverSnapshot_(touched, fresh.lines, locationNameMap_()),
+      });
+    }
+  }
+  return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
+}
+
+export function setProgress_(input: SetProgressInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const { handover, lines } = loadHandoverForWrite_(input);
+    assertHandoverOpen_(handover, lines);
+    const line = lines.find((row) => row.id === input.lineId);
+    if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
+    if (input.doneQty > line.qty) {
+      const message = `Harus bilangan bulat 0–${line.qty}`;
+      throw appError_('VALIDATION', message, { doneQty: message });
+    }
+    const now = nowIso_();
+    const beforeStatus = deriveHandoverStatus(handover.status, lines);
+    const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
+    const changed = writeProgress_(handover, line, input.doneQty, actor, now);
+    return finishProgress_(input, beforeStatus, beforeSnapshot, changed, actor, now);
+  });
+}
+
+export function completeLine_(input: CompleteLineInput, actor: ActorRef): HandoverDto {
+  const { id, locationId, lineId } = input;
+  return platform_().withLock(() => {
+    const { handover, lines } = loadHandoverForWrite_({ id, locationId });
+    assertHandoverOpen_(handover, lines);
+    const line = lines.find((row) => row.id === lineId);
+    if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
+    const now = nowIso_();
+    const beforeStatus = deriveHandoverStatus(handover.status, lines);
+    const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
+    const changed = writeProgress_(handover, line, line.qty, actor, now);
+    return finishProgress_({ id, locationId }, beforeStatus, beforeSnapshot, changed, actor, now);
+  });
+}
+
+/** Selesai per task: semua baris yang belum penuh diisi penuh; satu audit `handover.complete` (bukan per baris). */
+export function completeAll_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const { handover, lines } = loadHandoverForWrite_(input);
+    assertHandoverOpen_(handover, lines);
+    const now = nowIso_();
+    const names = locationNameMap_();
+    const before = handoverSnapshot_(handover, lines, names);
+    for (const line of lines) {
+      if (line.doneQty < line.qty) {
+        updateHandoverLine_({ ...line, doneQty: line.qty, doneAt: now, doneBy: actor.email });
+      }
+    }
+    const touched: HandoverRecord = { ...handover, updatedAt: now, updatedBy: actor.email };
+    updateHandover_(touched);
+    const fresh = loadHandoverForWrite_(input);
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'handover.complete',
+      target: handover.number,
+      before,
+      after: handoverSnapshot_(fresh.handover, fresh.lines, names),
+    });
+    return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
   });
 }

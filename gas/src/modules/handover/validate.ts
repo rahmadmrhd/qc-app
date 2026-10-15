@@ -3,11 +3,13 @@ import { readObject_ } from '@gas/core/validate';
 import { validateCustomerName_ } from '@gas/modules/customer/validate';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import type {
+  CompleteLineInput,
   GetHandoverInput,
   HandoverRefInput,
   ListHandoversInput,
   SaveHandoverInput,
   SaveHandoverLineInput,
+  SetProgressInput,
 } from '@shared/rpc';
 
 const MAX_LOCATION_IDS = 50;
@@ -105,4 +107,31 @@ export function validateHandoverRef_(raw: unknown): HandoverRefInput {
   const locationId = reader.str('locationId', { required: true, max: 100 });
   reader.done();
   return { id, locationId };
+}
+
+export function validateSetProgress_(raw: unknown): SetProgressInput {
+  const reader = readObject_(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const locationId = reader.str('locationId', { required: true, max: 100 });
+  const lineId = reader.str('lineId', { required: true, max: 100 });
+  const doneQty = reader.raw('doneQty');
+  if (
+    typeof doneQty !== 'number' ||
+    !Number.isInteger(doneQty) ||
+    doneQty < 0 ||
+    doneQty > HANDOVER_LIMITS.qtyMax
+  ) {
+    reader.fail('doneQty', `Harus bilangan bulat 0–${HANDOVER_LIMITS.qtyMax}`);
+  }
+  reader.done();
+  return { id, locationId, lineId, doneQty: doneQty as number };
+}
+
+export function validateCompleteLine_(raw: unknown): CompleteLineInput {
+  const reader = readObject_(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const locationId = reader.str('locationId', { required: true, max: 100 });
+  const lineId = reader.str('lineId', { required: true, max: 100 });
+  reader.done();
+  return { id, locationId, lineId };
 }

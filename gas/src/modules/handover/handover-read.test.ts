@@ -213,6 +213,6 @@ test('izin rute baca: anyOf handover view atau qc edit, berlokasi', () => {
   };
   const routes = getRoutes_();
   for (const method of ['handovers.options', 'handovers.list', 'handovers.get'] as const) {
-    expect(routes[method].permission).toEqual(anyOf);
+    expect(routes[method].permission as unknown).toEqual(anyOf);
   }
 });
