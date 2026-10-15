@@ -2,6 +2,7 @@ import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
 import { readObject_ } from '@gas/core/validate';
 import { nowIso_ } from '@gas/modules/access/service';
+import type { NewFileRecord } from '@gas/modules/files/repo';
 import { insertFile_, listFiles_ } from '@gas/modules/files/repo';
 import { base64ByteLength, isImageMime } from '@shared/files';
 import { SYNC_ACTOR, SYNC_LIMITS } from '@shared/sync';
@@ -58,19 +59,21 @@ export function probeDriveIds_(driveIds: readonly string[]): Map<string, DrivePr
 }
 
 /**
- * Memastikan tiap id Drive punya baris `files` yang boleh dipakai pemilik `ownerId`: baris tanpa pemilik atau
- * milik `ownerId` dipakai ulang; bila berkas Drive itu sudah dimiliki entitas lain, dibuat baris BARU untuk berkas
- * Drive yang sama (satu foto boleh dipakai banyak item). Id yang tak ada di folder aplikasi, bukan gambar
- * JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`. PEMANGGIL WAJIB memegang lock.
+ * Rencana pendaftaran (TANPA menulis): tiap id Drive dipetakan ke baris `files` yang boleh dipakai pemilik
+ * `ownerId` — baris tanpa pemilik atau milik `ownerId` dipakai ulang; bila berkas Drive itu sudah dimiliki
+ * entitas lain, disiapkan baris BARU untuk berkas Drive yang sama (satu foto boleh dipakai banyak item).
+ * Id yang tak ada di folder aplikasi, bukan gambar JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`.
+ * `pending` hanya ditulis lewat `commitDriveFiles_` setelah semua pemeriksaan entri lolos.
  */
-export function registerDriveFiles_(
+export function planDriveFiles_(
   driveIds: readonly string[],
   probes: ReadonlyMap<string, DriveProbe | null>,
   ownerId: string,
-): { map: Map<string, string>; missing: string[] } {
+): { map: Map<string, string>; missing: string[]; pending: NewFileRecord[] } {
   const rows = listFiles_();
   const map = new Map<string, string>();
   const missing: string[] = [];
+  const pending: NewFileRecord[] = [];
   for (const driveId of new Set(driveIds)) {
     const usable = rows.find(
       (file) => file.driveId === driveId && (file.ownerType === '' || file.ownerId === ownerId),
@@ -88,7 +91,7 @@ export function registerDriveFiles_(
       continue;
     }
     const id = platform_().uuid();
-    insertFile_({
+    pending.push({
       id,
       driveId,
       mime: info.mime,
@@ -102,5 +105,21 @@ export function registerDriveFiles_(
     });
     map.set(driveId, id);
   }
+  return { map, missing, pending };
+}
+
+/** Menulis baris yang direncanakan `planDriveFiles_`. PEMANGGIL WAJIB memegang lock. */
+export function commitDriveFiles_(pending: readonly NewFileRecord[]): void {
+  for (const record of pending) insertFile_(record);
+}
+
+/** Rencana + tulis sekaligus (tanpa pemeriksaan tambahan di antaranya). PEMANGGIL WAJIB memegang lock. */
+export function registerDriveFiles_(
+  driveIds: readonly string[],
+  probes: ReadonlyMap<string, DriveProbe | null>,
+  ownerId: string,
+): { map: Map<string, string>; missing: string[] } {
+  const { map, missing, pending } = planDriveFiles_(driveIds, probes, ownerId);
+  commitDriveFiles_(pending);
   return { map, missing };
 }

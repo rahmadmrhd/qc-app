@@ -137,3 +137,21 @@ test('nama method bawaan Object (constructor, __proto__) tidak dianggap rute', (
     });
   }
 });
+
+test('jendela 10 menit: kegagalan yang jarang tidak menumpuk menjadi blokir; 10 dalam jendela memblokir', () => {
+  let clock = Date.parse('2026-10-15T00:00:00.000Z');
+  platform = createMemoryPlatform({
+    properties: { ADMIN_EMAIL: 'admin@gmail.com', SESSION_SECRET: 's', SYNC_API_TOKEN: TOKEN },
+    now: () => clock,
+  });
+  setPlatform_(platform);
+  // 12 kegagalan, masing-masing berjarak 9 menit: tidak pernah 10 dalam 10 menit
+  for (let i = 0; i < 12; i++) {
+    ping(`salah-${i}`);
+    clock += 9 * 60 * 1000;
+  }
+  expect(ping(TOKEN)).toMatchObject({ ok: true });
+  // 10 kegagalan dalam satu jendela memblokir
+  for (let i = 0; i < 10; i++) ping(`cepat-${i}`);
+  expect(ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+});

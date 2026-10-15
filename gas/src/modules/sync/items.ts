@@ -25,10 +25,10 @@ import {
 } from '@shared/items';
 import type { ItemStatus, SaveItemInput } from '@shared/rpc';
 import type { SyncEntryResult, SyncWireItem, SyncWireSticker } from '@shared/sync';
-import { SYNC_ACTOR } from '@shared/sync';
+import { SYNC_ACTOR, SYNC_LIMITS } from '@shared/sync';
 import { isStaleWrite_, syncFailureResult_ } from './conflict';
 import type { DriveProbe } from './files';
-import { probeDriveIds_, registerDriveFiles_ } from './files';
+import { commitDriveFiles_, planDriveFiles_, probeDriveIds_ } from './files';
 import { paginateByRev_, validateSyncPull_ } from './pull';
 import type { SyncPushEnvelope, WireCheck } from './wire';
 import { asSyncObject_, readSyncBaseRev_, readSyncBool_, readSyncId_ } from './wire';
@@ -136,6 +136,16 @@ function checkWireText_(
   return undefined;
 }
 
+/** "drive:<id>" utuh; hanya judul Markdown ("..." atau '...') boleh mengikuti id. */
+function isWholeDriveTarget_(target: string): boolean {
+  if (!target.startsWith(DRIVE_REF_SCHEME)) return false;
+  let end = DRIVE_REF_SCHEME.length;
+  while (end < target.length && isRefIdChar(target.charAt(end))) end++;
+  if (end === DRIVE_REF_SCHEME.length) return false;
+  const rest = target.slice(end).trim();
+  return rest === '' || rest.startsWith('"') || rest.startsWith("'");
+}
+
 function checkWireDetail_(value: unknown, fields: Record<string, string>): string | undefined {
   if (typeof value !== 'string') {
     fields.detail = 'Harus berupa teks';
@@ -151,8 +161,7 @@ function checkWireDetail_(value: unknown, fields: Record<string, string>): strin
     return undefined;
   }
   for (const target of extractImageTargets(detail)) {
-    const id = target.startsWith('drive:') ? target.slice('drive:'.length) : '';
-    if (id === '' || !isRefIdChar(id.charAt(0))) {
+    if (!isWholeDriveTarget_(target)) {
       fields.detail = 'Gambar di Markdown hanya boleh ![alt](drive:<id>)';
       return undefined;
     }
@@ -290,6 +299,12 @@ export function checkSyncItem_(raw: unknown): WireCheck<SyncItemInput> {
       fields[key] = 'Data terlalu besar';
     }
   }
+  if (
+    Object.keys(fields).length === 0 &&
+    driveIdsOf_(value).length > SYNC_LIMITS.driveRefsPerEntry
+  ) {
+    fields.detail = `Maksimal ${SYNC_LIMITS.driveRefsPerEntry} gambar berbeda per item`;
+  }
   return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, value };
 }
 
@@ -385,7 +400,7 @@ function upsertSyncItem_(
   }
 
   const ownerId = existing?.id ?? platform_().uuid();
-  const { map, missing } = registerDriveFiles_(driveIdsOf_(entry), probes, ownerId);
+  const { map, missing, pending } = planDriveFiles_(driveIdsOf_(entry), probes, ownerId);
   if (missing.length > 0) {
     const bad = new Set(missing);
     const fields: Record<string, string> = {};
@@ -474,6 +489,8 @@ function upsertSyncItem_(
     }
   }
 
+  // Semua pemeriksaan (field, konflik, berkas) sudah lolos: baru sekarang berkas baru didaftarkan.
+  commitDriveFiles_(pending);
   const record = writeItem_(merged, {
     id: ownerId,
     existing,

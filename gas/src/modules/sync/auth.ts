@@ -13,12 +13,20 @@ function recordSyncFailure_(): void {
   const platform = platform_();
   try {
     platform.withLock(() => {
-      const count = (Number(platform.cacheGet(SYNC_FAIL_KEY)) || 0) + 1;
+      // Jendela tetap: simpan awal jendela bersama hitungan, sehingga kegagalan jarang tidak pernah menumpuk.
+      const now = platform.now();
+      const windowMs = SYNC_LIMITS.blockSeconds * 1000;
+      const [startText, countText] = (platform.cacheGet(SYNC_FAIL_KEY) ?? '').split(':');
+      const start = Number(startText);
+      const inWindow = Number.isFinite(start) && now - start < windowMs;
+      const windowStart = inWindow ? start : now;
+      const count = (inWindow ? Number(countText) || 0 : 0) + 1;
       if (count >= SYNC_LIMITS.failedAttempts) {
         platform.cachePut(SYNC_BLOCK_KEY, '1', SYNC_LIMITS.blockSeconds);
         platform.cacheRemove(SYNC_FAIL_KEY);
       } else {
-        platform.cachePut(SYNC_FAIL_KEY, String(count), SYNC_LIMITS.blockSeconds);
+        const remaining = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
+        platform.cachePut(SYNC_FAIL_KEY, `${windowStart}:${count}`, remaining);
       }
     });
   } catch {

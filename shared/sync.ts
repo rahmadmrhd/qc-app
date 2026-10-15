@@ -16,6 +16,8 @@ export const SYNC_LIMITS = {
   pushMaxWithDetail: 25,
   /** Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte). */
   fileBytes: 8_000_000,
+  /** Id Drive berbeda per entri item (galeri + stiker + Markdown): membatasi panggilan Drive per permintaan. */
+  driveRefsPerEntry: 50,
   failedAttempts: 10,
   blockSeconds: 600,
 } as const;

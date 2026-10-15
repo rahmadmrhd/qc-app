@@ -360,3 +360,44 @@ test('gambar Drive yang sama dipakai dua item, atau dipindah antar item, tidak d
   const [c] = results([{ ...BASE, id: '3', tipe: 'C', images: [img] }]);
   expect(c?.status).toBe('created');
 });
+
+test('berkas baru tidak didaftarkan bila entri akhirnya invalid atau konflik (tidak ada baris files yatim)', () => {
+  const good = drive('good.png');
+  const other = platform.driveCreateFolder('Lain');
+  const outside = platform.driveCreateFile(other, 'x.png', 'image/png', PNG);
+  const [mixed] = results([{ ...BASE, id: '1', tipe: 'Campur', images: [good, outside] }]);
+  expect(mixed?.status).toBe('invalid');
+  expect(listFiles_()).toHaveLength(0);
+
+  insertBrand_(brand('Ubiquiti', { syncRev: 1 }));
+  insertItem_(item({ id: 'i1', brand: 'Ubiquiti', model: 'ES 24', syncRev: 5, detail: 'server' }));
+  prime('items', 5);
+  const [conflict] = results([{ uid: 'i1', images: [good], detail: 'desktop', baseRev: 3 }]);
+  expect(conflict?.status).toBe('conflict');
+  expect(listFiles_()).toHaveLength(0);
+  expect(results([{ uid: 'i1', images: [good], baseRev: 5 }])[0]?.status).toBe('updated');
+  expect(listFiles_()).toHaveLength(1);
+});
+
+test('tujuan gambar Markdown harus drive:<id> utuh (judul boleh); sisa seperti /sufiks ditolak', () => {
+  const id = drive();
+  const [ok, titled, suffix, query] = results([
+    { ...BASE, id: '1', tipe: 'A', detail: `![x](drive:${id})` },
+    { ...BASE, id: '2', tipe: 'B', detail: `![x](drive:${id} "judul")` },
+    { ...BASE, id: '3', tipe: 'C', detail: `![x](drive:${id}/sufiks)` },
+    { ...BASE, id: '4', tipe: 'D', detail: `![x](drive:${id}?a=1)` },
+  ]);
+  expect(ok?.status).toBe('created');
+  expect(titled?.status).toBe('created');
+  expect(suffix).toMatchObject({ status: 'invalid', fields: { detail: expect.any(String) } });
+  expect(query?.status).toBe('invalid');
+});
+
+test('jumlah id Drive berbeda per item dibatasi (mencegah ribuan panggilan Drive)', () => {
+  const many = Array.from({ length: 51 }, (_, i) => `![x](drive:ID${i})`).join(' ');
+  const [out] = results([{ ...BASE, id: '1', tipe: 'Banyak', detail: many }]);
+  expect(out).toMatchObject({
+    status: 'invalid',
+    fields: { detail: expect.stringContaining('50') },
+  });
+});
