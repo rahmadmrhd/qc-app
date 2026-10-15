@@ -118,7 +118,10 @@ export interface SyncItemInput {
   baseRev?: number;
 }
 
-const SYNC_ITEM_ACTOR = { email: SYNC_ACTOR };
+// Fungsi, bukan konstanta: SYNC_ACTOR berasal dari file lain dan belum ada saat file ini dimuat di GAS.
+function syncItemActor_() {
+  return { email: SYNC_ACTOR };
+}
 /** Nama field internal → nama field pada kabel, agar pesan galat sesuai kontrak. */
 const WIRE_FIELD_NAMES: Record<string, string> = {
   brand: 'merk',
@@ -576,7 +579,7 @@ function upsertSyncItem_(
   const record = writeItem_(merged, {
     id: ownerId,
     existing,
-    actor: SYNC_ITEM_ACTOR,
+    actor: syncItemActor_(),
     externalId: entry.id,
     status,
   });
