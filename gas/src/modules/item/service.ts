@@ -1,6 +1,6 @@
+import type { ActorRef } from '@gas/core/actor';
 import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
-import type { UserContext } from '@gas/modules/access/context';
 import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import type { NewBrandRecord } from '@gas/modules/brand/repo';
@@ -23,13 +23,13 @@ import type { ItemRecord, NewItemRecord } from './repo';
 import { insertItem_, listItems_, updateItem_ } from './repo';
 
 /** Record item beserta nama merk (dari tabel merk) untuk DTO dan audit. */
-type ItemView = NewItemRecord & { brand: string };
+export type ItemView = NewItemRecord & { brand: string };
 
 export function brandNameMap_(): Map<string, string> {
   return new Map(listBrands_().map((brand) => [brand.id, brand.name]));
 }
 
-function toItemView_(item: NewItemRecord, names: Map<string, string>): ItemView {
+export function toItemView_(item: NewItemRecord, names: Map<string, string>): ItemView {
   return { ...item, brand: names.get(item.brandId) ?? '' };
 }
 
@@ -61,7 +61,7 @@ function toItemDto_(item: ItemView): ItemDto {
 }
 
 /** Snapshot audit ringkas: teks Markdown tidak disimpan, hanya panjang dan hash (sel audit maks. 50.000 karakter). */
-function itemSnapshot_(item: ItemView): Record<string, unknown> {
+export function itemSnapshot_(item: ItemView): Record<string, unknown> {
   return {
     brand: item.brand,
     model: item.model,
@@ -79,7 +79,7 @@ function itemSnapshot_(item: ItemView): Record<string, unknown> {
   };
 }
 
-function itemLabel_(item: { brand: string; model: string }): string {
+export function itemLabel_(item: { brand: string; model: string }): string {
   return `${item.brand} ${item.model}`;
 }
 
@@ -142,7 +142,7 @@ function referencedFileIds_(input: SaveItemInput): string[] {
 }
 
 /** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
-function itemSyncSignature_(item: {
+export function itemSyncSignature_(item: {
   brandId: string;
   model: string;
   isCountryLock: boolean;
@@ -164,89 +164,121 @@ function itemSyncSignature_(item: {
   ]);
 }
 
-export function saveItem_(input: SaveItemInput, actor: UserContext): ItemDto {
-  return platform_().withLock(() => {
-    const items = listItems_();
-    const existing = input.id ? items.find((item) => item.id === input.id) : undefined;
-    if (input.id && !existing) throw appError_('NOT_FOUND', 'Item tidak ditemukan');
-    const key = itemKey(input.brand, input.model);
-    // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
-    const brandKey = normalizeKey(input.brand);
-    const knownBrand = listBrands_().find((brand) => brand.key === brandKey);
-    if (knownBrand && knownBrand.status === 'inactive' && existing?.brandId !== knownBrand.id) {
-      const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
-      throw appError_('VALIDATION', message, { brand: message });
-    }
-    assertItemNamesFree_(
-      input,
-      key,
-      items.filter((item) => item.id !== input.id),
-      brandNameMap_(),
-    );
-    const id = existing?.id ?? platform_().uuid();
-    // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
-    attachFiles_(referencedFileIds_(input), 'item', id);
-    // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
-    const brand: NewBrandRecord = resolveBrandByName_(input.brand, actor);
-    const now = nowIso_();
-    const fields = {
-      brandId: brand.id,
-      model: input.model,
-      key,
-      isCountryLock: input.isCountryLock,
-      aliases: [...input.aliases],
-      stickers: input.stickers.map((sticker) => ({ ...sticker })),
-      accessories: input.accessories.map((accessory) => ({ ...accessory })),
-      attachments: [...input.attachments],
-      detail: input.detail,
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
+export interface WriteItemOptions {
+  existing?: ItemRecord | undefined;
+  actor: ActorRef;
+  /** Hanya sinkronisasi: id MySQL yang dipetakan ke item ini. */
+  externalId?: string | undefined;
+  /** Hanya sinkronisasi: status yang diminta (default: tetap; item baru aktif). */
+  status?: ItemStatus | undefined;
+}
 
-    if (existing) {
-      const merged: ItemRecord = { ...existing, ...fields };
-      const changed = itemSyncSignature_(existing) !== itemSyncSignature_(merged);
-      const updated: ItemRecord = {
-        ...merged,
-        syncRev: changed ? nextRev_('items') : existing.syncRev,
-      };
-      updateItem_(updated);
-      const names = brandNameMap_();
-      const after = toItemView_(updated, names);
-      appendAudit_({
-        ts: now,
-        actor: actor.email,
-        action: 'item.update',
-        target: itemLabel_(after),
-        before: itemSnapshot_(toItemView_(existing, names)),
-        after: itemSnapshot_(after),
-      });
-      return toItemDto_(after);
-    }
+/**
+ * Menulis item (baru atau ubah): keunikan, penautan berkas atomik, merk dibuat bila belum ada, kenaikan sync_rev,
+ * dan audit. Dipakai form web (`saveItem_`) dan sinkronisasi. PEMANGGIL WAJIB memegang lock.
+ */
+export function writeItem_(input: SaveItemInput, options: WriteItemOptions): NewItemRecord {
+  const { existing, actor } = options;
+  const items = listItems_();
+  const key = itemKey(input.brand, input.model);
+  // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
+  const brandKey = normalizeKey(input.brand);
+  const knownBrand = listBrands_().find((brand) => brand.key === brandKey);
+  if (knownBrand && knownBrand.status === 'inactive' && existing?.brandId !== knownBrand.id) {
+    const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
+    throw appError_('VALIDATION', message, { brand: message });
+  }
+  assertItemNamesFree_(
+    input,
+    key,
+    items.filter((item) => item.id !== existing?.id),
+    brandNameMap_(),
+  );
+  const id = existing?.id ?? platform_().uuid();
+  // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
+  attachFiles_(referencedFileIds_(input), 'item', id);
+  // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
+  const brand: NewBrandRecord = resolveBrandByName_(input.brand, actor);
+  const now = nowIso_();
+  const status = options.status ?? existing?.status ?? 'active';
+  const fields = {
+    brandId: brand.id,
+    model: input.model,
+    key,
+    isCountryLock: input.isCountryLock,
+    aliases: [...input.aliases],
+    stickers: input.stickers.map((sticker) => ({ ...sticker })),
+    accessories: input.accessories.map((accessory) => ({ ...accessory })),
+    attachments: [...input.attachments],
+    detail: input.detail,
+    updatedAt: now,
+    updatedBy: actor.email,
+  };
 
-    const created: NewItemRecord = {
-      id,
-      externalId: '',
-      status: 'active',
-      syncRev: nextRev_('items'),
-      createdAt: now,
+  if (existing) {
+    const merged: ItemRecord = {
+      ...existing,
       ...fields,
+      status,
+      externalId: options.externalId ?? existing.externalId,
     };
-    insertItem_(created);
-    const createdView = toItemView_(created, brandNameMap_());
+    const changed = itemSyncSignature_(existing) !== itemSyncSignature_(merged);
+    const updated: ItemRecord = {
+      ...merged,
+      syncRev: changed ? nextRev_('items') : existing.syncRev,
+    };
+    updateItem_(updated);
+    const names = brandNameMap_();
+    const after = toItemView_(updated, names);
+    const onlyStatus =
+      existing.status !== status &&
+      itemSyncSignature_({ ...existing, status }) === itemSyncSignature_(merged);
     appendAudit_({
       ts: now,
       actor: actor.email,
-      action: 'item.create',
-      target: itemLabel_(createdView),
-      before: null,
-      after: itemSnapshot_(createdView),
+      action: onlyStatus
+        ? status === 'active'
+          ? 'item.activate'
+          : 'item.deactivate'
+        : 'item.update',
+      target: itemLabel_(after),
+      before: itemSnapshot_(toItemView_(existing, names)),
+      after: itemSnapshot_(after),
     });
-    return toItemDto_(createdView);
+    return updated;
+  }
+
+  const created: NewItemRecord = {
+    id,
+    externalId: options.externalId ?? '',
+    status,
+    syncRev: nextRev_('items'),
+    createdAt: now,
+    ...fields,
+  };
+  insertItem_(created);
+  const createdView = toItemView_(created, brandNameMap_());
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action: 'item.create',
+    target: itemLabel_(createdView),
+    before: null,
+    after: itemSnapshot_(createdView),
+  });
+  return created;
+}
+
+export function saveItem_(input: SaveItemInput, actor: ActorRef): ItemDto {
+  return platform_().withLock(() => {
+    const existing = input.id ? listItems_().find((item) => item.id === input.id) : undefined;
+    if (input.id && !existing) throw appError_('NOT_FOUND', 'Item tidak ditemukan');
+    const record = writeItem_(input, { existing, actor });
+    return toItemDto_(toItemView_(record, brandNameMap_()));
   });
 }
 
-export function setItemStatus_(input: SetItemStatusInput, actor: UserContext): ItemDto {
+export function setItemStatus_(input: SetItemStatusInput, actor: ActorRef): ItemDto {
   return platform_().withLock(() => {
     const existing = listItems_().find((item) => item.id === input.id);
     if (!existing) throw appError_('NOT_FOUND', 'Item tidak ditemukan');
