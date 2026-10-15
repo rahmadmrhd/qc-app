@@ -347,10 +347,7 @@ test('merk baru dibuat langsung saat item disimpan (audit brand.create); merk sa
   const first = saveItem_({ ...baseInput, brand: 'Ubiquiti' }, admin);
   expect(listBrands_().map((b) => b.name)).toEqual(['Ubiquiti']);
   expect(listAuditRecords_().map((r) => r.action)).toEqual(['brand.create', 'item.create']);
-  const second = saveItem_(
-    { ...baseInput, brand: ' ubiquiti', model: 'AF' },
-    admin,
-  );
+  const second = saveItem_({ ...baseInput, brand: ' ubiquiti', model: 'AF' }, admin);
   expect(listBrands_()).toHaveLength(1);
   expect(second.brandId).toBe(first.brandId);
   expect(second.brand).toBe('Ubiquiti');
