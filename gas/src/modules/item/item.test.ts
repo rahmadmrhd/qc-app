@@ -348,7 +348,7 @@ test('merk baru dibuat langsung saat item disimpan (audit brand.create); merk sa
   expect(listBrands_().map((b) => b.name)).toEqual(['Ubiquiti']);
   expect(listAuditRecords_().map((r) => r.action)).toEqual(['brand.create', 'item.create']);
   const second = saveItem_(
-    { ...baseInput, brand: ' ubi-quiti'.replace('-', ''), model: 'AF' },
+    { ...baseInput, brand: ' ubiquiti', model: 'AF' },
     admin,
   );
   expect(listBrands_()).toHaveLength(1);
