@@ -58,7 +58,10 @@ export function ItemsTable({
                 <TableCell>
                   <div>{item.model}</div>
                   {item.aliases.length > 0 ? (
-                    <div className="text-xs text-muted-foreground">{item.aliases.join(', ')}</div>
+                    <div className="text-xs text-muted-foreground">
+                      <span className="sr-only">Nama lain: </span>
+                      {item.aliases.join(', ')}
+                    </div>
                   ) : null}
                 </TableCell>
                 <TableCell>

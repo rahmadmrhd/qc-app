@@ -2,6 +2,7 @@ import { normalizeKey } from '@shared/items';
 import type { BrandDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -9,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownEditor } from '@/modules/markdown/markdown-editor';
+import { errorText } from '../lib/row-error';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
 import { itemFormSchema } from '../schemas';
 import { AccessoryListField } from './accessory-list-field';
@@ -16,7 +18,6 @@ import { ImageGalleryField } from './image-gallery-field';
 import { StickerListField } from './sticker-list-field';
 
 export interface ItemFormProps {
-  mode: 'create' | 'edit';
   /** Merk yang sudah ada, untuk saran saat mengetik; merk yang belum ada dibuat saat item disimpan. */
   brands?: readonly BrandDto[];
   defaultValues: ItemFormInput;
@@ -76,7 +77,6 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 export function ItemForm({
-  mode,
   brands = [],
   defaultValues,
   submitError,
@@ -84,6 +84,14 @@ export function ItemForm({
   onSubmit,
   onCancel,
 }: ItemFormProps) {
+  // Galat server pada sebuah field hilang begitu user mengoreksi field itu (dan kembali saat ada galat baru).
+  const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset setiap kali galat server yang baru datang
+  useEffect(() => setCleared(new Set()), [fieldErrors]);
+  const serverError = (key: keyof ItemFieldErrors) =>
+    cleared.has(key) ? undefined : fieldErrors?.[key];
+  const clear = (key: keyof ItemFieldErrors) =>
+    setCleared((previous) => (previous.has(key) ? previous : new Set(previous).add(key)));
   const form = useForm({
     defaultValues,
     validators: { onSubmit: itemFormSchema },
@@ -96,7 +104,6 @@ export function ItemForm({
     <form
       noValidate
       className="space-y-4"
-      data-mode={mode}
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
@@ -113,7 +120,10 @@ export function ItemForm({
                 autoComplete="off"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                  clear('brand');
+                }}
               />
               <datalist id="item-brand-options">
                 {brands
@@ -123,7 +133,7 @@ export function ItemForm({
                   ))}
               </datalist>
               <BrandHint value={field.state.value} brands={brands} initial={defaultValues.brand} />
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.brand]} />
+              <FieldError errors={[...field.state.meta.errors, serverError('brand')]} />
             </div>
           )}
         </form.Field>
@@ -135,9 +145,12 @@ export function ItemForm({
                 id="item-model"
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                  clear('model');
+                }}
               />
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.model]} />
+              <FieldError errors={[...field.state.meta.errors, serverError('model')]} />
             </div>
           )}
         </form.Field>
@@ -164,12 +177,15 @@ export function ItemForm({
                 rows={3}
                 value={field.state.value}
                 onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
+                onChange={(event) => {
+                  field.handleChange(event.target.value);
+                  clear('aliases');
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Satu per baris. Dipakai untuk pencarian dan saran saat mengetik tipe.
               </p>
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.aliases]} />
+              <FieldError errors={[...field.state.meta.errors, serverError('aliases')]} />
             </div>
           )}
         </form.Field>
@@ -182,8 +198,21 @@ export function ItemForm({
         <form.Field name="attachments">
           {(field) => (
             <div className="space-y-1.5">
-              <ImageGalleryField value={field.state.value} onChange={field.handleChange} />
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.attachments]} />
+              <form.Subscribe
+                selector={(state) => `${state.values.brand} ${state.values.model}`.trim()}
+              >
+                {(itemLabel) => (
+                  <ImageGalleryField
+                    value={field.state.value}
+                    itemLabel={itemLabel}
+                    onChange={(ids) => {
+                      field.handleChange(ids);
+                      clear('attachments');
+                    }}
+                  />
+                )}
+              </form.Subscribe>
+              <FieldError errors={[...field.state.meta.errors, serverError('attachments')]} />
             </div>
           )}
         </form.Field>
@@ -193,8 +222,15 @@ export function ItemForm({
         <form.Field name="stickers">
           {(field) => (
             <div className="space-y-1.5">
-              <StickerListField value={field.state.value} onChange={field.handleChange} />
-              <FieldError stacked errors={[...field.state.meta.errors, fieldErrors?.stickers]} />
+              <StickerListField
+                value={field.state.value}
+                error={errorText([...field.state.meta.errors, serverError('stickers')])}
+                onChange={(rows) => {
+                  field.handleChange(rows);
+                  clear('stickers');
+                }}
+              />
+              <FieldError stacked errors={[...field.state.meta.errors, serverError('stickers')]} />
             </div>
           )}
         </form.Field>
@@ -204,8 +240,18 @@ export function ItemForm({
         <form.Field name="accessories">
           {(field) => (
             <div className="space-y-1.5">
-              <AccessoryListField value={field.state.value} onChange={field.handleChange} />
-              <FieldError stacked errors={[...field.state.meta.errors, fieldErrors?.accessories]} />
+              <AccessoryListField
+                value={field.state.value}
+                error={errorText([...field.state.meta.errors, serverError('accessories')])}
+                onChange={(rows) => {
+                  field.handleChange(rows);
+                  clear('accessories');
+                }}
+              />
+              <FieldError
+                stacked
+                errors={[...field.state.meta.errors, serverError('accessories')]}
+              />
             </div>
           )}
         </form.Field>
@@ -222,9 +268,12 @@ export function ItemForm({
                 id="item-detail"
                 labelledBy="item-detail-label"
                 value={field.state.value}
-                onChange={field.handleChange}
+                onChange={(text) => {
+                  field.handleChange(text);
+                  clear('detail');
+                }}
               />
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.detail]} />
+              <FieldError errors={[...field.state.meta.errors, serverError('detail')]} />
             </div>
           )}
         </form.Field>

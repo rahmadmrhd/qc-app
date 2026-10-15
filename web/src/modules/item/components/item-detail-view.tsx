@@ -49,7 +49,10 @@ export function ItemDetailView({
             ) : null}
           </div>
           {item.aliases.length > 0 ? (
-            <p className="text-sm text-muted-foreground">{item.aliases.join(', ')}</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="sr-only">Nama lain: </span>
+              {item.aliases.join(', ')}
+            </p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">

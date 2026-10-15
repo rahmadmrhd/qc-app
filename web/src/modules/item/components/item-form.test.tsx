@@ -15,7 +15,6 @@ function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
     <ItemForm
-      mode="create"
       defaultValues={toItemFormDefaults()}
       onSubmit={onSubmit}
       onCancel={() => undefined}
@@ -91,7 +90,6 @@ test('galat per field dari server tampil di bawah field terkait dan galat umum s
 
 test('mode ubah memuat nilai awal', () => {
   renderForm({
-    mode: 'edit',
     defaultValues: {
       ...toItemFormDefaults(),
       brand: 'Ubiquiti',
@@ -132,7 +130,6 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
   ];
   render(
     <ItemForm
-      mode="create"
       brands={brands}
       defaultValues={toItemFormDefaults()}
       onSubmit={vi.fn()}
@@ -167,7 +164,6 @@ test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menye
   ];
   render(
     <ItemForm
-      mode="edit"
       brands={brands}
       defaultValues={{ ...toItemFormDefaults(), brand: 'Lama', model: 'X' }}
       onSubmit={vi.fn()}
@@ -175,4 +171,27 @@ test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menye
     />,
   );
   expect(screen.queryByText(/aktifkan dulu/)).toBeNull();
+});
+
+test('galat server pada sebuah field hilang begitu user mengoreksi field itu; field lain tetap', async () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), brand: 'Ubiquiti', model: 'ES 24' },
+    fieldErrors: { model: 'Merk dan tipe sudah dipakai item lain', aliases: 'Nama lain bentrok' },
+  });
+  expect(screen.getByText('Merk dan tipe sudah dipakai item lain')).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Tipe'), ' V2');
+  expect(screen.queryByText('Merk dan tipe sudah dipakai item lain')).toBeNull();
+  expect(screen.getByText('Nama lain bentrok')).toBeInTheDocument();
+});
+
+test('galeri memberi alt yang memuat nama item', () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      brand: 'Ubiquiti',
+      model: 'ES 24',
+      attachments: ['f1'],
+    },
+  });
+  expect(screen.getByAltText('Gambar 1 Ubiquiti ES 24')).toBeInTheDocument();
 });
