@@ -4,7 +4,7 @@ import { authRoutes_ } from '@gas/modules/auth/routes';
 import { brandRoutes_ } from '@gas/modules/brand/routes';
 import { customerRoutes_ } from '@gas/modules/customer/routes';
 import { filesRoutes_ } from '@gas/modules/files/routes';
-import { handoverReadRoutes_ } from '@gas/modules/handover/routes';
+import { handoverRoutes_ } from '@gas/modules/handover/routes';
 import { itemRoutes_ } from '@gas/modules/item/routes';
 
 /** Dibangun lazy di dalam fungsi karena urutan load file GAS tidak dijamin. */
@@ -16,6 +16,6 @@ export function getRoutes_(): RouteTable {
     ...itemRoutes_(),
     ...brandRoutes_(),
     ...customerRoutes_(),
-    ...handoverReadRoutes_(),
+    ...handoverRoutes_(),
   };
 }
