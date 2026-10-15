@@ -150,6 +150,7 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
   const httpCalls: Array<{ url: string; form: Record<string, string> }> = [];
   const folders = new Map<string, string>();
   const trashedFolders = new Set<string>();
+  let locked = false;
   let driveSequence = 0;
   const drive = new Map<string, MemoryDriveFile>();
   return {
@@ -185,7 +186,14 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       return options.http(url, form);
     },
     withLock<T>(fn: () => T): T {
-      return fn();
+      // LockService asli tidak reentrant: kunci bersarang di produksi menunggu dirinya sendiri hingga habis waktu.
+      if (locked) throw new Error('withLock bersarang: LockService tidak reentrant');
+      locked = true;
+      try {
+        return fn();
+      } finally {
+        locked = false;
+      }
     },
     flush: () => undefined,
     spreadsheet: () => db,

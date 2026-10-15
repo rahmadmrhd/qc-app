@@ -50,3 +50,15 @@ test('driveTrashFile membuang berkas dan aman dipanggil untuk id yang tidak ada'
   expect(platform.driveReadFile(file, folder)).toBeNull();
   expect(() => platform.driveTrashFile('tidak-ada')).not.toThrow();
 });
+
+test('withLock bersarang melempar galat (LockService asli tidak reentrant) dan kunci dilepas setelah galat', () => {
+  const platform = createMemoryPlatform();
+  expect(() => platform.withLock(() => platform.withLock(() => 1))).toThrow('bersarang');
+  expect(platform.withLock(() => 'ok')).toBe('ok');
+  expect(() =>
+    platform.withLock(() => {
+      throw new Error('gagal');
+    }),
+  ).toThrow('gagal');
+  expect(platform.withLock(() => 'lagi')).toBe('lagi');
+});
