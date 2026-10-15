@@ -15,6 +15,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'brand.update': 'Merk diubah',
   'brand.activate': 'Merk diaktifkan',
   'brand.deactivate': 'Merk dinonaktifkan',
+  'brand.sync.conflict': 'Konflik sinkronisasi merk',
+  'item.sync.conflict': 'Konflik sinkronisasi item',
   'item.create': 'Item dibuat',
   'item.update': 'Item diubah',
   'item.activate': 'Item diaktifkan',
