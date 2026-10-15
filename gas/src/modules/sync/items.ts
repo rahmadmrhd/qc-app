@@ -16,7 +16,6 @@ import { FILE_SCHEME, MARKDOWN_MAX_LENGTH } from '@shared/files';
 import {
   DRIVE_REF_SCHEME,
   extractImageTargets,
-  extractRefs,
   ITEM_LIMITS,
   isRefIdChar,
   mapMarkdownRefs,
@@ -146,6 +145,53 @@ function isWholeDriveTarget_(target: string): boolean {
   return rest === '' || rest.startsWith('"') || rest.startsWith("'");
 }
 
+/**
+ * Markdown tanpa gambar `![alt](drive:<id>)` yang utuh. Sisa yang masih memuat "![" berarti ada gambar
+ * dalam bentuk lain (gaya referensi, bersarang, tidak tertutup) yang tidak boleh lolos dari pemeriksaan tujuan.
+ */
+function withoutWireImages_(detail: string): string {
+  let out = '';
+  let from = 0;
+  while (from < detail.length) {
+    const open = detail.indexOf('![', from);
+    if (open < 0) break;
+    out += detail.slice(from, open);
+    let altEnd = open + 2;
+    while (
+      altEnd < detail.length &&
+      detail.charAt(altEnd) !== ']' &&
+      detail.charAt(altEnd) !== '[' &&
+      detail.charAt(altEnd) !== '\n'
+    ) {
+      altEnd++;
+    }
+    if (detail.charAt(altEnd) === ']' && detail.charAt(altEnd + 1) === '(') {
+      let end = altEnd + 2;
+      while (end < detail.length && detail.charAt(end) !== ')' && detail.charAt(end) !== '\n')
+        end++;
+      if (detail.charAt(end) === ')' && isWholeDriveTarget_(detail.slice(altEnd + 2, end).trim())) {
+        from = end + 1;
+        continue;
+      }
+    }
+    out += '![';
+    from = open + 2;
+  }
+  return out + detail.slice(from);
+}
+
+/** Id Drive dari target gambar `![alt](drive:<id>)` saja; "drive:" di teks atau tautan biasa tidak dihitung. */
+function driveImageIds_(detail: string): string[] {
+  const ids: string[] = [];
+  for (const target of extractImageTargets(detail)) {
+    let end = DRIVE_REF_SCHEME.length;
+    while (end < target.length && isRefIdChar(target.charAt(end))) end++;
+    const id = target.slice(DRIVE_REF_SCHEME.length, end);
+    if (target.startsWith(DRIVE_REF_SCHEME) && id !== '' && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 function checkWireDetail_(value: unknown, fields: Record<string, string>): string | undefined {
   if (typeof value !== 'string') {
     fields.detail = 'Harus berupa teks';
@@ -165,6 +211,10 @@ function checkWireDetail_(value: unknown, fields: Record<string, string>): strin
       fields.detail = 'Gambar di Markdown hanya boleh ![alt](drive:<id>)';
       return undefined;
     }
+  }
+  if (withoutWireImages_(detail).includes('![')) {
+    fields.detail = 'Gambar di Markdown hanya boleh ![alt](drive:<id>)';
+    return undefined;
   }
   return detail;
 }
@@ -314,7 +364,7 @@ export function driveIdsOf_(entry: SyncItemInput): string[] {
   for (const sticker of entry.stickers ?? []) {
     if (sticker.image !== null) ids.push(sticker.image);
   }
-  ids.push(...extractRefs(entry.detail ?? '', 'drive:'));
+  ids.push(...driveImageIds_(entry.detail ?? ''));
   return [...new Set(ids)];
 }
 
@@ -412,7 +462,7 @@ function upsertSyncItem_(
     );
     if (badSticker !== undefined)
       fields.stickers = `Berkas ${badSticker} tidak ada di folder aplikasi`;
-    const badMarkdown = first(extractRefs(entry.detail ?? '', 'drive:'));
+    const badMarkdown = first(driveImageIds_(entry.detail ?? ''));
     if (badMarkdown !== undefined)
       fields.detail = `Berkas ${badMarkdown} tidak ada di folder aplikasi`;
     return { index, status: 'invalid', fields };
@@ -449,6 +499,17 @@ function upsertSyncItem_(
         ? mapMarkdownRefs(entry.detail, DRIVE_REF_SCHEME, FILE_SCHEME, (id) => map.get(id) ?? null)
         : (existing?.detail ?? ''),
   };
+
+  // Rujukan drive:<id> menjadi qcfile:<uuid> yang lebih panjang: batas Markdown berlaku pada hasil akhir.
+  if (merged.detail.length > MARKDOWN_MAX_LENGTH) {
+    return {
+      index,
+      status: 'invalid',
+      fields: {
+        detail: `Maksimal ${MARKDOWN_MAX_LENGTH} karakter setelah rujukan gambar dipetakan`,
+      },
+    };
+  }
 
   if (existing) {
     // Merk dibandingkan menurut kunci ternormalisasi: beda huruf besar/kecil saja bukan perubahan.

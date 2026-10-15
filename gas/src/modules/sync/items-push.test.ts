@@ -401,3 +401,38 @@ test('jumlah id Drive berbeda per item dibatasi (mencegah ribuan panggilan Drive
     fields: { detail: expect.stringContaining('50') },
   });
 });
+
+test('detail yang lolos batas di kabel tetapi melebihi 20.000 karakter setelah drive:→qcfile: ditolak per field, bukan tersimpan', () => {
+  const c = drive();
+  const ref = `![x](drive:${c})`;
+  // Persis pada batas di kabel; penerjemahan ke qcfile:<uuid> membuatnya lebih panjang.
+  const detail = `${ref}${'a'.repeat(20_000 - ref.length)}`;
+  expect(detail.length).toBe(20_000);
+  const [out] = results([{ ...BASE, id: '77', tipe: 'Panjang', detail }]);
+  expect(out).toMatchObject({ status: 'invalid', fields: { detail: expect.any(String) } });
+  expect(listItems_()).toHaveLength(0);
+});
+
+test('gambar Markdown gaya referensi dan bersarang ditolak (tidak lolos lewat tujuan di luar drive:)', () => {
+  const ok = drive();
+  const bad = [
+    '![x][r]\n\n[r]: https://x.test/a.png',
+    `![a ![b](drive:${ok})](https://x.test/a.png)`,
+    '![x]',
+    '![x](drive:abc',
+  ];
+  const out = results(
+    bad.map((detail, i) => ({ ...BASE, id: `${30 + i}`, tipe: `ref${i}`, detail })),
+  );
+  for (const entry of out)
+    expect(entry).toMatchObject({ status: 'invalid', fields: { detail: expect.any(String) } });
+  expect(listItems_()).toHaveLength(0);
+});
+
+test('"drive:" di luar target gambar tidak diperiksa ke Drive dan tidak mengubah isi', () => {
+  const [out] = results([
+    { ...BASE, id: '40', tipe: 'Teks', detail: 'Lihat drive:tidak-ada dan [x](drive:juga-tidak)' },
+  ]);
+  expect(out).toMatchObject({ status: 'created' });
+  expect(listItems_()[0]?.detail).toBe('Lihat drive:tidak-ada dan [x](drive:juga-tidak)');
+});
