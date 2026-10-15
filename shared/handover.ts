@@ -1,3 +1,5 @@
+import { isKeyChar } from './items';
+
 /** Batas task serah terima (PRD FH2). */
 export const HANDOVER_LIMITS = {
   note: 500,
@@ -71,9 +73,7 @@ export function customerKey(name: string): string {
   let out = '';
   let pendingSpace = false;
   for (const ch of name.toLowerCase()) {
-    const isDigit = ch >= '0' && ch <= '9';
-    const isLetter = ch.toUpperCase() !== ch.toLowerCase();
-    if (isDigit || isLetter) {
+    if (isKeyChar(ch)) {
       if (pendingSpace && out !== '') out += ' ';
       out += ch;
       pendingSpace = false;

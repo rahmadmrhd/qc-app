@@ -64,3 +64,7 @@ test('customerKey: tanda baca DIBUANG (bukan jadi spasi), spasi dirapikan, huruf
   expect(customerKey('--  . ')).toBe('');
   expect(customerKey('')).toBe('');
 });
+
+test('customerKey mempertahankan huruf non-Latin', () => {
+  expect(customerKey('PT. 小米 Indonesia')).toBe('pt 小米 indonesia');
+});

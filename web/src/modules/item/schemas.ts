@@ -54,7 +54,11 @@ export const itemFormSchema = z.object({
     .string()
     .trim()
     .min(1, 'Wajib diisi')
-    .max(ITEM_LIMITS.model, `Maksimal ${ITEM_LIMITS.model} karakter`),
+    .max(ITEM_LIMITS.model, `Maksimal ${ITEM_LIMITS.model} karakter`)
+    .refine(
+      (value) => value === '' || normalizeKey(value) !== '',
+      'Tipe harus memuat huruf atau angka',
+    ),
   isCountryLock: z.boolean(),
   aliasesText: z.string().superRefine((text, ctx) => {
     const lines = text

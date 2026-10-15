@@ -21,13 +21,18 @@ export const ITEM_LIMITS = {
  * Kunci pencocokan: huruf kecil, semua karakter selain huruf dan angka menjadi satu spasi, tepi dirapikan.
  * Dipakai untuk keunikan (merk+tipe, nama lain), pencarian, dan auto-suggest.
  */
+const KEY_CHAR_PATTERN = /[\p{L}\p{N}\p{M}]/u;
+
+/** Huruf, angka, atau tanda gabung dari aksara mana pun (Latin, CJK, Arab, Thai, Kiril, ...). */
+export function isKeyChar(ch: string): boolean {
+  return KEY_CHAR_PATTERN.test(ch);
+}
+
 export function normalizeKey(text: string): string {
   let result = '';
   let pendingSpace = false;
   for (const ch of text.toLowerCase()) {
-    const isDigit = ch >= '0' && ch <= '9';
-    const isLetter = ch.toUpperCase() !== ch.toLowerCase();
-    if (isDigit || isLetter) {
+    if (isKeyChar(ch)) {
       if (pendingSpace && result !== '') result += ' ';
       result += ch;
       pendingSpace = false;

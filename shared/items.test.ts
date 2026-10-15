@@ -159,3 +159,12 @@ describe('extractImageTargets', () => {
 test('DRIVE_REF_SCHEME adalah skema rujukan Drive pada kabel sinkronisasi', () => {
   expect(DRIVE_REF_SCHEME).toBe('drive:');
 });
+
+test('normalizeKey mempertahankan huruf dan angka non-Latin (CJK, Arab, Thai, Kiril)', () => {
+  expect(normalizeKey('小米 13')).toBe('小米 13');
+  expect(normalizeKey('Xiaomi-小米!')).toBe('xiaomi 小米');
+  expect(normalizeKey('Хуавей P40')).toBe('хуавей p40');
+  expect(normalizeKey('ซัมซุง')).toBe('ซัมซุง');
+  expect(normalizeKey('مرحبا 2')).toBe('مرحبا 2');
+  expect(itemKey('小米', '手机')).not.toBe(itemKey('华为', '手机'));
+});

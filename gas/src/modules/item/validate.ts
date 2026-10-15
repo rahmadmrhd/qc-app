@@ -193,6 +193,9 @@ export function validateSaveItem_(raw: unknown): SaveItemInput {
     reader.fail('brand', 'Merk harus memuat huruf atau angka');
   }
   const model = reader.str('model', { required: true, max: ITEM_LIMITS.model });
+  if (model !== '' && normalizeKey(model) === '') {
+    reader.fail('model', 'Tipe harus memuat huruf atau angka');
+  }
   const lock = reader.raw('isCountryLock');
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');
   const aliases = readItemAliases_(reader.raw('aliases'), reader);
