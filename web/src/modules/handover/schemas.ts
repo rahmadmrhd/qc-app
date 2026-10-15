@@ -54,12 +54,16 @@ export function toHandoverFormDefaults(handover?: HandoverDto, locationId = ''):
   };
 }
 
-export function toSaveHandoverInput(values: HandoverFormOutput, id?: string): SaveHandoverInput {
+export function toSaveHandoverInput(
+  values: HandoverFormOutput,
+  id?: string,
+  expectedUpdatedAt?: string,
+): SaveHandoverInput {
   const input: SaveHandoverInput = {
     locationId: values.locationId,
     customerName: values.customerName,
     note: values.note,
     lines: values.lines.map((line) => ({ itemId: line.itemId, qty: line.qty })),
   };
-  return id ? { id, ...input } : input;
+  return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }

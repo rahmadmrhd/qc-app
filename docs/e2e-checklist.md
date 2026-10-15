@@ -71,3 +71,6 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 65 | WH tanpa izin `item` membuka form task | Saran tipe dan customer tetap muncul (rute serah terima) | FC3 |
 | 66 | Log Audit: `handover.update` dan `handover.progress` | Baris dibandingkan per entri berwarna, status berlabel Indonesia, qty progres terbaca | FAU1, FAU2 |
 | 67 | Ukuran ponsel (375×812) pada daftar, form, dan detail task | Tidak ada gulir horizontal halaman | NFR6 |
+| 68 | Buka form ubah item/task yang sama di dua tab; simpan di tab 1 lalu simpan di tab 2 | Tab 2 ditolak: "sudah diubah orang lain; muat ulang halaman…"; data tab 1 tidak tertimpa | Konkurensi optimistis |
+| 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
+| 70 | Selesai per task pada task dengan dua baris belum penuh; buka Log Audit | Satu baris `handover.progress` per baris yang diisi, lalu satu `handover.complete` | FAU1 |

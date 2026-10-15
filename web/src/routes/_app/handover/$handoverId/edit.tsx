@@ -45,7 +45,7 @@ function EditHandoverPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await save.mutateAsync(toSaveHandoverInput(values, handoverId));
+      await save.mutateAsync(toSaveHandoverInput(values, handoverId, task?.updatedAt));
       toast.success('Task disimpan');
       back();
     } catch (error) {

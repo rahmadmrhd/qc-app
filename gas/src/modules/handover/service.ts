@@ -214,6 +214,16 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       ? loadHandoverForWrite_({ id: input.id, locationId: input.locationId })
       : null;
     if (loaded) assertHandoverOpen_(loaded.handover, loaded.lines);
+    if (
+      loaded &&
+      input.expectedUpdatedAt &&
+      input.expectedUpdatedAt !== loaded.handover.updatedAt
+    ) {
+      throw appError_(
+        'CONFLICT',
+        'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
+      );
+    }
     const existingLines = loaded?.lines ?? [];
     const items = new Map(listItems_().map((item) => [item.id, item]));
     const brands = brandNameMap_();

@@ -414,3 +414,16 @@ test('id dengan spasi di tepi di-trim; id tak dikenal tetap NOT_FOUND (M7)', () 
   expect(save({ id: '  t1  ', note: 'baru' }).data.note).toBe('baru');
   expect(save({ id: '   ', note: 'x' }).data.number).toMatch(/^ST-/); // spasi saja = buat baru
 });
+
+test('konkurensi optimistis: expectedUpdatedAt basi → CONFLICT dan task tidak berubah; cocok atau kosong → tersimpan', () => {
+  const created = save({ note: 'awal' });
+  const id = created.data.id as string;
+  const stale = save({ id, note: 'timpa', expectedUpdatedAt: '2020-01-01T00:00:00.000Z' });
+  expect(stale.error.code).toBe('CONFLICT');
+  expect(stale.error.message).toContain('diubah orang lain');
+  expect(listHandovers_()[0]?.note).toBe('awal');
+
+  const ok = save({ id, note: 'cocok', expectedUpdatedAt: created.data.updatedAt });
+  expect(ok.ok).toBe(true);
+  expect(save({ id, note: 'tanpa' }).ok).toBe(true);
+});
