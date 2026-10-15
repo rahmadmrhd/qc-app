@@ -3,11 +3,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
 import { itemKeys } from '@/modules/item/queries';
-
-export const brandKeys = {
-  all: ['brands'] as const,
-  list: ['brands', 'list'] as const,
-};
+import { brandKeys } from './keys';
 
 export function brandsQueryOptions() {
   return queryOptions({

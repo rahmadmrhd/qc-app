@@ -146,3 +146,22 @@ test('izin rute merk: list view, save edit, setStatus manage (modul item)', () =
   expect(routes['brands.save'].permission).toEqual({ module: 'item', level: 'edit' });
   expect(routes['brands.setStatus'].permission).toEqual({ module: 'item', level: 'manage' });
 });
+
+test('ganti nama merk yang membuat kunci item sama dengan nama lain item lain atau item sendiri ditolak', () => {
+  insertBrand_(brand('Ubiquity'));
+  insertBrand_(brand('Mikrotik'));
+  insertItem_(item({ id: 'i1', brand: 'Ubiquity', model: 'ES 24' }));
+  insertItem_(item({ id: 'i2', brand: 'Mikrotik', model: 'X', aliases: ['Ubiquiti ES 24'] }));
+  const other = captureAppError(() =>
+    saveBrand_({ id: 'brand-ubiquity', name: 'Ubiquiti' }, admin),
+  );
+  expect(other.code).toBe('CONFLICT');
+  expect(other.fields?.name).toBe('Nama baru bentrok dengan nama lain item');
+
+  insertItem_(item({ id: 'i3', brand: 'Ubiquity', model: 'AF', aliases: ['Ubiquiti AF'] }));
+  // i2 dibersihkan agar hanya kasus alias milik sendiri yang diuji
+  expect(
+    captureAppError(() => saveBrand_({ id: 'brand-ubiquity', name: 'Ubiquiti' }, admin)).code,
+  ).toBe('CONFLICT');
+  expect(listBrands_().find((x) => x.id === 'brand-ubiquity')?.name).toBe('Ubiquity');
+});

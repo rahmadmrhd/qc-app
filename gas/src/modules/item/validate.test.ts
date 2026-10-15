@@ -146,3 +146,7 @@ test('JSON per kolom melebihi 40.000 karakter ditolak (karakter kontrol membengk
   const stickers = Array.from({ length: 30 }, (_, i) => ({ name: `s${i}`, note }));
   expect(fieldsOf({ stickers })?.stickers).toBe('Data stiker terlalu besar');
 });
+
+test('merk wajib memuat huruf atau angka', () => {
+  expect(fieldsOf({ brand: '!!!' })?.brand).toBe('Merk harus memuat huruf atau angka');
+});

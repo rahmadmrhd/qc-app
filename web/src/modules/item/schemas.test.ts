@@ -143,3 +143,8 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     detail: '# isi',
   });
 });
+
+test('merk hanya tanda baca ditolak skema form', () => {
+  const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: '!!!', model: 'X' });
+  expect(result.success).toBe(false);
+});

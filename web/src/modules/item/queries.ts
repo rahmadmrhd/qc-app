@@ -2,6 +2,7 @@ import type { SaveItemInput, SetItemStatusInput } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
+import { brandKeys } from '@/modules/brand/keys';
 
 export const itemKeys = {
   all: ['items'] as const,
@@ -31,6 +32,8 @@ function useItemMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: itemKeys.all }),
+        // Simpan item dapat membuat merk baru; jumlah item per merk juga berubah.
+        queryClient.invalidateQueries({ queryKey: brandKeys.all }),
         queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
       ]);
     },

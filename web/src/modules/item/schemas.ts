@@ -45,7 +45,11 @@ export const itemFormSchema = z.object({
     .string()
     .trim()
     .min(1, 'Wajib diisi')
-    .max(ITEM_LIMITS.brand, `Maksimal ${ITEM_LIMITS.brand} karakter`),
+    .max(ITEM_LIMITS.brand, `Maksimal ${ITEM_LIMITS.brand} karakter`)
+    .refine(
+      (value) => value === '' || normalizeKey(value) !== '',
+      'Merk harus memuat huruf atau angka',
+    ),
   model: z
     .string()
     .trim()

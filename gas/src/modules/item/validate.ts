@@ -189,6 +189,9 @@ export function validateSaveItem_(raw: unknown): SaveItemInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
   const brand = reader.str('brand', { required: true, max: ITEM_LIMITS.brand });
+  if (brand !== '' && normalizeKey(brand) === '') {
+    reader.fail('brand', 'Merk harus memuat huruf atau angka');
+  }
   const model = reader.str('model', { required: true, max: ITEM_LIMITS.model });
   const lock = reader.raw('isCountryLock');
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');

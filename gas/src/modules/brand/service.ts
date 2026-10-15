@@ -101,6 +101,14 @@ export function saveBrand_(input: SaveBrandInput, actor: UserContext): BrandDto 
     const taken = new Set(
       items.filter((item) => item.brandId !== existing.id).map((item) => item.key),
     );
+    // Kunci baru juga tidak boleh sama dengan nama lain (alias) item mana pun, termasuk milik item itu sendiri.
+    const aliasKeys = new Set(
+      items.flatMap((item) => item.aliases.map((alias) => normalizeKey(alias))),
+    );
+    if (recomputed.some(({ next }) => aliasKeys.has(next))) {
+      const message = 'Nama baru bentrok dengan nama lain item';
+      throw appError_('CONFLICT', message, { name: message });
+    }
     if (recomputed.some(({ next }) => taken.has(next))) {
       const message = 'Nama baru membuat merk dan tipe dua item bentrok';
       throw appError_('CONFLICT', message, { name: message });
