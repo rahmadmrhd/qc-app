@@ -6,6 +6,7 @@ import { nowIso_ } from '@gas/modules/access/service';
 import type { NewBrandRecord } from '@gas/modules/brand/repo';
 import { listBrands_ } from '@gas/modules/brand/repo';
 import { resolveBrandByName_ } from '@gas/modules/brand/service';
+import { listFiles_ } from '@gas/modules/files/repo';
 import { attachFiles_ } from '@gas/modules/files/service';
 import { nextRev_ } from '@gas/modules/sync/state';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
@@ -141,6 +142,42 @@ function referencedFileIds_(input: SaveItemInput): string[] {
   return [...new Set(ids)];
 }
 
+/**
+ * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, stiker, detail):
+ * tidak dikenal → VALIDATION, sudah dipakai entitas lain → CONFLICT. `attachFiles_` tetap menjadi pagar atomik.
+ */
+function assertItemFilesUsable_(input: SaveItemInput, ownerId: string): void {
+  const files = new Map(listFiles_().map((file) => [file.id, file]));
+  const problem = (fileId: string): 'unknown' | 'taken' | null => {
+    const file = files.get(fileId);
+    if (!file) return 'unknown';
+    if (file.ownerType !== '' && !(file.ownerType === 'item' && file.ownerId === ownerId)) {
+      return 'taken';
+    }
+    return null;
+  };
+  const fail = (kind: 'unknown' | 'taken', field: string, subject: string): never => {
+    const message =
+      kind === 'unknown'
+        ? `${subject} tidak dikenal; unggah ulang`
+        : `${subject} sudah dipakai item lain`;
+    throw appError_(kind === 'unknown' ? 'VALIDATION' : 'CONFLICT', message, { [field]: message });
+  };
+  for (const fileId of input.attachments) {
+    const kind = problem(fileId);
+    if (kind) fail(kind, 'attachments', 'Ada gambar lampiran');
+  }
+  input.stickers.forEach((sticker, index) => {
+    if (sticker.fileId === null) return;
+    const kind = problem(sticker.fileId);
+    if (kind) fail(kind, 'stickers', `Stiker ${index + 1}: gambar`);
+  });
+  for (const fileId of extractFileRefs(input.detail)) {
+    const kind = problem(fileId);
+    if (kind) fail(kind, 'detail', 'Ada gambar di detail');
+  }
+}
+
 /** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
 export function itemSyncSignature_(item: {
   brandId: string;
@@ -198,6 +235,7 @@ export function writeItem_(input: SaveItemInput, options: WriteItemOptions): New
   );
   const id = existing?.id ?? options.id ?? platform_().uuid();
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
+  assertItemFilesUsable_(input, id);
   attachFiles_(referencedFileIds_(input), 'item', id);
   // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
   const brand: NewBrandRecord = resolveBrandByName_(input.brand, actor);

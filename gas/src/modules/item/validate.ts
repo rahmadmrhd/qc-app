@@ -185,6 +185,19 @@ function checkItemJsonSize_(
   }
 }
 
+/** Pembaca yang hanya menyimpan galat PERTAMA per field (`reader.fail` biasa menimpa galat sebelumnya). */
+function firstErrorReader_(reader: ObjectReader): ObjectReader {
+  const reported = new Set<string>();
+  return {
+    ...reader,
+    fail(key, message) {
+      if (reported.has(key)) return;
+      reported.add(key);
+      reader.fail(key, message);
+    },
+  };
+}
+
 export function validateSaveItem_(raw: unknown): SaveItemInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
@@ -198,11 +211,12 @@ export function validateSaveItem_(raw: unknown): SaveItemInput {
   }
   const lock = reader.raw('isCountryLock');
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');
-  const aliases = readItemAliases_(reader.raw('aliases'), reader);
-  const stickers = readItemStickers_(reader.raw('stickers'), reader);
-  const accessories = readItemAccessories_(reader.raw('accessories'), reader);
-  const attachments = readItemAttachments_(reader.raw('attachments'), reader);
-  const detail = readItemDetail_(reader.raw('detail'), reader);
+  const lists = firstErrorReader_(reader);
+  const aliases = readItemAliases_(reader.raw('aliases'), lists);
+  const stickers = readItemStickers_(reader.raw('stickers'), lists);
+  const accessories = readItemAccessories_(reader.raw('accessories'), lists);
+  const attachments = readItemAttachments_(reader.raw('attachments'), lists);
+  const detail = readItemDetail_(reader.raw('detail'), lists);
   checkItemJsonSize_('aliases', aliases, 'nama lain', reader);
   checkItemJsonSize_('stickers', stickers, 'stiker', reader);
   checkItemJsonSize_('accessories', accessories, 'kelengkapan', reader);

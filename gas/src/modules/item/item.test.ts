@@ -402,3 +402,30 @@ test('sync_rev: baru dan setiap perubahan field sinkron naik; ubah alias saja ti
   setItemStatus_({ id: created.id, status: 'inactive' }, admin);
   expect(rev()).toBe(4);
 });
+
+test('rujukan berkas bermasalah dilaporkan di field yang sesuai (attachments, stickers, detail), bukan galat umum', () => {
+  const ghost = 'tidak-ada';
+  const att = captureAppError(() => saveItem_({ ...baseInput, attachments: [ghost] }, admin));
+  expect(att).toMatchObject({
+    code: 'VALIDATION',
+    fields: { attachments: expect.stringContaining('tidak dikenal') },
+  });
+  const stk = captureAppError(() =>
+    saveItem_({ ...baseInput, stickers: [{ name: 'S', note: '', fileId: ghost }] }, admin),
+  );
+  expect(stk.fields?.stickers).toBe('Stiker 1: gambar tidak dikenal; unggah ulang');
+  const det = captureAppError(() =>
+    saveItem_({ ...baseInput, detail: `![x](qcfile:${ghost})` }, admin),
+  );
+  expect(det.fields).toHaveProperty('detail');
+  const taken = newFile();
+  saveItem_({ ...baseInput, model: 'Pemilik', attachments: [taken] }, admin);
+  const dup = captureAppError(() =>
+    saveItem_({ ...baseInput, model: 'Lain', attachments: [taken] }, admin),
+  );
+  expect(dup).toMatchObject({
+    code: 'CONFLICT',
+    fields: { attachments: expect.stringContaining('sudah dipakai') },
+  });
+  expect(listItems_()).toHaveLength(1);
+});
