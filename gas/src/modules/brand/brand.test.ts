@@ -4,6 +4,7 @@ import type { UserContext } from '@gas/modules/access/context';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import { listAuditRecords_ } from '@gas/modules/access/repo';
 import { insertItem_, listItems_ } from '@gas/modules/item/repo';
+import { nextRev_ } from '@gas/modules/sync/state';
 import { getRoutes_ } from '@gas/routes';
 import { captureAppError } from '@gas-test/errors';
 import { brand, item } from '@gas-test/item-fixtures';
@@ -35,7 +36,7 @@ const lastAudit = () => {
 test('membuat merk: nama dirapikan, aktif, kolom sinkron kosong, audit brand.create', () => {
   const saved = saveBrand_({ name: 'Ubiquiti' }, admin);
   expect(saved).toMatchObject({ name: 'Ubiquiti', status: 'active', externalId: '', itemCount: 0 });
-  expect(listBrands_()[0]).toMatchObject({ key: 'ubiquiti', syncRev: 0 });
+  expect(listBrands_()[0]).toMatchObject({ key: 'ubiquiti', syncRev: 1 });
   expect(lastAudit()).toMatchObject({
     action: 'brand.create',
     target: 'Ubiquiti',
@@ -171,4 +172,20 @@ test('ganti nama ke nama yang persis sama tidak menulis audit', () => {
   const before = listAuditRecords_().length;
   expect(saveBrand_({ id: 'brand-alfa', name: 'Alfa' }, admin).name).toBe('Alfa');
   expect(listAuditRecords_()).toHaveLength(before);
+});
+test('sync_rev merk: baru, ganti nama, dan status menaikkan; ganti nama juga menaikkan semua item merk itu saja', () => {
+  const created = saveBrand_({ name: 'Ubiquity' }, admin);
+  const brandRev = () => listBrands_().find((b) => b.id === created.id)?.syncRev ?? -1;
+  expect(brandRev()).toBe(1);
+  // Fixture memberi syncRev langsung; naikkan penghitung item agar revisi baru pasti lebih besar.
+  for (let i = 0; i < 6; i++) nextRev_('items');
+  insertItem_(item({ id: 'i1', brand: 'Ubiquity', model: 'X', syncRev: 5, brandId: created.id }));
+  insertItem_(item({ id: 'i2', brand: 'Mikrotik', model: 'Y', syncRev: 6 }));
+  saveBrand_({ id: created.id, name: 'Ubiquiti' }, admin);
+  expect(brandRev()).toBe(2);
+  const items = listItems_();
+  expect((items.find((i) => i.id === 'i1')?.syncRev ?? 0) > 5).toBe(true);
+  expect(items.find((i) => i.id === 'i2')?.syncRev).toBe(6);
+  setBrandStatus_({ id: created.id, status: 'inactive' }, admin);
+  expect(brandRev()).toBe(3);
 });

@@ -7,10 +7,14 @@ import type { NewBrandRecord } from '@gas/modules/brand/repo';
 import { listBrands_ } from '@gas/modules/brand/repo';
 import { resolveBrandByName_ } from '@gas/modules/brand/service';
 import { attachFiles_ } from '@gas/modules/files/service';
+import { nextRev_ } from '@gas/modules/sync/state';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import type {
   GetItemInput,
+  ItemAccessoryDto,
   ItemDto,
+  ItemStatus,
+  ItemStickerDto,
   ItemSummaryDto,
   SaveItemInput,
   SetItemStatusInput,
@@ -137,6 +141,29 @@ function referencedFileIds_(input: SaveItemInput): string[] {
   return [...new Set(ids)];
 }
 
+/** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
+function itemSyncSignature_(item: {
+  brandId: string;
+  model: string;
+  isCountryLock: boolean;
+  attachments: readonly string[];
+  detail: string;
+  stickers: readonly ItemStickerDto[];
+  accessories: readonly ItemAccessoryDto[];
+  status: ItemStatus;
+}): string {
+  return JSON.stringify([
+    item.brandId,
+    item.model,
+    item.isCountryLock,
+    item.attachments,
+    item.detail,
+    item.stickers,
+    item.accessories,
+    item.status,
+  ]);
+}
+
 export function saveItem_(input: SaveItemInput, actor: UserContext): ItemDto {
   return platform_().withLock(() => {
     const items = listItems_();
@@ -177,7 +204,12 @@ export function saveItem_(input: SaveItemInput, actor: UserContext): ItemDto {
     };
 
     if (existing) {
-      const updated: ItemRecord = { ...existing, ...fields };
+      const merged: ItemRecord = { ...existing, ...fields };
+      const changed = itemSyncSignature_(existing) !== itemSyncSignature_(merged);
+      const updated: ItemRecord = {
+        ...merged,
+        syncRev: changed ? nextRev_('items') : existing.syncRev,
+      };
       updateItem_(updated);
       const names = brandNameMap_();
       const after = toItemView_(updated, names);
@@ -196,7 +228,7 @@ export function saveItem_(input: SaveItemInput, actor: UserContext): ItemDto {
       id,
       externalId: '',
       status: 'active',
-      syncRev: 0,
+      syncRev: nextRev_('items'),
       createdAt: now,
       ...fields,
     };
@@ -224,6 +256,7 @@ export function setItemStatus_(input: SetItemStatusInput, actor: UserContext): I
     const updated: ItemRecord = {
       ...existing,
       status: input.status,
+      syncRev: nextRev_('items'),
       updatedAt: now,
       updatedBy: actor.email,
     };

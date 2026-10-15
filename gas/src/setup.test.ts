@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
+import { insertBrand_ } from '@gas/modules/brand/repo';
+import { insertItem_, listItems_ } from '@gas/modules/item/repo';
+import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { runSetup_ } from './setup';
 
@@ -12,7 +15,7 @@ test('melaporkan Script Property yang belum diset dan tidak membuat sheet tanpa 
   expect(platform.db.sheets.size).toBe(0);
 });
 
-test('membuat sheet users, roles, audit_log, locations, files, brands, items beserta header', () => {
+test('membuat sheet users, roles, audit_log, locations, files, brands, items, sync_state beserta header', () => {
   const platform = createMemoryPlatform({
     properties: {
       SPREADSHEET_ID: 'x',
@@ -33,6 +36,7 @@ test('membuat sheet users, roles, audit_log, locations, files, brands, items bes
     'files',
     'brands',
     'items',
+    'sync_state',
   ]);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
@@ -272,4 +276,14 @@ test('setup melaporkan status SYNC_API_TOKEN: kosong, pendek, dan cukup', () => 
   const ok = run('x'.repeat(40));
   expect(ok).toContain('SYNC_API_TOKEN terisi');
   expect(ok).not.toContain('x'.repeat(40));
+});
+test('setup memberi sync_rev pada item/merk lama dan melaporkannya; diulang tidak melapor lagi', () => {
+  const platform = createMemoryPlatform({ properties: ALL_PROPERTIES });
+  setPlatform_(platform);
+  runSetup_();
+  insertBrand_(brand('A'));
+  insertItem_(item({ id: 'i1', brand: 'A', model: 'X' }));
+  expect(runSetup_()).toContain('2 baris diberi revisi sinkron');
+  expect(listItems_()[0]?.syncRev).toBe(1);
+  expect(runSetup_()).not.toContain('diberi revisi sinkron');
 });

@@ -4,6 +4,7 @@ export const SYNC_API_VERSION = 1;
 export const SYNC_ACTOR = 'sync:desktop';
 export const SYNC_TOKEN_MIN_LENGTH = 32;
 export const SYNC_RESOURCES = ['brands', 'items'] as const;
+export type SyncResource = (typeof SYNC_RESOURCES)[number];
 
 export const SYNC_LIMITS = {
   /** Panjang maksimum body permintaan (karakter). */
