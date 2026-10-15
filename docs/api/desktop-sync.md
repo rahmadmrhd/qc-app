@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Versi API** | 1 |
-| **Status** | Draf — menunggu persetujuan PRD (`docs/prd/2026-10-09-qc-item-serah-terima.md`, bagian 4.8) |
+| **Status** | Dibangun (Fase B2); versi API 1 |
 | **Pengguna** | QC Desktop (di balik VPN, terhubung ke MySQL). QC App web tidak pernah berbicara ke MySQL. |
-| **Dibangun di** | Fase B2 (kerangka + sumber daya `items`); sumber daya stok menyusul |
+| **Dibangun di** | Fase B2: kerangka, sumber daya `brands` dan `items`, `sync.file.get`; sumber daya stok menyusul |
 
 Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak kompatibel menaikkan `v`.
 
@@ -18,6 +18,8 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 - **Redirect:** Apps Script menjawab `POST` dengan `302` ke alamat `script.googleusercontent.com`. Ikuti redirect itu dengan `GET` **tanpa mengirim ulang body** (perilaku bawaan `axios`, `node-fetch`, `HttpClient`, `requests`). Jangan mengulang `POST` ke alamat redirect.
 - **Token:** Script Property `SYNC_API_TOKEN` (≥ 32 karakter acak). Satu token bersama untuk Desktop. Memutar token = mengganti properti lalu mengganti konfigurasi Desktop.
 - **Pembatas percobaan salah:** 10 token salah dalam 10 menit membuat semua permintaan ditolak 10 menit.
+- **Konfigurasi:** isi Script Property `SYNC_API_TOKEN` (≥ 32 karakter acak) lalu jalankan `setup`; laporannya menyebut status token. Tanpa token yang sah semua permintaan ditolak.
+- **Semua kegagalan sebelum autentikasi lolos** (JSON rusak, body > 5 MB, token salah/hilang/dibatasi, token belum dikonfigurasi) menghasilkan galat yang sama: `UNAUTHENTICATED` "Token tidak valid". `VALIDATION` dan `NOT_FOUND` hanya muncul setelah token sah.
 - **Batas ukuran:** body ≤ 5 MB; satu panggilan harus selesai < 5 menit (batas Apps Script 6 menit); gunakan paginasi.
 
 ### Amplop permintaan
@@ -30,13 +32,13 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 { "ok": true, "data": { } }
 ```
 ```json
-{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 200 item" } } }
+{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 50 item" } } }
 ```
 
 | `error.code` | Arti |
 |---|---|
-| `UNAUTHENTICATED` | token salah, hilang, atau sedang dibatasi (pesan tidak membedakan alasannya) |
-| `VALIDATION` | amplop atau payload salah bentuk (kesalahan per item ada di hasil per item, lihat bawah) |
+| `UNAUTHENTICATED` | token salah, hilang, atau sedang dibatasi, atau permintaan tidak dapat dibaca (tidak dibedakan) |
+| `VALIDATION` | setelah autentikasi: `v` tidak didukung atau payload salah bentuk (kesalahan per item ada di hasil per item, lihat bawah) |
 | `NOT_FOUND` | `method` tidak dikenal, atau berkas tidak ada |
 | `INTERNAL` | galat server; sertakan `requestId` saat melapor |
 
@@ -52,7 +54,7 @@ Menguji token dan koneksi.
 { "v": 1, "method": "sync.ping", "token": "…", "payload": null }
 ```
 ```json
-{ "ok": true, "data": { "apiVersion": 1, "serverTime": "2026-10-10T03:00:00.000Z", "resources": ["items"] } }
+{ "ok": true, "data": { "apiVersion": 1, "serverTime": "2026-10-10T03:00:00.000Z", "resources": ["brands", "items"] } }
 ```
 
 ### `sync.file.get`
@@ -129,6 +131,8 @@ Master: **dua arah**. Kunci pencocokan: `uid` → `id` → merk+tipe ternormalis
 ```
 Simpan `nextRev` sebagai kursor. Bila `hasMore` benar, panggil lagi dengan `sinceRev = nextRev`. Urutan hasil menurut `rev` naik. Item yang tidak berubah di sisi sinkron tidak muncul (perubahan `alias` tidak menaikkan `rev`).
 
+Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut waktu dibuat); jalankan `setup` setelah deploy B2 sebelum Desktop menarik. `merk` selalu nama merk terkini; mengganti nama merk menaikkan `rev` semua item merk itu.
+
 ### 3.3 `sync.items.push`
 
 ```json
@@ -163,7 +167,14 @@ Simpan `nextRev` sebagai kursor. Bila `hasMore` benar, panggil lagi dengan `sinc
 - Alur yang disarankan: **pull dulu, lalu push dengan `baseRev` = `rev` item yang terakhir ditarik.**
 - `overwrite: true` (per permintaan) mengabaikan pemeriksaan konflik dan menimpa field yang dikirim.
 
-**Batas:** ≤ 200 item per panggilan, ≤ 100 bila ada yang memuat `detail`; total body ≤ 5 MB.
+**Batas:** ≤ 50 item per panggilan, ≤ 25 bila ada yang memuat `detail`; total body ≤ 5 MB. Batas ini konservatif: satu entri membaca dan menulis beberapa sheet di dalam lock, dan satu panggilan Apps Script dibatasi 6 menit. Naikkan hanya setelah diukur (E2E 52).
+
+**Catatan perilaku:**
+- Pemetaan id MySQL saja (nilai sama) → `updated` **tanpa** kenaikan `rev` dan tanpa audit.
+- Nama merk dibandingkan menurut kunci ternormalisasi (huruf besar/kecil tidak dianggap beda).
+- Pesan `fields` memakai nama field kabel (`merk`, `tipe`, `images`, ...).
+- Pembuatan, perubahan, dan konflik dicatat di audit atas nama `sync:desktop` (aksi `item.create`, `item.update`, `item.activate`/`item.deactivate`, `item.sync.conflict`).
+- `id` MySQL boleh dikirim sebagai angka; `isCountryLock` dan `active` boleh berupa teks `"true"`/`"false"`.
 
 **Balasan** — satu hasil per item, urutan sama dengan permintaan; kegagalan satu item tidak membatalkan yang lain:
 ```json
@@ -180,7 +191,8 @@ Simpan `nextRev` sebagai kursor. Bila `hasMore` benar, panggil lagi dengan `sinc
 | `updated` | ada field yang berubah; `rev` baru |
 | `unchanged` | nilai sama dengan yang tersimpan; tidak ada perubahan |
 | `conflict` | ditolak; `current` memuat item terkini (selalu dengan `detail`, `stickers`, `accessories`) |
-| `invalid` | ditolak karena isi tidak sah; `fields` berisi pesan per field |
+| `invalid` | ditolak karena isi tidak sah; `fields` berisi pesan per field. Jangan dicoba ulang tanpa mengubah isi |
+| `error` | galat server sementara (lock penuh, kuota, layanan Google): entri **belum diproses**; `fields._` berisi pesan. Boleh dicoba ulang apa adanya |
 
 ```json
 { "index": 3, "status": "conflict", "uid": "d3…", "rev": 131,
@@ -200,11 +212,12 @@ Simpan `nextRev` sebagai kursor. Bila `hasMore` benar, panggil lagi dengan `sinc
 ### 3.5 Gambar (`images`, `stickers[].image`, `drive:` di Markdown)
 - Semua id adalah **id berkas Drive di folder aplikasi**. Saat push, server memeriksa tiap id: bila berkas belum tercatat, ia didaftarkan (MIME dan ukuran dibaca dari Drive); bila tidak berada di folder aplikasi → item `invalid`.
 - Menghapus id dari `images` hanya melepas gambar dari item; berkas Drive **tidak** dihapus.
+- Satu berkas Drive boleh dipakai banyak item (QC App membuat satu baris `files` per item; foto yang dilepas satu item bebas dipakai item lain).
 - Untuk membaca isi gambar gunakan `sync.file.get`.
 
 ### 3.6 Migrasi awal dari MySQL dan spreadsheet lama
 1. Isi Script Property `DRIVE_FOLDER_ID` dengan id folder gambar lama **sebelum** menjalankan `setup`.
-2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 200 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
+2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 50 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
 3. Desktop lalu menarik (`sync.items.pull` dari `sinceRev: 0`) untuk memeriksa hasilnya dan menyimpan kursor.
 4. Setelah semua cocok, proyek GAS lama (`?action=insert|update|sync|delete`) dipensiunkan dan Desktop memakai kontrak ini.
 
@@ -236,7 +249,7 @@ Master: **dua arah**, polanya sama dengan `items` (`rev`, hasil per entri, konfl
 | `active` | boolean |
 | `rev` | hanya-baca (pull) |
 
-Metode: `sync.brands.pull` (`sinceRev`, `limit`) dan `sync.brands.push` (`brands[]`, `baseRev`, `overwrite`), bentuk balasan identik dengan `sync.items.*`. **Mengganti nama merk di salah satu sisi** berlaku ke semua item merk itu; `items.merk` pada pull selalu nama merk terkini.
+Metode: `sync.brands.pull` (`sinceRev`, `limit`) dan `sync.brands.push` (`brands[]`, `baseRev`, `overwrite`), bentuk balasan identik dengan `sync.items.*`. **Mengganti nama merk di salah satu sisi** berlaku ke semua item merk itu; `items.merk` pada pull selalu nama merk terkini. `sync.brands.pull` tidak menerima `include`.
 
 **Hubungan dengan item:** item membawa `merk` (nama). Pada `sync.items.push`, merk dicocokkan menurut nama ternormalisasi; bila belum ada, QC App membuatnya otomatis (sama seperti saat mengetik di form). Push merk sebaiknya dikirim **sebelum** item agar `id` MySQL merk terpetakan.
 
@@ -251,7 +264,8 @@ Dokumen ini hanya menetapkan konvensi agar sumber daya stok memakai kerangka yan
 ---
 
 ## 5. Menambah sumber daya baru (untuk pengembang QC App)
-1. Daftarkan di tabel rute sinkron (`gas/src/modules/sync/routes.ts`) dengan `validate` dan `handler`; handler menerima `{ actor: 'sync:desktop', requestId }`, tidak pernah `UserContext`.
+1. Daftarkan di tabel rute sinkron `getSyncRoutes_` (`gas/src/modules/sync/routes.ts`) lewat `syncRoute_({ validate, handler })`; handler menerima `{ actor: 'sync:desktop', requestId }`, tidak pernah `UserContext`. Tambahkan nama sumber daya ke `SYNC_RESOURCES` (`shared/sync.ts`).
 2. Deklarasikan: kunci pencocokan, field sinkron, master (`dua arah`/`desktop`), aturan konflik, batas ukuran.
-3. Pakai penghitung revisi per sumber daya (`sync_state`) bila perlu paginasi lewat `rev`.
-4. Tambahkan bagian baru di dokumen ini dan tes kesesuaian (`gas/src/modules/sync/*.test.ts`).
+3. Paginasi lewat `rev`: simpan `sync_rev` per baris, naikkan dengan `nextRev_('<sumberDaya>')` (pemanggil memegang lock) setiap field sinkron berubah, lalu tarik dengan `validateSyncPull_` dan `paginateByRev_`.
+4. Push per entri: validasi payload dengan `validateSyncPush_`, satu lock per entri, konflik dengan `isStaleWrite_`, galat entri dengan `syncFailureResult_`. Pakai fungsi domain yang sama dengan RPC web (mis. `writeItem_`).
+5. Tambahkan bagian baru di dokumen ini dan tes kesesuaian (`gas/src/modules/sync/*.test.ts`).

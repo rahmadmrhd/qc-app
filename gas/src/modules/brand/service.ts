@@ -1,9 +1,10 @@
+import type { ActorRef } from '@gas/core/actor';
 import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
-import type { UserContext } from '@gas/modules/access/context';
 import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import { listItems_, updateItem_ } from '@gas/modules/item/repo';
+import { nextRev_ } from '@gas/modules/sync/state';
 import { itemKey, normalizeKey } from '@shared/items';
 import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
 import type { BrandRecord, NewBrandRecord } from './repo';
@@ -20,7 +21,7 @@ function toBrandDto_(brand: NewBrandRecord, itemCount: number): BrandDto {
   };
 }
 
-function brandSnapshot_(brand: NewBrandRecord): Record<string, unknown> {
+export function brandSnapshot_(brand: NewBrandRecord): Record<string, unknown> {
   return { name: brand.name, status: brand.status };
 }
 
@@ -30,7 +31,7 @@ function countItemsByBrand_(): Map<string, number> {
   return counts;
 }
 
-function newBrandRecord_(name: string, actor: UserContext): NewBrandRecord {
+function newBrandRecord_(name: string, actor: ActorRef): NewBrandRecord {
   const now = nowIso_();
   return {
     id: platform_().uuid(),
@@ -38,14 +39,14 @@ function newBrandRecord_(name: string, actor: UserContext): NewBrandRecord {
     name,
     key: normalizeKey(name),
     status: 'active',
-    syncRev: 0,
+    syncRev: nextRev_('brands'),
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
   };
 }
 
-function insertBrandWithAudit_(brand: NewBrandRecord, actor: UserContext): void {
+function insertBrandWithAudit_(brand: NewBrandRecord, actor: ActorRef): void {
   insertBrand_(brand);
   appendAudit_({
     ts: brand.createdAt,
@@ -69,7 +70,7 @@ export function listBrandDtos_(): BrandDto[] {
  * Dipanggil DI DALAM lock penyimpanan item (tidak mengunci sendiri). Inilah "buat merk langsung
  * saat mengetik": tanpa form tambahan.
  */
-export function resolveBrandByName_(name: string, actor: UserContext): NewBrandRecord {
+export function resolveBrandByName_(name: string, actor: ActorRef): NewBrandRecord {
   const key = normalizeKey(name);
   const found = listBrands_().find((brand) => brand.key === key);
   if (found) return found;
@@ -78,91 +79,98 @@ export function resolveBrandByName_(name: string, actor: UserContext): NewBrandR
   return created;
 }
 
-export function saveBrand_(input: SaveBrandInput, actor: UserContext): BrandDto {
-  return platform_().withLock(() => {
-    const brands = listBrands_();
-    const existing = input.id ? brands.find((brand) => brand.id === input.id) : undefined;
-    if (input.id && !existing) throw appError_('NOT_FOUND', 'Merk tidak ditemukan');
-    const key = normalizeKey(input.name);
-    if (brands.some((brand) => brand.id !== input.id && brand.key === key)) {
-      throw appError_('CONFLICT', 'Nama merk sudah dipakai', { name: 'Nama merk sudah dipakai' });
-    }
+export function applyBrandSave_(input: SaveBrandInput, actor: ActorRef): BrandDto {
+  const brands = listBrands_();
+  const existing = input.id ? brands.find((brand) => brand.id === input.id) : undefined;
+  if (input.id && !existing) throw appError_('NOT_FOUND', 'Merk tidak ditemukan');
+  const key = normalizeKey(input.name);
+  if (brands.some((brand) => brand.id !== input.id && brand.key === key)) {
+    throw appError_('CONFLICT', 'Nama merk sudah dipakai', { name: 'Nama merk sudah dipakai' });
+  }
 
-    if (!existing) {
-      const created = newBrandRecord_(input.name, actor);
-      insertBrandWithAudit_(created, actor);
-      return toBrandDto_(created, 0);
-    }
+  if (!existing) {
+    const created = newBrandRecord_(input.name, actor);
+    insertBrandWithAudit_(created, actor);
+    return toBrandDto_(created, 0);
+  }
 
-    if (existing.name === input.name) {
-      return toBrandDto_(existing, countItemsByBrand_().get(existing.id) ?? 0);
-    }
+  if (existing.name === input.name) {
+    return toBrandDto_(existing, countItemsByBrand_().get(existing.id) ?? 0);
+  }
 
-    // Kunci item = merk + tipe, jadi ganti nama menghitung ulang kunci item merk ini; tolak bila bentrok.
-    const items = listItems_();
-    const own = items.filter((item) => item.brandId === existing.id);
-    const recomputed = own.map((item) => ({ item, next: itemKey(input.name, item.model) }));
-    const taken = new Set(
-      items.filter((item) => item.brandId !== existing.id).map((item) => item.key),
-    );
-    // Kunci baru juga tidak boleh sama dengan nama lain (alias) item mana pun, termasuk milik item itu sendiri.
-    const aliasKeys = new Set(
-      items.flatMap((item) => item.aliases.map((alias) => normalizeKey(alias))),
-    );
-    if (recomputed.some(({ next }) => aliasKeys.has(next))) {
-      const message = 'Nama baru bentrok dengan nama lain item';
-      throw appError_('CONFLICT', message, { name: message });
-    }
-    if (recomputed.some(({ next }) => taken.has(next))) {
-      const message = 'Nama baru membuat merk dan tipe dua item bentrok';
-      throw appError_('CONFLICT', message, { name: message });
-    }
-    const now = nowIso_();
-    const updated: BrandRecord = {
-      ...existing,
-      name: input.name,
-      key,
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
-    updateBrand_(updated);
-    for (const { item, next } of recomputed) {
-      if (item.key !== next) updateItem_({ ...item, key: next });
-    }
-    appendAudit_({
-      ts: now,
-      actor: actor.email,
-      action: 'brand.update',
-      target: updated.name,
-      before: brandSnapshot_(existing),
-      after: brandSnapshot_(updated),
-    });
-    return toBrandDto_(updated, own.length);
+  // Kunci item = merk + tipe, jadi ganti nama menghitung ulang kunci item merk ini; tolak bila bentrok.
+  const items = listItems_();
+  const own = items.filter((item) => item.brandId === existing.id);
+  const recomputed = own.map((item) => ({ item, next: itemKey(input.name, item.model) }));
+  const taken = new Set(
+    items.filter((item) => item.brandId !== existing.id).map((item) => item.key),
+  );
+  // Kunci baru juga tidak boleh sama dengan nama lain (alias) item mana pun, termasuk milik item itu sendiri.
+  const aliasKeys = new Set(
+    items.flatMap((item) => item.aliases.map((alias) => normalizeKey(alias))),
+  );
+  if (recomputed.some(({ next }) => aliasKeys.has(next))) {
+    const message = 'Nama baru bentrok dengan nama lain item';
+    throw appError_('CONFLICT', message, { name: message });
+  }
+  if (recomputed.some(({ next }) => taken.has(next))) {
+    const message = 'Nama baru membuat merk dan tipe dua item bentrok';
+    throw appError_('CONFLICT', message, { name: message });
+  }
+  const now = nowIso_();
+  const updated: BrandRecord = {
+    ...existing,
+    name: input.name,
+    key,
+    syncRev: nextRev_('brands'),
+    updatedAt: now,
+    updatedBy: actor.email,
+  };
+  updateBrand_(updated);
+  for (const { item, next } of recomputed) {
+    // Nama merk ikut tersinkron di setiap item (`merk`), jadi revisi item naik walau kunci sama.
+    updateItem_({ ...item, key: next, syncRev: nextRev_('items') });
+  }
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action: 'brand.update',
+    target: updated.name,
+    before: brandSnapshot_(existing),
+    after: brandSnapshot_(updated),
   });
+  return toBrandDto_(updated, own.length);
 }
 
-export function setBrandStatus_(input: SetBrandStatusInput, actor: UserContext): BrandDto {
-  return platform_().withLock(() => {
-    const existing = listBrands_().find((brand) => brand.id === input.id);
-    if (!existing) throw appError_('NOT_FOUND', 'Merk tidak ditemukan');
-    const count = countItemsByBrand_().get(existing.id) ?? 0;
-    if (existing.status === input.status) return toBrandDto_(existing, count);
-    const now = nowIso_();
-    const updated: BrandRecord = {
-      ...existing,
-      status: input.status,
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
-    updateBrand_(updated);
-    appendAudit_({
-      ts: now,
-      actor: actor.email,
-      action: input.status === 'active' ? 'brand.activate' : 'brand.deactivate',
-      target: updated.name,
-      before: brandSnapshot_(existing),
-      after: brandSnapshot_(updated),
-    });
-    return toBrandDto_(updated, count);
+export function saveBrand_(input: SaveBrandInput, actor: ActorRef): BrandDto {
+  return platform_().withLock(() => applyBrandSave_(input, actor));
+}
+
+export function applyBrandStatus_(input: SetBrandStatusInput, actor: ActorRef): BrandDto {
+  const existing = listBrands_().find((brand) => brand.id === input.id);
+  if (!existing) throw appError_('NOT_FOUND', 'Merk tidak ditemukan');
+  const count = countItemsByBrand_().get(existing.id) ?? 0;
+  if (existing.status === input.status) return toBrandDto_(existing, count);
+  const now = nowIso_();
+  const updated: BrandRecord = {
+    ...existing,
+    status: input.status,
+    syncRev: nextRev_('brands'),
+    updatedAt: now,
+    updatedBy: actor.email,
+  };
+  updateBrand_(updated);
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action: input.status === 'active' ? 'brand.activate' : 'brand.deactivate',
+    target: updated.name,
+    before: brandSnapshot_(existing),
+    after: brandSnapshot_(updated),
   });
+  return toBrandDto_(updated, count);
+}
+
+export function setBrandStatus_(input: SetBrandStatusInput, actor: ActorRef): BrandDto {
+  return platform_().withLock(() => applyBrandStatus_(input, actor));
 }

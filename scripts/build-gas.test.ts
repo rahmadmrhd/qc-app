@@ -64,13 +64,14 @@ describe('transformForGas', () => {
     );
   });
 
-  test('doGet, api, dan setup boleh publik', () => {
+  test('doGet, doPost, api, dan setup boleh publik', () => {
     const source =
-      'export function doGet() { return 1; }\nexport function api() { return 2; }\nexport function setup() { return 3; }';
+      'export function doGet() { return 1; }\nexport function api() { return 2; }\nexport function setup() { return 3; }\nexport function doPost() { return 4; }';
     expect(transformForGas(source, 'gas/src/main.ts', GAS).globals).toEqual([
       'doGet',
       'api',
       'setup',
+      'doPost',
     ]);
   });
 

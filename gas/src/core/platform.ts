@@ -47,6 +47,8 @@ export interface Platform {
   driveCreateFile(folderId: string, name: string, mime: string, base64: string): string;
   /** Membaca berkas Drive sebagai base64; `null` bila tidak ditemukan, tidak terbaca, atau bukan anak `folderId`. */
   driveReadFile(fileId: string, folderId: string): { mime: string; base64: string } | null;
+  /** Info berkas Drive tanpa membaca isinya; `null` bila tak ada, tak terbaca, di tempat sampah, atau bukan anak `folderId`. */
+  driveFileInfo(fileId: string, folderId: string): { mime: string; size: number } | null;
   /** True bila folder ada dan tidak berada di tempat sampah. */
   driveFolderExists(folderId: string): boolean;
   /** Membuang berkas Drive (ke tempat sampah); aman bila berkas tidak ada. */

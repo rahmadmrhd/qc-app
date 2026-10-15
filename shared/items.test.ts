@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  DRIVE_REF_SCHEME,
   extractFileRefs,
+  extractImageTargets,
+  extractRefs,
   hashText,
   ITEM_LIMITS,
   itemKey,
+  mapMarkdownRefs,
   normalizeKey,
   normalizeNewlines,
 } from './items';
@@ -102,4 +106,56 @@ test('ITEM_LIMITS memuat batas PRD FI7', () => {
     attachments: 10,
     jsonCell: 40_000,
   });
+});
+describe('extractRefs', () => {
+  test('skema bebas; sama dengan extractFileRefs untuk qcfile', () => {
+    const md = '![a](drive:AAA_1) dan [b](drive:BBB-2) ![c](qcfile:zzz)';
+    expect(extractRefs(md, 'drive:')).toEqual(['AAA_1', 'BBB-2']);
+    expect(extractRefs(md, 'qcfile:')).toEqual(['zzz']);
+    expect(extractFileRefs(md)).toEqual(['zzz']);
+  });
+});
+
+describe('mapMarkdownRefs', () => {
+  test('mengganti skema dan id yang dikenal; id tak dikenal dan kemunculan di tengah kata dibiarkan', () => {
+    const lookup = (id: string) => (id === 'f1' ? 'DRV1' : null);
+    expect(
+      mapMarkdownRefs('![x](qcfile:f1) ![y](qcfile:f2) xqcfile:f1', 'qcfile:', 'drive:', lookup),
+    ).toBe('![x](drive:DRV1) ![y](qcfile:f2) xqcfile:f1');
+  });
+
+  test('id kosong dan teks tanpa rujukan tidak berubah; bolak-balik stabil', () => {
+    const none = () => null;
+    expect(mapMarkdownRefs('![x](qcfile:) teks', 'qcfile:', 'drive:', none)).toBe(
+      '![x](qcfile:) teks',
+    );
+    expect(mapMarkdownRefs('', 'qcfile:', 'drive:', none)).toBe('');
+    const there = mapMarkdownRefs('A ![x](qcfile:f1) B', 'qcfile:', 'drive:', () => 'D1');
+    expect(mapMarkdownRefs(there, 'drive:', 'qcfile:', () => 'f1')).toBe('A ![x](qcfile:f1) B');
+  });
+});
+
+describe('extractImageTargets', () => {
+  test('mengambil tujuan semua gambar ![..](..), termasuk yang berjudul; tautan biasa diabaikan', () => {
+    const md = [
+      '![a](drive:AAA)',
+      '[tautan](https://x.test)',
+      '![b](https://x.test/b.png "judul")',
+      '![c](data:image/png;base64,AAAA)',
+    ].join(String.fromCharCode(10));
+    expect(extractImageTargets(md)).toEqual([
+      'drive:AAA',
+      'https://x.test/b.png "judul"',
+      'data:image/png;base64,AAAA',
+    ]);
+  });
+
+  test('tanpa gambar atau kurung tak lengkap menghasilkan daftar kosong', () => {
+    expect(extractImageTargets('teks biasa')).toEqual([]);
+    expect(extractImageTargets('![a] tanpa tujuan')).toEqual([]);
+  });
+});
+
+test('DRIVE_REF_SCHEME adalah skema rujukan Drive pada kabel sinkronisasi', () => {
+  expect(DRIVE_REF_SCHEME).toBe('drive:');
 });

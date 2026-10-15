@@ -5,6 +5,7 @@ import type {
   SheetLike,
   SpreadsheetLike,
 } from '@gas/core/platform';
+import { base64ByteLength } from '@shared/files';
 
 /** Meniru Google Sheets: apostrof depan = teks literal; string "=" tanpa apostrof dievaluasi jadi formula. */
 function storeCell(value: unknown): unknown {
@@ -202,6 +203,11 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     driveReadFile: (fileId, folderId) => {
       const file = drive.get(fileId);
       return file && file.folderId === folderId ? { mime: file.mime, base64: file.base64 } : null;
+    },
+    driveFileInfo: (fileId, folderId) => {
+      const file = drive.get(fileId);
+      if (!file || file.folderId !== folderId || trashedFolders.has(file.folderId)) return null;
+      return { mime: file.mime, size: base64ByteLength(file.base64) };
     },
     driveFolderExists: (folderId) => folders.has(folderId) && !trashedFolders.has(folderId),
     driveTrashFile: (fileId) => {

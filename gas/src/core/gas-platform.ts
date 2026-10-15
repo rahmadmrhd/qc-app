@@ -86,6 +86,21 @@ function createGasPlatform_(): Platform {
         return null;
       }
     },
+    driveFileInfo: (fileId, folderId) => {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        if (file.isTrashed()) return null;
+        const parents = file.getParents();
+        let inFolder = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === folderId) inFolder = true;
+        }
+        if (!inFolder) return null;
+        return { mime: file.getMimeType(), size: file.getSize() };
+      } catch {
+        return null;
+      }
+    },
     driveFolderExists: (folderId) => {
       try {
         return !DriveApp.getFolderById(folderId).isTrashed();
@@ -153,4 +168,8 @@ export function assertScriptOwner_(): void {
   if (!isScriptOwner_()) {
     throw new Error('setup hanya boleh dijalankan oleh pemilik script dari editor Apps Script.');
   }
+}
+
+export function renderJsonOutput_(json: string): GoogleAppsScript.Content.TextOutput {
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }

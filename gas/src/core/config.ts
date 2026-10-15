@@ -7,7 +7,8 @@ export type ConfigKey =
   | 'OAUTH_CLIENT_SECRET'
   | 'OAUTH_REDIRECT_URI'
   | 'SESSION_SECRET'
-  | 'ADMIN_EMAIL';
+  | 'ADMIN_EMAIL'
+  | 'SYNC_API_TOKEN';
 
 /** OAUTH_REDIRECT_URI tidak wajib: bila kosong, `redirectUri_()` memakai URL web app saat runtime. */
 export const REQUIRED_CONFIG_KEYS: readonly ConfigKey[] = [
@@ -46,4 +47,9 @@ export function missingConfigKeys_(): ConfigKey[] {
 
 export function adminEmail_(): string {
   return normalizeEmail_(platform_().getProperty('ADMIN_EMAIL') ?? '');
+}
+
+/** Token sinkron QC Desktop; kosong bila belum diset (sinkronisasi nonaktif). */
+export function syncToken_(): string {
+  return platform_().getProperty('SYNC_API_TOKEN')?.trim() ?? '';
 }

@@ -139,7 +139,7 @@ function authorizedLocationIds_(
   return ids;
 }
 
-function toErrorBody_(error: unknown, requestId: string): RpcErrorBody {
+export function toErrorBody_(error: unknown, requestId: string): RpcErrorBody {
   if (isAppError_(error)) {
     return {
       code: error.code,

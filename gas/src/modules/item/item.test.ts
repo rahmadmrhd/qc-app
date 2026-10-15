@@ -255,7 +255,8 @@ test('mengubah item mempertahankan id MySQL, revisi sinkron, dan waktu dibuat', 
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-10-09T00:00:00.000Z',
   });
-  expect(listItems_()[0]).toMatchObject({ externalId: '12', syncRev: 7, status: 'active' });
+  // isCountryLock adalah field sinkron: revisi naik (penghitung baru mulai dari 0, jadi 1); id MySQL tetap.
+  expect(listItems_()[0]).toMatchObject({ externalId: '12', syncRev: 1, status: 'active' });
 });
 
 test('mengubah item mencatat snapshot sebelum dan sesudah; id tak dikenal NOT_FOUND', () => {
@@ -377,4 +378,27 @@ test('galat validasi lain tidak meninggalkan merk yatim', () => {
     ).code,
   ).toBe('VALIDATION');
   expect(listBrands_()).toHaveLength(brandsBefore);
+});
+test('sync_rev: baru dan setiap perubahan field sinkron naik; ubah alias saja tidak (FS11)', () => {
+  const created = saveItem_({ ...baseInput }, admin);
+  const rev = () => listItems_().find((i) => i.id === created.id)?.syncRev ?? -1;
+  expect(rev()).toBe(1);
+
+  saveItem_({ ...baseInput, id: created.id, aliases: ['ES24'] }, admin);
+  expect(rev()).toBe(1); // alias tidak disinkronkan
+
+  saveItem_({ ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
+  expect(rev()).toBe(2);
+
+  saveItem_({ ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
+  expect(rev()).toBe(2); // tidak ada perubahan
+
+  saveItem_(
+    { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru', isCountryLock: true },
+    admin,
+  );
+  expect(rev()).toBe(3);
+
+  setItemStatus_({ id: created.id, status: 'inactive' }, admin);
+  expect(rev()).toBe(4);
 });

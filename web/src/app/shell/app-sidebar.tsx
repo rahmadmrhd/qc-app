@@ -1,5 +1,6 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
+import type { NavItem } from '@/app/navigation';
+import { isNavItemActive, NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -37,7 +38,9 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       tooltip={item.label}
-                      isActive={Boolean(matchRoute({ to: item.to, fuzzy: item.to !== '/' }))}
+                      isActive={isNavItemActive(item, (to, fuzzy) =>
+                        Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
+                      )}
                     >
                       <Link to={item.to}>
                         <item.icon />
