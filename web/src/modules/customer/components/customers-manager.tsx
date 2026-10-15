@@ -32,7 +32,8 @@ export function CustomersManager({
 }: CustomersManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Galat milik satu baris (id), supaya tidak tampil di baris lain.
+  const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save(id: string) {
@@ -44,7 +45,7 @@ export function CustomersManager({
       message = 'Gagal menyimpan customer';
     }
     setBusy(false);
-    setError(message);
+    setError(message === null ? null : { id, message });
     if (message === null) setEditingId(null);
   }
 
@@ -77,9 +78,9 @@ export function CustomersManager({
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                     />
-                    {error ? (
+                    {error?.id === customer.id ? (
                       <p role="alert" className="text-sm text-destructive">
-                        {error}
+                        {error.message}
                       </p>
                     ) : null}
                   </div>

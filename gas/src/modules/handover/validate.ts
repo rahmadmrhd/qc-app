@@ -81,7 +81,7 @@ function readHandoverLines_(value: unknown): {
 
 export function validateSaveHandover_(raw: unknown): SaveHandoverInput {
   const reader = readObject_(raw);
-  const id = reader.optionalId('id');
+  const id = reader.optionalId('id')?.trim() || undefined;
   const locationId = reader.str('locationId', { required: true, max: 100 });
   const note = reader.str('note', { max: HANDOVER_LIMITS.note });
   // Customer opsional: kosong = task tanpa customer.

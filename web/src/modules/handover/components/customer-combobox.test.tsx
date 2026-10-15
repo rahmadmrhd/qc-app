@@ -90,3 +90,21 @@ test('C.V. dan CV dianggap customer yang sama (ejaan resmi dipakai)', async () =
   await userEvent.type(screen.getByLabelText('Customer'), 'p.t. maju jaya');
   expect(screen.getByText(/Memakai customer yang sudah ada: "PT Maju Jaya"/)).toBeInTheDocument();
 });
+
+test('customer task saat ini (mungkin nonaktif) tidak disebut "baru akan dibuat" (M3)', async () => {
+  function Edit() {
+    const [value, setValue] = useState('Customer Lama');
+    return (
+      <CustomerCombobox
+        id="cust"
+        value={value}
+        onChange={setValue}
+        customers={customers}
+        currentName="Customer Lama"
+      />
+    );
+  }
+  render(<Edit />);
+  expect(screen.queryByText(/Customer baru/)).toBeNull();
+  expect(screen.getByText(/Customer saat ini/)).toBeInTheDocument();
+});

@@ -10,6 +10,8 @@ export interface CustomerComboboxProps {
   onChange: (name: string) => void;
   customers: ReadonlyArray<{ id: string; name: string }>;
   onBlur?: () => void;
+  /** Mode ubah: customer task saat ini (mungkin nonaktif, jadi tidak ada di daftar saran). */
+  currentName?: string;
 }
 
 /**
@@ -22,6 +24,7 @@ export function CustomerCombobox({
   onChange,
   customers,
   onBlur,
+  currentName,
 }: CustomerComboboxProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -120,7 +123,10 @@ export function CustomerCombobox({
           Memakai customer yang sudah ada: "{exact.name}".
         </p>
       ) : null}
-      {key !== '' && !exact ? (
+      {key !== '' && !exact && currentName && customerKey(currentName) === key ? (
+        <p className="text-xs text-muted-foreground">Customer saat ini (tidak berubah).</p>
+      ) : null}
+      {key !== '' && !exact && !(currentName && customerKey(currentName) === key) ? (
         <p className="text-xs text-muted-foreground">
           Customer baru "{value.trim()}" akan dibuat saat task disimpan.
         </p>

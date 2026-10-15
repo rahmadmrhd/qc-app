@@ -295,17 +295,35 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
     }
 
     const { handover, lines: oldLines } = loaded;
-    const before = handoverSnapshot_(handover, oldLines, locationNames);
-    // Hitung hasil akhir baris (tanpa menulis) untuk mendeteksi "tidak ada perubahan".
-    const nextLines = input.lines.map((line) => {
-      const current = byItem.get(line.itemId);
-      return {
-        itemId: line.itemId,
-        itemLabel: current?.itemLabel ?? label(line.itemId),
-        qty: line.qty,
-        doneQty: current?.doneQty ?? 0,
-      };
-    });
+    // Nama customer terkini (bukan salinan lama): ganti nama customer saja bukan perubahan task.
+    const currentCustomerName =
+      customerNameMap_().get(handover.customerId) ?? handover.customerName;
+    const before = handoverSnapshot_(
+      { ...handover, customerName: currentCustomerName },
+      oldLines,
+      locationNames,
+    );
+    // Hitung hasil akhir baris (tanpa menulis) untuk mendeteksi "tidak ada perubahan". Urutan mengikuti urutan
+    // tersimpan (baris lama) lalu baris baru, agar urutan kiriman klien yang berbeda tidak dianggap perubahan.
+    const inputByItem = new Map(input.lines.map((line) => [line.itemId, line]));
+    const nextLines = [
+      ...oldLines
+        .filter((line) => inputByItem.has(line.itemId))
+        .map((line) => ({
+          itemId: line.itemId,
+          itemLabel: line.itemLabel,
+          qty: inputByItem.get(line.itemId)?.qty ?? line.qty,
+          doneQty: line.doneQty,
+        })),
+      ...input.lines
+        .filter((line) => !byItem.has(line.itemId))
+        .map((line) => ({
+          itemId: line.itemId,
+          itemLabel: label(line.itemId),
+          qty: line.qty,
+          doneQty: 0,
+        })),
+    ];
     const nextHandover = {
       ...handover,
       customerId: customer?.id ?? '',

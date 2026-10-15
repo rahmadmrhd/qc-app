@@ -71,7 +71,11 @@ export function ItemLinesField({ options, value, onChange, createItemLink }: Ite
                   onChange(
                     value.map((row) =>
                       row.itemId === line.itemId
-                        ? { ...row, qty: Number(event.target.value) }
+                        ? {
+                            ...row,
+                            qty:
+                              event.target.value === '' ? Number.NaN : Number(event.target.value),
+                          }
                         : row,
                     ),
                   )

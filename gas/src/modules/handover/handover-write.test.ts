@@ -1,7 +1,9 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
+import { loadUserContext_ } from '@gas/modules/access/context';
 import { listAuditRecords_ } from '@gas/modules/access/repo';
 import { insertCustomer_, listCustomers_ } from '@gas/modules/customer/repo';
+import { renameCustomer_ } from '@gas/modules/customer/service';
 import { ENV, rpc, seedHandoverEnv } from '@gas-test/handover-env';
 import { customer, handover, handoverLine } from '@gas-test/handover-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
@@ -32,6 +34,11 @@ const save = (payload: Record<string, unknown>, email = 'wh@gmail.com') =>
     lines: [{ itemId: ENV.itemA, qty: 5 }],
     ...payload,
   });
+function adminCtx() {
+  const ctx = loadUserContext_('admin@gmail.com');
+  if (!ctx) throw new Error('admin hilang');
+  return ctx;
+}
 const audits = () => listAuditRecords_().map((r) => r.action);
 
 test('membuat task: nomor ST-YYYYMMDD-001, label baris disalin, status Baru, audit create setelah customer.create', () => {
@@ -369,4 +376,41 @@ test('Ubah yang tidak membuat task Selesai tidak mencatat handover.complete', ()
     ],
   }); // A penuh, B belum
   expect(audits()).toEqual(['handover.update']);
+});
+
+test('Ubah tanpa perubahan setelah customer diganti nama tidak menulis audit maupun memperbarui updatedAt (M2)', () => {
+  seedTask();
+  renameCustomer_({ id: 'cust-pt-maju', name: 'PT Maju Sejahtera' }, adminCtx());
+  const before = listHandovers_()[0]?.updatedAt;
+  const auditCount = listAuditRecords_().length;
+  const out = save({
+    id: 't1',
+    customerName: 'PT Maju Sejahtera',
+    lines: [
+      { itemId: ENV.itemA, qty: 5 },
+      { itemId: ENV.itemB, qty: 3 },
+    ],
+  });
+  expect(out.ok).toBe(true);
+  expect(listAuditRecords_()).toHaveLength(auditCount);
+  expect(listHandovers_()[0]?.updatedAt).toBe(before);
+});
+
+test('urutan baris berbeda dari urutan tersimpan bukan perubahan (tanpa audit) (M6)', () => {
+  seedTask();
+  const out = save({
+    id: 't1',
+    lines: [
+      { itemId: ENV.itemB, qty: 3 },
+      { itemId: ENV.itemA, qty: 5 },
+    ],
+  });
+  expect(out.ok).toBe(true);
+  expect(audits()).toEqual([]);
+});
+
+test('id dengan spasi di tepi di-trim; id tak dikenal tetap NOT_FOUND (M7)', () => {
+  seedTask();
+  expect(save({ id: '  t1  ', note: 'baru' }).data.note).toBe('baru');
+  expect(save({ id: '   ', note: 'x' }).data.number).toMatch(/^ST-/); // spasi saja = buat baru
 });

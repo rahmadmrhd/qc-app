@@ -10,7 +10,7 @@ const lineSchema = z.object({
   /** Hanya untuk tampilan; tidak dikirim ke server. */
   label: z.string(),
   qty: z
-    .number()
+    .number('Qty wajib diisi')
     .int('Qty harus bilangan bulat')
     .min(1, 'Minimal 1')
     .max(HANDOVER_LIMITS.qtyMax, `Maksimal ${HANDOVER_LIMITS.qtyMax}`),

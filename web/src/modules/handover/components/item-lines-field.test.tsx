@@ -77,3 +77,10 @@ test('maksimal 100 baris: pencarian dinonaktifkan', () => {
   render(<Harness initial={many} />);
   expect(screen.getByLabelText('Cari tipe')).toBeDisabled();
 });
+
+test('mengosongkan qty menampilkan isian kosong (bukan 0) (M5)', () => {
+  render(<Harness initial={[{ itemId: 'i1', label: 'Samsung Galaxy S24', qty: 3 }]} />);
+  const input = screen.getByLabelText('Qty Samsung Galaxy S24');
+  fireEvent.change(input, { target: { value: '' } });
+  expect(input).toHaveValue(null);
+});
