@@ -107,13 +107,13 @@ export function ItemLinesField({ options, value, onChange, createItemLink }: Ite
           }}
         />
         {suggestions.length > 0 ? (
-          <ul
+          <div
             role="listbox"
             aria-label="Saran tipe"
             className="max-h-60 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
           >
             {suggestions.map((item) => (
-              <li key={item.id} role="presentation">
+              <div key={item.id} role="presentation">
                 <button
                   type="button"
                   role="option"
@@ -123,9 +123,9 @@ export function ItemLinesField({ options, value, onChange, createItemLink }: Ite
                 >
                   {labelOf(item)}
                 </button>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         ) : null}
         {matchedButUsed ? (
           <p className="text-xs text-muted-foreground">

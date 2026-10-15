@@ -244,10 +244,10 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - [ ] Tim Desktop menyetujui `docs/api/desktop-sync.md`.
 
 **Fase C**
-- [ ] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
-- [ ] Task serah terima (buat, ubah, batalkan) dengan nomor otomatis dan auto-suggest tipe.
-- [ ] QC memperbarui qty, menandai selesai per tipe dan per task; status turunan benar.
-- [ ] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
+- [x] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
+- [x] Task serah terima (buat, ubah, batalkan) dengan nomor otomatis dan auto-suggest tipe.
+- [x] QC memperbarui qty, menandai selesai per tipe dan per task; status turunan benar.
+- [x] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
 
 **Semua fase**
 - [ ] `bun run check` hijau, build lolos `verify-dist`, checklist E2E diperbarui dan lulus di deployment.

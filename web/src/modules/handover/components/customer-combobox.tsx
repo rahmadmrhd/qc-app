@@ -58,14 +58,14 @@ export function CustomerCombobox({
         }}
       />
       {open && suggestions.length > 0 ? (
-        <ul
+        <div
           id={listId}
           role="listbox"
           aria-label="Saran customer"
           className="absolute z-10 mt-1 w-full rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {suggestions.map((customer) => (
-            <li key={customer.id} role="presentation">
+            <div key={customer.id} role="presentation">
               <button
                 type="button"
                 role="option"
@@ -79,9 +79,9 @@ export function CustomerCombobox({
               >
                 {customer.name}
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
       {key !== '' && exact && exact.name !== value.trim() ? (
         <p className="text-xs text-muted-foreground">
