@@ -12,8 +12,8 @@ export const SYNC_LIMITS = {
   pullDefault: 100,
   pullMax: 500,
   pullMaxWithDetail: 200,
-  pushMax: 200,
-  pushMaxWithDetail: 100,
+  pushMax: 50,
+  pushMaxWithDetail: 25,
   /** Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte). */
   fileBytes: 8_000_000,
   failedAttempts: 10,
@@ -30,7 +30,14 @@ export function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export type SyncResultStatus = 'created' | 'updated' | 'unchanged' | 'conflict' | 'invalid';
+/** `error` = galat server sementara (lock, kuota, layanan Google): entri BELUM diproses dan boleh diulang; beda dari `invalid`. */
+export type SyncResultStatus =
+  | 'created'
+  | 'updated'
+  | 'unchanged'
+  | 'conflict'
+  | 'invalid'
+  | 'error';
 
 export interface SyncWireSticker {
   name: string;

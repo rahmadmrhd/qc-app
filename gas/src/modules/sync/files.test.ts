@@ -64,7 +64,7 @@ test('registerDriveFiles_: berkas di folder didaftarkan sekali; id tak sah dilap
   const outside = platform.driveCreateFile(other, 'b.png', 'image/png', PNG);
   const text = platform.driveCreateFile(folder, 't.txt', 'text/plain', PNG);
   const ids = [good, outside, text, 'tidak-ada', good];
-  const first = registerDriveFiles_(ids, probeDriveIds_(ids));
+  const first = registerDriveFiles_(ids, probeDriveIds_(ids), 'owner-1');
   expect(first.missing.sort()).toEqual([outside, text, 'tidak-ada'].sort());
   expect(first.map.size).toBe(1);
   const rows = listFiles_();
@@ -76,7 +76,7 @@ test('registerDriveFiles_: berkas di folder didaftarkan sekali; id tak sah dilap
     ownerType: '',
     createdBy: 'sync:desktop',
   });
-  const second = registerDriveFiles_([good], probeDriveIds_([good]));
+  const second = registerDriveFiles_([good], probeDriveIds_([good]), 'owner-1');
   expect(second.map.get(good)).toBe(first.map.get(good));
   expect(listFiles_()).toHaveLength(1);
 });

@@ -14,7 +14,10 @@ export function isStaleWrite_(
   return !overwrite && (baseRev === undefined || baseRev < currentRev);
 }
 
-/** Galat saat memproses satu entri → hasil `invalid` (tidak membatalkan entri lain). Galat tak terduga dicatat. */
+/**
+ * Galat saat memproses satu entri tidak membatalkan entri lain. Galat aplikasi (isi tidak sah, bentrok) → `invalid`;
+ * galat tak terduga (lock timeout, kuota, layanan Google) → `error` yang boleh diulang, dan dicatat.
+ */
 export function syncFailureResult_<T>(error: unknown, index: number): SyncEntryResult<T> {
   if (isAppError_(error)) {
     return { index, status: 'invalid', fields: error.fields ?? { _: error.message } };
@@ -22,5 +25,5 @@ export function syncFailureResult_<T>(error: unknown, index: number): SyncEntryR
   platform_().logError(
     `sync entri ${index} gagal: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
   );
-  return { index, status: 'invalid', fields: { _: 'Galat server; coba lagi' } };
+  return { index, status: 'error', fields: { _: 'Galat server sementara; ulangi permintaan' } };
 }

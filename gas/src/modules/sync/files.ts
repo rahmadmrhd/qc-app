@@ -58,24 +58,32 @@ export function probeDriveIds_(driveIds: readonly string[]): Map<string, DrivePr
 }
 
 /**
- * Memastikan tiap id Drive punya baris `files` (didaftarkan bila belum, tanpa pemilik). Id yang tak ada di folder
- * aplikasi, bukan gambar JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`. PEMANGGIL WAJIB memegang lock.
+ * Memastikan tiap id Drive punya baris `files` yang boleh dipakai pemilik `ownerId`: baris tanpa pemilik atau
+ * milik `ownerId` dipakai ulang; bila berkas Drive itu sudah dimiliki entitas lain, dibuat baris BARU untuk berkas
+ * Drive yang sama (satu foto boleh dipakai banyak item). Id yang tak ada di folder aplikasi, bukan gambar
+ * JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`. PEMANGGIL WAJIB memegang lock.
  */
 export function registerDriveFiles_(
   driveIds: readonly string[],
   probes: ReadonlyMap<string, DriveProbe | null>,
+  ownerId: string,
 ): { map: Map<string, string>; missing: string[] } {
-  const byDrive = new Map(listFiles_().map((file) => [file.driveId, file.id]));
+  const rows = listFiles_();
   const map = new Map<string, string>();
   const missing: string[] = [];
   for (const driveId of new Set(driveIds)) {
-    const existing = byDrive.get(driveId);
-    if (existing !== undefined) {
-      map.set(driveId, existing);
+    const usable = rows.find(
+      (file) => file.driveId === driveId && (file.ownerType === '' || file.ownerId === ownerId),
+    );
+    if (usable) {
+      map.set(driveId, usable.id);
       continue;
     }
-    const probe = probes.get(driveId);
-    if (!probe || !isImageMime(probe.mime) || probe.size > SYNC_LIMITS.fileBytes) {
+    const sibling = rows.find((file) => file.driveId === driveId);
+    const info: DriveProbe | null = sibling
+      ? { mime: sibling.mime, size: sibling.size }
+      : (probes.get(driveId) ?? null);
+    if (!info || !isImageMime(info.mime) || info.size > SYNC_LIMITS.fileBytes) {
       missing.push(driveId);
       continue;
     }
@@ -83,10 +91,10 @@ export function registerDriveFiles_(
     insertFile_({
       id,
       driveId,
-      mime: probe.mime,
-      size: probe.size,
-      width: 0,
-      height: 0,
+      mime: info.mime,
+      size: info.size,
+      width: sibling?.width ?? 0,
+      height: sibling?.height ?? 0,
       ownerType: '',
       ownerId: '',
       createdAt: nowIso_(),

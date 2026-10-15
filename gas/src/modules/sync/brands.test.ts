@@ -31,6 +31,7 @@ function call(method: string, payload: unknown) {
     JSON.stringify({ v: 1, method, token: TOKEN, payload }),
     getSyncRoutes_(),
   );
+  // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
   return result as { ok: boolean; data?: any; error?: any };
 }
 const push = (brands: unknown[], extra: Record<string, unknown> = {}) =>
@@ -38,6 +39,7 @@ const push = (brands: unknown[], extra: Record<string, unknown> = {}) =>
 const results = (brands: unknown[], extra: Record<string, unknown> = {}) => {
   const out = push(brands, extra);
   if (!out.ok) throw new Error(JSON.stringify(out.error));
+  // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
   return out.data.results as Array<Record<string, any>>;
 };
 const lastAudit = () => {
@@ -219,10 +221,10 @@ test('ganti nama ke nama merk lain → invalid (CONFLICT server dipetakan ke fie
 });
 
 test('batas jumlah entri dan bentuk payload', () => {
-  const many = Array.from({ length: 201 }, (_, i) => ({ name: `M${i}` }));
+  const many = Array.from({ length: 51 }, (_, i) => ({ name: `M${i}` }));
   expect(push(many)).toMatchObject({
     ok: false,
-    error: { code: 'VALIDATION', fields: { brands: 'Maksimal 200 merk' } },
+    error: { code: 'VALIDATION', fields: { brands: 'Maksimal 50 merk' } },
   });
   expect(push([])).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });
   expect(call('sync.brands.push', { brands: 'x' })).toMatchObject({

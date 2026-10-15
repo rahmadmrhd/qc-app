@@ -166,6 +166,8 @@ export function itemSyncSignature_(item: {
 
 export interface WriteItemOptions {
   existing?: ItemRecord | undefined;
+  /** Hanya item baru: id yang sudah dipakai pemanggil (mis. untuk menautkan berkas sebelum menulis). */
+  id?: string | undefined;
   actor: ActorRef;
   /** Hanya sinkronisasi: id MySQL yang dipetakan ke item ini. */
   externalId?: string | undefined;
@@ -194,7 +196,7 @@ export function writeItem_(input: SaveItemInput, options: WriteItemOptions): New
     items.filter((item) => item.id !== existing?.id),
     brandNameMap_(),
   );
-  const id = existing?.id ?? platform_().uuid();
+  const id = existing?.id ?? options.id ?? platform_().uuid();
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
   attachFiles_(referencedFileIds_(input), 'item', id);
   // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.

@@ -17,16 +17,6 @@ const EXTENSIONS: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-/** Tanpa lock: pemanggil wajib sudah memegang lock (hindari withLock bersarang). */
-function driveFolderId_(): string {
-  const platform = platform_();
-  const existing = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim();
-  if (existing) return existing;
-  const id = platform.driveCreateFolder(DRIVE_FOLDER_NAME);
-  platform.setProperty(DRIVE_FOLDER_PROPERTY, id);
-  return id;
-}
-
 /**
  * Dipakai `setup`; idempoten. Membuat folder **hanya bila `DRIVE_FOLDER_ID` kosong**. Bila terisi tetapi
  * foldernya tak dapat diakses (dihapus, tempat sampah, atau akun pemilik tak punya akses), melempar galat dan

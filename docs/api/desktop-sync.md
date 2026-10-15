@@ -32,7 +32,7 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 { "ok": true, "data": { } }
 ```
 ```json
-{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 200 item" } } }
+{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 50 item" } } }
 ```
 
 | `error.code` | Arti |
@@ -167,7 +167,7 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 - Alur yang disarankan: **pull dulu, lalu push dengan `baseRev` = `rev` item yang terakhir ditarik.**
 - `overwrite: true` (per permintaan) mengabaikan pemeriksaan konflik dan menimpa field yang dikirim.
 
-**Batas:** ≤ 200 item per panggilan, ≤ 100 bila ada yang memuat `detail`; total body ≤ 5 MB.
+**Batas:** ≤ 50 item per panggilan, ≤ 25 bila ada yang memuat `detail`; total body ≤ 5 MB. Batas ini konservatif: satu entri membaca dan menulis beberapa sheet di dalam lock, dan satu panggilan Apps Script dibatasi 6 menit. Naikkan hanya setelah diukur (E2E 52).
 
 **Catatan perilaku:**
 - Pemetaan id MySQL saja (nilai sama) → `updated` **tanpa** kenaikan `rev` dan tanpa audit.
@@ -191,7 +191,8 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 | `updated` | ada field yang berubah; `rev` baru |
 | `unchanged` | nilai sama dengan yang tersimpan; tidak ada perubahan |
 | `conflict` | ditolak; `current` memuat item terkini (selalu dengan `detail`, `stickers`, `accessories`) |
-| `invalid` | ditolak karena isi tidak sah; `fields` berisi pesan per field |
+| `invalid` | ditolak karena isi tidak sah; `fields` berisi pesan per field. Jangan dicoba ulang tanpa mengubah isi |
+| `error` | galat server sementara (lock penuh, kuota, layanan Google): entri **belum diproses**; `fields._` berisi pesan. Boleh dicoba ulang apa adanya |
 
 ```json
 { "index": 3, "status": "conflict", "uid": "d3…", "rev": 131,
@@ -211,11 +212,12 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 ### 3.5 Gambar (`images`, `stickers[].image`, `drive:` di Markdown)
 - Semua id adalah **id berkas Drive di folder aplikasi**. Saat push, server memeriksa tiap id: bila berkas belum tercatat, ia didaftarkan (MIME dan ukuran dibaca dari Drive); bila tidak berada di folder aplikasi → item `invalid`.
 - Menghapus id dari `images` hanya melepas gambar dari item; berkas Drive **tidak** dihapus.
+- Satu berkas Drive boleh dipakai banyak item (QC App membuat satu baris `files` per item; foto yang dilepas satu item bebas dipakai item lain).
 - Untuk membaca isi gambar gunakan `sync.file.get`.
 
 ### 3.6 Migrasi awal dari MySQL dan spreadsheet lama
 1. Isi Script Property `DRIVE_FOLDER_ID` dengan id folder gambar lama **sebelum** menjalankan `setup`.
-2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 200 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
+2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 50 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
 3. Desktop lalu menarik (`sync.items.pull` dari `sinceRev: 0`) untuk memeriksa hasilnya dan menyimpan kursor.
 4. Setelah semua cocok, proyek GAS lama (`?action=insert|update|sync|delete`) dipensiunkan dan Desktop memakai kontrak ini.
 

@@ -17,8 +17,8 @@ test('konstanta kontrak', () => {
     pullDefault: 100,
     pullMax: 500,
     pullMaxWithDetail: 200,
-    pushMax: 200,
-    pushMaxWithDetail: 100,
+    pushMax: 50,
+    pushMaxWithDetail: 25,
     failedAttempts: 10,
     blockSeconds: 600,
   });

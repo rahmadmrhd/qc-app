@@ -308,12 +308,12 @@ test('isolasi: entri tidak sah, bentrok nama, dan sehat bercampur; urutan hasil 
 });
 
 test('batas jumlah entri dan bentuk payload', () => {
-  const many = Array.from({ length: 201 }, (_, i) => ({ ...BASE, id: String(i), tipe: `T${i}` }));
+  const many = Array.from({ length: 51 }, (_, i) => ({ ...BASE, id: String(i), tipe: `T${i}` }));
   expect(push(many)).toMatchObject({
     ok: false,
-    error: { code: 'VALIDATION', fields: { items: 'Maksimal 200 item' } },
+    error: { code: 'VALIDATION', fields: { items: 'Maksimal 50 item' } },
   });
-  const withDetail = Array.from({ length: 101 }, (_, i) => ({
+  const withDetail = Array.from({ length: 26 }, (_, i) => ({
     ...BASE,
     id: String(i),
     tipe: `T${i}`,
@@ -321,7 +321,7 @@ test('batas jumlah entri dan bentuk payload', () => {
   }));
   expect(push(withDetail)).toMatchObject({
     ok: false,
-    error: { code: 'VALIDATION', fields: { items: 'Maksimal 100 item' } },
+    error: { code: 'VALIDATION', fields: { items: 'Maksimal 25 item' } },
   });
   expect(push([])).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });
   expect(call('sync.items.push', { items: 'x' })).toMatchObject({
@@ -343,4 +343,20 @@ test('batas isi: detail > 20.000, stiker/kelengkapan tak sah, gambar > 10', () =
   expect(badQty?.fields).toHaveProperty('accessories');
   expect(tooManyImages?.fields).toHaveProperty('images');
   expect(listItems_()).toHaveLength(0);
+});
+
+test('gambar Drive yang sama dipakai dua item, atau dipindah antar item, tidak ditolak', () => {
+  const img = drive();
+  const [a, b] = results([
+    { ...BASE, id: '1', tipe: 'A', images: [img] },
+    { ...BASE, id: '2', tipe: 'B', images: [img] },
+  ]);
+  expect(a?.status).toBe('created');
+  expect(b?.status).toBe('created');
+  expect(pull([]).map((entry) => entry.images)).toEqual([[img], [img]]);
+  expect(listFiles_().filter((row) => row.driveId === img)).toHaveLength(2);
+  // pindah: A melepas gambar, item baru C memakainya
+  results([{ uid: a?.uid, images: [], baseRev: a?.rev }]);
+  const [c] = results([{ ...BASE, id: '3', tipe: 'C', images: [img] }]);
+  expect(c?.status).toBe('created');
 });

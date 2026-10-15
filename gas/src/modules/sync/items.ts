@@ -384,7 +384,8 @@ function upsertSyncItem_(
     if (Object.keys(required).length > 0) return { index, status: 'invalid', fields: required };
   }
 
-  const { map, missing } = registerDriveFiles_(driveIdsOf_(entry), probes);
+  const ownerId = existing?.id ?? platform_().uuid();
+  const { map, missing } = registerDriveFiles_(driveIdsOf_(entry), probes, ownerId);
   if (missing.length > 0) {
     const bad = new Set(missing);
     const fields: Record<string, string> = {};
@@ -474,6 +475,7 @@ function upsertSyncItem_(
   }
 
   const record = writeItem_(merged, {
+    id: ownerId,
     existing,
     actor: SYNC_ITEM_ACTOR,
     externalId: entry.id,
