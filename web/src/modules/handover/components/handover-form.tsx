@@ -86,6 +86,7 @@ export function HandoverForm({
                 onChange={field.handleChange}
                 onBlur={field.handleBlur}
                 customers={options.customers}
+                inactiveNames={options.inactiveCustomerNames}
                 currentName={mode === 'edit' ? defaultValues.customerName : undefined}
               />
               <FieldError errors={[...field.state.meta.errors, fieldErrors?.customerName]} />

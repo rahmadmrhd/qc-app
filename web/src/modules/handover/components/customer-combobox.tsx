@@ -9,6 +9,8 @@ export interface CustomerComboboxProps {
   value: string;
   onChange: (name: string) => void;
   customers: ReadonlyArray<{ id: string; name: string }>;
+  /** Nama customer nonaktif: memilihnya akan ditolak server, jadi petunjuknya diberikan lebih dulu. */
+  inactiveNames?: readonly string[];
   onBlur?: () => void;
   /** Mode ubah: customer task saat ini (mungkin nonaktif, jadi tidak ada di daftar saran). */
   currentName?: string;
@@ -23,6 +25,7 @@ export function CustomerCombobox({
   value,
   onChange,
   customers,
+  inactiveNames = [],
   onBlur,
   currentName,
 }: CustomerComboboxProps) {
@@ -39,6 +42,9 @@ export function CustomerCombobox({
           value,
           customers.map((customer) => customer.name),
         );
+  const isCurrent = Boolean(currentName) && customerKey(currentName ?? '') === key;
+  const inactive =
+    key !== '' && !exact && !isCurrent && inactiveNames.some((name) => customerKey(name) === key);
   const listId = `${id}-suggestions`;
   const visible = open && suggestions.length > 0;
   const choose = (name: string) => {
@@ -123,10 +129,15 @@ export function CustomerCombobox({
           Memakai customer yang sudah ada: "{exact.name}".
         </p>
       ) : null}
-      {key !== '' && !exact && currentName && customerKey(currentName) === key ? (
+      {key !== '' && !exact && isCurrent ? (
         <p className="text-xs text-muted-foreground">Customer saat ini (tidak berubah).</p>
       ) : null}
-      {key !== '' && !exact && !(currentName && customerKey(currentName) === key) ? (
+      {inactive ? (
+        <p className="text-xs text-destructive">
+          Customer dinonaktifkan; aktifkan dulu di halaman Customer.
+        </p>
+      ) : null}
+      {key !== '' && !exact && !isCurrent && !inactive ? (
         <p className="text-xs text-muted-foreground">
           Customer baru "{value.trim()}" akan dibuat saat task disimpan.
         </p>

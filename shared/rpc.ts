@@ -281,6 +281,8 @@ export interface HandoverOptionCustomerDto {
 export interface HandoverOptionsDto {
   items: HandoverOptionItemDto[];
   customers: HandoverOptionCustomerDto[];
+  /** Nama customer nonaktif: dipakai form untuk memberi petunjuk sebelum simpan ditolak. */
+  inactiveCustomerNames: string[];
 }
 
 export interface HandoverLineDto {

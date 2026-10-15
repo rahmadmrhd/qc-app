@@ -198,6 +198,7 @@ test('opsi form: item dan customer AKTIF saja, terurut, tanpa detail berat; izin
     aliases: ['hap'],
   });
   expect(out.data.customers.map((c: { name: string }) => c.name)).toEqual(['Budi', 'PT Maju']);
+  expect(out.data.inactiveCustomerNames).toEqual(['Lama']);
   expect(JSON.stringify(out.data)).not.toContain('detail');
   expect(
     call('noaccess@gmail.com', 'handovers.options', { locationIds: [ENV.locA] }).error.code,

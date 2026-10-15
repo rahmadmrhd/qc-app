@@ -140,6 +140,10 @@ export function handoverOptions_(): HandoverOptionsDto {
       .filter((customer) => customer.status === 'active')
       .map((customer) => ({ id: customer.id, name: customer.name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    inactiveCustomerNames: listCustomers_()
+      .filter((customer) => customer.status === 'inactive')
+      .map((customer) => customer.name)
+      .sort((a, b) => a.localeCompare(b)),
   };
 }
 

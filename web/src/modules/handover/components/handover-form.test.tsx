@@ -30,6 +30,7 @@ import { HandoverForm } from './handover-form';
 const options: HandoverOptionsDto = {
   items: [{ id: 'i1', brand: 'Ubiquiti', model: 'ES 24', aliases: [] }],
   customers: [{ id: 'c1', name: 'PT Maju' }],
+  inactiveCustomerNames: [],
 };
 
 beforeEach(() => {

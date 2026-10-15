@@ -9,9 +9,17 @@ const customers = [
   { id: 'c2', name: 'Budi Santoso' },
 ];
 
-function Harness({ initial = '' }: { initial?: string }) {
+function Harness({ initial = '', inactive = [] }: { initial?: string; inactive?: string[] }) {
   const [value, setValue] = useState(initial);
-  return <CustomerCombobox id="cust" value={value} onChange={setValue} customers={customers} />;
+  return (
+    <CustomerCombobox
+      id="cust"
+      value={value}
+      onChange={setValue}
+      customers={customers}
+      inactiveNames={inactive}
+    />
+  );
 }
 
 test('mengetik menampilkan saran toleran; memilih saran mengisi nama resmi', async () => {
@@ -107,4 +115,11 @@ test('customer task saat ini (mungkin nonaktif) tidak disebut "baru akan dibuat"
   render(<Edit />);
   expect(screen.queryByText(/Customer baru/)).toBeNull();
   expect(screen.getByText(/Customer saat ini/)).toBeInTheDocument();
+});
+
+test('nama customer yang dinonaktifkan: petunjuk aktifkan dulu, bukan "akan dibuat"', async () => {
+  render(<Harness inactive={['PT Lama Sekali']} />);
+  await userEvent.type(screen.getByLabelText('Customer'), 'pt lama sekali');
+  expect(screen.getByText(/dinonaktifkan; aktifkan dulu di halaman Customer/)).toBeInTheDocument();
+  expect(screen.queryByText(/akan dibuat/)).not.toBeInTheDocument();
 });
