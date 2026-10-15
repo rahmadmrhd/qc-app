@@ -18,9 +18,13 @@ import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
 import { Route as AppAccessRolesRouteImport } from './routes/_app/access/roles'
 import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
+import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
+import { Route as AppHandoverNewRouteImport } from './routes/_app/handover/new'
 import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
 import { Route as AppItemBrandsRouteImport } from './routes/_app/item/brands'
 import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
+import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
+import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
 import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
 import { Route as AppItemItemIdEditRouteImport } from './routes/_app/item/$itemId/edit'
 
@@ -68,6 +72,16 @@ const AppAccessUsersRoute = AppAccessUsersRouteImport.update({
   path: '/access/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHandoverIndexRoute = AppHandoverIndexRouteImport.update({
+  id: '/handover/',
+  path: '/handover/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHandoverNewRoute = AppHandoverNewRouteImport.update({
+  id: '/handover/new',
+  path: '/handover/new',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppItemIndexRoute = AppItemIndexRouteImport.update({
   id: '/item/',
   path: '/item/',
@@ -83,6 +97,18 @@ const AppItemNewRoute = AppItemNewRouteImport.update({
   path: '/item/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHandoverHandoverIdIndexRoute =
+  AppHandoverHandoverIdIndexRouteImport.update({
+    id: '/handover/$handoverId/',
+    path: '/handover/$handoverId/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppHandoverHandoverIdEditRoute =
+  AppHandoverHandoverIdEditRouteImport.update({
+    id: '/handover/$handoverId/edit',
+    path: '/handover/$handoverId/edit',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppItemItemIdIndexRoute = AppItemItemIdIndexRouteImport.update({
   id: '/item/$itemId/',
   path: '/item/$itemId/',
@@ -103,10 +129,14 @@ export interface FileRoutesByFullPath {
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/handover/new': typeof AppHandoverNewRoute
   '/item/brands': typeof AppItemBrandsRoute
   '/item/new': typeof AppItemNewRoute
+  '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
+  '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -118,10 +148,14 @@ export interface FileRoutesByTo {
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/handover/new': typeof AppHandoverNewRoute
   '/item/brands': typeof AppItemBrandsRoute
   '/item/new': typeof AppItemNewRoute
+  '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
+  '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesById {
@@ -135,10 +169,14 @@ export interface FileRoutesById {
   '/_app/access/locations': typeof AppAccessLocationsRoute
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
+  '/_app/handover/new': typeof AppHandoverNewRoute
   '/_app/item/brands': typeof AppItemBrandsRoute
   '/_app/item/new': typeof AppItemNewRoute
+  '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
+  '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -152,10 +190,14 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/handover/new'
     | '/item/brands'
     | '/item/new'
+    | '/handover/'
     | '/item/'
+    | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
+    | '/handover/$handoverId/'
     | '/item/$itemId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -167,10 +209,14 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/handover/new'
     | '/item/brands'
     | '/item/new'
+    | '/handover'
     | '/item'
+    | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
+    | '/handover/$handoverId'
     | '/item/$itemId'
   id:
     | '__root__'
@@ -183,10 +229,14 @@ export interface FileRouteTypes {
     | '/_app/access/locations'
     | '/_app/access/roles'
     | '/_app/access/users'
+    | '/_app/handover/new'
     | '/_app/item/brands'
     | '/_app/item/new'
+    | '/_app/handover/'
     | '/_app/item/'
+    | '/_app/handover/$handoverId/edit'
     | '/_app/item/$itemId/edit'
+    | '/_app/handover/$handoverId/'
     | '/_app/item/$itemId/'
   fileRoutesById: FileRoutesById
 }
@@ -260,6 +310,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/handover/': {
+      id: '/_app/handover/'
+      path: '/handover'
+      fullPath: '/handover/'
+      preLoaderRoute: typeof AppHandoverIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/new': {
+      id: '/_app/handover/new'
+      path: '/handover/new'
+      fullPath: '/handover/new'
+      preLoaderRoute: typeof AppHandoverNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/item/': {
       id: '/_app/item/'
       path: '/item'
@@ -279,6 +343,20 @@ declare module '@tanstack/react-router' {
       path: '/item/new'
       fullPath: '/item/new'
       preLoaderRoute: typeof AppItemNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/$handoverId/': {
+      id: '/_app/handover/$handoverId/'
+      path: '/handover/$handoverId'
+      fullPath: '/handover/$handoverId/'
+      preLoaderRoute: typeof AppHandoverHandoverIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/$handoverId/edit': {
+      id: '/_app/handover/$handoverId/edit'
+      path: '/handover/$handoverId/edit'
+      fullPath: '/handover/$handoverId/edit'
+      preLoaderRoute: typeof AppHandoverHandoverIdEditRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/item/$itemId/': {
@@ -306,10 +384,14 @@ interface AppRouteChildren {
   AppAccessLocationsRoute: typeof AppAccessLocationsRoute
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
+  AppHandoverNewRoute: typeof AppHandoverNewRoute
   AppItemBrandsRoute: typeof AppItemBrandsRoute
   AppItemNewRoute: typeof AppItemNewRoute
+  AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
+  AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
   AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
+  AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
   AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
 }
 
@@ -321,10 +403,14 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsRoute: AppAccessLocationsRoute,
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,
+  AppHandoverNewRoute: AppHandoverNewRoute,
   AppItemBrandsRoute: AppItemBrandsRoute,
   AppItemNewRoute: AppItemNewRoute,
+  AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
+  AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
   AppItemItemIdEditRoute: AppItemItemIdEditRoute,
+  AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
   AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
 }
 
