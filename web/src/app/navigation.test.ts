@@ -89,3 +89,56 @@ test('Data Item tidak ikut aktif di halaman Merk; Merk dan Data Item aktif di ha
     expect(isNavItemActive(merk, at(path))).toBe(false);
   }
 });
+
+test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak satu pun', () => {
+  const groups: NavGroup[] = [
+    {
+      label: 'Operasional',
+      items: [
+        {
+          label: 'Serah Terima',
+          to: '/',
+          icon: House,
+          permission: [
+            { module: 'handover', level: 'view', scope: 'location' },
+            { module: 'qc', level: 'edit', scope: 'location' },
+          ],
+        },
+      ],
+    },
+  ];
+  const location = (permissions: Record<string, string>) => ({
+    id: 'l1',
+    code: 'A',
+    name: 'A',
+    permissions: { handover: 'none', qc: 'none', stock: 'none', ...permissions },
+  });
+  const me = (perms: Record<string, string>): MeDto =>
+    ({
+      email: 'a@gmail.com',
+      name: 'A',
+      isSuperAdmin: false,
+      permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
+      locations: [location(perms)],
+    }) as MeDto;
+  expect(visibleNavGroups(groups, me({ handover: 'view' }), ['l1'])).toHaveLength(1);
+  expect(visibleNavGroups(groups, me({ qc: 'edit' }), ['l1'])).toHaveLength(1);
+  expect(visibleNavGroups(groups, me({}), ['l1'])).toHaveLength(0);
+  expect(visibleNavGroups(groups, me({ qc: 'edit' }), [])).toHaveLength(0); // lokasi aktif kosong
+});
+
+test('menu Customer (grup Data, item view) dan Serah Terima (grup Operasional, salah satu dari handover view atau qc edit)', () => {
+  const data = NAV_GROUPS.find((group) => group.label === 'Data');
+  expect(data?.items.find((entry) => entry.to === '/customer')).toMatchObject({
+    label: 'Customer',
+    permission: { module: 'item', level: 'view' },
+  });
+  const ops = NAV_GROUPS.find((group) => group.label === 'Operasional');
+  expect(ops?.items.find((entry) => entry.to === '/handover')).toMatchObject({
+    label: 'Serah Terima',
+    permission: [
+      { module: 'handover', level: 'view', scope: 'location' },
+      { module: 'qc', level: 'edit', scope: 'location' },
+    ],
+  });
+});

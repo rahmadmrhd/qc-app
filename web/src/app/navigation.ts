@@ -2,8 +2,25 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
-import { History, House, MapPin, Package, ShieldCheck, Tags, Users } from 'lucide-react';
+import {
+  ClipboardList,
+  Contact,
+  History,
+  House,
+  MapPin,
+  Package,
+  ShieldCheck,
+  Tags,
+  Users,
+} from 'lucide-react';
 import { canAnywhere } from '@/modules/auth/permissions';
+
+export interface NavPermission {
+  module: ModuleKey;
+  level: Level;
+  /** `scope: 'location'` = tampil bila izin cukup di minimal satu lokasi aktif terpilih. */
+  scope?: 'location';
+}
 
 export interface NavItem {
   label: string;
@@ -11,8 +28,18 @@ export interface NavItem {
   icon: LucideIcon;
   /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
   excludes?: LinkProps['to'][];
-  /** `scope: 'location'` = tampil bila izin cukup di minimal satu lokasi aktif terpilih. */
-  permission?: { module: ModuleKey; level: Level; scope?: 'location' };
+  /** Satu izin, atau **daftar** (salah satu cukup). */
+  permission?: NavPermission | readonly NavPermission[];
+}
+
+export interface NavItem {
+  label: string;
+  to: LinkProps['to'];
+  icon: LucideIcon;
+  /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
+  excludes?: LinkProps['to'][];
+  /** Satu izin, atau **daftar** (salah satu cukup). */
+  permission?: NavPermission | readonly NavPermission[];
 }
 
 export interface NavGroup {
@@ -37,6 +64,26 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/item/brands',
         icon: Tags,
         permission: { module: 'item', level: 'view' },
+      },
+      {
+        label: 'Customer',
+        to: '/customer',
+        icon: Contact,
+        permission: { module: 'item', level: 'view' },
+      },
+    ],
+  },
+  {
+    label: 'Operasional',
+    items: [
+      {
+        label: 'Serah Terima',
+        to: '/handover',
+        icon: ClipboardList,
+        permission: [
+          { module: 'handover', level: 'view', scope: 'location' },
+          { module: 'qc', level: 'edit', scope: 'location' },
+        ],
       },
     ],
   },
@@ -88,16 +135,20 @@ export function visibleNavGroups(
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) =>
-          !item.permission ||
+      items: group.items.filter((item) => {
+        if (!item.permission) return true;
+        const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
+          ? item.permission
+          : [item.permission as NavPermission];
+        return alternatives.some((permission) =>
           canAnywhere(
             me,
-            item.permission.module,
-            item.permission.level,
-            item.permission.scope === 'location' ? activeLocationIds : undefined,
+            permission.module,
+            permission.level,
+            permission.scope === 'location' ? activeLocationIds : undefined,
           ),
-      ),
+        );
+      }),
     }))
     .filter((group) => group.items.length > 0);
 }
