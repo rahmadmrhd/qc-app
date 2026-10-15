@@ -74,6 +74,8 @@ export function isRefIdChar(ch: string): boolean {
   );
 }
 
+export const DRIVE_REF_SCHEME = 'drive:';
+
 /**
  * Id dari setiap kemunculan "<skema><id>" (mis. "qcfile:" atau "drive:") di Markdown: bentuk apa pun yang
  * dirender (judul, kurung sudut, gaya referensi); unik, urutan kemunculan. Sengaja longgar: klaim berlebih

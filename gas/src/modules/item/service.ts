@@ -25,7 +25,7 @@ import { insertItem_, listItems_, updateItem_ } from './repo';
 /** Record item beserta nama merk (dari tabel merk) untuk DTO dan audit. */
 type ItemView = NewItemRecord & { brand: string };
 
-function brandNameMap_(): Map<string, string> {
+export function brandNameMap_(): Map<string, string> {
   return new Map(listBrands_().map((brand) => [brand.id, brand.name]));
 }
 

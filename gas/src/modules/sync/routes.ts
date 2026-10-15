@@ -5,6 +5,7 @@ import { pullBrands_, pushBrands_ } from './brands';
 import { getSyncFile_, validateSyncFileGet_ } from './files';
 import type { SyncRouteTable } from './handler';
 import { syncRoute_ } from './handler';
+import { pullItems_ } from './items';
 import { validateSyncPush_ } from './wire';
 
 /** Tabel rute sinkron (terpisah dari `getRoutes_` RPC web). Dibangun lazy karena urutan load file GAS tidak dijamin. */
@@ -19,6 +20,7 @@ export function getSyncRoutes_(): SyncRouteTable {
       validate: (raw) => validateSyncPush_(raw, 'brands', false),
       handler: (envelope) => pushBrands_(envelope),
     }),
+    'sync.items.pull': syncRoute_({ validate: (raw) => raw, handler: (raw) => pullItems_(raw) }),
     'sync.ping': syncRoute_({
       validate: expectNull_,
       handler: () => ({

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  DRIVE_REF_SCHEME,
   extractFileRefs,
   extractImageTargets,
   extractRefs,
@@ -153,4 +154,8 @@ describe('extractImageTargets', () => {
     expect(extractImageTargets('teks biasa')).toEqual([]);
     expect(extractImageTargets('![a] tanpa tujuan')).toEqual([]);
   });
+});
+
+test('DRIVE_REF_SCHEME adalah skema rujukan Drive pada kabel sinkronisasi', () => {
+  expect(DRIVE_REF_SCHEME).toBe('drive:');
 });
