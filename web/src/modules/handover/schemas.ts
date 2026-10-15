@@ -1,5 +1,4 @@
-import { HANDOVER_LIMITS } from '@shared/handover';
-import { normalizeKey } from '@shared/items';
+import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
 import type { HandoverDto, SaveHandoverInput } from '@shared/rpc';
 import { z } from 'zod';
 
@@ -24,7 +23,7 @@ export const handoverFormSchema = z.object({
     .trim()
     .max(HANDOVER_LIMITS.customerName, `Maksimal ${HANDOVER_LIMITS.customerName} karakter`)
     .refine(
-      (value) => value === '' || normalizeKey(value) !== '',
+      (value) => value === '' || customerKey(value) !== '',
       'Nama customer harus memuat huruf atau angka',
     ),
   note: z.string().trim().max(HANDOVER_LIMITS.note, `Maksimal ${HANDOVER_LIMITS.note} karakter`),

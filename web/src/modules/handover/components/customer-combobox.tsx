@@ -1,4 +1,4 @@
-import { normalizeKey } from '@shared/items';
+import { customerKey } from '@shared/handover';
 import { similarNames, suggestMatches } from '@shared/suggest';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
@@ -24,8 +24,9 @@ export function CustomerCombobox({
   onBlur,
 }: CustomerComboboxProps) {
   const [open, setOpen] = useState(false);
-  const key = normalizeKey(value);
-  const exact = customers.find((customer) => normalizeKey(customer.name) === key);
+  const [active, setActive] = useState(-1);
+  const key = customerKey(value);
+  const exact = customers.find((customer) => customerKey(customer.name) === key);
   const suggestions =
     key === '' || exact ? [] : suggestMatches(customers, value, (c) => [c.name], 6);
   const similar =
@@ -36,6 +37,12 @@ export function CustomerCombobox({
           customers.map((customer) => customer.name),
         );
   const listId = `${id}-suggestions`;
+  const visible = open && suggestions.length > 0;
+  const choose = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setActive(-1);
+  };
   return (
     <div className="relative space-y-1.5">
       <Label htmlFor={id}>Customer</Label>
@@ -43,8 +50,9 @@ export function CustomerCombobox({
         id={id}
         autoComplete="off"
         role="combobox"
-        aria-expanded={open && suggestions.length > 0}
+        aria-expanded={visible}
         aria-controls={listId}
+        aria-activedescendant={visible && active >= 0 ? `${id}-option-${active}` : undefined}
         value={value}
         onFocus={() => setOpen(true)}
         onBlur={() => {
@@ -55,27 +63,46 @@ export function CustomerCombobox({
         onChange={(event) => {
           onChange(event.target.value);
           setOpen(true);
+          setActive(-1);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && suggestions.length > 0) {
+            event.preventDefault();
+            setOpen(true);
+            setActive((current) => (current + 1) % suggestions.length);
+          } else if (event.key === 'ArrowUp' && suggestions.length > 0) {
+            event.preventDefault();
+            setOpen(true);
+            setActive((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+          } else if (event.key === 'Enter') {
+            // Enter TIDAK pernah mengirim form dari isian ini: memilih saran yang disorot, bila ada.
+            event.preventDefault();
+            const picked = visible && active >= 0 ? suggestions[active] : undefined;
+            if (picked) choose(picked.name);
+          } else if (event.key === 'Escape') {
+            setOpen(false);
+            setActive(-1);
+          }
         }}
       />
-      {open && suggestions.length > 0 ? (
+      {visible ? (
         <div
           id={listId}
           role="listbox"
           aria-label="Saran customer"
           className="absolute z-10 mt-1 w-full rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
-          {suggestions.map((customer) => (
+          {suggestions.map((customer, index) => (
             <div key={customer.id} role="presentation">
               <button
                 type="button"
                 role="option"
-                aria-selected={false}
-                className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                id={`${id}-option-${index}`}
+                tabIndex={-1}
+                aria-selected={index === active}
+                className={`w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent ${index === active ? 'bg-accent' : ''}`}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onChange(customer.name);
-                  setOpen(false);
-                }}
+                onClick={() => choose(customer.name)}
               >
                 {customer.name}
               </button>

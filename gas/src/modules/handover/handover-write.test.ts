@@ -343,3 +343,30 @@ test('customer opsional: task dapat disimpan tanpa customer (tidak membuat custo
     'Nama customer harus memuat huruf atau angka',
   );
 });
+
+test('Ubah yang membuat task Selesai (hapus baris terakhir yang belum penuh) mencatat handover.complete tepat sekali', () => {
+  seedTask({ doneA: 5 });
+  const out = save({ id: 't1', lines: [{ itemId: ENV.itemA, qty: 5 }] }); // hapus baris B (0/3) → semua penuh
+  expect(out.ok).toBe(true);
+  expect(out.data.status).toBe('done');
+  expect(audits()).toEqual(['handover.update', 'handover.complete']);
+  expect(listAuditRecords_().at(-1)).toMatchObject({
+    action: 'handover.complete',
+    target: 'ST-20261015-001',
+    before: { status: 'in_progress' },
+    after: { status: 'done' },
+  });
+  expect(save({ id: 't1', note: 'x' }).error.code).toBe('CONFLICT'); // kini terkunci
+});
+
+test('Ubah yang tidak membuat task Selesai tidak mencatat handover.complete', () => {
+  seedTask({ doneA: 2 });
+  save({
+    id: 't1',
+    lines: [
+      { itemId: ENV.itemA, qty: 2 },
+      { itemId: ENV.itemB, qty: 3 },
+    ],
+  }); // A penuh, B belum
+  expect(audits()).toEqual(['handover.update']);
+});

@@ -32,16 +32,6 @@ export interface NavItem {
   permission?: NavPermission | readonly NavPermission[];
 }
 
-export interface NavItem {
-  label: string;
-  to: LinkProps['to'];
-  icon: LucideIcon;
-  /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
-  excludes?: LinkProps['to'][];
-  /** Satu izin, atau **daftar** (salah satu cukup). */
-  permission?: NavPermission | readonly NavPermission[];
-}
-
 export interface NavGroup {
   label: string;
   items: NavItem[];

@@ -1,6 +1,6 @@
 import type { NewCustomerRecord } from '@gas/modules/customer/repo';
 import type { NewHandoverLineRecord, NewHandoverRecord } from '@gas/modules/handover/repo';
-import { normalizeKey } from '@shared/items';
+import { customerKey } from '@shared/handover';
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
@@ -8,7 +8,7 @@ export function customer(
   name: string,
   overrides: Partial<NewCustomerRecord> = {},
 ): NewCustomerRecord {
-  const key = normalizeKey(name);
+  const key = customerKey(name);
   return {
     id: `cust-${key.split(' ').join('-')}`,
     name,

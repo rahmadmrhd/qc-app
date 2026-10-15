@@ -3,7 +3,7 @@ import { appError_ } from '@gas/core/errors';
 import { platform_ } from '@gas/core/platform';
 import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
-import { normalizeKey } from '@shared/items';
+import { customerKey } from '@shared/handover';
 import type { CustomerDto, RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
 import type { CustomerRecord, NewCustomerRecord } from './repo';
 import { insertCustomer_, listCustomers_, updateCustomer_ } from './repo';
@@ -37,7 +37,7 @@ export function resolveCustomerByName_(
   actor: ActorRef,
   currentId?: string,
 ): NewCustomerRecord {
-  const key = normalizeKey(name);
+  const key = customerKey(name);
   const found = listCustomers_().find((customer) => customer.key === key);
   if (found) {
     if (found.status === 'inactive' && found.id !== currentId) {
@@ -73,7 +73,7 @@ export function renameCustomer_(input: RenameCustomerInput, actor: ActorRef): Cu
     const customers = listCustomers_();
     const existing = customers.find((customer) => customer.id === input.id);
     if (!existing) throw appError_('NOT_FOUND', 'Customer tidak ditemukan');
-    const key = normalizeKey(input.name);
+    const key = customerKey(input.name);
     if (customers.some((customer) => customer.id !== input.id && customer.key === key)) {
       throw appError_('CONFLICT', 'Nama customer sudah dipakai', {
         name: 'Nama customer sudah dipakai',

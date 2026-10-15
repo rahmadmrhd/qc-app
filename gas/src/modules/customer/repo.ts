@@ -11,7 +11,7 @@ export interface CustomerRecord {
   rowNumber: number;
   id: string;
   name: string;
-  /** `normalizeKey(name)`; unik. */
+  /** `customerKey(name)`; unik. */
   key: string;
   status: ItemStatus;
   createdAt: string;

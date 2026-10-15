@@ -8,6 +8,7 @@ import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, canAt, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverForm } from '@/modules/handover/components/handover-form';
+import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
   handoverOptionsQueryOptions,
   handoverQueryOptions,
@@ -31,7 +32,7 @@ function EditHandoverPage() {
   const navigate = useNavigate();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
-  const detail = useQuery(handoverQueryOptions(handoverId, selectedIds));
+  const detail = useQuery(handoverQueryOptions(handoverId, readableLocationIds(me, selectedIds)));
   const locationId = detail.data?.locationId;
   const options = useQuery(handoverOptionsQueryOptions(locationId ? [locationId] : []));
   const save = useSaveHandover();

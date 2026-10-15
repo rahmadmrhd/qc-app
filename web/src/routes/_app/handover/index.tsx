@@ -10,6 +10,7 @@ import { locationsWith, requireAnyPermission } from '@/modules/auth/permissions'
 import { useMe } from '@/modules/auth/use-me';
 import { HandoversTable } from '@/modules/handover/components/handovers-table';
 import { filterHandovers } from '@/modules/handover/lib/filter-handovers';
+import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import { handoversQueryOptions } from '@/modules/handover/queries';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
@@ -37,11 +38,7 @@ function HandoversPage() {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dibaca user (WH view ke atas atau QC edit); selebihnya tidak diminta.
-  const readable = selectedIds.filter(
-    (id) =>
-      locationsWith(me, 'handover', 'view', [id]).length > 0 ||
-      locationsWith(me, 'qc', 'edit', [id]).length > 0,
-  );
+  const readable = readableLocationIds(me, selectedIds);
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
   const query = useQuery(handoversQueryOptions(readable));
   const [text, setText] = useUrlSyncedText(
@@ -102,7 +99,7 @@ function HandoversPage() {
       ) : (
         <HandoversTable
           handovers={visible}
-          showLocation={selectedIds.length > 1}
+          showLocation={readable.length > 1}
           locationNames={locationNames}
           onOpen={(handover) =>
             void navigate({ to: '/handover/$handoverId', params: { handoverId: handover.id } })

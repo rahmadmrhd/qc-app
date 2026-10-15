@@ -144,3 +144,17 @@ test('izin rute customer: list = item view; rename dan setStatus = item manage',
   expect(routes['customers.rename'].permission).toEqual({ module: 'item', level: 'manage' });
   expect(routes['customers.setStatus'].permission).toEqual({ module: 'item', level: 'manage' });
 });
+
+test('singkatan bertitik dan tanpa titik adalah customer yang sama (kunci membuang tanda baca)', () => {
+  const first = resolveCustomerByName_('C.V. Abadi', admin);
+  const second = resolveCustomerByName_('CV Abadi', admin);
+  expect(second.id).toBe(first.id);
+  expect(second.name).toBe('C.V. Abadi');
+  expect(listCustomers_()).toHaveLength(1);
+  insertCustomer_(base('Lain', { id: 'cl', key: 'lain' }));
+  expect(
+    captureAppError(() => renameCustomer_({ id: 'cl', name: 'c.v abadi' }, admin)).fields,
+  ).toEqual({
+    name: 'Nama customer sudah dipakai',
+  });
+});

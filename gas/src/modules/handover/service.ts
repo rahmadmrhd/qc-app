@@ -353,6 +353,21 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       after,
     });
     const fresh = loadHandoverForWrite_({ id: handover.id, locationId: handover.locationId });
+    // Ubah dapat membuat task Selesai (mis. menghapus baris terakhir yang belum penuh): catat `handover.complete`
+    // tepat sekali agar riwayat selesai konsisten dengan jalur progres QC.
+    if (
+      deriveHandoverStatus(handover.status, oldLines) !== 'done' &&
+      deriveHandoverStatus(fresh.handover.status, fresh.lines) === 'done'
+    ) {
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'handover.complete',
+        target: handover.number,
+        before,
+        after: handoverSnapshot_(fresh.handover, fresh.lines, locationNames),
+      });
+    }
     return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
   });
 }

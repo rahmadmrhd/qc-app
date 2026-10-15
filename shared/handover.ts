@@ -62,3 +62,24 @@ export function nextHandoverSequence(numbers: readonly string[], dateKey: string
   }
   return max + 1;
 }
+
+/**
+ * Kunci customer (FC1): huruf kecil, TANDA BACA DIBUANG (bukan jadi spasi), spasi dirapikan. Sehingga
+ * "C.V. Abadi" = "CV Abadi" dan "A.B.C" = "ABC". Khusus customer; `normalizeKey` (item/merk) tidak berubah.
+ */
+export function customerKey(name: string): string {
+  let out = '';
+  let pendingSpace = false;
+  for (const ch of name.toLowerCase()) {
+    const isDigit = ch >= '0' && ch <= '9';
+    const isLetter = ch.toUpperCase() !== ch.toLowerCase();
+    if (isDigit || isLetter) {
+      if (pendingSpace && out !== '') out += ' ';
+      out += ch;
+      pendingSpace = false;
+    } else if (ch.trim() === '') {
+      pendingSpace = true;
+    }
+  }
+  return out;
+}

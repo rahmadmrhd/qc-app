@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import {
+  customerKey,
   dateKeyOf,
   deriveHandoverStatus,
   HANDOVER_LIMITS,
@@ -52,4 +53,14 @@ test('batas task', () => {
     qtyMax: 100_000,
     lines: 100,
   });
+});
+
+test('customerKey: tanda baca DIBUANG (bukan jadi spasi), spasi dirapikan, huruf kecil (FC1)', () => {
+  expect(customerKey('C.V. Abadi')).toBe('cv abadi');
+  expect(customerKey('CV Abadi')).toBe('cv abadi');
+  expect(customerKey('A.B.C')).toBe(customerKey('ABC'));
+  expect(customerKey('  PT.  Maju   Jaya, ')).toBe('pt maju jaya');
+  expect(customerKey('Tipe 7Å')).toBe('tipe 7å');
+  expect(customerKey('--  . ')).toBe('');
+  expect(customerKey('')).toBe('');
 });
