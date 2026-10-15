@@ -240,7 +240,7 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       if (!current && item.status !== 'active') {
         lineError_(`Baris ${index + 1}: tipe ${label(line.itemId)} dinonaktifkan`);
       }
-      if (current && line.qty < current.doneQty) {
+      if (current && line.qty !== current.qty && line.qty < current.doneQty) {
         lineError_(
           `${current.itemLabel}: qty target tidak boleh di bawah qty selesai (${current.doneQty})`,
         );
@@ -488,10 +488,6 @@ export function setProgress_(input: SetProgressInput, actor: ActorRef): Handover
     assertHandoverNotCancelled_(handover, lines);
     const line = lines.find((row) => row.id === input.lineId);
     if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
-    if (input.doneQty > line.qty) {
-      const message = `Harus bilangan bulat 0–${line.qty}`;
-      throw appError_('VALIDATION', message, { doneQty: message });
-    }
     const now = nowIso_();
     const beforeStatus = deriveHandoverStatus(handover.status, lines);
     const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
@@ -510,7 +506,8 @@ export function completeLine_(input: CompleteLineInput, actor: ActorRef): Handov
     const now = nowIso_();
     const beforeStatus = deriveHandoverStatus(handover.status, lines);
     const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
-    const changed = writeProgress_(handover, line, line.qty, actor, now);
+    // Qty selesai yang sudah melebihi target dibiarkan (tidak diturunkan ke target).
+    const changed = line.doneQty < line.qty && writeProgress_(handover, line, line.qty, actor, now);
     return finishProgress_({ id, locationId }, beforeStatus, beforeSnapshot, changed, actor, now);
   });
 }
@@ -526,7 +523,9 @@ export function completeAll_(input: HandoverRefInput, actor: ActorRef): Handover
     const now = nowIso_();
     const names = locationNameMap_();
     const before = handoverSnapshot_(handover, lines, names);
-    for (const line of lines) writeProgress_(handover, line, line.qty, actor, now);
+    for (const line of lines) {
+      if (line.doneQty < line.qty) writeProgress_(handover, line, line.qty, actor, now);
+    }
     const touched: HandoverRecord = { ...handover, updatedAt: now, updatedBy: actor.email };
     updateHandover_(touched);
     const fresh = loadHandoverForWrite_(input);

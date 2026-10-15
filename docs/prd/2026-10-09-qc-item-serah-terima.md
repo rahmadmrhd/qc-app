@@ -110,7 +110,7 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 ### 4.6 Pengerjaan QC
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FQ1 | QC memperbarui **qty selesai** per baris. | Butuh `qc: edit` di lokasi task. Nilai 0 ≤ selesai ≤ target; bilangan bulat. |
+| FQ1 | QC memperbarui **qty selesai** per baris. | Butuh `qc: edit` di lokasi task. Bilangan bulat ≥ 0 (maks. 100.000). Melebihi target diizinkan: form QC menampilkan peringatan, bukan galat; selesai per tipe/per task tidak menurunkan nilai yang sudah melebihi target. Qty target WH tidak boleh diturunkan di bawah qty selesai. |
 | FQ2 | **Tandai selesai per tipe**: mengisi qty selesai = target pada baris itu. | Satu klik; dapat diurungkan dengan mengubah qty. |
 | FQ3 | **Tandai selesai per task**: semua baris diisi penuh. | Satu klik dengan konfirmasi; mencatat siapa dan kapan. |
 | FQ4 | Setiap perubahan progres mencatat pelaku dan waktu per baris. | Tampil di detail task. |

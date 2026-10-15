@@ -74,3 +74,4 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 68 | Buka form ubah item/task yang sama di dua tab; simpan di tab 1 lalu simpan di tab 2 | Tab 2 ditolak: "sudah diubah orang lain; muat ulang halaman…"; data tab 1 tidak tertimpa | Konkurensi optimistis |
 | 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
 | 70 | Selesai per task pada task dengan dua baris belum penuh; buka Log Audit | Satu baris `handover.progress` per baris yang diisi, lalu satu `handover.complete` | FAU1 |
+| 71 | QC isi qty selesai di atas target (mis. 9 dari 5) | Peringatan "Melebihi target 5" muncul saat mengetik; nilai tersimpan; task Selesai; "Selesai" per tipe/task tidak menurunkannya | FQ1 |

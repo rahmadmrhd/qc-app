@@ -58,11 +58,10 @@ test('QC memperbarui qty selesai: baris, pelaku, waktu, status Dikerjakan, dan a
   });
 });
 
-test('batas qty selesai: bilangan bulat 0..target; pecahan, negatif, NaN, string, di atas target ditolak', () => {
-  for (const bad of [-1, 1.5, Number.NaN, '2', null, 6, 100_001]) {
+test('batas qty selesai: bilangan bulat 0..100.000; pecahan, negatif, NaN, string ditolak; melebihi target boleh', () => {
+  for (const bad of [-1, 1.5, Number.NaN, '2', null, 100_001]) {
     expect(progress('la', bad).error.code).toBe('VALIDATION');
   }
-  expect(progress('la', 6).error.fields.doneQty).toContain('0–5');
   expect(doneOf('la')).toBe(0);
   expect(progress('la', 5).ok).toBe(true);
   expect(progress('la', 0).ok).toBe(true); // dapat diturunkan kembali
@@ -169,4 +168,17 @@ test('baris milik task lain tidak dapat diubah lewat id task ini', () => {
   insertHandoverLine_(handoverLine({ id: 'lz', handoverId: 't2', itemId: ENV.itemA, qty: 4 }));
   expect(progress('lz', 1).error.code).toBe('NOT_FOUND');
   expect(doneOf('lz')).toBe(0);
+});
+
+test('qty selesai boleh melebihi target (tidak dipotong): status Selesai; selesai per tipe/task tidak menurunkannya', () => {
+  const over = progress('la', 7);
+  expect(over.ok).toBe(true);
+  expect(doneOf('la')).toBe(7);
+  progress('lb', 1);
+  expect(call('qc@gmail.com', 'handovers.completeLine', { ...ref, lineId: 'la' }).ok).toBe(true);
+  expect(doneOf('la')).toBe(7);
+  const all = call('qc@gmail.com', 'handovers.completeAll', ref);
+  expect(all.data.status).toBe('done');
+  expect(doneOf('la')).toBe(7);
+  expect(doneOf('lb')).toBe(3);
 });

@@ -88,10 +88,10 @@ test('mengubah qty selesai lalu keluar dari isian mengirim nilai baru; nilai tak
   expect(onSetProgress).toHaveBeenCalledWith('l1', 4);
   onSetProgress.mockClear();
   await userEvent.clear(input);
-  await userEvent.type(input, '9'); // di atas target 5
+  await userEvent.type(input, '1.5'); // pecahan
   await userEvent.tab();
   expect(onSetProgress).not.toHaveBeenCalled();
-  expect(screen.getByText('Harus bilangan bulat 0–5')).toBeInTheDocument();
+  expect(screen.getByText('Harus bilangan bulat ≥ 0')).toBeInTheDocument();
   await userEvent.clear(input);
   await userEvent.type(input, '2'); // sama dengan nilai tersimpan
   await userEvent.tab();
@@ -160,4 +160,15 @@ test('saat pending semua kontrol dinonaktifkan', () => {
 test('task tanpa customer menampilkan "Tanpa customer"', () => {
   renderView({ handover: { ...base, customerId: '', customerName: '' } });
   expect(screen.getByText('Tanpa customer')).toBeInTheDocument();
+});
+
+test('qty selesai di atas target: peringatan (bukan galat) dan tetap terkirim', async () => {
+  const { onSetProgress } = renderView();
+  const input = screen.getByLabelText('Qty selesai Ubiquiti ES 24');
+  await userEvent.clear(input);
+  await userEvent.type(input, '9');
+  expect(screen.getByText('Melebihi target 5 — pastikan jumlahnya benar.')).toBeInTheDocument();
+  await userEvent.tab();
+  expect(onSetProgress).toHaveBeenCalledWith('l1', 9);
+  expect(screen.queryByText(/Harus bilangan bulat/)).toBeNull();
 });

@@ -52,10 +52,13 @@ function ProgressCell({
 }) {
   const [text, setText] = useState(String(doneQty));
   const [error, setError] = useState<string | null>(null);
+  const typed = Number(text);
+  // Melebihi target diizinkan (mis. barang lebih dari yang diminta); hanya diberi peringatan.
+  const over = text.trim() !== '' && Number.isInteger(typed) && typed > qty;
   function commit() {
     const value = Number(text);
-    if (text.trim() === '' || !Number.isInteger(value) || value < 0 || value > qty) {
-      setError(`Harus bilangan bulat 0–${qty}`);
+    if (text.trim() === '' || !Number.isInteger(value) || value < 0) {
+      setError('Harus bilangan bulat ≥ 0');
       return;
     }
     setError(null);
@@ -68,7 +71,6 @@ function ProgressCell({
           type="number"
           inputMode="numeric"
           min={0}
-          max={qty}
           className="w-24"
           aria-label={`Qty selesai ${label}`}
           disabled={disabled}
@@ -85,6 +87,11 @@ function ProgressCell({
         <span className="text-sm text-muted-foreground">/ {qty}</span>
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {over && !error ? (
+        <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          Melebihi target {qty} — pastikan jumlahnya benar.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -432,3 +432,17 @@ test('konkurensi optimistis: expectedUpdatedAt basi → CONFLICT dan task tidak 
   expect(ok.ok).toBe(true);
   expect(save({ id, note: 'tanpa' }).ok).toBe(true);
 });
+
+test('ubah task yang qty selesainya melebihi target: simpan tanpa mengubah qty tetap diterima', () => {
+  seedTask({ doneA: 7 });
+  expect(
+    save({
+      id: 't1',
+      note: 'catatan',
+      lines: [
+        { itemId: ENV.itemA, qty: 5 },
+        { itemId: ENV.itemB, qty: 3 },
+      ],
+    }).ok,
+  ).toBe(true);
+});
