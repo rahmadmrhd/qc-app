@@ -3,8 +3,12 @@ import { handleRpc_ } from '@gas/core/router';
 import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { insertBrand_ } from '@gas/modules/brand/repo';
+import { insertFile_ } from '@gas/modules/files/repo';
+import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
 import { location, role, user } from '@gas-test/access-fixtures';
+import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
 
@@ -34,18 +38,17 @@ let ready = false;
 function ensureMockBackend(): void {
   if (ready) return;
   ready = true;
-  setPlatform_(
-    createMemoryPlatform({
-      properties: {
-        SPREADSHEET_ID: 'mock',
-        SESSION_SECRET: 'mock-secret',
-        ADMIN_EMAIL: MOCK_ADMIN_EMAIL,
-        OAUTH_CLIENT_ID: 'mock',
-        OAUTH_CLIENT_SECRET: 'mock',
-        OAUTH_REDIRECT_URI: 'http://localhost:3000',
-      },
-    }),
-  );
+  const platform = createMemoryPlatform({
+    properties: {
+      SPREADSHEET_ID: 'mock',
+      SESSION_SECRET: 'mock-secret',
+      ADMIN_EMAIL: MOCK_ADMIN_EMAIL,
+      OAUTH_CLIENT_ID: 'mock',
+      OAUTH_CLIENT_SECRET: 'mock',
+      OAUTH_REDIRECT_URI: 'http://localhost:3000',
+    },
+  });
+  setPlatform_(platform);
   insertRole_(
     role({
       id: 'role-qc',
@@ -103,7 +106,63 @@ function ensureMockBackend(): void {
       roleIds: ['role-qc'],
     }),
   );
+  seedMockItems(platform);
   seedMockAudit();
+}
+
+/** Satu piksel merah; cukup untuk memperlihatkan galeri dan gambar di dalam Markdown pada `bun run dev`. */
+const DEMO_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+function seedMockItems(platform: ReturnType<typeof createMemoryPlatform>): void {
+  const folder = platform.driveCreateFolder('QC App Files');
+  platform.setProperty('DRIVE_FOLDER_ID', folder);
+  const driveId = platform.driveCreateFile(folder, 'demo.png', 'image/png', DEMO_PNG);
+  insertFile_({
+    id: 'file-demo',
+    driveId,
+    mime: 'image/png',
+    size: 68,
+    width: 1,
+    height: 1,
+    ownerType: 'item',
+    ownerId: 'item-af5xhd',
+    createdAt: '2026-10-07T07:00:00.000Z',
+    createdBy: MOCK_ADMIN_EMAIL,
+  });
+  insertBrand_(brand('Ubiquiti', { externalId: '1' }));
+  insertBrand_(brand('Mikrotik', { externalId: '2' }));
+  insertItem_(
+    item({
+      id: 'item-af5xhd',
+      brand: 'Ubiquiti',
+      model: 'AF 5XHD',
+      isCountryLock: true,
+      aliases: ['AirFiber 5XHD', 'AF-5XHD'],
+      stickers: [
+        { name: 'Label SNI', note: 'Bagian belakang, sudut kanan bawah', fileId: 'file-demo' },
+        { name: 'Label garansi', note: '', fileId: null },
+      ],
+      accessories: [
+        { name: 'Adaptor PoE', qty: 1 },
+        { name: 'Bracket', qty: 1 },
+      ],
+      attachments: ['file-demo'],
+      detail:
+        '## Spesifikasi\n- Frekuensi: 5 GHz\n- Throughput: hingga 1 Gbps\n\n![Contoh penempelan](qcfile:file-demo)\n\nPerhatikan **country lock** sebelum pengiriman.',
+    }),
+  );
+  insertItem_(
+    item({
+      id: 'item-es24',
+      brand: 'Ubiquiti',
+      model: 'ES 24 250W',
+      aliases: ['ES24 250W'],
+      accessories: [{ name: 'Kabel daya', qty: 1 }],
+      detail: 'Switch 24 port PoE.',
+    }),
+  );
+  insertItem_(item({ id: 'item-hap', brand: 'Mikrotik', model: 'hAP ac2', status: 'inactive' }));
 }
 
 /** Contoh catatan audit agar halaman Log Audit tidak kosong saat `bun run dev`. */

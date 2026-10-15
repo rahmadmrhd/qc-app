@@ -17,6 +17,8 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - `web/src/` — `modules/<modul>/` (queries, schemas, components), `routes/` (tipis), `app/` (shell, router, boot), `lib/rpc/`, `modules/theme/` (terang/gelap/sistem).
 - `web/src/modules/location/` — lokasi aktif (konteks, pemilih header multi-select) dan `LocationField` untuk form tulis modul berlokasi.
 - `web/src/modules/files/` — kecilkan/unggah/tampil gambar (RPC `files.*`); `web/src/modules/markdown/` — render Markdown aman dan editor dengan sisip gambar. Drive hanya lewat `platform_()`.
+- `web/src/modules/brand/` — halaman Merk (master merk; nama merk dipakai item lewat `brand_id`). Backend: `gas/src/modules/brand/`. Izin memakai modul `item`.
+- `web/src/modules/item/` — Data Item (daftar, form, detail); detail Markdown dan gambar memakai `modules/markdown` dan `modules/files`. Backend: `gas/src/modules/item/`; fungsi murni (kunci pencarian, hash, rujukan berkas) di `shared/items.ts`.
 
 ## Aturan kode GAS (ditegakkan `scripts/build-gas.ts`)
 - File di-transpile per file dan `import`/`export` dihapus: semua file berbagi SATU global scope.

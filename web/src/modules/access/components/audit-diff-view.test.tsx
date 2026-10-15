@@ -130,3 +130,66 @@ test('field lokasi memakai label yang mudah dibaca', () => {
   expect(within(row('code')).getByText('Kode')).toBeInTheDocument();
   expect(within(row('status')).getByText('Aktif')).toBeInTheDocument();
 });
+const itemBefore = {
+  brand: 'Ubiquiti',
+  model: 'ES 24',
+  isCountryLock: false,
+  status: 'active',
+  aliases: ['ES24'],
+  stickers: ['Label — Belakang'],
+  accessories: ['Kabel ×1'],
+  attachments: ['f1'],
+  detailLength: 10,
+  detailHash: 'aaaaaaaa',
+};
+const itemAfter = {
+  ...itemBefore,
+  isCountryLock: true,
+  aliases: ['ES24', 'AirSwitch'],
+  stickers: ['Label — Belakang', 'Garansi'],
+  accessories: ['Kabel ×2'],
+  attachments: ['f1', 'f2'],
+  detailLength: 25,
+  detailHash: 'bbbbbbbb',
+};
+
+test('snapshot item: label Indonesia, boolean Ya/Tidak, daftar per entri, dan hash detail tidak ditampilkan', () => {
+  render(<AuditDiffView before={itemBefore} after={itemAfter} />);
+  expect(within(row('isCountryLock')).getByText('Country lock')).toBeInTheDocument();
+  expect(within(row('isCountryLock')).getByText('Tidak')).toBeInTheDocument();
+  expect(within(row('isCountryLock')).getByText('Ya')).toBeInTheDocument();
+  expect(within(row('aliases')).getByText('Nama lain')).toBeInTheDocument();
+  expect(within(row('aliases')).getByText('AirSwitch').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('stickers')).getByText('Garansi').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('accessories')).getByText('Kabel ×2').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('accessories')).getByText('Kabel ×1').closest('li')).toHaveAttribute(
+    'data-kind',
+    'removed',
+  );
+  expect(within(row('attachments')).getByText('Gambar …f2')).toBeInTheDocument();
+  expect(within(row('detailLength')).getByText('Panjang detail (karakter)')).toBeInTheDocument();
+  expect(within(row('detailHash')).getByText('Isi detail')).toBeInTheDocument();
+  expect(within(row('detailHash')).getByText('Isi Markdown diubah')).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('aaaaaaaa');
+  expect(document.body.textContent).not.toContain('bbbbbbbb');
+});
+
+test('hash detail disembunyikan bila tidak berubah atau pada create', () => {
+  const { unmount } = render(
+    <AuditDiffView before={itemBefore} after={{ ...itemBefore, model: 'ES 24 Lite' }} />,
+  );
+  expect(document.querySelector('[data-field="detailHash"]')).toBeNull();
+  unmount();
+  render(<AuditDiffView before={null} after={itemBefore} />);
+  expect(document.querySelector('[data-field="detailHash"]')).toBeNull();
+  expect(within(row('brand')).getByText('Merk')).toBeInTheDocument();
+});

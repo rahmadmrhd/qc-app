@@ -12,7 +12,7 @@ test('melaporkan Script Property yang belum diset dan tidak membuat sheet tanpa 
   expect(platform.db.sheets.size).toBe(0);
 });
 
-test('membuat sheet users, roles, audit_log, locations, files beserta header', () => {
+test('membuat sheet users, roles, audit_log, locations, files, brands, items beserta header', () => {
   const platform = createMemoryPlatform({
     properties: {
       SPREADSHEET_ID: 'x',
@@ -31,6 +31,8 @@ test('membuat sheet users, roles, audit_log, locations, files beserta header', (
     'audit_log',
     'locations',
     'files',
+    'brands',
+    'items',
   ]);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([

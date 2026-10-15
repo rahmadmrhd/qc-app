@@ -11,10 +11,12 @@
 
 ## 1. Ringkasan
 
-Dua modul bisnis pertama QC App:
+Dua modul bisnis pertama QC App, ditambah jalur sinkronisasi ke QC Desktop:
 
 1. **Data Item**: katalog tipe barang yang **dipakai bersama semua lokasi**: merk, tipe, status *country lock*, daftar stiker yang harus ditempel, kelengkapan aksesoris, galeri gambar lampiran, dan detail/spesifikasi dalam **editor Markdown dengan sisip gambar**.
 2. **Serah Terima WH → QC**: **task** yang dibuat Gudang (WH) untuk QC: nama customer + daftar tipe beserta jumlah. QC memperbarui jumlah yang selesai, atau menandai selesai per tipe maupun per task. Field customer dan tipe punya **auto-suggest**, sebab pengguna sering menulis nama yang berbeda untuk hal yang sama.
+
+3. **Sinkronisasi dengan QC Desktop** (Fase B2): QC App menjadi sistem utama data item (migrasi dari spreadsheet dan proyek GAS lama). QC Desktop, yang terhubung ke MySQL di balik VPN, **menarik dan mendorong** data lewat endpoint API bertoken. QC App tidak pernah berbicara ke MySQL. Kontraknya ada di `docs/api/desktop-sync.md` dan dirancang generik agar stok stiker dan stok manual book dapat menyusul.
 
 Fondasi yang dibutuhkan keduanya ikut dibangun: penyimpanan **gambar di Google Drive** dan komponen **editor Markdown**.
 
@@ -31,7 +33,8 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 - **G5.** Hak WH dan hak QC dapat diberikan terpisah lewat role.
 
 ### 2.3 Non-goals
-- Monitoring Stok (modul `stock`) dan penghitungan stok.
+- Monitoring Stok (modul `stock`), penghitungan stok, dan sumber daya sinkronisasi stok (kontrak hanya menetapkan konvensi, lihat `docs/api/desktop-sync.md` bagian 4).
+- Aplikasi QC Desktop itu sendiri (proyek terpisah) dan koneksi ke MySQL.
 - Notifikasi (email/chat) saat task dibuat atau selesai.
 - Pemindaian barcode/QR, serial number per unit.
 - Penghapusan permanen item, customer, atau task (hanya nonaktif/batal).
@@ -75,9 +78,12 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 |---|---|---|
 | FI1 | Daftar item: tabel merk, tipe, country lock, status, jumlah gambar. Pencarian dan filter status lewat URL. | Butuh `item: view`. |
 | FI2 | Field item: **merk** (wajib, maks. 60), **tipe** (wajib, maks. 100), **country lock** (ya/tidak), **nama lain/alias** (daftar teks, maks. 10 @ 100), **stiker** (daftar: nama, catatan posisi/ketentuan, gambar contoh opsional; maks. 30), **kelengkapan** (daftar: nama + jumlah per unit ≥ 1; maks. 30), **gambar lampiran** (maks. 10), **detail Markdown** (FA5). | Butuh `item: edit` untuk menambah/mengubah. |
+| FI8 | **Merk adalah tabel master** (`brands`: id, id MySQL, nama, kunci ternormalisasi, status, `sync_rev`), bukan teks bebas. Item menyimpan `brand_id`. Mengetik merk di form item memberi saran dari merk yang ada; merk yang belum ada **dibuat langsung saat item disimpan** (tanpa form tambahan, dengan audit `brand.create`). Halaman **Merk** untuk tambah, **ganti nama** (berlaku ke semua item merk itu; kunci item dihitung ulang; audit `brand.update`), dan nonaktifkan/aktifkan. Merk nonaktif tidak dapat dipakai item baru. Izin memakai modul `item` (view/edit/manage). | Nama merk unik (ternormalisasi); ganti nama yang membuat merk+tipe dua item bentrok ditolak. |
 | FI3 | Merk + tipe unik (dinormalisasi). | Duplikat ditolak `CONFLICT` dengan pesan di field; alias tidak boleh sama dengan merk+tipe item lain. |
 | FI4 | Nonaktifkan dan aktifkan item; tidak ada hapus. | Butuh `item: manage`. Item nonaktif tidak muncul di saran tipe pada task baru; task lama tetap menampilkannya. |
 | FI5 | Halaman detail item baca-saja untuk semua yang punya `item: view`. | Menampilkan semua field, galeri, stiker dan kelengkapan sebagai daftar rapi, dan detail Markdown terender. QC memakainya sebagai acuan kerja. |
+| FI6 | Item membawa **id MySQL** (`external_id`, opsional, unik) yang dipakai sinkronisasi. | Tampil baca-saja di halaman detail; tidak dapat diisi dari form. Diisi oleh sinkronisasi. |
+| FI7 | Batas field: nama stiker 1–100, catatan stiker ≤ 300, nama kelengkapan 1–100, jumlah kelengkapan 1–999 (bilangan bulat), alias ≤ 10 @ 100, lampiran ≤ 10, stiker ≤ 30, kelengkapan ≤ 30; total JSON per kolom ≤ 40.000 karakter. | Ditegakkan di server (dan di form); lebih dari batas ditolak dengan pesan di field. |
 
 ### 4.4 Customer (master, Fase C)
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -117,6 +123,25 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | FAU1 | Aksi baru di `audit_log` dengan snapshot before/after: `item.create/update/activate/deactivate`, `customer.create/rename/activate/deactivate`, `handover.create/update/cancel`, `handover.progress` (per perubahan progres), `handover.complete`. | Tampil di Log Audit dengan label Indonesia. |
 | FAU2 | Diff audit yang mudah dibaca untuk item dan task. | Daftar (alias, stiker, kelengkapan, baris task) dibandingkan per entri dengan warna tambah/ubah/hapus; isi Markdown ditampilkan sebagai "diubah" tanpa diff teks penuh. |
 
+### 4.8 Sinkronisasi dengan QC Desktop (Fase B2)
+Kontrak lengkap (amplop, payload, contoh, aturan konflik): `docs/api/desktop-sync.md`.
+
+| ID | Kebutuhan | Kriteria penerimaan |
+|---|---|---|
+| FS1 | Endpoint HTTP `doPost` untuk QC Desktop; amplop berversi `{ v, method, token, payload }`; metode `sync.<sumberDaya>.<aksi>`; balasan sama bentuk dengan RPC web. | `sync.ping` mengembalikan versi API dan daftar sumber daya. |
+| FS2 | Autentikasi satu token bersama `SYNC_API_TOKEN` (≥ 32 karakter), dibandingkan waktu-konstan; 10 token salah dalam 10 menit memblokir semua permintaan 10 menit. | Tanpa token valid tidak ada data atau metode yang terungkap; pesan galat tidak membedakan alasan. |
+| FS3 | Jalur sinkron **terpisah** dari RPC sesi: tabel rute sinkron sendiri; handler tidak pernah menerima konteks user; pelaku tercatat `sync:desktop`. | Token sinkron tidak dapat memanggil metode RPC web, dan sebaliknya. |
+| FS4 | `sync.items.pull`: kursor `rev`, paginasi (`limit`, `hasMore`, `nextRev`), `include` opsional untuk field berat. | Menarik dari `sinceRev: 0` sampai `hasMore: false` mengembalikan semua item tepat sekali. |
+| FS5 | `sync.items.push`: upsert per item dengan hasil per item (`created`, `updated`, `unchanged`, `conflict`, `invalid`); pencocokan `uid` → `id` (MySQL) → merk+tipe ternormalisasi; pemetaan id MySQL ke item QC App; `isCountryLock` boolean (teks "true"/"false" diterima); `active: false` = nonaktif. | Mendorong ulang permintaan yang sama menghasilkan `unchanged` (idempoten); kegagalan satu item tidak membatalkan yang lain; ≤ 200 item per panggilan (≤ 100 bila memuat `detail`). |
+| FS6 | Konflik dua arah: `baseRev` lebih lama dari `rev` sekarang **dan** nilai berbeda → `conflict` beserta nilai terkini; `overwrite: true` melewati pemeriksaan. | Tidak ada perubahan pada item yang konflik; nilai sama persis → `unchanged`. |
+| FS7 | Field sinkron: merk, tipe, isCountryLock, images, detail, stickers, accessories, active. **Alias tidak disinkronkan.** Field yang tidak dikirim tidak diubah; daftar/teks yang dikirim (termasuk kosong) menggantikan nilai tersimpan. | Push tanpa `detail` tidak mengosongkan detail. |
+| FS8 | Gambar dirujuk dengan **id Drive**: `images`, `stickers[].image`, dan `![alt](drive:<id>)` di Markdown. Tiap id harus berada di folder aplikasi; berkas yang belum tercatat didaftarkan otomatis di sheet `files`. Pada push hanya rujukan `drive:` yang diterima di Markdown. | Id di luar folder → item `invalid`; menghapus id dari `images` tidak menghapus berkas Drive. |
+| FS9 | `sync.file.get` mengembalikan `{ mime, base64 }` untuk berkas di folder aplikasi (≤ 8 MB), bertoken. | Id di luar folder → `NOT_FOUND`. |
+| FS10 | Setiap item yang dibuat, diubah, atau konflik dicatat di audit dengan pelaku `sync:desktop` dan snapshot before/after. | Terlihat di Log Audit dengan diff yang terbaca. |
+| FS11 | Perubahan field sinkron di QC App menaikkan `sync_rev` sehingga muncul di pull berikutnya; perubahan alias tidak. | Tes: ubah alias → tidak muncul di pull; ubah detail → muncul. |
+| FS12 | Kerangka generik: sumber daya baru (stok stiker, stok manual book) mendaftar ke tabel rute sinkron tanpa mengubah kerangka; konvensi stok (Desktop master, snapshot absolut `{ key, qty, asOf }`) tercatat di kontrak. | Bagian "Menambah sumber daya baru" di kontrak. |
+| FS13 | Pengamanan folder gambar: `setup` **tidak** menimpa `DRIVE_FOLDER_ID` yang sudah terisi bila foldernya tidak dapat diakses; ia berhenti dengan pesan jelas (mengubah perilaku Fase A yang membuat folder baru). | Properti tidak berubah, laporan `setup` menyebut penyebab; folder baru hanya dibuat bila properti kosong. |
+
 ## 5. Kebutuhan Non-Fungsional
 | ID | Kebutuhan |
 |---|---|
@@ -135,9 +160,10 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 |---|---|---|
 | **A** | Platform Drive, sheet `files`, RPC file, komponen editor Markdown, penanda `qc` di model izin, `item` menjadi global | `...-qc-fase-a-file-editor.md` |
 | **B** | Data Item (CRUD, alias, stiker, kelengkapan, galeri, detail, nonaktif, audit) | `...-qc-fase-b-item.md` |
+| **B2** | Kerangka sinkronisasi (`doPost`, token, pembatas, tabel rute sinkron), sumber daya `items`, `sync.file.get`, pengamanan folder `setup`, kontrak `docs/api/desktop-sync.md` | `...-qc-fase-b2-sinkronisasi.md` |
 | **C** | Customer master, Serah Terima, pengerjaan QC, auto-suggest, audit | `...-qc-fase-c-serah-terima.md` |
 
-Tiap fase dirilis dan dapat diuji sendiri.
+Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebelum C agar item sungguhan sudah ada saat task dibuat).
 
 **Catatan router:** FH6 meminta izin "salah satu dari" (`handover: view` **atau** `qc: edit` di lokasi). Router GAS perlu mendukung izin berupa daftar alternatif; ini ditambahkan di Fase A bersama penanda `qc`.
 
@@ -145,15 +171,19 @@ Tiap fase dirilis dan dapat diuji sendiri.
 | Sheet | Kolom |
 |---|---|
 | `files` | `id, drive_id, mime, size, width, height, owner_type, owner_id, created_at, created_by` |
-| `items` | `id, brand, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by` (`aliases/stickers/accessories/attachments` = JSON) |
+| `items` | `id, brand, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by` (`aliases/stickers/accessories/attachments` = JSON; ditambah `external_id` (id MySQL) dan `sync_rev` (revisi sinkron)) |
+| `sync_state` | `resource, seq, updated_at` (penghitung revisi per sumber daya; diubah di dalam lock) |
 | `customers` | `id, name, key, status, created_at, updated_at, updated_by` |
 | `handovers` | `id, number, location_id, customer_id, customer_name, note, status, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`) |
 | `handover_lines` | `id, handover_id, item_id, item_label, qty, done_qty, done_at, done_by` |
 
-`key` = merk+tipe (item) atau nama (customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
+`key` = merk+tipe (item) atau nama (merk, customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
-`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
+`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
+
+### 6.3b Endpoint sinkronisasi
+`doPost` di `gas/src/main.ts` mengurai amplop, memeriksa token, lalu memanggil tabel rute sinkron (`gas/src/modules/sync/`). Sumber daya `items` mendaftar di sana. Metode: `sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.file.get`. Detail di `docs/api/desktop-sync.md`.
 
 ### 6.4 Gambar dan Markdown
 - Drive: `DriveApp` lewat `platform_()` (`driveCreateFile`, `driveReadBase64`); folder utama dibuat `setup`. Izin Drive ditambahkan ke `appsscript.json`; Google meminta persetujuan ulang sekali saat `setup`.
@@ -186,6 +216,12 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 | Perubahan `item` menjadi global menyentuh izin | Regresi akses | Tes `resolveAccess` ditambah; belum ada data item sehingga dampak data nol. |
 | Batas sel 50.000 karakter | Data terpotong | Batas FA7 dan batas jumlah entri; validasi ukuran total JSON di server. |
 
+| Token sinkron bocor | Pihak luar dapat menulis atau membaca item | Token panjang acak di Script Property, tidak pernah di URL, pembatas percobaan salah, pelaku tercatat di audit, rotasi dengan mengganti properti. |
+| Konflik dua arah menimpa pekerjaan | Data berubah diam-diam | `baseRev` dan status `conflict`; audit before/after memungkinkan pemulihan; `overwrite` harus eksplisit. |
+| Folder gambar lama salah atau tidak berizin | Gambar tidak terbaca atau folder baru terbuat tanpa disadari | FS13 (setup tidak menimpa), urutan panduan: isi `DRIVE_FOLDER_ID` sebelum `setup`, validasi per id saat push. |
+| Migrasi besar melewati batas waktu `doPost` | Sebagian item belum masuk | Batas per panggilan, hasil per item, push idempoten sehingga dapat diulang aman. |
+| Desktop merender HTML mentah dari `detail` | XSS di Desktop | Kontrak mewajibkan Desktop tidak merender HTML mentah; QC App tidak pernah merendernya. |
+
 ## 9. Definition of Done
 **Fase A**
 - [ ] `setup` membuat folder Drive dan sheet `files`; izin Drive tercantum di `appsscript.json`.
@@ -194,8 +230,17 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - [x] Modul `qc` ada di form Role; `item` global dari semua penugasan; tes `resolveAccess` diperbarui.
 
 **Fase B**
-- [ ] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.
-- [ ] Halaman daftar dan detail item; audit dengan diff yang terbaca.
+- [x] CRUD item lengkap dengan alias, stiker, kelengkapan, galeri, detail; keunikan dan nonaktif bekerja.
+- [x] Merk sebagai tabel master: saran, buat langsung saat item disimpan, ganti nama, nonaktif, halaman Merk, audit `brand.*`.
+- [x] Halaman daftar dan detail item; audit dengan diff yang terbaca.
+
+**Fase B2**
+- [ ] `doPost` dan kerangka (token, pembatas percobaan salah, amplop, tabel rute sinkron) dites, termasuk token salah dan pembatasan.
+- [ ] `sync.items.pull` dan `sync.items.push` dengan semua field, hasil per item, dan konflik dua arah; tes kesesuaian terhadap contoh di `docs/api/desktop-sync.md`.
+- [ ] `sync.file.get` terbatas pada folder aplikasi.
+- [ ] `setup` tidak menimpa `DRIVE_FOLDER_ID` yang tidak dapat diakses (FS13).
+- [ ] Migrasi awal dari MySQL dicoba end-to-end dengan QC Desktop dan hasil pull cocok dengan MySQL.
+- [ ] Tim Desktop menyetujui `docs/api/desktop-sync.md`.
 
 **Fase C**
 - [ ] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
@@ -217,6 +262,15 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 | Model customer? | Tabel master; pembuatan inline saat mengetik tanpa form tambahan. |
 | Struktur dokumen? | Satu PRD, tiga rencana bertahap. |
 | Notifikasi? | Tidak di fase ini. |
+| Hubungan spreadsheet sinkron dengan QC App? | QC App menjadi sistem utama (migrasi dari spreadsheet dan proyek GAS lama); Desktop menarik/mendorong lewat API. |
+| Sumber kebenaran data item? | Dua arah (aturan konflik FS6). |
+| Gambar lama di spreadsheet? | Memakai folder Drive yang sama (`DRIVE_FOLDER_ID` = folder lama). |
+| Akses Desktop? | Endpoint API di QC App (GAS) dengan token. |
+| `isCountryLock` dan token? | Boolean; satu token bersama. |
+| Proyek GAS lama? | Dipensiunkan setelah migrasi; Desktop diarahkan ke `/exec` QC App. |
+| Cara Desktop membaca gambar? | Endpoint `sync.file.get`. |
+| Field yang disinkronkan? | Semua (merk, tipe, country lock, gambar, detail Markdown, stiker, kelengkapan) kecuali alias. |
+| Kontrak hanya untuk item? | Tidak: generik; stok stiker dan stok manual book menyusul (Desktop master, snapshot absolut). |
 | Nama modul QC dan izin Drive? | "Pengerjaan QC" (kunci `qc`); izin Drive disetujui saat `setup`. |
 
 ## 11. Keputusan yang Saya Ambil (mohon dikoreksi bila perlu)
@@ -224,3 +278,8 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - **Customer dikelola di bawah izin `item`** (master data), sedangkan membuatnya inline cukup `handover: edit`.
 - **Nomor task per hari** `ST-YYYYMMDD-NNN`, memakai zona waktu script.
 - **Penyelesaian bersamaan**: yang terakhir menang (6.6), tidak ada penguncian optimistis.
+- **Penghitung revisi sinkron per sumber daya** (`sync_rev`) hanya naik bila field sinkron berubah; perubahan alias tidak menaikkannya.
+- **"Hapus" dari Desktop diterjemahkan jadi nonaktif** (`active: false`), karena item dirujuk task dan tidak pernah dihapus.
+- **Daftar dan teks pada push bersifat "ganti seluruhnya"; field yang tidak dikirim tidak diubah.**
+- **`setup` tidak lagi membuat folder baru bila `DRIVE_FOLDER_ID` sudah terisi tetapi tidak dapat diakses** (FS13), karena itu hampir pasti folder buatan pengguna (folder gambar lama), bukan folder yang boleh diganti diam-diam.
+- **Gambar di Markdown pada kabel memakai `drive:<id>`** dan dipetakan ke `qcfile:` di dalam QC App.

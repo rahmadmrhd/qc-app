@@ -91,3 +91,60 @@ test('lokasi: daftar untuk akses lihat, simpan dan nonaktifkan butuh akses kelol
   const me = await call('auth.me', null, admin);
   expect(me.data.locations.map((l: { code: string }) => l.code)).not.toContain('SBY');
 });
+test('item demo: daftar untuk pemegang item view, simpan butuh item edit, detail memuat Markdown dan gambar', async () => {
+  const staff = tokenOf('qc.staff@qc.local'); // role-qc: item view
+  const list = await call('items.list', null, staff);
+  expect(list.data.map((i: { model: string }) => i.model)).toEqual([
+    'hAP ac2',
+    'AF 5XHD',
+    'ES 24 250W',
+  ]);
+  expect(
+    await call(
+      'items.save',
+      {
+        brand: 'X',
+        model: 'Y',
+        isCountryLock: false,
+        aliases: [],
+        stickers: [],
+        accessories: [],
+        attachments: [],
+        detail: '',
+      },
+      staff,
+    ),
+  ).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const detail = await call('items.get', { id: 'item-af5xhd' }, staff);
+  expect(detail.data.detail).toContain('country lock');
+  expect(detail.data.attachments).toEqual(['file-demo']);
+  const file = await call('files.get', { id: 'file-demo' }, staff);
+  expect(file.data.mime).toBe('image/png');
+});
+
+test('user tanpa izin item tidak dapat melihat daftar item', async () => {
+  const result = await call('items.list', null, tokenOf('access.viewer@qc.local'));
+  expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+
+test('merk demo: daftar memuat jumlah item; mengganti nama merk memperbarui nama di daftar item', async () => {
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const brands = await call('brands.list', null, admin);
+  expect(
+    brands.data.map((b: { name: string; itemCount: number }) => [b.name, b.itemCount]),
+  ).toEqual([
+    ['Mikrotik', 1],
+    ['Ubiquiti', 2],
+  ]);
+  const staff = tokenOf('qc.staff@qc.local'); // item view saja
+  expect(await call('brands.save', { name: 'Baru' }, staff)).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  await call('brands.save', { id: 'brand-mikrotik', name: 'MikroTik' }, admin);
+  const items = await call('items.list', null, admin);
+  expect(items.data.map((i: { brand: string }) => i.brand)).toContain('MikroTik');
+});

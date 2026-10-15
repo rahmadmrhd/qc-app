@@ -17,6 +17,11 @@ import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
 import { Route as AppAccessRolesRouteImport } from './routes/_app/access/roles'
 import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
+import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
+import { Route as AppItemBrandsRouteImport } from './routes/_app/item/brands'
+import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
+import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
+import { Route as AppItemItemIdEditRouteImport } from './routes/_app/item/$itemId/edit'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -57,6 +62,31 @@ const AppAccessUsersRoute = AppAccessUsersRouteImport.update({
   path: '/access/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppItemIndexRoute = AppItemIndexRouteImport.update({
+  id: '/item/',
+  path: '/item/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemBrandsRoute = AppItemBrandsRouteImport.update({
+  id: '/item/brands',
+  path: '/item/brands',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemNewRoute = AppItemNewRouteImport.update({
+  id: '/item/new',
+  path: '/item/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemItemIdIndexRoute = AppItemItemIdIndexRouteImport.update({
+  id: '/item/$itemId/',
+  path: '/item/$itemId/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemItemIdEditRoute = AppItemItemIdEditRouteImport.update({
+  id: '/item/$itemId/edit',
+  path: '/item/$itemId/edit',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -66,6 +96,11 @@ export interface FileRoutesByFullPath {
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/item/brands': typeof AppItemBrandsRoute
+  '/item/new': typeof AppItemNewRoute
+  '/item/': typeof AppItemIndexRoute
+  '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -75,6 +110,11 @@ export interface FileRoutesByTo {
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/item/brands': typeof AppItemBrandsRoute
+  '/item/new': typeof AppItemNewRoute
+  '/item': typeof AppItemIndexRoute
+  '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/item/$itemId': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,6 +126,11 @@ export interface FileRoutesById {
   '/_app/access/locations': typeof AppAccessLocationsRoute
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
+  '/_app/item/brands': typeof AppItemBrandsRoute
+  '/_app/item/new': typeof AppItemNewRoute
+  '/_app/item/': typeof AppItemIndexRoute
+  '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,6 +142,11 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/item/brands'
+    | '/item/new'
+    | '/item/'
+    | '/item/$itemId/edit'
+    | '/item/$itemId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -106,6 +156,11 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/item/brands'
+    | '/item/new'
+    | '/item'
+    | '/item/$itemId/edit'
+    | '/item/$itemId'
   id:
     | '__root__'
     | '/_app'
@@ -116,6 +171,11 @@ export interface FileRouteTypes {
     | '/_app/access/locations'
     | '/_app/access/roles'
     | '/_app/access/users'
+    | '/_app/item/brands'
+    | '/_app/item/new'
+    | '/_app/item/'
+    | '/_app/item/$itemId/edit'
+    | '/_app/item/$itemId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -181,6 +241,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/item/': {
+      id: '/_app/item/'
+      path: '/item'
+      fullPath: '/item/'
+      preLoaderRoute: typeof AppItemIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/brands': {
+      id: '/_app/item/brands'
+      path: '/item/brands'
+      fullPath: '/item/brands'
+      preLoaderRoute: typeof AppItemBrandsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/new': {
+      id: '/_app/item/new'
+      path: '/item/new'
+      fullPath: '/item/new'
+      preLoaderRoute: typeof AppItemNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/$itemId/': {
+      id: '/_app/item/$itemId/'
+      path: '/item/$itemId'
+      fullPath: '/item/$itemId/'
+      preLoaderRoute: typeof AppItemItemIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/$itemId/edit': {
+      id: '/_app/item/$itemId/edit'
+      path: '/item/$itemId/edit'
+      fullPath: '/item/$itemId/edit'
+      preLoaderRoute: typeof AppItemItemIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -191,6 +286,11 @@ interface AppRouteChildren {
   AppAccessLocationsRoute: typeof AppAccessLocationsRoute
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
+  AppItemBrandsRoute: typeof AppItemBrandsRoute
+  AppItemNewRoute: typeof AppItemNewRoute
+  AppItemIndexRoute: typeof AppItemIndexRoute
+  AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
+  AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -200,6 +300,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsRoute: AppAccessLocationsRoute,
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,
+  AppItemBrandsRoute: AppItemBrandsRoute,
+  AppItemNewRoute: AppItemNewRoute,
+  AppItemIndexRoute: AppItemIndexRoute,
+  AppItemItemIdEditRoute: AppItemItemIdEditRoute,
+  AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
