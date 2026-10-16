@@ -102,12 +102,16 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 96 | Tekan "Lihat PDF" pada form; klik link di kolom Link pada daftar | PDF terbuka di Drive pada tab baru | FQR27 |
 | 97 | Di form QR isi "Link atau ID berkas Drive" (PDF milik pemilik script) lalu "Salin dari Drive" | Salinan muncul di folder dokumen aplikasi, dibagikan via link, menjadi PDF sumber; berkas asli tidak berubah/tidak dibagikan | FQR28 |
 | 98 | Salin dari link non-Drive, berkas non-PDF, atau berkas yang tidak bisa diakses | Ditolak dengan pesan jelas | FQR28 |
-| 99 | Simpan konfigurasi PDF lalu cek nama berkas di Drive; ekspor lalu ganti PDF | Nama `{title}-{subtitle}-{timestamp}.pdf`; setelah diekspor hanya "ganti isi" (URL tetap), tanpa PDF baru/salin | FQR30, FQR31 |
+| 99 | Simpan konfigurasi PDF lalu cek nama berkas di Drive; ekspor lalu ganti PDF | Nama `{title}-{subtitle}-{timestamp}.pdf`; bila PDF sudah terpasang, unggah/salin dari Drive hanya mengganti isi (URL tetap), tanpa opsi PDF baru | FQR30, FQR31 |
 | 100 | Pengelola (kelola) buka "Konfigurasi default", isi title/footer/ukuran/bingkai, tambah 2 logo ke pustaka, pilih logo awal, Simpan | Tersimpan; tanpa tombol ekspor; pengguna edit/lihat tidak melihat tombol "Konfigurasi default" | FQR32 |
 | 101 | Pengguna edit buat QR baru | Isian awal sama dengan default dan logo awal terpilih; logo hanya dipilih dari pustaka (tanpa unggah) | FQR33, FQR34 |
 | 102 | Ubah default lalu buka QR lama | QR lama tidak berubah | FQR33 |
-| 103 | Atur ukuran logo 30% dengan logo lebar (rasio 3:1) lalu ekspor | Luas logo di label = 30% luas QR (QR tetap terbaca) | FQR35 |
+| 103 | Atur luas logo+latar 15% (maks.) dengan logo lebar, coba isi 16% | Nilai di atas 15% ditolak/dijepit; luas logo+latar = persen yang diatur; QR terbaca saat dipindai | FQR35 |
 | 104 | Pengelola tambah 2 konfigurasi default (nama berbeda) di Konfigurasi default; nama kembar ditolak | Keduanya tampil di daftar; nama sama (beda huruf besar) ditolak | FQR36 |
 | 105 | Buat QR baru sebagai pengguna edit | Hanya pemilih default yang tampil; setelah memilih, isian terisi; Simpan nonaktif sebelum memilih; memilih default lain mengisi ulang | FQR38 |
 | 106 | Pengguna edit mengekspor QR; pengguna lihat tidak melihat tombol Ekspor; pengguna edit tidak melihat tombol Konfigurasi default maupun Hapus | Ekspor berhasil untuk edit; default dan hapus hanya kelola | FQR10, FQR32 |
 | 107 | Setelah `setup` pada data lama berisi default tunggal | Muncul satu default "Default" dengan isi lama; pustaka logo tetap | FQR39 |
+| 108 | Buka ubah QR lalu klik "Perbarui sesuai konfigurasi default", pilih default, hilangkan centang Footer, Terapkan | Title/Subtitle/Logo terisi dari default, Footer tetap; gaya, ukuran, bingkai ikut; tersimpan hanya setelah Simpan | FQR40 |
+| 109 | Ubah "Jarak antarbagian" pada QR tanpa subtitle | Posisi QR tidak bergeser; hanya jarak title ↔ subtitle berubah | FQR41 |
+| 110 | Daftar QR tidak punya tombol Duplikat; pakai PDF yang sudah dipakai QR lain pada QR kedua | Tombol Duplikat tidak ada; PDF yang sudah dipakai QR lain ditolak; tidak ada info "dipakai N konfigurasi" | FQR42 |
+| 111 | Ubah QR yang sudah punya PDF: unggah ulang, lalu "Ganti dari Drive" | Tidak ada opsi "Pakai PDF baru"; keduanya mengganti isi dan URL tetap (dengan konfirmasi) | FQR43 |

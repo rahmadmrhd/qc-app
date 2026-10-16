@@ -20,10 +20,8 @@ export interface PdfSourceFieldProps {
   onDocument: (document: QrDocumentDto) => void;
   /** Mengunggah (atau mengganti isi bila `replaceId` ada) dan mengembalikan dokumen terbaru. */
   onUpload: (file: File, replaceId?: string) => Promise<QrDocumentDto>;
-  /** Menyalin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber baru. */
-  onClone: (source: string) => Promise<QrDocumentDto>;
-  /** Konfigurasi sudah diekspor: PDF hanya boleh diganti isinya (URL tetap), tanpa opsi PDF baru. */
-  replaceOnly?: boolean;
+  /** Menyalin berkas Drive (link atau fileId) ke folder aplikasi; dengan `replaceId` mengganti isi PDF yang ada. */
+  onClone: (source: string, replaceId?: string) => Promise<QrDocumentDto>;
   /** Dipanggil saat proses (unggah/salin) mulai/selesai; induk menonaktifkan Simpan selama berjalan. */
   onBusyChange?: (busy: boolean) => void;
 }
@@ -34,10 +32,10 @@ export function PdfSourceField({
   onDocument,
   onUpload,
   onClone,
-  replaceOnly = false,
   onBusyChange,
 }: PdfSourceFieldProps) {
-  const [pending, setPending] = useState<File | null>(null);
+  // Penggantian isi (PDF sudah terpasang) selalu dikonfirmasi lebih dulu; sumbernya berkas unggahan atau berkas Drive.
+  const [pending, setPending] = useState<{ file: File } | { drive: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [task, setTaskState] = useState<'clone' | 'upload' | null>(null);
   const busy = task !== null;
@@ -47,16 +45,8 @@ export function PdfSourceField({
   };
   const [copied, setCopied] = useState(false);
   const [driveSource, setDriveSource] = useState('');
-  // PDF yang dipakai banyak konfigurasi: bawaan PDF BARU agar isi bersama (dan label tercetak lain) tidak tertimpa.
-  const [mode, setMode] = useState<'replace' | 'new'>(
-    document !== null && document.uses > 1 && !replaceOnly ? 'new' : 'replace',
-  );
-  const documentId = document?.id;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat dokumen yang terpasang berganti
-  useEffect(() => {
-    setMode(document !== null && document.uses > 1 && !replaceOnly ? 'new' : 'replace');
-  }, [documentId]);
-  const replacing = document !== null && (replaceOnly || mode === 'replace');
+  // Unggah ulang SELALU mengganti isi PDF yang terpasang (URL tetap); PDF baru hanya saat belum ada PDF.
+  const replacing = document !== null;
 
   function choose(file: File | undefined) {
     setError(null);
@@ -69,14 +59,14 @@ export function PdfSourceField({
       setError('Ukuran PDF maksimal 10 MB');
       return;
     }
-    setPending(file);
+    setPending({ file });
   }
 
-  async function cloneFromDrive() {
+  async function cloneFromDrive(source: string) {
     setError(null);
     setTask('clone');
     try {
-      onDocument(await onClone(driveSource.trim()));
+      onDocument(await onClone(source, document?.id));
       setDriveSource('');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal menyalin PDF dari Drive');
@@ -87,9 +77,15 @@ export function PdfSourceField({
 
   async function confirm() {
     if (!pending) return;
+    if ('drive' in pending) {
+      const source = pending.drive;
+      setPending(null);
+      await cloneFromDrive(source);
+      return;
+    }
     setTask('upload');
     try {
-      onDocument(await onUpload(pending, replacing ? document?.id : undefined));
+      onDocument(await onUpload(pending.file, document?.id));
       setPending(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah PDF');
@@ -99,37 +95,16 @@ export function PdfSourceField({
     }
   }
 
+  const pendingName =
+    pending === null ? '' : 'file' in pending ? pending.file.name : 'berkas Drive';
+
   return (
     <div className="space-y-3">
-      {document && replaceOnly ? (
+      {document ? (
         <p className="text-sm text-muted-foreground">
-          Konfigurasi ini sudah diekspor: PDF hanya dapat diganti isinya (URL tetap
-          {document.uses > 1 ? `; memengaruhi ${document.uses} konfigurasi yang memakainya` : ''}).
+          PDF sudah terpasang: unggah ulang atau salin dari Drive hanya mengganti isinya (URL
+          tetap).
         </p>
-      ) : null}
-      {document && !replaceOnly ? (
-        <div role="radiogroup" aria-label="Mode unggah PDF" className="space-y-1.5">
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="qr-pdf-mode"
-              checked={mode === 'replace'}
-              onChange={() => setMode('replace')}
-            />
-            <span>
-              Ganti isi PDF ini (URL tetap; memengaruhi {document.uses} konfigurasi yang memakainya)
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="qr-pdf-mode"
-              checked={mode === 'new'}
-              onChange={() => setMode('new')}
-            />
-            <span>Pakai PDF baru (URL baru; konfigurasi lain tidak berubah)</span>
-          </label>
-        </div>
       ) : null}
       <div className="space-y-1.5">
         <Label htmlFor="qr-pdf-file">Pilih PDF</Label>
@@ -147,37 +122,47 @@ export function PdfSourceField({
           {replacing ? 'Mengganti PDF mempertahankan URL yang sama. ' : ''}Maksimal 10 MB.
         </p>
       </div>
-      {!replaceOnly && (document === null || mode === 'new') ? (
-        <div className="space-y-1.5">
-          <Label htmlFor="qr-drive-source">Atau salin dari Google Drive</Label>
-          <div className="flex gap-2">
-            <Input
-              id="qr-drive-source"
-              placeholder="Link atau ID berkas Drive"
-              value={driveSource}
-              disabled={busy}
-              onChange={(event) => setDriveSource(event.target.value)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy || driveSource.trim() === ''}
-              onClick={() => void cloneFromDrive()}
-            >
-              {task === 'clone' ? <BusyLabel>Menyalin…</BusyLabel> : 'Salin dari Drive'}
-            </Button>
-          </div>
-          {task === 'clone' ? (
-            <p role="status" className="text-sm">
-              <BusyLabel>Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…</BusyLabel>
-            </p>
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            PDF disalin ke folder aplikasi dan dibagikan ke siapa saja yang punya link; berkas asli
-            tidak diubah. URL salinan tetap, isinya dapat diganti kemudian.
-          </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="qr-drive-source">
+          {replacing ? 'Atau ganti isi dari Google Drive' : 'Atau salin dari Google Drive'}
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            id="qr-drive-source"
+            placeholder="Link atau ID berkas Drive"
+            value={driveSource}
+            disabled={busy}
+            onChange={(event) => setDriveSource(event.target.value)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy || driveSource.trim() === ''}
+            onClick={() => {
+              if (replacing) setPending({ drive: driveSource.trim() });
+              else void cloneFromDrive(driveSource.trim());
+            }}
+          >
+            {task === 'clone' ? (
+              <BusyLabel>{replacing ? 'Mengganti…' : 'Menyalin…'}</BusyLabel>
+            ) : replacing ? (
+              'Ganti dari Drive'
+            ) : (
+              'Salin dari Drive'
+            )}
+          </Button>
         </div>
-      ) : null}
+        {task === 'clone' ? (
+          <p role="status" className="text-sm">
+            <BusyLabel>Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…</BusyLabel>
+          </p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {replacing
+            ? 'Isi PDF terpasang diganti dengan isi berkas Drive; URL tetap dan berkas asli tidak diubah.'
+            : 'PDF disalin ke folder aplikasi dan dibagikan ke siapa saja yang punya link; berkas asli tidak diubah. URL salinan tetap, isinya dapat diganti kemudian.'}
+        </p>
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -186,8 +171,7 @@ export function PdfSourceField({
       {document ? (
         <div className="space-y-1.5 rounded-md border p-3">
           <p className="text-sm">
-            <span className="font-medium">{document.name}</span> · dipakai {document.uses}{' '}
-            konfigurasi
+            <span className="font-medium">{document.name}</span>
           </p>
           <Label htmlFor="qr-pdf-link" className="text-xs text-muted-foreground">
             URL berbagi (isi QR)
@@ -221,8 +205,8 @@ export function PdfSourceField({
             <DialogTitle>{replacing ? 'Ganti PDF?' : 'Bagikan PDF lewat link?'}</DialogTitle>
             <DialogDescription>
               {replacing
-                ? `Isi PDF diganti dengan "${pending?.name ?? ''}"; URL tetap sama sehingga label yang sudah tercetak tetap valid, tetapi pemindai akan melihat dokumen baru. ${document?.uses ?? 0} konfigurasi yang memakai PDF ini ikut berubah.`
-                : `"${pending?.name ?? ''}" akan disimpan di Drive dan dibagikan kepada siapa saja yang punya link (hanya lihat). Siapa pun yang memindai QR atau memegang link dapat membukanya. Berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun.`}
+                ? `Isi PDF diganti dengan "${pendingName}"; URL tetap sama sehingga label yang sudah tercetak tetap valid, tetapi pemindai akan melihat dokumen baru.`
+                : `"${pendingName}" akan disimpan di Drive dan dibagikan kepada siapa saja yang punya link (hanya lihat). Siapa pun yang memindai QR atau memegang link dapat membukanya. Berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

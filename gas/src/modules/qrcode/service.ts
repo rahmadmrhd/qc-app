@@ -93,20 +93,9 @@ function qrDocumentMap_(): Map<string, QrDocumentRecord> {
   return new Map(listQrDocuments_().map((doc) => [doc.id, doc]));
 }
 
-function qrUsesMap_(designs: readonly QrDesignRecord[]): Map<string, number> {
-  const uses = new Map<string, number>();
-  for (const design of designs) {
-    if (design.linkSource === 'pdf' && design.documentId !== '') {
-      uses.set(design.documentId, (uses.get(design.documentId) ?? 0) + 1);
-    }
-  }
-  return uses;
-}
-
 export function toQrDesignDto_(
   design: NewQrDesignRecord,
   documents: ReadonlyMap<string, QrDocumentRecord>,
-  uses: ReadonlyMap<string, number>,
 ): QrDesignDto {
   const content = qrDesignContent_(design, documents);
   return {
@@ -116,7 +105,6 @@ export function toQrDesignDto_(
     link: content.link,
     documentId: design.documentId,
     documentName: documents.get(design.documentId)?.name ?? '',
-    documentUses: uses.get(design.documentId) ?? 0,
     subtitle: design.subtitle,
     footer: design.footer,
     logoFileId: design.logoFileId,
@@ -153,9 +141,8 @@ export function qrDesignSnapshot_(
 export function listQrDesignDtos_(): QrDesignDto[] {
   const designs = listQrDesigns_();
   const documents = qrDocumentMap_();
-  const uses = qrUsesMap_(designs);
   return designs
-    .map((design) => toQrDesignDto_(design, documents, uses))
+    .map((design) => toQrDesignDto_(design, documents))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title));
 }
 
@@ -163,7 +150,7 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
   const designs = listQrDesigns_();
   const design = designs.find((row) => row.id === input.id);
   if (!design) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
-  return toQrDesignDto_(design, qrDocumentMap_(), qrUsesMap_(designs));
+  return toQrDesignDto_(design, qrDocumentMap_());
 }
 
 function toQrPresetDto_(record: QrPresetRecord): QrPresetDto {
@@ -464,6 +451,21 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
       const message = 'PDF tidak dikenal; unggah ulang';
       throw appError_('VALIDATION', message, { documentId: message });
     }
+    // Satu PDF hanya untuk satu konfigurasi QR (dokumen yang sama boleh dilampirkan ke fitur lain, bukan QR lain).
+    // Data lama yang sudah berbagi PDF tetap dapat disimpan selama dokumennya tidak diubah.
+    if (
+      input.linkSource === 'pdf' &&
+      input.documentId !== existing?.documentId &&
+      designs.some(
+        (row) =>
+          row.id !== existing?.id &&
+          row.linkSource === 'pdf' &&
+          row.documentId === input.documentId,
+      )
+    ) {
+      const message = 'PDF ini sudah dipakai konfigurasi QR lain; unggah atau salin PDF tersendiri';
+      throw appError_('VALIDATION', message, { documentId: message });
+    }
     const now = nowIso_();
     const next: NewQrDesignRecord = {
       id: existing?.id ?? platform_().uuid(),
@@ -501,7 +503,7 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
         after: qrDesignSnapshot_(next, documents),
       });
       return {
-        dto: toQrDesignDto_(next, documents, qrUsesMap_([...designs, { ...next, rowNumber: 0 }])),
+        dto: toQrDesignDto_(next, documents),
         released: [],
       };
     }
@@ -514,15 +516,11 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
         const flagged: QrDesignRecord = { ...existing, overflow: next.overflow };
         updateQrDesign_(flagged);
         return {
-          dto: toQrDesignDto_(
-            flagged,
-            documents,
-            qrUsesMap_(designs.map((row) => (row.id === flagged.id ? flagged : row))),
-          ),
+          dto: toQrDesignDto_(flagged, documents),
           released: [],
         };
       }
-      return { dto: toQrDesignDto_(existing, documents, qrUsesMap_(designs)), released: [] };
+      return { dto: toQrDesignDto_(existing, documents), released: [] };
     }
     const saved: QrDesignRecord = { ...next, rowNumber: existing.rowNumber };
     updateQrDesign_(saved);
@@ -535,11 +533,7 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
       after,
     });
     return {
-      dto: toQrDesignDto_(
-        saved,
-        documents,
-        qrUsesMap_(designs.map((row) => (row.id === saved.id ? saved : row))),
-      ),
+      dto: toQrDesignDto_(saved, documents),
       released:
         existing.documentId !== '' && existing.documentId !== next.documentId
           ? [existing.documentId]
@@ -649,13 +643,8 @@ export function removeQrDesign_(input: QrDesignRefInput, actor: ActorRef): QrDes
   return { id: removed.id };
 }
 
-function toQrDocumentDto_(doc: QrDocumentRecord, uses: number): QrDocumentDto {
-  return { id: doc.id, name: doc.name, link: driveShareUrl(doc.driveId), uses };
-}
-
-function qrDocumentUses_(documentId: string): number {
-  return listQrDesigns_().filter((d) => d.linkSource === 'pdf' && d.documentId === documentId)
-    .length;
+function toQrDocumentDto_(doc: QrDocumentRecord): QrDocumentDto {
+  return { id: doc.id, name: doc.name, link: driveShareUrl(doc.driveId) };
 }
 
 /**
@@ -694,6 +683,18 @@ export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): Q
     throw appError_('VALIDATION', 'Ukuran PDF maksimal 10 MB');
   }
   const name = limitQrDocumentName_(info.name);
+  if (input.replaceDocumentId) {
+    // Ganti isi PDF yang ada (URL tetap) dengan isi berkas Drive; berkas asli tidak diubah.
+    const content = platform.driveReadExternalFile(sourceId, resourceKey);
+    const isPdf = content?.mime === 'application/pdf' && content.base64.startsWith('JVBERi0'); // "%PDF-"
+    if (!content || !isPdf) {
+      throw appError_('VALIDATION', 'Berkas Drive bukan PDF yang dapat dibaca');
+    }
+    return uploadQrPdfNow_(
+      { name, base64: content.base64, replaceDocumentId: input.replaceDocumentId },
+      actor,
+    );
+  }
   const driveId = platform.driveCopyFile(sourceId, ensureQrDocFolder_(), name, resourceKey);
   try {
     platform.driveShareAnyoneWithLink(driveId);
@@ -719,7 +720,7 @@ export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): Q
         before: null,
         after: { name, size: info.size, sourceFileId: sourceId },
       });
-      return toQrDocumentDto_({ ...record, rowNumber: 0 }, 0);
+      return toQrDocumentDto_({ ...record, rowNumber: 0 });
     });
   } catch (error) {
     platform.driveTrashFile(driveId);
@@ -769,7 +770,7 @@ function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDt
         before: { name: fresh.name, size: fresh.size },
         after: { name: input.name, size, replaced: true },
       });
-      return toQrDocumentDto_(updated, qrDocumentUses_(updated.id));
+      return toQrDocumentDto_(updated);
     });
   }
   const folderId = ensureQrDocFolder_();
@@ -798,7 +799,7 @@ function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDt
         before: null,
         after: { name: input.name, size, replaced: false },
       });
-      return toQrDocumentDto_({ ...record, rowNumber: 0 }, 0);
+      return toQrDocumentDto_({ ...record, rowNumber: 0 });
     });
   } catch (error) {
     platform.driveTrashFile(driveId);
@@ -888,7 +889,7 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
       );
     }
   }
-  return toQrDesignDto_(committed.record, committed.documents, qrUsesMap_(committed.designs));
+  return toQrDesignDto_(committed.record, committed.documents);
 }
 
 export function readQrFile_(input: QrFileInput): QrFileDto {

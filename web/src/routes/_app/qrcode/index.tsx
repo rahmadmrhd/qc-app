@@ -112,7 +112,6 @@ function QrCodesPage() {
         onEdit={(design) =>
           void navigate({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
         }
-        onDuplicate={(design) => void navigate({ to: '/qrcode/new', search: { from: design.id } })}
         onExport={setExporting}
         onDownload={(design, kind) => void download(design, kind)}
         onDelete={setDeleting}

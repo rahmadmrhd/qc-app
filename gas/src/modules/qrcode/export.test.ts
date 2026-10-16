@@ -85,6 +85,7 @@ test('status Berubah sejak ekspor setelah konfigurasi diubah; ekspor ulang kemba
   const changed = call('qredit@gmail.com', 'qrcodes.save', {
     ...body,
     id: design.id,
+    documentId: design.documentId,
     expectedUpdatedAt: design.updatedAt,
     title: 'Judul Baru',
   }).data;
@@ -195,6 +196,7 @@ test('mengubah gaya/bingkai setelah ekspor = Berubah sejak ekspor', () => {
   const changed = call('qredit@gmail.com', 'qrcodes.save', {
     ...body,
     id: design.id,
+    documentId: design.documentId,
     expectedUpdatedAt: design.updatedAt,
     style,
   }).data;

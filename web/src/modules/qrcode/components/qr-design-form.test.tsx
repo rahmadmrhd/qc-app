@@ -1,6 +1,6 @@
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { toPresetFormValues, toQrFormDefaults } from '../schemas';
@@ -265,4 +265,35 @@ test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {
   renderForm({ logoLibrary: ['x'] });
   expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
   expect(screen.queryByLabelText(/Unggah logo/i)).toBeNull();
+});
+
+test('ubah/duplikat: "Perbarui sesuai konfigurasi default" menyalin ulang bagian terpilih; gaya, ukuran, bingkai selalu ikut', async () => {
+  renderForm({
+    updatePresets: [preset('p1', 'Standar', 'PT Contoh')],
+    defaultValues: {
+      ...toQrFormDefaults(),
+      title: 'Lama',
+      footer: 'footer lama',
+      linkSource: 'url',
+      link: 'https://contoh.com',
+    },
+  });
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Perbarui sesuai konfigurasi default' }),
+  );
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(/selalu ikut/)).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Terapkan' })).toBeDisabled();
+  await userEvent.selectOptions(within(dialog).getByLabelText('Konfigurasi default'), 'p1');
+  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Footer' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
+  expect(screen.getByLabelText('Title')).toHaveValue('PT Contoh');
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('Sub');
+  expect(screen.getByLabelText('Footer')).toHaveValue('footer lama'); // tidak dicentang: dipertahankan
+  expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(18); // ukuran selalu ikut
+});
+
+test('tombol "Perbarui sesuai konfigurasi default" tidak ada tanpa daftar default (QR baru, mode default)', () => {
+  renderForm();
+  expect(screen.queryByRole('button', { name: 'Perbarui sesuai konfigurasi default' })).toBeNull();
 });

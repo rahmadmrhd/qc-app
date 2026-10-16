@@ -4,7 +4,6 @@ import {
   frameRangeMessage,
   qrDesignFormSchema,
   qrPresetFormSchema,
-  toDuplicateDefaults,
   toNewDesignFromPreset,
   toPresetFormValues,
   toQrFormDefaults,
@@ -68,39 +67,8 @@ test('toSaveQrDesignInput: id dan expectedUpdatedAt hanya untuk ubah; link dikos
   expect(toSaveQrDesignInput(pdf)).toMatchObject({ link: '', documentId: 'd1' });
 });
 
-test('defaults: kosong memakai layout bawaan; duplikat menyalin semuanya dengan judul "(salinan)" dalam batas 60', () => {
+test('defaults: kosong memakai layout bawaan', () => {
   expect(toQrFormDefaults().layout).toEqual(DEFAULT_QR_LAYOUT);
-  const design = {
-    id: 'q1',
-    title: 'x'.repeat(58),
-    linkSource: 'url' as const,
-    link: 'https://a.co',
-    documentId: '',
-    documentName: '',
-    documentUses: 0,
-    subtitle: 's',
-    footer: 'f',
-    logoFileId: 'logo-1',
-    layout: DEFAULT_QR_LAYOUT,
-    style: DEFAULT_QR_STYLE,
-    overflow: false,
-    exportStatus: 'current' as const,
-    exportedAt: 't',
-    exportedBy: 'a',
-    createdAt: 't',
-    createdBy: 'a',
-    updatedAt: 't',
-    updatedBy: 'a',
-  };
-  const copy = toDuplicateDefaults(design);
-  expect(copy.title.length).toBeLessThanOrEqual(60);
-  expect(copy.title.endsWith('(salinan)')).toBe(true);
-  expect(copy).toMatchObject({
-    link: 'https://a.co',
-    logoFileId: 'logo-1',
-    subtitle: 's',
-    footer: 'f',
-  });
 });
 
 test('skema gaya: bingkai di luar rentang atau jenis tak dikenal ditolak; gaya sah diterima', () => {
@@ -117,34 +85,11 @@ test('skema gaya: bingkai di luar rentang atau jenis tak dikenal ditolak; gaya s
   expect(qrDesignFormSchema.safeParse({ ...valid, style: badTitle }).success).toBe(false);
 });
 
-test('gaya dikirim ke server dan disalin saat duplikat; bawaan form = gaya bawaan', () => {
+test('gaya dikirim ke server; bawaan form = gaya bawaan', () => {
   const style = { ...DEFAULT_QR_STYLE, footer: { ...DEFAULT_QR_STYLE.footer, underline: true } };
   const parsed = qrDesignFormSchema.parse({ ...valid, style });
   expect(toSaveQrDesignInput(parsed).style).toEqual(style);
   expect(toQrFormDefaults().style).toEqual(DEFAULT_QR_STYLE);
-  const design = {
-    id: 'q1',
-    title: 'Dengan gaya',
-    linkSource: 'url' as const,
-    link: 'https://a.co',
-    documentId: '',
-    documentName: '',
-    documentUses: 0,
-    subtitle: '',
-    footer: '',
-    logoFileId: '',
-    layout: DEFAULT_QR_LAYOUT,
-    style,
-    overflow: false,
-    exportStatus: 'none' as const,
-    exportedAt: '',
-    exportedBy: '',
-    createdAt: 't',
-    createdBy: 'a',
-    updatedAt: 't',
-    updatedBy: 'a',
-  };
-  expect(toDuplicateDefaults(design).style).toEqual(style);
 });
 
 test('frameRangeMessage: pesan per isian bingkai', () => {

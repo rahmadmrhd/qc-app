@@ -12,7 +12,6 @@ const design = (over: Partial<QrDesignDto> = {}): QrDesignDto => ({
   link: 'https://contoh.com/a',
   documentId: '',
   documentName: '',
-  documentUses: 0,
   subtitle: '',
   footer: '',
   logoFileId: '',
@@ -30,7 +29,6 @@ const design = (over: Partial<QrDesignDto> = {}): QrDesignDto => ({
 });
 const handlers = () => ({
   onEdit: vi.fn(),
-  onDuplicate: vi.fn(),
   onExport: vi.fn(),
   onDownload: vi.fn(),
   onDelete: vi.fn(),
@@ -78,16 +76,16 @@ test('aksi menurut izin: view tidak melihat Ubah/Ekspor/Hapus; Unduh hanya bila 
   const { rerender } = render(
     <QrDesignsTable designs={[exported]} canEdit={false} canManage={false} busyId={null} {...h} />,
   );
-  expect(screen.queryByRole('button', { name: /Ubah|Duplikat|Ekspor|Hapus/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Ubah|Ekspor|Hapus/ })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Unduh PDF' }));
   expect(h.onDownload).toHaveBeenCalledWith(exported, 'pdf');
   await userEvent.click(screen.getByRole('button', { name: 'Unduh PNG' }));
   expect(h.onDownload).toHaveBeenCalledWith(exported, 'png');
-  // izin edit: ubah, duplikat, dan ekspor; hapus butuh izin kelola
+  // izin edit: ubah dan ekspor; hapus butuh izin kelola
   rerender(<QrDesignsTable designs={[design()]} canEdit canManage={false} busyId={null} {...h} />);
   expect(screen.queryByRole('button', { name: /Unduh/ })).toBeNull();
   expect(screen.getByRole('button', { name: 'Ubah Panduan USW' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Duplikat Panduan USW' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Duplikat/ })).toBeNull();
   expect(screen.getByRole('button', { name: 'Ekspor Panduan USW' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Hapus/ })).toBeNull();
 });
