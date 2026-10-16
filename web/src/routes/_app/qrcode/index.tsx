@@ -19,6 +19,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { fileQueryOptions } from '@/modules/files/queries';
 import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
+import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveBase64File } from '@/modules/qrcode/lib/download';
 import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
 import {
@@ -122,8 +123,10 @@ function QrCodesPage() {
           <DialogHeader>
             <DialogTitle>Hapus konfigurasi?</DialogTitle>
             <DialogDescription>
-              "{deleting?.title}" dihapus beserta berkas hasil ekspornya di Drive. Logo dan PDF
-              sumber tidak dihapus (label yang sudah tercetak tetap dapat dibuka).
+              "{deleting ? designLabel(deleting) : ''}" dihapus beserta berkas hasil ekspornya di
+              Drive. Logo bersama dan berkas PDF sumber tidak dihapus dari Drive, tetapi berbagi PDF
+              dicabut bila tidak dipakai konfigurasi lain (link pada label yang sudah tercetak tidak
+              lagi dapat dibuka publik).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
+import { designLabel } from '../lib/design-label';
 
 export interface ExportDialogProps {
   design: QrDesignDto;
@@ -43,7 +44,7 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
         <DialogHeader>
           <DialogTitle>{again ? 'Ekspor ulang ke Drive?' : 'Simpan hasil ke Drive?'}</DialogTitle>
           <DialogDescription>
-            Dua berkas dibuat untuk "{design.title}": PDF lembar 10 × 14 (300 × 420 mm, garis
+            Dua berkas dibuat untuk "{designLabel(design)}": PDF lembar 10 × 14 (300 × 420 mm, garis
             potong) dan PNG label 3 × 3 cm. Keduanya disimpan di folder Drive "QC App QR".
           </DialogDescription>
         </DialogHeader>

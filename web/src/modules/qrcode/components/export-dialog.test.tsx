@@ -76,3 +76,15 @@ test('ekspor ulang: waktu ekspor ditampilkan terformat (bukan ISO mentah)', () =
   expect(screen.queryByText(/2026-10-16T04:00:00.000Z/)).toBeNull();
   expect(screen.getByText(/m@x.com/)).toBeInTheDocument();
 });
+
+test('dialog ekspor menyebut title dan subtitle konfigurasi', () => {
+  render(
+    <ExportDialog
+      design={{ ...base, title: 'Panduan Instalasi', subtitle: 'USW PRO MAX 48 PoE' }}
+      open
+      onOpenChange={vi.fn()}
+      onConfirm={vi.fn()}
+    />,
+  );
+  expect(screen.getByText(/"Panduan Instalasi — USW PRO MAX 48 PoE"/)).toBeInTheDocument();
+});
