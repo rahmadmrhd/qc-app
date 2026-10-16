@@ -89,7 +89,7 @@ export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto
   }
 }
 
-const FILE_CACHE_TTL_SECONDS = 3600;
+const FILE_CACHE_TTL_SECONDS = 10800;
 /** CacheService membatasi 100 KB per nilai; isi berkas dipotong per 90 ribu karakter base64. */
 const FILE_CACHE_CHUNK = 90_000;
 const FILE_CACHE_MAX_CHUNKS = 6;
