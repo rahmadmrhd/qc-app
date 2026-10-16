@@ -48,6 +48,7 @@ test('mengisi customer (ketik), memilih tipe dari saran, mengatur qty, lalu meny
   const onSubmit = vi.fn().mockResolvedValue(undefined);
   render(
     <HandoverForm
+      title="Form task"
       mode="create"
       defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
       options={options}
@@ -73,6 +74,7 @@ test('tanpa baris: tidak mengirim dan menampilkan pesan di field baris', async (
   const onSubmit = vi.fn();
   render(
     <HandoverForm
+      title="Form task"
       mode="create"
       defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
       options={options}
@@ -89,6 +91,7 @@ test('tanpa baris: tidak mengirim dan menampilkan pesan di field baris', async (
 test('galat dari server ditampilkan per field (customerName dan lines)', () => {
   render(
     <HandoverForm
+      title="Form task"
       mode="create"
       defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
       options={options}
@@ -109,6 +112,7 @@ test('galat dari server ditampilkan per field (customerName dan lines)', () => {
 test('mode ubah: lokasi tampil sebagai teks (tidak dapat dipindah)', () => {
   render(
     <HandoverForm
+      title="Form task"
       mode="edit"
       locationName="Lokasi A"
       defaultValues={{
@@ -130,6 +134,7 @@ test('customer tidak wajib: task tanpa customer dapat disimpan dan petunjuk meny
   const onSubmit = vi.fn().mockResolvedValue(undefined);
   render(
     <HandoverForm
+      title="Form task"
       mode="create"
       defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
       options={options}

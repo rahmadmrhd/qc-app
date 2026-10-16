@@ -16,6 +16,7 @@ function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = 
   const view = render(
     <QueryClientProvider client={client}>
       <QrDesignForm
+        title="Form QR"
         defaultValues={toQrFormDefaults()}
         designs={[]}
         onSubmit={onSubmit}

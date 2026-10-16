@@ -48,7 +48,6 @@ function NewHandoverPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-semibold">Tambah task serah terima</h1>
       {writable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Tidak ada lokasi aktif terpilih yang boleh Anda ubah. Pilih lokasi di header.
@@ -61,6 +60,7 @@ function NewHandoverPage() {
         </p>
       ) : (
         <HandoverForm
+          title="Tambah task serah terima"
           mode="create"
           defaultValues={toHandoverFormDefaults(
             undefined,

@@ -59,8 +59,8 @@ function EditQrDesignPage() {
 
   return (
     <div className="max-w-5xl space-y-4">
-      <h1 className="text-2xl font-semibold">Ubah konfigurasi: {design.title}</h1>
       <QrDesignForm
+        title={`Ubah konfigurasi: ${design.title}`}
         canExport={can(me, 'qrcode', 'manage')}
         key={loadedAt}
         defaultValues={toQrFormDefaults(loaded)}

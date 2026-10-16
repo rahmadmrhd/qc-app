@@ -56,10 +56,8 @@ function NewQrDesignPage() {
 
   return (
     <div className="max-w-5xl space-y-4">
-      <h1 className="text-2xl font-semibold">
-        {source ? 'Duplikat konfigurasi' : 'Konfigurasi QR baru'}
-      </h1>
       <QrDesignForm
+        title={source ? 'Duplikat konfigurasi' : 'Konfigurasi QR baru'}
         canExport={can(me, 'qrcode', 'manage')}
         defaultValues={source ? toDuplicateDefaults(source) : toQrFormDefaults()}
         initialDocument={

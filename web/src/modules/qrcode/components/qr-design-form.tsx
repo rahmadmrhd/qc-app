@@ -3,6 +3,7 @@ import type { QrDesignDto, QrDocumentDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
+import { FormHeader } from '@/components/form-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,8 @@ import { SheetPreviewDialog } from './sheet-preview-dialog';
 import { TextStyleToolbar } from './text-style-toolbar';
 
 export interface QrDesignFormProps {
+  /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
+  title: string;
   defaultValues: QrFormInput;
   /** PDF sumber yang sudah terpasang (saat ubah/duplikat). */
   initialDocument?: QrDocumentDto | null;
@@ -58,6 +61,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function QrDesignForm({
+  title,
   defaultValues,
   initialDocument = null,
   designs,
@@ -97,8 +101,38 @@ export function QrDesignForm({
         void form.handleSubmit();
       }}
     >
-      <div className="lg:col-span-2">
-        <LabelStatusAlerts status={labelStatus} />
+      <div className="contents">
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(submitting) => (
+            <FormHeader
+              className="lg:col-span-2"
+              title={title}
+              onCancel={onCancel}
+              submitting={submitting}
+              onSubmitClick={() => (exportAfterRef.current = false)}
+              extra={
+                canExport ? (
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    disabled={submitting || labelStatus?.overflow === true}
+                    title={
+                      labelStatus?.overflow
+                        ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
+                        : undefined
+                    }
+                    onClick={() => (exportAfterRef.current = true)}
+                  >
+                    Simpan dan ekspor
+                  </Button>
+                ) : null
+              }
+            />
+          )}
+        </form.Subscribe>
+        <div className="lg:col-span-2">
+          <LabelStatusAlerts status={labelStatus} />
+        </div>
       </div>
       <div className="space-y-4">
         <Section title="Isi label">
@@ -404,42 +438,9 @@ export function QrDesignForm({
             {submitError}
           </p>
         ) : null}
-        <div className="flex flex-wrap gap-2">
-          <form.Subscribe selector={(state) => state.isSubmitting}>
-            {(submitting) => (
-              <>
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  onClick={() => (exportAfterRef.current = false)}
-                >
-                  Simpan
-                </Button>
-                {canExport ? (
-                  <Button
-                    type="submit"
-                    variant="secondary"
-                    disabled={submitting || labelStatus?.overflow === true}
-                    title={
-                      labelStatus?.overflow
-                        ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
-                        : undefined
-                    }
-                    onClick={() => (exportAfterRef.current = true)}
-                  >
-                    Simpan dan ekspor
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </form.Subscribe>
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Batal
-          </Button>
-        </div>
       </div>
 
-      <aside className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+      <aside className="space-y-3 lg:sticky lg:top-36 lg:self-start">
         <form.Subscribe selector={(state) => state.values}>
           {(values) => (
             <PreviewPane

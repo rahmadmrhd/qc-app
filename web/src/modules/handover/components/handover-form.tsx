@@ -2,7 +2,7 @@ import type { HandoverOptionsDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { FieldError } from '@/components/field-error';
-import { Button } from '@/components/ui/button';
+import { FormHeader } from '@/components/form-header';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { LocationField } from '@/modules/location/location-field';
@@ -12,6 +12,8 @@ import { CustomerCombobox } from './customer-combobox';
 import { ItemLinesField } from './item-lines-field';
 
 export interface HandoverFormProps {
+  /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
+  title: string;
   mode: 'create' | 'edit';
   defaultValues: HandoverFormInput;
   options: HandoverOptionsDto;
@@ -32,6 +34,7 @@ export function HandoverForm({
   options,
   locationName,
   createItemLink,
+  title,
   submitError,
   fieldErrors,
   onSubmit,
@@ -54,6 +57,11 @@ export function HandoverForm({
         void form.handleSubmit();
       }}
     >
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(isSubmitting) => (
+          <FormHeader title={title} onCancel={onCancel} submitting={isSubmitting} />
+        )}
+      </form.Subscribe>
       <section className="space-y-3 rounded-lg border p-4">
         <h2 className="text-base font-semibold">Informasi task</h2>
         <form.Field name="locationId">
@@ -135,18 +143,6 @@ export function HandoverForm({
           {submitError}
         </p>
       ) : null}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Menyimpan…' : 'Simpan'}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
     </form>
   );
 }

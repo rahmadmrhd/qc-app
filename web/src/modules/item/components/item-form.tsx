@@ -4,7 +4,7 @@ import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { FieldError } from '@/components/field-error';
-import { Button } from '@/components/ui/button';
+import { FormHeader } from '@/components/form-header';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,8 @@ import { ImageGalleryField } from './image-gallery-field';
 import { StickerListField } from './sticker-list-field';
 
 export interface ItemFormProps {
+  /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
+  title: string;
   /** Merk yang sudah ada, untuk saran saat mengetik; merk yang belum ada dibuat saat item disimpan. */
   brands?: readonly BrandDto[];
   defaultValues: ItemFormInput;
@@ -79,6 +81,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 export function ItemForm({
   brands = [],
   defaultValues,
+  title,
   submitError,
   fieldErrors,
   onSubmit,
@@ -109,6 +112,11 @@ export function ItemForm({
         void form.handleSubmit();
       }}
     >
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(isSubmitting) => (
+          <FormHeader title={title} onCancel={onCancel} submitting={isSubmitting} />
+        )}
+      </form.Subscribe>
       <Section title="Informasi dasar">
         <form.Field name="brand">
           {(field) => (
@@ -284,18 +292,6 @@ export function ItemForm({
           {submitError}
         </p>
       ) : null}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Menyimpan…' : 'Simpan'}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
     </form>
   );
 }
