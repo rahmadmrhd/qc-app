@@ -4,6 +4,7 @@ import type { ItemStatus } from '@shared/rpc';
 
 export const BRANDS_TABLE: TableSchema = {
   sheetName: 'brands',
+  sharedCache: true,
   columns: [
     'id',
     'external_id',

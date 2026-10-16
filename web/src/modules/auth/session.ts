@@ -1,6 +1,8 @@
 import type { AuthErrorCode } from '@shared/rpc';
 
 const TOKEN_STORAGE_KEY = 'qc.session';
+/** Cache query tersimpan (lihat app/query-persist); dibuang bersama token saat keluar/sesi berakhir. */
+export const PERSISTED_CACHE_KEY = 'qc.cache.v1';
 
 export interface SessionState {
   token: string | null;
@@ -14,7 +16,10 @@ let state: SessionState = { token: null, loginUrl: null, authError: null, authEr
 function persist(token: string | null): void {
   try {
     if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+    else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(PERSISTED_CACHE_KEY);
+    }
   } catch {
     // Storage diblokir (mode privat / kebijakan browser) — sesi tetap berjalan di memori.
   }

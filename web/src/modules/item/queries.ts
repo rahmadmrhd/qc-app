@@ -1,5 +1,6 @@
-import type { SaveItemInput, SetItemStatusInput } from '@shared/rpc';
+import type { ItemDto, ItemSummaryDto, SaveItemInput, SetItemStatusInput } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { markStale, upsertInList } from '@/lib/query-cache';
 import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
 import { brandKeys } from '@/modules/brand/keys';
@@ -24,18 +25,21 @@ export function itemQueryOptions(id: string) {
   });
 }
 
-/** Perubahan item memuat ulang daftar dan detail, dan memperbarui Log Audit. */
-function useItemMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+const compareItems = (a: ItemSummaryDto, b: ItemSummaryDto) =>
+  a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model);
+
+/**
+ * Hasil simpan dipasang langsung ke daftar dan detail (tanpa memuat ulang dari server, sehingga navigasi setelah simpan
+ * tidak menunggu RPC lagi). Merk dan Log Audit ditandai basi (jumlah item per merk bisa berubah; merk baru bisa dibuat).
+ */
+function useItemMutation<TInput>(mutationFn: (input: TInput) => Promise<ItemDto>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: itemKeys.all }),
-        // Simpan item dapat membuat merk baru; jumlah item per merk juga berubah.
-        queryClient.invalidateQueries({ queryKey: brandKeys.all }),
-        queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
-      ]);
+    onSuccess: (saved) => {
+      markStale(queryClient, brandKeys.all, accessKeys.audit);
+      upsertInList<ItemSummaryDto>(queryClient, itemKeys.list, saved, compareItems);
+      queryClient.setQueryData(itemKeys.one(saved.id), saved);
     },
   });
 }

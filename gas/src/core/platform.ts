@@ -9,6 +9,12 @@ export interface SheetLike {
   getLastRow(): number;
   getLastColumn(): number;
   getRange(row: number, column: number, numRows: number, numColumns: number): RangeLike;
+  /** Notasi A1, mis. `A:K` = seluruh kolom A sampai K (termasuk baris yang akan datang). */
+  getRange(a1Notation: string): RangeLike;
+  /** Seluruh data sheet (dari A1 sampai sel terakhir berisi) dalam satu panggilan; sheet kosong = `[['']]`. */
+  getDataRange(): RangeLike;
+  getMaxRows(): number;
+  insertRowsAfter(afterPosition: number, howMany: number): unknown;
   appendRow(values: unknown[]): unknown;
   deleteRow(row: number): unknown;
 }
@@ -87,4 +93,46 @@ export function setPlatform_(platform: Platform | null): void {
 export function platform_(): Platform {
   if (!currentPlatform_) throw new Error('Platform belum diinisialisasi');
   return currentPlatform_;
+}
+
+/**
+ * Cache baca tabel selama SATU permintaan (RPC/sinkronisasi). Tiap panggilan Sheets di Apps Script berbiaya
+ * ratusan ms dan handler sering membaca tabel yang sama berulang kali. Di luar `withRequestCache_` (mis. tes yang
+ * memanggil repo langsung) cache nonaktif. Dibersihkan saat masuk/keluar lock dan pada setiap tulis (lihat core/db).
+ */
+let requestCache_: Map<string, unknown> | null = null;
+
+export function withRequestCache_<T>(fn: () => T): T {
+  // Bersarang (mis. item batch di dalam permintaan batch): memakai cache luar agar pembacaan dibagi.
+  if (requestCache_) return fn();
+  const previous = requestCache_;
+  requestCache_ = new Map();
+  try {
+    return fn();
+  } finally {
+    requestCache_ = previous;
+  }
+}
+
+export function requestCache_get_(key: string): unknown {
+  return requestCache_?.get(key);
+}
+
+export function requestCache_set_(key: string, value: unknown): void {
+  requestCache_?.set(key, value);
+}
+
+export function requestCache_delete_(key: string): void {
+  requestCache_?.delete(key);
+}
+
+/**
+ * Membuang cache ISI tabel (dipanggil platform saat lock diambil/dilepas agar pembacaan di dalam lock selalu segar).
+ * Cache sheet+header (kunci "open:") dipertahankan: header hanya berubah lewat openTable_ yang memperbaruinya sendiri.
+ */
+export function clearRequestCache_(): void {
+  if (!requestCache_) return;
+  for (const key of [...requestCache_.keys()]) {
+    if (!key.startsWith('open:')) requestCache_.delete(key);
+  }
 }

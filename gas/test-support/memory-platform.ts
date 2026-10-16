@@ -5,6 +5,8 @@ import type {
   SheetLike,
   SpreadsheetLike,
 } from '@gas/core/platform';
+import { clearRequestCache_ } from '@gas/core/platform';
+import { finishLockWrites_ } from '@gas/core/table-cache';
 import { base64ByteLength } from '@shared/files';
 
 const NUMBER_LIKE = /^[+-]?d+(.d+)?([eE][+-]?d+)?$/;
@@ -27,6 +29,11 @@ export class MemorySheet implements SheetLike {
   rows: unknown[][];
   /** Sel ("baris,kolom", 1-based) yang berformat teks. */
   private readonly textCells = new Set<string>();
+  /** Kolom (1-based) yang seluruhnya berformat teks lewat notasi A1 (`A:K`). */
+  private readonly textColumns = new Set<number>();
+  maxRows = 1000;
+  /** Hitungan panggilan (untuk tes efisiensi). */
+  calls = 0;
 
   constructor(rows: unknown[][] = []) {
     this.rows = rows;
@@ -40,7 +47,55 @@ export class MemorySheet implements SheetLike {
     return this.rows.reduce((max, row) => Math.max(max, row.length), 0);
   }
 
-  getRange(row: number, column: number, numRows: number, numColumns: number): RangeLike {
+  getMaxRows(): number {
+    return Math.max(this.maxRows, this.rows.length);
+  }
+
+  insertRowsAfter(_afterPosition: number, howMany: number): void {
+    this.maxRows = this.getMaxRows() + howMany;
+  }
+
+  getDataRange(): RangeLike {
+    if (this.rows.length === 0) return this.getRange(1, 1, 1, 1);
+    return this.getRange(1, 1, this.rows.length, this.getLastColumn());
+  }
+
+  getRange(a1: string): RangeLike;
+  getRange(row: number, column: number, numRows: number, numColumns: number): RangeLike;
+  getRange(
+    rowOrA1: number | string,
+    column?: number,
+    numRows?: number,
+    numColumns?: number,
+  ): RangeLike {
+    if (typeof rowOrA1 === 'string') {
+      const match = /^([A-Z]+):([A-Z]+)$/.exec(rowOrA1);
+      if (!match) throw new Error(`Notasi A1 tidak didukung: ${rowOrA1}`);
+      const toIndex = (letters: string) =>
+        [...letters].reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0);
+      const from = toIndex(match[1] ?? 'A');
+      const to = toIndex(match[2] ?? 'A');
+      return {
+        getValues: () => [],
+        setValues: () => undefined,
+        setNumberFormat: (format: string) => {
+          for (let c = from; c <= to; c++) {
+            if (format === '@') this.textColumns.add(c);
+            else this.textColumns.delete(c);
+          }
+          return undefined;
+        },
+      };
+    }
+    this.calls++;
+    const row = rowOrA1;
+    const col = column ?? 1;
+    const rowsCount = numRows ?? 1;
+    const colsCount = numColumns ?? 1;
+    return this.rangeAt(row, col, rowsCount, colsCount);
+  }
+
+  private rangeAt(row: number, column: number, numRows: number, numColumns: number): RangeLike {
     return {
       setNumberFormat: (format: string) => {
         for (let r = 0; r < numRows; r++) {
@@ -70,7 +125,7 @@ export class MemorySheet implements SheetLike {
           line.forEach((value, c) => {
             target[column - 1 + c] = storeCell(
               value,
-              this.textCells.has(`${row + r},${column + c}`),
+              this.textCells.has(`${row + r},${column + c}`) || this.textColumns.has(column + c),
             );
           });
           this.rows[index] = target;
@@ -80,7 +135,8 @@ export class MemorySheet implements SheetLike {
   }
 
   appendRow(values: unknown[]): void {
-    this.rows.push(values.map((value) => storeCell(value, false)));
+    this.calls++;
+    this.rows.push(values.map((value, index) => storeCell(value, this.textColumns.has(index + 1))));
   }
 
   deleteRow(row: number): void {
@@ -216,9 +272,12 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       // LockService asli tidak reentrant: kunci bersarang di produksi menunggu dirinya sendiri hingga habis waktu.
       if (locked) throw new Error('withLock bersarang: LockService tidak reentrant');
       locked = true;
+      clearRequestCache_();
       try {
         return fn();
       } finally {
+        clearRequestCache_();
+        finishLockWrites_();
         locked = false;
       }
     },

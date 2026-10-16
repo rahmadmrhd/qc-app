@@ -1,5 +1,6 @@
 import type { Platform, SpreadsheetLike } from './platform';
-import { setPlatform_ } from './platform';
+import { clearRequestCache_, setPlatform_ } from './platform';
+import { finishLockWrites_ } from './table-cache';
 
 function stripBase64Padding_(value: string): string {
   return value.replace(/=+$/, '');
@@ -47,10 +48,15 @@ function createGasPlatform_(): Platform {
     withLock<T>(fn: () => T): T {
       const lock = LockService.getScriptLock();
       lock.waitLock(20000);
+      // Pembacaan di dalam lock harus segar: tulisan eksekusi lain sebelum lock diambil tidak boleh tertutup cache.
+      clearRequestCache_();
       try {
         return fn();
       } finally {
+        clearRequestCache_();
         SpreadsheetApp.flush();
+        // Versi cache tabel diganti SETELAH flush dan sebelum lock dilepas (lihat core/table-cache).
+        finishLockWrites_();
         lock.releaseLock();
       }
     },
