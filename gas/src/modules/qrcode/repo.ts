@@ -47,6 +47,7 @@ export const QR_DOCUMENTS_TABLE: TableSchema = {
 /** Satu baris (id "default"): nilai awal QR baru dan pustaka logo. */
 export const QR_DEFAULTS_TABLE: TableSchema = {
   sheetName: 'qr_defaults',
+  sharedCache: true,
   columns: [
     'id',
     'title',
@@ -78,6 +79,7 @@ export type NewQrDefaultsRecord = Omit<QrDefaultsRecord, 'rowNumber'>;
 /** Konfigurasi default (banyak): nilai awal QR baru. */
 export const QR_PRESETS_TABLE: TableSchema = {
   sheetName: 'qr_presets',
+  sharedCache: true,
   columns: [
     'id',
     'name',

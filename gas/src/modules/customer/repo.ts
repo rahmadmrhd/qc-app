@@ -4,6 +4,7 @@ import type { ItemStatus } from '@shared/rpc';
 
 export const CUSTOMERS_TABLE: TableSchema = {
   sheetName: 'customers',
+  sharedCache: true,
   columns: ['id', 'name', 'key', 'status', 'created_at', 'updated_at', 'updated_by'],
 };
 

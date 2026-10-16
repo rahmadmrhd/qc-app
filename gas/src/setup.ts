@@ -1,5 +1,5 @@
 import { missingConfigKeys_, syncToken_ } from '@gas/core/config';
-import { openTable_ } from '@gas/core/db';
+import { applyTextFormats_, openTable_, TEXT_FORMATS_PROPERTY } from '@gas/core/db';
 import { platform_ } from '@gas/core/platform';
 import {
   AUDIT_TABLE,
@@ -49,7 +49,7 @@ export function runSetup_(): string {
     lines.push('Pembuatan sheet dilewati karena SPREADSHEET_ID belum diset.');
     return lines.join('\n');
   }
-  for (const table of [
+  const tables = [
     USERS_TABLE,
     ROLES_TABLE,
     AUDIT_TABLE,
@@ -65,10 +65,15 @@ export function runSetup_(): string {
     QR_DOCUMENTS_TABLE,
     QR_DEFAULTS_TABLE,
     QR_PRESETS_TABLE,
-  ]) {
+  ];
+  for (const table of tables) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
   }
+  // Seluruh kolom diformat teks sekali di sini; sesudahnya tulis tidak perlu memformat per baris (lebih cepat).
+  for (const table of tables) applyTextFormats_(table);
+  platform_().setProperty(TEXT_FORMATS_PROPERTY, '1');
+  lines.push('Format teks kolom diterapkan pada semua sheet.');
   const presets = migrateQrDefaults_();
   if (presets > 0) {
     lines.push('qr_presets: default tunggal lama dimigrasi menjadi konfigurasi default "Default".');

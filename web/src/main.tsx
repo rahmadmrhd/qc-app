@@ -5,14 +5,18 @@ import { createRoot } from 'react-dom/client';
 import { readBoot, resolveInitialSession } from '@/app/boot';
 import { restoreHashFromTop, syncTopUrl } from '@/app/gas-location';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
+import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
 import { readLoginNonce } from '@/modules/auth/nonce';
-import { clearToken, initSession, readStoredToken } from '@/modules/auth/session';
+import { clearToken, getToken, initSession, readStoredToken } from '@/modules/auth/session';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
 async function start() {
   initSession(resolveInitialSession(readBoot(), readStoredToken(), readLoginNonce()));
+  // Cache tersimpan dipasang SEBELUM router dibuat: halaman pertama tampil instan dari data lama (dimuat ulang di latar).
+  restoreQueryCache(queryClient, getToken());
+  startQueryPersistence(queryClient);
   await restoreHashFromTop();
 
   const router = createAppRouter(queryClient);

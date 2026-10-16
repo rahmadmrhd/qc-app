@@ -93,3 +93,17 @@ test('listAudit_ tidak jatuh bila sel before/after rusak atau bukan objek', () =
     [null, null],
   ]);
 });
+
+test('listAudit_ tidak membaca seluruh log: kolom ringan semua baris, before/after hanya untuk baris di halaman', () => {
+  for (let i = 0; i < 120; i++) {
+    const ts = `2026-10-08T${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00.000Z`;
+    add(ts, 'user.update', `u${i}@gmail.com`, { name: 'lama' }, { name: `baru-${i}` });
+  }
+  const sheet = platform.db.sheet('audit_log');
+  const before = sheet.calls;
+  const page = listAudit_({ page: 1, action: '', query: '' });
+  // hanya sekian panggilan: jumlah baris + kolom ringan + kolom before/after halaman (bukan satu pembacaan penuh)
+  expect(sheet.calls - before).toBeLessThanOrEqual(3);
+  expect(page.entries).toHaveLength(50);
+  expect(page.entries[0]).toMatchObject({ target: 'u119@gmail.com', after: { name: 'baru-119' } });
+});
