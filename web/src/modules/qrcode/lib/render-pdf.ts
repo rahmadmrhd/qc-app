@@ -1,6 +1,13 @@
 import fontkit from '@pdf-lib/fontkit';
 import type { LabelLayout } from '@shared/qrcode';
-import { framePolylines, LABEL_MM, PT_PER_MM, SHEET, sheetCells } from '@shared/qrcode';
+import {
+  frameDashPattern,
+  framePolylines,
+  LABEL_MM,
+  PT_PER_MM,
+  SHEET,
+  sheetCells,
+} from '@shared/qrcode';
 import type { PDFFont } from 'pdf-lib';
 import { LineCapStyle, PDFDocument, rgb } from 'pdf-lib';
 
@@ -114,20 +121,26 @@ async function buildLabelPdf(
       if (element.underline) rule(sizeMm * 0.15);
       if (element.strike) rule(-sizeMm * 0.3);
     } else if (element.kind === 'frame') {
-      // Goresan ruas demi ruas dengan ujung membulat: sambungan tampak membulat tanpa jalur kurva.
+      // Satu jalur utuh per goresan (bukan ruas lepas) agar pola putus-putus/titik berlanjut di sudut.
+      const dash = frameDashPattern(element.line, element.thicknessMm).map((mm) => mm * PT_PER_MM);
       for (const line of framePolylines(element)) {
-        for (let i = 1; i < line.length; i++) {
-          const from = line[i - 1];
-          const to = line[i];
-          if (!from || !to) continue;
-          page.drawLine({
-            start: { x: from.x * PT_PER_MM, y: side - from.y * PT_PER_MM },
-            end: { x: to.x * PT_PER_MM, y: side - to.y * PT_PER_MM },
-            thickness: element.thicknessMm * PT_PER_MM,
-            color: black,
-            lineCap: LineCapStyle.Round,
-          });
-        }
+        const [first, ...rest] = line;
+        if (!first || rest.length === 0) continue;
+        const closed = rest.length > 1 && rest.at(-1)?.x === first.x && rest.at(-1)?.y === first.y;
+        const points = closed ? rest.slice(0, -1) : rest;
+        const path =
+          `M ${first.x * PT_PER_MM} ${first.y * PT_PER_MM} ` +
+          points.map((point) => `L ${point.x * PT_PER_MM} ${point.y * PT_PER_MM}`).join(' ') +
+          (closed ? ' Z' : '');
+        // Koordinat jalur SVG berarah ke bawah dari pojok kiri atas label.
+        page.drawSvgPath(path, {
+          x: 0,
+          y: side,
+          borderColor: black,
+          borderWidth: element.thicknessMm * PT_PER_MM,
+          borderLineCap: element.line === 'dashed' ? LineCapStyle.Butt : LineCapStyle.Round,
+          ...(dash.length > 0 ? { borderDashArray: dash } : {}),
+        });
       }
     }
   }

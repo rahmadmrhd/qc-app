@@ -30,6 +30,14 @@ export interface QrDesignFormProps {
   onCancel: () => void;
 }
 
+/** Kunci ukuran font pada tata letak untuk tiap bagian teks (isiannya ada di bagian teks itu sendiri). */
+const TEXT_SIZE_KEY = {
+  title: 'titleSize',
+  subtitle: 'subtitleSize',
+  footer: 'footerSize',
+} as const;
+const TEXT_SIZE_KEYS: readonly string[] = Object.values(TEXT_SIZE_KEY);
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3 rounded-lg border p-4">
@@ -88,6 +96,46 @@ export function QrDesignForm({
                     onChange={(event) => field.handleChange(event.target.value)}
                   />
                   <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
+                  <form.Subscribe selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}>
+                    {(size) => {
+                      const sizeKey = TEXT_SIZE_KEY[name];
+                      const part =
+                        name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer';
+                      const message = layoutRangeMessage(sizeKey, size);
+                      return (
+                        <div className="flex items-center gap-2">
+                          <Label
+                            htmlFor={`qr-size-${name}`}
+                            className="text-xs text-muted-foreground"
+                          >
+                            {`Ukuran ${part} (pt)`}
+                          </Label>
+                          <Input
+                            id={`qr-size-${name}`}
+                            type="number"
+                            className="h-8 w-24"
+                            step={QR_LAYOUT_RANGES[sizeKey].step}
+                            min={QR_LAYOUT_RANGES[sizeKey].min}
+                            max={QR_LAYOUT_RANGES[sizeKey].max}
+                            aria-invalid={message ? true : undefined}
+                            value={Number.isNaN(size) ? '' : size}
+                            onChange={(event) =>
+                              form.setFieldValue('layout', {
+                                ...form.state.values.layout,
+                                [sizeKey]:
+                                  event.target.value === ''
+                                    ? Number.NaN
+                                    : Number(event.target.value),
+                              })
+                            }
+                          />
+                          {message ? (
+                            <span className="text-sm text-destructive">{message}</span>
+                          ) : null}
+                        </div>
+                      );
+                    }}
+                  </form.Subscribe>
                   <form.Subscribe selector={(state) => state.values.style[name]}>
                     {(textStyle) => (
                       <TextStyleToolbar
@@ -219,39 +267,67 @@ export function QrDesignForm({
                   ))}
                 </div>
                 {frame.kind !== 'none' ? (
+                  <div role="radiogroup" aria-label="Gaya garis" className="flex flex-wrap gap-4">
+                    {(
+                      [
+                        ['solid', 'Solid'],
+                        ['dashed', 'Putus-putus'],
+                        ['dotted', 'Titik-titik'],
+                      ] as const
+                    ).map(([line, label]) => (
+                      <label key={line} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="qr-frame-line"
+                          checked={frame.line === line}
+                          onChange={() =>
+                            form.setFieldValue('style', {
+                              ...form.state.values.style,
+                              frame: { ...form.state.values.style.frame, line },
+                            })
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+                {frame.kind !== 'none' ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {QR_FRAME_KEYS.map((key) => {
-                      const range = QR_FRAME_RANGES[key];
-                      const id = `qr-frame-${key}`;
-                      const message = frameRangeMessage(key, frame[key]);
-                      return (
-                        <div key={key} className="space-y-1.5">
-                          <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
-                          <Input
-                            id={id}
-                            type="number"
-                            step={range.step}
-                            min={range.min}
-                            max={range.max}
-                            aria-invalid={message ? true : undefined}
-                            value={Number.isNaN(frame[key]) ? '' : frame[key]}
-                            onChange={(event) =>
-                              form.setFieldValue('style', {
-                                ...form.state.values.style,
-                                frame: {
-                                  ...form.state.values.style.frame,
-                                  [key]:
-                                    event.target.value === ''
-                                      ? Number.NaN
-                                      : Number(event.target.value),
-                                },
-                              })
-                            }
-                          />
-                          {message ? <p className="text-sm text-destructive">{message}</p> : null}
-                        </div>
-                      );
-                    })}
+                    {QR_FRAME_KEYS.filter((key) => key !== 'arm' || frame.kind === 'corners').map(
+                      (key) => {
+                        const range = QR_FRAME_RANGES[key];
+                        const id = `qr-frame-${key}`;
+                        const message = frameRangeMessage(key, frame[key]);
+                        return (
+                          <div key={key} className="space-y-1.5">
+                            <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
+                            <Input
+                              id={id}
+                              type="number"
+                              step={range.step}
+                              min={range.min}
+                              max={range.max}
+                              aria-invalid={message ? true : undefined}
+                              value={Number.isNaN(frame[key]) ? '' : frame[key]}
+                              onChange={(event) =>
+                                form.setFieldValue('style', {
+                                  ...form.state.values.style,
+                                  frame: {
+                                    ...form.state.values.style.frame,
+                                    [key]:
+                                      event.target.value === ''
+                                        ? Number.NaN
+                                        : Number(event.target.value),
+                                  },
+                                })
+                              }
+                            />
+                            {message ? <p className="text-sm text-destructive">{message}</p> : null}
+                          </div>
+                        );
+                      },
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -264,7 +340,7 @@ export function QrDesignForm({
             {(field) => (
               <div className="space-y-2">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {QR_LAYOUT_KEYS.map((key) => {
+                  {QR_LAYOUT_KEYS.filter((key) => !TEXT_SIZE_KEYS.includes(key)).map((key) => {
                     const range = QR_LAYOUT_RANGES[key];
                     const id = `qr-layout-${key}`;
                     return (

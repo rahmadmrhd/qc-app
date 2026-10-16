@@ -1,5 +1,15 @@
 import { expect, test } from 'bun:test';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, isRenderableLabelText, layoutLabel } from './qrcode';
+import {
+  clampQrStyle,
+  DEFAULT_QR_LAYOUT,
+  DEFAULT_QR_STYLE,
+  frameDashPattern,
+  isQrStyle,
+  isRenderableLabelText,
+  layoutLabel,
+  QR_FRAME_LINES,
+  qrContentHash,
+} from './qrcode';
 
 const measure = (text: string, sizePt: number) => text.length * sizePt * 0.2;
 const base = {
@@ -77,4 +87,48 @@ test('frameTight: bingkai lebih dekat dari ~2 modul ke QR (quiet zone hilang) di
   const roomy = layoutLabel({ ...base, style: framed({ gap: 2 }) }, measure);
   expect(roomy.frameTight).toBe(false);
   expect(layoutLabel({ ...base }, measure).frameTight).toBe(false);
+});
+
+test('gaya garis bingkai: solid, putus-putus, titik-titik; bawaan solid; nilai tak dikenal dipulihkan ke solid', () => {
+  expect(QR_FRAME_LINES).toEqual(['solid', 'dashed', 'dotted']);
+  expect(DEFAULT_QR_STYLE.frame.line).toBe('solid');
+  expect(
+    isQrStyle({ ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, line: 'dashed' } }),
+  ).toBe(true);
+  expect(
+    isQrStyle({ ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, line: 'zigzag' } }),
+  ).toBe(false);
+  const { line: _omit, ...withoutLine } = DEFAULT_QR_STYLE.frame;
+  expect(isQrStyle({ ...DEFAULT_QR_STYLE, frame: withoutLine })).toBe(false);
+  // data tersimpan lama tanpa "line" tetap terbaca (bawaan solid)
+  expect(clampQrStyle({ frame: { kind: 'box', thickness: 0.5 } }).frame.line).toBe('solid');
+  expect(clampQrStyle({ frame: { line: 'zigzag' } }).frame.line).toBe('solid');
+  expect(clampQrStyle({ frame: { line: 'dotted' } }).frame.line).toBe('dotted');
+});
+
+test('elemen bingkai membawa gaya garis; pola putus-putus mengikuti tebal garis; hash ikut berubah', () => {
+  const dashed = framed({ kind: 'box', line: 'dashed', thickness: 0.4 });
+  const el = layoutLabel({ ...base, style: dashed }, measure).elements.find(
+    (e) => e.kind === 'frame',
+  );
+  expect(el).toMatchObject({ line: 'dashed' });
+  expect(frameDashPattern('solid', 0.4)).toEqual([]);
+  const dash = frameDashPattern('dashed', 0.4);
+  expect(dash).toHaveLength(2);
+  expect(dash[0]).toBeGreaterThan(dash[1] as number); // garis lebih panjang daripada celah
+  const dot = frameDashPattern('dotted', 0.4);
+  expect(dot[0]).toBeLessThan(0.05); // titik hampir nol panjangnya (digambar bulat oleh ujung garis)
+  expect(dot[1]).toBeGreaterThan(0.4);
+  const content = {
+    linkSource: 'url' as const,
+    link: 'https://a.co',
+    title: 'T',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+  };
+  expect(qrContentHash({ ...content, style: framed({ kind: 'box', line: 'dashed' }) })).not.toBe(
+    qrContentHash({ ...content, style: framed({ kind: 'box', line: 'solid' }) }),
+  );
 });

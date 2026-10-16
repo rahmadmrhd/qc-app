@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, layoutLabel, PT_PER_MM } from '@shared/qrcode';
-import { PDFDocument } from 'pdf-lib';
+import { decodePDFRawStream, PDFDocument, PDFRawStream } from 'pdf-lib';
 import { expect, test } from 'vitest';
 import { qrMatrix } from './qr-matrix';
 import { buildSheetPdf } from './render-pdf';
@@ -89,4 +89,42 @@ test('daftar karakter yang diizinkan hanya memuat glyph yang ADA di keempat vari
     }
   }
   expect([...new Set(missing)]).toEqual([]);
+});
+
+test('PDF: bingkai putus-putus memakai operator dash; solid tidak; keduanya tetap 1 halaman', async () => {
+  const matrix = qrMatrix('https://contoh.com/garis');
+  const make = async (line: 'solid' | 'dashed' | 'dotted') => {
+    const style = {
+      ...DEFAULT_QR_STYLE,
+      frame: { ...DEFAULT_QR_STYLE.frame, kind: 'corners' as const, line },
+    };
+    const layout = layoutLabel(
+      {
+        title: '',
+        subtitle: '',
+        footer: '',
+        hasLogo: false,
+        layout: { ...DEFAULT_QR_LAYOUT, qrSize: 14 },
+        style,
+        qrModules: matrix.length,
+      },
+      (text, size) => text.length * size * 0.2,
+    );
+    const bytes = await buildSheetPdf(layout, matrix, null, fonts);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    // Stream konten terkompresi: dekode dulu agar operator gambar (mis. dash "d") terlihat.
+    let text = '';
+    for (const [, object] of doc.context.enumerateIndirectObjects()) {
+      if (object instanceof PDFRawStream) {
+        text += `${Buffer.from(decodePDFRawStream(object).decode()).toString('latin1')}
+`;
+      }
+    }
+    return text;
+  };
+  const dashOperator = /\[[^\]]+\]\s+[0-9.]+\s+d\b/;
+  expect(dashOperator.test(await make('solid'))).toBe(false);
+  expect(dashOperator.test(await make('dashed'))).toBe(true);
+  expect(dashOperator.test(await make('dotted'))).toBe(true);
 });

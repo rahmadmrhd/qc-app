@@ -192,7 +192,7 @@ const framedStyle = {
   title: { bold: false, italic: true, underline: false, strike: false, uppercase: true },
   subtitle: { bold: false, italic: false, underline: true, strike: false, uppercase: false },
   footer: { bold: false, italic: false, underline: false, strike: true, uppercase: false },
-  frame: { kind: 'corners', thickness: 0.6, gap: 1.2, radius: 2, arm: 30 },
+  frame: { kind: 'corners', line: 'dotted', thickness: 0.6, gap: 1.2, radius: 2, arm: 30 },
 };
 
 test('gaya teks dan bingkai: tersimpan dan dikembalikan; tanpa style = bawaan', () => {
@@ -294,4 +294,12 @@ test('files.get untuk pengguna qrcode tanpa izin item: hanya logo (qrlogo) dan b
   // pemegang izin item tetap dapat membaca semua berkas gambar
   expect(call('noqr@gmail.com', 'files.get', { id: itemFile }).ok).toBe(true);
   expect(call('noqr@gmail.com', 'files.get', { id: logo }).ok).toBe(true);
+});
+
+test('gaya garis bingkai tervalidasi di server dan tersimpan; nilai tak dikenal ditolak', () => {
+  const dashed = { ...framedStyle, frame: { ...framedStyle.frame, kind: 'box', line: 'dashed' } };
+  const ok = save({ title: 'Putus', style: dashed });
+  expect(ok.data.style.frame.line).toBe('dashed');
+  const bad = save({ style: { ...framedStyle, frame: { ...framedStyle.frame, line: 'zigzag' } } });
+  expect(bad.error.fields.style).toBeDefined();
 });

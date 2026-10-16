@@ -199,7 +199,7 @@ test('isQrStyle/clampQrStyle: struktur salah ditolak; nilai tersimpan dipulihkan
   expect(clampQrStyle('rusak')).toEqual(DEFAULT_QR_STYLE);
   const restored = clampQrStyle({
     title: { italic: true, bold: 'x' },
-    frame: { kind: 'corners', thickness: 99, gap: -3, radius: 'a', arm: 5 },
+    frame: { kind: 'corners', thickness: 99, gap: -3, radius: 'a', arm: 5, line: 'dashed' },
   });
   expect(restored.title).toEqual({ ...DEFAULT_QR_STYLE.title, italic: true });
   expect(restored.frame).toEqual({
@@ -208,6 +208,7 @@ test('isQrStyle/clampQrStyle: struktur salah ditolak; nilai tersimpan dipulihkan
     gap: 0,
     radius: DEFAULT_QR_STYLE.frame.radius,
     arm: 10,
+    line: 'dashed',
   });
   expect(clampQrStyle({ frame: { kind: 'aneh' } }).frame.kind).toBe('none');
 });
@@ -256,7 +257,14 @@ test('tanpa style: perilaku lama (title tebal, lainnya polos, tanpa bingkai)', (
 test('bingkai QR: ada elemen frame mengelilingi QR; ruang yang dipakai ikut dihitung (overflow bila tak muat)', () => {
   const framed = {
     ...DEFAULT_QR_STYLE,
-    frame: { kind: 'corners' as const, thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
+    frame: {
+      kind: 'corners' as const,
+      line: 'solid' as const,
+      thickness: 0.5,
+      gap: 1,
+      radius: 1.5,
+      arm: 25,
+    },
   };
   const compact = { ...base, subtitle: '', footer: '', style: framed };
   const out = layoutLabel(compact, measure);
@@ -282,6 +290,7 @@ test('framePolylines: corners = 4 siku dalam batas bingkai; box = 1 jalur tertut
   const el = {
     kind: 'frame' as const,
     variant: 'corners' as const,
+    line: 'solid' as const,
     xMm: 5,
     yMm: 5,
     sideMm: 20,

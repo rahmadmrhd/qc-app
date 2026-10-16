@@ -1,5 +1,5 @@
 import type { LabelLayout } from '@shared/qrcode';
-import { framePolylines, LABEL_MM, PT_PER_MM } from '@shared/qrcode';
+import { frameDashPattern, framePolylines, LABEL_MM, PT_PER_MM } from '@shared/qrcode';
 import { LABEL_FONT_FAMILY } from './fonts';
 
 export interface LogoSource {
@@ -92,8 +92,11 @@ export function drawLabel(
     } else if (element.kind === 'frame') {
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = element.thicknessMm * pxPerMm;
-      ctx.lineCap = 'round';
+      // Putus-putus berujung rata; titik-titik dan solid berujung bulat (titik = garis nyaris tanpa panjang).
+      ctx.lineCap = element.line === 'dashed' ? 'butt' : 'round';
       ctx.lineJoin = 'round';
+      const dash = frameDashPattern(element.line, element.thicknessMm).map((mm) => mm * pxPerMm);
+      ctx.setLineDash(dash);
       for (const line of framePolylines(element)) {
         ctx.beginPath();
         line.forEach((point, index) => {
@@ -102,6 +105,7 @@ export function drawLabel(
         });
         ctx.stroke();
       }
+      if (dash.length > 0) ctx.setLineDash([]);
     }
   }
 }

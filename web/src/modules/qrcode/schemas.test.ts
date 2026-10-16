@@ -146,3 +146,13 @@ test('frameRangeMessage: pesan per isian bingkai', () => {
   expect(frameRangeMessage('arm', 5)).toBe('Minimal 10 %');
   expect(frameRangeMessage('gap', Number.NaN)).toBe('Wajib diisi angka');
 });
+
+test('skema bingkai: gaya garis solid/dashed/dotted diterima, lainnya ditolak', () => {
+  const withLine = (line: string) => ({
+    ...valid,
+    style: { ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, line } },
+  });
+  for (const ok of ['solid', 'dashed', 'dotted'])
+    expect(qrDesignFormSchema.safeParse(withLine(ok)).success).toBe(true);
+  expect(qrDesignFormSchema.safeParse(withLine('zigzag')).success).toBe(false);
+});

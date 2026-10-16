@@ -128,3 +128,26 @@ test('bingkai: dua gaya digambar sebagai goresan; corners = 4 goresan, box = 1; 
   expect(strokes('corners')).toBe(4);
   expect(strokes('box')).toBe(1);
 });
+
+test('gaya garis bingkai: solid tanpa pola; putus-putus dan titik-titik memakai setLineDash dengan pola dari tata letak', () => {
+  const dashFor = (line: 'solid' | 'dashed' | 'dotted') => {
+    const style = {
+      ...DEFAULT_QR_STYLE,
+      frame: { ...DEFAULT_QR_STYLE.frame, kind: 'box' as const, line },
+    };
+    const layout = layoutLabel(
+      { ...input, title: '', subtitle: '', footer: '', hasLogo: false, style },
+      measure,
+    );
+    const { ctx, calls } = fakeContext();
+    drawLabel(ctx, layout, matrix, null, 10);
+    return calls.filter((c) => c[0] === 'setLineDash').map((c) => c[1] as number[]);
+  };
+  expect(dashFor('solid')).toEqual([[]]);
+  const [dashed] = dashFor('dashed');
+  expect(dashed).toHaveLength(2);
+  expect(dashed?.[0] ?? 0).toBeGreaterThan(dashed?.[1] ?? 0);
+  const [dotted] = dashFor('dotted');
+  expect(dotted?.[0] ?? 1).toBeLessThan(1);
+  expect(dotted?.[1] ?? 0).toBeGreaterThan(2);
+});

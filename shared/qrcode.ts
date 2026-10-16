@@ -169,9 +169,14 @@ export const QR_TEXT_STYLE_KEYS = ['bold', 'italic', 'underline', 'strike', 'upp
 export const QR_FRAME_KINDS = ['none', 'corners', 'box'] as const;
 export type QrFrameKind = (typeof QR_FRAME_KINDS)[number];
 
+export const QR_FRAME_LINES = ['solid', 'dashed', 'dotted'] as const;
+export type QrFrameLine = (typeof QR_FRAME_LINES)[number];
+
 /** Bingkai di sekeliling QR: siku di empat sudut (seperti bingkai pemindai) atau kotak penuh. */
 export interface QrFrame {
   kind: QrFrameKind;
+  /** Gaya garis: solid, putus-putus, atau titik-titik. */
+  line: QrFrameLine;
   /** Tebal garis dan jarak ke QR (mm); lengkung sudut (mm); panjang siku (% sisi bingkai). */
   thickness: number;
   gap: number;
@@ -187,7 +192,7 @@ export const QR_FRAME_RANGES: Record<
 > = {
   thickness: { min: 0.1, max: 1.5, step: 0.05, unit: 'mm', label: 'Tebal bingkai' },
   gap: { min: 0, max: 4, step: 0.1, unit: 'mm', label: 'Jarak bingkai ke QR' },
-  radius: { min: 0, max: 4, step: 0.1, unit: 'mm', label: 'Lengkung sudut' },
+  radius: { min: 0, max: 4, step: 0.1, unit: 'mm', label: 'Sudut membulat' },
   arm: { min: 10, max: 50, step: 1, unit: '%', label: 'Panjang siku' },
 };
 
@@ -211,7 +216,7 @@ export const DEFAULT_QR_STYLE: QrStyle = {
   title: { ...PLAIN_TEXT_STYLE, bold: true },
   subtitle: { ...PLAIN_TEXT_STYLE },
   footer: { ...PLAIN_TEXT_STYLE },
-  frame: { kind: 'none', thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
+  frame: { kind: 'none', line: 'solid', thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
 };
 
 const QR_STYLE_PARTS = ['title', 'subtitle', 'footer'] as const;
@@ -230,6 +235,7 @@ export function isQrStyle(value: unknown): value is QrStyle {
   const frame = value.frame;
   if (!isPlainObject(frame)) return false;
   if (!(QR_FRAME_KINDS as readonly unknown[]).includes(frame.kind)) return false;
+  if (!(QR_FRAME_LINES as readonly unknown[]).includes(frame.line)) return false;
   return QR_FRAME_KEYS.every((key) => {
     const entry = frame[key];
     const range = QR_FRAME_RANGES[key];
@@ -262,6 +268,9 @@ export function clampQrStyle(value: unknown): QrStyle {
   if (isPlainObject(frame)) {
     if ((QR_FRAME_KINDS as readonly unknown[]).includes(frame.kind)) {
       out.frame.kind = frame.kind as QrFrameKind;
+    }
+    if ((QR_FRAME_LINES as readonly unknown[]).includes(frame.line)) {
+      out.frame.line = frame.line as QrFrameLine;
     }
     for (const key of QR_FRAME_KEYS) {
       const entry = frame[key];
@@ -297,6 +306,8 @@ export type LabelElement =
   | {
       kind: 'frame';
       variant: 'corners' | 'box';
+      /** Gaya garis (pola putus-putus dihitung dari tebal lewat `frameDashPattern`). */
+      line: QrFrameLine;
       /** Pojok kiri atas dan sisi persegi GARIS TENGAH bingkai (garis digambar selebar `thicknessMm`). */
       xMm: number;
       yMm: number;
@@ -475,6 +486,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     elements.push({
       kind: 'frame',
       variant: frame.kind === 'box' ? 'box' : 'corners',
+      line: frame.line,
       xMm: qrX - frame.gap - frame.thickness / 2,
       yMm: qrY - frame.gap - frame.thickness / 2,
       sideMm,
@@ -511,6 +523,16 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const moduleMm = qrSize / Math.max(1, input.qrModules);
   const frameTight = framed && frame.gap < 2 * moduleMm;
   return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM, frameTight };
+}
+
+/**
+ * Pola goresan (mm: panjang garis, panjang celah, ...) untuk gaya garis bingkai; kosong = solid. Titik-titik =
+ * garis nyaris tanpa panjang yang digambar bulat oleh ujung garis. Dipakai canvas dan PDF agar sama.
+ */
+export function frameDashPattern(line: QrFrameLine, thicknessMm: number): number[] {
+  if (line === 'dashed') return [thicknessMm * 4, thicknessMm * 2.5];
+  if (line === 'dotted') return [0.01, thicknessMm * 2.2];
+  return [];
 }
 
 export interface LabelPoint {
@@ -596,6 +618,7 @@ function qrStyleSignature(style: QrStyle | undefined): unknown {
       QR_TEXT_STYLE_KEYS.map((key) => (source[part][key] ? 1 : 0)).join(''),
     ),
     source.frame.kind,
+    source.frame.line,
     QR_FRAME_KEYS.map((key) => source.frame[key]),
   ];
 }

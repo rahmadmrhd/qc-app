@@ -5,6 +5,7 @@ import {
   isRenderableLabelText,
   type QR_FRAME_KEYS,
   QR_FRAME_KINDS,
+  QR_FRAME_LINES,
   QR_FRAME_RANGES,
   QR_LAYOUT_RANGES,
   QR_LIMITS,
@@ -54,6 +55,7 @@ const styleSchema = z.object({
   footer: textStyleSchema,
   frame: z.object({
     kind: z.enum(QR_FRAME_KINDS),
+    line: z.enum(QR_FRAME_LINES),
     thickness: frameNum('thickness'),
     gap: frameNum('gap'),
     radius: frameNum('radius'),

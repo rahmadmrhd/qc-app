@@ -114,3 +114,55 @@ test('bingkai QR: pilihan jenis; isian ukuran hanya tampil bila ada bingkai; ter
     thickness: 0.8,
   });
 });
+
+test('ukuran font ada di tiap bagian teks (bukan di bagian Ukuran) dan terkirim saat simpan; di luar rentang menampilkan galat', async () => {
+  const { onSubmit } = renderForm();
+  for (const part of ['Title', 'Subtitle', 'Footer']) {
+    expect(screen.getByLabelText(`Ukuran ${part} (pt)`)).toBeInTheDocument();
+  }
+  expect(screen.queryByLabelText('Ukuran title (pt)')).toBeNull(); // isian lama di bagian Ukuran sudah pindah
+  expect(screen.getByLabelText('Ukuran Title (pt)')).toHaveValue(6);
+  await userEvent.clear(screen.getByLabelText('Ukuran Title (pt)'));
+  await userEvent.type(screen.getByLabelText('Ukuran Title (pt)'), '99');
+  expect(await screen.findByText('Maksimal 14 pt')).toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText('Ukuran Title (pt)'));
+  await userEvent.type(screen.getByLabelText('Ukuran Title (pt)'), '8');
+  await userEvent.clear(screen.getByLabelText('Ukuran Footer (pt)'));
+  await userEvent.type(screen.getByLabelText('Ukuran Footer (pt)'), '5');
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[0].layout).toMatchObject({
+    titleSize: 8,
+    footerSize: 5,
+    subtitleSize: 5,
+  });
+});
+
+test('bingkai: sudut membulat dan gaya garis (solid, putus-putus, titik-titik) dapat diatur dan terkirim', async () => {
+  const { onSubmit } = renderForm();
+  await userEvent.click(screen.getByRole('radio', { name: 'Kotak penuh' }));
+  expect(screen.getByLabelText('Sudut membulat (mm)')).toHaveValue(1.5);
+  expect(screen.getByRole('radio', { name: 'Solid' })).toBeChecked();
+  await userEvent.click(screen.getByRole('radio', { name: 'Putus-putus' }));
+  expect(screen.getByRole('radio', { name: 'Putus-putus' })).toBeChecked();
+  await userEvent.clear(screen.getByLabelText('Sudut membulat (mm)'));
+  await userEvent.type(screen.getByLabelText('Sudut membulat (mm)'), '3');
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[0].style.frame).toMatchObject({
+    kind: 'box',
+    line: 'dashed',
+    radius: 3,
+  });
+});
+
+test('panjang siku hanya untuk bingkai siku di sudut; kotak penuh tidak menampilkannya', async () => {
+  renderForm();
+  await userEvent.click(screen.getByRole('radio', { name: 'Siku di sudut' }));
+  expect(screen.getByLabelText('Panjang siku (%)')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('radio', { name: 'Kotak penuh' }));
+  expect(screen.queryByLabelText('Panjang siku (%)')).toBeNull();
+  expect(screen.getByLabelText('Sudut membulat (mm)')).toBeInTheDocument();
+});
