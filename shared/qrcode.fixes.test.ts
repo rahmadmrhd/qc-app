@@ -6,6 +6,7 @@ import {
   frameDashPattern,
   isQrStyle,
   isRenderableLabelText,
+  labelFileName,
   layoutLabel,
   QR_FRAME_LINES,
   qrContentHash,
@@ -131,4 +132,16 @@ test('elemen bingkai membawa gaya garis; pola putus-putus mengikuti tebal garis;
   expect(qrContentHash({ ...content, style: framed({ kind: 'box', line: 'dashed' }) })).not.toBe(
     qrContentHash({ ...content, style: framed({ kind: 'box', line: 'solid' }) }),
   );
+});
+
+test('nama berkas dari title dan subtitle: huruf kecil, tanda hubung, dibatasi 60 karakter; subtitle kosong = hanya title', () => {
+  expect(labelFileName('Panduan Instalasi', 'USW PRO MAX 48 PoE')).toBe(
+    'panduan-instalasi-usw-pro-max-48-poe',
+  );
+  expect(labelFileName('Panduan Instalasi', '')).toBe('panduan-instalasi');
+  expect(labelFileName('Café & Bar!', 'Édisi #2')).toBe('caf-bar-disi-2');
+  expect(labelFileName('***', '???')).toBe('label');
+  const long = labelFileName('a'.repeat(50), 'b'.repeat(50));
+  expect(long.length).toBeLessThanOrEqual(60);
+  expect(long.endsWith('-')).toBe(false);
 });

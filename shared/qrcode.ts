@@ -144,14 +144,19 @@ export function driveShareUrl(fileId: string): string {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
-export function labelFileSlug(title: string): string {
-  const slug = title
+export function labelFileSlug(text: string, max = 40): string {
+  const slug = text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
+    .slice(0, max)
     .replace(/-+$/g, '');
   return slug === '' ? 'label' : slug;
+}
+
+/** Nama berkas hasil ekspor/unduh dari title dan subtitle (subtitle boleh kosong), maks. 60 karakter. */
+export function labelFileName(title: string, subtitle: string): string {
+  return labelFileSlug(`${title} ${subtitle}`, 60);
 }
 
 /** Gaya satu bagian teks (title, subtitle, atau footer). */

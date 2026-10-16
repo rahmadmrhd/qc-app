@@ -215,3 +215,25 @@ test('galat saat membuang berkas lama SETELAH pencatatan tidak menggagalkan eksp
   expect(platform.drive.has(second?.exportPngDriveId ?? '')).toBe(true);
   expect(platform.errors.some((m) => m.includes('Drive menolak'))).toBe(true);
 });
+
+test('nama berkas di Drive dan unduhan memakai title dan subtitle', () => {
+  const design = call('qredit@gmail.com', 'qrcodes.save', {
+    ...body,
+    title: 'Panduan Instalasi',
+    subtitle: 'USW PRO MAX 48 PoE',
+  }).data;
+  exportOf(design);
+  const record = listQrDesigns_()[0];
+  expect(platform.drive.get(record?.exportPdfDriveId ?? '')?.name).toMatch(
+    /^panduan-instalasi-usw-pro-max-48-poe-\d{14,17}\.pdf$/,
+  );
+  expect(platform.drive.get(record?.exportPngDriveId ?? '')?.name).toMatch(
+    /^panduan-instalasi-usw-pro-max-48-poe-\d{14,17}\.png$/,
+  );
+  expect(
+    call('qrview@gmail.com', 'qrcodes.file', { id: design.id, kind: 'pdf' }).data.filename,
+  ).toBe('panduan-instalasi-usw-pro-max-48-poe.pdf');
+  expect(
+    call('qrview@gmail.com', 'qrcodes.file', { id: design.id, kind: 'png' }).data.filename,
+  ).toBe('panduan-instalasi-usw-pro-max-48-poe.png');
+});

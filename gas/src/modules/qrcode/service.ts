@@ -9,7 +9,7 @@ import type { QrContent } from '@shared/qrcode';
 import {
   DEFAULT_QR_STYLE,
   driveShareUrl,
-  labelFileSlug,
+  labelFileName,
   qrContentHash,
   qrExportStatus,
 } from '@shared/qrcode';
@@ -438,7 +438,7 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
   }
   const folderId = ensureQrFolder_();
   const stamp = nowIso_().replace(/[-:.TZ]/g, '');
-  const base = `${labelFileSlug(precheck.title)}-${stamp}`;
+  const base = `${labelFileName(precheck.title, precheck.subtitle)}-${stamp}`;
   const created: string[] = [];
   let committed:
     | {
@@ -511,7 +511,7 @@ export function readQrFile_(input: QrFileInput): QrFileDto {
   const content = folderId ? platform_().driveReadFile(driveId, folderId) : null;
   if (!content) throw appError_('NOT_FOUND', 'Berkas hasil ekspor tidak ditemukan di Drive');
   return {
-    filename: `${labelFileSlug(design.title)}.${input.kind}`,
+    filename: `${labelFileName(design.title, design.subtitle)}.${input.kind}`,
     mime: content.mime,
     base64: content.base64,
   };
