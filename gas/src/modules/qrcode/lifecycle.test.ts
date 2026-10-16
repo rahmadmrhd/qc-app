@@ -3,9 +3,9 @@ import { setPlatform_ } from '@gas/core/platform';
 import { listAuditRecords_ } from '@gas/modules/access/repo';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
+import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
-import { listQrDocuments_ } from './repo';
+import { insertQrDesign_, listQrDocuments_ } from './repo';
 import { cleanupQrDocuments_ } from './service';
 
 let platform: MemoryPlatform;
@@ -28,9 +28,11 @@ const PDF = 'JVBERi0xLjQK';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 const url = {
   title: 'Panduan',
-  linkSource: 'url',
-  link: 'https://contoh.com/a',
-  documentId: '',
+  linkSource: 'pdf',
+  link: '',
+  get documentId() {
+    return qrPdfDocumentId();
+  },
   subtitle: '',
   footer: '',
   logoFileId: '',
@@ -91,6 +93,7 @@ test('hanya flag overflow yang berubah: tersimpan diam-diam tanpa menaikkan upda
 
 test('ekspor ditolak server bila konfigurasi ditandai tidak muat; tidak ada berkas dibuat di Drive', () => {
   const made = save({ overflow: true });
+  const before = platform.drive.size; // PDF sumber fixture sudah ada
   const out = call('qrmanage@gmail.com', 'qrcodes.export', {
     id: made.data.id,
     expectedUpdatedAt: made.data.updatedAt,
@@ -99,7 +102,7 @@ test('ekspor ditolak server bila konfigurasi ditandai tidak muat; tidak ada berk
   });
   expect(out.error.code).toBe('VALIDATION');
   expect(out.error.message).toContain('melebihi kanvas');
-  expect(platform.drive.size).toBe(0);
+  expect(platform.drive.size).toBe(before);
 });
 
 // ---- pencabutan berbagi PDF sumber yang tidak dipakai
@@ -123,17 +126,54 @@ test('PDF yang masih dipakai konfigurasi lain tetap dibagikan', () => {
   expect(docs().find((d) => d.id === doc.id)?.shared).toBe(true);
 });
 
-test('mengubah sumber link dari PDF ke link manual mencabut berbagi PDF yang tidak lagi dipakai', () => {
+test('mengganti PDF sumber ke dokumen lain mencabut berbagi PDF yang tidak lagi dipakai', () => {
   const doc = upload().data;
+  const other = upload('lain.pdf').data;
   const design = usePdf(doc.id).data;
-  const switched = save({
-    id: design.id,
-    expectedUpdatedAt: design.updatedAt,
-    linkSource: 'url',
-    link: 'https://contoh.com/b',
-  });
+  const switched = usePdf(other.id, { id: design.id, expectedUpdatedAt: design.updatedAt });
   expect(switched.ok).toBe(true);
   expect(platform.sharedFiles.has(driveIdOf(doc.id))).toBe(false);
+  expect(platform.sharedFiles.has(driveIdOf(other.id))).toBe(true);
+});
+
+test('link harus dari Drive: simpan dengan link manual baru ditolak; konfigurasi lama berlink manual tetap dapat disimpan ulang tanpa mengubah link', () => {
+  const rejected = save({ linkSource: 'url', link: 'https://contoh.com/a', documentId: '' });
+  expect(rejected.error.code).toBe('VALIDATION');
+  expect(rejected.error.fields.link).toContain('Drive');
+  // konfigurasi lama (sebelum aturan ini) disisipkan langsung ke repo
+  const now = '2026-10-16T00:00:00.000Z';
+  insertQrDesign_({
+    id: 'legacy',
+    title: 'Lama',
+    subtitle: '',
+    footer: '',
+    linkSource: 'url',
+    link: 'https://contoh.com/lama',
+    documentId: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+    overflow: false,
+    exportedHash: '',
+    exportPdfDriveId: '',
+    exportPngDriveId: '',
+    exportedAt: '',
+    exportedBy: '',
+    createdAt: now,
+    createdBy: 'seed@gmail.com',
+    updatedAt: now,
+    updatedBy: 'seed@gmail.com',
+  });
+  const legacy = { linkSource: 'url', link: 'https://contoh.com/lama', documentId: '' };
+  const same = save({ id: 'legacy', title: 'Lama diubah', expectedUpdatedAt: now, ...legacy });
+  expect(same.ok).toBe(true);
+  const changed = save({
+    id: 'legacy',
+    expectedUpdatedAt: same.data.updatedAt,
+    ...legacy,
+    link: 'https://contoh.com/baru',
+  });
+  expect(changed.error.code).toBe('VALIDATION');
 });
 
 test('memakai kembali PDF yang sudah dicabut membagikannya lagi', () => {

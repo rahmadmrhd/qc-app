@@ -5,7 +5,7 @@ import { listFiles_ } from '@gas/modules/files/repo';
 import { attachFiles_ } from '@gas/modules/files/service';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
+import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { insertQrDocument_, listQrDesigns_, updateQrDesign_ } from './repo';
 
@@ -27,9 +27,11 @@ const call = (email: string, method: string, payload: unknown) =>
   qrRpc(email, method, payload) as Result;
 const input = {
   title: 'Panduan',
-  linkSource: 'url',
-  link: 'https://contoh.com/a',
-  documentId: '',
+  linkSource: 'pdf',
+  link: '',
+  get documentId() {
+    return qrPdfDocumentId();
+  },
   subtitle: 'Sub',
   footer: 'foot',
   logoFileId: '',
@@ -62,8 +64,8 @@ test('buat: status Belum diekspor, audit qrcode.create, pembuat tercatat', () =>
   const out = save();
   expect(out.data).toMatchObject({
     title: 'Panduan',
-    linkSource: 'url',
-    link: 'https://contoh.com/a',
+    linkSource: 'pdf',
+    link: expect.any(String),
     exportStatus: 'none',
     createdBy: 'qredit@gmail.com',
     layout: DEFAULT_QR_LAYOUT,

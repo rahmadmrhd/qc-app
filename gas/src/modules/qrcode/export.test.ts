@@ -3,7 +3,7 @@ import { setPlatform_ } from '@gas/core/platform';
 import { listAuditRecords_ } from '@gas/modules/access/repo';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
+import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
 import { listQrDesigns_ } from './repo';
 
@@ -26,9 +26,11 @@ const PDF = 'JVBERi0xLjQK';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 const body = {
   title: 'Panduan Instalasi',
-  linkSource: 'url',
-  link: 'https://a.co/x',
-  documentId: '',
+  linkSource: 'pdf',
+  link: '',
+  get documentId() {
+    return qrPdfDocumentId();
+  },
   subtitle: '',
   footer: '',
   logoFileId: '',
@@ -108,16 +110,18 @@ test('ekspor ulang menimpa: berkas lama masuk sampah SETELAH pencatatan; hanya d
 
 test('konkurensi: expectedUpdatedAt basi → CONFLICT dan TIDAK ada berkas dibuat di Drive', () => {
   const design = make();
+  const before = platform.drive.size; // PDF sumber fixture sudah ada
   const out = exportOf(design, { expectedUpdatedAt: '2020-01-01T00:00:00.000Z' });
   expect(out.error.code).toBe('CONFLICT');
-  expect(platform.drive.size).toBe(0);
+  expect(platform.drive.size).toBe(before);
 });
 
 test('PDF/PNG palsu atau di atas batas ditolak sebelum Drive', () => {
   const design = make();
+  const before = platform.drive.size;
   expect(exportOf(design, { pdfBase64: PNG }).error.code).toBe('VALIDATION');
   expect(exportOf(design, { pngBase64: PDF }).error.code).toBe('VALIDATION');
-  expect(platform.drive.size).toBe(0);
+  expect(platform.drive.size).toBe(before);
 });
 
 test('pencatatan gagal setelah Drive berhasil: berkas baru dibersihkan, berkas lama utuh', () => {

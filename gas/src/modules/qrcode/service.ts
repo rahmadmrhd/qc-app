@@ -178,6 +178,16 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
     if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
       throw appError_('CONFLICT', QR_STALE_MESSAGE);
     }
+    // Link harus dari Drive (PDF sumber). Konfigurasi lama bersumber link manual boleh disimpan ulang selama
+    // linknya tidak berubah.
+    if (
+      input.linkSource === 'url' &&
+      !(existing && existing.linkSource === 'url' && existing.link === input.link)
+    ) {
+      const message =
+        'Link harus berasal dari Drive: unggah PDF atau salin berkas Drive ke aplikasi';
+      throw appError_('VALIDATION', message, { link: message });
+    }
     if (
       existing &&
       existing.exportedHash !== '' &&
