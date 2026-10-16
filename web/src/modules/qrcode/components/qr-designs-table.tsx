@@ -85,27 +85,17 @@ export function QrDesignsTable({
                       {design.subtitle}
                     </div>
                   ) : null}
-                  <div className="text-xs font-normal text-muted-foreground">
-                    {design.linkSource === 'pdf' ? (
-                      <>
-                        PDF{' · '}
-                        <a
-                          href={design.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Lihat PDF ${design.title}`}
-                          className="underline"
-                        >
-                          Lihat PDF
-                        </a>
-                      </>
-                    ) : (
-                      'Link manual'
-                    )}
-                  </div>
                 </TableCell>
                 <TableCell className="max-w-[16rem] truncate text-sm" title={design.link}>
-                  {design.link}
+                  <a
+                    href={design.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Buka link ${design.title}`}
+                    className="underline-offset-2 hover:underline"
+                  >
+                    {design.link}
+                  </a>
                 </TableCell>
                 <TableCell className="text-sm">{formatAuditTime(design.updatedAt)}</TableCell>
                 <TableCell>
