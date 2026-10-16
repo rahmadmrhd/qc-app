@@ -6,6 +6,7 @@ import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { listQrDocuments_ } from './repo';
+import { cleanupQrDocuments_ } from './service';
 
 let platform: MemoryPlatform;
 let clock: number;
@@ -204,4 +205,23 @@ test('pencabutan berbagi yang gagal (bukan "tidak ada") tidak ditandai privat da
   clock += 2 * 60 * 60 * 1000; // lewat masa tenggang unggahan yatim
   expect(upload('lain.pdf').ok).toBe(true); // pembersihan oportunistik berikutnya
   expect(docs().find((d) => d.id === doc)?.shared).toBe(false);
+});
+
+test('cleanupQrDocuments_ (trigger terjadwal) mencabut unggahan yatim setelah masa tenggang, tidak sebelumnya', () => {
+  const doc = upload().data.id;
+  expect(cleanupQrDocuments_()).toBe(0); // masih dalam masa tenggang
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(true);
+  clock += 61 * 60 * 1000;
+  expect(cleanupQrDocuments_()).toBe(1);
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(false);
+  expect(platform.sharedFiles.has(driveIdOf(doc))).toBe(false);
+  expect(cleanupQrDocuments_()).toBe(0); // idempoten
+});
+
+test('cleanupQrDocuments_ tidak mencabut PDF yang dipakai konfigurasi', () => {
+  const doc = upload().data.id;
+  usePdf(doc);
+  clock += 5 * 60 * 60 * 1000;
+  expect(cleanupQrDocuments_()).toBe(0);
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(true);
 });

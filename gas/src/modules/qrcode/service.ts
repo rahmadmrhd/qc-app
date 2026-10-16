@@ -281,17 +281,23 @@ function ensureQrDocumentShared_(documentId: string): void {
  * dilepas (`releasedIds`), dan setelah masa tenggang untuk unggahan yatim. Best-effort: galat Drive hanya dicatat.
  * I/O Drive di luar lock; pemanggil tanpa lock.
  */
-function revokeUnusedQrDocuments_(releasedIds: readonly string[]): void {
+/** Pembersihan terjadwal (trigger Apps Script): mencabut unggahan yatim yang lewat masa tenggang. Mengembalikan jumlahnya. */
+export function cleanupQrDocuments_(): number {
+  return revokeUnusedQrDocuments_([]);
+}
+
+function revokeUnusedQrDocuments_(releasedIds: readonly string[]): number {
   // Pemakaian dihitung dan berbagi dicabut DI DALAM lock yang sama dengan penyimpanan konfigurasi, sehingga
   // konfigurasi yang baru memasang PDF tidak bisa terlewat (snapshot basi). Satu panggilan Drive per dokumen
   // yatim/terlepas; jarang terjadi.
-  platform_().withLock(() => {
+  return platform_().withLock(() => {
     const used = new Set(
       listQrDesigns_().flatMap((design) =>
         design.linkSource === 'pdf' && design.documentId !== '' ? [design.documentId] : [],
       ),
     );
     const now = platform_().now();
+    let revoked = 0;
     for (const doc of listQrDocuments_()) {
       if (!doc.shared || used.has(doc.id)) continue;
       const age = now - Date.parse(doc.updatedAt);
@@ -299,6 +305,7 @@ function revokeUnusedQrDocuments_(releasedIds: readonly string[]): void {
       try {
         platform_().driveRevokeSharing(doc.driveId);
         updateQrDocument_({ ...doc, shared: false });
+        revoked += 1;
       } catch (error) {
         // Tetap bertanda terbagi agar pembersihan berikutnya mencoba lagi.
         platform_().logError(
@@ -306,6 +313,7 @@ function revokeUnusedQrDocuments_(releasedIds: readonly string[]): void {
         );
       }
     }
+    return revoked;
   });
 }
 

@@ -64,14 +64,15 @@ describe('transformForGas', () => {
     );
   });
 
-  test('doGet, doPost, api, dan setup boleh publik', () => {
+  test('doGet, doPost, api, setup, dan cleanupQrPdfs boleh publik', () => {
     const source =
-      'export function doGet() { return 1; }\nexport function api() { return 2; }\nexport function setup() { return 3; }\nexport function doPost() { return 4; }';
+      'export function doGet() { return 1; }\nexport function api() { return 2; }\nexport function setup() { return 3; }\nexport function doPost() { return 4; }\nexport function cleanupQrPdfs() { return 5; }';
     expect(transformForGas(source, 'gas/src/main.ts', GAS).globals).toEqual([
       'doGet',
       'api',
       'setup',
       'doPost',
+      'cleanupQrPdfs',
     ]);
   });
 

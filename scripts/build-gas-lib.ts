@@ -3,6 +3,7 @@ export const PUBLIC_GAS_FUNCTIONS: ReadonlySet<string> = new Set([
   'doPost',
   'api',
   'setup',
+  'cleanupQrPdfs',
 ]);
 
 export class GasBuildError extends Error {
