@@ -456,6 +456,10 @@ export interface RpcContract {
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
+  'qrcodes.list': { input: null; output: QrDesignDto[] };
+  'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
+  'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
 }
 
 export type RpcMethod = keyof RpcContract;
