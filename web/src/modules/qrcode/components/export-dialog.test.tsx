@@ -88,3 +88,15 @@ test('dialog ekspor menyebut title dan subtitle konfigurasi', () => {
   );
   expect(screen.getByText(/"Panduan Instalasi — USW PRO MAX 48 PoE"/)).toBeInTheDocument();
 });
+
+test('saat mengekspor, dialog menyebut langkah yang sedang berjalan', async () => {
+  const onConfirm = vi.fn((report: (step: string) => void) => {
+    report('Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…');
+    return new Promise<void>(() => undefined);
+  });
+  render(<ExportDialog design={base} open onOpenChange={vi.fn()} onConfirm={onConfirm} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan ke Drive' }));
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…',
+  );
+});

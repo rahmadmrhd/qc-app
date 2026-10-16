@@ -31,6 +31,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'qrcode.delete': 'Label QR dihapus',
   'qrcode.export': 'Label QR diekspor ke Drive',
   'qrcode.pdf_upload': 'PDF sumber label QR diunggah',
+  'qrcode.defaults_update': 'Konfigurasi default QR diubah',
+  'qrcode.pdf_clone': 'PDF sumber label QR disalin dari Drive',
   'item.create': 'Item dibuat',
   'item.update': 'Item diubah',
   'item.activate': 'Item diaktifkan',

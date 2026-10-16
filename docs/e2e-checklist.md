@@ -99,4 +99,11 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 93 | Isi form lalu tekan "Simpan dan ekspor" | Tersimpan, dialog konfirmasi ekspor terbuka otomatis di daftar; setelah konfirmasi status "Sudah diekspor" | FQR24 |
 | 94 | Simpan konfigurasi yang isinya tidak muat | Daftar menampilkan lencana "Tidak muat" dan tombol Ekspor nonaktif; "Simpan dan ekspor" nonaktif di form | FQR25 |
 | 95 | Hapus konfigurasi bersumber PDF yang terakhir; buka link PDF di jendela penyamaran | Link tidak lagi dapat dibuka publik; pakai PDF itu lagi di konfigurasi baru → dapat dibuka lagi | FQR26 |
-| 96 | Tekan "Lihat PDF" pada form dan pada daftar | PDF terbuka di Drive pada tab baru | FQR27 |
+| 96 | Tekan "Lihat PDF" pada form; klik link di kolom Link pada daftar | PDF terbuka di Drive pada tab baru | FQR27 |
+| 97 | Di form QR isi "Link atau ID berkas Drive" (PDF milik pemilik script) lalu "Salin dari Drive" | Salinan muncul di folder dokumen aplikasi, dibagikan via link, menjadi PDF sumber; berkas asli tidak berubah/tidak dibagikan | FQR28 |
+| 98 | Salin dari link non-Drive, berkas non-PDF, atau berkas yang tidak bisa diakses | Ditolak dengan pesan jelas | FQR28 |
+| 99 | Simpan konfigurasi PDF lalu cek nama berkas di Drive; ekspor lalu ganti PDF | Nama `{title}-{subtitle}-{timestamp}.pdf`; setelah diekspor hanya "ganti isi" (URL tetap), tanpa PDF baru/salin | FQR30, FQR31 |
+| 100 | Pengelola (kelola) buka "Konfigurasi default", isi title/footer/ukuran/bingkai, tambah 2 logo ke pustaka, pilih logo awal, Simpan | Tersimpan; tanpa tombol ekspor; pengguna edit/lihat tidak melihat tombol "Konfigurasi default" | FQR32 |
+| 101 | Pengguna edit buat QR baru | Isian awal sama dengan default dan logo awal terpilih; logo hanya dipilih dari pustaka (tanpa unggah) | FQR33, FQR34 |
+| 102 | Ubah default lalu buka QR lama | QR lama tidak berubah | FQR33 |
+| 103 | Atur ukuran logo 30% dengan logo lebar (rasio 3:1) lalu ekspor | Luas logo di label = 30% luas QR (QR tetap terbaca) | FQR35 |

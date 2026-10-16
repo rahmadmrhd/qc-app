@@ -25,6 +25,11 @@ test('saat menyimpan: tombol Simpan berlabel Menyimpan… dan nonaktif', () => {
   expect(submit).toBeDisabled();
 });
 
+test('busyText menyebut apa yang sedang disimpan', () => {
+  render(<FormHeader title="Judul" onCancel={vi.fn()} submitting busyText="Menyimpan item…" />);
+  expect(screen.getByRole('button', { name: 'Menyimpan item…' })).toBeDisabled();
+});
+
 test('submitDisabled menonaktifkan Simpan tanpa mengubah labelnya', () => {
   render(<FormHeader title="Judul" onCancel={vi.fn()} submitting={false} submitDisabled />);
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();

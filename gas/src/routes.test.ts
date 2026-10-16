@@ -35,12 +35,15 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'items.list',
     'items.save',
     'items.setStatus',
+    'qrcodes.cloneFromDrive',
     'qrcodes.delete',
     'qrcodes.export',
     'qrcodes.file',
     'qrcodes.get',
+    'qrcodes.getDefaults',
     'qrcodes.list',
     'qrcodes.save',
+    'qrcodes.saveDefaults',
     'qrcodes.uploadPdf',
   ]);
   expect(routes['auth.me'].permission).toBeUndefined();
@@ -66,6 +69,7 @@ test('semua method terdaftar dengan level akses yang benar', () => {
   expect(routes['qrcodes.export'].permission).toEqual({ module: 'qrcode', level: 'manage' });
   expect(routes['qrcodes.file'].permission).toEqual({ module: 'qrcode', level: 'view' });
   expect(routes['qrcodes.uploadPdf'].permission).toEqual({ module: 'qrcode', level: 'edit' });
+  expect(routes['qrcodes.cloneFromDrive'].permission).toEqual({ module: 'qrcode', level: 'edit' });
   expect(routes['qrcodes.delete'].permission).toEqual({ module: 'qrcode', level: 'manage' });
   for (const method of [
     'access.users.list',

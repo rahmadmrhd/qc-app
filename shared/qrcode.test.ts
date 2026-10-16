@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
   clampQrLayout,
   clampQrStyle,
@@ -13,12 +13,17 @@ import {
   LABEL_MM,
   labelFileSlug,
   layoutLabel,
+  parseDriveFileId,
+  parseDriveResourceKey,
   qrContentHash,
   qrExportStatus,
+  qrPdfFileName,
   sheetCells,
 } from './qrcode';
 
 // Lebar teks tiruan: 0,2 mm per karakter per pt (deterministik).
+// Luas logo bawaan 5% dari luas QR 17 × 17 mm.
+const LOGO_AREA = 17 * 17 * 0.05;
 const measure = (text: string, sizePt: number) => text.length * sizePt * 0.2;
 const base = {
   title: 'Panduan Instalasi',
@@ -47,9 +52,9 @@ test('tata letak bawaan: title, subtitle, QR di tengah ruang tersisa, footer di 
   expect(footer.baselineMm).toBeLessThanOrEqual(LABEL_MM - DEFAULT_QR_LAYOUT.padding);
 });
 
-test('logo: ada hanya bila hasLogo, terpusat di QR, sisi terpanjang = persen sisi QR, latar putih lebih besar', () => {
+test('logo: ada hanya bila hasLogo, terpusat di QR, luas = persen luas QR, latar putih lebih besar', () => {
   const withLogo = layoutLabel(base, measure).elements.find((e) => e.kind === 'logo');
-  expect(withLogo).toMatchObject({ widthMm: 17 * 0.22, heightMm: 17 * 0.22 });
+  expect(withLogo).toMatchObject({ widthMm: Math.sqrt(LOGO_AREA), heightMm: Math.sqrt(LOGO_AREA) });
   if (withLogo?.kind !== 'logo') throw new Error('logo hilang');
   expect(withLogo.xMm + withLogo.widthMm / 2).toBeCloseTo(15, 5);
   expect(withLogo.backdropWidthMm).toBeGreaterThan(withLogo.widthMm);
@@ -59,7 +64,7 @@ test('logo: ada hanya bila hasLogo, terpusat di QR, sisi terpanjang = persen sis
   ).toBe(false);
 });
 
-test('logo mengikuti rasio file: landscape lebar = persen sisi QR, portrait tinggi = persen sisi QR; tetap terpusat', () => {
+test('logo mengikuti rasio file: luas tetap, lebar/tinggi mengikuti rasio; tetap terpusat', () => {
   const find = (aspect: number) => {
     const logo = layoutLabel({ ...base, logoAspect: aspect }, measure).elements.find(
       (e) => e.kind === 'logo',
@@ -68,11 +73,11 @@ test('logo mengikuti rasio file: landscape lebar = persen sisi QR, portrait ting
     return logo;
   };
   const wide = find(3);
-  expect(wide.widthMm).toBeCloseTo(17 * 0.22, 6);
-  expect(wide.heightMm).toBeCloseTo((17 * 0.22) / 3, 6);
+  expect(wide.widthMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 3), 6);
+  expect(wide.heightMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 3), 6);
   const tall = find(0.5);
-  expect(tall.heightMm).toBeCloseTo(17 * 0.22, 6);
-  expect(tall.widthMm).toBeCloseTo((17 * 0.22) / 2, 6);
+  expect(tall.widthMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 2), 6);
+  expect(tall.heightMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 2), 6);
   const qr = layoutLabel(base, measure).elements.find((e) => e.kind === 'qr');
   if (qr?.kind !== 'qr') throw new Error('qr hilang');
   for (const logo of [wide, tall]) {
@@ -86,7 +91,7 @@ test('rasio logo tidak sah (0, negatif, NaN, Infinity) diperlakukan persegi', ()
     const logo = layoutLabel({ ...base, logoAspect: aspect }, measure).elements.find(
       (e) => e.kind === 'logo',
     );
-    expect(logo).toMatchObject({ widthMm: 17 * 0.22, heightMm: 17 * 0.22 });
+    expect(logo).toMatchObject({ widthMm: Math.sqrt(LOGO_AREA), heightMm: Math.sqrt(LOGO_AREA) });
   }
 });
 
@@ -354,4 +359,95 @@ test('tiap baris teks membawa lebar terukur (untuk garis bawah/coret yang identi
     if (el.kind !== 'text') continue;
     expect(el.widthMm).toBeCloseTo(measure(el.text, el.sizePt), 6);
   }
+});
+
+describe('qrPdfFileName', () => {
+  const at = Date.parse('2026-10-16T03:04:05.000Z'); // 10:04:05 WIB
+  test('{title}-{subtitle}-{yyyyMMdd-HHmmss WIB}.pdf', () => {
+    expect(qrPdfFileName('Panduan Instalasi', 'U7-Pro', at)).toBe(
+      'Panduan Instalasi-U7-Pro-20261016-100405.pdf',
+    );
+  });
+  test('subtitle kosong dihilangkan; karakter terlarang diganti spasi; panjang dibatasi', () => {
+    expect(qrPdfFileName('A/B: "C"', '  ', at)).toBe('A B C-20261016-100405.pdf');
+    expect(qrPdfFileName('x'.repeat(300), '', at).length).toBeLessThanOrEqual(120);
+    expect(qrPdfFileName('x'.repeat(300), '', at).endsWith('-20261016-100405.pdf')).toBe(true);
+  });
+});
+
+describe('parseDriveFileId', () => {
+  const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+  test('mengenali fileId polos dan berbagai bentuk link Drive/Docs', () => {
+    expect(parseDriveFileId(id)).toBe(id);
+    expect(parseDriveFileId(`  ${id}  `)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/file/d/${id}/view?usp=sharing`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/file/d/${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/open?id=${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/uc?export=download&id=${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/u/1/file/d/${id}/view`)).toBe(id);
+    expect(parseDriveFileId(`https://docs.google.com/document/d/${id}/edit`)).toBe(id);
+  });
+  test('menolak link non-Drive, teks pendek, dan host tiruan', () => {
+    expect(parseDriveFileId('https://contoh.com/a')).toBeNull();
+    expect(parseDriveFileId(`https://contoh.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveFileId(`https://drive.google.com.evil.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveFileId('abc')).toBeNull();
+    expect(parseDriveFileId('')).toBeNull();
+    expect(parseDriveFileId('https://drive.google.com/drive/folders/' + id)).toBeNull();
+  });
+});
+
+describe('ukuran logo berbasis luas', () => {
+  const logoOf = (logoArea: number, logoAspect: number) => {
+    const out = layoutLabel(
+      { ...base, layout: { ...DEFAULT_QR_LAYOUT, logoArea }, logoAspect },
+      measure,
+    );
+    const logo = out.elements.find((e) => e.kind === 'logo');
+    if (logo?.kind !== 'logo') throw new Error('logo tidak ada');
+    return logo;
+  };
+  const qrArea = DEFAULT_QR_LAYOUT.qrSize ** 2;
+
+  test('luas logo = persen luas QR untuk rasio persegi, lebar, dan tinggi; rasio gambar tetap', () => {
+    for (const aspect of [1, 2, 0.5, 3, 0.25]) {
+      const logo = logoOf(30, aspect);
+      expect((logo.widthMm * logo.heightMm) / qrArea).toBeCloseTo(0.3, 6);
+      expect(logo.widthMm / logo.heightMm).toBeCloseTo(aspect, 6);
+    }
+    const small = logoOf(5, 2);
+    expect((small.widthMm * small.heightMm) / qrArea).toBeCloseTo(0.05, 6);
+  });
+
+  test('batas luas: maksimal 30% walau diminta lebih; konfigurasi lama (persen sisi) diubah ke luas', () => {
+    expect(clampQrLayout({ logoArea: 80 }).logoArea).toBe(30);
+    // logoPercent lama = persen SISI QR: 22% sisi ≈ 4,84% luas
+    expect(clampQrLayout({ logoPercent: 22 }).logoArea).toBeCloseTo(4.84, 6);
+    expect(clampQrLayout({ logoPercent: 30, logoArea: 10 }).logoArea).toBe(10); // nilai baru menang
+    expect(clampQrLayout({}).logoArea).toBe(DEFAULT_QR_LAYOUT.logoArea);
+  });
+});
+
+describe('logo ekstrem dan resource key Drive', () => {
+  test('logo yang lebih lebar/tinggi dari QR (rasio ekstrem pada luas 30%) menandai overflow; rasio wajar tidak', () => {
+    const at = (logoArea: number, logoAspect: number) =>
+      layoutLabel({ ...base, layout: { ...DEFAULT_QR_LAYOUT, logoArea }, logoAspect }, measure);
+    expect(at(30, 10).overflow).toBe(true);
+    expect(at(30, 0.1).overflow).toBe(true);
+    expect(at(30, 3).overflow).toBe(false);
+    expect(at(5, 10).overflow).toBe(false);
+  });
+
+  test('parseDriveResourceKey: mengambil resourcekey dari link Drive; tanpa kunci null', () => {
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+    expect(
+      parseDriveResourceKey(`https://drive.google.com/file/d/${id}/view?resourcekey=0-AbC_d-1`),
+    ).toBe('0-AbC_d-1');
+    expect(parseDriveResourceKey(`https://drive.google.com/open?id=${id}&resourcekey=0-xyz`)).toBe(
+      '0-xyz',
+    );
+    expect(parseDriveResourceKey(`https://drive.google.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveResourceKey(id)).toBeNull();
+    expect(parseDriveResourceKey('https://contoh.com/a?resourcekey=0-x')).toBeNull();
+  });
 });

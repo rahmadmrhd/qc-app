@@ -103,3 +103,57 @@ test('gagal mengganti isi: ditolak dengan pesan jelas, dokumen lama tidak beruba
   expect(platform.drive.get(driveId)?.base64).toBe(PDF1);
   expect(listQrDocuments_()[0]?.name).toBe('manual.pdf');
 });
+
+// ---- clone dari Drive (link atau fileId)
+
+const DRIVE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+const seedForeign = (mime = 'application/pdf', base64 = PDF1) => {
+  platform.drive.set(DRIVE_ID, { folderId: 'foreign', name: 'FM BAK.09.pdf', mime, base64 });
+};
+const clone = (source: string, email = 'qredit@gmail.com') =>
+  call(email, 'qrcodes.cloneFromDrive', { source });
+
+test('clone: link Drive atau fileId disalin ke folder dokumen aplikasi, dibagikan, audit qrcode.pdf_clone; berkas asli tidak disentuh', () => {
+  seedForeign();
+  const out = clone(`https://drive.google.com/file/d/${DRIVE_ID}/view?usp=sharing`);
+  expect(out.ok).toBe(true);
+  const doc = listQrDocuments_()[0];
+  expect(doc?.driveId).not.toBe(DRIVE_ID);
+  expect(platform.drive.get(doc?.driveId ?? '')?.folderId).not.toBe('foreign');
+  expect(platform.sharedFiles.has(doc?.driveId ?? '')).toBe(true);
+  expect(platform.sharedFiles.has(DRIVE_ID)).toBe(false);
+  expect(out.data.link).toContain(doc?.driveId);
+  expect(out.data.uses).toBe(0);
+  expect(listAuditRecords_().map((r) => r.action)).toEqual(['qrcode.pdf_clone']);
+  // fileId polos juga diterima
+  expect(clone(DRIVE_ID).ok).toBe(true);
+});
+
+test('clone ditolak: bukan link/ID Drive, berkas tidak ada, bukan PDF, terlalu besar, atau tanpa izin edit', () => {
+  expect(clone('https://contoh.com/a').error.code).toBe('VALIDATION');
+  expect(clone(DRIVE_ID).error.code).toBe('NOT_FOUND');
+  seedForeign('image/png');
+  expect(clone(DRIVE_ID).error.message).toContain('PDF');
+  seedForeign('application/pdf', `JVBERi0x${'A'.repeat(14_000_000)}`);
+  expect(clone(DRIVE_ID).error.message).toContain('10 MB');
+  seedForeign();
+  expect(clone(DRIVE_ID, 'qrview@gmail.com').error.code).toBe('FORBIDDEN');
+  expect(listQrDocuments_().length).toBe(0);
+});
+
+test('clone dari link berkunci (resourcekey): kunci diteruskan ke Drive saat memeriksa dan menyalin', () => {
+  seedForeign();
+  const calls: Array<string | undefined> = [];
+  const original = platform.driveExternalFileInfo;
+  const wrapped = {
+    ...platform,
+    driveExternalFileInfo: (id: string, key?: string) => {
+      calls.push(key);
+      return original(id, key);
+    },
+  };
+  setPlatform_(wrapped);
+  const out = clone(`https://drive.google.com/file/d/${DRIVE_ID}/view?resourcekey=0-AbC_d-1`);
+  expect(out.ok).toBe(true);
+  expect(calls).toEqual(['0-AbC_d-1']);
+});
