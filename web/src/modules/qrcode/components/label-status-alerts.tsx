@@ -14,7 +14,9 @@ export interface LabelStatus {
 
 /** Banner di atas form: galat (overflow) dan peringatan (QR terlalu padat). Tanpa masalah = tidak merender apa pun. */
 export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
-  if (!status || (!status.overflow && !status.tooDense && !status.frameTight)) return null;
+  if (!status || (!status.overflow && !status.tooDense && !status.frameTight)) {
+    return null;
+  }
   return (
     <div className="space-y-2">
       {status.overflow ? (

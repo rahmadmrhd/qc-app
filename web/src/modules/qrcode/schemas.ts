@@ -196,6 +196,31 @@ export function toNewDesignFromPreset(preset: QrPresetDto): QrFormInput {
   return { ...toPresetFormValues(preset), name: '' };
 }
 
+/** Bagian isi (opsional) yang disalin ulang dari konfigurasi default; gaya, ukuran, dan bingkai selalu ikut. */
+export interface PresetApplyParts {
+  title: boolean;
+  subtitle: boolean;
+  footer: boolean;
+  logo: boolean;
+}
+
+export type PresetPatch = Partial<
+  Pick<QrFormInput, 'title' | 'subtitle' | 'footer' | 'logoFileId'>
+> &
+  Pick<QrFormInput, 'layout' | 'style'>;
+
+export function presetPatch(preset: QrPresetDto, parts: PresetApplyParts): PresetPatch {
+  const values = toNewDesignFromPreset(preset);
+  return {
+    ...(parts.title ? { title: values.title } : {}),
+    ...(parts.subtitle ? { subtitle: values.subtitle } : {}),
+    ...(parts.footer ? { footer: values.footer } : {}),
+    ...(parts.logo ? { logoFileId: values.logoFileId } : {}),
+    layout: values.layout,
+    style: values.style,
+  };
+}
+
 export function toSaveQrPresetInput(
   values: z.output<typeof qrPresetFormSchema>,
   id?: string,
@@ -212,13 +237,6 @@ export function toSaveQrPresetInput(
     style: values.style,
     defaultLogoId: values.logoFileId,
   };
-}
-
-/** Duplikat: salin seluruh isi (termasuk rujukan logo dan PDF); judul diberi "(salinan)" dalam batas panjang. */
-export function toDuplicateDefaults(design: QrDesignDto): QrFormInput {
-  const suffix = ' (salinan)';
-  const title = `${design.title.slice(0, QR_LIMITS.title - suffix.length)}${suffix}`;
-  return { ...toQrFormDefaults(design), title };
 }
 
 export function toSaveQrDesignInput(

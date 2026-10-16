@@ -15,6 +15,7 @@ import {
   layoutLabel,
   parseDriveFileId,
   parseDriveResourceKey,
+  QR_LOGO_BACKDROP_SCALE,
   qrContentHash,
   qrExportStatus,
   qrPdfFileName,
@@ -54,7 +55,11 @@ test('tata letak bawaan: title, subtitle, QR di tengah ruang tersisa, footer di 
 
 test('logo: ada hanya bila hasLogo, terpusat di QR, luas = persen luas QR, latar putih lebih besar', () => {
   const withLogo = layoutLabel(base, measure).elements.find((e) => e.kind === 'logo');
-  expect(withLogo).toMatchObject({ widthMm: Math.sqrt(LOGO_AREA), heightMm: Math.sqrt(LOGO_AREA) });
+  // LOGO_AREA = luas logo + latar putihnya; logo = latar ÷ 1,15 di tiap sisi
+  expect(withLogo).toMatchObject({
+    backdropWidthMm: Math.sqrt(LOGO_AREA),
+    backdropHeightMm: Math.sqrt(LOGO_AREA),
+  });
   if (withLogo?.kind !== 'logo') throw new Error('logo hilang');
   expect(withLogo.xMm + withLogo.widthMm / 2).toBeCloseTo(15, 5);
   expect(withLogo.backdropWidthMm).toBeGreaterThan(withLogo.widthMm);
@@ -73,11 +78,11 @@ test('logo mengikuti rasio file: luas tetap, lebar/tinggi mengikuti rasio; tetap
     return logo;
   };
   const wide = find(3);
-  expect(wide.widthMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 3), 6);
-  expect(wide.heightMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 3), 6);
+  expect(wide.backdropWidthMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 3), 6);
+  expect(wide.backdropHeightMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 3), 6);
   const tall = find(0.5);
-  expect(tall.widthMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 2), 6);
-  expect(tall.heightMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 2), 6);
+  expect(tall.backdropWidthMm).toBeCloseTo(Math.sqrt(LOGO_AREA / 2), 6);
+  expect(tall.backdropHeightMm).toBeCloseTo(Math.sqrt(LOGO_AREA * 2), 6);
   const qr = layoutLabel(base, measure).elements.find((e) => e.kind === 'qr');
   if (qr?.kind !== 'qr') throw new Error('qr hilang');
   for (const logo of [wide, tall]) {
@@ -91,7 +96,10 @@ test('rasio logo tidak sah (0, negatif, NaN, Infinity) diperlakukan persegi', ()
     const logo = layoutLabel({ ...base, logoAspect: aspect }, measure).elements.find(
       (e) => e.kind === 'logo',
     );
-    expect(logo).toMatchObject({ widthMm: Math.sqrt(LOGO_AREA), heightMm: Math.sqrt(LOGO_AREA) });
+    expect(logo).toMatchObject({
+      backdropWidthMm: Math.sqrt(LOGO_AREA),
+      backdropHeightMm: Math.sqrt(LOGO_AREA),
+    });
   }
 });
 
@@ -409,32 +417,47 @@ describe('ukuran logo berbasis luas', () => {
   };
   const qrArea = DEFAULT_QR_LAYOUT.qrSize ** 2;
 
-  test('luas logo = persen luas QR untuk rasio persegi, lebar, dan tinggi; rasio gambar tetap', () => {
-    for (const aspect of [1, 2, 0.5, 3, 0.25]) {
-      const logo = logoOf(30, aspect);
-      expect((logo.widthMm * logo.heightMm) / qrArea).toBeCloseTo(0.3, 6);
+  test('luas logo BESERTA latar putihnya = persen luas QR; rasio gambar tetap', () => {
+    for (const aspect of [1, 2, 0.5, 2.5]) {
+      const logo = logoOf(15, aspect);
+      expect((logo.backdropWidthMm * logo.backdropHeightMm) / qrArea).toBeCloseTo(0.15, 6);
       expect(logo.widthMm / logo.heightMm).toBeCloseTo(aspect, 6);
+      // latar = logo × 1,15 di tiap sisi
+      expect(logo.backdropWidthMm / logo.widthMm).toBeCloseTo(QR_LOGO_BACKDROP_SCALE, 6);
     }
     const small = logoOf(5, 2);
-    expect((small.widthMm * small.heightMm) / qrArea).toBeCloseTo(0.05, 6);
+    expect((small.backdropWidthMm * small.backdropHeightMm) / qrArea).toBeCloseTo(0.05, 6);
   });
 
-  test('batas luas: maksimal 30% walau diminta lebih; konfigurasi lama (persen sisi) diubah ke luas', () => {
-    expect(clampQrLayout({ logoArea: 80 }).logoArea).toBe(30);
+  test('batas luas: maksimal 15% walau diminta lebih; konfigurasi lama (persen sisi) diubah ke luas', () => {
+    expect(clampQrLayout({ logoArea: 80 }).logoArea).toBe(15);
     // logoPercent lama = persen SISI QR: 22% sisi ≈ 4,84% luas
     expect(clampQrLayout({ logoPercent: 22 }).logoArea).toBeCloseTo(4.84, 6);
-    expect(clampQrLayout({ logoPercent: 30, logoArea: 10 }).logoArea).toBe(10); // nilai baru menang
+    expect(clampQrLayout({ logoPercent: 30, logoArea: 6 }).logoArea).toBe(6); // nilai baru menang
     expect(clampQrLayout({}).logoArea).toBe(DEFAULT_QR_LAYOUT.logoArea);
+  });
+
+  test('jarak antarbagian hanya antar teks: tanpa subtitle, QR tidak bergeser oleh gap', () => {
+    const qrY = (gap: number) => {
+      const out = layoutLabel(
+        { ...base, subtitle: '', layout: { ...DEFAULT_QR_LAYOUT, gap } },
+        measure,
+      );
+      const qr = out.elements.find((e) => e.kind === 'qr');
+      if (qr?.kind !== 'qr') throw new Error('qr tidak ada');
+      return qr.yMm;
+    };
+    expect(qrY(0)).toBeCloseTo(qrY(4), 6);
   });
 });
 
 describe('logo ekstrem dan resource key Drive', () => {
-  test('logo yang lebih lebar/tinggi dari QR (rasio ekstrem pada luas 30%) menandai overflow; rasio wajar tidak', () => {
+  test('latar logo yang lebih lebar/tinggi dari QR (rasio ekstrem pada luas 15%) menandai overflow; rasio wajar tidak', () => {
     const at = (logoArea: number, logoAspect: number) =>
       layoutLabel({ ...base, layout: { ...DEFAULT_QR_LAYOUT, logoArea }, logoAspect }, measure);
-    expect(at(30, 10).overflow).toBe(true);
-    expect(at(30, 0.1).overflow).toBe(true);
-    expect(at(30, 3).overflow).toBe(false);
+    expect(at(15, 10).overflow).toBe(true);
+    expect(at(15, 0.1).overflow).toBe(true);
+    expect(at(15, 3).overflow).toBe(false);
     expect(at(5, 10).overflow).toBe(false);
   });
 

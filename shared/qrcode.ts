@@ -22,6 +22,8 @@ export const PT_PER_MM = 72 / 25.4;
 export const MIN_MODULE_MM = 0.3;
 /** Jarak bingkai ke QR minimal (mm); di bawahnya muncul peringatan "bingkai terlalu dekat". */
 export const QR_FRAME_MIN_GAP_MM = 0.5;
+/** Latar putih logo = logo × skala ini di tiap sisi. */
+export const QR_LOGO_BACKDROP_SCALE = 1.15;
 const QR_LINE_HEIGHT = 1.25;
 
 export type QrLinkSource = 'url' | 'pdf';
@@ -34,7 +36,7 @@ export interface QrLayout {
   footerSize: number;
   /** Sisi QR dalam mm. */
   qrSize: number;
-  /** Luas logo (lebar × tinggi) sebagai persen LUAS QR; maksimal 30. Rasio gambar logo tetap. */
+  /** Luas logo BESERTA latar putihnya sebagai persen LUAS QR; maksimal 15. Rasio gambar logo tetap. */
   logoArea: number;
   /** Jarak antarbagian dan padding kanvas dalam mm. */
   gap: number;
@@ -59,7 +61,13 @@ export const QR_LAYOUT_RANGES: Record<
   subtitleSize: { min: 3, max: 12, step: 0.5, unit: 'pt', label: 'Ukuran subtitle' },
   footerSize: { min: 3, max: 10, step: 0.5, unit: 'pt', label: 'Ukuran footer' },
   qrSize: { min: 10, max: 26, step: 0.5, unit: 'mm', label: 'Ukuran QR' },
-  logoArea: { min: 1, max: 30, step: 0.5, unit: '%', label: 'Luas logo terhadap luas QR' },
+  logoArea: {
+    min: 1,
+    max: 15,
+    step: 0.5,
+    unit: '%',
+    label: 'Luas logo dan latarnya terhadap luas QR',
+  },
   gap: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Jarak antarbagian' },
   padding: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Padding kanvas' },
 };
@@ -504,9 +512,8 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     ? LABEL_MM - layout.padding - footer.block.heightMm
     : LABEL_MM - layout.padding;
   if (footer.block) elements.push(...labelTextElements(footer.block, footerTop, measure));
-  const gapAbove = headerExists ? layout.gap : 0;
-  const gapBelow = footer.block ? layout.gap : 0;
-  const available = footerTop - headerBottom - gapAbove - gapBelow;
+  // `gap` hanya jarak antarbagian teks (title ↔ subtitle); QR tidak terpengaruh, dipusatkan di sisa ruang.
+  const available = footerTop - headerBottom;
   const qrSize = layout.qrSize;
   // Bingkai ikut memakan ruang: tebal + jarak di tiap sisi QR.
   const frame = style.frame;
@@ -521,7 +528,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   );
   const frameRadius = Math.min(frame.radius, maxRadius);
   const blockSize = qrSize + 2 * frameOffset;
-  const blockY = headerBottom + gapAbove + Math.max(0, (available - blockSize) / 2);
+  const blockY = headerBottom + Math.max(0, (available - blockSize) / 2);
   const qrY = blockY + frameOffset;
   const qrX = (LABEL_MM - qrSize) / 2;
   if (framed) {
@@ -544,24 +551,27 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       input.logoAspect !== undefined && Number.isFinite(input.logoAspect) && input.logoAspect > 0
         ? input.logoAspect
         : 1;
-    // luas logo = logoArea% dari luas QR, rasio gambar dipertahankan: w × h = A, w ÷ h = aspect
+    // luas logo + latar putihnya = logoArea% dari luas QR, rasio gambar dipertahankan: w × h = A, w ÷ h = aspect
     const area = (qrSize * qrSize * layout.logoArea) / 100;
-    const widthMm = Math.sqrt(area * aspect);
-    const heightMm = Math.sqrt(area / aspect);
+    const backdropWidthMm = Math.sqrt(area * aspect);
+    const backdropHeightMm = Math.sqrt(area / aspect);
+    const widthMm = backdropWidthMm / QR_LOGO_BACKDROP_SCALE;
+    const heightMm = backdropHeightMm / QR_LOGO_BACKDROP_SCALE;
     elements.push({
       kind: 'logo',
       xMm: LABEL_MM / 2 - widthMm / 2,
       yMm: qrY + qrSize / 2 - heightMm / 2,
       widthMm,
       heightMm,
-      backdropWidthMm: widthMm * 1.15,
-      backdropHeightMm: heightMm * 1.15,
+      backdropWidthMm,
+      backdropHeightMm,
     });
   }
-  // Logo dengan luas tetap dan rasio ekstrem dapat lebih lebar/tinggi dari QR (bahkan kanvas): dianggap tidak muat.
+  // Rasio ekstrem pada luas tetap membuat latar logo lebih lebar/tinggi dari QR: dianggap tidak muat.
   const logo = elements.find((element) => element.kind === 'logo');
   const logoTooBig =
-    logo?.kind === 'logo' && (logo.widthMm > qrSize + 1e-9 || logo.heightMm > qrSize + 1e-9);
+    logo?.kind === 'logo' &&
+    (logo.backdropWidthMm > qrSize + 1e-9 || logo.backdropHeightMm > qrSize + 1e-9);
   const overflow =
     logoTooBig ||
     title.tooWide ||
@@ -571,7 +581,13 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     available < blockSize - 1e-9;
   const moduleMm = qrSize / Math.max(1, input.qrModules);
   const frameTight = framed && frame.gap < QR_FRAME_MIN_GAP_MM;
-  return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM, frameTight };
+  return {
+    elements,
+    overflow,
+    moduleMm,
+    tooDense: moduleMm < MIN_MODULE_MM,
+    frameTight,
+  };
 }
 
 /**

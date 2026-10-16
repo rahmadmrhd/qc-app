@@ -44,6 +44,11 @@ const save = (payload: Record<string, unknown> = {}, email = 'qredit@gmail.com')
     const current = call('qrview@gmail.com', 'qrcodes.get', { id: body.id });
     if (current.ok) body.expectedUpdatedAt = current.data.updatedAt;
   }
+  // Satu PDF hanya untuk satu konfigurasi: mengubah tanpa menyebut dokumen mempertahankan dokumennya.
+  if (body.id && payload.documentId === undefined) {
+    const current = call('qrview@gmail.com', 'qrcodes.get', { id: body.id });
+    if (current.ok) body.documentId = current.data.documentId;
+  }
   return call(email, 'qrcodes.save', body);
 };
 const audits = () => listAuditRecords_().map((r) => r.action);
@@ -105,7 +110,7 @@ test('konkurensi optimistis: expectedUpdatedAt basi → CONFLICT dan data tidak 
   ).toBe(true);
 });
 
-test('sumber pdf: dokumen harus dikenal; link efektif = URL berbagi; documentUses dihitung', () => {
+test('sumber pdf: dokumen harus dikenal; link efektif = URL berbagi; satu PDF hanya untuk satu konfigurasi', () => {
   expect(
     save({ linkSource: 'pdf', link: '', documentId: 'tidak-ada' }).error.fields.documentId,
   ).toBeDefined();
@@ -121,13 +126,20 @@ test('sumber pdf: dokumen harus dikenal; link efektif = URL berbagi; documentUse
     updatedBy: 'a',
   });
   const a = save({ linkSource: 'pdf', link: '', documentId: 'd1' });
+  expect(a.data.documentUses).toBeUndefined();
   expect(a.data).toMatchObject({
     link: 'https://drive.google.com/file/d/file-77/view',
     documentName: 'manual.pdf',
-    documentUses: 1,
   });
-  save({ title: 'Kedua', linkSource: 'pdf', link: '', documentId: 'd1' });
-  expect(call('qredit@gmail.com', 'qrcodes.get', { id: a.data.id }).data.documentUses).toBe(2);
+  // PDF yang sama tidak boleh dipakai konfigurasi QR lain; menyimpan ulang konfigurasi pemilik tetap boleh.
+  const second = save({ title: 'Kedua', linkSource: 'pdf', link: '', documentId: 'd1' });
+  expect(second.error.code).toBe('VALIDATION');
+  expect(second.error.fields.documentId).toContain('sudah dipakai');
+  expect(
+    save({ id: a.data.id, title: 'Pertama baru', linkSource: 'pdf', link: '', documentId: 'd1' })
+      .ok,
+  ).toBe(true);
+  expect(listQrDesigns_()).toHaveLength(1);
 });
 
 test('logo: berkas yang tak dikenal ditolak; logo yang sama boleh dirujuk banyak konfigurasi', () => {

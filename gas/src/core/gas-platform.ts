@@ -126,6 +126,20 @@ function createGasPlatform_(): Platform {
         return null;
       }
     },
+    driveReadExternalFile: (fileId, resourceKey) => {
+      try {
+        const file = resourceKey
+          ? DriveApp.getFileByIdAndResourceKey(fileId, resourceKey)
+          : DriveApp.getFileById(fileId);
+        const blob = file.getBlob();
+        return {
+          mime: blob.getContentType() ?? '',
+          base64: Utilities.base64Encode(blob.getBytes()),
+        };
+      } catch {
+        return null;
+      }
+    },
     driveCopyFile: (fileId, folderId, name, resourceKey) =>
       (resourceKey
         ? DriveApp.getFileByIdAndResourceKey(fileId, resourceKey)

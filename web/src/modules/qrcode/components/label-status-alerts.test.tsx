@@ -7,7 +7,12 @@ test('tanpa masalah atau belum ada status: tidak ada banner', () => {
   expect(container).toBeEmptyDOMElement();
   rerender(
     <LabelStatusAlerts
-      status={{ overflow: false, tooDense: false, frameTight: false, moduleMm: 0.5 }}
+      status={{
+        overflow: false,
+        tooDense: false,
+        frameTight: false,
+        moduleMm: 0.5,
+      }}
     />,
   );
   expect(container).toBeEmptyDOMElement();
@@ -16,7 +21,12 @@ test('tanpa masalah atau belum ada status: tidak ada banner', () => {
 test('overflow: banner galat berjudul dan menjelaskan ekspor diblokir', () => {
   render(
     <LabelStatusAlerts
-      status={{ overflow: true, tooDense: false, frameTight: false, moduleMm: 0.5 }}
+      status={{
+        overflow: true,
+        tooDense: false,
+        frameTight: false,
+        moduleMm: 0.5,
+      }}
     />,
   );
   const banner = screen.getByRole('alert');
@@ -27,7 +37,12 @@ test('overflow: banner galat berjudul dan menjelaskan ekspor diblokir', () => {
 test('QR terlalu padat: banner peringatan (status, bukan alert) dengan ukuran modul; ekspor tetap boleh', () => {
   render(
     <LabelStatusAlerts
-      status={{ overflow: false, tooDense: true, frameTight: false, moduleMm: 0.2144 }}
+      status={{
+        overflow: false,
+        tooDense: true,
+        frameTight: false,
+        moduleMm: 0.2144,
+      }}
     />,
   );
   expect(screen.queryByRole('alert')).toBeNull();
@@ -40,7 +55,12 @@ test('QR terlalu padat: banner peringatan (status, bukan alert) dengan ukuran mo
 test('keduanya sekaligus: dua banner', () => {
   render(
     <LabelStatusAlerts
-      status={{ overflow: true, tooDense: true, frameTight: false, moduleMm: 0.2 }}
+      status={{
+        overflow: true,
+        tooDense: true,
+        frameTight: false,
+        moduleMm: 0.2,
+      }}
     />,
   );
   expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -50,7 +70,12 @@ test('keduanya sekaligus: dua banner', () => {
 test('angka ukuran modul dibulatkan KE BAWAH agar tidak tampil 0,30 saat disebut terlalu padat', () => {
   render(
     <LabelStatusAlerts
-      status={{ overflow: false, tooDense: true, frameTight: false, moduleMm: 0.2999 }}
+      status={{
+        overflow: false,
+        tooDense: true,
+        frameTight: false,
+        moduleMm: 0.2999,
+      }}
     />,
   );
   expect(screen.getByRole('status')).toHaveTextContent('0,29 mm');
@@ -60,7 +85,12 @@ test('angka ukuran modul dibulatkan KE BAWAH agar tidak tampil 0,30 saat disebut
 test('bingkai terlalu dekat ke QR: banner peringatan tersendiri; ekspor tetap diizinkan', () => {
   render(
     <LabelStatusAlerts
-      status={{ overflow: false, tooDense: false, frameTight: true, moduleMm: 0.5 }}
+      status={{
+        overflow: false,
+        tooDense: false,
+        frameTight: true,
+        moduleMm: 0.5,
+      }}
     />,
   );
   const banner = screen.getByRole('status');

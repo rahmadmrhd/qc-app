@@ -368,7 +368,6 @@ export interface QrDesignDto {
   link: string;
   documentId: string;
   documentName: string;
-  documentUses: number;
   subtitle: string;
   footer: string;
   logoFileId: string;
@@ -452,7 +451,6 @@ export interface QrDocumentDto {
   id: string;
   name: string;
   link: string;
-  uses: number;
 }
 export interface UploadQrPdfInput {
   name: string;
@@ -462,6 +460,8 @@ export interface UploadQrPdfInput {
 /** Salin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber. */
 export interface CloneQrPdfInput {
   source: string;
+  /** Ganti isi PDF sumber yang ada dengan berkas Drive ini (URL tetap) alih-alih membuat dokumen baru. */
+  replaceDocumentId?: string;
 }
 export interface ExportQrDesignInput {
   id: string;
