@@ -13,7 +13,7 @@ beforeEach(() => {
 function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = {}) {
   const onSubmit = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <QrDesignForm
         defaultValues={toQrFormDefaults()}
@@ -24,7 +24,7 @@ function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = 
       />
     </QueryClientProvider>,
   );
-  return { onSubmit };
+  return { onSubmit, unmount: view.unmount };
 }
 
 test('pratinjau 3×3 tampil di form; tombol Pratinjau lembar membuka dialog (bukan pratinjau lembar di form)', async () => {
@@ -165,4 +165,42 @@ test('panjang siku hanya untuk bingkai siku di sudut; kotak penuh tidak menampil
   await userEvent.click(screen.getByRole('radio', { name: 'Kotak penuh' }));
   expect(screen.queryByLabelText('Panjang siku (%)')).toBeNull();
   expect(screen.getByLabelText('Sudut membulat (mm)')).toBeInTheDocument();
+});
+
+test('submit membawa opsi: overflow dari pratinjau dan thenExport=false untuk Simpan biasa', async () => {
+  const { onSubmit } = renderForm();
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[1]).toEqual({ overflow: false, thenExport: false });
+});
+
+test('isi tidak muat: Simpan tetap boleh dan melaporkan overflow=true', async () => {
+  const { onSubmit } = renderForm({ canExport: true });
+  await userEvent.click(screen.getByLabelText('Title'));
+  await userEvent.paste('x'.repeat(60));
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await screen.findByRole('alert');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[1]).toEqual({ overflow: true, thenExport: false });
+});
+
+test('Simpan dan ekspor: hanya untuk pemegang izin ekspor; memanggil onSubmit dengan thenExport=true', async () => {
+  const none = renderForm();
+  expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
+  none.unmount();
+  const { onSubmit } = renderForm({ canExport: true });
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan dan ekspor' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit.mock.calls[0]?.[1]).toEqual({ overflow: false, thenExport: true });
+});
+
+test('Simpan dan ekspor dinonaktifkan selama isi tidak muat (ekspor pasti ditolak)', async () => {
+  renderForm({ canExport: true });
+  await userEvent.click(screen.getByLabelText('Title'));
+  await userEvent.paste('x'.repeat(60));
+  await screen.findByRole('alert');
+  expect(screen.getByRole('button', { name: 'Simpan dan ekspor' })).toBeDisabled();
 });

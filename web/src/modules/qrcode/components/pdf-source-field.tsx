@@ -134,6 +134,11 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
             >
               {copied ? 'Tersalin' : 'Salin'}
             </Button>
+            <Button asChild type="button" variant="outline">
+              <a href={document.link} target="_blank" rel="noopener noreferrer">
+                Lihat PDF
+              </a>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -147,7 +152,7 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
             <DialogDescription>
               {replacing
                 ? `Isi PDF diganti dengan "${pending?.name ?? ''}"; URL tetap sama sehingga label yang sudah tercetak tetap valid, tetapi pemindai akan melihat dokumen baru. ${document?.uses ?? 0} konfigurasi yang memakai PDF ini ikut berubah.`
-                : `"${pending?.name ?? ''}" akan disimpan di Drive dan dibagikan kepada siapa saja yang punya link (hanya lihat). Siapa pun yang memindai QR atau memegang link dapat membukanya.`}
+                : `"${pending?.name ?? ''}" akan disimpan di Drive dan dibagikan kepada siapa saja yang punya link (hanya lihat). Siapa pun yang memindai QR atau memegang link dapat membukanya. Berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

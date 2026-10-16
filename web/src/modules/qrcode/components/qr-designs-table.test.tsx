@@ -132,3 +132,49 @@ test('subtitle tampil di bawah title; tanpa subtitle tidak ada baris kosong', ()
   expect(screen.getByText('USW PRO MAX 48 PoE')).toHaveAttribute('data-testid', 'design-subtitle');
   expect(screen.getAllByTestId('design-subtitle')).toHaveLength(1);
 });
+
+test('konfigurasi tidak muat: lencana "Tidak muat" dan tombol Ekspor dinonaktifkan dengan penjelasan', () => {
+  render(
+    <QrDesignsTable
+      designs={[
+        design({ id: 'x', title: 'Meluber', overflow: true }),
+        design({ id: 'y', title: 'Muat' }),
+      ]}
+      canEdit
+      canManage
+      busyId={null}
+      {...handlers()}
+    />,
+  );
+  expect(screen.getAllByText('Tidak muat')).toHaveLength(1);
+  const blocked = screen.getByRole('button', { name: 'Ekspor Meluber' });
+  expect(blocked).toBeDisabled();
+  expect(blocked).toHaveAttribute('title', expect.stringContaining('tidak muat'));
+  expect(screen.getByRole('button', { name: 'Ekspor Muat' })).toBeEnabled();
+});
+
+test('sumber PDF: tautan "Lihat PDF" ke Drive membuka tab baru; link manual tidak punya tautan itu', () => {
+  render(
+    <QrDesignsTable
+      designs={[
+        design({
+          id: 'p',
+          title: 'Dari PDF',
+          linkSource: 'pdf',
+          documentName: 'm.pdf',
+          link: 'https://drive.google.com/file/d/f1/view',
+        }),
+        design({ id: 'u', title: 'Dari link' }),
+      ]}
+      canEdit
+      canManage
+      busyId={null}
+      {...handlers()}
+    />,
+  );
+  const link = screen.getByRole('link', { name: 'Lihat PDF Dari PDF' });
+  expect(link).toHaveAttribute('href', 'https://drive.google.com/file/d/f1/view');
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  expect(screen.getAllByRole('link', { name: /Lihat PDF/ })).toHaveLength(1);
+});

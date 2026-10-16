@@ -86,7 +86,23 @@ export function QrDesignsTable({
                     </div>
                   ) : null}
                   <div className="text-xs font-normal text-muted-foreground">
-                    {design.linkSource === 'pdf' ? `PDF: ${design.documentName}` : 'Link manual'}
+                    {design.linkSource === 'pdf' ? (
+                      <>
+                        {`PDF: ${design.documentName}`}
+                        {' · '}
+                        <a
+                          href={design.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Lihat PDF ${design.title}`}
+                          className="underline"
+                        >
+                          Lihat PDF
+                        </a>
+                      </>
+                    ) : (
+                      'Link manual'
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="max-w-[16rem] truncate text-sm" title={design.link}>
@@ -94,7 +110,10 @@ export function QrDesignsTable({
                 </TableCell>
                 <TableCell className="text-sm">{formatAuditTime(design.updatedAt)}</TableCell>
                 <TableCell>
-                  <StatusCell design={design} />
+                  <div className="space-y-1">
+                    <StatusCell design={design} />
+                    {design.overflow ? <Badge variant="destructive">Tidak muat</Badge> : null}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap justify-end gap-1">
@@ -146,7 +165,12 @@ export function QrDesignsTable({
                       <>
                         <Button
                           size="sm"
-                          disabled={busy}
+                          disabled={busy || design.overflow}
+                          title={
+                            design.overflow
+                              ? 'Isi label tidak muat di kanvas 3 × 3 cm; ubah konfigurasi lalu simpan ulang'
+                              : undefined
+                          }
                           aria-label={`${exported ? 'Ekspor ulang' : 'Ekspor'} ${design.title}`}
                           onClick={() => onExport(design)}
                         >

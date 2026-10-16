@@ -164,6 +164,8 @@ export function toSaveQrDesignInput(
   values: QrFormOutput,
   id?: string,
   expectedUpdatedAt?: string,
+  /** Hasil pengukuran tata letak di peramban (isi tidak muat di kanvas). */
+  overflow?: boolean,
 ): SaveQrDesignInput {
   const input: SaveQrDesignInput = {
     title: values.title,
@@ -175,6 +177,7 @@ export function toSaveQrDesignInput(
     logoFileId: values.logoFileId,
     layout: values.layout,
     style: values.style,
+    ...(overflow === undefined ? {} : { overflow }),
   };
   return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }

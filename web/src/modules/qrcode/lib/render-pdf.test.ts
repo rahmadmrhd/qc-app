@@ -128,3 +128,39 @@ test('PDF: bingkai putus-putus memakai operator dash; solid tidak; keduanya teta
   expect(dashOperator.test(await make('dashed'))).toBe(true);
   expect(dashOperator.test(await make('dotted'))).toBe(true);
 });
+
+test('lembar memuat tepat 140 penempatan label pada kisi 10 × 14 sel 30 mm tanpa margin', async () => {
+  const matrix = qrMatrix('https://contoh.com/kisi');
+  const layout = layoutLabel(
+    {
+      title: 'Judul',
+      subtitle: '',
+      footer: '',
+      hasLogo: false,
+      layout: { ...DEFAULT_QR_LAYOUT, qrSize: 14 },
+      qrModules: matrix.length,
+    },
+    (text, size) => text.length * size * 0.2,
+  );
+  const bytes = await buildSheetPdf(layout, matrix, null, fonts);
+  const doc = await PDFDocument.load(bytes);
+  // Isi halaman: semua stream hasil dekode; label dirujuk lewat operator "Do" dengan matriks "cm" sebelumnya.
+  let content = '';
+  for (const [, object] of doc.context.enumerateIndirectObjects()) {
+    if (object instanceof PDFRawStream) {
+      content += `${Buffer.from(decodePDFRawStream(object).decode()).toString('latin1')}\n`;
+    }
+  }
+  // pdf-lib menulis: q 1 0 0 1 X Y cm (+ matriks identitas) /EmbeddedPdfPage-… Do Q
+  const placements = [
+    ...content.matchAll(/q\s+1 0 0 1 ([-0-9.]+) ([-0-9.]+) cm(?:\s+1 0 0 1 0 0 cm)*\s+\/\S+ Do/g),
+  ];
+  expect(placements).toHaveLength(140);
+  const xs = new Set(placements.map((m) => Math.round(Number(m[1]) / PT_PER_MM)));
+  const ys = new Set(placements.map((m) => Math.round(Number(m[2]) / PT_PER_MM)));
+  // kolom 0,30,...,270 mm dan baris dari bawah: 420−30·(r+1) = 390,...,0 mm
+  expect([...xs].sort((a, b) => a - b)).toEqual([0, 30, 60, 90, 120, 150, 180, 210, 240, 270]);
+  expect([...ys].sort((a, b) => a - b)).toEqual([
+    0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360, 390,
+  ]);
+});

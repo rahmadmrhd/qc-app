@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/rpc/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
-import { requirePermission } from '@/modules/auth/permissions';
+import { can, requirePermission } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
 import { qrDesignsQueryOptions, useSaveQrDesign } from '@/modules/qrcode/queries';
 import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
@@ -26,19 +28,25 @@ export const Route = createFileRoute('/_app/qrcode/new')({
 function NewQrDesignPage() {
   const { from } = Route.useSearch();
   const navigate = useNavigate();
+  const me = useMe();
   const { data: designs } = useSuspenseQuery(qrDesignsQueryOptions());
   const save = useSaveQrDesign();
   const source = from ? designs.find((design) => design.id === from) : undefined;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<QrFieldErrors>({});
 
-  async function handleSubmit(values: QrFormOutput) {
+  async function handleSubmit(values: QrFormOutput, options: QrSubmitOptions) {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await save.mutateAsync(toSaveQrDesignInput(values));
+      const saved = await save.mutateAsync(
+        toSaveQrDesignInput(values, undefined, undefined, options.overflow),
+      );
       toast.success('Konfigurasi disimpan');
-      await navigate({ to: '/qrcode' });
+      // "Simpan dan ekspor": lanjut ke dialog konfirmasi ekspor di daftar.
+      await navigate(
+        options.thenExport ? { to: '/qrcode', search: { export: saved.id } } : { to: '/qrcode' },
+      );
     } catch (error) {
       const picked = pickFieldErrors(error, QR_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -52,6 +60,7 @@ function NewQrDesignPage() {
         {source ? 'Duplikat konfigurasi' : 'Konfigurasi QR baru'}
       </h1>
       <QrDesignForm
+        canExport={can(me, 'qrcode', 'manage')}
         defaultValues={source ? toDuplicateDefaults(source) : toQrFormDefaults()}
         initialDocument={
           source?.linkSource === 'pdf'

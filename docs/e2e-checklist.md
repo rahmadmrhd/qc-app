@@ -96,3 +96,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 90 | Pilih bingkai "Siku di sudut" lalu "Kotak penuh"; ubah tebal, jarak, lengkung, panjang siku | Bingkai tampil di pratinjau/PNG/PDF; bila isi jadi tidak muat muncul banner galat dan ekspor ditolak | FQR20 |
 | 91 | Unggah logo lebar (mis. 3:1) dan logo tinggi | Logo tidak terdistorsi dan tidak dipaksa persegi; QR tetap terbaca | FQR21 |
 | 92 | Klik pratinjau 3 × 3; buka pratinjau lembar lalu zoom (tombol dan Ctrl + roda) | Tampilan diperbesar terbuka; lembar bisa di-zoom 50–400% dan digulir | FQR22 |
+| 93 | Isi form lalu tekan "Simpan dan ekspor" | Tersimpan, dialog konfirmasi ekspor terbuka otomatis di daftar; setelah konfirmasi status "Sudah diekspor" | FQR24 |
+| 94 | Simpan konfigurasi yang isinya tidak muat | Daftar menampilkan lencana "Tidak muat" dan tombol Ekspor nonaktif; "Simpan dan ekspor" nonaktif di form | FQR25 |
+| 95 | Hapus konfigurasi bersumber PDF yang terakhir; buka link PDF di jendela penyamaran | Link tidak lagi dapat dibuka publik; pakai PDF itu lagi di konfigurasi baru → dapat dibuka lagi | FQR26 |
+| 96 | Tekan "Lihat PDF" pada form dan pada daftar | PDF terbuka di Drive pada tab baru | FQR27 |

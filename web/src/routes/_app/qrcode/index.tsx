@@ -1,7 +1,7 @@
 import type { QrDesignDto, QrFileKind } from '@shared/rpc';
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,9 @@ import {
 } from '@/modules/qrcode/queries';
 
 export const Route = createFileRoute('/_app/qrcode/')({
+  // `export=<id>`: dibuka dari "Simpan dan ekspor" pada form; dialog konfirmasi ekspor tampil otomatis.
+  validateSearch: (search: Record<string, unknown>): { export?: string } =>
+    typeof search.export === 'string' ? { export: search.export } : {},
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'view'),
   loader: ({ context }) => context.queryClient.ensureQueryData(qrDesignsQueryOptions()),
   component: QrCodesPage,
@@ -43,6 +46,14 @@ function QrCodesPage() {
   const [exporting, setExporting] = useState<QrDesignDto | null>(null);
   const [deleting, setDeleting] = useState<QrDesignDto | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { export: exportId } = Route.useSearch();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya bereaksi pada parameter export
+  useEffect(() => {
+    if (!exportId) return;
+    const target = designs.find((design) => design.id === exportId);
+    if (target && can(me, 'qrcode', 'manage') && !target.overflow) setExporting(target);
+    void navigate({ to: '/qrcode', search: {}, replace: true });
+  }, [exportId]);
 
   async function confirmExport(design: QrDesignDto) {
     const logo =

@@ -98,3 +98,23 @@ test('berkas bukan PDF atau > 10 MB ditolak di klien tanpa dialog', async () => 
   expect(await screen.findByText(/hanya berkas PDF/i)).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+
+test('"Lihat PDF" membuka berkas di Drive pada tab baru; tidak ada tombol itu sebelum ada PDF', () => {
+  const { rerender } = render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />,
+  );
+  expect(screen.queryByRole('link', { name: 'Lihat PDF' })).toBeNull();
+  rerender(<PdfSourceField document={doc} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  const link = screen.getByRole('link', { name: 'Lihat PDF' });
+  expect(link).toHaveAttribute('href', doc.link);
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+});
+
+test('dialog konfirmasi menyebut berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun', async () => {
+  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  expect(
+    await within(await screen.findByRole('dialog')).findByText(/dicabut otomatis/i),
+  ).toBeInTheDocument();
+});

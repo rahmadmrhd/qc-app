@@ -1,7 +1,7 @@
 import { QR_FRAME_KEYS, QR_FRAME_RANGES, QR_LAYOUT_KEYS, QR_LAYOUT_RANGES } from '@shared/qrcode';
 import type { QrDesignDto, QrDocumentDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,8 +27,17 @@ export interface QrDesignFormProps {
   designs: readonly QrDesignDto[];
   submitError?: string | null;
   fieldErrors?: QrFieldErrors;
-  onSubmit: (values: QrFormOutput) => void | Promise<void>;
+  onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
   onCancel: () => void;
+  /** Pemegang izin ekspor: tombol "Simpan dan ekspor" tersedia. */
+  canExport?: boolean;
+}
+
+export interface QrSubmitOptions {
+  /** Isi tidak muat di kanvas 3 × 3 cm menurut pratinjau saat disimpan (disimpan server sebagai flag). */
+  overflow: boolean;
+  /** Setelah tersimpan, lanjut ke dialog konfirmasi ekspor. */
+  thenExport: boolean;
 }
 
 /** Kunci ukuran font pada tata letak untuk tiap bagian teks (isiannya ada di bagian teks itu sendiri). */
@@ -56,16 +65,26 @@ export function QrDesignForm({
   fieldErrors,
   onSubmit,
   onCancel,
+  canExport = false,
 }: QrDesignFormProps) {
   const uploadPdf = useUploadQrPdf();
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [labelStatus, setLabelStatus] = useState<LabelStatus | null>(null);
+  // Nilai terkini untuk handler simpan (menghindari closure basi): status tata letak dan mode simpan.
+  const statusRef = useRef<LabelStatus | null>(null);
+  statusRef.current = labelStatus;
+  const exportAfterRef = useRef(false);
   const form = useForm({
     defaultValues,
     validators: { onSubmit: qrDesignFormSchema },
     onSubmit: async ({ value }) => {
-      await onSubmit(qrDesignFormSchema.parse(value));
+      const thenExport = exportAfterRef.current;
+      exportAfterRef.current = false;
+      await onSubmit(qrDesignFormSchema.parse(value), {
+        overflow: statusRef.current?.overflow ?? false,
+        thenExport,
+      });
     },
   });
 
@@ -388,9 +407,30 @@ export function QrDesignForm({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Button type="submit" disabled={submitting}>
-                Simpan
-              </Button>
+              <>
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  onClick={() => (exportAfterRef.current = false)}
+                >
+                  Simpan
+                </Button>
+                {canExport ? (
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    disabled={submitting || labelStatus?.overflow === true}
+                    title={
+                      labelStatus?.overflow
+                        ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
+                        : undefined
+                    }
+                    onClick={() => (exportAfterRef.current = true)}
+                  >
+                    Simpan dan ekspor
+                  </Button>
+                ) : null}
+              </>
             )}
           </form.Subscribe>
           <Button type="button" variant="outline" onClick={onCancel}>

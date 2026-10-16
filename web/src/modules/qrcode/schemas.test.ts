@@ -159,3 +159,10 @@ test('skema bingkai: gaya garis solid/dashed/dotted diterima, lainnya ditolak', 
     expect(qrDesignFormSchema.safeParse(withLine(ok)).success).toBe(true);
   expect(qrDesignFormSchema.safeParse(withLine('zigzag')).success).toBe(false);
 });
+
+test('toSaveQrDesignInput menyertakan flag overflow hanya bila diberikan', () => {
+  const parsed = qrDesignFormSchema.parse(valid);
+  expect(toSaveQrDesignInput(parsed, undefined, undefined, true).overflow).toBe(true);
+  expect(toSaveQrDesignInput(parsed, 'q1', 't', false).overflow).toBe(false);
+  expect('overflow' in toSaveQrDesignInput(parsed)).toBe(false);
+});
