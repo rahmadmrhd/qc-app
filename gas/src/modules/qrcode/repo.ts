@@ -16,6 +16,7 @@ export const QR_DESIGNS_TABLE: TableSchema = {
     'logo_file_id',
     'layout',
     'style',
+    'overflow',
     'exported_hash',
     'exported_at',
     'exported_by',
@@ -35,6 +36,7 @@ export const QR_DOCUMENTS_TABLE: TableSchema = {
     'drive_id',
     'name',
     'size',
+    'shared',
     'created_at',
     'created_by',
     'updated_at',
@@ -55,6 +57,8 @@ export interface QrDesignRecord {
   logoFileId: string;
   layout: QrLayout;
   style: QrStyle;
+  /** Isi tidak muat di kanvas (dilaporkan peramban saat simpan). */
+  overflow: boolean;
   exportedHash: string;
   exportedAt: string;
   exportedBy: string;
@@ -73,6 +77,8 @@ export interface QrDocumentRecord {
   driveId: string;
   name: string;
   size: number;
+  /** Dibagikan "siapa saja yang punya link"; dicabut bila tidak dipakai konfigurasi mana pun. */
+  shared: boolean;
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -112,6 +118,7 @@ function toQrDesignRecord_(rowNumber: number, data: RowData): QrDesignRecord {
     logoFileId: (data.logo_file_id ?? '').trim(),
     layout: parseQrLayout_(data.layout ?? ''),
     style: parseQrStyle_(data.style ?? ''),
+    overflow: (data.overflow ?? '').trim() === '1',
     exportedHash: (data.exported_hash ?? '').trim(),
     exportedAt: data.exported_at ?? '',
     exportedBy: data.exported_by ?? '',
@@ -136,6 +143,7 @@ function fromQrDesignRecord_(design: NewQrDesignRecord): RowData {
     logo_file_id: design.logoFileId,
     layout: JSON.stringify(design.layout),
     style: JSON.stringify(design.style),
+    overflow: design.overflow ? '1' : '',
     exported_hash: design.exportedHash,
     exported_at: design.exportedAt,
     exported_by: design.exportedBy,
@@ -170,6 +178,7 @@ function toQrDocumentRecord_(rowNumber: number, data: RowData): QrDocumentRecord
     driveId: (data.drive_id ?? '').trim(),
     name: data.name ?? '',
     size: Number(data.size ?? '0') || 0,
+    shared: (data.shared ?? '').trim() !== '0',
     createdAt: data.created_at ?? '',
     createdBy: data.created_by ?? '',
     updatedAt: data.updated_at ?? '',
@@ -182,6 +191,7 @@ function fromQrDocumentRecord_(doc: NewQrDocumentRecord): RowData {
     drive_id: doc.driveId,
     name: doc.name,
     size: String(doc.size),
+    shared: doc.shared ? '1' : '0',
     created_at: doc.createdAt,
     created_by: doc.createdBy,
     updated_at: doc.updatedAt,

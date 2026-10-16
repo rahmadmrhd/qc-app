@@ -82,6 +82,7 @@ test('status Berubah sejak ekspor setelah konfigurasi diubah; ekspor ulang kemba
   const changed = call('qredit@gmail.com', 'qrcodes.save', {
     ...body,
     id: design.id,
+    expectedUpdatedAt: design.updatedAt,
     title: 'Judul Baru',
   }).data;
   expect(changed.exportStatus).toBe('stale');
@@ -186,7 +187,12 @@ test('mengubah gaya/bingkai setelah ekspor = Berubah sejak ekspor', () => {
     footer: { bold: false, italic: false, underline: false, strike: false, uppercase: false },
     frame: { kind: 'box', line: 'solid', thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
   };
-  const changed = call('qredit@gmail.com', 'qrcodes.save', { ...body, id: design.id, style }).data;
+  const changed = call('qredit@gmail.com', 'qrcodes.save', {
+    ...body,
+    id: design.id,
+    expectedUpdatedAt: design.updatedAt,
+    style,
+  }).data;
   expect(changed.exportStatus).toBe('stale');
 });
 

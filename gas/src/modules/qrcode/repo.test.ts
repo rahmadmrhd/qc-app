@@ -23,6 +23,7 @@ const design = {
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
+  overflow: false,
   exportedHash: '',
   exportedAt: '',
   exportedBy: '',
@@ -71,12 +72,37 @@ test('dokumen: simpan dan baca', () => {
     driveId: 'file-1',
     name: 'manual.pdf',
     size: 1200,
+    shared: true,
     createdAt: '2026-10-16T00:00:00.000Z',
     createdBy: 'a@x.com',
     updatedAt: '2026-10-16T00:00:00.000Z',
     updatedBy: 'a@x.com',
   });
-  expect(listQrDocuments_()[0]).toMatchObject({ id: 'd1', driveId: 'file-1', size: 1200 });
+  expect(listQrDocuments_()[0]).toMatchObject({
+    id: 'd1',
+    driveId: 'file-1',
+    size: 1200,
+    shared: true,
+  });
+  // kolom shared kosong (baris lama) dianggap dibagikan; '0' = sudah dicabut
+  const platform = createMemoryPlatform();
+  setPlatform_(platform);
+  insertQrDocument_({
+    id: 'd2',
+    driveId: 'file-2',
+    name: 'x.pdf',
+    size: 1,
+    shared: false,
+    createdAt: 't',
+    createdBy: 'a',
+    updatedAt: 't',
+    updatedBy: 'a',
+  });
+  expect(listQrDocuments_()[0]?.shared).toBe(false);
+  const sheet = platform.db.sheet('qr_documents');
+  const header = sheet.rows[0] as string[];
+  (sheet.rows[1] as unknown[])[header.indexOf('shared')] = '';
+  expect(listQrDocuments_()[0]?.shared).toBe(true);
 });
 
 test('gaya tersimpan kembali utuh; kolom style kosong atau rusak dipulihkan ke bawaan', () => {

@@ -121,6 +121,13 @@ function createGasPlatform_(): Platform {
         DriveApp.Permission.VIEW,
       );
     },
+    driveRevokeSharing: (fileId) => {
+      try {
+        DriveApp.getFileById(fileId).setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+      } catch {
+        // Berkas sudah tidak ada: tidak ada yang perlu dicabut.
+      }
+    },
     driveReplaceFileContent: (fileId, mime, base64) => {
       // DriveApp tidak bisa mengganti isi berkas biner; Drive API v3 (scope drive yang sama) bisa.
       const response = UrlFetchApp.fetch(

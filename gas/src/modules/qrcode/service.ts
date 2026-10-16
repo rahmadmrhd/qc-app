@@ -97,6 +97,7 @@ export function toQrDesignDto_(
     logoFileId: design.logoFileId,
     layout: design.layout,
     style: design.style,
+    overflow: design.overflow,
     exportStatus: qrExportStatus(design.exportedHash, content),
     exportedAt: design.exportedAt,
     exportedBy: design.exportedBy,
@@ -141,7 +142,21 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
 }
 
 export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesignDto {
-  return platform_().withLock(() => {
+  // Berbagi PDF (I/O Drive) di luar lock: PDF yang sebelumnya dicabut dibagikan lagi saat dipakai.
+  if (input.linkSource === 'pdf') ensureQrDocumentShared_(input.documentId);
+  const { dto, released } = saveQrDesignLocked_(input, actor);
+  revokeUnusedQrDocuments_(released);
+  return dto;
+}
+
+interface SaveOutcome {
+  dto: QrDesignDto;
+  /** Dokumen PDF yang baru saja dilepas oleh konfigurasi ini (kandidat pencabutan berbagi). */
+  released: string[];
+}
+
+function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOutcome {
+  return platform_().withLock((): SaveOutcome => {
     const designs = listQrDesigns_();
     const existing = input.id ? designs.find((row) => row.id === input.id) : undefined;
     if (input.id && !existing) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
@@ -165,6 +180,7 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
       logoFileId: input.logoFileId,
       layout: input.layout,
       style: input.style ?? existing?.style ?? DEFAULT_QR_STYLE,
+      overflow: input.overflow ?? existing?.overflow ?? false,
       exportedHash: existing?.exportedHash ?? '',
       exportedAt: existing?.exportedAt ?? '',
       exportedBy: existing?.exportedBy ?? '',
@@ -188,12 +204,29 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
         before: null,
         after: qrDesignSnapshot_(next, documents),
       });
-      return toQrDesignDto_(next, documents, qrUsesMap_([...designs, { ...next, rowNumber: 0 }]));
+      return {
+        dto: toQrDesignDto_(next, documents, qrUsesMap_([...designs, { ...next, rowNumber: 0 }])),
+        released: [],
+      };
     }
     const before = qrDesignSnapshot_(existing, documents);
     const after = qrDesignSnapshot_(next, documents);
     if (JSON.stringify(before) === JSON.stringify(after)) {
-      return toQrDesignDto_(existing, documents, qrUsesMap_(designs));
+      // Hanya flag "tidak muat" (laporan peramban) yang berubah: simpan diam-diam, tanpa audit dan tanpa
+      // menaikkan updatedAt (agar versi yang sedang dimuat pengguna lain tidak jadi basi).
+      if (existing.overflow !== next.overflow) {
+        const flagged: QrDesignRecord = { ...existing, overflow: next.overflow };
+        updateQrDesign_(flagged);
+        return {
+          dto: toQrDesignDto_(
+            flagged,
+            documents,
+            qrUsesMap_(designs.map((row) => (row.id === flagged.id ? flagged : row))),
+          ),
+          released: [],
+        };
+      }
+      return { dto: toQrDesignDto_(existing, documents, qrUsesMap_(designs)), released: [] };
     }
     const saved: QrDesignRecord = { ...next, rowNumber: existing.rowNumber };
     updateQrDesign_(saved);
@@ -205,11 +238,65 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
       before,
       after,
     });
-    return toQrDesignDto_(
-      saved,
-      documents,
-      qrUsesMap_(designs.map((row) => (row.id === saved.id ? saved : row))),
-    );
+    return {
+      dto: toQrDesignDto_(
+        saved,
+        documents,
+        qrUsesMap_(designs.map((row) => (row.id === saved.id ? saved : row))),
+      ),
+      released:
+        existing.documentId !== '' && existing.documentId !== next.documentId
+          ? [existing.documentId]
+          : [],
+    };
+  });
+}
+
+/** Masa tenggang unggahan yang belum dipakai konfigurasi mana pun sebelum berbaginya dicabut. */
+const QR_ORPHAN_GRACE_MS = 60 * 60 * 1000;
+
+/** Membagikan (lagi) PDF yang sebelumnya dicabut berbaginya. I/O Drive di luar lock; pemanggil tanpa lock. */
+function ensureQrDocumentShared_(documentId: string): void {
+  const doc = listQrDocuments_().find((row) => row.id === documentId);
+  if (!doc || doc.shared) return;
+  platform_().driveShareAnyoneWithLink(doc.driveId);
+  platform_().withLock(() => {
+    const fresh = listQrDocuments_().find((row) => row.id === documentId);
+    if (fresh && !fresh.shared) updateQrDocument_({ ...fresh, shared: true });
+  });
+}
+
+/**
+ * Mencabut berbagi publik PDF sumber yang tidak dipakai konfigurasi mana pun: segera untuk dokumen yang baru
+ * dilepas (`releasedIds`), dan setelah masa tenggang untuk unggahan yatim. Best-effort: galat Drive hanya dicatat.
+ * I/O Drive di luar lock; pemanggil tanpa lock.
+ */
+function revokeUnusedQrDocuments_(releasedIds: readonly string[]): void {
+  const used = new Set(
+    listQrDesigns_().flatMap((design) =>
+      design.linkSource === 'pdf' && design.documentId !== '' ? [design.documentId] : [],
+    ),
+  );
+  const now = platform_().now();
+  const revoked: string[] = [];
+  for (const doc of listQrDocuments_()) {
+    if (!doc.shared || used.has(doc.id)) continue;
+    const age = now - Date.parse(doc.updatedAt);
+    if (!releasedIds.includes(doc.id) && !(age >= QR_ORPHAN_GRACE_MS)) continue;
+    try {
+      platform_().driveRevokeSharing(doc.driveId);
+      revoked.push(doc.id);
+    } catch (error) {
+      platform_().logError(
+        `qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (revoked.length === 0) return;
+  platform_().withLock(() => {
+    for (const doc of listQrDocuments_()) {
+      if (revoked.includes(doc.id) && doc.shared) updateQrDocument_({ ...doc, shared: false });
+    }
   });
 }
 
@@ -233,6 +320,7 @@ export function removeQrDesign_(input: QrDesignRefInput, actor: ActorRef): QrDes
   for (const driveId of [removed.exportPdfDriveId, removed.exportPngDriveId]) {
     if (driveId !== '') platform_().driveTrashFile(driveId);
   }
+  revokeUnusedQrDocuments_(removed.documentId !== '' ? [removed.documentId] : []);
   return { id: removed.id };
 }
 
@@ -250,6 +338,13 @@ function qrDocumentUses_(documentId: string): number {
  * valid. I/O Drive di luar lock; catatan sheet di dalam lock.
  */
 export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {
+  const out = uploadQrPdfNow_(input, actor);
+  // Pembersihan oportunistik: unggahan yatim yang sudah melewati masa tenggang dicabut berbaginya.
+  revokeUnusedQrDocuments_([]);
+  return out;
+}
+
+function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {
   const platform = platform_();
   const size = base64ByteLength(input.base64);
   if (input.replaceDocumentId) {
@@ -299,6 +394,7 @@ export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocume
         driveId,
         name: input.name,
         size,
+        shared: true,
         createdAt: now,
         createdBy: actor.email,
         updatedAt: now,
@@ -334,6 +430,12 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
   const precheck = listQrDesigns_().find((row) => row.id === input.id);
   if (!precheck) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
   assertQrFresh_(precheck, input.expectedUpdatedAt);
+  if (precheck.overflow) {
+    throw appError_(
+      'VALIDATION',
+      'Isi label melebihi kanvas 3 × 3 cm; perbaiki ukuran atau teks lalu simpan ulang',
+    );
+  }
   const folderId = ensureQrFolder_();
   const stamp = nowIso_().replace(/[-:.TZ]/g, '');
   const base = `${labelFileSlug(precheck.title)}-${stamp}`;

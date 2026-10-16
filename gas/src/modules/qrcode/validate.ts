@@ -19,6 +19,8 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id');
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
+  // Mengubah wajib membawa versi yang dimuat: tanpa itu, perubahan orang lain bisa tertimpa diam-diam.
+  if (id && !expectedUpdatedAt) reader.fail('expectedUpdatedAt', 'Wajib diisi saat mengubah');
   const title = reader.str('title', { required: true, max: QR_LIMITS.title });
   const linkSource = reader.oneOf('linkSource', QR_LINK_SOURCES);
   const subtitle = reader.str('subtitle', { max: QR_LIMITS.subtitle });
@@ -48,6 +50,10 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
   const layout = reader.raw('layout');
   if (!isQrLayout(layout))
     reader.fail('layout', 'Ukuran tata letak tidak valid atau di luar rentang');
+  const overflow = reader.raw('overflow');
+  if (overflow !== undefined && typeof overflow !== 'boolean') {
+    reader.fail('overflow', 'Harus true atau false');
+  }
   const style = reader.raw('style');
   if (style !== undefined && !isQrStyle(style)) {
     reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
@@ -63,6 +69,7 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
     logoFileId,
     layout: layout as SaveQrDesignInput['layout'],
     ...(style === undefined ? {} : { style: style as QrStyle }),
+    ...(typeof overflow === 'boolean' ? { overflow } : {}),
   };
   return {
     ...(id ? { id } : {}),

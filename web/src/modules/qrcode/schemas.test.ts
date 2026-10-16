@@ -18,6 +18,7 @@ const valid = {
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
+  overflow: false,
 };
 
 test('skema: sumber url butuh link http(s); sumber pdf butuh documentId', () => {
@@ -78,6 +79,7 @@ test('defaults: kosong memakai layout bawaan; duplikat menyalin semuanya dengan 
     logoFileId: 'logo-1',
     layout: DEFAULT_QR_LAYOUT,
     style: DEFAULT_QR_STYLE,
+    overflow: false,
     exportStatus: 'current' as const,
     exportedAt: 't',
     exportedBy: 'a',
@@ -129,6 +131,7 @@ test('gaya dikirim ke server dan disalin saat duplikat; bawaan form = gaya bawaa
     logoFileId: '',
     layout: DEFAULT_QR_LAYOUT,
     style,
+    overflow: false,
     exportStatus: 'none' as const,
     exportedAt: '',
     exportedBy: '',

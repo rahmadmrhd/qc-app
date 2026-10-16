@@ -35,8 +35,15 @@ const input = {
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
 };
-const save = (payload: Record<string, unknown> = {}, email = 'qredit@gmail.com') =>
-  call(email, 'qrcodes.save', { ...input, ...payload });
+const save = (payload: Record<string, unknown> = {}, email = 'qredit@gmail.com') => {
+  const body: Record<string, unknown> = { ...input, ...payload };
+  // Mengubah wajib membawa versi yang dimuat; tes yang tidak menguji hal itu memakai versi terkini.
+  if (body.id && body.expectedUpdatedAt === undefined) {
+    const current = call('qrview@gmail.com', 'qrcodes.get', { id: body.id });
+    if (current.ok) body.expectedUpdatedAt = current.data.updatedAt;
+  }
+  return call(email, 'qrcodes.save', body);
+};
 const audits = () => listAuditRecords_().map((r) => r.action);
 
 test('izin: view membaca, edit menyimpan, manage menghapus; tanpa modul qrcode FORBIDDEN', () => {
@@ -105,6 +112,7 @@ test('sumber pdf: dokumen harus dikenal; link efektif = URL berbagi; documentUse
     driveId: 'file-77',
     name: 'manual.pdf',
     size: 10,
+    shared: true,
     createdAt: 't',
     createdBy: 'a',
     updatedAt: 't',
@@ -157,6 +165,7 @@ test('hapus: baris hilang, audit qrcode.delete, berkas ekspor masuk sampah, logo
     driveId: 'file-77',
     name: 'm.pdf',
     size: 1,
+    shared: true,
     createdAt: 't',
     createdBy: 'a',
     updatedAt: 't',
@@ -233,6 +242,7 @@ test('ubah tanpa menyertakan style mempertahankan gaya yang ada', () => {
   const { style: _omit, ...withoutStyle } = {
     ...input,
     id: made.data.id,
+    expectedUpdatedAt: made.data.updatedAt,
     title: 'Judul Baru',
   } as Record<string, unknown>;
   const out = call('qredit@gmail.com', 'qrcodes.save', withoutStyle);
@@ -267,6 +277,7 @@ test('mengganti PDF sumber ke dokumen lain TERSIMPAN', () => {
       driveId: `file-${id}`,
       name: `${id}.pdf`,
       size: 1,
+      shared: true,
       createdAt: 't',
       createdBy: 'a',
       updatedAt: 't',

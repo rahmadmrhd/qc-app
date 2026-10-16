@@ -375,6 +375,8 @@ export interface QrDesignDto {
   layout: QrLayout;
   /** Gaya teks per bagian dan bingkai QR. */
   style: QrStyle;
+  /** Isi tidak muat di kanvas 3 × 3 cm (dilaporkan peramban saat simpan): ekspor diblokir. */
+  overflow: boolean;
   exportStatus: QrExportStatus;
   exportedAt: string;
   exportedBy: string;
@@ -396,6 +398,8 @@ export interface SaveQrDesignInput {
   layout: QrLayout;
   /** Kosong = pertahankan gaya yang ada (ubah) atau bawaan (buat). */
   style?: QrStyle;
+  /** Hasil pengukuran tata letak di peramban; kosong = pertahankan nilai yang ada (bawaan false). */
+  overflow?: boolean;
 }
 export interface QrDesignRefInput {
   id: string;

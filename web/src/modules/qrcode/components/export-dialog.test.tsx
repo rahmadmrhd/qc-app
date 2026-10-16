@@ -17,6 +17,7 @@ const base = {
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
+  overflow: false,
   exportStatus: 'none' as const,
   exportedAt: '',
   exportedBy: '',

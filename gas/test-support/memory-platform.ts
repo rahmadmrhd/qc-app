@@ -253,6 +253,9 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       if (!drive.has(fileId)) throw new Error(`Berkas Drive ${fileId} tidak ada`);
       sharedFiles.add(fileId);
     },
+    driveRevokeSharing: (fileId) => {
+      sharedFiles.delete(fileId);
+    },
     driveReplaceFileContent: (fileId, mime, base64) => {
       const file = drive.get(fileId);
       if (!file) throw new Error(`Berkas Drive ${fileId} tidak ada`);
