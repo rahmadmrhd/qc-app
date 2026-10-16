@@ -44,10 +44,13 @@ function blobToBase64(blob: Blob): Promise<string> {
  * (JPEG bila peramban tidak mendukung), kualitas diturunkan bertahap sampai <= `MAX_IMAGE_BYTES`.
  * Bergantung pada canvas peramban, jadi diverifikasi manual di peramban (bukan di jsdom).
  */
-export async function prepareImage(file: File): Promise<UploadFileInput> {
+export async function prepareImage(
+  file: File,
+  maxSide: number = MAX_IMAGE_SIDE,
+): Promise<UploadFileInput> {
   if (!isAcceptedImage(file)) throw new Error('Format gambar harus JPEG, PNG, atau WebP');
   const bitmap = await createImageBitmap(file);
-  const { width, height } = fitWithin(bitmap.width, bitmap.height);
+  const { width, height } = fitWithin(bitmap.width, bitmap.height, maxSide);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
