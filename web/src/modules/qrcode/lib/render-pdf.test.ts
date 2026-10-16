@@ -67,3 +67,26 @@ test('PDF dengan gaya miring, garis bawah/coret, dan bingkai: tetap 1 halaman ke
   expect(bytes.length).toBeLessThan(300_000);
   expect(Buffer.from(bytes).toString('latin1')).toContain('Italic');
 });
+
+test('daftar karakter yang diizinkan hanya memuat glyph yang ADA di keempat varian font (cmap)', async () => {
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  const faces = [fonts.regular, fonts.bold, fonts.italic, fonts.boldItalic].map((bytes) =>
+    fontkit.create(bytes),
+  );
+  const { isRenderableLabelText } = await import('@shared/qrcode');
+  const missing: string[] = [];
+  for (let code = 0x20; code <= 0x2300; code++) {
+    const char = String.fromCodePoint(code);
+    if (!isRenderableLabelText(char)) continue;
+    // Bentuk HURUF KAPITAL juga harus ada di font.
+    for (const shown of new Set([char, char.toUpperCase()])) {
+      for (const face of faces) {
+        for (const ch of shown) {
+          if (!face.hasGlyphForCodePoint(ch.codePointAt(0) ?? 0))
+            missing.push(`U+${code.toString(16)}`);
+        }
+      }
+    }
+  }
+  expect([...new Set(missing)]).toEqual([]);
+});

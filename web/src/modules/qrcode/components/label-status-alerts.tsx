@@ -7,12 +7,14 @@ export interface LabelStatus {
   overflow: boolean;
   /** Modul QR terlalu kecil untuk dicetak/dipindai dengan nyaman: peringatan saja. */
   tooDense: boolean;
+  /** Bingkai terlalu dekat ke QR (quiet zone hilang): peringatan saja. */
+  frameTight: boolean;
   moduleMm: number;
 }
 
 /** Banner di atas form: galat (overflow) dan peringatan (QR terlalu padat). Tanpa masalah = tidak merender apa pun. */
 export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
-  if (!status || (!status.overflow && !status.tooDense)) return null;
+  if (!status || (!status.overflow && !status.tooDense && !status.frameTight)) return null;
   return (
     <div className="space-y-2">
       {status.overflow ? (
@@ -32,8 +34,22 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
           <TriangleAlert />
           <AlertTitle>QR terlalu padat</AlertTitle>
           <AlertDescription>
-            {status.moduleMm.toFixed(2).replace('.', ',')} mm per modul: pendekkan link atau
-            perbesar QR agar mudah dipindai. Ekspor tetap diizinkan.
+            {(Math.floor(status.moduleMm * 100) / 100).toFixed(2).replace('.', ',')} mm per modul
+            (di bawah 0,30 mm): pendekkan link atau perbesar QR agar mudah dipindai. Ekspor tetap
+            diizinkan.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {status.frameTight ? (
+        <Alert
+          role="status"
+          className="border-amber-500/50 text-amber-700 *:data-[slot=alert-description]:text-amber-700/90 dark:text-amber-400 dark:*:data-[slot=alert-description]:text-amber-400/90"
+        >
+          <TriangleAlert />
+          <AlertTitle>Bingkai terlalu dekat dengan QR</AlertTitle>
+          <AlertDescription>
+            Beri jarak minimal sekitar 2 modul QR agar tepi putih (quiet zone) tidak hilang dan QR
+            tetap terbaca. Ekspor tetap diizinkan.
           </AlertDescription>
         </Alert>
       ) : null}

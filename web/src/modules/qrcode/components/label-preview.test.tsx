@@ -1,4 +1,4 @@
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -67,4 +67,16 @@ test('pratinjau dapat diklik: membuka tampilan diperbesar dengan kanvas yang leb
   expect(Number((zoom as HTMLCanvasElement).width)).toBeGreaterThan(360);
   await userEvent.keyboard('{Escape}');
   expect(screen.queryByLabelText('Pratinjau label diperbesar')).toBeNull();
+});
+
+test('bingkai rapat ke QR dilaporkan lewat onStatus.frameTight', () => {
+  const onStatus = vi.fn();
+  render(
+    <LabelPreview
+      {...base}
+      style={{ ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, kind: 'box', gap: 0.1 } }}
+      onStatus={onStatus}
+    />,
+  );
+  expect(onStatus).toHaveBeenLastCalledWith(expect.objectContaining({ frameTight: true }));
 });

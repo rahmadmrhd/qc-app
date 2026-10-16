@@ -99,22 +99,45 @@ export function isHttpUrl(text: string): boolean {
   return /^https?:\/\/[^\s]+$/i.test(text);
 }
 
-const QR_EXTRA_ALLOWED_CODES = [
-  0x131, 0x152, 0x153, 0x2bb, 0x2bc, 0x2c6, 0x2da, 0x2dc, 0x20ac, 0x2122, 0x2212,
+/**
+ * Titik kode yang ADA di keempat varian font label (Poppins latin: regular, tebal, miring, tebal-miring);
+ * hasil pemeriksaan cmap. Di luar daftar ini PDF mencetak glyph kosong (.notdef) walau pratinjau canvas
+ * tampak benar karena canvas jatuh ke font cadangan.
+ */
+const QR_GLYPH_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x20, 0x7e],
+  [0xa0, 0xff],
+  [0x131, 0x131],
+  [0x152, 0x153],
+  [0x2bc, 0x2bc],
+  [0x2c6, 0x2c6],
+  [0x2da, 0x2da],
+  [0x2dc, 0x2dc],
+  [0x2013, 0x2014],
+  [0x2018, 0x201a],
+  [0x201c, 0x201e],
+  [0x2022, 0x2022],
+  [0x2026, 0x2026],
+  [0x2039, 0x203a],
+  [0x20ac, 0x20ac],
+  [0x2122, 0x2122],
+  [0x2212, 0x2212],
 ];
 
-/** Karakter yang dicakup font label (Poppins latin): satu baris, tanpa kontrol. */
-export function isRenderableLabelText(text: string): boolean {
+function hasLabelGlyphs(text: string): boolean {
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
-    const ok =
-      (code >= 0x20 && code <= 0x7e) ||
-      (code >= 0xa0 && code <= 0xff) ||
-      (code >= 0x2010 && code <= 0x2027) ||
-      QR_EXTRA_ALLOWED_CODES.includes(code);
-    if (!ok) return false;
+    if (!QR_GLYPH_RANGES.some(([from, to]) => code >= from && code <= to)) return false;
   }
   return true;
+}
+
+/**
+ * Karakter yang dicakup font label: satu baris, tanpa kontrol. Bentuk HURUF KAPITAL-nya juga harus tercakup
+ * (mis. "µ" menjadi U+039C dan "ÿ" menjadi U+0178, keduanya tidak ada di font).
+ */
+export function isRenderableLabelText(text: string): boolean {
+  return hasLabelGlyphs(text) && hasLabelGlyphs(text.toUpperCase());
 }
 
 export function driveShareUrl(fileId: string): string {
@@ -316,6 +339,8 @@ export interface LabelLayout {
   moduleMm: number;
   /** Modul < `MIN_MODULE_MM`: peringatan saja. */
   tooDense: boolean;
+  /** Bingkai lebih dekat dari ~2 modul ke QR: quiet zone hilang, sulit dipindai. Peringatan saja. */
+  frameTight: boolean;
 }
 
 function wrapLabelText(
@@ -433,6 +458,14 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const frame = style.frame;
   const framed = frame.kind !== 'none';
   const frameOffset = framed ? frame.gap + frame.thickness : 0;
+  // Busur sudut tidak boleh masuk ke area QR: sudut QR harus tetap di dalam lingkaran tepi-dalam goresan,
+  // yaitu radius ≤ (√2·d0 − tebal/2) / (√2 − 1) dengan d0 = jarak garis tengah ke tepi QR.
+  const centerOffset = frame.gap + frame.thickness / 2;
+  const maxRadius = Math.max(
+    0,
+    (Math.SQRT2 * centerOffset - frame.thickness / 2) / (Math.SQRT2 - 1),
+  );
+  const frameRadius = Math.min(frame.radius, maxRadius);
   const blockSize = qrSize + 2 * frameOffset;
   const blockY = headerBottom + gapAbove + Math.max(0, (available - blockSize) / 2);
   const qrY = blockY + frameOffset;
@@ -446,7 +479,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       yMm: qrY - frame.gap - frame.thickness / 2,
       sideMm,
       thicknessMm: frame.thickness,
-      radiusMm: frame.radius,
+      radiusMm: frameRadius,
       armMm: (sideMm * frame.arm) / 100,
     });
   }
@@ -476,7 +509,8 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     blockSize > innerW + 1e-9 ||
     available < blockSize - 1e-9;
   const moduleMm = qrSize / Math.max(1, input.qrModules);
-  return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM };
+  const frameTight = framed && frame.gap < 2 * moduleMm;
+  return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM, frameTight };
 }
 
 export interface LabelPoint {

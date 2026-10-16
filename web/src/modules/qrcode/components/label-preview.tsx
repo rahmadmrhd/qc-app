@@ -134,6 +134,7 @@ export function LabelPreview({
     onStatus?.({
       overflow: computed.overflow,
       tooDense: computed.tooDense,
+      frameTight: computed.frameTight,
       moduleMm: computed.moduleMm,
     });
   }, [computed, onStatus]);
