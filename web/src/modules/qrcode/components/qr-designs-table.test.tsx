@@ -83,11 +83,13 @@ test('aksi menurut izin: view tidak melihat Ubah/Ekspor/Hapus; Unduh hanya bila 
   expect(h.onDownload).toHaveBeenCalledWith(exported, 'pdf');
   await userEvent.click(screen.getByRole('button', { name: 'Unduh PNG' }));
   expect(h.onDownload).toHaveBeenCalledWith(exported, 'png');
+  // izin edit: ubah, duplikat, dan ekspor; hapus butuh izin kelola
   rerender(<QrDesignsTable designs={[design()]} canEdit canManage={false} busyId={null} {...h} />);
   expect(screen.queryByRole('button', { name: /Unduh/ })).toBeNull();
   expect(screen.getByRole('button', { name: 'Ubah Panduan USW' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Duplikat Panduan USW' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Ekspor|Hapus/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ekspor Panduan USW' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Hapus/ })).toBeNull();
 });
 
 test('manage: Ekspor (Ekspor ulang bila sudah pernah) dan Hapus memanggil handler', async () => {

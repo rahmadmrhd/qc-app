@@ -2,14 +2,14 @@ import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { expect, test } from 'vitest';
 import {
   frameRangeMessage,
-  qrDefaultsFormSchema,
   qrDesignFormSchema,
+  qrPresetFormSchema,
   toDuplicateDefaults,
-  toNewDesignDefaults,
-  toQrDefaultsFormValues,
+  toNewDesignFromPreset,
+  toPresetFormValues,
   toQrFormDefaults,
-  toSaveQrDefaultsInput,
   toSaveQrDesignInput,
+  toSaveQrPresetInput,
 } from './schemas';
 
 const valid = {
@@ -171,20 +171,24 @@ test('toSaveQrDesignInput menyertakan flag overflow hanya bila diberikan', () =>
   expect('overflow' in toSaveQrDesignInput(parsed)).toBe(false);
 });
 
-test('konfigurasi default: nilai awal QR baru dari default (tanpa sumber link); simpan memetakan pustaka dan logo awal', () => {
-  const defaults = {
+test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru dari default; simpan memetakan logo awal', () => {
+  const preset = {
+    id: 'p1',
+    name: 'Standar',
     title: 'PT Contoh',
     subtitle: 'Label',
     footer: 'www.contoh.com',
     layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
     style: DEFAULT_QR_STYLE,
-    logoFileIds: ['a', 'b'],
     defaultLogoId: 'b',
+    createdAt: 't',
+    createdBy: 'x',
     updatedAt: 't',
     updatedBy: 'x',
   };
-  const fresh = toNewDesignDefaults(defaults);
+  const fresh = toNewDesignFromPreset(preset);
   expect(fresh).toMatchObject({
+    name: '',
     title: 'PT Contoh',
     subtitle: 'Label',
     footer: 'www.contoh.com',
@@ -192,19 +196,24 @@ test('konfigurasi default: nilai awal QR baru dari default (tanpa sumber link); 
     linkSource: 'pdf',
     link: '',
     documentId: '',
-    logoLibrary: [],
   });
   expect(fresh.layout.qrSize).toBe(18);
-  const values = qrDefaultsFormSchema.parse({ ...toQrDefaultsFormValues(defaults), title: '' });
-  expect(toSaveQrDefaultsInput(values, 't')).toEqual({
+  expect(qrPresetFormSchema.safeParse({ ...toPresetFormValues(preset), name: '  ' }).success).toBe(
+    false,
+  );
+  const values = qrPresetFormSchema.parse({ ...toPresetFormValues(preset), title: '' });
+  expect(toSaveQrPresetInput(values, 'p1', 't')).toEqual({
+    id: 'p1',
     expectedUpdatedAt: 't',
+    name: 'Standar',
     title: '',
     subtitle: 'Label',
     footer: 'www.contoh.com',
-    layout: defaults.layout,
-    style: defaults.style,
-    logoFileIds: ['a', 'b'],
+    layout: preset.layout,
+    style: preset.style,
     defaultLogoId: 'b',
   });
-  expect(toSaveQrDefaultsInput(values)).not.toHaveProperty('expectedUpdatedAt');
+  expect(toSaveQrPresetInput(values)).not.toHaveProperty('id');
+  expect(toSaveQrPresetInput(values)).not.toHaveProperty('expectedUpdatedAt');
+  expect(toPresetFormValues()).toMatchObject({ name: '', title: '', logoFileId: '' });
 });

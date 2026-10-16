@@ -2,14 +2,16 @@ import type { RouteTable } from '@gas/core/router';
 import { expectNull_ } from '@gas/core/validate';
 import {
   cloneQrPdfFromDrive_,
+  deleteQrPreset_,
   exportQrDesign_,
   getQrDefaultsDto_,
   getQrDesignDto_,
   listQrDesignDtos_,
   readQrFile_,
   removeQrDesign_,
-  saveQrDefaults_,
   saveQrDesign_,
+  saveQrLogoLibrary_,
+  saveQrPreset_,
   uploadQrPdf_,
 } from './service';
 import {
@@ -17,8 +19,9 @@ import {
   validateExportQrDesign_,
   validateQrDesignRef_,
   validateQrFile_,
-  validateSaveQrDefaults_,
   validateSaveQrDesign_,
+  validateSaveQrLogoLibrary_,
+  validateSaveQrPreset_,
   validateUploadQrPdf_,
 } from './validate';
 
@@ -28,7 +31,9 @@ type QrMethod =
   | 'qrcodes.save'
   | 'qrcodes.delete'
   | 'qrcodes.getDefaults'
-  | 'qrcodes.saveDefaults'
+  | 'qrcodes.savePreset'
+  | 'qrcodes.deletePreset'
+  | 'qrcodes.saveLogoLibrary'
   | 'qrcodes.uploadPdf'
   | 'qrcodes.cloneFromDrive'
   | 'qrcodes.export'
@@ -56,10 +61,20 @@ export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
       validate: expectNull_,
       handler: () => getQrDefaultsDto_(),
     },
-    'qrcodes.saveDefaults': {
+    'qrcodes.savePreset': {
       permission: { module: 'qrcode', level: 'manage' },
-      validate: validateSaveQrDefaults_,
-      handler: (input, ctx) => saveQrDefaults_(input, ctx.user),
+      validate: validateSaveQrPreset_,
+      handler: (input, ctx) => saveQrPreset_(input, ctx.user),
+    },
+    'qrcodes.deletePreset': {
+      permission: { module: 'qrcode', level: 'manage' },
+      validate: validateQrDesignRef_,
+      handler: (input, ctx) => deleteQrPreset_(input, ctx.user),
+    },
+    'qrcodes.saveLogoLibrary': {
+      permission: { module: 'qrcode', level: 'manage' },
+      validate: validateSaveQrLogoLibrary_,
+      handler: (input, ctx) => saveQrLogoLibrary_(input, ctx.user),
     },
     'qrcodes.uploadPdf': {
       permission: { module: 'qrcode', level: 'edit' },
@@ -72,7 +87,7 @@ export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
       handler: (input, ctx) => cloneQrPdfFromDrive_(input, ctx.user),
     },
     'qrcodes.export': {
-      permission: { module: 'qrcode', level: 'manage' },
+      permission: { module: 'qrcode', level: 'edit' },
       validate: validateExportQrDesign_,
       handler: (input, ctx) => exportQrDesign_(input, ctx.user),
     },

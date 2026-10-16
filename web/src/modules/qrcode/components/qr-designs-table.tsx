@@ -150,21 +150,23 @@ export function QrDesignsTable({
                         </Button>
                       </>
                     ) : null}
+                    {canEdit ? (
+                      <Button
+                        size="sm"
+                        disabled={busy || design.overflow}
+                        title={
+                          design.overflow
+                            ? 'Isi label tidak muat di kanvas 3 × 3 cm; ubah konfigurasi lalu simpan ulang'
+                            : undefined
+                        }
+                        aria-label={`${exported ? 'Ekspor ulang' : 'Ekspor'} ${design.title}`}
+                        onClick={() => onExport(design)}
+                      >
+                        {exported ? 'Ekspor ulang' : 'Ekspor'}
+                      </Button>
+                    ) : null}
                     {canManage ? (
                       <>
-                        <Button
-                          size="sm"
-                          disabled={busy || design.overflow}
-                          title={
-                            design.overflow
-                              ? 'Isi label tidak muat di kanvas 3 × 3 cm; ubah konfigurasi lalu simpan ulang'
-                              : undefined
-                          }
-                          aria-label={`${exported ? 'Ekspor ulang' : 'Ekspor'} ${design.title}`}
-                          onClick={() => onExport(design)}
-                        >
-                          {exported ? 'Ekspor ulang' : 'Ekspor'}
-                        </Button>
                         <Button
                           size="sm"
                           variant="destructive"

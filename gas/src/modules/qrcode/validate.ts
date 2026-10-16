@@ -7,8 +7,9 @@ import type {
   ExportQrDesignInput,
   QrDesignRefInput,
   QrFileInput,
-  SaveQrDefaultsInput,
   SaveQrDesignInput,
+  SaveQrLogoLibraryInput,
+  SaveQrPresetInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
 
@@ -80,9 +81,12 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
   };
 }
 
-export function validateSaveQrDefaults_(raw: unknown): SaveQrDefaultsInput {
+export function validateSaveQrPreset_(raw: unknown): SaveQrPresetInput {
   const reader = readObject_(raw);
+  const id = reader.optionalId('id');
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
+  if (id && !expectedUpdatedAt) reader.fail('expectedUpdatedAt', 'Wajib diisi saat mengubah');
+  const name = reader.str('name', { required: true, max: QR_LIMITS.presetName });
   const title = reader.str('title', { max: QR_LIMITS.title });
   const subtitle = reader.str('subtitle', { max: QR_LIMITS.subtitle });
   const footer = reader.str('footer', { max: QR_LIMITS.footer });
@@ -104,6 +108,24 @@ export function validateSaveQrDefaults_(raw: unknown): SaveQrDefaultsInput {
   const style = reader.raw('style');
   if (!isQrStyle(style))
     reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
+  const defaultLogoId = reader.str('defaultLogoId', { max: 100 });
+  reader.done();
+  return {
+    ...(id ? { id } : {}),
+    ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    name,
+    title,
+    subtitle,
+    footer,
+    layout: layout as SaveQrPresetInput['layout'],
+    style: style as QrStyle,
+    defaultLogoId,
+  };
+}
+
+export function validateSaveQrLogoLibrary_(raw: unknown): SaveQrLogoLibraryInput {
+  const reader = readObject_(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const ids = reader.raw('logoFileIds');
   if (
     !Array.isArray(ids) ||
@@ -112,17 +134,10 @@ export function validateSaveQrDefaults_(raw: unknown): SaveQrDefaultsInput {
   ) {
     reader.fail('logoFileIds', `Pustaka logo maksimal ${QR_LIMITS.logoLibrary} berkas`);
   }
-  const defaultLogoId = reader.str('defaultLogoId', { max: 100 });
   reader.done();
   return {
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
-    title,
-    subtitle,
-    footer,
-    layout: layout as SaveQrDefaultsInput['layout'],
-    style: style as QrStyle,
     logoFileIds: [...new Set(ids as string[])],
-    defaultLogoId,
   };
 }
 

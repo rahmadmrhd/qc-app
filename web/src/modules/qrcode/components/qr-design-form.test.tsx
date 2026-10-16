@@ -1,9 +1,9 @@
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { toQrFormDefaults } from '../schemas';
+import { toPresetFormValues, toQrFormDefaults } from '../schemas';
 import { QrDesignForm } from './qr-design-form';
 
 beforeEach(() => {
@@ -192,19 +192,73 @@ test('Simpan dan ekspor dinonaktifkan selama isi tidak muat (ekspor pasti ditola
   expect(screen.getByRole('button', { name: 'Simpan dan ekspor' })).toBeDisabled();
 });
 
-test('mode default: tanpa sumber link dan ekspor, title boleh kosong, mengelola pustaka logo; simpan mengirim nilai', async () => {
+test('mode default: tanpa sumber link dan ekspor; nama wajib, title boleh kosong; logo awal dipilih dari pustaka', async () => {
   const { onSubmit } = renderForm({
     mode: 'defaults',
     canExport: true,
-    defaultValues: toQrFormDefaults(),
+    logoLibrary: ['x'],
+    defaultValues: toPresetFormValues(),
   });
   expect(screen.queryByText('Sumber link')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
-  expect(screen.getByText('Pustaka logo')).toBeInTheDocument();
-  expect(screen.getByLabelText('Tambah logo ke pustaka')).toBeInTheDocument();
+  expect(screen.getByText('Logo awal')).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
+  expect(await screen.findByText('Wajib diisi')).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+  await userEvent.type(screen.getByLabelText('Nama konfigurasi default'), 'Standar');
+  await userEvent.click(screen.getByRole('radio', { name: 'Logo 1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ title: '', logoLibrary: [] });
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({
+    name: 'Standar',
+    title: '',
+    logoFileId: 'x',
+  });
+});
+
+const preset = (id: string, name: string, title: string) => ({
+  id,
+  name,
+  title,
+  subtitle: 'Sub',
+  footer: 'foot',
+  layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
+  style: DEFAULT_QR_STYLE,
+  defaultLogoId: '',
+  createdAt: 't',
+  createdBy: 'a',
+  updatedAt: 't',
+  updatedBy: 'a',
+});
+
+test('QR baru: wajib memilih konfigurasi default dulu; isian lain tersembunyi sampai dipilih, lalu terisi dari default', async () => {
+  const { onSubmit } = renderForm({
+    presets: [preset('p1', 'Standar', 'PT Contoh'), preset('p2', 'Promo', 'Diskon')],
+    defaultValues: toQrFormDefaults(),
+  });
+  expect(screen.getByLabelText('Pilih konfigurasi default')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Title')).toBeNull();
+  expect(screen.queryByText('Bingkai QR')).toBeNull();
+  expect(screen.queryByText('Sumber link')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
+  await userEvent.selectOptions(screen.getByLabelText('Pilih konfigurasi default'), 'p1');
+  expect(screen.getByLabelText('Title')).toHaveValue('PT Contoh');
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('Sub');
+  expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(18);
+  expect(screen.getByText('Sumber link')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
+  // memilih default lain mengisi ulang semua isian
+  await userEvent.selectOptions(screen.getByLabelText('Pilih konfigurasi default'), 'p2');
+  expect(screen.getByLabelText('Title')).toHaveValue('Diskon');
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('QR baru tanpa konfigurasi default: pesan dan tidak ada isian lain', () => {
+  renderForm({ presets: [], defaultValues: toQrFormDefaults() });
+  expect(screen.getByText(/Belum ada konfigurasi default/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('Title')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
 });
 
 test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {

@@ -6,6 +6,8 @@ import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { insertQrDefaults_ } from './repo';
+import { migrateQrDefaults_ } from './service';
 
 let platform: MemoryPlatform;
 let clock: number;
@@ -28,81 +30,125 @@ const logo = (email = 'qrmanage@gmail.com') => {
   if (!out.ok) throw new Error('unggah gagal');
   return out.data.id as string;
 };
-const defaultsBody = (extra: Record<string, unknown> = {}) => ({
+const defaults = () => call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
+const presetBody = (extra: Record<string, unknown> = {}) => ({
+  name: 'Standar',
   title: 'PT Contoh',
   subtitle: 'Label QR',
   footer: 'www.contoh.com',
   layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
   style: DEFAULT_QR_STYLE,
-  logoFileIds: [] as string[],
   defaultLogoId: '',
   ...extra,
 });
-const saveDefaults = (payload: Record<string, unknown> = {}, email = 'qrmanage@gmail.com') =>
-  call(email, 'qrcodes.saveDefaults', defaultsBody(payload));
-
-test('belum pernah diatur: bawaan bawaan aplikasi, pustaka logo kosong; view boleh membaca', () => {
-  const out = call('qrview@gmail.com', 'qrcodes.getDefaults', null);
-  expect(out.ok).toBe(true);
-  expect(out.data).toMatchObject({
-    title: '',
-    subtitle: '',
-    footer: '',
-    layout: DEFAULT_QR_LAYOUT,
-    style: DEFAULT_QR_STYLE,
-    logoFileIds: [],
-    defaultLogoId: '',
-    updatedAt: '',
+const savePreset = (payload: Record<string, unknown> = {}, email = 'qrmanage@gmail.com') =>
+  call(email, 'qrcodes.savePreset', presetBody(payload));
+const saveLibrary = (ids: string[], email = 'qrmanage@gmail.com') => {
+  const current = defaults();
+  return call(email, 'qrcodes.saveLogoLibrary', {
+    ...(current.logoUpdatedAt ? { expectedUpdatedAt: current.logoUpdatedAt } : {}),
+    logoFileIds: ids,
   });
+};
+
+test('belum ada apa pun: daftar default kosong dan pustaka logo kosong; view boleh membaca, tanpa modul tidak', () => {
+  expect(defaults()).toMatchObject({ presets: [], logoFileIds: [], logoUpdatedAt: '' });
   expect(call('noqr@gmail.com', 'qrcodes.getDefaults', null).error.code).toBe('FORBIDDEN');
 });
 
-test('simpan default: hanya izin kelola; tersimpan dan dikembalikan; audit; tidak membuat hasil ekspor', () => {
-  expect(saveDefaults({}, 'qredit@gmail.com').error.code).toBe('FORBIDDEN');
-  expect(saveDefaults({}, 'qrview@gmail.com').error.code).toBe('FORBIDDEN');
-  const a = logo();
-  const b = logo();
-  const out = saveDefaults({ logoFileIds: [a, b], defaultLogoId: b });
-  expect(out.ok).toBe(true);
-  expect(out.data).toMatchObject({
+test('buat default: hanya izin kelola; nama wajib dan unik (tanpa beda huruf besar); tersimpan; audit', () => {
+  expect(savePreset({}, 'qredit@gmail.com').error.code).toBe('FORBIDDEN');
+  expect(savePreset({}, 'qrview@gmail.com').error.code).toBe('FORBIDDEN');
+  expect(savePreset({ name: '  ' }).error.code).toBe('VALIDATION');
+  const first = savePreset();
+  expect(first.ok).toBe(true);
+  expect(first.data).toMatchObject({
+    name: 'Standar',
     title: 'PT Contoh',
     footer: 'www.contoh.com',
-    logoFileIds: [a, b],
-    defaultLogoId: b,
   });
-  expect(out.data.layout.qrSize).toBe(18);
-  const read = call('qredit@gmail.com', 'qrcodes.getDefaults', null);
-  expect(read.data.logoFileIds).toEqual([a, b]);
-  expect(listAuditRecords_().map((r) => r.action)).toContain('qrcode.defaults_update');
-  // logo pustaka dimiliki bersama sehingga dapat dibaca pengguna qrcode lain
+  expect(first.data.layout.qrSize).toBe(18);
+  const duplicate = savePreset({ name: 'standar' });
+  expect(duplicate.error.code).toBe('VALIDATION');
+  expect(duplicate.error.fields.name).toContain('sudah dipakai');
+  expect(savePreset({ name: 'Promo', title: '' }).ok).toBe(true); // title boleh kosong
+  expect(defaults().presets.map((p: { name: string }) => p.name)).toEqual(['Promo', 'Standar']);
+  expect(listAuditRecords_().map((r) => r.action)).toEqual([
+    'qrcode.preset_create',
+    'qrcode.preset_create',
+  ]);
+});
+
+test('ubah default: expectedUpdatedAt wajib dan harus terkini; nama boleh tetap; tanpa perubahan tidak mengaudit', () => {
+  const made = savePreset();
+  const base = { id: made.data.id };
+  expect(savePreset({ ...base, title: 'Baru' }).error.code).toBe('VALIDATION');
+  clock += 60_000;
+  expect(
+    savePreset({ ...base, title: 'Baru', expectedUpdatedAt: '2020-01-01T00:00:00.000Z' }).error
+      .code,
+  ).toBe('CONFLICT');
+  const updated = savePreset({ ...base, title: 'Baru', expectedUpdatedAt: made.data.updatedAt });
+  expect(updated.ok).toBe(true);
+  expect(updated.data.title).toBe('Baru');
+  const audits = listAuditRecords_().length;
+  const same = savePreset({ ...base, title: 'Baru', expectedUpdatedAt: updated.data.updatedAt });
+  expect(same.ok).toBe(true);
+  expect(listAuditRecords_().length).toBe(audits);
+  expect(savePreset({ id: 'tidak-ada', expectedUpdatedAt: 'x' }).error.code).toBe('NOT_FOUND');
+});
+
+test('hapus default: hanya kelola; hilang dari daftar; QR yang sudah dibuat tidak terpengaruh', () => {
+  const made = savePreset();
+  expect(call('qredit@gmail.com', 'qrcodes.deletePreset', { id: made.data.id }).error.code).toBe(
+    'FORBIDDEN',
+  );
+  expect(call('qrmanage@gmail.com', 'qrcodes.deletePreset', { id: 'tidak-ada' }).error.code).toBe(
+    'NOT_FOUND',
+  );
+  expect(call('qrmanage@gmail.com', 'qrcodes.deletePreset', { id: made.data.id }).ok).toBe(true);
+  expect(defaults().presets).toEqual([]);
+  expect(listAuditRecords_().map((r) => r.action)).toContain('qrcode.preset_delete');
+});
+
+test('pustaka logo bersama: hanya kelola; logo dimiliki bersama dan terbaca pengguna qrcode; maks. 20; tanpa duplikat', () => {
+  const a = logo();
+  const b = logo();
+  expect(saveLibrary([a], 'qredit@gmail.com').error.code).toBe('FORBIDDEN');
+  const saved = saveLibrary([a, b, a]);
+  expect(saved.ok).toBe(true);
+  expect(saved.data.logoFileIds).toEqual([a, b]);
+  expect(defaults().logoFileIds).toEqual([a, b]);
   expect(call('qrview@gmail.com', 'files.get', { id: a }).ok).toBe(true);
   expect(listFiles_().find((f) => f.id === a)?.ownerType).toBe('qrlogo');
-});
-
-test('validasi default: logo awal harus bagian pustaka; berkas tak dikenal ditolak; tanpa duplikat', () => {
-  const a = logo();
-  expect(saveDefaults({ logoFileIds: [a], defaultLogoId: 'lain' }).error.code).toBe('VALIDATION');
-  expect(saveDefaults({ logoFileIds: ['tidak-ada'] }).error.code).toBe('VALIDATION');
-  const dup = saveDefaults({ logoFileIds: [a, a], defaultLogoId: a });
-  expect(dup.ok).toBe(true);
-  expect(dup.data.logoFileIds).toEqual([a]);
-});
-
-test('konkurensi default: simpan ulang wajib expectedUpdatedAt terkini', () => {
-  const first = saveDefaults({});
-  expect(first.ok).toBe(true);
-  const noVersion = saveDefaults({ title: 'Baru' });
-  expect(noVersion.error.code).toBe('VALIDATION');
-  clock += 60_000;
-  const stale = saveDefaults({ title: 'Baru', expectedUpdatedAt: '2020-01-01T00:00:00.000Z' });
+  expect(saveLibrary(['tidak-ada']).error.code).toBe('VALIDATION');
+  const many = Array.from({ length: 21 }, (_, i) => `id-${i}`);
+  expect(saveLibrary(many).error.code).toBe('VALIDATION');
+  clock += 1000;
+  const stale = call('qrmanage@gmail.com', 'qrcodes.saveLogoLibrary', {
+    expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+    logoFileIds: [a],
+  });
   expect(stale.error.code).toBe('CONFLICT');
-  expect(saveDefaults({ title: 'Baru', expectedUpdatedAt: first.data.updatedAt }).ok).toBe(true);
+  expect(listAuditRecords_().map((r) => r.action)).toContain('qrcode.logo_library_update');
 });
 
-test('simpan QR: logo hanya dari pustaka (atau logo yang sudah dipakai konfigurasi itu); tanpa logo boleh', () => {
+test('logo awal default harus bagian pustaka; mengeluarkan logo dari pustaka mengosongkan logo awal default yang memakainya', () => {
+  const a = logo();
+  expect(savePreset({ defaultLogoId: a }).error.fields.defaultLogoId).toContain('pustaka');
+  saveLibrary([a]);
+  const withLogo = savePreset({ defaultLogoId: a });
+  expect(withLogo.ok).toBe(true);
+  expect(withLogo.data.defaultLogoId).toBe(a);
+  clock += 1000;
+  expect(saveLibrary([]).ok).toBe(true);
+  expect(defaults().presets[0].defaultLogoId).toBe('');
+});
+
+test('simpan QR: logo hanya dari pustaka (atau logo yang sudah dipakai konfigurasi lain); tanpa logo boleh', () => {
   const inLibrary = logo();
   const outside = logo('qredit@gmail.com');
-  saveDefaults({ logoFileIds: [inLibrary], defaultLogoId: inLibrary });
+  saveLibrary([inLibrary]);
   const body = {
     title: 'T',
     subtitle: '',
@@ -120,51 +166,57 @@ test('simpan QR: logo hanya dari pustaka (atau logo yang sudah dipakai konfigura
   const ok = call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: inLibrary });
   expect(ok.ok).toBe(true);
   expect(call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: '' }).ok).toBe(true);
-  // logo dikeluarkan dari pustaka: konfigurasi yang sudah memakainya tetap dapat disimpan ulang tanpa mengubah logo
+  // logo dikeluarkan dari pustaka: QR yang memakainya tetap dapat disimpan ulang dan diduplikat
+  clock += 1000;
+  saveLibrary([]);
   const current = call('qrview@gmail.com', 'qrcodes.get', { id: ok.data.id }).data;
-  const lib = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
-  saveDefaults({ logoFileIds: [], defaultLogoId: '', expectedUpdatedAt: lib.updatedAt });
-  const resave = call('qredit@gmail.com', 'qrcodes.save', {
-    ...body,
-    id: ok.data.id,
-    expectedUpdatedAt: current.updatedAt,
-    title: 'T2',
-    logoFileId: inLibrary,
-  });
-  expect(resave.ok).toBe(true);
-});
-
-test('duplikat konfigurasi berlogo lama (di luar pustaka): logo yang masih dipakai konfigurasi lain boleh dirujuk lagi', () => {
-  const legacy = logo('qredit@gmail.com');
-  const inLibrary = logo();
-  saveDefaults({ logoFileIds: [inLibrary], defaultLogoId: inLibrary });
-  // logo lama dipakai lewat pustaka lalu dikeluarkan dari pustaka
-  const lib = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
-  saveDefaults({ logoFileIds: [legacy], defaultLogoId: '', expectedUpdatedAt: lib.updatedAt });
-  const body = {
-    title: 'T',
-    subtitle: '',
-    footer: '',
-    linkSource: 'pdf',
-    link: '',
-    get documentId() {
-      return qrPdfDocumentId();
-    },
-    layout: DEFAULT_QR_LAYOUT,
-  };
-  const source = call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: legacy });
-  expect(source.ok).toBe(true);
-  clock += 60_000;
-  const lib2 = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
-  saveDefaults({ logoFileIds: [], defaultLogoId: '', expectedUpdatedAt: lib2.updatedAt });
-  // duplikat (tanpa id) dengan logo yang sama tetap diterima karena sumbernya masih memakainya
   expect(
-    call('qredit@gmail.com', 'qrcodes.save', { ...body, title: 'T (salinan)', logoFileId: legacy })
-      .ok,
+    call('qredit@gmail.com', 'qrcodes.save', {
+      ...body,
+      id: ok.data.id,
+      expectedUpdatedAt: current.updatedAt,
+      title: 'T2',
+      logoFileId: inLibrary,
+    }).ok,
+  ).toBe(true);
+  expect(
+    call('qredit@gmail.com', 'qrcodes.save', {
+      ...body,
+      title: 'T (salinan)',
+      logoFileId: inLibrary,
+    }).ok,
   ).toBe(true);
   // logo yang tidak dipakai siapa pun dan di luar pustaka tetap ditolak
-  const stray = logo('qredit@gmail.com');
-  expect(call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: stray }).error.code).toBe(
-    'VALIDATION',
-  );
+  expect(
+    call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: logo('qredit@gmail.com') })
+      .error.code,
+  ).toBe('VALIDATION');
+});
+
+test('migrasi: default tunggal lama menjadi satu default bernama "Default"; idempoten; tanpa default lama tidak membuat apa pun', () => {
+  expect(migrateQrDefaults_()).toBe(0);
+  const a = logo();
+  insertQrDefaults_({
+    title: 'PT Lama',
+    subtitle: 'S',
+    footer: 'F',
+    layout: { ...DEFAULT_QR_LAYOUT, qrSize: 19 },
+    style: DEFAULT_QR_STYLE,
+    logoFileIds: [a],
+    defaultLogoId: a,
+    updatedAt: '2026-10-15T00:00:00.000Z',
+    updatedBy: 'admin@gmail.com',
+  });
+  expect(migrateQrDefaults_()).toBe(1);
+  expect(migrateQrDefaults_()).toBe(0);
+  const read = defaults();
+  expect(read.logoFileIds).toEqual([a]);
+  expect(read.presets).toHaveLength(1);
+  expect(read.presets[0]).toMatchObject({
+    name: 'Default',
+    title: 'PT Lama',
+    footer: 'F',
+    defaultLogoId: a,
+  });
+  expect(read.presets[0].layout.qrSize).toBe(19);
 });
