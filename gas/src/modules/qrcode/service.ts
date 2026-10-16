@@ -143,10 +143,20 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
 
 export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesignDto {
   // Berbagi PDF (I/O Drive) di luar lock: PDF yang sebelumnya dicabut dibagikan lagi saat dipakai.
-  if (input.linkSource === 'pdf') ensureQrDocumentShared_(input.documentId);
-  const { dto, released } = saveQrDesignLocked_(input, actor);
-  revokeUnusedQrDocuments_(released);
-  return dto;
+  const pdfId = input.linkSource === 'pdf' ? input.documentId : '';
+  if (pdfId !== '') ensureQrDocumentShared_(pdfId);
+  let outcome: SaveOutcome;
+  try {
+    outcome = saveQrDesignLocked_(input, actor);
+  } catch (error) {
+    // Simpan ditolak (mis. CONFLICT dari form basi): PDF yang barusan dibagikan ulang tidak boleh tetap publik.
+    if (pdfId !== '') revokeUnusedQrDocuments_([pdfId]);
+    throw error;
+  }
+  // Pembersihan serentak bisa mencabut berbagi PDF ini tepat sebelum konfigurasi tersimpan: pastikan terbagi.
+  if (pdfId !== '') ensureQrDocumentShared_(pdfId);
+  revokeUnusedQrDocuments_(outcome.released);
+  return outcome.dto;
 }
 
 interface SaveOutcome {
@@ -272,30 +282,29 @@ function ensureQrDocumentShared_(documentId: string): void {
  * I/O Drive di luar lock; pemanggil tanpa lock.
  */
 function revokeUnusedQrDocuments_(releasedIds: readonly string[]): void {
-  const used = new Set(
-    listQrDesigns_().flatMap((design) =>
-      design.linkSource === 'pdf' && design.documentId !== '' ? [design.documentId] : [],
-    ),
-  );
-  const now = platform_().now();
-  const revoked: string[] = [];
-  for (const doc of listQrDocuments_()) {
-    if (!doc.shared || used.has(doc.id)) continue;
-    const age = now - Date.parse(doc.updatedAt);
-    if (!releasedIds.includes(doc.id) && !(age >= QR_ORPHAN_GRACE_MS)) continue;
-    try {
-      platform_().driveRevokeSharing(doc.driveId);
-      revoked.push(doc.id);
-    } catch (error) {
-      platform_().logError(
-        `qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-  if (revoked.length === 0) return;
+  // Pemakaian dihitung dan berbagi dicabut DI DALAM lock yang sama dengan penyimpanan konfigurasi, sehingga
+  // konfigurasi yang baru memasang PDF tidak bisa terlewat (snapshot basi). Satu panggilan Drive per dokumen
+  // yatim/terlepas; jarang terjadi.
   platform_().withLock(() => {
+    const used = new Set(
+      listQrDesigns_().flatMap((design) =>
+        design.linkSource === 'pdf' && design.documentId !== '' ? [design.documentId] : [],
+      ),
+    );
+    const now = platform_().now();
     for (const doc of listQrDocuments_()) {
-      if (revoked.includes(doc.id) && doc.shared) updateQrDocument_({ ...doc, shared: false });
+      if (!doc.shared || used.has(doc.id)) continue;
+      const age = now - Date.parse(doc.updatedAt);
+      if (!releasedIds.includes(doc.id) && !(age >= QR_ORPHAN_GRACE_MS)) continue;
+      try {
+        platform_().driveRevokeSharing(doc.driveId);
+        updateQrDocument_({ ...doc, shared: false });
+      } catch (error) {
+        // Tetap bertanda terbagi agar pembersihan berikutnya mencoba lagi.
+        platform_().logError(
+          `qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   });
 }
@@ -350,18 +359,20 @@ function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDt
   if (input.replaceDocumentId) {
     const current = listQrDocuments_().find((doc) => doc.id === input.replaceDocumentId);
     if (!current) throw appError_('NOT_FOUND', 'PDF tidak ditemukan');
-    try {
-      platform.driveReplaceFileContent(current.driveId, 'application/pdf', input.base64);
-    } catch (error) {
-      platform_().logError(
-        `qrcode: ganti PDF gagal: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw appError_(
-        'INTERNAL',
-        'Isi PDF tidak dapat diganti di Drive; URL lama tetap dipakai dan berkas lama tidak diubah',
-      );
-    }
+    // Penggantian isi Drive dan pencatatan metadata dalam SATU lock: penggantian serentak berjalan bergantian,
+    // jadi nama/ukuran/audit yang tercatat selalu milik byte yang terakhir ditulis ke Drive.
     return platform.withLock(() => {
+      try {
+        platform.driveReplaceFileContent(current.driveId, 'application/pdf', input.base64);
+      } catch (error) {
+        platform_().logError(
+          `qrcode: ganti PDF gagal: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw appError_(
+          'INTERNAL',
+          'Isi PDF tidak dapat diganti di Drive; URL lama tetap dipakai dan berkas lama tidak diubah',
+        );
+      }
       const fresh = listQrDocuments_().find((doc) => doc.id === current.id) ?? current;
       const now = nowIso_();
       const updated: QrDocumentRecord = {

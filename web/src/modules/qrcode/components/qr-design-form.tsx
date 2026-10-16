@@ -74,6 +74,7 @@ export function QrDesignForm({
   const uploadPdf = useUploadQrPdf();
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [labelStatus, setLabelStatus] = useState<LabelStatus | null>(null);
   // Nilai terkini untuk handler simpan (menghindari closure basi): status tata letak dan mode simpan.
   const statusRef = useRef<LabelStatus | null>(null);
@@ -109,13 +110,14 @@ export function QrDesignForm({
               title={title}
               onCancel={onCancel}
               submitting={submitting}
+              submitDisabled={logoBusy}
               onSubmitClick={() => (exportAfterRef.current = false)}
               extra={
                 canExport ? (
                   <Button
                     type="submit"
                     variant="secondary"
-                    disabled={submitting || labelStatus?.overflow === true}
+                    disabled={submitting || logoBusy || labelStatus?.overflow === true}
                     title={
                       labelStatus?.overflow
                         ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
@@ -285,6 +287,7 @@ export function QrDesignForm({
                   value={field.state.value}
                   onChange={field.handleChange}
                   designs={designs}
+                  onBusyChange={setLogoBusy}
                 />
                 <FieldError errors={[...field.state.meta.errors, fieldErrors?.logoFileId]} />
               </div>

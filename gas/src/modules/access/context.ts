@@ -4,7 +4,7 @@ import { platform_ } from '@gas/core/platform';
 import type { LocationPermissionMap } from '@shared/assignments';
 import { fullLocationPermissions, resolveAccess } from '@shared/assignments';
 import type { PermissionMap } from '@shared/permissions';
-import { fullPermissions } from '@shared/permissions';
+import { fullPermissions, MODULES } from '@shared/permissions';
 import { findUserByEmail_, listLocations_, listRoles_ } from './repo';
 
 export interface UserContext {
@@ -77,8 +77,14 @@ export function loadUserContext_(rawEmail: string): UserContext | null {
   if (cached === 'null') return null;
   if (cached !== null) {
     const parsed = JSON.parse(cached) as Partial<UserContext>;
-    // Entri dari versi kode lama (tanpa locations atau modul qc) dihitung ulang agar tidak merusak auth.me setelah deploy.
-    if (parsed.locations !== undefined && parsed.permissions?.qc !== undefined) {
+    // Entri dari versi kode lama (tanpa locations atau tanpa salah satu modul, mis. qc/qrcode) dihitung ulang agar
+    // modul baru tidak tertolak sampai cache kedaluwarsa.
+    const permissions = parsed.permissions;
+    if (
+      parsed.locations !== undefined &&
+      permissions !== undefined &&
+      MODULES.every((module) => permissions[module] !== undefined)
+    ) {
       return parsed as UserContext;
     }
   }

@@ -25,6 +25,11 @@ test('saat menyimpan: tombol Simpan berlabel Menyimpan… dan nonaktif', () => {
   expect(submit).toBeDisabled();
 });
 
+test('submitDisabled menonaktifkan Simpan tanpa mengubah labelnya', () => {
+  render(<FormHeader title="Judul" onCancel={vi.fn()} submitting={false} submitDisabled />);
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
+});
+
 test('slot tambahan tampil di antara Batal dan Simpan; label dan klik Simpan dapat diatur', async () => {
   const onSubmitClick = vi.fn();
   render(

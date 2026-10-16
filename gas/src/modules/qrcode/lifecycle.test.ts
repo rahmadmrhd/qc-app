@@ -168,3 +168,40 @@ test('gagal mencabut berbagi di Drive tidak menggagalkan hapus; galat dicatat', 
   expect(call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id }).ok).toBe(true);
   expect(platform.errors.some((m) => m.includes('Drive menolak'))).toBe(true);
 });
+
+// ---- temuan review PR #15
+
+test('simpan basi yang membagikan ulang PDF dan ditolak CONFLICT: berbagi dicabut lagi', () => {
+  const doc = upload().data.id;
+  const made = usePdf(doc);
+  const stale = made.data.updatedAt;
+  // konfigurasi dialihkan ke link manual: PDF lepas dan berbaginya dicabut
+  clock += 1000;
+  expect(save({ id: made.data.id, expectedUpdatedAt: stale }).ok).toBe(true);
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(false);
+  // form lama (masih memegang PDF) disimpan: CONFLICT, PDF tidak boleh tetap publik
+  const result = usePdf(doc, { id: made.data.id, expectedUpdatedAt: stale });
+  expect(result.error.code).toBe('CONFLICT');
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(false);
+  expect(platform.sharedFiles.has(driveIdOf(doc))).toBe(false);
+});
+
+test('pencabutan berbagi yang gagal (bukan "tidak ada") tidak ditandai privat dan dicoba lagi', () => {
+  const doc = upload().data.id;
+  const made = usePdf(doc);
+  const driveId = driveIdOf(doc);
+  const failing = {
+    ...platform,
+    driveRevokeSharing: () => {
+      throw new Error('Quota exceeded');
+    },
+  };
+  setPlatform_(failing);
+  expect(save({ id: made.data.id, expectedUpdatedAt: made.data.updatedAt }).ok).toBe(true);
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(true); // tetap terbagi: akan dicoba lagi
+  expect(platform.sharedFiles.has(driveId)).toBe(true);
+  setPlatform_(platform);
+  clock += 2 * 60 * 60 * 1000; // lewat masa tenggang unggahan yatim
+  expect(upload('lain.pdf').ok).toBe(true); // pembersihan oportunistik berikutnya
+  expect(docs().find((d) => d.id === doc)?.shared).toBe(false);
+});

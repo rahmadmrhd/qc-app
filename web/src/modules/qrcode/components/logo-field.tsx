@@ -13,9 +13,11 @@ export interface LogoFieldProps {
   onChange: (fileId: string) => void;
   /** Konfigurasi lain: logonya dapat dipakai ulang tanpa unggah ulang. */
   designs: readonly QrDesignDto[];
+  /** Dipanggil saat unggahan logo mulai/selesai; induk menonaktifkan Simpan selama berjalan. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function LogoField({ value, onChange, designs }: LogoFieldProps) {
+export function LogoField({ value, onChange, designs, onBusyChange }: LogoFieldProps) {
   const upload = useUploadFile();
   const { url } = useFileUrl(value);
   const [error, setError] = useState<string | null>(null);
@@ -28,11 +30,14 @@ export function LogoField({ value, onChange, designs }: LogoFieldProps) {
   async function choose(file: File | undefined) {
     setError(null);
     if (!file) return;
+    onBusyChange?.(true);
     try {
       const prepared = await prepareImage(file, LOGO_MAX_SIDE);
       onChange((await upload.mutateAsync(prepared)).id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah logo');
+    } finally {
+      onBusyChange?.(false);
     }
   }
 

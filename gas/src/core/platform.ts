@@ -57,7 +57,7 @@ export interface Platform {
   driveTrashFile(fileId: string): void;
   /** Membagikan berkas "siapa saja yang punya link: hanya lihat". Melempar bila berkas tidak ada. */
   driveShareAnyoneWithLink(fileId: string): void;
-  /** Mencabut berbagi publik berkas (kembali privat). Aman bila berkas tidak ada. */
+  /** Mencabut berbagi publik berkas (kembali privat). Sukses bila berkas tidak ada; galat lain dilempar. */
   driveRevokeSharing(fileId: string): void;
   /** Mengganti isi berkas yang ada (id tetap, sehingga URL berbagi tidak berubah). Melempar bila gagal. */
   driveReplaceFileContent(fileId: string, mime: string, base64: string): void;

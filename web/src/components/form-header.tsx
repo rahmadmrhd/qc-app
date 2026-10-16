@@ -8,6 +8,8 @@ export interface FormHeaderProps {
   /** Sedang menyimpan: tombol Simpan nonaktif dan berlabel "Menyimpan…". */
   submitting: boolean;
   submitLabel?: string;
+  /** Menonaktifkan Simpan tanpa mengubah labelnya (mis. unggahan lampiran belum selesai). */
+  submitDisabled?: boolean;
   /** Dipanggil saat tombol Simpan ditekan (sebelum submit), mis. untuk menandai mode simpan. */
   onSubmitClick?: () => void;
   /** Tombol aksi tambahan, ditampilkan di antara Batal dan Simpan. */
@@ -26,6 +28,7 @@ export function FormHeader({
   onCancel,
   submitting,
   submitLabel = 'Simpan',
+  submitDisabled = false,
   onSubmitClick,
   extra,
   className,
@@ -41,7 +44,7 @@ export function FormHeader({
           Batal
         </Button>
         {extra}
-        <Button type="submit" disabled={submitting} onClick={onSubmitClick}>
+        <Button type="submit" disabled={submitting || submitDisabled} onClick={onSubmitClick}>
           {submitting ? 'Menyimpan…' : submitLabel}
         </Button>
       </div>

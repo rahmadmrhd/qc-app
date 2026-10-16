@@ -122,11 +122,16 @@ function createGasPlatform_(): Platform {
       );
     },
     driveRevokeSharing: (fileId) => {
+      let file: GoogleAppsScript.Drive.File;
       try {
-        DriveApp.getFileById(fileId).setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
-      } catch {
-        // Berkas sudah tidak ada: tidak ada yang perlu dicabut.
+        file = DriveApp.getFileById(fileId);
+      } catch (error) {
+        // Hanya "berkas tidak ada" yang dianggap sukses; galat lain (kuota, izin, sementara) harus naik
+        // agar pemanggil tidak menandai berkas sebagai sudah privat.
+        if (/no item with the given id|could not be found|not found/i.test(String(error))) return;
+        throw error;
       }
+      file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
     },
     driveReplaceFileContent: (fileId, mime, base64) => {
       // DriveApp tidak bisa mengganti isi berkas biner; Drive API v3 (scope drive yang sama) bisa.
