@@ -6,15 +6,18 @@ import { nowIso_ } from '@gas/modules/access/service';
 import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
-import { driveShareUrl, qrExportStatus } from '@shared/qrcode';
+import { driveShareUrl, labelFileSlug, qrContentHash, qrExportStatus } from '@shared/qrcode';
 import type {
+  ExportQrDesignInput,
   QrDesignDto,
   QrDesignRefInput,
   QrDocumentDto,
+  QrFileDto,
+  QrFileInput,
   SaveQrDesignInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
-import { ensureQrDocFolder_ } from './folders';
+import { ensureQrDocFolder_, ensureQrFolder_, QR_FOLDER_PROPERTY } from './folders';
 import type { NewQrDesignRecord, QrDesignRecord, QrDocumentRecord } from './repo';
 import {
   deleteQrDesign_,
@@ -305,4 +308,77 @@ export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocume
     platform.driveTrashFile(driveId);
     throw error;
   }
+}
+
+function assertQrFresh_(design: QrDesignRecord, expectedUpdatedAt: string): void {
+  if (design.updatedAt !== expectedUpdatedAt) throw appError_('CONFLICT', QR_STALE_MESSAGE);
+}
+
+/**
+ * Ekspor: berkas baru dibuat di Drive DULU (di luar lock), lalu dicatat di dalam lock; berkas lama baru dibuang
+ * setelah pencatatan sukses. Gagal di tengah → berkas baru dibersihkan, berkas lama utuh.
+ */
+export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): QrDesignDto {
+  const platform = platform_();
+  const precheck = listQrDesigns_().find((row) => row.id === input.id);
+  if (!precheck) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+  assertQrFresh_(precheck, input.expectedUpdatedAt);
+  const folderId = ensureQrFolder_();
+  const stamp = nowIso_().replace(/[-:.TZ]/g, '');
+  const base = `${labelFileSlug(precheck.title)}-${stamp}`;
+  const created: string[] = [];
+  try {
+    created.push(
+      platform.driveCreateFile(folderId, `${base}.pdf`, 'application/pdf', input.pdfBase64),
+    );
+    created.push(platform.driveCreateFile(folderId, `${base}.png`, 'image/png', input.pngBase64));
+    const { record, previous, documents, designs } = platform.withLock(() => {
+      const designs = listQrDesigns_();
+      const current = designs.find((row) => row.id === input.id);
+      if (!current) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+      assertQrFresh_(current, input.expectedUpdatedAt);
+      const documents = qrDocumentMap_();
+      const now = nowIso_();
+      const updated: QrDesignRecord = {
+        ...current,
+        exportedHash: qrContentHash(qrDesignContent_(current, documents)),
+        exportedAt: now,
+        exportedBy: actor.email,
+        exportPdfDriveId: created[0] ?? '',
+        exportPngDriveId: created[1] ?? '',
+      };
+      updateQrDesign_(updated);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.export',
+        target: current.title,
+        before: { exported: current.exportedAt === '' ? 'belum' : current.exportedAt },
+        after: { exported: now, replaced: current.exportPdfDriveId !== '' },
+      });
+      return { record: updated, previous: current, documents, designs };
+    });
+    for (const driveId of [previous.exportPdfDriveId, previous.exportPngDriveId]) {
+      if (driveId !== '') platform.driveTrashFile(driveId);
+    }
+    return toQrDesignDto_(record, documents, qrUsesMap_(designs));
+  } catch (error) {
+    for (const driveId of created) platform.driveTrashFile(driveId);
+    throw error;
+  }
+}
+
+export function readQrFile_(input: QrFileInput): QrFileDto {
+  const design = listQrDesigns_().find((row) => row.id === input.id);
+  if (!design) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+  const driveId = input.kind === 'pdf' ? design.exportPdfDriveId : design.exportPngDriveId;
+  if (driveId === '') throw appError_('NOT_FOUND', 'Konfigurasi ini belum diekspor');
+  const folderId = platform_().getProperty(QR_FOLDER_PROPERTY)?.trim() ?? '';
+  const content = folderId ? platform_().driveReadFile(driveId, folderId) : null;
+  if (!content) throw appError_('NOT_FOUND', 'Berkas hasil ekspor tidak ditemukan di Drive');
+  return {
+    filename: `${labelFileSlug(design.title)}.${input.kind}`,
+    mime: content.mime,
+    base64: content.base64,
+  };
 }

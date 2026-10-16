@@ -36,7 +36,9 @@ test('unggah: berkas di folder dokumen, dibagikan via link, URL berbagi dikembal
   });
   expect(platform.sharedFiles.has(doc.driveId)).toBe(true);
   expect(platform.drive.get(doc.driveId)).toMatchObject({ mime: 'application/pdf', base64: PDF1 });
-  expect(platform.drive.get(doc.driveId)?.folderId).toBe(platform.getProperty('QR_DOC_FOLDER_ID') ?? undefined);
+  expect(platform.drive.get(doc.driveId)?.folderId).toBe(
+    platform.getProperty('QR_DOC_FOLDER_ID') ?? undefined,
+  );
   expect(listAuditRecords_().map((r) => r.action)).toEqual(['qrcode.pdf_upload']);
 });
 

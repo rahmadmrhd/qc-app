@@ -1,20 +1,30 @@
 import type { RouteTable } from '@gas/core/router';
 import { expectNull_ } from '@gas/core/validate';
 import {
+  exportQrDesign_,
   getQrDesignDto_,
   listQrDesignDtos_,
+  readQrFile_,
   removeQrDesign_,
   saveQrDesign_,
   uploadQrPdf_,
 } from './service';
-import { validateQrDesignRef_, validateSaveQrDesign_, validateUploadQrPdf_ } from './validate';
+import {
+  validateExportQrDesign_,
+  validateQrDesignRef_,
+  validateQrFile_,
+  validateSaveQrDesign_,
+  validateUploadQrPdf_,
+} from './validate';
 
 type QrMethod =
   | 'qrcodes.list'
   | 'qrcodes.get'
   | 'qrcodes.save'
   | 'qrcodes.delete'
-  | 'qrcodes.uploadPdf';
+  | 'qrcodes.uploadPdf'
+  | 'qrcodes.export'
+  | 'qrcodes.file';
 
 export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
   return {
@@ -37,6 +47,16 @@ export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'edit' },
       validate: validateUploadQrPdf_,
       handler: (input, ctx) => uploadQrPdf_(input, ctx.user),
+    },
+    'qrcodes.export': {
+      permission: { module: 'qrcode', level: 'manage' },
+      validate: validateExportQrDesign_,
+      handler: (input, ctx) => exportQrDesign_(input, ctx.user),
+    },
+    'qrcodes.file': {
+      permission: { module: 'qrcode', level: 'view' },
+      validate: validateQrFile_,
+      handler: (input) => readQrFile_(input),
     },
     'qrcodes.delete': {
       permission: { module: 'qrcode', level: 'manage' },
