@@ -68,7 +68,7 @@ const layoutSchema = z.object({
   subtitleSize: num('subtitleSize'),
   footerSize: num('footerSize'),
   qrSize: num('qrSize'),
-  logoPercent: num('logoPercent'),
+  logoArea: num('logoArea'),
   gap: num('gap'),
   padding: num('padding'),
 });

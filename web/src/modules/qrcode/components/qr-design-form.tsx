@@ -1,9 +1,16 @@
-import { QR_FRAME_KEYS, QR_FRAME_RANGES, QR_LAYOUT_KEYS, QR_LAYOUT_RANGES } from '@shared/qrcode';
+import {
+  parseDriveFileId,
+  QR_FRAME_KEYS,
+  QR_FRAME_RANGES,
+  QR_LAYOUT_KEYS,
+  QR_LAYOUT_RANGES,
+} from '@shared/qrcode';
 import type { QrDesignDto, QrDocumentDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
+import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -79,6 +86,9 @@ export function QrDesignForm({
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [legacyCloning, setLegacyCloning] = useState(false);
+  const [legacyError, setLegacyError] = useState<string | null>(null);
   const [labelStatus, setLabelStatus] = useState<LabelStatus | null>(null);
   // Nilai terkini untuk handler simpan (menghindari closure basi): status tata letak dan mode simpan.
   const statusRef = useRef<LabelStatus | null>(null);
@@ -97,6 +107,25 @@ export function QrDesignForm({
     },
   });
 
+  function applyDocument(next: QrDocumentDto) {
+    setDocument(next);
+    setLegacyError(null);
+    form.setFieldValue('linkSource', 'pdf');
+    form.setFieldValue('documentId', next.id);
+  }
+
+  async function cloneLegacy(link: string) {
+    setLegacyError(null);
+    setLegacyCloning(true);
+    try {
+      applyDocument(await cloneQrPdf.mutateAsync({ source: link }));
+    } catch (caught) {
+      setLegacyError(caught instanceof Error ? caught.message : 'Gagal menyalin PDF dari Drive');
+    } finally {
+      setLegacyCloning(false);
+    }
+  }
+
   return (
     <form
       noValidate
@@ -114,14 +143,21 @@ export function QrDesignForm({
               title={title}
               onCancel={onCancel}
               submitting={submitting}
-              submitDisabled={logoBusy}
+              busyText="Menyimpan konfigurasi…"
+              submitDisabled={logoBusy || pdfBusy || legacyCloning}
               onSubmitClick={() => (exportAfterRef.current = false)}
               extra={
                 canExport ? (
                   <Button
                     type="submit"
                     variant="secondary"
-                    disabled={submitting || logoBusy || labelStatus?.overflow === true}
+                    disabled={
+                      submitting ||
+                      logoBusy ||
+                      pdfBusy ||
+                      legacyCloning ||
+                      labelStatus?.overflow === true
+                    }
                     title={
                       labelStatus?.overflow
                         ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
@@ -217,15 +253,50 @@ export function QrDesignForm({
 
         <Section title="Sumber link">
           <form.Subscribe selector={(state) => state.values}>
-            {(values) =>
-              values.linkSource === 'url' ? (
-                <p className="text-sm text-muted-foreground">
-                  Link saat ini (bukan dari Drive): <span className="break-all">{values.link}</span>
-                  . Salin PDF dari Drive atau unggah PDF untuk menggantinya; link baru harus berasal
-                  dari Drive.
-                </p>
-              ) : null
-            }
+            {(values) => {
+              if (values.linkSource !== 'url') return null;
+              const driveLink = parseDriveFileId(values.link) !== null;
+              return (
+                <div className="space-y-2 rounded-md border p-3">
+                  <p className="text-sm text-muted-foreground">
+                    Link saat ini (bukan salinan di aplikasi):{' '}
+                    <span className="break-all">{values.link}</span>
+                  </p>
+                  {driveLink ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={legacyCloning || pdfBusy}
+                      onClick={() => void cloneLegacy(values.link)}
+                    >
+                      {legacyCloning ? (
+                        <BusyLabel>Menyalin…</BusyLabel>
+                      ) : (
+                        'Salin link ini ke Drive aplikasi'
+                      )}
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau salin
+                      berkas dari Drive di bawah untuk menggantinya.
+                    </p>
+                  )}
+                  {legacyCloning ? (
+                    <p role="status" className="text-sm">
+                      <BusyLabel>
+                        Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
+                      </BusyLabel>
+                    </p>
+                  ) : null}
+                  {legacyError ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      {legacyError}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            }}
           </form.Subscribe>
           <form.Field name="documentId">
             {(field) => (
@@ -233,11 +304,8 @@ export function QrDesignForm({
                 <PdfSourceField
                   document={document}
                   replaceOnly={exported}
-                  onDocument={(next) => {
-                    setDocument(next);
-                    form.setFieldValue('linkSource', 'pdf');
-                    field.handleChange(next.id);
-                  }}
+                  onDocument={applyDocument}
+                  onBusyChange={setPdfBusy}
                   onUpload={async (file, replaceId) =>
                     uploadPdf.mutateAsync({
                       name: limitDocumentName(file.name),

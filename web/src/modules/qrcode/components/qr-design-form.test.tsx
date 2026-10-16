@@ -49,7 +49,7 @@ test('sumber link: hanya PDF (unggah atau salin dari Drive); link lama non-Drive
   expect(screen.queryByLabelText('Link')).toBeNull();
   expect(screen.getByLabelText('Pilih PDF')).toBeInTheDocument();
   expect(screen.getByLabelText('Atau salin dari Google Drive')).toBeInTheDocument();
-  expect(screen.getByText(/bukan dari Drive/)).toBeInTheDocument();
+  expect(screen.getByText(/bukan link Drive/)).toBeInTheDocument();
 });
 
 test('simpan: nilai valid dikirim', async () => {

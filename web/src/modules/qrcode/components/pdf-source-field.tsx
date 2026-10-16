@@ -1,6 +1,7 @@
 import { QR_LIMITS } from '@shared/qrcode';
 import type { QrDocumentDto } from '@shared/rpc';
 import { useEffect, useState } from 'react';
+import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,6 +24,8 @@ export interface PdfSourceFieldProps {
   onClone: (source: string) => Promise<QrDocumentDto>;
   /** Konfigurasi sudah diekspor: PDF hanya boleh diganti isinya (URL tetap), tanpa opsi PDF baru. */
   replaceOnly?: boolean;
+  /** Dipanggil saat proses (unggah/salin) mulai/selesai; induk menonaktifkan Simpan selama berjalan. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /** Sumber link dari PDF yang diunggah ke Drive; link QR = URL berbagi berkas. */
@@ -32,10 +35,16 @@ export function PdfSourceField({
   onUpload,
   onClone,
   replaceOnly = false,
+  onBusyChange,
 }: PdfSourceFieldProps) {
   const [pending, setPending] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [task, setTaskState] = useState<'clone' | 'upload' | null>(null);
+  const busy = task !== null;
+  const setTask = (next: 'clone' | 'upload' | null) => {
+    setTaskState(next);
+    onBusyChange?.(next !== null);
+  };
   const [copied, setCopied] = useState(false);
   const [driveSource, setDriveSource] = useState('');
   // PDF yang dipakai banyak konfigurasi: bawaan PDF BARU agar isi bersama (dan label tercetak lain) tidak tertimpa.
@@ -65,20 +74,20 @@ export function PdfSourceField({
 
   async function cloneFromDrive() {
     setError(null);
-    setBusy(true);
+    setTask('clone');
     try {
       onDocument(await onClone(driveSource.trim()));
       setDriveSource('');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal menyalin PDF dari Drive');
     } finally {
-      setBusy(false);
+      setTask(null);
     }
   }
 
   async function confirm() {
     if (!pending) return;
-    setBusy(true);
+    setTask('upload');
     try {
       onDocument(await onUpload(pending, replacing ? document?.id : undefined));
       setPending(null);
@@ -86,7 +95,7 @@ export function PdfSourceField({
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah PDF');
       setPending(null);
     } finally {
-      setBusy(false);
+      setTask(null);
     }
   }
 
@@ -155,9 +164,14 @@ export function PdfSourceField({
               disabled={busy || driveSource.trim() === ''}
               onClick={() => void cloneFromDrive()}
             >
-              Salin dari Drive
+              {task === 'clone' ? <BusyLabel>Menyalin…</BusyLabel> : 'Salin dari Drive'}
             </Button>
           </div>
+          {task === 'clone' ? (
+            <p role="status" className="text-sm">
+              <BusyLabel>Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…</BusyLabel>
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             PDF disalin ke folder aplikasi dan dibagikan ke siapa saja yang punya link; berkas asli
             tidak diubah. URL salinan tetap, isinya dapat diganti kemudian.
@@ -216,7 +230,17 @@ export function PdfSourceField({
               Batal
             </Button>
             <Button type="button" disabled={busy} onClick={() => void confirm()}>
-              {replacing ? 'Ganti PDF' : 'Bagikan dan unggah'}
+              {task === 'upload' ? (
+                <BusyLabel>
+                  {replacing
+                    ? 'Mengganti isi PDF di Drive…'
+                    : 'Mengunggah PDF ke Drive dan membagikannya…'}
+                </BusyLabel>
+              ) : replacing ? (
+                'Ganti PDF'
+              ) : (
+                'Bagikan dan unggah'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

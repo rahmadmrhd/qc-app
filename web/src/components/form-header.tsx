@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 
 export interface FormHeaderProps {
@@ -10,6 +11,8 @@ export interface FormHeaderProps {
   submitLabel?: string;
   /** Menonaktifkan Simpan tanpa mengubah labelnya (mis. unggahan lampiran belum selesai). */
   submitDisabled?: boolean;
+  /** Teks saat menyimpan, menyebut apa yang disimpan (bawaan "Menyimpan…"). */
+  busyText?: string;
   /** Dipanggil saat tombol Simpan ditekan (sebelum submit), mis. untuk menandai mode simpan. */
   onSubmitClick?: () => void;
   /** Tombol aksi tambahan, ditampilkan di antara Batal dan Simpan. */
@@ -29,6 +32,7 @@ export function FormHeader({
   submitting,
   submitLabel = 'Simpan',
   submitDisabled = false,
+  busyText = 'Menyimpan…',
   onSubmitClick,
   extra,
   className,
@@ -45,7 +49,7 @@ export function FormHeader({
         </Button>
         {extra}
         <Button type="submit" disabled={submitting || submitDisabled} onClick={onSubmitClick}>
-          {submitting ? 'Menyimpan…' : submitLabel}
+          {submitting ? <BusyLabel>{busyText}</BusyLabel> : submitLabel}
         </Button>
       </div>
     </div>

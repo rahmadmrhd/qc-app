@@ -56,12 +56,15 @@ function QrCodesPage() {
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 
-  async function confirmExport(design: QrDesignDto) {
+  async function confirmExport(design: QrDesignDto, report: (step: string) => void) {
+    if (design.logoFileId !== '') report('Memuat logo dari Drive…');
     const logo =
       design.logoFileId === ''
         ? null
         : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
+    report('Membuat PDF lembar 10 × 14 dan PNG label…');
     const files = await renderExportFiles(design, logo);
+    report('Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…');
     await exportMutation.mutateAsync({
       id: design.id,
       expectedUpdatedAt: design.updatedAt,
@@ -112,7 +115,7 @@ function QrCodesPage() {
           design={exporting}
           open
           onOpenChange={(open) => (open ? undefined : setExporting(null))}
-          onConfirm={() => confirmExport(exporting)}
+          onConfirm={(report) => confirmExport(exporting, report)}
         />
       ) : null}
       <Dialog

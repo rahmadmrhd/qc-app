@@ -29,8 +29,8 @@ export interface QrLayout {
   footerSize: number;
   /** Sisi QR dalam mm. */
   qrSize: number;
-  /** Sisi logo sebagai persen sisi QR. */
-  logoPercent: number;
+  /** Luas logo (lebar × tinggi) sebagai persen LUAS QR; maksimal 30. Rasio gambar logo tetap. */
+  logoArea: number;
   /** Jarak antarbagian dan padding kanvas dalam mm. */
   gap: number;
   padding: number;
@@ -41,7 +41,7 @@ export const QR_LAYOUT_KEYS = [
   'subtitleSize',
   'footerSize',
   'qrSize',
-  'logoPercent',
+  'logoArea',
   'gap',
   'padding',
 ] as const;
@@ -54,7 +54,7 @@ export const QR_LAYOUT_RANGES: Record<
   subtitleSize: { min: 3, max: 12, step: 0.5, unit: 'pt', label: 'Ukuran subtitle' },
   footerSize: { min: 3, max: 10, step: 0.5, unit: 'pt', label: 'Ukuran footer' },
   qrSize: { min: 10, max: 26, step: 0.5, unit: 'mm', label: 'Ukuran QR' },
-  logoPercent: { min: 8, max: 30, step: 1, unit: '%', label: 'Ukuran logo' },
+  logoArea: { min: 1, max: 30, step: 0.5, unit: '%', label: 'Luas logo terhadap luas QR' },
   gap: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Jarak antarbagian' },
   padding: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Padding kanvas' },
 };
@@ -65,7 +65,7 @@ export const DEFAULT_QR_LAYOUT: QrLayout = {
   subtitleSize: 5,
   footerSize: 4,
   qrSize: 17,
-  logoPercent: 22,
+  logoArea: 5,
   gap: 1,
   padding: 1.2,
 };
@@ -88,6 +88,16 @@ export function isQrLayout(value: unknown): value is QrLayout {
 /** Menyaring nilai tersimpan/tak tepercaya: tiap field dijepit ke rentang; yang bukan angka memakai bawaan. */
 export function clampQrLayout(value: Partial<Record<string, unknown>>): QrLayout {
   const out: QrLayout = { ...DEFAULT_QR_LAYOUT };
+  // Konfigurasi lama menyimpan `logoPercent` (persen SISI QR): diubah ke persen luas (p² ÷ 100) bila nilai baru belum ada.
+  const legacySide = value.logoPercent;
+  if (
+    value.logoArea === undefined &&
+    typeof legacySide === 'number' &&
+    Number.isFinite(legacySide)
+  ) {
+    const range = QR_LAYOUT_RANGES.logoArea;
+    out.logoArea = Math.min(range.max, Math.max(range.min, (legacySide * legacySide) / 100));
+  }
   for (const key of QR_LAYOUT_KEYS) {
     const entry = value[key];
     if (typeof entry !== 'number' || !Number.isFinite(entry)) continue;
@@ -529,9 +539,10 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       input.logoAspect !== undefined && Number.isFinite(input.logoAspect) && input.logoAspect > 0
         ? input.logoAspect
         : 1;
-    const longest = (qrSize * layout.logoPercent) / 100;
-    const widthMm = aspect >= 1 ? longest : longest * aspect;
-    const heightMm = aspect >= 1 ? longest / aspect : longest;
+    // luas logo = logoArea% dari luas QR, rasio gambar dipertahankan: w × h = A, w ÷ h = aspect
+    const area = (qrSize * qrSize * layout.logoArea) / 100;
+    const widthMm = Math.sqrt(area * aspect);
+    const heightMm = Math.sqrt(area / aspect);
     elements.push({
       kind: 'logo',
       xMm: LABEL_MM / 2 - widthMm / 2,

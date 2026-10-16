@@ -203,3 +203,16 @@ test('sudah diekspor (replaceOnly): isian salin dari Drive tidak tersedia', () =
   );
   expect(screen.queryByLabelText('Atau salin dari Google Drive')).toBeNull();
 });
+
+test('salin dari Drive: selama proses tampil keterangan langkah dan tombol berspinner', async () => {
+  const onClone = vi.fn(() => new Promise<never>(() => undefined));
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={onClone} />,
+  );
+  await userEvent.type(screen.getByLabelText('Atau salin dari Google Drive'), 'abc');
+  await userEvent.click(screen.getByRole('button', { name: 'Salin dari Drive' }));
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…',
+  );
+  expect(screen.getByRole('button', { name: 'Menyalin…' })).toBeDisabled();
+});

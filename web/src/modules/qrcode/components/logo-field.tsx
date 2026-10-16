@@ -1,5 +1,6 @@
 import type { QrDesignDto } from '@shared/rpc';
 import { useState } from 'react';
+import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,9 @@ export interface LogoFieldProps {
 
 export function LogoField({ value, onChange, designs, onBusyChange }: LogoFieldProps) {
   const upload = useUploadFile();
-  const { url } = useFileUrl(value);
+  const { url, isLoading: loadingLogo } = useFileUrl(value);
+  const [phase, setPhase] = useState<'resize' | 'upload' | null>(null);
+  const uploading = phase !== null;
   const [error, setError] = useState<string | null>(null);
   const reusable = designs.filter((design, index, all) => {
     return (
@@ -31,19 +34,34 @@ export function LogoField({ value, onChange, designs, onBusyChange }: LogoFieldP
     setError(null);
     if (!file) return;
     onBusyChange?.(true);
+    setPhase('resize');
     try {
       const prepared = await prepareImage(file, LOGO_MAX_SIDE);
+      setPhase('upload');
       onChange((await upload.mutateAsync(prepared)).id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah logo');
     } finally {
+      setPhase(null);
       onBusyChange?.(false);
     }
   }
 
   return (
     <div className="space-y-3">
-      {value !== '' && url ? (
+      {uploading ? (
+        <p className="text-sm text-muted-foreground">
+          <BusyLabel>
+            {phase === 'resize'
+              ? 'Memeriksa dan mengecilkan gambar logo…'
+              : 'Mengunggah logo ke Drive…'}
+          </BusyLabel>
+        </p>
+      ) : value !== '' && loadingLogo ? (
+        <p className="text-sm text-muted-foreground">
+          <BusyLabel>Memuat gambar logo dari Drive…</BusyLabel>
+        </p>
+      ) : value !== '' && url ? (
         <img
           src={url}
           alt="Logo label"
@@ -58,6 +76,7 @@ export function LogoField({ value, onChange, designs, onBusyChange }: LogoFieldP
           id="qr-logo-file"
           type="file"
           accept="image/png,image/jpeg,image/webp"
+          disabled={uploading}
           onChange={(event) => {
             void choose(event.target.files?.[0]);
             event.target.value = '';
