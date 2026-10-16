@@ -15,6 +15,9 @@ function createGasPlatform_(): Platform {
   let spreadsheet: SpreadsheetLike | null = null;
   return {
     getProperty: (key) => properties.getProperty(key),
+    setProperty: (key, value) => {
+      properties.setProperty(key, value);
+    },
     scriptUrl: () => ScriptApp.getService().getUrl() ?? '',
     cacheGet: (key) => cache.get(key),
     cachePut: (key, value, ttlSeconds) => cache.put(key, value, ttlSeconds),
@@ -59,6 +62,93 @@ function createGasPlatform_(): Platform {
         spreadsheet = SpreadsheetApp.openById(id) as unknown as SpreadsheetLike;
       }
       return spreadsheet;
+    },
+    driveCreateFolder: (name) => DriveApp.createFolder(name).getId(),
+    driveCreateFile: (folderId, name, mime, base64) => {
+      const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime, name);
+      return DriveApp.getFolderById(folderId).createFile(blob).getId();
+    },
+    driveReadFile: (fileId, folderId) => {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        const parents = file.getParents();
+        let inFolder = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === folderId) inFolder = true;
+        }
+        if (!inFolder) return null;
+        const blob = file.getBlob();
+        return {
+          mime: blob.getContentType() ?? '',
+          base64: Utilities.base64Encode(blob.getBytes()),
+        };
+      } catch {
+        return null;
+      }
+    },
+    driveFileInfo: (fileId, folderId) => {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        if (file.isTrashed()) return null;
+        const parents = file.getParents();
+        let inFolder = false;
+        while (parents.hasNext()) {
+          if (parents.next().getId() === folderId) inFolder = true;
+        }
+        if (!inFolder) return null;
+        return { mime: file.getMimeType(), size: file.getSize() };
+      } catch {
+        return null;
+      }
+    },
+    driveFolderExists: (folderId) => {
+      try {
+        return !DriveApp.getFolderById(folderId).isTrashed();
+      } catch {
+        return false;
+      }
+    },
+    driveTrashFile: (fileId) => {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch {
+        // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
+      }
+    },
+    driveShareAnyoneWithLink: (fileId) => {
+      DriveApp.getFileById(fileId).setSharing(
+        DriveApp.Access.ANYONE_WITH_LINK,
+        DriveApp.Permission.VIEW,
+      );
+    },
+    driveRevokeSharing: (fileId) => {
+      let file: GoogleAppsScript.Drive.File;
+      try {
+        file = DriveApp.getFileById(fileId);
+      } catch (error) {
+        // Hanya "berkas tidak ada" yang dianggap sukses; galat lain (kuota, izin, sementara) harus naik
+        // agar pemanggil tidak menandai berkas sebagai sudah privat.
+        if (/no item with the given id|could not be found|not found/i.test(String(error))) return;
+        throw error;
+      }
+      file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    },
+    driveReplaceFileContent: (fileId, mime, base64) => {
+      // DriveApp tidak bisa mengganti isi berkas biner; Drive API v3 (scope drive yang sama) bisa.
+      const response = UrlFetchApp.fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+        {
+          method: 'patch',
+          contentType: mime,
+          payload: Utilities.base64Decode(base64),
+          headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+          muteHttpExceptions: true,
+        },
+      );
+      const status = response.getResponseCode();
+      if (status < 200 || status >= 300) {
+        throw new Error(`Drive API ${status}: ${response.getContentText().slice(0, 200)}`);
+      }
     },
     logError: (message) => console.error(message),
   };
@@ -113,4 +203,8 @@ export function assertScriptOwner_(): void {
   if (!isScriptOwner_()) {
     throw new Error('setup hanya boleh dijalankan oleh pemilik script dari editor Apps Script.');
   }
+}
+
+export function renderJsonOutput_(json: string): GoogleAppsScript.Content.TextOutput {
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }

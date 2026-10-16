@@ -1,0 +1,154 @@
+import { FILE_SCHEME } from './files';
+
+/** Batas field item (PRD FI7). */
+export const ITEM_LIMITS = {
+  brand: 60,
+  model: 100,
+  alias: 100,
+  aliases: 10,
+  stickerName: 100,
+  stickerNote: 300,
+  stickers: 30,
+  accessoryName: 100,
+  accessoryQty: 999,
+  accessories: 30,
+  attachments: 10,
+  /** Batas panjang JSON per kolom sheet (sel Sheets maks. 50.000 karakter). */
+  jsonCell: 40_000,
+} as const;
+
+/**
+ * Kunci pencocokan: huruf kecil, semua karakter selain huruf dan angka menjadi satu spasi, tepi dirapikan.
+ * Dipakai untuk keunikan (merk+tipe, nama lain), pencarian, dan auto-suggest.
+ */
+const KEY_CHAR_PATTERN = /[\p{L}\p{N}\p{M}]/u;
+
+/** Huruf, angka, atau tanda gabung dari aksara mana pun (Latin, CJK, Arab, Thai, Kiril, ...). */
+export function isKeyChar(ch: string): boolean {
+  return KEY_CHAR_PATTERN.test(ch);
+}
+
+export function normalizeKey(text: string): string {
+  let result = '';
+  let pendingSpace = false;
+  for (const ch of text.toLowerCase()) {
+    if (isKeyChar(ch)) {
+      if (pendingSpace && result !== '') result += ' ';
+      result += ch;
+      pendingSpace = false;
+    } else {
+      pendingSpace = true;
+    }
+  }
+  return result;
+}
+
+export function itemKey(brand: string, model: string): string {
+  return `${normalizeKey(brand)} ${normalizeKey(model)}`.trim();
+}
+
+const CR = String.fromCharCode(13);
+const LF = String.fromCharCode(10);
+
+/** CRLF dan CR sendirian menjadi LF agar perbandingan dan penyimpanan konsisten. */
+export function normalizeNewlines(text: string): string {
+  return text
+    .split(CR + LF)
+    .join(LF)
+    .split(CR)
+    .join(LF);
+}
+
+/** Hash FNV-1a 32-bit (8 digit heksa); hanya untuk deteksi perubahan di audit, bukan kriptografi. */
+export function hashText(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+export function isRefIdChar(ch: string): boolean {
+  return (
+    (ch >= 'a' && ch <= 'z') ||
+    (ch >= 'A' && ch <= 'Z') ||
+    (ch >= '0' && ch <= '9') ||
+    ch === '_' ||
+    ch === '-'
+  );
+}
+
+export const DRIVE_REF_SCHEME = 'drive:';
+
+/**
+ * Id dari setiap kemunculan "<skema><id>" (mis. "qcfile:" atau "drive:") di Markdown: bentuk apa pun yang
+ * dirender (judul, kurung sudut, gaya referensi); unik, urutan kemunculan. Sengaja longgar: klaim berlebih
+ * berarti simpan ditolak (aman), klaim kurang berarti berkas milik entitas lain bisa lolos.
+ */
+export function extractRefs(markdown: string, scheme: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  while (from < markdown.length) {
+    const at = markdown.indexOf(scheme, from);
+    if (at < 0) break;
+    let end = at + scheme.length;
+    while (end < markdown.length && isRefIdChar(markdown.charAt(end))) end++;
+    const id = markdown.slice(at + scheme.length, end);
+    const before = at > 0 ? markdown.charAt(at - 1) : '';
+    const boundary = before === '' || !isRefIdChar(before);
+    if (boundary && id !== '' && !found.includes(id)) found.push(id);
+    from = Math.max(end, at + 1);
+  }
+  return found;
+}
+
+export function extractFileRefs(markdown: string): string[] {
+  return extractRefs(markdown, FILE_SCHEME);
+}
+
+/**
+ * Mengganti "<fromScheme><id>" menjadi "<toScheme><lookup(id)>". Id yang tidak dikenal (lookup `null`),
+ * id kosong, dan kemunculan di tengah kata dibiarkan apa adanya.
+ */
+export function mapMarkdownRefs(
+  markdown: string,
+  fromScheme: string,
+  toScheme: string,
+  lookup: (id: string) => string | null,
+): string {
+  let out = '';
+  let from = 0;
+  while (from < markdown.length) {
+    const at = markdown.indexOf(fromScheme, from);
+    if (at < 0) break;
+    let end = at + fromScheme.length;
+    while (end < markdown.length && isRefIdChar(markdown.charAt(end))) end++;
+    const id = markdown.slice(at + fromScheme.length, end);
+    const before = at > 0 ? markdown.charAt(at - 1) : '';
+    const mapped = (before === '' || !isRefIdChar(before)) && id !== '' ? lookup(id) : null;
+    out +=
+      markdown.slice(from, at) + (mapped === null ? markdown.slice(at, end) : toScheme + mapped);
+    from = end;
+  }
+  return out + markdown.slice(from);
+}
+
+/** Tujuan (URL beserta judul bila ada) semua gambar `![alt](tujuan)`; tautan biasa diabaikan. */
+export function extractImageTargets(markdown: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  while (from < markdown.length) {
+    const open = markdown.indexOf('![', from);
+    if (open < 0) break;
+    const mid = markdown.indexOf('](', open + 2);
+    if (mid < 0) break;
+    let end = mid + 2;
+    while (end < markdown.length && markdown.charAt(end) !== ')' && markdown.charAt(end) !== LF) {
+      end++;
+    }
+    found.push(markdown.slice(mid + 2, end).trim());
+    from = end;
+  }
+  return found;
+}

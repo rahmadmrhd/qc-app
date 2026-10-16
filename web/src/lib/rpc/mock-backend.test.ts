@@ -45,7 +45,136 @@ test('user tanpa akses modul access ditolak melihat log audit', async () => {
 });
 
 test('user tanpa akses manage mendapat FORBIDDEN saat menyimpan user', async () => {
-  const input = { email: 'x@qc.local', name: 'X', status: 'active', roleIds: [] };
+  const input = { email: 'x@qc.local', name: 'X', status: 'active', assignments: [] };
   const result = await call('access.users.save', input, tokenOf('qc.staff@qc.local'));
   expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+
+test('auth.me memuat izin per lokasi sesuai penugasan (hak berbeda di tiap lokasi)', async () => {
+  const result = await call('auth.me', null, tokenOf('qc.staff@qc.local'));
+  expect(result.data.permissions).toMatchObject({ access: 'none', item: 'view' });
+  const byCode = Object.fromEntries(
+    result.data.locations.map((l: { code: string; permissions: unknown }) => [
+      l.code,
+      l.permissions,
+    ]),
+  );
+  expect(byCode.JKT).toEqual({ handover: 'view', qc: 'edit', stock: 'view' });
+  expect(byCode.BDG).toEqual({ handover: 'manage', qc: 'none', stock: 'view' });
+});
+
+test('super admin melihat semua lokasi aktif dengan manage', async () => {
+  const result = await call('auth.me', null, tokenOf(MOCK_ADMIN_EMAIL));
+  expect(result.data.locations.map((l: { code: string }) => l.code)).toEqual(['BDG', 'JKT']);
+});
+
+test('lokasi: daftar untuk akses lihat, simpan dan nonaktifkan butuh akses kelola', async () => {
+  const viewer = tokenOf('access.viewer@qc.local');
+  expect(
+    (await call('access.locations.list', null, viewer)).data.map((l: { code: string }) => l.code),
+  ).toEqual(['BDG', 'JKT']);
+  expect(
+    await call('access.locations.save', { code: 'SBY', name: 'Surabaya' }, viewer),
+  ).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const created = await call('access.locations.save', { code: 'sby', name: 'Surabaya' }, admin);
+  expect(created).toMatchObject({ ok: true, data: { code: 'SBY', status: 'active' } });
+  const off = await call(
+    'access.locations.setStatus',
+    { id: created.data.id, status: 'inactive' },
+    admin,
+  );
+  expect(off.data.status).toBe('inactive');
+  const me = await call('auth.me', null, admin);
+  expect(me.data.locations.map((l: { code: string }) => l.code)).not.toContain('SBY');
+});
+test('item demo: daftar untuk pemegang item view, simpan butuh item edit, detail memuat Markdown dan gambar', async () => {
+  const staff = tokenOf('qc.staff@qc.local'); // role-qc: item view
+  const list = await call('items.list', null, staff);
+  expect(list.data.map((i: { model: string }) => i.model)).toEqual([
+    'hAP ac2',
+    'AF 5XHD',
+    'ES 24 250W',
+  ]);
+  expect(
+    await call(
+      'items.save',
+      {
+        brand: 'X',
+        model: 'Y',
+        isCountryLock: false,
+        aliases: [],
+        stickers: [],
+        accessories: [],
+        attachments: [],
+        detail: '',
+      },
+      staff,
+    ),
+  ).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const detail = await call('items.get', { id: 'item-af5xhd' }, staff);
+  expect(detail.data.detail).toContain('country lock');
+  expect(detail.data.attachments).toEqual(['file-demo']);
+  const file = await call('files.get', { id: 'file-demo' }, staff);
+  expect(file.data.mime).toBe('image/png');
+});
+
+test('user tanpa izin item tidak dapat melihat daftar item', async () => {
+  const result = await call('items.list', null, tokenOf('access.viewer@qc.local'));
+  expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+
+test('merk demo: daftar memuat jumlah item; mengganti nama merk memperbarui nama di daftar item', async () => {
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const brands = await call('brands.list', null, admin);
+  expect(
+    brands.data.map((b: { name: string; itemCount: number }) => [b.name, b.itemCount]),
+  ).toEqual([
+    ['Mikrotik', 1],
+    ['Ubiquiti', 2],
+  ]);
+  const staff = tokenOf('qc.staff@qc.local'); // item view saja
+  expect(await call('brands.save', { name: 'Baru' }, staff)).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  await call('brands.save', { id: 'brand-mikrotik', name: 'MikroTik' }, admin);
+  const items = await call('items.list', null, admin);
+  expect(items.data.map((i: { brand: string }) => i.brand)).toContain('MikroTik');
+});
+
+test('serah terima demo: QC melihat task Jakarta dan mengubah progres; WH Bandung tidak melihat task Jakarta; customer diganti nama', async () => {
+  const qc = tokenOf('qc.staff@qc.local');
+  const list = await call('handovers.list', { locationIds: ['loc-jkt'] }, qc);
+  expect(list.ok).toBe(true);
+  expect(list.data.length).toBeGreaterThan(0);
+  const task = list.data[0];
+  const detail = await call('handovers.get', { id: task.id, locationIds: ['loc-jkt'] }, qc);
+  const line = detail.data.lines[0];
+  const updated = await call(
+    'handovers.setProgress',
+    { id: task.id, locationId: 'loc-jkt', lineId: line.id, doneQty: 1 },
+    qc,
+  );
+  expect(updated.data.lines[0].doneQty).toBe(1);
+  const wh = tokenOf('wh.staff@qc.local'); // Bandung saja
+  expect(await call('handovers.list', { locationIds: ['loc-jkt'] }, wh)).toMatchObject({
+    ok: false,
+    error: { code: 'FORBIDDEN' },
+  });
+  const admin = tokenOf(MOCK_ADMIN_EMAIL);
+  const customers = await call('customers.list', null, admin);
+  expect(customers.data.length).toBeGreaterThan(0);
+  const renamed = await call(
+    'customers.rename',
+    { id: customers.data[0].id, name: 'Nama Baru Demo' },
+    admin,
+  );
+  expect(renamed.data.name).toBe('Nama Baru Demo');
 });

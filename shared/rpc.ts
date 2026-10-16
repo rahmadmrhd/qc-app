@@ -1,4 +1,7 @@
+import type { Assignment, LocationPermissionMap } from './assignments';
+import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
+import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -21,11 +24,22 @@ export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: RpcErrorB
 
 export type UserStatus = 'active' | 'inactive';
 
+export interface LocationAccessDto {
+  id: string;
+  code: string;
+  name: string;
+  /** Izin efektif user di lokasi ini (gabungan "Semua lokasi" dan penugasan lokasi). */
+  permissions: LocationPermissionMap;
+}
+
 export interface MeDto {
   email: string;
   name: string;
   isSuperAdmin: boolean;
+  /** Izin GLOBAL: hanya dari penugasan "Semua lokasi" (satu-satunya sumber modul `access`). */
   permissions: PermissionMap;
+  /** Lokasi aktif yang boleh diakses, terurut menurut kode. */
+  locations: LocationAccessDto[];
 }
 
 export interface UserDto {
@@ -33,7 +47,7 @@ export interface UserDto {
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -55,7 +69,7 @@ export interface SaveUserInput {
   email: string;
   name: string;
   status: UserStatus;
-  roleIds: string[];
+  assignments: Assignment[];
 }
 
 export interface SetUserStatusInput {
@@ -102,6 +116,322 @@ export interface AuditPageDto {
   pageSize: number;
 }
 
+export type LocationStatus = 'active' | 'inactive';
+
+export interface LocationDto {
+  id: string;
+  /** Kode unik, huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
+  code: string;
+  name: string;
+  status: LocationStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface SaveLocationInput {
+  id?: string;
+  code: string;
+  name: string;
+}
+
+export interface SetLocationStatusInput {
+  id: string;
+  status: LocationStatus;
+}
+
+export interface FileDto {
+  id: string;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+}
+
+export interface UploadFileInput {
+  mime: string;
+  /** Isi gambar dalam base64 baku (tanpa awalan `data:`). */
+  base64: string;
+  width: number;
+  height: number;
+}
+
+export interface GetFileInput {
+  id: string;
+}
+
+export interface FileContentDto {
+  id: string;
+  mime: string;
+  base64: string;
+}
+export type ItemStatus = 'active' | 'inactive';
+
+export interface ItemStickerDto {
+  name: string;
+  /** Posisi/ketentuan penempelan. */
+  note: string;
+  /** Id berkas contoh (sheet `files`), atau `null`. */
+  fileId: string | null;
+}
+
+export interface ItemAccessoryDto {
+  name: string;
+  /** Jumlah per unit. */
+  qty: number;
+}
+
+export interface BrandDto {
+  id: string;
+  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
+  externalId: string;
+  name: string;
+  status: ItemStatus;
+  /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
+  itemCount: number;
+  updatedAt: string;
+}
+
+export interface SaveBrandInput {
+  id?: string;
+  name: string;
+}
+
+export interface SetBrandStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+export interface ItemSummaryDto {
+  id: string;
+  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
+  externalId: string;
+  brandId: string;
+  /** Nama merk (dari tabel merk). */
+  brand: string;
+  model: string;
+  isCountryLock: boolean;
+  status: ItemStatus;
+  aliases: string[];
+  imageCount: number;
+  updatedAt: string;
+}
+
+export interface ItemDto extends ItemSummaryDto {
+  stickers: ItemStickerDto[];
+  accessories: ItemAccessoryDto[];
+  /** Id berkas galeri (sheet `files`), urut. */
+  attachments: string[];
+  /** Detail Markdown. */
+  detail: string;
+  createdAt: string;
+  updatedBy: string;
+}
+
+export interface SaveItemInput {
+  id?: string;
+  /** `updatedAt` item saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT) agar tidak menimpa ubahan orang lain. */
+  expectedUpdatedAt?: string;
+  brand: string;
+  model: string;
+  isCountryLock: boolean;
+  aliases: string[];
+  stickers: ItemStickerDto[];
+  accessories: ItemAccessoryDto[];
+  attachments: string[];
+  detail: string;
+}
+
+export interface GetItemInput {
+  id: string;
+}
+
+export interface SetItemStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+export interface CustomerDto {
+  id: string;
+  name: string;
+  status: ItemStatus;
+  updatedAt: string;
+}
+
+export interface RenameCustomerInput {
+  id: string;
+  name: string;
+}
+
+export interface SetCustomerStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+/** Item aktif untuk saran tipe di form task (tanpa detail berat). */
+export interface HandoverOptionItemDto {
+  id: string;
+  brand: string;
+  model: string;
+  aliases: string[];
+}
+
+export interface HandoverOptionCustomerDto {
+  id: string;
+  name: string;
+}
+
+export interface HandoverOptionsDto {
+  items: HandoverOptionItemDto[];
+  customers: HandoverOptionCustomerDto[];
+  /** Nama customer nonaktif: dipakai form untuk memberi petunjuk sebelum simpan ditolak. */
+  inactiveCustomerNames: string[];
+}
+
+export interface HandoverLineDto {
+  id: string;
+  itemId: string;
+  /** Salinan "merk tipe" saat baris dibuat (FH9). */
+  itemLabel: string;
+  qty: number;
+  doneQty: number;
+  doneAt: string;
+  doneBy: string;
+}
+
+export interface HandoverSummaryDto {
+  id: string;
+  number: string;
+  locationId: string;
+  customerId: string;
+  customerName: string;
+  note: string;
+  status: HandoverStatus;
+  lineCount: number;
+  doneUnits: number;
+  totalUnits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HandoverDto extends HandoverSummaryDto {
+  lines: HandoverLineDto[];
+  createdBy: string;
+  updatedBy: string;
+}
+
+export interface ListHandoversInput {
+  locationIds: string[];
+}
+
+export interface GetHandoverInput {
+  id: string;
+  locationIds: string[];
+}
+
+export interface SaveHandoverLineInput {
+  itemId: string;
+  qty: number;
+}
+
+export interface SaveHandoverInput {
+  id?: string;
+  /** `updatedAt` task saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT). */
+  expectedUpdatedAt?: string;
+  locationId: string;
+  /** Nama customer; yang belum ada dibuat saat task disimpan (FC2). */
+  customerName: string;
+  note: string;
+  lines: SaveHandoverLineInput[];
+}
+
+export interface HandoverRefInput {
+  id: string;
+  locationId: string;
+}
+
+export interface SetProgressInput extends HandoverRefInput {
+  lineId: string;
+  doneQty: number;
+}
+
+export interface CompleteLineInput extends HandoverRefInput {
+  lineId: string;
+}
+
+// --- QR Code Label ---
+export interface QrDesignDto {
+  id: string;
+  title: string;
+  linkSource: QrLinkSource;
+  /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber. */
+  link: string;
+  documentId: string;
+  documentName: string;
+  documentUses: number;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  /** Gaya teks per bagian dan bingkai QR. */
+  style: QrStyle;
+  /** Isi tidak muat di kanvas 3 × 3 cm (dilaporkan peramban saat simpan): ekspor diblokir. */
+  overflow: boolean;
+  exportStatus: QrExportStatus;
+  exportedAt: string;
+  exportedBy: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface SaveQrDesignInput {
+  id?: string;
+  expectedUpdatedAt?: string;
+  title: string;
+  linkSource: QrLinkSource;
+  link: string;
+  documentId: string;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  /** Kosong = pertahankan gaya yang ada (ubah) atau bawaan (buat). */
+  style?: QrStyle;
+  /** Hasil pengukuran tata letak di peramban; kosong = pertahankan nilai yang ada (bawaan false). */
+  overflow?: boolean;
+}
+export interface QrDesignRefInput {
+  id: string;
+}
+export interface QrDocumentDto {
+  id: string;
+  name: string;
+  link: string;
+  uses: number;
+}
+export interface UploadQrPdfInput {
+  name: string;
+  base64: string;
+  replaceDocumentId?: string;
+}
+export interface ExportQrDesignInput {
+  id: string;
+  expectedUpdatedAt: string;
+  pdfBase64: string;
+  pngBase64: string;
+}
+export type QrFileKind = 'pdf' | 'png';
+export interface QrFileInput {
+  id: string;
+  kind: QrFileKind;
+}
+export interface QrFileDto {
+  filename: string;
+  mime: string;
+  base64: string;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -111,6 +441,36 @@ export interface RpcContract {
   'access.roles.save': { input: SaveRoleInput; output: RoleDto };
   'access.roles.delete': { input: DeleteRoleInput; output: { id: string } };
   'access.audit.list': { input: ListAuditInput; output: AuditPageDto };
+  'access.locations.list': { input: null; output: LocationDto[] };
+  'access.locations.save': { input: SaveLocationInput; output: LocationDto };
+  'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
+  'files.upload': { input: UploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: FileContentDto };
+  'brands.list': { input: null; output: BrandDto[] };
+  'brands.save': { input: SaveBrandInput; output: BrandDto };
+  'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
+  'customers.list': { input: null; output: CustomerDto[] };
+  'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
+  'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
+  'handovers.options': { input: ListHandoversInput; output: HandoverOptionsDto };
+  'handovers.list': { input: ListHandoversInput; output: HandoverSummaryDto[] };
+  'handovers.get': { input: GetHandoverInput; output: HandoverDto };
+  'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
+  'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
+  'handovers.setProgress': { input: SetProgressInput; output: HandoverDto };
+  'handovers.completeLine': { input: CompleteLineInput; output: HandoverDto };
+  'handovers.completeAll': { input: HandoverRefInput; output: HandoverDto };
+  'items.list': { input: null; output: ItemSummaryDto[] };
+  'items.get': { input: GetItemInput; output: ItemDto };
+  'items.save': { input: SaveItemInput; output: ItemDto };
+  'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
+  'qrcodes.list': { input: null; output: QrDesignDto[] };
+  'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
+  'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
+  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
 }
 
 export type RpcMethod = keyof RpcContract;

@@ -5,17 +5,28 @@ import type {
   SheetLike,
   SpreadsheetLike,
 } from '@gas/core/platform';
+import { base64ByteLength } from '@shared/files';
 
-/** Meniru Google Sheets: apostrof depan = teks literal; string "=" tanpa apostrof dievaluasi jadi formula. */
-function storeCell(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
+const NUMBER_LIKE = /^[+-]?d+(.d+)?([eE][+-]?d+)?$/;
+const DATE_LIKE = /^d{4}-d{2}-d{2}(T[d:.]+Z?)?$/;
+
+/**
+ * Meniru Google Sheets. Sel berformat teks ('@') menyimpan string apa adanya. Selain itu: apostrof depan =
+ * teks literal; string "=" dievaluasi jadi formula; teks mirip angka/tanggal diubah menjadi angka/Date.
+ */
+function storeCell(value: unknown, asText: boolean): unknown {
+  if (typeof value !== 'string' || asText) return value;
   if (value.startsWith("'")) return value.slice(1);
   if (value.startsWith('=')) return '#FORMULA';
+  if (NUMBER_LIKE.test(value)) return Number(value);
+  if (DATE_LIKE.test(value) && !Number.isNaN(Date.parse(value))) return new Date(value);
   return value;
 }
 
 export class MemorySheet implements SheetLike {
   rows: unknown[][];
+  /** Sel ("baris,kolom", 1-based) yang berformat teks. */
+  private readonly textCells = new Set<string>();
 
   constructor(rows: unknown[][] = []) {
     this.rows = rows;
@@ -31,6 +42,16 @@ export class MemorySheet implements SheetLike {
 
   getRange(row: number, column: number, numRows: number, numColumns: number): RangeLike {
     return {
+      setNumberFormat: (format: string) => {
+        for (let r = 0; r < numRows; r++) {
+          for (let c = 0; c < numColumns; c++) {
+            const key = `${row + r},${column + c}`;
+            if (format === '@') this.textCells.add(key);
+            else this.textCells.delete(key);
+          }
+        }
+        return undefined;
+      },
       getValues: () => {
         const out: unknown[][] = [];
         for (let r = 0; r < numRows; r++) {
@@ -47,7 +68,10 @@ export class MemorySheet implements SheetLike {
           while (this.rows.length <= index) this.rows.push([]);
           const target = this.rows[index] ?? [];
           line.forEach((value, c) => {
-            target[column - 1 + c] = storeCell(value);
+            target[column - 1 + c] = storeCell(
+              value,
+              this.textCells.has(`${row + r},${column + c}`),
+            );
           });
           this.rows[index] = target;
         });
@@ -56,7 +80,7 @@ export class MemorySheet implements SheetLike {
   }
 
   appendRow(values: unknown[]): void {
-    this.rows.push(values.map(storeCell));
+    this.rows.push(values.map((value) => storeCell(value, false)));
   }
 
   deleteRow(row: number): void {
@@ -85,6 +109,13 @@ export class MemorySpreadsheet implements SpreadsheetLike {
   }
 }
 
+export interface MemoryDriveFile {
+  folderId: string;
+  name: string;
+  mime: string;
+  base64: string;
+}
+
 export interface MemoryPlatformOptions {
   properties?: Record<string, string>;
   now?: () => number;
@@ -98,6 +129,12 @@ export interface MemoryPlatform extends Platform {
   readonly properties: Map<string, string>;
   readonly cache: Map<string, string>;
   readonly errors: string[];
+  readonly folders: Map<string, string>;
+  /** Folder yang ditandai berada di tempat sampah (untuk menguji `driveFolderExists`). */
+  readonly trashedFolders: Set<string>;
+  readonly drive: Map<string, MemoryDriveFile>;
+  /** Berkas yang dibagikan "siapa saja yang punya link". */
+  readonly sharedFiles: Set<string>;
   readonly httpCalls: Array<{ url: string; form: Record<string, string> }>;
 }
 
@@ -136,13 +173,26 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
   const db = new MemorySpreadsheet();
   const errors: string[] = [];
   const httpCalls: Array<{ url: string; form: Record<string, string> }> = [];
+  const folders = new Map<string, string>();
+  const trashedFolders = new Set<string>();
+  let locked = false;
+  let driveSequence = 0;
+  const drive = new Map<string, MemoryDriveFile>();
+  const sharedFiles = new Set<string>();
   return {
     db,
     properties,
     cache,
     errors,
     httpCalls,
+    folders,
+    trashedFolders,
+    drive,
+    sharedFiles,
     getProperty: (key) => properties.get(key) ?? null,
+    setProperty: (key, value) => {
+      properties.set(key, value);
+    },
     scriptUrl: () => options.scriptUrl ?? '',
     cacheGet: (key) => cache.get(key) ?? null,
     cachePut: (key, value) => {
@@ -163,10 +213,54 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       return options.http(url, form);
     },
     withLock<T>(fn: () => T): T {
-      return fn();
+      // LockService asli tidak reentrant: kunci bersarang di produksi menunggu dirinya sendiri hingga habis waktu.
+      if (locked) throw new Error('withLock bersarang: LockService tidak reentrant');
+      locked = true;
+      try {
+        return fn();
+      } finally {
+        locked = false;
+      }
     },
     flush: () => undefined,
     spreadsheet: () => db,
+    driveCreateFolder: (name) => {
+      const id = `folder-${++driveSequence}`;
+      folders.set(id, name);
+      return id;
+    },
+    driveCreateFile: (folderId, name, mime, base64) => {
+      if (!folders.has(folderId)) throw new Error(`Folder Drive ${folderId} tidak ada`);
+      const id = `file-${++driveSequence}`;
+      drive.set(id, { folderId, name, mime, base64 });
+      return id;
+    },
+    driveReadFile: (fileId, folderId) => {
+      const file = drive.get(fileId);
+      return file && file.folderId === folderId ? { mime: file.mime, base64: file.base64 } : null;
+    },
+    driveFileInfo: (fileId, folderId) => {
+      const file = drive.get(fileId);
+      if (!file || file.folderId !== folderId || trashedFolders.has(file.folderId)) return null;
+      return { mime: file.mime, size: base64ByteLength(file.base64) };
+    },
+    driveFolderExists: (folderId) => folders.has(folderId) && !trashedFolders.has(folderId),
+    driveTrashFile: (fileId) => {
+      drive.delete(fileId);
+      sharedFiles.delete(fileId);
+    },
+    driveShareAnyoneWithLink: (fileId) => {
+      if (!drive.has(fileId)) throw new Error(`Berkas Drive ${fileId} tidak ada`);
+      sharedFiles.add(fileId);
+    },
+    driveRevokeSharing: (fileId) => {
+      sharedFiles.delete(fileId);
+    },
+    driveReplaceFileContent: (fileId, mime, base64) => {
+      const file = drive.get(fileId);
+      if (!file) throw new Error(`Berkas Drive ${fileId} tidak ada`);
+      drive.set(fileId, { ...file, mime, base64 });
+    },
     logError: (message) => {
       errors.push(message);
     },

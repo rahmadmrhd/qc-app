@@ -1,4 +1,10 @@
-export const PUBLIC_GAS_FUNCTIONS: ReadonlySet<string> = new Set(['doGet', 'api', 'setup']);
+export const PUBLIC_GAS_FUNCTIONS: ReadonlySet<string> = new Set([
+  'doGet',
+  'doPost',
+  'api',
+  'setup',
+  'cleanupQrPdfs',
+]);
 
 export class GasBuildError extends Error {
   constructor(file: string, message: string) {

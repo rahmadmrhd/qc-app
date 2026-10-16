@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
+import { insertBrand_ } from '@gas/modules/brand/repo';
+import { insertItem_, listItems_ } from '@gas/modules/item/repo';
+import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { runSetup_ } from './setup';
 
@@ -12,7 +15,7 @@ test('melaporkan Script Property yang belum diset dan tidak membuat sheet tanpa 
   expect(platform.db.sheets.size).toBe(0);
 });
 
-test('membuat sheet users, roles, audit_log beserta header', () => {
+test('membuat sheet users, roles, audit_log, locations, files, brands, items, sync_state, customers, handovers, handover_lines, qr_designs, qr_documents beserta header', () => {
   const platform = createMemoryPlatform({
     properties: {
       SPREADSHEET_ID: 'x',
@@ -25,7 +28,21 @@ test('membuat sheet users, roles, audit_log beserta header', () => {
   });
   setPlatform_(platform);
   expect(runSetup_()).toContain('Script Properties lengkap.');
-  expect([...platform.db.sheets.keys()]).toEqual(['users', 'roles', 'audit_log']);
+  expect([...platform.db.sheets.keys()]).toEqual([
+    'users',
+    'roles',
+    'audit_log',
+    'locations',
+    'files',
+    'brands',
+    'items',
+    'sync_state',
+    'customers',
+    'handovers',
+    'handover_lines',
+    'qr_designs',
+    'qr_documents',
+  ]);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
     'ts',
@@ -192,4 +209,110 @@ test('laporan setup menyebut apakah redirect URI otomatis atau override', () => 
   expect(runSetup_()).toContain(
     'Redirect URI OAuth: override dari Script Property (https://script.google.com/macros/s/A/exec)',
   );
+});
+
+test('setup memigrasi role_ids lama menjadi penugasan Semua lokasi dan aman diulang', () => {
+  const platform = legacyAuditPlatform();
+  platform.db
+    .insertSheet('users')
+    .rows.push(
+      ['id', 'email', 'name', 'status', 'role_ids', 'created_at', 'updated_at', 'updated_by'],
+      ['u1', 'a@gmail.com', 'A', 'active', '["r1"]', '', '', ''],
+    );
+  expect(runSetup_()).toContain('1 user lama dimigrasi');
+  const rows = platform.db.sheet('users').rows;
+  const header = rows[0] ?? [];
+  expect(rows[1]?.[header.indexOf('assignments')]).toBe('[{"locationId":null,"roleIds":["r1"]}]');
+  expect(rows[1]?.[header.indexOf('role_ids')]).toBe('');
+  expect(runSetup_()).not.toContain('dimigrasi ke penugasan');
+});
+
+test('setup membuat folder Drive sekali dan melaporkannya; diulang tidak menggandakan folder', () => {
+  const platform = createMemoryPlatform({
+    properties: {
+      SPREADSHEET_ID: 'x',
+      OAUTH_CLIENT_ID: 'a',
+      OAUTH_CLIENT_SECRET: 'b',
+      OAUTH_REDIRECT_URI: 'c',
+      SESSION_SECRET: 'd',
+      ADMIN_EMAIL: 'e@gmail.com',
+    },
+  });
+  setPlatform_(platform);
+  const first = runSetup_();
+  const second = runSetup_();
+  expect(first).toContain('Folder Drive "QC App Files" siap');
+  // Tiga folder berbeda: gambar item, hasil ekspor QR, dan dokumen QR; dijalankan ulang tidak menggandakan.
+  expect(platform.folders.size).toBe(3);
+  expect(second).toContain(platform.getProperty('DRIVE_FOLDER_ID') ?? 'x');
+});
+
+const ALL_PROPERTIES = {
+  SPREADSHEET_ID: 'x',
+  OAUTH_CLIENT_ID: 'a',
+  OAUTH_CLIENT_SECRET: 'b',
+  OAUTH_REDIRECT_URI: 'c',
+  SESSION_SECRET: 'd',
+  ADMIN_EMAIL: 'e@gmail.com',
+};
+
+test('setup tidak menimpa DRIVE_FOLDER_ID yang tidak dapat diakses dan menyebut penyebabnya (FS13)', () => {
+  const platform = createMemoryPlatform({
+    properties: { ...ALL_PROPERTIES, DRIVE_FOLDER_ID: 'folder-hilang' },
+  });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(platform.properties.get('DRIVE_FOLDER_ID')).toBe('folder-hilang');
+  // Tidak ada folder gambar baru yang dibuat (folder QR boleh dibuat; itu properti terpisah).
+  expect([...platform.folders.values()]).not.toContain('QC App Files');
+  expect(report).toContain('TIDAK dapat diakses');
+  expect(report).toContain('folder-hilang');
+});
+
+test('setup membuat folder QR dan folder dokumen QR serta melaporkannya', () => {
+  const platform = createMemoryPlatform({ properties: ALL_PROPERTIES });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(report).toContain('Folder Drive "QC App QR" siap');
+  expect(report).toContain('Folder Drive "QC App QR Dokumen" siap');
+  expect(platform.properties.get('QR_FOLDER_ID')).toBeTruthy();
+  expect(platform.properties.get('QR_DOC_FOLDER_ID')).toBeTruthy();
+});
+
+test('setup tidak menimpa QR_FOLDER_ID yang tidak dapat diakses dan menyebut penyebabnya', () => {
+  const platform = createMemoryPlatform({
+    properties: { ...ALL_PROPERTIES, QR_FOLDER_ID: 'qr-hilang' },
+  });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(platform.properties.get('QR_FOLDER_ID')).toBe('qr-hilang');
+  expect(report).toContain('Folder Drive "QC App QR" TIDAK dapat diakses');
+  expect(report).toContain('qr-hilang');
+  expect(platform.properties.get('QR_DOC_FOLDER_ID')).toBeTruthy();
+});
+
+test('setup melaporkan status SYNC_API_TOKEN: kosong, pendek, dan cukup', () => {
+  const run = (token?: string) => {
+    const platform = createMemoryPlatform({
+      properties:
+        token === undefined ? ALL_PROPERTIES : { ...ALL_PROPERTIES, SYNC_API_TOKEN: token },
+    });
+    setPlatform_(platform);
+    return runSetup_();
+  };
+  expect(run()).toContain('SYNC_API_TOKEN belum diset');
+  expect(run('pendek')).toContain('kurang dari 32 karakter');
+  const ok = run('x'.repeat(40));
+  expect(ok).toContain('SYNC_API_TOKEN terisi');
+  expect(ok).not.toContain('x'.repeat(40));
+});
+test('setup memberi sync_rev pada item/merk lama dan melaporkannya; diulang tidak melapor lagi', () => {
+  const platform = createMemoryPlatform({ properties: ALL_PROPERTIES });
+  setPlatform_(platform);
+  runSetup_();
+  insertBrand_(brand('A'));
+  insertItem_(item({ id: 'i1', brand: 'A', model: 'X' }));
+  expect(runSetup_()).toContain('2 baris diberi revisi sinkron');
+  expect(listItems_()[0]?.syncRev).toBe(1);
+  expect(runSetup_()).not.toContain('diberi revisi sinkron');
 });

@@ -1,0 +1,28 @@
+import { expect, test } from 'vitest';
+import { auditActionLabel } from './audit-actions';
+
+test('label aksi item dalam bahasa Indonesia', () => {
+  expect(auditActionLabel('item.create')).toBe('Item dibuat');
+  expect(auditActionLabel('item.update')).toBe('Item diubah');
+  expect(auditActionLabel('item.activate')).toBe('Item diaktifkan');
+  expect(auditActionLabel('item.deactivate')).toBe('Item dinonaktifkan');
+});
+
+test('label aksi customer dan serah terima', () => {
+  expect(auditActionLabel('customer.create')).toBe('Customer dibuat');
+  expect(auditActionLabel('customer.rename')).toBe('Customer diganti nama');
+  expect(auditActionLabel('customer.activate')).toBe('Customer diaktifkan');
+  expect(auditActionLabel('customer.deactivate')).toBe('Customer dinonaktifkan');
+  expect(auditActionLabel('handover.create')).toBe('Task serah terima dibuat');
+  expect(auditActionLabel('handover.update')).toBe('Task serah terima diubah');
+  expect(auditActionLabel('handover.cancel')).toBe('Task serah terima dibatalkan');
+  expect(auditActionLabel('handover.progress')).toBe('Progres QC diperbarui');
+  expect(auditActionLabel('handover.complete')).toBe('Task serah terima selesai');
+});
+
+test('aksi audit qrcode.* berlabel Indonesia', () => {
+  for (const action of ['create', 'update', 'delete', 'export', 'pdf_upload']) {
+    expect(auditActionLabel(`qrcode.${action}`)).not.toBe(`qrcode.${action}`);
+  }
+  expect(auditActionLabel('qrcode.export')).toBe('Label QR diekspor ke Drive');
+});

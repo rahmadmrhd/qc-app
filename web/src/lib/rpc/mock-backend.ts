@@ -2,9 +2,16 @@ import { setPlatform_ } from '@gas/core/platform';
 import { handleRpc_ } from '@gas/core/router';
 import { signSessionToken_ } from '@gas/core/session';
 import { loadUserContext_ } from '@gas/modules/access/context';
-import { appendAudit_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/repo';
+import { insertBrand_ } from '@gas/modules/brand/repo';
+import { insertCustomer_ } from '@gas/modules/customer/repo';
+import { insertFile_ } from '@gas/modules/files/repo';
+import { insertHandover_, insertHandoverLine_ } from '@gas/modules/handover/repo';
+import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
-import { role, user } from '@gas-test/access-fixtures';
+import { location, role, user } from '@gas-test/access-fixtures';
+import { customer, handover, handoverLine } from '@gas-test/handover-fixtures';
+import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
 
@@ -21,10 +28,10 @@ export const MOCK_USERS: MockUser[] = [
   { email: MOCK_ADMIN_EMAIL, label: 'Super Admin' },
   {
     email: 'qc.staff@qc.local',
-    label: 'QC Staff (item: ubah, serah terima: ubah, stok: lihat)',
+    label: 'QC Staff (Jakarta: kerjakan task QC; Bandung: serah terima kelola)',
   },
-  { email: 'wh.staff@qc.local', label: 'WH Staff (serah terima: lihat, stok: lihat)' },
-  { email: 'access.viewer@qc.local', label: 'Pemantau Akses (akses: lihat)' },
+  { email: 'wh.staff@qc.local', label: 'WH Staff (Bandung saja: serah terima kelola)' },
+  { email: 'access.viewer@qc.local', label: 'Pemantau Akses (Semua lokasi: akses lihat)' },
   { email: 'nonaktif@qc.local', label: 'User nonaktif' },
   { email: 'asing@gmail.com', label: 'Email tidak terdaftar' },
 ];
@@ -34,24 +41,23 @@ let ready = false;
 function ensureMockBackend(): void {
   if (ready) return;
   ready = true;
-  setPlatform_(
-    createMemoryPlatform({
-      properties: {
-        SPREADSHEET_ID: 'mock',
-        SESSION_SECRET: 'mock-secret',
-        ADMIN_EMAIL: MOCK_ADMIN_EMAIL,
-        OAUTH_CLIENT_ID: 'mock',
-        OAUTH_CLIENT_SECRET: 'mock',
-        OAUTH_REDIRECT_URI: 'http://localhost:3000',
-      },
-    }),
-  );
+  const platform = createMemoryPlatform({
+    properties: {
+      SPREADSHEET_ID: 'mock',
+      SESSION_SECRET: 'mock-secret',
+      ADMIN_EMAIL: MOCK_ADMIN_EMAIL,
+      OAUTH_CLIENT_ID: 'mock',
+      OAUTH_CLIENT_SECRET: 'mock',
+      OAUTH_REDIRECT_URI: 'http://localhost:3000',
+    },
+  });
+  setPlatform_(platform);
   insertRole_(
     role({
       id: 'role-qc',
       name: 'QC Staff',
       description: 'Petugas QC',
-      permissions: { item: 'edit', handover: 'edit', stock: 'view' },
+      permissions: { item: 'view', handover: 'view', qc: 'edit', stock: 'view' },
     }),
   );
   insertRole_(
@@ -59,17 +65,32 @@ function ensureMockBackend(): void {
       id: 'role-wh',
       name: 'WH Staff',
       description: 'Petugas gudang',
-      permissions: { handover: 'view', stock: 'view' },
+      permissions: { item: 'view', handover: 'manage', stock: 'view' },
     }),
   );
   insertRole_(
     role({ id: 'role-access-viewer', name: 'Pemantau Akses', permissions: { access: 'view' } }),
   );
+  insertLocation_(location({ id: 'loc-jkt', code: 'JKT', name: 'Jakarta' }));
+  insertLocation_(location({ id: 'loc-bdg', code: 'BDG', name: 'Bandung' }));
   insertUser_(
-    user({ id: 'user-qc', email: 'qc.staff@qc.local', name: 'Siti QC', roleIds: ['role-qc'] }),
+    user({
+      id: 'user-qc',
+      email: 'qc.staff@qc.local',
+      name: 'Siti QC',
+      assignments: [
+        { locationId: 'loc-jkt', roleIds: ['role-qc'] },
+        { locationId: 'loc-bdg', roleIds: ['role-wh'] },
+      ],
+    }),
   );
   insertUser_(
-    user({ id: 'user-wh', email: 'wh.staff@qc.local', name: 'Andi Gudang', roleIds: ['role-wh'] }),
+    user({
+      id: 'user-wh',
+      email: 'wh.staff@qc.local',
+      name: 'Andi Gudang',
+      assignments: [{ locationId: 'loc-bdg', roleIds: ['role-wh'] }],
+    }),
   );
   insertUser_(
     user({
@@ -88,7 +109,127 @@ function ensureMockBackend(): void {
       roleIds: ['role-qc'],
     }),
   );
+  seedMockItems(platform);
+  seedMockHandovers();
   seedMockAudit();
+}
+
+/** Satu piksel merah; cukup untuk memperlihatkan galeri dan gambar di dalam Markdown pada `bun run dev`. */
+const DEMO_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+function seedMockItems(platform: ReturnType<typeof createMemoryPlatform>): void {
+  const folder = platform.driveCreateFolder('QC App Files');
+  platform.setProperty('DRIVE_FOLDER_ID', folder);
+  const driveId = platform.driveCreateFile(folder, 'demo.png', 'image/png', DEMO_PNG);
+  insertFile_({
+    id: 'file-demo',
+    driveId,
+    mime: 'image/png',
+    size: 68,
+    width: 1,
+    height: 1,
+    ownerType: 'item',
+    ownerId: 'item-af5xhd',
+    createdAt: '2026-10-07T07:00:00.000Z',
+    createdBy: MOCK_ADMIN_EMAIL,
+  });
+  insertBrand_(brand('Ubiquiti', { externalId: '1' }));
+  insertBrand_(brand('Mikrotik', { externalId: '2' }));
+  insertItem_(
+    item({
+      id: 'item-af5xhd',
+      brand: 'Ubiquiti',
+      model: 'AF 5XHD',
+      isCountryLock: true,
+      aliases: ['AirFiber 5XHD', 'AF-5XHD'],
+      stickers: [
+        { name: 'Label SNI', note: 'Bagian belakang, sudut kanan bawah', fileId: 'file-demo' },
+        { name: 'Label garansi', note: '', fileId: null },
+      ],
+      accessories: [
+        { name: 'Adaptor PoE', qty: 1 },
+        { name: 'Bracket', qty: 1 },
+      ],
+      attachments: ['file-demo'],
+      detail:
+        '## Spesifikasi\n- Frekuensi: 5 GHz\n- Throughput: hingga 1 Gbps\n\n![Contoh penempelan](qcfile:file-demo)\n\nPerhatikan **country lock** sebelum pengiriman.',
+    }),
+  );
+  insertItem_(
+    item({
+      id: 'item-es24',
+      brand: 'Ubiquiti',
+      model: 'ES 24 250W',
+      aliases: ['ES24 250W'],
+      accessories: [{ name: 'Kabel daya', qty: 1 }],
+      detail: 'Switch 24 port PoE.',
+    }),
+  );
+  insertItem_(item({ id: 'item-hap', brand: 'Mikrotik', model: 'hAP ac2', status: 'inactive' }));
+}
+
+/** Customer dan task serah terima contoh: Jakarta (Dikerjakan) dan Bandung (Baru). */
+function seedMockHandovers(): void {
+  insertCustomer_(customer('PT Maju Jaya'));
+  insertCustomer_(customer('Budi Santoso'));
+  insertHandover_(
+    handover({
+      id: 'ho-jkt-1',
+      number: 'ST-20261009-001',
+      locationId: 'loc-jkt',
+      customerId: 'cust-pt-maju-jaya',
+      customerName: 'PT Maju Jaya',
+      note: 'Kirim sebelum Jumat',
+      createdAt: '2026-10-09T02:00:00.000Z',
+      createdBy: 'wh.staff@qc.local',
+      updatedAt: '2026-10-09T05:00:00.000Z',
+      updatedBy: 'qc.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-1',
+      handoverId: 'ho-jkt-1',
+      itemId: 'item-af5xhd',
+      itemLabel: 'Ubiquiti AF 5XHD',
+      qty: 10,
+      doneQty: 4,
+      doneAt: '2026-10-09T05:00:00.000Z',
+      doneBy: 'qc.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-2',
+      handoverId: 'ho-jkt-1',
+      itemId: 'item-es24',
+      itemLabel: 'Ubiquiti ES 24 250W',
+      qty: 6,
+    }),
+  );
+  insertHandover_(
+    handover({
+      id: 'ho-bdg-1',
+      number: 'ST-20261010-001',
+      locationId: 'loc-bdg',
+      customerId: 'cust-budi-santoso',
+      customerName: 'Budi Santoso',
+      createdAt: '2026-10-10T02:00:00.000Z',
+      createdBy: 'wh.staff@qc.local',
+      updatedAt: '2026-10-10T02:00:00.000Z',
+      updatedBy: 'wh.staff@qc.local',
+    }),
+  );
+  insertHandoverLine_(
+    handoverLine({
+      id: 'hl-3',
+      handoverId: 'ho-bdg-1',
+      itemId: 'item-es24',
+      itemLabel: 'Ubiquiti ES 24 250W',
+      qty: 3,
+    }),
+  );
 }
 
 /** Contoh catatan audit agar halaman Log Audit tidak kosong saat `bun run dev`. */
@@ -96,20 +237,32 @@ function seedMockAudit(): void {
   const actor = MOCK_ADMIN_EMAIL;
   const qcUser = { email: 'qc.staff@qc.local', name: 'Siti QC', status: 'active' };
   appendAudit_({
+    ts: '2026-10-07T07:30:00.000Z',
+    actor,
+    action: 'location.create',
+    target: 'JKT',
+    before: null,
+    after: { code: 'JKT', name: 'Jakarta', status: 'active' },
+  });
+  appendAudit_({
     ts: '2026-10-07T08:00:00.000Z',
     actor,
     action: 'user.create',
     target: qcUser.email,
     before: null,
-    after: { ...qcUser, roleIds: ['role-qc'] },
+    after: { ...qcUser, assignments: { '*': ['role-qc'] } },
   });
   appendAudit_({
     ts: '2026-10-07T09:30:00.000Z',
     actor,
     action: 'user.update',
     target: qcUser.email,
-    before: { ...qcUser, roleIds: ['role-qc'] },
-    after: { ...qcUser, name: 'Siti Rahma', roleIds: ['role-qc', 'role-wh'] },
+    before: { ...qcUser, assignments: { '*': ['role-qc'] } },
+    after: {
+      ...qcUser,
+      name: 'Siti Rahma',
+      assignments: { 'loc-jkt': ['role-qc'], 'loc-bdg': ['role-wh'] },
+    },
   });
   appendAudit_({
     ts: '2026-10-07T10:15:00.000Z',
@@ -124,7 +277,7 @@ function seedMockAudit(): void {
     after: {
       name: 'QC Staff',
       description: 'Petugas QC',
-      permissions: { item: 'edit', handover: 'edit', stock: 'view' },
+      permissions: { item: 'view', handover: 'view', qc: 'edit', stock: 'view' },
     },
   });
   appendAudit_({

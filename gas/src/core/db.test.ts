@@ -64,3 +64,19 @@ test('deleteRow_ menghapus baris', () => {
   deleteRow_(TABLE, 2);
   expect(readTable_(TABLE).rows.map((row) => row.data.id)).toEqual(['2']);
 });
+
+test('teks mirip angka, tanggal, atau formula tersimpan apa adanya (Sheets tidak menafsirkan ulang)', () => {
+  const tricky = ['0815', '1/2', '2026-10-15', '1e3', '007.50', '=1+1', "'kutip", '+62812'];
+  tricky.forEach((value, index) => {
+    insertRow_(TABLE, { id: String(index), name: value, note: value });
+  });
+  expect(readTable_(TABLE).rows.map((row) => row.data.name)).toEqual(tricky);
+  tricky.forEach((value, index) => {
+    updateRow_(TABLE, index + 2, { note: `${value}!` });
+  });
+  expect(readTable_(TABLE).rows.map((row) => [row.data.name, row.data.note])).toEqual(
+    tricky.map((value) => [value, `${value}!`]),
+  );
+  updateRow_(TABLE, 2, { note: '0815' });
+  expect(readTable_(TABLE).rows[0]?.data.note).toBe('0815');
+});

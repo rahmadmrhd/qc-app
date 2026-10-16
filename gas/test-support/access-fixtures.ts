@@ -1,4 +1,4 @@
-import type { NewRoleRecord, NewUserRecord } from '@gas/modules/access/repo';
+import type { NewLocationRecord, NewRoleRecord, NewUserRecord } from '@gas/modules/access/repo';
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
@@ -15,13 +15,31 @@ export function role(
   };
 }
 
-export function user(
-  overrides: Partial<NewUserRecord> & Pick<NewUserRecord, 'id' | 'email'>,
-): NewUserRecord {
+type UserFixture = Partial<NewUserRecord> &
+  Pick<NewUserRecord, 'id' | 'email'> & {
+    /** Pintasan: penugasan "Semua lokasi" dengan role ini. `assignments` eksplisit menang. */
+    roleIds?: string[];
+  };
+
+export function user(overrides: UserFixture): NewUserRecord {
+  const { roleIds, ...rest } = overrides;
   return {
-    name: overrides.email,
+    name: rest.email,
     status: 'active',
-    roleIds: [],
+    assignments: roleIds && roleIds.length > 0 ? [{ locationId: null, roleIds }] : [],
+    createdAt: SEED_TIME,
+    updatedAt: SEED_TIME,
+    updatedBy: 'seed',
+    ...rest,
+  };
+}
+
+export function location(
+  overrides: Partial<NewLocationRecord> & Pick<NewLocationRecord, 'id' | 'code'>,
+): NewLocationRecord {
+  return {
+    name: overrides.code,
+    status: 'active',
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,
     updatedBy: 'seed',

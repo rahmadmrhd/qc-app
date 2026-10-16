@@ -41,7 +41,9 @@ test('user aktif mendapat level tertinggi dari semua role-nya', () => {
   expect(ctx?.permissions).toEqual({
     access: 'none',
     item: 'manage',
+    qrcode: 'none',
     handover: 'edit',
+    qc: 'none',
     stock: 'none',
   });
 });
@@ -66,7 +68,9 @@ test('JSON role_ids/permissions yang rusak dan level asing diabaikan tanpa error
   expect(loadUserContext_('rusak@gmail.com')?.permissions).toEqual({
     access: 'none',
     item: 'none',
+    qrcode: 'none',
     handover: 'none',
+    qc: 'none',
     stock: 'none',
   });
   expect(loadUserContext_('campur@gmail.com')?.permissions.stock).toBe('view');

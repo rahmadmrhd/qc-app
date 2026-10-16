@@ -7,6 +7,9 @@ import {
   LEVEL_HINTS,
   levelHint,
   levelsFor,
+  MODULE_LABELS,
+  MODULE_LEVELS,
+  MODULES,
   mergePermissions,
   sanitizePermissions,
 } from './permissions';
@@ -23,7 +26,14 @@ describe('hasLevel', () => {
 describe('mergePermissions', () => {
   test('mengambil level tertinggi per modul dari banyak role', () => {
     const merged = mergePermissions([{ item: 'view', handover: 'edit' }, { item: 'manage' }]);
-    expect(merged).toEqual({ access: 'none', item: 'manage', handover: 'edit', stock: 'none' });
+    expect(merged).toEqual({
+      access: 'none',
+      item: 'manage',
+      qrcode: 'none',
+      handover: 'edit',
+      qc: 'none',
+      stock: 'none',
+    });
   });
 
   test('tanpa role menghasilkan none di semua modul', () => {
@@ -38,7 +48,14 @@ describe('mergePermissions', () => {
       ['x'],
       { stock: 'view' },
     ]);
-    expect(merged).toEqual({ access: 'none', item: 'none', handover: 'none', stock: 'view' });
+    expect(merged).toEqual({
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'view',
+    });
   });
 });
 
@@ -47,7 +64,9 @@ describe('fullPermissions', () => {
     expect(fullPermissions()).toEqual({
       access: 'manage',
       item: 'manage',
+      qrcode: 'manage',
       handover: 'manage',
+      qc: 'manage',
       stock: 'manage',
     });
   });
@@ -67,6 +86,7 @@ describe('level per modul', () => {
     expect(levelsFor('access')).toEqual(['none', 'view', 'manage']);
     expect(levelsFor('stock')).toEqual(['none', 'view']);
     expect(levelsFor('item')).toEqual(['none', 'view', 'edit', 'manage']);
+    expect(levelsFor('qc')).toEqual(['none', 'edit']);
   });
 
   test('isLevelAllowed menolak level di luar daftar modul', () => {
@@ -76,6 +96,7 @@ describe('level per modul', () => {
   });
 
   test('sanitizePermissions menurunkan level tak tersedia ke level terdekat di bawahnya', () => {
+    expect(sanitizePermissions({ qc: 'manage' })).toEqual({ qc: 'edit' });
     expect(sanitizePermissions({ access: 'edit', stock: 'manage', item: 'edit' })).toEqual({
       access: 'view',
       stock: 'view',
@@ -85,6 +106,16 @@ describe('level per modul', () => {
 
   test('levelHint memakai keterangan khusus modul bila ada, bila tidak keterangan umum', () => {
     expect(levelHint('access', 'manage')).not.toBe(levelHint('item', 'manage'));
-    expect(levelHint('item', 'view')).toBe(LEVEL_HINTS.view);
+    expect(levelHint('item', 'none')).toBe(LEVEL_HINTS.none);
+    expect(levelHint('qc', 'edit')).toContain('progres');
+    expect(levelHint('handover', 'manage')).toContain('membatalkan');
+    expect(levelHint('item', 'manage')).toContain('customer');
   });
+});
+
+test('modul qrcode: level none/view/edit/manage dan petunjuk khusus', () => {
+  expect(MODULES).toContain('qrcode');
+  expect(MODULE_LEVELS.qrcode).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(MODULE_LABELS.qrcode).toBe('QR Code Label');
+  expect(levelHint('qrcode', 'manage')).toContain('ekspor');
 });

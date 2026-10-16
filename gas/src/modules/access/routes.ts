@@ -1,5 +1,6 @@
 import type { RouteTable } from '@gas/core/router';
 import { expectNull_ } from '@gas/core/validate';
+import { listLocationDtos_, saveLocation_, setLocationStatus_ } from './location-service';
 import {
   listAudit_,
   listRoleDtos_,
@@ -12,8 +13,10 @@ import {
 import {
   validateDeleteRole_,
   validateListAudit_,
+  validateSaveLocation_,
   validateSaveRole_,
   validateSaveUser_,
+  validateSetLocationStatus_,
   validateSetUserStatus_,
 } from './validate';
 
@@ -24,7 +27,10 @@ type AccessMethod =
   | 'access.roles.list'
   | 'access.roles.save'
   | 'access.roles.delete'
-  | 'access.audit.list';
+  | 'access.audit.list'
+  | 'access.locations.list'
+  | 'access.locations.save'
+  | 'access.locations.setStatus';
 
 export function accessRoutes_(): Pick<RouteTable, AccessMethod> {
   return {
@@ -62,6 +68,21 @@ export function accessRoutes_(): Pick<RouteTable, AccessMethod> {
       permission: { module: 'access', level: 'view' },
       validate: validateListAudit_,
       handler: (input) => listAudit_(input),
+    },
+    'access.locations.list': {
+      permission: { module: 'access', level: 'view' },
+      validate: expectNull_,
+      handler: () => listLocationDtos_(),
+    },
+    'access.locations.save': {
+      permission: { module: 'access', level: 'manage' },
+      validate: validateSaveLocation_,
+      handler: (input, ctx) => saveLocation_(input, ctx.user),
+    },
+    'access.locations.setStatus': {
+      permission: { module: 'access', level: 'manage' },
+      validate: validateSetLocationStatus_,
+      handler: (input, ctx) => setLocationStatus_(input, ctx.user),
     },
   };
 }

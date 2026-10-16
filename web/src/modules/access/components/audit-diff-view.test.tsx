@@ -81,3 +81,153 @@ test('menampilkan legenda warna', () => {
   render(<AuditDiffView before={null} after={{ name: 'A' }} />);
   expect(screen.getByRole('list', { name: 'Keterangan warna' })).toBeInTheDocument();
 });
+
+test('penugasan ditampilkan per lokasi dengan nama lokasi dan role yang ditambah atau dihapus', () => {
+  render(
+    <AuditDiffView
+      before={{ assignments: { '*': ['r1'], 'l-a': ['r1'] } }}
+      after={{ assignments: { '*': ['r1', 'r2'], 'l-b': ['r1'] } }}
+      roleNames={
+        new Map([
+          ['r1', 'Manajer'],
+          ['r2', 'Pemantau'],
+        ])
+      }
+      locationNames={
+        new Map([
+          ['l-a', 'Jakarta'],
+          ['l-b', 'Bandung'],
+        ])
+      }
+    />,
+  );
+  const field = row('assignments');
+  expect(within(field).getByText('Penugasan')).toBeInTheDocument();
+  const items = [...field.querySelectorAll(':scope > ul > li[data-kind]')].map((item) => [
+    item.querySelector('[data-slot="label"]')?.textContent,
+    item.getAttribute('data-kind'),
+  ]);
+  expect(items).toEqual([
+    ['Semua lokasi', 'changed'],
+    ['Bandung', 'added'],
+    ['Jakarta', 'removed'],
+  ]);
+  const everywhere = field.querySelector('li[data-kind="changed"]') as HTMLElement;
+  const roles = [...everywhere.querySelectorAll('li[data-kind]')].map((item) => [
+    item.textContent,
+    item.getAttribute('data-kind'),
+  ]);
+  expect(roles).toEqual([
+    ['Manajer', 'unchanged'],
+    ['Pemantau', 'added'],
+  ]);
+});
+
+test('field lokasi memakai label yang mudah dibaca', () => {
+  render(
+    <AuditDiffView before={null} after={{ code: 'JKT', name: 'Jakarta', status: 'active' }} />,
+  );
+  expect(within(row('code')).getByText('Kode')).toBeInTheDocument();
+  expect(within(row('status')).getByText('Aktif')).toBeInTheDocument();
+});
+const itemBefore = {
+  brand: 'Ubiquiti',
+  model: 'ES 24',
+  isCountryLock: false,
+  status: 'active',
+  aliases: ['ES24'],
+  stickers: ['Label — Belakang'],
+  accessories: ['Kabel ×1'],
+  attachments: ['f1'],
+  detailLength: 10,
+  detailHash: 'aaaaaaaa',
+};
+const itemAfter = {
+  ...itemBefore,
+  isCountryLock: true,
+  aliases: ['ES24', 'AirSwitch'],
+  stickers: ['Label — Belakang', 'Garansi'],
+  accessories: ['Kabel ×2'],
+  attachments: ['f1', 'f2'],
+  detailLength: 25,
+  detailHash: 'bbbbbbbb',
+};
+
+test('snapshot item: label Indonesia, boolean Ya/Tidak, daftar per entri, dan hash detail tidak ditampilkan', () => {
+  render(<AuditDiffView before={itemBefore} after={itemAfter} />);
+  expect(within(row('isCountryLock')).getByText('Country lock')).toBeInTheDocument();
+  expect(within(row('isCountryLock')).getByText('Tidak')).toBeInTheDocument();
+  expect(within(row('isCountryLock')).getByText('Ya')).toBeInTheDocument();
+  expect(within(row('aliases')).getByText('Nama lain')).toBeInTheDocument();
+  expect(within(row('aliases')).getByText('AirSwitch').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('stickers')).getByText('Garansi').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('accessories')).getByText('Kabel ×2').closest('li')).toHaveAttribute(
+    'data-kind',
+    'added',
+  );
+  expect(within(row('accessories')).getByText('Kabel ×1').closest('li')).toHaveAttribute(
+    'data-kind',
+    'removed',
+  );
+  expect(within(row('attachments')).getByText('Gambar …f2')).toBeInTheDocument();
+  expect(within(row('detailLength')).getByText('Panjang detail (karakter)')).toBeInTheDocument();
+  expect(within(row('detailHash')).getByText('Isi detail')).toBeInTheDocument();
+  expect(within(row('detailHash')).getByText('Isi Markdown diubah')).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('aaaaaaaa');
+  expect(document.body.textContent).not.toContain('bbbbbbbb');
+});
+
+test('hash detail disembunyikan bila tidak berubah atau pada create', () => {
+  const { unmount } = render(
+    <AuditDiffView before={itemBefore} after={{ ...itemBefore, model: 'ES 24 Lite' }} />,
+  );
+  expect(document.querySelector('[data-field="detailHash"]')).toBeNull();
+  unmount();
+  render(<AuditDiffView before={null} after={itemBefore} />);
+  expect(document.querySelector('[data-field="detailHash"]')).toBeNull();
+  expect(within(row('brand')).getByText('Merk')).toBeInTheDocument();
+});
+
+test('task serah terima: baris dibandingkan per entri, status memakai label Indonesia, qty progres terbaca', () => {
+  render(
+    <AuditDiffView
+      before={{
+        number: 'ST-1',
+        location: 'Lokasi A',
+        customer: 'PT A',
+        status: 'new',
+        lines: ['Ubiquiti ES 24 × 5', 'Mikrotik hAP × 3'],
+      }}
+      after={{
+        number: 'ST-1',
+        location: 'Lokasi A',
+        customer: 'PT A',
+        status: 'in_progress',
+        lines: ['Ubiquiti ES 24 × 5 (selesai 2)', 'Mikrotik hAP × 3'],
+      }}
+    />,
+  );
+  expect(within(row('status')).getByText('Baru')).toBeInTheDocument();
+  expect(within(row('status')).getByText('Dikerjakan')).toBeInTheDocument();
+  expect(within(row('lines')).getByText('Ubiquiti ES 24 × 5 (selesai 2)')).toBeInTheDocument();
+  expect(screen.getByText('Baris')).toBeInTheDocument();
+  expect(screen.getByText('Customer')).toBeInTheDocument();
+});
+
+test('progres QC: tipe, qty selesai lama dan baru terbaca', () => {
+  render(
+    <AuditDiffView
+      before={{ item: 'Ubiquiti ES 24', doneQty: 0, qty: 5 }}
+      after={{ item: 'Ubiquiti ES 24', doneQty: 2, qty: 5 }}
+    />,
+  );
+  expect(screen.getByText('Qty selesai')).toBeInTheDocument();
+  expect(within(row('doneQty')).getByText('0')).toBeInTheDocument();
+  expect(within(row('doneQty')).getByText('2')).toBeInTheDocument();
+});

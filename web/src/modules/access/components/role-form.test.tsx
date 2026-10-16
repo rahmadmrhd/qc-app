@@ -1,4 +1,4 @@
-import { LEVEL_HINTS } from '@shared/permissions';
+import { LEVEL_HINTS, levelHint } from '@shared/permissions';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -27,11 +27,11 @@ test('menampilkan arti level yang dipilih di tiap modul', async () => {
       onCancel={() => undefined}
     />,
   );
-  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(4);
+  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(6);
   const itemGroup = screen.getByRole('group', { name: 'Level Data Item' });
   await userEvent.click(within(itemGroup).getByRole('button', { name: 'Kelola' }));
-  expect(screen.getByText(LEVEL_HINTS.manage)).toBeInTheDocument();
-  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(3);
+  expect(screen.getByText(levelHint('item', 'manage'))).toBeInTheDocument();
+  expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(5);
 });
 
 test('tiap modul hanya menampilkan level yang bermakna baginya', () => {
@@ -72,7 +72,14 @@ test('matriks level per modul dikirim lengkap', async () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'QC Staff',
       description: '',
-      permissions: { access: 'none', item: 'manage', handover: 'none', stock: 'none' },
+      permissions: {
+        access: 'none',
+        item: 'manage',
+        qrcode: 'none',
+        handover: 'none',
+        qc: 'none',
+        stock: 'none',
+      },
     }),
   );
 });

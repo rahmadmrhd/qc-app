@@ -1,5 +1,6 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
+import type { NavItem } from '@/app/navigation';
+import { isNavItemActive, NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -12,9 +13,11 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useMe } from '@/modules/auth/use-me';
+import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export function AppSidebar() {
   const me = useMe();
+  const { selectedIds } = useActiveLocations();
   const matchRoute = useMatchRoute();
   return (
     <Sidebar collapsible="icon">
@@ -25,7 +28,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {visibleNavGroups(NAV_GROUPS, me).map((group) => (
+        {visibleNavGroups(NAV_GROUPS, me, selectedIds).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -35,7 +38,9 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       tooltip={item.label}
-                      isActive={Boolean(matchRoute({ to: item.to, fuzzy: item.to !== '/' }))}
+                      isActive={isNavItemActive(item, (to, fuzzy) =>
+                        Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
+                      )}
                     >
                       <Link to={item.to}>
                         <item.icon />

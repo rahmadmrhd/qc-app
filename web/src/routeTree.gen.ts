@@ -12,10 +12,24 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppCustomerRouteImport } from './routes/_app/customer'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
+import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
 import { Route as AppAccessRolesRouteImport } from './routes/_app/access/roles'
 import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
+import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
+import { Route as AppHandoverNewRouteImport } from './routes/_app/handover/new'
+import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
+import { Route as AppItemBrandsRouteImport } from './routes/_app/item/brands'
+import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
+import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
+import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
+import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
+import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
+import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
+import { Route as AppItemItemIdEditRouteImport } from './routes/_app/item/$itemId/edit'
+import { Route as AppQrcodeDesignIdEditRouteImport } from './routes/_app/qrcode/$designId/edit'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -31,6 +45,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCustomerRoute = AppCustomerRouteImport.update({
+  id: '/customer',
+  path: '/customer',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppForbiddenRoute = AppForbiddenRouteImport.update({
   id: '/forbidden',
   path: '/forbidden',
@@ -39,6 +58,11 @@ const AppForbiddenRoute = AppForbiddenRouteImport.update({
 const AppAccessAuditRoute = AppAccessAuditRouteImport.update({
   id: '/access/audit',
   path: '/access/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccessLocationsRoute = AppAccessLocationsRouteImport.update({
+  id: '/access/locations',
+  path: '/access/locations',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAccessRolesRoute = AppAccessRolesRouteImport.update({
@@ -51,59 +75,205 @@ const AppAccessUsersRoute = AppAccessUsersRouteImport.update({
   path: '/access/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHandoverIndexRoute = AppHandoverIndexRouteImport.update({
+  id: '/handover/',
+  path: '/handover/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHandoverNewRoute = AppHandoverNewRouteImport.update({
+  id: '/handover/new',
+  path: '/handover/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemIndexRoute = AppItemIndexRouteImport.update({
+  id: '/item/',
+  path: '/item/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemBrandsRoute = AppItemBrandsRouteImport.update({
+  id: '/item/brands',
+  path: '/item/brands',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemNewRoute = AppItemNewRouteImport.update({
+  id: '/item/new',
+  path: '/item/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQrcodeIndexRoute = AppQrcodeIndexRouteImport.update({
+  id: '/qrcode/',
+  path: '/qrcode/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQrcodeNewRoute = AppQrcodeNewRouteImport.update({
+  id: '/qrcode/new',
+  path: '/qrcode/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHandoverHandoverIdIndexRoute =
+  AppHandoverHandoverIdIndexRouteImport.update({
+    id: '/handover/$handoverId/',
+    path: '/handover/$handoverId/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppHandoverHandoverIdEditRoute =
+  AppHandoverHandoverIdEditRouteImport.update({
+    id: '/handover/$handoverId/edit',
+    path: '/handover/$handoverId/edit',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppItemItemIdIndexRoute = AppItemItemIdIndexRouteImport.update({
+  id: '/item/$itemId/',
+  path: '/item/$itemId/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemItemIdEditRoute = AppItemItemIdEditRouteImport.update({
+  id: '/item/$itemId/edit',
+  path: '/item/$itemId/edit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQrcodeDesignIdEditRoute = AppQrcodeDesignIdEditRouteImport.update({
+  id: '/qrcode/$designId/edit',
+  path: '/qrcode/$designId/edit',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
   '/access/audit': typeof AppAccessAuditRoute
+  '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/handover/new': typeof AppHandoverNewRoute
+  '/item/brands': typeof AppItemBrandsRoute
+  '/item/new': typeof AppItemNewRoute
+  '/qrcode/new': typeof AppQrcodeNewRoute
+  '/handover/': typeof AppHandoverIndexRoute
+  '/item/': typeof AppItemIndexRoute
+  '/qrcode/': typeof AppQrcodeIndexRoute
+  '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
+  '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
+  '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
+  '/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
+  '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
+  '/handover/new': typeof AppHandoverNewRoute
+  '/item/brands': typeof AppItemBrandsRoute
+  '/item/new': typeof AppItemNewRoute
+  '/qrcode/new': typeof AppQrcodeNewRoute
+  '/handover': typeof AppHandoverIndexRoute
+  '/item': typeof AppItemIndexRoute
+  '/qrcode': typeof AppQrcodeIndexRoute
+  '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
+  '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
+  '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
+  '/item/$itemId': typeof AppItemItemIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/customer': typeof AppCustomerRoute
   '/_app/forbidden': typeof AppForbiddenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
+  '/_app/access/locations': typeof AppAccessLocationsRoute
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
+  '/_app/handover/new': typeof AppHandoverNewRoute
+  '/_app/item/brands': typeof AppItemBrandsRoute
+  '/_app/item/new': typeof AppItemNewRoute
+  '/_app/qrcode/new': typeof AppQrcodeNewRoute
+  '/_app/handover/': typeof AppHandoverIndexRoute
+  '/_app/item/': typeof AppItemIndexRoute
+  '/_app/qrcode/': typeof AppQrcodeIndexRoute
+  '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
+  '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/_app/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
+  '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
+  '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/customer'
     | '/forbidden'
     | '/access/audit'
+    | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/handover/new'
+    | '/item/brands'
+    | '/item/new'
+    | '/qrcode/new'
+    | '/handover/'
+    | '/item/'
+    | '/qrcode/'
+    | '/handover/$handoverId/edit'
+    | '/item/$itemId/edit'
+    | '/qrcode/$designId/edit'
+    | '/handover/$handoverId/'
+    | '/item/$itemId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/customer'
     | '/forbidden'
     | '/'
     | '/access/audit'
+    | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/handover/new'
+    | '/item/brands'
+    | '/item/new'
+    | '/qrcode/new'
+    | '/handover'
+    | '/item'
+    | '/qrcode'
+    | '/handover/$handoverId/edit'
+    | '/item/$itemId/edit'
+    | '/qrcode/$designId/edit'
+    | '/handover/$handoverId'
+    | '/item/$itemId'
   id:
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/customer'
     | '/_app/forbidden'
     | '/_app/'
     | '/_app/access/audit'
+    | '/_app/access/locations'
     | '/_app/access/roles'
     | '/_app/access/users'
+    | '/_app/handover/new'
+    | '/_app/item/brands'
+    | '/_app/item/new'
+    | '/_app/qrcode/new'
+    | '/_app/handover/'
+    | '/_app/item/'
+    | '/_app/qrcode/'
+    | '/_app/handover/$handoverId/edit'
+    | '/_app/item/$itemId/edit'
+    | '/_app/qrcode/$designId/edit'
+    | '/_app/handover/$handoverId/'
+    | '/_app/item/$itemId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -134,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/customer': {
+      id: '/_app/customer'
+      path: '/customer'
+      fullPath: '/customer'
+      preLoaderRoute: typeof AppCustomerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/forbidden': {
       id: '/_app/forbidden'
       path: '/forbidden'
@@ -146,6 +323,13 @@ declare module '@tanstack/react-router' {
       path: '/access/audit'
       fullPath: '/access/audit'
       preLoaderRoute: typeof AppAccessAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/access/locations': {
+      id: '/_app/access/locations'
+      path: '/access/locations'
+      fullPath: '/access/locations'
+      preLoaderRoute: typeof AppAccessLocationsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/access/roles': {
@@ -162,23 +346,135 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/handover/': {
+      id: '/_app/handover/'
+      path: '/handover'
+      fullPath: '/handover/'
+      preLoaderRoute: typeof AppHandoverIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/new': {
+      id: '/_app/handover/new'
+      path: '/handover/new'
+      fullPath: '/handover/new'
+      preLoaderRoute: typeof AppHandoverNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/': {
+      id: '/_app/item/'
+      path: '/item'
+      fullPath: '/item/'
+      preLoaderRoute: typeof AppItemIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/brands': {
+      id: '/_app/item/brands'
+      path: '/item/brands'
+      fullPath: '/item/brands'
+      preLoaderRoute: typeof AppItemBrandsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/new': {
+      id: '/_app/item/new'
+      path: '/item/new'
+      fullPath: '/item/new'
+      preLoaderRoute: typeof AppItemNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/qrcode/': {
+      id: '/_app/qrcode/'
+      path: '/qrcode'
+      fullPath: '/qrcode/'
+      preLoaderRoute: typeof AppQrcodeIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/qrcode/new': {
+      id: '/_app/qrcode/new'
+      path: '/qrcode/new'
+      fullPath: '/qrcode/new'
+      preLoaderRoute: typeof AppQrcodeNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/$handoverId/': {
+      id: '/_app/handover/$handoverId/'
+      path: '/handover/$handoverId'
+      fullPath: '/handover/$handoverId/'
+      preLoaderRoute: typeof AppHandoverHandoverIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/handover/$handoverId/edit': {
+      id: '/_app/handover/$handoverId/edit'
+      path: '/handover/$handoverId/edit'
+      fullPath: '/handover/$handoverId/edit'
+      preLoaderRoute: typeof AppHandoverHandoverIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/$itemId/': {
+      id: '/_app/item/$itemId/'
+      path: '/item/$itemId'
+      fullPath: '/item/$itemId/'
+      preLoaderRoute: typeof AppItemItemIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/$itemId/edit': {
+      id: '/_app/item/$itemId/edit'
+      path: '/item/$itemId/edit'
+      fullPath: '/item/$itemId/edit'
+      preLoaderRoute: typeof AppItemItemIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/qrcode/$designId/edit': {
+      id: '/_app/qrcode/$designId/edit'
+      path: '/qrcode/$designId/edit'
+      fullPath: '/qrcode/$designId/edit'
+      preLoaderRoute: typeof AppQrcodeDesignIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppCustomerRoute: typeof AppCustomerRoute
   AppForbiddenRoute: typeof AppForbiddenRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccessAuditRoute: typeof AppAccessAuditRoute
+  AppAccessLocationsRoute: typeof AppAccessLocationsRoute
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
+  AppHandoverNewRoute: typeof AppHandoverNewRoute
+  AppItemBrandsRoute: typeof AppItemBrandsRoute
+  AppItemNewRoute: typeof AppItemNewRoute
+  AppQrcodeNewRoute: typeof AppQrcodeNewRoute
+  AppHandoverIndexRoute: typeof AppHandoverIndexRoute
+  AppItemIndexRoute: typeof AppItemIndexRoute
+  AppQrcodeIndexRoute: typeof AppQrcodeIndexRoute
+  AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
+  AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
+  AppQrcodeDesignIdEditRoute: typeof AppQrcodeDesignIdEditRoute
+  AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
+  AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCustomerRoute: AppCustomerRoute,
   AppForbiddenRoute: AppForbiddenRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccessAuditRoute: AppAccessAuditRoute,
+  AppAccessLocationsRoute: AppAccessLocationsRoute,
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,
+  AppHandoverNewRoute: AppHandoverNewRoute,
+  AppItemBrandsRoute: AppItemBrandsRoute,
+  AppItemNewRoute: AppItemNewRoute,
+  AppQrcodeNewRoute: AppQrcodeNewRoute,
+  AppHandoverIndexRoute: AppHandoverIndexRoute,
+  AppItemIndexRoute: AppItemIndexRoute,
+  AppQrcodeIndexRoute: AppQrcodeIndexRoute,
+  AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
+  AppItemItemIdEditRoute: AppItemItemIdEditRoute,
+  AppQrcodeDesignIdEditRoute: AppQrcodeDesignIdEditRoute,
+  AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
+  AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -19,9 +19,14 @@ export function cellToString_(value: unknown): string {
   return String(value);
 }
 
-/** Cegah formula injection: teks diawali = + - @ diberi apostrof agar Sheets menyimpannya sebagai teks. */
-export function toCell_(value: string): string {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value;
+/**
+ * Menulis satu baris sebagai TEKS: format sel '@' diset sebelum nilai ditulis, sehingga Sheets tidak mengubah
+ * "0815" menjadi 815, "1/2" menjadi tanggal, atau teks berawalan = + - @ menjadi formula (tanpa apostrof).
+ */
+function writeTextRow_(sheet: SheetLike, rowNumber: number, values: string[]): void {
+  const range = sheet.getRange(rowNumber, 1, 1, values.length);
+  range.setNumberFormat('@');
+  range.setValues([values]);
 }
 
 function readHeader_(sheet: SheetLike): string[] {
@@ -64,19 +69,22 @@ export function readTable_(schema: TableSchema): { header: string[]; rows: Store
 
 export function insertRow_(schema: TableSchema, data: RowData): void {
   const { sheet, header } = openTable_(schema);
-  sheet.appendRow(header.map((name) => toCell_(data[name] ?? '')));
+  writeTextRow_(
+    sheet,
+    sheet.getLastRow() + 1,
+    header.map((name) => data[name] ?? ''),
+  );
 }
 
 export function updateRow_(schema: TableSchema, rowNumber: number, data: RowData): void {
   const { sheet, header } = openTable_(schema);
-  const range = sheet.getRange(rowNumber, 1, 1, header.length);
-  const current = range.getValues()[0] ?? [];
-  const next = header.map((name, column) => {
-    if (name && Object.prototype.hasOwnProperty.call(data, name)) return toCell_(data[name] ?? '');
-    const existing = current[column];
-    return typeof existing === 'string' ? toCell_(existing) : (existing ?? '');
-  });
-  range.setValues([next]);
+  const current = sheet.getRange(rowNumber, 1, 1, header.length).getValues()[0] ?? [];
+  const next = header.map((name, column) =>
+    name && Object.prototype.hasOwnProperty.call(data, name)
+      ? (data[name] ?? '')
+      : cellToString_(current[column]),
+  );
+  writeTextRow_(sheet, rowNumber, next);
 }
 
 export function deleteRow_(schema: TableSchema, rowNumber: number): void {
