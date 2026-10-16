@@ -26,7 +26,8 @@ export function useFileUrl(id: string): {
   isLoading: boolean;
   isError: boolean;
 } {
-  const query = useQuery({ ...fileQueryOptions(id), select: toDataUrl });
+  // Id kosong = tidak ada berkas (mis. konfigurasi tanpa logo): jangan memanggil server.
+  const query = useQuery({ ...fileQueryOptions(id), select: toDataUrl, enabled: id !== '' });
   return { url: query.data ?? null, isLoading: query.isLoading, isError: query.isError };
 }
 

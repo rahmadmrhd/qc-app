@@ -112,7 +112,7 @@ export function SheetPreviewDialog({
           ref={canvasRef}
           width={SHEET.widthMm * SHEET_PX_PER_MM}
           height={SHEET.heightMm * SHEET_PX_PER_MM}
-          aria-label="Pratinjau lembar 10 × 14"
+          aria-label="Gambar lembar 10 × 14"
           className="mx-auto h-auto max-w-full border bg-white"
         />
       </DialogContent>
