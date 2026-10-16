@@ -9,6 +9,7 @@ import {
   House,
   MapPin,
   Package,
+  QrCode,
   ShieldCheck,
   Tags,
   Users,
@@ -48,6 +49,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Package,
         excludes: ['/item/brands'],
         permission: { module: 'item', level: 'view' },
+      },
+      {
+        label: 'QR Code',
+        to: '/qrcode',
+        icon: QrCode,
+        permission: { module: 'qrcode', level: 'view' },
       },
       {
         label: 'Merk',

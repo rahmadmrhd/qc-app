@@ -5,6 +5,7 @@ import type { LinkProps } from '@tanstack/react-router';
 export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   access: '/access/users',
   item: '/item',
+  qrcode: '/qrcode',
   handover: '/handover',
   qc: '/handover',
 };
