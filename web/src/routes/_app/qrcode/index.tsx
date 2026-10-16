@@ -52,7 +52,7 @@ function QrCodesPage() {
   useEffect(() => {
     if (!exportId) return;
     const target = designs.find((design) => design.id === exportId);
-    if (target && can(me, 'qrcode', 'manage') && !target.overflow) setExporting(target);
+    if (target && can(me, 'qrcode', 'edit') && !target.overflow) setExporting(target);
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 

@@ -257,15 +257,9 @@ test('ubah tanpa menyertakan style mempertahankan gaya yang ada', () => {
 /** Mendaftarkan logo ke pustaka default (hanya pengelola) agar QR boleh memakainya. */
 const addToLibrary = (...ids: string[]) => {
   const current = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
-  const out = call('qrmanage@gmail.com', 'qrcodes.saveDefaults', {
-    ...(current.updatedAt ? { expectedUpdatedAt: current.updatedAt } : {}),
-    title: current.title,
-    subtitle: current.subtitle,
-    footer: current.footer,
-    layout: current.layout,
-    style: current.style,
+  const out = call('qrmanage@gmail.com', 'qrcodes.saveLogoLibrary', {
+    ...(current.logoUpdatedAt ? { expectedUpdatedAt: current.logoUpdatedAt } : {}),
     logoFileIds: [...current.logoFileIds, ...ids],
-    defaultLogoId: current.defaultLogoId,
   });
   if (!out.ok) throw new Error('simpan pustaka gagal');
   clock += 1000;
@@ -288,7 +282,7 @@ test('mengganti logo ke logo lain TERSIMPAN (bukan dianggap tanpa perubahan) dan
   expect(swapped.data.logoFileId).toBe(b);
   expect(swapped.data.updatedAt).not.toBe(made.data.updatedAt);
   expect(call('qrview@gmail.com', 'qrcodes.get', { id: made.data.id }).data.logoFileId).toBe(b);
-  expect(audits()).toEqual(['qrcode.defaults_update', 'qrcode.create', 'qrcode.update']);
+  expect(audits()).toEqual(['qrcode.logo_library_update', 'qrcode.create', 'qrcode.update']);
 });
 
 test('mengganti PDF sumber ke dokumen lain TERSIMPAN', () => {

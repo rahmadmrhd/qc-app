@@ -71,10 +71,11 @@ test('ekspor: PDF dan PNG di folder QR, status Sudah diekspor, pelaku dan waktu,
   expect(listAuditRecords_().map((r) => r.action)).toEqual(['qrcode.create', 'qrcode.export']);
 });
 
-test('izin: hanya manage; edit dan view FORBIDDEN', () => {
+test('izin: edit dan manage boleh mengekspor; view FORBIDDEN', () => {
   const design = make();
-  expect(exportOf(design, {}, 'qredit@gmail.com').error.code).toBe('FORBIDDEN');
   expect(exportOf(design, {}, 'qrview@gmail.com').error.code).toBe('FORBIDDEN');
+  expect(exportOf(design, {}, 'qredit@gmail.com').ok).toBe(true);
+  expect(exportOf(design, {}, 'qrmanage@gmail.com').ok).toBe(true);
 });
 
 test('status Berubah sejak ekspor setelah konfigurasi diubah; ekspor ulang kembali Sudah', () => {

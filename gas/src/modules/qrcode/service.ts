@@ -28,17 +28,20 @@ import type {
   QrDocumentDto,
   QrFileDto,
   QrFileInput,
-  SaveQrDefaultsInput,
+  QrLogoLibraryDto,
+  QrPresetDto,
   SaveQrDesignInput,
+  SaveQrLogoLibraryInput,
+  SaveQrPresetInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
 import { ensureQrDocFolder_, ensureQrFolder_, QR_FOLDER_PROPERTY } from './folders';
 import type {
-  NewQrDefaultsRecord,
   NewQrDesignRecord,
-  QrDefaultsRecord,
+  NewQrPresetRecord,
   QrDesignRecord,
   QrDocumentRecord,
+  QrPresetRecord,
 } from './repo';
 import {
   deleteQrDesign_,
@@ -46,11 +49,15 @@ import {
   insertQrDefaults_,
   insertQrDesign_,
   insertQrDocument_,
+  insertQrPreset_,
   listQrDesigns_,
   listQrDocuments_,
+  listQrPresets_,
+  removeQrPresetRow_,
   updateQrDefaults_,
   updateQrDesign_,
   updateQrDocument_,
+  updateQrPreset_,
 } from './repo';
 
 const QR_STALE_MESSAGE =
@@ -159,51 +166,136 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
   return toQrDesignDto_(design, qrDocumentMap_(), qrUsesMap_(designs));
 }
 
-function toQrDefaultsDto_(record: QrDefaultsRecord | null): QrDefaultsDto {
-  if (!record) {
-    return {
-      title: '',
-      subtitle: '',
-      footer: '',
-      layout: clampQrLayout({}),
-      style: clampQrStyle(null),
-      logoFileIds: [],
-      defaultLogoId: '',
-      updatedAt: '',
-      updatedBy: '',
-    };
-  }
+function toQrPresetDto_(record: QrPresetRecord): QrPresetDto {
   return {
+    id: record.id,
+    name: record.name,
     title: record.title,
     subtitle: record.subtitle,
     footer: record.footer,
     layout: record.layout,
     style: record.style,
-    logoFileIds: record.logoFileIds,
     defaultLogoId: record.defaultLogoId,
+    createdAt: record.createdAt,
+    createdBy: record.createdBy,
     updatedAt: record.updatedAt,
     updatedBy: record.updatedBy,
   };
 }
 
+/** Semua konfigurasi default (urut nama) dan pustaka logo bersama. */
 export function getQrDefaultsDto_(): QrDefaultsDto {
-  return toQrDefaultsDto_(getQrDefaultsRecord_());
-}
-
-function qrDefaultsSnapshot_(dto: QrDefaultsDto): Record<string, string> {
+  const library = getQrDefaultsRecord_();
   return {
-    title: dto.title,
-    subtitle: dto.subtitle,
-    footer: dto.footer,
-    layout: JSON.stringify(dto.layout),
-    style: JSON.stringify(dto.style),
-    logoFileIds: dto.logoFileIds.join(','),
-    defaultLogoId: dto.defaultLogoId,
+    presets: listQrPresets_()
+      .map(toQrPresetDto_)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    logoFileIds: library?.logoFileIds ?? [],
+    logoUpdatedAt: library?.updatedAt ?? '',
   };
 }
 
-/** Menyimpan konfigurasi default (nilai awal QR baru dan pustaka logo). Hanya pengaturan: tidak ada hasil ekspor. */
-export function saveQrDefaults_(input: SaveQrDefaultsInput, actor: ActorRef): QrDefaultsDto {
+function qrPresetSnapshot_(preset: QrPresetRecord | NewQrPresetRecord): Record<string, string> {
+  return {
+    name: preset.name,
+    title: preset.title,
+    subtitle: preset.subtitle,
+    footer: preset.footer,
+    layout: JSON.stringify(preset.layout),
+    style: JSON.stringify(preset.style),
+    defaultLogoId: preset.defaultLogoId,
+  };
+}
+
+/** Membuat atau mengubah satu konfigurasi default (nilai awal QR baru). Hanya pengaturan: tanpa hasil ekspor. */
+export function saveQrPreset_(input: SaveQrPresetInput, actor: ActorRef): QrPresetDto {
+  return platform_().withLock(() => {
+    const presets = listQrPresets_();
+    const existing = input.id ? presets.find((row) => row.id === input.id) : undefined;
+    if (input.id && !existing) throw appError_('NOT_FOUND', 'Konfigurasi default tidak ditemukan');
+    if (existing && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw appError_('CONFLICT', QR_STALE_MESSAGE);
+    }
+    const taken = presets.some(
+      (row) => row.id !== existing?.id && row.name.toLowerCase() === input.name.toLowerCase(),
+    );
+    if (taken) {
+      const message = 'Nama sudah dipakai konfigurasi default lain';
+      throw appError_('VALIDATION', message, { name: message });
+    }
+    if (!existing && presets.length >= QR_LIMITS.presets) {
+      throw appError_('VALIDATION', `Konfigurasi default maksimal ${QR_LIMITS.presets}`);
+    }
+    const library = getQrDefaultsRecord_()?.logoFileIds ?? [];
+    if (input.defaultLogoId !== '' && !library.includes(input.defaultLogoId)) {
+      const message = 'Logo awal harus bagian dari pustaka logo';
+      throw appError_('VALIDATION', message, { defaultLogoId: message });
+    }
+    const now = nowIso_();
+    const next: NewQrPresetRecord = {
+      id: existing?.id ?? platform_().uuid(),
+      name: input.name,
+      title: input.title,
+      subtitle: input.subtitle,
+      footer: input.footer,
+      layout: input.layout,
+      style: input.style,
+      defaultLogoId: input.defaultLogoId,
+      createdAt: existing?.createdAt ?? now,
+      createdBy: existing?.createdBy ?? actor.email,
+      updatedAt: now,
+      updatedBy: actor.email,
+    };
+    if (!existing) {
+      insertQrPreset_(next);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.preset_create',
+        target: next.name,
+        before: null,
+        after: qrPresetSnapshot_(next),
+      });
+      return toQrPresetDto_({ ...next, rowNumber: 0 });
+    }
+    if (JSON.stringify(qrPresetSnapshot_(existing)) === JSON.stringify(qrPresetSnapshot_(next))) {
+      return toQrPresetDto_(existing);
+    }
+    updateQrPreset_({ ...next, rowNumber: existing.rowNumber });
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'qrcode.preset_update',
+      target: next.name,
+      before: qrPresetSnapshot_(existing),
+      after: qrPresetSnapshot_(next),
+    });
+    return toQrPresetDto_({ ...next, rowNumber: existing.rowNumber });
+  });
+}
+
+export function deleteQrPreset_(input: QrDesignRefInput, actor: ActorRef): QrDesignRefInput {
+  return platform_().withLock(() => {
+    const existing = listQrPresets_().find((row) => row.id === input.id);
+    if (!existing) throw appError_('NOT_FOUND', 'Konfigurasi default tidak ditemukan');
+    removeQrPresetRow_(existing);
+    appendAudit_({
+      ts: nowIso_(),
+      actor: actor.email,
+      action: 'qrcode.preset_delete',
+      target: existing.name,
+      before: qrPresetSnapshot_(existing),
+      after: null,
+    });
+    return { id: existing.id };
+  });
+}
+
+/** Menyimpan pustaka logo bersama; logo yang dikeluarkan juga dikosongkan dari logo awal default yang memakainya. */
+export function saveQrLogoLibrary_(
+  input: SaveQrLogoLibraryInput,
+  actor: ActorRef,
+): QrLogoLibraryDto {
   return platform_().withLock(() => {
     const existing = getQrDefaultsRecord_();
     if (existing) {
@@ -215,43 +307,78 @@ export function saveQrDefaults_(input: SaveQrDefaultsInput, actor: ActorRef): Qr
         throw appError_('CONFLICT', QR_STALE_MESSAGE);
       }
     }
-    if (input.defaultLogoId !== '' && !input.logoFileIds.includes(input.defaultLogoId)) {
-      const message = 'Logo awal harus bagian dari pustaka logo';
-      throw appError_('VALIDATION', message, { defaultLogoId: message });
-    }
     // Logo pustaka: pemilik tetap ('qrlogo','shared') sehingga dapat dibaca/dirujuk semua pengguna qrcode.
     attachFiles_(input.logoFileIds, 'qrlogo', 'shared');
-    const before = toQrDefaultsDto_(existing);
     const now = nowIso_();
-    const next: NewQrDefaultsRecord = {
-      title: input.title,
-      subtitle: input.subtitle,
-      footer: input.footer,
-      layout: input.layout,
-      style: input.style,
-      logoFileIds: input.logoFileIds,
-      defaultLogoId: input.defaultLogoId,
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
-    const after = toQrDefaultsDto_({ ...next, rowNumber: 0 });
-    if (
-      existing &&
-      JSON.stringify(qrDefaultsSnapshot_(before)) === JSON.stringify(qrDefaultsSnapshot_(after))
-    ) {
-      return before;
+    const before = existing?.logoFileIds ?? [];
+    if (existing && before.join(',') === input.logoFileIds.join(',')) {
+      return { logoFileIds: before, logoUpdatedAt: existing.updatedAt };
     }
-    if (existing) updateQrDefaults_({ ...next, rowNumber: existing.rowNumber });
-    else insertQrDefaults_(next);
+    if (existing) {
+      updateQrDefaults_({
+        ...existing,
+        logoFileIds: input.logoFileIds,
+        updatedAt: now,
+        updatedBy: actor.email,
+      });
+    } else {
+      insertQrDefaults_({
+        title: '',
+        subtitle: '',
+        footer: '',
+        layout: clampQrLayout({}),
+        style: clampQrStyle(null),
+        logoFileIds: input.logoFileIds,
+        defaultLogoId: '',
+        updatedAt: now,
+        updatedBy: actor.email,
+      });
+    }
+    for (const preset of listQrPresets_()) {
+      if (preset.defaultLogoId !== '' && !input.logoFileIds.includes(preset.defaultLogoId)) {
+        updateQrPreset_({ ...preset, defaultLogoId: '', updatedAt: now, updatedBy: actor.email });
+      }
+    }
     appendAudit_({
       ts: now,
       actor: actor.email,
-      action: 'qrcode.defaults_update',
-      target: 'Konfigurasi default QR',
-      before: existing ? qrDefaultsSnapshot_(before) : null,
-      after: qrDefaultsSnapshot_(after),
+      action: 'qrcode.logo_library_update',
+      target: 'Pustaka logo QR',
+      before: { logoFileIds: before.join(',') },
+      after: { logoFileIds: input.logoFileIds.join(',') },
     });
-    return after;
+    return { logoFileIds: input.logoFileIds, logoUpdatedAt: now };
+  });
+}
+
+const QR_PRESETS_MIGRATED_PROPERTY = 'QR_PRESETS_MIGRATED';
+
+/**
+ * Migrasi sekali (dipanggil `setup`): default tunggal versi lama (isi pada baris `qr_defaults`) menjadi satu
+ * konfigurasi default bernama "Default"; pustaka logo tetap di baris itu. Mengembalikan jumlah default dibuat.
+ */
+export function migrateQrDefaults_(): number {
+  return platform_().withLock(() => {
+    const legacy = getQrDefaultsRecord_();
+    if (!legacy || legacy.updatedAt === '') return 0;
+    if (platform_().getProperty(QR_PRESETS_MIGRATED_PROPERTY) === '1') return 0;
+    if (listQrPresets_().length > 0) return 0;
+    insertQrPreset_({
+      id: platform_().uuid(),
+      name: 'Default',
+      title: legacy.title,
+      subtitle: legacy.subtitle,
+      footer: legacy.footer,
+      layout: legacy.layout,
+      style: legacy.style,
+      defaultLogoId: legacy.logoFileIds.includes(legacy.defaultLogoId) ? legacy.defaultLogoId : '',
+      createdAt: legacy.updatedAt,
+      createdBy: legacy.updatedBy,
+      updatedAt: legacy.updatedAt,
+      updatedBy: legacy.updatedBy,
+    });
+    platform_().setProperty(QR_PRESETS_MIGRATED_PROPERTY, '1');
+    return 1;
   });
 }
 

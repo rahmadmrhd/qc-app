@@ -107,3 +107,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 101 | Pengguna edit buat QR baru | Isian awal sama dengan default dan logo awal terpilih; logo hanya dipilih dari pustaka (tanpa unggah) | FQR33, FQR34 |
 | 102 | Ubah default lalu buka QR lama | QR lama tidak berubah | FQR33 |
 | 103 | Atur ukuran logo 30% dengan logo lebar (rasio 3:1) lalu ekspor | Luas logo di label = 30% luas QR (QR tetap terbaca) | FQR35 |
+| 104 | Pengelola tambah 2 konfigurasi default (nama berbeda) di Konfigurasi default; nama kembar ditolak | Keduanya tampil di daftar; nama sama (beda huruf besar) ditolak | FQR36 |
+| 105 | Buat QR baru sebagai pengguna edit | Hanya pemilih default yang tampil; setelah memilih, isian terisi; Simpan nonaktif sebelum memilih; memilih default lain mengisi ulang | FQR38 |
+| 106 | Pengguna edit mengekspor QR; pengguna lihat tidak melihat tombol Ekspor; pengguna edit tidak melihat tombol Konfigurasi default maupun Hapus | Ekspor berhasil untuk edit; default dan hapus hanya kelola | FQR10, FQR32 |
+| 107 | Setelah `setup` pada data lama berisi default tunggal | Muncul satu default "Default" dengan isi lama; pustaka logo tetap | FQR39 |

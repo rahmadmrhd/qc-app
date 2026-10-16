@@ -21,7 +21,13 @@ import {
   QR_DOC_FOLDER_NAME,
   QR_FOLDER_NAME,
 } from '@gas/modules/qrcode/folders';
-import { QR_DEFAULTS_TABLE, QR_DESIGNS_TABLE, QR_DOCUMENTS_TABLE } from '@gas/modules/qrcode/repo';
+import {
+  QR_DEFAULTS_TABLE,
+  QR_DESIGNS_TABLE,
+  QR_DOCUMENTS_TABLE,
+  QR_PRESETS_TABLE,
+} from '@gas/modules/qrcode/repo';
+import { migrateQrDefaults_ } from '@gas/modules/qrcode/service';
 import { assignInitialRevs_, SYNC_STATE_TABLE } from '@gas/modules/sync/state';
 import { SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
 
@@ -58,9 +64,14 @@ export function runSetup_(): string {
     QR_DESIGNS_TABLE,
     QR_DOCUMENTS_TABLE,
     QR_DEFAULTS_TABLE,
+    QR_PRESETS_TABLE,
   ]) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);
+  }
+  const presets = migrateQrDefaults_();
+  if (presets > 0) {
+    lines.push('qr_presets: default tunggal lama dimigrasi menjadi konfigurasi default "Default".');
   }
   const migrated = migrateAuditDetail_();
   if (migrated > 0) lines.push(`audit_log: ${migrated} baris lama dimigrasi ke before/after.`);
