@@ -115,6 +115,29 @@ function createGasPlatform_(): Platform {
         // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
       }
     },
+    driveShareAnyoneWithLink: (fileId) => {
+      DriveApp.getFileById(fileId).setSharing(
+        DriveApp.Access.ANYONE_WITH_LINK,
+        DriveApp.Permission.VIEW,
+      );
+    },
+    driveReplaceFileContent: (fileId, mime, base64) => {
+      // DriveApp tidak bisa mengganti isi berkas biner; Drive API v3 (scope drive yang sama) bisa.
+      const response = UrlFetchApp.fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+        {
+          method: 'patch',
+          contentType: mime,
+          payload: Utilities.base64Decode(base64),
+          headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+          muteHttpExceptions: true,
+        },
+      );
+      const status = response.getResponseCode();
+      if (status < 200 || status >= 300) {
+        throw new Error(`Drive API ${status}: ${response.getContentText().slice(0, 200)}`);
+      }
+    },
     logError: (message) => console.error(message),
   };
 }

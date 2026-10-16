@@ -55,6 +55,10 @@ export interface Platform {
   driveFolderExists(folderId: string): boolean;
   /** Membuang berkas Drive (ke tempat sampah); aman bila berkas tidak ada. */
   driveTrashFile(fileId: string): void;
+  /** Membagikan berkas "siapa saja yang punya link: hanya lihat". Melempar bila berkas tidak ada. */
+  driveShareAnyoneWithLink(fileId: string): void;
+  /** Mengganti isi berkas yang ada (id tetap, sehingga URL berbagi tidak berubah). Melempar bila gagal. */
+  driveReplaceFileContent(fileId: string, mime: string, base64: string): void;
   logError(message: string): void;
 }
 
