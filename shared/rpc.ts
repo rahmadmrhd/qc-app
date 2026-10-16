@@ -1,6 +1,7 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
+import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -358,6 +359,79 @@ export interface CompleteLineInput extends HandoverRefInput {
   lineId: string;
 }
 
+// --- QR Code Label ---
+export interface QrDesignDto {
+  id: string;
+  title: string;
+  linkSource: QrLinkSource;
+  /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber. */
+  link: string;
+  documentId: string;
+  documentName: string;
+  documentUses: number;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  /** Gaya teks per bagian dan bingkai QR. */
+  style: QrStyle;
+  /** Isi tidak muat di kanvas 3 × 3 cm (dilaporkan peramban saat simpan): ekspor diblokir. */
+  overflow: boolean;
+  exportStatus: QrExportStatus;
+  exportedAt: string;
+  exportedBy: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface SaveQrDesignInput {
+  id?: string;
+  expectedUpdatedAt?: string;
+  title: string;
+  linkSource: QrLinkSource;
+  link: string;
+  documentId: string;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  /** Kosong = pertahankan gaya yang ada (ubah) atau bawaan (buat). */
+  style?: QrStyle;
+  /** Hasil pengukuran tata letak di peramban; kosong = pertahankan nilai yang ada (bawaan false). */
+  overflow?: boolean;
+}
+export interface QrDesignRefInput {
+  id: string;
+}
+export interface QrDocumentDto {
+  id: string;
+  name: string;
+  link: string;
+  uses: number;
+}
+export interface UploadQrPdfInput {
+  name: string;
+  base64: string;
+  replaceDocumentId?: string;
+}
+export interface ExportQrDesignInput {
+  id: string;
+  expectedUpdatedAt: string;
+  pdfBase64: string;
+  pngBase64: string;
+}
+export type QrFileKind = 'pdf' | 'png';
+export interface QrFileInput {
+  id: string;
+  kind: QrFileKind;
+}
+export interface QrFileDto {
+  filename: string;
+  mime: string;
+  base64: string;
+}
+
 export interface RpcContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -390,6 +464,13 @@ export interface RpcContract {
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
+  'qrcodes.list': { input: null; output: QrDesignDto[] };
+  'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
+  'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
+  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
 }
 
 export type RpcMethod = keyof RpcContract;

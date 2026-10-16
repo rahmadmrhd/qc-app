@@ -6,6 +6,7 @@ import { customerRoutes_ } from '@gas/modules/customer/routes';
 import { filesRoutes_ } from '@gas/modules/files/routes';
 import { handoverRoutes_ } from '@gas/modules/handover/routes';
 import { itemRoutes_ } from '@gas/modules/item/routes';
+import { qrcodeRoutes_ } from '@gas/modules/qrcode/routes';
 
 /** Dibangun lazy di dalam fungsi karena urutan load file GAS tidak dijamin. */
 export function getRoutes_(): RouteTable {
@@ -17,5 +18,6 @@ export function getRoutes_(): RouteTable {
     ...brandRoutes_(),
     ...customerRoutes_(),
     ...handoverRoutes_(),
+    ...qrcodeRoutes_(),
   };
 }

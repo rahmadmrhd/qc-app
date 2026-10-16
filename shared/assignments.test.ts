@@ -5,6 +5,7 @@ import {
   fullLocationPermissions,
   isLocatedModule,
   resolveAccess,
+  SHARED_MODULES,
   sanitizeAssignments,
 } from './assignments';
 import type { PartialPermissionMap } from './permissions';
@@ -171,4 +172,9 @@ describe('modul berlokasi', () => {
       stock: 'manage',
     });
   });
+});
+
+test('qrcode adalah modul global bersama (bukan berlokasi)', () => {
+  expect(SHARED_MODULES).toContain('qrcode');
+  expect(isLocatedModule('qrcode')).toBe(false);
 });

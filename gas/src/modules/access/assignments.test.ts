@@ -239,6 +239,32 @@ test('item global dari penugasan lokasi tertentu (FP2), tetapi tidak dari lokasi
   expect(loadUserContext_('mati@gmail.com')?.permissions.item).toBe('none');
 });
 
+test('cache konteks yang belum memuat modul qrcode dihitung ulang (modul baru tidak tertolak sampai cache habis)', () => {
+  insertUser_(
+    user({
+      id: 'u2',
+      email: 'sari@gmail.com',
+      assignments: [{ locationId: 'l-a', roleIds: ['r-view'] }],
+    }),
+  );
+  loadUserContext_('sari@gmail.com');
+  const key = `uctx:${platform.cacheGet('access:version')}:sari@gmail.com`;
+  platform.cachePut(
+    key,
+    JSON.stringify({
+      email: 'sari@gmail.com',
+      name: 'Sari',
+      userId: 'u2',
+      isSuperAdmin: false,
+      permissions: { access: 'none', item: 'none', qc: 'none', handover: 'none', stock: 'none' },
+      locations: {},
+    }),
+    300,
+  );
+  const ctx = loadUserContext_('sari@gmail.com');
+  expect(ctx?.permissions.qrcode).toBe('none');
+});
+
 test('cache konteks yang sudah punya locations tetapi belum memuat modul qc dihitung ulang', () => {
   insertUser_(
     user({

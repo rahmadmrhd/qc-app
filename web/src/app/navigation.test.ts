@@ -19,7 +19,14 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'view', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access: 'none',
+      item: 'view',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+    },
     locations: [],
   };
   expect(visibleNavGroups(groups, me).map((group) => group.label)).toEqual(['Umum']);
@@ -48,7 +55,14 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+    },
     locations: [
       {
         id: 'l-a',
@@ -111,14 +125,21 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
     id: 'l1',
     code: 'A',
     name: 'A',
-    permissions: { handover: 'none', qc: 'none', stock: 'none', ...permissions },
+    permissions: { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none', ...permissions },
   });
   const me = (perms: Record<string, string>): MeDto =>
     ({
       email: 'a@gmail.com',
       name: 'A',
       isSuperAdmin: false,
-      permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
+      permissions: {
+        access: 'none',
+        item: 'none',
+        qrcode: 'none',
+        handover: 'none',
+        qc: 'none',
+        stock: 'none',
+      },
       locations: [location(perms)],
     }) as MeDto;
   expect(visibleNavGroups(groups, me({ handover: 'view' }), ['l1'])).toHaveLength(1);

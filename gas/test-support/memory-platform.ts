@@ -133,6 +133,8 @@ export interface MemoryPlatform extends Platform {
   /** Folder yang ditandai berada di tempat sampah (untuk menguji `driveFolderExists`). */
   readonly trashedFolders: Set<string>;
   readonly drive: Map<string, MemoryDriveFile>;
+  /** Berkas yang dibagikan "siapa saja yang punya link". */
+  readonly sharedFiles: Set<string>;
   readonly httpCalls: Array<{ url: string; form: Record<string, string> }>;
 }
 
@@ -176,6 +178,7 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
   let locked = false;
   let driveSequence = 0;
   const drive = new Map<string, MemoryDriveFile>();
+  const sharedFiles = new Set<string>();
   return {
     db,
     properties,
@@ -185,6 +188,7 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     folders,
     trashedFolders,
     drive,
+    sharedFiles,
     getProperty: (key) => properties.get(key) ?? null,
     setProperty: (key, value) => {
       properties.set(key, value);
@@ -243,6 +247,19 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
     driveFolderExists: (folderId) => folders.has(folderId) && !trashedFolders.has(folderId),
     driveTrashFile: (fileId) => {
       drive.delete(fileId);
+      sharedFiles.delete(fileId);
+    },
+    driveShareAnyoneWithLink: (fileId) => {
+      if (!drive.has(fileId)) throw new Error(`Berkas Drive ${fileId} tidak ada`);
+      sharedFiles.add(fileId);
+    },
+    driveRevokeSharing: (fileId) => {
+      sharedFiles.delete(fileId);
+    },
+    driveReplaceFileContent: (fileId, mime, base64) => {
+      const file = drive.get(fileId);
+      if (!file) throw new Error(`Berkas Drive ${fileId} tidak ada`);
+      drive.set(fileId, { ...file, mime, base64 });
     },
     logError: (message) => {
       errors.push(message);

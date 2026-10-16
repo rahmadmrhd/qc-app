@@ -59,6 +59,9 @@ Aplikasi menyimpan gambar item di folder Drive privat bernama **QC App Files** (
 4. `doPost` memakai deployment yang sama dengan `doGet`; setelah mengubah kode tetap perbarui deployment.
 5. Memutar token = ganti properti lalu ganti konfigurasi Desktop.
 
+## 7d. Pembersihan PDF sumber QR (trigger berbasis waktu)
+PDF sumber QR dibagikan "siapa saja yang punya link". Unggahan yang ditinggalkan (tidak dipakai konfigurasi mana pun) dicabut berbaginya setelah 1 jam, tetapi pembersihan otomatis di aplikasi hanya berjalan saat ada simpan/hapus/unggah. Agar pencabutan tetap terjadi tanpa aktivitas, pasang trigger: editor Apps Script → **Triggers** → **Add Trigger** → fungsi `cleanupQrPdfs`, event source **Time-driven**, tipe **Hour timer**, setiap 1 jam (dipasang dengan akun pemilik script; fungsi menolak akun lain). Aman dijalankan berulang.
+
 ## 8. Deploy & coba
 ```bash
 bun run deploy

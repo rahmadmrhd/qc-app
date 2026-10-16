@@ -46,10 +46,8 @@ function EditItemPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-semibold">
-        Ubah item: {item.brand} {item.model}
-      </h1>
       <ItemForm
+        title={`Ubah item: ${item.brand} ${item.model}`}
         key={item.updatedAt}
         brands={brands}
         defaultValues={toItemFormDefaults(item)}

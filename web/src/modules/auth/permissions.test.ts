@@ -6,7 +6,14 @@ const me: MeDto = {
   email: 'a@gmail.com',
   name: 'A',
   isSuperAdmin: false,
-  permissions: { access: 'view', item: 'view', handover: 'none', qc: 'none', stock: 'none' },
+  permissions: {
+    access: 'view',
+    item: 'view',
+    qrcode: 'none',
+    handover: 'none',
+    qc: 'none',
+    stock: 'none',
+  },
   locations: [
     {
       id: 'l-a',

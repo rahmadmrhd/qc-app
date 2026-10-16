@@ -15,7 +15,7 @@ test('melaporkan Script Property yang belum diset dan tidak membuat sheet tanpa 
   expect(platform.db.sheets.size).toBe(0);
 });
 
-test('membuat sheet users, roles, audit_log, locations, files, brands, items, sync_state, customers, handovers, handover_lines beserta header', () => {
+test('membuat sheet users, roles, audit_log, locations, files, brands, items, sync_state, customers, handovers, handover_lines, qr_designs, qr_documents beserta header', () => {
   const platform = createMemoryPlatform({
     properties: {
       SPREADSHEET_ID: 'x',
@@ -40,6 +40,8 @@ test('membuat sheet users, roles, audit_log, locations, files, brands, items, sy
     'customers',
     'handovers',
     'handover_lines',
+    'qr_designs',
+    'qr_documents',
   ]);
   expect(platform.db.sheet('users').rows[0]?.[1]).toBe('email');
   expect(platform.db.sheet('audit_log').rows[0]).toEqual([
@@ -240,7 +242,8 @@ test('setup membuat folder Drive sekali dan melaporkannya; diulang tidak menggan
   const first = runSetup_();
   const second = runSetup_();
   expect(first).toContain('Folder Drive "QC App Files" siap');
-  expect(platform.folders.size).toBe(1);
+  // Tiga folder berbeda: gambar item, hasil ekspor QR, dan dokumen QR; dijalankan ulang tidak menggandakan.
+  expect(platform.folders.size).toBe(3);
   expect(second).toContain(platform.getProperty('DRIVE_FOLDER_ID') ?? 'x');
 });
 
@@ -260,9 +263,32 @@ test('setup tidak menimpa DRIVE_FOLDER_ID yang tidak dapat diakses dan menyebut 
   setPlatform_(platform);
   const report = runSetup_();
   expect(platform.properties.get('DRIVE_FOLDER_ID')).toBe('folder-hilang');
-  expect(platform.folders.size).toBe(0);
+  // Tidak ada folder gambar baru yang dibuat (folder QR boleh dibuat; itu properti terpisah).
+  expect([...platform.folders.values()]).not.toContain('QC App Files');
   expect(report).toContain('TIDAK dapat diakses');
   expect(report).toContain('folder-hilang');
+});
+
+test('setup membuat folder QR dan folder dokumen QR serta melaporkannya', () => {
+  const platform = createMemoryPlatform({ properties: ALL_PROPERTIES });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(report).toContain('Folder Drive "QC App QR" siap');
+  expect(report).toContain('Folder Drive "QC App QR Dokumen" siap');
+  expect(platform.properties.get('QR_FOLDER_ID')).toBeTruthy();
+  expect(platform.properties.get('QR_DOC_FOLDER_ID')).toBeTruthy();
+});
+
+test('setup tidak menimpa QR_FOLDER_ID yang tidak dapat diakses dan menyebut penyebabnya', () => {
+  const platform = createMemoryPlatform({
+    properties: { ...ALL_PROPERTIES, QR_FOLDER_ID: 'qr-hilang' },
+  });
+  setPlatform_(platform);
+  const report = runSetup_();
+  expect(platform.properties.get('QR_FOLDER_ID')).toBe('qr-hilang');
+  expect(report).toContain('Folder Drive "QC App QR" TIDAK dapat diakses');
+  expect(report).toContain('qr-hilang');
+  expect(platform.properties.get('QR_DOC_FOLDER_ID')).toBeTruthy();
 });
 
 test('setup melaporkan status SYNC_API_TOKEN: kosong, pendek, dan cukup', () => {

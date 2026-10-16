@@ -19,3 +19,10 @@ test('label aksi customer dan serah terima', () => {
   expect(auditActionLabel('handover.progress')).toBe('Progres QC diperbarui');
   expect(auditActionLabel('handover.complete')).toBe('Task serah terima selesai');
 });
+
+test('aksi audit qrcode.* berlabel Indonesia', () => {
+  for (const action of ['create', 'update', 'delete', 'export', 'pdf_upload']) {
+    expect(auditActionLabel(`qrcode.${action}`)).not.toBe(`qrcode.${action}`);
+  }
+  expect(auditActionLabel('qrcode.export')).toBe('Label QR diekspor ke Drive');
+});

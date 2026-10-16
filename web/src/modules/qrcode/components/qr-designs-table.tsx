@@ -1,0 +1,199 @@
+import type { QrDesignDto, QrFileKind } from '@shared/rpc';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { formatAuditTime } from '@/modules/access/lib/audit-actions';
+
+export interface QrDesignsTableProps {
+  designs: readonly QrDesignDto[];
+  canEdit: boolean;
+  canManage: boolean;
+  /** Konfigurasi yang sedang diproses (tombolnya dinonaktifkan). */
+  busyId: string | null;
+  onEdit: (design: QrDesignDto) => void;
+  onDuplicate: (design: QrDesignDto) => void;
+  onExport: (design: QrDesignDto) => void;
+  onDownload: (design: QrDesignDto, kind: QrFileKind) => void;
+  onDelete: (design: QrDesignDto) => void;
+}
+
+function StatusCell({ design }: { design: QrDesignDto }) {
+  if (design.exportStatus === 'none') return <Badge variant="secondary">Belum diekspor</Badge>;
+  return (
+    <div className="space-y-0.5">
+      <Badge variant={design.exportStatus === 'stale' ? 'outline' : 'default'}>
+        {design.exportStatus === 'stale' ? 'Berubah sejak ekspor' : 'Sudah diekspor'}
+      </Badge>
+      <p className="text-xs text-muted-foreground">
+        {formatAuditTime(design.exportedAt)} · {design.exportedBy}
+      </p>
+    </div>
+  );
+}
+
+export function QrDesignsTable({
+  designs,
+  canEdit,
+  canManage,
+  busyId,
+  onEdit,
+  onDuplicate,
+  onExport,
+  onDownload,
+  onDelete,
+}: QrDesignsTableProps) {
+  if (designs.length === 0) {
+    return (
+      <p className="rounded-md border p-6 text-sm text-muted-foreground">
+        Belum ada konfigurasi.{' '}
+        {canEdit ? 'Buat konfigurasi pertama untuk menghasilkan label QR.' : ''}
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Title</TableHead>
+            <TableHead>Link</TableHead>
+            <TableHead>Diperbarui</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Aksi</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {designs.map((design) => {
+            const busy = busyId === design.id;
+            const exported = design.exportedAt !== '';
+            return (
+              <TableRow key={design.id}>
+                <TableCell className="font-medium">
+                  {design.title}
+                  {design.subtitle !== '' ? (
+                    <div
+                      data-testid="design-subtitle"
+                      className="text-sm font-normal text-muted-foreground"
+                    >
+                      {design.subtitle}
+                    </div>
+                  ) : null}
+                  <div className="text-xs font-normal text-muted-foreground">
+                    {design.linkSource === 'pdf' ? (
+                      <>
+                        {`PDF: ${design.documentName}`}
+                        {' · '}
+                        <a
+                          href={design.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Lihat PDF ${design.title}`}
+                          className="underline"
+                        >
+                          Lihat PDF
+                        </a>
+                      </>
+                    ) : (
+                      'Link manual'
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="max-w-[16rem] truncate text-sm" title={design.link}>
+                  {design.link}
+                </TableCell>
+                <TableCell className="text-sm">{formatAuditTime(design.updatedAt)}</TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    <StatusCell design={design} />
+                    {design.overflow ? <Badge variant="destructive">Tidak muat</Badge> : null}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {exported ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          aria-label="Unduh PDF"
+                          onClick={() => onDownload(design, 'pdf')}
+                        >
+                          PDF
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          aria-label="Unduh PNG"
+                          onClick={() => onDownload(design, 'png')}
+                        >
+                          PNG
+                        </Button>
+                      </>
+                    ) : null}
+                    {canEdit ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          aria-label={`Ubah ${design.title}`}
+                          onClick={() => onEdit(design)}
+                        >
+                          Ubah
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          aria-label={`Duplikat ${design.title}`}
+                          onClick={() => onDuplicate(design)}
+                        >
+                          Duplikat
+                        </Button>
+                      </>
+                    ) : null}
+                    {canManage ? (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={busy || design.overflow}
+                          title={
+                            design.overflow
+                              ? 'Isi label tidak muat di kanvas 3 × 3 cm; ubah konfigurasi lalu simpan ulang'
+                              : undefined
+                          }
+                          aria-label={`${exported ? 'Ekspor ulang' : 'Ekspor'} ${design.title}`}
+                          onClick={() => onExport(design)}
+                        >
+                          {exported ? 'Ekspor ulang' : 'Ekspor'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={busy}
+                          aria-label={`Hapus ${design.title}`}
+                          onClick={() => onDelete(design)}
+                        >
+                          Hapus
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}

@@ -115,6 +115,41 @@ function createGasPlatform_(): Platform {
         // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
       }
     },
+    driveShareAnyoneWithLink: (fileId) => {
+      DriveApp.getFileById(fileId).setSharing(
+        DriveApp.Access.ANYONE_WITH_LINK,
+        DriveApp.Permission.VIEW,
+      );
+    },
+    driveRevokeSharing: (fileId) => {
+      let file: GoogleAppsScript.Drive.File;
+      try {
+        file = DriveApp.getFileById(fileId);
+      } catch (error) {
+        // Hanya "berkas tidak ada" yang dianggap sukses; galat lain (kuota, izin, sementara) harus naik
+        // agar pemanggil tidak menandai berkas sebagai sudah privat.
+        if (/no item with the given id|could not be found|not found/i.test(String(error))) return;
+        throw error;
+      }
+      file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    },
+    driveReplaceFileContent: (fileId, mime, base64) => {
+      // DriveApp tidak bisa mengganti isi berkas biner; Drive API v3 (scope drive yang sama) bisa.
+      const response = UrlFetchApp.fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+        {
+          method: 'patch',
+          contentType: mime,
+          payload: Utilities.base64Decode(base64),
+          headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+          muteHttpExceptions: true,
+        },
+      );
+      const status = response.getResponseCode();
+      if (status < 200 || status >= 300) {
+        throw new Error(`Drive API ${status}: ${response.getContentText().slice(0, 200)}`);
+      }
+    },
     logError: (message) => console.error(message),
   };
 }

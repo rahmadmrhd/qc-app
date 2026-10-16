@@ -36,3 +36,9 @@ test('useFileUrl menandai galat tanpa URL', async () => {
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(result.current.url).toBeNull();
 });
+
+test('useFileUrl dengan id kosong tidak memanggil RPC dan tidak memuat', () => {
+  const { result } = renderHook(() => useFileUrl(''), { wrapper: makeWrapper() });
+  expect(result.current).toEqual({ url: null, isLoading: false, isError: false });
+  expect(rpcMock).not.toHaveBeenCalled();
+});

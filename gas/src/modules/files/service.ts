@@ -22,10 +22,10 @@ const EXTENSIONS: Record<string, string> = {
  * foldernya tak dapat diakses (dihapus, tempat sampah, atau akun pemilik tak punya akses), melempar galat dan
  * TIDAK menimpa properti: menimpa akan memutus semua gambar yang sudah tercatat (FS13).
  */
-export function ensureDriveFolder_(): string {
+export function ensureNamedFolder_(property: string, name: string): string {
   return platform_().withLock(() => {
     const platform = platform_();
-    const existing = platform.getProperty(DRIVE_FOLDER_PROPERTY)?.trim();
+    const existing = platform.getProperty(property)?.trim();
     if (existing) {
       if (platform.driveFolderExists(existing)) return existing;
       throw appError_(
@@ -33,10 +33,15 @@ export function ensureDriveFolder_(): string {
         `Folder Drive ${existing} tidak dapat diakses (dihapus, ada di tempat sampah, atau akun pemilik script belum punya akses Editor).`,
       );
     }
-    const id = platform.driveCreateFolder(DRIVE_FOLDER_NAME);
-    platform.setProperty(DRIVE_FOLDER_PROPERTY, id);
+    const id = platform.driveCreateFolder(name);
+    platform.setProperty(property, id);
     return id;
   });
+}
+
+/** Folder gambar item; perilaku FS13 (tidak menimpa properti terisi) ada di `ensureNamedFolder_`. */
+export function ensureDriveFolder_(): string {
+  return ensureNamedFolder_(DRIVE_FOLDER_PROPERTY, DRIVE_FOLDER_NAME);
 }
 
 function toFileDto_(file: NewFileRecord): FileDto {
@@ -85,9 +90,19 @@ export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto
 }
 
 /** Hanya berkas yang tercatat di sheet `files` yang dapat dibaca; Drive id tidak pernah datang dari klien. */
-export function readFile_(input: GetFileInput): FileContentDto {
+/**
+ * Membaca berkas. `onlyLogosFor` (email pemanggil) dipakai untuk pengguna yang TIDAK punya izin `item` (mis. hanya
+ * `qrcode`): mereka hanya boleh membaca logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang
+ * (pratinjau logo sebelum disimpan), bukan foto item.
+ */
+export function readFile_(input: GetFileInput, onlyLogosFor?: string): FileContentDto {
   const record = listFiles_().find((file) => file.id === input.id);
   if (!record) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
+  if (onlyLogosFor !== undefined) {
+    const isLogo = record.ownerType === 'qrlogo';
+    const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
+    if (!isLogo && !isOwnPending) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   // Hanya berkas di dalam folder aplikasi yang boleh dibaca (pertahanan berlapis bila sheet files diedit manual).
   const folderId = platform_().getProperty(DRIVE_FOLDER_PROPERTY)?.trim() ?? '';
   const content = folderId ? platform_().driveReadFile(record.driveId, folderId) : null;

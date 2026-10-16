@@ -15,6 +15,7 @@ function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
     <ItemForm
+      title="Form item"
       defaultValues={toItemFormDefaults()}
       onSubmit={onSubmit}
       onCancel={() => undefined}
@@ -130,6 +131,7 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
   ];
   render(
     <ItemForm
+      title="Form item"
       brands={brands}
       defaultValues={toItemFormDefaults()}
       onSubmit={vi.fn()}
@@ -164,6 +166,7 @@ test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menye
   ];
   render(
     <ItemForm
+      title="Form item"
       brands={brands}
       defaultValues={{ ...toItemFormDefaults(), brand: 'Lama', model: 'X' }}
       onSubmit={vi.fn()}

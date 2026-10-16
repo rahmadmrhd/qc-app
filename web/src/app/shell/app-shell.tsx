@@ -14,7 +14,7 @@ export function AppShell() {
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
-            <header className="flex h-14 items-center gap-2 border-b px-4">
+            <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
               <SidebarTrigger />
               <div className="ml-auto flex items-center gap-1">
                 <LocationPicker />

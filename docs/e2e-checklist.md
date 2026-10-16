@@ -75,3 +75,28 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
 | 70 | Selesai per task pada task dengan dua baris belum penuh; buka Log Audit | Satu baris `handover.progress` per baris yang diisi, lalu satu `handover.complete` | FAU1 |
 | 71 | QC isi qty selesai di atas target (mis. 9 dari 5) | Peringatan "Melebihi target 5" muncul saat mengetik; nilai tersimpan; task Selesai; "Selesai" per tipe/task tidak menurunkannya | FQ1 |
+| 72 | Pengaturan Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
+| 73 | Jalankan `setup` setelah deploy | Laporan memuat folder "QC App QR" dan "QC App QR Dokumen" siap; sheet `qr_designs` dan `qr_documents` ada | FS13 serupa |
+| 74 | Buat konfigurasi: title, subtitle, link, footer, ukuran diubah | Pratinjau 3 × 3 berubah seketika; overflow memunculkan peringatan merah | FQR2, FQR3 |
+| 75 | Tekan "Pratinjau lembar" | Dialog menampilkan lembar 10 × 14 dengan garis potong; menutupnya tanpa efek | FQR4 |
+| 76 | Pakai logo (unggah), lalu buat konfigurasi lain dan pilih "Pakai logo dari konfigurasi lain" | Logo muncul di QR tanpa unggah ulang; QR tetap terbaca saat dipindai dari layar | FQR5, NFR3 |
+| 77 | Duplikat konfigurasi | Form buat terisi penuh, judul "(salinan)"; logo ikut tanpa unggah | FQR6 |
+| 78 | Ekspor (dialog konfirmasi → Simpan ke Drive) | Folder "QC App QR" berisi PDF dan PNG; status Sudah diekspor dengan pelaku dan waktu | FQR10 |
+| 79 | Buka PDF hasil: ukuran halaman | 300 × 420 mm, 1 halaman, 140 label, garis potong tipis; cetak 100% dan ukur label = 30 mm | NFR4 |
+| 80 | Ubah judul lalu lihat daftar; Ekspor ulang | Status "Berubah sejak ekspor"; dialog memperingatkan penimpaan; berkas lama masuk sampah Drive | FQR9, FQR11 |
+| 81 | Dua tab: ubah konfigurasi di tab 1, ekspor di tab 2 dengan halaman lama | Tab 2 ditolak (CONFLICT) tanpa menulis berkas | FQR12 |
+| 82 | Unduh PDF/PNG sebagai user level Lihat | Berkas terunduh lewat aplikasi; user tanpa akses folder Drive tetap bisa | FQR13 |
+| 83 | Sumber link "PDF di Drive": unggah PDF | Dialog menyebut berbagi publik; setelah konfirmasi URL berbagi tampil dan dapat dibuka di jendela penyamaran | FQR15, FQR16 |
+| 84 | Ganti PDF pada konfigurasi yang memakainya | URL tetap sama (Drive API v3 lewat UrlFetch bekerja); dokumen baru terbuka di URL lama | FQR17 |
+| 85 | Hapus konfigurasi | Berkas ekspor ke sampah; PDF sumber dan logo tetap ada | FQR7, FQR18 |
+| 86 | Link 300 karakter dengan QR 12 mm | Peringatan "QR terlalu padat"; ekspor tetap boleh | R4 |
+| 87 | Title berisi huruf Mandarin atau emoji | Ditolak dengan pesan karakter tidak didukung | R5 |
+| 88 | Ukuran ponsel (375 × 812) pada daftar dan form | Tidak ada gulir horizontal halaman | NFR5 |
+| 89 | Aktifkan miring, garis bawah, coret, dan huruf kapital pada title/subtitle/footer | Pratinjau, PNG, dan PDF hasil ekspor menampilkan gaya yang sama (garis bawah/coret sepanjang teks) | FQR19 |
+| 90 | Pilih bingkai "Siku di sudut" lalu "Kotak penuh"; ubah tebal, jarak, lengkung, panjang siku | Bingkai tampil di pratinjau/PNG/PDF; bila isi jadi tidak muat muncul banner galat dan ekspor ditolak | FQR20 |
+| 91 | Unggah logo lebar (mis. 3:1) dan logo tinggi | Logo tidak terdistorsi dan tidak dipaksa persegi; QR tetap terbaca | FQR21 |
+| 92 | Klik pratinjau 3 × 3; buka pratinjau lembar lalu zoom (tombol dan Ctrl + roda) | Tampilan diperbesar terbuka; lembar bisa di-zoom 50–400% dan digulir | FQR22 |
+| 93 | Isi form lalu tekan "Simpan dan ekspor" | Tersimpan, dialog konfirmasi ekspor terbuka otomatis di daftar; setelah konfirmasi status "Sudah diekspor" | FQR24 |
+| 94 | Simpan konfigurasi yang isinya tidak muat | Daftar menampilkan lencana "Tidak muat" dan tombol Ekspor nonaktif; "Simpan dan ekspor" nonaktif di form | FQR25 |
+| 95 | Hapus konfigurasi bersumber PDF yang terakhir; buka link PDF di jendela penyamaran | Link tidak lagi dapat dibuka publik; pakai PDF itu lagi di konfigurasi baru → dapat dibuka lagi | FQR26 |
+| 96 | Tekan "Lihat PDF" pada form dan pada daftar | PDF terbuka di Drive pada tab baru | FQR27 |

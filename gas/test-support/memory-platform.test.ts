@@ -62,3 +62,27 @@ test('withLock bersarang melempar galat (LockService asli tidak reentrant) dan k
   ).toThrow('gagal');
   expect(platform.withLock(() => 'lagi')).toBe('lagi');
 });
+
+test('Drive palsu: bagikan berkas dan ganti isi dengan id yang sama', () => {
+  const platform = createMemoryPlatform();
+  const folder = platform.driveCreateFolder('QR');
+  const id = platform.driveCreateFile(folder, 'a.pdf', 'application/pdf', 'QUJD');
+  expect(platform.sharedFiles.has(id)).toBe(false);
+  platform.driveShareAnyoneWithLink(id);
+  expect(platform.sharedFiles.has(id)).toBe(true);
+  platform.driveReplaceFileContent(id, 'application/pdf', 'REVG');
+  expect(platform.driveReadFile(id, folder)).toEqual({ mime: 'application/pdf', base64: 'REVG' });
+  expect(() => platform.driveReplaceFileContent('tidak-ada', 'application/pdf', 'REVG')).toThrow();
+  expect(() => platform.driveShareAnyoneWithLink('tidak-ada')).toThrow();
+});
+
+test('Drive palsu: cabut berbagi menghapus status dibagikan; aman bila berkas tidak ada', () => {
+  const platform = createMemoryPlatform();
+  const folder = platform.driveCreateFolder('QR');
+  const id = platform.driveCreateFile(folder, 'a.pdf', 'application/pdf', 'QUJD');
+  platform.driveShareAnyoneWithLink(id);
+  expect(platform.sharedFiles.has(id)).toBe(true);
+  platform.driveRevokeSharing(id);
+  expect(platform.sharedFiles.has(id)).toBe(false);
+  expect(() => platform.driveRevokeSharing('tidak-ada')).not.toThrow();
+});

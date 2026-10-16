@@ -62,7 +62,6 @@ function EditHandoverPage() {
     canAt(me, 'handover', 'edit', task.locationId);
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-semibold">Ubah task {task?.number ?? ''}</h1>
       {detail.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : !task ? (
@@ -84,6 +83,7 @@ function EditHandoverPage() {
       ) : (
         <HandoverForm
           key={task.updatedAt}
+          title={`Ubah task ${task.number}`}
           mode="edit"
           locationName={me.locations.find((location) => location.id === task.locationId)?.name}
           defaultValues={toHandoverFormDefaults(task)}

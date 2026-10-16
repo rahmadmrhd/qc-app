@@ -40,8 +40,8 @@ function NewItemPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-semibold">Tambah item</h1>
       <ItemForm
+        title="Tambah item"
         brands={brands}
         defaultValues={toItemFormDefaults()}
         submitError={submitError}
