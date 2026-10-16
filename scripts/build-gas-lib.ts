@@ -1,3 +1,6 @@
+import { parse } from '@babel/parser';
+import traverse from '@babel/traverse';
+
 export const PUBLIC_GAS_FUNCTIONS: ReadonlySet<string> = new Set([
   'doGet',
   'doPost',
@@ -63,6 +66,112 @@ function assertSupportedSyntax(js: string, file: string): void {
   }
 }
 
+/**
+ * API global yang TIDAK ada di runtime V8 Apps Script (server) beserta pengganti yang disarankan. Tes dan
+ * peramban (Bun/Node/DOM) menyediakannya, sehingga kesalahan baru ketahuan di produksi (mis. `new URL` melempar
+ * ReferenceError yang tertelan); karena itu build menolaknya lebih dulu. Pemeriksaan memakai parser dan analisis
+ * scope: hanya REFERENSI ke global yang tidak terikat deklarasi lokal yang ditolak (parameter, variabel lokal,
+ * kunci objek, nama method, dan properti `obj.fetch` aman).
+ */
+const UNAVAILABLE_GLOBALS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    URL: 'pecah link secara manual (lihat splitDriveLink di shared/qrcode.ts)',
+    URLSearchParams: 'urai/susun query string secara manual (lihat toQueryString_)',
+    fetch: 'UrlFetchApp.fetch lewat platform_()',
+    Headers: 'UrlFetchApp.fetch lewat platform_()',
+    Request: 'UrlFetchApp.fetch lewat platform_()',
+    Response: 'UrlFetchApp.fetch lewat platform_()',
+    setTimeout: 'Utilities.sleep lewat platform_(), atau trigger berbasis waktu',
+    setInterval: 'trigger berbasis waktu Apps Script',
+    clearTimeout: 'trigger berbasis waktu Apps Script',
+    clearInterval: 'trigger berbasis waktu Apps Script',
+    atob: 'Utilities.base64Decode',
+    btoa: 'Utilities.base64Encode',
+    structuredClone: 'salin manual atau JSON.parse(JSON.stringify(x))',
+    TextEncoder: 'Utilities.newBlob(teks).getBytes()',
+    TextDecoder: 'Utilities.newBlob(bytes).getDataAsString()',
+    crypto: 'Utilities.computeDigest / computeHmacSignature',
+    SubtleCrypto: 'Utilities.computeDigest / computeHmacSignature',
+    AbortController: 'tidak ada padanan di GAS',
+    DOMException: 'lempar Error biasa',
+    Blob: 'Utilities.newBlob',
+    File: 'DriveApp / Utilities.newBlob',
+    FormData: 'payload objek pada UrlFetchApp.fetch',
+    FileReader: 'DriveApp / Utilities',
+    ReadableStream: 'tidak ada padanan di GAS',
+    WritableStream: 'tidak ada padanan di GAS',
+    TransformStream: 'tidak ada padanan di GAS',
+    XMLHttpRequest: 'UrlFetchApp.fetch lewat platform_()',
+    WebSocket: 'tidak ada di GAS',
+    window: 'API peramban tidak ada di server GAS',
+    document: 'API peramban tidak ada di server GAS',
+    navigator: 'API peramban tidak ada di server GAS',
+    localStorage: 'PropertiesService / CacheService lewat platform_()',
+    sessionStorage: 'CacheService lewat platform_()',
+    performance: 'Date.now()',
+    Buffer: 'API Node tidak ada di GAS (Utilities.newBlob)',
+    process: 'API Node tidak ada di GAS',
+    require: 'API Node tidak ada di GAS (semua file berbagi satu global scope)',
+    module: 'API Node tidak ada di GAS',
+    __dirname: 'API Node tidak ada di GAS',
+  }),
+);
+
+/** Anggota yang belum tentu didukung V8 Apps Script (lihat CLAUDE.md), ditulis "Objek.anggota". */
+const UNAVAILABLE_MEMBERS: ReadonlyMap<string, string> = new Map([
+  ['Object.hasOwn', 'Object.prototype.hasOwnProperty.call(obj, key)'],
+]);
+
+/** Objek global: `globalThis.fetch(...)` sama saja dengan memanggil `fetch`. */
+const GLOBAL_OBJECTS: ReadonlySet<string> = new Set(['globalThis', 'self', 'global']);
+
+function failUnavailable(file: string, name: string, hint: string, uncertain = false): never {
+  const status = uncertain ? 'belum tentu didukung' : 'tidak tersedia di';
+  throw new GasBuildError(
+    file,
+    `API "${name}" ${status} runtime Apps Script (V8); gunakan ${hint}`,
+  );
+}
+
+/**
+ * Menolak referensi ke API yang tidak ada di runtime GAS. Berbasis AST dan scope (bukan pencocokan teks):
+ * literal regex, string, komentar, kunci objek, nama method, properti, dan nama yang terikat deklarasi lokal
+ * tidak ditandai, sedangkan pemakaian nyata (termasuk di ekspresi kondisional dan lewat `globalThis`) ditolak.
+ */
+function assertNoUnavailableApis(js: string, file: string): void {
+  let ast: ReturnType<typeof parse>;
+  try {
+    ast = parse(js, { sourceType: 'module' });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new GasBuildError(file, `kode tidak dapat diurai untuk pemeriksaan API: ${reason}`);
+  }
+  traverse(ast, {
+    Identifier(path) {
+      const hint = UNAVAILABLE_GLOBALS.get(path.node.name);
+      if (hint === undefined || !path.isReferencedIdentifier()) return;
+      if (path.scope.hasBinding(path.node.name, true)) return;
+      failUnavailable(file, path.node.name, hint);
+    },
+    MemberExpression(path) {
+      const { object, property, computed } = path.node;
+      if (object.type !== 'Identifier' || path.scope.hasBinding(object.name, true)) return;
+      const key =
+        !computed && property.type === 'Identifier'
+          ? property.name
+          : computed && property.type === 'StringLiteral'
+            ? property.value
+            : null;
+      if (key === null) return;
+      const globalHint = GLOBAL_OBJECTS.has(object.name) ? UNAVAILABLE_GLOBALS.get(key) : undefined;
+      if (globalHint !== undefined) failUnavailable(file, key, globalHint);
+      const memberName = `${object.name}.${key}`;
+      const memberHint = UNAVAILABLE_MEMBERS.get(memberName);
+      if (memberHint !== undefined) failUnavailable(file, memberName, memberHint, true);
+    },
+  });
+}
+
 export function transformForGas(
   source: string,
   file: string,
@@ -70,6 +179,7 @@ export function transformForGas(
 ): TransformResult {
   const js = transpiler.transformSync(source);
   assertSupportedSyntax(js, file);
+  assertNoUnavailableApis(js, file);
 
   const code = `${js
     .replace(IMPORT_STATEMENT, '')
