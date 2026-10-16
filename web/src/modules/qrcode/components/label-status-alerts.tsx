@@ -48,8 +48,8 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
           <TriangleAlert />
           <AlertTitle>Bingkai terlalu dekat dengan QR</AlertTitle>
           <AlertDescription>
-            Beri jarak minimal sekitar 2 modul QR agar tepi putih (quiet zone) tidak hilang dan QR
-            tetap terbaca. Ekspor tetap diizinkan.
+            Beri jarak minimal 0,5 mm antara bingkai dan QR agar QR tetap terbaca. Ekspor tetap
+            diizinkan.
           </AlertDescription>
         </Alert>
       ) : null}

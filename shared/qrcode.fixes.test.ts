@@ -82,9 +82,11 @@ test('bingkai hasil pembatasan: titik terdekat goresan ke sudut QR tidak lebih d
   if (r > 1e-9) expect(distance).toBeLessThanOrEqual(r - frame.thicknessMm / 2 + 1e-9);
 });
 
-test('frameTight: bingkai lebih dekat dari ~2 modul ke QR (quiet zone hilang) ditandai; jarak cukup tidak', () => {
-  const tight = layoutLabel({ ...base, style: framed({ gap: 0.2 }) }, measure);
+test('frameTight: jarak bingkai ke QR di bawah 0,5 mm ditandai; 0,5 mm ke atas tidak', () => {
+  const tight = layoutLabel({ ...base, style: framed({ gap: 0.49 }) }, measure);
   expect(tight.frameTight).toBe(true);
+  const edge = layoutLabel({ ...base, style: framed({ gap: 0.5 }) }, measure);
+  expect(edge.frameTight).toBe(false);
   const roomy = layoutLabel({ ...base, style: framed({ gap: 2 }) }, measure);
   expect(roomy.frameTight).toBe(false);
   expect(layoutLabel({ ...base }, measure).frameTight).toBe(false);

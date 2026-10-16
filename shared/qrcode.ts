@@ -15,6 +15,8 @@ export const SHEET = { widthMm: 300, heightMm: 420, columns: 10, rows: 14 } as c
 export const PT_PER_MM = 72 / 25.4;
 /** Modul QR lebih kecil dari ini sulit dicetak dan dipindai. */
 export const MIN_MODULE_MM = 0.3;
+/** Jarak bingkai ke QR minimal (mm); di bawahnya muncul peringatan "bingkai terlalu dekat". */
+export const QR_FRAME_MIN_GAP_MM = 0.5;
 const QR_LINE_HEIGHT = 1.25;
 
 export type QrLinkSource = 'url' | 'pdf';
@@ -355,7 +357,7 @@ export interface LabelLayout {
   moduleMm: number;
   /** Modul < `MIN_MODULE_MM`: peringatan saja. */
   tooDense: boolean;
-  /** Bingkai lebih dekat dari ~2 modul ke QR: quiet zone hilang, sulit dipindai. Peringatan saja. */
+  /** Jarak bingkai ke QR < QR_FRAME_MIN_GAP_MM (0,5 mm): bingkai mepet QR. Peringatan saja. */
   frameTight: boolean;
 }
 
@@ -526,7 +528,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     blockSize > innerW + 1e-9 ||
     available < blockSize - 1e-9;
   const moduleMm = qrSize / Math.max(1, input.qrModules);
-  const frameTight = framed && frame.gap < 2 * moduleMm;
+  const frameTight = framed && frame.gap < QR_FRAME_MIN_GAP_MM;
   return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM, frameTight };
 }
 
