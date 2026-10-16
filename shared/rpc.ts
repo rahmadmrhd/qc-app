@@ -1,6 +1,7 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
+import type { QrExportStatus, QrLayout, QrLinkSource } from './qrcode';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -356,6 +357,71 @@ export interface SetProgressInput extends HandoverRefInput {
 
 export interface CompleteLineInput extends HandoverRefInput {
   lineId: string;
+}
+
+// --- QR Code Label ---
+export interface QrDesignDto {
+  id: string;
+  title: string;
+  linkSource: QrLinkSource;
+  /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber. */
+  link: string;
+  documentId: string;
+  documentName: string;
+  documentUses: number;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  exportStatus: QrExportStatus;
+  exportedAt: string;
+  exportedBy: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface SaveQrDesignInput {
+  id?: string;
+  expectedUpdatedAt?: string;
+  title: string;
+  linkSource: QrLinkSource;
+  link: string;
+  documentId: string;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+}
+export interface QrDesignRefInput {
+  id: string;
+}
+export interface QrDocumentDto {
+  id: string;
+  name: string;
+  link: string;
+  uses: number;
+}
+export interface UploadQrPdfInput {
+  name: string;
+  base64: string;
+  replaceDocumentId?: string;
+}
+export interface ExportQrDesignInput {
+  id: string;
+  expectedUpdatedAt: string;
+  pdfBase64: string;
+  pngBase64: string;
+}
+export type QrFileKind = 'pdf' | 'png';
+export interface QrFileInput {
+  id: string;
+  kind: QrFileKind;
+}
+export interface QrFileDto {
+  filename: string;
+  mime: string;
+  base64: string;
 }
 
 export interface RpcContract {
