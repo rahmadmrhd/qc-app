@@ -1,5 +1,6 @@
 import { parse } from '@babel/parser';
 import traverse from '@babel/traverse';
+import type { Node } from '@babel/types';
 
 export const PUBLIC_GAS_FUNCTIONS: ReadonlySet<string> = new Set([
   'doGet',
@@ -153,23 +154,44 @@ function assertNoUnavailableApis(js: string, file: string): void {
       if (path.scope.hasBinding(path.node.name, true)) return;
       failUnavailable(file, path.node.name, hint);
     },
-    MemberExpression(path) {
-      const { object, property, computed } = path.node;
-      if (object.type !== 'Identifier' || path.scope.hasBinding(object.name, true)) return;
-      const key =
-        !computed && property.type === 'Identifier'
-          ? property.name
-          : computed && property.type === 'StringLiteral'
-            ? property.value
-            : null;
-      if (key === null) return;
-      const globalHint = GLOBAL_OBJECTS.has(object.name) ? UNAVAILABLE_GLOBALS.get(key) : undefined;
-      if (globalHint !== undefined) failUnavailable(file, key, globalHint);
-      const memberName = `${object.name}.${key}`;
-      const memberHint = UNAVAILABLE_MEMBERS.get(memberName);
-      if (memberHint !== undefined) failUnavailable(file, memberName, memberHint, true);
+    // Akses anggota biasa (a.b) dan opsional (a?.b) diperiksa sama; rantai bersarang dinormalkan.
+    'MemberExpression|OptionalMemberExpression'(path) {
+      const chain = staticMemberChain(path.node);
+      if (chain === null) return;
+      const [root] = chain;
+      if (root === undefined || path.scope.hasBinding(root, true)) return;
+      // Buang awalan objek global: globalThis.globalThis.Object.hasOwn === Object.hasOwn.
+      let start = 0;
+      while (start < chain.length - 1 && GLOBAL_OBJECTS.has(chain[start] as string)) start += 1;
+      const rest = chain.slice(start);
+      const [first, second] = rest;
+      if (first === undefined) return;
+      if (start > 0 && rest.length === 1) {
+        const globalHint = UNAVAILABLE_GLOBALS.get(first);
+        if (globalHint !== undefined) failUnavailable(file, first, globalHint);
+      }
+      if (second !== undefined && rest.length === 2) {
+        const memberName = `${first}.${second}`;
+        const memberHint = UNAVAILABLE_MEMBERS.get(memberName);
+        if (memberHint !== undefined) failUnavailable(file, memberName, memberHint, true);
+      }
     },
   });
+}
+
+/**
+ * Nama-nama pada rantai anggota statis (\`a.b['c']?.d\`) dari akar Identifier, atau null bila rantai mengandung
+ * bagian dinamis (pemanggilan, kunci komputasi non-literal, dsb.).
+ */
+function staticMemberChain(node: Node): string[] | null {
+  if (node.type === 'Identifier') return [node.name];
+  if (node.type !== 'MemberExpression' && node.type !== 'OptionalMemberExpression') return null;
+  const parent = staticMemberChain(node.object);
+  if (parent === null) return null;
+  const { property, computed } = node;
+  if (!computed && property.type === 'Identifier') return [...parent, property.name];
+  if (computed && property.type === 'StringLiteral') return [...parent, property.value];
+  return null;
 }
 
 export function transformForGas(

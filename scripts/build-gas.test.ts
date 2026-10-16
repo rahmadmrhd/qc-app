@@ -196,3 +196,31 @@ describe('pemeriksaan API berbasis AST dan scope (tindak lanjut review)', () => 
     expect(() => build('return module.exports;')).toThrow(/"module"/);
   });
 });
+
+describe('rantai anggota opsional dan bersarang', () => {
+  const build = (body: string) =>
+    transformForGas(`export function f_(a: any): unknown {\n${body}\n}`, 'gas/src/x.ts', GAS);
+
+  test('menolak akses opsional dan bersarang ke API yang tidak tersedia', () => {
+    expect(() => build("return globalThis?.fetch('x');")).toThrow(/"fetch"/);
+    expect(() => build("return Object?.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+    expect(() => build("return globalThis.Object.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+    expect(() => build("return globalThis.globalThis.fetch('x');")).toThrow(/"fetch"/);
+    expect(() => build("return globalThis['Object']?.['hasOwn']({}, 'a');")).toThrow(
+      /Object\.hasOwn/,
+    );
+    expect(() => build('return self?.URL;')).toThrow(/"URL"/);
+  });
+
+  test('tidak menandai akses opsional/bersarang biasa atau global yang terikat lokal', () => {
+    expect(() => build('return a?.fetch?.() ?? a?.b?.hasOwn;')).not.toThrow();
+    expect(() => build('return a.Object.hasOwn(a, "x");')).not.toThrow();
+    expect(() =>
+      transformForGas(
+        'export function g_(globalThis: any): unknown {\n  return globalThis?.fetch(1);\n}',
+        'gas/src/x.ts',
+        GAS,
+      ),
+    ).not.toThrow();
+  });
+});
