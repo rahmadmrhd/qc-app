@@ -115,6 +115,16 @@ function createGasPlatform_(): Platform {
         // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
       }
     },
+    driveExternalFileInfo: (fileId) => {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        return { name: file.getName(), mime: file.getMimeType(), size: file.getSize() };
+      } catch {
+        return null;
+      }
+    },
+    driveCopyFile: (fileId, folderId, name) =>
+      DriveApp.getFileById(fileId).makeCopy(name, DriveApp.getFolderById(folderId)).getId(),
     driveRenameFile: (fileId, name) => {
       DriveApp.getFileById(fileId).setName(name);
     },

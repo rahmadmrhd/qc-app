@@ -1,6 +1,7 @@
 import type { RouteTable } from '@gas/core/router';
 import { expectNull_ } from '@gas/core/validate';
 import {
+  cloneQrPdfFromDrive_,
   exportQrDesign_,
   getQrDesignDto_,
   listQrDesignDtos_,
@@ -10,6 +11,7 @@ import {
   uploadQrPdf_,
 } from './service';
 import {
+  validateCloneQrPdf_,
   validateExportQrDesign_,
   validateQrDesignRef_,
   validateQrFile_,
@@ -23,6 +25,7 @@ type QrMethod =
   | 'qrcodes.save'
   | 'qrcodes.delete'
   | 'qrcodes.uploadPdf'
+  | 'qrcodes.cloneFromDrive'
   | 'qrcodes.export'
   | 'qrcodes.file';
 
@@ -47,6 +50,11 @@ export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'edit' },
       validate: validateUploadQrPdf_,
       handler: (input, ctx) => uploadQrPdf_(input, ctx.user),
+    },
+    'qrcodes.cloneFromDrive': {
+      permission: { module: 'qrcode', level: 'edit' },
+      validate: validateCloneQrPdf_,
+      handler: (input, ctx) => cloneQrPdfFromDrive_(input, ctx.user),
     },
     'qrcodes.export': {
       permission: { module: 'qrcode', level: 'manage' },

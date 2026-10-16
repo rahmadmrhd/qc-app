@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
 import { fileToBase64 } from '../lib/file-to-base64';
-import { useUploadQrPdf } from '../queries';
+import { useCloneQrPdf, useUploadQrPdf } from '../queries';
 import type { QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import { frameRangeMessage, layoutRangeMessage, qrDesignFormSchema } from '../schemas';
 import { LabelPreview } from './label-preview';
@@ -75,6 +75,7 @@ export function QrDesignForm({
   canExport = false,
 }: QrDesignFormProps) {
   const uploadPdf = useUploadQrPdf();
+  const cloneQrPdf = useCloneQrPdf();
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -215,72 +216,42 @@ export function QrDesignForm({
         </Section>
 
         <Section title="Sumber link">
-          <form.Field name="linkSource">
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) =>
+              values.linkSource === 'url' ? (
+                <p className="text-sm text-muted-foreground">
+                  Link saat ini (bukan dari Drive): <span className="break-all">{values.link}</span>
+                  . Salin PDF dari Drive atau unggah PDF untuk menggantinya; link baru harus berasal
+                  dari Drive.
+                </p>
+              ) : null
+            }
+          </form.Subscribe>
+          <form.Field name="documentId">
             {(field) => (
-              <div role="radiogroup" aria-label="Sumber link" className="flex flex-wrap gap-4">
-                {(
-                  [
-                    ['url', 'Link manual'],
-                    ['pdf', 'PDF di Drive'],
-                  ] as const
-                ).map(([value, label]) => (
-                  <label key={value} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="qr-link-source"
-                      checked={field.state.value === value}
-                      onChange={() => field.handleChange(value)}
-                    />
-                    {label}
-                  </label>
-                ))}
+              <div className="space-y-1.5">
+                <PdfSourceField
+                  document={document}
+                  replaceOnly={exported}
+                  onDocument={(next) => {
+                    setDocument(next);
+                    form.setFieldValue('linkSource', 'pdf');
+                    field.handleChange(next.id);
+                  }}
+                  onUpload={async (file, replaceId) =>
+                    uploadPdf.mutateAsync({
+                      name: limitDocumentName(file.name),
+                      base64: await fileToBase64(file),
+                      ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                    })
+                  }
+                  onClone={(source) => cloneQrPdf.mutateAsync({ source })}
+                />
+                <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
+                <FieldError errors={[fieldErrors?.link]} />
               </div>
             )}
           </form.Field>
-          <form.Subscribe selector={(state) => state.values.linkSource}>
-            {(source) =>
-              source === 'url' ? (
-                <form.Field name="link">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="qr-link">Link</Label>
-                      <Input
-                        id="qr-link"
-                        inputMode="url"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.link]} />
-                    </div>
-                  )}
-                </form.Field>
-              ) : (
-                <form.Field name="documentId">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <PdfSourceField
-                        document={document}
-                        replaceOnly={exported}
-                        onDocument={(next) => {
-                          setDocument(next);
-                          field.handleChange(next.id);
-                        }}
-                        onUpload={async (file, replaceId) =>
-                          uploadPdf.mutateAsync({
-                            name: limitDocumentName(file.name),
-                            base64: await fileToBase64(file),
-                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                          })
-                        }
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
-                    </div>
-                  )}
-                </form.Field>
-              )
-            }
-          </form.Subscribe>
         </Section>
 
         <Section title="Logo di tengah QR">

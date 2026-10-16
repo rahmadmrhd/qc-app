@@ -1,4 +1,5 @@
 import type {
+  CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignRefInput,
   SaveQrDesignInput,
@@ -39,6 +40,8 @@ export const useSaveQrDesign = () =>
   useQrMutation((input: SaveQrDesignInput) => rpc('qrcodes.save', input));
 export const useDeleteQrDesign = () =>
   useQrMutation((input: QrDesignRefInput) => rpc('qrcodes.delete', input));
+export const useCloneQrPdf = () =>
+  useQrMutation((input: CloneQrPdfInput) => rpc('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
   useQrMutation((input: UploadQrPdfInput) => rpc('qrcodes.uploadPdf', input));
 export const useExportQrDesign = () =>

@@ -10,11 +10,14 @@ import {
   DEFAULT_QR_STYLE,
   driveShareUrl,
   labelFileName,
+  parseDriveFileId,
+  QR_LIMITS,
   qrContentHash,
   qrExportStatus,
   qrPdfFileName,
 } from '@shared/qrcode';
 import type {
+  CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignDto,
   QrDesignRefInput,
@@ -394,6 +397,67 @@ export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocume
   // Pembersihan oportunistik: unggahan yatim yang sudah melewati masa tenggang dicabut berbaginya.
   revokeUnusedQrDocuments_([]);
   return out;
+}
+
+/**
+ * Menyalin berkas PDF Drive (link atau fileId) ke folder dokumen aplikasi dan membagikannya: salinan menjadi PDF
+ * sumber dengan URL tetap yang isinya dapat diganti kemudian. Berkas asli tidak diubah (tidak dibagikan, tidak ditimpa).
+ * I/O Drive di luar lock; catatan sheet di dalam lock.
+ */
+export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): QrDocumentDto {
+  const platform = platform_();
+  const sourceId = parseDriveFileId(input.source);
+  if (sourceId === null) {
+    const message = 'Isi dengan link atau ID berkas Google Drive';
+    throw appError_('VALIDATION', message, { source: message });
+  }
+  const info = platform.driveExternalFileInfo(sourceId);
+  if (!info) {
+    throw appError_(
+      'NOT_FOUND',
+      'Berkas Drive tidak ditemukan atau tidak dapat diakses akun pemilik aplikasi',
+    );
+  }
+  if (info.mime !== 'application/pdf') throw appError_('VALIDATION', 'Berkas Drive bukan PDF');
+  if (info.size > QR_LIMITS.documentMaxBytes) {
+    throw appError_('VALIDATION', 'Ukuran PDF maksimal 10 MB');
+  }
+  const name = limitQrDocumentName_(info.name);
+  const driveId = platform.driveCopyFile(sourceId, ensureQrDocFolder_(), name);
+  try {
+    platform.driveShareAnyoneWithLink(driveId);
+    return platform.withLock(() => {
+      const now = nowIso_();
+      const record = {
+        id: platform_().uuid(),
+        driveId,
+        name,
+        size: info.size,
+        shared: true,
+        createdAt: now,
+        createdBy: actor.email,
+        updatedAt: now,
+        updatedBy: actor.email,
+      };
+      insertQrDocument_(record);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.pdf_clone',
+        target: name,
+        before: null,
+        after: { name, size: info.size, sourceFileId: sourceId },
+      });
+      return toQrDocumentDto_({ ...record, rowNumber: 0 }, 0);
+    });
+  } catch (error) {
+    platform.driveTrashFile(driveId);
+    throw error;
+  }
+}
+
+function limitQrDocumentName_(name: string): string {
+  return name.length <= QR_LIMITS.documentName ? name : name.slice(0, QR_LIMITS.documentName);
 }
 
 function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {

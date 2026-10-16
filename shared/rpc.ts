@@ -415,6 +415,10 @@ export interface UploadQrPdfInput {
   base64: string;
   replaceDocumentId?: string;
 }
+/** Salin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber. */
+export interface CloneQrPdfInput {
+  source: string;
+}
 export interface ExportQrDesignInput {
   id: string;
   expectedUpdatedAt: string;
@@ -469,6 +473,7 @@ export interface RpcContract {
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
 }

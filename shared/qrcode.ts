@@ -670,3 +670,38 @@ export function qrExportStatus(exportedHash: string, content: QrContent): QrExpo
   if (exportedHash === '') return 'none';
   return exportedHash === qrContentHash(content) ? 'current' : 'stale';
 }
+
+/**
+ * Mengambil fileId Google Drive dari link Drive/Docs (file/d/ID, open?id=ID, uc?id=ID) atau fileId polos.
+ * Link ke host lain, folder, atau teks yang bukan id dikembalikan null.
+ */
+export function parseDriveFileId(input: string): string | null {
+  const text = input.trim();
+  const idChars = (value: string) =>
+    value.length >= 20 && value.length <= 120 && isDriveIdText(value);
+  if (idChars(text)) return text;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    !['drive.google.com', 'docs.google.com'].includes(url.hostname)
+  ) {
+    return null;
+  }
+  const queryId = url.searchParams.get('id');
+  if (queryId !== null && idChars(queryId) && url.pathname.split('/').includes('open'))
+    return queryId;
+  if (queryId !== null && idChars(queryId) && url.pathname.endsWith('/uc')) return queryId;
+  const parts = url.pathname.split('/');
+  const at = parts.indexOf('d');
+  const fromPath = at >= 0 ? parts[at + 1] : undefined;
+  return fromPath !== undefined && idChars(fromPath) ? fromPath : null;
+}
+
+function isDriveIdText(value: string): boolean {
+  return value.split('').every((char) => /[A-Za-z0-9_-]/.test(char));
+}

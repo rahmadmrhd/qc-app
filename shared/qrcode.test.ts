@@ -13,6 +13,7 @@ import {
   LABEL_MM,
   labelFileSlug,
   layoutLabel,
+  parseDriveFileId,
   qrContentHash,
   qrExportStatus,
   qrPdfFileName,
@@ -368,5 +369,27 @@ describe('qrPdfFileName', () => {
     expect(qrPdfFileName('A/B: "C"', '  ', at)).toBe('A B C-20261016-100405.pdf');
     expect(qrPdfFileName('x'.repeat(300), '', at).length).toBeLessThanOrEqual(120);
     expect(qrPdfFileName('x'.repeat(300), '', at).endsWith('-20261016-100405.pdf')).toBe(true);
+  });
+});
+
+describe('parseDriveFileId', () => {
+  const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+  test('mengenali fileId polos dan berbagai bentuk link Drive/Docs', () => {
+    expect(parseDriveFileId(id)).toBe(id);
+    expect(parseDriveFileId(`  ${id}  `)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/file/d/${id}/view?usp=sharing`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/file/d/${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/open?id=${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/uc?export=download&id=${id}`)).toBe(id);
+    expect(parseDriveFileId(`https://drive.google.com/u/1/file/d/${id}/view`)).toBe(id);
+    expect(parseDriveFileId(`https://docs.google.com/document/d/${id}/edit`)).toBe(id);
+  });
+  test('menolak link non-Drive, teks pendek, dan host tiruan', () => {
+    expect(parseDriveFileId('https://contoh.com/a')).toBeNull();
+    expect(parseDriveFileId(`https://contoh.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveFileId(`https://drive.google.com.evil.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveFileId('abc')).toBeNull();
+    expect(parseDriveFileId('')).toBeNull();
+    expect(parseDriveFileId('https://drive.google.com/drive/folders/' + id)).toBeNull();
   });
 });

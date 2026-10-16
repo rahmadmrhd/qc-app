@@ -13,7 +13,9 @@ const pdf = new File(['%PDF-1.4'], 'baru.pdf', { type: 'application/pdf' });
 
 test('unggah baru: dialog konfirmasi menyebut akses publik; batal tidak mengunggah', async () => {
   const onUpload = vi.fn().mockResolvedValue(doc);
-  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={onUpload} />);
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={onUpload} onClone={vi.fn()} />,
+  );
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/siapa saja yang punya link/i)).toBeInTheDocument();
@@ -24,7 +26,14 @@ test('unggah baru: dialog konfirmasi menyebut akses publik; batal tidak mengungg
 test('konfirmasi mengunggah; hasil diteruskan dan URL berbagi tampil hanya-baca', async () => {
   const onUpload = vi.fn().mockResolvedValue(doc);
   const onDocument = vi.fn();
-  render(<PdfSourceField document={null} onDocument={onDocument} onUpload={onUpload} />);
+  render(
+    <PdfSourceField
+      document={null}
+      onDocument={onDocument}
+      onUpload={onUpload}
+      onClone={vi.fn()}
+    />,
+  );
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
   await userEvent.click(
     within(await screen.findByRole('dialog')).getByRole('button', { name: 'Bagikan dan unggah' }),
@@ -35,7 +44,9 @@ test('konfirmasi mengunggah; hasil diteruskan dan URL berbagi tampil hanya-baca'
 
 test('ganti isi PDF (dipilih eksplisit): konfirmasi menyebut URL tetap dan jumlah konfigurasi pemakai', async () => {
   const onUpload = vi.fn().mockResolvedValue({ ...doc, name: 'baru.pdf' });
-  render(<PdfSourceField document={doc} onDocument={vi.fn()} onUpload={onUpload} />);
+  render(
+    <PdfSourceField document={doc} onDocument={vi.fn()} onUpload={onUpload} onClone={vi.fn()} />,
+  );
   expect(screen.getByDisplayValue(doc.link)).toHaveAttribute('readonly');
   await userEvent.click(screen.getByRole('radio', { name: /Ganti isi PDF ini/ }));
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
@@ -49,7 +60,9 @@ test('ganti isi PDF (dipilih eksplisit): konfirmasi menyebut URL tetap dan jumla
 test('PDF dipakai banyak konfigurasi: bawaan = PDF BARU (URL baru), isi PDF bersama tidak tertimpa', async () => {
   const onUpload = vi.fn().mockResolvedValue({ ...doc, id: 'd2', name: 'baru.pdf', uses: 0 });
   const onDocument = vi.fn();
-  render(<PdfSourceField document={doc} onDocument={onDocument} onUpload={onUpload} />);
+  render(
+    <PdfSourceField document={doc} onDocument={onDocument} onUpload={onUpload} onClone={vi.fn()} />,
+  );
   expect(screen.getByRole('radio', { name: /Pakai PDF baru/ })).toBeChecked();
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
   const dialog = await screen.findByRole('dialog');
@@ -62,7 +75,12 @@ test('PDF dipakai banyak konfigurasi: bawaan = PDF BARU (URL baru), isi PDF bers
 test('PDF hanya dipakai satu konfigurasi: bawaan = ganti isi (URL tetap); pilihan dapat dibalik', async () => {
   const onUpload = vi.fn().mockResolvedValue({ ...doc, uses: 1 });
   render(
-    <PdfSourceField document={{ ...doc, uses: 1 }} onDocument={vi.fn()} onUpload={onUpload} />,
+    <PdfSourceField
+      document={{ ...doc, uses: 1 }}
+      onDocument={vi.fn()}
+      onUpload={onUpload}
+      onClone={vi.fn()}
+    />,
   );
   expect(screen.getByRole('radio', { name: /Ganti isi PDF ini/ })).toBeChecked();
   await userEvent.click(screen.getByRole('radio', { name: /Pakai PDF baru/ }));
@@ -74,12 +92,16 @@ test('PDF hanya dipakai satu konfigurasi: bawaan = ganti isi (URL tetap); piliha
 });
 
 test('tanpa PDF terpasang tidak ada pilihan mode (hanya unggah)', () => {
-  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
   expect(screen.queryByRole('radio')).toBeNull();
 });
 
 test('PDF dengan tipe kosong (beberapa OS) diterima bila namanya berakhiran .pdf; nama bukan .pdf ditolak', async () => {
-  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
   await userEvent.upload(
     screen.getByLabelText('Pilih PDF'),
     new File(['%PDF-1.4'], 'manual.PDF', { type: '' }),
@@ -89,7 +111,9 @@ test('PDF dengan tipe kosong (beberapa OS) diterima bila namanya berakhiran .pdf
 });
 
 test('berkas bukan PDF atau > 10 MB ditolak di klien tanpa dialog', async () => {
-  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
   await userEvent.upload(
     screen.getByLabelText('Pilih PDF'),
     new File(['x'], 'a.txt', { type: 'text/plain' }),
@@ -101,10 +125,12 @@ test('berkas bukan PDF atau > 10 MB ditolak di klien tanpa dialog', async () => 
 
 test('"Lihat PDF" membuka berkas di Drive pada tab baru; tidak ada tombol itu sebelum ada PDF', () => {
   const { rerender } = render(
-    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />,
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
   );
   expect(screen.queryByRole('link', { name: 'Lihat PDF' })).toBeNull();
-  rerender(<PdfSourceField document={doc} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  rerender(
+    <PdfSourceField document={doc} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
   const link = screen.getByRole('link', { name: 'Lihat PDF' });
   expect(link).toHaveAttribute('href', doc.link);
   expect(link).toHaveAttribute('target', '_blank');
@@ -112,7 +138,9 @@ test('"Lihat PDF" membuka berkas di Drive pada tab baru; tidak ada tombol itu se
 });
 
 test('dialog konfirmasi menyebut berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun', async () => {
-  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
   expect(
     await within(await screen.findByRole('dialog')).findByText(/dicabut otomatis/i),
@@ -126,6 +154,7 @@ test('sudah diekspor (replaceOnly): tanpa pilihan PDF baru; unggah selalu mengga
       document={{ ...doc, uses: 3 }}
       onDocument={vi.fn()}
       onUpload={onUpload}
+      onClone={vi.fn()}
       replaceOnly
     />,
   );
@@ -136,4 +165,41 @@ test('sudah diekspor (replaceOnly): tanpa pilihan PDF baru; unggah selalu mengga
     within(await screen.findByRole('dialog')).getByRole('button', { name: 'Ganti PDF' }),
   );
   await vi.waitFor(() => expect(onUpload).toHaveBeenCalledWith(pdf, 'd1'));
+});
+
+test('salin dari Drive: link/ID dikirim ke onClone dan hasilnya menjadi dokumen; galat ditampilkan', async () => {
+  const cloned = { ...doc, id: 'd9', uses: 0 };
+  const onClone = vi
+    .fn()
+    .mockResolvedValueOnce(cloned)
+    .mockRejectedValueOnce(new Error('Berkas Drive bukan PDF'));
+  const onDocument = vi.fn();
+  render(
+    <PdfSourceField document={null} onDocument={onDocument} onUpload={vi.fn()} onClone={onClone} />,
+  );
+  const button = screen.getByRole('button', { name: 'Salin dari Drive' });
+  expect(button).toBeDisabled();
+  await userEvent.type(
+    screen.getByLabelText('Atau salin dari Google Drive'),
+    ' https://drive.google.com/file/d/abc/view ',
+  );
+  await userEvent.click(button);
+  expect(onClone).toHaveBeenCalledWith('https://drive.google.com/file/d/abc/view');
+  await vi.waitFor(() => expect(onDocument).toHaveBeenCalledWith(cloned));
+  await userEvent.type(screen.getByLabelText('Atau salin dari Google Drive'), 'xyz');
+  await userEvent.click(screen.getByRole('button', { name: 'Salin dari Drive' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Berkas Drive bukan PDF');
+});
+
+test('sudah diekspor (replaceOnly): isian salin dari Drive tidak tersedia', () => {
+  render(
+    <PdfSourceField
+      document={doc}
+      onDocument={vi.fn()}
+      onUpload={vi.fn()}
+      onClone={vi.fn()}
+      replaceOnly
+    />,
+  );
+  expect(screen.queryByLabelText('Atau salin dari Google Drive')).toBeNull();
 });

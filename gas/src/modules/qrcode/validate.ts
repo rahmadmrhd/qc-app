@@ -3,6 +3,7 @@ import { base64ByteLength, isBase64Text } from '@shared/files';
 import type { QrStyle } from '@shared/qrcode';
 import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
+  CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignRefInput,
   QrFileInput,
@@ -83,6 +84,13 @@ export function validateQrDesignRef_(raw: unknown): QrDesignRefInput {
   const id = reader.str('id', { required: true, max: 100 });
   reader.done();
   return { id };
+}
+
+export function validateCloneQrPdf_(raw: unknown): CloneQrPdfInput {
+  const reader = readObject_(raw);
+  const source = reader.str('source', { required: true, max: 500 });
+  reader.done();
+  return { source };
 }
 
 export function validateUploadQrPdf_(raw: unknown): UploadQrPdfInput {

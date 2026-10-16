@@ -19,6 +19,8 @@ export interface PdfSourceFieldProps {
   onDocument: (document: QrDocumentDto) => void;
   /** Mengunggah (atau mengganti isi bila `replaceId` ada) dan mengembalikan dokumen terbaru. */
   onUpload: (file: File, replaceId?: string) => Promise<QrDocumentDto>;
+  /** Menyalin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber baru. */
+  onClone: (source: string) => Promise<QrDocumentDto>;
   /** Konfigurasi sudah diekspor: PDF hanya boleh diganti isinya (URL tetap), tanpa opsi PDF baru. */
   replaceOnly?: boolean;
 }
@@ -28,12 +30,14 @@ export function PdfSourceField({
   document,
   onDocument,
   onUpload,
+  onClone,
   replaceOnly = false,
 }: PdfSourceFieldProps) {
   const [pending, setPending] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [driveSource, setDriveSource] = useState('');
   // PDF yang dipakai banyak konfigurasi: bawaan PDF BARU agar isi bersama (dan label tercetak lain) tidak tertimpa.
   const [mode, setMode] = useState<'replace' | 'new'>(
     document !== null && document.uses > 1 && !replaceOnly ? 'new' : 'replace',
@@ -57,6 +61,19 @@ export function PdfSourceField({
       return;
     }
     setPending(file);
+  }
+
+  async function cloneFromDrive() {
+    setError(null);
+    setBusy(true);
+    try {
+      onDocument(await onClone(driveSource.trim()));
+      setDriveSource('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Gagal menyalin PDF dari Drive');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirm() {
@@ -121,6 +138,32 @@ export function PdfSourceField({
           {replacing ? 'Mengganti PDF mempertahankan URL yang sama. ' : ''}Maksimal 10 MB.
         </p>
       </div>
+      {!replaceOnly && (document === null || mode === 'new') ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="qr-drive-source">Atau salin dari Google Drive</Label>
+          <div className="flex gap-2">
+            <Input
+              id="qr-drive-source"
+              placeholder="Link atau ID berkas Drive"
+              value={driveSource}
+              disabled={busy}
+              onChange={(event) => setDriveSource(event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || driveSource.trim() === ''}
+              onClick={() => void cloneFromDrive()}
+            >
+              Salin dari Drive
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            PDF disalin ke folder aplikasi dan dibagikan ke siapa saja yang punya link; berkas asli
+            tidak diubah. URL salinan tetap, isinya dapat diganti kemudian.
+          </p>
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}

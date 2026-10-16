@@ -21,7 +21,7 @@ test('label aksi customer dan serah terima', () => {
 });
 
 test('aksi audit qrcode.* berlabel Indonesia', () => {
-  for (const action of ['create', 'update', 'delete', 'export', 'pdf_upload']) {
+  for (const action of ['create', 'update', 'delete', 'export', 'pdf_upload', 'pdf_clone']) {
     expect(auditActionLabel(`qrcode.${action}`)).not.toBe(`qrcode.${action}`);
   }
   expect(auditActionLabel('qrcode.export')).toBe('Label QR diekspor ke Drive');

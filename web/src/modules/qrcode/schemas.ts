@@ -142,7 +142,7 @@ export type QrFormOutput = z.output<typeof qrDesignFormSchema>;
 export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   return {
     title: design?.title ?? '',
-    linkSource: design?.linkSource ?? 'url',
+    linkSource: design?.linkSource ?? 'pdf',
     link: design?.linkSource === 'url' ? design.link : '',
     documentId: design?.documentId ?? '',
     subtitle: design?.subtitle ?? '',
