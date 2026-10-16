@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
   clampQrLayout,
   clampQrStyle,
@@ -15,6 +15,7 @@ import {
   layoutLabel,
   qrContentHash,
   qrExportStatus,
+  qrPdfFileName,
   sheetCells,
 } from './qrcode';
 
@@ -354,4 +355,18 @@ test('tiap baris teks membawa lebar terukur (untuk garis bawah/coret yang identi
     if (el.kind !== 'text') continue;
     expect(el.widthMm).toBeCloseTo(measure(el.text, el.sizePt), 6);
   }
+});
+
+describe('qrPdfFileName', () => {
+  const at = Date.parse('2026-10-16T03:04:05.000Z'); // 10:04:05 WIB
+  test('{title}-{subtitle}-{yyyyMMdd-HHmmss WIB}.pdf', () => {
+    expect(qrPdfFileName('Panduan Instalasi', 'U7-Pro', at)).toBe(
+      'Panduan Instalasi-U7-Pro-20261016-100405.pdf',
+    );
+  });
+  test('subtitle kosong dihilangkan; karakter terlarang diganti spasi; panjang dibatasi', () => {
+    expect(qrPdfFileName('A/B: "C"', '  ', at)).toBe('A B C-20261016-100405.pdf');
+    expect(qrPdfFileName('x'.repeat(300), '', at).length).toBeLessThanOrEqual(120);
+    expect(qrPdfFileName('x'.repeat(300), '', at).endsWith('-20261016-100405.pdf')).toBe(true);
+  });
 });

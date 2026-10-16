@@ -27,6 +27,8 @@ export interface QrDesignFormProps {
   defaultValues: QrFormInput;
   /** PDF sumber yang sudah terpasang (saat ubah/duplikat). */
   initialDocument?: QrDocumentDto | null;
+  /** Konfigurasi sudah pernah diekspor: PDF sumber hanya boleh diganti isinya (URL tetap). */
+  exported?: boolean;
   designs: readonly QrDesignDto[];
   submitError?: string | null;
   fieldErrors?: QrFieldErrors;
@@ -64,6 +66,7 @@ export function QrDesignForm({
   title,
   defaultValues,
   initialDocument = null,
+  exported = false,
   designs,
   submitError,
   fieldErrors,
@@ -258,6 +261,7 @@ export function QrDesignForm({
                     <div className="space-y-1.5">
                       <PdfSourceField
                         document={document}
+                        replaceOnly={exported}
                         onDocument={(next) => {
                           setDocument(next);
                           field.handleChange(next.id);

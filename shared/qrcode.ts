@@ -161,6 +161,27 @@ export function labelFileName(title: string, subtitle: string): string {
   return labelFileSlug(`${title} ${subtitle}`, 60);
 }
 
+/**
+ * Nama berkas PDF sumber di Drive: "{title}-{subtitle}-{yyyyMMdd-HHmmss}.pdf" (waktu WIB; subtitle kosong dihilangkan,
+ * karakter yang bermasalah untuk nama berkas diganti spasi, bagian title/subtitle dibatasi agar total <= 120).
+ */
+export function qrPdfFileName(title: string, subtitle: string, nowMs: number): string {
+  const wib = new Date(nowMs + 7 * 3600 * 1000).toISOString();
+  const stamp = `${wib.slice(0, 10).replace(/-/g, '')}-${wib.slice(11, 19).replace(/:/g, '')}`;
+  const clean = (text: string) =>
+    text
+      .split('')
+      .map((char) => (char.charCodeAt(0) < 32 || '\\/:*?"<>|'.includes(char) ? ' ' : char))
+      .join('')
+      .split(' ')
+      .filter((word) => word !== '')
+      .join(' ');
+  const base = [clean(title), clean(subtitle)].filter((part) => part !== '').join('-');
+  const suffix = `-${stamp}.pdf`;
+  const room = 120 - suffix.length;
+  return `${base === '' ? 'label' : base.slice(0, room).trim()}${suffix}`;
+}
+
 /** Gaya satu bagian teks (title, subtitle, atau footer). */
 export interface QrTextStyle {
   bold: boolean;

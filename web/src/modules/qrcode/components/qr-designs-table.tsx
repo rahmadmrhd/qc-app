@@ -88,8 +88,7 @@ export function QrDesignsTable({
                   <div className="text-xs font-normal text-muted-foreground">
                     {design.linkSource === 'pdf' ? (
                       <>
-                        {`PDF: ${design.documentName}`}
-                        {' · '}
+                        PDF{' · '}
                         <a
                           href={design.link}
                           target="_blank"

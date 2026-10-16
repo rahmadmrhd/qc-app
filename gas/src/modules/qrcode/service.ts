@@ -12,6 +12,7 @@ import {
   labelFileName,
   qrContentHash,
   qrExportStatus,
+  qrPdfFileName,
 } from '@shared/qrcode';
 import type {
   ExportQrDesignInput,
@@ -155,6 +156,7 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
   }
   // Pembersihan serentak bisa mencabut berbagi PDF ini tepat sebelum konfigurasi tersimpan: pastikan terbagi.
   if (pdfId !== '') ensureQrDocumentShared_(pdfId);
+  if (pdfId !== '') renameQrDocument_(pdfId, input.title, input.subtitle);
   revokeUnusedQrDocuments_(outcome.released);
   return outcome.dto;
 }
@@ -172,6 +174,17 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
     if (input.id && !existing) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
     if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
       throw appError_('CONFLICT', QR_STALE_MESSAGE);
+    }
+    if (
+      existing &&
+      existing.exportedHash !== '' &&
+      existing.linkSource === 'pdf' &&
+      input.linkSource === 'pdf' &&
+      input.documentId !== existing.documentId
+    ) {
+      const message =
+        'Konfigurasi sudah diekspor: PDF hanya dapat diganti isinya (URL tetap), bukan diganti dokumen lain';
+      throw appError_('VALIDATION', message, { documentId: message });
     }
     const documents = qrDocumentMap_();
     if (input.linkSource === 'pdf' && !documents.has(input.documentId)) {
@@ -264,6 +277,28 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
 
 /** Masa tenggang unggahan yang belum dipakai konfigurasi mana pun sebelum berbaginya dicabut. */
 const QR_ORPHAN_GRACE_MS = 60 * 60 * 1000;
+
+/**
+ * Mengganti nama berkas PDF sumber di Drive menjadi "{title}-{subtitle}-{timestamp}.pdf" (id dan URL tetap).
+ * Best-effort: galat Drive hanya dicatat. I/O Drive di luar lock; pemanggil tanpa lock.
+ */
+function renameQrDocument_(documentId: string, title: string, subtitle: string): void {
+  const doc = listQrDocuments_().find((row) => row.id === documentId);
+  if (!doc) return;
+  const name = qrPdfFileName(title, subtitle, platform_().now());
+  try {
+    platform_().driveRenameFile(doc.driveId, name);
+  } catch (error) {
+    platform_().logError(
+      `qrcode: nama PDF ${doc.driveId} tidak dapat diganti: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  platform_().withLock(() => {
+    const fresh = listQrDocuments_().find((row) => row.id === documentId);
+    if (fresh) updateQrDocument_({ ...fresh, name });
+  });
+}
 
 /** Membagikan (lagi) PDF yang sebelumnya dicabut berbaginya. I/O Drive di luar lock; pemanggil tanpa lock. */
 function ensureQrDocumentShared_(documentId: string): void {

@@ -115,6 +115,9 @@ function createGasPlatform_(): Platform {
         // Berkas sudah tidak ada: tidak ada yang perlu dibuang.
       }
     },
+    driveRenameFile: (fileId, name) => {
+      DriveApp.getFileById(fileId).setName(name);
+    },
     driveShareAnyoneWithLink: (fileId) => {
       DriveApp.getFileById(fileId).setSharing(
         DriveApp.Access.ANYONE_WITH_LINK,

@@ -118,3 +118,22 @@ test('dialog konfirmasi menyebut berbagi dicabut otomatis bila PDF tidak dipakai
     await within(await screen.findByRole('dialog')).findByText(/dicabut otomatis/i),
   ).toBeInTheDocument();
 });
+
+test('sudah diekspor (replaceOnly): tanpa pilihan PDF baru; unggah selalu mengganti isi dokumen yang sama', async () => {
+  const onUpload = vi.fn().mockResolvedValue({ ...doc, name: 'baru.pdf' });
+  render(
+    <PdfSourceField
+      document={{ ...doc, uses: 3 }}
+      onDocument={vi.fn()}
+      onUpload={onUpload}
+      replaceOnly
+    />,
+  );
+  expect(screen.queryByRole('radio')).toBeNull();
+  expect(screen.getByText(/sudah diekspor/i)).toBeInTheDocument();
+  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await userEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: 'Ganti PDF' }),
+  );
+  await vi.waitFor(() => expect(onUpload).toHaveBeenCalledWith(pdf, 'd1'));
+});

@@ -62,6 +62,7 @@ function EditQrDesignPage() {
       <QrDesignForm
         title={`Ubah konfigurasi: ${design.title}`}
         canExport={can(me, 'qrcode', 'manage')}
+        exported={design.exportStatus !== 'none'}
         key={loadedAt}
         defaultValues={toQrFormDefaults(loaded)}
         initialDocument={

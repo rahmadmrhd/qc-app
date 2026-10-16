@@ -225,3 +225,41 @@ test('cleanupQrDocuments_ tidak mencabut PDF yang dipakai konfigurasi', () => {
   expect(cleanupQrDocuments_()).toBe(0);
   expect(docs().find((d) => d.id === doc)?.shared).toBe(true);
 });
+
+// ---- nama berkas PDF dan ganti-isi-saja setelah diekspor
+
+test('menyimpan dengan PDF sumber mengganti nama berkas Drive menjadi {title}-{subtitle}-{timestamp}.pdf', () => {
+  const doc = upload('FM BAK.09 form.pdf').data.id;
+  const made = usePdf(doc, { title: 'Panduan Instalasi', subtitle: 'U7-Pro' });
+  expect(made.ok).toBe(true);
+  const expected = 'Panduan Instalasi-U7-Pro-20261016-100000.pdf'; // 03:00 UTC = 10:00 WIB
+  expect(platform.drive.get(driveIdOf(doc))?.name).toBe(expected);
+  expect(docs().find((d) => d.id === doc)?.name).toBe(expected);
+  // subtitle kosong dihilangkan
+  const doc2 = upload('lain.pdf').data.id;
+  usePdf(doc2, { title: 'Tanpa Sub' });
+  expect(platform.drive.get(driveIdOf(doc2))?.name).toBe('Tanpa Sub-20261016-100000.pdf');
+});
+
+test('setelah diekspor, PDF hanya boleh diganti isinya: memilih dokumen lain ditolak', () => {
+  const doc = upload().data.id;
+  const made = usePdf(doc);
+  const exported = call('qrmanage@gmail.com', 'qrcodes.export', {
+    id: made.data.id,
+    expectedUpdatedAt: made.data.updatedAt,
+    pdfBase64: PDF,
+    pngBase64: PNG,
+  });
+  expect(exported.ok).toBe(true);
+  const other = upload('baru.pdf').data.id;
+  const result = usePdf(other, {
+    id: made.data.id,
+    expectedUpdatedAt: exported.data.updatedAt,
+  });
+  expect(result.error.code).toBe('VALIDATION');
+  expect(result.error.fields.documentId).toContain('diekspor');
+  // dokumen yang sama tetap boleh disimpan
+  expect(usePdf(doc, { id: made.data.id, expectedUpdatedAt: exported.data.updatedAt }).ok).toBe(
+    true,
+  );
+});

@@ -19,24 +19,31 @@ export interface PdfSourceFieldProps {
   onDocument: (document: QrDocumentDto) => void;
   /** Mengunggah (atau mengganti isi bila `replaceId` ada) dan mengembalikan dokumen terbaru. */
   onUpload: (file: File, replaceId?: string) => Promise<QrDocumentDto>;
+  /** Konfigurasi sudah diekspor: PDF hanya boleh diganti isinya (URL tetap), tanpa opsi PDF baru. */
+  replaceOnly?: boolean;
 }
 
 /** Sumber link dari PDF yang diunggah ke Drive; link QR = URL berbagi berkas. */
-export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFieldProps) {
+export function PdfSourceField({
+  document,
+  onDocument,
+  onUpload,
+  replaceOnly = false,
+}: PdfSourceFieldProps) {
   const [pending, setPending] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   // PDF yang dipakai banyak konfigurasi: bawaan PDF BARU agar isi bersama (dan label tercetak lain) tidak tertimpa.
   const [mode, setMode] = useState<'replace' | 'new'>(
-    document !== null && document.uses > 1 ? 'new' : 'replace',
+    document !== null && document.uses > 1 && !replaceOnly ? 'new' : 'replace',
   );
   const documentId = document?.id;
   // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat dokumen yang terpasang berganti
   useEffect(() => {
-    setMode(document !== null && document.uses > 1 ? 'new' : 'replace');
+    setMode(document !== null && document.uses > 1 && !replaceOnly ? 'new' : 'replace');
   }, [documentId]);
-  const replacing = document !== null && mode === 'replace';
+  const replacing = document !== null && (replaceOnly || mode === 'replace');
 
   function choose(file: File | undefined) {
     setError(null);
@@ -68,7 +75,13 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
 
   return (
     <div className="space-y-3">
-      {document ? (
+      {document && replaceOnly ? (
+        <p className="text-sm text-muted-foreground">
+          Konfigurasi ini sudah diekspor: PDF hanya dapat diganti isinya (URL tetap
+          {document.uses > 1 ? `; memengaruhi ${document.uses} konfigurasi yang memakainya` : ''}).
+        </p>
+      ) : null}
+      {document && !replaceOnly ? (
         <div role="radiogroup" aria-label="Mode unggah PDF" className="space-y-1.5">
           <label className="flex items-start gap-2 text-sm">
             <input
