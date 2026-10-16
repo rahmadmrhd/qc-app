@@ -9,8 +9,8 @@ export const fallbackMeasure: Measure = (text, sizePt) => (text.length * sizePt 
 export function createCanvasMeasure(): Measure {
   const context = document.createElement('canvas').getContext('2d');
   if (!context) return fallbackMeasure;
-  return (text, sizePt, bold) => {
-    context.font = `${bold ? 600 : 400} 100px ${LABEL_FONT_FAMILY}, sans-serif`;
+  return (text, sizePt, bold, italic) => {
+    context.font = `${italic ? 'italic ' : ''}${bold ? 600 : 400} 100px ${LABEL_FONT_FAMILY}, sans-serif`;
     return (context.measureText(text).width / 100) * (sizePt / PT_PER_MM);
   };
 }

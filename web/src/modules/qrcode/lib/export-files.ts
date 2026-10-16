@@ -1,4 +1,4 @@
-import type { QrLayout } from '@shared/qrcode';
+import type { QrLayout, QrStyle } from '@shared/qrcode';
 import { layoutLabel } from '@shared/qrcode';
 import { loadLabelFonts, registerCanvasFonts } from './fonts';
 import { createCanvasMeasure } from './measure';
@@ -12,6 +12,7 @@ export interface ExportDesign {
   footer: string;
   link: string;
   layout: QrLayout;
+  style: QrStyle;
 }
 
 /** Logo sebagai berkas gambar (hasil `files.get`). */
@@ -76,6 +77,7 @@ export async function renderExportFiles(
       hasLogo: logoSource !== null,
       logoAspect: logoSource ? logoSource.width / logoSource.height : 1,
       layout: design.layout,
+      style: design.style,
       qrModules: matrix.length,
     },
     createCanvasMeasure(),

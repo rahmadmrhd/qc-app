@@ -1,8 +1,9 @@
-import { DEFAULT_QR_LAYOUT, layoutLabel } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, layoutLabel } from '@shared/qrcode';
 import { expect, test } from 'vitest';
 import { drawLabel } from './render-canvas';
 
-const measure = (text: string, size: number) => text.length * size * 0.2;
+const measure = (text: string, size: number, _bold?: boolean, _italic?: boolean) =>
+  text.length * size * 0.2;
 const input = {
   title: 'Judul',
   subtitle: 'Sub',
@@ -69,4 +70,61 @@ test('logo digambar persis di kotak hasil tata letak sesuai rasio berkas (bukan 
     logo.heightMm * 10,
   ]);
   expect(Number(draw?.[4])).toBeCloseTo(Number(draw?.[5]) * 2, 6);
+});
+
+const fonts = (calls: Array<[string, ...unknown[]]>) => calls.filter((c) => c[0] === 'fillText');
+
+test('gaya teks: font canvas memuat italic dan bobot; garis bawah dan coret digambar sebagai garis sejajar teks', () => {
+  const style = {
+    ...DEFAULT_QR_STYLE,
+    title: { bold: false, italic: true, underline: true, strike: false, uppercase: false },
+    subtitle: { bold: true, italic: false, underline: false, strike: true, uppercase: false },
+  };
+  const layout = layoutLabel({ ...input, hasLogo: false, style }, measure);
+  const used: string[] = [];
+  const base = fakeContext();
+  const ctx = new Proxy(base.ctx, {
+    set: (target, key: string, value) => {
+      if (key === 'font') used.push(String(value));
+      (target as unknown as Record<string, unknown>)[key] = value;
+      return true;
+    },
+  });
+  drawLabel(ctx, layout, matrix, null, 10);
+  expect(used.some((f) => f.includes('italic') && f.includes('400'))).toBe(true);
+  expect(used.some((f) => !f.includes('italic') && f.includes('600'))).toBe(true);
+  const title = layout.elements.find((e) => e.kind === 'text' && e.role === 'title');
+  if (title?.kind !== 'text') throw new Error('title hilang');
+  // garis bawah title: persegi tipis di bawah garis dasar dan memanjang sepanjang teks
+  const rects = base.calls.filter((c) => c[0] === 'fillRect');
+  // fillRect = [nama, x, y, lebar, tinggi]: garis tipis tepat di bawah garis dasar dan selebar teks
+  const underline = rects.find(
+    (r) =>
+      Number(r[4]) > 0 &&
+      Number(r[4]) < 3 &&
+      Number(r[3]) === title.widthMm * 10 &&
+      Number(r[2]) > title.baselineMm * 10 &&
+      Number(r[2]) < title.baselineMm * 10 + 6,
+  );
+  expect(underline).toBeDefined();
+  expect(fonts(base.calls).map((c) => c[1])).toContain('Judul');
+});
+
+test('bingkai: dua gaya digambar sebagai goresan; corners = 4 goresan, box = 1; tanpa bingkai tidak ada goresan', () => {
+  const frame = (kind: 'none' | 'corners' | 'box') => ({
+    ...DEFAULT_QR_STYLE,
+    frame: { ...DEFAULT_QR_STYLE.frame, kind },
+  });
+  const strokes = (kind: 'none' | 'corners' | 'box') => {
+    const layout = layoutLabel(
+      { ...input, title: '', subtitle: '', footer: '', hasLogo: false, style: frame(kind) },
+      measure,
+    );
+    const { ctx, calls } = fakeContext();
+    drawLabel(ctx, layout, matrix, null, 10);
+    return calls.filter((c) => c[0] === 'stroke').length;
+  };
+  expect(strokes('none')).toBe(0);
+  expect(strokes('corners')).toBe(4);
+  expect(strokes('box')).toBe(1);
 });

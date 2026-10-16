@@ -338,3 +338,11 @@ test('hash isi berubah bila gaya teks atau bingkai berubah', () => {
   ).not.toBe(hash);
   expect(qrContentHash({ ...content })).toBe(hash);
 });
+
+test('tiap baris teks membawa lebar terukur (untuk garis bawah/coret yang identik di semua keluaran)', () => {
+  const out = layoutLabel(base, measure);
+  for (const el of out.elements) {
+    if (el.kind !== 'text') continue;
+    expect(el.widthMm).toBeCloseTo(measure(el.text, el.sizePt), 6);
+  }
+});

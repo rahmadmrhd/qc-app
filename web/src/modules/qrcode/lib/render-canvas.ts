@@ -1,5 +1,5 @@
 import type { LabelLayout } from '@shared/qrcode';
-import { LABEL_MM, PT_PER_MM } from '@shared/qrcode';
+import { framePolylines, LABEL_MM, PT_PER_MM } from '@shared/qrcode';
 import { LABEL_FONT_FAMILY } from './fonts';
 
 export interface LogoSource {
@@ -65,10 +65,43 @@ export function drawLabel(
       );
     } else if (element.kind === 'text') {
       ctx.fillStyle = '#000000';
-      ctx.font = `${element.bold ? 600 : 400} ${(element.sizePt / PT_PER_MM) * pxPerMm}px ${LABEL_FONT_FAMILY}, sans-serif`;
+      const sizeMm = element.sizePt / PT_PER_MM;
+      ctx.font = `${element.italic ? 'italic ' : ''}${element.bold ? 600 : 400} ${sizeMm * pxPerMm}px ${LABEL_FONT_FAMILY}, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(element.text, element.centerMm * pxPerMm, element.baselineMm * pxPerMm);
+      // Garis bawah dan coret: persegi tipis sepanjang lebar baris (lebar dari tata letak, sama dengan PDF).
+      const thickness = Math.max(0.06, sizeMm * 0.07) * pxPerMm;
+      const left = (element.centerMm - element.widthMm / 2) * pxPerMm;
+      if (element.underline) {
+        ctx.fillRect(
+          left,
+          (element.baselineMm + sizeMm * 0.15) * pxPerMm,
+          element.widthMm * pxPerMm,
+          thickness,
+        );
+      }
+      if (element.strike) {
+        ctx.fillRect(
+          left,
+          (element.baselineMm - sizeMm * 0.3) * pxPerMm,
+          element.widthMm * pxPerMm,
+          thickness,
+        );
+      }
+    } else if (element.kind === 'frame') {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = element.thicknessMm * pxPerMm;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const line of framePolylines(element)) {
+        ctx.beginPath();
+        line.forEach((point, index) => {
+          if (index === 0) ctx.moveTo(point.x * pxPerMm, point.y * pxPerMm);
+          else ctx.lineTo(point.x * pxPerMm, point.y * pxPerMm);
+        });
+        ctx.stroke();
+      }
     }
   }
 }

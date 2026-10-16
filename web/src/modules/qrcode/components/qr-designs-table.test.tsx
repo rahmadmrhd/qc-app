@@ -1,4 +1,4 @@
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import type { QrDesignDto } from '@shared/rpc';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,6 +17,7 @@ const design = (over: Partial<QrDesignDto> = {}): QrDesignDto => ({
   footer: '',
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
+  style: DEFAULT_QR_STYLE,
   exportStatus: 'none',
   exportedAt: '',
   exportedBy: '',

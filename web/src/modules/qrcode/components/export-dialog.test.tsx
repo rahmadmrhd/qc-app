@@ -1,4 +1,4 @@
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -16,6 +16,7 @@ const base = {
   footer: '',
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
+  style: DEFAULT_QR_STYLE,
   exportStatus: 'none' as const,
   exportedAt: '',
   exportedBy: '',

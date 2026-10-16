@@ -2,7 +2,7 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { DEFAULT_QR_LAYOUT, layoutLabel, PT_PER_MM } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, layoutLabel, PT_PER_MM } from '@shared/qrcode';
 import { PDFDocument } from 'pdf-lib';
 import { expect, test } from 'vitest';
 import { qrMatrix } from './qr-matrix';
@@ -11,7 +11,12 @@ import { buildSheetPdf } from './render-pdf';
 const require = createRequire(import.meta.url);
 const font = (name: string) =>
   readFileSync(require.resolve(`@fontsource/poppins/files/${name}.woff`));
-const fonts = { regular: font('poppins-latin-400-normal'), bold: font('poppins-latin-600-normal') };
+const fonts = {
+  regular: font('poppins-latin-400-normal'),
+  bold: font('poppins-latin-600-normal'),
+  italic: font('poppins-latin-400-italic'),
+  boldItalic: font('poppins-latin-600-italic'),
+};
 
 test('PDF lembar: 1 halaman 300 × 420 mm, ukuran kecil karena label dipakai ulang 140 kali', async () => {
   const matrix = qrMatrix('https://contoh.com/panduan-instalasi-usw-pro-max-48-poe');
@@ -33,4 +38,32 @@ test('PDF lembar: 1 halaman 300 × 420 mm, ukuran kecil karena label dipakai ula
   expect(width).toBeCloseTo(300 * PT_PER_MM, 2);
   expect(height).toBeCloseTo(420 * PT_PER_MM, 2);
   expect(bytes.length).toBeLessThan(300_000);
+});
+
+test('PDF dengan gaya miring, garis bawah/coret, dan bingkai: tetap 1 halaman kecil dan memuat font miring', async () => {
+  const matrix = qrMatrix('https://contoh.com/gaya');
+  const style = {
+    title: { bold: true, italic: true, underline: true, strike: false, uppercase: true },
+    subtitle: { bold: false, italic: true, underline: false, strike: true, uppercase: false },
+    footer: { bold: false, italic: false, underline: false, strike: false, uppercase: false },
+    frame: { ...DEFAULT_QR_STYLE.frame, kind: 'corners' as const },
+  };
+  const layout = layoutLabel(
+    {
+      title: 'Panduan',
+      subtitle: 'Sub',
+      footer: '',
+      hasLogo: false,
+      layout: { ...DEFAULT_QR_LAYOUT, qrSize: 14 },
+      style,
+      qrModules: matrix.length,
+    },
+    (text, size) => text.length * size * 0.2,
+  );
+  expect(layout.overflow).toBe(false);
+  const bytes = await buildSheetPdf(layout, matrix, null, fonts);
+  const doc = await PDFDocument.load(bytes);
+  expect(doc.getPageCount()).toBe(1);
+  expect(bytes.length).toBeLessThan(300_000);
+  expect(Buffer.from(bytes).toString('latin1')).toContain('Italic');
 });

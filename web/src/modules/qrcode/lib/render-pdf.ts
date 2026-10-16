@@ -1,11 +1,14 @@
 import fontkit from '@pdf-lib/fontkit';
 import type { LabelLayout } from '@shared/qrcode';
-import { LABEL_MM, PT_PER_MM, SHEET, sheetCells } from '@shared/qrcode';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { framePolylines, LABEL_MM, PT_PER_MM, SHEET, sheetCells } from '@shared/qrcode';
+import type { PDFFont } from 'pdf-lib';
+import { LineCapStyle, PDFDocument, rgb } from 'pdf-lib';
 
 export interface PdfFonts {
   regular: ArrayBuffer | Uint8Array;
   bold: ArrayBuffer | Uint8Array;
+  italic: ArrayBuffer | Uint8Array;
+  boldItalic: ArrayBuffer | Uint8Array;
 }
 
 function darkRuns(row: readonly boolean[]): Array<[number, number]> {
@@ -31,8 +34,23 @@ async function buildLabelPdf(
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const regular = await doc.embedFont(fonts.regular, { subset: true });
-  const bold = await doc.embedFont(fonts.bold, { subset: true });
+  // Font disematkan hanya bila dipakai (tiap varian ≈ 10 KB).
+  const embedded = new Map<string, PDFFont>();
+  const fontFor = async (bold: boolean, italic: boolean): Promise<PDFFont> => {
+    const key = `${bold ? 'b' : ''}${italic ? 'i' : ''}`;
+    const found = embedded.get(key);
+    if (found) return found;
+    const source = bold
+      ? italic
+        ? fonts.boldItalic
+        : fonts.bold
+      : italic
+        ? fonts.italic
+        : fonts.regular;
+    const font = await doc.embedFont(source, { subset: true });
+    embedded.set(key, font);
+    return font;
+  };
   const side = LABEL_MM * PT_PER_MM;
   const page = doc.addPage([side, side]);
   const black = rgb(0, 0, 0);
@@ -72,7 +90,7 @@ async function buildLabelPdf(
         height: element.heightMm * PT_PER_MM,
       });
     } else if (element.kind === 'text') {
-      const font = element.bold ? bold : regular;
+      const font = await fontFor(element.bold, element.italic);
       const width = font.widthOfTextAtSize(element.text, element.sizePt);
       page.drawText(element.text, {
         x: element.centerMm * PT_PER_MM - width / 2,
@@ -81,6 +99,36 @@ async function buildLabelPdf(
         font,
         color: black,
       });
+      const left = (element.centerMm - element.widthMm / 2) * PT_PER_MM;
+      const lineWidth = element.widthMm * PT_PER_MM;
+      const sizeMm = element.sizePt / PT_PER_MM;
+      const thickness = Math.max(0.06, sizeMm * 0.07) * PT_PER_MM;
+      const rule = (offsetMm: number) =>
+        page.drawRectangle({
+          x: left,
+          y: side - (element.baselineMm + offsetMm) * PT_PER_MM - thickness,
+          width: lineWidth,
+          height: thickness,
+          color: black,
+        });
+      if (element.underline) rule(sizeMm * 0.15);
+      if (element.strike) rule(-sizeMm * 0.3);
+    } else if (element.kind === 'frame') {
+      // Goresan ruas demi ruas dengan ujung membulat: sambungan tampak membulat tanpa jalur kurva.
+      for (const line of framePolylines(element)) {
+        for (let i = 1; i < line.length; i++) {
+          const from = line[i - 1];
+          const to = line[i];
+          if (!from || !to) continue;
+          page.drawLine({
+            start: { x: from.x * PT_PER_MM, y: side - from.y * PT_PER_MM },
+            end: { x: to.x * PT_PER_MM, y: side - to.y * PT_PER_MM },
+            thickness: element.thicknessMm * PT_PER_MM,
+            color: black,
+            lineCap: LineCapStyle.Round,
+          });
+        }
+      }
     }
   }
   return doc.save();

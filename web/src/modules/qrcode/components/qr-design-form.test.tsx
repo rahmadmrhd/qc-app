@@ -79,3 +79,38 @@ test('ukuran: isian per bagian dengan satuan; nilai di luar rentang menampilkan 
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit).not.toHaveBeenCalled();
 });
+
+test('gaya teks: tombol per bagian mengubah gaya yang dikirim saat simpan', async () => {
+  const { onSubmit } = renderForm();
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Miring Title' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Garis bawah Subtitle' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Coret Footer' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tebal Title' })); // matikan tebal bawaan
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  const style = onSubmit.mock.calls[0]?.[0].style;
+  expect(style.title).toMatchObject({ italic: true, bold: false });
+  expect(style.subtitle.underline).toBe(true);
+  expect(style.footer.strike).toBe(true);
+});
+
+test('bingkai QR: pilihan jenis; isian ukuran hanya tampil bila ada bingkai; terkirim saat simpan', async () => {
+  const { onSubmit } = renderForm();
+  expect(screen.getByRole('radio', { name: 'Tanpa bingkai' })).toBeChecked();
+  expect(screen.queryByLabelText('Tebal bingkai (mm)')).toBeNull();
+  await userEvent.click(screen.getByRole('radio', { name: 'Siku di sudut' }));
+  expect(screen.getByLabelText('Tebal bingkai (mm)')).toHaveValue(0.5);
+  await userEvent.clear(screen.getByLabelText('Tebal bingkai (mm)'));
+  await userEvent.type(screen.getByLabelText('Tebal bingkai (mm)'), '9');
+  expect(await screen.findByText('Maksimal 1.5 mm')).toBeInTheDocument();
+  await userEvent.clear(screen.getByLabelText('Tebal bingkai (mm)'));
+  await userEvent.type(screen.getByLabelText('Tebal bingkai (mm)'), '0.8');
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.type(screen.getByLabelText('Link'), 'https://contoh.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[0].style.frame).toMatchObject({
+    kind: 'corners',
+    thickness: 0.8,
+  });
+});

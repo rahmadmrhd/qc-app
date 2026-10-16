@@ -1,4 +1,4 @@
-import type { QrLayout } from '@shared/qrcode';
+import type { QrLayout, QrStyle } from '@shared/qrcode';
 import { LABEL_MM, layoutLabel, SHEET, sheetCells } from '@shared/qrcode';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,14 @@ const FIT_INDEX = ZOOM_STEPS.indexOf(1);
 export interface SheetPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  design: { title: string; subtitle: string; footer: string; link: string; layout: QrLayout };
+  design: {
+    title: string;
+    subtitle: string;
+    footer: string;
+    link: string;
+    layout: QrLayout;
+    style?: QrStyle;
+  };
   logoUrl: string | null;
 }
 

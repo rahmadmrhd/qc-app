@@ -92,3 +92,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 86 | Link 300 karakter dengan QR 12 mm | Peringatan "QR terlalu padat"; ekspor tetap boleh | R4 |
 | 87 | Title berisi huruf Mandarin atau emoji | Ditolak dengan pesan karakter tidak didukung | R5 |
 | 88 | Ukuran ponsel (375 × 812) pada daftar dan form | Tidak ada gulir horizontal halaman | NFR5 |
+| 89 | Aktifkan miring, garis bawah, coret, dan huruf kapital pada title/subtitle/footer | Pratinjau, PNG, dan PDF hasil ekspor menampilkan gaya yang sama (garis bawah/coret sepanjang teks) | FQR19 |
+| 90 | Pilih bingkai "Siku di sudut" lalu "Kotak penuh"; ubah tebal, jarak, lengkung, panjang siku | Bingkai tampil di pratinjau/PNG/PDF; bila isi jadi tidak muat muncul banner galat dan ekspor ditolak | FQR20 |
+| 91 | Unggah logo lebar (mis. 3:1) dan logo tinggi | Logo tidak terdistorsi dan tidak dipaksa persegi; QR tetap terbaca | FQR21 |
+| 92 | Klik pratinjau 3 × 3; buka pratinjau lembar lalu zoom (tombol dan Ctrl + roda) | Tampilan diperbesar terbuka; lembar bisa di-zoom 50–400% dan digulir | FQR22 |

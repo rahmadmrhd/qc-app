@@ -262,6 +262,8 @@ export type LabelElement =
       /** Titik tengah horizontal dan garis dasar, dalam mm dari pojok kiri atas label. */
       centerMm: number;
       baselineMm: number;
+      /** Lebar baris terukur (mm): panjang garis bawah/coret. */
+      widthMm: number;
       sizePt: number;
       bold: boolean;
       italic: boolean;
@@ -364,7 +366,7 @@ function toLabelBlock(
   return { block: { role, lines, sizePt, style, heightMm }, tooWide };
 }
 
-function labelTextElements(block: Block, topMm: number): LabelElement[] {
+function labelTextElements(block: Block, topMm: number, measure: Measure): LabelElement[] {
   const sizeMm = block.sizePt / PT_PER_MM;
   return block.lines.map(
     (text, index): LabelElement => ({
@@ -373,6 +375,7 @@ function labelTextElements(block: Block, topMm: number): LabelElement[] {
       text,
       centerMm: LABEL_MM / 2,
       baselineMm: topMm + (index * QR_LINE_HEIGHT + 1) * sizeMm,
+      widthMm: measure(text, block.sizePt, block.style.bold, block.style.italic),
       sizePt: block.sizePt,
       bold: block.style.bold,
       italic: block.style.italic,
@@ -413,7 +416,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   for (const entry of [title, subtitle]) {
     if (!entry.block) continue;
     if (headerExists) y += layout.gap;
-    elements.push(...labelTextElements(entry.block, y));
+    elements.push(...labelTextElements(entry.block, y, measure));
     y += entry.block.heightMm;
     headerExists = true;
   }
@@ -421,7 +424,7 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const footerTop = footer.block
     ? LABEL_MM - layout.padding - footer.block.heightMm
     : LABEL_MM - layout.padding;
-  if (footer.block) elements.push(...labelTextElements(footer.block, footerTop));
+  if (footer.block) elements.push(...labelTextElements(footer.block, footerTop, measure));
   const gapAbove = headerExists ? layout.gap : 0;
   const gapBelow = footer.block ? layout.gap : 0;
   const available = footerTop - headerBottom - gapAbove - gapBelow;

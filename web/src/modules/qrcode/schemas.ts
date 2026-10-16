@@ -1,7 +1,11 @@
 import {
   DEFAULT_QR_LAYOUT,
+  DEFAULT_QR_STYLE,
   isHttpUrl,
   isRenderableLabelText,
+  type QR_FRAME_KEYS,
+  QR_FRAME_KINDS,
+  QR_FRAME_RANGES,
   QR_LAYOUT_RANGES,
   QR_LIMITS,
 } from '@shared/qrcode';
@@ -16,6 +20,7 @@ export const QR_FIELD_KEYS = [
   'footer',
   'logoFileId',
   'layout',
+  'style',
 ] as const;
 export type QrFieldErrors = Partial<Record<(typeof QR_FIELD_KEYS)[number], string>>;
 
@@ -26,6 +31,35 @@ const num = (key: keyof typeof QR_LAYOUT_RANGES) => {
     .min(range.min, `Minimal ${range.min} ${range.unit}`)
     .max(range.max, `Maksimal ${range.max} ${range.unit}`);
 };
+
+const textStyleSchema = z.object({
+  bold: z.boolean(),
+  italic: z.boolean(),
+  underline: z.boolean(),
+  strike: z.boolean(),
+  uppercase: z.boolean(),
+});
+
+const frameNum = (key: (typeof QR_FRAME_KEYS)[number]) => {
+  const range = QR_FRAME_RANGES[key];
+  return z
+    .number('Wajib diisi angka')
+    .min(range.min, `Minimal ${range.min} ${range.unit}`)
+    .max(range.max, `Maksimal ${range.max} ${range.unit}`);
+};
+
+const styleSchema = z.object({
+  title: textStyleSchema,
+  subtitle: textStyleSchema,
+  footer: textStyleSchema,
+  frame: z.object({
+    kind: z.enum(QR_FRAME_KINDS),
+    thickness: frameNum('thickness'),
+    gap: frameNum('gap'),
+    radius: frameNum('radius'),
+    arm: frameNum('arm'),
+  }),
+});
 
 const layoutSchema = z.object({
   titleSize: num('titleSize'),
@@ -58,6 +92,7 @@ export const qrDesignFormSchema = z
     footer: text(QR_LIMITS.footer, false),
     logoFileId: z.string(),
     layout: layoutSchema,
+    style: styleSchema,
   })
   .superRefine((value, ctx) => {
     if (value.linkSource === 'url') {
@@ -87,6 +122,18 @@ export function layoutRangeMessage(
   return null;
 }
 
+/** Pesan galat satu isian bingkai (langsung, tanpa menunggu simpan); `null` bila sah. */
+export function frameRangeMessage(
+  key: (typeof QR_FRAME_KEYS)[number],
+  value: number,
+): string | null {
+  const range = QR_FRAME_RANGES[key];
+  if (Number.isNaN(value)) return 'Wajib diisi angka';
+  if (value < range.min) return `Minimal ${range.min} ${range.unit}`;
+  if (value > range.max) return `Maksimal ${range.max} ${range.unit}`;
+  return null;
+}
+
 export type QrFormInput = z.input<typeof qrDesignFormSchema>;
 export type QrFormOutput = z.output<typeof qrDesignFormSchema>;
 
@@ -100,6 +147,7 @@ export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
     footer: design?.footer ?? '',
     logoFileId: design?.logoFileId ?? '',
     layout: design ? { ...design.layout } : { ...DEFAULT_QR_LAYOUT },
+    style: structuredClone(design ? design.style : DEFAULT_QR_STYLE),
   };
 }
 
@@ -124,6 +172,7 @@ export function toSaveQrDesignInput(
     footer: values.footer,
     logoFileId: values.logoFileId,
     layout: values.layout,
+    style: values.style,
   };
   return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }

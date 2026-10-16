@@ -1,4 +1,4 @@
-import { QR_LAYOUT_KEYS, QR_LAYOUT_RANGES } from '@shared/qrcode';
+import { QR_FRAME_KEYS, QR_FRAME_RANGES, QR_LAYOUT_KEYS, QR_LAYOUT_RANGES } from '@shared/qrcode';
 import type { QrDesignDto, QrDocumentDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import { useState } from 'react';
@@ -10,13 +10,14 @@ import { useFileUrl } from '@/modules/files/queries';
 import { fileToBase64 } from '../lib/file-to-base64';
 import { useUploadQrPdf } from '../queries';
 import type { QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
-import { layoutRangeMessage, qrDesignFormSchema } from '../schemas';
+import { frameRangeMessage, layoutRangeMessage, qrDesignFormSchema } from '../schemas';
 import { LabelPreview } from './label-preview';
 import type { LabelStatus } from './label-status-alerts';
 import { LabelStatusAlerts } from './label-status-alerts';
 import { LogoField } from './logo-field';
 import { PdfSourceField } from './pdf-source-field';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
+import { TextStyleToolbar } from './text-style-toolbar';
 
 export interface QrDesignFormProps {
   defaultValues: QrFormInput;
@@ -87,6 +88,19 @@ export function QrDesignForm({
                     onChange={(event) => field.handleChange(event.target.value)}
                   />
                   <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
+                  <form.Subscribe selector={(state) => state.values.style[name]}>
+                    {(textStyle) => (
+                      <TextStyleToolbar
+                        part={
+                          name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'
+                        }
+                        value={textStyle}
+                        onChange={(next) =>
+                          form.setFieldValue('style', { ...form.state.values.style, [name]: next })
+                        }
+                      />
+                    )}
+                  </form.Subscribe>
                 </div>
               )}
             </form.Field>
@@ -174,6 +188,75 @@ export function QrDesignForm({
               </div>
             )}
           </form.Field>
+        </Section>
+
+        <Section title="Bingkai QR">
+          <form.Subscribe selector={(state) => state.values.style.frame}>
+            {(frame) => (
+              <div className="space-y-3">
+                <div role="radiogroup" aria-label="Jenis bingkai" className="flex flex-wrap gap-4">
+                  {(
+                    [
+                      ['none', 'Tanpa bingkai'],
+                      ['corners', 'Siku di sudut'],
+                      ['box', 'Kotak penuh'],
+                    ] as const
+                  ).map(([kind, label]) => (
+                    <label key={kind} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="qr-frame-kind"
+                        checked={frame.kind === kind}
+                        onChange={() =>
+                          form.setFieldValue('style', {
+                            ...form.state.values.style,
+                            frame: { ...form.state.values.style.frame, kind },
+                          })
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {frame.kind !== 'none' ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {QR_FRAME_KEYS.map((key) => {
+                      const range = QR_FRAME_RANGES[key];
+                      const id = `qr-frame-${key}`;
+                      const message = frameRangeMessage(key, frame[key]);
+                      return (
+                        <div key={key} className="space-y-1.5">
+                          <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
+                          <Input
+                            id={id}
+                            type="number"
+                            step={range.step}
+                            min={range.min}
+                            max={range.max}
+                            aria-invalid={message ? true : undefined}
+                            value={Number.isNaN(frame[key]) ? '' : frame[key]}
+                            onChange={(event) =>
+                              form.setFieldValue('style', {
+                                ...form.state.values.style,
+                                frame: {
+                                  ...form.state.values.style.frame,
+                                  [key]:
+                                    event.target.value === ''
+                                      ? Number.NaN
+                                      : Number(event.target.value),
+                                },
+                              })
+                            }
+                          />
+                          {message ? <p className="text-sm text-destructive">{message}</p> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </form.Subscribe>
         </Section>
 
         <Section title="Ukuran">
@@ -280,6 +363,7 @@ function PreviewPane({
         footer={values.footer}
         link={link}
         layout={values.layout}
+        style={values.style}
         logoUrl={logo}
         onStatus={onStatus}
       />
@@ -295,6 +379,7 @@ function PreviewPane({
           footer: values.footer,
           link,
           layout: values.layout,
+          style: values.style,
         }}
         logoUrl={logo}
       />

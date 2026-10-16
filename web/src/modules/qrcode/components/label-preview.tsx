@@ -1,4 +1,4 @@
-import type { LabelLayout, QrLayout } from '@shared/qrcode';
+import type { LabelLayout, QrLayout, QrStyle } from '@shared/qrcode';
 import { layoutLabel } from '@shared/qrcode';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -25,6 +25,8 @@ export interface LabelPreviewProps {
   footer: string;
   link: string;
   layout: QrLayout;
+  /** Gaya teks dan bingkai; kosong = bawaan. */
+  style?: QrStyle;
   /** URL gambar logo (data URL) atau `null`. */
   logoUrl: string | null;
   /** Dipanggil tiap tata letak berubah: pemanggil menampilkan banner (isi melebihi kanvas / QR terlalu padat). */
@@ -81,6 +83,7 @@ export function LabelPreview({
   footer,
   link,
   layout,
+  style,
   logoUrl,
   onStatus,
 }: LabelPreviewProps) {
@@ -100,11 +103,12 @@ export function LabelPreview({
           hasLogo: logo !== null,
           logoAspect: logo ? logo.naturalWidth / logo.naturalHeight : 1,
           layout,
+          ...(style ? { style } : {}),
           qrModules: matrix.length,
         },
         measure,
       ),
-    [title, subtitle, footer, logo, layout, matrix, measure],
+    [title, subtitle, footer, logo, layout, style, matrix, measure],
   );
 
   useEffect(() => {
