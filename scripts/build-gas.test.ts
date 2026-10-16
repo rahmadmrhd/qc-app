@@ -95,3 +95,48 @@ describe('findDuplicateGlobals', () => {
     expect(problems).toEqual(['"y_" dideklarasikan di a.ts, b.ts']);
   });
 });
+
+describe('pemeriksaan API yang tidak ada di runtime Apps Script (V8)', () => {
+  const build = (body: string, options = GAS) =>
+    transformForGas(`export function f_(): unknown {\n${body}\n}`, 'gas/src/x.ts', options);
+
+  test('menolak API Web yang tidak tersedia, dengan petunjuk', () => {
+    expect(() => build("return new URL('https://a.co');")).toThrow(/"URL".*Apps Script/);
+    expect(() => build("return new URLSearchParams('a=1');")).toThrow(/"URLSearchParams"/);
+    expect(() => build("return fetch('https://a.co');")).toThrow(/UrlFetchApp/);
+    expect(() => build('return setTimeout(() => 1, 5);')).toThrow(/Utilities\.sleep/);
+    expect(() => build("return atob('QQ==');")).toThrow(/Utilities\.base64Decode/);
+    expect(() => build('return structuredClone({});')).toThrow(/"structuredClone"/);
+    expect(() => build('return new TextEncoder();')).toThrow(/"TextEncoder"/);
+    expect(() => build('return window.location;')).toThrow(/"window"/);
+    expect(() => build('return Buffer.from("a");')).toThrow(/"Buffer"/);
+  });
+
+  test('menolak anggota yang belum tentu didukung V8 Apps Script', () => {
+    expect(() => build("return Object.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+  });
+
+  test('berlaku juga untuk kode shared (berjalan di GAS)', () => {
+    expect(() => build("return new URL('https://a.co');", SHARED)).toThrow(/"URL"/);
+  });
+
+  test('tidak salah menandai: nama di string, komentar, properti, atau identifier serupa', () => {
+    expect(() =>
+      build(
+        [
+          "const text = 'gunakan URL atau fetch di sini';",
+          '// window, document, URL hanya komentar',
+          '/* setTimeout(...) */',
+          'const obj = { window: 1 } as Record<string, number>;',
+          'const urlText = `halaman ${obj.window} dan URLs`;',
+          'const myURL = 1, fetchAll = 2, documentId = 3;',
+          'return [text, urlText, myURL, fetchAll, documentId, obj.window];',
+        ].join('\n'),
+      ),
+    ).not.toThrow();
+  });
+
+  test('tetap menandai pemakaian di dalam ekspresi template literal', () => {
+    expect(() => build('return `x ${new URL("https://a.co")}`;')).toThrow(/"URL"/);
+  });
+});

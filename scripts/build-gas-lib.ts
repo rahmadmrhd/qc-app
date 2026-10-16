@@ -63,6 +63,194 @@ function assertSupportedSyntax(js: string, file: string): void {
   }
 }
 
+/**
+ * API global yang TIDAK ada di runtime V8 Apps Script (server) beserta pengganti yang disarankan. Tes dan
+ * peramban (Bun/Node/DOM) menyediakannya, sehingga kesalahan baru ketahuan di produksi (mis. `new URL` melempar
+ * ReferenceError yang tertelan); karena itu build menolaknya lebih dulu. Nama yang lazim jadi variabel lokal
+ * (module, process, performance, document) sengaja tidak diperiksa agar tidak salah menandai.
+ */
+const UNAVAILABLE_GLOBALS: Readonly<Record<string, string>> = {
+  URL: 'pecah link secara manual (lihat splitDriveLink di shared/qrcode.ts)',
+  URLSearchParams: 'urai/susun query string secara manual (lihat toQueryString_)',
+  fetch: 'UrlFetchApp.fetch lewat platform_()',
+  setTimeout: 'Utilities.sleep lewat platform_(), atau trigger berbasis waktu',
+  setInterval: 'trigger berbasis waktu Apps Script',
+  clearTimeout: 'trigger berbasis waktu Apps Script',
+  clearInterval: 'trigger berbasis waktu Apps Script',
+  atob: 'Utilities.base64Decode',
+  btoa: 'Utilities.base64Encode',
+  structuredClone: 'salin manual atau JSON.parse(JSON.stringify(x))',
+  TextEncoder: 'Utilities.newBlob(teks).getBytes()',
+  TextDecoder: 'Utilities.newBlob(bytes).getDataAsString()',
+  crypto: 'Utilities.computeDigest / computeHmacSignature',
+  AbortController: 'tidak ada padanan di GAS',
+  Blob: 'Utilities.newBlob',
+  FormData: 'payload objek pada UrlFetchApp.fetch',
+  FileReader: 'DriveApp / Utilities',
+  XMLHttpRequest: 'UrlFetchApp.fetch lewat platform_()',
+  WebSocket: 'tidak ada di GAS',
+  window: 'API peramban tidak ada di server GAS',
+  navigator: 'API peramban tidak ada di server GAS',
+  localStorage: 'PropertiesService / CacheService lewat platform_()',
+  sessionStorage: 'CacheService lewat platform_()',
+  Buffer: 'API Node tidak ada di GAS (Utilities.newBlob)',
+  require: 'API Node tidak ada di GAS (semua file berbagi satu global scope)',
+  __dirname: 'API Node tidak ada di GAS',
+};
+
+/** Anggota yang belum tentu didukung V8 Apps Script (lihat CLAUDE.md). */
+const UNAVAILABLE_MEMBERS: Readonly<Record<string, string>> = {
+  'Object.hasOwn': 'Object.prototype.hasOwnProperty.call(obj, key)',
+};
+
+/**
+ * Membuang komentar, isi string, dan literal regex dari JS hasil transpile (isi ekspresi dalam template literal
+ * tetap dipertahankan) agar pemeriksaan API tidak salah menandai teks biasa.
+ */
+export function stripNonCode(source: string): string {
+  let out = '';
+  const length = source.length;
+  // Karakter terakhir yang bermakna: menentukan apakah "/" membuka regex atau operator pembagian.
+  const regexPrefix = new Set([
+    '',
+    '(',
+    ',',
+    '=',
+    ':',
+    '[',
+    '!',
+    '&',
+    '|',
+    '?',
+    '{',
+    '}',
+    ';',
+    '+',
+    '-',
+    '*',
+    '%',
+    '<',
+    '>',
+    '~',
+    '^',
+  ]);
+
+  function skipRegex(start: number): number {
+    let i = start + 1;
+    let inClass = false;
+    while (i < length) {
+      const ch = source[i];
+      if (ch === '\\') {
+        i += 2;
+        continue;
+      }
+      if (ch === '[') inClass = true;
+      else if (ch === ']') inClass = false;
+      else if (ch === '/' && !inClass) return i + 1;
+      else if (ch === '\n') return i; // bukan regex sungguhan: jangan menelan baris berikutnya
+      i += 1;
+    }
+    return i;
+  }
+
+  function template(start: number): number {
+    let i = start;
+    while (i < length) {
+      const ch = source[i];
+      if (ch === '\\') {
+        i += 2;
+        continue;
+      }
+      if (ch === '`') return i + 1;
+      if (ch === '$' && source[i + 1] === '{') {
+        out += ' ';
+        i = code(i + 2, true);
+        continue;
+      }
+      i += 1;
+    }
+    return i;
+  }
+
+  function code(start: number, inExpression: boolean): number {
+    let i = start;
+    let depth = 0;
+    while (i < length) {
+      const ch = source[i] as string;
+      const next = source[i + 1];
+      if (ch === '/' && next === '/') {
+        const end = source.indexOf('\n', i);
+        i = end < 0 ? length : end;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        const end = source.indexOf('*/', i + 2);
+        i = end < 0 ? length : end + 2;
+        out += ' ';
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        i += 1;
+        while (i < length && source[i] !== ch && source[i] !== '\n') {
+          i += source[i] === '\\' ? 2 : 1;
+        }
+        i += 1;
+        out += ' ';
+        continue;
+      }
+      if (ch === '`') {
+        i = template(i + 1);
+        out += ' ';
+        continue;
+      }
+      if (ch === '/') {
+        const last = out.trimEnd().slice(-1);
+        if (regexPrefix.has(last) || /(?:^|[^\w$])return\s*$/.test(out)) {
+          i = skipRegex(i);
+          out += ' ';
+          continue;
+        }
+      }
+      if (inExpression) {
+        if (ch === '{') depth += 1;
+        else if (ch === '}') {
+          if (depth === 0) return i + 1;
+          depth -= 1;
+        }
+      }
+      out += ch;
+      i += 1;
+    }
+    return i;
+  }
+
+  code(0, false);
+  return out;
+}
+
+function assertNoUnavailableApis(js: string, file: string): void {
+  const code = stripNonCode(js);
+  for (const [name, hint] of Object.entries(UNAVAILABLE_GLOBALS)) {
+    // Bukan properti (obj.name), bukan bagian identifier lain, dan bukan kunci objek ({ name: ... }).
+    const pattern = new RegExp(`(?<![\\w$.])${name}(?![\\w$])(?!\\s*:)`);
+    if (pattern.test(code)) {
+      throw new GasBuildError(
+        file,
+        `API "${name}" tidak tersedia di runtime Apps Script (V8); gunakan ${hint}`,
+      );
+    }
+  }
+  for (const [name, hint] of Object.entries(UNAVAILABLE_MEMBERS)) {
+    const pattern = new RegExp(`(?<![\\w$.])${name.replace('.', '\\.')}(?![\\w$])`);
+    if (pattern.test(code)) {
+      throw new GasBuildError(
+        file,
+        `API "${name}" belum tentu didukung runtime Apps Script (V8); gunakan ${hint}`,
+      );
+    }
+  }
+}
+
 export function transformForGas(
   source: string,
   file: string,
@@ -70,6 +258,7 @@ export function transformForGas(
 ): TransformResult {
   const js = transpiler.transformSync(source);
   assertSupportedSyntax(js, file);
+  assertNoUnavailableApis(js, file);
 
   const code = `${js
     .replace(IMPORT_STATEMENT, '')
