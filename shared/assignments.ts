@@ -7,7 +7,7 @@ export type LocatedModule = (typeof LOCATION_MODULES)[number];
 export type LocationPermissionMap = Record<LocatedModule, Level>;
 
 /** Modul global yang levelnya dihitung dari SEMUA penugasan berlaku, bukan hanya "Semua lokasi". */
-export const SHARED_MODULES = ['item'] as const;
+export const SHARED_MODULES = ['item', 'qrcode'] as const;
 
 /** Kunci peta/snapshot untuk penugasan "Semua lokasi". */
 export const ALL_LOCATIONS_KEY = '*';

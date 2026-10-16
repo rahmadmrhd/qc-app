@@ -8,7 +8,14 @@ const meMock = vi.hoisted(() => ({
     email: 'wh@qc.local',
     name: 'WH',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'view', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access: 'none',
+      item: 'view',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+    },
     locations: [
       {
         id: 'loc-a',

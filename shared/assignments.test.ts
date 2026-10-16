@@ -4,6 +4,7 @@ import {
   assignmentKey,
   fullLocationPermissions,
   isLocatedModule,
+  SHARED_MODULES,
   resolveAccess,
   sanitizeAssignments,
 } from './assignments';
@@ -171,4 +172,9 @@ describe('modul berlokasi', () => {
       stock: 'manage',
     });
   });
+});
+
+test('qrcode adalah modul global bersama (bukan berlokasi)', () => {
+  expect(SHARED_MODULES).toContain('qrcode');
+  expect(isLocatedModule('qrcode')).toBe(false);
 });

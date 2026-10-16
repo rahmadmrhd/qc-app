@@ -10,13 +10,25 @@ function clientWith(permissions: Record<string, string>): QueryClient {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+    },
     locations: [
       {
         id: 'l1',
         code: 'A',
         name: 'A',
-        permissions: { handover: 'none', qc: 'none', stock: 'none', ...permissions },
+        permissions: {
+          handover: 'none',
+          qc: 'none',
+          stock: 'none',
+          ...permissions,
+        },
       },
     ],
   } as MeDto;

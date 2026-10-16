@@ -5,6 +5,9 @@ import {
   hasLevel,
   isLevelAllowed,
   LEVEL_HINTS,
+  MODULE_LABELS,
+  MODULE_LEVELS,
+  MODULES,
   levelHint,
   levelsFor,
   mergePermissions,
@@ -26,6 +29,7 @@ describe('mergePermissions', () => {
     expect(merged).toEqual({
       access: 'none',
       item: 'manage',
+      qrcode: 'none',
       handover: 'edit',
       qc: 'none',
       stock: 'none',
@@ -47,6 +51,7 @@ describe('mergePermissions', () => {
     expect(merged).toEqual({
       access: 'none',
       item: 'none',
+      qrcode: 'none',
       handover: 'none',
       qc: 'none',
       stock: 'view',
@@ -59,6 +64,7 @@ describe('fullPermissions', () => {
     expect(fullPermissions()).toEqual({
       access: 'manage',
       item: 'manage',
+      qrcode: 'manage',
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
@@ -105,4 +111,11 @@ describe('level per modul', () => {
     expect(levelHint('handover', 'manage')).toContain('membatalkan');
     expect(levelHint('item', 'manage')).toContain('customer');
   });
+});
+
+test('modul qrcode: level none/view/edit/manage dan petunjuk khusus', () => {
+  expect(MODULES).toContain('qrcode');
+  expect(MODULE_LEVELS.qrcode).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(MODULE_LABELS.qrcode).toBe('QR Code Label');
+  expect(levelHint('qrcode', 'manage')).toContain('ekspor');
 });

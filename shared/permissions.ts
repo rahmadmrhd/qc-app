@@ -1,9 +1,10 @@
-export const MODULES = ['access', 'item', 'handover', 'qc', 'stock'] as const;
+export const MODULES = ['access', 'item', 'qrcode', 'handover', 'qc', 'stock'] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   access: 'Pengaturan Akses',
   item: 'Data Item',
+  qrcode: 'QR Code Label',
   handover: 'Serah Terima QC–WH',
   qc: 'Pengerjaan QC',
   stock: 'Monitoring Stok',
@@ -26,6 +27,7 @@ export const LEVEL_LABELS: Record<Level, string> = {
 export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   access: ['none', 'view', 'manage'],
   item: ['none', 'view', 'edit', 'manage'],
+  qrcode: ['none', 'view', 'edit', 'manage'],
   handover: ['none', 'view', 'edit', 'manage'],
   qc: ['none', 'edit'],
   stock: ['none', 'view'],
@@ -48,6 +50,11 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     view: 'Melihat katalog item dan daftar customer.',
     edit: 'Melihat serta menambah dan mengubah item.',
     manage: 'Semua akses Ubah, ditambah menonaktifkan item dan mengelola customer.',
+  },
+  qrcode: {
+    view: 'Melihat konfigurasi label QR dan mengunduh hasil ekspor.',
+    edit: 'Melihat serta membuat, mengubah, dan menduplikat konfigurasi label.',
+    manage: 'Semua akses Ubah, ditambah ekspor ke Drive dan menghapus konfigurasi.',
   },
   handover: {
     view: 'Melihat task serah terima di lokasi penugasan.',

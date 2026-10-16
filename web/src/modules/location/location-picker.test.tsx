@@ -6,7 +6,7 @@ import { ACTIVE_LOCATIONS_STORAGE_KEY } from './active-locations';
 import { ActiveLocationsProvider } from './active-locations-context';
 import { LocationPicker } from './location-picker';
 
-const none = { handover: 'none', qc: 'none', stock: 'none' } as const;
+const none = { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none' } as const;
 let me: MeDto;
 
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -25,7 +25,14 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access: 'none', item: 'none', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+    },
     locations: [
       { id: 'l-a', code: 'JKT', name: 'Jakarta', permissions: { ...none, handover: 'view' } },
       { id: 'l-b', code: 'BDG', name: 'Bandung', permissions: { ...none, handover: 'view' } },
