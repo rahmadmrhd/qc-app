@@ -89,9 +89,16 @@ function QrCodesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">QR Code Label</h1>
-        {can(me, 'qrcode', 'edit') ? (
-          <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {can(me, 'qrcode', 'manage') ? (
+            <Button variant="outline" onClick={() => void navigate({ to: '/qrcode/default' })}>
+              Konfigurasi default
+            </Button>
+          ) : null}
+          {can(me, 'qrcode', 'edit') ? (
+            <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
+          ) : null}
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         Label 3 × 3 cm dari sebuah link. Ekspor menghasilkan PDF lembar 10 × 14 (300 × 420 mm) dan

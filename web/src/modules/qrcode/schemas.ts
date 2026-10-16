@@ -10,7 +10,12 @@ import {
   QR_LAYOUT_RANGES,
   QR_LIMITS,
 } from '@shared/qrcode';
-import type { QrDesignDto, SaveQrDesignInput } from '@shared/rpc';
+import type {
+  QrDefaultsDto,
+  QrDesignDto,
+  SaveQrDefaultsInput,
+  SaveQrDesignInput,
+} from '@shared/rpc';
 import { z } from 'zod';
 
 export const QR_FIELD_KEYS = [
@@ -23,6 +28,18 @@ export const QR_FIELD_KEYS = [
   'layout',
   'style',
 ] as const;
+export const QR_DEFAULTS_FIELD_KEYS = [
+  'title',
+  'subtitle',
+  'footer',
+  'layout',
+  'style',
+  'logoFileIds',
+  'defaultLogoId',
+] as const;
+export type QrDefaultsFieldErrors = Partial<
+  Record<(typeof QR_DEFAULTS_FIELD_KEYS)[number], string>
+>;
 export type QrFieldErrors = Partial<Record<(typeof QR_FIELD_KEYS)[number], string>>;
 
 const num = (key: keyof typeof QR_LAYOUT_RANGES) => {
@@ -84,33 +101,42 @@ const text = (max: number, required: boolean) =>
       'Karakter tidak didukung font label (gunakan huruf Latin, angka, tanda baca umum)',
     );
 
-export const qrDesignFormSchema = z
-  .object({
-    title: text(QR_LIMITS.title, true),
-    linkSource: z.enum(['url', 'pdf']),
-    link: z.string().trim().max(QR_LIMITS.link, `Maksimal ${QR_LIMITS.link} karakter`),
-    documentId: z.string(),
-    subtitle: text(QR_LIMITS.subtitle, false),
-    footer: text(QR_LIMITS.footer, false),
-    logoFileId: z.string(),
-    layout: layoutSchema,
-    style: styleSchema,
-  })
-  .superRefine((value, ctx) => {
-    if (value.linkSource === 'url') {
-      if (value.link === '')
-        ctx.addIssue({ code: 'custom', path: ['link'], message: 'Link wajib diisi' });
-      else if (!isHttpUrl(value.link)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['link'],
-          message: 'Link harus diawali http:// atau https:// tanpa spasi',
-        });
-      }
-    } else if (value.documentId === '') {
-      ctx.addIssue({ code: 'custom', path: ['documentId'], message: 'Unggah PDF dulu' });
+const qrFormShape = (titleRequired: boolean) => ({
+  title: text(QR_LIMITS.title, titleRequired),
+  linkSource: z.enum(['url', 'pdf']),
+  link: z.string().trim().max(QR_LIMITS.link, `Maksimal ${QR_LIMITS.link} karakter`),
+  documentId: z.string(),
+  subtitle: text(QR_LIMITS.subtitle, false),
+  footer: text(QR_LIMITS.footer, false),
+  /** QR: logo terpilih dari pustaka. Default: logo awal pada QR baru. */
+  logoFileId: z.string(),
+  /** Hanya konfigurasi default: pustaka logo. Konfigurasi QR mengabaikannya. */
+  logoLibrary: z
+    .array(z.string())
+    .max(QR_LIMITS.logoLibrary, `Maksimal ${QR_LIMITS.logoLibrary} logo`)
+    .default([]),
+  layout: layoutSchema,
+  style: styleSchema,
+});
+
+/** Konfigurasi default: tanpa sumber link, title boleh kosong. */
+export const qrDefaultsFormSchema = z.object(qrFormShape(false));
+
+export const qrDesignFormSchema = z.object(qrFormShape(true)).superRefine((value, ctx) => {
+  if (value.linkSource === 'url') {
+    if (value.link === '')
+      ctx.addIssue({ code: 'custom', path: ['link'], message: 'Link wajib diisi' });
+    else if (!isHttpUrl(value.link)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['link'],
+        message: 'Link harus diawali http:// atau https:// tanpa spasi',
+      });
     }
-  });
+  } else if (value.documentId === '') {
+    ctx.addIssue({ code: 'custom', path: ['documentId'], message: 'Unggah PDF dulu' });
+  }
+});
 
 /** Pesan galat satu isian ukuran (langsung, tanpa menunggu simpan); `null` bila sah. */
 export function layoutRangeMessage(
@@ -148,8 +174,46 @@ export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
     subtitle: design?.subtitle ?? '',
     footer: design?.footer ?? '',
     logoFileId: design?.logoFileId ?? '',
+    logoLibrary: [],
     layout: design ? { ...design.layout } : { ...DEFAULT_QR_LAYOUT },
     style: structuredClone(design ? design.style : DEFAULT_QR_STYLE),
+  };
+}
+
+/** Konfigurasi default sebagai nilai form (title boleh kosong; logoFileId = logo awal; logoLibrary = pustaka). */
+export function toQrDefaultsFormValues(defaults: QrDefaultsDto): QrFormInput {
+  return {
+    title: defaults.title,
+    linkSource: 'pdf',
+    link: '',
+    documentId: '',
+    subtitle: defaults.subtitle,
+    footer: defaults.footer,
+    logoFileId: defaults.defaultLogoId,
+    logoLibrary: [...defaults.logoFileIds],
+    layout: { ...defaults.layout },
+    style: structuredClone(defaults.style),
+  };
+}
+
+/** QR baru: semua isian awal diambil dari konfigurasi default (tanpa sumber link). */
+export function toNewDesignDefaults(defaults: QrDefaultsDto): QrFormInput {
+  return { ...toQrDefaultsFormValues(defaults), logoLibrary: [] };
+}
+
+export function toSaveQrDefaultsInput(
+  values: z.output<typeof qrDefaultsFormSchema>,
+  expectedUpdatedAt?: string,
+): SaveQrDefaultsInput {
+  return {
+    ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    title: values.title,
+    subtitle: values.subtitle,
+    footer: values.footer,
+    layout: values.layout,
+    style: values.style,
+    logoFileIds: values.logoLibrary,
+    defaultLogoId: values.logoFileId,
   };
 }
 

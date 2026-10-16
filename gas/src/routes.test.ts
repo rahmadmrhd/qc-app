@@ -40,8 +40,10 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'qrcodes.export',
     'qrcodes.file',
     'qrcodes.get',
+    'qrcodes.getDefaults',
     'qrcodes.list',
     'qrcodes.save',
+    'qrcodes.saveDefaults',
     'qrcodes.uploadPdf',
   ]);
   expect(routes['auth.me'].permission).toBeUndefined();

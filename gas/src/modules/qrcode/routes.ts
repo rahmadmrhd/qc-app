@@ -3,10 +3,12 @@ import { expectNull_ } from '@gas/core/validate';
 import {
   cloneQrPdfFromDrive_,
   exportQrDesign_,
+  getQrDefaultsDto_,
   getQrDesignDto_,
   listQrDesignDtos_,
   readQrFile_,
   removeQrDesign_,
+  saveQrDefaults_,
   saveQrDesign_,
   uploadQrPdf_,
 } from './service';
@@ -15,6 +17,7 @@ import {
   validateExportQrDesign_,
   validateQrDesignRef_,
   validateQrFile_,
+  validateSaveQrDefaults_,
   validateSaveQrDesign_,
   validateUploadQrPdf_,
 } from './validate';
@@ -24,6 +27,8 @@ type QrMethod =
   | 'qrcodes.get'
   | 'qrcodes.save'
   | 'qrcodes.delete'
+  | 'qrcodes.getDefaults'
+  | 'qrcodes.saveDefaults'
   | 'qrcodes.uploadPdf'
   | 'qrcodes.cloneFromDrive'
   | 'qrcodes.export'
@@ -45,6 +50,16 @@ export function qrcodeRoutes_(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'edit' },
       validate: validateSaveQrDesign_,
       handler: (input, ctx) => saveQrDesign_(input, ctx.user),
+    },
+    'qrcodes.getDefaults': {
+      permission: { module: 'qrcode', level: 'view' },
+      validate: expectNull_,
+      handler: () => getQrDefaultsDto_(),
+    },
+    'qrcodes.saveDefaults': {
+      permission: { module: 'qrcode', level: 'manage' },
+      validate: validateSaveQrDefaults_,
+      handler: (input, ctx) => saveQrDefaults_(input, ctx.user),
     },
     'qrcodes.uploadPdf': {
       permission: { module: 'qrcode', level: 'edit' },

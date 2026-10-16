@@ -7,6 +7,8 @@ import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
 import {
+  clampQrLayout,
+  clampQrStyle,
   DEFAULT_QR_STYLE,
   driveShareUrl,
   labelFileName,
@@ -19,22 +21,33 @@ import {
 import type {
   CloneQrPdfInput,
   ExportQrDesignInput,
+  QrDefaultsDto,
   QrDesignDto,
   QrDesignRefInput,
   QrDocumentDto,
   QrFileDto,
   QrFileInput,
+  SaveQrDefaultsInput,
   SaveQrDesignInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
 import { ensureQrDocFolder_, ensureQrFolder_, QR_FOLDER_PROPERTY } from './folders';
-import type { NewQrDesignRecord, QrDesignRecord, QrDocumentRecord } from './repo';
+import type {
+  NewQrDefaultsRecord,
+  NewQrDesignRecord,
+  QrDefaultsRecord,
+  QrDesignRecord,
+  QrDocumentRecord,
+} from './repo';
 import {
   deleteQrDesign_,
+  getQrDefaultsRecord_,
+  insertQrDefaults_,
   insertQrDesign_,
   insertQrDocument_,
   listQrDesigns_,
   listQrDocuments_,
+  updateQrDefaults_,
   updateQrDesign_,
   updateQrDocument_,
 } from './repo';
@@ -145,6 +158,102 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
   return toQrDesignDto_(design, qrDocumentMap_(), qrUsesMap_(designs));
 }
 
+function toQrDefaultsDto_(record: QrDefaultsRecord | null): QrDefaultsDto {
+  if (!record) {
+    return {
+      title: '',
+      subtitle: '',
+      footer: '',
+      layout: clampQrLayout({}),
+      style: clampQrStyle(null),
+      logoFileIds: [],
+      defaultLogoId: '',
+      updatedAt: '',
+      updatedBy: '',
+    };
+  }
+  return {
+    title: record.title,
+    subtitle: record.subtitle,
+    footer: record.footer,
+    layout: record.layout,
+    style: record.style,
+    logoFileIds: record.logoFileIds,
+    defaultLogoId: record.defaultLogoId,
+    updatedAt: record.updatedAt,
+    updatedBy: record.updatedBy,
+  };
+}
+
+export function getQrDefaultsDto_(): QrDefaultsDto {
+  return toQrDefaultsDto_(getQrDefaultsRecord_());
+}
+
+function qrDefaultsSnapshot_(dto: QrDefaultsDto): Record<string, string> {
+  return {
+    title: dto.title,
+    subtitle: dto.subtitle,
+    footer: dto.footer,
+    layout: JSON.stringify(dto.layout),
+    style: JSON.stringify(dto.style),
+    logoFileIds: dto.logoFileIds.join(','),
+    defaultLogoId: dto.defaultLogoId,
+  };
+}
+
+/** Menyimpan konfigurasi default (nilai awal QR baru dan pustaka logo). Hanya pengaturan: tidak ada hasil ekspor. */
+export function saveQrDefaults_(input: SaveQrDefaultsInput, actor: ActorRef): QrDefaultsDto {
+  return platform_().withLock(() => {
+    const existing = getQrDefaultsRecord_();
+    if (existing) {
+      if (!input.expectedUpdatedAt) {
+        const message = 'Wajib diisi saat mengubah';
+        throw appError_('VALIDATION', message, { expectedUpdatedAt: message });
+      }
+      if (input.expectedUpdatedAt !== existing.updatedAt) {
+        throw appError_('CONFLICT', QR_STALE_MESSAGE);
+      }
+    }
+    if (input.defaultLogoId !== '' && !input.logoFileIds.includes(input.defaultLogoId)) {
+      const message = 'Logo awal harus bagian dari pustaka logo';
+      throw appError_('VALIDATION', message, { defaultLogoId: message });
+    }
+    // Logo pustaka: pemilik tetap ('qrlogo','shared') sehingga dapat dibaca/dirujuk semua pengguna qrcode.
+    attachFiles_(input.logoFileIds, 'qrlogo', 'shared');
+    const before = toQrDefaultsDto_(existing);
+    const now = nowIso_();
+    const next: NewQrDefaultsRecord = {
+      title: input.title,
+      subtitle: input.subtitle,
+      footer: input.footer,
+      layout: input.layout,
+      style: input.style,
+      logoFileIds: input.logoFileIds,
+      defaultLogoId: input.defaultLogoId,
+      updatedAt: now,
+      updatedBy: actor.email,
+    };
+    const after = toQrDefaultsDto_({ ...next, rowNumber: 0 });
+    if (
+      existing &&
+      JSON.stringify(qrDefaultsSnapshot_(before)) === JSON.stringify(qrDefaultsSnapshot_(after))
+    ) {
+      return before;
+    }
+    if (existing) updateQrDefaults_({ ...next, rowNumber: existing.rowNumber });
+    else insertQrDefaults_(next);
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'qrcode.defaults_update',
+      target: 'Konfigurasi default QR',
+      before: existing ? qrDefaultsSnapshot_(before) : null,
+      after: qrDefaultsSnapshot_(after),
+    });
+    return after;
+  });
+}
+
 export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesignDto {
   // Berbagi PDF (I/O Drive) di luar lock: PDF yang sebelumnya dicabut dibagikan lagi saat dipakai.
   const pdfId = input.linkSource === 'pdf' ? input.documentId : '';
@@ -198,6 +307,13 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
       const message =
         'Konfigurasi sudah diekspor: PDF hanya dapat diganti isinya (URL tetap), bukan diganti dokumen lain';
       throw appError_('VALIDATION', message, { documentId: message });
+    }
+    if (input.logoFileId !== '' && input.logoFileId !== (existing?.logoFileId ?? '')) {
+      const library = getQrDefaultsRecord_()?.logoFileIds ?? [];
+      if (!library.includes(input.logoFileId)) {
+        const message = 'Logo harus dipilih dari pustaka logo (diatur di Konfigurasi default)';
+        throw appError_('VALIDATION', message, { logoFileId: message });
+      }
     }
     const documents = qrDocumentMap_();
     if (input.linkSource === 'pdf' && !documents.has(input.documentId)) {

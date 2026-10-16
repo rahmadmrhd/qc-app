@@ -5,7 +5,7 @@ import {
   QR_LAYOUT_KEYS,
   QR_LAYOUT_RANGES,
 } from '@shared/qrcode';
-import type { QrDesignDto, QrDocumentDto } from '@shared/rpc';
+import type { QrDocumentDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
@@ -19,11 +19,17 @@ import { limitDocumentName } from '../lib/document-name';
 import { fileToBase64 } from '../lib/file-to-base64';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
 import type { QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
-import { frameRangeMessage, layoutRangeMessage, qrDesignFormSchema } from '../schemas';
+import {
+  frameRangeMessage,
+  layoutRangeMessage,
+  qrDefaultsFormSchema,
+  qrDesignFormSchema,
+} from '../schemas';
 import { LabelPreview } from './label-preview';
 import type { LabelStatus } from './label-status-alerts';
 import { LabelStatusAlerts } from './label-status-alerts';
-import { LogoField } from './logo-field';
+import { LogoLibraryField } from './logo-library-field';
+import { LogoPicker } from './logo-picker';
 import { PdfSourceField } from './pdf-source-field';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
 import { TextStyleToolbar } from './text-style-toolbar';
@@ -36,9 +42,12 @@ export interface QrDesignFormProps {
   initialDocument?: QrDocumentDto | null;
   /** Konfigurasi sudah pernah diekspor: PDF sumber hanya boleh diganti isinya (URL tetap). */
   exported?: boolean;
-  designs: readonly QrDesignDto[];
+  /** `defaults`: konfigurasi default (tanpa sumber link dan ekspor; mengelola pustaka logo). */
+  mode?: 'design' | 'defaults';
+  /** Pustaka logo yang dapat dipilih (mode design). */
+  logoLibrary?: readonly string[];
   submitError?: string | null;
-  fieldErrors?: QrFieldErrors;
+  fieldErrors?: Readonly<Record<string, string | undefined>>;
   onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
   onCancel: () => void;
   /** Pemegang izin ekspor: tombol "Simpan dan ekspor" tersedia. */
@@ -74,7 +83,8 @@ export function QrDesignForm({
   defaultValues,
   initialDocument = null,
   exported = false,
-  designs,
+  mode = 'design',
+  logoLibrary = [],
   submitError,
   fieldErrors,
   onSubmit,
@@ -94,13 +104,17 @@ export function QrDesignForm({
   const statusRef = useRef<LabelStatus | null>(null);
   statusRef.current = labelStatus;
   const exportAfterRef = useRef(false);
+  const isDefaults = mode === 'defaults';
+  const schema = (
+    isDefaults ? qrDefaultsFormSchema : qrDesignFormSchema
+  ) as typeof qrDesignFormSchema;
   const form = useForm({
     defaultValues,
-    validators: { onSubmit: qrDesignFormSchema },
+    validators: { onSubmit: schema },
     onSubmit: async ({ value }) => {
       const thenExport = exportAfterRef.current;
       exportAfterRef.current = false;
-      await onSubmit(qrDesignFormSchema.parse(value), {
+      await onSubmit(schema.parse(value), {
         overflow: statusRef.current?.overflow ?? false,
         thenExport,
       });
@@ -143,11 +157,12 @@ export function QrDesignForm({
               title={title}
               onCancel={onCancel}
               submitting={submitting}
-              busyText="Menyimpan konfigurasi…"
+              busyText={isDefaults ? 'Menyimpan konfigurasi default…' : 'Menyimpan konfigurasi…'}
+              submitLabel={isDefaults ? 'Simpan default' : undefined}
               submitDisabled={logoBusy || pdfBusy || legacyCloning}
               onSubmitClick={() => (exportAfterRef.current = false)}
               extra={
-                canExport ? (
+                canExport && !isDefaults ? (
                   <Button
                     type="submit"
                     variant="secondary"
@@ -251,92 +266,122 @@ export function QrDesignForm({
           ))}
         </Section>
 
-        <Section title="Sumber link">
-          <form.Subscribe selector={(state) => state.values}>
-            {(values) => {
-              if (values.linkSource !== 'url') return null;
-              const driveLink = parseDriveFileId(values.link) !== null;
-              return (
-                <div className="space-y-2 rounded-md border p-3">
-                  <p className="text-sm text-muted-foreground">
-                    Link saat ini (bukan salinan di aplikasi):{' '}
-                    <span className="break-all">{values.link}</span>
-                  </p>
-                  {driveLink ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={legacyCloning || pdfBusy}
-                      onClick={() => void cloneLegacy(values.link)}
-                    >
-                      {legacyCloning ? (
-                        <BusyLabel>Menyalin…</BusyLabel>
-                      ) : (
-                        'Salin link ini ke Drive aplikasi'
-                      )}
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau salin
-                      berkas dari Drive di bawah untuk menggantinya.
+        {isDefaults ? null : (
+          <Section title="Sumber link">
+            <form.Subscribe selector={(state) => state.values}>
+              {(values) => {
+                if (values.linkSource !== 'url') return null;
+                const driveLink = parseDriveFileId(values.link) !== null;
+                return (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <p className="text-sm text-muted-foreground">
+                      Link saat ini (bukan salinan di aplikasi):{' '}
+                      <span className="break-all">{values.link}</span>
                     </p>
-                  )}
-                  {legacyCloning ? (
-                    <p role="status" className="text-sm">
-                      <BusyLabel>
-                        Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
-                      </BusyLabel>
-                    </p>
-                  ) : null}
-                  {legacyError ? (
-                    <p role="alert" className="text-sm text-destructive">
-                      {legacyError}
-                    </p>
-                  ) : null}
+                    {driveLink ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={legacyCloning || pdfBusy}
+                        onClick={() => void cloneLegacy(values.link)}
+                      >
+                        {legacyCloning ? (
+                          <BusyLabel>Menyalin…</BusyLabel>
+                        ) : (
+                          'Salin link ini ke Drive aplikasi'
+                        )}
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau
+                        salin berkas dari Drive di bawah untuk menggantinya.
+                      </p>
+                    )}
+                    {legacyCloning ? (
+                      <p role="status" className="text-sm">
+                        <BusyLabel>
+                          Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
+                        </BusyLabel>
+                      </p>
+                    ) : null}
+                    {legacyError ? (
+                      <p role="alert" className="text-sm text-destructive">
+                        {legacyError}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              }}
+            </form.Subscribe>
+            <form.Field name="documentId">
+              {(field) => (
+                <div className="space-y-1.5">
+                  <PdfSourceField
+                    document={document}
+                    replaceOnly={exported}
+                    onDocument={applyDocument}
+                    onBusyChange={setPdfBusy}
+                    onUpload={async (file, replaceId) =>
+                      uploadPdf.mutateAsync({
+                        name: limitDocumentName(file.name),
+                        base64: await fileToBase64(file),
+                        ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                      })
+                    }
+                    onClone={(source) => cloneQrPdf.mutateAsync({ source })}
+                  />
+                  <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
+                  <FieldError errors={[fieldErrors?.link]} />
                 </div>
-              );
-            }}
-          </form.Subscribe>
-          <form.Field name="documentId">
-            {(field) => (
-              <div className="space-y-1.5">
-                <PdfSourceField
-                  document={document}
-                  replaceOnly={exported}
-                  onDocument={applyDocument}
-                  onBusyChange={setPdfBusy}
-                  onUpload={async (file, replaceId) =>
-                    uploadPdf.mutateAsync({
-                      name: limitDocumentName(file.name),
-                      base64: await fileToBase64(file),
-                      ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                    })
-                  }
-                  onClone={(source) => cloneQrPdf.mutateAsync({ source })}
-                />
-                <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
-                <FieldError errors={[fieldErrors?.link]} />
-              </div>
-            )}
-          </form.Field>
-        </Section>
+              )}
+            </form.Field>
+          </Section>
+        )}
 
-        <Section title="Logo di tengah QR">
-          <form.Field name="logoFileId">
-            {(field) => (
-              <div className="space-y-1.5">
-                <LogoField
-                  value={field.state.value}
-                  onChange={field.handleChange}
-                  designs={designs}
-                  onBusyChange={setLogoBusy}
-                />
-                <FieldError errors={[...field.state.meta.errors, fieldErrors?.logoFileId]} />
-              </div>
-            )}
-          </form.Field>
-        </Section>
+        {isDefaults ? (
+          <Section title="Pustaka logo">
+            <form.Field name="logoLibrary">
+              {(library) => (
+                <form.Field name="logoFileId">
+                  {(initial) => (
+                    <div className="space-y-1.5">
+                      <LogoLibraryField
+                        library={library.state.value ?? []}
+                        onLibraryChange={library.handleChange}
+                        defaultLogoId={initial.state.value}
+                        onDefaultLogoChange={initial.handleChange}
+                        onBusyChange={setLogoBusy}
+                      />
+                      <FieldError
+                        errors={[
+                          ...library.state.meta.errors,
+                          fieldErrors?.logoFileIds,
+                          fieldErrors?.defaultLogoId,
+                        ]}
+                      />
+                    </div>
+                  )}
+                </form.Field>
+              )}
+            </form.Field>
+          </Section>
+        ) : (
+          <Section title="Logo di tengah QR">
+            <form.Field name="logoFileId">
+              {(field) => (
+                <div className="space-y-1.5">
+                  <LogoPicker
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    library={logoLibrary}
+                  />
+                  <FieldError errors={[...field.state.meta.errors, fieldErrors?.logoFileId]} />
+                </div>
+              )}
+            </form.Field>
+          </Section>
+        )}
 
         <Section title="Bingkai QR">
           <form.Subscribe selector={(state) => state.values.style.frame}>

@@ -10,8 +10,8 @@ import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
+  qrDefaultsQueryOptions,
   qrDesignQueryOptions,
-  qrDesignsQueryOptions,
   useSaveQrDesign,
 } from '@/modules/qrcode/queries';
 import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
   loader: ({ context, params }) =>
     Promise.all([
       context.queryClient.ensureQueryData(qrDesignQueryOptions(params.designId)),
-      context.queryClient.ensureQueryData(qrDesignsQueryOptions()),
+      context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
     ]),
   component: EditQrDesignPage,
 });
@@ -36,7 +36,7 @@ function EditQrDesignPage() {
   // server menjawab CONFLICT (bukan ketikan pengguna hilang diam-diam).
   const loadedAt = useFrozen(design.updatedAt);
   const loaded = useFrozen(design);
-  const { data: designs } = useSuspenseQuery(qrDesignsQueryOptions());
+  const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const save = useSaveQrDesign();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<QrFieldErrors>({});
@@ -75,7 +75,7 @@ function EditQrDesignPage() {
               }
             : null
         }
-        designs={designs}
+        logoLibrary={defaults.logoFileIds}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

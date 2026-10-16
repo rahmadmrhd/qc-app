@@ -7,6 +7,7 @@ import type {
   ExportQrDesignInput,
   QrDesignRefInput,
   QrFileInput,
+  SaveQrDefaultsInput,
   SaveQrDesignInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
@@ -76,6 +77,52 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
     ...(id ? { id } : {}),
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
     ...input,
+  };
+}
+
+export function validateSaveQrDefaults_(raw: unknown): SaveQrDefaultsInput {
+  const reader = readObject_(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
+  const title = reader.str('title', { max: QR_LIMITS.title });
+  const subtitle = reader.str('subtitle', { max: QR_LIMITS.subtitle });
+  const footer = reader.str('footer', { max: QR_LIMITS.footer });
+  for (const [key, text] of [
+    ['title', title],
+    ['subtitle', subtitle],
+    ['footer', footer],
+  ] as const) {
+    if (text !== '' && !isRenderableLabelText(text)) {
+      reader.fail(
+        key,
+        'Karakter tidak didukung font label (gunakan huruf Latin, angka, dan tanda baca umum)',
+      );
+    }
+  }
+  const layout = reader.raw('layout');
+  if (!isQrLayout(layout))
+    reader.fail('layout', 'Ukuran tata letak tidak valid atau di luar rentang');
+  const style = reader.raw('style');
+  if (!isQrStyle(style))
+    reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
+  const ids = reader.raw('logoFileIds');
+  if (
+    !Array.isArray(ids) ||
+    ids.length > QR_LIMITS.logoLibrary ||
+    ids.some((id) => typeof id !== 'string' || id === '' || id.length > 100)
+  ) {
+    reader.fail('logoFileIds', `Pustaka logo maksimal ${QR_LIMITS.logoLibrary} berkas`);
+  }
+  const defaultLogoId = reader.str('defaultLogoId', { max: 100 });
+  reader.done();
+  return {
+    ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    title,
+    subtitle,
+    footer,
+    layout: layout as SaveQrDefaultsInput['layout'],
+    style: style as QrStyle,
+    logoFileIds: [...new Set(ids as string[])],
+    defaultLogoId,
   };
 }
 

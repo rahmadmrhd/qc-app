@@ -44,6 +44,37 @@ export const QR_DOCUMENTS_TABLE: TableSchema = {
   ],
 };
 
+/** Satu baris (id "default"): nilai awal QR baru dan pustaka logo. */
+export const QR_DEFAULTS_TABLE: TableSchema = {
+  sheetName: 'qr_defaults',
+  columns: [
+    'id',
+    'title',
+    'subtitle',
+    'footer',
+    'layout',
+    'style',
+    'logo_file_ids',
+    'default_logo_id',
+    'updated_at',
+    'updated_by',
+  ],
+};
+
+export interface QrDefaultsRecord {
+  rowNumber: number;
+  title: string;
+  subtitle: string;
+  footer: string;
+  layout: QrLayout;
+  style: QrStyle;
+  logoFileIds: string[];
+  defaultLogoId: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type NewQrDefaultsRecord = Omit<QrDefaultsRecord, 'rowNumber'>;
+
 export interface QrDesignRecord {
   rowNumber: number;
   id: string;
@@ -169,6 +200,58 @@ export function updateQrDesign_(design: QrDesignRecord): void {
 }
 export function deleteQrDesign_(design: QrDesignRecord): void {
   deleteRow_(QR_DESIGNS_TABLE, design.rowNumber);
+}
+
+function parseQrIdList_(text: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string' && item !== '')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function fromQrDefaultsRecord_(record: NewQrDefaultsRecord): RowData {
+  return {
+    id: 'default',
+    title: record.title,
+    subtitle: record.subtitle,
+    footer: record.footer,
+    layout: JSON.stringify(record.layout),
+    style: JSON.stringify(record.style),
+    logo_file_ids: JSON.stringify(record.logoFileIds),
+    default_logo_id: record.defaultLogoId,
+    updated_at: record.updatedAt,
+    updated_by: record.updatedBy,
+  };
+}
+
+export function getQrDefaultsRecord_(): QrDefaultsRecord | null {
+  const row = readTable_(QR_DEFAULTS_TABLE).rows.find(
+    ({ data }) => (data.id ?? '').trim() === 'default',
+  );
+  if (!row) return null;
+  const data = row.data;
+  return {
+    rowNumber: row.rowNumber,
+    title: data.title ?? '',
+    subtitle: data.subtitle ?? '',
+    footer: data.footer ?? '',
+    layout: parseQrLayout_(data.layout ?? ''),
+    style: parseQrStyle_(data.style ?? ''),
+    logoFileIds: parseQrIdList_(data.logo_file_ids ?? ''),
+    defaultLogoId: (data.default_logo_id ?? '').trim(),
+    updatedAt: data.updated_at ?? '',
+    updatedBy: data.updated_by ?? '',
+  };
+}
+export function insertQrDefaults_(record: NewQrDefaultsRecord): void {
+  insertRow_(QR_DEFAULTS_TABLE, fromQrDefaultsRecord_(record));
+}
+export function updateQrDefaults_(record: QrDefaultsRecord): void {
+  updateRow_(QR_DEFAULTS_TABLE, record.rowNumber, fromQrDefaultsRecord_(record));
 }
 
 function toQrDocumentRecord_(rowNumber: number, data: RowData): QrDocumentRecord {

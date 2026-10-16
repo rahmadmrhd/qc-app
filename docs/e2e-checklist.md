@@ -103,3 +103,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 97 | Di form QR isi "Link atau ID berkas Drive" (PDF milik pemilik script) lalu "Salin dari Drive" | Salinan muncul di folder dokumen aplikasi, dibagikan via link, menjadi PDF sumber; berkas asli tidak berubah/tidak dibagikan | FQR28 |
 | 98 | Salin dari link non-Drive, berkas non-PDF, atau berkas yang tidak bisa diakses | Ditolak dengan pesan jelas | FQR28 |
 | 99 | Simpan konfigurasi PDF lalu cek nama berkas di Drive; ekspor lalu ganti PDF | Nama `{title}-{subtitle}-{timestamp}.pdf`; setelah diekspor hanya "ganti isi" (URL tetap), tanpa PDF baru/salin | FQR30, FQR31 |
+| 100 | Pengelola (kelola) buka "Konfigurasi default", isi title/footer/ukuran/bingkai, tambah 2 logo ke pustaka, pilih logo awal, Simpan | Tersimpan; tanpa tombol ekspor; pengguna edit/lihat tidak melihat tombol "Konfigurasi default" | FQR32 |
+| 101 | Pengguna edit buat QR baru | Isian awal sama dengan default dan logo awal terpilih; logo hanya dipilih dari pustaka (tanpa unggah) | FQR33, FQR34 |
+| 102 | Ubah default lalu buka QR lama | QR lama tidak berubah | FQR33 |
+| 103 | Atur ukuran logo 30% dengan logo lebar (rasio 3:1) lalu ekspor | Luas logo di label = 30% luas QR (QR tetap terbaca) | FQR35 |

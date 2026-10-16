@@ -18,7 +18,6 @@ function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = 
       <QrDesignForm
         title="Form QR"
         defaultValues={{ ...toQrFormDefaults(), linkSource: 'url', link: 'https://contoh.com' }}
-        designs={[]}
         onSubmit={onSubmit}
         onCancel={vi.fn()}
         {...props}
@@ -191,4 +190,25 @@ test('Simpan dan ekspor dinonaktifkan selama isi tidak muat (ekspor pasti ditola
   await userEvent.paste('x'.repeat(60));
   await screen.findByRole('alert');
   expect(screen.getByRole('button', { name: 'Simpan dan ekspor' })).toBeDisabled();
+});
+
+test('mode default: tanpa sumber link dan ekspor, title boleh kosong, mengelola pustaka logo; simpan mengirim nilai', async () => {
+  const { onSubmit } = renderForm({
+    mode: 'defaults',
+    canExport: true,
+    defaultValues: toQrFormDefaults(),
+  });
+  expect(screen.queryByText('Sumber link')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
+  expect(screen.getByText('Pustaka logo')).toBeInTheDocument();
+  expect(screen.getByLabelText('Tambah logo ke pustaka')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ title: '', logoLibrary: [] });
+});
+
+test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {
+  renderForm({ logoLibrary: ['x'] });
+  expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
+  expect(screen.queryByLabelText(/Unggah logo/i)).toBeNull();
 });

@@ -2,9 +2,13 @@ import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { expect, test } from 'vitest';
 import {
   frameRangeMessage,
+  qrDefaultsFormSchema,
   qrDesignFormSchema,
   toDuplicateDefaults,
+  toNewDesignDefaults,
+  toQrDefaultsFormValues,
   toQrFormDefaults,
+  toSaveQrDefaultsInput,
   toSaveQrDesignInput,
 } from './schemas';
 
@@ -165,4 +169,42 @@ test('toSaveQrDesignInput menyertakan flag overflow hanya bila diberikan', () =>
   expect(toSaveQrDesignInput(parsed, undefined, undefined, true).overflow).toBe(true);
   expect(toSaveQrDesignInput(parsed, 'q1', 't', false).overflow).toBe(false);
   expect('overflow' in toSaveQrDesignInput(parsed)).toBe(false);
+});
+
+test('konfigurasi default: nilai awal QR baru dari default (tanpa sumber link); simpan memetakan pustaka dan logo awal', () => {
+  const defaults = {
+    title: 'PT Contoh',
+    subtitle: 'Label',
+    footer: 'www.contoh.com',
+    layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
+    style: DEFAULT_QR_STYLE,
+    logoFileIds: ['a', 'b'],
+    defaultLogoId: 'b',
+    updatedAt: 't',
+    updatedBy: 'x',
+  };
+  const fresh = toNewDesignDefaults(defaults);
+  expect(fresh).toMatchObject({
+    title: 'PT Contoh',
+    subtitle: 'Label',
+    footer: 'www.contoh.com',
+    logoFileId: 'b',
+    linkSource: 'pdf',
+    link: '',
+    documentId: '',
+    logoLibrary: [],
+  });
+  expect(fresh.layout.qrSize).toBe(18);
+  const values = qrDefaultsFormSchema.parse({ ...toQrDefaultsFormValues(defaults), title: '' });
+  expect(toSaveQrDefaultsInput(values, 't')).toEqual({
+    expectedUpdatedAt: 't',
+    title: '',
+    subtitle: 'Label',
+    footer: 'www.contoh.com',
+    layout: defaults.layout,
+    style: defaults.style,
+    logoFileIds: ['a', 'b'],
+    defaultLogoId: 'b',
+  });
+  expect(toSaveQrDefaultsInput(values)).not.toHaveProperty('expectedUpdatedAt');
 });
