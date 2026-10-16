@@ -189,3 +189,23 @@ test('mengubah gaya/bingkai setelah ekspor = Berubah sejak ekspor', () => {
   const changed = call('qredit@gmail.com', 'qrcodes.save', { ...body, id: design.id, style }).data;
   expect(changed.exportStatus).toBe('stale');
 });
+
+test('galat saat membuang berkas lama SETELAH pencatatan tidak menggagalkan ekspor dan tidak membuang berkas baru', () => {
+  const design = make();
+  exportOf(design);
+  const first = listQrDesigns_()[0];
+  clock += 1000;
+  const again = call('qrmanage@gmail.com', 'qrcodes.get', { id: design.id }).data;
+  const trash = platform.driveTrashFile.bind(platform);
+  platform.driveTrashFile = (id: string) => {
+    if (id === first?.exportPdfDriveId) throw new Error('Drive menolak');
+    trash(id);
+  };
+  const out = exportOf(again);
+  expect(out.ok).toBe(true);
+  const second = listQrDesigns_()[0];
+  expect(second?.exportPdfDriveId).not.toBe(first?.exportPdfDriveId);
+  expect(platform.drive.has(second?.exportPdfDriveId ?? '')).toBe(true);
+  expect(platform.drive.has(second?.exportPngDriveId ?? '')).toBe(true);
+  expect(platform.errors.some((m) => m.includes('Drive menolak'))).toBe(true);
+});

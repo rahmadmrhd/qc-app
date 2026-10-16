@@ -2,6 +2,7 @@ import { beforeEach, expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
 import { listAuditRecords_ } from '@gas/modules/access/repo';
 import { listFiles_ } from '@gas/modules/files/repo';
+import { attachFiles_ } from '@gas/modules/files/service';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
@@ -137,7 +138,7 @@ test('logo: berkas yang tak dikenal ditolak; logo yang sama boleh dirujuk banyak
   });
 });
 
-test('pengguna qrcode tanpa izin item dapat mengunggah dan membaca logo', () => {
+test('pengguna qrcode tanpa izin item dapat mengunggah dan membaca unggahannya sendiri; orang lain baru bisa setelah menjadi logo', () => {
   const up = call('qredit@gmail.com', 'files.upload', {
     mime: 'image/png',
     base64: 'iVBORw0KGgoAAAANSUhEUg==',
@@ -145,7 +146,8 @@ test('pengguna qrcode tanpa izin item dapat mengunggah dan membaca logo', () => 
     height: 1,
   });
   expect(up.ok).toBe(true);
-  expect(call('qrview@gmail.com', 'files.get', { id: up.data.id }).ok).toBe(true);
+  expect(call('qredit@gmail.com', 'files.get', { id: up.data.id }).ok).toBe(true);
+  expect(call('qrview@gmail.com', 'files.get', { id: up.data.id }).error.code).toBe('NOT_FOUND');
   expect(call('noqr@gmail.com', 'files.get', { id: up.data.id }).ok).toBe(true); // item view
 });
 
@@ -236,4 +238,60 @@ test('ubah tanpa menyertakan style mempertahankan gaya yang ada', () => {
   const out = call('qredit@gmail.com', 'qrcodes.save', withoutStyle);
   expect(out.ok).toBe(true);
   expect(out.data.style).toEqual(framedStyle);
+});
+
+const PNG1 = { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==', width: 1, height: 1 };
+const uploadAs = (email: string) => {
+  const out = call(email, 'files.upload', PNG1);
+  if (!out.ok) throw new Error('unggah gagal');
+  return out.data.id as string;
+};
+
+test('mengganti logo ke logo lain TERSIMPAN (bukan dianggap tanpa perubahan) dan tercatat di audit', () => {
+  const a = uploadAs('qredit@gmail.com');
+  const b = uploadAs('qredit@gmail.com');
+  const made = save({ logoFileId: a });
+  clock += 60_000;
+  const swapped = save({ id: made.data.id, logoFileId: b });
+  expect(swapped.ok).toBe(true);
+  expect(swapped.data.logoFileId).toBe(b);
+  expect(swapped.data.updatedAt).not.toBe(made.data.updatedAt);
+  expect(call('qrview@gmail.com', 'qrcodes.get', { id: made.data.id }).data.logoFileId).toBe(b);
+  expect(audits()).toEqual(['qrcode.create', 'qrcode.update']);
+});
+
+test('mengganti PDF sumber ke dokumen lain TERSIMPAN', () => {
+  for (const id of ['d1', 'd2']) {
+    insertQrDocument_({
+      id,
+      driveId: `file-${id}`,
+      name: `${id}.pdf`,
+      size: 1,
+      createdAt: 't',
+      createdBy: 'a',
+      updatedAt: 't',
+      updatedBy: 'a',
+    });
+  }
+  const made = save({ linkSource: 'pdf', link: '', documentId: 'd1' });
+  clock += 60_000;
+  const swapped = save({ id: made.data.id, linkSource: 'pdf', link: '', documentId: 'd2' });
+  expect(swapped.data.documentId).toBe('d2');
+  expect(swapped.data.link).toBe('https://drive.google.com/file/d/file-d2/view');
+  expect(audits().at(-1)).toBe('qrcode.update');
+});
+
+test('files.get untuk pengguna qrcode tanpa izin item: hanya logo (qrlogo) dan berkas unggahannya sendiri yang belum terpasang', () => {
+  const logo = uploadAs('qredit@gmail.com');
+  save({ logoFileId: logo }); // menjadi qrlogo/shared
+  const itemFile = uploadAs('qredit@gmail.com');
+  attachFiles_([itemFile], 'item', 'item-1');
+  const mine = uploadAs('qredit@gmail.com');
+  expect(call('qrview@gmail.com', 'files.get', { id: logo }).ok).toBe(true);
+  expect(call('qrview@gmail.com', 'files.get', { id: itemFile }).error.code).toBe('NOT_FOUND');
+  expect(call('qrview@gmail.com', 'files.get', { id: mine }).error.code).toBe('NOT_FOUND'); // unggahan orang lain
+  expect(call('qredit@gmail.com', 'files.get', { id: mine }).ok).toBe(true); // unggahan sendiri (pratinjau)
+  // pemegang izin item tetap dapat membaca semua berkas gambar
+  expect(call('noqr@gmail.com', 'files.get', { id: itemFile }).ok).toBe(true);
+  expect(call('noqr@gmail.com', 'files.get', { id: logo }).ok).toBe(true);
 });

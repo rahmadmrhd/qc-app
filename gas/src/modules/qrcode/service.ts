@@ -117,7 +117,7 @@ export function qrDesignSnapshot_(
     link: qrEffectiveLink_(design, documents),
     subtitle: design.subtitle,
     footer: design.footer,
-    logo: design.logoFileId === '' ? 'tanpa' : 'ada',
+    logo: design.logoFileId === '' ? 'tanpa' : design.logoFileId,
     layout: JSON.stringify(design.layout),
     frame: design.style.frame.kind,
     style: JSON.stringify(design.style),
@@ -338,12 +338,20 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
   const stamp = nowIso_().replace(/[-:.TZ]/g, '');
   const base = `${labelFileSlug(precheck.title)}-${stamp}`;
   const created: string[] = [];
+  let committed:
+    | {
+        record: QrDesignRecord;
+        previous: QrDesignRecord;
+        documents: Map<string, QrDocumentRecord>;
+        designs: QrDesignRecord[];
+      }
+    | undefined;
   try {
     created.push(
       platform.driveCreateFile(folderId, `${base}.pdf`, 'application/pdf', input.pdfBase64),
     );
     created.push(platform.driveCreateFile(folderId, `${base}.png`, 'image/png', input.pngBase64));
-    const { record, previous, documents, designs } = platform.withLock(() => {
+    committed = platform.withLock(() => {
       const designs = listQrDesigns_();
       const current = designs.find((row) => row.id === input.id);
       if (!current) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
@@ -369,14 +377,27 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
       });
       return { record: updated, previous: current, documents, designs };
     });
-    for (const driveId of [previous.exportPdfDriveId, previous.exportPngDriveId]) {
-      if (driveId !== '') platform.driveTrashFile(driveId);
-    }
-    return toQrDesignDto_(record, documents, qrUsesMap_(designs));
   } catch (error) {
+    // Gagal SEBELUM pencatatan sukses: berkas baru dibersihkan, berkas lama utuh.
     for (const driveId of created) platform.driveTrashFile(driveId);
     throw error;
   }
+  // Setelah pencatatan sukses berkas baru sudah sah: membuang berkas lama bersifat best-effort dan tidak
+  // boleh menggagalkan ekspor atau membuang berkas baru.
+  for (const driveId of [
+    committed.previous.exportPdfDriveId,
+    committed.previous.exportPngDriveId,
+  ]) {
+    if (driveId === '') continue;
+    try {
+      platform.driveTrashFile(driveId);
+    } catch (error) {
+      platform.logError(
+        `qrcode: berkas ekspor lama ${driveId} tidak dapat dibuang: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return toQrDesignDto_(committed.record, committed.documents, qrUsesMap_(committed.designs));
 }
 
 export function readQrFile_(input: QrFileInput): QrFileDto {

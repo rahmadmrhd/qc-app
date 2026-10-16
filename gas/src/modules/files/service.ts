@@ -90,9 +90,19 @@ export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto
 }
 
 /** Hanya berkas yang tercatat di sheet `files` yang dapat dibaca; Drive id tidak pernah datang dari klien. */
-export function readFile_(input: GetFileInput): FileContentDto {
+/**
+ * Membaca berkas. `onlyLogosFor` (email pemanggil) dipakai untuk pengguna yang TIDAK punya izin `item` (mis. hanya
+ * `qrcode`): mereka hanya boleh membaca logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang
+ * (pratinjau logo sebelum disimpan), bukan foto item.
+ */
+export function readFile_(input: GetFileInput, onlyLogosFor?: string): FileContentDto {
   const record = listFiles_().find((file) => file.id === input.id);
   if (!record) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
+  if (onlyLogosFor !== undefined) {
+    const isLogo = record.ownerType === 'qrlogo';
+    const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
+    if (!isLogo && !isOwnPending) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   // Hanya berkas di dalam folder aplikasi yang boleh dibaca (pertahanan berlapis bila sheet files diedit manual).
   const folderId = platform_().getProperty(DRIVE_FOLDER_PROPERTY)?.trim() ?? '';
   const content = folderId ? platform_().driveReadFile(record.driveId, folderId) : null;

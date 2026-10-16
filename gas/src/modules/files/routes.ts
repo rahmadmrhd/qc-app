@@ -1,4 +1,5 @@
 import type { RouteTable } from '@gas/core/router';
+import { hasLevel } from '@shared/permissions';
 import { readFile_, uploadFile_ } from './service';
 import { validateGetFile_, validateUploadFile_ } from './validate';
 
@@ -22,7 +23,9 @@ export function filesRoutes_(): Pick<RouteTable, 'files.upload' | 'files.get'> {
         ],
       },
       validate: validateGetFile_,
-      handler: (input) => readFile_(input),
+      // Pemegang izin item membaca semua berkas gambar; pengguna qrcode saja hanya logo (lihat readFile_).
+      handler: (input, ctx) =>
+        readFile_(input, hasLevel(ctx.user.permissions.item, 'view') ? undefined : ctx.user.email),
     },
   };
 }
