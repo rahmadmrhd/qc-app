@@ -63,3 +63,15 @@ test('galat ekspor ditampilkan dan dialog tetap terbuka', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('melebihi kanvas');
   expect(onOpenChange).not.toHaveBeenCalledWith(false);
 });
+
+test('ekspor ulang: waktu ekspor ditampilkan terformat (bukan ISO mentah)', () => {
+  const exported = {
+    ...base,
+    exportStatus: 'current' as const,
+    exportedAt: '2026-10-16T04:00:00.000Z',
+    exportedBy: 'm@x.com',
+  };
+  render(<ExportDialog design={exported} open onOpenChange={vi.fn()} onConfirm={vi.fn()} />);
+  expect(screen.queryByText(/2026-10-16T04:00:00.000Z/)).toBeNull();
+  expect(screen.getByText(/m@x.com/)).toBeInTheDocument();
+});

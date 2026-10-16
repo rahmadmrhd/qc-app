@@ -33,16 +33,59 @@ test('konfirmasi mengunggah; hasil diteruskan dan URL berbagi tampil hanya-baca'
   expect(onDocument).toHaveBeenCalledWith(doc);
 });
 
-test('ganti PDF: konfirmasi menyebut URL tetap dan jumlah konfigurasi pemakai', async () => {
+test('ganti isi PDF (dipilih eksplisit): konfirmasi menyebut URL tetap dan jumlah konfigurasi pemakai', async () => {
   const onUpload = vi.fn().mockResolvedValue({ ...doc, name: 'baru.pdf' });
   render(<PdfSourceField document={doc} onDocument={vi.fn()} onUpload={onUpload} />);
   expect(screen.getByDisplayValue(doc.link)).toHaveAttribute('readonly');
+  await userEvent.click(screen.getByRole('radio', { name: /Ganti isi PDF ini/ }));
   await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/URL tetap sama/i)).toBeInTheDocument();
   expect(within(dialog).getByText(/2 konfigurasi/)).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Ganti PDF' }));
   expect(onUpload).toHaveBeenCalledWith(pdf, 'd1');
+});
+
+test('PDF dipakai banyak konfigurasi: bawaan = PDF BARU (URL baru), isi PDF bersama tidak tertimpa', async () => {
+  const onUpload = vi.fn().mockResolvedValue({ ...doc, id: 'd2', name: 'baru.pdf', uses: 0 });
+  const onDocument = vi.fn();
+  render(<PdfSourceField document={doc} onDocument={onDocument} onUpload={onUpload} />);
+  expect(screen.getByRole('radio', { name: /Pakai PDF baru/ })).toBeChecked();
+  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(/siapa saja yang punya link/i)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Bagikan dan unggah' }));
+  expect(onUpload).toHaveBeenCalledWith(pdf, undefined);
+  expect(onDocument).toHaveBeenCalledWith(expect.objectContaining({ id: 'd2' }));
+});
+
+test('PDF hanya dipakai satu konfigurasi: bawaan = ganti isi (URL tetap); pilihan dapat dibalik', async () => {
+  const onUpload = vi.fn().mockResolvedValue({ ...doc, uses: 1 });
+  render(
+    <PdfSourceField document={{ ...doc, uses: 1 }} onDocument={vi.fn()} onUpload={onUpload} />,
+  );
+  expect(screen.getByRole('radio', { name: /Ganti isi PDF ini/ })).toBeChecked();
+  await userEvent.click(screen.getByRole('radio', { name: /Pakai PDF baru/ }));
+  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await userEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: 'Bagikan dan unggah' }),
+  );
+  expect(onUpload).toHaveBeenCalledWith(pdf, undefined);
+});
+
+test('tanpa PDF terpasang tidak ada pilihan mode (hanya unggah)', () => {
+  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  expect(screen.queryByRole('radio')).toBeNull();
+});
+
+test('PDF dengan tipe kosong (beberapa OS) diterima bila namanya berakhiran .pdf; nama bukan .pdf ditolak', async () => {
+  render(<PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} />);
+  await userEvent.upload(
+    screen.getByLabelText('Pilih PDF'),
+    new File(['%PDF-1.4'], 'manual.PDF', { type: '' }),
+    { applyAccept: false },
+  );
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
 });
 
 test('berkas bukan PDF atau > 10 MB ditolak di klien tanpa dialog', async () => {

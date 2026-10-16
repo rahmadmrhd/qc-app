@@ -2,6 +2,7 @@ import type { QrLayout, QrStyle } from '@shared/qrcode';
 import { layoutLabel } from '@shared/qrcode';
 import { loadLabelFonts, registerCanvasFonts } from './fonts';
 import { createCanvasMeasure } from './measure';
+import { setPngDpi } from './png-dpi';
 import { qrMatrix } from './qr-matrix';
 import { renderLabelCanvas } from './render-canvas';
 import { buildSheetPdf } from './render-pdf';
@@ -21,7 +22,8 @@ export interface ExportLogo {
   base64: string;
 }
 
-const PNG_PX_PER_MM = 600 / 25.4;
+const PNG_DPI = 600;
+const PNG_PX_PER_MM = PNG_DPI / 25.4;
 
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -85,7 +87,11 @@ export async function renderExportFiles(
   if (layout.overflow)
     throw new Error('Isi label melebihi kanvas 3 × 3 cm; perbaiki ukuran atau teks');
   const pngCanvas = renderLabelCanvas(layout, matrix, logoSource, PNG_PX_PER_MM);
-  const pngBytes = new Uint8Array(await (await canvasToBlob(pngCanvas)).arrayBuffer());
+  // Canvas tidak menyimpan resolusi: tambahkan pHYs 600 dpi agar tercetak tepat 3 cm.
+  const pngBytes = setPngDpi(
+    new Uint8Array(await (await canvasToBlob(pngCanvas)).arrayBuffer()),
+    PNG_DPI,
+  );
   const pdfBytes = await buildSheetPdf(layout, matrix, logoPng, fonts);
   return { pdfBase64: bytesToBase64(pdfBytes), pngBase64: bytesToBase64(pngBytes) };
 }

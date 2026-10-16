@@ -1,6 +1,6 @@
 import { QR_LIMITS } from '@shared/qrcode';
 import type { QrDocumentDto } from '@shared/rpc';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { looksLikePdf } from '../lib/document-name';
 
 export interface PdfSourceFieldProps {
   document: QrDocumentDto | null;
@@ -26,12 +27,21 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const replacing = document !== null;
+  // PDF yang dipakai banyak konfigurasi: bawaan PDF BARU agar isi bersama (dan label tercetak lain) tidak tertimpa.
+  const [mode, setMode] = useState<'replace' | 'new'>(
+    document !== null && document.uses > 1 ? 'new' : 'replace',
+  );
+  const documentId = document?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat dokumen yang terpasang berganti
+  useEffect(() => {
+    setMode(document !== null && document.uses > 1 ? 'new' : 'replace');
+  }, [documentId]);
+  const replacing = document !== null && mode === 'replace';
 
   function choose(file: File | undefined) {
     setError(null);
     if (!file) return;
-    if (file.type !== 'application/pdf') {
+    if (!looksLikePdf(file)) {
       setError('Hanya berkas PDF yang dapat diunggah');
       return;
     }
@@ -46,7 +56,7 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
     if (!pending) return;
     setBusy(true);
     try {
-      onDocument(await onUpload(pending, document?.id));
+      onDocument(await onUpload(pending, replacing ? document?.id : undefined));
       setPending(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah PDF');
@@ -58,6 +68,30 @@ export function PdfSourceField({ document, onDocument, onUpload }: PdfSourceFiel
 
   return (
     <div className="space-y-3">
+      {document ? (
+        <div role="radiogroup" aria-label="Mode unggah PDF" className="space-y-1.5">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="qr-pdf-mode"
+              checked={mode === 'replace'}
+              onChange={() => setMode('replace')}
+            />
+            <span>
+              Ganti isi PDF ini (URL tetap; memengaruhi {document.uses} konfigurasi yang memakainya)
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="qr-pdf-mode"
+              checked={mode === 'new'}
+              onChange={() => setMode('new')}
+            />
+            <span>Pakai PDF baru (URL baru; konfigurasi lain tidak berubah)</span>
+          </label>
+        </div>
+      ) : null}
       <div className="space-y-1.5">
         <Label htmlFor="qr-pdf-file">Pilih PDF</Label>
         <Input

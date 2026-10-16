@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 
 export interface ExportDialogProps {
   design: QrDesignDto;
@@ -48,7 +49,8 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
         </DialogHeader>
         {again ? (
           <p className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
-            Ekspor ulang menimpa berkas lama (diekspor {design.exportedAt} oleh {design.exportedBy}
+            Ekspor ulang menimpa berkas lama (diekspor {formatAuditTime(design.exportedAt)} oleh{' '}
+            {design.exportedBy}
             ). Berkas lama dipindah ke tempat sampah Drive dan tidak dapat dipakai lagi dari
             aplikasi.
           </p>
