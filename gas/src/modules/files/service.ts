@@ -89,7 +89,7 @@ export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto
   }
 }
 
-const FILE_CACHE_TTL_SECONDS = 10800;
+const FILE_CACHE_TTL_SECONDS = 3600;
 /** CacheService membatasi 100 KB per nilai; isi berkas dipotong per 90 ribu karakter base64. */
 const FILE_CACHE_CHUNK = 90_000;
 const FILE_CACHE_MAX_CHUNKS = 6;
@@ -99,32 +99,33 @@ const FILE_CACHE_MAX_CHUNKS = 6;
  * lolos pemeriksaan di sheet `files` (izin/pemilik), jadi cache tidak melewati aturan akses. Berkas tidak pernah
  * diubah isinya (unggahan baru = id baru).
  */
-function readCachedFile_(driveId: string): string | null {
+function readCachedFile_(folderId: string, driveId: string): string | null {
+  if (folderId === '') return null;
   const platform = platform_();
-  const count = Number(platform.cacheGet(`fcont:${driveId}:n`) ?? '0');
+  const count = Number(platform.cacheGet(`fcont:${folderId}:${driveId}:n`) ?? '0');
   if (!Number.isInteger(count) || count < 1 || count > FILE_CACHE_MAX_CHUNKS) return null;
   let text = '';
   for (let index = 0; index < count; index++) {
-    const part = platform.cacheGet(`fcont:${driveId}:${index}`);
+    const part = platform.cacheGet(`fcont:${folderId}:${driveId}:${index}`);
     if (part === null) return null;
     text += part;
   }
   return text;
 }
 
-function cacheFileContent_(driveId: string, base64: string): void {
+function cacheFileContent_(folderId: string, driveId: string, base64: string): void {
   const chunks = Math.ceil(base64.length / FILE_CACHE_CHUNK);
   if (chunks < 1 || chunks > FILE_CACHE_MAX_CHUNKS) return;
   const platform = platform_();
   for (let index = 0; index < chunks; index++) {
     platform.cachePut(
-      `fcont:${driveId}:${index}`,
+      `fcont:${folderId}:${driveId}:${index}`,
       base64.slice(index * FILE_CACHE_CHUNK, (index + 1) * FILE_CACHE_CHUNK),
       FILE_CACHE_TTL_SECONDS,
     );
   }
   // Penanda terakhir: pembaca hanya percaya cache bila semua potongan sudah ada.
-  platform.cachePut(`fcont:${driveId}:n`, String(chunks), FILE_CACHE_TTL_SECONDS);
+  platform.cachePut(`fcont:${folderId}:${driveId}:n`, String(chunks), FILE_CACHE_TTL_SECONDS);
 }
 
 /** Hanya berkas yang tercatat di sheet `files` yang dapat dibaca; Drive id tidak pernah datang dari klien. */
@@ -141,13 +142,14 @@ export function readFile_(input: GetFileInput, onlyLogosFor?: string): FileConte
     const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
     if (!isLogo && !isOwnPending) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
   }
-  const cached = readCachedFile_(record.driveId);
-  if (cached !== null) return { id: record.id, mime: record.mime, base64: cached };
   // Hanya berkas di dalam folder aplikasi yang boleh dibaca (pertahanan berlapis bila sheet files diedit manual).
+  // Cache terikat folder aktif: mengganti DRIVE_FOLDER_ID membuat isi lama tidak terpakai lagi.
   const folderId = platform_().getProperty(DRIVE_FOLDER_PROPERTY)?.trim() ?? '';
+  const cached = readCachedFile_(folderId, record.driveId);
+  if (cached !== null) return { id: record.id, mime: record.mime, base64: cached };
   const content = folderId ? platform_().driveReadFile(record.driveId, folderId) : null;
   if (!content) throw appError_('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
-  cacheFileContent_(record.driveId, content.base64);
+  cacheFileContent_(folderId, record.driveId, content.base64);
   return { id: record.id, mime: record.mime, base64: content.base64 };
 }
 

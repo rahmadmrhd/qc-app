@@ -18,7 +18,6 @@ import { invalidateAccessCache_ } from './context';
 
 export const USERS_TABLE: TableSchema = {
   sheetName: 'users',
-  sharedCache: true,
   columns: [
     'id',
     'email',
@@ -34,7 +33,6 @@ export const USERS_TABLE: TableSchema = {
 
 export const ROLES_TABLE: TableSchema = {
   sheetName: 'roles',
-  sharedCache: true,
   columns: ['id', 'name', 'description', 'permissions', 'created_at', 'updated_at', 'updated_by'],
 };
 
@@ -45,7 +43,6 @@ export const AUDIT_TABLE: TableSchema = {
 
 export const LOCATIONS_TABLE: TableSchema = {
   sheetName: 'locations',
-  sharedCache: true,
   columns: ['id', 'code', 'name', 'status', 'created_at', 'updated_at', 'updated_by'],
 };
 
@@ -286,6 +283,9 @@ function parseSnapshot_(text: string): Record<string, unknown> | null {
  * Satu halaman log audit tanpa membaca seluruh log: (1) hanya kolom ringan ts/actor/action/target untuk semua baris
  * (filter, urut, total), lalu (2) kolom before/after (JSON besar) hanya untuk baris di halaman itu. Terbaru dahulu.
  */
+/** Selisih baris terbesar yang masih digabung dalam satu pembacaan before/after. */
+const AUDIT_GAP_ROWS = 25;
+
 export function readAuditPage_(
   filter: { action: string; query: string },
   page: number,
@@ -338,13 +338,26 @@ export function readAuditPage_(
   const afterCol = col('after');
   const snapFrom = Math.min(beforeCol, afterCol);
   const snapTo = Math.max(beforeCol, afterCol);
-  const firstRow = Math.min(...pageRows.map((row) => row.rowNumber));
-  const lastPageRow = Math.max(...pageRows.map((row) => row.rowNumber));
-  const snaps = sheet
-    .getRange(firstRow, snapFrom, lastPageRow - firstRow + 1, snapTo - snapFrom + 1)
-    .getValues();
+  // Hanya baris halaman yang dibaca: baris berdekatan (selisih <= AUDIT_GAP_ROWS) digabung dalam satu pembacaan, yang
+  // berjauhan dibaca terpisah. Filter yang menyebar tidak lagi memuat seluruh log (batas waktu/memori Apps Script).
+  const sortedRows = pageRows.map((row) => row.rowNumber).sort((a, b) => a - b);
+  const groups: Array<{ from: number; to: number }> = [];
+  for (const rowNumber of sortedRows) {
+    const last = groups[groups.length - 1];
+    if (last && rowNumber - last.to <= AUDIT_GAP_ROWS) last.to = rowNumber;
+    else groups.push({ from: rowNumber, to: rowNumber });
+  }
+  const snapshots = new Map<number, unknown[]>();
+  for (const group of groups) {
+    const block = sheet
+      .getRange(group.from, snapFrom, group.to - group.from + 1, snapTo - snapFrom + 1)
+      .getValues();
+    block.forEach((line, index) => {
+      snapshots.set(group.from + index, line);
+    });
+  }
   const entries = pageRows.map((row): AuditRecord => {
-    const line = snaps[row.rowNumber - firstRow] ?? [];
+    const line = snapshots.get(row.rowNumber) ?? [];
     return {
       ...row,
       before: parseSnapshot_(cellToString_(line[beforeCol - snapFrom])),

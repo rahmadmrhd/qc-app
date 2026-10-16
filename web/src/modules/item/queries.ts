@@ -32,13 +32,29 @@ const compareItems = (a: ItemSummaryDto, b: ItemSummaryDto) =>
  * Hasil simpan dipasang langsung ke daftar dan detail (tanpa memuat ulang dari server, sehingga navigasi setelah simpan
  * tidak menunggu RPC lagi). Merk dan Log Audit ditandai basi (jumlah item per merk bisa berubah; merk baru bisa dibuat).
  */
+/** Hanya field ringkasan: daftar ini ikut disimpan di localStorage dan tidak boleh memuat detail/stiker/aksesori/lampiran. */
+export function toItemSummary(item: ItemDto): ItemSummaryDto {
+  return {
+    id: item.id,
+    externalId: item.externalId,
+    brandId: item.brandId,
+    brand: item.brand,
+    model: item.model,
+    isCountryLock: item.isCountryLock,
+    status: item.status,
+    aliases: item.aliases,
+    imageCount: item.imageCount,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function useItemMutation<TInput>(mutationFn: (input: TInput) => Promise<ItemDto>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
     onSuccess: (saved) => {
       markStale(queryClient, brandKeys.all, accessKeys.audit);
-      upsertInList<ItemSummaryDto>(queryClient, itemKeys.list, saved, compareItems);
+      upsertInList<ItemSummaryDto>(queryClient, itemKeys.list, toItemSummary(saved), compareItems);
       queryClient.setQueryData(itemKeys.one(saved.id), saved);
     },
   });

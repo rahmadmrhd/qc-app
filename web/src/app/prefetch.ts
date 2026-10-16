@@ -11,6 +11,9 @@ import { qrDefaultsQueryOptions, qrDesignsQueryOptions } from '@/modules/qrcode/
 
 /** Jeda setelah beranda tampil sebelum prefetch (memberi waktu bagi klik pertama pengguna). */
 export const PREFETCH_IDLE_MS = 2500;
+/** Selang dan batas percobaan ulang bila masih ada pengambilan data saat jeda habis. */
+export const PREFETCH_RETRY_MS = 1000;
+export const PREFETCH_MAX_RETRIES = 30;
 
 /**
  * Daftar yang sering dipakai, hanya yang boleh dibaca pengguna (agar tidak memicu FORBIDDEN). Semua dipicu dalam satu
@@ -43,12 +46,21 @@ export function usePrefetchOnIdle(me: MeDto): void {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   useEffect(() => {
     if (pathname !== '/' || done.has(me.email)) return;
-    const timer = setTimeout(() => {
-      if (queryClient.isFetching() > 0) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const attempt = () => {
+      // Masih ada pengambilan data (mis. muat ulang cache basi yang lambat): coba lagi sampai klien diam, bukan menyerah.
+      if (queryClient.isFetching() > 0 && attempts++ < PREFETCH_MAX_RETRIES) {
+        timer = setTimeout(attempt, PREFETCH_RETRY_MS);
+        return;
+      }
       done.add(me.email);
       prefetchCommonQueries(queryClient, me);
-    }, PREFETCH_IDLE_MS);
-    return () => clearTimeout(timer);
+    };
+    timer = setTimeout(attempt, PREFETCH_IDLE_MS);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [pathname, me, queryClient]);
 }
 
