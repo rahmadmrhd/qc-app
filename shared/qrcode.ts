@@ -689,52 +689,81 @@ export function qrExportStatus(exportedHash: string, content: QrContent): QrExpo
   return exportedHash === qrContentHash(content) ? 'current' : 'stale';
 }
 
+interface DriveLinkParts {
+  /** Segmen path (diawali "" karena path diawali "/"). */
+  path: string[];
+  params: Array<[string, string]>;
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Memecah link https Drive/Docs tanpa Web API `URL`/`URLSearchParams` (tidak tersedia di runtime V8 Apps Script,
+ * tempat fungsi ini berjalan). Host harus persis drive.google.com atau docs.google.com (tanpa port/userinfo).
+ */
+function splitDriveLink(input: string): DriveLinkParts | null {
+  const text = input.trim();
+  const scheme = 'https://';
+  if (!text.toLowerCase().startsWith(scheme)) return null;
+  let rest = text.slice(scheme.length);
+  const hash = rest.indexOf('#');
+  if (hash >= 0) rest = rest.slice(0, hash);
+  const questionMark = rest.indexOf('?');
+  const query = questionMark >= 0 ? rest.slice(questionMark + 1) : '';
+  const beforeQuery = questionMark >= 0 ? rest.slice(0, questionMark) : rest;
+  const slash = beforeQuery.indexOf('/');
+  const host = (slash >= 0 ? beforeQuery.slice(0, slash) : beforeQuery).toLowerCase();
+  const path = slash >= 0 ? beforeQuery.slice(slash) : '/';
+  if (host !== 'drive.google.com' && host !== 'docs.google.com') return null;
+  const params = query
+    .split('&')
+    .filter((pair) => pair !== '')
+    .map((pair): [string, string] => {
+      const eq = pair.indexOf('=');
+      return eq >= 0
+        ? [safeDecode(pair.slice(0, eq)), safeDecode(pair.slice(eq + 1))]
+        : [safeDecode(pair), ''];
+    });
+  return { path: path.split('/'), params };
+}
+
+function driveParam(parts: DriveLinkParts, name: string): string | null {
+  const found = parts.params.find(([key]) => key === name);
+  return found ? found[1] : null;
+}
+
 /**
  * Mengambil fileId Google Drive dari link Drive/Docs (file/d/ID, open?id=ID, uc?id=ID) atau fileId polos.
- * Link ke host lain, folder, atau teks yang bukan id dikembalikan null.
+ * Link ke host lain, folder, atau teks yang bukan id dikembalikan null. Tanpa Web API URL (lihat splitDriveLink).
  */
 export function parseDriveFileId(input: string): string | null {
   const text = input.trim();
   const idChars = (value: string) =>
     value.length >= 20 && value.length <= 120 && isDriveIdText(value);
   if (idChars(text)) return text;
-  let url: URL;
-  try {
-    url = new URL(text);
-  } catch {
-    return null;
+  const parts = splitDriveLink(text);
+  if (parts === null) return null;
+  const queryId = driveParam(parts, 'id');
+  if (queryId !== null && idChars(queryId)) {
+    if (parts.path.includes('open') || parts.path[parts.path.length - 1] === 'uc') return queryId;
   }
-  if (
-    url.protocol !== 'https:' ||
-    !['drive.google.com', 'docs.google.com'].includes(url.hostname)
-  ) {
-    return null;
-  }
-  const queryId = url.searchParams.get('id');
-  if (queryId !== null && idChars(queryId) && url.pathname.split('/').includes('open'))
-    return queryId;
-  if (queryId !== null && idChars(queryId) && url.pathname.endsWith('/uc')) return queryId;
-  const parts = url.pathname.split('/');
-  const at = parts.indexOf('d');
-  const fromPath = at >= 0 ? parts[at + 1] : undefined;
+  const at = parts.path.indexOf('d');
+  const fromPath = at >= 0 ? parts.path[at + 1] : undefined;
   return fromPath !== undefined && idChars(fromPath) ? fromPath : null;
 }
 
 /** Resource key link Drive berkunci (parameter `resourcekey`), atau null; hanya untuk host Drive/Docs. */
 export function parseDriveResourceKey(input: string): string | null {
-  try {
-    const url = new URL(input.trim());
-    if (
-      url.protocol !== 'https:' ||
-      !['drive.google.com', 'docs.google.com'].includes(url.hostname)
-    ) {
-      return null;
-    }
-    const key = url.searchParams.get('resourcekey');
-    return key !== null && key.length > 0 && key.length <= 100 ? key : null;
-  } catch {
-    return null;
-  }
+  const parts = splitDriveLink(input);
+  if (parts === null) return null;
+  const key = driveParam(parts, 'resourcekey');
+  return key !== null && key.length > 0 && key.length <= 100 ? key : null;
 }
 
 function isDriveIdText(value: string): boolean {
