@@ -2,8 +2,9 @@ import type {
   CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignRefInput,
-  SaveQrDefaultsInput,
   SaveQrDesignInput,
+  SaveQrLogoLibraryInput,
+  SaveQrPresetInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -47,8 +48,12 @@ function useQrMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<T
 
 export const useSaveQrDesign = () =>
   useQrMutation((input: SaveQrDesignInput) => rpc('qrcodes.save', input));
-export const useSaveQrDefaults = () =>
-  useQrMutation((input: SaveQrDefaultsInput) => rpc('qrcodes.saveDefaults', input));
+export const useSaveQrPreset = () =>
+  useQrMutation((input: SaveQrPresetInput) => rpc('qrcodes.savePreset', input));
+export const useDeleteQrPreset = () =>
+  useQrMutation((input: QrDesignRefInput) => rpc('qrcodes.deletePreset', input));
+export const useSaveQrLogoLibrary = () =>
+  useQrMutation((input: SaveQrLogoLibraryInput) => rpc('qrcodes.saveLogoLibrary', input));
 export const useDeleteQrDesign = () =>
   useQrMutation((input: QrDesignRefInput) => rpc('qrcodes.delete', input));
 export const useCloneQrPdf = () =>

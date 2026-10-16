@@ -11,21 +11,16 @@ import { LogoThumb } from './logo-picker';
 const LOGO_MAX_SIDE = 512;
 
 export interface LogoLibraryFieldProps {
-  /** Pustaka logo (id berkas). */
+  /** Pustaka logo bersama (id berkas). */
   library: readonly string[];
   onLibraryChange: (ids: string[]) => void;
-  /** Logo awal pada QR baru; kosong = tanpa logo. */
-  defaultLogoId: string;
-  onDefaultLogoChange: (fileId: string) => void;
   onBusyChange?: (busy: boolean) => void;
 }
 
-/** Mengelola pustaka logo (khusus pengelola): tambah, hapus, dan pilih logo awal untuk QR baru. */
+/** Mengelola pustaka logo bersama (khusus pengelola): tambah dan hapus logo. */
 export function LogoLibraryField({
   library,
   onLibraryChange,
-  defaultLogoId,
-  onDefaultLogoChange,
   onBusyChange,
 }: LogoLibraryFieldProps) {
   const upload = useUploadFile();
@@ -53,49 +48,24 @@ export function LogoLibraryField({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Logo di pustaka ini dapat dipilih user saat membuat QR. Pilih satu sebagai logo awal pada QR
-        baru.
-      </p>
-      <div role="radiogroup" aria-label="Logo awal" className="flex flex-wrap gap-3">
-        <label className="flex cursor-pointer flex-col items-center gap-1 text-sm">
-          <input
-            type="radio"
-            name="qr-default-logo"
-            aria-label="Tanpa logo awal"
-            checked={defaultLogoId === ''}
-            onChange={() => onDefaultLogoChange('')}
-          />
-          <span className="flex h-16 w-16 items-center justify-center rounded border text-xs text-muted-foreground">
-            Tanpa logo
-          </span>
-        </label>
+      <div className="flex flex-wrap gap-3">
         {library.map((id, index) => (
           <div key={id} className="flex flex-col items-center gap-1 text-sm">
-            <label className="flex cursor-pointer flex-col items-center gap-1">
-              <input
-                type="radio"
-                name="qr-default-logo"
-                aria-label={`Jadikan logo ${index + 1} sebagai logo awal`}
-                checked={defaultLogoId === id}
-                onChange={() => onDefaultLogoChange(id)}
-              />
-              <LogoThumb id={id} label={`Logo ${index + 1}`} />
-            </label>
+            <LogoThumb id={id} label={`Logo ${index + 1}`} />
             <Button
               type="button"
               variant="outline"
               size="sm"
               aria-label={`Hapus logo ${index + 1} dari pustaka`}
-              onClick={() => {
-                onLibraryChange(library.filter((item) => item !== id));
-                if (defaultLogoId === id) onDefaultLogoChange('');
-              }}
+              onClick={() => onLibraryChange(library.filter((item) => item !== id))}
             >
               Hapus
             </Button>
           </div>
         ))}
+        {library.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Pustaka masih kosong.</p>
+        ) : null}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="qr-logo-library-file">Tambah logo ke pustaka</Label>
@@ -111,7 +81,8 @@ export function LogoLibraryField({
         />
         <p className="text-xs text-muted-foreground">
           {full ? `Pustaka penuh (maksimal ${QR_LIMITS.logoLibrary} logo). ` : ''}
-          Logo dikecilkan otomatis. Perubahan pustaka tersimpan setelah Anda menekan Simpan.
+          Logo dikecilkan otomatis. Perubahan pustaka tersimpan setelah Anda menekan Simpan pustaka
+          logo.
         </p>
       </div>
       {phase !== null ? (

@@ -9,6 +9,9 @@ export const QR_LIMITS = {
   documentMaxBytes: 10 * 1024 * 1024,
   /** Jumlah logo maksimal dalam pustaka logo konfigurasi default. */
   logoLibrary: 20,
+  /** Jumlah konfigurasi default maksimal dan panjang namanya. */
+  presets: 50,
+  presetName: 60,
   exportMaxBytes: 8 * 1024 * 1024,
 } as const;
 

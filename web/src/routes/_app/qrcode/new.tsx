@@ -17,7 +17,7 @@ import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
 import {
   QR_FIELD_KEYS,
   toDuplicateDefaults,
-  toNewDesignDefaults,
+  toQrFormDefaults,
   toSaveQrDesignInput,
 } from '@/modules/qrcode/schemas';
 
@@ -67,9 +67,10 @@ function NewQrDesignPage() {
     <div className="max-w-5xl space-y-4">
       <QrDesignForm
         title={source ? 'Duplikat konfigurasi' : 'Konfigurasi QR baru'}
-        canExport={can(me, 'qrcode', 'manage')}
-        defaultValues={source ? toDuplicateDefaults(source) : toNewDesignDefaults(defaults)}
+        canExport={can(me, 'qrcode', 'edit')}
+        defaultValues={source ? toDuplicateDefaults(source) : toQrFormDefaults()}
         logoLibrary={defaults.logoFileIds}
+        presets={source ? undefined : defaults.presets}
         initialDocument={
           source?.linkSource === 'pdf'
             ? {

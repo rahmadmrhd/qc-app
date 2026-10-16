@@ -75,6 +75,42 @@ export interface QrDefaultsRecord {
 }
 export type NewQrDefaultsRecord = Omit<QrDefaultsRecord, 'rowNumber'>;
 
+/** Konfigurasi default (banyak): nilai awal QR baru. */
+export const QR_PRESETS_TABLE: TableSchema = {
+  sheetName: 'qr_presets',
+  columns: [
+    'id',
+    'name',
+    'title',
+    'subtitle',
+    'footer',
+    'layout',
+    'style',
+    'default_logo_id',
+    'created_at',
+    'created_by',
+    'updated_at',
+    'updated_by',
+  ],
+};
+
+export interface QrPresetRecord {
+  rowNumber: number;
+  id: string;
+  name: string;
+  title: string;
+  subtitle: string;
+  footer: string;
+  layout: QrLayout;
+  style: QrStyle;
+  defaultLogoId: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type NewQrPresetRecord = Omit<QrPresetRecord, 'rowNumber'>;
+
 export interface QrDesignRecord {
   rowNumber: number;
   id: string;
@@ -252,6 +288,54 @@ export function insertQrDefaults_(record: NewQrDefaultsRecord): void {
 }
 export function updateQrDefaults_(record: QrDefaultsRecord): void {
   updateRow_(QR_DEFAULTS_TABLE, record.rowNumber, fromQrDefaultsRecord_(record));
+}
+
+function fromQrPresetRecord_(preset: NewQrPresetRecord): RowData {
+  return {
+    id: preset.id,
+    name: preset.name,
+    title: preset.title,
+    subtitle: preset.subtitle,
+    footer: preset.footer,
+    layout: JSON.stringify(preset.layout),
+    style: JSON.stringify(preset.style),
+    default_logo_id: preset.defaultLogoId,
+    created_at: preset.createdAt,
+    created_by: preset.createdBy,
+    updated_at: preset.updatedAt,
+    updated_by: preset.updatedBy,
+  };
+}
+
+export function listQrPresets_(): QrPresetRecord[] {
+  return readTable_(QR_PRESETS_TABLE)
+    .rows.map(
+      ({ rowNumber, data }): QrPresetRecord => ({
+        rowNumber,
+        id: (data.id ?? '').trim(),
+        name: data.name ?? '',
+        title: data.title ?? '',
+        subtitle: data.subtitle ?? '',
+        footer: data.footer ?? '',
+        layout: parseQrLayout_(data.layout ?? ''),
+        style: parseQrStyle_(data.style ?? ''),
+        defaultLogoId: (data.default_logo_id ?? '').trim(),
+        createdAt: data.created_at ?? '',
+        createdBy: data.created_by ?? '',
+        updatedAt: data.updated_at ?? '',
+        updatedBy: data.updated_by ?? '',
+      }),
+    )
+    .filter((preset) => preset.id !== '');
+}
+export function insertQrPreset_(preset: NewQrPresetRecord): void {
+  insertRow_(QR_PRESETS_TABLE, fromQrPresetRecord_(preset));
+}
+export function updateQrPreset_(preset: QrPresetRecord): void {
+  updateRow_(QR_PRESETS_TABLE, preset.rowNumber, fromQrPresetRecord_(preset));
+}
+export function removeQrPresetRow_(preset: QrPresetRecord): void {
+  deleteRow_(QR_PRESETS_TABLE, preset.rowNumber);
 }
 
 function toQrDocumentRecord_(rowNumber: number, data: RowData): QrDocumentRecord {

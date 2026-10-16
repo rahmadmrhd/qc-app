@@ -401,31 +401,49 @@ export interface SaveQrDesignInput {
   /** Hasil pengukuran tata letak di peramban; kosong = pertahankan nilai yang ada (bawaan false). */
   overflow?: boolean;
 }
-/** Konfigurasi default QR: nilai awal saat membuat QR baru (semua isian kecuali sumber link) dan pustaka logo. */
-export interface QrDefaultsDto {
+/** Satu konfigurasi default QR: nilai awal (semua isian kecuali sumber link) yang dipilih user saat membuat QR baru. */
+export interface QrPresetDto {
+  id: string;
+  name: string;
   title: string;
   subtitle: string;
   footer: string;
   layout: QrLayout;
   style: QrStyle;
-  /** Pustaka logo: id berkas (pemilik bersama) yang dapat dipilih user saat membuat QR. */
-  logoFileIds: string[];
-  /** Logo yang terpilih awal pada QR baru; kosong = tanpa logo. Harus bagian dari pustaka. */
+  /** Logo yang terpilih awal; kosong = tanpa logo. Harus bagian dari pustaka logo. */
   defaultLogoId: string;
-  /** Kosong bila default belum pernah disimpan. */
+  createdAt: string;
+  createdBy: string;
   updatedAt: string;
   updatedBy: string;
 }
-export interface SaveQrDefaultsInput {
-  /** Wajib bila default sudah pernah disimpan. */
+/** Seluruh konfigurasi default dan pustaka logo bersama (dipilih user saat membuat/mengubah QR). */
+export interface QrDefaultsDto {
+  presets: QrPresetDto[];
+  logoFileIds: string[];
+  /** Versi pustaka logo; kosong bila belum pernah disimpan. */
+  logoUpdatedAt: string;
+}
+export interface SaveQrPresetInput {
+  id?: string;
+  /** Wajib saat mengubah. */
   expectedUpdatedAt?: string;
+  name: string;
   title: string;
   subtitle: string;
   footer: string;
   layout: QrLayout;
   style: QrStyle;
-  logoFileIds: string[];
   defaultLogoId: string;
+}
+export interface SaveQrLogoLibraryInput {
+  /** Wajib bila pustaka sudah pernah disimpan. */
+  expectedUpdatedAt?: string;
+  logoFileIds: string[];
+}
+export interface QrLogoLibraryDto {
+  logoFileIds: string[];
+  logoUpdatedAt: string;
 }
 export interface QrDesignRefInput {
   id: string;
@@ -499,7 +517,9 @@ export interface RpcContract {
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
-  'qrcodes.saveDefaults': { input: SaveQrDefaultsInput; output: QrDefaultsDto };
+  'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
+  'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
