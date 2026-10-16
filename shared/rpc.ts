@@ -460,6 +460,7 @@ export interface RpcContract {
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
 }
 
 export type RpcMethod = keyof RpcContract;

@@ -4,16 +4,26 @@ import { platform_ } from '@gas/core/platform';
 import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import { attachFiles_ } from '@gas/modules/files/service';
+import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
 import { driveShareUrl, qrExportStatus } from '@shared/qrcode';
-import type { QrDesignDto, QrDesignRefInput, SaveQrDesignInput } from '@shared/rpc';
+import type {
+  QrDesignDto,
+  QrDesignRefInput,
+  QrDocumentDto,
+  SaveQrDesignInput,
+  UploadQrPdfInput,
+} from '@shared/rpc';
+import { ensureQrDocFolder_ } from './folders';
 import type { NewQrDesignRecord, QrDesignRecord, QrDocumentRecord } from './repo';
 import {
   deleteQrDesign_,
   insertQrDesign_,
+  insertQrDocument_,
   listQrDesigns_,
   listQrDocuments_,
   updateQrDesign_,
+  updateQrDocument_,
 } from './repo';
 
 const QR_STALE_MESSAGE =
@@ -210,4 +220,89 @@ export function removeQrDesign_(input: QrDesignRefInput, actor: ActorRef): QrDes
     if (driveId !== '') platform_().driveTrashFile(driveId);
   }
   return { id: removed.id };
+}
+
+function toQrDocumentDto_(doc: QrDocumentRecord, uses: number): QrDocumentDto {
+  return { id: doc.id, name: doc.name, link: driveShareUrl(doc.driveId), uses };
+}
+
+function qrDocumentUses_(documentId: string): number {
+  return listQrDesigns_().filter((d) => d.linkSource === 'pdf' && d.documentId === documentId)
+    .length;
+}
+
+/**
+ * Unggah PDF sumber, atau ganti isi PDF yang ada dengan id Drive (dan URL) yang SAMA agar label tercetak tetap
+ * valid. I/O Drive di luar lock; catatan sheet di dalam lock.
+ */
+export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {
+  const platform = platform_();
+  const size = base64ByteLength(input.base64);
+  if (input.replaceDocumentId) {
+    const current = listQrDocuments_().find((doc) => doc.id === input.replaceDocumentId);
+    if (!current) throw appError_('NOT_FOUND', 'PDF tidak ditemukan');
+    try {
+      platform.driveReplaceFileContent(current.driveId, 'application/pdf', input.base64);
+    } catch (error) {
+      platform_().logError(
+        `qrcode: ganti PDF gagal: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw appError_(
+        'INTERNAL',
+        'Isi PDF tidak dapat diganti di Drive; URL lama tetap dipakai dan berkas lama tidak diubah',
+      );
+    }
+    return platform.withLock(() => {
+      const fresh = listQrDocuments_().find((doc) => doc.id === current.id) ?? current;
+      const now = nowIso_();
+      const updated: QrDocumentRecord = {
+        ...fresh,
+        name: input.name,
+        size,
+        updatedAt: now,
+        updatedBy: actor.email,
+      };
+      updateQrDocument_(updated);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.pdf_upload',
+        target: input.name,
+        before: { name: fresh.name, size: fresh.size },
+        after: { name: input.name, size, replaced: true },
+      });
+      return toQrDocumentDto_(updated, qrDocumentUses_(updated.id));
+    });
+  }
+  const folderId = ensureQrDocFolder_();
+  const driveId = platform.driveCreateFile(folderId, input.name, 'application/pdf', input.base64);
+  try {
+    platform.driveShareAnyoneWithLink(driveId);
+    return platform.withLock(() => {
+      const now = nowIso_();
+      const record = {
+        id: platform_().uuid(),
+        driveId,
+        name: input.name,
+        size,
+        createdAt: now,
+        createdBy: actor.email,
+        updatedAt: now,
+        updatedBy: actor.email,
+      };
+      insertQrDocument_(record);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.pdf_upload',
+        target: input.name,
+        before: null,
+        after: { name: input.name, size, replaced: false },
+      });
+      return toQrDocumentDto_({ ...record, rowNumber: 0 }, 0);
+    });
+  } catch (error) {
+    platform.driveTrashFile(driveId);
+    throw error;
+  }
 }
