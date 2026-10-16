@@ -59,7 +59,12 @@ export function HandoverForm({
     >
       <form.Subscribe selector={(state) => state.isSubmitting}>
         {(isSubmitting) => (
-          <FormHeader title={title} onCancel={onCancel} submitting={isSubmitting} />
+          <FormHeader
+            title={title}
+            onCancel={onCancel}
+            submitting={isSubmitting}
+            busyText="Menyimpan task…"
+          />
         )}
       </form.Subscribe>
       <section className="space-y-3 rounded-lg border p-4">

@@ -56,12 +56,15 @@ function QrCodesPage() {
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 
-  async function confirmExport(design: QrDesignDto) {
+  async function confirmExport(design: QrDesignDto, report: (step: string) => void) {
+    if (design.logoFileId !== '') report('Memuat logo dari Drive…');
     const logo =
       design.logoFileId === ''
         ? null
         : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
+    report('Membuat PDF lembar 10 × 14 dan PNG label…');
     const files = await renderExportFiles(design, logo);
+    report('Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…');
     await exportMutation.mutateAsync({
       id: design.id,
       expectedUpdatedAt: design.updatedAt,
@@ -86,9 +89,16 @@ function QrCodesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">QR Code Label</h1>
-        {can(me, 'qrcode', 'edit') ? (
-          <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {can(me, 'qrcode', 'manage') ? (
+            <Button variant="outline" onClick={() => void navigate({ to: '/qrcode/default' })}>
+              Konfigurasi default
+            </Button>
+          ) : null}
+          {can(me, 'qrcode', 'edit') ? (
+            <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
+          ) : null}
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         Label 3 × 3 cm dari sebuah link. Ekspor menghasilkan PDF lembar 10 × 14 (300 × 420 mm) dan
@@ -112,7 +122,7 @@ function QrCodesPage() {
           design={exporting}
           open
           onOpenChange={(open) => (open ? undefined : setExporting(null))}
-          onConfirm={() => confirmExport(exporting)}
+          onConfirm={(report) => confirmExport(exporting, report)}
         />
       ) : null}
       <Dialog

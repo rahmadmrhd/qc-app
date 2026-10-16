@@ -1,6 +1,8 @@
 import type {
+  CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignRefInput,
+  SaveQrDefaultsInput,
   SaveQrDesignInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
@@ -11,11 +13,19 @@ import { accessKeys } from '@/modules/access/queries';
 export const qrKeys = {
   all: ['qrcodes'] as const,
   list: ['qrcodes', 'list'] as const,
+  defaults: ['qrcodes', 'defaults'] as const,
   one: (id: string) => ['qrcodes', 'one', id] as const,
 };
 
 export function qrDesignsQueryOptions() {
   return queryOptions({ queryKey: qrKeys.list, queryFn: () => rpc('qrcodes.list', null) });
+}
+
+export function qrDefaultsQueryOptions() {
+  return queryOptions({
+    queryKey: qrKeys.defaults,
+    queryFn: () => rpc('qrcodes.getDefaults', null),
+  });
 }
 
 export function qrDesignQueryOptions(id: string) {
@@ -37,8 +47,12 @@ function useQrMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<T
 
 export const useSaveQrDesign = () =>
   useQrMutation((input: SaveQrDesignInput) => rpc('qrcodes.save', input));
+export const useSaveQrDefaults = () =>
+  useQrMutation((input: SaveQrDefaultsInput) => rpc('qrcodes.saveDefaults', input));
 export const useDeleteQrDesign = () =>
   useQrMutation((input: QrDesignRefInput) => rpc('qrcodes.delete', input));
+export const useCloneQrPdf = () =>
+  useQrMutation((input: CloneQrPdfInput) => rpc('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
   useQrMutation((input: UploadQrPdfInput) => rpc('qrcodes.uploadPdf', input));
 export const useExportQrDesign = () =>

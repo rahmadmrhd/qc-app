@@ -21,7 +21,7 @@ import {
   QR_DOC_FOLDER_NAME,
   QR_FOLDER_NAME,
 } from '@gas/modules/qrcode/folders';
-import { QR_DESIGNS_TABLE, QR_DOCUMENTS_TABLE } from '@gas/modules/qrcode/repo';
+import { QR_DEFAULTS_TABLE, QR_DESIGNS_TABLE, QR_DOCUMENTS_TABLE } from '@gas/modules/qrcode/repo';
 import { assignInitialRevs_, SYNC_STATE_TABLE } from '@gas/modules/sync/state';
 import { SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
 
@@ -57,6 +57,7 @@ export function runSetup_(): string {
     HANDOVER_LINES_TABLE,
     QR_DESIGNS_TABLE,
     QR_DOCUMENTS_TABLE,
+    QR_DEFAULTS_TABLE,
   ]) {
     openTable_(table);
     lines.push(`Sheet "${table.sheetName}" siap.`);

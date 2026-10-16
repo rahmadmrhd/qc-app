@@ -1,5 +1,6 @@
 import type { QrDesignDto } from '@shared/rpc';
 import { useState } from 'react';
+import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,19 +18,21 @@ export interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Membuat berkas lalu menyimpannya; melempar bila gagal (pesan ditampilkan di dialog). */
-  onConfirm: () => Promise<void>;
+  onConfirm: (report: (step: string) => void) => Promise<void>;
 }
 
 export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDialogProps) {
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState('');
   const [error, setError] = useState<string | null>(null);
   const again = design.exportedAt !== '';
 
   async function confirm() {
     setBusy(true);
     setError(null);
+    setStep('Menyiapkan ekspor…');
     try {
-      await onConfirm();
+      await onConfirm(setStep);
       onOpenChange(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Ekspor gagal');
@@ -61,12 +64,23 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
             {error}
           </p>
         ) : null}
+        {busy ? (
+          <p role="status" className="text-sm">
+            <BusyLabel>{step}</BusyLabel>
+          </p>
+        ) : null}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Batal
           </Button>
           <Button disabled={busy} onClick={() => void confirm()}>
-            {busy ? 'Memproses…' : again ? 'Timpa dan simpan' : 'Simpan ke Drive'}
+            {busy ? (
+              <BusyLabel>Memproses…</BusyLabel>
+            ) : again ? (
+              'Timpa dan simpan'
+            ) : (
+              'Simpan ke Drive'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

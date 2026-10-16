@@ -7,6 +7,8 @@ export const QR_LIMITS = {
   link: 300,
   documentName: 150,
   documentMaxBytes: 10 * 1024 * 1024,
+  /** Jumlah logo maksimal dalam pustaka logo konfigurasi default. */
+  logoLibrary: 20,
   exportMaxBytes: 8 * 1024 * 1024,
 } as const;
 
@@ -29,8 +31,8 @@ export interface QrLayout {
   footerSize: number;
   /** Sisi QR dalam mm. */
   qrSize: number;
-  /** Sisi logo sebagai persen sisi QR. */
-  logoPercent: number;
+  /** Luas logo (lebar × tinggi) sebagai persen LUAS QR; maksimal 30. Rasio gambar logo tetap. */
+  logoArea: number;
   /** Jarak antarbagian dan padding kanvas dalam mm. */
   gap: number;
   padding: number;
@@ -41,7 +43,7 @@ export const QR_LAYOUT_KEYS = [
   'subtitleSize',
   'footerSize',
   'qrSize',
-  'logoPercent',
+  'logoArea',
   'gap',
   'padding',
 ] as const;
@@ -54,7 +56,7 @@ export const QR_LAYOUT_RANGES: Record<
   subtitleSize: { min: 3, max: 12, step: 0.5, unit: 'pt', label: 'Ukuran subtitle' },
   footerSize: { min: 3, max: 10, step: 0.5, unit: 'pt', label: 'Ukuran footer' },
   qrSize: { min: 10, max: 26, step: 0.5, unit: 'mm', label: 'Ukuran QR' },
-  logoPercent: { min: 8, max: 30, step: 1, unit: '%', label: 'Ukuran logo' },
+  logoArea: { min: 1, max: 30, step: 0.5, unit: '%', label: 'Luas logo terhadap luas QR' },
   gap: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Jarak antarbagian' },
   padding: { min: 0, max: 5, step: 0.1, unit: 'mm', label: 'Padding kanvas' },
 };
@@ -65,7 +67,7 @@ export const DEFAULT_QR_LAYOUT: QrLayout = {
   subtitleSize: 5,
   footerSize: 4,
   qrSize: 17,
-  logoPercent: 22,
+  logoArea: 5,
   gap: 1,
   padding: 1.2,
 };
@@ -88,6 +90,16 @@ export function isQrLayout(value: unknown): value is QrLayout {
 /** Menyaring nilai tersimpan/tak tepercaya: tiap field dijepit ke rentang; yang bukan angka memakai bawaan. */
 export function clampQrLayout(value: Partial<Record<string, unknown>>): QrLayout {
   const out: QrLayout = { ...DEFAULT_QR_LAYOUT };
+  // Konfigurasi lama menyimpan `logoPercent` (persen SISI QR): diubah ke persen luas (p² ÷ 100) bila nilai baru belum ada.
+  const legacySide = value.logoPercent;
+  if (
+    value.logoArea === undefined &&
+    typeof legacySide === 'number' &&
+    Number.isFinite(legacySide)
+  ) {
+    const range = QR_LAYOUT_RANGES.logoArea;
+    out.logoArea = Math.min(range.max, Math.max(range.min, (legacySide * legacySide) / 100));
+  }
   for (const key of QR_LAYOUT_KEYS) {
     const entry = value[key];
     if (typeof entry !== 'number' || !Number.isFinite(entry)) continue;
@@ -159,6 +171,27 @@ export function labelFileSlug(text: string, max = 40): string {
 /** Nama berkas hasil ekspor/unduh dari title dan subtitle (subtitle boleh kosong), maks. 60 karakter. */
 export function labelFileName(title: string, subtitle: string): string {
   return labelFileSlug(`${title} ${subtitle}`, 60);
+}
+
+/**
+ * Nama berkas PDF sumber di Drive: "{title}-{subtitle}-{yyyyMMdd-HHmmss}.pdf" (waktu WIB; subtitle kosong dihilangkan,
+ * karakter yang bermasalah untuk nama berkas diganti spasi, bagian title/subtitle dibatasi agar total <= 120).
+ */
+export function qrPdfFileName(title: string, subtitle: string, nowMs: number): string {
+  const wib = new Date(nowMs + 7 * 3600 * 1000).toISOString();
+  const stamp = `${wib.slice(0, 10).replace(/-/g, '')}-${wib.slice(11, 19).replace(/:/g, '')}`;
+  const clean = (text: string) =>
+    text
+      .split('')
+      .map((char) => (char.charCodeAt(0) < 32 || '\\/:*?"<>|'.includes(char) ? ' ' : char))
+      .join('')
+      .split(' ')
+      .filter((word) => word !== '')
+      .join(' ');
+  const base = [clean(title), clean(subtitle)].filter((part) => part !== '').join('-');
+  const suffix = `-${stamp}.pdf`;
+  const room = 120 - suffix.length;
+  return `${base === '' ? 'label' : base.slice(0, room).trim()}${suffix}`;
 }
 
 /** Gaya satu bagian teks (title, subtitle, atau footer). */
@@ -508,9 +541,10 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       input.logoAspect !== undefined && Number.isFinite(input.logoAspect) && input.logoAspect > 0
         ? input.logoAspect
         : 1;
-    const longest = (qrSize * layout.logoPercent) / 100;
-    const widthMm = aspect >= 1 ? longest : longest * aspect;
-    const heightMm = aspect >= 1 ? longest / aspect : longest;
+    // luas logo = logoArea% dari luas QR, rasio gambar dipertahankan: w × h = A, w ÷ h = aspect
+    const area = (qrSize * qrSize * layout.logoArea) / 100;
+    const widthMm = Math.sqrt(area * aspect);
+    const heightMm = Math.sqrt(area / aspect);
     elements.push({
       kind: 'logo',
       xMm: LABEL_MM / 2 - widthMm / 2,
@@ -521,7 +555,12 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       backdropHeightMm: heightMm * 1.15,
     });
   }
+  // Logo dengan luas tetap dan rasio ekstrem dapat lebih lebar/tinggi dari QR (bahkan kanvas): dianggap tidak muat.
+  const logo = elements.find((element) => element.kind === 'logo');
+  const logoTooBig =
+    logo?.kind === 'logo' && (logo.widthMm > qrSize + 1e-9 || logo.heightMm > qrSize + 1e-9);
   const overflow =
+    logoTooBig ||
     title.tooWide ||
     subtitle.tooWide ||
     footer.tooWide ||
@@ -648,4 +687,56 @@ export function qrContentHash(content: QrContent): string {
 export function qrExportStatus(exportedHash: string, content: QrContent): QrExportStatus {
   if (exportedHash === '') return 'none';
   return exportedHash === qrContentHash(content) ? 'current' : 'stale';
+}
+
+/**
+ * Mengambil fileId Google Drive dari link Drive/Docs (file/d/ID, open?id=ID, uc?id=ID) atau fileId polos.
+ * Link ke host lain, folder, atau teks yang bukan id dikembalikan null.
+ */
+export function parseDriveFileId(input: string): string | null {
+  const text = input.trim();
+  const idChars = (value: string) =>
+    value.length >= 20 && value.length <= 120 && isDriveIdText(value);
+  if (idChars(text)) return text;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    !['drive.google.com', 'docs.google.com'].includes(url.hostname)
+  ) {
+    return null;
+  }
+  const queryId = url.searchParams.get('id');
+  if (queryId !== null && idChars(queryId) && url.pathname.split('/').includes('open'))
+    return queryId;
+  if (queryId !== null && idChars(queryId) && url.pathname.endsWith('/uc')) return queryId;
+  const parts = url.pathname.split('/');
+  const at = parts.indexOf('d');
+  const fromPath = at >= 0 ? parts[at + 1] : undefined;
+  return fromPath !== undefined && idChars(fromPath) ? fromPath : null;
+}
+
+/** Resource key link Drive berkunci (parameter `resourcekey`), atau null; hanya untuk host Drive/Docs. */
+export function parseDriveResourceKey(input: string): string | null {
+  try {
+    const url = new URL(input.trim());
+    if (
+      url.protocol !== 'https:' ||
+      !['drive.google.com', 'docs.google.com'].includes(url.hostname)
+    ) {
+      return null;
+    }
+    const key = url.searchParams.get('resourcekey');
+    return key !== null && key.length > 0 && key.length <= 100 ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDriveIdText(value: string): boolean {
+  return value.split('').every((char) => /[A-Za-z0-9_-]/.test(char));
 }

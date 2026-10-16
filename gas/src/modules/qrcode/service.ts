@@ -7,30 +7,48 @@ import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
 import {
+  clampQrLayout,
+  clampQrStyle,
   DEFAULT_QR_STYLE,
   driveShareUrl,
   labelFileName,
+  parseDriveFileId,
+  parseDriveResourceKey,
+  QR_LIMITS,
   qrContentHash,
   qrExportStatus,
+  qrPdfFileName,
 } from '@shared/qrcode';
 import type {
+  CloneQrPdfInput,
   ExportQrDesignInput,
+  QrDefaultsDto,
   QrDesignDto,
   QrDesignRefInput,
   QrDocumentDto,
   QrFileDto,
   QrFileInput,
+  SaveQrDefaultsInput,
   SaveQrDesignInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
 import { ensureQrDocFolder_, ensureQrFolder_, QR_FOLDER_PROPERTY } from './folders';
-import type { NewQrDesignRecord, QrDesignRecord, QrDocumentRecord } from './repo';
+import type {
+  NewQrDefaultsRecord,
+  NewQrDesignRecord,
+  QrDefaultsRecord,
+  QrDesignRecord,
+  QrDocumentRecord,
+} from './repo';
 import {
   deleteQrDesign_,
+  getQrDefaultsRecord_,
+  insertQrDefaults_,
   insertQrDesign_,
   insertQrDocument_,
   listQrDesigns_,
   listQrDocuments_,
+  updateQrDefaults_,
   updateQrDesign_,
   updateQrDocument_,
 } from './repo';
@@ -141,6 +159,102 @@ export function getQrDesignDto_(input: QrDesignRefInput): QrDesignDto {
   return toQrDesignDto_(design, qrDocumentMap_(), qrUsesMap_(designs));
 }
 
+function toQrDefaultsDto_(record: QrDefaultsRecord | null): QrDefaultsDto {
+  if (!record) {
+    return {
+      title: '',
+      subtitle: '',
+      footer: '',
+      layout: clampQrLayout({}),
+      style: clampQrStyle(null),
+      logoFileIds: [],
+      defaultLogoId: '',
+      updatedAt: '',
+      updatedBy: '',
+    };
+  }
+  return {
+    title: record.title,
+    subtitle: record.subtitle,
+    footer: record.footer,
+    layout: record.layout,
+    style: record.style,
+    logoFileIds: record.logoFileIds,
+    defaultLogoId: record.defaultLogoId,
+    updatedAt: record.updatedAt,
+    updatedBy: record.updatedBy,
+  };
+}
+
+export function getQrDefaultsDto_(): QrDefaultsDto {
+  return toQrDefaultsDto_(getQrDefaultsRecord_());
+}
+
+function qrDefaultsSnapshot_(dto: QrDefaultsDto): Record<string, string> {
+  return {
+    title: dto.title,
+    subtitle: dto.subtitle,
+    footer: dto.footer,
+    layout: JSON.stringify(dto.layout),
+    style: JSON.stringify(dto.style),
+    logoFileIds: dto.logoFileIds.join(','),
+    defaultLogoId: dto.defaultLogoId,
+  };
+}
+
+/** Menyimpan konfigurasi default (nilai awal QR baru dan pustaka logo). Hanya pengaturan: tidak ada hasil ekspor. */
+export function saveQrDefaults_(input: SaveQrDefaultsInput, actor: ActorRef): QrDefaultsDto {
+  return platform_().withLock(() => {
+    const existing = getQrDefaultsRecord_();
+    if (existing) {
+      if (!input.expectedUpdatedAt) {
+        const message = 'Wajib diisi saat mengubah';
+        throw appError_('VALIDATION', message, { expectedUpdatedAt: message });
+      }
+      if (input.expectedUpdatedAt !== existing.updatedAt) {
+        throw appError_('CONFLICT', QR_STALE_MESSAGE);
+      }
+    }
+    if (input.defaultLogoId !== '' && !input.logoFileIds.includes(input.defaultLogoId)) {
+      const message = 'Logo awal harus bagian dari pustaka logo';
+      throw appError_('VALIDATION', message, { defaultLogoId: message });
+    }
+    // Logo pustaka: pemilik tetap ('qrlogo','shared') sehingga dapat dibaca/dirujuk semua pengguna qrcode.
+    attachFiles_(input.logoFileIds, 'qrlogo', 'shared');
+    const before = toQrDefaultsDto_(existing);
+    const now = nowIso_();
+    const next: NewQrDefaultsRecord = {
+      title: input.title,
+      subtitle: input.subtitle,
+      footer: input.footer,
+      layout: input.layout,
+      style: input.style,
+      logoFileIds: input.logoFileIds,
+      defaultLogoId: input.defaultLogoId,
+      updatedAt: now,
+      updatedBy: actor.email,
+    };
+    const after = toQrDefaultsDto_({ ...next, rowNumber: 0 });
+    if (
+      existing &&
+      JSON.stringify(qrDefaultsSnapshot_(before)) === JSON.stringify(qrDefaultsSnapshot_(after))
+    ) {
+      return before;
+    }
+    if (existing) updateQrDefaults_({ ...next, rowNumber: existing.rowNumber });
+    else insertQrDefaults_(next);
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'qrcode.defaults_update',
+      target: 'Konfigurasi default QR',
+      before: existing ? qrDefaultsSnapshot_(before) : null,
+      after: qrDefaultsSnapshot_(after),
+    });
+    return after;
+  });
+}
+
 export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesignDto {
   // Berbagi PDF (I/O Drive) di luar lock: PDF yang sebelumnya dicabut dibagikan lagi saat dipakai.
   const pdfId = input.linkSource === 'pdf' ? input.documentId : '';
@@ -154,9 +268,24 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
     throw error;
   }
   // Pembersihan serentak bisa mencabut berbagi PDF ini tepat sebelum konfigurasi tersimpan: pastikan terbagi.
-  if (pdfId !== '') ensureQrDocumentShared_(pdfId);
-  revokeUnusedQrDocuments_(outcome.released);
+  // Konfigurasi sudah tersimpan: langkah lanjutan (berbagi, nama berkas, pencabutan) best-effort — galatnya hanya
+  // dicatat agar pengguna tidak melihat "gagal" untuk simpan yang sebenarnya berhasil (retry akan CONFLICT).
+  if (pdfId !== '') {
+    afterQrCommit_('berbagi PDF', () => ensureQrDocumentShared_(pdfId));
+    afterQrCommit_('nama PDF', () => renameQrDocument_(pdfId, input.title, input.subtitle));
+  }
+  afterQrCommit_('pencabutan berbagi', () => revokeUnusedQrDocuments_(outcome.released));
   return outcome.dto;
+}
+
+function afterQrCommit_(label: string, run: () => void): void {
+  try {
+    run();
+  } catch (error) {
+    platform_().logError(
+      `qrcode: ${label} gagal setelah simpan: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 interface SaveOutcome {
@@ -172,6 +301,36 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
     if (input.id && !existing) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
     if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
       throw appError_('CONFLICT', QR_STALE_MESSAGE);
+    }
+    // Link harus dari Drive (PDF sumber). Konfigurasi lama bersumber link manual boleh disimpan ulang selama
+    // linknya tidak berubah.
+    if (
+      input.linkSource === 'url' &&
+      !(existing && existing.linkSource === 'url' && existing.link === input.link)
+    ) {
+      const message =
+        'Link harus berasal dari Drive: unggah PDF atau salin berkas Drive ke aplikasi';
+      throw appError_('VALIDATION', message, { link: message });
+    }
+    if (
+      existing &&
+      existing.exportedHash !== '' &&
+      existing.linkSource === 'pdf' &&
+      input.linkSource === 'pdf' &&
+      input.documentId !== existing.documentId
+    ) {
+      const message =
+        'Konfigurasi sudah diekspor: PDF hanya dapat diganti isinya (URL tetap), bukan diganti dokumen lain';
+      throw appError_('VALIDATION', message, { documentId: message });
+    }
+    if (input.logoFileId !== '' && input.logoFileId !== (existing?.logoFileId ?? '')) {
+      const library = getQrDefaultsRecord_()?.logoFileIds ?? [];
+      // Logo yang masih dipakai konfigurasi lain (mis. sumber duplikat berlogo lama) tetap boleh dirujuk.
+      const inUse = designs.some((design) => design.logoFileId === input.logoFileId);
+      if (!library.includes(input.logoFileId) && !inUse) {
+        const message = 'Logo harus dipilih dari pustaka logo (diatur di Konfigurasi default)';
+        throw appError_('VALIDATION', message, { logoFileId: message });
+      }
     }
     const documents = qrDocumentMap_();
     if (input.linkSource === 'pdf' && !documents.has(input.documentId)) {
@@ -264,6 +423,28 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
 
 /** Masa tenggang unggahan yang belum dipakai konfigurasi mana pun sebelum berbaginya dicabut. */
 const QR_ORPHAN_GRACE_MS = 60 * 60 * 1000;
+
+/**
+ * Mengganti nama berkas PDF sumber di Drive menjadi "{title}-{subtitle}-{timestamp}.pdf" (id dan URL tetap).
+ * Best-effort: galat Drive hanya dicatat. I/O Drive di luar lock; pemanggil tanpa lock.
+ */
+function renameQrDocument_(documentId: string, title: string, subtitle: string): void {
+  const doc = listQrDocuments_().find((row) => row.id === documentId);
+  if (!doc) return;
+  const name = qrPdfFileName(title, subtitle, platform_().now());
+  try {
+    platform_().driveRenameFile(doc.driveId, name);
+  } catch (error) {
+    platform_().logError(
+      `qrcode: nama PDF ${doc.driveId} tidak dapat diganti: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  platform_().withLock(() => {
+    const fresh = listQrDocuments_().find((row) => row.id === documentId);
+    if (fresh) updateQrDocument_({ ...fresh, name });
+  });
+}
 
 /** Membagikan (lagi) PDF yang sebelumnya dicabut berbaginya. I/O Drive di luar lock; pemanggil tanpa lock. */
 function ensureQrDocumentShared_(documentId: string): void {
@@ -359,6 +540,68 @@ export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocume
   // Pembersihan oportunistik: unggahan yatim yang sudah melewati masa tenggang dicabut berbaginya.
   revokeUnusedQrDocuments_([]);
   return out;
+}
+
+/**
+ * Menyalin berkas PDF Drive (link atau fileId) ke folder dokumen aplikasi dan membagikannya: salinan menjadi PDF
+ * sumber dengan URL tetap yang isinya dapat diganti kemudian. Berkas asli tidak diubah (tidak dibagikan, tidak ditimpa).
+ * I/O Drive di luar lock; catatan sheet di dalam lock.
+ */
+export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): QrDocumentDto {
+  const platform = platform_();
+  const sourceId = parseDriveFileId(input.source);
+  if (sourceId === null) {
+    const message = 'Isi dengan link atau ID berkas Google Drive';
+    throw appError_('VALIDATION', message, { source: message });
+  }
+  const resourceKey = parseDriveResourceKey(input.source) ?? undefined;
+  const info = platform.driveExternalFileInfo(sourceId, resourceKey);
+  if (!info) {
+    throw appError_(
+      'NOT_FOUND',
+      'Berkas Drive tidak ditemukan atau tidak dapat diakses akun pemilik aplikasi',
+    );
+  }
+  if (info.mime !== 'application/pdf') throw appError_('VALIDATION', 'Berkas Drive bukan PDF');
+  if (info.size > QR_LIMITS.documentMaxBytes) {
+    throw appError_('VALIDATION', 'Ukuran PDF maksimal 10 MB');
+  }
+  const name = limitQrDocumentName_(info.name);
+  const driveId = platform.driveCopyFile(sourceId, ensureQrDocFolder_(), name, resourceKey);
+  try {
+    platform.driveShareAnyoneWithLink(driveId);
+    return platform.withLock(() => {
+      const now = nowIso_();
+      const record = {
+        id: platform_().uuid(),
+        driveId,
+        name,
+        size: info.size,
+        shared: true,
+        createdAt: now,
+        createdBy: actor.email,
+        updatedAt: now,
+        updatedBy: actor.email,
+      };
+      insertQrDocument_(record);
+      appendAudit_({
+        ts: now,
+        actor: actor.email,
+        action: 'qrcode.pdf_clone',
+        target: name,
+        before: null,
+        after: { name, size: info.size, sourceFileId: sourceId },
+      });
+      return toQrDocumentDto_({ ...record, rowNumber: 0 }, 0);
+    });
+  } catch (error) {
+    platform.driveTrashFile(driveId);
+    throw error;
+  }
+}
+
+function limitQrDocumentName_(name: string): string {
+  return name.length <= QR_LIMITS.documentName ? name : name.slice(0, QR_LIMITS.documentName);
 }
 
 function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {

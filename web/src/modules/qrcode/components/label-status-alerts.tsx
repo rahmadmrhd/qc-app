@@ -22,7 +22,8 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
           <CircleAlert />
           <AlertTitle>Isi melebihi kanvas 3 × 3 cm</AlertTitle>
           <AlertDescription>
-            Perkecil ukuran bagian atau persingkat teks. Ekspor diblokir sampai isi muat.
+            Perkecil ukuran bagian (termasuk luas logo bila logonya sangat lebar/tinggi) atau
+            persingkat teks. Ekspor diblokir sampai isi muat.
           </AlertDescription>
         </Alert>
       ) : null}

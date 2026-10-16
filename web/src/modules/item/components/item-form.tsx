@@ -114,7 +114,12 @@ export function ItemForm({
     >
       <form.Subscribe selector={(state) => state.isSubmitting}>
         {(isSubmitting) => (
-          <FormHeader title={title} onCancel={onCancel} submitting={isSubmitting} />
+          <FormHeader
+            title={title}
+            onCancel={onCancel}
+            submitting={isSubmitting}
+            busyText="Menyimpan item…"
+          />
         )}
       </form.Subscribe>
       <Section title="Informasi dasar">

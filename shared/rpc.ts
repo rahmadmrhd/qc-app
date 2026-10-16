@@ -401,6 +401,32 @@ export interface SaveQrDesignInput {
   /** Hasil pengukuran tata letak di peramban; kosong = pertahankan nilai yang ada (bawaan false). */
   overflow?: boolean;
 }
+/** Konfigurasi default QR: nilai awal saat membuat QR baru (semua isian kecuali sumber link) dan pustaka logo. */
+export interface QrDefaultsDto {
+  title: string;
+  subtitle: string;
+  footer: string;
+  layout: QrLayout;
+  style: QrStyle;
+  /** Pustaka logo: id berkas (pemilik bersama) yang dapat dipilih user saat membuat QR. */
+  logoFileIds: string[];
+  /** Logo yang terpilih awal pada QR baru; kosong = tanpa logo. Harus bagian dari pustaka. */
+  defaultLogoId: string;
+  /** Kosong bila default belum pernah disimpan. */
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface SaveQrDefaultsInput {
+  /** Wajib bila default sudah pernah disimpan. */
+  expectedUpdatedAt?: string;
+  title: string;
+  subtitle: string;
+  footer: string;
+  layout: QrLayout;
+  style: QrStyle;
+  logoFileIds: string[];
+  defaultLogoId: string;
+}
 export interface QrDesignRefInput {
   id: string;
 }
@@ -414,6 +440,10 @@ export interface UploadQrPdfInput {
   name: string;
   base64: string;
   replaceDocumentId?: string;
+}
+/** Salin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber. */
+export interface CloneQrPdfInput {
+  source: string;
 }
 export interface ExportQrDesignInput {
   id: string;
@@ -468,7 +498,10 @@ export interface RpcContract {
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
+  'qrcodes.saveDefaults': { input: SaveQrDefaultsInput; output: QrDefaultsDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
 }

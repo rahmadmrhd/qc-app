@@ -153,7 +153,7 @@ test('konfigurasi tidak muat: lencana "Tidak muat" dan tombol Ekspor dinonaktifk
   expect(screen.getByRole('button', { name: 'Ekspor Muat' })).toBeEnabled();
 });
 
-test('sumber PDF: tautan "Lihat PDF" ke Drive membuka tab baru; link manual tidak punya tautan itu', () => {
+test('kolom Link dapat diklik (tab baru, aman); tanpa keterangan tambahan "PDF · Lihat PDF" / "Link manual" di kolom Title', () => {
   render(
     <QrDesignsTable
       designs={[
@@ -172,9 +172,12 @@ test('sumber PDF: tautan "Lihat PDF" ke Drive membuka tab baru; link manual tida
       {...handlers()}
     />,
   );
-  const link = screen.getByRole('link', { name: 'Lihat PDF Dari PDF' });
+  const link = screen.getByRole('link', { name: 'Buka link Dari PDF' });
   expect(link).toHaveAttribute('href', 'https://drive.google.com/file/d/f1/view');
   expect(link).toHaveAttribute('target', '_blank');
   expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
-  expect(screen.getAllByRole('link', { name: /Lihat PDF/ })).toHaveLength(1);
+  expect(link).toHaveTextContent('https://drive.google.com/file/d/f1/view');
+  expect(screen.getAllByRole('link')).toHaveLength(2); // satu per baris
+  expect(screen.queryByText('Link manual')).toBeNull();
+  expect(screen.queryByText('Lihat PDF')).toBeNull();
 });

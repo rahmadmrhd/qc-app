@@ -5,7 +5,7 @@ import { listFiles_ } from '@gas/modules/files/repo';
 import { attachFiles_ } from '@gas/modules/files/service';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
+import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { insertQrDocument_, listQrDesigns_, updateQrDesign_ } from './repo';
 
@@ -27,9 +27,11 @@ const call = (email: string, method: string, payload: unknown) =>
   qrRpc(email, method, payload) as Result;
 const input = {
   title: 'Panduan',
-  linkSource: 'url',
-  link: 'https://contoh.com/a',
-  documentId: '',
+  linkSource: 'pdf',
+  link: '',
+  get documentId() {
+    return qrPdfDocumentId();
+  },
   subtitle: 'Sub',
   footer: 'foot',
   logoFileId: '',
@@ -62,8 +64,8 @@ test('buat: status Belum diekspor, audit qrcode.create, pembuat tercatat', () =>
   const out = save();
   expect(out.data).toMatchObject({
     title: 'Panduan',
-    linkSource: 'url',
-    link: 'https://contoh.com/a',
+    linkSource: 'pdf',
+    link: expect.any(String),
     exportStatus: 'none',
     createdBy: 'qredit@gmail.com',
     layout: DEFAULT_QR_LAYOUT,
@@ -138,6 +140,8 @@ test('logo: berkas yang tak dikenal ditolak; logo yang sama boleh dirujuk banyak
   });
   expect(upload.ok).toBe(true);
   const logo = upload.data.id as string;
+  expect(save({ title: 'A', logoFileId: logo }).error.code).toBe('VALIDATION'); // belum di pustaka
+  addToLibrary(logo);
   expect(save({ title: 'A', logoFileId: logo }).ok).toBe(true);
   expect(save({ title: 'B', logoFileId: logo }).ok).toBe(true);
   expect(listFiles_().find((f) => f.id === logo)).toMatchObject({
@@ -250,6 +254,22 @@ test('ubah tanpa menyertakan style mempertahankan gaya yang ada', () => {
   expect(out.data.style).toEqual(framedStyle);
 });
 
+/** Mendaftarkan logo ke pustaka default (hanya pengelola) agar QR boleh memakainya. */
+const addToLibrary = (...ids: string[]) => {
+  const current = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
+  const out = call('qrmanage@gmail.com', 'qrcodes.saveDefaults', {
+    ...(current.updatedAt ? { expectedUpdatedAt: current.updatedAt } : {}),
+    title: current.title,
+    subtitle: current.subtitle,
+    footer: current.footer,
+    layout: current.layout,
+    style: current.style,
+    logoFileIds: [...current.logoFileIds, ...ids],
+    defaultLogoId: current.defaultLogoId,
+  });
+  if (!out.ok) throw new Error('simpan pustaka gagal');
+  clock += 1000;
+};
 const PNG1 = { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==', width: 1, height: 1 };
 const uploadAs = (email: string) => {
   const out = call(email, 'files.upload', PNG1);
@@ -260,6 +280,7 @@ const uploadAs = (email: string) => {
 test('mengganti logo ke logo lain TERSIMPAN (bukan dianggap tanpa perubahan) dan tercatat di audit', () => {
   const a = uploadAs('qredit@gmail.com');
   const b = uploadAs('qredit@gmail.com');
+  addToLibrary(a, b);
   const made = save({ logoFileId: a });
   clock += 60_000;
   const swapped = save({ id: made.data.id, logoFileId: b });
@@ -267,7 +288,7 @@ test('mengganti logo ke logo lain TERSIMPAN (bukan dianggap tanpa perubahan) dan
   expect(swapped.data.logoFileId).toBe(b);
   expect(swapped.data.updatedAt).not.toBe(made.data.updatedAt);
   expect(call('qrview@gmail.com', 'qrcodes.get', { id: made.data.id }).data.logoFileId).toBe(b);
-  expect(audits()).toEqual(['qrcode.create', 'qrcode.update']);
+  expect(audits()).toEqual(['qrcode.defaults_update', 'qrcode.create', 'qrcode.update']);
 });
 
 test('mengganti PDF sumber ke dokumen lain TERSIMPAN', () => {
@@ -294,7 +315,7 @@ test('mengganti PDF sumber ke dokumen lain TERSIMPAN', () => {
 
 test('files.get untuk pengguna qrcode tanpa izin item: hanya logo (qrlogo) dan berkas unggahannya sendiri yang belum terpasang', () => {
   const logo = uploadAs('qredit@gmail.com');
-  save({ logoFileId: logo }); // menjadi qrlogo/shared
+  addToLibrary(logo); // menjadi qrlogo/shared
   const itemFile = uploadAs('qredit@gmail.com');
   attachFiles_([itemFile], 'item', 'item-1');
   const mine = uploadAs('qredit@gmail.com');
