@@ -1,7 +1,7 @@
 import type { RowData, TableSchema } from '@gas/core/db';
 import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
-import type { QrLayout, QrLinkSource } from '@shared/qrcode';
-import { clampQrLayout } from '@shared/qrcode';
+import type { QrLayout, QrLinkSource, QrStyle } from '@shared/qrcode';
+import { clampQrLayout, clampQrStyle } from '@shared/qrcode';
 
 export const QR_DESIGNS_TABLE: TableSchema = {
   sheetName: 'qr_designs',
@@ -15,6 +15,7 @@ export const QR_DESIGNS_TABLE: TableSchema = {
     'footer',
     'logo_file_id',
     'layout',
+    'style',
     'exported_hash',
     'exported_at',
     'exported_by',
@@ -53,6 +54,7 @@ export interface QrDesignRecord {
   footer: string;
   logoFileId: string;
   layout: QrLayout;
+  style: QrStyle;
   exportedHash: string;
   exportedAt: string;
   exportedBy: string;
@@ -89,6 +91,14 @@ function parseQrLayout_(text: string): QrLayout {
   }
 }
 
+function parseQrStyle_(text: string): QrStyle {
+  try {
+    return clampQrStyle(JSON.parse(text));
+  } catch {
+    return clampQrStyle(null);
+  }
+}
+
 function toQrDesignRecord_(rowNumber: number, data: RowData): QrDesignRecord {
   return {
     rowNumber,
@@ -101,6 +111,7 @@ function toQrDesignRecord_(rowNumber: number, data: RowData): QrDesignRecord {
     footer: data.footer ?? '',
     logoFileId: (data.logo_file_id ?? '').trim(),
     layout: parseQrLayout_(data.layout ?? ''),
+    style: parseQrStyle_(data.style ?? ''),
     exportedHash: (data.exported_hash ?? '').trim(),
     exportedAt: data.exported_at ?? '',
     exportedBy: data.exported_by ?? '',
@@ -124,6 +135,7 @@ function fromQrDesignRecord_(design: NewQrDesignRecord): RowData {
     footer: design.footer,
     logo_file_id: design.logoFileId,
     layout: JSON.stringify(design.layout),
+    style: JSON.stringify(design.style),
     exported_hash: design.exportedHash,
     exported_at: design.exportedAt,
     exported_by: design.exportedBy,

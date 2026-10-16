@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
   insertQrDesign_,
   insertQrDocument_,
@@ -22,6 +22,7 @@ const design = {
   footer: '',
   logoFileId: '',
   layout: DEFAULT_QR_LAYOUT,
+  style: DEFAULT_QR_STYLE,
   exportedHash: '',
   exportedAt: '',
   exportedBy: '',
@@ -76,4 +77,23 @@ test('dokumen: simpan dan baca', () => {
     updatedBy: 'a@x.com',
   });
   expect(listQrDocuments_()[0]).toMatchObject({ id: 'd1', driveId: 'file-1', size: 1200 });
+});
+
+test('gaya tersimpan kembali utuh; kolom style kosong atau rusak dipulihkan ke bawaan', () => {
+  const styled = {
+    ...DEFAULT_QR_STYLE,
+    frame: { ...DEFAULT_QR_STYLE.frame, kind: 'box' as const },
+  };
+  insertQrDesign_({ ...design, style: styled });
+  expect(listQrDesigns_()[0]?.style).toEqual(styled);
+  const platform = createMemoryPlatform();
+  setPlatform_(platform);
+  insertQrDesign_(design);
+  const sheet = platform.db.sheet('qr_designs');
+  const header = sheet.rows[0] as string[];
+  const row = sheet.rows[1] as unknown[];
+  row[header.indexOf('style')] = '';
+  expect(listQrDesigns_()[0]?.style).toEqual(DEFAULT_QR_STYLE);
+  row[header.indexOf('style')] = '{bukan json';
+  expect(listQrDesigns_()[0]?.style).toEqual(DEFAULT_QR_STYLE);
 });

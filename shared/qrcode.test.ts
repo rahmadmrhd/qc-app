@@ -1,10 +1,14 @@
 import { expect, test } from 'bun:test';
 import {
   clampQrLayout,
+  clampQrStyle,
   DEFAULT_QR_LAYOUT,
+  DEFAULT_QR_STYLE,
   driveShareUrl,
+  framePolylines,
   isHttpUrl,
   isQrLayout,
+  isQrStyle,
   isRenderableLabelText,
   LABEL_MM,
   labelFileSlug,
@@ -159,6 +163,7 @@ test('hash isi dan status ekspor: Belum / Sudah / Berubah', () => {
     footer: '',
     logoFileId: '',
     layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
   };
   const hash = qrContentHash(content);
   expect(hash).toMatch(/^[0-9a-f]{8}$/);
@@ -168,4 +173,168 @@ test('hash isi dan status ekspor: Belum / Sudah / Berubah', () => {
   expect(qrExportStatus(hash, { ...content, layout: { ...DEFAULT_QR_LAYOUT, gap: 2 } })).toBe(
     'stale',
   );
+});
+
+// --- gaya teks dan bingkai QR ---
+const plain = { bold: false, italic: false, underline: false, strike: false, uppercase: false };
+
+test('gaya bawaan: hanya title tebal; subtitle/footer polos; bingkai mati', () => {
+  expect(DEFAULT_QR_STYLE.title).toEqual({ ...plain, bold: true });
+  expect(DEFAULT_QR_STYLE.subtitle).toEqual(plain);
+  expect(DEFAULT_QR_STYLE.footer).toEqual(plain);
+  expect(DEFAULT_QR_STYLE.frame.kind).toBe('none');
+  expect(isQrStyle(DEFAULT_QR_STYLE)).toBe(true);
+});
+
+test('isQrStyle/clampQrStyle: struktur salah ditolak; nilai tersimpan dipulihkan dan dijepit', () => {
+  expect(isQrStyle(null)).toBe(false);
+  expect(isQrStyle({ ...DEFAULT_QR_STYLE, title: { ...plain, bold: 'ya' } })).toBe(false);
+  expect(
+    isQrStyle({ ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, kind: 'bulat' } }),
+  ).toBe(false);
+  expect(
+    isQrStyle({ ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, thickness: 99 } }),
+  ).toBe(false);
+  expect(clampQrStyle(null)).toEqual(DEFAULT_QR_STYLE);
+  expect(clampQrStyle('rusak')).toEqual(DEFAULT_QR_STYLE);
+  const restored = clampQrStyle({
+    title: { italic: true, bold: 'x' },
+    frame: { kind: 'corners', thickness: 99, gap: -3, radius: 'a', arm: 5 },
+  });
+  expect(restored.title).toEqual({ ...DEFAULT_QR_STYLE.title, italic: true });
+  expect(restored.frame).toEqual({
+    kind: 'corners',
+    thickness: 1.5,
+    gap: 0,
+    radius: DEFAULT_QR_STYLE.frame.radius,
+    arm: 10,
+  });
+  expect(clampQrStyle({ frame: { kind: 'aneh' } }).frame.kind).toBe('none');
+});
+
+test('gaya teks diteruskan ke tiap baris teks; uppercase mengubah teks sebelum diukur', () => {
+  const style = {
+    ...DEFAULT_QR_STYLE,
+    title: { bold: false, italic: true, underline: true, strike: false, uppercase: true },
+    footer: { ...plain, strike: true },
+  };
+  const widths: string[] = [];
+  const spy = (text: string, size: number) => {
+    widths.push(text);
+    return text.length * size * 0.2;
+  };
+  const out = layoutLabel({ ...base, style }, spy);
+  const title = out.elements.find((e) => e.kind === 'text' && e.role === 'title');
+  const sub = out.elements.find((e) => e.kind === 'text' && e.role === 'subtitle');
+  const foot = out.elements.find((e) => e.kind === 'text' && e.role === 'footer');
+  if (title?.kind !== 'text' || sub?.kind !== 'text' || foot?.kind !== 'text')
+    throw new Error('teks hilang');
+  expect(title).toMatchObject({
+    text: 'PANDUAN INSTALASI',
+    bold: false,
+    italic: true,
+    underline: true,
+    strike: false,
+  });
+  expect(sub).toMatchObject({
+    text: 'USW PRO MAX 48 PoE',
+    bold: false,
+    italic: false,
+    underline: false,
+  });
+  expect(foot).toMatchObject({ strike: true, underline: false });
+  expect(widths).toContain('PANDUAN INSTALASI');
+});
+
+test('tanpa style: perilaku lama (title tebal, lainnya polos, tanpa bingkai)', () => {
+  const out = layoutLabel(base, measure);
+  const title = out.elements.find((e) => e.kind === 'text' && e.role === 'title');
+  expect(title).toMatchObject({ bold: true, italic: false });
+  expect(out.elements.some((e) => e.kind === 'frame')).toBe(false);
+});
+
+test('bingkai QR: ada elemen frame mengelilingi QR; ruang yang dipakai ikut dihitung (overflow bila tak muat)', () => {
+  const framed = {
+    ...DEFAULT_QR_STYLE,
+    frame: { kind: 'corners' as const, thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
+  };
+  const compact = { ...base, subtitle: '', footer: '', style: framed };
+  const out = layoutLabel(compact, measure);
+  const qr = out.elements.find((e) => e.kind === 'qr');
+  const frame = out.elements.find((e) => e.kind === 'frame');
+  if (qr?.kind !== 'qr' || frame?.kind !== 'frame') throw new Error('qr/frame hilang');
+  expect(frame.variant).toBe('corners');
+  // sisi garis tengah = QR + 2 × jarak + tebal; terpusat pada QR
+  expect(frame.sideMm).toBeCloseTo(qr.sizeMm + 2 * 1 + 0.5, 6);
+  expect(frame.xMm + frame.sideMm / 2).toBeCloseTo(qr.xMm + qr.sizeMm / 2, 6);
+  expect(frame.yMm + frame.sideMm / 2).toBeCloseTo(qr.yMm + qr.sizeMm / 2, 6);
+  expect(out.overflow).toBe(false);
+  // title + subtitle + footer + QR 17 + bingkai (≈3 mm) tidak muat di 30 mm
+  expect(layoutLabel({ ...base, style: framed }, measure).overflow).toBe(true);
+  // bingkai lebih lebar dari kanvas → overflow
+  expect(
+    layoutLabel({ ...compact, layout: { ...DEFAULT_QR_LAYOUT, qrSize: 26, padding: 0 } }, measure)
+      .overflow,
+  ).toBe(true);
+});
+
+test('framePolylines: corners = 4 siku dalam batas bingkai; box = 1 jalur tertutup; radius 0 = siku tajam', () => {
+  const el = {
+    kind: 'frame' as const,
+    variant: 'corners' as const,
+    xMm: 5,
+    yMm: 5,
+    sideMm: 20,
+    thicknessMm: 0.5,
+    radiusMm: 0,
+    armMm: 5,
+  };
+  const sharp = framePolylines(el);
+  expect(sharp).toHaveLength(4);
+  expect(sharp[0]).toEqual([
+    { x: 10, y: 5 },
+    { x: 5, y: 5 },
+    { x: 5, y: 10 },
+  ]);
+  const rounded = framePolylines({ ...el, radiusMm: 2 });
+  expect(rounded).toHaveLength(4);
+  for (const line of rounded) {
+    expect(line.length).toBeGreaterThan(3);
+    for (const p of line) {
+      expect(p.x).toBeGreaterThanOrEqual(5 - 1e-9);
+      expect(p.x).toBeLessThanOrEqual(25 + 1e-9);
+      expect(p.y).toBeGreaterThanOrEqual(5 - 1e-9);
+      expect(p.y).toBeLessThanOrEqual(25 + 1e-9);
+    }
+  }
+  const box = framePolylines({ ...el, variant: 'box', radiusMm: 2 });
+  expect(box).toHaveLength(1);
+  expect(box[0]?.[0]).toEqual(box[0]?.at(-1));
+});
+
+test('hash isi berubah bila gaya teks atau bingkai berubah', () => {
+  const content = {
+    linkSource: 'url' as const,
+    link: 'https://a.co',
+    title: 'T',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+  };
+  const hash = qrContentHash(content);
+  expect(
+    qrContentHash({
+      ...content,
+      style: { ...DEFAULT_QR_STYLE, footer: { ...plain, italic: true } },
+    }),
+  ).not.toBe(hash);
+  expect(
+    qrContentHash({
+      ...content,
+      style: { ...DEFAULT_QR_STYLE, frame: { ...DEFAULT_QR_STYLE.frame, kind: 'box' } },
+    }),
+  ).not.toBe(hash);
+  expect(qrContentHash({ ...content })).toBe(hash);
 });

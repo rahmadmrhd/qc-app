@@ -6,7 +6,13 @@ import { nowIso_ } from '@gas/modules/access/service';
 import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
-import { driveShareUrl, labelFileSlug, qrContentHash, qrExportStatus } from '@shared/qrcode';
+import {
+  DEFAULT_QR_STYLE,
+  driveShareUrl,
+  labelFileSlug,
+  qrContentHash,
+  qrExportStatus,
+} from '@shared/qrcode';
 import type {
   ExportQrDesignInput,
   QrDesignDto,
@@ -54,6 +60,7 @@ export function qrDesignContent_(
     footer: design.footer,
     logoFileId: design.logoFileId,
     layout: design.layout,
+    style: design.style,
   };
 }
 
@@ -89,6 +96,7 @@ export function toQrDesignDto_(
     footer: design.footer,
     logoFileId: design.logoFileId,
     layout: design.layout,
+    style: design.style,
     exportStatus: qrExportStatus(design.exportedHash, content),
     exportedAt: design.exportedAt,
     exportedBy: design.exportedBy,
@@ -111,6 +119,8 @@ export function qrDesignSnapshot_(
     footer: design.footer,
     logo: design.logoFileId === '' ? 'tanpa' : 'ada',
     layout: JSON.stringify(design.layout),
+    frame: design.style.frame.kind,
+    style: JSON.stringify(design.style),
   };
 }
 
@@ -154,6 +164,7 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
       footer: input.footer,
       logoFileId: input.logoFileId,
       layout: input.layout,
+      style: input.style ?? existing?.style ?? DEFAULT_QR_STYLE,
       exportedHash: existing?.exportedHash ?? '',
       exportedAt: existing?.exportedAt ?? '',
       exportedBy: existing?.exportedBy ?? '',

@@ -5,7 +5,7 @@ import { listFiles_ } from '@gas/modules/files/repo';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import { qrRpc, seedQrEnv } from '@gas-test/qrcode-env';
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { insertQrDocument_, listQrDesigns_, updateQrDesign_ } from './repo';
 
 let platform: MemoryPlatform;
@@ -184,4 +184,56 @@ test('daftar: terbaru dahulu', () => {
   expect(
     call('qrview@gmail.com', 'qrcodes.list', null).data.map((d: { title: string }) => d.title),
   ).toEqual(['Kedua', 'Pertama']);
+});
+
+const framedStyle = {
+  title: { bold: false, italic: true, underline: false, strike: false, uppercase: true },
+  subtitle: { bold: false, italic: false, underline: true, strike: false, uppercase: false },
+  footer: { bold: false, italic: false, underline: false, strike: true, uppercase: false },
+  frame: { kind: 'corners', thickness: 0.6, gap: 1.2, radius: 2, arm: 30 },
+};
+
+test('gaya teks dan bingkai: tersimpan dan dikembalikan; tanpa style = bawaan', () => {
+  const plain = save();
+  expect(plain.data.style).toEqual(DEFAULT_QR_STYLE);
+  const styled = save({ title: 'Bergaya', style: framedStyle });
+  expect(styled.ok).toBe(true);
+  expect(styled.data.style).toEqual(framedStyle);
+  expect(call('qrview@gmail.com', 'qrcodes.get', { id: styled.data.id }).data.style).toEqual(
+    framedStyle,
+  );
+});
+
+test('gaya tak sah ditolak per field style', () => {
+  expect(
+    save({ style: { ...framedStyle, frame: { ...framedStyle.frame, kind: 'bulat' } } }).error.fields
+      .style,
+  ).toBeDefined();
+  expect(
+    save({ style: { ...framedStyle, frame: { ...framedStyle.frame, thickness: 99 } } }).error.code,
+  ).toBe('VALIDATION');
+  expect(save({ style: null }).error.code).toBe('VALIDATION');
+});
+
+test('mengubah gaya saja = perubahan: updatedAt naik, audit qrcode.update memuat gaya sebelum dan sesudah', () => {
+  const made = save();
+  clock += 60_000;
+  const changed = save({ id: made.data.id, style: framedStyle });
+  expect(changed.data.updatedAt).not.toBe(made.data.updatedAt);
+  expect(audits()).toEqual(['qrcode.create', 'qrcode.update']);
+  const entry = listAuditRecords_().at(-1);
+  expect(entry?.before).toMatchObject({ frame: 'none' });
+  expect(entry?.after).toMatchObject({ frame: 'corners' });
+});
+
+test('ubah tanpa menyertakan style mempertahankan gaya yang ada', () => {
+  const made = save({ style: framedStyle });
+  const { style: _omit, ...withoutStyle } = {
+    ...input,
+    id: made.data.id,
+    title: 'Judul Baru',
+  } as Record<string, unknown>;
+  const out = call('qredit@gmail.com', 'qrcodes.save', withoutStyle);
+  expect(out.ok).toBe(true);
+  expect(out.data.style).toEqual(framedStyle);
 });

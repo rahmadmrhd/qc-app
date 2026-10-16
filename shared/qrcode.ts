@@ -131,8 +131,127 @@ export function labelFileSlug(title: string): string {
   return slug === '' ? 'label' : slug;
 }
 
-/** Lebar teks dalam mm untuk ukuran font (pt) dan ketebalan tertentu. */
-export type Measure = (text: string, sizePt: number, bold: boolean) => number;
+/** Gaya satu bagian teks (title, subtitle, atau footer). */
+export interface QrTextStyle {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+  /** Ditampilkan sebagai HURUF KAPITAL (teks tersimpan tetap apa adanya). */
+  uppercase: boolean;
+}
+
+export const QR_TEXT_STYLE_KEYS = ['bold', 'italic', 'underline', 'strike', 'uppercase'] as const;
+
+export const QR_FRAME_KINDS = ['none', 'corners', 'box'] as const;
+export type QrFrameKind = (typeof QR_FRAME_KINDS)[number];
+
+/** Bingkai di sekeliling QR: siku di empat sudut (seperti bingkai pemindai) atau kotak penuh. */
+export interface QrFrame {
+  kind: QrFrameKind;
+  /** Tebal garis dan jarak ke QR (mm); lengkung sudut (mm); panjang siku (% sisi bingkai). */
+  thickness: number;
+  gap: number;
+  radius: number;
+  arm: number;
+}
+
+export const QR_FRAME_KEYS = ['thickness', 'gap', 'radius', 'arm'] as const;
+
+export const QR_FRAME_RANGES: Record<
+  (typeof QR_FRAME_KEYS)[number],
+  { min: number; max: number; step: number; unit: 'mm' | '%'; label: string }
+> = {
+  thickness: { min: 0.1, max: 1.5, step: 0.05, unit: 'mm', label: 'Tebal bingkai' },
+  gap: { min: 0, max: 4, step: 0.1, unit: 'mm', label: 'Jarak bingkai ke QR' },
+  radius: { min: 0, max: 4, step: 0.1, unit: 'mm', label: 'Lengkung sudut' },
+  arm: { min: 10, max: 50, step: 1, unit: '%', label: 'Panjang siku' },
+};
+
+export interface QrStyle {
+  title: QrTextStyle;
+  subtitle: QrTextStyle;
+  footer: QrTextStyle;
+  frame: QrFrame;
+}
+
+const PLAIN_TEXT_STYLE: QrTextStyle = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  uppercase: false,
+};
+
+/** Title tebal (seperti contoh), lainnya polos, tanpa bingkai. */
+export const DEFAULT_QR_STYLE: QrStyle = {
+  title: { ...PLAIN_TEXT_STYLE, bold: true },
+  subtitle: { ...PLAIN_TEXT_STYLE },
+  footer: { ...PLAIN_TEXT_STYLE },
+  frame: { kind: 'none', thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
+};
+
+const QR_STYLE_PARTS = ['title', 'subtitle', 'footer'] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function isQrStyle(value: unknown): value is QrStyle {
+  if (!isPlainObject(value)) return false;
+  for (const part of QR_STYLE_PARTS) {
+    const entry = value[part];
+    if (!isPlainObject(entry)) return false;
+    if (!QR_TEXT_STYLE_KEYS.every((key) => typeof entry[key] === 'boolean')) return false;
+  }
+  const frame = value.frame;
+  if (!isPlainObject(frame)) return false;
+  if (!(QR_FRAME_KINDS as readonly unknown[]).includes(frame.kind)) return false;
+  return QR_FRAME_KEYS.every((key) => {
+    const entry = frame[key];
+    const range = QR_FRAME_RANGES[key];
+    return (
+      typeof entry === 'number' &&
+      Number.isFinite(entry) &&
+      entry >= range.min &&
+      entry <= range.max
+    );
+  });
+}
+
+/** Memulihkan gaya tersimpan/tak tepercaya: nilai tak sah memakai bawaan, angka dijepit ke rentang. */
+export function clampQrStyle(value: unknown): QrStyle {
+  const source = isPlainObject(value) ? value : {};
+  const out: QrStyle = {
+    title: { ...DEFAULT_QR_STYLE.title },
+    subtitle: { ...DEFAULT_QR_STYLE.subtitle },
+    footer: { ...DEFAULT_QR_STYLE.footer },
+    frame: { ...DEFAULT_QR_STYLE.frame },
+  };
+  for (const part of QR_STYLE_PARTS) {
+    const entry = source[part];
+    if (!isPlainObject(entry)) continue;
+    for (const key of QR_TEXT_STYLE_KEYS) {
+      if (typeof entry[key] === 'boolean') out[part][key] = entry[key];
+    }
+  }
+  const frame = source.frame;
+  if (isPlainObject(frame)) {
+    if ((QR_FRAME_KINDS as readonly unknown[]).includes(frame.kind)) {
+      out.frame.kind = frame.kind as QrFrameKind;
+    }
+    for (const key of QR_FRAME_KEYS) {
+      const entry = frame[key];
+      if (typeof entry !== 'number' || !Number.isFinite(entry)) continue;
+      const range = QR_FRAME_RANGES[key];
+      out.frame[key] = Math.min(range.max, Math.max(range.min, entry));
+    }
+  }
+  return out;
+}
+
+/** Lebar teks dalam mm untuk ukuran font (pt), ketebalan, dan kemiringan tertentu. */
+export type Measure = (text: string, sizePt: number, bold: boolean, italic: boolean) => number;
 export type LabelRole = 'title' | 'subtitle' | 'footer';
 
 export type LabelElement =
@@ -145,8 +264,23 @@ export type LabelElement =
       baselineMm: number;
       sizePt: number;
       bold: boolean;
+      italic: boolean;
+      underline: boolean;
+      strike: boolean;
     }
   | { kind: 'qr'; xMm: number; yMm: number; sizeMm: number }
+  | {
+      kind: 'frame';
+      variant: 'corners' | 'box';
+      /** Pojok kiri atas dan sisi persegi GARIS TENGAH bingkai (garis digambar selebar `thicknessMm`). */
+      xMm: number;
+      yMm: number;
+      sideMm: number;
+      thicknessMm: number;
+      radiusMm: number;
+      /** Panjang tiap siku (hanya untuk `corners`). */
+      armMm: number;
+    }
   | {
       kind: 'logo';
       xMm: number;
@@ -167,6 +301,8 @@ export interface LabelInput {
   /** Lebar ÷ tinggi gambar logo; tidak sah atau kosong = 1 (persegi). */
   logoAspect?: number;
   layout: QrLayout;
+  /** Gaya teks dan bingkai; kosong = `DEFAULT_QR_STYLE`. */
+  style?: QrStyle;
   /** Jumlah modul per sisi matriks QR (untuk ukuran modul). */
   qrModules: number;
 }
@@ -185,6 +321,7 @@ function wrapLabelText(
   maxMm: number,
   sizePt: number,
   bold: boolean,
+  italic: boolean,
   measure: Measure,
 ): { lines: string[]; tooWide: boolean } {
   const lines: string[] = [];
@@ -192,13 +329,13 @@ function wrapLabelText(
   let line = '';
   for (const word of text.split(' ').filter((w) => w !== '')) {
     const candidate = line === '' ? word : `${line} ${word}`;
-    if (measure(candidate, sizePt, bold) <= maxMm) {
+    if (measure(candidate, sizePt, bold, italic) <= maxMm) {
       line = candidate;
       continue;
     }
     if (line !== '') lines.push(line);
     line = word;
-    if (measure(word, sizePt, bold) > maxMm) tooWide = true;
+    if (measure(word, sizePt, bold, italic) > maxMm) tooWide = true;
   }
   if (line !== '') lines.push(line);
   return { lines, tooWide };
@@ -208,7 +345,7 @@ interface Block {
   role: LabelRole;
   lines: string[];
   sizePt: number;
-  bold: boolean;
+  style: QrTextStyle;
   heightMm: number;
 }
 
@@ -216,14 +353,15 @@ function toLabelBlock(
   role: LabelRole,
   text: string,
   sizePt: number,
-  bold: boolean,
+  style: QrTextStyle,
   maxMm: number,
   measure: Measure,
 ): { block: Block | null; tooWide: boolean } {
   if (text.trim() === '') return { block: null, tooWide: false };
-  const { lines, tooWide } = wrapLabelText(text.trim(), maxMm, sizePt, bold, measure);
+  const shown = style.uppercase ? text.trim().toUpperCase() : text.trim();
+  const { lines, tooWide } = wrapLabelText(shown, maxMm, sizePt, style.bold, style.italic, measure);
   const heightMm = (lines.length * sizePt * QR_LINE_HEIGHT) / PT_PER_MM;
-  return { block: { role, lines, sizePt, bold, heightMm }, tooWide };
+  return { block: { role, lines, sizePt, style, heightMm }, tooWide };
 }
 
 function labelTextElements(block: Block, topMm: number): LabelElement[] {
@@ -236,7 +374,10 @@ function labelTextElements(block: Block, topMm: number): LabelElement[] {
       centerMm: LABEL_MM / 2,
       baselineMm: topMm + (index * QR_LINE_HEIGHT + 1) * sizeMm,
       sizePt: block.sizePt,
-      bold: block.bold,
+      bold: block.style.bold,
+      italic: block.style.italic,
+      underline: block.style.underline,
+      strike: block.style.strike,
     }),
   );
 }
@@ -247,17 +388,25 @@ function labelTextElements(block: Block, topMm: number): LabelElement[] {
  */
 export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const { layout } = input;
+  const style = input.style ?? DEFAULT_QR_STYLE;
   const innerW = LABEL_MM - 2 * layout.padding;
-  const title = toLabelBlock('title', input.title, layout.titleSize, true, innerW, measure);
+  const title = toLabelBlock('title', input.title, layout.titleSize, style.title, innerW, measure);
   const subtitle = toLabelBlock(
     'subtitle',
     input.subtitle,
     layout.subtitleSize,
-    false,
+    style.subtitle,
     innerW,
     measure,
   );
-  const footer = toLabelBlock('footer', input.footer, layout.footerSize, false, innerW, measure);
+  const footer = toLabelBlock(
+    'footer',
+    input.footer,
+    layout.footerSize,
+    style.footer,
+    innerW,
+    measure,
+  );
   const elements: LabelElement[] = [];
   let y = layout.padding;
   let headerExists = false;
@@ -277,8 +426,27 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const gapBelow = footer.block ? layout.gap : 0;
   const available = footerTop - headerBottom - gapAbove - gapBelow;
   const qrSize = layout.qrSize;
-  const qrY = headerBottom + gapAbove + Math.max(0, (available - qrSize) / 2);
+  // Bingkai ikut memakan ruang: tebal + jarak di tiap sisi QR.
+  const frame = style.frame;
+  const framed = frame.kind !== 'none';
+  const frameOffset = framed ? frame.gap + frame.thickness : 0;
+  const blockSize = qrSize + 2 * frameOffset;
+  const blockY = headerBottom + gapAbove + Math.max(0, (available - blockSize) / 2);
+  const qrY = blockY + frameOffset;
   const qrX = (LABEL_MM - qrSize) / 2;
+  if (framed) {
+    const sideMm = qrSize + 2 * frame.gap + frame.thickness;
+    elements.push({
+      kind: 'frame',
+      variant: frame.kind === 'box' ? 'box' : 'corners',
+      xMm: qrX - frame.gap - frame.thickness / 2,
+      yMm: qrY - frame.gap - frame.thickness / 2,
+      sideMm,
+      thicknessMm: frame.thickness,
+      radiusMm: frame.radius,
+      armMm: (sideMm * frame.arm) / 100,
+    });
+  }
   elements.push({ kind: 'qr', xMm: qrX, yMm: qrY, sizeMm: qrSize });
   if (input.hasLogo) {
     const aspect =
@@ -302,10 +470,63 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
     title.tooWide ||
     subtitle.tooWide ||
     footer.tooWide ||
-    qrSize > innerW + 1e-9 ||
-    available < qrSize - 1e-9;
+    blockSize > innerW + 1e-9 ||
+    available < blockSize - 1e-9;
   const moduleMm = qrSize / Math.max(1, input.qrModules);
   return { elements, overflow, moduleMm, tooDense: moduleMm < MIN_MODULE_MM };
+}
+
+export interface LabelPoint {
+  x: number;
+  y: number;
+}
+
+const ARC_SEGMENTS = 8;
+
+/** Titik busur dari sudut `fromDeg` ke `toDeg` (derajat; sumbu y ke bawah). Radius 0 = satu titik sudut. */
+function arcPoints(
+  cx: number,
+  cy: number,
+  r: number,
+  fromDeg: number,
+  toDeg: number,
+): LabelPoint[] {
+  if (r < 1e-9) return [{ x: cx, y: cy }];
+  const points: LabelPoint[] = [];
+  for (let i = 0; i <= ARC_SEGMENTS; i++) {
+    const angle = ((fromDeg + ((toDeg - fromDeg) * i) / ARC_SEGMENTS) * Math.PI) / 180;
+    points.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  }
+  return points;
+}
+
+/**
+ * Jalur garis bingkai (mm), siap digoreskan dengan ujung dan sambungan membulat: `corners` = empat siku
+ * (kiri-atas, kanan-atas, kanan-bawah, kiri-bawah), `box` = satu jalur tertutup. Sudut membulat didekati
+ * dengan ruas garis, sehingga canvas dan PDF menggambar bentuk yang sama.
+ */
+export function framePolylines(el: Extract<LabelElement, { kind: 'frame' }>): LabelPoint[][] {
+  const { xMm: x, yMm: y, sideMm: s } = el;
+  const arm = Math.min(el.armMm, s / 2);
+  const r = Math.min(el.radiusMm, s / 2, el.variant === 'corners' ? arm : s / 2);
+  const x2 = x + s;
+  const y2 = y + s;
+  if (el.variant === 'box') {
+    const ring = [
+      { x: x + r, y },
+      ...arcPoints(x2 - r, y + r, r, -90, 0),
+      ...arcPoints(x2 - r, y2 - r, r, 0, 90),
+      ...arcPoints(x + r, y2 - r, r, 90, 180),
+      ...arcPoints(x + r, y + r, r, 180, 270),
+    ];
+    return [[...ring, { ...(ring[0] as LabelPoint) }]];
+  }
+  return [
+    [{ x: x + arm, y }, ...arcPoints(x + r, y + r, r, -90, -180), { x, y: y + arm }],
+    [{ x: x2 - arm, y }, ...arcPoints(x2 - r, y + r, r, -90, 0), { x: x2, y: y + arm }],
+    [{ x: x2, y: y2 - arm }, ...arcPoints(x2 - r, y2 - r, r, 0, 90), { x: x2 - arm, y: y2 }],
+    [{ x: x + arm, y: y2 }, ...arcPoints(x + r, y2 - r, r, 90, 180), { x, y: y2 - arm }],
+  ];
 }
 
 /** Sel lembar 10 × 14: pojok kiri atas tiap label, urut baris demi baris. */
@@ -328,6 +549,18 @@ export interface QrContent {
   footer: string;
   logoFileId: string;
   layout: QrLayout;
+  style: QrStyle;
+}
+
+function qrStyleSignature(style: QrStyle | undefined): unknown {
+  const source = style ?? DEFAULT_QR_STYLE;
+  return [
+    QR_STYLE_PARTS.map((part) =>
+      QR_TEXT_STYLE_KEYS.map((key) => (source[part][key] ? 1 : 0)).join(''),
+    ),
+    source.frame.kind,
+    QR_FRAME_KEYS.map((key) => source.frame[key]),
+  ];
 }
 
 export function qrContentHash(content: QrContent): string {
@@ -340,6 +573,7 @@ export function qrContentHash(content: QrContent): string {
       content.footer,
       content.logoFileId,
       QR_LAYOUT_KEYS.map((key) => content.layout[key]),
+      qrStyleSignature(content.style),
     ]),
   );
 }

@@ -175,3 +175,17 @@ test('hapus setelah ekspor membuang kedua berkas ekspor', () => {
     [...platform.drive.values()].filter((f) => f.folderId === platform.getProperty('QR_FOLDER_ID')),
   ).toHaveLength(0);
 });
+
+test('mengubah gaya/bingkai setelah ekspor = Berubah sejak ekspor', () => {
+  const design = make();
+  exportOf(design);
+  clock += 1000;
+  const style = {
+    title: { bold: true, italic: false, underline: false, strike: false, uppercase: false },
+    subtitle: { bold: false, italic: false, underline: false, strike: false, uppercase: false },
+    footer: { bold: false, italic: false, underline: false, strike: false, uppercase: false },
+    frame: { kind: 'box', thickness: 0.5, gap: 1, radius: 1.5, arm: 25 },
+  };
+  const changed = call('qredit@gmail.com', 'qrcodes.save', { ...body, id: design.id, style }).data;
+  expect(changed.exportStatus).toBe('stale');
+});

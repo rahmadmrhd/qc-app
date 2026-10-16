@@ -1,7 +1,7 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
-import type { QrExportStatus, QrLayout, QrLinkSource } from './qrcode';
+import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -373,6 +373,8 @@ export interface QrDesignDto {
   footer: string;
   logoFileId: string;
   layout: QrLayout;
+  /** Gaya teks per bagian dan bingkai QR. */
+  style: QrStyle;
   exportStatus: QrExportStatus;
   exportedAt: string;
   exportedBy: string;
@@ -392,6 +394,8 @@ export interface SaveQrDesignInput {
   footer: string;
   logoFileId: string;
   layout: QrLayout;
+  /** Kosong = pertahankan gaya yang ada (ubah) atau bawaan (buat). */
+  style?: QrStyle;
 }
 export interface QrDesignRefInput {
   id: string;

@@ -1,6 +1,7 @@
 import { readObject_ } from '@gas/core/validate';
 import { base64ByteLength, isBase64Text } from '@shared/files';
-import { isHttpUrl, isQrLayout, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
+import type { QrStyle } from '@shared/qrcode';
+import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
   ExportQrDesignInput,
   QrDesignRefInput,
@@ -47,6 +48,10 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
   const layout = reader.raw('layout');
   if (!isQrLayout(layout))
     reader.fail('layout', 'Ukuran tata letak tidak valid atau di luar rentang');
+  const style = reader.raw('style');
+  if (style !== undefined && !isQrStyle(style)) {
+    reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
+  }
   reader.done();
   const input: SaveQrDesignInput = {
     title,
@@ -57,6 +62,7 @@ export function validateSaveQrDesign_(raw: unknown): SaveQrDesignInput {
     footer,
     logoFileId,
     layout: layout as SaveQrDesignInput['layout'],
+    ...(style === undefined ? {} : { style: style as QrStyle }),
   };
   return {
     ...(id ? { id } : {}),
