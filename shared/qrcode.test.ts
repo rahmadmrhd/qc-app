@@ -451,3 +451,47 @@ describe('logo ekstrem dan resource key Drive', () => {
     expect(parseDriveResourceKey('https://contoh.com/a?resourcekey=0-x')).toBeNull();
   });
 });
+
+describe('parser link Drive tanpa Web API URL (runtime V8 Apps Script tidak punya URL)', () => {
+  const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+  const withoutUrlApi = <T>(run: () => T): T => {
+    const holder = globalThis as unknown as { URL?: unknown; URLSearchParams?: unknown };
+    const saved = { URL: holder.URL, URLSearchParams: holder.URLSearchParams };
+    holder.URL = undefined;
+    holder.URLSearchParams = undefined;
+    try {
+      return run();
+    } finally {
+      holder.URL = saved.URL;
+      holder.URLSearchParams = saved.URLSearchParams;
+    }
+  };
+
+  test('semua bentuk link tetap dikenali tanpa URL/URLSearchParams', () => {
+    withoutUrlApi(() => {
+      expect(parseDriveFileId(`https://drive.google.com/file/d/${id}/view?usp=sharing`)).toBe(id);
+      expect(parseDriveFileId(`https://drive.google.com/open?id=${id}`)).toBe(id);
+      expect(parseDriveFileId(`https://drive.google.com/uc?export=download&id=${id}`)).toBe(id);
+      expect(parseDriveFileId(`https://drive.google.com/u/1/file/d/${id}/view#x`)).toBe(id);
+      expect(parseDriveFileId(`https://docs.google.com/document/d/${id}/edit`)).toBe(id);
+      expect(
+        parseDriveResourceKey(`https://drive.google.com/file/d/${id}/view?resourcekey=0-AbC_d-1`),
+      ).toBe('0-AbC_d-1');
+      expect(
+        parseDriveResourceKey(`https://drive.google.com/open?id=${id}&resourcekey=0-xyz#a`),
+      ).toBe('0-xyz');
+    });
+  });
+
+  test('host tiruan, userinfo, port, protokol selain https, dan folder tetap ditolak', () => {
+    withoutUrlApi(() => {
+      expect(parseDriveFileId(`https://drive.google.com.evil.com/file/d/${id}/view`)).toBeNull();
+      expect(parseDriveFileId(`https://evil.com/?x=drive.google.com&id=${id}`)).toBeNull();
+      expect(parseDriveFileId(`https://drive.google.com@evil.com/file/d/${id}/view`)).toBeNull();
+      expect(parseDriveFileId(`https://drive.google.com:444/file/d/${id}/view`)).toBeNull();
+      expect(parseDriveFileId(`http://drive.google.com/file/d/${id}/view`)).toBeNull();
+      expect(parseDriveFileId(`https://drive.google.com/drive/folders/${id}`)).toBeNull();
+      expect(parseDriveResourceKey('https://contoh.com/a?resourcekey=0-x')).toBeNull();
+    });
+  });
+});

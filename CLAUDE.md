@@ -32,6 +32,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - Akses API GAS hanya lewat `platform_()`; implementasi asli di `core/gas-platform.ts`.
 - Tulis ke sheet di dalam `platform_().withLock(...)`; teks disimpan lewat `core/db` (aman dari formula injection).
 - Jangan pakai API JS yang runtime V8 Apps Script belum tentu dukung (mis. `Object.hasOwn`); aturan Biome `noPrototypeBuiltins` sengaja dimatikan.
+- Build menolak API yang TIDAK ada di runtime GAS (`URL`, `URLSearchParams`, `fetch`, `setTimeout`, `atob`/`btoa`, `structuredClone`, `TextEncoder`, `Buffer`, `window`, dll.; daftar + penggantinya di `scripts/build-gas-lib.ts`) di `gas/src` dan `shared/`. Bun/Node/peramban menyediakannya sehingga tes tetap hijau padahal produksi gagal (mis. `new URL` melempar ReferenceError). Gunakan padanan yang disarankan pesan galat.
 - Karakter khusus (mis. U+2028) ditulis lewat `String.fromCharCode`, bukan literal/escape di regex.
 - Konstanta level atas tidak boleh memakai global file lain (mis. `SYNC_ACTOR`); `verify-dist` memuat semua file `gas/dist` dalam urutan maju dan mundur untuk menangkapnya. Nama top-level harus unik juga terhadap `shared/` (beri awalan modul, mis. `QR_STALE_MESSAGE`).
 - Jangan pernah mengedit `gas/dist/` manual.

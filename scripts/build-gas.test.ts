@@ -95,3 +95,132 @@ describe('findDuplicateGlobals', () => {
     expect(problems).toEqual(['"y_" dideklarasikan di a.ts, b.ts']);
   });
 });
+
+describe('pemeriksaan API yang tidak ada di runtime Apps Script (V8)', () => {
+  const build = (body: string, options = GAS) =>
+    transformForGas(`export function f_(): unknown {\n${body}\n}`, 'gas/src/x.ts', options);
+
+  test('menolak API Web yang tidak tersedia, dengan petunjuk', () => {
+    expect(() => build("return new URL('https://a.co');")).toThrow(/"URL".*Apps Script/);
+    expect(() => build("return new URLSearchParams('a=1');")).toThrow(/"URLSearchParams"/);
+    expect(() => build("return fetch('https://a.co');")).toThrow(/UrlFetchApp/);
+    expect(() => build('return setTimeout(() => 1, 5);')).toThrow(/Utilities\.sleep/);
+    expect(() => build("return atob('QQ==');")).toThrow(/Utilities\.base64Decode/);
+    expect(() => build('return structuredClone({});')).toThrow(/"structuredClone"/);
+    expect(() => build('return new TextEncoder();')).toThrow(/"TextEncoder"/);
+    expect(() => build('return window.location;')).toThrow(/"window"/);
+    expect(() => build('return Buffer.from("a");')).toThrow(/"Buffer"/);
+  });
+
+  test('menolak anggota yang belum tentu didukung V8 Apps Script', () => {
+    expect(() => build("return Object.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+  });
+
+  test('berlaku juga untuk kode shared (berjalan di GAS)', () => {
+    expect(() => build("return new URL('https://a.co');", SHARED)).toThrow(/"URL"/);
+  });
+
+  test('tidak salah menandai: nama di string, komentar, properti, atau identifier serupa', () => {
+    expect(() =>
+      build(
+        [
+          "const text = 'gunakan URL atau fetch di sini';",
+          '// window, document, URL hanya komentar',
+          '/* setTimeout(...) */',
+          'const obj = { window: 1 } as Record<string, number>;',
+          'const urlText = `halaman ${obj.window} dan URLs`;',
+          'const myURL = 1, fetchAll = 2, documentId = 3;',
+          'return [text, urlText, myURL, fetchAll, documentId, obj.window];',
+        ].join('\n'),
+      ),
+    ).not.toThrow();
+  });
+
+  test('tetap menandai pemakaian di dalam ekspresi template literal', () => {
+    expect(() => build('return `x ${new URL("https://a.co")}`;')).toThrow(/"URL"/);
+  });
+});
+
+describe('pemeriksaan API berbasis AST dan scope (tindak lanjut review)', () => {
+  const build = (body: string) =>
+    transformForGas(`export function f_(a: unknown): unknown {\n${body}\n}`, 'gas/src/x.ts', GAS);
+
+  test('menolak referensi nyata walau lewat globalThis, kondisional, atau kunci komputasi', () => {
+    expect(() => build("return globalThis.fetch('x');")).toThrow(/"fetch"/);
+    expect(() => build("return globalThis['fetch']('x');")).toThrow(/"fetch"/);
+    expect(() => build('return a ? fetch : () => 1;')).toThrow(/"fetch"/);
+    expect(() => build('const o = { fetch }; return o;')).toThrow(/"fetch"/);
+    expect(() => build('return typeof URL;')).toThrow(/"URL"/);
+  });
+
+  test('literal regex di konteks apa pun tidak dianggap pemakaian API', () => {
+    expect(() => build('if (a) /URL/.test(String(a)); return 1;')).not.toThrow();
+    expect(() => build('if (!a) throw /URL/; return 1;')).not.toThrow();
+    expect(() => build('return [/fetch/, /window/g].length > 0 ? 1 : 2;')).not.toThrow();
+    expect(() => build('return a ? /URL/ : /x/;')).not.toThrow();
+  });
+
+  test('nama yang terikat lokal, kunci objek, method, dan properti tidak ditandai', () => {
+    expect(() =>
+      transformForGas(
+        'export function g_(fetch: () => number): number {\n  return fetch();\n}',
+        'gas/src/x.ts',
+        GAS,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      build('const o = { fetch() { return 1; }, URL: 2 }; return o.fetch() + o.URL;'),
+    ).not.toThrow();
+    expect(() =>
+      build(
+        'const module = 1; const process = [1].map((performance) => performance); return [module, process];',
+      ),
+    ).not.toThrow();
+    expect(() => build('const document = { URL: 1 }; return document.URL;')).not.toThrow();
+    expect(() =>
+      build('class File { fetch() { return 1; } } return new File().fetch();'),
+    ).not.toThrow();
+  });
+
+  test('daftar mencakup global yang disebut tidak tersedia oleh Google', () => {
+    for (const name of [
+      'File',
+      'ReadableStream',
+      'WritableStream',
+      'DOMException',
+      'SubtleCrypto',
+    ]) {
+      expect(() => build(`return new ${name}();`)).toThrow(new RegExp(`"${name}"`));
+    }
+    expect(() => build('return performance.now();')).toThrow(/"performance"/);
+    expect(() => build('return module.exports;')).toThrow(/"module"/);
+  });
+});
+
+describe('rantai anggota opsional dan bersarang', () => {
+  const build = (body: string) =>
+    transformForGas(`export function f_(a: any): unknown {\n${body}\n}`, 'gas/src/x.ts', GAS);
+
+  test('menolak akses opsional dan bersarang ke API yang tidak tersedia', () => {
+    expect(() => build("return globalThis?.fetch('x');")).toThrow(/"fetch"/);
+    expect(() => build("return Object?.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+    expect(() => build("return globalThis.Object.hasOwn({}, 'a');")).toThrow(/Object\.hasOwn/);
+    expect(() => build("return globalThis.globalThis.fetch('x');")).toThrow(/"fetch"/);
+    expect(() => build("return globalThis['Object']?.['hasOwn']({}, 'a');")).toThrow(
+      /Object\.hasOwn/,
+    );
+    expect(() => build('return self?.URL;')).toThrow(/"URL"/);
+  });
+
+  test('tidak menandai akses opsional/bersarang biasa atau global yang terikat lokal', () => {
+    expect(() => build('return a?.fetch?.() ?? a?.b?.hasOwn;')).not.toThrow();
+    expect(() => build('return a.Object.hasOwn(a, "x");')).not.toThrow();
+    expect(() =>
+      transformForGas(
+        'export function g_(globalThis: any): unknown {\n  return globalThis?.fetch(1);\n}',
+        'gas/src/x.ts',
+        GAS,
+      ),
+    ).not.toThrow();
+  });
+});
