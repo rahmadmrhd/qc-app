@@ -4,8 +4,8 @@ import {
   assignmentKey,
   fullLocationPermissions,
   isLocatedModule,
-  SHARED_MODULES,
   resolveAccess,
+  SHARED_MODULES,
   sanitizeAssignments,
 } from './assignments';
 import type { PartialPermissionMap } from './permissions';

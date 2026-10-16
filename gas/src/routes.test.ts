@@ -37,8 +37,18 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'items.setStatus',
   ]);
   expect(routes['auth.me'].permission).toBeUndefined();
-  expect(routes['files.get'].permission).toEqual({ module: 'item', level: 'view' });
-  expect(routes['files.upload'].permission).toEqual({ module: 'item', level: 'edit' });
+  expect(routes['files.get'].permission).toEqual({
+    anyOf: [
+      { module: 'item', level: 'view' },
+      { module: 'qrcode', level: 'view' },
+    ],
+  });
+  expect(routes['files.upload'].permission).toEqual({
+    anyOf: [
+      { module: 'item', level: 'edit' },
+      { module: 'qrcode', level: 'edit' },
+    ],
+  });
   expect(routes['items.list'].permission).toEqual({ module: 'item', level: 'view' });
   expect(routes['items.get'].permission).toEqual({ module: 'item', level: 'view' });
   expect(routes['items.save'].permission).toEqual({ module: 'item', level: 'edit' });

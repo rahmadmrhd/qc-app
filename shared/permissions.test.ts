@@ -5,11 +5,11 @@ import {
   hasLevel,
   isLevelAllowed,
   LEVEL_HINTS,
+  levelHint,
+  levelsFor,
   MODULE_LABELS,
   MODULE_LEVELS,
   MODULES,
-  levelHint,
-  levelsFor,
   mergePermissions,
   sanitizePermissions,
 } from './permissions';

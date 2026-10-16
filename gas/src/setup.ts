@@ -15,6 +15,12 @@ import { FILES_TABLE } from '@gas/modules/files/repo';
 import { DRIVE_FOLDER_NAME, ensureDriveFolder_ } from '@gas/modules/files/service';
 import { HANDOVER_LINES_TABLE, HANDOVERS_TABLE } from '@gas/modules/handover/repo';
 import { ITEMS_TABLE } from '@gas/modules/item/repo';
+import {
+  ensureQrDocFolder_,
+  ensureQrFolder_,
+  QR_DOC_FOLDER_NAME,
+  QR_FOLDER_NAME,
+} from '@gas/modules/qrcode/folders';
 import { assignInitialRevs_, SYNC_STATE_TABLE } from '@gas/modules/sync/state';
 import { SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
 
@@ -70,6 +76,20 @@ export function runSetup_(): string {
         'atau kosongkan DRIVE_FOLDER_ID agar folder baru dibuat (gambar lama tidak akan tampil).',
     );
     platform_().logError(`setup: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  for (const [label, ensure, property] of [
+    [QR_FOLDER_NAME, ensureQrFolder_, 'QR_FOLDER_ID'],
+    [QR_DOC_FOLDER_NAME, ensureQrDocFolder_, 'QR_DOC_FOLDER_ID'],
+  ] as const) {
+    try {
+      lines.push(`Folder Drive "${label}" siap (${ensure()}).`);
+    } catch (error) {
+      const current = platform_().getProperty(property)?.trim() ?? '';
+      lines.push(
+        `Folder Drive "${label}" TIDAK dapat diakses (${current}). Properti ${property} tidak diubah; periksa akses akun pemilik script atau kosongkan properti agar folder baru dibuat.`,
+      );
+      platform_().logError(`setup: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   const token = syncToken_();
   if (token === '') {
