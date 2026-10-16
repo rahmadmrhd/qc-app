@@ -77,7 +77,15 @@ export function QrDesignsTable({
               <TableRow key={design.id}>
                 <TableCell className="font-medium">
                   {design.title}
-                  <div className="text-xs text-muted-foreground">
+                  {design.subtitle !== '' ? (
+                    <div
+                      data-testid="design-subtitle"
+                      className="text-sm font-normal text-muted-foreground"
+                    >
+                      {design.subtitle}
+                    </div>
+                  ) : null}
+                  <div className="text-xs font-normal text-muted-foreground">
                     {design.linkSource === 'pdf' ? `PDF: ${design.documentName}` : 'Link manual'}
                   </div>
                 </TableCell>

@@ -8,14 +8,6 @@ export interface LogoSource {
   height: number;
 }
 
-/** Gambar yang muat di kotak persegi `boxMm` dengan aspek terjaga dan terpusat. */
-export function containRect(srcW: number, srcH: number, boxMm: number) {
-  const scale = boxMm / Math.max(srcW, srcH);
-  const w = srcW * scale;
-  const h = srcH * scale;
-  return { dx: (boxMm - w) / 2, dy: (boxMm - h) / 2, w, h };
-}
-
 function darkRuns(row: readonly boolean[]): Array<[number, number]> {
   const runs: Array<[number, number]> = [];
   let start = -1;
@@ -57,18 +49,19 @@ export function drawLabel(
         }
       });
     } else if (element.kind === 'logo' && logo) {
-      const back = element.backdropMm * pxPerMm;
-      const cx = (element.xMm + element.sizeMm / 2) * pxPerMm;
-      const cy = (element.yMm + element.sizeMm / 2) * pxPerMm;
+      const backW = element.backdropWidthMm * pxPerMm;
+      const backH = element.backdropHeightMm * pxPerMm;
+      const cx = (element.xMm + element.widthMm / 2) * pxPerMm;
+      const cy = (element.yMm + element.heightMm / 2) * pxPerMm;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(cx - back / 2, cy - back / 2, back, back);
-      const fit = containRect(logo.width, logo.height, element.sizeMm);
+      ctx.fillRect(cx - backW / 2, cy - backH / 2, backW, backH);
+      // Kotak logo sudah mengikuti rasio berkas (lihat layoutLabel): gambar mengisi kotaknya.
       ctx.drawImage(
         logo.image,
-        (element.xMm + fit.dx) * pxPerMm,
-        (element.yMm + fit.dy) * pxPerMm,
-        fit.w * pxPerMm,
-        fit.h * pxPerMm,
+        element.xMm * pxPerMm,
+        element.yMm * pxPerMm,
+        element.widthMm * pxPerMm,
+        element.heightMm * pxPerMm,
       );
     } else if (element.kind === 'text') {
       ctx.fillStyle = '#000000';

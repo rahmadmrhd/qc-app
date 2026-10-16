@@ -43,15 +43,47 @@ test('tata letak bawaan: title, subtitle, QR di tengah ruang tersisa, footer di 
   expect(footer.baselineMm).toBeLessThanOrEqual(LABEL_MM - DEFAULT_QR_LAYOUT.padding);
 });
 
-test('logo: ada hanya bila hasLogo, terpusat di QR, sisi = persen dari sisi QR, latar putih lebih besar', () => {
+test('logo: ada hanya bila hasLogo, terpusat di QR, sisi terpanjang = persen sisi QR, latar putih lebih besar', () => {
   const withLogo = layoutLabel(base, measure).elements.find((e) => e.kind === 'logo');
-  expect(withLogo).toMatchObject({ sizeMm: 17 * 0.22 });
+  expect(withLogo).toMatchObject({ widthMm: 17 * 0.22, heightMm: 17 * 0.22 });
   if (withLogo?.kind !== 'logo') throw new Error('logo hilang');
-  expect(withLogo.xMm + withLogo.sizeMm / 2).toBeCloseTo(15, 5);
-  expect(withLogo.backdropMm).toBeGreaterThan(withLogo.sizeMm);
+  expect(withLogo.xMm + withLogo.widthMm / 2).toBeCloseTo(15, 5);
+  expect(withLogo.backdropWidthMm).toBeGreaterThan(withLogo.widthMm);
+  expect(withLogo.backdropHeightMm).toBeGreaterThan(withLogo.heightMm);
   expect(
     layoutLabel({ ...base, hasLogo: false }, measure).elements.some((e) => e.kind === 'logo'),
   ).toBe(false);
+});
+
+test('logo mengikuti rasio file: landscape lebar = persen sisi QR, portrait tinggi = persen sisi QR; tetap terpusat', () => {
+  const find = (aspect: number) => {
+    const logo = layoutLabel({ ...base, logoAspect: aspect }, measure).elements.find(
+      (e) => e.kind === 'logo',
+    );
+    if (logo?.kind !== 'logo') throw new Error('logo hilang');
+    return logo;
+  };
+  const wide = find(3);
+  expect(wide.widthMm).toBeCloseTo(17 * 0.22, 6);
+  expect(wide.heightMm).toBeCloseTo((17 * 0.22) / 3, 6);
+  const tall = find(0.5);
+  expect(tall.heightMm).toBeCloseTo(17 * 0.22, 6);
+  expect(tall.widthMm).toBeCloseTo((17 * 0.22) / 2, 6);
+  const qr = layoutLabel(base, measure).elements.find((e) => e.kind === 'qr');
+  if (qr?.kind !== 'qr') throw new Error('qr hilang');
+  for (const logo of [wide, tall]) {
+    expect(logo.xMm + logo.widthMm / 2).toBeCloseTo(qr.xMm + qr.sizeMm / 2, 6);
+    expect(logo.yMm + logo.heightMm / 2).toBeCloseTo(qr.yMm + qr.sizeMm / 2, 6);
+  }
+});
+
+test('rasio logo tidak sah (0, negatif, NaN, Infinity) diperlakukan persegi', () => {
+  for (const aspect of [0, -2, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const logo = layoutLabel({ ...base, logoAspect: aspect }, measure).elements.find(
+      (e) => e.kind === 'logo',
+    );
+    expect(logo).toMatchObject({ widthMm: 17 * 0.22, heightMm: 17 * 0.22 });
+  }
 });
 
 test('subtitle dan footer kosong dilewati; QR tetap terpusat vertikal', () => {

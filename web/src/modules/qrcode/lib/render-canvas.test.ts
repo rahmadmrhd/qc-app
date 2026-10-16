@@ -1,6 +1,6 @@
 import { DEFAULT_QR_LAYOUT, layoutLabel } from '@shared/qrcode';
 import { expect, test } from 'vitest';
-import { containRect, drawLabel } from './render-canvas';
+import { drawLabel } from './render-canvas';
 
 const measure = (text: string, size: number) => text.length * size * 0.2;
 const input = {
@@ -55,7 +55,18 @@ test('drawLabel tanpa logo tidak menggambar gambar', () => {
   expect(calls.some((c) => c[0] === 'drawImage')).toBe(false);
 });
 
-test('containRect: gambar lebar dipusatkan vertikal dan aspek terjaga', () => {
-  expect(containRect(100, 50, 10)).toEqual({ dx: 0, dy: 2.5, w: 10, h: 5 });
-  expect(containRect(50, 100, 10)).toEqual({ dx: 2.5, dy: 0, w: 5, h: 10 });
+test('logo digambar persis di kotak hasil tata letak sesuai rasio berkas (bukan dipaksa persegi)', () => {
+  const layout = layoutLabel({ ...input, logoAspect: 2 }, measure);
+  const logo = layout.elements.find((e) => e.kind === 'logo');
+  if (logo?.kind !== 'logo') throw new Error('logo hilang');
+  const { ctx, calls } = fakeContext();
+  drawLabel(ctx, layout, matrix, { image: {} as CanvasImageSource, width: 200, height: 100 }, 10);
+  const draw = calls.find((c) => c[0] === 'drawImage');
+  expect(draw?.slice(2)).toEqual([
+    logo.xMm * 10,
+    logo.yMm * 10,
+    logo.widthMm * 10,
+    logo.heightMm * 10,
+  ]);
+  expect(Number(draw?.[4])).toBeCloseTo(Number(draw?.[5]) * 2, 6);
 });

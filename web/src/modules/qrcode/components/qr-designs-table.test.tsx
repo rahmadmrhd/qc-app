@@ -111,3 +111,22 @@ test('kosong: ajakan membuat konfigurasi pertama', () => {
   render(<QrDesignsTable designs={[]} canEdit canManage busyId={null} {...handlers()} />);
   expect(screen.getByText(/Belum ada konfigurasi/)).toBeInTheDocument();
 });
+
+test('subtitle tampil di bawah title; tanpa subtitle tidak ada baris kosong', () => {
+  render(
+    <QrDesignsTable
+      designs={[
+        design({ id: 'a', title: 'Dengan Sub', subtitle: 'USW PRO MAX 48 PoE' }),
+        design({ id: 'b', title: 'Tanpa Sub', subtitle: '' }),
+      ]}
+      canEdit
+      canManage
+      busyId={null}
+      {...handlers()}
+    />,
+  );
+  const withSub = screen.getByText('Dengan Sub').closest('td');
+  expect(withSub).toHaveTextContent('USW PRO MAX 48 PoE');
+  expect(screen.getByText('USW PRO MAX 48 PoE')).toHaveAttribute('data-testid', 'design-subtitle');
+  expect(screen.getAllByTestId('design-subtitle')).toHaveLength(1);
+});

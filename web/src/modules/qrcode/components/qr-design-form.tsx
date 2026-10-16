@@ -12,6 +12,8 @@ import { useUploadQrPdf } from '../queries';
 import type { QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import { layoutRangeMessage, qrDesignFormSchema } from '../schemas';
 import { LabelPreview } from './label-preview';
+import type { LabelStatus } from './label-status-alerts';
+import { LabelStatusAlerts } from './label-status-alerts';
 import { LogoField } from './logo-field';
 import { PdfSourceField } from './pdf-source-field';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
@@ -48,6 +50,7 @@ export function QrDesignForm({
   const uploadPdf = useUploadQrPdf();
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [labelStatus, setLabelStatus] = useState<LabelStatus | null>(null);
   const form = useForm({
     defaultValues,
     validators: { onSubmit: qrDesignFormSchema },
@@ -65,6 +68,9 @@ export function QrDesignForm({
         void form.handleSubmit();
       }}
     >
+      <div className="lg:col-span-2">
+        <LabelStatusAlerts status={labelStatus} />
+      </div>
       <div className="space-y-4">
         <Section title="Isi label">
           {(['title', 'subtitle', 'footer'] as const).map((name) => (
@@ -241,6 +247,7 @@ export function QrDesignForm({
               document={document}
               sheetOpen={sheetOpen}
               onSheetOpenChange={setSheetOpen}
+              onStatus={setLabelStatus}
             />
           )}
         </form.Subscribe>
@@ -254,11 +261,13 @@ function PreviewPane({
   document,
   sheetOpen,
   onSheetOpenChange,
+  onStatus,
 }: {
   values: QrFormInput;
   document: QrDocumentDto | null;
   sheetOpen: boolean;
   onSheetOpenChange: (open: boolean) => void;
+  onStatus: (status: LabelStatus) => void;
 }) {
   const { url: logoUrl } = useFileUrl(values.logoFileId);
   const link = values.linkSource === 'url' ? values.link : (document?.link ?? '');
@@ -272,6 +281,7 @@ function PreviewPane({
         link={link}
         layout={values.layout}
         logoUrl={logo}
+        onStatus={onStatus}
       />
       <Button type="button" variant="outline" onClick={() => onSheetOpenChange(true)}>
         Pratinjau lembar

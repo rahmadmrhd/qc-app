@@ -2,7 +2,6 @@ import fontkit from '@pdf-lib/fontkit';
 import type { LabelLayout } from '@shared/qrcode';
 import { LABEL_MM, PT_PER_MM, SHEET, sheetCells } from '@shared/qrcode';
 import { PDFDocument, rgb } from 'pdf-lib';
-import { containRect } from './render-canvas';
 
 export interface PdfFonts {
   regular: ArrayBuffer | Uint8Array;
@@ -55,22 +54,22 @@ async function buildLabelPdf(
         }
       });
     } else if (element.kind === 'logo' && logoImage) {
-      const back = element.backdropMm * PT_PER_MM;
-      const cx = (element.xMm + element.sizeMm / 2) * PT_PER_MM;
-      const cy = side - (element.yMm + element.sizeMm / 2) * PT_PER_MM;
+      const backW = element.backdropWidthMm * PT_PER_MM;
+      const backH = element.backdropHeightMm * PT_PER_MM;
+      const cx = (element.xMm + element.widthMm / 2) * PT_PER_MM;
+      const cy = side - (element.yMm + element.heightMm / 2) * PT_PER_MM;
       page.drawRectangle({
-        x: cx - back / 2,
-        y: cy - back / 2,
-        width: back,
-        height: back,
+        x: cx - backW / 2,
+        y: cy - backH / 2,
+        width: backW,
+        height: backH,
         color: white,
       });
-      const fit = containRect(logoImage.width, logoImage.height, element.sizeMm);
       page.drawImage(logoImage, {
-        x: (element.xMm + fit.dx) * PT_PER_MM,
-        y: side - (element.yMm + fit.dy + fit.h) * PT_PER_MM,
-        width: fit.w * PT_PER_MM,
-        height: fit.h * PT_PER_MM,
+        x: element.xMm * PT_PER_MM,
+        y: side - (element.yMm + element.heightMm) * PT_PER_MM,
+        width: element.widthMm * PT_PER_MM,
+        height: element.heightMm * PT_PER_MM,
       });
     } else if (element.kind === 'text') {
       const font = element.bold ? bold : regular;

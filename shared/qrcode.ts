@@ -147,13 +147,25 @@ export type LabelElement =
       bold: boolean;
     }
   | { kind: 'qr'; xMm: number; yMm: number; sizeMm: number }
-  | { kind: 'logo'; xMm: number; yMm: number; sizeMm: number; backdropMm: number };
+  | {
+      kind: 'logo';
+      xMm: number;
+      yMm: number;
+      /** Ukuran logo mengikuti rasio berkas: sisi terpanjang = persen sisi QR. */
+      widthMm: number;
+      heightMm: number;
+      /** Latar putih di belakang logo (sedikit lebih besar), terpusat pada logo. */
+      backdropWidthMm: number;
+      backdropHeightMm: number;
+    };
 
 export interface LabelInput {
   title: string;
   subtitle: string;
   footer: string;
   hasLogo: boolean;
+  /** Lebar ÷ tinggi gambar logo; tidak sah atau kosong = 1 (persegi). */
+  logoAspect?: number;
   layout: QrLayout;
   /** Jumlah modul per sisi matriks QR (untuk ukuran modul). */
   qrModules: number;
@@ -269,14 +281,21 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
   const qrX = (LABEL_MM - qrSize) / 2;
   elements.push({ kind: 'qr', xMm: qrX, yMm: qrY, sizeMm: qrSize });
   if (input.hasLogo) {
-    const size = (qrSize * layout.logoPercent) / 100;
-    const centerY = qrY + qrSize / 2;
+    const aspect =
+      input.logoAspect !== undefined && Number.isFinite(input.logoAspect) && input.logoAspect > 0
+        ? input.logoAspect
+        : 1;
+    const longest = (qrSize * layout.logoPercent) / 100;
+    const widthMm = aspect >= 1 ? longest : longest * aspect;
+    const heightMm = aspect >= 1 ? longest / aspect : longest;
     elements.push({
       kind: 'logo',
-      xMm: LABEL_MM / 2 - size / 2,
-      yMm: centerY - size / 2,
-      sizeMm: size,
-      backdropMm: size * 1.15,
+      xMm: LABEL_MM / 2 - widthMm / 2,
+      yMm: qrY + qrSize / 2 - heightMm / 2,
+      widthMm,
+      heightMm,
+      backdropWidthMm: widthMm * 1.15,
+      backdropHeightMm: heightMm * 1.15,
     });
   }
   const overflow =

@@ -75,3 +75,20 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
 | 70 | Selesai per task pada task dengan dua baris belum penuh; buka Log Audit | Satu baris `handover.progress` per baris yang diisi, lalu satu `handover.complete` | FAU1 |
 | 71 | QC isi qty selesai di atas target (mis. 9 dari 5) | Peringatan "Melebihi target 5" muncul saat mengetik; nilai tersimpan; task Selesai; "Selesai" per tipe/task tidak menurunkannya | FQ1 |
+| 72 | Pengaturan Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
+| 73 | Jalankan `setup` setelah deploy | Laporan memuat folder "QC App QR" dan "QC App QR Dokumen" siap; sheet `qr_designs` dan `qr_documents` ada | FS13 serupa |
+| 74 | Buat konfigurasi: title, subtitle, link, footer, ukuran diubah | Pratinjau 3 × 3 berubah seketika; overflow memunculkan peringatan merah | FQR2, FQR3 |
+| 75 | Tekan "Pratinjau lembar" | Dialog menampilkan lembar 10 × 14 dengan garis potong; menutupnya tanpa efek | FQR4 |
+| 76 | Pakai logo (unggah), lalu buat konfigurasi lain dan pilih "Pakai logo dari konfigurasi lain" | Logo muncul di QR tanpa unggah ulang; QR tetap terbaca saat dipindai dari layar | FQR5, NFR3 |
+| 77 | Duplikat konfigurasi | Form buat terisi penuh, judul "(salinan)"; logo ikut tanpa unggah | FQR6 |
+| 78 | Ekspor (dialog konfirmasi → Simpan ke Drive) | Folder "QC App QR" berisi PDF dan PNG; status Sudah diekspor dengan pelaku dan waktu | FQR10 |
+| 79 | Buka PDF hasil: ukuran halaman | 300 × 420 mm, 1 halaman, 140 label, garis potong tipis; cetak 100% dan ukur label = 30 mm | NFR4 |
+| 80 | Ubah judul lalu lihat daftar; Ekspor ulang | Status "Berubah sejak ekspor"; dialog memperingatkan penimpaan; berkas lama masuk sampah Drive | FQR9, FQR11 |
+| 81 | Dua tab: ubah konfigurasi di tab 1, ekspor di tab 2 dengan halaman lama | Tab 2 ditolak (CONFLICT) tanpa menulis berkas | FQR12 |
+| 82 | Unduh PDF/PNG sebagai user level Lihat | Berkas terunduh lewat aplikasi; user tanpa akses folder Drive tetap bisa | FQR13 |
+| 83 | Sumber link "PDF di Drive": unggah PDF | Dialog menyebut berbagi publik; setelah konfirmasi URL berbagi tampil dan dapat dibuka di jendela penyamaran | FQR15, FQR16 |
+| 84 | Ganti PDF pada konfigurasi yang memakainya | URL tetap sama (Drive API v3 lewat UrlFetch bekerja); dokumen baru terbuka di URL lama | FQR17 |
+| 85 | Hapus konfigurasi | Berkas ekspor ke sampah; PDF sumber dan logo tetap ada | FQR7, FQR18 |
+| 86 | Link 300 karakter dengan QR 12 mm | Peringatan "QR terlalu padat"; ekspor tetap boleh | R4 |
+| 87 | Title berisi huruf Mandarin atau emoji | Ditolak dengan pesan karakter tidak didukung | R5 |
+| 88 | Ukuran ponsel (375 × 812) pada daftar dan form | Tidak ada gulir horizontal halaman | NFR5 |

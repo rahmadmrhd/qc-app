@@ -53,20 +53,8 @@ export async function renderExportFiles(
 ): Promise<{ pdfBase64: string; pngBase64: string }> {
   const [fonts] = await Promise.all([loadLabelFonts(), registerCanvasFonts()]);
   const matrix = qrMatrix(design.link);
-  const layout = layoutLabel(
-    {
-      title: design.title,
-      subtitle: design.subtitle,
-      footer: design.footer,
-      hasLogo: logo !== null,
-      layout: design.layout,
-      qrModules: matrix.length,
-    },
-    createCanvasMeasure(),
-  );
-  if (layout.overflow)
-    throw new Error('Isi label melebihi kanvas 3 × 3 cm; perbaiki ukuran atau teks');
-  let logoSource = null;
+  // Logo di-decode lebih dulu: rasionya menentukan ukuran kotak logo pada tata letak.
+  let logoSource: { image: ImageBitmap; width: number; height: number } | null = null;
   let logoPng: Uint8Array | null = null;
   if (logo) {
     const bitmap = await createImageBitmap(
@@ -80,6 +68,20 @@ export async function renderExportFiles(
     logoCanvas.getContext('2d')?.drawImage(bitmap, 0, 0);
     logoPng = new Uint8Array(await (await canvasToBlob(logoCanvas)).arrayBuffer());
   }
+  const layout = layoutLabel(
+    {
+      title: design.title,
+      subtitle: design.subtitle,
+      footer: design.footer,
+      hasLogo: logoSource !== null,
+      logoAspect: logoSource ? logoSource.width / logoSource.height : 1,
+      layout: design.layout,
+      qrModules: matrix.length,
+    },
+    createCanvasMeasure(),
+  );
+  if (layout.overflow)
+    throw new Error('Isi label melebihi kanvas 3 × 3 cm; perbaiki ukuran atau teks');
   const pngCanvas = renderLabelCanvas(layout, matrix, logoSource, PNG_PX_PER_MM);
   const pngBytes = new Uint8Array(await (await canvasToBlob(pngCanvas)).arrayBuffer());
   const pdfBytes = await buildSheetPdf(layout, matrix, logoPng, fonts);

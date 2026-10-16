@@ -20,6 +20,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - `gas/src/modules/sync/` — jalur sinkronisasi QC Desktop (`doPost`): token bersama + pembatas, tabel rute sinkron `getSyncRoutes_` (terpisah dari `getRoutes_`), `sync_state`/`nextRev_` (penghitung revisi; pemanggil memegang lock), sumber daya `brands` dan `items`. Kontrak: `docs/api/desktop-sync.md`. Perubahan field sinkron item/merk WAJIB menaikkan `sync_rev` (lihat `itemSyncSignature_`).
 - `web/src/modules/brand/` — halaman Merk (master merk; nama merk dipakai item lewat `brand_id`). Backend: `gas/src/modules/brand/`. Izin memakai modul `item`.
 - `web/src/modules/customer/` dan `gas/src/modules/customer/` — master customer (dibuat inline saat task disimpan; halaman hanya ganti nama/status). `web/src/modules/handover/` dan `gas/src/modules/handover/` — Serah Terima WH→QC dan pengerjaan QC; rute `handovers.*` berlokasi (`anyOf` WH/QC untuk baca; `locationId` + `id` untuk tulis, lokasi baris diperiksa ulang). Fungsi murni: `shared/handover.ts` (status turunan, nomor `ST-YYYYMMDD-NNN`) dan `shared/suggest.ts` (saran toleran typo/urutan kata, nama mirip).
+- `shared/qrcode.ts` — tata letak label QR murni (`layoutLabel`, sel lembar 10×14, hash/status ekspor); `web/src/modules/qrcode/` — halaman QR Code (form + pratinjau 3×3, dialog pratinjau lembar, ekspor PDF/PNG di FE dengan `pdf-lib`, label dipakai ulang 140× lewat `embedPdf`); `gas/src/modules/qrcode/` — konfigurasi (`qr_designs`), PDF sumber (`qr_documents`, dibagikan "siapa saja yang punya link"), ekspor ke folder Drive `QR_FOLDER_ID` dan folder dokumen `QR_DOC_FOLDER_ID`. Izin modul `qrcode` (global). Logo memakai pemilik berkas `qrlogo/shared` (boleh dirujuk banyak konfigurasi). PRD: `docs/prd/2026-10-16-qc-qr-code.md`.
 - `web/src/modules/item/` — Data Item (daftar, form, detail); detail Markdown dan gambar memakai `modules/markdown` dan `modules/files`. Backend: `gas/src/modules/item/`; fungsi murni (kunci pencarian, hash, rujukan berkas) di `shared/items.ts`.
 
 ## Aturan kode GAS (ditegakkan `scripts/build-gas.ts`)
@@ -32,6 +33,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - Tulis ke sheet di dalam `platform_().withLock(...)`; teks disimpan lewat `core/db` (aman dari formula injection).
 - Jangan pakai API JS yang runtime V8 Apps Script belum tentu dukung (mis. `Object.hasOwn`); aturan Biome `noPrototypeBuiltins` sengaja dimatikan.
 - Karakter khusus (mis. U+2028) ditulis lewat `String.fromCharCode`, bukan literal/escape di regex.
+- Konstanta level atas tidak boleh memakai global file lain (mis. `SYNC_ACTOR`); `verify-dist` memuat semua file `gas/dist` dalam urutan maju dan mundur untuk menangkapnya. Nama top-level harus unik juga terhadap `shared/` (beri awalan modul, mis. `QR_STALE_MESSAGE`).
 - Jangan pernah mengedit `gas/dist/` manual.
 
 ## Aturan frontend

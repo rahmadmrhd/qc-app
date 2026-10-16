@@ -1,5 +1,6 @@
 import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { LabelPreview } from './label-preview';
 
@@ -22,23 +23,48 @@ test('pratinjau 3 × 3 cm: kanvas berlabel dan tanpa peringatan untuk isi normal
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
-test('isi melebihi kanvas: peringatan ekspor diblokir', () => {
-  render(<LabelPreview {...base} title={'kata '.repeat(60)} />);
-  expect(screen.getByRole('alert')).toHaveTextContent('melebihi kanvas');
+test('isi melebihi kanvas: dilaporkan lewat onStatus; pratinjau sendiri tidak menampilkan pesan (banner ada di form)', () => {
+  const onStatus = vi.fn();
+  render(<LabelPreview {...base} title={'kata '.repeat(60)} onStatus={onStatus} />);
+  expect(onStatus).toHaveBeenLastCalledWith(expect.objectContaining({ overflow: true }));
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 
-test('QR terlalu padat: peringatan (bukan galat) agar link dipendekkan atau QR diperbesar', () => {
+test('QR terlalu padat: dilaporkan tooDense (bukan overflow) beserta ukuran modul', () => {
+  const onStatus = vi.fn();
   render(
     <LabelPreview
       {...base}
       link={`https://contoh.com/${'a'.repeat(280)}`}
       layout={{ ...DEFAULT_QR_LAYOUT, qrSize: 12 }}
+      onStatus={onStatus}
     />,
   );
-  expect(screen.getByText(/terlalu padat/i)).toBeInTheDocument();
+  expect(onStatus).toHaveBeenLastCalledWith(
+    expect.objectContaining({ overflow: false, tooDense: true, moduleMm: expect.any(Number) }),
+  );
+});
+
+test('isi normal: onStatus melaporkan tanpa masalah', () => {
+  const onStatus = vi.fn();
+  render(<LabelPreview {...base} onStatus={onStatus} />);
+  expect(onStatus).toHaveBeenLastCalledWith(
+    expect.objectContaining({ overflow: false, tooDense: false }),
+  );
 });
 
 test('link kosong: tetap menampilkan pratinjau dengan QR contoh dan petunjuk', () => {
   render(<LabelPreview {...base} link="" />);
   expect(screen.getByText(/Isi link/i)).toBeInTheDocument();
+});
+
+test('pratinjau dapat diklik: membuka tampilan diperbesar dengan kanvas yang lebih besar; Escape menutup', async () => {
+  render(<LabelPreview {...base} />);
+  expect(screen.queryByLabelText('Pratinjau label diperbesar')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Perbesar pratinjau label' }));
+  const zoom = await screen.findByLabelText('Pratinjau label diperbesar');
+  expect(zoom).toBeInstanceOf(HTMLCanvasElement);
+  expect(Number((zoom as HTMLCanvasElement).width)).toBeGreaterThan(360);
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByLabelText('Pratinjau label diperbesar')).toBeNull();
 });
