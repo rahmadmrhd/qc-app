@@ -266,3 +266,52 @@ test('attachFiles_ menerima id ganda dalam satu batch', () => {
   attachFiles_([a.id, a.id], 'item', 'item-1');
   expect(listFiles_().filter((f) => f.ownerId === 'item-1')).toHaveLength(1);
 });
+
+test('readFile_: pembacaan kedua dari cache (tanpa Drive); aturan akses tetap diperiksa sebelum cache', () => {
+  const saved = uploadFile_(validateUploadFile_(upload()), admin);
+  const original = platform.driveReadFile;
+  let driveReads = 0;
+  platform.driveReadFile = (fileId, folderId) => {
+    driveReads++;
+    return original(fileId, folderId);
+  };
+  expect(readFile_({ id: saved.id }).base64).toBe(PNG);
+  expect(readFile_({ id: saved.id }).base64).toBe(PNG);
+  expect(driveReads).toBe(1);
+  // pengguna yang hanya boleh membaca logo tetap ditolak walau isinya sudah ada di cache
+  expect(captureAppError(() => readFile_({ id: saved.id }, 'lain@gmail.com')).code).toBe(
+    'NOT_FOUND',
+  );
+  expect(driveReads).toBe(1);
+});
+
+test('readFile_: berkas besar di-cache per potongan; potongan hilang = baca Drive lagi; terlalu besar tidak di-cache', () => {
+  const bigOf = (length: number) => `iVBORw0KGgoA${'A'.repeat(length - 12)}`; // PNG sah, kelipatan 4
+  const big = bigOf(200_000); // 3 potongan
+  const saved = uploadFile_(validateUploadFile_(upload({ base64: big })), admin);
+  const original = platform.driveReadFile;
+  let driveReads = 0;
+  platform.driveReadFile = (fileId, folderId) => {
+    driveReads++;
+    return original(fileId, folderId);
+  };
+  readFile_({ id: saved.id });
+  expect(readFile_({ id: saved.id }).base64).toBe(big);
+  expect(driveReads).toBe(1);
+  const driveId = listFiles_()[0]?.driveId ?? '';
+  const folderId = platform.getProperty('DRIVE_FOLDER_ID') ?? '';
+  platform.cache.delete(`fcont:${folderId}:${driveId}:1`);
+  expect(readFile_({ id: saved.id }).base64).toBe(big);
+  expect(driveReads).toBe(2);
+  const huge = uploadFile_(validateUploadFile_(upload({ base64: bigOf(600_000) })), admin);
+  readFile_({ id: huge.id });
+  readFile_({ id: huge.id });
+  expect(driveReads).toBe(4);
+});
+
+test('readFile_: cache terikat folder aktif — mengganti DRIVE_FOLDER_ID membuat isi lama tidak disajikan lagi', () => {
+  const saved = uploadFile_(validateUploadFile_(upload()), admin);
+  expect(readFile_({ id: saved.id }).base64).toBe(PNG); // terisi cache
+  platform.setProperty('DRIVE_FOLDER_ID', 'folder-lain-yang-tidak-memuat-berkas');
+  expect(captureAppError(() => readFile_({ id: saved.id })).code).toBe('NOT_FOUND');
+});

@@ -1,13 +1,16 @@
 import { Outlet } from '@tanstack/react-router';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useMe } from '@/modules/auth/use-me';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { LocationPicker } from '@/modules/location/location-picker';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
+import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
 import { UserMenu } from './user-menu';
 
 export function AppShell() {
+  usePrefetchOnIdle(useMe());
   return (
     <TooltipProvider>
       <ActiveLocationsProvider>

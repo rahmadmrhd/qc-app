@@ -7,8 +7,8 @@ import {
   renderHtmlPage_,
   renderJsonOutput_,
 } from '@gas/core/gas-platform';
-import { platform_ } from '@gas/core/platform';
-import { handleRpc_ } from '@gas/core/router';
+import { platform_, withRequestCache_ } from '@gas/core/platform';
+import { handleRpc_, handleRpcBatch_ } from '@gas/core/router';
 import { buildBootData_, injectBoot_ } from '@gas/modules/auth/boot';
 import { cleanupQrDocuments_ } from '@gas/modules/qrcode/service';
 import { handleSync_ } from '@gas/modules/sync/handler';
@@ -19,7 +19,12 @@ import { runSetup_ } from '@gas/setup';
 export function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.HTML.HtmlOutput {
   installGasPlatform_();
   try {
-    return renderHtmlPage_(injectBoot_(loadIndexHtml_(), buildBootData_(e.parameter ?? {})));
+    return renderHtmlPage_(
+      injectBoot_(
+        loadIndexHtml_(),
+        withRequestCache_(() => buildBootData_(e.parameter ?? {})),
+      ),
+    );
   } catch (error) {
     const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
     platform_().logError(`doGet gagal: ${detail}`);
@@ -32,6 +37,7 @@ export function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.HTML.H
 
 export function api(method: unknown, payloadJson: unknown, token: unknown): string {
   installGasPlatform_();
+  if (method === 'batch') return JSON.stringify(handleRpcBatch_(payloadJson, token, getRoutes_()));
   return JSON.stringify(handleRpc_(method, payloadJson, token, getRoutes_()));
 }
 

@@ -1,5 +1,5 @@
 import { appError_ } from '@gas/core/errors';
-import { platform_ } from '@gas/core/platform';
+import { platform_, withRequestCache_ } from '@gas/core/platform';
 import { toErrorBody_ } from '@gas/core/router';
 import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
@@ -37,6 +37,10 @@ function parseSyncEnvelope_(rawBody: unknown): Record<string, unknown> | null {
 }
 
 export function handleSync_(rawBody: unknown, routes: SyncRouteTable): RpcResult<unknown> {
+  return withRequestCache_(() => handleSyncUncached_(rawBody, routes));
+}
+
+function handleSyncUncached_(rawBody: unknown, routes: SyncRouteTable): RpcResult<unknown> {
   const requestId = platform_().uuid().replace(/-/g, '').slice(0, 8);
   try {
     const envelope = parseSyncEnvelope_(rawBody);

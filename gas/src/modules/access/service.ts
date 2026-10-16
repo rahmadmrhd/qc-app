@@ -22,10 +22,10 @@ import {
   deleteRole_,
   insertRole_,
   insertUser_,
-  listAuditRecords_,
   listLocations_,
   listRoles_,
   listUsers_,
+  readAuditPage_,
   updateRole_,
   updateUser_,
 } from './repo';
@@ -70,18 +70,9 @@ export function listAudit_(params: ListAuditInput): AuditPageDto {
   const page = params.page ?? 1;
   const action = params.action ?? '';
   const query = (params.query ?? '').toLowerCase();
-  const matched = listAuditRecords_()
-    .filter((record) => action === '' || record.action === action)
-    .filter(
-      (record) =>
-        query === '' ||
-        record.target.toLowerCase().includes(query) ||
-        record.actor.toLowerCase().includes(query),
-    )
-    .sort((a, b) => (a.ts === b.ts ? b.rowNumber - a.rowNumber : a.ts < b.ts ? 1 : -1));
-  const start = (page - 1) * AUDIT_PAGE_SIZE;
+  const { entries, total } = readAuditPage_({ action, query }, page, AUDIT_PAGE_SIZE);
   return {
-    entries: matched.slice(start, start + AUDIT_PAGE_SIZE).map((record) => ({
+    entries: entries.map((record) => ({
       id: String(record.rowNumber),
       ts: record.ts,
       actor: record.actor,
@@ -90,7 +81,7 @@ export function listAudit_(params: ListAuditInput): AuditPageDto {
       before: record.before,
       after: record.after,
     })),
-    total: matched.length,
+    total,
     page,
     pageSize: AUDIT_PAGE_SIZE,
   };

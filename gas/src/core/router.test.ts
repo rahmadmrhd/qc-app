@@ -14,7 +14,7 @@ import type { RpcResult } from '@shared/rpc';
 import { appError_ } from './errors';
 import { setPlatform_ } from './platform';
 import type { RequestContext, RoutePermission, RoutePermissionSpec, RouteTable } from './router';
-import { handleRpc_ } from './router';
+import { handleRpc_, handleRpcBatch_ } from './router';
 import { signSessionToken_ } from './session';
 import { expectNull_ } from './validate';
 
@@ -347,4 +347,42 @@ test('anyOf kosong (hasil cast) gagal tertutup, bukan setara "cukup login"', () 
   } as unknown as RouteTable;
   const token = signSessionToken_('admin@gmail.com');
   expect(errorOf(handleRpc_('report.list', 'null', token, kosong)).code).toBe('FORBIDDEN');
+});
+
+test('batch: beberapa RPC dalam satu eksekusi, hasil per item berurutan; item galat tidak menggagalkan yang lain', () => {
+  insertUser_(user({ id: 'u1', email: 'a@gmail.com', roleIds: [] }));
+  const token = signSessionToken_('a@gmail.com');
+  const out = handleRpcBatch_(
+    JSON.stringify([
+      { m: 'auth.me', p: 'null' },
+      { m: 'tidak.ada', p: 'null' },
+      { m: 'access.users.list', p: 'null' },
+    ]),
+    token,
+    routes,
+  );
+  if (!('batch' in out)) throw new Error('bukan hasil batch');
+  expect(out.batch.map((result) => result.ok)).toEqual([true, false, false]);
+  expect(out.batch[0]).toEqual({ ok: true, data: { email: 'a@gmail.com' } });
+  expect((out.batch[1] as { error: { code: string } }).error.code).toBe('NOT_FOUND');
+  expect((out.batch[2] as { error: { code: string } }).error.code).toBe('FORBIDDEN');
+});
+
+test('batch: bentuk tidak valid, kosong, atau lebih dari batas ditolak sebagai satu galat VALIDATION; batch tidak bersarang', () => {
+  const token = signSessionToken_('a@gmail.com');
+  for (const payload of [
+    'bukan json',
+    '[]',
+    '{"m":"auth.me"}',
+    JSON.stringify([{ m: 'auth.me' }]),
+    JSON.stringify(Array.from({ length: 9 }, () => ({ m: 'auth.me', p: 'null' }))),
+  ]) {
+    const out = handleRpcBatch_(payload, token, routes) as { ok: boolean; error: { code: string } };
+    expect(out.ok).toBe(false);
+    expect(out.error.code).toBe('VALIDATION');
+  }
+  const nested = handleRpcBatch_(JSON.stringify([{ m: 'batch', p: '[]' }]), token, routes) as {
+    batch: Array<{ ok: boolean; error: { code: string } }>;
+  };
+  expect(nested.batch[0]?.error.code).toBe('NOT_FOUND');
 });

@@ -1,5 +1,12 @@
 import type { RowData, TableSchema } from '@gas/core/db';
-import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
+import {
+  cellToString_,
+  deleteRow_,
+  insertRow_,
+  openTable_,
+  readTable_,
+  updateRow_,
+} from '@gas/core/db';
 import { normalizeEmail_ } from '@gas/core/email';
 import { platform_ } from '@gas/core/platform';
 import type { Assignment } from '@shared/assignments';
@@ -270,6 +277,94 @@ export interface AuditRecord {
 function parseSnapshot_(text: string): Record<string, unknown> | null {
   const value = parseJson_(text);
   return isPlainObject_(value) ? value : null;
+}
+
+/**
+ * Satu halaman log audit tanpa membaca seluruh log: (1) hanya kolom ringan ts/actor/action/target untuk semua baris
+ * (filter, urut, total), lalu (2) kolom before/after (JSON besar) hanya untuk baris di halaman itu. Terbaru dahulu.
+ */
+/** Selisih baris terbesar yang masih digabung dalam satu pembacaan before/after. */
+const AUDIT_GAP_ROWS = 25;
+
+export function readAuditPage_(
+  filter: { action: string; query: string },
+  page: number,
+  pageSize: number,
+): { entries: AuditRecord[]; total: number } {
+  const { sheet, header } = openTable_(AUDIT_TABLE);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { entries: [], total: 0 };
+  const col = (name: string) => header.indexOf(name) + 1;
+  const metaNames = ['ts', 'actor', 'action', 'target'] as const;
+  const metaCols = metaNames.map(col);
+  const metaFrom = Math.min(...metaCols);
+  const metaTo = Math.max(...metaCols);
+  const meta = sheet.getRange(2, metaFrom, lastRow - 1, metaTo - metaFrom + 1).getValues();
+  const query = filter.query.toLowerCase();
+  const matched: Array<{
+    rowNumber: number;
+    ts: string;
+    actor: string;
+    action: string;
+    target: string;
+  }> = [];
+  meta.forEach((line, index) => {
+    const at = (name: (typeof metaNames)[number]) => cellToString_(line[col(name) - metaFrom]);
+    const record = {
+      rowNumber: index + 2,
+      ts: at('ts'),
+      actor: at('actor'),
+      action: at('action'),
+      target: at('target'),
+    };
+    if (record.ts === '' && record.actor === '' && record.action === '' && record.target === '') {
+      return; // baris kosong (kolom before/after pun diabaikan: log selalu punya aksi)
+    }
+    if (filter.action !== '' && record.action !== filter.action) return;
+    if (
+      query !== '' &&
+      !record.target.toLowerCase().includes(query) &&
+      !record.actor.toLowerCase().includes(query)
+    ) {
+      return;
+    }
+    matched.push(record);
+  });
+  matched.sort((a, b) => (a.ts === b.ts ? b.rowNumber - a.rowNumber : a.ts < b.ts ? 1 : -1));
+  const start = (page - 1) * pageSize;
+  const pageRows = matched.slice(start, start + pageSize);
+  if (pageRows.length === 0) return { entries: [], total: matched.length };
+  const beforeCol = col('before');
+  const afterCol = col('after');
+  const snapFrom = Math.min(beforeCol, afterCol);
+  const snapTo = Math.max(beforeCol, afterCol);
+  // Hanya baris halaman yang dibaca: baris berdekatan (selisih <= AUDIT_GAP_ROWS) digabung dalam satu pembacaan, yang
+  // berjauhan dibaca terpisah. Filter yang menyebar tidak lagi memuat seluruh log (batas waktu/memori Apps Script).
+  const sortedRows = pageRows.map((row) => row.rowNumber).sort((a, b) => a - b);
+  const groups: Array<{ from: number; to: number }> = [];
+  for (const rowNumber of sortedRows) {
+    const last = groups[groups.length - 1];
+    if (last && rowNumber - last.to <= AUDIT_GAP_ROWS) last.to = rowNumber;
+    else groups.push({ from: rowNumber, to: rowNumber });
+  }
+  const snapshots = new Map<number, unknown[]>();
+  for (const group of groups) {
+    const block = sheet
+      .getRange(group.from, snapFrom, group.to - group.from + 1, snapTo - snapFrom + 1)
+      .getValues();
+    block.forEach((line, index) => {
+      snapshots.set(group.from + index, line);
+    });
+  }
+  const entries = pageRows.map((row): AuditRecord => {
+    const line = snapshots.get(row.rowNumber) ?? [];
+    return {
+      ...row,
+      before: parseSnapshot_(cellToString_(line[beforeCol - snapFrom])),
+      after: parseSnapshot_(cellToString_(line[afterCol - snapFrom])),
+    };
+  });
+  return { entries, total: matched.length };
 }
 
 export function listAuditRecords_(): AuditRecord[] {

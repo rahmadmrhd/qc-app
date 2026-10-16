@@ -1,5 +1,6 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { setPlatform_ } from '@gas/core/platform';
+import { bumpTableVersion_ } from '@gas/core/table-cache';
 import { location, role, user } from '@gas-test/access-fixtures';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
@@ -30,6 +31,12 @@ beforeEach(() => {
   insertLocation_(location({ id: 'l-b', code: 'B' }));
   insertLocation_(location({ id: 'l-mati', code: 'MATI', status: 'inactive' }));
 });
+
+/** Menyuntik baris mentah ke sheet users (seperti suntingan manual) dan membuang cache lintas request tabel itu. */
+function pushRawUser(row: unknown[]): void {
+  platform.db.sheet('users').rows.push(row);
+  bumpTableVersion_('users');
+}
 
 test('hak berbeda di tiap lokasi untuk satu user (FR-P6)', () => {
   insertUser_(
@@ -118,9 +125,7 @@ test('user tanpa penugasan dapat login tanpa izin apa pun (FR-P10)', () => {
 
 test('data lama yang hanya punya role_ids tetap berlaku sebagai Semua lokasi sebelum migrasi (deploy sebelum setup)', () => {
   listUsers_(); // membuat sheet users beserta header sebelum baris mentah diisi
-  platform.db
-    .sheet('users')
-    .rows.push(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
+  pushRawUser(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
   const ctx = loadUserContext_('lama@gmail.com');
   expect(ctx?.permissions.handover).toBe('manage');
   expect(ctx?.locations['l-a']?.handover).toBe('manage');
@@ -131,12 +136,8 @@ test('data lama yang hanya punya role_ids tetap berlaku sebagai Semua lokasi seb
 
 test('migrasi memindahkan role_ids ke assignments, mengosongkan role_ids, dan aman diulang', () => {
   listUsers_();
-  platform.db
-    .sheet('users')
-    .rows.push(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
-  platform.db
-    .sheet('users')
-    .rows.push(['u8', 'kosong@gmail.com', 'Kosong', 'active', '[]', '', '', '']);
+  pushRawUser(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
+  pushRawUser(['u8', 'kosong@gmail.com', 'Kosong', 'active', '[]', '', '', '']);
   expect(migrateUserAssignments_()).toBe(1);
   const header = platform.db.sheet('users').rows[0] ?? [];
   const row = platform.db.sheet('users').rows[1] ?? [];
@@ -150,22 +151,18 @@ test('migrasi memindahkan role_ids ke assignments, mengosongkan role_ids, dan am
 
 test('JSON assignments rusak diabaikan tanpa error dan locationId hilang tidak menjadi Semua lokasi', () => {
   listUsers_();
-  platform.db
-    .sheet('users')
-    .rows.push(['u1', 'rusak@gmail.com', 'Rusak', 'active', '', '', '', '', 'bukan-json']);
-  platform.db
-    .sheet('users')
-    .rows.push([
-      'u2',
-      'tanpa@gmail.com',
-      'Tanpa',
-      'active',
-      '',
-      '',
-      '',
-      '',
-      '[{"roleIds":["r-manage"]}]',
-    ]);
+  pushRawUser(['u1', 'rusak@gmail.com', 'Rusak', 'active', '', '', '', '', 'bukan-json']);
+  pushRawUser([
+    'u2',
+    'tanpa@gmail.com',
+    'Tanpa',
+    'active',
+    '',
+    '',
+    '',
+    '',
+    '[{"roleIds":["r-manage"]}]',
+  ]);
   expect(loadUserContext_('rusak@gmail.com')?.locations).toEqual({});
   expect(loadUserContext_('tanpa@gmail.com')?.locations).toEqual({});
   expect(loadUserContext_('tanpa@gmail.com')?.permissions.handover).toBe('none');
@@ -173,9 +170,7 @@ test('JSON assignments rusak diabaikan tanpa error dan locationId hilang tidak m
 
 test('migrasi berjalan di dalam lock dan membatalkan cache akses agar tidak menimpa tulisan bersamaan', () => {
   listUsers_();
-  platform.db
-    .sheet('users')
-    .rows.push(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
+  pushRawUser(['u9', 'lama@gmail.com', 'Lama', 'active', '["r-manage"]', '', '', '']);
   loadUserContext_('lama@gmail.com');
   const versionBefore = platform.cacheGet('access:version');
   let locks = 0;

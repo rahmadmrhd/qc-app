@@ -5,7 +5,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
 import type { RpcErrorBody, RpcInput, RpcMethod, RpcOutput, RpcResult } from '@shared/rpc';
 import { appError_, isAppError_ } from './errors';
-import { platform_ } from './platform';
+import { platform_, withRequestCache_ } from './platform';
 import { verifySessionToken_ } from './session';
 
 export interface RequestContext {
@@ -38,7 +38,61 @@ export interface RouteDef<M extends RpcMethod = RpcMethod> {
 
 export type RouteTable = { [M in RpcMethod]: RouteDef<M> };
 
+/** Batas item per permintaan batch (satu eksekusi Apps Script menjalankan semuanya berurutan). */
+export const RPC_BATCH_MAX_ITEMS = 8;
+
+/**
+ * Beberapa RPC dalam SATU eksekusi Apps Script: biaya tetap eksekusi (start, openById, cache, auth) dibayar sekali
+ * dan cache baca-tabel dibagi. Payload: JSON array `[{ m: method, p: payloadJson }, ...]`. Tiap item lewat
+ * `handleRpc_` penuh (token, izin, validasi sendiri-sendiri); satu item gagal tidak menggagalkan yang lain.
+ * Mengembalikan `{ batch: RpcResult[] }`, atau satu `RpcResult` galat bila bentuk payload salah.
+ */
+export function handleRpcBatch_(
+  payloadJson: unknown,
+  token: unknown,
+  routes: RouteTable,
+): { batch: RpcResult<unknown>[] } | RpcResult<unknown> {
+  const requestId = platform_().uuid().replace(/-/g, '').slice(0, 8);
+  let items: unknown;
+  try {
+    items = JSON.parse(typeof payloadJson === 'string' ? payloadJson : 'null');
+  } catch {
+    items = null;
+  }
+  const valid =
+    Array.isArray(items) &&
+    items.length > 0 &&
+    items.length <= RPC_BATCH_MAX_ITEMS &&
+    items.every(
+      (item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as { m?: unknown }).m === 'string' &&
+        typeof (item as { p?: unknown }).p === 'string',
+    );
+  if (!valid) {
+    return {
+      ok: false,
+      error: toErrorBody_(appError_('VALIDATION', 'Permintaan batch tidak valid'), requestId),
+    };
+  }
+  return withRequestCache_(() => ({
+    batch: (items as Array<{ m: string; p: string }>).map((item) =>
+      handleRpc_(item.m, item.p, token, routes),
+    ),
+  }));
+}
+
 export function handleRpc_(
+  method: unknown,
+  payloadJson: unknown,
+  token: unknown,
+  routes: RouteTable,
+): RpcResult<unknown> {
+  return withRequestCache_(() => handleRpcUncached_(method, payloadJson, token, routes));
+}
+
+function handleRpcUncached_(
   method: unknown,
   payloadJson: unknown,
   token: unknown,

@@ -93,3 +93,39 @@ test('listAudit_ tidak jatuh bila sel before/after rusak atau bukan objek', () =
     [null, null],
   ]);
 });
+
+test('listAudit_ tidak membaca seluruh log: kolom ringan semua baris, before/after hanya untuk baris di halaman', () => {
+  for (let i = 0; i < 120; i++) {
+    const ts = `2026-10-08T${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00.000Z`;
+    add(ts, 'user.update', `u${i}@gmail.com`, { name: 'lama' }, { name: `baru-${i}` });
+  }
+  const sheet = platform.db.sheet('audit_log');
+  const before = sheet.calls;
+  const page = listAudit_({ page: 1, action: '', query: '' });
+  // hanya sekian panggilan: jumlah baris + kolom ringan + kolom before/after halaman (bukan satu pembacaan penuh)
+  expect(sheet.calls - before).toBeLessThanOrEqual(3);
+  expect(page.entries).toHaveLength(50);
+  expect(page.entries[0]).toMatchObject({ target: 'u119@gmail.com', after: { name: 'baru-119' } });
+});
+
+test('listAudit_ dengan filter yang menyebar: tidak memuat rentang terjauh, hanya baris halaman (digabung bila berdekatan)', () => {
+  // 300 baris; aksi "role.delete" hanya tiap baris ke-100 (sangat menyebar), sisanya user.update
+  for (let i = 0; i < 300; i++) {
+    const ts = `2026-10-08T${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00.000Z`;
+    add(
+      ts,
+      i % 100 === 0 ? 'role.delete' : 'user.update',
+      `t${i}`,
+      { name: 'x' },
+      { name: `y-${i}` },
+    );
+  }
+  const sheet = platform.db.sheet('audit_log');
+  const before = sheet.calls;
+  const page = listAudit_({ page: 1, action: 'role.delete', query: '' });
+  expect(page.total).toBe(3);
+  expect(page.entries.map((entry) => entry.target).sort()).toEqual(['t0', 't100', 't200']);
+  expect(page.entries.every((entry) => entry.after !== null)).toBe(true);
+  // header + kolom ringan + 3 baca terpisah (tiap baris berjauhan > 25) = 5, bukan satu pembacaan 200 baris
+  expect(sheet.calls - before).toBe(5);
+});
