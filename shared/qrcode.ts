@@ -555,7 +555,12 @@ export function layoutLabel(input: LabelInput, measure: Measure): LabelLayout {
       backdropHeightMm: heightMm * 1.15,
     });
   }
+  // Logo dengan luas tetap dan rasio ekstrem dapat lebih lebar/tinggi dari QR (bahkan kanvas): dianggap tidak muat.
+  const logo = elements.find((element) => element.kind === 'logo');
+  const logoTooBig =
+    logo?.kind === 'logo' && (logo.widthMm > qrSize + 1e-9 || logo.heightMm > qrSize + 1e-9);
   const overflow =
+    logoTooBig ||
     title.tooWide ||
     subtitle.tooWide ||
     footer.tooWide ||
@@ -713,6 +718,23 @@ export function parseDriveFileId(input: string): string | null {
   const at = parts.indexOf('d');
   const fromPath = at >= 0 ? parts[at + 1] : undefined;
   return fromPath !== undefined && idChars(fromPath) ? fromPath : null;
+}
+
+/** Resource key link Drive berkunci (parameter `resourcekey`), atau null; hanya untuk host Drive/Docs. */
+export function parseDriveResourceKey(input: string): string | null {
+  try {
+    const url = new URL(input.trim());
+    if (
+      url.protocol !== 'https:' ||
+      !['drive.google.com', 'docs.google.com'].includes(url.hostname)
+    ) {
+      return null;
+    }
+    const key = url.searchParams.get('resourcekey');
+    return key !== null && key.length > 0 && key.length <= 100 ? key : null;
+  } catch {
+    return null;
+  }
 }
 
 function isDriveIdText(value: string): boolean {

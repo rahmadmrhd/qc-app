@@ -14,6 +14,7 @@ import {
   labelFileSlug,
   layoutLabel,
   parseDriveFileId,
+  parseDriveResourceKey,
   qrContentHash,
   qrExportStatus,
   qrPdfFileName,
@@ -424,5 +425,29 @@ describe('ukuran logo berbasis luas', () => {
     expect(clampQrLayout({ logoPercent: 22 }).logoArea).toBeCloseTo(4.84, 6);
     expect(clampQrLayout({ logoPercent: 30, logoArea: 10 }).logoArea).toBe(10); // nilai baru menang
     expect(clampQrLayout({}).logoArea).toBe(DEFAULT_QR_LAYOUT.logoArea);
+  });
+});
+
+describe('logo ekstrem dan resource key Drive', () => {
+  test('logo yang lebih lebar/tinggi dari QR (rasio ekstrem pada luas 30%) menandai overflow; rasio wajar tidak', () => {
+    const at = (logoArea: number, logoAspect: number) =>
+      layoutLabel({ ...base, layout: { ...DEFAULT_QR_LAYOUT, logoArea }, logoAspect }, measure);
+    expect(at(30, 10).overflow).toBe(true);
+    expect(at(30, 0.1).overflow).toBe(true);
+    expect(at(30, 3).overflow).toBe(false);
+    expect(at(5, 10).overflow).toBe(false);
+  });
+
+  test('parseDriveResourceKey: mengambil resourcekey dari link Drive; tanpa kunci null', () => {
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
+    expect(
+      parseDriveResourceKey(`https://drive.google.com/file/d/${id}/view?resourcekey=0-AbC_d-1`),
+    ).toBe('0-AbC_d-1');
+    expect(parseDriveResourceKey(`https://drive.google.com/open?id=${id}&resourcekey=0-xyz`)).toBe(
+      '0-xyz',
+    );
+    expect(parseDriveResourceKey(`https://drive.google.com/file/d/${id}/view`)).toBeNull();
+    expect(parseDriveResourceKey(id)).toBeNull();
+    expect(parseDriveResourceKey('https://contoh.com/a?resourcekey=0-x')).toBeNull();
   });
 });

@@ -249,13 +249,13 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
       drive.delete(fileId);
       sharedFiles.delete(fileId);
     },
-    driveExternalFileInfo: (fileId) => {
+    driveExternalFileInfo: (fileId, _resourceKey) => {
       const file = drive.get(fileId);
       return file
         ? { name: file.name, mime: file.mime, size: Math.floor((file.base64.length * 3) / 4) }
         : null;
     },
-    driveCopyFile: (fileId, folderId, name) => {
+    driveCopyFile: (fileId, folderId, name, _resourceKey) => {
       const file = drive.get(fileId);
       if (!file) throw new Error(`Berkas Drive ${fileId} tidak ada`);
       if (!folders.has(folderId)) throw new Error(`Folder Drive ${folderId} tidak ada`);

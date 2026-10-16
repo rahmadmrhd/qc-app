@@ -56,9 +56,12 @@ export interface Platform {
   /** Membuang berkas Drive (ke tempat sampah); aman bila berkas tidak ada. */
   driveTrashFile(fileId: string): void;
   /** Info berkas Drive mana pun yang dapat dibaca pemilik script; null bila tidak ada/tidak dapat diakses. */
-  driveExternalFileInfo(fileId: string): { name: string; mime: string; size: number } | null;
+  driveExternalFileInfo(
+    fileId: string,
+    resourceKey?: string,
+  ): { name: string; mime: string; size: number } | null;
   /** Menyalin berkas ke folder (berkas asli tidak diubah); mengembalikan id salinan. Melempar bila gagal. */
-  driveCopyFile(fileId: string, folderId: string, name: string): string;
+  driveCopyFile(fileId: string, folderId: string, name: string, resourceKey?: string): string;
   /** Mengganti nama berkas Drive. Melempar bila berkas tidak ada. */
   driveRenameFile(fileId: string, name: string): void;
   /** Membagikan berkas "siapa saja yang punya link: hanya lihat". Melempar bila berkas tidak ada. */

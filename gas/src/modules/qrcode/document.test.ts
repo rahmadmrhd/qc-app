@@ -140,3 +140,20 @@ test('clone ditolak: bukan link/ID Drive, berkas tidak ada, bukan PDF, terlalu b
   expect(clone(DRIVE_ID, 'qrview@gmail.com').error.code).toBe('FORBIDDEN');
   expect(listQrDocuments_().length).toBe(0);
 });
+
+test('clone dari link berkunci (resourcekey): kunci diteruskan ke Drive saat memeriksa dan menyalin', () => {
+  seedForeign();
+  const calls: Array<string | undefined> = [];
+  const original = platform.driveExternalFileInfo;
+  const wrapped = {
+    ...platform,
+    driveExternalFileInfo: (id: string, key?: string) => {
+      calls.push(key);
+      return original(id, key);
+    },
+  };
+  setPlatform_(wrapped);
+  const out = clone(`https://drive.google.com/file/d/${DRIVE_ID}/view?resourcekey=0-AbC_d-1`);
+  expect(out.ok).toBe(true);
+  expect(calls).toEqual(['0-AbC_d-1']);
+});

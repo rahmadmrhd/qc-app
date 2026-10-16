@@ -133,3 +133,38 @@ test('simpan QR: logo hanya dari pustaka (atau logo yang sudah dipakai konfigura
   });
   expect(resave.ok).toBe(true);
 });
+
+test('duplikat konfigurasi berlogo lama (di luar pustaka): logo yang masih dipakai konfigurasi lain boleh dirujuk lagi', () => {
+  const legacy = logo('qredit@gmail.com');
+  const inLibrary = logo();
+  saveDefaults({ logoFileIds: [inLibrary], defaultLogoId: inLibrary });
+  // logo lama dipakai lewat pustaka lalu dikeluarkan dari pustaka
+  const lib = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
+  saveDefaults({ logoFileIds: [legacy], defaultLogoId: '', expectedUpdatedAt: lib.updatedAt });
+  const body = {
+    title: 'T',
+    subtitle: '',
+    footer: '',
+    linkSource: 'pdf',
+    link: '',
+    get documentId() {
+      return qrPdfDocumentId();
+    },
+    layout: DEFAULT_QR_LAYOUT,
+  };
+  const source = call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: legacy });
+  expect(source.ok).toBe(true);
+  clock += 60_000;
+  const lib2 = call('qrview@gmail.com', 'qrcodes.getDefaults', null).data;
+  saveDefaults({ logoFileIds: [], defaultLogoId: '', expectedUpdatedAt: lib2.updatedAt });
+  // duplikat (tanpa id) dengan logo yang sama tetap diterima karena sumbernya masih memakainya
+  expect(
+    call('qredit@gmail.com', 'qrcodes.save', { ...body, title: 'T (salinan)', logoFileId: legacy })
+      .ok,
+  ).toBe(true);
+  // logo yang tidak dipakai siapa pun dan di luar pustaka tetap ditolak
+  const stray = logo('qredit@gmail.com');
+  expect(call('qredit@gmail.com', 'qrcodes.save', { ...body, logoFileId: stray }).error.code).toBe(
+    'VALIDATION',
+  );
+});

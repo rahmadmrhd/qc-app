@@ -13,6 +13,7 @@ import {
   driveShareUrl,
   labelFileName,
   parseDriveFileId,
+  parseDriveResourceKey,
   QR_LIMITS,
   qrContentHash,
   qrExportStatus,
@@ -267,10 +268,24 @@ export function saveQrDesign_(input: SaveQrDesignInput, actor: ActorRef): QrDesi
     throw error;
   }
   // Pembersihan serentak bisa mencabut berbagi PDF ini tepat sebelum konfigurasi tersimpan: pastikan terbagi.
-  if (pdfId !== '') ensureQrDocumentShared_(pdfId);
-  if (pdfId !== '') renameQrDocument_(pdfId, input.title, input.subtitle);
-  revokeUnusedQrDocuments_(outcome.released);
+  // Konfigurasi sudah tersimpan: langkah lanjutan (berbagi, nama berkas, pencabutan) best-effort — galatnya hanya
+  // dicatat agar pengguna tidak melihat "gagal" untuk simpan yang sebenarnya berhasil (retry akan CONFLICT).
+  if (pdfId !== '') {
+    afterQrCommit_('berbagi PDF', () => ensureQrDocumentShared_(pdfId));
+    afterQrCommit_('nama PDF', () => renameQrDocument_(pdfId, input.title, input.subtitle));
+  }
+  afterQrCommit_('pencabutan berbagi', () => revokeUnusedQrDocuments_(outcome.released));
   return outcome.dto;
+}
+
+function afterQrCommit_(label: string, run: () => void): void {
+  try {
+    run();
+  } catch (error) {
+    platform_().logError(
+      `qrcode: ${label} gagal setelah simpan: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 interface SaveOutcome {
@@ -310,7 +325,9 @@ function saveQrDesignLocked_(input: SaveQrDesignInput, actor: ActorRef): SaveOut
     }
     if (input.logoFileId !== '' && input.logoFileId !== (existing?.logoFileId ?? '')) {
       const library = getQrDefaultsRecord_()?.logoFileIds ?? [];
-      if (!library.includes(input.logoFileId)) {
+      // Logo yang masih dipakai konfigurasi lain (mis. sumber duplikat berlogo lama) tetap boleh dirujuk.
+      const inUse = designs.some((design) => design.logoFileId === input.logoFileId);
+      if (!library.includes(input.logoFileId) && !inUse) {
         const message = 'Logo harus dipilih dari pustaka logo (diatur di Konfigurasi default)';
         throw appError_('VALIDATION', message, { logoFileId: message });
       }
@@ -537,7 +554,8 @@ export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): Q
     const message = 'Isi dengan link atau ID berkas Google Drive';
     throw appError_('VALIDATION', message, { source: message });
   }
-  const info = platform.driveExternalFileInfo(sourceId);
+  const resourceKey = parseDriveResourceKey(input.source) ?? undefined;
+  const info = platform.driveExternalFileInfo(sourceId, resourceKey);
   if (!info) {
     throw appError_(
       'NOT_FOUND',
@@ -549,7 +567,7 @@ export function cloneQrPdfFromDrive_(input: CloneQrPdfInput, actor: ActorRef): Q
     throw appError_('VALIDATION', 'Ukuran PDF maksimal 10 MB');
   }
   const name = limitQrDocumentName_(info.name);
-  const driveId = platform.driveCopyFile(sourceId, ensureQrDocFolder_(), name);
+  const driveId = platform.driveCopyFile(sourceId, ensureQrDocFolder_(), name, resourceKey);
   try {
     platform.driveShareAnyoneWithLink(driveId);
     return platform.withLock(() => {

@@ -303,3 +303,20 @@ test('setelah diekspor, PDF hanya boleh diganti isinya: memilih dokumen lain dit
     true,
   );
 });
+
+test('langkah pasca-simpan yang gagal (ubah nama berkas) tidak menggagalkan RPC setelah konfigurasi tersimpan', () => {
+  const doc = upload().data.id;
+  const failing = {
+    ...platform,
+    driveRenameFile: () => {
+      throw new Error('Drive sementara gagal');
+    },
+  };
+  setPlatform_(failing);
+  const made = usePdf(doc, { title: 'Tetap Tersimpan' });
+  expect(made.ok).toBe(true);
+  setPlatform_(platform);
+  expect(call('qrview@gmail.com', 'qrcodes.get', { id: made.data.id }).data.title).toBe(
+    'Tetap Tersimpan',
+  );
+});
