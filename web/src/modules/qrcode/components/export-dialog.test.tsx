@@ -11,7 +11,6 @@ const base = {
   link: 'https://a.co',
   documentId: '',
   documentName: '',
-  documentUses: 0,
   subtitle: '',
   footer: '',
   logoFileId: '',

@@ -19,14 +19,16 @@ import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
 import { fileToBase64 } from '../lib/file-to-base64';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
-import type { QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
+import type { PresetApplyParts, QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import {
   frameRangeMessage,
   layoutRangeMessage,
+  presetPatch,
   qrDesignFormSchema,
   qrPresetFormSchema,
   toNewDesignFromPreset,
 } from '../schemas';
+import { ApplyPresetDialog } from './apply-preset-dialog';
 import { LabelPreview } from './label-preview';
 import type { LabelStatus } from './label-status-alerts';
 import { LabelStatusAlerts } from './label-status-alerts';
@@ -41,8 +43,6 @@ export interface QrDesignFormProps {
   defaultValues: QrFormInput;
   /** PDF sumber yang sudah terpasang (saat ubah/duplikat). */
   initialDocument?: QrDocumentDto | null;
-  /** Konfigurasi sudah pernah diekspor: PDF sumber hanya boleh diganti isinya (URL tetap). */
-  exported?: boolean;
   /** `defaults`: konfigurasi default (tanpa sumber link dan ekspor; mengelola pustaka logo). */
   mode?: 'design' | 'defaults';
   /** Pustaka logo bersama yang dapat dipilih. */
@@ -52,6 +52,8 @@ export interface QrDesignFormProps {
    * kosong = belum dapat membuat QR). Kosongkan (undefined) untuk ubah/duplikat/mode default.
    */
   presets?: readonly QrPresetDto[];
+  /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
+  updatePresets?: readonly QrPresetDto[];
   submitError?: string | null;
   fieldErrors?: Readonly<Record<string, string | undefined>>;
   onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
@@ -88,10 +90,10 @@ export function QrDesignForm({
   title,
   defaultValues,
   initialDocument = null,
-  exported = false,
   mode = 'design',
   logoLibrary = [],
   presets,
+  updatePresets,
   submitError,
   fieldErrors,
   onSubmit,
@@ -112,6 +114,7 @@ export function QrDesignForm({
   statusRef.current = labelStatus;
   const exportAfterRef = useRef(false);
   const isDefaults = mode === 'defaults';
+  const [applyOpen, setApplyOpen] = useState(false);
   const [presetId, setPresetId] = useState('');
   const ready = presets === undefined || presetId !== '';
   const schema = (
@@ -141,6 +144,13 @@ export function QrDesignForm({
     form.setFieldValue('logoFileId', values.logoFileId);
     form.setFieldValue('layout', values.layout);
     form.setFieldValue('style', values.style);
+  }
+
+  function applyPreset(preset: QrPresetDto, parts: PresetApplyParts) {
+    const patch = presetPatch(preset, parts);
+    for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
+      form.setFieldValue(key, patch[key] as never);
+    }
   }
 
   function applyDocument(next: QrDocumentDto) {
@@ -245,6 +255,24 @@ export function QrDesignForm({
             )}
           </Section>
         )}
+        {ready && !isDefaults && updatePresets && updatePresets.length > 0 ? (
+          <Section title="Konfigurasi default">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" onClick={() => setApplyOpen(true)}>
+                Perbarui sesuai konfigurasi default
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Pilih konfigurasi default dan bagian isi yang disalin ulang ke form ini.
+              </p>
+            </div>
+            <ApplyPresetDialog
+              open={applyOpen}
+              onOpenChange={setApplyOpen}
+              presets={updatePresets}
+              onApply={applyPreset}
+            />
+          </Section>
+        ) : null}
         {ready ? (
           <>
             <Section title="Isi label">
@@ -403,7 +431,6 @@ export function QrDesignForm({
                     <div className="space-y-1.5">
                       <PdfSourceField
                         document={document}
-                        replaceOnly={exported}
                         onDocument={applyDocument}
                         onBusyChange={setPdfBusy}
                         onUpload={async (file, replaceId) =>
@@ -413,7 +440,12 @@ export function QrDesignForm({
                             ...(replaceId ? { replaceDocumentId: replaceId } : {}),
                           })
                         }
-                        onClone={(source) => cloneQrPdf.mutateAsync({ source })}
+                        onClone={(source, replaceId) =>
+                          cloneQrPdf.mutateAsync({
+                            source,
+                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                          })
+                        }
                       />
                       <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
                       <FieldError errors={[fieldErrors?.link]} />

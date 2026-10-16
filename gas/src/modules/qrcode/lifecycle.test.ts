@@ -84,7 +84,12 @@ test('flag overflow dari peramban: tersimpan, tampil di get/list, bawaan false, 
 test('hanya flag overflow yang berubah: tersimpan diam-diam tanpa menaikkan updatedAt atau mencatat audit', () => {
   const made = save({ overflow: true });
   clock += 60_000;
-  const out = save({ id: made.data.id, expectedUpdatedAt: made.data.updatedAt, overflow: false });
+  const out = save({
+    id: made.data.id,
+    documentId: made.data.documentId,
+    expectedUpdatedAt: made.data.updatedAt,
+    overflow: false,
+  });
   expect(out.ok).toBe(true);
   expect(out.data.overflow).toBe(false);
   expect(out.data.updatedAt).toBe(made.data.updatedAt);
@@ -115,15 +120,6 @@ test('menghapus konfigurasi yang terakhir memakai PDF mencabut berbagi PDF itu',
   expect(platform.sharedFiles.has(driveIdOf(doc.id))).toBe(false);
   expect(docs().find((d) => d.id === doc.id)?.shared).toBe(false);
   expect(platform.drive.has(driveIdOf(doc.id))).toBe(true); // berkasnya tetap ada, hanya tidak publik lagi
-});
-
-test('PDF yang masih dipakai konfigurasi lain tetap dibagikan', () => {
-  const doc = upload().data;
-  const a = usePdf(doc.id, { title: 'A' }).data;
-  usePdf(doc.id, { title: 'B' });
-  call('qrmanage@gmail.com', 'qrcodes.delete', { id: a.id });
-  expect(platform.sharedFiles.has(driveIdOf(doc.id))).toBe(true);
-  expect(docs().find((d) => d.id === doc.id)?.shared).toBe(true);
 });
 
 test('mengganti PDF sumber ke dokumen lain mencabut berbagi PDF yang tidak lagi dipakai', () => {

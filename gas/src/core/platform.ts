@@ -60,6 +60,11 @@ export interface Platform {
     fileId: string,
     resourceKey?: string,
   ): { name: string; mime: string; size: number } | null;
+  /** Membaca isi berkas Drive mana pun yang dapat dibaca pemilik script (base64); null bila tidak terbaca. */
+  driveReadExternalFile(
+    fileId: string,
+    resourceKey?: string,
+  ): { mime: string; base64: string } | null;
   /** Menyalin berkas ke folder (berkas asli tidak diubah); mengembalikan id salinan. Melempar bila gagal. */
   driveCopyFile(fileId: string, folderId: string, name: string, resourceKey?: string): string;
   /** Mengganti nama berkas Drive. Melempar bila berkas tidak ada. */

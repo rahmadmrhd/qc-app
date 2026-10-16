@@ -151,8 +151,9 @@ export function validateQrDesignRef_(raw: unknown): QrDesignRefInput {
 export function validateCloneQrPdf_(raw: unknown): CloneQrPdfInput {
   const reader = readObject_(raw);
   const source = reader.str('source', { required: true, max: 500 });
+  const replaceDocumentId = reader.optionalId('replaceDocumentId');
   reader.done();
-  return { source };
+  return { source, ...(replaceDocumentId ? { replaceDocumentId } : {}) };
 }
 
 export function validateUploadQrPdf_(raw: unknown): UploadQrPdfInput {

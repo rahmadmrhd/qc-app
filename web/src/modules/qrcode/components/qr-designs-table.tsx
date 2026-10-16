@@ -18,7 +18,6 @@ export interface QrDesignsTableProps {
   /** Konfigurasi yang sedang diproses (tombolnya dinonaktifkan). */
   busyId: string | null;
   onEdit: (design: QrDesignDto) => void;
-  onDuplicate: (design: QrDesignDto) => void;
   onExport: (design: QrDesignDto) => void;
   onDownload: (design: QrDesignDto, kind: QrFileKind) => void;
   onDelete: (design: QrDesignDto) => void;
@@ -44,7 +43,6 @@ export function QrDesignsTable({
   canManage,
   busyId,
   onEdit,
-  onDuplicate,
   onExport,
   onDownload,
   onDelete,
@@ -138,15 +136,6 @@ export function QrDesignsTable({
                           onClick={() => onEdit(design)}
                         >
                           Ubah
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          aria-label={`Duplikat ${design.title}`}
-                          onClick={() => onDuplicate(design)}
-                        >
-                          Duplikat
                         </Button>
                       </>
                     ) : null}

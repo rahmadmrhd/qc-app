@@ -32,7 +32,6 @@ test('unggah: berkas di folder dokumen, dibagikan via link, URL berbagi dikembal
   expect(out.data).toMatchObject({
     name: 'manual.pdf',
     link: `https://drive.google.com/file/d/${doc.driveId}/view`,
-    uses: 0,
   });
   expect(platform.sharedFiles.has(doc.driveId)).toBe(true);
   expect(platform.drive.get(doc.driveId)).toMatchObject({ mime: 'application/pdf', base64: PDF1 });
@@ -65,7 +64,7 @@ test('ganti: id dokumen, id berkas Drive, dan URL tetap sama; isi dan nama berub
   expect(platform.drive.size).toBe(1);
 });
 
-test('ganti dokumen yang tidak dikenal → NOT_FOUND; uses menghitung konfigurasi pemakai', () => {
+test('ganti dokumen yang tidak dikenal → NOT_FOUND; uses menghitung konfigurasi pemakai (satu)', () => {
   expect(upload({ replaceDocumentId: 'tidak-ada' }).error.code).toBe('NOT_FOUND');
   const doc = upload({});
   const body = {
@@ -79,8 +78,10 @@ test('ganti dokumen yang tidak dikenal → NOT_FOUND; uses menghitung konfiguras
     layout: DEFAULT_QR_LAYOUT,
   };
   call('qredit@gmail.com', 'qrcodes.save', body);
-  call('qredit@gmail.com', 'qrcodes.save', { ...body, title: 'T2' });
-  expect(upload({ replaceDocumentId: doc.data.id }).data.uses).toBe(2);
+  expect(call('qredit@gmail.com', 'qrcodes.save', { ...body, title: 'T2' }).error.code).toBe(
+    'VALIDATION',
+  );
+  expect(upload({ replaceDocumentId: doc.data.id }).data.id).toBe(doc.data.id);
 });
 
 test('gagal membagikan: berkas yang baru dibuat dibuang dan tidak ada catatan dokumen', () => {
@@ -123,7 +124,7 @@ test('clone: link Drive atau fileId disalin ke folder dokumen aplikasi, dibagika
   expect(platform.sharedFiles.has(doc?.driveId ?? '')).toBe(true);
   expect(platform.sharedFiles.has(DRIVE_ID)).toBe(false);
   expect(out.data.link).toContain(doc?.driveId);
-  expect(out.data.uses).toBe(0);
+  expect(out.data.uses).toBeUndefined();
   expect(listAuditRecords_().map((r) => r.action)).toEqual(['qrcode.pdf_clone']);
   // fileId polos juga diterima
   expect(clone(DRIVE_ID).ok).toBe(true);
@@ -156,4 +157,24 @@ test('clone dari link berkunci (resourcekey): kunci diteruskan ke Drive saat mem
   const out = clone(`https://drive.google.com/file/d/${DRIVE_ID}/view?resourcekey=0-AbC_d-1`);
   expect(out.ok).toBe(true);
   expect(calls).toEqual(['0-AbC_d-1']);
+});
+
+test('clone dengan replaceDocumentId: isi PDF yang ada diganti dari Drive, URL (id berkas) tetap, berkas asli tidak disentuh', () => {
+  const first = upload({ name: 'lama.pdf', base64: PDF1 });
+  const driveId = listQrDocuments_()[0]?.driveId ?? '';
+  seedForeign('application/pdf', PDF2);
+  const out = call('qredit@gmail.com', 'qrcodes.cloneFromDrive', {
+    source: DRIVE_ID,
+    replaceDocumentId: first.data.id,
+  });
+  expect(out.ok).toBe(true);
+  expect(out.data.id).toBe(first.data.id);
+  expect(out.data.link).toBe(first.data.link);
+  expect(listQrDocuments_().length).toBe(1);
+  expect(platform.drive.get(driveId)?.base64).toBe(PDF2);
+  expect(platform.drive.get(DRIVE_ID)?.base64).toBe(PDF2);
+  expect(
+    call('qredit@gmail.com', 'qrcodes.cloneFromDrive', { source: DRIVE_ID, replaceDocumentId: 'x' })
+      .error.code,
+  ).toBe('NOT_FOUND');
 });

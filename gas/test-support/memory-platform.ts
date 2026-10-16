@@ -255,6 +255,10 @@ export function createMemoryPlatform(options: MemoryPlatformOptions = {}): Memor
         ? { name: file.name, mime: file.mime, size: Math.floor((file.base64.length * 3) / 4) }
         : null;
     },
+    driveReadExternalFile: (fileId, _resourceKey) => {
+      const file = drive.get(fileId);
+      return file ? { mime: file.mime, base64: file.base64 } : null;
+    },
     driveCopyFile: (fileId, folderId, name, _resourceKey) => {
       const file = drive.get(fileId);
       if (!file) throw new Error(`Berkas Drive ${fileId} tidak ada`);

@@ -62,7 +62,6 @@ function EditQrDesignPage() {
       <QrDesignForm
         title={`Ubah konfigurasi: ${design.title}`}
         canExport={can(me, 'qrcode', 'edit')}
-        exported={design.exportStatus !== 'none'}
         key={loadedAt}
         defaultValues={toQrFormDefaults(loaded)}
         initialDocument={
@@ -71,11 +70,11 @@ function EditQrDesignPage() {
                 id: design.documentId,
                 name: design.documentName,
                 link: design.link,
-                uses: design.documentUses,
               }
             : null
         }
         logoLibrary={defaults.logoFileIds}
+        updatePresets={defaults.presets}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

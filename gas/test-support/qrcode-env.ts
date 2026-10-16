@@ -19,16 +19,12 @@ export function seedQrEnv(): void {
 
 export const qrRpc = rpc;
 
-const seededDocuments = new WeakMap<object, string>();
-
 /**
- * Id dokumen PDF sumber untuk fixture tes (satu per platform), dibuat langsung lewat repo tanpa audit: sumber
+ * Id dokumen PDF sumber untuk fixture tes BARU di tiap pemanggilan (satu PDF hanya untuk satu konfigurasi QR), dibuat langsung lewat repo tanpa audit: sumber
  * link baru wajib PDF/Drive, jadi fixture memakainya lewat getter `documentId` (dievaluasi saat tes berjalan).
  */
 export function qrPdfDocumentId(): string {
   const platform = platform_();
-  const cached = seededDocuments.get(platform);
-  if (cached) return cached;
   const driveId = platform.driveCreateFile(
     ensureQrDocFolder_(),
     'sumber.pdf',
@@ -49,6 +45,5 @@ export function qrPdfDocumentId(): string {
     updatedAt: now,
     updatedBy: 'seed@gmail.com',
   });
-  seededDocuments.set(platform, id);
   return id;
 }
