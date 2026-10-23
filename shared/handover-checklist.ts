@@ -5,11 +5,12 @@ export interface ChecklistEntry {
   text: string;
 }
 
-/** Butir tercentang; dicocokkan lewat (text, kemunculan ke-k). */
+/** Butir tercentang; dicocokkan lewat (text, occurrence), occurrence = kemunculan ke-k teks yang sama (mulai 0). */
 export interface CheckState {
   text: string;
   by: string;
   at: string;
+  occurrence: number;
 }
 
 const ITEM = /^- \[([ xX])\] ?(.*)$/;
@@ -29,16 +30,6 @@ export function normalizeNoteChecks(note: string): string {
   return note.replace(/^- \[[xX]\]/gm, '- [ ]');
 }
 
-// Pasangkan setiap centang ke kemunculan ke-j butir bertulisan sama (j = urutan centang bertulisan itu).
-function checkOccurrences_(checks: CheckState[]): number[] {
-  const seen = new Map<string, number>();
-  return checks.map((c) => {
-    const j = seen.get(c.text) ?? 0;
-    seen.set(c.text, j + 1);
-    return j;
-  });
-}
-
 function nthIndexByText_(entries: ChecklistEntry[], text: string, k: number): number {
   let seen = 0;
   for (const e of entries) {
@@ -53,11 +44,10 @@ function nthIndexByText_(entries: ChecklistEntry[], text: string, k: number): nu
 export function matchChecks(note: string, checks: CheckState[]): Array<CheckState | null> {
   const entries = extractChecklist(note);
   const result: Array<CheckState | null> = entries.map(() => null);
-  const occ = checkOccurrences_(checks);
-  checks.forEach((c, i) => {
-    const at = nthIndexByText_(entries, c.text, occ[i] ?? 0);
+  for (const c of checks) {
+    const at = nthIndexByText_(entries, c.text, c.occurrence);
     if (at >= 0) result[at] = c;
-  });
+  }
   return result;
 }
 
@@ -78,20 +68,19 @@ export function reconcileChecks(
   const oldEntries = extractChecklist(oldNote);
   const newEntries = extractChecklist(newNote);
   const oldTexts = new Set(oldEntries.map((e) => e.text));
-  const occ = checkOccurrences_(checks);
 
   const kept: CheckState[] = [];
   const claimed = new Set<number>();
   const lost: Array<{ check: CheckState; oldIndex: number }> = [];
-  checks.forEach((c, i) => {
-    const newAt = nthIndexByText_(newEntries, c.text, occ[i] ?? 0);
+  for (const c of checks) {
+    const newAt = nthIndexByText_(newEntries, c.text, c.occurrence);
     if (newAt >= 0) {
       kept.push(c);
       claimed.add(newAt);
     } else {
-      lost.push({ check: c, oldIndex: nthIndexByText_(oldEntries, c.text, occ[i] ?? 0) });
+      lost.push({ check: c, oldIndex: nthIndexByText_(oldEntries, c.text, c.occurrence) });
     }
-  });
+  }
 
   const resets: Array<{ from: string; to: string }> = [];
   const removed: string[] = [];
