@@ -222,15 +222,28 @@ test('fitAuditSnapshots_: catatan dipotong dengan penanda; tidak muat sama sekal
   expect(error?.code).toBe('VALIDATION');
 });
 
-test('M-1: audit create memuat note (dipotong bila perlu), audit centang tidak memuat note', () => {
+test('M-1: audit create memuat catatan penuh bila muat; audit centang tidak memuat note', () => {
+  const body = `- [ ] A = 1
+
+${'z'.repeat(4000)}`;
   const created = call('wh@gmail.com', 'handovers.save', {
     locationId: ENV.locA,
     customerName: '',
-    note: `- [ ] A = 1\n\n${'z'.repeat(4000)}`,
+    note: body,
   });
-  const audit = listAuditRecords_().find((r) => r.action === 'handover.create');
-  const note = String(afterOf(audit).note);
-  expect(note).toContain('(dipotong)');
-  expect(note.length).toBeLessThan(2100);
   expect(created.ok).toBe(true);
+  const audit = listAuditRecords_().find((r) => r.action === 'handover.create');
+  expect(afterOf(audit).note).toBe(body);
+  const id = created.data.id;
+  call('qc@gmail.com', 'handovers.setCheck', {
+    id,
+    locationId: ENV.locA,
+    index: 0,
+    text: 'A = 1',
+    checked: true,
+  });
+  const check = listAuditRecords_().find((r) => r.action === 'handover.check');
+  expect(check).toBeDefined();
+  expect(Object.keys(afterOf(check))).not.toContain('note');
+  expect(Object.keys((check?.before ?? {}) as object)).not.toContain('note');
 });

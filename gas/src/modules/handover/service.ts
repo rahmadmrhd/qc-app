@@ -148,9 +148,9 @@ export function handoverOptions_(): HandoverOptionsDto {
   };
 }
 
-/** Panjang catatan di snapshot audit save yang terlalu besar, berurutan dari yang longgar. */
-const AUDIT_NOTE_STEPS = [2000, 400, 0] as const;
-const AUDIT_TRUNCATED = ' (dipotong)';
+/** Catatan penuh dulu (batas catatan); dipotong ke panjang ini hanya bila JSON > 40.000, berurutan dari yang longgar. */
+const HANDOVER_AUDIT_NOTE_STEPS = [2000, 400, 0] as const;
+const HANDOVER_AUDIT_TRUNCATED = ' (dipotong)';
 
 /**
  * Snapshot audit: butir tercentang sebagai daftar teks agar diff audit membandingkan per butir. `note` hanya
@@ -174,7 +174,7 @@ export function handoverSnapshot_(
   if (noteLimit !== null) {
     snapshot.note =
       handover.note.length > noteLimit
-        ? `${handover.note.slice(0, noteLimit)}${AUDIT_TRUNCATED}`
+        ? `${handover.note.slice(0, noteLimit)}${HANDOVER_AUDIT_TRUNCATED}`
         : handover.note;
   }
   return snapshot;
@@ -192,7 +192,9 @@ export function fitAuditSnapshots_(
   },
   withNote: boolean,
 ): { before: Record<string, unknown> | null; after: Record<string, unknown> } {
-  const limits: Array<number | null> = withNote ? [...AUDIT_NOTE_STEPS] : [null];
+  const limits: Array<number | null> = withNote
+    ? [HANDOVER_LIMITS.note, ...HANDOVER_AUDIT_NOTE_STEPS]
+    : [null];
   for (const limit of limits) {
     const pair = build(limit);
     if (
@@ -225,6 +227,20 @@ export function assertHandoverNotCancelled_(handover: HandoverRecord): void {
   }
 }
 
+/**
+ * Benar bila sejak form dibuka (`base`) catatan dan customer sama dan status tidak berpindah ke/dari Selesai.
+ * Perubahan lain di antaranya hanya centang/komentar/progres.
+ */
+function handoverOnlyProgressChanged_(
+  current: HandoverRecord,
+  base: SaveHandoverInput['base'],
+): boolean {
+  if (!base) return false;
+  const status = deriveHandoverStatus(current.status, progressOf_(current));
+  const statusMoved = (status === 'done') !== (base.status === 'done');
+  return base.note === current.note && base.customerId === current.customerId && !statusMoved;
+}
+
 export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
     const loaded = input.id
@@ -232,10 +248,14 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
       : null;
     if (loaded) assertHandoverNotCancelled_(loaded);
     if (loaded && input.expectedUpdatedAt && input.expectedUpdatedAt !== loaded.updatedAt) {
-      throw appError_(
-        'CONFLICT',
-        'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
-      );
+      // Tanpa `base`, atau bila catatan/customer/status berubah oleh orang lain: CONFLICT. Hanya centang/komentar
+      // yang berubah sejak form dibuka (base sama) bukan konflik; centang TERKINI tetap diselaraskan di bawah.
+      if (!handoverOnlyProgressChanged_(loaded, input.base)) {
+        throw appError_(
+          'CONFLICT',
+          'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
+        );
+      }
     }
     // Centang hanya milik QC: "- [x]" dari penulis catatan dinormalkan.
     const note = normalizeNoteChecks(input.note);
@@ -441,7 +461,8 @@ function occurrenceAt_(note: string, index: number): number {
 
 function assertStateSize_(checks: readonly CheckState[]): void {
   if (JSON.stringify(checks).length > HANDOVER_LIMITS.stateJson) {
-    const message = 'Data centang terlalu besar';
+    const message =
+      'Data centang task ini melebihi batas 40.000 karakter; kurangi jumlah atau panjang butir checklist';
     throw appError_('VALIDATION', message, { checks: message });
   }
 }
@@ -487,7 +508,9 @@ export function setCheck_(input: SetCheckInput, actor: ActorRef): HandoverDto {
     const entry = extractChecklist(handover.note)[input.index];
     // Penjaga: teks butir pada indeks harus sama dengan yang dilihat pengguna (catatan bisa berubah);
     // dibandingkan dalam bentuk kanonis (tanpa escape Markdown/entitas HTML).
-    if (!entry || entry.text !== handoverCanonicalText(input.text)) {
+    // `entry.text` sudah kanonis dan kanonisasi tidak idempoten (mis. `&amp;amp;`), jadi teks DTO diterima apa adanya
+    // ATAU dalam bentuk kanonisnya.
+    if (!entry || (entry.text !== input.text && entry.text !== handoverCanonicalText(input.text))) {
       throw appError_('CONFLICT', 'Catatan berubah; muat ulang halaman lalu ulangi');
     }
     const occurrence = occurrenceAt_(handover.note, input.index);
@@ -499,7 +522,8 @@ export function setCheck_(input: SetCheckInput, actor: ActorRef): HandoverDto {
     const checks = input.checked
       ? [...handover.checks, { text: entry.text, by: actor.email, at: now, occurrence }]
       : handover.checks.filter(
-          (check) => !(check.text === entry.text && check.occurrence === occurrence),
+          (check) =>
+            !(handoverCanonicalText(check.text) === entry.text && check.occurrence === occurrence),
         );
     const saved = writeTaskChange_(
       handover,
@@ -551,11 +575,16 @@ export function addComment_(input: AddCommentInput, actor: ActorRef): HandoverDt
       const message = `Task ini sudah mencapai batas ${HANDOVER_LIMITS.comments} komentar`;
       throw appError_('VALIDATION', message, { body: message });
     }
-    const anchor = {
-      quote: handoverNormalizeAnchorText(input.quote),
-      before: handoverNormalizeAnchorText(input.before),
-      after: handoverNormalizeAnchorText(input.after),
-    };
+    const quote = handoverNormalizeAnchorText(input.quote);
+    // Komentar umum (tanpa kutipan) tidak punya konteks jangkar.
+    const anchor =
+      quote === ''
+        ? { quote, before: '', after: '' }
+        : {
+            quote,
+            before: handoverNormalizeAnchorText(input.before),
+            after: handoverNormalizeAnchorText(input.after),
+          };
     // Kutipan kosong = komentar umum (tanpa seleksi); selainnya harus ditemukan pada catatan.
     if (anchor.quote !== '' && locateAnchor(noteToPlainText(handover.note), anchor) === null) {
       const message = 'Kutipan tidak ditemukan pada catatan';

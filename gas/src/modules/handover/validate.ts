@@ -14,7 +14,7 @@ import type {
 } from '@shared/rpc';
 
 const MAX_LOCATION_IDS = 50;
-const CONTROL_CHARS_MESSAGE = 'Tidak boleh memuat karakter kontrol';
+const HANDOVER_CONTROL_CHARS_MESSAGE = 'Tidak boleh memuat karakter kontrol';
 
 /** Galat batas catatan (kosong, panjang, jumlah butir, karakter kontrol) atau null bila sah. Untuk save dan batch. */
 export function handoverNoteError_(note: string): string | null {
@@ -22,7 +22,7 @@ export function handoverNoteError_(note: string): string | null {
   if (note.length > HANDOVER_LIMITS.note) {
     return `Catatan maksimal ${HANDOVER_LIMITS.note} karakter`;
   }
-  if (hasHandoverControlChars(note)) return CONTROL_CHARS_MESSAGE;
+  if (hasHandoverControlChars(note)) return HANDOVER_CONTROL_CHARS_MESSAGE;
   const items = extractChecklist(note).length;
   if (items > HANDOVER_LIMITS.checklistItems) {
     return `Catatan memuat ${items} butir checklist; maksimal ${HANDOVER_LIMITS.checklistItems} butir`;
@@ -56,6 +56,26 @@ export function validateGetHandover_(raw: unknown): GetHandoverInput {
   return { id, locationIds: validateLocationIds_(raw) };
 }
 
+const HANDOVER_BASE_STATUSES = ['new', 'in_progress', 'done', 'cancelled'] as const;
+
+/** `base` opsional: undefined bila tidak ada, 'invalid' bila bentuknya salah. */
+function readSaveBase_(value: unknown): SaveHandoverInput['base'] | 'invalid' | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) return 'invalid';
+  const source = value as Record<string, unknown>;
+  const status = HANDOVER_BASE_STATUSES.find((item) => item === source.status);
+  if (
+    typeof source.note !== 'string' ||
+    source.note.length > HANDOVER_LIMITS.note ||
+    typeof source.customerId !== 'string' ||
+    source.customerId.length > 100 ||
+    status === undefined
+  ) {
+    return 'invalid';
+  }
+  return { note: source.note, customerId: source.customerId, status };
+}
+
 export function validateSaveHandover_(raw: unknown): SaveHandoverInput {
   const reader = readObject_(raw);
   const id = reader.optionalId('id')?.trim() || undefined;
@@ -71,10 +91,20 @@ export function validateSaveHandover_(raw: unknown): SaveHandoverInput {
   if (customerName !== '' && customerKey(customerName) === '') {
     reader.fail('customerName', 'Nama customer harus memuat huruf atau angka');
   }
-  if (hasHandoverControlChars(customerName)) reader.fail('customerName', CONTROL_CHARS_MESSAGE);
+  if (hasHandoverControlChars(customerName))
+    reader.fail('customerName', HANDOVER_CONTROL_CHARS_MESSAGE);
+  const base = readSaveBase_(reader.raw('base'));
+  if (base === 'invalid') reader.fail('base', 'Keadaan dasar form tidak valid');
   reader.done();
   const input = { locationId, customerName, note };
-  return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
+  return id
+    ? {
+        id,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+        ...(base && base !== 'invalid' ? { base } : {}),
+        ...input,
+      }
+    : input;
 }
 
 /** Satu task batch: mengembalikan nilai bersih atau pesan galat pertama. */
@@ -98,7 +128,7 @@ function readBatchTask_(
   if (customerName !== '' && customerKey(customerName) === '') {
     return { error: 'Nama customer harus memuat huruf atau angka' };
   }
-  if (hasHandoverControlChars(customerName)) return { error: CONTROL_CHARS_MESSAGE };
+  if (hasHandoverControlChars(customerName)) return { error: HANDOVER_CONTROL_CHARS_MESSAGE };
   const noteError = handoverNoteError_(note);
   if (noteError !== null) return { error: noteError };
   return { customerName, note, error: null };
@@ -157,8 +187,11 @@ export function validateSetDone_(raw: unknown): SetDoneInput {
   const reader = readObject_(raw);
   const id = reader.str('id', { required: true, max: 100 });
   const locationId = reader.str('locationId', { required: true, max: 100 });
-  if (reader.raw('done') !== undefined) {
+  const done = reader.raw('done');
+  if (done === false) {
     reader.fail('done', 'Task yang sudah selesai tidak dapat dibuka kembali');
+  } else if (done !== undefined) {
+    reader.fail('done', 'Field done tidak lagi didukung; setDone selalu menyelesaikan task');
   }
   reader.done();
   return { id, locationId };
@@ -178,7 +211,7 @@ function readContext_(reader: ReturnType<typeof readObject_>, key: string): stri
   if (value.length > COMMENT_CONTEXT_MAX) {
     reader.fail(key, `Maksimal ${COMMENT_CONTEXT_MAX} karakter`);
   }
-  if (hasHandoverControlChars(value)) reader.fail(key, CONTROL_CHARS_MESSAGE);
+  if (hasHandoverControlChars(value)) reader.fail(key, HANDOVER_CONTROL_CHARS_MESSAGE);
   return value;
 }
 
@@ -188,11 +221,11 @@ export function validateAddComment_(raw: unknown): AddCommentInput {
   const locationId = reader.str('locationId', { required: true, max: 100 });
   // Komentar umum (tanpa seleksi) memakai kutipan kosong.
   const quote = reader.str('quote', { max: COMMENT_QUOTE_MAX });
-  if (hasHandoverControlChars(quote)) reader.fail('quote', CONTROL_CHARS_MESSAGE);
+  if (hasHandoverControlChars(quote)) reader.fail('quote', HANDOVER_CONTROL_CHARS_MESSAGE);
   const before = readContext_(reader, 'before');
   const after = readContext_(reader, 'after');
   const body = reader.str('body', { required: true, max: HANDOVER_LIMITS.comment });
-  if (hasHandoverControlChars(body)) reader.fail('body', CONTROL_CHARS_MESSAGE);
+  if (hasHandoverControlChars(body)) reader.fail('body', HANDOVER_CONTROL_CHARS_MESSAGE);
   reader.done();
   return { id, locationId, quote, before, after, body };
 }
