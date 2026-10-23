@@ -1,6 +1,11 @@
 import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
 import { extractChecklist } from '@shared/handover-checklist';
-import type { HandoverDto, SaveHandoverBatchInput, SaveHandoverInput } from '@shared/rpc';
+import type {
+  HandoverDto,
+  HandoverSaveBase,
+  SaveHandoverBatchInput,
+  SaveHandoverInput,
+} from '@shared/rpc';
 import { z } from 'zod';
 
 export const HANDOVER_FIELD_KEYS = ['locationId', 'customerName', 'note'] as const;
@@ -64,13 +69,21 @@ export function toSaveHandoverInput(
   values: HandoverFormOutput,
   id?: string,
   expectedUpdatedAt?: string,
+  base?: HandoverSaveBase,
 ): SaveHandoverInput {
   const input: SaveHandoverInput = {
     locationId: values.locationId,
     customerName: values.customerName,
     note: values.note,
   };
-  return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
+  return id
+    ? {
+        id,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+        ...(base ? { base } : {}),
+        ...input,
+      }
+    : input;
 }
 
 export function toSaveHandoverBatchInput(values: HandoverBatchFormOutput): SaveHandoverBatchInput {

@@ -52,7 +52,7 @@ function EditHandoverPage() {
 
   // Keadaan task saat form dibuka: dasar `expectedUpdatedAt` dan nilai awal. Muat ulang latar (mis. QC
   // mencentang, atau sambung ulang jaringan) TIDAK me-mount ulang form dan tidak mengganti draf; bentrokan
-  // dengan perubahan lain ditangkap server lewat expectedUpdatedAt.
+  // dengan perubahan lain ditangkap server (expectedUpdatedAt + base: hanya centang/komentar yang berubah bukan konflik).
   const baseTask = useRef<HandoverDto | null>(null);
   if (baseTask.current === null && detail.data) baseTask.current = detail.data;
 
@@ -60,7 +60,17 @@ function EditHandoverPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await save.mutateAsync(toSaveHandoverInput(values, handoverId, baseTask.current?.updatedAt));
+      const opened = baseTask.current;
+      await save.mutateAsync(
+        toSaveHandoverInput(
+          values,
+          handoverId,
+          opened?.updatedAt,
+          opened
+            ? { note: opened.note, customerId: opened.customerId, status: opened.status }
+            : undefined,
+        ),
+      );
       toast.success('Task disimpan');
       back();
     } catch (error) {

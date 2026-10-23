@@ -94,3 +94,10 @@ test('toSaveHandoverBatchInput dan defaults dari task', () => {
     note: 'n',
   });
 });
+
+test('toSaveHandoverInput menyertakan base (keadaan form ubah saat dibuka) hanya untuk ubah', () => {
+  const values = handoverFormSchema.parse(valid);
+  const base = { note: 'n', customerId: 'c1', status: 'new' as const };
+  expect(toSaveHandoverInput(values, 'h1', 't1', base)).toMatchObject({ base });
+  expect(toSaveHandoverInput(values, undefined, undefined, base)).not.toHaveProperty('base');
+});

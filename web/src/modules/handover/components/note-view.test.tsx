@@ -244,3 +244,23 @@ test('sorotan kutipan memilih kemunculan yang benar dan melepas sorotan saat dil
     g.Highlight = previous.highlight;
   }
 });
+
+test('M-D: seleksi lintas butir tercentang tidak memuat teks "oleh … · waktu"', async () => {
+  const { onComment } = setup({ note: '- [ ] A = 1\n- [ ] B = 2', comments: [] });
+  const a = textNodeOf('A = 1');
+  const b = textNodeOf('B = 2');
+  const range = document.createRange();
+  range.setStart(a, 0);
+  range.setEnd(b, 5);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  act(() => {
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Balas' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'x');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  await waitFor(() => expect(onComment).toHaveBeenCalled());
+  expect(onComment.mock.calls[0]?.[0].quote).toBe('A = 1\nB = 2');
+});

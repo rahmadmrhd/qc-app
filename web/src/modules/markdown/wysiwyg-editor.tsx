@@ -182,7 +182,8 @@ export function WysiwygEditor({
           '[&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold',
           '[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1',
           '[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0',
-          mode === 'note' && '[&_input[type=checkbox]]:pointer-events-none',
+          mode === 'note' &&
+            '[&_input[type=checkbox]]:pointer-events-none [&_ul[data-type=taskList]_label]:pointer-events-none',
           '[&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2',
           '[&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
           '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs',
@@ -191,6 +192,18 @@ export function WysiwygEditor({
           '[&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_th]:text-left',
           '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
         ),
+      },
+      // Catatan: klik pada kotak ATAU labelnya tidak boleh mengubah centang (CSS saja tidak cukup: label meneruskan aktivasi).
+      handleDOMEvents: {
+        click: (_view, event) => {
+          if (mode !== 'note') return false;
+          const target = event.target as HTMLElement | null;
+          if (target?.closest('ul[data-type=taskList] label, input[type=checkbox]')) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
       },
       // Catatan: centang dimiliki QC, jadi kotak di editor tidak dapat diubah (juga lewat keyboard).
       handleKeyDown: (_view, event) => {

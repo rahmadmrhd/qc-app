@@ -9,7 +9,7 @@ import type { Components } from 'react-markdown';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
-import { rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
+import { collectNoteText, rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
 import { CommentComposer } from './comment-composer';
 
 export interface NoteViewProps {
@@ -138,15 +138,19 @@ export function NoteView({
         setPending(null);
         return;
       }
-      const quote = normalizeQuote(selection.toString());
-      if (quote === '') {
-        setPending(null);
-        return;
+      // Jangkar dari teks DOM tanpa meta ("oleh … · waktu"); cadangan: teks seleksi + konteks sebelum seleksi.
+      let anchor = collectNoteText(body).anchorFor(range);
+      if (anchor === null) {
+        const quote = normalizeQuote(selection.toString());
+        if (quote === '') {
+          setPending(null);
+          return;
+        }
+        const before = document.createRange();
+        before.selectNodeContents(body);
+        before.setEnd(range.startContainer, range.startOffset);
+        anchor = buildAnchor(noteRef.current, quote, before.toString());
       }
-      const before = document.createRange();
-      before.selectNodeContents(body);
-      before.setEnd(range.startContainer, range.startOffset);
-      const anchor = buildAnchor(noteRef.current, quote, before.toString());
       const rect = range.getBoundingClientRect();
       const box = wrapper.getBoundingClientRect();
       setPending({

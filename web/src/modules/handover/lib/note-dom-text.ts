@@ -1,5 +1,5 @@
 import type { CommentAnchor } from '@shared/handover-comments';
-import { handoverNormalizeAnchorText, locateAnchor } from '@shared/handover-comments';
+import { handoverNormalizeAnchorText, locateAnchor, makeAnchor } from '@shared/handover-comments';
 
 const BLOCK_SELECTOR = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th,pre';
 /** Teks di dalam elemen ini (mis. "oleh … · waktu") bukan isi catatan dan dilewati. */
@@ -10,6 +10,8 @@ export interface NoteDomText {
   plain: string;
   /** Rentang DOM untuk [start, end) pada `plain`; null bila di luar jangkauan. */
   rangeFor: (start: number, end: number) => Range | null;
+  /** Jangkar komentar dari seleksi `range` (tanpa teks meta); null bila seleksi tidak memuat teks catatan. */
+  anchorFor: (range: Range) => CommentAnchor | null;
 }
 
 interface CharRef {
@@ -62,6 +64,22 @@ export function collectNoteText(root: HTMLElement): NoteDomText {
 
   return {
     plain,
+    anchorFor(range) {
+      let first = -1;
+      let last = -1;
+      for (let i = 0; i < chars.length; i++) {
+        const ref = chars[i] as CharRef;
+        if (ref.offset < 0) continue;
+        const inside =
+          range.comparePoint(ref.node, ref.offset) === 0 &&
+          !(ref.node === range.endContainer && ref.offset === range.endOffset);
+        if (!inside) continue;
+        if (first < 0) first = i;
+        last = i;
+      }
+      if (first < 0) return null;
+      return makeAnchor(plain, first, last + 1);
+    },
     rangeFor(start, end) {
       if (start < 0 || end > plain.length || start >= end) return null;
       let first = start;

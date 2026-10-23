@@ -125,3 +125,14 @@ test('checkbox di editor Catatan tidak dapat diubah lewat keyboard', async () =>
   fireEvent.keyDown(box, { key: ' ' });
   expect(last).not.toContain('[x]');
 });
+
+test('M-A: klik pada label/kotak checkbox editor Catatan tidak mengubah centang', async () => {
+  render(<Harness initial="- [ ] A = 1" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  const box = document.querySelector('input[type=checkbox]') as HTMLInputElement;
+  fireEvent.click(box.closest('label') as HTMLElement);
+  fireEvent.click(box);
+  expect(box.checked).toBe(false);
+  expect(editor.getMarkdown()).not.toContain('[x]');
+  expect(last).not.toContain('[x]');
+});
