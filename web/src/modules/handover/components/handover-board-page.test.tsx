@@ -134,7 +134,7 @@ test('Mark done mengirim setDone dan memindahkan kartu ke Selesai', async () => 
   });
 });
 
-test('pending per task: kartu lain tetap bisa dicentang saat satu task diproses', async () => {
+test('centang instan: langsung tercentang dengan penanda Menyimpan; checkbox lain dan kartu lain tetap aktif', async () => {
   const one = makeHandover({ id: '1', number: 'ST-1' });
   const two = makeHandover({ id: '2', number: 'ST-2' });
   let release: (value: HandoverDto) => void = () => undefined;
@@ -149,14 +149,38 @@ test('pending per task: kartu lain tetap bisa dicentang saat satu task diproses'
   });
   renderPage();
   await screen.findByText('ST-1');
-  const cardOne = screen.getByRole('article', { name: 'Task ST-1' });
   const cardTwo = screen.getByRole('article', { name: 'Task ST-2' });
-  await userEvent.click(within(cardOne).getAllByRole('checkbox')[0] as HTMLElement);
-  await waitFor(() => expect(within(cardOne).getAllByRole('checkbox')[0]).toBeDisabled());
-  expect(within(cardOne).getByRole('button', { name: 'Mark done' })).toBeDisabled();
+  await userEvent.click(
+    within(screen.getByRole('article', { name: 'Task ST-1' })).getAllByRole(
+      'checkbox',
+    )[0] as HTMLElement,
+  );
+  // kartu tetap di kolom sampai server menjawab (tidak melompat di tengah rentetan klik)
+  const cardOne = screen.getByRole('article', { name: 'Task ST-1' });
+  expect(
+    within(screen.getByRole('region', { name: 'Kolom Baru' })).getByText('ST-1'),
+  ).toBeInTheDocument();
+  // respons server belum datang, tetapi tampilan sudah berubah dan checkbox tidak dinonaktifkan
+  expect(within(cardOne).getAllByRole('checkbox')[0]).toBeChecked();
+  expect(within(cardOne).getAllByRole('checkbox')[1]).toBeEnabled();
+  expect(within(cardOne).getByRole('status')).toHaveTextContent('Menyimpan');
   expect(within(cardTwo).getAllByRole('checkbox')[0]).toBeEnabled();
-  expect(within(cardTwo).getByRole('button', { name: 'Mark done' })).toBeEnabled();
-  release(one);
+  release({
+    ...one,
+    status: 'in_progress',
+    checklist: [
+      { index: 0, text: 'A = 1', checked: true, by: 'u@qc.local', at: '2026-10-15T03:00:00.000Z' },
+      one.checklist[1] as HandoverDto['checklist'][number],
+    ],
+  });
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole('article', { name: 'Task ST-1' })).queryByRole('status'),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    within(screen.getByRole('article', { name: 'Task ST-1' })).getAllByRole('checkbox')[0],
+  ).toBeChecked();
 });
 
 test('Dibatalkan: Buka kembali mengirim handovers.reopen', async () => {

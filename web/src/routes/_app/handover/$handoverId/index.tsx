@@ -13,13 +13,13 @@ import {
   searchFromStatus,
   statusFromSearch,
 } from '@/modules/handover/lib/search';
+import { useCheckQueue } from '@/modules/handover/lib/use-check-queue';
 import {
   handoverKeys,
   handoverQueryOptions,
   useAddComment,
   useCancelHandover,
   useReopenHandover,
-  useSetCheck,
   useSetDone,
 } from '@/modules/handover/queries';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -44,12 +44,12 @@ function HandoverDetailPage() {
   const readable = readableLocationIds(me, selectedIds);
   const query = useQuery(handoverQueryOptions(handoverId, readable));
   const queryClient = useQueryClient();
-  const setCheck = useSetCheck();
   const setDone = useSetDone();
   const addComment = useAddComment();
+  const checks = useCheckQueue(me.email);
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
-  const pending = setCheck.isPending || setDone.isPending || cancel.isPending || reopen.isPending;
+  const pending = setDone.isPending || cancel.isPending || reopen.isPending;
 
   const task = query.data;
   if (query.isPending && readable.length > 0) return <Skeleton className="h-64 w-full" />;
@@ -89,16 +89,26 @@ function HandoverDetailPage() {
           search: listSearch,
         })
       }
+      // Aksi lain menunggu antrean centang task ini kosong.
       onCancel={() =>
-        cancel.mutate(ref, { onSuccess: () => toast.success('Task dibatalkan'), onError })
+        void checks
+          .whenIdle(task.id)
+          .then(() => cancel.mutateAsync(ref))
+          .then(() => toast.success('Task dibatalkan'), onError)
       }
-      onMarkDone={() => setDone.mutate(ref, { onError })}
+      onMarkDone={() =>
+        void checks
+          .whenIdle(task.id)
+          .then(() => setDone.mutateAsync(ref))
+          .then(undefined, onError)
+      }
       onReopen={() =>
-        reopen.mutate(ref, { onSuccess: () => toast.success('Task dibuka kembali'), onError })
+        void checks
+          .whenIdle(task.id)
+          .then(() => reopen.mutateAsync(ref))
+          .then(() => toast.success('Task dibuka kembali'), onError)
       }
-      onCheck={(item, checked) =>
-        setCheck.mutate({ ...ref, index: item.index, text: item.text, checked }, { onError })
-      }
+      onCheck={(item, checked) => checks.toggle(ref, item, checked)}
       onComment={async (input) => {
         await addComment.mutateAsync({ ...ref, ...input });
       }}

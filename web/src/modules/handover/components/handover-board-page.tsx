@@ -9,6 +9,7 @@ import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { readableLocationIds } from '../lib/readable-locations';
+import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
   handoverBoardQueryOptions,
@@ -16,7 +17,6 @@ import {
   useAddComment,
   useCancelHandover,
   useReopenHandover,
-  useSetCheck,
   useSetDone,
 } from '../queries';
 import { HandoverBoard } from './handover-board';
@@ -45,12 +45,13 @@ export function HandoverBoardPage({
   const readable = readableLocationIds(me, selectedIds);
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
   const query = useQuery(handoverBoardQueryOptions(readable));
-  const setCheck = useSetCheck();
   const setDone = useSetDone();
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
   const addComment = useAddComment();
   const { isPending, track } = usePendingIds();
+  // Centang instan + antrean serial per task; aksi lain menunggu antrean centang task itu kosong.
+  const checks = useCheckQueue(me.email);
   const locationNames = new Map(me.locations.map((location) => [location.id, location.name]));
 
   // Gagal (mis. CONFLICT karena catatan berubah): tampilkan pesan dan muat ulang papan agar tidak basi.
@@ -73,21 +74,30 @@ export function HandoverBoardPage({
       locationName: readable.length > 1 ? locationNames.get(handover.locationId) : undefined,
       onOpen: () => onOpen(handover.id),
       onCheck: (item: { index: number; text: string }, checked: boolean) =>
-        run(handover.id, () =>
-          setCheck.mutateAsync({ ...ref, index: item.index, text: item.text, checked }),
-        ),
-      onMarkDone: () => run(handover.id, () => setDone.mutateAsync(ref)),
+        checks.toggle(ref, item, checked),
+      saving: checks.isSaving(handover.id),
+      onMarkDone: () =>
+        run(handover.id, async () => {
+          await checks.whenIdle(handover.id);
+          return setDone.mutateAsync(ref);
+        }),
       onReopen: () =>
         run(
           handover.id,
-          () => reopen.mutateAsync(ref),
+          async () => {
+            await checks.whenIdle(handover.id);
+            return reopen.mutateAsync(ref);
+          },
           () => toast.success('Task dibuka kembali'),
         ),
       onEdit: () => onEdit(handover.id),
       onCancel: () =>
         run(
           handover.id,
-          () => cancel.mutateAsync(ref),
+          async () => {
+            await checks.whenIdle(handover.id);
+            return cancel.mutateAsync(ref);
+          },
           () => toast.success('Task dibatalkan'),
         ),
       // Galat komentar ditampilkan oleh composer (draf dipertahankan), jadi dilempar kembali.

@@ -25,6 +25,8 @@ export interface HandoverCardProps {
   canCancel: boolean;
   /** Ada mutasi yang berjalan untuk task INI saja. */
   pending: boolean;
+  /** Ada centang task INI yang sedang disimpan ke server (tampilan sudah berubah; penanda halus). */
+  saving?: boolean;
   locationName?: string;
   onOpen: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
@@ -50,6 +52,7 @@ export function HandoverCard({
   canEdit,
   canCancel,
   pending,
+  saving = false,
   locationName,
   onOpen,
   onCheck,
@@ -116,6 +119,11 @@ export function HandoverCard({
             {total > 0 ? <span>{`${checked}/${total}`}</span> : null}
             {handover.comments.length > 0 ? (
               <span>{`${handover.comments.length} komentar`}</span>
+            ) : null}
+            {saving ? (
+              <span role="status" className="italic">
+                Menyimpan…
+              </span>
             ) : null}
           </span>
           <span className="flex items-center gap-1">
