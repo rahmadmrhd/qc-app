@@ -142,3 +142,8 @@ body {
     @apply font-sans;
   }
 }
+
+/* Sorotan kutipan komentar pada catatan Serah Terima (CSS Custom Highlight API). */
+::highlight(qc-comment) {
+  background-color: oklch(0.92 0.12 95 / 0.7);
+}

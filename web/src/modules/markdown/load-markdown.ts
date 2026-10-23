@@ -16,6 +16,8 @@ export function wrapTopLevelInline(doc: JSONContent): JSONContent {
 /** Memuat Markdown ke editor sebagai dokumen sah, tanpa memicu `update`. */
 export function loadMarkdown(editor: Editor, markdown: string): void {
   const parsed = editor.markdown?.parse(markdown);
-  if (parsed) editor.commands.setContent(wrapTopLevelInline(parsed), { emitUpdate: false });
-  else editor.commands.setContent(markdown, { emitUpdate: false, contentType: 'markdown' });
+  // Muat awal tidak boleh masuk riwayat undo (Ctrl+Z tidak boleh mengosongkan editor).
+  const chain = editor.chain().setMeta('addToHistory', false);
+  if (parsed) chain.setContent(wrapTopLevelInline(parsed), { emitUpdate: false }).run();
+  else chain.setContent(markdown, { emitUpdate: false, contentType: 'markdown' }).run();
 }

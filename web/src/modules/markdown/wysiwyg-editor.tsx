@@ -99,6 +99,8 @@ export function WysiwygEditor({
   onChangeRef.current = onChange;
   const syncingRef = useRef(false);
   const lastEmitted = useRef(value);
+  // Nilai yang sudah dikirim ke induk tetapi gema-nya (prop value) belum kembali; render induk bisa tertinggal.
+  const pendingEchoes = useRef<string[]>([]);
   const editorRef = useRef<Editor | null>(null);
   const insertImagesRef = useRef<(files: File[]) => void>(() => undefined);
   const uploadImage = useUploadImage();
@@ -203,6 +205,7 @@ export function WysiwygEditor({
       const markdown = normalizeMarkdown(current.getMarkdown());
       if (markdown === lastEmitted.current) return;
       lastEmitted.current = markdown;
+      pendingEchoes.current.push(markdown);
       onChangeRef.current(markdown);
     },
   });
@@ -217,7 +220,15 @@ export function WysiwygEditor({
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     const first = !loadedRef.current;
-    if (!first && value === lastEmitted.current) return;
+    if (!first) {
+      const echo = pendingEchoes.current.indexOf(value);
+      if (echo >= 0) {
+        pendingEchoes.current.splice(0, echo + 1);
+        return;
+      }
+      if (value === lastEmitted.current) return;
+    }
+    pendingEchoes.current = [];
     loadedRef.current = true;
     lastEmitted.current = value;
     syncingRef.current = true;

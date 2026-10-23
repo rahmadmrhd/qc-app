@@ -266,3 +266,10 @@ test('perubahan value dari luar memuat ulang isi editor', async () => {
   rerender(<WysiwygEditor id="md" value="dua" onChange={() => undefined} />);
   await waitFor(() => expect(screen.getByText('dua')).toBeInTheDocument());
 });
+
+test('mengetik dengan spasi pada editor terkendali tidak kehilangan spasi (gema value tertinggal)', async () => {
+  render(<Harness />);
+  await userEvent.type(screen.getByRole('textbox'), 'a b c');
+  await waitFor(() => expect(lastValue).toBe('a b c'));
+  expect(editor.getText()).toBe('a b c');
+});
