@@ -268,38 +268,39 @@ export interface SetCustomerStatusInput {
   status: ItemStatus;
 }
 
-/** Item aktif untuk saran tipe di form task (tanpa detail berat). */
-export interface HandoverOptionItemDto {
-  id: string;
-  brand: string;
-  model: string;
-  aliases: string[];
-}
-
 export interface HandoverOptionCustomerDto {
   id: string;
   name: string;
 }
 
 export interface HandoverOptionsDto {
-  items: HandoverOptionItemDto[];
   customers: HandoverOptionCustomerDto[];
   /** Nama customer nonaktif: dipakai form untuk memberi petunjuk sebelum simpan ditolak. */
   inactiveCustomerNames: string[];
 }
 
-export interface HandoverLineDto {
-  id: string;
-  itemId: string;
-  /** Salinan "merk tipe" saat baris dibuat (FH9). */
-  itemLabel: string;
-  qty: number;
-  doneQty: number;
-  doneAt: string;
-  doneBy: string;
+/** Butir checklist tingkat atas pada catatan; `checked`/`by`/`at` berasal dari centang QC. */
+export interface HandoverChecklistItemDto {
+  index: number;
+  text: string;
+  checked: boolean;
+  by: string;
+  at: string;
 }
 
-export interface HandoverSummaryDto {
+export interface HandoverCommentDto {
+  id: string;
+  quote: string;
+  before: string;
+  after: string;
+  body: string;
+  author: string;
+  at: string;
+  /** Kutipan tak lagi ditemukan pada catatan (catatan disunting). */
+  stale: boolean;
+}
+
+export interface HandoverDto {
   id: string;
   number: string;
   locationId: string;
@@ -307,16 +308,13 @@ export interface HandoverSummaryDto {
   customerName: string;
   note: string;
   status: HandoverStatus;
-  lineCount: number;
-  doneUnits: number;
-  totalUnits: number;
+  checklist: HandoverChecklistItemDto[];
+  comments: HandoverCommentDto[];
+  completedAt: string;
+  completedBy: string;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface HandoverDto extends HandoverSummaryDto {
-  lines: HandoverLineDto[];
   createdBy: string;
+  updatedAt: string;
   updatedBy: string;
 }
 
@@ -329,11 +327,6 @@ export interface GetHandoverInput {
   locationIds: string[];
 }
 
-export interface SaveHandoverLineInput {
-  itemId: string;
-  qty: number;
-}
-
 export interface SaveHandoverInput {
   id?: string;
   /** `updatedAt` task saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT). */
@@ -341,8 +334,13 @@ export interface SaveHandoverInput {
   locationId: string;
   /** Nama customer; yang belum ada dibuat saat task disimpan (FC2). */
   customerName: string;
+  /** Catatan Markdown; butir "- [ ]" menjadi checklist. */
   note: string;
-  lines: SaveHandoverLineInput[];
+}
+
+export interface SaveHandoverBatchInput {
+  locationId: string;
+  tasks: Array<{ customerName: string; note: string }>;
 }
 
 export interface HandoverRefInput {
@@ -350,13 +348,21 @@ export interface HandoverRefInput {
   locationId: string;
 }
 
-export interface SetProgressInput extends HandoverRefInput {
-  lineId: string;
-  doneQty: number;
+export interface SetCheckInput extends HandoverRefInput {
+  index: number;
+  text: string;
+  checked: boolean;
 }
 
-export interface CompleteLineInput extends HandoverRefInput {
-  lineId: string;
+export interface SetDoneInput extends HandoverRefInput {
+  done: boolean;
+}
+
+export interface AddCommentInput extends HandoverRefInput {
+  quote: string;
+  before: string;
+  after: string;
+  body: string;
 }
 
 // --- QR Code Label ---
@@ -501,13 +507,14 @@ export interface RpcContract {
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
   'handovers.options': { input: ListHandoversInput; output: HandoverOptionsDto };
-  'handovers.list': { input: ListHandoversInput; output: HandoverSummaryDto[] };
+  'handovers.board': { input: ListHandoversInput; output: HandoverDto[] };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
   'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
+  'handovers.saveBatch': { input: SaveHandoverBatchInput; output: HandoverDto[] };
   'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
-  'handovers.setProgress': { input: SetProgressInput; output: HandoverDto };
-  'handovers.completeLine': { input: CompleteLineInput; output: HandoverDto };
-  'handovers.completeAll': { input: HandoverRefInput; output: HandoverDto };
+  'handovers.setCheck': { input: SetCheckInput; output: HandoverDto };
+  'handovers.setDone': { input: SetDoneInput; output: HandoverDto };
+  'handovers.comment': { input: AddCommentInput; output: HandoverDto };
   'items.list': { input: null; output: ItemSummaryDto[] };
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };

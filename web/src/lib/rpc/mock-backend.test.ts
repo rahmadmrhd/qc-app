@@ -149,22 +149,10 @@ test('merk demo: daftar memuat jumlah item; mengganti nama merk memperbarui nama
   expect(items.data.map((i: { brand: string }) => i.brand)).toContain('MikroTik');
 });
 
-test('serah terima demo: QC melihat task Jakarta dan mengubah progres; WH Bandung tidak melihat task Jakarta; customer diganti nama', async () => {
-  const qc = tokenOf('qc.staff@qc.local');
-  const list = await call('handovers.list', { locationIds: ['loc-jkt'] }, qc);
-  expect(list.ok).toBe(true);
-  expect(list.data.length).toBeGreaterThan(0);
-  const task = list.data[0];
-  const detail = await call('handovers.get', { id: task.id, locationIds: ['loc-jkt'] }, qc);
-  const line = detail.data.lines[0];
-  const updated = await call(
-    'handovers.setProgress',
-    { id: task.id, locationId: 'loc-jkt', lineId: line.id, doneQty: 1 },
-    qc,
-  );
-  expect(updated.data.lines[0].doneQty).toBe(1);
+test('serah terima demo: WH Bandung tidak melihat papan Jakarta; customer diganti nama', async () => {
+  // Pembacaan papan/centang oleh QC diuji lagi setelah layanan diimplementasi (Task 4-5).
   const wh = tokenOf('wh.staff@qc.local'); // Bandung saja
-  expect(await call('handovers.list', { locationIds: ['loc-jkt'] }, wh)).toMatchObject({
+  expect(await call('handovers.board', { locationIds: ['loc-jkt'] }, wh)).toMatchObject({
     ok: false,
     error: { code: 'FORBIDDEN' },
   });
