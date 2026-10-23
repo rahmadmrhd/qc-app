@@ -7,8 +7,10 @@ export interface ParsedHandoverTask {
 }
 
 // Awalan ekspor WhatsApp: "[22/10, 10.57] Nama Pengirim: " (isi pesan boleh sebaris atau di baris berikutnya).
-const HANDOVER_WA_PREFIX =
-  /^\[\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s+\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\]\s*[^:]+?:(?:\s+|$)/;
+// Bagian tanggal/jam memakai regex; nama sampai ":" dipindai manual agar linear untuk baris sangat panjang.
+const HANDOVER_WA_STAMP = /^\[\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s+\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\]/;
+// Satu karakter tanda baca akhir judul (":", "-", ",", ";") atau spasi.
+const HANDOVER_TITLE_TRAIL = /[\s:\-,;]/;
 // Penanda butir di awal baris: "- ", "* ", "• ", "1. ", "1) ", lalu kotak centang "[ ]"/"[x]".
 const HANDOVER_LIST_MARKER = /^(?:[-*•]\s+|\d+[.)]\s+)/;
 const HANDOVER_CHECKBOX_MARKER = /^\[[ xX]\]\s*/;
@@ -17,8 +19,20 @@ const HANDOVER_CHECKBOX_MARKER = /^\[[ xX]\]\s*/;
 const HANDOVER_WA_FORMAT =
   /(^|[\s([{.,;:!?"'])([*_~])(?=[^\s*_~])([^*_~\n]*?[^\s*_~])\2(?=$|[\s)\]}.,;:!?"'])/g;
 
+/** Panjang awalan WhatsApp di awal `line` (0 bila bukan awalan): stempel, nama (tanpa ":"), ":" lalu spasi/akhir baris. */
+function handoverWaPrefixLength_(line: string): number {
+  const stamp = HANDOVER_WA_STAMP.exec(line);
+  if (!stamp) return 0;
+  const colon = line.indexOf(':', stamp[0].length);
+  if (colon <= stamp[0].length) return 0;
+  let end = colon + 1;
+  if (end < line.length && !/\s/.test(line.charAt(end))) return 0;
+  while (end < line.length && /\s/.test(line.charAt(end))) end++;
+  return end;
+}
+
 export function stripWhatsappPrefix(line: string): string {
-  return line.replace(HANDOVER_WA_PREFIX, '');
+  return line.slice(handoverWaPrefixLength_(line));
 }
 
 export function convertWhatsappFormatting(line: string): string {
@@ -103,7 +117,7 @@ function handoverPasteLines_(raw: string): HandoverPasteLine[] {
   const out: HandoverPasteLine[] = [];
   let pendingStart = false;
   for (const line of raw.split(/\r\n|\r|\n/)) {
-    if (HANDOVER_WA_PREFIX.test(line.replace(/\t/g, ' ').trim())) pendingStart = true;
+    if (handoverWaPrefixLength_(line.replace(/\t/g, ' ').trim()) > 0) pendingStart = true;
     const text = handoverCleanLine_(line);
     if (text === '') continue;
     out.push({ text, start: pendingStart });
@@ -114,7 +128,9 @@ function handoverPasteLines_(raw: string): HandoverPasteLine[] {
 
 /** Usulan customer dari judul: tanda baca AKHIR (`: - , ;`) dan spasi dibuang, selebihnya utuh. */
 function handoverTitleToCustomer_(title: string): string {
-  return title.replace(/[\s:\-,;]+$/, '').trim();
+  let end = title.length;
+  while (end > 0 && HANDOVER_TITLE_TRAIL.test(title.charAt(end - 1))) end--;
+  return title.slice(0, end).trim();
 }
 
 /**

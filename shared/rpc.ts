@@ -327,10 +327,21 @@ export interface GetHandoverInput {
   locationIds: string[];
 }
 
+export interface HandoverSaveBase {
+  note: string;
+  customerId: string;
+  status: HandoverStatus;
+}
+
 export interface SaveHandoverInput {
   id?: string;
-  /** `updatedAt` task saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT). */
+  /** `updatedAt` task saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT) kecuali `base` menunjukkan hanya centang/komentar yang berubah. */
   expectedUpdatedAt?: string;
+  /**
+   * Keadaan task saat form ubah dibuka. Bila `updatedAt` sudah berbeda tetapi catatan, customer, dan status
+   * (Selesai/Dibatalkan) sama dengan `base`, perubahan di antaranya hanya centang/komentar dan simpan tidak CONFLICT.
+   */
+  base?: HandoverSaveBase;
   locationId: string;
   /** Nama customer; yang belum ada dibuat saat task disimpan (FC2). */
   customerName: string;

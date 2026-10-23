@@ -33,9 +33,11 @@ export function normalizeNoteChecks(note: string): string {
 }
 
 function handoverNthIndexByText_(entries: ChecklistEntry[], text: string, k: number): number {
+  // Teks centang tersimpan dikanonisasi juga (data lama mungkin masih ber-escape/berentitas).
+  const target = handoverCanonicalText(text);
   let seen = 0;
   for (const e of entries) {
-    if (e.text !== text) continue;
+    if (e.text !== target) continue;
     if (seen === k) return e.index;
     seen++;
   }

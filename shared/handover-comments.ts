@@ -84,5 +84,5 @@ export function locateAnchor(
 
 /** Teks hasil seleksi di layar: nbsp menjadi spasi biasa agar cocok dengan `noteToPlainText`. */
 export function handoverNormalizeAnchorText(text: string): string {
-  return text.replace(/\u00a0/g, ' ');
+  return text.split(String.fromCharCode(160)).join(' ');
 }
