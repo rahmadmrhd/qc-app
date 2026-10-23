@@ -14,7 +14,7 @@
 
 - Catatan serah terima maks. **5.000 karakter**; komentar maks. **1.000 karakter**, maks. **50 komentar per task**; batch maks. **30 task**, atomik (semua atau tidak sama sekali); satu batch satu lokasi.
 - Format simpan catatan **Markdown**; konversi WhatsApp, checklist, dan komentar **hanya** di editor Catatan serah terima; editor Detail Item hanya berubah tampilan (WYSIWYG, toolbar sama, gambar tetap, tanpa konversi WhatsApp). Catatan serah terima tanpa gambar.
-- Aturan baris item WhatsApp: `<teks> = <angka><satuan opsional>`; baris judul: tanpa `=`, berakhir `:` atau `-`; baris lain = paragraf; awalan `[tanggal, jam] Nama:` dibuang; `*x*`, `_x_`, `~x~` WhatsApp → format editor.
+- Aturan baris item WhatsApp: pemisah jumlah `=` atau `:` diikuti angka; judul = baris non-item yang langsung diikuti baris item, apa pun simbol akhirnya (termasuk tanpa simbol), boleh sebaris dengan awalan WhatsApp; tiap pesan WhatsApp memulai blok baru (lihat spesifikasi 4.3, diperbarui 2026-10-23); baris lain = paragraf; awalan `[tanggal, jam] Nama:` dibuang; `*x*`, `_x_`, `~x~` WhatsApp → format editor.
 - Izin: centang/selesai `qc: edit`; isi dan batch `handover: edit`; batal `handover: manage`; komentar = izin baca (WH atau QC lihat, berlokasi). Semua rute berlokasi (`scope: 'location'`).
 - Status: Baru / Dikerjakan / Selesai diturunkan dari centang (atau penanda selesai untuk task tanpa butir); Dibatalkan disimpan. Tidak ada aksi Hapus.
 - UI: kanban empat kolom (Baru, Dikerjakan, Selesai, Dibatalkan) di ≥ 768 px, daftar kartu + filter di < 768 px; seluruh catatan tampil tanpa dipotong; tidak ada task disembunyikan; tombol **Mark done** di setiap kartu; **More** hanya bila ada aksi (Ubah, Batalkan); klik badan kartu membuka halaman detail.
