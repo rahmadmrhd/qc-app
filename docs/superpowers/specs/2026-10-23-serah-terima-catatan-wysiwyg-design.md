@@ -45,7 +45,7 @@ Berhasil berarti: WH menempel tempelan WhatsApp, melihat task yang terbentuk den
 7. Satu batch **selalu satu lokasi**; customer boleh berbeda antar task. Cara masuk: (A) banyak form dalam satu halaman, (B) satu tempelan besar dipecah otomatis lalu dicek, (C) satu catatan yang sama untuk beberapa customer.
 8. Komentar: pilih teks di catatan, lalu **tombol "Balas" mengambang muncul saat teks dipilih, di desktop maupun ponsel** (bukan menu klik kanan). **Siapa pun yang bisa melihat task** boleh berkomentar (WH, QC, pemantau).
 9. Belum ada task sama sekali, sehingga model data boleh diganti tanpa jalur kompatibilitas.
-10. Halaman daftar: **kanban untuk desktop, kartu untuk ponsel**; kartu langsung memperlihatkan detail catatan agar QC tidak membuka task satu per satu.
+10. Halaman daftar: **kanban untuk desktop, kartu untuk ponsel**; kartu langsung memperlihatkan **seluruh** catatan agar QC tidak membuka task satu per satu; **tidak ada task yang disembunyikan**; tiap kartu punya tombol **Mark done** dan **More**.
 
 ## 4. Perilaku
 
@@ -88,10 +88,11 @@ Perubahan terjadi saat paste di editor, memakai aturan mekanis (tanpa memahami i
 - Batas: isi komentar 1.000 karakter, maksimal 50 komentar per task **[pilihan saya]**. Isi komentar dirender aman (tanpa HTML).
 
 ### 4.6 Daftar (kanban/kartu) dan detail
-- **Desktop:** kanban tiga kolom **Baru, Dikerjakan, Selesai** menurut status turunan. Kartu berpindah kolom sendiri saat centang berubah; tanpa drag-and-drop.
-- **Ponsel:** satu daftar kartu (terbaru di atas) dengan label status dan filter (Semua, Baru, Dikerjakan, Selesai). Pemisahan desktop/ponsel mengikuti titik putus layar `md` Tailwind (768 px) **[pilihan saya]**.
-- **Isi kartu:** nomor, customer, label status, isi catatan sebagai teks Markdown yang dirender (butir checklist yang **dapat dicentang langsung dari kartu** oleh QC dengan `qc: edit`; baca-saja bagi lainnya), progres centang (mis. 1/2), jumlah komentar, dan pelaku/waktu centang terakhir. Catatan yang panjang dipotong dengan tombol "Lihat semua" **[pilihan saya]**; klik badan kartu membuka halaman detail lengkap (komentar dan riwayat). Mencentang atau menekan tautan di kartu tidak boleh sekaligus membuka detail.
-- **Task Dibatalkan** disembunyikan secara bawaan dan tampil lewat pilihan "Tampilkan dibatalkan" **[pilihan saya]**. Kolom Selesai memuat task selesai terbaru saja dengan tombol "muat lebih lama" **[pilihan saya]**.
+- **Desktop:** kanban empat kolom **Baru, Dikerjakan, Selesai, Dibatalkan** menurut status. Kartu berpindah kolom sendiri saat centang berubah; tanpa drag-and-drop.
+- **Ponsel:** satu daftar kartu (terbaru di atas) dengan label status dan filter (Semua, Baru, Dikerjakan, Selesai). Pemisahan desktop/ponsel mengikuti titik putus layar `md` Tailwind (768 px) **[pilihan saya]**. Filter ponsel (Semua, Baru, Dikerjakan, Selesai, Dibatalkan) hanya menyaring tampilan; bawaannya "Semua".
+- **Isi kartu:** nomor, customer, label status, **seluruh isi catatan** (tidak dipotong dan tidak ada "Lihat semua") sebagai teks Markdown yang dirender, dengan butir checklist yang **dapat dicentang langsung dari kartu** oleh QC dengan `qc: edit` (baca-saja bagi lainnya), progres centang (mis. 1/2), jumlah komentar, dan pelaku/waktu centang terakhir. Klik badan kartu membuka halaman detail lengkap (komentar dan riwayat); mencentang, menekan tautan, atau menekan tombol di kartu tidak boleh sekaligus membuka detail.
+- **Tombol pada setiap kartu:** **Mark done** dan **More**. *Mark done* (izin `qc: edit`) menyelesaikan task (mencentang semua butir; untuk task tanpa butir menandainya selesai); pada kartu yang sudah selesai tombol ini menjadi aksi membuka kembali. *More* membuka menu aksi lain; isinya **[pilihan saya]**: Buka detail, Ubah (butuh `handover: edit`), Batalkan (butuh `handover: manage`), Salin nomor. Menu hanya menampilkan aksi yang boleh dilakukan pengguna itu.
+- **Tidak ada yang disembunyikan:** seluruh task tampil, termasuk Dibatalkan (kolom keempat di kanban; label dan filter di ponsel) dan semua task Selesai tanpa batas jumlah atau tanggal. Konsekuensinya waktu muat board tumbuh seiring jumlah task; pembangun mengukur dan **melapor bila board satu lokasi melewati sekitar 300 task** agar kita memutuskan langkah berikutnya, bukan memangkasnya sendiri.
 - Seluruh isi board (catatan, state centang, jumlah komentar) diambil dalam **satu RPC** untuk lokasi terpilih, bukan satu panggilan `get` per kartu; pemantauan lokasi, filter, dan posisi gulir tidak hilang setelah mencentang atau kembali dari halaman detail. Keadaan kosong, galat, dan "belum memilih lokasi" punya tampilan jelas; data satu task yang rusak tidak menghilangkan kartu lain.
 - Halaman detail menampilkan catatan di editor yang sama: bagi QC centang dapat diklik, bagi yang hanya melihat bersifat baca-saja; panel komentar tampil di samping atau di bawah.
 - Form buat/ubah task memakai editor Catatan; pemilihan item dihapus.
@@ -120,7 +121,8 @@ Tempelan WhatsApp nyata dan hasil yang benar:
 4. `Lintasmaya :` / `AF 5XHD = 16 unt` (kosong) `Mitra Tower :` / `RD-5G34 = 8 unt` (kosong) `CV. Tepian :` / `RD-5G34 = 5 unt` / `POE 24-12W = 50 unt` → **3 task**; yang ketiga punya dua butir checklist.
 
 Kriteria lain yang dapat diuji:
-- Di desktop daftar tampil sebagai kanban tiga kolom dan di ponsel (< 768 px) sebagai daftar kartu; mencentang di kartu memindahkan kartu ke kolom yang sesuai tanpa memuat ulang halaman dan tanpa membuka detail; catatan panjang dipotong dengan "Lihat semua".
+- Di desktop daftar tampil sebagai kanban empat kolom (Baru, Dikerjakan, Selesai, Dibatalkan) dan di ponsel (< 768 px) sebagai daftar kartu; **seluruh** catatan tampil di kartu tanpa dipotong dan tidak ada task yang disembunyikan; mencentang di kartu memindahkan kartu ke kolom yang sesuai tanpa memuat ulang halaman dan tanpa membuka detail.
+- Tombol **Mark done** pada kartu menyelesaikan task (dan membukanya kembali bila sudah selesai); tombol **More** menampilkan hanya aksi yang boleh dilakukan pengguna; pengguna tanpa `qc: edit` tidak melihat Mark done aktif.
 - Board satu lokasi dimuat dengan satu RPC (bukan satu per task); satu task berdata rusak tidak menghilangkan kartu lain.
 - Task dengan catatan > 5.000 karakter ditolak utuh di server dan UI tanpa kehilangan draf.
 - Batch dengan satu task tidak valid tidak menyimpan apa pun dan menunjuk task yang bermasalah.
@@ -136,7 +138,7 @@ Kriteria lain yang dapat diuji:
 Pilihan ekstensi Tiptap dan cara serialisasi Markdown; algoritma jangkar komentar; format penyimpanan centang dan komentar; bentuk persis RPC; tata letak mikro (posisi tombol, panel komentar); penyetelan batas yang tidak disebut; urutan pekerjaan; cara memasok data uji WhatsApp; dan apakah pemecah tempelan ditaruh di `shared/` (murni, tanpa API GAS atau DOM) agar dipakai FE dan dites bersama.
 
 ## 11. Pilihan yang saya ambil (mohon diperiksa)
-1. Kanban (desktop) dan kartu (ponsel) mengikuti permintaan Anda; yang saya pilih: titik putus 768 px, kartu memuat catatan terpotong dengan "Lihat semua", klik kartu membuka halaman detail, task dibatalkan disembunyikan secara bawaan, kolom Selesai dibatasi ke yang terbaru dengan "muat lebih lama".
+1. Kanban (desktop) dan kartu (ponsel), seluruh catatan tanpa dipotong, tanpa task yang disembunyikan, serta tombol Mark done dan More mengikuti permintaan Anda; yang saya pilih: titik putus 768 px, klik badan kartu membuka halaman detail, kolom Dibatalkan sebagai kolom keempat, isi menu More (Buka detail, Ubah, Batalkan, Salin nomor), dan aksi Mark done berubah menjadi "buka kembali" pada kartu selesai.
 2. Menempel di editor satu task tidak memecah task.
 3. Usulan customer = teks judul apa adanya tanpa tanda baca akhir.
 4. Cara C berupa tombol gandakan kartu.
