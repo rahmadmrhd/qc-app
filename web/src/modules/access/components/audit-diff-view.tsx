@@ -29,10 +29,7 @@ const FIELD_LABELS: Record<string, string> = {
   location: 'Lokasi',
   customer: 'Customer',
   note: 'Catatan',
-  lines: 'Baris',
   item: 'Tipe',
-  doneQty: 'Qty selesai',
-  qty: 'Target',
 };
 
 const STATUS_LABELS: Record<string, string> = {

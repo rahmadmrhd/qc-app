@@ -29,8 +29,8 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 
 ### 2.2 Tujuan
 - **G1.** Admin item dapat mengelola katalog item lengkap dengan gambar dan detail Markdown.
-- **G2.** WH dapat membuat task serah terima untuk satu lokasi dengan cepat: customer dan tipe tinggal dipilih dari saran saat mengetik.
-- **G3.** QC melihat task di lokasinya dan memperbarui progres per tipe, atau menyelesaikannya sekaligus.
+- **G2.** WH dapat membuat task serah terima untuk satu lokasi dengan cepat: menempel daftar item dan jumlah dari WhatsApp ke catatan, yang otomatis menjadi checklist; satu tempelan besar dapat dipecah menjadi beberapa task.
+- **G3.** QC melihat task di lokasinya di kanban (desktop) atau daftar kartu (ponsel), mencentang butir yang selesai, menyelesaikan task sekaligus, dan berkomentar pada teks catatan.
 - **G4.** Variasi penulisan nama customer dan tipe tidak menghasilkan data ganda.
 - **G5.** Hak WH dan hak QC dapat diberikan terpisah lewat role.
 
@@ -176,13 +176,13 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 | `items` | `id, brand, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by` (`aliases/stickers/accessories/attachments` = JSON; ditambah `external_id` (id MySQL) dan `sync_rev` (revisi sinkron)) |
 | `sync_state` | `resource, seq, updated_at` (penghitung revisi per sumber daya; diubah di dalam lock) |
 | `customers` | `id, name, key, status, created_at, updated_at, updated_by` |
-| `handovers` | `id, number, location_id, customer_id, customer_name, note, status, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`) |
-| `handover_lines` | `id, handover_id, item_id, item_label, qty, done_qty, done_at, done_by` |
+| `handovers` | `id, number, location_id, customer_id, customer_name, note, status, checks, comments, completed_at, completed_by, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`; `note` = Markdown ≤ 5.000 karakter; `checks` = centang per butir (JSON, pelaku dan waktu); `comments` = komentar beranchor (JSON, ≤ 50 per task); `completed_at/completed_by` = penanda selesai untuk task tanpa butir checklist; masing-masing dalam sel sendiri dengan batas JSON 40.000 karakter) |
+| ~~`handover_lines`~~ | Tidak dipakai lagi sejak serah terima berbasis catatan (lihat dokumen desain 2026-10-23 §5). Sheet yang sudah ada dibiarkan kosong. |
 
 `key` = merk+tipe (item) atau nama (merk, customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
-`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.list`, `handovers.get`, `handovers.save` (membuat customer baru bila perlu), `handovers.cancel`, `handovers.setProgress`, `handovers.completeLine`, `handovers.completeAll`. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
+`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.options`, `handovers.board` (seluruh isi board satu lokasi dalam satu panggilan), `handovers.get`, `handovers.save` (catatan saja; membuat customer baru bila perlu), `handovers.saveBatch` (atomik, maks. 30 task), `handovers.cancel`, `handovers.setCheck` (centang per butir, `qc: edit`), `handovers.setDone` (selesaikan atau buka kembali task, `qc: edit`), `handovers.comment` (hanya tambah; izin lihat). Rute `setProgress`, `completeLine`, dan `completeAll` dihapus. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
 
 ### 6.3b Endpoint sinkronisasi
 `doPost` di `gas/src/main.ts` mengurai amplop, memeriksa token, lalu memanggil tabel rute sinkron (`gas/src/modules/sync/`). Sumber daya `items` mendaftar di sana. Metode: `sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.file.get`. Detail di `docs/api/desktop-sync.md`.
@@ -196,7 +196,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 Fungsi murni di `shared/` (dites tabel): normalisasi, skor kecocokan (awalan > substring > token tak berurutan > jarak edit kecil), pengurutan. Dipakai untuk saran tipe, saran customer, dan penanda "mirip". Server memakai normalisasi yang sama untuk keunikan.
 
 ### 6.6 Konkurensi
-Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai ≤ target; bila dua QC mengubah baris yang sama, yang terakhir menang dan keduanya tercatat di audit (tidak ada penguncian optimistis di fase ini).
+Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, sehingga dua QC tidak saling membatalkan. Isi catatan memakai pemeriksaan versi (`expectedUpdatedAt`): penyimpanan kedua pada versi yang sama ditolak dan drafnya dipertahankan. Dokumen desain 2026-10-23 §4.4 dan §4.5 berlaku untuk serah terima.
 
 ## 7. Kualitas & Pengujian
 - Fungsi murni (normalisasi dan skor saran, turunan status task) dites tabel dengan nama-nama yang bervariasi.
@@ -247,8 +247,8 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 
 **Fase C**
 - [x] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
-- [x] Task serah terima (buat, ubah, batalkan) dengan nomor otomatis dan auto-suggest tipe.
-- [x] QC memperbarui qty, menandai selesai per tipe dan per task; status turunan benar.
+- [x] Task serah terima berbasis catatan (buat, bulk, ubah, batalkan) dengan nomor otomatis, tempel dari WhatsApp, dan kanban/kartu (dokumen desain 2026-10-23 §9).
+- [x] QC mencentang butir, menyelesaikan task, dan berkomentar; status turunan Baru/Dikerjakan/Selesai/Dibatalkan benar; board satu RPC.
 - [x] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
 
 **Semua fase**
@@ -280,7 +280,7 @@ Pembaruan progres menyimpan nilai absolut di dalam lock, validasi 0 ≤ selesai 
 - **`item` global dihitung dari semua penugasan**, bukan hanya "Semua lokasi" (FP2), agar staf cabang dapat memilih dari katalog. `access` tetap hanya dari "Semua lokasi".
 - **Customer dikelola di bawah izin `item`** (master data), sedangkan membuatnya inline cukup `handover: edit`.
 - **Nomor task per hari** `ST-YYYYMMDD-NNN`, memakai zona waktu script.
-- **Penyelesaian bersamaan**: yang terakhir menang (6.6), tidak ada penguncian optimistis.
+- **Penyelesaian bersamaan**: centang per butir dan komentar hanya tambah; isi catatan memakai pemeriksaan versi (lihat 6.6).
 - **Penghitung revisi sinkron per sumber daya** (`sync_rev`) hanya naik bila field sinkron berubah; perubahan alias tidak menaikkannya.
 - **"Hapus" dari Desktop diterjemahkan jadi nonaktif** (`active: false`), karena item dirujuk task dan tidak pernah dihapus.
 - **Daftar dan teks pada push bersifat "ganti seluruhnya"; field yang tidak dikirim tidak diubah.**
