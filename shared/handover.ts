@@ -7,6 +7,7 @@ export const HANDOVER_LIMITS = {
   comment: 1000,
   comments: 50,
   batch: 30,
+  checklistItems: 300,
   stateJson: 40000,
 } as const;
 
@@ -73,4 +74,13 @@ export function customerKey(name: string): string {
     }
   }
   return out;
+}
+
+/** Karakter kontrol U+0000–U+001F selain \n, \r, \t (ditolak validator; menggelembungkan JSON audit). */
+export function hasHandoverControlChars(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 && code !== 0x0a && code !== 0x0d && code !== 0x09) return true;
+  }
+  return false;
 }

@@ -1,6 +1,8 @@
 // Jangkar komentar pada teks polos catatan. Murni.
 
-const CONTEXT = 20;
+import { handoverUnescapeText } from './handover-text';
+
+const HANDOVER_ANCHOR_CONTEXT = 20;
 
 export interface CommentAnchor {
   quote: string;
@@ -20,7 +22,7 @@ export function noteToPlainText(note: string): string {
     s = s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/~~([^~]+)~~/g, '$1');
     s = s.replace(/(^|[\s([{.,;:!?"'])\*([^*\n]+)\*(?=$|[\s)\]}.,;:!?"'])/g, '$1$2');
     s = s.replace(/(^|[\s([{.,;:!?"'])_([^_\n]+)_(?=$|[\s)\]}.,;:!?"'])/g, '$1$2');
-    s = s.replace(/\\([\\`*_{}[\]()#+\-.!~>|])/g, '$1').trim();
+    s = handoverUnescapeText(s).trim();
     if (s !== '') lines.push(s);
   }
   return lines.join('\n');
@@ -29,18 +31,18 @@ export function noteToPlainText(note: string): string {
 export function makeAnchor(plain: string, start: number, end: number): CommentAnchor {
   return {
     quote: plain.slice(start, end),
-    before: plain.slice(Math.max(0, start - CONTEXT), start),
-    after: plain.slice(end, end + CONTEXT),
+    before: plain.slice(Math.max(0, start - HANDOVER_ANCHOR_CONTEXT), start),
+    after: plain.slice(end, end + HANDOVER_ANCHOR_CONTEXT),
   };
 }
 
-function commonSuffix_(a: string, b: string): number {
+function handoverCommonSuffix_(a: string, b: string): number {
   let n = 0;
   while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n++;
   return n;
 }
 
-function commonPrefix_(a: string, b: string): number {
+function handoverCommonPrefix_(a: string, b: string): number {
   let n = 0;
   while (n < a.length && n < b.length && a[n] === b[n]) n++;
   return n;
@@ -67,8 +69,10 @@ export function locateAnchor(
   for (const s of found) {
     const e = s + quote.length;
     const score =
-      commonSuffix_(anchor.before, plain.slice(Math.max(0, s - CONTEXT), s)) +
-      commonPrefix_(anchor.after, plain.slice(e, e + CONTEXT));
+      handoverCommonSuffix_(
+        anchor.before,
+        plain.slice(Math.max(0, s - HANDOVER_ANCHOR_CONTEXT), s),
+      ) + handoverCommonPrefix_(anchor.after, plain.slice(e, e + HANDOVER_ANCHOR_CONTEXT));
     if (score > bestScore) {
       bestScore = score;
       best = s;
@@ -76,4 +80,9 @@ export function locateAnchor(
     }
   }
   return best < 0 ? null : { start: best, end: bestEnd };
+}
+
+/** Teks hasil seleksi di layar: nbsp menjadi spasi biasa agar cocok dengan `noteToPlainText`. */
+export function handoverNormalizeAnchorText(text: string): string {
+  return text.replace(/\u00a0/g, ' ');
 }

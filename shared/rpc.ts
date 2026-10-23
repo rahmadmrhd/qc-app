@@ -354,11 +354,11 @@ export interface SetCheckInput extends HandoverRefInput {
   checked: boolean;
 }
 
-export interface SetDoneInput extends HandoverRefInput {
-  done: boolean;
-}
+/** Hanya menyelesaikan task; task Selesai tidak dibuka kembali (lihat `handovers.reopen` untuk Dibatalkan). */
+export type SetDoneInput = HandoverRefInput;
 
 export interface AddCommentInput extends HandoverRefInput {
+  /** Kutipan dari catatan; kosong = komentar umum (tanpa seleksi, tidak pernah usang). */
   quote: string;
   before: string;
   after: string;
@@ -512,6 +512,7 @@ export interface RpcContract {
   'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
   'handovers.saveBatch': { input: SaveHandoverBatchInput; output: HandoverDto[] };
   'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
+  'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };
   'handovers.setCheck': { input: SetCheckInput; output: HandoverDto };
   'handovers.setDone': { input: SetDoneInput; output: HandoverDto };
   'handovers.comment': { input: AddCommentInput; output: HandoverDto };

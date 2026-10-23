@@ -79,3 +79,35 @@ describe('handover-checklist', () => {
     expect(matchChecks(note, [chk('A'), chk('A', 1)])).toEqual([chk('A'), null, chk('A', 1)]);
   });
 });
+
+describe('handover-checklist: bentuk kanonis (mentah vs hasil serializer)', () => {
+  test('extractChecklist memberi teks kanonis', () => {
+    expect(
+      extractChecklist('- [ ] RB\\_5009\\_X = 1 unit\n- [ ] Kabel UTP &amp; konektor = 2 pcs'),
+    ).toEqual([
+      { index: 0, text: 'RB_5009_X = 1 unit' },
+      { index: 1, text: 'Kabel UTP & konektor = 2 pcs' },
+    ]);
+  });
+
+  test('centang tetap saat catatan mentah disimpan ulang versi ter-escape dengan suntingan lain', () => {
+    const mentah = '- [ ] RB_5009_X = 1 unit\n- [ ] Kabel UTP & konektor = 2 pcs';
+    const diserialkan =
+      'kirim sore\n\n- [ ] RB\\_5009\\_X = 1 unit\n- [ ] Kabel UTP &amp; konektor = 2 pcs';
+    const centang = [chk('RB_5009_X = 1 unit'), chk('Kabel UTP & konektor = 2 pcs')];
+    const r = reconcileChecks(mentah, centang, diserialkan);
+    expect(r.checks).toEqual(centang);
+    expect(r.resets).toEqual([]);
+    expect(r.removed).toEqual([]);
+    expect(matchChecks(diserialkan, centang)).toEqual(centang);
+  });
+
+  test('urut ulang butir ter-escape tidak menghasilkan removed palsu', () => {
+    const mentah = '- [ ] RB_5009_X = 1 unit\n- [ ] B = 2 unit';
+    const diserialkan = '- [ ] B = 2 unit\n- [ ] RB\\_5009\\_X = 1 unit';
+    const r = reconcileChecks(mentah, [chk('RB_5009_X = 1 unit')], diserialkan);
+    expect(r.removed).toEqual([]);
+    expect(r.resets).toEqual([]);
+    expect(r.checks).toEqual([chk('RB_5009_X = 1 unit')]);
+  });
+});

@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import {
   convertWhatsappFormatting,
   isChecklistLine,
-  isHeaderLine,
   splitWhatsappBatch,
   stripWhatsappPrefix,
   whatsappToNoteMarkdown,
@@ -96,23 +95,23 @@ describe('handover-paste', () => {
     expect(stripWhatsappPrefix('tanpa awalan')).toBe('tanpa awalan');
   });
 
-  test('isChecklistLine / isHeaderLine', () => {
-    const kasus: [string, boolean, boolean][] = [
-      ['X = 1 unit', true, false],
-      ['Kirim sore', false, false],
-      ['CV.Prisma :', false, true],
-      ['Orderan Pak OKY -', false, true],
-      ['A = 1 :', true, false],
+  test('isChecklistLine: pemisah "=" atau ":" diikuti angka', () => {
+    const kasus: [string, boolean][] = [
+      ['X = 1 unit', true],
+      ['RB 1100 X4 :3 unit', true],
+      ['UAP-AC-IW : 6 unit', true],
+      ['AF-5XHD-EU = 20', true],
+      ['Kirim sore', false],
+      ['CV.Prisma :', false],
+      ['Orderan Pak OKY -', false],
+      ['D~net', false],
     ];
-    for (const [s, cek, judul] of kasus) {
-      expect(isChecklistLine(s)).toBe(cek);
-      expect(isHeaderLine(s)).toBe(judul);
-    }
+    for (const [s, cek] of kasus) expect(isChecklistLine(s)).toBe(cek);
   });
 
-  test('masukan kosong dan hanya judul', () => {
+  test('masukan kosong; teks tanpa item menjadi satu task tanpa customer', () => {
     expect(splitWhatsappBatch('')).toEqual([]);
-    expect(splitWhatsappBatch('Judul :')).toEqual([]);
+    expect(splitWhatsappBatch('Judul :')).toEqual([{ customerSuggestion: '', note: 'Judul :' }]);
   });
 
   test('teks sebelum judul pertama menjadi task tanpa usulan customer', () => {
@@ -120,5 +119,88 @@ describe('handover-paste', () => {
       { customerSuggestion: '', note: '- [ ] A = 1 unit' },
       { customerSuggestion: 'CV X', note: '- [ ] B = 2 unit' },
     ]);
+  });
+
+  test('contoh 5: judul tanpa simbol, koma, pemisah ":", pesan tiap judul', () => {
+    const contoh5 = [
+      '[19/8, 10.53] Mas_Hendra WHJH: D~net',
+      'RB 1100 X4               :3 unit (1 unit sudah di ciwo)',
+      'CCR2116-12G-4S+   : 3 unit',
+      'CCR2004-16G-2S+    : 2 unit',
+      '[28/9, 10.14] Mas_Aden JH: Cv. Prisma,',
+      'Paket V1600G1-B (AC+DC 48V) with SFP C++++ 8 unit = 5 Set',
+      '[28/9, 10.49] Mas_Aden JH: Indo Akses,',
+      'CCR2116-12g-4S+ = 2 unit',
+      '[28/9, 11.53] Mas_Aden JH: Indo Akses,',
+      'SFP C++++ = 10 unit',
+      'PX20 ++++ = 10 unit',
+      '[29/9, 12.30] Mas-Indi: Cv. Prisma,',
+      'Paket V1600G1-B (AC+DC 48V) with SFP C++++ 8 unit = 50 Set',
+      '[2/10, 08.57] Mas_Aden JH: Surya Dexacom,',
+      'POE-24V-12W Gig = 3 unit',
+      '[2/10, 15.41] Mas_Aden JH: Dutakom,',
+      'U6-Pro = 1 unit',
+    ].join('\n');
+    const hasil = splitWhatsappBatch(contoh5);
+    expect(hasil.map((t) => t.customerSuggestion)).toEqual([
+      'D~net',
+      'Cv. Prisma',
+      'Indo Akses',
+      'Indo Akses',
+      'Cv. Prisma',
+      'Surya Dexacom',
+      'Dutakom',
+    ]);
+    expect(hasil.map((t) => t.note.split('\n').length)).toEqual([3, 1, 1, 2, 1, 1, 1]);
+    expect(hasil[0]?.note.split('\n')[0]).toBe('- [ ] RB 1100 X4 :3 unit (1 unit sudah di ciwo)');
+    expect(hasil[1]?.note).toContain('= 5 Set');
+    expect(hasil[4]?.note).toContain('= 50 Set');
+  });
+
+  test('contoh 6: judul berisi angka/koma, baris kosong setelah judul, item tanpa satuan', () => {
+    const contoh6 = [
+      '[2/10, 08.35] Mas_Hendra WHJH: Orderan Online dari 3 resi',
+      'UAP-AC-IW : 6 unit',
+      '[7/10, 08.23] Mas-Indi: Alokasi SAS, pengambilan nyicil',
+      '',
+      'AF-5XHD-EU = 20',
+      'LBE-M5-23-EU = 20',
+      'RD-5G30 = 6',
+      'RD-5G30-LW = 20',
+      'U6-Mesh-Pro-EU = 10',
+      'UAP-AC-PRO-EU = 30',
+      'USW-Flex-2.5G-5-EU = 3',
+    ].join('\n');
+    const hasil = splitWhatsappBatch(contoh6);
+    expect(hasil).toHaveLength(2);
+    expect(hasil[0]).toEqual({
+      customerSuggestion: 'Orderan Online dari 3 resi',
+      note: '- [ ] UAP-AC-IW : 6 unit',
+    });
+    expect(hasil[1]?.customerSuggestion).toBe('Alokasi SAS, pengambilan nyicil');
+    expect(hasil[1]?.note.split('\n')).toHaveLength(7);
+  });
+
+  test('judul sebaris awalan; baris non-item di antara dua item menjadi judul task berikutnya', () => {
+    const hasil = splitWhatsappBatch(
+      ['A = 1 unit', 'Pelanggan B -', 'C = 2 unit', 'kirim sore'].join('\n'),
+    );
+    expect(hasil).toEqual([
+      { customerSuggestion: '', note: '- [ ] A = 1 unit' },
+      { customerSuggestion: 'Pelanggan B', note: '- [ ] C = 2 unit\n\nkirim sore' },
+    ]);
+  });
+
+  test('customer sama di pesan berbeda tetap task terpisah', () => {
+    const hasil = splitWhatsappBatch(
+      ['[1/1, 10.00] Aku: PT X,', 'A = 1', '[1/1, 10.05] Aku: PT X,', 'B = 2'].join('\n'),
+    );
+    expect(hasil).toHaveLength(2);
+  });
+
+  test('whatsappToNoteMarkdown memakai definisi item baru dan tidak memecah', () => {
+    expect(whatsappToNoteMarkdown('D~net\nRB 1100 X4 :3 unit\nAF = 20')).toBe(
+      'D~net\n\n- [ ] RB 1100 X4 :3 unit\n- [ ] AF = 20',
+    );
   });
 });

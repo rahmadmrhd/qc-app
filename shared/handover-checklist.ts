@@ -1,4 +1,6 @@
 // Model checklist catatan Serah Terima: butir "- [ ]"/"- [x]" tingkat atas. Murni.
+// `text` butir = bentuk kanonis (lihat handover-text.ts): Markdown mentah dan hasil serializer editor dianggap sama.
+import { handoverCanonicalText } from './handover-text';
 
 export interface ChecklistEntry {
   index: number;
@@ -13,14 +15,14 @@ export interface CheckState {
   occurrence: number;
 }
 
-const ITEM = /^- \[([ xX])\] ?(.*)$/;
+const HANDOVER_CHECK_ITEM_RE = /^- \[([ xX])\] ?(.*)$/;
 
-/** Butir checklist tingkat atas (tanpa indentasi), berurutan. */
+/** Butir checklist tingkat atas (tanpa indentasi), berurutan; `text` berbentuk kanonis. */
 export function extractChecklist(note: string): ChecklistEntry[] {
   const out: ChecklistEntry[] = [];
   for (const line of note.split(/\r\n|\r|\n/)) {
-    const m = ITEM.exec(line);
-    if (m) out.push({ index: out.length, text: (m[2] ?? '').trim() });
+    const m = HANDOVER_CHECK_ITEM_RE.exec(line);
+    if (m) out.push({ index: out.length, text: handoverCanonicalText(m[2] ?? '') });
   }
   return out;
 }
@@ -30,7 +32,7 @@ export function normalizeNoteChecks(note: string): string {
   return note.replace(/^- \[[xX]\]/gm, '- [ ]');
 }
 
-function nthIndexByText_(entries: ChecklistEntry[], text: string, k: number): number {
+function handoverNthIndexByText_(entries: ChecklistEntry[], text: string, k: number): number {
   let seen = 0;
   for (const e of entries) {
     if (e.text !== text) continue;
@@ -45,7 +47,7 @@ export function matchChecks(note: string, checks: CheckState[]): Array<CheckStat
   const entries = extractChecklist(note);
   const result: Array<CheckState | null> = entries.map(() => null);
   for (const c of checks) {
-    const at = nthIndexByText_(entries, c.text, c.occurrence);
+    const at = handoverNthIndexByText_(entries, c.text, c.occurrence);
     if (at >= 0) result[at] = c;
   }
   return result;
@@ -73,12 +75,12 @@ export function reconcileChecks(
   const claimed = new Set<number>();
   const lost: Array<{ check: CheckState; oldIndex: number }> = [];
   for (const c of checks) {
-    const newAt = nthIndexByText_(newEntries, c.text, c.occurrence);
+    const newAt = handoverNthIndexByText_(newEntries, c.text, c.occurrence);
     if (newAt >= 0) {
       kept.push(c);
       claimed.add(newAt);
     } else {
-      lost.push({ check: c, oldIndex: nthIndexByText_(oldEntries, c.text, c.occurrence) });
+      lost.push({ check: c, oldIndex: handoverNthIndexByText_(oldEntries, c.text, c.occurrence) });
     }
   }
 
