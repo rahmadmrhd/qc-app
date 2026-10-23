@@ -2,39 +2,30 @@ import { isKeyChar } from './items';
 
 /** Batas task serah terima (PRD FH2). */
 export const HANDOVER_LIMITS = {
-  note: 500,
+  note: 5000,
   customerName: 100,
-  qtyMax: 100_000,
-  lines: 100,
+  comment: 1000,
+  comments: 50,
+  batch: 30,
+  stateJson: 40000,
 } as const;
 
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
 
-export interface ProgressLine {
-  qty: number;
-  doneQty: number;
-}
-
-/** Baru/Dikerjakan/Selesai diturunkan dari baris; Dibatalkan disimpan. Dipakai server dan klien. */
+/**
+ * Baru/Dikerjakan/Selesai diturunkan dari progres checklist; Dibatalkan disimpan.
+ * Tanpa butir checklist (total 0), Selesai ditentukan penanda `completed` (tombol Mark done).
+ */
 export function deriveHandoverStatus(
   stored: HandoverStoredStatus,
-  lines: readonly ProgressLine[],
+  progress: { total: number; done: number; completed: boolean },
 ): HandoverStatus {
   if (stored === 'cancelled') return 'cancelled';
-  if (lines.length > 0 && lines.every((line) => line.doneQty >= line.qty)) return 'done';
-  if (lines.some((line) => line.doneQty > 0)) return 'in_progress';
+  if (progress.total > 0 && progress.done === progress.total) return 'done';
+  if (progress.total === 0 && progress.completed) return 'done';
+  if (progress.done > 0) return 'in_progress';
   return 'new';
-}
-
-export function progressTotals(lines: readonly ProgressLine[]): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  for (const line of lines) {
-    done += Math.min(line.doneQty, line.qty);
-    total += line.qty;
-  }
-  return { done, total };
 }
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
