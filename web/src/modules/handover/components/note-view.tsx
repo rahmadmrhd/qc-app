@@ -102,6 +102,7 @@ export function NoteView({
   const bodyRef = useRef<HTMLDivElement>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [composer, setComposer] = useState<Anchor | null>(null);
+  const pressingRef = useRef(false);
   const noteRef = useRef(note);
   noteRef.current = note;
 
@@ -112,6 +113,8 @@ export function NoteView({
       return;
     }
     function onSelectionChange() {
+      // Menekan tombol Balas dapat meruntuhkan seleksi (mis. sentuhan di ponsel): jangan lepas tombolnya sebelum klik.
+      if (pressingRef.current) return;
       const selection = window.getSelection();
       const body = bodyRef.current;
       const wrapper = wrapperRef.current;
@@ -120,7 +123,8 @@ export function NoteView({
         return;
       }
       const range = selection.getRangeAt(0);
-      if (!body.contains(range.commonAncestorContainer)) {
+      // Seleksi triple-klik berakhir di awal blok berikutnya (bisa di luar catatan): cukup awalnya berada di catatan.
+      if (!body.contains(range.startContainer)) {
         setPending(null);
         return;
       }
@@ -259,8 +263,15 @@ export function NoteView({
           className="absolute z-10 shadow-md"
           style={{ top: pending.top, left: pending.left }}
           onMouseDown={(event) => event.preventDefault()}
-          onPointerDown={(event) => event.preventDefault()}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            pressingRef.current = true;
+          }}
+          onPointerCancel={() => {
+            pressingRef.current = false;
+          }}
           onClick={() => {
+            pressingRef.current = false;
             setComposer({ quote: pending.quote, before: pending.before, after: pending.after });
             setPending(null);
           }}

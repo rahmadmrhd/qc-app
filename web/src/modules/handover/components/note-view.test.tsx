@@ -1,5 +1,5 @@
 import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/rpc';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 
@@ -157,4 +157,33 @@ test('isi komentar <img onerror> tampil sebagai teks', () => {
   });
   expect(screen.getByText('<img src=x onerror="alert(1)">')).toBeInTheDocument();
   expect(container.querySelector('img[onerror]')).toBeNull();
+});
+
+test('seleksi triple-klik yang berakhir di luar catatan tetap memunculkan Balas', () => {
+  setup();
+  const node = textNodeOf('kirim sore. kirim sore.');
+  const range = document.createRange();
+  range.setStart(node, 0);
+  range.setEnd(document.body, document.body.childNodes.length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  act(() => {
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  expect(screen.getByRole('button', { name: 'Balas' })).toBeInTheDocument();
+});
+
+test('seleksi yang runtuh saat tombol Balas ditekan tidak melepas tombol sebelum klik', async () => {
+  setup();
+  select(textNodeOf('kirim sore. kirim sore.'), 0, 10);
+  const button = screen.getByRole('button', { name: 'Balas' });
+  fireEvent.pointerDown(button);
+  window.getSelection()?.removeAllRanges();
+  act(() => {
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  expect(screen.getByRole('button', { name: 'Balas' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Balas' }));
+  expect(screen.getByRole('textbox', { name: 'Komentar' })).toBeInTheDocument();
 });
