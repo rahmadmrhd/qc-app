@@ -149,20 +149,36 @@ test('merk demo: daftar memuat jumlah item; mengganti nama merk memperbarui nama
   expect(items.data.map((i: { brand: string }) => i.brand)).toContain('MikroTik');
 });
 
-test('serah terima demo: WH Bandung tidak melihat papan Jakarta; customer diganti nama', async () => {
-  // Pembacaan papan/centang oleh QC diuji lagi setelah layanan diimplementasi (Task 4-5).
+test('serah terima demo: QC mencentang butir lewat setCheck; WH Bandung tidak melihat papan Jakarta; customer diganti nama', async () => {
+  const qc = tokenOf('qc.staff@qc.local');
+  const board = await call('handovers.board', { locationIds: ['loc-jkt'] }, qc);
+  expect(board.ok).toBe(true);
+  const task = board.data.find((t: { id: string }) => t.id === 'ho-jkt-1');
+  expect(task.status).toBe('in_progress');
+  const open = task.checklist.find((c: { checked: boolean }) => !c.checked);
+  const checked = await call(
+    'handovers.setCheck',
+    { id: task.id, locationId: 'loc-jkt', index: open.index, text: open.text, checked: true },
+    qc,
+  );
+  expect(checked.ok).toBe(true);
+  expect(checked.data.status).toBe('done');
+  const after = await call('handovers.board', { locationIds: ['loc-jkt'] }, qc);
+  expect(after.data.find((t: { id: string }) => t.id === 'ho-jkt-1').status).toBe('done');
   const wh = tokenOf('wh.staff@qc.local'); // Bandung saja
   expect(await call('handovers.board', { locationIds: ['loc-jkt'] }, wh)).toMatchObject({
     ok: false,
     error: { code: 'FORBIDDEN' },
   });
   const admin = tokenOf(MOCK_ADMIN_EMAIL);
-  const customers = await call('customers.list', null, admin);
-  expect(customers.data.length).toBeGreaterThan(0);
   const renamed = await call(
     'customers.rename',
-    { id: customers.data[0].id, name: 'Nama Baru Demo' },
+    { id: 'cust-pt-maju-jaya', name: 'Nama Baru Demo' },
     admin,
   );
   expect(renamed.data.name).toBe('Nama Baru Demo');
+  const renamedBoard = await call('handovers.board', { locationIds: ['loc-jkt'] }, qc);
+  expect(renamedBoard.data.find((t: { id: string }) => t.id === 'ho-jkt-1').customerName).toBe(
+    'Nama Baru Demo',
+  );
 });

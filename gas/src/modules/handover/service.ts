@@ -13,6 +13,7 @@ import {
   handoverNumber,
   nextHandoverSequence,
 } from '@shared/handover';
+import type { CheckState } from '@shared/handover-checklist';
 import {
   extractChecklist,
   matchChecks,
@@ -360,23 +361,182 @@ export function saveHandoverBatch_(input: SaveHandoverBatchInput, actor: ActorRe
   });
 }
 
-// --- Rangka sementara (diisi Task 5) ---
-function notImplemented_(): never {
-  throw appError_('INTERNAL', 'belum diimplementasi');
+/** Nomor kemunculan butir `index` di antara butir bertulisan sama (mulai 0). */
+function occurrenceAt_(note: string, index: number): number {
+  const entries = extractChecklist(note);
+  const target = entries[index];
+  if (!target) return 0;
+  return entries.filter((entry) => entry.index < index && entry.text === target.text).length;
 }
 
-export function setCheck_(_input: SetCheckInput, _actor: ActorRef): HandoverDto {
-  return notImplemented_();
+function assertStateSize_(checks: readonly CheckState[]): void {
+  if (JSON.stringify(checks).length > HANDOVER_LIMITS.stateJson) {
+    const message = 'Data centang terlalu besar';
+    throw appError_('VALIDATION', message, { checks: message });
+  }
 }
 
-export function setDone_(_input: SetDoneInput, _actor: ActorRef): HandoverDto {
-  return notImplemented_();
+/** Menulis perubahan centang/selesai + audit; `updatedAt` naik hanya bila ada perubahan. Dalam lock. */
+function writeProgress_(
+  handover: HandoverRecord,
+  patch: Partial<Pick<HandoverRecord, 'checks' | 'completedAt' | 'completedBy'>>,
+  action: string,
+  actor: ActorRef,
+  now: string,
+): HandoverRecord {
+  const saved: HandoverRecord = { ...handover, ...patch, updatedAt: now, updatedBy: actor.email };
+  assertStateSize_(saved.checks);
+  updateHandover_(saved);
+  const names = locationNameMap_();
+  const customerName = customerNameMap_().get(handover.customerId) ?? handover.customerName;
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action,
+    target: handover.number,
+    before: handoverSnapshot_(handover, customerName, names),
+    after: handoverSnapshot_(saved, customerName, names),
+  });
+  return saved;
 }
 
-export function addComment_(_input: AddCommentInput, _actor: ActorRef): HandoverDto {
-  return notImplemented_();
+export function setCheck_(input: SetCheckInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    const entry = extractChecklist(handover.note)[input.index];
+    // Penjaga: teks butir pada indeks harus sama dengan yang dilihat pengguna (catatan bisa berubah).
+    if (!entry || entry.text !== input.text) {
+      throw appError_('CONFLICT', 'Catatan berubah; muat ulang halaman lalu ulangi');
+    }
+    const occurrence = occurrenceAt_(handover.note, input.index);
+    const existing = matchChecks(handover.note, handover.checks)[input.index] ?? null;
+    if (input.checked === (existing !== null)) {
+      return toHandoverDto_(handover, customerNameMap_());
+    }
+    const now = nowIso_();
+    const checks = input.checked
+      ? [...handover.checks, { text: entry.text, by: actor.email, at: now, occurrence }]
+      : handover.checks.filter(
+          (check) => !(check.text === entry.text && check.occurrence === occurrence),
+        );
+    const saved = writeProgress_(
+      handover,
+      { checks },
+      input.checked ? 'handover.check' : 'handover.uncheck',
+      actor,
+      now,
+    );
+    return toHandoverDto_(saved, customerNameMap_());
+  });
 }
 
-export function cancelHandover_(_input: HandoverRefInput, _actor: ActorRef): HandoverDto {
-  return notImplemented_();
+export function setDone_(input: SetDoneInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    const entries = extractChecklist(handover.note);
+    const matched = matchChecks(handover.note, handover.checks);
+    const now = nowIso_();
+    if (input.done) {
+      const missing = entries.filter((entry) => matched[entry.index] === null);
+      const needsMark = entries.length === 0 && handover.completedAt === '';
+      if (missing.length === 0 && !needsMark) return toHandoverDto_(handover, customerNameMap_());
+      const checks = [
+        ...handover.checks,
+        ...missing.map((entry) => ({
+          text: entry.text,
+          by: actor.email,
+          at: now,
+          occurrence: occurrenceAt_(handover.note, entry.index),
+        })),
+      ];
+      const saved = writeProgress_(
+        handover,
+        entries.length === 0 ? { checks, completedAt: now, completedBy: actor.email } : { checks },
+        'handover.done',
+        actor,
+        now,
+      );
+      return toHandoverDto_(saved, customerNameMap_());
+    }
+    if (handover.checks.length === 0 && handover.completedAt === '') {
+      return toHandoverDto_(handover, customerNameMap_());
+    }
+    const saved = writeProgress_(
+      handover,
+      { checks: [], completedAt: '', completedBy: '' },
+      'handover.reopen',
+      actor,
+      now,
+    );
+    return toHandoverDto_(saved, customerNameMap_());
+  });
+}
+
+export function addComment_(input: AddCommentInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    if (handover.comments.length >= HANDOVER_LIMITS.comments) {
+      const message = `Maksimal ${HANDOVER_LIMITS.comments} komentar per task`;
+      throw appError_('VALIDATION', message, { body: message });
+    }
+    const anchor = { quote: input.quote, before: input.before, after: input.after };
+    if (locateAnchor(noteToPlainText(handover.note), anchor) === null) {
+      const message = 'Kutipan tidak ditemukan pada catatan';
+      throw appError_('VALIDATION', message, { quote: message });
+    }
+    const now = nowIso_();
+    const comments = [
+      ...handover.comments,
+      { id: platform_().uuid(), ...anchor, body: input.body, author: actor.email, at: now },
+    ];
+    if (JSON.stringify(comments).length > HANDOVER_LIMITS.stateJson) {
+      const message = 'Data komentar terlalu besar';
+      throw appError_('VALIDATION', message, { body: message });
+    }
+    // Komentar tidak mengubah isi task: `updatedAt` tidak dinaikkan agar tidak memicu CONFLICT pada form WH.
+    const saved: HandoverRecord = { ...handover, comments };
+    updateHandover_(saved);
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'handover.comment',
+      target: handover.number,
+      before: null,
+      after: { number: handover.number, quote: input.quote, comment: input.body },
+    });
+    return toHandoverDto_(saved, customerNameMap_());
+  });
+}
+
+export function cancelHandover_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    const status = deriveHandoverStatus(handover.status, progressOf_(handover));
+    if (status === 'cancelled') return toHandoverDto_(handover, customerNameMap_());
+    if (status === 'done') {
+      throw appError_('CONFLICT', 'Task yang sudah selesai tidak dapat dibatalkan');
+    }
+    const now = nowIso_();
+    const updated: HandoverRecord = {
+      ...handover,
+      status: 'cancelled',
+      updatedAt: now,
+      updatedBy: actor.email,
+    };
+    updateHandover_(updated);
+    const names = locationNameMap_();
+    const customerName = customerNameMap_().get(handover.customerId) ?? handover.customerName;
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'handover.cancel',
+      target: handover.number,
+      before: handoverSnapshot_(handover, customerName, names),
+      after: handoverSnapshot_(updated, customerName, names),
+    });
+    return toHandoverDto_(updated, customerNameMap_());
+  });
 }
