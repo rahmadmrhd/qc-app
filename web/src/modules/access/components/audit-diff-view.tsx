@@ -1,4 +1,5 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
+import { handoverCanonicalText } from '@shared/handover-text';
 import { LEVEL_LABELS, MODULE_LABELS } from '@shared/permissions';
 import type { AuditSnapshot } from '@shared/rpc';
 import type { LucideIcon } from 'lucide-react';
@@ -30,6 +31,10 @@ const FIELD_LABELS: Record<string, string> = {
   customer: 'Customer',
   note: 'Catatan',
   item: 'Tipe',
+  checked: 'Butir tercentang',
+  resets: 'Centang direset',
+  quote: 'Kutipan',
+  comment: 'Komentar',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -158,7 +163,10 @@ function ChildItem({
     ? (MODULE_LABELS[child.label as keyof typeof MODULE_LABELS] ?? child.label)
     : fieldKey === 'attachments'
       ? `Gambar …${child.label.slice(-6)}`
-      : (roleNames.get(child.label) ?? child.label);
+      : fieldKey === 'checked' || fieldKey === 'resets'
+        ? // Teks butir tanpa escape Markdown/entitas (tampil seperti di layar).
+          handoverCanonicalText(child.label)
+        : (roleNames.get(child.label) ?? child.label);
   const level = (value: unknown) =>
     typeof value === 'string' ? (LEVEL_LABELS[value as keyof typeof LEVEL_LABELS] ?? value) : '';
   const style = child.kind === 'unchanged' ? null : KIND_STYLES[child.kind];

@@ -79,11 +79,20 @@ test('form task tunggal tidak punya pemilihan item; mengirim {locationId, custom
   });
 });
 
-test('customer boleh kosong dan catatan boleh kosong', async () => {
+test('customer boleh kosong, tetapi catatan kosong ditolak dengan pesan jelas', async () => {
   const { onSubmit } = renderForm();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByText('Catatan wajib diisi')).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('customer kosong diterima bila catatan terisi', async () => {
+  const { onSubmit } = renderForm({
+    defaultValues: { locationId: 'loc-a', customerName: '', note: '- [ ] A = 1' },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ customerName: '', note: '' });
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ customerName: '', note: '- [ ] A = 1' });
 });
 
 test('catatan di atas 5.000 karakter menampilkan galat tanpa mengosongkan draf', async () => {

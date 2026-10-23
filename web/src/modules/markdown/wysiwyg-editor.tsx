@@ -52,7 +52,11 @@ export interface WysiwygEditorProps {
 const LENGTH_KEY = new PluginKey('qcMarkdownLength');
 
 /** Menolak transaksi yang membuat Markdown melebihi batas (menghapus tetap boleh). */
-function lengthLimitExtension(getMax: () => number, isSyncing: () => boolean) {
+function lengthLimitExtension(
+  getMax: () => number,
+  isSyncing: () => boolean,
+  onReject: () => void,
+) {
   return Extension.create({
     name: 'qcMarkdownLength',
     addProseMirrorPlugins() {
@@ -65,7 +69,9 @@ function lengthLimitExtension(getMax: () => number, isSyncing: () => boolean) {
             const max = getMax();
             const next = editor.markdown.serialize(tr.doc.toJSON()).length;
             if (next <= max) return true;
-            return next <= editor.markdown.serialize(state.doc.toJSON()).length;
+            if (next <= editor.markdown.serialize(state.doc.toJSON()).length) return true;
+            onReject();
+            return false;
           },
         }),
       ];
@@ -86,6 +92,8 @@ export function WysiwygEditor({
 }: WysiwygEditorProps) {
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Transaksi ditolak karena melewati batas: beri tahu pengguna (bukan menolak diam-diam).
+  const [limitHit, setLimitHit] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
@@ -147,6 +155,7 @@ export function WysiwygEditor({
       lengthLimitExtension(
         () => maxRef.current,
         () => syncingRef.current,
+        () => setLimitHit(true),
       ),
       ...(extraExtensions ?? []),
     ],
@@ -173,6 +182,7 @@ export function WysiwygEditor({
           '[&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold',
           '[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1',
           '[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0',
+          mode === 'note' && '[&_input[type=checkbox]]:pointer-events-none',
           '[&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2',
           '[&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
           '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-xs',
@@ -181,6 +191,18 @@ export function WysiwygEditor({
           '[&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_th]:text-left',
           '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
         ),
+      },
+      // Catatan: centang dimiliki QC, jadi kotak di editor tidak dapat diubah (juga lewat keyboard).
+      handleKeyDown: (_view, event) => {
+        if (mode !== 'note') return false;
+        const target = event.target as HTMLElement | null;
+        if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+          if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault();
+            return true;
+          }
+        }
+        return false;
       },
       handlePaste: (_view, event) => {
         if (mode !== 'item') return false;
@@ -202,6 +224,7 @@ export function WysiwygEditor({
       },
     },
     onUpdate: ({ editor: current }) => {
+      setLimitHit(false);
       const markdown = normalizeMarkdown(current.getMarkdown());
       if (markdown === lastEmitted.current) return;
       lastEmitted.current = markdown;
@@ -314,6 +337,11 @@ export function WysiwygEditor({
           {value.length}/{maxLength}
         </span>
       </div>
+      {limitHit ? (
+        <p role="status" className="text-sm text-destructive">
+          Batas {maxLength} karakter tercapai; teks yang melebihi batas tidak dimasukkan.
+        </p>
+      ) : null}
       {uploadError ? (
         <p role="alert" className="text-sm text-destructive">
           {uploadError}

@@ -1,6 +1,7 @@
+import type { HandoverDto } from '@shared/rpc';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/lib/rpc/describe-error';
@@ -9,6 +10,11 @@ import { canAt, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverForm } from '@/modules/handover/components/handover-form';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
+import {
+  handoverSearchSchema,
+  searchFromStatus,
+  statusFromSearch,
+} from '@/modules/handover/lib/search';
 import {
   handoverOptionsQueryOptions,
   handoverQueryOptions,
@@ -23,12 +29,14 @@ import {
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
+  validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: EditHandoverPage,
 });
 
 function EditHandoverPage() {
   const { handoverId } = Route.useParams();
+  const listSearch = searchFromStatus(statusFromSearch(Route.useSearch()));
   const navigate = useNavigate();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
@@ -39,13 +47,20 @@ function EditHandoverPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<HandoverFieldErrors>({});
 
-  const back = () => void navigate({ to: '/handover/$handoverId', params: { handoverId } });
+  const back = () =>
+    void navigate({ to: '/handover/$handoverId', params: { handoverId }, search: listSearch });
+
+  // Keadaan task saat form dibuka: dasar `expectedUpdatedAt` dan nilai awal. Muat ulang latar (mis. QC
+  // mencentang, atau sambung ulang jaringan) TIDAK me-mount ulang form dan tidak mengganti draf; bentrokan
+  // dengan perubahan lain ditangkap server lewat expectedUpdatedAt.
+  const baseTask = useRef<HandoverDto | null>(null);
+  if (baseTask.current === null && detail.data) baseTask.current = detail.data;
 
   async function handleSubmit(values: HandoverFormOutput) {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await save.mutateAsync(toSaveHandoverInput(values, handoverId, task?.updatedAt));
+      await save.mutateAsync(toSaveHandoverInput(values, handoverId, baseTask.current?.updatedAt));
       toast.success('Task disimpan');
       back();
     } catch (error) {
@@ -67,14 +82,19 @@ function EditHandoverPage() {
       ) : !task ? (
         <p role="alert" className="text-sm text-destructive">
           Task tidak ditemukan di lokasi aktif.{' '}
-          <Link to="/handover" className="underline">
+          <Link to="/handover" search={listSearch} className="underline">
             Kembali ke daftar
           </Link>
         </p>
       ) : !editable ? (
         <p role="alert" className="text-sm text-destructive">
           Task ini tidak dapat diubah (sudah dibatalkan atau Anda tidak punya izin ubah).{' '}
-          <Link to="/handover/$handoverId" params={{ handoverId }} className="underline">
+          <Link
+            to="/handover/$handoverId"
+            params={{ handoverId }}
+            search={listSearch}
+            className="underline"
+          >
             Kembali
           </Link>
         </p>
@@ -82,11 +102,11 @@ function EditHandoverPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <HandoverForm
-          key={task.updatedAt}
+          key={task.id}
           title={`Ubah task ${task.number}`}
           mode="edit"
           locationName={me.locations.find((location) => location.id === task.locationId)?.name}
-          defaultValues={toHandoverFormDefaults(task)}
+          defaultValues={toHandoverFormDefaults(baseTask.current ?? task)}
           options={options.data}
           submitError={submitError}
           fieldErrors={fieldErrors}

@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
-import { HANDOVER_STATUS_LABELS, handoverStatusVariant } from '../lib/status';
+import { handoverActions } from '../lib/actions';
+import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import { CancelDialog } from './cancel-dialog';
 import { NoteView } from './note-view';
 
@@ -12,7 +13,7 @@ export interface HandoverDetailViewProps {
   locationName: string;
   /** WH: `handover: edit` di lokasi task. */
   canEdit: boolean;
-  /** WH: `handover: manage` di lokasi task. */
+  /** WH: `handover: manage` di lokasi task (Batalkan dan Buka kembali task Dibatalkan). */
   canCancel: boolean;
   /** QC: `qc: edit` di lokasi task (centang dan Mark done). */
   canProgress: boolean;
@@ -20,7 +21,8 @@ export interface HandoverDetailViewProps {
   onBack: () => void;
   onEdit: () => void;
   onCancel: () => void;
-  onToggleDone: (done: boolean) => void;
+  onMarkDone: () => void;
+  onReopen: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -49,13 +51,19 @@ export function HandoverDetailView({
   onBack,
   onEdit,
   onCancel,
-  onToggleDone,
+  onMarkDone,
+  onReopen,
   onCheck,
   onComment,
 }: HandoverDetailViewProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const cancelled = handover.status === 'cancelled';
-  const done = handover.status === 'done';
+  const actions = handoverActions(handover.status, {
+    canMarkDone: canProgress,
+    canEdit,
+    canManage: canCancel,
+  });
+  const styles = HANDOVER_STATUS_STYLES[handover.status];
   const total = handover.checklist.length;
   const checked = handover.checklist.filter((item) => item.checked).length;
 
@@ -68,26 +76,32 @@ export function HandoverDetailView({
           </Button>
           <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
             {handover.number}
-            <Badge variant={handoverStatusVariant(handover.status)}>
+            <Badge variant="outline" className={styles.badge}>
               {HANDOVER_STATUS_LABELS[handover.status]}
             </Badge>
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant={done ? 'outline' : 'default'}
-            disabled={!canProgress || cancelled || pending}
-            onClick={() => onToggleDone(!done)}
-          >
-            {done ? 'Buka kembali' : 'Mark done'}
-          </Button>
-          {canEdit && !cancelled ? (
+          {actions.markDone ? (
+            <Button
+              type="button"
+              disabled={!actions.markDoneEnabled || pending}
+              onClick={onMarkDone}
+            >
+              Mark done
+            </Button>
+          ) : null}
+          {actions.reopen ? (
+            <Button type="button" variant="outline" disabled={pending} onClick={onReopen}>
+              Buka kembali
+            </Button>
+          ) : null}
+          {actions.edit ? (
             <Button type="button" variant="outline" onClick={onEdit}>
               Ubah
             </Button>
           ) : null}
-          {canCancel && !cancelled && !done ? (
+          {actions.cancel ? (
             <Button type="button" variant="destructive" onClick={() => setConfirmCancel(true)}>
               Batalkan task
             </Button>
@@ -114,7 +128,8 @@ export function HandoverDetailView({
         />
         {!cancelled ? (
           <p className="text-xs text-muted-foreground">
-            Pilih teks pada catatan lalu tekan Balas untuk berkomentar.
+            Pilih teks pada catatan lalu tekan Balas, atau tekan Tambah komentar untuk komentar
+            umum.
           </p>
         ) : null}
       </section>

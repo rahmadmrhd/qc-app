@@ -29,6 +29,24 @@ export function convertWhatsappFormatting(line: string): string {
   });
 }
 
+// Tanda "*" yang bukan format WhatsApp (mis. "A*B*C", "2*3") di-escape agar Markdown tidak menjadikannya miring.
+function handoverEscapeLiteralStars_(text: string): string {
+  return text.split('*').join('\\*');
+}
+
+/** Format WhatsApp menjadi format editor; "*" literal di luar format di-escape (teks butir tetap apa adanya). */
+function handoverFormatLine_(line: string): string {
+  let out = '';
+  let last = 0;
+  for (const m of line.matchAll(HANDOVER_WA_FORMAT)) {
+    const at = m.index ?? 0;
+    out += handoverEscapeLiteralStars_(line.slice(last, at));
+    out += convertWhatsappFormatting(m[0]);
+    last = at + m[0].length;
+  }
+  return out + handoverEscapeLiteralStars_(line.slice(last));
+}
+
 /** Baris item = memuat pemisah jumlah "=" atau ":" diikuti angka (spasi di sekitarnya bebas). */
 export function isChecklistLine(line: string): boolean {
   return /[=:]\s*\d/.test(line);
@@ -59,7 +77,7 @@ function handoverLinesToNote_(lines: string[]): string {
     items = [];
   };
   for (const line of lines) {
-    const text = convertWhatsappFormatting(line);
+    const text = handoverFormatLine_(line);
     if (isChecklistLine(line)) {
       items.push(`- [ ] ${text}`);
     } else {

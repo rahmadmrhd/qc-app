@@ -52,12 +52,16 @@ export function HandoverBatchForm({
   });
   const [locationId, setLocationId] = useState(defaultLocationId);
   const [cards, setCards] = useState<Card[]>(() => [newCard()]);
+  // Galat per kartu menurut `key` kartu (bukan indeks): tetap menempel pada kartu yang benar setelah ada yang dihapus.
   const [cardErrors, setCardErrors] = useState<Record<number, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const baseId = useId();
   const full = cards.length >= HANDOVER_LIMITS.batch;
+  // Satu kartu kosong awal akan diganti oleh hasil tempel, jadi tidak memakai slot.
+  const pristine = cards.length === 1 && cards[0]?.note === '' && cards[0].customerName === '';
+  const remaining = HANDOVER_LIMITS.batch - (pristine ? 0 : cards.length);
 
   function patch(key: number, change: Partial<Card>) {
     setCards((current) =>
@@ -67,9 +71,9 @@ export function HandoverBatchForm({
 
   function addPasted(tasks: PastedTask[]) {
     setCards((current) => {
-      const pristine =
+      const empty =
         current.length === 1 && current[0]?.note === '' && current[0].customerName === '';
-      const base = pristine ? [] : current;
+      const base = empty ? [] : current;
       return [...base, ...tasks.map((task) => newCard(task))];
     });
   }
@@ -78,6 +82,7 @@ export function HandoverBatchForm({
     setFormError(null);
     setLocationError(null);
     setCardErrors({});
+    const keys = cards.map((card) => card.key);
     const parsed = handoverBatchSchema.safeParse({
       locationId,
       tasks: cards.map(({ customerName, note }) => ({ customerName, note })),
@@ -87,8 +92,10 @@ export function HandoverBatchForm({
       for (const issue of parsed.error.issues) {
         const [head, index] = issue.path;
         if (head === 'locationId') setLocationError(issue.message);
-        else if (head === 'tasks' && typeof index === 'number') errors[index] ??= issue.message;
-        else setFormError(issue.message);
+        else if (head === 'tasks' && typeof index === 'number') {
+          const key = keys[index];
+          if (key !== undefined) errors[key] ??= issue.message;
+        } else setFormError(issue.message);
       }
       setCardErrors(errors);
       return;
@@ -98,7 +105,9 @@ export function HandoverBatchForm({
       await onSubmit(parsed.data);
     } catch (error) {
       const task = parseTaskError(error);
-      if (task) setCardErrors({ [task.index]: task.message });
+      const key = task ? keys[task.index] : undefined;
+      if (task && key !== undefined) setCardErrors({ [key]: task.message });
+      else if (task) setFormError(`Task ${task.index + 1}: ${task.message}`);
       else setFormError(describeError(error));
     } finally {
       setSubmitting(false);
@@ -132,11 +141,11 @@ export function HandoverBatchForm({
         <FieldError errors={[locationError ?? undefined]} />
       </section>
 
-      <WhatsappPastePanel remaining={HANDOVER_LIMITS.batch - cards.length} onAdd={addPasted} />
+      <WhatsappPastePanel remaining={remaining} onAdd={addPasted} />
 
       <div className="space-y-3">
         {cards.map((card, index) => {
-          const error = cardErrors[index];
+          const error = cardErrors[card.key];
           return (
             <fieldset
               key={card.key}

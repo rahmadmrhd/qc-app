@@ -9,7 +9,7 @@ export interface CommentComposerProps {
   onCancel: () => void;
 }
 
-/** Form komentar kecil untuk kutipan yang dipilih; galat pengiriman ditampilkan dan isi dipertahankan. */
+/** Form komentar kecil untuk kutipan yang dipilih (`quote` kosong = komentar umum tanpa seleksi); galat pengiriman ditampilkan dan isi dipertahankan. */
 export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerProps) {
   const fieldId = useId();
   const [body, setBody] = useState('');
@@ -38,7 +38,9 @@ export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerPr
         void submit();
       }}
     >
-      <blockquote className="border-l-2 pl-3 text-sm text-muted-foreground">{quote}</blockquote>
+      {quote !== '' ? (
+        <blockquote className="border-l-2 pl-3 text-sm text-muted-foreground">{quote}</blockquote>
+      ) : null}
       <Textarea
         id={fieldId}
         aria-label="Komentar"

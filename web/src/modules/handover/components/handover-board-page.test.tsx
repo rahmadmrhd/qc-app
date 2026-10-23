@@ -48,10 +48,15 @@ function me(locPerms: Record<string, string>): MeDto {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const handlers = { onOpen: vi.fn(), onEdit: vi.fn(), onCreate: vi.fn() };
+  const handlers = {
+    onOpen: vi.fn(),
+    onEdit: vi.fn(),
+    onCreate: vi.fn(),
+    onStatusChange: vi.fn(),
+  };
   render(
     <QueryClientProvider client={client}>
-      <HandoverBoardPage {...handlers} />
+      <HandoverBoardPage status="all" {...handlers} />
     </QueryClientProvider>,
   );
   return handlers;
@@ -126,8 +131,84 @@ test('Mark done mengirim setDone dan memindahkan kartu ke Selesai', async () => 
   expect(state.rpc).toHaveBeenCalledWith('handovers.setDone', {
     id: '1',
     locationId: 'loc-a',
-    done: true,
   });
+});
+
+test('pending per task: kartu lain tetap bisa dicentang saat satu task diproses', async () => {
+  const one = makeHandover({ id: '1', number: 'ST-1' });
+  const two = makeHandover({ id: '2', number: 'ST-2' });
+  let release: (value: HandoverDto) => void = () => undefined;
+  state.rpc.mockImplementation((method: string, input: { id?: string }) => {
+    if (method === 'handovers.board') return Promise.resolve([one, two]);
+    if (input.id === '1') {
+      return new Promise<HandoverDto>((resolve) => {
+        release = resolve;
+      });
+    }
+    return Promise.resolve(two);
+  });
+  renderPage();
+  await screen.findByText('ST-1');
+  const cardOne = screen.getByRole('article', { name: 'Task ST-1' });
+  const cardTwo = screen.getByRole('article', { name: 'Task ST-2' });
+  await userEvent.click(within(cardOne).getAllByRole('checkbox')[0] as HTMLElement);
+  await waitFor(() => expect(within(cardOne).getAllByRole('checkbox')[0]).toBeDisabled());
+  expect(within(cardOne).getByRole('button', { name: 'Mark done' })).toBeDisabled();
+  expect(within(cardTwo).getAllByRole('checkbox')[0]).toBeEnabled();
+  expect(within(cardTwo).getByRole('button', { name: 'Mark done' })).toBeEnabled();
+  release(one);
+});
+
+test('Dibatalkan: Buka kembali mengirim handovers.reopen', async () => {
+  const task = makeHandover({ id: '1', number: 'ST-1', status: 'cancelled' });
+  state.rpc.mockImplementation(async (method: string) =>
+    method === 'handovers.board' ? [task] : { ...task, status: 'new' },
+  );
+  renderPage();
+  await screen.findByText('ST-1');
+  await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
+  await waitFor(() =>
+    expect(state.rpc).toHaveBeenCalledWith('handovers.reopen', { id: '1', locationId: 'loc-a' }),
+  );
+});
+
+test('komentar dikirim dari kartu tanpa membuka detail (komentar umum)', async () => {
+  const task = makeHandover({ id: '1', number: 'ST-1' });
+  const commented = {
+    ...task,
+    comments: [
+      {
+        id: 'c',
+        quote: '',
+        before: '',
+        after: '',
+        body: 'Halo',
+        author: 'u@qc.local',
+        at: '2026-10-15T03:00:00.000Z',
+        stale: false,
+      },
+    ],
+  };
+  state.rpc.mockImplementation(async (method: string) =>
+    method === 'handovers.board' ? [task] : commented,
+  );
+  const handlers = renderPage();
+  await screen.findByText('ST-1');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Halo');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  await waitFor(() =>
+    expect(state.rpc).toHaveBeenCalledWith('handovers.comment', {
+      id: '1',
+      locationId: 'loc-a',
+      quote: '',
+      before: '',
+      after: '',
+      body: 'Halo',
+    }),
+  );
+  expect(handlers.onOpen).not.toHaveBeenCalled();
+  await screen.findByText('Halo');
 });
 
 test('pengguna yang hanya QC tidak melihat More dan tombol Tambah task', async () => {

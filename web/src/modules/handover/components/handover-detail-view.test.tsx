@@ -17,7 +17,8 @@ function setup(
     onBack: vi.fn(),
     onEdit: vi.fn(),
     onCancel: vi.fn(),
-    onToggleDone: vi.fn(),
+    onMarkDone: vi.fn(),
+    onReopen: vi.fn(),
     onCheck: vi.fn(),
     onComment: vi.fn().mockResolvedValue(undefined),
   };
@@ -51,7 +52,7 @@ test('QC: centang dan Mark done aktif; tanpa qc:edit nonaktif', async () => {
   await userEvent.click(screen.getByRole('checkbox', { name: /B = 2/ }));
   expect(h.onCheck).toHaveBeenCalledWith({ index: 1, text: 'B = 2' }, true);
   await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
-  expect(h.onToggleDone).toHaveBeenCalledWith(true);
+  expect(h.onMarkDone).toHaveBeenCalledTimes(1);
   document.body.innerHTML = '';
   setup({ canProgress: false });
   expect(screen.getByRole('button', { name: 'Mark done' })).toBeDisabled();
@@ -73,6 +74,29 @@ test('tanpa izin WH tidak ada Ubah/Batalkan; tidak ada aksi Hapus', () => {
   expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Batalkan task' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Hapus/ })).not.toBeInTheDocument();
+});
+
+test('Selesai: tanpa Mark done dan Buka kembali', () => {
+  setup({}, makeHandover({ status: 'done' }));
+  expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
+});
+
+test('Dibatalkan: Buka kembali memanggil onReopen (hanya dengan handover:manage)', async () => {
+  const h = setup({}, makeHandover({ status: 'cancelled' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
+  expect(h.onReopen).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '';
+  setup({ canCancel: false }, makeHandover({ status: 'cancelled' }));
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
+});
+
+test('komentar umum tanpa seleksi lewat tombol Tambah komentar (kutipan kosong)', async () => {
+  const h = setup();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Umum');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  expect(h.onComment).toHaveBeenCalledWith({ quote: '', before: '', after: '', body: 'Umum' });
 });
 
 test('task Dibatalkan: tanpa Ubah, Batalkan, dan centang aktif', () => {

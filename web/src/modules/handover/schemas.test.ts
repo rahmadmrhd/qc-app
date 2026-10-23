@@ -34,6 +34,17 @@ test('skema menolak: lokasi kosong, customer tanda baca, catatan > 5.000; custom
   expect(issues(handoverFormSchema, { ...valid, note: 'a'.repeat(5000) })).toEqual([]);
 });
 
+test('skema: catatan kosong/spasi ditolak dan maks. 300 butir checklist', () => {
+  expect(issues(handoverFormSchema, { ...valid, note: '   ' })).toContain(
+    'note: Catatan wajib diisi',
+  );
+  const items = (n: number) => Array.from({ length: n }, () => '- [ ] a').join('\n');
+  expect(issues(handoverFormSchema, { ...valid, note: items(300) })).toEqual([]);
+  expect(issues(handoverFormSchema, { ...valid, note: items(301) })).toContain(
+    'note: Maksimal 300 butir checklist per catatan',
+  );
+});
+
 test('skema batch: 1-30 task, catatan wajib, lokasi wajib', () => {
   const task = { customerName: '', note: 'x' };
   const parse = (input: unknown) => handoverBatchSchema.safeParse(input);

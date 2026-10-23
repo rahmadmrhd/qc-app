@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
+/** Batas teks tempelan batch (30 task × 5.000 karakter); lebih dari ini tidak dipecah. */
+const MAX_PASTE_CHARS = 150_000;
+
 export interface PastedTask {
   customerName: string;
   note: string;
@@ -23,7 +26,10 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<PastedTask[] | null>(null);
 
+  const tooLong = text.length > MAX_PASTE_CHARS;
+
   function split() {
+    if (tooLong) return;
     setPreview(
       splitWhatsappBatch(text).map((task) => ({
         customerName: task.customerSuggestion,
@@ -50,8 +56,9 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
       <div>
         <h2 className="text-base font-semibold">Tempel dari WhatsApp</h2>
         <p className="text-sm text-muted-foreground">
-          Tempel beberapa orderan sekaligus. Baris judul (berakhiran “:” atau “-”) memulai task
-          baru.
+          Tempel beberapa orderan sekaligus. Setiap pesan WhatsApp memulai task baru; baris tanpa
+          jumlah yang langsung diikuti baris item (contoh “PT Maju,” atau “Orderan Online :”)
+          menjadi judul dan usulan customer. Periksa hasilnya sebelum ditambahkan.
         </p>
       </div>
       <Textarea
@@ -60,7 +67,12 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
         value={text}
         onChange={(event) => setText(event.target.value)}
       />
-      <Button type="button" variant="secondary" size="sm" onClick={split}>
+      {tooLong ? (
+        <p role="alert" className="text-sm text-destructive">
+          {`Tempelan ${text.length.toLocaleString('id-ID')} karakter melebihi batas ${MAX_PASTE_CHARS.toLocaleString('id-ID')} karakter dan tidak dipecah; bagi tempelan menjadi beberapa bagian.`}
+        </p>
+      ) : null}
+      <Button type="button" variant="secondary" size="sm" disabled={tooLong} onClick={split}>
         Pecah
       </Button>
       {preview !== null && preview.length === 0 ? (

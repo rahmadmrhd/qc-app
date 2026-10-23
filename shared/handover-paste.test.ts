@@ -198,6 +198,13 @@ describe('handover-paste', () => {
     expect(hasil).toHaveLength(2);
   });
 
+  test('tanda * literal di-escape agar tidak menjadi miring; format WhatsApp tetap diubah', () => {
+    expect(whatsappToNoteMarkdown('2*3 = 6 unit')).toBe('- [ ] 2\\*3 = 6 unit');
+    expect(whatsappToNoteMarkdown('A*B*C = 1 unit')).toBe('- [ ] A\\*B\\*C = 1 unit');
+    expect(whatsappToNoteMarkdown('RB_5009_X = 1 unit')).toBe('- [ ] RB_5009_X = 1 unit');
+    expect(whatsappToNoteMarkdown('*Penting* A*B = 1')).toBe('- [ ] **Penting** A\\*B = 1');
+  });
+
   test('whatsappToNoteMarkdown memakai definisi item baru dan tidak memecah', () => {
     expect(whatsappToNoteMarkdown('D~net\nRB 1100 X4 :3 unit\nAF = 20')).toBe(
       'D~net\n\n- [ ] RB 1100 X4 :3 unit\n- [ ] AF = 20',

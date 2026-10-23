@@ -1,4 +1,5 @@
 import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
+import { extractChecklist } from '@shared/handover-checklist';
 import type { HandoverDto, SaveHandoverBatchInput, SaveHandoverInput } from '@shared/rpc';
 import { z } from 'zod';
 
@@ -14,10 +15,16 @@ const customerNameSchema = z
     'Nama customer harus memuat huruf atau angka',
   );
 
+/** Catatan wajib terisi (bukan hanya spasi), maks. 5.000 karakter dan 300 butir checklist. */
 const noteSchema = z
   .string()
   .trim()
-  .max(HANDOVER_LIMITS.note, `Maksimal ${HANDOVER_LIMITS.note} karakter`);
+  .min(1, 'Catatan wajib diisi')
+  .max(HANDOVER_LIMITS.note, `Maksimal ${HANDOVER_LIMITS.note} karakter`)
+  .refine(
+    (value) => extractChecklist(value).length <= HANDOVER_LIMITS.checklistItems,
+    `Maksimal ${HANDOVER_LIMITS.checklistItems} butir checklist per catatan`,
+  );
 
 export const handoverFormSchema = z.object({
   locationId: z.string().min(1, 'Pilih lokasi'),
@@ -28,10 +35,10 @@ export const handoverFormSchema = z.object({
 export type HandoverFormInput = z.input<typeof handoverFormSchema>;
 export type HandoverFormOutput = z.output<typeof handoverFormSchema>;
 
-/** Satu kartu pada form bulk: catatan wajib terisi (task kosong tidak berguna). */
+/** Satu kartu pada form bulk (aturan catatan sama dengan form satu task). */
 export const batchTaskSchema = z.object({
   customerName: customerNameSchema,
-  note: noteSchema.min(1, 'Catatan wajib diisi'),
+  note: noteSchema,
 });
 
 export const handoverBatchSchema = z.object({

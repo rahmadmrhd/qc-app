@@ -1,9 +1,15 @@
-import { makeAnchor, noteToPlainText } from '@shared/handover-comments';
+import {
+  handoverNormalizeAnchorText,
+  makeAnchor,
+  noteToPlainText,
+} from '@shared/handover-comments';
 import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/rpc';
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
+import { rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
 import { CommentComposer } from './comment-composer';
 
 export interface NoteViewProps {
@@ -12,6 +18,8 @@ export interface NoteViewProps {
   comments: HandoverCommentDto[];
   canCheck: boolean;
   canComment: boolean;
+  /** Tampilan ringkas (kartu): komentar lebih kecil, kutipan dipotong. */
+  compact?: boolean;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -56,7 +64,7 @@ function commonSuffix(a: string, b: string): number {
 
 /** Kutipan dari seleksi layar: baris dirapikan agar sama dengan teks polos catatan. */
 function normalizeQuote(raw: string): string {
-  return raw
+  return handoverNormalizeAnchorText(raw)
     .replace(/\r/g, '')
     .replace(/[ \t]*\n[ \t]*/g, '\n')
     .replace(/\n+/g, '\n')
@@ -95,6 +103,7 @@ export function NoteView({
   comments,
   canCheck,
   canComment,
+  compact = false,
   onCheck,
   onComment,
 }: NoteViewProps) {
@@ -103,6 +112,7 @@ export function NoteView({
   const [pending, setPending] = useState<Pending | null>(null);
   const [composer, setComposer] = useState<Anchor | null>(null);
   const pressingRef = useRef(false);
+  const highlightOwner = useRef({});
   const noteRef = useRef(note);
   noteRef.current = note;
 
@@ -149,51 +159,29 @@ export function NoteView({
     return () => document.removeEventListener('selectionchange', onSelectionChange);
   }, [canComment]);
 
-  // Sorot kutipan komentar (CSS Custom Highlight API bila tersedia; tidak mengubah DOM React).
+  // Sorot kutipan komentar (CSS Custom Highlight API bila tersedia; tidak mengubah DOM React). Rentang dicari
+  // lewat teks DOM berpemisah blok + `locateAnchor`, jadi kutipan berulang dan lintas butir tepat.
   // biome-ignore lint/correctness/useExhaustiveDependencies: DOM catatan berubah bersama `note`
   useEffect(() => {
-    const registry = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS
-      ?.highlights;
-    const HighlightCtor = (globalThis as { Highlight?: new (...ranges: Range[]) => unknown })
-      .Highlight;
     const body = bodyRef.current;
-    if (!registry || !HighlightCtor || !body) return;
-    const nodes: Text[] = [];
-    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
-    const full = nodes.map((n) => n.data).join('');
+    const owner = highlightOwner.current;
+    if (!body) return;
     const ranges: Range[] = [];
     for (const comment of comments) {
       if (comment.stale || comment.quote === '') continue;
-      const at = full.indexOf(comment.quote);
-      if (at < 0) continue;
-      let offset = 0;
-      const range = document.createRange();
-      let started = false;
-      for (const node of nodes) {
-        const end = offset + node.data.length;
-        if (!started && at < end) {
-          range.setStart(node, at - offset);
-          started = true;
-        }
-        if (started && at + comment.quote.length <= end) {
-          range.setEnd(node, at + comment.quote.length - offset);
-          ranges.push(range);
-          break;
-        }
-        offset = end;
-      }
+      const range = rangeForAnchor(body, comment);
+      if (range) ranges.push(range);
     }
-    registry.set('qc-comment', new HighlightCtor(...ranges));
-    return () => {
-      registry.delete('qc-comment');
-    };
-  }, [comments, note]);
+    setNoteHighlights(owner, ranges);
+    return () => setNoteHighlights(owner, []);
+  }, [comments, note, checklist]);
 
   const components = useMemo<Components>(() => {
     const lines = checklistLines(note);
     return {
       input: () => null,
+      // Catatan Serah Terima tidak menampilkan gambar (hanya teks alt).
+      img: ({ alt }) => (alt ? <span>{alt}</span> : null),
       li: ({ node, children, className }) => {
         const isTask = typeof className === 'string' && className.includes('task-list-item');
         if (!isTask) return <li>{children}</li>;
@@ -238,7 +226,7 @@ export function NoteView({
               <span>{content}</span>
             </label>
             {item.checked && item.by !== '' ? (
-              <span className="ml-6 block text-xs text-muted-foreground">
+              <span data-note-meta="" className="ml-6 block text-xs text-muted-foreground">
                 oleh {item.by} · {formatTime(item.at)}
               </span>
             ) : null}
@@ -290,13 +278,25 @@ export function NoteView({
         />
       ) : null}
       {comments.length > 0 ? (
-        <ul aria-label="Komentar" className="space-y-2">
+        <ul aria-label="Komentar" className={cn('space-y-2', compact && 'space-y-1.5')}>
           {comments.map((comment) => (
-            <li key={comment.id} className="rounded-md border p-3 text-sm">
-              <blockquote className="border-l-2 pl-3 text-muted-foreground">
-                {comment.quote}
-              </blockquote>
-              <p className="mt-1 whitespace-pre-wrap break-words">{comment.body}</p>
+            <li
+              key={comment.id}
+              className={cn('rounded-md border text-sm', compact ? 'p-2 text-xs' : 'p-3')}
+            >
+              {comment.quote !== '' ? (
+                <blockquote
+                  className={cn(
+                    'border-l-2 pl-3 text-muted-foreground',
+                    compact && 'line-clamp-2 break-words',
+                  )}
+                >
+                  {comment.quote}
+                </blockquote>
+              ) : null}
+              <p className={cn('whitespace-pre-wrap break-words', comment.quote !== '' && 'mt-1')}>
+                {comment.body}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {comment.author} · {formatTime(comment.at)}
                 {comment.stale ? (
@@ -306,6 +306,16 @@ export function NoteView({
             </li>
           ))}
         </ul>
+      ) : null}
+      {canComment && !composer ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setComposer({ quote: '', before: '', after: '' })}
+        >
+          Tambah komentar
+        </Button>
       ) : null}
     </div>
   );

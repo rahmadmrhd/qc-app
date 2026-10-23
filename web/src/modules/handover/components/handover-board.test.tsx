@@ -1,5 +1,7 @@
+import type { HandoverStatus } from '@shared/handover';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 vi.mock('@/modules/files/queries', () => ({
@@ -17,10 +19,24 @@ const bindings = (): CardBindings => ({
   pending: false,
   onOpen: vi.fn(),
   onCheck: vi.fn(),
-  onToggleDone: vi.fn(),
+  onMarkDone: vi.fn(),
+  onReopen: vi.fn(),
   onEdit: vi.fn(),
   onCancel: vi.fn(),
+  onComment: vi.fn(),
 });
+
+function Board({ handovers = tasks }: { handovers?: typeof tasks }) {
+  const [filter, setFilter] = useState<HandoverStatus | 'all'>('all');
+  return (
+    <HandoverBoard
+      handovers={handovers}
+      filter={filter}
+      onFilterChange={setFilter}
+      bindings={bindings}
+    />
+  );
+}
 
 const tasks = [
   makeHandover({ id: '1', number: 'ST-1', status: 'new', createdAt: '2026-10-01T00:00:00.000Z' }),
@@ -55,7 +71,7 @@ afterEach(() => {
 
 test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan filter', async () => {
   mockMedia(true);
-  const { unmount } = render(<HandoverBoard handovers={tasks} bindings={bindings} />);
+  const { unmount } = render(<Board />);
   for (const name of ['Baru', 'Dikerjakan', 'Selesai', 'Dibatalkan']) {
     expect(screen.getByRole('region', { name: `Kolom ${name}` })).toBeInTheDocument();
   }
@@ -63,7 +79,7 @@ test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan 
   unmount();
 
   mockMedia(false);
-  render(<HandoverBoard handovers={tasks} bindings={bindings} />);
+  render(<Board />);
   expect(screen.queryByRole('region', { name: /^Kolom/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Semua' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getAllByRole('article')).toHaveLength(4);
@@ -74,7 +90,7 @@ test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan 
 
 test('task Dibatalkan dan Selesai ikut tampil di kolomnya', () => {
   mockMedia(true);
-  render(<HandoverBoard handovers={tasks} bindings={bindings} />);
+  render(<Board />);
   expect(
     within(screen.getByRole('region', { name: 'Kolom Selesai' })).getByText('ST-3'),
   ).toBeInTheDocument();
@@ -93,7 +109,7 @@ test('kolom kosong menampilkan petunjuk; semua task tetap tampil tanpa batas', (
       createdAt: `2026-10-01T00:${String(i).padStart(2, '0')}:00.000Z`,
     }),
   );
-  render(<HandoverBoard handovers={many} bindings={bindings} />);
+  render(<Board handovers={many} />);
   expect(screen.getAllByRole('article')).toHaveLength(60);
   expect(
     within(screen.getByRole('region', { name: 'Kolom Selesai' })).getByText('Tidak ada task.'),
@@ -108,13 +124,27 @@ test('data satu task rusak tidak menghilangkan kartu lain', () => {
     checklist: undefined,
     note: null,
   };
-  render(
-    <HandoverBoard
-      handovers={[...tasks, broken as unknown as (typeof tasks)[number]]}
-      bindings={bindings}
-    />,
-  );
+  render(<Board handovers={[...tasks, broken as unknown as (typeof tasks)[number]]} />);
   expect(screen.getByRole('alert')).toHaveTextContent('ST-RUSAK');
   expect(screen.getAllByRole('article')).toHaveLength(4);
   errors.mockRestore();
+});
+
+test('kanban: judul kolom tetap, hanya daftar kartu tiap kolom yang bergulir', () => {
+  mockMedia(true);
+  render(<Board />);
+  const column = screen.getByRole('region', { name: 'Kolom Baru' });
+  expect(column.className).toContain('flex-col');
+  const scroller = column.querySelector('[data-slot="column-cards"]');
+  expect(scroller?.className).toContain('overflow-y-auto');
+  expect(column.querySelector('h2')?.className).toContain('shrink-0');
+});
+
+test('filter ponsel dikendalikan dari luar (bertahan lewat props)', () => {
+  mockMedia(false);
+  render(
+    <HandoverBoard handovers={tasks} filter="done" onFilterChange={vi.fn()} bindings={bindings} />,
+  );
+  expect(screen.getByRole('button', { name: 'Selesai' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getAllByRole('article')).toHaveLength(1);
 });

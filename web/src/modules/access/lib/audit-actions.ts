@@ -27,7 +27,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'handover.check': 'Butir checklist dicentang',
   'handover.uncheck': 'Centang butir checklist dibatalkan',
   'handover.done': 'Task serah terima ditandai selesai',
-  'handover.reopen': 'Task serah terima dibuka kembali',
+  'handover.uncancel': 'Task serah terima dibuka kembali (batal dicabut)',
   'handover.comment': 'Komentar serah terima ditambahkan',
   'qrcode.create': 'Label QR dibuat',
   'qrcode.update': 'Label QR diubah',

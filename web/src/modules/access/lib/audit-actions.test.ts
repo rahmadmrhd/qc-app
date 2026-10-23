@@ -19,7 +19,9 @@ test('label aksi customer dan serah terima', () => {
   expect(auditActionLabel('handover.check')).toBe('Butir checklist dicentang');
   expect(auditActionLabel('handover.uncheck')).toBe('Centang butir checklist dibatalkan');
   expect(auditActionLabel('handover.done')).toBe('Task serah terima ditandai selesai');
-  expect(auditActionLabel('handover.reopen')).toBe('Task serah terima dibuka kembali');
+  expect(auditActionLabel('handover.uncancel')).toBe(
+    'Task serah terima dibuka kembali (batal dicabut)',
+  );
   expect(auditActionLabel('handover.comment')).toBe('Komentar serah terima ditambahkan');
 });
 

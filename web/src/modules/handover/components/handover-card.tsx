@@ -9,7 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { HANDOVER_STATUS_LABELS, handoverStatusVariant } from '../lib/status';
+import { cn } from '@/lib/utils';
+import { handoverActions } from '../lib/actions';
+import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import { CancelDialog } from './cancel-dialog';
 import { NoteView } from './note-view';
 
@@ -19,19 +21,27 @@ export interface HandoverCardProps {
   canMarkDone: boolean;
   /** WH: `handover: edit` di lokasi task. */
   canEdit: boolean;
-  /** WH: `handover: manage` di lokasi task. */
+  /** WH: `handover: manage` di lokasi task (Batalkan dan Buka kembali task Dibatalkan). */
   canCancel: boolean;
+  /** Ada mutasi yang berjalan untuk task INI saja. */
   pending: boolean;
   locationName?: string;
   onOpen: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
-  onToggleDone: (done: boolean) => void;
+  onMarkDone: () => void;
+  onReopen: () => void;
   onEdit: () => void;
   onCancel: () => void;
+  onComment: (input: {
+    quote: string;
+    before: string;
+    after: string;
+    body: string;
+  }) => Promise<void> | void;
 }
 
 const INTERACTIVE =
-  'a,button,input,label,textarea,select,[role="menu"],[role="menuitem"],[role="dialog"]';
+  'a,button,input,label,textarea,select,form,[aria-label="Komentar"],[role="menu"],[role="menuitem"],[role="dialog"]';
 
 /**
  * Kartu task: SELURUH catatan tampil (tanpa dipotong) dengan centang langsung. Klik badan kartu membuka detail;
@@ -46,28 +56,34 @@ export function HandoverCard({
   locationName,
   onOpen,
   onCheck,
-  onToggleDone,
+  onMarkDone,
+  onReopen,
   onEdit,
   onCancel,
+  onComment,
 }: HandoverCardProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const cancelled = handover.status === 'cancelled';
-  const done = handover.status === 'done';
   const total = handover.checklist.length;
   const checked = handover.checklist.filter((item) => item.checked).length;
-  // Aksi More: Ubah (handover:edit) dan Batalkan (handover:manage); keduanya tidak berlaku untuk task Dibatalkan,
-  // dan Batalkan tidak berlaku untuk task Selesai. Tanpa aksi, More tidak dirender sama sekali.
-  const showEdit = canEdit && !cancelled;
-  const showCancel = canCancel && !cancelled && !done;
+  // Aksi menurut status: Mark done (Baru/Dikerjakan), Buka kembali (hanya Dibatalkan), More (Ubah/Batalkan)
+  // hanya bila ada aksi di dalamnya.
+  const actions = handoverActions(handover.status, { canMarkDone, canEdit, canManage: canCancel });
+  const styles = HANDOVER_STATUS_STYLES[handover.status];
 
   return (
     <>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: jalur keyboard ke detail adalah tombol nomor task */}
       <article
         aria-label={`Task ${handover.number}`}
-        className="cursor-pointer space-y-3 rounded-lg border bg-card p-3 text-card-foreground shadow-xs"
+        className={cn(
+          'cursor-pointer space-y-3 rounded-lg border border-l-4 bg-card p-3 text-card-foreground shadow-xs',
+          styles.accent,
+        )}
         onClick={(event) => {
           if ((event.target as HTMLElement).closest(INTERACTIVE)) return;
+          // Menyeleksi teks catatan (untuk Balas) tidak boleh membuka detail.
+          if ((window.getSelection()?.toString() ?? '') !== '') return;
           onOpen();
         }}
       >
@@ -89,7 +105,7 @@ export function HandoverCard({
             </p>
             {locationName ? <p className="text-xs text-muted-foreground">{locationName}</p> : null}
           </div>
-          <Badge variant={handoverStatusVariant(handover.status)}>
+          <Badge variant="outline" className={styles.badge}>
             {HANDOVER_STATUS_LABELS[handover.status]}
           </Badge>
         </div>
@@ -97,11 +113,12 @@ export function HandoverCard({
         <NoteView
           note={handover.note}
           checklist={handover.checklist}
-          comments={[]}
+          comments={handover.comments}
           canCheck={canMarkDone && !cancelled && !pending}
-          canComment={false}
+          canComment={!cancelled}
+          compact
           onCheck={onCheck}
-          onComment={() => undefined}
+          onComment={onComment}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -112,16 +129,28 @@ export function HandoverCard({
             ) : null}
           </span>
           <span className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="sm"
-              variant={done ? 'outline' : 'default'}
-              disabled={!canMarkDone || cancelled || pending}
-              onClick={() => onToggleDone(!done)}
-            >
-              {done ? 'Buka kembali' : 'Mark done'}
-            </Button>
-            {showEdit || showCancel ? (
+            {actions.markDone ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={!actions.markDoneEnabled || pending}
+                onClick={onMarkDone}
+              >
+                Mark done
+              </Button>
+            ) : null}
+            {actions.reopen ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={onReopen}
+              >
+                Buka kembali
+              </Button>
+            ) : null}
+            {actions.more ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" size="sm" variant="ghost" aria-label="More">
@@ -129,8 +158,10 @@ export function HandoverCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {showEdit ? <DropdownMenuItem onSelect={onEdit}>Ubah</DropdownMenuItem> : null}
-                  {showCancel ? (
+                  {actions.edit ? (
+                    <DropdownMenuItem onSelect={onEdit}>Ubah</DropdownMenuItem>
+                  ) : null}
+                  {actions.cancel ? (
                     <DropdownMenuItem variant="destructive" onSelect={() => setConfirmCancel(true)}>
                       Batalkan
                     </DropdownMenuItem>

@@ -29,11 +29,11 @@ export function deriveHandoverStatus(
   return 'new';
 }
 
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+const HANDOVER_WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 /** Tanggal `YYYYMMDD` menurut WIB (UTC+7), zona proyek (`appsscript.json`). */
 export function dateKeyOf(epochMs: number): string {
-  const date = new Date(epochMs + WIB_OFFSET_MS);
+  const date = new Date(epochMs + HANDOVER_WIB_OFFSET_MS);
   const year = String(date.getUTCFullYear()).padStart(4, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');

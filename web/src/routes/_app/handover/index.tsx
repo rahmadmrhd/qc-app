@@ -1,8 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { requireAnyPermission } from '@/modules/auth/permissions';
 import { HandoverBoardPage } from '@/modules/handover/components/handover-board-page';
+import {
+  handoverSearchSchema,
+  searchFromStatus,
+  statusFromSearch,
+} from '@/modules/handover/lib/search';
 
 export const Route = createFileRoute('/_app/handover/')({
+  validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [
       { module: 'handover', level: 'view' },
@@ -13,13 +19,27 @@ export const Route = createFileRoute('/_app/handover/')({
 
 function HandoversPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const status = statusFromSearch(search);
   return (
     <HandoverBoardPage
+      status={status}
+      onStatusChange={(next) =>
+        void navigate({ to: '/handover', search: searchFromStatus(next), replace: true })
+      }
       onOpen={(handoverId) =>
-        void navigate({ to: '/handover/$handoverId', params: { handoverId } })
+        void navigate({
+          to: '/handover/$handoverId',
+          params: { handoverId },
+          search: searchFromStatus(status),
+        })
       }
       onEdit={(handoverId) =>
-        void navigate({ to: '/handover/$handoverId/edit', params: { handoverId } })
+        void navigate({
+          to: '/handover/$handoverId/edit',
+          params: { handoverId },
+          search: searchFromStatus(status),
+        })
       }
       onCreate={() => void navigate({ to: '/handover/new' })}
     />

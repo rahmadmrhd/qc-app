@@ -167,3 +167,44 @@ test('hasil pecah tempelan WhatsApp ditambahkan sebagai kartu', async () => {
   expect(within(cards()[0] as HTMLElement).getByLabelText('Customer')).toHaveValue('Lintasmaya');
   expect(within(cards()[1] as HTMLElement).getByLabelText('Customer')).toHaveValue('Mitra Tower');
 });
+
+test('galat server menempel pada kartu yang benar setelah kartu lain dihapus (pemetaan per id)', async () => {
+  const onSubmit = vi.fn().mockRejectedValue(
+    new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+      tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
+    }),
+  );
+  renderForm(onSubmit);
+  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
+  await fillNote(0, 'satu');
+  await fillNote(1, 'dua');
+  await fillNote(2, 'tiga');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (3)' }));
+  const flagged = await within(cards()[2] as HTMLElement).findByRole('alert');
+  expect(flagged).toHaveTextContent('Customer dinonaktifkan');
+  // hapus kartu pertama: pesan tetap menempel pada kartu "tiga" (kini kartu ke-2), bukan bergeser
+  await userEvent.click(within(cards()[0] as HTMLElement).getByRole('button', { name: 'Hapus' }));
+  expect(cards()).toHaveLength(2);
+  expect(within(cards()[1] as HTMLElement).getByRole('alert')).toHaveTextContent(
+    'Customer dinonaktifkan',
+  );
+  expect(noteOf(cards()[1] as HTMLElement)).toHaveTextContent('tiga');
+  expect(within(cards()[0] as HTMLElement).queryByRole('alert')).not.toBeInTheDocument();
+}, 40_000);
+
+test('tempelan 30 task muat walau ada satu kartu kosong awal (slot dihitung benar)', async () => {
+  renderForm();
+  const text = Array.from(
+    { length: 30 },
+    (_, i) => `Cust ${i + 1} :\nBarang ${i + 1} = 1 unit`,
+  ).join('\n\n');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
+    target: { value: text },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
+  expect(screen.queryByText(/melebihi sisa slot/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (30)' }));
+  expect(cards()).toHaveLength(30);
+}, 40_000);

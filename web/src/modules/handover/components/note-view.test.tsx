@@ -187,3 +187,60 @@ test('seleksi yang runtuh saat tombol Balas ditekan tidak melepas tombol sebelum
   await userEvent.click(screen.getByRole('button', { name: 'Balas' }));
   expect(screen.getByRole('textbox', { name: 'Komentar' })).toBeInTheDocument();
 });
+
+test('gambar pada catatan tidak dirender (hanya teks alt)', () => {
+  const { container } = setup({ note: '![logo](qcfile:abc)\n\nteks', checklist: [] });
+  expect(container.querySelector('img')).toBeNull();
+  expect(screen.getByText('logo')).toBeInTheDocument();
+});
+
+test('Tambah komentar membuka composer tanpa kutipan dan mengirim quote kosong', async () => {
+  const { onComment } = setup();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  expect(screen.queryByRole('blockquote')).not.toBeInTheDocument();
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Umum');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  await waitFor(() => expect(onComment).toHaveBeenCalled());
+  expect(onComment).toHaveBeenCalledWith({ quote: '', before: '', after: '', body: 'Umum' });
+});
+
+test('tanpa canComment tidak ada tombol Tambah komentar; komentar umum tampil tanpa blockquote', () => {
+  setup({ canComment: false, comments: [comment({ quote: '', body: 'Umum' })] });
+  expect(screen.queryByRole('button', { name: 'Tambah komentar' })).not.toBeInTheDocument();
+  expect(screen.getByText('Umum')).toBeInTheDocument();
+  expect(document.querySelector('blockquote')).toBeNull();
+});
+
+test('sorotan kutipan memilih kemunculan yang benar dan melepas sorotan saat dilepas', () => {
+  const highlights = new Map<string, unknown>();
+  class FakeHighlight {
+    ranges: Range[];
+    constructor(...ranges: Range[]) {
+      this.ranges = ranges;
+    }
+  }
+  const g = globalThis as unknown as Record<string, unknown>;
+  const previous = { css: g.CSS, highlight: g.Highlight };
+  g.CSS = { highlights };
+  g.Highlight = FakeHighlight;
+  try {
+    const { unmount } = setup({
+      comments: [
+        comment({ quote: 'kirim sore', before: 'kirim sore. ', after: '.' }),
+        comment({ id: 'c2', quote: 'A = 1\nB = 2' }),
+      ],
+    });
+    const ranges = (highlights.get('qc-comment') as FakeHighlight).ranges;
+    expect(ranges[0]?.toString()).toBe('kirim sore');
+    // kutipan lintas butir: dari "A = 1" sampai "B = 2" (teks meta "oleh …" ikut di antara, bukan di ujung)
+    expect(ranges[1]?.toString().startsWith('A = 1')).toBe(true);
+    expect(ranges[1]?.toString().endsWith('B = 2')).toBe(true);
+    // kemunculan kedua: rentang dimulai setelah "kirim sore. " (offset 12)
+    expect(ranges[0]?.startOffset).toBe(12);
+    unmount();
+    expect(highlights.has('qc-comment')).toBe(false);
+  } finally {
+    g.CSS = previous.css;
+    g.Highlight = previous.highlight;
+  }
+});

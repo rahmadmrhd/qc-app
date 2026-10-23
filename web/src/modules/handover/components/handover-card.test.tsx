@@ -13,9 +13,11 @@ function setup(over: Partial<Parameters<typeof HandoverCard>[0]> = {}, handover 
   const handlers = {
     onOpen: vi.fn(),
     onCheck: vi.fn(),
-    onToggleDone: vi.fn(),
+    onMarkDone: vi.fn(),
+    onReopen: vi.fn(),
     onEdit: vi.fn(),
     onCancel: vi.fn(),
+    onComment: vi.fn().mockResolvedValue(undefined),
   };
   render(
     <HandoverCard
@@ -75,14 +77,63 @@ test('menampilkan nomor, customer, status, progres, dan jumlah komentar', () => 
   expect(screen.getByText(/qc@qc\.local/)).toBeInTheDocument();
 });
 
-test('Mark done memanggil setDone(true); pada kartu Selesai memanggil setDone(false)', async () => {
+test('Mark done hanya pada Baru dan Dikerjakan; memanggil onMarkDone', async () => {
   const first = setup();
   await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
-  expect(first.onToggleDone).toHaveBeenCalledWith(true);
+  expect(first.onMarkDone).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
   document.body.innerHTML = '';
-  const second = setup({}, makeHandover({ status: 'done' }));
+  setup({}, makeHandover({ status: 'in_progress' }));
+  expect(screen.getByRole('button', { name: 'Mark done' })).toBeEnabled();
+});
+
+test('Selesai: tanpa Mark done dan tanpa Buka kembali; More hanya Ubah', async () => {
+  setup({}, makeHandover({ status: 'done' }));
+  expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  expect(screen.getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Batalkan' })).not.toBeInTheDocument();
+});
+
+test('Dibatalkan: Buka kembali (handover:manage) menggantikan Mark done; More tidak ada', async () => {
+  const { onReopen } = setup({}, makeHandover({ status: 'cancelled' }));
+  expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
-  expect(second.onToggleDone).toHaveBeenCalledWith(false);
+  expect(onReopen).toHaveBeenCalledTimes(1);
+});
+
+test('Dibatalkan tanpa handover:manage tidak menampilkan Buka kembali', () => {
+  setup({ canCancel: false }, makeHandover({ status: 'cancelled' }));
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
+});
+
+test('kartu menampilkan komentar (dengan kutipan bila ada) dan komentar umum tanpa seleksi', async () => {
+  const comment = (id: string, quote: string, body: string) => ({
+    id,
+    quote,
+    before: '',
+    after: '',
+    body,
+    author: 'qc@qc.local',
+    at: '2026-10-15T03:00:00.000Z',
+    stale: false,
+  });
+  const { onComment } = setup(
+    {},
+    makeHandover({
+      comments: [comment('c1', 'A = 1', 'Cek ini'), comment('c2', '', 'Komentar umum')],
+    }),
+  );
+  const list = screen.getByRole('list', { name: 'Komentar' });
+  expect(within(list).getByText('Cek ini')).toBeInTheDocument();
+  expect(within(list).getByText('Komentar umum')).toBeInTheDocument();
+  expect(within(list).getAllByRole('blockquote', { hidden: true }).length).toBeLessThanOrEqual(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Baru');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  expect(onComment).toHaveBeenCalledWith({ quote: '', before: '', after: '', body: 'Baru' });
 });
 
 test('Mark done dan centang dinonaktifkan tanpa qc:edit', () => {
@@ -128,9 +179,7 @@ test('klik centang tidak membuka detail; klik badan membuka detail', async () =>
   expect(onOpen).toHaveBeenCalledTimes(1);
 });
 
-test('task Dibatalkan: tanpa More dan tanpa aksi, tetap tampil', () => {
+test('task Dibatalkan tetap tampil dengan labelnya', () => {
   setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.getByText('Dibatalkan')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Mark done' })).toBeDisabled();
 });

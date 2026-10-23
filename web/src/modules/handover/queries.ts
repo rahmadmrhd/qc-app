@@ -94,6 +94,8 @@ export const useSaveHandoverBatch = () =>
   useHandoverMutation((input: SaveHandoverBatchInput) => rpc('handovers.saveBatch', input));
 export const useCancelHandover = () =>
   useHandoverMutation((input: HandoverRefInput) => rpc('handovers.cancel', input));
+export const useReopenHandover = () =>
+  useHandoverMutation((input: HandoverRefInput) => rpc('handovers.reopen', input));
 export const useSetCheck = () =>
   useHandoverMutation((input: SetCheckInput) => rpc('handovers.setCheck', input));
 export const useSetDone = () =>

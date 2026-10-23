@@ -210,3 +210,23 @@ test('task serah terima: status memakai label Indonesia dan perubahan catatan te
   expect(within(row('status')).getByText('Dikerjakan')).toBeInTheDocument();
   expect(screen.getByText('Customer')).toBeInTheDocument();
 });
+
+test('task serah terima: butir tercentang, centang direset, kutipan, dan komentar berlabel; teks tanpa escape', () => {
+  render(
+    <AuditDiffView
+      before={{ checked: ['A = 1'] }}
+      after={{
+        checked: ['RB\\_5009\\_X = 1 unit', 'Kabel &amp; konektor'],
+        resets: ['RD = 8 → RD = 9'],
+        quote: 'kirim',
+        comment: 'Mohon cek',
+      }}
+    />,
+  );
+  expect(within(row('checked')).getByText('Butir tercentang')).toBeInTheDocument();
+  expect(within(row('checked')).getByText('RB_5009_X = 1 unit')).toBeInTheDocument();
+  expect(within(row('checked')).getByText('Kabel & konektor')).toBeInTheDocument();
+  expect(within(row('resets')).getByText('Centang direset')).toBeInTheDocument();
+  expect(within(row('quote')).getByText('Kutipan')).toBeInTheDocument();
+  expect(within(row('comment')).getByText('Komentar')).toBeInTheDocument();
+});
