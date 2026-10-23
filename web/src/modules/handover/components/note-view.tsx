@@ -146,6 +146,7 @@ export function NoteView({
   }, [canComment]);
 
   // Sorot kutipan komentar (CSS Custom Highlight API bila tersedia; tidak mengubah DOM React).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: DOM catatan berubah bersama `note`
   useEffect(() => {
     const registry = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS
       ?.highlights;

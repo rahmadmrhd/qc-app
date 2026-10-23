@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/lib/rpc/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
-import { can, canAt, requirePermission } from '@/modules/auth/permissions';
+import { canAt, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverForm } from '@/modules/handover/components/handover-form';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
@@ -88,13 +88,6 @@ function EditHandoverPage() {
           locationName={me.locations.find((location) => location.id === task.locationId)?.name}
           defaultValues={toHandoverFormDefaults(task)}
           options={options.data}
-          createItemLink={
-            can(me, 'item', 'edit') ? (
-              <Link to="/item/new" className="underline">
-                Tambah item baru
-              </Link>
-            ) : null
-          }
           submitError={submitError}
           fieldErrors={fieldErrors}
           onSubmit={handleSubmit}

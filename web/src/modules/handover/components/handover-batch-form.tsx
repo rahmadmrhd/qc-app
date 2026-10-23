@@ -1,0 +1,227 @@
+import { HANDOVER_LIMITS } from '@shared/handover';
+import type { HandoverOptionsDto } from '@shared/rpc';
+import { Copy, Plus, Trash2 } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { FieldError } from '@/components/field-error';
+import { FormHeader } from '@/components/form-header';
+import { Button } from '@/components/ui/button';
+import { describeError } from '@/lib/rpc/describe-error';
+import { RpcError } from '@/lib/rpc/rpc-error';
+import { LocationField } from '@/modules/location/location-field';
+import type { HandoverBatchFormOutput } from '../schemas';
+import { handoverBatchSchema } from '../schemas';
+import { CustomerCombobox } from './customer-combobox';
+import { NoteEditor } from './note-editor';
+import type { PastedTask } from './whatsapp-paste-panel';
+import { WhatsappPastePanel } from './whatsapp-paste-panel';
+
+interface Card {
+  key: number;
+  customerName: string;
+  note: string;
+}
+
+export interface HandoverBatchFormProps {
+  options: HandoverOptionsDto;
+  defaultLocationId?: string;
+  /** Simpan atomik: bila menolak, draf semua kartu tetap utuh dan kartu bermasalah ditandai. */
+  onSubmit: (values: HandoverBatchFormOutput) => Promise<unknown>;
+  onCancel: () => void;
+}
+
+/** Galat server "Task N: pesan" → indeks kartu (0-based) dan pesan. */
+function parseTaskError(error: unknown): { index: number; message: string } | null {
+  if (!(error instanceof RpcError)) return null;
+  const match = /^Task (\d+):\s*(.*)$/.exec(error.fields?.tasks ?? '');
+  if (!match) return null;
+  return { index: Number(match[1]) - 1, message: match[2] || error.message };
+}
+
+export function HandoverBatchForm({
+  options,
+  defaultLocationId = '',
+  onSubmit,
+  onCancel,
+}: HandoverBatchFormProps) {
+  const nextKey = useRef(1);
+  const newCard = (init: Partial<Card> = {}): Card => ({
+    key: nextKey.current++,
+    customerName: '',
+    note: '',
+    ...init,
+  });
+  const [locationId, setLocationId] = useState(defaultLocationId);
+  const [cards, setCards] = useState<Card[]>(() => [newCard()]);
+  const [cardErrors, setCardErrors] = useState<Record<number, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const baseId = useId();
+  const full = cards.length >= HANDOVER_LIMITS.batch;
+
+  function patch(key: number, change: Partial<Card>) {
+    setCards((current) =>
+      current.map((card) => (card.key === key ? { ...card, ...change } : card)),
+    );
+  }
+
+  function addPasted(tasks: PastedTask[]) {
+    setCards((current) => {
+      const pristine =
+        current.length === 1 && current[0]?.note === '' && current[0].customerName === '';
+      const base = pristine ? [] : current;
+      return [...base, ...tasks.map((task) => newCard(task))];
+    });
+  }
+
+  async function submit() {
+    setFormError(null);
+    setLocationError(null);
+    setCardErrors({});
+    const parsed = handoverBatchSchema.safeParse({
+      locationId,
+      tasks: cards.map(({ customerName, note }) => ({ customerName, note })),
+    });
+    if (!parsed.success) {
+      const errors: Record<number, string> = {};
+      for (const issue of parsed.error.issues) {
+        const [head, index] = issue.path;
+        if (head === 'locationId') setLocationError(issue.message);
+        else if (head === 'tasks' && typeof index === 'number') errors[index] ??= issue.message;
+        else setFormError(issue.message);
+      }
+      setCardErrors(errors);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit(parsed.data);
+    } catch (error) {
+      const task = parseTaskError(error);
+      if (task) setCardErrors({ [task.index]: task.message });
+      else setFormError(describeError(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      noValidate
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <FormHeader
+        title="Tambah banyak task"
+        onCancel={onCancel}
+        submitting={submitting}
+        submitLabel={`Simpan semua (${cards.length})`}
+        busyText="Menyimpan semua task…"
+      />
+      <section className="space-y-1.5 rounded-lg border p-4">
+        <LocationField
+          id={`${baseId}-location`}
+          module="handover"
+          level="edit"
+          value={locationId}
+          onChange={setLocationId}
+        />
+        <FieldError errors={[locationError ?? undefined]} />
+      </section>
+
+      <WhatsappPastePanel remaining={HANDOVER_LIMITS.batch - cards.length} onAdd={addPasted} />
+
+      <div className="space-y-3">
+        {cards.map((card, index) => {
+          const error = cardErrors[index];
+          return (
+            <fieldset
+              key={card.key}
+              aria-label={`Task ${index + 1}`}
+              className={`space-y-3 rounded-lg border p-4 ${error ? 'border-destructive' : ''}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-base font-semibold">{`Task ${index + 1}`}</h2>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={full}
+                    onClick={() =>
+                      setCards((current) => {
+                        const at = current.findIndex((entry) => entry.key === card.key);
+                        const copy = newCard({ note: card.note });
+                        return [...current.slice(0, at + 1), copy, ...current.slice(at + 1)];
+                      })
+                    }
+                  >
+                    <Copy aria-hidden="true" />
+                    Gandakan
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={cards.length === 1}
+                    onClick={() => setCards((current) => current.filter((c) => c.key !== card.key))}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+              <CustomerCombobox
+                id={`${baseId}-customer-${card.key}`}
+                value={card.customerName}
+                onChange={(customerName) => patch(card.key, { customerName })}
+                customers={options.customers}
+                inactiveNames={options.inactiveCustomerNames}
+              />
+              <div className="space-y-1.5">
+                <span id={`${baseId}-note-${card.key}`} className="text-sm font-medium">
+                  {`Catatan task ${index + 1}`}
+                </span>
+                <NoteEditor
+                  id={`${baseId}-note-field-${card.key}`}
+                  labelledBy={`${baseId}-note-${card.key}`}
+                  value={card.note}
+                  onChange={(note) => patch(card.key, { note })}
+                />
+              </div>
+              {error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              ) : null}
+            </fieldset>
+          );
+        })}
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        disabled={full}
+        onClick={() => setCards((current) => [...current, newCard()])}
+      >
+        <Plus aria-hidden="true" />
+        Tambah task
+      </Button>
+      {full ? (
+        <p className="text-xs text-muted-foreground">
+          Maksimal {HANDOVER_LIMITS.batch} task per batch.
+        </p>
+      ) : null}
+
+      {formError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {formError}
+        </p>
+      ) : null}
+    </form>
+  );
+}
