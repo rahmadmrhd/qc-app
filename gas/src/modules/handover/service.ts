@@ -148,8 +148,6 @@ export function handoverOptions_(): HandoverOptionsDto {
   };
 }
 
-/** Batas JSON per sel audit (before/after), sama dengan konvensi sel proyek. */
-const AUDIT_MAX_JSON = HANDOVER_LIMITS.stateJson;
 /** Panjang catatan di snapshot audit save yang terlalu besar, berurutan dari yang longgar. */
 const AUDIT_NOTE_STEPS = [2000, 400, 0] as const;
 const AUDIT_TRUNCATED = ' (dipotong)';
@@ -198,8 +196,8 @@ export function fitAuditSnapshots_(
   for (const limit of limits) {
     const pair = build(limit);
     if (
-      JSON.stringify(pair.after).length <= AUDIT_MAX_JSON &&
-      (pair.before === null || JSON.stringify(pair.before).length <= AUDIT_MAX_JSON)
+      JSON.stringify(pair.after).length <= HANDOVER_LIMITS.stateJson &&
+      (pair.before === null || JSON.stringify(pair.before).length <= HANDOVER_LIMITS.stateJson)
     ) {
       return pair;
     }
