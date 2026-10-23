@@ -168,18 +168,19 @@ test('More hanya dengan Ubah bila tidak boleh membatalkan', async () => {
   expect(onEdit).toHaveBeenCalled();
 });
 
-test('klik centang tidak membuka detail; klik badan membuka detail', async () => {
+test('detail hanya dibuka lewat nomor task; badan kartu, centang, dan tombol tidak membukanya', async () => {
   const { onOpen, onCheck } = setup();
   await userEvent.click(screen.getByRole('checkbox', { name: /A = 1/ }));
   expect(onCheck).toHaveBeenCalledWith({ index: 0, text: 'A = 1' }, true);
-  expect(onOpen).not.toHaveBeenCalled();
   await userEvent.click(screen.getByText('PT Maju'));
-  expect(onOpen).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+  expect(onOpen).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'ST-20261015-001' }));
   expect(onOpen).toHaveBeenCalledTimes(1);
 });
 
 test('task Dibatalkan tetap tampil dengan labelnya', () => {
   setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.getByText('Dibatalkan')).toBeInTheDocument();
+  expect(screen.getByText('Dibatalkan').className).toContain('text-red-800');
 });

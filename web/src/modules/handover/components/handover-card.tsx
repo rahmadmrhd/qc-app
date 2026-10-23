@@ -40,12 +40,9 @@ export interface HandoverCardProps {
   }) => Promise<void> | void;
 }
 
-const INTERACTIVE =
-  'a,button,input,label,textarea,select,form,[aria-label="Komentar"],[role="menu"],[role="menuitem"],[role="dialog"]';
-
 /**
- * Kartu task: SELURUH catatan tampil (tanpa dipotong) dengan centang langsung. Klik badan kartu membuka detail;
- * klik pada centang, tautan, atau tombol tidak ikut membuka detail.
+ * Kartu task: SELURUH catatan tampil (tanpa dipotong) dengan centang langsung. Detail hanya dibuka lewat nomor task atau
+ * opsi Ubah (badan kartu tidak bisa diklik, agar tidak salah klik saat mencentang atau memilih teks).
  */
 export function HandoverCard({
   handover,
@@ -73,19 +70,12 @@ export function HandoverCard({
 
   return (
     <>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: jalur keyboard ke detail adalah tombol nomor task */}
       <article
         aria-label={`Task ${handover.number}`}
         className={cn(
-          'cursor-pointer space-y-3 rounded-lg border border-l-4 bg-card p-3 text-card-foreground shadow-xs',
+          'space-y-3 rounded-lg border border-l-4 bg-card p-3 text-card-foreground shadow-xs',
           styles.accent,
         )}
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest(INTERACTIVE)) return;
-          // Menyeleksi teks catatan (untuk Balas) tidak boleh membuka detail.
-          if ((window.getSelection()?.toString() ?? '') !== '') return;
-          onOpen();
-        }}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 space-y-0.5">

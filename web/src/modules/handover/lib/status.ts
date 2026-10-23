@@ -8,7 +8,7 @@ export const HANDOVER_STATUS_LABELS: Record<HandoverStatus, string> = {
 };
 
 /**
- * Warna status: Selesai hijau, Dikerjakan biru, Baru netral, Dibatalkan muted (terang dan gelap).
+ * Warna status: Selesai hijau, Dikerjakan biru, Baru netral, Dibatalkan merah (terang dan gelap).
  * Status tidak hanya dibedakan lewat warna: label teks selalu tampil.
  *  - `badge`: label status; `accent`: garis aksen kartu/kolom; `column`: latar kolom kanban.
  */
@@ -33,8 +33,8 @@ export const HANDOVER_STATUS_STYLES: Record<
     column: 'border-t-green-500 bg-green-500/5',
   },
   cancelled: {
-    badge: 'border-transparent bg-muted text-muted-foreground',
-    accent: 'border-l-muted-foreground/40',
-    column: 'border-t-muted-foreground/40 bg-muted/20',
+    badge: 'border-transparent bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200',
+    accent: 'border-l-red-500',
+    column: 'border-t-red-500 bg-red-500/5',
   },
 };
