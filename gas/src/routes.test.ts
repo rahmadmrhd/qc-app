@@ -28,6 +28,7 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'handovers.comment',
     'handovers.get',
     'handovers.options',
+    'handovers.reopen',
     'handovers.save',
     'handovers.saveBatch',
     'handovers.setCheck',
@@ -113,11 +114,13 @@ test('semua method terdaftar dengan level akses yang benar', () => {
       scope: 'location',
     });
   }
-  expect(routes['handovers.cancel'].permission).toEqual({
-    module: 'handover',
-    level: 'manage',
-    scope: 'location',
-  });
+  for (const method of ['handovers.cancel', 'handovers.reopen'] as const) {
+    expect(routes[method].permission).toEqual({
+      module: 'handover',
+      level: 'manage',
+      scope: 'location',
+    });
+  }
   for (const method of ['handovers.setCheck', 'handovers.setDone'] as const) {
     expect(routes[method].permission).toEqual({ module: 'qc', level: 'edit', scope: 'location' });
   }

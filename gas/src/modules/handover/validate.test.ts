@@ -66,10 +66,15 @@ describe('validasi serah terima berbasis catatan', () => {
     ).toBeDefined();
   });
 
-  test('setDone: done wajib boolean', () => {
-    expect(validateSetDone_({ id: 'h1', locationId: 'l', done: false }).done).toBe(false);
+  test('setDone: tanpa field done; done apa pun ditolak', () => {
+    expect(validateSetDone_({ id: 'h1', locationId: 'l' })).toEqual({ id: 'h1', locationId: 'l' });
     expect(
-      captureAppError(() => validateSetDone_({ id: 'h1', locationId: 'l' })).fields?.done,
+      captureAppError(() => validateSetDone_({ id: 'h1', locationId: 'l', done: false })).fields
+        ?.done,
+    ).toBeDefined();
+    expect(
+      captureAppError(() => validateSetDone_({ id: 'h1', locationId: 'l', done: true })).fields
+        ?.done,
     ).toBeDefined();
   });
 
@@ -92,11 +97,14 @@ describe('validasi serah terima berbasis catatan', () => {
     expect(validateAddComment_({ ...input, body: 'a'.repeat(1000) }).body).toHaveLength(1000);
   });
 
-  test('komentar: kutipan tidak boleh kosong atau > 500, konteks <= 40', () => {
+  test('komentar: kutipan boleh kosong (komentar umum), maks 500, konteks <= 40', () => {
     const input = { id: 'h1', locationId: 'l', quote: 'q', before: '', after: '', body: 'Ok' };
-    expect(
-      captureAppError(() => validateAddComment_({ ...input, quote: '' })).fields?.quote,
-    ).toBeDefined();
+    expect(validateAddComment_({ ...input, quote: '' }).quote).toBe('');
+    expect(validateAddComment_({ id: 'h1', locationId: 'l', body: 'Ok' })).toMatchObject({
+      quote: '',
+      before: '',
+      after: '',
+    });
     expect(
       captureAppError(() => validateAddComment_({ ...input, quote: 'q'.repeat(501) })).fields
         ?.quote,
@@ -108,5 +116,59 @@ describe('validasi serah terima berbasis catatan', () => {
     expect(
       captureAppError(() => validateAddComment_({ ...input, after: 'b'.repeat(41) })).fields?.after,
     ).toBeDefined();
+  });
+
+  test('catatan kosong atau hanya spasi ditolak di simpan dan batch', () => {
+    expect(
+      captureAppError(() => validateSaveHandover_({ ...base, note: '   ' })).fields?.note,
+    ).toBeDefined();
+    expect(
+      captureAppError(() => validateSaveHandover_({ ...base, note: undefined })).fields?.note,
+    ).toBeDefined();
+    const error = captureAppError(() =>
+      validateSaveHandoverBatch_({ locationId: 'l', tasks: [{ customerName: 'A', note: '  ' }] }),
+    );
+    expect(error.fields?.tasks).toContain('Task 1');
+  });
+
+  test('maks. 300 butir checklist per catatan (save dan batch)', () => {
+    const items = (n: number) => Array.from({ length: n }, (_, i) => `- [ ] B${i} = 1`).join('\n');
+    expect(validateSaveHandover_({ ...base, note: items(300) }).note).toContain('B299');
+    const error = captureAppError(() => validateSaveHandover_({ ...base, note: items(301) }));
+    expect(error.fields?.note).toContain('300');
+    const batch = captureAppError(() =>
+      validateSaveHandoverBatch_({
+        locationId: 'l',
+        tasks: [{ customerName: 'A', note: items(301) }],
+      }),
+    );
+    expect(batch.fields?.tasks).toContain('300');
+  });
+
+  test('karakter kontrol ditolak (kecuali tab/baris baru) pada note, customer, dan komentar', () => {
+    const ctrl = String.fromCharCode(1);
+    expect(validateSaveHandover_({ ...base, note: 'a\tb\r\nc' }).note).toContain('a');
+    expect(
+      captureAppError(() => validateSaveHandover_({ ...base, note: `- [ ] a${ctrl}` })).fields
+        ?.note,
+    ).toBeDefined();
+    expect(
+      captureAppError(() => validateSaveHandover_({ ...base, customerName: `PT${ctrl}` })).fields
+        ?.customerName,
+    ).toBeDefined();
+    expect(
+      captureAppError(() =>
+        validateSaveHandoverBatch_({
+          locationId: 'l',
+          tasks: [{ customerName: 'A', note: `x${ctrl}` }],
+        }),
+      ).fields?.tasks,
+    ).toBeDefined();
+    const input = { id: 'h1', locationId: 'l', quote: 'q', before: '', after: '', body: 'Ok' };
+    for (const key of ['quote', 'before', 'after', 'body'] as const) {
+      expect(
+        captureAppError(() => validateAddComment_({ ...input, [key]: `x${ctrl}` })).fields?.[key],
+      ).toBeDefined();
+    }
   });
 });

@@ -5,6 +5,7 @@ import {
   getHandoverDto_,
   handoverBoard_,
   handoverOptions_,
+  reopenHandover_,
   saveHandover_,
   saveHandoverBatch_,
   setCheck_,
@@ -28,6 +29,7 @@ type HandoverMethod =
   | 'handovers.save'
   | 'handovers.saveBatch'
   | 'handovers.cancel'
+  | 'handovers.reopen'
   | 'handovers.setCheck'
   | 'handovers.setDone'
   | 'handovers.comment';
@@ -71,6 +73,11 @@ export function handoverRoutes_(): Pick<RouteTable, HandoverMethod> {
       permission: { module: 'handover', level: 'manage', scope: 'location' },
       validate: validateHandoverRef_,
       handler: (input, ctx) => cancelHandover_(input, ctx.user),
+    },
+    'handovers.reopen': {
+      permission: { module: 'handover', level: 'manage', scope: 'location' },
+      validate: validateHandoverRef_,
+      handler: (input, ctx) => reopenHandover_(input, ctx.user),
     },
     'handovers.setCheck': {
       permission: { module: 'qc', level: 'edit', scope: 'location' },
