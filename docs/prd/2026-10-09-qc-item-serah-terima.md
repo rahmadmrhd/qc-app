@@ -11,6 +11,8 @@
 
 ## 1. Ringkasan
 
+> **Pembaruan 2026-10-23:** Serah terima kini berbasis **catatan**, bukan item katalog. Task tidak lagi memuat baris `item × qty`; daftar item dan jumlah ditempel dari WhatsApp ke editor catatan, diubah menjadi checklist, dicentang QC, dan dapat dikomentari. Ketentuan serah terima di bagian 4.5, 4.6, dan 4.7 di bawah mengikuti dokumen desain [`2026-10-23-serah-terima-catatan-wysiwyg-design.md`](../superpowers/specs/2026-10-23-serah-terima-catatan-wysiwyg-design.md), yang menggantikan ketentuan item/qty di sini. Bagian Data Item, merk, customer, dan sinkronisasi tidak berubah.
+
 Dua modul bisnis pertama QC App, ditambah jalur sinkronisasi ke QC Desktop:
 
 1. **Data Item**: katalog tipe barang yang **dipakai bersama semua lokasi**: merk, tipe, status *country lock*, daftar stiker yang harus ditempel, kelengkapan aksesoris, galeri gambar lampiran, dan detail/spesifikasi dalam **editor Markdown dengan sisip gambar**.
@@ -97,31 +99,31 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 ### 4.5 Serah Terima (Fase C)
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FH1 | Task milik **satu lokasi**; dibuat pada lokasi yang dipilih di form (lihat `LocationField`). | Butuh `handover: edit` di lokasi tujuan. |
-| FH2 | Isi task: **customer** (FC2; **opsional** — kosong = task tanpa customer), **catatan** opsional (maks. 500), dan **baris** `item × qty` (qty bilangan bulat 1–100.000; tiap item sekali per task; minimal satu baris). | Tipe dipilih dari saran (FH3); mengetik tipe di luar katalog tidak dapat disimpan. |
-| FH3 | Auto-suggest tipe. | Cocok ke merk, tipe, dan alias; tidak peka huruf besar; abaikan spasi/tanda baca; toleran typo ringan; urutan kata bebas ("galaxy samsung" menemukan "Samsung Galaxy"). Item nonaktif tidak disarankan. Bila tidak ketemu dan user punya `item: edit`, tersedia tautan "Tambah item baru". |
-| FH4 | **Nomor task otomatis** `ST-YYYYMMDD-NNN` (urut per hari). | Dibuat di server dalam lock; tidak pernah ganda. |
-| FH5 | Status task: **Baru** (belum ada progres), **Dikerjakan**, **Selesai** (semua baris penuh), **Dibatalkan**. | Baru/Dikerjakan/Selesai diturunkan dari baris; Dibatalkan disimpan. |
-| FH6 | Daftar task: kolom nomor, customer, lokasi, ringkasan progres (mis. 12/20 unit), status, waktu. Filter status dan pencarian lewat URL; mengikuti **lokasi aktif** header; kolom Lokasi bila lebih dari satu lokasi terpilih. | Butuh `handover: view` atau `qc: edit` di lokasi tersebut. |
-| FH7 | Ubah isi task (WH). | Butuh `handover: edit`. Task Selesai tetap dapat diubah (status Selesai hanya turunan dari qty selesai vs target, jadi menaikkan qty membuka lagi); hanya task Dibatalkan yang terkunci. Qty target tidak boleh di bawah qty selesai; baris yang sudah ada progres tidak dapat dihapus. |
-| FH8 | Batalkan task (WH). | Butuh `handover: manage`. Task Dibatalkan hanya baca; progres yang sudah tercatat tetap tersimpan di audit. |
-| FH9 | Snapshot nama. | Baris menyimpan salinan "merk tipe" saat dibuat sehingga riwayat tetap terbaca bila item diganti nama. |
+| FH1 | Task milik **satu lokasi**. Satu batch selalu satu lokasi (dipilih sekali di atas); tiap task dibuat pada lokasi itu lewat `LocationField`. | Butuh `handover: edit` di lokasi tujuan. Desain 2026-10-23 §3 (butir 7). |
+| FH2 | Isi task: **customer** (FC2; **opsional**, kosong = task tanpa customer) dan **catatan** Markdown (editor WYSIWYG, maks. **5.000** karakter). Task **tidak lagi memuat item katalog maupun qty**; item dan jumlah ditulis sebagai teks di catatan. | Editor catatan dan batas: Desain 2026-10-23 §4.1. |
+| FH3 | **Tempel dari WhatsApp**: tempelan diubah otomatis menjadi checklist (baris `<teks> = <angka><satuan>` menjadi butir; baris lain menjadi paragraf). Pada jalur bulk, tempelan besar dipecah menjadi beberapa task dan hasilnya dicek sebelum disimpan. Menggantikan saran tipe item yang lama. | Saran customer (FC3) tetap berlaku. Desain 2026-10-23 §4.2–4.3. |
+| FH4 | **Nomor task otomatis** `ST-YYYYMMDD-NNN` (urut per hari). | Dibuat di server dalam lock; tidak pernah ganda. Dalam satu batch tiap task mendapat nomor sendiri. |
+| FH5 | Status task: **Baru** (belum ada butir tercentang), **Dikerjakan** (sebagian butir tercentang), **Selesai** (semua butir tercentang, atau ditandai selesai bila task tanpa butir), **Dibatalkan** (disimpan). | Baru/Dikerjakan/Selesai diturunkan dari centang; Dibatalkan disimpan. Desain 2026-10-23 §4.4. |
+| FH6 | Daftar task: **desktop** berbentuk kanban empat kolom (Baru, Dikerjakan, Selesai, Dibatalkan); **ponsel** (< 768 px) berbentuk daftar kartu dengan filter status. Kartu menampilkan nomor, customer, label status, **seluruh** catatan, butir checklist yang dapat dicentang, progres centang (mis. 1/2), dan jumlah komentar. Tidak ada task yang disembunyikan. Mengikuti **lokasi aktif** header. | Butuh `handover: view` atau `qc: edit` di lokasi tersebut. Desain 2026-10-23 §4.6. |
+| FH7 | Ubah isi task (WH) dengan pemeriksaan versi (`expectedUpdatedAt`). Mengubah teks butir yang sudah dicentang **mereset** centang butir itu (tercatat di audit); menghapus atau mengonversi butir yang sudah dicentang **ditolak**. | Butuh `handover: edit`. Task Dibatalkan terkunci. Desain 2026-10-23 §4.4. |
+| FH8 | Batalkan task (WH), dengan konfirmasi. | Butuh `handover: manage`. Task Dibatalkan hanya baca; centang dan komentar tidak lagi diterima; jejak audit tetap tersimpan. |
+| FH9 | Snapshot nama item (**dihapus**). Serah terima tidak lagi merujuk item, sehingga tidak ada baris dan tidak ada snapshot "merk tipe"; catatan disimpan sebagai teks apa adanya. | Tidak berlaku lagi. Desain 2026-10-23 §5. |
 
 ### 4.6 Pengerjaan QC
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FQ1 | QC memperbarui **qty selesai** per baris. | Butuh `qc: edit` di lokasi task. Bilangan bulat ≥ 0 (maks. 100.000). Melebihi target diizinkan: form QC menampilkan peringatan, bukan galat; selesai per tipe/per task tidak menurunkan nilai yang sudah melebihi target. Qty target WH tidak boleh diturunkan di bawah qty selesai. |
-| FQ2 | **Tandai selesai per tipe**: mengisi qty selesai = target pada baris itu. | Satu klik; dapat diurungkan dengan mengubah qty. |
-| FQ3 | **Tandai selesai per task**: semua baris diisi penuh. | Satu klik dengan konfirmasi; mencatat siapa dan kapan. |
-| FQ4 | Setiap perubahan progres mencatat pelaku dan waktu per baris. | Tampil di detail task. |
-| FQ5 | Halaman detail task menautkan tiap tipe ke halaman detail item (FI5). | QC membuka stiker dan kelengkapan acuan tanpa meninggalkan task. |
-| FQ6 | Task Dibatalkan tidak dapat diubah QC. QC hanya mengisi/mengoreksi qty selesai, selesai per tipe, dan selesai per task; pada task Selesai koreksi qty tetap diizinkan (membuka lagi) agar FQ2 dapat diurungkan. | `CONFLICT` dengan pesan jelas untuk Dibatalkan; selesai per task pada task Selesai → `CONFLICT`. |
+| FQ1 | QC **mencentang tiap butir checklist** pada catatan (atau membatalkan centangnya). Centang bersifat set per butir ("dicentang/tidak"), bukan toggle buta, sehingga dua QC tidak saling membatalkan. Dapat dilakukan dari kartu maupun halaman detail. | Butuh `qc: edit` di lokasi task. Desain 2026-10-23 §4.4. |
+| FQ2 | **Selesaikan task** (tombol *Mark done*): mencentang seluruh butir yang belum dicentang; untuk task tanpa butir, menandainya selesai. Pada task yang sudah selesai tombol ini membuka kembali task. | Satu klik; mencatat siapa dan kapan; dapat dibuka lagi. Task tanpa butir juga dapat diselesaikan dan dibuka lagi. Desain 2026-10-23 §4.4, §4.6. |
+| FQ3 | **Komentar** pada teks catatan: pilih teks, lalu tombol **"Balas"** mengambang (desktop dan ponsel) membuka kotak komentar. Komentar menyimpan kutipan, jangkar posisi, isi, pelaku, dan waktu. | Boleh oleh siapa pun yang punya akses lihat ke lokasi (WH, QC, pemantau). Hanya tambah: tidak ada ubah, hapus, atau balasan bersarang. Isi maks. 1.000 karakter; maks. 50 komentar per task. Desain 2026-10-23 §4.5. |
+| FQ4 | Setiap perubahan centang dan penyelesaian mencatat pelaku dan waktu; tampil di kartu (pelaku/waktu centang terakhir) dan di halaman detail. | Centang tanpa perubahan tidak menambah audit. Desain 2026-10-23 §4.6. |
+| FQ5 | Halaman detail task menampilkan catatan di editor WYSIWYG yang sama dengan form, beserta panel komentar dan riwayat. | Bagi QC butir dapat dicentang; bagi yang hanya melihat baca-saja. Tautan ke halaman item tidak lagi ada karena serah terima tidak merujuk item katalog. Desain 2026-10-23 §4.6. |
+| FQ6 | Task Dibatalkan tidak dapat diubah QC: centang, penyelesaian, dan komentar ditolak. Task yang sudah selesai dapat dibuka kembali oleh QC. | `CONFLICT` dengan pesan jelas untuk task Dibatalkan. Desain 2026-10-23 §4.4–4.5. |
 
 ### 4.7 Audit
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FAU1 | Aksi baru di `audit_log` dengan snapshot before/after: `item.create/update/activate/deactivate`, `customer.create/rename/activate/deactivate`, `handover.create/update/cancel`, `handover.progress` (per perubahan progres), `handover.complete`. | Tampil di Log Audit dengan label Indonesia. |
-| FAU2 | Diff audit yang mudah dibaca untuk item dan task. | Daftar (alias, stiker, kelengkapan, baris task) dibandingkan per entri dengan warna tambah/ubah/hapus; isi Markdown ditampilkan sebagai "diubah" tanpa diff teks penuh. |
+| FAU1 | Aksi di `audit_log` dengan snapshot before/after: `item.create/update/activate/deactivate`, `customer.create/rename/activate/deactivate`, `handover.create/update/cancel`, `handover.check/uncheck` (per butir), `handover.done/reopen` (selesaikan dan buka kembali), `handover.comment`. Aksi `handover.progress` dan `handover.complete` (model lama) dihapus. | Tampil di Log Audit dengan label Indonesia. Centang tanpa perubahan tidak menambah audit. |
+| FAU2 | Diff audit yang mudah dibaca untuk item dan task. | Daftar (alias, stiker, kelengkapan) dan butir checklist task dibandingkan per entri dengan warna tambah/ubah/hapus; isi Markdown (detail item dan catatan task) ditampilkan sebagai "diubah" tanpa diff teks penuh. |
 
 ### 4.8 Sinkronisasi dengan QC Desktop (Fase B2)
 Kontrak lengkap (amplop, payload, contoh, aturan konflik): `docs/api/desktop-sync.md`.

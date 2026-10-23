@@ -1,5 +1,7 @@
 # TASK-001 — Paket Implementasi Catatan, Checklist, dan Kartu
 
+> **DIGANTIKAN** oleh docs/superpowers/specs/2026-10-23-serah-terima-catatan-wysiwyg-design.md (dialog detail dan aturan "WH/pemantau tidak boleh berkomentar" tidak berlaku; kanban/kartu dipakai).
+
 **Goal:** Melaksanakan [PRD TASK-001](../../prd/2026-10-18-qc-serah-terima-catatan-checklist.md) tanpa mewajibkan item katalog pada task baru dan tanpa menghilangkan data task lama.
 
 **Architecture:** Mode legacy dan note eksplisit; dokumen JSON blok ber-ID, checklist, komentar beranchor dan revisi; RPC koleksi board; editor Markdown dengan pratinjau langsung; grid kartu serta dialog bersama. Semua rancangan D1–D8 pada PRD masih berupa usulan default.
