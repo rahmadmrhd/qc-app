@@ -1,4 +1,3 @@
-import { readObject } from '@worker/core/validate';
 import { base64ByteLength, isBase64Text } from '@shared/files';
 import type { QrStyle } from '@shared/qrcode';
 import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
@@ -12,6 +11,7 @@ import type {
   SaveQrPresetInput,
   UploadQrPdfInput,
 } from '@shared/rpc';
+import { readObject } from '@worker/core/validate';
 
 const QR_PDF_PREFIX = 'JVBERi0'; // "%PDF-" dalam base64
 const QR_PNG_PREFIX = 'iVBORw0KGgo';

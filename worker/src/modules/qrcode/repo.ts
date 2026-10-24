@@ -281,7 +281,9 @@ const DEFAULTS_COLUMNS =
   'id, title, subtitle, footer, layout, style, logo_file_ids, default_logo_id, updated_at, updated_by';
 
 export async function getQrDefaultsRecord(env: Env): Promise<QrDefaultsRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${DEFAULTS_COLUMNS} FROM qr_defaults WHERE id = 'default'`).first<Row>();
+  const row = await env.DB.prepare(
+    `SELECT ${DEFAULTS_COLUMNS} FROM qr_defaults WHERE id = 'default'`,
+  ).first<Row>();
   if (!row) return null;
   return {
     title: text(row.title),
@@ -296,9 +298,14 @@ export async function getQrDefaultsRecord(env: Env): Promise<QrDefaultsRecord | 
   };
 }
 
-export function insertQrDefaultsStmt(db: D1Database, record: QrDefaultsRecord): D1PreparedStatement {
+export function insertQrDefaultsStmt(
+  db: D1Database,
+  record: QrDefaultsRecord,
+): D1PreparedStatement {
   return db
-    .prepare(`INSERT INTO qr_defaults (${DEFAULTS_COLUMNS}) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .prepare(
+      `INSERT INTO qr_defaults (${DEFAULTS_COLUMNS}) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
     .bind(
       record.title,
       record.subtitle,
@@ -378,7 +385,15 @@ export function updateQrDocumentStmt(db: D1Database, doc: QrDocumentRecord): D1P
     .prepare(
       'UPDATE qr_documents SET drive_id = ?, name = ?, size = ?, shared = ?, updated_at = ?, updated_by = ? WHERE id = ?',
     )
-    .bind(doc.driveId, doc.name, doc.size, doc.shared ? '1' : '0', doc.updatedAt, doc.updatedBy, doc.id);
+    .bind(
+      doc.driveId,
+      doc.name,
+      doc.size,
+      doc.shared ? '1' : '0',
+      doc.updatedAt,
+      doc.updatedBy,
+      doc.id,
+    );
 }
 
 /**

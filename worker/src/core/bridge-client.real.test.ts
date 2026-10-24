@@ -209,6 +209,18 @@ describe('badan besar tanpa parse/decode', () => {
     expect(Math.max(0, ...spy.seen.parse)).toBeLessThan(1000);
   });
 
+  test('base64 melebihi batas jembatan ditolak dengan pesan jelas sebelum dikirim', async () => {
+    let calls = 0;
+    const stub = (async () => {
+      calls += 1;
+      return new Response('{}');
+    }) as unknown as typeof fetch;
+    const error = await failure(client(stub).createFile('F1', 'a', 'a/b', 'QUJD'.repeat(260_000)));
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).toContain('terlalu besar');
+    expect(calls).toBe(0);
+  });
+
   test('base64 mengandung kutip ditolak sebelum dikirim', async () => {
     const stub = (async () => new Response('{}')) as unknown as typeof fetch;
     expect((await failure(client(stub).createFile('F1', 'a', 'a/b', 'AB"CD'))).code).toBe(

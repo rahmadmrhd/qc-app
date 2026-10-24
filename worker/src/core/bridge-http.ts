@@ -34,6 +34,8 @@ const BASE64_MARK = ',"base64":"';
 const FILE_SUFFIX = '"}}';
 
 const CLOCK_REWIND_MS = 60_000;
+/** Batas base64 per panggilan: badan jembatan maks. 1.048.576 karakter termasuk amplop (docs/setup-bridge.md). */
+export const BRIDGE_BASE64_MAX_CHARS = 1_000_000;
 
 /** `ts` terakhir yang dipakai di isolate ini: menjamin tanda tangan unik walau jam sama. */
 let lastTs = 0;
@@ -189,6 +191,12 @@ export function createBridgeClient(
   const json = (value: unknown) => JSON.stringify(value);
   /** Payload dengan base64 besar: metadata di-stringify, base64 disambung sebagai string. */
   function withBase64(meta: Record<string, unknown>, base64: string): string {
+    if (base64.length > BRIDGE_BASE64_MAX_CHARS) {
+      throw appError(
+        'VALIDATION',
+        'Berkas terlalu besar untuk diteruskan ke Google Drive (maksimal sekitar 750 KB)',
+      );
+    }
     if (base64.includes('"') || base64.includes('\\')) {
       throw appError('VALIDATION', 'Isi berkas bukan base64 yang valid');
     }

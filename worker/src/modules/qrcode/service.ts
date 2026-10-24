@@ -5,13 +5,13 @@ import {
   clampQrStyle,
   DEFAULT_QR_STYLE,
   driveShareUrl,
+  labelFileName,
   parseDriveFileId,
   parseDriveResourceKey,
   QR_LIMITS,
   qrExportStatus,
   qrPdfFileName,
 } from '@shared/qrcode';
-import { labelFileName } from '@shared/qrcode';
 import type {
   CloneQrPdfInput,
   QrDefaultsDto,
@@ -324,9 +324,16 @@ export async function saveQrLogoLibrary(
     after: { logoFileIds: input.logoFileIds.join(',') },
   });
   const presetCleanup = (await listQrPresets(env))
-    .filter((preset) => preset.defaultLogoId !== '' && !input.logoFileIds.includes(preset.defaultLogoId))
+    .filter(
+      (preset) => preset.defaultLogoId !== '' && !input.logoFileIds.includes(preset.defaultLogoId),
+    )
     .map((preset) =>
-      updateQrPresetStmt(env.DB, { ...preset, defaultLogoId: '', updatedAt: now, updatedBy: actor.email }),
+      updateQrPresetStmt(env.DB, {
+        ...preset,
+        defaultLogoId: '',
+        updatedAt: now,
+        updatedBy: actor.email,
+      }),
     );
   if (existing) {
     await runGuardedBatch(
@@ -391,7 +398,9 @@ export async function saveQrDesign(
   // hanya dicatat agar pengguna tidak melihat "gagal" untuk simpan yang sebenarnya berhasil.
   if (pdfId !== '') {
     await afterQrCommit('berbagi PDF', () => ensureQrDocumentShared(env, pdfId));
-    await afterQrCommit('nama PDF', () => renameQrDocument(env, pdfId, input.title, input.subtitle));
+    await afterQrCommit('nama PDF', () =>
+      renameQrDocument(env, pdfId, input.title, input.subtitle),
+    );
   }
   await afterQrCommit('pencabutan berbagi', () => revokeUnusedQrDocuments(env, outcome.released));
   return outcome.dto;
