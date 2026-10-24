@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "account_id": "2256d27ce4dcdcb9ade777cc2650fd81",
+  "name": "qc-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    // Sementara; diubah Task 4.2 (build tanpa satu berkas).
+    "directory": "../web/dist-worker",
+    "not_found_handling": "single-page-application",
+    // Daftar pola (bukan true): aset dan navigasi rute klien dilayani tanpa Worker/CPU.
+    "run_worker_first": ["/api/*", "/auth/*", "/sync"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "qc-app-production",
+      "database_id": "cf7f9bb3-202d-4819-bc1f-c60581795933",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-production" }],
+    "consumers": [{ "queue": "qc-app-jobs-production" }]
+  },
+  "env": {
+    "staging": {
+      "name": "qc-app-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "qc-app-staging",
+          "database_id": "67c826c4-e20e-413b-b611-0653a480c130",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "queues": {
+        "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-staging" }],
+        "consumers": [{ "queue": "qc-app-jobs-staging" }]
+      }
+    }
+  }
+}

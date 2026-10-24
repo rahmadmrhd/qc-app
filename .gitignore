@@ -25,3 +25,7 @@ coverage/
 
 # cache generator TanStack Router
 web/.tanstack/
+
+# Worker
+worker/.wrangler/
+web/dist-worker/
