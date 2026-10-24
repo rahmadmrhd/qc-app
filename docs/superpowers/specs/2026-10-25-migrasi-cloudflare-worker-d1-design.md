@@ -52,7 +52,7 @@ Keberhasilan = respons API terasa instan (puluhan ms di luar jembatan Google), t
 | Queues: ukuran pesan | 128 KB; batch konsumen 100; percobaan ulang maks. 100 | Pesan hanya membawa `{ jobId, potongan }`, data diambil dari D1 |
 | Queues: CPU konsumen | halaman limit Queues menyebut default 30 dtk (dapat diatur); **belum jelas** apakah paket gratis tetap dibatasi 10 ms | Tetap dirancang ≤ 10 ms per pesan; **[verifikasi lewat spike]** |
 
-Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, perilaku fallback SPA (`not_found_handling = "single-page-application"`): apakah muatan halaman/rute klien dilayani tanpa memanggil Worker (dokumentasi tidak merinci), dan CPU konsumen Queues di paket gratis.
+Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, dan CPU konsumen Queues di paket gratis.
 
 ## 3. Tujuan, bukan-tujuan, anti-tujuan
 
@@ -187,6 +187,7 @@ Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor
 
 ## 11. Frontend
 
+- Router tetap **hash history** (`createHashHistory`, alamat `/#/handover`): server hanya pernah menerima `GET /`, jadi tidak ada fallback SPA, tidak ada permintaan Worker untuk berpindah/memuat rute, dan Static Assets cukup melayani `index.html` biasa. Jangan diganti browser history.
 - Transport: `createGasTransport` (`google.script.run` + batching) diganti `createHttpTransport` (`fetch` ke `/api/rpc`). Antarmuka `Transport` (`web/src/lib/rpc/transport.ts`) dipertahankan sehingga `client.ts` dan semua `queries.ts` tidak berubah.
 - Hapus bundel satu berkas: build memakai potongan biasa dengan lazy load (rute, editor Tiptap, pdf-lib/ekspor QR). Batas `MAX_INDEX_BYTES` diganti anggaran per potongan di `verify-dist`. Pekerjaan lazy load yang tertunda dari fitur serah terima selesai di sini.
 - Mock backend `bun run dev`: sekarang menjalankan router dan layanan GAS asli di memori peramban. Setelah async/D1, **[saya]** pengembangan lokal memakai `wrangler dev` (D1 lokal via Miniflare) dengan proxy dari Vite; mock di peramban dihapus. Tes unit/integrasi worker memakai adaptor D1 berbasis `bun:sqlite` agar cepat.
