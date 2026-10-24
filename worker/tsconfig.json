@@ -5,7 +5,9 @@
     "paths": {
       "@shared/*": ["../shared/*"],
       "@worker/*": ["./src/*"],
-      "@worker-test/*": ["./test-support/*"]
+      "@worker-test/*": ["./test-support/*"],
+      "@bridge/*": ["../bridge/src/*"],
+      "@bridge-test/*": ["../bridge/test-support/*"]
     }
   },
   "include": ["src", "test-support", "migrations", "../shared/*.ts"]

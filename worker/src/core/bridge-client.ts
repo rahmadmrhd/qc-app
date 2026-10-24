@@ -1,3 +1,4 @@
+import { createBridgeClient } from './bridge-http';
 import type { Env } from './env';
 import { appError, isAppError } from './errors';
 
@@ -54,10 +55,11 @@ export interface BridgeClient {
   sheetsDump(): Promise<SheetsDump>;
 }
 
-/** Klien jembatan untuk permintaan ini; implementasi nyata menyusul di Task 3.2. */
+export { createBridgeClient };
+
+/** Klien jembatan untuk permintaan ini: `env.BRIDGE` (tes) atau klien HTTP nyata (HMAC + fetch). */
 export function getBridge(env: Env): BridgeClient {
-  if (env.BRIDGE) return env.BRIDGE;
-  throw new Error('BridgeClient belum diimplementasikan (Task 3.2)');
+  return env.BRIDGE ?? createBridgeClient(env);
 }
 
 /**
