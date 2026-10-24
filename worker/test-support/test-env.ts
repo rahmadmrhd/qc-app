@@ -1,15 +1,12 @@
+import type { Env, JobMessage } from '@worker/core/env';
 import { applyMigrations } from '@worker/core/migrate';
-import type { BridgeClient, Env, JobMessage } from '@worker/env';
+import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { createSqliteD1 } from './sqlite-d1';
 
 export interface TestClock {
   now(): number;
   set(ms: number): void;
   advance(ms: number): void;
-}
-
-export interface FakeBridge extends BridgeClient {
-  calls: { action: string; payload: unknown }[];
 }
 
 export interface TestEnv extends Env {
@@ -32,13 +29,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     },
   };
   const queued: JobMessage[] = [];
-  const bridge: FakeBridge = {
-    calls: [],
-    async call(action, payload) {
-      bridge.calls.push({ action, payload });
-      return {};
-    },
-  };
   const jobs = {
     async send(message: JobMessage) {
       queued.push(message);
@@ -47,20 +37,28 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
       for (const m of messages) queued.push(m.body);
     },
   } as unknown as Queue<JobMessage>;
+  const assets = {
+    async fetch() {
+      return new Response('aset statis', { status: 200 });
+    },
+  } as unknown as Fetcher;
   const db = createSqliteD1();
   await applyMigrations(db);
   return {
     DB: db,
     JOBS: jobs,
+    ASSETS: assets,
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
     OAUTH_CLIENT_SECRET: 'test-client-secret',
     SYNC_API_TOKEN: 'test-sync-token',
     BRIDGE_URL: 'https://bridge.test/exec',
     BRIDGE_SECRET: 'test-bridge-secret',
+    ADMIN_EMAIL: 'admin@gmail.com',
+    APP_ORIGIN: 'https://qc.test',
     NOW: () => clock.now(),
     ...overrides,
-    BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? bridge,
+    BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,
     queued,
   };
