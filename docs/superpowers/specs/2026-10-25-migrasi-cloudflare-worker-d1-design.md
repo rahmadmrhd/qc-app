@@ -41,7 +41,7 @@ Keberhasilan = respons API terasa instan (puluhan ms di luar jembatan Google), t
 | Subrequest per invokasi | **50**; panggilan D1 ikut dihitung; `db.batch()` dihitung **satu** | Jembatan Apps Script, D1, dan Queues semua menghabiskan jatah 50; pakai `batch()` |
 | Ukuran badan permintaan | 100 MB (mengikuti plan akun) | Tidak mengikat unggahan gambar ≤ ±540 KB |
 | Memori per isolate | 128 MB | Cukup |
-| Static Assets | 20.000 berkas/versi, 25 MiB per berkas | Cukup untuk potongan JS/CSS |
+| Static Assets | 20.000 berkas/versi, 25 MiB per berkas; `_headers` 100 aturan; `_redirects` 2.100. **Permintaan aset statis "free and unlimited"** (halaman Billing and limitations) dan tidak memanggil Worker, jadi tidak memakan 100.000 permintaan/hari maupun CPU | Cukup untuk potongan JS/CSS. Jangan pakai `run_worker_first` untuk aset (pola `run_worker_first` selalu memanggil Worker dan di paket gratis ikut dibatasi 429 saat kuota habis). Hanya `/api/*`, `/auth/*`, `/sync` yang masuk ke Worker; aset dan potongan JS dilayani tanpa CPU |
 | D1: basis data | 10 per akun; **500 MB per DB**; 5 GB total | Cukup (staging + produksi + cadangan) |
 | D1: baris dibaca | **5 juta/hari**, dihitung dari baris yang **dipindai**, bukan yang dikembalikan | Indeks wajib (§7.1); kueri tanpa indeks memakan kuota |
 | D1: baris ditulis | **100.000/hari**; tiap indeks pada kolom tertulis menambah 1 baris tulis | Aman pada skala sekarang; jangan menambah indeks berlebihan |
@@ -52,7 +52,7 @@ Keberhasilan = respons API terasa instan (puluhan ms di luar jembatan Google), t
 | Queues: ukuran pesan | 128 KB; batch konsumen 100; percobaan ulang maks. 100 | Pesan hanya membawa `{ jobId, potongan }`, data diambil dari D1 |
 | Queues: CPU konsumen | halaman limit Queues menyebut default 30 dtk (dapat diatur); **belum jelas** apakah paket gratis tetap dibatasi 10 ms | Tetap dirancang ≤ 10 ms per pesan; **[verifikasi lewat spike]** |
 
-Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, apakah permintaan Static Assets dihitung ke 100.000/hari, dan CPU konsumen Queues di paket gratis.
+Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, perilaku fallback SPA (`not_found_handling = "single-page-application"`): apakah muatan halaman/rute klien dilayani tanpa memanggil Worker (dokumentasi tidak merinci), dan CPU konsumen Queues di paket gratis.
 
 ## 3. Tujuan, bukan-tujuan, anti-tujuan
 
