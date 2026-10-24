@@ -1,11 +1,13 @@
 # Setup Cloudflare (Task 0.1)
 
-Dibuat 2026-10-25 lewat `wrangler` (akun login pemilik). Nama proyek: **qc-app**.
+Dibuat 2026-10-25 lewat `wrangler`. Nama proyek: **qc-app**. Akun Cloudflare: **QC** (account id `2256d27ce4dcdcb9ade777cc2650fd81`). Login Wrangler pemilik punya lebih dari satu akun, jadi SEMUA perintah `wrangler` non-interaktif wajib menyebut akun: `CLOUDFLARE_ACCOUNT_ID=2256d27ce4dcdcb9ade777cc2650fd81` (atau `account_id` di `wrangler.jsonc`). Jangan memakai akun lain.
 
 | Sumber daya | Staging | Production |
 |---|---|---|
 | Worker | `qc-app-staging` | `qc-app` |
-| D1 | `qc-app-staging` (`8328db7f-69e6-43ef-b4a4-7da285bb5194`) | `qc-app-production` (`a45aa48a-12b6-4d25-b43e-17490a292d55`) |
+| D1 | `qc-app-staging` (`67c826c4-e20e-413b-b611-0653a480c130`) | `qc-app-production` (`cf7f9bb3-202d-4819-bc1f-c60581795933`) |
 | Queue | `qc-app-jobs-staging` | `qc-app-jobs-production` |
 
-Id database bukan rahasia. Rahasia (`SESSION_SECRET`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_SECRET`, `CLOUDFLARE_API_TOKEN`) tidak boleh masuk repo; diatur dengan `wrangler secret put` / secret environment GitHub.
+Id akun dan database bukan rahasia. Rahasia (`SESSION_SECRET`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_SECRET`, `CLOUDFLARE_API_TOKEN`) tidak boleh masuk repo; diatur dengan `wrangler secret put` / secret environment GitHub.
+
+Catatan: sumber daya sempat dibuat di akun yang salah dan sudah dihapus seluruhnya.
