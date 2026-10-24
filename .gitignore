@@ -3,6 +3,7 @@ node_modules/
 
 # build output (dihasilkan oleh build, di-push oleh clasp)
 gas/dist/
+bridge/dist/
 web/dist/
 
 # env & secrets
