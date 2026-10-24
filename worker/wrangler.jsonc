@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "account_id": "2256d27ce4dcdcb9ade777cc2650fd81",
-  "name": "qc-app",
+  "name": "app",
   "main": "src/index.ts",
   "compatibility_date": "2025-04-01",
   "assets": {
@@ -26,7 +26,7 @@
   },
   "env": {
     "staging": {
-      "name": "qc-app-staging",
+      "name": "app-staging",
       "d1_databases": [
         {
           "binding": "DB",
