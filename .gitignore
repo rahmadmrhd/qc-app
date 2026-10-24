@@ -33,3 +33,6 @@ worker/.wrangler/
 web/dist-worker/
 
 .wrangler/
+
+# Variabel pengembangan lokal worker
+worker/.dev.vars

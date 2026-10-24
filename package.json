@@ -21,7 +21,9 @@
     "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd worker test && bun run --cwd web test",
     "check": "bun run typecheck && bun run lint && bun run test",
     "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
-    "deploy": "bun run push && bun run scripts/deploy.ts"
+    "deploy": "bun run push && bun run scripts/deploy.ts",
+    "dev:worker": "bun run worker/scripts/dev.ts",
+    "db:seed": "bun run worker/scripts/seed-dev.ts"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",
