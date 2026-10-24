@@ -220,12 +220,6 @@ describe('handler', () => {
     expect(bad.status).toBe(200);
     expect(await bad.json()).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
   });
-
-  test('item sync belum tersedia: galat jelas, bukan NOT_FOUND', async () => {
-    const out = await call('sync.items.pull', null);
-    expect(out).toMatchObject({ ok: false, error: { code: 'INTERNAL' } });
-    expect(out.error.message).toContain('NOT_IMPLEMENTED');
-  });
 });
 
 describe('brands', () => {

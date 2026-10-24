@@ -1,16 +1,12 @@
 import { SYNC_API_VERSION, SYNC_RESOURCES } from '@shared/sync';
 import { nowIso } from '@worker/core/env';
-import { appError } from '@worker/core/errors';
 import { expectNull } from '@worker/core/validate';
 import { pullBrands, pushBrands } from './brands';
 import { getSyncFile, validateSyncFileGet } from './files';
 import type { SyncRouteTable } from './handler';
 import { syncRoute } from './handler';
+import { pullItems, pushItems } from './items';
 import { validateSyncPush } from './wire';
-
-function itemsNotReady(): never {
-  throw appError('INTERNAL', 'NOT_IMPLEMENTED: sync item menunggu modul item Worker');
-}
 
 /** Tabel rute sinkron (terpisah dari rute RPC web). */
 export function syncRoutes(): SyncRouteTable {
@@ -27,11 +23,13 @@ export function syncRoutes(): SyncRouteTable {
       validate: (raw) => validateSyncPush(raw, 'brands', false),
       handler: (envelope, ctx) => pushBrands(ctx.env, envelope),
     }),
-    // STUB SEMENTARA: item disinkronkan setelah modul item Worker digabung (butuh writeItem/itemSyncSignature).
-    'sync.items.pull': syncRoute({ validate: (raw) => raw, handler: itemsNotReady }),
+    'sync.items.pull': syncRoute({
+      validate: (raw) => raw,
+      handler: (raw, ctx) => pullItems(ctx.env, raw),
+    }),
     'sync.items.push': syncRoute({
       validate: (raw) => validateSyncPush(raw, 'items', true),
-      handler: itemsNotReady,
+      handler: (envelope, ctx) => pushItems(ctx.env, envelope),
     }),
     'sync.ping': syncRoute({
       validate: expectNull,
