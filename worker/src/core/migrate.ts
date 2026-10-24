@@ -8,6 +8,7 @@ import accessUnique from '../../migrations/0004_access_unique.sql' with { type: 
 import brandCustomerUnique from '../../migrations/0005_brand_customer_unique.sql' with {
   type: 'text',
 };
+import settings from '../../migrations/0006_settings.sql' with { type: 'text' };
 
 export interface Migration {
   name: string;
@@ -21,6 +22,7 @@ export const MIGRATIONS: Migration[] = [
   { name: '0003_handover_board_status.sql', sql: boardStatus },
   { name: '0004_access_unique.sql', sql: accessUnique },
   { name: '0005_brand_customer_unique.sql', sql: brandCustomerUnique },
+  { name: '0006_settings.sql', sql: settings },
 ];
 
 /** Pecah berkas SQL menjadi pernyataan (tanpa baris komentar `--`, dipisah `;` di akhir baris). */

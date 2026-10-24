@@ -1,4 +1,5 @@
 import type { Env } from './env';
+import { appError, isAppError } from './errors';
 
 export interface BridgeFile {
   mime: string;
@@ -57,4 +58,22 @@ export interface BridgeClient {
 export function getBridge(env: Env): BridgeClient {
   if (env.BRIDGE) return env.BRIDGE;
   throw new Error('BridgeClient belum diimplementasikan (Task 3.2)');
+}
+
+/**
+ * Menjalankan panggilan jembatan; kegagalan apa pun yang bukan galat aplikasi (jaringan, kuota Apps Script,
+ * tanda tangan ditolak) dicatat lalu dilaporkan ke pengguna sebagai `UNAVAILABLE` yang jelas.
+ */
+export async function viaBridge<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    console.error(`Jembatan Google gagal: ${detail}`);
+    throw appError(
+      'UNAVAILABLE',
+      'Layanan Google Drive sedang tidak dapat dihubungi. Coba lagi sebentar lagi.',
+    );
+  }
 }

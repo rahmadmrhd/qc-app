@@ -164,6 +164,7 @@ const SHEET_COLUMNS: Record<string, string[]> = {
     'updated_at',
   ],
   counters: ['key', 'value'],
+  settings: ['key', 'value'],
   rate_limits: ['key', 'count', 'window_start'],
 };
 
@@ -399,6 +400,7 @@ describe('applyMigrations', () => {
       '0003_handover_board_status.sql',
       '0004_access_unique.sql',
       '0005_brand_customer_unique.sql',
+      '0006_settings.sql',
     ]);
   });
 

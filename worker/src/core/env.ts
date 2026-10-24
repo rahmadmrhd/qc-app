@@ -1,4 +1,5 @@
 import type { BridgeClient } from './bridge-client';
+import type { FileCache } from './file-cache';
 
 /** Pesan antrean pekerjaan: hanya pengenal; data diambil dari D1. */
 export interface JobMessage {
@@ -27,6 +28,8 @@ export interface Env {
   /** Hanya untuk tes: klien jembatan palsu dan jam terkendali (milidetik epoch). */
   BRIDGE?: BridgeClient;
   NOW?: () => number;
+  /** Hanya untuk tes: cache isi berkas (bawaan: Cache API Workers). */
+  FILE_CACHE?: FileCache | null;
 }
 
 export function nowOf(env: Env): number {
