@@ -95,19 +95,11 @@ interface ItemKeyRow {
   brand_id: string;
   model: string;
   key: string;
-  aliases: string;
+  alias_keys: string;
 }
 
 function readAliasKeys(text: string): string[] {
-  if (text.trim() === '' || text.trim() === '[]') return [];
-  try {
-    const value: unknown = JSON.parse(text);
-    return Array.isArray(value)
-      ? value.filter((v): v is string => typeof v === 'string').map((v) => normalizeKey(v))
-      : [];
-  } catch {
-    return [];
-  }
+  return text.split('|').filter((key) => key !== '');
 }
 
 export async function saveBrand(
@@ -136,14 +128,14 @@ export async function saveBrand(
 
   // Kunci item = merk + tipe, jadi ganti nama menghitung ulang kunci item merk ini; tolak bila bentrok.
   const rows = await env.DB.prepare(
-    'SELECT id, brand_id, model, key, aliases FROM items',
+    'SELECT id, brand_id, model, key, alias_keys FROM items',
   ).all<ItemKeyRow>();
   const items = rows.results;
   const own = items.filter((item) => item.brand_id === existing.id);
   const recomputed = own.map((item) => ({ item, next: itemKey(input.name, item.model) }));
   const taken = new Set(items.filter((item) => item.brand_id !== existing.id).map((i) => i.key));
   // Kunci baru juga tidak boleh sama dengan nama lain (alias) item mana pun, termasuk milik item itu sendiri.
-  const aliasKeys = new Set(items.flatMap((item) => readAliasKeys(item.aliases)));
+  const aliasKeys = new Set(items.flatMap((item) => readAliasKeys(item.alias_keys)));
   if (recomputed.some(({ next }) => aliasKeys.has(next))) {
     const message = 'Nama baru bentrok dengan nama lain item';
     throw appError('CONFLICT', message, { name: message });

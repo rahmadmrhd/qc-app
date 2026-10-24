@@ -6,6 +6,8 @@ import { authRpcRoutes } from '@worker/modules/auth/rpc';
 import { brandRoutes } from '@worker/modules/brand/routes';
 import { customerRoutes } from '@worker/modules/customer/routes';
 import { filesRoutes } from '@worker/modules/files/routes';
+import { handoverRoutes } from '@worker/modules/handover/routes';
+import { itemRoutes } from '@worker/modules/item/routes';
 import { qrcodeRoutes } from '@worker/modules/qrcode/routes';
 
 /**
@@ -83,6 +85,8 @@ function realRoutes(): Partial<RouteTable> {
     ...brandRoutes(),
     ...customerRoutes(),
     ...filesRoutes(),
+    ...itemRoutes(),
+    ...handoverRoutes(),
     ...qrcodeRoutes(),
   };
 }
