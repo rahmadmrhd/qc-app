@@ -1,0 +1,29 @@
+{
+  // Worker SEMENTARA untuk spike Task 0.3. Bukan bagian worker final; hapus setelah pengukuran.
+  "name": "qc-app-spike-cpu",
+  "main": "cpu-probe.ts",
+  "compatibility_date": "2025-04-01",
+  "account_id": "2256d27ce4dcdcb9ade777cc2650fd81",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "qc-app-spike-cpu",
+      "database_id": "ISI-ID-D1-SEMENTARA"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "qc-app-spike-cpu" }],
+    "consumers": [
+      {
+        "queue": "qc-app-spike-cpu",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 0
+      }
+    ]
+  }
+}

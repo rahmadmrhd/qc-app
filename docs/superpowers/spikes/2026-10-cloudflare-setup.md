@@ -11,3 +11,5 @@ Dibuat 2026-10-25 lewat `wrangler`. Nama proyek: **qc-app**. Akun Cloudflare: **
 Id akun dan database bukan rahasia. Rahasia (`SESSION_SECRET`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_SECRET`, `CLOUDFLARE_API_TOKEN`) tidak boleh masuk repo; diatur dengan `wrangler secret put` / secret environment GitHub.
 
 Catatan: sumber daya sempat dibuat di akun yang salah dan sudah dihapus seluruhnya.
+
+Prasyarat tambahan (ditemukan di Task 0.3): akun QC belum punya subdomain `workers.dev`. Selama belum ada, `wrangler deploy` gagal ("This Worker does not exist", kode 10007) dan pemasangan konsumen Queue ditolak (kode 10063). Buka menu Workers di dashboard akun QC sekali (otomatis membuat subdomain) atau daftarkan di halaman onboarding Workers.
