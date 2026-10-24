@@ -75,6 +75,7 @@ const SHEET_COLUMNS: Record<string, string[]> = {
     'accessories',
     'attachments',
     'detail_md',
+    'alias_keys',
     'status',
     'sync_rev',
     'created_at',
@@ -401,6 +402,7 @@ describe('applyMigrations', () => {
       '0004_access_unique.sql',
       '0005_brand_customer_unique.sql',
       '0006_settings.sql',
+      '0007_items_unique_alias_keys.sql',
     ]);
   });
 

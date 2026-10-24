@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.base.json",
-  "compilerOptions": { "types": ["bun"] },
-  "include": ["scripts"]
+  "compilerOptions": {
+    "types": ["bun", "@cloudflare/workers-types"],
+    "paths": {
+      "@shared/*": ["./shared/*"],
+      "@worker/*": ["./worker/src/*"],
+      "@worker-test/*": ["./worker/test-support/*"]
+    }
+  },
+  "include": ["scripts", "worker/src/sql.d.ts"]
 }

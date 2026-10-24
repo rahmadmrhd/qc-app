@@ -6,3 +6,5 @@ export const GAS_DIST_DIR = path.join(GAS_DIR, 'dist');
 export const SHARED_DIR = path.join(ROOT_DIR, 'shared');
 /** Keluaran build web = aset statis Worker (assets.directory di worker/wrangler.jsonc). */
 export const WORKER_DIST_DIR = path.join(ROOT_DIR, 'worker', 'dist');
+export const BRIDGE_DIR = path.join(ROOT_DIR, 'bridge');
+export const BRIDGE_DIST_DIR = path.join(BRIDGE_DIR, 'dist');
