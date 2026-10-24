@@ -45,6 +45,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION: 400,
   CONFLICT: 409,
   INTERNAL: 500,
+  UNAVAILABLE: 503,
 };
 
 export function statusOf(result: RpcResult<unknown>): number {
