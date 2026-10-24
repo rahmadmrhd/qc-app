@@ -1,5 +1,6 @@
 import { appError_ } from '@gas/core/errors';
 import { platform_, withRequestCache_ } from '@gas/core/platform';
+import { assertSyncWritable_ } from '@gas/core/read-only';
 import { toErrorBody_ } from '@gas/core/router';
 import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
@@ -57,6 +58,7 @@ function handleSyncUncached_(rawBody: unknown, routes: SyncRouteTable): RpcResul
     if (typeof method !== 'string' || !Object.prototype.hasOwnProperty.call(routes, method)) {
       throw appError_('NOT_FOUND', 'Method tidak dikenal');
     }
+    assertSyncWritable_(method);
     const route = routes[method] as SyncRouteDef<unknown>;
     const input = route.validate(envelope.payload === undefined ? null : envelope.payload);
     return { ok: true, data: route.handler(input, { requestId, actor: SYNC_ACTOR }) };

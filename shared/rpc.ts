@@ -9,6 +9,7 @@ export const ERROR_CODES = [
   'NOT_FOUND',
   'VALIDATION',
   'CONFLICT',
+  'UNAVAILABLE',
   'INTERNAL',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
