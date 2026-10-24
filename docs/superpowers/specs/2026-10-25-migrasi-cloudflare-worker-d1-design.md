@@ -110,6 +110,7 @@ Prinsip: CPU hanya untuk memetakan permintaan → SQL → respons. Pekerjaan ber
 ## 6. Kerangka Worker
 
 - **Router RPC:** `POST /api/rpc` dengan `{ method, payload }`, balasan `{ ok, data | error }` identik dengan sekarang (kode galat `UNAUTHENTICATED`, `VALIDATION`, `CONFLICT`, dst. tidak berubah). `RouteTable` bertipe, izin `anyOf`, dan `scope: 'location'` dipertahankan.
+- **Kerangka HTTP [saya]:** Hono, hanya sebagai cangkang HTTP (routing `/api/rpc`, `/auth/*`, `/sync`, cookie, CSRF, `secureHeaders`, `Env` bertipe untuk binding D1/Queues/Secrets). Router RPC sendiri (`RouteTable`, izin, kode galat) tetap milik proyek dan dipanggil dari satu handler. Tidak memakai validator zod, JSX, atau klien RPC Hono; validator tangan dan `shared/rpc.ts` tetap. `export default { fetch: app.fetch, queue, scheduled }`. Tes memakai `app.request()`. Bila pengukuran CPU menuntut, pakai preset `hono/tiny`. Pengganti native murni diterima bila pemilik memilih nol dependensi (biayanya: kode cookie/CSRF ditulis dan diuji sendiri).
 - **Batching:** `api('batch')` dan jendela 15 ms **dihapus**; HTTP/2 sudah menangani banyak permintaan paralel. Loader tidak perlu lagi menunggu pengelompokan.
 - **Async penuh:** semua lapisan data/service menjadi `async`. Fungsi murni di `shared/` tidak berubah.
 - **Aturan kode GAS tidak berlaku di `worker/`:** akhiran `_`, satu scope global, larangan `class`/`import` alias, daftar API terlarang. Biome/tsc tetap berlaku. Nama berkas dan modul mengikuti `modules/<modul>/{repo,validate,service,routes}.ts` agar pemetaan mudah.
