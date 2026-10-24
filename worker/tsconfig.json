@@ -8,5 +8,5 @@
       "@worker-test/*": ["./test-support/*"]
     }
   },
-  "include": ["src", "test-support", "migrations", "../shared/*.ts"]
+  "include": ["src", "test-support", "migrations", "../shared/*.ts", "scripts"]
 }
