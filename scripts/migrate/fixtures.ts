@@ -236,7 +236,7 @@ export function cleanDump(): Dump {
         model: 'Model X',
         key: 'model x',
         is_country_lock: 'false',
-        aliases: '["MX"]',
+        aliases: '["MX","Model Ex"]',
         stickers: '[]',
         accessories: '[]',
         attachments: '["f1"]',

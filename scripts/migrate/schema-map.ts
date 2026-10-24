@@ -119,8 +119,8 @@ export const TABLES: readonly TableDef[] = [
     columns: cols(
       'id:id external_id:ref brand_id:ref model key:key is_country_lock:enum aliases:json stickers:json accessories:json attachments:json detail_md status:enum sync_rev:int created_at:date updated_at:date updated_by',
     ),
-    derivedColumns: [],
-    checksumColumns: ['id', 'external_id', 'brand_id', 'key', 'status', 'sync_rev'],
+    derivedColumns: ['alias_keys'],
+    checksumColumns: ['id', 'external_id', 'brand_id', 'key', 'status', 'sync_rev', 'alias_keys'],
   },
   {
     name: 'qr_designs',

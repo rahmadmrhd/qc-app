@@ -607,3 +607,64 @@ test('grid membangun header dari skema Sheets', () => {
     'resource,seq,updated_at',
   );
 });
+
+describe('alias_keys dan keunikan indeks UNIK (migrasi 0004/0005/0007)', () => {
+  test('alias_keys dihitung dari aliases dan identik dengan aliasKeysOf Worker', async () => {
+    const { aliasKeysOf: workerAliasKeys } = await import('@worker/modules/item/repo');
+    const { aliasKeysOf } = await import('./alias-keys');
+    for (const aliases of [[], ['MX'], ['MX', 'Model Ex', 'mx', '  '], ['A/B', 'a b'], ['!!!']]) {
+      expect(aliasKeysOf(aliases)).toBe(workerAliasKeys(aliases));
+    }
+    const result = prepareImport(cleanDump());
+    const env = await runSql(result.sql as string);
+    const row = await env.DB.prepare("SELECT alias_keys FROM items WHERE id = 'i1'").first<{
+      alias_keys: string;
+    }>();
+    expect(row?.alias_keys).toBe('|mx|model ex|');
+  });
+
+  test('item tanpa alias -> alias_keys kosong; aliases JSON rusak dihentikan', () => {
+    const none = prepareImport(mutate(cleanDump(), 'items', 2, 'aliases', '[]'));
+    expect(none.rows.items?.[0]?.values.alias_keys).toBe('');
+    const bad = prepareImport(mutate(cleanDump(), 'items', 2, 'aliases', '{rusak'));
+    expect(bad.sql).toBeNull();
+    expect(bad.report.errors[0]).toMatchObject({
+      table: 'items',
+      code: 'JSON_TAK_VALID',
+      column: 'aliases',
+    });
+  });
+
+  test('kunci item/merk/customer ganda (tanpa beda huruf), nama peran dan kode/nama lokasi ganda dihentikan', () => {
+    const cases: Array<[string, number, string, string]> = [
+      ['brands', 3, 'key', 'ACME'],
+      ['customers', 2, 'key', 'cv abadi'],
+      ['roles', 2, 'name', 'x'],
+      ['locations', 3, 'code', 'A'],
+      ['locations', 3, 'name', 'gudang a'],
+    ];
+    for (const [table, row, column, value] of cases) {
+      let dump = cleanDump();
+      if (table === 'customers') {
+        (dump.customers as unknown[][]).push(['c2', 'CV Lain', 'x', 'active', '', '', '']);
+        dump = mutate(dump, 'customers', 3, 'key', 'CV ABADI');
+      } else if (table === 'roles') {
+        (dump.roles as unknown[][]).push(['r2', ' ADMIN ', '', '{}', '', '', '']);
+      } else {
+        dump = mutate(dump, table, row, column, value);
+      }
+      const result = prepareImport(dump);
+      expect({ table, column, sql: result.sql }).toEqual({ table, column, sql: null });
+      expect(result.report.errors.some((e) => e.table === table && e.code === 'DUPLIKAT')).toBe(
+        true,
+      );
+    }
+    const items = cleanDump();
+    (items.items as unknown[][]).push([...((items.items as unknown[][])[1] as unknown[])]);
+    (items.items as unknown[][])[2]![0] = 'i2';
+    (items.items as unknown[][])[2]![4] = 'MODEL X';
+    expect(
+      prepareImport(items).report.errors.some((e) => e.table === 'items' && e.column === 'key'),
+    ).toBe(true);
+  });
+});
