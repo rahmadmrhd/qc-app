@@ -1,0 +1,7 @@
+{
+  "name": "qc-app-spike-bridge",
+  "main": "bridge-roundtrip.ts",
+  "compatibility_date": "2025-04-01",
+  "account_id": "2256d27ce4dcdcb9ade777cc2650fd81",
+  "workers_dev": true
+}
