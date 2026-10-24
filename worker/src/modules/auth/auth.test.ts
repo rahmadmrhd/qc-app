@@ -48,7 +48,7 @@ function cookieValue(setCookie: string): string {
 
 /** Jalankan /auth/login dan kembalikan cookie state + state di URL Google. */
 async function startLogin(): Promise<{ cookie: string; state: string; location: URL }> {
-  const response = await app.request('/auth/login', {}, env);
+  const response = await app.request('https://qc.test/auth/login', {}, env);
   const location = new URL(response.headers.get('location') as string);
   return {
     cookie: `qc_oauth=${cookieValue(cookieOf(response, 'qc_oauth') as string)}`,
@@ -71,7 +71,7 @@ afterEach(() => {
 
 describe('GET /auth/login', () => {
   test('mengarahkan ke Google dengan state, redirect_uri origin aplikasi, dan cookie state', async () => {
-    const response = await app.request('/auth/login', {}, env);
+    const response = await app.request('https://qc.test/auth/login', {}, env);
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get('location') as string);
     expect(location.origin + location.pathname).toBe(
@@ -102,8 +102,8 @@ describe('GET /auth/callback', () => {
   test('tanpa cookie state atau tanpa parameter state menghasilkan 400 UNAUTHENTICATED', async () => {
     const { cookie } = await startLogin();
     for (const [path, headers] of [
-      ['/auth/callback?code=x&state=abc', {}],
-      ['/auth/callback?code=x', { cookie }],
+      ['https://qc.test/auth/callback?code=x&state=abc', {}],
+      ['https://qc.test/auth/callback?code=x', { cookie }],
       ['/auth/callback', {}],
     ] as const) {
       const response = await app.request(path, { headers }, env);
@@ -119,7 +119,7 @@ describe('GET /auth/callback', () => {
   test('state tidak cocok dengan cookie menghasilkan 400', async () => {
     const { cookie } = await startLogin();
     const response = await app.request(
-      '/auth/callback?code=x&state=salah',
+      'https://qc.test/auth/callback?code=x&state=salah',
       { headers: { cookie } },
       env,
     );
@@ -130,7 +130,7 @@ describe('GET /auth/callback', () => {
     const { cookie, state } = await startLogin();
     env.clock.advance(11 * 60 * 1000);
     const expired = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie } },
       env,
     );
@@ -138,7 +138,7 @@ describe('GET /auth/callback', () => {
     env.clock.set(Date.parse('2026-01-15T03:00:00.000Z'));
     const forged = cookie.slice(0, -2) + (cookie.endsWith('AA') ? 'BB' : 'AA');
     const response = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie: forged } },
       env,
     );
@@ -149,7 +149,7 @@ describe('GET /auth/callback', () => {
     mockGoogle({ body: { id_token: idToken({}) } });
     const { cookie, state } = await startLogin();
     const response = await app.request(
-      `/auth/callback?code=kode123&state=${state}`,
+      `https://qc.test/auth/callback?code=kode123&state=${state}`,
       { headers: { cookie } },
       env,
     );
@@ -180,7 +180,7 @@ describe('GET /auth/callback', () => {
     mockGoogle({ body: { id_token: idToken({ email: 'asing@gmail.com' }) } });
     const { cookie, state } = await startLogin();
     const response = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie } },
       env,
     );
@@ -201,7 +201,7 @@ describe('GET /auth/callback', () => {
       mockGoogle({ body: { id_token: idToken(claims) } });
       const { cookie, state } = await startLogin();
       const response = await app.request(
-        `/auth/callback?code=x&state=${state}`,
+        `https://qc.test/auth/callback?code=x&state=${state}`,
         { headers: { cookie } },
         env,
       );
@@ -214,21 +214,21 @@ describe('GET /auth/callback', () => {
     const { cookie, state } = await startLogin();
     mockGoogle({ status: 400, body: { error: 'invalid_grant' } });
     let response = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie } },
       env,
     );
     expect(response.headers.get('location')).toBe('/?authError=LOGIN_FAILED');
     mockGoogle({ body: {} });
     response = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie } },
       env,
     );
     expect(response.headers.get('location')).toBe('/?authError=LOGIN_FAILED');
     tokenRequests = [];
     response = await app.request(
-      `/auth/callback?error=access_denied&state=${state}`,
+      `https://qc.test/auth/callback?error=access_denied&state=${state}`,
       { headers: { cookie } },
       env,
     );
@@ -241,7 +241,7 @@ describe('GET /auth/callback', () => {
     mockGoogle({ body: { id_token: idToken({}) } });
     const { cookie, state } = await startLogin();
     const response = await app.request(
-      `/auth/callback?code=x&state=${state}`,
+      `https://qc.test/auth/callback?code=x&state=${state}`,
       { headers: { cookie } },
       env,
     );
@@ -265,7 +265,11 @@ describe('CSRF dan logout', () => {
   });
 
   test('POST /auth/logout dengan header menghapus cookie sesi', async () => {
-    const response = await app.request('/auth/logout', { method: 'POST', headers: CSRF }, env);
+    const response = await app.request(
+      'https://qc.test/auth/logout',
+      { method: 'POST', headers: CSRF },
+      env,
+    );
     expect(response.status).toBe(200);
     expect((await response.json()) as unknown).toEqual({ ok: true });
     expect(cookieOf(response, 'qc_session')).toMatch(/Max-Age=0/);

@@ -25,6 +25,8 @@ export interface Env {
    * dipakai origin permintaan.
    */
   APP_ORIGIN?: string;
+  /** HANYA pengembangan lokal (`.dev.vars`): email untuk `/auth/dev-login`; jangan pernah diset di produksi. */
+  DEV_LOGIN_EMAIL?: string;
   /** Hanya untuk tes: klien jembatan palsu dan jam terkendali (milidetik epoch). */
   BRIDGE?: BridgeClient;
   NOW?: () => number;
