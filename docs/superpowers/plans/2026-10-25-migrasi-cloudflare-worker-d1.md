@@ -204,9 +204,19 @@ Dipakai untuk setiap modul `gas/src/modules/<m>/` → `worker/src/modules/<m>/` 
 - Modify: `.github/workflows/test.yml` (sudah menjalankan `bun run check` — pastikan mencakup `worker`), `docs/ci-cd.md`
 
 **Interfaces:**
-- Produces: workflow yang pada merge ke `dev` menjalankan check+build, `wrangler d1 migrations apply qc-staging --remote --env staging`, `wrangler deploy --env staging`; pada merge ke `main` menjalankan hal sama untuk `production` dengan environment GitHub yang dilindungi (pola `gas-exec` pada `docs/ci-cd.md`); rahasia `CLOUDFLARE_API_TOKEN` sebagai secret environment (bukan repositori).
+- Produces: workflow `deploy-worker.yml` yang **mencerminkan `deploy.yml` Apps Script**:
 
-- [ ] **Step 1:** Tulis workflow mengikuti pola `deploy.yml` yang ada (`pull_request_target` hanya setelah merge, antrean serial, tidak men-checkout head PR yang belum di-merge). **Step 2:** Uji dengan `workflow_dispatch` dari `dev` ke staging; pastikan `GET /api/ping` di staging menjawab. **Step 3:** Perbarui `docs/ci-cd.md`. **Step 4:** Commit `ci: deploy Worker ke staging dan produksi`.
+  | Kejadian | Hasil |
+  |---|---|
+  | PR dibuka/diperbarui | `test.yml` (check + build) — sudah ada, kini mencakup `worker` |
+  | PR **di-merge** ke `dev` | build, `wrangler d1 migrations apply --env staging`, `wrangler deploy --env staging` |
+  | PR **di-merge** ke `main` | hal sama untuk `--env production` (otomatis, tanpa persetujuan manual) |
+  | Manual (`workflow_dispatch`) | pilih `staging` atau `production`; hanya dari `main` (keduanya) atau `dev` (hanya staging) |
+
+  Sama dengan `deploy.yml`: event `pull_request_target` yang hanya berjalan setelah merge dan hanya me-checkout commit hasil merge; gerbang `bun run check` + `bun run build` sebelum deploy; satu antrean serial `deploy-worker` tanpa membatalkan yang berjalan; environment GitHub `worker-staging` (cabang `dev` dan `main`) dan `worker-production` (cabang `main` saja, reviewer wajib opsional dan dimatikan secara bawaan); `CLOUDFLARE_API_TOKEN` sebagai secret **environment**, bukan secret repositori; `deploy-worker.yml` harus ada di branch default `main` agar pemicunya aktif. Migrasi D1 dijalankan sebelum deploy kode dan harus kompatibel mundur (hanya menambah).
+- Deploy jembatan Apps Script tetap lewat alur `clasp` terpisah (proyek jembatan), dengan pola `dev`→HEAD jembatan staging dan `main`→versi baru jembatan produksi.
+
+- [ ] **Step 1:** Tulis workflow mengikuti `deploy.yml` yang ada (aturan di atas; jangan menambah langkah yang me-checkout head PR yang belum di-merge). **Step 2:** Uji dengan `workflow_dispatch` dari `dev` ke staging; pastikan `GET /api/ping` di staging menjawab. **Step 3:** Perbarui `docs/ci-cd.md`. **Step 4:** Commit `ci: deploy Worker ke staging dan produksi`.
 
 ---
 
