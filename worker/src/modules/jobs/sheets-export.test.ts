@@ -99,8 +99,8 @@ describe('exportTableChunks', () => {
   test('halaman besar dipecah menurut anggaran karakter; sel > 50.000 karakter dipotong', async () => {
     const big = 'x'.repeat(40000);
     for (let i = 0; i < 30; i++) {
-      await env.DB.prepare('INSERT INTO items (id, model, detail_md) VALUES (?, ?, ?)')
-        .bind(`i${String(i).padStart(2, '0')}`, `M${i}`, i === 0 ? 'y'.repeat(70000) : big)
+      await env.DB.prepare('INSERT INTO items (id, model, key, detail_md) VALUES (?, ?, ?, ?)')
+        .bind(`i${String(i).padStart(2, '0')}`, `M${i}`, `k${i}`, i === 0 ? 'y'.repeat(70000) : big)
         .run();
     }
     const chunks = await collect('items');
