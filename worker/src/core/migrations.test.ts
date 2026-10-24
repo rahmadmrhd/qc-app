@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createSqliteD1 } from '@worker-test/sqlite-d1';
-import { applyMigrations } from './migrate';
+import { applyMigrations, MIGRATIONS } from './migrate';
 
 /** Kolom per tabel = TableSchema Sheets (gas/src/modules/*), disesuaikan Spek 7. */
 const SHEET_COLUMNS: Record<string, string[]> = {
@@ -61,6 +61,7 @@ const SHEET_COLUMNS: Record<string, string[]> = {
     'version',
     'checked_count',
     'total_count',
+    'board_status',
   ],
   items: [
     'id',
@@ -229,18 +230,18 @@ describe('indeks (EXPLAIN QUERY PLAN)', () => {
     const db = await migrated();
     const plan = await planOf(
       db,
-      'SELECT * FROM handovers WHERE location_id IN (?, ?) AND status = ? ORDER BY updated_at DESC LIMIT 21',
+      'SELECT * FROM handovers WHERE location_id IN (?, ?) AND board_status = ? ORDER BY updated_at DESC LIMIT 21',
       'a',
       'b',
-      'open',
+      'new',
     );
     expect(plan.join('\n')).toMatch(/SEARCH handovers USING INDEX handovers_board/);
     expectIndexed(plan);
     const single = await planOf(
       db,
-      'SELECT * FROM handovers WHERE location_id = ? AND status = ? ORDER BY updated_at DESC LIMIT 21',
+      'SELECT * FROM handovers WHERE location_id = ? AND board_status = ? ORDER BY updated_at DESC LIMIT 21',
       'a',
-      'open',
+      'new',
     );
     expect(single.join('\n')).not.toMatch(/TEMP B-TREE/);
   });
@@ -395,6 +396,7 @@ describe('applyMigrations', () => {
     expect(rows.results.map((r) => r.name)).toEqual([
       '0001_init.sql',
       '0002_handover_comments_jobs.sql',
+      '0003_handover_board_status.sql',
     ]);
   });
 
@@ -413,5 +415,47 @@ describe('applyMigrations', () => {
     expect(names.results).toHaveLength(0);
     const rows = await db.prepare('SELECT name FROM d1_migrations').all();
     expect(rows.results).toHaveLength(1);
+  });
+});
+
+describe('0003 board_status', () => {
+  test('migrasi mengisi ulang baris lama sesuai deriveHandoverStatus', async () => {
+    const db = createSqliteD1();
+    await applyMigrations(db, MIGRATIONS.slice(0, 2));
+    const rows: [string, string, string, number, number, string][] = [
+      ['a', 'ST-1', 'open', 0, 0, ''],
+      ['b', 'ST-2', 'open', 1, 3, ''],
+      ['c', 'ST-3', 'open', 3, 3, ''],
+      ['d', 'ST-4', 'open', 0, 0, '2026-01-01T00:00:00.000Z'],
+      ['e', 'ST-5', 'cancelled', 3, 3, ''],
+    ];
+    for (const [id, number, status, checked, total, completedAt] of rows) {
+      await db
+        .prepare(
+          'INSERT INTO handovers (id, number, status, checked_count, total_count, completed_at) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .bind(id, number, status, checked, total, completedAt)
+        .run();
+    }
+    await applyMigrations(db);
+    const out = await db
+      .prepare('SELECT id, board_status FROM handovers ORDER BY id')
+      .all<{ id: string; board_status: string }>();
+    expect(out.results.map((r) => r.board_status)).toEqual([
+      'new',
+      'in_progress',
+      'done',
+      'done',
+      'cancelled',
+    ]);
+  });
+
+  test('board_status dibatasi CHECK', async () => {
+    const db = await migrated();
+    await expect(
+      db
+        .prepare("INSERT INTO handovers (id, number, board_status) VALUES ('x', 'n', 'open')")
+        .run(),
+    ).rejects.toThrow(/CHECK/);
   });
 });

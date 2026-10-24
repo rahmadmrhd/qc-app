@@ -3,6 +3,8 @@ import handoverCommentsJobs from '../../migrations/0002_handover_comments_jobs.s
   type: 'text',
 };
 
+import boardStatus from '../../migrations/0003_handover_board_status.sql' with { type: 'text' };
+
 export interface Migration {
   name: string;
   sql: string;
@@ -12,6 +14,7 @@ export interface Migration {
 export const MIGRATIONS: Migration[] = [
   { name: '0001_init.sql', sql: init },
   { name: '0002_handover_comments_jobs.sql', sql: handoverCommentsJobs },
+  { name: '0003_handover_board_status.sql', sql: boardStatus },
 ];
 
 /** Pecah berkas SQL menjadi pernyataan (tanpa baris komentar `--`, dipisah `;` di akhir baris). */
