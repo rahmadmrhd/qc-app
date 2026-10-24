@@ -1,3 +1,4 @@
+import { applyMigrations } from '@worker/core/migrate';
 import type { BridgeClient, Env, JobMessage } from '@worker/env';
 import { createSqliteD1 } from './sqlite-d1';
 
@@ -46,8 +47,10 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
       for (const m of messages) queued.push(m.body);
     },
   } as unknown as Queue<JobMessage>;
+  const db = createSqliteD1();
+  await applyMigrations(db);
   return {
-    DB: createSqliteD1(),
+    DB: db,
     JOBS: jobs,
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
