@@ -7,6 +7,7 @@
   "assets": {
     // Sementara; diubah Task 4.2 (build tanpa satu berkas).
     "directory": "../web/dist-worker",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Daftar pola (bukan true): aset dan navigasi rute klien dilayani tanpa Worker/CPU.
     "run_worker_first": ["/api/*", "/auth/*", "/sync"]

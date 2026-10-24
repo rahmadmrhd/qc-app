@@ -1,6 +1,7 @@
 import { decodeBytes, decodeText, encodeBytes, encodeText } from './base64url';
 import type { Env } from './env';
 
+export const SESSION_COOKIE = 'qc_session';
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface SessionPayload {

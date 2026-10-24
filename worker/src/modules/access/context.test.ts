@@ -94,3 +94,19 @@ describe('loadUserContext', () => {
     expect(prepares).toBe(3);
   });
 });
+
+describe('data kotor di D1', () => {
+  test('JSON permissions/assignments rusak dan level asing diabaikan tanpa error', async () => {
+    await env.DB.prepare(
+      "INSERT INTO roles (id, name, permissions) VALUES ('r-rusak', 'Rusak', '{\"item\":\"superuser\",\"stock\":\"view\"}'), ('r-json', 'Json', '{\"item\":')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO users (id, email, status, assignments, role_ids) VALUES ('u3', 'rusak@gmail.com', 'active', '', 'bukan-json'), ('u4', 'campur@gmail.com', 'active', '', '[\" r-rusak \",\"r-json\"]')",
+    ).run();
+    const rusak = await loadUserContext(env, 'rusak@gmail.com');
+    expect(rusak?.permissions.item).toBe('none');
+    const campur = await loadUserContext(env, 'campur@gmail.com');
+    expect(campur?.permissions.stock).toBe('view');
+    expect(campur?.permissions.item).toBe('none');
+  });
+});

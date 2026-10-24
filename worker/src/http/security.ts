@@ -1,7 +1,7 @@
 import type { Env } from '@worker/core/env';
 import { nowOf } from '@worker/core/env';
 import type { SessionPayload } from '@worker/core/session';
-import { verifySessionToken } from '@worker/core/session';
+import { SESSION_COOKIE, verifySessionToken } from '@worker/core/session';
 import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { secureHeaders } from 'hono/secure-headers';
@@ -11,7 +11,7 @@ export interface AppBindings {
   Variables: { session: SessionPayload };
 }
 
-export const SESSION_COOKIE = 'qc_session';
+export { SESSION_COOKIE };
 export const OAUTH_COOKIE = 'qc_oauth';
 export const CSRF_HEADER = 'x-requested-with';
 export const CSRF_VALUE = 'qc';
