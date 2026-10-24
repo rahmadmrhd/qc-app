@@ -6,27 +6,16 @@ import {
   HANDOVER_LIMITS,
   handoverNumber,
   nextHandoverSequence,
-  progressTotals,
 } from './handover';
 
-test('status turunan: Baru, Dikerjakan, Selesai, Dibatalkan', () => {
-  const line = (qty: number, doneQty: number) => ({ qty, doneQty });
-  expect(deriveHandoverStatus('open', [line(5, 0), line(3, 0)])).toBe('new');
-  expect(deriveHandoverStatus('open', [line(5, 1), line(3, 0)])).toBe('in_progress');
-  expect(deriveHandoverStatus('open', [line(5, 5), line(3, 0)])).toBe('in_progress');
-  expect(deriveHandoverStatus('open', [line(5, 5), line(3, 3)])).toBe('done');
-  expect(deriveHandoverStatus('cancelled', [line(5, 5)])).toBe('cancelled');
-  expect(deriveHandoverStatus('open', [])).toBe('new');
-});
-
-test('ringkasan progres menjumlah unit', () => {
-  expect(
-    progressTotals([
-      { qty: 5, doneQty: 2 },
-      { qty: 3, doneQty: 3 },
-    ]),
-  ).toEqual({ done: 5, total: 8 });
-  expect(progressTotals([])).toEqual({ done: 0, total: 0 });
+test('deriveHandoverStatus: Baru, Dikerjakan, Selesai, Dibatalkan', () => {
+  const p = (total: number, done: number, completed: boolean) => ({ total, done, completed });
+  expect(deriveHandoverStatus('open', p(2, 0, false))).toBe('new');
+  expect(deriveHandoverStatus('open', p(2, 1, false))).toBe('in_progress');
+  expect(deriveHandoverStatus('open', p(2, 2, false))).toBe('done');
+  expect(deriveHandoverStatus('open', p(0, 0, true))).toBe('done');
+  expect(deriveHandoverStatus('open', p(0, 0, false))).toBe('new');
+  expect(deriveHandoverStatus('cancelled', p(2, 2, true))).toBe('cancelled');
 });
 
 test('dateKeyOf memakai zona WIB (UTC+7): lewat tengah malam WIB sudah hari berikutnya', () => {
@@ -48,10 +37,12 @@ test('nomor task ST-YYYYMMDD-NNN dan urutan berikutnya per hari', () => {
 
 test('batas task', () => {
   expect(HANDOVER_LIMITS).toMatchObject({
-    note: 500,
+    note: 5000,
     customerName: 100,
-    qtyMax: 100_000,
-    lines: 100,
+    comment: 1000,
+    comments: 50,
+    batch: 30,
+    stateJson: 40000,
   });
 });
 

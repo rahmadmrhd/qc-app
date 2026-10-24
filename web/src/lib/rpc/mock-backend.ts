@@ -6,11 +6,11 @@ import { appendAudit_, insertLocation_, insertRole_, insertUser_ } from '@gas/mo
 import { insertBrand_ } from '@gas/modules/brand/repo';
 import { insertCustomer_ } from '@gas/modules/customer/repo';
 import { insertFile_ } from '@gas/modules/files/repo';
-import { insertHandover_, insertHandoverLine_ } from '@gas/modules/handover/repo';
+import { insertHandover_ } from '@gas/modules/handover/repo';
 import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
 import { location, role, user } from '@gas-test/access-fixtures';
-import { customer, handover, handoverLine } from '@gas-test/handover-fixtures';
+import { customer, handover } from '@gas-test/handover-fixtures';
 import { brand, item } from '@gas-test/item-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
 import type { RpcTransport } from './transport';
@@ -169,7 +169,7 @@ function seedMockItems(platform: ReturnType<typeof createMemoryPlatform>): void 
   insertItem_(item({ id: 'item-hap', brand: 'Mikrotik', model: 'hAP ac2', status: 'inactive' }));
 }
 
-/** Customer dan task serah terima contoh: Jakarta (Dikerjakan) dan Bandung (Baru). */
+/** Customer dan task serah terima contoh: Jakarta (Dikerjakan, satu butir tercentang) dan Bandung (Baru). */
 function seedMockHandovers(): void {
   insertCustomer_(customer('PT Maju Jaya'));
   insertCustomer_(customer('Budi Santoso'));
@@ -180,32 +180,19 @@ function seedMockHandovers(): void {
       locationId: 'loc-jkt',
       customerId: 'cust-pt-maju-jaya',
       customerName: 'PT Maju Jaya',
-      note: 'Kirim sebelum Jumat',
+      note: '- [ ] AF 5XHD = 10 unit\n- [ ] ES 24 250W = 6 unit\n\nKirim sebelum Jumat',
+      checks: [
+        {
+          text: 'AF 5XHD = 10 unit',
+          by: 'qc.staff@qc.local',
+          at: '2026-10-09T05:00:00.000Z',
+          occurrence: 0,
+        },
+      ],
       createdAt: '2026-10-09T02:00:00.000Z',
       createdBy: 'wh.staff@qc.local',
       updatedAt: '2026-10-09T05:00:00.000Z',
       updatedBy: 'qc.staff@qc.local',
-    }),
-  );
-  insertHandoverLine_(
-    handoverLine({
-      id: 'hl-1',
-      handoverId: 'ho-jkt-1',
-      itemId: 'item-af5xhd',
-      itemLabel: 'Ubiquiti AF 5XHD',
-      qty: 10,
-      doneQty: 4,
-      doneAt: '2026-10-09T05:00:00.000Z',
-      doneBy: 'qc.staff@qc.local',
-    }),
-  );
-  insertHandoverLine_(
-    handoverLine({
-      id: 'hl-2',
-      handoverId: 'ho-jkt-1',
-      itemId: 'item-es24',
-      itemLabel: 'Ubiquiti ES 24 250W',
-      qty: 6,
     }),
   );
   insertHandover_(
@@ -215,19 +202,11 @@ function seedMockHandovers(): void {
       locationId: 'loc-bdg',
       customerId: 'cust-budi-santoso',
       customerName: 'Budi Santoso',
+      note: '- [ ] ES 24 250W = 3 unit',
       createdAt: '2026-10-10T02:00:00.000Z',
       createdBy: 'wh.staff@qc.local',
       updatedAt: '2026-10-10T02:00:00.000Z',
       updatedBy: 'wh.staff@qc.local',
-    }),
-  );
-  insertHandoverLine_(
-    handoverLine({
-      id: 'hl-3',
-      handoverId: 'ho-bdg-1',
-      itemId: 'item-es24',
-      itemLabel: 'Ubiquiti ES 24 250W',
-      qty: 3,
     }),
   );
 }

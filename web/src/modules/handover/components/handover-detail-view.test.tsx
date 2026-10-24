@@ -1,174 +1,129 @@
-import type { HandoverDto } from '@shared/rpc';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+
+vi.mock('@/modules/files/queries', () => ({
+  useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
+}));
+
 import { HandoverDetailView } from './handover-detail-view';
+import { makeHandover } from './test-handover';
 
-const base: HandoverDto = {
-  id: 'h1',
-  number: 'ST-20261015-001',
-  locationId: 'a',
-  customerId: 'c',
-  customerName: 'PT Maju',
-  note: 'kirim segera',
-  status: 'in_progress',
-  lineCount: 2,
-  doneUnits: 2,
-  totalUnits: 8,
-  createdAt: '2026-10-15T03:00:00.000Z',
-  updatedAt: '2026-10-15T04:00:00.000Z',
-  createdBy: 'wh@qc.local',
-  updatedBy: 'qc@qc.local',
-  lines: [
-    {
-      id: 'l1',
-      itemId: 'i1',
-      itemLabel: 'Ubiquiti ES 24',
-      qty: 5,
-      doneQty: 2,
-      doneAt: '2026-10-15T04:00:00.000Z',
-      doneBy: 'qc@qc.local',
-    },
-    {
-      id: 'l2',
-      itemId: 'i2',
-      itemLabel: 'Mikrotik hAP ac2',
-      qty: 3,
-      doneQty: 0,
-      doneAt: '',
-      doneBy: '',
-    },
-  ],
-};
-
-function renderView(props: Partial<Parameters<typeof HandoverDetailView>[0]> = {}) {
+function setup(
+  over: Partial<Parameters<typeof HandoverDetailView>[0]> = {},
+  handover = makeHandover(),
+) {
   const handlers = {
     onBack: vi.fn(),
     onEdit: vi.fn(),
     onCancel: vi.fn(),
-    onSetProgress: vi.fn(),
-    onCompleteLine: vi.fn(),
-    onCompleteAll: vi.fn(),
+    onMarkDone: vi.fn(),
+    onReopen: vi.fn(),
+    onCheck: vi.fn(),
+    onComment: vi.fn().mockResolvedValue(undefined),
   };
   render(
     <HandoverDetailView
-      handover={base}
+      handover={handover}
       locationName="Lokasi A"
       canEdit
       canCancel
       canProgress
       pending={false}
-      renderItemLink={(itemId, label) => <a href={`#/item/${itemId}`}>{label}</a>}
       {...handlers}
-      {...props}
+      {...over}
     />,
   );
   return handlers;
 }
 
-test('menampilkan nomor, status, customer, lokasi, catatan, progres, dan tautan tipe ke detail item', () => {
-  renderView();
-  expect(screen.getByText('ST-20261015-001')).toBeInTheDocument();
+test('menampilkan nomor, status, lokasi, customer, progres, dan riwayat', () => {
+  setup({}, makeHandover({ status: 'in_progress' }));
+  expect(screen.getByRole('heading', { level: 1, name: /ST-20261015-001/ })).toBeInTheDocument();
   expect(screen.getByText('Dikerjakan')).toBeInTheDocument();
-  expect(screen.getByText('PT Maju')).toBeInTheDocument();
   expect(screen.getByText('Lokasi A')).toBeInTheDocument();
-  expect(screen.getByText('kirim segera')).toBeInTheDocument();
-  expect(screen.getByText('2/8 unit')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Ubiquiti ES 24' })).toHaveAttribute('href', '#/item/i1');
-  expect(screen.getAllByText(/qc@qc\.local/).length).toBeGreaterThan(0); // pelaku progres per baris (FQ4)
+  expect(screen.getByText('PT Maju')).toBeInTheDocument();
+  expect(screen.getByText('0/2')).toBeInTheDocument();
+  expect(screen.getByText('Dibuat')).toBeInTheDocument();
 });
 
-test('mengubah qty selesai lalu keluar dari isian mengirim nilai baru; nilai tak sah/sama tidak dikirim', async () => {
-  const { onSetProgress } = renderView();
-  const input = screen.getByLabelText('Qty selesai Ubiquiti ES 24');
-  expect(input).toHaveValue(2);
-  await userEvent.clear(input);
-  await userEvent.type(input, '4');
-  await userEvent.tab();
-  expect(onSetProgress).toHaveBeenCalledWith('l1', 4);
-  onSetProgress.mockClear();
-  await userEvent.clear(input);
-  await userEvent.type(input, '1.5'); // pecahan
-  await userEvent.tab();
-  expect(onSetProgress).not.toHaveBeenCalled();
-  expect(screen.getByText('Harus bilangan bulat ≥ 0')).toBeInTheDocument();
-  await userEvent.clear(input);
-  await userEvent.type(input, '2'); // sama dengan nilai tersimpan
-  await userEvent.tab();
-  expect(onSetProgress).not.toHaveBeenCalled();
+test('QC: centang dan Mark done aktif; tanpa qc:edit nonaktif', async () => {
+  const h = setup();
+  await userEvent.click(screen.getByRole('checkbox', { name: /B = 2/ }));
+  expect(h.onCheck).toHaveBeenCalledWith({ index: 1, text: 'B = 2' }, true);
+  await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+  expect(h.onMarkDone).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '';
+  setup({ canProgress: false });
+  expect(screen.getByRole('button', { name: 'Mark done' })).toBeDisabled();
 });
 
-test('tombol Selesai per tipe mengisi penuh; nonaktif bila sudah penuh', async () => {
-  const { onCompleteLine } = renderView();
-  await userEvent.click(screen.getByRole('button', { name: 'Selesai Mikrotik hAP ac2' }));
-  expect(onCompleteLine).toHaveBeenCalledWith('l2');
-});
-
-test('selesai per task meminta konfirmasi lebih dulu', async () => {
-  const { onCompleteAll } = renderView();
-  await userEvent.click(screen.getByRole('button', { name: 'Selesaikan semua' }));
-  expect(onCompleteAll).not.toHaveBeenCalled();
-  const dialog = await screen.findByRole('dialog');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Ya, selesaikan' }));
-  expect(onCompleteAll).toHaveBeenCalled();
-});
-
-test('batalkan meminta konfirmasi; Ubah memanggil callback', async () => {
-  const { onCancel, onEdit } = renderView();
+test('Ubah dan Batalkan sesuai izin; Batalkan meminta konfirmasi', async () => {
+  const h = setup();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
-  expect(onEdit).toHaveBeenCalled();
+  expect(h.onEdit).toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Batalkan task' }));
-  expect(onCancel).not.toHaveBeenCalled();
+  expect(h.onCancel).not.toHaveBeenCalled();
   const dialog = await screen.findByRole('dialog');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Ya, batalkan' }));
-  expect(onCancel).toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batalkan task' }));
+  expect(h.onCancel).toHaveBeenCalled();
 });
 
-test('tanpa izin: tidak ada kontrol progres, Ubah, maupun Batalkan (WH view saja)', () => {
-  renderView({ canEdit: false, canCancel: false, canProgress: false });
-  expect(screen.queryByLabelText(/Qty selesai/)).toBeNull();
-  expect(
-    screen.queryByRole('button', { name: /Ubah|Batalkan task|Selesaikan semua|Selesai /i }),
-  ).toBeNull();
-  expect(screen.getByText('2 / 5')).toBeInTheDocument(); // progres tampil sebagai teks
+test('tanpa izin WH tidak ada Ubah/Batalkan; tidak ada aksi Hapus', () => {
+  setup({ canEdit: false, canCancel: false });
+  expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Batalkan task' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Hapus/ })).not.toBeInTheDocument();
 });
 
-test('task Selesai: Ubah dan koreksi progres tetap tersedia; selesaikan semua dan batalkan tidak', () => {
-  renderView({
-    handover: { ...base, status: 'done', doneUnits: 8 },
-    canProgress: true,
-    canEdit: true,
-    canCancel: true,
-  });
-  expect(screen.queryByText(/tidak dapat diubah/)).toBeNull();
-  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Qty selesai Ubiquiti ES 24')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Batalkan task|Selesaikan semua/ })).toBeNull();
+test('Selesai: tanpa Mark done dan Buka kembali', () => {
+  setup({}, makeHandover({ status: 'done' }));
+  expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
 });
 
-test('task Dibatalkan: keterangan dibatalkan', () => {
-  renderView({ handover: { ...base, status: 'cancelled' } });
-  expect(screen.getByText('Task sudah dibatalkan dan tidak dapat diubah.')).toBeInTheDocument();
+test('Dibatalkan: Buka kembali memanggil onReopen (hanya dengan handover:manage)', async () => {
+  const h = setup({}, makeHandover({ status: 'cancelled' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
+  expect(h.onReopen).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '';
+  setup({ canCancel: false }, makeHandover({ status: 'cancelled' }));
+  expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
 });
 
-test('saat pending semua kontrol dinonaktifkan', () => {
-  renderView({ pending: true });
-  expect(screen.getByLabelText('Qty selesai Ubiquiti ES 24')).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Selesaikan semua' })).toBeDisabled();
+test('komentar umum tanpa seleksi lewat tombol Tambah komentar (kutipan kosong)', async () => {
+  const h = setup();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Umum');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  expect(h.onComment).toHaveBeenCalledWith({ quote: '', before: '', after: '', body: 'Umum' });
 });
 
-test('task tanpa customer menampilkan "Tanpa customer"', () => {
-  renderView({ handover: { ...base, customerId: '', customerName: '' } });
-  expect(screen.getByText('Tanpa customer')).toBeInTheDocument();
+test('task Dibatalkan: tanpa Ubah, Batalkan, dan centang aktif', () => {
+  setup({}, makeHandover({ status: 'cancelled' }));
+  expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Batalkan task' })).not.toBeInTheDocument();
+  for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled();
 });
 
-test('qty selesai di atas target: peringatan (bukan galat) dan tetap terkirim', async () => {
-  const { onSetProgress } = renderView();
-  const input = screen.getByLabelText('Qty selesai Ubiquiti ES 24');
-  await userEvent.clear(input);
-  await userEvent.type(input, '9');
-  expect(screen.getByText('Melebihi target 5 — pastikan jumlahnya benar.')).toBeInTheDocument();
-  await userEvent.tab();
-  expect(onSetProgress).toHaveBeenCalledWith('l1', 9);
-  expect(screen.queryByText(/Harus bilangan bulat/)).toBeNull();
+test('komentar tampil dengan kutipan, isi, dan label usang', () => {
+  setup(
+    {},
+    makeHandover({
+      comments: [
+        {
+          id: 'c1',
+          quote: 'A = 1',
+          before: '',
+          after: '',
+          body: 'Mohon cek',
+          author: 'viewer@qc.local',
+          at: '2026-10-15T03:00:00.000Z',
+          stale: true,
+        },
+      ],
+    }),
+  );
+  expect(screen.getByText('Mohon cek')).toBeInTheDocument();
+  expect(screen.getByText('usang')).toBeInTheDocument();
 });

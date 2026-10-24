@@ -5,35 +5,41 @@ import { appendAudit_, listLocations_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import { listCustomers_ } from '@gas/modules/customer/repo';
 import { resolveCustomerByName_ } from '@gas/modules/customer/service';
-import { listItems_ } from '@gas/modules/item/repo';
-import { brandNameMap_ } from '@gas/modules/item/service';
 import {
+  customerKey,
   dateKeyOf,
   deriveHandoverStatus,
+  HANDOVER_LIMITS,
   handoverNumber,
   nextHandoverSequence,
-  progressTotals,
 } from '@shared/handover';
+import type { CheckState } from '@shared/handover-checklist';
+import {
+  extractChecklist,
+  matchChecks,
+  normalizeNoteChecks,
+  reconcileChecks,
+} from '@shared/handover-checklist';
+import {
+  handoverNormalizeAnchorText,
+  locateAnchor,
+  noteToPlainText,
+} from '@shared/handover-comments';
+import { handoverCanonicalText } from '@shared/handover-text';
 import type {
-  CompleteLineInput,
+  AddCommentInput,
   GetHandoverInput,
   HandoverDto,
   HandoverOptionsDto,
   HandoverRefInput,
-  HandoverSummaryDto,
+  SaveHandoverBatchInput,
   SaveHandoverInput,
-  SetProgressInput,
+  SetCheckInput,
+  SetDoneInput,
 } from '@shared/rpc';
-import type { HandoverLineRecord, HandoverRecord, NewHandoverLineRecord } from './repo';
-import {
-  deleteHandoverLine_,
-  insertHandover_,
-  insertHandoverLine_,
-  listHandoverLines_,
-  listHandovers_,
-  updateHandover_,
-  updateHandoverLine_,
-} from './repo';
+import type { HandoverRecord, NewHandoverRecord } from './repo';
+import { insertHandover_, listHandovers_, updateHandover_ } from './repo';
+import { handoverNoteError_ } from './validate';
 
 /** Nama customer terkini menurut id (salinan pada task dipakai bila customer tidak ada). */
 export function customerNameMap_(): Map<string, string> {
@@ -44,12 +50,27 @@ export function locationNameMap_(): Map<string, string> {
   return new Map(listLocations_().map((location) => [location.id, location.name]));
 }
 
-function toHandoverSummaryDto_(
-  handover: HandoverRecord,
-  lines: readonly HandoverLineRecord[],
+/** Progres checklist dari catatan dan centang tersimpan. */
+function progressOf_(handover: NewHandoverRecord): {
+  total: number;
+  done: number;
+  completed: boolean;
+} {
+  const matched = matchChecks(handover.note, handover.checks);
+  return {
+    total: matched.length,
+    done: matched.filter((check) => check !== null).length,
+    completed: handover.completedAt !== '',
+  };
+}
+
+export function toHandoverDto_(
+  handover: NewHandoverRecord,
   customerNames: ReadonlyMap<string, string>,
-): HandoverSummaryDto {
-  const totals = progressTotals(lines);
+): HandoverDto {
+  const entries = extractChecklist(handover.note);
+  const matched = matchChecks(handover.note, handover.checks);
+  const plain = noteToPlainText(handover.note);
   return {
     id: handover.id,
     number: handover.number,
@@ -57,154 +78,167 @@ function toHandoverSummaryDto_(
     customerId: handover.customerId,
     customerName: customerNames.get(handover.customerId) ?? handover.customerName,
     note: handover.note,
-    status: deriveHandoverStatus(handover.status, lines),
-    lineCount: lines.length,
-    doneUnits: totals.done,
-    totalUnits: totals.total,
-    createdAt: handover.createdAt,
-    updatedAt: handover.updatedAt,
-  };
-}
-
-export function toHandoverDto_(
-  handover: HandoverRecord,
-  lines: readonly HandoverLineRecord[],
-  customerNames: ReadonlyMap<string, string>,
-): HandoverDto {
-  return {
-    ...toHandoverSummaryDto_(handover, lines, customerNames),
-    lines: lines.map((line) => ({
-      id: line.id,
-      itemId: line.itemId,
-      itemLabel: line.itemLabel,
-      qty: line.qty,
-      doneQty: line.doneQty,
-      doneAt: line.doneAt,
-      doneBy: line.doneBy,
+    status: deriveHandoverStatus(handover.status, progressOf_(handover)),
+    checklist: entries.map((entry) => {
+      const check = matched[entry.index] ?? null;
+      return {
+        index: entry.index,
+        text: entry.text,
+        checked: check !== null,
+        by: check?.by ?? '',
+        at: check?.at ?? '',
+      };
+    }),
+    comments: handover.comments.map((comment) => ({
+      ...comment,
+      // Komentar umum (kutipan kosong) tidak pernah usang.
+      stale:
+        comment.quote !== '' &&
+        locateAnchor(plain, {
+          quote: comment.quote,
+          before: comment.before,
+          after: comment.after,
+        }) === null,
     })),
+    completedAt: handover.completedAt,
+    completedBy: handover.completedBy,
+    createdAt: handover.createdAt,
     createdBy: handover.createdBy,
+    updatedAt: handover.updatedAt,
     updatedBy: handover.updatedBy,
   };
 }
 
-function linesByHandover_(): Map<string, HandoverLineRecord[]> {
-  const grouped = new Map<string, HandoverLineRecord[]>();
-  for (const line of listHandoverLines_()) {
-    const list = grouped.get(line.handoverId) ?? [];
-    list.push(line);
-    grouped.set(line.handoverId, list);
-  }
-  return grouped;
-}
-
-/** Task di lokasi yang diizinkan (`locationIds` dari `ctx`), terbaru dulu. */
-export function listHandoverSummaries_(locationIds: readonly string[]): HandoverSummaryDto[] {
-  const grouped = linesByHandover_();
+/** Seluruh task di lokasi yang diizinkan dalam SATU pembacaan tabel, terbaru dahulu. */
+export function handoverBoard_(locationIds: readonly string[]): HandoverDto[] {
   const names = customerNameMap_();
   return listHandovers_()
     .filter((handover) => locationIds.includes(handover.locationId))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.number.localeCompare(a.number))
-    .map((handover) => toHandoverSummaryDto_(handover, grouped.get(handover.id) ?? [], names));
+    .map((handover) => toHandoverDto_(handover, names));
 }
 
 /**
- * Detail satu task. Lokasi baris task HARUS salah satu `locationIds` yang diizinkan router; bila tidak
- * (task milik lokasi lain), `NOT_FOUND` — izin ditegakkan di lokasi baris, bukan lokasi yang diklaim klien.
+ * Detail satu task. Lokasi baris task HARUS salah satu lokasi yang diizinkan router (`locationIds` dari `ctx`);
+ * bila tidak, `NOT_FOUND` — izin ditegakkan di lokasi baris, bukan lokasi yang diklaim klien.
  */
 export function getHandoverDto_(
   input: GetHandoverInput,
-  locationIds: readonly string[],
+  locationIds: readonly string[] = input.locationIds,
 ): HandoverDto {
   const handover = listHandovers_().find((row) => row.id === input.id);
   if (!handover || !locationIds.includes(handover.locationId)) {
     throw appError_('NOT_FOUND', 'Task tidak ditemukan');
   }
-  const lines = listHandoverLines_().filter((line) => line.handoverId === handover.id);
-  return toHandoverDto_(handover, lines, customerNameMap_());
+  return toHandoverDto_(handover, customerNameMap_());
 }
 
-/** Item dan customer aktif untuk saran di form task (diambil lewat izin serah terima, bukan izin item). */
+/** Customer aktif untuk saran di form task (diambil lewat izin serah terima, bukan izin customer). */
 export function handoverOptions_(): HandoverOptionsDto {
-  const brands = brandNameMap_();
+  const customers = listCustomers_();
   return {
-    items: listItems_()
-      .filter((item) => item.status === 'active')
-      .map((item) => ({
-        id: item.id,
-        brand: brands.get(item.brandId) ?? '',
-        model: item.model,
-        aliases: [...item.aliases],
-      }))
-      .sort((a, b) => a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model)),
-    customers: listCustomers_()
+    customers: customers
       .filter((customer) => customer.status === 'active')
       .map((customer) => ({ id: customer.id, name: customer.name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    inactiveCustomerNames: listCustomers_()
+    inactiveCustomerNames: customers
       .filter((customer) => customer.status === 'inactive')
       .map((customer) => customer.name)
       .sort((a, b) => a.localeCompare(b)),
   };
 }
 
-interface SnapshotHandover {
-  number: string;
-  locationId: string;
-  customerName: string;
-  note: string;
-  status: HandoverRecord['status'];
-}
+/** Catatan penuh dulu (batas catatan); dipotong ke panjang ini hanya bila JSON > 40.000, berurutan dari yang longgar. */
+const HANDOVER_AUDIT_NOTE_STEPS = [2000, 400, 0] as const;
+const HANDOVER_AUDIT_TRUNCATED = ' (dipotong)';
 
-/** Snapshot audit: daftar baris sebagai teks per entri agar diff audit membandingkan per baris. */
+/**
+ * Snapshot audit: butir tercentang sebagai daftar teks agar diff audit membandingkan per butir. `note` hanya
+ * dimuat bila `noteLimit` diberikan (aksi yang mengubah catatan), dipotong dengan penanda "(dipotong)".
+ */
 export function handoverSnapshot_(
-  handover: SnapshotHandover,
-  lines: ReadonlyArray<{ itemLabel: string; qty: number; doneQty: number }>,
+  handover: NewHandoverRecord,
+  customerName: string,
   locationNames: ReadonlyMap<string, string>,
+  noteLimit: number | null = null,
 ): Record<string, unknown> {
-  return {
+  const snapshot: Record<string, unknown> = {
     number: handover.number,
     location: locationNames.get(handover.locationId) ?? handover.locationId,
-    customer: handover.customerName,
-    note: handover.note,
-    status: deriveHandoverStatus(handover.status, lines),
-    lines: lines.map(
-      (line) =>
-        `${line.itemLabel} × ${line.qty}${line.doneQty > 0 ? ` (selesai ${line.doneQty})` : ''}`,
-    ),
+    customer: customerName,
+    status: deriveHandoverStatus(handover.status, progressOf_(handover)),
+    checked: matchChecks(handover.note, handover.checks)
+      .filter((check) => check !== null)
+      .map((check) => check?.text ?? ''),
   };
+  if (noteLimit !== null) {
+    snapshot.note =
+      handover.note.length > noteLimit
+        ? `${handover.note.slice(0, noteLimit)}${HANDOVER_AUDIT_TRUNCATED}`
+        : handover.note;
+  }
+  return snapshot;
+}
+
+/**
+ * Menyusun pasangan snapshot audit yang muat di satu sel (JSON <= 40.000 karakter) SEBELUM baris task ditulis.
+ * Aksi yang mengubah catatan (`withNote`) memuat catatan, dipotong bila perlu; bila tetap tidak muat,
+ * VALIDATION jelas (tidak ada yang tertulis).
+ */
+export function fitAuditSnapshots_(
+  build: (noteLimit: number | null) => {
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown>;
+  },
+  withNote: boolean,
+): { before: Record<string, unknown> | null; after: Record<string, unknown> } {
+  const limits: Array<number | null> = withNote
+    ? [HANDOVER_LIMITS.note, ...HANDOVER_AUDIT_NOTE_STEPS]
+    : [null];
+  for (const limit of limits) {
+    const pair = build(limit);
+    if (
+      JSON.stringify(pair.after).length <= HANDOVER_LIMITS.stateJson &&
+      (pair.before === null || JSON.stringify(pair.before).length <= HANDOVER_LIMITS.stateJson)
+    ) {
+      return pair;
+    }
+  }
+  const message = 'Perubahan terlalu besar untuk dicatat di audit; persingkat catatan';
+  throw appError_('VALIDATION', message, { note: message });
 }
 
 /**
  * Memuat task untuk ditulis. `NOT_FOUND` bila id tak ada ATAU lokasinya bukan `locationId` yang sudah diizinkan
  * router (izin ditegakkan lagi di lokasi baris). PEMANGGIL WAJIB memegang lock.
  */
-export function loadHandoverForWrite_(ref: HandoverRefInput): {
-  handover: HandoverRecord;
-  lines: HandoverLineRecord[];
-} {
+export function loadHandoverForWrite_(ref: HandoverRefInput): HandoverRecord {
   const handover = listHandovers_().find((row) => row.id === ref.id);
   if (!handover || handover.locationId !== ref.locationId) {
     throw appError_('NOT_FOUND', 'Task tidak ditemukan');
   }
-  const lines = listHandoverLines_().filter((line) => line.handoverId === handover.id);
-  return { handover, lines };
+  return handover;
 }
 
-/**
- * Hanya task Dibatalkan yang terkunci (WH maupun QC). Selesai hanyalah status turunan dari qty selesai vs target:
- * WH tetap dapat mengubah isi task (menaikkan qty membuka lagi) dan QC dapat mengoreksi qty selesai.
- */
-export function assertHandoverNotCancelled_(
-  handover: HandoverRecord,
-  lines: readonly HandoverLineRecord[],
-): void {
-  if (deriveHandoverStatus(handover.status, lines) === 'cancelled') {
+/** Hanya task Dibatalkan yang terkunci (WH maupun QC). */
+export function assertHandoverNotCancelled_(handover: HandoverRecord): void {
+  if (handover.status === 'cancelled') {
     throw appError_('CONFLICT', 'Task sudah dibatalkan dan tidak dapat diubah');
   }
 }
 
-function lineError_(message: string): never {
-  throw appError_('VALIDATION', message, { lines: message });
+/**
+ * Benar bila sejak form dibuka (`base`) catatan dan customer sama dan status tidak berpindah ke/dari Selesai.
+ * Perubahan lain di antaranya hanya centang/komentar/progres.
+ */
+function handoverOnlyProgressChanged_(
+  current: HandoverRecord,
+  base: SaveHandoverInput['base'],
+): boolean {
+  if (!base) return false;
+  const status = deriveHandoverStatus(current.status, progressOf_(current));
+  const statusMoved = (status === 'done') !== (base.status === 'done');
+  return base.note === current.note && base.customerId === current.customerId && !statusMoved;
 }
 
 export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): HandoverDto {
@@ -212,331 +246,414 @@ export function saveHandover_(input: SaveHandoverInput, actor: ActorRef): Handov
     const loaded = input.id
       ? loadHandoverForWrite_({ id: input.id, locationId: input.locationId })
       : null;
-    if (loaded) assertHandoverNotCancelled_(loaded.handover, loaded.lines);
-    if (
-      loaded &&
-      input.expectedUpdatedAt &&
-      input.expectedUpdatedAt !== loaded.handover.updatedAt
-    ) {
-      throw appError_(
-        'CONFLICT',
-        'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
-      );
-    }
-    const existingLines = loaded?.lines ?? [];
-    const items = new Map(listItems_().map((item) => [item.id, item]));
-    const brands = brandNameMap_();
-    const label = (itemId: string): string => {
-      const item = items.get(itemId);
-      return item ? `${brands.get(item.brandId) ?? ''} ${item.model}`.trim() : itemId;
-    };
-
-    // Validasi baris SEBELUM menulis apa pun (termasuk membuat customer).
-    const byItem = new Map(existingLines.map((line) => [line.itemId, line]));
-    input.lines.forEach((line, index) => {
-      const item = items.get(line.itemId);
-      if (!item) lineError_(`Baris ${index + 1}: tipe tidak ditemukan`);
-      const current = byItem.get(line.itemId);
-      if (!current && item.status !== 'active') {
-        lineError_(`Baris ${index + 1}: tipe ${label(line.itemId)} dinonaktifkan`);
-      }
-      if (current && line.qty !== current.qty && line.qty < current.doneQty) {
-        lineError_(
-          `${current.itemLabel}: qty target tidak boleh di bawah qty selesai (${current.doneQty})`,
+    if (loaded) assertHandoverNotCancelled_(loaded);
+    if (loaded && input.expectedUpdatedAt && input.expectedUpdatedAt !== loaded.updatedAt) {
+      // Tanpa `base`, atau bila catatan/customer/status berubah oleh orang lain: CONFLICT. Hanya centang/komentar
+      // yang berubah sejak form dibuka (base sama) bukan konflik; centang TERKINI tetap diselaraskan di bawah.
+      if (!handoverOnlyProgressChanged_(loaded, input.base)) {
+        throw appError_(
+          'CONFLICT',
+          'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda',
         );
       }
-    });
-    const wanted = new Set(input.lines.map((line) => line.itemId));
-    for (const current of existingLines) {
-      if (!wanted.has(current.itemId) && current.doneQty > 0) {
-        lineError_(`${current.itemLabel} sudah ada progres dan tidak dapat dihapus`);
-      }
+    }
+    // Centang hanya milik QC: "- [x]" dari penulis catatan dinormalkan.
+    const note = normalizeNoteChecks(input.note);
+    const noteError = handoverNoteError_(note);
+    if (noteError !== null) throw appError_('VALIDATION', noteError, { note: noteError });
+
+    // Validasi centang SEBELUM menulis apa pun (termasuk membuat customer).
+    const reconciled = loaded ? reconcileChecks(loaded.note, loaded.checks, note) : null;
+    if (reconciled && reconciled.removed.length > 0) {
+      const message = `Butir yang sudah dicentang tidak dapat dihapus: ${reconciled.removed.join('; ')}`;
+      throw appError_('VALIDATION', message, { note: message });
     }
 
     // Customer opsional: nama kosong = tanpa customer (tidak ada yang dibuat).
     const customer =
       input.customerName === ''
         ? null
-        : resolveCustomerByName_(input.customerName, actor, loaded?.handover.customerId);
+        : resolveCustomerByName_(input.customerName, actor, loaded?.customerId);
     const locationNames = locationNameMap_();
     const now = nowIso_();
 
     if (!loaded) {
-      const handovers = listHandovers_();
+      const dateKey = dateKeyOf(platform_().now());
       const sequence = nextHandoverSequence(
-        handovers.map((row) => row.number),
-        dateKeyOf(platform_().now()),
+        listHandovers_().map((row) => row.number),
+        dateKey,
       );
-      const created = {
+      const created: NewHandoverRecord = {
         id: platform_().uuid(),
-        number: handoverNumber(dateKeyOf(platform_().now()), sequence),
+        number: handoverNumber(dateKey, sequence),
         locationId: input.locationId,
         customerId: customer?.id ?? '',
         customerName: customer?.name ?? '',
-        note: input.note,
-        status: 'open' as const,
+        note,
+        status: 'open',
+        checks: [],
+        comments: [],
+        completedAt: '',
+        completedBy: '',
         createdAt: now,
         createdBy: actor.email,
         updatedAt: now,
         updatedBy: actor.email,
       };
+      // Audit disusun dan diperiksa mutlak SEBELUM baris task ditulis.
+      const audit = fitAuditSnapshots_(
+        (limit) => ({
+          before: null,
+          after: handoverSnapshot_(created, created.customerName, locationNames, limit),
+        }),
+        true,
+      );
       insertHandover_(created);
-      const lines: NewHandoverLineRecord[] = input.lines.map((line) => ({
-        id: platform_().uuid(),
-        handoverId: created.id,
-        itemId: line.itemId,
-        itemLabel: label(line.itemId),
-        qty: line.qty,
-        doneQty: 0,
-        doneAt: '',
-        doneBy: '',
-      }));
-      for (const line of lines) insertHandoverLine_(line);
       appendAudit_({
         ts: now,
         actor: actor.email,
         action: 'handover.create',
         target: created.number,
         before: null,
-        after: handoverSnapshot_(created, lines, locationNames),
+        after: audit.after,
       });
-      return toHandoverDto_(
-        { ...created, rowNumber: 0 },
-        lines.map((line) => ({ ...line, rowNumber: 0 })),
-        customerNameMap_(),
-      );
+      return toHandoverDto_(created, customerNameMap_());
     }
 
-    const { handover, lines: oldLines } = loaded;
     // Nama customer terkini (bukan salinan lama): ganti nama customer saja bukan perubahan task.
-    const currentCustomerName =
-      customerNameMap_().get(handover.customerId) ?? handover.customerName;
-    const before = handoverSnapshot_(
-      { ...handover, customerName: currentCustomerName },
-      oldLines,
-      locationNames,
-    );
-    // Hitung hasil akhir baris (tanpa menulis) untuk mendeteksi "tidak ada perubahan". Urutan mengikuti urutan
-    // tersimpan (baris lama) lalu baris baru, agar urutan kiriman klien yang berbeda tidak dianggap perubahan.
-    const inputByItem = new Map(input.lines.map((line) => [line.itemId, line]));
-    const nextLines = [
-      ...oldLines
-        .filter((line) => inputByItem.has(line.itemId))
-        .map((line) => ({
-          itemId: line.itemId,
-          itemLabel: line.itemLabel,
-          qty: inputByItem.get(line.itemId)?.qty ?? line.qty,
-          doneQty: line.doneQty,
-        })),
-      ...input.lines
-        .filter((line) => !byItem.has(line.itemId))
-        .map((line) => ({
-          itemId: line.itemId,
-          itemLabel: label(line.itemId),
-          qty: line.qty,
-          doneQty: 0,
-        })),
-    ];
-    const nextHandover = {
-      ...handover,
+    const currentCustomerName = customerNameMap_().get(loaded.customerId) ?? loaded.customerName;
+    const next: HandoverRecord = {
+      ...loaded,
       customerId: customer?.id ?? '',
       customerName: customer?.name ?? '',
-      note: input.note,
+      note,
+      checks: reconciled?.checks ?? loaded.checks,
     };
-    const after = handoverSnapshot_(nextHandover, nextLines, locationNames);
     if (
-      JSON.stringify(before) === JSON.stringify(after) &&
-      (customer?.id ?? '') === handover.customerId
+      next.note === loaded.note &&
+      next.customerId === loaded.customerId &&
+      (customer?.name ?? '') === currentCustomerName
     ) {
-      return toHandoverDto_(handover, oldLines, customerNameMap_());
+      return toHandoverDto_(loaded, customerNameMap_());
     }
-
-    updateHandover_({ ...nextHandover, updatedAt: now, updatedBy: actor.email });
-    for (const line of input.lines) {
-      const current = byItem.get(line.itemId);
-      if (current) {
-        if (current.qty !== line.qty) updateHandoverLine_({ ...current, qty: line.qty });
-      } else {
-        insertHandoverLine_({
-          id: platform_().uuid(),
-          handoverId: handover.id,
-          itemId: line.itemId,
-          itemLabel: label(line.itemId),
-          qty: line.qty,
-          doneQty: 0,
-          doneAt: '',
-          doneBy: '',
-        });
-      }
-    }
-    // Hapus dari nomor baris TERBESAR ke terkecil (nomor di bawahnya bergeser setelah tiap hapus).
-    for (const removed of oldLines
-      .filter((line) => !wanted.has(line.itemId))
-      .sort((a, b) => b.rowNumber - a.rowNumber)) {
-      deleteHandoverLine_(removed);
-    }
+    const resets = (reconciled?.resets ?? []).map((reset) => `${reset.from} → ${reset.to}`);
+    const audit = fitAuditSnapshots_(
+      (limit) => ({
+        before: handoverSnapshot_(loaded, currentCustomerName, locationNames, limit),
+        after: {
+          ...handoverSnapshot_(next, next.customerName, locationNames, limit),
+          ...(resets.length > 0 ? { resets } : {}),
+        },
+      }),
+      true,
+    );
+    const saved: HandoverRecord = { ...next, updatedAt: now, updatedBy: actor.email };
+    updateHandover_(saved);
     appendAudit_({
       ts: now,
       actor: actor.email,
       action: 'handover.update',
-      target: handover.number,
-      before,
-      after,
+      target: loaded.number,
+      before: audit.before,
+      after: audit.after,
     });
-    const fresh = loadHandoverForWrite_({ id: handover.id, locationId: handover.locationId });
-    // Ubah dapat membuat task Selesai (mis. menghapus baris terakhir yang belum penuh): catat `handover.complete`
-    // tepat sekali agar riwayat selesai konsisten dengan jalur progres QC.
-    if (
-      deriveHandoverStatus(handover.status, oldLines) !== 'done' &&
-      deriveHandoverStatus(fresh.handover.status, fresh.lines) === 'done'
-    ) {
+    return toHandoverDto_(saved, customerNameMap_());
+  });
+}
+
+/**
+ * Simpan banyak task atomik: SEMUA task divalidasi lebih dulu (batas, customer nonaktif); baru dalam satu lock
+ * nomor dialokasikan berurutan dan task ditulis. Galat sebelum penulisan = tidak ada task, customer, atau
+ * nomor yang terpakai. Customer baru dibuat sekali per `customerKey` yang sama (pembacaan tabel customer
+ * mencerminkan penulisan sebelumnya dalam permintaan yang sama).
+ */
+export function saveHandoverBatch_(input: SaveHandoverBatchInput, actor: ActorRef): HandoverDto[] {
+  return platform_().withLock(() => {
+    if (input.tasks.length === 0 || input.tasks.length > HANDOVER_LIMITS.batch) {
+      const message = `Jumlah task harus 1–${HANDOVER_LIMITS.batch}`;
+      throw appError_('VALIDATION', message, { tasks: message });
+    }
+    const customers = listCustomers_();
+    const prepared = input.tasks.map((task, index) => {
+      const fail = (field: string, message: string): never => {
+        throw appError_('VALIDATION', `Task ${index + 1}: ${message}`, {
+          tasks: `Task ${index + 1}: ${message}`,
+          [field]: message,
+        });
+      };
+      const customerName = task.customerName.trim();
+      const note = normalizeNoteChecks(task.note.trim());
+      const noteError = handoverNoteError_(note);
+      if (noteError !== null) fail('note', noteError);
+      if (customerName.length > HANDOVER_LIMITS.customerName) {
+        fail('customerName', `Nama customer maksimal ${HANDOVER_LIMITS.customerName} karakter`);
+      }
+      if (customerName !== '') {
+        const key = customerKey(customerName);
+        if (key === '') fail('customerName', 'Nama customer harus memuat huruf atau angka');
+        const found = customers.find((customer) => customer.key === key);
+        if (found && found.status === 'inactive') {
+          fail('customerName', 'Customer dinonaktifkan; aktifkan dulu di halaman Customer');
+        }
+      }
+      return { customerName, note };
+    });
+
+    const locationNames = locationNameMap_();
+    const dateKey = dateKeyOf(platform_().now());
+    const numbers = listHandovers_().map((row) => row.number);
+    let sequence = nextHandoverSequence(numbers, dateKey);
+    const names = new Map<string, string>();
+    const created: NewHandoverRecord[] = [];
+    for (const task of prepared) {
+      const customer =
+        task.customerName === '' ? null : resolveCustomerByName_(task.customerName, actor);
+      if (customer) names.set(customer.id, customer.name);
+      const now = nowIso_();
+      const record: NewHandoverRecord = {
+        id: platform_().uuid(),
+        number: handoverNumber(dateKey, sequence),
+        locationId: input.locationId,
+        customerId: customer?.id ?? '',
+        customerName: customer?.name ?? '',
+        note: task.note,
+        status: 'open',
+        checks: [],
+        comments: [],
+        completedAt: '',
+        completedBy: '',
+        createdAt: now,
+        createdBy: actor.email,
+        updatedAt: now,
+        updatedBy: actor.email,
+      };
+      sequence++;
+      // Catatan <= 5.000 karakter tanpa karakter kontrol selalu muat di sel audit (diperiksa tetap).
+      const audit = fitAuditSnapshots_(
+        (limit) => ({
+          before: null,
+          after: handoverSnapshot_(record, record.customerName, locationNames, limit),
+        }),
+        true,
+      );
+      insertHandover_(record);
       appendAudit_({
         ts: now,
         actor: actor.email,
-        action: 'handover.complete',
-        target: handover.number,
-        before,
-        after: handoverSnapshot_(fresh.handover, fresh.lines, locationNames),
+        action: 'handover.create',
+        target: record.number,
+        before: null,
+        after: audit.after,
       });
+      created.push(record);
     }
-    return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
+    return created.map((record) => toHandoverDto_(record, names));
+  });
+}
+
+/** Nomor kemunculan butir `index` di antara butir bertulisan sama (mulai 0). */
+function occurrenceAt_(note: string, index: number): number {
+  const entries = extractChecklist(note);
+  const target = entries[index];
+  if (!target) return 0;
+  return entries.filter((entry) => entry.index < index && entry.text === target.text).length;
+}
+
+function assertStateSize_(checks: readonly CheckState[]): void {
+  if (JSON.stringify(checks).length > HANDOVER_LIMITS.stateJson) {
+    const message =
+      'Data centang task ini melebihi batas 40.000 karakter; kurangi jumlah atau panjang butir checklist';
+    throw appError_('VALIDATION', message, { checks: message });
+  }
+}
+
+/**
+ * Menulis perubahan yang TIDAK mengubah catatan (centang/selesai/batal/buka) + audit; audit tanpa `note`
+ * disusun dan diperiksa ukurannya SEBELUM baris ditulis. Dalam lock.
+ */
+function writeTaskChange_(
+  handover: HandoverRecord,
+  patch: Partial<Pick<HandoverRecord, 'checks' | 'completedAt' | 'completedBy' | 'status'>>,
+  action: string,
+  actor: ActorRef,
+  now: string,
+): HandoverRecord {
+  const saved: HandoverRecord = { ...handover, ...patch, updatedAt: now, updatedBy: actor.email };
+  assertStateSize_(saved.checks);
+  const names = locationNameMap_();
+  const customerName = customerNameMap_().get(handover.customerId) ?? handover.customerName;
+  const audit = fitAuditSnapshots_(
+    () => ({
+      before: handoverSnapshot_(handover, customerName, names),
+      after: handoverSnapshot_(saved, customerName, names),
+    }),
+    false,
+  );
+  updateHandover_(saved);
+  appendAudit_({
+    ts: now,
+    actor: actor.email,
+    action,
+    target: handover.number,
+    before: audit.before,
+    after: audit.after,
+  });
+  return saved;
+}
+
+export function setCheck_(input: SetCheckInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    const entry = extractChecklist(handover.note)[input.index];
+    // Penjaga: teks butir pada indeks harus sama dengan yang dilihat pengguna (catatan bisa berubah);
+    // dibandingkan dalam bentuk kanonis (tanpa escape Markdown/entitas HTML).
+    // `entry.text` sudah kanonis dan kanonisasi tidak idempoten (mis. `&amp;amp;`), jadi teks DTO diterima apa adanya
+    // ATAU dalam bentuk kanonisnya.
+    if (!entry || (entry.text !== input.text && entry.text !== handoverCanonicalText(input.text))) {
+      throw appError_('CONFLICT', 'Catatan berubah; muat ulang halaman lalu ulangi');
+    }
+    const occurrence = occurrenceAt_(handover.note, input.index);
+    const existing = matchChecks(handover.note, handover.checks)[input.index] ?? null;
+    if (input.checked === (existing !== null)) {
+      return toHandoverDto_(handover, customerNameMap_());
+    }
+    const now = nowIso_();
+    const checks = input.checked
+      ? [...handover.checks, { text: entry.text, by: actor.email, at: now, occurrence }]
+      : handover.checks.filter(
+          (check) =>
+            !(handoverCanonicalText(check.text) === entry.text && check.occurrence === occurrence),
+        );
+    const saved = writeTaskChange_(
+      handover,
+      { checks },
+      input.checked ? 'handover.check' : 'handover.uncheck',
+      actor,
+      now,
+    );
+    return toHandoverDto_(saved, customerNameMap_());
+  });
+}
+
+/** Menyelesaikan task: mencentang semua butir yang belum (task tanpa butir ditandai selesai). Tidak ada buka kembali. */
+export function setDone_(input: SetDoneInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    const entries = extractChecklist(handover.note);
+    const matched = matchChecks(handover.note, handover.checks);
+    const now = nowIso_();
+    const missing = entries.filter((entry) => matched[entry.index] === null);
+    const needsMark = entries.length === 0 && handover.completedAt === '';
+    if (missing.length === 0 && !needsMark) return toHandoverDto_(handover, customerNameMap_());
+    const checks = [
+      ...handover.checks,
+      ...missing.map((entry) => ({
+        text: entry.text,
+        by: actor.email,
+        at: now,
+        occurrence: occurrenceAt_(handover.note, entry.index),
+      })),
+    ];
+    const saved = writeTaskChange_(
+      handover,
+      entries.length === 0 ? { checks, completedAt: now, completedBy: actor.email } : { checks },
+      'handover.done',
+      actor,
+      now,
+    );
+    return toHandoverDto_(saved, customerNameMap_());
+  });
+}
+
+export function addComment_(input: AddCommentInput, actor: ActorRef): HandoverDto {
+  return platform_().withLock(() => {
+    const handover = loadHandoverForWrite_(input);
+    assertHandoverNotCancelled_(handover);
+    if (handover.comments.length >= HANDOVER_LIMITS.comments) {
+      const message = `Task ini sudah mencapai batas ${HANDOVER_LIMITS.comments} komentar`;
+      throw appError_('VALIDATION', message, { body: message });
+    }
+    const quote = handoverNormalizeAnchorText(input.quote);
+    // Komentar umum (tanpa kutipan) tidak punya konteks jangkar.
+    const anchor =
+      quote === ''
+        ? { quote, before: '', after: '' }
+        : {
+            quote,
+            before: handoverNormalizeAnchorText(input.before),
+            after: handoverNormalizeAnchorText(input.after),
+          };
+    // Kutipan kosong = komentar umum (tanpa seleksi); selainnya harus ditemukan pada catatan.
+    if (anchor.quote !== '' && locateAnchor(noteToPlainText(handover.note), anchor) === null) {
+      const message = 'Kutipan tidak ditemukan pada catatan';
+      throw appError_('VALIDATION', message, { quote: message });
+    }
+    const now = nowIso_();
+    const comments = [
+      ...handover.comments,
+      { id: platform_().uuid(), ...anchor, body: input.body, author: actor.email, at: now },
+    ];
+    if (JSON.stringify(comments).length > HANDOVER_LIMITS.stateJson) {
+      const message = `Komentar tidak dapat ditambahkan: data komentar task ini sudah penuh (batas ${HANDOVER_LIMITS.comments} komentar atau 40.000 karakter, mana lebih dulu)`;
+      throw appError_('VALIDATION', message, { body: message });
+    }
+    const audit = fitAuditSnapshots_(
+      () => ({
+        before: null,
+        after: { number: handover.number, quote: anchor.quote, comment: input.body },
+      }),
+      false,
+    );
+    // Komentar tidak mengubah isi task: `updatedAt` tidak dinaikkan agar tidak memicu CONFLICT pada form WH.
+    const saved: HandoverRecord = { ...handover, comments };
+    updateHandover_(saved);
+    appendAudit_({
+      ts: now,
+      actor: actor.email,
+      action: 'handover.comment',
+      target: handover.number,
+      before: null,
+      after: audit.after,
+    });
+    return toHandoverDto_(saved, customerNameMap_());
   });
 }
 
 export function cancelHandover_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
-    const { handover, lines } = loadHandoverForWrite_(input);
-    const status = deriveHandoverStatus(handover.status, lines);
-    if (status === 'cancelled') return toHandoverDto_(handover, lines, customerNameMap_());
+    const handover = loadHandoverForWrite_(input);
+    const status = deriveHandoverStatus(handover.status, progressOf_(handover));
+    if (status === 'cancelled') return toHandoverDto_(handover, customerNameMap_());
     if (status === 'done') {
       throw appError_('CONFLICT', 'Task yang sudah selesai tidak dapat dibatalkan');
     }
-    const now = nowIso_();
-    const updated: HandoverRecord = {
-      ...handover,
-      status: 'cancelled',
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
-    updateHandover_(updated);
-    const names = locationNameMap_();
-    appendAudit_({
-      ts: now,
-      actor: actor.email,
-      action: 'handover.cancel',
-      target: handover.number,
-      before: handoverSnapshot_(handover, lines, names),
-      after: handoverSnapshot_(updated, lines, names),
-    });
-    return toHandoverDto_(updated, lines, customerNameMap_());
+    const saved = writeTaskChange_(
+      handover,
+      { status: 'cancelled' },
+      'handover.cancel',
+      actor,
+      nowIso_(),
+    );
+    return toHandoverDto_(saved, customerNameMap_());
   });
 }
 
-/** Menulis satu baris progres + audit `handover.progress`; mengembalikan true bila ada perubahan. Dalam lock. */
-function writeProgress_(
-  handover: HandoverRecord,
-  line: HandoverLineRecord,
-  doneQty: number,
-  actor: ActorRef,
-  now: string,
-): boolean {
-  if (line.doneQty === doneQty) return false;
-  updateHandoverLine_({ ...line, doneQty, doneAt: now, doneBy: actor.email });
-  appendAudit_({
-    ts: now,
-    actor: actor.email,
-    action: 'handover.progress',
-    target: `${handover.number} · ${line.itemLabel}`,
-    before: { item: line.itemLabel, doneQty: line.doneQty, qty: line.qty },
-    after: { item: line.itemLabel, doneQty, qty: line.qty },
-  });
-  return true;
-}
-
-/** Setelah perubahan progres: catat `handover.complete` sekali bila task baru saja menjadi Selesai; kembalikan DTO. */
-function finishProgress_(
-  ref: HandoverRefInput,
-  beforeStatus: ReturnType<typeof deriveHandoverStatus>,
-  beforeSnapshot: Record<string, unknown>,
-  changed: boolean,
-  actor: ActorRef,
-  now: string,
-): HandoverDto {
-  const fresh = loadHandoverForWrite_(ref);
-  if (changed) {
-    const touched: HandoverRecord = { ...fresh.handover, updatedAt: now, updatedBy: actor.email };
-    updateHandover_(touched);
-    fresh.handover = touched;
-    const afterStatus = deriveHandoverStatus(touched.status, fresh.lines);
-    if (afterStatus === 'done' && beforeStatus !== 'done') {
-      appendAudit_({
-        ts: now,
-        actor: actor.email,
-        action: 'handover.complete',
-        target: touched.number,
-        before: beforeSnapshot,
-        after: handoverSnapshot_(touched, fresh.lines, locationNameMap_()),
-      });
-    }
-  }
-  return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
-}
-
-export function setProgress_(input: SetProgressInput, actor: ActorRef): HandoverDto {
+/** Membuka kembali task Dibatalkan: status tersimpan kembali `open`; centang yang ada tidak berubah. */
+export function reopenHandover_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
   return platform_().withLock(() => {
-    const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverNotCancelled_(handover, lines);
-    const line = lines.find((row) => row.id === input.lineId);
-    if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
-    const now = nowIso_();
-    const beforeStatus = deriveHandoverStatus(handover.status, lines);
-    const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
-    const changed = writeProgress_(handover, line, input.doneQty, actor, now);
-    return finishProgress_(input, beforeStatus, beforeSnapshot, changed, actor, now);
-  });
-}
-
-export function completeLine_(input: CompleteLineInput, actor: ActorRef): HandoverDto {
-  const { id, locationId, lineId } = input;
-  return platform_().withLock(() => {
-    const { handover, lines } = loadHandoverForWrite_({ id, locationId });
-    assertHandoverNotCancelled_(handover, lines);
-    const line = lines.find((row) => row.id === lineId);
-    if (!line) throw appError_('NOT_FOUND', 'Baris tidak ditemukan');
-    const now = nowIso_();
-    const beforeStatus = deriveHandoverStatus(handover.status, lines);
-    const beforeSnapshot = handoverSnapshot_(handover, lines, locationNameMap_());
-    // Qty selesai yang sudah melebihi target dibiarkan (tidak diturunkan ke target).
-    const changed = line.doneQty < line.qty && writeProgress_(handover, line, line.qty, actor, now);
-    return finishProgress_({ id, locationId }, beforeStatus, beforeSnapshot, changed, actor, now);
-  });
-}
-
-/** Selesai per task: semua baris yang belum penuh diisi penuh; tiap baris tercatat `handover.progress` dan satu `handover.complete` menutup task. */
-export function completeAll_(input: HandoverRefInput, actor: ActorRef): HandoverDto {
-  return platform_().withLock(() => {
-    const { handover, lines } = loadHandoverForWrite_(input);
-    assertHandoverNotCancelled_(handover, lines);
-    if (deriveHandoverStatus(handover.status, lines) === 'done') {
-      throw appError_('CONFLICT', 'Task sudah selesai');
+    const handover = loadHandoverForWrite_(input);
+    if (handover.status !== 'cancelled') {
+      throw appError_('CONFLICT', 'Hanya task yang dibatalkan yang dapat dibuka kembali');
     }
-    const now = nowIso_();
-    const names = locationNameMap_();
-    const before = handoverSnapshot_(handover, lines, names);
-    for (const line of lines) {
-      if (line.doneQty < line.qty) writeProgress_(handover, line, line.qty, actor, now);
-    }
-    const touched: HandoverRecord = { ...handover, updatedAt: now, updatedBy: actor.email };
-    updateHandover_(touched);
-    const fresh = loadHandoverForWrite_(input);
-    appendAudit_({
-      ts: now,
-      actor: actor.email,
-      action: 'handover.complete',
-      target: handover.number,
-      before,
-      after: handoverSnapshot_(fresh.handover, fresh.lines, names),
-    });
-    return toHandoverDto_(fresh.handover, fresh.lines, customerNameMap_());
+    const saved = writeTaskChange_(
+      handover,
+      { status: 'open' },
+      'handover.uncancel',
+      actor,
+      nowIso_(),
+    );
+    return toHandoverDto_(saved, customerNameMap_());
   });
 }

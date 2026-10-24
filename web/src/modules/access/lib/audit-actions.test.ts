@@ -16,8 +16,13 @@ test('label aksi customer dan serah terima', () => {
   expect(auditActionLabel('handover.create')).toBe('Task serah terima dibuat');
   expect(auditActionLabel('handover.update')).toBe('Task serah terima diubah');
   expect(auditActionLabel('handover.cancel')).toBe('Task serah terima dibatalkan');
-  expect(auditActionLabel('handover.progress')).toBe('Progres QC diperbarui');
-  expect(auditActionLabel('handover.complete')).toBe('Task serah terima selesai');
+  expect(auditActionLabel('handover.check')).toBe('Butir checklist dicentang');
+  expect(auditActionLabel('handover.uncheck')).toBe('Centang butir checklist dibatalkan');
+  expect(auditActionLabel('handover.done')).toBe('Task serah terima ditandai selesai');
+  expect(auditActionLabel('handover.uncancel')).toBe(
+    'Task serah terima dibuka kembali (batal dicabut)',
+  );
+  expect(auditActionLabel('handover.comment')).toBe('Komentar serah terima ditambahkan');
 });
 
 test('aksi audit qrcode.* berlabel Indonesia', () => {

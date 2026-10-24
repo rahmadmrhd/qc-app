@@ -142,3 +142,13 @@ body {
     @apply font-sans;
   }
 }
+
+/* Sorotan kutipan komentar pada catatan Serah Terima (CSS Custom Highlight API): latar semitransparan lembut,
+   teks tidak berubah warna agar kontras tetap terbaca di tema terang dan gelap. */
+::highlight(qc-comment) {
+  background-color: rgb(245 158 11 / 0.22);
+}
+
+.dark ::highlight(qc-comment) {
+  background-color: rgb(251 191 36 / 0.28);
+}

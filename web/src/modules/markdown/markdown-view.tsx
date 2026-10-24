@@ -54,10 +54,12 @@ const components: Components = {
 export interface MarkdownViewProps {
   source: string;
   className?: string;
+  /** Penimpa komponen tambahan (mis. checkbox interaktif pada catatan); digabung dengan bawaan. */
+  components?: Components;
 }
 
 /** Render Markdown tanpa HTML mentah (tidak memakai rehype-raw); aman terhadap XSS (PRD FA6). */
-export function MarkdownView({ source, className }: MarkdownViewProps) {
+export function MarkdownView({ source, className, components: extra }: MarkdownViewProps) {
   return (
     <div
       className={cn(
@@ -72,7 +74,11 @@ export function MarkdownView({ source, className }: MarkdownViewProps) {
         className,
       )}
     >
-      <Markdown remarkPlugins={[remarkGfm]} urlTransform={urlTransform} components={components}>
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        urlTransform={urlTransform}
+        components={extra ? { ...components, ...extra } : components}
+      >
         {source}
       </Markdown>
     </div>

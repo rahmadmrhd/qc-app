@@ -17,3 +17,12 @@ class ResizeObserverStub {
   }
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
+
+// ProseMirror (editor Tiptap) membutuhkan geometri layout yang tidak dimiliki jsdom.
+if (typeof Element !== 'undefined') {
+  const emptyRects = () => [] as unknown as DOMRectList;
+  Element.prototype.getClientRects ??= emptyRects;
+  Range.prototype.getClientRects ??= emptyRects;
+  Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+  document.elementFromPoint ??= () => null;
+}

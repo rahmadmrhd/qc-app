@@ -62,7 +62,9 @@ for (const [label, order] of [
 }
 
 // Dinaikkan dari 1,5 MB untuk pdf-lib + fontkit + font label (ekspor PDF di FE); ukuran aktual ≈ 2,35 MB.
-const MAX_INDEX_BYTES = 2_600_000;
+// Dinaikkan dari 2,6 MB untuk editor Tiptap (WYSIWYG Catatan + Detail Item); ukuran aktual ≈ 2,95 MB
+// (tambahan ≈ 530 KB mentah / 165 KB gzip: prosemirror ≈ 220 KB, @tiptap/core ≈ 92 KB, marked ≈ 39 KB, dst).
+const MAX_INDEX_BYTES = 3_300_000;
 const indexFile = Bun.file(path.join(GAS_DIST_DIR, 'index.html'));
 if ((await indexFile.exists()) && indexFile.size > MAX_INDEX_BYTES) {
   problems.push(`index.html ${indexFile.size} byte melebihi batas ${MAX_INDEX_BYTES}`);
