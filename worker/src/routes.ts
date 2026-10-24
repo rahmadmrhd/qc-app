@@ -1,4 +1,4 @@
-import type { RpcMethod } from '@shared/rpc';
+import type { WorkerRpcMethod as RpcMethod } from '@shared/rpc';
 import { appError } from '@worker/core/errors';
 import type { RouteDef, RouteTable } from '@worker/core/router';
 import { authRpcRoutes } from '@worker/modules/auth/rpc';
@@ -53,6 +53,7 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
   'qrcodes.cloneFromDrive': true,
   'qrcodes.export': true,
   'qrcodes.file': true,
+  'jobs.get': true,
 };
 
 /** Method yang sudah diporting; sisanya memakai stub `NOT_IMPLEMENTED` (SEMENTARA, Fase 2). */

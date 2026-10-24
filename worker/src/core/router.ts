@@ -4,9 +4,9 @@ import { hasLevel } from '@shared/permissions';
 import type {
   ErrorCode,
   RpcErrorBody,
-  RpcInput,
-  RpcMethod,
-  RpcOutput,
+  WorkerRpcInput as RpcInput,
+  WorkerRpcMethod as RpcMethod,
+  WorkerRpcOutput as RpcOutput,
   RpcResult,
 } from '@shared/rpc';
 import type { UserContext } from '@worker/modules/access/context';

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { RpcMethod, RpcResult } from '@shared/rpc';
+import type { WorkerRpcMethod as RpcMethod, RpcResult } from '@shared/rpc';
 import { seedLocation, seedRole, seedUser } from '@worker-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
 import type { RouteTable } from './core/router';
@@ -61,7 +61,7 @@ describe('kontrak RPC', () => {
       {
         method: 'POST',
         headers: rpcHeaders(await cookieFor('admin@gmail.com')),
-        body: JSON.stringify({ method: 'items.list', payload: null }),
+        body: JSON.stringify({ method: 'brands.list', payload: null }),
       },
       env,
     );

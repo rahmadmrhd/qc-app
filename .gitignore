@@ -29,3 +29,5 @@ web/.tanstack/
 # Worker
 worker/.wrangler/
 web/dist-worker/
+
+.wrangler/

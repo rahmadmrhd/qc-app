@@ -561,3 +561,95 @@ export interface BootData {
   authError?: AuthErrorCode;
   email?: string;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Kontrak Worker (migrasi Cloudflare, Spek 7.4, 8.2, 9b). BERDAMPINGAN dengan `RpcContract`
+// di atas, yang tetap menjadi kontrak Apps Script (`gas/`) dan frontend sampai Fase 4/7: gas dan
+// web tidak berubah. Setelah cutover, `RpcContract` digantikan oleh `WorkerRpcContract`.
+// ---------------------------------------------------------------------------------------------
+
+/** Halaman berkursor; `nextCursor` null = halaman terakhir. */
+export interface BoardPageInput {
+  locationIds: string[];
+  /** Kolom kanban yang dimuat (status turunan, termasuk `cancelled`). */
+  status: HandoverStatus;
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
+}
+
+export interface BoardPageDto {
+  items: HandoverDto[];
+  nextCursor: string | null;
+  /** Jumlah task pada kolom itu (judul kolom). */
+  total: number;
+}
+
+export interface ListItemsPageInput {
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
+  /** Pencarian kunci (awalan/substring), opsional. */
+  query?: string;
+  status?: ItemStatus;
+}
+
+export interface ItemPageDto {
+  items: ItemSummaryDto[];
+  nextCursor: string | null;
+}
+
+export interface ListAuditPageInput {
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
+  /** Aksi persis, mis. `user.update`; kosong = semua. */
+  action?: string;
+  /** Kata kunci pada target atau pelaku. */
+  query?: string;
+}
+
+export interface AuditCursorPageDto {
+  entries: AuditEntryDto[];
+  nextCursor: string | null;
+}
+
+export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr';
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
+
+export interface GetJobInput {
+  id: string;
+}
+
+export interface JobDto {
+  id: string;
+  kind: JobKind;
+  status: JobStatus;
+  /** 0-100. */
+  progress: number;
+  result?: string;
+  error?: string;
+}
+
+/** Ekspor QR kini berupa pekerjaan latar; PDF/PNG dikirim klien lewat unggahan terpisah (Task 3.3). */
+export interface ExportQrJobDto {
+  jobId: string;
+}
+
+type WorkerReplacedMethods =
+  | 'access.audit.list'
+  | 'handovers.board'
+  | 'items.list'
+  | 'qrcodes.export';
+
+export interface WorkerRpcContract extends Omit<RpcContract, WorkerReplacedMethods> {
+  'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
+  'handovers.board': { input: BoardPageInput; output: BoardPageDto };
+  'items.list': { input: ListItemsPageInput; output: ItemPageDto };
+  'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
+  'jobs.get': { input: GetJobInput; output: JobDto };
+}
+
+export type WorkerRpcMethod = keyof WorkerRpcContract;
+export type WorkerRpcInput<M extends WorkerRpcMethod> = WorkerRpcContract[M]['input'];
+export type WorkerRpcOutput<M extends WorkerRpcMethod> = WorkerRpcContract[M]['output'];
