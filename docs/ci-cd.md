@@ -66,7 +66,7 @@ Dibuat otomatis pada run pertama; pengamanannya diatur di Settings → Environme
 1. **`worker-production`:** Deployment branches → *Selected branches* → hanya `main`. *Required reviewers* opsional (dimatikan secara bawaan; deploy produksi otomatis saat merge ke `main`).
 2. **`worker-staging`:** Deployment branches → *Selected branches* → `dev` dan `main`.
 3. Secret **environment** (bukan secret repositori) pada keduanya: `CLOUDFLARE_API_TOKEN`. Buat token di Cloudflare (My Profile → API Tokens) pada **akun "QC"** dengan izin: Workers Scripts (Edit), D1 (Edit), Queues (Edit), Workers Routes bila memakai rute/domain. Id akun (`2256d27ce4dcdcb9ade777cc2650fd81`) bukan rahasia dan sudah ditulis di workflow karena login Wrangler pemilik juga memiliki akun lain.
-4. Variabel environment opsional `WORKER_URL` untuk uji asap.
+4. Variabel environment opsional `WORKER_URL` untuk uji asap (staging `https://app-staging.qc-225.workers.dev`, production `https://app.qc-225.workers.dev`).
 5. Rahasia aplikasi (`SESSION_SECRET`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_SECRET`) diatur sekali dengan `wrangler secret put --env <target>`, bukan lewat GitHub.
 
 Prasyarat akun Cloudflare: subdomain `workers.dev` harus sudah terdaftar pada akun QC (buka menu Workers di dashboard sekali); tanpanya Wrangler gagal dengan galat 10063 / "Worker does not exist" saat deploy dan saat memasang konsumen Queue.

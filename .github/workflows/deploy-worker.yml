@@ -1,8 +1,8 @@
 name: Deploy Worker
 
 # Build lalu deploy Cloudflare Worker (+ migrasi D1). Mencerminkan deploy.yml (Apps Script). Target:
-#   staging    = Worker `qc-app-staging` + D1 `qc-app-staging`.
-#   production = Worker `qc-app` + D1 `qc-app-production` (otomatis, tanpa persetujuan manual
+#   staging    = Worker `app-staging` + D1 `qc-app-staging`.
+#   production = Worker `app` + D1 `qc-app-production` (otomatis, tanpa persetujuan manual
 #                kecuali reviewer wajib diaktifkan pada environment `worker-production`).
 on:
   workflow_dispatch:
@@ -107,7 +107,7 @@ jobs:
         working-directory: worker
         run: bunx wrangler deploy --env "${TARGET}"
 
-      # Opsional: isi variabel WORKER_URL pada environment (mis. https://qc-app-staging.<subdomain>.workers.dev).
+      # Opsional: isi variabel WORKER_URL pada environment (mis. https://app-staging.qc-225.workers.dev).
       - name: Uji asap /api/ping
         env:
           WORKER_URL: ${{ vars.WORKER_URL }}
