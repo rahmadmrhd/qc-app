@@ -30,6 +30,30 @@ Keberhasilan = respons API terasa instan (puluhan ms di luar jembatan Google), t
 5. Peralihan boleh memakai jeda tulis beberapa jam; aplikasi lama (deployment `/exec` Apps Script) tidak diubah selama Worker dibangun. **[saya]** Satu-satunya pengecualian: satu perubahan kecil di `gas/` berupa bendera Script Property `READ_ONLY=1` (semua RPC tulis ditolak dengan pesan jelas), di-deploy SEBELUM hari cutover supaya pembekuan tulis tidak bergantung pada disiplin pengguna.
 6. Skala sekarang ±50 task per bulan. Skala tahunan item/audit: **belum diketahui** (lihat §12).
 
+## 2b. Batas paket gratis yang SUDAH diverifikasi (dokumentasi Cloudflare, dibaca 2026-10-25)
+
+| Fitur | Batas gratis | Dampak pada rancangan |
+|---|---|---|
+| Workers: permintaan HTTP | 100.000/hari (reset 00:00 UTC) | Jauh di atas kebutuhan 50 task/bulan; tetap hindari polling agresif |
+| Workers: CPU per permintaan HTTP | **10 ms** | Aturan mutlak §5 |
+| Workers: CPU per Cron Trigger | **10 ms**; durasi (wall) 15 menit | Cron hanya menjadwalkan ke antrean (§9b, §10) |
+| Cron Trigger per akun | **5** | Cukup: pembersihan QR, ekspor terjadwal; hemat |
+| Subrequest per invokasi | **50**; panggilan D1 ikut dihitung; `db.batch()` dihitung **satu** | Jembatan Apps Script, D1, dan Queues semua menghabiskan jatah 50; pakai `batch()` |
+| Ukuran badan permintaan | 100 MB (mengikuti plan akun) | Tidak mengikat unggahan gambar ≤ ±540 KB |
+| Memori per isolate | 128 MB | Cukup |
+| Static Assets | 20.000 berkas/versi, 25 MiB per berkas | Cukup untuk potongan JS/CSS |
+| D1: basis data | 10 per akun; **500 MB per DB**; 5 GB total | Cukup (staging + produksi + cadangan) |
+| D1: baris dibaca | **5 juta/hari**, dihitung dari baris yang **dipindai**, bukan yang dikembalikan | Indeks wajib (§7.1); kueri tanpa indeks memakan kuota |
+| D1: baris ditulis | **100.000/hari**; tiap indeks pada kolom tertulis menambah 1 baris tulis | Aman pada skala sekarang; jangan menambah indeks berlebihan |
+| D1: **parameter terikat per kueri** | **100** | Penyisipan banyak baris per pernyataan terbatas (mis. 20 kolom → maks. 5 baris/pernyataan); gunakan `batch()` dari pernyataan per baris. Impor awal via berkas SQL (`wrangler d1 execute --file`) tidak terkena batas ini |
+| D1: ukuran baris/string/BLOB | 2 MB; pernyataan SQL 100 KB | Cukup (catatan ≤ 5.000 karakter, komentar ≤ 40 KB) |
+| D1: pola `LIKE`/`GLOB` | 50 byte | Pencarian teks panjang harus lewat kolom kunci pencarian (`shared/items.ts`) |
+| Queues | **Tersedia di paket gratis**; 10.000 operasi/hari; tiap pesan ±3 operasi (tulis, baca, hapus), tiap 64 KB = 1 operasi; retensi tetap **24 jam** | ≈ 3.300 pesan/hari; ukuran potongan ekspor dipilih agar jumlah pesan kecil. Pekerjaan yang tak tuntas dalam 24 jam hilang → status `jobs` harus bisa diulang manual |
+| Queues: ukuran pesan | 128 KB; batch konsumen 100; percobaan ulang maks. 100 | Pesan hanya membawa `{ jobId, potongan }`, data diambil dari D1 |
+| Queues: CPU konsumen | halaman limit Queues menyebut default 30 dtk (dapat diatur); **belum jelas** apakah paket gratis tetap dibatasi 10 ms | Tetap dirancang ≤ 10 ms per pesan; **[verifikasi lewat spike]** |
+
+Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, apakah permintaan Static Assets dihitung ke 100.000/hari, dan CPU konsumen Queues di paket gratis.
+
 ## 3. Tujuan, bukan-tujuan, anti-tujuan
 
 **Tujuan**
@@ -77,7 +101,7 @@ Prinsip: CPU hanya untuk memetakan permintaan → SQL → respons. Pekerjaan ber
 | Kolom JSON (`checks`, `comments`, snapshot audit) hanya di-parse pada `get`, bukan pada daftar; atau dinormalisasi jadi tabel (lihat §7.3) | `JSON.parse` pada banyak baris mahal |
 | Worker **tidak pernah** decode/encode base64 berkas | Mengubah 540 KB base64 ↔ byte bisa puluhan ms; klien yang mendekode |
 | Tidak ada loop atas seluruh tabel di dalam permintaan; filter/urut/hitung dikerjakan SQL dengan indeks | Pemindaian tanpa indeks memakan CPU dan kuota baris-dibaca D1 |
-| Penggabungan beberapa query memakai `D1.batch()` | Membatasi jumlah subrequest **[verifikasi: batas query/subrequest per invokasi paket gratis]** |
+| Penggabungan beberapa query memakai `D1.batch()` | Batas 50 subrequest per invokasi (D1, jembatan, Queues semua dihitung; `batch()` = satu) — terverifikasi §2b |
 | Validasi catatan (≤5.000 karakter), `extractChecklist`, kanonisasi tetap di server, tetapi `saveBatch` dibatasi 30 task dan diukur | Hot path terberat yang tersisa |
 | Pemecah WhatsApp, saran customer, ekspor PDF/PNG QR, kecilkan gambar tetap di klien | Tidak menggunakan CPU Worker |
 
@@ -154,12 +178,12 @@ Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor
 - **Producer:** RPC ekspor (mis. `qrcodes.export`) memvalidasi izin dan input, menyisipkan baris `jobs` (status `queued`) di D1, mengirim pesan `{ jobId }` ke antrean, lalu membalas segera dengan `jobId`. Respons tidak menunggu Drive.
 - **Consumer:** memproses satu potongan kecil per pesan (mis. satu berkas QR, atau ±500 baris ekspor), memperbarui `jobs` (`running`/`progress`/`done`/`failed` + hasil seperti id berkas Drive), dan mengirim pesan lanjutan untuk potongan berikutnya. Idempoten per potongan (pesan bisa terkirim ulang).
 - **Status ke pengguna:** klien memantau `jobs.get { id }` (polling ringan, interval bertahap) dan menampilkan progres, hasil, atau galat jelas. Pekerjaan gagal bisa diulang; berkas Drive setengah jadi mengikuti aturan yatim (§8.2).
-- **Batas dan ukuran:** ukuran potongan dipilih agar satu invokasi aman di bawah 10 ms CPU dan batas subrequest. Percobaan ulang otomatis dengan batas dan antrean galat mati (DLQ) bila tersedia. **[verifikasi lewat spike Fase 0]:** Queues tersedia di paket gratis, batas operasi/hari, masa simpan pesan, ukuran pesan, dan batas CPU consumer.
+- **Batas dan ukuran:** ukuran potongan dipilih agar satu invokasi aman di bawah 10 ms CPU dan batas subrequest. Percobaan ulang otomatis dengan batas dan antrean galat mati (DLQ) bila tersedia. Terverifikasi (§2b): Queues tersedia di paket gratis, 10.000 operasi/hari (≈ 3 per pesan), retensi 24 jam, pesan 128 KB. **[verifikasi lewat spike Fase 0]:** batas CPU consumer di paket gratis.
 - **Cron:** `scheduled()` hanya menjadwalkan (memasukkan pesan ke antrean); pekerjaan beratnya tetap di consumer.
 
 ## 10. Cron
 
-`scheduled()` Worker menggantikan trigger waktu Apps Script (`cleanupQrPdfs`, `docs/setup-google.md` 7d): mencari `qr_documents` yatim di D1 melewati masa tenggang lalu memerintahkan jembatan `drive.revokeSharing`, dengan memasukkannya ke antrean (§9b), bukan mengerjakannya di handler cron (CPU cron juga ≤ 10 ms di paket gratis **[verifikasi]**). Jadwal cron memakai UTC (WIB = UTC+7). Ekspor terjadwal ke Sheets memakai mekanisme yang sama.
+`scheduled()` Worker menggantikan trigger waktu Apps Script (`cleanupQrPdfs`, `docs/setup-google.md` 7d): mencari `qr_documents` yatim di D1 melewati masa tenggang lalu memerintahkan jembatan `drive.revokeSharing`, dengan memasukkannya ke antrean (§9b), bukan mengerjakannya di handler cron (CPU cron ≤ 10 ms di paket gratis, terverifikasi §2b). Jadwal cron memakai UTC (WIB = UTC+7). Ekspor terjadwal ke Sheets memakai mekanisme yang sama.
 
 ## 11. Frontend
 
@@ -214,7 +238,7 @@ Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor
 | Risiko | Penanganan |
 |---|---|
 | Rute melewati 10 ms CPU (galat 1102) | Anggaran §5, gerbang p99, paginasi, tanpa decode base64, SQL berindeks |
-| Queues tidak tersedia/cukup di paket gratis | Spike Fase 0; bila tidak cukup, pemilik memutuskan paket berbayar atau pembatasan fitur |
+| Kuota Queues gratis (10.000 operasi/hari, retensi 24 jam) atau CPU konsumen tidak cukup | Pesan sedikit dan besar; `jobs` dapat diulang; spike Fase 0; bila tidak cukup, pemilik memutuskan paket berbayar atau pembatasan fitur |
 | Aliran berkas lewat jembatan lambat atau melewati batas badan/CPU | Spike Fase 0; alternatif unggahan langsung klien ↔ jembatan bertiket |
 | Jembatan terbuka publik | HMAC + jendela waktu + allowlist + batas ukuran + pembatas percobaan |
 | Data tidak konsisten saat cutover | Jeda tulis, impor akhir terverifikasi, aplikasi lama tetap utuh |
