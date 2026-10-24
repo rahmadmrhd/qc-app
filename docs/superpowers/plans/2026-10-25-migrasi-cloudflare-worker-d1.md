@@ -452,11 +452,15 @@ Setiap task di bawah mengikuti P1–P7; yang tertulis hanyalah keputusan khusus 
 
 - [ ] Harian: periksa Workers Logs untuk galat 1102/429, kuota D1 (baris dibaca/ditulis), operasi Queues; ekspor terjadwal ke Sheets berjalan; catat di `docs/superpowers/spikes/2026-11-stabilisasi.md`. Perbaikan bug lewat PR kecil biasa.
 
-### Task 7.2: Penghentian `gas/` dan pembaruan dokumen
+### Task 7.2: Pembersihan kode yang tidak diperlukan lagi dan pembaruan dokumen
 
-**Files:** hapus `gas/src/**`, `gas/test-support/**` (kecuali yang dipindah), `scripts/build-gas*.ts`, `scripts/push.ts`, `scripts/deploy.ts`, `.github/workflows/deploy.yml` (versi GAS), `web/src/lib/rpc/mock-backend.*`; ubah `CLAUDE.md`, `docs/ci-cd.md`, `docs/setup-google.md` (jembatan saja), `docs/api/desktop-sync.md` (URL baru, tanpa catatan redirect 302), `docs/adding-a-module.md`, PRD NFR yang menyebut Sheets/Apps Script sebagai penyimpanan.
+**Keputusan pemilik:** hapus saja file/baris kode yang tidak diperlukan lagi; tidak perlu persetujuan terpisah. Yang masih dipakai ekosistem Google (`bridge/`, skrip impor/ekspor, `scripts/push-bridge.ts`, `scripts/deploy-bridge.ts`) dipertahankan. Waktu pelaksanaan: setelah masa stabilisasi (Task 7.1) selesai tanpa kebutuhan jalan mundur; sebelum itu `gas/` tetap sebagai pegangan jalan mundur (sumbernya juga aman di riwayat git).
 
-- [ ] **Step 1:** Pastikan stabilisasi selesai dan pemilik menyetujui penghentian (menunggu persetujuan eksplisit — tindakan tak mudah dibalik). **Step 2:** Hapus dan perbarui di branch; `bun run check` + `bun run build` hijau. **Step 3:** Commit `chore: hentikan backend Apps Script, jembatan tetap`.
+**Files:**
+- Hapus (setelah memeriksa tidak ada referensi tersisa lewat pencarian dan typecheck): `gas/` (src, test-support, dist, `deployment.json`, `appsscript.json`), `scripts/build-gas*.ts`, `scripts/verify-gas-dist.ts`, `scripts/push.ts`, `scripts/deploy.ts`, `.github/workflows/deploy.yml` (versi GAS), `web/src/lib/rpc/mock-backend.*`, kontrak lama `RpcContract` di `shared/rpc.ts` (tinggalkan hanya `WorkerRpcContract`, ganti nama bila perlu), alias `@gas*` di tsconfig/vite, bendera `READ_ONLY` bila hanya milik `gas/`.
+- Ubah: `CLAUDE.md`, `docs/ci-cd.md`, `docs/setup-google.md` (jembatan saja), `docs/api/desktop-sync.md` (URL baru, tanpa catatan redirect 302), `docs/adding-a-module.md`, PRD NFR yang menyebut Sheets/Apps Script sebagai penyimpanan.
+
+- [ ] **Step 1:** Pastikan Task 7.1 selesai. **Step 2:** Hapus berkas/baris di atas secara bertahap; setelah tiap kelompok jalankan `bun run typecheck` dan pencarian referensi (`@gas`, `gas/`, `RpcContract`). Kode yang masih dirujuk `bridge/` atau skrip migrasi dipertahankan. **Step 3:** `bun run check` + `bun run build` hijau. **Step 4:** Commit `chore: bersihkan kode backend Apps Script lama, jembatan tetap`.
 
 ---
 
