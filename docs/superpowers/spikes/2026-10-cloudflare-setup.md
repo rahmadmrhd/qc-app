@@ -4,7 +4,7 @@ Dibuat 2026-10-25 lewat `wrangler`. Nama proyek: **qc-app**. Akun Cloudflare: **
 
 | Sumber daya | Staging | Production |
 |---|---|---|
-| Worker | `qc-app-staging` | `qc-app` |
+| Worker | `app-staging` | `app` |
 | D1 | `qc-app-staging` (`67c826c4-e20e-413b-b611-0653a480c130`) | `qc-app-production` (`cf7f9bb3-202d-4819-bc1f-c60581795933`) |
 | Queue | `qc-app-jobs-staging` | `qc-app-jobs-production` |
 
@@ -15,4 +15,4 @@ Catatan: sumber daya sempat dibuat di akun yang salah dan sudah dihapus seluruhn
 Prasyarat tambahan (ditemukan di Task 0.3): akun QC belum punya subdomain `workers.dev`. Selama belum ada, `wrangler deploy` gagal ("This Worker does not exist", kode 10007) dan pemasangan konsumen Queue ditolak (kode 10063). Buka menu Workers di dashboard akun QC sekali (otomatis membuat subdomain) atau daftarkan di halaman onboarding Workers.
 
 ## Subdomain workers.dev
-Terdaftar 2026-10-25: **`qc-225.workers.dev`** (nama `qc` sudah dipakai pihak lain). Alamat: production `https://qc-app.qc-225.workers.dev`, staging `https://qc-app-staging.qc-225.workers.dev`. Redirect OAuth yang harus didaftarkan di Google Cloud Console: `https://qc-app-staging.qc-225.workers.dev/auth/callback` dan `https://qc-app.qc-225.workers.dev/auth/callback`.
+Terdaftar 2026-10-25: **`qc-225.workers.dev`** (nama `qc` sudah dipakai pihak lain). Nama Worker (keputusan pemilik): `app` (production) dan `app-staging` (staging); D1 dan Queue tetap `qc-app-*`. Alamat: production `https://app.qc-225.workers.dev`, staging `https://app-staging.qc-225.workers.dev`. Redirect OAuth yang harus didaftarkan di Google Cloud Console: `https://app-staging.qc-225.workers.dev/auth/callback` dan `https://app.qc-225.workers.dev/auth/callback`.
