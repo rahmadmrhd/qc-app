@@ -137,19 +137,29 @@ Apps Script web app hanya mengembalikan teks, jadi berkas dikirim sebagai base64
 - **Konsistensi D1 ⇄ Drive [saya].** Tidak ada transaksi bersama, jadi urutannya: **unggah/buat = Drive dulu, lalu D1** (kegagalan sesudah Drive meninggalkan berkas yatim yang dibersihkan cron; pengguna melihat galat dan mengulang); **hapus/ganti = tandai di D1 dulu (status `pending_delete`), lalu Drive, lalu hapus baris** (cron mencoba ulang yang tersangkut). Tabel `files` dan ekspor QR mendapat kolom `status` untuk ini, dan cron pembersihan mencakup berkas yatim di semua folder yang dikelola, bukan hanya `qr_documents`.
 - **Ulang aman:** `files.upload` tetap idempoten terhadap kegagalan di tengah (berkas Drive yatim dibersihkan oleh cron).
 - **Redirect Apps Script:** web app menjawab `POST` dengan 302 ke `script.googleusercontent.com`. `fetch` Workers mengikuti 302 dengan `GET` tanpa badan sesuai spesifikasi fetch; ini **[verifikasi lewat spike]** dengan permintaan nyata, termasuk ukuran badan besar.
-- **Latensi:** jembatan tetap 1,5–2,5 dtk per panggilan (waktu tunggu, tidak dihitung CPU). Operasi yang butuh banyak panggilan Drive (mis. ekspor QR) dirancang memakai sedikit panggilan dan menampilkan status ke pengguna.
+- **Latensi:** jembatan tetap 1,5–2,5 dtk per panggilan (waktu tunggu, tidak dihitung CPU). Operasi yang butuh banyak panggilan Drive (mis. ekspor QR) dijalankan lewat antrean (§9b) dan statusnya ditampilkan ke pengguna.
 
 ### 8.3 Impor dan ekspor Sheets
 - **Impor awal (sekali):** skrip lokal (Bun, bukan Worker) memanggil `sheets.dump` untuk mendapat semua tabel sebagai JSON, memvalidasi baris terhadap skema (tipe, kunci unik, rujukan antar tabel), dan menghasilkan berkas SQL `INSERT` untuk `wrangler d1 execute --file`. Dijalankan berulang di staging (gladi) sebelum produksi.
-- **Ekspor:** Worker membaca D1 per halaman (±500 baris) dan mengirim potongan ke `sheets.export` (membuat/menimpa sheet laporan; baris pertama = nama kolom). Dipicu manual (tombol admin) dan opsional terjadwal. Sheets hasil ekspor **hanya baca**; suntingan di sana tidak kembali ke D1.
+- **Ekspor:** consumer antrean (§9b) membaca D1 per halaman (±500 baris) dan mengirim potongan ke `sheets.export` (membuat/menimpa sheet laporan; baris pertama = nama kolom). Dipicu manual (tombol admin) dan opsional terjadwal. Sheets hasil ekspor **hanya baca**; suntingan di sana tidak kembali ke D1.
 
 ## 9. Sinkron QC Desktop
 
 Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 10 salah/10 menit, body ≤ 5 MB, paginasi) dipertahankan; endpoint menjadi `POST https://<domain-worker>/sync`. Tidak ada lagi redirect 302. Syarat peralihan: data `sync_state` dan semua `sync_rev` item/merk **diimpor apa adanya** sehingga kursor Desktop tetap valid. QC Desktop adalah proyek terpisah: pemilik/pemelihara Desktop harus mengganti URL pada hari cutover (lihat §11). Ukuran halaman sinkron dibatasi dan diukur terhadap anggaran CPU (hash `itemSyncSignature_` per item).
 
+## 9b. Pekerjaan latar lewat Queues **[pemilik: ekspor dilakukan di queue]**
+
+Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor D1 ke Spreadsheet, pembersihan berkas yatim) dijalankan oleh **consumer Cloudflare Queues**, bukan di dalam permintaan pengguna. Tiap pesan antrean = satu invokasi consumer dengan anggaran CPU dan subrequest sendiri, sehingga batas per permintaan tidak mengikat alur pengguna.
+
+- **Producer:** RPC ekspor (mis. `qrcodes.export`) memvalidasi izin dan input, menyisipkan baris `jobs` (status `queued`) di D1, mengirim pesan `{ jobId }` ke antrean, lalu membalas segera dengan `jobId`. Respons tidak menunggu Drive.
+- **Consumer:** memproses satu potongan kecil per pesan (mis. satu berkas QR, atau ±500 baris ekspor), memperbarui `jobs` (`running`/`progress`/`done`/`failed` + hasil seperti id berkas Drive), dan mengirim pesan lanjutan untuk potongan berikutnya. Idempoten per potongan (pesan bisa terkirim ulang).
+- **Status ke pengguna:** klien memantau `jobs.get { id }` (polling ringan, interval bertahap) dan menampilkan progres, hasil, atau galat jelas. Pekerjaan gagal bisa diulang; berkas Drive setengah jadi mengikuti aturan yatim (§8.2).
+- **Batas dan ukuran:** ukuran potongan dipilih agar satu invokasi aman di bawah 10 ms CPU dan batas subrequest. Percobaan ulang otomatis dengan batas dan antrean galat mati (DLQ) bila tersedia. **[verifikasi lewat spike Fase 0]:** Queues tersedia di paket gratis, batas operasi/hari, masa simpan pesan, ukuran pesan, dan batas CPU consumer.
+- **Cron:** `scheduled()` hanya menjadwalkan (memasukkan pesan ke antrean); pekerjaan beratnya tetap di consumer.
+
 ## 10. Cron
 
-`scheduled()` Worker menggantikan trigger waktu Apps Script (`cleanupQrPdfs`, `docs/setup-google.md` 7d): mencari `qr_documents` yatim di D1 melewati masa tenggang lalu memerintahkan jembatan `drive.revokeSharing`, dalam potongan kecil agar CPU cron (juga ≤ 10 ms di paket gratis **[verifikasi]**) aman. Jadwal cron memakai UTC (WIB = UTC+7). Ekspor terjadwal ke Sheets memakai mekanisme sama (satu potongan per panggilan atau Queues bila tersedia di paket gratis **[verifikasi]**).
+`scheduled()` Worker menggantikan trigger waktu Apps Script (`cleanupQrPdfs`, `docs/setup-google.md` 7d): mencari `qr_documents` yatim di D1 melewati masa tenggang lalu memerintahkan jembatan `drive.revokeSharing`, dengan memasukkannya ke antrean (§9b), bukan mengerjakannya di handler cron (CPU cron juga ≤ 10 ms di paket gratis **[verifikasi]**). Jadwal cron memakai UTC (WIB = UTC+7). Ekspor terjadwal ke Sheets memakai mekanisme yang sama.
 
 ## 11. Frontend
 
@@ -182,7 +192,7 @@ Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 
 
 **Fase 2 — Porting modul** (urut dari yang paling mendasari): `access` (pengguna, peran, lokasi, audit) → `brand`, `customer` → `files` (butuh jembatan) → `item` → `handover` (termasuk board berhalaman, `base`, centang, komentar) → `qrcode` → `sync`. Tiap modul: port, tes paritas, ukuran CPU. *Keluaran:* semua RPC di staging lulus paritas.
 
-**Fase 3 — Jembatan.** `bridge/` dengan HMAC, aksi Drive, `sheets.dump`, `sheets.export`; skrip `clasp` + CI untuk jembatan. Cron `scheduled()` (pembersihan QR, ekspor). *Keluaran:* unggah/baca/ekspor QR berfungsi di staging.
+**Fase 3 — Jembatan dan antrean.** `bridge/` dengan HMAC, aksi Drive, `sheets.dump`, `sheets.export`; skrip `clasp` + CI untuk jembatan. Antrean + consumer + tabel `jobs` + `jobs.get`, cron `scheduled()` yang hanya menjadwalkan (pembersihan QR, ekspor). *Keluaran:* unggah/baca/ekspor QR berfungsi di staging.
 
 **Fase 4 — Frontend.** Transport HTTP, pecah bundel, `board` berhalaman, hapus mock-di-peramban, perbarui `verify-dist`. *Keluaran:* aplikasi staging penuh dengan E2E hijau; gerbang CPU p99 ≤ 8 ms lulus.
 
@@ -204,6 +214,7 @@ Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 
 | Risiko | Penanganan |
 |---|---|
 | Rute melewati 10 ms CPU (galat 1102) | Anggaran §5, gerbang p99, paginasi, tanpa decode base64, SQL berindeks |
+| Queues tidak tersedia/cukup di paket gratis | Spike Fase 0; bila tidak cukup, pemilik memutuskan paket berbayar atau pembatasan fitur |
 | Aliran berkas lewat jembatan lambat atau melewati batas badan/CPU | Spike Fase 0; alternatif unggahan langsung klien ↔ jembatan bertiket |
 | Jembatan terbuka publik | HMAC + jendela waktu + allowlist + batas ukuran + pembatas percobaan |
 | Data tidak konsisten saat cutover | Jeda tulis, impor akhir terverifikasi, aplikasi lama tetap utuh |
@@ -219,7 +230,7 @@ Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 
 3. Siapa yang memelihara QC Desktop dan bisakah URL sinkron diganti pada hari cutover?
 4. Setuju lingkungan **staging** terpisah (Worker + D1 staging + jembatan staging) selain produksi?
 5. Apakah masa jalan mundur 2–4 minggu (aplikasi lama tetap hidup, baca-saja) cukup?
-6. Bila spike Fase 0 menunjukkan paket gratis tidak cukup untuk ekspor QR/ekspor Sheets (batas subrequest per permintaan kecil), mana yang Anda pilih: pindah ke paket berbayar, atau membatasi fitur (mis. ekspor QR dipecah jadi beberapa langkah/lebih lambat)?
+6. ~~Batas subrequest untuk ekspor~~ — dijawab pemilik: ekspor berjalan di Queues (§9b). Bila spike menunjukkan Queues tidak tersedia/cukup di paket gratis, pemilik diminta memutuskan ulang (paket berbayar atau pembatasan fitur).
 
 ## 16. Diserahkan kepada pembangun
 
