@@ -41,3 +41,46 @@ export async function batchGuarded(
     throw error;
   }
 }
+
+/** Penjaga umum: batch dibatalkan (integer overflow) bila `conditionSql` tidak benar. */
+export function guardCondition(
+  db: D1Database,
+  conditionSql: string,
+  ...binds: unknown[]
+): D1PreparedStatement {
+  return db
+    .prepare(`SELECT CASE WHEN (${conditionSql}) THEN 1 ELSE abs(-9223372036854775808) END`)
+    .bind(...binds);
+}
+
+/** Kegagalan tulis yang aman diulang setelah memuat ulang keadaan: penjaga CAS atau rebutan kunci unik. */
+export function isRetryableWriteError(error: unknown): boolean {
+  if (isGuardFailure(error)) return true;
+  return (
+    error instanceof Error &&
+    /UNIQUE constraint failed: (customers\.key|handovers\.number|brands\.key)/i.test(error.message)
+  );
+}
+
+/**
+ * Menjalankan `attempt` (muat keadaan -> hitung -> `batch` dengan penjaga). Bila batch dibatalkan penjaga
+ * CAS/kunci unik karena penulis lain, keadaan dimuat ulang dan `attempt` diulang (hingga `attempts` kali);
+ * setelah itu CONFLICT.
+ */
+export async function runCas<T>(
+  attempt: () => Promise<T>,
+  staleMessage: string,
+  attempts = 3,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!isRetryableWriteError(error)) throw error;
+      last = error;
+    }
+  }
+  console.error(`CAS gagal setelah ${attempts} percobaan: ${String(last)}`);
+  throw appError('CONFLICT', staleMessage);
+}
