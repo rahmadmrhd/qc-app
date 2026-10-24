@@ -60,13 +60,18 @@ export async function findActiveFile(env: Env, id: string): Promise<FileRecord |
 }
 
 export async function findActiveFiles(env: Env, ids: readonly string[]): Promise<FileRecord[]> {
-  if (ids.length === 0) return [];
-  const rows = await env.DB.prepare(
-    `SELECT ${FILE_COLUMNS} FROM files WHERE status = 'active' AND id IN (${ids.map(() => '?').join(',')})`,
-  )
-    .bind(...ids)
-    .all<FileRow>();
-  return rows.results.map(toFile);
+  const out: FileRecord[] = [];
+  // Batas D1: 100 parameter terikat per kueri.
+  for (let from = 0; from < ids.length; from += 90) {
+    const chunk = ids.slice(from, from + 90);
+    const rows = await env.DB.prepare(
+      `SELECT ${FILE_COLUMNS} FROM files WHERE status = 'active' AND id IN (${chunk.map(() => '?').join(',')})`,
+    )
+      .bind(...chunk)
+      .all<FileRow>();
+    out.push(...rows.results.map(toFile));
+  }
+  return out;
 }
 
 export async function countUnattached(env: Env, createdBy: string): Promise<number> {

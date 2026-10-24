@@ -6,6 +6,7 @@ import { authRpcRoutes } from '@worker/modules/auth/rpc';
 import { brandRoutes } from '@worker/modules/brand/routes';
 import { customerRoutes } from '@worker/modules/customer/routes';
 import { filesRoutes } from '@worker/modules/files/routes';
+import { itemRoutes } from '@worker/modules/item/routes';
 
 /**
  * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
@@ -82,6 +83,7 @@ function realRoutes(): Partial<RouteTable> {
     ...brandRoutes(),
     ...customerRoutes(),
     ...filesRoutes(),
+    ...itemRoutes(),
   };
 }
 
