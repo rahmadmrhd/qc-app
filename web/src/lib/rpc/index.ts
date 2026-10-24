@@ -1,6 +1,6 @@
 import { getToken } from '@/modules/auth/session';
 import { createRpcClient } from './client';
-import { gasTransport } from './gas-transport';
+import { httpTransport } from './http-transport';
 import type { RpcTransport } from './transport';
 
 /** Mock dimuat lazy hanya saat dev, sehingga tidak ikut ter-bundle ke build produksi (dicek verify-dist). */
@@ -16,7 +16,8 @@ function createDevTransport(): RpcTransport {
   };
 }
 
+// Produksi: sesi lewat cookie HttpOnly (token tidak dipegang JS); `getToken` hanya terisi pada mode dev (mock).
 export const rpc = createRpcClient(
-  import.meta.env.DEV ? createDevTransport() : gasTransport,
+  import.meta.env.DEV ? createDevTransport() : httpTransport,
   getToken,
 );

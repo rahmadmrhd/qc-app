@@ -5,8 +5,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-04-01",
   "assets": {
-    // Sementara; diubah Task 4.2 (build tanpa satu berkas).
-    "directory": "../web/dist-worker",
+    // Keluaran build web (Vite outDir ../worker/dist), berpotongan.
+    "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Daftar pola (bukan true): aset dan navigasi rute klien dilayani tanpa Worker/CPU.

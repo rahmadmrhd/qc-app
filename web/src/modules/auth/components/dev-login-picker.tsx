@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { MOCK_USERS, mockLogin } from '@/lib/rpc/mock-backend';
-import { setToken } from '@/modules/auth/session';
+import { markAuthenticated, setDevToken } from '@/modules/auth/session';
 
 export default function DevLoginPicker() {
   const navigate = useNavigate();
@@ -11,7 +11,8 @@ export default function DevLoginPicker() {
   function loginAs(email: string) {
     const result = mockLogin(email);
     if ('token' in result) {
-      setToken(result.token);
+      setDevToken(result.token);
+      markAuthenticated(email);
       void navigate({ to: '/' });
     } else {
       setRejected(result.email);

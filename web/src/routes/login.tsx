@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { LoginPanel } from '@/modules/auth/components/login-panel';
-import { getSession, getToken } from '@/modules/auth/session';
+import { getSession, isAuthenticated } from '@/modules/auth/session';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 
 const DevLoginPicker = import.meta.env.DEV
@@ -10,7 +10,7 @@ const DevLoginPicker = import.meta.env.DEV
 
 export const Route = createFileRoute('/login')({
   beforeLoad: () => {
-    if (getToken()) throw redirect({ to: '/' });
+    if (isAuthenticated()) throw redirect({ to: '/' });
   },
   component: LoginPage,
 });

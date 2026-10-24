@@ -1,26 +1,21 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { clearToken, initSession, PERSISTED_CACHE_KEY } from '@/modules/auth/session';
+import {
+  ANONYMOUS_SESSION,
+  clearSession,
+  initSession,
+  PERSISTED_CACHE_KEY,
+} from '@/modules/auth/session';
 import {
   PERSIST_MAX_AGE_MS,
   restoreQueryCache,
   savePersistedQueryCache,
   startQueryPersistence,
-  tokenOwner,
 } from './query-persist';
 
-function tokenFor(email: string): string {
-  const payload = btoa(JSON.stringify({ email, iat: 1, exp: 2 }))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  return `${payload}.sig`;
-}
-
 function login(email: string): string {
-  const token = tokenFor(email);
-  initSession({ token, loginUrl: null, authError: null, authErrorEmail: null });
-  return token;
+  initSession({ ...ANONYMOUS_SESSION, authenticated: true, email });
+  return email;
 }
 
 beforeEach(() => {
@@ -28,18 +23,11 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
-  clearToken();
-});
-
-test('tokenOwner membaca email dari payload; token rusak/kosong = null', () => {
-  expect(tokenOwner(tokenFor('a@x.com'))).toBe('a@x.com');
-  expect(tokenOwner(null)).toBeNull();
-  expect(tokenOwner('bukan-token')).toBeNull();
-  expect(tokenOwner('!!!.x')).toBeNull();
+  clearSession();
 });
 
 test('menyimpan HANYA query daftar yang di-whitelist; Log Audit, user, dan berkas tidak ikut', () => {
-  const token = login('a@x.com');
+  const owner = login('a@x.com');
   const client = new QueryClient();
   client.setQueryData(['items', 'list'], [{ id: 'i1' }]);
   client.setQueryData(['auth', 'me'], { email: 'a@x.com' });
@@ -53,7 +41,7 @@ test('menyimpan HANYA query daftar yang di-whitelist; Log Audit, user, dan berka
     'items/list',
   ]);
   const restored = new QueryClient();
-  expect(restoreQueryCache(restored, token)).toBe(2);
+  expect(restoreQueryCache(restored, owner)).toBe(2);
   expect(restored.getQueryData(['items', 'list'])).toEqual([{ id: 'i1' }]);
   expect(restored.getQueryData(['access', 'users'])).toBeUndefined();
 });
@@ -63,40 +51,40 @@ test('cache milik pengguna lain atau terlalu tua tidak dipulihkan', () => {
   const client = new QueryClient();
   client.setQueryData(['items', 'list'], [{ id: 'i1' }]);
   savePersistedQueryCache(client);
-  expect(restoreQueryCache(new QueryClient(), tokenFor('b@x.com'))).toBe(0);
+  expect(restoreQueryCache(new QueryClient(), 'b@x.com')).toBe(0);
   vi.useFakeTimers();
   vi.setSystemTime(Date.now() + PERSIST_MAX_AGE_MS + 1000);
-  expect(restoreQueryCache(new QueryClient(), tokenFor('a@x.com'))).toBe(0);
+  expect(restoreQueryCache(new QueryClient(), 'a@x.com')).toBe(0);
 });
 
 test('data dipulihkan tetap membawa waktu asli (basi → dimuat ulang di latar belakang, bukan dianggap segar)', () => {
-  const token = login('a@x.com');
+  const owner = login('a@x.com');
   const client = new QueryClient();
   client.setQueryData(['items', 'list'], [1], { updatedAt: 1_000 });
   savePersistedQueryCache(client);
   const restored = new QueryClient();
-  restoreQueryCache(restored, token);
+  restoreQueryCache(restored, owner);
   expect(restored.getQueryState(['items', 'list'])?.dataUpdatedAt).toBe(1_000);
 });
 
-test('keluar (clearToken) membuang cache tersimpan', () => {
+test('keluar (clearSession) membuang cache tersimpan', () => {
   login('a@x.com');
   const client = new QueryClient();
   client.setQueryData(['items', 'list'], [1]);
   savePersistedQueryCache(client);
   expect(localStorage.getItem(PERSISTED_CACHE_KEY)).not.toBeNull();
-  clearToken();
+  clearSession();
   expect(localStorage.getItem(PERSISTED_CACHE_KEY)).toBeNull();
 });
 
-test('tanpa token tidak menulis apa pun; storage rusak tidak melempar', () => {
-  initSession({ token: null, loginUrl: null, authError: null, authErrorEmail: null });
+test('tanpa sesi tidak menulis apa pun; storage rusak tidak melempar', () => {
+  initSession(ANONYMOUS_SESSION);
   const client = new QueryClient();
   client.setQueryData(['items', 'list'], [1]);
   savePersistedQueryCache(client);
   expect(localStorage.getItem(PERSISTED_CACHE_KEY)).toBeNull();
   localStorage.setItem(PERSISTED_CACHE_KEY, '{rusak');
-  expect(restoreQueryCache(new QueryClient(), tokenFor('a@x.com'))).toBe(0);
+  expect(restoreQueryCache(new QueryClient(), 'a@x.com')).toBe(0);
 });
 
 test('startQueryPersistence menyimpan setelah jeda ketika query berubah', async () => {

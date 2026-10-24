@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { getToken, PERSISTED_CACHE_KEY } from '@/modules/auth/session';
+import { getSession, PERSISTED_CACHE_KEY } from '@/modules/auth/session';
 
 /** Umur maksimal cache tersimpan; lebih tua dari ini dibuang (data tetap dimuat ulang di latar belakang bila basi). */
 export const PERSIST_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -36,22 +36,9 @@ function keyId(key: readonly unknown[]): string {
   return key.map(String).join('/');
 }
 
-/** Email pemilik dari payload token sesi (hanya untuk memilih cache; server tetap memverifikasi token sungguhan). */
-export function tokenOwner(token: string | null): string | null {
-  if (!token) return null;
-  try {
-    const payload = token.split('.')[0] ?? '';
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    const email = (JSON.parse(json) as { email?: unknown }).email;
-    return typeof email === 'string' && email !== '' ? email : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
-export function restoreQueryCache(queryClient: QueryClient, token: string | null): number {
-  const owner = tokenOwner(token);
+/** `owner` = email pengguna yang sesinya sudah diverifikasi server (GET /api/boot); cache milik orang lain dibuang. */
+export function restoreQueryCache(queryClient: QueryClient, owner: string | null): number {
   if (!owner) return 0;
   try {
     const raw = localStorage.getItem(PERSISTED_CACHE_KEY);
@@ -73,7 +60,7 @@ export function restoreQueryCache(queryClient: QueryClient, token: string | null
 }
 
 export function savePersistedQueryCache(queryClient: QueryClient): void {
-  const owner = tokenOwner(getToken());
+  const owner = getSession().email;
   if (!owner) return;
   const entries: PersistedEntry[] = [];
   for (const query of queryClient.getQueryCache().findAll()) {

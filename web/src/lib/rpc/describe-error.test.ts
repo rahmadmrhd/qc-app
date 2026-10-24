@@ -30,3 +30,12 @@ test('error INTERNAL dari server menyertakan kode request', () => {
 test('error selain RpcError diberi pesan umum', () => {
   expect(describeError(new Error('x'))).toBe('Terjadi kesalahan yang tidak terduga.');
 });
+
+test('UNAVAILABLE dilengkapi saran mencoba lagi tanpa menggandakan titik', () => {
+  expect(describeError(new RpcError('UNAVAILABLE', 'Aplikasi sedang dipindahkan', '-'))).toBe(
+    'Aplikasi sedang dipindahkan. Coba lagi beberapa saat.',
+  );
+  expect(describeError(new RpcError('UNAVAILABLE', 'Sedang sibuk.', 'r'))).toBe(
+    'Sedang sibuk. Coba lagi beberapa saat.',
+  );
+});

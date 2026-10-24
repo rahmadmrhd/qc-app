@@ -2,18 +2,12 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
-import { viteSingleFile } from 'vite-plugin-singlefile';
 import { defineConfig } from 'vitest/config';
 
 const fromHere = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
 
 export default defineConfig({
-  plugins: [
-    tanstackRouter({ target: 'react', autoCodeSplitting: false }),
-    react(),
-    tailwindcss(),
-    viteSingleFile(),
-  ],
+  plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
   resolve: {
     alias: {
       '@shared': fromHere('../shared'),
@@ -24,11 +18,10 @@ export default defineConfig({
   },
   server: { port: 3000, fs: { allow: ['..'] } },
   build: {
-    outDir: '../gas/dist',
-    emptyOutDir: false,
-    cssCodeSplit: false,
-    assetsInlineLimit: 100_000_000,
-    chunkSizeWarningLimit: 5_000,
+    // Aset statis Worker (assets.directory di worker/wrangler.jsonc). Berpotongan: dilayani Cloudflare tanpa Worker.
+    outDir: '../worker/dist',
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1_000,
   },
   test: {
     environment: 'jsdom',
