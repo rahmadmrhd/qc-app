@@ -184,3 +184,11 @@ function createGasBridgePlatform_(): BridgePlatform {
 export function installGasBridgePlatform_(): void {
   setBridgePlatform_(createGasBridgePlatform_());
 }
+
+/** `setup` hanya boleh dijalankan pemilik script dari editor, bukan oleh pemanggil luar. */
+export function assertBridgeOwner_(): void {
+  const active = Session.getActiveUser().getEmail();
+  if (active === '' || active !== Session.getEffectiveUser().getEmail()) {
+    throw new Error('setup hanya boleh dijalankan oleh pemilik script dari editor Apps Script.');
+  }
+}

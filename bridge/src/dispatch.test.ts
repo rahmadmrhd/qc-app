@@ -297,3 +297,21 @@ test('unggah 1 MB base64 lolos batas badan (spike Task 0.2)', () => {
   });
   expect(reply.ok).toBe(true);
 });
+
+test('setup: laporan status tanpa membocorkan rahasia', async () => {
+  const { runBridgeSetup_ } = await import('./setup');
+  platform.addFolder('F1');
+  platform.folders.get('F1')!.trashed = false;
+  const report = runBridgeSetup_();
+  expect(report).toContain('BRIDGE_SECRET: terisi');
+  expect(report).toContain('ALLOWED_FOLDER_IDS F1: ok');
+  expect(report).toContain('ALLOWED_FOLDER_IDS F2: ok');
+  expect(report).not.toContain(TEST_BRIDGE_SECRET);
+  platform.properties.set('BRIDGE_SECRET', 'pendek');
+  platform.properties.delete('SPREADSHEET_ID');
+  platform.properties.set('ALLOWED_FOLDER_IDS', 'HILANG');
+  const bad = runBridgeSetup_();
+  expect(bad).toContain('BELUM SAH');
+  expect(bad).toContain('HILANG: TIDAK TERAKSES');
+  expect(bad).toContain('SPREADSHEET_ID: KOSONG');
+});

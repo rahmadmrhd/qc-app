@@ -1,6 +1,7 @@
 import { sanitizeAssignments } from '@shared/assignments';
 import { deriveHandoverStatus } from '@shared/handover';
 import { extractChecklist, matchChecks } from '@shared/handover-checklist';
+import { aliasKeysOf } from './alias-keys';
 import { parseSheetDate } from './dates';
 import {
   COMMENT_COLUMNS,
@@ -377,6 +378,35 @@ function checkUnique(
   }
 }
 
+/** Keunikan tanpa beda huruf besar/kecil (indeks UNIK D1 pada kolom COLLATE NOCASE / lower()). */
+function checkUniqueNoCase(
+  collector: Collector,
+  table: string,
+  rows: readonly PreparedRow[],
+  column: string,
+  label: string,
+  fold: (value: string) => string = (value) => value.toLowerCase(),
+): void {
+  const seen = new Map<string, number>();
+  for (const row of rows) {
+    const value = String(row.values[column]);
+    if (value === '') continue;
+    const folded = fold(value);
+    const first = seen.get(folded);
+    if (first === undefined) {
+      seen.set(folded, row.sheetRow);
+      continue;
+    }
+    collector.error(
+      table,
+      row.sheetRow,
+      'DUPLIKAT',
+      `${label} ganda "${value}" (juga di baris ${first})`,
+      column,
+    );
+  }
+}
+
 function parseJsonArray(text: string): unknown[] | null {
   if (text.trim() === '') return [];
   try {
@@ -577,6 +607,27 @@ function expandHandovers(collector: Collector, rows: readonly PreparedRow[]): Co
   return comments;
 }
 
+/** Kolom turunan `items.alias_keys` (`|kunci1|kunci2|`) dihitung dari `aliases` seperti penulisan item di Worker. */
+function fillItemAliasKeys(collector: Collector, rows: readonly PreparedRow[]): void {
+  for (const row of rows) {
+    const list = parseJsonArray(String(row.values.aliases));
+    if (list === null) {
+      collector.error(
+        'items',
+        row.sheetRow,
+        'JSON_TAK_VALID',
+        'aliases bukan array JSON yang valid',
+        'aliases',
+      );
+      row.values.alias_keys = '';
+      continue;
+    }
+    row.values.alias_keys = aliasKeysOf(
+      list.filter((item): item is string => typeof item === 'string'),
+    );
+  }
+}
+
 function idSet(
   rows: readonly PreparedRow[] | undefined,
   extra: readonly string[] = [],
@@ -766,6 +817,15 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   }
   checkUnique(collector, 'users', rows.users ?? [], 'email', 'email');
   checkUnique(collector, 'handovers', rows.handovers ?? [], 'number', 'nomor');
+  checkUniqueNoCase(collector, 'brands', rows.brands ?? [], 'key', 'kunci merk');
+  checkUniqueNoCase(collector, 'customers', rows.customers ?? [], 'key', 'kunci customer');
+  checkUniqueNoCase(collector, 'items', rows.items ?? [], 'key', 'kunci item');
+  checkUniqueNoCase(collector, 'roles', rows.roles ?? [], 'name', 'nama peran', (v) =>
+    v.trim().toLowerCase(),
+  );
+  checkUniqueNoCase(collector, 'locations', rows.locations ?? [], 'code', 'kode lokasi', (v) => v);
+  checkUniqueNoCase(collector, 'locations', rows.locations ?? [], 'name', 'nama lokasi');
+  fillItemAliasKeys(collector, rows.items ?? []);
 
   const comments = expandHandovers(collector, rows.handovers ?? []);
   const commentSummary = comments.map((comment) => ({

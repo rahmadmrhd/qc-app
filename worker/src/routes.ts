@@ -8,6 +8,7 @@ import { customerRoutes } from '@worker/modules/customer/routes';
 import { filesRoutes } from '@worker/modules/files/routes';
 import { handoverRoutes } from '@worker/modules/handover/routes';
 import { itemRoutes } from '@worker/modules/item/routes';
+import { qrcodeRoutes } from '@worker/modules/qrcode/routes';
 
 /**
  * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
@@ -86,6 +87,7 @@ function realRoutes(): Partial<RouteTable> {
     ...filesRoutes(),
     ...itemRoutes(),
     ...handoverRoutes(),
+    ...qrcodeRoutes(),
   };
 }
 

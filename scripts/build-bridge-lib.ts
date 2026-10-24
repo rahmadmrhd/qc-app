@@ -66,7 +66,7 @@ export function loadBridgeFiles(files: readonly BridgeBuildFile[]): string[] {
 export function missingBridgeEntryPoints(files: readonly BridgeBuildFile[]): string[] {
   const context = vm.createContext({});
   for (const file of files) vm.runInContext(file.code, context, { filename: file.output });
-  return ['doPost', 'doGet'].filter(
+  return ['doPost', 'doGet', 'setup'].filter(
     (name) => typeof (context as Record<string, unknown>)[name] !== 'function',
   );
 }

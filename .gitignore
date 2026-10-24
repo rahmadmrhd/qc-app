@@ -36,3 +36,5 @@ web/dist-worker/
 
 # Variabel pengembangan lokal worker
 worker/.dev.vars
+# jembatan: rahasia lokal
+bridge/.secrets.local
