@@ -4,6 +4,7 @@ node_modules/
 # build output (dihasilkan oleh build, di-push oleh clasp)
 gas/dist/
 web/dist/
+worker/dist/
 
 # env & secrets
 .env
