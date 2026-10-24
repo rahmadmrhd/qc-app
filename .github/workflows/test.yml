@@ -26,10 +26,11 @@ jobs:
       - name: Pasang dependensi
         run: bun install --frozen-lockfile
 
-      # typecheck + Biome + semua test (shared, gas, web, scripts)
+      # typecheck + Biome + semua test (shared, gas, web, scripts, worker). Paket worker masuk lewat skrip
+      # root `check` (Task 1.1), jadi workflow ini tidak perlu diubah saat worker ditambahkan.
       - name: Check
         run: bun run check
 
-      # build gas/dist + verifikasi (penanda boot, tanpa mock, tanpa import/export)
+      # build gas/dist + web (+ worker/dist setelah Fase 4) + verifikasi (penanda boot, tanpa mock, tanpa import/export)
       - name: Build
         run: bun run build
