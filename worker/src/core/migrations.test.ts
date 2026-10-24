@@ -398,6 +398,7 @@ describe('applyMigrations', () => {
       '0002_handover_comments_jobs.sql',
       '0003_handover_board_status.sql',
       '0004_access_unique.sql',
+      '0005_brand_customer_unique.sql',
     ]);
   });
 

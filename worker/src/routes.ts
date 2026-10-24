@@ -3,6 +3,8 @@ import { appError } from '@worker/core/errors';
 import type { RouteDef, RouteTable } from '@worker/core/router';
 import { accessRoutes } from '@worker/modules/access/routes';
 import { authRpcRoutes } from '@worker/modules/auth/rpc';
+import { brandRoutes } from '@worker/modules/brand/routes';
+import { customerRoutes } from '@worker/modules/customer/routes';
 
 /**
  * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
@@ -73,7 +75,7 @@ function notImplementedRoute(method: WorkerRpcMethod): RouteDef {
 
 /** Rute modul yang sudah diporting. Tambahkan tabel rute tiap modul di sini. */
 function realRoutes(): Partial<RouteTable> {
-  return { ...authRpcRoutes(), ...accessRoutes() };
+  return { ...authRpcRoutes(), ...accessRoutes(), ...brandRoutes(), ...customerRoutes() };
 }
 
 /** Dibangun sekali per isolate. */

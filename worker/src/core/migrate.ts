@@ -5,6 +5,9 @@ import handoverCommentsJobs from '../../migrations/0002_handover_comments_jobs.s
 
 import boardStatus from '../../migrations/0003_handover_board_status.sql' with { type: 'text' };
 import accessUnique from '../../migrations/0004_access_unique.sql' with { type: 'text' };
+import brandCustomerUnique from '../../migrations/0005_brand_customer_unique.sql' with {
+  type: 'text',
+};
 
 export interface Migration {
   name: string;
@@ -17,6 +20,7 @@ export const MIGRATIONS: Migration[] = [
   { name: '0002_handover_comments_jobs.sql', sql: handoverCommentsJobs },
   { name: '0003_handover_board_status.sql', sql: boardStatus },
   { name: '0004_access_unique.sql', sql: accessUnique },
+  { name: '0005_brand_customer_unique.sql', sql: brandCustomerUnique },
 ];
 
 /** Pecah berkas SQL menjadi pernyataan (tanpa baris komentar `--`, dipisah `;` di akhir baris). */
