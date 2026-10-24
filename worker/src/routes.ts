@@ -1,13 +1,14 @@
-import type { WorkerRpcMethod as RpcMethod } from '@shared/rpc';
+import type { WorkerRpcMethod } from '@shared/rpc';
 import { appError } from '@worker/core/errors';
 import type { RouteDef, RouteTable } from '@worker/core/router';
+import { accessRoutes } from '@worker/modules/access/routes';
 import { authRpcRoutes } from '@worker/modules/auth/rpc';
 
 /**
  * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
  * Dipakai untuk membangun rute stub dan tes kontrak.
  */
-export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
+export const ALL_RPC_METHODS: Record<WorkerRpcMethod, true> = {
   'auth.me': true,
   'access.users.list': true,
   'access.users.save': true,
@@ -56,15 +57,12 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
   'jobs.get': true,
 };
 
-/** Method yang sudah diporting; sisanya memakai stub `NOT_IMPLEMENTED` (SEMENTARA, Fase 2). */
-const PORTED = new Set<RpcMethod>(['auth.me']);
-
 /**
  * STUB SEMENTARA: rute modul yang belum dipindah. Memakai kode `INTERNAL` dengan pesan
- * `NOT_IMPLEMENTED` (kode galat kontrak tidak ditambah). Tiap task Fase 2 menghapus method
- * miliknya dari sini (tambahkan ke `PORTED` dan ke tabel rute modul).
+ * `NOT_IMPLEMENTED` (kode galat kontrak tidak ditambah). Method hilang dari stub otomatis begitu
+ * modulnya didaftarkan di `realRoutes()`; stub dihapus seluruhnya di akhir Fase 2.
  */
-function notImplementedRoute(method: RpcMethod): RouteDef {
+function notImplementedRoute(method: WorkerRpcMethod): RouteDef {
   return {
     validate: (raw) => raw as never,
     handler: () => {
@@ -73,15 +71,21 @@ function notImplementedRoute(method: RpcMethod): RouteDef {
   };
 }
 
+/** Rute modul yang sudah diporting. Tambahkan tabel rute tiap modul di sini. */
+function realRoutes(): Partial<RouteTable> {
+  return { ...authRpcRoutes(), ...accessRoutes() };
+}
+
 /** Dibangun sekali per isolate. */
 let cached: RouteTable | undefined;
 
 export function getRoutes(): RouteTable {
   if (cached) return cached;
-  const stubs: Record<string, RouteDef> = {};
-  for (const method of Object.keys(ALL_RPC_METHODS) as RpcMethod[]) {
-    if (!PORTED.has(method)) stubs[method] = notImplementedRoute(method);
+  const real = realRoutes();
+  const table: Record<string, RouteDef> = {};
+  for (const method of Object.keys(ALL_RPC_METHODS) as WorkerRpcMethod[]) {
+    table[method] = (real[method] as RouteDef | undefined) ?? notImplementedRoute(method);
   }
-  cached = { ...(stubs as unknown as RouteTable), ...authRpcRoutes() };
+  cached = table as unknown as RouteTable;
   return cached;
 }

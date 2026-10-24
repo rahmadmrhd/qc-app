@@ -32,3 +32,8 @@ export interface Env {
 export function nowOf(env: Env): number {
   return env.NOW ? env.NOW() : Date.now();
 }
+
+/** Waktu sekarang sebagai ISO 8601 UTC. */
+export function nowIso(env: Env): string {
+  return new Date(nowOf(env)).toISOString();
+}

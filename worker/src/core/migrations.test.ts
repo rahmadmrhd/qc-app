@@ -397,6 +397,7 @@ describe('applyMigrations', () => {
       '0001_init.sql',
       '0002_handover_comments_jobs.sql',
       '0003_handover_board_status.sql',
+      '0004_access_unique.sql',
     ]);
   });
 
@@ -457,5 +458,22 @@ describe('0003 board_status', () => {
         .prepare("INSERT INTO handovers (id, number, board_status) VALUES ('x', 'n', 'open')")
         .run(),
     ).rejects.toThrow(/CHECK/);
+  });
+});
+
+describe('0004 keunikan akses', () => {
+  test('nama role (tanpa beda huruf/spasi), kode dan nama lokasi unik', async () => {
+    const db = await migrated();
+    await db.prepare("INSERT INTO roles (id, name) VALUES ('r1', 'QC Staff')").run();
+    await expect(
+      db.prepare("INSERT INTO roles (id, name) VALUES ('r2', '  qc staff ')").run(),
+    ).rejects.toThrow(/UNIQUE/);
+    await db.prepare("INSERT INTO locations (id, code, name) VALUES ('l1', 'A', 'Cabang A')").run();
+    await expect(
+      db.prepare("INSERT INTO locations (id, code, name) VALUES ('l2', 'A', 'Lain')").run(),
+    ).rejects.toThrow(/UNIQUE/);
+    await expect(
+      db.prepare("INSERT INTO locations (id, code, name) VALUES ('l3', 'B', 'cabang a')").run(),
+    ).rejects.toThrow(/UNIQUE/);
   });
 });

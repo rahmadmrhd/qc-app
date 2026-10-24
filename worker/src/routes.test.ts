@@ -61,7 +61,7 @@ describe('kontrak RPC', () => {
       {
         method: 'POST',
         headers: rpcHeaders(await cookieFor('admin@gmail.com')),
-        body: JSON.stringify({ method: 'brands.list', payload: null }),
+        body: JSON.stringify({ method: 'handovers.options', payload: { locationIds: ['x'] } }),
       },
       env,
     );
