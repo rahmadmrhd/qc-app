@@ -1,6 +1,6 @@
 # CI/CD (GitHub Actions)
 
-Dua workflow di `.github/workflows/`.
+Workflow di `.github/workflows/`: `test.yml`, `deploy.yml` (Apps Script), dan `deploy-worker.yml` (Cloudflare Worker, lihat bagian di bawah).
 
 ## Alur
 
@@ -38,6 +38,38 @@ Job deploy memakai environment `gas-<target>`. GitHub membuatnya otomatis saat r
 1. **`gas-exec`:** Deployment branches → *Selected branches* → hanya `main`. Tambahkan *Required reviewers* bila ingin persetujuan manual sebelum `/exec`.
 2. **`gas-dev`:** Deployment branches → *Selected branches* → `dev` dan `main`.
 3. Pindahkan secret `CLASPRC_JSON` dari secret repositori ke **secret environment** (di kedua environment), lalu hapus secret repositori. Dengan begitu token hanya sampai ke job yang berjalan dari branch yang diizinkan.
+
+
+## Worker Cloudflare (`deploy-worker.yml`)
+
+Backend baru (Cloudflare Worker + D1) memakai workflow tersendiri yang mencerminkan `deploy.yml`. Selama masa migrasi keduanya berjalan berdampingan: `deploy.yml` untuk aplikasi Apps Script lama, `deploy-worker.yml` untuk Worker.
+
+| Kejadian | Workflow | Hasil |
+|---|---|---|
+| PR dibuka, dibuka kembali, atau ada commit baru | `test.yml` | `bun run check` (mencakup paket `worker`) lalu `bun run build` |
+| PR **di-merge** ke `dev` | `deploy-worker.yml` (target `staging`) | check, build, `wrangler d1 migrations apply DB --env staging --remote`, `wrangler deploy --env staging` |
+| PR **di-merge** ke `main` | `deploy-worker.yml` (target `production`) | hal yang sama untuk `--env production` (otomatis, tanpa persetujuan manual) |
+| Manual (Actions → Deploy Worker → Run workflow) | `deploy-worker.yml` | pilih `staging` atau `production` |
+
+Catatan:
+- Aturan keamanan sama dengan `deploy.yml`: `pull_request_target` (hanya setelah merge, hanya checkout `merge_commit_sha`, jangan pernah checkout head PR yang belum di-merge), PR ditutup tanpa merge tidak men-deploy apa pun, dispatch manual hanya dari `main` (staging atau production) atau `dev` (hanya staging) dan ditolak sebelum checkout.
+- Satu antrean serial `deploy-worker` tanpa membatalkan yang berjalan.
+- Migrasi D1 berjalan **sebelum** kode baru di-deploy, sehingga migrasi wajib kompatibel mundur (hanya menambah tabel/kolom/indeks) karena versi lama masih melayani permintaan.
+- Langkah terakhir menguji `GET /api/ping` bila variabel environment `WORKER_URL` diisi; bila kosong, uji asap dilewati.
+- `deploy-worker.yml` harus ada di branch default `main` agar pemicunya aktif (alasan sama dengan `deploy.yml`).
+- Deploy jembatan Apps Script (proyek `bridge/`) tetap lewat alur `clasp` terpisah: `dev` → HEAD jembatan staging, `main` → versi baru jembatan produksi.
+
+### Environment `worker-staging` dan `worker-production`
+
+Dibuat otomatis pada run pertama; pengamanannya diatur di Settings → Environments:
+
+1. **`worker-production`:** Deployment branches → *Selected branches* → hanya `main`. *Required reviewers* opsional (dimatikan secara bawaan; deploy produksi otomatis saat merge ke `main`).
+2. **`worker-staging`:** Deployment branches → *Selected branches* → `dev` dan `main`.
+3. Secret **environment** (bukan secret repositori) pada keduanya: `CLOUDFLARE_API_TOKEN`. Buat token di Cloudflare (My Profile → API Tokens) pada **akun "QC"** dengan izin: Workers Scripts (Edit), D1 (Edit), Queues (Edit), Workers Routes bila memakai rute/domain. Id akun (`2256d27ce4dcdcb9ade777cc2650fd81`) bukan rahasia dan sudah ditulis di workflow karena login Wrangler pemilik juga memiliki akun lain.
+4. Variabel environment opsional `WORKER_URL` untuk uji asap.
+5. Rahasia aplikasi (`SESSION_SECRET`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_SECRET`) diatur sekali dengan `wrangler secret put --env <target>`, bukan lewat GitHub.
+
+Prasyarat akun Cloudflare: subdomain `workers.dev` harus sudah terdaftar pada akun QC (buka menu Workers di dashboard sekali); tanpanya Wrangler gagal dengan galat 10063 / "Worker does not exist" saat deploy dan saat memasang konsumen Queue.
 
 ## Disarankan
 

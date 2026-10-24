@@ -1,0 +1,137 @@
+name: Deploy Worker
+
+# Build lalu deploy Cloudflare Worker (+ migrasi D1). Mencerminkan deploy.yml (Apps Script). Target:
+#   staging    = Worker `qc-app-staging` + D1 `qc-app-staging`.
+#   production = Worker `qc-app` + D1 `qc-app-production` (otomatis, tanpa persetujuan manual
+#                kecuali reviewer wajib diaktifkan pada environment `worker-production`).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'staging = dari main atau dev; production = hanya dari branch main'
+        type: choice
+        options: [staging, production]
+        default: staging
+  # PR yang di-merge: base dev -> staging, base main -> production.
+  #
+  # Sengaja `pull_request_target`, bukan `pull_request` (alasan sama dengan deploy.yml): pada
+  # `pull_request` GITHUB_REF selalu `refs/pull/N/merge` sehingga aturan environment "Selected
+  # branches" menolaknya. `pull_request_target` berjalan pada ref branch tujuan, memakai file workflow
+  # dari branch tujuan, dan menerima secret walau PR berasal dari fork.
+  # Aman karena job hanya jalan setelah PR di-merge (lihat `if`) dan hanya meng-checkout
+  # merge_commit_sha, yaitu kode yang sudah masuk ke branch terlindungi. Jangan pernah menambahkan
+  # langkah yang meng-checkout head PR yang belum di-merge pada workflow ini.
+  pull_request_target:
+    types: [closed]
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # PR yang ditutup tanpa merge tidak men-deploy apa pun.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Satu deploy pada satu waktu untuk SELURUH target: migrasi D1 dan deploy kode tidak boleh saling
+    # menyela. Deploy yang berjalan tidak dibatalkan.
+    concurrency:
+      group: deploy-worker
+      cancel-in-progress: false
+    # Environment per target: tempat menaruh CLOUDFLARE_API_TOKEN, membatasi branch yang boleh deploy,
+    # dan (opsional) meminta persetujuan. Lihat docs/ci-cd.md.
+    environment: worker-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'production' || 'staging') }}
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'production' || 'staging') }}
+      # Login Wrangler pemilik punya lebih dari satu akun; akun "QC" wajib disebut eksplisit.
+      CLOUDFLARE_ACCOUNT_ID: 2256d27ce4dcdcb9ade777cc2650fd81
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      # Berjalan sebelum checkout. Dispatch manual hanya dari ref tepercaya: kode pada branch lain
+      # bisa mengubah skrip build/wrangler dan membaca CLOUDFLARE_API_TOKEN.
+      - name: Pastikan dispatch dari ref tepercaya
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/main) ;;
+            refs/heads/dev)
+              if [ "${TARGET}" = "production" ]; then
+                echo "::error::Target production hanya boleh dijalankan dari branch main (dipilih: ${GITHUB_REF_NAME})."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Deploy manual hanya boleh dari branch main atau dev (dipilih: ${GITHUB_REF_NAME})."
+              exit 1
+              ;;
+          esac
+
+      # PR: commit hasil merge. Manual: commit dari branch yang dipilih.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Pasang dependensi
+        run: bun install --frozen-lockfile
+
+      - name: Periksa prasyarat
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "::error::Secret CLOUDFLARE_API_TOKEN belum diisi pada environment worker-${TARGET} (lihat docs/ci-cd.md)."
+            exit 1
+          fi
+          if [ ! -f worker/wrangler.jsonc ]; then
+            echo "::error::worker/wrangler.jsonc tidak ada pada commit ini."
+            exit 1
+          fi
+
+      # Gerbang sebelum menyentuh Cloudflare.
+      - name: Check
+        run: bun run check
+
+      - name: Build
+        run: bun run build
+
+      # Migrasi dijalankan SEBELUM kode baru dan harus kompatibel mundur (hanya menambah), karena
+      # versi lama masih melayani permintaan sampai deploy selesai.
+      - name: Migrasi D1
+        working-directory: worker
+        run: bunx wrangler d1 migrations apply DB --env "${TARGET}" --remote
+
+      - name: Deploy Worker
+        working-directory: worker
+        run: bunx wrangler deploy --env "${TARGET}"
+
+      # Opsional: isi variabel WORKER_URL pada environment (mis. https://qc-app-staging.<subdomain>.workers.dev).
+      - name: Uji asap /api/ping
+        env:
+          WORKER_URL: ${{ vars.WORKER_URL }}
+        run: |
+          if [ -z "${WORKER_URL}" ]; then
+            echo "Variabel WORKER_URL belum diisi pada environment worker-${TARGET}; uji asap dilewati."
+            exit 0
+          fi
+          for i in 1 2 3 4 5; do
+            if curl -fsS "${WORKER_URL%/}/api/ping"; then
+              echo
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::GET /api/ping gagal pada ${WORKER_URL}."
+          exit 1
+
+      - name: Ringkasan
+        if: success()
+        run: |
+          {
+            echo "### Deploy Worker: ${TARGET}"
+            echo
+            echo "Migrasi D1 diterapkan lalu kode Worker di-deploy ke environment \`${TARGET}\`."
+            echo "Jembatan Apps Script di-deploy terpisah lewat alur clasp proyek jembatan."
+          } >> "$GITHUB_STEP_SUMMARY"
