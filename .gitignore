@@ -33,3 +33,6 @@ worker/.wrangler/
 web/dist-worker/
 
 .wrangler/
+
+# jembatan: rahasia lokal
+bridge/.secrets.local

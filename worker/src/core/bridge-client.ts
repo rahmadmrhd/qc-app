@@ -52,7 +52,8 @@ export interface BridgeClient {
   revokeSharing(fileId: string): Promise<void>;
   replaceFileContent(fileId: string, mime: string, base64: string): Promise<void>;
   sheetsExport(chunk: SheetsExportChunk): Promise<void>;
-  sheetsDump(): Promise<SheetsDump>;
+  /** `sheets` membatasi nama sheet yang diambil (bawaan: semua sheet sumber). */
+  sheetsDump(sheets?: string[]): Promise<SheetsDump>;
 }
 
 export { createBridgeClient };

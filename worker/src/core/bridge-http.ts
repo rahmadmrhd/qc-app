@@ -264,8 +264,8 @@ export function createBridgeClient(
       // `replace` menimpa seluruh sheet sehingga aman diulang; `append` tidak (dapat menggandakan baris).
       await call('sheets.export', json(chunk), { idempotent: chunk.mode === 'replace' });
     },
-    async sheetsDump(): Promise<SheetsDump> {
-      const reply = await call('sheets.dump', json({}), { idempotent: true });
+    async sheetsDump(sheets?: string[]): Promise<SheetsDump> {
+      const reply = await call('sheets.dump', json(sheets ? { sheets } : {}), { idempotent: true });
       return (reply.data as { tables: SheetsDump }).tables;
     },
   };
