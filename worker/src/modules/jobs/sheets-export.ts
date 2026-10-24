@@ -122,6 +122,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'key',
     'is_country_lock',
     'aliases',
+    'alias_keys',
     'stickers',
     'accessories',
     'attachments',
