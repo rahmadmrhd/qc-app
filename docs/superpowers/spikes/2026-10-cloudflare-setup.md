@@ -13,3 +13,6 @@ Id akun dan database bukan rahasia. Rahasia (`SESSION_SECRET`, `OAUTH_CLIENT_SEC
 Catatan: sumber daya sempat dibuat di akun yang salah dan sudah dihapus seluruhnya.
 
 Prasyarat tambahan (ditemukan di Task 0.3): akun QC belum punya subdomain `workers.dev`. Selama belum ada, `wrangler deploy` gagal ("This Worker does not exist", kode 10007) dan pemasangan konsumen Queue ditolak (kode 10063). Buka menu Workers di dashboard akun QC sekali (otomatis membuat subdomain) atau daftarkan di halaman onboarding Workers.
+
+## Subdomain workers.dev
+Terdaftar 2026-10-25: **`qc-225.workers.dev`** (nama `qc` sudah dipakai pihak lain). Alamat: production `https://qc-app.qc-225.workers.dev`, staging `https://qc-app-staging.qc-225.workers.dev`. Redirect OAuth yang harus didaftarkan di Google Cloud Console: `https://qc-app-staging.qc-225.workers.dev/auth/callback` dan `https://qc-app.qc-225.workers.dev/auth/callback`.
