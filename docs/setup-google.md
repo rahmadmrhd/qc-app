@@ -62,6 +62,9 @@ Aplikasi menyimpan gambar item di folder Drive privat bernama **QC App Files** (
 ## 7d. Pembersihan PDF sumber QR (trigger berbasis waktu)
 PDF sumber QR dibagikan "siapa saja yang punya link". Unggahan yang ditinggalkan (tidak dipakai konfigurasi mana pun) dicabut berbaginya setelah 1 jam, tetapi pembersihan otomatis di aplikasi hanya berjalan saat ada simpan/hapus/unggah. Agar pencabutan tetap terjadi tanpa aktivitas, pasang trigger: editor Apps Script → **Triggers** → **Add Trigger** → fungsi `cleanupQrPdfs`, event source **Time-driven**, tipe **Hour timer**, setiap 1 jam (dipasang dengan akun pemilik script; fungsi menolak akun lain). Aman dijalankan berulang.
 
+## 7e. Bendera READ_ONLY (jendela migrasi ke Cloudflare)
+Script Property opsional `READ_ONLY`. Bila bernilai `1`, semua RPC tulis (`items.save`, `handovers.save`, `files.upload`, dst.) dan sinkron QC Desktop tulis (`sync.items.push`, `sync.brands.push`) ditolak dengan galat `UNAVAILABLE` ("Aplikasi sedang dipindahkan; hanya baca"); RPC baca dan sinkron baca (`pull`, `ping`, `file.get`) tetap berjalan. Properti tidak ada atau bernilai lain = perilaku normal. Klasifikasi baca/tulis ada di `gas/src/core/read-only.ts` (method baru wajib diklasifikasikan; typecheck gagal bila tidak). Batas: trigger `cleanupQrPdfs` (7d) tidak ikut dibekukan. Pasang (`1`) hanya pada hari cutover setelah deployment berisi bendera ini aktif; hapus properti untuk membuka kembali.
+
 ## 8. Deploy & coba
 ```bash
 bun run deploy
