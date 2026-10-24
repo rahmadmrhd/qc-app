@@ -23,14 +23,16 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'customers.setStatus',
     'files.get',
     'files.upload',
+    'handovers.board',
     'handovers.cancel',
-    'handovers.completeAll',
-    'handovers.completeLine',
+    'handovers.comment',
     'handovers.get',
-    'handovers.list',
     'handovers.options',
+    'handovers.reopen',
     'handovers.save',
-    'handovers.setProgress',
+    'handovers.saveBatch',
+    'handovers.setCheck',
+    'handovers.setDone',
     'items.get',
     'items.list',
     'items.save',
@@ -90,5 +92,36 @@ test('semua method terdaftar dengan level akses yang benar', () => {
     'access.locations.setStatus',
   ] as const) {
     expect(routes[method].permission).toEqual({ module: 'access', level: 'manage' });
+  }
+  const handoverRead = {
+    anyOf: [
+      { module: 'handover', level: 'view', scope: 'location' },
+      { module: 'qc', level: 'edit', scope: 'location' },
+    ],
+  } as const;
+  for (const method of [
+    'handovers.board',
+    'handovers.get',
+    'handovers.options',
+    'handovers.comment',
+  ] as const) {
+    expect(routes[method].permission).toEqual(handoverRead);
+  }
+  for (const method of ['handovers.save', 'handovers.saveBatch'] as const) {
+    expect(routes[method].permission).toEqual({
+      module: 'handover',
+      level: 'edit',
+      scope: 'location',
+    });
+  }
+  for (const method of ['handovers.cancel', 'handovers.reopen'] as const) {
+    expect(routes[method].permission).toEqual({
+      module: 'handover',
+      level: 'manage',
+      scope: 'location',
+    });
+  }
+  for (const method of ['handovers.setCheck', 'handovers.setDone'] as const) {
+    expect(routes[method].permission).toEqual({ module: 'qc', level: 'edit', scope: 'location' });
   }
 });

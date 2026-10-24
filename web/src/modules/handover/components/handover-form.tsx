@@ -1,15 +1,13 @@
 import type { HandoverOptionsDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
-import type { ReactNode } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { LocationField } from '@/modules/location/location-field';
 import type { HandoverFieldErrors, HandoverFormInput, HandoverFormOutput } from '../schemas';
 import { handoverFormSchema } from '../schemas';
 import { CustomerCombobox } from './customer-combobox';
-import { ItemLinesField } from './item-lines-field';
+import { NoteEditor } from './note-editor';
 
 export interface HandoverFormProps {
   /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
@@ -19,10 +17,8 @@ export interface HandoverFormProps {
   options: HandoverOptionsDto;
   /** Mode ubah: nama lokasi ditampilkan sebagai teks (lokasi task tidak dapat dipindah). */
   locationName?: string;
-  /** Tautan "Tambah item baru" (hanya bila user punya `item: edit`). */
-  createItemLink?: ReactNode;
   submitError?: string | null;
-  /** Galat per field dari server (mis. customer nonaktif, qty di bawah qty selesai). */
+  /** Galat per field dari server (mis. customer nonaktif). */
   fieldErrors?: HandoverFieldErrors;
   onSubmit: (values: HandoverFormOutput) => Promise<unknown>;
   onCancel: () => void;
@@ -33,7 +29,6 @@ export function HandoverForm({
   defaultValues,
   options,
   locationName,
-  createItemLink,
   title,
   submitError,
   fieldErrors,
@@ -109,35 +104,14 @@ export function HandoverForm({
         <form.Field name="note">
           {(field) => (
             <div className="space-y-1.5">
-              <Label htmlFor="handover-note">Catatan</Label>
-              <Textarea
+              <Label id="handover-note-label">Catatan</Label>
+              <NoteEditor
                 id="handover-note"
-                rows={3}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-              <FieldError errors={[...field.state.meta.errors, fieldErrors?.note]} />
-            </div>
-          )}
-        </form.Field>
-      </section>
-
-      <section className="space-y-3 rounded-lg border p-4">
-        <div>
-          <h2 className="text-base font-semibold">Tipe dan qty</h2>
-          <p className="text-sm text-muted-foreground">Setiap tipe hanya sekali per task.</p>
-        </div>
-        <form.Field name="lines">
-          {(field) => (
-            <div className="space-y-1.5">
-              <ItemLinesField
-                options={options.items}
+                labelledBy="handover-note-label"
                 value={field.state.value}
                 onChange={field.handleChange}
-                createItemLink={createItemLink}
               />
-              <FieldError stacked errors={[...field.state.meta.errors, fieldErrors?.lines]} />
+              <FieldError errors={[...field.state.meta.errors, fieldErrors?.note]} />
             </div>
           )}
         </form.Field>

@@ -194,40 +194,39 @@ test('hash detail disembunyikan bila tidak berubah atau pada create', () => {
   expect(within(row('brand')).getByText('Merk')).toBeInTheDocument();
 });
 
-test('task serah terima: baris dibandingkan per entri, status memakai label Indonesia, qty progres terbaca', () => {
+test('task serah terima: status memakai label Indonesia dan perubahan catatan terbaca', () => {
   render(
     <AuditDiffView
-      before={{
-        number: 'ST-1',
-        location: 'Lokasi A',
-        customer: 'PT A',
-        status: 'new',
-        lines: ['Ubiquiti ES 24 × 5', 'Mikrotik hAP × 3'],
-      }}
+      before={{ number: 'ST-1', customer: 'PT A', status: 'new', note: 'CRS310 = 1 unt' }}
       after={{
         number: 'ST-1',
-        location: 'Lokasi A',
         customer: 'PT A',
         status: 'in_progress',
-        lines: ['Ubiquiti ES 24 × 5 (selesai 2)', 'Mikrotik hAP × 3'],
+        note: 'CRS310 = 1 unt\nRB5009 = 2 unt',
       }}
     />,
   );
   expect(within(row('status')).getByText('Baru')).toBeInTheDocument();
   expect(within(row('status')).getByText('Dikerjakan')).toBeInTheDocument();
-  expect(within(row('lines')).getByText('Ubiquiti ES 24 × 5 (selesai 2)')).toBeInTheDocument();
-  expect(screen.getByText('Baris')).toBeInTheDocument();
   expect(screen.getByText('Customer')).toBeInTheDocument();
 });
 
-test('progres QC: tipe, qty selesai lama dan baru terbaca', () => {
+test('task serah terima: butir tercentang, centang direset, kutipan, dan komentar berlabel; teks tanpa escape', () => {
   render(
     <AuditDiffView
-      before={{ item: 'Ubiquiti ES 24', doneQty: 0, qty: 5 }}
-      after={{ item: 'Ubiquiti ES 24', doneQty: 2, qty: 5 }}
+      before={{ checked: ['A = 1'] }}
+      after={{
+        checked: ['RB\\_5009\\_X = 1 unit', 'Kabel &amp; konektor'],
+        resets: ['RD = 8 → RD = 9'],
+        quote: 'kirim',
+        comment: 'Mohon cek',
+      }}
     />,
   );
-  expect(screen.getByText('Qty selesai')).toBeInTheDocument();
-  expect(within(row('doneQty')).getByText('0')).toBeInTheDocument();
-  expect(within(row('doneQty')).getByText('2')).toBeInTheDocument();
+  expect(within(row('checked')).getByText('Butir tercentang')).toBeInTheDocument();
+  expect(within(row('checked')).getByText('RB_5009_X = 1 unit')).toBeInTheDocument();
+  expect(within(row('checked')).getByText('Kabel & konektor')).toBeInTheDocument();
+  expect(within(row('resets')).getByText('Centang direset')).toBeInTheDocument();
+  expect(within(row('quote')).getByText('Kutipan')).toBeInTheDocument();
+  expect(within(row('comment')).getByText('Komentar')).toBeInTheDocument();
 });

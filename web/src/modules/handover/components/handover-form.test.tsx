@@ -30,12 +30,15 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => meMock.me }));
 vi.mock('@/modules/location/active-locations-context', () => ({
   useActiveLocations: () => ({ selectedIds: ['loc-a'] }),
 }));
+vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
+vi.mock('@/modules/files/queries', () => ({
+  useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
+}));
 
 import { toHandoverFormDefaults } from '../schemas';
 import { HandoverForm } from './handover-form';
 
 const options: HandoverOptionsDto = {
-  items: [{ id: 'i1', brand: 'Ubiquiti', model: 'ES 24', aliases: [] }],
   customers: [{ id: 'c1', name: 'PT Maju' }],
   inactiveCustomerNames: [],
 };
@@ -44,7 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test('mengisi customer (ketik), memilih tipe dari saran, mengatur qty, lalu menyimpan tanpa form tambahan', async () => {
+function renderForm(props: Partial<Parameters<typeof HandoverForm>[0]> = {}) {
   const onSubmit = vi.fn().mockResolvedValue(undefined);
   render(
     <HandoverForm
@@ -54,98 +57,66 @@ test('mengisi customer (ketik), memilih tipe dari saran, mengatur qty, lalu meny
       options={options}
       onSubmit={onSubmit}
       onCancel={vi.fn()}
+      {...props}
     />,
   );
+  return { onSubmit };
+}
+
+test('form task tunggal tidak punya pemilihan item; mengirim {locationId, customerName, note}', async () => {
+  const { onSubmit } = renderForm();
+  expect(screen.queryByLabelText('Cari tipe')).not.toBeInTheDocument();
+  expect(screen.queryByText(/qty/i)).not.toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Customer'), 'Perusahaan Baru');
-  await userEvent.type(screen.getByLabelText('Cari tipe'), 'ubiquiti');
-  await userEvent.click(await screen.findByRole('option', { name: 'Ubiquiti ES 24' }));
-  await userEvent.type(screen.getByLabelText('Catatan'), 'segera');
+  await userEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'RB5009');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({
+  expect(onSubmit.mock.calls[0]?.[0]).toEqual({
     locationId: 'loc-a',
     customerName: 'Perusahaan Baru',
-    note: 'segera',
-    lines: [{ itemId: 'i1', qty: 1 }],
+    note: '- [ ] RB5009',
   });
 });
 
-test('tanpa baris: tidak mengirim dan menampilkan pesan di field baris', async () => {
-  const onSubmit = vi.fn();
-  render(
-    <HandoverForm
-      title="Form task"
-      mode="create"
-      defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
-      options={options}
-      onSubmit={onSubmit}
-      onCancel={vi.fn()}
-    />,
-  );
-  await userEvent.type(screen.getByLabelText('Customer'), 'PT A');
+test('customer boleh kosong, tetapi catatan kosong ditolak dengan pesan jelas', async () => {
+  const { onSubmit } = renderForm();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-  expect(await screen.findByText('Minimal satu baris')).toBeInTheDocument();
+  expect(await screen.findByText('Catatan wajib diisi')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('galat dari server ditampilkan per field (customerName dan lines)', () => {
-  render(
-    <HandoverForm
-      title="Form task"
-      mode="create"
-      defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
-      options={options}
-      fieldErrors={{
-        customerName: 'Customer dinonaktifkan; aktifkan dulu di halaman Customer',
-        lines: 'Baris 1: tipe tidak ditemukan',
-      }}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
-  );
-  expect(
-    screen.getByText('Customer dinonaktifkan; aktifkan dulu di halaman Customer'),
-  ).toBeInTheDocument();
-  expect(screen.getByText('Baris 1: tipe tidak ditemukan')).toBeInTheDocument();
-});
-
-test('mode ubah: lokasi tampil sebagai teks (tidak dapat dipindah)', () => {
-  render(
-    <HandoverForm
-      title="Form task"
-      mode="edit"
-      locationName="Lokasi A"
-      defaultValues={{
-        locationId: 'loc-a',
-        customerName: 'PT Maju',
-        note: '',
-        lines: [{ itemId: 'i1', label: 'Ubiquiti ES 24', qty: 2 }],
-      }}
-      options={options}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
-  );
-  expect(screen.getByText('Lokasi A')).toBeInTheDocument();
-  expect(screen.queryByLabelText('Lokasi')).toBeNull();
-});
-
-test('customer tidak wajib: task tanpa customer dapat disimpan dan petunjuk menyebut opsional', async () => {
-  const onSubmit = vi.fn().mockResolvedValue(undefined);
-  render(
-    <HandoverForm
-      title="Form task"
-      mode="create"
-      defaultValues={toHandoverFormDefaults(undefined, 'loc-a')}
-      options={options}
-      onSubmit={onSubmit}
-      onCancel={vi.fn()}
-    />,
-  );
-  expect(screen.getByText(/Opsional/)).toBeInTheDocument();
-  await userEvent.type(screen.getByLabelText('Cari tipe'), 'ubiquiti');
-  await userEvent.click(await screen.findByRole('option', { name: 'Ubiquiti ES 24' }));
+test('customer kosong diterima bila catatan terisi', async () => {
+  const { onSubmit } = renderForm({
+    defaultValues: { locationId: 'loc-a', customerName: '', note: '- [ ] A = 1' },
+  });
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ customerName: '' });
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ customerName: '', note: '- [ ] A = 1' });
+});
+
+test('catatan di atas 5.000 karakter menampilkan galat tanpa mengosongkan draf', async () => {
+  const { onSubmit } = renderForm({
+    defaultValues: { locationId: 'loc-a', customerName: 'PT Maju', note: 'a'.repeat(5001) },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByText('Maksimal 5000 karakter')).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Customer')).toHaveValue('PT Maju');
+  expect(screen.getByText('5001/5000')).toBeInTheDocument();
+});
+
+test('galat server tampil dan draf tetap ada', async () => {
+  renderForm({
+    submitError: 'Task sudah diubah orang lain',
+    fieldErrors: { customerName: 'Customer dinonaktifkan' },
+  });
+  expect(screen.getByRole('alert')).toHaveTextContent('Task sudah diubah orang lain');
+  expect(screen.getByText('Customer dinonaktifkan')).toBeInTheDocument();
+});
+
+test('mode ubah menampilkan nama lokasi sebagai teks', () => {
+  renderForm({ mode: 'edit', locationName: 'Lokasi A' });
+  expect(screen.getByText('Lokasi A')).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Lokasi' })).not.toBeInTheDocument();
 });

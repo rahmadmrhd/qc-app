@@ -1,32 +1,38 @@
 import type { RouteTable } from '@gas/core/router';
 import {
+  addComment_,
   cancelHandover_,
-  completeAll_,
-  completeLine_,
   getHandoverDto_,
+  handoverBoard_,
   handoverOptions_,
-  listHandoverSummaries_,
+  reopenHandover_,
   saveHandover_,
-  setProgress_,
+  saveHandoverBatch_,
+  setCheck_,
+  setDone_,
 } from './service';
 import {
-  validateCompleteLine_,
+  validateAddComment_,
   validateGetHandover_,
   validateHandoverRef_,
   validateListHandovers_,
   validateSaveHandover_,
-  validateSetProgress_,
+  validateSaveHandoverBatch_,
+  validateSetCheck_,
+  validateSetDone_,
 } from './validate';
 
 type HandoverMethod =
   | 'handovers.options'
-  | 'handovers.list'
+  | 'handovers.board'
   | 'handovers.get'
   | 'handovers.save'
+  | 'handovers.saveBatch'
   | 'handovers.cancel'
-  | 'handovers.setProgress'
-  | 'handovers.completeLine'
-  | 'handovers.completeAll';
+  | 'handovers.reopen'
+  | 'handovers.setCheck'
+  | 'handovers.setDone'
+  | 'handovers.comment';
 
 /** WH (handover view ke atas) atau QC (qc edit) boleh membaca; izin diperiksa per lokasi yang diminta. */
 const READ_PERMISSION = {
@@ -43,10 +49,10 @@ export function handoverRoutes_(): Pick<RouteTable, HandoverMethod> {
       validate: validateListHandovers_,
       handler: () => handoverOptions_(),
     },
-    'handovers.list': {
+    'handovers.board': {
       permission: READ_PERMISSION,
       validate: validateListHandovers_,
-      handler: (_input, ctx) => listHandoverSummaries_(ctx.locationIds),
+      handler: (_input, ctx) => handoverBoard_(ctx.locationIds),
     },
     'handovers.get': {
       permission: READ_PERMISSION,
@@ -58,25 +64,35 @@ export function handoverRoutes_(): Pick<RouteTable, HandoverMethod> {
       validate: validateSaveHandover_,
       handler: (input, ctx) => saveHandover_(input, ctx.user),
     },
+    'handovers.saveBatch': {
+      permission: { module: 'handover', level: 'edit', scope: 'location' },
+      validate: validateSaveHandoverBatch_,
+      handler: (input, ctx) => saveHandoverBatch_(input, ctx.user),
+    },
     'handovers.cancel': {
       permission: { module: 'handover', level: 'manage', scope: 'location' },
       validate: validateHandoverRef_,
       handler: (input, ctx) => cancelHandover_(input, ctx.user),
     },
-    'handovers.setProgress': {
-      permission: { module: 'qc', level: 'edit', scope: 'location' },
-      validate: validateSetProgress_,
-      handler: (input, ctx) => setProgress_(input, ctx.user),
-    },
-    'handovers.completeLine': {
-      permission: { module: 'qc', level: 'edit', scope: 'location' },
-      validate: validateCompleteLine_,
-      handler: (input, ctx) => completeLine_(input, ctx.user),
-    },
-    'handovers.completeAll': {
-      permission: { module: 'qc', level: 'edit', scope: 'location' },
+    'handovers.reopen': {
+      permission: { module: 'handover', level: 'manage', scope: 'location' },
       validate: validateHandoverRef_,
-      handler: (input, ctx) => completeAll_(input, ctx.user),
+      handler: (input, ctx) => reopenHandover_(input, ctx.user),
+    },
+    'handovers.setCheck': {
+      permission: { module: 'qc', level: 'edit', scope: 'location' },
+      validate: validateSetCheck_,
+      handler: (input, ctx) => setCheck_(input, ctx.user),
+    },
+    'handovers.setDone': {
+      permission: { module: 'qc', level: 'edit', scope: 'location' },
+      validate: validateSetDone_,
+      handler: (input, ctx) => setDone_(input, ctx.user),
+    },
+    'handovers.comment': {
+      permission: READ_PERMISSION,
+      validate: validateAddComment_,
+      handler: (input, ctx) => addComment_(input, ctx.user),
     },
   };
 }

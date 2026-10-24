@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { MarkdownEditor } from '@/modules/markdown/markdown-editor';
+import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
 import { errorText } from '../lib/row-error';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
 import { itemFormSchema } from '../schemas';
@@ -277,7 +277,7 @@ export function ItemForm({
               <span id="item-detail-label" className="sr-only">
                 Detail dan spesifikasi
               </span>
-              <MarkdownEditor
+              <WysiwygEditor
                 id="item-detail"
                 labelledBy="item-detail-label"
                 value={field.state.value}

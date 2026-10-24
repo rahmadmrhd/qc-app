@@ -2,46 +2,38 @@ import { isKeyChar } from './items';
 
 /** Batas task serah terima (PRD FH2). */
 export const HANDOVER_LIMITS = {
-  note: 500,
+  note: 5000,
   customerName: 100,
-  qtyMax: 100_000,
-  lines: 100,
+  comment: 1000,
+  comments: 50,
+  batch: 30,
+  checklistItems: 300,
+  stateJson: 40000,
 } as const;
 
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
 
-export interface ProgressLine {
-  qty: number;
-  doneQty: number;
-}
-
-/** Baru/Dikerjakan/Selesai diturunkan dari baris; Dibatalkan disimpan. Dipakai server dan klien. */
+/**
+ * Baru/Dikerjakan/Selesai diturunkan dari progres checklist; Dibatalkan disimpan.
+ * Tanpa butir checklist (total 0), Selesai ditentukan penanda `completed` (tombol Mark done).
+ */
 export function deriveHandoverStatus(
   stored: HandoverStoredStatus,
-  lines: readonly ProgressLine[],
+  progress: { total: number; done: number; completed: boolean },
 ): HandoverStatus {
   if (stored === 'cancelled') return 'cancelled';
-  if (lines.length > 0 && lines.every((line) => line.doneQty >= line.qty)) return 'done';
-  if (lines.some((line) => line.doneQty > 0)) return 'in_progress';
+  if (progress.total > 0 && progress.done === progress.total) return 'done';
+  if (progress.total === 0 && progress.completed) return 'done';
+  if (progress.done > 0) return 'in_progress';
   return 'new';
 }
 
-export function progressTotals(lines: readonly ProgressLine[]): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  for (const line of lines) {
-    done += Math.min(line.doneQty, line.qty);
-    total += line.qty;
-  }
-  return { done, total };
-}
-
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+const HANDOVER_WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 /** Tanggal `YYYYMMDD` menurut WIB (UTC+7), zona proyek (`appsscript.json`). */
 export function dateKeyOf(epochMs: number): string {
-  const date = new Date(epochMs + WIB_OFFSET_MS);
+  const date = new Date(epochMs + HANDOVER_WIB_OFFSET_MS);
   const year = String(date.getUTCFullYear()).padStart(4, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -82,4 +74,13 @@ export function customerKey(name: string): string {
     }
   }
   return out;
+}
+
+/** Karakter kontrol U+0000–U+001F selain \n, \r, \t (ditolak validator; menggelembungkan JSON audit). */
+export function hasHandoverControlChars(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 && code !== 0x0a && code !== 0x0d && code !== 0x09) return true;
+  }
+  return false;
 }

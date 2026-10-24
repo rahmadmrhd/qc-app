@@ -1,6 +1,8 @@
 import type { RowData, TableSchema } from '@gas/core/db';
-import { deleteRow_, insertRow_, readTable_, updateRow_ } from '@gas/core/db';
+import { insertRow_, readTable_, updateRow_ } from '@gas/core/db';
 import type { HandoverStoredStatus } from '@shared/handover';
+import type { CheckState } from '@shared/handover-checklist';
+import type { HandoverCommentDto } from '@shared/rpc';
 
 export const HANDOVERS_TABLE: TableSchema = {
   sheetName: 'handovers',
@@ -12,6 +14,10 @@ export const HANDOVERS_TABLE: TableSchema = {
     'customer_name',
     'note',
     'status',
+    'checks',
+    'comments',
+    'completed_at',
+    'completed_by',
     'created_at',
     'created_by',
     'updated_at',
@@ -19,10 +25,7 @@ export const HANDOVERS_TABLE: TableSchema = {
   ],
 };
 
-export const HANDOVER_LINES_TABLE: TableSchema = {
-  sheetName: 'handover_lines',
-  columns: ['id', 'handover_id', 'item_id', 'item_label', 'qty', 'done_qty', 'done_at', 'done_by'],
-};
+export type StoredComment = Omit<HandoverCommentDto, 'stale'>;
 
 export interface HandoverRecord {
   rowNumber: number;
@@ -34,6 +37,12 @@ export interface HandoverRecord {
   customerName: string;
   note: string;
   status: HandoverStoredStatus;
+  /** Centang QC pada butir checklist (JSON di sheet). */
+  checks: CheckState[];
+  comments: StoredComment[];
+  /** Penanda Selesai untuk task tanpa checklist (Mark done). */
+  completedAt: string;
+  completedBy: string;
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -41,19 +50,57 @@ export interface HandoverRecord {
 }
 export type NewHandoverRecord = Omit<HandoverRecord, 'rowNumber'>;
 
-export interface HandoverLineRecord {
-  rowNumber: number;
-  id: string;
-  handoverId: string;
-  itemId: string;
-  /** Salinan "merk tipe" saat baris dibuat (FH9). */
-  itemLabel: string;
-  qty: number;
-  doneQty: number;
-  doneAt: string;
-  doneBy: string;
+function parseJsonArray_(text: string | undefined): unknown[] {
+  if (!text || text.trim() === '') return [];
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
 }
-export type NewHandoverLineRecord = Omit<HandoverLineRecord, 'rowNumber'>;
+
+function asObject_(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function str_(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function parseChecks_(text: string | undefined): CheckState[] {
+  const out: CheckState[] = [];
+  for (const entry of parseJsonArray_(text)) {
+    const o = asObject_(entry);
+    if (!o || typeof o.text !== 'string') continue;
+    const occurrence =
+      typeof o.occurrence === 'number' && Number.isInteger(o.occurrence) && o.occurrence >= 0
+        ? o.occurrence
+        : 0;
+    out.push({ text: o.text, by: str_(o.by), at: str_(o.at), occurrence });
+  }
+  return out;
+}
+
+function parseComments_(text: string | undefined): StoredComment[] {
+  const out: StoredComment[] = [];
+  for (const entry of parseJsonArray_(text)) {
+    const o = asObject_(entry);
+    if (!o || typeof o.id !== 'string' || typeof o.quote !== 'string') continue;
+    out.push({
+      id: o.id,
+      quote: o.quote,
+      before: str_(o.before),
+      after: str_(o.after),
+      body: str_(o.body),
+      author: str_(o.author),
+      at: str_(o.at),
+    });
+  }
+  return out;
+}
 
 function toHandoverRecord_(rowNumber: number, data: RowData): HandoverRecord {
   return {
@@ -65,6 +112,10 @@ function toHandoverRecord_(rowNumber: number, data: RowData): HandoverRecord {
     customerName: data.customer_name ?? '',
     note: data.note ?? '',
     status: (data.status ?? '').trim() === 'cancelled' ? 'cancelled' : 'open',
+    checks: parseChecks_(data.checks),
+    comments: parseComments_(data.comments),
+    completedAt: data.completed_at ?? '',
+    completedBy: data.completed_by ?? '',
     createdAt: data.created_at ?? '',
     createdBy: data.created_by ?? '',
     updatedAt: data.updated_at ?? '',
@@ -81,37 +132,14 @@ function fromHandoverRecord_(handover: NewHandoverRecord): RowData {
     customer_name: handover.customerName,
     note: handover.note,
     status: handover.status,
+    checks: JSON.stringify(handover.checks),
+    comments: JSON.stringify(handover.comments),
+    completed_at: handover.completedAt,
+    completed_by: handover.completedBy,
     created_at: handover.createdAt,
     created_by: handover.createdBy,
     updated_at: handover.updatedAt,
     updated_by: handover.updatedBy,
-  };
-}
-
-function toHandoverLineRecord_(rowNumber: number, data: RowData): HandoverLineRecord {
-  return {
-    rowNumber,
-    id: (data.id ?? '').trim(),
-    handoverId: (data.handover_id ?? '').trim(),
-    itemId: (data.item_id ?? '').trim(),
-    itemLabel: data.item_label ?? '',
-    qty: Number(data.qty) || 0,
-    doneQty: Number(data.done_qty) || 0,
-    doneAt: data.done_at ?? '',
-    doneBy: data.done_by ?? '',
-  };
-}
-
-function fromHandoverLineRecord_(line: NewHandoverLineRecord): RowData {
-  return {
-    id: line.id,
-    handover_id: line.handoverId,
-    item_id: line.itemId,
-    item_label: line.itemLabel,
-    qty: String(line.qty),
-    done_qty: String(line.doneQty),
-    done_at: line.doneAt,
-    done_by: line.doneBy,
   };
 }
 
@@ -127,26 +155,4 @@ export function insertHandover_(handover: NewHandoverRecord): void {
 
 export function updateHandover_(handover: HandoverRecord): void {
   updateRow_(HANDOVERS_TABLE, handover.rowNumber, fromHandoverRecord_(handover));
-}
-
-export function listHandoverLines_(): HandoverLineRecord[] {
-  return readTable_(HANDOVER_LINES_TABLE)
-    .rows.map(({ rowNumber, data }) => toHandoverLineRecord_(rowNumber, data))
-    .filter((line) => line.id !== '' && line.handoverId !== '');
-}
-
-export function insertHandoverLine_(line: NewHandoverLineRecord): void {
-  insertRow_(HANDOVER_LINES_TABLE, fromHandoverLineRecord_(line));
-}
-
-export function updateHandoverLine_(line: HandoverLineRecord): void {
-  updateRow_(HANDOVER_LINES_TABLE, line.rowNumber, fromHandoverLineRecord_(line));
-}
-
-/**
- * Menghapus baris sheet: nomor baris di bawahnya bergeser, jadi hapus beberapa baris dari nomor TERBESAR ke
- * terkecil (urutkan menurun) dan jangan memakai `rowNumber` hasil baca sebelumnya setelah ada penghapusan.
- */
-export function deleteHandoverLine_(line: HandoverLineRecord): void {
-  deleteRow_(HANDOVER_LINES_TABLE, line.rowNumber);
 }
