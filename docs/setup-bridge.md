@@ -69,3 +69,17 @@ Catatan keamanan: URL web app publik di internet, jadi satu-satunya penjaga adal
 5. Verifikasi: `CLOUDFLARE_ACCOUNT_ID=... bun run scripts/migrate/verify-import.ts --dump dump.json --d1 <nama-db> [--remote|--local] [--exclude excludes.json]`: jumlah baris dan checksum SHA-256 per tabel, rujukan yatim di D1, `counters.sync_rev` dan `counters.handover:YYYYMMDD` >= data. Kode keluar 0 = lulus. Hanya menjalankan `SELECT`.
 
 Hasil impor selain salinan kolom: `handovers.comments` dipecah ke `handover_comments`; `version=1`, `checked_count`, `total_count`, `board_status` dihitung; `files.status='active'`; `counters` diisi (`sync_rev` = maks. `sync_rev` merk/item dan `sync_state.seq`, `handover:YYYYMMDD` = urutan tertinggi hari itu); `sync_state` diimpor apa adanya.
+
+## 6. Deployment jembatan staging (dibuat 2026-10-26 lewat CLI)
+- Proyek Apps Script **QC Bridge** (script id `1-NThD1rbr1MnuRRNli3-ZB8GOOVxMcs9sExFAR-tvlT6ASX7zgWtDl1M`, akun clasp `qcspectrum123@gmail.com`), terpisah dari aplikasi lama (`gas/`, script id dan deployment-nya tidak disentuh) dan dari proyek spike `qc-bridge-spike` (boleh dihapus pemilik).
+- Deployment web app BARU: `AKfycbwkbK43GVO1Y-_xxvLZyym6n5uvLuY_Hr_aJcu5-lgGWrbyXntsb7jpOR-mmEL2dHj7Kw` (tercatat di `bridge/deployment.staging.json`).
+- URL: `https://script.google.com/macros/s/AKfycbwkbK43GVO1Y-_xxvLZyym6n5uvLuY_Hr_aJcu5-lgGWrbyXntsb7jpOR-mmEL2dHj7Kw/exec` (nilai `BRIDGE_URL` Worker staging).
+- Dibuat dengan: `bun run build:bridge`, `bun run scripts/push-bridge.ts staging`, `bun run scripts/deploy-bridge.ts staging` (skrip menolak scriptId/deploymentId aplikasi lama). Pembaruan kode berikutnya: `build:bridge`, `push-bridge`, `deploy-bridge` (memperbarui deployment yang sama, URL tetap).
+- Status: BELUM DIOTORISASI. Scope Drive + Sheets harus disetujui pemilik sekali di editor; sampai itu, permintaan anonim ke URL mendapat HTTP 403 ("Anda memerlukan akses") dan Worker melaporkan `UNAVAILABLE`.
+
+### Langkah pemilik (sekali, tidak dapat dilakukan lewat CLI)
+1. Buka proyek: https://script.google.com/d/1-NThD1rbr1MnuRRNli3-ZB8GOOVxMcs9sExFAR-tvlT6ASX7zgWtDl1M/edit (akun `qcspectrum123@gmail.com`, atau akun yang akan menjadi pemilik data).
+2. **Project Settings → Script properties → Add**: `BRIDGE_SECRET` (nilai acak 64 karakter heksadesimal; salinan lokal ada di `bridge/.secrets.local` di worktree jembatan, JANGAN dibagikan lewat repo/obrolan), `ALLOWED_FOLDER_IDS` (id folder Drive gambar item `DRIVE_FOLDER_ID` + folder QR; ambil dari Script Properties aplikasi lama atau dari tabel `settings` D1 setelah gladi), `SPREADSHEET_ID` (id Spreadsheet database aplikasi lama, hanya dibaca lewat `sheets.dump`), opsional `EXPORT_SPREADSHEET_ID`.
+3. Pilih fungsi `setup` di editor lalu **Run**; setujui izin (Drive, Sheets, request eksternal). `setup` hanya melaporkan status properti/folder/spreadsheet tanpa mencetak rahasia.
+4. Pasang rahasia yang SAMA di Worker staging: `cd worker && CLOUDFLARE_ACCOUNT_ID=2256d27ce4dcdcb9ade777cc2650fd81 bunx wrangler secret put BRIDGE_SECRET --env staging` (tempel nilai dari `bridge/.secrets.local`) dan set `BRIDGE_URL` staging ke URL di atas.
+5. Uji cepat hanya-baca: `bun run scripts/bridge-smoke.ts brands` (memakai `bridge/.secrets.local`; `sheets.dump` satu sheet, tidak menulis apa pun, hanya mencetak jumlah baris dan header).

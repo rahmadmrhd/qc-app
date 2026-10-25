@@ -49,3 +49,22 @@ export const requireSession = createMiddleware<AppBindings>(async (c, next) => {
   c.set('session', session);
   await next();
 });
+
+/** Host pengembangan lokal (wrangler dev); tidak pernah melayani produksi. */
+export function isLocalHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1'
+  );
+}
+
+/**
+ * Atribut `Secure` cookie: wajib di semua origin KECUALI http://localhost (wrangler dev), karena sebagian
+ * peramban menolak cookie Secure pada http meski localhost.
+ */
+export function cookieSecure(requestUrl: string): boolean {
+  const url = new URL(requestUrl);
+  return !(url.protocol === 'http:' && isLocalHostname(url.hostname));
+}

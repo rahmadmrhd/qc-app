@@ -1,28 +1,41 @@
 import path from 'node:path';
 import { $ } from 'bun';
+import { bridgeProjectFile, legacyDeploymentId } from './bridge-clasp';
 import { BRIDGE_DIR } from './paths';
 
-// Memperbarui deployment web app jembatan yang SUDAH ada (URL tetap). Dijalankan MANUAL oleh pemilik.
+// Deployment web app jembatan. Tanpa `bridge/deployment.<env>.json`: membuat deployment BARU (tanpa --deploymentId)
+// dan mencatat id-nya. Dengan berkas itu: memperbarui deployment jembatan tersebut (URL tetap). Tidak pernah
+// menyentuh deployment aplikasi lama.
 const env = process.argv[2];
 if (env !== 'staging' && env !== 'production') {
   console.error('Pemakaian: bun run scripts/deploy-bridge.ts <staging|production>');
   process.exit(1);
 }
-const project = path.join(BRIDGE_DIR, `.clasp.${env}.json`);
+const project = await bridgeProjectFile(env);
 const deploymentFile = path.join(BRIDGE_DIR, `deployment.${env}.json`);
-if (!(await Bun.file(project).exists()) || !(await Bun.file(deploymentFile).exists())) {
-  console.error(
-    `bridge/.clasp.${env}.json atau bridge/deployment.${env}.json tidak ada (docs/setup-bridge.md).`,
+const description = `deploy-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+const legacy = await legacyDeploymentId();
+
+if (await Bun.file(deploymentFile).exists()) {
+  const config = (await Bun.file(deploymentFile).json()) as { deploymentId?: string };
+  if (!config.deploymentId)
+    throw new Error(`bridge/deployment.${env}.json belum berisi deploymentId`);
+  if (config.deploymentId === legacy)
+    throw new Error('deploymentId sama dengan aplikasi lama; dibatalkan');
+  await $`bunx @google/clasp create-deployment --deploymentId ${config.deploymentId} --description ${description} --project ${project}`.cwd(
+    BRIDGE_DIR,
   );
-  process.exit(1);
+  console.log(`Deployment jembatan (${env}) diperbarui: ${config.deploymentId}`);
+} else {
+  const out =
+    await $`bunx @google/clasp create-deployment --description ${description} --project ${project}`
+      .cwd(BRIDGE_DIR)
+      .text();
+  const id = /Deployed\s+(\S+)/.exec(out)?.[1];
+  if (!id) throw new Error(`Id deployment tidak terbaca dari keluaran clasp: ${out}`);
+  if (id === legacy)
+    throw new Error('clasp mengembalikan deployment aplikasi lama; periksa konfigurasi');
+  await Bun.write(deploymentFile, `${JSON.stringify({ deploymentId: id }, null, 2)}\n`);
+  console.log(`Deployment BARU jembatan (${env}): ${id}`);
+  console.log(`URL: https://script.google.com/macros/s/${id}/exec`);
 }
-const config = (await Bun.file(deploymentFile).json()) as { deploymentId?: string };
-if (!config.deploymentId) {
-  console.error(`bridge/deployment.${env}.json belum berisi deploymentId.`);
-  process.exit(1);
-}
-const description = `deploy-${new Date().toISOString()}`;
-await $`clasp deploy --deploymentId ${config.deploymentId} --description ${description} --project ${project}`.cwd(
-  BRIDGE_DIR,
-);
-console.log(`Deployment jembatan (${env}) diperbarui.`);

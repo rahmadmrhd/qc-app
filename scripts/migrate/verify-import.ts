@@ -1,3 +1,4 @@
+import { aliasKeysOf } from './alias-keys';
 import {
   type DumpInput,
   type ExcludeEntry,
@@ -35,6 +36,8 @@ export interface VerifyReport {
   tables: TableVerdict[];
   orphans: CheckVerdict[];
   counters: CheckVerdict[];
+  /** Konsistensi kolom turunan D1 (mis. `items.alias_keys` vs `aliases`). */
+  consistency: CheckVerdict[];
   problems: string[];
 }
 
@@ -123,6 +126,31 @@ const ORPHAN_CHECKS: ReadonlyArray<{ name: string; sql: string }> = [
   },
 ];
 
+/** `items.alias_keys` harus sama dengan kunci yang dihitung dari `aliases` (migrasi 0007). */
+async function checkAliasKeys(reader: D1Reader): Promise<CheckVerdict> {
+  const rows = await readAll(reader, 'items', ['id', 'aliases', 'alias_keys']);
+  const bad: string[] = [];
+  for (const row of rows) {
+    let aliases: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(cell(row.aliases) || '[]');
+      if (Array.isArray(parsed))
+        aliases = parsed.filter((item): item is string => typeof item === 'string');
+    } catch {
+      // aliases rusak: dianggap kosong, sehingga alias_keys tidak kosong akan terlapor
+    }
+    if (aliasKeysOf(aliases) !== cell(row.alias_keys)) bad.push(cell(row.id));
+  }
+  return {
+    name: 'items.alias_keys konsisten dengan aliases',
+    ok: bad.length === 0,
+    detail:
+      bad.length === 0
+        ? `${rows.length} item`
+        : `${bad.length} item tidak konsisten: ${bad.slice(0, 5).join(', ')}`,
+  };
+}
+
 export interface VerifyOptions {
   exclude?: readonly ExcludeEntry[];
 }
@@ -133,7 +161,14 @@ export async function verifyImport(
   options: VerifyOptions = {},
 ): Promise<VerifyReport> {
   const prepared = prepareImport(dump, { exclude: options.exclude });
-  const report: VerifyReport = { ok: true, tables: [], orphans: [], counters: [], problems: [] };
+  const report: VerifyReport = {
+    ok: true,
+    tables: [],
+    orphans: [],
+    counters: [],
+    consistency: [],
+    problems: [],
+  };
   if (!prepared.report.ok) {
     report.ok = false;
     report.problems.push(
@@ -210,7 +245,14 @@ export async function verifyImport(
     });
   }
 
-  report.ok = [...report.tables, ...report.orphans, ...report.counters].every((entry) => entry.ok);
+  report.consistency.push(await checkAliasKeys(reader));
+
+  report.ok = [
+    ...report.tables,
+    ...report.orphans,
+    ...report.counters,
+    ...report.consistency,
+  ].every((entry) => entry.ok);
   return report;
 }
 
@@ -242,7 +284,7 @@ function printReport(report: VerifyReport): void {
       `${table.ok ? 'LULUS' : 'GAGAL'}  ${table.table}: baris ${table.actualRows}/${table.expectedRows}, checksum ${table.actualChecksum === table.expectedChecksum ? 'sama' : 'BEDA'}`,
     );
   }
-  for (const check of [...report.orphans, ...report.counters]) {
+  for (const check of [...report.orphans, ...report.counters, ...report.consistency]) {
     console.log(`${check.ok ? 'LULUS' : 'GAGAL'}  ${check.name}: ${check.detail}`);
   }
   for (const problem of report.problems) console.log(`GAGAL  ${problem}`);

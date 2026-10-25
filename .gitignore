@@ -33,3 +33,8 @@ worker/.wrangler/
 web/dist-worker/
 
 .wrangler/
+
+# Variabel pengembangan lokal worker
+worker/.dev.vars
+# jembatan: rahasia lokal
+bridge/.secrets.local

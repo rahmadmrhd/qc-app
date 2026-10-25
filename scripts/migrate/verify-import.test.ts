@@ -163,3 +163,24 @@ describe('CLI dan pembaca wrangler', () => {
     }
   });
 });
+
+describe('konsistensi alias_keys', () => {
+  test('alias_keys lulus pada impor bersih dan gagal bila tidak sama dengan aliases', async () => {
+    const clean = await verifyImport(cleanDump(), reader());
+    expect(clean.consistency).toEqual([
+      expect.objectContaining({ name: 'items.alias_keys konsisten dengan aliases', ok: true }),
+    ]);
+    await exec("UPDATE items SET alias_keys = '|salah|' WHERE id = 'i1'");
+    const tampered = await verifyImport(cleanDump(), reader());
+    expect(tampered.ok).toBe(false);
+    expect(tampered.consistency[0]).toMatchObject({ ok: false });
+    expect(tampered.consistency[0]?.detail).toContain('i1');
+    // checksum items juga memuat alias_keys
+    expect(tampered.tables.find((table) => table.table === 'items')?.ok).toBe(false);
+  });
+
+  test('aliases diubah tanpa memperbarui alias_keys terdeteksi', async () => {
+    await exec(`UPDATE items SET aliases = '["Baru"]' WHERE id = 'i1'`);
+    expect((await verifyImport(cleanDump(), reader())).consistency[0]?.ok).toBe(false);
+  });
+});
