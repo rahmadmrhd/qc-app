@@ -4,9 +4,9 @@ Aplikasi Quality Control: backend Google Apps Script (GAS) + Google Sheets, fron
 PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 
 ## Perintah
-- `bun run dev` — FE lokal dengan mock backend (router & layanan GAS asli berjalan in-memory di browser).
+- `bun run dev` — Worker lokal (`wrangler dev --local`, D1 lokal, :8787) + Vite (:3000) yang mem-proxy `/api`, `/auth`, `/sync` ke Worker. Mock backend di peramban sudah dihapus. Sekali di awal: `bun run db:seed` (migrasi + data contoh ke D1 lokal); login lewat "Masuk sebagai pengguna dev" (`DEV_LOGIN_EMAIL` di `worker/.dev.vars`). Jembatan Google tidak tersedia lokal. Rincian: `docs/dev-worker.md`.
 - `bun run check` — typecheck + Biome + semua test. Wajib hijau sebelum commit.
-- `bun run build` — `gas/dist` (JS per file + `index.html` single-file) lalu `verify-dist`.
+- `bun run build` — build web (Vite, potongan JS/CSS dengan lazy load per rute) ke `worker/dist` (aset statis Worker), lalu `verify-dist`: `index.html` ada, tanpa kode mock, dan tiap potongan JS ≤ 600 KB gzip. Aplikasi Apps Script lama: `bun run build:gas` (`gas/dist` + `verify-gas-dist`); jembatan: `bun run build:bridge`.
 - `bun run push` / `bun run deploy` — push ke Apps Script / perbarui deployment tetap (`gas/deployment.json`).
 - Bun terpasang di `~/.bun/bin`; bila `bun` tidak ditemukan di shell, tambahkan ke PATH.
 

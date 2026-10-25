@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Tanggal** | 2026-10-25 |
-| **Status** | Draf untuk ditinjau pemilik |
+| **Status** | Disetujui pemilik; sedang diimplementasikan (Fase 0–3 selesai, Fase 4 menunggu gerbang CPU, Fase 5 menunggu gladi; lihat bagian Status di rencana `docs/superpowers/plans/2026-10-25-migrasi-cloudflare-worker-d1.md`) |
 | **Cakupan** | Seluruh backend QC App (auth, RPC, data, berkas, sinkron QC Desktop, QR, cron) dan transport frontend |
 | **Dasar** | Kode saat ini (`gas/src`, `shared/`, `web/`), `docs/api/desktop-sync.md`, `docs/ci-cd.md`, percakapan dengan pemilik |
 
@@ -50,9 +50,9 @@ Keberhasilan = respons API terasa instan (puluhan ms di luar jembatan Google), t
 | D1: pola `LIKE`/`GLOB` | 50 byte | Pencarian teks panjang harus lewat kolom kunci pencarian (`shared/items.ts`) |
 | Queues | **Tersedia di paket gratis**; 10.000 operasi/hari; tiap pesan ±3 operasi (tulis, baca, hapus), tiap 64 KB = 1 operasi; retensi tetap **24 jam** | ≈ 3.300 pesan/hari; ukuran potongan ekspor dipilih agar jumlah pesan kecil. Pekerjaan yang tak tuntas dalam 24 jam hilang → status `jobs` harus bisa diulang manual |
 | Queues: ukuran pesan | 128 KB; batch konsumen 100; percobaan ulang maks. 100 | Pesan hanya membawa `{ jobId, potongan }`, data diambil dari D1 |
-| Queues: CPU konsumen | halaman limit Queues menyebut default 30 dtk (dapat diatur); **belum jelas** apakah paket gratis tetap dibatasi 10 ms | Tetap dirancang ≤ 10 ms per pesan; **[verifikasi lewat spike]** |
+| Queues: CPU konsumen | halaman limit Queues menyebut default 30 dtk (dapat diatur); **belum jelas** apakah paket gratis tetap dibatasi 10 ms | Tetap dirancang ≤ 10 ms per pesan. **Terverifikasi spike (2026-10-25):** konsumen di paket gratis tidak dibatasi 10 ms (beban ±115 ms selesai), tetapi batasnya tidak terdokumentasi, jadi anggaran ≤ 10 ms per pesan tetap berlaku |
 
-Belum terverifikasi (tetap spike Fase 0): perilaku redirect 302 Apps Script dari `fetch` Workers, ukuran/CPU unggahan base64 lewat Worker, dan CPU konsumen Queues di paket gratis.
+Hasil spike Fase 0 (`docs/superpowers/spikes/2026-10-bridge-roundtrip.md`, `2026-10-cpu-limits.md`): `fetch` Workers mengikuti 302 Apps Script sebagai `GET` dan mengembalikan badan jawaban; badan unggah sampai 10 MB lolos (batas jembatan ditetapkan 1 MB); unggah memakai penyambungan string di Worker tanpa decode. CPU penyambungan badan unggah di edge masih dikonfirmasi di gerbang CPU (rencana Task 4.5).
 
 ## 3. Tujuan, bukan-tujuan, anti-tujuan
 
@@ -256,11 +256,11 @@ Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor
 
 ## 15. Pertanyaan yang hanya Anda yang bisa jawab
 
-1. Domain: cukup `*.workers.dev` atau memakai domain sendiri? (memengaruhi redirect OAuth dan URL Desktop)
-2. Perkiraan jumlah item, pelanggan, dan baris audit sekarang dan setahun ke depan (untuk memastikan kuota D1 dan ukuran halaman sinkron).
-3. Siapa yang memelihara QC Desktop dan bisakah URL sinkron diganti pada hari cutover?
-4. Setuju lingkungan **staging** terpisah (Worker + D1 staging + jembatan staging) selain produksi?
-5. Apakah masa jalan mundur 2–4 minggu (aplikasi lama tetap hidup, baca-saja) cukup?
+1. ~~Domain~~ — dijawab pemilik: `*.workers.dev` dengan subdomain akun `qc-225.workers.dev`; Worker `app` (produksi, `https://app.qc-225.workers.dev`) dan `app-staging` (`https://app-staging.qc-225.workers.dev`). Redirect OAuth: `<origin>/auth/callback` untuk keduanya (`docs/superpowers/spikes/2026-10-cloudflare-setup.md`).
+2. Perkiraan jumlah item, pelanggan, dan baris audit sekarang dan setahun ke depan (untuk memastikan kuota D1 dan ukuran halaman sinkron). **Belum dijawab.** Gerbang CPU (rencana Task 4.5) memakai proyeksi 2 tahun sampai ada angka nyata.
+3. Siapa yang memelihara QC Desktop dan bisakah URL sinkron diganti pada hari cutover? **Belum dijawab.** Wajib terjawab sebelum cutover (rencana Task 6.1 Step 1).
+4. ~~Staging terpisah~~ — dijawab pemilik: ya. Worker `app-staging`, D1 `qc-app-staging`, Queue `qc-app-jobs-staging`, dan jembatan staging (`bridge/deployment.staging.json`) sudah dibuat.
+5. Apakah masa jalan mundur 2–4 minggu (aplikasi lama tetap hidup, baca-saja) cukup? **Belum dijawab.**
 6. ~~Batas subrequest untuk ekspor~~ — dijawab pemilik: ekspor berjalan di Queues (§9b). Bila spike menunjukkan Queues tidak tersedia/cukup di paket gratis, pemilik diminta memutuskan ulang (paket berbayar atau pembatasan fitur).
 
 ## 16. Diserahkan kepada pembangun
