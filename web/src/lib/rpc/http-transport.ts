@@ -25,7 +25,7 @@ function looksLikeEnvelope(text: string): boolean {
 
 /**
  * Transport HTTP ke Worker: `POST /api/rpc` dengan badan `{ method, payload }`; sesi lewat cookie
- * (`credentials: same-origin`), jadi argumen token diabaikan. Worker membalas amplop `{ ok, data | error }`
+ * (`credentials: same-origin`), jadi JavaScript tidak memegang token. Worker membalas amplop `{ ok, data | error }`
  * dengan status HTTP sesuai kode galat, jadi badan dibaca walau status bukan 200. Tiap panggilan = satu
  * permintaan (tanpa batching). Galat jaringan dilempar agar klien RPC memetakannya ke INTERNAL.
  */

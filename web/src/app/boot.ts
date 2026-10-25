@@ -1,12 +1,5 @@
 import type { AuthErrorCode, MeDto } from '@shared/rpc';
-import { rpc } from '@/lib/rpc';
-import {
-  ANONYMOUS_SESSION,
-  getToken,
-  readStoredDevToken,
-  type SessionState,
-  setDevToken,
-} from '@/modules/auth/session';
+import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 
 /** Galat login dari redirect Worker (`/?authError=...`); nilai lain diabaikan. */
 export function readAuthError(search: string): AuthErrorCode | null {
@@ -25,19 +18,8 @@ export function resolveInitialSession(
 /**
  * Data awal klien: `GET /api/boot` (alias `auth.me`, sesi dari cookie). 401 = belum login. Galat lain
  * (jaringan/5xx) diperlakukan sebagai belum login agar halaman login tetap bisa tampil.
- * Mode dev memakai mock backend dengan token dev tersimpan.
  */
 export async function loadBoot(fetchImpl: typeof fetch = fetch): Promise<MeDto | null> {
-  if (import.meta.env.DEV) {
-    setDevToken(readStoredDevToken());
-    if (!getToken()) return null;
-    try {
-      return await rpc('auth.me', null);
-    } catch {
-      setDevToken(null);
-      return null;
-    }
-  }
   try {
     const response = await fetchImpl('/api/boot', { credentials: 'same-origin' });
     if (!response.ok) return null;

@@ -17,11 +17,11 @@ function isRpcResult(value: unknown): value is RpcResult<unknown> {
   );
 }
 
-export function createRpcClient(transport: RpcTransport, getToken: () => string | null): RpcCall {
+export function createRpcClient(transport: RpcTransport): RpcCall {
   async function call<M extends RpcMethod>(method: M, input: RpcInput<M>): Promise<RpcOutput<M>> {
     let raw: string;
     try {
-      raw = await transport.call(method, JSON.stringify(input ?? null), getToken() ?? '');
+      raw = await transport.call(method, JSON.stringify(input ?? null));
     } catch (error) {
       throw new RpcError(
         'INTERNAL',

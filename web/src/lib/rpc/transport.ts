@@ -1,3 +1,4 @@
 export interface RpcTransport {
-  call(method: string, payloadJson: string, token: string): Promise<string>;
+  /** Mengirim satu RPC dan mengembalikan badan balasan (amplop `{ ok, data | error }`) sebagai teks. */
+  call(method: string, payloadJson: string): Promise<string>;
 }

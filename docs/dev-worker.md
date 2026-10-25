@@ -1,16 +1,16 @@
 # Pengembangan lokal Worker (D1 lokal)
 
 Menjalankan backend Cloudflare Worker + D1 di komputer sendiri, tanpa menyentuh akun Cloudflare, D1 remote, atau Google.
-`bun run dev` yang lama (mock backend di peramban) tetap ada dan tidak berubah.
+Mock backend di peramban sudah dihapus: frontend dev (Vite, :3000) memakai Worker lokal ini lewat proxy `/api`, `/auth`, `/sync`.
 
 ## Cepat mulai
 
 ```bash
-bun run db:seed        # migrasi + data contoh ke D1 LOKAL
-bun run dev:worker     # wrangler dev di http://localhost:8787
+bun run db:seed        # sekali: migrasi + data contoh ke D1 LOKAL
+bun run dev            # Worker lokal (:8787) + Vite (:3000) bersamaan
 ```
 
-Lalu buka `http://localhost:8787/auth/dev-login` (menerbitkan cookie sesi untuk `DEV_LOGIN_EMAIL`) dan kembali ke `/`.
+Buka `http://localhost:3000`, pada halaman login tekan **Masuk sebagai pengguna dev** (`/auth/dev-login` lewat proxy menerbitkan cookie sesi untuk `DEV_LOGIN_EMAIL` di origin :3000). Bila ingin dua terminal: `bun run dev:worker` dan `bun run dev:web`. Port Worker lain: set `WORKER_DEV_URL` untuk Vite.
 
 Pertama kali, `dev:worker` membuat `worker/.dev.vars` dari `worker/.dev.vars.example` (rahasia sesi acak). Ubah
 `DEV_LOGIN_EMAIL` (dan `ADMIN_EMAIL`) menjadi email Anda **sebelum** `bun run db:seed`; skrip seed membuat pengguna admin dengan
@@ -39,5 +39,5 @@ di semua origin lain (termasuk http selain localhost) atribut `Secure` tetap dip
 
 - Jembatan Google (`BRIDGE_URL`) tidak tersedia secara lokal: unggah berkas, ekspor, dan fitur QR yang memakai Drive akan
   gagal dengan `UNAVAILABLE`. Gunakan staging untuk menguji jembatan.
-- Frontend di `http://localhost:8787` dilayani dari `worker/dist` (hasil build web). Selama jalur web belum mengubah build,
-  uji API lewat `curl`, mis. `curl -b cookie -H "X-Requested-With: qc" -d '{"method":"auth.me","payload":null}' http://localhost:8787/api/rpc`.
+- `http://localhost:8787` melayani build web dari `worker/dist` (jalankan `bun run build`); untuk pengembangan UI pakai `http://localhost:3000` (Vite, hot reload).
+- Uji API tanpa UI: `curl -b cookie -H "X-Requested-With: qc" -d '{"method":"auth.me","payload":null}' http://localhost:8787/api/rpc`.

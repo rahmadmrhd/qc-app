@@ -17,7 +17,7 @@ export const PREFETCH_MAX_RETRIES = 30;
 
 /**
  * Daftar yang sering dipakai, hanya yang boleh dibaca pengguna (agar tidak memicu FORBIDDEN). Semua dipicu dalam satu
- * tick sehingga digabung jadi SATU eksekusi Apps Script oleh transport (batching).
+ * tick (permintaan paralel ke Worker).
  */
 export function prefetchCommonQueries(queryClient: QueryClient, me: MeDto): void {
   if (can(me, 'item', 'view')) {
@@ -38,8 +38,8 @@ const done = new Set<string>();
 
 /**
  * Prefetch massal SEKALI per sesi saat pengguna diam di beranda: kunjungan pertama ke tiap modul jadi instan. Dibatalkan
- * bila pengguna sudah berpindah halaman atau ada pengambilan data yang berjalan (RPC antre serial di klien, jadi
- * prefetch tidak boleh menghalangi klik nyata).
+ * bila pengguna sudah berpindah halaman atau ada pengambilan data yang berjalan (prefetch tidak boleh bersaing dengan
+ * klik nyata).
  */
 export function usePrefetchOnIdle(me: MeDto): void {
   const queryClient = useQueryClient();
