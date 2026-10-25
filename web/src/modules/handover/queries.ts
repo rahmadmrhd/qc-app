@@ -54,6 +54,8 @@ export function handoverColumnQueryOptions(locationIds: readonly string[], statu
 export interface BoardColumnState {
   /** Jumlah task kolom itu di server (judul kolom). */
   total: number;
+  /** Jumlah task yang sudah dimuat di kolom ini (memicu pemuatan otomatis berikutnya). */
+  loaded: number;
   hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => void;
@@ -73,6 +75,7 @@ export function useHandoverBoard(locationIds: readonly string[]) {
       const query = byStatus[status];
       const state: BoardColumnState = {
         total: query.data?.pages[0]?.total ?? 0,
+        loaded: query.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? 0,
         hasMore: query.hasNextPage,
         loadingMore: query.isFetchingNextPage,
         loadMore: () => void query.fetchNextPage(),

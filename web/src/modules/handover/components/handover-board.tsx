@@ -5,6 +5,7 @@ import { Component, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { BOARD_STATUSES, filterByStatus, groupBoard } from '../lib/group-board';
+import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '../lib/near-viewport';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import type { BoardColumnState } from '../queries';
 import type { HandoverCardProps } from './handover-card';
@@ -75,19 +76,51 @@ const FILTERS: ReadonlyArray<{ value: HandoverStatus | 'all'; label: string }> =
   ...BOARD_STATUSES.map((status) => ({ value: status, label: HANDOVER_STATUS_LABELS[status] })),
 ];
 
+/**
+ * Halaman berikutnya dimuat OTOMATIS saat akhir daftar mendekati layar (infinite scroll); karena sentinel diamati
+ * ulang tiap jumlah task termuat berubah, kolom yang belum penuh layar terisi sendiri. Tanpa
+ * `IntersectionObserver` (mis. jsdom) tersedia tombol "Muat lebih banyak".
+ */
 function LoadMore({ column }: { column: BoardColumnState | undefined }) {
+  const active = Boolean(column?.hasMore) && !column?.loadingMore;
+  const sentinel = useOnNear(active, column?.loaded, () => column?.loadMore());
   if (!column?.hasMore) return null;
+  if (!hasIntersectionObserver()) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full"
+        disabled={column.loadingMore}
+        onClick={column.loadMore}
+      >
+        {column.loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
+      </Button>
+    );
+  }
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="w-full"
-      disabled={column.loadingMore}
-      onClick={column.loadMore}
+    <div ref={sentinel} data-slot="load-more-sentinel" className="min-h-4 text-center">
+      {column.loadingMore ? (
+        <span role="status" className="text-xs text-muted-foreground">
+          Memuat…
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Daftar kartu satu kolom kanban; elemen gulirnya menjadi akar pengamat (lazy kartu dan muat otomatis). */
+function ColumnCards({ children }: { children: ReactNode }) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  return (
+    <div
+      ref={setRoot}
+      className="min-h-0 flex-1 space-y-3 overflow-y-auto"
+      data-slot="column-cards"
     >
-      {column.loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
-    </Button>
+      <ScrollRootProvider root={root}>{children}</ScrollRootProvider>
+    </div>
   );
 }
 
@@ -118,7 +151,7 @@ export function HandoverBoard({
               {HANDOVER_STATUS_LABELS[status]} (
               {columnState?.[status].total ?? columns[status].length})
             </h2>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto" data-slot="column-cards">
+            <ColumnCards>
               {columns[status].length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">Tidak ada task.</p>
               ) : (
@@ -127,7 +160,7 @@ export function HandoverBoard({
                 ))
               )}
               <LoadMore column={columnState?.[status]} />
-            </div>
+            </ColumnCards>
           </section>
         ))}
       </div>
