@@ -38,3 +38,5 @@ web/dist-worker/
 worker/.dev.vars
 
 worker/.staging.secrets.local
+# jembatan: rahasia lokal
+bridge/.secrets.local
