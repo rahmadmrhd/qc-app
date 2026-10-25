@@ -29,7 +29,7 @@ Kotak centang di "Prosedur Porting Modul" adalah templat per modul dan sengaja t
 
 Setiap task secara implisit memuat bagian ini (nilai disalin dari Spek §2b, §5, §6–§11).
 
-- CPU Worker **≤ 10 ms per permintaan HTTP dan per Cron**; gerbang rilis: **p99 ≤ 8 ms** tiap rute di staging.
+- CPU Worker **≤ 10 ms per permintaan HTTP dan per Cron**; gerbang rilis: **p95 ≤ 8 ms** tiap rute di staging (≥ 100 sampel; p99/maks informatif karena lantai derau isolate, `/api/ping` p99 10 ms; diputuskan pemilik 2026-10-25).
 - **Subrequest ≤ 50 per invokasi**: panggilan D1, jembatan, dan Queues semuanya dihitung; `db.batch()` dihitung satu.
 - D1: **maks. 100 parameter terikat per kueri**; baris/string ≤ 2 MB; pernyataan SQL ≤ 100 KB; pola `LIKE`/`GLOB` ≤ 50 byte; 500 MB per database; baris dibaca 5 juta/hari (dihitung dari baris yang **dipindai**) dan ditulis 100.000/hari (tiap indeks +1 baris tulis).
 - Queues: pesan ≤ 128 KB; 10.000 operasi/hari (±3 per pesan); retensi 24 jam; pesan hanya membawa `{ jobId, potongan }`.
@@ -403,9 +403,9 @@ Setiap task di bawah mengikuti P1–P7; yang tertulis hanyalah keputusan khusus 
 
 **Files:** `scripts/load-cpu.ts`, `docs/superpowers/spikes/2026-10-cpu-gate.md`
 
-**Interfaces:** Produces skrip yang mengisi D1 staging dengan data proyeksi 2 tahun (task, audit, item), memanggil setiap RPC dengan muatan terbesar yang realistis (`saveBatch` 30×5.000 karakter, `items.list` halaman penuh, `handovers.board` tiap kolom, `files.get` 540 KB, `/sync` halaman penuh), mengambil `cpuTime` dari log, dan menghasilkan tabel p50/p99 per rute; **keluar dengan kode ≠ 0 bila ada rute p99 > 8 ms**.
+**Interfaces:** Produces skrip yang mengisi D1 staging dengan data proyeksi 2 tahun (task, audit, item), memanggil setiap RPC dengan muatan terbesar yang realistis (`saveBatch` 30×5.000 karakter, `items.list` halaman penuh, `handovers.board` tiap kolom, `files.get` 540 KB, `/sync` halaman penuh), mengambil `cpuTime` dari log, dan menghasilkan tabel p50/p95/p99/maks per rute; **keluar dengan kode ≠ 0 bila ada rute p95 > 8 ms**.
 
-- [ ] Jalankan di staging; perbaiki rute yang gagal (kembali ke task modul terkait) sampai hijau. Commit `test: gerbang CPU p99 ≤ 8 ms`.
+- [ ] Jalankan di staging; perbaiki rute yang gagal (kembali ke task modul terkait) sampai hijau. Commit `test: gerbang CPU p95 ≤ 8 ms`.
 
 ---
 

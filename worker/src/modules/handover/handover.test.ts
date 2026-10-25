@@ -1056,7 +1056,7 @@ describe('baca: board per kolom, get, options', () => {
     expect(doneItems.find((t: { id: string }) => t.id === 't6').status).toBe('done');
   });
 
-  test('halaman berkursor per kolom tanpa duplikat/lompatan; batas default 20; total konsisten', async () => {
+  test('halaman berkursor per kolom tanpa duplikat/lompatan; batas default 3; total konsisten', async () => {
     const statements: D1PreparedStatement[] = [];
     for (let i = 0; i < 45; i++) {
       statements.push(
@@ -1076,17 +1076,17 @@ describe('baca: board per kolom, get, options', () => {
     let pages = 0;
     let total = 0;
     do {
-      const page = await board('new', { limit: 20, ...(cursor ? { cursor } : {}) });
+      const page = await board('new', { limit: 3, ...(cursor ? { cursor } : {}) });
       expect(page.ok).toBe(true);
       seen.push(...page.data.items.map((t: { id: string }) => t.id));
       total = page.data.total;
       cursor = page.data.nextCursor ?? undefined;
       pages++;
     } while (cursor);
-    expect(pages).toBe(3);
+    expect(pages).toBe(16); // 46 task / 3 per halaman
     expect(total).toBe(46);
     expect(new Set(seen).size).toBe(46);
-    expect((await board('new')).data.items).toHaveLength(20);
+    expect((await board('new')).data.items).toHaveLength(3);
     // urutan menurun menurut (updated_at, number)
     const rows = await env.DB.prepare(
       "SELECT id FROM handovers WHERE board_status = 'new' AND location_id = ? ORDER BY updated_at DESC, number DESC",
@@ -1117,9 +1117,14 @@ describe('baca: board per kolom, get, options', () => {
     await mk('p1a', 1, 10, '2026-10-17T00:00:01.000Z');
     await mk('p1b', 1, 10, '2026-10-17T00:00:02.000Z');
     await mk('p5', 5, 10, '2026-10-17T00:00:03.000Z');
-    const all = (await board('in_progress', { limit: 50 })).data.items.map(
-      (t: { id: string }) => t.id,
-    );
+    const pageAll: string[] = [];
+    let first: string | undefined;
+    do {
+      const page = await board('in_progress', { limit: 3, ...(first ? { cursor: first } : {}) });
+      pageAll.push(...page.data.items.map((t: { id: string }) => t.id));
+      first = page.data.nextCursor ?? undefined;
+    } while (first);
+    const all = pageAll;
     // t2 (1/2 = 500) setara p5 (500); progres 100 dahulu; terbaru dahulu pada progres sama
     expect(all).toEqual(['p1b', 'p1a', 'p5', 't2', 'p9']);
     const seen: string[] = [];
@@ -1157,7 +1162,7 @@ describe('baca: board per kolom, get, options', () => {
     expect(plan.results.map((r) => r.detail).join('\n')).toMatch(/handovers_board/);
   });
 
-  test('CPU kasar: halaman board 20 task dengan komentar di bawah anggaran', async () => {
+  test('CPU kasar: halaman board (maks. 3 task) dari kolom 21 task di bawah anggaran', async () => {
     const note = Array.from({ length: 60 }, (_, i) => `- [ ] Barang ${i} = ${i} pcs`).join('\n');
     const stmts: D1PreparedStatement[] = [];
     for (let i = 0; i < 20; i++) {
@@ -1174,8 +1179,9 @@ describe('baca: board per kolom, get, options', () => {
       );
     }
     await env.DB.batch(stmts);
-    const { result, ms } = await measureCpu(() => board('new', { limit: 20 }, 'qc@gmail.com'));
-    expect(result.data.items).toHaveLength(20);
+    const { result, ms } = await measureCpu(() => board('new', { limit: 3 }, 'qc@gmail.com'));
+    expect(result.data.items).toHaveLength(3);
+    expect(result.data.total).toBe(21); // 20 + task contoh
     expect(ms).toBeLessThan(50);
   });
 });

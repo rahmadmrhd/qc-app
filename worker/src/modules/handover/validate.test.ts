@@ -177,13 +177,13 @@ describe('validateBoardPage', () => {
     expect(validateBoardPage({ locationIds: ['a'], status: 'new' })).toEqual({
       locationIds: ['a'],
       status: 'new',
-      limit: 20,
+      limit: 3,
     });
     expect(
       validateBoardPage({
         locationIds: ['a'],
         status: 'done',
-        limit: 50,
+        limit: 3,
         cursor: '2026-01-01T00:00:00.000Z|ST-1',
       }),
     ).toMatchObject({ cursor: '2026-01-01T00:00:00.000Z|ST-1' });
@@ -197,7 +197,7 @@ describe('validateBoardPage', () => {
     expect(
       captureAppError(() => validateBoardPage({ locationIds: ['a'], status: 'x' })).fields?.status,
     ).toBeDefined();
-    for (const bad of [{ limit: 0 }, { limit: 51 }, { cursor: 'x' }, { cursor: 5 }]) {
+    for (const bad of [{ limit: 0 }, { limit: 4 }, { limit: 51 }, { cursor: 'x' }, { cursor: 5 }]) {
       const e = captureAppError(() =>
         validateBoardPage({ locationIds: ['a'], status: 'new', ...bad }),
       );

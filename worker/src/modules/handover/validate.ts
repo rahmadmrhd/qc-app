@@ -232,8 +232,16 @@ export function validateAddComment(raw: unknown): AddCommentInput {
   return { id, locationId, quote, before, after, body };
 }
 
-export const BOARD_DEFAULT_LIMIT = 20;
-export const BOARD_MAX_LIMIT = 50;
+/**
+ * Ukuran halaman board di Worker: bawaan = maksimum = 3 task. Kartu board memuat DTO penuh (catatan <= 5.000
+ * karakter, centang, komentar), jadi CPU sebanding jumlah task per halaman. Pengukuran lokal pada baris terberat
+ * (catatan ±4.900 karakter, 136 butir tercentang, 3 komentar): ±0,25-0,37 ms/task; rasio edge/lokal dari gerbang
+ * staging 3-8x (diambil konservatif ±3,5x) -> ±0,9-1,3 ms/task di edge. Dengan lantai ±2,5 ms dan p95 ≈ 1,5x p50,
+ * target p95 <= 8 ms membatasi 3 task. Klien memuat halaman berikutnya otomatis (infinite scroll) lewat kursor.
+ * Di atas batas ditolak VALIDATION (pola kontrak board). Naikkan hanya setelah diukur di staging.
+ */
+export const BOARD_DEFAULT_LIMIT = 3;
+export const BOARD_MAX_LIMIT = 3;
 const BOARD_STATUSES = ['new', 'in_progress', 'done', 'cancelled'] as const;
 
 /**

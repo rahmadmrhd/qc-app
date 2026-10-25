@@ -35,27 +35,29 @@ describe('statistik', () => {
 
   test('summarize dan failingRoutes: lewat anggaran, tak terukur, atau panggilan gagal', () => {
     const ok = summarize('a', [1, 2, 3, 2, 2], 5, 0);
-    expect(ok).toMatchObject({ p50: 2, p99: 3, max: 3, measured: 5 });
+    expect(ok).toMatchObject({ p50: 2, p95: 3, p99: 3, max: 3, measured: 5 });
     const slow = summarize('b', [2, 3, 9], 3, 0);
     const none = summarize('c', [], 3, 0);
     const failed = summarize('d', [1, 1], 2, 1);
     expect(failingRoutes([ok, slow, none, failed], 8, 1)).toEqual(['b', 'c', 'd']);
     expect(failingRoutes([summarize('e', [8, 8], 2, 0)], 8, 1)).toEqual([]);
-    expect(renderTable([ok, slow], 8, 1)).toContain('| b | 3 | 3 | 3 | 9 | 9 | LEWAT |');
+    expect(renderTable([ok, slow], 8, 1)).toContain('| b | 3 | 3 | 3 | 9 | 9 | 9 | LEWAT |');
   });
 
-  test('p99 dari < 100 sampel hanyalah maksimum: sampel kurang menggagalkan gerbang', () => {
-    const hundred = Array.from({ length: 100 }, (_, i) => (i === 99 ? 30 : 2));
-    // 100 sampel: p99 = sampel terbesar kedua; satu lonjakan tunggal tidak menggagalkan
-    expect(summarize('r', hundred, 100, 0)).toMatchObject({ p99: 2, max: 30, measured: 100 });
-    expect(failingRoutes([summarize('r', hundred, 100, 0)])).toEqual([]);
-    // dua lonjakan = gagal
-    const twoSpikes = hundred.map((v, i) => (i === 98 ? 30 : v));
-    expect(failingRoutes([summarize('r', twoSpikes, 100, 0)])).toEqual(['r']);
+  test('gerbang memakai p95; p99 dan maks informatif; sampel < 100 menggagalkan', () => {
+    const base = Array.from({ length: 100 }, () => 2);
+    const withSpikes = (count: number) => base.map((v, i) => (i >= 100 - count ? 30 : v));
+    // sampai 5 lonjakan (derau isolate): p95 tetap rendah, lulus walau p99 dan maks tinggi
+    const noisy = summarize('r', withSpikes(5), 100, 0);
+    expect(noisy).toMatchObject({ p95: 2, p99: 30, max: 30, measured: 100 });
+    expect(failingRoutes([noisy])).toEqual([]);
+    // 6 lonjakan = p95 melewati anggaran
+    expect(failingRoutes([summarize('r', withSpikes(6), 100, 0)])).toEqual(['r']);
     // 99 sampel terukur (satu peristiwa tail hilang) = gagal, walau semua cepat
-    const few = summarize('s', hundred.slice(0, 99), 100, 0);
+    const few = summarize('s', base.slice(0, 99), 100, 0);
     expect(failingRoutes([few])).toEqual(['s']);
     expect(renderTable([few])).toContain('SAMPEL KURANG');
+    expect(renderTable([noisy])).toContain('| r | 100 | 100 | 2 | 2 | 30 | 30 | ok |');
   });
 
   test('perkiraan baris ditulis: SQL beban dan satu run penuh di bawah kuota harian D1', () => {

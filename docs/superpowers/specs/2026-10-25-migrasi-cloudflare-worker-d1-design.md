@@ -105,7 +105,7 @@ Prinsip: CPU hanya untuk memetakan permintaan → SQL → respons. Pekerjaan ber
 | Validasi catatan (≤5.000 karakter), `extractChecklist`, kanonisasi tetap di server, tetapi `saveBatch` dibatasi 30 task dan diukur | Hot path terberat yang tersisa |
 | Pemecah WhatsApp, saran customer, ekspor PDF/PNG QR, kecilkan gambar tetap di klien | Tidak menggunakan CPU Worker |
 
-**Gerbang pengukuran (kriteria rilis).** Cloudflare melaporkan `cpuTime` per invokasi (Workers Logs / `wrangler tail`). Skrip beban di staging memanggil setiap RPC dengan data realistis (±2 tahun data hasil proyeksi) dan mencatat p50/p99 CPU. Rilis ke produksi hanya bila **p99 ≤ 8 ms** untuk setiap rute (margin 2 ms). Rute yang gagal diperbaiki sebelum cutover, bukan sesudahnya.
+**Gerbang pengukuran (kriteria rilis).** Cloudflare melaporkan `cpuTime` per invokasi (Workers Logs / `wrangler tail`). Skrip beban di staging memanggil setiap RPC dengan data realistis (±2 tahun data hasil proyeksi) dan mencatat p50/p95/p99/maks CPU. Rilis ke produksi hanya bila **p95 ≤ 8 ms** untuk setiap rute (margin 2 ms) dengan ≥ 100 sampel. **[pemilik, 2026-10-25]** Kriteria semula p99; diganti p95 karena lantai derau isolate di edge: rute tanpa kerja (`/api/ping`) sudah p99 10 ms dan rute baca ringan p50 2-3 ms tetap p99 9-24 ms. p99 dan maks tetap dicetak sebagai informasi. Rute yang gagal diperbaiki sebelum cutover, bukan sesudahnya.
 
 ## 6. Kerangka Worker
 
@@ -142,6 +142,8 @@ D1 menserialkan tulis, tetapi urutan baca-ubah-tulis lintas dua query tidak atom
 
 ### 7.4 Kontrak DTO
 `HandoverDto` dan DTO lain tidak berubah bentuk. Yang berubah: `handovers.board` menjadi berhalaman (input kursor/batas/filter status per kolom), dan `FileContentDto` diganti (lihat §8).
+
+**Ukuran halaman board [pemilik, 2026-10-25].** Kartu board tetap memuat DTO penuh (catatan, centang, komentar langsung di kartu), jadi CPU sebanding jumlah task per halaman. Di Worker `limit` bawaan = maksimum = **3** (di atas 3 ditolak `VALIDATION`). Dasar: baris terberat (catatan ±4.900 karakter, 136 butir tercentang, 3 komentar) ±0,25-0,37 ms/task lokal; rasio edge/lokal gerbang staging 3-8x (diambil ±3,5x) -> ±0,9-1,3 ms/task; lantai ±2,5 ms, p95 ≈ 1,5x p50 -> p95 ≤ 8 ms membatasi 3 task. Frontend memuat halaman berikutnya otomatis (infinite scroll, kolom diisi sampai penuh layar) dan merender isi kartu (catatan/komentar) lazy saat mendekati viewport. Naikkan batas hanya setelah diukur di staging.
 
 **Kontrak `handovers.board` baru [saya].** Tiap kolom kanban (Baru, Dikerjakan, Selesai, Dibatalkan) dimuat terpisah: `handovers.board { locationIds, status, cursor?, limit }` → `{ items, nextCursor, total }`. `total` = hitungan SQL per kolom untuk judul kolom. Urutan di server sesuai spek serah terima §12 (terbaru dahulu; pada Dikerjakan progres lebih sedikit di atas), sehingga tabel `handovers` menyimpan kolom turunan `checked_count` dan `total_count` (dihitung saat tulis) dan `updated_at` berindeks. Klien memuat halaman berikutnya saat daftar kolom digulir ke bawah (infinite scroll per kolom). Ponsel memakai `status` yang dipilih sebagai satu daftar. Optimistic update centang memperbarui item di halaman yang termuat; kolom diurut ulang setelah server menjawab (perilaku sekarang). `usePendingIds`, antrean centang, dan prefetch disesuaikan; persist TIDAK menyimpan board. Perubahan kontrak ini dicatat di `shared/rpc.ts`, dan frontend menyesuaikan `handover-board-page`.
 
@@ -252,7 +254,7 @@ Semua pekerjaan yang butuh banyak panggilan jembatan (ekspor QR ke Drive, ekspor
 
 | Risiko | Penanganan |
 |---|---|
-| Rute melewati 10 ms CPU (galat 1102) | Anggaran §5, gerbang p99, paginasi, tanpa decode base64, SQL berindeks |
+| Rute melewati 10 ms CPU (galat 1102) | Anggaran §5, gerbang p95, paginasi, tanpa decode base64, SQL berindeks |
 | Kuota Queues gratis (10.000 operasi/hari, retensi 24 jam) atau CPU konsumen tidak cukup | Pesan sedikit dan besar; `jobs` dapat diulang; spike Fase 0; bila tidak cukup, pemilik memutuskan paket berbayar atau pembatasan fitur |
 | Aliran berkas lewat jembatan lambat atau melewati batas badan/CPU | Spike Fase 0; alternatif unggahan langsung klien ↔ jembatan bertiket |
 | Jembatan terbuka publik | HMAC + jendela waktu + allowlist + batas ukuran + pembatas percobaan |

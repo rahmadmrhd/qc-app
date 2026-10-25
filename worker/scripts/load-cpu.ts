@@ -24,8 +24,8 @@ import {
 /**
  * Gerbang CPU (Task 4.5): HANYA staging. Mode:
  *   seed     isi D1 staging dengan data proyeksi 2 tahun (SQL --remote)
- *   run      panggil tiap rute (100x, rute tulis juga), ambil cpuTime dari `wrangler tail`, cetak tabel p50/p99;
- *            keluar != 0 bila ada rute p99 > 8 ms atau terukur < 100 sampel. Perkiraan baris ditulis D1 dicetak
+ *   run      panggil tiap rute (100x, rute tulis juga), ambil cpuTime dari `wrangler tail`, cetak tabel p50/p95/p99/maks;
+ *            keluar != 0 bila ada rute p95 > 8 ms atau terukur < 100 sampel. Perkiraan baris ditulis D1 dicetak
  *            di awal; `run` menolak bila melewati anggaran (`--max-writes=<n>`, bawaan 90.000 dari kuota
  *            100.000 baris/hari) kecuali `--allow-quota`; pecah dengan `--only=<awalan>` bila perlu
  *   cleanup  kembalikan D1 staging ke bookmark Time Travel bersih (CLEAN_BOOKMARK di berkas rahasia lokal)
@@ -281,11 +281,11 @@ async function run(only: string | undefined): Promise<number> {
   const bad = failingRoutes(stats, CPU_BUDGET_MS);
   if (bad.length > 0) {
     console.error(
-      `Gerbang CPU GAGAL (p99 > ${CPU_BUDGET_MS} ms, sampel < ${MIN_SAMPLES}, atau panggilan gagal):\n  ${bad.join('\n  ')}`,
+      `Gerbang CPU GAGAL (p95 > ${CPU_BUDGET_MS} ms, sampel < ${MIN_SAMPLES}, atau panggilan gagal):\n  ${bad.join('\n  ')}`,
     );
     return 1;
   }
-  console.log(`Gerbang CPU LULUS: semua rute p99 <= ${CPU_BUDGET_MS} ms.`);
+  console.log(`Gerbang CPU LULUS: semua rute p95 <= ${CPU_BUDGET_MS} ms.`);
   return 0;
 }
 

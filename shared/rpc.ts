@@ -574,7 +574,7 @@ export interface BoardPageInput {
   /** Kolom kanban yang dimuat (status turunan, termasuk `cancelled`). */
   status: HandoverStatus;
   cursor?: string;
-  /** Bawaan 20, maksimum 50. */
+  /** Apps Script: bawaan 20, maksimum 50. Worker: bawaan dan maksimum 3 (anggaran CPU; klien memuat lanjutan lewat kursor). */
   limit?: number;
 }
 

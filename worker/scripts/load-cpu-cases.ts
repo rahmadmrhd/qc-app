@@ -25,7 +25,7 @@ export interface CaseContext {
   syncToken: string;
 }
 
-/** Sampel per rute (rute tulis juga): p99 pada 100 sampel = sampel terbesar kedua, bukan maksimum tunggal. */
+/** Sampel per rute (rute tulis juga): p95 pada 100 sampel = sampel ke-95; lonjakan tunggal tidak menentukan hasil. */
 export const SAMPLES = 100;
 
 const PRODUCTS = [
@@ -124,19 +124,18 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
     spec('brands.list', () => rpc('brands.list', null)),
     spec('customers.list', () => rpc('customers.list', null)),
     spec('handovers.board:new', () =>
-      rpc('handovers.board', { locationIds: LOC_JKT, status: 'new', limit: 50 }),
+      rpc('handovers.board', { locationIds: LOC_JKT, status: 'new' }),
     ),
     spec('handovers.board:in_progress', () =>
-      rpc('handovers.board', { locationIds: LOC_JKT, status: 'in_progress', limit: 50 }),
+      rpc('handovers.board', { locationIds: LOC_JKT, status: 'in_progress' }),
     ),
     spec('handovers.board:done', () =>
-      rpc('handovers.board', { locationIds: LOC_JKT, status: 'done', limit: 50 }),
+      rpc('handovers.board', { locationIds: LOC_JKT, status: 'done' }),
     ),
     spec('handovers.board:cancelled', () =>
       rpc('handovers.board', {
         locationIds: ['loc-jkt', 'loc-bdg'],
         status: 'cancelled',
-        limit: 50,
       }),
     ),
     spec('handovers.get', (i) =>
