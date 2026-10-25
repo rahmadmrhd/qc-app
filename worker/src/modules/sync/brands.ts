@@ -5,6 +5,7 @@ import { writeAudit } from '@worker/core/audit';
 import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
+import { touchCache } from '@worker/core/mem-cache';
 import type { BrandRecord } from '@worker/modules/brand/repo';
 import { listBrands } from '@worker/modules/brand/repo';
 import { brandSnapshot, saveBrand, setBrandStatus } from '@worker/modules/brand/service';
@@ -72,7 +73,7 @@ export async function pullBrands(
 ): Promise<{ brands: SyncWireBrand[]; nextRev: number; hasMore: boolean }> {
   const input = validateSyncPull(raw, []);
   const { page, nextRev, hasMore } = paginateByRev(
-    await listBrands(env),
+    await listBrands(env, { fresh: true }),
     input.sinceRev,
     input.limit,
   );
@@ -107,11 +108,12 @@ async function brandConflict(
 }
 
 async function freshBrand(env: Env, id: string): Promise<BrandRecord> {
-  return (await listBrands(env)).find((brand) => brand.id === id) as BrandRecord;
+  return (await listBrands(env, { fresh: true })).find((brand) => brand.id === id) as BrandRecord;
 }
 
 async function mapExternalId(env: Env, id: string, externalId: string): Promise<void> {
   // Pemetaan id MySQL adalah pembukuan: tidak menaikkan revisi dan tidak diaudit.
+  touchCache('brands');
   await env.DB.prepare('UPDATE brands SET external_id = ? WHERE id = ?').bind(externalId, id).run();
 }
 
@@ -121,7 +123,7 @@ async function upsertBrand(
   index: number,
   overwrite: boolean,
 ): Promise<SyncEntryResult<SyncWireBrand>> {
-  const brands = await listBrands(env);
+  const brands = await listBrands(env, { fresh: true });
   const byUid =
     entry.uid === undefined ? undefined : brands.find((brand) => brand.id === entry.uid);
   if (entry.uid !== undefined && !byUid) {

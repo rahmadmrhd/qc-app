@@ -3,6 +3,7 @@ import { locateAnchor, noteToPlainText } from '@shared/handover-comments';
 import { ENV, rpc, seedHandover, seedHandoverEnv } from '@worker-test/handover-env';
 import { seedCustomer } from '@worker-test/item-fixtures';
 import { measureCpu } from '@worker-test/measure';
+import { d1StatsOf } from '@worker-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
 import { derivedColumns, parseChecks } from './repo';
 import { fitAuditSnapshots, handoverSnapshot } from './service';
@@ -992,6 +993,36 @@ describe('baca: board per kolom, get, options', () => {
     expect((await board('in_progress')).data.items.map((t: { id: string }) => t.id)).toEqual([
       't2',
     ]);
+  });
+
+  test('jumlah kolom (COUNT) hanya dihitung bila tak dapat disimpulkan dari halaman; round trip board <= 2', async () => {
+    const stats = d1StatsOf(env.DB);
+    const countsOf = async (extra: Record<string, unknown>) => {
+      stats.log = [];
+      const trips = stats.trips;
+      const result = await board('done', extra);
+      const log = stats.log;
+      stats.log = null;
+      return {
+        result,
+        count: log.filter((sql) => sql.includes('COUNT(*)')).length,
+        trips: stats.trips - trips,
+      };
+    };
+    // halaman pertama yang tidak penuh: total = jumlah baris, tanpa COUNT
+    const first = await countsOf({});
+    expect(first.result.data.total).toBe(2);
+    expect(first.count).toBe(0);
+    expect(first.trips).toBeLessThanOrEqual(3); // konteks akses (cache mati di tes) + halaman + komentar
+    // halaman penuh (limit 1 dari 2): COUNT diperlukan, tetap satu round trip bersama komentar
+    const full = await countsOf({ limit: 1 });
+    expect(full.result.data.total).toBe(2);
+    expect(full.result.data.nextCursor).not.toBeNull();
+    expect(full.count).toBe(1);
+    // halaman berkursor: COUNT diperlukan walau halaman tidak penuh
+    const next = await countsOf({ limit: 1, cursor: full.result.data.nextCursor });
+    expect(next.result.data.total).toBe(2);
+    expect(next.count).toBe(1);
   });
 
   test('board menolak lokasi terlarang (FORBIDDEN) dan tidak membocorkan task lokasi lain; multi lokasi', async () => {

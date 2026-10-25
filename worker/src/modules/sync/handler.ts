@@ -2,6 +2,7 @@ import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import type { Env } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { settleCache } from '@worker/core/mem-cache';
 import { toErrorBody } from '@worker/core/router';
 import { authenticateSync } from './auth';
 
@@ -71,6 +72,8 @@ export async function handleSync(
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error: toErrorBody(error, requestId) };
+  } finally {
+    settleCache();
   }
 }
 

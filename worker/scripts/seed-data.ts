@@ -2,7 +2,7 @@ import { customerKey, dateKeyOf, handoverNumber } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
 import { itemKey, normalizeKey } from '@shared/items';
 import { derivedColumns } from '@worker/modules/handover/repo';
-import { aliasKeysOf } from '@worker/modules/item/repo';
+import { aliasKeyList, aliasKeysOf } from '@worker/modules/item/repo';
 
 /** Literal SQL aman untuk nilai teks/angka/null (skrip dev saja; nilai berasal dari kode ini). */
 function q(value: string | number | null): string {
@@ -24,6 +24,7 @@ const HOUR = 60 * MIN;
 const RESET_TABLES = [
   'handover_comments',
   'handovers',
+  'item_alias_keys',
   'items',
   'brands',
   'customers',
@@ -165,6 +166,15 @@ export function buildSeedSql(email: string, nowMs: number): string {
       }),
     );
   });
+  items.forEach((item, index) => {
+    for (const key of aliasKeyList(item.aliases ?? [])) {
+      sql.push(insert('item_alias_keys', { key, item_id: `item-${index + 1}` }));
+    }
+  });
+  // Penghitung turunan `brands.item_count` (dijaga kode produksi pada penulisan item; migrasi 0009).
+  sql.push(
+    'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id);',
+  );
   sql.push(insert('sync_state', { resource: 'items', seq: items.length, updated_at: t0 }));
 
   const customers = ['PT Maju Jaya', 'CV Abadi Sentosa', 'Toko Sinar Elektronik'];

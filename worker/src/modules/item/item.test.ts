@@ -637,3 +637,106 @@ describe('rute', () => {
     expect(list.ok && JSON.stringify(list.data).includes('"detail"')).toBe(false);
   });
 });
+
+describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
+  const aliasRows = async () =>
+    (
+      await env.DB.prepare('SELECT key, item_id FROM item_alias_keys ORDER BY key').all<{
+        key: string;
+        item_id: string;
+      }>()
+    ).results;
+  const brandCount = async (name: string) =>
+    (
+      await env.DB.prepare('SELECT item_count AS n FROM brands WHERE name = ?')
+        .bind(name)
+        .first<{ n: number }>()
+    )?.n;
+
+  test('membuat item menulis satu baris per kunci nama lain dan menaikkan item_count merk', async () => {
+    const saved = await saveItem(
+      env,
+      { ...baseInput, aliases: ['ES-24', 'es 24', 'Switch Ubnt'] },
+      admin,
+    );
+    // 'ES-24' dan 'es 24' berkunci sama: satu baris
+    expect(await aliasRows()).toEqual([
+      { key: 'es 24', item_id: saved.id },
+      { key: 'switch ubnt', item_id: saved.id },
+    ]);
+    expect(await brandCount('Ubiquiti')).toBe(1);
+    await saveItem(env, { ...baseInput, model: 'ES 48' }, admin);
+    expect(await brandCount('Ubiquiti')).toBe(2);
+  });
+
+  test('mengubah nama lain: hanya selisih ditulis; menghapus semua mengosongkan baris item itu', async () => {
+    const saved = await saveItem(env, { ...baseInput, aliases: ['A1', 'B2'] }, admin);
+    const other = await saveItem(env, { ...baseInput, model: 'Lain', aliases: ['Z9'] }, admin);
+    await saveItem(env, { ...baseInput, id: saved.id, aliases: ['B2', 'C3'] }, admin);
+    expect(await aliasRows()).toEqual([
+      { key: 'b2', item_id: saved.id },
+      { key: 'c3', item_id: saved.id },
+      { key: 'z9', item_id: other.id },
+    ]);
+    await saveItem(env, { ...baseInput, id: saved.id, aliases: [] }, admin);
+    expect(await aliasRows()).toEqual([{ key: 'z9', item_id: other.id }]);
+    // nama lain yang dilepas dapat dipakai item lain
+    await saveItem(
+      env,
+      { ...baseInput, id: other.id, model: 'Lain', aliases: ['Z9', 'A1'] },
+      admin,
+    );
+    expect((await aliasRows()).map((row) => row.key)).toEqual(['a1', 'z9']);
+  });
+
+  test('pindah merk memindahkan penghitung; status tidak mengubahnya', async () => {
+    const saved = await saveItem(env, baseInput, admin);
+    expect(await brandCount('Ubiquiti')).toBe(1);
+    await saveItem(env, { ...baseInput, id: saved.id, brand: 'Mikrotik' }, admin);
+    expect(await brandCount('Ubiquiti')).toBe(0);
+    expect(await brandCount('Mikrotik')).toBe(1);
+    await setItemStatus(env, { id: saved.id, status: 'inactive' }, admin);
+    expect(await brandCount('Mikrotik')).toBe(1);
+  });
+
+  test('bentrok nama lain dilaporkan dari indeks; rebutan di basis data tetap CONFLICT (PRIMARY KEY)', async () => {
+    const first = await saveItem(env, { ...baseInput, aliases: ['Samaan'] }, admin);
+    const error = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, model: 'Kedua', aliases: ['SAMAAN'] }, admin),
+    );
+    expect(error.code).toBe('CONFLICT');
+    expect(error.fields?.aliases).toContain('sudah dipakai');
+    // item lain merebut kunci setelah pemeriksaan aplikasi: PRIMARY KEY menolak, tanpa item setengah jadi
+    const second = await saveItem(env, { ...baseInput, model: 'Ketiga' }, admin);
+    const racing = await captureAppErrorAsync(async () => {
+      const original = env.DB.batch.bind(env.DB);
+      let calls = 0;
+      env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+        // panggilan pertama = pemeriksaan nama (lolos); sebelum batch tulis, item lain merebut kuncinya
+        if (++calls === 2) {
+          await env.DB.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)')
+            .bind('rebutan', first.id)
+            .run();
+          env.DB.batch = original;
+        }
+        return original(statements);
+      }) as typeof env.DB.batch;
+      await saveItem(
+        env,
+        { ...baseInput, id: second.id, model: 'Ketiga', aliases: ['Rebutan'] },
+        admin,
+      );
+    });
+    expect(racing.code).toBe('CONFLICT');
+    expect(racing.fields?.aliases).toBeDefined();
+    expect((await getItemDto(env, { id: second.id })).aliases).toEqual([]);
+  });
+
+  test('nama lain sama dengan merk+tipe item lain tetap ditolak (kunci item vs nama lain)', async () => {
+    await saveItem(env, { ...baseInput, model: 'Ada' }, admin);
+    const error = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, model: 'Baru', aliases: ['Ubiquiti Ada'] }, admin),
+    );
+    expect(error.code).toBe('CONFLICT');
+  });
+});

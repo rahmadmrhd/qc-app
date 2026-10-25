@@ -1,7 +1,7 @@
 import { sanitizeAssignments } from '@shared/assignments';
 import { deriveHandoverStatus } from '@shared/handover';
 import { extractChecklist, matchChecks } from '@shared/handover-checklist';
-import { aliasKeysOf } from './alias-keys';
+import { aliasKeysOf, splitAliasKeys } from './alias-keys';
 import { parseSheetDate } from './dates';
 import {
   COMMENT_COLUMNS,
@@ -793,6 +793,38 @@ function normalizeDump(dump: DumpInput): Record<string, CellValue[][]> {
   >;
 }
 
+/**
+ * Kolom turunan `brands.item_count` (jumlah item per merk, aktif + nonaktif; migrasi 0009) dan keunikan kunci
+ * nama lain di seluruh item (PRIMARY KEY `item_alias_keys`): kunci ganda menghentikan impor.
+ */
+function fillBrandItemCounts(
+  collector: Collector,
+  brands: readonly PreparedRow[],
+  items: readonly PreparedRow[],
+): void {
+  const counts = new Map<string, number>();
+  const aliasOwner = new Map<string, PreparedRow>();
+  for (const item of items) {
+    const brandId = String(item.values.brand_id);
+    counts.set(brandId, (counts.get(brandId) ?? 0) + 1);
+    for (const key of splitAliasKeys(String(item.values.alias_keys))) {
+      const owner = aliasOwner.get(key);
+      if (owner) {
+        collector.error(
+          'items',
+          item.sheetRow,
+          'ALIAS_GANDA',
+          `Kunci nama lain "${key}" sudah dipakai item baris ${owner.sheetRow}`,
+          'aliases',
+        );
+      } else {
+        aliasOwner.set(key, item);
+      }
+    }
+  }
+  for (const brand of brands) brand.values.item_count = counts.get(String(brand.values.id)) ?? 0;
+}
+
 export function prepareImport(dump: DumpInput, options: ImportOptions = {}): ImportResult {
   const collector = new Collector();
   const grids = normalizeDump(dump);
@@ -826,6 +858,7 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   checkUniqueNoCase(collector, 'locations', rows.locations ?? [], 'code', 'kode lokasi', (v) => v);
   checkUniqueNoCase(collector, 'locations', rows.locations ?? [], 'name', 'nama lokasi');
   fillItemAliasKeys(collector, rows.items ?? []);
+  fillBrandItemCounts(collector, rows.brands ?? [], rows.items ?? []);
 
   const comments = expandHandovers(collector, rows.handovers ?? []);
   const commentSummary = comments.map((comment) => ({
@@ -863,6 +896,7 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   ];
   if (options.reset) {
     lines.push('-- --reset: kosongkan tabel dulu (HANYA gladi staging)');
+    lines.push('DELETE FROM item_alias_keys;');
     for (const name of [...INSERT_ORDER].reverse()) lines.push(`DELETE FROM ${name};`);
     lines.push("DELETE FROM sqlite_sequence WHERE name = 'audit_log';");
   }
@@ -896,6 +930,16 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
         const ordered: Record<string, SqlValue> = {};
         for (const column of names) ordered[column] = row.values[column] as SqlValue;
         emit(name, ordered, `${name} baris ${row.sheetRow}`);
+        // Tabel turunan: satu baris per kunci nama lain item (migrasi 0009).
+        if (name === 'items') {
+          for (const key of splitAliasKeys(String(row.values.alias_keys))) {
+            emit(
+              'item_alias_keys',
+              { key, item_id: row.values.id as SqlValue },
+              `items baris ${row.sheetRow} nama lain ${key}`,
+            );
+          }
+        }
       }
     }
   }

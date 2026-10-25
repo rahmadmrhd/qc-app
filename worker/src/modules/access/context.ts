@@ -4,6 +4,7 @@ import type { PartialPermissionMap, PermissionMap } from '@shared/permissions';
 import { fullPermissions, sanitizePermissions } from '@shared/permissions';
 import { normalizeEmail } from '@worker/core/email';
 import type { Env } from '@worker/core/env';
+import { cached } from '@worker/core/mem-cache';
 
 export interface UserContext {
   email: string;
@@ -47,12 +48,18 @@ function readAssignments(row: UserRow): Assignment[] {
 }
 
 /**
- * Konteks akses user dari D1 dengan SATU `batch` (users, roles, locations; tabel kecil) dan tanpa
- * cache lintas permintaan, sehingga pencabutan akses berlaku seketika.
+ * Konteks akses user. Dari D1 dengan SATU `batch` (users, roles, locations; tabel kecil), disimpan di cache
+ * memori isolate (`mem-cache.ts`, TTL <= 15 dtk): perubahan akses dari isolate lain, termasuk pencabutan,
+ * berlaku paling lambat sebesar TTL; di isolate yang sama berlaku seketika (cache dibuang saat tulis).
  */
 export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
   const email = normalizeEmail(rawEmail);
   if (email === '') return null;
+  return cached(env, `access:ctx:${email}`, () => loadUserContextFresh(env, email));
+}
+
+/** Konteks akses langsung dari D1 (tanpa cache). */
+export async function loadUserContextFresh(env: Env, email: string): Promise<UserContext | null> {
   const [users, roles, locations] = await env.DB.batch([
     env.DB.prepare(
       'SELECT id, name, status, role_ids, assignments FROM users WHERE email = ? LIMIT 1',

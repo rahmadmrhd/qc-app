@@ -9,10 +9,12 @@ import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
 import { isAppError } from '@worker/core/errors';
+import type { BrandRecord } from '@worker/modules/brand/repo';
 import { listBrands } from '@worker/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@worker/modules/item/repo';
-import { findItem, ITEM_COLUMNS, toItem } from '@worker/modules/item/repo';
+import { ITEM_COLUMNS, toItem } from '@worker/modules/item/repo';
 import {
+  ITEM_CONFLICTS,
   itemLabel,
   itemSnapshot,
   itemSyncSignature,
@@ -77,7 +79,7 @@ export function toWireItem(
 }
 
 export async function brandNameMap(env: Env): Promise<Map<string, string>> {
-  return new Map((await listBrands(env)).map((brand) => [brand.id, brand.name]));
+  return new Map((await listBrands(env, { fresh: true })).map((brand) => [brand.id, brand.name]));
 }
 
 /** id berkas -> id Drive, hanya untuk berkas yang dirujuk `items` (dipecah ≤ 90 parameter per kueri D1). */
@@ -111,6 +113,34 @@ export async function driveIdsByFile(
   return map;
 }
 
+/**
+ * Kolom `items` untuk halaman tarik: kolom besar (detail, stiker, kelengkapan) dan `aliases` (tidak pernah
+ * dikirim) hanya dibaca bila diminta lewat `include`; selebihnya konstanta kosong yang diterima `toItem`.
+ * Mengurangi byte hasil D1 yang harus dideserialisasi Worker (CPU) tanpa mengubah kabel.
+ */
+function pullColumns(include: readonly string[]): string {
+  const column = (field: string, name: string, empty: string) =>
+    include.includes(field) ? name : `${empty} AS ${name}`;
+  return [
+    'id',
+    'external_id',
+    'brand_id',
+    'model',
+    'key',
+    'is_country_lock',
+    "'' AS aliases",
+    column('stickers', 'stickers', "'[]'"),
+    column('accessories', 'accessories', "'[]'"),
+    'attachments',
+    column('detail', 'detail_md', "''"),
+    'status',
+    'sync_rev',
+    'created_at',
+    'updated_at',
+    'updated_by',
+  ].join(', ');
+}
+
 export async function pullItems(
   env: Env,
   raw: unknown,
@@ -118,7 +148,7 @@ export async function pullItems(
   const input = validateSyncPull(raw, SYNC_ITEM_INCLUDABLE);
   // Halaman berindeks `items_sync_rev` (hanya baris > sinceRev, urut naik, limit+1 untuk hasMore).
   const rows = await env.DB.prepare(
-    `SELECT ${ITEM_COLUMNS} FROM items WHERE sync_rev > ? ORDER BY sync_rev ASC LIMIT ?`,
+    `SELECT ${pullColumns(input.include)} FROM items WHERE sync_rev > ? ORDER BY sync_rev ASC LIMIT ?`,
   )
     .bind(input.sinceRev, input.limit + 1)
     .all<ItemRow>();
@@ -144,27 +174,80 @@ type Match =
   | { kind: 'invalid'; fields: Record<string, string> }
   | { kind: 'conflict'; existing: ItemRecord; fields: Record<string, string> };
 
-async function findByExternalId(env: Env, externalId: string): Promise<ItemRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE external_id = ?`)
-    .bind(externalId)
-    .first<ItemRow>();
-  return row ? toItem(row) : null;
+/**
+ * Item yang dimuat SEKALI di awal `push` (satu round trip D1 untuk seluruh entri) dan dijaga selaras dengan
+ * tulisan permintaan ini. Pencarian per entri tidak lagi memakai kueri sendiri-sendiri.
+ */
+interface ItemIndex {
+  byId: Map<string, ItemRecord>;
+  /** id MySQL -> item (hanya yang terpetakan). */
+  byExternal: Map<string, ItemRecord>;
+  /** kunci item (huruf kecil, seperti kolom `key` NOCASE) -> item. */
+  byKey: Map<string, ItemRecord>;
 }
 
-async function findByKey(env: Env, key: string): Promise<ItemRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE key = ?`)
-    .bind(key)
-    .first<ItemRow>();
-  return row ? toItem(row) : null;
+/** Kunci pencocokan merk+tipe seperti `matchSyncItem` (kontrak 3.3). */
+function syncKeyOf(entry: { merk?: string | undefined; tipe?: string | undefined }): string | null {
+  if (entry.merk === undefined || entry.tipe === undefined) return null;
+  return `${normalizeKey(entry.merk)} ${normalizeKey(entry.tipe)}`.trim().toLowerCase();
 }
 
-/** Pencocokan: uid -> id MySQL -> merk+tipe ternormalisasi (kontrak 3.3), lewat kueri berindeks. */
-async function matchSyncItem(env: Env, entry: SyncItemInput): Promise<Match> {
-  const byUid = entry.uid === undefined ? undefined : await findItem(env, entry.uid);
+function indexItem(index: ItemIndex, item: ItemRecord): void {
+  index.byId.set(item.id, item);
+  if (item.externalId !== '' && !index.byExternal.has(item.externalId)) {
+    index.byExternal.set(item.externalId, item);
+  }
+  index.byKey.set(item.key.toLowerCase(), item);
+}
+
+/** Buang jejak lama item (kunci/id MySQL sebelum diubah) sebelum `indexItem` memasang yang baru. */
+function unindexItem(index: ItemIndex, item: ItemRecord): void {
+  index.byId.delete(item.id);
+  if (index.byExternal.get(item.externalId)?.id === item.id)
+    index.byExternal.delete(item.externalId);
+  if (index.byKey.get(item.key.toLowerCase())?.id === item.id) {
+    index.byKey.delete(item.key.toLowerCase());
+  }
+}
+
+/** Satu `batch` untuk seluruh pencarian uid / id MySQL / kunci semua entri (<= 90 parameter per kueri). */
+async function prefetchItems(env: Env, entries: readonly SyncItemInput[]): Promise<ItemIndex> {
+  const index: ItemIndex = { byId: new Map(), byExternal: new Map(), byKey: new Map() };
+  const uids = [
+    ...new Set(entries.flatMap((entry) => (entry.uid === undefined ? [] : [entry.uid]))),
+  ];
+  const externals = [
+    ...new Set(entries.flatMap((entry) => (entry.id === undefined ? [] : [entry.id]))),
+  ];
+  const keys = [...new Set(entries.flatMap((entry) => syncKeyOf(entry) ?? []))];
+  const statements: D1PreparedStatement[] = [];
+  const add = (column: string, values: readonly string[]) => {
+    for (let from = 0; from < values.length; from += 90) {
+      const chunk = values.slice(from, from + 90);
+      statements.push(
+        env.DB.prepare(
+          `SELECT ${ITEM_COLUMNS} FROM items WHERE ${column} IN (${chunk.map(() => '?').join(',')})`,
+        ).bind(...chunk),
+      );
+    }
+  };
+  add('id', uids);
+  add('external_id', externals);
+  add('key', keys);
+  if (statements.length === 0) return index;
+  for (const result of await env.DB.batch<ItemRow>(statements)) {
+    for (const row of result.results) indexItem(index, toItem(row));
+  }
+  return index;
+}
+
+/** Pencocokan: uid -> id MySQL -> merk+tipe ternormalisasi (kontrak 3.3), dari indeks hasil `prefetchItems`. */
+function matchSyncItem(index: ItemIndex, entry: SyncItemInput): Match {
+  const byUid = entry.uid === undefined ? undefined : index.byId.get(entry.uid);
   if (entry.uid !== undefined && !byUid) {
     return { kind: 'invalid', fields: { uid: 'Item tidak ditemukan' } };
   }
-  const byId = entry.id === undefined ? undefined : await findByExternalId(env, entry.id);
+  const byId = entry.id === undefined ? undefined : index.byExternal.get(entry.id);
   if (byUid && byId && byUid.id !== byId.id) {
     return {
       kind: 'conflict',
@@ -173,9 +256,9 @@ async function matchSyncItem(env: Env, entry: SyncItemInput): Promise<Match> {
     };
   }
   let existing = byUid ?? byId ?? undefined;
-  if (!existing && entry.merk !== undefined && entry.tipe !== undefined) {
-    const key = `${normalizeKey(entry.merk)} ${normalizeKey(entry.tipe)}`.trim();
-    existing = (await findByKey(env, key)) ?? undefined;
+  if (!existing) {
+    const key = syncKeyOf(entry);
+    if (key !== null) existing = index.byKey.get(key) ?? undefined;
   }
   if (!existing) return { kind: 'none' };
   if (entry.id !== undefined && existing.externalId !== '' && existing.externalId !== entry.id) {
@@ -218,15 +301,23 @@ async function itemConflict(
   };
 }
 
+/** Keadaan bersama satu permintaan `push`: merk (dimuat langsung dari D1 sekali) dan indeks item. */
+interface PushState {
+  names: Map<string, string>;
+  brandsByKey: Map<string, BrandRecord>;
+  items: ItemIndex;
+}
+
 async function upsertSyncItem(
   env: Env,
   entry: SyncItemInput,
   index: number,
   overwrite: boolean,
   probes: ReadonlyMap<string, DriveProbe | null>,
+  state: PushState,
 ): Promise<SyncEntryResult<SyncWireItem>> {
-  const names = await brandNameMap(env);
-  const matched = await matchSyncItem(env, entry);
+  const { names } = state;
+  const matched = matchSyncItem(state.items, entry);
   if (matched.kind === 'invalid') return { index, status: 'invalid', fields: matched.fields };
   if (matched.kind === 'conflict') {
     return itemConflict(env, index, matched.existing, names, {}, matched.fields);
@@ -328,6 +419,8 @@ async function upsertSyncItem(
         await env.DB.prepare('UPDATE items SET external_id = ? WHERE id = ?')
           .bind(entry.id as string, existing.id)
           .run();
+        unindexItem(state.items, existing);
+        indexItem(state.items, { ...existing, externalId: entry.id as string });
         return { index, status: 'updated', uid: existing.id, rev: existing.syncRev };
       }
       return { index, status: 'unchanged', uid: existing.id, rev: existing.syncRev };
@@ -354,19 +447,45 @@ async function upsertSyncItem(
     actor: SYNC_ACTOR_REF,
     externalId: entry.id,
     status,
+    knownBrand: state.brandsByKey.get(normalizeKey(merged.brand)) ?? null,
   });
-  await batchGuarded(
+  // Revisi yang dipakai baris dibaca balik di batch yang sama (tanpa round trip tambahan).
+  const results = await batchGuarded(
     env.DB,
-    plan.statements,
-    { 'items.key': { field: 'model', message: 'Merk dan tipe sudah dipakai item lain' } },
+    [
+      ...plan.statements,
+      env.DB.prepare('SELECT sync_rev FROM items WHERE id = ?').bind(plan.record.id),
+    ],
+    ITEM_CONFLICTS,
     'Item diubah pihak lain; ulangi permintaan',
   );
-  const written = await findItem(env, plan.record.id);
+  const written = (results[results.length - 1]?.results[0] as { sync_rev: number } | undefined)
+    ?.sync_rev;
+  const record: ItemRecord = { ...plan.record, syncRev: written ?? plan.record.syncRev };
+  if (existing) unindexItem(state.items, existing);
+  indexItem(state.items, record);
+  // Merk yang dibuat/dipakai penulisan ini ikut tercatat untuk entri berikutnya.
+  names.set(record.brandId, plan.brandName);
+  const brandKey = normalizeKey(plan.brandName);
+  if (!state.brandsByKey.has(brandKey)) {
+    state.brandsByKey.set(brandKey, {
+      id: record.brandId,
+      externalId: '',
+      name: plan.brandName,
+      key: brandKey,
+      status: 'active',
+      itemCount: 0,
+      syncRev: 0,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      updatedBy: SYNC_ACTOR,
+    });
+  }
   return {
     index,
     status: existing ? 'updated' : 'created',
-    uid: plan.record.id,
-    rev: written?.syncRev ?? plan.record.syncRev,
+    uid: record.id,
+    rev: record.syncRev,
   };
 }
 
@@ -390,6 +509,16 @@ export async function pushItems(
     env,
     checks.flatMap((check) => (check.ok ? driveIdsOf(check.value) : [])),
   );
+  // Merk (langsung dari D1) dan item yang dirujuk dimuat sekali untuk seluruh permintaan.
+  const brands = await listBrands(env, { fresh: true });
+  const state: PushState = {
+    names: new Map(brands.map((brand) => [brand.id, brand.name])),
+    brandsByKey: new Map(brands.map((brand) => [brand.key, brand])),
+    items: await prefetchItems(
+      env,
+      checks.flatMap((check) => (check.ok ? [check.value] : [])),
+    ),
+  };
   const results: Array<SyncEntryResult<SyncWireItem>> = [];
   for (const [index, check] of checks.entries()) {
     if (!check.ok) {
@@ -397,7 +526,9 @@ export async function pushItems(
       continue;
     }
     try {
-      results.push(await upsertSyncItem(env, check.value, index, envelope.overwrite, probes));
+      results.push(
+        await upsertSyncItem(env, check.value, index, envelope.overwrite, probes, state),
+      );
     } catch (error) {
       // Penjaga CAS yang gagal (rebutan dengan penulis lain) tidak bermakna "isi tidak sah": boleh diulang.
       if (isAppError(error) && error.code === 'CONFLICT' && error.fields === undefined) {

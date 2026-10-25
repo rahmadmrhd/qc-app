@@ -24,6 +24,7 @@ const SHEET_COLUMNS: Record<string, string[]> = {
     'name',
     'key',
     'status',
+    'item_count',
     'sync_rev',
     'created_at',
     'updated_at',
@@ -409,6 +410,7 @@ describe('applyMigrations', () => {
       '0006_settings.sql',
       '0007_items_unique_alias_keys.sql',
       '0008_jobs_queue.sql',
+      '0009_item_alias_index_brand_count.sql',
     ]);
   });
 
@@ -486,5 +488,52 @@ describe('0004 keunikan akses', () => {
     await expect(
       db.prepare("INSERT INTO locations (id, code, name) VALUES ('l3', 'B', 'cabang a')").run(),
     ).rejects.toThrow(/UNIQUE/);
+  });
+});
+
+describe('migrasi 0009: item_alias_keys dan brands.item_count', () => {
+  const insertItem = (db: D1Database, id: string, brand: string, key: string, aliasKeys: string) =>
+    db
+      .prepare(
+        "INSERT INTO items (id, brand_id, model, key, aliases, alias_keys, status) VALUES (?, ?, 'm', ?, '[]', ?, 'active')",
+      )
+      .bind(id, brand, key, aliasKeys)
+      .run();
+
+  test('mengisi indeks nama lain dan hitungan merk dari data lama; kunci ganda lama tidak menggagalkan migrasi', async () => {
+    const db = createSqliteD1();
+    await applyMigrations(db, MIGRATIONS.slice(0, 8));
+    await db
+      .prepare(
+        "INSERT INTO brands (id, name, key, status) VALUES ('b1', 'A', 'a', 'active'), ('b2', 'B', 'b', 'active'), ('b3', 'C', 'c', 'active')",
+      )
+      .run();
+    await insertItem(db, 'i1', 'b1', 'a 1', '|satu|dua|');
+    await insertItem(db, 'i2', 'b1', 'a 2', '');
+    await insertItem(db, 'i3', 'b2', 'b 1', '|tiga|');
+    // data lama tidak dijaga basis data: kunci 'dua' juga dipegang i3 (salah satunya dipertahankan)
+    await insertItem(db, 'i4', 'b2', 'b 2', '|dua|');
+    await applyMigrations(db);
+    const aliases = await db
+      .prepare('SELECT key, item_id FROM item_alias_keys ORDER BY key')
+      .all<{ key: string; item_id: string }>();
+    expect(aliases.results.map((row) => row.key)).toEqual(['dua', 'satu', 'tiga']);
+    expect(['i1', 'i4']).toContain(aliases.results.find((row) => row.key === 'dua')?.item_id ?? '');
+    const counts = await db
+      .prepare('SELECT id, item_count FROM brands ORDER BY id')
+      .all<{ id: string; item_count: number }>();
+    expect(counts.results).toEqual([
+      { id: 'b1', item_count: 2 },
+      { id: 'b2', item_count: 2 },
+      { id: 'b3', item_count: 0 },
+    ]);
+  });
+
+  test('kunci nama lain unik tanpa beda huruf; WITHOUT ROWID dengan PRIMARY KEY', async () => {
+    const db = await migrated();
+    await db.prepare("INSERT INTO item_alias_keys (key, item_id) VALUES ('Abc', 'x')").run();
+    await expect(
+      db.prepare("INSERT INTO item_alias_keys (key, item_id) VALUES ('ABC', 'y')").run(),
+    ).rejects.toThrow(/UNIQUE constraint failed: item_alias_keys\.key/);
   });
 });

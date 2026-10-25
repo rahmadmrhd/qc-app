@@ -169,6 +169,14 @@ describe('konsistensi alias_keys', () => {
     const clean = await verifyImport(cleanDump(), reader());
     expect(clean.consistency).toEqual([
       expect.objectContaining({ name: 'items.alias_keys konsisten dengan aliases', ok: true }),
+      expect.objectContaining({
+        name: 'item_alias_keys konsisten dengan items.alias_keys',
+        ok: true,
+      }),
+      expect.objectContaining({
+        name: 'brands.item_count sama dengan jumlah item per merk',
+        ok: true,
+      }),
     ]);
     await exec("UPDATE items SET alias_keys = '|salah|' WHERE id = 'i1'");
     const tampered = await verifyImport(cleanDump(), reader());
@@ -182,5 +190,27 @@ describe('konsistensi alias_keys', () => {
   test('aliases diubah tanpa memperbarui alias_keys terdeteksi', async () => {
     await exec(`UPDATE items SET aliases = '["Baru"]' WHERE id = 'i1'`);
     expect((await verifyImport(cleanDump(), reader())).consistency[0]?.ok).toBe(false);
+  });
+});
+
+describe('tabel turunan migrasi 0009', () => {
+  const find = async (name: string) =>
+    (await verifyImport(cleanDump(), reader())).consistency.find((c) => c.name.startsWith(name));
+
+  test('item_alias_keys: baris hilang, kunci asing, dan pemilik salah terdeteksi', async () => {
+    await exec("DELETE FROM item_alias_keys WHERE key = 'mx'");
+    expect(await find('item_alias_keys')).toMatchObject({ ok: false });
+  });
+
+  test('item_alias_keys: kunci tambahan yang tidak ada di alias_keys terdeteksi', async () => {
+    await exec("INSERT INTO item_alias_keys (key, item_id) VALUES ('liar', 'i1')");
+    expect(await find('item_alias_keys')).toMatchObject({ ok: false });
+  });
+
+  test('brands.item_count yang tak sama dengan jumlah item terdeteksi', async () => {
+    await exec("UPDATE brands SET item_count = item_count + 3 WHERE id = 'b1'");
+    const verdict = await find('brands.item_count');
+    expect(verdict).toMatchObject({ ok: false });
+    expect(verdict?.detail).toContain('b1');
   });
 });

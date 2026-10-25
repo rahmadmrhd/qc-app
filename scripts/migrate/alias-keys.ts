@@ -10,3 +10,8 @@ export function aliasKeysOf(aliases: readonly string[]): string {
   ];
   return keys.length === 0 ? '' : `|${keys.join('|')}|`;
 }
+
+/** Kunci nama lain dari bentuk tersimpan `|kunci1|kunci2|` (kebalikan `aliasKeysOf`). */
+export function splitAliasKeys(aliasKeys: string): string[] {
+  return aliasKeys.split('|').filter((key) => key !== '');
+}

@@ -1,6 +1,7 @@
 import { normalizeKey } from '@shared/items';
 import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/rpc';
 import type { Env } from '@worker/core/env';
+import { adjustItemCountStmt } from '@worker/modules/brand/repo';
 import { nextSyncRev, syncRevExpr } from '@worker/modules/sync/state';
 
 export interface ItemRecord {
@@ -123,8 +124,24 @@ export async function findItem(env: Env, id: string): Promise<ItemRecord | null>
 
 /** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); lihat migrasi 0007. */
 export function aliasKeysOf(aliases: readonly string[]): string {
-  const keys = [...new Set(aliases.map((alias) => normalizeKey(alias)).filter((k) => k !== ''))];
+  const keys = aliasKeyList(aliases);
   return keys.length === 0 ? '' : `|${keys.join('|')}|`;
+}
+
+/** Kunci nama lain sebagai larik (urutan terjaga, tanpa duplikat); dasar `aliasKeysOf` dan tabel `item_alias_keys`. */
+export function aliasKeyList(aliases: readonly string[]): string[] {
+  return [...new Set(aliases.map((alias) => normalizeKey(alias)).filter((k) => k !== ''))];
+}
+
+/** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY (migrasi 0009). */
+function insertAliasKeyStmts(
+  db: D1Database,
+  itemId: string,
+  keys: readonly string[],
+): D1PreparedStatement[] {
+  return keys.map((key) =>
+    db.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)').bind(key, itemId),
+  );
 }
 
 export function insertItemStmts(
@@ -159,14 +176,21 @@ export function insertItemStmts(
       )
       .bind(...binds),
   );
+  statements.push(...insertAliasKeyStmts(db, item.id, aliasKeyList(item.aliases)));
+  statements.push(adjustItemCountStmt(db, item.brandId, 1));
   return statements;
 }
 
-/** UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. */
+/**
+ * UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. `previous` = merk dan nama
+ * lain item SEBELUM perubahan (dari baris yang dijaga CAS): selisihnya menentukan baris `item_alias_keys`
+ * dan penghitung `brands.item_count` yang ikut ditulis.
+ */
 export function updateItemStmts(
   db: D1Database,
   item: ItemRecord,
   bumpRev: boolean,
+  previous: Pick<ItemRecord, 'brandId' | 'aliases'>,
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
   if (bumpRev) statements.push(nextSyncRev(db, 'items', item.updatedAt));
@@ -194,5 +218,30 @@ export function updateItemStmts(
         item.id,
       ),
   );
+  const oldKeys = aliasKeyList(previous.aliases);
+  const newKeys = aliasKeyList(item.aliases);
+  const removed = oldKeys.filter((key) => !newKeys.includes(key));
+  if (removed.length > 0) {
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM item_alias_keys WHERE item_id = ? AND key IN (${removed.map(() => '?').join(',')})`,
+        )
+        .bind(item.id, ...removed),
+    );
+  }
+  statements.push(
+    ...insertAliasKeyStmts(
+      db,
+      item.id,
+      newKeys.filter((key) => !oldKeys.includes(key)),
+    ),
+  );
+  if (previous.brandId !== item.brandId) {
+    statements.push(
+      adjustItemCountStmt(db, previous.brandId, -1),
+      adjustItemCountStmt(db, item.brandId, 1),
+    );
+  }
   return statements;
 }

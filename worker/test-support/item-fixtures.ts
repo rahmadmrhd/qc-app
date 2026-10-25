@@ -1,6 +1,6 @@
 import { itemKey, normalizeKey } from '@shared/items';
 import type { Env } from '@worker/core/env';
-import { aliasKeysOf } from '@worker/modules/item/repo';
+import { aliasKeyList, aliasKeysOf } from '@worker/modules/item/repo';
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
@@ -51,12 +51,13 @@ export interface SeedItem {
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
+  const brandId = item.brandId ?? brandIdOf(item.brand);
   await env.DB.prepare(
     "INSERT INTO items (id, external_id, brand_id, model, key, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, '', ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, ?, 'seed')",
   )
     .bind(
       item.id,
-      item.brandId ?? brandIdOf(item.brand),
+      brandId,
       item.model,
       item.key ?? itemKey(item.brand, item.model),
       JSON.stringify(item.aliases ?? []),
@@ -66,6 +67,15 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       SEED_TIME,
       SEED_TIME,
     )
+    .run();
+  // Tabel turunan yang dijaga kode produksi (migrasi 0009): kunci nama lain dan penghitung item merk.
+  for (const key of aliasKeyList(item.aliases ?? [])) {
+    await env.DB.prepare('INSERT OR IGNORE INTO item_alias_keys (key, item_id) VALUES (?, ?)')
+      .bind(key, item.id)
+      .run();
+  }
+  await env.DB.prepare('UPDATE brands SET item_count = item_count + 1 WHERE id = ?')
+    .bind(brandId)
     .run();
 }
 

@@ -39,11 +39,21 @@ function buildMeta(db: Database, started: number, rows: number): Meta {
   };
 }
 
+/** Pencacah ringan untuk mengukur beban D1 di tes/skrip: round trip, pernyataan, baris dikembalikan. */
+export interface D1Stats {
+  trips: number;
+  statements: number;
+  rows: number;
+  /** Bila diisi, setiap SQL yang dijalankan ditambahkan (untuk pemeriksaan rencana kueri). */
+  log: string[] | null;
+}
+
 class SqliteStatement {
   constructor(
     private readonly db: Database,
     readonly sql: string,
     readonly params: SQLQueryBindings[] = [],
+    private readonly stats: D1Stats = { trips: 0, statements: 0, rows: 0, log: null },
   ) {}
 
   bind(...values: unknown[]): SqliteStatement {
@@ -52,7 +62,7 @@ class SqliteStatement {
         `D1_ERROR: too many SQL variables (${values.length}); batas ${D1_MAX_BOUND_PARAMETERS} parameter terikat per kueri`,
       );
     }
-    return new SqliteStatement(this.db, this.sql, values.map(toBinding));
+    return new SqliteStatement(this.db, this.sql, values.map(toBinding), this.stats);
   }
 
   /** Dipakai `batch`: jalankan tanpa membuka transaksi sendiri. */
@@ -60,18 +70,24 @@ class SqliteStatement {
     const started = performance.now();
     const stmt = this.db.query(this.sql);
     const results = stmt.all(...this.params) as Row[];
+    this.stats.statements++;
+    this.stats.rows += results.length;
+    this.stats.log?.push(this.sql);
     return { results, success: true, meta: buildMeta(this.db, started, results.length) };
   }
 
   async all<T = Row>(): Promise<{ results: T[]; success: true; meta: Meta }> {
+    this.stats.trips++;
     return this.execute() as { results: T[]; success: true; meta: Meta };
   }
 
   async run<T = Row>(): Promise<{ results: T[]; success: true; meta: Meta }> {
+    this.stats.trips++;
     return this.execute() as { results: T[]; success: true; meta: Meta };
   }
 
   async first<T = Row>(column?: string): Promise<T | null> {
+    this.stats.trips++;
     const row = this.execute().results[0];
     if (row === undefined) return null;
     if (column !== undefined) {
@@ -96,11 +112,14 @@ class SqliteStatement {
  */
 export function createSqliteD1(): D1Database {
   const db = new Database(':memory:');
+  const stats: D1Stats = { trips: 0, statements: 0, rows: 0, log: null };
   db.exec('PRAGMA foreign_keys = ON');
 
   const d1 = {
-    prepare: (sql: string) => new SqliteStatement(db, sql),
+    stats,
+    prepare: (sql: string) => new SqliteStatement(db, sql, [], stats),
     async batch(statements: SqliteStatement[]) {
+      stats.trips++;
       db.exec('BEGIN');
       try {
         const out = statements.map((statement) => statement.execute());
@@ -112,6 +131,7 @@ export function createSqliteD1(): D1Database {
       }
     },
     async exec(sql: string) {
+      stats.trips++;
       const started = performance.now();
       db.exec(sql);
       return {
@@ -127,4 +147,9 @@ export function createSqliteD1(): D1Database {
     },
   };
   return d1 as unknown as D1Database;
+}
+
+/** Pencacah D1 dari `createSqliteD1`; ada pada env uji (`createTestEnv`). */
+export function d1StatsOf(db: D1Database): D1Stats {
+  return (db as unknown as { stats: D1Stats }).stats;
 }

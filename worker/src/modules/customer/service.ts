@@ -43,7 +43,10 @@ export async function planCustomerByName(
   currentId?: string,
 ): Promise<{ customer: CustomerRecord; statements: D1PreparedStatement[] }> {
   const key = customerKey(name);
-  const found = await findCustomerByKey(env, key);
+  // Daftar dari cache memori isolate (<= 15 dtk); bila tak ada di sana, cek langsung ke D1 sebelum membuat.
+  const found =
+    (await listCustomers(env)).find((customer) => customer.key === key) ??
+    (await findCustomerByKey(env, key));
   if (found) {
     if (found.status === 'inactive' && found.id !== currentId) {
       const message = 'Customer dinonaktifkan; aktifkan dulu di halaman Customer';
@@ -104,7 +107,7 @@ export async function renameCustomer(
   input: RenameCustomerInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
-  const customers = await listCustomers(env);
+  const customers = await listCustomers(env, { fresh: true });
   const existing = customers.find((customer) => customer.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Customer tidak ditemukan');
   const key = customerKey(input.name);
@@ -145,7 +148,9 @@ export async function setCustomerStatus(
   input: SetCustomerStatusInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
-  const existing = (await listCustomers(env)).find((customer) => customer.id === input.id);
+  const existing = (await listCustomers(env, { fresh: true })).find(
+    (customer) => customer.id === input.id,
+  );
   if (!existing) throw appError('NOT_FOUND', 'Customer tidak ditemukan');
   if (existing.status === input.status) return toCustomerDto(existing);
   const now = nowIso(env);

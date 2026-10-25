@@ -1,5 +1,6 @@
 import type { ItemStatus } from '@shared/rpc';
 import type { Env } from '@worker/core/env';
+import { cached, touchCache } from '@worker/core/mem-cache';
 import { nextSyncRev, syncRevExpr } from '@worker/modules/sync/state';
 
 export interface BrandRecord {
@@ -10,6 +11,8 @@ export interface BrandRecord {
   /** `normalizeKey(name)`; unik. */
   key: string;
   status: ItemStatus;
+  /** Jumlah item (aktif + nonaktif) pada merk ini; dijaga setiap penulisan item (migrasi 0009). */
+  itemCount: number;
   syncRev: number;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +25,7 @@ interface BrandRow {
   name: string;
   key: string;
   status: string;
+  item_count: number;
   sync_rev: number;
   created_at: string;
   updated_at: string;
@@ -29,7 +33,7 @@ interface BrandRow {
 }
 
 const BRAND_COLUMNS =
-  'id, external_id, name, key, status, sync_rev, created_at, updated_at, updated_by';
+  'id, external_id, name, key, status, item_count, sync_rev, created_at, updated_at, updated_by';
 
 function toBrand(row: BrandRow): BrandRecord {
   return {
@@ -38,6 +42,7 @@ function toBrand(row: BrandRow): BrandRecord {
     name: row.name.trim(),
     key: row.key.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
+    itemCount: Number(row.item_count) || 0,
     syncRev: Number(row.sync_rev) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -45,11 +50,22 @@ function toBrand(row: BrandRow): BrandRecord {
   };
 }
 
-export async function listBrands(env: Env): Promise<BrandRecord[]> {
-  const result = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`).all<BrandRow>();
-  return result.results.map(toBrand).filter((brand) => brand.id !== '' && brand.key !== '');
+/**
+ * Seluruh merk (kecil). Bawaan memakai cache memori isolate (`mem-cache.ts`, TTL <= 15 dtk); `fresh: true`
+ * membaca langsung dari D1 dan WAJIB dipakai jalur yang memutuskan penulisan (sinkron, ganti nama/status).
+ */
+export async function listBrands(
+  env: Env,
+  options: { fresh?: boolean } = {},
+): Promise<BrandRecord[]> {
+  const load = async (): Promise<BrandRecord[]> => {
+    const result = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`).all<BrandRow>();
+    return result.results.map(toBrand).filter((brand) => brand.id !== '' && brand.key !== '');
+  };
+  return options.fresh ? load() : cached(env, 'brands:all', load);
 }
 
+/** Merk menurut kunci (kueri berindeks langsung ke D1: dipakai sebelum menulis). */
 export async function findBrandByKey(env: Env, key: string): Promise<BrandRecord | null> {
   const row = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE key = ?`)
     .bind(key)
@@ -57,12 +73,16 @@ export async function findBrandByKey(env: Env, key: string): Promise<BrandRecord
   return row ? toBrand(row) : null;
 }
 
-/** Jumlah item per merk (aktif dan nonaktif), memakai indeks `items_brand`. */
-export async function countItemsByBrand(env: Env): Promise<Map<string, number>> {
-  const result = await env.DB.prepare(
-    'SELECT brand_id, COUNT(*) AS n FROM items GROUP BY brand_id',
-  ).all<{ brand_id: string; n: number }>();
-  return new Map(result.results.map((row) => [row.brand_id, row.n] as const));
+/** Penghitung item per merk +1/-1 (dijaga di batch penulisan item; lihat `insertItemStmts`/`updateItemStmts`). */
+export function adjustItemCountStmt(
+  db: D1Database,
+  brandId: string,
+  delta: 1 | -1,
+): D1PreparedStatement {
+  touchCache('brands');
+  return db
+    .prepare('UPDATE brands SET item_count = item_count + ? WHERE id = ?')
+    .bind(delta, brandId);
 }
 
 /**
@@ -70,6 +90,7 @@ export async function countItemsByBrand(env: Env): Promise<Map<string, number>> 
  * revisi itu (satu `batch()` bersama audit oleh pemanggil).
  */
 export function insertBrandStmts(db: D1Database, brand: BrandRecord): D1PreparedStatement[] {
+  touchCache('brands');
   return [
     nextSyncRev(db, 'brands', brand.createdAt),
     db
@@ -91,6 +112,7 @@ export function insertBrandStmts(db: D1Database, brand: BrandRecord): D1Prepared
 
 /** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
 export function updateBrandStmts(db: D1Database, brand: BrandRecord): D1PreparedStatement[] {
+  touchCache('brands');
   return [
     nextSyncRev(db, 'brands', brand.updatedAt),
     db

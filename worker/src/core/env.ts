@@ -29,6 +29,10 @@ export interface Env {
   APP_ORIGIN?: string;
   /** HANYA pengembangan lokal (`.dev.vars`): email untuk `/auth/dev-login`; jangan pernah diset di produksi. */
   DEV_LOGIN_EMAIL?: string;
+  /**
+   * TTL cache memori isolate dalam milidetik (bawaan 10000, maks. 15000; `0` = mati). Lihat `mem-cache.ts`.
+   */
+  CACHE_TTL_MS?: string;
   /** Hanya untuk tes: klien jembatan palsu dan jam terkendali (milidetik epoch). */
   BRIDGE?: BridgeClient;
   NOW?: () => number;

@@ -68,6 +68,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'created_at',
     'updated_at',
     'updated_by',
+    'item_count',
   ]),
   spec('customers', ['id', 'name', 'key', 'status', 'created_at', 'updated_at', 'updated_by']),
   spec('files', [

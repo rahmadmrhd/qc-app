@@ -13,6 +13,7 @@ import type { UserContext } from '@worker/modules/access/context';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
+import { settleCache } from './mem-cache';
 import { SESSION_COOKIE, verifySessionToken } from './session';
 
 export type GlobalPermission = {
@@ -152,6 +153,9 @@ export async function callRoute(
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error: toErrorBody(error, requestId) };
+  } finally {
+    // Penulisan selesai (atau gagal): buang cache kelompok yang disentuh agar pembaca berikutnya segar.
+    settleCache();
   }
 }
 

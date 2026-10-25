@@ -1,12 +1,7 @@
 import type { LocationPermissionMap } from '@shared/assignments';
 import type { RouteTable } from '@worker/core/router';
 import { expectNull } from '@worker/core/validate';
-
-interface LocationRow {
-  id: string;
-  code: string;
-  name: string;
-}
+import { listLocationBriefs } from '@worker/modules/access/repo';
 
 /** Rute RPC `auth.me` (rute HTTP `/auth/*` ada di `routes.ts`). */
 export function authRpcRoutes(): Pick<RouteTable, 'auth.me'> {
@@ -14,15 +9,13 @@ export function authRpcRoutes(): Pick<RouteTable, 'auth.me'> {
     'auth.me': {
       validate: expectNull,
       handler: async (_input, ctx) => {
-        const rows = await ctx.env.DB.prepare(
-          "SELECT id, code, name FROM locations WHERE status = 'active'",
-        ).all<LocationRow>();
+        const rows = (await listLocationBriefs(ctx.env)).filter((location) => location.active);
         return {
           email: ctx.user.email,
           name: ctx.user.name,
           isSuperAdmin: ctx.user.isSuperAdmin,
           permissions: ctx.user.permissions,
-          locations: rows.results
+          locations: rows
             .filter((location) => ctx.user.locations[location.id] !== undefined)
             .map((location) => ({
               id: location.id,

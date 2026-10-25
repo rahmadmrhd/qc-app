@@ -11,6 +11,9 @@ import brandCustomerUnique from '../../migrations/0005_brand_customer_unique.sql
 import settings from '../../migrations/0006_settings.sql' with { type: 'text' };
 import itemsUnique from '../../migrations/0007_items_unique_alias_keys.sql' with { type: 'text' };
 import jobsQueue from '../../migrations/0008_jobs_queue.sql' with { type: 'text' };
+import itemAliasIndex from '../../migrations/0009_item_alias_index_brand_count.sql' with {
+  type: 'text',
+};
 
 export interface Migration {
   name: string;
@@ -27,6 +30,7 @@ export const MIGRATIONS: Migration[] = [
   { name: '0006_settings.sql', sql: settings },
   { name: '0007_items_unique_alias_keys.sql', sql: itemsUnique },
   { name: '0008_jobs_queue.sql', sql: jobsQueue },
+  { name: '0009_item_alias_index_brand_count.sql', sql: itemAliasIndex },
 ];
 
 /** Pecah berkas SQL menjadi pernyataan (tanpa baris komentar `--`, dipisah `;` di akhir baris). */

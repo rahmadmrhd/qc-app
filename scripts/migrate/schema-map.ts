@@ -76,7 +76,7 @@ export const TABLES: readonly TableDef[] = [
     columns: cols(
       'id:id external_id:ref name key:key status:enum sync_rev:int created_at:date updated_at:date updated_by',
     ),
-    derivedColumns: [],
+    derivedColumns: ['item_count'],
     checksumColumns: ['id', 'external_id', 'key', 'status', 'sync_rev'],
   },
   {

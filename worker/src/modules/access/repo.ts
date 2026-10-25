@@ -6,6 +6,7 @@ import type { LocationStatus, UserStatus } from '@shared/rpc';
 import { normalizeEmail } from '@worker/core/email';
 import type { Env } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { cached, touchCache } from '@worker/core/mem-cache';
 
 export interface UserRecord {
   id: string;
@@ -137,6 +138,31 @@ export interface AccessTables {
   locations: LocationRecord[];
 }
 
+export interface LocationBrief {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+/** Ringkasan semua lokasi (kecil); cache memori isolate (`mem-cache.ts`), dibuang saat lokasi ditulis. */
+export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
+  return cached(env, 'access:locations', async () => {
+    const result = await env.DB.prepare('SELECT id, code, name, status FROM locations').all<{
+      id: string;
+      code: string;
+      name: string;
+      status: string;
+    }>();
+    return result.results.map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      active: row.status === 'active',
+    }));
+  });
+}
+
 /** Tiga tabel akses (kecil) dalam SATU `batch()`. */
 export async function loadAccessTables(env: Env): Promise<AccessTables> {
   const [users, roles, locations] = await env.DB.batch([
@@ -162,6 +188,7 @@ export async function loadAccessTables(env: Env): Promise<AccessTables> {
 }
 
 export function insertUserStmt(db: D1Database, user: UserRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       "INSERT INTO users (id, email, name, status, role_ids, assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)",
@@ -179,6 +206,7 @@ export function insertUserStmt(db: D1Database, user: UserRecord): D1PreparedStat
 }
 
 export function updateUserStmt(db: D1Database, user: UserRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, updated_at = ?, updated_by = ? WHERE id = ?",
@@ -194,6 +222,7 @@ export function updateUserStmt(db: D1Database, user: UserRecord): D1PreparedStat
 }
 
 export function insertRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       'INSERT INTO roles (id, name, description, permissions, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -210,6 +239,7 @@ export function insertRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStat
 }
 
 export function updateRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       'UPDATE roles SET name = ?, description = ?, permissions = ?, updated_at = ?, updated_by = ? WHERE id = ?',
@@ -225,10 +255,12 @@ export function updateRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStat
 }
 
 export function deleteRoleStmt(db: D1Database, id: string): D1PreparedStatement {
+  touchCache('access');
   return db.prepare('DELETE FROM roles WHERE id = ?').bind(id);
 }
 
 export function insertLocationStmt(db: D1Database, location: LocationRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       'INSERT INTO locations (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -245,6 +277,7 @@ export function insertLocationStmt(db: D1Database, location: LocationRecord): D1
 }
 
 export function updateLocationStmt(db: D1Database, location: LocationRecord): D1PreparedStatement {
+  touchCache('access');
   return db
     .prepare(
       'UPDATE locations SET name = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
@@ -260,9 +293,9 @@ export async function batchWrite(
   db: D1Database,
   statements: D1PreparedStatement[],
   conflicts: Record<string, { message: string; field: string }>,
-): Promise<void> {
+): Promise<D1Result[]> {
   try {
-    await db.batch(statements);
+    return await db.batch(statements);
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     if (/UNIQUE constraint failed/i.test(text)) {

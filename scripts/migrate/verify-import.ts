@@ -1,4 +1,4 @@
-import { aliasKeysOf } from './alias-keys';
+import { aliasKeysOf, splitAliasKeys } from './alias-keys';
 import {
   type DumpInput,
   type ExcludeEntry,
@@ -62,12 +62,14 @@ async function readAll(
   reader: D1Reader,
   table: string,
   columns: readonly string[],
+  /** Tabel `WITHOUT ROWID` (item_alias_keys) tidak punya rowid: urutkan menurut kolom kuncinya. */
+  orderBy = 'rowid',
 ): Promise<Array<Record<string, unknown>>> {
   const out: Array<Record<string, unknown>> = [];
   const select = columns.map(quoteIdentifier).join(', ');
   for (let offset = 0; ; offset += PAGE) {
     const rows = await reader.query(
-      `SELECT ${select} FROM ${quoteIdentifier(table)} ORDER BY rowid LIMIT ${PAGE} OFFSET ${offset}`,
+      `SELECT ${select} FROM ${quoteIdentifier(table)} ORDER BY ${orderBy} LIMIT ${PAGE} OFFSET ${offset}`,
     );
     out.push(...rows);
     if (rows.length < PAGE) return out;
@@ -148,6 +150,51 @@ async function checkAliasKeys(reader: D1Reader): Promise<CheckVerdict> {
       bad.length === 0
         ? `${rows.length} item`
         : `${bad.length} item tidak konsisten: ${bad.slice(0, 5).join(', ')}`,
+  };
+}
+
+/** `item_alias_keys` (migrasi 0009) harus memuat tepat satu baris per kunci di `items.alias_keys`. */
+async function checkAliasIndex(reader: D1Reader): Promise<CheckVerdict> {
+  const items = await readAll(reader, 'items', ['id', 'alias_keys']);
+  const indexed = await readAll(reader, 'item_alias_keys', ['key', 'item_id'], 'key');
+  const expected = new Set(
+    items.flatMap((row) =>
+      splitAliasKeys(cell(row.alias_keys)).map((key) => `${cell(row.id)}${SEP}${key}`),
+    ),
+  );
+  const actual = new Set(indexed.map((row) => `${cell(row.item_id)}${SEP}${cell(row.key)}`));
+  const bad = [
+    ...[...expected].filter((entry) => !actual.has(entry)),
+    ...[...actual].filter((entry) => !expected.has(entry)),
+  ];
+  return {
+    name: 'item_alias_keys konsisten dengan items.alias_keys',
+    ok: bad.length === 0 && indexed.length === actual.size,
+    detail:
+      bad.length === 0
+        ? `${indexed.length} kunci`
+        : `${bad.length} kunci tidak selaras: ${bad
+            .slice(0, 5)
+            .map((entry) => entry.split(SEP).join(' / '))
+            .join(', ')}`,
+  };
+}
+
+/** `brands.item_count` (migrasi 0009) harus sama dengan jumlah item per merk. */
+async function checkBrandItemCounts(reader: D1Reader): Promise<CheckVerdict> {
+  const brands = await readAll(reader, 'brands', ['id', 'item_count']);
+  const counted = await reader.query('SELECT brand_id, COUNT(*) AS n FROM items GROUP BY brand_id');
+  const actual = new Map(counted.map((row) => [cell(row.brand_id), Number(row.n)]));
+  const bad = brands
+    .filter((row) => Number(row.item_count) !== (actual.get(cell(row.id)) ?? 0))
+    .map((row) => cell(row.id));
+  return {
+    name: 'brands.item_count sama dengan jumlah item per merk',
+    ok: bad.length === 0,
+    detail:
+      bad.length === 0
+        ? `${brands.length} merk`
+        : `${bad.length} merk tidak sama: ${bad.slice(0, 5).join(', ')}`,
   };
 }
 
@@ -246,6 +293,8 @@ export async function verifyImport(
   }
 
   report.consistency.push(await checkAliasKeys(reader));
+  report.consistency.push(await checkAliasIndex(reader));
+  report.consistency.push(await checkBrandItemCounts(reader));
 
   report.ok = [
     ...report.tables,

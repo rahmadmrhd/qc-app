@@ -6,12 +6,7 @@ import {
   handoverNumber,
 } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
-import {
-  extractChecklist,
-  matchChecks,
-  normalizeNoteChecks,
-  reconcileChecks,
-} from '@shared/handover-checklist';
+import { normalizeNoteChecks, reconcileChecks } from '@shared/handover-checklist';
 import {
   handoverNormalizeAnchorText,
   locateAnchor,
@@ -37,12 +32,22 @@ import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso, nowOf } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { listLocationBriefs } from '@worker/modules/access/repo';
 import type { CustomerRecord } from '@worker/modules/customer/repo';
 import { listCustomers } from '@worker/modules/customer/repo';
 import { planCustomerByName } from '@worker/modules/customer/service';
-import type { HandoverRecord, HandoverRow, LoadedHandover, StoredComment } from './repo';
+import { checklistOf, matchedChecks } from './checklist';
+import type {
+  CommentStats,
+  HandoverRecord,
+  HandoverRow,
+  LoadedHandover,
+  StoredComment,
+} from './repo';
 import {
-  findHandover,
+  commentStatements,
+  commentsByHandover,
+  findHandoverWithComments,
   HANDOVER_COLUMNS,
   HANDOVER_FROM,
   insertHandoverStmt,
@@ -55,11 +60,8 @@ import { BOARD_DEFAULT_LIMIT, handoverNoteError, parseBoardCursor } from './vali
 const STALE_MESSAGE = 'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
 export async function locationNameMap(env: Env): Promise<Map<string, string>> {
-  const rows = await env.DB.prepare('SELECT id, name FROM locations').all<{
-    id: string;
-    name: string;
-  }>();
-  return new Map(rows.results.map((row) => [row.id, row.name] as const));
+  const rows = await listLocationBriefs(env);
+  return new Map(rows.map((row) => [row.id, row.name] as const));
 }
 
 /** Progres checklist dari catatan dan centang tersimpan. */
@@ -68,7 +70,7 @@ function progressOf(handover: Pick<HandoverRecord, 'note' | 'checks' | 'complete
   done: number;
   completed: boolean;
 } {
-  const matched = matchChecks(handover.note, handover.checks);
+  const matched = matchedChecks(handover.note, handover.checks);
   return {
     total: matched.length,
     done: matched.filter((check) => check !== null).length,
@@ -81,8 +83,9 @@ export function toHandoverDto(
   customerName: string,
   comments: readonly StoredComment[],
 ): HandoverDto {
-  const entries = extractChecklist(handover.note);
-  const matched = matchChecks(handover.note, handover.checks);
+  const entries = checklistOf(handover.note);
+  const matched = matchedChecks(handover.note, handover.checks);
+  const done = matched.reduce((n, check) => (check === null ? n : n + 1), 0);
   // Teks polos catatan hanya dihitung bila ada komentar berjangkar (hemat CPU).
   const plain = comments.some((comment) => comment.quote !== '')
     ? noteToPlainText(handover.note)
@@ -94,7 +97,11 @@ export function toHandoverDto(
     customerId: handover.customerId,
     customerName,
     note: handover.note,
-    status: deriveHandoverStatus(handover.status, progressOf(handover)),
+    status: deriveHandoverStatus(handover.status, {
+      total: entries.length,
+      done,
+      completed: handover.completedAt !== '',
+    }),
     checklist: entries.map((entry) => {
       const check = matched[entry.index] ?? null;
       return {
@@ -126,7 +133,8 @@ export function toHandoverDto(
 }
 
 async function dtoOf(env: Env, loaded: LoadedHandover): Promise<HandoverDto> {
-  const comments = (await listComments(env, [loaded.record.id])).get(loaded.record.id) ?? [];
+  const comments =
+    loaded.comments ?? (await listComments(env, [loaded.record.id])).get(loaded.record.id) ?? [];
   return toHandoverDto(loaded.record, loaded.customerName, comments);
 }
 
@@ -137,6 +145,27 @@ async function dtoOf(env: Env, loaded: LoadedHandover): Promise<HandoverDto> {
 interface BoardRow extends HandoverRow {
   checked_count: number;
   total_count: number;
+}
+
+/**
+ * Komentar halaman board (dan, bila perlu, jumlah kolom) dalam SATU round trip D1.
+ * `knownTotal` dipakai bila `countQuery` null (halaman pertama yang tidak penuh).
+ */
+async function loadBoardExtras(
+  env: Env,
+  ids: readonly string[],
+  countQuery: { sql: string; binds: unknown[] } | null,
+  knownTotal: number,
+): Promise<[Map<string, StoredComment[]>, number]> {
+  const statements = commentStatements(env, ids);
+  if (countQuery) statements.push(env.DB.prepare(countQuery.sql).bind(...countQuery.binds));
+  const results = statements.length > 0 ? await env.DB.batch(statements) : [];
+  const countResult = countQuery ? results[results.length - 1] : undefined;
+  const comments = commentsByHandover(countQuery ? results.slice(0, -1) : results);
+  const total = countQuery
+    ? Number((countResult?.results[0] as { n: number } | undefined)?.n ?? 0)
+    : knownTotal;
+  return [comments, total];
 }
 
 /**
@@ -178,17 +207,23 @@ export async function handoverBoard(
     input.status === 'in_progress'
       ? `${progress} ASC, h.updated_at DESC, h.number DESC`
       : 'h.updated_at DESC, h.number DESC';
-  const [page, count] = await env.DB.batch([
-    env.DB.prepare(
-      `SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`,
-    ).bind(...binds, limit + 1),
-    env.DB.prepare(`SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`).bind(...baseBinds),
-  ]);
-  const rows = (page?.results ?? []) as BoardRow[];
+  const page = await env.DB.prepare(
+    `SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`,
+  )
+    .bind(...binds, limit + 1)
+    .all<BoardRow>();
+  const rows = page.results;
   const pageRows = rows.slice(0, limit);
-  const comments = await listComments(
+  // Jumlah kolom hanya dihitung bila tidak dapat disimpulkan dari halaman ini: halaman pertama yang tidak
+  // penuh berisi seluruh kolom (hemat rows read D1: COUNT memindai indeks seluruh kolom).
+  const needsCount = cursor !== null || rows.length > limit;
+  const [comments, total] = await loadBoardExtras(
     env,
     pageRows.map((row) => row.id),
+    needsCount
+      ? { sql: `SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`, binds: baseBinds }
+      : null,
+    pageRows.length,
   );
   const last = pageRows[pageRows.length - 1];
   let nextCursor: string | null = null;
@@ -208,7 +243,7 @@ export async function handoverBoard(
       );
     }),
     nextCursor,
-    total: Number((count?.results[0] as { n: number } | undefined)?.n ?? 0),
+    total,
   };
 }
 
@@ -221,11 +256,11 @@ export async function getHandoverDto(
   input: GetHandoverInput,
   locationIds: readonly string[] = input.locationIds,
 ): Promise<HandoverDto> {
-  const loaded = await findHandover(env, input.id);
-  if (!loaded || !locationIds.includes(loaded.record.locationId)) {
+  const found = await findHandoverWithComments(env, input.id);
+  if (!found || !locationIds.includes(found.loaded.record.locationId)) {
     throw appError('NOT_FOUND', 'Task tidak ditemukan');
   }
-  return dtoOf(env, loaded);
+  return dtoOf(env, found.loaded);
 }
 
 /** Customer aktif untuk saran di form task (diambil lewat izin serah terima, bukan izin customer). */
@@ -263,7 +298,7 @@ export function handoverSnapshot(
     location: locationNames.get(handover.locationId) ?? handover.locationId,
     customer: customerName,
     status: deriveHandoverStatus(handover.status, progressOf(handover)),
-    checked: matchChecks(handover.note, handover.checks)
+    checked: matchedChecks(handover.note, handover.checks)
       .filter((check) => check !== null)
       .map((check) => check?.text ?? ''),
   };
@@ -305,12 +340,17 @@ export function fitAuditSnapshots(
 // ---------------------------------------------------------------------------------------------
 
 /** Memuat task untuk ditulis. `NOT_FOUND` bila id tak ada ATAU lokasinya bukan `locationId` yang diizinkan. */
-async function loadForWrite(env: Env, ref: HandoverRefInput): Promise<LoadedHandover> {
-  const loaded = await findHandover(env, ref.id);
-  if (!loaded || loaded.record.locationId !== ref.locationId) {
+async function loadForWrite(
+  env: Env,
+  ref: HandoverRefInput,
+  statsSql?: string,
+): Promise<{ loaded: LoadedHandover; stats: CommentStats | null }> {
+  // Task dan komentarnya sekaligus (satu round trip): DTO balasan tidak perlu membaca komentar lagi.
+  const found = await findHandoverWithComments(env, ref.id, statsSql);
+  if (!found || found.loaded.record.locationId !== ref.locationId) {
     throw appError('NOT_FOUND', 'Task tidak ditemukan');
   }
-  return loaded;
+  return found;
 }
 
 /** Hanya task Dibatalkan yang terkunci (WH maupun QC). */
@@ -484,7 +524,7 @@ export async function saveHandover(
   const id = input.id;
 
   return runCas(async () => {
-    const loaded = await loadForWrite(env, { id, locationId: input.locationId });
+    const { loaded } = await loadForWrite(env, { id, locationId: input.locationId });
     const current = loaded.record;
     assertNotCancelled(current);
     if (input.expectedUpdatedAt && input.expectedUpdatedAt !== current.updatedAt) {
@@ -553,7 +593,7 @@ export async function saveHandover(
         after: audit.after,
       }),
     ]);
-    return dtoOf(env, { record: saved, customerName: saved.customerName });
+    return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }
 
@@ -601,7 +641,7 @@ export async function saveHandoverBatch(
 
 /** Nomor kemunculan butir `index` di antara butir bertulisan sama (mulai 0). */
 function occurrenceAt(note: string, index: number): number {
-  const entries = extractChecklist(note);
+  const entries = checklistOf(note);
   const target = entries[index];
   if (!target) return 0;
   return entries.filter((entry) => entry.index < index && entry.text === target.text).length;
@@ -667,17 +707,17 @@ export async function setCheck(
   actor: ActorRef,
 ): Promise<HandoverDto> {
   return runCas(async () => {
-    const loaded = await loadForWrite(env, input);
+    const { loaded } = await loadForWrite(env, input);
     const handover = loaded.record;
     assertNotCancelled(handover);
-    const entry = extractChecklist(handover.note)[input.index];
+    const entry = checklistOf(handover.note)[input.index];
     // Penjaga: teks butir pada indeks harus sama dengan yang dilihat pengguna (catatan bisa berubah);
     // dibandingkan dalam bentuk kanonis (tanpa escape Markdown/entitas HTML).
     if (!entry || (entry.text !== input.text && entry.text !== handoverCanonicalText(input.text))) {
       throw appError('CONFLICT', 'Catatan berubah; muat ulang halaman lalu ulangi');
     }
     const occurrence = occurrenceAt(handover.note, input.index);
-    const existing = matchChecks(handover.note, handover.checks)[input.index] ?? null;
+    const existing = matchedChecks(handover.note, handover.checks)[input.index] ?? null;
     // Idempoten: keadaan sudah sesuai (mis. diulang setelah penulis lain) = tidak menulis apa pun.
     if (input.checked === (existing !== null)) return dtoOf(env, loaded);
     const now = nowIso(env);
@@ -695,16 +735,13 @@ export async function setCheck(
       actor,
       now,
     );
-    return toDtoAfter(env, saved, loaded.customerName);
+    return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }
 
-async function toDtoAfter(
-  env: Env,
-  saved: HandoverRecord,
-  customerName: string,
-): Promise<HandoverDto> {
-  return dtoOf(env, { record: saved, customerName });
+/** DTO setelah tulis: komentar tidak berubah oleh perubahan isi/centang/status, jadi dipakai dari pemuatan awal. */
+function toDtoAfter(saved: HandoverRecord, loaded: LoadedHandover): HandoverDto {
+  return toHandoverDto(saved, loaded.customerName, loaded.comments ?? []);
 }
 
 /** Menyelesaikan task: mencentang semua butir yang belum (task tanpa butir ditandai selesai). Tidak ada buka kembali. */
@@ -714,11 +751,11 @@ export async function setDone(
   actor: ActorRef,
 ): Promise<HandoverDto> {
   return runCas(async () => {
-    const loaded = await loadForWrite(env, input);
+    const { loaded } = await loadForWrite(env, input);
     const handover = loaded.record;
     assertNotCancelled(handover);
-    const entries = extractChecklist(handover.note);
-    const matched = matchChecks(handover.note, handover.checks);
+    const entries = checklistOf(handover.note);
+    const matched = matchedChecks(handover.note, handover.checks);
     const now = nowIso(env);
     const missing = entries.filter((entry) => matched[entry.index] === null);
     const needsMark = entries.length === 0 && handover.completedAt === '';
@@ -740,7 +777,7 @@ export async function setDone(
       actor,
       now,
     );
-    return toDtoAfter(env, saved, loaded.customerName);
+    return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }
 
@@ -753,14 +790,14 @@ export async function addComment(
   input: AddCommentInput,
   actor: ActorRef,
 ): Promise<HandoverDto> {
-  const loaded = await loadForWrite(env, input);
+  // Task, komentar, dan statistik batas komentar dalam satu round trip.
+  const { loaded, stats } = await loadForWrite(
+    env,
+    input,
+    `SELECT COUNT(*) AS n, COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) AS s FROM handover_comments WHERE handover_id = ?`,
+  );
   const handover = loaded.record;
   assertNotCancelled(handover);
-  const stats = await env.DB.prepare(
-    `SELECT COUNT(*) AS n, COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) AS s FROM handover_comments WHERE handover_id = ?`,
-  )
-    .bind(handover.id)
-    .first<{ n: number; s: number }>();
   if ((stats?.n ?? 0) >= HANDOVER_LIMITS.comments) {
     const message = `Task ini sudah mencapai batas ${HANDOVER_LIMITS.comments} komentar`;
     throw appError('VALIDATION', message, { body: message });
@@ -848,7 +885,17 @@ export async function addComment(
     throw error;
   }
   // Komentar tidak mengubah isi task: `updatedAt`/`version` tidak dinaikkan agar tidak memicu CONFLICT pada form WH.
-  return dtoOf(env, loaded);
+  // Daftar komentar balasan = yang dimuat awal + komentar baru (paling akhir menurut waktu lalu rowid).
+  const created: StoredComment = {
+    id,
+    quote: anchor.quote,
+    before: anchor.before,
+    after: anchor.after,
+    body: input.body,
+    author: actor.email,
+    at: now,
+  };
+  return dtoOf(env, { ...loaded, comments: [...(loaded.comments ?? []), created] });
 }
 
 export async function cancelHandover(
@@ -857,7 +904,7 @@ export async function cancelHandover(
   actor: ActorRef,
 ): Promise<HandoverDto> {
   return runCas(async () => {
-    const loaded = await loadForWrite(env, input);
+    const { loaded } = await loadForWrite(env, input);
     const handover = loaded.record;
     const status = deriveHandoverStatus(handover.status, progressOf(handover));
     if (status === 'cancelled') return dtoOf(env, loaded);
@@ -872,7 +919,7 @@ export async function cancelHandover(
       actor,
       nowIso(env),
     );
-    return toDtoAfter(env, saved, loaded.customerName);
+    return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }
 
@@ -883,7 +930,7 @@ export async function reopenHandover(
   actor: ActorRef,
 ): Promise<HandoverDto> {
   return runCas(async () => {
-    const loaded = await loadForWrite(env, input);
+    const { loaded } = await loadForWrite(env, input);
     if (loaded.record.status !== 'cancelled') {
       throw appError('CONFLICT', 'Hanya task yang dibatalkan yang dapat dibuka kembali');
     }
@@ -895,6 +942,6 @@ export async function reopenHandover(
       actor,
       nowIso(env),
     );
-    return toDtoAfter(env, saved, loaded.customerName);
+    return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }

@@ -1,4 +1,5 @@
 import type { Env, JobMessage } from '@worker/core/env';
+import { resetMemCache } from '@worker/core/mem-cache';
 import { applyMigrations } from '@worker/core/migrate';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { createSqliteD1 } from './sqlite-d1';
@@ -42,6 +43,10 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
       return new Response('aset statis', { status: 200 });
     },
   } as unknown as Fetcher;
+  // Cache memori isolate (variabel modul) tidak boleh bocor antar tes: bersihkan dan, kecuali diminta,
+  // matikan (`CACHE_TTL_MS=0`). Seluruh suite dapat dijalankan dengan cache menyala lewat
+  // `QC_TEST_CACHE_TTL_MS=10000 bun test` untuk memeriksa invalidasi.
+  resetMemCache();
   const db = createSqliteD1();
   await applyMigrations(db);
   return {
@@ -57,6 +62,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     ADMIN_EMAIL: 'admin@gmail.com',
     APP_ORIGIN: 'https://qc.test',
     NOW: () => clock.now(),
+    CACHE_TTL_MS: process.env.QC_TEST_CACHE_TTL_MS ?? '0',
     ...overrides,
     BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,

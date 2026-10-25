@@ -1,9 +1,9 @@
 import type { HandoverStatus, HandoverStoredStatus } from '@shared/handover';
 import { deriveHandoverStatus } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
-import { matchChecks } from '@shared/handover-checklist';
 import type { HandoverCommentDto } from '@shared/rpc';
 import type { Env } from '@worker/core/env';
+import { matchedChecks } from './checklist';
 
 export type StoredComment = Omit<HandoverCommentDto, 'stale'>;
 
@@ -116,7 +116,7 @@ export interface DerivedColumns {
 export function derivedColumns(
   handover: Pick<HandoverRecord, 'note' | 'checks' | 'status' | 'completedAt'>,
 ): DerivedColumns {
-  const matched = matchChecks(handover.note, handover.checks);
+  const matched = matchedChecks(handover.note, handover.checks);
   const total = matched.length;
   const done = matched.filter((check) => check !== null).length;
   return {
@@ -134,6 +134,14 @@ export interface LoadedHandover {
   record: HandoverRecord;
   /** Nama customer terkini menurut id (salinan pada task dipakai bila customer tidak ada). */
   customerName: string;
+  /** Komentar task bila dimuat bersama barisnya (`findHandoverWithComments`); tanpa itu dimuat terpisah. */
+  comments?: StoredComment[];
+}
+
+/** Statistik komentar task untuk batas jumlah/ukuran (dihitung SQL seperti penjaga di batch tulis). */
+export interface CommentStats {
+  n: number;
+  s: number;
 }
 
 function loaded(row: HandoverRow): LoadedHandover {
@@ -174,34 +182,85 @@ interface CommentRow {
   body: string;
 }
 
-/** Komentar untuk sekumpulan task (satu kueri, urut waktu lalu id). */
-export async function listComments(
+const COMMENT_COLUMNS =
+  'id, handover_id, author, created_at, quote, "before" AS before, "after" AS after, body';
+
+function toStoredComment(row: CommentRow): StoredComment {
+  return {
+    id: row.id,
+    quote: row.quote,
+    before: row.before,
+    after: row.after,
+    body: row.body,
+    author: row.author,
+    at: row.created_at,
+  };
+}
+
+/**
+ * Task beserta komentarnya dalam SATU round trip D1 (`batch`); `statsSql` (opsional) menambah statistik
+ * komentar sebagai pernyataan ketiga. Null bila task tidak ada.
+ */
+export async function findHandoverWithComments(
   env: Env,
-  handoverIds: readonly string[],
-): Promise<Map<string, StoredComment[]>> {
-  const out = new Map<string, StoredComment[]>();
+  id: string,
+  statsSql?: string,
+): Promise<{ loaded: LoadedHandover; stats: CommentStats | null } | null> {
+  const statements = [
+    env.DB.prepare(`SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id = ?`).bind(id),
+    env.DB.prepare(
+      `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id = ? ORDER BY created_at, rowid`,
+    ).bind(id),
+  ];
+  if (statsSql !== undefined) statements.push(env.DB.prepare(statsSql).bind(id));
+  const [handover, comments, stats] = await env.DB.batch(statements);
+  const row = handover?.results[0] as HandoverRow | undefined;
+  if (!row) return null;
+  return {
+    loaded: {
+      ...loaded(row),
+      comments: ((comments?.results ?? []) as CommentRow[]).map(toStoredComment),
+    },
+    stats: (stats?.results[0] as CommentStats | undefined) ?? null,
+  };
+}
+
+/** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu id). */
+export function commentStatements(env: Env, handoverIds: readonly string[]): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
   for (let from = 0; from < handoverIds.length; from += 90) {
     const chunk = handoverIds.slice(from, from + 90);
-    const rows = await env.DB.prepare(
-      `SELECT id, handover_id, author, created_at, quote, "before" AS before, "after" AS after, body FROM handover_comments WHERE handover_id IN (${chunk.map(() => '?').join(',')}) ORDER BY created_at, rowid`,
-    )
-      .bind(...chunk)
-      .all<CommentRow>();
-    for (const row of rows.results) {
+    statements.push(
+      env.DB.prepare(
+        `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id IN (${chunk.map(() => '?').join(',')}) ORDER BY created_at, rowid`,
+      ).bind(...chunk),
+    );
+  }
+  return statements;
+}
+
+/** Hasil `commentStatements` (urutan sama) menjadi komentar per task. */
+export function commentsByHandover(
+  results: ReadonlyArray<{ results: unknown[] }>,
+): Map<string, StoredComment[]> {
+  const out = new Map<string, StoredComment[]>();
+  for (const result of results) {
+    for (const row of result.results as CommentRow[]) {
       const list = out.get(row.handover_id) ?? [];
-      list.push({
-        id: row.id,
-        quote: row.quote,
-        before: row.before,
-        after: row.after,
-        body: row.body,
-        author: row.author,
-        at: row.created_at,
-      });
+      list.push(toStoredComment(row));
       out.set(row.handover_id, list);
     }
   }
   return out;
+}
+
+/** Komentar untuk sekumpulan task (satu round trip, urut waktu lalu id). */
+export async function listComments(
+  env: Env,
+  handoverIds: readonly string[],
+): Promise<Map<string, StoredComment[]>> {
+  const statements = commentStatements(env, handoverIds);
+  return commentsByHandover(statements.length > 0 ? await env.DB.batch(statements) : []);
 }
 
 export function insertHandoverStmt(db: D1Database, handover: HandoverRecord): D1PreparedStatement {

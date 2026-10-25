@@ -104,6 +104,44 @@ describe('merk', () => {
     });
   });
 
+  test('ganti nama merk besar (> 90 item): semua kunci dihitung ulang, revisi item unik dan menaik, hitungan tetap', async () => {
+    await seedBrand(env, 'Lama');
+    await seedBrand(env, 'Lain');
+    for (let n = 1; n <= 130; n++) {
+      await seedItem(env, { id: `i${n}`, brand: 'Lama', model: `M ${n}`, syncRev: n });
+    }
+    await seedItem(env, { id: 'x1', brand: 'Lain', model: 'M 1', syncRev: 500 });
+    await env.DB.prepare(
+      "INSERT INTO sync_state (resource, seq, updated_at) VALUES ('items', 500, '')",
+    ).run();
+    const saved = await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    expect(saved.itemCount).toBe(130);
+    const rows = (
+      await env.DB.prepare(
+        'SELECT id, key, sync_rev FROM items WHERE brand_id = ? ORDER BY sync_rev',
+      )
+        .bind('brand-lama')
+        .all<{ id: string; key: string; sync_rev: number }>()
+    ).results;
+    expect(rows).toHaveLength(130);
+    expect(rows.every((row) => row.key.startsWith('baru m '))).toBe(true);
+    // revisi 501..630: unik, berurutan, > revisi lama; item merk lain tak tersentuh
+    expect(rows.map((row) => row.sync_rev)).toEqual(Array.from({ length: 130 }, (_, i) => 501 + i));
+    expect((await itemRow('x1'))?.sync_rev).toBe(500);
+    expect(await currentSyncRev(env.DB, 'items')).toBe(630);
+    const count = await env.DB.prepare(
+      "SELECT item_count AS n FROM brands WHERE id = 'brand-lama'",
+    ).first<{ n: number }>();
+    expect(count?.n).toBe(130);
+  });
+
+  test('ganti nama merk tanpa item: hanya merk dan audit yang ditulis', async () => {
+    await seedBrand(env, 'Kosong');
+    const saved = await saveBrand(env, { id: 'brand-kosong', name: 'Kosong 2' }, admin);
+    expect(saved).toMatchObject({ name: 'Kosong 2', itemCount: 0 });
+    expect(await currentSyncRev(env.DB, 'items')).toBe(0);
+  });
+
   test('ganti nama ke merk lain ditolak; ganti kapitalisasi milik sendiri diizinkan; id tak dikenal NOT_FOUND', async () => {
     await seedBrand(env, 'A');
     await seedBrand(env, 'B');

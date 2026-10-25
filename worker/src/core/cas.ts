@@ -33,9 +33,9 @@ export async function batchGuarded(
   statements: D1PreparedStatement[],
   conflicts: Record<string, { message: string; field: string }>,
   staleMessage: string,
-): Promise<void> {
+): Promise<D1Result[]> {
   try {
-    await batchWrite(db, statements, conflicts);
+    return await batchWrite(db, statements, conflicts);
   } catch (error) {
     if (isGuardFailure(error)) throw appError('CONFLICT', staleMessage);
     throw error;

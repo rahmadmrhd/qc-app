@@ -1,6 +1,5 @@
 import type { HandoverStatus } from '@shared/handover';
 import { customerKey, HANDOVER_LIMITS, hasHandoverControlChars } from '@shared/handover';
-import { extractChecklist } from '@shared/handover-checklist';
 import type {
   AddCommentInput,
   BoardPageInput,
@@ -14,6 +13,7 @@ import type {
 } from '@shared/rpc';
 import { appError } from '@worker/core/errors';
 import { readObject } from '@worker/core/validate';
+import { checklistOf } from './checklist';
 
 const MAX_LOCATION_IDS = 50;
 const HANDOVER_CONTROL_CHARS_MESSAGE = 'Tidak boleh memuat karakter kontrol';
@@ -25,7 +25,7 @@ export function handoverNoteError(note: string): string | null {
     return `Catatan maksimal ${HANDOVER_LIMITS.note} karakter`;
   }
   if (hasHandoverControlChars(note)) return HANDOVER_CONTROL_CHARS_MESSAGE;
-  const items = extractChecklist(note).length;
+  const items = checklistOf(note).length;
   if (items > HANDOVER_LIMITS.checklistItems) {
     return `Catatan memuat ${items} butir checklist; maksimal ${HANDOVER_LIMITS.checklistItems} butir`;
   }

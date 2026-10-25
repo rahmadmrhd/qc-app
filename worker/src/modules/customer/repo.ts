@@ -1,5 +1,6 @@
 import type { ItemStatus } from '@shared/rpc';
 import type { Env } from '@worker/core/env';
+import { cached, touchCache } from '@worker/core/mem-cache';
 
 export interface CustomerRecord {
   id: string;
@@ -36,11 +37,21 @@ function toCustomer(row: CustomerRow): CustomerRecord {
   };
 }
 
-export async function listCustomers(env: Env): Promise<CustomerRecord[]> {
-  const result = await env.DB.prepare(
-    `SELECT ${CUSTOMER_COLUMNS} FROM customers`,
-  ).all<CustomerRow>();
-  return result.results.map(toCustomer).filter((c) => c.id !== '' && c.key !== '');
+/**
+ * Seluruh customer. Bawaan memakai cache memori isolate (`mem-cache.ts`, TTL <= 15 dtk); `fresh: true`
+ * membaca langsung dari D1 dan dipakai jalur yang memutuskan penulisan (ganti nama/status).
+ */
+export async function listCustomers(
+  env: Env,
+  options: { fresh?: boolean } = {},
+): Promise<CustomerRecord[]> {
+  const load = async (): Promise<CustomerRecord[]> => {
+    const result = await env.DB.prepare(
+      `SELECT ${CUSTOMER_COLUMNS} FROM customers`,
+    ).all<CustomerRow>();
+    return result.results.map(toCustomer).filter((c) => c.id !== '' && c.key !== '');
+  };
+  return options.fresh ? load() : cached(env, 'customers:all', load);
 }
 
 export async function findCustomerByKey(env: Env, key: string): Promise<CustomerRecord | null> {
@@ -51,6 +62,7 @@ export async function findCustomerByKey(env: Env, key: string): Promise<Customer
 }
 
 export function insertCustomerStmt(db: D1Database, customer: CustomerRecord): D1PreparedStatement {
+  touchCache('customers');
   return db
     .prepare(`INSERT INTO customers (${CUSTOMER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .bind(
@@ -65,6 +77,7 @@ export function insertCustomerStmt(db: D1Database, customer: CustomerRecord): D1
 }
 
 export function updateCustomerStmt(db: D1Database, customer: CustomerRecord): D1PreparedStatement {
+  touchCache('customers');
   return db
     .prepare(
       'UPDATE customers SET name = ?, key = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',

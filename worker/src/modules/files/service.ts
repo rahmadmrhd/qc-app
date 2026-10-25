@@ -155,10 +155,12 @@ export async function planAttachFiles(
   ids: readonly string[],
   ownerType: FileOwnerType,
   ownerId: string,
+  /** Hasil `findActiveFiles` untuk `ids` yang sudah dimuat pemanggil (hindari kueri ganda). */
+  preloaded?: readonly FileRecord[],
 ): Promise<D1PreparedStatement[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
-  const files = await findActiveFiles(env, unique);
+  const files = preloaded ?? (await findActiveFiles(env, unique));
   const byId = new Map(files.map((file) => [file.id, file] as const));
   const toClaim: FileRecord[] = [];
   for (const id of unique) {

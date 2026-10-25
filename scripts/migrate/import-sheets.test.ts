@@ -623,6 +623,39 @@ describe('alias_keys dan keunikan indeks UNIK (migrasi 0004/0005/0007)', () => {
     expect(row?.alias_keys).toBe('|mx|model ex|');
   });
 
+  test('item_alias_keys diisi satu baris per kunci dan brands.item_count dihitung (migrasi 0009)', async () => {
+    const result = prepareImport(cleanDump());
+    expect(result.sql).toContain('INSERT INTO item_alias_keys');
+    const env = await runSql(result.sql as string);
+    const aliases = await env.DB.prepare(
+      'SELECT key, item_id FROM item_alias_keys ORDER BY key',
+    ).all<{
+      key: string;
+      item_id: string;
+    }>();
+    expect(aliases.results).toEqual([
+      { key: 'model ex', item_id: 'i1' },
+      { key: 'mx', item_id: 'i1' },
+    ]);
+    const counts = await env.DB.prepare(
+      'SELECT b.id, b.item_count, (SELECT COUNT(*) FROM items i WHERE i.brand_id = b.id) AS n FROM brands b',
+    ).all<{ id: string; item_count: number; n: number }>();
+    expect(counts.results.length).toBeGreaterThan(0);
+    for (const row of counts.results) expect(row.item_count).toBe(row.n);
+    expect(counts.results.some((row) => row.item_count > 0)).toBe(true);
+  });
+
+  test('kunci nama lain yang sama pada dua item dihentikan (ALIAS_GANDA)', () => {
+    let dump = cleanDump();
+    (dump.items as unknown[][]).push([...((dump.items as unknown[][])[1] as unknown[])]);
+    dump = mutate(dump, 'items', 3, 'id', 'i9');
+    dump = mutate(dump, 'items', 3, 'model', 'Lain');
+    dump = mutate(dump, 'items', 3, 'key', 'acme lain');
+    const result = prepareImport(dump);
+    expect(result.sql).toBeNull();
+    expect(result.report.errors.some((e) => e.code === 'ALIAS_GANDA')).toBe(true);
+  });
+
   test('item tanpa alias -> alias_keys kosong; aliases JSON rusak dihentikan', () => {
     const none = prepareImport(mutate(cleanDump(), 'items', 2, 'aliases', '[]'));
     expect(none.rows.items?.[0]?.values.alias_keys).toBe('');
