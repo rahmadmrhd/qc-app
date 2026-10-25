@@ -26,8 +26,15 @@
   },
   // Cron hanya menjadwalkan pembersihan (pesan antrean); kerja berat di consumer. Tiap env mendefinisikan sendiri.
   "triggers": { "crons": ["0 * * * *"] },
+  // Cache isi berkas di R2 (OPSIONAL, Spek 8.4). R2 belum diaktifkan di akun: JANGAN buka komentar sebelum
+  // diaktifkan (deploy gagal bila binding aktif). Cara: dashboard Cloudflare > R2 > aktifkan; buat bucket
+  // (`wrangler r2 bucket create qc-app-files-production` dan `qc-app-files-staging`); lalu buka komentar
+  // blok di bawah (produksi di sini, staging di dalam "env.staging") dan deploy. Tanpa binding perilaku
+  // sama seperti sebelumnya (Cache API). Objek `f/<driveId>`; aman dikosongkan kapan pun.
+  // "r2_buckets": [{ "binding": "FILES_CACHE", "bucket_name": "qc-app-files-production" }],
   "env": {
     "staging": {
+      // "r2_buckets": [{ "binding": "FILES_CACHE", "bucket_name": "qc-app-files-staging" }],
       "name": "app-staging",
       "d1_databases": [
         {

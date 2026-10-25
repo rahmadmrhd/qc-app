@@ -7,6 +7,7 @@ import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { dropCachedFile } from '@worker/core/file-cache';
 import type { JobHandler, StepContext, StepOutcome } from '@worker/modules/jobs/consumer';
 import { deleteBlobs, findActiveJob, readBlob } from '@worker/modules/jobs/repo';
 import { enqueueJob } from '@worker/modules/jobs/service';
@@ -165,6 +166,7 @@ export const qrExportHandler: JobHandler = {
           if (!driveId || driveId === state.pdfDriveId || driveId === state.pngDriveId) continue;
           try {
             await bridge.trashFile(driveId);
+            await dropCachedFile(ctx.env, driveId);
           } catch (error) {
             console.error(
               `qrcode: berkas ekspor lama ${driveId} tidak dapat dibuang: ${String(error)}`,
@@ -186,6 +188,7 @@ export const qrExportHandler: JobHandler = {
       if (!driveId) continue;
       try {
         await getBridge(ctx.env).trashFile(driveId);
+        await dropCachedFile(ctx.env, driveId);
       } catch {
         orphans.push(driveId);
       }

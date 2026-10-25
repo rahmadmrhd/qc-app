@@ -4,6 +4,7 @@ import { getBridge, viaBridge } from '@worker/core/bridge-client';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { cachedFileContent } from '@worker/core/file-cache';
 import { getSetting, SETTING_DRIVE_FOLDER_ID } from '@worker/core/settings';
 import { readObject } from '@worker/core/validate';
 import type { FileRecord } from '@worker/modules/files/repo';
@@ -36,7 +37,10 @@ export async function getSyncFile(
   if (info.size > SYNC_LIMITS.fileBytes) {
     throw appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });
   }
-  const content = await viaBridge(() => bridge.readFile(input.driveId, folderId));
+  const content = await cachedFileContent(env, folderId, input.driveId, async () => {
+    const read = await viaBridge(() => bridge.readFile(input.driveId, folderId));
+    return read ? { mime: read.mime, base64: read.base64 } : null;
+  });
   if (!content) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   if (base64ByteLength(content.base64) > SYNC_LIMITS.fileBytes) {
     throw appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });

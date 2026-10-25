@@ -5,7 +5,7 @@ import { getBridge, viaBridge } from '@worker/core/bridge-client';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
-import { fileCacheKey, fileCacheOf } from '@worker/core/file-cache';
+import { cachedFileContent, dropCachedFile } from '@worker/core/file-cache';
 import { getSetting, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@worker/core/settings';
 import type { UserContext } from '@worker/modules/access/context';
 import type { FileRecord } from './repo';
@@ -104,6 +104,7 @@ export async function uploadFile(
     console.error(`Pencatatan berkas gagal setelah unggah ke Drive: ${detail}`);
     try {
       await bridge.trashFile(driveId);
+      await dropCachedFile(env, driveId);
     } catch (trashError) {
       console.error(`Berkas Drive ${driveId} yatim (gagal dibuang): ${String(trashError)}`);
     }
@@ -132,15 +133,13 @@ export async function readFile(
   }
   const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
-  // Cache terikat folder aktif; diperiksa SETELAH aturan akses di atas.
-  const cache = fileCacheOf(env);
-  const key = fileCacheKey(folderId, record.driveId);
-  const cached = cache ? await cache.get(key).catch(() => null) : null;
-  if (cached !== null) return { id: record.id, mime: record.mime, base64: cached };
+  // Cache (R2 / Cache API) terikat folder aktif; dibaca SETELAH aturan akses di atas.
   const bridge = getBridge(env);
-  const content = await viaBridge(() => bridge.readFile(record.driveId, folderId));
+  const content = await cachedFileContent(env, folderId, record.driveId, async () => {
+    const read = await viaBridge(() => bridge.readFile(record.driveId, folderId));
+    return read ? { mime: record.mime, base64: read.base64 } : null;
+  });
   if (!content) throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
-  if (cache) await cache.put(key, record.mime, content.base64).catch(() => undefined);
   return { id: record.id, mime: record.mime, base64: content.base64 };
 }
 
@@ -211,6 +210,7 @@ export async function purgePendingFiles(env: Env, limit = 20): Promise<number> {
     const file = toFile(row);
     try {
       await bridge.trashFile(file.driveId);
+      await dropCachedFile(env, file.driveId);
     } catch (error) {
       console.error(`Gagal membuang berkas Drive ${file.driveId}: ${String(error)}`);
       continue;

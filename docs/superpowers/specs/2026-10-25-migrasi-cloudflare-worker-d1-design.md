@@ -64,7 +64,7 @@ Hasil spike Fase 0 (`docs/superpowers/spikes/2026-10-bridge-roundtrip.md`, `2026
 
 **Bukan-tujuan**
 - Mengubah fitur atau aturan bisnis. Perilaku fitur mengikuti PRD/spek yang ada.
-- Menyimpan berkas di R2/D1 (berkas tetap di Drive).
+- Menyimpan berkas di R2/D1 sebagai sumber utama (berkas tetap di Drive). R2 hanya dipakai sebagai **salinan cache** isi berkas (§8.4, keputusan pemilik 2026-10-25).
 - Sinkronisasi dua arah D1 ⇄ Sheets. Sheets hanya sumber impor awal dan tujuan ekspor satu arah.
 - Memindahkan QC Desktop atau MySQL.
 
@@ -167,6 +167,14 @@ Apps Script web app hanya mengembalikan teks, jadi berkas dikirim sebagai base64
 ### 8.3 Impor dan ekspor Sheets
 - **Impor awal (sekali):** skrip lokal (Bun, bukan Worker) memanggil `sheets.dump` untuk mendapat semua tabel sebagai JSON, memvalidasi baris terhadap skema (tipe, kunci unik, rujukan antar tabel), dan menghasilkan berkas SQL `INSERT` untuk `wrangler d1 execute --file`. Dijalankan berulang di staging (gladi) sebelum produksi.
 - **Ekspor:** consumer antrean (§9b) membaca D1 per halaman (±500 baris) dan mengirim potongan ke `sheets.export` (membuat/menimpa sheet laporan; baris pertama = nama kolom). Dipicu manual (tombol admin) dan opsional terjadwal. Sheets hasil ekspor **hanya baca**; suntingan di sana tidak kembali ke D1.
+
+### 8.4 Cache dan kuota baris-dibaca D1 **[pemilik, 2026-10-25]**
+Kuota D1 gratis 5 juta baris **dipindai** per hari (bukan baris yang dikembalikan; habis = kueri gagal sampai 00:00 UTC). Run gerbang CPU pertama (`wrangler d1 insights`) menunjukkan pemakan terbesar adalah pemindaian seluruh tabel (cek alias item `instr(alias_keys, …)`, hitung item per merk, `brands` dibaca tiap permintaan, komentar dimuat di board, `COUNT(*)` kolom board). Kebijakan:
+- **Perbaiki di sumber dulu:** tabel/kolom ternormalisasi berindeks dan kolom turunan agar hot path tidak memindai seluruh tabel; diuji dengan `EXPLAIN QUERY PLAN`.
+- **Cache memori isolate (TTL ≤ 10 dtk)** untuk konteks akses (users/roles/locations) dan master `brands`/`customers`, dibuang lokal saat tulis. Pencabutan akses tetap berlaku ≤ TTL (memenuhi batas §6 ≤ 15 dtk).
+- **R2 sebagai cache isi berkas:** `files.get` (dan pembacaan isi berkas lain) membaca R2 dulu; bila belum ada, ambil dari jembatan Drive lalu simpan ke R2. Drive tetap sumber utama; ganti/hapus berkas membuang salinan R2. Binding R2 opsional: tanpa bucket perilaku sama seperti sebelumnya. Batas gratis R2: 10 GB, 1 juta operasi kelas A dan 10 juta kelas B per bulan. R2 harus diaktifkan pemilik di dashboard akun.
+- **Tidak dipakai:** Workers KV (hanya 1.000 tulis/hari dan basi ±60 dtk), Cache API `caches.default` (hanya berfungsi di domain kustom, aplikasi tetap di `*.workers.dev`), Hyperdrive (untuk Postgres/MySQL eksternal, bukan D1), D1 read replication (baris tetap dihitung ke kuota), Durable Objects (dipertimbangkan hanya bila cache isolate terbukti kurang).
+- Galat kuota D1 habis ditampilkan sebagai pesan jelas (`UNAVAILABLE`), bukan galat mentah.
 
 ## 9. Sinkron QC Desktop
 

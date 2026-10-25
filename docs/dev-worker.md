@@ -41,3 +41,7 @@ di semua origin lain (termasuk http selain localhost) atribut `Secure` tetap dip
   gagal dengan `UNAVAILABLE`. Gunakan staging untuk menguji jembatan.
 - `http://localhost:8787` melayani build web dari `worker/dist` (jalankan `bun run build`); untuk pengembangan UI pakai `http://localhost:3000` (Vite, hot reload).
 - Uji API tanpa UI: `curl -b cookie -H "X-Requested-With: qc" -d '{"method":"auth.me","payload":null}' http://localhost:8787/api/rpc`.
+
+## Cache isi berkas di R2 (opsional)
+
+`files.get`, `qrcodes.file`, dan `sync.files.get` membaca R2 dulu (objek `f/<driveId>`, teks base64 apa adanya, `mime` dan folder di customMetadata) lalu jembatan Drive bila miss; Drive tetap sumber utama. Binding `FILES_CACHE` opsional dan lokal tidak memakainya (tanpa binding: Cache API Workers bila ada). Izin dan folder induk selalu diperiksa sebelum cache. Objek dibuang saat ganti isi (unggah ulang PDF QR), pembuangan berkas, dan pembersihan yatim; galat R2 tidak pernah menggagalkan permintaan. Mengaktifkan di staging/produksi: lihat komentar `r2_buckets` di `worker/wrangler.jsonc`.

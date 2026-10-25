@@ -38,6 +38,13 @@ export interface Env {
   NOW?: () => number;
   /** Hanya untuk tes: cache isi berkas (bawaan: Cache API Workers). */
   FILE_CACHE?: FileCache | null;
+  /**
+   * OPSIONAL: bucket R2 sebagai cache isi berkas (Spek 8.4). Tanpa binding perilaku tidak berubah. Lihat
+   * komentar `r2_buckets` di wrangler.jsonc untuk mengaktifkannya.
+   */
+  FILES_CACHE?: R2Bucket;
+  /** Dipasang `index.ts` per permintaan: menjalankan pekerjaan latar (`ctx.waitUntil`); tak ada di tes. */
+  WAIT_UNTIL?: (promise: Promise<unknown>) => void;
 }
 
 export function nowOf(env: Env): number {

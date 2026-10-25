@@ -47,7 +47,8 @@ class MemoryFileCache implements FileCache {
   gets = 0;
   async get(key: string) {
     this.gets++;
-    return this.store.get(key) ?? null;
+    const base64 = this.store.get(key);
+    return base64 === undefined ? null : { mime: 'image/png', base64 };
   }
   async put(key: string, _mime: string, base64: string) {
     this.store.set(key, base64);

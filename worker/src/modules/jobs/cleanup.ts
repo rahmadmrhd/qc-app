@@ -1,6 +1,7 @@
 import { getBridge } from '@worker/core/bridge-client';
 import type { Env } from '@worker/core/env';
 import { nowOf } from '@worker/core/env';
+import { dropCachedFile } from '@worker/core/file-cache';
 import { purgePendingFiles } from '@worker/modules/files/service';
 import { cleanupQrDocuments } from '@worker/modules/qrcode/service';
 import type { JobHandler, StepOutcome } from './consumer';
@@ -34,6 +35,7 @@ async function trashExportOrphans(env: Env, limit: number): Promise<number> {
     for (const driveId of state.orphans ?? []) {
       try {
         await getBridge(env).trashFile(driveId);
+        await dropCachedFile(env, driveId);
         trashed += 1;
       } catch (error) {
         console.error(`cleanup: berkas yatim ${driveId} belum dapat dibuang: ${String(error)}`);

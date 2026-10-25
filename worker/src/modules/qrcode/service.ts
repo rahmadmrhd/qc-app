@@ -33,6 +33,7 @@ import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso, nowOf } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { cachedFileContent, dropCachedFile } from '@worker/core/file-cache';
 import { getSetting } from '@worker/core/settings';
 import { planAttachFiles } from '@worker/modules/files/service';
 import { ensureQrDocFolder, QR_FOLDER_SETTING } from './folders';
@@ -647,7 +648,11 @@ export async function removeQrDesign(
   // I/O Drive sesudah D1. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
   for (const driveId of [design.exportPdfDriveId, design.exportPngDriveId]) {
     if (driveId === '') continue;
-    await afterQrCommit('berkas ekspor', () => getBridge(env).trashFile(driveId));
+    await afterQrCommit('berkas ekspor', () =>
+      getBridge(env)
+        .trashFile(driveId)
+        .then(() => dropCachedFile(env, driveId)),
+    );
   }
   await afterQrCommit('pencabutan berbagi', () =>
     revokeUnusedQrDocuments(env, design.documentId !== '' ? [design.documentId] : []),
@@ -749,7 +754,9 @@ export async function cloneQrPdfFromDrive(
     ]);
     return toQrDocumentDto(record);
   } catch (error) {
-    await afterQrCommit('pembersihan salinan', () => bridge.trashFile(driveId));
+    await afterQrCommit('pembersihan salinan', () =>
+      bridge.trashFile(driveId).then(() => dropCachedFile(env, driveId)),
+    );
     throw error;
   }
 }
@@ -766,6 +773,7 @@ async function uploadQrPdfNow(
     if (!current) throw appError('NOT_FOUND', 'PDF tidak ditemukan');
     try {
       await bridge.replaceFileContent(current.driveId, 'application/pdf', input.base64);
+      await dropCachedFile(env, current.driveId);
     } catch (error) {
       console.error(
         `qrcode: ganti PDF gagal: ${error instanceof Error ? error.message : String(error)}`,
@@ -827,7 +835,9 @@ async function uploadQrPdfNow(
     ]);
     return toQrDocumentDto(record);
   } catch (error) {
-    await afterQrCommit('pembersihan unggahan', () => bridge.trashFile(driveId));
+    await afterQrCommit('pembersihan unggahan', () =>
+      bridge.trashFile(driveId).then(() => dropCachedFile(env, driveId)),
+    );
     throw error;
   }
 }
@@ -839,8 +849,12 @@ export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDt
   const driveId = input.kind === 'pdf' ? design.exportPdfDriveId : design.exportPngDriveId;
   if (driveId === '') throw appError('NOT_FOUND', 'Konfigurasi ini belum diekspor');
   const folderId = await getSetting(env, QR_FOLDER_SETTING);
+  // Izin dan rujukan konfigurasi sudah diperiksa di atas; baru sesudahnya cache (R2) dibaca.
   const content = folderId
-    ? await viaBridge(() => getBridge(env).readFile(driveId, folderId))
+    ? await cachedFileContent(env, folderId, driveId, async () => {
+        const read = await viaBridge(() => getBridge(env).readFile(driveId, folderId));
+        return read ? { mime: read.mime, base64: read.base64 } : null;
+      })
     : null;
   if (!content) throw appError('NOT_FOUND', 'Berkas hasil ekspor tidak ditemukan di Drive');
   return {
