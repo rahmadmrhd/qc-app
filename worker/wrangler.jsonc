@@ -35,9 +35,10 @@
           "migrations_dir": "migrations"
         }
       ],
+      // Konsumen Queue staging DINONAKTIFKAN sementara: handler `queue` belum ada (Task 3.3), deploy ditolak (kode 11001).
+      // Pulihkan `consumers` saat handler diekspor.
       "queues": {
-        "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-staging" }],
-        "consumers": [{ "queue": "qc-app-jobs-staging" }]
+        "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-staging" }]
       }
     }
   }
