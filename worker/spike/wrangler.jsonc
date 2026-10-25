@@ -4,7 +4,7 @@
   "main": "cpu-probe.ts",
   "compatibility_date": "2025-04-01",
   "account_id": "2256d27ce4dcdcb9ade777cc2650fd81",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
   "triggers": { "crons": ["* * * * *"] },

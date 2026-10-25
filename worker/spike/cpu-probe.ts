@@ -80,7 +80,9 @@ async function setup(env: Env): Promise<void> {
   }
 }
 
-async function run(kind: string, units: number, env: Env): Promise<unknown> {
+async function run(kind: string, units: number, env: Env, reps = 1): Promise<unknown> {
+  // reps > 1 mengulang skenario dalam satu invokasi: dipakai mencari titik batas 10 ms (pass-rate per reps).
+  for (let i = 1; i < reps; i++) await run(kind, units, env, 1);
   switch (kind) {
     case 'baseline':
       return { ok: true };
@@ -155,7 +157,8 @@ export default {
       ).all();
       return Response.json(rows.results);
     }
-    return Response.json(await run(name, Number(url.searchParams.get('units') ?? '1'), env));
+    const reps = Number(url.searchParams.get('reps') ?? '1');
+    return Response.json(await run(name, Number(url.searchParams.get('units') ?? '1'), env, reps));
   },
 
   // Cron: hanya memasukkan pesan (CPU ringan), seperti rancangan produksi (Spek §10).

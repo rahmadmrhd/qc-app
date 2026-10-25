@@ -1,29 +1,59 @@
 # Spike CPU dan batas paket gratis (Task 0.3)
 
-Status: **TERTUNDA, menunggu pemilik.** Pengukuran di Cloudflare belum bisa dijalankan karena akun QC belum punya subdomain `workers.dev`.
+Diukur 2026-10-25 di edge Cloudflare (colo SIN), akun QC, paket gratis, Worker sementara `qc-app-spike-cpu` (kini dihapus bersama D1 dan Queue-nya). `cpuTime` dari `wrangler tail --format json` (resolusi bulat 1 ms). Pengukuran pertama tertunda karena akun belum punya subdomain `workers.dev`; sesudah `qc-225.workers.dev` terdaftar, spike diulang.
 
-## Penghalang
+## Jawaban inti
 
-Deploy ke akun QC gagal pada langkah sesudah unggah: `GET /workers/workers/<nama>` menjawab "This Worker does not exist" (kode 10007), dan memasang konsumen Queue dijawab eksplisit: "You need a workers.dev subdomain in order to proceed ... Opening the Workers landing page for the first time will create a workers.dev subdomain automatically" (kode 10063). Wrangler juga gagal mendaftarkan subdomain otomatis (nama "spike" tidak tersedia). Pendaftaran subdomain adalah pengaturan akun yang bersifat publik dan tahan lama, jadi tidak dilakukan agen.
+1. **Konsumen Queues di paket gratis TIDAK dibatasi 10 ms CPU.** Konsumen menjalankan beban CPU ~115 ms (p50) sampai selesai pada 169 dari 170 percobaan; di ~220 ms selesai 152/170 (89%); di ~0,8 s 84/170; di ~4 s tidak ada yang selesai. Batas nyata ada, tetapi puluhan kali di atas 10 ms. Rancangan Queues (Spek §9b) **layak**; keputusan pemilik tidak diperlukan.
+2. **Queues + cron berjalan.** Cron `* * * * *` berjalan tiap menit (2+ jam), `sendBatch` ke Queue berhasil, konsumen (satu pesan per invokasi) memproses.
+3. Peringatan kuota: spike sempat mengirim 245 pesan/menit dan kena `Queue sendBatch failed: Too Many Requests` (kuota 10.000 operasi/hari, ±3 operasi/pesan, terbukti ditegakkan). Rancangan produksi (pesan hanya saat ada pekerjaan) jauh di bawah itu.
+4. Batas 10 ms untuk HTTP juga **tidak ditegakkan keras** di edge ini (lihat tabel), tetapi dokumentasi tetap menyebut 10 ms dan kelonggaran ini tidak terjamin. **Keputusan: anggaran 10 ms per permintaan (gerbang p99 ≤ 8 ms) tetap berlaku**; kelonggaran tidak dipakai.
 
-**Tindakan pemilik:** buka dashboard Cloudflare akun QC, menu Workers & Pages (membuka halaman landing pertama kali membuat subdomain), atau daftarkan nama subdomain pilihan di `https://dash.cloudflare.com/2256d27ce4dcdcb9ade777cc2650fd81/workers/onboarding`. Ini juga prasyarat Task 1.7 dan staging (`GET /api/ping`, konsumen Queue).
+## cpuTime skenario nyata (HTTP, N = 40 tiap skenario, `wrangler tail`)
 
-## Yang sudah disiapkan (siap dijalankan ulang)
+| Skenario | cpuTime p50 | p99 | maks |
+|---|---|---|---|
+| baseline (respons kosong) | 0 ms | 3 ms | 3 ms |
+| `JSON.parse` 700 KB (termasuk baca badan) | **2 ms** | **4 ms** | 4 ms |
+| Teruskan base64 540 KB tanpa decode (baca badan + sambung amplop) | **0 ms** | **2 ms** | 2 ms |
+| `atob` 540 KB (pembanding) | **1 ms** | **2 ms** | 2 ms |
+| `D1.batch()` 10 kueri (3 tulis + 7 baca berindeks, 2.000 baris) | **1 ms** | **2 ms** | 2 ms |
+| Cron (kirim 245 pesan dalam 3 `sendBatch`) | 0 ms | 1 ms | 1 ms |
 
-- `worker/spike/cpu-probe.ts` + `wrangler.jsonc` (Worker `qc-app-spike-cpu`): cron tiap menit memasukkan pesan ke Queue; konsumen Queue (satu pesan per invokasi) menjalankan skenario `baseline`, `json-parse` (700 KB), `forward-b64` (540 KB tanpa decode), `atob` (540 KB, pembanding), `d1-batch` (10 kueri), dan `burn` dengan beban 10 ... 5000 unit untuk mencari titik konsumen dihentikan (start tanpa done di tabel `qlog`). Rute HTTP `/probe/*` tersedia bila ingin mengukur lewat `fetch`.
-- Pembuatan payload: `bun worker/spike/gen-payloads.ts` dan `gen-seed.ts` (keluaran tidak di-commit).
-- Langkah: buat D1 + Queue `qc-app-spike-cpu` (akun QC), isi `database_id` di `wrangler.jsonc`, `d1 execute --remote --file seed.sql`, `wrangler deploy --var KEY:<acak>`, jalankan `wrangler tail --format json` ≥ 3 menit, ambil `cpuTime` per skenario (p50/p99), lalu hapus Worker, Queue, D1.
-- Pelajaran: timer Workers tidak maju di loop sinkron, sehingga beban CPU dinyatakan dalam iterasi, bukan milidetik.
-- Semua sumber daya spike yang sempat dibuat (Worker `qc-app-spike-cpu`, `qc-app-spike-cpu-min`, D1 dan Queue `qc-app-spike-cpu`) sudah dihapus dari akun QC.
+Pembacaan: semuanya jauh di bawah 8 ms. `JSON.parse` 700 KB adalah yang termahal (~2 ms, lebih murah dari 3 ms di laptop). `atob` 540 KB hanya ~1 ms lebih mahal daripada meneruskan teks, jadi larangan decode di Spek tetap benar sebagai kebijakan (hemat memori/CPU, tak ada keuntungan) tetapi bukan penyelamat 10 ms. Resolusi 1 ms membuat p99 kasar.
 
-## Bukti sementara (BUKAN pengukuran Cloudflare)
+## Penegakan batas CPU (beban buatan, unit = 100 ribu iterasi)
 
-Dokumentasi Cloudflare (dibaca 2026-10-25):
-- Workers Limits: CPU per permintaan HTTP **10 ms** dan per Cron **10 ms** pada paket gratis. Tabel itu tidak mencantumkan CPU untuk konsumen Queue.
-- Queues Limits: konsumen default **30 detik** CPU (dapat diatur lewat `limits.cpu_ms`, sampai 5 menit); halaman menyatakan batas berlaku untuk paket Free dan Paid (retensi pesan satu-satunya pengecualian). Namun `limits.cpu_ms` pada paket gratis belum tentu dihormati; tetap perlu bukti empiris.
+HTTP (`wrangler tail`, N = 20): 
 
-Pembanding lokal (`worker/spike/local-bench.ts`, Bun/V8 di laptop pengembang, p50; BUKAN angka edge): `JSON.parse` 700 KB ≈ 3,1 ms; penyambungan string base64 540 KB ≈ 0 ms; `atob` 540 KB ≈ 0,2 ms. Artinya `JSON.parse` 700 KB sendiri sudah memakan sepertiga anggaran 10 ms, mendukung aturan Spek §5 (tidak mem-parse badan besar). `atob` native tidak semahal perkiraan Spek; larangan decode tetap beralasan (memori/alokasi) tetapi perlu diukur di edge.
+| Beban | cpuTime p50 | maks | hasil |
+|---|---|---|---|
+| 5 unit | 6 ms | 17 | 20/20 ok |
+| 10 unit | 9 ms | 26 | 20/20 ok |
+| 40 unit | 39 ms | 127 | 20/20 ok |
+| 100 unit | 115 ms | 219 | 18 ok, 2 `exceededCpu` |
+| 300 unit | 222 ms | 619 | 8 ok, 1 `exceededCpu` (9 tercatat) |
+
+Konsumen Queue (pesan dengan beban sama, tabel `qlog` D1, 170 pesan per beban; cpuTime konsumen tak tertangkap karena kuota Queue habis sebelum tail dipasang, tetapi 1 unit ≈ 1,1 ms dari kalibrasi HTTP):
+
+| Beban (≈ CPU) | selesai |
+|---|---|
+| 10 unit (~9 ms) | 170/170 |
+| 30 unit (~30 ms) | 170/170 |
+| 100 unit (~115 ms) | 169/170 |
+| 300 unit (~220 ms) | 152/170 |
+| 1000 unit (~0,8 s) | 84/170 |
+| 5000 unit (~4 s) | 0/170 |
+
+## Catatan lingkungan (bukan bagian rancangan)
+
+- DNS lokal mesin pengembang ini mengembalikan IP salah untuk `*.workers.dev` (akibatnya `wrangler tail` dan `curl` ke workers.dev timeout). Solusi: resolusi lewat DoH dan `curl --resolve` / pra-muat `dns.lookup` di Node. Tidak dimasukkan ke repo.
+- Hapus Worker konsumen Queue butuh `wrangler queues consumer remove` dulu (kode 10064/11005).
+- Timer Workers tidak maju di loop sinkron: beban buatan dinyatakan dalam iterasi.
+- Instrumen ada di `worker/spike/` (`cpu-probe.ts`, `run-probes.ts`, `gen-*.ts`, `local-bench.ts`); jangan biarkan cron-nya berjalan lama (menghabiskan kuota Queue).
 
 ## Keputusan
 
-Belum ada. Hasil p50/p99 dan jawaban "apakah konsumen Queue di paket gratis dibatasi 10 ms CPU" akan diisi setelah subdomain tersedia. Sesuai Task 0.3 Step 3, Fase 3 jangan dimulai sebelum pertanyaan itu terjawab.
+- Queues dipakai di paket gratis untuk ekspor/pembersihan (Spek §9b, §10); Fase 3 boleh berjalan. Tetap rancang tiap pesan ≤ 10 ms CPU dan idempoten, karena konsumen tidak aman tanpa batas (dihentikan sekitar ratusan ms) dan kuota 10.000 operasi/hari nyata.
+- Gerbang 10 ms/p99 ≤ 8 ms tidak berubah. Perkiraan anggaran: `JSON.parse` 700 KB ≈ 2 ms, D1.batch 10 kueri ≈ 1 ms, meneruskan base64 540 KB ≈ 0 ms.
+- Spek §2b "CPU konsumen Queues": jawabannya tidak dibatasi 10 ms pada paket gratis (teramati ≥ 100 ms), tidak ada dokumen yang menjaminnya.
