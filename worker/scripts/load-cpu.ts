@@ -251,7 +251,7 @@ async function run(only: string | undefined): Promise<number> {
   );
   const table = renderTable(stats);
   console.log(`\n${table}\n`);
-  const outIndex = process.argv.findIndex((a) => a.startsWith('--out='));
+  const outIndex = process.argv.findIndex((a: string) => a.startsWith('--out='));
   if (outIndex >= 0) {
     const out = (process.argv[outIndex] as string).slice('--out='.length);
     writeFileSync(out, `${table}\n`);
@@ -269,7 +269,7 @@ async function run(only: string | undefined): Promise<number> {
 
 async function main(): Promise<void> {
   const mode = process.argv[2];
-  const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length);
+  const only = process.argv.find((a: string) => a.startsWith('--only='))?.slice('--only='.length);
   if (mode === 'seed') await seed();
   else if (mode === 'cleanup') await cleanup();
   else if (mode === 'run') process.exit(await run(only));
