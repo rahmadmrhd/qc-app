@@ -115,7 +115,8 @@ describe('penjaga staging', () => {
       { dbName: 'qc-app-production' },
       { env: 'production' },
       { env: 'prod' },
-      { host: 'app-staging.qc-225.workers.dev', dbName: 'cf7f9bb3-202d-4819-bc1f-c60581795933' },
+      { host: 'app-staging.qc-225.workers.dev' }, // staging lama di akun produksi
+      { host: STAGING.host, dbName: 'cf7f9bb3-202d-4819-bc1f-c60581795933' },
     ]) {
       expect(() => assertStagingTarget(bad)).toThrow(/DITOLAK/);
     }

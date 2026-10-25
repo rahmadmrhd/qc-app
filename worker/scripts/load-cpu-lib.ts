@@ -11,9 +11,10 @@ import { buildSeedSql } from './seed-data';
 
 export const STAGING = {
   workerName: 'app-staging',
-  host: 'app-staging.qc-225.workers.dev',
+  host: 'app-staging.qc-worker.workers.dev',
   dbName: 'qc-app-staging',
-  accountId: '2256d27ce4dcdcb9ade777cc2650fd81',
+  // Akun Cloudflare staging TERPISAH dari produksi (akun "QC" 2256d27c…): kuota D1 gratis berlaku per akun.
+  accountId: '0c513cf2ea5fc5f24a06c6725e224400',
   loadEmail: 'loadtest@staging.test',
 } as const;
 
