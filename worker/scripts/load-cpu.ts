@@ -2,14 +2,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { signSessionToken } from '../src/core/session';
 import { parseDevVars } from './dev-vars';
-import { buildCases, type LoadCase, type LoadRequest } from './load-cpu-cases';
+import { buildCases, estimateRunWrites, type LoadCase, type LoadRequest } from './load-cpu-cases';
 import {
   assertStagingTarget,
   buildLoadSql,
   CPU_BUDGET_MS,
   cpuByRoute,
+  D1_DAILY_WRITE_QUOTA,
   d1RemoteArgs,
+  estimateSqlWrites,
   failingRoutes,
+  MIN_SAMPLES,
   parseTailStream,
   type RouteStats,
   renderTable,
@@ -21,8 +24,10 @@ import {
 /**
  * Gerbang CPU (Task 4.5): HANYA staging. Mode:
  *   seed     isi D1 staging dengan data proyeksi 2 tahun (SQL --remote)
- *   run      panggil tiap rute (>= 30x), ambil cpuTime dari `wrangler tail`, cetak tabel p50/p99;
- *            keluar != 0 bila ada rute p99 > 8 ms
+ *   run      panggil tiap rute (100x, rute tulis juga), ambil cpuTime dari `wrangler tail`, cetak tabel p50/p99;
+ *            keluar != 0 bila ada rute p99 > 8 ms atau terukur < 100 sampel. Perkiraan baris ditulis D1 dicetak
+ *            di awal; `run` menolak bila melewati anggaran (`--max-writes=<n>`, bawaan 90.000 dari kuota
+ *            100.000 baris/hari) kecuali `--allow-quota`; pecah dengan `--only=<awalan>` bila perlu
  *   cleanup  kembalikan D1 staging ke bookmark Time Travel bersih (CLEAN_BOOKMARK di berkas rahasia lokal)
  * Rahasia dibaca dari worker/.staging.secrets.local (git-ignored) dan TIDAK pernah dicetak.
  */
@@ -65,7 +70,9 @@ async function seed(): Promise<void> {
   const sql = buildLoadSql(STAGING.loadEmail, Date.now());
   mkdirSync(dirname(SQL_FILE), { recursive: true });
   writeFileSync(SQL_FILE, sql);
-  console.log(`SQL beban ${(sql.length / 1e6).toFixed(1)} MB -> D1 staging (--remote)...`);
+  console.log(
+    `SQL beban ${(sql.length / 1e6).toFixed(1)} MB -> D1 staging (--remote); perkiraan baris ditulis D1: ${estimateSqlWrites(sql).toLocaleString('id-ID')} (kuota ${D1_DAILY_WRITE_QUOTA.toLocaleString('id-ID')}/hari)...`,
+  );
   await runWrangler(d1RemoteArgs('execute', SQL_FILE));
   // `now` data dicatat agar kursor audit pada fase run cocok.
   writeFileSync(join(WORKER_DIR, '.wrangler', 'load-cpu.now'), String(Date.now()));
@@ -178,6 +185,10 @@ function startTail(): TailSession {
   };
 }
 
+function argValue(name: string): string | undefined {
+  return process.argv.find((a: string) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
@@ -203,6 +214,20 @@ async function run(only: string | undefined): Promise<number> {
   console.log(`Staging ${STAGING.host} -> ${ip}`);
   let cases: LoadCase[] = buildCases({ nowMs, syncToken: secret.SYNC_API_TOKEN ?? '' });
   if (only) cases = cases.filter((c) => c.name.startsWith(only));
+  const writes = estimateRunWrites(cases);
+  const maxWrites = Number(argValue('max-writes') ?? 90_000);
+  console.log(
+    `${cases.length} rute, ${cases.reduce((n, c) => n + c.calls, 0)} panggilan; perkiraan baris ditulis D1: ${writes.toLocaleString('id-ID')} (kuota ${D1_DAILY_WRITE_QUOTA.toLocaleString('id-ID')}/hari, anggaran run ${maxWrites.toLocaleString('id-ID')}; sampel minimum ${MIN_SAMPLES}/rute)`,
+  );
+  for (const c of cases.filter((entry) => entry.writes > 0)) {
+    console.log(`  tulis ${c.name}: ~${(c.calls * c.writes).toLocaleString('id-ID')} baris`);
+  }
+  if (writes > maxWrites && !process.argv.includes('--allow-quota')) {
+    console.error(
+      `DIBATALKAN: perkiraan ${writes} baris ditulis melewati anggaran ${maxWrites}. Pecah dengan --only=<awalan>, naikkan --max-writes, atau pakai --allow-quota (paket berbayar).`,
+    );
+    return 2;
+  }
 
   const cpu = new Map<string, number[]>();
   const calls = new Map<string, number>();
@@ -251,15 +276,12 @@ async function run(only: string | undefined): Promise<number> {
   );
   const table = renderTable(stats);
   console.log(`\n${table}\n`);
-  const outIndex = process.argv.findIndex((a: string) => a.startsWith('--out='));
-  if (outIndex >= 0) {
-    const out = (process.argv[outIndex] as string).slice('--out='.length);
-    writeFileSync(out, `${table}\n`);
-  }
+  const out = argValue('out');
+  if (out) writeFileSync(out, `${table}\n`);
   const bad = failingRoutes(stats, CPU_BUDGET_MS);
   if (bad.length > 0) {
     console.error(
-      `Gerbang CPU GAGAL (p99 > ${CPU_BUDGET_MS} ms, tak terukur, atau panggilan gagal):\n  ${bad.join('\n  ')}`,
+      `Gerbang CPU GAGAL (p99 > ${CPU_BUDGET_MS} ms, sampel < ${MIN_SAMPLES}, atau panggilan gagal):\n  ${bad.join('\n  ')}`,
     );
     return 1;
   }
@@ -269,7 +291,7 @@ async function run(only: string | undefined): Promise<number> {
 
 async function main(): Promise<void> {
   const mode = process.argv[2];
-  const only = process.argv.find((a: string) => a.startsWith('--only='))?.slice('--only='.length);
+  const only = argValue('only');
   if (mode === 'seed') await seed();
   else if (mode === 'cleanup') await cleanup();
   else if (mode === 'run') process.exit(await run(only));

@@ -2,21 +2,26 @@ import { describe, expect, test } from 'bun:test';
 import { createTestEnv } from '@worker-test/test-env';
 import { signSessionToken } from '../src/core/session';
 import { app } from '../src/index';
-import { buildCases } from './load-cpu-cases';
+import { buildCases, estimateRunWrites } from './load-cpu-cases';
 import {
   assertStagingTarget,
   auditCursorAfter,
   buildLoadSql,
   cpuByRoute,
+  D1_DAILY_WRITE_QUOTA,
   d1RemoteArgs,
+  estimateSqlWrites,
   failingRoutes,
   LOAD_SIZES,
+  MIN_SAMPLES,
   parseTailStream,
   percentile,
   renderTable,
   STAGING,
   summarize,
 } from './load-cpu-lib';
+
+const NL = String.fromCharCode(10);
 
 describe('statistik', () => {
   test('percentile nearest-rank', () => {
@@ -34,9 +39,38 @@ describe('statistik', () => {
     const slow = summarize('b', [2, 3, 9], 3, 0);
     const none = summarize('c', [], 3, 0);
     const failed = summarize('d', [1, 1], 2, 1);
-    expect(failingRoutes([ok, slow, none, failed])).toEqual(['b', 'c', 'd']);
-    expect(failingRoutes([summarize('e', [8, 8], 2, 0)])).toEqual([]);
-    expect(renderTable([ok, slow])).toContain('| b | 3 | 3 | 3 | 9 | 9 | LEWAT |');
+    expect(failingRoutes([ok, slow, none, failed], 8, 1)).toEqual(['b', 'c', 'd']);
+    expect(failingRoutes([summarize('e', [8, 8], 2, 0)], 8, 1)).toEqual([]);
+    expect(renderTable([ok, slow], 8, 1)).toContain('| b | 3 | 3 | 3 | 9 | 9 | LEWAT |');
+  });
+
+  test('p99 dari < 100 sampel hanyalah maksimum: sampel kurang menggagalkan gerbang', () => {
+    const hundred = Array.from({ length: 100 }, (_, i) => (i === 99 ? 30 : 2));
+    // 100 sampel: p99 = sampel terbesar kedua; satu lonjakan tunggal tidak menggagalkan
+    expect(summarize('r', hundred, 100, 0)).toMatchObject({ p99: 2, max: 30, measured: 100 });
+    expect(failingRoutes([summarize('r', hundred, 100, 0)])).toEqual([]);
+    // dua lonjakan = gagal
+    const twoSpikes = hundred.map((v, i) => (i === 98 ? 30 : v));
+    expect(failingRoutes([summarize('r', twoSpikes, 100, 0)])).toEqual(['r']);
+    // 99 sampel terukur (satu peristiwa tail hilang) = gagal, walau semua cepat
+    const few = summarize('s', hundred.slice(0, 99), 100, 0);
+    expect(failingRoutes([few])).toEqual(['s']);
+    expect(renderTable([few])).toContain('SAMPEL KURANG');
+  });
+
+  test('perkiraan baris ditulis: SQL beban dan satu run penuh di bawah kuota harian D1', () => {
+    expect(
+      estimateSqlWrites('INSERT INTO items (a) VALUES (1), (2), (3);' + NL + 'SELECT 1;'),
+    ).toBe(21);
+    expect(
+      estimateSqlWrites('DELETE FROM items;' + NL + 'INSERT INTO audit_log (a) VALUES (1);'),
+    ).toBe(4);
+    const cases = buildCases({ nowMs: 0, syncToken: 'x' });
+    const total = estimateRunWrites(cases);
+    expect(total).toBeGreaterThan(30_000);
+    expect(total).toBeLessThanOrEqual(90_000);
+    expect(total).toBeLessThan(D1_DAILY_WRITE_QUOTA);
+    expect(estimateRunWrites(cases.filter((c) => c.writes === 0))).toBe(0);
   });
 });
 
@@ -124,9 +158,12 @@ describe('data beban dan semua rute (terhadap D1 sqlite lokal)', () => {
     };
     const cases = buildCases({ nowMs: NOW, syncToken: env.SYNC_API_TOKEN });
     const timings: string[] = [];
+    const changes = async () =>
+      (await env.DB.prepare('SELECT total_changes() AS n').first<{ n: number }>())?.n ?? 0;
     for (const loadCase of cases) {
-      expect(loadCase.calls).toBeGreaterThanOrEqual(30);
+      expect(loadCase.calls).toBeGreaterThanOrEqual(MIN_SAMPLES);
       for (let i = 0; i < loadCase.calls; i++) {
+        const changesBefore = await changes();
         const request = loadCase.request(i);
         const url = `https://${STAGING.host}${request.path}?r=${encodeURIComponent(loadCase.name)}&i=${i}`;
         const started = performance.now();
@@ -145,6 +182,15 @@ describe('data beban dan semua rute (terhadap D1 sqlite lokal)', () => {
           ok = (JSON.parse(text) as { ok?: boolean }).ok === true;
         }
         if (!ok) throw new Error(`${loadCase.name}#${i}: ${response.status} ${text.slice(0, 300)}`);
+        // Rute tulis HARUS benar-benar menulis pada tiap panggilan (bukan jalur idempoten yang tak menulis);
+        // rute baca tidak menulis apa pun.
+        const delta = (await changes()) - changesBefore;
+        if (loadCase.writes > 0 && delta === 0)
+          throw new Error(
+            `${loadCase.name}#${i}: rute tulis tidak menulis apa pun (target tumpang tindih?)`,
+          );
+        if (loadCase.writes === 0 && delta !== 0)
+          throw new Error(`${loadCase.name}#${i}: rute baca menulis ${delta} baris`);
         if (i === loadCase.calls - 1)
           timings.push(`${loadCase.name}: ${(performance.now() - started).toFixed(1)} ms`);
       }

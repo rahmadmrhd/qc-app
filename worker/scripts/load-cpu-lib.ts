@@ -2,7 +2,7 @@ import { customerKey, dateKeyOf, handoverNumber } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
 import { itemKey, normalizeKey } from '@shared/items';
 import { derivedColumns } from '@worker/modules/handover/repo';
-import { aliasKeysOf } from '@worker/modules/item/repo';
+import { aliasKeyList, aliasKeysOf } from '@worker/modules/item/repo';
 import { buildSeedSql } from './seed-data';
 
 // ---------------------------------------------------------------------------------------------
@@ -19,6 +19,12 @@ export const STAGING = {
 
 /** Anggaran p99 CPU per rute (ms), kriteria rilis Spek 5. */
 export const CPU_BUDGET_MS = 8;
+
+/** Sampel terukur minimum per rute: p99 dari < 100 sampel hanyalah maksimum. */
+export const MIN_SAMPLES = 100;
+
+/** Kuota baris DITULIS D1 per hari (paket gratis); `run` menolak bila perkiraannya melewati anggaran. */
+export const D1_DAILY_WRITE_QUOTA = 100_000;
 
 /** Menolak apa pun yang bukan persis staging (nama production, Worker `app`, D1 production, host lain). */
 export function assertStagingTarget(target: {
@@ -56,6 +62,29 @@ export function d1RemoteArgs(kind: 'execute' | 'restore', arg: string): string[]
     throw new Error('DITOLAK: argumen wrangler memuat production.');
   }
   return args;
+}
+
+/** Perkiraan baris ditulis per baris yang disisipkan (baris + entri indeks); kasar, untuk anggaran kuota. */
+const WRITES_PER_INSERTED_ROW: Record<string, number> = {
+  items: 7,
+  item_alias_keys: 1,
+  brands: 5,
+  customers: 3,
+  handovers: 5,
+  handover_comments: 3,
+  audit_log: 4,
+};
+
+/** Perkiraan baris ditulis D1 oleh SQL `INSERT` (mis. data beban): jumlah tuple x faktor tabel. */
+export function estimateSqlWrites(sql: string): number {
+  let total = 0;
+  for (const statement of sql.split(';' + String.fromCharCode(10))) {
+    const match = /^INSERT INTO (\w+) /.exec(statement);
+    if (!match) continue;
+    const tuples = statement.includes(' VALUES (') ? statement.split('), (').length : 1;
+    total += tuples * (WRITES_PER_INSERTED_ROW[match[1] as string] ?? 2);
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -97,23 +126,36 @@ export function summarize(
   };
 }
 
-/** Rute gagal: p99 di atas anggaran, tak ada pengukuran, atau ada panggilan yang gagal (non-2xx). */
-export function failingRoutes(stats: readonly RouteStats[], budget = CPU_BUDGET_MS): string[] {
+/**
+ * Rute gagal: p99 di atas anggaran, sampel terukur kurang dari `minSamples` (peristiwa tail ada yang hilang),
+ * atau ada panggilan yang gagal (non-2xx).
+ */
+export function failingRoutes(
+  stats: readonly RouteStats[],
+  budget = CPU_BUDGET_MS,
+  minSamples = MIN_SAMPLES,
+): string[] {
   return stats
-    .filter((s) => s.measured === 0 || s.failures > 0 || !(s.p99 <= budget))
+    .filter((s) => s.measured < minSamples || s.failures > 0 || !(s.p99 <= budget))
     .map((s) => s.route);
 }
 
-export function renderTable(stats: readonly RouteStats[], budget = CPU_BUDGET_MS): string {
+export function renderTable(
+  stats: readonly RouteStats[],
+  budget = CPU_BUDGET_MS,
+  minSamples = MIN_SAMPLES,
+): string {
   const rows = stats.map((s) => {
     const verdict =
       s.measured === 0
         ? 'TIDAK TERUKUR'
-        : s.failures > 0
-          ? 'GAGAL PANGGILAN'
-          : s.p99 <= budget
-            ? 'ok'
-            : 'LEWAT';
+        : s.measured < minSamples
+          ? 'SAMPEL KURANG'
+          : s.failures > 0
+            ? 'GAGAL PANGGILAN'
+            : s.p99 <= budget
+              ? 'ok'
+              : 'LEWAT';
     return `| ${s.route} | ${s.calls} | ${s.measured} | ${s.p50} | ${s.p99} | ${s.max} | ${verdict} |`;
   });
   return [
@@ -206,8 +248,11 @@ export function cpuByRoute(events: readonly TailEvent[]): Map<string, number[]> 
 
 export const LOAD_SIZES = {
   tasks: 1200,
-  /** Task berstatus Baru berisi 20 butir; `dedicatedNew` pertama dipakai rute tulis (30 per rute). */
-  newTasks: 180,
+  /**
+   * Task berstatus Baru berisi 20 butir, semuanya di loc-jkt; dipakai rute tulis dengan rentang yang tidak
+   * saling tumpang tindih (lihat `TASKS` di load-cpu-cases.ts: 100 sampel per rute tulis).
+   */
+  newTasks: 400,
   items: 2000,
   brands: 40,
   customers: 150,
@@ -405,6 +450,17 @@ export function buildLoadSql(email: string, nowMs: number): string {
       itemRows,
     ),
   );
+  const aliasRows: Array<Array<string | number | null>> = [];
+  for (let n = 1; n <= LOAD_SIZES.items; n++) {
+    if (n % 5 !== 0) continue;
+    for (const key of aliasKeyList([`Alias ${n}`, `Nama lain ${n}`]))
+      aliasRows.push([key, `li-${n}`]);
+  }
+  sql.push(...bulkInsert('item_alias_keys', ['key', 'item_id'], aliasRows));
+  // Penghitung turunan `brands.item_count` (dijaga kode produksi pada penulisan item; migrasi 0009).
+  sql.push(
+    'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id);',
+  );
   sql.push(
     `INSERT INTO sync_state (resource, seq, updated_at) VALUES ('items', ${1000 + LOAD_SIZES.items}, ${q(iso(nowMs))}) ON CONFLICT (resource) DO UPDATE SET seq = excluded.seq;`,
   );
@@ -449,7 +505,8 @@ export function buildLoadSql(email: string, nowMs: number): string {
       ? nowMs - Math.floor(random() * 25 * DAY) - 2 * 3_600_000
       : start + Math.floor(random() * 700 * DAY);
     const dateKey = dateKeyOf(created - 7 * 3_600_000);
-    const seq = (perDay.get(dateKey) ?? 0) + 1;
+    // Urutan dimulai di 100: nomor data contoh (`buildSeedSql`, 001..00x) pada hari yang sama tidak bentrok.
+    const seq = (perDay.get(dateKey) ?? 99) + 1;
     perDay.set(dateKey, seq);
     const itemsCount = isNew ? 20 : 8 + Math.floor(random() * 28);
     const note = isNew ? newTaskNote(k) : checklistNote(random, itemsCount, `T${k}`);
@@ -532,6 +589,15 @@ export function buildLoadSql(email: string, nowMs: number): string {
       taskRows,
     ),
   );
+  // Penghitung nomor harian (`counters`) untuk hari terbaru: tanpa ini `reserveNumbers` memakai penghitung data
+  // contoh (nomor 001..00x) dan bertabrakan dengan nomor beban (100..) pada hari yang sama.
+  const recentFrom = dateKeyOf(nowMs - 40 * DAY);
+  for (const [dateKey, seq] of perDay) {
+    if (dateKey < recentFrom) continue;
+    sql.push(
+      `INSERT INTO counters (key, value) VALUES ('st:${dateKey}', ${seq}) ON CONFLICT (key) DO UPDATE SET value = MAX(value, excluded.value);`,
+    );
+  }
   sql.push(
     ...bulkInsert(
       'handover_comments',
