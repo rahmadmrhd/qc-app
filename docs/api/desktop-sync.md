@@ -123,7 +123,7 @@ Master: **dua arah**. Kunci pencocokan: `uid` → `id` → merk+tipe ternormalis
 | Field | Aturan |
 |---|---|
 | `sinceRev` | integer ≥ 0; hanya item dengan `rev` > nilai ini. Mulai dari `0`. |
-| `limit` | 1–500 (default 100); di atas 500 ditolak `VALIDATION`. Bila `include` memuat `detail`, nilai yang lebih besar dari **50** dipotong diam-diam menjadi 50 (bukan ditolak; sebelumnya 200). Perubahan 2026-10-25: halaman dengan detail lebih kecil menekan CPU Worker. QC Desktop HARUS mengikuti `nextRev`/`hasMore` sampai `hasMore: false` dan tidak boleh mengandalkan jumlah item atau jumlah halaman. |
+| `limit` | 1–500 (default 100); di atas 500 ditolak `VALIDATION`. Bila `include` memuat `detail`, nilai yang lebih besar dari **50** dipotong diam-diam menjadi **50 di endpoint Worker** (bukan ditolak; aplikasi Apps Script lama tetap 200 sampai cutover). Perubahan 2026-10-25: halaman dengan detail lebih kecil menekan CPU Worker. QC Desktop HARUS mengikuti `nextRev`/`hasMore` sampai `hasMore: false` dan tidak boleh mengandalkan jumlah item atau jumlah halaman. |
 | `include` | opsional; subset dari `detail`, `stickers`, `accessories`. Field yang tidak diminta tidak dikirim. `images`, `id`, `uid`, `merk`, `tipe`, `isCountryLock`, `active`, `rev` selalu dikirim. |
 
 ```json

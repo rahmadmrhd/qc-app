@@ -16,7 +16,7 @@ test('konstanta kontrak', () => {
   expect(SYNC_LIMITS).toMatchObject({
     pullDefault: 100,
     pullMax: 500,
-    pullMaxWithDetail: 50,
+    pullMaxWithDetail: 200,
     pushMax: 50,
     pushMaxWithDetail: 25,
     failedAttempts: 10,

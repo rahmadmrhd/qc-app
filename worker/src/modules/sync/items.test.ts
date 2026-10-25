@@ -225,7 +225,7 @@ describe('pull', () => {
     const measured = await measureCpu(() =>
       call('sync.items.pull', { limit: 200, include: ['detail', 'stickers', 'accessories'] }),
     );
-    expect(measured.result.data.items).toHaveLength(50); // dipotong ke pullMaxWithDetail
+    expect(measured.result.data.items).toHaveLength(50); // dipotong ke WORKER_PULL_MAX_WITH_DETAIL
     expect(measured.ms).toBeLessThan(20);
   });
 });

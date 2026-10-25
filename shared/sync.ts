@@ -11,7 +11,7 @@ export const SYNC_LIMITS = {
   bodyChars: 5_000_000,
   pullDefault: 100,
   pullMax: 500,
-  pullMaxWithDetail: 50,
+  pullMaxWithDetail: 200,
   pushMax: 50,
   pushMaxWithDetail: 25,
   /** Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte). */
