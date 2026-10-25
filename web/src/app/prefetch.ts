@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { locationsQueryOptions, rolesQueryOptions } from '@/modules/access/queries';
 import { can } from '@/modules/auth/permissions';
 import { brandsQueryOptions } from '@/modules/brand/queries';
-import { itemsQueryOptions } from '@/modules/item/queries';
+import { itemsInfiniteQueryOptions } from '@/modules/item/queries';
 import { qrDefaultsQueryOptions, qrDesignsQueryOptions } from '@/modules/qrcode/queries';
 
 /** Jeda setelah beranda tampil sebelum prefetch (memberi waktu bagi klik pertama pengguna). */
@@ -21,7 +21,7 @@ export const PREFETCH_MAX_RETRIES = 30;
  */
 export function prefetchCommonQueries(queryClient: QueryClient, me: MeDto): void {
   if (can(me, 'item', 'view')) {
-    void queryClient.prefetchQuery(itemsQueryOptions());
+    void queryClient.prefetchInfiniteQuery(itemsInfiniteQueryOptions());
     void queryClient.prefetchQuery(brandsQueryOptions());
   }
   if (can(me, 'qrcode', 'view')) {

@@ -1,4 +1,9 @@
-import type { RpcInput, RpcMethod, RpcOutput, RpcResult } from '@shared/rpc';
+import type {
+  WorkerRpcInput as RpcInput,
+  WorkerRpcMethod as RpcMethod,
+  WorkerRpcOutput as RpcOutput,
+  RpcResult,
+} from '@shared/rpc';
 import { RpcError } from './rpc-error';
 import type { RpcTransport } from './transport';
 

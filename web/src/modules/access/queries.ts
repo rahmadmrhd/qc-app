@@ -1,13 +1,18 @@
 import type {
+  AuditCursorPageDto,
   DeleteRoleInput,
-  ListAuditInput,
   SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
   SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/rpc';
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { rpc } from '@/lib/rpc';
 import { meQueryKey } from '@/modules/auth/queries';
 
@@ -19,10 +24,23 @@ export const accessKeys = {
   locations: ['access', 'locations'] as const,
 };
 
-export function auditQueryOptions(input: ListAuditInput) {
-  return queryOptions({
-    queryKey: [...accessKeys.audit, input] as const,
-    queryFn: () => rpc('access.audit.list', input),
+export interface AuditFilter {
+  action?: string;
+  query?: string;
+}
+
+/** Log audit berkursor (20 per halaman, terbaru dahulu); filter aksi dan kata kunci dikerjakan server. */
+export function auditInfiniteQueryOptions(filter: AuditFilter) {
+  return infiniteQueryOptions({
+    queryKey: [...accessKeys.audit, filter.action ?? '', filter.query ?? ''] as const,
+    queryFn: ({ pageParam }) =>
+      rpc('access.audit.list', {
+        ...(filter.action ? { action: filter.action } : {}),
+        ...(filter.query ? { query: filter.query } : {}),
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: AuditCursorPageDto) => last.nextCursor ?? undefined,
   });
 }
 

@@ -1,7 +1,14 @@
 import { getToken } from '@/modules/auth/session';
 import { createRpcClient } from './client';
 import { httpTransport } from './http-transport';
+import { adaptMockToWorker } from './mock-worker-adapter';
 import type { RpcTransport } from './transport';
+
+let adaptedMock: RpcTransport | null = null;
+function adapted(mock: RpcTransport): RpcTransport {
+  adaptedMock ??= adaptMockToWorker(mock);
+  return adaptedMock;
+}
 
 /** Mock dimuat lazy hanya saat dev, sehingga tidak ikut ter-bundle ke build produksi (dicek verify-dist). */
 function createDevTransport(): RpcTransport {
@@ -11,7 +18,7 @@ function createDevTransport(): RpcTransport {
       const latency = Number(localStorage.getItem('rpcLatency') ?? 0);
       if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
       const { mockTransport } = await import('./mock-backend');
-      return mockTransport.call(method, payloadJson, token);
+      return adapted(mockTransport).call(method, payloadJson, token);
     },
   };
 }

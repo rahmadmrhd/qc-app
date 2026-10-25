@@ -8,6 +8,7 @@ import { describeError } from '@/lib/rpc/describe-error';
 import { RpcError } from '@/lib/rpc/rpc-error';
 import { accessKeys } from '@/modules/access/queries';
 import { applySavedHandover, handoverKeys } from '../queries';
+import { findHandoverInBoards, patchHandoverInBoards } from './board-cache';
 import { applyOptimisticCheck } from './optimistic-check';
 
 interface TaskQueue {
@@ -34,9 +35,7 @@ function patchCaches(
   id: string,
   patch: Patch,
 ): void {
-  queryClient.setQueriesData<HandoverDto[]>({ queryKey: handoverKeys.boards }, (list) =>
-    list ? list.map((entry) => (entry.id === id ? patch(entry) : entry)) : list,
-  );
+  patchHandoverInBoards(queryClient, id, patch);
   queryClient.setQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] }, (one) =>
     one ? patch(one) : one,
   );
@@ -46,12 +45,8 @@ function cachedHandover(
   queryClient: ReturnType<typeof useQueryClient>,
   id: string,
 ): HandoverDto | undefined {
-  for (const [, list] of queryClient.getQueriesData<HandoverDto[]>({
-    queryKey: handoverKeys.boards,
-  })) {
-    const found = list?.find((entry) => entry.id === id);
-    if (found) return found;
-  }
+  const onBoard = findHandoverInBoards(queryClient, id);
+  if (onBoard) return onBoard;
   return queryClient.getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] })[0]?.[1];
 }
 

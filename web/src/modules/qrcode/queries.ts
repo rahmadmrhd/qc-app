@@ -1,6 +1,7 @@
 import type {
   CloneQrPdfInput,
   ExportQrDesignInput,
+  JobDto,
   QrDefaultsDto,
   QrDesignDto,
   QrDesignRefInput,
@@ -15,6 +16,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
 import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
+import { awaitJob } from '@/modules/jobs/queries';
 
 export const qrKeys = {
   all: ['qrcodes'] as const,
@@ -122,8 +124,20 @@ export const useCloneQrPdf = () =>
   useQrMutation((input: CloneQrPdfInput) => rpc('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
   useQrMutation((input: UploadQrPdfInput) => rpc('qrcodes.uploadPdf', input));
+/**
+ * Ekspor QR kini pekerjaan latar (Queues): `qrcodes.export` hanya mengantre dan membalas `{ jobId }`. Mutasi ini
+ * menunggu job selesai (polling `jobs.get` bertahap), lalu memuat desain terbaru (status ekspor berubah) sehingga
+ * pemanggil tetap menerima `QrDesignDto`. Job gagal dilempar sebagai galat dengan pesan server; mengekspor lagi aman.
+ */
 export const useExportQrDesign = () =>
   useQrMutation(
-    (input: ExportQrDesignInput) => rpc('qrcodes.export', input),
+    async ({
+      onProgress,
+      ...input
+    }: ExportQrDesignInput & { onProgress?: (job: JobDto) => void }) => {
+      const { jobId } = await rpc('qrcodes.export', input);
+      await awaitJob(jobId, { onProgress });
+      return rpc('qrcodes.get', { id: input.id });
+    },
     (queryClient, saved) => applyDesign(queryClient, saved),
   );

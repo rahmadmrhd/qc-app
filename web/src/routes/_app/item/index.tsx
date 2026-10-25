@@ -1,5 +1,5 @@
 import type { ItemSummaryDto } from '@shared/rpc';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -11,8 +11,11 @@ import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { ItemsTable } from '@/modules/item/components/items-table';
-import { filterItems } from '@/modules/item/lib/filter-items';
-import { itemsQueryOptions, useSetItemStatus } from '@/modules/item/queries';
+import {
+  type ItemListFilter,
+  itemsInfiniteQueryOptions,
+  useSetItemStatus,
+} from '@/modules/item/queries';
 
 const itemsSearchSchema = z.object({
   q: z.string().optional().catch(undefined),
@@ -22,9 +25,17 @@ const itemsSearchSchema = z.object({
 export const Route = createFileRoute('/_app/item/')({
   validateSearch: (search: Record<string, unknown>) => itemsSearchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
-  loader: ({ context }) => context.queryClient.ensureQueryData(itemsQueryOptions()),
+  // Tanpa loaderDeps: mengetik di kolom cari tidak menjalankan ulang loader; daftar memuat halamannya sendiri.
+  loader: ({ context, location }) => {
+    const search = itemsSearchSchema.parse(location.search);
+    return context.queryClient.ensureInfiniteQueryData(itemsInfiniteQueryOptions(filterOf(search)));
+  },
   component: ItemsPage,
 });
+
+function filterOf(search: z.infer<typeof itemsSearchSchema>): ItemListFilter {
+  return { query: search.q ?? '', status: search.status ?? 'all' };
+}
 
 function ItemsPage() {
   const search = Route.useSearch();
@@ -32,14 +43,14 @@ function ItemsPage() {
   const me = useMe();
   const canEdit = can(me, 'item', 'edit');
   const canManage = can(me, 'item', 'manage');
-  const { data: items } = useSuspenseQuery(itemsQueryOptions());
+  const list = useInfiniteQuery(itemsInfiniteQueryOptions(filterOf(search)));
+  const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
   const [text, setText] = useUrlSyncedText(
     search.q ?? '',
     (value) =>
       void navigate({ search: (prev) => ({ ...prev, q: value || undefined }), replace: true }),
   );
-  const visible = filterItems(items, { q: search.q ?? '', status: search.status ?? 'all' });
 
   function toggleStatus(item: ItemSummaryDto) {
     const status = item.status === 'active' ? 'inactive' : 'active';
@@ -92,6 +103,11 @@ function ItemsPage() {
           <option value="inactive">Nonaktif</option>
         </NativeSelect>
       </div>
+      {list.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          Gagal memuat item. Coba muat ulang.
+        </p>
+      ) : null}
       <ItemsTable
         items={visible}
         canEdit={canEdit}
@@ -101,6 +117,16 @@ function ItemsPage() {
         onEdit={(item) => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
         onToggleStatus={toggleStatus}
       />
+      {list.hasNextPage ? (
+        <Button
+          variant="outline"
+          className="w-full"
+          disabled={list.isFetchingNextPage}
+          onClick={() => void list.fetchNextPage()}
+        >
+          {list.isFetchingNextPage ? 'Memuat…' : 'Muat lebih banyak'}
+        </Button>
+      ) : null}
     </div>
   );
 }

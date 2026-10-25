@@ -9,11 +9,10 @@ const SAVE_DELAY_MS = 1500;
 
 /**
  * Hanya query berikut yang disimpan: data referensi non-sensitif yang sering dibuka. TIDAK termasuk Log Audit, daftar
- * user, atau isi berkas. Kuncinya `root/sub` dari queryKey.
+ * user, atau isi berkas. Daftar item tidak ikut: berkursor per filter dan murah dimuat (20 per halaman). Kuncinya `root/sub` dari queryKey.
  */
 const PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'auth/me',
-  'items/list',
   'brands/list',
   'qrcodes/list',
   'qrcodes/defaults',

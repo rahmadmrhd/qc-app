@@ -64,12 +64,13 @@ function QrCodesPage() {
         : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
     report('Membuat PDF lembar 10 × 14 dan PNG label…');
     const files = await renderExportFiles(design, logo);
-    report('Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…');
+    report('Mengirim PDF dan PNG ke server…');
     await exportMutation.mutateAsync({
       id: design.id,
       expectedUpdatedAt: design.updatedAt,
       pdfBase64: files.pdfBase64,
       pngBase64: files.pngBase64,
+      onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
     });
     toast.success('Hasil ekspor disimpan di Drive');
   }
