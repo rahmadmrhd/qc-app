@@ -35,12 +35,15 @@
   "env": {
     "staging": {
       // "r2_buckets": [{ "binding": "FILES_CACHE", "bucket_name": "qc-app-files-staging" }],
+      // Staging di akun Cloudflare TERPISAH (keputusan pemilik 2026-10-25): kuota D1 gratis berlaku per akun,
+      // jadi uji beban staging tidak boleh memakan jatah produksi di akun "QC".
+      "account_id": "0c513cf2ea5fc5f24a06c6725e224400",
       "name": "app-staging",
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "qc-app-staging",
-          "database_id": "67c826c4-e20e-413b-b611-0653a480c130",
+          "database_id": "f1161b5c-a26f-44f1-a99e-c3bd88dfd271",
           "migrations_dir": "migrations"
         }
       ],

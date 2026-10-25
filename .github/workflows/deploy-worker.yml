@@ -1,7 +1,7 @@
 name: Deploy Worker
 
 # Build lalu deploy Cloudflare Worker (+ migrasi D1). Mencerminkan deploy.yml (Apps Script). Target:
-#   staging    = Worker `app-staging` + D1 `qc-app-staging`.
+#   staging    = Worker `app-staging` + D1 `qc-app-staging` di akun Cloudflare staging TERPISAH (kuota D1 per akun).
 #   production = Worker `app` + D1 `qc-app-production` (otomatis, tanpa persetujuan manual
 #                kecuali reviewer wajib diaktifkan pada environment `worker-production`).
 on:
@@ -44,8 +44,9 @@ jobs:
     environment: worker-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'production' || 'staging') }}
     env:
       TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'production' || 'staging') }}
-      # Login Wrangler pemilik punya lebih dari satu akun; akun "QC" wajib disebut eksplisit.
-      CLOUDFLARE_ACCOUNT_ID: 2256d27ce4dcdcb9ade777cc2650fd81
+      # Login Wrangler pemilik punya lebih dari satu akun; akun wajib disebut eksplisit. Produksi = akun "QC",
+      # staging = akun terpisah (sama dengan account_id env.staging di worker/wrangler.jsonc).
+      CLOUDFLARE_ACCOUNT_ID: ${{ (github.event_name == 'workflow_dispatch' && inputs.target || (github.base_ref == 'main' && 'production' || 'staging')) == 'production' && '2256d27ce4dcdcb9ade777cc2650fd81' || '0c513cf2ea5fc5f24a06c6725e224400' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       # Berjalan sebelum checkout. Dispatch manual hanya dari ref tepercaya: kode pada branch lain
