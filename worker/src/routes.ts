@@ -62,6 +62,7 @@ export const ALL_RPC_METHODS: Record<WorkerRpcMethod, true> = {
   'qrcodes.export': true,
   'qrcodes.file': true,
   'jobs.get': true,
+  'exports.sheets': true,
 };
 
 /**

@@ -636,6 +636,12 @@ export interface ExportQrJobDto {
   jobId: string;
 }
 
+/** Ekspor tabel D1 ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
+export interface ExportSheetsInput {
+  tables?: string[];
+}
+export type ExportSheetsJobDto = ExportQrJobDto;
+
 type WorkerReplacedMethods =
   | 'access.audit.list'
   | 'handovers.board'
@@ -648,6 +654,7 @@ export interface WorkerRpcContract extends Omit<RpcContract, WorkerReplacedMetho
   'items.list': { input: ListItemsPageInput; output: ItemPageDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
+  'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
 
 export type WorkerRpcMethod = keyof WorkerRpcContract;
