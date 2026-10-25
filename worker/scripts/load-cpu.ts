@@ -157,7 +157,8 @@ interface TailSession {
 
 function startTail(): TailSession {
   assertStagingTarget({ workerName: STAGING.workerName });
-  const proc = Bun.spawn(['bunx', 'wrangler', 'tail', STAGING.workerName, '--format', 'json'], {
+  // Tanpa nama + --env staging: nama dan account_id diambil dari env.staging (account_id tingkat atas = produksi mengalahkan CLOUDFLARE_ACCOUNT_ID).
+  const proc = Bun.spawn(['bunx', 'wrangler', 'tail', '--env', 'staging', '--format', 'json'], {
     cwd: WORKER_DIR,
     stdout: 'pipe',
     stderr: 'pipe',
