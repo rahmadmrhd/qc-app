@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { SYNC_ACTOR } from '@shared/sync';
+import { D1_QUOTA_MESSAGE } from '@worker/core/router';
 import { signSessionToken } from '@worker/core/session';
 import { CSRF_HEADER, CSRF_VALUE } from '@worker/http/security';
 import { app } from '@worker/index';
@@ -181,6 +182,24 @@ describe('handler', () => {
       error: { code: 'INTERNAL', message: 'Terjadi kesalahan pada server' },
     });
     expect(JSON.stringify(result)).not.toContain('rahasia');
+  });
+
+  test('kuota harian D1 habis tetap INTERNAL (kontrak Desktop) dengan pesan kuota', async () => {
+    const routes = {
+      'sync.quota': syncRoute({
+        validate: () => null,
+        handler: () => {
+          throw new Error(
+            "D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan",
+          );
+        },
+      }),
+    };
+    const result = await send({ v: 1, method: 'sync.quota', token: TOKEN }, routes);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL', message: D1_QUOTA_MESSAGE },
+    });
   });
 
   test('handler menerima konteks dengan pelaku sync:desktop dan tanpa user', async () => {

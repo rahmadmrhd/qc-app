@@ -71,7 +71,9 @@ export async function handleSync(
     const data = await route.handler(input, { env, requestId, actor: SYNC_ACTOR });
     return { ok: true, data };
   } catch (error) {
-    return { ok: false, error: toErrorBody(error, requestId) };
+    const body = toErrorBody(error, requestId);
+    // Kontrak QC Desktop (docs/api/desktop-sync.md) tidak mengenal UNAVAILABLE: kuota D1 habis tetap INTERNAL, pesan tetap jelas.
+    return { ok: false, error: body.code === 'UNAVAILABLE' ? { ...body, code: 'INTERNAL' } : body };
   } finally {
     settleCache();
   }

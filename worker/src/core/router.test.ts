@@ -5,7 +5,7 @@ import { createTestEnv, type TestEnv } from '@worker-test/test-env';
 import type { RequestCtx } from './context';
 import { appError } from './errors';
 import type { RoutePermission, RoutePermissionSpec, RouteTable } from './router';
-import { callRoute, handleRpc } from './router';
+import { callRoute, D1_QUOTA_MESSAGE, handleRpc, isD1QuotaError, toErrorBody } from './router';
 import { signSessionToken } from './session';
 import { expectNull } from './validate';
 
@@ -188,6 +188,19 @@ describe('dasar', () => {
     const token = await tokenFor('admin@gmail.com');
     const error = errorOf(await callRoute(env, token, 'access.users.save', null, routes));
     expect(error).toMatchObject({ code: 'VALIDATION', fields: { email: 'Wajib diisi' } });
+  });
+
+  test('kuota harian D1 habis menjadi UNAVAILABLE dengan pesan jelas', () => {
+    const quota = new Error(
+      "D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.",
+    );
+    expect(isD1QuotaError(quota)).toBe(true);
+    expect(isD1QuotaError(new Error('D1_ERROR: no such table: x'))).toBe(false);
+    expect(toErrorBody(quota, 'abcd1234')).toEqual({
+      code: 'UNAVAILABLE',
+      message: D1_QUOTA_MESSAGE,
+      requestId: 'abcd1234',
+    });
   });
 
   test('error tak terduga disamarkan menjadi INTERNAL dan dicatat bersama requestId', async () => {
