@@ -165,10 +165,10 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
     spec('qrcodes.list', () => rpc('qrcodes.list', null)),
     spec('qrcodes.getDefaults', () => rpc('qrcodes.getDefaults', null)),
     spec('sync.ping', () => syncCall(ctx, 'sync.ping', null)),
-    spec('sync.items.pull:200+detail', (i) =>
+    spec('sync.items.pull:50+detail', (i) =>
       syncCall(ctx, 'sync.items.pull', {
         sinceRev: 1000 + (i % 10) * 100,
-        limit: 200,
+        limit: 50,
         include: ['detail', 'stickers', 'accessories'],
       }),
     ),

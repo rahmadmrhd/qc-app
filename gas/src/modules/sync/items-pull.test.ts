@@ -156,7 +156,7 @@ test('FS11: ubah alias tidak muncul di pull berikutnya; ubah detail muncul', () 
   expect(pull({ sinceRev: first.nextRev }).items.map((entry) => entry.uid)).toEqual([saved.id]);
 });
 
-test('payload tidak sah → VALIDATION; limit dibatasi 200 bila include memuat detail', () => {
+test('payload tidak sah → VALIDATION; limit dibatasi 50 bila include memuat detail', () => {
   for (const payload of [
     { sinceRev: -1 },
     { limit: 0 },
@@ -176,6 +176,6 @@ test('payload tidak sah → VALIDATION; limit dibatasi 200 bila include memuat d
     'stickers',
     'accessories',
   ]);
-  expect(parsed.limit).toBe(200);
+  expect(parsed.limit).toBe(50);
   expect(validateSyncPull_({ limit: 500 }, ['detail']).limit).toBe(500);
 });

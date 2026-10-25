@@ -178,7 +178,7 @@ Kuota D1 gratis 5 juta baris **dipindai** per hari (bukan baris yang dikembalika
 
 ## 9. Sinkron QC Desktop
 
-Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 10 salah/10 menit, body ≤ 5 MB, paginasi) dipertahankan; endpoint menjadi `POST https://<domain-worker>/sync`. Tidak ada lagi redirect 302. Syarat peralihan: data `sync_state` dan semua `sync_rev` item/merk **diimpor apa adanya** sehingga kursor Desktop tetap valid. QC Desktop adalah proyek terpisah: pemilik/pemelihara Desktop harus mengganti URL pada hari cutover (lihat §11). Ukuran halaman sinkron dibatasi dan diukur terhadap anggaran CPU (hash `itemSyncSignature_` per item).
+Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 10 salah/10 menit, body ≤ 5 MB, paginasi) dipertahankan; endpoint menjadi `POST https://<domain-worker>/sync`. Tidak ada lagi redirect 302. Syarat peralihan: data `sync_state` dan semua `sync_rev` item/merk **diimpor apa adanya** sehingga kursor Desktop tetap valid. QC Desktop adalah proyek terpisah: pemilik/pemelihara Desktop harus mengganti URL pada hari cutover (lihat §11). Ukuran halaman sinkron dibatasi dan diukur terhadap anggaran CPU (hash `itemSyncSignature_` per item). **[pemilik, 2026-10-25]** `sync.items.pull` dengan `include: detail` dipotong ke maks. 50 item per halaman (sebelumnya 200; tanpa detail tetap 500) karena hasil gerbang edge (p50 13 ms); Desktop wajib mengikuti `nextRev`/`hasMore`.
 
 ## 9b. Pekerjaan latar lewat Queues **[pemilik: ekspor dilakukan di queue]**
 

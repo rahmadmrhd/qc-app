@@ -190,7 +190,7 @@ describe('pull', () => {
     ]);
   });
 
-  test('payload tidak sah -> VALIDATION; limit dibatasi 200 bila include memuat detail', async () => {
+  test('payload tidak sah -> VALIDATION; limit dibatasi 50 bila include memuat detail', async () => {
     for (const payload of [
       { sinceRev: -1 },
       { limit: 0 },
@@ -207,7 +207,7 @@ describe('pull', () => {
     expect(
       validateSyncPull({ limit: 500, include: ['detail'] }, ['detail', 'stickers', 'accessories'])
         .limit,
-    ).toBe(200);
+    ).toBe(50);
     expect(validateSyncPull({ limit: 500 }, ['detail']).limit).toBe(500);
   });
 
@@ -225,7 +225,7 @@ describe('pull', () => {
     const measured = await measureCpu(() =>
       call('sync.items.pull', { limit: 200, include: ['detail', 'stickers', 'accessories'] }),
     );
-    expect(measured.result.data.items).toHaveLength(200);
+    expect(measured.result.data.items).toHaveLength(50); // dipotong ke pullMaxWithDetail
     expect(measured.ms).toBeLessThan(20);
   });
 });
