@@ -24,7 +24,8 @@
     "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
     "deploy": "bun run push && bun run scripts/deploy.ts",
     "dev:worker": "bun run worker/scripts/dev.ts",
-    "db:seed": "bun run worker/scripts/seed-dev.ts"
+    "db:seed": "bun run worker/scripts/seed-dev.ts",
+    "load:cpu": "bun run worker/scripts/load-cpu.ts"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",
