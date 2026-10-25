@@ -228,5 +228,7 @@ export const D1_QUOTA_MESSAGE =
 /** Galat D1 saat kuota harian paket gratis (baris dibaca/ditulis) habis; berlaku sampai 00:00 UTC. */
 export function isD1QuotaError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('D1_ERROR') && /exceeded D1's free tier daily row (read|write)/i.test(message);
+  return (
+    message.includes('D1_ERROR') && /exceeded D1's free tier daily row (read|write)/i.test(message)
+  );
 }
