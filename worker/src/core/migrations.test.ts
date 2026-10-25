@@ -163,7 +163,12 @@ const SHEET_COLUMNS: Record<string, string[]> = {
     'created_by',
     'created_at',
     'updated_at',
+    'input',
+    'state',
+    'step',
+    'lease_until',
   ],
+  job_blobs: ['job_id', 'name', 'data'],
   counters: ['key', 'value'],
   settings: ['key', 'value'],
   rate_limits: ['key', 'count', 'window_start'],
@@ -403,6 +408,7 @@ describe('applyMigrations', () => {
       '0005_brand_customer_unique.sql',
       '0006_settings.sql',
       '0007_items_unique_alias_keys.sql',
+      '0008_jobs_queue.sql',
     ]);
   });
 

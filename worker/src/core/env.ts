@@ -1,10 +1,12 @@
+import type { JobKind } from '@shared/rpc';
 import type { BridgeClient } from './bridge-client';
 import type { FileCache } from './file-cache';
 
-/** Pesan antrean pekerjaan: hanya pengenal; data diambil dari D1. */
+/** Pesan antrean pekerjaan: hanya pengenal (data ada di D1); `step` informatif, kebenaran ada di baris `jobs`. */
 export interface JobMessage {
   jobId: string;
-  chunk?: number;
+  kind: JobKind;
+  step: number;
 }
 
 /** Binding, variabel, dan rahasia Worker (lihat wrangler.jsonc). */

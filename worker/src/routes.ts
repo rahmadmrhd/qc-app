@@ -8,6 +8,7 @@ import { customerRoutes } from '@worker/modules/customer/routes';
 import { filesRoutes } from '@worker/modules/files/routes';
 import { handoverRoutes } from '@worker/modules/handover/routes';
 import { itemRoutes } from '@worker/modules/item/routes';
+import { jobsRoutes } from '@worker/modules/jobs/routes';
 import { qrcodeRoutes } from '@worker/modules/qrcode/routes';
 
 /**
@@ -88,6 +89,7 @@ function realRoutes(): Partial<RouteTable> {
     ...itemRoutes(),
     ...handoverRoutes(),
     ...qrcodeRoutes(),
+    ...jobsRoutes(),
   };
 }
 

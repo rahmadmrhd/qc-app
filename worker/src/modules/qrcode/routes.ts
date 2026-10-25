@@ -1,5 +1,6 @@
 import type { RouteTable } from '@worker/core/router';
 import { expectNull } from '@worker/core/validate';
+import { requestQrExport } from './export';
 import {
   cloneQrPdfFromDrive,
   deleteQrPreset,
@@ -15,6 +16,7 @@ import {
 } from './service';
 import {
   validateCloneQrPdf,
+  validateExportQrDesign,
   validateQrDesignRef,
   validateQrFile,
   validateSaveQrDesign,
@@ -23,7 +25,6 @@ import {
   validateUploadQrPdf,
 } from './validate';
 
-/** `qrcodes.export` ditambahkan Task 3.3 (antrean); sampai itu tetap stub NOT_IMPLEMENTED di routes.ts. */
 type QrMethod =
   | 'qrcodes.list'
   | 'qrcodes.get'
@@ -35,6 +36,7 @@ type QrMethod =
   | 'qrcodes.saveLogoLibrary'
   | 'qrcodes.uploadPdf'
   | 'qrcodes.cloneFromDrive'
+  | 'qrcodes.export'
   | 'qrcodes.file';
 
 export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
@@ -83,6 +85,11 @@ export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'edit' },
       validate: validateCloneQrPdf,
       handler: (input, ctx) => cloneQrPdfFromDrive(ctx.env, input, ctx.user),
+    },
+    'qrcodes.export': {
+      permission: { module: 'qrcode', level: 'edit' },
+      validate: validateExportQrDesign,
+      handler: (input, ctx) => requestQrExport(ctx.env, input, ctx.user),
     },
     'qrcodes.file': {
       permission: { module: 'qrcode', level: 'view' },

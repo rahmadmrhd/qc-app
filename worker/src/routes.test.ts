@@ -55,22 +55,18 @@ describe('kontrak RPC', () => {
     }
   });
 
-  test('method yang belum dipindah menjawab INTERNAL NOT_IMPLEMENTED (stub sementara)', async () => {
-    const response = await app.request(
-      '/api/rpc',
-      {
-        method: 'POST',
-        headers: rpcHeaders(await cookieFor('admin@gmail.com')),
-        body: JSON.stringify({ method: 'qrcodes.export', payload: null }),
-      },
-      env,
-    );
-    expect(response.status).toBe(500);
-    const json = (await response.json()) as RpcResult<unknown>;
-    expect(json.ok).toBe(false);
-    if (!json.ok) {
-      expect(json.error.code).toBe('INTERNAL');
-      expect(json.error.message).toContain('NOT_IMPLEMENTED');
+  test('semua method RPC sudah punya rute nyata: tidak ada stub NOT_IMPLEMENTED tersisa', async () => {
+    const headers = rpcHeaders(await cookieFor('admin@gmail.com'));
+    for (const method of Object.keys(ALL_RPC_METHODS)) {
+      const response = await app.request(
+        '/api/rpc',
+        { method: 'POST', headers, body: JSON.stringify({ method, payload: 'bukan-objek' }) },
+        env,
+      );
+      expect({ method, text: (await response.text()).includes('NOT_IMPLEMENTED') }).toEqual({
+        method,
+        text: false,
+      });
     }
   });
 });

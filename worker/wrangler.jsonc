@@ -24,6 +24,8 @@
     "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-production" }],
     "consumers": [{ "queue": "qc-app-jobs-production" }]
   },
+  // Cron hanya menjadwalkan pembersihan (pesan antrean); kerja berat di consumer. Tiap env mendefinisikan sendiri.
+  "triggers": { "crons": ["0 * * * *"] },
   "env": {
     "staging": {
       "name": "app-staging",
@@ -35,6 +37,7 @@
           "migrations_dir": "migrations"
         }
       ],
+      "triggers": { "crons": ["0 * * * *"] },
       "queues": {
         "producers": [{ "binding": "JOBS", "queue": "qc-app-jobs-staging" }],
         "consumers": [{ "queue": "qc-app-jobs-staging" }]

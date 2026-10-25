@@ -102,8 +102,8 @@ describe('createTestEnv', () => {
     expect(env.NOW?.()).toBe(1_000);
     env.clock.advance(500);
     expect(env.NOW?.()).toBe(1_500);
-    await env.JOBS.send({ jobId: 'j1' });
-    expect(env.queued).toEqual([{ jobId: 'j1' }]);
+    await env.JOBS.send({ jobId: 'j1', kind: 'cleanup_qr', step: 0 });
+    expect(env.queued).toEqual([{ jobId: 'j1', kind: 'cleanup_qr', step: 0 }]);
     expect(env.BRIDGE.calls).toEqual([]);
     await env.DB.prepare('SELECT 1').first();
   });
