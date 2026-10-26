@@ -115,10 +115,13 @@ export function toItem(row: ItemRow): ItemRecord {
   };
 }
 
+/** Kueri satu item menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
+export function findItemStmt(db: D1Database, id: string): D1PreparedStatement {
+  return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`).bind(id);
+}
+
 export async function findItem(env: Env, id: string): Promise<ItemRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`)
-    .bind(id)
-    .first<ItemRow>();
+  const row = await findItemStmt(env.DB, id).first<ItemRow>();
   return row ? toItem(row) : null;
 }
 

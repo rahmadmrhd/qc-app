@@ -21,10 +21,22 @@ import type { BrandRecord } from '@worker/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@worker/modules/brand/repo';
 import { planBrandByName } from '@worker/modules/brand/service';
 import type { FileRecord } from '@worker/modules/files/repo';
-import { findActiveFiles } from '@worker/modules/files/repo';
+import {
+  activeFilesFromResults,
+  activeFilesStatements,
+  findActiveFiles,
+} from '@worker/modules/files/repo';
 import { planAttachFiles } from '@worker/modules/files/service';
 import type { ItemRecord } from './repo';
-import { findItem, insertItemStmts, parseStrings, updateItemStmts } from './repo';
+import {
+  findItem,
+  findItemStmt,
+  type ItemRow,
+  insertItemStmts,
+  parseStrings,
+  toItem,
+  updateItemStmts,
+} from './repo';
 import { ITEM_PAGE_DEFAULT_LIMIT } from './validate';
 
 /** Record item beserta nama merk (dari tabel merk) untuk DTO dan audit. */
@@ -57,8 +69,11 @@ export function toItemDto(item: ItemView): ItemDto {
   };
 }
 
-/** Snapshot audit ringkas: teks Markdown tidak disimpan, hanya panjang dan hash (sel audit maks. 50.000 karakter). */
-export function itemSnapshot(item: ItemView): Record<string, unknown> {
+/**
+ * Snapshot audit ringkas: teks Markdown tidak disimpan, hanya panjang dan hash (sel audit maks. 50.000 karakter).
+ * `detailHash` (opsional) dipakai bila pemanggil sudah menghitungnya untuk teks yang sama (hash O(panjang)).
+ */
+export function itemSnapshot(item: ItemView, detailHash?: string): Record<string, unknown> {
   return {
     brand: item.brand,
     model: item.model,
@@ -72,7 +87,7 @@ export function itemSnapshot(item: ItemView): Record<string, unknown> {
     accessories: item.accessories.map((accessory) => `${accessory.name} ×${accessory.qty}`),
     attachments: [...item.attachments],
     detailLength: item.detail.length,
-    detailHash: hashText(item.detail),
+    detailHash: detailHash ?? hashText(item.detail),
   };
 }
 
@@ -165,64 +180,84 @@ export async function getItemDto(env: Env, input: GetItemInput): Promise<ItemDto
 }
 
 interface OwnerRow {
+  hit: string;
   id: string;
   model: string;
   brand: string | null;
 }
 
 const OWNER_SELECT =
-  'SELECT i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
+  'SELECT i.key AS hit, i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
 const ALIAS_OWNER_SELECT =
-  'SELECT i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id';
+  'SELECT a.key AS hit, i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id';
 
-/** Merk+tipe dan nama lain harus unik terhadap item lain (kunci ternormalisasi). */
-async function assertItemNamesFree(
+/** Kunci yang harus bebas: merk+tipe lalu tiap nama lain (urutan input; `normalizeKey` sekali per nama lain). */
+function nameKeysOf(input: SaveItemInput, key: string): { key: string; aliasKeys: string[] } {
+  return { key, aliasKeys: input.aliases.map((alias) => normalizeKey(alias)) };
+}
+
+/**
+ * Dua kueri keunikan nama (untuk `batch()` bersama kueri baca lain): pemilik kunci sebagai merk+tipe item
+ * (indeks UNIK `items_key`) dan pemegangnya sebagai nama lain (PRIMARY KEY `item_alias_keys`, bukan `instr`
+ * pada `items`). Satu kueri untuk SEMUA kunci, bukan dua per nama lain.
+ */
+function nameCheckStatements(
   env: Env,
   input: SaveItemInput,
   key: string,
   selfId: string,
-): Promise<void> {
-  const label = (row: OwnerRow) => itemLabel({ brand: row.brand ?? '', model: row.model });
-  const statements = [
-    env.DB.prepare(`${OWNER_SELECT} WHERE i.id <> ? AND i.key = ? LIMIT 1`).bind(selfId, key),
-    // Pemegang kunci sebagai nama lain: indeks PRIMARY KEY `item_alias_keys` (bukan `instr` pada `items`).
-    env.DB.prepare(`${ALIAS_OWNER_SELECT} WHERE a.key = ? AND a.item_id <> ? LIMIT 1`).bind(
-      key,
+): D1PreparedStatement[] {
+  const keys = [...new Set([key, ...nameKeysOf(input, key).aliasKeys])];
+  const marks = keys.map(() => '?').join(',');
+  return [
+    env.DB.prepare(`${OWNER_SELECT} WHERE i.id <> ? AND i.key IN (${marks})`).bind(selfId, ...keys),
+    env.DB.prepare(`${ALIAS_OWNER_SELECT} WHERE a.key IN (${marks}) AND a.item_id <> ?`).bind(
+      ...keys,
       selfId,
     ),
-    ...input.aliases.flatMap((alias) => [
-      env.DB.prepare(`${OWNER_SELECT} WHERE i.id <> ? AND i.key = ? LIMIT 1`).bind(
-        selfId,
-        normalizeKey(alias),
-      ),
-      env.DB.prepare(`${ALIAS_OWNER_SELECT} WHERE a.key = ? AND a.item_id <> ? LIMIT 1`).bind(
-        normalizeKey(alias),
-        selfId,
-      ),
-    ]),
   ];
-  const [sameKey, holder, ...aliasOwners] = await env.DB.batch(statements);
-  if (sameKey?.results[0]) {
+}
+
+/** Hasil `nameCheckStatements`: pemilik per kunci (huruf kecil, seperti kolom `key` NOCASE). */
+interface NameOwners {
+  byItemKey: Map<string, OwnerRow>;
+  byAliasKey: Map<string, OwnerRow>;
+}
+
+function nameOwnersFrom(results: ReadonlyArray<{ results: unknown[] }>): NameOwners {
+  const index = (rows: unknown[]) => {
+    const map = new Map<string, OwnerRow>();
+    for (const row of rows as OwnerRow[]) map.set(row.hit.toLowerCase(), row);
+    return map;
+  };
+  return {
+    byItemKey: index(results[0]?.results ?? []),
+    byAliasKey: index(results[1]?.results ?? []),
+  };
+}
+
+/** Merk+tipe dan nama lain harus unik terhadap item lain (kunci ternormalisasi). */
+function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwners): void {
+  const label = (row: OwnerRow) => itemLabel({ brand: row.brand ?? '', model: row.model });
+  if (owners.byItemKey.get(key)) {
     throw appError('CONFLICT', 'Merk dan tipe sudah dipakai item lain', {
       model: 'Merk dan tipe sudah dipakai item lain',
     });
   }
-  const holderRow = holder?.results[0] as OwnerRow | undefined;
+  const holderRow = owners.byAliasKey.get(key);
   if (holderRow) {
     throw appError('CONFLICT', 'Merk dan tipe sama dengan nama lain item lain', {
       model: `Sama dengan nama lain item ${label(holderRow)}`,
     });
   }
-  for (const [index, alias] of input.aliases.entries()) {
-    if (normalizeKey(alias) === key) {
+  for (const [index, aliasKey] of nameKeysOf(input, key).aliasKeys.entries()) {
+    const alias = input.aliases[index] as string;
+    if (aliasKey === key) {
       throw appError('VALIDATION', 'Nama lain sama dengan merk dan tipe', {
         aliases: 'Nama lain tidak boleh sama dengan merk dan tipe item ini',
       });
     }
-    // Pasangan hasil per nama lain: [pemilik kunci item, pemegang sebagai nama lain].
-    const owner = (aliasOwners[index * 2]?.results[0] ?? aliasOwners[index * 2 + 1]?.results[0]) as
-      | OwnerRow
-      | undefined;
+    const owner = owners.byItemKey.get(aliasKey) ?? owners.byAliasKey.get(aliasKey);
     if (owner) {
       const message = `Nama lain "${alias}" sudah dipakai item ${label(owner)}`;
       throw appError('CONFLICT', message, { aliases: message });
@@ -244,12 +279,11 @@ function referencedFileIds(input: SaveItemInput): string[] {
  * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, stiker, detail):
  * tidak dikenal -> VALIDATION, sudah dipakai entitas lain -> CONFLICT. `planAttachFiles` tetap menjadi pagar.
  */
-async function assertItemFilesUsable(
-  env: Env,
+function assertItemFilesUsable(
   input: SaveItemInput,
   ownerId: string,
-): Promise<FileRecord[]> {
-  const found = await findActiveFiles(env, referencedFileIds(input));
+  found: readonly FileRecord[],
+): FileRecord[] {
   const files = new Map(found.map((file) => [file.id, file]));
   const problem = (fileId: string): 'unknown' | 'taken' | null => {
     const file = files.get(fileId);
@@ -279,7 +313,7 @@ async function assertItemFilesUsable(
     const kind = problem(fileId);
     if (kind) fail(kind, 'detail', 'Ada gambar di detail');
   }
-  return found;
+  return [...found];
 }
 
 /** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
@@ -305,6 +339,41 @@ export function itemSyncSignature(item: {
   ]);
 }
 
+type SyncFields = Parameters<typeof itemSyncSignature>[0];
+
+/**
+ * Sama dengan `itemSyncSignature(a) === itemSyncSignature(b)` tanpa menyerialkan Markdown dan daftar ke JSON
+ * (perbandingan string/larik langsung; detail bisa 20.000 karakter).
+ */
+export function itemSyncEquals(a: SyncFields, b: SyncFields): boolean {
+  if (
+    a.brandId !== b.brandId ||
+    a.model !== b.model ||
+    a.isCountryLock !== b.isCountryLock ||
+    a.status !== b.status ||
+    a.detail !== b.detail ||
+    a.attachments.length !== b.attachments.length ||
+    a.stickers.length !== b.stickers.length ||
+    a.accessories.length !== b.accessories.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < a.attachments.length; i++) {
+    if (a.attachments[i] !== b.attachments[i]) return false;
+  }
+  for (let i = 0; i < a.stickers.length; i++) {
+    const x = a.stickers[i] as ItemStickerDto;
+    const y = b.stickers[i] as ItemStickerDto;
+    if (x.name !== y.name || x.note !== y.note || x.fileId !== y.fileId) return false;
+  }
+  for (let i = 0; i < a.accessories.length; i++) {
+    const x = a.accessories[i] as ItemAccessoryDto;
+    const y = b.accessories[i] as ItemAccessoryDto;
+    if (x.name !== y.name || x.qty !== y.qty) return false;
+  }
+  return true;
+}
+
 export interface WriteItemOptions {
   existing?: ItemRecord | undefined;
   /** Hanya item baru: id yang sudah dipakai pemanggil. */
@@ -319,6 +388,8 @@ export interface WriteItemOptions {
    * di sini (daftar cache dulu, bila tak ada langsung ke D1 sebelum membuat merk baru).
    */
   knownBrand?: BrandRecord | null | undefined;
+  /** Hasil baca yang sudah dimuat pemanggil dalam `batch()` bersama (menghemat round trip D1). */
+  preloaded?: { owners: NameOwners; files: readonly FileRecord[] } | undefined;
 }
 
 export const ITEM_CONFLICTS = {
@@ -354,9 +425,10 @@ export async function planItemWrite(
     throw appError('VALIDATION', message, { brand: message });
   }
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
-  await assertItemNamesFree(env, input, key, id);
+  const preloaded = options.preloaded ?? (await loadWriteChecks(env, input, key, id));
+  assertItemNamesFree(input, key, preloaded.owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
-  const usableFiles = await assertItemFilesUsable(env, input, id);
+  const usableFiles = assertItemFilesUsable(input, id, preloaded.files);
   const attach = await planAttachFiles(env, referencedFileIds(input), 'item', id, usableFiles);
   // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
   const resolved = await planBrandByName(env, input.brand, actor, knownBrand);
@@ -386,11 +458,16 @@ export async function planItemWrite(
       status,
       externalId: options.externalId ?? existing.externalId,
     };
-    const changed = itemSyncSignature(existing) !== itemSyncSignature(merged);
+    const changed = !itemSyncEquals(existing, merged);
     const onlyStatus =
-      existing.status !== status &&
-      itemSyncSignature({ ...existing, status }) === itemSyncSignature(merged);
+      existing.status !== status && itemSyncEquals({ ...existing, status }, merged);
     const before = await viewOf(env, existing);
+    // Hash Markdown O(panjang): dihitung sekali bila teksnya tidak berubah.
+    const beforeSnapshot = itemSnapshot(before);
+    const afterSnapshot = itemSnapshot(
+      afterView(merged),
+      existing.detail === merged.detail ? (beforeSnapshot.detailHash as string) : undefined,
+    );
     statements.push(
       ...resolved.statements,
       ...attach,
@@ -406,8 +483,8 @@ export async function planItemWrite(
             : 'item.deactivate'
           : 'item.update',
         target: itemLabel(afterView(merged)),
-        before: itemSnapshot(before),
-        after: itemSnapshot(afterView(merged)),
+        before: beforeSnapshot,
+        after: afterSnapshot,
       }),
     );
     return { record: merged, brandName: resolved.brand.name, statements };
@@ -435,13 +512,47 @@ export async function planItemWrite(
   return { record: created, brandName: resolved.brand.name, statements };
 }
 
+/** Pemeriksaan baca sebelum menulis (keunikan nama dan berkas) dalam SATU `batch()`; untuk penulis tanpa muatan awal. */
+async function loadWriteChecks(
+  env: Env,
+  input: SaveItemInput,
+  key: string,
+  selfId: string,
+): Promise<{ owners: NameOwners; files: FileRecord[] }> {
+  const fileStatements = activeFilesStatements(env, referencedFileIds(input));
+  const results = await env.DB.batch([
+    ...nameCheckStatements(env, input, key, selfId),
+    ...fileStatements,
+  ]);
+  return { owners: nameOwnersFrom(results), files: activeFilesFromResults(results.slice(2)) };
+}
+
 export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef): Promise<ItemDto> {
-  const existing = input.id ? await findItem(env, input.id) : undefined;
+  // Satu round trip baca: item yang diubah, keunikan nama, dan berkas yang dirujuk (urutan hasil di bawah).
+  const id = input.id ?? crypto.randomUUID();
+  const key = itemKey(input.brand, input.model);
+  const reads = [
+    ...(input.id ? [findItemStmt(env.DB, input.id)] : []),
+    ...nameCheckStatements(env, input, key, id),
+    ...activeFilesStatements(env, referencedFileIds(input)),
+  ];
+  const results = await env.DB.batch(reads);
+  const offset = input.id ? 1 : 0;
+  const row = input.id ? (results[0]?.results[0] as ItemRow | undefined) : undefined;
+  const existing = row ? toItem(row) : undefined;
   if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
     throw appError('CONFLICT', STALE_MESSAGE);
   }
-  const plan = await planItemWrite(env, input, { existing: existing ?? undefined, actor });
+  const plan = await planItemWrite(env, input, {
+    existing,
+    id,
+    actor,
+    preloaded: {
+      owners: nameOwnersFrom(results.slice(offset, offset + 2)),
+      files: activeFilesFromResults(results.slice(offset + 2)),
+    },
+  });
   await batchGuarded(env.DB, plan.statements, ITEM_CONFLICTS, STALE_MESSAGE);
   return toItemDto({ ...plan.record, brand: plan.brandName });
 }
