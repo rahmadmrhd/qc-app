@@ -225,6 +225,26 @@ export async function findHandoverWithComments(
   };
 }
 
+/**
+ * Komentar task (`alias`.id) sebagai larik JSON dari subkueri (urut waktu lalu `rowid`, indeks
+ * `handover_comments_handover`); kolom tambahan pada kueri daftar sehingga komentar halaman tidak butuh round
+ * trip sendiri. Bentuknya `StoredComment` (`at` = `created_at`). Pasang pada kueri LUAR atas halaman yang sudah
+ * dibatasi `LIMIT`, supaya subkueri hanya berjalan untuk baris halaman (bukan semua baris yang cocok).
+ */
+export function commentsJsonSql(alias: string): string {
+  return `(SELECT json_group_array(json(x)) FROM (SELECT json_object('id', c.id, 'quote', c.quote, 'before', c."before", 'after', c."after", 'body', c.body, 'author', c.author, 'at', c.created_at) AS x FROM handover_comments c WHERE c.handover_id = ${alias}.id ORDER BY c.created_at, c.rowid)) AS comments_json`;
+}
+
+export function parseStoredComments(text: string | null | undefined): StoredComment[] {
+  if (text === undefined || text === null || text === '[]') return [];
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? (value as StoredComment[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu id). */
 export function commentStatements(env: Env, handoverIds: readonly string[]): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];

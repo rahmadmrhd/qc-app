@@ -69,10 +69,10 @@ describe('round trip D1 per rute (cache hangat)', () => {
     ['items.list', 1],
     ['items.get', 1],
     ['handovers.get', 1],
-    ['handovers.board:new', 2],
-    ['handovers.board:in_progress', 2],
-    ['handovers.board:done', 2],
-    ['handovers.board:cancelled', 2],
+    ['handovers.board:new', 1],
+    ['handovers.board:in_progress', 1],
+    ['handovers.board:done', 1],
+    ['handovers.board:cancelled', 1],
     ['handovers.setCheck', 2],
     ['handovers.setDone', 2],
     ['handovers.comment:general', 2],
@@ -86,7 +86,7 @@ describe('round trip D1 per rute (cache hangat)', () => {
     ['sync.items.pull:500', 2],
     ['sync.items.pull:50+detail', 2],
     ['items.setStatus', 2],
-    ['items.save', 4],
+    ['items.save', 2],
     ['brands.save:rename(~50 item)', 4],
   ];
   for (const [name, max] of budget) {
@@ -126,6 +126,11 @@ const ALLOWED_SCANS: Record<string, string[]> = {
  */
 const JSON_EACH_SCAN = /^SCAN (?:\(subquery-\d+\)|\w+ VIRTUAL TABLE INDEX \d+:)/;
 const JSON_EACH_ROUTES = new Set(['sync.items.pull:500', 'sync.items.pull:50+detail']);
+/**
+ * Rute board: kueri luar membaca halaman yang sudah dibatasi `LIMIT` (`SCAN p`, paling banyak limit+1 baris)
+ * untuk memasang subkueri komentar; tabel sumbernya tetap dibaca lewat indeks.
+ */
+const PAGE_SUBQUERY_SCAN = /^SCAN (?:p|\(subquery-\d+\))$/;
 const SMALL_TABLE_SCAN = /^SCAN (brands|locations|roles|customers)(?: |$)/;
 
 describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
@@ -169,6 +174,7 @@ describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
         for (const detail of await planOf(sql)) {
           if (SMALL_TABLE_SCAN.test(detail) || detail === 'SCAN CONSTANT ROW') continue;
           if (JSON_EACH_ROUTES.has(name) && JSON_EACH_SCAN.test(detail)) continue;
+          if (name.startsWith('handovers.board:') && PAGE_SUBQUERY_SCAN.test(detail)) continue;
           if (detail.startsWith('SCAN ')) scans.add(detail);
         }
       }

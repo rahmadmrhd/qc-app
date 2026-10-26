@@ -46,13 +46,13 @@ import type {
   StoredComment,
 } from './repo';
 import {
-  commentStatements,
-  commentsByHandover,
+  commentsJsonSql,
   findHandoverWithComments,
   HANDOVER_COLUMNS,
   HANDOVER_FROM,
   insertHandoverStmt,
   listComments,
+  parseStoredComments,
   toHandover,
   updateHandoverStmt,
 } from './repo';
@@ -146,27 +146,8 @@ async function dtoOf(env: Env, loaded: LoadedHandover): Promise<HandoverDto> {
 interface BoardRow extends HandoverRow {
   checked_count: number;
   total_count: number;
-}
-
-/**
- * Komentar halaman board (dan, bila perlu, jumlah kolom) dalam SATU round trip D1.
- * `knownTotal` dipakai bila `countQuery` null (halaman pertama yang tidak penuh).
- */
-async function loadBoardExtras(
-  env: Env,
-  ids: readonly string[],
-  countQuery: { sql: string; binds: unknown[] } | null,
-  knownTotal: number,
-): Promise<[Map<string, StoredComment[]>, number]> {
-  const statements = commentStatements(env, ids);
-  if (countQuery) statements.push(env.DB.prepare(countQuery.sql).bind(...countQuery.binds));
-  const results = statements.length > 0 ? await env.DB.batch(statements) : [];
-  const countResult = countQuery ? results[results.length - 1] : undefined;
-  const comments = commentsByHandover(countQuery ? results.slice(0, -1) : results);
-  const total = countQuery
-    ? Number((countResult?.results[0] as { n: number } | undefined)?.n ?? 0)
-    : knownTotal;
-  return [comments, total];
+  /** Komentar task (larik JSON dari subkueri; lihat `COMMENTS_JSON_SQL`). */
+  comments_json: string | null;
 }
 
 /**
@@ -208,24 +189,23 @@ export async function handoverBoard(
     input.status === 'in_progress'
       ? `${progress} ASC, h.updated_at DESC, h.number DESC`
       : 'h.updated_at DESC, h.number DESC';
-  const page = await env.DB.prepare(
-    `SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`,
-  )
-    .bind(...binds, limit + 1)
-    .all<BoardRow>();
-  const rows = page.results;
-  const pageRows = rows.slice(0, limit);
-  // Jumlah kolom hanya dihitung bila tidak dapat disimpulkan dari halaman ini: halaman pertama yang tidak
-  // penuh berisi seluruh kolom (hemat rows read D1: COUNT memindai indeks seluruh kolom).
-  const needsCount = cursor !== null || rows.length > limit;
-  const [comments, total] = await loadBoardExtras(
-    env,
-    pageRows.map((row) => row.id),
-    needsCount
-      ? { sql: `SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`, binds: baseBinds }
-      : null,
-    pageRows.length,
+  const outerOrder =
+    input.status === 'in_progress'
+      ? '(p.checked_count * 1000 / p.total_count) ASC, p.updated_at DESC, p.number DESC'
+      : 'p.updated_at DESC, p.number DESC';
+  // Halaman beserta komentarnya dalam SATU kueri (komentar lewat subkueri atas halaman yang sudah dibatasi
+  // LIMIT) dan jumlah kolom dalam batch yang sama: satu round trip D1 per halaman. COUNT hanya memindai
+  // indeks kolom itu; kolom besar memang membutuhkannya (halaman penuh) dan kolom kecil murah.
+  const pageStatement = env.DB.prepare(
+    `SELECT p.*, ${commentsJsonSql('p')} FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
+  ).bind(...binds, limit + 1);
+  const countStatement = env.DB.prepare(`SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`).bind(
+    ...baseBinds,
   );
+  const [pageResult, countResult] = await env.DB.batch([pageStatement, countStatement]);
+  const rows = (pageResult?.results ?? []) as BoardRow[];
+  const total = Number((countResult?.results[0] as { n: number } | undefined)?.n ?? 0);
+  const pageRows = rows.slice(0, limit);
   const last = pageRows[pageRows.length - 1];
   let nextCursor: string | null = null;
   if (rows.length > limit && last) {
@@ -240,7 +220,7 @@ export async function handoverBoard(
       return toHandoverDto(
         record,
         row.current_customer_name ?? record.customerName,
-        comments.get(record.id) ?? [],
+        parseStoredComments(row.comments_json),
       );
     }),
     nextCursor,

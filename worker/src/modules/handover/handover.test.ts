@@ -995,7 +995,7 @@ describe('baca: board per kolom, get, options', () => {
     ]);
   });
 
-  test('jumlah kolom (COUNT) hanya dihitung bila tak dapat disimpulkan dari halaman; round trip board <= 2', async () => {
+  test('jumlah kolom (COUNT) satu batch dengan halaman dan komentar: satu round trip board', async () => {
     const stats = d1StatsOf(env.DB);
     const countsOf = async (extra: Record<string, unknown>) => {
       stats.log = [];
@@ -1009,16 +1009,17 @@ describe('baca: board per kolom, get, options', () => {
         trips: stats.trips - trips,
       };
     };
-    // halaman pertama yang tidak penuh: total = jumlah baris, tanpa COUNT
+    // halaman pertama yang tidak penuh: COUNT ikut batch yang sama (murah: hanya baris kolom itu)
     const first = await countsOf({});
     expect(first.result.data.total).toBe(2);
-    expect(first.count).toBe(0);
-    expect(first.trips).toBeLessThanOrEqual(3); // konteks akses (cache mati di tes) + halaman + komentar
-    // halaman penuh (limit 1 dari 2): COUNT diperlukan, tetap satu round trip bersama komentar
+    expect(first.count).toBe(1);
+    expect(first.trips).toBeLessThanOrEqual(2); // konteks akses (cache mati di tes) + halaman/komentar/COUNT
+    // halaman penuh (limit 1 dari 2): tetap satu round trip bersama komentar
     const full = await countsOf({ limit: 1 });
     expect(full.result.data.total).toBe(2);
     expect(full.result.data.nextCursor).not.toBeNull();
     expect(full.count).toBe(1);
+    expect(full.trips).toBeLessThanOrEqual(2);
     // halaman berkursor: COUNT diperlukan walau halaman tidak penuh
     const next = await countsOf({ limit: 1, cursor: full.result.data.nextCursor });
     expect(next.result.data.total).toBe(2);
