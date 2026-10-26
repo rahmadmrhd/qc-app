@@ -145,7 +145,8 @@ test('validasi klien: catatan kosong menahan pengiriman', async () => {
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('batch di atas 30 task menonaktifkan tambah', async () => {
+// 29 klik userEvent + render 30 kartu Tiptap: berat saat vitest menjalankan banyak berkas paralel, jadi batas dilonggarkan.
+test('batch di atas 30 task menonaktifkan tambah', { timeout: 60_000 }, async () => {
   renderForm();
   const add = screen.getByRole('button', { name: 'Tambah task' });
   for (let i = 0; i < 29; i++) await userEvent.click(add);
