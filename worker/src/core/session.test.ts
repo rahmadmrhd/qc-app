@@ -77,3 +77,26 @@ describe('kunci HMAC dipakai ulang', () => {
     spy.mockRestore();
   });
 });
+
+describe('token terverifikasi disimpan per isolate', () => {
+  test('pemakaian ulang tidak memverifikasi HMAC lagi, tetapi kedaluwarsa tetap diperiksa', async () => {
+    const e = await createTestEnv({ SESSION_SECRET: 'rahasia-cache' });
+    const token = await signSessionToken(e, 'c@gmail.com', NOW);
+    const spy = spyOn(crypto.subtle, 'verify');
+    for (let i = 0; i < 4; i++) {
+      expect((await verifySessionToken(e, token, NOW + 1000))?.email).toBe('c@gmail.com');
+    }
+    expect(spy.mock.calls.length).toBe(1);
+    expect(await verifySessionToken(e, token, NOW + SESSION_TTL_MS)).toBeNull();
+    spy.mockRestore();
+  });
+
+  test('ganti rahasia mengosongkan cache: token lama ditolak', async () => {
+    const a = await createTestEnv({ SESSION_SECRET: 'rahasia-satu' });
+    const token = await signSessionToken(a, 'd@gmail.com', NOW);
+    expect(await verifySessionToken(a, token, NOW + 1)).not.toBeNull();
+    const b = await createTestEnv({ SESSION_SECRET: 'rahasia-dua' });
+    expect(await verifySessionToken(b, token, NOW + 1)).toBeNull();
+    expect(await verifySessionToken(a, token, NOW + 1)).not.toBeNull();
+  });
+});

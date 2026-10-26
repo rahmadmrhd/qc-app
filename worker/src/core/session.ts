@@ -83,12 +83,32 @@ function isSessionPayload(value: unknown): value is SessionPayload {
   );
 }
 
+/**
+ * Token yang sudah terbukti sah (tanda tangan HMAC cocok) per isolate: token itu tidak berubah, jadi
+ * memverifikasinya lagi tiap permintaan (decode base64url, `crypto.subtle.verify`, `JSON.parse`) hanya membuang
+ * CPU. Masa berlaku (`exp`) tetap diperiksa pada TIAP pemakaian; ganti `SESSION_SECRET` mengosongkan cache.
+ * Dibatasi agar memori isolate tetap kecil.
+ */
+const VERIFIED_MAX = 64;
+const verifiedTokens = new Map<string, SessionPayload>();
+let verifiedSecret = '';
+
 export async function verifySessionToken(
   env: Env,
   token: unknown,
   now: number,
 ): Promise<SessionPayload | null> {
+  if (verifiedSecret !== env.SESSION_SECRET) {
+    verifiedTokens.clear();
+    verifiedSecret = env.SESSION_SECRET;
+  }
+  const known = typeof token === 'string' ? verifiedTokens.get(token) : undefined;
+  if (known) return known.exp <= now ? null : known;
   const payload = await verifyValue(env, token);
   if (!isSessionPayload(payload) || payload.exp <= now) return null;
+  if (typeof token === 'string') {
+    if (verifiedTokens.size >= VERIFIED_MAX) verifiedTokens.clear();
+    verifiedTokens.set(token, payload);
+  }
   return payload;
 }
