@@ -90,3 +90,19 @@ Pembacaan:
 1. **Rute baca kini hampir seluruhnya lulus p95 ≤ 8 ms** (dibanding run 3: p95 9–13). Minify (bundle 391 → 177 KB), cache lokasi satu round trip, dan kunci HMAC sesi sekali per isolate efektif. `GET /api/boot` dan board kolom Baru/Dikerjakan/Dibatalkan masih p95 9–10 (tipis di atas batas), `items.save` p95 17 dan `sync.items.pull:500` p95 20 masih jelas di atas.
 2. Run ini TIDAK membuktikan lulusnya gerbang: rute tulis penting belum terukur. Gerbang dinyatakan belum selesai.
 3. **Perkiraan baris tulis di skrip terlalu rendah** (heuristik 34.800 untuk satu run; kuota habis jauh sebelum itu bersama seed). Anggaran `--max-writes` harus diperkecil atau seed dikurangi (mis. tanpa 400 task Baru khusus tulis) bila run dilakukan di hari yang sama dengan seed.
+
+## Optimasi sesudah run 4 (2026-10-26, proksi lokal; edge BELUM diukur ulang)
+
+Pengukuran: `createTestEnv()` + `buildLoadSql()`, tiap rute lewat `app.request`, cache isolate hangat; "JS" = waktu dinding dikurangi waktu SQLite (SQLite lokal setara kerja D1, bukan CPU Worker). Pola di edge: pull 500 item lokal total 2,4 ms ≈ p50 10 ms edge (×3,5-4); rute dengan banyak round trip D1 (`items.save` lokal 0,3 ms, edge p50 6) lebih mahal daripada proksi lokal, jadi jumlah round trip dan pernyataan D1 diperlakukan sebagai biaya tersendiri.
+
+| Rute | Round trip sebelum → sesudah | Total lokal p50 (ms) | JS lokal p50 (ms) |
+|---|---|---|---|
+| `sync.items.pull:500` | 3 → 2 (1 + autentikasi sinkron) | 2,40 → 0,81 | 1,32 → 0,07 |
+| `sync.items.pull:50+detail` | 3 → 2 | 0,58 → 1,46 (SQLite lebih banyak kerja) | 0,36 → 0,10 |
+| `items.save` | 3 → 2 (dan 4 → 2 bila ada gambar) | 0,31 → 0,16 | 0,24 → 0,10 |
+| `handovers.board:*` | 2 → 1 | 0,29-0,57 → 0,21-0,52 | 0,15-0,33 → 0,06-0,14 |
+| `GET /api/boot`, `auth.me` | 0 → 0 | 0,22 → 0,05 | 0,22 → 0,05 |
+| `access.users.save` | 3 → 3 | 0,29 → 0,12 | 0,23 → 0,08 |
+| `handovers.comment:general` | 2 → 2 | 0,20 → 0,10 | 0,15 → 0,06 |
+
+Perubahan: (1) `sync.items.pull` membangun objek kabel di SQLite (`json_object`, join `brands`, `json_each` untuk gambar/stiker/kelengkapan) dan mengirim teks JSON apa adanya (`PreEncodedJson`): tanpa `toItem`/`paginateByRev`/pemetaan/serialisasi per baris dan tanpa kueri merk terpisah; (2) `items.save` membaca item, keunikan nama (dua kueri untuk semua kunci) dan berkas dalam satu `batch()`, membandingkan field sinkron tanpa `JSON.stringify`, menghitung hash detail audit sekali, `normalizeKey` jalur cepat ASCII; (3) `handovers.board` memasang komentar lewat subkueri pada kueri luar atas halaman ber-LIMIT dan menaruh COUNT di batch yang sama; (4) token sesi yang sudah terverifikasi disimpan per isolate (tanpa HMAC/decode/`JSON.parse` ulang) dan daftar lokasi `auth.me` dimemo per konteks akses. Kontrak RPC/sync, DTO, kode galat dan migrasi tidak berubah. Biaya: pull kini membaca baris `brands` per item lewat join (rows read halaman 500 item naik dari ±500 menjadi ±1.000-1.500; kuota 5 juta/hari).
