@@ -53,3 +53,10 @@ Pembacaan:
 2. **p95 rute ringan 9–11 ms walau p50 1–3 ms.** Rute tanpa kerja p95 1 ms pada run ini, jadi lonjakan p95 bukan lantai derau isolate saja: kemungkinan penyebabnya biaya sisa per round trip D1 dan permulaan isolate dingin. Kriteria p95 ≤ 8 ms hanya lulus untuk sebagian rute; keputusan pemilik diperlukan (lihat laporan sesi).
 3. Spike CPU (`2026-10-cpu-limits.md`) menunjukkan batas 10 ms tidak ditegakkan keras (kegagalan `exceededCpu` baru muncul pada beban ≥ ±100 ms), jadi risiko galat 1102 pada p95 9–15 ms rendah, tetapi tidak dijamin dokumentasi.
 4. Kuota tulis D1 dipakai ±22 rb baris pada run tulis (anggaran 40 rb).
+
+## Investigasi p95 rute ringan (2026-10-26, proksi lokal; edge belum diukur ulang)
+
+- **Bundle Worker** (`wrangler deploy --dry-run --env staging`): 390,9 KB (tanpa minify, 672 panggilan `__name` dari `keep_names`) -> 374,1 KB setelah Hono memakai `hono/tiny`; dengan `--minify` 194,7 KB. Tidak ada SQL migrasi ter-embed (`core/migrate.ts` hanya dipakai tes). Terbesar: hono ±88 KB, qrcode 61, sync 61, handover 60, access 38, item 36, jobs 32, shared/qrcode 27.
+- **Inisialisasi tingkat modul** hanya ±2 ms (pendaftaran rute Hono 0,65 ms, `__name` 0,64 ms); biaya mulai dingin didominasi kompilasi 390 KB JS (±11 ms di Node), bukan kode kita. Tidak ada inisialisasi mahal yang bisa ditunda. Impor dinamis tidak mengurangi kompilasi karena wrangler membundel semuanya jadi satu berkas.
+- **Penyebab paling mungkin p95 9-13 ms pada rute ringan:** cache isolate (TTL 10 dtk) kedaluwarsa. Gerbang memanggil lewat `curl` per permintaan (±0,5-1 dtk per panggilan), sehingga ±5-10% panggilan jatuh pada miss konteks akses (batch 3 pernyataan) dan miss daftar lokasi (round trip kedua). Perbaikan: satu miss kini satu round trip (konteks akses mengisi cache lokasi), kunci HMAC sesi diimpor sekali per isolate.
+- **Rekomendasi (di luar wewenang kode):** `keep_names = false` dan `minify = true` di `worker/wrangler.jsonc`.

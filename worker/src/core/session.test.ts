@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
 import { SESSION_TTL_MS, signSessionToken, verifySessionToken } from './session';
 
@@ -58,5 +58,22 @@ describe('token sesi', () => {
     const { signValue } = await import('./session');
     const forged = await signValue(env, { email: '', iat: NOW, exp: NOW + 10_000_000 });
     expect(await verifySessionToken(env, forged, NOW)).toBeNull();
+  });
+});
+
+describe('kunci HMAC dipakai ulang', () => {
+  test('banyak tanda tangan/verifikasi dengan rahasia sama dan berbeda tetap benar', async () => {
+    const a = await createTestEnv({ SESSION_SECRET: 'rahasia-a' });
+    const b = await createTestEnv({ SESSION_SECRET: 'rahasia-b' });
+    const spy = spyOn(crypto.subtle, 'importKey');
+    const tokenA = await signSessionToken(a, 'x@gmail.com', 1000);
+    for (let i = 0; i < 5; i++) {
+      expect((await verifySessionToken(a, tokenA, 2000))?.email).toBe('x@gmail.com');
+    }
+    // rahasia lain menolak token A; kunci tidak tertukar
+    expect(await verifySessionToken(b, tokenA, 2000)).toBeNull();
+    // sign + verify (A) + verify (B) = paling banyak 3 impor, bukan satu per panggilan
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(3);
+    spy.mockRestore();
   });
 });

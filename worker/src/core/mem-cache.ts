@@ -43,19 +43,40 @@ function generationOf(group: string): number {
   return generations.get(group) ?? 0;
 }
 
-/** Nilai dari cache bila masih segar; bila tidak, `load()` lalu simpan (kecuali kunci disentuh selama memuat). */
-export async function cached<T>(env: Env, key: string, load: () => Promise<T>): Promise<T> {
+/** Mengisi kunci LAIN dari data yang sudah dibaca pemuat yang sama (tanpa round trip tambahan). */
+export type Prime = (key: string, value: unknown) => void;
+
+/**
+ * Nilai dari cache bila masih segar; bila tidak, `load()` lalu simpan (kecuali kunci disentuh selama memuat).
+ * `load` boleh mengisi kunci lain lewat `prime` (mis. konteks akses dan daftar lokasi dibaca dalam SATU round
+ * trip D1: satu miss, bukan dua).
+ */
+export async function cached<T>(
+  env: Env,
+  key: string,
+  load: (prime: Prime) => Promise<T>,
+): Promise<T> {
   const ttl = cacheTtlMs(env);
-  if (ttl === 0) return load();
+  if (ttl === 0) return load(() => undefined);
   const now = nowOf(env);
   const hit = entries.get(key);
   const group = groupOf(key);
   if (hit && hit.expires > now && hit.generation === generationOf(group)) return hit.value as T;
-  const generation = generationOf(group);
-  const value = await load();
+  const startGenerations = new Map(generations);
+  const primed: Array<[string, unknown]> = [];
+  const value = await load((primeKey, primeValue) => {
+    primed.push([primeKey, primeValue]);
+  });
   // Ada penulisan (touch) selama memuat: nilai ini mungkin sudah basi, jangan disimpan.
-  if (generation === generationOf(group))
-    entries.set(key, { expires: now + ttl, generation, value });
+  const store = (storeKey: string, storeValue: unknown) => {
+    const storeGroup = groupOf(storeKey);
+    const generation = startGenerations.get(storeGroup) ?? 0;
+    if (generation === generationOf(storeGroup)) {
+      entries.set(storeKey, { expires: now + ttl, generation, value: storeValue });
+    }
+  };
+  store(key, value);
+  for (const [primeKey, primeValue] of primed) store(primeKey, primeValue);
   return value;
 }
 

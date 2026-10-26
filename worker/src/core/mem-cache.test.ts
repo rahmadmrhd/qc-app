@@ -9,6 +9,7 @@ import { insertBrandStmts, listBrands } from '@worker/modules/brand/repo';
 import { createBrandStmts, saveBrand } from '@worker/modules/brand/service';
 import { insertCustomerStmt, listCustomers } from '@worker/modules/customer/repo';
 import { seedLocation, seedRole, seedUser } from '@worker-test/access-fixtures';
+import { d1StatsOf } from '@worker-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
 import {
   CACHE_TTL_DEFAULT_MS,
@@ -212,5 +213,54 @@ describe('merk dan customer', () => {
       }),
     ]);
     expect(await listCustomers(env)).toHaveLength(1);
+  });
+});
+
+describe('pemuatan bersama (prime)', () => {
+  test('load boleh mengisi kunci lain; terpakai tanpa memuat ulang', async () => {
+    let otherLoads = 0;
+    await cached(env, 'access:ctx:x', async (prime) => {
+      prime('access:locations', ['dari-ctx']);
+      return 1;
+    });
+    const locations = await cached(env, 'access:locations', async () => {
+      otherLoads++;
+      return ['dari-db'];
+    });
+    expect(locations).toEqual(['dari-ctx']);
+    expect(otherLoads).toBe(0);
+  });
+
+  test('penulisan (touch) selama memuat: kunci utama dan kunci yang diisi sama-sama tidak disimpan', async () => {
+    await cached(env, 'access:ctx:x', async (prime) => {
+      prime('access:locations', ['basi']);
+      touchCache('access');
+      return 1;
+    });
+    let loads = 0;
+    expect(
+      await cached(env, 'access:locations', async () => {
+        loads++;
+        return ['segar'];
+      }),
+    ).toEqual(['segar']);
+    expect(loads).toBe(1);
+  });
+
+  test('satu miss konteks akses = SATU round trip D1 dan juga mengisi daftar lokasi', async () => {
+    await seedLocation(env, { id: 'l-a', code: 'A' });
+    await seedLocation(env, { id: 'l-mati', code: 'MATI', status: 'inactive' });
+    await seedRole(env, { id: 'r-view', name: 'Viewer', permissions: { access: 'view' } });
+    await seedUser(env, { id: 'u1', email: 'viewer@gmail.com', roleIds: ['r-view'] });
+    const stats = d1StatsOf(env.DB);
+    const before = stats.trips;
+    await loadUserContext(env, 'viewer@gmail.com');
+    expect(stats.trips - before).toBe(1);
+    const briefs = await listLocationBriefs(env);
+    expect(stats.trips - before).toBe(1); // dari cache hasil prime
+    expect(briefs.map((b) => [b.id, b.active])).toEqual([
+      ['l-a', true],
+      ['l-mati', false],
+    ]);
   });
 });

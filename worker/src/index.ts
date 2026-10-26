@@ -7,7 +7,7 @@ import { handleSyncRequest } from '@worker/modules/sync/handler';
 import { syncRoutes } from '@worker/modules/sync/routes';
 import { getRoutes } from '@worker/routes';
 import { scheduled } from '@worker/scheduled';
-import { Hono } from 'hono';
+import { Hono } from 'hono/tiny';
 
 const app = new Hono<AppBindings>();
 

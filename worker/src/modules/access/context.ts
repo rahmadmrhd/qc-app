@@ -4,7 +4,10 @@ import type { PartialPermissionMap, PermissionMap } from '@shared/permissions';
 import { fullPermissions, sanitizePermissions } from '@shared/permissions';
 import { normalizeEmail } from '@worker/core/email';
 import type { Env } from '@worker/core/env';
+import type { Prime } from '@worker/core/mem-cache';
 import { cached } from '@worker/core/mem-cache';
+import type { LocationBriefRow } from './location-brief';
+import { LOCATION_BRIEF_SQL, toLocationBrief } from './location-brief';
 
 export interface UserContext {
   email: string;
@@ -55,22 +58,28 @@ function readAssignments(row: UserRow): Assignment[] {
 export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
   const email = normalizeEmail(rawEmail);
   if (email === '') return null;
-  return cached(env, `access:ctx:${email}`, () => loadUserContextFresh(env, email));
+  return cached(env, `access:ctx:${email}`, (prime) => loadUserContextFresh(env, email, prime));
 }
 
 /** Konteks akses langsung dari D1 (tanpa cache). */
-export async function loadUserContextFresh(env: Env, email: string): Promise<UserContext | null> {
+export async function loadUserContextFresh(
+  env: Env,
+  email: string,
+  prime?: Prime,
+): Promise<UserContext | null> {
   const [users, roles, locations] = await env.DB.batch([
     env.DB.prepare(
       'SELECT id, name, status, role_ids, assignments FROM users WHERE email = ? LIMIT 1',
     ).bind(email),
     env.DB.prepare('SELECT id, permissions FROM roles'),
-    env.DB.prepare("SELECT id FROM locations WHERE status = 'active'"),
+    // Seluruh lokasi (bukan hanya yang aktif): daftar yang sama mengisi cache `access:locations`.
+    env.DB.prepare(LOCATION_BRIEF_SQL),
   ]);
   const record = (users?.results[0] as UserRow | undefined) ?? null;
   const roleRows = (roles?.results ?? []) as { id: string; permissions: string }[];
-  const locationRows = (locations?.results ?? []) as { id: string }[];
-  const activeLocationIds = locationRows.map((row) => row.id);
+  const briefs = ((locations?.results ?? []) as LocationBriefRow[]).map(toLocationBrief);
+  prime?.('access:locations', briefs);
+  const activeLocationIds = briefs.filter((brief) => brief.active).map((brief) => brief.id);
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');
   if (admin !== '' && email === admin) {
     const byLocation: Record<string, LocationPermissionMap> = {};

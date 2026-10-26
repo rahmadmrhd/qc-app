@@ -7,6 +7,10 @@ import { normalizeEmail } from '@worker/core/email';
 import type { Env } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
 import { cached, touchCache } from '@worker/core/mem-cache';
+import type { LocationBrief, LocationBriefRow } from './location-brief';
+import { LOCATION_BRIEF_SQL, toLocationBrief } from './location-brief';
+
+export type { LocationBrief };
 
 export interface UserRecord {
   id: string;
@@ -138,28 +142,11 @@ export interface AccessTables {
   locations: LocationRecord[];
 }
 
-export interface LocationBrief {
-  id: string;
-  code: string;
-  name: string;
-  active: boolean;
-}
-
 /** Ringkasan semua lokasi (kecil); cache memori isolate (`mem-cache.ts`), dibuang saat lokasi ditulis. */
 export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
   return cached(env, 'access:locations', async () => {
-    const result = await env.DB.prepare('SELECT id, code, name, status FROM locations').all<{
-      id: string;
-      code: string;
-      name: string;
-      status: string;
-    }>();
-    return result.results.map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      active: row.status === 'active',
-    }));
+    const result = await env.DB.prepare(LOCATION_BRIEF_SQL).all<LocationBriefRow>();
+    return result.results.map(toLocationBrief);
   });
 }
 

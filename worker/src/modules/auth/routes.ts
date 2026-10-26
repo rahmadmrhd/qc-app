@@ -9,8 +9,8 @@ import {
   SESSION_COOKIE,
 } from '@worker/http/security';
 import { loadUserContext } from '@worker/modules/access/context';
-import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { Hono } from 'hono/tiny';
 import { createLogin, exchangeCodeForEmail, OAUTH_STATE_TTL_MS, verifyLoginState } from './oauth';
 
 /** Rute `/auth/*` (dipasang di `app.route('/auth', authApp)`). */

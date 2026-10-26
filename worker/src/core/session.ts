@@ -10,14 +10,27 @@ export interface SessionPayload {
   exp: number;
 }
 
-async function hmacKey(env: Env, usage: 'sign' | 'verify'): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
+/**
+ * Kunci HMAC diimpor sekali per rahasia dan kegunaan dalam isolate (`importKey` tiap permintaan memakan CPU
+ * yang tidak perlu); `CryptoKey` tidak terikat permintaan. Dibatasi agar rahasia lama (rotasi, tes) tidak menumpuk.
+ */
+const hmacKeys = new Map<string, Promise<CryptoKey>>();
+
+function hmacKey(env: Env, usage: 'sign' | 'verify'): Promise<CryptoKey> {
+  const id = `${usage}:${env.SESSION_SECRET}`;
+  const known = hmacKeys.get(id);
+  if (known) return known;
+  if (hmacKeys.size >= 8) hmacKeys.clear();
+  const imported = crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(env.SESSION_SECRET),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     [usage],
   );
+  hmacKeys.set(id, imported);
+  imported.catch(() => hmacKeys.delete(id));
+  return imported;
 }
 
 /** `base64url(JSON).base64url(HMAC-SHA256)`; dipakai token sesi dan cookie state OAuth. */
