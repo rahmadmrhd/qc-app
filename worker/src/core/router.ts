@@ -13,6 +13,7 @@ import type { UserContext } from '@worker/modules/access/context';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
+import { logRequest } from './log';
 import { settleCache } from './mem-cache';
 import { SESSION_COOKIE, verifySessionToken } from './session';
 
@@ -118,6 +119,8 @@ export async function callRoute(
   routes: RouteTable,
 ): Promise<RpcResult<unknown>> {
   const requestId = newRequestId();
+  const startedAt = Date.now();
+  let userId: string | null | undefined;
   try {
     if (typeof method !== 'string' || !Object.hasOwn(routes, method)) {
       throw appError('NOT_FOUND', 'Method tidak dikenal');
@@ -129,6 +132,7 @@ export async function callRoute(
     const base = await loadRequestCtx(env, session.email, requestId);
     if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
     const user = base.user;
+    userId = user.userId;
     const spec = route.permission;
     // anyOf kosong (hanya mungkin lewat cast) tidak boleh setara "cukup login": gagal tertutup.
     if (spec && 'anyOf' in spec && spec.anyOf.length === 0) {
@@ -150,9 +154,20 @@ export async function callRoute(
         ? authorizedLocationIds(input, user, locationAlternatives)
         : [];
     const data = await route.handler(input, { ...base, locationIds });
+    logRequest({ evt: 'rpc', requestId, method, ok: true, ms: Date.now() - startedAt, userId });
     return { ok: true, data };
   } catch (error) {
-    return { ok: false, error: toErrorBody(error, requestId) };
+    const body = toErrorBody(error, requestId);
+    logRequest({
+      evt: 'rpc',
+      requestId,
+      method: typeof method === 'string' ? method.slice(0, 64) : '?',
+      ok: false,
+      code: body.code,
+      ms: Date.now() - startedAt,
+      userId,
+    });
+    return { ok: false, error: body };
   } finally {
     // Penulisan selesai (atau gagal): buang cache kelompok yang disentuh agar pembaca berikutnya segar.
     settleCache();

@@ -4,6 +4,12 @@
   "name": "app",
   "main": "src/index.ts",
   "compatibility_date": "2025-04-01",
+  // Bundle lebih kecil dan startup lebih cepat (rencana: CPU edge): minify dan tanpa penamaan fungsi (__name).
+  "minify": true,
+  "keep_names": false,
+  // Workers Logs (paket gratis: 200 ribu log/hari, retensi 3 hari). Satu permintaan = invocation log + satu baris
+  // terstruktur dari core/log.ts. Lihat docs/observability.md. Tiap env mendefinisikan sendiri.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
   "assets": {
     // Keluaran build web (Vite outDir ../worker/dist), berpotongan.
     "directory": "./dist",
@@ -38,6 +44,9 @@
       // Staging di akun Cloudflare TERPISAH (keputusan pemilik 2026-10-25): kuota D1 gratis berlaku per akun,
       // jadi uji beban staging tidak boleh memakan jatah produksi di akun "QC".
       "account_id": "0c513cf2ea5fc5f24a06c6725e224400",
+      // Workers Logs (paket gratis: 200 ribu log/hari, retensi 3 hari). Satu permintaan = invocation log + satu baris
+      // terstruktur dari core/log.ts. Lihat docs/observability.md. Tiap env mendefinisikan sendiri.
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
       "name": "app-staging",
       "d1_databases": [
         {

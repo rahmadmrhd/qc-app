@@ -190,6 +190,29 @@ describe('dasar', () => {
     expect(error).toMatchObject({ code: 'VALIDATION', fields: { email: 'Wajib diisi' } });
   });
 
+  test('tiap permintaan RPC menulis satu log terstruktur (tanpa email atau payload)', async () => {
+    const lines: unknown[] = [];
+    const realLog = console.log;
+    const realWarn = console.warn;
+    console.log = (value?: unknown) => void lines.push(value);
+    console.warn = (value?: unknown) => void lines.push(value);
+    try {
+      await call('access.users.save', { rahasia: 'jangan-dicatat' }, 'plain@gmail.com');
+      await call('tidak.ada', null);
+    } finally {
+      console.log = realLog;
+      console.warn = realWarn;
+    }
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ evt: 'rpc', method: 'access.users.save', ok: false });
+    expect(lines[1]).toMatchObject({ evt: 'rpc', ok: false, code: 'NOT_FOUND' });
+    const text = JSON.stringify(lines);
+    expect(text).not.toContain('jangan-dicatat');
+    expect(text).not.toContain('@gmail.com');
+    expect(lines[0]).toHaveProperty('requestId');
+    expect(lines[0]).toHaveProperty('ms');
+  });
+
   test('kuota harian D1 habis menjadi UNAVAILABLE dengan pesan jelas', () => {
     const quota = new Error(
       "D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.",

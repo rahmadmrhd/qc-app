@@ -2,6 +2,7 @@ import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import type { Env } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
+import { logRequest } from '@worker/core/log';
 import { settleCache } from '@worker/core/mem-cache';
 import { toErrorBody } from '@worker/core/router';
 import { authenticateSync } from './auth';
@@ -48,6 +49,8 @@ export async function handleSync(
   routes: SyncRouteTable,
 ): Promise<RpcResult<unknown>> {
   const requestId = newRequestId();
+  const startedAt = Date.now();
+  let methodName = '?';
   try {
     const envelope = parseSyncEnvelope(rawBody);
     // Autentikasi lebih dulu dan seragam: tidak ada yang terungkap (metode, versi, bentuk JSON) tanpa token sah.
@@ -66,12 +69,28 @@ export async function handleSync(
     if (typeof method !== 'string' || !Object.hasOwn(routes, method)) {
       throw appError('NOT_FOUND', 'Method tidak dikenal');
     }
+    methodName = method;
     const route = routes[method] as SyncRouteDef<unknown>;
     const input = route.validate(envelope.payload === undefined ? null : envelope.payload);
     const data = await route.handler(input, { env, requestId, actor: SYNC_ACTOR });
+    logRequest({
+      evt: 'sync',
+      requestId,
+      method: methodName,
+      ok: true,
+      ms: Date.now() - startedAt,
+    });
     return { ok: true, data };
   } catch (error) {
     const body = toErrorBody(error, requestId);
+    logRequest({
+      evt: 'sync',
+      requestId,
+      method: methodName,
+      ok: false,
+      code: body.code,
+      ms: Date.now() - startedAt,
+    });
     // Kontrak QC Desktop (docs/api/desktop-sync.md) tidak mengenal UNAVAILABLE: kuota D1 habis tetap INTERNAL, pesan tetap jelas.
     return { ok: false, error: body.code === 'UNAVAILABLE' ? { ...body, code: 'INTERNAL' } : body };
   } finally {
