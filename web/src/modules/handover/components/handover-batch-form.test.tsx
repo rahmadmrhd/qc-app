@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { RpcError } from '@/lib/rpc/rpc-error';
+import type { HandoverBatchFormOutput } from '../schemas';
 
 const meMock = vi.hoisted(() => ({
   me: {
@@ -208,3 +209,87 @@ test('tempelan 30 task muat walau ada satu kartu kosong awal (slot dihitung bena
   await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (30)' }));
   expect(cards()).toHaveLength(30);
 }, 40_000);
+
+/** Tempel `n` task WhatsApp lalu tambahkan ke batch; lokasi dipilih. */
+async function pasteTasks(
+  n: number,
+  onSubmit: (values: HandoverBatchFormOutput) => Promise<unknown>,
+  onSaved = vi.fn(),
+) {
+  render(
+    <HandoverBatchForm
+      options={options}
+      onSubmit={onSubmit}
+      onSaved={onSaved}
+      onCancel={vi.fn()}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  const text = Array.from(
+    { length: n },
+    (_, i) => `Cust ${i + 1} :\nBarang ${i + 1} = 1 unit`,
+  ).join('\n\n');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
+    target: { value: text },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
+  await userEvent.click(screen.getByRole('button', { name: `Tambahkan ke batch (${n})` }));
+  return { onSaved };
+}
+
+const sentNotes = (onSubmit: ReturnType<typeof vi.fn>) =>
+  onSubmit.mock.calls.flatMap((call) =>
+    (call[0] as { tasks: { note: string }[] }).tasks.map((task) => task.note),
+  );
+
+test('25 task dikirim berurutan dalam kelompok 10/10/5 lalu onSaved(25)', async () => {
+  const onSubmit = vi.fn().mockResolvedValue([]);
+  const { onSaved } = await pasteTasks(25, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(25));
+  expect(onSubmit.mock.calls.map((call) => (call[0] as { tasks: unknown[] }).tasks.length)).toEqual(
+    [10, 10, 5],
+  );
+}, 60_000);
+
+test('kelompok ke-2 gagal: kelompok 1 dilaporkan tersimpan dan dibuang dari draf; ulang hanya mengirim sisanya', async () => {
+  const onSubmit = vi
+    .fn()
+    .mockResolvedValueOnce(Array.from({ length: 10 }, (_, i) => ({ number: `ST-${i + 1}` })))
+    .mockRejectedValueOnce(
+      new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+        tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
+      }),
+    )
+    .mockResolvedValue([]);
+  const { onSaved } = await pasteTasks(25, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
+  const notice = await screen.findByRole('status');
+  expect(notice).toHaveTextContent('10 dari 25 task sudah tersimpan');
+  expect(notice).toHaveTextContent('ST-1');
+  expect(notice).toHaveTextContent('15 task lainnya belum tersimpan');
+  expect(onSaved).not.toHaveBeenCalled();
+  // draf tinggal 15 kartu (task 11-25); galat menempel pada kartu ke-3 kelompok 2 = task 13
+  expect(cards()).toHaveLength(15);
+  expect(within(cards()[2] as HTMLElement).getByRole('alert')).toHaveTextContent(
+    'Customer dinonaktifkan',
+  );
+  expect(noteOf(cards()[0] as HTMLElement)).toHaveTextContent('Barang 11 = 1 unit');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (15)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(15));
+  // tiap task terkirim tepat sekali ke server yang menerimanya: kelompok 1 (10), gagal (10), ulang 10+5
+  const notes = sentNotes(onSubmit);
+  expect(notes).toHaveLength(10 + 10 + 15);
+  const accepted = [...notes.slice(0, 10), ...notes.slice(20)];
+  expect(new Set(accepted).size).toBe(25);
+}, 90_000);
+
+test('galat jaringan pada kelompok pertama: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan tersimpan', async () => {
+  const onSubmit = vi.fn().mockRejectedValue(new RpcError('FORBIDDEN', 'Tidak punya izin', 'r3'));
+  await pasteTasks(12, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (12)' }));
+  expect(await screen.findByText('Tidak punya izin')).toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(cards()).toHaveLength(12);
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+}, 60_000);

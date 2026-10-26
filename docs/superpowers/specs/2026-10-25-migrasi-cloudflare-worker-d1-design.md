@@ -102,7 +102,7 @@ Prinsip: CPU hanya untuk memetakan permintaan → SQL → respons. Pekerjaan ber
 | Worker **tidak pernah** decode/encode base64 berkas | Mengubah 540 KB base64 ↔ byte bisa puluhan ms; klien yang mendekode |
 | Tidak ada loop atas seluruh tabel di dalam permintaan; filter/urut/hitung dikerjakan SQL dengan indeks | Pemindaian tanpa indeks memakan CPU dan kuota baris-dibaca D1 |
 | Penggabungan beberapa query memakai `D1.batch()` | Batas 50 subrequest per invokasi (D1, jembatan, Queues semua dihitung; `batch()` = satu) — terverifikasi §2b |
-| Validasi catatan (≤5.000 karakter), `extractChecklist`, kanonisasi tetap di server, tetapi `saveBatch` dibatasi 30 task dan diukur | Hot path terberat yang tersisa |
+| Validasi catatan (≤5.000 karakter), `extractChecklist`, kanonisasi tetap di server, tetapi `saveBatch` dibatasi 10 task per permintaan di Worker (30 sebelum 2026-10-26; formulir bulk mengirim berurutan) dan diukur | Hot path terberat yang tersisa |
 | Pemecah WhatsApp, saran customer, ekspor PDF/PNG QR, kecilkan gambar tetap di klien | Tidak menggunakan CPU Worker |
 
 **Gerbang pengukuran (kriteria rilis).** Cloudflare melaporkan `cpuTime` per invokasi (Workers Logs / `wrangler tail`). Skrip beban di staging memanggil setiap RPC dengan data realistis (±2 tahun data hasil proyeksi) dan mencatat p50/p95/p99/maks CPU. Rilis ke produksi hanya bila **p95 ≤ 8 ms** untuk setiap rute (margin 2 ms) dengan ≥ 100 sampel. **[pemilik, 2026-10-25]** Kriteria semula p99; diganti p95 karena lantai derau isolate di edge: rute tanpa kerja (`/api/ping`) sudah p99 10 ms dan rute baca ringan p50 2-3 ms tetap p99 9-24 ms. p99 dan maks tetap dicetak sebagai informasi. Rute yang gagal diperbaiki sebelum cutover, bukan sesudahnya.
@@ -134,7 +134,7 @@ Satu tabel D1 per `TableSchema` yang ada: `users`, `roles`, `locations`, `audit_
 D1 menserialkan tulis, tetapi urutan baca-ubah-tulis lintas dua query tidak atomik. Pola yang dipakai:
 - Operasi baca-ubah-tulis memakai **kolom `version` + `UPDATE … WHERE id=? AND version=?`**, diulang sekali bila 0 baris berubah (bukan lock).
 - Penomoran (`ST-YYYYMMDD-NNN`, `sync_rev`) memakai tabel penghitung dengan `UPDATE … SET n = n + 1 … RETURNING`, di dalam `batch()` yang sama dengan penyisipan agar atomik.
-- `saveBatch` (maks. 30 task, atomik) = satu `batch()` D1 (transaksi implisit): validasi semua dulu di kode, lalu sisipkan semuanya atau tidak sama sekali.
+- `saveBatch` (maks. 10 task per permintaan di Worker, atomik per permintaan; GAS lama 30) = satu `batch()` D1 (transaksi implisit): validasi semua dulu di kode, lalu sisipkan semuanya atau tidak sama sekali.
 - Aturan bisnis yang sekarang ada **tidak berubah**: `setCheck` idempoten dan tidak memakai `expectedUpdatedAt`; simpan task tidak CONFLICT bila hanya centang berubah (`base`); antrean klien serial per task.
 
 ### 7.3 Bentuk data handover
@@ -180,7 +180,7 @@ Kuota D1 gratis 5 juta baris **dipindai** per hari (bukan baris yang dikembalika
 
 ## 9. Sinkron QC Desktop
 
-Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 10 salah/10 menit, body ≤ 5 MB, paginasi) dipertahankan; endpoint menjadi `POST https://<domain-worker>/sync`. Tidak ada lagi redirect 302. Syarat peralihan: data `sync_state` dan semua `sync_rev` item/merk **diimpor apa adanya** sehingga kursor Desktop tetap valid. QC Desktop adalah proyek terpisah: pemilik/pemelihara Desktop harus mengganti URL pada hari cutover (lihat §11). Ukuran halaman sinkron dibatasi dan diukur terhadap anggaran CPU (hash `itemSyncSignature_` per item). **[pemilik, 2026-10-25]** `sync.items.pull` dengan `include: detail` dipotong ke maks. 50 item per halaman (sebelumnya 200; tanpa detail tetap 500) karena hasil gerbang edge (p50 13 ms); Desktop wajib mengikuti `nextRev`/`hasMore`.
+Kontrak `docs/api/desktop-sync.md` (amplop, token di body, kode galat, pembatas 10 salah/10 menit, body ≤ 5 MB, paginasi) dipertahankan; endpoint menjadi `POST https://<domain-worker>/sync`. Tidak ada lagi redirect 302. Syarat peralihan: data `sync_state` dan semua `sync_rev` item/merk **diimpor apa adanya** sehingga kursor Desktop tetap valid. QC Desktop adalah proyek terpisah: pemilik/pemelihara Desktop harus mengganti URL pada hari cutover (lihat §11). Ukuran halaman sinkron dibatasi dan diukur terhadap anggaran CPU (hash `itemSyncSignature_` per item). **[pemilik, 2026-10-25]** `sync.items.pull` dengan `include: detail` dipotong ke maks. 50 item per halaman (sebelumnya 200; tanpa detail tetap 500) karena hasil gerbang edge (p50 13 ms); Desktop wajib mengikuti `nextRev`/`hasMore`. **[pemilik, 2026-10-26]** `sync.items.push` dibatasi **5 item per panggilan** di Worker (dengan atau tanpa detail; sebelumnya 50/25) berdasarkan gerbang run 3 (p50 59 / p95 100 ms untuk 25 item); QC Desktop harus mengirim kelompok ≤ 5. `sync.brands.push` tidak berubah.
 
 ## 9b. Pekerjaan latar lewat Queues **[pemilik: ekspor dilakukan di queue]**
 

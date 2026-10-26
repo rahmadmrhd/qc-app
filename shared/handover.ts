@@ -11,6 +11,13 @@ export const HANDOVER_LIMITS = {
   stateJson: 40000,
 } as const;
 
+/**
+ * Maksimum task per permintaan `handovers.saveBatch` di Worker (anggaran CPU edge; keputusan pemilik 2026-10-26).
+ * Aplikasi Apps Script lama tetap memakai `HANDOVER_LIMITS.batch` (30). Formulir bulk tetap menampung
+ * `HANDOVER_LIMITS.batch` kartu dan mengirimnya berurutan dalam kelompok sebesar ini.
+ */
+export const HANDOVER_WORKER_BATCH = 10;
+
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
 

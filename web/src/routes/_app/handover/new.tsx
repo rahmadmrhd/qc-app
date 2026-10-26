@@ -64,9 +64,13 @@ function NewHandoverPage() {
   }
 
   async function handleBatch(values: HandoverBatchFormOutput) {
-    // Galat dilempar ke form bulk (menandai kartu bermasalah); tidak ada task yang tersimpan bila gagal.
-    const saved = await saveBatch.mutateAsync(toSaveHandoverBatchInput(values));
-    toast.success(`${saved.length} task disimpan`);
+    // Satu kelompok (<= 10 task, atomik). Galat dilempar ke form bulk: kartu bermasalah ditandai dan kelompok
+    // yang sudah tersimpan dilaporkan; navigasi hanya setelah SEMUA kelompok tersimpan (`onSaved`).
+    return saveBatch.mutateAsync(toSaveHandoverBatchInput(values));
+  }
+
+  function handleBatchSaved(count: number) {
+    toast.success(`${count} task disimpan`);
     toList();
   }
 
@@ -122,6 +126,7 @@ function NewHandoverPage() {
               options={options.data}
               defaultLocationId={defaultLocation}
               onSubmit={handleBatch}
+              onSaved={handleBatchSaved}
               onCancel={toList}
             />
           </div>

@@ -3,6 +3,7 @@ import {
   dateKeyOf,
   deriveHandoverStatus,
   HANDOVER_LIMITS,
+  HANDOVER_WORKER_BATCH,
   handoverNumber,
 } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
@@ -607,8 +608,8 @@ export async function saveHandoverBatch(
   input: SaveHandoverBatchInput,
   actor: ActorRef,
 ): Promise<HandoverDto[]> {
-  if (input.tasks.length === 0 || input.tasks.length > HANDOVER_LIMITS.batch) {
-    const message = `Jumlah task harus 1–${HANDOVER_LIMITS.batch}`;
+  if (input.tasks.length === 0 || input.tasks.length > HANDOVER_WORKER_BATCH) {
+    const message = `Jumlah task harus 1–${HANDOVER_WORKER_BATCH}`;
     throw appError('VALIDATION', message, { tasks: message });
   }
   const customers = await listCustomers(env);

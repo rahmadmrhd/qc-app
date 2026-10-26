@@ -81,7 +81,7 @@ describe('round trip D1 per rute (cache hangat)', () => {
     ['handovers.reopen', 2],
     ['handovers.save:update', 3],
     ['handovers.save:create', 2],
-    ['handovers.saveBatch:30x5000', 3],
+    ['handovers.saveBatch:10x5000', 3],
     ['items.setStatus', 2],
     ['items.save', 4],
     ['brands.save:rename(~50 item)', 4],
@@ -92,8 +92,8 @@ describe('round trip D1 per rute (cache hangat)', () => {
     });
   }
 
-  test('sync.items.push: <= 3 round trip per entri (25 entri)', async () => {
-    expect(await tripsPer('sync.items.push:25+detail', 2)).toBeLessThanOrEqual(25 * 3 + 4);
+  test('sync.items.push: <= 3 round trip per entri (5 entri)', async () => {
+    expect(await tripsPer('sync.items.push:5+detail', 2)).toBeLessThanOrEqual(5 * 3 + 4);
   });
 });
 
@@ -132,8 +132,8 @@ describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
     'handovers.setCheck',
     'handovers.comment:anchored',
     'handovers.save:create',
-    'handovers.saveBatch:30x5000',
-    'sync.items.push:25+detail',
+    'handovers.saveBatch:10x5000',
+    'sync.items.push:5+detail',
     'sync.items.pull:500',
     'items.list',
     'items.list:cursor',

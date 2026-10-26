@@ -297,25 +297,25 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
     ),
     // ---- tulis berat ----
     spec(
-      'handovers.saveBatch:30x5000',
+      'handovers.saveBatch:10x5000',
       (i) =>
         rpc('handovers.saveBatch', {
           locationId: 'loc-jkt',
-          tasks: Array.from({ length: 30 }, (_, t) => ({
+          tasks: Array.from({ length: 10 }, (_, t) => ({
             customerName: `PT Pelanggan Uji ${1 + ((i + t) % 5)}`,
             note: bigNote(`B${i}-${t}`),
           })),
         }),
-      30 * 8 + 1,
+      10 * 8 + 1,
     ),
     spec(
-      'sync.items.push:25+detail',
+      'sync.items.push:5+detail',
       (i) =>
         syncCall(ctx, 'sync.items.push', {
           overwrite: true,
-          items: Array.from({ length: 25 }, (_, t) => {
+          items: Array.from({ length: 5 }, (_, t) => {
             // 1.700 item (301..2000) dipakai berputar: putaran kedua memperbarui item yang sama (isi beda).
-            const n = 301 + ((i * 25 + t) % (LOAD_SIZES.items - 300));
+            const n = 301 + ((i * 5 + t) % (LOAD_SIZES.items - 300));
             const naming = itemNaming(n);
             return {
               uid: `li-${n}`,
@@ -331,7 +331,7 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
             };
           }),
         }),
-      25 * 8,
+      5 * 8,
     ),
     // ---- mengubah data referensi (paling akhir) ----
     spec(

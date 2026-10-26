@@ -1,5 +1,10 @@
 import type { HandoverStatus } from '@shared/handover';
-import { customerKey, HANDOVER_LIMITS, hasHandoverControlChars } from '@shared/handover';
+import {
+  customerKey,
+  HANDOVER_LIMITS,
+  HANDOVER_WORKER_BATCH,
+  hasHandoverControlChars,
+} from '@shared/handover';
 import type {
   AddCommentInput,
   BoardPageInput,
@@ -145,8 +150,8 @@ export function validateSaveHandoverBatch(raw: unknown): SaveHandoverBatchInput 
     reader.fail('tasks', 'Harus berupa daftar task');
   } else if (value.length === 0) {
     reader.fail('tasks', 'Minimal satu task');
-  } else if (value.length > HANDOVER_LIMITS.batch) {
-    reader.fail('tasks', `Maksimal ${HANDOVER_LIMITS.batch} task`);
+  } else if (value.length > HANDOVER_WORKER_BATCH) {
+    reader.fail('tasks', `Maksimal ${HANDOVER_WORKER_BATCH} task per permintaan`);
   } else {
     for (let i = 0; i < value.length; i++) {
       const task = readBatchTask(value[i]);

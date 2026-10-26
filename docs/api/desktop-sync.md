@@ -32,7 +32,7 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 { "ok": true, "data": { } }
 ```
 ```json
-{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 50 item" } } }
+{ "ok": false, "error": { "code": "VALIDATION", "message": "Input tidak valid", "requestId": "a1b2c3d4", "fields": { "items": "Maksimal 5 item" } } }
 ```
 
 | `error.code` | Arti |
@@ -167,7 +167,7 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 - Alur yang disarankan: **pull dulu, lalu push dengan `baseRev` = `rev` item yang terakhir ditarik.**
 - `overwrite: true` (per permintaan) mengabaikan pemeriksaan konflik dan menimpa field yang dikirim.
 
-**Batas:** ≤ 50 item per panggilan, ≤ 25 bila ada yang memuat `detail`; total body ≤ 5 MB. Batas ini konservatif: satu entri membaca dan menulis beberapa sheet di dalam lock, dan satu panggilan Apps Script dibatasi 6 menit. Naikkan hanya setelah diukur (E2E 52).
+**Batas (perubahan 2026-10-26, Worker):** ≤ **5 item per panggilan**, dengan atau tanpa `detail`; di atas itu ditolak `VALIDATION` (`fields.items`: "Maksimal 5 item"). Sebelumnya (Apps Script) 50 item, 25 bila memuat `detail`. QC Desktop HARUS mengirim kelompok ≤ 5 item; perubahan ini perlu dikoordinasikan dengan pemelihara Desktop sebelum cutover. `sync.brands.push` tetap ≤ 50. total body ≤ 5 MB. Batas ini konservatif: satu entri membaca dan menulis beberapa sheet di dalam lock, dan satu panggilan Apps Script dibatasi 6 menit. Naikkan hanya setelah diukur (E2E 52).
 
 **Catatan perilaku:**
 - Pemetaan id MySQL saja (nilai sama) → `updated` **tanpa** kenaikan `rev` dan tanpa audit.
@@ -218,7 +218,7 @@ Item dan merk yang sudah ada sebelum Fase B2 diberi revisi oleh `setup` (urut wa
 
 ### 3.6 Migrasi awal dari MySQL dan spreadsheet lama
 1. Isi Script Property `DRIVE_FOLDER_ID` dengan id folder gambar lama **sebelum** menjalankan `setup`.
-2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 50 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
+2. Desktop mendorong seluruh isi MySQL dengan `sync.items.push` secara bertahap (≤ 5 item/panggilan). Item tanpa `uid`, `id` = id MySQL.
 3. Desktop lalu menarik (`sync.items.pull` dari `sinceRev: 0`) untuk memeriksa hasilnya dan menyimpan kursor.
 4. Setelah semua cocok, proyek GAS lama (`?action=insert|update|sync|delete`) dipensiunkan dan Desktop memakai kontrak ini.
 

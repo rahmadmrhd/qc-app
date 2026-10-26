@@ -474,13 +474,13 @@ describe('saveBatch', () => {
     ]);
   });
 
-  test('31 task ditolak; kosong ditolak; 30 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
-    const tasks = Array.from({ length: 31 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
+  test('11 task ditolak (batas Worker 10); kosong ditolak; 10 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
+    const tasks = Array.from({ length: 11 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
     expect((await batch(tasks)).error.code).toBe('VALIDATION');
     expect((await batch([])).error.code).toBe('VALIDATION');
-    const ok = await batch(tasks.slice(0, 30));
-    expect(ok.data).toHaveLength(30);
-    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(30);
+    const ok = await batch(tasks.slice(0, 10));
+    expect(ok.data).toHaveLength(10);
+    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(10);
     expect((await batch([{ customerName: '', note: 'x' }], 'qc@gmail.com')).error.code).toBe(
       'FORBIDDEN',
     );
@@ -500,14 +500,14 @@ describe('saveBatch', () => {
     ]);
   });
 
-  test('CPU kasar: 30 task x 5.000 karakter di bawah anggaran', async () => {
+  test('CPU kasar: 10 task x 5.000 karakter di bawah anggaran', async () => {
     const note = Array.from(
       { length: 120 },
       (_, i) => `- [ ] Barang ${i} = ${i} pcs ${'x'.repeat(20)}`,
     )
       .join('\n')
       .slice(0, 5000);
-    const tasks = Array.from({ length: 30 }, (_, i) => ({ customerName: `PT ${i}`, note }));
+    const tasks = Array.from({ length: 10 }, (_, i) => ({ customerName: `PT ${i}`, note }));
     const { result, ms } = await measureCpu(() => batch(tasks));
     expect(result.ok).toBe(true);
     expect(ms).toBeLessThan(100);
@@ -1287,7 +1287,7 @@ describe('konkurensi (Review Focus 3)', () => {
   });
 
   test('batch banyak: setiap pernyataan di bawah 100 parameter terikat (adaptor menolak bila lebih)', async () => {
-    const tasks = Array.from({ length: 30 }, (_, i) => ({
+    const tasks = Array.from({ length: 10 }, (_, i) => ({
       customerName: `Cust ${i}`,
       note: `- [ ] x${i}`,
     }));

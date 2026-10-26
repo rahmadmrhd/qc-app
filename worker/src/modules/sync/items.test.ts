@@ -324,10 +324,12 @@ describe('push', () => {
       '![x]()',
       'teks qcfile:abc',
     ];
-    const out = await results([
+    // Worker: maks. 5 item per panggilan, jadi dikirim dalam dua panggilan
+    const entries = [
       { ...BASE, id: '1', tipe: 'ok', detail: `![x](drive:${ok}) dan [tautan](https://x.test)` },
       ...bad.map((detail, i) => ({ ...BASE, id: `${10 + i}`, tipe: `bad${i}`, detail })),
-    ]);
+    ];
+    const out = [...(await results(entries.slice(0, 5))), ...(await results(entries.slice(5)))];
     expect(out[0]?.status).toBe('created');
     for (const entry of out.slice(1))
       expect(entry).toMatchObject({ status: 'invalid', fields: { detail: expect.any(String) } });
@@ -507,21 +509,20 @@ describe('push', () => {
   });
 
   test('batas jumlah entri dan bentuk payload', async () => {
-    const many = Array.from({ length: 51 }, (_, i) => ({ ...BASE, id: String(i), tipe: `T${i}` }));
+    // Worker: maks. 5 item per panggilan, dengan atau tanpa detail (aplikasi lama: 50/25)
+    const many = Array.from({ length: 6 }, (_, i) => ({ ...BASE, id: String(i), tipe: `T${i}` }));
     expect(await push(many)).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { items: 'Maksimal 50 item' } },
+      error: { code: 'VALIDATION', fields: { items: 'Maksimal 5 item' } },
     });
-    const withDetail = Array.from({ length: 26 }, (_, i) => ({
-      ...BASE,
-      id: String(i),
-      tipe: `T${i}`,
-      detail: 'x',
-    }));
+    const withDetail = many.map((entry) => ({ ...entry, detail: 'x' }));
     expect(await push(withDetail)).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { items: 'Maksimal 25 item' } },
+      error: { code: 'VALIDATION', fields: { items: 'Maksimal 5 item' } },
     });
+    expect((await results(many.slice(0, 5))).map((entry) => entry.status)).toEqual(
+      Array.from({ length: 5 }, () => 'created'),
+    );
     expect(await push([])).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });
     expect(await call('sync.items.push', { items: 'x' })).toMatchObject({
       ok: false,
