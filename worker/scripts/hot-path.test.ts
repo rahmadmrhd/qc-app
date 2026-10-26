@@ -82,6 +82,9 @@ describe('round trip D1 per rute (cache hangat)', () => {
     ['handovers.save:update', 3],
     ['handovers.save:create', 2],
     ['handovers.saveBatch:10x5000', 3],
+    // Satu kueri kabel (autentikasi sinkron = 1 round trip lain); berkas hanya bila detail memuat rujukan qcfile:.
+    ['sync.items.pull:500', 2],
+    ['sync.items.pull:50+detail', 2],
     ['items.setStatus', 2],
     ['items.save', 4],
     ['brands.save:rename(~50 item)', 4],
@@ -117,6 +120,12 @@ const ALLOWED_SCANS: Record<string, string[]> = {
  * Tabel kecil (puluhan/ratusan baris) yang memang dibaca seluruhnya SAAT cache memori isolate kosong; cache
  * (TTL <= 15 dtk) melindungi dari pembacaan tiap permintaan, dan jumlah barisnya terbatas.
  */
+/**
+ * `json_each` atas larik kecil milik item itu sendiri (maks. 10 gambar, 30 stiker/kelengkapan), bukan tabel:
+ * diizinkan hanya pada rute tarik sinkron yang menyusun JSON kabel di SQL.
+ */
+const JSON_EACH_SCAN = /^SCAN (?:\(subquery-\d+\)|\w+ VIRTUAL TABLE INDEX \d+:)/;
+const JSON_EACH_ROUTES = new Set(['sync.items.pull:500', 'sync.items.pull:50+detail']);
 const SMALL_TABLE_SCAN = /^SCAN (brands|locations|roles|customers)(?: |$)/;
 
 describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
@@ -135,6 +144,7 @@ describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
     'handovers.saveBatch:10x5000',
     'sync.items.push:5+detail',
     'sync.items.pull:500',
+    'sync.items.pull:50+detail',
     'items.list',
     'items.list:cursor',
     'access.audit.list',
@@ -158,6 +168,7 @@ describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
       for (const sql of executed.filter((entry) => /^\s*(SELECT|WITH)\b/i.test(entry))) {
         for (const detail of await planOf(sql)) {
           if (SMALL_TABLE_SCAN.test(detail) || detail === 'SCAN CONSTANT ROW') continue;
+          if (JSON_EACH_ROUTES.has(name) && JSON_EACH_SCAN.test(detail)) continue;
           if (detail.startsWith('SCAN ')) scans.add(detail);
         }
       }

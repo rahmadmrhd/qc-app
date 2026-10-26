@@ -4,6 +4,7 @@ import type { Env } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
 import { logRequest } from '@worker/core/log';
 import { settleCache } from '@worker/core/mem-cache';
+import { PreEncodedJson } from '@worker/core/pre-encoded';
 import { toErrorBody } from '@worker/core/router';
 import { authenticateSync } from './auth';
 
@@ -111,7 +112,12 @@ export async function handleSyncRequest(
   const declared = Number(request.headers.get('content-length') ?? '0');
   const body = declared > SYNC_LIMITS.bodyChars * 4 ? undefined : await request.text();
   const result = await handleSync(env, body, routes);
-  return new Response(JSON.stringify(result), {
+  // Data yang sudah berbentuk teks JSON (mis. halaman tarik item) dikirim apa adanya, tanpa serialisasi ulang.
+  const text =
+    result.ok && result.data instanceof PreEncodedJson
+      ? `{"ok":true,"data":${result.data.text}}`
+      : JSON.stringify(result);
+  return new Response(text, {
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
