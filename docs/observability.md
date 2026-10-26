@@ -14,7 +14,7 @@ Workers Logs aktif di produksi (akun "QC") dan staging (akun terpisah) lewat `ob
 | `method` | nama RPC, mis. `handovers.setCheck`; di `sync` hanya diisi setelah token sah (galat autentikasi = `?`) |
 | `ok` | `true` atau `false` |
 | `code` | kode galat bila `ok = false`: `VALIDATION`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `UNAVAILABLE`, `INTERNAL` |
-| `ms` | waktu dinding (bukan CPU; mencakup menunggu D1/jembatan) |
+| `ms` | waktu dinding (bukan CPU; mencakup menunggu D1/jembatan). Bernilai 0 untuk permintaan tanpa I/O (jam Workers hanya maju saat ada I/O, mis. galat sebelum menyentuh D1) |
 | `userId` | id internal pengguna (bukan email); kosong bila belum login |
 
 Tidak pernah dicatat: email, token sesi, `SYNC_API_TOKEN`, isi payload, isi catatan atau komentar.
