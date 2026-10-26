@@ -60,3 +60,33 @@ Pembacaan:
 - **Inisialisasi tingkat modul** hanya ±2 ms (pendaftaran rute Hono 0,65 ms, `__name` 0,64 ms); biaya mulai dingin didominasi kompilasi 390 KB JS (±11 ms di Node), bukan kode kita. Tidak ada inisialisasi mahal yang bisa ditunda. Impor dinamis tidak mengurangi kompilasi karena wrangler membundel semuanya jadi satu berkas.
 - **Penyebab paling mungkin p95 9-13 ms pada rute ringan:** cache isolate (TTL 10 dtk) kedaluwarsa. Gerbang memanggil lewat `curl` per permintaan (±0,5-1 dtk per panggilan), sehingga ±5-10% panggilan jatuh pada miss konteks akses (batch 3 pernyataan) dan miss daftar lokasi (round trip kedua). Perbaikan: satu miss kini satu round trip (konteks akses mengisi cache lokasi), kunci HMAC sesi diimpor sekali per isolate.
 - **Rekomendasi (di luar wewenang kode):** `keep_names = false` dan `minify = true` di `worker/wrangler.jsonc`.
+
+## Run 4 (2026-10-26, staging akun terpisah, Worker di-minify, `hono/tiny`, satu sesi tail untuk semua rute)
+
+Versi `443e26aa` (minify, observability aktif, saveBatch maks 10, push maks 5, board 3 task). 100 sampel per rute. **Run terpotong di rute tulis: kuota tulis D1 harian akun staging (100 rb baris) habis** (seed 57 rb + run 3 + run sebelumnya), jadi 743 panggilan tulis gagal dengan `UNAVAILABLE` (RPC, HTTP 503) atau `INTERNAL` dengan pesan kuota (`/sync`). Ini sekaligus bukti pemetaan galat kuota bekerja. Rute tulis yang gagal HARUS diulang setelah kuota reset (00:00 UTC = 07.00 WIB), dengan seed lebih kecil atau `--only=<awalan>` per kelompok.
+
+Rute baca dan tulis yang terukur penuh (p95 ≤ 8 ms = lulus):
+
+| Rute | p50 | p95 | p99 | maks | Hasil |
+|---|---|---|---|---|---|
+| `/api/ping` | 0 | 1 | 2 | 3 | lulus |
+| `auth.me` | 1 | 5 | 11 | 13 | lulus |
+| `items.list` (+`:cursor`, `:query`), `items.get`, `brands.list`, `customers.list` | 2–3 | 5–8 | 6–13 | 9–50 | lulus |
+| `handovers.get`, `handovers.options` | 2 | 6–8 | 8–9 | 10–11 | lulus |
+| `access.audit.list` (4 varian), `access.users.list`, `access.roles.list`, `access.locations.list` | 2 | 6–7 | 8–11 | 8–12 | lulus |
+| `qrcodes.list`, `qrcodes.getDefaults`, `sync.ping`, `sync.brands.pull:500` | 1–2 | 4–8 | 5–10 | 5–14 | lulus |
+| `handovers.board:done` | 4 | 8 | 11 | 12 | lulus (batas) |
+| `items.setStatus`, `handovers.setCheck`, `handovers.setDone` | 2 | 7–8 | 9–12 | 10–12 | lulus |
+| `GET /api/boot` | 1 | 10 | 12 | 14 | **gagal tipis** |
+| `handovers.board:new` / `in_progress` / `cancelled` | 4 / 4 / 3 | 10 / 9 / 9 | 14 / 14 / 10 | 14 / 14 / 11 | **gagal tipis** |
+| `sync.items.pull:50+detail` | 5 | 10 | 12 | 14 | **gagal tipis** |
+| `access.users.save`, `handovers.comment:general` | 3–4 | 9 | 10 | 10–11 | **gagal tipis** |
+| `items.save` | 6 | 17 | 18 | 21 | **gagal** |
+| `sync.items.pull:500` | 10 | 20 | 26 | 27 | **gagal** |
+
+Tidak terukur karena kuota (ulang setelah reset): `handovers.comment:anchored` (65 dari 100 terukur), `handovers.cancel`, `handovers.reopen`, `handovers.save:update`, `handovers.save:create`, `handovers.saveBatch:10x5000`, `sync.items.push:5+detail`, `brands.save` ganti nama.
+
+Pembacaan:
+1. **Rute baca kini hampir seluruhnya lulus p95 ≤ 8 ms** (dibanding run 3: p95 9–13). Minify (bundle 391 → 177 KB), cache lokasi satu round trip, dan kunci HMAC sesi sekali per isolate efektif. `GET /api/boot` dan board kolom Baru/Dikerjakan/Dibatalkan masih p95 9–10 (tipis di atas batas), `items.save` p95 17 dan `sync.items.pull:500` p95 20 masih jelas di atas.
+2. Run ini TIDAK membuktikan lulusnya gerbang: rute tulis penting belum terukur. Gerbang dinyatakan belum selesai.
+3. **Perkiraan baris tulis di skrip terlalu rendah** (heuristik 34.800 untuk satu run; kuota habis jauh sebelum itu bersama seed). Anggaran `--max-writes` harus diperkecil atau seed dikurangi (mis. tanpa 400 task Baru khusus tulis) bila run dilakukan di hari yang sama dengan seed.
