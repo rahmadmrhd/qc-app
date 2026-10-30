@@ -530,3 +530,87 @@ describe('ganti nama merk: tabrakan sementara dan perubahan himpunan item', () =
     expect(await keysOf(id)).toEqual([{ id: 'i1', key: 'ubiquiti x2' }]);
   });
 });
+
+describe('ganti nama merk: kasus tepi (review)', () => {
+  const keysOf = async (brandId: string) =>
+    (
+      await env.DB.prepare('SELECT id, key FROM items WHERE brand_id = ? ORDER BY id')
+        .bind(brandId)
+        .all<{ id: string; key: string }>()
+    ).results;
+
+  /** Jalankan `mutate` sekali tepat sebelum `batch()` yang memuat SQL `match`. */
+  function beforeBatch(match: RegExp, mutate: () => Promise<unknown>): void {
+    const original = env.DB.batch.bind(env.DB);
+    let fired = false;
+    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+      const sqls = statements.map((s) => (s as unknown as { sql: string }).sql);
+      if (!fired && sqls.some((sql) => match.test(sql))) {
+        fired = true;
+        env.DB.batch = original;
+        await mutate();
+      }
+      return original(statements);
+    }) as typeof env.DB.batch;
+  }
+
+  test('merk tanpa item terbaca, item disisipkan di antara baca dan tulis: diulang, item baru berkunci nama baru', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    beforeBatch(/UPDATE brands/, () => seedItem(env, { id: 'i9', brand: 'Ubiquity', model: 'Z' }));
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([{ id: 'i9', key: 'ubiquiti z' }]);
+    expect((await itemRow('i9'))?.sync_rev).toBe(1);
+  });
+
+  test('merk tanpa item sama sekali: ganti nama berhasil tanpa menyentuh item', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect((await brandRow(id))?.name).toBe('Ubiquiti');
+    expect(await currentSyncRev(env.DB, 'items')).toBe(0);
+  });
+
+  test('tipe memuat teks Unicode tak utuh (surrogate tunggal): tetap berhasil (dibandingkan per byte)', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X\ud800' });
+    await seedItem(env, { id: 'i2', brand: 'Ubiquity', model: 'Y' });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'i1', key: 'ubiquiti x' },
+      { id: 'i2', key: 'ubiquiti y' },
+    ]);
+  });
+
+  test('ABA: tipe berubah lalu kembali sebelum baca ulang: diulang dan berhasil (bukan CONFLICT alias palsu)', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X' });
+    await seedItem(env, { id: 'i2', brand: 'Ubiquity', model: 'Y' });
+    // 1) tepat sebelum tulis: tipe i2 berubah (penjaga sisa kunci sementara gagal);
+    beforeBatch(/UPDATE brands/, async () => {
+      await env.DB.prepare(
+        "UPDATE items SET model = 'Y2', key = 'ubiquity y2' WHERE id = 'i2'",
+      ).run();
+      // 2) tepat sebelum pemeriksaan alias/baca ulang: tipe kembali ke semula (himpunan (id, tipe) sama lagi).
+      beforeBatch(/item_alias_keys/, async () => {
+        await env.DB.prepare(
+          "UPDATE items SET model = 'Y', key = 'ubiquity y' WHERE id = 'i2'",
+        ).run();
+      });
+    });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'i1', key: 'ubiquiti x' },
+      { id: 'i2', key: 'ubiquiti y' },
+    ]);
+  });
+
+  test('id yang hanya beda huruf besar/kecil (kunci NOCASE): kunci sementara tetap unik', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await seedItem(env, { id: 'AB', brand: 'Ubiquity', model: 'X' });
+    await seedItem(env, { id: 'ab', brand: 'Ubiquity', model: 'Y' });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'AB', key: 'ubiquiti x' },
+      { id: 'ab', key: 'ubiquiti y' },
+    ]);
+  });
+});

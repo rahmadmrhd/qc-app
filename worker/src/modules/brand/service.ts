@@ -94,7 +94,12 @@ export async function planBrandByName(
 
 /** Batas parameter terikat D1 per kueri (100) dikurangi sisa parameter tetap. */
 const KEY_CHUNK = 90;
-/** Item per pernyataan `UPDATE ... FROM json_each` ganti nama (satu parameter JSON, ±90 byte per item). */
+/**
+ * Item per pernyataan `UPDATE ... FROM json_each` ganti nama: satu parameter JSON berisi `[id, kunci, urutan, hex(tipe)]`
+ * per item. ASCII umum ±150 byte per item (500 item = ±75 KB); terburuk (tipe 100 karakter non-ASCII 3 byte, merk 60
+ * karakter) ±1,1 KB per item = ±550 KB per potongan. Batas D1 untuk nilai string/BLOB 2 MB (spek §2b; batas 100 KB
+ * berlaku untuk teks SQL, bukan nilai bind), jadi 500 per potongan masih jauh di bawah batas.
+ */
 const RENAME_ITEMS_PER_STATEMENT = 500;
 
 /**
@@ -129,25 +134,50 @@ function aliasCollisionGuards(env: Env, keys: readonly string[]): D1PreparedStat
   return guards;
 }
 
-/** Item milik merk pada saat dibaca: id dan tipe (kunci baru dihitung dari tipe). */
+/** True bila salah satu kunci masih dipegang sebagai nama lain (alias) item mana pun: satu round trip. */
+async function aliasCollides(env: Env, keys: readonly string[]): Promise<boolean> {
+  const unique = [...new Set(keys)];
+  const statements: D1PreparedStatement[] = [];
+  for (let from = 0; from < unique.length; from += KEY_CHUNK) {
+    const chunk = unique.slice(from, from + KEY_CHUNK);
+    statements.push(
+      env.DB.prepare(
+        `SELECT 1 AS hit FROM item_alias_keys WHERE key IN (${chunk.map(() => '?').join(',')}) LIMIT 1`,
+      ).bind(...chunk),
+    );
+  }
+  if (statements.length === 0) return false;
+  return (await env.DB.batch(statements)).some((result) => result.results.length > 0);
+}
+
+/**
+ * Item milik merk pada saat dibaca: id, tipe (kunci baru dihitung dari tipe), dan `mh` = `hex(model)` dari D1.
+ * Tipe dibandingkan per BYTE (`hex`), bukan lewat teks hasil dekode `json_extract`: teks Unicode tak utuh (mis.
+ * surrogate tunggal) tidak sama byte-nya setelah bolak-balik JSON, dan item tak akan pernah cocok.
+ */
 interface OwnItem {
   id: string;
   model: string;
+  mh: string;
 }
 
-const OWN_ITEMS_SQL = 'SELECT id, model FROM items WHERE brand_id = ? ORDER BY id';
+const OWN_ITEMS_SQL =
+  'SELECT id, model, hex(model) AS mh FROM items WHERE brand_id = ? ORDER BY id';
 
-/** Kunci sementara unik per item (`` + id; kunci asli tidak pernah memuat karakter kontrol). */
-const TEMP_KEY_SQL = 'char(1) || id';
+/**
+ * Kunci sementara yang pasti unik per item: karakter kontrol U+0001 (kunci asli tidak pernah memuatnya) + `rowid`
+ * (bilangan bulat unik; `id` tidak dipakai karena `items.key` berurutan NOCASE sehingga `AB` dan `ab` bertabrakan).
+ */
+const TEMP_KEY_SQL = 'char(1) || rowid';
 
 /**
  * Menghitung ulang kunci SELURUH item merk ini dalam dua tahap di batch yang sama, supaya tabrakan SEMENTARA antar
  * item merk ini (kunci baru satu item = kunci lama item lain di merk yang sama) tidak ditolak indeks unik
  * `items.key`, yang memeriksa per baris:
- *  1. satu `UPDATE` memberi semua item merk kunci sementara unik (`TEMP_KEY_SQL`);
+ *  1. satu `UPDATE` memberi semua item merk kunci sementara unik (`TEMP_KEY_SQL`; dilewati bila merk tanpa item);
  *  2. `UPDATE ... FROM json_each` per 500 item memasang kunci akhir dan revisi sinkron tiap item dari jatah yang
  *     dipesan `reserveSyncRevs` (item ke-`i` dari `count` memakai `seq - (count - 1 - i)`). Hanya baris yang masih
- *     milik merk ini dengan tipe yang sama dengan yang dibaca yang disentuh.
+ *     milik merk ini dengan tipe yang sama (byte) dengan yang dibaca yang disentuh.
  * Penjaga di batch yang sama (keduanya `integer overflow`, mengulang `saveBrand`): jumlah item merk harus sama dengan
  * yang dibaca (sebelum tahap 1), dan tidak boleh ada item merk yang masih berkunci sementara (sesudah tahap 2:
  * item baru, pindah merk, atau tipe berubah di antara baca dan tulis). Bentrok sungguhan dengan merk+tipe item
@@ -158,22 +188,26 @@ const TEMP_KEY_SQL = 'char(1) || id';
 function renameItemStatements(
   env: Env,
   brandId: string,
-  own: ReadonlyArray<{ id: string; model: string; next: string }>,
+  own: ReadonlyArray<{ id: string; mh: string; next: string }>,
 ): D1PreparedStatement[] {
   const guard = (condition: string, ...binds: unknown[]) =>
     env.DB.prepare(`SELECT CASE WHEN ${condition} THEN 1 ELSE ${CAS_FAIL_SQL} END`).bind(...binds);
+  // Penjaga jumlah SELALU dikirim (juga untuk merk tanpa item: item yang disisipkan di tengah memicu ulang).
   const statements: D1PreparedStatement[] = [
     guard('(SELECT COUNT(*) FROM items WHERE brand_id = ?) = ?', brandId, own.length),
-    env.DB.prepare(`UPDATE items SET key = ${TEMP_KEY_SQL} WHERE brand_id = ?`).bind(brandId),
   ];
+  if (own.length === 0) return statements;
+  statements.push(
+    env.DB.prepare(`UPDATE items SET key = ${TEMP_KEY_SQL} WHERE brand_id = ?`).bind(brandId),
+  );
   for (let from = 0; from < own.length; from += RENAME_ITEMS_PER_STATEMENT) {
     const chunk = own.slice(from, from + RENAME_ITEMS_PER_STATEMENT);
     const rows = JSON.stringify(
-      chunk.map((item, offset) => [item.id, item.next, from + offset, item.model]),
+      chunk.map((item, offset) => [item.id, item.next, from + offset, item.mh]),
     );
     statements.push(
       env.DB.prepare(
-        `UPDATE items SET key = j.k, sync_rev = (SELECT seq FROM sync_state WHERE resource = 'items') - ${own.length - 1} + j.i FROM (SELECT json_extract(value, '$[0]') AS id, json_extract(value, '$[1]') AS k, json_extract(value, '$[2]') AS i, json_extract(value, '$[3]') AS m FROM json_each(?)) AS j WHERE items.id = j.id AND +items.brand_id = ? AND items.model = j.m`,
+        `UPDATE items SET key = j.k, sync_rev = (SELECT seq FROM sync_state WHERE resource = 'items') - ${own.length - 1} + j.i FROM (SELECT json_extract(value, '$[0]') AS id, json_extract(value, '$[1]') AS k, json_extract(value, '$[2]') AS i, json_extract(value, '$[3]') AS mh FROM json_each(?)) AS j WHERE items.id = j.id AND +items.brand_id = ? AND hex(items.model) = j.mh`,
       ).bind(rows, brandId),
     );
   }
@@ -236,14 +270,10 @@ export async function saveBrand(
       ...aliasCollisionGuards(env, [...new Set(own.map((item) => item.next))]),
       ...updateBrandStmts(env.DB, updated),
     ];
-    if (own.length > 0) {
-      // Nama merk ikut tersinkron di setiap item (`merk`), jadi revisi item naik walau kunci sama. Satu
-      // pernyataan memesan N revisi unik berurutan; tiap item mengambil jatahnya sendiri.
-      statements.push(
-        reserveSyncRevs(env.DB, 'items', own.length, now),
-        ...renameItemStatements(env, existing.id, own),
-      );
-    }
+    // Nama merk ikut tersinkron di setiap item (`merk`), jadi revisi item naik walau kunci sama. Satu pernyataan
+    // memesan N revisi unik berurutan; tiap item mengambil jatahnya sendiri. Penjaga jumlah dikirim juga untuk N = 0.
+    if (own.length > 0) statements.push(reserveSyncRevs(env.DB, 'items', own.length, now));
+    statements.push(...renameItemStatements(env, existing.id, own));
     statements.push(
       writeAudit(env.DB, {
         ts: now,
@@ -259,18 +289,18 @@ export async function saveBrand(
       return toBrandDto(updated);
     } catch (error) {
       if (!isGuardFailure(error)) throw error;
-      // Dua kemungkinan: bentrok sungguhan dengan nama lain (himpunan item sama) atau himpunan item berubah.
-      const fresh = (await env.DB.prepare(OWN_ITEMS_SQL).bind(existing.id).all<OwnItem>()).results;
-      const same =
-        fresh.length === rows.length &&
-        fresh.every(
-          (item, index) => item.id === rows[index]?.id && item.model === rows[index]?.model,
-        );
-      if (same) {
+      // Sebab dipilih dari bentrok yang SEBENARNYA, bukan dari perbandingan himpunan item (rentan ABA): nama baru
+      // memang dipegang sebagai nama lain item mana pun, atau himpunan/tipe item berubah (ulangi dari bacaan baru).
+      if (
+        await aliasCollides(
+          env,
+          own.map((item) => item.next),
+        )
+      ) {
         throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });
       }
       if (attempt >= RENAME_ATTEMPTS) throw appError('CONFLICT', RENAME_STALE_MESSAGE);
-      rows = fresh;
+      rows = (await env.DB.prepare(OWN_ITEMS_SQL).bind(existing.id).all<OwnItem>()).results;
     }
   }
 }
