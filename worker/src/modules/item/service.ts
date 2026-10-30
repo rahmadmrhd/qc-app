@@ -12,7 +12,7 @@ import type {
   SetItemStatusInput,
 } from '@shared/rpc';
 import { writeAudit } from '@worker/core/audit';
-import { batchGuarded, guardRow } from '@worker/core/cas';
+import { batchGuarded } from '@worker/core/cas';
 import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso } from '@worker/core/env';
@@ -451,7 +451,6 @@ export async function planItemWrite(
   const statements: D1PreparedStatement[] = [];
 
   if (existing) {
-    statements.push(guardRow(env.DB, 'items', existing.id, 'updated_at', existing.updatedAt));
     const merged: ItemRecord = {
       ...existing,
       ...fields,
@@ -576,7 +575,6 @@ export async function setItemStatus(
   await batchGuarded(
     env.DB,
     [
-      guardRow(env.DB, 'items', existing.id, 'updated_at', existing.updatedAt),
       ...updateItemStmts(env.DB, updated, true, existing),
       writeAudit(env.DB, {
         ts: now,

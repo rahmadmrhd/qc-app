@@ -464,6 +464,62 @@ describe('konkurensi optimistis', () => {
   });
 });
 
+describe('CAS digabung ke UPDATE (konkurensi)', () => {
+  test('ubah status dan simpan serentak dari versi yang sama: tepat satu menang, revisi tanpa lompatan atau ganda', async () => {
+    const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
+    expect(await rev(first.id)).toBe(1);
+    env.clock.advance(1000);
+    const results = await Promise.allSettled([
+      saveItem(
+        env,
+        { ...baseInput, id: first.id, detail: 'baru', expectedUpdatedAt: first.updatedAt },
+        admin,
+      ),
+      setItemStatus(env, { id: first.id, status: 'inactive' }, admin),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect((rejected.reason as { code: string }).code).toBe('CONFLICT');
+    // Batch yang kalah dibatalkan utuh: revisi naik tepat 1, audit tepat satu, penghitung merk utuh.
+    expect(await rev(first.id)).toBe(2);
+    expect(
+      (await auditActions()).filter((a) => a.startsWith('item.') && a !== 'item.create'),
+    ).toHaveLength(1);
+    expect(
+      (
+        await env.DB.prepare('SELECT seq FROM sync_state WHERE resource = ?')
+          .bind('items')
+          .first<{ seq: number }>()
+      )?.seq,
+    ).toBe(2);
+  });
+
+  test('item dengan nama lain: CAS basi membatalkan juga perubahan baris nama lain', async () => {
+    const first = await saveItem(env, { ...baseInput, aliases: ['Lama'] }, admin);
+    env.clock.advance(1000);
+    await saveItem(env, { ...baseInput, id: first.id, aliases: ['Lama', 'Tengah'] }, admin);
+    env.clock.advance(1000);
+    await expect(
+      saveItem(
+        env,
+        {
+          ...baseInput,
+          id: first.id,
+          aliases: ['Baru'],
+          expectedUpdatedAt: first.updatedAt,
+        },
+        admin,
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    const keys = (
+      await env.DB.prepare('SELECT key FROM item_alias_keys WHERE item_id = ? ORDER BY key')
+        .bind(first.id)
+        .all<{ key: string }>()
+    ).results.map((r) => r.key);
+    expect(keys).toEqual(['lama', 'tengah']);
+  });
+});
+
 describe('status', () => {
   test('nonaktifkan dan aktifkan dicatat; status sama tidak mencatat apa pun', async () => {
     const saved = await saveItem(env, baseInput, admin);

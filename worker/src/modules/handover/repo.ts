@@ -2,6 +2,7 @@ import type { HandoverStatus, HandoverStoredStatus } from '@shared/handover';
 import { deriveHandoverStatus } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
 import type { HandoverCommentDto } from '@shared/rpc';
+import { CAS_VERSION_BUMP_SET } from '@worker/core/cas';
 import type { Env } from '@worker/core/env';
 import { matchedChecks } from './checklist';
 
@@ -311,12 +312,20 @@ export function insertHandoverStmt(db: D1Database, handover: HandoverRecord): D1
     );
 }
 
-/** UPDATE seluruh kolom isi + turunan; `version = version + 1` (dipasangkan dengan penjaga CAS di batch). */
-export function updateHandoverStmt(db: D1Database, handover: HandoverRecord): D1PreparedStatement {
+/**
+ * UPDATE seluruh kolom isi + turunan. Penjaga CAS `version` ada di `UPDATE` ini (`CAS_VERSION_BUMP_SET`):
+ * `expectedVersion` = versi yang dilihat penulis; basi = seluruh batch batal (`integer overflow`), tanpa
+ * pernyataan penjaga terpisah. Sukses menaikkan `version` 1.
+ */
+export function updateHandoverStmt(
+  db: D1Database,
+  handover: HandoverRecord,
+  expectedVersion: number,
+): D1PreparedStatement {
   const d = derivedColumns(handover);
   return db
     .prepare(
-      'UPDATE handovers SET customer_id = ?, customer_name = ?, note = ?, status = ?, checks = ?, completed_at = ?, completed_by = ?, updated_at = ?, updated_by = ?, version = version + 1, checked_count = ?, total_count = ?, board_status = ? WHERE id = ?',
+      `UPDATE handovers SET customer_id = ?, customer_name = ?, note = ?, status = ?, checks = ?, completed_at = ?, completed_by = ?, updated_at = ?, updated_by = ?, ${CAS_VERSION_BUMP_SET}, checked_count = ?, total_count = ?, board_status = ? WHERE id = ?`,
     )
     .bind(
       handover.customerId,
@@ -328,6 +337,7 @@ export function updateHandoverStmt(db: D1Database, handover: HandoverRecord): D1
       handover.completedBy,
       handover.updatedAt,
       handover.updatedBy,
+      expectedVersion,
       d.checkedCount,
       d.totalCount,
       d.boardStatus,

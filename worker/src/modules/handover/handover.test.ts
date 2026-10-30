@@ -1287,6 +1287,71 @@ describe('konkurensi (Review Focus 3)', () => {
     expect((await audits()).filter((a) => a === 'customer.create')).toHaveLength(1);
   });
 
+  test('penghitung nomor (CAS digabung ke INSERT ... ON CONFLICT): dua saveBatch dari penghitung yang sama, nomor tanpa lompat dan tanpa ganda', async () => {
+    // Penghitung hari itu belum ada: kedua penulis membaca `expected = -1`; yang kalah mengulang.
+    const batch = (tag: string, n: number) =>
+      call('wh@gmail.com', 'handovers.saveBatch', {
+        locationId: ENV.locA,
+        tasks: Array.from({ length: n }, (_, i) => ({ customerName: '', note: `${tag}${i}` })),
+      });
+    const [b1, b2] = await Promise.all([batch('x', 4), batch('y', 3)]);
+    expect(b1.ok && b2.ok).toBe(true);
+    const numbers = (await taskRows()).map((r) => r.number).sort();
+    expect(numbers).toEqual(
+      Array.from({ length: 7 }, (_, i) => `ST-20261015-${String(i + 1).padStart(3, '0')}`),
+    );
+    expect(
+      (
+        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+          value: number;
+        }>()
+      )?.value,
+    ).toBe(7);
+    // Penghitung sudah ada: dua penulis lagi dari nilai yang sama.
+    const [b3, b4] = await Promise.all([batch('p', 2), batch('q', 2)]);
+    expect(b3.ok && b4.ok).toBe(true);
+    expect(new Set((await taskRows()).map((r) => r.number)).size).toBe(11);
+    expect(
+      (
+        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+          value: number;
+        }>()
+      )?.value,
+    ).toBe(11);
+  });
+
+  test('simpan catatan dan batalkan bersamaan dari versi yang sama: tepat satu menang pada putaran pertama, tanpa versi/audit ganda', async () => {
+    await seedTwo();
+    const [saved, cancelled] = await Promise.all([
+      save({ id: 't1', note: '- [ ] A\n- [ ] B\n- [ ] C\n- [ ] D' }),
+      call('wh@gmail.com', 'handovers.cancel', ref),
+    ]);
+    // Penjaga CAS `version` digabung ke UPDATE: yang basi mengulang dari keadaan baru, jadi versi naik tepat
+    // satu per tulisan yang berhasil dan tiap tulisan yang berhasil punya tepat satu audit.
+    const succeeded = [saved, cancelled].filter((r) => r.ok).length;
+    const row = await task();
+    expect(row.version).toBe(1 + succeeded);
+    const actions = (await audits()).filter(
+      (a) => a === 'handover.update' || a === 'handover.cancel',
+    );
+    expect(actions).toHaveLength(succeeded);
+  });
+
+  test('komentar bersamaan dengan pembatalan: komentar tidak pernah masuk ke task yang sudah dibatalkan', async () => {
+    await seedTwo();
+    const [c, x] = await Promise.all([
+      comment('', 'serentak'),
+      call('wh@gmail.com', 'handovers.cancel', ref),
+    ]);
+    expect(x.ok).toBe(true);
+    const rows = await commentsOf();
+    if (c.ok) expect(rows).toHaveLength(1);
+    else expect(rows).toHaveLength(0);
+    // Setelah batal pasti ditolak.
+    expect((await comment('', 'terlambat')).ok).toBe(false);
+    expect(await commentsOf()).toHaveLength(rows.length);
+  });
+
   test('batch banyak: setiap pernyataan di bawah 100 parameter terikat (adaptor menolak bila lebih)', async () => {
     const tasks = Array.from({ length: 10 }, (_, i) => ({
       customerName: `Cust ${i}`,

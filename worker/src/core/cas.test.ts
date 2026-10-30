@@ -1,35 +1,55 @@
 import { expect, test } from 'bun:test';
 import { captureAppErrorAsync } from '@worker-test/errors';
 import { createTestEnv } from '@worker-test/test-env';
-import { batchGuarded, guardRow } from './cas';
+import { batchGuarded, CAS_UPDATED_AT_SET, CAS_VERSION_BUMP_SET, isGuardFailure } from './cas';
 
-test('penjaga CAS: cocok = batch jalan; tidak cocok = seluruh batch batal dan CONFLICT', async () => {
+test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = seluruh batch batal dan CONFLICT', async () => {
   const env = await createTestEnv();
   await env.DB.prepare("INSERT INTO items (id, key, updated_at) VALUES ('i1', 'k', 't1')").run();
-  const bump = (v: string) => env.DB.prepare("UPDATE items SET model = ? WHERE id = 'i1'").bind(v);
-  await batchGuarded(
-    env.DB,
-    [guardRow(env.DB, 'items', 'i1', 'updated_at', 't1'), bump('a')],
-    {},
-    'basi',
-  );
-  expect((await env.DB.prepare('SELECT model FROM items').first<{ model: string }>())?.model).toBe(
-    'a',
-  );
-  const error = await captureAppErrorAsync(() =>
-    batchGuarded(
-      env.DB,
-      [guardRow(env.DB, 'items', 'i1', 'updated_at', 'lama'), bump('b')],
-      {},
-      'basi',
+  const edit = (expected: string, next: string, model: string) => [
+    env.DB.prepare(
+      "INSERT INTO sync_state (resource, seq) VALUES ('x', 1) ON CONFLICT (resource) DO UPDATE SET seq = seq + 1",
     ),
+    env.DB.prepare(`UPDATE items SET model = ?, ${CAS_UPDATED_AT_SET} WHERE id = 'i1'`).bind(
+      model,
+      expected,
+      next,
+    ),
+  ];
+  await batchGuarded(env.DB, edit('t1', 't2', 'a'), {}, 'basi');
+  const row = () =>
+    env.DB.prepare('SELECT model, updated_at AS at FROM items').first<{
+      model: string;
+      at: string;
+    }>();
+  expect(await row()).toEqual({ model: 'a', at: 't2' });
+  // penulis dengan updated_at lama: CONFLICT, dan pernyataan sebelum UPDATE (sync_state) ikut dibatalkan
+  const error = await captureAppErrorAsync(() =>
+    batchGuarded(env.DB, edit('t1', 't3', 'b'), {}, 'basi'),
   );
   expect(error).toMatchObject({ code: 'CONFLICT', message: 'basi' });
-  expect((await env.DB.prepare('SELECT model FROM items').first<{ model: string }>())?.model).toBe(
-    'a',
-  );
-  // angka (version)
+  expect(await row()).toEqual({ model: 'a', at: 't2' });
+  expect(
+    (
+      await env.DB.prepare("SELECT seq FROM sync_state WHERE resource = 'x'").first<{
+        seq: number;
+      }>()
+    )?.seq,
+  ).toBe(1);
+});
+
+test('CAS version digabung ke UPDATE: naik 1 bila cocok, batal dengan integer overflow bila basi', async () => {
+  const env = await createTestEnv();
   await env.DB.prepare("INSERT INTO handovers (id, number, version) VALUES ('h1', 'n', 3)").run();
-  await env.DB.batch([guardRow(env.DB, 'handovers', 'h1', 'version', 3)]);
-  await expect(env.DB.batch([guardRow(env.DB, 'handovers', 'h1', 'version', 2)])).rejects.toThrow();
+  const bump = (expected: number) =>
+    env.DB.prepare(`UPDATE handovers SET note = 'x', ${CAS_VERSION_BUMP_SET} WHERE id = 'h1'`).bind(
+      expected,
+    );
+  await env.DB.batch([bump(3)]);
+  const version = async () =>
+    (await env.DB.prepare('SELECT version FROM handovers').first<{ version: number }>())?.version;
+  expect(await version()).toBe(4);
+  const failure = await env.DB.batch([bump(3)]).catch((error: unknown) => error);
+  expect(isGuardFailure(failure)).toBe(true);
+  expect(await version()).toBe(4);
 });

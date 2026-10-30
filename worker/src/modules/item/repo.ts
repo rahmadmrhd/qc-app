@@ -1,5 +1,6 @@
 import { normalizeKey } from '@shared/items';
 import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/rpc';
+import { CAS_UPDATED_AT_SET } from '@worker/core/cas';
 import type { Env } from '@worker/core/env';
 import { adjustItemCountStmt } from '@worker/modules/brand/repo';
 import { nextSyncRev, syncRevExpr } from '@worker/modules/sync/state';
@@ -185,15 +186,17 @@ export function insertItemStmts(
 }
 
 /**
- * UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. `previous` = merk dan nama
- * lain item SEBELUM perubahan (dari baris yang dijaga CAS): selisihnya menentukan baris `item_alias_keys`
- * dan penghitung `brands.item_count` yang ikut ditulis.
+ * UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. `previous` = merk, nama
+ * lain, dan `updatedAt` item SEBELUM perubahan (yang dilihat penulis): `updatedAt` dijaga CAS di `UPDATE`
+ * itu sendiri (`CAS_UPDATED_AT_SET`: basi = seluruh batch batal dengan `integer overflow`, tanpa pernyataan
+ * penjaga terpisah), dan selisih merk/nama lain menentukan baris `item_alias_keys` dan penghitung
+ * `brands.item_count` yang ikut ditulis.
  */
 export function updateItemStmts(
   db: D1Database,
   item: ItemRecord,
   bumpRev: boolean,
-  previous: Pick<ItemRecord, 'brandId' | 'aliases'>,
+  previous: Pick<ItemRecord, 'brandId' | 'aliases' | 'updatedAt'>,
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
   if (bumpRev) statements.push(nextSyncRev(db, 'items', item.updatedAt));
@@ -201,7 +204,7 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, key = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, updated_at = ?, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, key = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
         item.externalId,
@@ -216,6 +219,7 @@ export function updateItemStmts(
         JSON.stringify(item.attachments),
         item.detail,
         item.status,
+        previous.updatedAt,
         item.updatedAt,
         item.updatedBy,
         item.id,

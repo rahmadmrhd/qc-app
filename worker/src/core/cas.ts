@@ -2,24 +2,22 @@ import { batchWrite } from '@worker/modules/access/repo';
 import { appError } from './errors';
 
 /**
- * Penjaga CAS (compare-and-swap) untuk `batch()`: pernyataan ini melempar galat SQLite
- * `integer overflow` bila baris `table.id` tidak (lagi) memiliki `column = expected`, sehingga SELURUH
- * batch dibatalkan (transaksi) tanpa menulis apa pun. Ditaruh sebagai pernyataan PERTAMA batch.
- * Tidak menulis baris (tidak memakan kuota tulis D1).
+ * Ekspresi SQL yang melempar galat SQLite `integer overflow` bila dievaluasi: seluruh `batch()` (transaksi)
+ * dibatalkan tanpa menulis apa pun. Dipakai sebagai cabang gagal `CASE` pada penjaga CAS yang DIGABUNG ke
+ * pernyataan tulisnya (`CAS_UPDATED_AT_SET`, `CAS_VERSION_BUMP_SET`, penghitung nomor): satu pernyataan
+ * lebih sedikit per batch daripada penjaga `SELECT` terpisah, dengan atomisitas dan kode galat yang sama.
  */
-export function guardRow(
-  db: D1Database,
-  table: 'items' | 'handovers',
-  id: string,
-  column: 'updated_at' | 'version',
-  expected: string | number,
-): D1PreparedStatement {
-  return db
-    .prepare(
-      `SELECT CASE WHEN EXISTS (SELECT 1 FROM ${table} WHERE id = ? AND ${column} = ?) THEN 1 ELSE abs(-9223372036854775808) END`,
-    )
-    .bind(id, expected);
-}
+export const CAS_FAIL_SQL = 'abs(-9223372036854775808)';
+
+/**
+ * Penjaga CAS `updated_at` yang digabung ke `UPDATE` (klausa SET): `updated_at` baru ditetapkan hanya bila
+ * baris masih bernilai `expected` (yang dilihat penulis); selain itu seluruh batch dibatalkan. Bind: `expected`,
+ * lalu nilai baru. Item dan task tidak pernah dihapus, jadi `UPDATE` yang tak menemukan baris tidak terjadi.
+ */
+export const CAS_UPDATED_AT_SET = `updated_at = CASE WHEN updated_at = ? THEN ? ELSE ${CAS_FAIL_SQL} END`;
+
+/** Penjaga CAS `version` yang digabung ke `UPDATE` (klausa SET): naik 1 bila masih `expected`. Bind: `expected`. */
+export const CAS_VERSION_BUMP_SET = `version = CASE WHEN version = ? THEN version + 1 ELSE ${CAS_FAIL_SQL} END`;
 
 const GUARD_FAILED = /integer overflow/i;
 
@@ -42,23 +40,14 @@ export async function batchGuarded(
   }
 }
 
-/** Penjaga umum: batch dibatalkan (integer overflow) bila `conditionSql` tidak benar. */
-export function guardCondition(
-  db: D1Database,
-  conditionSql: string,
-  ...binds: unknown[]
-): D1PreparedStatement {
-  return db
-    .prepare(`SELECT CASE WHEN (${conditionSql}) THEN 1 ELSE abs(-9223372036854775808) END`)
-    .bind(...binds);
-}
-
 /** Kegagalan tulis yang aman diulang setelah memuat ulang keadaan: penjaga CAS atau rebutan kunci unik. */
 export function isRetryableWriteError(error: unknown): boolean {
   if (isGuardFailure(error)) return true;
   return (
     error instanceof Error &&
-    /UNIQUE constraint failed: (customers\.key|handovers\.number|brands\.key)/i.test(error.message)
+    /UNIQUE constraint failed: (customers\.key|handovers\.number|brands\.key|counters\.key)/i.test(
+      error.message,
+    )
   );
 }
 

@@ -28,7 +28,7 @@ import type {
   SetDoneInput,
 } from '@shared/rpc';
 import { writeAudit } from '@worker/core/audit';
-import { guardCondition, guardRow, runCas } from '@worker/core/cas';
+import { CAS_FAIL_SQL, runCas } from '@worker/core/cas';
 import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
 import { nowIso, nowOf } from '@worker/core/env';
@@ -360,7 +360,7 @@ interface NumberReservation {
 /**
  * Menyediakan `count` nomor `ST-YYYYMMDD-NNN` berurutan untuk satu tanggal (WIB). Penghitung harian di
  * tabel `counters`; bila belum ada, dimulai dari urutan terbesar nomor yang sudah ada (mis. hasil impor).
- * Pernyataan yang dikembalikan (penjaga + simpan penghitung) HARUS berada di `batch()` yang sama dengan
+ * Pernyataan yang dikembalikan (penjaga CAS + simpan penghitung dalam satu `INSERT ... ON CONFLICT`) HARUS berada di `batch()` yang sama dengan
  * penyisipan task: bila penulis lain menaikkan penghitung lebih dulu, batch dibatalkan dan pemanggil
  * mengulang (`runCas`). Nomor unik dijamin juga oleh indeks unik `handovers.number`.
  */
@@ -390,16 +390,13 @@ async function reserveNumbers(
   }
   return {
     numbers: Array.from({ length: count }, (_, i) => handoverNumber(dateKey, base + i + 1)),
+    // Penjaga + simpan penghitung dalam SATU pernyataan: baris yang sudah berubah (`expected` tak cocok)
+    // membatalkan batch (`integer overflow`); baris yang belum ada (`expected = -1`) disisipkan, dan bila
+    // penulis lain menyisipkannya lebih dulu, cabang `DO UPDATE` yang gagal (nilai != -1) atau PRIMARY KEY.
     statements: [
-      guardCondition(
-        env.DB,
-        'COALESCE((SELECT value FROM counters WHERE key = ?), -1) = ?',
-        key,
-        expected,
-      ),
       env.DB.prepare(
-        'INSERT INTO counters (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
-      ).bind(key, base + count),
+        `INSERT INTO counters (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = CASE WHEN counters.value = ? THEN excluded.value ELSE ${CAS_FAIL_SQL} END`,
+      ).bind(key, base + count, expected),
     ],
   };
 }
@@ -562,9 +559,8 @@ export async function saveHandover(
       version: current.version + 1,
     };
     await env.DB.batch([
-      guardRow(env.DB, 'handovers', current.id, 'version', current.version),
       ...(plan?.statements ?? []),
-      updateHandoverStmt(env.DB, saved),
+      updateHandoverStmt(env.DB, saved, current.version),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,
@@ -638,7 +634,7 @@ function assertStateSize(checks: readonly CheckState[]): void {
 
 /**
  * Menulis perubahan yang TIDAK mengubah catatan (centang/selesai/batal/buka) + audit dalam SATU batch dengan
- * penjaga CAS `version`; kolom turunan (`checked_count`, `total_count`, `board_status`) dihitung ulang oleh
+ * CAS `version` (digabung ke `UPDATE`, lihat `updateHandoverStmt`); kolom turunan (`checked_count`, `total_count`, `board_status`) dihitung ulang oleh
  * `updateHandoverStmt`. Audit tanpa `note` diperiksa ukurannya SEBELUM menulis. Penjaga gagal -> dilempar
  * mentah agar pemanggil (`runCas`) memuat ulang dan mengulang.
  */
@@ -668,8 +664,7 @@ async function writeTaskChange(
     false,
   );
   await env.DB.batch([
-    guardRow(env.DB, 'handovers', handover.id, 'version', handover.version),
-    updateHandoverStmt(env.DB, saved),
+    updateHandoverStmt(env.DB, saved, handover.version),
     writeAudit(env.DB, {
       ts: now,
       actor: actor.email,
@@ -824,19 +819,16 @@ export async function addComment(
   // ulang oleh SQL saat menulis, sehingga komentar serentak tidak melewati batas.
   try {
     await env.DB.batch([
-      guardCondition(
-        env.DB,
-        `(SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')`,
+      // Penjaga digabung ke kolom `id` (nilai gagal = `integer overflow`): tanpa pernyataan penjaga terpisah.
+      env.DB.prepare(
+        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, "before", "after", body) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
         handover.id,
         HANDOVER_LIMITS.comments,
         handover.id,
         newSize,
         HANDOVER_LIMITS.stateJson,
         handover.id,
-      ),
-      env.DB.prepare(
-        'INSERT INTO handover_comments (id, handover_id, author, created_at, quote, "before", "after", body) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      ).bind(
         id,
         handover.id,
         actor.email,
