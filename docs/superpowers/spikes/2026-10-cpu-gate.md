@@ -172,3 +172,24 @@ Analisis dan keputusan:
 - **Batas `saveBatch` diturunkan 10 -> 5** (keputusan pemilik 2026-10-30, lihat spek §5): proksi lokal 10 task masih ~3,7 ms (x3,5 = ~13 ms) karena biayanya JS sebanding jumlah task (parse checklist, snapshot audit, DTO balasan ~19 KB per task), bukan jumlah pernyataan. Dengan 5 task proksinya ~1,9 ms (~6,6 ms). Kasus gerbang kini `handovers.saveBatch:5x5000`.
 - **Batas push TIDAK diturunkan** (tetap 5): sesudah optimasi proksinya ~1,4 ms (x3,5 = ~5 ms); per entri hanya ±1 ms p95 di edge (p95 `items.save` satu tulis sudah 11, push 5 entri 15), jadi menurunkannya ke 2 tidak akan menembus 8 ms bila p95 tulis tunggal belum lulus.
 - **Peringatan kalibrasi**: aturan x3,5 meremehkan rute ringan (Run 6: `items.save` lokal 0,47 -> edge p50 3, p95 11). Round trip dan pernyataan ternyata murah (push 14 round trip/40 pernyataan p50 4 ms; `items.save` 2 round trip p50 3 ms), sedangkan p95 rute tulis 9-18 ms mengikuti ekor yang tidak terlihat lokal: panggilan awal pada kode yang belum "panas" (kompilasi lazy/JIT) dan miss cache. Dengan 100 panggilan, p95 = panggilan ke-6 terburuk, jadi ~5 panggilan pertama pada kode dingin menentukan hasil. Karena itu jumlah kode yang dilalui rute (bukan data) paling berpengaruh, dan hanya Run 7 yang bisa memastikan. Rute yang paling mungkin masih > 8 ms: `items.save`, `handovers.save:create`/`update`, `handovers.saveBatch` (5 task), `sync.items.push`, `GET /api/boot` (p95 10 walau 0 round trip pada cache hangat; DUGAAN: kasus ini berjalan tepat setelah `/api/ping` sehingga jalur autentikasi masih dingin, karena `auth.me` lewat RPC yang kode jalurnya sama dan berjalan sesudahnya p95 3; perlu dibuktikan di Run 7, mis. dengan panggilan pemanasan berotentikasi sebelum pengukuran).
+
+## Run 7 (2026-10-30, staging akun terpisah, versi `2d4adf3c`: CAS digabung, INSERT banyak-baris, konteks satu pernyataan, saveBatch 5, rename dua tahap)
+
+Hanya rute yang berubah diukur (sisa kuota baca harian akun staging ±0,9 juta setelah run 6). 100 sampel per rute, syarat terukur ≥ 90, kriteria p95 ≤ 8 ms.
+
+| Rute | p50 | p95 | p99 | maks | terukur | Run 6 p50/p95 |
+|---|---|---|---|---|---|---|
+| `GET /api/boot` | 1 | **13** | 15 | 16 | 100 | 0/10 |
+| `items.save` | 4 | **14** | 20 | 20 | 100 | 3/11 |
+| `handovers.save:update` | 3 | **13** | 19 | 19 | 100 | 3/10 |
+| `handovers.save:create` | 5 | **14** | 17 | 17 | 99 | 5/11 |
+| `handovers.saveBatch:5x5000` | 6 | **17** | 21 | 21 | 94 | (10 task) 8/18 |
+| `sync.items.push:5+detail` | 4 | **13** | 20 | 22 | 100 | 4/15 |
+| `brands.save` ganti nama | — | — | — | — | — | dibatalkan skrip: perkiraan 30.400 baris tulis > anggaran 30.000 (rename kini menulis ±2× per item); ulang dengan `--max-writes` lebih besar |
+
+Pembacaan:
+1. **Pengurangan pernyataan dan round trip (proksi lokal) TIDAK mengubah p95 di edge.** p50 tetap 1–6 ms; p95 tetap 13–17 ms untuk semua rute berotentikasi. Run 7 bahkan sedikit lebih buruk dari run 6 pada beberapa rute (selisih 2–3 ms, di dalam derau antar-run).
+2. **`/api/boot` (tanpa kerja D1 saat cache hangat) p95 13 ms**, jauh di atas `auth.me` (p95 3–5 ms di run 4 dan 6) padahal jalur kodenya sama. Ini menunjukkan p95 tidak ditentukan oleh jumlah pernyataan rute, melainkan oleh sisa lain: kemungkinan terbesar ongkos MISS cache konteks akses (satu batch D1 ditambah penyusunan konteks), karena gerbang memanggil ±1 kali/detik dan TTL cache 10 detik, sehingga ±10% panggilan adalah miss (p95 = ongkos miss). Dugaan; belum diuji dengan memisahkan panggilan hangat dari dingin.
+3. **Konsekuensi untuk pemakaian nyata:** dengan 8–10 pengguna yang jarang menekan beruntun, sebagian besar permintaan justru jatuh pada miss, jadi p95 gerbang (±13 ms) lebih mencerminkan kenyataan daripada p50 (1–6 ms).
+4. Spike CPU (`2026-10-cpu-limits.md`) tetap menunjukkan batas 10 ms tidak ditegakkan keras pada HTTP (kegagalan `exceededCpu` baru muncul pada beban ±100 ms); tidak ada galat 1102 yang teramati di semua run gerbang.
+5. Panggilan gagal jaringan (status 0) pada `saveBatch` (6 dari 100) dan `save:create` (1 dari 100) berasal dari klien `curl` (timeout/koneksi), bukan respons server; tidak ada galat INTERNAL.
