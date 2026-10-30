@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { listBrands } from '@worker/modules/brand/repo';
+import { listCustomers } from '@worker/modules/customer/repo';
 import { seedLocation, seedRole, seedUser } from '@worker-test/access-fixtures';
 import { d1StatsOf } from '@worker-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
-import { listBrands } from '@worker/modules/brand/repo';
-import { listCustomers } from '@worker/modules/customer/repo';
 import { loadUserContext } from './context';
 
 let env: TestEnv;

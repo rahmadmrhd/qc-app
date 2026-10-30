@@ -1,5 +1,4 @@
-import type { UserContext } from '@worker/modules/access/context';
-import type { WarmGroup } from '@worker/modules/access/context';
+import type { UserContext, WarmGroup } from '@worker/modules/access/context';
 import { loadUserContext } from '@worker/modules/access/context';
 import type { Env } from './env';
 
