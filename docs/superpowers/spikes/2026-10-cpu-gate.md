@@ -140,3 +140,35 @@ Pembacaan:
 2. **Sisa kegagalan semuanya rute tulis berat**: `items.save`, `handovers.save`, `saveBatch`, `sync.items.push`, `brands.save` (p95 9–18). Penyebab: batch tulis 5–7 pernyataan (CAS, `sync_state`, UPDATE/INSERT, indeks, audit) yang tidak bisa dikurangi tanpa melemahkan atomisitas atau CAS. Kriteria "SAMPEL KURANG" pada tiga baris terjadi karena `wrangler tail` kehilangan 1–7 peristiwa dari 100, bukan karena CPU; angka CPU-nya tetap valid.
 3. **Satu run penuh memakai ±4,06 juta baris dibaca (±81% kuota harian akun)**, terutama dari kasus yang memindai (kata kunci audit dan item, pull 500). Maksimal satu run penuh per hari per akun staging; pakai `--only=` untuk rute tertentu.
 4. Tulis hari ini hanya ±14 rb baris (seed tidak diulang).
+
+## Optimasi sesudah Run 6 (2026-10-30, proksi lokal; edge BELUM diukur ulang)
+
+Persetujuan pemilik 2026-10-30: p95 tetap <= 8 ms untuk SEMUA rute (rute tulis tidak dilonggarkan); CAS boleh digabung ke `UPDATE`; batas `saveBatch` (turun hingga 5) dan push (turun hingga 2) hanya bila masih perlu; ambang gerbang >= 90 dari 100 terukur.
+
+Pengukuran seperti bagian sebelumnya (`createTestEnv()`, `buildLoadSql()`, cache isolate hangat; "JS" = waktu dinding dikurangi waktu SQLite; median beberapa putaran, mesin berderau). Tabel: round trip / pernyataan D1 per permintaan, sebelum -> sesudah, dan proksi CPU lokal p50 (ms).
+
+| Rute | Round trip | Pernyataan | Lokal total p50 (JS p50) | x3,5 (perkiraan edge) | Run 6 edge p50 / p95 |
+|---|---|---|---|---|---|
+| `items.save` | 2 -> 2 | 7 -> 5 | 0,47 -> 0,5 (0,4) | ~1,8 | 3 / 11 |
+| `handovers.save:update` | 2 -> 2 | 5 -> 4 | 0,50 -> 0,35 (0,3) | ~1,3 | 3 / 10 |
+| `handovers.save:create` | 2 -> 2 | 5 -> 4 | 0,61 -> 0,45 (0,4) | ~1,6 | 5 / 11 |
+| `handovers.saveBatch` 10 task | 2 -> 2 | 23 -> 5 | 3,9 -> 3,1-4,5 (2,7-4,0) | ~13 | 8 / 18 |
+| `handovers.saveBatch` 5 task (batas baru) | 2 | 4 | 1,7-2,5 (1,5-2,2) | ~6-9 | - |
+| `sync.items.push` 5 entri | 14 -> 7 | 40 -> 19 | 1,9 -> 1,2-1,5 (0,7-0,9) | ~5 | 4 / 15 |
+| `brands.save` ganti nama ~50 item | 4 -> 2 | 58 -> 8 | 2,7 -> 0,9-1,3 (0,3-0,4) | ~3,5 | 4 / 9 |
+| `GET /api/boot` (cache hangat) | 0 | 0 | 0,05 | ~0,2 | 0 / 10 |
+| Miss cache (dingin) `items.save` | 4 -> 3 | - | - | - | - |
+| Miss cache (dingin) `GET /api/boot` | 1 -> 1 | 3 -> 1 | - | - | - |
+
+Perubahan:
+1. **CAS digabung ke `UPDATE`/`INSERT`** (`worker/src/core/cas.ts`): `updated_at`/`version` item dan task, penghitung nomor task (`INSERT ... ON CONFLICT DO UPDATE SET value = CASE ...`), dan guard batas komentar (di kolom `id`). Basi = `integer overflow` membatalkan seluruh `batch()`; kode galat, semantik konflik, penomoran, dan audit tidak berubah. Tes: `cas.test.ts` plus konkurensi baru (penghitung nomor dua penulis, simpan vs batal, komentar vs batal, ubah status vs simpan item, CAS basi membatalkan baris nama lain).
+2. **Pernyataan per baris menjadi banyak-baris**: `saveBatch` memakai `INSERT` banyak-baris untuk task (5/pernyataan), customer baru (14), dan audit (16): 23 -> 5 pernyataan.
+3. **Ganti nama merk** satu `UPDATE ... FROM json_each` per 500 item (revisi tiap item tetap unik: `seq - (N-1-i)`), pemeriksaan bentrok pindah ke batch tulis (penjaga alias + indeks unik `items.key`; kini atomik) dan dua pembacaan awal digabung: 4 -> 2 round trip, 58 -> 8 pernyataan. Sintaks `UPDATE ... FROM json_each`, `RETURNING`, dan CAS-overflow diverifikasi di SQLite workerd lokal (`wrangler d1 execute --local`).
+4. **Push sinkron**: pembacaan keunikan nama dilewati bila merk+tipe dan nama lain item tidak berubah (kasus umum), merk dimuat dalam batch prefetch yang sama, probe Drive dilewati tanpa id Drive, revisi dibaca lewat `RETURNING sync_rev`: 14 -> 7 round trip. `items.save`: dua kueri keunikan jadi satu `UNION ALL`.
+5. **Miss cache**: konteks akses (users/roles/locations) satu pernyataan (`UNION ALL`); cache `brands`/`customers` yang dibaca rute dimuat bersama konteks lewat `RouteDef.warm` (satu miss, bukan 2-3 round trip berurutan). TTL tidak berubah (10 dtk).
+6. `hot-path.test.ts` kini juga menjaga jumlah pernyataan per rute tulis.
+
+Analisis dan keputusan:
+- **Batas `saveBatch` diturunkan 10 -> 5** (keputusan pemilik 2026-10-30, lihat spek §5): proksi lokal 10 task masih ~3,7 ms (x3,5 = ~13 ms) karena biayanya JS sebanding jumlah task (parse checklist, snapshot audit, DTO balasan ~19 KB per task), bukan jumlah pernyataan. Dengan 5 task proksinya ~1,9 ms (~6,6 ms). Kasus gerbang kini `handovers.saveBatch:5x5000`.
+- **Batas push TIDAK diturunkan** (tetap 5): sesudah optimasi proksinya ~1,4 ms (x3,5 = ~5 ms); per entri hanya ±1 ms p95 di edge (p95 `items.save` satu tulis sudah 11, push 5 entri 15), jadi menurunkannya ke 2 tidak akan menembus 8 ms bila p95 tulis tunggal belum lulus.
+- **Peringatan kalibrasi**: aturan x3,5 meremehkan rute ringan (Run 6: `items.save` lokal 0,47 -> edge p50 3, p95 11). Round trip dan pernyataan ternyata murah (push 14 round trip/40 pernyataan p50 4 ms; `items.save` 2 round trip p50 3 ms), sedangkan p95 rute tulis 9-18 ms mengikuti ekor yang tidak terlihat lokal: panggilan awal pada kode yang belum "panas" (kompilasi lazy/JIT) dan miss cache. Dengan 100 panggilan, p95 = panggilan ke-6 terburuk, jadi ~5 panggilan pertama pada kode dingin menentukan hasil. Karena itu jumlah kode yang dilalui rute (bukan data) paling berpengaruh, dan hanya Run 7 yang bisa memastikan. Rute yang paling mungkin masih > 8 ms: `items.save`, `handovers.save:create`/`update`, `handovers.saveBatch` (5 task), `sync.items.push`, `GET /api/boot` (p95 10 pada kasus yang urutannya tepat setelah `/api/ping` sehingga jalur autentikasi masih dingin: `auth.me` lewat RPC pada isolate yang sama p95 3).
