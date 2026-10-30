@@ -16,7 +16,7 @@
 | 1 Kerangka Worker | Selesai; uji `workflow_dispatch` ke staging (Task 1.7 Step 2) belum |
 | 2 Porting modul | Selesai (access, brand, customer, files, item, handover, qrcode, sync) |
 | 3 Jembatan dan antrean | Selesai; jembatan staging ter-deploy (`bridge/deployment.staging.json`) |
-| 4 Frontend | 4.1–4.4 selesai; E2E login di staging (Task 4.2 Step 4) belum; **4.5 gerbang CPU belum lulus**: skrip, optimasi tiga tahap, batas Worker (board 3 task, `saveBatch` 10, push 5, pull detail 50), minify, dan observability selesai; rute baca hampir semua p95 ≤ 8 ms (run 4), rute tulis belum terukur dan run 5 tidak sah karena kuota D1 staging habis; ukur ulang setelah reset kuota (satu run per hari). Kriteria: p95 ≤ 8 ms. Lihat `docs/superpowers/spikes/2026-10-cpu-gate.md` |
+| 4 Frontend | 4.1–4.4 selesai; E2E login di staging (Task 4.2 Step 4) belum; **4.5 gerbang CPU belum lulus**: skrip, optimasi tiga tahap, batas Worker (board 3 task, `saveBatch` 5 (10 sebelum 2026-10-30), push 5, pull detail 50), minify, dan observability selesai; rute baca hampir semua p95 ≤ 8 ms (run 4), rute tulis belum terukur dan run 5 tidak sah karena kuota D1 staging habis; ukur ulang setelah reset kuota (satu run per hari). Kriteria: p95 ≤ 8 ms. Lihat `docs/superpowers/spikes/2026-10-cpu-gate.md` |
 | 5 Migrasi data | 5.1, 5.2, 5.4 (kode) selesai; **5.3 gladi belum**: jembatan staging belum diotorisasi pemilik (HTTP 403); deploy `READ_ONLY` ke `/exec` belum |
 | 6 Cutover | Runbook ditulis (`docs/superpowers/runbooks/2026-10-cutover-cloudflare.md`); pelaksanaan belum, menunggu gladi, gerbang CPU, rahasia/OAuth produksi, dan koordinasi pemelihara QC Desktop |
 | 7 Stabilisasi | Belum |

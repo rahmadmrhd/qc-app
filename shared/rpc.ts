@@ -522,7 +522,7 @@ export interface RpcContract {
   'handovers.board': { input: ListHandoversInput; output: HandoverDto[] };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
   'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
-  /** Apps Script: maks. 30 task per permintaan. Worker: maks. 10 (`HANDOVER_WORKER_BATCH`); klien memecah dan mengirim berurutan. */
+  /** Apps Script: maks. 30 task per permintaan. Worker: maks. 5 (`HANDOVER_WORKER_BATCH`); klien memecah dan mengirim berurutan. */
   'handovers.saveBatch': { input: SaveHandoverBatchInput; output: HandoverDto[] };
   'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
   'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };

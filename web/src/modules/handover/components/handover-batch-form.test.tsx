@@ -243,20 +243,20 @@ const sentNotes = (onSubmit: ReturnType<typeof vi.fn>) =>
     (call[0] as { tasks: { note: string }[] }).tasks.map((task) => task.note),
   );
 
-test('25 task dikirim berurutan dalam kelompok 10/10/5 lalu onSaved(25)', async () => {
+test('25 task dikirim berurutan dalam kelompok 5/5/5/5/5 lalu onSaved(25)', async () => {
   const onSubmit = vi.fn().mockResolvedValue([]);
   const { onSaved } = await pasteTasks(25, onSubmit);
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(25));
   expect(onSubmit.mock.calls.map((call) => (call[0] as { tasks: unknown[] }).tasks.length)).toEqual(
-    [10, 10, 5],
+    [5, 5, 5, 5, 5],
   );
 }, 60_000);
 
 test('kelompok ke-2 gagal: kelompok 1 dilaporkan tersimpan dan dibuang dari draf; ulang hanya mengirim sisanya', async () => {
   const onSubmit = vi
     .fn()
-    .mockResolvedValueOnce(Array.from({ length: 10 }, (_, i) => ({ number: `ST-${i + 1}` })))
+    .mockResolvedValueOnce(Array.from({ length: 5 }, (_, i) => ({ number: `ST-${i + 1}` })))
     .mockRejectedValueOnce(
       new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
         tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
@@ -266,22 +266,22 @@ test('kelompok ke-2 gagal: kelompok 1 dilaporkan tersimpan dan dibuang dari draf
   const { onSaved } = await pasteTasks(25, onSubmit);
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
   const notice = await screen.findByRole('status');
-  expect(notice).toHaveTextContent('10 dari 25 task sudah tersimpan');
+  expect(notice).toHaveTextContent('5 dari 25 task sudah tersimpan');
   expect(notice).toHaveTextContent('ST-1');
-  expect(notice).toHaveTextContent('15 task lainnya belum tersimpan');
+  expect(notice).toHaveTextContent('20 task lainnya belum tersimpan');
   expect(onSaved).not.toHaveBeenCalled();
-  // draf tinggal 15 kartu (task 11-25); galat menempel pada kartu ke-3 kelompok 2 = task 13
-  expect(cards()).toHaveLength(15);
+  // draf tinggal 20 kartu (task 6-25); galat menempel pada kartu ke-3 kelompok 2 = task 8
+  expect(cards()).toHaveLength(20);
   expect(within(cards()[2] as HTMLElement).getByRole('alert')).toHaveTextContent(
     'Customer dinonaktifkan',
   );
-  expect(noteOf(cards()[0] as HTMLElement)).toHaveTextContent('Barang 11 = 1 unit');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (15)' }));
-  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(15));
-  // tiap task terkirim tepat sekali ke server yang menerimanya: kelompok 1 (10), gagal (10), ulang 10+5
+  expect(noteOf(cards()[0] as HTMLElement)).toHaveTextContent('Barang 6 = 1 unit');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (20)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(20));
+  // tiap task terkirim tepat sekali ke server yang menerimanya: kelompok 1 (5), gagal (5), ulang 20
   const notes = sentNotes(onSubmit);
-  expect(notes).toHaveLength(10 + 10 + 15);
-  const accepted = [...notes.slice(0, 10), ...notes.slice(20)];
+  expect(notes).toHaveLength(5 + 5 + 20);
+  const accepted = [...notes.slice(0, 5), ...notes.slice(10)];
   expect(new Set(accepted).size).toBe(25);
 }, 90_000);
 

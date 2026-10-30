@@ -479,7 +479,7 @@ async function createTasks(
       records.push(record);
     }
     // Penghitung nomor (CAS), customer baru, task, lalu audit: INSERT banyak-baris, bukan satu pernyataan per
-    // baris (batch 10 task = 4 pernyataan, bukan 22). Atomik dalam satu `batch()`.
+    // baris (batch 5 task = 3-4 pernyataan, bukan 12). Atomik dalam satu `batch()`.
     await env.DB.batch([
       ...reservation.statements,
       ...insertCustomerStmts(env.DB, newCustomers),

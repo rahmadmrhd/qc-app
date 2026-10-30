@@ -1,3 +1,4 @@
+import { HANDOVER_WORKER_BATCH } from '@shared/handover';
 import { auditCursorAfter, LOAD_SIZES, newTaskNote } from './load-cpu-lib';
 
 export interface LoadRequest {
@@ -297,16 +298,16 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
     ),
     // ---- tulis berat ----
     spec(
-      'handovers.saveBatch:10x5000',
+      'handovers.saveBatch:5x5000',
       (i) =>
         rpc('handovers.saveBatch', {
           locationId: 'loc-jkt',
-          tasks: Array.from({ length: 10 }, (_, t) => ({
+          tasks: Array.from({ length: HANDOVER_WORKER_BATCH }, (_, t) => ({
             customerName: `PT Pelanggan Uji ${1 + ((i + t) % 5)}`,
             note: bigNote(`B${i}-${t}`),
           })),
         }),
-      10 * 8 + 1,
+      HANDOVER_WORKER_BATCH * 8 + 1,
     ),
     spec(
       'sync.items.push:5+detail',

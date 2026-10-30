@@ -35,14 +35,14 @@ describe('validasi serah terima berbasis catatan', () => {
     });
   });
 
-  test('batch: kosong dan 11 task ditolak (batas Worker 10), 10 diterima', () => {
+  test('batch: kosong dan 6 task ditolak (batas Worker 5), 5 diterima', () => {
     const task = { customerName: 'A', note: '- [ ] X = 1' };
     expect(
       captureAppError(() => validateSaveHandoverBatch({ locationId: 'l', tasks: [] })).code,
     ).toBe('VALIDATION');
     const many = (n: number) => ({ locationId: 'l', tasks: Array.from({ length: n }, () => task) });
-    expect(captureAppError(() => validateSaveHandoverBatch(many(11))).fields?.tasks).toBeDefined();
-    expect(validateSaveHandoverBatch(many(10)).tasks).toHaveLength(10);
+    expect(captureAppError(() => validateSaveHandoverBatch(many(6))).fields?.tasks).toBeDefined();
+    expect(validateSaveHandoverBatch(many(5)).tasks).toHaveLength(5);
   });
 
   test('batch: galat menyebut nomor task', () => {

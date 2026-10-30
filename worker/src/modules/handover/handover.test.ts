@@ -474,13 +474,13 @@ describe('saveBatch', () => {
     ]);
   });
 
-  test('11 task ditolak (batas Worker 10); kosong ditolak; 10 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
-    const tasks = Array.from({ length: 11 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
+  test('6 task ditolak (batas Worker 5); kosong ditolak; 5 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
+    const tasks = Array.from({ length: 6 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
     expect((await batch(tasks)).error.code).toBe('VALIDATION');
     expect((await batch([])).error.code).toBe('VALIDATION');
-    const ok = await batch(tasks.slice(0, 10));
-    expect(ok.data).toHaveLength(10);
-    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(10);
+    const ok = await batch(tasks.slice(0, 5));
+    expect(ok.data).toHaveLength(5);
+    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(5);
     expect((await batch([{ customerName: '', note: 'x' }], 'qc@gmail.com')).error.code).toBe(
       'FORBIDDEN',
     );
@@ -500,14 +500,14 @@ describe('saveBatch', () => {
     ]);
   });
 
-  test('CPU kasar: 10 task x 5.000 karakter di bawah anggaran', async () => {
+  test('CPU kasar: 5 task x 5.000 karakter di bawah anggaran', async () => {
     const note = Array.from(
       { length: 120 },
       (_, i) => `- [ ] Barang ${i} = ${i} pcs ${'x'.repeat(20)}`,
     )
       .join('\n')
       .slice(0, 5000);
-    const tasks = Array.from({ length: 10 }, (_, i) => ({ customerName: `PT ${i}`, note }));
+    const tasks = Array.from({ length: 5 }, (_, i) => ({ customerName: `PT ${i}`, note }));
     const { result, ms } = await measureCpu(() => batch(tasks));
     expect(result.ok).toBe(true);
     expect(ms).toBeLessThan(100);
@@ -1287,12 +1287,13 @@ describe('konkurensi (Review Focus 3)', () => {
     expect((await audits()).filter((a) => a === 'customer.create')).toHaveLength(1);
   });
 
-  test('saveBatch (INSERT banyak-baris): urutan audit mengikuti kejadian, nomor berurutan, 10 task melewati batas 5 baris per pernyataan', async () => {
+  test('saveBatch (INSERT banyak-baris): urutan audit mengikuti kejadian dan nomor berurutan', async () => {
     const tasks = [
       { customerName: 'Cust A', note: '- [ ] a1' },
       { customerName: 'cust a', note: '- [ ] a2' },
       { customerName: 'Cust B', note: '- [ ] b1' },
-      ...Array.from({ length: 7 }, (_, i) => ({ customerName: '', note: `- [ ] z${i}` })),
+      { customerName: '', note: '- [ ] z1' },
+      { customerName: '', note: '- [ ] z2' },
     ];
     const out = await call('wh@gmail.com', 'handovers.saveBatch', {
       locationId: ENV.locA,
@@ -1300,26 +1301,24 @@ describe('konkurensi (Review Focus 3)', () => {
     });
     expect(out.ok).toBe(true);
     expect(out.data.map((t: { number: string }) => t.number)).toEqual(
-      Array.from({ length: 10 }, (_, i) => `ST-20261015-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 5 }, (_, i) => `ST-20261015-${String(i + 1).padStart(3, '0')}`),
     );
     const trail = (await auditRows()).map((r) => `${r.action}:${r.target}`);
-    expect(trail.slice(0, 5)).toEqual([
+    expect(trail).toEqual([
       'customer.create:Cust A',
       'handover.create:ST-20261015-001',
       'handover.create:ST-20261015-002',
       'customer.create:Cust B',
       'handover.create:ST-20261015-003',
+      'handover.create:ST-20261015-004',
+      'handover.create:ST-20261015-005',
     ]);
-    expect(trail).toHaveLength(12);
-    const rows = await taskRows();
-    expect(rows).toHaveLength(10);
+    expect(await taskRows()).toHaveLength(5);
     expect(
       (
         await env.DB.prepare(
           "SELECT COUNT(*) AS n FROM handovers WHERE customer_name = 'Cust A'",
-        ).first<{
-          n: number;
-        }>()
+        ).first<{ n: number }>()
       )?.n,
     ).toBe(2);
   });
@@ -1390,7 +1389,7 @@ describe('konkurensi (Review Focus 3)', () => {
   });
 
   test('batch banyak: setiap pernyataan di bawah 100 parameter terikat (adaptor menolak bila lebih)', async () => {
-    const tasks = Array.from({ length: 10 }, (_, i) => ({
+    const tasks = Array.from({ length: 5 }, (_, i) => ({
       customerName: `Cust ${i}`,
       note: `- [ ] x${i}`,
     }));
