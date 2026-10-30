@@ -115,3 +115,28 @@ Pelajaran:
 1. **Satu run gerbang penuh menghabiskan jutaan baris dibaca**, bukan karena kode produksi, tetapi karena kasus uji yang memang memindai: `access.audit.list:query` (`instr(lower(target))` pada ±12.000 baris audit × 100 panggilan) dan `items.list:query` (`instr(key)`), ditambah halaman `sync.items.pull:500` (kini ±1.000–1.500 baris dibaca per halaman karena join merk). Beberapa run berurutan dalam sehari melewati 5 juta.
 2. Rencana run berikutnya (setelah reset): satu run per hari paling banyak; kurangi sampel kasus yang memindai (atau jalankan terpisah dengan `--only=`), dan jangan seed ulang (seed menulis ±57 rb baris).
 3. Pemakaian nyata 8–10 pengguna jauh lebih rendah (perkiraan 0,5–1,5 juta baris/hari), tetapi dua pencarian yang memindai di atas (kata kunci audit, kata kunci item) tetap candidat perbaikan jika dipakai sering (kolom kunci berindeks atau pencarian awalan; mengubah perilaku, perlu keputusan pemilik).
+
+## Run 6 (2026-10-30, staging akun terpisah, kuota segar, versi `1c2075fc`, satu sesi tail, 42 rute)
+
+Run penuh pertama yang sah untuk rute tulis. Kriteria p95 ≤ 8 ms. **35 dari 43 baris lulus.**
+
+Lulus (p50 / p95 ms): `/api/ping` 0/2; `auth.me` 1/3; `items.list` (+`:cursor`, `:query`) 2/5–6; `items.get` 2/8; `customers.list` 1/7; `handovers.board:*` 1–2/5–7 (kolom Baru p95 7); `handovers.get`, `options` 1–2/4–5; `access.audit.list` (4 varian), `users/roles/locations.list` 1–2/4–5; `qrcodes.*` 2/4–5; `sync.ping`, `sync.items.pull:50+detail`, `sync.items.pull:500`, `sync.brands.pull:500` 1–2/3–6; `access.users.save` 2/7; `items.setStatus` 2/6; `handovers.setCheck`, `setDone`, `comment:general`, `comment:anchored`, `cancel`, `reopen` 2–3/5–8.
+
+Belum lulus:
+
+| Rute | p50 | p95 | p99 | maks | Catatan |
+|---|---|---|---|---|---|
+| `GET /api/boot` | 0 | 10 | 18 | 18 | 99 dari 100 sampel terukur |
+| `items.save` | 3 | 11 | 14 | 16 | |
+| `handovers.save:update` | 3 | 10 | 14 | 20 | |
+| `handovers.save:create` | 5 | 11 | 13 | 13 | 99 sampel |
+| `handovers.saveBatch:10x5000` | 8 | 18 | 34 | 34 | 93 sampel |
+| `sync.items.push:5+detail` | 4 | 15 | 19 | 24 | |
+| `brands.save` ganti nama ±50 item | 4 | 9 | 12 | 12 | |
+| `brands.list` | 1 | 4 | 7 | 7 | lulus CPU; hanya 99 sampel terukur |
+
+Pembacaan:
+1. **Semua rute baca dan semua tulis ringan kini lulus.** Dibanding run 3/4 (p95 9–13 untuk rute ringan; board p50 10–19 di run 1): minify, cache, kueri satu round trip, dan JSON disusun SQLite efektif.
+2. **Sisa kegagalan semuanya rute tulis berat**: `items.save`, `handovers.save`, `saveBatch`, `sync.items.push`, `brands.save` (p95 9–18). Penyebab: batch tulis 5–7 pernyataan (CAS, `sync_state`, UPDATE/INSERT, indeks, audit) yang tidak bisa dikurangi tanpa melemahkan atomisitas atau CAS. Kriteria "SAMPEL KURANG" pada tiga baris terjadi karena `wrangler tail` kehilangan 1–7 peristiwa dari 100, bukan karena CPU; angka CPU-nya tetap valid.
+3. **Satu run penuh memakai ±4,06 juta baris dibaca (±81% kuota harian akun)**, terutama dari kasus yang memindai (kata kunci audit dan item, pull 500). Maksimal satu run penuh per hari per akun staging; pakai `--only=` untuk rute tertentu.
+4. Tulis hari ini hanya ±14 rb baris (seed tidak diulang).
