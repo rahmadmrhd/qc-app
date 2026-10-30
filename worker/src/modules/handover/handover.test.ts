@@ -1356,36 +1356,106 @@ describe('konkurensi (Review Focus 3)', () => {
     ).toBe(11);
   });
 
-  test('simpan catatan dan batalkan bersamaan dari versi yang sama: tepat satu menang pada putaran pertama, tanpa versi/audit ganda', async () => {
+  /**
+   * Menjalankan `mutate` TEPAT sebelum `batch()` tulis yang memuat SQL `match` (sekali): menghasilkan penulis basi
+   * secara deterministik (bukan bergantung pada urutan `Promise.all`), sehingga hasil akhir hanya benar bila
+   * penjaga CAS/guard di batch itu bekerja. Tanpa penjaga, penulis basi menimpa tulisan `mutate`.
+   */
+  function beforeWrite(match: RegExp, mutate: () => Promise<unknown>): void {
+    const original = env.DB.batch.bind(env.DB);
+    let fired = false;
+    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+      const sqls = statements.map((s) => (s as unknown as { sql: string }).sql);
+      if (!fired && sqls.some((sql) => match.test(sql))) {
+        fired = true;
+        env.DB.batch = original;
+        await mutate();
+      }
+      return original(statements);
+    }) as typeof env.DB.batch;
+  }
+
+  const OLD_NOTE = '- [ ] A\n- [ ] B\n- [ ] C';
+  const NEW_NOTE = '- [ ] A\n- [ ] B\n- [ ] C\n- [ ] D';
+
+  test('simpan catatan basi (batal ditulis lebih dulu): catatan lama tidak menimpa pembatalan; simpan ditolak CONFLICT, versi/audit tepat satu', async () => {
     await seedTwo();
-    const [saved, cancelled] = await Promise.all([
-      save({ id: 't1', note: '- [ ] A\n- [ ] B\n- [ ] C\n- [ ] D' }),
-      call('wh@gmail.com', 'handovers.cancel', ref),
-    ]);
-    // Penjaga CAS `version` digabung ke UPDATE: yang basi mengulang dari keadaan baru, jadi versi naik tepat
-    // satu per tulisan yang berhasil dan tiap tulisan yang berhasil punya tepat satu audit.
-    const succeeded = [saved, cancelled].filter((r) => r.ok).length;
-    const row = await task();
-    expect(row.version).toBe(1 + succeeded);
+    let cancelled: Result | undefined;
+    beforeWrite(/UPDATE handovers/, async () => {
+      cancelled = await call('wh@gmail.com', 'handovers.cancel', ref);
+    });
+    const saved = await save({ id: 't1', note: NEW_NOTE });
+    expect(cancelled?.ok).toBe(true);
+    // Penulis basi mengulang dari keadaan baru: task sudah dibatalkan, jadi simpan ditolak (bukan menimpa status).
+    expect(saved.ok).toBe(false);
+    expect(saved.error.code).toBe('CONFLICT');
+    expect(await task()).toMatchObject({ status: 'cancelled', note: OLD_NOTE, version: 2 });
     const actions = (await audits()).filter(
       (a) => a === 'handover.update' || a === 'handover.cancel',
     );
-    expect(actions).toHaveLength(succeeded);
+    expect(actions).toEqual(['handover.cancel']);
   });
 
-  test('komentar bersamaan dengan pembatalan: komentar tidak pernah masuk ke task yang sudah dibatalkan', async () => {
+  test('batalkan basi (catatan disimpan lebih dulu): pembatalan mengulang dan mempertahankan catatan baru', async () => {
     await seedTwo();
-    const [c, x] = await Promise.all([
-      comment('', 'serentak'),
-      call('wh@gmail.com', 'handovers.cancel', ref),
-    ]);
-    expect(x.ok).toBe(true);
-    const rows = await commentsOf();
-    if (c.ok) expect(rows).toHaveLength(1);
-    else expect(rows).toHaveLength(0);
-    // Setelah batal pasti ditolak.
-    expect((await comment('', 'terlambat')).ok).toBe(false);
-    expect(await commentsOf()).toHaveLength(rows.length);
+    let saved: Result | undefined;
+    beforeWrite(/UPDATE handovers/, async () => {
+      saved = await save({ id: 't1', note: NEW_NOTE });
+    });
+    const cancelled = await call('wh@gmail.com', 'handovers.cancel', ref);
+    expect(saved?.ok).toBe(true);
+    expect(cancelled.ok).toBe(true);
+    // Tanpa CAS, pembatalan basi menimpa catatan baru dengan yang lama.
+    expect(await task()).toMatchObject({ status: 'cancelled', note: NEW_NOTE, version: 3 });
+    expect(
+      (await audits()).filter((a) => a === 'handover.update' || a === 'handover.cancel'),
+    ).toEqual(['handover.update', 'handover.cancel']);
+  });
+
+  test('komentar yang sudah memuat task lalu task dibatalkan sebelum komentar ditulis: VALIDATION dan tidak ada komentar di task dibatalkan', async () => {
+    await seedTwo();
+    beforeWrite(/INSERT INTO handover_comments/, async () => {
+      expect((await call('wh@gmail.com', 'handovers.cancel', ref)).ok).toBe(true);
+    });
+    const c = await comment('', 'terlambat');
+    expect(c.ok).toBe(false);
+    expect(c.error.code).toBe('VALIDATION');
+    expect(c.error.message).toContain('dibatalkan');
+    expect(await commentsOf()).toHaveLength(0);
+    expect((await audits()).filter((a) => a === 'handover.comment')).toHaveLength(0);
+  });
+
+  test('penghitung nomor basi: batch lain menaikkan penghitung lebih dulu, nomor TIDAK ditolong indeks unik (baris batch lain dihapus) tetap tanpa ganda', async () => {
+    const batch = (tag: string, n: number) =>
+      call('wh@gmail.com', 'handovers.saveBatch', {
+        locationId: ENV.locA,
+        tasks: Array.from({ length: n }, (_, i) => ({ customerName: '', note: `${tag}${i}` })),
+      });
+    // Penghitung belum ada (expected = -1): A menulis 001-002 di tengah B; barisnya dihapus agar tak ada tabrakan nomor.
+    beforeWrite(/INSERT INTO handovers/, async () => {
+      expect((await batch('a', 2)).ok).toBe(true);
+      await env.DB.prepare('DELETE FROM handovers').run();
+    });
+    const b = await batch('b', 1);
+    expect(b.ok).toBe(true);
+    // Dengan CAS: B mengulang dari penghitung (2) dan mendapat 003, bukan 001.
+    expect(b.data[0].number).toBe('ST-20261015-003');
+
+    // Penghitung sudah ada (expected = 3): A menulis 004-005 di tengah B.
+    beforeWrite(/INSERT INTO handovers/, async () => {
+      expect((await batch('c', 2)).ok).toBe(true);
+      await env.DB.prepare('DELETE FROM handovers').run();
+    });
+    const d = await batch('d', 1);
+    expect(d.ok).toBe(true);
+    expect(d.data[0].number).toBe('ST-20261015-006');
+    expect(
+      (
+        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+          value: number;
+        }>()
+      )?.value,
+    ).toBe(6);
   });
 
   test('batch banyak: setiap pernyataan di bawah 100 parameter terikat (adaptor menolak bila lebih)', async () => {
