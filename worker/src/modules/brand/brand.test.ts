@@ -367,5 +367,166 @@ test('CPU kasar: ganti nama merk dengan 200 item di bawah anggaran', async () =>
     await seedItem(env, { id: `i${i}`, brand: 'Ubiquity', model: `Model ${i}` });
   }
   const { ms } = await measureCpu(() => saveBrand(env, { id, name: 'Ubiquiti' }, admin));
-  expect(ms).toBeLessThan(50);
+  // 200 item: bila planner memindai json_each per item (O(N^2)) waktunya >30 ms; yang benar ~5 ms.
+  expect(ms).toBeLessThan(20);
+});
+
+describe('ganti nama merk: tabrakan sementara dan perubahan himpunan item', () => {
+  const keysOf = async (brandId: string) =>
+    (
+      await env.DB.prepare('SELECT id, key FROM items WHERE brand_id = ? ORDER BY id')
+        .bind(brandId)
+        .all<{ id: string; key: string }>()
+    ).results;
+
+  /** Jalankan `mutate` TEPAT sebelum batch tulis `saveBrand` (panggilan `batch` ke-2; ke-1 = baca merk + item). */
+  function mutateBeforeWrite(mutate: () => Promise<void>): void {
+    const original = env.DB.batch.bind(env.DB);
+    let calls = 0;
+    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+      if (++calls === 2) {
+        env.DB.batch = original;
+        await mutate();
+      }
+      return original(statements);
+    }) as typeof env.DB.batch;
+  }
+
+  test('kunci baru satu item = kunci lama item lain di merk yang sama tetapi hasil akhir unik: berhasil', async () => {
+    const id = await seedBrand(env, 'A');
+    await seedItem(env, { id: 'i1', brand: 'A', model: 'c' }); // a c -> a b c
+    await seedItem(env, { id: 'i2', brand: 'A', model: 'b c' }); // a b c -> a b b c
+    await saveBrand(env, { id, name: 'A b' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'i1', key: 'a b c' },
+      { id: 'i2', key: 'a b b c' },
+    ]);
+  });
+
+  test('520 item lintas dua potongan dengan tabrakan sementara: berhasil, revisi unik berurutan', async () => {
+    const id = await seedBrand(env, 'A');
+    for (let i = 0; i < 260; i++) {
+      await seedItem(env, { id: `p${String(i).padStart(3, '0')}`, brand: 'A', model: `c${i}` });
+      await seedItem(env, { id: `q${String(i).padStart(3, '0')}`, brand: 'A', model: `b c${i}` });
+    }
+    await saveBrand(env, { id, name: 'A b' }, admin);
+    const rows = await keysOf(id);
+    expect(rows).toHaveLength(520);
+    for (const row of rows) {
+      const n = Number(row.id.slice(1));
+      expect(row.key).toBe(row.id.startsWith('p') ? `a b c${n}` : `a b b c${n}`);
+    }
+    const revs = (
+      await env.DB.prepare('SELECT sync_rev FROM items ORDER BY sync_rev').all<{
+        sync_rev: number;
+      }>()
+    ).results.map((r) => r.sync_rev);
+    expect(revs).toEqual(Array.from({ length: 520 }, (_, i) => i + 1));
+  });
+
+  test('bentrok sungguhan dengan item merk lain pada item di potongan ke-2: ditolak tanpa perubahan sebagian, pesan tetap', async () => {
+    await seedBrand(env, 'Ab');
+    await seedBrand(env, 'A');
+    for (let i = 0; i < 520; i++) {
+      await seedItem(env, {
+        id: `i${String(i).padStart(3, '0')}`,
+        brand: 'Ab',
+        model: `c d ${i}`,
+      });
+    }
+    await seedItem(env, { id: 'x', brand: 'A', model: 'b c d 515' });
+    const revBefore = await currentSyncRev(env.DB, 'items');
+    const error = await captureAppErrorAsync(() =>
+      saveBrand(env, { id: 'brand-ab', name: 'A b' }, admin),
+    );
+    expect(error.code).toBe('CONFLICT');
+    expect(error.fields?.name).toBe('Nama baru membuat merk dan tipe dua item bentrok');
+    const rows = await keysOf('brand-ab');
+    expect(rows).toHaveLength(520);
+    expect(rows.every((row) => row.key === `ab c d ${Number(row.id.slice(1))}`)).toBe(true);
+    expect(await currentSyncRev(env.DB, 'items')).toBe(revBefore);
+    expect((await brandRow('brand-ab'))?.name).toBe('Ab');
+  });
+
+  test('bentrok sungguhan dengan nama lain tetap CONFLICT dengan pesan alias (bukan diulang terus)', async () => {
+    await seedBrand(env, 'Ubiquity');
+    await seedBrand(env, 'Mikrotik');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'ES 24' });
+    await seedItem(env, { id: 'i2', brand: 'Mikrotik', model: 'X', aliases: ['Ubiquiti ES 24'] });
+    const error = await captureAppErrorAsync(() =>
+      saveBrand(env, { id: 'brand-ubiquity', name: 'Ubiquiti' }, admin),
+    );
+    expect(error.fields?.name).toBe('Nama baru bentrok dengan nama lain item');
+    expect((await itemRow('i1'))?.key).toBe('ubiquity es 24');
+  });
+
+  test('item baru di merk itu di antara baca dan tulis: diulang, semua item merk berkunci nama baru', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X' });
+    mutateBeforeWrite(() => seedItem(env, { id: 'i2', brand: 'Ubiquity', model: 'Y' }));
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'i1', key: 'ubiquiti x' },
+      { id: 'i2', key: 'ubiquiti y' },
+    ]);
+    const revs = (
+      await env.DB.prepare('SELECT sync_rev FROM items ORDER BY id').all<{ sync_rev: number }>()
+    ).results.map((r) => r.sync_rev);
+    expect(new Set(revs).size).toBe(2);
+  });
+
+  test('item pindah ke merk lain di antara baca dan tulis: tidak disentuh, sisanya berkunci nama baru', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    const other = await seedBrand(env, 'Mikrotik');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X' });
+    await seedItem(env, { id: 'i2', brand: 'Ubiquity', model: 'Y' });
+    mutateBeforeWrite(async () => {
+      await env.DB.prepare("UPDATE items SET brand_id = ?, key = 'mikrotik y' WHERE id = 'i2'")
+        .bind(other)
+        .run();
+    });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([{ id: 'i1', key: 'ubiquiti x' }]);
+    expect(await keysOf(other)).toEqual([{ id: 'i2', key: 'mikrotik y' }]);
+    // percobaan pertama dibatalkan penjaga jumlah: jatah revisi dipesan ulang untuk 1 item, tanpa lompatan
+    expect(await currentSyncRev(env.DB, 'items')).toBe(1);
+    expect((await itemRow('i1'))?.sync_rev).toBe(1);
+    expect((await itemRow('i2'))?.sync_rev).toBe(0);
+  });
+
+  test('satu item keluar dan satu masuk (jumlah sama): terdeteksi, hasil akhir konsisten', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    const other = await seedBrand(env, 'Mikrotik');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X' });
+    await seedItem(env, { id: 'i2', brand: 'Ubiquity', model: 'Y' });
+    await seedItem(env, { id: 'i3', brand: 'Mikrotik', model: 'Z' });
+    mutateBeforeWrite(async () => {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE items SET brand_id = ?, key = 'mikrotik y' WHERE id = 'i2'").bind(
+          other,
+        ),
+        env.DB.prepare("UPDATE items SET brand_id = ?, key = 'ubiquity z' WHERE id = 'i3'").bind(
+          id,
+        ),
+      ]);
+    });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([
+      { id: 'i1', key: 'ubiquiti x' },
+      { id: 'i3', key: 'ubiquiti z' },
+    ]);
+    expect(await keysOf(other)).toEqual([{ id: 'i2', key: 'mikrotik y' }]);
+  });
+
+  test('tipe item berubah di antara baca dan tulis: diulang dengan tipe terbaru', async () => {
+    const id = await seedBrand(env, 'Ubiquity');
+    await seedItem(env, { id: 'i1', brand: 'Ubiquity', model: 'X' });
+    mutateBeforeWrite(async () => {
+      await env.DB.prepare(
+        "UPDATE items SET model = 'X2', key = 'ubiquity x2' WHERE id = 'i1'",
+      ).run();
+    });
+    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+    expect(await keysOf(id)).toEqual([{ id: 'i1', key: 'ubiquiti x2' }]);
+  });
 });

@@ -128,7 +128,7 @@ describe('pernyataan D1 per rute tulis (cache hangat)', () => {
     ['handovers.cancel', 4],
     ['handovers.reopen', 4],
     ['sync.items.push:5+detail', 19],
-    ['brands.save:rename(~50 item)', 8],
+    ['brands.save:rename(~50 item)', 11],
   ];
   for (const [name, max] of statementBudget) {
     test(`${name} <= ${max} pernyataan`, async () => {

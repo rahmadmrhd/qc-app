@@ -342,7 +342,7 @@ export function buildCases(ctx: CaseContext): LoadCase[] {
           id: `lb-${1 + (i % LOAD_SIZES.brands)}`,
           name: `Merk Uji ${1 + (i % LOAD_SIZES.brands)} Baru ${i}`,
         }),
-      4 + Math.round(LOAD_SIZES.items / LOAD_SIZES.brands) * 3,
+      4 + Math.round(LOAD_SIZES.items / LOAD_SIZES.brands) * 6, // dua tahap kunci: tiap item ditulis dua kali (baris + indeks key)
     ),
   ];
 }
