@@ -46,6 +46,7 @@ const READ_PERMISSION = {
 export function handoverRoutes(): Pick<RouteTable, HandoverMethod> {
   return {
     'handovers.options': {
+      warm: ['customers'],
       permission: READ_PERMISSION,
       validate: validateListHandovers,
       handler: (_input, ctx) => handoverOptions(ctx.env),
@@ -61,11 +62,13 @@ export function handoverRoutes(): Pick<RouteTable, HandoverMethod> {
       handler: (input, ctx) => getHandoverDto(ctx.env, input, ctx.locationIds),
     },
     'handovers.save': {
+      warm: ['customers'],
       permission: { module: 'handover', level: 'edit', scope: 'location' },
       validate: validateSaveHandover,
       handler: (input, ctx) => saveHandover(ctx.env, input, ctx.user),
     },
     'handovers.saveBatch': {
+      warm: ['customers'],
       permission: { module: 'handover', level: 'edit', scope: 'location' },
       validate: validateSaveHandoverBatch,
       handler: (input, ctx) => saveHandoverBatch(ctx.env, input, ctx.user),

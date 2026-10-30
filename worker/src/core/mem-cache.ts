@@ -43,6 +43,15 @@ function generationOf(group: string): number {
   return generations.get(group) ?? 0;
 }
 
+/** True bila `key` ada di cache dan masih segar (tanpa memuatnya); `false` bila cache dimatikan. */
+export function isCached(env: Env, key: string): boolean {
+  if (cacheTtlMs(env) === 0) return false;
+  const hit = entries.get(key);
+  return (
+    hit !== undefined && hit.expires > nowOf(env) && hit.generation === generationOf(groupOf(key))
+  );
+}
+
 /** Mengisi kunci LAIN dari data yang sudah dibaca pemuat yang sama (tanpa round trip tambahan). */
 export type Prime = (key: string, value: unknown) => void;
 

@@ -17,16 +17,19 @@ export function itemRoutes(): Pick<RouteTable, ItemMethod> {
       handler: (input, ctx) => listItemPage(ctx.env, input),
     },
     'items.get': {
+      warm: ['brands'],
       permission: { module: 'item', level: 'view' },
       validate: validateGetItem,
       handler: (input, ctx) => getItemDto(ctx.env, input),
     },
     'items.save': {
+      warm: ['brands'],
       permission: { module: 'item', level: 'edit' },
       validate: validateSaveItem,
       handler: (input, ctx) => saveItem(ctx.env, input, ctx.user),
     },
     'items.setStatus': {
+      warm: ['brands'],
       permission: { module: 'item', level: 'manage' },
       validate: validateSetItemStatus,
       handler: (input, ctx) => setItemStatus(ctx.env, input, ctx.user),

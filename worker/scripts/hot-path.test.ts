@@ -51,13 +51,21 @@ async function call(name: string, i: number): Promise<void> {
   if (body.ok !== true) throw new Error(`${name}: ${JSON.stringify(body)}`);
 }
 
-/** Round trip D1 per panggilan setelah satu panggilan pemanasan (cache isolate hangat). */
-async function tripsPer(name: string, calls = 3): Promise<number> {
+/** Round trip dan pernyataan D1 per panggilan setelah satu panggilan pemanasan (cache isolate hangat). */
+async function loadPer(name: string, calls = 3): Promise<{ trips: number; statements: number }> {
   await call(name, 0);
   const stats = d1StatsOf(env.DB);
-  const before = stats.trips;
+  const trips = stats.trips;
+  const statements = stats.statements;
   for (let i = 1; i <= calls; i++) await call(name, i);
-  return (stats.trips - before) / calls;
+  return {
+    trips: (stats.trips - trips) / calls,
+    statements: (stats.statements - statements) / calls,
+  };
+}
+
+async function tripsPer(name: string, calls = 3): Promise<number> {
+  return (await loadPer(name, calls)).trips;
 }
 
 describe('round trip D1 per rute (cache hangat)', () => {
@@ -79,15 +87,15 @@ describe('round trip D1 per rute (cache hangat)', () => {
     ['handovers.comment:anchored', 2],
     ['handovers.cancel', 2],
     ['handovers.reopen', 2],
-    ['handovers.save:update', 3],
+    ['handovers.save:update', 2],
     ['handovers.save:create', 2],
-    ['handovers.saveBatch:10x5000', 3],
+    ['handovers.saveBatch:10x5000', 2],
     // Satu kueri kabel (autentikasi sinkron = 1 round trip lain); berkas hanya bila detail memuat rujukan qcfile:.
     ['sync.items.pull:500', 2],
     ['sync.items.pull:50+detail', 2],
     ['items.setStatus', 2],
     ['items.save', 2],
-    ['brands.save:rename(~50 item)', 4],
+    ['brands.save:rename(~50 item)', 2],
   ];
   for (const [name, max] of budget) {
     test(`${name} <= ${max}`, async () => {
@@ -95,9 +103,38 @@ describe('round trip D1 per rute (cache hangat)', () => {
     });
   }
 
-  test('sync.items.push: <= 3 round trip per entri (5 entri)', async () => {
-    expect(await tripsPer('sync.items.push:5+detail', 2)).toBeLessThanOrEqual(5 * 3 + 4);
+  // Autentikasi (batas laju) 1 + prefetch item dan merk 1 + satu batch tulis per entri (5): tanpa pembacaan
+  // keunikan per entri bila merk+tipe dan nama lain tidak berubah.
+  test('sync.items.push: <= 7 round trip untuk 5 entri', async () => {
+    expect(await tripsPer('sync.items.push:5+detail', 2)).toBeLessThanOrEqual(7);
   });
+});
+
+/**
+ * Pernyataan per permintaan (bukan hanya round trip): tiap pernyataan di `batch()` menambah serialisasi dan
+ * pembentukan hasil di Worker. Penjaga CAS digabung ke UPDATE/INSERT, INSERT banyak-baris, dan UPDATE set-based
+ * menjaga angka ini; naikkan hanya dengan alasan tertulis.
+ */
+describe('pernyataan D1 per rute tulis (cache hangat)', () => {
+  const statementBudget: Array<[string, number]> = [
+    ['items.save', 5],
+    ['items.setStatus', 4],
+    ['handovers.save:update', 4],
+    ['handovers.save:create', 4],
+    ['handovers.saveBatch:10x5000', 5],
+    ['handovers.setCheck', 4],
+    ['handovers.setDone', 4],
+    ['handovers.comment:general', 5],
+    ['handovers.cancel', 4],
+    ['handovers.reopen', 4],
+    ['sync.items.push:5+detail', 19],
+    ['brands.save:rename(~50 item)', 8],
+  ];
+  for (const [name, max] of statementBudget) {
+    test(`${name} <= ${max} pernyataan`, async () => {
+      expect((await loadPer(name)).statements).toBeLessThanOrEqual(max);
+    });
+  }
 });
 
 async function planOf(sql: string): Promise<string[]> {

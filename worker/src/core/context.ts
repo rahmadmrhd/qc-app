@@ -1,4 +1,5 @@
 import type { UserContext } from '@worker/modules/access/context';
+import type { WarmGroup } from '@worker/modules/access/context';
 import { loadUserContext } from '@worker/modules/access/context';
 import type { Env } from './env';
 
@@ -17,14 +18,16 @@ export interface ActorRef {
 }
 
 /**
- * Muat konteks akses (satu `batch` D1, tanpa cache lintas permintaan). `locationIds` diisi router
+ * Muat konteks akses (satu round trip D1 saat cache isolate kosong; `warm` = cache tabel kecil lain yang
+ * dibutuhkan rute dan ikut dimuat di round trip yang sama). `locationIds` diisi router
  * setelah izin lokasi diperiksa.
  */
 export async function loadRequestCtx(
   env: Env,
   email: string,
   requestId = '',
+  warm: readonly WarmGroup[] = [],
 ): Promise<RequestCtx | null> {
-  const user = await loadUserContext(env, email);
+  const user = await loadUserContext(env, email, warm);
   return user ? { env, requestId, user, locationIds: [] } : null;
 }

@@ -9,6 +9,7 @@ type BrandMethod = 'brands.list' | 'brands.save' | 'brands.setStatus';
 export function brandRoutes(): Pick<RouteTable, BrandMethod> {
   return {
     'brands.list': {
+      warm: ['brands'],
       permission: { module: 'item', level: 'view' },
       validate: expectNull,
       handler: (_input, ctx) => listBrandDtos(ctx.env),

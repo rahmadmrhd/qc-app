@@ -9,7 +9,7 @@ import type {
   WorkerRpcOutput as RpcOutput,
   RpcResult,
 } from '@shared/rpc';
-import type { UserContext } from '@worker/modules/access/context';
+import type { UserContext, WarmGroup } from '@worker/modules/access/context';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
@@ -32,6 +32,11 @@ export type RoutePermissionSpec =
   | { anyOf: readonly [LocationPermission, ...LocationPermission[]] };
 
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
+  /**
+   * Cache tabel kecil yang dibaca handler (`brands`, `customers`): bila kosong saat konteks akses dimuat,
+   * dimuat di round trip yang sama (satu miss, bukan dua atau tiga round trip berurutan).
+   */
+  warm?: readonly WarmGroup[];
   /** Tanpa `permission` = cukup login. */
   permission?: RoutePermissionSpec;
   validate: (raw: unknown) => RpcInput<M>;
@@ -129,7 +134,7 @@ export async function callRoute(
 
     const session = await verifySessionToken(env, token, nowOf(env));
     if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
-    const base = await loadRequestCtx(env, session.email, requestId);
+    const base = await loadRequestCtx(env, session.email, requestId, route.warm);
     if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
     const user = base.user;
     userId = user.userId;

@@ -1313,7 +1313,15 @@ describe('konkurensi (Review Focus 3)', () => {
     expect(trail).toHaveLength(12);
     const rows = await taskRows();
     expect(rows).toHaveLength(10);
-    expect(rows.filter((r) => r.customer_name === 'Cust A')).toHaveLength(2);
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM handovers WHERE customer_name = 'Cust A'",
+        ).first<{
+          n: number;
+        }>()
+      )?.n,
+    ).toBe(2);
   });
 
   test('penghitung nomor (CAS digabung ke INSERT ... ON CONFLICT): dua saveBatch dari penghitung yang sama, nomor tanpa lompat dan tanpa ganda', async () => {

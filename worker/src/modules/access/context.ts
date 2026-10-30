@@ -5,9 +5,11 @@ import { fullPermissions, sanitizePermissions } from '@shared/permissions';
 import { normalizeEmail } from '@worker/core/email';
 import type { Env } from '@worker/core/env';
 import type { Prime } from '@worker/core/mem-cache';
-import { cached } from '@worker/core/mem-cache';
+import { cached, cacheTtlMs, isCached } from '@worker/core/mem-cache';
+import { brandsFromResult, brandsStatement } from '@worker/modules/brand/repo';
+import { customersFromResult, customersStatement } from '@worker/modules/customer/repo';
 import type { LocationBriefRow } from './location-brief';
-import { LOCATION_BRIEF_SQL, toLocationBrief } from './location-brief';
+import { toLocationBrief } from './location-brief';
 
 export interface UserContext {
   email: string;
@@ -26,6 +28,28 @@ interface UserRow {
   status: string;
   role_ids: string;
   assignments: string;
+}
+
+/**
+ * Cache tabel kecil lain yang dibutuhkan rute dan dimuat BERSAMA konteks akses saat konteks kedaluwarsa:
+ * ketiganya habis hampir serempak (TTL sama), jadi satu round trip menggantikan dua atau tiga.
+ */
+export type WarmGroup = 'brands' | 'customers';
+
+/**
+ * Satu kueri untuk tiga tabel akses (kecil): baris `u` = user menurut email (indeks unik: maks. 1), `r` = peran, `l` = lokasi
+ * (seluruhnya, bukan hanya yang aktif: daftar yang sama mengisi cache `access:locations`). Kolom generik
+ * a..e agar `UNION ALL` sah; satu pernyataan, bukan tiga.
+ */
+const ACCESS_SQL = `SELECT 'u' AS k, id AS a, name AS b, status AS c, role_ids AS d, assignments AS e FROM users WHERE email = ? UNION ALL SELECT 'r', id, permissions, NULL, NULL, NULL FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL FROM locations`;
+
+interface AccessRow {
+  k: 'u' | 'r' | 'l';
+  a: string;
+  b: string;
+  c: string | null;
+  d: string | null;
+  e: string | null;
 }
 
 function parseJson(text: string): unknown {
@@ -55,10 +79,16 @@ function readAssignments(row: UserRow): Assignment[] {
  * memori isolate (`mem-cache.ts`, TTL <= 15 dtk): perubahan akses dari isolate lain, termasuk pencabutan,
  * berlaku paling lambat sebesar TTL; di isolate yang sama berlaku seketika (cache dibuang saat tulis).
  */
-export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
+export async function loadUserContext(
+  env: Env,
+  rawEmail: string,
+  warm: readonly WarmGroup[] = [],
+): Promise<UserContext | null> {
   const email = normalizeEmail(rawEmail);
   if (email === '') return null;
-  return cached(env, `access:ctx:${email}`, (prime) => loadUserContextFresh(env, email, prime));
+  return cached(env, `access:ctx:${email}`, (prime) =>
+    loadUserContextFresh(env, email, prime, warm),
+  );
 }
 
 /** Konteks akses langsung dari D1 (tanpa cache). */
@@ -66,18 +96,41 @@ export async function loadUserContextFresh(
   env: Env,
   email: string,
   prime?: Prime,
+  warm: readonly WarmGroup[] = [],
 ): Promise<UserContext | null> {
-  const [users, roles, locations] = await env.DB.batch([
-    env.DB.prepare(
-      'SELECT id, name, status, role_ids, assignments FROM users WHERE email = ? LIMIT 1',
-    ).bind(email),
-    env.DB.prepare('SELECT id, permissions FROM roles'),
-    // Seluruh lokasi (bukan hanya yang aktif): daftar yang sama mengisi cache `access:locations`.
-    env.DB.prepare(LOCATION_BRIEF_SQL),
+  // Cache lain yang dibutuhkan rute ikut dimuat di round trip yang sama bila sedang kosong (hanya lewat cache,
+  // yaitu bila ada `prime`; pemuatan langsung tanpa cache tidak mengisi apa pun).
+  const warming = prime !== undefined && cacheTtlMs(env) > 0;
+  const wantBrands = warming && warm.includes('brands') && !isCached(env, 'brands:all');
+  const wantCustomers = warming && warm.includes('customers') && !isCached(env, 'customers:all');
+  const results = await env.DB.batch([
+    env.DB.prepare(ACCESS_SQL).bind(email),
+    ...(wantBrands ? [brandsStatement(env)] : []),
+    ...(wantCustomers ? [customersStatement(env)] : []),
   ]);
-  const record = (users?.results[0] as UserRow | undefined) ?? null;
-  const roleRows = (roles?.results ?? []) as { id: string; permissions: string }[];
-  const briefs = ((locations?.results ?? []) as LocationBriefRow[]).map(toLocationBrief);
+  let next = 1;
+  if (wantBrands) {
+    prime?.('brands:all', brandsFromResult(results[next++] as { results: unknown[] }));
+  }
+  if (wantCustomers) {
+    prime?.('customers:all', customersFromResult(results[next++] as { results: unknown[] }));
+  }
+  let record: UserRow | null = null;
+  const roleRows: { id: string; permissions: string }[] = [];
+  const briefRows: LocationBriefRow[] = [];
+  for (const row of (results[0]?.results ?? []) as AccessRow[]) {
+    if (row.k === 'u') {
+      record = {
+        id: row.a,
+        name: row.b,
+        status: row.c ?? '',
+        role_ids: row.d ?? '',
+        assignments: row.e ?? '',
+      };
+    } else if (row.k === 'r') roleRows.push({ id: row.a, permissions: row.b });
+    else briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
+  }
+  const briefs = briefRows.map(toLocationBrief);
   prime?.('access:locations', briefs);
   const activeLocationIds = briefs.filter((brief) => brief.active).map((brief) => brief.id);
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');

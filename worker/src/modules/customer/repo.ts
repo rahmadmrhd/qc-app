@@ -41,15 +41,24 @@ function toCustomer(row: CustomerRow): CustomerRecord {
  * Seluruh customer. Bawaan memakai cache memori isolate (`mem-cache.ts`, TTL <= 15 dtk); `fresh: true`
  * membaca langsung dari D1 dan dipakai jalur yang memutuskan penulisan (ganti nama/status).
  */
+/** Kueri seluruh customer untuk digabung ke `batch()` pemanggil (tanpa cache); lihat `customersFromResult`. */
+export function customersStatement(env: Env): D1PreparedStatement {
+  return env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers`);
+}
+
+/** Hasil `customersStatement` sebagai rekaman customer. */
+export function customersFromResult(result: { results: unknown[] }): CustomerRecord[] {
+  return (result.results as CustomerRow[])
+    .map(toCustomer)
+    .filter((c) => c.id !== '' && c.key !== '');
+}
+
 export async function listCustomers(
   env: Env,
   options: { fresh?: boolean } = {},
 ): Promise<CustomerRecord[]> {
   const load = async (): Promise<CustomerRecord[]> => {
-    const result = await env.DB.prepare(
-      `SELECT ${CUSTOMER_COLUMNS} FROM customers`,
-    ).all<CustomerRow>();
-    return result.results.map(toCustomer).filter((c) => c.id !== '' && c.key !== '');
+    return customersFromResult(await customersStatement(env).all<CustomerRow>());
   };
   return options.fresh ? load() : cached(env, 'customers:all', load);
 }

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedLocation, seedRole, seedUser } from '@worker-test/access-fixtures';
+import { d1StatsOf } from '@worker-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@worker-test/test-env';
+import { listBrands } from '@worker/modules/brand/repo';
+import { listCustomers } from '@worker/modules/customer/repo';
 import { loadUserContext } from './context';
 
 let env: TestEnv;
@@ -75,7 +78,7 @@ describe('loadUserContext', () => {
     expect(await loadUserContext(env, 'viewer@gmail.com')).toBeNull();
   });
 
-  test('memakai satu panggilan batch ke D1', async () => {
+  test('memakai satu panggilan batch ke D1 berisi SATU pernyataan', async () => {
     let batches = 0;
     let prepares = 0;
     const db = env.DB;
@@ -91,7 +94,49 @@ describe('loadUserContext', () => {
     } as unknown as D1Database;
     await loadUserContext({ ...env, DB: counting }, 'admin@gmail.com');
     expect(batches).toBe(1);
-    expect(prepares).toBe(3);
+    expect(prepares).toBe(1);
+  });
+});
+
+describe('warm: cache brands/customers dimuat bersama konteks akses', () => {
+  test('miss konteks + brands + customers = SATU round trip; pembacaan berikutnya tidak ke D1', async () => {
+    const cachedEnv = await createTestEnv({ CACHE_TTL_MS: '10000' });
+    await seedLocation(cachedEnv, { id: 'l-a', code: 'A' });
+    await seedRole(cachedEnv, { id: 'r-view', name: 'Viewer', permissions: { item: 'view' } });
+    await seedUser(cachedEnv, { id: 'u1', email: 'viewer@gmail.com', roleIds: ['r-view'] });
+    await cachedEnv.DB.prepare(
+      "INSERT INTO brands (id, name, key, status) VALUES ('b1', 'Merk', 'merk', 'active')",
+    ).run();
+    await cachedEnv.DB.prepare(
+      "INSERT INTO customers (id, name, key, status) VALUES ('c1', 'Cust', 'cust', 'active')",
+    ).run();
+    const stats = d1StatsOf(cachedEnv.DB);
+    const before = stats.trips;
+    const ctx = await loadUserContext(cachedEnv, 'viewer@gmail.com', ['brands', 'customers']);
+    expect(ctx?.permissions.item).toBe('view');
+    expect(stats.trips - before).toBe(1);
+    expect((await listBrands(cachedEnv)).map((b) => b.name)).toEqual(['Merk']);
+    expect((await listCustomers(cachedEnv)).map((c) => c.name)).toEqual(['Cust']);
+    expect(stats.trips - before).toBe(1);
+  });
+
+  test('cache brands yang masih segar tidak dimuat ulang; tanpa warm hanya konteks', async () => {
+    const cachedEnv = await createTestEnv({ CACHE_TTL_MS: '10000' });
+    await seedRole(cachedEnv, { id: 'r-view', name: 'Viewer', permissions: { item: 'view' } });
+    await seedUser(cachedEnv, { id: 'u1', email: 'viewer@gmail.com', roleIds: ['r-view'] });
+    const stats = d1StatsOf(cachedEnv.DB);
+    await listBrands(cachedEnv);
+    const statementsBefore = stats.statements;
+    await loadUserContext(cachedEnv, 'viewer@gmail.com', ['brands']);
+    expect(stats.statements - statementsBefore).toBe(1);
+  });
+
+  test('tanpa cache (CACHE_TTL_MS=0) warm diabaikan: hanya satu pernyataan konteks', async () => {
+    const uncached = await createTestEnv({ CACHE_TTL_MS: '0' });
+    const stats = d1StatsOf(uncached.DB);
+    const before = stats.statements;
+    await loadUserContext(uncached, 'admin@gmail.com', ['brands', 'customers']);
+    expect(stats.statements - before).toBe(1);
   });
 });
 
