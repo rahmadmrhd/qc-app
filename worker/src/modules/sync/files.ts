@@ -64,6 +64,8 @@ export async function probeDriveIds(
   driveIds: readonly string[],
 ): Promise<Map<string, DriveProbe | null>> {
   const unique = [...new Set(driveIds)];
+  // Tanpa id Drive tidak ada yang perlu diperiksa: lewati pembacaan folder dan tabel berkas (2 round trip).
+  if (unique.length === 0) return new Map();
   const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
   const known = new Set((await filesByDriveIds(env, unique)).map((file) => file.driveId));
   const bridge = getBridge(env);

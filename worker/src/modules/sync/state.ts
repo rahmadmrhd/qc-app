@@ -19,7 +19,7 @@ export function nextSyncRev(
 
 /**
  * Menaikkan penghitung `count` sekaligus (satu pernyataan): revisi ke-`index` (0..count-1) kemudian dipakai
- * lewat `syncRevAtExpr(resource, count, index)` di batch yang sama. Revisi tetap unik dan menaik.
+ * di batch yang sama (revisi ke-`i` dari `count` = `seq - (count - 1 - i)`; lihat ganti nama merk). Revisi tetap unik dan menaik.
  */
 export function reserveSyncRevs(
   db: D1Database,
@@ -32,11 +32,6 @@ export function reserveSyncRevs(
       'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON CONFLICT (resource) DO UPDATE SET seq = seq + excluded.seq, updated_at = excluded.updated_at',
     )
     .bind(resource, count, nowIso);
-}
-
-/** Revisi ke-`index` dari `count` revisi yang dipesan `reserveSyncRevs` pada batch yang sama. */
-export function syncRevAtExpr(resource: SyncResource, count: number, index: number): string {
-  return `((SELECT seq FROM sync_state WHERE resource = '${resource}') - ${count - 1 - index})`;
 }
 
 /** Ekspresi SQL nilai revisi terbaru sumber daya (dipakai setelah `nextSyncRev` di batch yang sama). */

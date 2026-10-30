@@ -11,7 +11,7 @@ import { nowIso } from '@worker/core/env';
 import { isAppError } from '@worker/core/errors';
 import { PreEncodedJson } from '@worker/core/pre-encoded';
 import type { BrandRecord } from '@worker/modules/brand/repo';
-import { listBrands } from '@worker/modules/brand/repo';
+import { brandsFromResult, brandsStatement, listBrands } from '@worker/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@worker/modules/item/repo';
 import { ITEM_COLUMNS, toItem } from '@worker/modules/item/repo';
 import {
@@ -299,8 +299,14 @@ function unindexItem(index: ItemIndex, item: ItemRecord): void {
   }
 }
 
-/** Satu `batch` untuk seluruh pencarian uid / id MySQL / kunci semua entri (<= 90 parameter per kueri). */
-async function prefetchItems(env: Env, entries: readonly SyncItemInput[]): Promise<ItemIndex> {
+/**
+ * Satu `batch` untuk seluruh pencarian uid / id MySQL / kunci semua entri (<= 90 parameter per kueri) DAN daftar
+ * merk (langsung dari D1): satu round trip untuk keduanya.
+ */
+async function prefetchItems(
+  env: Env,
+  entries: readonly SyncItemInput[],
+): Promise<{ index: ItemIndex; brands: BrandRecord[] }> {
   const index: ItemIndex = { byId: new Map(), byExternal: new Map(), byKey: new Map() };
   const uids = [
     ...new Set(entries.flatMap((entry) => (entry.uid === undefined ? [] : [entry.uid]))),
@@ -323,11 +329,13 @@ async function prefetchItems(env: Env, entries: readonly SyncItemInput[]): Promi
   add('id', uids);
   add('external_id', externals);
   add('key', keys);
-  if (statements.length === 0) return index;
-  for (const result of await env.DB.batch<ItemRow>(statements)) {
+  const itemResults = statements.length;
+  statements.push(brandsStatement(env));
+  const results = await env.DB.batch<ItemRow>(statements);
+  for (const result of results.slice(0, itemResults)) {
     for (const row of result.results) indexItem(index, toItem(row));
   }
-  return index;
+  return { index, brands: brandsFromResult(results[itemResults] as { results: unknown[] }) };
 }
 
 /** Pencocokan: uid -> id MySQL -> merk+tipe ternormalisasi (kontrak 3.3), dari indeks hasil `prefetchItems`. */
@@ -538,18 +546,19 @@ async function upsertSyncItem(
     status,
     knownBrand: state.brandsByKey.get(normalizeKey(merged.brand)) ?? null,
   });
-  // Revisi yang dipakai baris dibaca balik di batch yang sama (tanpa round trip tambahan).
+  // Revisi yang dipakai baris datang dari `RETURNING sync_rev` pada INSERT/UPDATE item di batch yang sama
+  // (tanpa pernyataan tambahan); hanya pernyataan itu yang mengembalikan baris.
   const results = await batchGuarded(
     env.DB,
-    [
-      ...plan.statements,
-      env.DB.prepare('SELECT sync_rev FROM items WHERE id = ?').bind(plan.record.id),
-    ],
+    plan.statements,
     ITEM_CONFLICTS,
     'Item diubah pihak lain; ulangi permintaan',
   );
-  const written = (results[results.length - 1]?.results[0] as { sync_rev: number } | undefined)
-    ?.sync_rev;
+  const written = (
+    results.find((result) => result.results.length > 0)?.results[0] as
+      | { sync_rev: number }
+      | undefined
+  )?.sync_rev;
   const record: ItemRecord = { ...plan.record, syncRev: written ?? plan.record.syncRev };
   if (existing) unindexItem(state.items, existing);
   indexItem(state.items, record);
@@ -598,15 +607,15 @@ export async function pushItems(
     env,
     checks.flatMap((check) => (check.ok ? driveIdsOf(check.value) : [])),
   );
-  // Merk (langsung dari D1) dan item yang dirujuk dimuat sekali untuk seluruh permintaan.
-  const brands = await listBrands(env, { fresh: true });
+  // Merk (langsung dari D1) dan item yang dirujuk dimuat sekali untuk seluruh permintaan (satu round trip).
+  const { index, brands } = await prefetchItems(
+    env,
+    checks.flatMap((check) => (check.ok ? [check.value] : [])),
+  );
   const state: PushState = {
     names: new Map(brands.map((brand) => [brand.id, brand.name])),
     brandsByKey: new Map(brands.map((brand) => [brand.key, brand])),
-    items: await prefetchItems(
-      env,
-      checks.flatMap((check) => (check.ok ? [check.value] : [])),
-    ),
+    items: index,
   };
   const results: Array<SyncEntryResult<SyncWireItem>> = [];
   for (const [index, check] of checks.entries()) {

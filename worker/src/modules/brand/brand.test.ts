@@ -320,6 +320,47 @@ test('izin rute merk: list view, save edit, setStatus manage (modul item)', () =
   expect(routes['brands.setStatus'].permission).toEqual({ module: 'item', level: 'manage' });
 });
 
+test('ganti nama merk dengan 520 item (dua potongan UPDATE): semua kunci berubah, revisi unik berurutan, item merk lain utuh', async () => {
+  const id = await seedBrand(env, 'Ubiquity');
+  for (let i = 0; i < 520; i++) {
+    await seedItem(env, { id: `i${i}`, brand: 'Ubiquity', model: `Model ${i}` });
+  }
+  await seedItem(env, { id: 'lain', brand: 'Mikrotik', model: 'Z', syncRev: 9 });
+  await env.DB.prepare(
+    "INSERT INTO sync_state (resource, seq) VALUES ('items', 100) ON CONFLICT (resource) DO UPDATE SET seq = 100",
+  ).run();
+  await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
+  const rows = (
+    await env.DB.prepare('SELECT key, sync_rev FROM items WHERE brand_id = ? ORDER BY sync_rev')
+      .bind(id)
+      .all<{ key: string; sync_rev: number }>()
+  ).results;
+  expect(rows).toHaveLength(520);
+  expect(rows.every((row) => row.key.startsWith('ubiquiti model '))).toBe(true);
+  expect(rows.map((row) => row.sync_rev)).toEqual(Array.from({ length: 520 }, (_, i) => 101 + i));
+  expect(await currentSyncRev(env.DB, 'items')).toBe(620);
+  expect((await itemRow('lain'))?.sync_rev).toBe(9);
+});
+
+test('ganti nama merk: bentrok dengan merk+tipe item lain pada item KE-300 membatalkan seluruh batch (tanpa perubahan sebagian)', async () => {
+  await seedBrand(env, 'Ab');
+  await seedBrand(env, 'A');
+  for (let i = 0; i < 300; i++) {
+    await seedItem(env, { id: `i${i}`, brand: 'Ab', model: `c d ${i}` });
+  }
+  await seedItem(env, { id: 'x', brand: 'A', model: 'b c d 299' });
+  const revBefore = await currentSyncRev(env.DB, 'items');
+  const error = await captureAppErrorAsync(() =>
+    saveBrand(env, { id: 'brand-ab', name: 'A b' }, admin),
+  );
+  expect(error.code).toBe('CONFLICT');
+  expect(error.fields?.name).toBe('Nama baru membuat merk dan tipe dua item bentrok');
+  expect((await itemRow('i0'))?.key).toBe('ab c d 0');
+  expect((await itemRow('i299'))?.key).toBe('ab c d 299');
+  expect(await currentSyncRev(env.DB, 'items')).toBe(revBefore);
+  expect((await brandRow('brand-ab'))?.name).toBe('Ab');
+});
+
 test('CPU kasar: ganti nama merk dengan 200 item di bawah anggaran', async () => {
   const id = await seedBrand(env, 'Ubiquity');
   for (let i = 0; i < 200; i++) {

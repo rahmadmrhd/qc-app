@@ -50,6 +50,18 @@ function toBrand(row: BrandRow): BrandRecord {
   };
 }
 
+/** Kueri seluruh merk untuk digabung ke `batch()` pemanggil (langsung dari D1, tanpa cache); lihat `brandsFromResult`. */
+export function brandsStatement(env: Env): D1PreparedStatement {
+  return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`);
+}
+
+/** Hasil `brandsStatement` sebagai rekaman merk. */
+export function brandsFromResult(result: { results: unknown[] }): BrandRecord[] {
+  return (result.results as BrandRow[])
+    .map(toBrand)
+    .filter((brand) => brand.id !== '' && brand.key !== '');
+}
+
 /**
  * Seluruh merk (kecil). Bawaan memakai cache memori isolate (`mem-cache.ts`, TTL <= 15 dtk); `fresh: true`
  * membaca langsung dari D1 dan WAJIB dipakai jalur yang memutuskan penulisan (sinkron, ganti nama/status).
@@ -59,8 +71,7 @@ export async function listBrands(
   options: { fresh?: boolean } = {},
 ): Promise<BrandRecord[]> {
   const load = async (): Promise<BrandRecord[]> => {
-    const result = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`).all<BrandRow>();
-    return result.results.map(toBrand).filter((brand) => brand.id !== '' && brand.key !== '');
+    return brandsFromResult(await brandsStatement(env).all<BrandRow>());
   };
   return options.fresh ? load() : cached(env, 'brands:all', load);
 }

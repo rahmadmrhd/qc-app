@@ -148,6 +148,10 @@ function insertAliasKeyStmts(
   );
 }
 
+/**
+ * `INSERT`/`UPDATE` item memakai `RETURNING sync_rev`: revisi yang benar-benar dipakai baris terbaca dari hasil
+ * `batch()` yang sama (tanpa `SELECT` tambahan); hasil pernyataan lain di batch kosong.
+ */
 export function insertItemStmts(
   db: D1Database,
   item: ItemRecord,
@@ -176,7 +180,7 @@ export function insertItemStmts(
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, external_id, brand_id, model, key, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${revSql}, ?, ?, ?)`,
+        `INSERT INTO items (id, external_id, brand_id, model, key, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${revSql}, ?, ?, ?) RETURNING sync_rev`,
       )
       .bind(...binds),
   );
@@ -204,7 +208,7 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, key = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, key = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ? RETURNING sync_rev`,
       )
       .bind(
         item.externalId,

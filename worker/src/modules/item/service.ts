@@ -180,6 +180,8 @@ export async function getItemDto(env: Env, input: GetItemInput): Promise<ItemDto
 }
 
 interface OwnerRow {
+  /** `k` = pemilik merk+tipe (`items.key`), `a` = pemegang nama lain (`item_alias_keys`). */
+  src: 'k' | 'a';
   hit: string;
   id: string;
   model: string;
@@ -187,9 +189,9 @@ interface OwnerRow {
 }
 
 const OWNER_SELECT =
-  'SELECT i.key AS hit, i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
+  "SELECT 'k' AS src, i.key AS hit, i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id";
 const ALIAS_OWNER_SELECT =
-  'SELECT a.key AS hit, i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id';
+  "SELECT 'a' AS src, a.key AS hit, i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id";
 
 /** Kunci yang harus bebas: merk+tipe lalu tiap nama lain (urutan input; `normalizeKey` sekali per nama lain). */
 function nameKeysOf(input: SaveItemInput, key: string): { key: string; aliasKeys: string[] } {
@@ -197,43 +199,37 @@ function nameKeysOf(input: SaveItemInput, key: string): { key: string; aliasKeys
 }
 
 /**
- * Dua kueri keunikan nama (untuk `batch()` bersama kueri baca lain): pemilik kunci sebagai merk+tipe item
- * (indeks UNIK `items_key`) dan pemegangnya sebagai nama lain (PRIMARY KEY `item_alias_keys`, bukan `instr`
- * pada `items`). Satu kueri untuk SEMUA kunci, bukan dua per nama lain.
+ * Satu kueri keunikan nama (untuk `batch()` bersama kueri baca lain): pemilik kunci sebagai merk+tipe item
+ * (indeks UNIK `items_key`, `src = 'k'`) digabung `UNION ALL` dengan pemegangnya sebagai nama lain
+ * (PRIMARY KEY `item_alias_keys`, `src = 'a'`; bukan `instr` pada `items`). Satu pernyataan untuk SEMUA kunci.
  */
-function nameCheckStatements(
+function nameCheckStatement(
   env: Env,
   input: SaveItemInput,
   key: string,
   selfId: string,
-): D1PreparedStatement[] {
+): D1PreparedStatement {
   const keys = [...new Set([key, ...nameKeysOf(input, key).aliasKeys])];
   const marks = keys.map(() => '?').join(',');
-  return [
-    env.DB.prepare(`${OWNER_SELECT} WHERE i.id <> ? AND i.key IN (${marks})`).bind(selfId, ...keys),
-    env.DB.prepare(`${ALIAS_OWNER_SELECT} WHERE a.key IN (${marks}) AND a.item_id <> ?`).bind(
-      ...keys,
-      selfId,
-    ),
-  ];
+  return env.DB.prepare(
+    `${OWNER_SELECT} WHERE i.id <> ? AND i.key IN (${marks}) UNION ALL ${ALIAS_OWNER_SELECT} WHERE a.key IN (${marks}) AND a.item_id <> ?`,
+  ).bind(selfId, ...keys, ...keys, selfId);
 }
 
-/** Hasil `nameCheckStatements`: pemilik per kunci (huruf kecil, seperti kolom `key` NOCASE). */
+/** Hasil `nameCheckStatement`: pemilik per kunci (huruf kecil, seperti kolom `key` NOCASE). */
 interface NameOwners {
   byItemKey: Map<string, OwnerRow>;
   byAliasKey: Map<string, OwnerRow>;
 }
 
-function nameOwnersFrom(results: ReadonlyArray<{ results: unknown[] }>): NameOwners {
-  const index = (rows: unknown[]) => {
-    const map = new Map<string, OwnerRow>();
-    for (const row of rows as OwnerRow[]) map.set(row.hit.toLowerCase(), row);
-    return map;
-  };
-  return {
-    byItemKey: index(results[0]?.results ?? []),
-    byAliasKey: index(results[1]?.results ?? []),
-  };
+const NO_OWNERS: NameOwners = { byItemKey: new Map(), byAliasKey: new Map() };
+
+function nameOwnersFrom(result: { results: unknown[] } | undefined): NameOwners {
+  const owners: NameOwners = { byItemKey: new Map(), byAliasKey: new Map() };
+  for (const row of (result?.results ?? []) as OwnerRow[]) {
+    (row.src === 'k' ? owners.byItemKey : owners.byAliasKey).set(row.hit.toLowerCase(), row);
+  }
+  return owners;
 }
 
 /** Merk+tipe dan nama lain harus unik terhadap item lain (kunci ternormalisasi). */
@@ -425,7 +421,7 @@ export async function planItemWrite(
     throw appError('VALIDATION', message, { brand: message });
   }
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
-  const preloaded = options.preloaded ?? (await loadWriteChecks(env, input, key, id));
+  const preloaded = options.preloaded ?? (await loadWriteChecks(env, input, key, id, existing));
   assertItemNamesFree(input, key, preloaded.owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
   const usableFiles = assertItemFilesUsable(input, id, preloaded.files);
@@ -511,19 +507,44 @@ export async function planItemWrite(
   return { record: created, brandName: resolved.brand.name, statements };
 }
 
-/** Pemeriksaan baca sebelum menulis (keunikan nama dan berkas) dalam SATU `batch()`; untuk penulis tanpa muatan awal. */
+/**
+ * Item yang sudah ada tidak mengklaim kunci baru bila merk+tipe dan nama lainnya tidak berubah (kasus umum
+ * penyimpanan dari Desktop: hanya detail/stiker/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
+ * indeks unik tetap menjadi pagar bila ada rebutan.
+ */
+function claimsNoNewNames(
+  existing: ItemRecord | undefined,
+  input: SaveItemInput,
+  key: string,
+): boolean {
+  if (!existing || existing.key.toLowerCase() !== key.toLowerCase()) return false;
+  if (existing.aliases.length !== input.aliases.length) return false;
+  return existing.aliases.every((alias, index) => alias === input.aliases[index]);
+}
+
+/**
+ * Pemeriksaan baca sebelum menulis (keunikan nama dan berkas) dalam SATU `batch()`; untuk penulis tanpa muatan
+ * awal. Tanpa kunci baru dan tanpa rujukan berkas tidak ada round trip sama sekali.
+ */
 async function loadWriteChecks(
   env: Env,
   input: SaveItemInput,
   key: string,
   selfId: string,
+  existing?: ItemRecord,
 ): Promise<{ owners: NameOwners; files: FileRecord[] }> {
-  const fileStatements = activeFilesStatements(env, referencedFileIds(input));
-  const results = await env.DB.batch([
-    ...nameCheckStatements(env, input, key, selfId),
-    ...fileStatements,
-  ]);
-  return { owners: nameOwnersFrom(results), files: activeFilesFromResults(results.slice(2)) };
+  const checkNames = !claimsNoNewNames(existing, input, key);
+  const statements = [
+    ...(checkNames ? [nameCheckStatement(env, input, key, selfId)] : []),
+    ...activeFilesStatements(env, referencedFileIds(input)),
+  ];
+  if (statements.length === 0) return { owners: NO_OWNERS, files: [] };
+  const results = await env.DB.batch(statements);
+  const offset = checkNames ? 1 : 0;
+  return {
+    owners: checkNames ? nameOwnersFrom(results[0]) : NO_OWNERS,
+    files: activeFilesFromResults(results.slice(offset)),
+  };
 }
 
 export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef): Promise<ItemDto> {
@@ -532,7 +553,7 @@ export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef):
   const key = itemKey(input.brand, input.model);
   const reads = [
     ...(input.id ? [findItemStmt(env.DB, input.id)] : []),
-    ...nameCheckStatements(env, input, key, id),
+    nameCheckStatement(env, input, key, id),
     ...activeFilesStatements(env, referencedFileIds(input)),
   ];
   const results = await env.DB.batch(reads);
@@ -548,8 +569,8 @@ export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef):
     id,
     actor,
     preloaded: {
-      owners: nameOwnersFrom(results.slice(offset, offset + 2)),
-      files: activeFilesFromResults(results.slice(offset + 2)),
+      owners: nameOwnersFrom(results[offset]),
+      files: activeFilesFromResults(results.slice(offset + 1)),
     },
   });
   await batchGuarded(env.DB, plan.statements, ITEM_CONFLICTS, STALE_MESSAGE);
