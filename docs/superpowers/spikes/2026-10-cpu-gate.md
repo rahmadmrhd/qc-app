@@ -1,6 +1,6 @@
 # Gerbang CPU staging (Task 4.5) — catatan hasil
 
-Skrip: `worker/scripts/load-cpu.ts` (`seed | run [--only=<awalan>] | cleanup`), `cpuTime` dari `wrangler tail`, kriteria p99 ≤ 8 ms per rute dengan ≥ 100 sampel. Worker `app-staging`, colo SIN, paket gratis, data proyeksi 2 tahun (±2.000 item, 2.100 task, 12.000 audit).
+Skrip: `worker/scripts/load-cpu.ts` (`seed | run [--only=<awalan>] | cleanup`), `cpuTime` dari `wrangler tail`, kriteria p95 ≤ 8 ms per rute; tiap rute dipanggil 100x dan lulus bila ≥ 90 panggilan terukur (keputusan pemilik 2026-10-30; semula ≥ 100 sampel; p95 dihitung dari yang terukur dan jumlah terukur dicetak). Worker `app-staging`, colo SIN, paket gratis, data proyeksi 2 tahun (±2.000 item, 2.100 task, 12.000 audit).
 
 ## Run 1 (2026-10-25 pagi, sebelum optimasi, 30–60 sampel)
 

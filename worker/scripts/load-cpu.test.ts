@@ -44,7 +44,7 @@ describe('statistik', () => {
     expect(renderTable([ok, slow], 8, 1)).toContain('| b | 3 | 3 | 3 | 9 | 9 | 9 | LEWAT |');
   });
 
-  test('gerbang memakai p95; p99 dan maks informatif; sampel < 100 menggagalkan', () => {
+  test('gerbang memakai p95; p99 dan maks informatif; terukur < 90 dari 100 menggagalkan', () => {
     const base = Array.from({ length: 100 }, () => 2);
     const withSpikes = (count: number) => base.map((v, i) => (i >= 100 - count ? 30 : v));
     // sampai 5 lonjakan (derau isolate): p95 tetap rendah, lulus walau p99 dan maks tinggi
@@ -53,8 +53,13 @@ describe('statistik', () => {
     expect(failingRoutes([noisy])).toEqual([]);
     // 6 lonjakan = p95 melewati anggaran
     expect(failingRoutes([summarize('r', withSpikes(6), 100, 0)])).toEqual(['r']);
-    // 99 sampel terukur (satu peristiwa tail hilang) = gagal, walau semua cepat
-    const few = summarize('s', base.slice(0, 99), 100, 0);
+    // 93 sampel terukur (beberapa peristiwa tail hilang) tetap sah: p95 dihitung dari yang terukur
+    const lossy = summarize('t', base.slice(0, 93), 100, 0);
+    expect(MIN_SAMPLES).toBe(90);
+    expect(failingRoutes([lossy])).toEqual([]);
+    expect(renderTable([lossy])).toContain('| t | 100 | 93 | 2 | 2 | 2 | 2 | ok |');
+    // 89 sampel terukur = gagal, walau semua cepat
+    const few = summarize('s', base.slice(0, 89), 100, 0);
     expect(failingRoutes([few])).toEqual(['s']);
     expect(renderTable([few])).toContain('SAMPEL KURANG');
     expect(renderTable([noisy])).toContain('| r | 100 | 100 | 2 | 2 | 30 | 30 | ok |');
@@ -164,6 +169,7 @@ describe('data beban dan semua rute (terhadap D1 sqlite lokal)', () => {
     const changes = async () =>
       (await env.DB.prepare('SELECT total_changes() AS n').first<{ n: number }>())?.n ?? 0;
     for (const loadCase of cases) {
+      expect(loadCase.calls).toBeGreaterThanOrEqual(100);
       expect(loadCase.calls).toBeGreaterThanOrEqual(MIN_SAMPLES);
       for (let i = 0; i < loadCase.calls; i++) {
         const changesBefore = await changes();

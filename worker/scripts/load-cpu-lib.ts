@@ -24,8 +24,12 @@ export const STAGING = {
  */
 export const CPU_BUDGET_MS = 8;
 
-/** Sampel terukur minimum per rute: persentil tinggi dari sampel sedikit hanyalah maksimum. */
-export const MIN_SAMPLES = 100;
+/**
+ * Sampel terukur minimum per rute (keputusan pemilik 2026-10-30): tiap rute dipanggil 100x dan lulus bila
+ * >= 90 panggilan terukur. `wrangler tail` kerap kehilangan 1-7 peristiwa dari 100 (bukan masalah CPU); p95
+ * dihitung dari sampel yang terukur dan jumlahnya dicetak di kolom "Terukur".
+ */
+export const MIN_SAMPLES = 90;
 
 /** Kuota baris DITULIS D1 per hari (paket gratis); `run` menolak bila perkiraannya melewati anggaran. */
 export const D1_DAILY_WRITE_QUOTA = 100_000;

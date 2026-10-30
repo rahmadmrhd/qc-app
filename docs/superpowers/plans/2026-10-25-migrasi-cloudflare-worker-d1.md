@@ -31,7 +31,7 @@ Kotak centang di "Prosedur Porting Modul" adalah templat per modul dan sengaja t
 
 Setiap task secara implisit memuat bagian ini (nilai disalin dari Spek §2b, §5, §6–§11).
 
-- CPU Worker **≤ 10 ms per permintaan HTTP dan per Cron**; gerbang rilis: **p95 ≤ 8 ms** tiap rute di staging (≥ 100 sampel; p99/maks informatif karena lantai derau isolate, `/api/ping` p99 10 ms; diputuskan pemilik 2026-10-25).
+- CPU Worker **≤ 10 ms per permintaan HTTP dan per Cron**; gerbang rilis: **p95 ≤ 8 ms** tiap rute di staging (100 panggilan per rute, lulus bila ≥ 90 terukur; p99/maks informatif karena lantai derau isolate, `/api/ping` p99 10 ms; p95 diputuskan pemilik 2026-10-25, ambang ≥ 90 terukur 2026-10-30).
 - **Subrequest ≤ 50 per invokasi**: panggilan D1, jembatan, dan Queues semuanya dihitung; `db.batch()` dihitung satu.
 - D1: **maks. 100 parameter terikat per kueri**; baris/string ≤ 2 MB; pernyataan SQL ≤ 100 KB; pola `LIKE`/`GLOB` ≤ 50 byte; 500 MB per database; baris dibaca 5 juta/hari (dihitung dari baris yang **dipindai**) dan ditulis 100.000/hari (tiap indeks +1 baris tulis).
 - Queues: pesan ≤ 128 KB; 10.000 operasi/hari (±3 per pesan); retensi 24 jam; pesan hanya membawa `{ jobId, potongan }`.
