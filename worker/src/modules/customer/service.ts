@@ -1,5 +1,6 @@
 import { customerKey } from '@shared/handover';
 import type { CustomerDto, RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
+import type { AuditInput } from '@worker/core/audit';
 import { writeAudit } from '@worker/core/audit';
 import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
@@ -30,18 +31,24 @@ export async function listCustomerDtos(env: Env): Promise<CustomerDto[]> {
   return (await listCustomers(env)).map(toCustomerDto).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Hasil pencarian customer untuk penulisan task: yang sudah ada, atau customer baru beserta entri auditnya. */
+export interface CustomerLookup {
+  customer: CustomerRecord;
+  /** Entri audit `customer.create`; ada hanya bila `customer` baru dan belum disisipkan. */
+  created: AuditInput | null;
+}
+
 /**
- * Rencana "buat langsung saat mengetik" (FC2) untuk penyimpanan task: mencari customer menurut nama
- * (kunci ternormalisasi; ejaan resmi yang tersimpan menang); bila belum ada, mengembalikan customer baru
- * beserta pernyataan penyisipan + audit untuk digabung ke `batch()` penyimpanan task. Customer nonaktif
- * ditolak kecuali `currentId` (task yang sudah memakainya).
+ * Mencari customer menurut nama (kunci ternormalisasi; ejaan resmi yang tersimpan menang); bila belum ada,
+ * menyusun customer baru dan entri audit `customer.create`-nya (belum ditulis). Customer nonaktif ditolak
+ * kecuali `currentId` (task yang sudah memakainya).
  */
-export async function planCustomerByName(
+export async function lookupCustomerForWrite(
   env: Env,
   name: string,
   actor: ActorRef,
   currentId?: string,
-): Promise<{ customer: CustomerRecord; statements: D1PreparedStatement[] }> {
+): Promise<CustomerLookup> {
   const key = customerKey(name);
   // Daftar dari cache memori isolate (<= 15 dtk); bila tak ada di sana, cek langsung ke D1 sebelum membuat.
   const found =
@@ -52,10 +59,10 @@ export async function planCustomerByName(
       const message = 'Customer dinonaktifkan; aktifkan dulu di halaman Customer';
       throw appError('VALIDATION', message, { customerName: message });
     }
-    return { customer: found, statements: [] };
+    return { customer: found, created: null };
   }
   const now = nowIso(env);
-  const created: CustomerRecord = {
+  const customer: CustomerRecord = {
     id: crypto.randomUUID(),
     name,
     key,
@@ -65,18 +72,32 @@ export async function planCustomerByName(
     updatedBy: actor.email,
   };
   return {
-    customer: created,
-    statements: [
-      insertCustomerStmt(env.DB, created),
-      writeAudit(env.DB, {
-        ts: now,
-        actor: actor.email,
-        action: 'customer.create',
-        target: created.name,
-        before: null,
-        after: customerSnapshot(created),
-      }),
-    ],
+    customer,
+    created: {
+      ts: now,
+      actor: actor.email,
+      action: 'customer.create',
+      target: customer.name,
+      before: null,
+      after: customerSnapshot(customer),
+    },
+  };
+}
+
+/**
+ * Rencana "buat langsung saat mengetik" (FC2) untuk penyimpanan task: `lookupCustomerForWrite` beserta
+ * pernyataan penyisipan + audit untuk digabung ke `batch()` penyimpanan task (kosong bila customer sudah ada).
+ */
+export async function planCustomerByName(
+  env: Env,
+  name: string,
+  actor: ActorRef,
+  currentId?: string,
+): Promise<{ customer: CustomerRecord; statements: D1PreparedStatement[] }> {
+  const { customer, created } = await lookupCustomerForWrite(env, name, actor, currentId);
+  return {
+    customer,
+    statements: created ? [insertCustomerStmt(env.DB, customer), writeAudit(env.DB, created)] : [],
   };
 }
 

@@ -1287,6 +1287,35 @@ describe('konkurensi (Review Focus 3)', () => {
     expect((await audits()).filter((a) => a === 'customer.create')).toHaveLength(1);
   });
 
+  test('saveBatch (INSERT banyak-baris): urutan audit mengikuti kejadian, nomor berurutan, 10 task melewati batas 5 baris per pernyataan', async () => {
+    const tasks = [
+      { customerName: 'Cust A', note: '- [ ] a1' },
+      { customerName: 'cust a', note: '- [ ] a2' },
+      { customerName: 'Cust B', note: '- [ ] b1' },
+      ...Array.from({ length: 7 }, (_, i) => ({ customerName: '', note: `- [ ] z${i}` })),
+    ];
+    const out = await call('wh@gmail.com', 'handovers.saveBatch', {
+      locationId: ENV.locA,
+      tasks,
+    });
+    expect(out.ok).toBe(true);
+    expect(out.data.map((t: { number: string }) => t.number)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `ST-20261015-${String(i + 1).padStart(3, '0')}`),
+    );
+    const trail = (await auditRows()).map((r) => `${r.action}:${r.target}`);
+    expect(trail.slice(0, 5)).toEqual([
+      'customer.create:Cust A',
+      'handover.create:ST-20261015-001',
+      'handover.create:ST-20261015-002',
+      'customer.create:Cust B',
+      'handover.create:ST-20261015-003',
+    ]);
+    expect(trail).toHaveLength(12);
+    const rows = await taskRows();
+    expect(rows).toHaveLength(10);
+    expect(rows.filter((r) => r.customer_name === 'Cust A')).toHaveLength(2);
+  });
+
   test('penghitung nomor (CAS digabung ke INSERT ... ON CONFLICT): dua saveBatch dari penghitung yang sama, nomor tanpa lompat dan tanpa ganda', async () => {
     // Penghitung hari itu belum ada: kedua penulis membaca `expected = -1`; yang kalah mengulang.
     const batch = (tag: string, n: number) =>

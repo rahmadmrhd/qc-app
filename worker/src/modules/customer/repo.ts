@@ -76,6 +76,37 @@ export function insertCustomerStmt(db: D1Database, customer: CustomerRecord): D1
     );
 }
 
+/** Beberapa customer baru dalam `INSERT` banyak-baris (7 parameter per baris, maks. 14 baris per pernyataan). */
+export function insertCustomerStmts(
+  db: D1Database,
+  customers: readonly CustomerRecord[],
+): D1PreparedStatement[] {
+  const perStatement = 14;
+  const statements: D1PreparedStatement[] = [];
+  for (let from = 0; from < customers.length; from += perStatement) {
+    const chunk = customers.slice(from, from + perStatement);
+    touchCache('customers');
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO customers (${CUSTOMER_COLUMNS}) VALUES ${chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+        )
+        .bind(
+          ...chunk.flatMap((customer) => [
+            customer.id,
+            customer.name,
+            customer.key,
+            customer.status,
+            customer.createdAt,
+            customer.updatedAt,
+            customer.updatedBy,
+          ]),
+        ),
+    );
+  }
+  return statements;
+}
+
 export function updateCustomerStmt(db: D1Database, customer: CustomerRecord): D1PreparedStatement {
   touchCache('customers');
   return db

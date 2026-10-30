@@ -27,7 +27,8 @@ import type {
   SetCheckInput,
   SetDoneInput,
 } from '@shared/rpc';
-import { writeAudit } from '@worker/core/audit';
+import type { AuditInput } from '@worker/core/audit';
+import { writeAudit, writeAuditRows } from '@worker/core/audit';
 import { CAS_FAIL_SQL, runCas } from '@worker/core/cas';
 import type { ActorRef } from '@worker/core/context';
 import type { Env } from '@worker/core/env';
@@ -35,8 +36,8 @@ import { nowIso, nowOf } from '@worker/core/env';
 import { appError } from '@worker/core/errors';
 import { listLocationBriefs } from '@worker/modules/access/repo';
 import type { CustomerRecord } from '@worker/modules/customer/repo';
-import { listCustomers } from '@worker/modules/customer/repo';
-import { planCustomerByName } from '@worker/modules/customer/service';
+import { insertCustomerStmts, listCustomers } from '@worker/modules/customer/repo';
+import { lookupCustomerForWrite, planCustomerByName } from '@worker/modules/customer/service';
 import { checklistOf, matchedChecks } from './checklist';
 import type {
   CommentStats,
@@ -50,7 +51,7 @@ import {
   findHandoverWithComments,
   HANDOVER_COLUMNS,
   HANDOVER_FROM,
-  insertHandoverStmt,
+  insertHandoverStmts,
   listComments,
   parseStoredComments,
   toHandover,
@@ -422,8 +423,10 @@ async function createTasks(
     const now = nowIso(env);
     const dateKey = dateKeyOf(nowOf(env));
     const reservation = await reserveNumbers(env, dateKey, tasks.length);
-    const statements: D1PreparedStatement[] = [...reservation.statements];
     const resolved = new Map<string, CustomerRecord>();
+    const newCustomers: CustomerRecord[] = [];
+    // Urutan audit = urutan kejadian: `customer.create` sebelum audit task pertama yang memakainya.
+    const audits: AuditInput[] = [];
     const records: HandoverRecord[] = [];
     for (const [index, task] of tasks.entries()) {
       let customer: CustomerRecord | null = null;
@@ -431,10 +434,13 @@ async function createTasks(
         const key = customerKey(task.customerName);
         customer = resolved.get(key) ?? null;
         if (!customer) {
-          const plan = await planCustomerByName(env, task.customerName, actor);
-          customer = plan.customer;
+          const lookup = await lookupCustomerForWrite(env, task.customerName, actor);
+          customer = lookup.customer;
           resolved.set(key, customer);
-          statements.push(...plan.statements);
+          if (lookup.created) {
+            newCustomers.push(customer);
+            audits.push(lookup.created);
+          }
         }
       }
       const record: HandoverRecord = {
@@ -462,20 +468,24 @@ async function createTasks(
         }),
         true,
       );
-      statements.push(
-        insertHandoverStmt(env.DB, record),
-        writeAudit(env.DB, {
-          ts: now,
-          actor: actor.email,
-          action: 'handover.create',
-          target: record.number,
-          before: null,
-          after: audit.after,
-        }),
-      );
+      audits.push({
+        ts: now,
+        actor: actor.email,
+        action: 'handover.create',
+        target: record.number,
+        before: null,
+        after: audit.after,
+      });
       records.push(record);
     }
-    await env.DB.batch(statements);
+    // Penghitung nomor (CAS), customer baru, task, lalu audit: INSERT banyak-baris, bukan satu pernyataan per
+    // baris (batch 10 task = 4 pernyataan, bukan 22). Atomik dalam satu `batch()`.
+    await env.DB.batch([
+      ...reservation.statements,
+      ...insertCustomerStmts(env.DB, newCustomers),
+      ...insertHandoverStmts(env.DB, records),
+      ...writeAuditRows(env.DB, audits),
+    ]);
     return records.map((record) => toHandoverDto(record, record.customerName, []));
   }, 'Nomor task sedang direbut penulis lain; coba lagi');
 }

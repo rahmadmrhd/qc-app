@@ -44,6 +44,8 @@ export interface D1Stats {
   trips: number;
   statements: number;
   rows: number;
+  /** Waktu (ms) yang dihabiskan SQLite untuk menjalankan pernyataan: pembeda kerja D1 dari kerja JS Worker. */
+  sqlMs: number;
   /** Bila diisi, setiap SQL yang dijalankan ditambahkan (untuk pemeriksaan rencana kueri). */
   log: string[] | null;
 }
@@ -53,7 +55,7 @@ class SqliteStatement {
     private readonly db: Database,
     readonly sql: string,
     readonly params: SQLQueryBindings[] = [],
-    private readonly stats: D1Stats = { trips: 0, statements: 0, rows: 0, log: null },
+    private readonly stats: D1Stats = { trips: 0, statements: 0, rows: 0, sqlMs: 0, log: null },
   ) {}
 
   bind(...values: unknown[]): SqliteStatement {
@@ -72,6 +74,7 @@ class SqliteStatement {
     const results = stmt.all(...this.params) as Row[];
     this.stats.statements++;
     this.stats.rows += results.length;
+    this.stats.sqlMs += performance.now() - started;
     this.stats.log?.push(this.sql);
     return { results, success: true, meta: buildMeta(this.db, started, results.length) };
   }
@@ -112,7 +115,7 @@ class SqliteStatement {
  */
 export function createSqliteD1(): D1Database {
   const db = new Database(':memory:');
-  const stats: D1Stats = { trips: 0, statements: 0, rows: 0, log: null };
+  const stats: D1Stats = { trips: 0, statements: 0, rows: 0, sqlMs: 0, log: null };
   db.exec('PRAGMA foreign_keys = ON');
 
   const d1 = {

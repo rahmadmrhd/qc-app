@@ -32,6 +32,44 @@ export function writeAudit(db: D1Database, entry: AuditInput): D1PreparedStateme
     );
 }
 
+/** Baris audit per pernyataan `INSERT` banyak-baris: 6 parameter per baris, batas D1 100 parameter. */
+const AUDIT_ROWS_PER_STATEMENT = 16;
+
+/**
+ * Seperti `writeAudit` untuk banyak entri sekaligus: satu `INSERT` banyak-baris per 16 entri (bukan satu
+ * pernyataan per entri), urutan baris = urutan `entries` (id audit menaik mengikuti urutan itu). Hasil yang
+ * tersimpan identik dengan `writeAudit` berulang; yang berkurang hanya jumlah pernyataan dalam `batch()`.
+ */
+export function writeAuditRows(
+  db: D1Database,
+  entries: readonly AuditInput[],
+): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
+  for (let from = 0; from < entries.length; from += AUDIT_ROWS_PER_STATEMENT) {
+    const chunk = entries.slice(from, from + AUDIT_ROWS_PER_STATEMENT);
+    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const binds: unknown[] = [];
+    for (const entry of chunk) {
+      binds.push(
+        entry.ts ?? new Date().toISOString(),
+        entry.actor,
+        entry.action,
+        entry.target,
+        JSON.stringify(entry.before ?? null),
+        JSON.stringify(entry.after ?? null),
+      );
+    }
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO audit_log (ts, actor, action, target, "before", "after") VALUES ${values}`,
+        )
+        .bind(...binds),
+    );
+  }
+  return statements;
+}
+
 interface AuditRow {
   id: number;
   ts: string;

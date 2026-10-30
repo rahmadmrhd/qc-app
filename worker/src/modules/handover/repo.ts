@@ -312,6 +312,51 @@ export function insertHandoverStmt(db: D1Database, handover: HandoverRecord): D1
     );
 }
 
+/** Beberapa task baru dalam `INSERT` banyak-baris (18 parameter per baris, maks. 5 baris per pernyataan). */
+export function insertHandoverStmts(
+  db: D1Database,
+  handovers: readonly HandoverRecord[],
+): D1PreparedStatement[] {
+  const perStatement = 5;
+  const statements: D1PreparedStatement[] = [];
+  for (let from = 0; from < handovers.length; from += perStatement) {
+    const chunk = handovers.slice(from, from + perStatement);
+    const binds: unknown[] = [];
+    for (const handover of chunk) {
+      const d = derivedColumns(handover);
+      binds.push(
+        handover.id,
+        handover.number,
+        handover.locationId,
+        handover.customerId,
+        handover.customerName,
+        handover.note,
+        handover.status,
+        JSON.stringify(handover.checks),
+        handover.completedAt,
+        handover.completedBy,
+        handover.createdAt,
+        handover.createdBy,
+        handover.updatedAt,
+        handover.updatedBy,
+        handover.version,
+        d.checkedCount,
+        d.totalCount,
+        d.boardStatus,
+      );
+    }
+    const row = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO handovers (id, number, location_id, customer_id, customer_name, note, status, checks, completed_at, completed_by, created_at, created_by, updated_at, updated_by, version, checked_count, total_count, board_status) VALUES ${chunk.map(() => row).join(', ')}`,
+        )
+        .bind(...binds),
+    );
+  }
+  return statements;
+}
+
 /**
  * UPDATE seluruh kolom isi + turunan. Penjaga CAS `version` ada di `UPDATE` ini (`CAS_VERSION_BUMP_SET`):
  * `expectedVersion` = versi yang dilihat penulis; basi = seluruh batch batal (`integer overflow`), tanpa
