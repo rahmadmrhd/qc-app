@@ -134,7 +134,7 @@ async function readMultipart(
 }
 
 /** Respons unduhan: byte mentah, Content-Type dari keluaran, ETag/304, dan Cache-Control menurut tabel. */
-function downloadResponse(
+export function downloadResponse(
   def: ApiRouteDef,
   output: unknown,
   headers: Record<string, string>,

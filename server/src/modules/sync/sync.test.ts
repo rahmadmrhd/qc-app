@@ -757,6 +757,26 @@ describe('files', () => {
     expect(await odd.json()).toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  test('Cache-Control berkas mengikuti def.download.cache pada tabel (bukan nilai tetap di kode)', async () => {
+    const folder = await folderWithBridge();
+    const driveId = await driveFile(folder, 'a.png', 'image/png', PNG);
+    const download = SYNC_API_ROUTES['sync.file.get'].download as { cache?: string };
+    const original = download.cache;
+    const expected = (cache: string | undefined) =>
+      cache === 'immutable' ? 'private, max-age=31536000, immutable' : 'private, no-cache';
+    try {
+      expect((await syncSend(env, 'sync.file.get', { driveId })).headers.get('cache-control')).toBe(
+        expected(original),
+      );
+      download.cache = 'no-cache';
+      const changed = await syncSend(env, 'sync.file.get', { driveId });
+      expect(changed.headers.get('cache-control')).toBe('private, no-cache');
+      expect(changed.status).toBe(200);
+    } finally {
+      download.cache = original;
+    }
+  });
+
   test('GET /sync/files/{id} tanpa token yang sah = 401 (berkas tidak pernah diperiksa)', async () => {
     const folder = await folderWithBridge();
     const driveId = await driveFile(folder, 'a.png', 'image/png', PNG);

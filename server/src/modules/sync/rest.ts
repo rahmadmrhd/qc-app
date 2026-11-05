@@ -2,9 +2,10 @@ import { appError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
 import { SYNC_MAX_BODY_BYTES } from '@server/http/body';
 import { problemResponse, toProblem } from '@server/http/problem';
-import { honoPath, readJsonBody } from '@server/http/rest';
+import { downloadResponse, honoPath, readJsonBody } from '@server/http/rest';
 import { type AppBindings, newRequestId } from '@server/http/security';
 import {
+  type ApiRouteDef,
   etagMatches,
   formatEtag,
   isApiFieldIssue,
@@ -37,19 +38,15 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-/** Unduhan berkas: byte mentah, Content-Type dari berkas, ETag = id Drive, 304 untuk `If-None-Match` yang cocok. */
-function fileResponse(request: Request, output: unknown): Response {
-  const file = output as { driveId: string; mime: string; bytes: Uint8Array };
-  const headers: Record<string, string> = {
-    etag: formatEtag(file.driveId),
-    // Isi untuk id Drive yang sama tidak berubah (sama dengan `files.get` web).
-    'cache-control': 'private, max-age=31536000, immutable',
-  };
-  if (etagMatches(request.headers.get('if-none-match'), file.driveId)) {
-    return new Response(null, { status: 304, headers });
-  }
-  headers['content-type'] = file.mime;
-  return new Response(file.bytes, { status: 200, headers });
+/**
+ * Unduhan berkas: byte mentah, Content-Type dari berkas, ETag = id Drive, 304 untuk `If-None-Match` yang cocok.
+ * Bentuk jawaban dan kebijakan cache dibaca dari `def.download` oleh `downloadResponse` yang sama dengan kernel web
+ * (satu sumber kebenaran: mengubah `cache` di tabel mengubah kedua sisi).
+ */
+function fileResponse(def: ApiRouteDef, request: Request, output: unknown): Response {
+  const file = output as { driveId: string };
+  const notModified = etagMatches(request.headers.get('if-none-match'), file.driveId);
+  return downloadResponse(def, output, { etag: formatEtag(file.driveId) }, notModified);
 }
 
 /**
@@ -93,7 +90,7 @@ function handlerFor(id: SyncRouteId, table: SyncRouteTable) {
         actor: SYNC_ACTOR,
       });
       logRequest({ evt: 'sync', requestId, method: id, ok: true, ms: Date.now() - startedAt });
-      return def.download === undefined ? jsonResponse(output) : fileResponse(request, output);
+      return def.download === undefined ? jsonResponse(output) : fileResponse(def, request, output);
     } catch (error) {
       const problem = toProblem(error, requestId);
       logRequest({
