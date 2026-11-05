@@ -308,6 +308,19 @@ test('qrcodes.export: multipart pdf+png tanpa Content-Type buatan sendiri, If-Ma
   expect(await bytesOfBody(form.get('png') as Blob)).toEqual([2, 3]);
 });
 
+test('JSON (GET/tulis) memakai cache no-store; unduhan mengikuti kebijakan cache tabelnya (tanpa opsi)', async () => {
+  const { api, fetchImpl } = setup(() => respond({ id: 'h1' }));
+  await api('handovers.get', { id: 'h1', locationIds: ['l1'] });
+  expect(lastCall(fetchImpl).init.cache).toBe('no-store');
+  await api('brands.save', { name: 'Sony' });
+  expect(lastCall(fetchImpl).init.cache).toBe('no-store');
+  const download = setup(
+    () => new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/png' } }),
+  );
+  await download.api('files.get', { id: 'f1' });
+  expect(lastCall(download.fetchImpl).init.cache).toBeUndefined();
+});
+
 test('files.get: unduhan menjadi { id, mime, bytes } dari Content-Type dan badan mentah', async () => {
   const { api, fetchImpl } = setup(
     () => new Response(new Uint8Array([9, 8, 7]), { headers: { 'content-type': 'image/webp' } }),

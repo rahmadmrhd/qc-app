@@ -378,6 +378,16 @@ describe('perakitan permintaan dan respons', () => {
     expect(calls).toHaveLength(3);
   });
 
+  test('GET JSON berETag: no-store (peramban tidak menyimpan, jadi tak ada 304 basi dari cache HTTP); 304 untuk If-None-Match klien tetap', async () => {
+    const app = appWith();
+    const first = await call(app, '/items/i1');
+    expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(first.headers.get('etag')).toBe('"t1"');
+    const same = await call(app, '/items/i1', { headers: { 'if-none-match': '"t1"' } });
+    expect(same.status).toBe(304);
+    expect(same.headers.get('cache-control')).toBe('no-store');
+  });
+
   test('If-Match dibaca ke field expectedUpdatedAt tanpa kutip; jalur dan badan menjadi input datar', async () => {
     const response = await call(appWith(), '/items/i1', {
       method: 'PUT',

@@ -138,6 +138,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
       response = await doFetch(urlOf(baseUrl, parts), {
         method: parts.verb,
         credentials: 'same-origin',
+        // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
+        // mengikuti kebijakan Cache-Control server (immutable/revalidate).
+        ...(isDownload ? {} : { cache: 'no-store' as const }),
         headers: headersOf(parts.verb, parts, isDownload),
         body: bodyOf(parts),
       });

@@ -205,9 +205,11 @@ function handlerFor(operation: Operation, routes: RouteTable) {
         ms: Date.now() - startedAt,
         userId: meta.userId,
       });
-      const headers: Record<string, string> = {
-        'cache-control': verb === 'GET' && def.etag ? 'private, no-cache' : 'no-store',
-      };
+      // JSON tidak boleh disimpan peramban. ETag `updatedAt` BUKAN validator isi (komentar, ganti nama merk/customer,
+      // dan hasil ekspor tidak menaikkannya), jadi cache HTTP + revalidasi dapat menyajikan badan basi lewat 304.
+      // ETag tetap dikirim (dasar If-Match dan 304 bagi klien yang sendiri mengirim If-None-Match); unduhan biner
+      // memakai kebijakan tabelnya (`downloadResponse` menimpa).
+      const headers: Record<string, string> = { 'cache-control': 'no-store' };
       const etag = etagOf(id, output as never);
       if (etag !== undefined) headers.etag = formatEtag(etag);
       if (created && output && typeof (output as { id?: unknown }).id === 'string') {
