@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { createBridgeClient } from '@worker/core/bridge-http';
-import type { Env } from '@worker/core/env';
+import { createBridgeClient } from '@server/core/bridge-http';
+import type { Env } from '@server/core/env';
 import { BRIDGE_DIR } from './paths';
 
 /**

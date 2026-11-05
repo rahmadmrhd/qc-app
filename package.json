@@ -7,7 +7,7 @@
     "gas",
     "bridge",
     "web",
-    "worker"
+    "server"
   ],
   "scripts": {
     "dev": "bun run scripts/dev.ts",
@@ -16,16 +16,16 @@
     "build:bridge": "bun run scripts/build-bridge.ts",
     "build:web": "bun run --cwd web build",
     "build": "bun run build:web && bun run scripts/verify-dist.ts",
-    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck && bun run --cwd bridge typecheck && bun run --cwd web typecheck && bun run --cwd worker typecheck",
+    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck && bun run --cwd bridge typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd worker test && bun run --cwd web test",
+    "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd server test && bun run --cwd web test",
     "check": "bun run typecheck && bun run lint && bun run test",
     "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
     "deploy": "bun run push && bun run scripts/deploy.ts",
-    "dev:worker": "bun run worker/scripts/dev.ts",
-    "db:seed": "bun run worker/scripts/seed-dev.ts",
-    "load:cpu": "bun run worker/scripts/load-cpu.ts"
+    "dev:worker": "bun run server/scripts/dev.ts",
+    "db:seed": "bun run server/scripts/seed-dev.ts",
+    "load:cpu": "bun run server/scripts/load-cpu.ts"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",

@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 
 /**
  * Hanya mode dev: masuk lewat `/auth/dev-login` (Worker lokal menerbitkan cookie sesi untuk `DEV_LOGIN_EMAIL` di
- * `worker/.dev.vars`; 404 di luar localhost). Lihat docs/dev-worker.md.
+ * `server/.dev.vars`; 404 di luar localhost). Lihat docs/dev-worker.md.
  */
 export function DevLoginLink() {
   return (

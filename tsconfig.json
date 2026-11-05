@@ -4,9 +4,9 @@
     "types": ["bun", "@cloudflare/workers-types"],
     "paths": {
       "@shared/*": ["./shared/*"],
-      "@worker/*": ["./worker/src/*"],
-      "@worker-test/*": ["./worker/test-support/*"]
+      "@server/*": ["./server/src/*"],
+      "@server-test/*": ["./server/test-support/*"]
     }
   },
-  "include": ["scripts", "worker/src/sql.d.ts"]
+  "include": ["scripts", "server/src/sql.d.ts"]
 }

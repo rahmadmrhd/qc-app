@@ -17,7 +17,7 @@ describe('checkDist', () => {
     expect(checkDist([html, js('index-abc.js'), js('route-x.js')])).toEqual([]);
   });
   test('tanpa index.html atau tanpa JS gagal', () => {
-    expect(checkDist([js('a.js')])).toContain('worker/dist/index.html tidak ada');
+    expect(checkDist([js('a.js')])).toContain('server/dist/index.html tidak ada');
     expect(checkDist([html]).join()).toContain('tidak ada potongan JS');
   });
   test('penanda boot Apps Script dan kode mock ditolak', () => {

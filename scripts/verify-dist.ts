@@ -18,7 +18,7 @@ export function checkDist(files: DistFile[]): string[] {
   const problems: string[] = [];
   const index = files.find((entry) => entry.file === 'index.html');
   if (!index) {
-    problems.push('worker/dist/index.html tidak ada');
+    problems.push('server/dist/index.html tidak ada');
   } else {
     if (!/<script[^>]+type=["']module["'][^>]+\bsrc=/i.test(index.text)) {
       problems.push('index.html tidak memuat skrip modul utama');

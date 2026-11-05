@@ -10,6 +10,8 @@
 
 ## Status (diperbarui 2026-10-25)
 
+> **Status: Dibatalkan 2026-11-05 oleh pemilik; digantikan docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md dan rencananya. Alasan: gerbang CPU edge tidak lulus di paket gratis Cloudflare; pemilik memiliki VPS.** Tabel di bawah adalah riwayat per 2026-10-25.
+
 | Fase | Status |
 |---|---|
 | 0 Spike | Selesai (hasil di `docs/superpowers/spikes/`) |

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { createTestEnv, type TestEnv } from '@worker-test/test-env';
+import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { cleanDump, mutate } from './fixtures';
 import { prepareImport } from './import-sheets';
 import { type D1Reader, runVerifyCli, verifyImport, wranglerReader } from './verify-import';

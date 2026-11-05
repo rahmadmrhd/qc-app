@@ -1,7 +1,7 @@
 /**
  * Pemetaan Sheets -> D1 untuk impor (Task 5.1). Kolom Sheets mengikuti `TableSchema` di
  * `gas/src/modules/*` (disalin sebagai data karena skrip ini berjalan di Bun, bukan GAS); kolom D1 mengikuti
- * `worker/migrations`. Tes `schema-map.test.ts` mencocokkan keduanya dengan migrasi.
+ * `server/migrations`. Tes `schema-map.test.ts` mencocokkan keduanya dengan migrasi.
  */
 
 /**

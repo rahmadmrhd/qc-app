@@ -27,8 +27,8 @@ export default defineConfig({
     },
   },
   build: {
-    // Aset statis Worker (assets.directory di worker/wrangler.jsonc). Berpotongan: dilayani Cloudflare tanpa Worker.
-    outDir: '../worker/dist',
+    // Aset statis Worker (assets.directory di server/wrangler.jsonc). Berpotongan: dilayani Cloudflare tanpa Worker.
+    outDir: '../server/dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1_000,
   },

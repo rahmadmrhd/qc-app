@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "bun"],
+    "paths": {
+      "@shared/*": ["../shared/*"],
+      "@server/*": ["./src/*"],
+      "@server-test/*": ["./test-support/*"],
+      "@bridge/*": ["../bridge/src/*"],
+      "@bridge-test/*": ["../bridge/test-support/*"]
+    }
+  },
+  "include": ["src", "test-support", "migrations", "../shared/*.ts", "scripts"]
+}

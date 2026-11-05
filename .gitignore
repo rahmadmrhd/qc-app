@@ -5,7 +5,7 @@ node_modules/
 gas/dist/
 bridge/dist/
 web/dist/
-worker/dist/
+server/dist/
 
 # env & secrets
 .env
@@ -29,14 +29,14 @@ coverage/
 web/.tanstack/
 
 # Worker
-worker/.wrangler/
+server/.wrangler/
 web/dist-worker/
 
 .wrangler/
 
 # Variabel pengembangan lokal worker
-worker/.dev.vars
+server/.dev.vars
 
-worker/.staging.secrets.local
+server/.staging.secrets.local
 # jembatan: rahasia lokal
 bridge/.secrets.local

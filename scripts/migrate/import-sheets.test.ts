@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createTestEnv } from '@worker-test/test-env';
+import { createTestEnv } from '@server-test/test-env';
 import { cleanDump, grid, mutate } from './fixtures';
 import { type DumpInput, prepareImport, runImportCli } from './import-sheets';
 import { INSERT_ORDER, TABLES } from './schema-map';
@@ -610,7 +610,7 @@ test('grid membangun header dari skema Sheets', () => {
 
 describe('alias_keys dan keunikan indeks UNIK (migrasi 0004/0005/0007)', () => {
   test('alias_keys dihitung dari aliases dan identik dengan aliasKeysOf Worker', async () => {
-    const { aliasKeysOf: workerAliasKeys } = await import('@worker/modules/item/repo');
+    const { aliasKeysOf: workerAliasKeys } = await import('@server/modules/item/repo');
     const { aliasKeysOf } = await import('./alias-keys');
     for (const aliases of [[], ['MX'], ['MX', 'Model Ex', 'mx', '  '], ['A/B', 'a b'], ['!!!']]) {
       expect(aliasKeysOf(aliases)).toBe(workerAliasKeys(aliases));

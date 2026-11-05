@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Tanggal** | 2026-10-25 |
-| **Status** | Disetujui pemilik; sedang diimplementasikan (Fase 0–3 selesai, Fase 4 menunggu gerbang CPU, Fase 5 menunggu gladi; lihat bagian Status di rencana `docs/superpowers/plans/2026-10-25-migrasi-cloudflare-worker-d1.md`) |
+| **Status** | **Dibatalkan 2026-11-05 oleh pemilik; digantikan docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md dan rencananya. Alasan: gerbang CPU edge tidak lulus di paket gratis Cloudflare; pemilik memiliki VPS.** Riwayat sebelumnya: disetujui pemilik; sedang diimplementasikan (Fase 0–3 selesai, Fase 4 menunggu gerbang CPU, Fase 5 menunggu gladi; lihat bagian Status di rencana `docs/superpowers/plans/2026-10-25-migrasi-cloudflare-worker-d1.md`) |
 | **Cakupan** | Seluruh backend QC App (auth, RPC, data, berkas, sinkron QC Desktop, QR, cron) dan transport frontend |
 | **Dasar** | Kode saat ini (`gas/src`, `shared/`, `web/`), `docs/api/desktop-sync.md`, `docs/ci-cd.md`, percakapan dengan pemilik |
 
