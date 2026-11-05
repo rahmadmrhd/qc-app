@@ -77,9 +77,10 @@ export async function requestQrExport(
     if (running.expectedUpdatedAt === input.expectedUpdatedAt) return { jobId: active.id };
   }
   const payload: ExportInput = { designId: design.id, expectedUpdatedAt: input.expectedUpdatedAt };
-  return enqueueJob(env, 'qr_export', payload, actor.email, {
+  const jobId = await enqueueJob(env, 'qr_export', payload, actor.email, {
     blobs: { pdf: input.pdfBase64, png: input.pngBase64 },
   });
+  return { jobId };
 }
 
 async function createExportFile(

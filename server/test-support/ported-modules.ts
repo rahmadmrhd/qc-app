@@ -9,6 +9,10 @@ export const PORTED: readonly string[] = [
   'src/modules/auth',
   'src/modules/brand',
   'src/modules/customer',
+  'src/modules/files',
+  'src/modules/jobs',
+  'src/modules/qrcode',
+  'src/jobs',
   'src/http',
   'test-support',
 ];

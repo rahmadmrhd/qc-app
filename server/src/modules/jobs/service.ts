@@ -1,22 +1,22 @@
-import type { Env, JobMessage } from '@server/core/env';
+import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import { hasLevel } from '@shared/permissions';
 import type { GetJobInput, JobDto, JobKind } from '@shared/rpc';
 import type { JobRecord } from './repo';
-import { failJob, findJob, insertBlobStmt, insertJobStmt } from './repo';
+import { findJob, insertBlobStmt, insertJobStmt } from './repo';
 
 export const JOB_SYSTEM_ACTOR = 'system';
 
 export interface EnqueueOptions {
-  /** Muatan besar (base64): satu baris `job_blobs` per entri; TIDAK ikut pesan antrean. */
+  /** Muatan besar (base64): satu baris `job_blobs` per entri; tidak ikut kolom `input`. */
   blobs?: Record<string, string>;
 }
 
 /**
- * Membuat job (baris `jobs` + muatan) lalu mengirim pesan `{ jobId, kind, step }`. Bila pengiriman gagal, job
- * ditandai gagal (tidak menggantung `queued`) dan galat UNAVAILABLE dilempar.
+ * Membuat job (baris `jobs` berstatus `queued` + muatan) dan mengembalikan id-nya. Tidak ada antrean: runner
+ * internal (`jobs/runner.ts`) mengambilnya dari tabel pada putaran berikutnya.
  */
 export async function enqueueJob(
   env: Env,
@@ -24,7 +24,7 @@ export async function enqueueJob(
   input: unknown,
   createdBy: string,
   options: EnqueueOptions = {},
-): Promise<{ jobId: string }> {
+): Promise<string> {
   const now = nowIso(env);
   const job: JobRecord = {
     id: crypto.randomUUID(),
@@ -47,18 +47,7 @@ export async function enqueueJob(
       insertBlobStmt(env.DB, job.id, name, data),
     ),
   ]);
-  const message: JobMessage = { jobId: job.id, kind, step: 0 };
-  try {
-    await env.JOBS.send(message);
-  } catch (error) {
-    console.error(`enqueueJob ${kind}: pengiriman antrean gagal: ${String(error)}`);
-    await failJob(env, job, 'Antrean pekerjaan tidak dapat dihubungi', {}, nowIso(env));
-    throw appError(
-      'UNAVAILABLE',
-      'Antrean pekerjaan sedang tidak dapat dihubungi. Coba lagi sebentar lagi.',
-    );
-  }
-  return { jobId: job.id };
+  return job.id;
 }
 
 export function toJobDto(job: JobRecord): JobDto {

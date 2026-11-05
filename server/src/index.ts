@@ -2,11 +2,9 @@ import { callRoute, handleRpc, readCookie, rpcResponse } from '@server/core/rout
 import { SESSION_COOKIE } from '@server/core/session';
 import { type AppBindings, csrfGuard, securityHeaders } from '@server/http/security';
 import { authApp } from '@server/modules/auth/routes';
-import { handleQueue } from '@server/modules/jobs/consumer';
 import { handleSyncRequest } from '@server/modules/sync/handler';
 import { syncRoutes } from '@server/modules/sync/routes';
 import { getRoutes } from '@server/routes';
-import { scheduled } from '@server/scheduled';
 import { Hono } from 'hono/tiny';
 
 const app = new Hono<AppBindings>();
@@ -27,5 +25,5 @@ app.route('/auth', authApp);
 // QC Desktop: token di badan, tanpa cookie (bukan permukaan CSRF); amplop sama dengan era Apps Script.
 app.post('/sync', (c) => handleSyncRequest(c.env, c.req.raw, syncRoutes()));
 
-export default { fetch: app.fetch, queue: handleQueue, scheduled };
+export default { fetch: app.fetch };
 export { app };

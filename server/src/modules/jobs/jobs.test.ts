@@ -1,15 +1,16 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import type { DbStatement } from '@server/core/db';
-import app from '@server/index';
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { runPendingJobs, scheduleCleanupJob } from '@server/jobs/runner';
 import { cleanupQrDocuments } from '@server/modules/qrcode/service';
-import { scheduled } from '@server/scheduled';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { CLEANUP_REVOKE_LIMIT } from './cleanup';
-import { handleQueue, JOB_MAX_ATTEMPTS, processJobMessage } from './consumer';
+import { JOB_MAX_ATTEMPTS, runJobStep } from './consumer';
 import { findJob } from './repo';
 import { enqueueJob } from './service';
+
+// Tiap tes melewati beberapa round trip ke MariaDB (lewat terowongan SSH saat dev): beri ruang.
+setDefaultTimeout(30_000);
 
 const PDF = 'JVBERi0xLjQK';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
@@ -64,17 +65,16 @@ const requestExport = (
   email = 'qredit@gmail.com',
 ) => call(email, 'qrcodes.export', exportBody(design, extra));
 
-/** Memproses semua pesan antrean berurutan (tiap pesan = satu langkah). */
-async function drain(attempts = 1, max = 100): Promise<number> {
-  let processed = 0;
-  while (env.queued.length > 0 && processed < max) {
-    const message = env.queued.shift();
-    if (!message) break;
-    const outcome = await processJobMessage(env, message, attempts);
-    processed += 1;
-    if (outcome.kind === 'retry') env.queued.unshift(message);
-  }
-  return processed;
+/** Satu langkah job `jobId` (pengganti memproses satu pesan antrean era Queue). */
+const step = (jobId: string, attempts = 1) => runJobStep(env, jobId, attempts);
+/** Menjalankan semua job yang siap sampai habis lewat runner (satu langkah = satu iterasi di dalamnya). */
+const drain = () => runPendingJobs(env);
+/** Id job yang masih menunggu/berjalan, urut menurut waktu dibuat. */
+async function activeJobs() {
+  const rows = await env.DB.prepare(
+    "SELECT id, kind, step FROM jobs WHERE status IN ('queued', 'running') ORDER BY created_at, id",
+  ).all<{ id: string; kind: string; step: number }>();
+  return rows.results;
 }
 async function design(id: string) {
   return env.DB.prepare(
@@ -104,7 +104,9 @@ async function blobCount(jobId?: string) {
 }
 /** Berkas hasil ekspor = berkas di folder QR (bukan PDF sumber di folder dokumen). */
 async function exportFiles() {
-  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'QR_FOLDER_ID'").first<{
+  const row = await env.DB.prepare(
+    "SELECT value FROM settings WHERE `key` = 'QR_FOLDER_ID'",
+  ).first<{
     value: string;
   }>();
   return [...env.BRIDGE.state.files.entries()]
@@ -114,14 +116,14 @@ async function exportFiles() {
 const createCalls = () => env.BRIDGE.calls.filter((c) => c.action === 'createFile');
 
 describe('qrcodes.export dan jobs.get', () => {
-  test('RPC hanya mengantre: balas { jobId }, pesan hanya { jobId, kind, step }, muatan di job_blobs, belum ada berkas', async () => {
+  test('RPC hanya mengantre: balas { jobId }, baris jobs queued tanpa muatan base64, muatan di job_blobs, belum ada berkas', async () => {
     const made = await makeDesign();
     const filesBefore = createCalls().length;
     const out = await requestExport(made);
     expect(out.ok).toBe(true);
     expect(Object.keys(out.data)).toEqual(['jobId']);
-    expect(env.queued).toEqual([{ jobId: out.data.jobId, kind: 'qr_export', step: 0 }]);
-    expect(JSON.stringify(env.queued)).not.toContain(PDF);
+    expect(await activeJobs()).toEqual([{ id: out.data.jobId, kind: 'qr_export', step: 0 }]);
+    expect((await findJob(env, out.data.jobId))?.input).not.toContain(PDF);
     expect(createCalls()).toHaveLength(filesBefore);
     expect(await blobCount(out.data.jobId)).toBe(2);
     expect((await design(made.id))?.exported_hash).toBe('');
@@ -145,12 +147,12 @@ describe('qrcodes.export dan jobs.get', () => {
     ).toBe('CONFLICT');
     const big = await requestExport(made, { pngBase64: `iVBORw0KGgo${'A'.repeat(1_100_000)}` });
     expect(big.error.code).toBe('VALIDATION');
-    expect(env.queued).toHaveLength(0);
+    expect(await activeJobs()).toHaveLength(0);
     await env.DB.prepare("UPDATE qr_designs SET overflow = '1' WHERE id = ?").bind(made.id).run();
     const over = await requestExport(made);
     expect(over.error.code).toBe('VALIDATION');
     expect(over.error.message).toContain('melebihi kanvas');
-    expect(env.queued).toHaveLength(0);
+    expect(await activeJobs()).toHaveLength(0);
   });
 
   test('klik ganda dengan versi yang sama memakai job yang masih berjalan (tanpa job/berkas ganda)', async () => {
@@ -160,7 +162,7 @@ describe('qrcodes.export dan jobs.get', () => {
     expect(b.data.jobId).toBe(a.data.jobId);
     const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number }>();
     expect(count?.n).toBe(1);
-    expect(env.queued).toHaveLength(1);
+    expect(await activeJobs()).toHaveLength(1);
   });
 
   test('jobs.get: pembuat dan pengguna qrcode boleh; orang lain tanpa qrcode NOT_FOUND; id tak dikenal NOT_FOUND', async () => {
@@ -181,10 +183,9 @@ describe('ekspor QR berjalan per langkah', () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;
     const seen: number[] = [];
-    while (env.queued.length > 0) {
-      const message = env.queued.shift();
-      if (!message) break;
-      await processJobMessage(env, message, 1);
+    for (;;) {
+      const result = await step(jobId);
+      if (result.kind === 'skipped') break;
       seen.push((await findJob(env, jobId))?.progress ?? -1);
     }
     expect(seen).toEqual([30, 60, 90, 100]);
@@ -228,21 +229,21 @@ describe('ekspor QR berjalan per langkah', () => {
   });
 });
 
-describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
+describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
   test('galat jembatan sementara di langkah PNG: dicoba ulang; PDF tidak dibuat dua kali', async () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;
     const baseline = createCalls().length;
     // langkah 0 (PDF) sukses
-    await processJobMessage(env, env.queued.shift()!, 1);
+    await step(jobId);
     env.BRIDGE.failNext('createFile', new Error('jaringan putus'));
-    const failing = await processJobMessage(env, env.queued.shift()!, 1);
+    const failing = await step(jobId);
     expect(failing.kind).toBe('retry');
     expect((await findJob(env, jobId))?.status).toBe('running');
     expect((await findJob(env, jobId))?.leaseUntil).toBe(0);
-    // pesan dikirim ulang oleh Queues: langkah PNG diulang, PDF dilewati
-    await processJobMessage(env, { jobId, kind: 'qr_export', step: 1 }, 2);
-    await drain(1);
+    // runner mencoba lagi langkah yang sama (percobaan 2): langkah PNG diulang, PDF dilewati
+    await step(jobId, 2);
+    await drain();
     expect((await findJob(env, jobId))?.status).toBe('done');
     expect(createCalls().length - baseline).toBe(3); // pdf (1x) + png (percobaan gagal + berhasil)
     const pdfCreates = createCalls()
@@ -257,7 +258,7 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
     await drain();
     const before = await design(made.id);
     const second = (await requestExport(made, { pdfBase64: 'JVBERi0xLjUK' })).data.jobId;
-    await processJobMessage(env, env.queued.shift()!, 1); // PDF baru dibuat
+    await step(second); // PDF baru dibuat
     const created = [...env.BRIDGE.state.files.keys()].filter(
       (id) =>
         ![before?.export_pdf_drive_id, before?.export_png_drive_id].includes(id) &&
@@ -267,8 +268,8 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
     env.BRIDGE.createFile = async () => {
       throw new Error('jembatan mati');
     };
-    const outcome = await processJobMessage(env, env.queued.shift()!, JOB_MAX_ATTEMPTS);
-    expect(outcome.kind).toBe('ack');
+    const outcome = await step(second, JOB_MAX_ATTEMPTS);
+    expect(outcome.kind).toBe('failed');
     const job = await call('qredit@gmail.com', 'jobs.get', { id: second });
     expect(job.data.status).toBe('failed');
     expect(job.data.error).toBeTruthy();
@@ -283,7 +284,7 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
     const made = await makeDesign();
     const failed = (await requestExport(made)).data.jobId;
     env.BRIDGE.failNext('createFile', new Error('x'));
-    await processJobMessage(env, env.queued.shift()!, JOB_MAX_ATTEMPTS);
+    await step(failed, JOB_MAX_ATTEMPTS);
     expect((await findJob(env, failed))?.status).toBe('failed');
     const retry = await requestExport(made);
     expect(retry.data.jobId).not.toBe(failed);
@@ -296,15 +297,15 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
   test('versi konfigurasi berubah sebelum pencatatan: CONFLICT, job gagal, berkas baru dibuang, desain tidak ter-ekspor', async () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;
-    await processJobMessage(env, env.queued.shift()!, 1);
-    await processJobMessage(env, env.queued.shift()!, 1);
+    await step(jobId);
+    await step(jobId);
     env.clock.advance(1000);
     await env.DB.prepare(
       "UPDATE qr_designs SET updated_at = '2026-10-16T03:10:00.000Z' WHERE id = ?",
     )
       .bind(made.id)
       .run();
-    await processJobMessage(env, env.queued.shift()!, 1);
+    await step(jobId);
     const job = await findJob(env, jobId);
     expect(job?.status).toBe('failed');
     expect(job?.error).toContain('diubah orang lain');
@@ -315,46 +316,22 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
     expect(await audits()).toEqual(['qrcode.create']);
   });
 
-  test('pesan terkirim ganda/serentak (at-least-once): langkah berjalan sekali, hasil tidak digandakan', async () => {
+  test('pemanggil serentak pada langkah yang sama: langkah berjalan sekali, hasil tidak digandakan', async () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;
-    const message = env.queued[0]!;
     const baseline = createCalls().length;
-    const [a, b, c] = await Promise.all([
-      processJobMessage(env, message, 1),
-      processJobMessage(env, message, 1),
-      processJobMessage(env, message, 1),
-    ]);
-    expect([a, b, c].every((o) => o.kind === 'ack')).toBe(true);
+    const results = await Promise.all([step(jobId), step(jobId), step(jobId)]);
+    expect(results.filter((r) => r.kind === 'advanced')).toHaveLength(1);
+    expect(results.filter((r) => r.kind === 'skipped')).toHaveLength(2);
     expect(createCalls().length - baseline).toBe(1);
-    // pesan lanjutan ganda juga aman; seluruh job tetap selesai tepat sekali
-    env.queued.push({ ...message });
-    env.queued.push({ ...message });
-    await drain();
+    // dua runner serentak menyelesaikan sisanya; seluruh job tetap selesai tepat sekali
+    await Promise.all([drain(), drain()]);
     expect((await findJob(env, jobId))?.status).toBe('done');
     expect(createCalls().length - baseline).toBe(2);
     expect((await audits()).filter((x) => x === 'qrcode.export')).toHaveLength(1);
-    // pesan setelah job selesai tidak berbuat apa pun
-    expect((await processJobMessage(env, message, 1)).kind).toBe('ack');
+    // langkah setelah job selesai tidak berbuat apa pun
+    expect((await step(jobId)).kind).toBe('skipped');
     expect(createCalls().length - baseline).toBe(2);
-  });
-
-  test('pesan lanjutan gagal terkirim: langkah tersimpan, pesan asli dikirim ulang dan melanjutkan tanpa menggandakan', async () => {
-    const made = await makeDesign();
-    const { jobId } = (await requestExport(made)).data;
-    const first = env.queued.shift()!;
-    const realSend = env.JOBS.send.bind(env.JOBS);
-    env.JOBS.send = async () => {
-      throw new Error('antrean down');
-    };
-    const outcome = await processJobMessage(env, first, 1);
-    expect(outcome.kind).toBe('retry');
-    expect((await findJob(env, jobId))?.step).toBe(1);
-    env.JOBS.send = realSend;
-    await processJobMessage(env, first, 2); // redelivery: melanjutkan ke langkah 1
-    await drain();
-    expect((await findJob(env, jobId))?.status).toBe('done');
-    expect((await exportFiles()).filter((f) => f.name.endsWith('.pdf'))).toHaveLength(1);
   });
 
   test('pengolah yang mati meninggalkan lease: setelah lease habis, pengolah lain mengambil alih', async () => {
@@ -363,62 +340,36 @@ describe('Review Focus 2: kegagalan di tengah dan pesan ganda', () => {
     await env.DB.prepare("UPDATE jobs SET status = 'running', lease_until = ? WHERE id = ?")
       .bind(env.clock.now() + 60_000, jobId)
       .run();
-    expect((await processJobMessage(env, env.queued[0]!, 1)).kind).toBe('ack');
+    expect((await step(jobId)).kind).toBe('skipped');
     expect((await findJob(env, jobId))?.step).toBe(0);
     env.clock.advance(61_000);
-    await processJobMessage(env, env.queued[0]!, 1);
+    await step(jobId);
     expect((await findJob(env, jobId))?.step).toBe(1);
-  });
-
-  test('enqueue gagal kirim: job ditandai gagal dan UNAVAILABLE dilempar (tidak menggantung queued)', async () => {
-    env.JOBS.send = async () => {
-      throw new Error('antrean down');
-    };
-    await expect(enqueueJob(env, 'cleanup_qr', {}, 'system')).rejects.toMatchObject({
-      code: 'UNAVAILABLE',
-    });
-    const row = await env.DB.prepare('SELECT status FROM jobs').first<{ status: string }>();
-    expect(row?.status).toBe('failed');
   });
 });
 
-describe('cleanup_qr dan cron', () => {
+describe('cleanup_qr dan penjadwal', () => {
   async function orphanDocs(count: number) {
     for (let i = 0; i < count; i++) await qrPdfDocumentId(env);
     env.clock.advance(2 * 60 * 60 * 1000);
   }
   const sharedCount = () => [...env.BRIDGE.state.files.values()].filter((f) => f.shared).length;
 
-  test('scheduled hanya menjadwalkan (satu pesan cleanup_qr), tidak menumpuk', async () => {
+  test('penjadwal hanya menjadwalkan (satu job cleanup_qr), tidak menumpuk, tanpa menyentuh Drive', async () => {
     const calls = env.BRIDGE.calls.length;
-    await scheduled(
-      {
-        cron: '0 * * * *',
-        scheduledTime: env.clock.now(),
-        type: 'scheduled',
-      } as unknown as ScheduledController,
-      env,
-    );
-    await scheduled(
-      {
-        cron: '0 * * * *',
-        scheduledTime: env.clock.now(),
-        type: 'scheduled',
-      } as unknown as ScheduledController,
-      env,
-    );
-    expect(env.queued).toHaveLength(1);
-    expect(env.queued[0]).toMatchObject({ kind: 'cleanup_qr', step: 0 });
+    await scheduleCleanupJob(env);
+    await scheduleCleanupJob(env);
+    expect(await activeJobs()).toEqual([expect.objectContaining({ kind: 'cleanup_qr', step: 0 })]);
     expect(env.BRIDGE.calls.length).toBe(calls);
   });
 
-  test('mencabut berbagi PDF yatim dalam potongan <= N per pesan, berlanjut sampai habis', async () => {
+  test('mencabut berbagi PDF yatim dalam potongan <= N per langkah, berlanjut sampai habis', async () => {
     await orphanDocs(CLEANUP_REVOKE_LIMIT * 2 + 1);
     expect(sharedCount()).toBe(CLEANUP_REVOKE_LIMIT * 2 + 1);
-    const { jobId } = await enqueueJob(env, 'cleanup_qr', {}, 'system');
-    await processJobMessage(env, env.queued.shift()!, 1);
+    const jobId = await enqueueJob(env, 'cleanup_qr', {}, 'system');
+    await step(jobId);
     expect(sharedCount()).toBe(CLEANUP_REVOKE_LIMIT + 1);
-    expect(env.queued).toHaveLength(1);
+    expect(await activeJobs()).toHaveLength(1);
     await drain();
     expect(sharedCount()).toBe(0);
     const job = await findJob(env, jobId);
@@ -429,7 +380,7 @@ describe('cleanup_qr dan cron', () => {
   test('membuang muatan job selesai/gagal dan riwayat lama; berkas ekspor yatim dari job gagal dibuang', async () => {
     const made = await makeDesign();
     const failed = (await requestExport(made)).data.jobId;
-    await processJobMessage(env, env.queued.shift()!, 1); // PDF dibuat
+    await step(failed); // PDF dibuat
     const orphanId = (await exportFiles())[0]?.id ?? '';
     expect(orphanId).not.toBe('');
     const realTrash = env.BRIDGE.trashFile;
@@ -437,11 +388,10 @@ describe('cleanup_qr dan cron', () => {
       throw new Error('Drive menolak');
     };
     env.BRIDGE.failNext('createFile', new Error('x'));
-    await processJobMessage(env, env.queued.shift()!, JOB_MAX_ATTEMPTS);
+    await step(failed, JOB_MAX_ATTEMPTS);
     expect((await findJob(env, failed))?.status).toBe('failed');
     expect(env.BRIDGE.state.files.get(orphanId)?.trashed).toBe(false);
     env.BRIDGE.trashFile = realTrash;
-    env.queued.length = 0;
     env.clock.advance(2 * 60 * 60 * 1000);
     await enqueueJob(env, 'cleanup_qr', {}, 'system');
     await drain();
@@ -454,7 +404,7 @@ describe('cleanup_qr dan cron', () => {
     expect(await blobCount()).toBe(0);
   });
 
-  test('cleanupQrDocuments tetap dapat dipanggil langsung (kompatibel dengan cron lama)', async () => {
+  test('cleanupQrDocuments tetap dapat dipanggil langsung', async () => {
     await orphanDocs(2);
     expect(await cleanupQrDocuments(env, 10)).toBe(2);
   });
@@ -462,23 +412,24 @@ describe('cleanup_qr dan cron', () => {
 
 describe('ekspor Spreadsheet (sheets_export)', () => {
   async function seedBrands(n: number) {
-    const statements: DbStatement[] = [];
-    for (let i = 0; i < n; i++) {
-      statements.push(
-        env.DB.prepare('INSERT INTO brands (id, name, key, sync_rev) VALUES (?, ?, ?, ?)').bind(
-          `b${String(i).padStart(5, '0')}`,
-          `Merk ${i}`,
-          `merk ${i}`,
-          i,
-        ),
-      );
+    // INSERT banyak-baris per 500 baris (satu pernyataan per baris terlalu lambat lewat jaringan)
+    for (let from = 0; from < n; from += 500) {
+      const count = Math.min(500, n - from);
+      const binds: Array<string | number> = [];
+      for (let i = from; i < from + count; i++) {
+        binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`, i);
+      }
+      await env.DB.prepare(
+        `INSERT INTO brands (id, name, \`key\`, sync_rev) VALUES ${Array(count).fill('(?, ?, ?, ?)').join(', ')}`,
+      )
+        .bind(...binds)
+        .run();
     }
-    for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
   }
 
   test('1.200 baris: potongan 500/500/200, replace lalu append, urutan terjaga, progres, selesai', async () => {
     await seedBrands(1200);
-    const { jobId } = await enqueueJob(
+    const jobId = await enqueueJob(
       env,
       'sheets_export',
       { tables: ['brands'] },
@@ -498,11 +449,11 @@ describe('ekspor Spreadsheet (sheets_export)', () => {
     expect(ids).toHaveLength(1200);
   });
 
-  test('semua tabel dalam beberapa langkah kecil; pesan ganda tidak menggandakan potongan', async () => {
+  test('semua tabel dalam beberapa langkah kecil; pemanggil serentak tidak menggandakan potongan', async () => {
     await seedBrands(30);
-    const { jobId } = await enqueueJob(env, 'sheets_export', {}, 'qredit@gmail.com');
-    const first = { ...env.queued[0]! };
-    await Promise.all([processJobMessage(env, first, 1), processJobMessage(env, { ...first }, 1)]);
+    const jobId = await enqueueJob(env, 'sheets_export', {}, 'qredit@gmail.com');
+    const both = await Promise.all([step(jobId), step(jobId)]);
+    expect(both.filter((r) => r.kind === 'advanced')).toHaveLength(1);
     const afterFirst = env.BRIDGE.state.exports.length;
     expect(afterFirst).toBeLessThanOrEqual(4);
     await drain();
@@ -516,47 +467,16 @@ describe('ekspor Spreadsheet (sheets_export)', () => {
 
   test('galat jembatan di tengah: dicoba ulang dari langkah yang sama; replace pertama tidak diulang tak perlu', async () => {
     await seedBrands(10);
-    const { jobId } = await enqueueJob(
+    const jobId = await enqueueJob(
       env,
       'sheets_export',
       { tables: ['brands', 'users'] },
       'qredit@gmail.com',
     );
     env.BRIDGE.failNext('sheetsExport', new Error('gangguan'));
-    const outcome = await processJobMessage(env, env.queued.shift()!, 1);
+    const outcome = await step(jobId);
     expect(outcome.kind).toBe('retry');
-    env.queued.push({ jobId, kind: 'sheets_export', step: 0 });
     await drain();
     expect((await findJob(env, jobId))?.status).toBe('done');
-  });
-});
-
-describe('Worker default export dan consumer', () => {
-  test('default export memiliki fetch, queue, scheduled', () => {
-    expect(typeof app.fetch).toBe('function');
-    expect(typeof app.queue).toBe('function');
-    expect(typeof app.scheduled).toBe('function');
-  });
-
-  test('handleQueue: ack bila selesai, retry dengan jeda bila galat sementara', async () => {
-    const made = await makeDesign();
-    await requestExport(made);
-    const acks: string[] = [];
-    const retries: number[] = [];
-    const message = (body: (typeof env.queued)[number]) => ({
-      body,
-      attempts: 1,
-      ack: () => acks.push(body.jobId),
-      retry: (options?: { delaySeconds?: number }) => retries.push(options?.delaySeconds ?? 0),
-    });
-    const batch = { messages: [message(env.queued.shift()!)] } as unknown as MessageBatch<
-      (typeof env.queued)[number]
-    >;
-    await handleQueue(batch, env);
-    expect(acks).toHaveLength(1);
-    env.BRIDGE.failNext('createFile', new Error('x'));
-    const next = env.queued.shift()!;
-    await handleQueue({ messages: [message(next)] } as unknown as MessageBatch<typeof next>, env);
-    expect(retries).toEqual([20]);
   });
 });

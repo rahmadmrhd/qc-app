@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
-import type { DbStatement } from '@server/core/db';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -14,18 +13,19 @@ import {
 let env: TestEnv;
 
 async function insertBrands(count: number): Promise<void> {
-  const statements: DbStatement[] = [];
-  for (let i = 0; i < count; i++) {
-    statements.push(
-      env.DB.prepare('INSERT INTO brands (id, name, key, sync_rev) VALUES (?, ?, ?, ?)').bind(
-        `b${String(i).padStart(5, '0')}`,
-        `Merk ${i}`,
-        `merk ${i}`,
-        i,
-      ),
-    );
+  // satu INSERT banyak-baris per 500 baris: jauh lebih cepat lewat jaringan daripada satu pernyataan per baris
+  for (let from = 0; from < count; from += 500) {
+    const n = Math.min(500, count - from);
+    const binds: Array<string | number> = [];
+    for (let i = from; i < from + n; i++) {
+      binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`, i);
+    }
+    await env.DB.prepare(
+      `INSERT INTO brands (id, name, \`key\`, sync_rev) VALUES ${Array(n).fill('(?, ?, ?, ?)').join(', ')}`,
+    )
+      .bind(...binds)
+      .run();
   }
-  for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
 }
 
 async function collect(table: string, pageRows?: number): Promise<SheetsExportChunk[]> {
@@ -98,12 +98,18 @@ describe('exportTableChunks', () => {
   });
 
   test('halaman besar dipecah menurut anggaran karakter; sel > 50.000 karakter dipotong', async () => {
-    const big = 'x'.repeat(40000);
+    // isi besar dibangkitkan di sisi server (REPEAT): mengirim ±1,2 MB lewat terowongan membuat tes lambat
+    const rows: string[] = [];
+    const binds: string[] = [];
     for (let i = 0; i < 30; i++) {
-      await env.DB.prepare('INSERT INTO items (id, model, key, detail_md) VALUES (?, ?, ?, ?)')
-        .bind(`i${String(i).padStart(2, '0')}`, `M${i}`, `k${i}`, i === 0 ? 'y'.repeat(70000) : big)
-        .run();
+      rows.push(`(?, ?, ?, REPEAT('${i === 0 ? 'y' : 'x'}', ${i === 0 ? 70000 : 40000}))`);
+      binds.push(`i${String(i).padStart(2, '0')}`, `M${i}`, `k${i}`);
     }
+    await env.DB.prepare(
+      `INSERT INTO items (id, model, \`key\`, detail_md) VALUES ${rows.join(', ')}`,
+    )
+      .bind(...binds)
+      .run();
     const chunks = await collect('items');
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.map((chunk) => chunk.mode)).toEqual([
@@ -121,17 +127,30 @@ describe('exportTableChunks', () => {
     expect(chunks.flatMap((chunk) => chunk.rows)).toHaveLength(30);
   });
 
-  test('semua nama sheet ekspor berawalan export_ dan unik; kolom sama dengan skema D1', async () => {
+  test('semua nama sheet ekspor berawalan export_ dan unik; kolom sama dengan skema MariaDB (selain kolom teknis)', async () => {
     const sheets = EXPORT_TABLES.map((spec) => spec.sheet);
     expect(sheets.every((name) => /^export_[a-z0-9_]+$/.test(name))).toBe(true);
     expect(new Set(sheets).size).toBe(sheets.length);
+    // Kolom teknis MariaDB yang sengaja tidak diekspor: kolom turunan name_key (indeks UNIK ekspresi) dan
+    // handover_comments.seq (pengganti rowid untuk urutan/kursor).
+    const technical: Record<string, string[]> = {
+      roles: ['name_key'],
+      locations: ['name_key'],
+      handover_comments: ['seq'],
+    };
     for (const spec of EXPORT_TABLES) {
-      const info = await env.DB.prepare(`PRAGMA table_info("${spec.table}")`).all<{
-        name: string;
-      }>();
+      const info = await env.DB.prepare(
+        'SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+      )
+        .bind(spec.table)
+        .all<{ name: string }>();
+      const actual = info.results
+        .map((row) => row.name)
+        .filter((name) => !(technical[spec.table] ?? []).includes(name))
+        .sort();
       expect({ table: spec.table, columns: [...spec.columns].sort() }).toEqual({
         table: spec.table,
-        columns: info.results.map((row) => row.name).sort(),
+        columns: actual,
       });
       expect(spec.columns).toContain(spec.key);
     }

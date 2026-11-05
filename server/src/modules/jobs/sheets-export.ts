@@ -217,7 +217,7 @@ export interface ExportPage {
 }
 
 function quote(identifier: string): string {
-  return `"${identifier}"`;
+  return `\`${identifier}\``;
 }
 
 /**

@@ -1,19 +1,10 @@
 import type { Db } from '@server/core/db';
-import type { JobKind } from '@shared/rpc';
 import type { BridgeClient } from './bridge-client';
 import type { FileCache } from './file-cache';
-
-/** Pesan antrean pekerjaan: hanya pengenal (data ada di D1); `step` informatif, kebenaran ada di baris `jobs`. */
-export interface JobMessage {
-  jobId: string;
-  kind: JobKind;
-  step: number;
-}
 
 /** Binding, variabel, dan rahasia Worker (lihat wrangler.jsonc). */
 export interface Env {
   DB: Db;
-  JOBS: Queue<JobMessage>;
   ASSETS: Fetcher;
   SESSION_SECRET: string;
   OAUTH_CLIENT_ID: string;

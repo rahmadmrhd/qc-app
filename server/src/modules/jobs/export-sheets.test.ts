@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { runPendingJobs } from '@server/jobs/runner';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { qrRpc } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { processJobMessage } from './consumer';
+import { runJobStep } from './consumer';
 import { validateExportSheets } from './export-sheets';
 import { findJob } from './repo';
 import { EXPORT_TABLES } from './sheets-export';
@@ -31,14 +32,18 @@ afterEach(() => {
 
 const call = (email: string, payload: unknown) => qrRpc(env, email, 'exports.sheets', payload);
 async function drain(): Promise<void> {
-  for (let guard = 0; guard < 200 && env.queued.length > 0; guard++) {
-    const message = env.queued.shift();
-    if (message) await processJobMessage(env, message, 1);
-  }
+  await runPendingJobs(env);
+}
+/** Job yang masih menunggu/berjalan (pengganti isi antrean pada era Queue). */
+async function activeJobs() {
+  const rows = await env.DB.prepare(
+    "SELECT id, kind, step FROM jobs WHERE status IN ('queued', 'running')",
+  ).all<{ id: string; kind: string; step: number }>();
+  return rows.results;
 }
 async function audits(): Promise<Array<{ actor: string; action: string; after: string }>> {
   const rows = await env.DB.prepare(
-    'SELECT actor, action, "after" AS after FROM audit_log ORDER BY id',
+    'SELECT actor, action, `after` AS after FROM audit_log ORDER BY id',
   ).all<{
     actor: string;
     action: string;
@@ -52,7 +57,7 @@ describe('exports.sheets', () => {
     expect((await call('akses@gmail.com', {})).error.code).toBe('FORBIDDEN');
     expect((await call('qrm@gmail.com', {})).error.code).toBe('FORBIDDEN');
     expect((await call('nobody@gmail.com', {})).error.code).toBe('UNAUTHENTICATED');
-    expect(env.queued).toHaveLength(0);
+    expect(await activeJobs()).toHaveLength(0);
     expect((await call('admin2@gmail.com', {})).ok).toBe(true);
   });
 
@@ -60,7 +65,7 @@ describe('exports.sheets', () => {
     const out = await call('admin2@gmail.com', null);
     expect(out.ok).toBe(true);
     expect(Object.keys(out.data)).toEqual(['jobId']);
-    expect(env.queued).toEqual([{ jobId: out.data.jobId, kind: 'sheets_export', step: 0 }]);
+    expect(await activeJobs()).toEqual([{ id: out.data.jobId, kind: 'sheets_export', step: 0 }]);
     const job = await findJob(env, out.data.jobId);
     expect(JSON.parse(job?.input ?? '{}').tables).toEqual(EXPORT_TABLES.map((spec) => spec.table));
     const queued = await call('admin2@gmail.com', {});
@@ -72,7 +77,7 @@ describe('exports.sheets', () => {
     });
 
     await env.DB.prepare(
-      "INSERT INTO brands (id, name, key, sync_rev) VALUES ('b1', 'Acme', 'acme', 1)",
+      "INSERT INTO brands (id, name, `key`, sync_rev) VALUES ('b1', 'Acme', 'acme', 1)",
     ).run();
     await drain();
     const done = await call('admin2@gmail.com', {}).then(() =>
@@ -125,7 +130,7 @@ describe('exports.sheets', () => {
     ]) {
       expect((await call('admin2@gmail.com', bad)).error.code).toBe('VALIDATION');
     }
-    expect(env.queued).toHaveLength(0);
+    expect(await activeJobs()).toHaveLength(0);
     expect(() => validateExportSheets({ tables: ['brands'] })).not.toThrow();
     expect(validateExportSheets(undefined)).toEqual({});
   });
@@ -138,7 +143,7 @@ describe('exports.sheets', () => {
     expect(other.error.code).toBe('CONFLICT');
     const all = await call('admin2@gmail.com', {});
     expect(all.error.code).toBe('CONFLICT');
-    expect(env.queued).toHaveLength(1);
+    expect(await activeJobs()).toHaveLength(1);
     await drain();
     const next = await call('admin2@gmail.com', { tables: ['users'] });
     expect(next.ok).toBe(true);
@@ -151,9 +156,7 @@ describe('exports.sheets', () => {
     env.BRIDGE.sheetsExport = async () => {
       throw new Error('jembatan mati');
     };
-    const message = env.queued.shift();
-    if (!message) throw new Error('pesan hilang');
-    await processJobMessage(env, message, 3);
+    await runJobStep(env, first.data.jobId, 3);
     const failed = await qrRpc(env, 'admin2@gmail.com', 'jobs.get', { id: first.data.jobId });
     expect(failed.data).toMatchObject({ status: 'failed' });
     expect(failed.data.error).toBeTruthy();

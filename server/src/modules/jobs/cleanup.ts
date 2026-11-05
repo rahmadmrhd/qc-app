@@ -12,8 +12,7 @@ export const CLEANUP_PURGE_LIMIT = 4;
 export const CLEANUP_ORPHAN_LIMIT = 2;
 /** Maksimum langkah berlanjut dalam satu job pembersihan. */
 export const CLEANUP_MAX_STEPS = 10;
-/** Muatan ekspor kedaluwarsa dan riwayat job lama. */
-export const JOB_BLOB_TTL_MS = 24 * 60 * 60 * 1000;
+/** Riwayat job lama. */
 export const JOB_HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface FailedExportRow {
@@ -49,15 +48,14 @@ async function trashExportOrphans(env: Env, limit: number): Promise<number> {
   return trashed;
 }
 
-/** Membuang muatan job yang sudah selesai/gagal atau kedaluwarsa dan riwayat job lama. */
+/** Membuang muatan job yang sudah selesai/gagal dan riwayat job lama. */
 async function purgeJobData(env: Env): Promise<void> {
   const now = nowOf(env);
-  const blobCutoff = new Date(now - JOB_BLOB_TTL_MS).toISOString();
   const historyCutoff = new Date(now - JOB_HISTORY_TTL_MS).toISOString();
   await env.DB.batch([
     env.DB.prepare(
-      "DELETE FROM job_blobs WHERE job_id IN (SELECT id FROM jobs WHERE status IN ('done', 'failed') OR updated_at < ?)",
-    ).bind(blobCutoff),
+      "DELETE FROM job_blobs WHERE job_id IN (SELECT id FROM jobs WHERE status IN ('done', 'failed'))",
+    ),
     env.DB.prepare('DELETE FROM job_blobs WHERE job_id NOT IN (SELECT id FROM jobs)'),
     env.DB.prepare(
       "DELETE FROM jobs WHERE status IN ('done', 'failed') AND updated_at < ? AND state NOT LIKE '%\"orphans\":[\"%'",

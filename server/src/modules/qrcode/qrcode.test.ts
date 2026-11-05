@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { DbStatement } from '@server/core/db';
 import { attachFiles } from '@server/modules/files/service';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';

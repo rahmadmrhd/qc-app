@@ -103,14 +103,14 @@ export async function deleteBlobs(env: Env, jobId: string): Promise<void> {
   await env.DB.prepare('DELETE FROM job_blobs WHERE job_id = ?').bind(jobId).run();
 }
 
-/** Job aktif (queued/running) jenis `kind` yang `json_extract(input, path) = value`; untuk dedup pemicu. */
+/** Job aktif (queued/running) jenis `kind` yang `JSON_VALUE(input, path) = value`; untuk dedup pemicu. */
 export async function findActiveJob(
   env: Env,
   kind: JobKind,
   where?: { path: string; value: string },
 ): Promise<JobRecord | null> {
   const sql = `SELECT ${JOB_COLUMNS} FROM jobs WHERE kind = ? AND status IN ('queued', 'running')${
-    where ? ' AND json_extract(input, ?) = ?' : ''
+    where ? ' AND JSON_VALUE(input, ?) = ?' : ''
   } ORDER BY created_at DESC LIMIT 1`;
   const binds: unknown[] = where ? [kind, where.path, where.value] : [kind];
   const row = await env.DB.prepare(sql)
@@ -136,6 +136,28 @@ export async function claimStep(
     .bind(now + leaseMs, nowIso, job.id, job.step, now)
     .run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * Id job yang siap dijalankan runner: belum selesai dan tidak sedang dipegang pengolah (lease habis atau 0; job
+ * yang ditunda karena galat sementara baru muncul setelah jedanya lewat), urut menurut waktu dibuat.
+ */
+export async function listRunnableJobIds(env: Env, now: number, limit: number): Promise<string[]> {
+  const rows = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE status IN ('queued', 'running') AND lease_until <= ? ORDER BY created_at, id LIMIT ?",
+  )
+    .bind(now, limit)
+    .all<{ id: string }>();
+  return rows.results.map((row) => row.id);
+}
+
+/** Menunda job sampai `until` (epoch ms): lease dipakai sebagai jeda sebelum langkah dicoba ulang. */
+export async function delayLease(env: Env, jobId: string, until: number): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE jobs SET lease_until = ? WHERE id = ? AND status IN ('queued', 'running')",
+  )
+    .bind(until, jobId)
+    .run();
 }
 
 export async function releaseLease(env: Env, job: JobRecord): Promise<void> {

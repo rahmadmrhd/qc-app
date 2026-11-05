@@ -1,4 +1,4 @@
-import type { Env, JobMessage } from '@server/core/env';
+import type { Env } from '@server/core/env';
 import { resetMemCache } from '@server/core/mem-cache';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { acquireTestDb, resetTestDb } from './test-db';
@@ -11,12 +11,10 @@ export interface TestClock {
 
 export interface TestEnv extends Env {
   clock: TestClock;
-  /** Pesan yang dikirim ke antrean `JOBS`. */
-  queued: JobMessage[];
   BRIDGE: FakeBridge;
 }
 
-/** Env uji: skema MariaDB sementara per proses (dikloning dari templat, dikosongkan tiap panggilan), antrean dan jembatan palsu, rahasia uji, jam terkendali. */
+/** Env uji: skema MariaDB sementara per proses (dikloning dari templat, dikosongkan tiap panggilan), jembatan palsu, rahasia uji, jam terkendali. */
 export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestEnv> {
   let current = Date.parse('2026-01-15T03:00:00.000Z');
   const clock: TestClock = {
@@ -28,15 +26,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
       current += ms;
     },
   };
-  const queued: JobMessage[] = [];
-  const jobs = {
-    async send(message: JobMessage) {
-      queued.push(message);
-    },
-    async sendBatch(messages: Iterable<{ body: JobMessage }>) {
-      for (const m of messages) queued.push(m.body);
-    },
-  } as unknown as Queue<JobMessage>;
   const assets = {
     async fetch() {
       return new Response('aset statis', { status: 200 });
@@ -50,7 +39,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
   await resetTestDb(testDb);
   return {
     DB: testDb.db,
-    JOBS: jobs,
     ASSETS: assets,
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
@@ -65,6 +53,5 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     ...overrides,
     BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,
-    queued,
   };
 }
