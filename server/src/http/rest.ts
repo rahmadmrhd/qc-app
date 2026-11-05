@@ -1,6 +1,12 @@
 import { appError, isAppError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
-import { type RouteMeta, type RouteTable, readCookie, runRoute } from '@server/core/router';
+import {
+  authorize,
+  execute,
+  type RouteMeta,
+  type RouteTable,
+  readCookie,
+} from '@server/core/router';
 import { SESSION_COOKIE } from '@server/core/session';
 import { MAX_REQUEST_BODY_BYTES, readBytesLimited, readTextLimited } from '@server/http/body';
 import { problemResponse, toProblem } from '@server/http/problem';
@@ -160,10 +166,16 @@ function handlerFor(operation: Operation, routes: RouteTable) {
     const ifMatchHeader = request.headers.get('if-match');
     try {
       const hasBinaryBody = def.rawBody !== undefined || def.multipart !== undefined;
-      // Tanpa cookie sesi tak ada gunanya membaca badan unggahan yang besar.
-      if (hasBinaryBody && readCookie(request, SESSION_COOKIE) === undefined) {
-        throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
-      }
+      // Sesi (HMAC), akun aktif, dan izin global diperiksa SEBELUM badan apa pun dibaca: klien tanpa sesi sah atau
+      // tanpa izin tidak dapat memaksa server menyangga/mem-parse badan besar (JSON sampai batas, unggahan sampai 10 MB).
+      // Izin berlokasi butuh input tervalidasi, jadi diperiksa di `execute`.
+      const authorized = await authorize(
+        c.env,
+        readCookie(request, SESSION_COOKIE),
+        id,
+        routes,
+        meta,
+      );
       const raw = def.rawBody ? await readRawBody(request, def.rawBody) : undefined;
       const multipart = def.multipart ? await readMultipart(request, def.multipart) : undefined;
       const body = BODY_VERBS.has(verb) && !hasBinaryBody ? await readJsonBody(request) : undefined;
@@ -184,14 +196,7 @@ function handlerFor(operation: Operation, routes: RouteTable) {
         }
         throw issue;
       }
-      const output = await runRoute(
-        c.env,
-        readCookie(request, SESSION_COOKIE),
-        id,
-        input,
-        routes,
-        meta,
-      );
+      const output = await execute(authorized, input);
       logRequest({
         evt: 'rest',
         requestId: meta.requestId,
@@ -261,8 +266,8 @@ export function restNotFound(): Response {
 
 /**
  * Mendaftarkan rute REST pada `app` (disambung ke `/api/v1`): satu handler per operasi tabel `API_ROUTES`
- * untuk SEMUA id, lalu 404 problem+json untuk sisanya. Handler memakai `runRoute` yang sama
- * dengan RPC (sesi, izin, validasi, lokasi), jadi logika modul tidak berubah.
+ * untuk SEMUA id, lalu 404 problem+json untuk sisanya. Handler memakai `authorize` + `execute`
+ * (= `runRoute`: sesi, izin, validasi, lokasi), jadi logika modul tidak berubah.
  */
 export function registerRest(app: Hono<AppBindings>, routes: RouteTable): void {
   for (const operation of listOperations()) {

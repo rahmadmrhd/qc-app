@@ -320,6 +320,33 @@ describe('pemetaan galat (RFC 9457)', () => {
     expect(lines[0]).toHaveProperty('ms');
   });
 
+  test('JSON 16 MB dengan cookie palsu atau tanpa cookie -> 401 tanpa membaca badan', async () => {
+    for (const cookie of [undefined, 'qc_session=palsu.palsu']) {
+      let pulled = 0;
+      const chunk = new Uint8Array(1024 * 1024).fill(32);
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulled >= 16) return controller.close();
+          pulled++;
+          controller.enqueue(chunk);
+        },
+      });
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'x-requested-with': 'qc',
+      };
+      if (cookie) headers.cookie = cookie;
+      const response = await appWith().request(
+        'https://qc.test/api/v1/brands',
+        { method: 'POST', headers, body: stream, duplex: 'half' } as RequestInit,
+        env,
+      );
+      expect(response.status).toBe(401);
+      expect(pulled).toBeLessThanOrEqual(2);
+    }
+    expect(calls).toEqual([]);
+  });
+
   test('basis data tak terjangkau -> 503 UNAVAILABLE', async () => {
     const app = appWith({
       'brands.list': {

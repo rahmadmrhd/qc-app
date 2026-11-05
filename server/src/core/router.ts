@@ -12,7 +12,7 @@ import { loadRequestCtx, type RequestCtx } from './context';
 import { DbError } from './db';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
-import { SESSION_COOKIE, verifySessionToken } from './session';
+import { verifySessionToken } from './session';
 
 export type GlobalPermission = {
   module: Exclude<ModuleKey, LocatedModule>;
@@ -81,19 +81,25 @@ export interface RouteMeta {
   userId?: string | null;
 }
 
+/** Hasil `authorize`: rute yang sudah lolos sesi, akun aktif, dan izin global; dipakai `execute`. */
+export interface Authorized {
+  route: RouteDef<RpcMethod>;
+  base: RequestCtx;
+  locationAlternatives: readonly LocationPermission[];
+}
+
 /**
- * Menjalankan satu id rute: rute, sesi, konteks, izin, validasi, lokasi, handler. Mengembalikan nilai mentah
- * atau MELEMPAR galat (`AppError` atau lainnya); pembungkus yang memilih bentuk kabel: kernel REST (problem+json)
- * dan tes memakai SATU jalur kode ini. `meta` dipakai pemanggil untuk log.
+ * Tahap 1 `runRoute`: rute dikenal, sesi sah (HMAC), akun aktif, dan izin GLOBAL. Tidak menyentuh input, jadi
+ * kernel REST dapat memanggilnya SEBELUM membaca badan permintaan apa pun (badan besar tanpa sesi/izin ditolak murah).
+ * Izin berlokasi butuh input tervalidasi dan diperiksa di `execute`.
  */
-export async function runRoute(
+export async function authorize(
   env: Env,
   token: unknown,
   id: unknown,
-  rawInput: unknown,
   routes: RouteTable,
   meta: RouteMeta = { requestId: newRequestId() },
-): Promise<unknown> {
+): Promise<Authorized> {
   if (typeof id !== 'string' || !Object.hasOwn(routes, id)) {
     throw appError('NOT_FOUND', 'Method tidak dikenal');
   }
@@ -119,11 +125,34 @@ export async function runRoute(
   ) {
     throw appError('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
   }
+  return { route, base, locationAlternatives };
+}
 
+/** Tahap 2 `runRoute`: validasi input, izin berlokasi dari input tervalidasi, lalu handler. */
+export async function execute(authorized: Authorized, rawInput: unknown): Promise<unknown> {
+  const { route, base, locationAlternatives } = authorized;
   const input = route.validate(rawInput === undefined ? null : rawInput);
   const locationIds =
-    locationAlternatives.length > 0 ? authorizedLocationIds(input, user, locationAlternatives) : [];
+    locationAlternatives.length > 0
+      ? authorizedLocationIds(input, base.user, locationAlternatives)
+      : [];
   return route.handler(input, { ...base, locationIds });
+}
+
+/**
+ * Menjalankan satu id rute: rute, sesi, konteks, izin, validasi, lokasi, handler (= `authorize` + `execute`).
+ * Mengembalikan nilai mentah atau MELEMPAR galat (`AppError` atau lainnya); pembungkus yang memilih bentuk kabel:
+ * kernel REST (problem+json) dan tes memakai SATU jalur kode ini. `meta` dipakai pemanggil untuk log.
+ */
+export async function runRoute(
+  env: Env,
+  token: unknown,
+  id: unknown,
+  rawInput: unknown,
+  routes: RouteTable,
+  meta: RouteMeta = { requestId: newRequestId() },
+): Promise<unknown> {
+  return execute(await authorize(env, token, id, routes, meta), rawInput);
 }
 
 function alternativesOf(spec: RoutePermissionSpec | undefined): readonly RoutePermission[] {

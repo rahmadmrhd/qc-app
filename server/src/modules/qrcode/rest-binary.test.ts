@@ -133,6 +133,64 @@ describe('POST /qrcode-documents (PDF mentah)', () => {
   });
 });
 
+describe('sesi dan izin diperiksa SEBELUM badan unggahan dibaca', () => {
+  /** Aliran 20 MB yang menghitung potongan yang benar-benar ditarik pembaca. */
+  function countingStream() {
+    const state = { pulled: 0 };
+    const chunk = new Uint8Array(512 * 1024);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (state.pulled >= 40) return controller.close();
+        state.pulled++;
+        controller.enqueue(chunk);
+      },
+    });
+    return { state, stream: stream as unknown as Uint8Array };
+  }
+
+  test('PDF 10 MB dengan cookie palsu -> 401, badan tidak dibaca', async () => {
+    const { state, stream } = countingStream();
+    const response = await rest.send('POST', '/qrcode-documents?name=a.pdf', {
+      email: null,
+      raw: stream,
+      headers: { cookie: 'qc_session=palsu.palsu', 'content-type': 'application/pdf' },
+    });
+    expect(response.status).toBe(401);
+    expect(state.pulled).toBeLessThanOrEqual(2);
+  });
+
+  test('PDF 10 MB oleh sesi sah tanpa izin edit -> 403, badan tidak dibaca', async () => {
+    const { state, stream } = countingStream();
+    const response = await rest.send('POST', '/qrcode-documents?name=a.pdf', {
+      email: 'qrview@gmail.com',
+      raw: stream,
+      headers: { 'content-type': 'application/pdf' },
+    });
+    expect(response.status).toBe(403);
+    expect(state.pulled).toBeLessThanOrEqual(2);
+  });
+
+  test('ekspor multipart: cookie palsu -> 401 dan tanpa izin -> 403, badan tidak dibaca', async () => {
+    for (const [email, headers, status] of [
+      [null, { cookie: 'qc_session=palsu.palsu' }, 401],
+      ['qrview@gmail.com', {}, 403],
+    ] as const) {
+      const { state, stream } = countingStream();
+      const response = await rest.send('POST', '/qrcodes/tidak-ada/exports', {
+        email,
+        raw: stream,
+        headers: {
+          ...headers,
+          'content-type': 'multipart/form-data; boundary=x',
+          'if-match': '"t"',
+        },
+      });
+      expect(response.status).toBe(status);
+      expect(state.pulled).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
 describe('POST /qrcodes/{id}/exports (multipart) dan GET /qrcodes/{id}/files/{kind}', () => {
   test('202 + Location /api/v1/jobs/{jobId}; setelah job selesai unduhan = byte yang diunggah (PDF ~700 KB, batas jembatan)', async () => {
     const design = await makeDesign();
