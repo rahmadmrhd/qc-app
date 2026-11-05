@@ -42,4 +42,4 @@ Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. V
 
 - Jembatan Google (`BRIDGE_URL`) tidak tersedia secara lokal: unggah berkas, ekspor, dan fitur QR yang memakai Drive akan gagal dengan `UNAVAILABLE`.
 - `http://localhost:8788` melayani build web dari `server/dist` (jalankan `bun run build`); untuk pengembangan UI pakai `http://localhost:3000` (Vite, hot reload).
-- Uji API tanpa UI: `curl -b cookie -H "X-Requested-With: qc" -d '{"method":"auth.me","payload":null}' http://localhost:8788/api/rpc`.
+- Uji API tanpa UI: `curl -b cookie -H "X-Requested-With: qc" http://localhost:8788/api/v1/me` (kabel web = REST `/api/v1`; daftar lengkap rute: `GET /api/openapi.json`, butuh sesi).

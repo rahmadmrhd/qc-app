@@ -2,18 +2,15 @@
 
 Contoh: modul `item` (Data Item). Modul sudah terdaftar di `MODULES` (`shared/permissions.ts`); untuk modul yang benar-benar baru, tambahkan key dan label di sana terlebih dahulu.
 
-## 1. Kontrak — `shared/rpc.ts`
-Tambahkan DTO, input, dan entri `RpcContract`, mis. `'item.list': { input: null; output: ItemDto[] }`.
+## 1. Kontrak — `shared/rpc.ts` dan `shared/api.ts`
+Tambahkan DTO, input, dan entri `WorkerRpcContract` (`shared/rpc.ts`), mis. `'item.list': { input: null; output: ItemDto[] }`, lalu entri `API_ROUTES` di `shared/api.ts` (verba HTTP, jalur `/api/v1/...`, field query, `ifMatch`/`etag` untuk rute berversi, `create` untuk 201+`Location`). Satu tabel itu dipakai klien, server, dan OpenAPI; `shared/api.test.ts` gagal bila id kontrak dan tabel tidak sejalan.
 
-## 2. Backend — `gas/src/modules/item/`
-- `repo.ts` — `ITEMS_TABLE: TableSchema`, fungsi baca/tulis memakai `readTable_`/`insertRow_`/`updateRow_`.
-- `validate.ts` — `validateXxx_(raw)` memakai `readObject_`.
-- `service.ts` — logika bisnis; semua penulisan di dalam `platform_().withLock(...)`, catat `appendAudit_` bila perlu.
-- `routes.ts` — `itemRoutes_(): Pick<RouteTable, ...>` dengan `permission: { module: 'item', level: 'view' | 'edit' | 'manage' }`.
-- Daftarkan di `gas/src/routes.ts`: `{ ...authRoutes_(), ...accessRoutes_(), ...itemRoutes_() }`.
-- Bila modul punya sheet, tambahkan tabelnya ke `runSetup_` (`gas/src/setup.ts`).
-- Ingat: semua fungsi top-level berakhiran `_`, nama unik global.
-- Test di samping file (`*.test.ts`) memakai `createMemoryPlatform` dan fixture.
+## 2. Backend — `server/src/modules/item/`
+- `repo.ts` — kueri MariaDB lewat adaptor `Db` (`prepare(sql).bind(...)`, `batch`, `transaction`); migrasi skema di `server/migrations/NNNN_nama.sql`.
+- `validate.ts` — `validateXxx(raw)` yang mengembalikan input bertipe atau melempar `VALIDATION`.
+- `service.ts` — logika bisnis; penulisan berbasis baca-lalu-tulis dijaga CAS di dalam `batch()` atau `SELECT ... FOR UPDATE` (lihat "Aturan server" di `CLAUDE.md`); catat audit bila perlu. Versi usang dilempar lewat `staleError(message)` agar menjadi 412 pada rute berETag.
+- `routes.ts` — tabel `RouteTable` per modul dengan `permission: { module: 'item', level: 'view' | 'edit' | 'manage' }`; daftarkan di `server/src/routes.ts` (`getRoutes()`).
+- Test di samping berkas (`*.test.ts`, `rest.test.ts`) memakai MariaDB sungguhan lewat `createTestEnv`, `restClient`, dan `restRpc` (`server/test-support`).
 
 ## 3. Frontend — `web/src/modules/item/`
 - `queries.ts` — `queryOptions` + mutation (invalidate key modul).
@@ -21,7 +18,7 @@ Tambahkan DTO, input, dan entri `RpcContract`, mis. `'item.list': { input: null;
 - `components/` — form & tabel.
 - Route di `web/src/routes/_app/item/*.tsx` dengan `beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view')`.
 - Tambahkan menu di `NAV_GROUPS` (`web/src/app/navigation.ts`) dan link di `MODULE_LINKS` (`web/src/app/module-links.ts`).
-- Data contoh untuk dev di `web/src/lib/rpc/mock-backend.ts`.
+- Data contoh untuk dev ada di seed (`server/scripts/seed-dev.ts`, `bun run db:seed`); klien memanggil rute lewat `api(id, input)` (`web/src/lib/api`).
 
 ## 4. Selesai bila
 `bun run check` hijau, `bun run build` lolos verify-dist, dan alur utama dicoba di `bun run dev` (terang dan gelap) serta di deployment.
@@ -30,7 +27,7 @@ Tambahkan DTO, input, dan entri `RpcContract`, mis. `'item.list': { input: null;
 
 Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `shared/assignments.ts`). `access` global dan hanya dari penugasan "Semua lokasi"; `item` global bersama (levelnya tertinggi dari **semua** penugasan berlaku, `SHARED_MODULES`). Untuk modul berlokasi:
 
-1. **Rute GAS** wajib menandai `scope: 'location'`:
+1. **Rute server** wajib menandai `scope: 'location'`:
 
    ```ts
    'handover.list': {
@@ -57,11 +54,11 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 
 ## Gambar dan Markdown
 
-- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat RPC `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `attachFiles_` saat entitas disimpan.
+- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat rute REST `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `attachFiles_` saat entitas disimpan.
 - **Memiliki berkas**: saat entitas (mis. item) disimpan, panggil `attachFiles_(ids, 'item', itemId)` (`gas/src/modules/files/service.ts`) **di dalam lock yang sama** dengan penyimpanan entitas. Berkas yang sudah dimiliki entitas lain ditolak `CONFLICT`. Jenis pemilik baru ditambahkan ke `FileOwnerType` di `shared/files.ts`.
 - **Tampil**: `useFileUrl(id)` (cache lama, data URL). Server hanya membaca berkas yang tercatat di sheet `files`; klien tidak pernah mengirim Drive id.
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
 - **Drive** hanya diakses lewat `platform_()` (`driveCreateFolder`, `driveCreateFile`, `driveReadFile`); jangan memanggil `DriveApp` langsung.
 
 ## Sumber daya sinkron
-Bila modul perlu disinkronkan dengan QC Desktop, ikuti bagian 5 `docs/api/desktop-sync.md`. Handler sinkron tidak menerima `UserContext`; penulisan memakai fungsi domain yang sama dengan RPC web (mis. `writeItem_`) agar keunikan, audit, dan `sync_rev` konsisten.
+Bila modul perlu disinkronkan dengan QC Desktop, ikuti bagian 5 `docs/api/desktop-sync.md`. Handler sinkron tidak menerima `UserContext`; penulisan memakai fungsi domain yang sama dengan rute REST web (mis. `writeItem_`) agar keunikan, audit, dan `sync_rev` konsisten.

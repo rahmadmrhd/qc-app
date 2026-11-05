@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { type CallResult, callRoute } from '@server-test/call-route';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { RpcResult } from '@shared/rpc';
 import type { RequestCtx } from './context';
 import { DbError } from './db';
 import { appError } from './errors';
 import type { RoutePermission, RoutePermissionSpec, RouteTable } from './router';
-import { callRoute, DB_UNAVAILABLE_MESSAGE, handleRpc, toErrorBody } from './router';
+import { DB_UNAVAILABLE_MESSAGE, toErrorBody } from './router';
 import { signSessionToken } from './session';
 import { expectNull } from './validate';
 
@@ -87,7 +87,7 @@ const routes = {
   },
 } as unknown as RouteTable;
 
-function errorOf(result: RpcResult<unknown>) {
+function errorOf(result: CallResult) {
   if (result.ok) throw new Error(`Diharapkan error, didapat ${JSON.stringify(result.data)}`);
   return result.error;
 }
@@ -189,29 +189,6 @@ describe('dasar', () => {
     const token = await tokenFor('admin@gmail.com');
     const error = errorOf(await callRoute(env, token, 'access.users.save', null, routes));
     expect(error).toMatchObject({ code: 'VALIDATION', fields: { email: 'Wajib diisi' } });
-  });
-
-  test('tiap permintaan RPC menulis satu log terstruktur (tanpa email atau payload)', async () => {
-    const lines: unknown[] = [];
-    const realLog = console.log;
-    const realWarn = console.warn;
-    console.log = (value?: unknown) => void lines.push(value);
-    console.warn = (value?: unknown) => void lines.push(value);
-    try {
-      await call('access.users.save', { rahasia: 'jangan-dicatat' }, 'plain@gmail.com');
-      await call('tidak.ada', null);
-    } finally {
-      console.log = realLog;
-      console.warn = realWarn;
-    }
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatchObject({ evt: 'rpc', method: 'access.users.save', ok: false });
-    expect(lines[1]).toMatchObject({ evt: 'rpc', ok: false, code: 'NOT_FOUND' });
-    const text = JSON.stringify(lines);
-    expect(text).not.toContain('jangan-dicatat');
-    expect(text).not.toContain('@gmail.com');
-    expect(lines[0]).toHaveProperty('requestId');
-    expect(lines[0]).toHaveProperty('ms');
   });
 
   test('DbError unavailable (MariaDB tidak terjangkau) menjadi UNAVAILABLE tanpa membocorkan petunjuk operator', () => {
@@ -388,59 +365,6 @@ describe('anyOf', () => {
     const token = await tokenFor('admin@gmail.com');
     expect(errorOf(await callRoute(env, token, 'brands.list', null, kosong)).code).toBe(
       'FORBIDDEN',
-    );
-  });
-});
-
-describe('handleRpc (HTTP)', () => {
-  async function post(body: unknown, email: string | null = 'viewer@gmail.com') {
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (email) headers.cookie = `qc_session=${await tokenFor(email)}`;
-    return handleRpc(
-      env,
-      new Request('https://qc.test/api/rpc', {
-        method: 'POST',
-        headers,
-        body: typeof body === 'string' ? body : JSON.stringify(body),
-      }),
-      routes,
-    );
-  }
-
-  test('amplop sukses, status 200, tanpa cache', async () => {
-    const response = await post({ method: 'access.users.list', payload: null });
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    expect((await response.json()) as unknown).toEqual({ ok: true, data: [] });
-  });
-
-  test('status HTTP mengikuti kode galat dengan amplop yang sama', async () => {
-    const cases: [unknown, string | null, number, string][] = [
-      [{ method: 'access.users.list' }, null, 401, 'UNAUTHENTICATED'],
-      [{ method: 'access.users.list' }, 'plain@gmail.com', 403, 'FORBIDDEN'],
-      [{ method: 'nope' }, 'viewer@gmail.com', 404, 'NOT_FOUND'],
-      [{ method: 'access.users.save', payload: null }, 'admin@gmail.com', 400, 'VALIDATION'],
-      [{ method: 'access.users.save', payload: {} }, 'admin@gmail.com', 500, 'INTERNAL'],
-    ];
-    for (const [body, email, status, code] of cases) {
-      const response = await post(body, email);
-      expect(response.status).toBe(status);
-      const json = (await response.json()) as { ok: boolean; error: { code: string } };
-      expect(json.ok).toBe(false);
-      expect(json.error.code).toBe(code);
-    }
-  });
-
-  test('badan bukan JSON atau bukan objek menghasilkan VALIDATION 400', async () => {
-    for (const body of ['{rusak', 'null', '[]', '"x"']) {
-      const response = await post(body);
-      const json = (await response.json()) as { error: { code: string } };
-      // '[]' adalah objek JS tetapi tanpa method -> NOT_FOUND; selebihnya VALIDATION
-      expect(['VALIDATION', 'NOT_FOUND']).toContain(json.error.code);
-      expect(response.status).toBeGreaterThanOrEqual(400);
-    }
-    expect(((await (await post('{rusak')).json()) as { error: { code: string } }).error.code).toBe(
-      'VALIDATION',
     );
   });
 });

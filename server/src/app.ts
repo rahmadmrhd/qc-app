@@ -1,4 +1,4 @@
-import { handleRpc, type RouteTable, statusOf, toErrorBody } from '@server/core/router';
+import { httpStatusOf, type RouteTable, toErrorBody } from '@server/core/router';
 import { openApiResponse } from '@server/http/openapi';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { registerRest, restNotFound } from '@server/http/rest';
@@ -15,19 +15,14 @@ import { authApp } from '@server/modules/auth/routes';
 import { handleSyncRequest } from '@server/modules/sync/handler';
 import { syncRoutes } from '@server/modules/sync/routes';
 import { getRoutes } from '@server/routes';
-import { REST_MIGRATED_IDS } from '@shared/api';
-import type { WorkerRpcMethod } from '@shared/rpc';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 /**
- * Aplikasi Hono: `/api/*`, `/auth/*`, `/sync`, lalu berkas statis web dengan fallback SPA. `Env` (koneksi
+ * Aplikasi Hono: `/api/*` (REST `/api/v1`), `/auth/*`, `/sync`, lalu berkas statis web dengan fallback SPA. `Env` (koneksi
  * dan rahasia) datang lewat `c.env`; `createServer` (server.ts) menyusunnya dari konfigurasi.
  */
-export function createApp(
-  routes: RouteTable,
-  migrated: ReadonlySet<WorkerRpcMethod>,
-): Hono<AppBindings> {
+export function createApp(routes: RouteTable): Hono<AppBindings> {
   const app = new Hono<AppBindings>();
 
   app.use('*', securityHeaders);
@@ -35,13 +30,12 @@ export function createApp(
   app.use('/auth/*', csrfGuard);
 
   app.get('/api/ping', (c) => c.json({ ok: true }));
-  app.post('/api/rpc', (c) => handleRpc(c.env, c.req.raw, routes, migrated));
-  // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; id yang belum pindah tetap RPC.
+  // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar.
   const rest = new Hono<AppBindings>();
-  registerRest(rest, routes, migrated);
+  registerRest(rest, routes);
   app.route('/api/v1', rest);
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
-  // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST); `/api/boot` sudah dihapus.
+  // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
   // QC Desktop: token di badan, tanpa cookie (bukan permukaan CSRF); amplop sama dengan era Apps Script.
   // Pembatas percobaan salah dihitung per IP klien (`clientIp`, lihat http/proxy.ts).
@@ -61,10 +55,7 @@ export function createApp(
   app.onError((error, c) => {
     if (isRestPath(c.req.path)) return problemResponse(toProblem(error, newRequestId()));
     const body = toErrorBody(error, newRequestId());
-    return c.json(
-      { ok: false, error: body },
-      statusOf({ ok: false, error: body }) as ContentfulStatusCode,
-    );
+    return c.json({ ok: false, error: body }, httpStatusOf(body.code) as ContentfulStatusCode);
   });
   app.notFound((c) =>
     isRestPath(c.req.path)
@@ -74,4 +65,4 @@ export function createApp(
   return app;
 }
 
-export const app = createApp(getRoutes(), REST_MIGRATED_IDS);
+export const app = createApp(getRoutes());

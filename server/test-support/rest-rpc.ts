@@ -1,33 +1,27 @@
 import { app } from '@server/app';
 import type { Env } from '@server/core/env';
-import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
-import {
-  API_ROUTES,
-  downloadOutput,
-  formatEtag,
-  REST_MIGRATED_IDS,
-  toRequestParts,
-} from '@shared/api';
-import type { RpcResult, WorkerRpcMethod } from '@shared/rpc';
+import { API_ROUTES, downloadOutput, formatEtag, toRequestParts } from '@shared/api';
+import type { WorkerRpcMethod } from '@shared/rpc';
+import { type CallResult, callRoute } from './call-route';
 
 /**
  * Memanggil satu id sebagai user lewat KABEL REST nyata (`app.request` -> `/api/v1/...` dari tabel `API_ROUTES`)
- * dan mengembalikan bentuk `RpcResult` yang dipakai tes lama, sehingga semua asersi tes RPC tetap berlaku di atas
- * kabel baru, termasuk rute biner (badan mentah/multipart dan unduhan: keluaran `bytes`). Id yang belum ada di `REST_MIGRATED_IDS`, atau input yang bukan objek/null (payload rusak yang
- * sengaja diuji pada validator), tetap lewat `callRoute`.
+ * dan mengembalikan `CallResult` (`{ ok, data | error }`), sehingga asersi tes modul tetap berlaku di atas kabel REST,
+ * termasuk rute biner (badan mentah/multipart dan unduhan: keluaran `bytes`). Input yang bukan objek/null atau yang
+ * jalurnya tak dapat dibentuk (payload rusak yang sengaja diuji pada validator) lewat `callRoute` (`runRoute` tanpa HTTP).
  */
 export async function restRpc(
   env: Env,
   email: string,
   id: string,
   input: unknown,
-): Promise<RpcResult<unknown>> {
+): Promise<CallResult> {
   const token = await signSessionToken(env, email, (env.NOW ?? Date.now)());
   const plain =
     input === null || input === undefined || (typeof input === 'object' && !Array.isArray(input));
-  if (!REST_MIGRATED_IDS.has(id as WorkerRpcMethod) || !plain) {
+  if (!plain) {
     return callRoute(env, token, id, input, getRoutes());
   }
   let parts: ReturnType<typeof toRequestParts>;

@@ -1,7 +1,7 @@
 import type { JobDto } from '@shared/rpc';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 
 export const jobKeys = {
   one: (id: string) => ['jobs', id] as const,
@@ -40,7 +40,7 @@ export interface AwaitJobOptions {
 
 /**
  * Menunggu pekerjaan selesai dengan polling `jobs.get` (jeda bertahap). Mengembalikan job `done`; job `failed`
- * dilempar sebagai `RpcError` berisi pesan galat server agar pemanggil dapat menampilkannya dan mengulang.
+ * dilempar sebagai `ApiError` berisi pesan galat server agar pemanggil dapat menampilkannya dan mengulang.
  */
 export async function awaitJob(jobId: string, options: AwaitJobOptions = {}): Promise<JobDto> {
   const sleep =
@@ -50,7 +50,7 @@ export async function awaitJob(jobId: string, options: AwaitJobOptions = {}): Pr
     options.onProgress?.(job);
     if (job.status === 'done') return job;
     if (job.status === 'failed') {
-      throw new RpcError('INTERNAL', job.error ?? 'Pekerjaan gagal di server. Coba ulangi.', '-');
+      throw new ApiError('INTERNAL', job.error ?? 'Pekerjaan gagal di server. Coba ulangi.', '-');
     }
     await sleep(jobPollDelay(attempt));
   }

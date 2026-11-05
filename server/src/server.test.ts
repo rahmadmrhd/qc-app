@@ -195,7 +195,7 @@ describe('createServer: batas ukuran badan (M3)', () => {
     };
     const bun = Bun.serve(bunServeOptions(counting, { host: '127.0.0.1', port: 0 }));
     try {
-      const url = `http://127.0.0.1:${bun.port}/api/rpc`;
+      const url = `http://127.0.0.1:${bun.port}/api/v1/brands`;
       const send = (bytes: number) =>
         fetch(url, {
           method: 'POST',
@@ -233,10 +233,10 @@ describe('createServer: batas ukuran badan (M3)', () => {
     expect(state.pulled).toBeLessThan(25);
   }, 60_000);
 
-  test('/api/rpc: badan chunked terlalu besar ditolak VALIDATION, tidak dimuat penuh', async () => {
+  test('REST JSON: badan chunked terlalu besar ditolak 413 VALIDATION, tidak dimuat penuh', async () => {
     const { stream, state } = chunkedBody(40, 1024 * 1024);
     const response = await server.fetch(
-      new Request('http://localhost/api/rpc', {
+      new Request('http://localhost/api/v1/brands', {
         method: 'POST',
         headers: { 'x-requested-with': 'qc' },
         body: stream,
@@ -244,9 +244,8 @@ describe('createServer: batas ukuran badan (M3)', () => {
       }),
       LOOPBACK,
     );
-    const body = (await response.json()) as { ok: boolean; error?: { code: string } };
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe('VALIDATION');
+    expect(response.status).toBe(413);
+    expect(((await response.json()) as { code: string }).code).toBe('VALIDATION');
     expect(state.pulled).toBeLessThan(25);
   }, 60_000);
 });

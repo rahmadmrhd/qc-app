@@ -5,7 +5,7 @@ import type {
   GasQrFileDto,
   GasUploadFileInput,
   GasUploadQrPdfInput,
-} from './gas-binary';
+} from './gas-legacy';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
@@ -20,15 +20,6 @@ export const ERROR_CODES = [
   'INTERNAL',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
-
-export interface RpcErrorBody {
-  code: ErrorCode;
-  message: string;
-  requestId: string;
-  fields?: Record<string, string>;
-}
-
-export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: RpcErrorBody };
 
 export type UserStatus = 'active' | 'inactive';
 

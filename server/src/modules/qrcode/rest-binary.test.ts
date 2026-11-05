@@ -3,7 +3,6 @@ import { runPendingJobs } from '@server/jobs/runner';
 import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 
 // Kabel REST biner QR: unggah PDF sumber (badan mentah), ekspor (multipart pdf+png), unduh hasil ekspor (aliran).
@@ -73,12 +72,6 @@ const exportRequest = (
     raw: form,
     headers: ifMatch === null ? {} : { 'if-match': `"${ifMatch}"` },
   });
-
-test('rute biner QR terdaftar di REST_MIGRATED_IDS', () => {
-  for (const id of ['qrcodes.uploadPdf', 'qrcodes.export', 'qrcodes.file'] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
-});
 
 describe('POST /qrcode-documents (PDF mentah)', () => {
   const upload = (bytes: Uint8Array, query = '?name=manual.pdf', email = 'qredit@gmail.com') =>

@@ -3,7 +3,6 @@ import { writeAuditRows } from '@server/core/audit';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 // Padanan REST dari kontrak RPC `access.*` (users, roles, locations, audit berkursor).
 
@@ -17,23 +16,6 @@ beforeEach(async () => {
   await seedRole(env, { id: 'r-view', name: 'Lihat Akses', permissions: { access: 'view' } });
   await seedUser(env, { id: 'u-v', email: 'viewer@gmail.com', roleIds: ['r-view'] });
   await seedUser(env, { id: 'u-plain', email: 'plain@gmail.com' });
-});
-
-test('access.* terdaftar di REST_MIGRATED_IDS', () => {
-  for (const id of [
-    'access.users.list',
-    'access.users.save',
-    'access.users.setStatus',
-    'access.roles.list',
-    'access.roles.save',
-    'access.roles.delete',
-    'access.audit.list',
-    'access.locations.list',
-    'access.locations.save',
-    'access.locations.setStatus',
-  ] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
 });
 
 describe('izin rute access (terjemahan tes RPC lama)', () => {

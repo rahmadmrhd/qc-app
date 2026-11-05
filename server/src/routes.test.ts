@@ -54,21 +54,6 @@ describe('kontrak RPC', () => {
       expect(typeof route.handler).toBe('function');
     }
   });
-
-  test('semua method RPC sudah punya rute nyata: tidak ada stub NOT_IMPLEMENTED tersisa', async () => {
-    const headers = rpcHeaders(await cookieFor('admin@gmail.com'));
-    for (const method of Object.keys(ALL_RPC_METHODS)) {
-      const response = await app.request(
-        '/api/rpc',
-        { method: 'POST', headers, body: JSON.stringify({ method, payload: 'bukan-objek' }) },
-        env,
-      );
-      expect({ method, text: (await response.text()).includes('NOT_IMPLEMENTED') }).toEqual({
-        method,
-        text: false,
-      });
-    }
-  });
 });
 
 describe('auth.me (GET /api/v1/me)', () => {
@@ -131,13 +116,13 @@ describe('auth.me (GET /api/v1/me)', () => {
     expect((await app.request('/api/v1/me', { headers: { cookie } }, env)).status).toBe(401);
   });
 
-  test('POST /api/rpc tanpa header CSRF ditolak sebelum menyentuh sesi', async () => {
+  test('tulis REST tanpa header CSRF ditolak sebelum menyentuh sesi', async () => {
     const response = await app.request(
-      '/api/rpc',
+      '/api/v1/brands',
       {
         method: 'POST',
         headers: { cookie: await cookieFor('budi@gmail.com') },
-        body: JSON.stringify({ method: 'auth.me', payload: null }),
+        body: JSON.stringify({ name: 'X' }),
       },
       env,
     );

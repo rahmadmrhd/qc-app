@@ -4,7 +4,6 @@ import { signSessionToken } from '@server/core/session';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 // Padanan REST dari kontrak RPC `brands.*`: kabel baru, logika modul sama.
 
@@ -44,27 +43,6 @@ beforeEach(async () => {
   await seedUser(env, { id: 'u-lihat', email: 'lihat@gmail.com', roleIds: ['r-lihat'] });
   await seedUser(env, { id: 'u-edit', email: 'edit@gmail.com', roleIds: ['r-edit'] });
   await seedUser(env, { id: 'u-polos', email: 'polos@gmail.com' });
-});
-
-test('brands.* terdaftar di REST_MIGRATED_IDS dan /api/rpc menjawab NOT_FOUND untuknya', async () => {
-  for (const id of ['brands.list', 'brands.save', 'brands.setStatus'] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-    const response = await app.request(
-      'https://qc.test/api/rpc',
-      {
-        method: 'POST',
-        headers: {
-          cookie: await cookieFor('admin@gmail.com'),
-          'content-type': 'application/json',
-          'x-requested-with': 'qc',
-        },
-        body: JSON.stringify({ method: id, payload: null }),
-      },
-      env,
-    );
-    expect(response.status).toBe(404);
-    expect(((await json(response)).error as { code: string }).code).toBe('NOT_FOUND');
-  }
 });
 
 describe('GET /brands', () => {

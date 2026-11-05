@@ -2,14 +2,14 @@
  * Log terstruktur ke stdout (dibaca lewat `docker logs`; lihat docs/observability.md).
  *
  * Satu objek per peristiwa lewat `console.log/warn` (bukan string): Bun mencetaknya sebagai satu entri sehingga
- * mudah disaring, mis. `evt = rpc` dan `ok = false`, atau `ms > 500`. Jangan memasukkan rahasia, isi payload, atau
+ * mudah disaring, mis. `evt = rest` dan `ok = false`, atau `ms > 500`. Jangan memasukkan rahasia, isi payload, atau
  * email; `userId` (id internal) cukup untuk melacak. `requestId` sama dengan yang dikirim ke klien pada galat,
  * sehingga laporan pengguna ("requestId a1b2c3d4") langsung bisa dicari.
  */
 
 export interface RequestLog {
-  /** `rpc` (POST /api/rpc), `rest` (/api/v1/*; `method` = id RPC), atau `sync` (POST /sync, QC Desktop). */
-  evt: 'rpc' | 'rest' | 'sync';
+  /** `rest` (/api/v1/*; `method` = id rute), atau `sync` (POST /sync, QC Desktop). */
+  evt: 'rest' | 'sync';
   requestId: string;
   method: string;
   ok: boolean;

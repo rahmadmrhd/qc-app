@@ -4,7 +4,6 @@ import { signSessionToken } from '@server/core/session';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 // `GET /api/v1/me` (id `auth.me`) menggantikan `/api/boot` dan `auth.me` lewat RPC.
 
@@ -27,10 +26,6 @@ beforeEach(async () => {
       { locationId: 'l-m', roleIds: ['r1'] },
     ],
   });
-});
-
-test('auth.me terdaftar di REST_MIGRATED_IDS', () => {
-  expect(REST_MIGRATED_IDS.has('auth.me')).toBe(true);
 });
 
 describe('GET /api/v1/me', () => {

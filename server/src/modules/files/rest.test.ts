@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 import { MAX_IMAGE_BYTES } from '@shared/files';
 
 // Kabel REST untuk berkas gambar: unggah badan mentah (Content-Type = mime), unduh mengalirkan byte.
@@ -51,11 +50,6 @@ const upload = (
     raw: bytes,
     headers: { 'content-type': options.mime ?? 'image/png' },
   });
-
-test('files.upload dan files.get terdaftar di REST_MIGRATED_IDS', () => {
-  expect(REST_MIGRATED_IDS.has('files.upload')).toBe(true);
-  expect(REST_MIGRATED_IDS.has('files.get')).toBe(true);
-});
 
 describe('POST /files (badan mentah)', () => {
   test('201 + Location + FileDto; byte tersimpan di Drive sebagai base64 (hanya di jembatan)', async () => {

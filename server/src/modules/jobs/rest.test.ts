@@ -3,7 +3,6 @@ import { runPendingJobs } from '@server/jobs/runner';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -25,11 +24,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   console.error = realError;
-});
-
-test('jobs.get dan exports.sheets terdaftar di REST_MIGRATED_IDS', () => {
-  expect(REST_MIGRATED_IDS.has('jobs.get')).toBe(true);
-  expect(REST_MIGRATED_IDS.has('exports.sheets')).toBe(true);
 });
 
 test('POST /exports/sheets -> 202 + Location /api/v1/jobs/{jobId}; hanya access:manage', async () => {

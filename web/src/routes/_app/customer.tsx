@@ -2,7 +2,7 @@ import type { CustomerDto } from '@shared/rpc';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CustomersManager } from '@/modules/customer/components/customers-manager';

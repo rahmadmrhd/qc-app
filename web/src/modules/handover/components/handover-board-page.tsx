@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';

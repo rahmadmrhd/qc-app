@@ -5,7 +5,7 @@ import { getSyncRoutes_ } from '@gas/modules/sync/routes';
 import { getRoutes_ } from '@gas/routes';
 import { location } from '@gas-test/access-fixtures';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import type { RpcResult } from '@shared/rpc';
+import type { RpcResult } from '@shared/gas-legacy';
 import { setPlatform_ } from './platform';
 import { RPC_ACCESS, SYNC_READ_METHODS } from './read-only';
 import { handleRpc_, handleRpcBatch_ } from './router';

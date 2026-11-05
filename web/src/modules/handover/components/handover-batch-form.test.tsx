@@ -2,7 +2,7 @@ import type { HandoverOptionsDto, MeDto } from '@shared/rpc';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 import type { HandoverBatchFormOutput } from '../schemas';
 
 const meMock = vi.hoisted(() => ({
@@ -109,7 +109,7 @@ test('Simpan semua mengirim saveBatch dengan semua task', async () => {
 
 test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua draf', async () => {
   const onSubmit = vi.fn().mockRejectedValue(
-    new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+    new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
       tasks: 'Task 2: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
     }),
   );
@@ -128,7 +128,7 @@ test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua d
 });
 
 test('galat umum dari server ditampilkan di atas form dan draf tetap', async () => {
-  const onSubmit = vi.fn().mockRejectedValue(new RpcError('FORBIDDEN', 'Tidak punya izin', 'r2'));
+  const onSubmit = vi.fn().mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak punya izin', 'r2'));
   renderForm(onSubmit);
   fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
   await fillNote(0, 'satu');
@@ -172,7 +172,7 @@ test('hasil pecah tempelan WhatsApp ditambahkan sebagai kartu', async () => {
 
 test('galat server menempel pada kartu yang benar setelah kartu lain dihapus (pemetaan per id)', async () => {
   const onSubmit = vi.fn().mockRejectedValue(
-    new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+    new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
       tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
     }),
   );
@@ -257,7 +257,7 @@ test('gagal: tidak ada yang tersimpan, draf utuh (30 kartu), galat menempel pada
   const onSubmit = vi
     .fn()
     .mockRejectedValueOnce(
-      new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+      new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
         tasks: 'Task 8: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
       }),
     )
@@ -280,7 +280,7 @@ test('gagal: tidak ada yang tersimpan, draf utuh (30 kartu), galat menempel pada
 }, 90_000);
 
 test('galat server: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan tersimpan', async () => {
-  const onSubmit = vi.fn().mockRejectedValue(new RpcError('FORBIDDEN', 'Tidak punya izin', 'r3'));
+  const onSubmit = vi.fn().mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak punya izin', 'r3'));
   await pasteTasks(12, onSubmit);
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (12)' }));
   expect(await screen.findByText('Tidak punya izin')).toBeInTheDocument();

@@ -5,7 +5,7 @@ import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
-import type { GasExportQrDesignInput, GasQrFileDto, GasUploadQrPdfInput } from '@shared/gas-binary';
+import type { GasExportQrDesignInput, GasQrFileDto, GasUploadQrPdfInput } from '@shared/gas-legacy';
 import type { QrContent } from '@shared/qrcode';
 import {
   clampQrLayout,

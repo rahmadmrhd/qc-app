@@ -5,8 +5,8 @@ import { useId, useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { Button } from '@/components/ui/button';
-import { describeError } from '@/lib/rpc/describe-error';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
+import { describeError } from '@/lib/api/describe-error';
 import { LocationField } from '@/modules/location/location-field';
 import type { HandoverBatchFormOutput } from '../schemas';
 import { handoverBatchSchema } from '../schemas';
@@ -36,7 +36,7 @@ export interface HandoverBatchFormProps {
 
 /** Galat server "Task N: pesan" → indeks kartu (0-based) dan pesan. */
 function parseTaskError(error: unknown): { index: number; message: string } | null {
-  if (!(error instanceof RpcError)) return null;
+  if (!(error instanceof ApiError)) return null;
   const match = /^Task (\d+):\s*(.*)$/.exec(error.fields?.tasks ?? '');
   if (!match) return null;
   return { index: Number(match[1]) - 1, message: match[2] || error.message };

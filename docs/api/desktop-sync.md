@@ -28,7 +28,8 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 { "v": 1, "method": "sync.items.push", "token": "<SYNC_API_TOKEN>", "payload": { } }
 ```
 
-### Amplop balasan (sama dengan RPC web)
+### Amplop balasan
+Catatan: kabel aplikasi web kini REST (`/api/v1`, problem+json); amplop di bawah hanya tinggal di `/sync` sampai ditulis ulang di T25.
 ```json
 { "ok": true, "data": { } }
 ```

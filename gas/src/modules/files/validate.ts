@@ -7,7 +7,7 @@ import {
   MAX_IMAGE_DIMENSION,
   matchesImageSignature,
 } from '@shared/files';
-import type { GasUploadFileInput } from '@shared/gas-binary';
+import type { GasUploadFileInput } from '@shared/gas-legacy';
 import type { GetFileInput } from '@shared/rpc';
 
 function isDimension_(value: unknown): value is number {

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 
 // Kabel REST untuk rute QR bukan-biner (list, get, save, delete, getDefaults, savePreset, deletePreset,
@@ -47,24 +46,6 @@ const presetBody = (extra: Record<string, unknown> = {}) => ({
   style: DEFAULT_QR_STYLE,
   defaultLogoId: '',
   ...extra,
-});
-
-test('rute QR dan jobs/exports terdaftar di REST_MIGRATED_IDS', () => {
-  for (const id of [
-    'qrcodes.list',
-    'qrcodes.get',
-    'qrcodes.save',
-    'qrcodes.delete',
-    'qrcodes.getDefaults',
-    'qrcodes.savePreset',
-    'qrcodes.deletePreset',
-    'qrcodes.saveLogoLibrary',
-    'qrcodes.cloneFromDrive',
-    'jobs.get',
-    'exports.sheets',
-  ] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
 });
 
 describe('desain QR', () => {

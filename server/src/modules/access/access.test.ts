@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { listAudit, writeAudit, writeAuditRows } from '@server/core/audit';
-import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { callRoute } from '@server-test/call-route';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { AuditEntryDto } from '@shared/rpc';

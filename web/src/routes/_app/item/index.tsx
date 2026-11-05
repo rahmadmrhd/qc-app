@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';

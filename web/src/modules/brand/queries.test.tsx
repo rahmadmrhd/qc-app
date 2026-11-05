@@ -30,7 +30,7 @@ function lastRequest() {
   return { url: String(url), init: init as RequestInit };
 }
 
-test('daftar merk: GET /api/v1/brands (REST, bukan /api/rpc)', async () => {
+test('daftar merk: GET /api/v1/brands (REST)', async () => {
   fetchMock.mockResolvedValueOnce(new Response('[]'));
   const options = brandsQueryOptions();
   const queryFn = options.queryFn as () => Promise<unknown>;

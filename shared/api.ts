@@ -237,61 +237,6 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
   },
 };
 
-/**
- * Id yang sudah dilayani REST. Sumber tunggal untuk server (`/api/rpc` menjawab `NOT_FOUND` untuk id ini) dan
- * FE (`rpc()` mengarahkan id ini ke `api()`). Tiap tugas modul menambah id-nya bersama pemindahan FE modul itu;
- * setelah T22 seluruh id sudah di sini (himpunan ini dan `/api/rpc` dihapus di T23).
- */
-export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpcMethod>([
-  'brands.list',
-  'brands.save',
-  'brands.setStatus',
-  'access.users.list',
-  'access.users.save',
-  'access.users.setStatus',
-  'access.roles.list',
-  'access.roles.save',
-  'access.roles.delete',
-  'access.audit.list',
-  'access.locations.list',
-  'access.locations.save',
-  'access.locations.setStatus',
-  'customers.list',
-  'customers.rename',
-  'customers.setStatus',
-  'items.list',
-  'items.get',
-  'items.save',
-  'items.setStatus',
-  'handovers.options',
-  'handovers.board',
-  'handovers.get',
-  'handovers.save',
-  'handovers.saveBatch',
-  'handovers.cancel',
-  'handovers.reopen',
-  'handovers.setCheck',
-  'handovers.setDone',
-  'handovers.comment',
-  'qrcodes.list',
-  'qrcodes.get',
-  'qrcodes.save',
-  'qrcodes.delete',
-  'qrcodes.getDefaults',
-  'qrcodes.savePreset',
-  'qrcodes.deletePreset',
-  'qrcodes.saveLogoLibrary',
-  'qrcodes.cloneFromDrive',
-  'jobs.get',
-  'exports.sheets',
-  'files.upload',
-  'files.get',
-  'qrcodes.uploadPdf',
-  'qrcodes.export',
-  'qrcodes.file',
-  'auth.me',
-]);
-
 export interface RequestParts {
   verb: ApiVerb;
   /** Jalur relatif terhadap `/api/v1`, parameter sudah terisi (nilai di-encode). */

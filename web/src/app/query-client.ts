@@ -1,9 +1,9 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 
 export function shouldRetry(failureCount: number, error: unknown): boolean {
-  return error instanceof RpcError && error.code === 'INTERNAL' && failureCount < 1;
+  return error instanceof ApiError && error.code === 'INTERNAL' && failureCount < 1;
 }
 
 export interface GlobalErrorDeps {
@@ -12,7 +12,7 @@ export interface GlobalErrorDeps {
 }
 
 export function handleGlobalError(error: unknown, deps: GlobalErrorDeps): void {
-  if (!(error instanceof RpcError)) return;
+  if (!(error instanceof ApiError)) return;
   if (error.code === 'UNAUTHENTICATED') deps.onUnauthenticated();
   else if (error.code === 'FORBIDDEN') deps.notify('Anda tidak memiliki akses untuk aksi ini.');
 }

@@ -2,7 +2,7 @@ import { appError_ } from '@gas/core/errors';
 import { platform_, withRequestCache_ } from '@gas/core/platform';
 import { assertSyncWritable_ } from '@gas/core/read-only';
 import { toErrorBody_ } from '@gas/core/router';
-import type { RpcResult } from '@shared/rpc';
+import type { RpcResult } from '@shared/gas-legacy';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import { authenticateSync_ } from './auth';
 

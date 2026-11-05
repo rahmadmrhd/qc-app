@@ -44,15 +44,14 @@ function honoPath(path: string): string {
 }
 
 /**
- * Daftar operasi yang didaftarkan: tiap id yang sudah `migrated` (termasuk rute biner) dengan jalur ubah
+ * Daftar operasi yang didaftarkan: tiap id tabel `API_ROUTES` (termasuk rute biner) dengan jalur ubah
  * dan, bila ada, jalur `create`. Rute statis didahulukan atas berparameter (router Hono mencocokkan menurut urutan
  * pendaftaran): `/handovers/options` dan `/handovers/batch` tidak boleh tertelan `/handovers/{id}`.
  */
-export function listOperations(migrated: ReadonlySet<WorkerRpcMethod>): Operation[] {
+export function listOperations(): Operation[] {
   const operations: Operation[] = [];
   for (const id of Object.keys(API_ROUTES) as WorkerRpcMethod[]) {
     const def = API_ROUTES[id];
-    if (!migrated.has(id)) continue;
     operations.push({ id, def, created: false, ...routeShape(def, false) });
     if (def.create) operations.push({ id, def, created: true, ...routeShape(def, true) });
   }
@@ -262,15 +261,11 @@ export function restNotFound(): Response {
 
 /**
  * Mendaftarkan rute REST pada `app` (disambung ke `/api/v1`): satu handler per operasi tabel `API_ROUTES`
- * untuk id yang sudah `migrated`, lalu 404 problem+json untuk sisanya. Handler memakai `runRoute` yang sama
+ * untuk SEMUA id, lalu 404 problem+json untuk sisanya. Handler memakai `runRoute` yang sama
  * dengan RPC (sesi, izin, validasi, lokasi), jadi logika modul tidak berubah.
  */
-export function registerRest(
-  app: Hono<AppBindings>,
-  routes: RouteTable,
-  migrated: ReadonlySet<WorkerRpcMethod>,
-): void {
-  for (const operation of listOperations(migrated)) {
+export function registerRest(app: Hono<AppBindings>, routes: RouteTable): void {
+  for (const operation of listOperations()) {
     app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes));
   }
   app.all('*', () => restNotFound());

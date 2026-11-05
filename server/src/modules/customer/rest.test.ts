@@ -3,7 +3,6 @@ import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedCustomer } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -14,12 +13,6 @@ beforeEach(async () => {
   rest = restClient(env);
   await seedRole(env, { id: 'r-lihat', name: 'Lihat', permissions: { item: 'view' } });
   await seedUser(env, { id: 'u-lihat', email: 'lihat@gmail.com', roleIds: ['r-lihat'] });
-});
-
-test('customers.* terdaftar di REST_MIGRATED_IDS', () => {
-  for (const id of ['customers.list', 'customers.rename', 'customers.setStatus'] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
 });
 
 describe('customers', () => {

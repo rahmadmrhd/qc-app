@@ -1,8 +1,8 @@
 import type { Env } from '@server/core/env';
 import type { HandoverRecord, StoredComment } from '@server/modules/handover/repo';
 import { insertHandoverStmt } from '@server/modules/handover/repo';
-import type { RpcResult } from '@shared/rpc';
 import { seedLocation, seedRole, seedUser } from './access-fixtures';
+import type { CallResult } from './call-route';
 import { restRpc } from './rest-rpc';
 
 export const ENV = {
@@ -48,15 +48,15 @@ export async function seedHandoverEnv(env: Pick<Env, 'DB'>): Promise<void> {
 }
 
 /**
- * Memanggil satu id sebagai user lewat kabel REST nyata (`restRpc`) dan mengembalikan bentuk `RpcResult`, sehingga
+ * Memanggil satu id sebagai user lewat kabel REST nyata (`restRpc`) dan mengembalikan bentuk `CallResult`, sehingga
  * semua asersi tes serah terima tetap berlaku di atas `/api/v1`.
  */
-export async function rpc(
+export async function callRest(
   env: Env,
   email: string,
   method: string,
   payload: unknown,
-): Promise<RpcResult<unknown>> {
+): Promise<CallResult> {
   return restRpc(env, email, method, payload);
 }
 

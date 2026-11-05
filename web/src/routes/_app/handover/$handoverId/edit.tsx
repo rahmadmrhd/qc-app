@@ -4,7 +4,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { canAt, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';

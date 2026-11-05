@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { AppShell } from '@/app/shell/app-shell';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { clearSession, isAuthenticated } from '@/modules/auth/session';
 
@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app')({
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
     } catch (error) {
-      if (error instanceof RpcError && error.code === 'UNAUTHENTICATED') {
+      if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') {
         clearSession();
         context.queryClient.clear();
         throw redirect({ to: '/login' });

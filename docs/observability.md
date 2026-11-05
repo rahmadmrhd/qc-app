@@ -4,13 +4,13 @@ Server Bun menulis log terstruktur ke **stdout/stderr**: satu objek per peristiw
 
 ## Baris aplikasi
 
-Sumber: `server/src/core/log.ts`, satu objek per RPC dan per sinkron:
+Sumber: `server/src/core/log.ts`, satu objek per permintaan REST dan per sinkron:
 
 | Field | Arti |
 |---|---|
-| `evt` | `rpc` (`POST /api/rpc`, aplikasi web), `rest` (`/api/v1/*`, aplikasi web; `method` = id RPC pada tabel `shared/api.ts`) atau `sync` (`POST /sync`, QC Desktop) |
+| `evt` | `rest` (`/api/v1/*`, aplikasi web; `method` = id rute pada tabel `shared/api.ts`) atau `sync` (`POST /sync`, QC Desktop) |
 | `requestId` | 8 karakter; sama dengan yang tampil di pesan galat pengguna ("requestId a1b2c3d4") |
-| `method` | nama RPC, mis. `handovers.setCheck`; di `sync` hanya diisi setelah token sah (galat autentikasi = `?`) |
+| `method` | id rute, mis. `handovers.setCheck`; di `sync` hanya diisi setelah token sah (galat autentikasi = `?`) |
 | `ok` | `true` atau `false` |
 | `code` | kode galat bila `ok = false`: `VALIDATION`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `UNAVAILABLE`, `INTERNAL` |
 | `ms` | waktu dinding permintaan (mencakup menunggu MariaDB/jembatan) |
@@ -31,10 +31,10 @@ Bun mencetak objek log sebagai blok beberapa baris; cari dengan `grep -B3 -A8 <t
 
 | Pertanyaan | Cari |
 |---|---|
-| Laporan pengguna dengan `requestId` | `requestId: "a1b2c3d4"` (baris RPC dan, bila `INTERNAL`, baris stack) |
+| Laporan pengguna dengan `requestId` | `requestId: "a1b2c3d4"` (baris `rest` dan, bila `INTERNAL`, baris stack) |
 | Semua galat server | `code: "INTERNAL"` atau baris level `error` |
 | Siapa yang ditolak izin | `code: "FORBIDDEN"` (lihat `userId`, `method`) |
-| RPC lambat | `ms` di atas 500 untuk `method` yang sama |
+| Rute lambat | `ms` di atas 500 untuk `method` yang sama |
 | Basis data tak terjangkau | `code: "UNAVAILABLE"` dan pesan "Basis data sedang tidak dapat dihubungi" |
 | Aktivitas QC Desktop | `evt: "sync"` |
 

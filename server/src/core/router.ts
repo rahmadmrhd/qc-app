@@ -1,21 +1,17 @@
-import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
 import type { UserContext } from '@server/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
 import type {
   ErrorCode,
-  RpcErrorBody,
   WorkerRpcInput as RpcInput,
   WorkerRpcMethod as RpcMethod,
   WorkerRpcOutput as RpcOutput,
-  RpcResult,
 } from '@shared/rpc';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { DbError } from './db';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
-import { logRequest } from './log';
 import { SESSION_COOKIE, verifySessionToken } from './session';
 
 export type GlobalPermission = {
@@ -51,15 +47,17 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   UNAVAILABLE: 503,
 };
 
-export function statusOf(result: RpcResult<unknown>): number {
-  return result.ok ? 200 : STATUS_BY_CODE[result.error.code];
+/** Status HTTP bawaan per kode galat (rute non-REST seperti OAuth/sinkron). */
+export function httpStatusOf(code: ErrorCode): number {
+  return STATUS_BY_CODE[code];
 }
 
-export function rpcResponse(result: RpcResult<unknown>): Response {
-  return new Response(JSON.stringify(result), {
-    status: statusOf(result),
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
+/** Badan galat bersama: dipetakan ke problem+json oleh `http/problem.ts` dan ke amplop `/sync` oleh modul sinkron. */
+export interface ErrorBody {
+  code: ErrorCode;
+  message: string;
+  requestId: string;
+  fields?: Record<string, string>;
 }
 
 function newRequestId(): string {
@@ -77,59 +75,6 @@ export function readCookie(request: Request, name: string): string | undefined {
   return undefined;
 }
 
-/**
- * `POST /api/rpc` dengan badan `{ method, payload }`; balasan amplop `{ ok, data | error }` yang sama
- * dengan RPC Apps Script. Status HTTP mengikuti kode galat (200 bila sukses). Id di `migrated` sudah dilayani
- * REST (`/api/v1`) dan dijawab `NOT_FOUND` di sini (penghapusan bertahap, lihat `REST_MIGRATED_IDS`).
- */
-export async function handleRpc(
-  env: Env,
-  request: Request,
-  routes: RouteTable,
-  migrated: ReadonlySet<string> = new Set(),
-): Promise<Response> {
-  let body: unknown;
-  const text = await readTextLimited(request, MAX_REQUEST_BODY_BYTES);
-  if (text === undefined) {
-    return rpcResponse({
-      ok: false,
-      error: toErrorBody(appError('VALIDATION', 'Badan permintaan terlalu besar'), newRequestId()),
-    });
-  }
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = null;
-  }
-  const record =
-    typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : null;
-  if (!record) {
-    const requestId = newRequestId();
-    return rpcResponse({
-      ok: false,
-      error: toErrorBody(
-        appError('VALIDATION', 'Badan permintaan bukan JSON yang valid'),
-        requestId,
-      ),
-    });
-  }
-  if (typeof record.method === 'string' && migrated.has(record.method)) {
-    return rpcResponse({
-      ok: false,
-      error: toErrorBody(appError('NOT_FOUND', 'Method tidak dikenal'), newRequestId()),
-    });
-  }
-  return rpcResponse(
-    await callRoute(
-      env,
-      readCookie(request, SESSION_COOKIE),
-      record.method,
-      record.payload,
-      routes,
-    ),
-  );
-}
-
 /** Jejak satu permintaan yang diisi `runRoute` untuk log pemanggil (`userId` terisi setelah sesi sah). */
 export interface RouteMeta {
   requestId: string;
@@ -138,8 +83,8 @@ export interface RouteMeta {
 
 /**
  * Menjalankan satu id rute: rute, sesi, konteks, izin, validasi, lokasi, handler. Mengembalikan nilai mentah
- * atau MELEMPAR galat (`AppError` atau lainnya); pembungkus yang memilih bentuk kabel: `callRoute` (amplop RPC)
- * dan kernel REST (problem+json) memakai SATU jalur kode ini. `meta` dipakai pemanggil untuk log.
+ * atau MELEMPAR galat (`AppError` atau lainnya); pembungkus yang memilih bentuk kabel: kernel REST (problem+json)
+ * dan tes memakai SATU jalur kode ini. `meta` dipakai pemanggil untuk log.
  */
 export async function runRoute(
   env: Env,
@@ -179,42 +124,6 @@ export async function runRoute(
   const locationIds =
     locationAlternatives.length > 0 ? authorizedLocationIds(input, user, locationAlternatives) : [];
   return route.handler(input, { ...base, locationIds });
-}
-
-/** Menjalankan satu RPC (amplop `{ ok, data | error }`) di atas `runRoute`. */
-export async function callRoute(
-  env: Env,
-  token: unknown,
-  method: unknown,
-  payload: unknown,
-  routes: RouteTable,
-): Promise<RpcResult<unknown>> {
-  const meta: RouteMeta = { requestId: newRequestId() };
-  const startedAt = Date.now();
-  try {
-    const data = await runRoute(env, token, method, payload, routes, meta);
-    logRequest({
-      evt: 'rpc',
-      requestId: meta.requestId,
-      method: method as string,
-      ok: true,
-      ms: Date.now() - startedAt,
-      userId: meta.userId,
-    });
-    return { ok: true, data };
-  } catch (error) {
-    const body = toErrorBody(error, meta.requestId);
-    logRequest({
-      evt: 'rpc',
-      requestId: meta.requestId,
-      method: typeof method === 'string' ? method.slice(0, 64) : '?',
-      ok: false,
-      code: body.code,
-      ms: Date.now() - startedAt,
-      userId: meta.userId,
-    });
-    return { ok: false, error: body };
-  }
 }
 
 function alternativesOf(spec: RoutePermissionSpec | undefined): readonly RoutePermission[] {
@@ -265,7 +174,7 @@ function authorizedLocationIds(
   return ids;
 }
 
-export function toErrorBody(error: unknown, requestId: string): RpcErrorBody {
+export function toErrorBody(error: unknown, requestId: string): ErrorBody {
   if (isAppError(error)) {
     return {
       code: error.code,

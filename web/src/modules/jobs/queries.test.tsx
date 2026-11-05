@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 
 const rpcMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: rpcMock }));
@@ -42,11 +42,11 @@ test('awaitJob mengulang jobs.get dengan jeda bertahap sampai done dan melaporka
   expect(progress).toHaveBeenCalledTimes(4);
 });
 
-test('job gagal dilempar sebagai RpcError dengan pesan server (dapat diulang oleh pemanggil)', async () => {
+test('job gagal dilempar sebagai ApiError dengan pesan server (dapat diulang oleh pemanggil)', async () => {
   rpcMock.mockResolvedValue(job('failed', { error: 'Jembatan Drive tidak menjawab' }));
   const error = await awaitJob('j1', { sleep: async () => undefined }).catch((e: unknown) => e);
-  expect(error).toBeInstanceOf(RpcError);
-  expect((error as RpcError).message).toBe('Jembatan Drive tidak menjawab');
+  expect(error).toBeInstanceOf(ApiError);
+  expect((error as ApiError).message).toBe('Jembatan Drive tidak menjawab');
 });
 
 test('useJob berhenti polling setelah job selesai', async () => {

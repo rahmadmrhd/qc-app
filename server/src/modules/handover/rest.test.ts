@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { ENV, seedHandoverEnv } from '@server-test/handover-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 import { HANDOVER_BATCH_MAX } from '@shared/handover';
 
 setDefaultTimeout(60_000);
@@ -29,21 +28,7 @@ async function createOne(note = '- [ ] A = 1', customerName = 'PT Maju') {
   return { response, task: await jsonOf(response) };
 }
 
-test('handovers.* terdaftar di REST_MIGRATED_IDS dan batas batch M2 = 30', () => {
-  for (const id of [
-    'handovers.options',
-    'handovers.board',
-    'handovers.get',
-    'handovers.save',
-    'handovers.saveBatch',
-    'handovers.cancel',
-    'handovers.reopen',
-    'handovers.setCheck',
-    'handovers.setDone',
-    'handovers.comment',
-  ] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
+test('batas batch M2 = 30', () => {
   expect(HANDOVER_BATCH_MAX).toBe(30);
 });
 

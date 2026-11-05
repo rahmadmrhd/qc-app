@@ -20,7 +20,7 @@ afterEach(() => {
 describe('logRequest', () => {
   test('sukses = console.log berupa OBJEK (bukan string) agar field terindeks', () => {
     logRequest({
-      evt: 'rpc',
+      evt: 'rest',
       requestId: 'ab12cd34',
       method: 'items.list',
       ok: true,
@@ -31,7 +31,7 @@ describe('logRequest', () => {
       {
         level: 'log',
         value: {
-          evt: 'rpc',
+          evt: 'rest',
           requestId: 'ab12cd34',
           method: 'items.list',
           ok: true,
@@ -51,7 +51,7 @@ describe('logRequest', () => {
       'CONFLICT',
       'UNAVAILABLE',
     ]) {
-      logRequest({ evt: 'rpc', requestId: 'r', method: 'm', ok: false, code, ms: 1 });
+      logRequest({ evt: 'rest', requestId: 'r', method: 'm', ok: false, code, ms: 1 });
     }
     logRequest({ evt: 'sync', requestId: 'r', method: 'm', ok: false, code: 'INTERNAL', ms: 1 });
     expect(calls.map((c) => c.level)).toEqual([
@@ -67,7 +67,7 @@ describe('logRequest', () => {
 
   test('tidak memuat email, token, atau isi payload', () => {
     logRequest({
-      evt: 'rpc',
+      evt: 'rest',
       requestId: 'r',
       method: 'handovers.save',
       ok: true,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { isGuardFailure } from '@server/core/cas';
 import type { DbStatement } from '@server/core/db';
-import { ENV, rpc, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
+import { callRest, ENV, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { seedCustomer } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { locateAnchor, noteToPlainText } from '@shared/handover-comments';
@@ -16,7 +16,7 @@ let env: TestEnv;
 // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
 type Result = { ok: boolean; data?: any; error?: any };
 const call = async (email: string, method: string, payload: unknown) =>
-  (await rpc(env, email, method, payload)) as Result;
+  (await callRest(env, email, method, payload)) as Result;
 const ref = { id: 't1', locationId: ENV.locA };
 const save = (payload: Record<string, unknown>, email = 'wh@gmail.com') =>
   call(email, 'handovers.save', { locationId: ENV.locA, customerName: '', note: '', ...payload });

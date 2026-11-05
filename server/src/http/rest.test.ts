@@ -12,7 +12,6 @@ import { API_ROUTES } from '@shared/api';
 import type { WorkerRpcMethod } from '@shared/rpc';
 
 const IDS = Object.keys(API_ROUTES) as WorkerRpcMethod[];
-const NON_BINARY = new Set(IDS.filter((id) => API_ROUTES[id].binary === undefined));
 
 let env: TestEnv;
 let calls: Array<{ id: string; input: unknown }>;
@@ -36,7 +35,7 @@ function stubRoutes(overrides: Record<string, unknown> = {}): RouteTable {
 }
 
 function appWith(overrides: Record<string, unknown> = {}) {
-  return createApp(stubRoutes(overrides), NON_BINARY);
+  return createApp(stubRoutes(overrides));
 }
 
 async function sessionCookie(email = 'admin@gmail.com'): Promise<string> {
@@ -287,6 +286,40 @@ describe('pemetaan galat (RFC 9457)', () => {
     expect(logged.join('\n')).toContain('rahasia internal');
   });
 
+  test('tiap permintaan REST menulis satu log terstruktur (tanpa email atau payload)', async () => {
+    const lines: unknown[] = [];
+    console.log = (value?: unknown) => void lines.push(value);
+    console.warn = (value?: unknown) => void lines.push(value);
+    await seedUser(env, { id: 'u-plain', email: 'plain@gmail.com' });
+    const app = appWith({
+      'brands.save': {
+        validate: (raw: unknown) => raw,
+        handler: () => {
+          throw appError('FORBIDDEN', 'Tidak boleh');
+        },
+      },
+    });
+    await call(app, '/brands', {
+      method: 'POST',
+      body: { rahasia: 'jangan-dicatat' },
+      email: 'plain@gmail.com',
+    });
+    await call(app, '/brands', { email: null });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      evt: 'rest',
+      method: 'brands.save',
+      ok: false,
+      code: 'FORBIDDEN',
+    });
+    expect(lines[1]).toMatchObject({ evt: 'rest', ok: false, code: 'UNAUTHENTICATED' });
+    const text = JSON.stringify(lines);
+    expect(text).not.toContain('jangan-dicatat');
+    expect(text).not.toContain('@gmail.com');
+    expect(lines[0]).toHaveProperty('requestId');
+    expect(lines[0]).toHaveProperty('ms');
+  });
+
   test('basis data tak terjangkau -> 503 UNAVAILABLE', async () => {
     const app = appWith({
       'brands.list': {
@@ -407,7 +440,7 @@ describe('perakitan permintaan dan respons', () => {
   });
 
   test('id biner (badan mentah, multipart, unduhan) didaftarkan oleh kernel seperti id lain', () => {
-    const registered = listOperations(new Set(IDS)).map((operation) => operation.id);
+    const registered = listOperations().map((operation) => operation.id);
     for (const id of [
       'files.upload',
       'files.get',
@@ -419,40 +452,24 @@ describe('perakitan permintaan dan respons', () => {
     }
   });
 
-  test('id yang belum migrated tidak didaftarkan', async () => {
-    const app = createApp(stubRoutes(), new Set<WorkerRpcMethod>(['brands.list']));
-    expect((await call(app, '/brands')).status).toBe(200);
-    expect((await call(app, '/customers')).status).toBe(404);
+  test('SEMUA id tabel terdaftar tanpa himpunan migrasi (jalur ubah dan create)', () => {
+    const registered = listOperations();
+    const creates = IDS.filter((id) => API_ROUTES[id].create).length;
+    expect(registered).toHaveLength(IDS.length + creates);
+    for (const id of IDS) expect(registered.map((operation) => operation.id)).toContain(id);
   });
-});
 
-describe('/api/rpc untuk id yang sudah REST', () => {
-  test('menjawab NOT_FOUND untuk id migrated, id lain tetap jalan', async () => {
-    const app = createApp(stubRoutes(), new Set<WorkerRpcMethod>(['brands.list']));
-    const rpc = async (method: string) => {
-      const response = await app.request(
-        'https://qc.test/api/rpc',
-        {
-          method: 'POST',
-          headers: {
-            cookie: await sessionCookie(),
-            'content-type': 'application/json',
-            'x-requested-with': 'qc',
-          },
-          body: JSON.stringify({ method, payload: null }),
-        },
-        env,
-      );
-      return {
-        status: response.status,
-        body: (await response.json()) as { ok: boolean; error?: { code: string } },
-      };
-    };
-    expect(await rpc('brands.list')).toMatchObject({
-      status: 404,
-      body: { ok: false, error: { code: 'NOT_FOUND' } },
-    });
-    expect((await rpc('customers.list')).body.ok).toBe(true);
+  test('/api/rpc sudah dihapus: 404 (tidak ada rute RPC)', async () => {
+    const response = await appWith().request(
+      'https://qc.test/api/rpc',
+      {
+        method: 'POST',
+        headers: { cookie: await sessionCookie(), 'x-requested-with': 'qc' },
+        body: JSON.stringify({ method: 'brands.list', payload: null }),
+      },
+      env,
+    );
+    expect(response.status).toBe(404);
   });
 });
 

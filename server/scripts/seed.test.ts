@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { loadUserContext } from '@server/modules/access/context';
 import { derivedColumns, parseChecks } from '@server/modules/handover/repo';
 import { getRoutes } from '@server/routes';
+import { callRoute } from '@server-test/call-route';
 import { createTestEnv } from '@server-test/test-env';
 import { applySeed, buildSeedStatements } from './seed-data';
 import { assertSeedTarget, parseSeedArgs, resolveEmail } from './seed-dev';

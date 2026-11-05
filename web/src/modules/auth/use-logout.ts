@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
-import { CSRF_HEADERS } from '@/lib/rpc/http-transport';
+import { CSRF_HEADERS } from '@/lib/api/client';
 import { clearSession } from './session';
 
 /** Menghapus cookie sesi di server (gagal jaringan diabaikan: sesi lokal tetap dibuang). */

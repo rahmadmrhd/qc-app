@@ -3,7 +3,6 @@ import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { REST_MIGRATED_IDS } from '@shared/api';
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -30,12 +29,6 @@ beforeEach(async () => {
   await seedUser(env, { id: 'u-e', email: 'ubah@gmail.com', roleIds: ['r-edit'] });
   await seedUser(env, { id: 'u-m', email: 'kelola@gmail.com', roleIds: ['r-manage'] });
   await seedUser(env, { id: 'u-n', email: 'tanpa@gmail.com' });
-});
-
-test('items.* terdaftar di REST_MIGRATED_IDS', () => {
-  for (const id of ['items.list', 'items.get', 'items.save', 'items.setStatus'] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
 });
 
 describe('izin rute (terjemahan tes RPC lama)', () => {

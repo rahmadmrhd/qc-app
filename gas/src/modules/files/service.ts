@@ -4,7 +4,7 @@ import type { UserContext } from '@gas/modules/access/context';
 import { nowIso_ } from '@gas/modules/access/service';
 import type { FileOwnerType } from '@shared/files';
 import { base64ByteLength, MAX_UNATTACHED_UPLOADS } from '@shared/files';
-import type { GasFileContentDto, GasUploadFileInput } from '@shared/gas-binary';
+import type { GasFileContentDto, GasUploadFileInput } from '@shared/gas-legacy';
 import type { FileDto, GetFileInput } from '@shared/rpc';
 import type { FileRecord, NewFileRecord } from './repo';
 import { insertFile_, listFiles_, updateFile_ } from './repo';

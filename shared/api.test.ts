@@ -12,7 +12,6 @@ import {
   fromRequestParts,
   parseIfMatch,
   parseQueryValue,
-  REST_MIGRATED_IDS,
   routeShape,
   toRequestParts,
 } from './api';
@@ -190,10 +189,9 @@ describe('tabel rute', () => {
     }
   });
 
-  test('semua id tercakup; REST_MIGRATED_IDS = seluruh id tabel (setelah T22 tak ada yang tersisa di RPC)', () => {
+  test('semua id kontrak Worker punya entri tabel (dan sebaliknya)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
-    for (const id of REST_MIGRATED_IDS) expect(API_ROUTES[id]).toBeDefined();
-    expect([...REST_MIGRATED_IDS].sort()).toEqual([...IDS].sort());
+    expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as WorkerRpcMethod[]);
   });
 
   test('rute biner punya bentuk rinci (rawBody/multipart/download) sesuai penandanya', () => {

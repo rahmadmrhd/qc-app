@@ -1,11 +1,13 @@
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
-import { toErrorBody } from '@server/core/router';
+import { type ErrorBody, toErrorBody } from '@server/core/router';
 import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
-import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import { authenticateSync, UNKNOWN_CLIENT_IP } from './auth';
+
+/** Amplop jawaban `/sync` (kabel lama QC Desktop, sampai diganti REST di Task 25). */
+export type SyncResult<T> = { ok: true; data: T } | { ok: false; error: ErrorBody };
 
 /** Konteks handler sinkron: TIDAK pernah memuat `UserContext` (FS3). */
 export interface SyncContext {
@@ -48,7 +50,7 @@ export async function handleSync(
   rawBody: unknown,
   routes: SyncRouteTable,
   clientIp = UNKNOWN_CLIENT_IP,
-): Promise<RpcResult<unknown>> {
+): Promise<SyncResult<unknown>> {
   const requestId = newRequestId();
   const startedAt = Date.now();
   let methodName = '?';

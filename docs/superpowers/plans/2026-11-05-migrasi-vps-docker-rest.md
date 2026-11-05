@@ -452,7 +452,7 @@ Jalur `{id}` = `input.id`; `{kind}` = `input.kind`. Sinkron Desktop (`sync.*`) b
 - Eksekusi atas persetujuan pemilik per langkah (deploy READ_ONLY, dump, impor produksi, verifikasi, DNS, pantau).
 
 ### Task 35: Pemensiunan dan dokumentasi akhir
-**Files:** Modify/Delete: `gas/` (dihapus setelah masa pantau), `build:gas`/`push`/`deploy` root dan skrip GAS, `web/src/lib/rpc/*` sisa, `CLAUDE.md`, `docs/*`, PRD PWA (Fase 2 "ketahanan server" ditinjau ulang dengan alasan kuota D1 hilang), spek Cloudflare (status final); perbarui memori proyek agen.
+**Files:** Modify/Delete: `gas/` (dihapus setelah masa pantau), `build:gas`/`push`/`deploy` root dan skrip GAS, `shared/gas-legacy.ts` (amplop RPC dan DTO base64 khusus `gas/`, dipertahankan di T23 karena `RpcContract` GAS masih memakainya; hapus bersama `gas/`) dan `RpcContract` GAS di `shared/rpc.ts`, `CLAUDE.md`, `docs/*`, PRD PWA (Fase 2 "ketahanan server" ditinjau ulang dengan alasan kuota D1 hilang), spek Cloudflare (status final); perbarui memori proyek agen.
 
 ### Task 36: Gerbang akhir
 - Review menyeluruh independen atas seluruh diff proyek: kesesuaian spek + `security-audit` terfokus permukaan yang disentuh (otorisasi rute REST, validasi input, mass assignment, kebocoran data di `problem+json`, penanganan rahasia `.env`, race pada data sensitif, kepercayaan `CF-Connecting-IP`, izin pengguna `deploy` dan kunci SSH). Audit penuh seluruh codebase hanya bila pemilik memintanya.

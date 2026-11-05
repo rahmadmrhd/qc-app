@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { fileQueryOptions } from '@/modules/files/queries';

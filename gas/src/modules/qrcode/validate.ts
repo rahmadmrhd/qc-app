@@ -1,6 +1,6 @@
 import { readObject_ } from '@gas/core/validate';
 import { base64ByteLength, isBase64Text } from '@shared/files';
-import type { GasExportQrDesignInput, GasUploadQrPdfInput } from '@shared/gas-binary';
+import type { GasExportQrDesignInput, GasUploadQrPdfInput } from '@shared/gas-legacy';
 import type { QrStyle } from '@shared/qrcode';
 import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {

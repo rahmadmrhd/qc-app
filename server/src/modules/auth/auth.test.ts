@@ -256,12 +256,13 @@ describe('GET /auth/callback', () => {
 });
 
 describe('CSRF dan logout', () => {
-  test('POST tanpa X-Requested-With: qc ditolak 403 (logout dan RPC)', async () => {
-    for (const path of ['/auth/logout', '/api/rpc']) {
-      const response = await app.request(path, { method: 'POST', body: '{}' }, env);
-      expect(response.status).toBe(403);
-      expect(((await response.json()) as { error: { code: string } }).error.code).toBe('FORBIDDEN');
-    }
+  test('POST tanpa X-Requested-With: qc ditolak 403 (logout dan tulis REST)', async () => {
+    const logout = await app.request('/auth/logout', { method: 'POST', body: '{}' }, env);
+    expect(logout.status).toBe(403);
+    expect(((await logout.json()) as { error: { code: string } }).error.code).toBe('FORBIDDEN');
+    const write = await app.request('/api/v1/brands', { method: 'POST', body: '{}' }, env);
+    expect(write.status).toBe(403);
+    expect(((await write.json()) as { code: string }).code).toBe('FORBIDDEN');
     const wrong = await app.request(
       '/auth/logout',
       { method: 'POST', headers: { 'X-Requested-With': 'x' } },
