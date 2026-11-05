@@ -2,6 +2,7 @@ import { decodeText, encodeBytes } from '@server/core/base64url';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { appError } from '@server/core/errors';
 import { signValue, verifyValue } from '@server/core/session';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -18,10 +19,14 @@ interface StatePayload {
   exp: number;
 }
 
-/** Origin aplikasi untuk redirect URI: `APP_ORIGIN` bila diisi, jika tidak origin permintaan. */
-export function appOrigin(env: Env, request: Request): string {
+/**
+ * Origin aplikasi untuk redirect URI: HANYA dari `APP_ORIGIN` (konfigurasi). Origin permintaan tidak dipakai: di
+ * belakang reverse proxy header Host/skema tidak dapat dipercaya.
+ */
+export function appOrigin(env: Env, _request?: Request): string {
   const configured = env.APP_ORIGIN?.trim().replace(/\/+$/, '');
-  return configured ? configured : new URL(request.url).origin;
+  if (!configured) throw appError('UNAVAILABLE', 'APP_ORIGIN belum dikonfigurasi di server');
+  return configured;
 }
 
 export function redirectUri(env: Env, request: Request): string {

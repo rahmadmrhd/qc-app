@@ -88,11 +88,19 @@ describe('GET /auth/login', () => {
     expect(cookie).toMatch(/Path=\/auth/);
   });
 
-  test('tanpa APP_ORIGIN memakai origin permintaan', async () => {
+  test('(I3) origin OAuth selalu dari APP_ORIGIN, tidak pernah dari Host permintaan', async () => {
+    for (const url of ['http://127.0.0.1:8788/auth/login', 'https://lain.example/auth/login']) {
+      const response = await app.request(url, {}, env);
+      const location = new URL(response.headers.get('location') as string);
+      expect(location.searchParams.get('redirect_uri')).toBe('https://qc.test/auth/callback');
+    }
+  });
+
+  test('(I3) tanpa APP_ORIGIN login ditolak (UNAVAILABLE), tidak memakai origin permintaan', async () => {
     const bare = await createTestEnv({ APP_ORIGIN: '' });
     const response = await app.request('https://lain.example/auth/login', {}, bare);
-    const location = new URL(response.headers.get('location') as string);
-    expect(location.searchParams.get('redirect_uri')).toBe('https://lain.example/auth/callback');
+    expect(response.status).toBe(503);
+    expect(response.headers.get('location')).toBeNull();
   });
 });
 

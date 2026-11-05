@@ -46,7 +46,6 @@ describe('loadConfig', () => {
       TRUSTED_PROXY: 'any',
       DB_POOL_SIZE: '5',
       APP_ORIGIN: ' https://qc.example.com ',
-      DEV_LOGIN_EMAIL: 'dev@example.test',
     });
     expect(config).toMatchObject({
       port: 9000,
@@ -54,7 +53,7 @@ describe('loadConfig', () => {
       trustedProxy: 'any',
       dbPoolSize: 5,
       appOrigin: 'https://qc.example.com',
-      devLoginEmail: 'dev@example.test',
+      devLoginEmail: undefined,
     });
   });
 
@@ -100,5 +99,37 @@ describe('loadConfig', () => {
 
   test('variabel kosong/spasi dianggap hilang', () => {
     expect(errorOf({ ...VALID, ADMIN_EMAIL: '   ' }).message).toContain('ADMIN_EMAIL');
+  });
+
+  test('(I3) NODE_ENV=production mewajibkan APP_ORIGIN https', () => {
+    const prod = { ...VALID, NODE_ENV: 'production' };
+    expect(errorOf(prod).message).toContain('APP_ORIGIN');
+    expect(errorOf({ ...prod, APP_ORIGIN: 'http://qc.example.com' }).message).toContain('https');
+    expect(loadConfig({ ...prod, APP_ORIGIN: 'https://qc.example.com' }).appOrigin).toBe(
+      'https://qc.example.com',
+    );
+    expect(loadConfig({ ...prod, APP_ORIGIN: 'https://qc.example.com' }).production).toBe(true);
+    // non-produksi tanpa APP_ORIGIN tetap boleh (dev)
+    expect(loadConfig(VALID).production).toBe(false);
+  });
+
+  test('(I3) DEV_LOGIN_EMAIL + konfigurasi produksi/non-lokal ditolak (ConfigError tanpa membocorkan nilai)', () => {
+    const dev = { ...VALID, DEV_LOGIN_EMAIL: 'rahasia-dev@example.test' };
+    for (const env of [
+      { ...dev, NODE_ENV: 'production', APP_ORIGIN: 'https://qc.example.com' },
+      { ...dev, APP_ORIGIN: 'https://qc.example.com' },
+      { ...dev, APP_ORIGIN: 'http://qc.example.com' },
+      { ...dev, APP_ORIGIN: 'http://localhost.evil.example' },
+      dev, // tanpa APP_ORIGIN
+    ]) {
+      const error = errorOf(env);
+      expect(error.message).toContain('DEV_LOGIN_EMAIL');
+      expect(error.message).not.toContain('rahasia-dev');
+    }
+    for (const origin of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost']) {
+      expect(loadConfig({ ...dev, APP_ORIGIN: origin }).devLoginEmail).toBe(
+        'rahasia-dev@example.test',
+      );
+    }
   });
 });

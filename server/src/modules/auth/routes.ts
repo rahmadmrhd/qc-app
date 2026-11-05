@@ -1,5 +1,6 @@
 import { nowOf } from '@server/core/env';
 import { SESSION_TTL_MS, signSessionToken } from '@server/core/session';
+import { isLoopbackAddress } from '@server/http/proxy';
 import {
   type AppBindings,
   cookieSecure,
@@ -20,7 +21,7 @@ authApp.get('/login', async (c) => {
   const { url, stateCookie } = await createLogin(c.env, c.req.raw);
   setCookie(c, OAUTH_COOKIE, stateCookie, {
     httpOnly: true,
-    secure: cookieSecure(c.req.url),
+    secure: cookieSecure(c.env),
     sameSite: 'Lax',
     path: '/auth',
     maxAge: OAUTH_STATE_TTL_MS / 1000,
@@ -31,7 +32,7 @@ authApp.get('/login', async (c) => {
 authApp.get('/callback', async (c) => {
   const stateOk = await verifyLoginState(c.env, getCookie(c, OAUTH_COOKIE), c.req.query('state'));
   // Cookie state sekali pakai: selalu dihapus, berhasil maupun gagal.
-  deleteCookie(c, OAUTH_COOKIE, { path: '/auth', secure: cookieSecure(c.req.url) });
+  deleteCookie(c, OAUTH_COOKIE, { path: '/auth', secure: cookieSecure(c.env) });
   if (!stateOk) {
     return c.json(
       errorEnvelope('UNAUTHENTICATED', 'Login tidak valid atau sudah kedaluwarsa'),
@@ -51,7 +52,7 @@ authApp.get('/callback', async (c) => {
   }
   setCookie(c, SESSION_COOKIE, await signSessionToken(c.env, result.email, nowOf(c.env)), {
     httpOnly: true,
-    secure: cookieSecure(c.req.url),
+    secure: cookieSecure(c.env),
     sameSite: 'Lax',
     path: '/',
     maxAge: SESSION_TTL_MS / 1000,
@@ -60,7 +61,7 @@ authApp.get('/callback', async (c) => {
 });
 
 authApp.post('/logout', (c) => {
-  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: cookieSecure(c.req.url) });
+  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: cookieSecure(c.env) });
   return c.json({ ok: true });
 });
 
@@ -71,7 +72,11 @@ authApp.post('/logout', (c) => {
  */
 authApp.get('/dev-login', async (c) => {
   const email = c.env.DEV_LOGIN_EMAIL?.trim();
-  if (!email || !isLocalHostname(new URL(c.req.url).hostname)) return c.notFound();
+  // Hanya dari mesin yang sama: peer TCP loopback DAN tanpa CF-Connecting-IP (bukan lewat reverse proxy), serta Host
+  // lokal. Host saja tidak cukup: header itu dapat dikirim siapa pun yang mencapai proses ini.
+  const direct =
+    isLoopbackAddress(c.env.peerAddress ?? '') && c.req.header('cf-connecting-ip') === undefined;
+  if (!email || !direct || !isLocalHostname(new URL(c.req.url).hostname)) return c.notFound();
   if (!(await loadUserContext(c.env, email))) {
     return c.json(
       errorEnvelope('UNAUTHENTICATED', 'DEV_LOGIN_EMAIL belum terdaftar; jalankan bun run db:seed'),
@@ -80,7 +85,7 @@ authApp.get('/dev-login', async (c) => {
   }
   setCookie(c, SESSION_COOKIE, await signSessionToken(c.env, email, nowOf(c.env)), {
     httpOnly: true,
-    secure: cookieSecure(c.req.url),
+    secure: cookieSecure(c.env),
     sameSite: 'Lax',
     path: '/',
     maxAge: SESSION_TTL_MS / 1000,

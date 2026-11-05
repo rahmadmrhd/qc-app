@@ -54,6 +54,7 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       app.fetch(request, {
         ...env,
         clientIp: clientIp(request, peerAddress, config.trustedProxy),
+        peerAddress,
         staticDir: config.staticDir,
       }),
     async stop() {

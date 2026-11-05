@@ -14,8 +14,10 @@ export interface Config {
   bridgeUrl: string;
   bridgeSecret: string;
   adminEmail: string;
-  /** Origin publik aplikasi (redirect OAuth); kosong = origin permintaan. */
+  /** Origin publik aplikasi: dasar redirect OAuth dan atribut `Secure` cookie (BUKAN header Host). Wajib https di produksi. */
   appOrigin: string | undefined;
+  /** `NODE_ENV=production`. */
+  production: boolean;
   /** Hanya pengembangan lokal: email untuk `/auth/dev-login`. Jangan diisi di produksi. */
   devLoginEmail: string | undefined;
   /** Alamat yang didengarkan. Bawaan loopback (di belakang nginx); di dalam kontainer isi `0.0.0.0`. */
@@ -67,6 +69,18 @@ function hasProtocol(raw: string, protocols: string[]): boolean {
   }
 }
 
+/** True bila `origin` adalah origin http lokal (localhost atau 127.0.0.1, port bebas); selain itu false. */
+export function isLocalOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Membaca dan memvalidasi konfigurasi. Melempar `ConfigError` yang menyebut SEMUA variabel wajib yang hilang
  * dan semua nilai yang tidak valid sekaligus (tanpa membocorkan nilai apa pun).
@@ -95,6 +109,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     problems.push('APP_ORIGIN harus berupa origin http(s), mis. https://qc.example.com');
   }
 
+  const production = get('NODE_ENV') === 'production';
+  if (production) {
+    if (appOrigin === '') {
+      problems.push('APP_ORIGIN wajib diisi bila NODE_ENV=production');
+    } else if (!appOrigin.startsWith('https://')) {
+      problems.push('APP_ORIGIN harus https bila NODE_ENV=production');
+    }
+  }
+  // Login dev tanpa OAuth hanya untuk mesin pengembang: tidak di produksi dan hanya bila origin aplikasi lokal.
+  if (get('DEV_LOGIN_EMAIL') !== '' && (production || !isLocalOrigin(appOrigin))) {
+    problems.push(
+      'DEV_LOGIN_EMAIL hanya untuk pengembangan lokal: kosongkan di produksi dan syaratkan APP_ORIGIN http://localhost atau http://127.0.0.1',
+    );
+  }
+
   const portRaw = get('PORT');
   const port = portRaw === '' ? DEFAULT_PORT : integerIn(portRaw, 1, 65535);
   if (port === null) problems.push('PORT harus bilangan bulat 1-65535');
@@ -121,6 +150,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     bridgeSecret: get('BRIDGE_SECRET'),
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,
+    production,
     devLoginEmail: get('DEV_LOGIN_EMAIL') === '' ? undefined : get('DEV_LOGIN_EMAIL'),
     host: get('HOST') || DEFAULT_HOST,
     port,

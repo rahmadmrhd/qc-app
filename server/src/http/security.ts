@@ -10,6 +10,8 @@ import { secureHeaders } from 'hono/secure-headers';
 export interface RequestBindings {
   /** IP klien hasil `clientIp` (peer, atau `CF-Connecting-IP` bila peer proxy tepercaya). */
   clientIp?: string;
+  /** Alamat TCP peer (bukan header). Rute khusus mesin lokal (dev-login) mensyaratkan peer loopback. */
+  peerAddress?: string;
   /** Direktori berkas statis web; tanpa nilai = tidak ada berkas statis (mis. tes API). */
   staticDir?: string;
 }
@@ -69,10 +71,18 @@ export function isLocalHostname(hostname: string): boolean {
 }
 
 /**
- * Atribut `Secure` cookie: wajib di semua origin KECUALI http://localhost (pengembangan lokal), karena sebagian
- * peramban menolak cookie Secure pada http meski localhost.
+ * Atribut `Secure` cookie, diturunkan dari `APP_ORIGIN` (konfigurasi), BUKAN dari URL/header Host permintaan (di
+ * belakang reverse proxy Host dapat berupa `127.0.0.1:<port>`): tidak Secure hanya bila `APP_ORIGIN` adalah
+ * http://localhost atau http://127.0.0.1 (pengembangan; sebagian peramban menolak cookie Secure pada http). Tanpa
+ * `APP_ORIGIN` atau origin lain: Secure.
  */
-export function cookieSecure(requestUrl: string): boolean {
-  const url = new URL(requestUrl);
-  return !(url.protocol === 'http:' && isLocalHostname(url.hostname));
+export function cookieSecure(env: Pick<Env, 'APP_ORIGIN'>): boolean {
+  const origin = env.APP_ORIGIN?.trim();
+  if (!origin) return true;
+  try {
+    const url = new URL(origin);
+    return !(url.protocol === 'http:' && isLocalHostname(url.hostname));
+  } catch {
+    return true;
+  }
 }

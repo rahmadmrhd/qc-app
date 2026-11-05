@@ -1,12 +1,26 @@
-import { callRoute, handleRpc, readCookie, rpcResponse } from '@server/core/router';
+import {
+  callRoute,
+  handleRpc,
+  readCookie,
+  rpcResponse,
+  statusOf,
+  toErrorBody,
+} from '@server/core/router';
 import { SESSION_COOKIE } from '@server/core/session';
-import { type AppBindings, csrfGuard, errorEnvelope, securityHeaders } from '@server/http/security';
+import {
+  type AppBindings,
+  csrfGuard,
+  errorEnvelope,
+  newRequestId,
+  securityHeaders,
+} from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
 import { handleSyncRequest } from '@server/modules/sync/handler';
 import { syncRoutes } from '@server/modules/sync/routes';
 import { getRoutes } from '@server/routes';
 import { Hono } from 'hono/tiny';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 /**
  * Aplikasi Hono: `/api/*`, `/auth/*`, `/sync`, lalu berkas statis web dengan fallback SPA. `Env` (koneksi
@@ -40,6 +54,14 @@ app.get('*', (c) => {
       ? null
       : serveStatic(staticDir, c.req.method, path);
   return response ?? c.notFound();
+});
+// Galat tak tertangani di rute (mis. konfigurasi kurang): amplop yang sama dengan RPC, galat internal disamarkan.
+app.onError((error, c) => {
+  const body = toErrorBody(error, newRequestId());
+  return c.json(
+    { ok: false, error: body },
+    statusOf({ ok: false, error: body }) as ContentfulStatusCode,
+  );
 });
 app.notFound((c) => c.json(errorEnvelope('NOT_FOUND', 'Rute tidak ditemukan'), 404));
 
