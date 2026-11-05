@@ -40,6 +40,10 @@ Masukan yang tersirat spek tetapi tak terlihat di tes biasa (tiap baris punya te
 4. **Header `CF-Connecting-IP` palsu** dari koneksi non-loopback diabaikan sehingga pembatas token tak bisa dikelabui (T13).
 5. **Dump terpotong hilang/tertukar bagian**: pemulihan menolak (checksum), tidak mengimpor setengah data (T31).
 6. **Tunnel DB mati saat `bun run check`**: gagal cepat dengan pesan yang menyebut `bun run db:tunnel`, bukan menggantung (T3, T5).
+7. **Galat REST**: badan bukan JSON/terlalu besar → 400/413 `problem+json`; `id` badan ≠ `id` jalur → 422; metode tulis tanpa `X-Requested-With: qc` → 403; rute `/api/v1/*` tak dikenal → 404 `problem+json`, bukan HTML SPA (T14).
+8. **`If-Match` basi → 412, duplikat nama → 409**, dan galat 412/409 tak membocorkan isi baris orang lain (T14, T18, T19).
+9. **Rute statis vs berparameter** (`/handovers/options`, `/handovers/batch` tidak tertelan `/handovers/{id}`) dan `{kind}` di luar `pdf|png` ditolak (T14, T21).
+10. **Unggahan biner**: melebihi batas diputus tanpa memuat seluruh badan ke memori; byte masuk = byte keluar; izin diperiksa sebelum cache berkas (T21).
 
 ## Pembagian beban eksekusi (pedoman kerja pemilik)
 
@@ -250,21 +254,145 @@ Gerbang Fase 1: `bun run check` hijau (termasuk tes MariaDB lewat tunnel), `bun 
 
 ---
 
-# FASE 2 — Kabel REST (rinci tiap tugas saat Fase 1 lulus; berikut garis besar dan tes kuncinya)
+# FASE 2 — Kabel REST (dirinci 2026-11-05 setelah Fase 1 lulus dan pemilik menyetujui I5, M2, stabilitas tes)
+
+Gerbang Fase 2: `/api/rpc`, `/api/boot`, amplop `RpcResult`, dan `web/src/lib/rpc/` tidak ada lagi; semua rute web dilayani di `/api/v1/*` dari SATU tabel (`shared/api.ts`); `bun run check` dan `bun run build` hijau; `GET /api/openapi.json` memuat semua jalur.
+
+## Putusan desain Fase 2 (berlaku untuk T13b–T24; catat di ledger sebagai `Ruling:`)
+
+1. **Satu tabel, validator dan handler tak disentuh.** `API_ROUTES` memetakan tiap id `WorkerRpcMethod` ke bentuk kabel. Server merakit kembali objek input datar yang SAMA dengan sekarang (`SaveBrandInput`, dst.) dari jalur + query + badan + `If-Match`, lalu memanggil `RouteDef.validate/handler/permission` yang ada. Perubahan bentuk kabel tidak boleh menyentuh logika modul.
+2. **Bentuk `ApiRouteDef` (shared/api.ts, murni, tanpa API runtime):**
+   ```ts
+   type ApiVerb = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+   type QueryKind = 'string' | 'number' | 'boolean' | 'list'; // list = nilai dipisah koma
+   interface ApiRouteDef {
+     verb: ApiVerb; path: string;        // relatif terhadap /api/v1, mis. '/brands/{id}'
+     status?: 200 | 201 | 202;           // bawaan 200
+     query?: Record<string, QueryKind>;  // field input yang dikirim lewat query (selain parameter jalur)
+     create?: { verb: ApiVerb; path: string; status?: 201 }; // dipakai bila input.id TIDAK ada (rute save)
+     etag?: string;                      // field keluaran yang menjadi nilai header ETag (mis. 'updatedAt')
+     ifMatch?: string;                   // field input yang dibawa header If-Match (mis. 'expectedUpdatedAt')
+     binary?: 'request' | 'response' | 'multipart'; // diisi T21; sebelum itu rute berpenanda ini tidak didaftarkan
+   }
+   ```
+   Field input yang bukan parameter jalur/query/`ifMatch` masuk badan JSON (POST/PUT/PATCH); pada GET/DELETE semuanya lewat query. Parameter jalur menang atas badan; `id` badan yang berbeda dari jalur → `VALIDATION` 422.
+3. **Rute `save` = dua jalur satu id**: `PUT /x/{id}` (ubah) dan `create` = `POST /x` (buat, 201 + `Location`). `toRequestParts` memilih menurut ada-tidaknya `input.id`.
+4. **Status galat (RFC 9457 `application/problem+json`)**: `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409, `VALIDATION` 422 (badan bukan JSON/terlalu besar: 400/413 dengan `code: 'VALIDATION'`), `UNAVAILABLE` 503 (pembatas laju 429), `INTERNAL` 500. Badan: `{ type: 'urn:qc:problem:<code-huruf-kecil>', title, status, detail, code, requestId, fields? }`. Galat basi (stale) membawa penanda `stale: true` pada `AppError` (helper `staleError(message)`, dipakai di `cas.ts` dan tiap pelempar `STALE_MESSAGE`); aturan kernel: `stale` DAN rute punya `ifMatch` DAN permintaan membawa `If-Match` → **412**, selain itu `CONFLICT` → 409. Kode di badan tetap `CONFLICT` agar FE tidak berubah.
+5. **ETag**: GET sumber daya tunggal dan respons PUT/PATCH/POST-buat memberi `ETag: "<keluaran[etag]>"`; GET dengan `If-None-Match` cocok → 304 (handler tetap jalan; hemat badan, bukan hemat CPU). `If-Match` dibaca ke field `ifMatch` (kutip dibuang; `*` dan banyak-nilai diabaikan).
+6. **Kursor**: `limit`/`cursor` lewat query, keluaran `{ items, nextCursor }` (item, audit) dan `BoardPageDto` (board) tetap seperti `WorkerRpcContract`. Bawaan dan batas baru: lihat T19 (M2).
+7. **Penghapusan bertahap tanpa mematikan FE**: `REST_MIGRATED_IDS` (satu sumber, di `shared/api.ts`, dipakai server dan FE) memuat himpunan id yang sudah REST; `getRoutes()` untuk `/api/rpc` menjawab `NOT_FOUND` untuk id di himpunan itu; tiap tugas modul menambah id-nya dan memindahkan FE modul itu dalam komit yang sama. `/api/rpc` dihapus di T23 saat himpunan = semua id.
+8. **Urutan pendaftaran Hono**: rute statis sebelum berparameter (`/handovers/options` dan `/handovers/batch` sebelum `/handovers/{id}`). Rute tak dikenal di bawah `/api/v1/*` → 404 `problem+json` (bukan fallback SPA; `isServerPath` sudah mencakup `/api`).
+9. **OpenAPI**: `GET /api/openapi.json` (OpenAPI 3.1) dibangun dari tabel: jalur, verba, status, parameter jalur/query, header `If-Match`/`ETag`, `operationId` = id RPC, ringkasan izin dari `RouteDef.permission`. Tanpa skema JSON badan (lihat penyimpangan 2). Dilindungi: butuh sesi login (galat 401 bila tidak); `Cache-Control: no-store`.
+10. **`DELETE` mengembalikan 200 dengan `{ id }`** (isi kontrak sekarang dipertahankan; tidak 204) — FE tak berubah.
+
+## Peta id → REST (jalur final; dua jalur pada satu sel = ubah / `create`)
+
+| id | verba jalur | catatan |
+|---|---|---|
+| `auth.me` | `GET /me` | etag: —; T22 |
+| `access.users.list` / `save` / `setStatus` | `GET /users` / `PUT /users/{id}` + `POST /users` / `PATCH /users/{id}` | setStatus: badan `{status}` |
+| `access.roles.list` / `save` / `delete` | `GET /roles` / `PUT /roles/{id}` + `POST /roles` / `DELETE /roles/{id}` | |
+| `access.locations.list` / `save` / `setStatus` | `GET /locations` / `PUT /locations/{id}` + `POST /locations` / `PATCH /locations/{id}` | |
+| `access.audit.list` | `GET /audit-logs` | query `cursor:string, limit:number, action:string, query:string` |
+| `brands.list` / `save` / `setStatus` | `GET /brands` / `PUT /brands/{id}` + `POST /brands` / `PATCH /brands/{id}` | |
+| `customers.list` / `rename` / `setStatus` | `GET /customers` / `PUT /customers/{id}` / `PATCH /customers/{id}` | rename = ganti `name`; setStatus = ubah `status` |
+| `items.list` / `get` / `save` / `setStatus` | `GET /items` / `GET /items/{id}` / `PUT /items/{id}` + `POST /items` / `PATCH /items/{id}` | list query `cursor,limit,query,status`; save `ifMatch:'expectedUpdatedAt'`, `etag:'updatedAt'` |
+| `handovers.options` | `GET /handovers/options` | query `locationIds:list` |
+| `handovers.board` | `GET /handovers` | query `locationIds:list, status, cursor, limit:number` |
+| `handovers.get` | `GET /handovers/{id}` | query `locationIds:list`; etag `updatedAt` |
+| `handovers.save` | `PUT /handovers/{id}` + `POST /handovers` | ifMatch `expectedUpdatedAt`, etag `updatedAt` |
+| `handovers.saveBatch` | `POST /handovers/batch` (201) | |
+| `handovers.cancel` / `reopen` / `setDone` | `POST /handovers/{id}/cancel` / `/reopen` / `/done` | badan `{locationId}` |
+| `handovers.setCheck` | `PUT /handovers/{id}/checks` | badan `{locationId,index,text,checked}`; idempoten |
+| `handovers.comment` | `POST /handovers/{id}/comments` (201) | |
+| `qrcodes.list` / `get` / `save` / `delete` | `GET /qrcodes` / `GET /qrcodes/{id}` / `PUT /qrcodes/{id}` + `POST /qrcodes` / `DELETE /qrcodes/{id}` | save ifMatch `expectedUpdatedAt` |
+| `qrcodes.getDefaults` | `GET /qrcode-defaults` | |
+| `qrcodes.savePreset` / `deletePreset` | `PUT /qrcode-presets/{id}` + `POST /qrcode-presets` / `DELETE /qrcode-presets/{id}` | |
+| `qrcodes.saveLogoLibrary` | `PUT /qrcode-defaults/logos` | ifMatch `expectedUpdatedAt` |
+| `qrcodes.uploadPdf` | `POST /qrcode-documents` | `binary:'request'` (badan = PDF mentah; query `name:string, replaceDocumentId:string`); T21 |
+| `qrcodes.cloneFromDrive` | `POST /qrcode-documents/clone` | badan `{source, replaceDocumentId?}` |
+| `qrcodes.export` | `POST /qrcodes/{id}/exports` (202) | `binary:'multipart'` (bagian `pdf`, `png`); ifMatch `expectedUpdatedAt`; T21 |
+| `qrcodes.file` | `GET /qrcodes/{id}/files/{kind}` | `binary:'response'`, `kind` ∈ `pdf|png`; T21 |
+| `files.upload` | `POST /files` (201) | `binary:'request'` (badan = byte gambar, `Content-Type` = `mime`; query `width,height:number`); T21 |
+| `files.get` | `GET /files/{id}` | `binary:'response'`, etag = id (isi tak berubah); T21 |
+| `jobs.get` | `GET /jobs/{id}` | |
+| `exports.sheets` | `POST /exports/sheets` (202) | badan `{tables?}` |
+
+Jalur `{id}` = `input.id`; `{kind}` = `input.kind`. Sinkron Desktop (`sync.*`) bukan bagian tabel ini (T25).
+
+### Task 13b: Perkuat stabilitas `bun run check` lewat tunnel (keputusan pemilik: kurangi shard atau tes jarak jauh)
+
+**Files:** Modify: `server/scripts/test.ts`, `docs/dev-server.md`
+- Keputusan controller (memilih opsi termurah dulu): `DEFAULT_SHARDS` 4 → 3, `MAX_SHARDS` tetap; `QC_TEST_SHARDS` tetap menimpa. Ukur: tiga `bun run check` berurutan di mesin pengembang harus hijau tanpa timeout latensi; bila masih acak gagal, turunkan ke 2 dan catat durasinya di `docs/dev-server.md`. `test:remote` (tes langsung di VPS) HANYA bila 2 shard pun gagal — catat sebagai `Ruling:` dan jangan dibangun spekulatif.
+- Tes: tes runner yang ada hijau; tidak ada tes baru. Komit: `fix(server): turunkan shard tes bawaan untuk stabilitas lewat tunnel`.
 
 ### Task 14: Tabel rute `shared/api.ts` + kernel REST di server
 
-**Files:** Create: `shared/api.ts`, `shared/api.test.ts`, `server/src/http/rest.ts`, `server/src/http/problem.ts`, `server/src/http/openapi.ts` (+ tes); Modify: `server/src/app.ts`
-- `API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef }` (kompilator memaksa lengkap), `ApiRouteDef { verb; path; status?; query?; etag?: string; ifMatch?: string; binary?: 'request' | 'response' }`; fungsi murni `toRequestParts(id, input)` dan `fromRequestParts(id, params, query, body, ifMatch)`; `toProblem(error, requestId)` (RFC 9457 + `code`/`fields`); registrasi rute REST dari tabel memakai `RouteDef` yang ada (izin/validator/handler tak berubah); `GET /api/openapi.json` dari tabel. Tes: tiap id punya tepat satu (verba, jalur); `toRequestParts`→`fromRequestParts` bolak-balik identik untuk input contoh semua id; `409` untuk `CONFLICT`, `412` untuk `If-Match` basi; `GET` memberi `ETag`; OpenAPI memuat semua jalur.
+**Files:** Create: `shared/api.ts`, `shared/api.test.ts`, `server/src/http/{rest,problem,openapi}.ts` (+ `*.test.ts`); Modify: `server/src/app.ts`, `server/src/core/errors.ts` (`staleError`, `AppError.stale?`), `server/src/core/cas.ts` + semua pelempar `STALE_MESSAGE` (grep `STALE_MESSAGE`/`staleMessage`/`'CONFLICT'`), `server/src/core/router.ts` (pisahkan perakitan konteks permintaan dari amplop agar dipakai bersama)
+**Interfaces:**
+- Produces `API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef }` dan, murni dan bolak-balik:
+  `toRequestParts(id: M, input: WorkerRpcInput<M>): { verb; path: string; query: Record<string,string>; body?: unknown; ifMatch?: string }`,
+  `fromRequestParts(id: M, parts: { params: Record<string,string>; query: Record<string,string>; body: unknown; ifMatch?: string; created: boolean }): unknown` (hasil = input datar siap `validate`; galat parameter → melempar objek `{ field: string; message: string }` yang diubah kernel menjadi `VALIDATION`),
+  `etagOf(id: M, output: WorkerRpcOutput<M>): string | undefined`, `fillPath(path: string, params: Record<string,string>): string`.
+- Produces `toProblem(error: unknown, requestId: string): { status: number; body: ProblemBody; headers?: Record<string,string> }`, `registerRest(app, routes: RouteTable, migrated: ReadonlySet<WorkerRpcMethod>)`, `buildOpenApi(routes: RouteTable): OpenApiDocument`.
+- Consumes `RouteDef`/`callRoute` logika dari `router.ts` (sesi cookie, konteks, izin, validasi, lokasi, handler): refaktor `callRoute` menjadi `runRoute(env, token, id, rawInput, routes)` yang melempar/mengembalikan nilai mentah; `callRoute` (RPC) membungkusnya dengan amplop dan kernel REST membungkusnya dengan problem+json (satu jalur kode).
+- **Tes (RED dulu)**:
+  - `shared/api.test.ts`: tiap id punya jalur+verba unik (pasangan `verb path` tak ada yang ganda, termasuk `create`); `toRequestParts → fromRequestParts` mengembalikan input identik untuk satu contoh tiap id (tabel contoh di berkas tes; kompilator memaksa contoh lengkap lewat `Record<WorkerRpcMethod, …>`); `id` badan ≠ jalur → galat; `list` memecah `a,b`; `number`/`boolean` diparse, bukan-angka → galat.
+  - Server (`http/rest.test.ts` memakai `createTestEnv` + `app.request`): `CONFLICT` biasa → 409; `staleError` + `If-Match` → 412; `staleError` tanpa `If-Match` → 409; `VALIDATION` → 422 dengan `fields`; badan bukan JSON → 400, > batas → 413 (`problem+json`); metode tulis tanpa `X-Requested-With: qc` → 403 problem+json; `/api/v1/tidak-ada` → 404 problem+json; GET tunggal memberi `ETag` dan `If-None-Match` sama → 304; `INTERNAL` menyamarkan pesan dan menyertakan `requestId`; `/api/openapi.json` tanpa sesi 401, dengan sesi memuat SEMUA jalur tabel (jumlah operasi = jumlah id).
+- Langkah: (1) tulis tes RED; (2) implementasi `shared/api.ts` + `problem.ts` + refaktor router; (3) `rest.ts` + `openapi.ts` + `app.ts` (`app.route('/api/v1', …)`, `/api/openapi.json`); (4) `staleError` di semua pelempar basi, tes lama tetap hijau; (5) `bun run check`; komit bertahap.
 
 ### Task 15: Klien FE `web/src/lib/api/` + `describeError` problem+json
 
-**Files:** Create: `web/src/lib/api/{client,api-error,index}.ts` (+ tes); Modify: `web/src/lib/rpc/describe-error.ts` (dipindah), setup tes FE
-- `api<M>(id: M, input): Promise<Output<M>>` membangun URL/verba/badan dari `API_ROUTES`, menyisipkan `X-Requested-With: qc` dan `If-Match`, menerjemahkan `problem+json` ke `ApiError` (kode, pesan, `requestId`, `fields`); alias `rpc` dipertahankan sementara agar migrasi modul bertahap. Tes: mock `fetch` memverifikasi tiap verba/jalur contoh, galat 412 → `CONFLICT`, jaringan gagal → `INTERNAL`.
+**Files:** Create: `web/src/lib/api/{client,api-error,describe-error,index}.ts` (+ tes); Modify: setup tes FE bila perlu
+**Interfaces:** Produces `api<M extends WorkerRpcMethod>(id: M, input: WorkerRpcInput<M>): Promise<WorkerRpcOutput<M>>`, `class ApiError extends Error { code: ErrorCode; status: number; requestId: string; fields?: Record<string,string> }`, `describeError(error: unknown): string` (isi dan format identik dengan `lib/rpc/describe-error.ts` sekarang; kelas dasar diganti).
+- `api()` memakai `toRequestParts`, menyisipkan `X-Requested-With: qc` pada non-GET dan `If-Match: "<nilai>"`, `credentials: 'same-origin'`, memetakan respons `problem+json` ke `ApiError` (kode dari `body.code`, bukan dari status; 412 → `CONFLICT`), jaringan gagal → `INTERNAL` ("Tidak dapat menghubungi server…"), badan bukan problem (halaman galat proksi) dipetakan dari status seperti `http-transport.ts` sekarang. Alias sementara: `rpc = api` dan `RpcError = ApiError` diekspor dari `web/src/lib/rpc/index.ts` hingga T23 supaya modul yang belum pindah tetap jalan, tetapi `lib/rpc` memakai transport lama untuk id yang belum REST — SATU pintu: `rpc(id, input)` memeriksa `RPC_MIGRATED` (himpunan sama dengan server; sumber tunggal di `shared/api.ts`: `REST_MIGRATED_IDS`) dan mengarahkan ke `api()` bila id sudah pindah.
+- Tes: `fetch` dipalsukan: tiap verba/jalur contoh (GET dengan query list, PUT dengan `If-Match`, POST `create`, PATCH, DELETE); problem 409 → `code 'CONFLICT'`; 412 → `CONFLICT`; 401 → `UNAUTHENTICATED` (penanganan global di `query-client.ts`/`_app.tsx` tetap bekerja: periksa memakai `ApiError`/`RpcError` yang sama); jaringan gagal → `INTERNAL`; `describeError` tabel kasus yang sama dengan tes lama dipindah.
 
-### Task 16–24: Modul REST + FE per modul (satu tugas per kelompok)
-Tiap tugas: server mendaftarkan rute REST modul dari tabel (rute `/api/rpc` modul itu dihapus), FE modul beralih `rpc`→`api`, tes server (kode status, `ETag`/`If-Match`, `problem+json`), tes FE (`queries.test`) dan uji manual dev.
-- **T16** `brand` (pola acuan), **T17** `customer` + `access` (users, roles, locations, audit; kursor audit), **T18** `item`, **T19** `handover` (board berkursor; `PUT …/checks` idempoten; `POST …/batch`), **T20** `qrcode` + `jobs`/`exports`, **T21** **berkas biner**: `files.upload/get`, `qrcodes.uploadPdf/file` memakai `multipart`/biner dan stream (hapus base64 dari `shared/rpc.ts` dan FE `modules/files`); tes: unggahan melebihi batas → 413 problem+json, unduh memberi `Content-Type` dan `ETag`, **T22** `auth` (`GET /me`, alias `/api/boot`), **T23** hapus `/api/rpc`, `shared/rpc.ts` amplop `RpcResult`/`RpcErrorBody` diganti `Problem`, hapus `web/src/lib/rpc/`, perbarui `docs/adding-a-module.md`; **T24** gerbang Fase 2: `bun run check && bun run build`, OpenAPI diperiksa, uji manual seluruh alur (checklist `docs/e2e-checklist.md`).
+### Task 16: `brand` REST (pola acuan)
+
+**Files:** Modify: `shared/api.ts` (`REST_MIGRATED_IDS`), `web/src/modules/brand/queries.ts` (`rpc` → `api`), tes
+- Tambah id `brands.*` ke himpunan; `/api/rpc` untuk id itu → `NOT_FOUND`. Tes server (`modules/brand/rest.test.ts`): 201 + `Location` saat membuat; `PUT` ganti nama; `PATCH` status; duplikat nama → 409 `fields`; tanpa izin → 403; merk dipakai item tak terhapus; tes lama RPC brand diganti padanan REST (bukan dihapus: tiap asersi lama tetap ada lewat `app.request`). Tes FE: `queries.test` memeriksa URL/verba. Uji manual: `bun run dev` → halaman Merk (daftar, buat, ganti nama, status) tanpa galat konsol; lampirkan hasil di ledger.
+
+### Task 17: `customer` + `access` REST
+
+**Files:** Modify: modul `customer` dan `access` (server: tes; FE: `modules/customer/queries.ts`, `modules/access/queries.ts` dan pemanggil audit)
+- `users/roles/locations` + `GET /audit-logs` berkursor (FE audit: ganti `page` angka oleh kursor — periksa `access.audit.list` FE memakai `ListAuditPageInput`; bila UI audit masih bernomor halaman, pakai tombol "Muat lebih banyak" dengan kursor). Tes: kursor tidak melewatkan/menggandakan entri saat penulisan audit baru masuk di tengah; `DELETE /roles/{id}` role dipakai → 409; toggle status ganda aman.
+
+### Task 18: `item` REST
+
+**Files:** Modify: modul `item` (server tes, FE `modules/item/queries.ts`, detail/form)
+- `GET /items?cursor&limit&query&status`, `PUT` dengan `If-Match: "<updatedAt>"` menggantikan `expectedUpdatedAt` di badan; ETag dari `updatedAt`. Tes: dua penyimpan, satu 412; GET → ETag sama dengan `updatedAt`; kursor + `query`; sinkron Desktop tak terdampak (jalur `sync` tidak disentuh).
+
+### Task 19: `handover` REST + **M2 (keputusan pemilik 2026-11-05: longgarkan batas peninggalan CPU edge)**
+
+**Files:** Modify: modul `handover` (server dan FE `modules/handover/**`), `shared/handover.ts` (`HANDOVER_WORKER_BATCH` → `HANDOVER_BATCH_MAX = 30`), `server/src/modules/handover/{validate,service}.ts` (`BOARD_DEFAULT_LIMIT`), `web/src/modules/handover/components/handover-batch-form.tsx`, spek §18 dan PRD (`docs/prd/`: lokasi keputusan 2026-10-30 — cari `HANDOVER_WORKER_BATCH`, "maks. 5", "10 sebelum 2026-10-30")
+- M2 yang disetujui: (a) `saveBatch` maks. **30** per permintaan (seperti GAS); formulir bulk mengirim SATU permintaan atomik (hapus pemecahan 5 dan logika "kelompok tersimpan dibuang bila berikutnya gagal"; gagal = tak ada yang tersimpan); (b) board: bawaan **20**, maks. **50** (BoardPageInput) menggantikan 3; (c) detail `sync.items.pull` 50 ditinjau di T25 (bukan di sini). Catat: spek §18 (butir baru), PRD (keputusan 2026-10-30 digantikan 2026-11-05, alasan: batas CPU edge hilang di VPS, disetujui pemilik), `CLAUDE.md` bagian handover (angka batch), dan ubah semua tes yang menyebut 5/10/3.
+- Tes: `PUT …/checks` dipanggil dua kali dengan isi sama → hasil identik (idempoten), tanpa 409; 31 task → 422 `fields.tasks`; 30 task atomik (satu gagal → tidak ada yang tersimpan, nomor `ST-…` tidak ganda; ekstensi tes konkurensi nomor paralel T9 lewat REST); `POST …/comments` 201; stale `PUT /handovers/{id}` → 412 saat `If-Match` ada; `GET /handovers?status=…&limit=50` kursor konsisten; lokasi di luar akses → 403.
+
+### Task 20: `qrcode` + `jobs` + `exports` REST (tanpa biner)
+
+**Files:** Modify: modul `qrcode`, `jobs`, `jobs/routes.ts` (`exports.sheets`), FE `modules/qrcode/queries.ts`, `modules/jobs/queries.ts`, `routes/_app/qrcode/index.tsx`
+- Ubah rute bukan-biner saja (`list/get/save/delete/getDefaults/savePreset/deletePreset/saveLogoLibrary/cloneFromDrive`, `jobs.get`, `exports.sheets`); `export` dan `uploadPdf`/`file` dipindah di T21. `exports.sheets` memberi 202 + `Location: /api/v1/jobs/{id}`. Tes: pemilik QR default; `DELETE` mengembalikan `{id}`; `GET /jobs/{id}` job milik orang lain → 404 (periksa perilaku sekarang dulu, jangan mengubahnya).
+
+### Task 21: Berkas biner (hapus base64 dari kabel)
+
+**Files:** Modify: `shared/rpc.ts` (hapus `base64` dari `UploadFileInput`, `FileContentDto`, `UploadQrPdfInput`, `ExportQrDesignInput`, `QrFileDto`; ganti dengan `bytes: Uint8Array`/`Blob` di sisi kernel), `shared/api.ts` (`binary`), `server/src/http/rest.ts` (pembaca badan biner/multipart, penulis aliran), modul `files` dan `qrcode` (validator, layanan, jembatan: base64 tetap hanya di `bridge-client` ke GAS), FE `modules/files/**`, `modules/qrcode/**`
+- Batas ukuran tetap seperti sekarang (periksa konstanta yang ada; jangan menaikkan). Unggah: `POST /files` (badan mentah, `Content-Type` = mime, `width/height` di query), `POST /qrcode-documents` (PDF mentah), `POST /qrcodes/{id}/exports` (multipart: `pdf`, `png`). Unduh: `GET /files/{id}` dan `GET /qrcodes/{id}/files/{kind}` mengalirkan byte dengan `Content-Type` benar, `Content-Disposition` untuk QR, `Cache-Control: private, max-age=…` (file gambar: `immutable`), `ETag` + 304.
+- Tes: melebihi batas → 413 `problem+json` TANPA membaca seluruh badan ke memori (alirkan dan potong); mime tidak diizinkan → 422; unduh memberi `Content-Type`, `ETag`, 304 pada `If-None-Match`; izin tetap diperiksa SEBELUM cache berkas; byte yang diunggah = byte yang diunduh (round trip, termasuk gambar ≥ 1 MB); multipart tanpa bagian `png` → 422; FE `modules/files` tes unggah memakai `Blob`; tak ada `base64` tersisa di `shared/rpc.ts` selain DTO jembatan (grep jadi tes).
+
+### Task 22: `auth` — `GET /me`
+
+**Files:** Modify: `server/src/modules/auth/rpc.ts` → rute REST, `server/src/app.ts` (hapus `/api/boot`), `web/src/app/boot.ts`, `web/src/modules/auth/queries.ts`/`session.ts`, `web/src/app/query-persist.ts` (rujukan `/api/boot`), tes
+- `GET /api/v1/me` (tanpa sesi → 401 problem). Tes boot FE memakai jalur baru; `/api/boot` tak ada (404). Alur `/auth/*` (OAuth) tidak berubah.
+
+### Task 23: Hapus RPC lama dan perbarui dokumen
+
+**Files:** Delete: `web/src/lib/rpc/`, `/api/rpc` dan `handleRpc`, `REST_MIGRATED_IDS`; Modify: `shared/rpc.ts` (amplop `RpcResult`/`RpcErrorBody` dihapus; `ErrorCode` tetap; DTO dan `WorkerRpcContract` tetap sebagai kontrak tipe — ganti nama berkas ke `shared/contract.ts` BILA diff-nya kecil, jika tidak tinggalkan), `docs/adding-a-module.md` (resep modul baru: tambah id di kontrak, entri `API_ROUTES`, `RouteDef`, `queries.ts` via `api`), `CLAUDE.md` ("Menambah method RPC" → "Menambah rute REST"), `README.md`, `docs/dev-server.md`, `docs/observability.md` (log per rute REST), `web/vite.config.ts` bila perlu
+- Tes: grep-tes (`scripts/`): tak ada `rpc(`/`/api/rpc`/`RpcResult` tersisa di `web/`, `server/`, `shared/` (kecuali `gas/` yang dipensiunkan di T35); semua id punya rute REST terdaftar (`registerRest` tanpa himpunan).
+
+### Task 24: Gerbang Fase 2
+
+`bun run check && bun run build` hijau; uji manual seluruh alur via `bun run dev` (login dev, Merk, Customer, Item (buat/ubah/status, konflik dua tab → pesan stale), Serah Terima (buat, bulk 30, centang, komentar, batal/buka ulang), QR (buat, unggah PDF, ekspor, unduh), Log Audit, Pengguna/Peran/Lokasi) dengan hasil per butir di ledger; periksa `GET /api/openapi.json` memuat tiap id; ukur lazy-load dan ukuran chunk (`verify-dist`). Lalu review akhir putaran 2 (independen, spek + `security-audit` terfokus diff: otorisasi per rute baru, `If-Match` bypass, mass assignment lewat gabungan badan+query+jalur (parameter jalur menang), CSRF header pada semua metode tulis, unggahan biner (ukuran, mime, path traversal pada `{kind}`), kebocoran detail galat di problem+json, IDOR pada `GET /files/{id}` dan `GET /jobs/{id}`).
 
 ---
 
@@ -281,6 +409,7 @@ Tiap tugas: server mendaftarkan rute REST modul dari tabel (rute `/api/rpc` modu
 ### Task 26: Image dan compose lengkap
 **Files:** Create: `Dockerfile`, `.dockerignore`; Modify: `deploy/compose.yml` (tambah `qc-app`), `deploy/.env.example`
 - Image WAJIB menyertakan `server/migrations/` (migrator membaca berkas dari disk, putusan T4). Multi-stage: build web + dependensi produksi server; dasar `oven/bun` ringan; pengguna non-root; `HEALTHCHECK` ke `/api/ping`; `qc-app` mendengarkan `127.0.0.1:${APP_PORT}`, `mem_limit` (±256m), bergantung `qc-db` sehat; migrasi dijalankan `qc-app` saat start sebelum `listen`. Tes: `docker build` lokal tidak tersedia → verifikasi di Actions (T28) dan di VPS dev (T27).
+- **I5 (keputusan pemilik 2026-11-05)**: `TRUSTED_PROXY` menerima DAFTAR CIDR (bukan hanya loopback); subnet jaringan compose dipatok (`ipam` subnet tetap di `compose.yml`) dan nginx host memanggil `qc-app` lewat gateway bridge itu. Ubah `server/src/http/proxy.ts` (`clientIp` menerima daftar CIDR IPv4/IPv6; peer di luar daftar → `CF-Connecting-IP` diabaikan), `server/src/config.ts`, tes (peer di dalam/luar CIDR, IPv4-mapped), dan **catat di spek §5** (butir "hanya dipercaya bila dari loopback" diubah menjadi "hanya dari alamat dalam `TRUSTED_PROXY`; bawaan loopback") serta Global Constraints dan Review Focus 4 di rencana ini ("loopback" → "daftar CIDR tepercaya"), dengan tanggal 2026-11-05, alasan (peer di Docker adalah gateway bridge), disetujui pemilik.
 
 ### Task 27: Provisioning VPS (pengguna deploy, nginx, staging)
 **Files:** Create: `deploy/nginx/qc.conf.example`, `deploy/deploy.sh`, `docs/deploy-vps.md`

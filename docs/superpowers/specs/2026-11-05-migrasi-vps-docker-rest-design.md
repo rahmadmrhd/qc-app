@@ -226,3 +226,12 @@ Tiap fase berakhir dengan `bun run check` hijau; tinjauan akhir per putaran (kes
 ## 18. Catatan revisi saat penyusunan rencana (2026-11-05)
 
 Pembacaan kode saat menyusun `docs/superpowers/plans/2026-11-05-migrasi-vps-docker-rest.md` mengubah lima butir **[saya]** di §6/§7 (rinci dan alasannya di bagian "Penyimpangan dari spek" rencana itu): adaptor `Db` berbentuk D1 sebagai pengganti Kysely; OpenAPI dari tabel rute `shared/api.ts` sebagai pengganti `@hono/zod-openapi` (validator server ditulis tangan); penjaga CAS yang digabung ke `UPDATE` dipertahankan; klien FE bertipe berbasis tabel rute; migrasi D1 0001–0009 dikonsolidasi menjadi satu baseline. Pemilik memilih melanjutkan ke eksekusi rencana setelah melihat daftar itu (2026-11-05); butir ini dianggap diterima dan dapat dibalik bila pemilik keberatan. Bila rencana dan §6/§7 bertentangan, §18 ini dan rencana yang berlaku.
+
+## 19. Keputusan pemilik setelah Fase 1 (2026-11-05)
+
+Pemilik produk menyetujui tiga butir hasil review akhir Fase 1; ketiganya mengubah atau melengkapi butir spek di atas dan dikerjakan pada tugas yang disebut:
+1. **I5 — IP klien di Docker (mengubah §5 dan Global Constraints rencana, "hanya dipercaya bila dari loopback")**: `TRUSTED_PROXY` menerima daftar CIDR; `CF-Connecting-IP` dipercaya hanya dari peer di dalam daftar itu (bawaan: loopback), dan subnet jaringan compose dipatok agar alamat gateway nginx→container dapat didaftarkan. Alasan: di dalam container peer nginx host adalah gateway bridge, bukan loopback. Dikerjakan di T26; kata §5 diubah di tugas itu.
+2. **M2 — longgarkan batas peninggalan CPU edge (menggantikan keputusan pemilik 2026-10-30 di PRD handover)**: `saveBatch` maks. 30 task per permintaan (sama dengan Apps Script; formulir bulk satu permintaan atomik), halaman board bawaan 20 dan maks. 50. Alasan: batas 5/3 hanya anggaran CPU edge Cloudflare, yang tidak ada lagi di VPS. Dikerjakan di T19; PRD dan `CLAUDE.md` diubah di tugas itu.
+3. **Stabilitas tes lewat tunnel**: kurangi shard bawaan lebih dulu (T13b, 4 → 3, lalu 2 bila perlu); tes langsung di VPS (`test:remote`) hanya bila masih tak stabil.
+
+Rincian kabel REST (tabel id→jalur, status galat, ETag/`If-Match`, urutan penghapusan RPC) ada di rencana, bagian Fase 2.
