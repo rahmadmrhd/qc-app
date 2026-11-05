@@ -1,11 +1,11 @@
 import { writeAudit } from '@server/core/audit';
 import { runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
-import type { DbStatement } from '@server/core/db';
+import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import { batchWrite } from '@server/modules/access/repo';
+import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
 import { planBrandByName } from '@server/modules/brand/service';
@@ -398,6 +398,22 @@ export const ITEM_CONFLICTS = {
   PRIMARY: { field: 'aliases', message: 'Nama lain sudah dipakai item lain' },
 };
 
+/**
+ * `batchWrite` untuk penulisan item di dalam `runCas`: duplikat `brands_key` (dua penulis membuat merk bernama sama
+ * serentak, mis. sesudah ganti nama merk) TIDAK dipetakan ke CONFLICT melainkan dilempar apa adanya agar `runCas`
+ * memuat ulang: percobaan berikutnya menemukan merk yang dibuat penulis lain dan memakainya.
+ */
+export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise<DbResult[]> {
+  try {
+    return await db.batch(statements);
+  } catch (error) {
+    if (error instanceof DbError && error.kind === 'duplicate' && error.key === 'brands_key') {
+      throw error;
+    }
+    throw mapDuplicateError(error, ITEM_CONFLICTS);
+  }
+}
+
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
 /**
@@ -591,7 +607,7 @@ async function saveItemOnce(
       files: activeFilesFromResults(results.slice(offset + 1)),
     },
   });
-  await batchWrite(env.DB, plan.statements, ITEM_CONFLICTS);
+  await batchItemWrite(env.DB, plan.statements);
   return toItemDto({ ...plan.record, brand: plan.brandName });
 }
 

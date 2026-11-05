@@ -5,13 +5,12 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
-import { batchWrite } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { brandsFromResult, brandsStatement, listBrands } from '@server/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@server/modules/item/repo';
 import { ITEM_COLUMNS, toItem } from '@server/modules/item/repo';
 import {
-  ITEM_CONFLICTS,
+  batchItemWrite,
   itemLabel,
   itemSnapshot,
   itemSyncSignature,
@@ -440,7 +439,7 @@ async function upsertSyncItem(
     });
     // Revisi yang dipakai baris datang dari `SELECT sync_rev` di akhir batch penulisan item (transaksi yang sama;
     // lihat `readSyncRevStmt`).
-    const results = await batchWrite(env.DB, plan.statements, ITEM_CONFLICTS);
+    const results = await batchItemWrite(env.DB, plan.statements);
     return { plan, results };
   }, 'Item diubah pihak lain; ulangi permintaan');
   const written = results
