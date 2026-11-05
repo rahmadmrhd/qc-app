@@ -208,9 +208,12 @@ describe('POST /qrcodes/{id}/exports (multipart) dan GET /qrcodes/{id}/files/{ki
     const file = await rest.get(`/qrcodes/${design.id}/files/pdf`, { email: 'qrview@gmail.com' });
     expect(file.status).toBe(200);
     expect(file.headers.get('content-type')).toBe('application/pdf');
+    // penjaga: penghapusan middleware header keamanan tak boleh lolos diam-diam
+    expect(file.headers.get('x-content-type-options')).toBe('nosniff');
     expect(Buffer.compare(Buffer.from(await file.arrayBuffer()), Buffer.from(pdf))).toBe(0);
     const image = await rest.get(`/qrcodes/${design.id}/files/png`, { email: 'qrview@gmail.com' });
     expect(image.headers.get('content-type')).toBe('image/png');
+    expect(image.headers.get('x-content-type-options')).toBe('nosniff');
     expect(Buffer.compare(Buffer.from(await image.arrayBuffer()), Buffer.from(png))).toBe(0);
   });
 

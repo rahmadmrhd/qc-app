@@ -171,6 +171,8 @@ describe('GET /files/{id} (unduhan mengalir)', () => {
     expect(response.headers.get('etag')).toBe(`"${id}"`);
     expect(response.headers.get('cache-control')).toContain('immutable');
     expect(response.headers.get('cache-control')).toContain('private');
+    // penjaga: penghapusan middleware header keamanan tak boleh lolos diam-diam
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(Buffer.compare(Buffer.from(await response.arrayBuffer()), Buffer.from(bytes))).toBe(0);
   });
 
