@@ -126,7 +126,7 @@ export interface DbConfig {
   database?: string;
 }
 
-const CONNECT_TIMEOUT_MS = 4000;
+const CONNECT_TIMEOUT_MS = 10_000;
 const SESSION_COLLATION = 'SET NAMES utf8mb4 COLLATE utf8mb4_nopad_bin';
 /**
  * MariaDB >= 11.6.2 menyalakan `innodb_snapshot_isolation` (bawaan): pada REPEATABLE READ, menulis/mengunci baris yang
