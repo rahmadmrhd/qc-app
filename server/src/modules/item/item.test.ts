@@ -4,6 +4,7 @@ import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { listBrands } from '@server/modules/brand/repo';
 import { uploadFile } from '@server/modules/files/service';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -29,7 +30,13 @@ const baseInput: SaveItemInput = {
 };
 
 const newFile = async () =>
-  (await uploadFile(env, { mime: 'image/png', base64: PNG, width: 1, height: 1 }, admin)).id;
+  (
+    await uploadFile(
+      env,
+      { mime: 'image/png', bytes: bytesOfBase64(PNG), width: 1, height: 1 },
+      admin,
+    )
+  ).id;
 
 async function lastAudit() {
   const row = await env.DB.prepare(

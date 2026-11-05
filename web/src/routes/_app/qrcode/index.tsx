@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { rpc } from '@/lib/rpc';
+import { api } from '@/lib/api';
 import { describeError } from '@/lib/rpc/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -20,7 +20,7 @@ import { fileQueryOptions } from '@/modules/files/queries';
 import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
-import { saveBase64File } from '@/modules/qrcode/lib/download';
+import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
 import {
   qrDesignsQueryOptions,
@@ -68,8 +68,8 @@ function QrCodesPage() {
     await exportMutation.mutateAsync({
       id: design.id,
       expectedUpdatedAt: design.updatedAt,
-      pdfBase64: files.pdfBase64,
-      pngBase64: files.pngBase64,
+      pdf: files.pdf,
+      png: files.png,
       onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
     });
     toast.success('Hasil ekspor disimpan di Drive');
@@ -78,7 +78,7 @@ function QrCodesPage() {
   async function download(design: QrDesignDto, kind: QrFileKind) {
     setBusyId(design.id);
     try {
-      saveBase64File(await rpc('qrcodes.file', { id: design.id, kind }));
+      saveFileDownload(await api('qrcodes.file', { id: design.id, kind }));
     } catch (error) {
       toast.error(describeError(error));
     } finally {

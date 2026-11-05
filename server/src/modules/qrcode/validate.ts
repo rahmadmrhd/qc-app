@@ -1,5 +1,5 @@
 import { readObject } from '@server/core/validate';
-import { base64ByteLength, isBase64Text } from '@shared/files';
+import { isPdfBytes, isPngBytes } from '@shared/files';
 import type { QrStyle } from '@shared/qrcode';
 import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
@@ -13,8 +13,6 @@ import type {
   UploadQrPdfInput,
 } from '@shared/rpc';
 
-const QR_PDF_PREFIX = 'JVBERi0'; // "%PDF-" dalam base64
-const QR_PNG_PREFIX = 'iVBORw0KGgo';
 const QR_FILE_KINDS = ['pdf', 'png'] as const;
 const QR_LINK_SOURCES = ['url', 'pdf'] as const;
 
@@ -160,39 +158,35 @@ export function validateUploadQrPdf(raw: unknown): UploadQrPdfInput {
   const reader = readObject(raw);
   const name = reader.str('name', { required: true, max: QR_LIMITS.documentName });
   const replaceDocumentId = reader.optionalId('replaceDocumentId');
-  const base64 = reader.raw('base64');
-  if (typeof base64 !== 'string' || !isBase64Text(base64)) {
-    reader.fail('base64', 'Isi berkas tidak valid');
-  } else if (base64ByteLength(base64) > QR_LIMITS.documentMaxBytes) {
-    reader.fail('base64', 'Ukuran PDF maksimal 10 MB');
-  } else if (!base64.startsWith(QR_PDF_PREFIX)) {
-    reader.fail('base64', 'Berkas bukan PDF');
+  const bytes = reader.raw('bytes');
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+    reader.fail('bytes', 'Isi berkas tidak valid');
+  } else if (bytes.length > QR_LIMITS.documentMaxBytes) {
+    reader.fail('bytes', 'Ukuran PDF maksimal 10 MB');
+  } else if (!isPdfBytes(bytes)) {
+    reader.fail('bytes', 'Berkas bukan PDF');
   }
   reader.done();
-  return { name, base64: base64 as string, ...(replaceDocumentId ? { replaceDocumentId } : {}) };
+  return { name, bytes: bytes as Uint8Array, ...(replaceDocumentId ? { replaceDocumentId } : {}) };
 }
 
 export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });
   const expectedUpdatedAt = reader.str('expectedUpdatedAt', { required: true, max: 40 });
-  const pdf = reader.raw('pdfBase64');
-  const png = reader.raw('pngBase64');
-  if (typeof pdf !== 'string' || !isBase64Text(pdf) || !pdf.startsWith(QR_PDF_PREFIX)) {
-    reader.fail('pdfBase64', 'PDF tidak valid');
-  }
-  if (typeof png !== 'string' || !isBase64Text(png) || !png.startsWith(QR_PNG_PREFIX)) {
-    reader.fail('pngBase64', 'PNG tidak valid');
-  }
+  const pdf = reader.raw('pdf');
+  const png = reader.raw('png');
+  if (!(pdf instanceof Uint8Array) || !isPdfBytes(pdf)) reader.fail('pdf', 'PDF tidak valid');
+  if (!(png instanceof Uint8Array) || !isPngBytes(png)) reader.fail('png', 'PNG tidak valid');
   if (
-    typeof pdf === 'string' &&
-    typeof png === 'string' &&
-    base64ByteLength(pdf) + base64ByteLength(png) > QR_LIMITS.exportMaxBytes
+    pdf instanceof Uint8Array &&
+    png instanceof Uint8Array &&
+    pdf.length + png.length > QR_LIMITS.exportMaxBytes
   ) {
-    reader.fail('pdfBase64', 'Ukuran hasil ekspor maksimal 8 MB');
+    reader.fail('pdf', 'Ukuran hasil ekspor maksimal 8 MB');
   }
   reader.done();
-  return { id, expectedUpdatedAt, pdfBase64: pdf as string, pngBase64: png as string };
+  return { id, expectedUpdatedAt, pdf: pdf as Uint8Array, png: png as Uint8Array };
 }
 
 export function validateQrFile(raw: unknown): QrFileInput {

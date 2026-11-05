@@ -5,6 +5,7 @@ import { appError, staleError } from '@server/core/errors';
 import type { RouteTable } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
+import { listOperations } from '@server/http/rest';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { API_ROUTES } from '@shared/api';
@@ -405,10 +406,17 @@ describe('perakitan permintaan dan respons', () => {
     expect(calls[0]?.input).toMatchObject({ id: 'a/b c' });
   });
 
-  test('id berpenanda binary tidak didaftarkan oleh kernel (T21)', async () => {
-    const app = createApp(stubRoutes(), new Set(IDS));
-    expect((await call(app, '/files/f1')).status).toBe(404);
-    expect((await call(app, '/qrcodes/q1/exports', { method: 'POST', body: {} })).status).toBe(404);
+  test('id biner (badan mentah, multipart, unduhan) didaftarkan oleh kernel seperti id lain', () => {
+    const registered = listOperations(new Set(IDS)).map((operation) => operation.id);
+    for (const id of [
+      'files.upload',
+      'files.get',
+      'qrcodes.uploadPdf',
+      'qrcodes.export',
+      'qrcodes.file',
+    ] as const) {
+      expect(registered).toContain(id);
+    }
   });
 
   test('id yang belum migrated tidak didaftarkan', async () => {

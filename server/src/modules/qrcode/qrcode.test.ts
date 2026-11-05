@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { attachFiles } from '@server/modules/files/service';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -28,7 +29,12 @@ afterEach(() => {
 
 const call = (email: string, method: string, payload: unknown) =>
   qrRpc(env, email, method, payload);
-const PNG1 = { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==', width: 1, height: 1 };
+const PNG1 = {
+  mime: 'image/png',
+  bytes: bytesOfBase64('iVBORw0KGgoAAAANSUhEUg=='),
+  width: 1,
+  height: 1,
+};
 const PDF = 'JVBERi0xLjQK';
 
 async function input(extra: Record<string, unknown> = {}) {
@@ -58,7 +64,7 @@ async function save(payload: Record<string, unknown> = {}, email = 'qredit@gmail
   return call(email, 'qrcodes.save', body);
 }
 const upload = (name = 'manual.pdf', email = 'qredit@gmail.com') =>
-  call(email, 'qrcodes.uploadPdf', { name, base64: PDF });
+  call(email, 'qrcodes.uploadPdf', { name, bytes: bytesOfBase64(PDF) });
 const usePdf = (documentId: string, extra: Record<string, unknown> = {}) =>
   save({ linkSource: 'pdf', link: '', documentId, ...extra });
 
@@ -422,7 +428,7 @@ describe('link, logo, dan berkas', () => {
     expect((await call('noqr@gmail.com', 'files.get', { id: logo })).ok).toBe(true);
   });
 
-  test('qrcodes.file meneruskan base64 hasil ekspor apa adanya; belum diekspor/hilang -> NOT_FOUND', async () => {
+  test('qrcodes.file mengalirkan byte hasil ekspor apa adanya; belum diekspor/hilang -> NOT_FOUND', async () => {
     const made = await save();
     expect(
       (await call('qrview@gmail.com', 'qrcodes.file', { id: made.data.id, kind: 'pdf' })).error
@@ -440,7 +446,7 @@ describe('link, logo, dan berkas', () => {
       .bind(pdf, made.data.id)
       .run();
     const out = await call('qrview@gmail.com', 'qrcodes.file', { id: made.data.id, kind: 'pdf' });
-    expect(out.data).toMatchObject({ mime: 'application/pdf', base64: PDF });
+    expect(out.data).toMatchObject({ mime: 'application/pdf', bytes: bytesOfBase64(PDF) });
     expect(out.data.filename).toMatch(/\.pdf$/);
     expect(
       (await call('qrview@gmail.com', 'qrcodes.file', { id: made.data.id, kind: 'png' })).error

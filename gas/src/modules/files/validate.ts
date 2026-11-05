@@ -7,7 +7,8 @@ import {
   MAX_IMAGE_DIMENSION,
   matchesImageSignature,
 } from '@shared/files';
-import type { GetFileInput, UploadFileInput } from '@shared/rpc';
+import type { GasUploadFileInput } from '@shared/gas-binary';
+import type { GetFileInput } from '@shared/rpc';
 
 function isDimension_(value: unknown): value is number {
   return (
@@ -18,7 +19,7 @@ function isDimension_(value: unknown): value is number {
   );
 }
 
-export function validateUploadFile_(raw: unknown): UploadFileInput {
+export function validateUploadFile_(raw: unknown): GasUploadFileInput {
   const reader = readObject_(raw);
   const mime = reader.raw('mime');
   const base64 = reader.raw('base64');

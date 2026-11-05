@@ -1,6 +1,7 @@
 import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { BRIDGE_BASE64_MAX_CHARS } from '@server/core/bridge-http';
+import { bytesToBase64 } from '@server/core/bytes';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -60,9 +61,12 @@ export async function requestQrExport(
 ): Promise<ExportQrJobDto> {
   const design = await loadDesign(env, input.id);
   assertExportable(design, input.expectedUpdatedAt);
+  // Jembatan Google menerima base64: konversi sekali di sini (muatan job disimpan sebagai base64).
+  const pdfBase64 = bytesToBase64(input.pdf);
+  const pngBase64 = bytesToBase64(input.png);
   for (const [field, data] of [
-    ['pdfBase64', input.pdfBase64],
-    ['pngBase64', input.pngBase64],
+    ['pdf', pdfBase64],
+    ['png', pngBase64],
   ] as const) {
     if (data.length > BRIDGE_BASE64_MAX_CHARS) {
       const message =
@@ -78,7 +82,7 @@ export async function requestQrExport(
   }
   const payload: ExportInput = { designId: design.id, expectedUpdatedAt: input.expectedUpdatedAt };
   const jobId = await enqueueJob(env, 'qr_export', payload, actor.email, {
-    blobs: { pdf: input.pdfBase64, png: input.pngBase64 },
+    blobs: { pdf: pdfBase64, png: pngBase64 },
   });
   return { jobId };
 }

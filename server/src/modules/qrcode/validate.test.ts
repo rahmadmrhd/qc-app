@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
 import {
   validateExportQrDesign,
@@ -74,43 +75,45 @@ test('simpan: batas teks, karakter yang tak didukung font, dan layout di luar re
   expect(fieldsOf(() => validateSaveQrDesign({ ...url, layout: null })).layout).toBeDefined();
 });
 
-test('unggah PDF: nama, base64, tanda %PDF-, dan batas 10 MB', () => {
-  const pdf = 'JVBERi0xLjQK'; // "%PDF-1.4\n"
-  expect(validateUploadQrPdf({ name: 'a.pdf', base64: pdf })).toEqual({
-    name: 'a.pdf',
-    base64: pdf,
-  });
+test('unggah PDF: nama, byte, tanda %PDF-, dan batas 10 MB', () => {
+  const pdf = bytesOfBase64('JVBERi0xLjQK'); // "%PDF-1.4" + baris baru
+  expect(validateUploadQrPdf({ name: 'a.pdf', bytes: pdf })).toEqual({ name: 'a.pdf', bytes: pdf });
   expect(
-    fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', base64: 'QUJDRA==' })).base64,
+    fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', bytes: bytesOfBase64('QUJDRA==') })).bytes,
   ).toContain('PDF');
-  expect(fieldsOf(() => validateUploadQrPdf({ name: '', base64: pdf })).name).toBeDefined();
+  expect(fieldsOf(() => validateUploadQrPdf({ name: '', bytes: pdf })).name).toBeDefined();
+  expect(fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', bytes: '***' })).bytes).toBeDefined();
   expect(
-    fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', base64: '***' })).base64,
+    fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', bytes: new Uint8Array() })).bytes,
   ).toBeDefined();
-  const big = `JVBERi0${'A'.repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3) + 8)}`;
-  expect(
-    fieldsOf(() =>
-      validateUploadQrPdf({ name: 'a.pdf', base64: big.slice(0, big.length - (big.length % 4)) }),
-    ).base64,
-  ).toContain('10 MB');
+  const big = new Uint8Array(10 * 1024 * 1024 + 1);
+  big.set(pdf);
+  expect(fieldsOf(() => validateUploadQrPdf({ name: 'a.pdf', bytes: big })).bytes).toContain(
+    '10 MB',
+  );
 });
 
 test('ekspor dan unduh: tanda PDF/PNG, batas gabungan 8 MB, jenis berkas', () => {
-  const pdf = 'JVBERi0xLjQK';
-  const png = 'iVBORw0KGgoAAAANSUhEUg==';
+  const pdf = bytesOfBase64('JVBERi0xLjQK');
+  const png = bytesOfBase64('iVBORw0KGgoAAAANSUhEUg==');
+  expect(validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdf, png })).toMatchObject({
+    id: 'q',
+  });
   expect(
-    validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdfBase64: pdf, pngBase64: png }),
-  ).toMatchObject({ id: 'q' });
-  expect(
-    fieldsOf(() =>
-      validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdfBase64: png, pngBase64: png }),
-    ).pdfBase64,
+    fieldsOf(() => validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdf: png, png })).pdf,
   ).toBeDefined();
   expect(
-    fieldsOf(() =>
-      validateExportQrDesign({ id: 'q', expectedUpdatedAt: '', pdfBase64: pdf, pngBase64: png }),
-    ).expectedUpdatedAt,
+    fieldsOf(() => validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdf, png: pdf })).png,
   ).toBeDefined();
+  expect(
+    fieldsOf(() => validateExportQrDesign({ id: 'q', expectedUpdatedAt: '', pdf, png }))
+      .expectedUpdatedAt,
+  ).toBeDefined();
+  const huge = new Uint8Array(8 * 1024 * 1024);
+  huge.set(pdf);
+  expect(
+    fieldsOf(() => validateExportQrDesign({ id: 'q', expectedUpdatedAt: 't', pdf: huge, png })).pdf,
+  ).toContain('8 MB');
   expect(validateQrFile({ id: 'q', kind: 'png' })).toEqual({ id: 'q', kind: 'png' });
   expect(fieldsOf(() => validateQrFile({ id: 'q', kind: 'zip' })).kind).toBeDefined();
 });

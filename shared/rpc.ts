@@ -1,4 +1,11 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type {
+  GasExportQrDesignInput,
+  GasFileContentDto,
+  GasQrFileDto,
+  GasUploadFileInput,
+  GasUploadQrPdfInput,
+} from './gas-binary';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
@@ -149,10 +156,10 @@ export interface FileDto {
   height: number;
 }
 
+/** Unggah gambar (kontrak Worker/REST): byte mentah; `mime` = Content-Type badan. */
 export interface UploadFileInput {
   mime: string;
-  /** Isi gambar dalam base64 baku (tanpa awalan `data:`). */
-  base64: string;
+  bytes: Uint8Array;
   width: number;
   height: number;
 }
@@ -164,7 +171,7 @@ export interface GetFileInput {
 export interface FileContentDto {
   id: string;
   mime: string;
-  base64: string;
+  bytes: Uint8Array;
 }
 export type ItemStatus = 'active' | 'inactive';
 
@@ -472,7 +479,8 @@ export interface QrDocumentDto {
 }
 export interface UploadQrPdfInput {
   name: string;
-  base64: string;
+  /** PDF mentah (badan permintaan). */
+  bytes: Uint8Array;
   replaceDocumentId?: string;
 }
 /** Salin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber. */
@@ -481,11 +489,12 @@ export interface CloneQrPdfInput {
   /** Ganti isi PDF sumber yang ada dengan berkas Drive ini (URL tetap) alih-alih membuat dokumen baru. */
   replaceDocumentId?: string;
 }
+/** Ekspor QR: PDF dan PNG hasil render klien sebagai bagian multipart `pdf` dan `png`. */
 export interface ExportQrDesignInput {
   id: string;
   expectedUpdatedAt: string;
-  pdfBase64: string;
-  pngBase64: string;
+  pdf: Uint8Array;
+  png: Uint8Array;
 }
 export type QrFileKind = 'pdf' | 'png';
 export interface QrFileInput {
@@ -495,7 +504,9 @@ export interface QrFileInput {
 export interface QrFileDto {
   filename: string;
   mime: string;
-  base64: string;
+  bytes: Uint8Array;
+  /** Versi isi (ETag): berubah tiap ekspor ulang. */
+  etag: string;
 }
 
 export interface RpcContract {
@@ -510,8 +521,8 @@ export interface RpcContract {
   'access.locations.list': { input: null; output: LocationDto[] };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
-  'files.upload': { input: UploadFileInput; output: FileDto };
-  'files.get': { input: GetFileInput; output: FileContentDto };
+  'files.upload': { input: GasUploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: GasFileContentDto };
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
@@ -541,10 +552,10 @@ export interface RpcContract {
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
-  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.uploadPdf': { input: GasUploadQrPdfInput; output: QrDocumentDto };
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
-  'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
-  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
+  'qrcodes.export': { input: GasExportQrDesignInput; output: QrDesignDto };
+  'qrcodes.file': { input: QrFileInput; output: GasQrFileDto };
 }
 
 export type RpcMethod = keyof RpcContract;
@@ -644,6 +655,10 @@ export interface ExportSheetsInput {
 export type ExportSheetsJobDto = ExportQrJobDto;
 
 type WorkerReplacedMethods =
+  | 'files.upload'
+  | 'files.get'
+  | 'qrcodes.uploadPdf'
+  | 'qrcodes.file'
   | 'access.audit.list'
   | 'handovers.board'
   | 'items.list'
@@ -653,6 +668,10 @@ export interface WorkerRpcContract extends Omit<RpcContract, WorkerReplacedMetho
   'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
   'handovers.board': { input: BoardPageInput; output: BoardPageDto };
   'items.list': { input: ListItemsPageInput; output: ItemPageDto };
+  'files.upload': { input: UploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: FileContentDto };
+  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };

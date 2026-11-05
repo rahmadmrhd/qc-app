@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
 import { ensureQrFolder } from '@server/modules/qrcode/folders';
 import { readQrFile } from '@server/modules/qrcode/service';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
@@ -36,7 +37,7 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
     await exportedDesign();
     const first = await readQrFile(env, { id: 'd1', kind: 'pdf' });
     const second = await readQrFile(env, { id: 'd1', kind: 'pdf' });
-    expect(first.base64).toBe(PDF1);
+    expect(first.bytes).toEqual(bytesOfBase64(PDF1));
     expect(second).toEqual(first);
     expect(second.mime).toBe('application/pdf');
     expect(reads()).toBe(1);
@@ -55,7 +56,7 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
   test('unggah ulang PDF (replaceFileContent): salinan lama dibuang dan tidak dikembalikan', async () => {
     const first = await qrRpc(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
       name: 'm.pdf',
-      base64: PDF1,
+      bytes: bytesOfBase64(PDF1),
     });
     const driveId =
       (
@@ -69,7 +70,7 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
     expect(cache.size).toBeGreaterThan(0);
     const second = await qrRpc(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
       name: 'm.pdf',
-      base64: PDF2,
+      bytes: bytesOfBase64(PDF2),
       replaceDocumentId: first.data.id,
     });
     expect(second.ok).toBe(true);

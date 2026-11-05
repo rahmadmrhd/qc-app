@@ -1,4 +1,11 @@
-import { type ApiVerb, formatEtag, type RequestParts, toRequestParts } from '@shared/api';
+import {
+  API_ROUTES,
+  type ApiVerb,
+  downloadOutput,
+  formatEtag,
+  type RequestParts,
+  toRequestParts,
+} from '@shared/api';
 import {
   ERROR_CODES,
   type ErrorCode,
@@ -85,12 +92,29 @@ function urlOf(baseUrl: string, parts: RequestParts): string {
   return `${baseUrl}${API_BASE}${parts.path}${query === '' ? '' : `?${query}`}`;
 }
 
-function headersOf(verb: ApiVerb, parts: RequestParts): Record<string, string> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
+function headersOf(verb: ApiVerb, parts: RequestParts, download: boolean): Record<string, string> {
+  const headers: Record<string, string> = { Accept: download ? '*/*' : 'application/json' };
   if (verb !== 'GET') Object.assign(headers, CSRF_HEADERS);
   if (parts.body !== undefined) headers['Content-Type'] = 'application/json';
+  // Badan mentah: jenis isinya dari rute. Multipart: biarkan peramban memberi Content-Type beserta boundary.
+  if (parts.raw !== undefined) headers['Content-Type'] = parts.raw.contentType;
   if (parts.ifMatch !== undefined) headers['If-Match'] = formatEtag(parts.ifMatch);
   return headers;
+}
+
+/** Badan permintaan: JSON, byte mentah (Blob), atau multipart/form-data. */
+function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
+  if (parts.raw !== undefined) {
+    return new Blob([parts.raw.data as BlobPart], { type: parts.raw.contentType });
+  }
+  if (parts.multipart !== undefined) {
+    const form = new FormData();
+    for (const [name, data] of Object.entries(parts.multipart)) {
+      form.append(name, new Blob([data as BlobPart]), `${name}.bin`);
+    }
+    return form;
+  }
+  return parts.body === undefined ? undefined : JSON.stringify(parts.body);
 }
 
 /**
@@ -105,17 +129,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     input: WorkerRpcInput<M>,
   ): Promise<WorkerRpcOutput<M>> {
     const parts = toRequestParts(id, input);
+    const isDownload = API_ROUTES[id].download !== undefined;
     const doFetch = options.fetchImpl ?? fetch;
     let response: Response;
-    let text: string;
+    let text = '';
+    let bytes: Uint8Array | undefined;
     try {
       response = await doFetch(urlOf(baseUrl, parts), {
         method: parts.verb,
         credentials: 'same-origin',
-        headers: headersOf(parts.verb, parts),
-        body: parts.body === undefined ? undefined : JSON.stringify(parts.body),
+        headers: headersOf(parts.verb, parts, isDownload),
+        body: bodyOf(parts),
       });
-      text = await response.text();
+      // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
+      if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
+      else text = await response.text();
     } catch (error) {
       throw new ApiError(
         'INTERNAL',
@@ -128,6 +156,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
       );
     }
     if (!response.ok) throw errorFromResponse(response.status, text);
+    if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
     if (text === '') return undefined as unknown as WorkerRpcOutput<M>;
     const data = parseJson(text);
     if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');

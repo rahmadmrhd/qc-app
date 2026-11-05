@@ -1,5 +1,5 @@
 import type { ImageMime } from '@shared/files';
-import { base64ByteLength, isImageMime, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from '@shared/files';
+import { isImageMime, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from '@shared/files';
 import type { UploadFileInput } from '@shared/rpc';
 
 /** Skala turun agar sisi terpanjang <= `max`; tidak pernah membesarkan; sisi minimal 1 px. */
@@ -30,12 +30,12 @@ function canvasToBlob(
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
+function blobToBytes(blob: Blob): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error('Gagal membaca gambar'));
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-    reader.readAsDataURL(blob);
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.readAsArrayBuffer(blob);
   });
 }
 
@@ -63,9 +63,8 @@ export async function prepareImage(
     const blob =
       webp && webp.type === 'image/webp' ? webp : await canvasToBlob(canvas, 'image/jpeg', quality);
     if (!blob || !isImageMime(blob.type)) continue;
-    const base64 = await blobToBase64(blob);
-    if (base64ByteLength(base64) <= MAX_IMAGE_BYTES) {
-      return { mime: blob.type as ImageMime, base64, width, height };
+    if (blob.size <= MAX_IMAGE_BYTES) {
+      return { mime: blob.type as ImageMime, bytes: await blobToBytes(blob), width, height };
     }
   }
   throw new Error('Gambar masih terlalu besar setelah dikompres (maks. 1 MB)');

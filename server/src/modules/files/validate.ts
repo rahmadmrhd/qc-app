@@ -1,11 +1,9 @@
 import { readObject } from '@server/core/validate';
 import {
-  base64ByteLength,
-  isBase64Text,
   isImageMime,
   MAX_IMAGE_BYTES,
   MAX_IMAGE_DIMENSION,
-  matchesImageSignature,
+  matchesImageBytesSignature,
 } from '@shared/files';
 import type { GetFileInput, UploadFileInput } from '@shared/rpc';
 
@@ -21,23 +19,23 @@ function isDimension(value: unknown): value is number {
 export function validateUploadFile(raw: unknown): UploadFileInput {
   const reader = readObject(raw);
   const mime = reader.raw('mime');
-  const base64 = reader.raw('base64');
+  const bytes = reader.raw('bytes');
   const width = reader.raw('width');
   const height = reader.raw('height');
   if (!isImageMime(mime)) reader.fail('mime', 'Hanya JPEG, PNG, atau WebP');
-  if (typeof base64 !== 'string' || !isBase64Text(base64)) {
-    reader.fail('base64', 'Isi gambar tidak valid');
-  } else if (base64ByteLength(base64) > MAX_IMAGE_BYTES) {
-    reader.fail('base64', 'Ukuran gambar maksimal 1 MB');
-  } else if (isImageMime(mime) && !matchesImageSignature(mime, base64)) {
-    reader.fail('base64', 'Isi berkas tidak sesuai jenis gambar');
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+    reader.fail('bytes', 'Isi gambar tidak valid');
+  } else if (bytes.length > MAX_IMAGE_BYTES) {
+    reader.fail('bytes', 'Ukuran gambar maksimal 1 MB');
+  } else if (isImageMime(mime) && !matchesImageBytesSignature(mime, bytes)) {
+    reader.fail('bytes', 'Isi berkas tidak sesuai jenis gambar');
   }
   if (!isDimension(width)) reader.fail('width', 'Lebar tidak valid');
   if (!isDimension(height)) reader.fail('height', 'Tinggi tidak valid');
   reader.done();
   return {
     mime: mime as string,
-    base64: base64 as string,
+    bytes: bytes as Uint8Array,
     width: width as number,
     height: height as number,
   };

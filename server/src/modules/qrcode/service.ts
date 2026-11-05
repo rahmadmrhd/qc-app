@@ -1,5 +1,6 @@
 import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
+import { base64ToBytes, bytesToBase64, shortDigest } from '@server/core/bytes';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
@@ -673,7 +674,15 @@ export async function uploadQrPdf(
   input: UploadQrPdfInput,
   actor: ActorRef,
 ): Promise<QrDocumentDto> {
-  const out = await uploadQrPdfNow(env, input, actor);
+  const out = await uploadQrPdfNow(
+    env,
+    {
+      name: input.name,
+      base64: bytesToBase64(input.bytes),
+      replaceDocumentId: input.replaceDocumentId,
+    },
+    actor,
+  );
   // Pembersihan oportunistik: unggahan yatim yang sudah melewati masa tenggang dicabut berbaginya.
   await afterQrCommit('pencabutan berbagi', () => revokeUnusedQrDocuments(env, []));
   return out;
@@ -761,9 +770,16 @@ export async function cloneQrPdfFromDrive(
   }
 }
 
+/** PDF sumber dalam base64 (bentuk yang diteruskan ke jembatan Google). */
+interface QrPdfBase64Input {
+  name: string;
+  base64: string;
+  replaceDocumentId?: string;
+}
+
 async function uploadQrPdfNow(
   env: Env,
-  input: UploadQrPdfInput,
+  input: QrPdfBase64Input,
   actor: ActorRef,
 ): Promise<QrDocumentDto> {
   const bridge = getBridge(env);
@@ -842,7 +858,7 @@ async function uploadQrPdfNow(
   }
 }
 
-/** Isi hasil ekspor (PDF/PNG) diteruskan sebagai base64 apa adanya. */
+/** Isi hasil ekspor (PDF/PNG) sebagai byte; `etag` = sidik id berkas Drive (berubah tiap ekspor ulang). */
 export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDto> {
   const design = (await listQrDesigns(env)).find((row) => row.id === input.id);
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
@@ -860,6 +876,7 @@ export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDt
   return {
     filename: `${labelFileName(design.title, design.subtitle)}.${input.kind}`,
     mime: content.mime,
-    base64: content.base64,
+    bytes: base64ToBytes(content.base64),
+    etag: await shortDigest(driveId),
   };
 }

@@ -4,13 +4,12 @@ import { join, relative } from 'node:path';
 import type { Db, DbStatement } from '@server/core/db';
 import type { FileCache } from '@server/core/file-cache';
 import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
-import { callRoute } from '@server/core/router';
-import { signSessionToken } from '@server/core/session';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
-import { getRoutes } from '@server/routes';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
+import { restRpc } from '@server-test/rest-rpc';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import {
@@ -36,7 +35,7 @@ let logged: string[];
 
 const upload = (overrides: Record<string, unknown> = {}) => ({
   mime: 'image/png',
-  base64: PNG,
+  bytes: bytesOfBase64(PNG),
   width: 1,
   height: 1,
   ...overrides,
@@ -187,7 +186,7 @@ describe('unggah', () => {
     const first = await ensureDriveFolder(env);
     const second = await ensureDriveFolder(env);
     await up();
-    await up(upload({ mime: 'image/jpeg', base64: JPEG }));
+    await up(upload({ mime: 'image/jpeg', bytes: bytesOfBase64(JPEG) }));
     expect(second).toBe(first);
     expect(env.BRIDGE.state.folders.size).toBe(1);
     const setting = await env.DB.prepare(
@@ -255,7 +254,7 @@ describe('baca', () => {
     expect(await readFile(env, { id: saved.id })).toEqual({
       id: saved.id,
       mime: 'image/png',
-      base64: PNG,
+      bytes: bytesOfBase64(PNG),
     });
     expect((await captureAppErrorAsync(() => readFile(env, { id: 'tidak-ada' }))).code).toBe(
       'NOT_FOUND',
@@ -285,7 +284,7 @@ describe('baca', () => {
     )
       .bind(foreign)
       .run();
-    expect((await readFile(env, { id: saved.id })).base64).toBe(PNG);
+    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
     expect((await captureAppErrorAsync(() => readFile(env, { id: 'f-luar' }))).code).toBe(
       'NOT_FOUND',
     );
@@ -308,16 +307,20 @@ describe('baca', () => {
     expect(
       (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, 'lain@gmail.com'))).code,
     ).toBe('NOT_FOUND');
-    expect((await readFile(env, { id: logo.id }, 'lain@gmail.com')).base64).toBe(PNG);
-    expect((await readFile(env, { id: saved.id }, 'admin@gmail.com')).base64).toBe(PNG);
+    expect((await readFile(env, { id: logo.id }, 'lain@gmail.com')).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    expect((await readFile(env, { id: saved.id }, 'admin@gmail.com')).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
   });
 
   test('pembacaan kedua dari cache (tanpa jembatan); aturan akses diperiksa sebelum cache', async () => {
     const cache = new MemoryFileCache();
     env.FILE_CACHE = cache;
     const saved = await up();
-    expect((await readFile(env, { id: saved.id })).base64).toBe(PNG);
-    expect((await readFile(env, { id: saved.id })).base64).toBe(PNG);
+    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
+    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
     expect(env.BRIDGE.calls.filter((c) => c.action === 'readFile')).toHaveLength(1);
     expect(
       (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, 'lain@gmail.com'))).code,
@@ -368,21 +371,18 @@ describe('baca', () => {
 });
 
 describe('validasi', () => {
-  test('menolak MIME, base64, tanda tangan, ukuran, dan dimensi yang salah', () => {
+  test('menolak MIME, byte, tanda tangan, ukuran, dan dimensi yang salah', () => {
     const fieldsOf = (input: unknown) => captureAppError(() => validateUploadFile(input)).fields;
     expect(fieldsOf(upload({ mime: 'image/gif' }))?.mime).toBe('Hanya JPEG, PNG, atau WebP');
     expect(fieldsOf(upload({ mime: 'text/html' }))?.mime).toBeDefined();
-    expect(fieldsOf(upload({ base64: 'bukan base64!' }))?.base64).toBe('Isi gambar tidak valid');
-    expect(fieldsOf(upload({ base64: `data:image/png;base64,${PNG}` }))?.base64).toBe(
-      'Isi gambar tidak valid',
-    );
-    expect(fieldsOf(upload({ mime: 'image/jpeg' }))?.base64).toBe(
+    expect(fieldsOf(upload({ bytes: 'bukan byte' }))?.bytes).toBe('Isi gambar tidak valid');
+    expect(fieldsOf(upload({ bytes: new Uint8Array() }))?.bytes).toBe('Isi gambar tidak valid');
+    expect(fieldsOf(upload({ mime: 'image/jpeg' }))?.bytes).toBe(
       'Isi berkas tidak sesuai jenis gambar',
     );
-    const huge = `iVBORw0KGgo${'A'.repeat(Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 8)}`;
-    expect(
-      fieldsOf(upload({ base64: huge.slice(0, huge.length - (huge.length % 4)) }))?.base64,
-    ).toBe('Ukuran gambar maksimal 1 MB');
+    const huge = new Uint8Array(MAX_IMAGE_BYTES + 1);
+    huge.set(bytesOfBase64(PNG));
+    expect(fieldsOf(upload({ bytes: huge }))?.bytes).toBe('Ukuran gambar maksimal 1 MB');
     for (const bad of [0, -1, 4001, 1.5, '1', null]) {
       expect(fieldsOf(upload({ width: bad }))?.width).toBeDefined();
       expect(fieldsOf(upload({ height: bad }))?.height).toBeDefined();
@@ -470,13 +470,7 @@ describe('penghapusan (pending_delete)', () => {
 
 describe('rute dan izin', () => {
   async function call(method: string, payload: unknown, email: string) {
-    return callRoute(
-      env,
-      await signSessionToken(env, email, env.clock.now()),
-      method,
-      payload,
-      getRoutes(),
-    );
+    return restRpc(env, email, method, payload);
   }
 
   test('upload butuh item edit, baca butuh item view, dan lintas peran ditolak', async () => {
@@ -498,7 +492,7 @@ describe('rute dan izin', () => {
     });
     expect(await call('files.get', { id }, 'lihat@gmail.com')).toMatchObject({
       ok: true,
-      data: { mime: 'image/png', base64: PNG },
+      data: { mime: 'image/png', bytes: bytesOfBase64(PNG) },
     });
     expect(await call('files.get', { id }, 'tanpa@gmail.com')).toMatchObject({
       ok: false,
@@ -517,7 +511,7 @@ describe('rute dan izin', () => {
 });
 
 describe('pagar base64', () => {
-  test('pagar: tidak ada atob/btoa/Buffer base64 di server/src selain token kecil (base64url.ts)', () => {
+  test('pagar: tidak ada atob/btoa/Buffer base64 di server/src selain token kecil (base64url.ts) dan core/bytes.ts', () => {
     const root = join(import.meta.dir, '../..');
     const offenders: string[] = [];
     const walk = (dir: string) => {
@@ -527,6 +521,7 @@ describe('pagar base64', () => {
         else if (path.endsWith('.ts') && !path.endsWith('.test.ts')) {
           const rel = relative(root, path).split('\\').join('/');
           if (rel === 'core/base64url.ts') continue; // token sesi/OAuth saja, bukan isi berkas
+          if (rel === 'core/bytes.ts') continue; // satu-satunya konversi byte <-> base64 isi berkas
           const text = readFileSync(path, 'utf8');
           if (/\b(atob|btoa)\s*\(|Buffer\.from\([^)]*base64|toBase64|fromBase64/.test(text)) {
             offenders.push(rel);

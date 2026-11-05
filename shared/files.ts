@@ -79,3 +79,33 @@ export function parseFileRef(url: string): string | null {
   const id = url.slice(FILE_SCHEME.length);
   return /^[A-Za-z0-9_-]+$/.test(id) ? id : null;
 }
+
+/** True bila `bytes` diawali `signature` (mulai dari `offset`). */
+function bytesHaveSignature(bytes: Uint8Array, signature: readonly number[], offset = 0): boolean {
+  if (bytes.length < offset + signature.length) return false;
+  return signature.every((value, index) => bytes[offset + index] === value);
+}
+
+const JPEG_SIGNATURE = [0xff, 0xd8, 0xff] as const;
+const PNG_FILE_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
+const WEBP_SIGNATURE = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP"
+const PDF_FILE_SIGNATURE = [0x25, 0x50, 0x44, 0x46, 0x2d] as const; // "%PDF-"
+
+/** Tanda tangan byte berkas gambar harus cocok dengan MIME yang diklaim (padanan `matchesImageSignature` untuk byte mentah). */
+export function matchesImageBytesSignature(mime: ImageMime, bytes: Uint8Array): boolean {
+  if (mime === 'image/jpeg') return bytesHaveSignature(bytes, JPEG_SIGNATURE);
+  if (mime === 'image/png') return bytesHaveSignature(bytes, PNG_FILE_SIGNATURE);
+  // WebP = kontainer RIFF; byte 8-11 harus "WEBP" (WAV/AVI juga berawalan RIFF).
+  return bytesHaveSignature(bytes, RIFF_SIGNATURE) && bytesHaveSignature(bytes, WEBP_SIGNATURE, 8);
+}
+
+/** Berkas diawali "%PDF-". */
+export function isPdfBytes(bytes: Uint8Array): boolean {
+  return bytesHaveSignature(bytes, PDF_FILE_SIGNATURE);
+}
+
+/** Berkas diawali tanda tangan PNG. */
+export function isPngBytes(bytes: Uint8Array): boolean {
+  return bytesHaveSignature(bytes, PNG_FILE_SIGNATURE);
+}

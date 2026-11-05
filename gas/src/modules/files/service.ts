@@ -4,7 +4,8 @@ import type { UserContext } from '@gas/modules/access/context';
 import { nowIso_ } from '@gas/modules/access/service';
 import type { FileOwnerType } from '@shared/files';
 import { base64ByteLength, MAX_UNATTACHED_UPLOADS } from '@shared/files';
-import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/rpc';
+import type { GasFileContentDto, GasUploadFileInput } from '@shared/gas-binary';
+import type { FileDto, GetFileInput } from '@shared/rpc';
 import type { FileRecord, NewFileRecord } from './repo';
 import { insertFile_, listFiles_, updateFile_ } from './repo';
 
@@ -48,7 +49,7 @@ function toFileDto_(file: NewFileRecord): FileDto {
   return { id: file.id, mime: file.mime, size: file.size, width: file.width, height: file.height };
 }
 
-export function uploadFile_(input: UploadFileInput, actor: UserContext): FileDto {
+export function uploadFile_(input: GasUploadFileInput, actor: UserContext): FileDto {
   const platform = platform_();
   // Batas berkas yatim per user: yang belum ditautkan ke entitas tidak boleh menumpuk tanpa batas.
   const pending = listFiles_().filter(
@@ -134,7 +135,7 @@ function cacheFileContent_(folderId: string, driveId: string, base64: string): v
  * `qrcode`): mereka hanya boleh membaca logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang
  * (pratinjau logo sebelum disimpan), bukan foto item.
  */
-export function readFile_(input: GetFileInput, onlyLogosFor?: string): FileContentDto {
+export function readFile_(input: GetFileInput, onlyLogosFor?: string): GasFileContentDto {
   const record = listFiles_().find((file) => file.id === input.id);
   if (!record) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
   if (onlyLogosFor !== undefined) {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -13,7 +14,12 @@ beforeEach(async () => {
 
 const call = (email: string, method: string, payload: unknown) =>
   qrRpc(env, email, method, payload);
-const PNG1 = { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==', width: 1, height: 1 };
+const PNG1 = {
+  mime: 'image/png',
+  bytes: bytesOfBase64('iVBORw0KGgoAAAANSUhEUg=='),
+  width: 1,
+  height: 1,
+};
 const logo = async (email = 'qrmanage@gmail.com') => {
   const out = await call(email, 'files.upload', PNG1);
   if (!out.ok) throw new Error('unggah gagal');

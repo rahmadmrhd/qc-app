@@ -15,7 +15,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
-import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
 import { awaitJob } from '@/modules/jobs/queries';
 
@@ -124,7 +123,7 @@ export const useDeleteQrDesign = () =>
 export const useCloneQrPdf = () =>
   useQrMutation((input: CloneQrPdfInput) => api('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
-  useQrMutation((input: UploadQrPdfInput) => rpc('qrcodes.uploadPdf', input));
+  useQrMutation((input: UploadQrPdfInput) => api('qrcodes.uploadPdf', input));
 /**
  * Ekspor QR kini pekerjaan latar (Queues): `qrcodes.export` hanya mengantre dan membalas `{ jobId }`. Mutasi ini
  * menunggu job selesai (polling `jobs.get` bertahap), lalu memuat desain terbaru (status ekspor berubah) sehingga
@@ -136,7 +135,7 @@ export const useExportQrDesign = () =>
       onProgress,
       ...input
     }: ExportQrDesignInput & { onProgress?: (job: JobDto) => void }) => {
-      const { jobId } = await rpc('qrcodes.export', input);
+      const { jobId } = await api('qrcodes.export', input);
       await awaitJob(jobId, { onProgress });
       return api('qrcodes.get', { id: input.id });
     },

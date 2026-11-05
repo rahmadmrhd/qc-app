@@ -29,9 +29,42 @@ export interface ApiRouteDef {
    * kernel memberi header `Location: /api/v1<jalur>`.
    */
   location?: string;
-  /** Diisi T21; sebelum itu rute berpenanda ini tidak didaftarkan dan tidak masuk `REST_MIGRATED_IDS`. */
+  /** Penanda rute biner (dokumentasi OpenAPI); bentuk rinci ada di `rawBody`/`multipart`/`download`. */
   binary?: 'request' | 'response' | 'multipart';
+  /** Badan permintaan mentah (unggah): `field` input memuat byte; Content-Type dari `mimeField` atau `contentType` tetap. */
+  rawBody?: ApiRawBody;
+  /** Badan multipart/form-data: tiap nama bagian = nama field input (byte). */
+  multipart?: { parts: readonly string[]; maxBytes: number; tooLarge: string };
+  /** Unduhan: isi respons = byte mentah; field keluaran lain dibentuk dari header. */
+  download?: ApiDownload;
 }
+
+export interface ApiRawBody {
+  field: string;
+  mimeField?: string;
+  contentType?: string;
+  /** Batas byte badan; server memutus pembacaan begitu terlampaui (413). */
+  maxBytes: number;
+  /** Pesan galat 413 yang ramah pengguna. */
+  tooLarge: string;
+}
+
+export interface ApiDownload {
+  /** Field keluaran yang memuat byte. */
+  bytesField: string;
+  /** Field keluaran untuk Content-Type. */
+  mimeField: string;
+  /** Field keluaran untuk nama berkas (header Content-Disposition); tanpa = tidak ada header itu. */
+  filenameField?: string;
+  /** Field input yang disalin ke keluaran di sisi klien (mis. `id`). */
+  echo?: readonly string[];
+  /** `immutable` = isi tak pernah berubah untuk id yang sama; `revalidate` = selalu cek ETag. */
+  cache: 'immutable' | 'revalidate';
+}
+
+// Batas ukuran di tabel ditulis sebagai angka literal: build GAS memuat tiap berkas `shared/` lebih dulu dalam satu
+// scope global, jadi konstanta level atas tidak boleh memakai global berkas lain (`MAX_IMAGE_BYTES`, `QR_LIMITS`).
+// `api.test.ts` memastikan angka-angka ini sama dengan konstanta sumbernya.
 
 export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
   'auth.me': { verb: 'GET', path: '/me' },
@@ -65,10 +98,23 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     verb: 'POST',
     path: '/files',
     status: 201,
+    location: '/files/{id}',
     query: { width: 'number', height: 'number' },
     binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 1_048_576, // = MAX_IMAGE_BYTES (shared/files.ts)
+      tooLarge: 'Ukuran gambar maksimal 1 MB',
+    },
   },
-  'files.get': { verb: 'GET', path: '/files/{id}', etag: 'id', binary: 'response' },
+  'files.get': {
+    verb: 'GET',
+    path: '/files/{id}',
+    etag: 'id',
+    binary: 'response',
+    download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
+  },
   'brands.list': { verb: 'GET', path: '/brands' },
   'brands.save': {
     verb: 'PUT',
@@ -148,6 +194,12 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     path: '/qrcode-documents',
     query: { name: 'string', replaceDocumentId: 'string' },
     binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      contentType: 'application/pdf',
+      maxBytes: 10_485_760, // = QR_LIMITS.documentMaxBytes (shared/qrcode.ts)
+      tooLarge: 'Ukuran PDF maksimal 10 MB',
+    },
   },
   'qrcodes.cloneFromDrive': { verb: 'POST', path: '/qrcode-documents/clone' },
   'qrcodes.export': {
@@ -157,8 +209,25 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     location: '/jobs/{jobId}',
     ifMatch: 'expectedUpdatedAt',
     binary: 'multipart',
+    multipart: {
+      parts: ['pdf', 'png'],
+      // = QR_LIMITS.exportMaxBytes (8 MB) + 64 KB ruang batas bagian dan header multipart
+      maxBytes: 8_454_144,
+      tooLarge: 'Ukuran hasil ekspor maksimal 8 MB',
+    },
   },
-  'qrcodes.file': { verb: 'GET', path: '/qrcodes/{id}/files/{kind}', binary: 'response' },
+  'qrcodes.file': {
+    verb: 'GET',
+    path: '/qrcodes/{id}/files/{kind}',
+    etag: 'etag',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      cache: 'revalidate',
+    },
+  },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',
@@ -215,6 +284,11 @@ export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpc
   'qrcodes.cloneFromDrive',
   'jobs.get',
   'exports.sheets',
+  'files.upload',
+  'files.get',
+  'qrcodes.uploadPdf',
+  'qrcodes.export',
+  'qrcodes.file',
 ]);
 
 export interface RequestParts {
@@ -224,6 +298,10 @@ export interface RequestParts {
   query: Record<string, string>;
   /** Ada hanya untuk POST/PUT/PATCH. */
   body?: unknown;
+  /** Badan mentah (rute `rawBody`): byte dan Content-Type. */
+  raw?: { data: Uint8Array; contentType: string };
+  /** Bagian multipart (rute `multipart`): nama bagian -> byte. */
+  multipart?: Record<string, Uint8Array>;
   /** Nilai `If-Match` TANPA tanda kutip (pemanggil yang membungkusnya, lihat `formatEtag`). */
   ifMatch?: string;
 }
@@ -232,6 +310,10 @@ export interface ParsedParts {
   params: Record<string, string>;
   query: Record<string, string>;
   body: unknown;
+  /** Badan mentah yang sudah dibaca server (rute `rawBody`) dan Content-Type tanpa parameter. */
+  raw?: { data: Uint8Array; contentType: string };
+  /** Bagian multipart yang ada (nama -> byte). */
+  multipart?: Record<string, Uint8Array>;
   /** Nilai `If-Match` tanpa kutip (lihat `parseIfMatch`). */
   ifMatch?: string;
   /** Permintaan datang di jalur `create` (rute save tanpa id). */
@@ -347,15 +429,45 @@ export function toRequestParts<M extends WorkerRpcMethod>(
       query[key] = queryText(kind, value);
     }
   }
+  const path = fillPath(shape.path, params);
+  if (def.rawBody !== undefined) {
+    const { field, mimeField } = def.rawBody;
+    const data = rest[field];
+    delete rest[field];
+    const contentType = mimeField === undefined ? def.rawBody.contentType : rest[mimeField];
+    if (mimeField !== undefined) delete rest[mimeField];
+    if (!(data instanceof Uint8Array) || typeof contentType !== 'string' || contentType === '') {
+      throw new Error(`Input ${id} harus memuat byte "${field}" dan jenis isinya`);
+    }
+    assertNoStray(id, rest);
+    return { verb: shape.verb, path, query, raw: { data, contentType }, ifMatch };
+  }
+  if (def.multipart !== undefined) {
+    const parts: Record<string, Uint8Array> = {};
+    for (const name of def.multipart.parts) {
+      const data = rest[name];
+      delete rest[name];
+      if (!(data instanceof Uint8Array)) throw new Error(`Input ${id} harus memuat byte "${name}"`);
+      parts[name] = data;
+    }
+    assertNoStray(id, rest);
+    return { verb: shape.verb, path, query, multipart: parts, ifMatch };
+  }
   if (BODY_VERBS.has(shape.verb)) {
-    return { verb: shape.verb, path: fillPath(shape.path, params), query, body: rest, ifMatch };
+    return { verb: shape.verb, path, query, body: rest, ifMatch };
   }
   if (Object.keys(rest).length > 0) {
     throw new Error(
       `Field ${Object.keys(rest).join(', ')} tidak dideklarasikan sebagai query untuk ${id}`,
     );
   }
-  return { verb: shape.verb, path: fillPath(shape.path, params), query, ifMatch };
+  return { verb: shape.verb, path, query, ifMatch };
+}
+
+function assertNoStray(id: string, rest: AnyRecord): void {
+  if (Object.keys(rest).length > 0) {
+    throw new Error(`Field ${Object.keys(rest).join(', ')} tidak dapat dikirim untuk ${id}`);
+  }
 }
 
 export function parseQueryValue(field: string, kind: QueryKind, text: string): unknown {
@@ -401,6 +513,22 @@ export function fromRequestParts<M extends WorkerRpcMethod>(id: M, parts: Parsed
   for (const [field, kind] of Object.entries(kinds)) {
     const text = parts.query[field];
     if (text !== undefined) input[field] = parseQueryValue(field, kind, text);
+  }
+  if (def.rawBody !== undefined) {
+    const { field, mimeField } = def.rawBody;
+    delete input[field];
+    if (parts.raw !== undefined) input[field] = parts.raw.data;
+    if (mimeField !== undefined) {
+      delete input[mimeField];
+      if (parts.raw !== undefined) input[mimeField] = parts.raw.contentType;
+    }
+  }
+  if (def.multipart !== undefined) {
+    for (const name of def.multipart.parts) {
+      delete input[name];
+      const data = parts.multipart?.[name];
+      if (data !== undefined) input[name] = data;
+    }
   }
   if (def.ifMatch !== undefined) {
     delete input[def.ifMatch];
@@ -470,4 +598,79 @@ export function etagMatches(header: string | null | undefined, etag: string): bo
     const candidate = part.trim().replace(/^W\//, '');
     return candidate === '*' || candidate === quoted;
   });
+}
+
+/** Pembaca header minimal (dipenuhi `Headers` peramban dan Bun) agar berkas ini tetap murni. */
+export interface HeaderReader {
+  get(name: string): string | null;
+}
+
+/** Nama berkas untuk header: tanpa karakter kendali, tanda kutip, dan garis miring terbalik. */
+function cleanFilename(filename: string): string {
+  let out = '';
+  for (const ch of filename) {
+    const code = ch.charCodeAt(0);
+    out += code < 0x20 || code === 0x7f || ch === '"' || ch === '\\' ? '_' : ch;
+  }
+  return out === '' ? 'berkas' : out;
+}
+
+/** `Content-Disposition: attachment` dengan cadangan ASCII dan `filename*` UTF-8 (RFC 6266/5987). */
+export function contentDispositionOf(filename: string): string {
+  const clean = cleanFilename(filename);
+  let ascii = '';
+  for (const ch of clean) {
+    const code = ch.charCodeAt(0);
+    ascii += code < 0x20 || code > 0x7e || ch === '%' ? '_' : ch;
+  }
+  const encoded = encodeURIComponent(clean).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/** Nama berkas dari `Content-Disposition` (`filename*` didahulukan); string kosong bila tak ada. */
+export function filenameFromDisposition(header: string | null | undefined): string {
+  if (header === null || header === undefined) return '';
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1] !== undefined) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      // jatuh ke filename biasa
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]*)"/i.exec(header);
+  return plain?.[1] ?? '';
+}
+
+/**
+ * Keluaran sisi klien untuk rute `download`: byte dari badan respons, MIME dari Content-Type, nama berkas dari
+ * Content-Disposition, field `echo` disalin dari input, dan field ETag (bila ada) dari header `ETag`.
+ */
+export function downloadOutput<M extends WorkerRpcMethod>(
+  id: M,
+  input: WorkerRpcInput<M>,
+  headers: HeaderReader,
+  bytes: Uint8Array,
+): WorkerRpcOutput<M> {
+  const def = API_ROUTES[id];
+  const spec = def.download;
+  if (spec === undefined) throw new Error(`Rute ${id} bukan unduhan`);
+  const source = asRecord(input);
+  const output: AnyRecord = {};
+  for (const field of spec.echo ?? []) output[field] = source[field];
+  output[spec.bytesField] = bytes;
+  output[spec.mimeField] = (headers.get('content-type') ?? 'application/octet-stream')
+    .split(';')[0]
+    ?.trim();
+  if (spec.filenameField !== undefined) {
+    output[spec.filenameField] = filenameFromDisposition(headers.get('content-disposition'));
+  }
+  if (def.etag !== undefined && output[def.etag] === undefined) {
+    const raw = headers.get('etag');
+    if (raw !== null) output[def.etag] = raw.replace(/^W\//, '').replace(/"/g, '');
+  }
+  return output as WorkerRpcOutput<M>;
 }

@@ -2,13 +2,14 @@ import { appError, isAppError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
 import { type RouteMeta, type RouteTable, readCookie, runRoute } from '@server/core/router';
 import { SESSION_COOKIE } from '@server/core/session';
-import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
+import { MAX_REQUEST_BODY_BYTES, readBytesLimited, readTextLimited } from '@server/http/body';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { type AppBindings, newRequestId } from '@server/http/security';
 import {
   API_ROUTES,
   type ApiRouteDef,
   type ApiVerb,
+  contentDispositionOf,
   etagMatches,
   etagOf,
   fillPath,
@@ -43,7 +44,7 @@ function honoPath(path: string): string {
 }
 
 /**
- * Daftar operasi yang didaftarkan: tiap id yang sudah `migrated` (dan bukan berkas biner, T21) dengan jalur ubah
+ * Daftar operasi yang didaftarkan: tiap id yang sudah `migrated` (termasuk rute biner) dengan jalur ubah
  * dan, bila ada, jalur `create`. Rute statis didahulukan atas berparameter (router Hono mencocokkan menurut urutan
  * pendaftaran): `/handovers/options` dan `/handovers/batch` tidak boleh tertelan `/handovers/{id}`.
  */
@@ -51,7 +52,7 @@ export function listOperations(migrated: ReadonlySet<WorkerRpcMethod>): Operatio
   const operations: Operation[] = [];
   for (const id of Object.keys(API_ROUTES) as WorkerRpcMethod[]) {
     const def = API_ROUTES[id];
-    if (!migrated.has(id) || def.binary !== undefined) continue;
+    if (!migrated.has(id)) continue;
     operations.push({ id, def, created: false, ...routeShape(def, false) });
     if (def.create) operations.push({ id, def, created: true, ...routeShape(def, true) });
   }
@@ -81,6 +82,69 @@ async function readJsonBody(request: Request): Promise<unknown> {
   }
 }
 
+function tooLarge(message: string): Error {
+  return Object.assign(appError('VALIDATION', message), { status: 413 });
+}
+
+/** Badan mentah rute unggah: byte (berbatas) dan Content-Type tanpa parameter. */
+async function readRawBody(
+  request: Request,
+  spec: NonNullable<ApiRouteDef['rawBody']>,
+): Promise<{ data: Uint8Array; contentType: string }> {
+  const data = await readBytesLimited(request, spec.maxBytes);
+  if (data === undefined) throw tooLarge(spec.tooLarge);
+  const contentType = (request.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
+  return { data, contentType: contentType.toLowerCase() };
+}
+
+/** Bagian multipart bernama (byte). Bagian yang tak ada / bukan berkas dilewati (validator yang menolak). */
+async function readMultipart(
+  request: Request,
+  spec: NonNullable<ApiRouteDef['multipart']>,
+): Promise<Record<string, Uint8Array>> {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+    throw Object.assign(appError('VALIDATION', 'Badan harus multipart/form-data'), { status: 415 });
+  }
+  const data = await readBytesLimited(request, spec.maxBytes);
+  if (data === undefined) throw tooLarge(spec.tooLarge);
+  let form: Awaited<ReturnType<Response['formData']>>;
+  try {
+    // Badan sudah dibatasi di atas; formData() hanya mengurai salinan berbatas itu.
+    form = await new Response(data, { headers: { 'content-type': contentType } }).formData();
+  } catch {
+    throw Object.assign(appError('VALIDATION', 'Badan multipart tidak valid'), { status: 400 });
+  }
+  const parts: Record<string, Uint8Array> = {};
+  for (const name of spec.parts) {
+    const value = form.get(name);
+    if (value !== null && typeof value !== 'string') {
+      parts[name] = new Uint8Array(await value.arrayBuffer());
+    }
+  }
+  return parts;
+}
+
+/** Respons unduhan: byte mentah, Content-Type dari keluaran, ETag/304, dan Cache-Control menurut tabel. */
+function downloadResponse(
+  def: ApiRouteDef,
+  output: unknown,
+  headers: Record<string, string>,
+  notModified: boolean,
+): Response {
+  const spec = def.download as NonNullable<ApiRouteDef['download']>;
+  const source = output as Record<string, unknown>;
+  const bytes = source[spec.bytesField] as Uint8Array;
+  headers['cache-control'] =
+    spec.cache === 'immutable' ? 'private, max-age=31536000, immutable' : 'private, no-cache';
+  if (notModified) return new Response(null, { status: 304, headers });
+  headers['content-type'] = String(source[spec.mimeField]);
+  if (spec.filenameField !== undefined) {
+    headers['content-disposition'] = contentDispositionOf(String(source[spec.filenameField]));
+  }
+  return new Response(bytes, { status: 200, headers });
+}
+
 function jsonResponse(status: number, body: unknown, headers: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -96,13 +160,22 @@ function handlerFor(operation: Operation, routes: RouteTable) {
     const request = c.req.raw;
     const ifMatchHeader = request.headers.get('if-match');
     try {
-      const body = BODY_VERBS.has(verb) ? await readJsonBody(request) : undefined;
+      const hasBinaryBody = def.rawBody !== undefined || def.multipart !== undefined;
+      // Tanpa cookie sesi tak ada gunanya membaca badan unggahan yang besar.
+      if (hasBinaryBody && readCookie(request, SESSION_COOKIE) === undefined) {
+        throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
+      }
+      const raw = def.rawBody ? await readRawBody(request, def.rawBody) : undefined;
+      const multipart = def.multipart ? await readMultipart(request, def.multipart) : undefined;
+      const body = BODY_VERBS.has(verb) && !hasBinaryBody ? await readJsonBody(request) : undefined;
       let input: unknown;
       try {
         input = fromRequestParts(id, {
           params: c.req.param(),
           query: c.req.query(),
           body,
+          raw,
+          multipart,
           ifMatch: parseIfMatch(ifMatchHeader),
           created,
         });
@@ -140,13 +213,12 @@ function handlerFor(operation: Operation, routes: RouteTable) {
         const location = locationOf(def.location, output);
         if (location !== undefined) headers.location = location;
       }
-      if (
+      const notModified =
         verb === 'GET' &&
         etag !== undefined &&
-        etagMatches(request.headers.get('if-none-match'), etag)
-      ) {
-        return new Response(null, { status: 304, headers });
-      }
+        etagMatches(request.headers.get('if-none-match'), etag);
+      if (def.download !== undefined) return downloadResponse(def, output, headers, notModified);
+      if (notModified) return new Response(null, { status: 304, headers });
       return jsonResponse(status, output, headers);
     } catch (error) {
       // Basi + rute berETag + permintaan membawa If-Match = prasyarat gagal (412); `code` tetap CONFLICT.

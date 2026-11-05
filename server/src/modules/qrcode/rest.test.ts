@@ -49,7 +49,7 @@ const presetBody = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-test('rute QR bukan-biner dan jobs/exports terdaftar di REST_MIGRATED_IDS; biner belum (T21)', () => {
+test('rute QR dan jobs/exports terdaftar di REST_MIGRATED_IDS', () => {
   for (const id of [
     'qrcodes.list',
     'qrcodes.get',
@@ -64,9 +64,6 @@ test('rute QR bukan-biner dan jobs/exports terdaftar di REST_MIGRATED_IDS; biner
     'exports.sheets',
   ] as const) {
     expect(REST_MIGRATED_IDS.has(id)).toBe(true);
-  }
-  for (const id of ['qrcodes.uploadPdf', 'qrcodes.export', 'qrcodes.file'] as const) {
-    expect(REST_MIGRATED_IDS.has(id)).toBe(false);
   }
 });
 

@@ -1,4 +1,5 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
+import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -7,7 +8,7 @@ import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { getSetting, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import type { FileOwnerType } from '@shared/files';
-import { base64ByteLength, MAX_UNATTACHED_UPLOADS } from '@shared/files';
+import { MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/rpc';
 import type { FileRecord } from './repo';
 import {
@@ -83,13 +84,13 @@ export async function uploadFile(
   const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
   const bridge = getBridge(env);
   const driveId = await viaBridge(() =>
-    bridge.createFile(folderId, name, input.mime, input.base64),
+    bridge.createFile(folderId, name, input.mime, bytesToBase64(input.bytes)),
   );
   const record: FileRecord = {
     id,
     driveId,
     mime: input.mime,
-    size: base64ByteLength(input.base64),
+    size: input.bytes.length,
     width: input.width,
     height: input.height,
     ownerType: '',
@@ -116,8 +117,8 @@ export async function uploadFile(
 
 /**
  * Membaca berkas: hanya berkas aktif yang tercatat di tabel `files` yang dapat dibaca (id Drive tidak
- * pernah datang dari klien), dan hanya yang induknya folder aplikasi. Isi diteruskan sebagai base64 apa
- * adanya, tanpa decode di Worker. `onlyLogosFor` (email pemanggil) untuk pengguna tanpa izin `item`:
+ * pernah datang dari klien), dan hanya yang induknya folder aplikasi. Isi dibaca dari cache/jembatan (base64)
+ * lalu didekode menjadi byte untuk respons mentah. `onlyLogosFor` (email pemanggil) untuk pengguna tanpa izin `item`:
  * hanya logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang.
  */
 export async function readFile(
@@ -141,7 +142,7 @@ export async function readFile(
     return read ? { mime: record.mime, base64: read.base64 } : null;
   });
   if (!content) throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
-  return { id: record.id, mime: record.mime, base64: content.base64 };
+  return { id: record.id, mime: record.mime, bytes: base64ToBytes(content.base64) };
 }
 
 /**

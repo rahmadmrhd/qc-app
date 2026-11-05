@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -27,7 +28,7 @@ const call = (email: string, method: string, payload: unknown) =>
 const PDF1 = 'JVBERi0xLjQK';
 const PDF2 = 'JVBERi0xLjUK';
 const upload = (payload: Record<string, unknown>, email = 'qredit@gmail.com') =>
-  call(email, 'qrcodes.uploadPdf', { name: 'manual.pdf', base64: PDF1, ...payload });
+  call(email, 'qrcodes.uploadPdf', { name: 'manual.pdf', bytes: bytesOfBase64(PDF1), ...payload });
 async function docs() {
   const rows = await env.DB.prepare(
     'SELECT id, drive_id, name, size, shared FROM qr_documents ORDER BY created_at, id',
@@ -73,7 +74,7 @@ describe('unggah PDF sumber', () => {
   });
 
   test('bukan PDF atau terlalu besar ditolak sebelum menyentuh Drive', async () => {
-    expect((await upload({ base64: 'QUJDRA==' })).error.code).toBe('VALIDATION');
+    expect((await upload({ bytes: bytesOfBase64('QUJDRA==') })).error.code).toBe('VALIDATION');
     expect(env.BRIDGE.state.files.size).toBe(0);
   });
 
@@ -82,7 +83,7 @@ describe('unggah PDF sumber', () => {
     const driveId = (await docs())[0]?.drive_id ?? '';
     const second = await upload({
       name: 'baru.pdf',
-      base64: PDF2,
+      bytes: bytesOfBase64(PDF2),
       replaceDocumentId: first.data.id,
     });
     expect(second.ok).toBe(true);
@@ -149,7 +150,7 @@ describe('unggah PDF sumber', () => {
     env.BRIDGE.replaceFileContent = async () => {
       throw new Error('Drive API 403');
     };
-    const out = await upload({ base64: PDF2, replaceDocumentId: first.data.id });
+    const out = await upload({ bytes: bytesOfBase64(PDF2), replaceDocumentId: first.data.id });
     expect(out.ok).toBe(false);
     expect(env.BRIDGE.state.files.get(driveId)?.base64).toBe(PDF1);
     expect((await docs())[0]?.name).toBe('manual.pdf');
@@ -201,7 +202,7 @@ describe('clone dari Drive', () => {
   });
 
   test('replaceDocumentId: isi PDF yang ada diganti dari Drive, URL tetap, berkas asli tidak disentuh', async () => {
-    const first = await upload({ name: 'lama.pdf', base64: PDF1 });
+    const first = await upload({ name: 'lama.pdf', bytes: bytesOfBase64(PDF1) });
     const driveId = (await docs())[0]?.drive_id ?? '';
     seedForeign('application/pdf', PDF2);
     const out = await call('qredit@gmail.com', 'qrcodes.cloneFromDrive', {

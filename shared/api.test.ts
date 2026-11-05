@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import {
   API_ROUTES,
   type ApiFieldIssue,
+  contentDispositionOf,
+  downloadOutput,
   etagMatches,
   etagOf,
+  filenameFromDisposition,
   fillPath,
   formatEtag,
   fromRequestParts,
@@ -13,6 +16,8 @@ import {
   routeShape,
   toRequestParts,
 } from './api';
+import { MAX_IMAGE_BYTES } from './files';
+import { QR_LIMITS } from './qrcode';
 import type { WorkerRpcInput, WorkerRpcMethod } from './rpc';
 
 const IDS = Object.keys(API_ROUTES) as WorkerRpcMethod[];
@@ -36,7 +41,7 @@ const EXAMPLES: { [M in WorkerRpcMethod]: WorkerRpcInput<M> } = {
   'access.locations.list': null,
   'access.locations.save': { id: 'l1', code: 'WH', name: 'Gudang' },
   'access.locations.setStatus': { id: 'l1', status: 'inactive' },
-  'files.upload': { mime: 'image/png', base64: 'AAAA', width: 10, height: 20 },
+  'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
   'brands.list': null,
   'brands.save': { id: 'b1', name: 'Sony' },
@@ -114,22 +119,24 @@ const EXAMPLES: { [M in WorkerRpcMethod]: WorkerRpcInput<M> } = {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     logoFileIds: ['f1'],
   },
-  'qrcodes.uploadPdf': { name: 'a.pdf', base64: 'AAAA', replaceDocumentId: 'd1' },
+  'qrcodes.uploadPdf': {
+    name: 'a.pdf',
+    bytes: new Uint8Array([37, 80, 68, 70]),
+    replaceDocumentId: 'd1',
+  },
   'qrcodes.cloneFromDrive': { source: 'https://drive.google.com/x', replaceDocumentId: 'd1' },
   'qrcodes.export': {
     id: 'q1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    pdfBase64: 'AAAA',
-    pngBase64: 'BBBB',
+    pdf: new Uint8Array([37, 80, 68, 70]),
+    png: new Uint8Array([137, 80, 78, 71]),
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };
 
-// Id berpenanda `binary` baru mendapat bentuk kabel final di T21 (badan mentah/multipart); sebelum itu
-// perakitan bolak-baliknya belum bermakna dan tidak diuji.
-const ROUNDTRIP_IDS = IDS.filter((id) => API_ROUTES[id].binary === undefined);
+const ROUNDTRIP_IDS = IDS;
 
 function issueOf(run: () => unknown): ApiFieldIssue {
   try {
@@ -148,6 +155,8 @@ function roundTrip<M extends WorkerRpcMethod>(id: M, input: WorkerRpcInput<M>) {
     params: pathParams(id, parts.path, created),
     query: parts.query,
     body: parts.body === undefined ? undefined : JSON.parse(JSON.stringify(parts.body)),
+    raw: parts.raw,
+    multipart: parts.multipart,
     ifMatch: parts.ifMatch,
     created,
   });
@@ -181,11 +190,17 @@ describe('tabel rute', () => {
     }
   });
 
-  test('semua id tercakup dan REST_MIGRATED_IDS hanya berisi id yang ada tanpa penanda binary', () => {
+  test('semua id tercakup dan REST_MIGRATED_IDS hanya berisi id yang ada', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
-    for (const id of REST_MIGRATED_IDS) {
-      expect(API_ROUTES[id]).toBeDefined();
-      expect(API_ROUTES[id].binary).toBeUndefined();
+    for (const id of REST_MIGRATED_IDS) expect(API_ROUTES[id]).toBeDefined();
+  });
+
+  test('rute biner punya bentuk rinci (rawBody/multipart/download) sesuai penandanya', () => {
+    for (const id of IDS) {
+      const def = API_ROUTES[id];
+      expect(def.binary === 'request').toBe(def.rawBody !== undefined);
+      expect(def.binary === 'multipart').toBe(def.multipart !== undefined);
+      expect(def.binary === 'response').toBe(def.download !== undefined);
     }
   });
 
@@ -389,5 +404,96 @@ describe('parseQueryValue', () => {
     expect(parseQueryValue('l', 'list', '')).toEqual([]);
     expect(parseQueryValue('l', 'list', 'a,b')).toEqual(['a', 'b']);
     expect(parseQueryValue('s', 'string', '')).toBe('');
+  });
+});
+
+describe('rute biner', () => {
+  test('files.upload: byte menjadi badan mentah, mime menjadi Content-Type, lebar/tinggi lewat query', () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const parts = toRequestParts('files.upload', {
+      mime: 'image/png',
+      bytes,
+      width: 10,
+      height: 20,
+    });
+    expect(parts).toMatchObject({
+      verb: 'POST',
+      path: '/files',
+      query: { width: '10', height: '20' },
+      raw: { data: bytes, contentType: 'image/png' },
+    });
+    expect(parts.body).toBeUndefined();
+  });
+
+  test('qrcodes.uploadPdf: Content-Type tetap application/pdf; name dan replaceDocumentId lewat query', () => {
+    const parts = toRequestParts('qrcodes.uploadPdf', EXAMPLES['qrcodes.uploadPdf']);
+    expect(parts).toMatchObject({
+      path: '/qrcode-documents',
+      query: { name: 'a.pdf', replaceDocumentId: 'd1' },
+      raw: { contentType: 'application/pdf' },
+    });
+  });
+
+  test('qrcodes.export: dua bagian multipart, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
+    const parts = toRequestParts('qrcodes.export', EXAMPLES['qrcodes.export']);
+    expect(parts.path).toBe('/qrcodes/q1/exports');
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png']);
+    expect(parts.ifMatch).toBe('2026-10-09T00:00:00.000Z');
+    expect(parts.body).toBeUndefined();
+  });
+
+  test('input biner tanpa byte yang sah melempar galat pemrograman', () => {
+    expect(() =>
+      toRequestParts('files.upload', { mime: 'image/png', width: 1, height: 1 } as never),
+    ).toThrow();
+    expect(() =>
+      toRequestParts('qrcodes.export', {
+        id: 'q1',
+        expectedUpdatedAt: 'x',
+        pdf: new Uint8Array(),
+      } as never),
+    ).toThrow();
+  });
+
+  test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
+    expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
+    // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
+    expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
+      QR_LIMITS.exportMaxBytes + 64 * 1024,
+    );
+  });
+
+  test('Content-Disposition: cadangan ASCII, filename* UTF-8, tanpa kutip/CRLF; terurai kembali', () => {
+    const header = contentDispositionOf('Label "Gudang" \u00e9\r\nx.pdf');
+    expect(header).not.toContain('\r');
+    expect(header).not.toContain('\n');
+    expect(header).toMatch(/^attachment; filename="[\x20-\x7e]*"; filename\*=UTF-8''/);
+    expect(filenameFromDisposition(header)).toBe('Label _Gudang_ \u00e9__x.pdf');
+    expect(filenameFromDisposition(null)).toBe('');
+    expect(filenameFromDisposition(contentDispositionOf(''))).toBe('berkas');
+  });
+
+  test('downloadOutput: byte, mime tanpa parameter, nama berkas, echo id, ETag tanpa kutip', () => {
+    const bytes = new Uint8Array([9]);
+    const headers = new Headers({
+      'content-type': 'application/pdf; charset=binary',
+      'content-disposition': contentDispositionOf('a b.pdf'),
+      etag: '"v1"',
+    });
+    expect(downloadOutput('qrcodes.file', { id: 'q1', kind: 'pdf' }, headers, bytes)).toEqual({
+      filename: 'a b.pdf',
+      mime: 'application/pdf',
+      bytes,
+      etag: 'v1',
+    });
+    expect(
+      downloadOutput(
+        'files.get',
+        { id: 'f1' },
+        new Headers({ 'content-type': 'image/png' }),
+        bytes,
+      ),
+    ).toEqual({ id: 'f1', mime: 'image/png', bytes });
   });
 });

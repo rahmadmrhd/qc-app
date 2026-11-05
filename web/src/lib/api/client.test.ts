@@ -248,3 +248,104 @@ test('rute handover: setCheck PUT .../checks, cancel POST .../cancel, comment PO
   await api('handovers.get', { id: 'h1', locationIds: ['l1', 'l2'] });
   expect(lastCall(fetchImpl).url).toBe('/api/v1/handovers/h1?locationIds=l1%2Cl2');
 });
+
+function bytesOfBody(body: BodyInit | null | undefined): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve([...new Uint8Array(reader.result as ArrayBuffer)]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(body as Blob);
+  });
+}
+
+test('files.upload: badan mentah (Blob), Content-Type = mime, lebar/tinggi di query, header CSRF', async () => {
+  const { api, fetchImpl } = setup(() =>
+    respond({ id: 'f1', mime: 'image/png', size: 3, width: 4, height: 5 }),
+  );
+  const dto = await api('files.upload', {
+    mime: 'image/png',
+    bytes: new Uint8Array([1, 2, 3]),
+    width: 4,
+    height: 5,
+  });
+  expect(dto.id).toBe('f1');
+  const { url, init } = lastCall(fetchImpl);
+  expect(url).toBe('/api/v1/files?width=4&height=5');
+  expect(init.method).toBe('POST');
+  expect(init.headers).toMatchObject({ 'Content-Type': 'image/png', 'X-Requested-With': 'qc' });
+  expect(init.body).toBeInstanceOf(Blob);
+  expect(await bytesOfBody(init.body)).toEqual([1, 2, 3]);
+});
+
+test('qrcodes.uploadPdf: Content-Type application/pdf, nama dan replaceDocumentId di query', async () => {
+  const { api, fetchImpl } = setup(() => respond({ id: 'd1', name: 'a b.pdf', link: 'x' }));
+  await api('qrcodes.uploadPdf', {
+    name: 'a b.pdf',
+    bytes: new Uint8Array([37, 80, 68, 70, 45]),
+    replaceDocumentId: 'd0',
+  });
+  const { url, init } = lastCall(fetchImpl);
+  expect(url).toBe('/api/v1/qrcode-documents?name=a+b.pdf&replaceDocumentId=d0');
+  expect(init.headers).toMatchObject({ 'Content-Type': 'application/pdf' });
+});
+
+test('qrcodes.export: multipart pdf+png tanpa Content-Type buatan sendiri, If-Match dari expectedUpdatedAt, 202 { jobId }', async () => {
+  const { api, fetchImpl } = setup(() => respond({ jobId: 'j1' }, { status: 202 }));
+  const out = await api('qrcodes.export', {
+    id: 'q1',
+    expectedUpdatedAt: '2026-10-16T00:00:00.000Z',
+    pdf: new Uint8Array([1]),
+    png: new Uint8Array([2, 3]),
+  });
+  expect(out).toEqual({ jobId: 'j1' });
+  const { url, init } = lastCall(fetchImpl);
+  expect(url).toBe('/api/v1/qrcodes/q1/exports');
+  expect(init.headers).not.toHaveProperty('Content-Type');
+  expect(init.headers).toMatchObject({ 'If-Match': '"2026-10-16T00:00:00.000Z"' });
+  const form = init.body as FormData;
+  expect(form).toBeInstanceOf(FormData);
+  expect(await bytesOfBody(form.get('pdf') as Blob)).toEqual([1]);
+  expect(await bytesOfBody(form.get('png') as Blob)).toEqual([2, 3]);
+});
+
+test('files.get: unduhan menjadi { id, mime, bytes } dari Content-Type dan badan mentah', async () => {
+  const { api, fetchImpl } = setup(
+    () => new Response(new Uint8Array([9, 8, 7]), { headers: { 'content-type': 'image/webp' } }),
+  );
+  const out = await api('files.get', { id: 'f9' });
+  expect(out).toEqual({ id: 'f9', mime: 'image/webp', bytes: new Uint8Array([9, 8, 7]) });
+  expect(lastCall(fetchImpl).url).toBe('/api/v1/files/f9');
+  expect(lastCall(fetchImpl).init.headers).toMatchObject({ Accept: '*/*' });
+});
+
+test('qrcodes.file: nama berkas dari Content-Disposition dan etag dari header ETag', async () => {
+  const { api } = setup(
+    () =>
+      new Response(new Uint8Array([1]), {
+        headers: {
+          'content-type': 'application/pdf',
+          'content-disposition': `attachment; filename="a.pdf"; filename*=UTF-8''%C3%A9.pdf`,
+          etag: '"v7"',
+        },
+      }),
+  );
+  expect(await api('qrcodes.file', { id: 'q1', kind: 'pdf' })).toEqual({
+    filename: 'é.pdf',
+    mime: 'application/pdf',
+    bytes: new Uint8Array([1]),
+    etag: 'v7',
+  });
+});
+
+test('unduhan gagal: badan problem+json dibaca sebagai teks (ApiError), bukan byte', async () => {
+  const { api } = setup(() =>
+    respond(
+      { code: 'NOT_FOUND', detail: 'Berkas tidak ditemukan', requestId: 'r1' },
+      { status: 404 },
+      'application/problem+json',
+    ),
+  );
+  const error = await api('files.get', { id: 'x' }).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toMatchObject({ code: 'NOT_FOUND', message: 'Berkas tidak ditemukan' });
+});

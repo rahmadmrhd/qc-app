@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { runPendingJobs, scheduleCleanupJob } from '@server/jobs/runner';
 import { cleanupQrDocuments } from '@server/modules/qrcode/service';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -55,8 +56,8 @@ const exportBody = (
 ) => ({
   id: design.id,
   expectedUpdatedAt: design.updatedAt,
-  pdfBase64: PDF,
-  pngBase64: PNG,
+  pdf: bytesOfBase64(PDF),
+  png: bytesOfBase64(PNG),
   ...extra,
 });
 const requestExport = (
@@ -145,7 +146,9 @@ describe('qrcodes.export dan jobs.get', () => {
     expect(
       (await requestExport({ ...made, updatedAt: '2020-01-01T00:00:00.000Z' })).error.code,
     ).toBe('CONFLICT');
-    const big = await requestExport(made, { pngBase64: `iVBORw0KGgo${'A'.repeat(1_100_000)}` });
+    const big = await requestExport(made, {
+      png: Uint8Array.from([...bytesOfBase64(PNG), ...new Uint8Array(800_000)]),
+    });
     expect(big.error.code).toBe('VALIDATION');
     expect(await activeJobs()).toHaveLength(0);
     await env.DB.prepare("UPDATE qr_designs SET overflow = '1' WHERE id = ?").bind(made.id).run();
@@ -205,7 +208,7 @@ describe('ekspor QR berjalan per langkah', () => {
     const state = (await call('qrview@gmail.com', 'qrcodes.get', { id: made.id })).data;
     expect(state.exportStatus).toBe('current');
     const file = await call('qrview@gmail.com', 'qrcodes.file', { id: made.id, kind: 'pdf' });
-    expect(file.data).toMatchObject({ mime: 'application/pdf', base64: PDF });
+    expect(file.data).toMatchObject({ mime: 'application/pdf', bytes: bytesOfBase64(PDF) });
   });
 
   test('ekspor ulang membuang berkas lama (best effort) dan tidak menyisakan berkas ganda', async () => {
@@ -215,7 +218,7 @@ describe('ekspor QR berjalan per langkah', () => {
     const first = await design(made.id);
     env.clock.advance(60_000);
     // konfigurasi tidak berubah (updatedAt sama) -> ekspor lagi diperbolehkan
-    await requestExport(made, { pdfBase64: 'JVBERi0xLjUK' });
+    await requestExport(made, { pdf: bytesOfBase64('JVBERi0xLjUK') });
     await drain();
     const second = await design(made.id);
     expect(second?.export_pdf_drive_id).not.toBe(first?.export_pdf_drive_id);
@@ -257,7 +260,7 @@ describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
     await requestExport(made);
     await drain();
     const before = await design(made.id);
-    const second = (await requestExport(made, { pdfBase64: 'JVBERi0xLjUK' })).data.jobId;
+    const second = (await requestExport(made, { pdf: bytesOfBase64('JVBERi0xLjUK') })).data.jobId;
     await step(second); // PDF baru dibuat
     const created = [...env.BRIDGE.state.files.keys()].filter(
       (id) =>

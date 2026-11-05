@@ -1,4 +1,5 @@
 import type { Env } from '@server/core/env';
+import { createMemoryFileCache } from '@server/core/file-cache';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { acquireTestDb, resetTestDb } from './test-db';
 
@@ -38,6 +39,9 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     ADMIN_EMAIL: 'admin@gmail.com',
     APP_ORIGIN: 'https://qc.test',
     NOW: () => clock.now(),
+    // Cache isi berkas milik env ini: id Drive jembatan palsu berulang antar-tes, jadi cache bawaan proses
+    // (dipakai bila FILE_CACHE kosong) akan mengembalikan isi tes sebelumnya.
+    FILE_CACHE: createMemoryFileCache(),
     ...overrides,
     BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,
