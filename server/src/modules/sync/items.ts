@@ -4,7 +4,7 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { isAppError } from '@server/core/errors';
+import { appError, isAppError } from '@server/core/errors';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { brandsFromResult, brandsStatement, listBrands } from '@server/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@server/modules/item/repo';
@@ -426,8 +426,18 @@ async function upsertSyncItem(
   if (pending.length > 0) await env.DB.batch(commitDriveFilesStmts(env, pending));
   // Percobaan pertama memakai merk yang sudah dimuat permintaan ini; bila ganti nama merk menyela (penjaga merk
   // di batch, I1) percobaan berikutnya mencari merk langsung di basis data.
+  const staleMessage = 'Item diubah pihak lain; ulangi permintaan';
   let attempt = 0;
   const { plan, results } = await runCas(async () => {
+    // Percobaan ulang: bila item itu sendiri sudah berubah (penjaga CAS `updated_at` yang memicu), `existing` yang
+    // dipakai penjaga basi dan percobaan berikutnya pasti gagal lagi: langsung CONFLICT tanpa merencanakan ulang.
+    // Bila item tidak berubah (penjaga merk yang memicu), rencana dibuat ulang dengan merk yang dibaca segar.
+    if (attempt > 0 && existing) {
+      const current = await env.DB.prepare('SELECT updated_at FROM items WHERE id = ?')
+        .bind(existing.id)
+        .first<{ updated_at: string }>();
+      if (current?.updated_at !== existing.updatedAt) throw appError('CONFLICT', staleMessage);
+    }
     const plan = await planItemWrite(env, merged, {
       id: ownerId,
       existing,
@@ -441,7 +451,7 @@ async function upsertSyncItem(
     // lihat `readSyncRevStmt`).
     const results = await batchItemWrite(env.DB, plan.statements);
     return { plan, results };
-  }, 'Item diubah pihak lain; ulangi permintaan');
+  }, staleMessage);
   const written = results
     .flatMap((result) => result.results as Array<{ sync_rev?: number }>)
     .find((row) => row.sync_rev !== undefined)?.sync_rev;

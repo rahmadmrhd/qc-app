@@ -559,3 +559,53 @@ describe('(m3) audit status merk memakai nama dari keadaan terjaga', () => {
     expect(JSON.parse(audit?.after as string).status).toBe('inactive');
   }, 60_000);
 });
+
+describe('(m2) sync push: percobaan ulang tidak menjalankan ulang rencana sia-sia', () => {
+  test('item diubah web saat push berjalan: satu percobaan tulis, hasil error (CONFLICT), item web utuh', async () => {
+    await seedBrand(env, 'Lama');
+    await seedItem(env, { id: 'i1', brand: 'Lama', model: 'Satu', syncRev: 1 });
+    const updatedAt = (
+      await env.DB.prepare('SELECT updated_at FROM items WHERE id = ?')
+        .bind('i1')
+        .first<{ updated_at: string }>()
+    )?.updated_at as string;
+    let writes = 0;
+    const { delayed, atWrite, release } = gatedEnv(ITEM_WRITE);
+    const counting = {
+      ...delayed,
+      DB: {
+        ...delayed.DB,
+        batch: (statements: Parameters<typeof env.DB.batch>[0]) => {
+          if (statements.some((s) => ITEM_WRITE.test((s as unknown as { sql: string }).sql)))
+            writes++;
+          return delayed.DB.batch(statements);
+        },
+      },
+    } as TestEnv;
+    const pending = syncPush(counting, [
+      { uid: 'i1', merk: 'Lama', tipe: 'Satu', isCountryLock: true, baseRev: 1 },
+    ]);
+    await atWrite;
+    env.clock.set(env.clock.now() + 1000);
+    await saveItem(
+      env,
+      {
+        ...ITEM_BASE,
+        id: 'i1',
+        expectedUpdatedAt: updatedAt,
+        brand: 'Lama',
+        model: 'Satu',
+        detail: 'web',
+      },
+      admin,
+    );
+    release();
+    const out = await pending;
+    expect(out.data?.results.map((entry) => entry.status)).toEqual(['error']);
+    expect(writes).toBe(1); // sebelumnya 3 percobaan tulis (dua terakhir pasti gagal lagi)
+    const row = await env.DB.prepare('SELECT detail_md FROM items WHERE id = ?')
+      .bind('i1')
+      .first<{ detail_md: string }>();
+    expect(row?.detail_md).toBe('web');
+  }, 60_000);
+});
