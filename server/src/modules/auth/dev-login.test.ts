@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { app } from '../../app';
 import { verifySessionToken } from '../../core/session';
-import { app } from '../../index';
 
 let env: TestEnv;
 
@@ -19,7 +19,7 @@ beforeEach(async () => {
 describe('GET /auth/dev-login', () => {
   test('404 tanpa DEV_LOGIN_EMAIL, walau di localhost', async () => {
     const bare = await createTestEnv();
-    const response = await app.request('http://localhost:8787/auth/dev-login', {}, bare);
+    const response = await app.request('http://localhost:8788/auth/dev-login', {}, bare);
     expect(response.status).toBe(404);
     expect(sessionCookie(response)).toBeUndefined();
   });
@@ -39,7 +39,7 @@ describe('GET /auth/dev-login', () => {
 
   test('di localhost dan 127.0.0.1: cookie sesi untuk email itu dan redirect ke /', async () => {
     for (const url of [
-      'http://localhost:8787/auth/dev-login',
+      'http://localhost:8788/auth/dev-login',
       'http://127.0.0.1:8787/auth/dev-login',
     ]) {
       const response = await app.request(url, {}, env);
@@ -56,9 +56,9 @@ describe('GET /auth/dev-login', () => {
   });
 
   test('cookie TIDAK Secure di http://localhost, tetap Secure di https', async () => {
-    const local = await app.request('http://localhost:8787/auth/dev-login', {}, env);
+    const local = await app.request('http://localhost:8788/auth/dev-login', {}, env);
     expect(sessionCookie(local)).not.toMatch(/Secure/);
-    const login = await app.request('http://localhost:8787/auth/login', {}, env);
+    const login = await app.request('http://localhost:8788/auth/login', {}, env);
     expect(login.headers.getSetCookie().find((c) => c.startsWith('qc_oauth='))).not.toMatch(
       /Secure/,
     );
@@ -71,24 +71,19 @@ describe('GET /auth/dev-login', () => {
 
   test('email yang tidak terdaftar: 404 dengan petunjuk, tanpa cookie', async () => {
     const other = await createTestEnv({ DEV_LOGIN_EMAIL: 'tak-ada@example.test' });
-    const response = await app.request('http://localhost:8787/auth/dev-login', {}, other);
+    const response = await app.request('http://localhost:8788/auth/dev-login', {}, other);
     expect(response.status).toBe(404);
     expect(sessionCookie(response)).toBeUndefined();
     expect(JSON.stringify(await response.json())).toContain('db:seed');
   });
 
   test('cookie dev-login dapat dipakai untuk /api/boot', async () => {
-    const login = await app.request('http://localhost:8787/auth/dev-login', {}, env);
+    const login = await app.request('http://localhost:8788/auth/dev-login', {}, env);
     const cookie = (sessionCookie(login) as string).split(';')[0] as string;
-    const boot = await app.request('http://localhost:8787/api/boot', { headers: { cookie } }, env);
+    const boot = await app.request('http://localhost:8788/api/boot', { headers: { cookie } }, env);
     expect(boot.status).toBe(200);
     expect(((await boot.json()) as { data: { email: string } }).data.email).toBe(
       'dev@example.test',
     );
-  });
-
-  test('wrangler.jsonc tidak memuat DEV_LOGIN_EMAIL di tingkat mana pun', async () => {
-    const text = await Bun.file(`${import.meta.dir}/../../../wrangler.jsonc`).text();
-    expect(text).not.toContain('DEV_LOGIN_EMAIL');
   });
 });

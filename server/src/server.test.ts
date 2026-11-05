@@ -1,0 +1,184 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { type Config, loadConfig } from './config';
+import { createServer, type QcServer } from './server';
+
+const TOKEN = 't0k3n'.repeat(8);
+const HTML = '<!doctype html><html><body><div id="root">QC-SPA</div></body></html>';
+const LOOPBACK = '127.0.0.1';
+const ATTACKER = '203.0.113.7';
+
+let root: string;
+let staticDir: string;
+let env: TestEnv;
+let server: QcServer;
+
+function configFor(): Config {
+  return loadConfig({
+    DATABASE_URL: 'mysql://tidak-dipakai:x@127.0.0.1:1/tidak_ada',
+    SESSION_SECRET: 'test-session-secret',
+    OAUTH_CLIENT_ID: 'test-client-id',
+    OAUTH_CLIENT_SECRET: 'test-client-secret',
+    SYNC_API_TOKEN: TOKEN,
+    BRIDGE_URL: 'https://bridge.test/exec',
+    BRIDGE_SECRET: 'test-bridge-secret',
+    ADMIN_EMAIL: 'admin@gmail.com',
+    STATIC_DIR: staticDir,
+  });
+}
+
+beforeAll(() => {
+  root = mkdtempSync(join(tmpdir(), 'qc-server-test-'));
+  staticDir = join(root, 'dist');
+  mkdirSync(join(staticDir, 'assets'), { recursive: true });
+  writeFileSync(join(staticDir, 'index.html'), HTML);
+  writeFileSync(join(staticDir, 'assets', 'app-abc123.js'), 'console.log("app")');
+  writeFileSync(join(root, 'rahasia.txt'), 'di luar direktori statis');
+});
+
+afterAll(() => {
+  rmSync(root, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+  env = await createTestEnv({ SYNC_API_TOKEN: TOKEN });
+  server = createServer(configFor(), { db: env.DB, background: false, env: { NOW: env.NOW } });
+});
+
+const get = (path: string, peer = LOOPBACK) =>
+  server.fetch(new Request(`http://localhost${path}`), peer);
+
+describe('createServer: API', () => {
+  test('GET /api/ping menjawab ok', async () => {
+    const response = await get('/api/ping');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test('POST /api/rpc auth.me tanpa sesi -> 401 UNAUTHENTICATED', async () => {
+    const response = await server.fetch(
+      new Request('http://localhost/api/rpc', {
+        method: 'POST',
+        headers: { 'x-requested-with': 'qc', 'content-type': 'application/json' },
+        body: JSON.stringify({ method: 'auth.me' }),
+      }),
+      LOOPBACK,
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+  });
+
+  test('GET /api/boot tanpa sesi -> 401', async () => {
+    expect((await get('/api/boot')).status).toBe(401);
+  });
+
+  test('rute server yang tidak dikenal = 404 JSON, bukan index.html', async () => {
+    for (const path of ['/api/tidak-ada', '/auth/tidak-ada', '/sync/x']) {
+      const response = await get(path);
+      expect(response.status).toBe(404);
+      expect(await response.text()).not.toContain('QC-SPA');
+    }
+    const json = await get('/api/tidak-ada');
+    expect(await json.json()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+  });
+});
+
+describe('createServer: berkas statis dan fallback SPA', () => {
+  test('rute klien (/rute-klien, /handover/board) dijawab index.html tanpa cache', async () => {
+    for (const path of ['/', '/rute-klien', '/handover/board/abc']) {
+      const response = await get(path);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain('QC-SPA');
+      expect(response.headers.get('cache-control')).toBe('no-cache');
+      expect(response.headers.get('content-type')).toContain('text/html');
+    }
+  });
+
+  test('aset berhash dilayani dengan Cache-Control panjang dan immutable', async () => {
+    const response = await get('/assets/app-abc123.js');
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('console.log("app")');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(response.headers.get('content-type')).toContain('javascript');
+  });
+
+  test('berkas berekstensi yang tidak ada = 404 (bukan index.html)', async () => {
+    const response = await get('/assets/hilang-1.js');
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('QC-SPA');
+  });
+
+  test('path traversal tidak keluar dari direktori statis', async () => {
+    for (const path of [
+      '/..%2frahasia.txt',
+      '/%2e%2e/rahasia.txt',
+      '/assets/..%2f..%2frahasia.txt',
+    ]) {
+      const response = await get(path);
+      expect(await response.text()).not.toContain('di luar direktori statis');
+    }
+    expect((await get('/%00')).status).toBe(400);
+  });
+
+  test('POST ke jalur statis tidak dilayani (404)', async () => {
+    const response = await server.fetch(
+      new Request('http://localhost/rute-klien', { method: 'POST' }),
+      LOOPBACK,
+    );
+    expect(response.status).toBe(404);
+  });
+});
+
+describe('createServer: IP klien dan pembatas /sync', () => {
+  const syncFrom = (peer: string, token: string, spoofed?: string) =>
+    server.fetch(
+      new Request('http://localhost/sync', {
+        method: 'POST',
+        headers: spoofed === undefined ? {} : { 'CF-Connecting-IP': spoofed },
+        body: JSON.stringify({ v: 1, method: 'sync.ping', token, payload: null }),
+      }),
+      peer,
+    );
+  const okOf = async (response: Response) => ((await response.json()) as { ok: boolean }).ok;
+  const limiterKeys = async () =>
+    (
+      await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
+    ).results.map((row) => row.key);
+
+  test('peer non-loopback tak bisa mengelabui pembatas dengan CF-Connecting-IP palsu', async () => {
+    for (let i = 0; i < 10; i++) await syncFrom(ATTACKER, `salah-${i}`, `198.51.100.${i}`);
+    // token benar pun ditolak: semua percobaan dihitung pada IP peer, bukan pada header acak
+    expect(await okOf(await syncFrom(ATTACKER, TOKEN, '198.51.100.200'))).toBe(false);
+    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`]);
+    // peer lain tidak ikut terblokir
+    expect(await okOf(await syncFrom('198.51.100.1', TOKEN))).toBe(true);
+  });
+
+  test('peer loopback (nginx) dipercaya: IP klien dari CF-Connecting-IP, tiap klien dihitung sendiri', async () => {
+    for (let i = 0; i < 10; i++) await syncFrom(LOOPBACK, `salah-${i}`, '198.51.100.9');
+    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '198.51.100.9'))).toBe(false);
+    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '198.51.100.10'))).toBe(true);
+    expect(await limiterKeys()).toEqual(['sync:blocked:198.51.100.9']);
+  });
+});
+
+describe('createServer: siklus hidup', () => {
+  test('stop() tidak menutup Db yang disuntik dan boleh dipanggil berulang', async () => {
+    await server.stop();
+    await server.stop();
+    expect((await env.DB.prepare('SELECT 1 AS n').first<{ n: number }>())?.n).toBe(1);
+  });
+
+  test('env disusun dari konfigurasi dan menerima timpaan tes', () => {
+    expect(server.env).toMatchObject({
+      SESSION_SECRET: 'test-session-secret',
+      SYNC_API_TOKEN: TOKEN,
+      ADMIN_EMAIL: 'admin@gmail.com',
+    });
+    expect(server.env.NOW).toBe(env.NOW);
+    expect(server.env.DB).toBe(env.DB);
+  });
+});

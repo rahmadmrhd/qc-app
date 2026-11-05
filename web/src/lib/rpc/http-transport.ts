@@ -42,7 +42,7 @@ export function createHttpTransport(options: HttpTransportOptions = {}): RpcTran
       });
       const text = await response.text();
       if (looksLikeEnvelope(text)) return text;
-      // Badan bukan amplop (mis. halaman galat Cloudflare): petakan dari status HTTP.
+      // Badan bukan amplop (mis. halaman galat proxy): petakan dari status HTTP.
       if (response.status === 401) {
         return envelopeText('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
       }

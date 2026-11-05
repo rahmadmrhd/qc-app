@@ -3,9 +3,10 @@ import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { RpcResult } from '@shared/rpc';
 import type { RequestCtx } from './context';
+import { DbError } from './db';
 import { appError } from './errors';
 import type { RoutePermission, RoutePermissionSpec, RouteTable } from './router';
-import { callRoute, D1_QUOTA_MESSAGE, handleRpc, isD1QuotaError, toErrorBody } from './router';
+import { callRoute, DB_UNAVAILABLE_MESSAGE, handleRpc, toErrorBody } from './router';
 import { signSessionToken } from './session';
 import { expectNull } from './validate';
 
@@ -213,17 +214,23 @@ describe('dasar', () => {
     expect(lines[0]).toHaveProperty('ms');
   });
 
-  test('kuota harian D1 habis menjadi UNAVAILABLE dengan pesan jelas', () => {
-    const quota = new Error(
-      "D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.",
+  test('DbError unavailable (MariaDB tidak terjangkau) menjadi UNAVAILABLE tanpa membocorkan petunjuk operator', () => {
+    const down = new DbError(
+      'Database tidak terjangkau. Jalankan `bun run db:tunnel` (ECONNREFUSED)',
+      {
+        errno: 0,
+        kind: 'unavailable',
+      },
     );
-    expect(isD1QuotaError(quota)).toBe(true);
-    expect(isD1QuotaError(new Error('D1_ERROR: no such table: x'))).toBe(false);
-    expect(toErrorBody(quota, 'abcd1234')).toEqual({
+    expect(toErrorBody(down, 'abcd1234')).toEqual({
       code: 'UNAVAILABLE',
-      message: D1_QUOTA_MESSAGE,
+      message: DB_UNAVAILABLE_MESSAGE,
       requestId: 'abcd1234',
     });
+    expect(DB_UNAVAILABLE_MESSAGE).not.toContain('db:tunnel');
+    // galat DB lain tetap INTERNAL
+    const other = new DbError('x', { errno: 1064, kind: 'other' });
+    expect(toErrorBody(other, 'abcd1234').code).toBe('INTERNAL');
   });
 
   test('error tak terduga disamarkan menjadi INTERNAL dan dicatat bersama requestId', async () => {

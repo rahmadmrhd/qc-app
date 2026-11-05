@@ -1,5 +1,4 @@
 import type { Env } from '@server/core/env';
-import { resetMemCache } from '@server/core/mem-cache';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { acquireTestDb, resetTestDb } from './test-db';
 
@@ -26,20 +25,10 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
       current += ms;
     },
   };
-  const assets = {
-    async fetch() {
-      return new Response('aset statis', { status: 200 });
-    },
-  } as unknown as Fetcher;
-  // Cache memori isolate (variabel modul) tidak boleh bocor antar tes: bersihkan dan, kecuali diminta,
-  // matikan (`CACHE_TTL_MS=0`). Seluruh suite dapat dijalankan dengan cache menyala lewat
-  // `QC_TEST_CACHE_TTL_MS=10000 bun test` untuk memeriksa invalidasi.
-  resetMemCache();
   const testDb = await acquireTestDb();
   await resetTestDb(testDb);
   return {
     DB: testDb.db,
-    ASSETS: assets,
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
     OAUTH_CLIENT_SECRET: 'test-client-secret',
@@ -49,7 +38,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     ADMIN_EMAIL: 'admin@gmail.com',
     APP_ORIGIN: 'https://qc.test',
     NOW: () => clock.now(),
-    CACHE_TTL_MS: process.env.QC_TEST_CACHE_TTL_MS ?? '0',
     ...overrides,
     BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,

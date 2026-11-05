@@ -11,6 +11,7 @@ import type {
   RpcResult,
 } from '@shared/rpc';
 import { loadRequestCtx, type RequestCtx } from './context';
+import { DbError } from './db';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
 import { logRequest } from './log';
@@ -30,12 +31,7 @@ export type RoutePermissionSpec =
   | { anyOf: readonly [GlobalPermission, ...GlobalPermission[]] }
   | { anyOf: readonly [LocationPermission, ...LocationPermission[]] };
 
-/** Kelompok cache tabel kecil; DIABAIKAN (cache dimatikan di jalur inti); dibuang bersama `mem-cache` di T13. */
-export type WarmGroup = 'brands' | 'customers';
-
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
-  /** Diabaikan sejak cache memori dibuang dari jalur inti (T5); dibuang di T13. */
-  warm?: readonly WarmGroup[];
   /** Tanpa `permission` = cukup login. */
   permission?: RoutePermissionSpec;
   validate: (raw: unknown) => RpcInput<M>;
@@ -234,17 +230,12 @@ export function toErrorBody(error: unknown, requestId: string): RpcErrorBody {
   }
   const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(`[${requestId}] ${detail}`);
-  if (isD1QuotaError(error)) return { code: 'UNAVAILABLE', message: D1_QUOTA_MESSAGE, requestId };
+  if (error instanceof DbError && error.kind === 'unavailable') {
+    return { code: 'UNAVAILABLE', message: DB_UNAVAILABLE_MESSAGE, requestId };
+  }
   return { code: 'INTERNAL', message: 'Terjadi kesalahan pada server', requestId };
 }
 
-export const D1_QUOTA_MESSAGE =
-  'Kuota harian basis data habis; aplikasi bisa dipakai lagi setelah pukul 07.00 WIB';
-
-/** Galat D1 saat kuota harian paket gratis (baris dibaca/ditulis) habis; berlaku sampai 00:00 UTC. */
-export function isD1QuotaError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes('D1_ERROR') && /exceeded D1's free tier daily row (read|write)/i.test(message)
-  );
-}
+/** Pesan ke klien bila MariaDB tidak terjangkau (detail dan petunjuk operator hanya di log server). */
+export const DB_UNAVAILABLE_MESSAGE =
+  'Basis data sedang tidak dapat dihubungi. Coba lagi sebentar lagi.';

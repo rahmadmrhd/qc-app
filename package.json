@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "dev": "bun run scripts/dev.ts",
+    "dev:server": "bun run --cwd server dev",
     "dev:web": "bun run --cwd web dev",
     "build:gas": "bun run scripts/build-gas.ts && bun run scripts/verify-gas-dist.ts",
     "build:bridge": "bun run scripts/build-bridge.ts",
@@ -23,17 +24,14 @@
     "check": "bun run typecheck && bun run lint && bun run test",
     "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
     "deploy": "bun run push && bun run scripts/deploy.ts",
-    "dev:worker": "bun run server/scripts/dev.ts",
-    "db:seed": "bun run server/scripts/seed-dev.ts",
-    "db:tunnel": "bun run scripts/db-tunnel.ts",
-    "load:cpu": "bun run server/scripts/load-cpu.ts"
+    "db:seed": "bun run --cwd server db:seed",
+    "db:tunnel": "bun run scripts/db-tunnel.ts"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",
     "@babel/traverse": "^8.0.7",
     "@babel/types": "^8.0.6",
     "@biomejs/biome": "^2.5.15",
-    "@cloudflare/workers-types": "^5.20261024.1",
     "@types/bun": "^1.4.2",
     "typescript": "^7.0.2"
   }

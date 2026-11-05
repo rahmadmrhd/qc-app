@@ -1,8 +1,8 @@
 /**
- * Log terstruktur untuk Workers Logs (observability di `wrangler.jsonc`).
+ * Log terstruktur ke stdout (dibaca lewat `docker logs`; lihat docs/observability.md).
  *
- * Satu objek per peristiwa lewat `console.log/warn` (bukan string): Workers Logs mengindeks field objek sehingga
- * bisa difilter, mis. `evt = rpc AND ok = false`, atau `ms > 500`. Jangan memasukkan rahasia, isi payload, atau
+ * Satu objek per peristiwa lewat `console.log/warn` (bukan string): Bun mencetaknya sebagai satu entri sehingga
+ * mudah disaring, mis. `evt = rpc` dan `ok = false`, atau `ms > 500`. Jangan memasukkan rahasia, isi payload, atau
  * email; `userId` (id internal) cukup untuk melacak. `requestId` sama dengan yang dikirim ke klien pada galat,
  * sehingga laporan pengguna ("requestId a1b2c3d4") langsung bisa dicari.
  */
@@ -15,7 +15,7 @@ export interface RequestLog {
   ok: boolean;
   /** Kode galat (`VALIDATION`, `FORBIDDEN`, `INTERNAL`, ...) bila `ok = false`. */
   code?: string;
-  /** Waktu dinding sejak permintaan diterima, milidetik (CPU ada di invocation log Cloudflare). */
+  /** Waktu dinding sejak permintaan diterima, milidetik. */
   ms: number;
   userId?: string | null;
 }

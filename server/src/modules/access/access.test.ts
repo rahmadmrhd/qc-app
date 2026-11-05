@@ -5,7 +5,6 @@ import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { AuditEntryDto } from '@shared/rpc';
 import type { UserContext } from './context';
@@ -713,10 +712,10 @@ describe('audit.list (kursor)', () => {
     ]);
   });
 
-  test('CPU kasar: halaman audit dari 2.000 baris di bawah anggaran', async () => {
+  test('pencarian audit pada ratusan baris hanya mengembalikan entri yang cocok', async () => {
     await clear();
     // Seed lewat INSERT banyak-baris (16 per pernyataan) agar tidak lama lewat tunnel.
-    const entries = Array.from({ length: 2000 }, (_, index) => ({
+    const entries = Array.from({ length: 300 }, (_, index) => ({
       ts: new Date(Date.UTC(2026, 9, 1, 0, 0, index)).toISOString(),
       actor: 'admin@gmail.com',
       action: 'user.update',
@@ -728,16 +727,10 @@ describe('audit.list (kursor)', () => {
     for (let from = 0; from < statements.length; from += 25) {
       await env.DB.batch(statements.slice(from, from + 25));
     }
-    const { result, ms } = await measureCpu(() =>
-      listAudit(env, {
-        limit: 50,
-        action: '',
-        query: 'u19',
-      }),
-    );
-    expect(result.entries.length).toBeGreaterThan(0);
-    // CPU proses (tanpa menunggu jaringan ke MariaDB), lihat test-support/measure.ts.
-    expect(ms).toBeLessThan(25);
+    const result = await listAudit(env, { limit: 50, action: '', query: 'u19' });
+    // u19, u190-u199 = 11 entri
+    expect(result.entries).toHaveLength(11);
+    expect(result.entries.every((entry) => entry.target.includes('u19'))).toBe(true);
   }, 60_000);
 });
 

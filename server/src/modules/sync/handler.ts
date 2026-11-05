@@ -4,7 +4,7 @@ import { logRequest } from '@server/core/log';
 import { toErrorBody } from '@server/core/router';
 import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
-import { authenticateSync } from './auth';
+import { authenticateSync, UNKNOWN_CLIENT_IP } from './auth';
 
 /** Konteks handler sinkron: TIDAK pernah memuat `UserContext` (FS3). */
 export interface SyncContext {
@@ -46,6 +46,7 @@ export async function handleSync(
   env: Env,
   rawBody: unknown,
   routes: SyncRouteTable,
+  clientIp = UNKNOWN_CLIENT_IP,
 ): Promise<RpcResult<unknown>> {
   const requestId = newRequestId();
   const startedAt = Date.now();
@@ -54,7 +55,7 @@ export async function handleSync(
     const envelope = parseSyncEnvelope(rawBody);
     // Autentikasi lebih dulu dan seragam: tidak ada yang terungkap (metode, versi, bentuk JSON) tanpa token sah.
     if (
-      !(await authenticateSync(env, envelope === null ? undefined : envelope.token)) ||
+      !(await authenticateSync(env, envelope === null ? undefined : envelope.token, clientIp)) ||
       envelope === null
     ) {
       throw appError('UNAUTHENTICATED', 'Token tidak valid');
@@ -98,16 +99,18 @@ export async function handleSync(
 /**
  * Titik masuk HTTP `POST /sync`. Balasan selalu 200 dengan amplop `{ok, data|error}` (kontrak
  * docs/api/desktop-sync.md tidak berubah dari era Apps Script, tanpa redirect). Badan > 5 MB tidak dibaca
- * (diperlakukan sama dengan badan tak terbaca: UNAUTHENTICATED).
+ * (diperlakukan sama dengan badan tak terbaca: UNAUTHENTICATED). `clientIp` = IP klien untuk pembatas percobaan
+ * salah (`clientIp` di http/proxy.ts); tanpa nilai, semua pemanggil berbagi satu penghitung.
  */
 export async function handleSyncRequest(
   env: Env,
   request: Request,
   routes: SyncRouteTable,
+  clientIp = UNKNOWN_CLIENT_IP,
 ): Promise<Response> {
   const declared = Number(request.headers.get('content-length') ?? '0');
   const body = declared > SYNC_LIMITS.bodyChars * 4 ? undefined : await request.text();
-  const result = await handleSync(env, body, routes);
+  const result = await handleSync(env, body, routes, clientIp);
   return new Response(JSON.stringify(result), {
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },

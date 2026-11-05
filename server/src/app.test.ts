@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { app } from './index';
+import { app } from './app';
 
 test('GET /api/ping menjawab ok', async () => {
   const response = await app.request('/api/ping');

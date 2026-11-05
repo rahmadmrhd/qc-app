@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { app } from '../../app';
 import { verifySessionToken } from '../../core/session';
-import { app } from '../../index';
 
 let env: TestEnv;
 const realFetch = globalThis.fetch;
@@ -29,7 +27,7 @@ function idToken(claims: Record<string, unknown>): string {
 let tokenRequests: { url: string; body: URLSearchParams }[];
 
 function mockGoogle(response: { status?: number; body: unknown }) {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     tokenRequests.push({
       url: String(input),
       body: new URLSearchParams(String(init?.body ?? '')),
@@ -285,24 +283,4 @@ test('secureHeaders terpasang', async () => {
   const response = await app.request('/api/ping', {}, env);
   expect(response.headers.get('x-content-type-options')).toBe('nosniff');
   expect(response.headers.get('x-frame-options')).toBeTruthy();
-});
-
-describe('wrangler.jsonc', () => {
-  const raw = readFileSync(join(import.meta.dir, '../../../wrangler.jsonc'), 'utf8');
-  const config = JSON.parse(
-    raw
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('//'))
-      .join('\n'),
-  ) as { assets: { run_worker_first: string[]; not_found_handling: string } };
-
-  test('run_worker_first berupa daftar pola yang mencakup /auth/*, /api/*, dan /sync', () => {
-    const patterns = config.assets.run_worker_first;
-    expect(Array.isArray(patterns)).toBe(true);
-    for (const needed of ['/auth/*', '/api/*', '/sync']) expect(patterns).toContain(needed);
-  });
-
-  test('aset memakai SPA fallback', () => {
-    expect(config.assets.not_found_handling).toBe('single-page-application');
-  });
 });

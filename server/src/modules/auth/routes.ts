@@ -65,8 +65,8 @@ authApp.post('/logout', (c) => {
 });
 
 /**
- * Login pengembangan: aktif HANYA bila `DEV_LOGIN_EMAIL` ada (diisi lewat `.dev.vars`, tidak pernah di
- * wrangler.jsonc/produksi) DAN host permintaan localhost/127.0.0.1. Selain itu 404 seolah rute tak ada.
+ * Login pengembangan: aktif HANYA bila `DEV_LOGIN_EMAIL` ada (diisi lewat `server/.env`, tidak pernah di
+ * produksi) DAN host permintaan localhost/127.0.0.1. Selain itu 404 seolah rute tak ada.
  * Menerbitkan cookie sesi untuk email itu bila terdaftar/aktif (atau super admin).
  */
 authApp.get('/dev-login', async (c) => {

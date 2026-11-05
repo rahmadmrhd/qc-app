@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { WorkerRpcMethod as RpcMethod, RpcResult } from '@shared/rpc';
+import { app } from './app';
 import type { RouteTable } from './core/router';
 import { signSessionToken } from './core/session';
-import { app } from './index';
 import { ALL_RPC_METHODS, getRoutes } from './routes';
 
 let env: TestEnv;

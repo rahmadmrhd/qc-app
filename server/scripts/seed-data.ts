@@ -1,20 +1,27 @@
+import type { Db } from '@server/core/db';
 import { derivedColumns } from '@server/modules/handover/repo';
 import { aliasKeyList, aliasKeysOf } from '@server/modules/item/repo';
 import { customerKey, dateKeyOf, handoverNumber } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
 import { itemKey, normalizeKey } from '@shared/items';
 
-/** Literal SQL aman untuk nilai teks/angka/null (skrip dev saja; nilai berasal dari kode ini). */
-function q(value: string | number | null): string {
-  if (value === null) return 'NULL';
-  if (typeof value === 'number') return String(value);
-  return `'${value.split("'").join("''")}'`;
+/** Satu pernyataan seed berparameter (nilai selalu diikat, tidak pernah disisipkan ke teks SQL). */
+export interface SeedStatement {
+  sql: string;
+  values: Array<string | number | null>;
 }
 
-function insert(table: string, row: Record<string, string | number | null>): string {
+function insert(table: string, row: Record<string, string | number | null>): SeedStatement {
   const columns = Object.keys(row);
-  return `INSERT INTO ${table} (${columns.map((c) => (c === 'before' || c === 'after' ? `"${c}"` : c)).join(', ')}) VALUES (${columns.map((c) => q(row[c] ?? null)).join(', ')});`;
+  const names = columns.map((c) => '`' + c + '`').join(', ');
+  const marks = columns.map(() => '?').join(', ');
+  return {
+    sql: `INSERT INTO ${table} (${names}) VALUES (${marks})`,
+    values: columns.map((c) => row[c] ?? null),
+  };
 }
+
+const raw = (sql: string): SeedStatement => ({ sql, values: [] });
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const MIN = 60_000;
@@ -24,6 +31,7 @@ const HOUR = 60 * MIN;
 const RESET_TABLES = [
   'handover_comments',
   'handovers',
+  'job_blobs',
   'item_alias_keys',
   'items',
   'brands',
@@ -40,13 +48,12 @@ const RESET_TABLES = [
 ];
 
 /**
- * SQL data contoh realistis untuk D1 LOKAL: pengguna admin (`email`) + peran + lokasi + merk + customer + item +
+ * Pernyataan data contoh realistis untuk MariaDB DEV: pengguna admin (`email`) + peran + lokasi + merk + customer + item +
  * beberapa task serah terima (Baru, Dikerjakan, Selesai, Dibatalkan) dengan centang dan komentar. Mengosongkan
  * tabel data terlebih dulu sehingga aman dijalankan ulang. Kolom turunan handover dihitung oleh kode produksi.
  */
-export function buildSeedSql(email: string, nowMs: number): string {
-  const sql: string[] = [`-- Data contoh pengembangan lokal (dibuat ${iso(nowMs)})`];
-  for (const table of RESET_TABLES) sql.push(`DELETE FROM ${table};`);
+export function buildSeedStatements(email: string, nowMs: number): SeedStatement[] {
+  const sql: SeedStatement[] = RESET_TABLES.map((table) => raw(`DELETE FROM ${table}`));
 
   const t0 = iso(nowMs - 3 * 24 * HOUR);
   const meta = { created_at: t0, updated_at: t0, updated_by: 'seed' };
@@ -173,7 +180,9 @@ export function buildSeedSql(email: string, nowMs: number): string {
   });
   // Penghitung turunan `brands.item_count` (dijaga kode produksi pada penulisan item; migrasi 0009).
   sql.push(
-    'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id);',
+    raw(
+      'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id)',
+    ),
   );
   sql.push(insert('sync_state', { resource: 'items', seq: items.length, updated_at: t0 }));
 
@@ -315,5 +324,10 @@ export function buildSeedSql(email: string, nowMs: number): string {
       after: 'null',
     }),
   );
-  return `${sql.join('\n')}\n`;
+  return sql;
+}
+
+/** Menerapkan seed dalam SATU transaksi (hapus data lama lalu isi ulang): gagal di tengah = tidak ada yang berubah. */
+export async function applySeed(db: Db, email: string, nowMs: number): Promise<void> {
+  await db.batch(buildSeedStatements(email, nowMs).map((s) => db.prepare(s.sql).bind(...s.values)));
 }

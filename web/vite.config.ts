@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 
 const fromHere = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
 
-const WORKER_DEV_URL = process.env.WORKER_DEV_URL ?? 'http://localhost:8787';
+const SERVER_DEV_URL = process.env.SERVER_DEV_URL ?? 'http://localhost:8788';
 
 export default defineConfig({
   plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
@@ -19,15 +19,16 @@ export default defineConfig({
   server: {
     port: 3000,
     fs: { allow: ['..'] },
-    // Backend lokal: `bun run dev:worker` (wrangler dev, D1 lokal) di :8787. Cookie sesi tetap same-origin (:3000).
+    // Backend lokal: `bun run dev:server` (server Bun, MariaDB dev lewat terowongan) di :8788. Cookie sesi tetap
+    // same-origin (:3000).
     proxy: {
-      '/api': WORKER_DEV_URL,
-      '/auth': WORKER_DEV_URL,
-      '/sync': WORKER_DEV_URL,
+      '/api': SERVER_DEV_URL,
+      '/auth': SERVER_DEV_URL,
+      '/sync': SERVER_DEV_URL,
     },
   },
   build: {
-    // Aset statis Worker (assets.directory di server/wrangler.jsonc). Berpotongan: dilayani Cloudflare tanpa Worker.
+    // Berkas statis yang dilayani server Bun (STATIC_DIR, bawaan server/dist) dengan fallback SPA.
     outDir: '../server/dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1_000,

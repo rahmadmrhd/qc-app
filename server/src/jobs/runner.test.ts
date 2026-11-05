@@ -197,9 +197,9 @@ describe('startJobRunner', () => {
       const id = await enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
       await waitFor(async () => (await findJob(env, id))?.status === 'done');
     } finally {
-      stop();
+      await stop();
     }
-    await sleep(60); // menunggu putaran yang sedang berjalan selesai
+    // fungsi penghenti sudah menunggu putaran yang sedang berjalan selesai
     const later = await enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
     await sleep(100);
     expect((await findJob(env, later))?.status).toBe('queued');
@@ -227,7 +227,7 @@ describe('startJobRunner', () => {
       const id = await enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
       await waitFor(async () => (await findJob(env, id))?.status === 'done');
     } finally {
-      stop();
+      await stop();
     }
   });
 });
@@ -250,7 +250,7 @@ describe('penjadwal', () => {
       await sleep(100); // banyak detak berlalu
       expect(await countJobs('cleanup_qr')).toBe(1);
     } finally {
-      stop();
+      await stop();
     }
   });
 });

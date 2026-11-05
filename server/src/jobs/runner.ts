@@ -48,27 +48,45 @@ export async function runPendingJobs(env: Env): Promise<number> {
 }
 
 /**
- * Runner latar: memanggil `runPendingJobs` tiap `intervalMs` (bawaan 2 dtk), satu putaran pada satu waktu
- * (putaran berikutnya dijadwalkan SETELAH putaran sebelumnya selesai, jadi satu job pada satu waktu). Galat
- * putaran dicatat dan tidak menghentikan runner. Mengembalikan fungsi penghenti.
+ * Putaran berulang: `step` dijalankan segera lalu tiap `intervalMs` SETELAH putaran sebelumnya selesai (satu
+ * putaran pada satu waktu). Galat putaran dicatat dan tidak menghentikan putaran. Fungsi penghenti menunggu
+ * putaran yang sedang berjalan selesai (aman menutup pool basis data sesudahnya).
  */
-export function startJobRunner(env: Env, options: { intervalMs?: number } = {}): () => void {
-  const intervalMs = options.intervalMs ?? JOB_RUNNER_INTERVAL_MS;
+function startLoop(label: string, step: () => Promise<unknown>, intervalMs: number) {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const tick = async () => {
-    try {
-      await runPendingJobs(env);
-    } catch (error) {
-      console.error(`runner job: putaran gagal: ${String(error)}`);
-    }
-    if (!stopped) timer = setTimeout(tick, intervalMs);
+  let running: Promise<void> | undefined;
+  const tick = () => {
+    running = (async () => {
+      try {
+        await step();
+      } catch (error) {
+        console.error(`${label}: putaran gagal: ${String(error)}`);
+      }
+      if (!stopped) timer = setTimeout(tick, intervalMs);
+    })();
   };
   timer = setTimeout(tick, 0);
-  return () => {
+  return async (): Promise<void> => {
     stopped = true;
     if (timer !== undefined) clearTimeout(timer);
+    await running;
   };
+}
+
+/**
+ * Runner latar: memanggil `runPendingJobs` tiap `intervalMs` (bawaan 2 dtk); satu job pada satu waktu.
+ * Mengembalikan fungsi penghenti (lihat `startLoop`).
+ */
+export function startJobRunner(
+  env: Env,
+  options: { intervalMs?: number } = {},
+): () => Promise<void> {
+  return startLoop(
+    'runner job',
+    () => runPendingJobs(env),
+    options.intervalMs ?? JOB_RUNNER_INTERVAL_MS,
+  );
 }
 
 /**
@@ -82,23 +100,15 @@ export async function scheduleCleanupJob(env: Env): Promise<string | null> {
 
 /**
  * Penjadwal: `scheduleCleanupJob` sekali saat mulai lalu tiap jam (`intervalMs`). Kerangka yang sama dipakai
- * untuk pekerjaan berkala lain (mis. dump malam). Mengembalikan fungsi penghenti.
+ * untuk pekerjaan berkala lain (mis. dump malam). Mengembalikan fungsi penghenti (lihat `startLoop`).
  */
-export function startScheduler(env: Env, options: { intervalMs?: number } = {}): () => void {
-  const intervalMs = options.intervalMs ?? SCHEDULER_INTERVAL_MS;
-  let stopped = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const tick = async () => {
-    try {
-      await scheduleCleanupJob(env);
-    } catch (error) {
-      console.error(`penjadwal: gagal menjadwalkan cleanup_qr: ${String(error)}`);
-    }
-    if (!stopped) timer = setTimeout(tick, intervalMs);
-  };
-  timer = setTimeout(tick, 0);
-  return () => {
-    stopped = true;
-    if (timer !== undefined) clearTimeout(timer);
-  };
+export function startScheduler(
+  env: Env,
+  options: { intervalMs?: number } = {},
+): () => Promise<void> {
+  return startLoop(
+    'penjadwal',
+    () => scheduleCleanupJob(env),
+    options.intervalMs ?? SCHEDULER_INTERVAL_MS,
+  );
 }

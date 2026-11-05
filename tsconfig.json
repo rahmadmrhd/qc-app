@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["bun", "@cloudflare/workers-types"],
+    "types": ["bun"],
     "paths": {
       "@shared/*": ["./shared/*"],
       "@server/*": ["./server/src/*"],

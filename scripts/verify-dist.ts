@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { WORKER_DIST_DIR } from './paths';
+import { WEB_DIST_DIR } from './paths';
 
 /**
  * Anggaran per potongan JS (gzip). Rencana Task 4.2 mulai 500 KB; dinaikkan ke 600 KB karena potongan rute QR
@@ -45,9 +45,9 @@ export function checkDist(files: DistFile[]): string[] {
 
 if (import.meta.main) {
   const files: DistFile[] = [];
-  for await (const file of new Bun.Glob('**/*').scan({ cwd: WORKER_DIST_DIR })) {
+  for await (const file of new Bun.Glob('**/*').scan({ cwd: WEB_DIST_DIR })) {
     if (!/\.(html|js|css)$/.test(file)) continue;
-    const text = await Bun.file(path.join(WORKER_DIST_DIR, file)).text();
+    const text = await Bun.file(path.join(WEB_DIST_DIR, file)).text();
     files.push({ file, text, gzipBytes: Bun.gzipSync(text).byteLength });
   }
   const problems = checkDist(files);

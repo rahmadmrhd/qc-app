@@ -5,20 +5,19 @@ import { loadUserContext } from '@server/modules/access/context';
 import { derivedColumns, parseChecks } from '@server/modules/handover/repo';
 import { getRoutes } from '@server/routes';
 import { createTestEnv } from '@server-test/test-env';
-import { parseDevVars, renderDevVars } from './dev-vars';
-import { buildSeedSql } from './seed-data';
-import { parseSeedArgs, wranglerArgs } from './seed-dev';
+import { applySeed, buildSeedStatements } from './seed-data';
+import { assertSeedTarget, parseSeedArgs, resolveEmail } from './seed-dev';
 
 const NOW = Date.parse('2026-10-25T03:00:00.000Z');
 
 async function seeded(email = 'saya@example.test') {
   const env = await createTestEnv({ ADMIN_EMAIL: 'bukan-saya@example.test' });
   env.clock.set(NOW);
-  await env.DB.exec(buildSeedSql(email, NOW));
+  await applySeed(env.DB, email, NOW);
   return env;
 }
 
-describe('buildSeedSql', () => {
+describe('seed data contoh', () => {
   test('pengguna admin sesuai email: izin penuh di semua lokasi; email dinormalkan', async () => {
     const env = await seeded('Saya@Example.Test');
     const ctx = await loadUserContext(env, 'saya@example.test');
@@ -71,7 +70,7 @@ describe('buildSeedSql', () => {
       ]);
     }
     const counter = await env.DB.prepare(
-      "SELECT value FROM counters WHERE key = 'st:20261025'",
+      "SELECT value FROM counters WHERE `key` = 'st:20261025'",
     ).first<{
       value: number;
     }>();
@@ -84,7 +83,7 @@ describe('buildSeedSql', () => {
 
   test('dapat dijalankan ulang (idempoten) dan aplikasi dapat memakainya lewat RPC', async () => {
     const env = await seeded();
-    await env.DB.exec(buildSeedSql('saya@example.test', NOW));
+    await applySeed(env.DB, 'saya@example.test', NOW);
     expect(
       (await env.DB.prepare('SELECT COUNT(*) AS n FROM handovers').first<{ n: number }>())?.n,
     ).toBe(6);
@@ -121,50 +120,59 @@ describe('buildSeedSql', () => {
 
   test('menerapkan migrasi pada database kosong tanpa galat FK/unik', async () => {
     const { DB: db } = await createTestEnv();
-    await db.exec(buildSeedSql('a@b.test', NOW));
+    await applySeed(db, 'a@b.test', NOW);
+  });
+
+  test('semua nilai diikat sebagai parameter (tidak ada nilai di teks SQL), termasuk email yang berisi kutip', async () => {
+    const statements = buildSeedStatements("o'brien@example.test", NOW);
+    for (const statement of statements) {
+      expect(statement.sql).not.toContain("o'brien");
+      expect((statement.sql.match(/[?]/g) ?? []).length).toBe(statement.values.length);
+    }
+    const env = await createTestEnv();
+    await applySeed(env.DB, "o'brien@example.test", NOW);
+    expect(await loadUserContext(env, "o'brien@example.test")).not.toBeNull();
+  });
+
+  test('gagal di tengah = tidak ada yang berubah (satu transaksi)', async () => {
+    const env = await seeded();
+    const before = (await env.DB.prepare('SELECT COUNT(*) AS n FROM brands').first<{ n: number }>())
+      ?.n;
+    // email panjang melebihi VARCHAR memicu galat di tengah batch; data sebelumnya harus utuh
+    await expect(applySeed(env.DB, 'x'.repeat(400) + '@example.test', NOW)).rejects.toThrow();
+    const after = (await env.DB.prepare('SELECT COUNT(*) AS n FROM brands').first<{ n: number }>())
+      ?.n;
+    expect(after).toBe(before);
   });
 });
 
-describe('parseSeedArgs dan wranglerArgs', () => {
-  test('menolak --remote dan bentuk setara; menolak argumen tak dikenal', () => {
-    for (const bad of [
-      ['--remote'],
-      ['-r'],
-      ['--preview'],
-      ['--remote=true'],
-      ['--email=a@b.c', '--remote'],
-    ]) {
-      expect(() => parseSeedArgs(bad)).toThrow(/LOKAL/);
-    }
-    expect(() => parseSeedArgs(['--aneh'])).toThrow(/tidak dikenal/);
-  });
-
-  test('menerima --local dan --email', () => {
+describe('argumen dan penjagaan target', () => {
+  test('hanya --email yang diterima; argumen lain ditolak', () => {
     expect(parseSeedArgs([])).toEqual({});
-    expect(parseSeedArgs(['--local', '--email=Saya@x.test'])).toEqual({ email: 'Saya@x.test' });
-  });
-
-  test('perintah wrangler selalu --local dan tidak pernah --remote', () => {
-    for (const args of [wranglerArgs('migrate'), wranglerArgs('execute', 'x.sql')]) {
-      expect(args).toContain('--local');
-      expect(args).not.toContain('--remote');
-      expect(args).not.toContain('-r');
+    expect(parseSeedArgs(['--email=Saya@x.test'])).toEqual({ email: 'Saya@x.test' });
+    for (const bad of ['--remote', '--database=qc_prod', '--aneh']) {
+      expect(() => parseSeedArgs([bad])).toThrow(/tidak dikenal/);
     }
   });
-});
 
-describe('dev-vars', () => {
-  test('parseDevVars: komentar, kutip, spasi', () => {
-    expect(parseDevVars('# c\nA=1\n B = "dua" \nC=\n\nD=x=y')).toEqual({
-      A: '1',
-      B: 'dua',
-      C: '',
-      D: 'x=y',
-    });
-  });
-  test('renderDevVars mengganti SESSION_SECRET saja', () => {
-    expect(renderDevVars('X=1\nSESSION_SECRET=ganti\nY=2', 'rahasia')).toBe(
-      'X=1\nSESSION_SECRET=rahasia\nY=2',
+  test('assertSeedTarget hanya menerima skema qc_dev', () => {
+    expect(assertSeedTarget('mysql://u:p@127.0.0.1:33063/qc_dev')).toBe(
+      'mysql://u:p@127.0.0.1:33063/qc_dev',
     );
+    for (const bad of [
+      'mysql://u:p@127.0.0.1:33063/qc_prod',
+      'mysql://u:p@127.0.0.1:33063/qc_dev2',
+      'mysql://u:p@127.0.0.1:33063/',
+      'mysql://u:p@127.0.0.1:33063/qc_test_1_ab',
+    ]) {
+      expect(() => assertSeedTarget(bad)).toThrow(/hanya untuk skema qc_dev/);
+    }
+    expect(() => assertSeedTarget(undefined)).toThrow(/DATABASE_URL belum diatur/);
+  });
+
+  test('resolveEmail: argumen lebih dulu dari DEV_LOGIN_EMAIL; dinormalkan; kosong = galat', () => {
+    expect(resolveEmail({ email: 'A@B.test' }, { DEV_LOGIN_EMAIL: 'x@y.test' })).toBe('a@b.test');
+    expect(resolveEmail({}, { DEV_LOGIN_EMAIL: ' X@Y.test ' })).toBe('x@y.test');
+    expect(() => resolveEmail({}, {})).toThrow(/DEV_LOGIN_EMAIL/);
   });
 });

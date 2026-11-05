@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { app } from '@server/app';
 import { appError } from '@server/core/errors';
 import { signSessionToken } from '@server/core/session';
 import { CSRF_HEADER, CSRF_VALUE } from '@server/http/security';
-import { app } from '@server/index';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
@@ -126,18 +126,41 @@ describe('handler', () => {
     ).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
   });
 
-  test('10 kegagalan memblokir semua permintaan, termasuk yang bertoken benar (tabel rate_limits)', async () => {
+  test('10 kegagalan memblokir IP itu, termasuk permintaannya yang bertoken benar (tabel rate_limits)', async () => {
     for (let i = 0; i < 9; i++) await ping(`salah-${i}`);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
     await ping('salah-9');
     expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
     const block = await env.DB.prepare(
-      "SELECT count FROM rate_limits WHERE `key` = 'sync:blocked'",
+      "SELECT count FROM rate_limits WHERE `key` = 'sync:blocked:unknown'",
     ).first();
     expect(block).not.toBeNull();
     // blokir berakhir setelah 10 menit
     env.clock.advance(10 * 60 * 1000 + 1);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('pembatas per IP: IP yang diblokir tidak menghalangi IP lain, dan tiap IP dihitung sendiri', async () => {
+    const from = (ip: string, token: unknown) =>
+      handleSync(
+        env,
+        JSON.stringify({ v: 1, method: 'sync.ping', token, payload: null }),
+        syncRoutes(),
+        ip,
+      );
+    for (let i = 0; i < 10; i++) await from('203.0.113.7', `salah-${i}`);
+    expect(await from('203.0.113.7', TOKEN)).toMatchObject({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED' },
+    });
+    // IP lain tetap bisa masuk, dan kegagalannya tidak menambah hitungan IP yang diblokir
+    expect(await from('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
+    for (let i = 0; i < 9; i++) await from('198.51.100.9', `salah-${i}`);
+    expect(await from('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
+    const keys = (
+      await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
+    ).results.map((r) => r.key);
+    expect(keys).toEqual(['sync:blocked:203.0.113.7', 'sync:fails:198.51.100.9']);
   });
 
   test('kegagalan serentak dihitung atomik (tanpa pembaruan hilang): 12 token salah paralel memblokir; hitungan di jendela = 0 setelah blokir', async () => {
@@ -148,11 +171,11 @@ describe('handler', () => {
       key: string;
       count: number;
     }>();
-    // blokir tercatat; penghitung kegagalan dihapus saat blokir (hanya baris sync:blocked yang tersisa),
+    // blokir tercatat; penghitung kegagalan dihapus saat blokir (hanya baris sync:blocked:<ip> yang tersisa),
     // atau bila beberapa permintaan sempat mencatat sesudahnya hitungannya kecil (< 10)
     const names = rows.results.map((r) => r.key);
-    expect(names).toContain('sync:blocked');
-    const fails = rows.results.find((r) => r.key === 'sync:fails');
+    expect(names).toContain('sync:blocked:unknown');
+    const fails = rows.results.find((r) => r.key === 'sync:fails:unknown');
     if (fails) expect(Number(fails.count)).toBeLessThan(10);
   });
 

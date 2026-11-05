@@ -6,8 +6,16 @@ import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { secureHeaders } from 'hono/secure-headers';
 
+/** Data per permintaan yang ditambahkan `createServer` di atas `Env` (tidak ada di tes yang memanggil `app` langsung). */
+export interface RequestBindings {
+  /** IP klien hasil `clientIp` (peer, atau `CF-Connecting-IP` bila peer proxy tepercaya). */
+  clientIp?: string;
+  /** Direktori berkas statis web; tanpa nilai = tidak ada berkas statis (mis. tes API). */
+  staticDir?: string;
+}
+
 export interface AppBindings {
-  Bindings: Env;
+  Bindings: Env & RequestBindings;
   Variables: { session: SessionPayload };
 }
 
@@ -50,7 +58,7 @@ export const requireSession = createMiddleware<AppBindings>(async (c, next) => {
   await next();
 });
 
-/** Host pengembangan lokal (wrangler dev); tidak pernah melayani produksi. */
+/** Host pengembangan lokal; tidak pernah melayani produksi. */
 export function isLocalHostname(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
@@ -61,7 +69,7 @@ export function isLocalHostname(hostname: string): boolean {
 }
 
 /**
- * Atribut `Secure` cookie: wajib di semua origin KECUALI http://localhost (wrangler dev), karena sebagian
+ * Atribut `Secure` cookie: wajib di semua origin KECUALI http://localhost (pengembangan lokal), karena sebagian
  * peramban menolak cookie Secure pada http meski localhost.
  */
 export function cookieSecure(requestUrl: string): boolean {
