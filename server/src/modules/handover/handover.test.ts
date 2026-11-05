@@ -829,25 +829,59 @@ describe('komentar', () => {
     expect(after.version).toBe(before.version);
   });
 
-  test('komentar ke-51 ditolak dengan pesan batas', async () => {
-    await seed('- [ ] A = 1');
-    let error: Result['error'];
-    for (let i = 0; i < 51; i++) {
-      const out = await comment('', 'k');
-      if (!out.ok) error = out.error;
-    }
-    expect(error.fields.body).toContain('50');
+  /** Komentar awal langsung ke DB (satu INSERT banyak-baris): menghindari puluhan RPC berurutan lewat tunnel. */
+  const seededComments = (
+    count: number,
+    shape: { quote?: string; ctx?: string; body?: string } = {},
+  ) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `seed-${String(i).padStart(3, '0')}`,
+      quote: shape.quote ?? '',
+      before: shape.ctx ?? '',
+      after: shape.ctx ?? '',
+      body: shape.body ?? 'k',
+      author: 'viewer@gmail.com',
+      at: `2026-10-15T01:00:${String(i % 60).padStart(2, '0')}.000Z`,
+    }));
+  const seedWithComments = (note: string, comments: ReturnType<typeof seededComments>) =>
+    seedHandover(
+      env,
+      {
+        id: 't1',
+        number: 'ST-20261015-001',
+        locationId: ENV.locA,
+        customerId: '',
+        customerName: '',
+        note,
+      },
+      comments,
+    );
+
+  test('komentar ke-51 ditolak dengan pesan batas (49 disemai, ke-50 lulus lewat RPC)', async () => {
+    await seedWithComments('- [ ] A = 1', seededComments(49));
+    const fiftieth = await comment('', 'k');
+    expect(fiftieth.ok).toBe(true);
+    expect(await commentsOf()).toHaveLength(50);
+    const fiftyFirst = await comment('', 'k');
+    expect(fiftyFirst.ok).toBe(false);
+    expect(fiftyFirst.error.fields.body).toContain('50');
     expect(await commentsOf()).toHaveLength(50);
   });
 
   test('batas 40.000 karakter JSON lebih dulu dari 50 komentar dengan pesan jelas', async () => {
-    await seed(`- [ ] A = 1\n\n${'q'.repeat(480)}`);
+    const shape = { quote: 'q'.repeat(480), ctx: 'x'.repeat(40), body: 'b'.repeat(1000) };
+    await seedWithComments(
+      `- [ ] A = 1
+
+${'q'.repeat(480)}`,
+      seededComments(20, shape),
+    );
     let count = 0;
     let lastError: Result['error'];
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 10; i++) {
       const out = await comment('q'.repeat(480), 'b'.repeat(1000), {
         before: 'x'.repeat(40),
-        after: 'y'.repeat(40),
+        after: 'x'.repeat(40),
       });
       if (!out.ok) {
         lastError = out.error;
@@ -855,10 +889,11 @@ describe('komentar', () => {
       }
       count++;
     }
-    expect(count).toBeLessThan(50);
+    expect(count).toBeGreaterThan(0); // komentar yang masih muat tetap diterima lewat RPC
+    expect(count).toBeLessThan(10);
     expect(lastError.code).toBe('VALIDATION');
     expect(lastError.fields.body).toContain('40.000');
-    expect(await commentsOf()).toHaveLength(count);
+    expect(await commentsOf()).toHaveLength(20 + count);
   });
 
   test('komentar serentak 60: tepat 50 tersimpan, tanpa melewati batas', async () => {

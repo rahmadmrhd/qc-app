@@ -90,19 +90,24 @@ export async function seedHandover(
 ): Promise<HandoverRecord> {
   const record = handoverRecord(overrides);
   await insertHandoverStmt(env.DB, record).run();
-  for (const comment of comments) {
+  // Satu INSERT banyak-baris per 50 komentar (bukan satu round trip per komentar): menyemai puluhan komentar murah.
+  for (let from = 0; from < comments.length; from += 50) {
+    const chunk = comments.slice(from, from + 50);
+    const rows = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
     await env.DB.prepare(
-      'INSERT INTO handover_comments (id, handover_id, author, created_at, quote, `before`, `after`, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body) VALUES ${rows}`,
     )
       .bind(
-        comment.id,
-        record.id,
-        comment.author,
-        comment.at,
-        comment.quote,
-        comment.before,
-        comment.after,
-        comment.body,
+        ...chunk.flatMap((comment) => [
+          comment.id,
+          record.id,
+          comment.author,
+          comment.at,
+          comment.quote,
+          comment.before,
+          comment.after,
+          comment.body,
+        ]),
       )
       .run();
   }
