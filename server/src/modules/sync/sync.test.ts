@@ -280,6 +280,35 @@ describe('handler (REST /api/v1/sync/*)', () => {
     if (fails) expect(Number(fails.count)).toBeLessThan(10);
   });
 
+  test('tebakan serentak dibatasi: 30 token salah + 1 benar paralel, yang benar ditolak karena ambang sudah terlampaui', async () => {
+    const guesses = Array.from({ length: 30 }, (_, i) => ping(`tebakan-${i}`));
+    const results = await Promise.all([...guesses, ping(TOKEN)]); // yang benar dikirim paling akhir
+    expect(results.every((r) => !r.ok)).toBe(true);
+    const block = await env.DB.prepare(
+      "SELECT count FROM rate_limits WHERE `key` = 'sync:blocked:unknown'",
+    ).first();
+    expect(block).not.toBeNull();
+    expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+  });
+
+  test('burst token benar serentak tidak menghukum IP: tidak ada blokir dan permintaan berikutnya lolos', async () => {
+    const results = await Promise.all(Array.from({ length: 12 }, () => ping(TOKEN)));
+    // yang melampaui anggaran serentak ditolak sementara (401), tetapi tanpa blokir 10 menit
+    expect(results.filter((r) => r.ok).length).toBeGreaterThanOrEqual(10);
+    const rows = await env.DB.prepare('SELECT `key` FROM rate_limits').all<{ key: string }>();
+    expect(rows.results.map((r) => r.key)).not.toContain('sync:blocked:unknown');
+    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('kegagalan yang sudah tercatat tidak terhapus oleh keberhasilan: 9 salah lalu benar lalu 1 salah memblokir (tidak ada pelonggaran)', async () => {
+    for (let i = 0; i < 9; i++) await ping(`salah-${i}`);
+    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+    await ping('salah-9');
+    expect(await ping(TOKEN)).toMatchObject({ ok: false });
+  });
+
   test('jendela 10 menit: kegagalan yang jarang tidak menumpuk; 10 dalam jendela memblokir', async () => {
     for (let i = 0; i < 12; i++) {
       await ping(`salah-${i}`);

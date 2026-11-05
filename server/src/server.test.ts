@@ -72,21 +72,17 @@ describe('createServer: API', () => {
   });
 
   test('rute server yang tidak dikenal = 404 JSON, bukan index.html', async () => {
-    for (const path of [
-      '/api/tidak-ada',
-      '/auth/tidak-ada',
-      '/sync/x',
-      '/sync',
-      '/api/v1/sync/x',
-    ]) {
+    for (const path of ['/api/tidak-ada', '/auth/tidak-ada', '/sync/x', '/sync']) {
       const response = await get(path);
       expect(response.status).toBe(404);
       expect(await response.text()).not.toContain('QC-SPA');
     }
     const json = await get('/api/tidak-ada');
     expect(await json.json()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    // /api/v1/sync/x tak dikenal: tanpa token 401 (rute tidak terungkap), dengan token sah 404
+    expect((await get('/api/v1/sync/x')).status).toBe(401);
     // jalur REST dan kabel lama /sync: problem+json
-    for (const path of ['/sync', '/sync/x', '/api/v1/sync/x']) {
+    for (const path of ['/sync', '/sync/x']) {
       const rest = await get(path);
       expect(rest.headers.get('content-type')).toContain('application/problem+json');
       expect(await rest.json()).toMatchObject({ code: 'NOT_FOUND' });
