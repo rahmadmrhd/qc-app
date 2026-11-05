@@ -65,6 +65,9 @@ async function filesByDriveIds(env: Env, driveIds: readonly string[]): Promise<F
   return rows.results.map(toFile);
 }
 
+/** Konkurensi maksimum pemeriksaan id Drive per permintaan (sejalan dengan pool koneksi; tanpa batas jumlah id baru). */
+export const DRIVE_PROBE_CONCURRENCY = 8;
+
 /** Info Drive untuk id yang belum tercatat di tabel `files`; `null` = tak sah (di luar folder aplikasi). */
 export async function probeDriveIds(
   env: Env,
@@ -77,13 +80,22 @@ export async function probeDriveIds(
   const known = new Set((await filesByDriveIds(env, unique)).map((file) => file.driveId));
   const bridge = getBridge(env);
   const probes = new Map<string, DriveProbe | null>();
-  for (const driveId of unique) {
-    if (known.has(driveId)) continue;
-    probes.set(
-      driveId,
-      folderId ? await viaBridge(() => bridge.fileInfo(driveId, folderId)) : null,
-    );
+  const pending = unique.filter((driveId) => !known.has(driveId));
+  // Pekerja bersama dengan konkurensi terbatas: puluhan id baru dalam satu push tidak lagi berurutan satu per satu
+  // (tiap panggilan jembatan = ratusan ms), tetapi tidak juga menyerbu jembatan sekaligus.
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < pending.length) {
+      const driveId = pending[next++] as string;
+      probes.set(
+        driveId,
+        folderId ? await viaBridge(() => bridge.fileInfo(driveId, folderId)) : null,
+      );
+    }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(DRIVE_PROBE_CONCURRENCY, pending.length) }, () => worker()),
+  );
   return probes;
 }
 

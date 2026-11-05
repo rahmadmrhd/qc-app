@@ -778,6 +778,40 @@ describe('files', () => {
     expect(typeof getSyncFile).toBe('function');
   });
 
+  test('probeDriveIds: 50 id baru diperiksa dengan konkurensi terbatas (<= 8, > 1), dedup tetap, hasil sama dengan berurutan', async () => {
+    const folder = await folderWithBridge();
+    const ids: string[] = [];
+    for (let i = 0; i < 50; i++) {
+      ids.push(await driveFile(folder, `f${i}.png`, 'image/png', PNG));
+    }
+    // sekuensial (acuan): satu per satu
+    const expected = new Map<string, { mime: string; size: number } | null>();
+    for (const id of ids) expected.set(id, await env.BRIDGE.fileInfo(id, folder));
+
+    const real = env.BRIDGE.fileInfo.bind(env.BRIDGE);
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    env.BRIDGE.fileInfo = async (fileId, folderId) => {
+      calls++;
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      try {
+        return await real(fileId, folderId);
+      } finally {
+        active--;
+      }
+    };
+    const probes = await probeDriveIds(env, [...ids, ...ids, 'tidak-ada']);
+    expect(calls).toBe(51); // dedup: tiap id unik sekali
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(probes.size).toBe(51);
+    for (const id of ids) expect(probes.get(id)).toEqual(expected.get(id) ?? null);
+    expect(probes.get('tidak-ada')).toBeNull();
+  });
+
   test('registerDriveFiles: berkas di folder didaftarkan sekali; id tak sah missing; idempoten', async () => {
     const folder = await folderWithBridge();
     env.BRIDGE.state.folders.add('LAIN');
