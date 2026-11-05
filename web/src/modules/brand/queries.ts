@@ -1,6 +1,6 @@
 import type { SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { rpc } from '@/lib/rpc';
+import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';
 import { itemKeys } from '@/modules/item/queries';
 import { brandKeys } from './keys';
@@ -8,7 +8,7 @@ import { brandKeys } from './keys';
 export function brandsQueryOptions() {
   return queryOptions({
     queryKey: brandKeys.list,
-    queryFn: () => rpc('brands.list', null),
+    queryFn: () => api('brands.list', null),
   });
 }
 
@@ -28,6 +28,6 @@ function useBrandMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promis
 }
 
 export const useSaveBrand = () =>
-  useBrandMutation((input: SaveBrandInput) => rpc('brands.save', input));
+  useBrandMutation((input: SaveBrandInput) => api('brands.save', input));
 export const useSetBrandStatus = () =>
-  useBrandMutation((input: SetBrandStatusInput) => rpc('brands.setStatus', input));
+  useBrandMutation((input: SetBrandStatusInput) => api('brands.setStatus', input));

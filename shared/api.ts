@@ -160,7 +160,11 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
  * FE (`rpc()` mengarahkan id ini ke `api()`). Tiap tugas modul menambah id-nya bersama pemindahan FE modul itu;
  * id berpenanda `binary` baru masuk setelah T21.
  */
-export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpcMethod>([]);
+export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpcMethod>([
+  'brands.list',
+  'brands.save',
+  'brands.setStatus',
+]);
 
 export interface RequestParts {
   verb: ApiVerb;

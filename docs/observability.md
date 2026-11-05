@@ -8,7 +8,7 @@ Sumber: `server/src/core/log.ts`, satu objek per RPC dan per sinkron:
 
 | Field | Arti |
 |---|---|
-| `evt` | `rpc` (`POST /api/rpc`, aplikasi web) atau `sync` (`POST /sync`, QC Desktop) |
+| `evt` | `rpc` (`POST /api/rpc`, aplikasi web), `rest` (`/api/v1/*`, aplikasi web; `method` = id RPC pada tabel `shared/api.ts`) atau `sync` (`POST /sync`, QC Desktop) |
 | `requestId` | 8 karakter; sama dengan yang tampil di pesan galat pengguna ("requestId a1b2c3d4") |
 | `method` | nama RPC, mis. `handovers.setCheck`; di `sync` hanya diisi setelah token sah (galat autentikasi = `?`) |
 | `ok` | `true` atau `false` |
