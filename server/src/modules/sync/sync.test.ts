@@ -297,25 +297,69 @@ describe('handler (REST /api/v1/sync/*)', () => {
     if (fails) expect(Number(fails.count)).toBeLessThan(10);
   });
 
-  test('tebakan serentak dibatasi: 30 token salah + 1 benar paralel, yang benar ditolak karena ambang sudah terlampaui', async () => {
-    const guesses = Array.from({ length: 30 }, (_, i) => ping(`tebakan-${i}`));
-    const results = await Promise.all([...guesses, ping(TOKEN)]); // yang benar dikirim paling akhir
-    expect(results.every((r) => !r.ok)).toBe(true);
-    const block = await env.DB.prepare(
-      "SELECT count FROM rate_limits WHERE `key` = 'sync:blocked:unknown'",
-    ).first();
-    expect(block).not.toBeNull();
-    expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+  const limiterRows = async () =>
+    (
+      await env.DB.prepare('SELECT `key`, count FROM rate_limits ORDER BY `key`').all<{
+        key: string;
+        count: number;
+      }>()
+    ).results;
+
+  test('(N1) 25 permintaan SAH serentak semuanya diterima; permintaan sukses tidak dihitung dan tidak meninggalkan baris', async () => {
+    const results = await Promise.all(Array.from({ length: 25 }, () => ping(TOKEN)));
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(await limiterRows()).toEqual([]);
   });
 
-  test('burst token benar serentak tidak menghukum IP: tidak ada blokir dan permintaan berikutnya lolos', async () => {
-    const results = await Promise.all(Array.from({ length: 12 }, () => ping(TOKEN)));
-    // yang melampaui anggaran serentak ditolak sementara (401), tetapi tanpa blokir 10 menit
-    expect(results.filter((r) => r.ok).length).toBeGreaterThanOrEqual(10);
-    const rows = await env.DB.prepare('SELECT `key` FROM rate_limits').all<{ key: string }>();
-    expect(rows.results.map((r) => r.key)).not.toContain('sync:blocked:unknown');
+  test('(N1) 9 permintaan sah serentak + 1 token salah: semua yang sah sukses dan IP TIDAK terblokir (hanya 1 kegagalan)', async () => {
+    const results = await Promise.all([
+      ...Array.from({ length: 9 }, () => ping(TOKEN)),
+      ping('salah-tunggal'),
+    ]);
+    expect(results.slice(0, 9).every((r) => r.ok)).toBe(true);
+    expect(results[9]?.ok).toBe(false);
+    expect(await limiterRows()).toEqual([{ key: 'sync:fails:unknown', count: 1 }]);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
-    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('(N1) 30 tebakan salah serentak lalu 10 token benar serentak: SEMUA ditolak (0 diterima setelah ambang); blokir tercatat, penghitung tidak tertinggal', async () => {
+    const guesses = await Promise.all(Array.from({ length: 30 }, (_, i) => ping(`tebakan-${i}`)));
+    expect(guesses.every((r) => !r.ok)).toBe(true);
+    const correct = await Promise.all(Array.from({ length: 10 }, () => ping(TOKEN)));
+    expect(correct.filter((r) => r.ok)).toHaveLength(0);
+    const rows = await limiterRows();
+    expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
+    // IP lain tidak terdampak
+    expect(await pingFrom('198.51.100.20', TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('(N1/N2) 30 salah + 30 benar tercampur serentak: tiap token salah ditolak, hitungan tidak pernah melampaui anggaran, dan setelahnya yang benar ditolak', async () => {
+    const mixed = Array.from({ length: 60 }, (_, i) =>
+      i % 2 === 0 ? ping(`campur-${i}`) : ping(TOKEN),
+    );
+    const results = await Promise.all(mixed);
+    for (let i = 0; i < 60; i += 2) expect(results[i]?.ok).toBe(false);
+    const rows = await limiterRows();
+    const fails = rows.find((r) => r.key === 'sync:fails:unknown');
+    if (fails) expect(Number(fails.count)).toBeLessThan(10);
+    expect(rows.map((r) => r.key)).toContain('sync:blocked:unknown');
+    expect(await ping(TOKEN)).toMatchObject({ ok: false });
+    // tidak ada kegagalan yang hilang: 10 salah sudah cukup memblokir, dan blokir tetap sampai kedaluwarsa
+    env.clock.advance(5 * 60 * 1000);
+    expect(await ping(TOKEN)).toMatchObject({ ok: false });
+  });
+
+  test('(N2) kegagalan lain tidak hilang saat blokir/jendela: 9 salah, lalu 1 salah dan 5 sah serentak memblokir tepat pada kegagalan ke-10', async () => {
+    for (let i = 0; i < 9; i++) await ping(`salah-${i}`);
+    const results = await Promise.all([
+      ping('salah-ke-10'),
+      ...Array.from({ length: 5 }, () => ping(TOKEN)),
+    ]);
+    expect(results[0]?.ok).toBe(false);
+    // yang sah yang diserialkan sebelum kegagalan ke-10 diterima, sesudahnya ditolak; tidak pernah diterima setelah blokir
+    expect(await ping(TOKEN)).toMatchObject({ ok: false });
+    const rows = await limiterRows();
+    expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
   });
 
   test('kegagalan yang sudah tercatat tidak terhapus oleh keberhasilan: 9 salah lalu benar lalu 1 salah memblokir (tidak ada pelonggaran)', async () => {

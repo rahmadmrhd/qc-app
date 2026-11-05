@@ -10,79 +10,79 @@ const FAIL_PREFIX = 'sync:fails:';
 /** Pemanggil tanpa IP (tes, atau peer tak dikenal) berbagi satu penghitung. */
 export const UNKNOWN_CLIENT_IP = 'unknown';
 
-/** True bila pembatas sedang memblokir (10 salah dalam 10 menit memblokir 10 menit). */
+/** True bila baris blokir ada dan masih berlaku pada `now`. */
+function blockActive(row: { window_start: number } | null, now: number): boolean {
+  return row !== null && now - Number(row.window_start) < SYNC_LIMITS.blockSeconds * 1000;
+}
+
+/** Pra-pemeriksaan tanpa penulisan: IP yang sedang diblokir ditolak tanpa menyentuh penghitung. */
 async function isBlocked(env: Env, now: number, ip: string): Promise<boolean> {
   const row = await env.DB.prepare('SELECT window_start FROM rate_limits WHERE `key` = ?')
     .bind(BLOCK_PREFIX + ip)
     .first<{ window_start: number }>();
-  return row !== null && now - Number(row.window_start) < SYNC_LIMITS.blockSeconds * 1000;
+  return blockActive(row, now);
 }
 
 /**
- * Memesan satu jatah percobaan SEBELUM token dibandingkan (atomik: satu `INSERT ... ON DUPLICATE KEY UPDATE` + baca
- * hitungan dalam satu transaksi). Jendela tetap: hitungan dimulai ulang bila jendela sebelumnya sudah lewat. Dengan
- * pemesanan di muka, tebakan serentak tidak lagi lolos bersamaan: paling banyak `failedAttempts` pemesanan yang
- * dibandingkan, sisanya ditolak tanpa perbandingan. Mengembalikan hitungan sesudah pemesanan, atau `null` bila pencatatan
- * gagal (best-effort: kegagalan mencatat tidak mengubah balasan dan tidak membuka bypass karena token tetap dibandingkan).
+ * Menetapkan hasil satu percobaan dalam SATU transaksi dengan bentuk pernyataan yang sama untuk token benar maupun salah
+ * (hanya nilai bind yang berbeda: +1 bila salah, +0 bila benar; tidak ada orakel waktu dari jalur yang berlainan).
+ * Kunci baris `sync:fails:<ip>` menyerialkan semua percobaan dari IP itu, sehingga:
+ * - token salah dicatat tepat sekali dan kegagalan ke-`failedAttempts` MENULIS blokir di transaksi yang sama (blokir
+ *   dan penghapusan penghitung atomik: tidak ada generasi baru yang membaca hitungan nol sementara blokir belum terlihat);
+ * - token benar diterima HANYA bila IP tidak terblokir dan kegagalan terhitung < `failedAttempts`; permintaan sah
+ *   tidak dihitung, tidak ditolak karena serentak, dan tidak ikut memicu blokir;
+ * - blokir yang dibaca di dalam transaksi (setelah kunci didapat) menolak percobaan yang lolos pra-pemeriksaan tepat
+ *   sebelum blokir ter-commit (penghitung yang sempat dibuat dibuang lagi).
+ * `fn` bebas efek di luar basis data (deadlock mengulangnya sekali).
  */
-async function reserveAttempt(env: Env, now: number, ip: string): Promise<number | null> {
-  try {
-    const windowMs = SYNC_LIMITS.blockSeconds * 1000;
-    const [, read] = await env.DB.batch<{ count: number }>([
-      env.DB.prepare(
-        `INSERT INTO rate_limits (\`key\`, count, window_start) VALUES (?, 1, ?)
+async function settleAttempt(env: Env, now: number, ip: string, valid: boolean): Promise<boolean> {
+  const windowMs = SYNC_LIMITS.blockSeconds * 1000;
+  const delta = valid ? 0 : 1;
+  const failKey = FAIL_PREFIX + ip;
+  const blockKey = BLOCK_PREFIX + ip;
+  return env.DB.transaction(async (tx) => {
+    await tx
+      .prepare(
+        `INSERT INTO rate_limits (\`key\`, count, window_start) VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         count = CASE WHEN ? - window_start >= ? THEN 1 ELSE count + 1 END,
+         count = CASE WHEN ? - window_start >= ? THEN ? ELSE count + ? END,
          window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
-      ).bind(FAIL_PREFIX + ip, now, now, windowMs, now, windowMs, now),
-      env.DB.prepare('SELECT count FROM rate_limits WHERE `key` = ?').bind(FAIL_PREFIX + ip),
-    ]);
-    const row = read?.results[0] ?? null;
-    return row === null ? null : Number(row.count);
-  } catch (error) {
-    console.error(`pembatas sync gagal mencatat: ${String(error)}`);
-    return null;
-  }
+      )
+      .bind(failKey, delta, now, now, windowMs, delta, delta, now, windowMs, now)
+      .run();
+    const counted = await tx
+      .prepare('SELECT count FROM rate_limits WHERE `key` = ?')
+      .bind(failKey)
+      .first<{ count: number }>();
+    const blockRow = await tx
+      .prepare('SELECT window_start FROM rate_limits WHERE `key` = ?')
+      .bind(blockKey)
+      .first<{ window_start: number }>();
+    const failures = counted === null ? 0 : Number(counted.count);
+    let blocked = blockActive(blockRow, now);
+    if (!blocked && !valid && failures >= SYNC_LIMITS.failedAttempts) {
+      await tx
+        .prepare(
+          'INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count = 1, window_start = ?',
+        )
+        .bind(blockKey, now, now)
+        .run();
+      blocked = true;
+    }
+    // Penghitung dibuang bila blokir berlaku (kegagalan sudah terwakili blokir) atau kosong (permintaan sah tidak
+    // meninggalkan baris); pernyataan yang sama dijalankan pada semua jalur.
+    await tx
+      .prepare('DELETE FROM rate_limits WHERE `key` = ? AND (count <= 0 OR ?)')
+      .bind(failKey, blocked ? 1 : 0)
+      .run();
+    return valid && !blocked && failures < SYNC_LIMITS.failedAttempts;
+  });
 }
 
 /**
- * Mengembalikan satu jatah (percobaan sukses, atau ditolak sebelum dibandingkan): hitungan turun satu dan baris dibuang
- * bila habis. Hanya kegagalan yang tetap tercatat, jadi IP yang benar tidak dihukum oleh pemesanannya sendiri.
- */
-async function releaseAttempt(env: Env, ip: string): Promise<void> {
-  try {
-    await env.DB.batch([
-      env.DB.prepare('UPDATE rate_limits SET count = GREATEST(count - 1, 0) WHERE `key` = ?').bind(
-        FAIL_PREFIX + ip,
-      ),
-      env.DB.prepare('DELETE FROM rate_limits WHERE `key` = ? AND count <= 0').bind(
-        FAIL_PREFIX + ip,
-      ),
-    ]);
-  } catch (error) {
-    console.error(`pembatas sync gagal melepas jatah: ${String(error)}`);
-  }
-}
-
-/** Kegagalan ke-`failedAttempts` dalam jendela memblokir IP (blokir ditulis, penghitung dibuang). */
-async function blockClient(env: Env, now: number, ip: string): Promise<void> {
-  try {
-    await env.DB.batch([
-      env.DB.prepare(
-        'INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count = 1, window_start = ?',
-      ).bind(BLOCK_PREFIX + ip, now, now),
-      env.DB.prepare('DELETE FROM rate_limits WHERE `key` = ?').bind(FAIL_PREFIX + ip),
-    ]);
-  } catch (error) {
-    console.error(`pembatas sync gagal memblokir: ${String(error)}`);
-  }
-}
-
-/**
- * True bila token sah dan IP klien tidak sedang diblokir. Jatah dipesan SEBELUM perbandingan: pemesanan di atas
- * `failedAttempts` (tebakan serentak) ditolak tanpa dibandingkan dan jatahnya dikembalikan; yang dibandingkan lalu gagal
- * tetap tercatat (token belum diset ikut dihitung) dan kegagalan ke-10 memblokir IP itu 10 menit; yang sukses
- * mengembalikan jatahnya. IP lain tidak terpengaruh.
+ * True bila token sah dan IP klien tidak sedang diblokir. Token dibandingkan DULU (waktu-konstan, lokal), lalu
+ * `settleAttempt` menetapkan hasilnya secara atomik: permintaan sukses tidak dihitung, 10 token salah dalam 10 menit
+ * memblokir IP itu 10 menit (token belum diset ikut dihitung), IP lain tidak terpengaruh.
  */
 export async function authenticateSync(
   env: Env,
@@ -91,21 +91,11 @@ export async function authenticateSync(
 ): Promise<boolean> {
   const now = nowOf(env);
   ip = limiterAddress(ip); // IPv6 per /64, IPv4 per alamat
-  if (await isBlocked(env, now, ip)) return false;
-  const reserved = await reserveAttempt(env, now, ip);
-  if (reserved !== null && reserved > SYNC_LIMITS.failedAttempts) {
-    await releaseAttempt(env, ip);
-    return false;
-  }
   const expected = env.SYNC_API_TOKEN?.trim() ?? '';
   const valid =
     expected.length >= SYNC_TOKEN_MIN_LENGTH &&
     typeof token === 'string' &&
     constantTimeEqual(token, expected);
-  if (valid) {
-    if (reserved !== null) await releaseAttempt(env, ip);
-    return true;
-  }
-  if (reserved !== null && reserved >= SYNC_LIMITS.failedAttempts) await blockClient(env, now, ip);
-  return false;
+  if (await isBlocked(env, now, ip)) return false;
+  return settleAttempt(env, now, ip, valid);
 }
