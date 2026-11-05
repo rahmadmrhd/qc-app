@@ -8,8 +8,8 @@
  */
 
 export interface RequestLog {
-  /** `rpc` (POST /api/rpc) atau `sync` (POST /sync, QC Desktop). */
-  evt: 'rpc' | 'sync';
+  /** `rpc` (POST /api/rpc), `rest` (/api/v1/*; `method` = id RPC), atau `sync` (POST /sync, QC Desktop). */
+  evt: 'rpc' | 'rest' | 'sync';
   requestId: string;
   method: string;
   ok: boolean;

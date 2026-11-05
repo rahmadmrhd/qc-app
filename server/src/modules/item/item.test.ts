@@ -504,6 +504,7 @@ describe('konkurensi optimistis', () => {
     );
     expect(stale.code).toBe('CONFLICT');
     expect(stale.message).toContain('diubah orang lain');
+    expect(stale.stale).toBe(true);
     expect((await getItemDto(env, { id: first.id })).detail).toBe('awal');
     const ok = await saveItem(
       env,

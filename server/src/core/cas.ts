@@ -1,6 +1,6 @@
 import { batchWrite } from '@server/modules/access/repo';
 import { type Db, DbError, type DbResult, type DbStatement, type Preparer } from './db';
-import { appError } from './errors';
+import { staleError } from './errors';
 
 /**
  * Ekspresi SQL yang melempar galat MariaDB `ER_DATA_OUT_OF_RANGE` (1690, "BIGINT value is out of range") bila
@@ -53,7 +53,7 @@ export async function batchGuarded(
   try {
     return await batchWrite(db, statements, conflicts);
   } catch (error) {
-    if (isGuardFailure(error)) throw appError('CONFLICT', staleMessage);
+    if (isGuardFailure(error)) throw staleError(staleMessage);
     throw error;
   }
 }
@@ -108,5 +108,5 @@ export async function runCas<T>(
       ? `errno=${last.errno} kind=${last.kind}${last.key === undefined ? '' : ` key=${last.key}`}`
       : 'galat non-DB';
   console.error(`CAS gagal setelah ${attempts} percobaan: ${detail}`);
-  throw appError('CONFLICT', staleMessage);
+  throw staleError(staleMessage);
 }

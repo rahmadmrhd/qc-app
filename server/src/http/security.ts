@@ -1,7 +1,9 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { appError } from '@server/core/errors';
 import type { SessionPayload } from '@server/core/session';
 import { SESSION_COOKIE, verifySessionToken } from '@server/core/session';
+import { problemResponse, toProblem } from '@server/http/problem';
 import { getCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { secureHeaders } from 'hono/secure-headers';
@@ -32,6 +34,11 @@ export function newRequestId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
 }
 
+/** Jalur REST (`/api/v1` dan turunannya): galatnya problem+json, bukan amplop RPC. */
+export function isRestPath(path: string): boolean {
+  return path === '/api/v1' || path.startsWith('/api/v1/');
+}
+
 /** Amplop galat yang sama dengan RPC (`{ ok:false, error }`). */
 export function errorEnvelope(code: string, message: string) {
   return { ok: false, error: { code, message, requestId: newRequestId() } };
@@ -45,6 +52,10 @@ export const securityHeaders = secureHeaders();
  */
 export const csrfGuard = createMiddleware<AppBindings>(async (c, next) => {
   if (!SAFE_METHODS.has(c.req.method) && c.req.header(CSRF_HEADER) !== CSRF_VALUE) {
+    if (isRestPath(c.req.path)) {
+      const message = 'Permintaan ditolak (header CSRF tidak ada)';
+      return problemResponse(toProblem(appError('FORBIDDEN', message), newRequestId()));
+    }
     return c.json(errorEnvelope('FORBIDDEN', 'Permintaan ditolak (header CSRF tidak ada)'), 403);
   }
   await next();

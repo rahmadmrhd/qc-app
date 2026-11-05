@@ -79,9 +79,15 @@ export function readCookie(request: Request, name: string): string | undefined {
 
 /**
  * `POST /api/rpc` dengan badan `{ method, payload }`; balasan amplop `{ ok, data | error }` yang sama
- * dengan RPC Apps Script. Status HTTP mengikuti kode galat (200 bila sukses).
+ * dengan RPC Apps Script. Status HTTP mengikuti kode galat (200 bila sukses). Id di `migrated` sudah dilayani
+ * REST (`/api/v1`) dan dijawab `NOT_FOUND` di sini (penghapusan bertahap, lihat `REST_MIGRATED_IDS`).
  */
-export async function handleRpc(env: Env, request: Request, routes: RouteTable): Promise<Response> {
+export async function handleRpc(
+  env: Env,
+  request: Request,
+  routes: RouteTable,
+  migrated: ReadonlySet<string> = new Set(),
+): Promise<Response> {
   let body: unknown;
   const text = await readTextLimited(request, MAX_REQUEST_BODY_BYTES);
   if (text === undefined) {
@@ -107,6 +113,12 @@ export async function handleRpc(env: Env, request: Request, routes: RouteTable):
       ),
     });
   }
+  if (typeof record.method === 'string' && migrated.has(record.method)) {
+    return rpcResponse({
+      ok: false,
+      error: toErrorBody(appError('NOT_FOUND', 'Method tidak dikenal'), newRequestId()),
+    });
+  }
   return rpcResponse(
     await callRoute(
       env,
@@ -118,7 +130,58 @@ export async function handleRpc(env: Env, request: Request, routes: RouteTable):
   );
 }
 
-/** Menjalankan satu RPC: rute, sesi, konteks, izin, validasi, lokasi, handler. */
+/** Jejak satu permintaan yang diisi `runRoute` untuk log pemanggil (`userId` terisi setelah sesi sah). */
+export interface RouteMeta {
+  requestId: string;
+  userId?: string | null;
+}
+
+/**
+ * Menjalankan satu id rute: rute, sesi, konteks, izin, validasi, lokasi, handler. Mengembalikan nilai mentah
+ * atau MELEMPAR galat (`AppError` atau lainnya); pembungkus yang memilih bentuk kabel: `callRoute` (amplop RPC)
+ * dan kernel REST (problem+json) memakai SATU jalur kode ini. `meta` dipakai pemanggil untuk log.
+ */
+export async function runRoute(
+  env: Env,
+  token: unknown,
+  id: unknown,
+  rawInput: unknown,
+  routes: RouteTable,
+  meta: RouteMeta = { requestId: newRequestId() },
+): Promise<unknown> {
+  if (typeof id !== 'string' || !Object.hasOwn(routes, id)) {
+    throw appError('NOT_FOUND', 'Method tidak dikenal');
+  }
+  const route = routes[id as RpcMethod] as unknown as RouteDef<RpcMethod>;
+
+  const session = await verifySessionToken(env, token, nowOf(env));
+  if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
+  const base = await loadRequestCtx(env, session.email, meta.requestId);
+  if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
+  const user = base.user;
+  meta.userId = user.userId;
+  const spec = route.permission;
+  // anyOf kosong (hanya mungkin lewat cast) tidak boleh setara "cukup login": gagal tertutup.
+  if (spec && 'anyOf' in spec && spec.anyOf.length === 0) {
+    throw appError('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
+  }
+  const alternatives = alternativesOf(spec);
+  const globalAlternatives = alternatives.filter((item) => !isLocationPermission(item));
+  const locationAlternatives = alternatives.filter(isLocationPermission);
+  if (
+    globalAlternatives.length > 0 &&
+    !globalAlternatives.some((item) => hasLevel(user.permissions[item.module], item.level))
+  ) {
+    throw appError('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
+  }
+
+  const input = route.validate(rawInput === undefined ? null : rawInput);
+  const locationIds =
+    locationAlternatives.length > 0 ? authorizedLocationIds(input, user, locationAlternatives) : [];
+  return route.handler(input, { ...base, locationIds });
+}
+
+/** Menjalankan satu RPC (amplop `{ ok, data | error }`) di atas `runRoute`. */
 export async function callRoute(
   env: Env,
   token: unknown,
@@ -126,54 +189,29 @@ export async function callRoute(
   payload: unknown,
   routes: RouteTable,
 ): Promise<RpcResult<unknown>> {
-  const requestId = newRequestId();
+  const meta: RouteMeta = { requestId: newRequestId() };
   const startedAt = Date.now();
-  let userId: string | null | undefined;
   try {
-    if (typeof method !== 'string' || !Object.hasOwn(routes, method)) {
-      throw appError('NOT_FOUND', 'Method tidak dikenal');
-    }
-    const route = routes[method as RpcMethod] as unknown as RouteDef<RpcMethod>;
-
-    const session = await verifySessionToken(env, token, nowOf(env));
-    if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
-    const base = await loadRequestCtx(env, session.email, requestId);
-    if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
-    const user = base.user;
-    userId = user.userId;
-    const spec = route.permission;
-    // anyOf kosong (hanya mungkin lewat cast) tidak boleh setara "cukup login": gagal tertutup.
-    if (spec && 'anyOf' in spec && spec.anyOf.length === 0) {
-      throw appError('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
-    }
-    const alternatives = alternativesOf(spec);
-    const globalAlternatives = alternatives.filter((item) => !isLocationPermission(item));
-    const locationAlternatives = alternatives.filter(isLocationPermission);
-    if (
-      globalAlternatives.length > 0 &&
-      !globalAlternatives.some((item) => hasLevel(user.permissions[item.module], item.level))
-    ) {
-      throw appError('FORBIDDEN', 'Anda tidak memiliki akses untuk aksi ini');
-    }
-
-    const input = route.validate(payload === undefined ? null : payload);
-    const locationIds =
-      locationAlternatives.length > 0
-        ? authorizedLocationIds(input, user, locationAlternatives)
-        : [];
-    const data = await route.handler(input, { ...base, locationIds });
-    logRequest({ evt: 'rpc', requestId, method, ok: true, ms: Date.now() - startedAt, userId });
-    return { ok: true, data };
-  } catch (error) {
-    const body = toErrorBody(error, requestId);
+    const data = await runRoute(env, token, method, payload, routes, meta);
     logRequest({
       evt: 'rpc',
-      requestId,
+      requestId: meta.requestId,
+      method: method as string,
+      ok: true,
+      ms: Date.now() - startedAt,
+      userId: meta.userId,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const body = toErrorBody(error, meta.requestId);
+    logRequest({
+      evt: 'rpc',
+      requestId: meta.requestId,
       method: typeof method === 'string' ? method.slice(0, 64) : '?',
       ok: false,
       code: body.code,
       ms: Date.now() - startedAt,
-      userId,
+      userId: meta.userId,
     });
     return { ok: false, error: body };
   }

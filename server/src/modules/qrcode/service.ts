@@ -3,7 +3,7 @@ import { getBridge, viaBridge } from '@server/core/bridge-client';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { getSetting } from '@server/core/settings';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -67,7 +67,7 @@ export const QR_STALE_MESSAGE =
   'Konfigurasi sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
 function staleError(): Error {
-  return appError('CONFLICT', QR_STALE_MESSAGE);
+  return coreStaleError(QR_STALE_MESSAGE);
 }
 
 /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber (kosong bila dokumen hilang). */

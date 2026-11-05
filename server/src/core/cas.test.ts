@@ -35,7 +35,7 @@ test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = selu
   const error = await captureAppErrorAsync(() =>
     batchGuarded(env.DB, edit('t1', 't3', 'b'), {}, 'basi'),
   );
-  expect(error).toMatchObject({ code: 'CONFLICT', message: 'basi' });
+  expect(error).toMatchObject({ code: 'CONFLICT', message: 'basi', stale: true });
   expect(await row()).toEqual({ model: 'a', at: 't2' });
   expect(
     (
@@ -96,6 +96,7 @@ test('runCas mengulang setelah deadlock lalu berhasil; deadlock terus-menerus be
     }, 'basi'),
   );
   expect(error.code).toBe('CONFLICT');
+  expect(error.stale).toBe(true);
 });
 
 test('runCas mencatat errno/kind/key saja, tanpa nilai duplikat dari pesan galat (M11)', async () => {

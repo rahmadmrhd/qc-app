@@ -5,7 +5,7 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { listLocationBriefs } from '@server/modules/access/repo';
 import type { CustomerRecord } from '@server/modules/customer/repo';
 import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
@@ -540,7 +540,7 @@ export async function saveHandover(
     if (input.expectedUpdatedAt && input.expectedUpdatedAt !== current.updatedAt) {
       // Tanpa `base`, atau bila catatan/customer/status berubah oleh orang lain: CONFLICT. Hanya centang/komentar
       // yang berubah sejak form dibuka (base sama) bukan konflik; centang TERKINI tetap diselaraskan di bawah.
-      if (!onlyProgressChanged(current, input.base)) throw appError('CONFLICT', STALE_MESSAGE);
+      if (!onlyProgressChanged(current, input.base)) throw staleError(STALE_MESSAGE);
     }
     if (noteError !== null) throw appError('VALIDATION', noteError, { note: noteError });
 
@@ -722,7 +722,7 @@ export async function setCheck(
     // Penjaga: teks butir pada indeks harus sama dengan yang dilihat pengguna (catatan bisa berubah);
     // dibandingkan dalam bentuk kanonis (tanpa escape Markdown/entitas HTML).
     if (!entry || (entry.text !== input.text && entry.text !== handoverCanonicalText(input.text))) {
-      throw appError('CONFLICT', 'Catatan berubah; muat ulang halaman lalu ulangi');
+      throw staleError('Catatan berubah; muat ulang halaman lalu ulangi');
     }
     const occurrence = occurrenceAt(handover.note, input.index);
     const existing = matchedChecks(handover.note, handover.checks)[input.index] ?? null;

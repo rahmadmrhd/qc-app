@@ -4,7 +4,7 @@ import type { ActorRef } from '@server/core/context';
 import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
@@ -596,7 +596,7 @@ async function saveItemOnce(
   const existing = row ? toItem(row) : undefined;
   if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
-    throw appError('CONFLICT', STALE_MESSAGE);
+    throw staleError(STALE_MESSAGE);
   }
   const plan = await planItemWrite(env, input, {
     existing,

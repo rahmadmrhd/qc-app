@@ -4,7 +4,7 @@ import { BRIDGE_BASE64_MAX_CHARS } from '@server/core/bridge-http';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
 import type { JobHandler, StepContext, StepOutcome } from '@server/modules/jobs/consumer';
 import { deleteBlobs, findActiveJob, readBlob } from '@server/modules/jobs/repo';
@@ -48,7 +48,7 @@ async function loadDesign(env: Env, id: string): Promise<QrDesignRecord> {
 }
 
 function assertExportable(design: QrDesignRecord, expectedUpdatedAt: string): void {
-  if (design.updatedAt !== expectedUpdatedAt) throw appError('CONFLICT', QR_STALE_MESSAGE);
+  if (design.updatedAt !== expectedUpdatedAt) throw staleError(QR_STALE_MESSAGE);
   if (design.overflow) throw appError('VALIDATION', OVERFLOW_MESSAGE);
 }
 
@@ -154,7 +154,7 @@ export const qrExportHandler: JobHandler = {
                 after: { exported: now, replaced: current.exportPdfDriveId !== '' },
               }),
             ],
-            () => appError('CONFLICT', QR_STALE_MESSAGE),
+            () => staleError(QR_STALE_MESSAGE),
           );
         }
         state.committed = true;
