@@ -362,6 +362,41 @@ describe('handler (REST /api/v1/sync/*)', () => {
     expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
   });
 
+  test('(N3) deterministik: token benar yang lolos pra-pemeriksaan tepat sebelum blokir ter-commit tetap ditolak (blokir dibaca di dalam transaksi), tanpa bergantung urutan pool', async () => {
+    const realTransaction = env.DB.transaction.bind(env.DB);
+    let holdNext = true;
+    let reached!: () => void;
+    const held = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    env.DB.transaction = (async (fn: Parameters<typeof realTransaction>[0]) => {
+      if (holdNext) {
+        holdNext = false;
+        reached(); // pra-pemeriksaan permintaan ini sudah lewat; transaksinya ditahan di gerbang
+        await gate;
+      }
+      return realTransaction(fn);
+    }) as typeof env.DB.transaction;
+    try {
+      const correct = ping(TOKEN); // pra-pemeriksaan blokir: belum ada blokir, lolos
+      await held;
+      // 10 tebakan salah (tidak ditahan) memblokir IP dan membuang penghitung
+      for (let i = 0; i < 10; i++) expect((await ping(`gerbang-${i}`)).ok).toBe(false);
+      const rows = await limiterRows();
+      expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
+      release();
+      // transaksi yang tertahan kini berjalan: harus melihat blokir dan menolak (sebelumnya: hitungan mulai dari nol, diterima)
+      expect(await correct).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+      expect((await limiterRows()).map((r) => r.key)).toEqual(['sync:blocked:unknown']);
+    } finally {
+      env.DB.transaction = realTransaction;
+    }
+  });
+
   test('kegagalan yang sudah tercatat tidak terhapus oleh keberhasilan: 9 salah lalu benar lalu 1 salah memblokir (tidak ada pelonggaran)', async () => {
     for (let i = 0; i < 9; i++) await ping(`salah-${i}`);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
