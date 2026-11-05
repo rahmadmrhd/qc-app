@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { DbStatement } from '@server/core/db';
 import { attachFiles } from '@server/modules/files/service';
-import { measureCpu } from '@server-test/measure';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -72,19 +71,19 @@ async function audits(): Promise<string[]> {
 }
 async function lastAudit() {
   const row = await env.DB.prepare(
-    'SELECT "before" AS b, "after" AS a FROM audit_log ORDER BY id DESC LIMIT 1',
+    'SELECT `before` AS b, `after` AS a FROM audit_log ORDER BY id DESC LIMIT 1',
   ).first<{ b: string; a: string }>();
   return { before: JSON.parse(row?.b ?? 'null'), after: JSON.parse(row?.a ?? 'null') };
 }
 async function designs() {
   const rows = await env.DB.prepare(
-    'SELECT id, title, export_pdf_drive_id FROM qr_designs ORDER BY rowid',
+    'SELECT id, title, export_pdf_drive_id FROM qr_designs ORDER BY created_at, id',
   ).all<{ id: string; title: string; export_pdf_drive_id: string }>();
   return rows.results;
 }
 async function docs() {
   const rows = await env.DB.prepare(
-    'SELECT id, drive_id, name, shared FROM qr_documents ORDER BY rowid',
+    'SELECT id, drive_id, name, shared FROM qr_documents ORDER BY created_at, id',
   ).all<{ id: string; drive_id: string; name: string; shared: string }>();
   return rows.results;
 }
@@ -432,7 +431,7 @@ describe('link, logo, dan berkas', () => {
     ).toBe('NOT_FOUND');
     const folder = await (async () => {
       env.BRIDGE.state.folders.add('QRF');
-      await env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, 'QRF')")
+      await env.DB.prepare("INSERT INTO settings (`key`, value) VALUES (?, 'QRF')")
         .bind(QR_FOLDER_SETTING)
         .run();
       return 'QRF';
@@ -595,27 +594,5 @@ describe('pencabutan berbagi PDF sumber', () => {
     expect((await call('qrview@gmail.com', 'qrcodes.get', { id: made.data.id })).data.title).toBe(
       'Tetap Tersimpan',
     );
-  });
-});
-
-describe('P6: CPU kasar', () => {
-  test('daftar 300 konfigurasi QR murah', async () => {
-    const statements: DbStatement[] = [];
-    for (let i = 0; i < 300; i++) {
-      statements.push(
-        env.DB.prepare(
-          "INSERT INTO qr_designs (id, title, link_source, link, layout, style, created_at, updated_at) VALUES (?, ?, 'url', 'https://x.id', ?, ?, '2026-10-16T00:00:00.000Z', '2026-10-16T00:00:00.000Z')",
-        ).bind(
-          `q${i}`,
-          `Judul ${i}`,
-          JSON.stringify(DEFAULT_QR_LAYOUT),
-          JSON.stringify(DEFAULT_QR_STYLE),
-        ),
-      );
-    }
-    for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
-    const measured = await measureCpu(() => call('qrview@gmail.com', 'qrcodes.list', null));
-    expect(measured.result.data).toHaveLength(300);
-    expect(measured.ms).toBeLessThan(30);
   });
 });

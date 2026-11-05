@@ -30,7 +30,7 @@ const upload = (payload: Record<string, unknown>, email = 'qredit@gmail.com') =>
   call(email, 'qrcodes.uploadPdf', { name: 'manual.pdf', base64: PDF1, ...payload });
 async function docs() {
   const rows = await env.DB.prepare(
-    'SELECT id, drive_id, name, size, shared FROM qr_documents ORDER BY rowid',
+    'SELECT id, drive_id, name, size, shared FROM qr_documents ORDER BY created_at, id',
   ).all<{
     id: string;
     drive_id: string;
@@ -59,7 +59,7 @@ describe('unggah PDF sumber', () => {
     });
     const file = env.BRIDGE.state.files.get(doc.drive_id);
     expect(file).toMatchObject({ mime: 'application/pdf', base64: PDF1, shared: true });
-    const folder = await env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    const folder = await env.DB.prepare('SELECT value FROM settings WHERE `key` = ?')
       .bind(QR_DOC_FOLDER_SETTING)
       .first<{ value: string }>();
     expect(file?.folderId).toBe(folder?.value);
@@ -127,14 +127,20 @@ describe('unggah PDF sumber', () => {
     expect([...env.BRIDGE.state.files.values()].every((file) => file.trashed)).toBe(true);
   });
 
-  test('D1 gagal setelah Drive sukses: berkas Drive dibuang (best effort), tidak ada catatan', async () => {
-    await env.DB.prepare('DROP TABLE qr_documents')
-      .run()
-      .catch(() => undefined);
-    // tabel dihapus: penyisipan gagal setelah berkas Drive terbuat
-    const out = await upload({});
-    expect(out.ok).toBe(false);
-    expect([...env.BRIDGE.state.files.values()].every((file) => file.trashed)).toBe(true);
+  test('database gagal setelah Drive sukses: berkas Drive dibuang (best effort), tidak ada catatan', async () => {
+    // trigger yang menolak INSERT: penyisipan gagal setelah berkas Drive terbuat (dibuang di finally,
+    // karena skema tes dipakai ulang antar-tes dan TRUNCATE tidak menghapus trigger)
+    await env.DB.exec(
+      "CREATE TRIGGER qr_documents_tes_gagal BEFORE INSERT ON qr_documents FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'tes: insert ditolak'",
+    );
+    try {
+      const out = await upload({});
+      expect(out.ok).toBe(false);
+      expect([...env.BRIDGE.state.files.values()].every((file) => file.trashed)).toBe(true);
+      expect(await docs()).toHaveLength(0);
+    } finally {
+      await env.DB.exec('DROP TRIGGER IF EXISTS qr_documents_tes_gagal');
+    }
   });
 
   test('gagal mengganti isi: ditolak dengan pesan jelas, dokumen lama tidak berubah', async () => {
@@ -224,7 +230,7 @@ describe('folder QR', () => {
     const a = await ensureQrFolder(env);
     const b = await ensureQrDocFolder(env);
     expect(a).not.toBe(b);
-    const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    const row = await env.DB.prepare('SELECT value FROM settings WHERE `key` = ?')
       .bind(QR_FOLDER_SETTING)
       .first<{ value: string }>();
     expect(row?.value).toBe(a);
@@ -232,11 +238,11 @@ describe('folder QR', () => {
   });
 
   test('setting terisi tetapi folder tidak terakses: galat dan setting TIDAK ditimpa (FS13)', async () => {
-    await env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, 'folder-hilang')")
+    await env.DB.prepare("INSERT INTO settings (`key`, value) VALUES (?, 'folder-hilang')")
       .bind(QR_FOLDER_SETTING)
       .run();
     await expect(ensureQrFolder(env)).rejects.toThrow('tidak dapat diakses');
-    const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    const row = await env.DB.prepare('SELECT value FROM settings WHERE `key` = ?')
       .bind(QR_FOLDER_SETTING)
       .first<{ value: string }>();
     expect(row?.value).toBe('folder-hilang');

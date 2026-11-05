@@ -1,3 +1,4 @@
+import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import type { QrLayout, QrLinkSource, QrStyle } from '@shared/qrcode';
@@ -184,7 +185,7 @@ export function insertQrDesignStmt(db: Db, design: QrDesignRecord): DbStatement 
 
 /**
  * UPDATE seluruh kolom konfigurasi; `guardUpdatedAt` (bila ada) menjaga konkurensi: 0 baris berubah = basi.
- * Statement berikutnya di batch yang sama dapat memakai `WHERE changes() > 0` (lihat `auditIfChanged`).
+ * Pernyataan penjaga (`guardChanged`) langsung sesudahnya membatalkan batch bila 0 baris berubah.
  */
 export function updateQrDesignStmt(
   db: Db,
@@ -395,17 +396,14 @@ export function updateQrDocumentStmt(db: Db, doc: QrDocumentRecord): DbStatement
 }
 
 /**
- * Penjaga konkurensi optimistis: letakkan SESUDAH pernyataan UPDATE bergaris `AND updated_at = ?`. Bila update
- * tadi tidak mengubah baris (versi basi), pernyataan ini melempar galat SQLite (integer overflow) sehingga
- * SELURUH `batch()` dibatalkan; `runGuardedBatch` mengubahnya menjadi CONFLICT.
+ * Penjaga konkurensi optimistis: letakkan LANGSUNG SESUDAH pernyataan UPDATE bergaris `AND updated_at = ?`.
+ * `ROW_COUNT()` melaporkan baris yang berubah oleh pernyataan sebelumnya; bila 0 (versi basi) penjaga
+ * mengevaluasi `CAS_FAIL_SQL` (galat 'BIGINT value is out of range' di mode STRICT) sehingga SELURUH `batch()`
+ * dibatalkan; `runGuardedBatch` mengubahnya menjadi CONFLICT.
  */
 export function guardChanged(db: Db): DbStatement {
-  return db.prepare(
-    'SELECT CASE WHEN changes() = 0 THEN abs(-9223372036854775807 - 1) ELSE 1 END AS ok',
-  );
+  return db.prepare(`SELECT CASE WHEN ROW_COUNT() = 0 THEN ${CAS_FAIL_SQL} ELSE 1 END AS ok`);
 }
-
-const STALE_PATTERN = /integer overflow/i;
 
 export async function runGuardedBatch(
   db: Db,
@@ -415,7 +413,7 @@ export async function runGuardedBatch(
   try {
     await db.batch(statements);
   } catch (error) {
-    if (STALE_PATTERN.test(error instanceof Error ? error.message : String(error))) throw onStale();
+    if (isGuardFailure(error)) throw onStale();
     throw error;
   }
 }

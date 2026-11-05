@@ -1,7 +1,14 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
-import { insertQrDesignStmt, listQrDesigns, listQrDocuments, updateQrDesignStmt } from './repo';
+import {
+  guardChanged,
+  insertQrDesignStmt,
+  listQrDesigns,
+  listQrDocuments,
+  runGuardedBatch,
+  updateQrDesignStmt,
+} from './repo';
 
 let env: TestEnv;
 beforeEach(async () => {
@@ -75,4 +82,30 @@ test('dokumen: kolom shared kosong (baris impor lama) dianggap dibagikan; 0 = di
   const rows = await listQrDocuments(env);
   expect(rows.find((d) => d.id === 'd1')).toMatchObject({ size: 1200, shared: true });
   expect(rows.find((d) => d.id === 'd2')?.shared).toBe(false);
+});
+
+test('guardChanged: UPDATE bergaris yang tak mengubah baris membatalkan SELURUH batch; yang berubah lolos', async () => {
+  await env.DB.batch([insertQrDesignStmt(env.DB, design)]);
+  const stale = { ...design, title: 'Basi', updatedAt: '2026-10-17T00:00:00.000Z' };
+  const marker = env.DB.prepare(
+    "INSERT INTO qr_documents (id, drive_id, name, size, shared, created_at, created_by, updated_at, updated_by) VALUES ('penanda', 'd', 'n', 1, '1', '', '', '', '')",
+  );
+  // guard salah (updated_at tidak cocok): 0 baris berubah -> batch dibatalkan, penanda ikut batal
+  await expect(
+    runGuardedBatch(
+      env.DB,
+      [updateQrDesignStmt(env.DB, stale, '2026-01-01T00:00:00.000Z'), guardChanged(env.DB), marker],
+      () => new Error('basi'),
+    ),
+  ).rejects.toThrow('basi');
+  expect((await listQrDesigns(env))[0]?.title).toBe('0815');
+  expect(await listQrDocuments(env)).toHaveLength(0);
+  // guard benar: lolos dan semua pernyataan terterapkan
+  await runGuardedBatch(
+    env.DB,
+    [updateQrDesignStmt(env.DB, stale, design.updatedAt), guardChanged(env.DB), marker],
+    () => new Error('basi'),
+  );
+  expect((await listQrDesigns(env))[0]?.title).toBe('Basi');
+  expect(await listQrDocuments(env)).toHaveLength(1);
 });
