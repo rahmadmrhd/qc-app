@@ -1,5 +1,5 @@
+import { prepareDatabase, StartupError } from '@server/boot';
 import { ConfigError, loadConfig } from '@server/config';
-import { toDbError } from '@server/core/db';
 import { bunServeOptions, createServer } from '@server/server';
 
 // Titik masuk proses server: `bun run src/main.ts` (dev: `bun run dev:server`). Konfigurasi dari variabel
@@ -17,11 +17,14 @@ try {
 
 const app = createServer(config);
 
-// Gagal cepat dan jelas bila basis data tidak terjangkau (dev: terowongan `bun run db:tunnel` belum jalan).
+// Gagal cepat dan jelas bila basis data tidak terjangkau (dev: terowongan `bun run db:tunnel` belum jalan) atau
+// sebuah migrasi gagal. Migrasi yang belum diterapkan dijalankan SEBELUM port dibuka (image Docker tidak butuh
+// langkah migrasi terpisah).
 try {
-  await app.env.DB.prepare('SELECT 1').first();
+  const applied = await prepareDatabase(app.env.DB);
+  if (applied.length > 0) console.log({ evt: 'migrate', applied });
 } catch (error) {
-  console.error(`Basis data tidak terjangkau: ${toDbError(error).message}`);
+  console.error(error instanceof StartupError ? error.message : String(error));
   await app.stop();
   process.exit(1);
 }
