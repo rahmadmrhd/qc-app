@@ -280,7 +280,7 @@ Tiap tugas: server mendaftarkan rute REST modul dari tabel (rute `/api/rpc` modu
 
 ### Task 26: Image dan compose lengkap
 **Files:** Create: `Dockerfile`, `.dockerignore`; Modify: `deploy/compose.yml` (tambah `qc-app`), `deploy/.env.example`
-- Multi-stage: build web + dependensi produksi server; dasar `oven/bun` ringan; pengguna non-root; `HEALTHCHECK` ke `/api/ping`; `qc-app` mendengarkan `127.0.0.1:${APP_PORT}`, `mem_limit` (±256m), bergantung `qc-db` sehat; migrasi dijalankan `qc-app` saat start sebelum `listen`. Tes: `docker build` lokal tidak tersedia → verifikasi di Actions (T28) dan di VPS dev (T27).
+- Image WAJIB menyertakan `server/migrations/` (migrator membaca berkas dari disk, putusan T4). Multi-stage: build web + dependensi produksi server; dasar `oven/bun` ringan; pengguna non-root; `HEALTHCHECK` ke `/api/ping`; `qc-app` mendengarkan `127.0.0.1:${APP_PORT}`, `mem_limit` (±256m), bergantung `qc-db` sehat; migrasi dijalankan `qc-app` saat start sebelum `listen`. Tes: `docker build` lokal tidak tersedia → verifikasi di Actions (T28) dan di VPS dev (T27).
 
 ### Task 27: Provisioning VPS (pengguna deploy, nginx, staging)
 **Files:** Create: `deploy/nginx/qc.conf.example`, `deploy/deploy.sh`, `docs/deploy-vps.md`
@@ -315,6 +315,7 @@ Tiap tugas: server mendaftarkan rute REST modul dari tabel (rute `/api/rpc` modu
 
 ### Task 33: Impor Sheets → MariaDB dan gladi staging
 **Files:** Modify: `scripts/migrate/{import-sheets,verify-import,schema-map}.ts` (+ tes), `docs/setup-bridge.md` bagian 5; Create: `docs/superpowers/runbooks/2026-11-cutover-vps.md`
+- **Aktifkan kembali** `scripts/migrate/*.test.ts` (29 tes; dikecualikan dari skrip `test` root lewat `--path-ignore-patterns` sejak T5 karena memakai SQL SQLite) dan hapus pengecualian itu dari skrip root.
 - Keluaran SQL dialek MariaDB; `verify-import` membandingkan jumlah baris + checksum per tabel, rujukan yatim, penghitung `sync_rev` dan `handover:YYYYMMDD`. **Verifikasi dulu** isi dump produksi: hanya modul akses dan QR yang hidup; putuskan bersama pemilik apakah data uji handover/item dibuang. Gladi di staging dengan dump nyata, uji fitur, uji pemulihan cadangan. Runbook: urutan, jendela tulis-beku beberapa jam, jalan mundur (cabut `READ_ONLY`, `gas-legacy`), pemulihan manual tulisan jendela.
 
 ### Task 34: PR kecil ke `origin/main` (READ_ONLY) dan PR cutover
