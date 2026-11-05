@@ -29,15 +29,5 @@ coverage/
 # cache generator TanStack Router
 web/.tanstack/
 
-# Worker
-server/.wrangler/
-web/dist-worker/
-
-.wrangler/
-
-# Variabel pengembangan lokal worker
-server/.dev.vars
-
-server/.staging.secrets.local
 # jembatan: rahasia lokal
 bridge/.secrets.local
