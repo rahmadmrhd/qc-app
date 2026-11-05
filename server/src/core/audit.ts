@@ -1,4 +1,4 @@
-import type { Db, DbStatement } from '@server/core/db';
+import type { DbStatement, Preparer } from '@server/core/db';
 import type { AuditCursorPageDto, AuditEntryDto } from '@shared/rpc';
 import type { Env } from './env';
 
@@ -18,7 +18,7 @@ export interface AuditInput {
  * Pernyataan INSERT audit untuk digabung ke `batch()` tulisan yang sama, sehingga perubahan dan
  * jejak audit atomik (keduanya tersimpan atau keduanya batal).
  */
-export function writeAudit(db: Db, entry: AuditInput): DbStatement {
+export function writeAudit(db: Preparer, entry: AuditInput): DbStatement {
   return db
     .prepare(
       'INSERT INTO audit_log (ts, actor, action, target, `before`, `after`) VALUES (?, ?, ?, ?, ?, ?)',
@@ -41,7 +41,7 @@ const AUDIT_ROWS_PER_STATEMENT = 16;
  * pernyataan per entri), urutan baris = urutan `entries` (id audit menaik mengikuti urutan itu). Hasil yang
  * tersimpan identik dengan `writeAudit` berulang; yang berkurang hanya jumlah pernyataan dalam `batch()`.
  */
-export function writeAuditRows(db: Db, entries: readonly AuditInput[]): DbStatement[] {
+export function writeAuditRows(db: Preparer, entries: readonly AuditInput[]): DbStatement[] {
   const statements: DbStatement[] = [];
   for (let from = 0; from < entries.length; from += AUDIT_ROWS_PER_STATEMENT) {
     const chunk = entries.slice(from, from + AUDIT_ROWS_PER_STATEMENT);

@@ -1,6 +1,5 @@
-import type { Db, DbStatement } from '@server/core/db';
+import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { cached, touchCache } from '@server/core/mem-cache';
 import type { ItemStatus } from '@shared/rpc';
 
 export interface CustomerRecord {
@@ -24,7 +23,7 @@ interface CustomerRow {
   updated_by: string;
 }
 
-const CUSTOMER_COLUMNS = 'id, name, key, status, created_at, updated_at, updated_by';
+const CUSTOMER_COLUMNS = 'id, name, `key`, status, created_at, updated_at, updated_by';
 
 function toCustomer(row: CustomerRow): CustomerRecord {
   return {
@@ -38,11 +37,7 @@ function toCustomer(row: CustomerRow): CustomerRecord {
   };
 }
 
-/**
- * Seluruh customer. Bawaan memakai cache memori isolate (`mem-cache.ts`, TTL <= 15 dtk); `fresh: true`
- * membaca langsung dari D1 dan dipakai jalur yang memutuskan penulisan (ganti nama/status).
- */
-/** Kueri seluruh customer untuk digabung ke `batch()` pemanggil (tanpa cache); lihat `customersFromResult`. */
+/** Kueri seluruh customer untuk digabung ke `batch()` pemanggil (langsung dari MariaDB, tanpa cache); lihat `customersFromResult`. */
 export function customersStatement(env: Env): DbStatement {
   return env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers`);
 }
@@ -54,25 +49,25 @@ export function customersFromResult(result: { results: unknown[] }): CustomerRec
     .filter((c) => c.id !== '' && c.key !== '');
 }
 
+/**
+ * Seluruh customer, dibaca langsung dari MariaDB (tanpa cache). `options.fresh` diabaikan (tersisa agar pemanggil
+ * di modul yang belum dipindah tetap terkompilasi; dibuang bersama cache di T13).
+ */
 export async function listCustomers(
   env: Env,
-  options: { fresh?: boolean } = {},
+  _options: { fresh?: boolean } = {},
 ): Promise<CustomerRecord[]> {
-  const load = async (): Promise<CustomerRecord[]> => {
-    return customersFromResult(await customersStatement(env).all<CustomerRow>());
-  };
-  return options.fresh ? load() : cached(env, 'customers:all', load);
+  return customersFromResult(await customersStatement(env).all<CustomerRow>());
 }
 
 export async function findCustomerByKey(env: Env, key: string): Promise<CustomerRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE key = ?`)
+  const row = await env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE \`key\` = ?`)
     .bind(key)
     .first<CustomerRow>();
   return row ? toCustomer(row) : null;
 }
 
-export function insertCustomerStmt(db: Db, customer: CustomerRecord): DbStatement {
-  touchCache('customers');
+export function insertCustomerStmt(db: Preparer, customer: CustomerRecord): DbStatement {
   return db
     .prepare(`INSERT INTO customers (${CUSTOMER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .bind(
@@ -87,12 +82,14 @@ export function insertCustomerStmt(db: Db, customer: CustomerRecord): DbStatemen
 }
 
 /** Beberapa customer baru dalam `INSERT` banyak-baris (7 parameter per baris, maks. 14 baris per pernyataan). */
-export function insertCustomerStmts(db: Db, customers: readonly CustomerRecord[]): DbStatement[] {
+export function insertCustomerStmts(
+  db: Preparer,
+  customers: readonly CustomerRecord[],
+): DbStatement[] {
   const perStatement = 14;
   const statements: DbStatement[] = [];
   for (let from = 0; from < customers.length; from += perStatement) {
     const chunk = customers.slice(from, from + perStatement);
-    touchCache('customers');
     statements.push(
       db
         .prepare(
@@ -114,11 +111,10 @@ export function insertCustomerStmts(db: Db, customers: readonly CustomerRecord[]
   return statements;
 }
 
-export function updateCustomerStmt(db: Db, customer: CustomerRecord): DbStatement {
-  touchCache('customers');
+export function updateCustomerStmt(db: Preparer, customer: CustomerRecord): DbStatement {
   return db
     .prepare(
-      'UPDATE customers SET name = ?, key = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+      'UPDATE customers SET name = ?, `key` = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
     )
     .bind(
       customer.name,

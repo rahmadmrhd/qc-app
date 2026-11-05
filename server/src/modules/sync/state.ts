@@ -1,45 +1,48 @@
-import type { Db, DbStatement } from '@server/core/db';
+import type { DbStatement, Preparer } from '@server/core/db';
+
 export type SyncResource = 'brands' | 'items';
 
 /**
  * Menaikkan penghitung revisi sinkron sumber daya (menggantikan `nextRev_` Apps Script). Pernyataan ini
- * WAJIB berada di `batch()` yang sama dengan penulisan baris yang memakai revisinya lewat
- * `syncRevExpr(resource)`; D1 menserialkan batch (transaksi), sehingga revisi unik dan menaik.
+ * WAJIB berada di transaksi yang sama dengan penulisan baris yang memakai revisinya lewat
+ * `syncRevExpr(resource)`: kunci baris `sync_state` yang ditahan `INSERT ... ON DUPLICATE KEY UPDATE` sampai COMMIT
+ * menserialkan penulis, sehingga revisi unik dan menaik, dan subkueri `syncRevExpr` di transaksi yang sama membaca
+ * nilai yang baru dinaikkan itu.
  */
-export function nextSyncRev(db: Db, resource: SyncResource, nowIso: string): DbStatement {
+export function nextSyncRev(db: Preparer, resource: SyncResource, nowIso: string): DbStatement {
   return db
     .prepare(
-      'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, 1, ?) ON CONFLICT (resource) DO UPDATE SET seq = seq + 1, updated_at = excluded.updated_at',
+      'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE seq = seq + 1, updated_at = VALUES(updated_at)',
     )
     .bind(resource, nowIso);
 }
 
 /**
  * Menaikkan penghitung `count` sekaligus (satu pernyataan): revisi ke-`index` (0..count-1) kemudian dipakai
- * di batch yang sama (revisi ke-`i` dari `count` = `seq - (count - 1 - i)`; lihat ganti nama merk). Revisi tetap unik dan menaik.
+ * di transaksi yang sama (revisi ke-`i` dari `count` = `seq - (count - 1 - i)`; lihat ganti nama merk). Revisi tetap unik dan menaik.
  */
 export function reserveSyncRevs(
-  db: Db,
+  db: Preparer,
   resource: SyncResource,
   count: number,
   nowIso: string,
 ): DbStatement {
   return db
     .prepare(
-      'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON CONFLICT (resource) DO UPDATE SET seq = seq + excluded.seq, updated_at = excluded.updated_at',
+      'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE seq = seq + VALUES(seq), updated_at = VALUES(updated_at)',
     )
     .bind(resource, count, nowIso);
 }
 
-/** Ekspresi SQL nilai revisi terbaru sumber daya (dipakai setelah `nextSyncRev` di batch yang sama). */
+/** Ekspresi SQL nilai revisi terbaru sumber daya (dipakai setelah `nextSyncRev` di transaksi yang sama). */
 export function syncRevExpr(resource: SyncResource): string {
   return `(SELECT seq FROM sync_state WHERE resource = '${resource}')`;
 }
 
-export async function currentSyncRev(db: Db, resource: SyncResource): Promise<number> {
+export async function currentSyncRev(db: Preparer, resource: SyncResource): Promise<number> {
   const row = await db
     .prepare('SELECT seq FROM sync_state WHERE resource = ?')
     .bind(resource)
     .first<{ seq: number }>();
-  return row?.seq ?? 0;
+  return Number(row?.seq ?? 0);
 }

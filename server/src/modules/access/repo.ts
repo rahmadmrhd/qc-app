@@ -277,13 +277,24 @@ export async function batchWrite(
   try {
     return await db.batch(statements);
   } catch (error) {
-    if (error instanceof DbError && error.kind === 'duplicate') {
-      const conflict = error.key === undefined ? undefined : conflicts[error.key];
-      if (conflict) {
-        throw appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
-      }
-      throw appError('CONFLICT', 'Data sudah ada');
-    }
-    throw error;
+    throw mapDuplicateError(error, conflicts);
   }
+}
+
+/**
+ * Memetakan `DbError{kind:'duplicate'}` ke CONFLICT lewat `conflicts` (kunci = nama indeks); galat lain
+ * dikembalikan apa adanya (untuk dilempar pemanggil).
+ */
+export function mapDuplicateError(
+  error: unknown,
+  conflicts: Record<string, { message: string; field: string }>,
+): unknown {
+  if (error instanceof DbError && error.kind === 'duplicate') {
+    const conflict = error.key === undefined ? undefined : conflicts[error.key];
+    if (conflict) {
+      return appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
+    }
+    return appError('CONFLICT', 'Data sudah ada');
+  }
+  return error;
 }

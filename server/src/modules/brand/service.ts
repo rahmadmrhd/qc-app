@@ -1,18 +1,17 @@
 import { writeAudit } from '@server/core/audit';
-import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
-import type { DbStatement } from '@server/core/db';
+import type { DbStatement, DbTx } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import { batchWrite } from '@server/modules/access/repo';
-import { reserveSyncRevs } from '@server/modules/sync/state';
+import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
+import { currentSyncRev, reserveSyncRevs } from '@server/modules/sync/state';
 import { itemKey, normalizeKey } from '@shared/items';
 import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
-import type { BrandRecord } from './repo';
+import type { BrandRecord, BrandRow } from './repo';
 import {
+  BRAND_COLUMNS,
   brandsFromResult,
-  brandsStatement,
   findBrandByKey,
   insertBrandStmts,
   listBrands,
@@ -34,7 +33,7 @@ export function brandSnapshot(brand: BrandRecord): Record<string, unknown> {
   return { name: brand.name, status: brand.status };
 }
 
-const BRAND_CONFLICTS = { 'brands.key': { field: 'name', message: 'Nama merk sudah dipakai' } };
+const BRAND_CONFLICTS = { brands_key: { field: 'name', message: 'Nama merk sudah dipakai' } };
 
 function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
   const now = nowIso(env);
@@ -89,217 +88,136 @@ export async function planBrandByName(
   return { brand: created, statements: createBrandStmts(env, created, actor) };
 }
 
-/** Batas parameter terikat D1 per kueri (100) dikurangi sisa parameter tetap. */
-const KEY_CHUNK = 90;
-/**
- * Item per pernyataan `UPDATE ... FROM json_each` ganti nama: satu parameter JSON berisi `[id, kunci, urutan, hex(tipe)]`
- * per item. ASCII umum ±150 byte per item (500 item = ±75 KB); terburuk (tipe 100 karakter non-ASCII 3 byte, merk 60
- * karakter) ±1,1 KB per item = ±550 KB per potongan. Batas D1 untuk nilai string/BLOB 2 MB (spek §2b; batas 100 KB
- * berlaku untuk teks SQL, bukan nilai bind), jadi 500 per potongan masih jauh di bawah batas.
- */
-const RENAME_ITEMS_PER_STATEMENT = 500;
+/** Item per pernyataan `UPDATE` ganti nama (3 nilai terikat per item; driver tanpa batas parameter). */
+const RENAME_ITEMS_PER_STATEMENT = 200;
+/** Kunci nama lain per pernyataan `SELECT ... IN (...)`. */
+const KEY_CHUNK = 500;
 
 /**
- * Tabrakan kunci merk+tipe dua item akibat ganti nama: dijaga indeks unik `items.key` pada `UPDATE` item
- * di batch yang sama (bukan kueri pemeriksaan terpisah), jadi pemeriksaan dan penulisan atomik.
+ * Tabrakan kunci merk+tipe dua item akibat ganti nama: dijaga indeks unik `items_key` pada `UPDATE` item di
+ * transaksi yang sama (galat duplikat membatalkan seluruh transaksi), dan nama merk kembar oleh `brands_key`.
  */
 const BRAND_RENAME_CONFLICTS = {
   ...BRAND_CONFLICTS,
-  'items.key': {
+  items_key: {
     field: 'name',
     message: 'Nama baru membuat merk dan tipe dua item bentrok',
   },
 };
 
 const RENAME_ALIAS_MESSAGE = 'Nama baru bentrok dengan nama lain item';
+const NAME_TAKEN_MESSAGE = 'Nama merk sudah dipakai';
 
-/**
- * Penjaga di batch ganti nama: kunci item baru tidak boleh sama dengan nama lain (alias) item mana pun, termasuk
- * milik item itu sendiri. Satu `SELECT` per potongan kunci yang melempar `integer overflow` bila ada bentrok
- * (dipetakan ke CONFLICT di `saveBrand`), sehingga seluruh batch batal.
- */
-function aliasCollisionGuards(env: Env, keys: readonly string[]): DbStatement[] {
-  const guards: DbStatement[] = [];
-  for (let from = 0; from < keys.length; from += KEY_CHUNK) {
-    const chunk = keys.slice(from, from + KEY_CHUNK);
-    guards.push(
-      env.DB.prepare(
-        `SELECT CASE WHEN EXISTS (SELECT 1 FROM item_alias_keys WHERE key IN (${chunk.map(() => '?').join(',')})) THEN ${CAS_FAIL_SQL} ELSE 1 END`,
-      ).bind(...chunk),
-    );
-  }
-  return guards;
-}
-
-/** True bila salah satu kunci masih dipegang sebagai nama lain (alias) item mana pun: satu round trip. */
-async function aliasCollides(env: Env, keys: readonly string[]): Promise<boolean> {
+/** True bila salah satu kunci dipegang sebagai nama lain (alias) item mana pun (dibaca di dalam transaksi). */
+async function aliasCollides(tx: DbTx, keys: readonly string[]): Promise<boolean> {
   const unique = [...new Set(keys)];
-  const statements: DbStatement[] = [];
   for (let from = 0; from < unique.length; from += KEY_CHUNK) {
     const chunk = unique.slice(from, from + KEY_CHUNK);
-    statements.push(
-      env.DB.prepare(
-        `SELECT 1 AS hit FROM item_alias_keys WHERE key IN (${chunk.map(() => '?').join(',')}) LIMIT 1`,
-      ).bind(...chunk),
-    );
+    const hit = await tx
+      .prepare(
+        `SELECT 1 AS hit FROM item_alias_keys WHERE \`key\` IN (${chunk.map(() => '?').join(',')}) LIMIT 1`,
+      )
+      .bind(...chunk)
+      .first();
+    if (hit) return true;
   }
-  if (statements.length === 0) return false;
-  return (await env.DB.batch(statements)).some((result) => result.results.length > 0);
+  return false;
 }
 
 /**
- * Item milik merk pada saat dibaca: id, tipe (kunci baru dihitung dari tipe), dan `mh` = `hex(model)` dari D1.
- * Tipe dibandingkan per BYTE (`hex`), bukan lewat teks hasil dekode `json_extract`: teks Unicode tak utuh (mis.
- * surrogate tunggal) tidak sama byte-nya setelah bolak-balik JSON, dan item tak akan pernah cocok.
+ * Ganti nama merk dalam SATU transaksi: baris merk dan item milik merk dikunci (`SELECT ... FOR UPDATE`) sehingga
+ * penulis lain (item baru/pindah merk/ubah tipe, ganti nama serentak) menunggu sampai COMMIT dan membaca hasil
+ * akhir; tidak ada percobaan ulang optimistik.
+ *  1. kunci semua item merk diberi kunci sementara unik per item (U+0001 + `id`; kunci asli tak pernah memuatnya),
+ *     supaya tabrakan SEMENTARA antar item merk ini (kunci baru satu item = kunci lama item lain di merk yang sama)
+ *     tidak ditolak indeks unik `items_key` yang diperiksa per baris;
+ *  2. `UPDATE ... JOIN (SELECT ... UNION ALL ...)` per 200 item memasang kunci akhir dan revisi sinkron tiap item
+ *     (jatah dipesan `reserveSyncRevs`; item ke-`i` dari `n` memakai `seq - (n - 1 - i)`, urut `id`).
+ * Bentrok sungguhan dengan merk+tipe item merk lain ditolak `items_key` (CONFLICT); dengan nama lain (alias) item
+ * mana pun ditolak pemeriksaan alias di transaksi yang sama.
  */
-interface OwnItem {
-  id: string;
-  model: string;
-  mh: string;
+async function renameBrand(env: Env, id: string, name: string, actor: ActorRef): Promise<BrandDto> {
+  return env.DB.transaction(async (tx) => {
+    const row = await tx
+      .prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ? FOR UPDATE`)
+      .bind(id)
+      .first<BrandRow>();
+    const existing = row ? brandsFromResult({ results: [row] })[0] : undefined;
+    if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
+    if (existing.name === name) return toBrandDto(existing);
+    const key = normalizeKey(name);
+    const clash = await tx
+      .prepare('SELECT 1 AS hit FROM brands WHERE `key` = ? AND id <> ? LIMIT 1')
+      .bind(key, id)
+      .first();
+    if (clash) throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
+
+    const own = (
+      await tx
+        .prepare('SELECT id, model FROM items WHERE brand_id = ? ORDER BY id FOR UPDATE')
+        .bind(id)
+        .all<{ id: string; model: string }>()
+    ).results.map((item) => ({ id: item.id, next: itemKey(name, item.model) }));
+    if (
+      await aliasCollides(
+        tx,
+        own.map((item) => item.next),
+      )
+    ) {
+      throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });
+    }
+
+    const now = nowIso(env);
+    const updated: BrandRecord = { ...existing, name, key, updatedAt: now, updatedBy: actor.email };
+    for (const statement of updateBrandStmts(tx, updated)) await statement.run();
+    if (own.length > 0) {
+      await tx
+        .prepare('UPDATE items SET `key` = CONCAT(CHAR(1 USING utf8mb4), id) WHERE brand_id = ?')
+        .bind(id)
+        .run();
+      await reserveSyncRevs(tx, 'items', own.length, now).run();
+      const firstRev = (await currentSyncRev(tx, 'items')) - own.length + 1;
+      for (let from = 0; from < own.length; from += RENAME_ITEMS_PER_STATEMENT) {
+        const chunk = own.slice(from, from + RENAME_ITEMS_PER_STATEMENT);
+        const values = chunk.map(() => 'SELECT ? AS id, ? AS k, ? AS rev').join(' UNION ALL ');
+        await tx
+          .prepare(
+            `UPDATE items i JOIN (${values}) j ON i.id = j.id SET i.\`key\` = j.k, i.sync_rev = j.rev`,
+          )
+          .bind(...chunk.flatMap((item, offset) => [item.id, item.next, firstRev + from + offset]))
+          .run();
+      }
+    }
+    await writeAudit(tx, {
+      ts: now,
+      actor: actor.email,
+      action: 'brand.update',
+      target: updated.name,
+      before: brandSnapshot(existing),
+      after: brandSnapshot(updated),
+    }).run();
+    return toBrandDto(updated);
+  });
 }
-
-const OWN_ITEMS_SQL =
-  'SELECT id, model, hex(model) AS mh FROM items WHERE brand_id = ? ORDER BY id';
-
-/**
- * Kunci sementara yang pasti unik per item: karakter kontrol U+0001 (kunci asli tidak pernah memuatnya) + `rowid`
- * (bilangan bulat unik; `id` tidak dipakai karena `items.key` berurutan NOCASE sehingga `AB` dan `ab` bertabrakan).
- */
-const TEMP_KEY_SQL = 'char(1) || rowid';
-
-/**
- * Menghitung ulang kunci SELURUH item merk ini dalam dua tahap di batch yang sama, supaya tabrakan SEMENTARA antar
- * item merk ini (kunci baru satu item = kunci lama item lain di merk yang sama) tidak ditolak indeks unik
- * `items.key`, yang memeriksa per baris:
- *  1. satu `UPDATE` memberi semua item merk kunci sementara unik (`TEMP_KEY_SQL`; dilewati bila merk tanpa item);
- *  2. `UPDATE ... FROM json_each` per 500 item memasang kunci akhir dan revisi sinkron tiap item dari jatah yang
- *     dipesan `reserveSyncRevs` (item ke-`i` dari `count` memakai `seq - (count - 1 - i)`). Hanya baris yang masih
- *     milik merk ini dengan tipe yang sama (byte) dengan yang dibaca yang disentuh.
- * Penjaga di batch yang sama (keduanya `integer overflow`, mengulang `saveBrand`): jumlah item merk harus sama dengan
- * yang dibaca (sebelum tahap 1), dan tidak boleh ada item merk yang masih berkunci sementara (sesudah tahap 2:
- * item baru, pindah merk, atau tipe berubah di antara baca dan tulis). Bentrok sungguhan dengan merk+tipe item
- * merk lain ditolak indeks unik `items.key` pada tahap 2. `+items.brand_id` (tanpa indeks) sengaja: tanpa `+`
- * planner memilih indeks `items_brand` sebagai loop luar dan memindai `json_each` untuk tiap item (O(N^2), 28 ms untuk
- * 200 item di SQLite); dengan `+` ia mencari baris lewat PRIMARY KEY dari tiap baris JSON.
- */
-function renameItemStatements(
-  env: Env,
-  brandId: string,
-  own: ReadonlyArray<{ id: string; mh: string; next: string }>,
-): DbStatement[] {
-  const guard = (condition: string, ...binds: unknown[]) =>
-    env.DB.prepare(`SELECT CASE WHEN ${condition} THEN 1 ELSE ${CAS_FAIL_SQL} END`).bind(...binds);
-  // Penjaga jumlah SELALU dikirim (juga untuk merk tanpa item: item yang disisipkan di tengah memicu ulang).
-  const statements: DbStatement[] = [
-    guard('(SELECT COUNT(*) FROM items WHERE brand_id = ?) = ?', brandId, own.length),
-  ];
-  if (own.length === 0) return statements;
-  statements.push(
-    env.DB.prepare(`UPDATE items SET key = ${TEMP_KEY_SQL} WHERE brand_id = ?`).bind(brandId),
-  );
-  for (let from = 0; from < own.length; from += RENAME_ITEMS_PER_STATEMENT) {
-    const chunk = own.slice(from, from + RENAME_ITEMS_PER_STATEMENT);
-    const rows = JSON.stringify(
-      chunk.map((item, offset) => [item.id, item.next, from + offset, item.mh]),
-    );
-    statements.push(
-      env.DB.prepare(
-        `UPDATE items SET key = j.k, sync_rev = (SELECT seq FROM sync_state WHERE resource = 'items') - ${own.length - 1} + j.i FROM (SELECT json_extract(value, '$[0]') AS id, json_extract(value, '$[1]') AS k, json_extract(value, '$[2]') AS i, json_extract(value, '$[3]') AS mh FROM json_each(?)) AS j WHERE items.id = j.id AND +items.brand_id = ? AND hex(items.model) = j.mh`,
-      ).bind(rows, brandId),
-    );
-  }
-  statements.push(
-    guard(
-      'NOT EXISTS (SELECT 1 FROM items WHERE brand_id = ? AND substr(key, 1, 1) = char(1))',
-      brandId,
-    ),
-  );
-  return statements;
-}
-
-/** Percobaan ganti nama bila himpunan item merk berubah di antara baca dan tulis. */
-const RENAME_ATTEMPTS = 3;
-const RENAME_STALE_MESSAGE = 'Item merk ini sedang berubah; ulangi permintaan';
 
 export async function saveBrand(
   env: Env,
   input: SaveBrandInput,
   actor: ActorRef,
 ): Promise<BrandDto> {
-  // Satu round trip baca: daftar merk (langsung dari D1) dan, untuk merk yang ada, item milik merk itu
-  // (indeks `items_brand`; dipakai hanya bila nama berubah).
-  const [brandsResult, ownRows] = await env.DB.batch([
-    brandsStatement(env),
-    ...(input.id ? [env.DB.prepare(OWN_ITEMS_SQL).bind(input.id)] : []),
-  ]);
-  const brands = brandsFromResult(brandsResult as { results: unknown[] });
-  const existing = input.id ? brands.find((brand) => brand.id === input.id) : undefined;
-  if (input.id && !existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
-  const key = normalizeKey(input.name);
-  if (brands.some((brand) => brand.id !== input.id && brand.key === key)) {
-    throw appError('CONFLICT', 'Nama merk sudah dipakai', { name: 'Nama merk sudah dipakai' });
-  }
-
-  if (!existing) {
-    const created = newBrandRecord(env, input.name, actor);
-    await batchWrite(env.DB, createBrandStmts(env, created, actor), BRAND_CONFLICTS);
-    return toBrandDto(created);
-  }
-
-  if (existing.name === input.name) return toBrandDto(existing);
-
-  // Kunci item = merk + tipe, jadi ganti nama menghitung ulang kunci item merk ini. Tabrakan dengan nama lain
-  // (alias) dijaga penjaga di batch tulis; tabrakan dengan merk+tipe item lain dijaga indeks unik `items.key`;
-  // perubahan himpunan item merk di antara baca dan tulis dijaga `renameItemStatements` (diulang).
-  // Hanya item merk ini (indeks `items_brand`) dan kunci baru yang disentuh; tidak ada pemindaian `items`.
-  let rows = (ownRows?.results ?? []) as OwnItem[];
-  for (let attempt = 1; ; attempt++) {
-    const own = rows.map((item) => ({ ...item, next: itemKey(input.name, item.model) }));
-    const now = nowIso(env);
-    const updated: BrandRecord = {
-      ...existing,
-      name: input.name,
-      key,
-      updatedAt: now,
-      updatedBy: actor.email,
-    };
-    const statements: DbStatement[] = [
-      ...aliasCollisionGuards(env, [...new Set(own.map((item) => item.next))]),
-      ...updateBrandStmts(env.DB, updated),
-    ];
-    // Nama merk ikut tersinkron di setiap item (`merk`), jadi revisi item naik walau kunci sama. Satu pernyataan
-    // memesan N revisi unik berurutan; tiap item mengambil jatahnya sendiri. Penjaga jumlah dikirim juga untuk N = 0.
-    if (own.length > 0) statements.push(reserveSyncRevs(env.DB, 'items', own.length, now));
-    statements.push(...renameItemStatements(env, existing.id, own));
-    statements.push(
-      writeAudit(env.DB, {
-        ts: now,
-        actor: actor.email,
-        action: 'brand.update',
-        target: updated.name,
-        before: brandSnapshot(existing),
-        after: brandSnapshot(updated),
-      }),
-    );
+  if (input.id) {
     try {
-      await batchWrite(env.DB, statements, BRAND_RENAME_CONFLICTS);
-      return toBrandDto(updated);
+      return await renameBrand(env, input.id, input.name, actor);
     } catch (error) {
-      if (!isGuardFailure(error)) throw error;
-      // Sebab dipilih dari bentrok yang SEBENARNYA, bukan dari perbandingan himpunan item (rentan ABA): nama baru
-      // memang dipegang sebagai nama lain item mana pun, atau himpunan/tipe item berubah (ulangi dari bacaan baru).
-      if (
-        await aliasCollides(
-          env,
-          own.map((item) => item.next),
-        )
-      ) {
-        throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });
-      }
-      if (attempt >= RENAME_ATTEMPTS) throw appError('CONFLICT', RENAME_STALE_MESSAGE);
-      rows = (await env.DB.prepare(OWN_ITEMS_SQL).bind(existing.id).all<OwnItem>()).results;
+      throw mapDuplicateError(error, BRAND_RENAME_CONFLICTS);
     }
   }
+  if (await findBrandByKey(env, normalizeKey(input.name))) {
+    throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
+  }
+  const created = newBrandRecord(env, input.name, actor);
+  await batchWrite(env.DB, createBrandStmts(env, created, actor), BRAND_CONFLICTS);
+  return toBrandDto(created);
 }
 
 export async function setBrandStatus(
@@ -307,7 +225,7 @@ export async function setBrandStatus(
   input: SetBrandStatusInput,
   actor: ActorRef,
 ): Promise<BrandDto> {
-  const brands = await listBrands(env, { fresh: true });
+  const brands = await listBrands(env);
   const existing = brands.find((brand) => brand.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
   if (existing.status === input.status) return toBrandDto(existing);

@@ -7,6 +7,8 @@ export const PORTED: readonly string[] = [
   'src/core',
   'src/modules/access',
   'src/modules/auth',
+  'src/modules/brand',
+  'src/modules/customer',
   'src/http',
   'test-support',
 ];

@@ -271,3 +271,126 @@ describe('testDbUrl', () => {
     );
   });
 });
+
+describe('transaction', () => {
+  test('commit: pernyataan dalam satu koneksi dan transaksi, baca-di-tengah boleh', async () => {
+    const out = await db.transaction(async (tx) => {
+      const a = await tx.prepare('SELECT CONNECTION_ID() AS c').first<{ c: number }>();
+      await tx.prepare('INSERT INTO t_kv (k, v) VALUES (?, ?)').bind('tx-1', 5).run();
+      const mid = await tx
+        .prepare('SELECT v FROM t_kv WHERE k = ? FOR UPDATE')
+        .bind('tx-1')
+        .first<{ v: number }>();
+      await tx
+        .prepare('UPDATE t_kv SET v = ? WHERE k = ?')
+        .bind((mid?.v ?? 0) + 1, 'tx-1')
+        .run();
+      const b = await tx.prepare('SELECT CONNECTION_ID() AS c').first<{ c: number }>();
+      expect(b?.c).toBe(a?.c);
+      return mid?.v;
+    });
+    expect(out).toBe(5);
+    expect(
+      await db.prepare('SELECT v FROM t_kv WHERE k = ?').bind('tx-1').first<{ v: number }>(),
+    ).toEqual({
+      v: 6,
+    });
+  });
+
+  test('galat di callback: ROLLBACK dan galat aplikasi dilempar apa adanya', async () => {
+    const appError = Object.assign(new Error('galat aplikasi'), { code: 'CONFLICT' });
+    const err = await db
+      .transaction(async (tx) => {
+        await tx.prepare('INSERT INTO t_kv (k) VALUES (?)').bind('tx-rollback').run();
+        throw appError;
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBe(appError);
+    expect(
+      await db.prepare('SELECT 1 FROM t_kv WHERE k = ?').bind('tx-rollback').first(),
+    ).toBeNull();
+  });
+
+  test('galat basis data di callback menjadi DbError dan membatalkan transaksi', async () => {
+    await db.prepare('INSERT INTO t_kv (k) VALUES (?)').bind('tx-dup').run();
+    const err = await db
+      .transaction(async (tx) => {
+        await tx.prepare('INSERT INTO t_kv (k) VALUES (?)').bind('tx-before-dup').run();
+        await tx.prepare('INSERT INTO t_kv (k) VALUES (?)').bind('tx-dup').run();
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DbError);
+    expect(err).toMatchObject({ kind: 'duplicate', key: 'uq_k' });
+    expect(
+      await db.prepare('SELECT 1 FROM t_kv WHERE k = ?').bind('tx-before-dup').first(),
+    ).toBeNull();
+  });
+
+  test('mengulang callback sekali pada deadlock', async () => {
+    await db.batch([
+      db.prepare('INSERT INTO t_kv (k, v) VALUES (?, 0)').bind('tdl-1'),
+      db.prepare('INSERT INTO t_kv (k, v) VALUES (?, 0)').bind('tdl-2'),
+    ]);
+    let runsA = 0;
+    let runsB = 0;
+    const a = db.transaction(async (tx) => {
+      runsA++;
+      await tx.prepare("UPDATE t_kv SET v = v + 1 WHERE k = 'tdl-1'").run();
+      await tx.prepare('SELECT SLEEP(1)').run();
+      await tx.prepare("UPDATE t_kv SET v = v + 1 WHERE k = 'tdl-2'").run();
+    });
+    const b = db.transaction(async (tx) => {
+      runsB++;
+      await tx.prepare("UPDATE t_kv SET v = v + 1 WHERE k = 'tdl-2'").run();
+      await tx.prepare('SELECT SLEEP(0.5)').run();
+      await tx.prepare("UPDATE t_kv SET v = v + 1 WHERE k = 'tdl-1'").run();
+    });
+    await Promise.all([a, b]);
+    expect(runsA + runsB).toBe(3); // tepat satu korban deadlock diulang sekali
+    const rows = await db
+      .prepare("SELECT k, v FROM t_kv WHERE k LIKE 'tdl-%' ORDER BY k")
+      .all<{ k: string; v: number }>();
+    expect(rows.results).toEqual([
+      { k: 'tdl-1', v: 2 },
+      { k: 'tdl-2', v: 2 },
+    ]);
+  }, 30_000);
+
+  test('SELECT ... FOR UPDATE menyerialkan transaksi serentak pada baris yang sama', async () => {
+    await db.prepare('INSERT INTO t_kv (k, v) VALUES (?, 0)').bind('tx-lock').run();
+    const bump = () =>
+      db.transaction(async (tx) => {
+        const row = await tx
+          .prepare('SELECT v FROM t_kv WHERE k = ? FOR UPDATE')
+          .bind('tx-lock')
+          .first<{ v: number }>();
+        await tx.prepare('SELECT SLEEP(0.2)').run();
+        await tx
+          .prepare('UPDATE t_kv SET v = ? WHERE k = ?')
+          .bind((row?.v ?? 0) + 1, 'tx-lock')
+          .run();
+      });
+    await Promise.all([bump(), bump(), bump()]);
+    expect(
+      await db.prepare('SELECT v FROM t_kv WHERE k = ?').bind('tx-lock').first<{ v: number }>(),
+    ).toEqual({
+      v: 3,
+    });
+  }, 30_000);
+});
+
+describe('isolasi snapshot', () => {
+  test('menulis baris yang diubah transaksi lain setelah bacaan biasa tidak melempar galat 1020', async () => {
+    await db.prepare('INSERT INTO t_kv (k, v) VALUES (?, 0)').bind('snap').run();
+    const out = await db.transaction(async (tx) => {
+      await tx.prepare('SELECT v FROM t_kv WHERE k = ?').bind('snap').first(); // snapshot dibuat di sini
+      await db.prepare('UPDATE t_kv SET v = 10 WHERE k = ?').bind('snap').run(); // transaksi lain commit
+      await tx.prepare('UPDATE t_kv SET v = v + 1 WHERE k = ?').bind('snap').run();
+      return tx
+        .prepare('SELECT v FROM t_kv WHERE k = ? FOR UPDATE')
+        .bind('snap')
+        .first<{ v: number }>();
+    });
+    expect(out).toEqual({ v: 11 });
+  });
+});

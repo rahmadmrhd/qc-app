@@ -25,7 +25,7 @@ export function customerSnapshot(customer: CustomerRecord): Record<string, unkno
 }
 
 const CUSTOMER_CONFLICTS = {
-  'customers.key': { field: 'name', message: 'Nama customer sudah dipakai' },
+  customers_key: { field: 'name', message: 'Nama customer sudah dipakai' },
 };
 
 export async function listCustomerDtos(env: Env): Promise<CustomerDto[]> {
@@ -51,10 +51,7 @@ export async function lookupCustomerForWrite(
   currentId?: string,
 ): Promise<CustomerLookup> {
   const key = customerKey(name);
-  // Daftar dari cache memori isolate (<= 15 dtk); bila tak ada di sana, cek langsung ke D1 sebelum membuat.
-  const found =
-    (await listCustomers(env)).find((customer) => customer.key === key) ??
-    (await findCustomerByKey(env, key));
+  const found = await findCustomerByKey(env, key);
   if (found) {
     if (found.status === 'inactive' && found.id !== currentId) {
       const message = 'Customer dinonaktifkan; aktifkan dulu di halaman Customer';
@@ -129,7 +126,7 @@ export async function renameCustomer(
   input: RenameCustomerInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
-  const customers = await listCustomers(env, { fresh: true });
+  const customers = await listCustomers(env);
   const existing = customers.find((customer) => customer.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Customer tidak ditemukan');
   const key = customerKey(input.name);
@@ -170,9 +167,7 @@ export async function setCustomerStatus(
   input: SetCustomerStatusInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
-  const existing = (await listCustomers(env, { fresh: true })).find(
-    (customer) => customer.id === input.id,
-  );
+  const existing = (await listCustomers(env)).find((customer) => customer.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Customer tidak ditemukan');
   if (existing.status === input.status) return toCustomerDto(existing);
   const now = nowIso(env);

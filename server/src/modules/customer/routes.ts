@@ -9,7 +9,6 @@ type CustomerMethod = 'customers.list' | 'customers.rename' | 'customers.setStat
 export function customerRoutes(): Pick<RouteTable, CustomerMethod> {
   return {
     'customers.list': {
-      warm: ['customers'],
       permission: { module: 'item', level: 'view' },
       validate: expectNull,
       handler: (_input, ctx) => listCustomerDtos(ctx.env),

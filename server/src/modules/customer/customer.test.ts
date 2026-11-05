@@ -32,7 +32,7 @@ beforeEach(async () => {
 
 async function lastAudit() {
   const row = await env.DB.prepare(
-    'SELECT action, target, "before" AS before, "after" AS after FROM audit_log ORDER BY id DESC LIMIT 1',
+    'SELECT action, target, `before`, `after` FROM audit_log ORDER BY id DESC LIMIT 1',
   ).first<{ action: string; target: string; before: string; after: string }>();
   if (!row) throw new Error('audit kosong');
   return {
@@ -166,4 +166,31 @@ test('izin rute customer: list = item view; rename dan setStatus = item manage',
   expect(routes['customers.list'].permission).toEqual({ module: 'item', level: 'view' });
   expect(routes['customers.rename'].permission).toEqual({ module: 'item', level: 'manage' });
   expect(routes['customers.setStatus'].permission).toEqual({ module: 'item', level: 'manage' });
+});
+
+test('kunci customer di tingkat layanan: Sony, "sony ", "SONY " satu customer; Sone dan Soné berbeda', async () => {
+  const first = await resolveCustomerByName(env, 'Sony', admin);
+  for (const variant of ['sony ', ' SONY ']) {
+    expect((await resolveCustomerByName(env, variant, admin)).id).toBe(first.id);
+  }
+  const sone = await resolveCustomerByName(env, 'Sone', admin);
+  const soneAccent = await resolveCustomerByName(env, 'Soné', admin);
+  expect(new Set([first.id, sone.id, soneAccent.id]).size).toBe(3);
+  expect((await listCustomers(env)).map((c) => c.key).sort()).toEqual(['sone', 'sony', 'soné']);
+});
+
+test('dua rename serentak ke nama yang sama: satu berhasil, satu CONFLICT lewat indeks customers_key', async () => {
+  await seedCustomer(env, { id: 'c1', name: 'Satu', key: 'satu' });
+  await seedCustomer(env, { id: 'c2', name: 'Dua', key: 'dua' });
+  const results = await Promise.allSettled([
+    renameCustomer(env, { id: 'c1', name: 'Baru' }, admin),
+    renameCustomer(env, { id: 'c2', name: 'Baru' }, admin),
+  ]);
+  expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+  expect(rejected.reason).toMatchObject({
+    code: 'CONFLICT',
+    fields: { name: 'Nama customer sudah dipakai' },
+  });
+  expect((await listCustomers(env)).filter((c) => c.name === 'Baru')).toHaveLength(1);
 });

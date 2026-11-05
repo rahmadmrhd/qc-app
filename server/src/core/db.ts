@@ -12,10 +12,26 @@ export interface DbStatement {
   run(): Promise<DbResult>;
 }
 
-export interface Db {
+/** Pembuat pernyataan; `Db` dan `DbTx` memenuhinya (pembangun pernyataan menerima keduanya). */
+export interface Preparer {
   prepare(sql: string): DbStatement;
+}
+
+/**
+ * Transaksi interaktif: pernyataan dari `prepare` berjalan di SATU koneksi di dalam transaksi (boleh membaca di
+ * tengah transaksi, mis. `SELECT ... FOR UPDATE`, lalu menulis). Hanya berlaku selama callback `Db.transaction`.
+ */
+export type DbTx = Preparer;
+
+export interface Db extends Preparer {
   /** Semua pernyataan dalam satu transaksi (BEGIN ... COMMIT); gagal -> ROLLBACK. Deadlock diulang sekali. */
   batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]>;
+  /**
+   * Jalankan `fn` dalam satu transaksi (BEGIN ... COMMIT); galat apa pun dari `fn` -> ROLLBACK dan galat dilempar
+   * ulang (sebagai `DbError` untuk galat basis data). Deadlock (1213) mengulang `fn` SEKALI dari awal, jadi `fn`
+   * hanya boleh punya efek di dalam transaksi (tanpa efek samping di luar basis data).
+   */
+  transaction<T>(fn: (tx: DbTx) => Promise<T>): Promise<T>;
   /** Banyak pernyataan sekaligus (koneksi khusus). HANYA untuk SQL tepercaya milik migrator dan harness tes. */
   exec(sql: string): Promise<void>;
   close(): Promise<void>;
@@ -129,6 +145,13 @@ export interface DbConfig {
 
 const CONNECT_TIMEOUT_MS = 4000;
 const SESSION_COLLATION = 'SET NAMES utf8mb4 COLLATE utf8mb4_nopad_bin';
+/**
+ * MariaDB >= 11.6.2 menyalakan `innodb_snapshot_isolation` (bawaan): pada REPEATABLE READ, menulis/mengunci baris yang
+ * diubah transaksi lain SETELAH snapshot transaksi ini dibuat melempar galat 1020 ("Record has changed since last
+ * read"). Penghitung bersama (`sync_state`, `counters`) dan penulisan setelah baca biasa akan sering kena. Dimatikan
+ * per sesi: bacaan biasa tetap konsisten, pembacaan/penulisan mengunci tetap melihat data terbaru (perilaku MySQL).
+ */
+const SESSION_SNAPSHOT_OFF = 'SET SESSION innodb_snapshot_isolation = 0';
 
 function connectionOptions(config: DbConfig) {
   const u = new URL(config.url);
@@ -203,6 +226,15 @@ class Statement implements DbStatement {
   }
 }
 
+/** Galat dari driver mysql2/jaringan (punya `errno` numerik); selain itu galat aplikasi yang tak boleh dibungkus. */
+function isDriverError(err: Error): boolean {
+  return (
+    err instanceof DbError ||
+    err instanceof AggregateError ||
+    typeof (err as { errno?: unknown }).errno === 'number'
+  );
+}
+
 export function createDb(config: DbConfig): Db {
   const base = connectionOptions(config);
   const pool = mysql.createPool({
@@ -214,6 +246,7 @@ export function createDb(config: DbConfig): Db {
   // Kolasi sesi sama dengan server (utf8mb4_nopad_bin) agar literal ikut membedakan spasi ekor.
   pool.pool.on('connection', (conn) => {
     conn.query(SESSION_COLLATION, () => {});
+    conn.query(SESSION_SNAPSHOT_OFF, () => {});
   });
 
   const stats: DbStats = { trips: 0, statements: 0, log: null };
@@ -246,8 +279,45 @@ export function createDb(config: DbConfig): Db {
     }
   };
 
+  const transactionOnce = async <T>(fn: (tx: DbTx) => Promise<T>): Promise<T> => {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const tx: DbTx = {
+        prepare: (sql) =>
+          new Statement(sql, [], (text, values) => {
+            count(text, 1);
+            return execute(conn as unknown as Executor, text, values);
+          }),
+      };
+      try {
+        const out = await fn(tx);
+        await conn.commit();
+        return out;
+      } catch (err) {
+        await conn.rollback().catch(() => {});
+        throw err;
+      }
+    } finally {
+      conn.release();
+    }
+  };
+
   const db: Db = {
     prepare: (sql) => new Statement(sql, [], poolRunner),
+
+    async transaction<T>(fn: (tx: DbTx) => Promise<T>): Promise<T> {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await transactionOnce(fn);
+        } catch (err) {
+          const e = toDbError(err);
+          if (e.kind === 'deadlock' && e.errno === ER_DEADLOCK && attempt === 0) continue;
+          // Galat aplikasi (mis. AppError) dilempar apa adanya; hanya galat driver yang dibungkus.
+          throw err instanceof Error && !isDriverError(err) ? err : e;
+        }
+      }
+    },
 
     async batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]> {
       const list = statements.map((s) => {
