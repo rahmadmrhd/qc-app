@@ -165,23 +165,41 @@ describe('handler (REST /api/v1/sync/*)', () => {
     });
   });
 
-  test('rute /api/v1/sync/* yang tidak ada, nama bawaan Object, atau verba keliru -> 404 problem+json', async () => {
-    for (const [method, path] of [
-      ['GET', '/sync/tidak-ada'],
-      ['GET', '/sync/constructor'],
-      ['GET', '/sync/__proto__'],
-      ['POST', '/sync/ping'],
-      ['GET', '/sync/items/push'],
-    ] as const) {
-      const response = await app.request(
-        `https://qc.test/api/v1${path}`,
-        { method, headers: { authorization: `Bearer ${TOKEN}` } },
-        env,
+  const UNKNOWN_SYNC_ROUTES = [
+    ['GET', '/sync/tidak-ada'],
+    ['GET', '/sync/constructor'],
+    ['GET', '/sync/__proto__'],
+    ['POST', '/sync/ping'],
+    ['GET', '/sync/items/push'],
+    ['GET', '/sync'],
+  ] as const;
+  const probe = (method: string, path: string, token: string | null) =>
+    app.request(
+      `https://qc.test/api/v1${path}`,
+      { method, headers: token === null ? {} : { authorization: `Bearer ${token}` } },
+      env,
+    );
+
+  test('rute /api/v1/sync/* yang tidak ada, nama bawaan Object, atau verba keliru: 401 seragam tanpa token, 404 problem+json dengan token sah', async () => {
+    const reference = await problemShape(
+      await syncSend(env, 'sync.ping', null, { token: 'salah' }),
+    );
+    // 6 probe tanpa token (< 10 kegagalan) agar IP belum diblokir saat probe bertoken sah
+    for (const [method, path] of UNKNOWN_SYNC_ROUTES) {
+      // keberadaan rute tidak terungkap tanpa token (sama dengan 401 rute yang ada)
+      expect(await problemShape(await probe(method, path, null)), `${method} ${path}`).toEqual(
+        reference,
       );
-      expect(response.status).toBe(404);
-      expect(response.headers.get('content-type')).toContain('application/problem+json');
-      expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' });
+      const found = await probe(method, path, TOKEN);
+      expect(found.status).toBe(404);
+      expect(found.headers.get('content-type')).toContain('application/problem+json');
+      expect(await found.json()).toMatchObject({ code: 'NOT_FOUND' });
     }
+  });
+
+  test('probe rute tak dikenal ikut dihitung pembatas: 10 probe tanpa token memblokir IP (token benar pun ditolak)', async () => {
+    for (let i = 0; i < 10; i++) await probe('GET', `/sync/probe-${i}`, null);
+    expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
   });
 
   test('POST /sync (kabel lama beramplop) sudah dihapus: 404 problem+json untuk semua metode dan turunannya', async () => {

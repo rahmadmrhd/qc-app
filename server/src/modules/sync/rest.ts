@@ -102,6 +102,31 @@ function handlerFor(id: SyncRouteId, table: SyncRouteTable) {
 }
 
 /**
+ * Penutup `/sync/*`: rute (atau verba) sinkron yang tidak dikenal. Otentikasi LEBIH DULU (gagal = 401 seragam, dihitung
+ * pembatas), baru 404: keberadaan rute tidak terungkap tanpa token sah (sama dengan rute yang ada).
+ */
+async function unknownSyncRoute(c: Context<AppBindings>): Promise<Response> {
+  const requestId = newRequestId();
+  const startedAt = Date.now();
+  const token = bearerToken(c.req.raw.headers.get('authorization'));
+  const authenticated = await authenticateSync(c.env, token, c.env.clientIp);
+  const problem = authenticated
+    ? toProblem(appError('NOT_FOUND', 'Rute tidak ditemukan'), requestId)
+    : toProblem(appError('UNAUTHENTICATED', INVALID_TOKEN), requestId);
+  logRequest({
+    evt: 'sync',
+    requestId,
+    method: '?',
+    ok: false,
+    code: problem.body.code,
+    ms: Date.now() - startedAt,
+  });
+  if (problem.status === 401)
+    problem.headers = { ...problem.headers, 'www-authenticate': 'Bearer' };
+  return problemResponse(problem);
+}
+
+/**
  * Mendaftarkan rute QC Desktop (`SYNC_API_ROUTES`, kontrak versi 2) pada sub-aplikasi `/api/v1`: satu handler per id,
  * otentikasi Bearer (bukan sesi, tanpa CSRF), galat problem+json. Harus dipanggil SEBELUM `registerRest` (yang
  * menutup dengan 404 untuk jalur lain).
@@ -111,4 +136,6 @@ export function registerSyncRest(app: Hono<AppBindings>, table: SyncRouteTable):
     const def = SYNC_API_ROUTES[id];
     app.on(def.verb, honoPath(def.path), handlerFor(id, table));
   }
+  app.all('/sync', unknownSyncRoute);
+  app.all('/sync/*', unknownSyncRoute);
 }
