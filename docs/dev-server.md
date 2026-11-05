@@ -22,7 +22,7 @@ Buka `http://localhost:3000`, pada halaman login tekan **Masuk sebagai pengguna 
 
 ## Konfigurasi (`server/.env`)
 
-Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. Variabel wajib: `DATABASE_URL`, `SESSION_SECRET`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_URL`, `BRIDGE_SECRET`, `ADMIN_EMAIL`. Opsional: `APP_ORIGIN`, `DEV_LOGIN_EMAIL` (hanya dev), `PORT` (8788), `HOST` (127.0.0.1), `TRUSTED_PROXY` (`loopback`), `DB_POOL_SIZE` (8), `STATIC_DIR` (`server/dist`). Server menolak jalan dan menyebut SEMUA variabel yang hilang/tidak valid (tanpa mencetak nilainya).
+Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. Variabel wajib: `DATABASE_URL`, `SESSION_SECRET`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_URL`, `BRIDGE_SECRET`, `ADMIN_EMAIL`. Opsional: `APP_ORIGIN` (wajib https di produksi), `DEV_LOGIN_EMAIL` (hanya dev), `PORT` (8788), `HOST` (127.0.0.1), `TRUSTED_PROXY` (`loopback`), `DB_POOL_SIZE` (8), `STATIC_DIR` (`server/dist`). Server menolak jalan dan menyebut SEMUA variabel yang hilang/tidak valid (tanpa mencetak nilainya).
 
 ## Yang dilakukan tiap skrip
 
@@ -32,11 +32,11 @@ Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. V
 
 ## Login pengembangan
 
-`GET /auth/dev-login` aktif **hanya bila** `DEV_LOGIN_EMAIL` terisi **dan** host permintaan `localhost`/`127.0.0.1`; selain itu 404. Jangan isi variabel ini di produksi. Email harus terdaftar dan aktif (atau sama dengan `ADMIN_EMAIL`). Cookie sesi di `http://localhost` dikirim tanpa atribut `Secure`; di origin lain tetap `Secure`.
+`GET /auth/dev-login` aktif **hanya bila** `DEV_LOGIN_EMAIL` terisi, host permintaan `localhost`/`127.0.0.1`, **dan** peer TCP-nya loopback tanpa header `CF-Connecting-IP` (bukan lewat reverse proxy); selain itu 404. `loadConfig` menolak start bila `DEV_LOGIN_EMAIL` terisi dengan `NODE_ENV=production` atau `APP_ORIGIN` bukan `http://localhost`/`http://127.0.0.1`. Jangan isi variabel ini di produksi. Email harus terdaftar dan aktif (atau sama dengan `ADMIN_EMAIL`). Atribut `Secure` cookie dan origin redirect OAuth diturunkan dari `APP_ORIGIN` (bukan header Host): tanpa `Secure` hanya bila `APP_ORIGIN` adalah `http://localhost`/`http://127.0.0.1`; selain itu `Secure`. `APP_ORIGIN` wajib https saat `NODE_ENV=production`.
 
 ## Tes
 
-`bun run test` (di `server/` atau dari root lewat `bun run check`) membagi berkas tes ke 4 proses `bun test` paralel (`QC_TEST_SHARDS`, maks. 4); tiap proses memakai skema `qc_test_<waktu>_<acak>` sementara yang dikloning dari templat `qc_test_template` dan dihapus setelah berkas selesai. Butuh terowongan hidup dan `server/.env.test` (`QC_TEST_DB_URL`, lihat `.env.test.example`); tanpa itu runner berhenti dengan pesan `bun run db:tunnel`. Satu berkas/folder: `bun run test src/modules/sync`. Semua keluaran proses yang lulus diringkas; proses yang gagal dicetak penuh (`QC_TEST_VERBOSE=1` mencetak semua).
+`bun run test` (di `server/` atau dari root lewat `bun run check`) membagi berkas tes ke 4 proses `bun test` paralel (`QC_TEST_SHARDS`, maks. 4); tiap proses memakai SATU skema `qc_test_<waktu>_<acak>` sementara (dikloning dari templat `qc_test_template`, dipakai semua berkas di proses itu, dihapus saat proses selesai). Butuh terowongan hidup dan `server/.env.test` (`QC_TEST_DB_URL`, lihat `.env.test.example`); tanpa itu, atau bila tunnel setengah-terbuka (TCP terbuka tetapi `SELECT 1` tak dijawab dalam 5 dtk), runner berhenti dengan pesan `bun run db:tunnel`. Hak pengguna `qc_dev`/`qc_test` (hanya atas skema `qc_dev` dan pola `qc_test_%`) terekam di `deploy/mariadb/grants-dev.sql`. Satu berkas/folder: `bun run test src/modules/sync`. Semua keluaran proses yang lulus diringkas; proses yang gagal dicetak penuh (`QC_TEST_VERBOSE=1` mencetak semua).
 
 ## Batasan
 

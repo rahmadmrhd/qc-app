@@ -849,7 +849,7 @@ export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDt
   const driveId = input.kind === 'pdf' ? design.exportPdfDriveId : design.exportPngDriveId;
   if (driveId === '') throw appError('NOT_FOUND', 'Konfigurasi ini belum diekspor');
   const folderId = await getSetting(env, QR_FOLDER_SETTING);
-  // Izin dan rujukan konfigurasi sudah diperiksa di atas; baru sesudahnya cache (R2) dibaca.
+  // Izin dan rujukan konfigurasi sudah diperiksa di atas; baru sesudahnya cache memori proses dibaca.
   const content = folderId
     ? await cachedFileContent(env, folderId, driveId, async () => {
         const read = await viaBridge(() => getBridge(env).readFile(driveId, folderId));

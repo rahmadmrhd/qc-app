@@ -134,7 +134,7 @@ export async function readFile(
   }
   const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
-  // Cache (R2 / Cache API) terikat folder aktif; dibaca SETELAH aturan akses di atas.
+  // Cache memori proses terikat folder aktif; dibaca SETELAH aturan akses di atas.
   const bridge = getBridge(env);
   const content = await cachedFileContent(env, folderId, record.driveId, async () => {
     const read = await viaBridge(() => bridge.readFile(record.driveId, folderId));

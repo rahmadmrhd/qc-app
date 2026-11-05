@@ -426,7 +426,7 @@ interface NewTaskInput {
 }
 
 /**
- * Membuat 1..30 task SEKALIGUS dalam SATU `batch()` (atomik): penjaga/penyimpanan penghitung nomor, customer
+ * Membuat 1..`HANDOVER_WORKER_BATCH` (5) task SEKALIGUS dalam SATU `batch()` (atomik): penjaga/penyimpanan penghitung nomor, customer
  * baru (satu kali per kunci), task, dan audit tiap task. Gagal = tidak ada task, customer, atau nomor.
  * Diulang otomatis bila penulis lain merebut nomor/customer yang sama.
  */

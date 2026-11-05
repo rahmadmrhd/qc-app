@@ -1,5 +1,5 @@
 // Dimuat lewat `bun test --preload` (lihat scripts/test.ts): menyiapkan templat skema dan membersihkan skema
-// tes yatim sebelum tes pertama, lalu menghapus skema tes setiap berkas tes selesai. Tanpa tunnel, gagal cepat
+// tes yatim sebelum tes pertama, lalu menghapus skema tes proses ini setelah seluruh berkas di proses itu selesai. Tanpa tunnel, gagal cepat
 // dengan pesan yang menyebut `bun run db:tunnel`.
 import { afterAll, setDefaultTimeout } from 'bun:test';
 import { createDb, toDbError } from '@server/core/db';
@@ -19,7 +19,8 @@ try {
   process.exit(1);
 }
 
-// Skema per berkas tes: dihapus di akhir tiap berkas; `createTestEnv` berikutnya mengkloning skema baru.
+// Satu skema per PROSES tes: `afterAll` di berkas preload berlaku untuk seluruh proses (bukan per berkas); dihapus saat
+// proses selesai.
 afterAll(async () => {
   await dropTestSchemas();
 });
