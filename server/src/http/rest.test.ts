@@ -4,7 +4,7 @@ import { DbError } from '@server/core/db';
 import { appError, staleError } from '@server/core/errors';
 import type { RouteTable } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
-import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
+import { MAX_JSON_BODY_BYTES } from '@server/http/body';
 import { listOperations } from '@server/http/rest';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -207,11 +207,33 @@ describe('pemetaan galat (RFC 9457)', () => {
     expect(await problem(bad)).toMatchObject({ code: 'VALIDATION', status: 400 });
     const huge = await call(app, '/brands', {
       method: 'POST',
-      rawBody: `{"name":"${'a'.repeat(MAX_REQUEST_BODY_BYTES + 10)}"}`,
+      rawBody: `{"name":"${'a'.repeat(MAX_JSON_BODY_BYTES + 10)}"}`,
     });
     expect(huge.status).toBe(413);
     expect(await problem(huge)).toMatchObject({ code: 'VALIDATION', status: 413 });
     expect(calls).toEqual([]);
+  });
+
+  test('batas JSON 2 MB: tepat 2 MB lolos ke handler, 2 MB + 1 byte -> 413', async () => {
+    expect(MAX_JSON_BODY_BYTES).toBe(2 * 1024 * 1024);
+    const app = appWith();
+    const filler = (total: number) => {
+      const head = '{"name":"';
+      const tail = '"}';
+      return head + 'a'.repeat(total - head.length - tail.length) + tail;
+    };
+    const atLimit = await call(app, '/brands', {
+      method: 'POST',
+      rawBody: filler(MAX_JSON_BODY_BYTES),
+    });
+    expect(atLimit.status).toBe(201);
+    const over = await call(app, '/brands', {
+      method: 'POST',
+      rawBody: filler(MAX_JSON_BODY_BYTES + 1),
+    });
+    expect(over.status).toBe(413);
+    expect(await problem(over)).toMatchObject({ code: 'VALIDATION', status: 413 });
+    expect(calls).toHaveLength(1);
   });
 
   test('badan JSON berupa array -> 422 (bukan objek)', async () => {

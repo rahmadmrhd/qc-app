@@ -1,13 +1,41 @@
+import { API_ROUTES } from '@shared/api';
+
 /**
- * Batas badan permintaan. `Bun.serve` memakai `MAX_REQUEST_BODY_BYTES` (bawaan Bun 128 MB terlalu longgar: badan
- * dimuat ke memori sebelum autentikasi). Di atas batas ini Bun membalas 413 tanpa menjalankan aplikasi.
- *
- * Asal nilai 16 MB: peninggalan masa RPC, saat berkas dikirim sebagai base64 di dalam amplop JSON (8 MB x 4/3 +
- * amplop). Base64 sudah hilang dari kabel: rute biner dibatasi sendiri per rute di `API_ROUTES` (terbesar PDF 10 MB)
- * dan badan JSON nyata jauh di bawah 1 MB. Nilai 16 MB sengaja dipertahankan apa adanya sampai pemilik memutuskan
- * penurunannya (temuan review I2 butir 4); jangan menganggapnya sebagai kebutuhan teknis kabel saat ini.
+ * Batas badan JSON REST: 2 MB (keputusan pemilik 2026-11-06). Base64 sudah hilang dari kabel (berkas lewat rute
+ * biner dengan batasnya sendiri), dan muatan JSON sah terbesar (`handovers.saveBatch`: 30 task x 5.000 karakter)
+ * kurang dari 1 MB bahkan dengan karakter terburuk (dijaga `body.test.ts`). Batas kecil memperkecil permukaan
+ * serangan memori: badan di atasnya = 413 problem+json (code VALIDATION) tanpa dimuat penuh (`readTextLimited`).
  */
-export const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
+export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Batas badan `/sync` (QC Desktop): nilai lama (16 MB, dulu batas global) dipertahankan apa adanya; ditinjau di
+ * Task 25 (penulisan ulang kabel sinkron). Dipakai `handler.ts` dan ikut menentukan batas global di bawah.
+ */
+export const SYNC_MAX_BODY_BYTES = 16 * 1024 * 1024;
+
+/** Selisih kecil di atas batas rute biner terbesar untuk overhead HTTP/multipart yang belum terhitung di tabel. */
+const BINARY_BODY_OVERHEAD_BYTES = 64 * 1024;
+
+/** Batas `maxBytes` terbesar di antara rute biner tabel `API_ROUTES` (sumber tunggal, bukan angka kedua). */
+export const MAX_BINARY_ROUTE_BYTES = Math.max(
+  ...Object.values(API_ROUTES).flatMap((def) => [
+    def.rawBody?.maxBytes ?? 0,
+    def.multipart?.maxBytes ?? 0,
+  ]),
+);
+
+/**
+ * Batas global `Bun.serve` (`maxRequestBodySize`; bawaan Bun 128 MB terlalu longgar: badan dimuat ke memori sebelum
+ * autentikasi; di atasnya Bun membalas 413 tanpa menjalankan aplikasi) = yang terbesar antara rute biner terbesar
+ * (+ overhead) dan `/sync`. Selama `/sync` memakai 16 MB, batas global efektif tetap 16 MB; ia turun ke
+ * ~10 MB begitu `SYNC_MAX_BODY_BYTES` diturunkan di T25. Rute REST JSON dibatasi `MAX_JSON_BODY_BYTES`, rute biner
+ * oleh `maxBytes` masing-masing, keduanya saat dibaca (setelah sesi diperiksa).
+ */
+export const MAX_REQUEST_BODY_BYTES = Math.max(
+  MAX_BINARY_ROUTE_BYTES + BINARY_BODY_OVERHEAD_BYTES,
+  SYNC_MAX_BODY_BYTES,
+);
 
 /**
  * Membaca badan sebagai byte dengan batas, TANPA mempercayai `content-length` (tidak ada pada badan chunked, dan

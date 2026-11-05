@@ -2,7 +2,7 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
 import { type ErrorBody, toErrorBody } from '@server/core/router';
-import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
+import { readTextLimited, SYNC_MAX_BODY_BYTES } from '@server/http/body';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import { authenticateSync, UNKNOWN_CLIENT_IP } from './auth';
 
@@ -115,7 +115,7 @@ export async function handleSyncRequest(
   // dan dihentikan di batas, termasuk badan chunked tanpa content-length.
   const body = await readTextLimited(
     request,
-    Math.min(SYNC_LIMITS.bodyChars * 4, MAX_REQUEST_BODY_BYTES),
+    Math.min(SYNC_LIMITS.bodyChars * 4, SYNC_MAX_BODY_BYTES),
   );
   const result = await handleSync(env, body, routes, clientIp);
   return new Response(JSON.stringify(result), {

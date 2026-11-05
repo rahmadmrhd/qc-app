@@ -26,7 +26,7 @@ Hasil pembacaan kode saat menyusun rencana; spek §6/§7 menandainya **[saya]**:
 - VPS dipakai bersama: **jangan menyentuh** container, blok nginx, atau firewall aplikasi lain; semua berkas QC di `/opt/qc/<dev|exec>/`; periksa `docker ps`/`ss -tlnp` sebelum membuat apa pun.
 - Environment GitHub: **`dev`** (staging) dan **`exec`** (production). Rahasia aplikasi hanya di `.env` VPS (izin 600), di GitHub hanya kunci SSH deploy.
 - REST: dasar `/api/v1`, `application/problem+json` (RFC 9457) dengan ekstensi `code`, `requestId`, `fields`; `ETag`/`If-Match`; kursor `?cursor=&limit=`; cookie sesi `HttpOnly; Secure; SameSite=Lax` + header `X-Requested-With: qc` pada metode non-aman; sinkron Desktop `Authorization: Bearer`, API versi 2, 10 token salah/10 menit memblokir 10 menit.
-- Cadangan: nama `qc-backup-YYYYMMDD-HHmm.sql.gz`, sekali per malam, retensi **7 harian + 4 mingguan**, **tidak pernah** menghapus bila salinan tersisa < minimum, email ke pemilik bila terbaru > **36 jam**; badan jembatan ≤ 1.048.576 karakter.
+- Cadangan: nama `qc-backup-YYYYMMDD-HHmm.sql.gz`, sekali per malam, retensi **7 harian + 4 mingguan**, **tidak pernah** menghapus bila salinan tersisa < minimum, email ke pemilik bila terbaru > **36 jam**; badan per permintaan jembatan ≤ 1.048.576 karakter (tetap; berkas dikirim berpotongan, T30a). Batas badan JSON REST 2 MB (spek §19 butir 4, 2026-11-06); batas berkas/gambar 10 MB di tepi dinaikkan bersama T30a (spek §19 butir 5).
 - IP klien dari `CF-Connecting-IP` **hanya** bila koneksi datang dari loopback (nginx).
 - Aturan kode yang ada tetap: komentar Indonesia, Biome, `bun run check` hijau sebelum commit, `gas/dist` tak pernah diedit, logika murni di `shared/` tanpa API runtime.
 - Commit: pesan gaya repo (`feat(server): …`), akhiri dengan baris `Co-Authored-By` yang berlaku; jangan commit rahasia (`.env*`, kunci).
@@ -377,7 +377,7 @@ Aturan umum (ruling yang diterapkan): rute `create` mendaftarkan operasi kedua d
 ### Task 21: Berkas biner (hapus base64 dari kabel)
 
 **Files:** Modify: `shared/rpc.ts` (hapus `base64` dari `UploadFileInput`, `FileContentDto`, `UploadQrPdfInput`, `ExportQrDesignInput`, `QrFileDto`; ganti dengan `bytes: Uint8Array`/`Blob` di sisi kernel), `shared/api.ts` (`binary`), `server/src/http/rest.ts` (pembaca badan biner/multipart, penulis aliran), modul `files` dan `qrcode` (validator, layanan, jembatan: base64 tetap hanya di `bridge-client` ke GAS), FE `modules/files/**`, `modules/qrcode/**`
-- Batas ukuran tetap seperti sekarang (periksa konstanta yang ada; jangan menaikkan). Unggah: `POST /files` (badan mentah, `Content-Type` = mime, `width/height` di query), `POST /qrcode-documents` (PDF mentah), `POST /qrcodes/{id}/exports` (multipart: `pdf`, `png`). Unduh: `GET /files/{id}` dan `GET /qrcodes/{id}/files/{kind}` mengalirkan byte dengan `Content-Type` benar, `Content-Disposition` untuk QR, `Cache-Control: private, max-age=…` (file gambar: `immutable`), `ETag` + 304.
+- Batas ukuran tetap seperti saat T21 (periksa konstanta yang ada; jangan menaikkan di T21). Diperbarui 2026-11-06 (spek §19 butir 5): batas berkas/gambar menjadi 10 MB bersama T30a, bukan sebelumnya; batas JSON REST 2 MB (§19 butir 4). Unggah: `POST /files` (badan mentah, `Content-Type` = mime, `width/height` di query), `POST /qrcode-documents` (PDF mentah), `POST /qrcodes/{id}/exports` (multipart: `pdf`, `png`). Unduh: `GET /files/{id}` dan `GET /qrcodes/{id}/files/{kind}` mengalirkan byte dengan `Content-Type` benar, `Content-Disposition` untuk QR, `Cache-Control: private, max-age=…` (file gambar: `immutable`), `ETag` + 304.
 - Tes: melebihi batas → 413 `problem+json` TANPA membaca seluruh badan ke memori (alirkan dan potong); mime tidak diizinkan → 422; unduh memberi `Content-Type`, `ETag`, 304 pada `If-None-Match`; izin tetap diperiksa SEBELUM cache berkas; byte yang diunggah = byte yang diunduh (round trip, termasuk gambar ≥ 1 MB); multipart tanpa bagian `png` → 422; FE `modules/files` tes unggah memakai `Blob`; tak ada `base64` tersisa di `shared/rpc.ts` selain DTO jembatan (grep jadi tes).
 
 ### Task 22: `auth` — `GET /me`
@@ -426,9 +426,15 @@ Aturan umum (ruling yang diterapkan): rute `create` mendaftarkan operasi kedua d
 
 # FASE 5 — Cadangan ke Drive
 
+### Task 30a: Unggah berpotongan di jembatan + batas berkas 10 MB (spek §19 butir 5; keputusan pemilik 2026-11-06, opsi A)
+
+**Files:** Modify: `bridge/src/drive.ts` (+ aksi potongan: mulai/tambah/selesai/batal, berkas baru baru terlihat setelah potongan lengkap dan checksum cocok), `bridge/src/dispatch.ts`, `server/src/core/bridge-http.ts` + `bridge-client.ts` (kirim berkas berpotongan, tiap permintaan tetap ≤ `BRIDGE_MAX_BODY_CHARS`), `shared/files.ts` (`MAX_IMAGE_BYTES` batas tepi 10 MB; target pengecilan FE TIDAK ikut naik), `shared/qrcode.ts`, `shared/api.ts` (`maxBytes`; `api.test.ts` menjaga kesamaan dengan konstanta), modul `files` dan `qrcode` (layanan memakai klien berpotongan; `MAX_REQUEST_BODY_BYTES` mengikuti tabel secara otomatis)
+- Tes: berkas 9 MB lolos utuh lewat jembatan palsu (byte masuk = byte keluar); potongan hilang atau tertukar urutan ditolak TANPA berkas setengah jadi di Drive; 10 MB + 1 byte → 413 problem+json tanpa membaca seluruh badan; target pengecilan gambar di FE tak berubah; badan tiap permintaan ke jembatan < 1.048.576 karakter.
+- Dikerjakan SEBELUM T30 (dump cadangan memakai jalur yang sama) dan hanya bersamaan dengan kenaikan batas tepi. Tidak dikerjakan sekarang.
+
 ### Task 30: Dump malam, potong, unggah, `drive.listFolder`
 **Files:** Create: `server/src/modules/backup/{dump,upload,service}.ts` (+ tes), `bridge/src/backup.ts`; Modify: `server/src/jobs/runner.ts` (jadwal 02:00 WIB), `bridge/src/dispatch.ts` (+ `drive.listFolder`), `docs/setup-bridge.md`, `Dockerfile` (`mariadb-client`)
-- Dump `mariadb-dump --single-transaction --routines` → gzip → potongan ≤ 700.000 byte (`…sql.gz.part001`) + manifest JSON (daftar bagian, ukuran, SHA-256 per bagian dan total) ke folder Drive; folder masuk `ALLOWED_FOLDER_IDS`. Tes: potongan menyambung kembali identik dengan dump; badan tiap unggahan < 1.048.576 karakter; unggahan gagal → dump lokal tetap ada dan job `failed` dapat diulang; di VPS hanya 3 salinan terakhir.
+- Unggah memakai jalur berpotongan dari T30a. Dump `mariadb-dump --single-transaction --routines` → gzip → potongan ≤ 700.000 byte (`…sql.gz.part001`) + manifest JSON (daftar bagian, ukuran, SHA-256 per bagian dan total) ke folder Drive; folder masuk `ALLOWED_FOLDER_IDS`. Tes: potongan menyambung kembali identik dengan dump; badan tiap unggahan < 1.048.576 karakter; unggahan gagal → dump lokal tetap ada dan job `failed` dapat diulang; di VPS hanya 3 salinan terakhir.
 
 ### Task 31: Pemulihan teruji
 **Files:** Create: `scripts/restore-backup.ts` (+ tes)

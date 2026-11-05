@@ -8,7 +8,7 @@ import {
   readCookie,
 } from '@server/core/router';
 import { SESSION_COOKIE } from '@server/core/session';
-import { MAX_REQUEST_BODY_BYTES, readBytesLimited, readTextLimited } from '@server/http/body';
+import { MAX_JSON_BODY_BYTES, readBytesLimited, readTextLimited } from '@server/http/body';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { type AppBindings, newRequestId } from '@server/http/security';
 import {
@@ -73,7 +73,7 @@ export function listOperations(): Operation[] {
 
 /** Badan JSON dengan batas byte (413 bila terlampaui, 400 bila bukan JSON); badan kosong = `undefined`. */
 async function readJsonBody(request: Request): Promise<unknown> {
-  const text = await readTextLimited(request, MAX_REQUEST_BODY_BYTES);
+  const text = await readTextLimited(request, MAX_JSON_BODY_BYTES);
   if (text === undefined) {
     throw Object.assign(appError('VALIDATION', 'Badan permintaan terlalu besar'), { status: 413 });
   }
