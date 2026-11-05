@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, StrictMode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -46,6 +46,25 @@ test('useFileUrl melepas URL objek saat komponen lepas', async () => {
   expect(revokeObjectURL).not.toHaveBeenCalled();
   unmount();
   expect(revokeObjectURL).toHaveBeenCalledWith('blob:test/1-image/png');
+});
+
+test('useFileUrl aman StrictMode: tak ada URL objek bocor, dan URL yang dipakai tidak sudah di-revoke', async () => {
+  let counter = 0;
+  createObjectURL.mockImplementation(() => `blob:test/${++counter}`);
+  apiMock.mockResolvedValue({ id: 'f1', mime: 'image/png', bytes: new Uint8Array([1]) });
+  const base = makeWrapper();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <StrictMode>{base({ children })}</StrictMode>
+  );
+  const { result, unmount } = renderHook(() => useFileUrl('f1'), { wrapper });
+  await waitFor(() => expect(result.current.url).not.toBeNull());
+  const live = result.current.url as string;
+  expect(revokeObjectURL.mock.calls.map(([url]) => url)).not.toContain(live);
+  unmount();
+  // setiap URL yang pernah dibuat akhirnya di-revoke tepat sekali: tidak ada yang bocor
+  const created = createObjectURL.mock.results.map((item) => item.value as string);
+  const revoked = revokeObjectURL.mock.calls.map(([url]) => url as string);
+  expect([...revoked].sort()).toEqual([...created].sort());
 });
 
 test('useFileUrl menandai galat tanpa URL', async () => {
