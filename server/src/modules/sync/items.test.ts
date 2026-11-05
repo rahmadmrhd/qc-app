@@ -1,19 +1,17 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
-import type { DbStatement } from '@server/core/db';
-import type { ItemRow } from '@server/modules/item/repo';
-import { ITEM_COLUMNS, toItem } from '@server/modules/item/repo';
+import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { saveItem } from '@server/modules/item/service';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
 import { handleSync, handleSyncRequest } from './handler';
-import { brandNameMap, driveIdsByFile, toWireItem } from './items';
 import { validateSyncPull } from './pull';
 import { syncRoutes } from './routes';
 
 const TOKEN = 't0k3n'.repeat(8);
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
+// Banyak tes memanggil MariaDB lewat jaringan (terowongan SSH saat dev).
+setDefaultTimeout(60_000);
+
 let env: TestEnv;
 let folder: string;
 
@@ -27,7 +25,7 @@ beforeEach(async () => {
   env.clock.set(Date.parse('2026-10-15T00:00:00.000Z'));
   folder = 'F1';
   env.BRIDGE.state.folders.add(folder);
-  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('DRIVE_FOLDER_ID', ?)")
+  await env.DB.prepare("INSERT INTO settings (`key`, value) VALUES ('DRIVE_FOLDER_ID', ?)")
     .bind(folder)
     .run();
 });
@@ -39,7 +37,7 @@ async function call(method: string, payload: unknown): Promise<Out> {
     JSON.stringify({ v: 1, method, token: TOKEN, payload }),
     syncRoutes(),
   );
-  // Seperti di kabel: data berbentuk teks JSON (halaman tarik) diurai lewat `toJSON`.
+  // Seperti di kabel: hasil diserialisasi JSON lalu diurai.
   return JSON.parse(JSON.stringify(result)) as Out;
 }
 const push = (items: unknown[], extra: Record<string, unknown> = {}) =>
@@ -61,7 +59,7 @@ async function pullPage(payload: unknown) {
 }
 async function prime(resource: 'brands' | 'items', count: number) {
   await env.DB.prepare(
-    'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON CONFLICT (resource) DO UPDATE SET seq = excluded.seq',
+    'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE seq = VALUES(seq)',
   )
     .bind(resource, count, '2026-01-01T00:00:00.000Z')
     .run();
@@ -81,7 +79,7 @@ async function audits() {
 }
 async function filesRows() {
   const rows = await env.DB.prepare(
-    'SELECT id, drive_id, owner_type, owner_id, created_by FROM files ORDER BY rowid',
+    'SELECT id, drive_id, owner_type, owner_id, created_by FROM files ORDER BY created_at, id',
   ).all<Entry>();
   return rows.results;
 }
@@ -216,27 +214,9 @@ describe('pull', () => {
     ).toBe(50);
     expect(validateSyncPull({ limit: 500 }, ['detail']).limit).toBe(500);
   });
-
-  test('P6: pull 500 item dengan field berat tetap murah dan memakai sedikit kueri D1', async () => {
-    await seedBrand(env, 'A', { syncRev: 1 });
-    const statements: DbStatement[] = [];
-    for (let i = 1; i <= 500; i++) {
-      statements.push(
-        env.DB.prepare(
-          "INSERT INTO items (id, brand_id, model, key, status, sync_rev, detail_md) VALUES (?, 'brand-a', ?, ?, 'active', ?, 'teks')",
-        ).bind(`i${i}`, `M${i}`, `a m${i}`, i),
-      );
-    }
-    for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
-    const measured = await measureCpu(() =>
-      call('sync.items.pull', { limit: 200, include: ['detail', 'stickers', 'accessories'] }),
-    );
-    expect(measured.result.data.items).toHaveLength(50); // dipotong ke WORKER_PULL_MAX_WITH_DETAIL
-    expect(measured.ms).toBeLessThan(20);
-  });
 });
 
-describe('pull: badan kabel disusun SQLite setara toWireItem', () => {
+describe('pull: bentuk kabel yang dikirim Desktop (disusun di aplikasi lewat toWireItem)', () => {
   const ALL = ['detail', 'stickers', 'accessories'];
   const LS = String.fromCharCode(0x2028);
   const SMILEY = String.fromCodePoint(0x1f600);
@@ -305,26 +285,104 @@ describe('pull: badan kabel disusun SQLite setara toWireItem', () => {
     }
   }
 
-  async function expectedWire(include: string[]): Promise<Entry[]> {
-    const rows = (
-      await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items ORDER BY sync_rev`).all<ItemRow>()
-    ).results;
-    const records = rows.map(toItem);
-    const names = await brandNameMap(env);
-    const driveByFile = await driveIdsByFile(env, records, include);
-    return records.map((record) => toWireItem(record, names, driveByFile, include));
-  }
+  const byUid = (items: Entry[], uid: string) => items.find((item) => item.uid === uid) as Entry;
 
-  for (const include of [[], ['detail'], ['stickers'], ['accessories'], ALL]) {
-    test(`include=${JSON.stringify(include)}`, async () => {
+  test('item kaya, semua field berat: nilai, urutan field, dan urutan galeri/stiker persis sesuai kontrak', async () => {
+    await messyRows();
+    const page = await pullPage({ include: ALL });
+    expect(page).toMatchObject({ nextRev: 6, hasMore: false });
+    expect(page.items.map((item) => item.uid)).toEqual([
+      'i-rich',
+      'i-plain',
+      'i-empty',
+      'i-junk',
+      'i-junk2',
+      'i-nobrand',
+    ]);
+    const rich = byUid(page.items, 'i-rich');
+    // urutan field kabel stabil: dasar, lalu detail, stiker, kelengkapan
+    expect(Object.keys(rich)).toEqual([
+      'uid',
+      'id',
+      'merk',
+      'tipe',
+      'isCountryLock',
+      'images',
+      'active',
+      'rev',
+      'detail',
+      'stickers',
+      'accessories',
+    ]);
+    expect(rich).toMatchObject({
+      uid: 'i-rich',
+      id: '77',
+      merk: 'Ubiquiti',
+      tipe: 'Model rich',
+      isCountryLock: true,
+      // urutan galeri terjaga; berkas tak tercatat ("gaib") dibuang
+      images: ['DRV3', 'DRV1', 'DRV2'],
+      active: true,
+      rev: 1,
+      // hanya stiker bernama; catatan bukan teks = ''; berkas tak dikenal/kosong = null
+      stickers: [
+        { name: 'Label', note: 'n', image: 'DRV2' },
+        { name: 'Tanpa berkas', note: '', image: null },
+        { name: 'Berkas gaib', note: '', image: null },
+        { name: 'Berkas kosong', note: '', image: null },
+      ],
+      // hanya kelengkapan bernama dengan qty bilangan bulat >= 1
+      accessories: [
+        { name: 'Kabel', qty: 2 },
+        { name: 'Rak', qty: 999 },
+      ],
+    });
+    // detail: rujukan berkas dikembalikan sebagai drive:<id>; tidak ada qcfile: pada gambar yang dikenal
+    expect(rich.detail).toContain('![a](drive:DRV3)');
+    expect(rich.detail).toContain('![b](drive:DRV1)');
+    expect(rich.detail).not.toContain('(qcfile:f3)');
+    expect(rich.detail).not.toContain('(qcfile:f1)');
+    // karakter khusus (kutip, tab, U+2028, emoji) utuh
+    expect(rich.detail).toContain(`baris dua\ttab ${LS} é${SMILEY}`);
+    expect(rich.detail).toContain('Baris "kutip"  miring');
+  });
+
+  test('item lain: nonaktif -> active:false; kolom kosong/rusak -> larik kosong; merk hilang -> merk kosong', async () => {
+    await messyRows();
+    const page = await pullPage({ include: ALL });
+    expect(byUid(page.items, 'i-plain')).toMatchObject({
+      active: false,
+      id: null,
+      isCountryLock: false,
+      detail: 'Tanpa rujukan: "kutip",  dan baris\nbaru',
+    });
+    for (const uid of ['i-empty', 'i-junk', 'i-junk2']) {
+      expect(byUid(page.items, uid)).toMatchObject({ images: [], stickers: [], accessories: [] });
+    }
+    expect(byUid(page.items, 'i-empty').detail).toBe('');
+    expect(byUid(page.items, 'i-nobrand').merk).toBe('');
+  });
+
+  for (const include of [[], ['detail'], ['stickers'], ['accessories']]) {
+    test(`include=${JSON.stringify(include)}: hanya field berat yang diminta yang ikut`, async () => {
       await messyRows();
       const page = await pullPage({ include });
-      expect(page.items).toEqual(await expectedWire(include));
-      expect(page).toMatchObject({ nextRev: 6, hasMore: false });
+      const keys = Object.keys(byUid(page.items, 'i-rich'));
+      expect(keys).toEqual([
+        'uid',
+        'id',
+        'merk',
+        'tipe',
+        'isCountryLock',
+        'images',
+        'active',
+        'rev',
+        ...include,
+      ]);
     });
   }
 
-  test('badan HTTP /sync memakai teks JSON apa adanya dan sama dengan serialisasi biasa', async () => {
+  test('badan HTTP /sync = amplop { ok, data } yang sama dengan hasil handler', async () => {
     await messyRows();
     const payload = { include: ALL };
     const body = JSON.stringify({ v: 1, method: 'sync.items.pull', token: TOKEN, payload });
@@ -333,6 +391,7 @@ describe('pull: badan kabel disusun SQLite setara toWireItem', () => {
       new Request('https://x/sync', { method: 'POST', body }),
       syncRoutes(),
     );
+    expect(response.status).toBe(200);
     expect(JSON.parse(await response.text())).toEqual({ ok: true, data: await pullPage(payload) });
   });
 });

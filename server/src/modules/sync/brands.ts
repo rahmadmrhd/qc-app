@@ -2,7 +2,6 @@ import { writeAudit } from '@server/core/audit';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { touchCache } from '@server/core/mem-cache';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { listBrands } from '@server/modules/brand/repo';
 import { brandSnapshot, saveBrand, setBrandStatus } from '@server/modules/brand/service';
@@ -113,7 +112,6 @@ async function freshBrand(env: Env, id: string): Promise<BrandRecord> {
 
 async function mapExternalId(env: Env, id: string, externalId: string): Promise<void> {
   // Pemetaan id MySQL adalah pembukuan: tidak menaikkan revisi dan tidak diaudit.
-  touchCache('brands');
   await env.DB.prepare('UPDATE brands SET external_id = ? WHERE id = ?').bind(externalId, id).run();
 }
 

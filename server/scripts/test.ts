@@ -25,6 +25,8 @@ const proc = Bun.spawn(
     'test',
     '--preload',
     './test-support/global-setup.ts',
+    '--timeout',
+    '30000',
     ...[...files].sort().map((file) => `./${file}`),
     ...process.argv.slice(2),
   ],

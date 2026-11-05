@@ -14,8 +14,11 @@ export const PORTED: readonly string[] = [
   'src/modules/item',
   'src/modules/jobs',
   'src/modules/qrcode',
+  'src/modules/sync',
   'src/jobs',
   'src/http',
+  'src/index.test.ts',
+  'src/routes.test.ts',
   'test-support',
 ];
 

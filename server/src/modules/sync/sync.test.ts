@@ -1,11 +1,9 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
-import type { DbStatement } from '@server/core/db';
-import { D1_QUOTA_MESSAGE } from '@server/core/router';
+import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { appError } from '@server/core/errors';
 import { signSessionToken } from '@server/core/session';
 import { CSRF_HEADER, CSRF_VALUE } from '@server/http/security';
 import { app } from '@server/index';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
 import { getSyncFile, planDriveFiles, probeDriveIds, registerDriveFiles } from './files';
@@ -15,6 +13,9 @@ import { currentSyncRev } from './state';
 
 const TOKEN = 't0k3n'.repeat(8);
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
+// Banyak tes memanggil MariaDB lewat jaringan (terowongan SSH saat dev).
+setDefaultTimeout(60_000);
+
 let env: TestEnv;
 
 beforeEach(async () => {
@@ -33,7 +34,7 @@ async function call(method: string, payload: unknown): Promise<Out> {
 
 async function prime(resource: 'brands' | 'items', count: number): Promise<void> {
   await env.DB.prepare(
-    'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON CONFLICT (resource) DO UPDATE SET seq = excluded.seq',
+    'INSERT INTO sync_state (resource, seq, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE seq = VALUES(seq)',
   )
     .bind(resource, count, '2026-01-01T00:00:00.000Z')
     .run();
@@ -131,12 +132,28 @@ describe('handler', () => {
     await ping('salah-9');
     expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
     const block = await env.DB.prepare(
-      "SELECT count FROM rate_limits WHERE key = 'sync:blocked'",
+      "SELECT count FROM rate_limits WHERE `key` = 'sync:blocked'",
     ).first();
     expect(block).not.toBeNull();
     // blokir berakhir setelah 10 menit
     env.clock.advance(10 * 60 * 1000 + 1);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('kegagalan serentak dihitung atomik (tanpa pembaruan hilang): 12 token salah paralel memblokir; hitungan di jendela = 0 setelah blokir', async () => {
+    const results = await Promise.all(Array.from({ length: 12 }, (_, i) => ping(`paralel-${i}`)));
+    expect(results.every((r) => !r.ok)).toBe(true);
+    expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+    const rows = await env.DB.prepare('SELECT `key`, count FROM rate_limits ORDER BY `key`').all<{
+      key: string;
+      count: number;
+    }>();
+    // blokir tercatat; penghitung kegagalan dihapus saat blokir (hanya baris sync:blocked yang tersisa),
+    // atau bila beberapa permintaan sempat mencatat sesudahnya hitungannya kecil (< 10)
+    const names = rows.results.map((r) => r.key);
+    expect(names).toContain('sync:blocked');
+    const fails = rows.results.find((r) => r.key === 'sync:fails');
+    if (fails) expect(Number(fails.count)).toBeLessThan(10);
   });
 
   test('jendela 10 menit: kegagalan yang jarang tidak menumpuk; 10 dalam jendela memblokir', async () => {
@@ -185,21 +202,19 @@ describe('handler', () => {
     expect(JSON.stringify(result)).not.toContain('rahasia');
   });
 
-  test('kuota harian D1 habis tetap INTERNAL (kontrak Desktop) dengan pesan kuota', async () => {
+  test('UNAVAILABLE dari handler dipetakan INTERNAL dengan pesan tetap (kontrak Desktop tidak mengenal UNAVAILABLE)', async () => {
     const routes = {
-      'sync.quota': syncRoute({
+      'sync.down': syncRoute({
         validate: () => null,
         handler: () => {
-          throw new Error(
-            "D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan",
-          );
+          throw appError('UNAVAILABLE', 'Layanan sedang tidak dapat dihubungi');
         },
       }),
     };
-    const result = await send({ v: 1, method: 'sync.quota', token: TOKEN }, routes);
+    const result = await send({ v: 1, method: 'sync.down', token: TOKEN }, routes);
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'INTERNAL', message: D1_QUOTA_MESSAGE },
+      error: { code: 'INTERNAL', message: 'Layanan sedang tidak dapat dihubungi' },
     });
   });
 
@@ -340,7 +355,7 @@ describe('brands', () => {
     const [renamed] = await results([{ uid: 'brand-ubiquity', name: 'Ubiquiti', baseRev: 5 }]);
     expect(renamed?.status).toBe('updated');
     expect((renamed?.rev ?? 0) > 5).toBe(true);
-    const item = await env.DB.prepare("SELECT key, sync_rev FROM items WHERE id = 'i1'").first<{
+    const item = await env.DB.prepare("SELECT `key`, sync_rev FROM items WHERE id = 'i1'").first<{
       key: string;
       sync_rev: number;
     }>();
@@ -477,7 +492,7 @@ describe('brands', () => {
 describe('files', () => {
   async function folderWithBridge(): Promise<string> {
     await env.DB.prepare(
-      "INSERT INTO settings (key, value) VALUES ('DRIVE_FOLDER_ID', 'F1')",
+      "INSERT INTO settings (`key`, value) VALUES ('DRIVE_FOLDER_ID', 'F1')",
     ).run();
     env.BRIDGE.state.folders.add('F1');
     return 'F1';
@@ -507,7 +522,7 @@ describe('files', () => {
       error: { code: 'NOT_FOUND' },
     });
     const inside = await driveFile(folder, 'c.png', 'image/png', PNG);
-    await env.DB.prepare("DELETE FROM settings WHERE key = 'DRIVE_FOLDER_ID'").run();
+    await env.DB.prepare("DELETE FROM settings WHERE `key` = 'DRIVE_FOLDER_ID'").run();
     expect(await call('sync.file.get', { driveId: inside })).toMatchObject({
       ok: false,
       error: { code: 'NOT_FOUND' },
@@ -577,24 +592,5 @@ describe('files', () => {
     expect(plan.pending[0]).toMatchObject({ driveId: drive, ownerType: '' });
     const again = await planDriveFiles(env, [drive], await probeDriveIds(env, [drive]), 'item-1');
     expect(again.pending).toHaveLength(0);
-  });
-});
-
-describe('CPU kasar (P6)', () => {
-  test('pull merk 500 baris dan ping tetap murah; autentikasi sah = satu kueri D1', async () => {
-    const statements: DbStatement[] = [];
-    for (let i = 0; i < 500; i++) {
-      statements.push(
-        env.DB.prepare(
-          "INSERT INTO brands (id, name, key, status, sync_rev) VALUES (?, ?, ?, 'active', ?)",
-        ).bind(`b${i}`, `Merk ${i}`, `merk ${i}`, i + 1),
-      );
-    }
-    for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
-    const pull = await measureCpu(() => call('sync.brands.pull', { limit: 500 }));
-    expect(pull.result.data.brands).toHaveLength(500);
-    expect(pull.ms).toBeLessThan(15);
-    const ping = await measureCpu(() => send({ v: 1, method: 'sync.ping', token: TOKEN }));
-    expect(ping.ms).toBeLessThan(5);
   });
 });

@@ -5,7 +5,6 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
-import { PreEncodedJson } from '@server/core/pre-encoded';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { brandsFromResult, brandsStatement, listBrands } from '@server/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@server/modules/item/repo';
@@ -84,7 +83,7 @@ export async function brandNameMap(env: Env): Promise<Map<string, string>> {
   return new Map((await listBrands(env, { fresh: true })).map((brand) => [brand.id, brand.name]));
 }
 
-/** id berkas -> id Drive, hanya untuk berkas yang dirujuk `items` (dipecah ≤ 90 parameter per kueri D1). */
+/** id berkas -> id Drive, hanya untuk berkas yang dirujuk `items` (dipecah ≤ 90 parameter per kueri). */
 export async function driveIdsByFile(
   env: Env,
   items: readonly ItemRecord[],
@@ -115,147 +114,33 @@ export async function driveIdsByFile(
   return map;
 }
 
-/**
- * Id Drive gambar galeri sebagai larik JSON, dihitung SQLite (urut galeri; berkas tak dikenal dilewati, seperti
- * `toWireItem`). Jalur cepat `'[]'` menghindari `json_each` untuk item tanpa gambar; kolom bukan larik JSON
- * dibaca sebagai kosong (seperti `parseStrings`).
- */
-const PULL_IMAGES_SQL = `CASE
-  WHEN i.attachments = '[]' THEN '[]'
-  WHEN json_valid(i.attachments) = 0 THEN '[]'
-  WHEN json_type(i.attachments) <> 'array' THEN '[]'
-  ELSE COALESCE((SELECT json_group_array(drive_id) FROM (SELECT f.drive_id AS drive_id FROM json_each(i.attachments) a JOIN files f ON f.id = a.value ORDER BY a.key)), '[]')
-END`;
-
-/**
- * Stiker kabel (`name`, `note`, `image` = id Drive atau null) dari kolom `stickers`, dengan aturan yang sama
- * dengan `parseStickers` (hanya objek bernama; catatan bukan teks = ''; berkas tak dikenal = null).
- */
-const PULL_STICKERS_SQL = `CASE
-  WHEN json_valid(i.stickers) = 0 THEN '[]'
-  WHEN json_type(i.stickers) <> 'array' THEN '[]'
-  ELSE COALESCE((SELECT json_group_array(json(w)) FROM (
-    SELECT json_object(
-      'name', trim(json_extract(e.value, '$.name')),
-      'note', CASE WHEN json_type(e.value, '$.note') = 'text' THEN trim(json_extract(e.value, '$.note')) ELSE '' END,
-      'image', (SELECT f.drive_id FROM files f WHERE f.id = trim(json_extract(e.value, '$.fileId')))
-    ) AS w
-    FROM json_each(i.stickers) e
-    WHERE CASE WHEN e.type = 'object' THEN json_type(e.value, '$.name') = 'text' AND trim(json_extract(e.value, '$.name')) <> '' ELSE 0 END
-    ORDER BY e.key)), '[]')
-END`;
-
-/** Kelengkapan kabel (`name`, `qty`) dengan aturan `parseAccessories` (objek bernama, qty bilangan bulat >= 1). */
-const PULL_ACCESSORIES_SQL = `CASE
-  WHEN json_valid(i.accessories) = 0 THEN '[]'
-  WHEN json_type(i.accessories) <> 'array' THEN '[]'
-  ELSE COALESCE((SELECT json_group_array(json(w)) FROM (
-    SELECT json_object('name', trim(json_extract(e.value, '$.name')), 'qty', json_extract(e.value, '$.qty')) AS w
-    FROM json_each(i.accessories) e
-    WHERE CASE WHEN e.type = 'object' THEN json_type(e.value, '$.name') = 'text' AND trim(json_extract(e.value, '$.name')) <> ''
-      AND json_type(e.value, '$.qty') = 'integer' AND json_extract(e.value, '$.qty') >= 1 ELSE 0 END
-    ORDER BY e.key)), '[]')
-END`;
-
-/**
- * Badan kabel item disusun di SQLite sebagai teks JSON: Worker tidak lagi membuat objek per baris, memetakan
- * merk/gambar/stiker, lalu menyerialkan ulang (gerbang CPU: halaman 500 item). Nilai field sama dengan
- * `toWireItem` (acuan tes); nama merk dari `brands` pada kueri yang sama (selalu segar).
- */
-function pullHeadSql(include: readonly string[]): string {
-  const fields = [
-    `'uid', trim(i.id)`,
-    `'id', CASE WHEN trim(i.external_id) = '' THEN NULL ELSE trim(i.external_id) END`,
-    `'merk', COALESCE(trim(b.name), '')`,
-    `'tipe', trim(i.model)`,
-    `'isCountryLock', json(CASE WHEN trim(i.is_country_lock) = 'true' THEN 'true' ELSE 'false' END)`,
-    `'images', json(${PULL_IMAGES_SQL})`,
-    `'active', json(CASE WHEN trim(i.status) = 'inactive' THEN 'false' ELSE 'true' END)`,
-    `'rev', i.sync_rev`,
-  ];
-  if (include.includes('stickers')) fields.push(`'stickers', json(${PULL_STICKERS_SQL})`);
-  if (include.includes('accessories')) fields.push(`'accessories', json(${PULL_ACCESSORIES_SQL})`);
-  return `json_object(${fields.join(', ')})`;
+/** Halaman tarik item: bentuk kabel disusun di aplikasi lewat `toWireItem` (satu-satunya definisi bentuk kabel). */
+export interface SyncItemPage {
+  items: SyncWireItem[];
+  nextRev: number;
+  hasMore: boolean;
 }
 
-interface PullRow {
-  j: string;
-  rev: number;
-  /** `detail` sebagai literal string JSON; null bila memuat rujukan berkas (dipetakan di Worker, lihat `dr`). */
-  dj?: string | null;
-  /** Teks Markdown mentah, hanya untuk detail yang memuat rujukan `qcfile:`. */
-  dr?: string | null;
-}
-
-/** Kolom besar hanya dibaca bila diminta lewat `include`; detail tanpa rujukan berkas sudah berbentuk JSON. */
-function pullSql(include: readonly string[]): string {
-  const detail = include.includes('detail')
-    ? `, CASE WHEN instr(i.detail_md, '${FILE_SCHEME}') = 0 THEN json_quote(i.detail_md) END AS dj, CASE WHEN instr(i.detail_md, '${FILE_SCHEME}') > 0 THEN i.detail_md END AS dr`
-    : '';
-  return `SELECT ${pullHeadSql(include)} AS j, i.sync_rev AS rev${detail} FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.sync_rev > ? ORDER BY i.sync_rev ASC LIMIT ?`;
-}
-
-/** Id berkas -> id Drive untuk berkas yang dirujuk detail halaman ini (kosong bila tak ada rujukan). */
-async function driveIdsForRefs(
-  env: Env,
-  fileIds: ReadonlySet<string>,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  const all = [...fileIds];
-  if (all.length === 0) return map;
-  const statements: DbStatement[] = [];
-  for (let i = 0; i < all.length; i += 90) {
-    const chunk = all.slice(i, i + 90);
-    statements.push(
-      env.DB.prepare(
-        `SELECT id, drive_id FROM files WHERE id IN (${chunk.map(() => '?').join(',')})`,
-      ).bind(...chunk),
-    );
-  }
-  const results = await env.DB.batch<{ id: string; drive_id: string }>(statements);
-  for (const result of results) for (const row of result.results) map.set(row.id, row.drive_id);
-  return map;
-}
-
-export async function pullItems(env: Env, raw: unknown): Promise<PreEncodedJson> {
+export async function pullItems(env: Env, raw: unknown): Promise<SyncItemPage> {
   const input = validateSyncPull(raw, SYNC_ITEM_INCLUDABLE);
   // Halaman berindeks `items_sync_rev` (hanya baris > sinceRev, urut naik, limit+1 untuk hasMore).
-  const result = await env.DB.prepare(pullSql(input.include))
+  const result = await env.DB.prepare(
+    `SELECT ${ITEM_COLUMNS} FROM items WHERE sync_rev > ? ORDER BY sync_rev ASC LIMIT ?`,
+  )
     .bind(input.sinceRev, input.limit + 1)
-    .all<PullRow>();
-  const rows = result.results;
-  const count = Math.min(rows.length, input.limit);
-  const bodies: string[] = [];
-  if (!input.include.includes('detail')) {
-    for (let i = 0; i < count; i++) bodies.push((rows[i] as PullRow).j);
-  } else {
-    // Hanya detail yang memuat rujukan berkas yang perlu dipetakan di sini (satu kueri berkas untuk halaman).
-    const fileIds = new Set<string>();
-    for (let i = 0; i < count; i++) {
-      const row = rows[i] as PullRow;
-      if (row.dj == null) for (const id of extractFileRefs(row.dr ?? '')) fileIds.add(id);
-    }
-    const driveByFile = await driveIdsForRefs(env, fileIds);
-    for (let i = 0; i < count; i++) {
-      const row = rows[i] as PullRow;
-      const detail =
-        row.dj ??
-        JSON.stringify(
-          mapMarkdownRefs(
-            row.dr ?? '',
-            FILE_SCHEME,
-            DRIVE_REF_SCHEME,
-            (id) => driveByFile.get(id) ?? null,
-          ),
-        );
-      bodies.push(`${row.j.slice(0, -1)},"detail":${detail}}`);
-    }
-  }
-  const last = count > 0 ? (rows[count - 1] as PullRow) : undefined;
-  const nextRev = last ? Number(last.rev) : input.sinceRev;
-  return new PreEncodedJson(
-    `{"items":[${bodies.join(',')}],"nextRev":${nextRev},"hasMore":${rows.length > input.limit}}`,
-  );
+    .all<ItemRow>();
+  const page = result.results.slice(0, input.limit).map(toItem);
+  // Nama merk dan id Drive (gambar, stiker, rujukan detail) dimuat paralel untuk halaman ini.
+  const [names, driveByFile] = await Promise.all([
+    brandNameMap(env),
+    driveIdsByFile(env, page, input.include),
+  ]);
+  const last = page.at(-1);
+  return {
+    items: page.map((item) => toWireItem(item, names, driveByFile, input.include)),
+    nextRev: last ? last.syncRev : input.sinceRev,
+    hasMore: result.results.length > input.limit,
+  };
 }
 
 type Match =
@@ -265,14 +150,14 @@ type Match =
   | { kind: 'conflict'; existing: ItemRecord; fields: Record<string, string> };
 
 /**
- * Item yang dimuat SEKALI di awal `push` (satu round trip D1 untuk seluruh entri) dan dijaga selaras dengan
+ * Item yang dimuat SEKALI di awal `push` (satu `batch()` untuk seluruh entri) dan dijaga selaras dengan
  * tulisan permintaan ini. Pencarian per entri tidak lagi memakai kueri sendiri-sendiri.
  */
 interface ItemIndex {
   byId: Map<string, ItemRecord>;
   /** id MySQL -> item (hanya yang terpetakan). */
   byExternal: Map<string, ItemRecord>;
-  /** kunci item (huruf kecil, seperti kolom `key` NOCASE) -> item. */
+  /** kunci item (huruf kecil) -> item. */
   byKey: Map<string, ItemRecord>;
 }
 
@@ -302,7 +187,7 @@ function unindexItem(index: ItemIndex, item: ItemRecord): void {
 
 /**
  * Satu `batch` untuk seluruh pencarian uid / id MySQL / kunci semua entri (<= 90 parameter per kueri) DAN daftar
- * merk (langsung dari D1): satu round trip untuk keduanya.
+ * merk (langsung dari basis data): satu `batch()` untuk keduanya.
  */
 async function prefetchItems(
   env: Env,
@@ -329,7 +214,7 @@ async function prefetchItems(
   };
   add('id', uids);
   add('external_id', externals);
-  add('key', keys);
+  add('`key`', keys);
   const itemResults = statements.length;
   statements.push(brandsStatement(env));
   const results = await env.DB.batch<ItemRow>(statements);
@@ -547,8 +432,8 @@ async function upsertSyncItem(
     status,
     knownBrand: state.brandsByKey.get(normalizeKey(merged.brand)) ?? null,
   });
-  // Revisi yang dipakai baris datang dari `RETURNING sync_rev` pada INSERT/UPDATE item di batch yang sama
-  // (tanpa pernyataan tambahan); hanya pernyataan itu yang mengembalikan baris.
+  // Revisi yang dipakai baris datang dari `SELECT sync_rev` di akhir batch penulisan item (transaksi yang sama;
+  // lihat `readSyncRevStmt`); hanya pernyataan itu yang mengembalikan baris.
   const results = await batchGuarded(
     env.DB,
     plan.statements,

@@ -1,8 +1,6 @@
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
-import { settleCache } from '@server/core/mem-cache';
-import { PreEncodedJson } from '@server/core/pre-encoded';
 import { toErrorBody } from '@server/core/router';
 import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
@@ -92,10 +90,8 @@ export async function handleSync(
       code: body.code,
       ms: Date.now() - startedAt,
     });
-    // Kontrak QC Desktop (docs/api/desktop-sync.md) tidak mengenal UNAVAILABLE: kuota D1 habis tetap INTERNAL, pesan tetap jelas.
+    // Kontrak QC Desktop (docs/api/desktop-sync.md) tidak mengenal UNAVAILABLE: UNAVAILABLE dipetakan INTERNAL, pesan tetap jelas.
     return { ok: false, error: body.code === 'UNAVAILABLE' ? { ...body, code: 'INTERNAL' } : body };
-  } finally {
-    settleCache();
   }
 }
 
@@ -112,12 +108,7 @@ export async function handleSyncRequest(
   const declared = Number(request.headers.get('content-length') ?? '0');
   const body = declared > SYNC_LIMITS.bodyChars * 4 ? undefined : await request.text();
   const result = await handleSync(env, body, routes);
-  // Data yang sudah berbentuk teks JSON (mis. halaman tarik item) dikirim apa adanya, tanpa serialisasi ulang.
-  const text =
-    result.ok && result.data instanceof PreEncodedJson
-      ? `{"ok":true,"data":${result.data.text}}`
-      : JSON.stringify(result);
-  return new Response(text, {
+  return new Response(JSON.stringify(result), {
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });

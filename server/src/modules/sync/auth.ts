@@ -7,10 +7,10 @@ const FAIL_KEY = 'sync:fails';
 
 /** True bila pembatas sedang memblokir (10 salah dalam 10 menit memblokir 10 menit). */
 async function isBlocked(env: Env, now: number): Promise<boolean> {
-  const row = await env.DB.prepare('SELECT window_start FROM rate_limits WHERE key = ?')
+  const row = await env.DB.prepare('SELECT window_start FROM rate_limits WHERE `key` = ?')
     .bind(BLOCK_KEY)
     .first<{ window_start: number }>();
-  return row !== null && now - row.window_start < SYNC_LIMITS.blockSeconds * 1000;
+  return row !== null && now - Number(row.window_start) < SYNC_LIMITS.blockSeconds * 1000;
 }
 
 /**
@@ -20,21 +20,25 @@ async function isBlocked(env: Env, now: number): Promise<boolean> {
 async function recordFailure(env: Env, now: number): Promise<void> {
   try {
     const windowMs = SYNC_LIMITS.blockSeconds * 1000;
-    const row = await env.DB.prepare(
-      `INSERT INTO rate_limits (key, count, window_start) VALUES (?1, 1, ?2)
-       ON CONFLICT (key) DO UPDATE SET
-         count = CASE WHEN ?2 - window_start >= ?3 THEN 1 ELSE count + 1 END,
-         window_start = CASE WHEN ?2 - window_start >= ?3 THEN ?2 ELSE window_start END
-       RETURNING count`,
-    )
-      .bind(FAIL_KEY, now, windowMs)
-      .first<{ count: number }>();
-    if (row !== null && row.count >= SYNC_LIMITS.failedAttempts) {
+    // Naikkan hitungan dan baca nilainya dalam transaksi yang sama (kunci baris dari INSERT ... ON DUPLICATE KEY
+    // UPDATE ditahan sampai COMMIT, jadi SELECT membaca hitungan milik penulis ini). Jendela tetap: hitungan
+    // dimulai ulang bila jendela sebelumnya sudah lewat; di UPDATE, `count` dievaluasi sebelum `window_start`.
+    const [, read] = await env.DB.batch<{ count: number }>([
+      env.DB.prepare(
+        `INSERT INTO rate_limits (\`key\`, count, window_start) VALUES (?, 1, ?)
+       ON DUPLICATE KEY UPDATE
+         count = CASE WHEN ? - window_start >= ? THEN 1 ELSE count + 1 END,
+         window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
+      ).bind(FAIL_KEY, now, now, windowMs, now, windowMs, now),
+      env.DB.prepare('SELECT count FROM rate_limits WHERE `key` = ?').bind(FAIL_KEY),
+    ]);
+    const row = read?.results[0] ?? null;
+    if (row !== null && Number(row.count) >= SYNC_LIMITS.failedAttempts) {
       await env.DB.batch([
         env.DB.prepare(
-          'INSERT INTO rate_limits (key, count, window_start) VALUES (?1, 1, ?2) ON CONFLICT (key) DO UPDATE SET count = 1, window_start = ?2',
-        ).bind(BLOCK_KEY, now),
-        env.DB.prepare('DELETE FROM rate_limits WHERE key = ?').bind(FAIL_KEY),
+          'INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count = 1, window_start = ?',
+        ).bind(BLOCK_KEY, now, now),
+        env.DB.prepare('DELETE FROM rate_limits WHERE `key` = ?').bind(FAIL_KEY),
       ]);
     }
   } catch (error) {
