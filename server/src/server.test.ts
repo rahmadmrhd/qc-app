@@ -18,7 +18,7 @@ let staticDir: string;
 let env: TestEnv;
 let server: QcServer;
 
-function configFor(): Config {
+function configFor(extra: Record<string, string> = {}): Config {
   return loadConfig({
     DATABASE_URL: 'mysql://tidak-dipakai:x@127.0.0.1:1/tidak_ada',
     SESSION_SECRET: 'test-session-secret',
@@ -29,6 +29,7 @@ function configFor(): Config {
     BRIDGE_SECRET: 'test-bridge-secret',
     ADMIN_EMAIL: 'admin@gmail.com',
     STATIC_DIR: staticDir,
+    ...extra,
   });
 }
 
@@ -178,6 +179,66 @@ describe('createServer: IP klien dan pembatas /api/v1/sync/*', () => {
     expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:bb:ffff::9'))).toBe(false);
     expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:cc::1'))).toBe(true);
     expect(await limiterKeys()).toEqual(['sync:blocked:2001:db8:aa:bb::/64']);
+  });
+});
+
+describe('createServer: TRUSTED_PROXY daftar CIDR (I5, gateway bridge Docker)', () => {
+  const GATEWAY = '172.30.0.1';
+  let dockerServer: QcServer;
+  beforeEach(() => {
+    dockerServer = createServer(configFor({ TRUSTED_PROXY: '127.0.0.1/32,172.30.0.0/24' }), {
+      db: env.DB,
+      background: false,
+      env: { NOW: env.NOW },
+    });
+  });
+  const syncFrom = (peer: string, token: string, forwarded?: string) =>
+    dockerServer.fetch(
+      new Request('http://localhost/api/v1/sync/ping', {
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(forwarded === undefined ? {} : { 'CF-Connecting-IP': forwarded }),
+        },
+      }),
+      peer,
+    );
+  const limiterKeys = async () =>
+    (
+      await env.DB.prepare('SELECT `key` FROM rate_limits WHERE count > 0 ORDER BY `key`').all<{
+        key: string;
+      }>()
+    ).results.map((row) => row.key);
+
+  test('peer = gateway bridge (di dalam CIDR) dipercaya: pembatas menghitung per IP klien dari header, bukan per gateway', async () => {
+    for (let i = 0; i < 10; i++) await syncFrom(GATEWAY, `salah-${i}`, '198.51.100.9');
+    // klien yang diblokir ditolak walau token benar; klien lain lewat gateway yang sama tetap dilayani
+    expect((await syncFrom(GATEWAY, TOKEN, '198.51.100.9')).status).not.toBe(200);
+    expect((await syncFrom(GATEWAY, TOKEN, '198.51.100.10')).status).toBe(200);
+    expect(await limiterKeys()).toEqual(['sync:blocked:198.51.100.9']);
+  });
+
+  test('peer di luar daftar tak bisa memalsukan CF-Connecting-IP (termasuk memakai alamat gateway)', async () => {
+    for (let i = 0; i < 10; i++) await syncFrom(ATTACKER, `salah-${i}`, `198.51.100.${i}`);
+    expect((await syncFrom(ATTACKER, TOKEN, '198.51.100.200')).status).not.toBe(200);
+    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`]);
+    // memalsukan header sebagai gateway tidak menolong: yang dihitung tetap peer
+    expect((await syncFrom('172.31.0.1', 'salah', GATEWAY)).status).toBe(401);
+    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`, 'sync:fails:172.31.0.1']);
+  });
+
+  test('loopback yang tidak ada di daftar tidak dipercaya', async () => {
+    const only = createServer(configFor({ TRUSTED_PROXY: '172.30.0.0/24' }), {
+      db: env.DB,
+      background: false,
+      env: { NOW: env.NOW },
+    });
+    await only.fetch(
+      new Request('http://localhost/api/v1/sync/ping', {
+        headers: { authorization: 'Bearer salah', 'CF-Connecting-IP': '198.51.100.9' },
+      }),
+      LOOPBACK,
+    );
+    expect(await limiterKeys()).toEqual(['sync:fails:127.0.0.1']);
   });
 });
 

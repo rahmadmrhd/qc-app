@@ -30,7 +30,7 @@ const server = Bun.serve(bunServeOptions(app, { host: config.host, port: config.
 console.log({
   evt: 'start',
   url: `http://${config.host}:${server.port}`,
-  trustedProxy: config.trustedProxy,
+  trustedProxy: config.trustedProxyText,
 });
 
 let shuttingDown = false;

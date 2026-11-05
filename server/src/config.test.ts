@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { ConfigError, DEFAULT_DB_POOL_SIZE, DEFAULT_PORT, loadConfig } from './config';
+import { DEFAULT_TRUSTED_PROXY, isTrustedPeer, parseTrustedProxy } from './http/proxy';
 
 const VALID: Record<string, string> = {
   DATABASE_URL: 'mysql://qc_dev:rahasia-db@127.0.0.1:33063/qc_dev',
@@ -29,7 +30,6 @@ describe('loadConfig', () => {
       databaseUrl: VALID.DATABASE_URL,
       port: DEFAULT_PORT,
       host: '127.0.0.1',
-      trustedProxy: 'loopback',
       dbPoolSize: DEFAULT_DB_POOL_SIZE,
       appOrigin: undefined,
       devLoginEmail: undefined,
@@ -38,19 +38,54 @@ describe('loadConfig', () => {
     expect(config.staticDir.replaceAll('\\', '/')).toMatch(/\/server\/dist$/);
   });
 
+  test('(I5) TRUSTED_PROXY: bawaan loopback; daftar CIDR diurai ketat', () => {
+    const byDefault = loadConfig(VALID);
+    expect(byDefault.trustedProxy).toEqual(parseTrustedProxy(DEFAULT_TRUSTED_PROXY) ?? []);
+    expect(isTrustedPeer('127.0.0.1', byDefault.trustedProxy)).toBe(true);
+    expect(isTrustedPeer('::1', byDefault.trustedProxy)).toBe(true);
+    expect(isTrustedPeer('172.30.0.1', byDefault.trustedProxy)).toBe(false);
+
+    const docker = loadConfig({ ...VALID, TRUSTED_PROXY: '127.0.0.1/32,172.30.0.0/24' });
+    expect(isTrustedPeer('172.30.0.1', docker.trustedProxy)).toBe(true);
+    expect(isTrustedPeer('172.31.0.1', docker.trustedProxy)).toBe(false);
+
+    // kosong/spasi = tidak diisi = bawaan loopback (bukan daftar kosong yang diam-diam menolak semua proxy)
+    expect(loadConfig({ ...VALID, TRUSTED_PROXY: '  ' }).trustedProxy).toEqual(
+      byDefault.trustedProxy,
+    );
+  });
+
+  test('(I5) TRUSTED_PROXY rusak membuat loadConfig gagal keras, tanpa membocorkan nilainya', () => {
+    for (const bad of [
+      'loopback', // kata kunci lama
+      'any',
+      '172.30.0.0', // tanpa prefiks
+      '172.30.0.0/33',
+      '10.0.0.5/24',
+      '127.0.0.1/32,',
+      '127.0.0.1/32,rusak-xyz',
+    ]) {
+      const error = errorOf({ ...VALID, TRUSTED_PROXY: bad });
+      expect(error.problems).toHaveLength(1);
+      expect(error.message).toContain('TRUSTED_PROXY');
+      expect(error.message).toContain('CIDR');
+      expect(error.message).not.toContain('xyz');
+      expect(error.message).not.toContain(bad);
+    }
+  });
+
   test('nilai opsional dibaca dan dipangkas', () => {
     const config = loadConfig({
       ...VALID,
       PORT: '9000',
       HOST: '0.0.0.0',
-      TRUSTED_PROXY: 'any',
+      TRUSTED_PROXY: '127.0.0.1/32, 172.30.0.0/24',
       DB_POOL_SIZE: '5',
       APP_ORIGIN: ' https://qc.example.com ',
     });
     expect(config).toMatchObject({
       port: 9000,
       host: '0.0.0.0',
-      trustedProxy: 'any',
       dbPoolSize: 5,
       appOrigin: 'https://qc.example.com',
       devLoginEmail: undefined,

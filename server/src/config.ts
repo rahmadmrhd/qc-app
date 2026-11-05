@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { TrustedProxy } from '@server/http/proxy';
+import { DEFAULT_TRUSTED_PROXY, parseTrustedProxy, type TrustedProxy } from '@server/http/proxy';
 
 /** Konfigurasi proses server, dibaca dari variabel lingkungan (Bun memuat `server/.env` saat dijalankan dari `server/`). */
 export interface Config {
@@ -23,7 +23,10 @@ export interface Config {
   /** Alamat yang didengarkan. Bawaan loopback (di belakang nginx); di dalam kontainer isi `0.0.0.0`. */
   host: string;
   port: number;
+  /** Daftar CIDR peer yang `CF-Connecting-IP`-nya dipercaya (`TRUSTED_PROXY`; bawaan loopback). */
   trustedProxy: TrustedProxy;
+  /** Teks `TRUSTED_PROXY` yang berlaku (untuk log awal; `trustedProxy` memuat bilangan besar yang tak dapat di-JSON-kan). */
+  trustedProxyText: string;
   /** Direktori berkas statis web (hasil `bun run build`). */
   staticDir: string;
 }
@@ -132,12 +135,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const dbPoolSize = poolRaw === '' ? DEFAULT_DB_POOL_SIZE : integerIn(poolRaw, 1, 30);
   if (dbPoolSize === null) problems.push('DB_POOL_SIZE harus bilangan bulat 1-30');
 
-  const proxyRaw = get('TRUSTED_PROXY') || 'loopback';
-  if (proxyRaw !== 'loopback' && proxyRaw !== 'any') {
-    problems.push("TRUSTED_PROXY harus 'loopback' atau 'any'");
+  const trustedProxyText = get('TRUSTED_PROXY') || DEFAULT_TRUSTED_PROXY;
+  const trustedProxy = parseTrustedProxy(trustedProxyText);
+  if (trustedProxy === null) {
+    problems.push(
+      'TRUSTED_PROXY harus daftar CIDR IPv4/IPv6 yang valid, dipisah koma, tiap entri berprefiks dan tanpa bit tuan rumah di luar prefiks',
+    );
   }
 
-  if (problems.length > 0 || port === null || dbPoolSize === null) throw new ConfigError(problems);
+  if (problems.length > 0 || port === null || dbPoolSize === null || trustedProxy === null) {
+    throw new ConfigError(problems);
+  }
   const staticDir = get('STATIC_DIR');
   return {
     databaseUrl,
@@ -154,7 +162,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     devLoginEmail: get('DEV_LOGIN_EMAIL') === '' ? undefined : get('DEV_LOGIN_EMAIL'),
     host: get('HOST') || DEFAULT_HOST,
     port,
-    trustedProxy: proxyRaw as TrustedProxy,
+    trustedProxy,
+    trustedProxyText,
     staticDir: staticDir === '' ? resolve(import.meta.dir, '../dist') : resolve(staticDir),
   };
 }
