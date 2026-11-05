@@ -112,3 +112,28 @@ describe('limiterAddress: IPv4-mapped bentuk heksa (m5)', () => {
     expect(limiterAddress('::ffff:c000:0205')).not.toBe(limiterAddress('::1'));
   });
 });
+
+describe('limiterAddress: IPv4-compatible dan IPv4-translated (n4)', () => {
+  test('::a.b.c.d, ::hhhh:hhhh (IPv4-compatible) dan ::ffff:0:a.b.c.d (IPv4-translated) = IPv4 yang sama', () => {
+    for (const form of [
+      '::192.0.2.4',
+      '::c000:204',
+      '::c000:0204',
+      '0:0:0:0:0:0:c000:204',
+      '::ffff:0:192.0.2.4',
+      '::ffff:0:c000:204',
+      '0:0:0:0:ffff:0:c000:204',
+    ]) {
+      expect(limiterAddress(form)).toBe('192.0.2.4');
+    }
+  });
+
+  test('IPv6 sungguhan tidak ikut ternormalisasi keliru (::1, ::2, ::, 2001:db8::1, NAT64)', () => {
+    expect(limiterAddress('::1')).toBe('0:0:0:0::/64');
+    expect(limiterAddress('::2')).toBe('0:0:0:0::/64');
+    expect(limiterAddress('::')).toBe('0:0:0:0::/64');
+    expect(limiterAddress('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(limiterAddress('2001:db8:0:0:0:0:c000:204')).toBe('2001:db8:0:0::/64');
+    expect(limiterAddress('64:ff9b::c000:204')).toBe('64:ff9b:0:0::/64'); // NAT64 bukan IPv4-compatible
+  });
+});

@@ -82,12 +82,25 @@ export function limiterAddress(ip: string): string {
   if (!address.includes(':')) return address;
   const groups = expandIpv6(address);
   if (groups === null) return address;
-  // IPv4-mapped (::ffff:a.b.c.d) dalam bentuk heksa atau diperluas: IPv4 yang sama dengan bentuk bertitiknya, bukan /64.
-  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
-    const high = groups[6] as number;
-    const low = groups[7] as number;
-    return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
-  }
+  // Bentuk yang membawa IPv4 di 32 bit terakhir dinormalkan ke IPv4 bertitiknya (satu penghitung per IPv4, bukan
+  // satu ember /64 bersama alamat IPv6 lain): IPv4-mapped `::ffff:a.b.c.d`, IPv4-translated `::ffff:0:a.b.c.d`, dan
+  // IPv4-compatible usang `::a.b.c.d` (6 kelompok nol; kelompok ke-7 tak nol agar `::1`, `::2`, dan `::` tetap IPv6).
+  const [g0, g1, g2, g3, g4, g5, high, low] = groups as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const zeros = (...values: number[]) => values.every((value) => value === 0);
+  const embedsIpv4 =
+    (zeros(g0, g1, g2, g3, g4) && g5 === 0xffff) ||
+    (zeros(g0, g1, g2, g3, g5) && g4 === 0xffff) ||
+    (zeros(g0, g1, g2, g3, g4, g5) && high !== 0);
+  if (embedsIpv4) return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
   return `${groups
     .slice(0, 4)
     .map((group) => group.toString(16))
