@@ -74,7 +74,7 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     path: '/users/{id}',
     create: { verb: 'POST', path: '/users' },
   },
-  'access.users.setStatus': { verb: 'PATCH', path: '/users/{id}' },
+  'access.users.setStatus': { verb: 'PATCH', path: '/users/{id}', etag: 'updatedAt' },
   'access.roles.list': { verb: 'GET', path: '/roles' },
   'access.roles.save': {
     verb: 'PUT',
@@ -93,7 +93,7 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     path: '/locations/{id}',
     create: { verb: 'POST', path: '/locations' },
   },
-  'access.locations.setStatus': { verb: 'PATCH', path: '/locations/{id}' },
+  'access.locations.setStatus': { verb: 'PATCH', path: '/locations/{id}', etag: 'updatedAt' },
   'files.upload': {
     verb: 'POST',
     path: '/files',
@@ -121,10 +121,10 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     path: '/brands/{id}',
     create: { verb: 'POST', path: '/brands' },
   },
-  'brands.setStatus': { verb: 'PATCH', path: '/brands/{id}' },
+  'brands.setStatus': { verb: 'PATCH', path: '/brands/{id}', etag: 'updatedAt' },
   'customers.list': { verb: 'GET', path: '/customers' },
   'customers.rename': { verb: 'PUT', path: '/customers/{id}' },
-  'customers.setStatus': { verb: 'PATCH', path: '/customers/{id}' },
+  'customers.setStatus': { verb: 'PATCH', path: '/customers/{id}', etag: 'updatedAt' },
   'handovers.options': { verb: 'GET', path: '/handovers/options', query: { locationIds: 'list' } },
   'handovers.board': {
     verb: 'GET',
@@ -163,7 +163,7 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
   },
-  'items.setStatus': { verb: 'PATCH', path: '/items/{id}' },
+  'items.setStatus': { verb: 'PATCH', path: '/items/{id}', etag: 'updatedAt' },
   'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
   'qrcodes.save': {

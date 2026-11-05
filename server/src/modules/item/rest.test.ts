@@ -91,6 +91,14 @@ describe('ETag dan If-Match (updatedAt)', () => {
     const after = await jsonOf(updated);
     expect(after.updatedAt).not.toBe(created.updatedAt);
     expect(updated.headers.get('etag')).toBe(`"${after.updatedAt as string}"`);
+    env.clock.advance(1000);
+    const patched = await rest.patch(`/items/${created.id as string}`, {
+      body: { status: 'inactive' },
+    });
+    expect(patched.status).toBe(200);
+    const afterPatch = await jsonOf(patched);
+    expect(afterPatch.updatedAt).not.toBe(after.updatedAt);
+    expect(patched.headers.get('etag')).toBe(`"${afterPatch.updatedAt as string}"`);
   });
 
   test('dua penyimpan dari versi yang sama: satu 200, satu 412 (code CONFLICT) tanpa membocorkan isi baris', async () => {

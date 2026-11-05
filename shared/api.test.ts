@@ -189,6 +189,12 @@ describe('tabel rute', () => {
     }
   });
 
+  test('rute PATCH (keluaran DTO ber-updatedAt) memberi ETag updatedAt', () => {
+    const patches = IDS.filter((id) => API_ROUTES[id].verb === 'PATCH');
+    expect(patches.length).toBeGreaterThanOrEqual(5);
+    for (const id of patches) expect(API_ROUTES[id].etag, id).toBe('updatedAt');
+  });
+
   test('semua id kontrak Worker punya entri tabel (dan sebaliknya)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
     expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as WorkerRpcMethod[]);
