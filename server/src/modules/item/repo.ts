@@ -44,8 +44,32 @@ export interface ItemRow {
   updated_by: string;
 }
 
-export const ITEM_COLUMNS =
-  'id, external_id, brand_id, model, `key`, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by';
+/** Kolom `items` yang dibaca `toItem` (satu sumber kebenaran; nama = kunci `ItemRow`). */
+const ITEM_COLUMN_LIST = [
+  'id',
+  'external_id',
+  'brand_id',
+  'model',
+  '`key`',
+  'is_country_lock',
+  'aliases',
+  'stickers',
+  'accessories',
+  'attachments',
+  'detail_md',
+  'status',
+  'sync_rev',
+  'created_at',
+  'updated_at',
+  'updated_by',
+] as const;
+
+export const ITEM_COLUMNS = ITEM_COLUMN_LIST.join(', ');
+
+/** Daftar kolom yang sama berawalan alias tabel (untuk JOIN). */
+export function itemColumnsOf(alias: string): string {
+  return ITEM_COLUMN_LIST.map((column) => `${alias}.${column}`).join(', ');
+}
 
 function parseJson(text: string): unknown {
   try {
@@ -140,9 +164,7 @@ export interface ItemWithBrand {
  * merk yang commit sesudahnya membatalkan batch, yang commit sebelumnya sudah tercermin di `items.key` (N1).
  */
 export async function findItemWithBrand(env: Env, id: string): Promise<ItemWithBrand | null> {
-  const columns = ITEM_COLUMNS.split(', ')
-    .map((column) => `i.${column}`)
-    .join(', ');
+  const columns = itemColumnsOf('i');
   const row = await env.DB.prepare(
     `SELECT ${columns}, b.name AS brand_name, b.\`key\` AS brand_key FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.id = ?`,
   )
