@@ -146,6 +146,11 @@ export interface CommentStats {
   s: number;
 }
 
+/** `SUM(...)` MariaDB bertipe DECIMAL (driver mengembalikan string): angka dipastikan lewat `Number`. */
+function commentStatsOf(row: { n: unknown; s: unknown } | undefined): CommentStats | null {
+  return row ? { n: Number(row.n) || 0, s: Number(row.s) || 0 } : null;
+}
+
 function loaded(row: HandoverRow): LoadedHandover {
   const record = toHandover(row);
   return { record, customerName: row.current_customer_name ?? record.customerName };
@@ -184,8 +189,11 @@ interface CommentRow {
   body: string;
 }
 
-const COMMENT_COLUMNS =
-  'id, handover_id, author, created_at, quote, "before" AS before, "after" AS after, body';
+// `before`/`after` kata cadangan MariaDB: berbacktick; baris hasil tetap berkunci `before`/`after`.
+const COMMENT_COLUMNS = 'id, handover_id, author, created_at, quote, `before`, `after`, body';
+
+/** Urutan komentar: waktu, lalu `seq` (AUTO_INCREMENT; pengganti rowid SQLite untuk urutan sisip). */
+const COMMENT_ORDER = 'created_at, seq';
 
 function toStoredComment(row: CommentRow): StoredComment {
   return {
@@ -200,7 +208,7 @@ function toStoredComment(row: CommentRow): StoredComment {
 }
 
 /**
- * Task beserta komentarnya dalam SATU round trip D1 (`batch`); `statsSql` (opsional) menambah statistik
+ * Task beserta komentarnya dalam SATU `batch()`; `statsSql` (opsional) menambah statistik
  * komentar sebagai pernyataan ketiga. Null bila task tidak ada.
  */
 export async function findHandoverWithComments(
@@ -211,7 +219,7 @@ export async function findHandoverWithComments(
   const statements = [
     env.DB.prepare(`SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id = ?`).bind(id),
     env.DB.prepare(
-      `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id = ? ORDER BY created_at, rowid`,
+      `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id = ? ORDER BY ${COMMENT_ORDER}`,
     ).bind(id),
   ];
   if (statsSql !== undefined) statements.push(env.DB.prepare(statsSql).bind(id));
@@ -223,38 +231,18 @@ export async function findHandoverWithComments(
       ...loaded(row),
       comments: ((comments?.results ?? []) as CommentRow[]).map(toStoredComment),
     },
-    stats: (stats?.results[0] as CommentStats | undefined) ?? null,
+    stats: commentStatsOf(stats?.results[0] as { n: unknown; s: unknown } | undefined),
   };
 }
 
-/**
- * Komentar task (`alias`.id) sebagai larik JSON dari subkueri (urut waktu lalu `rowid`, indeks
- * `handover_comments_handover`); kolom tambahan pada kueri daftar sehingga komentar halaman tidak butuh round
- * trip sendiri. Bentuknya `StoredComment` (`at` = `created_at`). Pasang pada kueri LUAR atas halaman yang sudah
- * dibatasi `LIMIT`, supaya subkueri hanya berjalan untuk baris halaman (bukan semua baris yang cocok).
- */
-export function commentsJsonSql(alias: string): string {
-  return `(SELECT json_group_array(json(x)) FROM (SELECT json_object('id', c.id, 'quote', c.quote, 'before', c."before", 'after', c."after", 'body', c.body, 'author', c.author, 'at', c.created_at) AS x FROM handover_comments c WHERE c.handover_id = ${alias}.id ORDER BY c.created_at, c.rowid)) AS comments_json`;
-}
-
-export function parseStoredComments(text: string | null | undefined): StoredComment[] {
-  if (text === undefined || text === null || text === '[]') return [];
-  try {
-    const value: unknown = JSON.parse(text);
-    return Array.isArray(value) ? (value as StoredComment[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu id). */
+/** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu `seq`). */
 export function commentStatements(env: Env, handoverIds: readonly string[]): DbStatement[] {
   const statements: DbStatement[] = [];
   for (let from = 0; from < handoverIds.length; from += 90) {
     const chunk = handoverIds.slice(from, from + 90);
     statements.push(
       env.DB.prepare(
-        `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id IN (${chunk.map(() => '?').join(',')}) ORDER BY created_at, rowid`,
+        `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id IN (${chunk.map(() => '?').join(',')}) ORDER BY ${COMMENT_ORDER}`,
       ).bind(...chunk),
     );
   }
@@ -276,7 +264,7 @@ export function commentsByHandover(
   return out;
 }
 
-/** Komentar untuk sekumpulan task (satu round trip, urut waktu lalu id). */
+/** Komentar untuk sekumpulan task (satu `batch()`, urut waktu lalu `seq`). */
 export async function listComments(
   env: Env,
   handoverIds: readonly string[],
@@ -357,7 +345,7 @@ export function insertHandoverStmts(db: Db, handovers: readonly HandoverRecord[]
 
 /**
  * UPDATE seluruh kolom isi + turunan. Penjaga CAS `version` ada di `UPDATE` ini (`CAS_VERSION_BUMP_SET`):
- * `expectedVersion` = versi yang dilihat penulis; basi = seluruh batch batal (`integer overflow`), tanpa
+ * `expectedVersion` = versi yang dilihat penulis; basi = galat 'BIGINT value is out of range' yang membatalkan seluruh batch, tanpa
  * pernyataan penjaga terpisah. Sukses menaikkan `version` 1.
  */
 export function updateHandoverStmt(

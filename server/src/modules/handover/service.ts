@@ -1,6 +1,6 @@
 import type { AuditInput } from '@server/core/audit';
 import { writeAudit, writeAuditRows } from '@server/core/audit';
-import { CAS_FAIL_SQL, runCas } from '@server/core/cas';
+import { CAS_FAIL_SQL, isGuardFailure, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -48,13 +48,11 @@ import type {
   StoredComment,
 } from './repo';
 import {
-  commentsJsonSql,
   findHandoverWithComments,
   HANDOVER_COLUMNS,
   HANDOVER_FROM,
   insertHandoverStmts,
   listComments,
-  parseStoredComments,
   toHandover,
   updateHandoverStmt,
 } from './repo';
@@ -89,7 +87,7 @@ export function toHandoverDto(
   const entries = checklistOf(handover.note);
   const matched = matchedChecks(handover.note, handover.checks);
   const done = matched.reduce((n, check) => (check === null ? n : n + 1), 0);
-  // Teks polos catatan hanya dihitung bila ada komentar berjangkar (hemat CPU).
+  // Teks polos catatan hanya dihitung bila ada komentar berjangkar (hanya dihitung bila perlu).
   const plain = comments.some((comment) => comment.quote !== '')
     ? noteToPlainText(handover.note)
     : '';
@@ -148,8 +146,6 @@ async function dtoOf(env: Env, loaded: LoadedHandover): Promise<HandoverDto> {
 interface BoardRow extends HandoverRow {
   checked_count: number;
   total_count: number;
-  /** Komentar task (larik JSON dari subkueri; lihat `COMMENTS_JSON_SQL`). */
-  comments_json: string | null;
 }
 
 /**
@@ -169,7 +165,7 @@ export async function handoverBoard(
   const cursor = input.cursor ? parseBoardCursor(input.status, input.cursor) : null;
   const where: string[] = [base];
   const binds: unknown[] = [...baseBinds];
-  const progress = '(h.checked_count * 1000 / h.total_count)';
+  const progress = '(h.checked_count * 1000 DIV h.total_count)';
   if (cursor) {
     if (input.status === 'in_progress') {
       where.push(
@@ -193,20 +189,33 @@ export async function handoverBoard(
       : 'h.updated_at DESC, h.number DESC';
   const outerOrder =
     input.status === 'in_progress'
-      ? '(p.checked_count * 1000 / p.total_count) ASC, p.updated_at DESC, p.number DESC'
+      ? '(p.checked_count * 1000 DIV p.total_count) ASC, p.updated_at DESC, p.number DESC'
       : 'p.updated_at DESC, p.number DESC';
-  // Halaman beserta komentarnya dalam SATU kueri (komentar lewat subkueri atas halaman yang sudah dibatasi
-  // LIMIT) dan jumlah kolom dalam batch yang sama: satu round trip D1 per halaman. COUNT hanya memindai
-  // indeks kolom itu; kolom besar memang membutuhkannya (halaman penuh) dan kolom kecil murah.
+  // Halaman (LIMIT) dan jumlah kolom berjalan paralel; komentar halaman diambil dengan satu kueri berikutnya
+  // (id task halaman) dan disusun di aplikasi, jadi board = 2 round trip berurutan. COUNT hanya memindai indeks
+  // kolom itu.
   const pageStatement = env.DB.prepare(
-    `SELECT p.*, ${commentsJsonSql('p')} FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
+    `SELECT p.* FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
   ).bind(...binds, limit + 1);
   const countStatement = env.DB.prepare(`SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`).bind(
     ...baseBinds,
   );
-  const [pageResult, countResult] = await env.DB.batch([pageStatement, countStatement]);
-  const rows = (pageResult?.results ?? []) as BoardRow[];
-  const total = Number((countResult?.results[0] as { n: number } | undefined)?.n ?? 0);
+  const [pageAndComments, countResult] = await Promise.all([
+    pageStatement.all<BoardRow>().then(async (result) => {
+      const page = result.results.slice(0, limit);
+      return {
+        rows: result.results,
+        comments: await listComments(
+          env,
+          page.map((row) => row.id),
+        ),
+      };
+    }),
+    countStatement.first<{ n: number }>(),
+  ]);
+  const rows = pageAndComments.rows;
+  const commentsOf = pageAndComments.comments;
+  const total = Number(countResult?.n ?? 0);
   const pageRows = rows.slice(0, limit);
   const last = pageRows[pageRows.length - 1];
   let nextCursor: string | null = null;
@@ -222,7 +231,7 @@ export async function handoverBoard(
       return toHandoverDto(
         record,
         row.current_customer_name ?? record.customerName,
-        parseStoredComments(row.comments_json),
+        commentsOf.get(row.id) ?? [],
       );
     }),
     nextCursor,
@@ -362,7 +371,7 @@ interface NumberReservation {
 /**
  * Menyediakan `count` nomor `ST-YYYYMMDD-NNN` berurutan untuk satu tanggal (WIB). Penghitung harian di
  * tabel `counters`; bila belum ada, dimulai dari urutan terbesar nomor yang sudah ada (mis. hasil impor).
- * Pernyataan yang dikembalikan (penjaga CAS + simpan penghitung dalam satu `INSERT ... ON CONFLICT`) HARUS berada di `batch()` yang sama dengan
+ * Pernyataan yang dikembalikan (penjaga CAS + simpan penghitung dalam satu `INSERT ... ON DUPLICATE KEY UPDATE`) HARUS berada di `batch()` yang sama dengan
  * penyisipan task: bila penulis lain menaikkan penghitung lebih dulu, batch dibatalkan dan pemanggil
  * mengulang (`runCas`). Nomor unik dijamin juga oleh indeks unik `handovers.number`.
  */
@@ -372,7 +381,7 @@ async function reserveNumbers(
   count: number,
 ): Promise<NumberReservation> {
   const key = `st:${dateKey}`;
-  const row = await env.DB.prepare('SELECT value FROM counters WHERE key = ?')
+  const row = await env.DB.prepare('SELECT value FROM counters WHERE `key` = ?')
     .bind(key)
     .first<{ value: number }>();
   let base: number;
@@ -383,7 +392,7 @@ async function reserveNumbers(
   } else {
     const prefix = `ST-${dateKey}-`;
     const max = await env.DB.prepare(
-      'SELECT MAX(CAST(substr(number, 13) AS INTEGER)) AS m FROM handovers WHERE number >= ? AND number < ?',
+      'SELECT MAX(CAST(SUBSTR(number, 13) AS UNSIGNED)) AS m FROM handovers WHERE number >= ? AND number < ?',
     )
       .bind(prefix, `ST-${dateKey}.`)
       .first<{ m: number | null }>();
@@ -393,15 +402,23 @@ async function reserveNumbers(
   return {
     numbers: Array.from({ length: count }, (_, i) => handoverNumber(dateKey, base + i + 1)),
     // Penjaga + simpan penghitung dalam SATU pernyataan: baris yang sudah berubah (`expected` tak cocok)
-    // membatalkan batch (`integer overflow`); baris yang belum ada (`expected = -1`) disisipkan, dan bila
-    // penulis lain menyisipkannya lebih dulu, cabang `DO UPDATE` yang gagal (nilai != -1) atau PRIMARY KEY.
+    // membatalkan batch (galat 'BIGINT value is out of range'); baris yang belum ada (`expected = -1`)
+    // disisipkan, dan bila penulis lain menyisipkannya lebih dulu, cabang `ON DUPLICATE KEY UPDATE` yang gagal
+    // (nilai != -1) atau PRIMARY KEY. Penulis serentak diserialkan oleh kunci baris penghitung sampai COMMIT.
     statements: [
       env.DB.prepare(
-        `INSERT INTO counters (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = CASE WHEN counters.value = ? THEN excluded.value ELSE ${CAS_FAIL_SQL} END`,
+        `INSERT INTO counters (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = CASE WHEN value = ? THEN VALUES(value) ELSE ${CAS_FAIL_SQL} END`,
       ).bind(key, base + count, expected),
     ],
   };
 }
+
+/**
+ * Percobaan CAS penghitung nomor. Penulis serentak pada MariaDB benar-benar paralel (bukan diserialkan satu
+ * isolate seperti di D1): tiap putaran hanya satu penulis yang menang, jadi N penulis serentak butuh sampai N
+ * percobaan. 10 menutup beban nyata (beberapa admin WH menyimpan bersamaan) dan tes 6 penulis serentak.
+ */
+const CREATE_TASKS_ATTEMPTS = 10;
 
 interface NewTaskInput {
   customerName: string;
@@ -420,75 +437,79 @@ async function createTasks(
   actor: ActorRef,
 ): Promise<HandoverDto[]> {
   const locationNames = await locationNameMap(env);
-  return runCas(async () => {
-    const now = nowIso(env);
-    const dateKey = dateKeyOf(nowOf(env));
-    const reservation = await reserveNumbers(env, dateKey, tasks.length);
-    const resolved = new Map<string, CustomerRecord>();
-    const newCustomers: CustomerRecord[] = [];
-    // Urutan audit = urutan kejadian: `customer.create` sebelum audit task pertama yang memakainya.
-    const audits: AuditInput[] = [];
-    const records: HandoverRecord[] = [];
-    for (const [index, task] of tasks.entries()) {
-      let customer: CustomerRecord | null = null;
-      if (task.customerName !== '') {
-        const key = customerKey(task.customerName);
-        customer = resolved.get(key) ?? null;
-        if (!customer) {
-          const lookup = await lookupCustomerForWrite(env, task.customerName, actor);
-          customer = lookup.customer;
-          resolved.set(key, customer);
-          if (lookup.created) {
-            newCustomers.push(customer);
-            audits.push(lookup.created);
+  return runCas(
+    async () => {
+      const now = nowIso(env);
+      const dateKey = dateKeyOf(nowOf(env));
+      const reservation = await reserveNumbers(env, dateKey, tasks.length);
+      const resolved = new Map<string, CustomerRecord>();
+      const newCustomers: CustomerRecord[] = [];
+      // Urutan audit = urutan kejadian: `customer.create` sebelum audit task pertama yang memakainya.
+      const audits: AuditInput[] = [];
+      const records: HandoverRecord[] = [];
+      for (const [index, task] of tasks.entries()) {
+        let customer: CustomerRecord | null = null;
+        if (task.customerName !== '') {
+          const key = customerKey(task.customerName);
+          customer = resolved.get(key) ?? null;
+          if (!customer) {
+            const lookup = await lookupCustomerForWrite(env, task.customerName, actor);
+            customer = lookup.customer;
+            resolved.set(key, customer);
+            if (lookup.created) {
+              newCustomers.push(customer);
+              audits.push(lookup.created);
+            }
           }
         }
-      }
-      const record: HandoverRecord = {
-        id: crypto.randomUUID(),
-        number: reservation.numbers[index] as string,
-        locationId,
-        customerId: customer?.id ?? '',
-        customerName: customer?.name ?? '',
-        note: task.note,
-        status: 'open',
-        checks: [],
-        completedAt: '',
-        completedBy: '',
-        createdAt: now,
-        createdBy: actor.email,
-        updatedAt: now,
-        updatedBy: actor.email,
-        version: 1,
-      };
-      // Audit disusun dan diperiksa mutlak SEBELUM menulis apa pun.
-      const audit = fitAuditSnapshots(
-        (limit) => ({
+        const record: HandoverRecord = {
+          id: crypto.randomUUID(),
+          number: reservation.numbers[index] as string,
+          locationId,
+          customerId: customer?.id ?? '',
+          customerName: customer?.name ?? '',
+          note: task.note,
+          status: 'open',
+          checks: [],
+          completedAt: '',
+          completedBy: '',
+          createdAt: now,
+          createdBy: actor.email,
+          updatedAt: now,
+          updatedBy: actor.email,
+          version: 1,
+        };
+        // Audit disusun dan diperiksa mutlak SEBELUM menulis apa pun.
+        const audit = fitAuditSnapshots(
+          (limit) => ({
+            before: null,
+            after: handoverSnapshot(record, record.customerName, locationNames, limit),
+          }),
+          true,
+        );
+        audits.push({
+          ts: now,
+          actor: actor.email,
+          action: 'handover.create',
+          target: record.number,
           before: null,
-          after: handoverSnapshot(record, record.customerName, locationNames, limit),
-        }),
-        true,
-      );
-      audits.push({
-        ts: now,
-        actor: actor.email,
-        action: 'handover.create',
-        target: record.number,
-        before: null,
-        after: audit.after,
-      });
-      records.push(record);
-    }
-    // Penghitung nomor (CAS), customer baru, task, lalu audit: INSERT banyak-baris, bukan satu pernyataan per
-    // baris (batch 5 task = 3-4 pernyataan, bukan 12). Atomik dalam satu `batch()`.
-    await env.DB.batch([
-      ...reservation.statements,
-      ...insertCustomerStmts(env.DB, newCustomers),
-      ...insertHandoverStmts(env.DB, records),
-      ...writeAuditRows(env.DB, audits),
-    ]);
-    return records.map((record) => toHandoverDto(record, record.customerName, []));
-  }, 'Nomor task sedang direbut penulis lain; coba lagi');
+          after: audit.after,
+        });
+        records.push(record);
+      }
+      // Penghitung nomor (CAS), customer baru, task, lalu audit: INSERT banyak-baris, bukan satu pernyataan per
+      // baris (batch 5 task = 3-4 pernyataan, bukan 12). Atomik dalam satu `batch()`.
+      await env.DB.batch([
+        ...reservation.statements,
+        ...insertCustomerStmts(env.DB, newCustomers),
+        ...insertHandoverStmts(env.DB, records),
+        ...writeAuditRows(env.DB, audits),
+      ]);
+      return records.map((record) => toHandoverDto(record, record.customerName, []));
+    },
+    'Nomor task sedang direbut penulis lain; coba lagi',
+    CREATE_TASKS_ATTEMPTS,
+  );
 }
 
 export async function saveHandover(
@@ -770,7 +791,7 @@ export async function setDone(
 
 /** Perkiraan ukuran JSON satu komentar dalam SQL: panjang field + kerangka JSON (80 karakter, termasuk koma). */
 const COMMENT_SIZE_SQL =
-  'length(id) + length(quote) + length("before") + length("after") + length(body) + length(author) + length(created_at) + 80';
+  'CHAR_LENGTH(id) + CHAR_LENGTH(quote) + CHAR_LENGTH(`before`) + CHAR_LENGTH(`after`) + CHAR_LENGTH(body) + CHAR_LENGTH(author) + CHAR_LENGTH(created_at) + 80';
 
 export async function addComment(
   env: Env,
@@ -830,9 +851,13 @@ export async function addComment(
   // ulang oleh SQL saat menulis, sehingga komentar serentak tidak melewati batas.
   try {
     await env.DB.batch([
-      // Penjaga digabung ke kolom `id` (nilai gagal = `integer overflow`): tanpa pernyataan penjaga terpisah.
+      // Kunci baris task (X) menserialkan penulis komentar serentak pada task yang sama: tanpa ini dua transaksi
+      // sama-sama membaca 49 komentar (snapshot) dan keduanya lolos penjaga batas. Pembacaan komentar di penjaga
+      // di bawah baru terjadi SETELAH kunci didapat, sehingga melihat komentar yang sudah di-commit penulis lain.
+      env.DB.prepare('SELECT id FROM handovers WHERE id = ? FOR UPDATE').bind(handover.id),
+      // Penjaga digabung ke kolom `id` (nilai gagal = `CAS_FAIL_SQL`, galat di luar jangkauan): tanpa pernyataan penjaga terpisah.
       env.DB.prepare(
-        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, "before", "after", body) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         handover.id,
         HANDOVER_LIMITS.comments,
@@ -859,7 +884,7 @@ export async function addComment(
       }),
     ]);
   } catch (error) {
-    if (error instanceof Error && /integer overflow/i.test(error.message)) {
+    if (isGuardFailure(error)) {
       throw appError(
         'VALIDATION',
         `Komentar tidak dapat ditambahkan: batas ${HANDOVER_LIMITS.comments} komentar atau 40.000 karakter tercapai, atau task sudah dibatalkan`,
@@ -869,7 +894,7 @@ export async function addComment(
     throw error;
   }
   // Komentar tidak mengubah isi task: `updatedAt`/`version` tidak dinaikkan agar tidak memicu CONFLICT pada form WH.
-  // Daftar komentar balasan = yang dimuat awal + komentar baru (paling akhir menurut waktu lalu rowid).
+  // Daftar komentar balasan = yang dimuat awal + komentar baru (paling akhir menurut waktu lalu `seq`).
   const created: StoredComment = {
     id,
     quote: anchor.quote,

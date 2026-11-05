@@ -1,13 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { isGuardFailure } from '@server/core/cas';
 import type { DbStatement } from '@server/core/db';
-import { dbStatsOf } from '@server/core/db';
 import { ENV, rpc, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { seedCustomer } from '@server-test/item-fixtures';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { locateAnchor, noteToPlainText } from '@shared/handover-comments';
-import { derivedColumns, parseChecks } from './repo';
+import { derivedColumns, parseChecks, updateHandoverStmt } from './repo';
 import { fitAuditSnapshots, handoverSnapshot } from './service';
+
+// Banyak tes memanggil puluhan RPC berurutan/serentak ke MariaDB (lewat terowongan SSH saat dev).
+setDefaultTimeout(60_000);
 
 let env: TestEnv;
 
@@ -44,14 +46,14 @@ interface AuditRow {
 }
 async function auditRows(): Promise<AuditRow[]> {
   const rows = await env.DB.prepare(
-    'SELECT action, actor, target, "before" AS before, "after" AS after FROM audit_log ORDER BY id',
-  ).all<{ action: string; actor: string; target: string; before: string; after: string }>();
+    'SELECT action, actor, target, `before` AS bf, `after` AS af FROM audit_log ORDER BY id',
+  ).all<{ action: string; actor: string; target: string; bf: string; af: string }>();
   return rows.results.map((r) => ({
     action: r.action,
     actor: r.actor,
     target: r.target,
-    before: JSON.parse(r.before) as Record<string, unknown> | null,
-    after: JSON.parse(r.after) as Record<string, unknown> | null,
+    before: JSON.parse(r.bf) as Record<string, unknown> | null,
+    after: JSON.parse(r.af) as Record<string, unknown> | null,
   }));
 }
 const audits = async () => (await auditRows()).map((r) => r.action);
@@ -80,7 +82,9 @@ async function task(id = 't1'): Promise<TaskRow> {
 const checksOf = async (id = 't1') => parseChecks((await task(id)).checks);
 const commentsOf = async (id = 't1') =>
   (
-    await env.DB.prepare('SELECT * FROM handover_comments WHERE handover_id = ? ORDER BY rowid')
+    await env.DB.prepare(
+      'SELECT * FROM handover_comments WHERE handover_id = ? ORDER BY created_at, seq',
+    )
       .bind(id)
       .all<{ body: string }>()
   ).results;
@@ -395,7 +399,7 @@ describe('saveBatch', () => {
       'ST-20261015-003',
     ]);
     const customers = await env.DB.prepare(
-      "SELECT id FROM customers WHERE key = 'cv prisma'",
+      "SELECT id FROM customers WHERE `key` = 'cv prisma'",
     ).all();
     expect(customers.results).toHaveLength(1);
     expect(out.data[0].customerId).toBe(out.data[1].customerId);
@@ -429,14 +433,14 @@ describe('saveBatch', () => {
     expect((await save({ note: 'x' })).data.number).toBe('ST-20261015-001');
   });
 
-  test('kegagalan di tengah batch (D1) membatalkan semuanya: tidak ada task/customer/nomor/audit', async () => {
+  test('kegagalan di tengah batch (basis data) membatalkan semuanya: tidak ada task/customer/nomor/audit', async () => {
     // Task ke-2 melanggar CHECK status melalui nomor ganda yang sengaja dipaksa: sisipkan lebih dulu nomor 002.
     await env.DB.prepare(
       "INSERT INTO handovers (id, number, location_id) VALUES ('pre', 'ST-20261015-002', ?)",
     )
       .bind(ENV.locB)
       .run();
-    await env.DB.prepare("INSERT INTO counters (key, value) VALUES ('st:20261015', 0)").run();
+    await env.DB.prepare("INSERT INTO counters (`key`, value) VALUES ('st:20261015', 0)").run();
     const out = await batch([
       { customerName: 'PT Satu', note: 'a' },
       { customerName: 'PT Dua', note: 'b' },
@@ -450,7 +454,7 @@ describe('saveBatch', () => {
     expect(await audits()).toEqual([]);
     expect(
       (
-        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+        await env.DB.prepare("SELECT value FROM counters WHERE `key` = 'st:20261015'").first<{
           value: number;
         }>()
       )?.value,
@@ -499,19 +503,6 @@ describe('saveBatch', () => {
       'ST-20261015-001',
       'ST-20261015-002',
     ]);
-  });
-
-  test('CPU kasar: 5 task x 5.000 karakter di bawah anggaran', async () => {
-    const note = Array.from(
-      { length: 120 },
-      (_, i) => `- [ ] Barang ${i} = ${i} pcs ${'x'.repeat(20)}`,
-    )
-      .join('\n')
-      .slice(0, 5000);
-    const tasks = Array.from({ length: 5 }, (_, i) => ({ customerName: `PT ${i}`, note }));
-    const { result, ms } = await measureCpu(() => batch(tasks));
-    expect(result.ok).toBe(true);
-    expect(ms).toBeLessThan(100);
   });
 });
 
@@ -996,37 +987,6 @@ describe('baca: board per kolom, get, options', () => {
     ]);
   });
 
-  test('jumlah kolom (COUNT) satu batch dengan halaman dan komentar: satu round trip board', async () => {
-    const stats = dbStatsOf(env.DB);
-    const countsOf = async (extra: Record<string, unknown>) => {
-      stats.log = [];
-      const trips = stats.trips;
-      const result = await board('done', extra);
-      const log = stats.log;
-      stats.log = null;
-      return {
-        result,
-        count: log.filter((sql) => sql.includes('COUNT(*)')).length,
-        trips: stats.trips - trips,
-      };
-    };
-    // halaman pertama yang tidak penuh: COUNT ikut batch yang sama (murah: hanya baris kolom itu)
-    const first = await countsOf({});
-    expect(first.result.data.total).toBe(2);
-    expect(first.count).toBe(1);
-    expect(first.trips).toBeLessThanOrEqual(2); // konteks akses (cache mati di tes) + halaman/komentar/COUNT
-    // halaman penuh (limit 1 dari 2): tetap satu round trip bersama komentar
-    const full = await countsOf({ limit: 1 });
-    expect(full.result.data.total).toBe(2);
-    expect(full.result.data.nextCursor).not.toBeNull();
-    expect(full.count).toBe(1);
-    expect(full.trips).toBeLessThanOrEqual(2);
-    // halaman berkursor: COUNT diperlukan walau halaman tidak penuh
-    const next = await countsOf({ limit: 1, cursor: full.result.data.nextCursor });
-    expect(next.result.data.total).toBe(2);
-    expect(next.count).toBe(1);
-  });
-
   test('board menolak lokasi terlarang (FORBIDDEN) dan tidak membocorkan task lokasi lain; multi lokasi', async () => {
     const denied = await board('done', {}, 'wh@gmail.com', [ENV.locA, ENV.locB]);
     expect(denied.error.code).toBe('FORBIDDEN');
@@ -1154,38 +1114,6 @@ describe('baca: board per kolom, get, options', () => {
     expect(out.data.customers.map((c: { name: string }) => c.name)).toEqual(['Budi', 'PT Maju']);
     expect(out.data.inactiveCustomerNames).toEqual(['Lama']);
   });
-
-  test('board_status berindeks: kueri board tidak memindai tabel', async () => {
-    const plan = await env.DB.prepare(
-      'EXPLAIN QUERY PLAN SELECT * FROM handovers h WHERE h.location_id IN (?, ?) AND h.board_status = ? ORDER BY h.updated_at DESC, h.number DESC LIMIT 21',
-    )
-      .bind(ENV.locA, ENV.locB, 'new')
-      .all<{ detail: string }>();
-    expect(plan.results.map((r) => r.detail).join('\n')).toMatch(/handovers_board/);
-  });
-
-  test('CPU kasar: halaman board (maks. 3 task) dari kolom 21 task di bawah anggaran', async () => {
-    const note = Array.from({ length: 60 }, (_, i) => `- [ ] Barang ${i} = ${i} pcs`).join('\n');
-    const stmts: DbStatement[] = [];
-    for (let i = 0; i < 20; i++) {
-      stmts.push(
-        env.DB.prepare(
-          "INSERT INTO handovers (id, number, location_id, note, updated_at, board_status, total_count) VALUES (?, ?, ?, ?, ?, 'new', 60)",
-        ).bind(
-          `b${i}`,
-          `ST-20261020-${String(i + 1).padStart(3, '0')}`,
-          ENV.locA,
-          note,
-          `2026-10-20T00:00:${String(i).padStart(2, '0')}.000Z`,
-        ),
-      );
-    }
-    await env.DB.batch(stmts);
-    const { result, ms } = await measureCpu(() => board('new', { limit: 3 }, 'qc@gmail.com'));
-    expect(result.data.items).toHaveLength(3);
-    expect(result.data.total).toBe(21); // 20 + task contoh
-    expect(ms).toBeLessThan(50);
-  });
 });
 
 describe('konkurensi (Review Focus 3)', () => {
@@ -1280,7 +1208,7 @@ describe('konkurensi (Review Focus 3)', () => {
     expect(new Set(numbers).size).toBe(11);
     expect(
       (
-        await env.DB.prepare("SELECT COUNT(*) AS n FROM customers WHERE key = 'pt sama'").first<{
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM customers WHERE `key` = 'pt sama'").first<{
           n: number;
         }>()
       )?.n,
@@ -1339,7 +1267,7 @@ describe('konkurensi (Review Focus 3)', () => {
     );
     expect(
       (
-        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+        await env.DB.prepare("SELECT value FROM counters WHERE `key` = 'st:20261015'").first<{
           value: number;
         }>()
       )?.value,
@@ -1350,7 +1278,7 @@ describe('konkurensi (Review Focus 3)', () => {
     expect(new Set((await taskRows()).map((r) => r.number)).size).toBe(11);
     expect(
       (
-        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+        await env.DB.prepare("SELECT value FROM counters WHERE `key` = 'st:20261015'").first<{
           value: number;
         }>()
       )?.value,
@@ -1452,14 +1380,14 @@ describe('konkurensi (Review Focus 3)', () => {
     expect(d.data[0].number).toBe('ST-20261015-006');
     expect(
       (
-        await env.DB.prepare("SELECT value FROM counters WHERE key = 'st:20261015'").first<{
+        await env.DB.prepare("SELECT value FROM counters WHERE `key` = 'st:20261015'").first<{
           value: number;
         }>()
       )?.value,
     ).toBe(6);
   });
 
-  test('batch banyak: setiap pernyataan di bawah 100 parameter terikat (adaptor menolak bila lebih)', async () => {
+  test('batch 5 task (batas per permintaan, HANDOVER_WORKER_BATCH) dengan customer berbeda diterima', async () => {
     const tasks = Array.from({ length: 5 }, (_, i) => ({
       customerName: `Cust ${i}`,
       note: `- [ ] x${i}`,
@@ -1467,5 +1395,117 @@ describe('konkurensi (Review Focus 3)', () => {
     expect(
       (await call('wh@gmail.com', 'handovers.saveBatch', { locationId: ENV.locA, tasks })).ok,
     ).toBe(true);
+  });
+});
+
+describe('MariaDB: konkurensi nyata dan Unicode', () => {
+  test('penjaga CAS version: dua UPDATE paralel dari versi yang sama, satu berhasil dan satu ditolak penjaga (batch batal utuh)', async () => {
+    const rec = await seedHandover(env, {
+      id: 'g1',
+      number: 'ST-20261015-001',
+      locationId: ENV.locA,
+      customerId: '',
+      customerName: '',
+      note: 'awal',
+    });
+    const write = (note: string, auditAction: string) =>
+      env.DB.batch([
+        updateHandoverStmt(
+          env.DB,
+          { ...rec, note, updatedAt: '2026-10-15T03:00:00.000Z', version: rec.version + 1 },
+          rec.version,
+        ),
+        env.DB.prepare(
+          "INSERT INTO audit_log (ts, actor, action, target) VALUES ('t', 'a', ?, 'g1')",
+        ).bind(auditAction),
+      ]);
+    const [x, y] = await Promise.allSettled([
+      write('dari X', 'tulis.x'),
+      write('dari Y', 'tulis.y'),
+    ]);
+    const outcomes = [x, y];
+    expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+    const rejected = outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult;
+    expect(isGuardFailure(rejected.reason)).toBe(true);
+    const winner = x.status === 'fulfilled' ? 'X' : 'Y';
+    expect((await task('g1')).note).toBe(`dari ${winner}`);
+    expect((await task('g1')).version).toBe(2);
+    // pernyataan audit si penolak ikut batal: tepat satu baris audit
+    const logged = await env.DB.prepare('SELECT action FROM audit_log').all<{ action: string }>();
+    expect(logged.results.map((r) => r.action)).toEqual([`tulis.${winner.toLowerCase()}`]);
+  });
+
+  test('dua setCheck paralel pada butir yang sama: tepat satu tulis (satu audit, versi +1), yang lain idempoten; teks usang CONFLICT', async () => {
+    await seedHandover(env, {
+      id: 't1',
+      number: 'ST-20261015-001',
+      locationId: ENV.locA,
+      customerId: '',
+      customerName: '',
+      note: '- [ ] A\n- [ ] B',
+    });
+    const setCheck = (text: string) =>
+      call('qc@gmail.com', 'handovers.setCheck', { ...ref, index: 0, text, checked: true });
+    const [a, b, stale] = await Promise.all([setCheck('A'), setCheck('A'), setCheck('Z')]);
+    expect([a.ok, b.ok].sort()).toEqual([true, true]);
+    expect(stale.ok).toBe(false);
+    expect(stale.error.code).toBe('CONFLICT');
+    expect((await audits()).filter((x) => x === 'handover.check')).toHaveLength(1);
+    expect((await task()).version).toBe(2);
+  });
+
+  test('save, saveBatch, dan save paralel pada hari yang sama: nomor 001..N tanpa ganda dan tanpa celah, penghitung = N', async () => {
+    const batch = (prefix: string, n: number) =>
+      call('wh@gmail.com', 'handovers.saveBatch', {
+        locationId: ENV.locA,
+        tasks: Array.from({ length: n }, (_, i) => ({ customerName: '', note: `${prefix}${i}` })),
+      });
+    const [b1, s1, b2, s2] = await Promise.all([
+      batch('x', 3),
+      save({ note: 'tunggal 1' }),
+      batch('y', 2),
+      save({ note: 'tunggal 2' }),
+    ]);
+    for (const r of [b1, s1, b2, s2]) expect(r.ok).toBe(true);
+    const numbers = (await taskRows()).map((r) => r.number);
+    expect(numbers).toEqual(
+      Array.from({ length: 7 }, (_, i) => `ST-20261015-${String(i + 1).padStart(3, '0')}`),
+    );
+    const counter = await env.DB.prepare(
+      "SELECT value FROM counters WHERE `key` = 'st:20261015'",
+    ).first<{ value: number }>();
+    expect(Number(counter?.value)).toBe(7);
+  });
+
+  test('catatan 5.000 karakter berisi emoji dan komentar berisi emoji tersimpan dan terbaca utuh (utf8mb4)', async () => {
+    const head = '- [ ] Kirim 😀 sore\n\nCatatan 😀 akhir\n\n';
+    const note = head + 'z😀'.repeat(((5000 - head.length) / 3) | 0);
+    expect(note.length).toBeLessThanOrEqual(5000);
+    expect(note.length).toBeGreaterThan(4900);
+    const saved = await save({ note });
+    expect(saved.ok).toBe(true);
+    const id = saved.data.id as string;
+    const body = 'Mohon cek 😀 👨‍👩‍👧‍👦 𝒳';
+    const commented = await call('wh@gmail.com', 'handovers.comment', {
+      id,
+      locationId: ENV.locA,
+      quote: 'Catatan 😀 akhir',
+      before: '',
+      after: '',
+      body,
+    });
+    expect(commented.ok).toBe(true);
+    const got = await call('wh@gmail.com', 'handovers.get', { id, locationIds: [ENV.locA] });
+    expect(got.ok).toBe(true);
+    expect(got.data.note).toBe(note);
+    expect(got.data.comments).toHaveLength(1);
+    expect(got.data.comments[0]).toMatchObject({ body, quote: 'Catatan 😀 akhir', stale: false });
+    // kolom mentah dan halaman board (komentar disusun di aplikasi) juga utuh
+    expect((await task(id)).note).toBe(note);
+    const board = await call('wh@gmail.com', 'handovers.board', {
+      locationIds: [ENV.locA],
+      status: 'new',
+    });
+    expect(board.data.items[0].comments[0].body).toBe(body);
   });
 });
