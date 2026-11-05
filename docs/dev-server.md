@@ -22,7 +22,7 @@ Buka `http://localhost:3000`, pada halaman login tekan **Masuk sebagai pengguna 
 
 ## Konfigurasi (`server/.env`)
 
-Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. Variabel wajib: `DATABASE_URL`, `SESSION_SECRET`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_URL`, `BRIDGE_SECRET`, `ADMIN_EMAIL`. Opsional: `APP_ORIGIN` (wajib https di produksi), `DEV_LOGIN_EMAIL` (hanya dev), `PORT` (8788), `HOST` (127.0.0.1), `TRUSTED_PROXY` (`loopback`), `DB_POOL_SIZE` (8), `STATIC_DIR` (`server/dist`). Server menolak jalan dan menyebut SEMUA variabel yang hilang/tidak valid (tanpa mencetak nilainya).
+Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. Variabel wajib: `DATABASE_URL`, `SESSION_SECRET`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `SYNC_API_TOKEN`, `BRIDGE_URL`, `BRIDGE_SECRET`, `ADMIN_EMAIL`. Opsional: `APP_ORIGIN` (wajib https di produksi), `DEV_LOGIN_EMAIL` (hanya dev), `PORT` (8788), `HOST` (127.0.0.1), `TRUSTED_PROXY` (daftar CIDR dipisah koma, bawaan `127.0.0.1/32,::1/128`; peer di luar daftar tidak dipercaya header `CF-Connecting-IP`-nya), `DB_POOL_SIZE` (8), `STATIC_DIR` (`server/dist`). Server menolak jalan dan menyebut SEMUA variabel yang hilang/tidak valid (tanpa mencetak nilainya).
 
 ## Yang dilakukan tiap skrip
 
