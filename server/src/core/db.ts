@@ -127,6 +127,8 @@ export interface DbConfig {
 }
 
 const CONNECT_TIMEOUT_MS = 10_000;
+const CONNECT_ATTEMPTS = 3;
+const CONNECT_RETRY_DELAY_MS = 300;
 const SESSION_COLLATION = 'SET NAMES utf8mb4 COLLATE utf8mb4_nopad_bin';
 /**
  * MariaDB >= 11.6.2 menyalakan `innodb_snapshot_isolation` (bawaan): pada REPEATABLE READ, menulis/mengunci baris yang
@@ -135,6 +137,24 @@ const SESSION_COLLATION = 'SET NAMES utf8mb4 COLLATE utf8mb4_nopad_bin';
  * per sesi: bacaan biasa tetap konsisten, pembacaan/penulisan mengunci tetap melihat data terbaru (perilaku MySQL).
  */
 const SESSION_SNAPSHOT_OFF = 'SET SESSION innodb_snapshot_isolation = 0';
+
+/** Galat saat MEMBUKA koneksi (syscall connect): belum ada pernyataan yang dikirim, jadi aman diulang. */
+function isConnectFailure(err: unknown): boolean {
+  const e = err as { syscall?: unknown; code?: unknown };
+  return e?.syscall === 'connect' && (e.code === 'ETIMEDOUT' || e.code === 'ECONNRESET');
+}
+
+/** Mengulang pekerjaan yang gagal hanya saat koneksi gagal dibuka (tunnel/jaringan kadang menolak sesaat). */
+async function retryConnect<T>(work: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await work();
+    } catch (err) {
+      if (attempt >= CONNECT_ATTEMPTS || !isConnectFailure(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
 
 function connectionOptions(config: DbConfig) {
   const u = new URL(config.url);
@@ -233,10 +253,10 @@ export function createDb(config: DbConfig): Db {
   });
 
   const poolRunner = (sql: string, values: unknown[]) =>
-    execute(pool as unknown as Executor, sql, values);
+    retryConnect(() => execute(pool as unknown as Executor, sql, values));
 
   const batchOnce = async (statements: Statement[]): Promise<DbResult[]> => {
-    const conn = await pool.getConnection();
+    const conn = await retryConnect(() => pool.getConnection());
     try {
       await conn.beginTransaction();
       try {
@@ -255,7 +275,7 @@ export function createDb(config: DbConfig): Db {
   };
 
   const transactionOnce = async <T>(fn: (tx: DbTx) => Promise<T>): Promise<T> => {
-    const conn = await pool.getConnection();
+    const conn = await retryConnect(() => pool.getConnection());
     try {
       await conn.beginTransaction();
       const tx: DbTx = {
@@ -313,7 +333,16 @@ export function createDb(config: DbConfig): Db {
     async exec(sql) {
       let conn: mysql.Connection | undefined;
       try {
-        conn = await mysql.createConnection({ ...base, multipleStatements: true });
+        // Membuka koneksi aman diulang (belum ada yang dijalankan); jaringan/tunnel kadang menolak sesaat.
+        for (let attempt = 1; ; attempt++) {
+          try {
+            conn = await mysql.createConnection({ ...base, multipleStatements: true });
+            break;
+          } catch (err) {
+            if (attempt >= CONNECT_ATTEMPTS || toDbError(err).kind !== 'unavailable') throw err;
+            await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_DELAY_MS * attempt));
+          }
+        }
         await conn.query(sql);
       } catch (err) {
         throw toDbError(err);
