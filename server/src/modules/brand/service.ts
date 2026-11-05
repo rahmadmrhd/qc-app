@@ -15,6 +15,7 @@ import {
   findBrandByKey,
   insertBrandStmts,
   listBrands,
+  setBrandStatusStmts,
   updateBrandStmts,
 } from './repo';
 
@@ -236,8 +237,9 @@ export async function setBrandStatus(
     updatedAt: now,
     updatedBy: actor.email,
   };
-  await env.DB.batch([
-    ...updateBrandStmts(env.DB, updated),
+  // Hanya kolom status yang ditulis; baris terkini dibaca di akhir batch untuk DTO (nama bisa baru diganti orang lain).
+  const results = await env.DB.batch([
+    ...setBrandStatusStmts(env.DB, updated),
     writeAudit(env.DB, {
       ts: now,
       actor: actor.email,
@@ -247,5 +249,6 @@ export async function setBrandStatus(
       after: brandSnapshot(updated),
     }),
   ]);
-  return toBrandDto(updated);
+  const fresh = brandsFromResult(results[2] as { results: unknown[] })[0];
+  return toBrandDto(fresh ?? updated);
 }

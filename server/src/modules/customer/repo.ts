@@ -111,6 +111,33 @@ export function insertCustomerStmts(
   return statements;
 }
 
+/** Hanya ganti nama (`name`/`key`): tidak menulis `status`, sehingga perubahan status serentak tidak tertimpa (I2). */
+export function renameCustomerStmt(
+  db: Preparer,
+  customer: Pick<CustomerRecord, 'id' | 'name' | 'key' | 'updatedAt' | 'updatedBy'>,
+): DbStatement {
+  return db
+    .prepare(
+      'UPDATE customers SET name = ?, `key` = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+    )
+    .bind(customer.name, customer.key, customer.updatedAt, customer.updatedBy, customer.id);
+}
+
+/** Hanya status: tidak menulis ulang `name`/`key`, sehingga ganti nama serentak tidak tertimpa (I2). */
+export function setCustomerStatusStmt(
+  db: Preparer,
+  customer: Pick<CustomerRecord, 'id' | 'status' | 'updatedAt' | 'updatedBy'>,
+): DbStatement {
+  return db
+    .prepare('UPDATE customers SET status = ?, updated_at = ?, updated_by = ? WHERE id = ?')
+    .bind(customer.status, customer.updatedAt, customer.updatedBy, customer.id);
+}
+
+/** Baris customer terkini menurut id (dibaca di akhir batch untuk DTO). */
+export function customerByIdStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE id = ?`).bind(id);
+}
+
 export function updateCustomerStmt(db: Preparer, customer: CustomerRecord): DbStatement {
   return db
     .prepare(

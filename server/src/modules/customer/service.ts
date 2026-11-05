@@ -9,7 +9,15 @@ import { batchWrite } from '@server/modules/access/repo';
 import { customerKey } from '@shared/handover';
 import type { CustomerDto, RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
 import type { CustomerRecord } from './repo';
-import { findCustomerByKey, insertCustomerStmt, listCustomers, updateCustomerStmt } from './repo';
+import {
+  customerByIdStmt,
+  customersFromResult,
+  findCustomerByKey,
+  insertCustomerStmt,
+  listCustomers,
+  renameCustomerStmt,
+  setCustomerStatusStmt,
+} from './repo';
 
 function toCustomerDto(customer: CustomerRecord): CustomerDto {
   return {
@@ -147,7 +155,7 @@ export async function renameCustomer(
   await batchWrite(
     env.DB,
     [
-      updateCustomerStmt(env.DB, updated),
+      renameCustomerStmt(env.DB, updated),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,
@@ -177,8 +185,9 @@ export async function setCustomerStatus(
     updatedAt: now,
     updatedBy: actor.email,
   };
-  await env.DB.batch([
-    updateCustomerStmt(env.DB, updated),
+  // Hanya status yang ditulis; baris terkini dibaca di akhir batch untuk DTO (nama bisa baru diganti orang lain).
+  const results = await env.DB.batch([
+    setCustomerStatusStmt(env.DB, updated),
     writeAudit(env.DB, {
       ts: now,
       actor: actor.email,
@@ -187,6 +196,8 @@ export async function setCustomerStatus(
       before: customerSnapshot(existing),
       after: customerSnapshot(updated),
     }),
+    customerByIdStmt(env.DB, updated.id),
   ]);
-  return toCustomerDto(updated);
+  const fresh = customersFromResult(results[2] as { results: unknown[] })[0];
+  return toCustomerDto(fresh ?? updated);
 }

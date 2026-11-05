@@ -113,6 +113,26 @@ export function insertBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[
 }
 
 /** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
+/**
+ * Perubahan STATUS merk: hanya menulis `status` (+ revisi sinkron dan `updated_*`), TIDAK `name`/`key`, sehingga
+ * ganti nama yang selesai di antara baca dan tulis tidak tertimpa nilai basi (I2). Diikuti `SELECT` baris merk
+ * terkini (hasil terakhir batch) agar DTO memuat nama sebenarnya.
+ */
+export function setBrandStatusStmts(
+  db: Preparer,
+  brand: Pick<BrandRecord, 'id' | 'status' | 'updatedAt' | 'updatedBy'>,
+): DbStatement[] {
+  return [
+    nextSyncRev(db, 'brands', brand.updatedAt),
+    db
+      .prepare(
+        `UPDATE brands SET status = ?, sync_rev = ${syncRevExpr('brands')}, updated_at = ?, updated_by = ? WHERE id = ?`,
+      )
+      .bind(brand.status, brand.updatedAt, brand.updatedBy, brand.id),
+    db.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(brand.id),
+  ];
+}
+
 export function updateBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[] {
   return [
     nextSyncRev(db, 'brands', brand.updatedAt),
