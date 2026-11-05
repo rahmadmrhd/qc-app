@@ -37,15 +37,8 @@ export interface Env {
   /** Hanya untuk tes: klien jembatan palsu dan jam terkendali (milidetik epoch). */
   BRIDGE?: BridgeClient;
   NOW?: () => number;
-  /** Hanya untuk tes: cache isi berkas (bawaan: Cache API Workers). */
+  /** Hanya untuk tes: cache isi berkas (bawaan: cache memori LRU proses, maks. 32 MB; null = tanpa cache). */
   FILE_CACHE?: FileCache | null;
-  /**
-   * OPSIONAL: bucket R2 sebagai cache isi berkas (Spek 8.4). Tanpa binding perilaku tidak berubah. Lihat
-   * komentar `r2_buckets` di wrangler.jsonc untuk mengaktifkannya.
-   */
-  FILES_CACHE?: R2Bucket;
-  /** Dipasang `index.ts` per permintaan: menjalankan pekerjaan latar (`ctx.waitUntil`); tak ada di tes. */
-  WAIT_UNTIL?: (promise: Promise<unknown>) => void;
 }
 
 export function nowOf(env: Env): number {

@@ -11,23 +11,6 @@ import { Hono } from 'hono/tiny';
 
 const app = new Hono<AppBindings>();
 
-// Pekerjaan latar (mis. menyimpan salinan berkas ke R2) tanpa menahan respons.
-app.use('*', async (c, next) => {
-  let ctx: { waitUntil(promise: Promise<unknown>): void } | undefined;
-  try {
-    ctx = c.executionCtx;
-  } catch {
-    ctx = undefined; // di luar runtime Workers (tes)
-  }
-  if (ctx) {
-    const executionCtx = ctx;
-    c.env = {
-      ...c.env,
-      WAIT_UNTIL: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
-    };
-  }
-  await next();
-});
 app.use('*', securityHeaders);
 app.use('/api/*', csrfGuard);
 app.use('/auth/*', csrfGuard);

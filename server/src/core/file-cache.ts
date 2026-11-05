@@ -1,6 +1,6 @@
 import type { Env } from './env';
 
-/** Cache isi berkas (teks base64 apa adanya; Worker tidak pernah men-decode). */
+/** Cache isi berkas (teks base64 apa adanya; server tidak men-decode isi berkas pada Fase 1). */
 export interface CachedFile {
   mime: string;
   base64: string;
@@ -9,14 +9,14 @@ export interface CachedFile {
 export interface FileCache {
   get(key: string): Promise<CachedFile | null>;
   put(key: string, mime: string, base64: string): Promise<void>;
-  /** Membuang salinan berkas Drive `driveId` (ganti isi, sampah, yatim). Tidak semua cache mendukungnya. */
+  /** Membuang salinan berkas Drive `driveId` (ganti isi, sampah, yatim). */
   drop?(driveId: string): Promise<void>;
 }
 
 /** Isi base64 lebih besar dari ini tidak di-cache. */
 const CACHE_MAX_CHARS = 2_000_000;
-/** Cache API: berkas Drive yang di-cache tidak berubah isinya (id baru = berkas baru), jadi aman lama. */
-const CACHE_TTL_SECONDS = 10_800;
+/** Total isi yang ditahan cache memori proses (karakter base64 = byte ASCII). */
+export const FILE_CACHE_MAX_TOTAL_CHARS = 32 * 1024 * 1024;
 
 const KEY_PREFIX = 'https://files.cache.invalid/';
 
@@ -30,68 +30,76 @@ function parseKey(key: string): { folderId: string; driveId: string } {
   return { folderId: decodeURIComponent(folder), driveId: decodeURIComponent(drive) };
 }
 
+interface Entry {
+  folderId: string;
+  mime: string;
+  base64: string;
+}
+
 /**
- * R2 sebagai cache isi berkas (Spek 8.4): objek `f/<driveId>` berisi teks base64 apa adanya; `mime` dan
- * folder induk di customMetadata. Folder yang tak cocok dengan folder aktif dianggap miss. Drive tetap
- * sumber utama.
+ * Cache memori LRU berbatas ukuran total, berkunci `driveId` (isi berkas Drive tidak berubah untuk id yang sama;
+ * ganti isi = id baru). Entri mencatat folder induknya: folder yang tak cocok dengan folder aktif dianggap miss.
+ * Map JavaScript mempertahankan urutan sisip, jadi entri tertua = kunci pertama (dipindah ke akhir saat dibaca).
  */
-function r2Cache(bucket: R2Bucket): FileCache {
-  const objectKey = (driveId: string) => `f/${driveId}`;
+export function createMemoryFileCache(maxTotalChars = FILE_CACHE_MAX_TOTAL_CHARS): FileCache & {
+  /** Total karakter yang sedang ditahan (untuk tes). */
+  readonly size: number;
+} {
+  const entries = new Map<string, Entry>();
+  let total = 0;
+  const remove = (driveId: string) => {
+    const old = entries.get(driveId);
+    if (!old) return;
+    total -= old.base64.length;
+    entries.delete(driveId);
+  };
   return {
+    get size() {
+      return total;
+    },
     async get(key) {
       const { folderId, driveId } = parseKey(key);
-      const object = await bucket.get(objectKey(driveId));
-      if (!object) return null;
-      const meta = object.customMetadata ?? {};
-      if (meta.folder !== folderId) return null;
-      return { mime: meta.mime ?? '', base64: await object.text() };
+      const entry = entries.get(driveId);
+      if (!entry || entry.folderId !== folderId) return null;
+      entries.delete(driveId);
+      entries.set(driveId, entry); // paling baru dipakai
+      return { mime: entry.mime, base64: entry.base64 };
     },
     async put(key, mime, base64) {
-      if (base64.length > CACHE_MAX_CHARS) return;
+      if (base64.length > CACHE_MAX_CHARS || base64.length > maxTotalChars) return;
       const { folderId, driveId } = parseKey(key);
-      await bucket.put(objectKey(driveId), base64, { customMetadata: { mime, folder: folderId } });
+      remove(driveId);
+      entries.set(driveId, { folderId, mime, base64 });
+      total += base64.length;
+      while (total > maxTotalChars) {
+        const oldest = entries.keys().next();
+        if (oldest.done) break;
+        remove(oldest.value);
+      }
     },
     async drop(driveId) {
-      await bucket.delete(objectKey(driveId));
+      remove(driveId);
     },
   };
 }
 
-/** Cache API Workers (`caches.default`). */
-function cacheApi(store: Cache): FileCache {
-  return {
-    async get(key) {
-      const hit = await store.match(new Request(key));
-      if (!hit) return null;
-      return { mime: hit.headers.get('content-type') ?? '', base64: await hit.text() };
-    },
-    async put(key, mime, base64) {
-      if (base64.length > CACHE_MAX_CHARS) return;
-      await store.put(
-        new Request(key),
-        new Response(base64, {
-          headers: { 'content-type': mime, 'cache-control': `max-age=${CACHE_TTL_SECONDS}` },
-        }),
-      );
-    },
-  };
-}
+/** Cache bawaan proses (satu per proses server). */
+let defaultCache: FileCache | null = null;
 
 /**
- * Cache yang dipakai: `FILE_CACHE` (disuntik tes), lalu R2 (`FILES_CACHE`, opsional), lalu Cache API
- * Workers; null di luar runtime Workers. Tanpa binding R2 perilaku sama seperti sebelumnya.
+ * Cache yang dipakai: `FILE_CACHE` (disuntik tes; `null` = tanpa cache), bila tidak diisi cache memori LRU
+ * proses (maks. 32 MB).
  */
 export function fileCacheOf(env: Env): FileCache | null {
   if (env.FILE_CACHE !== undefined) return env.FILE_CACHE;
-  if (env.FILES_CACHE) return r2Cache(env.FILES_CACHE);
-  const store = (globalThis as { caches?: { default?: Cache } }).caches?.default;
-  return store ? cacheApi(store) : null;
+  defaultCache ??= createMemoryFileCache();
+  return defaultCache;
 }
 
 /**
  * Isi berkas: cache dulu, bila miss ambil lewat `load` (jembatan) lalu simpan. Pemeriksaan izin dan folder induk
  * HARUS sudah dilakukan pemanggil sebelum ini (cache tidak boleh melewati otorisasi). Galat cache tidak pernah
- * menggagalkan permintaan; penyimpanan berjalan di latar (`WAIT_UNTIL`) bila tersedia.
+ * menggagalkan permintaan.
  */
 export async function cachedFileContent(
   env: Env,
@@ -106,11 +114,7 @@ export async function cachedFileContent(
     if (hit !== null) return hit;
   }
   const content = await load();
-  if (content && cache) {
-    const store = cache.put(key, content.mime, content.base64).catch(() => undefined);
-    if (env.WAIT_UNTIL) env.WAIT_UNTIL(store);
-    else await store;
-  }
+  if (content && cache) await cache.put(key, content.mime, content.base64).catch(() => undefined);
   return content;
 }
 

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Db, DbStatement } from '@server/core/db';
 import type { FileCache } from '@server/core/file-cache';
-import { fileCacheKey } from '@server/core/file-cache';
+import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
 import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import type { UserContext } from '@server/modules/access/context';
@@ -11,7 +11,6 @@ import { loadUserContext } from '@server/modules/access/context';
 import { getRoutes } from '@server/routes';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import {
@@ -58,7 +57,7 @@ class MemoryFileCache implements FileCache {
 
 async function files() {
   const rows = await env.DB.prepare(
-    'SELECT id, drive_id, owner_type, owner_id, created_by, created_at, status FROM files ORDER BY rowid',
+    'SELECT id, drive_id, owner_type, owner_id, created_by, created_at, status FROM files',
   ).all<{
     id: string;
     drive_id: string;
@@ -68,15 +67,25 @@ async function files() {
     created_at: string;
     status: string;
   }>();
-  return rows.results;
+  const rank = (id: string) => {
+    const i = uploadOrder.indexOf(id);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return [...rows.results].sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
 }
 
+// MariaDB tidak punya rowid: urutan sisip dicatat di tes agar `files()` deterministik.
+let uploadOrder: string[] = [];
+
 async function up(input = upload(), actor = admin) {
-  return uploadFile(env, validateUploadFile(input), actor);
+  const saved = await uploadFile(env, validateUploadFile(input), actor);
+  uploadOrder.push(saved.id);
+  return saved;
 }
 
 beforeEach(async () => {
   logged = [];
+  uploadOrder = [];
   console.error = (message?: unknown) => {
     logged.push(String(message));
   };
@@ -182,7 +191,7 @@ describe('unggah', () => {
     expect(second).toBe(first);
     expect(env.BRIDGE.state.folders.size).toBe(1);
     const setting = await env.DB.prepare(
-      "SELECT value FROM settings WHERE key = 'DRIVE_FOLDER_ID'",
+      "SELECT value FROM settings WHERE `key` = 'DRIVE_FOLDER_ID'",
     ).first<{
       value: string;
     }>();
@@ -193,7 +202,7 @@ describe('unggah', () => {
   test('upload pertama tanpa setup membuat folder sendiri; dua upload serentak memakai folder yang sama', async () => {
     await Promise.all([up(), up()]);
     const setting = await env.DB.prepare(
-      "SELECT value FROM settings WHERE key = 'DRIVE_FOLDER_ID'",
+      "SELECT value FROM settings WHERE `key` = 'DRIVE_FOLDER_ID'",
     ).first<{
       value: string;
     }>();
@@ -210,7 +219,7 @@ describe('unggah', () => {
     expect(error.code).toBe('INTERNAL');
     expect(error.message).toContain('tidak dapat diakses');
     const setting = await env.DB.prepare(
-      "SELECT value FROM settings WHERE key = 'DRIVE_FOLDER_ID'",
+      "SELECT value FROM settings WHERE `key` = 'DRIVE_FOLDER_ID'",
     ).first<{
       value: string;
     }>();
@@ -331,11 +340,22 @@ describe('baca', () => {
       ),
     ).toBe(true);
     await env.DB.prepare(
-      "UPDATE settings SET value = 'folder-lain' WHERE key = 'DRIVE_FOLDER_ID'",
+      "UPDATE settings SET value = 'folder-lain' WHERE `key` = 'DRIVE_FOLDER_ID'",
     ).run();
     expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }))).code).toBe(
       'NOT_FOUND',
     );
+  });
+
+  test('cache memori LRU: dibuang saat berkas dipurge dari Drive (dropCachedFile)', async () => {
+    const cache = createMemoryFileCache(1_000_000);
+    env.FILE_CACHE = cache;
+    const saved = await up();
+    await readFile(env, { id: saved.id });
+    expect(cache.size).toBeGreaterThan(0);
+    await env.DB.batch(markFilesPendingDelete(env, [saved.id]));
+    await purgePendingFiles(env);
+    expect(cache.size).toBe(0);
   });
 
   test('berkas pending_delete tidak terbaca', async () => {
@@ -496,19 +516,7 @@ describe('rute dan izin', () => {
   });
 });
 
-describe('anggaran CPU dan pagar base64', () => {
-  test('CPU kasar: unggah gambar ~1 MB (validasi + jembatan palsu + D1) di bawah anggaran', async () => {
-    const bytes = 1_000_000;
-    const base64 = `iVBORw0KGgo${'A'.repeat(Math.ceil((bytes * 4) / 3) - 11)}`;
-    const padded = base64.slice(0, base64.length - (base64.length % 4));
-    await ensureDriveFolder(env);
-    const { ms } = await measureCpu(async () => {
-      const input = validateUploadFile(upload({ base64: padded }));
-      await uploadFile(env, input, admin);
-    });
-    expect(ms).toBeLessThan(30);
-  });
-
+describe('pagar base64', () => {
   test('pagar: tidak ada atob/btoa/Buffer base64 di server/src selain token kecil (base64url.ts)', () => {
     const root = join(import.meta.dir, '../..');
     const offenders: string[] = [];
