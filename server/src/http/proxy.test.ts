@@ -92,3 +92,23 @@ describe('limiterAddress (I4: IPv6 per /64)', () => {
     expect(limiterAddress('bukan:ip:::::x')).toBe('bukan:ip:::::x');
   });
 });
+
+describe('limiterAddress: IPv4-mapped bentuk heksa (m5)', () => {
+  test('::ffff:c000:0204 dinormalkan ke IPv4 yang sama dengan ::ffff:192.0.2.4 (satu penghitung per IPv4)', () => {
+    const dotted = limiterAddress('::ffff:192.0.2.4');
+    expect(dotted).toBe('192.0.2.4');
+    for (const hex of [
+      '::ffff:c000:0204',
+      '::ffff:c000:204',
+      '::FFFF:C000:0204',
+      '0:0:0:0:0:ffff:c000:204',
+    ]) {
+      expect(limiterAddress(hex)).toBe(dotted);
+    }
+  });
+
+  test('IPv4 berbeda tetap berbeda dan tidak jatuh ke ember /64 bersama ::1', () => {
+    expect(limiterAddress('::ffff:c000:0205')).toBe('192.0.2.5');
+    expect(limiterAddress('::ffff:c000:0205')).not.toBe(limiterAddress('::1'));
+  });
+});

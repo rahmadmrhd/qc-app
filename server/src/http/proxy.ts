@@ -82,6 +82,12 @@ export function limiterAddress(ip: string): string {
   if (!address.includes(':')) return address;
   const groups = expandIpv6(address);
   if (groups === null) return address;
+  // IPv4-mapped (::ffff:a.b.c.d) dalam bentuk heksa atau diperluas: IPv4 yang sama dengan bentuk bertitiknya, bukan /64.
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    const high = groups[6] as number;
+    const low = groups[7] as number;
+    return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+  }
   return `${groups
     .slice(0, 4)
     .map((group) => group.toString(16))
