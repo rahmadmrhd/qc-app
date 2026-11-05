@@ -200,3 +200,15 @@ test('baseUrl ditambahkan di depan /api/v1', async () => {
   await api('brands.list', null);
   expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://qc.test/api/v1/brands');
 });
+
+test('413 polos dari Bun.serve (bukan problem) menjadi VALIDATION "Badan permintaan terlalu besar"', async () => {
+  const { api } = setup(() => respond('Payload Too Large', { status: 413 }, 'text/plain'));
+  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toMatchObject({
+    code: 'VALIDATION',
+    status: 413,
+    message: 'Badan permintaan terlalu besar',
+    requestId: '-',
+  });
+});

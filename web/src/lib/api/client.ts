@@ -68,6 +68,10 @@ function errorFromResponse(status: number, text: string): ApiError {
   }
   if (status === 403)
     return new ApiError('FORBIDDEN', 'Permintaan ditolak', '-', undefined, { status });
+  // Bun.serve memutus badan di atas batas dengan 413 polos sebelum aplikasi berjalan (tanpa problem+json).
+  if (status === 413) {
+    return new ApiError('VALIDATION', 'Badan permintaan terlalu besar', '-', undefined, { status });
+  }
   if (status === 429 || status === 503) {
     return new ApiError('UNAVAILABLE', 'Layanan sedang sibuk atau tidak tersedia', '-', undefined, {
       status,
