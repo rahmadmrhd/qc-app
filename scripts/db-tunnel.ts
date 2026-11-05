@@ -33,7 +33,7 @@ while (!stopping) {
       '-o',
       'ServerAliveInterval=15',
       '-o',
-      'ServerAliveCountMax=4',
+      'ServerAliveCountMax=3',
       '-o',
       'TCPKeepAlive=yes',
       SSH_ALIAS,
