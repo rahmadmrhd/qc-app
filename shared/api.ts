@@ -24,6 +24,11 @@ export interface ApiRouteDef {
   etag?: string;
   /** Field input yang dibawa header `If-Match` (mis. `expectedUpdatedAt`). */
   ifMatch?: string;
+  /**
+   * Rute asinkron (202): jalur sumber daya yang dibuat, `{param}` diisi dari field keluaran (mis. `/jobs/{jobId}`);
+   * kernel memberi header `Location: /api/v1<jalur>`.
+   */
+  location?: string;
   /** Diisi T21; sebelum itu rute berpenanda ini tidak didaftarkan dan tidak masuk `REST_MIGRATED_IDS`. */
   binary?: 'request' | 'response' | 'multipart';
 }
@@ -128,6 +133,8 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     verb: 'PUT',
     path: '/qrcode-presets/{id}',
     create: { verb: 'POST', path: '/qrcode-presets' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
   },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
   'qrcodes.saveLogoLibrary': {
@@ -147,12 +154,18 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     verb: 'POST',
     path: '/qrcodes/{id}/exports',
     status: 202,
+    location: '/jobs/{jobId}',
     ifMatch: 'expectedUpdatedAt',
     binary: 'multipart',
   },
   'qrcodes.file': { verb: 'GET', path: '/qrcodes/{id}/files/{kind}', binary: 'response' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
-  'exports.sheets': { verb: 'POST', path: '/exports/sheets', status: 202 },
+  'exports.sheets': {
+    verb: 'POST',
+    path: '/exports/sheets',
+    status: 202,
+    location: '/jobs/{jobId}',
+  },
 };
 
 /**
@@ -191,6 +204,17 @@ export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpc
   'handovers.setCheck',
   'handovers.setDone',
   'handovers.comment',
+  'qrcodes.list',
+  'qrcodes.get',
+  'qrcodes.save',
+  'qrcodes.delete',
+  'qrcodes.getDefaults',
+  'qrcodes.savePreset',
+  'qrcodes.deletePreset',
+  'qrcodes.saveLogoLibrary',
+  'qrcodes.cloneFromDrive',
+  'jobs.get',
+  'exports.sheets',
 ]);
 
 export interface RequestParts {

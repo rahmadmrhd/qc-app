@@ -6,7 +6,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { RpcError } from '@/lib/rpc/rpc-error';
 
 const rpcMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/rpc', () => ({ rpc: rpcMock }));
+vi.mock('@/lib/api', () => ({ api: rpcMock }));
 
 import { awaitJob, jobPollDelay, useJob } from './queries';
 

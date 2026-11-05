@@ -1,8 +1,6 @@
-import { callRoute } from '@server/core/router';
-import { signSessionToken } from '@server/core/session';
 import { ensureQrDocFolder } from '@server/modules/qrcode/folders';
-import { getRoutes } from '@server/routes';
 import { seedRole, seedUser } from './access-fixtures';
+import { restRpc } from './rest-rpc';
 import type { TestEnv } from './test-env';
 
 /** qrview@/qredit@/qrmanage@ = modul qrcode per level (Semua lokasi); noqr@ = item view saja. */
@@ -20,15 +18,14 @@ export async function seedQrEnv(env: TestEnv): Promise<void> {
 // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
 export type RpcOut = { ok: boolean; data?: any; error?: any };
 
-/** Memanggil RPC lewat router sungguhan (sesi, izin, validasi) sebagai `email`. */
+/** Memanggil satu id sebagai `email` lewat kabel REST nyata (id yang belum pindah tetap lewat router RPC). */
 export async function qrRpc(
   env: TestEnv,
   email: string,
   method: string,
   payload: unknown,
 ): Promise<RpcOut> {
-  const token = await signSessionToken(env, email, env.clock.now());
-  return (await callRoute(env, token, method, payload, getRoutes())) as RpcOut;
+  return (await restRpc(env, email, method, payload)) as RpcOut;
 }
 
 /**

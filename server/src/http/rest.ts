@@ -136,6 +136,10 @@ function handlerFor(operation: Operation, routes: RouteTable) {
       if (created && output && typeof (output as { id?: unknown }).id === 'string') {
         headers.location = `${REST_BASE}${fillPath(def.path, { id: (output as { id: string }).id })}`;
       }
+      if (def.location !== undefined) {
+        const location = locationOf(def.location, output);
+        if (location !== undefined) headers.location = location;
+      }
       if (
         verb === 'GET' &&
         etag !== undefined &&
@@ -164,6 +168,19 @@ function handlerFor(operation: Operation, routes: RouteTable) {
       return problemResponse(problem);
     }
   };
+}
+
+/** `Location` dari templat `def.location` dan field keluaran; `undefined` bila ada parameter yang tidak terisi. */
+function locationOf(template: string, output: unknown): string | undefined {
+  const source =
+    typeof output === 'object' && output !== null ? (output as Record<string, unknown>) : {};
+  const params: Record<string, string> = {};
+  for (const name of pathParamNames(template)) {
+    const value = source[name];
+    if (typeof value !== 'string' || value === '') return undefined;
+    params[name] = value;
+  }
+  return `${REST_BASE}${fillPath(template, params)}`;
 }
 
 /** Jawaban untuk rute `/api/v1/*` yang tidak dikenal: 404 problem+json (bukan fallback SPA). */

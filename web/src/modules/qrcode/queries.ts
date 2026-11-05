@@ -13,6 +13,7 @@ import type {
 } from '@shared/rpc';
 import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
 import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
@@ -26,18 +27,18 @@ export const qrKeys = {
 };
 
 export function qrDesignsQueryOptions() {
-  return queryOptions({ queryKey: qrKeys.list, queryFn: () => rpc('qrcodes.list', null) });
+  return queryOptions({ queryKey: qrKeys.list, queryFn: () => api('qrcodes.list', null) });
 }
 
 export function qrDefaultsQueryOptions() {
   return queryOptions({
     queryKey: qrKeys.defaults,
-    queryFn: () => rpc('qrcodes.getDefaults', null),
+    queryFn: () => api('qrcodes.getDefaults', null),
   });
 }
 
 export function qrDesignQueryOptions(id: string) {
-  return queryOptions({ queryKey: qrKeys.one(id), queryFn: () => rpc('qrcodes.get', { id }) });
+  return queryOptions({ queryKey: qrKeys.one(id), queryFn: () => api('qrcodes.get', { id }) });
 }
 
 const compareDesigns = (a: QrDesignDto, b: QrDesignDto) =>
@@ -69,14 +70,14 @@ function useQrMutation<TInput, TOutput>(
 
 export const useSaveQrDesign = () =>
   useQrMutation(
-    (input: SaveQrDesignInput) => rpc('qrcodes.save', input),
+    (input: SaveQrDesignInput) => api('qrcodes.save', input),
     (queryClient, saved) => applyDesign(queryClient, saved),
   );
 const comparePresets = (a: QrPresetDto, b: QrPresetDto) => a.name.localeCompare(b.name);
 
 export const useSaveQrPreset = () =>
   useQrMutation(
-    (input: SaveQrPresetInput) => rpc('qrcodes.savePreset', input),
+    (input: SaveQrPresetInput) => api('qrcodes.savePreset', input),
     (queryClient, saved) => {
       queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
         current
@@ -92,7 +93,7 @@ export const useSaveQrPreset = () =>
   );
 export const useDeleteQrPreset = () =>
   useQrMutation(
-    (input: QrDesignRefInput) => rpc('qrcodes.deletePreset', input),
+    (input: QrDesignRefInput) => api('qrcodes.deletePreset', input),
     (queryClient, _saved, input) => {
       queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
         current
@@ -104,7 +105,7 @@ export const useDeleteQrPreset = () =>
 export const useSaveQrLogoLibrary = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: SaveQrLogoLibraryInput) => rpc('qrcodes.saveLogoLibrary', input),
+    mutationFn: (input: SaveQrLogoLibraryInput) => api('qrcodes.saveLogoLibrary', input),
     // Mengeluarkan logo mengosongkan logo awal default yang memakainya (diturunkan server): defaults dimuat ulang.
     onSuccess: async () => {
       markStale(queryClient, accessKeys.audit);
@@ -114,14 +115,14 @@ export const useSaveQrLogoLibrary = () => {
 };
 export const useDeleteQrDesign = () =>
   useQrMutation(
-    (input: QrDesignRefInput) => rpc('qrcodes.delete', input),
+    (input: QrDesignRefInput) => api('qrcodes.delete', input),
     (queryClient, _saved, input) => {
       removeFromList<QrDesignDto>(queryClient, qrKeys.list, input.id);
       queryClient.removeQueries({ queryKey: qrKeys.one(input.id) });
     },
   );
 export const useCloneQrPdf = () =>
-  useQrMutation((input: CloneQrPdfInput) => rpc('qrcodes.cloneFromDrive', input));
+  useQrMutation((input: CloneQrPdfInput) => api('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
   useQrMutation((input: UploadQrPdfInput) => rpc('qrcodes.uploadPdf', input));
 /**
@@ -137,7 +138,7 @@ export const useExportQrDesign = () =>
     }: ExportQrDesignInput & { onProgress?: (job: JobDto) => void }) => {
       const { jobId } = await rpc('qrcodes.export', input);
       await awaitJob(jobId, { onProgress });
-      return rpc('qrcodes.get', { id: input.id });
+      return api('qrcodes.get', { id: input.id });
     },
     (queryClient, saved) => applyDesign(queryClient, saved),
   );

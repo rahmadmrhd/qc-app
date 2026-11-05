@@ -1,6 +1,6 @@
 import type { JobDto } from '@shared/rpc';
 import { queryOptions, useQuery } from '@tanstack/react-query';
-import { rpc } from '@/lib/rpc';
+import { api } from '@/lib/api';
 import { RpcError } from '@/lib/rpc/rpc-error';
 
 export const jobKeys = {
@@ -18,7 +18,7 @@ export const isJobFinished = (job: JobDto | undefined): boolean =>
 export function jobQueryOptions(id: string) {
   return queryOptions({
     queryKey: jobKeys.one(id),
-    queryFn: () => rpc('jobs.get', { id }),
+    queryFn: () => api('jobs.get', { id }),
   });
 }
 
@@ -46,7 +46,7 @@ export async function awaitJob(jobId: string, options: AwaitJobOptions = {}): Pr
   const sleep =
     options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   for (let attempt = 0; ; attempt++) {
-    const job = await rpc('jobs.get', { id: jobId });
+    const job = await api('jobs.get', { id: jobId });
     options.onProgress?.(job);
     if (job.status === 'done') return job;
     if (job.status === 'failed') {
