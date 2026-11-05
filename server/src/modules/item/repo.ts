@@ -45,7 +45,7 @@ export interface ItemRow {
 }
 
 export const ITEM_COLUMNS =
-  'id, external_id, brand_id, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by';
+  'id, external_id, brand_id, model, `key`, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by';
 
 function parseJson(text: string): unknown {
   try {
@@ -127,7 +127,7 @@ export async function findItem(env: Env, id: string): Promise<ItemRecord | null>
   return row ? toItem(row) : null;
 }
 
-/** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); lihat migrasi 0007. */
+/** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); kolom `items.alias_keys`. */
 export function aliasKeysOf(aliases: readonly string[]): string {
   const keys = aliasKeyList(aliases);
   return keys.length === 0 ? '' : `|${keys.join('|')}|`;
@@ -138,17 +138,23 @@ export function aliasKeyList(aliases: readonly string[]): string[] {
   return [...new Set(aliases.map((alias) => normalizeKey(alias)).filter((k) => k !== ''))];
 }
 
-/** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY (migrasi 0009). */
+/** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY. */
 function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): DbStatement[] {
   return keys.map((key) =>
-    db.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)').bind(key, itemId),
+    db.prepare('INSERT INTO item_alias_keys (`key`, item_id) VALUES (?, ?)').bind(key, itemId),
   );
 }
 
 /**
- * `INSERT`/`UPDATE` item memakai `RETURNING sync_rev`: revisi yang benar-benar dipakai baris terbaca dari hasil
- * `batch()` yang sama (tanpa `SELECT` tambahan); hasil pernyataan lain di batch kosong.
+ * Pernyataan pembaca revisi yang dipakai baris item: `SELECT sync_rev` di akhir penulisan item (transaksi
+ * `batch()` yang sama, jadi membaca nilai yang baru ditulis; MariaDB tidak punya `UPDATE ... RETURNING`).
+ * Hanya pernyataan ini yang mengembalikan baris di batch penulisan item; pemanggil membacanya dari hasil batch.
  */
+function readSyncRevStmt(db: Db, itemId: string): DbStatement {
+  return db.prepare('SELECT sync_rev FROM items WHERE id = ?').bind(itemId);
+}
+
+/** Penyisipan item (+ `item_alias_keys`, `brands.item_count`, dan pembacaan `sync_rev` yang dipakai). */
 export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolean): DbStatement[] {
   const revSql = createdSyncRev ? syncRevExpr('items') : '?';
   const statements: DbStatement[] = [];
@@ -173,20 +179,21 @@ export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolea
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, external_id, brand_id, model, key, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${revSql}, ?, ?, ?) RETURNING sync_rev`,
+        `INSERT INTO items (id, external_id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${revSql}, ?, ?, ?)`,
       )
       .bind(...binds),
   );
   statements.push(...insertAliasKeyStmts(db, item.id, aliasKeyList(item.aliases)));
   statements.push(adjustItemCountStmt(db, item.brandId, 1));
+  statements.push(readSyncRevStmt(db, item.id));
   return statements;
 }
 
 /**
  * UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. `previous` = merk, nama
  * lain, dan `updatedAt` item SEBELUM perubahan (yang dilihat penulis): `updatedAt` dijaga CAS di `UPDATE`
- * itu sendiri (`CAS_UPDATED_AT_SET`: basi = seluruh batch batal dengan `integer overflow`, tanpa pernyataan
- * penjaga terpisah), dan selisih merk/nama lain menentukan baris `item_alias_keys` dan penghitung
+ * itu sendiri (`CAS_UPDATED_AT_SET`: basi = galat 'BIGINT value is out of range' yang membatalkan seluruh batch,
+ * tanpa pernyataan penjaga terpisah), dan selisih merk/nama lain menentukan baris `item_alias_keys` dan penghitung
  * `brands.item_count` yang ikut ditulis.
  */
 export function updateItemStmts(
@@ -201,7 +208,7 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, key = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ? RETURNING sync_rev`,
+        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
         item.externalId,
@@ -229,7 +236,7 @@ export function updateItemStmts(
     statements.push(
       db
         .prepare(
-          `DELETE FROM item_alias_keys WHERE item_id = ? AND key IN (${removed.map(() => '?').join(',')})`,
+          `DELETE FROM item_alias_keys WHERE item_id = ? AND \`key\` IN (${removed.map(() => '?').join(',')})`,
         )
         .bind(item.id, ...removed),
     );
@@ -247,5 +254,6 @@ export function updateItemStmts(
       adjustItemCountStmt(db, item.brandId, 1),
     );
   }
+  statements.push(readSyncRevStmt(db, item.id));
   return statements;
 }

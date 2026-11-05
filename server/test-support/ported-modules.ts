@@ -10,6 +10,7 @@ export const PORTED: readonly string[] = [
   'src/modules/brand',
   'src/modules/customer',
   'src/modules/files',
+  'src/modules/item',
   'src/modules/jobs',
   'src/modules/qrcode',
   'src/jobs',

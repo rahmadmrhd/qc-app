@@ -1,7 +1,7 @@
 // Dimuat lewat `bun test --preload` (lihat scripts/test.ts): menyiapkan templat skema dan membersihkan skema
 // tes yatim sebelum tes pertama, lalu menghapus skema tes setiap berkas tes selesai. Tanpa tunnel, gagal cepat
 // dengan pesan yang menyebut `bun run db:tunnel`.
-import { afterAll } from 'bun:test';
+import { afterAll, setDefaultTimeout } from 'bun:test';
 import { createDb, toDbError } from '@server/core/db';
 import { testDbUrl } from './db-env';
 import { dropTestSchemas, ensureTemplate, sweepOrphanSchemas } from './test-db';
@@ -23,3 +23,8 @@ try {
 afterAll(async () => {
   await dropTestSchemas();
 });
+
+// Tes memanggil MariaDB lewat jaringan (terowongan SSH saat dev): beberapa tes berantai banyak round trip dan
+// melewati batas bawaan 5 dtk bila latensi sedang tinggi. Batas lebih longgar menghindari kegagalan acak
+// (tes yang timeout juga membocorkan pekerjaan async ke tes berikutnya).
+setDefaultTimeout(30_000);

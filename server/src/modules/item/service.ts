@@ -9,11 +9,7 @@ import type { BrandRecord } from '@server/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
 import { planBrandByName } from '@server/modules/brand/service';
 import type { FileRecord } from '@server/modules/files/repo';
-import {
-  activeFilesFromResults,
-  activeFilesStatements,
-  findActiveFiles,
-} from '@server/modules/files/repo';
+import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import type {
@@ -139,16 +135,16 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
   }
   const query = normalizeKey(input.query ?? '');
   if (query !== '') {
-    where.push('(instr(i.key, ?) > 0 OR instr(i.alias_keys, ?) > 0)');
+    where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
     binds.push(query, query);
   }
   if (input.cursor) {
-    where.push('i.key > ?');
+    where.push('i.`key` > ?');
     binds.push(input.cursor);
   }
-  const sql = `SELECT i.id, i.external_id, i.brand_id, b.name AS brand_name, i.model, i.key, i.is_country_lock, i.aliases, CASE WHEN json_valid(i.attachments) THEN json_array_length(i.attachments) ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
+  const sql = `SELECT i.id, i.external_id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
     where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
-  } ORDER BY i.key LIMIT ?`;
+  } ORDER BY i.\`key\` LIMIT ?`;
   const result = await env.DB.prepare(sql)
     .bind(...binds, limit + 1)
     .all<ListRow>();
@@ -190,9 +186,9 @@ interface OwnerRow {
 }
 
 const OWNER_SELECT =
-  "SELECT 'k' AS src, i.key AS hit, i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id";
+  "SELECT 'k' AS src, i.`key` AS hit, i.id, i.model, b.name AS brand FROM items i LEFT JOIN brands b ON b.id = i.brand_id";
 const ALIAS_OWNER_SELECT =
-  "SELECT 'a' AS src, a.key AS hit, i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id";
+  "SELECT 'a' AS src, a.`key` AS hit, i.id, i.model, b.name AS brand FROM item_alias_keys a JOIN items i ON i.id = a.item_id LEFT JOIN brands b ON b.id = i.brand_id";
 
 /** Kunci yang harus bebas: merk+tipe lalu tiap nama lain (urutan input; `normalizeKey` sekali per nama lain). */
 function nameKeysOf(input: SaveItemInput, key: string): { key: string; aliasKeys: string[] } {
@@ -213,7 +209,7 @@ function nameCheckStatement(
   const keys = [...new Set([key, ...nameKeysOf(input, key).aliasKeys])];
   const marks = keys.map(() => '?').join(',');
   return env.DB.prepare(
-    `${OWNER_SELECT} WHERE i.id <> ? AND i.key IN (${marks}) UNION ALL ${ALIAS_OWNER_SELECT} WHERE a.key IN (${marks}) AND a.item_id <> ?`,
+    `${OWNER_SELECT} WHERE i.id <> ? AND i.\`key\` IN (${marks}) UNION ALL ${ALIAS_OWNER_SELECT} WHERE a.\`key\` IN (${marks}) AND a.item_id <> ?`,
   ).bind(selfId, ...keys, ...keys, selfId);
 }
 
@@ -389,10 +385,14 @@ export interface WriteItemOptions {
   preloaded?: { owners: NameOwners; files: readonly FileRecord[] } | undefined;
 }
 
+/**
+ * Peta konflik berkunci NAMA INDEKS MariaDB (galat duplikat membawa nama indeks, bukan tabel.kolom):
+ * `items_key` (UNIQUE merk+tipe) dan `PRIMARY` (PRIMARY KEY `item_alias_keys`: balapan penulis yang merebut nama
+ * lain; MariaDB tidak menyebut tabel, jadi duplikat PRIMARY mana pun di batch penulisan item dipetakan ke sini).
+ */
 export const ITEM_CONFLICTS = {
-  'items.key': { field: 'model', message: 'Merk dan tipe sudah dipakai item lain' },
-  // Balapan penulis: PRIMARY KEY `item_alias_keys` menolak nama lain yang direbut item lain.
-  'item_alias_keys.key': { field: 'aliases', message: 'Nama lain sudah dipakai item lain' },
+  items_key: { field: 'model', message: 'Merk dan tipe sudah dipakai item lain' },
+  PRIMARY: { field: 'aliases', message: 'Nama lain sudah dipakai item lain' },
 };
 
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';

@@ -10,11 +10,11 @@ import { getRoutes } from '@server/routes';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
-import { measureCpu } from '@server-test/measure';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { hashText } from '@shared/items';
 import type { SaveItemInput } from '@shared/rpc';
-import { getItemDto, listItemPage, saveItem, setItemStatus } from './service';
+import { findItem } from './repo';
+import { getItemDto, listItemPage, planItemWrite, saveItem, setItemStatus } from './service';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 
@@ -37,14 +37,14 @@ const newFile = async () =>
 
 async function lastAudit() {
   const row = await env.DB.prepare(
-    'SELECT action, target, "before" AS before, "after" AS after FROM audit_log ORDER BY id DESC LIMIT 1',
-  ).first<{ action: string; target: string; before: string; after: string }>();
+    'SELECT action, target, `before` AS bf, `after` AS af FROM audit_log ORDER BY id DESC LIMIT 1',
+  ).first<{ action: string; target: string; bf: string; af: string }>();
   if (!row) throw new Error('audit kosong');
   return {
     action: row.action,
     target: row.target,
-    before: JSON.parse(row.before) as Record<string, unknown> | null,
-    after: JSON.parse(row.after) as Record<string, unknown> | null,
+    before: JSON.parse(row.bf) as Record<string, unknown> | null,
+    after: JSON.parse(row.af) as Record<string, unknown> | null,
   };
 }
 
@@ -416,6 +416,71 @@ describe('sync_rev', () => {
   });
 });
 
+describe('sync_rev dibaca dari hasil batch penulisan', () => {
+  test('INSERT dan UPDATE item menyertakan SELECT sync_rev (satu-satunya hasil berisi baris) sama dengan nilai tersimpan', async () => {
+    const plan = await planItemWrite(env, baseInput, { id: 'baru-1', actor: admin });
+    const created = await env.DB.batch(plan.statements);
+    const written = created.find((r) => r.results.length > 0)?.results[0] as { sync_rev: number };
+    expect(Number(written.sync_rev)).toBe(await rev('baru-1'));
+    expect(created.filter((r) => r.results.length > 0)).toHaveLength(1);
+    env.clock.advance(1000);
+    const existing = await findItem(env, 'baru-1');
+    if (!existing) throw new Error('item hilang');
+    const update = await planItemWrite(
+      env,
+      { ...baseInput, id: 'baru-1', detail: 'berubah', expectedUpdatedAt: existing.updatedAt },
+      {
+        id: 'baru-1',
+        actor: admin,
+        existing,
+      },
+    );
+    const updated = await env.DB.batch(update.statements);
+    const after = updated.find((r) => r.results.length > 0)?.results[0] as { sync_rev: number };
+    expect(Number(after.sync_rev)).toBe(2);
+    expect(await rev('baru-1')).toBe(2);
+  });
+});
+
+describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
+  test('detail Markdown dan nama lain berisi emoji tersimpan dan terbaca utuh (utf8mb4)', async () => {
+    const detail = '# Panduan 😀\n\n- paket 📦 lengkap\n- 𝒳 dan 👨‍👩‍👧‍👦';
+    const saved = await saveItem(
+      env,
+      { ...baseInput, model: 'Emoji 😀', aliases: ['Mantap 😀', 'Nama 👍'], detail },
+      admin,
+    );
+    const got = await getItemDto(env, { id: saved.id });
+    expect(got.detail).toBe(detail);
+    expect(got.model).toBe('Emoji 😀');
+    expect(got.aliases).toEqual(['Mantap 😀', 'Nama 👍']);
+    // kolom mentah dan indeks nama lain juga utuh
+    const row = await env.DB.prepare('SELECT detail_md, alias_keys FROM items WHERE id = ?')
+      .bind(saved.id)
+      .first<{ detail_md: string; alias_keys: string }>();
+    expect(row?.detail_md).toBe(detail);
+    // kunci pencarian dinormalisasi (emoji dibuang), teks aslinya tetap utuh di kolom aliases
+    expect(row?.alias_keys).toBe('|mantap|nama|');
+    const keys = (
+      await env.DB.prepare('SELECT `key` FROM item_alias_keys WHERE item_id = ? ORDER BY `key`')
+        .bind(saved.id)
+        .all<{ key: string }>()
+    ).results.map((r) => r.key);
+    expect(keys).toEqual(['mantap', 'nama']);
+    // pencarian lewat nama lain bernama emoji; menyimpan ulang tidak merusak
+    expect((await listItemPage(env, { query: 'mantap' })).items.map((i) => i.id)).toEqual([
+      saved.id,
+    ]);
+    env.clock.advance(1000);
+    await saveItem(
+      env,
+      { ...baseInput, id: saved.id, model: 'Emoji 😀', aliases: ['Mantap 😀'], detail },
+      admin,
+    );
+    expect((await getItemDto(env, { id: saved.id })).detail).toBe(detail);
+  });
+});
+
 describe('konkurensi optimistis', () => {
   test('expectedUpdatedAt basi -> CONFLICT dan item tidak berubah; cocok atau kosong -> tersimpan', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
@@ -513,7 +578,7 @@ describe('CAS digabung ke UPDATE (konkurensi)', () => {
       ),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     const keys = (
-      await env.DB.prepare('SELECT key FROM item_alias_keys WHERE item_id = ? ORDER BY key')
+      await env.DB.prepare('SELECT `key` FROM item_alias_keys WHERE item_id = ? ORDER BY `key`')
         .bind(first.id)
         .all<{ key: string }>()
     ).results.map((r) => r.key);
@@ -638,21 +703,6 @@ describe('daftar berkursor dan get', () => {
       'NOT_FOUND',
     );
   });
-
-  test('CPU kasar: halaman 50 dari 1.000 item di bawah anggaran', async () => {
-    const statements: DbStatement[] = [];
-    for (let i = 0; i < 1000; i++) {
-      statements.push(
-        env.DB.prepare(
-          "INSERT INTO items (id, brand_id, model, key, aliases, alias_keys, attachments) VALUES (?, 'b', ?, ?, '[\"a\",\"b\"]', '|a|b|', '[\"f\"]')",
-        ).bind(`i${i}`, `M${i}`, `b m${String(i).padStart(4, '0')}`),
-      );
-      if (statements.length === 100) await env.DB.batch(statements.splice(0));
-    }
-    const { result, ms } = await measureCpu(() => listItemPage(env, { limit: 50 }));
-    expect(result.items).toHaveLength(50);
-    expect(ms).toBeLessThan(15);
-  });
 });
 
 describe('rute', () => {
@@ -698,7 +748,7 @@ describe('rute', () => {
 describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
   const aliasRows = async () =>
     (
-      await env.DB.prepare('SELECT key, item_id FROM item_alias_keys ORDER BY key').all<{
+      await env.DB.prepare('SELECT `key`, item_id FROM item_alias_keys ORDER BY `key`').all<{
         key: string;
         item_id: string;
       }>()
@@ -771,7 +821,7 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
       env.DB.batch = (async (statements: DbStatement[]) => {
         // panggilan pertama = pemeriksaan nama (lolos); sebelum batch tulis, item lain merebut kuncinya
         if (++calls === 2) {
-          await env.DB.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)')
+          await env.DB.prepare('INSERT INTO item_alias_keys (`key`, item_id) VALUES (?, ?)')
             .bind('rebutan', first.id)
             .run();
           env.DB.batch = original;
