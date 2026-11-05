@@ -25,6 +25,7 @@
     "deploy": "bun run push && bun run scripts/deploy.ts",
     "dev:worker": "bun run server/scripts/dev.ts",
     "db:seed": "bun run server/scripts/seed-dev.ts",
+    "db:tunnel": "bun run scripts/db-tunnel.ts",
     "load:cpu": "bun run server/scripts/load-cpu.ts"
   },
   "devDependencies": {

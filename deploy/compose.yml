@@ -1,0 +1,26 @@
+# Compose MariaDB QC. Proyek per lingkungan: qc-${QC_ENV} (dev, prod).
+# qc-app ditambah pada T26. Jalankan dari folder ini: docker compose up -d
+name: qc-${QC_ENV:?QC_ENV wajib diisi}
+
+services:
+  qc-db:
+    image: mariadb:11.8
+    container_name: qc-${QC_ENV}-db
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD wajib diisi}
+    ports:
+      - "127.0.0.1:${DB_PORT:?DB_PORT wajib diisi}:3306"
+    volumes:
+      - qc-db-data:/var/lib/mysql
+      - ./mariadb/qc.cnf:/etc/mysql/conf.d/qc.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  qc-db-data:
