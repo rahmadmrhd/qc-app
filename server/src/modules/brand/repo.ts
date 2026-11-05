@@ -112,7 +112,6 @@ export function insertBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[
   ];
 }
 
-/** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
 /**
  * Perubahan STATUS merk: hanya menulis `status` (+ revisi sinkron dan `updated_*`), TIDAK `name`/`key`, sehingga
  * ganti nama yang selesai di antara baca dan tulis tidak tertimpa nilai basi (I2). Diikuti `SELECT` baris merk
@@ -133,6 +132,7 @@ export function setBrandStatusStmts(
   ];
 }
 
+/** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
 export function updateBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[] {
   return [
     nextSyncRev(db, 'brands', brand.updatedAt),
