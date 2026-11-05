@@ -479,13 +479,13 @@ describe('saveBatch', () => {
     ]);
   });
 
-  test('6 task ditolak (batas Worker 5); kosong ditolak; 5 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
-    const tasks = Array.from({ length: 6 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
+  test('31 task ditolak (batas 30); kosong ditolak; 30 task diterima dalam satu batch; QC tanpa edit FORBIDDEN', async () => {
+    const tasks = Array.from({ length: 31 }, (_, i) => ({ customerName: `PT ${i}`, note: 'x' }));
     expect((await batch(tasks)).error.code).toBe('VALIDATION');
     expect((await batch([])).error.code).toBe('VALIDATION');
-    const ok = await batch(tasks.slice(0, 5));
-    expect(ok.data).toHaveLength(5);
-    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(5);
+    const ok = await batch(tasks.slice(0, 30));
+    expect(ok.data).toHaveLength(30);
+    expect(new Set(ok.data.map((t: { number: string }) => t.number)).size).toBe(30);
     expect((await batch([{ customerName: '', note: 'x' }], 'qc@gmail.com')).error.code).toBe(
       'FORBIDDEN',
     );
@@ -1083,7 +1083,7 @@ describe('baca: board per kolom, get, options', () => {
     expect(pages).toBe(16); // 46 task / 3 per halaman
     expect(total).toBe(46);
     expect(new Set(seen).size).toBe(46);
-    expect((await board('new')).data.items).toHaveLength(3);
+    expect((await board('new')).data.items).toHaveLength(20);
     // urutan menurun menurut (updated_at, number)
     const rows = await env.DB.prepare(
       "SELECT id FROM handovers WHERE board_status = 'new' AND location_id = ? ORDER BY updated_at DESC, number DESC",
@@ -1422,8 +1422,8 @@ describe('konkurensi (Review Focus 3)', () => {
     ).toBe(6);
   });
 
-  test('batch 5 task (batas per permintaan, HANDOVER_WORKER_BATCH) dengan customer berbeda diterima', async () => {
-    const tasks = Array.from({ length: 5 }, (_, i) => ({
+  test('batch 30 task (batas per permintaan, HANDOVER_BATCH_MAX) dengan customer berbeda diterima', async () => {
+    const tasks = Array.from({ length: 30 }, (_, i) => ({
       customerName: `Cust ${i}`,
       note: `- [ ] x${i}`,
     }));

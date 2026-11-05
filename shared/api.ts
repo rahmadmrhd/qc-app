@@ -181,6 +181,16 @@ export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpc
   'items.get',
   'items.save',
   'items.setStatus',
+  'handovers.options',
+  'handovers.board',
+  'handovers.get',
+  'handovers.save',
+  'handovers.saveBatch',
+  'handovers.cancel',
+  'handovers.reopen',
+  'handovers.setCheck',
+  'handovers.setDone',
+  'handovers.comment',
 ]);
 
 export interface RequestParts {

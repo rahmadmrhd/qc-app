@@ -1,4 +1,4 @@
-import { HANDOVER_LIMITS, HANDOVER_WORKER_BATCH } from '@shared/handover';
+import { HANDOVER_BATCH_MAX } from '@shared/handover';
 import type { HandoverOptionsDto } from '@shared/rpc';
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
@@ -25,12 +25,11 @@ export interface HandoverBatchFormProps {
   options: HandoverOptionsDto;
   defaultLocationId?: string;
   /**
-   * Simpan SATU kelompok (maks. `HANDOVER_WORKER_BATCH` task, atomik per kelompok). Form mengirim kelompok
-   * berurutan; bila satu menolak, kelompok sebelumnya sudah tersimpan dan dibuang dari draf, sisanya tetap
-   * utuh dengan kartu bermasalah ditandai. Mengembalikan task tersimpan (untuk nomornya) bila ada.
+   * Simpan SEMUA task dalam SATU permintaan atomik (maks. `HANDOVER_BATCH_MAX` = 30): gagal = tidak ada yang
+   * tersimpan, draf tetap utuh dan kartu bermasalah ditandai.
    */
   onSubmit: (values: HandoverBatchFormOutput) => Promise<unknown>;
-  /** Seluruh kelompok berhasil disimpan (jumlah task total). */
+  /** Semua task berhasil disimpan (jumlah task). */
   onSaved?: (count: number) => void;
   onCancel: () => void;
 }
@@ -62,15 +61,13 @@ export function HandoverBatchForm({
   // Galat per kartu menurut `key` kartu (bukan indeks): tetap menempel pada kartu yang benar setelah ada yang dihapus.
   const [cardErrors, setCardErrors] = useState<Record<number, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  // Kelompok yang sudah tersimpan sebelum satu kelompok gagal (tidak dikirim ulang).
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const baseId = useId();
-  const full = cards.length >= HANDOVER_LIMITS.batch;
+  const full = cards.length >= HANDOVER_BATCH_MAX;
   // Satu kartu kosong awal akan diganti oleh hasil tempel, jadi tidak memakai slot.
   const pristine = cards.length === 1 && cards[0]?.note === '' && cards[0].customerName === '';
-  const remaining = HANDOVER_LIMITS.batch - (pristine ? 0 : cards.length);
+  const remaining = HANDOVER_BATCH_MAX - (pristine ? 0 : cards.length);
 
   function patch(key: number, change: Partial<Card>) {
     setCards((current) =>
@@ -109,42 +106,16 @@ export function HandoverBatchForm({
       setCardErrors(errors);
       return;
     }
-    setSavedNotice(null);
     setSubmitting(true);
-    const tasks = parsed.data.tasks;
-    const numbers: string[] = [];
-    let saved = 0;
     try {
-      for (let offset = 0; offset < tasks.length; offset += HANDOVER_WORKER_BATCH) {
-        const group = tasks.slice(offset, offset + HANDOVER_WORKER_BATCH);
-        try {
-          const out = await onSubmit({ ...parsed.data, tasks: group });
-          if (Array.isArray(out)) {
-            for (const item of out) {
-              const number = (item as { number?: unknown } | null)?.number;
-              if (typeof number === 'string') numbers.push(number);
-            }
-          }
-          saved += group.length;
-        } catch (error) {
-          // Kelompok sebelumnya sudah tersimpan: buang dari draf agar tidak tersimpan dua kali saat diulang.
-          const savedKeys = new Set(keys.slice(0, saved));
-          if (saved > 0) {
-            setCards((current) => current.filter((card) => !savedKeys.has(card.key)));
-            setSavedNotice(
-              `${saved} dari ${tasks.length} task sudah tersimpan${numbers.length > 0 ? ` (${numbers.join(', ')})` : ''} dan dihapus dari draf; ${tasks.length - saved} task lainnya belum tersimpan. Perbaiki lalu tekan Simpan semua lagi: hanya sisanya yang dikirim.`,
-            );
-          }
-          const task = parseTaskError(error);
-          const global = task ? offset + task.index : -1;
-          const key = task ? keys[global] : undefined;
-          if (task && key !== undefined) setCardErrors({ [key]: task.message });
-          else if (task) setFormError(`Task ${global - saved + 1}: ${task.message}`);
-          else setFormError(describeError(error));
-          return;
-        }
-      }
-      onSaved?.(saved);
+      await onSubmit(parsed.data);
+      onSaved?.(parsed.data.tasks.length);
+    } catch (error) {
+      const task = parseTaskError(error);
+      const key = task ? keys[task.index] : undefined;
+      if (task && key !== undefined) setCardErrors({ [key]: task.message });
+      else if (task) setFormError(`Task ${task.index + 1}: ${task.message}`);
+      else setFormError(describeError(error));
     } finally {
       setSubmitting(false);
     }
@@ -258,15 +229,10 @@ export function HandoverBatchForm({
       </Button>
       {full ? (
         <p className="text-xs text-muted-foreground">
-          Maksimal {HANDOVER_LIMITS.batch} task per batch.
+          Maksimal {HANDOVER_BATCH_MAX} task per batch.
         </p>
       ) : null}
 
-      {savedNotice ? (
-        <p role="status" className="rounded-md border p-3 text-sm">
-          {savedNotice}
-        </p>
-      ) : null}
       {formError ? (
         <p role="alert" className="text-sm text-destructive">
           {formError}

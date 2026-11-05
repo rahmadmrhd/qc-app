@@ -13,7 +13,7 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => state.me }));
 vi.mock('@/modules/location/active-locations-context', () => ({
   useActiveLocations: () => ({ selectedIds: state.selected }),
 }));
-vi.mock('@/lib/rpc', () => ({ rpc: (...args: unknown[]) => state.rpc(...args) }));
+vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => state.rpc(...args) }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));

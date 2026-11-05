@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), error: vi.fn() }));
-vi.mock('@/lib/rpc', () => ({ rpc: (...args: unknown[]) => mocks.rpc(...args) }));
+vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.rpc(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error } }));
 
 import { makeHandover } from '../components/test-handover';

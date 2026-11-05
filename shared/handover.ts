@@ -12,12 +12,11 @@ export const HANDOVER_LIMITS = {
 } as const;
 
 /**
- * Maksimum task per permintaan `handovers.saveBatch` di Worker (anggaran CPU edge; keputusan pemilik 2026-10-26,
- * diturunkan dari 10 menjadi 5 pada 2026-10-30 setelah optimasi pernyataan; Run 6: p95 18 ms pada 10 task).
- * Aplikasi Apps Script lama tetap memakai `HANDOVER_LIMITS.batch` (30). Formulir bulk tetap menampung
- * `HANDOVER_LIMITS.batch` kartu dan mengirimnya berurutan dalam kelompok sebesar ini.
+ * Maksimum task per permintaan `handovers.saveBatch` (server Bun di VPS dan Apps Script lama): 30. Formulir bulk
+ * mengirim SATU permintaan atomik. Keputusan pemilik 2026-11-05: batas 5 peninggalan anggaran CPU edge (2026-10-26/30)
+ * dibuang karena batas CPU edge hilang di VPS.
  */
-export const HANDOVER_WORKER_BATCH = 5;
+export const HANDOVER_BATCH_MAX = HANDOVER_LIMITS.batch;
 
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';

@@ -1,13 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { DbStatement } from '@server/core/db';
-import { callRoute } from '@server/core/router';
-import { signSessionToken } from '@server/core/session';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { listBrands } from '@server/modules/brand/repo';
 import { uploadFile } from '@server/modules/files/service';
-import { getRoutes } from '@server/routes';
-import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';

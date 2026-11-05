@@ -35,14 +35,16 @@ describe('validasi serah terima berbasis catatan', () => {
     });
   });
 
-  test('batch: kosong dan 6 task ditolak (batas Worker 5), 5 diterima', () => {
+  test('batch: kosong dan 31 task ditolak (batas 30), 30 diterima', () => {
     const task = { customerName: 'A', note: '- [ ] X = 1' };
     expect(
       captureAppError(() => validateSaveHandoverBatch({ locationId: 'l', tasks: [] })).code,
     ).toBe('VALIDATION');
     const many = (n: number) => ({ locationId: 'l', tasks: Array.from({ length: n }, () => task) });
-    expect(captureAppError(() => validateSaveHandoverBatch(many(6))).fields?.tasks).toBeDefined();
-    expect(validateSaveHandoverBatch(many(5)).tasks).toHaveLength(5);
+    expect(captureAppError(() => validateSaveHandoverBatch(many(31))).fields?.tasks).toBe(
+      'Maksimal 30 task per permintaan',
+    );
+    expect(validateSaveHandoverBatch(many(30)).tasks).toHaveLength(30);
   });
 
   test('batch: galat menyebut nomor task', () => {
@@ -177,7 +179,7 @@ describe('validateBoardPage', () => {
     expect(validateBoardPage({ locationIds: ['a'], status: 'new' })).toEqual({
       locationIds: ['a'],
       status: 'new',
-      limit: 3,
+      limit: 20,
     });
     expect(
       validateBoardPage({
@@ -194,10 +196,17 @@ describe('validateBoardPage', () => {
         cursor: '500|2026-01-01T00:00:00.000Z|ST-1',
       }).cursor,
     ).toBe('500|2026-01-01T00:00:00.000Z|ST-1');
+    expect(validateBoardPage({ locationIds: ['a'], status: 'new', limit: 50 }).limit).toBe(50);
     expect(
       captureAppError(() => validateBoardPage({ locationIds: ['a'], status: 'x' })).fields?.status,
     ).toBeDefined();
-    for (const bad of [{ limit: 0 }, { limit: 4 }, { limit: 51 }, { cursor: 'x' }, { cursor: 5 }]) {
+    for (const bad of [
+      { limit: 0 },
+      { limit: 51 },
+      { limit: 3.5 },
+      { cursor: 'x' },
+      { cursor: 5 },
+    ]) {
       const e = captureAppError(() =>
         validateBoardPage({ locationIds: ['a'], status: 'new', ...bad }),
       );

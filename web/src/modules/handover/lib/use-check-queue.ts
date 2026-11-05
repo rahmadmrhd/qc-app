@@ -2,8 +2,8 @@ import type { HandoverDto } from '@shared/rpc';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
-import { rpc } from '@/lib/rpc';
 import { describeError } from '@/lib/rpc/describe-error';
 import { RpcError } from '@/lib/rpc/rpc-error';
 import { accessKeys } from '@/modules/access/queries';
@@ -94,7 +94,7 @@ export function useCheckQueue(by: string) {
             cachedHandover(queryClient, task.id)?.checklist.find(
               (entry) => entry.index === item.index,
             )?.text ?? item.text;
-          q.latest = await rpc('handovers.setCheck', {
+          q.latest = await api('handovers.setCheck', {
             id: task.id,
             locationId: task.locationId,
             index: item.index,

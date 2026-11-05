@@ -1,11 +1,9 @@
 import type { Env } from '@server/core/env';
-import { callRoute } from '@server/core/router';
-import { signSessionToken } from '@server/core/session';
 import type { HandoverRecord, StoredComment } from '@server/modules/handover/repo';
 import { insertHandoverStmt } from '@server/modules/handover/repo';
-import { getRoutes } from '@server/routes';
 import type { RpcResult } from '@shared/rpc';
 import { seedLocation, seedRole, seedUser } from './access-fixtures';
+import { restRpc } from './rest-rpc';
 
 export const ENV = {
   locA: 'loc-a',
@@ -49,15 +47,17 @@ export async function seedHandoverEnv(env: Pick<Env, 'DB'>): Promise<void> {
   ]);
 }
 
-/** Memanggil RPC sebagai user (token sesi sah) lewat router sungguhan. */
+/**
+ * Memanggil satu id sebagai user lewat kabel REST nyata (`restRpc`) dan mengembalikan bentuk `RpcResult`, sehingga
+ * semua asersi tes serah terima tetap berlaku di atas `/api/v1`.
+ */
 export async function rpc(
   env: Env,
   email: string,
   method: string,
   payload: unknown,
 ): Promise<RpcResult<unknown>> {
-  const token = await signSessionToken(env, email, (env.NOW ?? Date.now)());
-  return callRoute(env, token, method, payload, getRoutes());
+  return restRpc(env, email, method, payload);
 }
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';

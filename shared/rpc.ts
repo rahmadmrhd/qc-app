@@ -522,7 +522,7 @@ export interface RpcContract {
   'handovers.board': { input: ListHandoversInput; output: HandoverDto[] };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
   'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
-  /** Apps Script: maks. 30 task per permintaan. Worker: maks. 5 (`HANDOVER_WORKER_BATCH`); klien memecah dan mengirim berurutan. */
+  /** Maks. 30 task per permintaan (`HANDOVER_BATCH_MAX`), atomik: gagal = tidak ada yang tersimpan. */
   'handovers.saveBatch': { input: SaveHandoverBatchInput; output: HandoverDto[] };
   'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
   'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };
@@ -575,7 +575,7 @@ export interface BoardPageInput {
   /** Kolom kanban yang dimuat (status turunan, termasuk `cancelled`). */
   status: HandoverStatus;
   cursor?: string;
-  /** Apps Script: bawaan 20, maksimum 50. Worker: bawaan dan maksimum 3 (anggaran CPU; klien memuat lanjutan lewat kursor). */
+  /** Bawaan 20, maksimum 50; klien memuat lanjutan lewat kursor. */
   limit?: number;
 }
 

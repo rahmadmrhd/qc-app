@@ -212,3 +212,39 @@ test('413 polos dari Bun.serve (bukan problem) menjadi VALIDATION "Badan permint
     requestId: '-',
   });
 });
+
+test('rute handover: setCheck PUT .../checks, cancel POST .../cancel, comment POST .../comments, batch POST /handovers/batch', async () => {
+  const { api, fetchImpl } = setup(() => respond({}));
+  await api('handovers.setCheck', {
+    id: 'h1',
+    locationId: 'l1',
+    index: 2,
+    text: 'A',
+    checked: true,
+  });
+  let call = lastCall(fetchImpl);
+  expect([call.init.method, call.url]).toEqual(['PUT', '/api/v1/handovers/h1/checks']);
+  expect(JSON.parse(String(call.init.body))).toEqual({
+    locationId: 'l1',
+    index: 2,
+    text: 'A',
+    checked: true,
+  });
+  await api('handovers.cancel', { id: 'h1', locationId: 'l1' });
+  call = lastCall(fetchImpl);
+  expect([call.init.method, call.url]).toEqual(['POST', '/api/v1/handovers/h1/cancel']);
+  await api('handovers.comment', {
+    id: 'h1',
+    locationId: 'l1',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'x',
+  });
+  expect(lastCall(fetchImpl).url).toBe('/api/v1/handovers/h1/comments');
+  await api('handovers.saveBatch', { locationId: 'l1', tasks: [] });
+  call = lastCall(fetchImpl);
+  expect([call.init.method, call.url]).toEqual(['POST', '/api/v1/handovers/batch']);
+  await api('handovers.get', { id: 'h1', locationIds: ['l1', 'l2'] });
+  expect(lastCall(fetchImpl).url).toBe('/api/v1/handovers/h1?locationIds=l1%2Cl2');
+});

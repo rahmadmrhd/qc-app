@@ -14,8 +14,8 @@ import {
   customerKey,
   dateKeyOf,
   deriveHandoverStatus,
+  HANDOVER_BATCH_MAX,
   HANDOVER_LIMITS,
-  HANDOVER_WORKER_BATCH,
   handoverNumber,
 } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
@@ -426,7 +426,7 @@ interface NewTaskInput {
 }
 
 /**
- * Membuat 1..`HANDOVER_WORKER_BATCH` (5) task SEKALIGUS dalam SATU `batch()` (atomik): penjaga/penyimpanan penghitung nomor, customer
+ * Membuat 1..`HANDOVER_BATCH_MAX` (30) task SEKALIGUS dalam SATU `batch()` (atomik): penjaga/penyimpanan penghitung nomor, customer
  * baru (satu kali per kunci), task, dan audit tiap task. Gagal = tidak ada task, customer, atau nomor.
  * Diulang otomatis bila penulis lain merebut nomor/customer yang sama.
  */
@@ -616,8 +616,8 @@ export async function saveHandoverBatch(
   input: SaveHandoverBatchInput,
   actor: ActorRef,
 ): Promise<HandoverDto[]> {
-  if (input.tasks.length === 0 || input.tasks.length > HANDOVER_WORKER_BATCH) {
-    const message = `Jumlah task harus 1–${HANDOVER_WORKER_BATCH}`;
+  if (input.tasks.length === 0 || input.tasks.length > HANDOVER_BATCH_MAX) {
+    const message = `Jumlah task harus 1–${HANDOVER_BATCH_MAX}`;
     throw appError('VALIDATION', message, { tasks: message });
   }
   const customers = await listCustomers(env);

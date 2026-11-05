@@ -64,8 +64,8 @@ function NewHandoverPage() {
   }
 
   async function handleBatch(values: HandoverBatchFormOutput) {
-    // Satu kelompok (<= 5 task, atomik). Galat dilempar ke form bulk: kartu bermasalah ditandai dan kelompok
-    // yang sudah tersimpan dilaporkan; navigasi hanya setelah SEMUA kelompok tersimpan (`onSaved`).
+    // SATU permintaan atomik (<= 30 task). Galat dilempar ke form bulk: kartu bermasalah ditandai dan draf utuh;
+    // navigasi hanya setelah semua task tersimpan (`onSaved`).
     return saveBatch.mutateAsync(toSaveHandoverBatchInput(values));
   }
 

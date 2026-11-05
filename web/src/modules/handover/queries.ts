@@ -16,8 +16,8 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
-import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
 import { customerKeys } from '@/modules/customer/queries';
 import { boardColumnKey, upsertHandoverInBoards } from './lib/board-cache';
@@ -35,12 +35,12 @@ export const handoverKeys = {
   options: (ids: readonly string[]) => ['handovers', 'options', sorted(ids)] as const,
 };
 
-/** Satu kolom papan: halaman pertama 20 task, berikutnya lewat kursor server (`handovers.board`). */
+/** Satu kolom papan: halaman pertama 20 task (bawaan server), berikutnya lewat kursor server (`handovers.board`). */
 export function handoverColumnQueryOptions(locationIds: readonly string[], status: HandoverStatus) {
   return infiniteQueryOptions({
     queryKey: handoverKeys.column(locationIds, status),
     queryFn: ({ pageParam }) =>
-      rpc('handovers.board', {
+      api('handovers.board', {
         locationIds: [...locationIds],
         status,
         ...(pageParam ? { cursor: pageParam } : {}),
@@ -95,7 +95,7 @@ export function useHandoverBoard(locationIds: readonly string[]) {
 export function handoverQueryOptions(id: string, locationIds: readonly string[]) {
   return queryOptions({
     queryKey: handoverKeys.one(id, locationIds),
-    queryFn: () => rpc('handovers.get', { id, locationIds: [...locationIds] }),
+    queryFn: () => api('handovers.get', { id, locationIds: [...locationIds] }),
     enabled: locationIds.length > 0,
   });
 }
@@ -103,7 +103,7 @@ export function handoverQueryOptions(id: string, locationIds: readonly string[])
 export function handoverOptionsQueryOptions(locationIds: readonly string[]) {
   return queryOptions({
     queryKey: handoverKeys.options(locationIds),
-    queryFn: () => rpc('handovers.options', { locationIds: [...locationIds] }),
+    queryFn: () => api('handovers.options', { locationIds: [...locationIds] }),
     enabled: locationIds.length > 0,
   });
 }
@@ -137,16 +137,16 @@ function useHandoverMutation<TInput, TOutput extends HandoverDto | HandoverDto[]
 }
 
 export const useSaveHandover = () =>
-  useHandoverMutation((input: SaveHandoverInput) => rpc('handovers.save', input));
+  useHandoverMutation((input: SaveHandoverInput) => api('handovers.save', input));
 export const useSaveHandoverBatch = () =>
-  useHandoverMutation((input: SaveHandoverBatchInput) => rpc('handovers.saveBatch', input));
+  useHandoverMutation((input: SaveHandoverBatchInput) => api('handovers.saveBatch', input));
 export const useCancelHandover = () =>
-  useHandoverMutation((input: HandoverRefInput) => rpc('handovers.cancel', input));
+  useHandoverMutation((input: HandoverRefInput) => api('handovers.cancel', input));
 export const useReopenHandover = () =>
-  useHandoverMutation((input: HandoverRefInput) => rpc('handovers.reopen', input));
+  useHandoverMutation((input: HandoverRefInput) => api('handovers.reopen', input));
 export const useSetCheck = () =>
-  useHandoverMutation((input: SetCheckInput) => rpc('handovers.setCheck', input));
+  useHandoverMutation((input: SetCheckInput) => api('handovers.setCheck', input));
 export const useSetDone = () =>
-  useHandoverMutation((input: SetDoneInput) => rpc('handovers.setDone', input));
+  useHandoverMutation((input: SetDoneInput) => api('handovers.setDone', input));
 export const useAddComment = () =>
-  useHandoverMutation((input: AddCommentInput) => rpc('handovers.comment', input));
+  useHandoverMutation((input: AddCommentInput) => api('handovers.comment', input));

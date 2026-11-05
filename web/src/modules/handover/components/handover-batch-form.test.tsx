@@ -243,49 +243,43 @@ const sentNotes = (onSubmit: ReturnType<typeof vi.fn>) =>
     (call[0] as { tasks: { note: string }[] }).tasks.map((task) => task.note),
   );
 
-test('25 task dikirim berurutan dalam kelompok 5/5/5/5/5 lalu onSaved(25)', async () => {
+test('30 task dikirim dalam SATU permintaan atomik lalu onSaved(30)', async () => {
   const onSubmit = vi.fn().mockResolvedValue([]);
-  const { onSaved } = await pasteTasks(25, onSubmit);
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
-  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(25));
-  expect(onSubmit.mock.calls.map((call) => (call[0] as { tasks: unknown[] }).tasks.length)).toEqual(
-    [5, 5, 5, 5, 5],
-  );
+  const { onSaved } = await pasteTasks(30, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(30));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  const sent = onSubmit.mock.calls[0]?.[0] as { tasks: unknown[] };
+  expect(sent.tasks).toHaveLength(30);
 }, 60_000);
 
-test('kelompok ke-2 gagal: kelompok 1 dilaporkan tersimpan dan dibuang dari draf; ulang hanya mengirim sisanya', async () => {
+test('gagal: tidak ada yang tersimpan, draf utuh (30 kartu), galat menempel pada kartu bermasalah; ulang mengirim semuanya sekali lagi', async () => {
   const onSubmit = vi
     .fn()
-    .mockResolvedValueOnce(Array.from({ length: 5 }, (_, i) => ({ number: `ST-${i + 1}` })))
     .mockRejectedValueOnce(
       new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
-        tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
+        tasks: 'Task 8: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
       }),
     )
     .mockResolvedValue([]);
-  const { onSaved } = await pasteTasks(25, onSubmit);
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (25)' }));
-  const notice = await screen.findByRole('status');
-  expect(notice).toHaveTextContent('5 dari 25 task sudah tersimpan');
-  expect(notice).toHaveTextContent('ST-1');
-  expect(notice).toHaveTextContent('20 task lainnya belum tersimpan');
+  const { onSaved } = await pasteTasks(30, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/Customer dinonaktifkan/)).toBeInTheDocument();
   expect(onSaved).not.toHaveBeenCalled();
-  // draf tinggal 20 kartu (task 6-25); galat menempel pada kartu ke-3 kelompok 2 = task 8
-  expect(cards()).toHaveLength(20);
-  expect(within(cards()[2] as HTMLElement).getByRole('alert')).toHaveTextContent(
+  // tidak ada yang dibuang dari draf dan tidak ada pemberitahuan "sudah tersimpan"
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(cards()).toHaveLength(30);
+  expect(within(cards()[7] as HTMLElement).getByRole('alert')).toHaveTextContent(
     'Customer dinonaktifkan',
   );
-  expect(noteOf(cards()[0] as HTMLElement)).toHaveTextContent('Barang 6 = 1 unit');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (20)' }));
-  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(20));
-  // tiap task terkirim tepat sekali ke server yang menerimanya: kelompok 1 (5), gagal (5), ulang 20
-  const notes = sentNotes(onSubmit);
-  expect(notes).toHaveLength(5 + 5 + 20);
-  const accepted = [...notes.slice(0, 5), ...notes.slice(10)];
-  expect(new Set(accepted).size).toBe(25);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(30));
+  expect(onSubmit).toHaveBeenCalledTimes(2);
+  expect(sentNotes(onSubmit)).toHaveLength(60);
 }, 90_000);
 
-test('galat jaringan pada kelompok pertama: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan tersimpan', async () => {
+test('galat server: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan tersimpan', async () => {
   const onSubmit = vi.fn().mockRejectedValue(new RpcError('FORBIDDEN', 'Tidak punya izin', 'r3'));
   await pasteTasks(12, onSubmit);
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (12)' }));
