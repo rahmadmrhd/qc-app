@@ -7,6 +7,7 @@ import {
   CAS_VERSION_BUMP_SET,
   isGuardFailure,
   isRetryableWriteError,
+  runCas,
 } from './cas';
 import { DbError } from './db';
 
@@ -71,4 +72,54 @@ test('isRetryableWriteError: penjaga CAS dan duplikat indeks yang diperebutkan p
   expect(isRetryableWriteError(duplicate('users_email'))).toBe(false);
   expect(isRetryableWriteError(new DbError('x', { errno: 1064, kind: 'other' }))).toBe(false);
   expect(isRetryableWriteError(new Error('integer overflow'))).toBe(false);
+});
+
+test('isRetryableWriteError: deadlock (1213/1205) bisa diulang (M9)', () => {
+  expect(isRetryableWriteError(new DbError('Deadlock', { errno: 1213, kind: 'deadlock' }))).toBe(
+    true,
+  );
+});
+
+test('runCas mengulang setelah deadlock lalu berhasil; deadlock terus-menerus berakhir CONFLICT (M9)', async () => {
+  const deadlock = () => new DbError('Deadlock found', { errno: 1213, kind: 'deadlock' });
+  let calls = 0;
+  const result = await runCas(async () => {
+    calls++;
+    if (calls < 3) throw deadlock();
+    return 'ok';
+  }, 'basi');
+  expect(result).toBe('ok');
+  expect(calls).toBe(3);
+  const error = await captureAppErrorAsync(() =>
+    runCas(async () => {
+      throw deadlock();
+    }, 'basi'),
+  );
+  expect(error.code).toBe('CONFLICT');
+});
+
+test('runCas mencatat errno/kind/key saja, tanpa nilai duplikat dari pesan galat (M11)', async () => {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args.join(' '));
+  };
+  try {
+    const error = await captureAppErrorAsync(() =>
+      runCas(async () => {
+        throw new DbError("Duplicate entry 'PT Rahasia Customer' for key 'customers_key'", {
+          errno: 1062,
+          kind: 'duplicate',
+          key: 'customers_key',
+        });
+      }, 'basi'),
+    );
+    expect(error.code).toBe('CONFLICT');
+  } finally {
+    console.error = original;
+  }
+  const text = logged.join('\n');
+  expect(text).toContain('customers_key');
+  expect(text).toContain('1062');
+  expect(text).not.toContain('Rahasia');
 });

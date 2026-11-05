@@ -101,7 +101,9 @@ export function toDbError(err: unknown): DbError {
     return new DbError(`${UNAVAILABLE_HINT} (${code})`, { errno, kind: 'unavailable', cause: err });
   }
   if (errno === ER_DUP_ENTRY) {
-    const m = /for key '([^']+)'/.exec(message);
+    // Pesan = `Duplicate entry '<nilai>' for key '<indeks>'`: nilai berisi teks bebas, jadi nama indeks diambil dari
+    // ujung pesan (terjangkar `$`), bukan kecocokan pertama.
+    const m = /for key '([^']+)'$/.exec(message);
     const key = m?.[1]?.split('.').pop();
     return new DbError(
       message,
@@ -176,6 +178,12 @@ function connectionOptions(config: DbConfig) {
 
 type BindValue = string | number | bigint | boolean | null | Date | Uint8Array;
 
+/**
+ * INVARIAN KEAMANAN: mysql2 `query(sql, values)` mengganti `?` di SISI KLIEN (bukan prepared statement server) dengan
+ * nilai yang di-escape; benarnya escaping itu bergantung pada `sql_mode` server. `NO_BACKSLASH_ESCAPES` DILARANG
+ * di `sql_mode` (lihat deploy/mariadb/qc.cnf): dengan mode itu escaping `\'` mysql2 tidak lagi benar dan terbuka
+ * injeksi SQL. `checkBindValue` menolak objek/larik, dan pool dibuat tanpa `multipleStatements`.
+ */
 function checkBindValue(v: unknown, index: number): BindValue {
   if (v === null) return null;
   const t = typeof v;

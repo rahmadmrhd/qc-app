@@ -194,6 +194,13 @@ describe('galat', () => {
       kind: 'duplicate',
       key: 'idx_x',
     });
+    // nilai duplikat yang memuat teks `for key '...'` tidak boleh menggeser nama indeks (M1)
+    expect(
+      toDbError({
+        errno: 1062,
+        message: "Duplicate entry 'a' for key 'handovers_number' for key 'customers_key'",
+      }),
+    ).toMatchObject({ kind: 'duplicate', key: 'customers_key' });
     expect(toDbError({ code: 'ECONNREFUSED', message: 'x' }).kind).toBe('unavailable');
     expect(toDbError({ code: 'ETIMEDOUT', message: 'x' }).kind).toBe('unavailable');
     expect(toDbError({ errno: 1064, message: 'syntax' }).kind).toBe('other');

@@ -55,6 +55,8 @@ const RETRYABLE_UNIQUE_KEYS = new Set([
 
 export function isRetryableWriteError(error: unknown): boolean {
   if (isGuardFailure(error)) return true;
+  // Deadlock (1213) / lock wait timeout (1205) yang lolos dari ulang sekali di `Db.batch`: muat ulang dan ulangi.
+  if (error instanceof DbError && error.kind === 'deadlock') return true;
   return (
     error instanceof DbError &&
     error.kind === 'duplicate' &&
@@ -82,6 +84,11 @@ export async function runCas<T>(
       last = error;
     }
   }
-  console.error(`CAS gagal setelah ${attempts} percobaan: ${String(last)}`);
+  // Hanya errno/kind/key: pesan mentah galat duplikat memuat nilai (nama customer, nomor) yang tidak boleh masuk log.
+  const detail =
+    last instanceof DbError
+      ? `errno=${last.errno} kind=${last.kind}${last.key === undefined ? '' : ` key=${last.key}`}`
+      : 'galat non-DB';
+  console.error(`CAS gagal setelah ${attempts} percobaan: ${detail}`);
   throw appError('CONFLICT', staleMessage);
 }
