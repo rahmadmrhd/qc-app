@@ -1,4 +1,4 @@
-// Runner tes server: membagi berkas tes ke N proses `bun test` paralel (bawaan 4, `QC_TEST_SHARDS`), tiap proses
+// Runner tes server: membagi berkas tes ke N proses `bun test` paralel (bawaan 3, `QC_TEST_SHARDS`), tiap proses
 // memakai skema MariaDB sementara per berkas (harness test-support/global-setup.ts), lalu menggabungkan hasil dan
 // kode keluar. Tes lewat tunnel SSH ke MariaDB di VPS sehingga latensi round trip mendominasi; paralel memangkas
 // waktu dinding tanpa mengubah isolasi (tidak ada skema yang dipakai dua proses).
@@ -15,7 +15,7 @@ import { DB_PING_TIMEOUT_MS, pingDatabase } from '../test-support/db-ping';
 const root = resolve(import.meta.dir, '..');
 /** Batas atas proses paralel: tiap proses memakai maks. 8 koneksi (pool tes 6 + admin 2); `max_connections` VPS = 40. */
 const MAX_SHARDS = 4;
-const DEFAULT_SHARDS = 4;
+const DEFAULT_SHARDS = 3;
 const TEST_ROOTS = ['src', 'scripts', 'test-support'];
 const VALUE_FLAGS = new Set(['-t', '--test-name-pattern', '--timeout', '--rerun-each', '--bail']);
 
