@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createSqliteD1 } from '@server-test/sqlite-d1';
-import { applyMigrations, MIGRATIONS } from './migrate';
+import { applyD1Migrations, D1_MIGRATIONS } from './migrate';
 
 /** Kolom per tabel = TableSchema Sheets (gas/src/modules/*), disesuaikan Spek 7. */
 const SHEET_COLUMNS: Record<string, string[]> = {
@@ -177,7 +177,7 @@ const SHEET_COLUMNS: Record<string, string[]> = {
 
 async function migrated() {
   const db = createSqliteD1();
-  await applyMigrations(db);
+  await applyD1Migrations(db);
   return db;
 }
 
@@ -393,11 +393,11 @@ describe('batasan', () => {
   });
 });
 
-describe('applyMigrations', () => {
+describe('applyD1Migrations', () => {
   test('idempoten dan mencatat versi', async () => {
     const db = createSqliteD1();
-    await applyMigrations(db);
-    await applyMigrations(db);
+    await applyD1Migrations(db);
+    await applyD1Migrations(db);
     const rows = await db.prepare('SELECT name FROM d1_migrations ORDER BY id').all<{
       name: string;
     }>();
@@ -416,9 +416,9 @@ describe('applyMigrations', () => {
 
   test('migrasi yang gagal tidak meninggalkan sisa dan tidak dicatat', async () => {
     const db = createSqliteD1();
-    await applyMigrations(db, [{ name: '0001_ok.sql', sql: 'CREATE TABLE a (id TEXT);' }]);
+    await applyD1Migrations(db, [{ name: '0001_ok.sql', sql: 'CREATE TABLE a (id TEXT);' }]);
     await expect(
-      applyMigrations(db, [
+      applyD1Migrations(db, [
         { name: '0001_ok.sql', sql: 'CREATE TABLE a (id TEXT);' },
         { name: '0002_bad.sql', sql: 'CREATE TABLE b (id TEXT);\nCREATE TABLE a (id TEXT);' },
       ]),
@@ -435,7 +435,7 @@ describe('applyMigrations', () => {
 describe('0003 board_status', () => {
   test('migrasi mengisi ulang baris lama sesuai deriveHandoverStatus', async () => {
     const db = createSqliteD1();
-    await applyMigrations(db, MIGRATIONS.slice(0, 2));
+    await applyD1Migrations(db, D1_MIGRATIONS.slice(0, 2));
     const rows: [string, string, string, number, number, string][] = [
       ['a', 'ST-1', 'open', 0, 0, ''],
       ['b', 'ST-2', 'open', 1, 3, ''],
@@ -451,7 +451,7 @@ describe('0003 board_status', () => {
         .bind(id, number, status, checked, total, completedAt)
         .run();
     }
-    await applyMigrations(db);
+    await applyD1Migrations(db);
     const out = await db
       .prepare('SELECT id, board_status FROM handovers ORDER BY id')
       .all<{ id: string; board_status: string }>();
@@ -502,7 +502,7 @@ describe('migrasi 0009: item_alias_keys dan brands.item_count', () => {
 
   test('mengisi indeks nama lain dan hitungan merk dari data lama; kunci ganda lama tidak menggagalkan migrasi', async () => {
     const db = createSqliteD1();
-    await applyMigrations(db, MIGRATIONS.slice(0, 8));
+    await applyD1Migrations(db, D1_MIGRATIONS.slice(0, 8));
     await db
       .prepare(
         "INSERT INTO brands (id, name, key, status) VALUES ('b1', 'A', 'a', 'active'), ('b2', 'B', 'b', 'active'), ('b3', 'C', 'c', 'active')",
@@ -513,7 +513,7 @@ describe('migrasi 0009: item_alias_keys dan brands.item_count', () => {
     await insertItem(db, 'i3', 'b2', 'b 1', '|tiga|');
     // data lama tidak dijaga basis data: kunci 'dua' juga dipegang i3 (salah satunya dipertahankan)
     await insertItem(db, 'i4', 'b2', 'b 2', '|dua|');
-    await applyMigrations(db);
+    await applyD1Migrations(db);
     const aliases = await db
       .prepare('SELECT key, item_id FROM item_alias_keys ORDER BY key')
       .all<{ key: string; item_id: string }>();

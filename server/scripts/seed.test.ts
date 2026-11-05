@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyMigrations } from '@server/core/migrate';
+import { applyD1Migrations } from '@server/core/migrate';
 import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { loadUserContext } from '@server/modules/access/context';
@@ -123,7 +123,7 @@ describe('buildSeedSql', () => {
 
   test('menerapkan migrasi pada database kosong tanpa galat FK/unik', async () => {
     const db = createSqliteD1();
-    await applyMigrations(db);
+    await applyD1Migrations(db);
     await db.exec(buildSeedSql('a@b.test', NOW));
   });
 });

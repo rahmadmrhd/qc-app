@@ -1,6 +1,6 @@
 import type { Env, JobMessage } from '@server/core/env';
 import { resetMemCache } from '@server/core/mem-cache';
-import { applyMigrations } from '@server/core/migrate';
+import { applyD1Migrations } from '@server/core/migrate';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { createSqliteD1 } from './sqlite-d1';
 
@@ -48,7 +48,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
   // `QC_TEST_CACHE_TTL_MS=10000 bun test` untuk memeriksa invalidasi.
   resetMemCache();
   const db = createSqliteD1();
-  await applyMigrations(db);
+  await applyD1Migrations(db);
   return {
     DB: db,
     JOBS: jobs,

@@ -1,8 +1,9 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import init from '../../migrations/0001_init.sql' with { type: 'text' };
 import handoverCommentsJobs from '../../migrations/0002_handover_comments_jobs.sql' with {
   type: 'text',
 };
-
 import boardStatus from '../../migrations/0003_handover_board_status.sql' with { type: 'text' };
 import accessUnique from '../../migrations/0004_access_unique.sql' with { type: 'text' };
 import brandCustomerUnique from '../../migrations/0005_brand_customer_unique.sql' with {
@@ -14,6 +15,7 @@ import jobsQueue from '../../migrations/0008_jobs_queue.sql' with { type: 'text'
 import itemAliasIndex from '../../migrations/0009_item_alias_index_brand_count.sql' with {
   type: 'text',
 };
+import type { Db } from './db';
 
 export interface Migration {
   name: string;
@@ -21,7 +23,7 @@ export interface Migration {
 }
 
 /** Daftar statis berurutan; deploy memakai `wrangler d1 migrations apply`, tes memakai ini. */
-export const MIGRATIONS: Migration[] = [
+export const D1_MIGRATIONS: Migration[] = [
   { name: '0001_init.sql', sql: init },
   { name: '0002_handover_comments_jobs.sql', sql: handoverCommentsJobs },
   { name: '0003_handover_board_status.sql', sql: boardStatus },
@@ -49,9 +51,9 @@ export function splitStatements(sql: string): string[] {
  * Terapkan migrasi yang belum tercatat, berurutan. Tiap migrasi + catatannya satu `batch`
  * (atomik). Tabel `d1_migrations` sama dengan milik Wrangler.
  */
-export async function applyMigrations(
+export async function applyD1Migrations(
   db: D1Database,
-  migrations: Migration[] = MIGRATIONS,
+  migrations: Migration[] = D1_MIGRATIONS,
 ): Promise<void> {
   await db
     .prepare(
@@ -67,4 +69,45 @@ export async function applyMigrations(
       db.prepare('INSERT INTO d1_migrations (name) VALUES (?)').bind(migration.name),
     ]);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Migrator MariaDB: berkas `*.sql` bernomor di `server/migrations/mariadb/` (urut nama), dibaca dari disk.
+// (Transisi: migrasi D1 di atas dihapus pada T5 dan baseline dipindah ke `server/migrations/`.)
+// ---------------------------------------------------------------------------------------------
+
+const MARIADB_MIGRATIONS_DIR = join(import.meta.dir, '..', '..', 'migrations', 'mariadb');
+const MIGRATION_FILE_PATTERN = /^\d{4}_[A-Za-z0-9_]+\.sql$/;
+
+/** Baca migrasi MariaDB dari disk, urut nama berkas. */
+export async function loadMigrations(dir: string = MARIADB_MIGRATIONS_DIR): Promise<Migration[]> {
+  const names = (await readdir(dir)).filter((name) => MIGRATION_FILE_PATTERN.test(name)).sort();
+  return Promise.all(
+    names.map(async (name) => ({ name, sql: await Bun.file(join(dir, name)).text() })),
+  );
+}
+
+/**
+ * Terapkan migrasi MariaDB yang belum tercatat di `schema_migrations`, berurutan; kembalikan nama yang baru
+ * diterapkan. DDL MariaDB tidak transaksional (implicit commit): berkas migrasi gagal di tengah dapat
+ * meninggalkan sebagian tabel dan TIDAK dicatat; perbaiki manual/buang skema sebelum mengulang.
+ * SQL migrasi tepercaya (dijalankan lewat `Db.exec`, banyak pernyataan sekaligus).
+ */
+export async function applyMigrations(db: Db, migrations?: Migration[]): Promise<string[]> {
+  const list = migrations ?? (await loadMigrations());
+  await db
+    .prepare(
+      'CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(255) NOT NULL, applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), PRIMARY KEY (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin',
+    )
+    .run();
+  const applied = await db.prepare('SELECT name FROM schema_migrations').all<{ name: string }>();
+  const done = new Set(applied.results.map((row) => row.name));
+  const newlyApplied: string[] = [];
+  for (const migration of list) {
+    if (done.has(migration.name)) continue;
+    await db.exec(migration.sql);
+    await db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').bind(migration.name).run();
+    newlyApplied.push(migration.name);
+  }
+  return newlyApplied;
 }
