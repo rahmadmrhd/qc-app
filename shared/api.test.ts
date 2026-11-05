@@ -319,6 +319,22 @@ describe('toRequestParts <-> fromRequestParts', () => {
     expect(tanpa).not.toHaveProperty('expectedUpdatedAt');
   });
 
+  test('__proto__/constructor/prototype di badan JSON tidak mengganti prototipe input dan tidak menyelundupkan nilai', () => {
+    const body = JSON.parse(
+      '{"brand":"X","__proto__":{"expectedUpdatedAt":"X","isAdmin":true},"constructor":{"a":1},"prototype":{"b":2}}',
+    );
+    const rebuilt = fromRequestParts('items.save', {
+      params: { id: 'i1' },
+      query: {},
+      body,
+      created: false,
+    }) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(rebuilt)).toBe(Object.prototype);
+    expect(rebuilt.expectedUpdatedAt).toBeUndefined();
+    expect((rebuilt as { isAdmin?: unknown }).isAdmin).toBeUndefined();
+    expect(Object.keys(rebuilt).sort()).toEqual(['brand', 'id']);
+  });
+
   test('number dan boolean diparse; bukan angka menjadi galat', () => {
     expect(
       fromRequestParts('access.audit.list', {

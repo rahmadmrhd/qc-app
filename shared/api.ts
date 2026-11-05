@@ -433,6 +433,9 @@ export function parseQueryValue(field: string, kind: QueryKind, text: string): u
   return text;
 }
 
+/** Nama properti badan JSON yang tidak pernah disalin ke input (lihat `fromRequestParts`). */
+const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
 /**
  * Kebalikan `toRequestParts`: merakit input datar (siap `validate`) dari jalur + query + badan + `If-Match`.
  * Parameter jalur menang atas badan: nilai badan yang berbeda dari jalur = galat. Field `If-Match` hanya dibaca
@@ -453,7 +456,12 @@ export function fromRequestParts<M extends WorkerRpcMethod>(id: M, parts: Parsed
       if (typeof body !== 'object' || Array.isArray(body)) {
         throw { field: 'body', message: 'Badan harus berupa objek JSON' } satisfies ApiFieldIssue;
       }
-      Object.assign(input, body);
+      // Salin hanya properti milik dan lewati nama prototipe: `Object.assign` memanggil setter `__proto__` sehingga
+      // nilai warisan (mis. expectedUpdatedAt) lolos dari `delete` aturan "If-Match hanya dari header".
+      for (const key of Object.keys(body)) {
+        if (UNSAFE_BODY_KEYS.has(key)) continue;
+        input[key] = (body as AnyRecord)[key];
+      }
     }
   }
   for (const [field, kind] of Object.entries(kinds)) {
