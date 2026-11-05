@@ -290,13 +290,13 @@ Gerbang Fase 2: `/api/rpc`, `/api/boot`, amplop `RpcResult`, dan `web/src/lib/rp
 | id | verba jalur | catatan |
 |---|---|---|
 | `auth.me` | `GET /me` | etag: —; T22 |
-| `access.users.list` / `save` / `setStatus` | `GET /users` / `PUT /users/{id}` + `POST /users` / `PATCH /users/{id}` | setStatus: badan `{status}` |
+| `access.users.list` / `save` / `setStatus` | `GET /users` / `PUT /users/{id}` + `POST /users` / `PATCH /users/{id}` | setStatus: badan `{status}`; PATCH etag `updatedAt` (ruling review putaran 2, M6) |
 | `access.roles.list` / `save` / `delete` | `GET /roles` / `PUT /roles/{id}` + `POST /roles` / `DELETE /roles/{id}` | |
-| `access.locations.list` / `save` / `setStatus` | `GET /locations` / `PUT /locations/{id}` + `POST /locations` / `PATCH /locations/{id}` | |
+| `access.locations.list` / `save` / `setStatus` | `GET /locations` / `PUT /locations/{id}` + `POST /locations` / `PATCH /locations/{id}` | PATCH etag `updatedAt` |
 | `access.audit.list` | `GET /audit-logs` | query `cursor:string, limit:number, action:string, query:string` |
-| `brands.list` / `save` / `setStatus` | `GET /brands` / `PUT /brands/{id}` + `POST /brands` / `PATCH /brands/{id}` | |
-| `customers.list` / `rename` / `setStatus` | `GET /customers` / `PUT /customers/{id}` / `PATCH /customers/{id}` | rename = ganti `name`; setStatus = ubah `status` |
-| `items.list` / `get` / `save` / `setStatus` | `GET /items` / `GET /items/{id}` / `PUT /items/{id}` + `POST /items` / `PATCH /items/{id}` | list query `cursor,limit,query,status`; save `ifMatch:'expectedUpdatedAt'`, `etag:'updatedAt'` |
+| `brands.list` / `save` / `setStatus` | `GET /brands` / `PUT /brands/{id}` + `POST /brands` / `PATCH /brands/{id}` | PATCH etag `updatedAt` |
+| `customers.list` / `rename` / `setStatus` | `GET /customers` / `PUT /customers/{id}` / `PATCH /customers/{id}` | rename = ganti `name`; setStatus = ubah `status`; PATCH etag `updatedAt` |
+| `items.list` / `get` / `save` / `setStatus` | `GET /items` / `GET /items/{id}` / `PUT /items/{id}` + `POST /items` / `PATCH /items/{id}` | list query `cursor,limit,query,status`; save `ifMatch:'expectedUpdatedAt'`, `etag:'updatedAt'`; setStatus (PATCH) etag `updatedAt` |
 | `handovers.options` | `GET /handovers/options` | query `locationIds:list` |
 | `handovers.board` | `GET /handovers` | query `locationIds:list, status, cursor, limit:number` |
 | `handovers.get` | `GET /handovers/{id}` | query `locationIds:list`; etag `updatedAt` |
@@ -305,20 +305,20 @@ Gerbang Fase 2: `/api/rpc`, `/api/boot`, amplop `RpcResult`, dan `web/src/lib/rp
 | `handovers.cancel` / `reopen` / `setDone` | `POST /handovers/{id}/cancel` / `/reopen` / `/done` | badan `{locationId}` |
 | `handovers.setCheck` | `PUT /handovers/{id}/checks` | badan `{locationId,index,text,checked}`; idempoten |
 | `handovers.comment` | `POST /handovers/{id}/comments` (201) | |
-| `qrcodes.list` / `get` / `save` / `delete` | `GET /qrcodes` / `GET /qrcodes/{id}` / `PUT /qrcodes/{id}` + `POST /qrcodes` / `DELETE /qrcodes/{id}` | save ifMatch `expectedUpdatedAt` |
+| `qrcodes.list` / `get` / `save` / `delete` | `GET /qrcodes` / `GET /qrcodes/{id}` / `PUT /qrcodes/{id}` + `POST /qrcodes` / `DELETE /qrcodes/{id}` | get/save etag `updatedAt`; save ifMatch `expectedUpdatedAt` (ruling T20) |
 | `qrcodes.getDefaults` | `GET /qrcode-defaults` | |
-| `qrcodes.savePreset` / `deletePreset` | `PUT /qrcode-presets/{id}` + `POST /qrcode-presets` / `DELETE /qrcode-presets/{id}` | |
-| `qrcodes.saveLogoLibrary` | `PUT /qrcode-defaults/logos` | ifMatch `expectedUpdatedAt` |
-| `qrcodes.uploadPdf` | `POST /qrcode-documents` | `binary:'request'` (badan = PDF mentah; query `name:string, replaceDocumentId:string`); T21 |
+| `qrcodes.savePreset` / `deletePreset` | `PUT /qrcode-presets/{id}` + `POST /qrcode-presets` / `DELETE /qrcode-presets/{id}` | savePreset ifMatch `expectedUpdatedAt`, etag `updatedAt` (ruling T20) |
+| `qrcodes.saveLogoLibrary` | `PUT /qrcode-defaults/logos` | ifMatch `expectedUpdatedAt`, etag `logoUpdatedAt` |
+| `qrcodes.uploadPdf` | `POST /qrcode-documents` | `binary:'request'` (badan = PDF mentah; query `name:string, replaceDocumentId:string`); status **200** (bukan 201: mengunggah/mengganti dokumen sumber, bukan membuat sumber daya ber-`Location`); T21 |
 | `qrcodes.cloneFromDrive` | `POST /qrcode-documents/clone` | badan `{source, replaceDocumentId?}` |
-| `qrcodes.export` | `POST /qrcodes/{id}/exports` (202) | `binary:'multipart'` (bagian `pdf`, `png`); ifMatch `expectedUpdatedAt`; T21 |
+| `qrcodes.export` | `POST /qrcodes/{id}/exports` (202) | `binary:'multipart'` (bagian `pdf`, `png`); ifMatch `expectedUpdatedAt`; `Location: /api/v1/jobs/{jobId}`; T21 |
 | `qrcodes.file` | `GET /qrcodes/{id}/files/{kind}` | `binary:'response'`, `kind` ∈ `pdf|png`; T21 |
-| `files.upload` | `POST /files` (201) | `binary:'request'` (badan = byte gambar, `Content-Type` = `mime`; query `width,height:number`); T21 |
+| `files.upload` | `POST /files` (201) | `binary:'request'` (badan = byte gambar, `Content-Type` = `mime`; query `width,height:number`); `Location: /api/v1/files/{id}`; T21 |
 | `files.get` | `GET /files/{id}` | `binary:'response'`, etag = id (isi tak berubah); T21 |
 | `jobs.get` | `GET /jobs/{id}` | |
 | `exports.sheets` | `POST /exports/sheets` (202) | badan `{tables?}` |
 
-Jalur `{id}` = `input.id`; `{kind}` = `input.kind`. Sinkron Desktop (`sync.*`) bukan bagian tabel ini (T25).
+Aturan umum (ruling yang diterapkan): rute `create` mendaftarkan operasi kedua dengan `operationId` OpenAPI `<id>.create` (jalur ubah memakai `<id>`), jadi jumlah operasi = jumlah id + jumlah rute ber-`create`; respons JSON `Cache-Control: no-store` dan klien `cache: 'no-store'` (review putaran 2, I1: ETag `updatedAt` bukan validator isi); `authorize` (sesi + izin global) berjalan SEBELUM badan dibaca (I2). Jalur `{id}` = `input.id`; `{kind}` = `input.kind`. Sinkron Desktop (`sync.*`) bukan bagian tabel ini (T25).
 
 ### Task 13b: Perkuat stabilitas `bun run check` lewat tunnel (keputusan pemilik: kurangi shard atau tes jarak jauh)
 
@@ -334,11 +334,11 @@ Jalur `{id}` = `input.id`; `{kind}` = `input.kind`. Sinkron Desktop (`sync.*`) b
   `toRequestParts(id: M, input: WorkerRpcInput<M>): { verb; path: string; query: Record<string,string>; body?: unknown; ifMatch?: string }`,
   `fromRequestParts(id: M, parts: { params: Record<string,string>; query: Record<string,string>; body: unknown; ifMatch?: string; created: boolean }): unknown` (hasil = input datar siap `validate`; galat parameter → melempar objek `{ field: string; message: string }` yang diubah kernel menjadi `VALIDATION`),
   `etagOf(id: M, output: WorkerRpcOutput<M>): string | undefined`, `fillPath(path: string, params: Record<string,string>): string`.
-- Produces `toProblem(error: unknown, requestId: string): { status: number; body: ProblemBody; headers?: Record<string,string> }`, `registerRest(app, routes: RouteTable, migrated: ReadonlySet<WorkerRpcMethod>)`, `buildOpenApi(routes: RouteTable): OpenApiDocument`.
+- Produces `toProblem(error: unknown, requestId: string): { status: number; body: ProblemBody; headers?: Record<string,string> }`, `registerRest(app, routes: RouteTable)` (himpunan `migrated` hanya ada sementara sampai T23), `buildOpenApi(routes: RouteTable): OpenApiDocument`.
 - Consumes `RouteDef`/`callRoute` logika dari `router.ts` (sesi cookie, konteks, izin, validasi, lokasi, handler): refaktor `callRoute` menjadi `runRoute(env, token, id, rawInput, routes)` yang melempar/mengembalikan nilai mentah; `callRoute` (RPC) membungkusnya dengan amplop dan kernel REST membungkusnya dengan problem+json (satu jalur kode).
 - **Tes (RED dulu)**:
   - `shared/api.test.ts`: tiap id punya jalur+verba unik (pasangan `verb path` tak ada yang ganda, termasuk `create`); `toRequestParts → fromRequestParts` mengembalikan input identik untuk satu contoh tiap id (tabel contoh di berkas tes; kompilator memaksa contoh lengkap lewat `Record<WorkerRpcMethod, …>`); `id` badan ≠ jalur → galat; `list` memecah `a,b`; `number`/`boolean` diparse, bukan-angka → galat.
-  - Server (`http/rest.test.ts` memakai `createTestEnv` + `app.request`): `CONFLICT` biasa → 409; `staleError` + `If-Match` → 412; `staleError` tanpa `If-Match` → 409; `VALIDATION` → 422 dengan `fields`; badan bukan JSON → 400, > batas → 413 (`problem+json`); metode tulis tanpa `X-Requested-With: qc` → 403 problem+json; `/api/v1/tidak-ada` → 404 problem+json; GET tunggal memberi `ETag` dan `If-None-Match` sama → 304; `INTERNAL` menyamarkan pesan dan menyertakan `requestId`; `/api/openapi.json` tanpa sesi 401, dengan sesi memuat SEMUA jalur tabel (jumlah operasi = jumlah id).
+  - Server (`http/rest.test.ts` memakai `createTestEnv` + `app.request`): `CONFLICT` biasa → 409; `staleError` + `If-Match` → 412; `staleError` tanpa `If-Match` → 409; `VALIDATION` → 422 dengan `fields`; badan bukan JSON → 400, > batas → 413 (`problem+json`); metode tulis tanpa `X-Requested-With: qc` → 403 problem+json; `/api/v1/tidak-ada` → 404 problem+json; GET tunggal memberi `ETag` dan `If-None-Match` sama → 304; `INTERNAL` menyamarkan pesan dan menyertakan `requestId`; `/api/openapi.json` tanpa sesi 401, dengan sesi memuat SEMUA jalur tabel (jumlah operasi = jumlah id + jumlah rute ber-`create`; `operationId` jalur create = `<id>.create`).
 - Langkah: (1) tulis tes RED; (2) implementasi `shared/api.ts` + `problem.ts` + refaktor router; (3) `rest.ts` + `openapi.ts` + `app.ts` (`app.route('/api/v1', …)`, `/api/openapi.json`); (4) `staleError` di semua pelempar basi, tes lama tetap hijau; (5) `bun run check`; komit bertahap.
 
 ### Task 15: Klien FE `web/src/lib/api/` + `describeError` problem+json

@@ -1,7 +1,11 @@
 /**
  * Batas badan permintaan. `Bun.serve` memakai `MAX_REQUEST_BODY_BYTES` (bawaan Bun 128 MB terlalu longgar: badan
- * dimuat ke memori sebelum autentikasi): batas berkas terbesar (8 MB) + overhead base64 (x4/3) + amplop JSON.
- * Di atas itu Bun membalas 413 tanpa menjalankan aplikasi.
+ * dimuat ke memori sebelum autentikasi). Di atas batas ini Bun membalas 413 tanpa menjalankan aplikasi.
+ *
+ * Asal nilai 16 MB: peninggalan masa RPC, saat berkas dikirim sebagai base64 di dalam amplop JSON (8 MB x 4/3 +
+ * amplop). Base64 sudah hilang dari kabel: rute biner dibatasi sendiri per rute di `API_ROUTES` (terbesar PDF 10 MB)
+ * dan badan JSON nyata jauh di bawah 1 MB. Nilai 16 MB sengaja dipertahankan apa adanya sampai pemilik memutuskan
+ * penurunannya (temuan review I2 butir 4); jangan menganggapnya sebagai kebutuhan teknis kabel saat ini.
  */
 export const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
 
