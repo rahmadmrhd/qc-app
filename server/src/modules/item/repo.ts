@@ -1,4 +1,4 @@
-import { CAS_UPDATED_AT_SET } from '@server/core/cas';
+import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
@@ -152,6 +152,21 @@ function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): D
  */
 function readSyncRevStmt(db: Db, itemId: string): DbStatement {
   return db.prepare('SELECT sync_rev FROM items WHERE id = ?').bind(itemId);
+}
+
+/**
+ * Penjaga ganti nama merk (I1): pernyataan PERTAMA batch penulisan item. Mengunci baris merk (`FOR UPDATE`: menunggu
+ * transaksi ganti nama yang sedang berjalan sampai COMMIT, dan menahan ganti nama baru sampai batch ini selesai) lalu
+ * gagal dengan `CAS_FAIL_SQL` (galat 1690, `isGuardFailure`: seluruh batch batal) bila `brands.key` bukan lagi
+ * `expectedKey`, yaitu kunci merk yang dipakai penulis untuk menghitung `items.key`. Pemanggil mengulang lewat `runCas`.
+ * Tidak mengubah `items.updated_at` saat ganti nama (semantik CAS FE dan sinkron tetap).
+ */
+export function brandKeyGuardStmt(db: Db, brandId: string, expectedKey: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN \`key\` = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM brands WHERE id = ? FOR UPDATE`,
+    )
+    .bind(expectedKey, brandId);
 }
 
 /** Penyisipan item (+ `item_alias_keys`, `brands.item_count`, dan pembacaan `sync_rev` yang dipakai). */

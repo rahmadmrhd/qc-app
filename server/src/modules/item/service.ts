@@ -1,10 +1,11 @@
 import { writeAudit } from '@server/core/audit';
-import { batchGuarded } from '@server/core/cas';
+import { runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { batchWrite } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
 import { planBrandByName } from '@server/modules/brand/service';
@@ -26,6 +27,7 @@ import type {
 } from '@shared/rpc';
 import type { ItemRecord } from './repo';
 import {
+  brandKeyGuardStmt,
   findItem,
   findItemStmt,
   type ItemRow,
@@ -445,7 +447,11 @@ export async function planItemWrite(
     updatedBy: actor.email,
   };
   const afterView = (record: ItemRecord): ItemView => ({ ...record, brand: resolved.brand.name });
-  const statements: DbStatement[] = [];
+  // Merk yang sudah ada dijaga: ganti nama merk yang menyela membatalkan batch (I1); merk baru tak perlu.
+  const statements: DbStatement[] =
+    resolved.statements.length === 0
+      ? [brandKeyGuardStmt(env.DB, resolved.brand.id, brandKey)]
+      : [];
 
   if (existing) {
     const merged: ItemRecord = {
@@ -549,8 +555,18 @@ async function loadWriteChecks(
 }
 
 export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef): Promise<ItemDto> {
-  // Satu round trip baca: item yang diubah, keunikan nama, dan berkas yang dirujuk (urutan hasil di bawah).
   const id = input.id ?? crypto.randomUUID();
+  // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: muat ulang semuanya dan ulangi.
+  return runCas(() => saveItemOnce(env, input, actor, id), STALE_MESSAGE);
+}
+
+async function saveItemOnce(
+  env: Env,
+  input: SaveItemInput,
+  actor: ActorRef,
+  id: string,
+): Promise<ItemDto> {
+  // Satu round trip baca: item yang diubah, keunikan nama, dan berkas yang dirujuk (urutan hasil di bawah).
   const key = itemKey(input.brand, input.model);
   const reads = [
     ...(input.id ? [findItemStmt(env.DB, input.id)] : []),
@@ -574,11 +590,20 @@ export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef):
       files: activeFilesFromResults(results.slice(offset + 1)),
     },
   });
-  await batchGuarded(env.DB, plan.statements, ITEM_CONFLICTS, STALE_MESSAGE);
+  await batchWrite(env.DB, plan.statements, ITEM_CONFLICTS);
   return toItemDto({ ...plan.record, brand: plan.brandName });
 }
 
 export async function setItemStatus(
+  env: Env,
+  input: SetItemStatusInput,
+  actor: ActorRef,
+): Promise<ItemDto> {
+  // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: baca ulang item dan ulangi.
+  return runCas(() => setItemStatusOnce(env, input, actor), STALE_MESSAGE);
+}
+
+async function setItemStatusOnce(
   env: Env,
   input: SetItemStatusInput,
   actor: ActorRef,
@@ -594,9 +619,10 @@ export async function setItemStatus(
     updatedAt: now,
     updatedBy: actor.email,
   };
-  await batchGuarded(
+  await batchWrite(
     env.DB,
     [
+      brandKeyGuardStmt(env.DB, existing.brandId, normalizeKey(before.brand)),
       ...updateItemStmts(env.DB, updated, true, existing),
       writeAudit(env.DB, {
         ts: now,
@@ -608,7 +634,6 @@ export async function setItemStatus(
       }),
     ],
     ITEM_CONFLICTS,
-    STALE_MESSAGE,
   );
   return toItemDto({ ...updated, brand: before.brand });
 }

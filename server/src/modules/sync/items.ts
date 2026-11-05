@@ -1,10 +1,11 @@
 import { writeAudit } from '@server/core/audit';
-import { batchGuarded } from '@server/core/cas';
+import { runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
+import { batchWrite } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { brandsFromResult, brandsStatement, listBrands } from '@server/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@server/modules/item/repo';
@@ -424,27 +425,27 @@ async function upsertSyncItem(
 
   // Semua pemeriksaan (field, konflik, berkas) sudah lolos: baru sekarang berkas baru didaftarkan.
   if (pending.length > 0) await env.DB.batch(commitDriveFilesStmts(env, pending));
-  const plan = await planItemWrite(env, merged, {
-    id: ownerId,
-    existing,
-    actor: SYNC_ACTOR_REF,
-    externalId: entry.id,
-    status,
-    knownBrand: state.brandsByKey.get(normalizeKey(merged.brand)) ?? null,
-  });
-  // Revisi yang dipakai baris datang dari `SELECT sync_rev` di akhir batch penulisan item (transaksi yang sama;
-  // lihat `readSyncRevStmt`); hanya pernyataan itu yang mengembalikan baris.
-  const results = await batchGuarded(
-    env.DB,
-    plan.statements,
-    ITEM_CONFLICTS,
-    'Item diubah pihak lain; ulangi permintaan',
-  );
-  const written = (
-    results.find((result) => result.results.length > 0)?.results[0] as
-      | { sync_rev: number }
-      | undefined
-  )?.sync_rev;
+  // Percobaan pertama memakai merk yang sudah dimuat permintaan ini; bila ganti nama merk menyela (penjaga merk
+  // di batch, I1) percobaan berikutnya mencari merk langsung di basis data.
+  let attempt = 0;
+  const { plan, results } = await runCas(async () => {
+    const plan = await planItemWrite(env, merged, {
+      id: ownerId,
+      existing,
+      actor: SYNC_ACTOR_REF,
+      externalId: entry.id,
+      status,
+      knownBrand:
+        attempt++ === 0 ? (state.brandsByKey.get(normalizeKey(merged.brand)) ?? null) : undefined,
+    });
+    // Revisi yang dipakai baris datang dari `SELECT sync_rev` di akhir batch penulisan item (transaksi yang sama;
+    // lihat `readSyncRevStmt`).
+    const results = await batchWrite(env.DB, plan.statements, ITEM_CONFLICTS);
+    return { plan, results };
+  }, 'Item diubah pihak lain; ulangi permintaan');
+  const written = results
+    .flatMap((result) => result.results as Array<{ sync_rev?: number }>)
+    .find((row) => row.sync_rev !== undefined)?.sync_rev;
   const record: ItemRecord = { ...plan.record, syncRev: written ?? plan.record.syncRev };
   if (existing) unindexItem(state.items, existing);
   indexItem(state.items, record);

@@ -417,12 +417,14 @@ describe('sync_rev', () => {
 });
 
 describe('sync_rev dibaca dari hasil batch penulisan', () => {
-  test('INSERT dan UPDATE item menyertakan SELECT sync_rev (satu-satunya hasil berisi baris) sama dengan nilai tersimpan', async () => {
+  test('INSERT dan UPDATE item menyertakan SELECT sync_rev (satu-satunya hasil berisi kolom sync_rev; penjaga merk mengembalikan guard_ok) sama dengan nilai tersimpan', async () => {
     const plan = await planItemWrite(env, baseInput, { id: 'baru-1', actor: admin });
     const created = await env.DB.batch(plan.statements);
-    const written = created.find((r) => r.results.length > 0)?.results[0] as { sync_rev: number };
+    const revRows = (batch: typeof created) =>
+      batch.filter((r) => r.results.some((row) => 'sync_rev' in (row as object)));
+    const written = revRows(created)[0]?.results[0] as { sync_rev: number };
     expect(Number(written.sync_rev)).toBe(await rev('baru-1'));
-    expect(created.filter((r) => r.results.length > 0)).toHaveLength(1);
+    expect(revRows(created)).toHaveLength(1);
     env.clock.advance(1000);
     const existing = await findItem(env, 'baru-1');
     if (!existing) throw new Error('item hilang');
@@ -436,7 +438,10 @@ describe('sync_rev dibaca dari hasil batch penulisan', () => {
       },
     );
     const updated = await env.DB.batch(update.statements);
-    const after = updated.find((r) => r.results.length > 0)?.results[0] as { sync_rev: number };
+    expect(revRows(updated)).toHaveLength(1);
+    // merk sudah ada: pernyataan pertama batch adalah penjaga merk (I1)
+    expect(updated[0]?.results[0]).toEqual({ guard_ok: 1 });
+    const after = revRows(updated)[0]?.results[0] as { sync_rev: number };
     expect(Number(after.sync_rev)).toBe(2);
     expect(await rev('baru-1')).toBe(2);
   });
