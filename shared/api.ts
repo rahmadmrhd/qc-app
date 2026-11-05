@@ -433,6 +433,79 @@ export function parseQueryValue(field: string, kind: QueryKind, text: string): u
   return text;
 }
 
+/** Id rute sinkron QC Desktop (nama metode internal; tetap dipakai sebagai id handler dan operationId). */
+export type SyncRouteId =
+  | 'sync.ping'
+  | 'sync.brands.pull'
+  | 'sync.brands.push'
+  | 'sync.items.pull'
+  | 'sync.items.push'
+  | 'sync.file.get';
+
+/**
+ * Rute REST QC Desktop (kontrak versi 2, `docs/api/desktop-sync.md`), relatif terhadap `/api/v1`. Otentikasi HANYA
+ * `Authorization: Bearer <SYNC_API_TOKEN>` (bukan cookie sesi, tanpa CSRF); tidak ada `etag`/`ifMatch` (pull berbasis
+ * `sinceRev`). `sync.file.get` = unduhan biner (byte mentah, ETag = id Drive; isi tak berubah untuk id yang sama).
+ */
+export const SYNC_API_ROUTES: { [M in SyncRouteId]: ApiRouteDef } = {
+  'sync.ping': { verb: 'GET', path: '/sync/ping' },
+  'sync.brands.pull': {
+    verb: 'GET',
+    path: '/sync/brands',
+    query: { sinceRev: 'number', limit: 'number' },
+  },
+  'sync.brands.push': { verb: 'POST', path: '/sync/brands/push' },
+  'sync.items.pull': {
+    verb: 'GET',
+    path: '/sync/items',
+    query: { sinceRev: 'number', limit: 'number', include: 'list' },
+  },
+  'sync.items.push': { verb: 'POST', path: '/sync/items/push' },
+  'sync.file.get': {
+    verb: 'GET',
+    path: '/sync/files/{id}',
+    etag: 'driveId',
+    binary: 'response',
+    download: { bytesField: 'bytes', mimeField: 'mime', cache: 'immutable' },
+  },
+};
+
+/** Bagian permintaan sinkron yang sudah diurai server (jalur, query, badan JSON). */
+export interface SyncRequestParts {
+  params: Record<string, string>;
+  query: Record<string, string>;
+  body: unknown;
+}
+
+/**
+ * Merakit input handler sinkron dari bagian permintaan: pull = field query bertipe (query tak dikenal diabaikan),
+ * push = badan JSON (hanya properti milik; nama prototipe dibuang), file.get = `{ driveId }` dari jalur, ping = null.
+ * Galat parameter dilempar sebagai `ApiFieldIssue` (diubah kernel menjadi VALIDATION).
+ */
+export function syncInputFromParts(id: SyncRouteId, parts: SyncRequestParts): unknown {
+  const def = SYNC_API_ROUTES[id];
+  if (id === 'sync.ping') return null;
+  if (id === 'sync.file.get') return { driveId: parts.params.id };
+  if (def.verb === 'GET') {
+    const input: AnyRecord = {};
+    for (const [field, kind] of Object.entries(def.query ?? {})) {
+      const text = parts.query[field];
+      if (text !== undefined) input[field] = parseQueryValue(field, kind, text);
+    }
+    return input;
+  }
+  const body = parts.body;
+  if (body === undefined || body === null) return null;
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    throw { field: 'body', message: 'Badan harus berupa objek JSON' } satisfies ApiFieldIssue;
+  }
+  const input: AnyRecord = {};
+  for (const key of Object.keys(body)) {
+    if (!UNSAFE_BODY_KEYS.has(key)) input[key] = (body as AnyRecord)[key];
+  }
+  return input;
+}
+
 /** Nama properti badan JSON yang tidak pernah disalin ke input (lihat `fromRequestParts`). */
 const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
 

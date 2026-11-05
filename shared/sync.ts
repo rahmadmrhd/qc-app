@@ -1,5 +1,8 @@
 /** Kontrak sinkronisasi QC Desktop (docs/api/desktop-sync.md). Murni: tanpa API GAS/DOM. */
+/** Versi kontrak amplop RPC lama (khusus aplikasi Apps Script `gas/`, sampai dipensiunkan di T35). */
 export const SYNC_API_VERSION = 1;
+/** Versi API kontrak REST QC Desktop (`/api/v1/sync/*`, Task 25; keputusan pemilik 2026-11-06). */
+export const SYNC_REST_API_VERSION = 2;
 /** Pelaku yang tercatat di audit untuk semua perubahan lewat jalur sinkron. */
 export const SYNC_ACTOR = 'sync:desktop';
 export const SYNC_TOKEN_MIN_LENGTH = 32;
