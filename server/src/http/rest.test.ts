@@ -611,6 +611,11 @@ describe('OpenAPI: rute sinkron QC Desktop', () => {
     const file = doc.paths['/sync/files/{id}']?.get as { responses: Record<string, unknown> };
     expect(JSON.stringify(file.responses['200'])).toContain('application/octet-stream');
     expect(JSON.stringify(doc.paths['/sync/items']?.get?.parameters)).toContain('include');
+    // merk tidak punya field berat: include tidak diiklankan (dan selalu ditolak 422)
+    const brandParams = (doc.paths['/sync/brands']?.get?.parameters ?? []) as Array<{
+      name: string;
+    }>;
+    expect(brandParams.map((p) => p.name)).toEqual(['sinceRev', 'limit']);
     expect(Object.keys(doc.paths['/sync/items/push']?.post?.requestBody as object)).toContain(
       'content',
     );

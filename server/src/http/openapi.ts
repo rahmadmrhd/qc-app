@@ -153,6 +153,8 @@ function syncOperationFor(id: SyncRouteId): {
     schema: { type: 'string' },
   }));
   for (const [name, kind] of Object.entries(def.query ?? {})) {
+    // `include` pada merk dideklarasikan di tabel hanya agar validator menolaknya (422); jangan diiklankan.
+    if (id === 'sync.brands.pull' && name === 'include') continue;
     parameters.push({ name, in: 'query', required: false, schema: SCHEMA_BY_KIND[kind] });
   }
   const isFile = def.binary === 'response';
