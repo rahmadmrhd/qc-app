@@ -1,9 +1,5 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
-import type { Prime } from '@server/core/mem-cache';
-import { cached, cacheTtlMs, isCached } from '@server/core/mem-cache';
-import { brandsFromResult, brandsStatement } from '@server/modules/brand/repo';
-import { customersFromResult, customersStatement } from '@server/modules/customer/repo';
 import type { Assignment, LocationPermissionMap } from '@shared/assignments';
 import { fullLocationPermissions, resolveAccess, sanitizeAssignments } from '@shared/assignments';
 import type { PartialPermissionMap, PermissionMap } from '@shared/permissions';
@@ -29,12 +25,6 @@ interface UserRow {
   role_ids: string;
   assignments: string;
 }
-
-/**
- * Cache tabel kecil lain yang dibutuhkan rute dan dimuat BERSAMA konteks akses saat konteks kedaluwarsa:
- * ketiganya habis hampir serempak (TTL sama), jadi satu round trip menggantikan dua atau tiga.
- */
-export type WarmGroup = 'brands' | 'customers';
 
 /**
  * Satu kueri untuk tiga tabel akses (kecil): baris `u` = user menurut email (indeks unik: maks. 1), `r` = peran, `l` = lokasi
@@ -75,50 +65,18 @@ function readAssignments(row: UserRow): Assignment[] {
 }
 
 /**
- * Konteks akses user. Dari D1 dengan SATU `batch` (users, roles, locations; tabel kecil), disimpan di cache
- * memori isolate (`mem-cache.ts`, TTL <= 15 dtk): perubahan akses dari isolate lain, termasuk pencabutan,
- * berlaku paling lambat sebesar TTL; di isolate yang sama berlaku seketika (cache dibuang saat tulis).
+ * Konteks akses user, dimuat LANGSUNG dari MariaDB pada setiap permintaan (tanpa cache): perubahan akses, termasuk
+ * pencabutan, berlaku pada permintaan berikutnya. Satu pernyataan untuk tiga tabel kecil (users menurut email,
+ * roles, locations).
  */
-export async function loadUserContext(
-  env: Env,
-  rawEmail: string,
-  warm: readonly WarmGroup[] = [],
-): Promise<UserContext | null> {
+export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
   const email = normalizeEmail(rawEmail);
   if (email === '') return null;
-  return cached(env, `access:ctx:${email}`, (prime) =>
-    loadUserContextFresh(env, email, prime, warm),
-  );
-}
-
-/** Konteks akses langsung dari D1 (tanpa cache). */
-export async function loadUserContextFresh(
-  env: Env,
-  email: string,
-  prime?: Prime,
-  warm: readonly WarmGroup[] = [],
-): Promise<UserContext | null> {
-  // Cache lain yang dibutuhkan rute ikut dimuat di round trip yang sama bila sedang kosong (hanya lewat cache,
-  // yaitu bila ada `prime`; pemuatan langsung tanpa cache tidak mengisi apa pun).
-  const warming = prime !== undefined && cacheTtlMs(env) > 0;
-  const wantBrands = warming && warm.includes('brands') && !isCached(env, 'brands:all');
-  const wantCustomers = warming && warm.includes('customers') && !isCached(env, 'customers:all');
-  const results = await env.DB.batch([
-    env.DB.prepare(ACCESS_SQL).bind(email),
-    ...(wantBrands ? [brandsStatement(env)] : []),
-    ...(wantCustomers ? [customersStatement(env)] : []),
-  ]);
-  let next = 1;
-  if (wantBrands) {
-    prime?.('brands:all', brandsFromResult(results[next++] as { results: unknown[] }));
-  }
-  if (wantCustomers) {
-    prime?.('customers:all', customersFromResult(results[next++] as { results: unknown[] }));
-  }
+  const result = await env.DB.prepare(ACCESS_SQL).bind(email).all<AccessRow>();
   let record: UserRow | null = null;
   const roleRows: { id: string; permissions: string }[] = [];
   const briefRows: LocationBriefRow[] = [];
-  for (const row of (results[0]?.results ?? []) as AccessRow[]) {
+  for (const row of result.results) {
     if (row.k === 'u') {
       record = {
         id: row.a,
@@ -131,7 +89,6 @@ export async function loadUserContextFresh(
     else briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
   }
   const briefs = briefRows.map(toLocationBrief);
-  prime?.('access:locations', briefs);
   const activeLocationIds = briefs.filter((brief) => brief.active).map((brief) => brief.id);
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');
   if (admin !== '' && email === admin) {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import type { ItemRow } from '@server/modules/item/repo';
 import { ITEM_COLUMNS, toItem } from '@server/modules/item/repo';
 import { saveItem } from '@server/modules/item/service';
@@ -218,7 +219,7 @@ describe('pull', () => {
 
   test('P6: pull 500 item dengan field berat tetap murah dan memakai sedikit kueri D1', async () => {
     await seedBrand(env, 'A', { syncRev: 1 });
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 1; i <= 500; i++) {
       statements.push(
         env.DB.prepare(

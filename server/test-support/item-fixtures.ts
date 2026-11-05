@@ -21,7 +21,7 @@ export async function seedBrand(
 ): Promise<string> {
   const id = overrides.id ?? brandIdOf(name);
   await env.DB.prepare(
-    'INSERT INTO brands (id, external_id, name, key, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO brands (id, external_id, name, `key`, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(
       id,
@@ -53,7 +53,7 @@ export interface SeedItem {
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
   const brandId = item.brandId ?? brandIdOf(item.brand);
   await env.DB.prepare(
-    "INSERT INTO items (id, external_id, brand_id, model, key, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, '', ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, ?, 'seed')",
+    "INSERT INTO items (id, external_id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, '', ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, ?, 'seed')",
   )
     .bind(
       item.id,
@@ -70,7 +70,7 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
     .run();
   // Tabel turunan yang dijaga kode produksi (migrasi 0009): kunci nama lain dan penghitung item merk.
   for (const key of aliasKeyList(item.aliases ?? [])) {
-    await env.DB.prepare('INSERT OR IGNORE INTO item_alias_keys (key, item_id) VALUES (?, ?)')
+    await env.DB.prepare('INSERT IGNORE INTO item_alias_keys (`key`, item_id) VALUES (?, ?)')
       .bind(key, item.id)
       .run();
   }
@@ -84,7 +84,7 @@ export async function seedCustomer(
   customer: { id: string; name: string; key?: string; status?: 'active' | 'inactive' },
 ): Promise<void> {
   await env.DB.prepare(
-    'INSERT INTO customers (id, name, key, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO customers (id, name, `key`, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(
       customer.id,

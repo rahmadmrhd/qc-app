@@ -24,7 +24,7 @@ function locationSnapshot(location: LocationRecord): Record<string, unknown> {
 }
 
 const LOCATION_CONFLICTS = {
-  'locations.code': { field: 'code', message: 'Kode lokasi sudah dipakai' },
+  locations_code_unique: { field: 'code', message: 'Kode lokasi sudah dipakai' },
   locations_name_unique: { field: 'name', message: 'Nama lokasi sudah dipakai' },
 };
 

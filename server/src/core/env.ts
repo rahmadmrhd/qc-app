@@ -1,3 +1,4 @@
+import type { Db } from '@server/core/db';
 import type { JobKind } from '@shared/rpc';
 import type { BridgeClient } from './bridge-client';
 import type { FileCache } from './file-cache';
@@ -11,7 +12,7 @@ export interface JobMessage {
 
 /** Binding, variabel, dan rahasia Worker (lihat wrangler.jsonc). */
 export interface Env {
-  DB: D1Database;
+  DB: Db;
   JOBS: Queue<JobMessage>;
   ASSETS: Fetcher;
   SESSION_SECRET: string;

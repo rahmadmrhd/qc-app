@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { Db } from '@server/core/db';
 import { createTestEnv } from '@server-test/test-env';
 import { cleanDump, grid, mutate } from './fixtures';
 import { type DumpInput, prepareImport, runImportCli } from './import-sheets';
@@ -15,7 +16,7 @@ async function runSql(sql: string) {
   return env;
 }
 
-async function count(db: D1Database, table: string): Promise<number> {
+async function count(db: Db, table: string): Promise<number> {
   const row = await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
   return row?.n ?? -1;
 }

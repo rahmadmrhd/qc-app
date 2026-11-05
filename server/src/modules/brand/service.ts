@@ -1,6 +1,7 @@
 import { writeAudit } from '@server/core/audit';
 import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -52,11 +53,7 @@ function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
 }
 
 /** Pernyataan penyisipan merk baru + audit `brand.create` (digabung ke `batch()` pemanggil). */
-export function createBrandStmts(
-  env: Env,
-  brand: BrandRecord,
-  actor: ActorRef,
-): D1PreparedStatement[] {
+export function createBrandStmts(env: Env, brand: BrandRecord, actor: ActorRef): DbStatement[] {
   return [
     ...insertBrandStmts(env.DB, brand),
     writeAudit(env.DB, {
@@ -85,7 +82,7 @@ export async function planBrandByName(
   actor: ActorRef,
   /** Hasil `findBrandByKey` yang sudah dimuat pemanggil (hindari kueri ganda); `undefined` = muat di sini. */
   known?: BrandRecord | null,
-): Promise<{ brand: BrandRecord; statements: D1PreparedStatement[] }> {
+): Promise<{ brand: BrandRecord; statements: DbStatement[] }> {
   const found = known === undefined ? await findBrandByKey(env, normalizeKey(name)) : known;
   if (found) return { brand: found, statements: [] };
   const created = newBrandRecord(env, name, actor);
@@ -121,8 +118,8 @@ const RENAME_ALIAS_MESSAGE = 'Nama baru bentrok dengan nama lain item';
  * milik item itu sendiri. Satu `SELECT` per potongan kunci yang melempar `integer overflow` bila ada bentrok
  * (dipetakan ke CONFLICT di `saveBrand`), sehingga seluruh batch batal.
  */
-function aliasCollisionGuards(env: Env, keys: readonly string[]): D1PreparedStatement[] {
-  const guards: D1PreparedStatement[] = [];
+function aliasCollisionGuards(env: Env, keys: readonly string[]): DbStatement[] {
+  const guards: DbStatement[] = [];
   for (let from = 0; from < keys.length; from += KEY_CHUNK) {
     const chunk = keys.slice(from, from + KEY_CHUNK);
     guards.push(
@@ -137,7 +134,7 @@ function aliasCollisionGuards(env: Env, keys: readonly string[]): D1PreparedStat
 /** True bila salah satu kunci masih dipegang sebagai nama lain (alias) item mana pun: satu round trip. */
 async function aliasCollides(env: Env, keys: readonly string[]): Promise<boolean> {
   const unique = [...new Set(keys)];
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let from = 0; from < unique.length; from += KEY_CHUNK) {
     const chunk = unique.slice(from, from + KEY_CHUNK);
     statements.push(
@@ -189,11 +186,11 @@ function renameItemStatements(
   env: Env,
   brandId: string,
   own: ReadonlyArray<{ id: string; mh: string; next: string }>,
-): D1PreparedStatement[] {
+): DbStatement[] {
   const guard = (condition: string, ...binds: unknown[]) =>
     env.DB.prepare(`SELECT CASE WHEN ${condition} THEN 1 ELSE ${CAS_FAIL_SQL} END`).bind(...binds);
   // Penjaga jumlah SELALU dikirim (juga untuk merk tanpa item: item yang disisipkan di tengah memicu ulang).
-  const statements: D1PreparedStatement[] = [
+  const statements: DbStatement[] = [
     guard('(SELECT COUNT(*) FROM items WHERE brand_id = ?) = ?', brandId, own.length),
   ];
   if (own.length === 0) return statements;
@@ -266,7 +263,7 @@ export async function saveBrand(
       updatedAt: now,
       updatedBy: actor.email,
     };
-    const statements: D1PreparedStatement[] = [
+    const statements: DbStatement[] = [
       ...aliasCollisionGuards(env, [...new Set(own.map((item) => item.next))]),
       ...updateBrandStmts(env.DB, updated),
     ];

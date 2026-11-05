@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { dbStatsOf } from '@server/core/db';
 import { loadUserContext } from '@server/modules/access/context';
 import {
   insertLocationStmt,
@@ -9,7 +10,6 @@ import { insertBrandStmts, listBrands } from '@server/modules/brand/repo';
 import { createBrandStmts, saveBrand } from '@server/modules/brand/service';
 import { insertCustomerStmt, listCustomers } from '@server/modules/customer/repo';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
-import { d1StatsOf } from '@server-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   CACHE_TTL_DEFAULT_MS,
@@ -252,7 +252,7 @@ describe('pemuatan bersama (prime)', () => {
     await seedLocation(env, { id: 'l-mati', code: 'MATI', status: 'inactive' });
     await seedRole(env, { id: 'r-view', name: 'Viewer', permissions: { access: 'view' } });
     await seedUser(env, { id: 'u1', email: 'viewer@gmail.com', roleIds: ['r-view'] });
-    const stats = d1StatsOf(env.DB);
+    const stats = dbStatsOf(env.DB);
     const before = stats.trips;
     await loadUserContext(env, 'viewer@gmail.com');
     expect(stats.trips - before).toBe(1);

@@ -1,6 +1,7 @@
 import { writeAudit } from '@server/core/audit';
 import { batchGuarded } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
@@ -100,7 +101,7 @@ export async function driveIdsByFile(
   const all = [...ids];
   const map = new Map<string, string>();
   if (all.length === 0) return map;
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let i = 0; i < all.length; i += 90) {
     const chunk = all.slice(i, i + 90);
     statements.push(
@@ -202,7 +203,7 @@ async function driveIdsForRefs(
   const map = new Map<string, string>();
   const all = [...fileIds];
   if (all.length === 0) return map;
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let i = 0; i < all.length; i += 90) {
     const chunk = all.slice(i, i + 90);
     statements.push(
@@ -315,7 +316,7 @@ async function prefetchItems(
     ...new Set(entries.flatMap((entry) => (entry.id === undefined ? [] : [entry.id]))),
   ];
   const keys = [...new Set(entries.flatMap((entry) => syncKeyOf(entry) ?? []))];
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   const add = (column: string, values: readonly string[]) => {
     for (let from = 0; from < values.length; from += 90) {
       const chunk = values.slice(from, from + 90);

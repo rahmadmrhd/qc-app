@@ -1,4 +1,5 @@
 import { CAS_VERSION_BUMP_SET } from '@server/core/cas';
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import type { HandoverStatus, HandoverStoredStatus } from '@shared/handover';
 import { deriveHandoverStatus } from '@shared/handover';
@@ -247,8 +248,8 @@ export function parseStoredComments(text: string | null | undefined): StoredComm
 }
 
 /** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu id). */
-export function commentStatements(env: Env, handoverIds: readonly string[]): D1PreparedStatement[] {
-  const statements: D1PreparedStatement[] = [];
+export function commentStatements(env: Env, handoverIds: readonly string[]): DbStatement[] {
+  const statements: DbStatement[] = [];
   for (let from = 0; from < handoverIds.length; from += 90) {
     const chunk = handoverIds.slice(from, from + 90);
     statements.push(
@@ -284,7 +285,7 @@ export async function listComments(
   return commentsByHandover(statements.length > 0 ? await env.DB.batch(statements) : []);
 }
 
-export function insertHandoverStmt(db: D1Database, handover: HandoverRecord): D1PreparedStatement {
+export function insertHandoverStmt(db: Db, handover: HandoverRecord): DbStatement {
   const d = derivedColumns(handover);
   return db
     .prepare(
@@ -313,12 +314,9 @@ export function insertHandoverStmt(db: D1Database, handover: HandoverRecord): D1
 }
 
 /** Beberapa task baru dalam `INSERT` banyak-baris (18 parameter per baris, maks. 5 baris per pernyataan). */
-export function insertHandoverStmts(
-  db: D1Database,
-  handovers: readonly HandoverRecord[],
-): D1PreparedStatement[] {
+export function insertHandoverStmts(db: Db, handovers: readonly HandoverRecord[]): DbStatement[] {
   const perStatement = 5;
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let from = 0; from < handovers.length; from += perStatement) {
     const chunk = handovers.slice(from, from + perStatement);
     const binds: unknown[] = [];
@@ -363,10 +361,10 @@ export function insertHandoverStmts(
  * pernyataan penjaga terpisah. Sukses menaikkan `version` 1.
  */
 export function updateHandoverStmt(
-  db: D1Database,
+  db: Db,
   handover: HandoverRecord,
   expectedVersion: number,
-): D1PreparedStatement {
+): DbStatement {
   const d = derivedColumns(handover);
   return db
     .prepare(

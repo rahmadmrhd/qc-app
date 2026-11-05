@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { listAudit, writeAudit } from '@server/core/audit';
+import { listAudit, writeAudit, writeAuditRows } from '@server/core/audit';
 import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
@@ -34,7 +34,7 @@ async function contextOf(email: string): Promise<UserContext> {
 
 async function auditRows() {
   const rows = await env.DB.prepare(
-    'SELECT action, target, "before" AS before, "after" AS after FROM audit_log ORDER BY id',
+    'SELECT action, target, `before`, `after` FROM audit_log ORDER BY id',
   ).all<{ action: string; target: string; before: string; after: string }>();
   return rows.results.map((row) => ({
     action: row.action,
@@ -704,7 +704,7 @@ describe('audit.list (kursor)', () => {
   test('tidak jatuh bila sel before/after rusak atau bukan objek', async () => {
     await clear();
     await env.DB.prepare(
-      "INSERT INTO audit_log (ts, actor, action, target, \"before\", \"after\") VALUES ('2026-10-08T01:00:00.000Z', 'x', 'user.update', 'a', '{rusak', '[1,2]'), ('2026-10-08T02:00:00.000Z', 'x', 'user.update', 'b', '', '\"teks\"')",
+      "INSERT INTO audit_log (ts, actor, action, target, `before`, `after`) VALUES ('2026-10-08T01:00:00.000Z', 'x', 'user.update', 'a', '{rusak', '[1,2]'), ('2026-10-08T02:00:00.000Z', 'x', 'user.update', 'b', '', '\"teks\"')",
     ).run();
     const page = await listAuditPage(env, {});
     expect(page.entries.map((entry) => [entry.before, entry.after])).toEqual([
@@ -715,21 +715,18 @@ describe('audit.list (kursor)', () => {
 
   test('CPU kasar: halaman audit dari 2.000 baris di bawah anggaran', async () => {
     await clear();
-    const statements: D1PreparedStatement[] = [];
-    for (let index = 0; index < 2000; index++) {
-      statements.push(
-        writeAudit(env.DB, {
-          ts: new Date(Date.UTC(2026, 9, 1, 0, 0, index)).toISOString(),
-          actor: 'admin@gmail.com',
-          action: 'user.update',
-          target: `u${index}@gmail.com`,
-          before: { name: 'a' },
-          after: { name: 'b' },
-        }),
-      );
-      if (statements.length === 50) {
-        await env.DB.batch(statements.splice(0));
-      }
+    // Seed lewat INSERT banyak-baris (16 per pernyataan) agar tidak lama lewat tunnel.
+    const entries = Array.from({ length: 2000 }, (_, index) => ({
+      ts: new Date(Date.UTC(2026, 9, 1, 0, 0, index)).toISOString(),
+      actor: 'admin@gmail.com',
+      action: 'user.update',
+      target: `u${index}@gmail.com`,
+      before: { name: 'a' },
+      after: { name: 'b' },
+    }));
+    const statements = writeAuditRows(env.DB, entries);
+    for (let from = 0; from < statements.length; from += 25) {
+      await env.DB.batch(statements.slice(from, from + 25));
     }
     const { result, ms } = await measureCpu(() =>
       listAudit(env, {
@@ -739,8 +736,9 @@ describe('audit.list (kursor)', () => {
       }),
     );
     expect(result.entries.length).toBeGreaterThan(0);
+    // CPU proses (tanpa menunggu jaringan ke MariaDB), lihat test-support/measure.ts.
     expect(ms).toBeLessThan(25);
-  });
+  }, 60_000);
 });
 
 describe('izin rute access', () => {

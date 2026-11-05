@@ -2,10 +2,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createDb, type Db, DbError } from '@server/core/db';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
-import { testDbUrl } from '@server-test/db-env';
+import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
 
 const URL_NO_DB = testDbUrl();
-const newSchemaName = () => `qc_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+const newSchemaName = newTestSchemaName;
 
 const EXPECTED_TABLES = [
   'audit_log',
@@ -61,7 +61,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe('loadMigrations', () => {
-  test('membaca berkas *.sql bernomor di server/migrations/mariadb, urut nama', async () => {
+  test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list[0]?.name).toBe('0001_baseline.sql');
@@ -127,6 +127,9 @@ describe('skema baseline', () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
+    // DDL baseline idempoten: dijalankan ulang tanpa catatan tidak melempar galat dan tak mengubah tabel.
+    const [baseline] = await loadMigrations();
+    await db.exec(baseline?.sql ?? '');
     expect(await tableNames(db)).toEqual(before);
     const rows = await db.prepare('SELECT name FROM schema_migrations').all<{ name: string }>();
     expect(rows.results).toEqual([{ name: '0001_baseline.sql' }]);
@@ -164,6 +167,7 @@ describe('skema baseline', () => {
         'files.files_owner',
         'files.files_pending_delete',
         'handover_comments.handover_comments_handover',
+        'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
         'handovers.handovers_customer',
         'handovers.handovers_number',
@@ -282,8 +286,8 @@ describe('skema baseline', () => {
       .bind('h-emoji', 'ST-20261105-001', 'catatan 😀 selesai')
       .run();
     const ins = await db
-      .prepare('INSERT INTO handover_comments (handover_id, quote, body) VALUES (?, ?, ?)')
-      .bind('h-emoji', 'kutipan 😀', 'isi')
+      .prepare('INSERT INTO handover_comments (id, handover_id, quote, body) VALUES (?, ?, ?, ?)')
+      .bind('c-emoji', 'h-emoji', 'kutipan 😀', 'isi')
       .run();
     expect(ins.meta.lastRowId).toBeGreaterThan(0);
     const h = await db
@@ -298,7 +302,7 @@ describe('skema baseline', () => {
     expect(c?.quote).toBe('kutipan 😀');
   });
 
-  test('audit_log.id dan handover_comments.id naik otomatis (urutan)', async () => {
+  test('audit_log.id dan handover_comments.seq naik otomatis (urutan)', async () => {
     const a = await db
       .prepare('INSERT INTO audit_log (ts, actor) VALUES (?, ?)')
       .bind('2026-11-05T00:00:00Z', 'x')
@@ -308,6 +312,21 @@ describe('skema baseline', () => {
       .bind('2026-11-05T00:00:00Z', 'y')
       .run();
     expect(b.meta.lastRowId).toBeGreaterThan(a.meta.lastRowId);
+    await db
+      .prepare('INSERT INTO handovers (id, number) VALUES (?, ?)')
+      .bind('h-seq', 'ST-SEQ-1')
+      .run();
+    for (const id of ['c-seq-1', 'c-seq-2', 'c-seq-0']) {
+      await db
+        .prepare('INSERT INTO handover_comments (id, handover_id, body) VALUES (?, ?, ?)')
+        .bind(id, 'h-seq', id)
+        .run();
+    }
+    const rows = await db
+      .prepare('SELECT id FROM handover_comments WHERE handover_id = ? ORDER BY seq')
+      .bind('h-seq')
+      .all<{ id: string }>();
+    expect(rows.results.map((r) => r.id)).toEqual(['c-seq-1', 'c-seq-2', 'c-seq-0']);
   });
 
   test('CHECK status ditolak dan FK komentar ke handovers ditegakkan', async () => {
@@ -318,8 +337,8 @@ describe('skema baseline', () => {
       .catch((e: unknown) => e);
     expect(bad).toBeInstanceOf(DbError);
     const orphan = await db
-      .prepare('INSERT INTO handover_comments (handover_id, body) VALUES (?, ?)')
-      .bind('tidak-ada', 'x')
+      .prepare('INSERT INTO handover_comments (id, handover_id, body) VALUES (?, ?, ?)')
+      .bind('c-orphan', 'tidak-ada', 'x')
       .run()
       .catch((e: unknown) => e);
     expect(orphan).toBeInstanceOf(DbError);

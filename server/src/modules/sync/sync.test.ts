@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import { D1_QUOTA_MESSAGE } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { CSRF_HEADER, CSRF_VALUE } from '@server/http/security';
@@ -581,7 +582,7 @@ describe('files', () => {
 
 describe('CPU kasar (P6)', () => {
   test('pull merk 500 baris dan ping tetap murah; autentikasi sah = satu kueri D1', async () => {
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 0; i < 500; i++) {
       statements.push(
         env.DB.prepare(

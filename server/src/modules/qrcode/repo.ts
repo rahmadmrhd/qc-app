@@ -1,3 +1,4 @@
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import type { QrLayout, QrLinkSource, QrStyle } from '@shared/qrcode';
 import { clampQrLayout, clampQrStyle } from '@shared/qrcode';
@@ -171,7 +172,7 @@ function designValues(design: QrDesignRecord): Array<string | number> {
   ];
 }
 
-export function insertQrDesignStmt(db: D1Database, design: QrDesignRecord): D1PreparedStatement {
+export function insertQrDesignStmt(db: Db, design: QrDesignRecord): DbStatement {
   return db
     .prepare(
       `INSERT INTO qr_designs (${DESIGN_COLUMNS}) VALUES (${designValues(design)
@@ -186,10 +187,10 @@ export function insertQrDesignStmt(db: D1Database, design: QrDesignRecord): D1Pr
  * Statement berikutnya di batch yang sama dapat memakai `WHERE changes() > 0` (lihat `auditIfChanged`).
  */
 export function updateQrDesignStmt(
-  db: D1Database,
+  db: Db,
   design: QrDesignRecord,
   guardUpdatedAt?: string,
-): D1PreparedStatement {
+): DbStatement {
   const names = DESIGN_COLUMNS.split(', ').slice(1);
   const values = designValues(design).slice(1);
   return db
@@ -201,7 +202,7 @@ export function updateQrDesignStmt(
     .bind(...values, design.id, ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]));
 }
 
-export function deleteQrDesignStmt(db: D1Database, id: string): D1PreparedStatement {
+export function deleteQrDesignStmt(db: Db, id: string): DbStatement {
   return db.prepare('DELETE FROM qr_designs WHERE id = ?').bind(id);
 }
 
@@ -247,7 +248,7 @@ function presetValues(preset: QrPresetRecord): Array<string | number> {
   ];
 }
 
-export function insertQrPresetStmt(db: D1Database, preset: QrPresetRecord): D1PreparedStatement {
+export function insertQrPresetStmt(db: Db, preset: QrPresetRecord): DbStatement {
   return db
     .prepare(
       `INSERT INTO qr_presets (${PRESET_COLUMNS}) VALUES (${presetValues(preset)
@@ -258,10 +259,10 @@ export function insertQrPresetStmt(db: D1Database, preset: QrPresetRecord): D1Pr
 }
 
 export function updateQrPresetStmt(
-  db: D1Database,
+  db: Db,
   preset: QrPresetRecord,
   guardUpdatedAt?: string,
-): D1PreparedStatement {
+): DbStatement {
   const names = PRESET_COLUMNS.split(', ').slice(1);
   const values = presetValues(preset).slice(1);
   return db
@@ -273,7 +274,7 @@ export function updateQrPresetStmt(
     .bind(...values, preset.id, ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]));
 }
 
-export function deleteQrPresetStmt(db: D1Database, id: string): D1PreparedStatement {
+export function deleteQrPresetStmt(db: Db, id: string): DbStatement {
   return db.prepare('DELETE FROM qr_presets WHERE id = ?').bind(id);
 }
 
@@ -298,10 +299,7 @@ export async function getQrDefaultsRecord(env: Env): Promise<QrDefaultsRecord | 
   };
 }
 
-export function insertQrDefaultsStmt(
-  db: D1Database,
-  record: QrDefaultsRecord,
-): D1PreparedStatement {
+export function insertQrDefaultsStmt(db: Db, record: QrDefaultsRecord): DbStatement {
   return db
     .prepare(
       `INSERT INTO qr_defaults (${DEFAULTS_COLUMNS}) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -320,10 +318,10 @@ export function insertQrDefaultsStmt(
 }
 
 export function updateQrDefaultsStmt(
-  db: D1Database,
+  db: Db,
   record: QrDefaultsRecord,
   guardUpdatedAt: string,
-): D1PreparedStatement {
+): DbStatement {
   return db
     .prepare(
       "UPDATE qr_defaults SET title = ?, subtitle = ?, footer = ?, layout = ?, style = ?, logo_file_ids = ?, default_logo_id = ?, updated_at = ?, updated_by = ? WHERE id = 'default' AND updated_at = ?",
@@ -364,7 +362,7 @@ export async function listQrDocuments(env: Env): Promise<QrDocumentRecord[]> {
   return result.results.map(toDocument).filter((doc) => doc.id !== '' && doc.driveId !== '');
 }
 
-export function insertQrDocumentStmt(db: D1Database, doc: QrDocumentRecord): D1PreparedStatement {
+export function insertQrDocumentStmt(db: Db, doc: QrDocumentRecord): DbStatement {
   return db
     .prepare(`INSERT INTO qr_documents (${DOCUMENT_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
@@ -380,7 +378,7 @@ export function insertQrDocumentStmt(db: D1Database, doc: QrDocumentRecord): D1P
     );
 }
 
-export function updateQrDocumentStmt(db: D1Database, doc: QrDocumentRecord): D1PreparedStatement {
+export function updateQrDocumentStmt(db: Db, doc: QrDocumentRecord): DbStatement {
   return db
     .prepare(
       'UPDATE qr_documents SET drive_id = ?, name = ?, size = ?, shared = ?, updated_at = ?, updated_by = ? WHERE id = ?',
@@ -401,7 +399,7 @@ export function updateQrDocumentStmt(db: D1Database, doc: QrDocumentRecord): D1P
  * tadi tidak mengubah baris (versi basi), pernyataan ini melempar galat SQLite (integer overflow) sehingga
  * SELURUH `batch()` dibatalkan; `runGuardedBatch` mengubahnya menjadi CONFLICT.
  */
-export function guardChanged(db: D1Database): D1PreparedStatement {
+export function guardChanged(db: Db): DbStatement {
   return db.prepare(
     'SELECT CASE WHEN changes() = 0 THEN abs(-9223372036854775807 - 1) ELSE 1 END AS ok',
   );
@@ -410,8 +408,8 @@ export function guardChanged(db: D1Database): D1PreparedStatement {
 const STALE_PATTERN = /integer overflow/i;
 
 export async function runGuardedBatch(
-  db: D1Database,
-  statements: D1PreparedStatement[],
+  db: Db,
+  statements: DbStatement[],
   onStale: () => Error,
 ): Promise<void> {
   try {

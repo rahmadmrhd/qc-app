@@ -1,4 +1,5 @@
 import { CAS_UPDATED_AT_SET } from '@server/core/cas';
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
 import { nextSyncRev, syncRevExpr } from '@server/modules/sync/state';
@@ -117,7 +118,7 @@ export function toItem(row: ItemRow): ItemRecord {
 }
 
 /** Kueri satu item menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
-export function findItemStmt(db: D1Database, id: string): D1PreparedStatement {
+export function findItemStmt(db: Db, id: string): DbStatement {
   return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`).bind(id);
 }
 
@@ -138,11 +139,7 @@ export function aliasKeyList(aliases: readonly string[]): string[] {
 }
 
 /** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY (migrasi 0009). */
-function insertAliasKeyStmts(
-  db: D1Database,
-  itemId: string,
-  keys: readonly string[],
-): D1PreparedStatement[] {
+function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): DbStatement[] {
   return keys.map((key) =>
     db.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)').bind(key, itemId),
   );
@@ -152,13 +149,9 @@ function insertAliasKeyStmts(
  * `INSERT`/`UPDATE` item memakai `RETURNING sync_rev`: revisi yang benar-benar dipakai baris terbaca dari hasil
  * `batch()` yang sama (tanpa `SELECT` tambahan); hasil pernyataan lain di batch kosong.
  */
-export function insertItemStmts(
-  db: D1Database,
-  item: ItemRecord,
-  createdSyncRev: boolean,
-): D1PreparedStatement[] {
+export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolean): DbStatement[] {
   const revSql = createdSyncRev ? syncRevExpr('items') : '?';
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   if (createdSyncRev) statements.push(nextSyncRev(db, 'items', item.createdAt));
   const binds: unknown[] = [
     item.id,
@@ -197,12 +190,12 @@ export function insertItemStmts(
  * `brands.item_count` yang ikut ditulis.
  */
 export function updateItemStmts(
-  db: D1Database,
+  db: Db,
   item: ItemRecord,
   bumpRev: boolean,
   previous: Pick<ItemRecord, 'brandId' | 'aliases' | 'updatedAt'>,
-): D1PreparedStatement[] {
-  const statements: D1PreparedStatement[] = [];
+): DbStatement[] {
+  const statements: DbStatement[] = [];
   if (bumpRev) statements.push(nextSyncRev(db, 'items', item.updatedAt));
   const revSql = bumpRev ? syncRevExpr('items') : 'sync_rev';
   statements.push(

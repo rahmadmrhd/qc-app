@@ -1,4 +1,5 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -133,10 +134,7 @@ export async function planDriveFiles(
 }
 
 /** Pernyataan penulisan baris yang direncanakan `planDriveFiles` (digabung ke `batch()` pemanggil). */
-export function commitDriveFilesStmts(
-  env: Env,
-  pending: readonly FileRecord[],
-): D1PreparedStatement[] {
+export function commitDriveFilesStmts(env: Env, pending: readonly FileRecord[]): DbStatement[] {
   return pending.map((record) => insertFileStmt(env.DB, record));
 }
 

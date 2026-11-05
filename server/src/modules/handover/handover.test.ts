@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
+import { dbStatsOf } from '@server/core/db';
 import { ENV, rpc, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { seedCustomer } from '@server-test/item-fixtures';
 import { measureCpu } from '@server-test/measure';
-import { d1StatsOf } from '@server-test/sqlite-d1';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { locateAnchor, noteToPlainText } from '@shared/handover-comments';
 import { derivedColumns, parseChecks } from './repo';
@@ -996,7 +997,7 @@ describe('baca: board per kolom, get, options', () => {
   });
 
   test('jumlah kolom (COUNT) satu batch dengan halaman dan komentar: satu round trip board', async () => {
-    const stats = d1StatsOf(env.DB);
+    const stats = dbStatsOf(env.DB);
     const countsOf = async (extra: Record<string, unknown>) => {
       stats.log = [];
       const trips = stats.trips;
@@ -1058,7 +1059,7 @@ describe('baca: board per kolom, get, options', () => {
   });
 
   test('halaman berkursor per kolom tanpa duplikat/lompatan; batas default 3; total konsisten', async () => {
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 0; i < 45; i++) {
       statements.push(
         env.DB.prepare(
@@ -1165,7 +1166,7 @@ describe('baca: board per kolom, get, options', () => {
 
   test('CPU kasar: halaman board (maks. 3 task) dari kolom 21 task di bawah anggaran', async () => {
     const note = Array.from({ length: 60 }, (_, i) => `- [ ] Barang ${i} = ${i} pcs`).join('\n');
-    const stmts: D1PreparedStatement[] = [];
+    const stmts: DbStatement[] = [];
     for (let i = 0; i < 20; i++) {
       stmts.push(
         env.DB.prepare(
@@ -1364,7 +1365,7 @@ describe('konkurensi (Review Focus 3)', () => {
   function beforeWrite(match: RegExp, mutate: () => Promise<unknown>): void {
     const original = env.DB.batch.bind(env.DB);
     let fired = false;
-    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+    env.DB.batch = (async (statements: DbStatement[]) => {
       const sqls = statements.map((s) => (s as unknown as { sql: string }).sql);
       if (!fired && sqls.some((sql) => match.test(sql))) {
         fired = true;

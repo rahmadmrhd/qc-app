@@ -1,3 +1,4 @@
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { cached, touchCache } from '@server/core/mem-cache';
 import { nextSyncRev, syncRevExpr } from '@server/modules/sync/state';
@@ -51,7 +52,7 @@ function toBrand(row: BrandRow): BrandRecord {
 }
 
 /** Kueri seluruh merk untuk digabung ke `batch()` pemanggil (langsung dari D1, tanpa cache); lihat `brandsFromResult`. */
-export function brandsStatement(env: Env): D1PreparedStatement {
+export function brandsStatement(env: Env): DbStatement {
   return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`);
 }
 
@@ -85,11 +86,7 @@ export async function findBrandByKey(env: Env, key: string): Promise<BrandRecord
 }
 
 /** Penghitung item per merk +1/-1 (dijaga di batch penulisan item; lihat `insertItemStmts`/`updateItemStmts`). */
-export function adjustItemCountStmt(
-  db: D1Database,
-  brandId: string,
-  delta: 1 | -1,
-): D1PreparedStatement {
+export function adjustItemCountStmt(db: Db, brandId: string, delta: 1 | -1): DbStatement {
   touchCache('brands');
   return db
     .prepare('UPDATE brands SET item_count = item_count + ? WHERE id = ?')
@@ -100,7 +97,7 @@ export function adjustItemCountStmt(
  * Pernyataan penyisipan merk baru: menaikkan revisi sinkron `brands` lalu menyisipkan baris yang memakai
  * revisi itu (satu `batch()` bersama audit oleh pemanggil).
  */
-export function insertBrandStmts(db: D1Database, brand: BrandRecord): D1PreparedStatement[] {
+export function insertBrandStmts(db: Db, brand: BrandRecord): DbStatement[] {
   touchCache('brands');
   return [
     nextSyncRev(db, 'brands', brand.createdAt),
@@ -122,7 +119,7 @@ export function insertBrandStmts(db: D1Database, brand: BrandRecord): D1Prepared
 }
 
 /** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
-export function updateBrandStmts(db: D1Database, brand: BrandRecord): D1PreparedStatement[] {
+export function updateBrandStmts(db: Db, brand: BrandRecord): DbStatement[] {
   touchCache('brands');
   return [
     nextSyncRev(db, 'brands', brand.updatedAt),

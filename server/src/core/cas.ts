@@ -1,13 +1,15 @@
 import { batchWrite } from '@server/modules/access/repo';
+import { type Db, DbError, type DbResult, type DbStatement } from './db';
 import { appError } from './errors';
 
 /**
- * Ekspresi SQL yang melempar galat SQLite `integer overflow` bila dievaluasi: seluruh `batch()` (transaksi)
- * dibatalkan tanpa menulis apa pun. Dipakai sebagai cabang gagal `CASE` pada penjaga CAS yang DIGABUNG ke
- * pernyataan tulisnya (`CAS_UPDATED_AT_SET`, `CAS_VERSION_BUMP_SET`, penghitung nomor): satu pernyataan
- * lebih sedikit per batch daripada penjaga `SELECT` terpisah, dengan atomisitas dan kode galat yang sama.
+ * Ekspresi SQL yang melempar galat MariaDB `ER_DATA_OUT_OF_RANGE` (1690, "BIGINT value is out of range") bila
+ * dievaluasi (mode STRICT): seluruh `batch()` (transaksi) dibatalkan tanpa menulis apa pun. Dipakai sebagai cabang
+ * gagal `CASE` pada penjaga CAS yang DIGABUNG ke pernyataan tulisnya (`CAS_UPDATED_AT_SET`, `CAS_VERSION_BUMP_SET`,
+ * penghitung nomor): satu pernyataan lebih sedikit per batch daripada penjaga `SELECT` terpisah, dengan atomisitas
+ * dan kode galat yang sama. `DbError.kind` = 'out_of_range'.
  */
-export const CAS_FAIL_SQL = 'abs(-9223372036854775808)';
+export const CAS_FAIL_SQL = '(-9223372036854775807 - 2)';
 
 /**
  * Penjaga CAS `updated_at` yang digabung ke `UPDATE` (klausa SET): `updated_at` baru ditetapkan hanya bila
@@ -19,19 +21,17 @@ export const CAS_UPDATED_AT_SET = `updated_at = CASE WHEN updated_at = ? THEN ? 
 /** Penjaga CAS `version` yang digabung ke `UPDATE` (klausa SET): naik 1 bila masih `expected`. Bind: `expected`. */
 export const CAS_VERSION_BUMP_SET = `version = CASE WHEN version = ? THEN version + 1 ELSE ${CAS_FAIL_SQL} END`;
 
-const GUARD_FAILED = /integer overflow/i;
-
 export function isGuardFailure(error: unknown): boolean {
-  return error instanceof Error && GUARD_FAILED.test(error.message);
+  return error instanceof DbError && error.kind === 'out_of_range';
 }
 
 /** `batchWrite` yang memetakan kegagalan penjaga CAS ke `CONFLICT(staleMessage)`. */
 export async function batchGuarded(
-  db: D1Database,
-  statements: D1PreparedStatement[],
+  db: Db,
+  statements: DbStatement[],
   conflicts: Record<string, { message: string; field: string }>,
   staleMessage: string,
-): Promise<D1Result[]> {
+): Promise<DbResult[]> {
   try {
     return await batchWrite(db, statements, conflicts);
   } catch (error) {
@@ -40,14 +40,26 @@ export async function batchGuarded(
   }
 }
 
-/** Kegagalan tulis yang aman diulang setelah memuat ulang keadaan: penjaga CAS atau rebutan kunci unik. */
+/**
+ * Indeks UNIK yang diperebutkan penulis serentak dan aman diulang setelah memuat ulang keadaan: nama merk/customer
+ * (kunci ternormalisasi), nomor serah terima, dan kunci penghitung (PRIMARY KEY `counters`; MariaDB tidak
+ * menyebut tabel pada galat duplikat, jadi 'PRIMARY' dihitung; percobaan ulang dibatasi sehingga galat PK lain
+ * berakhir CONFLICT).
+ */
+const RETRYABLE_UNIQUE_KEYS = new Set([
+  'customers_key',
+  'handovers_number',
+  'brands_key',
+  'PRIMARY',
+]);
+
 export function isRetryableWriteError(error: unknown): boolean {
   if (isGuardFailure(error)) return true;
   return (
-    error instanceof Error &&
-    /UNIQUE constraint failed: (customers\.key|handovers\.number|brands\.key|counters\.key)/i.test(
-      error.message,
-    )
+    error instanceof DbError &&
+    error.kind === 'duplicate' &&
+    error.key !== undefined &&
+    RETRYABLE_UNIQUE_KEYS.has(error.key)
   );
 }
 

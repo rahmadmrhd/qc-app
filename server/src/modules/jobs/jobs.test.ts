@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import app from '@server/index';
 import { cleanupQrDocuments } from '@server/modules/qrcode/service';
 import { scheduled } from '@server/scheduled';
@@ -461,7 +462,7 @@ describe('cleanup_qr dan cron', () => {
 
 describe('ekspor Spreadsheet (sheets_export)', () => {
   async function seedBrands(n: number) {
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 0; i < n; i++) {
       statements.push(
         env.DB.prepare('INSERT INTO brands (id, name, key, sync_rev) VALUES (?, ?, ?, ?)').bind(

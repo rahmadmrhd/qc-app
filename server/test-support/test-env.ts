@@ -1,8 +1,7 @@
 import type { Env, JobMessage } from '@server/core/env';
 import { resetMemCache } from '@server/core/mem-cache';
-import { applyD1Migrations } from '@server/core/migrate';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
-import { createSqliteD1 } from './sqlite-d1';
+import { acquireTestDb, resetTestDb } from './test-db';
 
 export interface TestClock {
   now(): number;
@@ -17,7 +16,7 @@ export interface TestEnv extends Env {
   BRIDGE: FakeBridge;
 }
 
-/** Env uji: D1 baru (skema dimigrasi), antrean dan jembatan palsu, rahasia uji, jam terkendali. */
+/** Env uji: skema MariaDB sementara per proses (dikloning dari templat, dikosongkan tiap panggilan), antrean dan jembatan palsu, rahasia uji, jam terkendali. */
 export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestEnv> {
   let current = Date.parse('2026-01-15T03:00:00.000Z');
   const clock: TestClock = {
@@ -47,10 +46,10 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
   // matikan (`CACHE_TTL_MS=0`). Seluruh suite dapat dijalankan dengan cache menyala lewat
   // `QC_TEST_CACHE_TTL_MS=10000 bun test` untuk memeriksa invalidasi.
   resetMemCache();
-  const db = createSqliteD1();
-  await applyD1Migrations(db);
+  const testDb = await acquireTestDb();
+  await resetTestDb(testDb);
   return {
-    DB: db,
+    DB: testDb.db,
     JOBS: jobs,
     ASSETS: assets,
     SESSION_SECRET: 'test-session-secret',

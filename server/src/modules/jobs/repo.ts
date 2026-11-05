@@ -1,3 +1,4 @@
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import type { JobKind, JobStatus } from '@shared/rpc';
 
@@ -65,7 +66,7 @@ export async function findJob(env: Env, id: string): Promise<JobRecord | null> {
   return row ? toJob(row) : null;
 }
 
-export function insertJobStmt(db: D1Database, job: JobRecord): D1PreparedStatement {
+export function insertJobStmt(db: Db, job: JobRecord): DbStatement {
   return db
     .prepare(`INSERT INTO jobs (${JOB_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
@@ -85,12 +86,7 @@ export function insertJobStmt(db: D1Database, job: JobRecord): D1PreparedStateme
     );
 }
 
-export function insertBlobStmt(
-  db: D1Database,
-  jobId: string,
-  name: string,
-  data: string,
-): D1PreparedStatement {
+export function insertBlobStmt(db: Db, jobId: string, name: string, data: string): DbStatement {
   return db
     .prepare('INSERT INTO job_blobs (job_id, name, data) VALUES (?, ?, ?)')
     .bind(jobId, name, data);

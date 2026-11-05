@@ -15,10 +15,27 @@ export interface DbStatement {
 export interface Db {
   prepare(sql: string): DbStatement;
   /** Semua pernyataan dalam satu transaksi (BEGIN ... COMMIT); gagal -> ROLLBACK. Deadlock diulang sekali. */
-  batch(statements: DbStatement[]): Promise<DbResult[]>;
+  batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]>;
   /** Banyak pernyataan sekaligus (koneksi khusus). HANYA untuk SQL tepercaya milik migrator dan harness tes. */
   exec(sql: string): Promise<void>;
   close(): Promise<void>;
+}
+
+/** Pencacah ringan untuk mengukur beban basis data di tes/skrip: pemanggilan Db (round trip), pernyataan. */
+export interface DbStats {
+  /** Pemanggilan `run/all/first` (1 per pernyataan tunggal) dan `batch` (1 per batch). */
+  trips: number;
+  statements: number;
+  /** Bila diisi, setiap SQL yang dijalankan ditambahkan (untuk pemeriksaan kueri). */
+  log: string[] | null;
+}
+
+const statsByDb = new WeakMap<Db, DbStats>();
+
+export function dbStatsOf(db: Db): DbStats {
+  const stats = statsByDb.get(db);
+  if (!stats) throw new Error('dbStatsOf: bukan Db hasil createDb');
+  return stats;
 }
 
 export type DbErrorKind = 'duplicate' | 'out_of_range' | 'deadlock' | 'unavailable' | 'other';
@@ -199,8 +216,16 @@ export function createDb(config: DbConfig): Db {
     conn.query(SESSION_COLLATION, () => {});
   });
 
-  const poolRunner = (sql: string, values: unknown[]) =>
-    execute(pool as unknown as Executor, sql, values);
+  const stats: DbStats = { trips: 0, statements: 0, log: null };
+  const count = (sql: string, trips: number) => {
+    stats.trips += trips;
+    stats.statements += 1;
+    stats.log?.push(sql);
+  };
+  const poolRunner = (sql: string, values: unknown[]) => {
+    count(sql, 1);
+    return execute(pool as unknown as Executor, sql, values);
+  };
 
   const batchOnce = async (statements: Statement[]): Promise<DbResult[]> => {
     const conn = await pool.getConnection();
@@ -221,18 +246,20 @@ export function createDb(config: DbConfig): Db {
     }
   };
 
-  return {
+  const db: Db = {
     prepare: (sql) => new Statement(sql, [], poolRunner),
 
-    async batch(statements) {
+    async batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]> {
       const list = statements.map((s) => {
         if (!(s instanceof Statement))
           throw new TypeError('batch hanya menerima pernyataan dari Db.prepare() ini');
         return s;
       });
+      stats.trips += 1;
+      for (const s of list) count(s.sql, 0);
       for (let attempt = 0; ; attempt++) {
         try {
-          return await batchOnce(list);
+          return (await batchOnce(list)) as DbResult<T>[];
         } catch (err) {
           const e = toDbError(err);
           if (e.kind === 'deadlock' && e.errno === ER_DEADLOCK && attempt === 0) continue;
@@ -257,4 +284,6 @@ export function createDb(config: DbConfig): Db {
       await pool.end();
     },
   };
+  statsByDb.set(db, stats);
+  return db;
 }

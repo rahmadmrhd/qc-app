@@ -1,11 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { applyD1Migrations } from '@server/core/migrate';
 import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import { loadUserContext } from '@server/modules/access/context';
 import { derivedColumns, parseChecks } from '@server/modules/handover/repo';
 import { getRoutes } from '@server/routes';
-import { createSqliteD1 } from '@server-test/sqlite-d1';
 import { createTestEnv } from '@server-test/test-env';
 import { parseDevVars, renderDevVars } from './dev-vars';
 import { buildSeedSql } from './seed-data';
@@ -122,8 +120,7 @@ describe('buildSeedSql', () => {
   });
 
   test('menerapkan migrasi pada database kosong tanpa galat FK/unik', async () => {
-    const db = createSqliteD1();
-    await applyD1Migrations(db);
+    const { DB: db } = await createTestEnv();
     await db.exec(buildSeedSql('a@b.test', NOW));
   });
 });

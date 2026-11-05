@@ -1,6 +1,7 @@
 import type { AuditInput } from '@server/core/audit';
 import { writeAudit } from '@server/core/audit';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -93,7 +94,7 @@ export async function planCustomerByName(
   name: string,
   actor: ActorRef,
   currentId?: string,
-): Promise<{ customer: CustomerRecord; statements: D1PreparedStatement[] }> {
+): Promise<{ customer: CustomerRecord; statements: DbStatement[] }> {
   const { customer, created } = await lookupCustomerForWrite(env, name, actor, currentId);
   return {
     customer,

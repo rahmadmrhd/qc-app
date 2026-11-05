@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import { attachFiles } from '@server/modules/files/service';
 import { measureCpu } from '@server-test/measure';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
@@ -599,7 +600,7 @@ describe('pencabutan berbagi PDF sumber', () => {
 
 describe('P6: CPU kasar', () => {
   test('daftar 300 konfigurasi QR murah', async () => {
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 0; i < 300; i++) {
       statements.push(
         env.DB.prepare(

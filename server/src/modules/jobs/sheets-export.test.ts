@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
+import type { DbStatement } from '@server/core/db';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -13,7 +14,7 @@ import {
 let env: TestEnv;
 
 async function insertBrands(count: number): Promise<void> {
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let i = 0; i < count; i++) {
     statements.push(
       env.DB.prepare('INSERT INTO brands (id, name, key, sync_rev) VALUES (?, ?, ?, ?)').bind(

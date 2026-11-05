@@ -1,4 +1,4 @@
-import type { UserContext, WarmGroup } from '@server/modules/access/context';
+import type { UserContext } from '@server/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
@@ -14,7 +14,6 @@ import { loadRequestCtx, type RequestCtx } from './context';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
 import { logRequest } from './log';
-import { settleCache } from './mem-cache';
 import { SESSION_COOKIE, verifySessionToken } from './session';
 
 export type GlobalPermission = {
@@ -31,11 +30,11 @@ export type RoutePermissionSpec =
   | { anyOf: readonly [GlobalPermission, ...GlobalPermission[]] }
   | { anyOf: readonly [LocationPermission, ...LocationPermission[]] };
 
+/** Kelompok cache tabel kecil; DIABAIKAN (cache dimatikan di jalur inti); dibuang bersama `mem-cache` di T13. */
+export type WarmGroup = 'brands' | 'customers';
+
 export interface RouteDef<M extends RpcMethod = RpcMethod> {
-  /**
-   * Cache tabel kecil yang dibaca handler (`brands`, `customers`): bila kosong saat konteks akses dimuat,
-   * dimuat di round trip yang sama (satu miss, bukan dua atau tiga round trip berurutan).
-   */
+  /** Diabaikan sejak cache memori dibuang dari jalur inti (T5); dibuang di T13. */
   warm?: readonly WarmGroup[];
   /** Tanpa `permission` = cukup login. */
   permission?: RoutePermissionSpec;
@@ -134,7 +133,7 @@ export async function callRoute(
 
     const session = await verifySessionToken(env, token, nowOf(env));
     if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
-    const base = await loadRequestCtx(env, session.email, requestId, route.warm);
+    const base = await loadRequestCtx(env, session.email, requestId);
     if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
     const user = base.user;
     userId = user.userId;
@@ -173,9 +172,6 @@ export async function callRoute(
       userId,
     });
     return { ok: false, error: body };
-  } finally {
-    // Penulisan selesai (atau gagal): buang cache kelompok yang disentuh agar pembaca berikutnya segar.
-    settleCache();
   }
 }
 

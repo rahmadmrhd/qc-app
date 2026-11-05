@@ -92,7 +92,7 @@ export async function seedHandover(
   await insertHandoverStmt(env.DB, record).run();
   for (const comment of comments) {
     await env.DB.prepare(
-      'INSERT INTO handover_comments (id, handover_id, author, created_at, quote, "before", "after", body) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO handover_comments (id, handover_id, author, created_at, quote, `before`, `after`, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
       .bind(
         comment.id,

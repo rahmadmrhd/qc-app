@@ -1,6 +1,7 @@
 import { writeAudit } from '@server/core/audit';
 import { batchGuarded } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -208,7 +209,7 @@ function nameCheckStatement(
   input: SaveItemInput,
   key: string,
   selfId: string,
-): D1PreparedStatement {
+): DbStatement {
   const keys = [...new Set([key, ...nameKeysOf(input, key).aliasKeys])];
   const marks = keys.map(() => '?').join(',');
   return env.DB.prepare(
@@ -406,7 +407,7 @@ export async function planItemWrite(
   env: Env,
   input: SaveItemInput,
   options: WriteItemOptions,
-): Promise<{ record: ItemRecord; brandName: string; statements: D1PreparedStatement[] }> {
+): Promise<{ record: ItemRecord; brandName: string; statements: DbStatement[] }> {
   const { existing, actor } = options;
   const key = itemKey(input.brand, input.model);
   // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
@@ -444,7 +445,7 @@ export async function planItemWrite(
     updatedBy: actor.email,
   };
   const afterView = (record: ItemRecord): ItemView => ({ ...record, brand: resolved.brand.name });
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
 
   if (existing) {
     const merged: ItemRecord = {

@@ -1,3 +1,4 @@
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { cached, touchCache } from '@server/core/mem-cache';
 import type { ItemStatus } from '@shared/rpc';
@@ -42,7 +43,7 @@ function toCustomer(row: CustomerRow): CustomerRecord {
  * membaca langsung dari D1 dan dipakai jalur yang memutuskan penulisan (ganti nama/status).
  */
 /** Kueri seluruh customer untuk digabung ke `batch()` pemanggil (tanpa cache); lihat `customersFromResult`. */
-export function customersStatement(env: Env): D1PreparedStatement {
+export function customersStatement(env: Env): DbStatement {
   return env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers`);
 }
 
@@ -70,7 +71,7 @@ export async function findCustomerByKey(env: Env, key: string): Promise<Customer
   return row ? toCustomer(row) : null;
 }
 
-export function insertCustomerStmt(db: D1Database, customer: CustomerRecord): D1PreparedStatement {
+export function insertCustomerStmt(db: Db, customer: CustomerRecord): DbStatement {
   touchCache('customers');
   return db
     .prepare(`INSERT INTO customers (${CUSTOMER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -86,12 +87,9 @@ export function insertCustomerStmt(db: D1Database, customer: CustomerRecord): D1
 }
 
 /** Beberapa customer baru dalam `INSERT` banyak-baris (7 parameter per baris, maks. 14 baris per pernyataan). */
-export function insertCustomerStmts(
-  db: D1Database,
-  customers: readonly CustomerRecord[],
-): D1PreparedStatement[] {
+export function insertCustomerStmts(db: Db, customers: readonly CustomerRecord[]): DbStatement[] {
   const perStatement = 14;
-  const statements: D1PreparedStatement[] = [];
+  const statements: DbStatement[] = [];
   for (let from = 0; from < customers.length; from += perStatement) {
     const chunk = customers.slice(from, from + perStatement);
     touchCache('customers');
@@ -116,7 +114,7 @@ export function insertCustomerStmts(
   return statements;
 }
 
-export function updateCustomerStmt(db: D1Database, customer: CustomerRecord): D1PreparedStatement {
+export function updateCustomerStmt(db: Db, customer: CustomerRecord): DbStatement {
   touchCache('customers');
   return db
     .prepare(

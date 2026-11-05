@@ -1,4 +1,4 @@
-import type { UserContext, WarmGroup } from '@server/modules/access/context';
+import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import type { Env } from './env';
 
@@ -17,16 +17,14 @@ export interface ActorRef {
 }
 
 /**
- * Muat konteks akses (satu round trip D1 saat cache isolate kosong; `warm` = cache tabel kecil lain yang
- * dibutuhkan rute dan ikut dimuat di round trip yang sama). `locationIds` diisi router
- * setelah izin lokasi diperiksa.
+ * Muat konteks akses (satu `batch` ke MariaDB; tanpa cache). `locationIds` diisi router setelah izin lokasi
+ * diperiksa.
  */
 export async function loadRequestCtx(
   env: Env,
   email: string,
   requestId = '',
-  warm: readonly WarmGroup[] = [],
 ): Promise<RequestCtx | null> {
-  const user = await loadUserContext(env, email, warm);
+  const user = await loadUserContext(env, email);
   return user ? { env, requestId, user, locationIds: [] } : null;
 }

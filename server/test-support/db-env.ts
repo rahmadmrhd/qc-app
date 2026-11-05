@@ -27,3 +27,15 @@ export function testDbUrl(options: TestDbUrlOptions = {}): string {
   }
   throw new Error(TUNNEL_HINT);
 }
+
+/** Awalan skema tes sementara; pola `qc_test_%` adalah satu-satunya yang boleh dibuat pengguna qc_test. */
+export const TEST_SCHEMA_PREFIX = 'qc_test_';
+
+/**
+ * Nama skema sementara `qc_test_<epoch detik>_<hex>`. Stempel waktu memungkinkan pembersihan skema yatim milik
+ * proses tes yang mati (`sweepOrphanSchemas`).
+ */
+export function newTestSchemaName(): string {
+  const seconds = Math.floor(Date.now() / 1000);
+  return `${TEST_SCHEMA_PREFIX}${seconds}_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+}

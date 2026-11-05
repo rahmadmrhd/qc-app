@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { d1StatsOf } from '@server-test/sqlite-d1';
+import { dbStatsOf } from '@server/core/db';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { resetMemCache } from '../src/core/mem-cache';
 import { signSessionToken } from '../src/core/session';
@@ -54,7 +54,7 @@ async function call(name: string, i: number): Promise<void> {
 /** Round trip dan pernyataan D1 per panggilan setelah satu panggilan pemanasan (cache isolate hangat). */
 async function loadPer(name: string, calls = 3): Promise<{ trips: number; statements: number }> {
   await call(name, 0);
-  const stats = d1StatsOf(env.DB);
+  const stats = dbStatsOf(env.DB);
   const trips = stats.trips;
   const statements = stats.statements;
   for (let i = 1; i <= calls; i++) await call(name, i);
@@ -196,7 +196,7 @@ describe('rencana kueri: tanpa pemindaian penuh tabel besar', () => {
   ];
   for (const name of routes) {
     test(name, async () => {
-      const stats = d1StatsOf(env.DB);
+      const stats = dbStatsOf(env.DB);
       // Cache kosong pada panggilan pemanasan; `brands.list`/`options` hanya membaca tabel saat cache kosong.
       resetMemCache();
       stats.log = [];

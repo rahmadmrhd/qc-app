@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import { callRoute } from '@server/core/router';
 import { signSessionToken } from '@server/core/session';
 import type { UserContext } from '@server/modules/access/context';
@@ -639,7 +640,7 @@ describe('daftar berkursor dan get', () => {
   });
 
   test('CPU kasar: halaman 50 dari 1.000 item di bawah anggaran', async () => {
-    const statements: D1PreparedStatement[] = [];
+    const statements: DbStatement[] = [];
     for (let i = 0; i < 1000; i++) {
       statements.push(
         env.DB.prepare(
@@ -767,7 +768,7 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
     const racing = await captureAppErrorAsync(async () => {
       const original = env.DB.batch.bind(env.DB);
       let calls = 0;
-      env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+      env.DB.batch = (async (statements: DbStatement[]) => {
         // panggilan pertama = pemeriksaan nama (lolos); sebelum batch tulis, item lain merebut kuncinya
         if (++calls === 2) {
           await env.DB.prepare('INSERT INTO item_alias_keys (key, item_id) VALUES (?, ?)')

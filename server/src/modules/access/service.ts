@@ -171,7 +171,7 @@ function assertRoleEditKeepsOwnAccess(
   }
 }
 
-const USER_CONFLICTS = { 'users.email': { field: 'email', message: 'Email sudah terdaftar' } };
+const USER_CONFLICTS = { users_email: { field: 'email', message: 'Email sudah terdaftar' } };
 const ROLE_CONFLICTS = {
   roles_name_unique: { field: 'name', message: 'Nama role sudah dipakai' },
 };

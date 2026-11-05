@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { currentSyncRev } from '@server/modules/sync/state';
@@ -383,7 +384,7 @@ describe('ganti nama merk: tabrakan sementara dan perubahan himpunan item', () =
   function mutateBeforeWrite(mutate: () => Promise<void>): void {
     const original = env.DB.batch.bind(env.DB);
     let calls = 0;
-    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+    env.DB.batch = (async (statements: DbStatement[]) => {
       if (++calls === 2) {
         env.DB.batch = original;
         await mutate();
@@ -543,7 +544,7 @@ describe('ganti nama merk: kasus tepi (review)', () => {
   function beforeBatch(match: RegExp, mutate: () => Promise<unknown>): void {
     const original = env.DB.batch.bind(env.DB);
     let fired = false;
-    env.DB.batch = (async (statements: D1PreparedStatement[]) => {
+    env.DB.batch = (async (statements: DbStatement[]) => {
       const sqls = statements.map((s) => (s as unknown as { sql: string }).sql);
       if (!fired && sqls.some((sql) => match.test(sql))) {
         fired = true;

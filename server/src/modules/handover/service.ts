@@ -2,6 +2,7 @@ import type { AuditInput } from '@server/core/audit';
 import { writeAudit, writeAuditRows } from '@server/core/audit';
 import { CAS_FAIL_SQL, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -355,7 +356,7 @@ function onlyProgressChanged(current: HandoverRecord, base: SaveHandoverInput['b
 
 interface NumberReservation {
   numbers: string[];
-  statements: D1PreparedStatement[];
+  statements: DbStatement[];
 }
 
 /**

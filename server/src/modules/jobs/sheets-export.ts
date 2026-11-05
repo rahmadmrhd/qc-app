@@ -1,7 +1,8 @@
 import type { SheetsExportChunk } from '@server/core/bridge-client';
+import type { Db } from '@server/core/db';
 
 /**
- * Pembaca potongan D1 untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `D1Database`:
+ * Pembaca potongan D1 untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
  * tanpa Queue/jobs/jembatan (kabelnya Task 3.3). Satu pembacaan = satu halaman berindeks kunci (keyset),
  * sehingga consumer antrean dapat melanjutkan dari `nextKey` pada pesan berikutnya.
  */
@@ -225,7 +226,7 @@ function quote(identifier: string): string {
  * (menimpa sheet, juga untuk tabel kosong sehingga sheet lama dibersihkan) dan membawa header.
  */
 export async function readExportPage(
-  db: D1Database,
+  db: Db,
   table: ExportTableSpec,
   afterKey: string | null,
   first: boolean,
@@ -277,7 +278,7 @@ export async function readExportPage(
 
 /** Seluruh potongan satu tabel berurutan (halaman demi halaman). Praktis untuk tes dan skrip. */
 export async function* exportTableChunks(
-  db: D1Database,
+  db: Db,
   table: ExportTableSpec,
   pageRows: number = EXPORT_PAGE_ROWS,
 ): AsyncGenerator<SheetsExportChunk> {

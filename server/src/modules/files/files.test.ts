@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import type { Db, DbStatement } from '@server/core/db';
 import type { FileCache } from '@server/core/file-cache';
 import { fileCacheKey } from '@server/core/file-cache';
 import { callRoute } from '@server/core/router';
@@ -139,7 +140,7 @@ describe('unggah', () => {
         return realDb.prepare(sql);
       },
       batch: realDb.batch.bind(realDb),
-    } as unknown as D1Database;
+    } as unknown as Db;
     const error = await captureAppErrorAsync(() => up());
     expect(error.code).toBe('INTERNAL');
     expect(error.message).toBe('Gambar gagal disimpan. Coba unggah lagi.');
@@ -166,7 +167,7 @@ describe('unggah', () => {
             }
           : realDb.prepare(sql),
       batch: realDb.batch.bind(realDb),
-    } as unknown as D1Database;
+    } as unknown as Db;
     env.BRIDGE.failNext('trashFile', new Error('mati'));
     const error = await captureAppErrorAsync(() => up());
     expect(error.code).toBe('INTERNAL');
@@ -220,7 +221,7 @@ describe('unggah', () => {
   });
 
   test('batas berkas belum terpasang per user', async () => {
-    const rows: D1PreparedStatement[] = [];
+    const rows: DbStatement[] = [];
     for (let i = 0; i < MAX_UNATTACHED_UPLOADS; i++) {
       rows.push(
         env.DB.prepare(

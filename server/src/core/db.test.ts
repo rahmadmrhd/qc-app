@@ -5,10 +5,10 @@
 // 30 kali berurutan, satu koneksi hangat; dua kali jalan: 21,1 ms dan 20,1 ms). Anggaran T5: ~20 ms x jumlah round trip.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createDb, type Db, DbError, toDbError } from '@server/core/db';
-import { testDbUrl } from '@server-test/db-env';
+import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
 
 const URL_NO_DB = testDbUrl();
-const SCHEMA = `qc_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+const SCHEMA = newTestSchemaName();
 
 let admin: Db; // tanpa database terpilih
 let db: Db; // menunjuk SCHEMA

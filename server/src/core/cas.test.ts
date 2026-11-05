@@ -1,14 +1,21 @@
 import { expect, test } from 'bun:test';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv } from '@server-test/test-env';
-import { batchGuarded, CAS_UPDATED_AT_SET, CAS_VERSION_BUMP_SET, isGuardFailure } from './cas';
+import {
+  batchGuarded,
+  CAS_UPDATED_AT_SET,
+  CAS_VERSION_BUMP_SET,
+  isGuardFailure,
+  isRetryableWriteError,
+} from './cas';
+import { DbError } from './db';
 
 test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = seluruh batch batal dan CONFLICT', async () => {
   const env = await createTestEnv();
-  await env.DB.prepare("INSERT INTO items (id, key, updated_at) VALUES ('i1', 'k', 't1')").run();
+  await env.DB.prepare("INSERT INTO items (id, `key`, updated_at) VALUES ('i1', 'k', 't1')").run();
   const edit = (expected: string, next: string, model: string) => [
     env.DB.prepare(
-      "INSERT INTO sync_state (resource, seq) VALUES ('x', 1) ON CONFLICT (resource) DO UPDATE SET seq = seq + 1",
+      "INSERT INTO sync_state (resource, seq) VALUES ('x', 1) ON DUPLICATE KEY UPDATE seq = seq + 1",
     ),
     env.DB.prepare(`UPDATE items SET model = ?, ${CAS_UPDATED_AT_SET} WHERE id = 'i1'`).bind(
       model,
@@ -52,4 +59,16 @@ test('CAS version digabung ke UPDATE: naik 1 bila cocok, batal dengan integer ov
   const failure = await env.DB.batch([bump(3)]).catch((error: unknown) => error);
   expect(isGuardFailure(failure)).toBe(true);
   expect(await version()).toBe(4);
+});
+
+test('isRetryableWriteError: penjaga CAS dan duplikat indeks yang diperebutkan penulis serentak', () => {
+  const duplicate = (key: string) =>
+    new DbError('Duplicate entry', { errno: 1062, kind: 'duplicate', key });
+  expect(isRetryableWriteError(new DbError('x', { errno: 1690, kind: 'out_of_range' }))).toBe(true);
+  for (const key of ['customers_key', 'handovers_number', 'brands_key', 'PRIMARY']) {
+    expect(isRetryableWriteError(duplicate(key))).toBe(true);
+  }
+  expect(isRetryableWriteError(duplicate('users_email'))).toBe(false);
+  expect(isRetryableWriteError(new DbError('x', { errno: 1064, kind: 'other' }))).toBe(false);
+  expect(isRetryableWriteError(new Error('integer overflow'))).toBe(false);
 });

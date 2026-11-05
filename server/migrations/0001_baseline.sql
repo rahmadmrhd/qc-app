@@ -10,11 +10,11 @@
 --    email VARCHAR(254), nomor serah terima VARCHAR(32). Markdown/JSON/teks bebas = LONGTEXT.
 --  * Penghitung/revisi/ukuran = BIGINT (out of range -> ER_DATA_OUT_OF_RANGE 1690 membatalkan batch).
 --  * Kolom `key`, `before`, `after` diberi backtick (kata kunci SQL).
---  * audit_log.id dan handover_comments.id = BIGINT AUTO_INCREMENT (pengganti rowid SQLite untuk urutan/kursor).
+--  * audit_log.id = BIGINT AUTO_INCREMENT; handover_comments.seq = BIGINT AUTO_INCREMENT UNIQUE (pengganti rowid SQLite untuk urutan/kursor).
 --  * Boolean tetap teks seperti Sheets (items.is_country_lock 'true'/'false', qr_designs.overflow '1'/'',
 --    qr_documents.shared '1'/'0').
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(100) NOT NULL,
   email VARCHAR(254) NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
@@ -30,7 +30,7 @@ CREATE TABLE users (
 
 -- SQLite: UNIQUE INDEX roles_name_unique ON roles (lower(trim(name))). MariaDB tidak punya indeks ekspresi:
 -- kolom turunan VIRTUAL name_key + UNIQUE. LOWER MariaDB memakai pemetaan huruf Unicode (SQLite: hanya ASCII).
-CREATE TABLE roles (
+CREATE TABLE IF NOT EXISTS roles (
   id VARCHAR(100) NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
   description VARCHAR(500) NOT NULL DEFAULT '',
@@ -44,7 +44,7 @@ CREATE TABLE roles (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- SQLite: UNIQUE (code) dan UNIQUE (lower(name)); lower(name) lewat kolom turunan name_key.
-CREATE TABLE locations (
+CREATE TABLE IF NOT EXISTS locations (
   id VARCHAR(100) NOT NULL,
   code VARCHAR(32) NOT NULL DEFAULT '',
   name VARCHAR(255) NOT NULL DEFAULT '',
@@ -59,7 +59,7 @@ CREATE TABLE locations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Sheets tidak punya id baris; id otomatis dipakai untuk kursor (ts, id) yang stabil.
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
   id BIGINT NOT NULL AUTO_INCREMENT,
   ts VARCHAR(30) NOT NULL,
   actor VARCHAR(255) NOT NULL DEFAULT '',
@@ -73,7 +73,7 @@ CREATE TABLE audit_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- `key` kini membandingkan byte persis (SQLite: NOCASE); aplikasi menormalkan ke huruf kecil (normalizeKey).
-CREATE TABLE brands (
+CREATE TABLE IF NOT EXISTS brands (
   id VARCHAR(100) NOT NULL,
   external_id VARCHAR(100) NOT NULL DEFAULT '',
   name VARCHAR(255) NOT NULL DEFAULT '',
@@ -91,7 +91,7 @@ CREATE TABLE brands (
   KEY brands_sync_rev (sync_rev)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
-CREATE TABLE customers (
+CREATE TABLE IF NOT EXISTS customers (
   id VARCHAR(100) NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
   `key` VARCHAR(255) NOT NULL DEFAULT '',
@@ -105,7 +105,7 @@ CREATE TABLE customers (
 
 -- status: 'active' | 'pending_delete' (hapus = tandai dulu, lalu Drive, lalu hapus baris).
 -- SQLite: indeks parsial WHERE status = 'pending_delete'; MariaDB tak punya indeks parsial -> indeks biasa pada status.
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
   id VARCHAR(100) NOT NULL,
   drive_id VARCHAR(255) NOT NULL DEFAULT '',
   mime VARCHAR(100) NOT NULL DEFAULT '',
@@ -125,7 +125,7 @@ CREATE TABLE files (
 
 -- status tersimpan hanya 'open' | 'cancelled'; status tampilan diturunkan dari checked/total_count.
 -- board_status turunan (deriveHandoverStatus di shared/handover.ts) WAJIB dijaga setiap penulisan handovers.
-CREATE TABLE handovers (
+CREATE TABLE IF NOT EXISTS handovers (
   id VARCHAR(100) NOT NULL,
   number VARCHAR(32) NOT NULL,
   location_id VARCHAR(100) NOT NULL DEFAULT '',
@@ -154,7 +154,7 @@ CREATE TABLE handovers (
 
 -- alias_keys: kunci ternormalisasi semua nama lain dalam bentuk '|kunci1|kunci2|' (pencarian substring daftar item,
 -- ekspor). WAJIB diisi setiap penulisan item bersama item_alias_keys.
-CREATE TABLE items (
+CREATE TABLE IF NOT EXISTS items (
   id VARCHAR(100) NOT NULL,
   external_id VARCHAR(100) NOT NULL DEFAULT '',
   brand_id VARCHAR(100) NOT NULL DEFAULT '',
@@ -183,13 +183,13 @@ CREATE TABLE items (
 -- Indeks ternormalisasi satu baris per kunci nama lain item; PRIMARY KEY = keunikan kunci nama lain di seluruh item.
 -- Kunci yang sama dengan items.key item lain dicek aplikasi (assertItemNamesFree). WAJIB ditulis bersama items.
 -- (SQLite: WITHOUT ROWID; InnoDB sudah berindeks klaster pada PRIMARY KEY.)
-CREATE TABLE item_alias_keys (
+CREATE TABLE IF NOT EXISTS item_alias_keys (
   `key` VARCHAR(255) NOT NULL,
   item_id VARCHAR(100) NOT NULL,
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
-CREATE TABLE qr_designs (
+CREATE TABLE IF NOT EXISTS qr_designs (
   id VARCHAR(100) NOT NULL,
   title VARCHAR(255) NOT NULL DEFAULT '',
   link_source VARCHAR(32) NOT NULL DEFAULT '',
@@ -214,7 +214,7 @@ CREATE TABLE qr_designs (
   KEY qr_designs_document (document_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
-CREATE TABLE qr_documents (
+CREATE TABLE IF NOT EXISTS qr_documents (
   id VARCHAR(100) NOT NULL,
   drive_id VARCHAR(255) NOT NULL DEFAULT '',
   name VARCHAR(255) NOT NULL DEFAULT '',
@@ -227,7 +227,7 @@ CREATE TABLE qr_documents (
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
-CREATE TABLE qr_defaults (
+CREATE TABLE IF NOT EXISTS qr_defaults (
   id VARCHAR(100) NOT NULL,
   title VARCHAR(255) NOT NULL DEFAULT '',
   subtitle VARCHAR(255) NOT NULL DEFAULT '',
@@ -241,7 +241,7 @@ CREATE TABLE qr_defaults (
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
-CREATE TABLE qr_presets (
+CREATE TABLE IF NOT EXISTS qr_presets (
   id VARCHAR(100) NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
   title VARCHAR(255) NOT NULL DEFAULT '',
@@ -258,7 +258,7 @@ CREATE TABLE qr_presets (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Penghitung revisi sinkron per sumber daya ('brands' | 'items'); PK = resource.
-CREATE TABLE sync_state (
+CREATE TABLE IF NOT EXISTS sync_state (
   resource VARCHAR(64) NOT NULL,
   seq BIGINT NOT NULL DEFAULT 0,
   updated_at VARCHAR(30) NOT NULL DEFAULT '',
@@ -267,8 +267,9 @@ CREATE TABLE sync_state (
 
 -- Komentar serah terima (append-only), satu baris per komentar; `at` Sheets = created_at.
 -- `stale` cadangan untuk penanda basi yang disimpan; DTO tetap menurunkannya saat baca.
-CREATE TABLE handover_comments (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+CREATE TABLE IF NOT EXISTS handover_comments (
+  id VARCHAR(100) NOT NULL,
+  seq BIGINT NOT NULL AUTO_INCREMENT,
   handover_id VARCHAR(100) NOT NULL,
   author VARCHAR(255) NOT NULL DEFAULT '',
   created_at VARCHAR(30) NOT NULL DEFAULT '',
@@ -278,13 +279,14 @@ CREATE TABLE handover_comments (
   body LONGTEXT NOT NULL DEFAULT '',
   stale INT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
+  UNIQUE KEY handover_comments_seq (seq),
   KEY handover_comments_handover (handover_id, created_at),
   CONSTRAINT handover_comments_handover_fk FOREIGN KEY (handover_id) REFERENCES handovers (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Antrean pekerjaan latar; status: queued|running|done|failed. `input`/`state` = JSON kecil; `step` = langkah berikutnya;
 -- `lease_until` (epoch ms) = penguasaan langkah oleh satu pengolah (at-least-once).
-CREATE TABLE jobs (
+CREATE TABLE IF NOT EXISTS jobs (
   id VARCHAR(100) NOT NULL,
   kind VARCHAR(64) NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'queued',
@@ -304,14 +306,14 @@ CREATE TABLE jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Penghitung atomik (UPDATE ... SET value = value + 1), mis. nomor ST harian.
-CREATE TABLE counters (
+CREATE TABLE IF NOT EXISTS counters (
   `key` VARCHAR(128) NOT NULL,
   value BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Pembatas percobaan; window_start = epoch milidetik.
-CREATE TABLE rate_limits (
+CREATE TABLE IF NOT EXISTS rate_limits (
   `key` VARCHAR(255) NOT NULL,
   count BIGINT NOT NULL DEFAULT 0,
   window_start BIGINT NOT NULL DEFAULT 0,
@@ -319,14 +321,14 @@ CREATE TABLE rate_limits (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Konfigurasi aplikasi bernilai teks (mis. id folder Drive). Bukan rahasia.
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
   `key` VARCHAR(128) NOT NULL,
   value LONGTEXT NOT NULL DEFAULT '',
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Muatan besar (base64 PDF/PNG ekspor QR) satu baris per muatan (maks. ±1 juta karakter); dibersihkan saat job selesai.
-CREATE TABLE job_blobs (
+CREATE TABLE IF NOT EXISTS job_blobs (
   job_id VARCHAR(100) NOT NULL,
   name VARCHAR(64) NOT NULL,
   data LONGTEXT NOT NULL DEFAULT '',

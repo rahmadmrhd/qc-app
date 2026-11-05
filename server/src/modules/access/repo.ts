@@ -1,7 +1,8 @@
+import type { Db, DbResult, DbStatement } from '@server/core/db';
+import { DbError } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import { cached, touchCache } from '@server/core/mem-cache';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { PartialPermissionMap } from '@shared/permissions';
@@ -142,12 +143,10 @@ export interface AccessTables {
   locations: LocationRecord[];
 }
 
-/** Ringkasan semua lokasi (kecil); cache memori isolate (`mem-cache.ts`), dibuang saat lokasi ditulis. */
+/** Ringkasan semua lokasi (kecil); dibaca langsung dari MariaDB (tanpa cache). */
 export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
-  return cached(env, 'access:locations', async () => {
-    const result = await env.DB.prepare(LOCATION_BRIEF_SQL).all<LocationBriefRow>();
-    return result.results.map(toLocationBrief);
-  });
+  const result = await env.DB.prepare(LOCATION_BRIEF_SQL).all<LocationBriefRow>();
+  return result.results.map(toLocationBrief);
 }
 
 /** Tiga tabel akses (kecil) dalam SATU `batch()`. */
@@ -174,8 +173,7 @@ export async function loadAccessTables(env: Env): Promise<AccessTables> {
   };
 }
 
-export function insertUserStmt(db: D1Database, user: UserRecord): D1PreparedStatement {
-  touchCache('access');
+export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
       "INSERT INTO users (id, email, name, status, role_ids, assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)",
@@ -192,8 +190,7 @@ export function insertUserStmt(db: D1Database, user: UserRecord): D1PreparedStat
     );
 }
 
-export function updateUserStmt(db: D1Database, user: UserRecord): D1PreparedStatement {
-  touchCache('access');
+export function updateUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
       "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, updated_at = ?, updated_by = ? WHERE id = ?",
@@ -208,8 +205,7 @@ export function updateUserStmt(db: D1Database, user: UserRecord): D1PreparedStat
     );
 }
 
-export function insertRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStatement {
-  touchCache('access');
+export function insertRoleStmt(db: Db, role: RoleRecord): DbStatement {
   return db
     .prepare(
       'INSERT INTO roles (id, name, description, permissions, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -225,8 +221,7 @@ export function insertRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStat
     );
 }
 
-export function updateRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStatement {
-  touchCache('access');
+export function updateRoleStmt(db: Db, role: RoleRecord): DbStatement {
   return db
     .prepare(
       'UPDATE roles SET name = ?, description = ?, permissions = ?, updated_at = ?, updated_by = ? WHERE id = ?',
@@ -241,13 +236,11 @@ export function updateRoleStmt(db: D1Database, role: RoleRecord): D1PreparedStat
     );
 }
 
-export function deleteRoleStmt(db: D1Database, id: string): D1PreparedStatement {
-  touchCache('access');
+export function deleteRoleStmt(db: Db, id: string): DbStatement {
   return db.prepare('DELETE FROM roles WHERE id = ?').bind(id);
 }
 
-export function insertLocationStmt(db: D1Database, location: LocationRecord): D1PreparedStatement {
-  touchCache('access');
+export function insertLocationStmt(db: Db, location: LocationRecord): DbStatement {
   return db
     .prepare(
       'INSERT INTO locations (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -263,8 +256,7 @@ export function insertLocationStmt(db: D1Database, location: LocationRecord): D1
     );
 }
 
-export function updateLocationStmt(db: D1Database, location: LocationRecord): D1PreparedStatement {
-  touchCache('access');
+export function updateLocationStmt(db: Db, location: LocationRecord): DbStatement {
   return db
     .prepare(
       'UPDATE locations SET name = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
@@ -273,23 +265,22 @@ export function updateLocationStmt(db: D1Database, location: LocationRecord): D1
 }
 
 /**
- * Jalankan `batch` tulis; pelanggaran indeks UNIK (penjaga keunikan yang di Apps Script dijaga lock)
- * dipetakan ke CONFLICT dengan pesan per kolom.
+ * Jalankan `batch` tulis; pelanggaran indeks UNIK (penjaga keunikan yang di Apps Script dijaga lock) dipetakan ke
+ * CONFLICT dengan pesan per kolom. `conflicts` dikunci dengan NAMA INDEKS MariaDB dari baseline (mis.
+ * `users_email`, `roles_name_unique`; PRIMARY KEY bernama `PRIMARY`), sesuai `DbError.key`.
  */
 export async function batchWrite(
-  db: D1Database,
-  statements: D1PreparedStatement[],
+  db: Db,
+  statements: DbStatement[],
   conflicts: Record<string, { message: string; field: string }>,
-): Promise<D1Result[]> {
+): Promise<DbResult[]> {
   try {
     return await db.batch(statements);
   } catch (error) {
-    const text = error instanceof Error ? error.message : String(error);
-    if (/UNIQUE constraint failed/i.test(text)) {
-      for (const [needle, conflict] of Object.entries(conflicts)) {
-        if (text.includes(needle)) {
-          throw appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
-        }
+    if (error instanceof DbError && error.kind === 'duplicate') {
+      const conflict = error.key === undefined ? undefined : conflicts[error.key];
+      if (conflict) {
+        throw appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
       }
       throw appError('CONFLICT', 'Data sudah ada');
     }

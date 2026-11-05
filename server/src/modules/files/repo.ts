@@ -1,3 +1,4 @@
+import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 
 export type FileStatus = 'active' | 'pending_delete';
@@ -60,8 +61,8 @@ export async function findActiveFile(env: Env, id: string): Promise<FileRecord |
 }
 
 /** Kueri berkas aktif menurut id (dipecah <= 90 parameter per kueri; batas D1 100). */
-export function activeFilesStatements(env: Env, ids: readonly string[]): D1PreparedStatement[] {
-  const statements: D1PreparedStatement[] = [];
+export function activeFilesStatements(env: Env, ids: readonly string[]): DbStatement[] {
+  const statements: DbStatement[] = [];
   for (let from = 0; from < ids.length; from += 90) {
     const chunk = ids.slice(from, from + 90);
     statements.push(
@@ -104,7 +105,7 @@ export async function countUnattached(env: Env, createdBy: string): Promise<numb
   return row?.n ?? 0;
 }
 
-export function insertFileStmt(db: D1Database, file: FileRecord): D1PreparedStatement {
+export function insertFileStmt(db: Db, file: FileRecord): DbStatement {
   return db
     .prepare(`INSERT INTO files (${FILE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(

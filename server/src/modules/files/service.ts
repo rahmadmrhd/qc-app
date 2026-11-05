@@ -1,4 +1,5 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -156,7 +157,7 @@ export async function planAttachFiles(
   ownerId: string,
   /** Hasil `findActiveFiles` untuk `ids` yang sudah dimuat pemanggil (hindari kueri ganda). */
   preloaded?: readonly FileRecord[],
-): Promise<D1PreparedStatement[]> {
+): Promise<DbStatement[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
   const files = preloaded ?? (await findActiveFiles(env, unique));
@@ -188,7 +189,7 @@ export async function attachFiles(
 }
 
 /** Langkah 1 penghapusan (Spek 8.2): tandai `pending_delete` di D1; berkas langsung tak terbaca. */
-export function markFilesPendingDelete(env: Env, ids: readonly string[]): D1PreparedStatement[] {
+export function markFilesPendingDelete(env: Env, ids: readonly string[]): DbStatement[] {
   return ids.map((id) =>
     env.DB.prepare("UPDATE files SET status = 'pending_delete' WHERE id = ?").bind(id),
   );
