@@ -282,6 +282,15 @@ describe('pembersihan rate_limits (I4)', () => {
     expect(await limitKeys()).toEqual(['sync:blocked:aktif', 'sync:fails:baru']);
   });
 
+  test('purgeExpiredRateLimits: baris penghitung bernilai 0 (jalur sah) yang kedaluwarsa dibuang, yang aktif tidak', async () => {
+    const now = env.clock.now();
+    await seedLimit('sync:fails:nol-basi', 0, now - 11 * MINUTE);
+    await seedLimit('sync:fails:nol-aktif', 0, now - 2 * MINUTE);
+    await seedLimit('sync:fails:nol-batas', 0, now - 10 * MINUTE); // tepat di batas: belum kedaluwarsa
+    expect(await purgeExpiredRateLimits(env)).toBe(1);
+    expect(await limitKeys()).toEqual(['sync:fails:nol-aktif', 'sync:fails:nol-batas']);
+  });
+
   test('detak penjadwal ikut membersihkan rate_limits kedaluwarsa', async () => {
     await seedLimit('sync:fails:basi', 3, env.clock.now() - 2 * 60 * MINUTE);
     const stop = startScheduler(env, { intervalMs: 10_000 });

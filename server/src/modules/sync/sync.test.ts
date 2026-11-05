@@ -302,7 +302,7 @@ describe('handler (REST /api/v1/sync/*)', () => {
       }>()
     ).results;
 
-  test('(N1) 25 permintaan SAH serentak semuanya diterima; permintaan sukses tidak dihitung dan tidak meninggalkan baris', async () => {
+  test('(N1) 25 permintaan SAH serentak semuanya diterima; permintaan sukses tidak dihitung sebagai kegagalan dan tidak menghapus baris (paling banyak menyisipkan penghitung bernilai 0)', async () => {
     const results = await Promise.all(Array.from({ length: 25 }, () => ping(TOKEN)));
     expect(results.every((r) => r.ok)).toBe(true);
     // tidak ada kegagalan tercatat (baris bernilai 0 dipertahankan, lihat tes m1)

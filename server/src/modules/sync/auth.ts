@@ -33,9 +33,11 @@ async function isBlocked(env: Env, now: number, ip: string): Promise<boolean> {
  *   tidak dihitung, tidak ditolak karena serentak, dan tidak ikut memicu blokir;
  * - blokir yang dibaca di dalam transaksi (setelah kunci didapat) menolak percobaan yang lolos pra-pemeriksaan tepat
  *   sebelum blokir ter-commit (penghitung yang sempat dibuat dibuang lagi).
- * Baris penghitung bernilai 0 DIPERTAHANKAN untuk permintaan sah (jalur sah hanya `UPDATE` baris yang ada, tanpa
- * sisip-lalu-hapus pada kunci yang sama yang rawan deadlock gap-lock saat burst); baris kedaluwarsa dibuang penjadwal
- * (`purgeExpiredRateLimits`, tiap jam). Penghitung baru dibuang hanya saat blokir berlaku.
+ * Baris penghitung bernilai 0 DIPERTAHANKAN untuk permintaan sah (tanpa sisip-lalu-hapus pada kunci yang sama yang
+ * rawan deadlock gap-lock saat burst): permintaan sah PERTAMA dari suatu IP (atau pertama sesudah baris dibuang purge)
+ * menyisipkan baris bernilai 0, pada baris kedaluwarsa `window_start`-nya ditulis ulang, selanjutnya hanya `UPDATE`
+ * yang tak mengubah hitungan. `window_start` baris 0 menempel pada saat pembuatan/reset, bukan kegagalan pertama
+ * (tak mempengaruhi anggaran jangka panjang). Baris kedaluwarsa dibuang penjadwal (`purgeExpiredRateLimits`, tiap jam). Penghitung baru dibuang hanya saat blokir berlaku.
  * Urutan di dalam transaksi PENTING: read view InnoDB dibuat pada bacaan konsisten PERTAMA (`SELECT count`), yaitu
  * sesudah kunci baris dari upsert didapat, sehingga `SELECT` blokir melihat blokir yang sudah ter-commit oleh transaksi
  * yang mendahului. Jangan memindahkan `SELECT` ke sebelum upsert atau memakai `WITH CONSISTENT SNAPSHOT` (mengandalkan
