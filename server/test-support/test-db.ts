@@ -138,7 +138,7 @@ async function createCurrent(): Promise<Current> {
   const name = newTestSchemaName();
   try {
     const tables = await cloneTemplate(admin, name);
-    const db = createDb({ url: testDbUrl(), database: name, connectionLimit: 10 });
+    const db = createDb({ url: testDbUrl(), database: name, connectionLimit: 6 });
     state.__qcTestSchemaName = name;
     return { name, db, admin, tables };
   } catch (error) {
