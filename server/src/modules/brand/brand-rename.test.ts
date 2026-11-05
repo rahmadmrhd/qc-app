@@ -540,3 +540,22 @@ describe('(m1) pindah merk dan sync push vs ganti nama merk', () => {
     }
   }, 120_000);
 });
+
+describe('(m3) audit status merk memakai nama dari keadaan terjaga', () => {
+  test('ganti nama menyela status: audit brand.deactivate bernama baru, snapshot sebelum/sesudah konsisten', async () => {
+    await seedBrand(env, 'Lama');
+    const { delayed, atWrite, release } = gatedEnv(/^\s*(INSERT INTO audit_log|UPDATE brands)/);
+    const pending = setBrandStatus(delayed, { id: 'brand-lama', status: 'inactive' }, admin);
+    await atWrite;
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    release();
+    await pending;
+    const audit = await env.DB.prepare(
+      "SELECT target, `before`, `after` FROM audit_log WHERE action = 'brand.deactivate'",
+    ).first<{ target: string; before: string; after: string }>();
+    expect(audit?.target).toBe('Baru');
+    expect(JSON.parse(audit?.before as string).name).toBe('Baru');
+    expect(JSON.parse(audit?.after as string).name).toBe('Baru');
+    expect(JSON.parse(audit?.after as string).status).toBe('inactive');
+  }, 60_000);
+});

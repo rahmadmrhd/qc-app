@@ -1,4 +1,5 @@
 import { writeAudit } from '@server/core/audit';
+import { nameGuardStmt, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement, DbTx } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -226,6 +227,17 @@ export async function setBrandStatus(
   input: SetBrandStatusInput,
   actor: ActorRef,
 ): Promise<BrandDto> {
+  // Penjaga nama: ganti nama yang menyela membatalkan batch dan keadaan dimuat ulang (audit memakai nama terkini).
+  return runCas(() => setBrandStatusOnce(env, input, actor), BRAND_STALE_MESSAGE);
+}
+
+const BRAND_STALE_MESSAGE = 'Merk diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+
+async function setBrandStatusOnce(
+  env: Env,
+  input: SetBrandStatusInput,
+  actor: ActorRef,
+): Promise<BrandDto> {
   const brands = await listBrands(env);
   const existing = brands.find((brand) => brand.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
@@ -239,6 +251,7 @@ export async function setBrandStatus(
   };
   // Hanya kolom status yang ditulis; baris terkini dibaca di akhir batch untuk DTO (nama bisa baru diganti orang lain).
   const results = await env.DB.batch([
+    nameGuardStmt(env.DB, 'brands', existing.id, existing.name),
     ...setBrandStatusStmts(env.DB, updated),
     writeAudit(env.DB, {
       ts: now,
@@ -249,6 +262,6 @@ export async function setBrandStatus(
       after: brandSnapshot(updated),
     }),
   ]);
-  const fresh = brandsFromResult(results[2] as { results: unknown[] })[0];
+  const fresh = brandsFromResult(results[3] as { results: unknown[] })[0];
   return toBrandDto(fresh ?? updated);
 }

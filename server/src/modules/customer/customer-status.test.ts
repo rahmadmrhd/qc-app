@@ -94,3 +94,21 @@ describe('customer: status dan ganti nama tidak saling menimpa (I2)', () => {
     }
   }, 60_000);
 });
+
+describe('(m3) audit status customer memakai nama dari keadaan terjaga', () => {
+  test('ganti nama menyela status: audit customer.deactivate bernama baru', async () => {
+    await seedCustomer(env, { id: 'c1', name: 'PT Lama' });
+    const { delayed, atWrite, release } = gatedEnv();
+    const pending = setCustomerStatus(delayed, { id: 'c1', status: 'inactive' }, admin);
+    await atWrite;
+    await renameCustomer(env, { id: 'c1', name: 'PT Baru' }, admin);
+    release();
+    await pending;
+    const audit = await env.DB.prepare(
+      "SELECT target, `before`, `after` FROM audit_log WHERE action = 'customer.deactivate'",
+    ).first<{ target: string; before: string; after: string }>();
+    expect(audit?.target).toBe('PT Baru');
+    expect(JSON.parse(audit?.before as string).name).toBe('PT Baru');
+    expect(JSON.parse(audit?.after as string).name).toBe('PT Baru');
+  }, 60_000);
+});

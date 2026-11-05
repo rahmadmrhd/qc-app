@@ -1,5 +1,6 @@
 import type { AuditInput } from '@server/core/audit';
 import { writeAudit } from '@server/core/audit';
+import { nameGuardStmt, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -175,6 +176,18 @@ export async function setCustomerStatus(
   input: SetCustomerStatusInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
+  // Penjaga nama: ganti nama yang menyela membatalkan batch dan keadaan dimuat ulang (audit memakai nama terkini).
+  return runCas(() => setCustomerStatusOnce(env, input, actor), CUSTOMER_STALE_MESSAGE);
+}
+
+const CUSTOMER_STALE_MESSAGE =
+  'Customer diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+
+async function setCustomerStatusOnce(
+  env: Env,
+  input: SetCustomerStatusInput,
+  actor: ActorRef,
+): Promise<CustomerDto> {
   const existing = (await listCustomers(env)).find((customer) => customer.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'Customer tidak ditemukan');
   if (existing.status === input.status) return toCustomerDto(existing);
@@ -187,6 +200,7 @@ export async function setCustomerStatus(
   };
   // Hanya status yang ditulis; baris terkini dibaca di akhir batch untuk DTO (nama bisa baru diganti orang lain).
   const results = await env.DB.batch([
+    nameGuardStmt(env.DB, 'customers', existing.id, existing.name),
     setCustomerStatusStmt(env.DB, updated),
     writeAudit(env.DB, {
       ts: now,
@@ -198,6 +212,6 @@ export async function setCustomerStatus(
     }),
     customerByIdStmt(env.DB, updated.id),
   ]);
-  const fresh = customersFromResult(results[2] as { results: unknown[] })[0];
+  const fresh = customersFromResult(results[3] as { results: unknown[] })[0];
   return toCustomerDto(fresh ?? updated);
 }

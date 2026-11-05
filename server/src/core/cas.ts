@@ -1,5 +1,5 @@
 import { batchWrite } from '@server/modules/access/repo';
-import { type Db, DbError, type DbResult, type DbStatement } from './db';
+import { type Db, DbError, type DbResult, type DbStatement, type Preparer } from './db';
 import { appError } from './errors';
 
 /**
@@ -20,6 +20,24 @@ export const CAS_UPDATED_AT_SET = `updated_at = CASE WHEN updated_at = ? THEN ? 
 
 /** Penjaga CAS `version` yang digabung ke `UPDATE` (klausa SET): naik 1 bila masih `expected`. Bind: `expected`. */
 export const CAS_VERSION_BUMP_SET = `version = CASE WHEN version = ? THEN version + 1 ELSE ${CAS_FAIL_SQL} END`;
+
+/**
+ * Penjaga nama baris master (`brands`/`customers`) untuk perubahan STATUS: mengunci baris (`FOR UPDATE`) dan
+ * membatalkan batch (`CAS_FAIL_SQL`) bila namanya bukan yang dibaca penulis. Dengan begitu audit dan DTO memakai nama
+ * dari keadaan yang sama dengan yang dijaga; ganti nama yang menyela membuat `runCas` memuat ulang.
+ */
+export function nameGuardStmt(
+  db: Preparer,
+  table: 'brands' | 'customers',
+  id: string,
+  expectedName: string,
+): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN name = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM ${table} WHERE id = ? FOR UPDATE`,
+    )
+    .bind(expectedName, id);
+}
 
 export function isGuardFailure(error: unknown): boolean {
   return error instanceof DbError && error.kind === 'out_of_range';
