@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { type Config, loadConfig } from './config';
+import { signSessionToken } from './core/session';
 import { MAX_REQUEST_BODY_BYTES } from './http/body';
 import { bunServeOptions, createServer, type QcServer } from './server';
 
@@ -235,10 +236,12 @@ describe('createServer: batas ukuran badan (M3)', () => {
 
   test('REST JSON: badan chunked terlalu besar ditolak 413 VALIDATION, tidak dimuat penuh', async () => {
     const { stream, state } = chunkedBody(40, 1024 * 1024);
+    // sesi sah: sejak I2 sesi diperiksa SEBELUM badan dibaca (tanpa sesi = 401 tanpa membaca apa pun)
+    const cookie = `qc_session=${await signSessionToken(server.env, 'admin@gmail.com', env.clock.now())}`;
     const response = await server.fetch(
       new Request('http://localhost/api/v1/brands', {
         method: 'POST',
-        headers: { 'x-requested-with': 'qc' },
+        headers: { 'x-requested-with': 'qc', cookie },
         body: stream,
         duplex: 'half',
       }),
