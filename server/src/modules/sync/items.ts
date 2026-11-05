@@ -4,7 +4,7 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError, isAppError } from '@server/core/errors';
+import { isAppError, staleError } from '@server/core/errors';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { brandsFromResult, brandsStatement, listBrands } from '@server/modules/brand/repo';
 import type { ItemRecord, ItemRow } from '@server/modules/item/repo';
@@ -440,7 +440,7 @@ async function upsertSyncItem(
       )
         .bind(existing.id)
         .first<{ updated_at: string; brand_name: string | null }>();
-      if (current?.updated_at !== existing.updatedAt) throw appError('CONFLICT', staleMessage);
+      if (current?.updated_at !== existing.updatedAt) throw staleError(staleMessage);
       // Entri tanpa `merk` berarti "merk tidak berubah": nama merk diambil segar menurut id, BUKAN nama basi dari
       // cache permintaan (ganti nama merk yang menyela akan membuat merk bernama lama tercipta ulang, N2). Bila
       // `merk` dikirim, nama itu dipakai apa adanya.

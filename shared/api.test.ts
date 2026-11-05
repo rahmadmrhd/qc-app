@@ -8,6 +8,7 @@ import {
   formatEtag,
   fromRequestParts,
   parseIfMatch,
+  parseQueryValue,
   REST_MIGRATED_IDS,
   routeShape,
   toRequestParts,
@@ -368,5 +369,25 @@ describe('fillPath, etag, If-Match', () => {
     expect(etagMatches('*', 'abc')).toBe(true);
     expect(etagMatches('"abd"', 'abc')).toBe(false);
     expect(etagMatches(null, 'abc')).toBe(false);
+  });
+});
+
+describe('parseQueryValue', () => {
+  test('boolean: true dan false diparse, nilai lain menjadi galat', () => {
+    expect(parseQueryValue('aktif', 'boolean', 'true')).toBe(true);
+    expect(parseQueryValue('aktif', 'boolean', 'false')).toBe(false);
+    for (const bad of ['yes', 'TRUE', '1', '']) {
+      expect(issueOf(() => parseQueryValue('aktif', 'boolean', bad))).toEqual({
+        field: 'aktif',
+        message: 'Harus true atau false',
+      });
+    }
+  });
+
+  test('number, list, dan string', () => {
+    expect(parseQueryValue('n', 'number', '-2.5')).toBe(-2.5);
+    expect(parseQueryValue('l', 'list', '')).toEqual([]);
+    expect(parseQueryValue('l', 'list', 'a,b')).toEqual(['a', 'b']);
+    expect(parseQueryValue('s', 'string', '')).toBe('');
   });
 });

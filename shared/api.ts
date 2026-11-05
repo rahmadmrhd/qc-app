@@ -307,7 +307,7 @@ export function toRequestParts<M extends WorkerRpcMethod>(
   return { verb: shape.verb, path: fillPath(shape.path, params), query, ifMatch };
 }
 
-function parseQueryValue(field: string, kind: QueryKind, text: string): unknown {
+export function parseQueryValue(field: string, kind: QueryKind, text: string): unknown {
   if (kind === 'list') return text === '' ? [] : text.split(',');
   if (kind === 'number') {
     if (text.trim() === '' || !Number.isFinite(Number(text))) {
