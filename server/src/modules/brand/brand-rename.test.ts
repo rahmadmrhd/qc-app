@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { DbStatement } from '@server/core/db';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { saveItem, setItemStatus } from '@server/modules/item/service';
@@ -261,5 +262,76 @@ describe('status merk tidak menimpa nama/kunci (I2)', () => {
         status: 'inactive',
       });
     }
+  }, 60_000);
+});
+
+/**
+ * Menahan eksekusi PERTAMA kueri baca yang cocok `match` SESUDAH hasilnya diperoleh: `atRead` selesai saat itu
+ * dan kueri baru kembali setelah `release()`. Dipakai untuk menyelipkan ganti nama merk di antara dua pembacaan
+ * (bukan di antara baca dan tulis).
+ */
+function gatedAfterRead(match: RegExp) {
+  let reached!: () => void;
+  const atRead = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let fired = false;
+  const wrap = (statement: DbStatement): DbStatement =>
+    new Proxy(statement, {
+      get(target, property) {
+        const value = Reflect.get(target, property) as unknown;
+        if (property === 'bind') {
+          return (...values: unknown[]) => wrap(target.bind(...values));
+        }
+        if (property === 'first' || property === 'all') {
+          return async () => {
+            const result = await (value as () => Promise<unknown>).call(target);
+            if (!fired) {
+              fired = true;
+              reached();
+              await gate;
+            }
+            return result;
+          };
+        }
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  const delayed = {
+    ...env,
+    DB: {
+      ...env.DB,
+      prepare: (sql: string) => {
+        const statement = env.DB.prepare(sql);
+        return match.test(sql) ? wrap(statement) : statement;
+      },
+    },
+  } as TestEnv;
+  return { delayed, atRead, release };
+}
+
+const ITEM_READ = /FROM items[^;]*WHERE (i\.)?id = \?/;
+
+describe('(N1) setItemStatus: ganti nama merk di antara dua pembacaan', () => {
+  test('rename commit setelah item dibaca: kunci baru bertahan, status tetap berubah, audit memakai nama baru', async () => {
+    await seedBrand(env, 'Lama');
+    await seedItem(env, { id: 'i1', brand: 'Lama', model: 'Satu' });
+    const { delayed, atRead, release } = gatedAfterRead(ITEM_READ);
+    const pending = setItemStatus(delayed, { id: 'i1', status: 'inactive' }, admin);
+    await atRead;
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    release();
+    const dto = await pending;
+    expect(dto.status).toBe('inactive');
+    expect(dto.brand).toBe('Baru');
+    await assertItemKeysMatchBrands();
+    const row = await env.DB.prepare('SELECT `key`, status FROM items WHERE id = ?')
+      .bind('i1')
+      .first<{ key: string; status: string }>();
+    expect(row).toEqual({ key: 'baru satu', status: 'inactive' });
   }, 60_000);
 });

@@ -127,6 +127,31 @@ export async function findItem(env: Env, id: string): Promise<ItemRecord | null>
   return row ? toItem(row) : null;
 }
 
+/** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */
+export interface ItemWithBrand {
+  item: ItemRecord;
+  brandName: string;
+  brandKey: string;
+}
+
+/**
+ * Item dan merknya dalam SATU kueri (JOIN): kunci item (`items.key`) dan kunci merk (`brands.key`) berasal dari
+ * snapshot yang sama, sehingga `brandKeyGuardStmt(.., brandKey)` menjaga persis keadaan yang dibaca: ganti nama
+ * merk yang commit sesudahnya membatalkan batch, yang commit sebelumnya sudah tercermin di `items.key` (N1).
+ */
+export async function findItemWithBrand(env: Env, id: string): Promise<ItemWithBrand | null> {
+  const columns = ITEM_COLUMNS.split(', ')
+    .map((column) => `i.${column}`)
+    .join(', ');
+  const row = await env.DB.prepare(
+    `SELECT ${columns}, b.name AS brand_name, b.\`key\` AS brand_key FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.id = ?`,
+  )
+    .bind(id)
+    .first<ItemRow & { brand_name: string | null; brand_key: string | null }>();
+  if (!row) return null;
+  return { item: toItem(row), brandName: row.brand_name ?? '', brandKey: row.brand_key ?? '' };
+}
+
 /** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); kolom `items.alias_keys`. */
 export function aliasKeysOf(aliases: readonly string[]): string {
   const keys = aliasKeyList(aliases);

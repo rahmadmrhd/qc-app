@@ -30,6 +30,7 @@ import {
   brandKeyGuardStmt,
   findItem,
   findItemStmt,
+  findItemWithBrand,
   type ItemRow,
   insertItemStmts,
   parseStrings,
@@ -608,9 +609,11 @@ async function setItemStatusOnce(
   input: SetItemStatusInput,
   actor: ActorRef,
 ): Promise<ItemDto> {
-  const existing = await findItem(env, input.id);
-  if (!existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  const before = await viewOf(env, existing);
+  // Item dan merknya dibaca dalam SATU snapshot (JOIN); penjaga memeriksa kunci merk tersimpan itu (N1).
+  const found = await findItemWithBrand(env, input.id);
+  if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  const existing = found.item;
+  const before: ItemView = { ...existing, brand: found.brandName };
   if (existing.status === input.status) return toItemDto(before);
   const now = nowIso(env);
   const updated: ItemRecord = {
@@ -622,7 +625,7 @@ async function setItemStatusOnce(
   await batchWrite(
     env.DB,
     [
-      brandKeyGuardStmt(env.DB, existing.brandId, normalizeKey(before.brand)),
+      brandKeyGuardStmt(env.DB, existing.brandId, found.brandKey),
       ...updateItemStmts(env.DB, updated, true, existing),
       writeAudit(env.DB, {
         ts: now,
