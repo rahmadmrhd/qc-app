@@ -16,8 +16,29 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Tes server memakai MariaDB sungguhan (skema sementara qc_test_* dikloning dari qc_test_template). Pengguna
+      # root hanya untuk basis data sekali pakai di runner ini.
+      QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
     steps:
       - uses: actions/checkout@v4
+
+      # MariaDB 11.8 dengan konfigurasi yang sama dengan VPS (deploy/mariadb/qc.cnf: utf8mb4, collation
+      # utf8mb4_nopad_bin, sql_mode, max_connections). Dijalankan lewat `docker run` (bukan `services:`) karena
+      # service container tidak dapat memasang berkas konfigurasi dari checkout atau menerima argumen mysqld.
+      # TAK TERVERIFIKASI: belum pernah dijalankan di GitHub Actions (hanya ditulis mengikuti compose VPS).
+      - name: Jalankan MariaDB
+        run: |
+          docker run -d --name qc-ci-db -p 127.0.0.1:3306:3306 \
+            -e MARIADB_ROOT_PASSWORD=ci-only \
+            -v "$PWD/deploy/mariadb/qc.cnf:/etc/mysql/conf.d/qc.cnf:ro" \
+            mariadb:11.8
+          for i in $(seq 1 60); do
+            if docker exec qc-ci-db healthcheck.sh --connect --innodb_initialized; then exit 0; fi
+            sleep 2
+          done
+          docker logs qc-ci-db
+          exit 1
 
       - uses: oven-sh/setup-bun@v2
         with:
