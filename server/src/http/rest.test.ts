@@ -606,6 +606,7 @@ describe('OpenAPI: rute sinkron QC Desktop', () => {
       expect(operation?.security, id).toEqual([{ syncBearer: [] }]);
       expect(operation?.tags).toEqual(['sync']);
       expect(Object.keys(operation?.responses as object)).toContain('401');
+      if (def.verb === 'POST') expect(Object.keys(operation?.responses as object)).toContain('400');
     }
     const file = doc.paths['/sync/files/{id}']?.get as { responses: Record<string, unknown> };
     expect(JSON.stringify(file.responses['200'])).toContain('application/octet-stream');

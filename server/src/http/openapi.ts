@@ -168,6 +168,7 @@ function syncOperationFor(id: SyncRouteId): {
     },
     ...(isFile ? { '304': { description: 'If-None-Match cocok' } } : {}),
     '401': problemResponse('Token tidak valid (semua sebab, termasuk diblokir, dijawab sama)'),
+    ...(def.verb === 'POST' ? { '400': problemResponse('Badan bukan JSON yang valid') } : {}),
     '404': problemResponse('Tidak ditemukan'),
     '413': problemResponse('Badan atau berkas terlalu besar'),
     '422': problemResponse('Input tidak valid'),
