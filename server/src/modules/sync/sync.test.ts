@@ -289,12 +289,9 @@ describe('handler (REST /api/v1/sync/*)', () => {
       key: string;
       count: number;
     }>();
-    // blokir tercatat; penghitung kegagalan dihapus saat blokir (hanya baris sync:blocked:<ip> yang tersisa),
-    // atau bila beberapa permintaan sempat mencatat sesudahnya hitungannya kecil (< 10)
-    const names = rows.results.map((r) => r.key);
-    expect(names).toContain('sync:blocked:unknown');
-    const fails = rows.results.find((r) => r.key === 'sync:fails:unknown');
-    if (fails) expect(Number(fails.count)).toBeLessThan(10);
+    // blokir tercatat dan penghitung dibuang di transaksi blokir (juga oleh transaksi yang melihat blokir): hanya
+    // baris sync:blocked:<ip> yang tersisa
+    expect(rows.results.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
   });
 
   const limiterRows = async () =>
@@ -340,23 +337,24 @@ describe('handler (REST /api/v1/sync/*)', () => {
     const results = await Promise.all(mixed);
     for (let i = 0; i < 60; i += 2) expect(results[i]?.ok).toBe(false);
     const rows = await limiterRows();
-    const fails = rows.find((r) => r.key === 'sync:fails:unknown');
-    if (fails) expect(Number(fails.count)).toBeLessThan(10);
-    expect(rows.map((r) => r.key)).toContain('sync:blocked:unknown');
+    expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
     expect(await ping(TOKEN)).toMatchObject({ ok: false });
     // tidak ada kegagalan yang hilang: 10 salah sudah cukup memblokir, dan blokir tetap sampai kedaluwarsa
     env.clock.advance(5 * 60 * 1000);
     expect(await ping(TOKEN)).toMatchObject({ ok: false });
   });
 
-  test('(N2) kegagalan lain tidak hilang saat blokir/jendela: 9 salah, lalu 1 salah dan 5 sah serentak memblokir tepat pada kegagalan ke-10', async () => {
+  test('(N2) 9 salah lalu 1 salah + 5 sah serentak: kegagalan ke-10 memblokir, penghitung dibuang, yang sah sesudahnya ditolak (tanpa 5xx)', async () => {
     for (let i = 0; i < 9; i++) await ping(`salah-${i}`);
     const results = await Promise.all([
       ping('salah-ke-10'),
       ...Array.from({ length: 5 }, () => ping(TOKEN)),
     ]);
     expect(results[0]?.ok).toBe(false);
-    // yang sah yang diserialkan sebelum kegagalan ke-10 diterima, sesudahnya ditolak; tidak pernah diterima setelah blokir
+    // yang sah yang diserialkan sebelum kegagalan ke-10 diterima, sesudahnya ditolak 401 (tidak pernah 5xx)
+    for (const r of results.slice(1)) {
+      expect(r.ok || r.error?.code === 'UNAUTHENTICATED').toBe(true);
+    }
     expect(await ping(TOKEN)).toMatchObject({ ok: false });
     const rows = await limiterRows();
     expect(rows.map((r) => r.key)).toEqual(['sync:blocked:unknown']);
