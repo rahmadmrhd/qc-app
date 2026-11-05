@@ -20,3 +20,12 @@ test('UNAUTHENTICATED memicu logout global, FORBIDDEN menampilkan notifikasi', (
   expect(deps.onUnauthenticated).toHaveBeenCalledOnce();
   expect(deps.notify).toHaveBeenCalledOnce();
 });
+
+test('ApiError (klien REST) dan RpcError (transport lama) adalah kelas yang sama untuk penanganan global', async () => {
+  const { ApiError } = await import('@/lib/api/api-error');
+  expect(ApiError).toBe(RpcError);
+  const deps = { onUnauthenticated: vi.fn(), notify: vi.fn() };
+  handleGlobalError(new ApiError('UNAUTHENTICATED', 'x', 'r', undefined, { status: 401 }), deps);
+  expect(deps.onUnauthenticated).toHaveBeenCalledOnce();
+  expect(shouldRetry(0, new ApiError('INTERNAL', 'x', '-'))).toBe(true);
+});
