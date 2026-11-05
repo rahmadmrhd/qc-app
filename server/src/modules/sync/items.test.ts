@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { app } from '@server/app';
 import { saveItem } from '@server/modules/item/service';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { type SyncOut, syncCall, syncSend } from '@server-test/sync-rest';
@@ -205,6 +206,34 @@ describe('pull', () => {
         .limit,
     ).toBe(200);
     expect(validateSyncPull({ limit: 500 }, ['detail']).limit).toBe(500);
+  });
+
+  test('include yang diulang (?include=a&include=b) digabung: semua nilai dipakai; nilai berulang pada limit ditolak', async () => {
+    await results([
+      {
+        ...BASE,
+        detail: 'rincian',
+        stickers: [{ name: 'Label', note: '', image: null }],
+        accessories: [{ name: 'Kabel', qty: 1 }],
+      },
+    ]);
+    const get = (query: string) =>
+      app.request(
+        `https://qc.test/api/v1/sync/items?${query}`,
+        { headers: { authorization: `Bearer ${TOKEN}` } },
+        env,
+      );
+    const repeated = (await (await get('include=detail&include=stickers')).json()) as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(repeated.items[0]).toHaveProperty('detail');
+    expect(repeated.items[0]).toHaveProperty('stickers');
+    expect(repeated.items[0]).not.toHaveProperty('accessories');
+    const joined = (await (await get('include=detail,stickers')).json()) as typeof repeated;
+    expect(Object.keys(joined.items[0] as object).sort()).toEqual(
+      Object.keys(repeated.items[0] as object).sort(),
+    );
+    expect((await get('limit=1&limit=2')).status).toBe(422);
   });
 
   test('limit 200 dengan detail diterima oleh rute (kontrak: 200 per halaman dengan detail)', async () => {

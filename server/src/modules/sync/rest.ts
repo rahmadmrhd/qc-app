@@ -52,6 +52,16 @@ function fileResponse(request: Request, output: unknown): Response {
   return new Response(file.bytes, { status: 200, headers });
 }
 
+/**
+ * Query sebagai satu teks per nama: nilai yang diulang (`?include=a&include=b`) digabung dengan koma, jadi SEMUA nilai
+ * dipakai (daftar) atau, untuk angka, menjadi nilai tak sah yang ditolak 422 (tidak ada nilai yang hilang diam-diam).
+ */
+function queryOf(c: Context<AppBindings>): Record<string, string> {
+  const query: Record<string, string> = {};
+  for (const [name, values] of Object.entries(c.req.queries())) query[name] = values.join(',');
+  return query;
+}
+
 function handlerFor(id: SyncRouteId, table: SyncRouteTable) {
   const def = SYNC_API_ROUTES[id];
   return async (c: Context<AppBindings>): Promise<Response> => {
@@ -70,7 +80,7 @@ function handlerFor(id: SyncRouteId, table: SyncRouteTable) {
         def.verb === 'POST' ? await readJsonBody(request, SYNC_MAX_BODY_BYTES) : undefined;
       let input: unknown;
       try {
-        input = syncInputFromParts(id, { params: c.req.param(), query: c.req.query(), body });
+        input = syncInputFromParts(id, { params: c.req.param(), query: queryOf(c), body });
       } catch (issue) {
         if (isApiFieldIssue(issue)) {
           throw appError('VALIDATION', 'Input tidak valid', { [issue.field]: issue.message });

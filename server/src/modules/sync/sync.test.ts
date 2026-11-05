@@ -467,15 +467,20 @@ describe('brands', () => {
     expect((await call('sync.brands.pull', null)).data.brands).toHaveLength(5);
   });
 
-  test('pull: query tidak sah -> VALIDATION (422); include tidak dikenal untuk merk diabaikan seperti query lain', async () => {
-    for (const payload of [{ sinceRev: -1 }, { sinceRev: 1.5 }, { limit: 0 }, { limit: 501 }]) {
+  test('pull: query tidak sah -> VALIDATION (422); merk tidak menerima include (seperti v1)', async () => {
+    for (const payload of [
+      { sinceRev: -1 },
+      { sinceRev: 1.5 },
+      { limit: 0 },
+      { limit: 501 },
+      { include: ['detail'] },
+      { include: 'detail' },
+    ]) {
       expect(await call('sync.brands.pull', payload)).toMatchObject({
         ok: false,
         error: { code: 'VALIDATION', status: 422 },
       });
     }
-    // REST: query yang bukan bagian rute (include untuk merk) tidak pernah sampai ke handler.
-    expect(await call('sync.brands.pull', { include: ['detail'] })).toMatchObject({ ok: true });
   });
 
   test('push merk baru: created, dipetakan ke id MySQL, audit atas nama sync:desktop; diulang -> unchanged', async () => {

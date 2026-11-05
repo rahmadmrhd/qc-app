@@ -134,7 +134,7 @@ curl -s -H "Authorization: Bearer $SYNC_API_TOKEN" \
 | `limit` | 1–500 (default 100); di atas 500 ditolak `422`. Bila `include` memuat `detail`, nilai yang lebih besar dari **200** dipotong diam-diam menjadi **200** (bukan ditolak). QC Desktop HARUS mengikuti `nextRev`/`hasMore` sampai `hasMore: false` dan tidak boleh mengandalkan jumlah item atau jumlah halaman. |
 | `include` | opsional; daftar dipisah koma, subset dari `detail`, `stickers`, `accessories`. Field yang tidak diminta tidak dikirim. `images`, `id`, `uid`, `merk`, `tipe`, `isCountryLock`, `active`, `rev` selalu dikirim. Nama lain ditolak `422`. |
 
-Query yang tidak dikenal diabaikan; nilai bukan angka pada `sinceRev`/`limit` ditolak `422` (`fields.sinceRev`/`fields.limit`).
+Query yang tidak dikenal diabaikan; nilai bukan angka pada `sinceRev`/`limit` ditolak `422` (`fields.sinceRev`/`fields.limit`). Query yang diulang digabung: `?include=detail&include=stickers` sama dengan `?include=detail,stickers` (semua nilai dipakai); `limit` atau `sinceRev` yang diulang menjadi nilai tak sah (`422`).
 
 ```json
 { "items": [ { "...item..." } ], "nextRev": 128, "hasMore": false }
@@ -263,7 +263,7 @@ Master: **dua arah**, polanya sama dengan `items` (`rev`, hasil per entri, konfl
 | `active` | boolean |
 | `rev` | hanya-baca (pull) |
 
-Rute: `GET /sync/brands?sinceRev=&limit=` (halaman: `{ "brands": [...], "nextRev": n, "hasMore": bool }`; `limit` 1–500) dan `POST /sync/brands/push` (`{ "brands": [...], "baseRev"?, "overwrite"? }`, ≤ 50 merk; badan 5 MB), bentuk balasan push identik dengan `items`. **Mengganti nama merk di salah satu sisi** berlaku ke semua item merk itu; `items.merk` pada pull selalu nama merk terkini. `GET /sync/brands` tidak mengenal `include` (query itu diabaikan).
+Rute: `GET /sync/brands?sinceRev=&limit=` (halaman: `{ "brands": [...], "nextRev": n, "hasMore": bool }`; `limit` 1–500) dan `POST /sync/brands/push` (`{ "brands": [...], "baseRev"?, "overwrite"? }`, ≤ 50 merk; badan 5 MB), bentuk balasan push identik dengan `items`. **Mengganti nama merk di salah satu sisi** berlaku ke semua item merk itu; `items.merk` pada pull selalu nama merk terkini. `GET /sync/brands` tidak menerima `include` (ditolak `422`, `fields.include`: "Tidak ada field yang dapat diminta", sama dengan versi 1).
 
 **Hubungan dengan item:** item membawa `merk` (nama). Pada `POST /sync/items/push`, merk dicocokkan menurut nama ternormalisasi; bila belum ada, QC App membuatnya otomatis (sama seperti saat mengetik di form). Push merk sebaiknya dikirim **sebelum** item agar `id` MySQL merk terpetakan.
 

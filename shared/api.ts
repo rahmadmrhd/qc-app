@@ -452,7 +452,8 @@ export const SYNC_API_ROUTES: { [M in SyncRouteId]: ApiRouteDef } = {
   'sync.brands.pull': {
     verb: 'GET',
     path: '/sync/brands',
-    query: { sinceRev: 'number', limit: 'number' },
+    // `include` dideklarasikan agar sampai ke validator, yang menolaknya (merk tidak punya field berat): sama dengan v1.
+    query: { sinceRev: 'number', limit: 'number', include: 'list' },
   },
   'sync.brands.push': { verb: 'POST', path: '/sync/brands/push' },
   'sync.items.pull': {

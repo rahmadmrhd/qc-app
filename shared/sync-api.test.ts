@@ -21,10 +21,11 @@ describe('tabel rute sinkron', () => {
     );
   });
 
-  test('query pull: sinceRev dan limit angka; items juga include berupa daftar; brands tanpa include', () => {
+  test('query pull: sinceRev dan limit angka; include berupa daftar (items: subset field berat; brands: dideklarasikan agar ditolak validator, seperti v1)', () => {
     expect(SYNC_API_ROUTES['sync.brands.pull'].query).toEqual({
       sinceRev: 'number',
       limit: 'number',
+      include: 'list',
     });
     expect(SYNC_API_ROUTES['sync.items.pull'].query).toEqual({
       sinceRev: 'number',
