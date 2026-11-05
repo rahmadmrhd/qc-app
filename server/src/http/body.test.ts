@@ -174,7 +174,7 @@ describe('batas badan', () => {
     // Tanpa ketergantungan pada batas 16 MB lama: global = rute biner terbesar + overhead, dan push sinkron muat di dalamnya.
     expect(MAX_REQUEST_BODY_BYTES).toBe(binaryMax + 64 * 1024);
     expect(MAX_REQUEST_BODY_BYTES).toBeLessThan(16 * 1024 * 1024);
-    expect(SYNC_MAX_BODY_BYTES).toBe(SYNC_LIMITS.bodyChars);
+    expect(SYNC_MAX_BODY_BYTES).toBe(SYNC_LIMITS.bodyBytes);
     expect(SYNC_MAX_BODY_BYTES).toBe(5_000_000);
     expect(SYNC_MAX_BODY_BYTES).toBeGreaterThan(MAX_JSON_BODY_BYTES);
     expect(SYNC_MAX_BODY_BYTES).toBeLessThan(MAX_REQUEST_BODY_BYTES);

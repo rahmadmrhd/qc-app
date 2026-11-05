@@ -10,11 +10,12 @@ import { SYNC_LIMITS } from '@shared/sync';
 export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
- * Batas badan push sinkron QC Desktop (`POST /api/v1/sync/*`): 5 MB, sama dengan `SYNC_LIMITS.bodyChars` (satu
- * sumber; kontrak `docs/api/desktop-sync.md`). Sengaja BUKAN `MAX_JSON_BODY_BYTES` (2 MB): push 25 item dengan detail
+ * Batas badan push sinkron QC Desktop (`POST /api/v1/sync/*`): 5.000.000 BYTE (UTF-8), sama dengan
+ * `SYNC_LIMITS.bodyBytes` (satuan byte; `bodyChars` adalah karakter untuk aplikasi GAS; kontrak
+ * `docs/api/desktop-sync.md`). Sengaja BUKAN `MAX_JSON_BODY_BYTES` (2 MB): push 25 item dengan detail
  * 20.000 karakter dapat mendekati 2 MB. Dibaca setelah token diverifikasi.
  */
-export const SYNC_MAX_BODY_BYTES = SYNC_LIMITS.bodyChars;
+export const SYNC_MAX_BODY_BYTES = SYNC_LIMITS.bodyBytes;
 
 /** Selisih kecil di atas batas rute biner terbesar untuk overhead HTTP/multipart yang belum terhitung di tabel. */
 const BINARY_BODY_OVERHEAD_BYTES = 64 * 1024;

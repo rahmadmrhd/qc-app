@@ -10,8 +10,10 @@ export const SYNC_RESOURCES = ['brands', 'items'] as const;
 export type SyncResource = (typeof SYNC_RESOURCES)[number];
 
 export const SYNC_LIMITS = {
-  /** Panjang maksimum body permintaan (karakter). */
+  /** Panjang maksimum body permintaan, dalam KARAKTER (`string.length`): dipakai aplikasi Apps Script `gas/`. */
   bodyChars: 5_000_000,
+  /** Ukuran maksimum body permintaan, dalam BYTE (UTF-8): dipakai server Bun (`SYNC_MAX_BODY_BYTES`, dibaca bertahap). */
+  bodyBytes: 5_000_000,
   pullDefault: 100,
   pullMax: 500,
   pullMaxWithDetail: 200,
