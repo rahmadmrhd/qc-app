@@ -8,7 +8,7 @@
  */
 
 export interface RequestLog {
-  /** `rest` (/api/v1/*; `method` = id rute), atau `sync` (POST /sync, QC Desktop). */
+  /** `rest` (/api/v1/*; `method` = id rute), atau `sync` (/api/v1/sync/*, QC Desktop; `method` = id rute sinkron). */
   evt: 'rest' | 'sync';
   requestId: string;
   method: string;

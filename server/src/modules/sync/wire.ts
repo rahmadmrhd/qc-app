@@ -55,12 +55,6 @@ export interface SyncPushEnvelope {
   entries: unknown[];
 }
 
-/**
- * Maksimum item per panggilan `sync.items.push` di Worker (anggaran CPU edge; keputusan pemilik 2026-10-26),
- * dengan atau tanpa `detail`. Aplikasi Apps Script lama tetap 50/25 (`SYNC_LIMITS`). Push merk tidak berubah.
- */
-export const WORKER_ITEM_PUSH_MAX = 5;
-
 /** Validasi tingkat permintaan push; kesalahan per entri ditangani per entri (hasil `invalid`). */
 export function validateSyncPush(
   raw: unknown,
@@ -83,12 +77,7 @@ export function validateSyncPush(
   }
   const withDetail =
     detailLimited && entries.some((entry) => typeof asSyncObject(entry)?.detail === 'string');
-  const max =
-    key === 'items'
-      ? WORKER_ITEM_PUSH_MAX
-      : withDetail
-        ? SYNC_LIMITS.pushMaxWithDetail
-        : SYNC_LIMITS.pushMax;
+  const max = withDetail ? SYNC_LIMITS.pushMaxWithDetail : SYNC_LIMITS.pushMax;
   if (entries.length > max) {
     throw appError('VALIDATION', 'Input tidak valid', { [key]: `Maksimal ${max} ${label}` });
   }

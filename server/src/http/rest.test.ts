@@ -8,10 +8,11 @@ import { MAX_JSON_BODY_BYTES } from '@server/http/body';
 import { listOperations } from '@server/http/rest';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { API_ROUTES } from '@shared/api';
+import { API_ROUTES, SYNC_API_ROUTES, type SyncRouteId } from '@shared/api';
 import type { WorkerRpcMethod } from '@shared/rpc';
 
 const IDS = Object.keys(API_ROUTES) as WorkerRpcMethod[];
+const SYNC_IDS = Object.keys(SYNC_API_ROUTES) as SyncRouteId[];
 
 let env: TestEnv;
 let calls: Array<{ id: string; input: unknown }>;
@@ -557,7 +558,7 @@ describe('OpenAPI', () => {
     expect(doc.openapi).toBe('3.1.0');
     const operations = Object.values(doc.paths).flatMap((item) => Object.values(item));
     const creates = IDS.filter((id) => API_ROUTES[id].create).length;
-    expect(operations).toHaveLength(IDS.length + creates);
+    expect(operations).toHaveLength(IDS.length + creates + SYNC_IDS.length);
     const ids = new Set(operations.map((operation) => operation.operationId));
     for (const id of IDS) expect(ids.has(id)).toBe(true);
     for (const id of IDS) {
@@ -572,6 +573,46 @@ describe('OpenAPI', () => {
       'action',
       'query',
     ]);
+  });
+});
+
+describe('OpenAPI: rute sinkron QC Desktop', () => {
+  test('memuat enam operasi /sync/* dengan keamanan syncBearer (http bearer), tanpa membocorkan token', async () => {
+    const secret = 'rahasia-sinkron-tidak-boleh-bocor-0123456789';
+    const withToken = await createTestEnv({ SYNC_API_TOKEN: secret });
+    const response = await appWith().request(
+      'https://qc.test/api/openapi.json',
+      { headers: { cookie: await sessionCookie() } },
+      withToken,
+    );
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(secret);
+    const doc = JSON.parse(text) as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { securitySchemes: Record<string, Record<string, unknown>> };
+      security: Array<Record<string, string[]>>;
+    };
+    expect(doc.components.securitySchemes.syncBearer).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+    });
+    expect(doc.components.securitySchemes.session).toMatchObject({ type: 'apiKey', in: 'cookie' });
+    expect(doc.security).toEqual([{ session: [] }]); // bawaan tetap sesi; rute sinkron menimpa
+    for (const id of SYNC_IDS) {
+      const def = SYNC_API_ROUTES[id];
+      const operation = doc.paths[def.path]?.[def.verb.toLowerCase()];
+      expect(operation?.operationId, id).toBe(id);
+      expect(operation?.security, id).toEqual([{ syncBearer: [] }]);
+      expect(operation?.tags).toEqual(['sync']);
+      expect(Object.keys(operation?.responses as object)).toContain('401');
+    }
+    const file = doc.paths['/sync/files/{id}']?.get as { responses: Record<string, unknown> };
+    expect(JSON.stringify(file.responses['200'])).toContain('application/octet-stream');
+    expect(JSON.stringify(doc.paths['/sync/items']?.get?.parameters)).toContain('include');
+    expect(Object.keys(doc.paths['/sync/items/push']?.post?.requestBody as object)).toContain(
+      'content',
+    );
   });
 });
 

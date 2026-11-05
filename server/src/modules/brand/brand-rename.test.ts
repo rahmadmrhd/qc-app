@@ -3,11 +3,10 @@ import type { DbStatement } from '@server/core/db';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { saveItem, setItemStatus } from '@server/modules/item/service';
-import { handleSync } from '@server/modules/sync/handler';
-import { syncRoutes } from '@server/modules/sync/routes';
 import { currentSyncRev } from '@server/modules/sync/state';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
+import { syncCall } from '@server-test/sync-rest';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { itemKey } from '@shared/items';
 import { saveBrand, setBrandStatus } from './service';
@@ -366,19 +365,15 @@ describe('(N1) setItemStatus: ganti nama merk di antara dua pembacaan', () => {
 
 const SYNC_TOKEN = 't0k3n'.repeat(8);
 
-/** Panggilan sync dengan amplop dan serialisasi JSON seperti di kabel. */
+/** Push item lewat REST nyata (`POST /api/v1/sync/items/push`, Bearer); hasil dibungkus { ok, data | error }. */
 async function syncPush(target: TestEnv, entries: unknown[]) {
-  const result = await handleSync(
+  const result = await syncCall(
     { ...target, SYNC_API_TOKEN: SYNC_TOKEN } as TestEnv,
-    JSON.stringify({
-      v: 1,
-      method: 'sync.items.push',
-      token: SYNC_TOKEN,
-      payload: { items: entries },
-    }),
-    syncRoutes(),
+    'sync.items.push',
+    { items: entries },
+    { token: SYNC_TOKEN },
   );
-  return JSON.parse(JSON.stringify(result)) as {
+  return result as {
     ok: boolean;
     data?: { results: Array<{ status: string; uid?: string }> };
     error?: unknown;

@@ -5,6 +5,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import type { WorkerRpcInput, WorkerRpcMethod } from '@shared/rpc';
+import { SYNC_LIMITS } from '@shared/sync';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES, SYNC_MAX_BODY_BYTES } from './body';
 
 // Batas JSON REST 2 MB (keputusan pemilik 2026-11-06): muatan sah terbesar tiap rute JSON harus muat dengan lega.
@@ -160,7 +161,7 @@ describe('batas badan', () => {
     expect(max * 2).toBeLessThan(MAX_JSON_BODY_BYTES);
   });
 
-  test('batas JSON 2 MB; batas global Bun.serve diturunkan dari tabel rute biner (+ batas /sync)', () => {
+  test('batas JSON 2 MB; batas push sinkron 5 MB (= kontrak); batas global Bun.serve diturunkan dari tabel rute biner', () => {
     expect(MAX_JSON_BODY_BYTES).toBe(2 * 1024 * 1024);
     const binaryMax = Math.max(
       ...Object.values(API_ROUTES).flatMap((def) => [
@@ -170,7 +171,12 @@ describe('batas badan', () => {
     );
     expect(binaryMax).toBe(QR_LIMITS.documentMaxBytes);
     expect(MAX_REQUEST_BODY_BYTES).toBeGreaterThan(binaryMax);
-    expect(MAX_REQUEST_BODY_BYTES).toBeGreaterThanOrEqual(SYNC_MAX_BODY_BYTES);
-    expect(MAX_REQUEST_BODY_BYTES).toBe(Math.max(binaryMax + 64 * 1024, SYNC_MAX_BODY_BYTES));
+    // Tanpa ketergantungan pada batas 16 MB lama: global = rute biner terbesar + overhead, dan push sinkron muat di dalamnya.
+    expect(MAX_REQUEST_BODY_BYTES).toBe(binaryMax + 64 * 1024);
+    expect(MAX_REQUEST_BODY_BYTES).toBeLessThan(16 * 1024 * 1024);
+    expect(SYNC_MAX_BODY_BYTES).toBe(SYNC_LIMITS.bodyChars);
+    expect(SYNC_MAX_BODY_BYTES).toBe(5_000_000);
+    expect(SYNC_MAX_BODY_BYTES).toBeGreaterThan(MAX_JSON_BODY_BYTES);
+    expect(SYNC_MAX_BODY_BYTES).toBeLessThan(MAX_REQUEST_BODY_BYTES);
   });
 });

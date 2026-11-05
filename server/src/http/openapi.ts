@@ -13,6 +13,8 @@ import {
   pathParamNames,
   type QueryKind,
   routeShape,
+  SYNC_API_ROUTES,
+  type SyncRouteId,
 } from '@shared/api';
 import { ERROR_CODES, type WorkerRpcMethod } from '@shared/rpc';
 
@@ -37,6 +39,8 @@ export interface OpenApiOperation {
   parameters: Array<Record<string, unknown>>;
   requestBody?: Record<string, unknown>;
   responses: Record<string, Record<string, unknown>>;
+  /** Hanya rute sinkron: menimpa keamanan global (sesi) dengan token Bearer. */
+  security?: Array<Record<string, string[]>>;
   'x-permission': string;
 }
 
@@ -135,6 +139,60 @@ function operationFor(
   return { verb: shape.verb, path: shape.path, operation };
 }
 
+/** Operasi rute QC Desktop (`SYNC_API_ROUTES`): keamanan `syncBearer` (token), bukan sesi; tanpa CSRF. */
+function syncOperationFor(id: SyncRouteId): {
+  verb: ApiVerb;
+  path: string;
+  operation: OpenApiOperation;
+} {
+  const def = SYNC_API_ROUTES[id];
+  const parameters: Array<Record<string, unknown>> = pathParamNames(def.path).map((name) => ({
+    name,
+    in: 'path',
+    required: true,
+    schema: { type: 'string' },
+  }));
+  for (const [name, kind] of Object.entries(def.query ?? {})) {
+    parameters.push({ name, in: 'query', required: false, schema: SCHEMA_BY_KIND[kind] });
+  }
+  const isFile = def.binary === 'response';
+  const responses: Record<string, Record<string, unknown>> = {
+    '200': {
+      description: 'Berhasil',
+      ...(isFile
+        ? { headers: { ETag: { description: 'Id Drive berkas.', schema: { type: 'string' } } } }
+        : {}),
+      content: isFile
+        ? { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } }
+        : { 'application/json': { schema: {} } },
+    },
+    ...(isFile ? { '304': { description: 'If-None-Match cocok' } } : {}),
+    '401': problemResponse('Token tidak valid (semua sebab, termasuk diblokir, dijawab sama)'),
+    '404': problemResponse('Tidak ditemukan'),
+    '413': problemResponse('Badan atau berkas terlalu besar'),
+    '422': problemResponse('Input tidak valid'),
+    '503': problemResponse('Layanan tidak tersedia'),
+    default: problemResponse('Galat lain'),
+  };
+  const operation: OpenApiOperation = {
+    operationId: id,
+    summary: id,
+    description: 'Kontrak QC Desktop versi 2. Otentikasi: `Authorization: Bearer <token sinkron>`.',
+    tags: ['sync'],
+    parameters,
+    responses,
+    security: [{ syncBearer: [] }],
+    'x-permission': 'token sinkron',
+  };
+  if (def.verb === 'POST') {
+    operation.requestBody = {
+      required: true,
+      content: { 'application/json': { schema: { type: 'object' } } },
+    };
+  }
+  return { verb: def.verb, path: def.path, operation };
+}
+
 /** Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur relatif terhadap `servers[0].url` = `/api/v1`). */
 export function buildOpenApi(routes: RouteTable): OpenApiDocument {
   const paths: OpenApiDocument['paths'] = {};
@@ -147,18 +205,27 @@ export function buildOpenApi(routes: RouteTable): OpenApiDocument {
       paths[path] = item;
     }
   }
+  for (const id of Object.keys(SYNC_API_ROUTES) as SyncRouteId[]) {
+    const { verb, path, operation } = syncOperationFor(id);
+    const item = paths[path] ?? {};
+    item[verb.toLowerCase()] = operation;
+    paths[path] = item;
+  }
   return {
     openapi: '3.1.0',
     info: {
       title: 'QC App API',
       version: '1',
       description:
-        'API REST aplikasi QC. Sesi lewat cookie; metode tulis wajib membawa header `X-Requested-With: qc`. Galat memakai application/problem+json.',
+        'API REST aplikasi QC. Sesi lewat cookie; metode tulis wajib membawa header `X-Requested-With: qc`. Rute `/sync/*` (QC Desktop) memakai `Authorization: Bearer <token sinkron>` tanpa cookie dan tanpa header CSRF. Galat memakai application/problem+json.',
     },
     servers: [{ url: '/api/v1' }],
     paths,
     components: {
-      securitySchemes: { session: { type: 'apiKey', in: 'cookie', name: SESSION_COOKIE } },
+      securitySchemes: {
+        session: { type: 'apiKey', in: 'cookie', name: SESSION_COOKIE },
+        syncBearer: { type: 'http', scheme: 'bearer', description: 'Token sinkron QC Desktop.' },
+      },
       schemas: {
         Problem: {
           type: 'object',

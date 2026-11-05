@@ -39,6 +39,11 @@ export function isRestPath(path: string): boolean {
   return path === '/api/v1' || path.startsWith('/api/v1/');
 }
 
+/** Rute sinkron QC Desktop (`/api/v1/sync/*`): otentikasi Bearer, tanpa cookie, jadi bukan permukaan CSRF. */
+export function isSyncApiPath(path: string): boolean {
+  return path.startsWith('/api/v1/sync/');
+}
+
 /** Amplop galat yang sama dengan RPC (`{ ok:false, error }`). */
 export function errorEnvelope(code: string, message: string) {
   return { ok: false, error: { code, message, requestId: newRequestId() } };
@@ -51,6 +56,7 @@ export const securityHeaders = secureHeaders();
  * Header kustom tidak dapat dikirim lintas-origin dari form/navigasi tanpa preflight CORS (yang tidak diizinkan).
  */
 export const csrfGuard = createMiddleware<AppBindings>(async (c, next) => {
+  if (isSyncApiPath(c.req.path)) return next(); // Bearer saja; cookie tak pernah dibaca di sana
   if (!SAFE_METHODS.has(c.req.method) && c.req.header(CSRF_HEADER) !== CSRF_VALUE) {
     if (isRestPath(c.req.path)) {
       const message = 'Permintaan ditolak (header CSRF tidak ada)';

@@ -45,7 +45,7 @@ interface Operation {
 }
 
 /** `/brands/{id}` -> `/brands/:id` (sintaks Hono). */
-function honoPath(path: string): string {
+export function honoPath(path: string): string {
   return path.replace(/\{([A-Za-z0-9_]+)\}/g, ':$1');
 }
 
@@ -72,8 +72,11 @@ export function listOperations(): Operation[] {
 }
 
 /** Badan JSON dengan batas byte (413 bila terlampaui, 400 bila bukan JSON); badan kosong = `undefined`. */
-async function readJsonBody(request: Request): Promise<unknown> {
-  const text = await readTextLimited(request, MAX_JSON_BODY_BYTES);
+export async function readJsonBody(
+  request: Request,
+  maxBytes: number = MAX_JSON_BODY_BYTES,
+): Promise<unknown> {
+  const text = await readTextLimited(request, maxBytes);
   if (text === undefined) {
     throw Object.assign(appError('VALIDATION', 'Badan permintaan terlalu besar'), { status: 413 });
   }

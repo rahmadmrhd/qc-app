@@ -2,12 +2,6 @@ import { appError } from '@server/core/errors';
 import { SYNC_LIMITS } from '@shared/sync';
 import { asSyncObject } from './wire';
 
-/**
- * Batas halaman pull dengan detail KHUSUS Worker (gerbang CPU 8 ms, keputusan pemilik 2026-10-25).
- * Aplikasi Apps Script lama tetap memakai SYNC_LIMITS.pullMaxWithDetail (200) dan tidak diubah.
- */
-export const WORKER_PULL_MAX_WITH_DETAIL = 50;
-
 export interface SyncPullInput {
   sinceRev: number;
   limit: number;
@@ -47,7 +41,7 @@ export function validateSyncPull(raw: unknown, includable: readonly string[]): S
   const include = [...new Set(includeRaw as string[])];
   const limit = Math.min(
     limitRaw as number,
-    include.includes('detail') ? WORKER_PULL_MAX_WITH_DETAIL : SYNC_LIMITS.pullMax,
+    include.includes('detail') ? SYNC_LIMITS.pullMaxWithDetail : SYNC_LIMITS.pullMax,
   );
   return { sinceRev: sinceRaw as number, limit, include };
 }

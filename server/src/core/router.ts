@@ -52,7 +52,7 @@ export function httpStatusOf(code: ErrorCode): number {
   return STATUS_BY_CODE[code];
 }
 
-/** Badan galat bersama: dipetakan ke problem+json oleh `http/problem.ts` dan ke amplop `/sync` oleh modul sinkron. */
+/** Badan galat bersama: dipetakan ke problem+json oleh `http/problem.ts`. */
 export interface ErrorBody {
   code: ErrorCode;
   message: string;

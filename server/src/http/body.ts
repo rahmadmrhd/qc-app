@@ -1,4 +1,5 @@
 import { API_ROUTES } from '@shared/api';
+import { SYNC_LIMITS } from '@shared/sync';
 
 /**
  * Batas badan JSON REST: 2 MB (keputusan pemilik 2026-11-06). Base64 sudah hilang dari kabel (berkas lewat rute
@@ -9,10 +10,11 @@ import { API_ROUTES } from '@shared/api';
 export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
- * Batas badan `/sync` (QC Desktop): nilai lama (16 MB, dulu batas global) dipertahankan apa adanya; ditinjau di
- * Task 25 (penulisan ulang kabel sinkron). Dipakai `handler.ts` dan ikut menentukan batas global di bawah.
+ * Batas badan push sinkron QC Desktop (`POST /api/v1/sync/*`): 5 MB, sama dengan `SYNC_LIMITS.bodyChars` (satu
+ * sumber; kontrak `docs/api/desktop-sync.md`). Sengaja BUKAN `MAX_JSON_BODY_BYTES` (2 MB): push 25 item dengan detail
+ * 20.000 karakter dapat mendekati 2 MB. Dibaca setelah token diverifikasi.
  */
-export const SYNC_MAX_BODY_BYTES = 16 * 1024 * 1024;
+export const SYNC_MAX_BODY_BYTES = SYNC_LIMITS.bodyChars;
 
 /** Selisih kecil di atas batas rute biner terbesar untuk overhead HTTP/multipart yang belum terhitung di tabel. */
 const BINARY_BODY_OVERHEAD_BYTES = 64 * 1024;
@@ -27,15 +29,11 @@ export const MAX_BINARY_ROUTE_BYTES = Math.max(
 
 /**
  * Batas global `Bun.serve` (`maxRequestBodySize`; bawaan Bun 128 MB terlalu longgar: badan dimuat ke memori sebelum
- * autentikasi; di atasnya Bun membalas 413 tanpa menjalankan aplikasi) = yang terbesar antara rute biner terbesar
- * (+ overhead) dan `/sync`. Selama `/sync` memakai 16 MB, batas global efektif tetap 16 MB; ia turun ke
- * ~10 MB begitu `SYNC_MAX_BODY_BYTES` diturunkan di T25. Rute REST JSON dibatasi `MAX_JSON_BODY_BYTES`, rute biner
- * oleh `maxBytes` masing-masing, keduanya saat dibaca (setelah sesi diperiksa).
+ * autentikasi; di atasnya Bun membalas 413 tanpa menjalankan aplikasi) = rute biner terbesar di tabel `API_ROUTES`
+ * (+ overhead kecil). Rute JSON REST dibatasi `MAX_JSON_BODY_BYTES`, push sinkron `SYNC_MAX_BODY_BYTES` (5 MB), dan
+ * rute biner `maxBytes` masing-masing, semuanya saat dibaca (setelah sesi/token diperiksa).
  */
-export const MAX_REQUEST_BODY_BYTES = Math.max(
-  MAX_BINARY_ROUTE_BYTES + BINARY_BODY_OVERHEAD_BYTES,
-  SYNC_MAX_BODY_BYTES,
-);
+export const MAX_REQUEST_BODY_BYTES = MAX_BINARY_ROUTE_BYTES + BINARY_BODY_OVERHEAD_BYTES;
 
 /**
  * Membaca badan sebagai byte dengan batas, TANPA mempercayai `content-length` (tidak ada pada badan chunked, dan

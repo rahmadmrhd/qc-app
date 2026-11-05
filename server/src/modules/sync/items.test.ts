@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { saveItem } from '@server/modules/item/service';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { type SyncOut, syncCall, syncSend } from '@server-test/sync-rest';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
-import { handleSync, handleSyncRequest } from './handler';
 import { validateSyncPull } from './pull';
-import { syncRoutes } from './routes';
 
 const TOKEN = 't0k3n'.repeat(8);
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
@@ -17,8 +16,7 @@ let folder: string;
 
 // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
 type Entry = Record<string, any>;
-// biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
-type Out = { ok: boolean; data?: any; error?: any };
+type Out = SyncOut;
 
 beforeEach(async () => {
   env = await createTestEnv({ SYNC_API_TOKEN: TOKEN });
@@ -31,15 +29,9 @@ beforeEach(async () => {
 });
 
 const drive = (name = 'a.png') => env.BRIDGE.createFile(folder, name, 'image/png', PNG);
-async function call(method: string, payload: unknown): Promise<Out> {
-  const result = await handleSync(
-    env,
-    JSON.stringify({ v: 1, method, token: TOKEN, payload }),
-    syncRoutes(),
-  );
-  // Seperti di kabel: hasil diserialisasi JSON lalu diurai.
-  return JSON.parse(JSON.stringify(result)) as Out;
-}
+// Lewat app nyata (`/api/v1/sync/*`, Bearer): pull = query, push = badan JSON; hasil dibungkus { ok, data | error }.
+const call = (method: string, payload: unknown): Promise<Out> =>
+  syncCall(env, method as 'sync.items.pull' | 'sync.items.push', payload);
 const push = (items: unknown[], extra: Record<string, unknown> = {}) =>
   call('sync.items.push', { items, ...extra });
 async function results(items: unknown[], extra: Record<string, unknown> = {}): Promise<Entry[]> {
@@ -194,25 +186,32 @@ describe('pull', () => {
     ]);
   });
 
-  test('payload tidak sah -> VALIDATION; limit dibatasi 50 bila include memuat detail', async () => {
+  test('query tidak sah -> VALIDATION (422); limit dibatasi 200 bila include memuat detail (500 tanpa)', async () => {
     for (const payload of [
       { sinceRev: -1 },
       { limit: 0 },
       { limit: 501 },
       { include: ['alias'] },
-      { include: 'detail' },
-      'x',
     ]) {
       expect(await call('sync.items.pull', payload)).toMatchObject({
         ok: false,
-        error: { code: 'VALIDATION' },
+        error: { code: 'VALIDATION', status: 422 },
       });
     }
+    // REST: include berbentuk teks tunggal (?include=detail) adalah daftar berisi satu nama, jadi sah.
+    expect(await call('sync.items.pull', { include: 'detail' })).toMatchObject({ ok: true });
     expect(
       validateSyncPull({ limit: 500, include: ['detail'] }, ['detail', 'stickers', 'accessories'])
         .limit,
-    ).toBe(50);
+    ).toBe(200);
     expect(validateSyncPull({ limit: 500 }, ['detail']).limit).toBe(500);
+  });
+
+  test('limit 200 dengan detail diterima oleh rute (kontrak: 200 per halaman dengan detail)', async () => {
+    expect(await call('sync.items.pull', { limit: 200, include: ['detail'] })).toMatchObject({
+      ok: true,
+    });
+    expect(await call('sync.items.pull', { limit: 500 })).toMatchObject({ ok: true });
   });
 });
 
@@ -382,17 +381,16 @@ describe('pull: bentuk kabel yang dikirim Desktop (disusun di aplikasi lewat toW
     });
   }
 
-  test('badan HTTP /sync = amplop { ok, data } yang sama dengan hasil handler', async () => {
+  test('badan HTTP GET /api/v1/sync/items = objek halaman apa adanya (tanpa amplop { ok, data }), no-store', async () => {
     await messyRows();
-    const payload = { include: ALL };
-    const body = JSON.stringify({ v: 1, method: 'sync.items.pull', token: TOKEN, payload });
-    const response = await handleSyncRequest(
-      env,
-      new Request('https://x/sync', { method: 'POST', body }),
-      syncRoutes(),
-    );
+    const response = await syncSend(env, 'sync.items.pull', { include: ALL });
     expect(response.status).toBe(200);
-    expect(JSON.parse(await response.text())).toEqual({ ok: true, data: await pullPage(payload) });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-type')).toContain('application/json');
+    const text = await response.text();
+    const page = JSON.parse(text);
+    expect(Object.keys(page).sort()).toEqual(['hasMore', 'items', 'nextRev']);
+    expect(page).toEqual(await pullPage({ include: ALL }));
   });
 });
 
@@ -490,12 +488,11 @@ describe('push', () => {
       '![x]()',
       'teks qcfile:abc',
     ];
-    // Worker: maks. 5 item per panggilan, jadi dikirim dalam dua panggilan
     const entries = [
       { ...BASE, id: '1', tipe: 'ok', detail: `![x](drive:${ok}) dan [tautan](https://x.test)` },
       ...bad.map((detail, i) => ({ ...BASE, id: `${10 + i}`, tipe: `bad${i}`, detail })),
     ];
-    const out = [...(await results(entries.slice(0, 5))), ...(await results(entries.slice(5)))];
+    const out = await results(entries);
     expect(out[0]?.status).toBe('created');
     for (const entry of out.slice(1))
       expect(entry).toMatchObject({ status: 'invalid', fields: { detail: expect.any(String) } });
@@ -675,18 +672,32 @@ describe('push', () => {
   });
 
   test('batas jumlah entri dan bentuk payload', async () => {
-    // Worker: maks. 5 item per panggilan, dengan atau tanpa detail (aplikasi lama: 50/25)
-    const many = Array.from({ length: 6 }, (_, i) => ({ ...BASE, id: String(i), tipe: `T${i}` }));
-    expect(await push(many)).toMatchObject({
+    // Kontrak: maks. 50 item per panggilan, 25 bila ada entri berdetail (422 dengan fields.items).
+    const make = (count: number, extra: Record<string, unknown> = {}) =>
+      Array.from({ length: count }, (_, i) => ({
+        ...BASE,
+        id: String(i),
+        tipe: `T${i}`,
+        ...extra,
+      }));
+    expect(await push(make(51))).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { items: 'Maksimal 5 item' } },
+      error: { code: 'VALIDATION', status: 422, fields: { items: 'Maksimal 50 item' } },
     });
-    const withDetail = many.map((entry) => ({ ...entry, detail: 'x' }));
-    expect(await push(withDetail)).toMatchObject({
+    expect(await push(make(26, { detail: 'x' }))).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { items: 'Maksimal 5 item' } },
+      error: { code: 'VALIDATION', status: 422, fields: { items: 'Maksimal 25 item' } },
     });
-    expect((await results(many.slice(0, 5))).map((entry) => entry.status)).toEqual(
+    // tepat di batas lolos validasi tingkat permintaan (entri tak sah menghasilkan invalid per entri, murah)
+    const noRows = (count: number, extra: Record<string, unknown> = {}) =>
+      Array.from({ length: count }, (_, i) => ({ id: String(i), ...extra }));
+    expect((await results(noRows(50))).map((entry) => entry.status)).toEqual(
+      Array.from({ length: 50 }, () => 'invalid'),
+    );
+    expect((await results(noRows(25, { detail: 'x' }))).map((entry) => entry.status)).toEqual(
+      Array.from({ length: 25 }, () => 'invalid'),
+    );
+    expect((await results(make(5))).map((entry) => entry.status)).toEqual(
       Array.from({ length: 5 }, () => 'created'),
     );
     expect(await push([])).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });

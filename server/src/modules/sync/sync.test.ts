@@ -1,16 +1,19 @@
-import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { app } from '@server/app';
+import { beforeEach, describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test';
+import { app, createApp } from '@server/app';
 import { appError } from '@server/core/errors';
 import { signSessionToken } from '@server/core/session';
+import { getRoutes } from '@server/routes';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { SYNC_TEST_TOKEN, type SyncOut, syncCall, syncSend } from '@server-test/sync-rest';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { SYNC_API_ROUTES, type SyncRouteId } from '@shared/api';
 import { SYNC_ACTOR } from '@shared/sync';
 import { getSyncFile, planDriveFiles, probeDriveIds, registerDriveFiles } from './files';
-import { handleSync, syncRoute } from './handler';
+import { syncRoute } from './handler';
 import { syncRoutes } from './routes';
 import { currentSyncRev } from './state';
 
-const TOKEN = 't0k3n'.repeat(8);
+const TOKEN = SYNC_TEST_TOKEN;
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 // Banyak tes memanggil MariaDB lewat jaringan (terowongan SSH saat dev).
 setDefaultTimeout(60_000);
@@ -22,14 +25,12 @@ beforeEach(async () => {
   env.clock.set(Date.parse('2026-10-15T03:00:00.000Z'));
 });
 
-const send = (body: unknown, routes = syncRoutes()) =>
-  handleSync(env, typeof body === 'string' ? body : JSON.stringify(body), routes);
-const ping = (token: unknown) => send({ v: 1, method: 'sync.ping', token, payload: null });
-
-type Out = { ok: boolean; data?: any; error?: any };
-async function call(method: string, payload: unknown): Promise<Out> {
-  return (await send({ v: 1, method, token: TOKEN, payload })) as Out;
-}
+/** Id handler dari nama metode lama (`sync.items.push` dst.): sama dengan kunci `SYNC_API_ROUTES`. */
+const call = (method: string, payload: unknown): Promise<SyncOut> =>
+  syncCall(env, method as SyncRouteId, payload);
+const ping = (token: string | null) => syncCall(env, 'sync.ping', null, { token });
+const pingFrom = (clientIp: string, token: string | null) =>
+  syncCall(env, 'sync.ping', null, { token, clientIp });
 
 async function prime(resource: 'brands' | 'items', count: number): Promise<void> {
   await env.DB.prepare(
@@ -55,74 +56,164 @@ async function brandsInDb() {
   return rows.results;
 }
 
-describe('handler', () => {
-  test('sync.ping dengan token benar mengembalikan versi, waktu server, dan sumber daya', async () => {
-    expect(await ping(TOKEN)).toEqual({
-      ok: true,
-      data: {
-        apiVersion: 1,
-        serverTime: '2026-10-15T03:00:00.000Z',
-        resources: ['brands', 'items'],
-      },
+/** Badan problem+json tanpa `requestId` (acak per permintaan), plus header yang relevan untuk perbandingan. */
+async function problemShape(response: Response) {
+  const body = (await response.json()) as Record<string, unknown>;
+  const { requestId, ...rest } = body;
+  expect(typeof requestId).toBe('string');
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type'),
+    cacheControl: response.headers.get('cache-control'),
+    authenticate: response.headers.get('www-authenticate'),
+    body: rest,
+  };
+}
+
+describe('handler (REST /api/v1/sync/*)', () => {
+  test('sync.ping dengan token benar mengembalikan versi API 2, waktu server, dan sumber daya', async () => {
+    const response = await syncSend(env, 'sync.ping', null);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      apiVersion: 2,
+      serverTime: '2026-10-15T03:00:00.000Z',
+      resources: ['brands', 'items'],
     });
   });
 
-  test('semua kegagalan sebelum autentikasi menghasilkan UNAUTHENTICATED yang sama', async () => {
-    const failures = [
-      await ping('salah'),
-      await ping(undefined),
-      await ping(123),
-      await send('{bukan json'),
-      await send(''),
-      await send('[]'),
-      await send('null'),
-      await send({ v: 1, method: 'tidak.ada', token: 'salah', payload: null }),
-      await send({ v: 99, method: 'sync.ping', token: 'salah' }),
-      await handleSync(env, undefined, syncRoutes()),
-      await handleSync(env, 'x'.repeat(5_000_001), syncRoutes()),
-    ];
-    for (const result of failures) {
-      expect(result).toMatchObject({
-        ok: false,
-        error: { code: 'UNAUTHENTICATED', message: 'Token tidak valid' },
-      });
-    }
+  test('semua kegagalan sebelum autentikasi menghasilkan 401 yang SAMA (badan, header; sebab tak terbedakan)', async () => {
+    const bearer = (value: string) => ({ authorization: value });
+    const responses = await Promise.all([
+      syncSend(env, 'sync.ping', null, { token: 'salah' }), // token salah
+      syncSend(env, 'sync.ping', null, { token: null }), // header tidak ada
+      syncSend(env, 'sync.ping', null, { token: null, headers: bearer(`Basic ${TOKEN}`) }), // bukan Bearer
+      syncSend(env, 'sync.ping', null, { token: null, headers: bearer('Bearer') }), // Bearer tanpa token
+      syncSend(env, 'sync.ping', null, { token: null, headers: bearer(`Bearer a ${TOKEN}`) }), // spasi di token
+      syncSend(env, 'sync.ping', null, { token: null, headers: bearer(TOKEN) }), // tanpa skema
+      syncSend(env, 'sync.ping', null, { token: 'x'.repeat(5000) }), // token sangat panjang
+      syncSend(env, 'sync.brands.pull', { limit: 0 }, { token: 'salah' }), // input buruk TIDAK diperiksa dulu
+      syncSend(env, 'sync.items.push', null, { token: 'salah', raw: 'bukan json' }),
+      syncSend(env, 'sync.items.push', null, { token: 'salah', raw: 'x'.repeat(5_000_001) }),
+      syncSend(env, 'sync.file.get', { driveId: 'apa-saja' }, { token: 'salah' }),
+    ]);
+    const shapes: Awaited<ReturnType<typeof problemShape>>[] = [];
+    for (const response of responses) shapes.push(await problemShape(response));
+    expect(shapes[0]).toMatchObject({
+      status: 401,
+      contentType: 'application/problem+json; charset=utf-8',
+      cacheControl: 'no-store',
+      authenticate: 'Bearer',
+      body: { code: 'UNAUTHENTICATED', detail: 'Token tidak valid', status: 401 },
+    });
+    for (const shape of shapes) expect(JSON.stringify(shape)).toBe(JSON.stringify(shapes[0]));
+  });
+
+  test('sebab lain yang juga seragam: IP diblokir, token server belum diset/terlalu pendek', async () => {
+    const reference = await problemShape(
+      await syncSend(env, 'sync.ping', null, { token: 'salah' }),
+    );
+    // diblokir: token benar pun ditolak dengan badan yang sama
+    for (let i = 0; i < 10; i++) await ping(`salah-${i}`);
+    expect(await problemShape(await syncSend(env, 'sync.ping', null))).toEqual(reference);
+    const empty = await createTestEnv({ SYNC_API_TOKEN: '' });
+    expect(
+      await problemShape(await syncSend(empty, 'sync.ping', null, { token: 'apa saja pun' })),
+    ).toEqual(reference);
+    const short = await createTestEnv({ SYNC_API_TOKEN: 'pendek' });
+    expect(
+      await problemShape(await syncSend(short, 'sync.ping', null, { token: 'pendek' })),
+    ).toEqual(reference);
+  });
+
+  test('token HANYA lewat header Authorization: di query atau badan tidak diterima', async () => {
+    const viaQuery = await app.request(`https://qc.test/api/v1/sync/ping?token=${TOKEN}`, {}, env);
+    expect(viaQuery.status).toBe(401);
+    const viaBody = await syncSend(
+      env,
+      'sync.items.push',
+      { token: TOKEN, items: [{ name: 'X' }] },
+      { token: null },
+    );
+    expect(viaBody.status).toBe(401);
+    const scheme = await syncSend(env, 'sync.ping', null, {
+      token: null,
+      headers: { authorization: `bearer ${TOKEN}` },
+    });
+    expect(scheme.status).toBe(200); // skema tak peka huruf (RFC 9110)
   });
 
   test('VALIDATION dan NOT_FOUND hanya muncul setelah token benar', async () => {
-    expect(await send({ v: 2, method: 'sync.ping', token: TOKEN })).toMatchObject({
+    expect((await syncSend(env, 'sync.brands.pull', { limit: 0 }, { token: 'salah' })).status).toBe(
+      401,
+    );
+    expect(await call('sync.brands.pull', { limit: 0 })).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { v: 'Gunakan v 1' } },
+      error: { code: 'VALIDATION', status: 422, fields: { limit: expect.any(String) } },
     });
-    expect(await send({ v: 1, method: 'sync.tidak.ada', token: TOKEN })).toMatchObject({
+    expect(await call('sync.file.get', { driveId: 'tidak-ada' })).toMatchObject({
       ok: false,
-      error: { code: 'NOT_FOUND' },
-    });
-    expect(
-      await send({ v: 1, method: 'sync.ping', token: TOKEN, payload: { x: 1 } }),
-    ).toMatchObject({
-      ok: false,
-      error: { code: 'VALIDATION' },
+      error: { code: 'NOT_FOUND', status: 404 },
     });
   });
 
-  test('token belum dikonfigurasi atau terlalu pendek: semua permintaan ditolak', async () => {
+  test('query pull yang salah bentuk -> 422 dengan nama field (bukan angka)', async () => {
+    expect(await call('sync.items.pull', { sinceRev: 'abc' })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION', status: 422, fields: { sinceRev: expect.any(String) } },
+    });
+  });
+
+  test('rute /api/v1/sync/* yang tidak ada, nama bawaan Object, atau verba keliru -> 404 problem+json', async () => {
+    for (const [method, path] of [
+      ['GET', '/sync/tidak-ada'],
+      ['GET', '/sync/constructor'],
+      ['GET', '/sync/__proto__'],
+      ['POST', '/sync/ping'],
+      ['GET', '/sync/items/push'],
+    ] as const) {
+      const response = await app.request(
+        `https://qc.test/api/v1${path}`,
+        { method, headers: { authorization: `Bearer ${TOKEN}` } },
+        env,
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toContain('application/problem+json');
+      expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' });
+    }
+  });
+
+  test('POST /sync (kabel lama beramplop) sudah dihapus: 404 problem+json untuk semua metode dan turunannya', async () => {
+    const envelope = JSON.stringify({ v: 1, method: 'sync.ping', token: TOKEN });
+    for (const [method, path] of [
+      ['POST', '/sync'],
+      ['GET', '/sync'],
+      ['POST', '/sync/ping'],
+      ['POST', '/sync/items/push'],
+    ] as const) {
+      const response = await app.request(
+        `https://qc.test${path}`,
+        { method, body: method === 'POST' ? envelope : undefined },
+        env,
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toContain('application/problem+json');
+      expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' });
+    }
+  });
+
+  test('token tidak dikonfigurasi atau terlalu pendek: semua permintaan ditolak', async () => {
     const empty = await createTestEnv({ SYNC_API_TOKEN: '' });
-    expect(
-      await handleSync(
-        empty,
-        JSON.stringify({ v: 1, method: 'sync.ping', token: 'apa saja' }),
-        syncRoutes(),
-      ),
-    ).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+    expect(await syncCall(empty, 'sync.ping', null, { token: 'apa saja' })).toMatchObject({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED' },
+    });
     const short = await createTestEnv({ SYNC_API_TOKEN: 'pendek' });
-    expect(
-      await handleSync(
-        short,
-        JSON.stringify({ v: 1, method: 'sync.ping', token: 'pendek' }),
-        syncRoutes(),
-      ),
-    ).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+    expect(await syncCall(short, 'sync.ping', null, { token: 'pendek' })).toMatchObject({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED' },
+    });
   });
 
   test('10 kegagalan memblokir IP itu, termasuk permintaannya yang bertoken benar (tabel rate_limits)', async () => {
@@ -140,22 +231,15 @@ describe('handler', () => {
   });
 
   test('pembatas per IP: IP yang diblokir tidak menghalangi IP lain, dan tiap IP dihitung sendiri', async () => {
-    const from = (ip: string, token: unknown) =>
-      handleSync(
-        env,
-        JSON.stringify({ v: 1, method: 'sync.ping', token, payload: null }),
-        syncRoutes(),
-        ip,
-      );
-    for (let i = 0; i < 10; i++) await from('203.0.113.7', `salah-${i}`);
-    expect(await from('203.0.113.7', TOKEN)).toMatchObject({
+    for (let i = 0; i < 10; i++) await pingFrom('203.0.113.7', `salah-${i}`);
+    expect(await pingFrom('203.0.113.7', TOKEN)).toMatchObject({
       ok: false,
       error: { code: 'UNAUTHENTICATED' },
     });
     // IP lain tetap bisa masuk, dan kegagalannya tidak menambah hitungan IP yang diblokir
-    expect(await from('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
-    for (let i = 0; i < 9; i++) await from('198.51.100.9', `salah-${i}`);
-    expect(await from('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
+    expect(await pingFrom('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
+    for (let i = 0; i < 9; i++) await pingFrom('198.51.100.9', `salah-${i}`);
+    expect(await pingFrom('198.51.100.9', TOKEN)).toMatchObject({ ok: true });
     const keys = (
       await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
     ).results.map((r) => r.key);
@@ -188,90 +272,139 @@ describe('handler', () => {
     expect(await ping(TOKEN)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
   });
 
-  test('token sinkron tidak berlaku untuk RPC web, dan token sesi tidak berlaku untuk jalur sinkron', async () => {
-    const response = await app.request(
-      '/api/v1/me',
+  test('cookie sesi TIDAK diterima di rute sinkron; Bearer + cookie memakai Bearer; tanpa CSRF', async () => {
+    const session = await signSessionToken(env, 'admin@gmail.com', env.clock.now());
+    const cookie = { cookie: `qc_session=${session}` };
+    // sesi sah tanpa Bearer -> 401 seragam
+    const reference = await problemShape(
+      await syncSend(env, 'sync.ping', null, { token: 'salah' }),
+    );
+    expect(
+      await problemShape(await syncSend(env, 'sync.ping', null, { token: null, headers: cookie })),
+    ).toEqual(reference);
+    // token sesi sebagai Bearer -> 401; token sinkron sebagai cookie di rute web -> 401
+    expect(await ping(session)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+    const web = await app.request(
+      'https://qc.test/api/v1/me',
       { headers: { cookie: `qc_session=${TOKEN}` } },
       env,
     );
-    expect(response.status).toBe(401);
+    expect(web.status).toBe(401);
+    // Bearer sah + cookie sah/rusak: Bearer yang dipakai (hasil sama), cookie tidak dibaca
+    expect((await syncSend(env, 'sync.ping', null, { headers: cookie })).status).toBe(200);
     expect(
-      await ping(await signSessionToken(env, 'admin@gmail.com', env.clock.now())),
-    ).toMatchObject({
-      ok: false,
-      error: { code: 'UNAUTHENTICATED' },
-    });
+      (await syncSend(env, 'sync.ping', null, { headers: { cookie: 'qc_session=rusak' } })).status,
+    ).toBe(200);
+    // metode tulis tanpa X-Requested-With: qc tetap diproses (tanpa csrfGuard)
+    const push = await syncSend(env, 'sync.brands.push', { brands: [{ name: 'Tanpa Csrf' }] });
+    expect(push.status).toBe(200);
   });
 
-  test('galat tak terduga di handler menjadi INTERNAL tanpa membocorkan detail', async () => {
-    const routes = {
-      'sync.boom': syncRoute({
+  test('galat tak terduga di handler menjadi INTERNAL (500) tanpa membocorkan detail', async () => {
+    const boom = createApp(getRoutes(), {
+      'sync.ping': syncRoute({
         validate: () => null,
         handler: () => {
           throw new Error('rahasia internal');
         },
       }),
-    };
-    const result = await send({ v: 1, method: 'sync.boom', token: TOKEN }, routes);
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: 'INTERNAL', message: 'Terjadi kesalahan pada server' },
     });
-    expect(JSON.stringify(result)).not.toContain('rahasia');
+    const error = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await syncSend(env, 'sync.ping', null, {}, boom);
+      expect(response.status).toBe(500);
+      const text = await response.text();
+      expect(JSON.parse(text)).toMatchObject({
+        code: 'INTERNAL',
+        detail: 'Terjadi kesalahan pada server',
+      });
+      expect(text).not.toContain('rahasia');
+    } finally {
+      error.mockRestore();
+    }
   });
 
-  test('UNAVAILABLE dari handler dipetakan INTERNAL dengan pesan tetap (kontrak Desktop tidak mengenal UNAVAILABLE)', async () => {
-    const routes = {
-      'sync.down': syncRoute({
+  test('UNAVAILABLE dari handler = 503 problem+json dengan Retry-After (kontrak versi 2 mengenal UNAVAILABLE)', async () => {
+    const down = createApp(getRoutes(), {
+      'sync.ping': syncRoute({
         validate: () => null,
         handler: () => {
           throw appError('UNAVAILABLE', 'Layanan sedang tidak dapat dihubungi');
         },
       }),
-    };
-    const result = await send({ v: 1, method: 'sync.down', token: TOKEN }, routes);
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: 'INTERNAL', message: 'Layanan sedang tidak dapat dihubungi' },
+    });
+    const response = await syncSend(env, 'sync.ping', null, {}, down);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('retry-after')).toBe('5');
+    expect(await response.json()).toMatchObject({
+      code: 'UNAVAILABLE',
+      detail: 'Layanan sedang tidak dapat dihubungi',
     });
   });
 
   test('handler menerima konteks dengan pelaku sync:desktop dan tanpa user', async () => {
     let seen: unknown;
-    const routes = {
-      'sync.ctx': syncRoute({
+    const spy = createApp(getRoutes(), {
+      'sync.ping': syncRoute({
         validate: () => null,
         handler: (_input, ctx) => {
           seen = ctx;
           return 1;
         },
       }),
-    };
-    await send({ v: 1, method: 'sync.ctx', token: TOKEN }, routes);
+    });
+    await syncSend(env, 'sync.ping', null, {}, spy);
     expect(seen).toMatchObject({ actor: SYNC_ACTOR });
     expect(Object.keys(seen as object).sort()).toEqual(['actor', 'env', 'requestId']);
   });
 
-  test('nama method bawaan Object tidak dianggap rute', async () => {
-    for (const method of ['constructor', '__proto__', 'toString']) {
-      expect(await send({ v: 1, method, token: TOKEN })).toMatchObject({
-        ok: false,
-        error: { code: 'NOT_FOUND' },
-      });
+  test('header Authorization dan token tidak pernah masuk log (sukses maupun gagal)', async () => {
+    const lines: string[] = [];
+    const sink = (...args: unknown[]) => {
+      lines.push(JSON.stringify(args));
+    };
+    const log = spyOn(console, 'log').mockImplementation(sink);
+    const warn = spyOn(console, 'warn').mockImplementation(sink);
+    const error = spyOn(console, 'error').mockImplementation(sink);
+    try {
+      await ping(TOKEN);
+      await ping('salah-rahasia-123');
+      await syncSend(env, 'sync.brands.pull', { limit: 0 });
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+      error.mockRestore();
     }
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    const all = lines.join('\n');
+    expect(all).toContain('"evt":"sync"');
+    expect(all).not.toContain(TOKEN);
+    expect(all).not.toContain('salah-rahasia-123');
+    expect(all.toLowerCase()).not.toContain('bearer');
   });
 
-  test('POST /sync lewat Hono: HTTP 200 dengan amplop; badan tak terbaca -> UNAUTHENTICATED', async () => {
-    const ok = await app.request(
-      '/sync',
-      { method: 'POST', body: JSON.stringify({ v: 1, method: 'sync.ping', token: TOKEN }) },
-      env,
-    );
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ ok: true, data: { apiVersion: 1 } });
-    const bad = await app.request('/sync', { method: 'POST', body: 'bukan json' }, env);
-    expect(bad.status).toBe(200);
-    expect(await bad.json()).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+  test('badan push: batas 5 MB milik sinkron (bukan 2 MB JSON) dan baru dibaca setelah token sah', async () => {
+    // 3 MB (> 2 MB batas JSON web) diterima: nama terlalu panjang = invalid per entri, bukan 413
+    const big = await syncCall(env, 'sync.brands.push', {
+      brands: [{ name: 'x'.repeat(3_000_000) }],
+    });
+    expect(big).toMatchObject({ ok: true, data: { results: [{ status: 'invalid' }] } });
+    // > 5 MB = 413 problem+json
+    const tooLarge = await syncCall(env, 'sync.brands.push', null, { raw: 'x'.repeat(5_000_001) });
+    expect(tooLarge).toMatchObject({ ok: false, error: { code: 'VALIDATION', status: 413 } });
+    // token salah + badan besar = 401 (badan tidak dibaca)
+    const unauthenticated = await syncSend(env, 'sync.brands.push', null, {
+      token: 'salah',
+      raw: 'x'.repeat(5_000_001),
+    });
+    expect(unauthenticated.status).toBe(401);
+    // bukan JSON = 400
+    const notJson = await syncSend(env, 'sync.brands.push', null, { raw: '{bukan json' });
+    expect(notJson.status).toBe(400);
+  });
+
+  test('tabel rute: tiap id SYNC_API_ROUTES punya handler terdaftar dan sebaliknya', () => {
+    expect(Object.keys(syncRoutes()).sort()).toEqual(Object.keys(SYNC_API_ROUTES).sort());
   });
 });
 
@@ -316,20 +449,15 @@ describe('brands', () => {
     expect((await call('sync.brands.pull', null)).data.brands).toHaveLength(5);
   });
 
-  test('pull: payload tidak sah -> VALIDATION', async () => {
-    for (const payload of [
-      { sinceRev: -1 },
-      { sinceRev: 1.5 },
-      { limit: 0 },
-      { limit: 501 },
-      { include: ['detail'] },
-      'x',
-    ]) {
+  test('pull: query tidak sah -> VALIDATION (422); include tidak dikenal untuk merk diabaikan seperti query lain', async () => {
+    for (const payload of [{ sinceRev: -1 }, { sinceRev: 1.5 }, { limit: 0 }, { limit: 501 }]) {
       expect(await call('sync.brands.pull', payload)).toMatchObject({
         ok: false,
-        error: { code: 'VALIDATION' },
+        error: { code: 'VALIDATION', status: 422 },
       });
     }
+    // REST: query yang bukan bagian rute (include untuk merk) tidak pernah sampai ke handler.
+    expect(await call('sync.brands.pull', { include: ['detail'] })).toMatchObject({ ok: true });
   });
 
   test('push merk baru: created, dipetakan ke id MySQL, audit atas nama sync:desktop; diulang -> unchanged', async () => {
@@ -527,6 +655,65 @@ describe('files', () => {
     });
   });
 
+  test('GET /sync/files/{id}: byte mentah persis sama (semua nilai 0-255), Content-Type berkas, ETag = id, tanpa base64', async () => {
+    const folder = await folderWithBridge();
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i);
+    const driveId = await driveFile(
+      folder,
+      'semua.png',
+      'image/png',
+      Buffer.from(bytes).toString('base64'),
+    );
+    const response = await syncSend(env, 'sync.file.get', { driveId });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('etag')).toBe(`"${driveId}"`);
+    expect(response.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    // JPEG dan WebP: Content-Type mengikuti berkas
+    const jpeg = await driveFile(folder, 'b.jpg', 'image/jpeg', PNG);
+    expect(
+      (await syncSend(env, 'sync.file.get', { driveId: jpeg })).headers.get('content-type'),
+    ).toBe('image/jpeg');
+  });
+
+  test('GET /sync/files/{id}: If-None-Match yang cocok = 304 tanpa badan; berbeda = 200; id dengan karakter khusus di-decode', async () => {
+    const folder = await folderWithBridge();
+    const driveId = await driveFile(folder, 'a.png', 'image/png', PNG);
+    const same = await syncSend(
+      env,
+      'sync.file.get',
+      { driveId },
+      {
+        headers: { 'if-none-match': `"${driveId}"` },
+      },
+    );
+    expect(same.status).toBe(304);
+    expect(await same.text()).toBe('');
+    expect(same.headers.get('etag')).toBe(`"${driveId}"`);
+    const other = await syncSend(
+      env,
+      'sync.file.get',
+      { driveId },
+      {
+        headers: { 'if-none-match': '"lain"' },
+      },
+    );
+    expect(other.status).toBe(200);
+    const odd = await syncSend(env, 'sync.file.get', { driveId: 'a/b c%d' });
+    expect(odd.status).toBe(404);
+    expect(await odd.json()).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  test('GET /sync/files/{id} tanpa token yang sah = 401 (berkas tidak pernah diperiksa)', async () => {
+    const folder = await folderWithBridge();
+    const driveId = await driveFile(folder, 'a.png', 'image/png', PNG);
+    expect((await syncSend(env, 'sync.file.get', { driveId }, { token: 'salah' })).status).toBe(
+      401,
+    );
+    expect((await syncSend(env, 'sync.file.get', { driveId }, { token: null })).status).toBe(401);
+  });
+
   test('id di luar folder, tak dikenal, atau tanpa DRIVE_FOLDER_ID -> NOT_FOUND', async () => {
     const folder = await folderWithBridge();
     env.BRIDGE.state.folders.add('LAIN');
@@ -547,21 +734,24 @@ describe('files', () => {
     });
   });
 
-  test('payload tidak sah -> VALIDATION; berkas > 8 MB -> VALIDATION', async () => {
+  test('id kosong = rute tidak ada (404); berkas > 8 MB = 413 problem+json', async () => {
     const folder = await folderWithBridge();
-    expect(await call('sync.file.get', {})).toMatchObject({
-      ok: false,
-      error: { code: 'VALIDATION', fields: { driveId: 'Wajib diisi' } },
-    });
-    expect(await call('sync.file.get', null)).toMatchObject({
-      ok: false,
-      error: { code: 'VALIDATION' },
-    });
+    const empty = await app.request(
+      'https://qc.test/api/v1/sync/files/',
+      { headers: { authorization: `Bearer ${TOKEN}` } },
+      env,
+    );
+    expect(empty.status).toBe(404);
     const big = await driveFile(folder, 'big.png', 'image/png', 'A'.repeat(11_000_000));
     expect(await call('sync.file.get', { driveId: big })).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', fields: { driveId: 'Berkas melebihi 8 MB' } },
+      error: { code: 'VALIDATION', status: 413, fields: { driveId: 'Berkas melebihi 8 MB' } },
     });
+    // tepat di bawah batas lolos (8.000.000 byte = 10.666.668 karakter base64 dengan padding)
+    const edge = await driveFile(folder, 'edge.png', 'image/png', 'A'.repeat(10_666_664));
+    const ok = await syncSend(env, 'sync.file.get', { driveId: edge });
+    expect(ok.status).toBe(200);
+    expect((await ok.arrayBuffer()).byteLength).toBe(7_999_998);
     expect(typeof getSyncFile).toBe('function');
   });
 

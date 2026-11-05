@@ -72,13 +72,25 @@ describe('createServer: API', () => {
   });
 
   test('rute server yang tidak dikenal = 404 JSON, bukan index.html', async () => {
-    for (const path of ['/api/tidak-ada', '/auth/tidak-ada', '/sync/x']) {
+    for (const path of [
+      '/api/tidak-ada',
+      '/auth/tidak-ada',
+      '/sync/x',
+      '/sync',
+      '/api/v1/sync/x',
+    ]) {
       const response = await get(path);
       expect(response.status).toBe(404);
       expect(await response.text()).not.toContain('QC-SPA');
     }
     const json = await get('/api/tidak-ada');
     expect(await json.json()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    // jalur REST dan kabel lama /sync: problem+json
+    for (const path of ['/sync', '/sync/x', '/api/v1/sync/x']) {
+      const rest = await get(path);
+      expect(rest.headers.get('content-type')).toContain('application/problem+json');
+      expect(await rest.json()).toMatchObject({ code: 'NOT_FOUND' });
+    }
   });
 });
 
@@ -128,17 +140,18 @@ describe('createServer: berkas statis dan fallback SPA', () => {
   });
 });
 
-describe('createServer: IP klien dan pembatas /sync', () => {
+describe('createServer: IP klien dan pembatas /api/v1/sync/*', () => {
   const syncFrom = (peer: string, token: string, spoofed?: string) =>
     server.fetch(
-      new Request('http://localhost/sync', {
-        method: 'POST',
-        headers: spoofed === undefined ? {} : { 'CF-Connecting-IP': spoofed },
-        body: JSON.stringify({ v: 1, method: 'sync.ping', token, payload: null }),
+      new Request('http://localhost/api/v1/sync/ping', {
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(spoofed === undefined ? {} : { 'CF-Connecting-IP': spoofed }),
+        },
       }),
       peer,
     );
-  const okOf = async (response: Response) => ((await response.json()) as { ok: boolean }).ok;
+  const okOf = async (response: Response) => response.status === 200;
   const limiterKeys = async () =>
     (
       await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
@@ -218,20 +231,36 @@ describe('createServer: batas ukuran badan (M3)', () => {
     }
   }, 60_000);
 
-  test('/sync: badan chunked tanpa content-length berhenti dibaca di batas (UNAUTHENTICATED, tidak dimuat penuh)', async () => {
+  test('push sinkron: badan chunked tanpa content-length berhenti dibaca di batas 5 MB (413, tidak dimuat penuh)', async () => {
     const { stream, state } = chunkedBody(40, 1024 * 1024); // 40 MB bila dibaca penuh
     const response = await server.fetch(
-      new Request('http://localhost/sync', {
+      new Request('http://localhost/api/v1/sync/items/push', {
         method: 'POST',
+        headers: { authorization: `Bearer ${TOKEN}` },
         body: stream,
         duplex: 'half',
       }),
       LOOPBACK,
     );
-    const body = (await response.json()) as { ok: boolean; error?: { code: string } };
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe('UNAUTHENTICATED');
-    expect(state.pulled).toBeLessThan(25);
+    expect(response.status).toBe(413);
+    expect(((await response.json()) as { code: string }).code).toBe('VALIDATION');
+    expect(state.pulled).toBeLessThan(10); // batas 5 MB (bukan 2 MB JSON, bukan 16 MB lama)
+    expect(state.pulled).toBeGreaterThanOrEqual(5);
+  }, 60_000);
+
+  test('push sinkron: token salah = 401 tanpa membaca satu potongan badan pun', async () => {
+    const { stream, state } = chunkedBody(40, 1024 * 1024);
+    const response = await server.fetch(
+      new Request('http://localhost/api/v1/sync/items/push', {
+        method: 'POST',
+        headers: { authorization: 'Bearer salah' },
+        body: stream,
+        duplex: 'half',
+      }),
+      LOOPBACK,
+    );
+    expect(response.status).toBe(401);
+    expect(state.pulled).toBeLessThanOrEqual(2); // hanya prabaca bawaan aliran, tidak dibaca oleh aplikasi
   }, 60_000);
 
   test('REST JSON: badan chunked terlalu besar ditolak 413 VALIDATION, tidak dimuat penuh', async () => {

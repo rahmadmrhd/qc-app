@@ -1,4 +1,5 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
+import { base64ToBytes } from '@server/core/bytes';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -27,26 +28,31 @@ export function validateSyncFileGet(raw: unknown): SyncFileGetInput {
   return { driveId };
 }
 
+/** Berkas > 8 MB: 413 (badan problem+json tetap berkode VALIDATION dengan `fields.driveId`). */
+function fileTooLarge(): Error {
+  return Object.assign(
+    appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' }),
+    { status: 413 },
+  );
+}
+
+/** Byte berkas Drive di folder aplikasi (maks. `SYNC_LIMITS.fileBytes`); di luar folder = NOT_FOUND. */
 export async function getSyncFile(
   env: Env,
   input: SyncFileGetInput,
-): Promise<{ driveId: string; mime: string; base64: string }> {
+): Promise<{ driveId: string; mime: string; bytes: Uint8Array }> {
   const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
   const bridge = getBridge(env);
   const info = folderId ? await viaBridge(() => bridge.fileInfo(input.driveId, folderId)) : null;
   if (!info) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
-  if (info.size > SYNC_LIMITS.fileBytes) {
-    throw appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });
-  }
+  if (info.size > SYNC_LIMITS.fileBytes) throw fileTooLarge();
   const content = await cachedFileContent(env, folderId, input.driveId, async () => {
     const read = await viaBridge(() => bridge.readFile(input.driveId, folderId));
     return read ? { mime: read.mime, base64: read.base64 } : null;
   });
   if (!content) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
-  if (base64ByteLength(content.base64) > SYNC_LIMITS.fileBytes) {
-    throw appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });
-  }
-  return { driveId: input.driveId, mime: content.mime, base64: content.base64 };
+  if (base64ByteLength(content.base64) > SYNC_LIMITS.fileBytes) throw fileTooLarge();
+  return { driveId: input.driveId, mime: content.mime, bytes: base64ToBytes(content.base64) };
 }
 
 async function filesByDriveIds(env: Env, driveIds: readonly string[]): Promise<FileRecord[]> {

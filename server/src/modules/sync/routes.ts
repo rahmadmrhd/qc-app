@@ -1,6 +1,6 @@
 import { nowIso } from '@server/core/env';
 import { expectNull } from '@server/core/validate';
-import { SYNC_API_VERSION, SYNC_RESOURCES } from '@shared/sync';
+import { SYNC_RESOURCES, SYNC_REST_API_VERSION } from '@shared/sync';
 import { pullBrands, pushBrands } from './brands';
 import { getSyncFile, validateSyncFileGet } from './files';
 import type { SyncRouteTable } from './handler';
@@ -8,7 +8,7 @@ import { syncRoute } from './handler';
 import { pullItems, pushItems } from './items';
 import { validateSyncPush } from './wire';
 
-/** Tabel rute sinkron (terpisah dari rute RPC web). */
+/** Tabel handler sinkron (id = kunci `SYNC_API_ROUTES`; didaftarkan `registerSyncRest`), terpisah dari rute web. */
 export function syncRoutes(): SyncRouteTable {
   return {
     'sync.file.get': syncRoute({
@@ -34,7 +34,7 @@ export function syncRoutes(): SyncRouteTable {
     'sync.ping': syncRoute({
       validate: expectNull,
       handler: (_input, ctx) => ({
-        apiVersion: SYNC_API_VERSION,
+        apiVersion: SYNC_REST_API_VERSION,
         serverTime: nowIso(ctx.env),
         resources: [...SYNC_RESOURCES],
       }),
