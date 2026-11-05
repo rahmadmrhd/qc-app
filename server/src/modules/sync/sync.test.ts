@@ -986,6 +986,31 @@ describe('files', () => {
     expect(probes.get('tidak-ada')).toBeNull();
   });
 
+  test('(N4) probeDriveIds: galat pertama menghentikan pekerja lain, tidak ada panggilan jembatan baru setelah penolakan', async () => {
+    const folder = await folderWithBridge();
+    const ids: string[] = [];
+    for (let i = 0; i < 100; i++) ids.push(await driveFile(folder, `g${i}.png`, 'image/png', PNG));
+    const real = env.BRIDGE.fileInfo.bind(env.BRIDGE);
+    let calls = 0;
+    env.BRIDGE.fileInfo = async (fileId, folderId) => {
+      calls++;
+      const mine = calls;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (mine === 3) throw new Error('jembatan putus');
+      return real(fileId, folderId);
+    };
+    const error = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(probeDriveIds(env, ids)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+      const atRejection = calls;
+      await new Promise((resolve) => setTimeout(resolve, 100)); // pekerja yang tersisa diberi waktu untuk (keliru) lanjut
+      expect(calls).toBe(atRejection);
+      expect(calls).toBeLessThanOrEqual(3 + 7); // paling banyak yang sedang berjalan saat galat (konkurensi 8)
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   test('registerDriveFiles: berkas di folder didaftarkan sekali; id tak sah missing; idempoten', async () => {
     const folder = await folderWithBridge();
     env.BRIDGE.state.folders.add('LAIN');
