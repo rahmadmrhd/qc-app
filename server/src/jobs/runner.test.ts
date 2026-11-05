@@ -5,7 +5,13 @@ import { findJob } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { runPendingJobs, scheduleCleanupJob, startJobRunner, startScheduler } from './runner';
+import {
+  purgeExpiredRateLimits,
+  runPendingJobs,
+  scheduleCleanupJob,
+  startJobRunner,
+  startScheduler,
+} from './runner';
 
 let env: TestEnv;
 const realError = console.error;
@@ -249,6 +255,38 @@ describe('penjadwal', () => {
       await waitFor(async () => (await countJobs('cleanup_qr')) === 1);
       await sleep(100); // banyak detak berlalu
       expect(await countJobs('cleanup_qr')).toBe(1);
+    } finally {
+      await stop();
+    }
+  });
+});
+
+describe('pembersihan rate_limits (I4)', () => {
+  const MINUTE = 60_000;
+  const seedLimit = (key: string, count: number, windowStart: number) =>
+    env.DB.prepare('INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, ?, ?)')
+      .bind(key, count, windowStart)
+      .run();
+  const limitKeys = async () =>
+    (
+      await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
+    ).results.map((row) => row.key);
+
+  test('purgeExpiredRateLimits membuang baris yang jendelanya (terbesar: blokir 10 menit) sudah lewat saja', async () => {
+    const now = env.clock.now();
+    await seedLimit('sync:fails:basi', 3, now - 11 * MINUTE);
+    await seedLimit('sync:blocked:basi', 1, now - 10 * MINUTE - 1);
+    await seedLimit('sync:blocked:aktif', 1, now - 9 * MINUTE);
+    await seedLimit('sync:fails:baru', 2, now - 1 * MINUTE);
+    expect(await purgeExpiredRateLimits(env)).toBe(2);
+    expect(await limitKeys()).toEqual(['sync:blocked:aktif', 'sync:fails:baru']);
+  });
+
+  test('detak penjadwal ikut membersihkan rate_limits kedaluwarsa', async () => {
+    await seedLimit('sync:fails:basi', 3, env.clock.now() - 2 * 60 * MINUTE);
+    const stop = startScheduler(env, { intervalMs: 10_000 });
+    try {
+      await waitFor(async () => (await limitKeys()).length === 0);
     } finally {
       await stop();
     }

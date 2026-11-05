@@ -43,3 +43,47 @@ export function clientIp(
   }
   return peer === '' ? 'unknown' : peer;
 }
+
+/** Memperluas alamat IPv6 tekstual menjadi delapan kelompok 16-bit; `null` bila bukan IPv6 yang sah. */
+function expandIpv6(address: string): number[] | null {
+  let text = address.toLowerCase();
+  const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(text);
+  if (tail) {
+    const octets = tail.slice(1, 5).map(Number);
+    if (octets.some((octet) => octet > 255)) return null;
+    const high = ((octets[0] as number) << 8) | (octets[1] as number);
+    const low = ((octets[2] as number) << 8) | (octets[3] as number);
+    text = `${text.slice(0, tail.index)}${high.toString(16)}:${low.toString(16)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const parse = (part: string): number[] | null => {
+    if (part === '') return [];
+    const groups = part.split(':');
+    if (!groups.every((group) => /^[0-9a-f]{1,4}$/.test(group))) return null;
+    return groups.map((group) => Number.parseInt(group, 16));
+  };
+  const head = parse(halves[0] ?? '');
+  const rest = halves.length === 2 ? parse(halves[1] ?? '') : [];
+  if (head === null || rest === null) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const missing = 8 - head.length - rest.length;
+  if (missing < 1) return null;
+  return [...head, ...new Array<number>(missing).fill(0), ...rest];
+}
+
+/**
+ * Pengenal klien untuk pembatas percobaan: IPv4 per alamat, IPv6 per /64 (satu pelanggan lazimnya memegang seluruh
+ * /64 dan dapat berganti alamat di dalamnya sesuka hati; tanpa pengelompokan, penyerang melewati batas dan memenuhi
+ * tabel `rate_limits`). Alamat yang tak dapat diurai (mis. `unknown`) dikembalikan apa adanya.
+ */
+export function limiterAddress(ip: string): string {
+  const address = normalizeAddress(ip);
+  if (!address.includes(':')) return address;
+  const groups = expandIpv6(address);
+  if (groups === null) return address;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.toString(16))
+    .join(':')}::/64`;
+}

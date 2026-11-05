@@ -163,6 +163,15 @@ describe('createServer: IP klien dan pembatas /sync', () => {
     expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '198.51.100.10'))).toBe(true);
     expect(await limiterKeys()).toEqual(['sync:blocked:198.51.100.9']);
   });
+
+  test('(I4) IPv6 dihitung per /64: berganti alamat dalam /64 yang sama tidak melewati batas', async () => {
+    for (let i = 0; i < 10; i++) {
+      await syncFrom(LOOPBACK, `salah-${i}`, `2001:db8:aa:bb:${i.toString(16)}::1`);
+    }
+    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:bb:ffff::9'))).toBe(false);
+    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:cc::1'))).toBe(true);
+    expect(await limiterKeys()).toEqual(['sync:blocked:2001:db8:aa:bb::/64']);
+  });
 });
 
 describe('createServer: siklus hidup', () => {

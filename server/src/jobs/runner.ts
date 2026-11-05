@@ -3,6 +3,7 @@ import { nowOf } from '@server/core/env';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { SYNC_LIMITS } from '@shared/sync';
 
 /** Selang polling runner (milidetik). */
 export const JOB_RUNNER_INTERVAL_MS = 2_000;
@@ -99,7 +100,36 @@ export async function scheduleCleanupJob(env: Env): Promise<string | null> {
 }
 
 /**
- * Penjadwal: `scheduleCleanupJob` sekali saat mulai lalu tiap jam (`intervalMs`). Kerangka yang sama dipakai
+ * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar, yaitu
+ * lama blokir): baris sah paling lama hidup selama jendela itu, sisanya sampah yang tak pernah dibaca lagi.
+ * Mengembalikan jumlah baris terhapus.
+ */
+export async function purgeExpiredRateLimits(env: Env): Promise<number> {
+  const cutoff = nowOf(env) - SYNC_LIMITS.blockSeconds * 1000;
+  const result = await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
+    .bind(cutoff)
+    .run();
+  return result.meta.changes;
+}
+
+/**
+ * Detak penjadwal: menjadwalkan pembersihan QR lalu membersihkan `rate_limits`. Keduanya dicoba walau salah satu
+ * gagal (galat pertama dilempar setelah keduanya dicoba, agar tercatat oleh `startLoop`).
+ */
+async function schedulerTick(env: Env): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of [scheduleCleanupJob, purgeExpiredRateLimits]) {
+    try {
+      await step(env);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
+}
+
+/**
+ * Penjadwal: `schedulerTick` sekali saat mulai lalu tiap jam (`intervalMs`). Kerangka yang sama dipakai
  * untuk pekerjaan berkala lain (mis. dump malam). Mengembalikan fungsi penghenti (lihat `startLoop`).
  */
 export function startScheduler(
@@ -108,7 +138,7 @@ export function startScheduler(
 ): () => Promise<void> {
   return startLoop(
     'penjadwal',
-    () => scheduleCleanupJob(env),
+    () => schedulerTick(env),
     options.intervalMs ?? SCHEDULER_INTERVAL_MS,
   );
 }

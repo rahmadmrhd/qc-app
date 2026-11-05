@@ -1,8 +1,9 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { limiterAddress } from '@server/http/proxy';
 import { constantTimeEqual, SYNC_LIMITS, SYNC_TOKEN_MIN_LENGTH } from '@shared/sync';
 
-/** Kunci pembatas per IP klien: `sync:blocked:<ip>` dan `sync:fails:<ip>` (kolom `key` VARCHAR(255); IP <= 45). */
+/** Kunci pembatas per klien: `sync:blocked:<id>` dan `sync:fails:<id>` (kolom `key` VARCHAR(255); id = IPv4 atau /64 IPv6, <= 45). */
 const BLOCK_PREFIX = 'sync:blocked:';
 const FAIL_PREFIX = 'sync:fails:';
 
@@ -62,6 +63,7 @@ export async function authenticateSync(
   ip: string = UNKNOWN_CLIENT_IP,
 ): Promise<boolean> {
   const now = nowOf(env);
+  ip = limiterAddress(ip); // IPv6 per /64, IPv4 per alamat
   if (await isBlocked(env, now, ip)) return false;
   const expected = env.SYNC_API_TOKEN?.trim() ?? '';
   const valid =
