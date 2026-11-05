@@ -1,3 +1,4 @@
+import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
 import type { UserContext } from '@server/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
 import type { Level, ModuleKey } from '@shared/permissions';
@@ -82,8 +83,15 @@ export function readCookie(request: Request, name: string): string | undefined {
  */
 export async function handleRpc(env: Env, request: Request, routes: RouteTable): Promise<Response> {
   let body: unknown;
+  const text = await readTextLimited(request, MAX_REQUEST_BODY_BYTES);
+  if (text === undefined) {
+    return rpcResponse({
+      ok: false,
+      error: toErrorBody(appError('VALIDATION', 'Badan permintaan terlalu besar'), newRequestId()),
+    });
+  }
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     body = null;
   }

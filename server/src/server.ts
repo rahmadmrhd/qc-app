@@ -2,6 +2,7 @@ import { app } from '@server/app';
 import type { Config } from '@server/config';
 import { createDb, type Db } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startScheduler } from '@server/jobs/runner';
 
@@ -61,5 +62,19 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       await Promise.all(stops.map((stop) => stop()));
       if (ownsDb) await db.close();
     },
+  };
+}
+
+/**
+ * Opsi `Bun.serve` untuk server ini: alamat TCP peer diteruskan ke aplikasi dan `maxRequestBodySize` dibatasi
+ * (`MAX_REQUEST_BODY_BYTES`; di atasnya Bun membalas 413 sebelum badan dimuat ke memori).
+ */
+export function bunServeOptions(server: QcServer, listen: { host: string; port: number }) {
+  return {
+    hostname: listen.host,
+    port: listen.port,
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    fetch: (request: Request, srv: { requestIP(request: Request): { address: string } | null }) =>
+      server.fetch(request, srv.requestIP(request)?.address ?? ''),
   };
 }

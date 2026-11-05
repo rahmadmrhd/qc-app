@@ -1,6 +1,6 @@
 import { ConfigError, loadConfig } from '@server/config';
 import { toDbError } from '@server/core/db';
-import { createServer } from '@server/server';
+import { bunServeOptions, createServer } from '@server/server';
 
 // Titik masuk proses server: `bun run src/main.ts` (dev: `bun run dev:server`). Konfigurasi dari variabel
 // lingkungan; Bun memuat `server/.env` bila dijalankan dari folder `server/`.
@@ -26,11 +26,7 @@ try {
   process.exit(1);
 }
 
-const server = Bun.serve({
-  hostname: config.host,
-  port: config.port,
-  fetch: (request, srv) => app.fetch(request, srv.requestIP(request)?.address ?? ''),
-});
+const server = Bun.serve(bunServeOptions(app, { host: config.host, port: config.port }));
 console.log({
   evt: 'start',
   url: `http://${config.host}:${server.port}`,

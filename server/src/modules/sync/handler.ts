@@ -2,6 +2,7 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
 import { toErrorBody } from '@server/core/router';
+import { MAX_REQUEST_BODY_BYTES, readTextLimited } from '@server/http/body';
 import type { RpcResult } from '@shared/rpc';
 import { SYNC_ACTOR, SYNC_API_VERSION, SYNC_LIMITS } from '@shared/sync';
 import { authenticateSync, UNKNOWN_CLIENT_IP } from './auth';
@@ -108,8 +109,12 @@ export async function handleSyncRequest(
   routes: SyncRouteTable,
   clientIp = UNKNOWN_CLIENT_IP,
 ): Promise<Response> {
-  const declared = Number(request.headers.get('content-length') ?? '0');
-  const body = declared > SYNC_LIMITS.bodyChars * 4 ? undefined : await request.text();
+  // Batas byte pra-baca (UTF-8 <= 4 byte per karakter; jumlah karakter diperiksa ulang di handleSync). Dibaca bertahap
+  // dan dihentikan di batas, termasuk badan chunked tanpa content-length.
+  const body = await readTextLimited(
+    request,
+    Math.min(SYNC_LIMITS.bodyChars * 4, MAX_REQUEST_BODY_BYTES),
+  );
   const result = await handleSync(env, body, routes, clientIp);
   return new Response(JSON.stringify(result), {
     status: 200,

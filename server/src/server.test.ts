@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { type Config, loadConfig } from './config';
-import { createServer, type QcServer } from './server';
+import { MAX_REQUEST_BODY_BYTES } from './http/body';
+import { bunServeOptions, createServer, type QcServer } from './server';
 
 const TOKEN = 't0k3n'.repeat(8);
 const HTML = '<!doctype html><html><body><div id="root">QC-SPA</div></body></html>';
@@ -172,6 +173,88 @@ describe('createServer: IP klien dan pembatas /sync', () => {
     expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:cc::1'))).toBe(true);
     expect(await limiterKeys()).toEqual(['sync:blocked:2001:db8:aa:bb::/64']);
   });
+});
+
+describe('createServer: batas ukuran badan (M3)', () => {
+  /** Badan chunked tanpa content-length; `pulled` = jumlah potongan yang benar-benar ditarik pembaca. */
+  function chunkedBody(chunks: number, chunkBytes: number) {
+    const state = { pulled: 0 };
+    const chunk = new Uint8Array(chunkBytes).fill(32);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (state.pulled >= chunks) return controller.close();
+        state.pulled++;
+        controller.enqueue(chunk);
+      },
+    });
+    return { stream, state };
+  }
+
+  test('Bun.serve memakai MAX_REQUEST_BODY_BYTES: badan > batas = 413 tanpa menjalankan aplikasi, di bawahnya lolos', async () => {
+    let reached = 0;
+    const counting: QcServer = {
+      ...server,
+      fetch: (request, peer) => {
+        reached++;
+        return server.fetch(request, peer);
+      },
+    };
+    const bun = Bun.serve(bunServeOptions(counting, { host: '127.0.0.1', port: 0 }));
+    try {
+      const url = `http://127.0.0.1:${bun.port}/api/rpc`;
+      const send = (bytes: number) =>
+        fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-requested-with': 'qc' },
+          body: new Uint8Array(bytes).fill(32),
+        });
+      // Bun menolak di lapisan HTTP: 413, atau koneksi diputus bila klien masih mengirim (keduanya = ditolak).
+      const outcome = await send(MAX_REQUEST_BODY_BYTES + 1024).then(
+        (response) => response.status,
+        () => 'reset',
+      );
+      expect([413, 'reset']).toContain(outcome);
+      expect(reached).toBe(0); // aplikasi tidak pernah dijalankan
+      const ok = await send(1024); // spasi saja = bukan JSON: sampai ke aplikasi, ditolak di sana
+      expect(ok.status).not.toBe(413);
+      expect(reached).toBe(1);
+    } finally {
+      await bun.stop(true);
+    }
+  }, 60_000);
+
+  test('/sync: badan chunked tanpa content-length berhenti dibaca di batas (UNAUTHENTICATED, tidak dimuat penuh)', async () => {
+    const { stream, state } = chunkedBody(40, 1024 * 1024); // 40 MB bila dibaca penuh
+    const response = await server.fetch(
+      new Request('http://localhost/sync', {
+        method: 'POST',
+        body: stream,
+        duplex: 'half',
+      }),
+      LOOPBACK,
+    );
+    const body = (await response.json()) as { ok: boolean; error?: { code: string } };
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe('UNAUTHENTICATED');
+    expect(state.pulled).toBeLessThan(25);
+  }, 60_000);
+
+  test('/api/rpc: badan chunked terlalu besar ditolak VALIDATION, tidak dimuat penuh', async () => {
+    const { stream, state } = chunkedBody(40, 1024 * 1024);
+    const response = await server.fetch(
+      new Request('http://localhost/api/rpc', {
+        method: 'POST',
+        headers: { 'x-requested-with': 'qc' },
+        body: stream,
+        duplex: 'half',
+      }),
+      LOOPBACK,
+    );
+    const body = (await response.json()) as { ok: boolean; error?: { code: string } };
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe('VALIDATION');
+    expect(state.pulled).toBeLessThan(25);
+  }, 60_000);
 });
 
 describe('createServer: siklus hidup', () => {
