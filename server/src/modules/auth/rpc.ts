@@ -9,7 +9,7 @@ import type { MeDto } from '@shared/rpc';
 /**
  * Daftar lokasi `auth.me` per konteks akses: konteks dan daftar lokasi hidup di cache isolate (dibuang bersama),
  * jadi selama keduanya objek yang sama hasilnya tidak berubah dan tidak perlu disaring/diurutkan ulang tiap
- * permintaan (`/api/boot` = `auth.me` dipanggil di setiap pemuatan halaman). Identitas `briefs` dicek agar
+ * permintaan (`GET /api/v1/me` dipanggil di setiap pemuatan halaman). Identitas `briefs` dicek agar
  * hasil lama tidak dipakai bila daftar lokasi dimuat ulang.
  */
 const meLocations = new WeakMap<
@@ -33,7 +33,7 @@ function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto
   return locations;
 }
 
-/** Rute RPC `auth.me` (rute HTTP `/auth/*` ada di `routes.ts`). */
+/** Rute `auth.me` (REST `GET /api/v1/me`; rute HTTP `/auth/*` ada di `routes.ts`). */
 export function authRpcRoutes(): Pick<RouteTable, 'auth.me'> {
   return {
     'auth.me': {

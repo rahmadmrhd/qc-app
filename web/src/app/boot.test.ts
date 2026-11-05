@@ -1,6 +1,7 @@
 import type { MeDto } from '@shared/rpc';
 import { afterEach, expect, test, vi } from 'vitest';
-import { loadBoot, readAuthError, resolveInitialSession } from './boot';
+import { ApiError } from '@/lib/api/api-error';
+import { loadMe, readAuthError, resolveInitialSession } from './boot';
 
 const me = { email: 'a@x.com', name: 'A' } as MeDto;
 
@@ -22,15 +23,18 @@ test('sesi sah dari boot; tanpa me, galat login ditampilkan', () => {
   });
 });
 
-test('loadBoot memanggil GET /api/boot dengan cookie; 401 dan galat jaringan = belum login', async () => {
-  vi.stubEnv('DEV', false);
-  const ok = vi.fn(async () => Response.json({ ok: true, data: me }));
-  await expect(loadBoot(ok as unknown as typeof fetch)).resolves.toEqual(me);
-  expect(ok).toHaveBeenCalledWith('/api/boot', { credentials: 'same-origin' });
-  const unauthorized = vi.fn(async () =>
-    Response.json({ ok: false, error: { code: 'UNAUTHENTICATED' } }, { status: 401 }),
-  );
-  await expect(loadBoot(unauthorized as unknown as typeof fetch)).resolves.toBeNull();
+test('loadMe memanggil auth.me lewat api() (GET /api/v1/me); 401, galat server, dan jaringan = belum login', async () => {
+  const ok = vi.fn(async () => me);
+  await expect(loadMe(ok as never)).resolves.toEqual(me);
+  expect(ok).toHaveBeenCalledWith('auth.me', null);
+  const unauthorized = vi.fn(async () => {
+    throw new ApiError('UNAUTHENTICATED', 'Sesi tidak valid', 'r1', undefined, { status: 401 });
+  });
+  await expect(loadMe(unauthorized as never)).resolves.toBeNull();
+  const broken = vi.fn(async () => {
+    throw new ApiError('INTERNAL', 'Tidak dapat menghubungi server.', '-');
+  });
+  await expect(loadMe(broken as never)).resolves.toBeNull();
   const offline = vi.fn(async () => Promise.reject(new TypeError('offline')));
-  await expect(loadBoot(offline as unknown as typeof fetch)).resolves.toBeNull();
+  await expect(loadMe(offline as never)).resolves.toBeNull();
 });

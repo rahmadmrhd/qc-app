@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { loadBoot, readAuthError, resolveInitialSession } from '@/app/boot';
+import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
@@ -16,8 +16,8 @@ async function start() {
   const authError = readAuthError(window.location.search);
   if (authError) window.history.replaceState(null, '', window.location.pathname);
 
-  // Sesi cookie diverifikasi server (GET /api/boot) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
-  const me = await loadBoot();
+  // Sesi cookie diverifikasi server (GET /api/v1/me) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
+  const me = await loadMe();
   initSession(resolveInitialSession(me, authError));
   if (me) {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).

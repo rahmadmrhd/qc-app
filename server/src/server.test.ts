@@ -59,21 +59,15 @@ describe('createServer: API', () => {
     expect(await response.json()).toEqual({ ok: true });
   });
 
-  test('POST /api/rpc auth.me tanpa sesi -> 401 UNAUTHENTICATED', async () => {
-    const response = await server.fetch(
-      new Request('http://localhost/api/rpc', {
-        method: 'POST',
-        headers: { 'x-requested-with': 'qc', 'content-type': 'application/json' },
-        body: JSON.stringify({ method: 'auth.me' }),
-      }),
-      LOOPBACK,
-    );
+  test('GET /api/v1/me tanpa sesi -> 401 problem+json UNAUTHENTICATED', async () => {
+    const response = await get('/api/v1/me');
     expect(response.status).toBe(401);
-    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+    expect(response.headers.get('content-type')).toContain('application/problem+json');
+    expect(await response.json()).toMatchObject({ code: 'UNAUTHENTICATED', status: 401 });
   });
 
-  test('GET /api/boot tanpa sesi -> 401', async () => {
-    expect((await get('/api/boot')).status).toBe(401);
+  test('GET /api/boot sudah dihapus -> 404', async () => {
+    expect((await get('/api/boot')).status).toBe(404);
   });
 
   test('rute server yang tidak dikenal = 404 JSON, bukan index.html', async () => {

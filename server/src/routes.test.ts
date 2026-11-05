@@ -71,20 +71,15 @@ describe('kontrak RPC', () => {
   });
 });
 
-describe('auth.me dan /api/boot', () => {
-  test('auth.me memuat izin global dan lokasi aktif yang boleh diakses, terurut menurut kode', async () => {
-    const response = await app.request(
-      '/api/rpc',
-      {
-        method: 'POST',
-        headers: rpcHeaders(await cookieFor('budi@gmail.com')),
-        body: JSON.stringify({ method: 'auth.me', payload: null }),
-      },
-      env,
-    );
+describe('auth.me (GET /api/v1/me)', () => {
+  const me = async (email: string, headers: Record<string, string> = {}) =>
+    app.request('/api/v1/me', { headers: { cookie: await cookieFor(email), ...headers } }, env);
+
+  test('memuat izin global dan lokasi aktif yang boleh diakses, terurut menurut kode', async () => {
+    const response = await me('budi@gmail.com');
     expect(response.status).toBe(200);
-    const json = (await response.json()) as { ok: true; data: Record<string, unknown> };
-    expect(json.data).toMatchObject({
+    const json = (await response.json()) as Record<string, unknown>;
+    expect(json).toMatchObject({
       email: 'budi@gmail.com',
       name: 'Budi',
       isSuperAdmin: false,
@@ -100,63 +95,40 @@ describe('auth.me dan /api/boot', () => {
   });
 
   test('super admin melihat semua lokasi aktif dengan manage', async () => {
-    const response = await app.request(
-      '/api/rpc',
-      {
-        method: 'POST',
-        headers: rpcHeaders(await cookieFor('admin@gmail.com')),
-        body: JSON.stringify({ method: 'auth.me', payload: null }),
-      },
-      env,
-    );
-    const json = (await response.json()) as {
-      data: { locations: { code: string; permissions: unknown }[]; isSuperAdmin: boolean };
+    const json = (await (await me('admin@gmail.com')).json()) as {
+      locations: { code: string; permissions: unknown }[];
+      isSuperAdmin: boolean;
     };
-    expect(json.data.isSuperAdmin).toBe(true);
-    expect(json.data.locations.map((l) => l.code)).toEqual(['BDG', 'JKT']);
-    expect(json.data.locations[0]?.permissions).toEqual({
+    expect(json.isSuperAdmin).toBe(true);
+    expect(json.locations.map((l) => l.code)).toEqual(['BDG', 'JKT']);
+    expect(json.locations[0]?.permissions).toEqual({
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
     });
   });
 
-  test('auth.me menolak input non-null', async () => {
+  test('/api/rpc tidak lagi melayani auth.me (sudah REST): NOT_FOUND', async () => {
     const response = await app.request(
       '/api/rpc',
       {
         method: 'POST',
         headers: rpcHeaders(await cookieFor('budi@gmail.com')),
-        body: JSON.stringify({ method: 'auth.me', payload: { x: 1 } }),
-      },
-      env,
-    );
-    expect(response.status).toBe(400);
-  });
-
-  test('GET /api/boot mengembalikan data yang sama dengan auth.me', async () => {
-    const cookie = await cookieFor('budi@gmail.com');
-    const boot = await app.request('/api/boot', { headers: { cookie } }, env);
-    const rpc = await app.request(
-      '/api/rpc',
-      {
-        method: 'POST',
-        headers: rpcHeaders(cookie),
         body: JSON.stringify({ method: 'auth.me', payload: null }),
       },
       env,
     );
-    expect(boot.status).toBe(200);
-    expect((await boot.json()) as unknown).toEqual((await rpc.json()) as unknown);
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('NOT_FOUND');
   });
 
-  test('GET /api/boot tanpa sesi: 401 UNAUTHENTICATED; akun dinonaktifkan: 401', async () => {
-    const anon = await app.request('/api/boot', {}, env);
+  test('tanpa sesi: 401 UNAUTHENTICATED (problem+json); akun dinonaktifkan: 401', async () => {
+    const anon = await app.request('/api/v1/me', {}, env);
     expect(anon.status).toBe(401);
-    expect(((await anon.json()) as { error: { code: string } }).error.code).toBe('UNAUTHENTICATED');
+    expect(((await anon.json()) as { code: string }).code).toBe('UNAUTHENTICATED');
     const cookie = await cookieFor('budi@gmail.com');
     await env.DB.prepare("UPDATE users SET status = 'inactive'").run();
-    expect((await app.request('/api/boot', { headers: { cookie } }, env)).status).toBe(401);
+    expect((await app.request('/api/v1/me', { headers: { cookie } }, env)).status).toBe(401);
   });
 
   test('POST /api/rpc tanpa header CSRF ditolak sebelum menyentuh sesi', async () => {

@@ -1,13 +1,4 @@
-import {
-  callRoute,
-  handleRpc,
-  type RouteTable,
-  readCookie,
-  rpcResponse,
-  statusOf,
-  toErrorBody,
-} from '@server/core/router';
-import { SESSION_COOKIE } from '@server/core/session';
+import { handleRpc, type RouteTable, statusOf, toErrorBody } from '@server/core/router';
 import { openApiResponse } from '@server/http/openapi';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { registerRest, restNotFound } from '@server/http/rest';
@@ -50,12 +41,7 @@ export function createApp(
   registerRest(rest, routes, migrated);
   app.route('/api/v1', rest);
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
-  // Data awal klien: alias `auth.me` (sesi dari cookie); tanpa sesi -> 401 UNAUTHENTICATED.
-  app.get('/api/boot', async (c) =>
-    rpcResponse(
-      await callRoute(c.env, readCookie(c.req.raw, SESSION_COOKIE), 'auth.me', null, routes),
-    ),
-  );
+  // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST); `/api/boot` sudah dihapus.
   app.route('/auth', authApp);
   // QC Desktop: token di badan, tanpa cookie (bukan permukaan CSRF); amplop sama dengan era Apps Script.
   // Pembatas percobaan salah dihitung per IP klien (`clientIp`, lihat http/proxy.ts).

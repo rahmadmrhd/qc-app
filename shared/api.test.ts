@@ -190,9 +190,10 @@ describe('tabel rute', () => {
     }
   });
 
-  test('semua id tercakup dan REST_MIGRATED_IDS hanya berisi id yang ada', () => {
+  test('semua id tercakup; REST_MIGRATED_IDS = seluruh id tabel (setelah T22 tak ada yang tersisa di RPC)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
     for (const id of REST_MIGRATED_IDS) expect(API_ROUTES[id]).toBeDefined();
+    expect([...REST_MIGRATED_IDS].sort()).toEqual([...IDS].sort());
   });
 
   test('rute biner punya bentuk rinci (rawBody/multipart/download) sesuai penandanya', () => {

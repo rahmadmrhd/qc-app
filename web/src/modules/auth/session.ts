@@ -7,7 +7,7 @@ export const PERSISTED_CACHE_KEY = 'qc.cache.v1';
 export const LOGIN_URL = '/auth/login';
 
 export interface SessionState {
-  /** Sesi cookie sah (hasil GET /api/boot). Token tidak pernah dipegang JavaScript. */
+  /** Sesi cookie sah (hasil GET /api/v1/me). Token tidak pernah dipegang JavaScript. */
   authenticated: boolean;
   email: string | null;
   loginUrl: string;

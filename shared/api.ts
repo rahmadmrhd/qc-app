@@ -240,7 +240,7 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
 /**
  * Id yang sudah dilayani REST. Sumber tunggal untuk server (`/api/rpc` menjawab `NOT_FOUND` untuk id ini) dan
  * FE (`rpc()` mengarahkan id ini ke `api()`). Tiap tugas modul menambah id-nya bersama pemindahan FE modul itu;
- * id berpenanda `binary` baru masuk setelah T21.
+ * setelah T22 seluruh id sudah di sini (himpunan ini dan `/api/rpc` dihapus di T23).
  */
 export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpcMethod>([
   'brands.list',
@@ -289,6 +289,7 @@ export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpc
   'qrcodes.uploadPdf',
   'qrcodes.export',
   'qrcodes.file',
+  'auth.me',
 ]);
 
 export interface RequestParts {

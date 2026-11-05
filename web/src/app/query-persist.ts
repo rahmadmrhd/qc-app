@@ -36,7 +36,7 @@ function keyId(key: readonly unknown[]): string {
 }
 
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
-/** `owner` = email pengguna yang sesinya sudah diverifikasi server (GET /api/boot); cache milik orang lain dibuang. */
+/** `owner` = email pengguna yang sesinya sudah diverifikasi server (GET /api/v1/me); cache milik orang lain dibuang. */
 export function restoreQueryCache(queryClient: QueryClient, owner: string | null): number {
   if (!owner) return 0;
   try {

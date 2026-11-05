@@ -125,17 +125,15 @@ describe('GET /auth/dev-login', () => {
     expect(JSON.stringify(await response.json())).toContain('db:seed');
   });
 
-  test('cookie dev-login dapat dipakai untuk /api/boot', async () => {
+  test('cookie dev-login dapat dipakai untuk GET /api/v1/me', async () => {
     const login = await app.request('http://localhost:8788/auth/dev-login', {}, devEnv());
     const cookie = (sessionCookie(login) as string).split(';')[0] as string;
     const boot = await app.request(
-      'http://localhost:8788/api/boot',
+      'http://localhost:8788/api/v1/me',
       { headers: { cookie } },
       devEnv(),
     );
     expect(boot.status).toBe(200);
-    expect(((await boot.json()) as { data: { email: string } }).data.email).toBe(
-      'dev@example.test',
-    );
+    expect(((await boot.json()) as { email: string }).email).toBe('dev@example.test');
   });
 });

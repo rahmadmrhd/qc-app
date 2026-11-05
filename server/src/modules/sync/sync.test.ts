@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { app } from '@server/app';
 import { appError } from '@server/core/errors';
 import { signSessionToken } from '@server/core/session';
-import { CSRF_HEADER, CSRF_VALUE } from '@server/http/security';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
@@ -191,12 +190,8 @@ describe('handler', () => {
 
   test('token sinkron tidak berlaku untuk RPC web, dan token sesi tidak berlaku untuk jalur sinkron', async () => {
     const response = await app.request(
-      '/api/rpc',
-      {
-        method: 'POST',
-        headers: { cookie: `qc_session=${TOKEN}`, [CSRF_HEADER]: CSRF_VALUE },
-        body: JSON.stringify({ method: 'auth.me' }),
-      },
+      '/api/v1/me',
+      { headers: { cookie: `qc_session=${TOKEN}` } },
       env,
     );
     expect(response.status).toBe(401);
