@@ -733,27 +733,3 @@ describe('audit.list (kursor)', () => {
     expect(result.entries.every((entry) => entry.target.includes('u19'))).toBe(true);
   }, 60_000);
 });
-
-describe('izin rute access', () => {
-  test('view boleh membaca, hanya manage boleh menulis; audit.list lewat RPC berkursor', async () => {
-    await seedRole(env, { id: 'r-view', name: 'Lihat Akses', permissions: { access: 'view' } });
-    await seedUser(env, { id: 'u-v', email: 'viewer@gmail.com', roleIds: ['r-view'] });
-    const token = await signSessionToken(env, 'viewer@gmail.com', env.clock.now());
-    const routes = getRoutes();
-    const read = await callRoute(env, token, 'access.users.list', null, routes);
-    expect(read.ok).toBe(true);
-    const write = await callRoute(
-      env,
-      token,
-      'access.locations.save',
-      { code: 'ZZ', name: 'Zed' },
-      routes,
-    );
-    expect(write.ok).toBe(false);
-    if (!write.ok) expect(write.error.code).toBe('FORBIDDEN');
-    const audit = await callRoute(env, token, 'access.audit.list', { limit: 2 }, routes);
-    expect(audit.ok).toBe(true);
-    const bad = await callRoute(env, token, 'access.audit.list', { limit: 500 }, routes);
-    expect(bad.ok).toBe(false);
-  });
-});

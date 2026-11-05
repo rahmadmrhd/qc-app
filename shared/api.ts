@@ -164,6 +164,19 @@ export const REST_MIGRATED_IDS: ReadonlySet<WorkerRpcMethod> = new Set<WorkerRpc
   'brands.list',
   'brands.save',
   'brands.setStatus',
+  'access.users.list',
+  'access.users.save',
+  'access.users.setStatus',
+  'access.roles.list',
+  'access.roles.save',
+  'access.roles.delete',
+  'access.audit.list',
+  'access.locations.list',
+  'access.locations.save',
+  'access.locations.setStatus',
+  'customers.list',
+  'customers.rename',
+  'customers.setStatus',
 ]);
 
 export interface RequestParts {
