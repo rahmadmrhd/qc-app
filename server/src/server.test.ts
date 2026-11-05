@@ -150,7 +150,9 @@ describe('createServer: IP klien dan pembatas /api/v1/sync/*', () => {
   const okOf = async (response: Response) => response.status === 200;
   const limiterKeys = async () =>
     (
-      await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
+      await env.DB.prepare('SELECT `key` FROM rate_limits WHERE count > 0 ORDER BY `key`').all<{
+        key: string;
+      }>()
     ).results.map((row) => row.key);
 
   test('peer non-loopback tak bisa mengelabui pembatas dengan CF-Connecting-IP palsu', async () => {

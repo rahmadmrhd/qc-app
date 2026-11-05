@@ -33,6 +33,13 @@ async function isBlocked(env: Env, now: number, ip: string): Promise<boolean> {
  *   tidak dihitung, tidak ditolak karena serentak, dan tidak ikut memicu blokir;
  * - blokir yang dibaca di dalam transaksi (setelah kunci didapat) menolak percobaan yang lolos pra-pemeriksaan tepat
  *   sebelum blokir ter-commit (penghitung yang sempat dibuat dibuang lagi).
+ * Baris penghitung bernilai 0 DIPERTAHANKAN untuk permintaan sah (jalur sah hanya `UPDATE` baris yang ada, tanpa
+ * sisip-lalu-hapus pada kunci yang sama yang rawan deadlock gap-lock saat burst); baris kedaluwarsa dibuang penjadwal
+ * (`purgeExpiredRateLimits`, tiap jam). Penghitung baru dibuang hanya saat blokir berlaku.
+ * Urutan di dalam transaksi PENTING: read view InnoDB dibuat pada bacaan konsisten PERTAMA (`SELECT count`), yaitu
+ * sesudah kunci baris dari upsert didapat, sehingga `SELECT` blokir melihat blokir yang sudah ter-commit oleh transaksi
+ * yang mendahului. Jangan memindahkan `SELECT` ke sebelum upsert atau memakai `WITH CONSISTENT SNAPSHOT` (mengandalkan
+ * `innodb_snapshot_isolation` mati, lihat CLAUDE.md).
  * `fn` bebas efek di luar basis data (deadlock mengulangnya sekali).
  */
 async function settleAttempt(env: Env, now: number, ip: string, valid: boolean): Promise<boolean> {
@@ -69,10 +76,10 @@ async function settleAttempt(env: Env, now: number, ip: string, valid: boolean):
         .run();
       blocked = true;
     }
-    // Penghitung dibuang bila blokir berlaku (kegagalan sudah terwakili blokir) atau kosong (permintaan sah tidak
-    // meninggalkan baris); pernyataan yang sama dijalankan pada semua jalur.
+    // Penghitung dibuang bila blokir berlaku (kegagalan sudah terwakili blokir); pernyataan yang sama dijalankan pada
+    // semua jalur (hanya nilai bind yang berbeda).
     await tx
-      .prepare('DELETE FROM rate_limits WHERE `key` = ? AND (count <= 0 OR ?)')
+      .prepare('DELETE FROM rate_limits WHERE `key` = ? AND ?')
       .bind(failKey, blocked ? 1 : 0)
       .run();
     return valid && !blocked && failures < SYNC_LIMITS.failedAttempts;

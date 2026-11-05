@@ -305,7 +305,20 @@ describe('handler (REST /api/v1/sync/*)', () => {
   test('(N1) 25 permintaan SAH serentak semuanya diterima; permintaan sukses tidak dihitung dan tidak meninggalkan baris', async () => {
     const results = await Promise.all(Array.from({ length: 25 }, () => ping(TOKEN)));
     expect(results.every((r) => r.ok)).toBe(true);
-    expect(await limiterRows()).toEqual([]);
+    // tidak ada kegagalan tercatat (baris bernilai 0 dipertahankan, lihat tes m1)
+    expect((await limiterRows()).filter((r) => Number(r.count) > 0)).toEqual([]);
+  });
+
+  test('(m1) jalur sah tanpa sisip-lalu-hapus: baris penghitung bernilai 0 dipertahankan dan burst 60 permintaan sah semuanya diterima', async () => {
+    expect(await ping(TOKEN)).toMatchObject({ ok: true });
+    expect(await limiterRows()).toEqual([{ key: 'sync:fails:unknown', count: 0 }]);
+    const results = await Promise.all(Array.from({ length: 60 }, () => ping(TOKEN)));
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(await limiterRows()).toEqual([{ key: 'sync:fails:unknown', count: 0 }]);
+    // baris bernilai 0 tidak melonggarkan atau mengetatkan: 10 kegagalan tetap memblokir
+    for (let i = 0; i < 10; i++) await ping(`salah-${i}`);
+    expect(await ping(TOKEN)).toMatchObject({ ok: false });
+    expect((await limiterRows()).map((r) => r.key)).toEqual(['sync:blocked:unknown']);
   });
 
   test('(N1) 9 permintaan sah serentak + 1 token salah: semua yang sah sukses dan IP TIDAK terblokir (hanya 1 kegagalan)', async () => {

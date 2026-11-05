@@ -83,8 +83,9 @@ export async function probeDriveIds(
   const pending = unique.filter((driveId) => !known.has(driveId));
   // Pekerja bersama dengan konkurensi terbatas: puluhan id baru dalam satu push tidak lagi berurutan satu per satu
   // (tiap panggilan jembatan = ratusan ms), tetapi tidak juga menyerbu jembatan sekaligus.
-  // Galat pertama menghentikan semua pekerja (`failed`): tidak ada panggilan jembatan yang berlanjut di latar setelah
-  // permintaan dijawab galat (seperti versi berurutan yang berhenti di galat pertama).
+  // Galat pertama menghentikan semua pekerja (`failed`): tidak ada panggilan jembatan BARU setelah permintaan dijawab
+  // galat (seperti versi berurutan yang berhenti di galat pertama); panggilan yang sedang berjalan (maks. 7) tetap
+  // selesai di latar.
   let next = 0;
   let failed = false;
   async function worker(): Promise<void> {
