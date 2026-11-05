@@ -432,20 +432,30 @@ async function upsertSyncItem(
     // Percobaan ulang: bila item itu sendiri sudah berubah (penjaga CAS `updated_at` yang memicu), `existing` yang
     // dipakai penjaga basi dan percobaan berikutnya pasti gagal lagi: langsung CONFLICT tanpa merencanakan ulang.
     // Bila item tidak berubah (penjaga merk yang memicu), rencana dibuat ulang dengan merk yang dibaca segar.
+    let input = merged;
     if (attempt > 0 && existing) {
-      const current = await env.DB.prepare('SELECT updated_at FROM items WHERE id = ?')
+      // Satu kueri (JOIN): `updated_at` item DAN nama merk tersimpannya menurut ID (tanpa round trip tambahan).
+      const current = await env.DB.prepare(
+        'SELECT i.updated_at AS updated_at, b.name AS brand_name FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.id = ?',
+      )
         .bind(existing.id)
-        .first<{ updated_at: string }>();
+        .first<{ updated_at: string; brand_name: string | null }>();
       if (current?.updated_at !== existing.updatedAt) throw appError('CONFLICT', staleMessage);
+      // Entri tanpa `merk` berarti "merk tidak berubah": nama merk diambil segar menurut id, BUKAN nama basi dari
+      // cache permintaan (ganti nama merk yang menyela akan membuat merk bernama lama tercipta ulang, N2). Bila
+      // `merk` dikirim, nama itu dipakai apa adanya.
+      if (entry.merk === undefined && current.brand_name) {
+        input = { ...merged, brand: current.brand_name };
+      }
     }
-    const plan = await planItemWrite(env, merged, {
+    const plan = await planItemWrite(env, input, {
       id: ownerId,
       existing,
       actor: SYNC_ACTOR_REF,
       externalId: entry.id,
       status,
       knownBrand:
-        attempt++ === 0 ? (state.brandsByKey.get(normalizeKey(merged.brand)) ?? null) : undefined,
+        attempt++ === 0 ? (state.brandsByKey.get(normalizeKey(input.brand)) ?? null) : undefined,
     });
     // Revisi yang dipakai baris datang dari `SELECT sync_rev` di akhir batch penulisan item (transaksi yang sama;
     // lihat `readSyncRevStmt`).

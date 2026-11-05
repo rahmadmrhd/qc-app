@@ -242,13 +242,6 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
         saveItem(env, { ...ITEM_BASE, brand: old, model: `Tambah ${round}` }, admin),
         saveItem(env, { ...ITEM_BASE, brand: old, model: `Tambah B${round}` }, admin),
       ]);
-      for (const s of settled)
-        if (s.status === 'rejected')
-          console.log(
-            'REJ',
-            String((s.reason as Error)?.message),
-            JSON.stringify((s.reason as { fields?: unknown })?.fields),
-          );
       // ketiganya berhasil (percobaan ulang menutup penjaga yang memicu); tak ada yang ditolak diam-diam
       expect(settled.map((entry) => entry.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
       await assertItemKeysMatchBrands();
@@ -362,6 +355,12 @@ describe('(N1) setItemStatus: ganti nama merk di antara dua pembacaan', () => {
       .bind('i1')
       .first<{ key: string; status: string }>();
     expect(row).toEqual({ key: 'baru satu', status: 'inactive' });
+    const audit = await env.DB.prepare(
+      "SELECT target, `before`, `after` FROM audit_log WHERE action = 'item.deactivate'",
+    ).first<{ target: string; before: string; after: string }>();
+    expect(audit?.target).toBe('Baru Satu');
+    expect(JSON.parse(audit?.before as string).brand).toBe('Baru');
+    expect(JSON.parse(audit?.after as string).brand).toBe('Baru');
   }, 60_000);
 });
 
@@ -519,6 +518,33 @@ describe('(m1) pindah merk dan sync push vs ganti nama merk', () => {
       .bind('i1')
       .first<{ k: string; brand: string }>();
     expect(moved).toEqual({ k: 'lama satu', brand: 'Lama' });
+    await assertItemKeysMatchBrands();
+  }, 60_000);
+
+  test('(N2) sync push item yang ada TANPA merk saat merknya diganti nama: item tetap di merk yang sama, tidak ada merk lama baru', async () => {
+    await seedBrand(env, 'Lama');
+    await seedItem(env, { id: 'i1', brand: 'Lama', model: 'Satu', syncRev: 1 });
+    await env.DB.prepare('UPDATE brands SET item_count = 1 WHERE id = ?').bind('brand-lama').run();
+    const { delayed, atWrite, release } = gatedEnv(ITEM_WRITE);
+    const pending = syncPush(delayed, [{ uid: 'i1', detail: 'teks baru', baseRev: 1 }]);
+    await atWrite;
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    release();
+    const out = await pending;
+    expect(out.ok).toBe(true);
+    expect(out.data?.results.map((entry) => entry.status)).toEqual(['updated']);
+    const row = await env.DB.prepare(
+      'SELECT i.brand_id AS brand_id, i.`key` AS k, i.detail_md AS detail FROM items i WHERE i.id = ?',
+    )
+      .bind('i1')
+      .first<{ brand_id: string; k: string; detail: string }>();
+    expect(row).toEqual({ brand_id: 'brand-lama', k: 'baru satu', detail: 'teks baru' });
+    expect(await brandRow('brand-lama')).toMatchObject({ name: 'Baru', key: 'baru' });
+    const lama = await env.DB.prepare('SELECT COUNT(*) AS n FROM brands WHERE name = ?')
+      .bind('Lama')
+      .first<{ n: number }>();
+    expect(Number(lama?.n)).toBe(0);
+    expect(await itemCountOf('brand-lama')).toBe(1);
     await assertItemKeysMatchBrands();
   }, 60_000);
 
