@@ -8,7 +8,7 @@ import { SYNC_TEST_TOKEN, type SyncOut, syncCall, syncSend } from '@server-test/
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_API_ROUTES, type SyncRouteId } from '@shared/api';
 import { SYNC_ACTOR } from '@shared/sync';
-import { getSyncFile, planDriveFiles, probeDriveIds, registerDriveFiles } from './files';
+import { planDriveFiles, probeDriveIds, registerDriveFiles } from './files';
 import { syncRoute } from './handler';
 import { syncRoutes } from './routes';
 import { currentSyncRev } from './state';
@@ -246,6 +246,23 @@ describe('handler (REST /api/v1/sync/*)', () => {
     // blokir berakhir setelah 10 menit
     env.clock.advance(10 * 60 * 1000 + 1);
     expect(await ping(TOKEN)).toMatchObject({ ok: true });
+  });
+
+  test('token sinkron sebagai Bearer tidak berlaku di rute web: GET /me dan rute tulis = 401', async () => {
+    const bearer = { authorization: `Bearer ${TOKEN}` };
+    const me = await app.request('https://qc.test/api/v1/me', { headers: bearer }, env);
+    expect(me.status).toBe(401);
+    const write = await app.request(
+      'https://qc.test/api/v1/brands',
+      {
+        method: 'POST',
+        headers: { ...bearer, 'x-requested-with': 'qc', 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Lewat Bearer' }),
+      },
+      env,
+    );
+    expect(write.status).toBe(401);
+    expect(await brandsInDb()).toEqual([]);
   });
 
   test('pembatas per IP: IP yang diblokir tidak menghalangi IP lain, dan tiap IP dihitung sendiri', async () => {
@@ -729,7 +746,7 @@ describe('files', () => {
     ).toBe('image/jpeg');
   });
 
-  test('GET /sync/files/{id}: If-None-Match yang cocok = 304 tanpa badan; berbeda = 200; id dengan karakter khusus di-decode', async () => {
+  test('GET /sync/files/{id}: If-None-Match yang cocok = 304 tanpa badan; berbeda = 200', async () => {
     const folder = await folderWithBridge();
     const driveId = await driveFile(folder, 'a.png', 'image/png', PNG);
     const same = await syncSend(
@@ -755,6 +772,36 @@ describe('files', () => {
     const odd = await syncSend(env, 'sync.file.get', { driveId: 'a/b c%d' });
     expect(odd.status).toBe(404);
     expect(await odd.json()).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  test('id berkarakter khusus di jalur di-decode: berkas dengan id "a b" ditemukan (200), ETag memuat id asli', async () => {
+    const folder = await folderWithBridge();
+    env.BRIDGE.state.files.set('a b', {
+      folderId: folder,
+      name: 'spasi.png',
+      mime: 'image/png',
+      base64: PNG,
+      shared: false,
+      trashed: false,
+    });
+    const response = await syncSend(env, 'sync.file.get', { driveId: 'a b' });
+    expect(response.status).toBe(200); // tanpa decoding, jalur "a%20b" tidak akan cocok dengan id "a b"
+    expect(response.headers.get('etag')).toBe('"a b"');
+    expect(response.headers.get('content-type')).toBe('image/png');
+    const missing = await syncSend(env, 'sync.file.get', { driveId: 'a/b c%d' });
+    expect(missing.status).toBe(404);
+  });
+
+  test('driveId 101 karakter ditolak 422 fields.driveId; 100 karakter diteruskan (404 bila tak ada)', async () => {
+    await folderWithBridge();
+    expect(await call('sync.file.get', { driveId: 'x'.repeat(101) })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION', status: 422, fields: { driveId: expect.any(String) } },
+    });
+    expect(await call('sync.file.get', { driveId: 'x'.repeat(100) })).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
   });
 
   test('Cache-Control berkas mengikuti def.download.cache pada tabel (bukan nilai tetap di kode)', async () => {
@@ -824,7 +871,6 @@ describe('files', () => {
     const ok = await syncSend(env, 'sync.file.get', { driveId: edge });
     expect(ok.status).toBe(200);
     expect((await ok.arrayBuffer()).byteLength).toBe(7_999_998);
-    expect(typeof getSyncFile).toBe('function');
   });
 
   test('probeDriveIds: 50 id baru diperiksa dengan konkurensi terbatas (<= 8, > 1), dedup tetap, hasil sama dengan berurutan', async () => {

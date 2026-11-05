@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
 import { saveItem } from '@server/modules/item/service';
-import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { type SyncOut, syncCall, syncSend } from '@server-test/sync-rest';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SYNC_ACTOR } from '@shared/sync';
@@ -234,6 +234,38 @@ describe('pull', () => {
       Object.keys(repeated.items[0] as object).sort(),
     );
     expect((await get('limit=1&limit=2')).status).toBe(422);
+  });
+
+  test('pull 201 item dengan ?limit=500&include=detail: halaman dipotong 200, hasMore, kursor = rev ke-200', async () => {
+    await seedBrand(env, 'Merk', { syncRev: 0 });
+    const brandId = brandIdOf('Merk');
+    const rows = Array.from({ length: 201 }, (_, i) => i + 1);
+    const tuple =
+      "(?, '', ?, ?, ?, 'false', '[]', '', '[]', '[]', '[]', '', 'active', ?, ?, ?, 'seed')";
+    await env.DB.prepare(
+      'INSERT INTO items (id, external_id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES ' +
+        rows.map(() => tuple).join(','),
+    )
+      .bind(
+        ...rows.flatMap((n) => [
+          `bulk-${n}`,
+          brandId,
+          `T${n}`,
+          `merk t${n}`,
+          n,
+          '2026-10-15T00:00:00.000Z',
+          '2026-10-15T00:00:00.000Z',
+        ]),
+      )
+      .run();
+    const page = await call('sync.items.pull', { limit: 500, include: ['detail'] });
+    expect(page.ok).toBe(true);
+    expect(page.data.items).toHaveLength(200);
+    expect(page.data.hasMore).toBe(true);
+    expect(page.data.nextRev).toBe(200);
+    const plain = await call('sync.items.pull', { limit: 500 });
+    expect(plain.data.items).toHaveLength(201); // tanpa detail: 500 per halaman
+    expect(plain.data.hasMore).toBe(false);
   });
 
   test('limit 200 dengan detail diterima oleh rute (kontrak: 200 per halaman dengan detail)', async () => {
