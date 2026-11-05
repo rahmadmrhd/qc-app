@@ -126,22 +126,24 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | FAU2 | Diff audit yang mudah dibaca untuk item dan task. | Daftar (alias, stiker, kelengkapan) dan butir checklist task dibandingkan per entri dengan warna tambah/ubah/hapus; isi Markdown (detail item dan catatan task) ditampilkan sebagai "diubah" tanpa diff teks penuh. |
 
 ### 4.8 Sinkronisasi dengan QC Desktop (Fase B2)
-Kontrak lengkap (amplop, payload, contoh, aturan konflik): `docs/api/desktop-sync.md`.
+> **Keputusan pemilik 2026-11-05/06 (migrasi VPS, spek `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md` §2 butir 6 dan §19 butir 7):** kontrak sinkron dikonversi dari amplop RPC (`doPost`/`POST /sync`, token di badan) menjadi **REST `/api/v1/sync/*` dengan `Authorization: Bearer`**, versi API 2. Alasan: kontrak belum dipakai klien mana pun, jadi tidak ada jalur kompatibilitas. Butir FS1, FS2, FS4, FS5, FS9, FS12, FS13, §6.3b, risiko token bocor, daftar periksa Fase B2, dan keputusan di bawah diubah sesuai; batas peninggalan CPU edge (pull dengan detail 50, push 5 item) dikembalikan ke nilai kontrak (200 dan 50/25). Bentuk item/merk dan semantik `rev`/`baseRev`/`overwrite` tidak berubah.
+
+Kontrak lengkap (rute, payload, contoh, aturan konflik): `docs/api/desktop-sync.md`.
 
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FS1 | Endpoint HTTP `doPost` untuk QC Desktop; amplop berversi `{ v, method, token, payload }`; metode `sync.<sumberDaya>.<aksi>`; balasan sama bentuk dengan RPC web. | `sync.ping` mengembalikan versi API dan daftar sumber daya. |
-| FS2 | Autentikasi satu token bersama `SYNC_API_TOKEN` (≥ 32 karakter), dibandingkan waktu-konstan; 10 token salah dalam 10 menit memblokir semua permintaan 10 menit. | Tanpa token valid tidak ada data atau metode yang terungkap; pesan galat tidak membedakan alasan. |
-| FS3 | Jalur sinkron **terpisah** dari RPC sesi: tabel rute sinkron sendiri; handler tidak pernah menerima konteks user; pelaku tercatat `sync:desktop`. | Token sinkron tidak dapat memanggil metode RPC web, dan sebaliknya. |
-| FS4 | `sync.items.pull`: kursor `rev`, paginasi (`limit`, `hasMore`, `nextRev`), `include` opsional untuk field berat. | Menarik dari `sinceRev: 0` sampai `hasMore: false` mengembalikan semua item tepat sekali. |
-| FS5 | `sync.items.push`: upsert per item dengan hasil per item (`created`, `updated`, `unchanged`, `conflict`, `invalid`, `error`); pencocokan `uid` → `id` (MySQL) → merk+tipe ternormalisasi; pemetaan id MySQL ke item QC App; `isCountryLock` boolean (teks "true"/"false" diterima); `active: false` = nonaktif. | Mendorong ulang permintaan yang sama menghasilkan `unchanged` (idempoten); kegagalan satu item tidak membatalkan yang lain; ≤ 50 item per panggilan (≤ 25 bila memuat `detail`; konservatif karena batas 6 menit Apps Script, naikkan setelah diukur). |
+| FS1 | Rute REST `/api/v1/sync/*` untuk QC Desktop (`GET /sync/ping`, `GET /sync/brands`, `POST /sync/brands/push`, `GET /sync/items`, `POST /sync/items/push`, `GET /sync/files/{id}`); tanpa amplop: sukses = badan JSON apa adanya, galat = problem+json; API berversi lewat `apiVersion` (2). | `GET /sync/ping` mengembalikan versi API dan daftar sumber daya; `POST /sync` (kabel lama) menjawab 404. |
+| FS2 | Autentikasi HANYA `Authorization: Bearer <SYNC_API_TOKEN>` (satu token bersama ≥ 32 karakter, dibandingkan waktu-konstan; tidak pernah di badan atau URL; cookie sesi tidak diterima); 10 token salah dalam 10 menit memblokir IP klien itu 10 menit. | Tanpa token valid tidak ada data atau rute yang terungkap; semua kegagalan sebelum autentikasi (header hilang, bukan Bearer, token salah, diblokir, token server belum diset) menjawab 401 problem+json yang sama persis ("Token tidak valid"); IP lain tidak terpengaruh. |
+| FS3 | Jalur sinkron **terpisah** dari REST sesi: tabel rute sinkron sendiri (`SYNC_API_ROUTES`); handler tidak pernah menerima konteks user; pelaku tercatat `sync:desktop`. | Token sinkron tidak dapat memanggil rute REST web, dan sebaliknya (sesi sah tanpa Bearer di rute sinkron = 401). |
+| FS4 | `GET /sync/items`: kursor `rev` (query `sinceRev`), paginasi (`limit`, `hasMore`, `nextRev`; 500 per halaman, 200 bila `include` memuat `detail`), `include` opsional untuk field berat. | Menarik dari `sinceRev: 0` sampai `hasMore: false` mengembalikan semua item tepat sekali. |
+| FS5 | `POST /sync/items/push`: upsert per item dengan hasil per item (`created`, `updated`, `unchanged`, `conflict`, `invalid`, `error`); pencocokan `uid` → `id` (MySQL) → merk+tipe ternormalisasi; pemetaan id MySQL ke item QC App; `isCountryLock` boolean (teks "true"/"false" diterima); `active: false` = nonaktif. | Mendorong ulang permintaan yang sama menghasilkan `unchanged` (idempoten); kegagalan satu item tidak membatalkan yang lain; ≤ 50 item per panggilan (≤ 25 bila memuat `detail`; lebih banyak = 422 dengan `fields.items`), badan ≤ 5 MB; hasil per item tetap di badan 200. |
 | FS6 | Konflik dua arah: `baseRev` lebih lama dari `rev` sekarang **dan** nilai berbeda → `conflict` beserta nilai terkini; `overwrite: true` melewati pemeriksaan. | Tidak ada perubahan pada item yang konflik; nilai sama persis → `unchanged`. |
 | FS7 | Field sinkron: merk, tipe, isCountryLock, images, detail, stickers, accessories, active. **Alias tidak disinkronkan.** Field yang tidak dikirim tidak diubah; daftar/teks yang dikirim (termasuk kosong) menggantikan nilai tersimpan. | Push tanpa `detail` tidak mengosongkan detail. |
-| FS8 | Gambar dirujuk dengan **id Drive**: `images`, `stickers[].image`, dan `![alt](drive:<id>)` di Markdown. Tiap id harus berada di folder aplikasi; berkas yang belum tercatat didaftarkan otomatis di sheet `files`. Pada push hanya rujukan `drive:` yang diterima di Markdown. | Id di luar folder → item `invalid`; menghapus id dari `images` tidak menghapus berkas Drive. |
-| FS9 | `sync.file.get` mengembalikan `{ mime, base64 }` untuk berkas di folder aplikasi (≤ 8 MB), bertoken. | Id di luar folder → `NOT_FOUND`. |
+| FS8 | Gambar dirujuk dengan **id Drive**: `images`, `stickers[].image`, dan `![alt](drive:<id>)` di Markdown. Tiap id harus berada di folder aplikasi; berkas yang belum tercatat didaftarkan otomatis di tabel `files`. Pada push hanya rujukan `drive:` yang diterima di Markdown. | Id di luar folder → item `invalid`; menghapus id dari `images` tidak menghapus berkas Drive. |
+| FS9 | `GET /sync/files/{id}` mengembalikan byte mentah (tanpa base64) dengan `Content-Type` berkas dan `ETag` = id, untuk berkas di folder aplikasi (≤ 8 MB), bertoken. | Id di luar folder → 404; berkas > 8 MB → 413. |
 | FS10 | Setiap item yang dibuat, diubah, atau konflik dicatat di audit dengan pelaku `sync:desktop` dan snapshot before/after. | Terlihat di Log Audit dengan diff yang terbaca. |
 | FS11 | Perubahan field sinkron di QC App menaikkan `sync_rev` sehingga muncul di pull berikutnya; perubahan alias tidak. | Tes: ubah alias → tidak muncul di pull; ubah detail → muncul. |
-| FS12 | Kerangka generik: sumber daya baru (stok stiker, stok manual book) mendaftar ke tabel rute sinkron tanpa mengubah kerangka; konvensi stok (Desktop master, snapshot absolut `{ key, qty, asOf }`) tercatat di kontrak. | Bagian "Menambah sumber daya baru" di kontrak. |
+| FS12 | Kerangka generik: sumber daya baru (stok stiker, stok manual book) mendaftar ke `SYNC_API_ROUTES` dan tabel handler sinkron tanpa mengubah kerangka; konvensi stok (Desktop master, snapshot absolut `{ key, qty, asOf }`) tercatat di kontrak. | Bagian "Menambah sumber daya baru" di kontrak. |
 | FS13 | Pengamanan folder gambar: `setup` **tidak** menimpa `DRIVE_FOLDER_ID` yang sudah terisi bila foldernya tidak dapat diakses; ia berhenti dengan pesan jelas (mengubah perilaku Fase A yang membuat folder baru). | Properti tidak berubah, laporan `setup` menyebut penyebab; folder baru hanya dibuat bila properti kosong. |
 
 ## 5. Kebutuhan Non-Fungsional
@@ -185,7 +187,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 `files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.options`, `handovers.board` (seluruh isi board satu lokasi dalam satu panggilan), `handovers.get`, `handovers.save` (catatan saja; membuat customer baru bila perlu), `handovers.saveBatch` (atomik per permintaan, maks. 30 task per permintaan di Apps Script maupun server VPS; formulir bulk mengirim SATU permintaan atomik: gagal = tidak ada yang tersimpan. **Keputusan pemilik produk 2026-11-05** menggantikan batas Worker 5 task (semula 10, diturunkan 2026-10-30 demi anggaran CPU edge) karena batas CPU edge tidak ada lagi di VPS), `handovers.cancel`, `handovers.setCheck` (centang per butir, `qc: edit`), `handovers.setDone { id, locationId }` (selesaikan task, `qc: edit`; tanpa field `done`), `handovers.reopen` (buka kembali task Dibatalkan, `handover: manage`), `handovers.comment` (hanya tambah; komentar umum dengan `quote` kosong; izin lihat). Rute `setProgress`, `completeLine`, dan `completeAll` dihapus. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
 
 ### 6.3b Endpoint sinkronisasi
-`doPost` di `gas/src/main.ts` mengurai amplop, memeriksa token, lalu memanggil tabel rute sinkron (`gas/src/modules/sync/`). Sumber daya `items` mendaftar di sana. Metode: `sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.file.get`. Detail di `docs/api/desktop-sync.md`.
+`registerSyncRest` (`server/src/modules/sync/rest.ts`) mendaftarkan enam rute `SYNC_API_ROUTES` (`shared/api.ts`) pada `/api/v1`, memeriksa token Bearer dan pembatas per IP, lalu memanggil tabel handler sinkron (`server/src/modules/sync/routes.ts`); badan push dibatasi 5 MB. Id handler (`sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.brands.*`, `sync.file.get`) tetap sebagai nama internal dan `operationId` OpenAPI. Versi lama (`doPost` di `gas/src/main.ts`, amplop `{ v, method, token, payload }`) hanya tinggal di aplikasi GAS yang dipensiunkan di T35. Detail di `docs/api/desktop-sync.md`.
 
 ### 6.4 Gambar dan Markdown
 - Drive: `DriveApp` lewat `platform_()` (`driveCreateFile`, `driveReadBase64`); folder utama dibuat `setup`. Izin Drive ditambahkan ke `appsscript.json`; Google meminta persetujuan ulang sekali saat `setup`.
@@ -218,7 +220,7 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 | Perubahan `item` menjadi global menyentuh izin | Regresi akses | Tes `resolveAccess` ditambah; belum ada data item sehingga dampak data nol. |
 | Batas sel 50.000 karakter | Data terpotong | Batas FA7 dan batas jumlah entri; validasi ukuran total JSON di server. |
 
-| Token sinkron bocor | Pihak luar dapat menulis atau membaca item | Token panjang acak di Script Property, tidak pernah di URL, pembatas percobaan salah, pelaku tercatat di audit, rotasi dengan mengganti properti. |
+| Token sinkron bocor | Pihak luar dapat menulis atau membaca item | Token panjang acak di variabel lingkungan server, hanya di header `Authorization` (tidak pernah di URL atau badan, tidak dicatat di log), pembatas percobaan salah per IP, pelaku tercatat di audit, rotasi dengan mengganti variabel. |
 | Konflik dua arah menimpa pekerjaan | Data berubah diam-diam | `baseRev` dan status `conflict`; audit before/after memungkinkan pemulihan; `overwrite` harus eksplisit. |
 | Folder gambar lama salah atau tidak berizin | Gambar tidak terbaca atau folder baru terbuat tanpa disadari | FS13 (setup tidak menimpa), urutan panduan: isi `DRIVE_FOLDER_ID` sebelum `setup`, validasi per id saat push. |
 | Migrasi besar melewati batas waktu `doPost` | Sebagian item belum masuk | Batas per panggilan, hasil per item, push idempoten sehingga dapat diulang aman. |
@@ -237,11 +239,11 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 - [x] Halaman daftar dan detail item; audit dengan diff yang terbaca.
 
 **Fase B2**
-- [x] `doPost` dan kerangka (token, pembatas percobaan salah, amplop, tabel rute sinkron) dites, termasuk token salah dan pembatasan.
-- [x] `sync.items.pull` dan `sync.items.push` dengan semua field, hasil per item, dan konflik dua arah; tes kesesuaian terhadap contoh di `docs/api/desktop-sync.md`.
-- [x] `sync.file.get` terbatas pada folder aplikasi.
+- [x] Kerangka REST sinkron (token Bearer, pembatas percobaan salah per IP, problem+json, tabel rute sinkron) dites, termasuk token salah seragam 401 dan pembatasan (T25, 2026-11-06; sebelumnya `doPost`).
+- [x] `GET /sync/items` dan `POST /sync/items/push` dengan semua field, hasil per item, dan konflik dua arah; tes kesesuaian terhadap contoh di `docs/api/desktop-sync.md`.
+- [x] `GET /sync/files/{id}` terbatas pada folder aplikasi.
 - [x] `setup` tidak menimpa `DRIVE_FOLDER_ID` yang tidak dapat diakses (FS13).
-- [x] `sync.brands.pull` dan `sync.brands.push` (merk master dua arah).
+- [x] `GET /sync/brands` dan `POST /sync/brands/push` (merk master dua arah).
 - [ ] Migrasi awal dari MySQL dicoba end-to-end dengan QC Desktop dan hasil pull cocok dengan MySQL.
 - [ ] Tim Desktop menyetujui `docs/api/desktop-sync.md`.
 
@@ -270,8 +272,8 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 | Gambar lama di spreadsheet? | Memakai folder Drive yang sama (`DRIVE_FOLDER_ID` = folder lama). |
 | Akses Desktop? | Endpoint API di QC App (GAS) dengan token. |
 | `isCountryLock` dan token? | Boolean; satu token bersama. |
-| Proyek GAS lama? | Dipensiunkan setelah migrasi; Desktop diarahkan ke `/exec` QC App. |
-| Cara Desktop membaca gambar? | Endpoint `sync.file.get`. |
+| Proyek GAS lama? | Dipensiunkan setelah migrasi; Desktop diarahkan ke REST `/api/v1/sync/*` QC App (keputusan 2026-11-05/06; sebelumnya `/exec`). |
+| Cara Desktop membaca gambar? | `GET /sync/files/{id}` (byte mentah). |
 | Field yang disinkronkan? | Semua (merk, tipe, country lock, gambar, detail Markdown, stiker, kelengkapan) kecuali alias. |
 | Kontrak hanya untuk item? | Tidak: generik; stok stiker dan stok manual book menyusul (Desktop master, snapshot absolut). |
 | Nama modul QC dan izin Drive? | "Pengerjaan QC" (kunci `qc`); izin Drive disetujui saat `setup`. |
