@@ -13,8 +13,8 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
-import { rpc } from '@/lib/rpc';
 import { accessKeys } from '@/modules/access/queries';
 import { brandKeys } from '@/modules/brand/keys';
 
@@ -38,7 +38,7 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
   return infiniteQueryOptions({
     queryKey: itemKeys.page(filter),
     queryFn: ({ pageParam }) =>
-      rpc('items.list', {
+      api('items.list', {
         ...(filter.query.trim() !== '' ? { query: filter.query.trim() } : {}),
         ...(filter.status !== 'all' ? { status: filter.status } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
@@ -53,13 +53,13 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
 export function itemQueryOptions(id: string) {
   return queryOptions({
     queryKey: itemKeys.one(id),
-    queryFn: () => rpc('items.get', { id }),
+    queryFn: () => api('items.get', { id }),
   });
 }
 
 /**
  * Hasil simpan dipasang langsung ke daftar dan detail (tanpa memuat ulang dari server, sehingga navigasi setelah simpan
- * tidak menunggu RPC lagi). Merk dan Log Audit ditandai basi (jumlah item per merk bisa berubah; merk baru bisa dibuat).
+ * tidak menunggu permintaan lagi). Merk dan Log Audit ditandai basi (jumlah item per merk bisa berubah; merk baru bisa dibuat).
  */
 /** Hanya field ringkasan: daftar ini ikut disimpan di localStorage dan tidak boleh memuat detail/stiker/aksesori/lampiran. */
 export function toItemSummary(item: ItemDto): ItemSummaryDto {
@@ -110,6 +110,6 @@ function useItemMutation<TInput>(mutationFn: (input: TInput) => Promise<ItemDto>
 }
 
 export const useSaveItem = () =>
-  useItemMutation((input: SaveItemInput) => rpc('items.save', input));
+  useItemMutation((input: SaveItemInput) => api('items.save', input));
 export const useSetItemStatus = () =>
-  useItemMutation((input: SetItemStatusInput) => rpc('items.setStatus', input));
+  useItemMutation((input: SetItemStatusInput) => api('items.setStatus', input));

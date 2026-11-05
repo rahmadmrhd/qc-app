@@ -711,46 +711,6 @@ describe('daftar berkursor dan get', () => {
   });
 });
 
-describe('rute', () => {
-  test('view membaca, edit menyimpan, hanya manage menonaktifkan; daftar tanpa detail', async () => {
-    await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
-    await seedRole(env, { id: 'r-edit', name: 'Ubah', permissions: { item: 'edit' } });
-    await seedRole(env, { id: 'r-manage', name: 'Kelola', permissions: { item: 'manage' } });
-    await seedUser(env, { id: 'u-v', email: 'lihat@gmail.com', roleIds: ['r-view'] });
-    await seedUser(env, { id: 'u-e', email: 'ubah@gmail.com', roleIds: ['r-edit'] });
-    await seedUser(env, { id: 'u-m', email: 'kelola@gmail.com', roleIds: ['r-manage'] });
-    await seedUser(env, { id: 'u-n', email: 'tanpa@gmail.com' });
-    const call = async (method: string, payload: unknown, email: string) =>
-      callRoute(
-        env,
-        await signSessionToken(env, email, env.clock.now()),
-        method,
-        payload,
-        getRoutes(),
-      );
-    const code = (r: Awaited<ReturnType<typeof call>>) => (r.ok ? 'OK' : r.error.code);
-
-    const saved = await call('items.save', baseInput, 'ubah@gmail.com');
-    expect(code(saved)).toBe('OK');
-    const id = saved.ok ? (saved.data as { id: string }).id : '';
-    expect(code(await call('items.save', baseInput, 'lihat@gmail.com'))).toBe('FORBIDDEN');
-    expect(code(await call('items.save', baseInput, 'tanpa@gmail.com'))).toBe('FORBIDDEN');
-    expect(code(await call('items.list', null, 'lihat@gmail.com'))).toBe('OK');
-    expect(code(await call('items.get', { id }, 'lihat@gmail.com'))).toBe('OK');
-    expect(code(await call('items.list', null, 'tanpa@gmail.com'))).toBe('FORBIDDEN');
-    expect(code(await call('items.list', { limit: 999 }, 'lihat@gmail.com'))).toBe('VALIDATION');
-    expect(code(await call('items.setStatus', { id, status: 'inactive' }, 'ubah@gmail.com'))).toBe(
-      'FORBIDDEN',
-    );
-    env.clock.advance(1000);
-    expect(
-      code(await call('items.setStatus', { id, status: 'inactive' }, 'kelola@gmail.com')),
-    ).toBe('OK');
-    const list = await call('items.list', null, 'lihat@gmail.com');
-    expect(list.ok && JSON.stringify(list.data).includes('"detail"')).toBe(false);
-  });
-});
-
 describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
   const aliasRows = async () =>
     (

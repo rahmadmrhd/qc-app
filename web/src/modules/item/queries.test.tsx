@@ -11,8 +11,8 @@ import {
   useSaveItem,
 } from './queries';
 
-const rpcMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/rpc', () => ({ rpc: rpcMock }));
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 const full = {
   id: 'i1',
@@ -39,7 +39,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 beforeEach(() => {
-  rpcMock.mockReset();
+  apiMock.mockReset();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 
@@ -68,7 +68,7 @@ const listData = (items: ItemSummaryDto[], nextCursor: string | null = null) => 
 test('simpan item: item yang sudah termuat diganti di tempat dengan ringkasan saja; detail lengkap hanya di kunci detail', async () => {
   const old = { ...toItemSummary(full), model: 'lama' };
   client.setQueryData(itemKeys.page(DEFAULT_ITEM_FILTER), listData([old], 'c1'));
-  rpcMock.mockResolvedValue(full);
+  apiMock.mockResolvedValue(full);
   const { result } = renderHook(() => useSaveItem(), { wrapper });
   await act(async () => {
     await result.current.mutateAsync({} as never);
@@ -85,23 +85,23 @@ test('simpan item: item yang sudah termuat diganti di tempat dengan ringkasan sa
   expect(client.getQueryData(itemKeys.one('i1'))).toEqual(full);
   // daftar ditandai basi (item baru/berubah muncul sesuai filter saat dibuka lagi) tanpa muat ulang sekarang
   expect(client.getQueryState(itemKeys.page(DEFAULT_ITEM_FILTER))?.isInvalidated).toBe(true);
-  expect(rpcMock).toHaveBeenCalledTimes(1);
+  expect(apiMock).toHaveBeenCalledTimes(1);
 });
 
 test('daftar item: pencarian dan status dikirim ke server bersama kursor', async () => {
-  rpcMock.mockImplementation(async (_method: string, input: { cursor?: string }) =>
+  apiMock.mockImplementation(async (_method: string, input: { cursor?: string }) =>
     input.cursor ? { items: [], nextCursor: null } : { items: [], nextCursor: 'c1' },
   );
   const options = itemsInfiniteQueryOptions({ query: ' es 24 ', status: 'active' });
   const first = await client.fetchInfiniteQuery({ ...options, pages: 2 });
-  expect(rpcMock).toHaveBeenNthCalledWith(1, 'items.list', { query: 'es 24', status: 'active' });
-  expect(rpcMock).toHaveBeenNthCalledWith(2, 'items.list', {
+  expect(apiMock).toHaveBeenNthCalledWith(1, 'items.list', { query: 'es 24', status: 'active' });
+  expect(apiMock).toHaveBeenNthCalledWith(2, 'items.list', {
     query: 'es 24',
     status: 'active',
     cursor: 'c1',
   });
   expect(first.pages).toHaveLength(2);
-  rpcMock.mockClear();
+  apiMock.mockClear();
   await client.fetchInfiniteQuery(itemsInfiniteQueryOptions());
-  expect(rpcMock).toHaveBeenCalledWith('items.list', {});
+  expect(apiMock).toHaveBeenCalledWith('items.list', {});
 });
