@@ -10,6 +10,7 @@ import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Glob } from 'bun';
 import { testDbUrl } from '../test-support/db-env';
+import { DB_PING_TIMEOUT_MS, pingDatabase } from '../test-support/db-ping';
 
 const root = resolve(import.meta.dir, '..');
 /** Batas atas proses paralel: tiap proses memakai maks. 8 koneksi (pool tes 6 + admin 2); `max_connections` VPS = 40. */
@@ -96,6 +97,16 @@ async function assertDatabaseReachable(): Promise<void> {
   } catch {
     console.error(
       `MariaDB tes tidak terjangkau di ${url.hostname}:${port}. Jalankan \`bun run db:tunnel\` di terminal lain, lalu ulangi.`,
+    );
+    process.exit(1);
+  }
+  // TCP terbuka belum berarti MariaDB menjawab (tunnel setengah-terbuka): satu SELECT 1 nyata dengan batas waktu.
+  try {
+    await pingDatabase(testDbUrl());
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(
+      `MariaDB tes di ${url.hostname}:${port} menerima koneksi tetapi tidak menjawab SELECT 1 dalam ${DB_PING_TIMEOUT_MS / 1000} dtk (${reason}). Mulai ulang \`bun run db:tunnel\`, lalu ulangi.`,
     );
     process.exit(1);
   }
