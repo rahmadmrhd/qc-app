@@ -20,6 +20,7 @@ import {
   renderSql,
   runImportCli,
   sqlLiteral,
+  writePrivate,
 } from './import-sheets';
 import {
   DISCARDED_TARGET_TABLES,
@@ -479,6 +480,22 @@ describe('dump bersih dijalankan ke MariaDB', () => {
   test('dump boleh dibungkus {tables: ...} (keluaran sheets.dump)', () => {
     const wrapped: DumpInput = { tables: stripDiscarded(cleanDump()) };
     expect(prepareImport(wrapped).report.ok).toBe(true);
+  });
+});
+
+describe('berkas keluaran impor (data pengguna)', () => {
+  test('writePrivate menulis 0600, juga menimpa berkas lama yang berizin longgar', async () => {
+    if (process.platform === 'win32') return;
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'qc-private-'));
+    try {
+      const file = path.join(dir, 'import.sql');
+      await writeFile(file, 'lama', { mode: 0o644 });
+      await writePrivate(file, 'baru');
+      expect(await readFile(file, 'utf8')).toBe('baru');
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

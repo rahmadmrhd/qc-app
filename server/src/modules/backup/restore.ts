@@ -340,10 +340,13 @@ export function createRestoreDb(db: Db): RestoreDb {
 /** Pengimpor nyata: klien `mariadb` membaca berkas .sql dari stdin; kata sandi lewat `MYSQL_PWD`, galat dibersihkan. */
 /**
  * Argumen klien `mariadb` untuk impor: skema target POSISIONAL dari argumen CLI (bukan dari URL; URL pengguna terbatas
- * tak punya nama basis data).
+ * tak punya nama basis data). `--binary-mode` mematikan penguraian perintah klien (`\!`, `source`, `system`, dll.) di
+ * mana pun dalam berkas: tanpanya klien menjalankan `\! perintah` yang diselipkan di tengah baris INSERT (terbukti di
+ * klien image 2026-11-07); dengan opsi ini perintah itu ditolak ("Unknown command") dan baris sandbox MariaDB 11 pada
+ * dump asli tetap komentar biasa. Hanya untuk impor: `mariadb-dump` tak mengenal opsi ini.
  */
 export function importArgs(target: DumpTarget, schema: string): string[] {
-  return [...clientArgs(target), schema];
+  return [...clientArgs(target), '--binary-mode', schema];
 }
 
 export function createMariadbImporter(target: DumpTarget) {

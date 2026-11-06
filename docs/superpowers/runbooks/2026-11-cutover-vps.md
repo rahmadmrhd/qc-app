@@ -154,7 +154,7 @@ Jalan mundur T-1: `docker compose down` TANPA `-v`. Production masih kosong, jad
 | # | Langkah | Detail | Pelaksana |
 |---|---|---|---|
 | H1 | Umumkan jendela dimulai; minta QC Desktop **berhenti sinkron** | | pemilik |
-| H2 | **Bekukan aplikasi lama** | Set Script Property `READ_ONLY=1` di proyek Apps Script; tunggu tulis terakhir selesai (±1 menit); uji satu tulis ditolak `UNAVAILABLE` dan baca tetap jalan. Mulai jendela tulis-beku (catat jam) | pemilik, atas persetujuan pemilik |
+| H2 | **[DILEWATI 2026-11-07, spek §19 butir 16]** **Bekukan aplikasi lama** | Set Script Property `READ_ONLY=1` di proyek Apps Script; tunggu tulis terakhir selesai (±1 menit); uji satu tulis ditolak `UNAVAILABLE` dan baca tetap jalan. Mulai jendela tulis-beku (catat jam) | pemilik, atas persetujuan pemilik |
 | H3 | Dump final Sheets (setelah H2, aplikasi lama beku) | `GOOGLE_SA_KEY_FILE=<berkas kunci lokal> GOOGLE_SPREADSHEET_ID=<id> bun run migrate:dump --out <jalur di luar repositori>/dump.json` (tambah `--force` hanya bila sengaja mengganti dump lama). Keluaran konsol: jumlah baris per sheet saja; berkas 0600 berisi data pengguna: JANGAN di-commit, simpan di luar repositori. Header sheet tak cocok membatalkan dump (tanpa berkas): perbaiki di Sheets lalu ulangi (rincian: `docs/setup-google.md` S9); simpan satu salinan arsip | agen, atas persetujuan pemilik |
 | H4 | Laporan impor | `bun run scripts/migrate/import-sheets.ts --dump dump.json --out import.sql --report report.json` **tanpa `--reset`** (kode keluar 1 bila `discarded` berisi: itu diharapkan) | agen |
 | H5 | **Persetujuan pembuangan atas dump FINAL** | Pemilik memeriksa `discarded` di `report.json` (isi dump final dapat berbeda dari gladi; persetujuan gladi tidak berlaku karena checksum). Bila hanya data uji: tulis `discard-approval.json` (`approvedBy`, `approvedOn`); bila ada yang dipakai sungguhan: BERHENTI (jalan mundur) | pemilik memutuskan |
@@ -167,7 +167,7 @@ Jalan mundur T-1: `docker compose down` TANPA `-v`. Production masih kosong, jad
 | H11 | **Alihkan pengguna** | Aktifkan blok nginx production (`nginx -t` lulus baru `nginx -s reload`), alihkan DNS Cloudflare `qc` ke VPS (Proxied; SSL/TLS Full strict), umumkan URL `https://qc.rhd.my.id`; ganti URL QC Desktop ke `…/api/v1/sync` bila sudah dipakai. Sebelum langkah ini jalan mundur tidak menyentuh pengguna | pemilik, atas persetujuan pemilik |
 | H12 | Tag dan PR cutover | **Tag `gas-legacy` pada `origin/main` SEBELUM merge** (titik jalan mundur). Lalu gabungkan PR cutover dari branch kerja: hapus `.github/workflows/deploy.yml` (GAS) dan daftar `feat/migrasi-cloudflare` di `deploy-server.yml`, aturan environment `staging` menjadi hanya branch `dev` dan `main` (`docs/ci-cd.md`, "Saat cutover"); baca PERINGATAN di atas dulu. Merge memicu deploy production dari `main` (image baru, restart singkat) | pemilik, atas persetujuan pemilik |
 | H13 | Pantau 1 jam pertama | `docker logs -f qc-production-app`, `docker stats`, `free -h`, galat 5xx di log nginx, pekerjaan latar (job QR), dump malam pertama berhasil | pemilik + agen |
-| H14 | Aplikasi lama dan Sheets dibiarkan **utuh dan baca-saja** (`READ_ONLY=1` tetap) | Catat waktu selesai jendela di tabel bawah | pemilik |
+| H14 | Aplikasi lama dan Sheets dibiarkan **utuh** (`/exec` kini halaman pengalih; `READ_ONLY` tidak dipakai, §19 butir 16) | Catat waktu selesai jendela di tabel bawah | pemilik |
 
 ---
 

@@ -17,8 +17,8 @@
 # ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
 # Kode keluar: 0 sukses; 1 gagal dan sudah dikembalikan ke tag sebelumnya; 2 input/konfigurasi tidak valid
-# (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 2 juga bila kredensial DB di .env
-# tidak cocok dengan database yang berjalan (preflight); 5 versi baru
+# (tidak ada yang diubah; termasuk kredensial DB di .env yang tidak cocok dengan database yang berjalan, preflight);
+# 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 5 versi baru
 # sehat dan aktif tetapi nginx host TIDAK TERJANGKAU (masalah infrastruktur, bukan versi: tidak dikembalikan dan image
 # lama tidak dibersihkan; periksa nginx). Bila nginx menjawab tetapi bukan 2xx, itu dianggap masalah versi: rollback.
 #
@@ -306,13 +306,22 @@ if ! QC_IMAGE_TAG="$TAG" docker compose --project-directory "$DIR" -f "$DIR/comp
   die 2 ".env/compose.yml tidak valid; periksa di VPS: cd $DIR && docker compose config --quiet"
 fi
 db_preflight
-set_tag "$TAG" || die 2 'gagal menulis QC_IMAGE_TAG ke .env'
+# Salinan .env sementara (izin 600) agar pull yang gagal memulihkan .env APA ADANYA, termasuk saat belum ada tag
+# sebelumnya (instalasi pertama); dihapus begitu pull berhasil.
+ENV_BACKUP=$(mktemp "$DIR/.env.bak.XXXXXX") || die 2 'gagal membuat salinan sementara .env'
+if ! { cp -p "$DIR/.env" "$ENV_BACKUP" && chmod 600 "$ENV_BACKUP"; }; then
+  rm -f "$ENV_BACKUP"
+  die 2 'gagal menyalin .env'
+fi
+restore_env() { mv -f "$ENV_BACKUP" "$DIR/.env" || log 'PERINGATAN: .env tidak dapat dipulihkan dari salinan sementara'; }
+set_tag "$TAG" || { restore_env; die 2 'gagal menulis QC_IMAGE_TAG ke .env'; }
 
 if ! compose pull qc-app; then
-  # kontainer yang berjalan tidak tersentuh: cukup pulihkan .env
-  if [ -n "$PREV_TAG" ]; then set_tag "$PREV_TAG" || true; fi
-  die 1 "pull image gagal; tag di .env dikembalikan (${PREV_TAG:-tanpa tag}; $LOG_HINT)"
+  # kontainer yang berjalan tidak tersentuh: pulihkan .env persis seperti semula
+  restore_env
+  die 1 "pull image gagal; .env dipulihkan apa adanya (tag sebelumnya: ${PREV_TAG:-tidak ada}; $LOG_HINT)"
 fi
+rm -f "$ENV_BACKUP"
 if ! compose up -d; then
   log 'up -d gagal'
   rollback

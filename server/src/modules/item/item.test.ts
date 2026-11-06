@@ -540,11 +540,11 @@ describe('konkurensi optimistis', () => {
 });
 
 describe('CAS digabung ke UPDATE (konkurensi)', () => {
-  test('ubah status dan simpan serentak dari versi yang sama: tepat satu menang, revisi tanpa lompatan atau ganda', async () => {
+  test('ubah status dan simpan serentak dari versi yang sama: tak ada revisi ganda atau lompatan, yang kalah dibatalkan utuh', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
     expect(await rev(first.id)).toBe(1);
     env.clock.advance(1000);
-    const results = await Promise.allSettled([
+    const [saved, status] = await Promise.allSettled([
       saveItem(
         env,
         { ...baseInput, id: first.id, detail: 'baru', expectedUpdatedAt: first.updatedAt },
@@ -552,21 +552,29 @@ describe('CAS digabung ke UPDATE (konkurensi)', () => {
       ),
       setItemStatus(env, { id: first.id, status: 'inactive' }, admin),
     ]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-    expect((rejected.reason as { code: string }).code).toBe('CONFLICT');
-    // Batch yang kalah dibatalkan utuh: revisi naik tepat 1, audit tepat satu, penghitung merk utuh.
-    expect(await rev(first.id)).toBe(2);
+    // setItemStatus tak membawa versi dan dibungkus runCas (memuat ulang lalu mengulang), jadi SELALU berhasil. Dua hasil
+    // sah: status menang dulu lalu simpan basi = CONFLICT (1 berhasil), atau simpan menang dulu lalu status mengulang (2).
+    expect(status.status).toBe('fulfilled');
+    const fulfilled = [saved, status].filter((r) => r.status === 'fulfilled').length;
+    if (saved.status === 'rejected') {
+      expect((saved.reason as { code: string }).code).toBe('CONFLICT');
+      expect(fulfilled).toBe(1);
+    } else {
+      expect(fulfilled).toBe(2);
+    }
+    // Apa pun urutannya: revisi naik tepat satu per tulis yang berhasil (batch yang kalah dibatalkan utuh), tepat satu
+    // audit per tulis yang berhasil, penghitung sinkron ikut.
+    expect(await rev(first.id)).toBe(1 + fulfilled);
     expect(
       (await auditActions()).filter((a) => a.startsWith('item.') && a !== 'item.create'),
-    ).toHaveLength(1);
+    ).toHaveLength(fulfilled);
     expect(
       (
         await env.DB.prepare('SELECT seq FROM sync_state WHERE resource = ?')
           .bind('items')
           .first<{ seq: number }>()
       )?.seq,
-    ).toBe(2);
+    ).toBe(1 + fulfilled);
   });
 
   test('item dengan nama lain: CAS basi membatalkan juga perubahan baris nama lain', async () => {

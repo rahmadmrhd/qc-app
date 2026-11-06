@@ -1041,6 +1041,13 @@ export async function readApprovalFile(path: string): Promise<DiscardApproval> {
 }
 
 /** CLI: `bun run scripts/migrate/import-sheets.ts --dump dump.json --out import.sql --report report.json [--exclude e.json] [--discard-approval a.json] [--reset]`. */
+/** Menulis berkas keluaran dengan izin 0600 (isinya data pengguna, sama sensitifnya dengan dump.json); chmod ulang bila berkas sudah ada. */
+export async function writePrivate(path: string, content: string): Promise<void> {
+  const { chmod, writeFile } = await import('node:fs/promises');
+  await writeFile(path, content, { mode: 0o600 });
+  await chmod(path, 0o600).catch(() => {});
+}
+
 export async function runImportCli(argv: readonly string[]): Promise<number> {
   const args = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
@@ -1063,7 +1070,7 @@ export async function runImportCli(argv: readonly string[]): Promise<number> {
   const approvalPath = args.get('discard-approval');
   const discardApproval = approvalPath ? await readApprovalFile(approvalPath) : undefined;
   const result = prepareImport(dump, { exclude, reset: args.has('reset'), discardApproval });
-  await Bun.write(reportPath, `${JSON.stringify(result.report, null, 2)}\n`);
+  await writePrivate(reportPath, `${JSON.stringify(result.report, null, 2)}\n`);
   // Jangan tinggalkan SQL lama dari proses sebelumnya: impor yang gagal tidak boleh punya import.sql.
   const { rm } = await import('node:fs/promises');
   await rm(outPath, { force: true });
@@ -1078,7 +1085,7 @@ export async function runImportCli(argv: readonly string[]): Promise<number> {
     }
     return 1;
   }
-  await Bun.write(outPath, result.sql);
+  await writePrivate(outPath, result.sql);
   const imported = Object.values(result.report.tables).reduce(
     (sum, table) => sum + table.imported,
     0,

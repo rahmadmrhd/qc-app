@@ -6,8 +6,10 @@
  *
  * BUKAN batas keamanan yang lengkap: pemeriksa berbasis baris tidak dapat menutup semua bentuk SQL/perintah klien.
  * PERTAHANAN UTAMA = pengguna pemulihan berhak terbatas (`qc_restore`: hanya skema `qc\_restore\_%`, SELECT pada skema
- * aplikasi; docs/setup-google.md S8) dan skema target baru. Sisa risiko (perintah klien `\!` yang tak dikenali, bentuk
- * SQL yang tak terdaftar) diterima: prasyaratnya hak tulis ke folder cadangan Drive. Baris sandbox MariaDB 11
+ * aplikasi; docs/setup-google.md S8) dan skema target baru; itu membatasi SQL, BUKAN perintah klien. Perintah klien di
+ * tengah baris data (`INSERT ...;\! cmd`) ditutup oleh `--binary-mode` pada klien impor (`importArgs` di restore.ts;
+ * terbukti di klien image 2026-11-07, T36). Sisa risiko (bentuk SQL yang tak terdaftar) diterima: prasyaratnya hak
+ * tulis ke folder cadangan Drive. Baris sandbox MariaDB 11
  * (`/*M!999999\- enable the sandbox mode *\/`) sengaja TIDAK diwajibkan (tak terverifikasi pada klien image; bisa
  * menolak cadangan asli saat pemulihan bencana).
  *

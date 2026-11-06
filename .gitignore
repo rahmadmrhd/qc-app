@@ -35,3 +35,8 @@ bridge/.secrets.local
 # dump Sheets (T33): berisi data pengguna, tak pernah di-commit
 dump.json
 *.dump.json
+import.sql
+report.json
+verify.json
+discard-approval.json
+excludes.json
