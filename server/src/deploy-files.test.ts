@@ -97,6 +97,40 @@ describe('deploy: variabel konfigurasi', () => {
   });
 });
 
+describe('deploy: compose.yml qc-db membuat skema dan pengguna aplikasi', () => {
+  const dbEnv = (compose.services['qc-db']?.environment ?? {}) as Record<string, string>;
+  const appUrl = String(
+    ((compose.services['qc-app']?.environment ?? {}) as Record<string, unknown>).DATABASE_URL,
+  );
+  test('DATABASE_URL = mysql://<MARIADB_USER>:<MARIADB_PASSWORD>@qc-db:3306/<MARIADB_DATABASE> (ekspresi persis sama)', () => {
+    expect(dbEnv.MARIADB_USER).toBeString();
+    expect(dbEnv.MARIADB_PASSWORD).toBeString();
+    expect(dbEnv.MARIADB_DATABASE).toBeString();
+    expect(appUrl).toBe(
+      `mysql://${dbEnv.MARIADB_USER}:${dbEnv.MARIADB_PASSWORD}@qc-db:3306/${dbEnv.MARIADB_DATABASE}`,
+    );
+  });
+
+  test('variabel yang dipakai (QC_DB_USER/PASSWORD/NAME) tercantum di .env.example', () => {
+    const lines = envExample.split('\n').map((line) => line.replace(/^#\s*/, ''));
+    for (const name of ['QC_DB_USER', 'QC_DB_PASSWORD', 'QC_DB_NAME']) {
+      expect(
+        lines.some((line) => line.startsWith(`${name}=`)),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  test('kolasi skema yang dibuat entrypoint = collation-server di qc.cnf (utf8mb4_nopad_bin), dan qc.cnf dipasang', () => {
+    const cnf = read('deploy/mariadb/qc.cnf');
+    expect(cnf).toMatch(/^collation-server=utf8mb4_nopad_bin$/m);
+    expect(cnf).toMatch(/^character-set-server=utf8mb4$/m);
+    expect(compose.services['qc-db']?.volumes).toContain(
+      './mariadb/qc.cnf:/etc/mysql/conf.d/qc.cnf:ro',
+    );
+  });
+});
+
 describe('deploy: compose.yml qc-app', () => {
   const app = compose.services['qc-app'] as Record<string, unknown>;
 
