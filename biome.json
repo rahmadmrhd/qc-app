@@ -5,6 +5,7 @@
     "includes": [
       "**",
       "!**/dist",
+      "!.claude/worktrees",
       "!**/routeTree.gen.ts",
       "!web/src/components/ui",
       "!web/src/hooks"

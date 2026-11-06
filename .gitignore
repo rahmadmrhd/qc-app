@@ -3,12 +3,15 @@ node_modules/
 
 # build output (dihasilkan oleh build, di-push oleh clasp)
 gas/dist/
+bridge/dist/
 web/dist/
+server/dist/
 
 # env & secrets
 .env
 .env.*
 !.env.example
+!.env.test.example
 .clasprc.json
 
 # local tooling
@@ -25,3 +28,10 @@ coverage/
 
 # cache generator TanStack Router
 web/.tanstack/
+
+# jembatan: rahasia lokal
+bridge/.secrets.local
+
+# dump Sheets (T33): berisi data pengguna, tak pernah di-commit
+dump.json
+*.dump.json

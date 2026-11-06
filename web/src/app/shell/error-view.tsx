@@ -2,7 +2,7 @@ import type { ErrorComponentProps } from '@tanstack/react-router';
 import { useRouter } from '@tanstack/react-router';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 
 export function ErrorView({ error, reset }: ErrorComponentProps) {
   const router = useRouter();

@@ -10,7 +10,7 @@ import {
 import { location, role, user } from '@gas-test/access-fixtures';
 import type { MemoryPlatform } from '@gas-test/memory-platform';
 import { createMemoryPlatform } from '@gas-test/memory-platform';
-import type { RpcResult } from '@shared/rpc';
+import type { RpcResult } from '@shared/gas-legacy';
 import { appError_ } from './errors';
 import { setPlatform_ } from './platform';
 import type { RequestContext, RoutePermission, RoutePermissionSpec, RouteTable } from './router';

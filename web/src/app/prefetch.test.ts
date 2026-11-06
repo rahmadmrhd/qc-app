@@ -15,8 +15,9 @@ const me = (permissions: Record<string, string>) =>
 function keysFor(user: MeDto): string[] {
   const client = new QueryClient();
   const spy = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined);
+  const infinite = vi.spyOn(client, 'prefetchInfiniteQuery').mockResolvedValue(undefined);
   prefetchCommonQueries(client, user);
-  return spy.mock.calls.map(([options]) =>
+  return [...spy.mock.calls, ...infinite.mock.calls].map(([options]) =>
     String((options as { queryKey: unknown[] }).queryKey[0]),
   );
 }

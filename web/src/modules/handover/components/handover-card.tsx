@@ -1,5 +1,6 @@
 import type { HandoverDto } from '@shared/rpc';
 import { MoreHorizontal } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { handoverActions } from '../lib/actions';
+import { useNearViewport } from '../lib/near-viewport';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import { CancelDialog } from './cancel-dialog';
 import { NoteView } from './note-view';
@@ -40,6 +42,25 @@ export interface HandoverCardProps {
     after: string;
     body: string;
   }) => Promise<void> | void;
+}
+
+/**
+ * Isi berat kartu (catatan Markdown, centang, komentar) dirender baru saat kartu mendekati viewport/kolom
+ * bergulir; sebelum itu placeholder dengan tinggi perkiraan tetap agar daftar tidak melompat. Sekali
+ * dirender tetap dirender.
+ */
+function LazyNote({ handover, children }: { handover: HandoverDto; children: ReactNode }) {
+  const [ref, near] = useNearViewport();
+  if (near) return <>{children}</>;
+  const lines = handover.note.split(String.fromCharCode(10)).length;
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-slot="note-placeholder"
+      style={{ height: Math.min(480, Math.max(72, lines * 24)) }}
+    />
+  );
 }
 
 /**
@@ -103,16 +124,18 @@ export function HandoverCard({
           </Badge>
         </div>
 
-        <NoteView
-          note={handover.note}
-          checklist={handover.checklist}
-          comments={handover.comments}
-          canCheck={canMarkDone && !cancelled && !pending}
-          canComment={!cancelled}
-          compact
-          onCheck={onCheck}
-          onComment={onComment}
-        />
+        <LazyNote handover={handover}>
+          <NoteView
+            note={handover.note}
+            checklist={handover.checklist}
+            comments={handover.comments}
+            canCheck={canMarkDone && !cancelled && !pending}
+            canComment={!cancelled}
+            compact
+            onCheck={onCheck}
+            onComment={onComment}
+          />
+        </LazyNote>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="flex gap-3">

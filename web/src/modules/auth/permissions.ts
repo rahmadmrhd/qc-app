@@ -10,7 +10,7 @@ import { meQueryOptions } from './queries';
 /**
  * Izin GLOBAL (penugasan "Semua lokasi"); benar untuk modul `access`.
  * Untuk modul berlokasi pakai `canAt`, `locationsWith`, atau `canAnywhere`.
- * Hanya untuk UX — penegakan sebenarnya ada di router GAS.
+ * Hanya untuk UX — penegakan sebenarnya ada di router Worker.
  */
 export function can(me: MeDto | null | undefined, module: ModuleKey, level: Level): boolean {
   return me ? hasLevel(me.permissions[module], level) : false;

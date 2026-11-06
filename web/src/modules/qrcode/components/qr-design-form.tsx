@@ -17,7 +17,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
-import { fileToBase64 } from '../lib/file-to-base64';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
 import type { PresetApplyParts, QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import {
@@ -436,7 +435,7 @@ export function QrDesignForm({
                         onUpload={async (file, replaceId) =>
                           uploadPdf.mutateAsync({
                             name: limitDocumentName(file.name),
-                            base64: await fileToBase64(file),
+                            bytes: new Uint8Array(await file.arrayBuffer()),
                             ...(replaceId ? { replaceDocumentId: replaceId } : {}),
                           })
                         }

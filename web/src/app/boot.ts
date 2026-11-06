@@ -1,31 +1,29 @@
-import type { BootData } from '@shared/rpc';
-import type { SessionState } from '@/modules/auth/session';
+import type { AuthErrorCode, MeDto } from '@shared/rpc';
+import { type ApiCall, api } from '@/lib/api';
+import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 
-export function readBoot(): BootData {
-  const boot: unknown = window.__BOOT__;
-  // Saat dev (tanpa server) nilainya masih berupa string penanda.
-  return boot && typeof boot === 'object' ? (boot as BootData) : {};
+/** Galat login dari redirect Worker (`/?authError=...`); nilai lain diabaikan. */
+export function readAuthError(search: string): AuthErrorCode | null {
+  const value = new URLSearchParams(search).get('authError');
+  return value === 'NOT_WHITELISTED' || value === 'LOGIN_FAILED' ? value : null;
 }
 
 export function resolveInitialSession(
-  boot: BootData,
-  storedToken: string | null,
-  storedNonce: string | null = null,
+  me: MeDto | null,
+  authError: AuthErrorCode | null,
 ): SessionState {
-  const loginUrl = boot.loginUrl ?? null;
-  // Token dari callback hanya sah bila nonce-nya cocok dengan yang dibuat browser ini (anti login-CSRF).
-  if (boot.sessionToken && boot.nonce && boot.nonce === storedNonce) {
-    return { token: boot.sessionToken, loginUrl, authError: null, authErrorEmail: null };
+  if (me) return { ...ANONYMOUS_SESSION, authenticated: true, email: me.email };
+  return { ...ANONYMOUS_SESSION, authError };
+}
+
+/**
+ * Data awal klien: `GET /api/v1/me` (id `auth.me`, sesi dari cookie). 401 = belum login. Galat lain
+ * (jaringan/5xx) diperlakukan sebagai belum login agar halaman login tetap bisa tampil.
+ */
+export async function loadMe(call: ApiCall = api): Promise<MeDto | null> {
+  try {
+    return (await call('auth.me', null)) ?? null;
+  } catch {
+    return null;
   }
-  if (boot.authError === 'NOT_WHITELISTED') {
-    return {
-      token: null,
-      loginUrl,
-      authError: 'NOT_WHITELISTED',
-      authErrorEmail: boot.email ?? null,
-    };
-  }
-  // LOGIN_FAILED karena refresh di URL callback lama: token tersimpan tetap sah.
-  if (storedToken) return { token: storedToken, loginUrl, authError: null, authErrorEmail: null };
-  return { token: null, loginUrl, authError: boot.authError ?? null, authErrorEmail: null };
 }

@@ -29,12 +29,28 @@ export function isKeyChar(ch: string): boolean {
 }
 
 export function normalizeKey(text: string): string {
+  const lower = text.toLowerCase();
   let result = '';
   let pendingSpace = false;
-  for (const ch of text.toLowerCase()) {
-    if (isKeyChar(ch)) {
+  for (let i = 0; i < lower.length; i++) {
+    const code = lower.charCodeAt(i);
+    let chunk: string;
+    let keep: boolean;
+    if (code < 128) {
+      // Jalur cepat ASCII (tanpa regex Unicode): hanya a-z dan 0-9 yang huruf/angka.
+      keep = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+      chunk = lower.charAt(i);
+    } else {
+      // Satu titik kode (pasangan surrogate utuh dibaca bersama, seperti iterasi `for...of`).
+      const next = i + 1 < lower.length ? lower.charCodeAt(i + 1) : 0;
+      const pair = code >= 0xd800 && code <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
+      chunk = pair ? lower.slice(i, i + 2) : lower.charAt(i);
+      if (pair) i++;
+      keep = isKeyChar(chunk);
+    }
+    if (keep) {
       if (pendingSpace && result !== '') result += ' ';
-      result += ch;
+      result += chunk;
       pendingSpace = false;
     } else {
       pendingSpace = true;

@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { RoleForm } from '@/modules/access/components/role-form';
 import { RolesTable } from '@/modules/access/components/roles-table';
 import { rolesQueryOptions, useDeleteRole, useSaveRole } from '@/modules/access/queries';

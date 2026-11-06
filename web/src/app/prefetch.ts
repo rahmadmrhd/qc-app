@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { locationsQueryOptions, rolesQueryOptions } from '@/modules/access/queries';
 import { can } from '@/modules/auth/permissions';
 import { brandsQueryOptions } from '@/modules/brand/queries';
-import { itemsQueryOptions } from '@/modules/item/queries';
+import { itemsInfiniteQueryOptions } from '@/modules/item/queries';
 import { qrDefaultsQueryOptions, qrDesignsQueryOptions } from '@/modules/qrcode/queries';
 
 /** Jeda setelah beranda tampil sebelum prefetch (memberi waktu bagi klik pertama pengguna). */
@@ -17,11 +17,11 @@ export const PREFETCH_MAX_RETRIES = 30;
 
 /**
  * Daftar yang sering dipakai, hanya yang boleh dibaca pengguna (agar tidak memicu FORBIDDEN). Semua dipicu dalam satu
- * tick sehingga digabung jadi SATU eksekusi Apps Script oleh transport (batching).
+ * tick (permintaan paralel ke Worker).
  */
 export function prefetchCommonQueries(queryClient: QueryClient, me: MeDto): void {
   if (can(me, 'item', 'view')) {
-    void queryClient.prefetchQuery(itemsQueryOptions());
+    void queryClient.prefetchInfiniteQuery(itemsInfiniteQueryOptions());
     void queryClient.prefetchQuery(brandsQueryOptions());
   }
   if (can(me, 'qrcode', 'view')) {
@@ -38,8 +38,8 @@ const done = new Set<string>();
 
 /**
  * Prefetch massal SEKALI per sesi saat pengguna diam di beranda: kunjungan pertama ke tiap modul jadi instan. Dibatalkan
- * bila pengguna sudah berpindah halaman atau ada pengambilan data yang berjalan (RPC antre serial di klien, jadi
- * prefetch tidak boleh menghalangi klik nyata).
+ * bila pengguna sudah berpindah halaman atau ada pengambilan data yang berjalan (prefetch tidak boleh bersaing dengan
+ * klik nyata).
  */
 export function usePrefetchOnIdle(me: MeDto): void {
   const queryClient = useQueryClient();

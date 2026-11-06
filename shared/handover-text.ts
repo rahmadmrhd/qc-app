@@ -14,6 +14,7 @@ const HANDOVER_NAMED_ENTITIES: Record<string, string> = {
 
 // Escape backslash Markdown (CommonMark: tanda baca ASCII dapat di-escape).
 const HANDOVER_MD_ESCAPE = /\\([\\`*_{}[\]()#+\-.!~>|<&:;="'$%^,/?@])/g;
+const HANDOVER_NEEDS_SPACE_FOLD = /[^\S ]| {2}/;
 const HANDOVER_ENTITY = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]+));/g;
 
 function handoverDecodeEntity_(
@@ -40,5 +41,13 @@ export function handoverUnescapeText(text: string): string {
 
 /** Bentuk kanonis: tanpa escape/entitas, spasi (termasuk nbsp) dirapikan menjadi satu dan dipangkas. */
 export function handoverCanonicalText(text: string): string {
+  // Jalur cepat (kasus umum): tanpa backslash/entitas dan tanpa spasi selain satu spasi biasa.
+  if (
+    text.indexOf(String.fromCharCode(92)) === -1 &&
+    text.indexOf('&') === -1 &&
+    !HANDOVER_NEEDS_SPACE_FOLD.test(text)
+  ) {
+    return text.trim();
+  }
   return handoverUnescapeText(text).replace(/\s+/g, ' ').trim();
 }

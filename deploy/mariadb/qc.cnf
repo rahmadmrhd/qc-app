@@ -1,0 +1,8 @@
+[mysqld]
+character-set-server=utf8mb4
+collation-server=utf8mb4_nopad_bin
+innodb_buffer_pool_size=128M
+max_connections=40
+# JANGAN menambahkan NO_BACKSLASH_ESCAPES: mysql2 meng-escape nilai di sisi klien dengan backslash, dan mode itu
+# membuat escaping salah (injeksi SQL). Lihat komentar `checkBindValue` di server/src/core/db.ts.
+sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION

@@ -2,31 +2,36 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { readBoot, resolveInitialSession } from '@/app/boot';
-import { restoreHashFromTop, syncTopUrl } from '@/app/gas-location';
+import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
-import { readLoginNonce } from '@/modules/auth/nonce';
-import { clearToken, getToken, initSession, readStoredToken } from '@/modules/auth/session';
+import { meQueryKey } from '@/modules/auth/queries';
+import { clearSession, initSession } from '@/modules/auth/session';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
 async function start() {
-  initSession(resolveInitialSession(readBoot(), readStoredToken(), readLoginNonce()));
-  // Cache tersimpan dipasang SEBELUM router dibuat: halaman pertama tampil instan dari data lama (dimuat ulang di latar).
-  restoreQueryCache(queryClient, getToken());
+  // Galat login dari redirect Worker (/?authError=...) dibaca sekali lalu dibuang dari URL.
+  const authError = readAuthError(window.location.search);
+  if (authError) window.history.replaceState(null, '', window.location.pathname);
+
+  // Sesi cookie diverifikasi server (GET /api/v1/me) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
+  const me = await loadMe();
+  initSession(resolveInitialSession(me, authError));
+  if (me) {
+    // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
+    restoreQueryCache(queryClient, me.email);
+    queryClient.setQueryData(meQueryKey, me);
+  }
   startQueryPersistence(queryClient);
-  await restoreHashFromTop();
 
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {
-    clearToken();
+    clearSession();
     queryClient.clear();
     void router.navigate({ to: '/login' });
   });
-  router.subscribe('onResolved', () => syncTopUrl(window.location.hash));
-  syncTopUrl(window.location.hash);
 
   const root = document.getElementById('app');
   if (!root) throw new Error('Elemen #app tidak ditemukan');

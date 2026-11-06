@@ -6,6 +6,7 @@ import {
   extractRefs,
   hashText,
   ITEM_LIMITS,
+  isKeyChar,
   itemKey,
   mapMarkdownRefs,
   normalizeKey,
@@ -31,6 +32,53 @@ describe('normalizeKey', () => {
 
   test('angka dan huruf bukan-ASCII dipertahankan', () => {
     expect(normalizeKey('Tipe 7Å')).toBe('tipe 7å');
+  });
+
+  test('setara implementasi acuan (iterasi titik kode + regex) pada teks acak termasuk surrogate', () => {
+    const reference = (text: string): string => {
+      let result = '';
+      let pendingSpace = false;
+      for (const ch of text.toLowerCase()) {
+        if (isKeyChar(ch)) {
+          if (pendingSpace && result !== '') result += ' ';
+          result += ch;
+          pendingSpace = false;
+        } else {
+          pendingSpace = true;
+        }
+      }
+      return result;
+    };
+    const alphabet = [
+      ...'abcXYZ019 -_/.,()',
+      String.fromCharCode(
+        0x00c5,
+        0x0130,
+        0x00df,
+        0x0301,
+        0x4e2d,
+        0x0645,
+        0x0e01,
+        0x0416,
+        0x00a0,
+        0x2028,
+      ),
+      String.fromCodePoint(0x1f600),
+      String.fromCodePoint(0x1d49c),
+      String.fromCharCode(0xd83d),
+      String.fromCharCode(0xde00),
+    ];
+    let seed = 12345;
+    const random = () => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let n = 0; n < 3000; n++) {
+      let text = '';
+      const length = Math.floor(random() * 14);
+      for (let i = 0; i < length; i++) text += alphabet[Math.floor(random() * alphabet.length)];
+      expect(normalizeKey(text)).toBe(reference(text));
+    }
   });
 });
 

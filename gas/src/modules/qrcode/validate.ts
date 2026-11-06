@@ -1,16 +1,15 @@
 import { readObject_ } from '@gas/core/validate';
 import { base64ByteLength, isBase64Text } from '@shared/files';
+import type { GasExportQrDesignInput, GasUploadQrPdfInput } from '@shared/gas-legacy';
 import type { QrStyle } from '@shared/qrcode';
 import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
   CloneQrPdfInput,
-  ExportQrDesignInput,
   QrDesignRefInput,
   QrFileInput,
   SaveQrDesignInput,
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
-  UploadQrPdfInput,
 } from '@shared/rpc';
 
 const QR_PDF_PREFIX = 'JVBERi0'; // "%PDF-" dalam base64
@@ -156,7 +155,7 @@ export function validateCloneQrPdf_(raw: unknown): CloneQrPdfInput {
   return { source, ...(replaceDocumentId ? { replaceDocumentId } : {}) };
 }
 
-export function validateUploadQrPdf_(raw: unknown): UploadQrPdfInput {
+export function validateUploadQrPdf_(raw: unknown): GasUploadQrPdfInput {
   const reader = readObject_(raw);
   const name = reader.str('name', { required: true, max: QR_LIMITS.documentName });
   const replaceDocumentId = reader.optionalId('replaceDocumentId');
@@ -172,7 +171,7 @@ export function validateUploadQrPdf_(raw: unknown): UploadQrPdfInput {
   return { name, base64: base64 as string, ...(replaceDocumentId ? { replaceDocumentId } : {}) };
 }
 
-export function validateExportQrDesign_(raw: unknown): ExportQrDesignInput {
+export function validateExportQrDesign_(raw: unknown): GasExportQrDesignInput {
   const reader = readObject_(raw);
   const id = reader.str('id', { required: true, max: 100 });
   const expectedUpdatedAt = reader.str('expectedUpdatedAt', { required: true, max: 40 });

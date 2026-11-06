@@ -1,42 +1,45 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
-  clearToken,
+  ANONYMOUS_SESSION,
+  clearSession,
   getSession,
-  getToken,
   initSession,
-  readStoredToken,
-  setToken,
+  isAuthenticated,
+  markAuthenticated,
+  PERSISTED_CACHE_KEY,
 } from './session';
 
 afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
-  initSession({ token: null, loginUrl: null, authError: null, authErrorEmail: null });
+  initSession(ANONYMOUS_SESSION);
 });
 
-test('setToken menyimpan ke state dan localStorage serta menghapus error login', () => {
-  initSession({ token: null, loginUrl: 'u', authError: 'LOGIN_FAILED', authErrorEmail: null });
-  setToken('abc');
-  expect(getToken()).toBe('abc');
-  expect(readStoredToken()).toBe('abc');
-  expect(getSession()).toMatchObject({ loginUrl: 'u', authError: null });
+test('markAuthenticated menyimpan email dan menghapus error login', () => {
+  initSession({ ...ANONYMOUS_SESSION, authError: 'LOGIN_FAILED' });
+  markAuthenticated('a@x.com');
+  expect(isAuthenticated()).toBe(true);
+  expect(getSession()).toMatchObject({
+    email: 'a@x.com',
+    authError: null,
+    loginUrl: '/auth/login',
+  });
 });
 
-test('clearToken menghapus token dari state dan localStorage', () => {
-  setToken('abc');
-  clearToken();
-  expect(getToken()).toBeNull();
-  expect(readStoredToken()).toBeNull();
+test('clearSession membuang status dan cache tersimpan', () => {
+  markAuthenticated('a@x.com');
+  localStorage.setItem(PERSISTED_CACHE_KEY, '{}');
+  clearSession();
+  expect(isAuthenticated()).toBe(false);
+  expect(getSession().email).toBeNull();
+  expect(localStorage.getItem(PERSISTED_CACHE_KEY)).toBeNull();
 });
 
 test('storage yang tidak tersedia tidak membuat aplikasi crash', () => {
-  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+  vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
     throw new Error('blocked');
   });
-  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-    throw new Error('blocked');
-  });
-  expect(readStoredToken()).toBeNull();
-  expect(() => setToken('abc')).not.toThrow();
-  expect(getToken()).toBe('abc');
+  markAuthenticated('a@x.com');
+  expect(() => clearSession()).not.toThrow();
+  expect(isAuthenticated()).toBe(false);
 });

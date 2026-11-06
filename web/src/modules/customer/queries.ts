@@ -1,6 +1,6 @@
 import type { RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { rpc } from '@/lib/rpc';
+import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';
 
 export const customerKeys = {
@@ -9,7 +9,7 @@ export const customerKeys = {
 };
 
 export function customersQueryOptions() {
-  return queryOptions({ queryKey: customerKeys.list, queryFn: () => rpc('customers.list', null) });
+  return queryOptions({ queryKey: customerKeys.list, queryFn: () => api('customers.list', null) });
 }
 
 /** Nama customer tampil di daftar/detail task, jadi task ikut dimuat ulang (dan Log Audit). */
@@ -28,6 +28,6 @@ function useCustomerMutation<TInput, TOutput>(mutationFn: (input: TInput) => Pro
 }
 
 export const useRenameCustomer = () =>
-  useCustomerMutation((input: RenameCustomerInput) => rpc('customers.rename', input));
+  useCustomerMutation((input: RenameCustomerInput) => api('customers.rename', input));
 export const useSetCustomerStatus = () =>
-  useCustomerMutation((input: SetCustomerStatusInput) => rpc('customers.setStatus', input));
+  useCustomerMutation((input: SetCustomerStatusInput) => api('customers.setStatus', input));

@@ -6,7 +6,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { qrKeys, useDeleteQrDesign, useSaveQrDesign } from './queries';
 
 const rpcMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/rpc', () => ({ rpc: rpcMock }));
+vi.mock('@/lib/api', () => ({ api: rpcMock }));
 
 const design = (id: string, title: string, updatedAt: string) =>
   ({ id, title, updatedAt }) as unknown as QrDesignDto;

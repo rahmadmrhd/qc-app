@@ -4,7 +4,7 @@ import { insertLocation_, insertRole_, insertUser_ } from '@gas/modules/access/r
 import { insertBrand_ } from '@gas/modules/brand/repo';
 import { insertItem_ } from '@gas/modules/item/repo';
 import { getRoutes_ } from '@gas/routes';
-import type { RpcResult } from '@shared/rpc';
+import type { RpcResult } from '@shared/gas-legacy';
 import { location, role, user } from './access-fixtures';
 import { brand, item } from './item-fixtures';
 

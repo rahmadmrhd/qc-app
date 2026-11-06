@@ -1,0 +1,126 @@
+import { expect, test } from 'bun:test';
+import { captureAppErrorAsync } from '@server-test/errors';
+import { createTestEnv } from '@server-test/test-env';
+import {
+  batchGuarded,
+  CAS_UPDATED_AT_SET,
+  CAS_VERSION_BUMP_SET,
+  isGuardFailure,
+  isRetryableWriteError,
+  runCas,
+} from './cas';
+import { DbError } from './db';
+
+test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = seluruh batch batal dan CONFLICT', async () => {
+  const env = await createTestEnv();
+  await env.DB.prepare("INSERT INTO items (id, `key`, updated_at) VALUES ('i1', 'k', 't1')").run();
+  const edit = (expected: string, next: string, model: string) => [
+    env.DB.prepare(
+      "INSERT INTO sync_state (resource, seq) VALUES ('x', 1) ON DUPLICATE KEY UPDATE seq = seq + 1",
+    ),
+    env.DB.prepare(`UPDATE items SET model = ?, ${CAS_UPDATED_AT_SET} WHERE id = 'i1'`).bind(
+      model,
+      expected,
+      next,
+    ),
+  ];
+  await batchGuarded(env.DB, edit('t1', 't2', 'a'), {}, 'basi');
+  const row = () =>
+    env.DB.prepare('SELECT model, updated_at AS at FROM items').first<{
+      model: string;
+      at: string;
+    }>();
+  expect(await row()).toEqual({ model: 'a', at: 't2' });
+  // penulis dengan updated_at lama: CONFLICT, dan pernyataan sebelum UPDATE (sync_state) ikut dibatalkan
+  const error = await captureAppErrorAsync(() =>
+    batchGuarded(env.DB, edit('t1', 't3', 'b'), {}, 'basi'),
+  );
+  expect(error).toMatchObject({ code: 'CONFLICT', message: 'basi', stale: true });
+  expect(await row()).toEqual({ model: 'a', at: 't2' });
+  expect(
+    (
+      await env.DB.prepare("SELECT seq FROM sync_state WHERE resource = 'x'").first<{
+        seq: number;
+      }>()
+    )?.seq,
+  ).toBe(1);
+});
+
+test('CAS version digabung ke UPDATE: naik 1 bila cocok, batal dengan integer overflow bila basi', async () => {
+  const env = await createTestEnv();
+  await env.DB.prepare("INSERT INTO handovers (id, number, version) VALUES ('h1', 'n', 3)").run();
+  const bump = (expected: number) =>
+    env.DB.prepare(`UPDATE handovers SET note = 'x', ${CAS_VERSION_BUMP_SET} WHERE id = 'h1'`).bind(
+      expected,
+    );
+  await env.DB.batch([bump(3)]);
+  const version = async () =>
+    (await env.DB.prepare('SELECT version FROM handovers').first<{ version: number }>())?.version;
+  expect(await version()).toBe(4);
+  const failure = await env.DB.batch([bump(3)]).catch((error: unknown) => error);
+  expect(isGuardFailure(failure)).toBe(true);
+  expect(await version()).toBe(4);
+});
+
+test('isRetryableWriteError: penjaga CAS dan duplikat indeks yang diperebutkan penulis serentak', () => {
+  const duplicate = (key: string) =>
+    new DbError('Duplicate entry', { errno: 1062, kind: 'duplicate', key });
+  expect(isRetryableWriteError(new DbError('x', { errno: 1690, kind: 'out_of_range' }))).toBe(true);
+  for (const key of ['customers_key', 'handovers_number', 'brands_key', 'PRIMARY']) {
+    expect(isRetryableWriteError(duplicate(key))).toBe(true);
+  }
+  expect(isRetryableWriteError(duplicate('users_email'))).toBe(false);
+  expect(isRetryableWriteError(new DbError('x', { errno: 1064, kind: 'other' }))).toBe(false);
+  expect(isRetryableWriteError(new Error('integer overflow'))).toBe(false);
+});
+
+test('isRetryableWriteError: deadlock (1213/1205) bisa diulang (M9)', () => {
+  expect(isRetryableWriteError(new DbError('Deadlock', { errno: 1213, kind: 'deadlock' }))).toBe(
+    true,
+  );
+});
+
+test('runCas mengulang setelah deadlock lalu berhasil; deadlock terus-menerus berakhir CONFLICT (M9)', async () => {
+  const deadlock = () => new DbError('Deadlock found', { errno: 1213, kind: 'deadlock' });
+  let calls = 0;
+  const result = await runCas(async () => {
+    calls++;
+    if (calls < 3) throw deadlock();
+    return 'ok';
+  }, 'basi');
+  expect(result).toBe('ok');
+  expect(calls).toBe(3);
+  const error = await captureAppErrorAsync(() =>
+    runCas(async () => {
+      throw deadlock();
+    }, 'basi'),
+  );
+  expect(error.code).toBe('CONFLICT');
+  expect(error.stale).toBe(true);
+});
+
+test('runCas mencatat errno/kind/key saja, tanpa nilai duplikat dari pesan galat (M11)', async () => {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args.join(' '));
+  };
+  try {
+    const error = await captureAppErrorAsync(() =>
+      runCas(async () => {
+        throw new DbError("Duplicate entry 'PT Rahasia Customer' for key 'customers_key'", {
+          errno: 1062,
+          kind: 'duplicate',
+          key: 'customers_key',
+        });
+      }, 'basi'),
+    );
+    expect(error.code).toBe('CONFLICT');
+  } finally {
+    console.error = original;
+  }
+  const text = logged.join('\n');
+  expect(text).toContain('customers_key');
+  expect(text).toContain('1062');
+  expect(text).not.toContain('Rahasia');
+});

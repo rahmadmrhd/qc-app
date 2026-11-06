@@ -1,14 +1,19 @@
 import type {
+  AuditCursorPageDto,
   DeleteRoleInput,
-  ListAuditInput,
   SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
   SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/rpc';
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { rpc } from '@/lib/rpc';
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { meQueryKey } from '@/modules/auth/queries';
 
 export const accessKeys = {
@@ -19,31 +24,44 @@ export const accessKeys = {
   locations: ['access', 'locations'] as const,
 };
 
-export function auditQueryOptions(input: ListAuditInput) {
-  return queryOptions({
-    queryKey: [...accessKeys.audit, input] as const,
-    queryFn: () => rpc('access.audit.list', input),
+export interface AuditFilter {
+  action?: string;
+  query?: string;
+}
+
+/** Log audit berkursor (20 per halaman, terbaru dahulu); filter aksi dan kata kunci dikerjakan server. */
+export function auditInfiniteQueryOptions(filter: AuditFilter) {
+  return infiniteQueryOptions({
+    queryKey: [...accessKeys.audit, filter.action ?? '', filter.query ?? ''] as const,
+    queryFn: ({ pageParam }) =>
+      api('access.audit.list', {
+        ...(filter.action ? { action: filter.action } : {}),
+        ...(filter.query ? { query: filter.query } : {}),
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: AuditCursorPageDto) => last.nextCursor ?? undefined,
   });
 }
 
 export function usersQueryOptions() {
   return queryOptions({
     queryKey: accessKeys.users,
-    queryFn: () => rpc('access.users.list', null),
+    queryFn: () => api('access.users.list', null),
   });
 }
 
 export function rolesQueryOptions() {
   return queryOptions({
     queryKey: accessKeys.roles,
-    queryFn: () => rpc('access.roles.list', null),
+    queryFn: () => api('access.roles.list', null),
   });
 }
 
 export function locationsQueryOptions() {
   return queryOptions({
     queryKey: accessKeys.locations,
-    queryFn: () => rpc('access.locations.list', null),
+    queryFn: () => api('access.locations.list', null),
   });
 }
 
@@ -62,14 +80,14 @@ function useAccessMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promi
 }
 
 export const useSaveUser = () =>
-  useAccessMutation((input: SaveUserInput) => rpc('access.users.save', input));
+  useAccessMutation((input: SaveUserInput) => api('access.users.save', input));
 export const useSetUserStatus = () =>
-  useAccessMutation((input: SetUserStatusInput) => rpc('access.users.setStatus', input));
+  useAccessMutation((input: SetUserStatusInput) => api('access.users.setStatus', input));
 export const useSaveRole = () =>
-  useAccessMutation((input: SaveRoleInput) => rpc('access.roles.save', input));
+  useAccessMutation((input: SaveRoleInput) => api('access.roles.save', input));
 export const useDeleteRole = () =>
-  useAccessMutation((input: DeleteRoleInput) => rpc('access.roles.delete', input));
+  useAccessMutation((input: DeleteRoleInput) => api('access.roles.delete', input));
 export const useSaveLocation = () =>
-  useAccessMutation((input: SaveLocationInput) => rpc('access.locations.save', input));
+  useAccessMutation((input: SaveLocationInput) => api('access.locations.save', input));
 export const useSetLocationStatus = () =>
-  useAccessMutation((input: SetLocationStatusInput) => rpc('access.locations.setStatus', input));
+  useAccessMutation((input: SetLocationStatusInput) => api('access.locations.setStatus', input));

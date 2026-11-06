@@ -1,12 +1,12 @@
-import { HANDOVER_LIMITS } from '@shared/handover';
+import { HANDOVER_BATCH_MAX } from '@shared/handover';
 import type { HandoverOptionsDto } from '@shared/rpc';
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { Button } from '@/components/ui/button';
-import { describeError } from '@/lib/rpc/describe-error';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
+import { describeError } from '@/lib/api/describe-error';
 import { LocationField } from '@/modules/location/location-field';
 import type { HandoverBatchFormOutput } from '../schemas';
 import { handoverBatchSchema } from '../schemas';
@@ -24,14 +24,19 @@ interface Card {
 export interface HandoverBatchFormProps {
   options: HandoverOptionsDto;
   defaultLocationId?: string;
-  /** Simpan atomik: bila menolak, draf semua kartu tetap utuh dan kartu bermasalah ditandai. */
+  /**
+   * Simpan SEMUA task dalam SATU permintaan atomik (maks. `HANDOVER_BATCH_MAX` = 30): gagal = tidak ada yang
+   * tersimpan, draf tetap utuh dan kartu bermasalah ditandai.
+   */
   onSubmit: (values: HandoverBatchFormOutput) => Promise<unknown>;
+  /** Semua task berhasil disimpan (jumlah task). */
+  onSaved?: (count: number) => void;
   onCancel: () => void;
 }
 
 /** Galat server "Task N: pesan" → indeks kartu (0-based) dan pesan. */
 function parseTaskError(error: unknown): { index: number; message: string } | null {
-  if (!(error instanceof RpcError)) return null;
+  if (!(error instanceof ApiError)) return null;
   const match = /^Task (\d+):\s*(.*)$/.exec(error.fields?.tasks ?? '');
   if (!match) return null;
   return { index: Number(match[1]) - 1, message: match[2] || error.message };
@@ -41,6 +46,7 @@ export function HandoverBatchForm({
   options,
   defaultLocationId = '',
   onSubmit,
+  onSaved,
   onCancel,
 }: HandoverBatchFormProps) {
   const nextKey = useRef(1);
@@ -58,10 +64,10 @@ export function HandoverBatchForm({
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const baseId = useId();
-  const full = cards.length >= HANDOVER_LIMITS.batch;
+  const full = cards.length >= HANDOVER_BATCH_MAX;
   // Satu kartu kosong awal akan diganti oleh hasil tempel, jadi tidak memakai slot.
   const pristine = cards.length === 1 && cards[0]?.note === '' && cards[0].customerName === '';
-  const remaining = HANDOVER_LIMITS.batch - (pristine ? 0 : cards.length);
+  const remaining = HANDOVER_BATCH_MAX - (pristine ? 0 : cards.length);
 
   function patch(key: number, change: Partial<Card>) {
     setCards((current) =>
@@ -103,6 +109,7 @@ export function HandoverBatchForm({
     setSubmitting(true);
     try {
       await onSubmit(parsed.data);
+      onSaved?.(parsed.data.tasks.length);
     } catch (error) {
       const task = parseTaskError(error);
       const key = task ? keys[task.index] : undefined;
@@ -222,7 +229,7 @@ export function HandoverBatchForm({
       </Button>
       {full ? (
         <p className="text-xs text-muted-foreground">
-          Maksimal {HANDOVER_LIMITS.batch} task per batch.
+          Maksimal {HANDOVER_BATCH_MAX} task per batch.
         </p>
       ) : null}
 

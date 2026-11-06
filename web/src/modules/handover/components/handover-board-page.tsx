@@ -1,10 +1,10 @@
 import type { HandoverStatus } from '@shared/handover';
 import type { HandoverDto } from '@shared/rpc';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -12,10 +12,10 @@ import { readableLocationIds } from '../lib/readable-locations';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
-  handoverBoardQueryOptions,
   handoverKeys,
   useAddComment,
   useCancelHandover,
+  useHandoverBoard,
   useReopenHandover,
   useSetDone,
 } from '../queries';
@@ -30,7 +30,7 @@ export interface HandoverBoardPageProps {
   onCreate: () => void;
 }
 
-/** Halaman board: SATU RPC `handovers.board` untuk seluruh lokasi terpilih yang boleh dibaca. */
+/** Halaman board: satu RPC berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
 export function HandoverBoardPage({
   status,
   onStatusChange,
@@ -44,7 +44,7 @@ export function HandoverBoardPage({
   // Hanya lokasi terpilih yang boleh dibaca user (WH view ke atas atau QC edit); selebihnya tidak diminta.
   const readable = readableLocationIds(me, selectedIds);
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
-  const query = useQuery(handoverBoardQueryOptions(readable));
+  const board = useHandoverBoard(readable);
   const setDone = useSetDone();
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
@@ -119,17 +119,18 @@ export function HandoverBoardPage({
         <p className="text-sm text-muted-foreground">
           Pilih lokasi di header yang Anda punya akses serah terima atau QC-nya.
         </p>
-      ) : query.isPending ? (
+      ) : board.isPending ? (
         <Skeleton className="h-40 w-full" />
-      ) : query.isError ? (
+      ) : board.isError ? (
         <p role="alert" className="text-sm text-destructive">
           Gagal memuat task. Coba muat ulang.
         </p>
-      ) : query.data.length === 0 ? (
+      ) : board.total === 0 ? (
         <p className="text-sm text-muted-foreground">Belum ada task serah terima di lokasi ini.</p>
       ) : (
         <HandoverBoard
-          handovers={query.data}
+          handovers={board.handovers}
+          columns={board.columns}
           filter={status}
           onFilterChange={onStatusChange}
           bindings={bindings}

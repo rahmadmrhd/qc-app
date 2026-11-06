@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { requirePermission } from '@/modules/auth/permissions';
 import { LogoLibraryField } from '@/modules/qrcode/components/logo-library-field';
