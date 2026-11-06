@@ -54,17 +54,14 @@ function stepsOf(workflow: Workflow): Step[] {
 }
 
 describe('workflow: aturan umum (semua berkas)', () => {
-  test('ada workflow yang diperiksa', () => {
+  test('ada workflow yang diperiksa; deploy GAS lama (deploy.yml) sudah dihapus saat cutover', () => {
+    expect(workflowFiles).not.toContain('deploy.yml');
     expect(workflowFiles).toContain('deploy-server.yml');
     expect(workflowFiles).toContain('test.yml');
   });
 
   test('semua aksi pihak ketiga dipatok ke SHA commit 40 heksa (atau aksi lokal ./)', () => {
-    // deploy.yml (Apps Script lama) dikecualikan: dihapus di T34 (cutover), jadi tidak dipatok ulang.
-    const texts = [
-      ...workflowFiles.filter((name) => name !== 'deploy.yml').map(rawOf),
-      MARIADB_ACTION,
-    ].map(codeOf);
+    const texts = [...workflowFiles.map(rawOf), MARIADB_ACTION].map(codeOf);
     for (const text of texts) {
       for (const match of text.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)) {
         const ref = match[1] as string;
@@ -99,16 +96,14 @@ describe('workflow: aturan umum (semua berkas)', () => {
 });
 
 describe('deploy-server.yml: keamanan', () => {
-  test('pemicu: PR di-merge ke dev/main (pull_request_target closed), push HANYA branch kerja, dispatch; tanpa pull_request biasa', () => {
+  test('pemicu: PR di-merge ke dev/main (pull_request_target closed) dan dispatch; tanpa push dan tanpa pull_request biasa', () => {
     const on = deploy.on as {
       pull_request_target: { types: string[]; branches: string[] };
-      push: { branches: string[] };
     };
-    expect(Object.keys(on).sort()).toEqual(['pull_request_target', 'push', 'workflow_dispatch']);
+    expect(Object.keys(on).sort()).toEqual(['pull_request_target', 'workflow_dispatch']);
     // keputusan pemilik 2026-11-06 (spek §11/§13.2): push langsung ke main/dev tidak men-deploy
     expect(on.pull_request_target.types).toEqual(['closed']);
     expect([...on.pull_request_target.branches].sort()).toEqual(['dev', 'main']);
-    expect(on.push.branches).toEqual(['feat/migrasi-cloudflare']);
     // `pull_request` (tanpa _target) menjalankan kode PR; `pull_request_target` dikunci pada merged (di bawah)
     expect(codeOf(deployText)).not.toMatch(/^\s*pull_request:/m);
   });
@@ -286,20 +281,13 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     expect(script).toContain('GITHUB_OUTPUT');
   });
 
-  test('push: HANYA feat/migrasi-cloudflare -> staging; push ke main/dev (tanpa PR) dan ref lain ditolak', async () => {
-    expect(await select('push', 'refs/heads/feat/migrasi-cloudflare')).toEqual({
-      code: 0,
-      target: 'staging',
-      sha: GITHUB_SHA,
-    });
+  test('push (tanpa PR) ditolak untuk semua ref, termasuk branch kerja lama', async () => {
     for (const ref of [
+      'refs/heads/feat/migrasi-cloudflare',
       'refs/heads/main',
       'refs/heads/dev',
       'refs/heads/feat/lain',
-      'refs/heads/main2',
       'refs/tags/v1',
-      'refs/pull/1/merge',
-      'refs/heads/dev/x',
     ]) {
       expect((await select('push', ref)).code, ref).toBe(1);
     }
@@ -347,7 +335,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     ).toBe(1);
   });
 
-  test('dispatch: production HANYA dari main; staging dari main/dev/feat; ref lain dan target aneh ditolak', async () => {
+  test('dispatch: production HANYA dari main; staging dari main/dev; ref lain dan target aneh ditolak', async () => {
     expect(await select('workflow_dispatch', 'refs/heads/main', 'production')).toEqual({
       code: 0,
       target: 'production',
@@ -364,12 +352,8 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
       sha: GITHUB_SHA,
     });
     expect(
-      await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'staging'),
-    ).toEqual({
-      code: 0,
-      target: 'staging',
-      sha: GITHUB_SHA,
-    });
+      (await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'staging')).code,
+    ).toBe(1);
     for (const ref of [
       'refs/heads/dev',
       'refs/heads/feat/migrasi-cloudflare',

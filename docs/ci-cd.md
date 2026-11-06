@@ -1,6 +1,6 @@
 # CI/CD (GitHub Actions)
 
-Workflow di `.github/workflows/`: `test.yml` (PR), `deploy-server.yml` (server Bun + MariaDB di VPS, bagian pertama di bawah), dan `deploy.yml` (Apps Script lama, dipensiunkan di T34/T35). Aksi lokal bersama: `.github/actions/mariadb` (MariaDB 11.8 dengan `deploy/mariadb/qc.cnf` untuk tes server). `deploy-worker.yml` (Cloudflare) sudah dihapus; rencana Cloudflare dibatalkan 2026-11-05.
+Workflow di `.github/workflows/`: `test.yml` (PR), dan `deploy-server.yml` (server Bun + MariaDB di VPS). Workflow deploy Apps Script lama (`deploy.yml`) dihapus saat cutover 2026-11-07; versinya tetap ada di tag `gas-legacy`. Aksi lokal bersama: `.github/actions/mariadb` (MariaDB 11.8 dengan `deploy/mariadb/qc.cnf` untuk tes server). `deploy-worker.yml` (Cloudflare) sudah dihapus; rencana Cloudflare dibatalkan 2026-11-05.
 
 ## Server di VPS (`deploy-server.yml`)
 
@@ -10,28 +10,20 @@ Alur satu run: **`meta`** (menentukan environment dan commit yang dibangun, meno
 |---|---|---|
 | PR **di-merge** ke `dev` (`pull_request_target`, closed + merged) | `staging` (`qc-dev.rhd.my.id`) | membangun commit hasil merge (`merge_commit_sha`); PR yang ditutup tanpa merge dilewati |
 | PR **di-merge** ke `main` (`pull_request_target`, closed + merged) | `production` (`qc.rhd.my.id`) | sama; PR rilis `dev` -> `main` itu sendiri adalah deploy production |
-| push ke `feat/migrasi-cloudflare` (**sementara**) | `staging` | `production` TIDAK PERNAH dari branch ini; dihapus saat cutover |
 | push langsung ke `main` atau `dev` | tidak ada | tidak memicu deploy (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge) |
-| Manual (Actions -> Deploy Server -> Run workflow) | pilihan `staging`/`production` | `production` hanya dari `main`; `staging` dari `main`, `dev`, atau `feat/migrasi-cloudflare`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
+| Manual (Actions -> Deploy Server -> Run workflow) | pilihan `staging`/`production` | `production` hanya dari `main`; `staging` dari `main` atau `dev`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
 
 Perubahan hanya di `docs/**`, `**/*.md`, `gas/**`, `bridge/**` tidak memicu deploy (tidak masuk ke image).
 
-### Mengapa masih ada pemicu `push` (sementara) dan `pull_request_target` baru berlaku setelah cutover
+### Cutover (T34), selesai 2026-11-07
 
-GitHub hanya menjalankan (dan menampilkan tombol) `workflow_dispatch` dan `pull_request_target` bila berkas workflow ada di **branch default** (`main`), yang dibekukan sampai cutover (spek §13 butir 1). Teramati pada `deploy.yml` (di bawah): nol run `pull_request_target` selama berkas hanya ada di `dev`. Jadi **sebelum cutover satu-satunya jalur otomatis ke staging adalah `push` ke `feat/migrasi-cloudflare`**; `pull_request_target` dan `workflow_dispatch` ikut ditulis agar aktif sendiri begitu berkas ada di `main` (PR `dev` -> `main` saat cutover). Dokumentasi GitHub (Events that trigger workflows, diperiksa 2026-11-06): `push` berlaku untuk workflow yang belum di-merge ke branch default. Yang tidak diverifikasi: perilaku tepat tombol Run workflow pada branch non-default, bahwa berkas yang dipakai run `push` adalah versi pada commit yang di-push (tersirat, tak disebut eksplisit; pengalaman `deploy.yml` konsisten), dan perilaku `paths-ignore` pada `pull_request_target` (dibandingkan terhadap berkas yang diubah PR).
-
-### Saat cutover (T34)
-
-1. Hapus pemicu `push` seluruhnya dari `deploy-server.yml` DAN `feat/migrasi-cloudflare` dari `case` di job `meta` (cabang `push` dan `workflow_dispatch`); `scripts/ci-workflows.test.ts` menegakkan daftar pemicu dan branch, jadi perbarui tesnya bersamaan.
-2. Dalam PR yang sama: hapus `deploy.yml` (GAS) dan, pada environment `staging`, ganti aturan *Deployment branches* menjadi hanya `dev` dan `main`.
-3. Merge PR ke `main` otomatis men-deploy production (environment `production`). *Required reviewers* pada environment `production` tetap **disarankan** (bukan wajib; keputusan pemilik 2026-11-06) bila ingin persetujuan manual.
-4. Sebelum PR cutover di-merge: pastikan perubahan `deploy/compose.yml`, `deploy/deploy.sh`, `deploy/mariadb/qc.cnf`, dan variabel `.env` baru sudah dipasang manual di VPS (lihat "Perubahan berkas deploy" di bawah).
+Sebelum cutover, GitHub hanya menjalankan `workflow_dispatch` dan `pull_request_target` bila berkas workflow ada di branch default (`main`, dibekukan sebagai jalur GAS), sehingga staging di-deploy lewat `push` ke `feat/migrasi-cloudflare`. Pemicu `push` itu, branch kerja itu di job `meta` dan di dispatch, serta `deploy.yml` (GAS) dihapus dalam PR cutover (spek §13 butir 1, §19 butir 14); `scripts/ci-workflows.test.ts` menegakkan daftar pemicu dan branch yang baru. Dua hal tetap pekerjaan pemilik di GitHub: aturan *Deployment branches* environment `staging` menjadi hanya `dev` dan `main`, dan *Required reviewers* pada `production` (disarankan, bukan wajib; keputusan pemilik 2026-11-06). Merge PR ke `main` otomatis men-deploy production. Perubahan `deploy/compose.yml`, `deploy/deploy.sh`, `deploy/mariadb/qc.cnf`, dan variabel `.env` baru tetap harus dipasang manual di VPS sebelum merge (lihat "Perubahan berkas deploy").
 
 ### Yang HARUS dibuat pemilik di GitHub (workflow tidak dapat mengaturnya sendiri)
 
 Repositori -> Settings -> Environments:
 
-1. **Environment `staging`**: *Deployment branches and tags* -> *Selected branches* -> `feat/migrasi-cloudflare`, lalu tambahkan `dev` dan `main` (run `pull_request_target` berjalan pada ref branch tujuan PR, jadi aturan ini menilai `dev`/`main`, bukan `refs/pull/N/merge`).
+1. **Environment `staging`**: *Deployment branches and tags* -> *Selected branches* -> hanya `dev` dan `main` (setelah cutover; `feat/migrasi-cloudflare` dikeluarkan) (run `pull_request_target` berjalan pada ref branch tujuan PR, jadi aturan ini menilai `dev`/`main`, bukan `refs/pull/N/merge`).
 2. **Environment `production`**: *Selected branches* -> hanya `main`. *Required reviewers* **disarankan** untuk production (tidak diwajibkan pemilik).
 3. **Secret environment** (BUKAN secret repositori; buat di KEDUA environment dengan nilai milik masing-masing):
 
@@ -77,16 +69,16 @@ Butir spek "uji asap ... (dan kesehatan database)" dipenuhi oleh gerbang migrasi
 ### Urutan uji pertama (setelah pemilik mengatur di atas)
 
 1. Pastikan VPS siap (`docs/deploy-vps.md`, termasuk kunci SSH deploy langkah 9). Khusus staging yang kini memakai image lokal: **hapus atau komentari `QC_IMAGE`** di `.env` staging (`deploy.sh` menolak dengan kode 2 bila `QC_IMAGE` bukan `ghcr.io/...`; tanpanya compose memakai `ghcr.io/<pemilik>/qc-app`), dan jalankan `docker login ghcr.io` (lihat butir 5 di atas) agar `compose pull` berhasil. Catatan: `QC_IMAGE_TAG=local-<sha>` lama menunjuk `ghcr.io/...:local-<sha>` yang tak ada, jadi **deploy GHCR pertama tidak punya target pengembalian**: bila `pull` gagal, `.env` dipulihkan dan kontainer lokal yang berjalan tidak tersentuh (kode 1); bila gagal sesudah `up -d` (tak sehat, ping gagal), pengembalian ke tag `local-<sha>` tak mungkin dan skrip berakhir kode 4: pulihkan manual (kembalikan `QC_IMAGE=qc-app` dan tag lokal, `docker compose up -d`).
-2. Dispatch tidak tersedia sebelum cutover; cukup push ke `feat/migrasi-cloudflare` (atau komit kosong: `git commit --allow-empty -m "ci: uji deploy staging"`). Perhatikan tab Actions: `meta` -> `check` -> `image` -> `deploy`.
+2. Setelah cutover: merge PR ke `dev` (atau Run workflow dari `dev`/`main` dengan target `staging`). Perhatikan tab Actions: `meta` -> `check` -> `image` -> `deploy`.
 3. Bila `image` gagal di `buildx`, perbaiki Dockerfile (build BuildKit di Actions belum pernah dijalankan; yang terbukti hanya pembangun klasik di VPS).
 4. Bila `deploy` gagal "Secret environment ... belum diisi" atau "Host key verification failed", periksa daftar di atas. Kode keluar skrip VPS: 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian juga gagal (periksa VPS manual), 2 ditolak (input, `QC_IMAGE` non-GHCR) atau `.env`/`compose.yml` tidak valid (`compose config` gagal; tidak ada yang diubah), 3 deploy lain sedang berjalan, 5 versi baru sehat dan aktif tetapi nginx tidak terjangkau (tidak dikembalikan; periksa nginx). Keluaran `docker compose` TIDAK muncul di log Actions (dapat memuat potongan rahasia dari `.env`): lihat `<INSTALL_DIR>/<env>/.deploy.log` di server (VPS pribadi `/root/apps/qc-app/<env>/.deploy.log`) (izin 600, ditimpa tiap deploy).
 5. Uji pemulihan sekali di staging **setelah deploy GHCR kedua sukses** (baru saat itu ada tag GHCR sebelumnya yang dapat dikembalikan): dorong komit yang memecahkan `/api/ping` dan pastikan job gagal dan VPS kembali ke tag lama.
 
 ### Keamanan workflow (ditegakkan `scripts/ci-workflows.test.ts`)
 
-- `pull_request_target` (menerima rahasia walau PR dari fork) hanya `types: [closed]` untuk `dev`/`main`, dan hanya setelah PR **di-merge**: job `meta` punya `if` merged dan skripnya menolak selain `merged == true`. Yang dibangun dan di-checkout HANYA commit dari output `sha` job `meta` (= `merge_commit_sha`, kode yang sudah masuk ke branch tujuan; divalidasi 40 heksa); tak ada `pull_request.head`, `head_ref`, atau `refs/pull/` di mana pun. Tanpa `pull_request` biasa. PR fork yang belum di-merge tidak pernah mendapat rahasia maupun menjalankan kodenya. Jangan menambah langkah yang meng-checkout head PR. Push langsung ke `main`/`dev` tidak memicu deploy; `push` hanya untuk `feat/migrasi-cloudflare` (sementara).
+- `pull_request_target` (menerima rahasia walau PR dari fork) hanya `types: [closed]` untuk `dev`/`main`, dan hanya setelah PR **di-merge**: job `meta` punya `if` merged dan skripnya menolak selain `merged == true`. Yang dibangun dan di-checkout HANYA commit dari output `sha` job `meta` (= `merge_commit_sha`, kode yang sudah masuk ke branch tujuan; divalidasi 40 heksa); tak ada `pull_request.head`, `head_ref`, atau `refs/pull/` di mana pun. Tanpa `pull_request` biasa. PR fork yang belum di-merge tidak pernah mendapat rahasia maupun menjalankan kodenya. Jangan menambah langkah yang meng-checkout head PR. Push langsung ke `main`/`dev` tidak memicu deploy, dan tidak ada pemicu `push` sama sekali.
 - PR yang ditutup tanpa merge dilewati dan memakai grup `concurrency` sendiri (tidak menggantikan run deploy yang menunggu).
-- Semua aksi pihak ketiga pada `deploy-server.yml`, `test.yml`, dan aksi lokal dipatok ke SHA commit (tag mayor di komentar; diambil 2026-11-06). Perbarui dengan sengaja, bukan otomatis. (`deploy.yml` GAS lama dikecualikan: dihapus di T34.)
+- Semua aksi pihak ketiga pada `deploy-server.yml`, `test.yml`, dan aksi lokal dipatok ke SHA commit (tag mayor di komentar; diambil 2026-11-06). Perbarui dengan sengaja, bukan otomatis.
 - `permissions` minimal: `contents: read` di tingkat atas; hanya job `image` yang `packages: write`; job `deploy` `permissions: {}` dan tanpa checkout.
 - Tidak ada `${{ }}` di dalam skrip `run`: nilai lewat `env`, sehingga tak ada injeksi ekspresi.
 - Antrean serial per environment (`concurrency` `deploy-server-<env>`, tanpa membatalkan yang berjalan; GitHub hanya menyimpan satu run menunggu, yang lebih lama dibatalkan). Pengaman kedua: `deploy.sh` memakai kunci per lingkungan (kode 3).
@@ -99,46 +91,9 @@ Butir spek "uji asap ... (dan kesehatan database)" dipenuhi oleh gerbang migrasi
 
 `deploy-server.yml` dan `.github/actions/mariadb` belum pernah dijalankan di GitHub: hanya diuji lokal (`scripts/ci-workflows.test.ts`: mengurai YAML, menegakkan aturan, menjalankan skrip `meta` dengan bash). Belum terbukti: `docker run` MariaDB + `qc.cnf` di runner, `bun run check` penuh di runner (tanpa tunnel), build BuildKit Dockerfile (job `image` di `test.yml` dan `deploy-server.yml`), dorong ke GHCR dan visibilitas paket, SSH dengan kunci host dipatok ke VPS, ekspresi `concurrency`/`environment`, pemicu `pull_request_target` (hanya aktif setelah berkas workflow ada di `main`) dan grup `concurrency` untuk PR tanpa merge, dan uji asap.
 
-## Apps Script lama (`deploy.yml`; dihapus di T34)
+## Apps Script lama (dihapus saat cutover)
 
-Ringkasan sebelum migrasi; berlaku selama `main` masih jalur GAS.
-
-### Alur
-
-| Kejadian | Workflow | Hasil |
-|---|---|---|
-| PR dibuka, dibuka kembali, atau ada commit baru | `test.yml` | `bun run check` lalu `bun run build` (termasuk `verify-dist`) |
-| PR **di-merge** ke `dev` | `deploy.yml` (target `dev`) | build, lalu push ke Apps Script `@HEAD` saja; URL `/dev` terbarui, `/exec` tidak berubah |
-| PR **di-merge** ke `main` | `deploy.yml` (target `exec`) | build, push, lalu membuat versi baru pada deployment tetap (`gas/deployment.json`); URL `/exec` terbarui |
-| Manual (Actions → Deploy GAS → Run workflow) | `deploy.yml` | pilih `dev` atau `exec` |
-
-Catatan:
-- PR yang ditutup **tanpa merge** tidak men-deploy apa pun.
-- Deploy manual hanya dari branch `main` (target `dev` atau `exec`) atau `dev` (target `dev`); dari ref lain workflow gagal sebelum checkout dan sebelum kredensial dibuat.
-- `deploy.yml` menjalankan `bun run check` dan `bun run build` dulu sebagai gerbang; push ke Apps Script hanya terjadi bila keduanya lolos.
-- Semua deploy (dev dan exec) berjalan bergantian dalam satu antrean (`deploy-gas`), tanpa membatalkan yang sedang berjalan. Ini perlu karena kedua target menulis ke project Apps Script yang sama dan versi `/exec` dibuat dari `@HEAD`; paralel akan membuat kode dev bisa terbit di `/exec`. Keterbatasan GitHub: hanya satu run yang boleh menunggu, jadi bila dua run antre di belakang deploy yang sedang berjalan, run menunggu yang lebih lama dibatalkan. Bila run `exec` yang dibatalkan, jalankan ulang manual dari `main`.
-- Deploy dari PR memakai event `pull_request_target`, bukan `pull_request`. Alasannya: pada `pull_request`, GITHUB_REF selalu `refs/pull/N/merge`, sehingga aturan environment "Selected branches" selalu menolaknya ("Branch refs/pull/N/merge is not allowed to deploy"). `pull_request_target` berjalan pada ref branch tujuan (`dev` atau `main`). Job hanya berjalan setelah PR di-merge dan hanya meng-checkout commit hasil merge; jangan menambah langkah yang meng-checkout head PR yang belum di-merge.
-- **`deploy.yml` harus ada di branch default (`main`).** Tanpa itu, tombol **Run workflow** (`workflow_dispatch`) tidak muncul dan merge PR ke `dev` tidak memicu deploy sama sekali (teramati: nol run `pull_request_target` selama workflow hanya ada di `dev`). Setelah file masuk ke `main`, keduanya langsung bekerja. Jadi workflow baru atau pemicu baru perlu dibawa ke `main` (PR `dev` → `main`) sebelum pemicu otomatisnya bisa diandalkan.
-- Merge PR ke `main` membuat versi baru di `/exec` (target `exec`), jadi PR rilis `dev` → `main` itu sendiri adalah deploy produksi.
-
-### Menyiapkan secret `CLASPRC_JSON`
-
-Workflow deploy memakai kredensial `clasp` milik akun Google pemilik script.
-
-1. Di komputer Anda, login sekali: `clasp login` (bukan `--creds`; cukup akun pemilik script).
-2. Salin **seluruh isi** `~/.clasprc.json` (Windows: `C:\Users\<nama>\.clasprc.json`).
-3. Di GitHub: repositori → Settings → Secrets and variables → Actions → New repository secret.
-   Nama: `CLASPRC_JSON`, nilai: isi berkas tadi.
-
-Berkas itu berisi token akses akun Google Anda. Jangan di-commit (sudah ada di `.gitignore`), jangan ditempel di issue atau PR, dan cabut aksesnya dari akun Google bila bocor. Workflow menulisnya ke runner hanya selama deploy dan menghapusnya di akhir.
-
-### Environment: `gas-dev` dan `gas-exec`
-
-Job deploy memakai environment `gas-<target>`. GitHub membuatnya otomatis saat run pertama, tetapi **pengamanannya Anda atur sendiri** di Settings → Environments, karena workflow tidak bisa membatasi dirinya sendiri (branch yang dispatch bisa mengubah file workflow):
-
-1. **`gas-exec`:** Deployment branches → *Selected branches* → hanya `main`. Tambahkan *Required reviewers* bila ingin persetujuan manual sebelum `/exec`.
-2. **`gas-dev`:** Deployment branches → *Selected branches* → `dev` dan `main`.
-3. Pindahkan secret `CLASPRC_JSON` dari secret repositori ke **secret environment** (di kedua environment), lalu hapus secret repositori. Dengan begitu token hanya sampai ke job yang berjalan dari branch yang diizinkan.
+`deploy.yml` (deploy GAS lewat `clasp`, environment `gas-dev`/`gas-exec`, secret `CLASPRC_JSON`) dihapus dalam PR cutover 2026-11-07; versi terakhirnya ada di tag `gas-legacy`. Pemilik dapat menghapus environment `gas-dev` dan `gas-exec` serta secret `CLASPRC_JSON` di GitHub. Halaman GAS `/exec` dialihkan ke `https://qc.rhd.my.id` lewat `clasp` lokal di luar repositori (spek §19 butir 14).
 
 ## Disarankan
 

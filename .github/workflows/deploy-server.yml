@@ -7,13 +7,9 @@ name: Deploy Server
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
 # - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `staging`    (qc-dev.rhd.my.id)
 # - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `production` (qc.rhd.my.id)
-# - push ke `feat/migrasi-cloudflare` (SEMENTARA)                  -> environment `staging`
-# - workflow_dispatch (target staging|production)               -> `production` HANYA dari main; `staging` dari main/dev/feat/migrasi-cloudflare
+# - workflow_dispatch (target staging|production)               -> `production` HANYA dari main; `staging` dari main/dev
 # Nama environment GitHub = kunci deploy di VPS (folder `<INSTALL_DIR>/<env>` (VPS pribadi: `/root/apps/qc-app/<env>`), `deploy.sh --only`, authorized_keys): staging | production (keputusan pemilik 2026-11-07).
-# Push langsung ke `main`/`dev` TIDAK men-deploy. `push` ke branch kerja hanya ada selama berkas workflow ini belum
-# di branch default: GitHub hanya menjalankan workflow_dispatch/pull_request_target bila berkas ada di branch DEFAULT
-# (main, dibekukan sampai cutover), sedangkan push berjalan dari berkas di branch yang di-push. Saat cutover (T34)
-# hapus pemicu `push` seluruhnya (dan `feat/migrasi-cloudflare` dari `case` di job `meta`).
+# Push langsung ke `main`/`dev` TIDAK men-deploy (cutover T34 2026-11-07: pemicu `push` dan branch kerja sementara dihapus).
 #
 # Keamanan `pull_request_target` (menerima rahasia walau PR dari fork): job HANYA berjalan setelah PR di-merge (`if` di
 # job `meta` + pemeriksaan di skripnya), dan HANYA meng-checkout commit hasil merge (`merge_commit_sha`, kode yang sudah
@@ -24,15 +20,6 @@ on:
     types: [closed]
     branches: [dev, main]
     # Perubahan yang tak masuk ke image tidak perlu deploy.
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - 'gas/**'
-      - 'bridge/**'
-      - '.superpowers/**'
-  push:
-    branches:
-      - feat/migrasi-cloudflare
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
@@ -94,13 +81,6 @@ jobs:
               esac
               sha=$PR_MERGE_SHA
               ;;
-            push)
-              # Hanya branch kerja sementara; push ke main/dev tidak men-deploy (lewat PR yang di-merge).
-              case "$REF" in
-                refs/heads/feat/migrasi-cloudflare) target=staging ;;
-                *) fail "Push hanya men-deploy dari feat/migrasi-cloudflare; main dan dev lewat PR yang di-merge." ;;
-              esac
-              ;;
             workflow_dispatch)
               case "$INPUT_TARGET" in
                 staging | production) target=$INPUT_TARGET ;;
@@ -108,10 +88,10 @@ jobs:
               esac
               case "$REF" in
                 refs/heads/main) ;;
-                refs/heads/dev | refs/heads/feat/migrasi-cloudflare)
+                refs/heads/dev)
                   if [ "$target" = production ]; then fail "Target production hanya boleh dijalankan dari branch main."; fi
                   ;;
-                *) fail "Deploy manual hanya dari main, dev, atau feat/migrasi-cloudflare." ;;
+                *) fail "Deploy manual hanya dari main atau dev." ;;
               esac
               ;;
             *) fail "Pemicu tidak didukung." ;;
