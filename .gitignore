@@ -31,3 +31,7 @@ web/.tanstack/
 
 # jembatan: rahasia lokal
 bridge/.secrets.local
+
+# dump Sheets (T33): berisi data pengguna, tak pernah di-commit
+dump.json
+*.dump.json
