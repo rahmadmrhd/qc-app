@@ -15,13 +15,14 @@ try {
   process.exit(1);
 }
 
-const app = createServer(config);
+// Runner job dan penjadwal baru berjalan SETELAH persiapan basis data (migrasi) selesai.
+const app = createServer(config, { prepare: prepareDatabase });
 
 // Gagal cepat dan jelas bila basis data tidak terjangkau (dev: terowongan `bun run db:tunnel` belum jalan) atau
 // sebuah migrasi gagal. Migrasi yang belum diterapkan dijalankan SEBELUM port dibuka (image Docker tidak butuh
 // langkah migrasi terpisah).
 try {
-  const applied = await prepareDatabase(app.env.DB);
+  const applied = await app.ready;
   if (applied.length > 0) console.log({ evt: 'migrate', applied });
 } catch (error) {
   console.error(error instanceof StartupError ? error.message : String(error));

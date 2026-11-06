@@ -13,12 +13,20 @@ export interface ServerOptions {
   background?: boolean;
   /** Hanya tes: timpa/ tambah isi `Env` (jembatan palsu, jam terkendali, ...). */
   env?: Partial<Env>;
+  /**
+   * Persiapan basis data yang HARUS selesai sebelum runner job dan penjadwal dijalankan (`main.ts`:
+   * `prepareDatabase` = cek koneksi + migrasi). Tanpa ini runner mulai menanyai tabel yang belum ada pada skema
+   * baru dan mencatat galat. Gagal = `ready` menolak dan runner/penjadwal tidak pernah dijalankan.
+   */
+  prepare?: (db: Db) => Promise<string[]>;
 }
 
 export interface QcServer {
   env: Env;
   /** `peerAddress`: alamat TCP lawan bicara (bukan header); dipakai `clientIp` untuk pembatas dan log. */
   fetch(request: Request, peerAddress: string): Response | Promise<Response>;
+  /** Selesai setelah `prepare` (bila ada) berhasil dan runner/penjadwal berjalan; menolak bila `prepare` gagal. */
+  ready: Promise<string[]>;
   /** Hentikan runner/penjadwal (menunggu putaran berjalan selesai), lalu tutup pool basis data milik sendiri. */
   stop(): Promise<void>;
 }
@@ -48,9 +56,21 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   const db =
     options.db ?? createDb({ url: config.databaseUrl, connectionLimit: config.dbPoolSize });
   const env: Env = { ...envFromConfig(config, db), ...options.env };
-  const stops = options.background === false ? [] : [startJobRunner(env), startScheduler(env)];
+  let stops: Array<() => Promise<void>> = [];
+  const startBackground = () => {
+    if (options.background !== false) stops = [startJobRunner(env), startScheduler(env)];
+  };
+  const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
+    (result) => {
+      startBackground();
+      return result;
+    },
+  );
+  // Penolakan ditangani pemanggil lewat `ready`; tanpa ini, tes/pemanggil yang tak menunggu memicu "unhandled".
+  ready.catch(() => {});
   return {
     env,
+    ready,
     fetch: (request, peerAddress) =>
       app.fetch(request, {
         ...env,
@@ -59,6 +79,7 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
         staticDir: config.staticDir,
       }),
     async stop() {
+      await ready.catch(() => {}); // runner dimulai (atau tidak) sebelum dihentikan
       await Promise.all(stops.map((stop) => stop()));
       if (ownsDb) await db.close();
     },
