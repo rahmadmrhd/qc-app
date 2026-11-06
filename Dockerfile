@@ -71,7 +71,7 @@ EXPOSE 8788
 
 # Gagal sehat bila /api/ping tak menjawab 200; start_period menampung migrasi saat start.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
-  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT ?? 8788}/api/ping`).then((r) => process.exit(1), () => process.exit(1))"]
+  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT ?? 8788}/api/ping`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 # Bentuk exec: SIGTERM dari `docker stop` langsung ke Bun (shutdown rapi di main.ts).
 ENTRYPOINT ["bun", "src/main.ts"]
