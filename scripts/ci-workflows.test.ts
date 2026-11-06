@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: ekspresi GitHub Actions (`${{ }}`) memang ditulis literal di berkas yang diperiksa
 // Penjaga keamanan workflow GitHub Actions tanpa GitHub: mengurai YAML dan menegakkan aturan yang tak boleh
-// bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, exec hanya dari main, tanpa injeksi
+// bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, production hanya dari main, tanpa injeksi
 // ekspresi di skrip, izin minimal). TIDAK menjalankan workflow: hasil nyata baru diketahui di GitHub (docs/ci-cd.md).
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -180,11 +180,11 @@ describe('deploy-server.yml: keamanan', () => {
     }
   });
 
-  test('perintah SSH sesuai kontrak deploy.sh: `deploy <dev|exec> <sha 40 heksa>` diterima, kunci --only dicocokkan', async () => {
+  test('perintah SSH sesuai kontrak deploy.sh: `deploy <staging|production> <sha 40 heksa>` diterima, kunci --only dicocokkan', async () => {
     const deployStep = (deploy.jobs.deploy?.steps ?? []).find((s) => s.name === 'Deploy di VPS');
     expect(deployStep?.run).toContain('ssh qc-deploy "deploy $TARGET $TAG"');
     const sha = 'a'.repeat(40);
-    for (const target of ['dev', 'exec']) {
+    for (const target of ['staging', 'production']) {
       const proc = Bun.spawn(
         [
           'bash',
@@ -275,10 +275,10 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     expect(script).toContain('GITHUB_OUTPUT');
   });
 
-  test('push: HANYA feat/migrasi-cloudflare -> dev; push ke main/dev (tanpa PR) dan ref lain ditolak', async () => {
+  test('push: HANYA feat/migrasi-cloudflare -> staging; push ke main/dev (tanpa PR) dan ref lain ditolak', async () => {
     expect(await select('push', 'refs/heads/feat/migrasi-cloudflare')).toEqual({
       code: 0,
-      target: 'dev',
+      target: 'staging',
       sha: GITHUB_SHA,
     });
     for (const ref of [
@@ -294,14 +294,14 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     }
   });
 
-  test('pull_request_target: hanya PR merged; main -> exec dan dev -> dev, yang dibangun = merge_commit_sha', async () => {
+  test('pull_request_target: hanya PR merged; main -> production dan dev -> staging, yang dibangun = merge_commit_sha', async () => {
     const merged = { merged: 'true', mergeSha: MERGE_SHA };
     expect(
       await select('pull_request_target', 'refs/heads/main', '', { ...merged, base: 'main' }),
-    ).toEqual({ code: 0, target: 'exec', sha: MERGE_SHA });
+    ).toEqual({ code: 0, target: 'production', sha: MERGE_SHA });
     expect(
       await select('pull_request_target', 'refs/heads/dev', '', { ...merged, base: 'dev' }),
-    ).toEqual({ code: 0, target: 'dev', sha: MERGE_SHA });
+    ).toEqual({ code: 0, target: 'staging', sha: MERGE_SHA });
   });
 
   test('pull_request_target: PR belum merged, merge sha tak sah, branch tujuan tak cocok/tak dikenal ditolak', async () => {
@@ -336,25 +336,27 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     ).toBe(1);
   });
 
-  test('dispatch: exec HANYA dari main; dev dari main/dev/feat; ref lain dan target aneh ditolak', async () => {
-    expect(await select('workflow_dispatch', 'refs/heads/main', 'exec')).toEqual({
+  test('dispatch: production HANYA dari main; staging dari main/dev/feat; ref lain dan target aneh ditolak', async () => {
+    expect(await select('workflow_dispatch', 'refs/heads/main', 'production')).toEqual({
       code: 0,
-      target: 'exec',
+      target: 'production',
       sha: GITHUB_SHA,
     });
-    expect(await select('workflow_dispatch', 'refs/heads/main', 'dev')).toEqual({
+    expect(await select('workflow_dispatch', 'refs/heads/main', 'staging')).toEqual({
       code: 0,
-      target: 'dev',
+      target: 'staging',
       sha: GITHUB_SHA,
     });
-    expect(await select('workflow_dispatch', 'refs/heads/dev', 'dev')).toEqual({
+    expect(await select('workflow_dispatch', 'refs/heads/dev', 'staging')).toEqual({
       code: 0,
-      target: 'dev',
+      target: 'staging',
       sha: GITHUB_SHA,
     });
-    expect(await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'dev')).toEqual({
+    expect(
+      await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'staging'),
+    ).toEqual({
       code: 0,
-      target: 'dev',
+      target: 'staging',
       sha: GITHUB_SHA,
     });
     for (const ref of [
@@ -363,17 +365,29 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
       'refs/heads/feat/lain',
       'refs/tags/v1',
     ]) {
-      expect((await select('workflow_dispatch', ref, 'exec')).code, `exec dari ${ref}`).toBe(1);
+      expect(
+        (await select('workflow_dispatch', ref, 'production')).code,
+        `production dari ${ref}`,
+      ).toBe(1);
     }
-    expect((await select('workflow_dispatch', 'refs/heads/feat/lain', 'dev')).code).toBe(1);
-    for (const bad of ['', 'prod', 'DEV', 'dev;id', 'dev exec', '$(id)']) {
+    expect((await select('workflow_dispatch', 'refs/heads/feat/lain', 'staging')).code).toBe(1);
+    for (const bad of [
+      '',
+      'prod',
+      'DEV',
+      'dev',
+      'exec',
+      'staging;id',
+      'staging production',
+      '$(id)',
+    ]) {
       expect((await select('workflow_dispatch', 'refs/heads/main', bad)).code, bad).toBe(1);
     }
   });
 
   test('pemicu lain (pull_request, schedule) ditolak; pull_request_target tanpa data PR yang sah juga ditolak', async () => {
     for (const event of ['pull_request', 'pull_request_target', 'schedule', '']) {
-      expect((await select(event, 'refs/heads/main', 'exec')).code, event).toBe(1);
+      expect((await select(event, 'refs/heads/main', 'production')).code, event).toBe(1);
     }
   });
 

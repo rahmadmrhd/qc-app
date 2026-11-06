@@ -157,11 +157,17 @@ describe('deploy: compose.yml qc-app', () => {
     expect(proxy?.split(',')).toEqual(['127.0.0.1/32', '::1/128', subnet as string]);
   });
 
-  test('nama proyek dan kontainer memakai QC_NAME (staging qc-staging hidup berdampingan dengan stack dev lama qc-dev)', () => {
+  test('nama proyek dan kontainer memakai QC_NAME (staging qc-staging dan production qc-production, tak bertabrakan dengan stack dev lama qc-dev)', () => {
     expect((compose as unknown as { name: string }).name).toMatch(/^\$\{QC_NAME:-qc-\$\{QC_ENV:\?/);
     expect(app.container_name).toBe('${QC_NAME:-qc-${QC_ENV}}-app');
     expect(compose.services['qc-db']?.container_name).toBe('${QC_NAME:-qc-${QC_ENV}}-db');
     expect(envExample).toMatch(/^# QC_NAME=qc-staging$/m);
+  });
+
+  test('contoh .env staging: lingkungan staging, skema/pengguna DB qc_dev diisi eksplisit (bukan diturunkan dari QC_ENV)', () => {
+    expect(envExample).toMatch(/^QC_ENV=staging$/m);
+    expect(envExample).toMatch(/^QC_DB_USER=qc_dev$/m);
+    expect(envExample).toMatch(/^QC_DB_NAME=qc_dev$/m);
   });
 
   test('qc-db tidak berubah bentuknya: port hanya 127.0.0.1', () => {

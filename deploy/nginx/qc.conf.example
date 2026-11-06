@@ -83,7 +83,7 @@ server {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
-# PRODUCTION: qc.rhd.my.id  (JANGAN diaktifkan sebelum lingkungan exec siap dan cutover; ditulis di sini agar
+# PRODUCTION: qc.rhd.my.id  (JANGAN diaktifkan sebelum lingkungan production siap dan cutover; ditulis di sini agar
 # bentuknya sudah tertinjau)
 # ---------------------------------------------------------------------------------------------------------------
 server {

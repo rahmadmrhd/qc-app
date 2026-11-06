@@ -109,17 +109,17 @@ describe('pemeriksa isi dump', () => {
   test('bentuk berbahaya ditolak (huruf besar/kecil dan backtick tak dibedakan)', () => {
     const bad = [
       'USE x;',
-      'use `qc_exec`;',
-      'USE\tqc_exec;',
+      'use `qc_production`;',
+      'USE\tqc_production;',
       '\\u x',
       '\\! cat /etc/passwd',
       'system cat /etc/passwd',
       'SYSTEM id',
-      'CREATE DATABASE qc_exec;',
-      'create schema `qc_exec`;',
-      'DROP DATABASE qc_exec;',
-      'drop database if exists qc_exec;',
-      'ALTER DATABASE qc_exec CHARACTER SET latin1;',
+      'CREATE DATABASE qc_production;',
+      'create schema `qc_production`;',
+      'DROP DATABASE qc_production;',
+      'drop database if exists qc_production;',
+      'ALTER DATABASE qc_production CHARACTER SET latin1;',
       "GRANT ALL ON *.* TO 'x'@'%';",
       'revoke all on *.* from x;',
       "ALTER USER 'root'@'localhost' IDENTIFIED BY 'a';",
@@ -128,25 +128,25 @@ describe('pemeriksa isi dump', () => {
       'SET GLOBAL general_log_file = "/tmp/x";',
       'INSERT INTO mysql.user VALUES (1);',
       'INSERT INTO `mysql`.`user` VALUES (1);',
-      'INSERT INTO`qc_exec`.`users` VALUES (1);',
-      'INSERT /* c */ INTO qc_exec.users VALUES (1);',
-      'INSERT LOW_PRIORITY INTO qc_exec.users VALUES (1);',
-      'INSERT qc_exec.users VALUES (1);',
-      'REPLACE qc_exec.users VALUES (1);',
+      'INSERT INTO`qc_production`.`users` VALUES (1);',
+      'INSERT /* c */ INTO qc_production.users VALUES (1);',
+      'INSERT LOW_PRIORITY INTO qc_production.users VALUES (1);',
+      'INSERT qc_production.users VALUES (1);',
+      'REPLACE qc_production.users VALUES (1);',
       'insert ignore into `information_schema`.`x` values (1);',
-      'UPDATE `qc_exec`.`users` SET a = 1;',
-      'DELETE FROM qc_exec.users;',
-      'DROP TABLE IF EXISTS `qc_exec`.`users`;',
-      'TRUNCATE TABLE qc_exec.users;',
-      'LOCK TABLES `qc_exec`.`users` WRITE;',
+      'UPDATE `qc_production`.`users` SET a = 1;',
+      'DELETE FROM qc_production.users;',
+      'DROP TABLE IF EXISTS `qc_production`.`users`;',
+      'TRUNCATE TABLE qc_production.users;',
+      'LOCK TABLES `qc_production`.`users` WRITE;',
       "SELECT 1 INTO OUTFILE '/tmp/x';",
       '/*!40101 GRANT ALL ON *.* TO x */;',
-      '/*M!100100 USE qc_exec */;',
+      '/*M!100100 USE qc_production */;',
       'SOURCE /tmp/x.sql',
-      'connect qc_exec;',
+      'connect qc_production;',
       'tee /tmp/x',
-      "EXECUTE IMMEDIATE 'DROP DATABASE qc_exec';",
-      "PREPARE s FROM 'DROP DATABASE qc_exec';",
+      "EXECUTE IMMEDIATE 'DROP DATABASE qc_production';",
+      "PREPARE s FROM 'DROP DATABASE qc_production';",
       'DELIMITER ;;',
       'delimiter //',
       'LOAD DATA INFILE "/etc/passwd" INTO TABLE a;',
@@ -180,13 +180,13 @@ describe('pemeriksa isi dump', () => {
     inspector.feed(`INSERT INTO \`a\` VALUES ('${'x'.repeat(5000)}`);
     inspector.feed(`${'y'.repeat(5000)}');\nUS`);
     expect(() => {
-      inspector.feed('E qc_exec;\n');
+      inspector.feed('E qc_production;\n');
     }).toThrow();
   });
 
   test('baris terakhir tanpa baris baru ikut diperiksa saat end()', () => {
     const inspector = createDumpInspector(TARGET);
-    inspector.feed('USE qc_exec;');
+    inspector.feed('USE qc_production;');
     expect(() => inspector.end()).toThrow();
   });
 });

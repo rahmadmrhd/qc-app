@@ -5,10 +5,11 @@ name: Deploy Server
 # tag sebelumnya bila gagal) -> uji asap lewat URL publik. Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
-# - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `dev`  (staging, qc-dev.rhd.my.id)
-# - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `exec` (production, qc.rhd.my.id)
-# - push ke `feat/migrasi-cloudflare` (SEMENTARA)                  -> environment `dev`
-# - workflow_dispatch (target dev|exec)                            -> `exec` HANYA dari main; `dev` dari main/dev/feat/migrasi-cloudflare
+# - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `staging`    (qc-dev.rhd.my.id)
+# - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `production` (qc.rhd.my.id)
+# - push ke `feat/migrasi-cloudflare` (SEMENTARA)                  -> environment `staging`
+# - workflow_dispatch (target staging|production)               -> `production` HANYA dari main; `staging` dari main/dev/feat/migrasi-cloudflare
+# Nama environment GitHub = kunci deploy di VPS (folder `/root/apps/qc-app/<env>`, `deploy.sh --only`, authorized_keys): staging | production (keputusan pemilik 2026-11-07).
 # Push langsung ke `main`/`dev` TIDAK men-deploy. `push` ke branch kerja hanya ada selama berkas workflow ini belum
 # di branch default: GitHub hanya menjalankan workflow_dispatch/pull_request_target bila berkas ada di branch DEFAULT
 # (main, dibekukan sampai cutover), sedangkan push berjalan dari berkas di branch yang di-push. Saat cutover (T34)
@@ -41,10 +42,10 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'dev = staging; exec = production (hanya dari branch main)'
+        description: 'staging, atau production (hanya dari branch main)'
         type: choice
-        options: [dev, exec]
-        default: dev
+        options: [staging, production]
+        default: staging
 
 permissions:
   contents: read
@@ -53,7 +54,7 @@ permissions:
 # banyak satu run yang menunggu; run menunggu yang lebih lama dibatalkan, sehingga tag lama tak menimpa yang baru).
 # PR yang ditutup TANPA merge (run dilewati) diberi grup sendiri agar tidak menggantikan run deploy yang menunggu.
 concurrency:
-  group: deploy-server-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.merged != true) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'exec' || 'dev')) }}
+  group: deploy-server-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.merged != true) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'production' || 'staging')) }}
   cancel-in-progress: false
 
 jobs:
@@ -87,8 +88,8 @@ jobs:
               [ "$PR_MERGED" = true ] || fail "PR belum di-merge."
               [ "refs/heads/$PR_BASE_REF" = "$REF" ] || fail "Ref run tidak sama dengan branch tujuan PR."
               case "$REF" in
-                refs/heads/main) target=exec ;;
-                refs/heads/dev) target=dev ;;
+                refs/heads/main) target=production ;;
+                refs/heads/dev) target=staging ;;
                 *) fail "Branch tujuan PR tidak diizinkan untuk deploy server." ;;
               esac
               sha=$PR_MERGE_SHA
@@ -96,19 +97,19 @@ jobs:
             push)
               # Hanya branch kerja sementara; push ke main/dev tidak men-deploy (lewat PR yang di-merge).
               case "$REF" in
-                refs/heads/feat/migrasi-cloudflare) target=dev ;;
+                refs/heads/feat/migrasi-cloudflare) target=staging ;;
                 *) fail "Push hanya men-deploy dari feat/migrasi-cloudflare; main dan dev lewat PR yang di-merge." ;;
               esac
               ;;
             workflow_dispatch)
               case "$INPUT_TARGET" in
-                dev | exec) target=$INPUT_TARGET ;;
-                *) fail "Target harus dev atau exec." ;;
+                staging | production) target=$INPUT_TARGET ;;
+                *) fail "Target harus staging atau production." ;;
               esac
               case "$REF" in
                 refs/heads/main) ;;
                 refs/heads/dev | refs/heads/feat/migrasi-cloudflare)
-                  if [ "$target" = exec ]; then fail "Target exec hanya boleh dijalankan dari branch main."; fi
+                  if [ "$target" = production ]; then fail "Target production hanya boleh dijalankan dari branch main."; fi
                   ;;
                 *) fail "Deploy manual hanya dari main, dev, atau feat/migrasi-cloudflare." ;;
               esac
@@ -243,7 +244,7 @@ jobs:
       - name: Deploy di VPS
         run: |
           set -uo pipefail
-          [[ $TARGET =~ ^(dev|exec)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
+          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
           [[ $TAG =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Tag image bukan SHA commit."; exit 1; }
           ssh qc-deploy "deploy $TARGET $TAG"
           code=$?

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Skrip deploy qc-app di VPS. Dipasang di /root/apps/qc-app/deploy.sh dan dipanggil lewat kunci SSH khusus:
-#   restrict,command="/root/apps/qc-app/deploy.sh [--only dev|exec]" ssh-ed25519 AAAA...
+#   restrict,command="/root/apps/qc-app/deploy.sh [--only staging|production]" ssh-ed25519 AAAA...
 # (`restrict` sudah mencakup no-pty/no-port-forwarding/no-agent-forwarding/no-X11-forwarding/no-user-rc dan menutup
 # fitur baru OpenSSH yang kelak aktif bawaan; periksa juga `PermitRootLogin prohibit-password` atau
 # `forced-commands-only` di sshd_config VPS.)
-# Klien (GitHub Actions) menjalankan `ssh ... "deploy <dev|exec> <sha-40-heksa>"`; sshd mengisi SSH_ORIGINAL_COMMAND
+# Klien (GitHub Actions) menjalankan `ssh ... "deploy <staging|production> <sha-40-heksa>"`; sshd mengisi SSH_ORIGINAL_COMMAND
 # dengan teks itu dan HANYA skrip ini yang berjalan. Input itu tak tepercaya: divalidasi ketat (regex), tidak pernah
 # di-eval, tidak diekspansi shell, dan tidak pernah dicetak balik. Argumen baris perintah hanya datang dari pemanggil
 # lokal/authorized_keys (klien jarak jauh tak bisa menambahkannya).
@@ -18,7 +18,7 @@
 # Kode keluar: 0 sukses; 1 gagal dan sudah dikembalikan ke tag sebelumnya; 2 input/konfigurasi tidak valid
 # (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin.
 #
-# Argumen (hanya pemanggil lokal): --only dev|exec (batasi lingkungan yang boleh diminta kunci ini), --dry-run
+# Argumen (hanya pemanggil lokal): --only staging|production (batasi lingkungan yang boleh diminta kunci ini), --dry-run
 # (validasi lalu cetak rencana; tidak menyentuh docker/berkas), --root DIR (bawaan /root/apps/qc-app),
 # --wait-seconds N, --poll-seconds N.
 set -euo pipefail
@@ -48,7 +48,7 @@ while [ $# -gt 0 ]; do
       ;;
     --only)
       [ $# -ge 2 ] || die 2 'argumen --only butuh nilai'
-      [[ $2 =~ ^(dev|exec)$ ]] || die 2 'nilai --only harus dev atau exec'
+      [[ $2 =~ ^(staging|production)$ ]] || die 2 'nilai --only harus staging atau production'
       ONLY=$2
       shift 2
       ;;
@@ -75,14 +75,14 @@ done
 
 # ---- 1. Validasi input (satu-satunya tempat input klien dibaca) ----
 REQUEST=${SSH_ORIGINAL_COMMAND-}
-[ -n "$REQUEST" ] || die 2 'perintah kosong (format: deploy <dev|exec> <tag>)'
+[ -n "$REQUEST" ] || die 2 'perintah kosong (format: deploy <staging|production> <tag>)'
 [ "${#REQUEST}" -le 80 ] || die 2 'perintah terlalu panjang'
 # Persis: "deploy", satu spasi, nama lingkungan, satu spasi, tag. Tag permintaan = SHA commit penuh (40 heksa huruf
 # kecil, kontrak CI: satu tag per commit); tag yang dapat berubah seperti `latest` ditolak. (Tag SEBELUMNYA di .env,
 # PREV_TAG, sengaja lebih longgar agar `local-<sha>` lama masih dapat dikembalikan.)
-REQUEST_PATTERN='^deploy (dev|exec) ([0-9a-f]{40})$'
+REQUEST_PATTERN='^deploy (staging|production) ([0-9a-f]{40})$'
 if [[ ! $REQUEST =~ $REQUEST_PATTERN ]]; then
-  die 2 'perintah ditolak (format: deploy <dev|exec> <sha commit 40 heksa huruf kecil>)'
+  die 2 'perintah ditolak (format: deploy <staging|production> <sha commit 40 heksa huruf kecil>)'
 fi
 ENV_NAME=${BASH_REMATCH[1]}
 TAG=${BASH_REMATCH[2]}

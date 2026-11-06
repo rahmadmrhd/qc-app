@@ -1,15 +1,15 @@
-# Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Satu proyek per lingkungan (QC_ENV = dev atau exec).
+# Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Satu proyek per lingkungan (QC_ENV = staging atau production).
 # Jalankan dari folder ini (di VPS: /root/apps/qc-app/<env>/): docker compose up -d
 # Nilai dibaca dari .env di folder yang sama (lihat .env.example). TIDAK ada rahasia di berkas ini.
-# Awalan nama proyek/kontainer/jaringan/volume: QC_NAME (bawaan qc-${QC_ENV}). Staging di VPS memakai
-# QC_NAME=qc-staging agar tidak bertabrakan dengan stack dev lama T1 (proyek qc-dev, kontainer qc-dev-db) yang
-# masih berjalan di /opt/qc/dev.
+# Awalan nama proyek/kontainer/jaringan/volume: QC_NAME (bawaan qc-${QC_ENV}: qc-staging, qc-production). Nama staging
+# tidak bertabrakan dengan stack dev lama T1 (proyek qc-dev, kontainer qc-dev-db) yang masih berjalan di /opt/qc/dev.
+# Pengguna/skema DB: bawaan qc_${QC_ENV}; staging yang sudah berisi data memakai qc_dev lewat QC_DB_USER/QC_DB_NAME di .env.
 name: ${QC_NAME:-qc-${QC_ENV:?QC_ENV wajib diisi}}
 
 # Subnet jaringan proyek DIPATOK agar alamat gateway bridge (peer nginx host di mata qc-app) dapat didaftarkan
 # di TRUSTED_PROXY (keputusan I5). Pilih blok 10.x yang tidak pernah dialokasikan otomatis oleh Docker
 # (kolam bawaan Docker: 172.16/12 dan 192.168/16) dan tidak dipakai jaringan Docker lain di VPS; satu subnet
-# per lingkungan (dev 10.77.10.0/24, exec 10.77.20.0/24).
+# per lingkungan (staging 10.77.10.0/24, production 10.77.20.0/24).
 networks:
   default:
     ipam:
