@@ -6,7 +6,8 @@
 | **Spek** | `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md` §13 (branch dan koeksistensi), §14 (data dan cutover), §19 butir 9 (data uji dibuang) |
 | **Menggantikan** | `docs/superpowers/runbooks/2026-10-cutover-cloudflare.md` (rencana Cloudflare dibatalkan 2026-11-05) |
 | **Status** | **Draf, belum pernah dijalankan.** Tidak ada langkah di sini yang dieksekusi oleh penulisnya; gladi (Fase 0) wajib mulus dua kali berturut-turut sebelum hari-H |
-| **Lingkungan** | Staging: `https://qc-dev.rhd.my.id`, folder VPS `/root/apps/qc-app/staging`, kontainer `qc-staging-db` / `qc-staging-app`, skema `qc_dev`. Production: `https://qc.rhd.my.id`, folder VPS `/root/apps/qc-app/production`, kontainer `qc-production-db` / `qc-production-app`, skema `qc_production` (nama dari `deploy/compose.yml`, `docs/deploy-vps.md`) |
+| **Lingkungan** | Staging: `https://qc-dev.rhd.my.id`, folder instalasi `<INSTALL_DIR>/staging`, kontainer `qc-staging-db` / `qc-staging-app`, skema `qc_dev`. Production: `https://qc.rhd.my.id`, folder instalasi `<INSTALL_DIR>/production`, kontainer `qc-production-db` / `qc-production-app`, skema `qc_production` (nama dari `deploy/compose.yml`, `docs/deploy-vps.md`) |
+| **Folder instalasi** | `<INSTALL_DIR>` = folder instalasi di server tempat cutover dijalankan (VPS pribadi: `/root/apps/qc-app`; server kantor nanti: jalur lain dan pengguna deploy non-root, spek §19 butir 11, `docs/deploy-vps.md` bagian 14). Ganti `<INSTALL_DIR>` pada perintah di bawah sebelum menjalankan; pengguna yang menjalankan harus anggota grup `docker` (bukan harus root) |
 
 ## Cakupan data (keputusan pemilik 2026-11-06, spek §14 dan §19 butir 9)
 
@@ -60,7 +61,7 @@ Syarat lulus gladi: `verify-import` lulus (kode keluar 0) dua kali berturut-turu
 
 `.env` TIDAK boleh di-`source` oleh shell root (nilai berspasi seperti sandi aplikasi Google `abcd efgh ijkl mnop` dijalankan sebagai perintah, dan `$`/backtick dieksekusi atau dirusak; aturan yang sama dengan `deploy.sh`). Ambil HANYA `QC_DB_PASSWORD`, dan jangan lewat argumen proses: `MYSQL_PWD` diteruskan sebagai lingkungan (`-e MYSQL_PWD` TANPA nilai).
 ```bash
-cd /root/apps/qc-app/<env>
+cd <INSTALL_DIR>/<env>
 PW=$(grep -E '^QC_DB_PASSWORD=' .env | tail -n1 | cut -d= -f2-)
 PW=${PW%$'\r'}; dq='"'; sq="'"
 # buang SATU pasang kutip yang cocok (logika yang sama dengan env_value di deploy.sh)
@@ -76,15 +77,15 @@ Tujuan: menjalankan `verify-import.ts` terhadap MariaDB yang hanya terjangkau da
 
 1. **Siapkan folder kerja di VPS** (pemilik, izin ketat; uid 1000 adalah pengguna `bun` di kontainer). Dari mesin pengembang pada komit yang sama dengan image yang berjalan:
    ```bash
-   ssh rhd_vps_ipv4 'install -d -m 700 -o 1000 -g 1000 /root/apps/qc-app/<env>/verify /root/apps/qc-app/<env>/verify/data'
-   git archive HEAD scripts/migrate tsconfig.json | ssh rhd_vps_ipv4 'tar -x --exclude="*.test.ts" -C /root/apps/qc-app/<env>/verify'
-   scp dump.json discard-approval.json rhd_vps_ipv4:/root/apps/qc-app/<env>/verify/data/
-   ssh rhd_vps_ipv4 'chown -R 1000:1000 /root/apps/qc-app/<env>/verify && chmod 600 /root/apps/qc-app/<env>/verify/data/*'
+   ssh rhd_vps_ipv4 'install -d -m 700 -o 1000 -g 1000 <INSTALL_DIR>/<env>/verify <INSTALL_DIR>/<env>/verify/data'
+   git archive HEAD scripts/migrate tsconfig.json | ssh rhd_vps_ipv4 'tar -x --exclude="*.test.ts" -C <INSTALL_DIR>/<env>/verify'
+   scp dump.json discard-approval.json rhd_vps_ipv4:<INSTALL_DIR>/<env>/verify/data/
+   ssh rhd_vps_ipv4 'chown -R 1000:1000 <INSTALL_DIR>/<env>/verify && chmod 600 <INSTALL_DIR>/<env>/verify/data/*'
    ```
 2. **Jalankan** di VPS (basis data `qc-db` harus berjalan; aplikasi `qc-app` boleh berhenti seperti di H7; `--no-deps` agar tidak menyalakan layanan lain, `-T` karena SSH tanpa terminal):
    ```bash
-   cd /root/apps/qc-app/<env>
-   V=/root/apps/qc-app/<env>/verify
+   cd <INSTALL_DIR>/<env>
+   V=<INSTALL_DIR>/<env>/verify
    QC_IMAGE_TAG=<tag image yang berjalan> docker compose run --rm --no-deps -T --entrypoint sh      -v "$V/scripts/migrate:/app/scripts/migrate:ro" -v "$V/tsconfig.json:/app/tsconfig.json:ro" -v "$V/data:/data"      qc-app -c 'QC_IMPORT_DB_URL="$DATABASE_URL" exec bun /app/scripts/migrate/verify-import.ts --dump /data/dump.json --discard-approval /data/discard-approval.json --report /data/verify.json'
    echo "kode keluar: $?"
    ```
@@ -100,7 +101,7 @@ Tujuan: menjalankan `verify-import.ts` terhadap MariaDB yang hanya terjangkau da
 
 - [ ] Gladi mulus dua kali berturut-turut.
 - [ ] **PR kecil `READ_ONLY` ke `origin/main` sudah digabung** dan bendera aktif di aplikasi GAS `/exec` **[T34; atas persetujuan pemilik; hanya ditulis di sini, belum dieksekusi]**: branch baru dari `origin/main`, bawa hanya komit bendera (`gas/src/core/read-only.ts`, tes, pemanggilnya di router/sinkron, dan `docs/setup-google.md` §7e) dari branch kerja; `bun run check` hijau; merge memicu `deploy.yml` (target `exec`). Uji: dengan Script Property `READ_ONLY=1` semua RPC tulis dan sinkron tulis ditolak `UNAVAILABLE`, baca tetap jalan. Catatan: trigger `cleanupQrPdfs` tidak ikut dibekukan.
-- [ ] Stack production di VPS siap tetapi **belum menerima pengguna**: `/root/apps/qc-app/production` terisi (`.env` rahasia baru, kunci service account), skema `qc_production` dan pengguna `qc_production` dibuat, image yang sama dengan hasil merge cutover berjalan (bangun lokal `qc-app:local-<sha>`, `docs/deploy-vps.md` §7, atau tag GHCR) dan **sudah bermigrasi** (qc-app menjalankan migrasi saat start; impor butuh skema itu), `/api/ping` sehat dari dalam VPS, semua tabel masih kosong.
+- [ ] Stack production di VPS siap tetapi **belum menerima pengguna**: `<INSTALL_DIR>/production` terisi (`.env` rahasia baru, kunci service account), skema `qc_production` dan pengguna `qc_production` dibuat, image yang sama dengan hasil merge cutover berjalan (bangun lokal `qc-app:local-<sha>`, `docs/deploy-vps.md` §7, atau tag GHCR) dan **sudah bermigrasi** (qc-app menjalankan migrasi saat start; impor butuh skema itu), `/api/ping` sehat dari dalam VPS, semua tabel masih kosong.
 - [ ] nginx production (`qc.rhd.my.id`) ditulis tetapi **belum diaktifkan**; DNS `qc` belum dialihkan; URI redirect `https://qc.rhd.my.id/auth/callback` sudah terdaftar di Google Cloud Console (klien OAuth yang sama).
 - [ ] **Id folder Drive lama dipindahkan ke `.env` (P1-I3; impor TIDAK menulis tabel `settings`, jadi tanpa ini logo QR lama dan unduh ekspor lama tak terbaca dan server membuat folder BARU yang kosong)**. Ambil dari Script Properties proyek Apps Script lama (hanya baca): `DRIVE_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`. Isikan ke `.env` production (dan staging untuk gladi) sebagai `ITEM_IMAGES_FOLDER_ID` (dari `DRIVE_FOLDER_ID`; ini folder berkas logo QR), `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`. Bagikan ketiga folder itu ke service account sebagai Editor, ATAU pindahkan ke bawah folder induk `GOOGLE_ROOT_FOLDER_ID` TANPA mengubah id (`docs/setup-google.md` S3). Id yang terisi hanya diverifikasi; folder yang tak terjangkau = galat jelas saat `qc-app` dipakai. Checklist: ketiga variabel terisi (bukan kosong atau `ISI_OLEH_PEMILIK`) dan ketiga folder terjangkau service account; `files` hasil impor akan merujuk isi di `ITEM_IMAGES_FOLDER_ID`, jadi variabel itu kosong sementara `files` diimpor = logo tak tampil.
 - [ ] Cadangan malam berjalan di staging dan pemulihannya terbukti (G8); peringatan email diuji.
@@ -120,7 +121,7 @@ Tujuan: menjalankan `verify-import.ts` terhadap MariaDB yang hanya terjangkau da
 | H4 | Laporan impor | `bun run scripts/migrate/import-sheets.ts --dump dump.json --out import.sql --report report.json` **tanpa `--reset`** (kode keluar 1 bila `discarded` berisi: itu diharapkan) | agen |
 | H5 | **Persetujuan pembuangan atas dump FINAL** | Pemilik memeriksa `discarded` di `report.json` (isi dump final dapat berbeda dari gladi; persetujuan gladi tidak berlaku karena checksum). Bila hanya data uji: tulis `discard-approval.json` (`approvedBy`, `approvedOn`); bila ada yang dipakai sungguhan: BERHENTI (jalan mundur) | pemilik memutuskan |
 | H6 | Hasilkan `import.sql` | Ulangi H4 dengan `--discard-approval discard-approval.json` (kode keluar 0); baca `warnings`, `normalizations`, `excluded` | agen |
-| H7 | Pastikan target kosong dan henti aplikasi | Hentikan `qc-production-app` (`docker compose stop qc-app` di `/root/apps/qc-app/production`) agar tak ada tulisan atau job selama impor; semua tabel di `qc_production` kosong | pemilik, atas persetujuan pemilik |
+| H7 | Pastikan target kosong dan henti aplikasi | Hentikan `qc-production-app` (`docker compose stop qc-app` di `<INSTALL_DIR>/production`) agar tak ada tulisan atau job selama impor; semua tabel di `qc_production` kosong | pemilik, atas persetujuan pemilik |
 | H8 | Terapkan impor ke production | Salin `import.sql` ke VPS (izin 600), lalu ikuti "Menerapkan `import.sql` di VPS" di bawah dengan `<env>` = `production`, kontainer `qc-production-db`, pengguna/skema `qc_production`; satu transaksi: galat = tidak ada yang tersimpan. Hapus `import.sql` dari VPS sesudahnya | pemilik, atas persetujuan pemilik |
 | H9 | **Verifikasi (HARUS lulus)** | Dijalankan DI VPS dengan kontainer sementara pada jaringan compose `production` ("Cara verifikasi di VPS" di bawah). TANPA terowongan SSH dan tanpa membuka port DB production (spek §13 butir 6: database `production` tidak dijangkau tunnel; alasan penggantian terowongan sementara 2026-11-06). Kata sandi DB tidak diketik dan tidak lewat argumen proses: `DATABASE_URL` sudah ada di lingkungan kontainer dari compose. Kode keluar 0 = lulus | pemilik, atas persetujuan pemilik; agen mengamati |
 | H9b | Bila verifikasi gagal | Jangan lanjut. Cabut `READ_ONLY` di Apps Script (aplikasi lama utuh), kosongkan target production (hanya bila pemilik memutuskan ulang impor), analisis di `verify.json`. Pengguna tidak terdampak | pemilik |
