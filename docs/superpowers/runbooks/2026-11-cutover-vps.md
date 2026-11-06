@@ -97,11 +97,49 @@ Tujuan: menjalankan `verify-import.ts` terhadap MariaDB yang hanya terjangkau da
 
 ---
 
+## T-1: peluncuran production pertama (sebelum hari cutover, tanpa data)
+
+Dilakukan SEKALI, beberapa hari sebelum cutover, saat production masih kosong. Deploy pertama TIDAK boleh lewat CI: belum ada tag sebelumnya untuk rollback (kode 4 bila gagal). Setelah langkah ini, deploy berikutnya lewat CI (`deploy.sh`) memiliki tag rollback.
+
+Prasyarat, berurutan:
+
+1. **`.env` production terisi** (`<INSTALL_DIR>/production/.env`, izin 600, dari `deploy/.env.example`): ganti semua `ganti-...` dengan nilai acak heksa dan isi variabel milik pemilik yang masih `ISI_OLEH_PEMILIK`: `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `ADMIN_EMAIL`, `GOOGLE_ROOT_FOLDER_ID`, `GOOGLE_SPREADSHEET_ID`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `ALERT_TO` (dan `SMTP_HOST` bila bukan bawaan). Production: `QC_ENV=production`, `APP_PORT=8791`, `DB_PORT=33065`, `QC_SUBNET=10.77.20.0/24` (dan `TRUSTED_PROXY` memuat subnet itu), `APP_ORIGIN=https://qc.rhd.my.id`; `QC_DB_USER`/`QC_DB_NAME` dikosongkan (bawaan `qc_production`, dibuat otomatis oleh entrypoint pada volume baru).
+2. **Kunci service account**: `install -m 600 -o 1000 -g 1000 <berkas> <INSTALL_DIR>/production/secrets/google-sa.json` (`docs/setup-google.md`).
+3. **Folder Google production** (`GOOGLE_ROOT_FOLDER_ID`, dibagikan ke service account sebagai Editor): folder BARU, atau id folder lama dari Script Properties proyek GAS bila berkas lama (logo QR, ekspor) ingin tetap terbaca; keputusannya terkait pertanyaan migrasi berkas di bagian cakupan data runbook ini dan id folder fungsi (P1-I3). Isi `ITEM_IMAGES_FOLDER_ID`/`QR_FOLDER_ID`/`QR_DOC_FOLDER_ID`/`BACKUP_FOLDER_ID` bila memakai ulang folder lama.
+4. **vhost nginx `qc.rhd.my.id` sudah aktif** (sejak 2026-11-07; `docs/deploy-vps.md` 10); DNS dan URI redirect OAuth `https://qc.rhd.my.id/auth/callback` terdaftar.
+5. **`docker login ghcr.io`** sudah ada di VPS (`docs/ci-cd.md`, langkah 5 tindakan pemilik).
+6. **Salin `compose.yml`, `mariadb/qc.cnf`, dan `deploy.sh` terbaru** ke VPS (langkah 4 `docs/deploy-vps.md`; `compose.yml` harus yang memuat `MARIADB_DATABASE/USER/PASSWORD`).
+
+Peluncuran PERTAMA (manual):
+
+```bash
+cd <INSTALL_DIR>/production
+# isi QC_IMAGE_TAG=<sha 40 heksa dari run CI hijau terbaru; image sudah ada di GHCR> di .env
+docker compose config --quiet
+docker compose up -d
+docker inspect --format '{{.State.Health.Status}}' qc-production-db qc-production-app   # healthy
+curl -fsS http://127.0.0.1:8791/api/ping
+curl -fsSk --resolve qc.rhd.my.id:443:127.0.0.1 https://qc.rhd.my.id/api/ping           # {"ok":true}
+docker logs --tail 100 qc-production-app                                                   # tanpa galat
+# tabel dan kolasi (kata sandi root lewat prompt):
+docker exec -it qc-production-db mariadb -uroot -p
+#   SHOW TABLES FROM qc_production;
+#   SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='qc_production';   -- utf8mb4_nopad_bin
+```
+
+Verifikasi: kontainer sehat; `/api/ping` lokal dan lewat nginx lulus; tabel terbentuk oleh migrasi; kolasi skema `utf8mb4_nopad_bin`; tidak ada galat di log; pekerjaan cadangan terjadwal terdaftar (cadangan pertama jatuh tempo setelah 02:00 WIB; periksa log berikutnya); login Google berfungsi (URI redirect production terdaftar); BELUM ada impor data (itu H8).
+
+Setelah itu deploy berikutnya lewat CI (`deploy.sh`: preflight kredensial DB, pull, `up -d`, uji lokal dan nginx, rollback ke tag T-1 bila gagal).
+
+Jalan mundur T-1: `docker compose down` TANPA `-v`. Production masih kosong, jadi `down -v` lalu mengulang dari volume baru juga aman (ulangi dari prasyarat 6); tidak ada data yang hilang karena belum ada impor.
+
+---
+
 ## T-7 hari: syarat siap (semua harus ya)
 
 - [ ] Gladi mulus dua kali berturut-turut.
 - [ ] **PR kecil `READ_ONLY` ke `origin/main` sudah digabung** dan bendera aktif di aplikasi GAS `/exec` **[T34; atas persetujuan pemilik; hanya ditulis di sini, belum dieksekusi]**: branch baru dari `origin/main`, bawa hanya komit bendera (`gas/src/core/read-only.ts`, tes, pemanggilnya di router/sinkron, dan `docs/setup-google.md` §7e) dari branch kerja; `bun run check` hijau; merge memicu `deploy.yml` (target `exec`). Uji: dengan Script Property `READ_ONLY=1` semua RPC tulis dan sinkron tulis ditolak `UNAVAILABLE`, baca tetap jalan. Catatan: trigger `cleanupQrPdfs` tidak ikut dibekukan.
-- [ ] Stack production di VPS siap tetapi **belum menerima pengguna**: `<INSTALL_DIR>/production` terisi (`.env` rahasia baru, kunci service account), skema `qc_production` dan pengguna `qc_production` dibuat, image yang sama dengan hasil merge cutover berjalan (bangun lokal `qc-app:local-<sha>`, `docs/deploy-vps.md` §7, atau tag GHCR) dan **sudah bermigrasi** (qc-app menjalankan migrasi saat start; impor butuh skema itu), `/api/ping` sehat dari dalam VPS, semua tabel masih kosong.
+- [ ] (Skema dan pengguna `qc_production` dibuat OTOMATIS pada volume baru, spek §19 butir 15; lihat T-1.) Stack production di VPS siap tetapi **belum menerima pengguna**: `<INSTALL_DIR>/production` terisi (`.env` rahasia baru, kunci service account), skema `qc_production` dan pengguna `qc_production` dibuat, image yang sama dengan hasil merge cutover berjalan (bangun lokal `qc-app:local-<sha>`, `docs/deploy-vps.md` §7, atau tag GHCR) dan **sudah bermigrasi** (qc-app menjalankan migrasi saat start; impor butuh skema itu), `/api/ping` sehat dari dalam VPS, semua tabel masih kosong.
 - [ ] nginx production (`qc.rhd.my.id`) ditulis tetapi **belum diaktifkan**; DNS `qc` belum dialihkan; URI redirect `https://qc.rhd.my.id/auth/callback` sudah terdaftar di Google Cloud Console (klien OAuth yang sama).
 - [ ] **Id folder Drive lama dipindahkan ke `.env` (P1-I3; impor TIDAK menulis tabel `settings`, jadi tanpa ini logo QR lama dan unduh ekspor lama tak terbaca dan server membuat folder BARU yang kosong)**. Ambil dari Script Properties proyek Apps Script lama (hanya baca): `DRIVE_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`. Isikan ke `.env` production (dan staging untuk gladi) sebagai `ITEM_IMAGES_FOLDER_ID` (dari `DRIVE_FOLDER_ID`; ini folder berkas logo QR), `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`. Bagikan ketiga folder itu ke service account sebagai Editor, ATAU pindahkan ke bawah folder induk `GOOGLE_ROOT_FOLDER_ID` TANPA mengubah id (`docs/setup-google.md` S3). Id yang terisi hanya diverifikasi; folder yang tak terjangkau = galat jelas saat `qc-app` dipakai. Checklist: ketiga variabel terisi (bukan kosong atau `ISI_OLEH_PEMILIK`) dan ketiga folder terjangkau service account; `files` hasil impor akan merujuk isi di `ITEM_IMAGES_FOLDER_ID`, jadi variabel itu kosong sementara `files` diimpor = logo tak tampil.
 - [ ] Cadangan malam berjalan di staging dan pemulihannya terbukti (G8); peringatan email diuji.

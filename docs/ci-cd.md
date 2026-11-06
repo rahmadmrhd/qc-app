@@ -52,6 +52,8 @@ Penamaan (keputusan pemilik 2026-11-07, spek §19 butir 10): nama environment Gi
 
 ### Perubahan berkas deploy (salin manual di VPS SEBELUM push yang men-deploy)
 
+**Catatan 2026-11-07 (spek §19 butir 15):** `compose.yml` kini memberi `MARIADB_DATABASE`/`MARIADB_USER`/`MARIADB_PASSWORD` ke `qc-db` (skema dan pengguna aplikasi dibuat otomatis pada volume BARU; pada volume lama diabaikan). Konfigurasi `qc-db` berubah, jadi pada staging `qc-db` DIBUAT ULANG pada `docker compose up -d` berikutnya setelah `compose.yml` baru disalin (beberapa detik; data aman di volume). Langkah manual: salin `compose.yml` baru SEBELUM push yang men-deploy, lalu jalankan `docker compose up -d` sekali di folder lingkungan itu.
+
 CI hanya mengganti tag image (`QC_IMAGE_TAG`): berkas di folder instalasi server (`<INSTALL_DIR>/<env>/compose.yml`; VPS pribadi `/root/apps/qc-app/<env>/...`, `deploy.sh`, `mariadb/qc.cnf`, `.env`) TIDAK ikut ter-deploy dari repositori. Bila sebuah komit mengubah `deploy/compose.yml`, `deploy/deploy.sh`, `deploy/mariadb/qc.cnf`, atau menambah variabel `.env` baru (mis. variabel wajib baru di `server/src/config.ts` + `compose.yml` + `.env.example`), **salin/isi manual di VPS sebelum push yang men-deploy komit itu** (langkah 4-5 `docs/deploy-vps.md`). Bila terlupa, image baru gagal `loadConfig` atau `compose config` di VPS dan deploy berakhir kode 1 (dikembalikan) atau 2 (tidak ada yang diubah): aman, tetapi memakan satu siklus deploy.
 
 ### Pembersihan image lama (`QC_KEEP_IMAGES`)

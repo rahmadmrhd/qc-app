@@ -108,7 +108,7 @@ Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, 
 
 ## 8. Menjalankan stack
 
-`qc-app` menjalankan migrasi saat start, jadi skema dan pengguna DB harus ada SEBELUM `qc-app` dinyalakan (bila tidak, `qc-app` gagal start berulang karena `restart: unless-stopped`). Urutannya: nyalakan `qc-db` saja, tunggu sehat, buat skema/pengguna, baru nyalakan semuanya.
+`qc-app` menjalankan migrasi saat start, jadi skema dan pengguna DB harus ada SEBELUM `qc-app` dinyalakan (bila tidak, `qc-app` gagal start berulang karena `restart: unless-stopped`). Sejak 2026-11-07 (spek §19 butir 15) skema dan pengguna aplikasi dibuat OTOMATIS oleh entrypoint MariaDB dari `MARIADB_DATABASE`/`MARIADB_USER`/`MARIADB_PASSWORD` (= `QC_DB_NAME`/`QC_DB_USER`/`QC_DB_PASSWORD`, bawaan `qc_${QC_ENV}`) di `compose.yml`, HANYA saat volume `qc-db-data` pertama kali diinisialisasi; kolasi skema mengikuti `collation-server=utf8mb4_nopad_bin` di `mariadb/qc.cnf`, dan pengguna berhak ALL PRIVILEGES pada skema itu (setara GRANT di bawah). Pada volume yang SUDAH terinisialisasi (mis. staging) ketiga variabel itu DIABAIKAN MariaDB: pembuatan manual di bawah hanya untuk volume lama atau pemulihan. Verifikasi pada volume baru: `SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='<QC_DB_NAME>'` (lewat `docker exec -it <QC_NAME>-db mariadb -uroot -p`) harus `utf8mb4_nopad_bin`. Urutan manual (volume lama): nyalakan `qc-db` saja, tunggu sehat, buat skema/pengguna, baru nyalakan semuanya.
 
 ```bash
 cd /root/apps/qc-app/staging
