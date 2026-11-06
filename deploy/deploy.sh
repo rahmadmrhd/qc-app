@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # Skrip deploy qc-app di VPS. Dipasang di /root/apps/qc-app/deploy.sh dan dipanggil lewat kunci SSH khusus:
-#   command="/root/apps/qc-app/deploy.sh [--only dev|exec]",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA...
-# Klien (GitHub Actions) menjalankan `ssh ... "deploy <dev|exec> <tag>"`; sshd mengisi SSH_ORIGINAL_COMMAND dengan
-# teks itu dan HANYA skrip ini yang berjalan. Input itu tak tepercaya: divalidasi ketat (regex), tidak pernah
+#   restrict,command="/root/apps/qc-app/deploy.sh [--only dev|exec]" ssh-ed25519 AAAA...
+# (`restrict` sudah mencakup no-pty/no-port-forwarding/no-agent-forwarding/no-X11-forwarding/no-user-rc dan menutup
+# fitur baru OpenSSH yang kelak aktif bawaan; periksa juga `PermitRootLogin prohibit-password` atau
+# `forced-commands-only` di sshd_config VPS.)
+# Klien (GitHub Actions) menjalankan `ssh ... "deploy <dev|exec> <sha-40-heksa>"`; sshd mengisi SSH_ORIGINAL_COMMAND
+# dengan teks itu dan HANYA skrip ini yang berjalan. Input itu tak tepercaya: divalidasi ketat (regex), tidak pernah
 # di-eval, tidak diekspansi shell, dan tidak pernah dicetak balik. Argumen baris perintah hanya datang dari pemanggil
 # lokal/authorized_keys (klien jarak jauh tak bisa menambahkannya).
 #
-# Alur: validasi -> kunci -> ganti QC_IMAGE_TAG di .env -> pull -> up -d -> tunggu sehat (dan memakai tag baru) ->
-# uji /api/ping -> bila gagal di langkah mana pun sesudah tag diganti, kembali ke tag sebelumnya.
+# Alur: validasi -> kunci -> `compose config` (.env/compose.yml valid; bila rusak berhenti tanpa mengubah apa pun) ->
+# ganti QC_IMAGE_TAG di .env -> pull -> up -d -> tunggu sehat (dan memakai tag baru) -> uji /api/ping -> bila gagal di
+# langkah mana pun sesudah tag diganti, kembali ke tag sebelumnya. Keluaran docker compose TIDAK diteruskan ke
+# pemanggil (galat urai compose dapat memuat potongan nilai rahasia dari .env): ditulis ke $DIR/.deploy.log (izin 600,
+# ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
 # Kode keluar: 0 sukses; 1 gagal dan sudah dikembalikan ke tag sebelumnya; 2 input/konfigurasi tidak valid
 # (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin.
@@ -71,11 +77,12 @@ done
 REQUEST=${SSH_ORIGINAL_COMMAND-}
 [ -n "$REQUEST" ] || die 2 'perintah kosong (format: deploy <dev|exec> <tag>)'
 [ "${#REQUEST}" -le 80 ] || die 2 'perintah terlalu panjang'
-# Persis: "deploy", satu spasi, nama lingkungan, satu spasi, tag. Karakter tag dibatasi (tanpa spasi, kutip, $, `, ;,
-# |, &, /, \, newline); karakter pertama bukan titik/minus; maksimal 64.
-REQUEST_PATTERN='^deploy (dev|exec) ([A-Za-z0-9_][A-Za-z0-9_.-]{0,63})$'
+# Persis: "deploy", satu spasi, nama lingkungan, satu spasi, tag. Tag permintaan = SHA commit penuh (40 heksa huruf
+# kecil, kontrak CI: satu tag per commit); tag yang dapat berubah seperti `latest` ditolak. (Tag SEBELUMNYA di .env,
+# PREV_TAG, sengaja lebih longgar agar `local-<sha>` lama masih dapat dikembalikan.)
+REQUEST_PATTERN='^deploy (dev|exec) ([0-9a-f]{40})$'
 if [[ ! $REQUEST =~ $REQUEST_PATTERN ]]; then
-  die 2 'perintah ditolak (format: deploy <dev|exec> <tag>, tag [A-Za-z0-9_.-] maks. 64 karakter)'
+  die 2 'perintah ditolak (format: deploy <dev|exec> <sha commit 40 heksa huruf kecil>)'
 fi
 ENV_NAME=${BASH_REMATCH[1]}
 TAG=${BASH_REMATCH[2]}
@@ -95,11 +102,15 @@ DIR=$ROOT/$ENV_NAME
 [ -f "$DIR/compose.yml" ] || die 2 'compose.yml tidak ada di folder lingkungan'
 [ -f "$DIR/.env" ] || die 2 '.env tidak ada di folder lingkungan'
 
-env_value() { # env_value NAMA -> nilai terakhir NAMA= di .env (tanpa CR)
-  local line
+env_value() { # env_value NAMA -> nilai terakhir NAMA= di .env (tanpa CR; satu pasang kutip yang cocok dibuang, seperti compose)
+  local line dq='"' sq="'"
   line=$(grep -E "^$1=" "$DIR/.env" | tail -n1 || true)
   line=${line#*=}
-  printf '%s' "${line%$'\r'}"
+  line=${line%$'\r'}
+  if [[ $line =~ ^${dq}(.*)${dq}$ ]] || [[ $line =~ ^${sq}(.*)${sq}$ ]]; then
+    line=${BASH_REMATCH[1]}
+  fi
+  printf '%s' "$line"
 }
 
 QC_ENV_VALUE=$(env_value QC_ENV)
@@ -114,13 +125,26 @@ if [ -n "$PREV_TAG" ] && [[ ! $PREV_TAG =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$ ]]
   PREV_TAG=''
 fi
 CONTAINER="$NAME-app"
+# Skrip ini hanya dapat men-deploy image dari GHCR (`compose pull`): image lokal (QC_IMAGE=qc-app) tak pernah dapat
+# ditarik. Tolak lebih awal dengan pesan jelas, sebelum apa pun diubah. QC_IMAGE kosong/tidak ada = bawaan compose (GHCR).
+IMAGE_NAME=$(env_value QC_IMAGE)
+if [ -n "$IMAGE_NAME" ] && [[ ! $IMAGE_NAME =~ ^ghcr\.io/[a-z0-9][a-z0-9._/-]*$ ]]; then
+  die 2 'QC_IMAGE di .env bukan ghcr.io/...: hapus/komentari QC_IMAGE (bawaan compose = GHCR); image lokal tidak dapat di-deploy lewat skrip ini (docs/ci-cd.md)'
+fi
 
 # ---- 3. Kunci: satu deploy per lingkungan (mkdir atomik; hapus manual bila proses mati mendadak) ----
 LOCK=$DIR/.deploy.lock
 mkdir "$LOCK" 2>/dev/null || die 3 "deploy lain sedang berjalan (atau kunci basi: rmdir $LOCK)"
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
-compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" "$@"; }
+# Log keluaran docker compose: khusus root di VPS, ditimpa tiap deploy. Tidak pernah diteruskan ke pemanggil.
+DEPLOY_LOG=$DIR/.deploy.log
+: >"$DEPLOY_LOG"
+chmod 600 "$DEPLOY_LOG" 2>/dev/null || true
+LOG_HINT="detail di VPS: $DEPLOY_LOG"
+
+# stdout/stderr compose ke log, bukan ke pemanggil (galat urai .env dapat memuat potongan nilai rahasia).
+compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" "$@" >>"$DEPLOY_LOG" 2>&1; }
 
 set_tag() { # set_tag TAG: tulis ulang .env secara atomik (izin 600), mengganti/menambah QC_IMAGE_TAG
   local tmp
@@ -167,19 +191,25 @@ rollback() { # rollback: kembali ke PREV_TAG dan pastikan sehat; kode keluar 1 (
   fi
   log "mengembalikan ke tag sebelumnya: $PREV_TAG"
   if set_tag "$PREV_TAG" && compose up -d && wait_healthy "$PREV_TAG" && smoke_test; then
-    die 1 "deploy $TAG gagal; dikembalikan ke $PREV_TAG"
+    die 1 "deploy $TAG gagal; dikembalikan ke $PREV_TAG ($LOG_HINT)"
   fi
-  die 4 "deploy $TAG gagal DAN pengembalian ke $PREV_TAG gagal; periksa kontainer secara manual"
+  die 4 "deploy $TAG gagal DAN pengembalian ke $PREV_TAG gagal; periksa kontainer secara manual ($LOG_HINT)"
 }
 
 # ---- 4. Deploy ----
 log "lingkungan=$ENV_NAME tag=$TAG (sebelumnya: ${PREV_TAG:-tidak ada})"
+# .env/compose.yml yang rusak (kutip tak tertutup, variabel wajib kosong) berhenti DI SINI tanpa mengubah apa pun dan
+# tanpa mencetak pesan docker (dapat memuat potongan rahasia). QC_IMAGE_TAG diberikan lewat lingkungan proses (yang
+# didahulukan compose atas .env) agar deploy pertama tanpa tag di .env tidak ditolak oleh `${QC_IMAGE_TAG:?}`.
+if ! QC_IMAGE_TAG="$TAG" docker compose --project-directory "$DIR" -f "$DIR/compose.yml" config --quiet >/dev/null 2>&1; then
+  die 2 ".env/compose.yml tidak valid; periksa di VPS: cd $DIR && docker compose config --quiet"
+fi
 set_tag "$TAG" || die 2 'gagal menulis QC_IMAGE_TAG ke .env'
 
 if ! compose pull qc-app; then
   # kontainer yang berjalan tidak tersentuh: cukup pulihkan .env
   if [ -n "$PREV_TAG" ]; then set_tag "$PREV_TAG" || true; fi
-  die 1 "pull image gagal; tag di .env dikembalikan (${PREV_TAG:-tanpa tag})"
+  die 1 "pull image gagal; tag di .env dikembalikan (${PREV_TAG:-tanpa tag}; $LOG_HINT)"
 fi
 if ! compose up -d; then
   log 'up -d gagal'

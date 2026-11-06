@@ -1,7 +1,8 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: payload jahat (`${HOME}`) sengaja ditulis literal
 // Tes `deploy/deploy.sh` tanpa Docker dan tanpa VPS: skrip dijalankan dengan `docker` dan `curl` PALSU di PATH
 // (mencatat panggilan dan meniru keadaan) pada folder sementara. Menguji validasi ketat SSH_ORIGINAL_COMMAND
-// (input jahat tidak boleh sampai ke docker maupun berkas), pemulihan ke tag sebelumnya, kunci, dan pembatasan --only.
+// (input jahat tidak boleh sampai ke docker maupun berkas), pemulihan ke tag sebelumnya, kunci, pembatasan --only,
+// dan bahwa keluaran docker compose (yang dapat memuat potongan rahasia) tak pernah sampai ke pemanggil.
 import {
   afterAll,
   beforeAll,
@@ -18,6 +19,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,6 +30,10 @@ setDefaultTimeout(30_000);
 
 const SCRIPT = join(import.meta.dir, '..', '..', 'deploy', 'deploy.sh').replaceAll('\\', '/');
 const posix = (path: string) => path.replaceAll('\\', '/');
+// Tag permintaan = SHA commit penuh (40 heksa huruf kecil); tag SEBELUMNYA di .env boleh bentuk lain (mis. local-<sha>).
+const SHA_NEW = 'a'.repeat(40);
+const SHA_BAD = 'b'.repeat(40);
+const SHA_OTHER = 'c'.repeat(40);
 
 let base: string;
 let bin: string;
@@ -38,9 +44,19 @@ let log: string;
 const FAKE_DOCKER = `#!/bin/sh
 # docker palsu: mencatat argumen; meniru compose pull/up dan inspect berdasarkan berkas keadaan.
 echo "docker $*" >> "$FAKE_LOG"
+# Semua subperintah compose menulis "rahasia-uji" ke stdout DAN stderr (meniru galat urai yang memuat nilai .env).
 case "$*" in
-  *" pull "*) [ -f "$FAKE_STATE/pull_fail" ] && exit 1; exit 0 ;;
+  *" config "*)
+    echo "config-env QC_IMAGE_TAG=$QC_IMAGE_TAG" >> "$FAKE_LOG"
+    echo "config rahasia-uji"; echo "config err rahasia-uji" >&2
+    [ -f "$FAKE_STATE/config_fail" ] && exit 1
+    exit 0 ;;
+  *" pull "*)
+    echo "pull rahasia-uji"; echo "pull err rahasia-uji" >&2
+    [ -f "$FAKE_STATE/pull_fail" ] && exit 1
+    exit 0 ;;
   *" up "*)
+    echo "up rahasia-uji"; echo "up err rahasia-uji" >&2
     [ -f "$FAKE_STATE/up_fail" ] && exit 1
     sed -n 's/^QC_IMAGE_TAG=//p' "$FAKE_ENV" > "$FAKE_STATE/running"
     exit 0 ;;
@@ -171,6 +187,14 @@ describe('deploy.sh: validasi input (tidak ada yang berjalan)', () => {
     ['tag 65 karakter', `deploy dev ${'a'.repeat(65)}`],
     ['perintah sangat panjang', `deploy dev ${'a'.repeat(500)}`],
     ['lingkungan dengan lebih dari satu nama', 'deploy dev,exec abc123'],
+    ['tag bernama (latest)', 'deploy dev latest'],
+    ['tag versi (v1.2.3)', 'deploy dev v1.2.3'],
+    ['tag bentuk local-<sha>', 'deploy dev local-0123abc'],
+    ['SHA pendek (7 heksa)', 'deploy dev 0123abc'],
+    ['SHA 39 heksa', `deploy dev ${'a'.repeat(39)}`],
+    ['SHA 41 heksa', `deploy dev ${'a'.repeat(41)}`],
+    ['SHA huruf kapital', `deploy dev ${'A'.repeat(40)}`],
+    ['40 karakter bukan heksa', `deploy dev ${'g'.repeat(40)}`],
   ];
 
   for (const [label, request] of MALICIOUS) {
@@ -192,14 +216,17 @@ describe('deploy.sh: validasi input (tidak ada yang berjalan)', () => {
     const chars = ['\\', ';', '$', '`', '|', '&', '>', '<', '(', ')', '*', '?', '!', '#', '~'];
     chars.push('{', '}', '[', ']', '=', ':', ',', '%', '@', '+', '^', "'", '"', ' ', '\t', '/');
     for (const char of chars) {
-      const result = await run(`deploy dev ab${char}cd`, ['--dry-run']);
+      // 40 karakter persis: hanya karakter itu yang membuatnya tidak sah
+      const result = await run(`deploy dev ${'a'.repeat(20)}${char}${'a'.repeat(19)}`, [
+        '--dry-run',
+      ]);
       expect(result.code, `karakter ${JSON.stringify(char)}`).toBe(2);
     }
     expect(calls()).toBe('');
   });
 
-  test('format sah diterima: tag dengan titik, minus, garis bawah, angka, dan 64 karakter', async () => {
-    for (const tag of ['sha-0123abcd', 'v1.2.3_rc-1', '0123456789abcdef', 'A'.repeat(64), '_x']) {
+  test('format sah diterima: hanya SHA commit 40 heksa huruf kecil', async () => {
+    for (const tag of [SHA_NEW, '0123456789abcdef'.repeat(2) + '01234567', 'f'.repeat(40)]) {
       const result = await run(`deploy dev ${tag}`, ['--dry-run']);
       expect(result.code).toBe(0);
       expect(result.out).toContain(`tag=${tag}`);
@@ -208,20 +235,20 @@ describe('deploy.sh: validasi input (tidak ada yang berjalan)', () => {
   });
 
   test('argumen skrip tak dikenal / --only salah ditolak', async () => {
-    expect((await run('deploy dev abc', ['--aneh'])).code).toBe(2);
-    expect((await run('deploy dev abc', ['--only', 'prod'])).code).toBe(2);
-    expect((await run('deploy dev abc', ['--wait-seconds', 'x'])).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`, ['--aneh'])).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`, ['--only', 'prod'])).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`, ['--wait-seconds', 'x'])).code).toBe(2);
     expect(calls()).toBe('');
   });
 
   test('--only membatasi lingkungan: kunci dev tidak boleh men-deploy exec dan sebaliknya', async () => {
-    const wrong = await run('deploy exec abc123', ['--only', 'dev']);
+    const wrong = await run(`deploy exec ${SHA_NEW}`, ['--only', 'dev']);
     expect(wrong.code).toBe(2);
     expect(wrong.out).toContain('tidak diizinkan');
-    expect((await run('deploy dev abc123', ['--only', 'exec'])).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`, ['--only', 'exec'])).code).toBe(2);
     expect(calls()).toBe('');
     expect(tagIn('exec')).toBe('tag-lama');
-    const ok = await run('deploy dev abc123', ['--only', 'dev', '--dry-run']);
+    const ok = await run(`deploy dev ${SHA_NEW}`, ['--only', 'dev', '--dry-run']);
     expect(ok.code).toBe(0);
   });
 });
@@ -229,41 +256,78 @@ describe('deploy.sh: validasi input (tidak ada yang berjalan)', () => {
 describe('deploy.sh: konfigurasi lingkungan', () => {
   test('folder, compose.yml, .env hilang atau QC_ENV/APP_PORT/QC_NAME tak valid: kode 2, tanpa docker', async () => {
     rmSync(join(root, 'dev', 'compose.yml'));
-    expect((await run('deploy dev abc123')).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`)).code).toBe(2);
     writeFileSync(join(root, 'dev', 'compose.yml'), 'services: {}\n');
 
     writeFileSync(join(root, 'dev', '.env'), envFile().replace('QC_ENV=dev', 'QC_ENV=exec'));
-    expect((await run('deploy dev abc123')).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`)).code).toBe(2);
 
     writeFileSync(join(root, 'dev', '.env'), envFile().replace('8790', '80; id'));
-    expect((await run('deploy dev abc123')).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`)).code).toBe(2);
 
     writeFileSync(join(root, 'dev', '.env'), envFile('QC_NAME=Qc Bad;id\n'));
-    expect((await run('deploy dev abc123')).code).toBe(2);
+    expect((await run(`deploy dev ${SHA_NEW}`)).code).toBe(2);
     expect(calls()).toBe('');
   });
 
   test('deploy lain berjalan (kunci ada): kode 3, tidak ada perubahan; kunci milik orang lain tak dihapus', async () => {
     mkdirSync(join(root, 'dev', '.deploy.lock'));
-    const result = await run('deploy dev abc123');
+    const result = await run(`deploy dev ${SHA_NEW}`);
     expect(result.code).toBe(3);
     expect(calls()).toBe('');
     expect(tagIn('dev')).toBe('tag-lama');
     expect(existsSync(join(root, 'dev', '.deploy.lock'))).toBe(true);
   });
+
+  test('nilai .env berkutip (ganda/tunggal) dibaca seperti compose: QC_ENV, APP_PORT, QC_NAME diterima', async () => {
+    writeFileSync(
+      join(root, 'dev', '.env'),
+      `QC_ENV="dev"\nAPP_PORT='8790'\nQC_NAME="qc-staging"\nQC_IMAGE_TAG=tag-lama\n`,
+    );
+    const result = await run(`deploy dev ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(calls()).toContain('qc-staging-app');
+    expect(calls()).toContain('http://127.0.0.1:8790/api/ping');
+  });
+
+  test('kutip yang tak cocok tidak dibuang: QC_ENV="dev tetap ditolak (kode 2)', async () => {
+    writeFileSync(join(root, 'dev', '.env'), `QC_ENV="dev\nAPP_PORT=8790\nQC_IMAGE_TAG=tag-lama\n`);
+    expect((await run(`deploy dev ${SHA_NEW}`)).code).toBe(2);
+    expect(calls()).toBe('');
+  });
+
+  test('QC_IMAGE selain ghcr.io/... ditolak (kode 2) sebelum apa pun berubah; ghcr.io atau tanpa QC_IMAGE diterima', async () => {
+    for (const image of ['qc-app', 'docker.io/x/qc-app', '"qc-app"', 'ghcr.io', 'ghcr.io/']) {
+      writeFileSync(join(root, 'dev', '.env'), envFile(`QC_IMAGE=${image}\n`));
+      const before = readFileSync(join(root, 'dev', '.env'), 'utf8');
+      const result = await run(`deploy dev ${SHA_NEW}`);
+      expect(result.code, image).toBe(2);
+      expect(result.out, image).toContain('QC_IMAGE');
+      expect(readFileSync(join(root, 'dev', '.env'), 'utf8')).toBe(before);
+    }
+    expect(calls()).toBe('');
+    for (const image of ['ghcr.io/rahmadmrhd/qc-app', '"ghcr.io/rahmadmrhd/qc-app"']) {
+      writeFileSync(join(root, 'dev', '.env'), envFile(`QC_IMAGE=${image}\n`));
+      expect((await run(`deploy dev ${SHA_NEW}`)).code, image).toBe(0);
+    }
+    writeFileSync(join(root, 'dev', '.env'), envFile('# QC_IMAGE=qc-app\n'));
+    expect((await run(`deploy dev ${SHA_BAD}`)).code).toBe(0);
+  });
 });
 
 describe('deploy.sh: alur deploy dan pemulihan', () => {
-  test('sukses: tag baru ditulis (izin .env terjaga), pull, up -d, inspect, ping; kunci dilepas', async () => {
-    const result = await run('deploy dev sha-baru');
+  test('sukses: tag baru ditulis (izin .env terjaga), config, pull, up -d, inspect, ping; kunci dilepas', async () => {
+    const result = await run(`deploy dev ${SHA_NEW}`);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('DEPLOY_OK env=dev tag=sha-baru');
-    expect(tagIn('dev')).toBe('sha-baru');
+    expect(result.out).toContain(`DEPLOY_OK env=dev tag=${SHA_NEW}`);
+    expect(tagIn('dev')).toBe(SHA_NEW);
     expect(tagIn('exec')).toBe('tag-lama'); // lingkungan lain tak tersentuh
     const text = calls();
+    expect(text).toMatch(/docker compose .* config --quiet/);
     expect(text).toMatch(/docker compose .* pull qc-app/);
     expect(text).toMatch(/docker compose .* up -d/);
     expect(text).toContain('curl -fsS --max-time 5 -o /dev/null http://127.0.0.1:8790/api/ping');
+    expect(text.indexOf(' config ')).toBeLessThan(text.indexOf(' pull '));
     expect(text.indexOf(' pull ')).toBeLessThan(text.indexOf(' up '));
     expect(existsSync(join(root, 'dev', '.deploy.lock'))).toBe(false);
     // rahasia .env tidak dicetak
@@ -274,9 +338,66 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     );
   });
 
+  test('keluaran docker compose (stdout dan stderr) tak pernah sampai ke pemanggil; masuk log khusus root yang ditimpa tiap deploy', async () => {
+    const result = await run(`deploy dev ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(result.out).not.toContain('rahasia-uji');
+    const logPath = join(root, 'dev', '.deploy.log');
+    const content = readFileSync(logPath, 'utf8');
+    expect(content).toContain('pull rahasia-uji');
+    expect(content).toContain('up err rahasia-uji');
+    if (process.platform !== 'win32') expect(statSync(logPath).mode & 0o777).toBe(0o600);
+    // deploy berikutnya menimpa (bukan menambah)
+    await run(`deploy dev ${SHA_OTHER}`);
+    expect(readFileSync(logPath, 'utf8').split('pull rahasia-uji').length - 1).toBe(1);
+  });
+
+  test('keluaran compose tak bocor pada jalur gagal (pull gagal, up gagal, tidak sehat + pengembalian)', async () => {
+    writeFileSync(join(state, 'pull_fail'), '1');
+    const pullFail = await run(`deploy dev ${SHA_BAD}`);
+    expect(pullFail.code).toBe(1);
+    expect(pullFail.out).not.toContain('rahasia-uji');
+    rmSync(join(state, 'pull_fail'));
+
+    writeFileSync(join(state, 'up_fail'), '1');
+    const upFail = await run(`deploy dev ${SHA_BAD}`);
+    expect(upFail.code).toBe(4);
+    expect(upFail.out).not.toContain('rahasia-uji');
+    rmSync(join(state, 'up_fail'));
+
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    const unhealthy = await run(`deploy dev ${SHA_BAD}`);
+    expect(unhealthy.code).toBe(1);
+    expect(unhealthy.out).not.toContain('rahasia-uji');
+    expect(unhealthy.out).toContain('.deploy.log'); // petunjuk lokasi log di VPS
+  });
+
+  test('.env/compose.yml rusak (compose config gagal): kode 2, tanpa pull/up, .env utuh, tanpa mencetak galat docker', async () => {
+    writeFileSync(join(state, 'config_fail'), '1');
+    const before = readFileSync(join(root, 'dev', '.env'), 'utf8');
+    const result = await run(`deploy dev ${SHA_NEW}`);
+    expect(result.code).toBe(2);
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(result.out).toContain('tidak valid');
+    const text = calls();
+    expect(text).toContain(' config ');
+    expect(text).not.toContain(' pull ');
+    expect(text).not.toContain(' up ');
+    expect(readFileSync(join(root, 'dev', '.env'), 'utf8')).toBe(before);
+    expect(readFileSync(join(state, 'running'), 'utf8').trim()).toBe('tag-lama');
+    expect(existsSync(join(root, 'dev', '.deploy.lock'))).toBe(false);
+  });
+
+  test('compose config diberi QC_IMAGE_TAG baru lewat lingkungan proses (deploy pertama tanpa tag di .env tetap valid)', async () => {
+    writeFileSync(join(root, 'dev', '.env'), envFile('', null));
+    const result = await run(`deploy dev ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(calls()).toContain(`config-env QC_IMAGE_TAG=${SHA_NEW}`);
+  });
+
   test('kontainer tidak sehat: kembali ke tag sebelumnya (kode 1), .env dikembalikan, kunci dilepas', async () => {
-    writeFileSync(join(state, 'unhealthy_tags'), 'sha-rusak\n');
-    const result = await run('deploy dev sha-rusak');
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy dev ${SHA_BAD}`);
     expect(result.code).toBe(1);
     expect(result.out).toContain('dikembalikan ke tag-lama');
     expect(tagIn('dev')).toBe('tag-lama');
@@ -286,8 +407,8 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
   });
 
   test('/api/ping gagal pada tag baru: kembali ke tag sebelumnya (kode 1)', async () => {
-    writeFileSync(join(state, 'ping_fail_tags'), 'sha-ping-rusak\n');
-    const result = await run('deploy dev sha-ping-rusak');
+    writeFileSync(join(state, 'ping_fail_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy dev ${SHA_BAD}`);
     expect(result.code).toBe(1);
     expect(tagIn('dev')).toBe('tag-lama');
     expect(readFileSync(join(state, 'running'), 'utf8').trim()).toBe('tag-lama');
@@ -295,7 +416,7 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
 
   test('up -d gagal: kembali ke tag sebelumnya; bila up -d terus gagal, kode 4', async () => {
     writeFileSync(join(state, 'up_fail'), '1');
-    const result = await run('deploy dev sha-baru');
+    const result = await run(`deploy dev ${SHA_NEW}`);
     expect(result.code).toBe(4);
     expect(result.out).toContain('pengembalian');
     expect(tagIn('dev')).toBe('tag-lama');
@@ -303,7 +424,7 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
 
   test('pull gagal: tidak ada up -d, tag di .env dikembalikan, kode 1', async () => {
     writeFileSync(join(state, 'pull_fail'), '1');
-    const result = await run('deploy dev sha-tak-ada');
+    const result = await run(`deploy dev ${SHA_OTHER}`);
     expect(result.code).toBe(1);
     expect(calls()).not.toContain(' up ');
     expect(tagIn('dev')).toBe('tag-lama');
@@ -311,22 +432,46 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
 
   test('tanpa tag sebelumnya dan gagal: kode 4 (tidak ada yang bisa dikembalikan), pesan jelas', async () => {
     writeFileSync(join(root, 'dev', '.env'), envFile('', null));
-    writeFileSync(join(state, 'unhealthy_tags'), 'sha-rusak\n');
-    const result = await run('deploy dev sha-rusak');
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy dev ${SHA_BAD}`);
     expect(result.code).toBe(4);
     expect(result.out).toContain('tidak ada tag sebelumnya');
   });
 
   test('QC_IMAGE_TAG belum ada di .env: ditambahkan', async () => {
     writeFileSync(join(root, 'dev', '.env'), envFile('', null));
-    const result = await run('deploy dev sha-pertama');
+    const result = await run(`deploy dev ${SHA_NEW}`);
     expect(result.code).toBe(0);
-    expect(tagIn('dev')).toBe('sha-pertama');
+    expect(tagIn('dev')).toBe(SHA_NEW);
+  });
+
+  test('tag sebelumnya bentuk local-<sha> (image lokal lama) tetap dapat dikembalikan', async () => {
+    writeFileSync(join(root, 'dev', '.env'), envFile('', 'local-0123abc'));
+    writeFileSync(join(state, 'running'), 'local-0123abc\n');
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy dev ${SHA_BAD}`);
+    expect(result.code).toBe(1);
+    expect(tagIn('dev')).toBe('local-0123abc');
+  });
+
+  test('QC_IMAGE_TAG berkutip di .env: tag sebelumnya tetap dikenali, pengembalian berfungsi (bukan kode 4)', async () => {
+    const quoted = (q: string) =>
+      envFile().replace('QC_IMAGE_TAG=tag-lama', `QC_IMAGE_TAG=${q}tag-lama${q}`);
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    for (const q of ['"', "'"]) {
+      writeFileSync(join(root, 'dev', '.env'), quoted(q));
+      writeFileSync(join(state, 'running'), 'tag-lama\n');
+      const result = await run(`deploy dev ${SHA_BAD}`);
+      expect(result.code, `kutip ${q}`).toBe(1);
+      expect(result.out).toContain('dikembalikan ke tag-lama');
+      expect(tagIn('dev')).toBe('tag-lama');
+      expect(readFileSync(join(state, 'running'), 'utf8').trim()).toBe('tag-lama');
+    }
   });
 
   test('QC_NAME dipakai untuk nama kontainer yang diperiksa (staging memakai qc-staging)', async () => {
     writeFileSync(join(root, 'dev', '.env'), envFile('QC_NAME=qc-staging\n'));
-    const result = await run('deploy dev sha-baru');
+    const result = await run(`deploy dev ${SHA_NEW}`);
     expect(result.code).toBe(0);
     expect(calls()).toContain('qc-staging-app');
     expect(calls()).not.toContain('qc-dev-app');
