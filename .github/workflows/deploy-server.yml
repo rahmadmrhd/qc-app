@@ -166,7 +166,8 @@ jobs:
           provenance: false
           tags: ${{ steps.name.outputs.image }}:${{ needs.meta.outputs.sha }}
           cache-from: type=gha,scope=qc-app
-          cache-to: type=gha,scope=qc-app,mode=max
+          # Token `pull_request_target` tak boleh menulis cache GHA ("cache write denied"), jadi hanya dispatch yang menulis; semua event membaca.
+          cache-to: ${{ github.event_name == 'workflow_dispatch' && 'type=gha,scope=qc-app,mode=max' || '' }}
 
   deploy:
     needs: [meta, image]

@@ -108,6 +108,11 @@ describe('deploy-server.yml: keamanan', () => {
     expect(codeOf(deployText)).not.toMatch(/^\s*pull_request:/m);
   });
 
+  test('cache build GHA ditulis hanya oleh workflow_dispatch (token pull_request_target ditolak menulis cache)', () => {
+    expect(deployText).toMatch(/cache-to: ${{ github.event_name == 'workflow_dispatch' && /);
+    expect(deployText).toContain('cache-from: type=gha,scope=qc-app');
+  });
+
   test('pull_request_target: job meta hanya jalan bila PR merged; semua job lain bergantung padanya', () => {
     const metaIf = deploy.jobs.meta?.if ?? '';
     expect(metaIf).toContain("github.event_name != 'pull_request_target'");
