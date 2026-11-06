@@ -63,7 +63,9 @@ Dari mesin pengembang (repo `qc`, working tree bersih di komit yang akan dipasan
 scp deploy/deploy.sh rhd_vps_ipv4:/root/apps/qc-app/deploy.sh
 scp deploy/compose.yml rhd_vps_ipv4:/root/apps/qc-app/staging/compose.yml
 scp deploy/mariadb/qc.cnf rhd_vps_ipv4:/root/apps/qc-app/staging/mariadb/qc.cnf
-ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc-app/staging/compose.yml /root/apps/qc-app/staging/mariadb/qc.cnf'
+ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc-app/staging/compose.yml; chmod 644 /root/apps/qc-app/staging/mariadb/qc.cnf'
+
+**`mariadb/qc.cnf` HARUS dapat dibaca pengguna `mysql` di dalam kontainer (izin 644, tanpa rahasia).** Bila berizin 600 milik root, mariadbd (berjalan sebagai `mysql`) mengabaikannya TANPA galat: `collation-server`, `sql_mode`, dan `max_connections=40` tidak berlaku (teramati 2026-11-07 di staging dan production: `max_connections` 151 dan kolasi bawaan `utf8mb4_uca1400_ai_ci`; diperbaiki dengan `chmod 644` dan `docker compose restart qc-db`). Verifikasi: `docker exec <qc-db> sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -e "select @@global.collation_server, @@global.max_connections"'` harus `utf8mb4_nopad_bin` dan `40`. Skema yang dibuat entrypoint SEBELUM berkas terbaca memiliki kolasi bawaan: setel `ALTER DATABASE <skema> CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin`.
 ```
 
 Ulangi untuk `production` bila perlu. Pembatalan: hapus berkas yang disalin.
