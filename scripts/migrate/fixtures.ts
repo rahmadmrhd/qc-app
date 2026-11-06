@@ -1,7 +1,42 @@
-import type { CellValue } from './import-sheets';
-import { tableDef } from './schema-map';
+import type { Db } from '@server/core/db';
+import {
+  type CellValue,
+  type DiscardApproval,
+  type ImportOptions,
+  type ImportPlan,
+  type ImportResult,
+  prepareImport,
+} from './import-sheets';
+import { DISCARD_TABLES, tableDef } from './schema-map';
 
 export type Dump = Record<string, CellValue[][]>;
+
+/** Menerapkan rencana impor ke MariaDB seperti `mariadb < import.sql`: DDL di luar transaksi, data dalam SATU transaksi. */
+export async function applyPlan(db: Db, plan: ImportPlan): Promise<void> {
+  for (const statement of plan.before) await db.exec(statement);
+  await db.batch(plan.transaction.map((item) => db.prepare(item.sql).bind(...item.params)));
+}
+
+/** Impor dengan persetujuan pembuangan yang cocok persis dengan dump (kecuali `options.discardApproval`). */
+export function importWithApproval(dump: Dump, options: ImportOptions = {}): ImportResult {
+  return prepareImport(dump, { discardApproval: approvalFor(dump), ...options });
+}
+
+/** Pemilik produk menyetujui membuang isi dump yang akan dibuang, persis seperti terlihat sekarang. */
+export function approvalFor(dump: Dump): DiscardApproval {
+  const template = prepareImport(dump).report.approvalTemplate;
+  return { ...template, approvedBy: 'Pemilik Produk', approvedOn: '2026-11-06' };
+}
+
+/** Dump tanpa tabel yang dibuang (tak ada yang perlu disetujui) dan tanpa berkas milik item. */
+export function stripDiscarded(dump: Dump): Dump {
+  const copy = structuredClone(dump);
+  for (const def of DISCARD_TABLES) delete copy[def.name];
+  const files = copy.files as CellValue[][];
+  const ownerAt = (files[0] as CellValue[]).indexOf('owner_type');
+  copy.files = files.filter((row, index) => index === 0 || row[ownerAt] !== 'item');
+  return copy;
+}
 
 /** Membangun grid Sheets (header + baris) dari objek per baris; kolom yang tidak disebut = ''. */
 export function grid(table: string, rows: ReadonlyArray<Record<string, CellValue>>): CellValue[][] {
@@ -95,7 +130,13 @@ export function cleanDump(): Dump {
         action: 'user.save',
         target: 'u2',
         before: '',
-        after: '{"nama":"O\'Brien"}',
+        // Karakter yang harus selamat dari escaping SQL: kutip, backslash, kutip ganda JSON, emoji, CR/LF, Ctrl-Z.
+        after: JSON.stringify({
+          nama: 'O\'Brien \\ "x"',
+          emoji: '\u{1F600}',
+          baris: 'a\nb\r\nc',
+          ctrlz: String.fromCharCode(26),
+        }),
       },
       {
         ts: T2,
@@ -162,6 +203,18 @@ export function cleanDump(): Dump {
         height: '10',
         owner_type: 'qrlogo',
         owner_id: 'shared',
+        created_at: T1,
+        created_by: 'admin@x.id',
+      },
+      {
+        id: 'f3',
+        drive_id: 'drv3',
+        mime: 'image/png',
+        size: '77',
+        width: '5',
+        height: '5',
+        owner_type: '',
+        owner_id: '',
         created_at: T1,
         created_by: 'admin@x.id',
       },

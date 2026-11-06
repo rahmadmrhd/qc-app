@@ -1,19 +1,37 @@
-import { aliasKeysOf, splitAliasKeys } from './alias-keys';
+import { createDb } from '@server/core/db';
 import {
+  type DiscardApproval,
   type DumpInput,
   type ExcludeEntry,
   type PreparedRow,
+  parseStringList,
   prepareImport,
+  readApprovalFile,
+  readDumpFile,
+  sha256Lines,
+  userReferences,
 } from './import-sheets';
-import { TABLES } from './schema-map';
+import {
+  DISCARDED_FILE_OWNER,
+  DISCARDED_TARGET_TABLES,
+  IMPORT_TABLES,
+  type TableDef,
+  writtenColumns,
+} from './schema-map';
 
 /**
- * Verifikasi pasca-impor (Task 5.2): membandingkan dump Sheets dengan isi D1. Murni terhadap `D1Reader`
- * (tes memakai D1 palsu; CLI memakai `wrangler d1 execute --json`). Hanya MEMBACA D1.
+ * Verifikasi pasca-impor (T33): membandingkan dump Sheets dengan isi MariaDB target. Murni terhadap `DbReader`
+ * (tes memakai skema MariaDB sementara; CLI memakai `mariadbReader`). Hanya MEMBACA basis data.
+ *
+ * Keputusan pemilik 2026-11-06 (spek §14): hanya modul akses dan QR yang diimpor; tabel handover/item/merk/customer
+ * dan berkas milik item HARUS kosong di target, dan dump yang isinya akan dibuang harus disetujui pemilik (lihat
+ * `DiscardApproval`; tanpa persetujuan yang cocok, verifikasi gagal dengan galat yang sama seperti impor).
  */
 
-export interface D1Reader {
+export interface DbReader {
+  /** Hanya SELECT. */
   query(sql: string): Promise<Array<Record<string, unknown>>>;
+  close?(): Promise<void>;
 }
 
 export interface TableVerdict {
@@ -36,40 +54,33 @@ export interface VerifyReport {
   tables: TableVerdict[];
   orphans: CheckVerdict[];
   counters: CheckVerdict[];
-  /** Konsistensi kolom turunan D1 (mis. `items.alias_keys` vs `aliases`). */
-  consistency: CheckVerdict[];
+  /** Tabel buangan (handover, item, merk, customer, berkas item) harus kosong di target. */
+  discarded: CheckVerdict[];
   problems: string[];
 }
 
 const PAGE = 1000;
 const SEP = '\u001f';
 
-function sha256Hex(lines: readonly string[]): string {
-  const hasher = new Bun.CryptoHasher('sha256');
-  hasher.update([...lines].sort().join('\n'));
-  return hasher.digest('hex');
-}
-
 function cell(value: unknown): string {
   return value === null || value === undefined ? '' : String(value);
 }
 
 function quoteIdentifier(name: string): string {
-  return `"${name}"`;
+  return `\`${name}\``;
 }
 
 async function readAll(
-  reader: D1Reader,
+  reader: DbReader,
   table: string,
   columns: readonly string[],
-  /** Tabel `WITHOUT ROWID` (item_alias_keys) tidak punya rowid: urutkan menurut kolom kuncinya. */
-  orderBy = 'rowid',
+  orderBy: string,
 ): Promise<Array<Record<string, unknown>>> {
   const out: Array<Record<string, unknown>> = [];
   const select = columns.map(quoteIdentifier).join(', ');
   for (let offset = 0; ; offset += PAGE) {
     const rows = await reader.query(
-      `SELECT ${select} FROM ${quoteIdentifier(table)} ORDER BY ${orderBy} LIMIT ${PAGE} OFFSET ${offset}`,
+      `SELECT ${select} FROM ${quoteIdentifier(table)} ORDER BY ${quoteIdentifier(orderBy)} LIMIT ${PAGE} OFFSET ${offset}`,
     );
     out.push(...rows);
     if (rows.length < PAGE) return out;
@@ -80,210 +91,169 @@ function expectedLines(rows: readonly PreparedRow[], columns: readonly string[])
   return rows.map((row) => columns.map((column) => cell(row.values[column])).join(SEP));
 }
 
-/** Pemeriksaan rujukan yatim di D1 (hasil harus 0). */
-const ORPHAN_CHECKS: ReadonlyArray<{ name: string; sql: string }> = [
-  {
-    name: 'handovers.location_id -> locations',
-    sql: 'SELECT COUNT(*) AS n FROM handovers h LEFT JOIN locations l ON l.id = h.location_id WHERE l.id IS NULL',
-  },
-  {
-    name: 'handovers.customer_id -> customers',
-    sql: "SELECT COUNT(*) AS n FROM handovers h LEFT JOIN customers c ON c.id = h.customer_id WHERE h.customer_id <> '' AND c.id IS NULL",
-  },
-  {
-    name: 'handover_comments.handover_id -> handovers',
-    sql: 'SELECT COUNT(*) AS n FROM handover_comments c LEFT JOIN handovers h ON h.id = c.handover_id WHERE h.id IS NULL',
-  },
-  {
-    name: 'items.brand_id -> brands',
-    sql: "SELECT COUNT(*) AS n FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.brand_id <> '' AND b.id IS NULL",
-  },
-  {
-    name: 'files.owner_id (item) -> items',
-    sql: "SELECT COUNT(*) AS n FROM files f LEFT JOIN items i ON i.id = f.owner_id WHERE f.owner_type = 'item' AND i.id IS NULL",
-  },
-  {
-    name: 'qr_designs.document_id -> qr_documents',
-    sql: "SELECT COUNT(*) AS n FROM qr_designs q LEFT JOIN qr_documents d ON d.id = q.document_id WHERE q.document_id <> '' AND d.id IS NULL",
-  },
-  {
-    name: 'qr_designs.logo_file_id -> files',
-    sql: "SELECT COUNT(*) AS n FROM qr_designs q LEFT JOIN files f ON f.id = q.logo_file_id WHERE q.logo_file_id <> '' AND f.id IS NULL",
-  },
-  {
-    name: 'qr_defaults.default_logo_id -> files',
-    sql: "SELECT COUNT(*) AS n FROM qr_defaults q LEFT JOIN files f ON f.id = q.default_logo_id WHERE q.default_logo_id <> '' AND f.id IS NULL",
-  },
-  {
-    name: 'qr_presets.default_logo_id -> files',
-    sql: "SELECT COUNT(*) AS n FROM qr_presets q LEFT JOIN files f ON f.id = q.default_logo_id WHERE q.default_logo_id <> '' AND f.id IS NULL",
-  },
-  {
-    name: 'users.assignments.roleIds -> roles',
-    sql: "SELECT COUNT(*) AS n FROM users u, json_each(CASE WHEN u.assignments = '' THEN '[]' ELSE u.assignments END) a, json_each(json_extract(a.value, '$.roleIds')) r WHERE r.value NOT IN (SELECT id FROM roles)",
-  },
-  {
-    name: 'users.assignments.locationId -> locations',
-    sql: "SELECT COUNT(*) AS n FROM users u, json_each(CASE WHEN u.assignments = '' THEN '[]' ELSE u.assignments END) a WHERE json_extract(a.value, '$.locationId') IS NOT NULL AND json_extract(a.value, '$.locationId') NOT IN (SELECT id FROM locations)",
-  },
-];
-
-/** `items.alias_keys` harus sama dengan kunci yang dihitung dari `aliases` (migrasi 0007). */
-async function checkAliasKeys(reader: D1Reader): Promise<CheckVerdict> {
-  const rows = await readAll(reader, 'items', ['id', 'aliases', 'alias_keys']);
-  const bad: string[] = [];
-  for (const row of rows) {
-    let aliases: string[] = [];
-    try {
-      const parsed: unknown = JSON.parse(cell(row.aliases) || '[]');
-      if (Array.isArray(parsed))
-        aliases = parsed.filter((item): item is string => typeof item === 'string');
-    } catch {
-      // aliases rusak: dianggap kosong, sehingga alias_keys tidak kosong akan terlapor
-    }
-    if (aliasKeysOf(aliases) !== cell(row.alias_keys)) bad.push(cell(row.id));
-  }
-  return {
-    name: 'items.alias_keys konsisten dengan aliases',
-    ok: bad.length === 0,
-    detail:
-      bad.length === 0
-        ? `${rows.length} item`
-        : `${bad.length} item tidak konsisten: ${bad.slice(0, 5).join(', ')}`,
-  };
+/** Kolom pengurut stabil: id, atau kolom id Sheets (resource), atau `id` otomatis audit_log. */
+function orderColumn(def: TableDef): string {
+  return def.idColumn ?? 'id';
 }
 
-/** `item_alias_keys` (migrasi 0009) harus memuat tepat satu baris per kunci di `items.alias_keys`. */
-async function checkAliasIndex(reader: D1Reader): Promise<CheckVerdict> {
-  const items = await readAll(reader, 'items', ['id', 'alias_keys']);
-  const indexed = await readAll(reader, 'item_alias_keys', ['key', 'item_id'], 'key');
-  const expected = new Set(
-    items.flatMap((row) =>
-      splitAliasKeys(cell(row.alias_keys)).map((key) => `${cell(row.id)}${SEP}${key}`),
-    ),
-  );
-  const actual = new Set(indexed.map((row) => `${cell(row.item_id)}${SEP}${cell(row.key)}`));
-  const bad = [
-    ...[...expected].filter((entry) => !actual.has(entry)),
-    ...[...actual].filter((entry) => !expected.has(entry)),
+async function countOf(reader: DbReader, sql: string): Promise<number> {
+  const rows = await reader.query(sql);
+  return Number(rows[0]?.n ?? Number.NaN);
+}
+
+/** Tabel buangan harus kosong di target (data uji tidak dimigrasi). */
+async function checkDiscardedEmpty(reader: DbReader): Promise<CheckVerdict[]> {
+  const queries: Array<[string, string]> = [
+    ...DISCARDED_TARGET_TABLES.map((name): [string, string] => [
+      name,
+      `SELECT COUNT(*) AS n FROM ${quoteIdentifier(name)}`,
+    ]),
+    [
+      `files (owner_type = '${DISCARDED_FILE_OWNER}')`,
+      `SELECT COUNT(*) AS n FROM \`files\` WHERE \`owner_type\` = '${DISCARDED_FILE_OWNER}'`,
+    ],
   ];
-  return {
-    name: 'item_alias_keys konsisten dengan items.alias_keys',
-    ok: bad.length === 0 && indexed.length === actual.size,
-    detail:
-      bad.length === 0
-        ? `${indexed.length} kunci`
-        : `${bad.length} kunci tidak selaras: ${bad
-            .slice(0, 5)
-            .map((entry) => entry.split(SEP).join(' / '))
-            .join(', ')}`,
-  };
+  const verdicts: CheckVerdict[] = [];
+  for (const [name, sql] of queries) {
+    const count = await countOf(reader, sql);
+    verdicts.push({
+      name: `${name} kosong di target`,
+      ok: count === 0,
+      detail: Number.isNaN(count) ? 'hasil kueri tidak terbaca' : `${count} baris`,
+    });
+  }
+  return verdicts;
 }
 
-/** `brands.item_count` (migrasi 0009) harus sama dengan jumlah item per merk. */
-async function checkBrandItemCounts(reader: D1Reader): Promise<CheckVerdict> {
-  const brands = await readAll(reader, 'brands', ['id', 'item_count']);
-  const counted = await reader.query('SELECT brand_id, COUNT(*) AS n FROM items GROUP BY brand_id');
-  const actual = new Map(counted.map((row) => [cell(row.brand_id), Number(row.n)]));
-  const bad = brands
-    .filter((row) => Number(row.item_count) !== (actual.get(cell(row.id)) ?? 0))
-    .map((row) => cell(row.id));
-  return {
-    name: 'brands.item_count sama dengan jumlah item per merk',
+/** Rujukan yatim di target, dihitung di TS dari isi tabel (tanpa fungsi JSON SQL) dengan aturan yang sama dengan impor. */
+async function checkOrphans(reader: DbReader): Promise<CheckVerdict[]> {
+  const ids = async (table: string) =>
+    new Set((await readAll(reader, table, ['id'], 'id')).map((row) => cell(row.id)));
+  const [roles, locations, files, documents] = await Promise.all([
+    ids('roles'),
+    ids('locations'),
+    ids('files'),
+    ids('qr_documents'),
+  ]);
+  const users = await readAll(reader, 'users', ['id', 'role_ids', 'assignments'], 'id');
+  const designs = await readAll(reader, 'qr_designs', ['id', 'document_id', 'logo_file_id'], 'id');
+  const defaults = await readAll(
+    reader,
+    'qr_defaults',
+    ['id', 'logo_file_ids', 'default_logo_id'],
+    'id',
+  );
+  const presets = await readAll(reader, 'qr_presets', ['id', 'default_logo_id'], 'id');
+
+  const verdict = (name: string, bad: string[], total: number): CheckVerdict => ({
+    name,
     ok: bad.length === 0,
     detail:
       bad.length === 0
-        ? `${brands.length} merk`
-        : `${bad.length} merk tidak sama: ${bad.slice(0, 5).join(', ')}`,
-  };
+        ? `0 yatim dari ${total}`
+        : `${bad.length} yatim: ${bad.slice(0, 5).join(', ')}`,
+  });
+
+  const badRoles: string[] = [];
+  const badLocations: string[] = [];
+  for (const user of users) {
+    const refs = userReferences(cell(user.assignments), cell(user.role_ids));
+    if ('error' in refs) {
+      badRoles.push(`${cell(user.id)} (${refs.error} rusak)`);
+      continue;
+    }
+    for (const role of refs.roles) if (!roles.has(role)) badRoles.push(`${cell(user.id)}:${role}`);
+    for (const location of refs.locations)
+      if (!locations.has(location)) badLocations.push(`${cell(user.id)}:${location}`);
+  }
+  const badDocuments: string[] = [];
+  const badDesignLogos: string[] = [];
+  for (const design of designs) {
+    const document = cell(design.document_id);
+    if (document !== '' && !documents.has(document)) badDocuments.push(cell(design.id));
+    const logo = cell(design.logo_file_id);
+    if (logo !== '' && !files.has(logo)) badDesignLogos.push(cell(design.id));
+  }
+  const badDefaultLogo: string[] = [];
+  const badDefaultList: string[] = [];
+  for (const row of defaults) {
+    const logo = cell(row.default_logo_id);
+    if (logo !== '' && !files.has(logo)) badDefaultLogo.push(cell(row.id));
+    const list = parseStringList(cell(row.logo_file_ids));
+    if (list === null || list.some((file) => !files.has(file))) badDefaultList.push(cell(row.id));
+  }
+  const badPresetLogo = presets
+    .filter((row) => cell(row.default_logo_id) !== '' && !files.has(cell(row.default_logo_id)))
+    .map((row) => cell(row.id));
+
+  return [
+    verdict('users.assignments.roleIds -> roles', badRoles, users.length),
+    verdict('users.assignments.locationId -> locations', badLocations, users.length),
+    verdict('qr_designs.document_id -> qr_documents', badDocuments, designs.length),
+    verdict('qr_designs.logo_file_id -> files', badDesignLogos, designs.length),
+    verdict('qr_defaults.default_logo_id -> files', badDefaultLogo, defaults.length),
+    verdict('qr_defaults.logo_file_ids -> files', badDefaultList, defaults.length),
+    verdict('qr_presets.default_logo_id -> files', badPresetLogo, presets.length),
+  ];
 }
 
 export interface VerifyOptions {
   exclude?: readonly ExcludeEntry[];
+  /** Persetujuan pemilik untuk membuang isi dump (sama dengan yang dipakai saat impor). */
+  discardApproval?: DiscardApproval;
 }
 
 export async function verifyImport(
   dump: DumpInput,
-  reader: D1Reader,
+  reader: DbReader,
   options: VerifyOptions = {},
 ): Promise<VerifyReport> {
-  const prepared = prepareImport(dump, { exclude: options.exclude });
+  const prepared = prepareImport(dump, {
+    exclude: options.exclude,
+    discardApproval: options.discardApproval,
+  });
   const report: VerifyReport = {
     ok: true,
     tables: [],
     orphans: [],
     counters: [],
-    consistency: [],
+    discarded: [],
     problems: [],
   };
   if (!prepared.report.ok) {
     report.ok = false;
     report.problems.push(
-      `Dump tidak lolos validasi impor (${prepared.report.errors.length} galat); jalankan import-sheets untuk rinciannya`,
+      `Dump tidak lolos validasi impor (${prepared.report.errors.length} galat: ${[...new Set(prepared.report.errors.map((e) => e.code))].join(', ')}); jalankan import-sheets untuk rinciannya`,
     );
     return report;
   }
 
-  for (const def of TABLES) {
+  for (const def of IMPORT_TABLES) {
     const expectedRows = prepared.rows[def.name] ?? [];
-    const columns = def.checksumColumns;
-    const expectedChecksum = sha256Hex(expectedLines(expectedRows, columns));
-    const actual = await readAll(reader, def.name, columns);
-    const actualChecksum = sha256Hex(
+    // Checksum atas SEMUA kolom yang ditulis (bukan hanya kunci): kerusakan isi (mis. escaping) ikut terdeteksi.
+    const columns = writtenColumns(def);
+    const expectedChecksum = sha256Lines(expectedLines(expectedRows, columns));
+    const actual = await readAll(reader, def.name, columns, orderColumn(def));
+    const actualChecksum = sha256Lines(
       actual.map((row) => columns.map((column) => cell(row[column])).join(SEP)),
     );
-    const verdict: TableVerdict = {
+    report.tables.push({
       table: def.name,
       ok: actual.length === expectedRows.length && actualChecksum === expectedChecksum,
       expectedRows: expectedRows.length,
       actualRows: actual.length,
       expectedChecksum,
       actualChecksum,
-    };
-    report.tables.push(verdict);
-  }
-
-  const commentColumns = ['id', 'handover_id'] as const;
-  const expectedComments = prepared.comments.map((comment) =>
-    [comment.id, comment.handoverId].join(SEP),
-  );
-  const actualComments = (await readAll(reader, 'handover_comments', commentColumns)).map((row) =>
-    commentColumns.map((column) => cell(row[column])).join(SEP),
-  );
-  const commentsExpected = sha256Hex(expectedComments);
-  const commentsActual = sha256Hex(actualComments);
-  report.tables.push({
-    table: 'handover_comments',
-    ok: expectedComments.length === actualComments.length && commentsExpected === commentsActual,
-    expectedRows: expectedComments.length,
-    actualRows: actualComments.length,
-    expectedChecksum: commentsExpected,
-    actualChecksum: commentsActual,
-  });
-
-  for (const check of ORPHAN_CHECKS) {
-    const rows = await reader.query(check.sql);
-    const count = Number(rows[0]?.n ?? Number.NaN);
-    report.orphans.push({
-      name: check.name,
-      ok: count === 0,
-      detail: Number.isNaN(count) ? 'hasil kueri tidak terbaca' : `${count} yatim`,
     });
   }
 
-  const counterRows = await reader.query('SELECT key, value FROM counters');
+  report.orphans.push(...(await checkOrphans(reader)));
+  report.discarded.push(...(await checkDiscardedEmpty(reader)));
+
+  const counterRows = await reader.query('SELECT `key`, value FROM `counters`');
   const counters = new Map(counterRows.map((row) => [cell(row.key), Number(row.value)]));
-  const maxRev = await reader.query(
-    'SELECT MAX(m) AS m FROM (SELECT MAX(sync_rev) AS m FROM brands UNION ALL SELECT MAX(sync_rev) FROM items)',
-  );
-  const actualMaxRev = Number(maxRev[0]?.m ?? 0) || 0;
-  const syncRev = counters.get('sync_rev');
-  report.counters.push({
-    name: 'counters.sync_rev >= max(sync_rev) di D1',
-    ok: syncRev !== undefined && syncRev >= actualMaxRev,
-    detail: `counters=${syncRev ?? 'tidak ada'}, max D1=${actualMaxRev}`,
-  });
-  for (const [key, expected] of Object.entries(prepared.report.counters)) {
+  const expectedCounters = Object.entries(prepared.report.counters);
+  for (const [key, expected] of expectedCounters) {
     const actual = counters.get(key);
     report.counters.push({
       name: `counters.${key} >= data`,
@@ -292,38 +262,26 @@ export async function verifyImport(
     });
   }
 
-  report.consistency.push(await checkAliasKeys(reader));
-  report.consistency.push(await checkAliasIndex(reader));
-  report.consistency.push(await checkBrandItemCounts(reader));
-
-  report.ok = [
-    ...report.tables,
-    ...report.orphans,
-    ...report.counters,
-    ...report.consistency,
-  ].every((entry) => entry.ok);
+  report.ok = [...report.tables, ...report.orphans, ...report.counters, ...report.discarded].every(
+    (entry) => entry.ok,
+  );
   return report;
 }
 
-/** Pembaca D1 lewat `wrangler d1 execute --json` (read-only: hanya SELECT). */
-export function wranglerReader(database: string, flags: readonly string[]): D1Reader {
+/**
+ * Pembaca MariaDB untuk CLI, hanya SELECT. URL (mengandung kata sandi) dibaca dari variabel lingkungan, tidak
+ * pernah dari argumen baris perintah.
+ */
+export function mariadbReader(url: string): DbReader {
+  const db = createDb({ url, connectionLimit: 1 });
   return {
     async query(sql) {
       if (!/^\s*select\b/i.test(sql))
         throw new Error('verify-import hanya boleh menjalankan SELECT');
-      const process = Bun.spawn(
-        ['bunx', 'wrangler', 'd1', 'execute', database, '--json', ...flags, '--command', sql],
-        { stdout: 'pipe', stderr: 'pipe', env: { ...Bun.env } },
-      );
-      const [stdout, stderr, code] = await Promise.all([
-        new Response(process.stdout).text(),
-        new Response(process.stderr).text(),
-        process.exited,
-      ]);
-      if (code !== 0) throw new Error(`wrangler gagal (${code}): ${stderr.slice(0, 400)}`);
-      const parsed = JSON.parse(stdout) as Array<{ results?: Array<Record<string, unknown>> }>;
-      return parsed[0]?.results ?? [];
+      const result = await db.prepare(sql).all<Record<string, unknown>>();
+      return result.results;
     },
+    close: () => db.close(),
   };
 }
 
@@ -333,45 +291,52 @@ function printReport(report: VerifyReport): void {
       `${table.ok ? 'LULUS' : 'GAGAL'}  ${table.table}: baris ${table.actualRows}/${table.expectedRows}, checksum ${table.actualChecksum === table.expectedChecksum ? 'sama' : 'BEDA'}`,
     );
   }
-  for (const check of [...report.orphans, ...report.counters, ...report.consistency]) {
+  for (const check of [...report.orphans, ...report.counters, ...report.discarded]) {
     console.log(`${check.ok ? 'LULUS' : 'GAGAL'}  ${check.name}: ${check.detail}`);
   }
   for (const problem of report.problems) console.log(`GAGAL  ${problem}`);
   console.log(report.ok ? 'VERIFIKASI LULUS' : 'VERIFIKASI GAGAL');
 }
 
-/** CLI: `bun run scripts/migrate/verify-import.ts --dump dump.json --d1 <nama> [--local | --remote] [--env staging] [--exclude e.json] [--report out.json]`. */
+/** Nama variabel lingkungan berisi URL MariaDB target (`mysql://pengguna:kata-sandi@host:port/nama_db`). */
+export const VERIFY_DB_URL_ENV = 'QC_IMPORT_DB_URL';
+
+/** CLI: `QC_IMPORT_DB_URL=mysql://... bun run scripts/migrate/verify-import.ts --dump dump.json [--exclude e.json] [--discard-approval a.json] [--report out.json]`. */
 export async function runVerifyCli(argv: readonly string[]): Promise<number> {
   const args = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
-    if (arg === '--local' || arg === '--remote') args.set('mode', arg);
-    else if (arg.startsWith('--')) args.set(arg.slice(2), argv[++i] ?? '');
+    if (arg.startsWith('--')) args.set(arg.slice(2), argv[++i] ?? '');
   }
   const dumpPath = args.get('dump');
-  const database = args.get('d1');
-  if (!dumpPath || !database) {
+  if (!dumpPath) {
     console.error(
-      'Pemakaian: verify-import.ts --dump dump.json --d1 <nama-db> [--local|--remote] [--env nama] [--exclude excludes.json] [--report out.json]',
+      `Pemakaian: ${VERIFY_DB_URL_ENV}=mysql://... verify-import.ts --dump dump.json [--exclude excludes.json] [--discard-approval approval.json] [--report out.json]`,
     );
     return 2;
   }
-  const mode = args.get('mode') ?? '--remote';
-  if (mode === '--remote' && !Bun.env.CLOUDFLARE_ACCOUNT_ID) {
+  const url = process.env[VERIFY_DB_URL_ENV]?.trim();
+  if (!url) {
     console.error(
-      'CLOUDFLARE_ACCOUNT_ID wajib diset (akun "QC") agar wrangler tidak memakai akun lain.',
+      `${VERIFY_DB_URL_ENV} wajib diset (URL MariaDB target; jangan menaruh kata sandi di argumen baris perintah).`,
     );
     return 2;
   }
-  const flags = [mode, ...(args.get('env') ? ['--env', args.get('env') as string] : [])];
-  const dump = (await Bun.file(dumpPath).json()) as DumpInput;
+  const dump = await readDumpFile(dumpPath);
   const excludePath = args.get('exclude');
   const exclude = excludePath ? ((await Bun.file(excludePath).json()) as ExcludeEntry[]) : [];
-  const report = await verifyImport(dump, wranglerReader(database, flags), { exclude });
-  const reportPath = args.get('report');
-  if (reportPath) await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  printReport(report);
-  return report.ok ? 0 : 1;
+  const approvalPath = args.get('discard-approval');
+  const discardApproval = approvalPath ? await readApprovalFile(approvalPath) : undefined;
+  const reader = mariadbReader(url);
+  try {
+    const report = await verifyImport(dump, reader, { exclude, discardApproval });
+    const reportPath = args.get('report');
+    if (reportPath) await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+    printReport(report);
+    return report.ok ? 0 : 1;
+  } finally {
+    await reader.close?.();
+  }
 }
 
 if (import.meta.main) {
