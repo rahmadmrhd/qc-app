@@ -2,6 +2,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
 import type { JobKind } from '@shared/rpc';
+import { backupHandler } from '../backup/service';
 import { qrExportHandler } from '../qrcode/export';
 import { cleanupHandler } from './cleanup';
 import type { JobRecord } from './repo';
@@ -48,6 +49,8 @@ function handlerOf(kind: JobKind): JobHandler {
       return sheetsExportHandler;
     case 'cleanup_qr':
       return cleanupHandler;
+    case 'db_backup':
+      return backupHandler;
   }
 }
 

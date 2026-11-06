@@ -57,6 +57,11 @@ COPY --from=web-build /app/server/dist server/dist
 # Berkas tes tidak dibutuhkan runtime.
 RUN find shared server/src -name '*.test.ts' -delete
 
+# Klien MariaDB untuk cadangan malam (mariadb-dump) dan skrip pemulihan (mariadb). Hanya paket klien, bukan server.
+# Folder dump lokal: named volume dipasang di sini; direktori dibuat dan dimiliki `bun` SEBELUM USER agar volume baru
+# mewarisi kepemilikannya (tanpa ini volume dimiliki root dan cadangan tak dapat menulis).
+RUN apk add --no-cache mariadb-client     && mkdir -p /var/backups/qc     && chown bun:bun /var/backups/qc
+
 # Pengguna non-root bawaan image oven/bun (uid 1000).
 USER bun
 WORKDIR /app/server

@@ -617,7 +617,7 @@ export interface AuditCursorPageDto {
   nextCursor: string | null;
 }
 
-export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr';
+export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export interface GetJobInput {

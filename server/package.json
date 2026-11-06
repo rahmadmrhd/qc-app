@@ -11,6 +11,10 @@
   },
   "dependencies": {
     "hono": "^4.13.13",
-    "mysql2": "^3.24.6"
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2"
   }
 }

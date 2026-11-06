@@ -1,5 +1,8 @@
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { isValidEmail } from '@server/core/email';
 import { isDriveId } from '@server/core/google/settings';
+import type { SmtpSettings } from '@server/core/mail';
 import { DEFAULT_TRUSTED_PROXY, parseTrustedProxy, type TrustedProxy } from '@server/http/proxy';
 
 /** Konfigurasi proses server, dibaca dari variabel lingkungan (Bun memuat `server/.env` saat dijalankan dari `server/`). */
@@ -25,6 +28,14 @@ export interface Config {
   backupFolderId: string;
   /** Folder tambahan di luar induk yang diizinkan klien Google. */
   allowedFolderIds: string[];
+  /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
+  backupLocalDir: string;
+  /** SMTP untuk email peringatan; `null` = belum dikonfigurasi/tidak dapat dipakai (peringatan dilewati dan dicatat). */
+  smtp: SmtpSettings | null;
+  /** Penerima peringatan (`ALERT_TO`, dipisah koma; entri yang bukan alamat email dibuang). */
+  alertTo: string[];
+  /** Ambang peringatan pemakaian kuota Drive, persen (`QUOTA_ALERT_PERCENT`, bawaan 80). */
+  quotaAlertPercent: number;
   adminEmail: string;
   /** Origin publik aplikasi: dasar redirect OAuth dan atribut `Secure` cookie (BUKAN header Host). Wajib https di produksi. */
   appOrigin: string | undefined;
@@ -46,6 +57,9 @@ export interface Config {
 export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_DB_POOL_SIZE = 8;
+export const DEFAULT_SMTP_PORT = 587;
+export const DEFAULT_QUOTA_ALERT_PERCENT = 80;
+export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
 const SESSION_SECRET_MIN_LENGTH = 16;
 
 /** Galat konfigurasi: memuat NAMA variabel yang bermasalah saja, tidak pernah nilainya. */
@@ -172,6 +186,32 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const dbPoolSize = poolRaw === '' ? DEFAULT_DB_POOL_SIZE : integerIn(poolRaw, 1, 30);
   if (dbPoolSize === null) problems.push('DB_POOL_SIZE harus bilangan bulat 1-30');
 
+  const quotaRaw = get('QUOTA_ALERT_PERCENT');
+  const quotaAlertPercent =
+    quotaRaw === '' ? DEFAULT_QUOTA_ALERT_PERCENT : integerIn(quotaRaw, 1, 99);
+  if (quotaAlertPercent === null) problems.push('QUOTA_ALERT_PERCENT harus bilangan bulat 1-99');
+
+  // SMTP/ALERT_TO TIDAK pernah menggagalkan start: berkas .env di VPS dapat berisi penanda ISI_OLEH_PEMILIK. Nilai yang
+  // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi.
+  const alertTo = get('ALERT_TO')
+    .split(',')
+    .map((address) => address.trim())
+    .filter((address) => isValidEmail(address));
+  const smtpPort =
+    get('SMTP_PORT') === '' ? DEFAULT_SMTP_PORT : integerIn(get('SMTP_PORT'), 1, 65535);
+  const smtpFrom = get('SMTP_FROM') || get('SMTP_USER');
+  const smtp: SmtpSettings | null =
+    get('SMTP_HOST') !== '' && smtpPort !== null && smtpFrom !== '' && alertTo.length > 0
+      ? {
+          host: get('SMTP_HOST'),
+          port: smtpPort,
+          secure: ['true', '1', 'yes'].includes(get('SMTP_SECURE').toLowerCase()),
+          user: get('SMTP_USER'),
+          pass: get('SMTP_PASS'),
+          from: smtpFrom,
+        }
+      : null;
+
   const trustedProxyText = get('TRUSTED_PROXY') || DEFAULT_TRUSTED_PROXY;
   const trustedProxy = parseTrustedProxy(trustedProxyText);
   if (trustedProxy === null) {
@@ -180,7 +220,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     );
   }
 
-  if (problems.length > 0 || port === null || dbPoolSize === null || trustedProxy === null) {
+  if (
+    problems.length > 0 ||
+    port === null ||
+    dbPoolSize === null ||
+    trustedProxy === null ||
+    quotaAlertPercent === null
+  ) {
     throw new ConfigError(problems);
   }
   const staticDir = get('STATIC_DIR');
@@ -199,6 +245,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     qrDocFolderId: get('QR_DOC_FOLDER_ID'),
     backupFolderId: get('BACKUP_FOLDER_ID'),
     allowedFolderIds,
+    backupLocalDir:
+      get('BACKUP_LOCAL_DIR') ||
+      (production ? PRODUCTION_BACKUP_DIR : join(tmpdir(), 'qc-backups')),
+    smtp,
+    alertTo,
+    quotaAlertPercent,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,
     production,

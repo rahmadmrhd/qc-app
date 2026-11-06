@@ -36,7 +36,14 @@ function configVariables(): string[] {
 /** Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR dan DB_POOL_SIZE memakai bawaan image/kode. */
 const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'DB_POOL_SIZE']);
 /** Tetap di compose/image (bukan pilihan operator di .env); DATABASE_URL disusun compose dari QC_DB_USER/QC_DB_PASSWORD/QC_DB_NAME. */
-const NOT_IN_ENV_EXAMPLE = new Set([...NOT_IN_COMPOSE, 'HOST', 'PORT', 'NODE_ENV', 'DATABASE_URL']);
+const NOT_IN_ENV_EXAMPLE = new Set([
+  ...NOT_IN_COMPOSE,
+  'HOST',
+  'PORT',
+  'NODE_ENV',
+  'DATABASE_URL',
+  'BACKUP_LOCAL_DIR', // tetap /var/backups/qc (volume qc-backups); bukan pilihan operator
+]);
 
 describe('deploy: variabel konfigurasi', () => {
   test('pembacaan config.ts terdeteksi (penjaga tes ini sendiri)', () => {
@@ -108,6 +115,7 @@ describe('deploy: compose.yml qc-app', () => {
 
   test('kunci Google dipasang baca-saja, tidak otomatis membuat direktori, ke /run/secrets/google-sa.json', () => {
     expect(app.volumes).toEqual([
+      'qc-backups:/var/backups/qc',
       {
         type: 'bind',
         source: '${QC_SECRETS_DIR:-/root/apps/qc-app/${QC_ENV}/secrets}/google-sa.json',
@@ -118,6 +126,18 @@ describe('deploy: compose.yml qc-app', () => {
     ]);
     const environment = app.environment as Record<string, string>;
     expect(environment.GOOGLE_SA_KEY_FILE).toContain('/run/secrets/google-sa.json');
+  });
+
+  test('cadangan (T30): volume qc-backups terdaftar, folder dump di image dimiliki bun dan klien MariaDB terpasang sebelum USER', () => {
+    expect(Object.keys((compose as unknown as { volumes: object }).volumes)).toContain(
+      'qc-backups',
+    );
+    const environment = app.environment as Record<string, string>;
+    expect(environment.BACKUP_LOCAL_DIR).toBe('/var/backups/qc');
+    const beforeUser = dockerfile.slice(0, dockerfile.indexOf('USER bun'));
+    expect(beforeUser).toContain('apk add --no-cache mariadb-client');
+    expect(beforeUser).toContain('mkdir -p /var/backups/qc');
+    expect(beforeUser).toContain('chown bun:bun /var/backups/qc');
   });
 
   test('subnet jaringan dipatok dari variabel (I5) dan tidak memakai kolam otomatis Docker', () => {

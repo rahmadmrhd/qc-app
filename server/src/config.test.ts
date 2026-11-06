@@ -271,3 +271,77 @@ describe('loadConfig', () => {
     });
   });
 });
+
+describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
+  const SMTP = {
+    SMTP_HOST: 'smtp.example.test',
+    SMTP_PORT: '465',
+    SMTP_SECURE: 'true',
+    SMTP_USER: 'qc@example.test',
+    SMTP_PASS: 'sandi-aplikasi-rahasia',
+    SMTP_FROM: 'QC App <qc@example.test>',
+    ALERT_TO: 'pemilik@example.test, lain@example.test',
+  };
+
+  test('bawaan: tanpa SMTP, tanpa penerima, ambang kuota 80, folder lokal dev di folder sementara OS', () => {
+    const config = loadConfig(VALID);
+    expect(config.smtp).toBeNull();
+    expect(config.alertTo).toEqual([]);
+    expect(config.quotaAlertPercent).toBe(80);
+    expect(config.backupLocalDir.replaceAll('\\', '/')).toMatch(/qc-backups$/);
+  });
+
+  test('produksi: folder lokal bawaan /var/backups/qc; BACKUP_LOCAL_DIR menimpa', () => {
+    const prod = {
+      ...VALID,
+      NODE_ENV: 'production',
+      APP_ORIGIN: 'https://qc.example.com',
+      GOOGLE_SA_KEY_FILE: '/run/secrets/google-sa.json',
+      GOOGLE_ROOT_FOLDER_ID: 'abcdefghij1234567890',
+    };
+    expect(loadConfig(prod).backupLocalDir).toBe('/var/backups/qc');
+    expect(loadConfig({ ...prod, BACKUP_LOCAL_DIR: '/data/cadangan' }).backupLocalDir).toBe(
+      '/data/cadangan',
+    );
+  });
+
+  test('SMTP lengkap dirakit; penerima dipisah koma dan dipangkas', () => {
+    const config = loadConfig({ ...VALID, ...SMTP });
+    expect(config.smtp).toEqual({
+      host: 'smtp.example.test',
+      port: 465,
+      secure: true,
+      user: 'qc@example.test',
+      pass: 'sandi-aplikasi-rahasia',
+      from: 'QC App <qc@example.test>',
+    });
+    expect(config.alertTo).toEqual(['pemilik@example.test', 'lain@example.test']);
+  });
+
+  test('SMTP_FROM kosong memakai SMTP_USER; port kosong = 587', () => {
+    const config = loadConfig({ ...VALID, ...SMTP, SMTP_FROM: '', SMTP_PORT: '' });
+    expect(config.smtp?.from).toBe('qc@example.test');
+    expect(config.smtp?.port).toBe(587);
+  });
+
+  test('penanda ISI_OLEH_PEMILIK / nilai rusak TIDAK menggagalkan start: peringatan dinonaktifkan', () => {
+    expect(loadConfig({ ...VALID, ...SMTP, ALERT_TO: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
+    expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
+    expect(loadConfig({ ...VALID, ...SMTP, SMTP_HOST: '' }).smtp).toBeNull();
+    expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: '99999' }).smtp).toBeNull();
+  });
+
+  test('QUOTA_ALERT_PERCENT: 1-99 atau ConfigError dengan nama variabel saja', () => {
+    expect(loadConfig({ ...VALID, QUOTA_ALERT_PERCENT: '70' }).quotaAlertPercent).toBe(70);
+    for (const bad of ['0', '100', 'banyak', '8.5']) {
+      const error = errorOf({ ...VALID, QUOTA_ALERT_PERCENT: bad });
+      expect(error.message).toContain('QUOTA_ALERT_PERCENT');
+      expect(error.message).not.toContain(bad === 'banyak' ? 'banyak' : '\u0000');
+    }
+  });
+
+  test('SMTP_PASS tidak pernah muncul di pesan galat konfigurasi', () => {
+    const error = errorOf({ ...VALID, ...SMTP, SESSION_SECRET: '' });
+    expect(error.message).not.toContain('sandi-aplikasi-rahasia');
+  });
+});

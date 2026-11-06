@@ -3,9 +3,11 @@ import type { Config } from '@server/config';
 import { createDb, type Db } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { createGoogleClient } from '@server/core/google/client';
+import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startScheduler } from '@server/jobs/runner';
+import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -54,6 +56,16 @@ export function envFromConfig(config: Config, db: Db): Env {
     OAUTH_CLIENT_SECRET: config.oauthClientSecret,
     SYNC_API_TOKEN: config.syncApiToken,
     ADMIN_EMAIL: config.adminEmail,
+    // Cadangan malam hanya di produksi dengan Google terkonfigurasi (dev memakai basis data bersama di VPS dan tak
+    // punya mariadb-dump); `parseDatabaseUrl` hanya dipakai bila dump dijalankan (URL sudah divalidasi `loadConfig`).
+    BACKUP_ENABLED:
+      config.production && config.googleSaKeyFile !== '' && config.googleRootFolderId !== '',
+    BACKUP_LOCAL_DIR: config.backupLocalDir,
+    BACKUP_DUMP: (outputPath) =>
+      createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
+    ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
+    ALERT_TO: config.alertTo,
+    QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),
   };

@@ -79,7 +79,10 @@ services:
       QR_DOC_FOLDER_ID: ${QR_DOC_FOLDER_ID:-}
       BACKUP_FOLDER_ID: ${BACKUP_FOLDER_ID:-}
       ALLOWED_FOLDER_IDS: ${ALLOWED_FOLDER_IDS:-}
-      # Email peringatan (T32); kosong = belum dipakai kode.
+      # Cadangan malam (T30): dump disimpan sementara di volume qc-backups (3 salinan terakhir; sisanya di Drive).
+      BACKUP_LOCAL_DIR: /var/backups/qc
+      # Peringatan email (T32): cadangan basi > 36 jam dan pemakaian kuota Drive di atas ambang (bawaan 80%).
+      QUOTA_ALERT_PERCENT: ${QUOTA_ALERT_PERCENT:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-}
       SMTP_SECURE: ${SMTP_SECURE:-}
@@ -88,6 +91,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       ALERT_TO: ${ALERT_TO:-}
     volumes:
+      - qc-backups:/var/backups/qc
       # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang
       # baca-saja. create_host_path: false = bila berkasnya belum ada, compose GAGAL (bukan membuat direktori kosong).
       - type: bind
@@ -99,3 +103,4 @@ services:
 
 volumes:
   qc-db-data:
+  qc-backups:

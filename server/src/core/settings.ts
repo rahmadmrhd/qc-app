@@ -12,6 +12,7 @@ const FOLDER_ENV_FIELD = {
   DRIVE_FOLDER_ID: 'ITEM_IMAGES_FOLDER_ID',
   QR_FOLDER_ID: 'QR_FOLDER_ID',
   QR_DOC_FOLDER_ID: 'QR_DOC_FOLDER_ID',
+  BACKUP_FOLDER_ID: 'BACKUP_FOLDER_ID',
 } as const;
 
 /** Id folder fungsi dari `.env`; '' bila tidak dikonfigurasi. */

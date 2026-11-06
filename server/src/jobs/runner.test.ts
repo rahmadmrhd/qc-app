@@ -261,6 +261,30 @@ describe('penjadwal', () => {
   });
 });
 
+describe('penjadwal: cadangan harian (T30)', () => {
+  test('tanpa BACKUP_ENABLED penjadwal tidak pernah menyisipkan job db_backup', async () => {
+    const stop = startScheduler(env, { intervalMs: 10 });
+    try {
+      await waitFor(async () => (await countJobs('cleanup_qr')) === 1);
+      await sleep(60);
+      expect(await countJobs('db_backup')).toBe(0);
+    } finally {
+      await stop();
+    }
+  });
+
+  test('dengan BACKUP_ENABLED dan lewat 02:00 WIB: satu job db_backup, tidak menumpuk', async () => {
+    const stop = startScheduler({ ...env, BACKUP_ENABLED: true }, { intervalMs: 10 });
+    try {
+      await waitFor(async () => (await countJobs('db_backup')) === 1);
+      await sleep(60);
+      expect(await countJobs('db_backup')).toBe(1);
+    } finally {
+      await stop();
+    }
+  });
+});
+
 describe('pembersihan rate_limits (I4)', () => {
   const MINUTE = 60_000;
   const seedLimit = (key: string, count: number, windowStart: number) =>
