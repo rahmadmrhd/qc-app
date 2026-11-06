@@ -27,6 +27,7 @@ describe('createSmtpMailer (transport disuntik)', () => {
       host: 'smtp.example.test',
       port: 587,
       secure: false,
+      requireTLS: true, // autentikasi tidak pernah polos (STARTTLS wajib)
       auth: { user: 'pengirim@example.test', pass: SENTINEL },
     });
     expect(sent).toEqual([
@@ -40,7 +41,7 @@ describe('createSmtpMailer (transport disuntik)', () => {
   });
 
   test('tanpa SMTP_USER: tanpa autentikasi', async () => {
-    const created: Array<{ auth?: unknown }> = [];
+    const created: Array<{ auth?: unknown; requireTLS?: boolean }> = [];
     const mailer = createSmtpMailer(
       { ...SETTINGS, user: '', pass: '' },
       {
@@ -52,6 +53,22 @@ describe('createSmtpMailer (transport disuntik)', () => {
     );
     await mailer.send({ to: ['a@x.test'], subject: 's', text: 't' });
     expect(created[0]?.auth).toBeUndefined();
+    expect(created[0]?.requireTLS).toBe(false); // relay tanpa autentikasi boleh polos
+  });
+
+  test('TLS langsung (465): requireTLS tidak diperlukan', async () => {
+    const created: Array<{ secure: boolean; requireTLS?: boolean }> = [];
+    const mailer = createSmtpMailer(
+      { ...SETTINGS, port: 465, secure: true },
+      {
+        createTransport: (options) => {
+          created.push(options);
+          return { sendMail: async () => {} };
+        },
+      },
+    );
+    await mailer.send({ to: ['a@x.test'], subject: 's', text: 't' });
+    expect(created[0]).toMatchObject({ secure: true, requireTLS: false });
   });
 
   test('galat transport dibungkus tanpa SMTP_PASS (galat asli tidak diteruskan)', async () => {

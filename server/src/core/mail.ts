@@ -32,6 +32,8 @@ export interface SmtpTransportOptions {
   host: string;
   port: number;
   secure: boolean;
+  /** Wajib STARTTLS: tanpa ini penyerang di jalur dapat membuang penawaran STARTTLS dan AUTH terkirim polos. */
+  requireTLS: boolean;
   auth?: { user: string; pass: string };
   connectionTimeout: number;
   greetingTimeout: number;
@@ -53,6 +55,8 @@ export function createSmtpMailer(settings: SmtpSettings, deps: MailDeps = {}): M
     host: settings.host,
     port: settings.port,
     secure: settings.secure,
+    // Autentikasi tidak pernah polos; relay tanpa autentikasi (user kosong) boleh polos.
+    requireTLS: !settings.secure && settings.user !== '',
     ...(settings.user === '' ? {} : { auth: { user: settings.user, pass: settings.pass } }),
     connectionTimeout: TIMEOUT_MS,
     greetingTimeout: TIMEOUT_MS,
