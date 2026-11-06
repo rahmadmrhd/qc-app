@@ -80,7 +80,7 @@ sed -i "s/^QC_DB_PASSWORD=.*/QC_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 chmod 600 .env
 ```
 
-Nilai yang diisi pemilik (OAUTH_*, SMTP_*, GOOGLE_ROOT_FOLDER_ID, BRIDGE_* sementara) ditulis `ISI_OLEH_PEMILIK` sampai diisi. Pastikan `QC_ENV` sama dengan nama folder, `QC_NAME=qc-staging` (staging), `QC_SUBNET`, `TRUSTED_PROXY` (loopback + `QC_SUBNET`), `APP_PORT`, `DB_PORT`, dan `APP_ORIGIN` (`https://qc-dev.rhd.my.id` atau `https://qc.rhd.my.id`). Kata sandi hanya heksa (aman-URL). Jangan `cat .env`.
+Nilai yang diisi pemilik (OAUTH_*, SMTP_*, GOOGLE_ROOT_FOLDER_ID, GOOGLE_SPREADSHEET_ID; kunci service account bukan variabel melainkan berkas `secrets/google-sa.json`, lihat `docs/setup-google.md`) ditulis `ISI_OLEH_PEMILIK` sampai diisi. Pastikan `QC_ENV` sama dengan nama folder, `QC_NAME=qc-staging` (staging), `QC_SUBNET`, `TRUSTED_PROXY` (loopback + `QC_SUBNET`), `APP_PORT`, `DB_PORT`, dan `APP_ORIGIN` (`https://qc-dev.rhd.my.id` atau `https://qc.rhd.my.id`). Kata sandi hanya heksa (aman-URL). Jangan `cat .env`.
 
 Pembatalan: hapus `.env` (rahasia dapat dibangkitkan ulang; belum ada data).
 

@@ -1,4 +1,6 @@
-# Setup jembatan Apps Script (`bridge/`)
+# Setup jembatan Apps Script (`bridge/`) — USANG
+
+> **USANG sejak T30a (2026-11-06)**: server Bun tidak lagi memanggil jembatan ini; Drive dan Sheets diakses langsung lewat service account (`docs/setup-google.md`, bagian "Service account"). Dokumen ini, `bridge/`, dan skrip `build:bridge`/`push-bridge`/`deploy-bridge` dihapus di T35. `scripts/bridge-smoke.ts` sudah dihapus (bergantung pada klien jembatan yang diganti).
 
 Jembatan adalah proyek Apps Script **terpisah** dari aplikasi lama (`gas/`) yang hanya melayani Drive dan Sheets untuk Worker Cloudflare (Spek 8.1). Deployment `/exec` aplikasi lama TIDAK disentuh. Satu proyek jembatan per lingkungan (staging dan production), masing-masing dengan rahasia dan daftar folder sendiri.
 
@@ -82,4 +84,4 @@ Hasil impor selain salinan kolom: `handovers.comments` dipecah ke `handover_comm
 2. **Project Settings → Script properties → Add**: `BRIDGE_SECRET` (nilai acak 64 karakter heksadesimal; salinan lokal ada di `bridge/.secrets.local` di worktree jembatan, JANGAN dibagikan lewat repo/obrolan), `ALLOWED_FOLDER_IDS` (id folder Drive gambar item `DRIVE_FOLDER_ID` + folder QR; ambil dari Script Properties aplikasi lama atau dari tabel `settings` D1 setelah gladi), `SPREADSHEET_ID` (id Spreadsheet database aplikasi lama, hanya dibaca lewat `sheets.dump`), opsional `EXPORT_SPREADSHEET_ID`.
 3. Pilih fungsi `setup` di editor lalu **Run**; setujui izin (Drive, Sheets, request eksternal). `setup` hanya melaporkan status properti/folder/spreadsheet tanpa mencetak rahasia.
 4. Pasang rahasia yang SAMA di Worker staging: `cd worker && CLOUDFLARE_ACCOUNT_ID=2256d27ce4dcdcb9ade777cc2650fd81 bunx wrangler secret put BRIDGE_SECRET --env staging` (tempel nilai dari `bridge/.secrets.local`) dan set `BRIDGE_URL` staging ke URL di atas.
-5. Uji cepat hanya-baca: `bun run scripts/bridge-smoke.ts brands` (memakai `bridge/.secrets.local`; `sheets.dump` satu sheet, tidak menulis apa pun, hanya mencetak jumlah baris dan header).
+5. (Uji cepat `scripts/bridge-smoke.ts` dihapus di T30a bersama klien jembatan server.)
