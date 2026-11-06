@@ -41,7 +41,7 @@ permissions:
 # banyak satu run yang menunggu; run menunggu yang lebih lama dibatalkan, sehingga tag lama tak menimpa yang baru).
 # PR yang ditutup TANPA merge (run dilewati) diberi grup sendiri agar tidak menggantikan run deploy yang menunggu.
 concurrency:
-  group: deploy-server-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.merged != true) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'production' || 'staging')) }}
+  group: deploy-server-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.merged != true) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.event.pull_request.base.ref == 'main' && 'production' || 'staging')) }}
   cancel-in-progress: false
 
 jobs:
@@ -73,10 +73,12 @@ jobs:
             pull_request_target)
               # Hanya PR yang SUDAH di-merge; yang dibangun adalah commit hasil merge, bukan head PR.
               [ "$PR_MERGED" = true ] || fail "PR belum di-merge."
-              [ "refs/heads/$PR_BASE_REF" = "$REF" ] || fail "Ref run tidak sama dengan branch tujuan PR."
-              case "$REF" in
-                refs/heads/main) target=production ;;
-                refs/heads/dev) target=staging ;;
+              # pull_request_target SELALU berjalan dari branch default (main), apa pun branch tujuan PR (teramati: merge ke dev
+              # menghasilkan REF=refs/heads/main); branch tujuan ada di PR_BASE_REF (dari payload event, bukan input pengguna).
+              [ "$REF" = refs/heads/main ] || fail "pull_request_target hanya sah dari branch default main."
+              case "$PR_BASE_REF" in
+                main) target=production ;;
+                dev) target=staging ;;
                 *) fail "Branch tujuan PR tidak diizinkan untuk deploy server." ;;
               esac
               sha=$PR_MERGE_SHA
