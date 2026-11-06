@@ -30,6 +30,8 @@ export interface Config {
   allowedFolderIds: string[];
   /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
   backupLocalDir: string;
+  /** Sakelar cadangan terjadwal (`BACKUP_ENABLED`): kosong/`true` = hidup di produksi dengan Google terkonfigurasi, `false` = mati (mis. staging). CLI pemulihan tidak bergantung padanya. */
+  backupEnabled: boolean;
   /** SMTP untuk email peringatan; `null` = belum dikonfigurasi/tidak dapat dipakai (peringatan dilewati dan dicatat). */
   smtp: SmtpSettings | null;
   /** Penerima peringatan (`ALERT_TO`, dipisah koma; entri yang bukan alamat email dibuang). */
@@ -191,6 +193,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     quotaRaw === '' ? DEFAULT_QUOTA_ALERT_PERCENT : integerIn(quotaRaw, 1, 99);
   if (quotaAlertPercent === null) problems.push('QUOTA_ALERT_PERCENT harus bilangan bulat 1-99');
 
+  const backupEnabledRaw = get('BACKUP_ENABLED').toLowerCase();
+  if (!['', 'true', 'false'].includes(backupEnabledRaw)) {
+    problems.push('BACKUP_ENABLED harus true atau false (kosong = true)');
+  }
+
   // SMTP/ALERT_TO TIDAK pernah menggagalkan start: berkas .env di VPS dapat berisi penanda ISI_OLEH_PEMILIK. Nilai yang
   // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi.
   const alertTo = get('ALERT_TO')
@@ -248,6 +255,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     backupLocalDir:
       get('BACKUP_LOCAL_DIR') ||
       (production ? PRODUCTION_BACKUP_DIR : join(tmpdir(), 'qc-backups')),
+    backupEnabled: backupEnabledRaw !== 'false',
     smtp,
     alertTo,
     quotaAlertPercent,

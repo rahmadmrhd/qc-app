@@ -304,7 +304,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
       await select('pull_request_target', 'refs/heads/main', '', { ...merged, base: 'main' }),
     ).toEqual({ code: 0, target: 'production', sha: MERGE_SHA });
     expect(
-      await select('pull_request_target', 'refs/heads/dev', '', { ...merged, base: 'dev' }),
+      await select('pull_request_target', 'refs/heads/main', '', { ...merged, base: 'dev' }),
     ).toEqual({ code: 0, target: 'staging', sha: MERGE_SHA });
   });
 
@@ -329,12 +329,16 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
         `mergeSha=${mergeSha}`,
       ).toBe(1);
     }
-    // ref run harus sama dengan branch tujuan PR, dan hanya main/dev
-    expect((await select('pull_request_target', 'refs/heads/dev', '', ok)).code).toBe(1);
-    expect(
-      (await select('pull_request_target', 'refs/heads/feat/x', '', { ...ok, base: 'feat/x' }))
-        .code,
-    ).toBe(1);
+    // run pull_request_target hanya sah dari branch default main (REF), dan branch tujuan (PR_BASE_REF) hanya main/dev
+    for (const ref of ['refs/heads/dev', 'refs/heads/feat/x', 'refs/pull/1/merge']) {
+      expect((await select('pull_request_target', ref, '', ok)).code, ref).toBe(1);
+    }
+    for (const base of ['feat/x', 'main2', 'refs/heads/main', 'Main']) {
+      expect(
+        (await select('pull_request_target', 'refs/heads/main', '', { ...ok, base })).code,
+        `base=${base}`,
+      ).toBe(1);
+    }
     expect(
       (await select('pull_request_target', 'refs/pull/1/merge', '', { ...ok, base: '' })).code,
     ).toBe(1);
