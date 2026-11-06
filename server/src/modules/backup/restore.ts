@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -338,9 +338,17 @@ export function createRestoreDb(db: Db): RestoreDb {
 }
 
 /** Pengimpor nyata: klien `mariadb` membaca berkas .sql dari stdin; kata sandi lewat `MYSQL_PWD`, galat dibersihkan. */
+/**
+ * Argumen klien `mariadb` untuk impor: skema target POSISIONAL dari argumen CLI (bukan dari URL; URL pengguna terbatas
+ * tak punya nama basis data).
+ */
+export function importArgs(target: DumpTarget, schema: string): string[] {
+  return [...clientArgs(target), schema];
+}
+
 export function createMariadbImporter(target: DumpTarget) {
   return async (sqlPath: string, schema: string): Promise<void> => {
-    const proc = Bun.spawn([Bun.which('mariadb') ?? 'mariadb', ...clientArgs(target), schema], {
+    const proc = Bun.spawn([Bun.which('mariadb') ?? 'mariadb', ...importArgs(target, schema)], {
       env: { MYSQL_PWD: target.password },
       stdin: Bun.file(sqlPath),
       stdout: 'ignore',
@@ -433,15 +441,32 @@ export async function resolveBackupFolderId(sources: {
   return stored;
 }
 
-/** Membuang folder kerja pemulihan lama (`job-*`) yang tertinggal proses yang terbunuh (berisi SQL seluruh basis data). */
-export async function purgeStaleRestoreDirs(root: string): Promise<number> {
+/** Folder kerja pemulihan yang lebih muda dari ini dianggap milik pemulihan lain yang sedang berjalan. */
+export const RESTORE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Membuang folder kerja pemulihan lama (`job-*`) yang tertinggal proses yang terbunuh (berisi SQL seluruh basis data).
+ * Hanya yang berumur > `RESTORE_STALE_AFTER_MS` (mtime): pemulihan lain yang sedang berjalan tidak kehilangan berkas.
+ */
+export async function purgeStaleRestoreDirs(
+  root: string,
+  options: { now?: number; maxAgeMs?: number } = {},
+): Promise<number> {
   let names: string[];
   try {
     names = await readdir(root);
   } catch {
     return 0;
   }
-  const stale = names.filter((name) => name.startsWith('job-'));
-  for (const name of stale) await rm(join(root, name), { recursive: true, force: true });
-  return stale.length;
+  const now = options.now ?? Date.now();
+  const maxAge = options.maxAgeMs ?? RESTORE_STALE_AFTER_MS;
+  let removed = 0;
+  for (const name of names.filter((candidate) => candidate.startsWith('job-'))) {
+    const path = join(root, name);
+    const info = await stat(path).catch(() => null);
+    if (info === null || now - info.mtimeMs <= maxAge) continue;
+    await rm(path, { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
 }

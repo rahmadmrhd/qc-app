@@ -14,7 +14,11 @@ import { join } from 'node:path';
 import { loadConfig } from '../server/src/config';
 import { createDb } from '../server/src/core/db';
 import { getSetting } from '../server/src/core/settings';
-import { parseDatabaseUrl } from '../server/src/modules/backup/dump';
+import {
+  type DumpTarget,
+  parseDatabaseUrl,
+  parseMysqlUrl,
+} from '../server/src/modules/backup/dump';
 import {
   createMariadbImporter,
   createRestoreDb,
@@ -36,7 +40,20 @@ async function main(): Promise<number> {
   }
   const config = loadConfig(process.env);
   // Hak CREATE/DROP DATABASE: pengguna aplikasi biasanya hanya berhak atas skemanya sendiri.
-  const adminUrl = process.env.RESTORE_DATABASE_URL?.trim() || config.databaseUrl;
+  // `RESTORE_DATABASE_URL` boleh tanpa nama basis data (URL tingkat server, mis. pengguna terbatas `qc_restore`);
+  // skema target selalu dari `--target`. Diurai SEBELUM koneksi apa pun dibuat; galat menyebut variabel yang benar.
+  const restoreUrl = process.env.RESTORE_DATABASE_URL?.trim() ?? '';
+  const adminUrl = restoreUrl || config.databaseUrl;
+  let target: DumpTarget;
+  try {
+    target = parseMysqlUrl(adminUrl, {
+      name: restoreUrl === '' ? 'DATABASE_URL' : 'RESTORE_DATABASE_URL',
+      requireDatabase: restoreUrl === '',
+    });
+  } catch (error) {
+    console.error((error as Error).message);
+    return 1;
+  }
   const db = createDb({ url: adminUrl, connectionLimit: 2 });
   // Hanya `Env` (klien Google bercache token) dari konfigurasi; tanpa penjadwal/penyaji.
   const env = envFromConfig(config, db);
@@ -61,7 +78,6 @@ async function main(): Promise<number> {
     await purgeStaleRestoreDirs(workRoot);
     const workDir = await mkdtemp(join(workRoot, 'job-'));
     try {
-      const target = parseDatabaseUrl(adminUrl);
       const report = await restoreBackup(
         {
           bridge: env.BRIDGE as NonNullable<typeof env.BRIDGE>,

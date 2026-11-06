@@ -9,6 +9,7 @@ import {
   ensureLocalDir,
   fileDigest,
   parseDatabaseUrl,
+  parseMysqlUrl,
   pruneLocalDumps,
   runDump,
   type SpawnFn,
@@ -206,5 +207,49 @@ describe('fileDigest dan pruneLocalDumps', () => {
 
   test('pruneLocalDumps pada folder yang belum ada -> tidak melempar', async () => {
     expect(await pruneLocalDumps(join(dir, 'tidak-ada'), 3)).toEqual([]);
+  });
+});
+
+describe('parseMysqlUrl (URL pemulihan tingkat server, N1)', () => {
+  test('tanpa nama basis data diterima bila requireDatabase=false: host/port/pengguna/sandi saja', () => {
+    for (const url of [
+      'mysql://qc_restore:rahasia@qc-db:3306/',
+      'mysql://qc_restore:rahasia@qc-db:3306',
+    ]) {
+      expect(parseMysqlUrl(url, { name: 'RESTORE_DATABASE_URL', requireDatabase: false })).toEqual({
+        host: 'qc-db',
+        port: 3306,
+        user: 'qc_restore',
+        password: 'rahasia',
+        database: '',
+      });
+    }
+  });
+
+  test('dengan nama basis data tetap diterima; tanpa sandi diterima (sandi kosong)', () => {
+    expect(parseMysqlUrl('mysql://u@h:3307/x', { requireDatabase: false })).toMatchObject({
+      user: 'u',
+      password: '',
+      database: 'x',
+      port: 3307,
+    });
+  });
+
+  test('bawaan (DATABASE_URL) tetap mewajibkan nama basis data', () => {
+    expect(() => parseDatabaseUrl('mysql://u:p@h:3306/')).toThrow(/DATABASE_URL harus berbentuk/);
+  });
+
+  test('skema salah/bukan URL ditolak dengan pesan yang menyebut variabel yang benar dan tanpa membocorkan URL', () => {
+    for (const bad of [`postgres://u:${SENTINEL}@h/`, 'bukan url', `mysql://u:${SENTINEL}@/x`]) {
+      let message = '';
+      try {
+        parseMysqlUrl(bad, { name: 'RESTORE_DATABASE_URL', requireDatabase: false });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message, bad).toContain('RESTORE_DATABASE_URL');
+      expect(message).not.toContain(SENTINEL);
+      expect(message).not.toMatch(/(^|[^_])DATABASE_URL/);
+    }
   });
 });

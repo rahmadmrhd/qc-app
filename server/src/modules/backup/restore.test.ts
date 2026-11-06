@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createFakeBridge, type FakeBridge } from '@server-test/fake-bridge';
+import { parseMysqlUrl } from './dump';
 import {
+  importArgs,
   parseRestoreArgs,
   purgeStaleRestoreDirs,
   RESTORE_USAGE,
@@ -433,14 +435,43 @@ ${line}
     },
   );
 
-  test('purgeStaleRestoreDirs membuang job-* lama saja', async () => {
+  test('purgeStaleRestoreDirs membuang job-* yang usang (> 6 jam) saja; yang baru (pemulihan lain yang berjalan) dibiarkan', async () => {
     const root = join(dir, 'restore-tmp');
-    await mkdir(join(root, 'job-abc'), { recursive: true });
-    await mkdir(join(root, 'job-def'), { recursive: true });
-    await mkdir(join(root, 'lain'), { recursive: true });
-    expect(await purgeStaleRestoreDirs(root)).toBe(2);
-    expect(await readdir(root)).toEqual(['lain']);
+    for (const name of ['job-lama', 'job-baru', 'lain'])
+      await mkdir(join(root, name), { recursive: true });
+    const hours = (count: number) => new Date(Date.now() - count * 3_600_000);
+    await utimes(join(root, 'job-lama'), hours(7), hours(7));
+    await utimes(join(root, 'job-baru'), hours(1), hours(1));
+    await utimes(join(root, 'lain'), hours(9), hours(9));
+    expect(await purgeStaleRestoreDirs(root)).toBe(1);
+    expect((await readdir(root)).sort()).toEqual(['job-baru', 'lain']);
     expect(await purgeStaleRestoreDirs(join(dir, 'tidak-ada'))).toBe(0);
+  });
+
+  test('purgeStaleRestoreDirs: ambang dapat diatur dan memakai jam yang disuntik', async () => {
+    const root = join(dir, 'restore-tmp');
+    await mkdir(join(root, 'job-x'), { recursive: true });
+    expect(await purgeStaleRestoreDirs(root, { now: Date.now() + 10_000, maxAgeMs: 60_000 })).toBe(
+      0,
+    );
+    expect(await purgeStaleRestoreDirs(root, { now: Date.now() + 120_000, maxAgeMs: 60_000 })).toBe(
+      1,
+    );
+  });
+});
+
+describe('importArgs (N1)', () => {
+  test('skema target dari argumen CLI secara posisional; URL tingkat server tanpa nama basis data cukup', () => {
+    const target = parseMysqlUrl('mysql://qc_restore:rahasia@qc-db:3306/', {
+      name: 'RESTORE_DATABASE_URL',
+      requireDatabase: false,
+    });
+    const args = importArgs(target, 'qc_restore_check');
+    expect(args.at(-1)).toBe('qc_restore_check');
+    expect(args).toContain('--user=qc_restore');
+    expect(args).toContain('--host=qc-db');
+    expect(args.join(' ')).not.toContain('rahasia');
+    expect(args).not.toContain('');
   });
 });
 

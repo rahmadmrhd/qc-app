@@ -40,17 +40,32 @@ export interface DumpDeps {
   bin?: string;
 }
 
-/** Mengurai `mysql://pengguna:kata-sandi@host:port/skema` (galat tanpa memuat URL: ada kata sandi di dalamnya). */
-export function parseDatabaseUrl(databaseUrl: string): DumpTarget {
+/**
+ * Mengurai `mysql://pengguna:kata-sandi@host:port[/skema]` (galat tanpa memuat URL: ada kata sandi di dalamnya).
+ * `name` = nama variabel lingkungan yang disebut di pesan galat. `requireDatabase: false` menerima URL tingkat
+ * server tanpa nama basis data (`database` = ''): dipakai `RESTORE_DATABASE_URL` pengguna pemulihan terbatas, yang
+ * tak punya skema bawaan (skema target diberikan CLI secara posisional dan tak pernah dibaca dari URL).
+ */
+export function parseMysqlUrl(
+  databaseUrl: string,
+  options: { name?: string; requireDatabase?: boolean } = {},
+): DumpTarget {
+  const name = options.name ?? 'DATABASE_URL';
   let url: URL;
   try {
     url = new URL(databaseUrl);
   } catch {
-    throw new Error('DATABASE_URL bukan URL yang valid');
+    throw new Error(`${name} bukan URL yang valid`);
   }
   const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
-  if (url.protocol !== 'mysql:' || url.hostname === '' || database === '') {
-    throw new Error('DATABASE_URL harus berbentuk mysql://pengguna:kata-sandi@host:port/skema');
+  if (
+    url.protocol !== 'mysql:' ||
+    url.hostname === '' ||
+    (options.requireDatabase !== false && database === '')
+  ) {
+    throw new Error(
+      `${name} harus berbentuk mysql://pengguna:kata-sandi@host:port${options.requireDatabase === false ? '[/skema]' : '/skema'}`,
+    );
   }
   return {
     host: url.hostname,
@@ -59,6 +74,11 @@ export function parseDatabaseUrl(databaseUrl: string): DumpTarget {
     password: decodeURIComponent(url.password),
     database,
   };
+}
+
+/** URL aplikasi (`DATABASE_URL`): nama basis data wajib. */
+export function parseDatabaseUrl(databaseUrl: string): DumpTarget {
+  return parseMysqlUrl(databaseUrl);
 }
 
 /**
