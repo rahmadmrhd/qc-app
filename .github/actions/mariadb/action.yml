@@ -1,0 +1,25 @@
+name: MariaDB uji
+description: >-
+  Menjalankan MariaDB 11.8 dengan konfigurasi yang sama dengan VPS (deploy/mariadb/qc.cnf: utf8mb4, collation
+  utf8mb4_nopad_bin, sql_mode, max_connections) untuk tes server. Jalankan SETELAH actions/checkout. Pengguna root
+  (kata sandi ci-only) hanya untuk basis data sekali pakai di runner ini: QC_TEST_DB_URL=mysql://root:ci-only@127.0.0.1:3306/
+
+runs:
+  using: composite
+  steps:
+    # Dijalankan lewat `docker run` (bukan `services:`) karena service container tidak dapat memasang berkas
+    # konfigurasi dari checkout atau menerima argumen mysqld; konfigurasi VPS harus dipakai apa adanya agar kolasi
+    # dan sql_mode tes sama dengan produksi.
+    - name: Jalankan MariaDB
+      shell: bash
+      run: |
+        docker run -d --name qc-ci-db -p 127.0.0.1:3306:3306 \
+          -e MARIADB_ROOT_PASSWORD=ci-only \
+          -v "$PWD/deploy/mariadb/qc.cnf:/etc/mysql/conf.d/qc.cnf:ro" \
+          mariadb:11.8
+        for i in $(seq 1 60); do
+          if docker exec qc-ci-db healthcheck.sh --connect --innodb_initialized; then exit 0; fi
+          sleep 2
+        done
+        docker logs qc-ci-db
+        exit 1
