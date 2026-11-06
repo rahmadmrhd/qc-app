@@ -23,7 +23,7 @@ Sebelum cutover, GitHub hanya menjalankan `workflow_dispatch` dan `pull_request_
 
 Repositori -> Settings -> Environments:
 
-1. **Environment `staging`**: *Deployment branches and tags* -> *Selected branches* -> hanya `dev` dan `main` (setelah cutover; `feat/migrasi-cloudflare` dikeluarkan) (run `pull_request_target` berjalan pada ref branch tujuan PR, jadi aturan ini menilai `dev`/`main`, bukan `refs/pull/N/merge`).
+1. **Environment `staging`**: *Deployment branches and tags* -> *Selected branches* -> hanya `dev` dan `main` (setelah cutover; `feat/migrasi-cloudflare` dikeluarkan) (teramati 2026-11-07: run `pull_request_target` SELALU berjalan dengan `REF=refs/heads/main`, juga untuk PR yang bertujuan `dev`; yang dinilai aturan environment adalah `main`, bukan `dev` dan bukan `refs/pull/N/merge`. Branch tujuan PR hanya ada di `github.event.pull_request.base.ref`, yang dipakai job `meta` untuk memilih `staging` (dev) atau `production` (main); `dev` dalam aturan environment boleh tetap ada untuk `workflow_dispatch` dari `dev`).
 2. **Environment `production`**: *Selected branches* -> hanya `main`. *Required reviewers* **disarankan** untuk production (tidak diwajibkan pemilik).
 3. **Secret environment** (BUKAN secret repositori; buat di KEDUA environment dengan nilai milik masing-masing):
 
@@ -76,7 +76,7 @@ Butir spek "uji asap ... (dan kesehatan database)" dipenuhi oleh gerbang migrasi
 
 ### Keamanan workflow (ditegakkan `scripts/ci-workflows.test.ts`)
 
-- `pull_request_target` (menerima rahasia walau PR dari fork) hanya `types: [closed]` untuk `dev`/`main`, dan hanya setelah PR **di-merge**: job `meta` punya `if` merged dan skripnya menolak selain `merged == true`. Yang dibangun dan di-checkout HANYA commit dari output `sha` job `meta` (= `merge_commit_sha`, kode yang sudah masuk ke branch tujuan; divalidasi 40 heksa); tak ada `pull_request.head`, `head_ref`, atau `refs/pull/` di mana pun. Tanpa `pull_request` biasa. PR fork yang belum di-merge tidak pernah mendapat rahasia maupun menjalankan kodenya. Jangan menambah langkah yang meng-checkout head PR. Push langsung ke `main`/`dev` tidak memicu deploy, dan tidak ada pemicu `push` sama sekali.
+- `pull_request_target` (menerima rahasia walau PR dari fork) hanya `types: [closed]` untuk `dev`/`main`, dan hanya setelah PR **di-merge**: job `meta` punya `if` merged dan skripnya menolak selain `merged == true`, menolak bila `REF` bukan `refs/heads/main` (run selalu dari branch default), dan memetakan `PR_BASE_REF` `main` -> production, `dev` -> staging (branch lain ditolak). Yang dibangun dan di-checkout HANYA commit dari output `sha` job `meta` (= `merge_commit_sha`, kode yang sudah masuk ke branch tujuan; divalidasi 40 heksa); tak ada `pull_request.head`, `head_ref`, atau `refs/pull/` di mana pun. Tanpa `pull_request` biasa. PR fork yang belum di-merge tidak pernah mendapat rahasia maupun menjalankan kodenya. Jangan menambah langkah yang meng-checkout head PR. Push langsung ke `main`/`dev` tidak memicu deploy, dan tidak ada pemicu `push` sama sekali.
 - PR yang ditutup tanpa merge dilewati dan memakai grup `concurrency` sendiri (tidak menggantikan run deploy yang menunggu).
 - Semua aksi pihak ketiga pada `deploy-server.yml`, `test.yml`, dan aksi lokal dipatok ke SHA commit (tag mayor di komentar; diambil 2026-11-06). Perbarui dengan sengaja, bukan otomatis.
 - `permissions` minimal: `contents: read` di tingkat atas; hanya job `image` yang `packages: write`; job `deploy` `permissions: {}` dan tanpa checkout.
