@@ -1,7 +1,7 @@
-import type { WorkerRpcInput, WorkerRpcMethod, WorkerRpcOutput } from './rpc';
+import type { RpcInput, RpcMethod, RpcOutput } from './rpc';
 
 // Tabel rute REST (`/api/v1`): SATU sumber untuk klien FE (`api()`), server (kernel REST), dan OpenAPI. Murni:
-// tanpa API runtime (build GAS menolak `URL`/`URLSearchParams`/`fetch`/`atob` dll. di `shared/`), jadi query
+// tanpa API runtime (`shared/` murni, tanpa `URL`/`URLSearchParams`/`fetch`/`atob`), jadi query
 // diterima dan dikembalikan sebagai `Record<string, string>` dan pengodean URL diserahkan ke pemanggil.
 // Validator dan handler modul tidak tahu bentuk kabel: server merakit kembali objek input datar yang sama
 // (`fromRequestParts`) lalu memanggil `RouteDef.validate/handler` yang ada.
@@ -62,11 +62,11 @@ export interface ApiDownload {
   cache: 'immutable' | 'revalidate';
 }
 
-// Batas ukuran di tabel ditulis sebagai angka literal: build GAS memuat tiap berkas `shared/` lebih dulu dalam satu
-// scope global, jadi konstanta level atas tidak boleh memakai global berkas lain (`MAX_IMAGE_BYTES`, `QR_LIMITS`).
+// Batas ukuran di tabel ditulis sebagai angka literal agar `shared/api.ts` tak bergantung pada berkas lain
+// (`MAX_IMAGE_BYTES`, `QR_LIMITS`).
 // `api.test.ts` memastikan angka-angka ini sama dengan konstanta sumbernya.
 
-export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
+export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
   'auth.me': { verb: 'GET', path: '/me' },
   'access.users.list': { verb: 'GET', path: '/users' },
   'access.users.save': {
@@ -341,10 +341,7 @@ function queryText(kind: QueryKind, value: unknown): string {
  * Memecah input datar sebuah id menjadi bagian permintaan HTTP: parameter jalur, query, badan, dan `If-Match`.
  * Rute `save` memilih jalur `create` bila `input.id` tidak ada. Pada GET/DELETE semua field lewat query.
  */
-export function toRequestParts<M extends WorkerRpcMethod>(
-  id: M,
-  input: WorkerRpcInput<M>,
-): RequestParts {
+export function toRequestParts<M extends RpcMethod>(id: M, input: RpcInput<M>): RequestParts {
   const def = API_ROUTES[id];
   const source = asRecord(input);
   const created = def.create !== undefined && !hasId(source);
@@ -516,7 +513,7 @@ const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor
  * dari header (nilai badan dengan nama sama dibuang). Galat parameter dilempar sebagai `ApiFieldIssue`.
  * Rute tanpa input (`null`) dikenali dari: GET tanpa parameter jalur dan tanpa query.
  */
-export function fromRequestParts<M extends WorkerRpcMethod>(id: M, parts: ParsedParts): unknown {
+export function fromRequestParts<M extends RpcMethod>(id: M, parts: ParsedParts): unknown {
   const def = API_ROUTES[id];
   const shape = routeShape(def, parts.created);
   const names = pathParamNames(shape.path);
@@ -590,10 +587,7 @@ export function fromRequestParts<M extends WorkerRpcMethod>(id: M, parts: Parsed
 }
 
 /** Nilai ETag dari keluaran (`undefined` bila rute tidak berETag atau field kosong). */
-export function etagOf<M extends WorkerRpcMethod>(
-  id: M,
-  output: WorkerRpcOutput<M>,
-): string | undefined {
+export function etagOf<M extends RpcMethod>(id: M, output: RpcOutput<M>): string | undefined {
   const field = API_ROUTES[id].etag;
   if (field === undefined || typeof output !== 'object' || output === null) return undefined;
   const value = (output as AnyRecord)[field];
@@ -677,12 +671,12 @@ export function filenameFromDisposition(header: string | null | undefined): stri
  * Keluaran sisi klien untuk rute `download`: byte dari badan respons, MIME dari Content-Type, nama berkas dari
  * Content-Disposition, field `echo` disalin dari input, dan field ETag (bila ada) dari header `ETag`.
  */
-export function downloadOutput<M extends WorkerRpcMethod>(
+export function downloadOutput<M extends RpcMethod>(
   id: M,
-  input: WorkerRpcInput<M>,
+  input: RpcInput<M>,
   headers: HeaderReader,
   bytes: Uint8Array,
-): WorkerRpcOutput<M> {
+): RpcOutput<M> {
   const def = API_ROUTES[id];
   const spec = def.download;
   if (spec === undefined) throw new Error(`Rute ${id} bukan unduhan`);
@@ -700,5 +694,5 @@ export function downloadOutput<M extends WorkerRpcMethod>(
     const raw = headers.get('etag');
     if (raw !== null) output[def.etag] = raw.replace(/^W\//, '').replace(/"/g, '');
   }
-  return output as WorkerRpcOutput<M>;
+  return output as RpcOutput<M>;
 }

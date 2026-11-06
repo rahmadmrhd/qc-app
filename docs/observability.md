@@ -13,7 +13,7 @@ Sumber: `server/src/core/log.ts`, satu objek per permintaan REST dan per sinkron
 | `method` | id rute, mis. `handovers.setCheck`; di `sync` = id rute sinkron (`sync.items.pull`, ...); galat autentikasi tercatat sebagai `ok: false`, `code: UNAUTHENTICATED` (sebabnya tidak dibedakan) |
 | `ok` | `true` atau `false` |
 | `code` | kode galat bila `ok = false`: `VALIDATION`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `UNAVAILABLE`, `INTERNAL` |
-| `ms` | waktu dinding permintaan (mencakup menunggu MariaDB/jembatan) |
+| `ms` | waktu dinding permintaan (mencakup menunggu MariaDB/Google) |
 | `userId` | id internal pengguna (bukan email); kosong bila belum login |
 
 Tidak pernah dicatat: email, token sesi, `SYNC_API_TOKEN`, header `Authorization`, isi payload, isi catatan atau komentar.

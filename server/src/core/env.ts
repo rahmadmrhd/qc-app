@@ -17,7 +17,7 @@ export interface Env extends GoogleSettings {
   OAUTH_CLIENT_ID: string;
   OAUTH_CLIENT_SECRET: string;
   SYNC_API_TOKEN: string;
-  /** Email super admin (setara Script Property ADMIN_EMAIL di Apps Script). */
+  /** Email super admin. */
   ADMIN_EMAIL: string;
   /**
    * Origin aplikasi untuk redirect OAuth (mis. `https://qc.example.com`). Bila kosong, dipakai origin

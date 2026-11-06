@@ -1,6 +1,6 @@
 # Setup Google
 
-Ada dua bagian. **Service account** (di bawah) adalah cara server Bun mengakses Google Drive dan Google Sheets: wajib untuk server baru (VPS). **Apps Script lama** (bagian "Apps Script lama" di bawah, langkah 1-8) **USANG**: hanya dipelihara sampai cutover dan dihapus bersama `gas/` dan `bridge/` di T35. Jembatan Apps Script (`docs/setup-bridge.md`) tidak lagi dipakai server sejak T30a.
+Dua hal dikonfigurasi di Google: **service account** (cara server Bun mengakses Google Drive dan Google Sheets; wajib untuk server di VPS) dan **klien OAuth** (login web, bagian terakhir). Aplikasi Apps Script lama dan jembatannya sudah dipensiunkan (T35); panduannya ada di tag `gas-legacy`.
 
 ## Service account (server Bun, T30a)
 
@@ -37,7 +37,7 @@ Server memanggil Drive v3 dan Sheets v4 langsung lewat `fetch` dengan token OAut
 | `ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` | Opsional (lihat S3). |
 | `ALLOWED_FOLDER_IDS` | Opsional: id folder tambahan di luar induk, dipisah koma. |
 
-Di luar produksi semuanya opsional: tanpa konfigurasi Google, operasi Drive/Sheets gagal dengan `UNAVAILABLE` ("Google belum dikonfigurasi") dan sisa aplikasi tetap berjalan. `BRIDGE_URL`/`BRIDGE_SECRET` sudah dihapus dan diabaikan.
+Di luar produksi semuanya opsional: tanpa konfigurasi Google, operasi Drive/Sheets gagal dengan `UNAVAILABLE` ("Google belum dikonfigurasi") dan sisa aplikasi tetap berjalan. `BRIDGE_URL`/`BRIDGE_SECRET` (peninggalan jembatan Apps Script) sudah dihapus dan diabaikan.
 
 ### S5. Rotasi kunci
 1. Buat kunci baru di service account (S1 langkah 3) **tanpa** menghapus yang lama.
@@ -132,91 +132,17 @@ GOOGLE_SA_KEY_FILE=/jalur/kunci.json GOOGLE_SPREADSHEET_ID=<id> \
 | `403 storageQuotaExceeded` di log | Kuota 15 GB habis: hapus berkas milik service account (`check.ts` menampilkan daftarnya). |
 | `UNAVAILABLE` "Spreadsheet ... belum dibagikan" | Bagikan spreadsheet ke service account sebagai Editor (S3 langkah 4). |
 
----
+## Klien OAuth (login web)
 
-# Apps Script lama (USANG; dihapus di T35)
+Login pengguna memakai OAuth Google (bukan service account) dan tidak bergantung pada Apps Script. Di https://console.cloud.google.com (project yang sama):
+1. **Google Auth Platform → Branding/OAuth consent screen**: User type **External**, nama aplikasi "QC App", email dukungan.
+2. **Data access / Scopes**: tambahkan `openid` dan `.../auth/userinfo.email` saja.
+3. **Audience**: **Publish app** sehingga status **In production** (scope ini tidak memerlukan verifikasi Google).
+4. **Clients → Create client → Web application**; daftarkan URI redirect `https://<host>/auth/callback` untuk tiap hostname (staging, production; `docs/deploy-vps.md` bagian OAuth), persis dan tanpa garis miring di akhir.
+5. Salin **Client ID** dan **Client secret** ke `.env` server (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`; `server/.env.example`).
 
-> Bagian di bawah hanya untuk aplikasi Google Apps Script lama yang masih hidup sampai cutover. **Server Bun baru tidak memakainya**: jembatan Apps Script (`bridge/`, `docs/setup-bridge.md`) tidak lagi dipanggil sejak T30a.
-
-
-Semua langkah memakai akun pemilik script (mis. `qcspectrum123@gmail.com`).
-
-## 1. Spreadsheet database
-Buat spreadsheet baru (atau pakai yang ada). Salin ID dari URL `https://docs.google.com/spreadsheets/d/<ID>/edit`.
-
-## 2. Push kode pertama
-```bash
-bun run push
-```
-> `clasp push --force` **menimpa semua file** di project Apps Script. Simpan dulu isi lama bila perlu (`clasp pull` ke folder sementara di luar repo).
-
-## 3. Script Properties (tahap 1)
-Buka editor: `cd gas && clasp open-script` (atau script.google.com). **Project Settings → Script Properties**, tambahkan:
-
-| Key | Isi |
-|---|---|
-| `SPREADSHEET_ID` | ID dari langkah 1 |
-| `SESSION_SECRET` | string acak ≥ 32 karakter, mis. hasil `bun -e "console.log(crypto.randomUUID() + crypto.randomUUID())"` |
-| `ADMIN_EMAIL` | email super admin |
-
-## 4. Jalankan `setup`
-Di editor pilih fungsi `setup` → **Run** → izinkan akses. Log menampilkan laporan; sheet `users`, `roles`, `audit_log` dibuat.
-
-## 5. Deployment pertama
-```bash
-cd gas
-clasp deploy --description "v1"
-clasp deployments
-```
-Salin **deployment ID** (bukan `@HEAD`) ke `gas/deployment.json`, lalu commit file itu. URL aplikasi: `https://script.google.com/macros/s/<deploymentId>/exec`. Pastikan di **Deploy → Manage deployments** tertulis *Execute as: Me* dan *Who has access: Anyone*.
-
-## 6. Google Cloud OAuth client
-Di https://console.cloud.google.com (akun yang sama):
-1. Buat project baru, mis. "QC App".
-2. **Google Auth Platform → Branding/OAuth consent screen**: User type **External**, nama aplikasi "QC App", email dukungan.
-3. **Data access / Scopes**: tambahkan `openid` dan `.../auth/userinfo.email` saja.
-4. **Audience**: klik **Publish app** sehingga status **In production** (scope ini tidak memerlukan verifikasi Google).
-5. **Clients → Create client → Web application**. *Authorized redirect URIs*: daftarkan **kedua** URL, persis dan tanpa garis miring di akhir: URL `/exec` dari langkah 5 dan URL `/dev` (sama, tetapi berakhiran `/dev`). Aplikasi memakai URL yang sedang melayani halaman, jadi keduanya cukup didaftarkan sekali dan tidak perlu diubah saat deploy. Google Cloud tidak menyediakan API untuk mengubah daftar ini, hanya Console.
-6. Salin **Client ID** dan **Client secret**.
-
-## 7. Script Properties (tahap 2)
-| Key | Isi |
-|---|---|
-| `OAUTH_CLIENT_ID` | Client ID |
-| `OAUTH_CLIENT_SECRET` | Client secret |
-| `OAUTH_REDIRECT_URI` | **Opsional, biasanya dikosongkan.** Bila kosong, aplikasi memakai URL web app yang sedang berjalan (`/dev` atau `/exec`). Isi hanya bila ingin memaksa satu URL tertentu (override); nilainya harus persis sama dengan yang terdaftar di Google Cloud. |
-
-Jalankan `setup` sekali lagi — laporan harus "Script Properties lengkap." dan menyebut apakah redirect URI otomatis atau override.
-
-## 7b. Izin Drive (mulai Fase A Data Item)
-Aplikasi menyimpan gambar item di folder Drive privat bernama **QC App Files** (milik akun pemilik script, tidak dibagikan). Manifest `appsscript.json` kini memuat scope `https://www.googleapis.com/auth/drive`. Setelah `bun run push`, jalankan fungsi `setup` dari editor dengan akun pemilik: Google meminta persetujuan izin Drive **sekali**. `setup` lalu membuat folder dan menyimpan id-nya di Script Property `DRIVE_FOLDER_ID` (jangan diubah manual). Berkas dibaca hanya dari folder ini: bila folder dihapus atau dipindah ke tempat sampah, jalankan `setup` lagi (membuat folder baru dan memperbarui properti), tetapi **gambar lama di folder yang hilang tidak lagi terbaca** dan upload baru masuk folder baru.
-
-## 7c. Sinkronisasi QC Desktop (mulai Fase B2)
-1. Buat token acak ≥ 32 karakter (mis. `openssl rand -hex 24`) dan isi sebagai Script Property `SYNC_API_TOKEN`. Jangan menaruhnya di URL atau repo.
-2. Untuk migrasi dari folder gambar lama, isi `DRIVE_FOLDER_ID` **sebelum** `setup`, pastikan akun pemilik script punya akses Editor ke folder itu, dan cocokkan id di laporan `setup`. `setup` tidak menimpa properti yang terisi.
-3. Jalankan `setup` dan baca laporannya (status folder, status token, jumlah baris yang diberi revisi sinkron).
-4. `doPost` memakai deployment yang sama dengan `doGet`; setelah mengubah kode tetap perbarui deployment.
-5. Memutar token = ganti properti lalu ganti konfigurasi Desktop.
-
-## 7d. Pembersihan PDF sumber QR (trigger berbasis waktu)
-PDF sumber QR dibagikan "siapa saja yang punya link". Unggahan yang ditinggalkan (tidak dipakai konfigurasi mana pun) dicabut berbaginya setelah 1 jam, tetapi pembersihan otomatis di aplikasi hanya berjalan saat ada simpan/hapus/unggah. Agar pencabutan tetap terjadi tanpa aktivitas, pasang trigger: editor Apps Script → **Triggers** → **Add Trigger** → fungsi `cleanupQrPdfs`, event source **Time-driven**, tipe **Hour timer**, setiap 1 jam (dipasang dengan akun pemilik script; fungsi menolak akun lain). Aman dijalankan berulang.
-
-## 7e. Bendera READ_ONLY (jendela migrasi ke Cloudflare)
-Script Property opsional `READ_ONLY`. Bila bernilai `1`, semua RPC tulis (`items.save`, `handovers.save`, `files.upload`, dst.) dan sinkron QC Desktop tulis (`sync.items.push`, `sync.brands.push`) ditolak dengan galat `UNAVAILABLE` ("Aplikasi sedang dipindahkan; hanya baca"); RPC baca dan sinkron baca (`pull`, `ping`, `file.get`) tetap berjalan. Properti tidak ada atau bernilai lain = perilaku normal. Klasifikasi baca/tulis ada di `gas/src/core/read-only.ts` (method baru wajib diklasifikasikan; typecheck gagal bila tidak). Batas: trigger `cleanupQrPdfs` (7d) tidak ikut dibekukan. Pasang (`1`) hanya pada hari cutover setelah deployment berisi bendera ini aktif; hapus properti untuk membuka kembali.
-
-## 8. Deploy & coba
-```bash
-bun run deploy
-```
-Buka URL `/exec`, klik **Masuk dengan Google** dengan akun `ADMIN_EMAIL`, lalu buat role dan user di menu **Pengaturan Akses**.
-
-## Troubleshooting
 | Gejala | Penyebab & solusi |
 |---|---|
-| Google menampilkan `redirect_uri_mismatch` | URL yang dipakai aplikasi tidak terdaftar di Google Cloud. Halaman galat Google menampilkan `redirect_uri` yang dikirim; daftarkan persis nilai itu (mis. URL `/dev` atau `/exec`). Bila `OAUTH_REDIRECT_URI` diisi, nilai itu yang dipakai dan harus identik dengan yang terdaftar; kosongkan agar otomatis. |
-| "Aplikasi belum dapat dibuka. Hubungi admin." | Lihat **Executions** di editor; biasanya Script Property belum lengkap. |
-| "Login gagal" | State login kedaluwarsa (> 6 jam) atau dipakai ulang — klik tombol login sekali lagi. |
-| "Email … belum terdaftar" | Tambahkan email tersebut di menu Users (status Aktif). |
-| URL berubah setelah deploy | Selalu pakai `bun run deploy` (memperbarui deployment ID yang sama), jangan membuat deployment baru. |
-| Paksa semua user logout | Ganti `SESSION_SECRET`. |
-| Unggah gambar gagal "Terjadi kesalahan" setelah update | Izin Drive belum disetujui: jalankan `setup` sekali dari editor (bagian 7b). Lihat **Executions** untuk galat `DriveApp`. |
+| Google menampilkan `redirect_uri_mismatch` | URI redirect yang dikirim server (diturunkan dari `APP_ORIGIN`) tidak terdaftar; daftarkan persis nilai yang tampil di halaman galat Google. |
+| "Email … belum terdaftar" | Tambahkan email itu di menu Users (status Aktif). |
+| Paksa semua user logout | Ganti `SESSION_SECRET` di `.env` lalu mulai ulang kontainer. |

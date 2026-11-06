@@ -12,7 +12,7 @@ export const HANDOVER_LIMITS = {
 } as const;
 
 /**
- * Maksimum task per permintaan `handovers.saveBatch` (server Bun di VPS dan Apps Script lama): 30. Formulir bulk
+ * Maksimum task per permintaan `handovers.saveBatch` (server Bun di VPS): 30. Formulir bulk
  * mengirim SATU permintaan atomik. Keputusan pemilik 2026-11-05: batas 5 peninggalan anggaran CPU edge (2026-10-26/30)
  * dibuang karena batas CPU edge hilang di VPS.
  */

@@ -8,13 +8,13 @@ import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
-import type { WorkerRpcMethod } from '@shared/rpc';
+import type { RpcMethod } from '@shared/rpc';
 
 /**
  * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
  * Dipakai tes kontrak.
  */
-export const ALL_RPC_METHODS: Record<WorkerRpcMethod, true> = {
+export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
   'auth.me': true,
   'access.users.list': true,
   'access.users.save': true,

@@ -11,12 +11,9 @@ FROM oven/bun:${BUN_VERSION}-alpine AS base
 WORKDIR /app
 
 # Manifest workspace: dasar lapisan dependensi (dicache selama manifest dan bun.lock tidak berubah).
-# gas/ dan bridge/ hanya memasok package.json (ada di bun.lock; kodenya tidak masuk image).
 FROM base AS manifests
 COPY package.json bun.lock ./
 COPY shared/package.json shared/
-COPY gas/package.json gas/
-COPY bridge/package.json bridge/
 COPY web/package.json web/
 COPY server/package.json server/
 

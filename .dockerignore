@@ -1,5 +1,5 @@
 # Konteks build image server (Dockerfile di akar repo). Hanya yang dibutuhkan build web dan runtime server
-# yang masuk; rahasia, dokumentasi, dan aplikasi lama (GAS, jembatan) tidak ikut terkirim ke daemon Docker.
+# yang masuk; rahasia, dokumentasi, dan aplikasi lama tidak ikut terkirim ke daemon Docker.
 
 # Rahasia dan berkas lingkungan lokal: TIDAK BOLEH masuk image maupun konteks build.
 .env
@@ -30,8 +30,6 @@
 server/dist
 web/dist
 web/.tanstack
-gas/dist
-bridge/dist
 **/*.log
 coverage
 
@@ -39,12 +37,6 @@ coverage
 docs
 deploy
 **/*.md
-
-# Aplikasi GAS lama dan jembatan: hanya package.json (bun.lock mencantumkan workspace-nya).
-gas/*
-!gas/package.json
-bridge/*
-!bridge/package.json
 
 # Skrip dev/tes server tidak dibutuhkan runtime.
 server/scripts

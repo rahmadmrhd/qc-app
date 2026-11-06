@@ -1,9 +1,7 @@
 # dependencies
 node_modules/
 
-# build output (dihasilkan oleh build, di-push oleh clasp)
-gas/dist/
-bridge/dist/
+# build output
 web/dist/
 server/dist/
 
@@ -28,9 +26,6 @@ coverage/
 
 # cache generator TanStack Router
 web/.tanstack/
-
-# jembatan: rahasia lokal
-bridge/.secrets.local
 
 # dump Sheets (T33): berisi data pengguna, tak pernah di-commit
 dump.json

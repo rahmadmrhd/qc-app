@@ -23,8 +23,6 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
-      - 'gas/**'
-      - 'bridge/**'
       - '.superpowers/**'
   workflow_dispatch:
     inputs:

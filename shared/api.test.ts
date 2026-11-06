@@ -17,12 +17,12 @@ import {
 } from './api';
 import { MAX_IMAGE_BYTES } from './files';
 import { QR_LIMITS } from './qrcode';
-import type { WorkerRpcInput, WorkerRpcMethod } from './rpc';
+import type { RpcInput, RpcMethod } from './rpc';
 
-const IDS = Object.keys(API_ROUTES) as WorkerRpcMethod[];
+const IDS = Object.keys(API_ROUTES) as RpcMethod[];
 
-/** Contoh input tiap id; `Record<WorkerRpcMethod, …>` memaksa kelengkapan lewat kompilator. */
-const EXAMPLES: { [M in WorkerRpcMethod]: WorkerRpcInput<M> } = {
+/** Contoh input tiap id; `Record<RpcMethod, …>` memaksa kelengkapan lewat kompilator. */
+const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
   'auth.me': null,
   'access.users.list': null,
   'access.users.save': {
@@ -146,7 +146,7 @@ function issueOf(run: () => unknown): ApiFieldIssue {
   throw new Error('seharusnya melempar');
 }
 
-function roundTrip<M extends WorkerRpcMethod>(id: M, input: WorkerRpcInput<M>) {
+function roundTrip<M extends RpcMethod>(id: M, input: RpcInput<M>) {
   const parts = toRequestParts(id, input);
   const create = API_ROUTES[id].create;
   const created = create !== undefined && parts.verb === create.verb && parts.path === create.path;
@@ -163,7 +163,7 @@ function roundTrip<M extends WorkerRpcMethod>(id: M, input: WorkerRpcInput<M>) {
 }
 
 /** Parameter jalur dibaca dari jalur terisi menurut templat (kebalikan `fillPath`). */
-function pathParams(id: WorkerRpcMethod, filled: string, created: boolean) {
+function pathParams(id: RpcMethod, filled: string, created: boolean) {
   const shape = routeShape(API_ROUTES[id], created);
   const names = [...shape.path.matchAll(/\{(\w+)\}/g)].map((match) => match[1] as string);
   const pattern = new RegExp(`^${shape.path.replace(/\{\w+\}/g, '([^/]+)')}$`);
@@ -197,7 +197,7 @@ describe('tabel rute', () => {
 
   test('semua id kontrak Worker punya entri tabel (dan sebaliknya)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
-    expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as WorkerRpcMethod[]);
+    expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as RpcMethod[]);
   });
 
   test('rute biner punya bentuk rinci (rawBody/multipart/download) sesuai penandanya', () => {

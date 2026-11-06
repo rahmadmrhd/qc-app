@@ -116,7 +116,6 @@ describe('batas kontrak versi 2', () => {
     expect(SYNC_LIMITS.pushMaxWithDetail).toBe(25);
     expect(SYNC_LIMITS.fileBytes).toBe(10_485_760);
     expect(SYNC_LIMITS.fileBytes).toBe(MAX_IMAGE_BYTES);
-    expect(SYNC_LIMITS.bodyChars).toBe(5_000_000); // karakter: dipakai aplikasi GAS
-    expect(SYNC_LIMITS.bodyBytes).toBe(5_000_000); // byte: dipakai server Bun (batas baca badan)
+    expect(SYNC_LIMITS.bodyBytes).toBe(5_000_000); // byte: batas baca badan server
   });
 });

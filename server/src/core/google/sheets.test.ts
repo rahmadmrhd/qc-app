@@ -205,7 +205,7 @@ describe('sheetsDump', () => {
     expect(dump.kosong).toEqual([]);
     const batch = rig.fake.requests.filter((r) => r.url.pathname.endsWith('values:batchGet'));
     expect(batch.length).toBeGreaterThan(0);
-    // Seperti getValues() GAS lama: nilai mentah (bukan tampilan berformat) yang diubah ke teks.
+    // Seperti getValues() Sheets: nilai mentah (bukan tampilan berformat) yang diubah ke teks.
     expect(batch[0]?.url.searchParams.get('valueRenderOption')).toBe('UNFORMATTED_VALUE');
     expect(batch[0]?.url.searchParams.getAll('ranges')).toContain("'it''ems'");
   });

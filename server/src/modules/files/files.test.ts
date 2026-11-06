@@ -121,7 +121,7 @@ describe('unggah', () => {
 
   test('urutan Drive dulu, lalu D1: jembatan gagal = tidak ada baris files, galat UNAVAILABLE jelas', async () => {
     await ensureDriveFolder(env);
-    env.BRIDGE.failNext('createFile', new Error('Apps Script 500'));
+    env.BRIDGE.failNext('createFile', new Error('Drive 500'));
     const error = await captureAppErrorAsync(() => up());
     expect(error.code).toBe('UNAVAILABLE');
     expect(error.message).toContain('Google Drive');

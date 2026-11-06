@@ -40,7 +40,7 @@ const SIGNATURE_PREFIX: Record<ImageMime, string> = {
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-/** Dekode `count` byte pertama dari base64 (tanpa atob, yang tidak ada di GAS); null bila terlalu pendek/rusak. */
+/** Dekode `count` byte pertama dari base64 (tanpa atob; `shared/` murni); null bila terlalu pendek/rusak. */
 function base64Head(base64: string, count: number): number[] | null {
   const chars = Math.ceil((count * 4) / 3);
   if (base64.length < chars) return null;

@@ -723,8 +723,8 @@ function safeDecode(text: string): string {
 }
 
 /**
- * Memecah link https Drive/Docs tanpa Web API `URL`/`URLSearchParams` (tidak tersedia di runtime V8 Apps Script,
- * tempat fungsi ini berjalan). Host harus persis drive.google.com atau docs.google.com (tanpa port/userinfo).
+ * Memecah link https Drive/Docs tanpa Web API `URL`/`URLSearchParams` (`shared/` murni dan tanpa API
+ * runtime). Host harus persis drive.google.com atau docs.google.com (tanpa port/userinfo).
  */
 function splitDriveLink(input: string): DriveLinkParts | null {
   const text = input.trim();

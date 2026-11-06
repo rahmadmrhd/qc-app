@@ -1,5 +1,5 @@
 // Konversi tempelan WhatsApp menjadi Markdown catatan Serah Terima dan pemecah batch.
-// Murni: tanpa API GAS/DOM.
+// Murni: tanpa API server/DOM.
 
 export interface ParsedHandoverTask {
   customerSuggestion: string;

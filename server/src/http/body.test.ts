@@ -4,7 +4,7 @@ import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import type { WorkerRpcInput, WorkerRpcMethod } from '@shared/rpc';
+import type { RpcInput, RpcMethod } from '@shared/rpc';
 import { SYNC_LIMITS } from '@shared/sync';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES, SYNC_MAX_BODY_BYTES } from './body';
 
@@ -16,7 +16,7 @@ const text = (chars: number) => WORST_CHAR.repeat(chars);
 const UUID = '123e4567-e89b-12d3-a456-426614174000';
 const STAMP = '2026-11-06T00:00:00.000Z';
 
-type Inputs = { [M in WorkerRpcMethod]?: WorkerRpcInput<M> };
+type Inputs = { [M in RpcMethod]?: RpcInput<M> };
 
 const longList = <T>(count: number, make: (index: number) => T): T[] =>
   Array.from({ length: count }, (_, index) => make(index));
@@ -135,8 +135,8 @@ const WORST: Inputs = {
 const BODY_VERBS = new Set(['POST', 'PUT', 'PATCH']);
 
 /** Id rute JSON bertubuh: bukan biner, verba tulis berbadan (termasuk varian `create`). */
-function jsonBodyRouteIds(): WorkerRpcMethod[] {
-  return (Object.keys(API_ROUTES) as WorkerRpcMethod[]).filter((id) => {
+function jsonBodyRouteIds(): RpcMethod[] {
+  return (Object.keys(API_ROUTES) as RpcMethod[]).filter((id) => {
     const def = API_ROUTES[id];
     if (def.rawBody !== undefined || def.multipart !== undefined) return false;
     return BODY_VERBS.has(def.verb) || BODY_VERBS.has(def.create?.verb ?? '');
@@ -150,7 +150,7 @@ describe('batas badan', () => {
 
   test('muatan sah terbesar tiap rute JSON jauh di bawah 2 MB', () => {
     const sizes: Array<[string, number]> = [];
-    for (const id of Object.keys(WORST) as WorkerRpcMethod[]) {
+    for (const id of Object.keys(WORST) as RpcMethod[]) {
       const parts = toRequestParts(id, WORST[id] as never);
       const bytes = new TextEncoder().encode(JSON.stringify(parts.body ?? null)).length;
       sizes.push([id, bytes]);

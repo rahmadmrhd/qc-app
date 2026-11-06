@@ -35,7 +35,7 @@ jobs:
       - name: Pasang dependensi
         run: bun install --frozen-lockfile
 
-      # typecheck + Biome + semua test (shared, gas, bridge, web, scripts, server).
+      # typecheck + Biome + semua test (shared, web, scripts, server).
       - name: Check
         run: bun run check
 
