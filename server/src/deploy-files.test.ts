@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { MAX_REQUEST_BODY_BYTES } from './http/body';
 
 const ROOT = join(import.meta.dir, '..', '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8').replace(/\r\n/g, '\n');
@@ -109,7 +110,7 @@ describe('deploy: compose.yml qc-app', () => {
     expect(app.volumes).toEqual([
       {
         type: 'bind',
-        source: '${QC_SECRETS_DIR:-/opt/qc/${QC_ENV}/secrets}/google-sa.json',
+        source: '${QC_SECRETS_DIR:-/root/apps/qc-app/${QC_ENV}/secrets}/google-sa.json',
         target: '/run/secrets/google-sa.json',
         read_only: true,
         bind: { create_host_path: false },
@@ -130,6 +131,13 @@ describe('deploy: compose.yml qc-app', () => {
     const proxy = /^TRUSTED_PROXY=(\S+)$/m.exec(envExample)?.[1];
     expect(subnet).toBeDefined();
     expect(proxy?.split(',')).toEqual(['127.0.0.1/32', '::1/128', subnet as string]);
+  });
+
+  test('nama proyek dan kontainer memakai QC_NAME (staging qc-staging hidup berdampingan dengan stack dev lama qc-dev)', () => {
+    expect((compose as unknown as { name: string }).name).toMatch(/^\$\{QC_NAME:-qc-\$\{QC_ENV:\?/);
+    expect(app.container_name).toBe('${QC_NAME:-qc-${QC_ENV}}-app');
+    expect(compose.services['qc-db']?.container_name).toBe('${QC_NAME:-qc-${QC_ENV}}-db');
+    expect(envExample).toMatch(/^# QC_NAME=qc-staging$/m);
   });
 
   test('qc-db tidak berubah bentuknya: port hanya 127.0.0.1', () => {
@@ -190,5 +198,71 @@ describe('deploy: Dockerfile dan .dockerignore', () => {
     // package.json gas/bridge tetap masuk (bun.lock mencantumkan workspace-nya)
     expect(lines).toContain('!gas/package.json');
     expect(lines).toContain('!bridge/package.json');
+  });
+});
+
+describe('deploy: nginx/qc.conf.example', () => {
+  const nginx = read('deploy/nginx/qc.conf.example');
+  const code = nginx
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'))
+    .join('\n');
+  const servers443 = code.split(/\nserver \{/).filter((block) => block.includes('listen 443'));
+
+  /** "11m" -> byte (satuan nginx: k, m = pangkat 1024). */
+  function nginxBytes(size: string): number {
+    const match = /^(\d+)([km]?)$/i.exec(size);
+    if (!match) throw new Error(`ukuran nginx tak dikenal: ${size}`);
+    const unit = (match[2] ?? '').toLowerCase();
+    const factor = unit === 'm' ? 1024 * 1024 : unit === 'k' ? 1024 : 1;
+    return Number(match[1]) * factor;
+  }
+
+  test('dua blok TLS: staging qc-dev.rhd.my.id dan production qc.rhd.my.id, masing-masing dengan redirect 80', () => {
+    expect(servers443).toHaveLength(2);
+    expect(code).toContain('server_name qc-dev.rhd.my.id;');
+    expect(code).toContain('server_name qc.rhd.my.id;');
+    expect(code.match(/return 301 https:\/\/\$host\$request_uri;/g)).toHaveLength(2);
+    expect(code).not.toContain('qc.dev.rhd.my.id');
+  });
+
+  test('proxy ke 127.0.0.1 pada port APP_PORT yang berbeda per lingkungan (bukan 8787 yang dilarang)', () => {
+    const ports = [...code.matchAll(/proxy_pass http:\/\/127\.0\.0\.1:(\d+);/g)].map((m) => m[1]);
+    expect(ports).toEqual(['8790', '8791']);
+    expect(ports).not.toContain('8787');
+    expect(envExample).toMatch(/^APP_PORT=8790$/m);
+  });
+
+  test('client_max_body_size >= batas badan terbesar server (MAX_REQUEST_BODY_BYTES) di kedua blok', () => {
+    const sizes = [...code.matchAll(/client_max_body_size (\S+);/g)].map((m) => m[1] as string);
+    expect(sizes).toHaveLength(2);
+    for (const size of sizes) {
+      expect(nginxBytes(size)).toBeGreaterThanOrEqual(MAX_REQUEST_BODY_BYTES);
+      expect(nginxBytes(size)).toBeGreaterThanOrEqual(10 * 1024 * 1024 + 64 * 1024); // 10 MiB + overhead (T30a)
+    }
+  });
+
+  test('real_ip Cloudflare di tiap blok; CF-Connecting-IP dari klien ditimpa $remote_addr', () => {
+    for (const block of servers443) {
+      expect(block).toContain('real_ip_header CF-Connecting-IP;');
+      expect(block).toContain('real_ip_recursive off;');
+      expect((block.match(/set_real_ip_from /g) ?? []).length).toBeGreaterThanOrEqual(20);
+      expect(block).toContain('set_real_ip_from 173.245.48.0/20;');
+      expect(block).toContain('set_real_ip_from 2400:cb00::/32;');
+      expect(block).toContain('proxy_set_header CF-Connecting-IP $remote_addr;');
+      expect(block).toContain('proxy_connect_timeout');
+      expect(block).toContain('proxy_read_timeout');
+    }
+    expect(code).not.toMatch(/set_real_ip_from (0\.0\.0\.0\/0|::\/0)/);
+  });
+
+  test('sertifikat berupa placeholder yang membuat nginx -t gagal bila belum diganti; tanpa jalur nyata', () => {
+    expect(code.match(/ssl_certificate\s+ISI_JALUR_SERTIFIKAT_ORIGIN_DI_SINI\.pem;/g)).toHaveLength(
+      2,
+    );
+    expect(code.match(/ssl_certificate_key\s+ISI_JALUR_KUNCI_PRIVAT_DI_SINI\.key;/g)).toHaveLength(
+      2,
+    );
+    expect(nginx).not.toMatch(/\/etc\/(ssl|letsencrypt|nginx\/ssl)/);
   });
 });

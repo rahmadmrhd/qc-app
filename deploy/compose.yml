@@ -1,7 +1,10 @@
-# Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Proyek per lingkungan: qc-${QC_ENV} (dev, exec).
-# Jalankan dari folder ini (di VPS: /opt/qc/<env>/): docker compose up -d
+# Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Satu proyek per lingkungan (QC_ENV = dev atau exec).
+# Jalankan dari folder ini (di VPS: /root/apps/qc-app/<env>/): docker compose up -d
 # Nilai dibaca dari .env di folder yang sama (lihat .env.example). TIDAK ada rahasia di berkas ini.
-name: qc-${QC_ENV:?QC_ENV wajib diisi}
+# Awalan nama proyek/kontainer/jaringan/volume: QC_NAME (bawaan qc-${QC_ENV}). Staging di VPS memakai
+# QC_NAME=qc-staging agar tidak bertabrakan dengan stack dev lama T1 (proyek qc-dev, kontainer qc-dev-db) yang
+# masih berjalan di /opt/qc/dev.
+name: ${QC_NAME:-qc-${QC_ENV:?QC_ENV wajib diisi}}
 
 # Subnet jaringan proyek DIPATOK agar alamat gateway bridge (peer nginx host di mata qc-app) dapat didaftarkan
 # di TRUSTED_PROXY (keputusan I5). Pilih blok 10.x yang tidak pernah dialokasikan otomatis oleh Docker
@@ -16,7 +19,7 @@ networks:
 services:
   qc-db:
     image: mariadb:11.8
-    container_name: qc-${QC_ENV}-db
+    container_name: ${QC_NAME:-qc-${QC_ENV}}-db
     restart: unless-stopped
     mem_limit: 384m
     environment:
@@ -36,7 +39,7 @@ services:
 
   qc-app:
     image: ${QC_IMAGE:-ghcr.io/rahmadmrhd/qc-app}:${QC_IMAGE_TAG:?QC_IMAGE_TAG wajib diisi (tag SHA dari GHCR)}
-    container_name: qc-${QC_ENV}-app
+    container_name: ${QC_NAME:-qc-${QC_ENV}}-app
     # init: proses 1 kecil yang meneruskan sinyal dan menuai proses yatim; healthcheck ada di image.
     init: true
     restart: unless-stopped
@@ -83,7 +86,7 @@ services:
       # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang
       # baca-saja. create_host_path: false = bila berkasnya belum ada, compose GAGAL (bukan membuat direktori kosong).
       - type: bind
-        source: ${QC_SECRETS_DIR:-/opt/qc/${QC_ENV}/secrets}/google-sa.json
+        source: ${QC_SECRETS_DIR:-/root/apps/qc-app/${QC_ENV}/secrets}/google-sa.json
         target: /run/secrets/google-sa.json
         read_only: true
         bind:
