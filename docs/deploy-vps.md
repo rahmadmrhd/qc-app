@@ -187,6 +187,17 @@ docker stats --no-stream; free -h
 
 Lewat Cloudflare (setelah DNS): `curl -s https://qc-dev.rhd.my.id/api/ping`. Perhatikan memori (`docker stats`, `free -h`) terhadap batas di rencana (T29).
 
+## 12b. Rotasi kata sandi dan rahasia
+
+Prinsip: **ubah di sumber yang menyimpan nilai itu DULU, baru `.env`, lalu `docker compose up -d`**. `.env` hanya dibaca compose saat `up -d` (bukan `restart`, yang memakai konfigurasi kontainer lama), dan kata sandi DB di `.env` TIDAK mengubah database: `MARIADB_ROOT_PASSWORD` hanya dipakai MariaDB saat inisialisasi volume pertama, dan pengguna aplikasi dibuat manual (langkah 8). Bila `.env` diubah lebih dulu, aplikasi baru gagal login ke DB dan rollback `deploy.sh` (yang hanya mengganti tag) tidak menolong: kode 4. Karena itu `deploy.sh` menjalankan **preflight kredensial DB** sebelum mengubah apa pun (kontainer DB berjalan: `docker exec ... mariadb ... SELECT 1` dengan kata sandi lewat env `MYSQL_PWD`); `.env` yang tak cocok = kode keluar 2, tidak ada yang diubah. Jangan menulis kata sandi di argumen perintah (tampak di `ps`) maupun riwayat shell.
+
+- **Kata sandi DB aplikasi (`QC_DB_PASSWORD`)**: (1) di database dulu, lewat root: `docker exec -it <QC_NAME>-db mariadb -uroot -p` (prompt kata sandi) lalu `ALTER USER 'qc_dev'@'%' IDENTIFIED BY '<baru>';` (nama pengguna = `QC_DB_USER`); (2) ubah `QC_DB_PASSWORD` di `.env`; (3) `docker compose up -d` (membuat ulang `qc-app` dengan `DATABASE_URL` baru). Tidak ada variabel `MARIADB_PASSWORD` di stack ini. JANGAN `.env` dulu.
+- **Kata sandi root DB (`MARIADB_ROOT_PASSWORD`)**: `ALTER USER 'root'@'localhost' IDENTIFIED BY '<baru>';` (dan `'root'@'%'` bila ada) lebih dulu, baru ubah `.env`. Perubahan `.env` saja tidak mengubah root di volume yang sudah ada. `qc-app` tidak memakai root.
+- **Pengguna `qc_restore`** (`docs/setup-google.md` S8): kata sandinya tidak ada di `.env`; `ALTER USER 'qc_restore'@'%' IDENTIFIED BY '<baru>';` di database, lalu pakai nilai baru pada `RESTORE_DATABASE_URL` saat pemulihan. `QC_TEST_DB_PASSWORD` (pengguna tes) diperlakukan sama: database dulu, lalu `.env`.
+- **`SESSION_SECRET`**: cukup ubah di `.env` lalu `docker compose up -d`; EFEK: semua sesi login keluar (pengguna masuk ulang).
+- **`SYNC_API_TOKEN`**: ubah di `.env` lalu `docker compose up -d`; EFEK: klien QC Desktop memakai token lama ditolak (401) sampai token barunya dipasang di tiap klien. Atur waktunya.
+- Setelah mengubah `.env` apa pun: `docker compose up -d` (bukan `restart`), lalu pastikan sehat (`docker inspect --format '{{.State.Health.Status}}' <QC_NAME>-app`).
+
 ## 13. Ringkasan pembatalan
 
 | Langkah | Pembatalan |
