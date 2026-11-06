@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { viaBridge } from '@server/core/bridge-client';
 import { bytesToBase64 } from '@server/core/bytes';
 import { type AppError, isAppError } from '@server/core/errors';
 import { FOLDER_MIME, type RecordedRequest } from '@server-test/fake-google';
@@ -628,5 +629,53 @@ describe('konfigurasi dan kerahasiaan', () => {
     expect(everything).not.toContain('SENTINEL-9');
     expect(everything).not.toContain('PRIVATE KEY');
     expect(everything).not.toContain(rig.privateKeyPem.split('\n')[1] as string);
+  });
+});
+
+describe('pemetaan galat HTTP ke kode aplikasi (kontrak jembatan lama)', () => {
+  const FILE_ID = 'FILEIDXXXXXXXXXXX1';
+
+  /** Klien dengan `fetch` yang menimpa permintaan ke Drive; penukaran token tetap ke server Google palsu. */
+  async function clientWithDrive(drive: (init?: RequestInit) => Promise<Response>) {
+    rig = await createGoogleRig();
+    const real = rig.fake.fetch;
+    const stub = ((url: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new URL(String(url)).hostname === 'www.googleapis.com'
+        ? drive(init)
+        : real(url, init)) as typeof fetch;
+    return rig.make({}, { fetch: stub });
+  }
+
+  test('TimeoutError -> UNAVAILABLE yang menyebut batas waktu', async () => {
+    const client = await clientWithDrive(async () => {
+      throw Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' });
+    });
+    const error = await failure(client.fileInfo(FILE_ID, IMAGES_ID));
+    expect(error.code).toBe('UNAVAILABLE');
+    expect(error.message).toContain('batas waktu');
+  });
+
+  test('HTTP 400 berbadan galat Google -> VALIDATION (badan tidak ikut ke pesan)', async () => {
+    const client = await clientWithDrive(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 400, message: 'RAHASIA-DETAIL', errors: [{ reason: 'invalid' }] },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const error = await failure(client.fileInfo(FILE_ID, IMAGES_ID));
+    expect(error.code).toBe('VALIDATION');
+    expect(error.message).not.toContain('RAHASIA-DETAIL');
+  });
+
+  test('HTTP 200 berbadan HTML pada fileInfo lewat viaBridge -> UNAVAILABLE', async () => {
+    const client = await clientWithDrive(
+      async () => new Response('<html>Error 411</html>', { status: 200 }),
+    );
+    const error = await failure(viaBridge(() => client.fileInfo(FILE_ID, IMAGES_ID)));
+    expect(error.code).toBe('UNAVAILABLE');
+    expect(error.message).toContain('tidak dapat dihubungi');
   });
 });
