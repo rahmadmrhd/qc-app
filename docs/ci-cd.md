@@ -8,11 +8,11 @@ Alur satu run: **`meta`** (menentukan environment dan commit yang dibangun, meno
 
 | Kejadian | Environment | Catatan |
 |---|---|---|
-| PR **di-merge** ke `dev` (`pull_request_target`, closed + merged) | `dev` (staging, `qc-dev.rhd.my.id`) | membangun commit hasil merge (`merge_commit_sha`); PR yang ditutup tanpa merge dilewati |
-| PR **di-merge** ke `main` (`pull_request_target`, closed + merged) | `exec` (production, `qc.rhd.my.id`) | sama; PR rilis `dev` -> `main` itu sendiri adalah deploy production |
-| push ke `feat/migrasi-cloudflare` (**sementara**) | `dev` | `exec` TIDAK PERNAH dari branch ini; dihapus saat cutover |
+| PR **di-merge** ke `dev` (`pull_request_target`, closed + merged) | `staging` (`qc-dev.rhd.my.id`) | membangun commit hasil merge (`merge_commit_sha`); PR yang ditutup tanpa merge dilewati |
+| PR **di-merge** ke `main` (`pull_request_target`, closed + merged) | `production` (`qc.rhd.my.id`) | sama; PR rilis `dev` -> `main` itu sendiri adalah deploy production |
+| push ke `feat/migrasi-cloudflare` (**sementara**) | `staging` | `production` TIDAK PERNAH dari branch ini; dihapus saat cutover |
 | push langsung ke `main` atau `dev` | tidak ada | tidak memicu deploy (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge) |
-| Manual (Actions -> Deploy Server -> Run workflow) | pilihan `dev`/`exec` | `exec` hanya dari `main`; `dev` dari `main`, `dev`, atau `feat/migrasi-cloudflare`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
+| Manual (Actions -> Deploy Server -> Run workflow) | pilihan `staging`/`production` | `production` hanya dari `main`; `staging` dari `main`, `dev`, atau `feat/migrasi-cloudflare`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
 
 Perubahan hanya di `docs/**`, `**/*.md`, `gas/**`, `bridge/**` tidak memicu deploy (tidak masuk ke image).
 
@@ -23,16 +23,16 @@ GitHub hanya menjalankan (dan menampilkan tombol) `workflow_dispatch` dan `pull_
 ### Saat cutover (T34)
 
 1. Hapus pemicu `push` seluruhnya dari `deploy-server.yml` DAN `feat/migrasi-cloudflare` dari `case` di job `meta` (cabang `push` dan `workflow_dispatch`); `scripts/ci-workflows.test.ts` menegakkan daftar pemicu dan branch, jadi perbarui tesnya bersamaan.
-2. Dalam PR yang sama: hapus `deploy.yml` (GAS) dan, pada environment `dev`, ganti aturan *Deployment branches* menjadi hanya `dev` dan `main`.
-3. Merge PR ke `main` otomatis men-deploy production (`exec`). *Required reviewers* pada environment `exec` tetap **disarankan** (bukan wajib; keputusan pemilik 2026-11-06) bila ingin persetujuan manual.
+2. Dalam PR yang sama: hapus `deploy.yml` (GAS) dan, pada environment `staging`, ganti aturan *Deployment branches* menjadi hanya `dev` dan `main`.
+3. Merge PR ke `main` otomatis men-deploy production (environment `production`). *Required reviewers* pada environment `production` tetap **disarankan** (bukan wajib; keputusan pemilik 2026-11-06) bila ingin persetujuan manual.
 4. Sebelum PR cutover di-merge: pastikan perubahan `deploy/compose.yml`, `deploy/deploy.sh`, `deploy/mariadb/qc.cnf`, dan variabel `.env` baru sudah dipasang manual di VPS (lihat "Perubahan berkas deploy" di bawah).
 
 ### Yang HARUS dibuat pemilik di GitHub (workflow tidak dapat mengaturnya sendiri)
 
 Repositori -> Settings -> Environments:
 
-1. **Environment `dev`**: *Deployment branches and tags* -> *Selected branches* -> `feat/migrasi-cloudflare`, lalu tambahkan `dev` dan `main` (run `pull_request_target` berjalan pada ref branch tujuan PR, jadi aturan ini menilai `dev`/`main`, bukan `refs/pull/N/merge`).
-2. **Environment `exec`**: *Selected branches* -> hanya `main`. *Required reviewers* **disarankan** untuk production (tidak diwajibkan pemilik).
+1. **Environment `staging`**: *Deployment branches and tags* -> *Selected branches* -> `feat/migrasi-cloudflare`, lalu tambahkan `dev` dan `main` (run `pull_request_target` berjalan pada ref branch tujuan PR, jadi aturan ini menilai `dev`/`main`, bukan `refs/pull/N/merge`).
+2. **Environment `production`**: *Selected branches* -> hanya `main`. *Required reviewers* **disarankan** untuk production (tidak diwajibkan pemilik).
 3. **Secret environment** (BUKAN secret repositori; buat di KEDUA environment dengan nilai milik masing-masing):
 
 | Nama | Isi |
@@ -43,7 +43,9 @@ Repositori -> Settings -> Environments:
 | `DEPLOY_PORT` | port SSH VPS (non-standar) |
 | `DEPLOY_USER` | `root` (akses lewat kunci `command=` terbatas, dikonfirmasi pemilik 2026-11-06) |
 
-4. **Variabel environment** (Variables, bukan Secrets): `APP_URL` = `https://qc-dev.rhd.my.id` (environment `dev`) dan `https://qc.rhd.my.id` (environment `exec`), tanpa garis miring penutup. Dipakai uji asap `GET <APP_URL>/api/ping`.
+4. **Variabel environment** (Variables, bukan Secrets): `APP_URL` = `https://qc-dev.rhd.my.id` (environment `staging`) dan `https://qc.rhd.my.id` (environment `production`), tanpa garis miring penutup. Dipakai uji asap `GET <APP_URL>/api/ping`.
+
+Penamaan (keputusan pemilik 2026-11-07, spek §19 butir 10): nama environment GitHub, kunci deploy (`--only`, perintah `deploy <env> <sha>`), folder VPS (`/root/apps/qc-app/<env>`), dan `QC_ENV` sama: `staging` | `production` (sebelumnya `dev` | `exec`). Environment GitHub tidak dapat diganti nama: buat `staging` dan `production`, salin secret/variabel dan aturan branch dari `dev`/`exec`, lalu hapus yang lama. `deploy.sh` memakai kunci per lingkungan, jadi baris `authorized_keys` juga harus `--only staging` / `--only production`.
 5. **Token baca GHCR di VPS** (bukan di GitHub): paket `qc-app` dibuat privat bila repositori privat. Pilihan: (a) **PAT classic dengan scope `read:packages`** milik pemilik, `docker login ghcr.io -u <pengguna>` sekali di VPS (tersimpan di `/root/.docker/config.json`, izin 600): paket tetap privat, tetapi token berumur panjang di VPS dan terkait akun pemilik, jadi buat khusus untuk ini dan atur kedaluwarsa; (b) **jadikan paket publik** (Package settings -> Change visibility): tanpa token di VPS, tetapi isi image (kode aplikasi; rahasia tak ada di image) dapat diunduh siapa pun. Rekomendasi: (a). Image tidak memuat rahasia (tes `server/src/deploy-files.test.ts`).
 6. Tidak ada rahasia lain di GitHub: `GITHUB_TOKEN` otomatis (izin `packages: write` hanya di job `image`); rahasia aplikasi (`.env`, kunci service account) hanya di VPS.
 7. **sshd di VPS**: periksa `PermitRootLogin prohibit-password` (atau `forced-commands-only`) di `/etc/ssh/sshd_config`; kunci deploy hanya boleh menjalankan `deploy.sh`, bukan shell root.
@@ -128,4 +130,4 @@ Job deploy memakai environment `gas-<target>`. GitHub membuatnya otomatis saat r
 ## Disarankan
 
 - Aktifkan branch protection pada `main` dan `dev`: wajib PR dan wajib check `test` lulus, supaya deploy hanya terjadi dari kode yang teruji (deploy server kini hanya dipicu oleh PR yang di-merge ke branch itu).
-- *Required reviewers* pada environment `exec` (persetujuan manual sebelum production); pemilik tidak mewajibkannya (2026-11-06).
+- *Required reviewers* pada environment `production` (persetujuan manual sebelum production); pemilik tidak mewajibkannya (2026-11-06).

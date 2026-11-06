@@ -2,11 +2,11 @@
 
 Prosedur MANUAL untuk memasang `qc-app` (Bun + Hono) dan `qc-db` (MariaDB 11.8) di VPS bersama, di belakang nginx host dan Cloudflare. Semua langkah yang mengubah VPS dijalankan pemilik atau agen dengan otorisasi pemilik secara terpisah; dokumen ini tidak menjalankan apa pun sendiri. Tiap langkah memuat cara membatalkannya.
 
-| | Staging (`dev`) | Production (`exec`) |
+| | Staging (`staging`) | Production (`production`) |
 |---|---|---|
 | Hostname | `qc-dev.rhd.my.id` | `qc.rhd.my.id` |
-| Folder | `/root/apps/qc-app/dev` | `/root/apps/qc-app/exec` |
-| `QC_ENV` / `QC_NAME` | `dev` / `qc-staging` | `exec` / `qc-exec` (bawaan) |
+| Folder | `/root/apps/qc-app/staging` | `/root/apps/qc-app/production` |
+| `QC_ENV` / `QC_NAME` | `staging` / `qc-staging` (bawaan) | `production` / `qc-production` (bawaan) |
 | `APP_PORT` (127.0.0.1) | 8790 | 8791 |
 | `DB_PORT` (127.0.0.1) | 33064 | 33065 |
 | `QC_SUBNET` | `10.77.10.0/24` | `10.77.20.0/24` |
@@ -16,7 +16,8 @@ Aturan VPS bersama: jangan menyentuh kontainer, blok nginx, firewall, atau pengg
 ## 0. Hostname dan keputusan jalur
 
 - Staging memakai `qc-dev.rhd.my.id`, BUKAN `qc.dev.rhd.my.id`: Universal SSL Cloudflare hanya mencakup satu tingkat di bawah `rhd.my.id`, hostname dua tingkat tidak tertutup sertifikat tepinya.
-- Folder deploy `/root/apps/qc-app/{dev,exec}` menggantikan `/opt/qc/<env>`. Deploy otomatis (T28) masuk sebagai `root` dengan kunci SSH yang dibatasi `command=` ke satu skrip (lihat langkah 9). Akses lewat `root` ini DIKONFIRMASI pemilik 2026-11-06 (spek §19 butir 8).
+- Folder deploy `/root/apps/qc-app/{staging,production}` menggantikan `/opt/qc/<env>`. Deploy otomatis (T28) masuk sebagai `root` dengan kunci SSH yang dibatasi `command=` ke satu skrip (lihat langkah 9). Akses lewat `root` ini DIKONFIRMASI pemilik 2026-11-06 (spek §19 butir 8).
+- Penamaan lingkungan (keputusan pemilik 2026-11-07, spek §19 butir 10): `staging` dan `production` di semua tempat (folder, `QC_ENV`, `--only`, environment GitHub), menggantikan `dev`/`exec`. Instalasi staging yang dibuat dengan nama lama dipindahkan: hentikan stack, `mv /root/apps/qc-app/dev /root/apps/qc-app/staging`, ubah `QC_ENV=staging` dan tambahkan `QC_DB_USER=qc_dev`/`QC_DB_NAME=qc_dev` di `.env`, salin `compose.yml`/`deploy.sh` baru, ganti `--only dev` di `authorized_keys` menjadi `--only staging`, lalu `docker compose up -d` (nama proyek/kontainer `qc-staging` tidak berubah, volume tetap).
 
 ## 1. Stack dev lama (T1) yang masih berjalan di /opt/qc/dev
 
@@ -45,9 +46,9 @@ Pastikan 8790/8791 dan 33064/33065 bebas, subnet `10.77.x.0/24` tidak terpakai, 
 
 ```bash
 install -d -m 700 /root/apps/qc-app /root/apps/qc-app/backup /root/apps/qc-app/ci-keys
-install -d -m 700 /root/apps/qc-app/dev /root/apps/qc-app/dev/secrets /root/apps/qc-app/dev/mariadb
-# production hanya saat exec disiapkan:
-install -d -m 700 /root/apps/qc-app/exec /root/apps/qc-app/exec/secrets /root/apps/qc-app/exec/mariadb
+install -d -m 700 /root/apps/qc-app/staging /root/apps/qc-app/staging/secrets /root/apps/qc-app/staging/mariadb
+# production hanya saat production disiapkan:
+install -d -m 700 /root/apps/qc-app/production /root/apps/qc-app/production/secrets /root/apps/qc-app/production/mariadb
 ```
 
 Pembatalan: `rmdir`/`rm -r` direktori baru itu saja (belum berisi data pada tahap ini).
@@ -58,19 +59,19 @@ Dari mesin pengembang (repo `qc`, working tree bersih di komit yang akan dipasan
 
 ```bash
 scp deploy/deploy.sh rhd_vps_ipv4:/root/apps/qc-app/deploy.sh
-scp deploy/compose.yml rhd_vps_ipv4:/root/apps/qc-app/dev/compose.yml
-scp deploy/mariadb/qc.cnf rhd_vps_ipv4:/root/apps/qc-app/dev/mariadb/qc.cnf
-ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc-app/dev/compose.yml /root/apps/qc-app/dev/mariadb/qc.cnf'
+scp deploy/compose.yml rhd_vps_ipv4:/root/apps/qc-app/staging/compose.yml
+scp deploy/mariadb/qc.cnf rhd_vps_ipv4:/root/apps/qc-app/staging/mariadb/qc.cnf
+ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc-app/staging/compose.yml /root/apps/qc-app/staging/mariadb/qc.cnf'
 ```
 
-Ulangi untuk `exec` bila perlu. Pembatalan: hapus berkas yang disalin.
+Ulangi untuk `production` bila perlu. Pembatalan: hapus berkas yang disalin.
 
 ## 5. .env per lingkungan (izin 600, rahasia dibangkitkan di VPS)
 
 Salin `deploy/.env.example` menjadi `/root/apps/qc-app/<env>/.env` lalu isi LANGSUNG di VPS. Bangkitkan rahasia di sana tanpa mencetaknya:
 
 ```bash
-cd /root/apps/qc-app/dev
+cd /root/apps/qc-app/staging
 umask 077
 # contoh: tulis nilai acak langsung ke berkas, tidak ke layar
 sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=$(openssl rand -hex 24)/" .env
@@ -108,7 +109,7 @@ Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, 
 `qc-app` menjalankan migrasi saat start, jadi skema dan pengguna DB harus ada SEBELUM `qc-app` dinyalakan (bila tidak, `qc-app` gagal start berulang karena `restart: unless-stopped`). Urutannya: nyalakan `qc-db` saja, tunggu sehat, buat skema/pengguna, baru nyalakan semuanya.
 
 ```bash
-cd /root/apps/qc-app/dev
+cd /root/apps/qc-app/staging
 docker compose config --quiet            # validasi (baca-saja)
 docker compose up -d qc-db               # hanya MariaDB: membuat jaringan qc-staging_default dan qc-staging-db
 docker inspect --format '{{.State.Health.Status}}' qc-staging-db   # ulangi sampai: healthy
@@ -122,7 +123,7 @@ CREATE USER IF NOT EXISTS 'qc_dev'@'%' IDENTIFIED BY '<QC_DB_PASSWORD>';
 GRANT ALL PRIVILEGES ON `qc_dev`.* TO 'qc_dev'@'%';
 ```
 
-(production: `qc_exec`). Lalu nyalakan sisanya:
+(production: `qc_production`, bawaan `qc_${QC_ENV}`). Pada staging nama `qc_dev` WAJIB diisi eksplisit di `.env` (`QC_DB_USER=qc_dev`, `QC_DB_NAME=qc_dev`): skema itu sudah berisi data dan bawaan `qc_${QC_ENV}` akan menjadi `qc_staging`, yang tidak ada. Lalu nyalakan sisanya:
 
 ```bash
 docker compose up -d                     # membuat qc-staging-app
@@ -135,21 +136,21 @@ docker compose ps; docker inspect --format '{{.State.Health.Status}}' qc-staging
 Buat satu pasang kunci per lingkungan di VPS (kunci privat hanya di `/root/apps/qc-app/ci-keys`, izin 600, tidak dicetak; pemilik memindahkannya ke secret environment GitHub lalu menghapus salinan di VPS bila mau):
 
 ```bash
-ssh-keygen -t ed25519 -N '' -C 'qc-deploy dev' -f /root/apps/qc-app/ci-keys/qc-deploy-dev
+ssh-keygen -t ed25519 -N '' -C 'qc-deploy staging' -f /root/apps/qc-app/ci-keys/qc-deploy-staging
 ```
 
 Cadangkan dan tambahkan SATU baris ke `/root/.ssh/authorized_keys`:
 
 ```bash
 cp -p /root/.ssh/authorized_keys /root/apps/qc-app/backup/authorized_keys.$(date +%Y%m%d%H%M%S)
-printf 'restrict,command="/root/apps/qc-app/deploy.sh --only dev" %s\n' "$(cat /root/apps/qc-app/ci-keys/qc-deploy-dev.pub)" >> /root/.ssh/authorized_keys
+printf 'restrict,command="/root/apps/qc-app/deploy.sh --only staging" %s\n' "$(cat /root/apps/qc-app/ci-keys/qc-deploy-staging.pub)" >> /root/.ssh/authorized_keys
 ```
 
-`restrict` mematikan sekaligus pty, port/agent/X11 forwarding, `~/.ssh/rc`, dan penerusan tun (serta fitur baru OpenSSH yang kelak aktif bawaan), jadi opsi `no-*` terpisah tidak dipakai. `--only dev` adalah tambahan di atas bentuk dasar `command="/root/apps/qc-app/deploy.sh"`: kunci staging tak dapat men-deploy production. Klien menjalankan `ssh -i <kunci> root@<host> "deploy dev <tag>"`; input divalidasi ketat (`deploy <dev|exec> <tag>`, tag permintaan = SHA commit 40 heksa huruf kecil `[0-9a-f]{40}`; hanya tag sebelumnya yang dikembalikan boleh lebih longgar), tidak pernah di-eval, dan perintah lain apa pun ditolak. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy dev <sha-40-heksa>' /root/apps/qc-app/deploy.sh --only dev --dry-run`.
+`restrict` mematikan sekaligus pty, port/agent/X11 forwarding, `~/.ssh/rc`, dan penerusan tun (serta fitur baru OpenSSH yang kelak aktif bawaan), jadi opsi `no-*` terpisah tidak dipakai. `--only staging` adalah tambahan di atas bentuk dasar `command="/root/apps/qc-app/deploy.sh"`: kunci staging tak dapat men-deploy production. Klien menjalankan `ssh -i <kunci> root@<host> "deploy staging <tag>"`; input divalidasi ketat (`deploy <staging|production> <tag>`, tag permintaan = SHA commit 40 heksa huruf kecil `[0-9a-f]{40}`; hanya tag sebelumnya yang dikembalikan boleh lebih longgar), tidak pernah di-eval, dan perintah lain apa pun ditolak. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy staging <sha-40-heksa>' /root/apps/qc-app/deploy.sh --only staging --dry-run`.
 
 Periksa juga di VPS (baca-saja, belum terverifikasi): `sshd -T | grep -i permitrootlogin` harus `prohibit-password` atau `forced-commands-only`, agar kunci root hanya dapat menjalankan perintah paksa dan tidak membuka shell lewat kata sandi.
 
-Pembatalan: hapus baris itu dari `authorized_keys` (cari komentar `qc-deploy dev`: `grep -v 'qc-deploy dev' /root/.ssh/authorized_keys > /tmp/ak && cat /tmp/ak > /root/.ssh/authorized_keys`), atau pulihkan salinan di `/root/apps/qc-app/backup/`.
+Pembatalan: hapus baris itu dari `authorized_keys` (cari komentar `qc-deploy staging`: `grep -v 'qc-deploy staging' /root/.ssh/authorized_keys > /tmp/ak && cat /tmp/ak > /root/.ssh/authorized_keys`), atau pulihkan salinan di `/root/apps/qc-app/backup/`.
 
 ## 10. nginx (SATU berkas baru per hostname)
 
