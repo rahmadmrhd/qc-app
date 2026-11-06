@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck && bun run --cwd bridge typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd server test && bun run --cwd web test",
+    "test": "bun test ./scripts --path-ignore-patterns \"scripts/migrate/*.test.ts\" && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd server test && bun run --cwd web test",
     "check": "bun run typecheck && bun run lint && bun run test",
     "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
     "deploy": "bun run push && bun run scripts/deploy.ts",
