@@ -89,6 +89,8 @@ services:
       ALLOWED_FOLDER_IDS: ${ALLOWED_FOLDER_IDS:-}
       # Cadangan malam (T30): dump disimpan sementara di volume qc-backups (3 salinan terakhir; sisanya di Drive).
       BACKUP_LOCAL_DIR: /var/backups/qc
+      # Sakelar cadangan terjadwal: kosong = hidup; `false` di staging (data uji; folder Drive dipakai bersama production, retensi satu berkas per hari).
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-}
       # Peringatan email (T32): cadangan basi > 36 jam dan pemakaian kuota Drive di atas ambang (bawaan 80%).
       QUOTA_ALERT_PERCENT: ${QUOTA_ALERT_PERCENT:-}
       SMTP_HOST: ${SMTP_HOST:-}
