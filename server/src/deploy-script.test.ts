@@ -60,6 +60,14 @@ case "$*" in
     [ -f "$FAKE_STATE/up_fail" ] && exit 1
     sed -n 's/^QC_IMAGE_TAG=//p' "$FAKE_ENV" > "$FAKE_STATE/running"
     exit 0 ;;
+  "image ls"*)
+    cat "$FAKE_STATE/images" 2>/dev/null
+    [ -f "$FAKE_STATE/ls_fail" ] && exit 1
+    exit 0 ;;
+  "image rm"*)
+    echo "rm rahasia-uji"; echo "rm err rahasia-uji" >&2
+    [ -f "$FAKE_STATE/rm_fail" ] && exit 1
+    exit 0 ;;
   inspect*)
     tag=$(cat "$FAKE_STATE/running" 2>/dev/null)
     case "$*" in
@@ -487,5 +495,109 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     const result = await run(`deploy staging ${SHA_NEW}`);
     expect(result.code).toBe(0);
     expect(calls()).toContain('qc-staging-app');
+  });
+});
+
+describe('deploy.sh: pembersihan image lama', () => {
+  const sha = (ch: string) => ch.repeat(40);
+  const [D, E, F, G, H] = ['d', 'e', 'f', '1', '2'].map(sha) as [
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+  // terurut dari yang terbaru dibuat (seperti `docker image ls`)
+  const setImages = (...tags: string[]) =>
+    writeFileSync(join(state, 'images'), `${tags.join('\n')}\n`);
+  const removed = () => [...calls().matchAll(/^docker image rm (\S+)$/gm)].map((m) => m[1]);
+  const REPO = 'ghcr.io/rahmadmrhd/qc-app';
+
+  test('simpan 3 tag terbaru, tag lingkungan lain, tag baru; hapus sisanya satu per satu; tag tak valid dibiarkan', async () => {
+    writeFileSync(
+      join(root, 'production', '.env'),
+      envFile().replace('QC_ENV=staging', 'QC_ENV=production').replace('tag-lama', G),
+    );
+    setImages(SHA_NEW, D, E, F, G, 'latest', H, 'tag-lama', 'local-abc1234');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    // rank: SHA_NEW, D, E dipertahankan (3 terbaru); G dipakai production; 'tag-lama' (PREV) bukan tag valid
+    expect(removed()).toEqual([`${REPO}:${F}`, `${REPO}:${H}`, `${REPO}:local-abc1234`]);
+    expect(calls()).not.toMatch(/docker (system|image prune|volume prune)/);
+    expect(calls()).not.toMatch(/image rm -f/);
+    expect(result.out).toContain('dihapus=3');
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(readFileSync(join(root, 'staging', '.deploy.log'), 'utf8')).toContain('rm rahasia-uji');
+  });
+
+  test('tag sebelumnya (PREV_TAG valid) dan tag kontainer berjalan dipertahankan', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile('', H));
+    writeFileSync(join(state, 'running'), `${H}\n`);
+    setImages(SHA_NEW, D, E, F, G, H);
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(removed()).toEqual([`${REPO}:${F}`, `${REPO}:${G}`]);
+  });
+
+  test('QC_KEEP_IMAGES mengatur jumlah yang disimpan', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile('QC_KEEP_IMAGES=5\n'));
+    setImages(SHA_NEW, D, E, F, G, H);
+    expect((await run(`deploy staging ${SHA_NEW}`)).code).toBe(0);
+    expect(removed()).toEqual([`${REPO}:${H}`]);
+  });
+
+  for (const bad of ['0', 'abc', '-1', '100', '']) {
+    test(`QC_KEEP_IMAGES tak sah (${JSON.stringify(bad)}) memakai bawaan 3`, async () => {
+      writeFileSync(join(root, 'staging', '.env'), envFile(`QC_KEEP_IMAGES=${bad}\n`));
+      setImages(SHA_NEW, D, E, F, G, H);
+      expect((await run(`deploy staging ${SHA_NEW}`)).code).toBe(0);
+      expect(removed()).toEqual([`${REPO}:${F}`, `${REPO}:${G}`, `${REPO}:${H}`]);
+    });
+  }
+
+  test('QC_IMAGE di .env menentukan repositori yang dibersihkan', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile('QC_IMAGE=ghcr.io/org/lain\n'));
+    setImages(SHA_NEW, D, E, F);
+    expect((await run(`deploy staging ${SHA_NEW}`)).code).toBe(0);
+    expect(removed()).toEqual([`ghcr.io/org/lain:${F}`]);
+    expect(calls()).toMatch(/docker image ls ghcr\.io\/org\/lain /);
+  });
+
+  test('kegagalan image rm atau image ls tidak mengubah kode keluar 0', async () => {
+    setImages(SHA_NEW, D, E, F, G);
+    writeFileSync(join(state, 'rm_fail'), '1');
+    const rm = await run(`deploy staging ${SHA_NEW}`);
+    expect(rm.code).toBe(0);
+    expect(rm.out).toContain('DEPLOY_OK');
+    expect(rm.out).toContain('gagal/dilewati=2');
+    rmSync(join(state, 'rm_fail'));
+    writeFileSync(join(state, 'ls_fail'), '1');
+    const ls = await run(`deploy staging ${SHA_OTHER}`);
+    expect(ls.code).toBe(0);
+    expect(ls.out).toContain('DEPLOY_OK');
+  });
+
+  test('tidak dijalankan saat deploy gagal atau dikembalikan', async () => {
+    setImages(SHA_BAD, D, E, F, G, H);
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    expect((await run(`deploy staging ${SHA_BAD}`)).code).toBe(1);
+    rmSync(join(state, 'unhealthy_tags'));
+    writeFileSync(join(state, 'ping_fail_tags'), `${SHA_BAD}\n`);
+    expect((await run(`deploy staging ${SHA_BAD}`)).code).toBe(1);
+    rmSync(join(state, 'ping_fail_tags'));
+    writeFileSync(join(state, 'pull_fail'), '1');
+    expect((await run(`deploy staging ${SHA_BAD}`)).code).toBe(1);
+    rmSync(join(state, 'pull_fail'));
+    writeFileSync(join(state, 'up_fail'), '1');
+    expect((await run(`deploy staging ${SHA_BAD}`)).code).toBe(4);
+    expect(calls()).not.toContain('image rm');
+    expect(calls()).not.toContain('image ls');
+  });
+
+  test('--dry-run mencetak rencana pembersihan tanpa menyentuh docker', async () => {
+    const result = await run(`deploy staging ${SHA_NEW}`, ['--dry-run']);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('rencana pembersihan');
+    expect(calls()).toBe('');
   });
 });

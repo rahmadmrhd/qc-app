@@ -11,7 +11,8 @@
 #
 # Alur: validasi -> kunci -> `compose config` (.env/compose.yml valid; bila rusak berhenti tanpa mengubah apa pun) ->
 # ganti QC_IMAGE_TAG di .env -> pull -> up -d -> tunggu sehat (dan memakai tag baru) -> uji /api/ping -> bila gagal di
-# langkah mana pun sesudah tag diganti, kembali ke tag sebelumnya. Keluaran docker compose TIDAK diteruskan ke
+# langkah mana pun sesudah tag diganti, kembali ke tag sebelumnya; bila sukses penuh, image lama dibersihkan
+# (`cleanup_images`: simpan QC_KEEP_IMAGES tag terbaru, bawaan 3; kegagalannya tak mengubah kode keluar). Keluaran docker compose TIDAK diteruskan ke
 # pemanggil (galat urai compose dapat memuat potongan nilai rahasia dari .env): ditulis ke $DIR/.deploy.log (izin 600,
 # ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
@@ -93,6 +94,7 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
   log "dry-run: lingkungan=$ENV_NAME tag=$TAG root=$ROOT"
   log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping; kembali ke tag sebelumnya bila gagal"
+  log "rencana pembersihan (hanya setelah sukses penuh; gagal tak mengubah kode keluar): hapus image repositori QC_IMAGE (bawaan GHCR) bertag SHA/local-<sha> satu per satu dengan docker image rm, kecuali tag terpakai kontainer, tag baru, tag sebelumnya, tag di .env lingkungan lain, dan QC_KEEP_IMAGES (bawaan 3) tag terbaru; tanpa prune"
   exit 0
 fi
 
@@ -102,9 +104,9 @@ DIR=$ROOT/$ENV_NAME
 [ -f "$DIR/compose.yml" ] || die 2 'compose.yml tidak ada di folder lingkungan'
 [ -f "$DIR/.env" ] || die 2 '.env tidak ada di folder lingkungan'
 
-env_value() { # env_value NAMA -> nilai terakhir NAMA= di .env (tanpa CR; satu pasang kutip yang cocok dibuang, seperti compose)
+env_value() { # env_value NAMA [BERKAS] -> nilai terakhir NAMA= di .env (tanpa CR; satu pasang kutip yang cocok dibuang, seperti compose)
   local line dq='"' sq="'"
-  line=$(grep -E "^$1=" "$DIR/.env" | tail -n1 || true)
+  line=$(grep -E "^$1=" "${2:-$DIR/.env}" 2>/dev/null | tail -n1 || true)
   line=${line#*=}
   line=${line%$'\r'}
   if [[ $line =~ ^${dq}(.*)${dq}$ ]] || [[ $line =~ ^${sq}(.*)${sq}$ ]]; then
@@ -196,6 +198,51 @@ rollback() { # rollback: kembali ke PREV_TAG dan pastikan sehat; kode keluar 1 (
   die 4 "deploy $TAG gagal DAN pengembalian ke $PREV_TAG gagal; periksa kontainer secara manual ($LOG_HINT)"
 }
 
+cleanup_images() { # Pembersihan image lama; dipanggil HANYA setelah deploy sukses penuh. Tidak pernah gagal keras.
+  # Hanya repositori image stack ini (dari QC_IMAGE, atau bawaan yang tertulis di compose.yml) dan hanya tag SHA/local-<sha>.
+  # Dipertahankan: tag yang dipakai kontainer ini, tag baru, PREV_TAG, tag di .env lingkungan LAIN (satu repositori dipakai
+  # bersama), dan KEEP tag terbaru. Tanpa -f: image yang masih dipakai gagal dihapus dengan aman. Tidak pernah prune.
+  local repo keep keep_n=3 override tags tag f other rank=0 removed=0 failed=0 current
+  override=$(env_value QC_KEEP_IMAGES)
+  if [[ $override =~ ^[1-9][0-9]?$ ]]; then keep_n=$override; fi
+  repo=$IMAGE_NAME
+  if [ -z "$repo" ]; then
+    repo=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\${QC_IMAGE:-\([^}]*\)}:.*/\1/p' "$DIR/compose.yml" | head -n1)
+    [ -n "$repo" ] || repo=ghcr.io/rahmadmrhd/qc-app
+  fi
+  if [[ ! $repo =~ ^ghcr\.io/[a-z0-9][a-z0-9._/-]*$ ]]; then
+    log 'pembersihan image dilewati: repositori image tidak valid'
+    return 0
+  fi
+  keep=$'\n'"$TAG"$'\n'
+  [ -z "$PREV_TAG" ] || keep+="$PREV_TAG"$'\n'
+  current=$(docker inspect --format '{{.Config.Image}}' "$CONTAINER" 2>/dev/null || true)
+  [ -z "$current" ] || keep+="${current##*:}"$'\n'
+  for f in "$ROOT"/*/.env; do
+    [ -f "$f" ] || continue
+    other=$(env_value QC_IMAGE_TAG "$f")
+    [ -z "$other" ] || keep+="$other"$'\n'
+  done
+  if ! tags=$(docker image ls "$repo" --format '{{.Tag}}' 2>>"$DEPLOY_LOG"); then
+    log 'pembersihan image dilewati: daftar image gagal dibaca'
+    return 0
+  fi
+  while IFS= read -r tag; do
+    tag=${tag%$'\r'}
+    if [[ ! $tag =~ ^([0-9a-f]{40}|local-[0-9a-f]{7,40})$ ]]; then continue; fi
+    rank=$((rank + 1)) # daftar docker terurut dari yang terbaru dibuat
+    if [ "$rank" -le "$keep_n" ]; then continue; fi
+    case $keep in *$'\n'"$tag"$'\n'*) continue ;; esac
+    if docker image rm "$repo:$tag" >>"$DEPLOY_LOG" 2>&1; then
+      removed=$((removed + 1))
+    else
+      failed=$((failed + 1))
+    fi
+  done <<<"$tags"
+  log "pembersihan image: dihapus=$removed gagal/dilewati=$failed (simpan terbaru=$keep_n)"
+  return 0
+}
+
 # ---- 4. Deploy ----
 log "lingkungan=$ENV_NAME tag=$TAG (sebelumnya: ${PREV_TAG:-tidak ada})"
 # .env/compose.yml yang rusak (kutip tak tertutup, variabel wajib kosong) berhenti DI SINI tanpa mengubah apa pun dan
@@ -223,6 +270,8 @@ if ! smoke_test; then
   log '/api/ping gagal'
   rollback
 fi
+
+cleanup_images || log 'pembersihan image dilewati (galat tak terduga; tidak memengaruhi hasil deploy)'
 
 log "selesai: lingkungan=$ENV_NAME tag=$TAG"
 echo "DEPLOY_OK env=$ENV_NAME tag=$TAG"
