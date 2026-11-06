@@ -65,11 +65,45 @@ describe('pemeriksa isi dump', () => {
     expect(() => run(dump)).not.toThrow();
   });
 
-  test('N3: badan CREATE TABLE tidak bisa dipakai menyembunyikan pernyataan (baris berakhiran ; menutup badan)', () => {
+  test('badan CREATE TABLE ditutup baris berakhiran ";" dan pernyataan sesudahnya tetap diperiksa', () => {
     expect(() => run('CREATE TABLE a (\n  id int);\nUSE mysql;\n-- Dump completed\n')).toThrow();
     expect(() =>
       run('CREATE TABLE a (\n  id int\n) ENGINE=InnoDB;\nUSE mysql;\n-- Dump completed\n'),
     ).toThrow();
+    // Pernyataan di baris penutup yang sama setelah ";" juga ditolak.
+    expect(() => run('CREATE TABLE a (\n  `id` int); USE mysql;\n-- Dump completed\n')).toThrow();
+  });
+
+  test('M1: perintah klien di DALAM badan CREATE TABLE ditolak (tanpa menolak kolom berbacktick bernama sama)', () => {
+    const inBody = (line: string) => `CREATE TABLE a (\n  \`id\` int,\n${line}\n  \`x\` int\n);\n`;
+    for (const line of [
+      '\\! id',
+      '\\. /etc/passwd',
+      '  \\! id',
+      'system id',
+      'SYSTEM id',
+      'source /tmp/x.sql',
+      'connect other',
+      'tee /tmp/out',
+      'delimiter ;;',
+    ]) {
+      expect(() => run(inBody(line)), line).toThrow();
+    }
+    // Kolom berbacktick dengan nama yang sama tetap lolos (N3 tak hidup lagi).
+    expect(() =>
+      run(
+        inBody(
+          '  `source` varchar(64),\n  `system` int,\n  `use` int,\n  `grant` int,\n  `kill` int,',
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  test('M2: sisa risiko yang DITERIMA: pernyataan tersembunyi di baris badan yang tak berakhiran ";" tak terlihat (pertahanan utama = pengguna qc_restore)', () => {
+    // Bukti jujur batas pemeriksa berbasis baris: ini lolos; yang menahannya adalah hak terbatas `qc_restore`.
+    expect(() =>
+      run('CREATE TABLE a (\n  `id` int) ; USE mysql\n);\n-- Dump completed\n'),
+    ).not.toThrow();
   });
 
   test('bentuk berbahaya ditolak (huruf besar/kecil dan backtick tak dibedakan)', () => {

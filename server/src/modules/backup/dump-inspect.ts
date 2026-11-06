@@ -12,9 +12,16 @@
  * menolak cadangan asli saat pemulihan bencana).
  *
  * Aturan pemeriksaan (hanya awalan 300 karakter tiap baris, memori konstan):
- * - Hanya AWAL PERNYATAAN diperiksa. Baris di dalam badan `CREATE TABLE (...)` (definisi kolom/kunci, mis. kolom bernama
- *   `source`/`use`/`system`) dilewati; badan ditutup oleh baris yang diakhiri `;` (pembatas klien), jadi baris sesudahnya
- *   kembali diperiksa sebagai pernyataan. Baris data `INSERT`/`REPLACE` hanya diperiksa sebagai awal pernyataan
+ * - Hanya AWAL PERNYATAAN diperiksa. Baris di dalam badan `CREATE TABLE (...)` (definisi kolom/kunci; kolom selalu
+ *   berbacktick, jadi kolom bernama `source`/`use`/`system` lolos) TIDAK diperlakukan sebagai pernyataan, tetapi tetap
+ *   ditolak bila berawalan "\\" atau berupa perintah klien tanpa backtick (`source x`, `system x`, `connect x`, `tee x`,
+ *   `delimiter x`). Badan ditutup oleh baris yang diakhiri `;` (pembatas klien); pernyataan yang menyusul di baris
+ *   penutup itu dan baris sesudahnya kembali diperiksa.
+ * - SISA RISIKO YANG DITERIMA: pernyataan yang disembunyikan pada baris badan yang TIDAK berakhiran `;` (mis.
+ *   `id int) ; USE mysql` lalu baris `);`) tidak terlihat. Pemeriksa berbasis baris tidak dapat menutupnya tanpa
+ *   mengurai SQL penuh (dan memeriksa tiap baris badan menolak dump asli, mis. COMMENT berisi `; use`); pertahanan
+ *   utamanya pengguna `qc_restore` berhak terbatas.
+ * - Baris data `INSERT`/`REPLACE` hanya diperiksa sebagai awal pernyataan
  *   (`mariadb-dump` meloloskan baris baru dalam data sebagai `\n`, jadi data tak dapat meniru awal pernyataan), tidak
  *   ditelusuri isinya.
  * - Huruf besar/kecil tak dibedakan; backtick diperlakukan sebagai pemisah; komentar bersyarat `/*!NNN ..*\/` dibuka.
@@ -54,6 +61,9 @@ const QUALIFIED_WRITE =
 const DATA_STATEMENT = /^(?:insert|replace)\b/;
 const OPENS_TABLE_BODY = /^create\s+(?:or\s+replace\s+)?(?:temporary\s+)?table\b/;
 
+/** Perintah klien (bukan SQL) tanpa backtick; di badan tabel, nama kolom selalu berbacktick sehingga tak bentrok. */
+const CLIENT_COMMAND = /^(?:system|source|connect|tee|notee|delimiter)\s/i;
+
 /** Keadaan antar baris (badan CREATE TABLE yang sedang dilewati). */
 export interface InspectState {
   inTableBody: boolean;
@@ -74,8 +84,22 @@ export function inspectDumpLine(
   const trimmed = rawLine.replace(/\r$/, '').trim();
   if (trimmed === '' || SANDBOX_LINE.test(trimmed)) return;
   if (state.inTableBody) {
-    // Definisi kolom/kunci: bukan pernyataan. Pembatas klien (`;` di akhir baris) menutup badan.
-    if (trimmed.endsWith(';')) state.inTableBody = false;
+    // Definisi kolom/kunci: bukan pernyataan (kolom selalu diawali backtick, jadi kolom bernama `source`/`use`/`system`
+    // lolos). Perintah klien yang BUKAN SQL tetap ditolak di sini: baris berawalan "\" dan kata perintah klien tanpa
+    // backtick (`source x`, `system x`, `connect x`, `tee x`). Pembatas klien (`;` di akhir baris) menutup badan.
+    if (trimmed.startsWith('\\')) {
+      throw new Error('baris berawalan "\\" (perintah klien mariadb)');
+    }
+    if (CLIENT_COMMAND.test(trimmed)) {
+      throw new Error(`perintah klien di dalam badan tabel: ${trimmed.slice(0, 40)}`);
+    }
+    if (trimmed.endsWith(';')) {
+      // Baris penutup: pernyataan lain di baris yang sama setelah `;` tetap diperiksa.
+      if (TRAILING_STATEMENT.test(trimmed.toLowerCase())) {
+        throw new Error('perintah/pernyataan terlarang di tengah baris');
+      }
+      state.inTableBody = false;
+    }
     return;
   }
   if (trimmed.startsWith('\\')) {
