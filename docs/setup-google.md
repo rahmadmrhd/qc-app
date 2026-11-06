@@ -102,6 +102,24 @@ CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), MENAMPILKAN nama da
 
 Pindah ke email kantor nanti = mengganti nilai-nilai ini di `.env` lalu `docker compose up -d`; tidak ada perubahan kode. Bila `SMTP_HOST`/`SMTP_FROM`/`ALERT_TO` kosong atau tidak valid (mis. masih `ISI_OLEH_PEMILIK`), peringatan dinonaktifkan dan satu baris log menyebutnya; aplikasi tetap berjalan. Keterbatasan yang diterima pemilik (2026-11-06): peringatan berjalan DI server, jadi tidak berbunyi bila VPS atau `qc-app` mati; dead-man's switch eksternal tidak dikerjakan (dapat ditambahkan kemudian).
 
+### S9. Dump Sheets untuk impor data (T33)
+CLI `scripts/migrate/dump-sheets.ts` membaca spreadsheet data tunggal lewat klien Google (HANYA baca; sheet `export_*` tak pernah disentuh) dan menulis `dump.json`, masukan `import-sheets.ts` dan `verify-import.ts` (urutan lengkap: `docs/superpowers/runbooks/2026-11-cutover-vps.md`). Dijalankan **pemilik dari mesinnya sendiri**, dengan berkas kunci service account lokal (jangan disalin ke repositori, VPS, atau chat).
+
+Prasyarat: spreadsheet data tunggal sudah dibagikan ke service account sebagai **Editor** (S3 langkah 4; Editor dipakai ekspor job, dump hanya membaca) dan id-nya diketahui (bagian `/d/<ID>/` pada URL spreadsheet).
+
+```bash
+# PowerShell: $env:GOOGLE_SA_KEY_FILE = 'D:\rahasia\kunci.json'; $env:GOOGLE_SPREADSHEET_ID = '<id>'
+GOOGLE_SA_KEY_FILE=/jalur/kunci.json GOOGLE_SPREADSHEET_ID=<id> \
+  bun run migrate:dump --out /jalur/di-luar-repo/dump.json
+# atau tanpa env: bun run migrate:dump --out <berkas> --spreadsheet <id> --key-file <jalur kunci>
+```
+- `--out` wajib; berkas yang sudah ada TIDAK ditimpa tanpa `--force`. Folder tujuan dibuat (izin 0700) bila belum ada, berkas ditulis atomik (berkas sementara lalu rename) dengan izin 0600; kegagalan di tengah tidak meninggalkan `dump.json` sebagian. Simpan di luar repositori (`.gitignore` mengabaikan `dump.json` dan `*.dump.json` sebagai jaring pengaman, bukan izin untuk menaruhnya di repo): isinya data pengguna.
+- Yang dibaca: semua sheet yang dipetakan `scripts/migrate/schema-map.ts` (tabel yang diimpor DAN yang dibuang, karena gerbang pembuangan butuh isinya) dan sheet penghitung `sync_state`/`counters` bila ada. Sheet lain tak ikut.
+- Header tiap sheet divalidasi terhadap `schema-map` (kolom hilang, ganda, atau tak dikenal; kolom tanpa nama yang berisi data; sheet hilang atau tanpa header). Semua masalah dicetak sekaligus per sheet dan dump DIBATALKAN (tanpa berkas). Perbaiki di spreadsheet lalu ulangi; ini sengaja lebih ketat daripada peringatan `import-sheets.ts`.
+- Konsol hanya mencetak jumlah baris per sheet, tidak pernah isi baris, token, atau isi berkas kunci. Kode keluar 0 berhasil, 1 gagal, 2 salah pakai.
+- Sel dibaca sebagai nilai mentah lalu diubah ke teks (tanggal yang disimpan sebagai teks ISO oleh aplikasi lama utuh; sel yang diubah manual menjadi tanggal Sheets muncul sebagai angka serial dan dilaporkan `import-sheets.ts` sebagai tanggal tak terbaca: ubah kembali menjadi teks di Sheets).
+- Galat `Spreadsheet ... belum dibagikan`: lihat Troubleshooting di bawah.
+
 ### Troubleshooting service account
 | Gejala | Penyebab & solusi |
 |---|---|
