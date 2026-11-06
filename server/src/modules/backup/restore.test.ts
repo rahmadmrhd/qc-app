@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createFakeBridge, type FakeBridge } from '@server-test/fake-bridge';
 import {
   parseRestoreArgs,
+  purgeStaleRestoreDirs,
   RESTORE_USAGE,
   type RestoreDb,
   type RestoreDeps,
   RestoreError,
+  resolveBackupFolderId,
   restoreBackup,
 } from './restore';
 
@@ -261,7 +263,7 @@ describe('restoreBackup', () => {
     await seed(gzipSync('USE `qc_dev`;\nCREATE TABLE a (id int);\n-- Dump completed\n'));
     await expect(
       restoreBackup(deps(fakeImporter(state)), { targetSchema: 'qc_restore_check' }),
-    ).rejects.toThrow(/CREATE DATABASE\/USE/);
+    ).rejects.toThrow(/isi yang ditolak/);
     expect(state.created).toEqual([]);
   });
 
@@ -341,5 +343,159 @@ describe('parseRestoreArgs', () => {
     expect(parseRestoreArgs(['--target', '--drop-after'])).toBeNull();
     expect(parseRestoreArgs(['--target', 'x', '--aneh'])).toBeNull();
     expect(RESTORE_USAGE).toContain('--target');
+  });
+});
+
+describe('restoreBackup: pengerasan (M2, M9)', () => {
+  test('bentuk berbahaya apa pun ditolak sebelum skema dibuat (USE tanpa backtick, perintah klien, tulisan ke skema lain)', async () => {
+    for (const line of [
+      'USE qc_dev;',
+      '\\! cat /etc/passwd',
+      'system id',
+      'DROP DATABASE qc_dev;',
+      "GRANT ALL ON *.* TO 'x'@'%';",
+      'INSERT INTO mysql.user VALUES (1);',
+    ]) {
+      bridge = createFakeBridge();
+      state.created = [];
+      await seed(
+        gzipSync(`CREATE TABLE a (id int);
+${line}
+-- Dump completed
+`),
+      );
+      const importer = fakeImporter(state);
+      await expect(
+        restoreBackup(deps(importer), { targetSchema: 'qc_restore_check' }),
+        line,
+      ).rejects.toThrow(/isi yang ditolak/);
+      expect(state.created, line).toEqual([]);
+      expect(importer.imported).toEqual([]);
+    }
+  });
+
+  test('dump asli MariaDB 11 (baris sandbox dan komentar bersyarat) tetap lolos', async () => {
+    await seed(
+      gzipSync(
+        [
+          '/*M!999999\\- enable the sandbox mode */',
+          '/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;',
+          SQL,
+        ].join('\n'),
+      ),
+    );
+    const report = await restoreBackup(deps(fakeImporter(state)), {
+      targetSchema: 'qc_restore_check',
+    });
+    expect(report.tables).toHaveLength(2);
+  });
+
+  test('announce dipanggil dengan nama dan tanggal cadangan SEBELUM impor', async () => {
+    await seed(gzipSync(SQL));
+    const order: string[] = [];
+    const importer = fakeImporter(state);
+    await restoreBackup(
+      deps(
+        {
+          ...importer,
+          importSql: async (...args) => {
+            order.push('impor');
+            await importer.importSql(...args);
+          },
+        },
+        { announce: (backup) => order.push(`announce:${backup.name}:${backup.date}`) },
+      ),
+      { targetSchema: 'qc_restore_check' },
+    );
+    expect(order).toEqual([`announce:${NAME}:20260115`, 'impor']);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'berkas kerja pemulihan hanya dapat dibaca pemilik (0600) dan folder 0700',
+    async () => {
+      await seed(gzipSync(SQL));
+      let mode = 0;
+      let dirMode = 0;
+      const importer = fakeImporter(state);
+      await restoreBackup(
+        deps({
+          ...importer,
+          importSql: async (sqlPath, schema) => {
+            mode = (await stat(sqlPath)).mode & 0o777;
+            dirMode = (await stat(join(dir, 'kerja'))).mode & 0o777;
+            await importer.importSql(sqlPath, schema);
+          },
+        }),
+        { targetSchema: 'qc_restore_check' },
+      );
+      expect(mode).toBe(0o600);
+      expect(dirMode).toBe(0o700);
+    },
+  );
+
+  test('purgeStaleRestoreDirs membuang job-* lama saja', async () => {
+    const root = join(dir, 'restore-tmp');
+    await mkdir(join(root, 'job-abc'), { recursive: true });
+    await mkdir(join(root, 'job-def'), { recursive: true });
+    await mkdir(join(root, 'lain'), { recursive: true });
+    expect(await purgeStaleRestoreDirs(root)).toBe(2);
+    expect(await readdir(root)).toEqual(['lain']);
+    expect(await purgeStaleRestoreDirs(join(dir, 'tidak-ada'))).toBe(0);
+  });
+});
+
+describe('resolveBackupFolderId (I1)', () => {
+  const ID_FLAG = 'folderFlag1234567';
+  const ID_ENV = 'folderEnv12345678';
+  const ID_SETTING = 'folderSetting1234';
+  const failing = async (): Promise<string> => {
+    throw new Error("Table 'mysql.settings' doesn't exist");
+  };
+
+  test('urutan: --folder-id menang atas BACKUP_FOLDER_ID, yang menang atas settings; settings tak dibaca bila ada yang di atasnya', async () => {
+    let reads = 0;
+    const readSetting = async () => {
+      reads += 1;
+      return ID_SETTING;
+    };
+    expect(await resolveBackupFolderId({ flag: ID_FLAG, configured: ID_ENV, readSetting })).toBe(
+      ID_FLAG,
+    );
+    expect(await resolveBackupFolderId({ configured: ID_ENV, readSetting })).toBe(ID_ENV);
+    expect(reads).toBe(0);
+    expect(await resolveBackupFolderId({ configured: '', readSetting })).toBe(ID_SETTING);
+    expect(reads).toBe(1);
+  });
+
+  test('--folder-id divalidasi sebagai id Drive', async () => {
+    for (const bad of ['../x', 'a b', 'x?alt=media', 'pendek']) {
+      await expect(
+        resolveBackupFolderId({ flag: bad, configured: '', readSetting: async () => '' }),
+      ).rejects.toThrow(/--folder-id/);
+    }
+  });
+
+  test('skema aplikasi tak terbaca dan tak ada sumber lain: galat jelas yang menyebut --folder-id; flag tetap berfungsi', async () => {
+    await expect(resolveBackupFolderId({ configured: '', readSetting: failing })).rejects.toThrow(
+      /--folder-id/,
+    );
+    expect(
+      await resolveBackupFolderId({ flag: ID_FLAG, configured: '', readSetting: failing }),
+    ).toBe(ID_FLAG);
+  });
+
+  test('settings kosong dan tak ada sumber lain: galat menyebut --folder-id', async () => {
+    await expect(
+      resolveBackupFolderId({ configured: '', readSetting: async () => '' }),
+    ).rejects.toThrow(/--folder-id/);
+  });
+
+  test('parseRestoreArgs menerima --folder-id', () => {
+    expect(parseRestoreArgs(['--target', 'x', '--folder-id', ID_FLAG])).toEqual({
+      targetSchema: 'x',
+      dropAfter: false,
+      folderId: ID_FLAG,
+    });
+    expect(RESTORE_USAGE).toContain('--folder-id');
   });
 });

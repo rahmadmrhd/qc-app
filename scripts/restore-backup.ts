@@ -13,16 +13,19 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadConfig } from '../server/src/config';
 import { createDb } from '../server/src/core/db';
+import { getSetting } from '../server/src/core/settings';
 import { parseDatabaseUrl } from '../server/src/modules/backup/dump';
 import {
   createMariadbImporter,
   createRestoreDb,
   parseRestoreArgs,
+  purgeStaleRestoreDirs,
   RESTORE_USAGE,
   RestoreError,
+  resolveBackupFolderId,
   restoreBackup,
 } from '../server/src/modules/backup/restore';
-import { backupFolderIdOf } from '../server/src/modules/backup/upload';
+import { BACKUP_FOLDER_SETTING } from '../server/src/modules/backup/upload';
 import { envFromConfig } from '../server/src/server';
 
 async function main(): Promise<number> {
@@ -39,16 +42,25 @@ async function main(): Promise<number> {
   const env = envFromConfig(config, db);
   const workRoot = join(config.backupLocalDir, 'restore-tmp');
   try {
-    await mkdir(workRoot, { recursive: true });
+    // Sumber id folder: --folder-id, BACKUP_FOLDER_ID, lalu settings SKEMA APLIKASI (koneksi DATABASE_URL, bukan
+    // URL admin yang berskema lain). Dibaca SEBELUM folder kerja dibuat.
+    const folderId = await resolveBackupFolderId({
+      ...(args.folderId === undefined ? {} : { flag: args.folderId }),
+      configured: config.backupFolderId,
+      readSetting: async () => {
+        const appDb = createDb({ url: config.databaseUrl, connectionLimit: 1 });
+        try {
+          return await getSetting({ ...env, DB: appDb }, BACKUP_FOLDER_SETTING);
+        } finally {
+          await appDb.close();
+        }
+      },
+    });
+    await mkdir(workRoot, { recursive: true, mode: 0o700 });
+    // Sisa proses yang terbunuh (berisi SQL seluruh basis data) dibuang saat mulai.
+    await purgeStaleRestoreDirs(workRoot);
     const workDir = await mkdtemp(join(workRoot, 'job-'));
     try {
-      const folderId = await backupFolderIdOf(env);
-      if (folderId === '') {
-        console.error(
-          'Folder cadangan belum dikonfigurasi (BACKUP_FOLDER_ID) dan belum pernah dibuat.',
-        );
-        return 1;
-      }
       const target = parseDatabaseUrl(adminUrl);
       const report = await restoreBackup(
         {
@@ -58,6 +70,10 @@ async function main(): Promise<number> {
           db: createRestoreDb(db),
           importSql: createMariadbImporter(target),
           protectedSchemas: [parseDatabaseUrl(config.databaseUrl).database],
+          announce: (backup) =>
+            console.log(
+              `Memulihkan cadangan ${backup.name} (tanggal ${backup.date}, ${backup.size} byte, id ${backup.driveId}) ke ${args.targetSchema}`,
+            ),
         },
         args,
       );

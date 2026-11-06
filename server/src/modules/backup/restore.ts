@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import type { BridgeClient, DriveFolderEntry } from '@server/core/bridge-client';
 import type { Db } from '@server/core/db';
+import { isDriveId } from '@server/core/google/settings';
 import { redactSecrets } from '@server/core/redact';
 import { clientArgs, type DumpTarget } from './dump';
+import { createDumpInspector } from './dump-inspect';
+import { parseBackupName } from './names';
 import { listAllEntriesVia, recognizedBackups } from './upload';
 
 const SCHEMA_PATTERN = /^[A-Za-z0-9_]{1,64}$/;
@@ -41,6 +44,8 @@ export interface RestoreDeps {
   importSql(sqlPath: string, schema: string): Promise<void>;
   /** Skema yang tidak boleh menjadi target (skema aplikasi yang sedang dipakai). */
   protectedSchemas?: string[];
+  /** Dipanggil setelah cadangan terpilih dan SEBELUM unduh/impor (nama dan tanggal cadangan ditampilkan operator). */
+  announce?(backup: { name: string; date: string; size: number; driveId: string }): void;
 }
 
 export interface RestoreOptions {
@@ -95,41 +100,60 @@ async function downloadTo(body: ReadableStream<Uint8Array>, path: string): Promi
   await pipeline(
     Readable.fromWeb(body as import('node:stream/web').ReadableStream),
     hasher,
-    createWriteStream(path),
+    createWriteStream(path, { mode: 0o600 }),
   );
   return { md5: md5.digest('hex'), sha256: sha256.digest('hex'), size };
 }
 
 /**
  * Gunzip PENUH ke `sqlPath` (gzip yang terpotong atau rusak baru ketahuan di ujung aliran, karena itu seluruhnya
- * dibuka SEBELUM apa pun diimpor). Memeriksa baris penutup "Dump completed" dan menolak SQL yang memuat
- * `CREATE DATABASE`/`USE` (akan menimpa skema lain, bukan skema target).
+ * dibuka SEBELUM apa pun diimpor). Memeriksa baris penutup "Dump completed" dan isi dump (`dump-inspect.ts`: tolak
+ * USE/CREATE|DROP DATABASE/GRANT/perintah klien/tulisan ke skema lain; huruf besar/kecil dan backtick tak dibedakan).
  */
-async function gunzipTo(gzPath: string, sqlPath: string): Promise<void> {
+async function gunzipTo(gzPath: string, sqlPath: string, targetSchema: string): Promise<void> {
   let tail = '';
-  let foreignDatabase = false;
+  const lines = createDumpInspector(targetSchema);
   const inspector = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
-      const window = tail + chunk.toString('latin1');
-      if (/^(CREATE DATABASE|USE `)/im.test(window)) foreignDatabase = true;
-      tail = window.slice(-TAIL_BYTES);
+      const text = chunk.toString('latin1');
+      try {
+        lines.feed(text);
+      } catch (error) {
+        callback(
+          new RestoreError(
+            `Dump memuat isi yang ditolak (${(error as Error).message}); tidak ada yang diimpor`,
+          ),
+        );
+        return;
+      }
+      tail = (tail + text).slice(-TAIL_BYTES);
       callback(null, chunk);
     },
   });
   try {
-    await pipeline(createReadStream(gzPath), createGunzip(), inspector, createWriteStream(sqlPath));
-  } catch {
+    await pipeline(
+      createReadStream(gzPath),
+      createGunzip(),
+      inspector,
+      createWriteStream(sqlPath, { mode: 0o600 }),
+    );
+  } catch (error) {
+    if (error instanceof RestoreError) throw error;
     throw new RestoreError(
       'Berkas cadangan rusak atau terpotong (gunzip gagal); tidak ada yang diimpor',
+    );
+  }
+  try {
+    lines.end();
+  } catch (error) {
+    throw new RestoreError(
+      `Dump memuat isi yang ditolak (${(error as Error).message}); tidak ada yang diimpor`,
     );
   }
   if (!/-- Dump completed/.test(tail)) {
     throw new RestoreError(
       'Dump di dalam cadangan tidak lengkap (baris penutup tidak ada); tidak ada yang diimpor',
     );
-  }
-  if (foreignDatabase) {
-    throw new RestoreError('Dump memuat CREATE DATABASE/USE dan dapat menimpa skema lain; ditolak');
   }
 }
 
@@ -178,7 +202,14 @@ export async function restoreBackup(
     );
   }
 
-  await mkdir(deps.workDir, { recursive: true });
+  deps.announce?.({
+    name: entry.name,
+    date: parseBackupName(entry.name)?.date ?? '',
+    size: entry.size,
+    driveId: entry.id,
+  });
+
+  await mkdir(deps.workDir, { recursive: true, mode: 0o700 });
   const base = join(deps.workDir, entry.name);
   const gzPath = `${base}.download`;
   const sqlPath = `${base}.sql`;
@@ -196,7 +227,7 @@ export async function restoreBackup(
         'SHA-256 berkas unduhan tidak sama dengan yang tercatat saat unggah; tidak ada yang diimpor',
       );
     }
-    await gunzipTo(gzPath, sqlPath);
+    await gunzipTo(gzPath, sqlPath, targetSchema);
 
     if (await deps.db.schemaExists(targetSchema)) {
       if ((await deps.db.tableNames(targetSchema)).length > 0) {
@@ -326,14 +357,18 @@ export function createMariadbImporter(target: DumpTarget) {
 export interface RestoreArgs {
   targetSchema: string;
   fileId?: string;
+  /** Id folder cadangan di Drive (sumber pertama; lihat `resolveBackupFolderId`). */
+  folderId?: string;
   compareWith?: string;
   dropAfter: boolean;
 }
 
 export const RESTORE_USAGE = `Pemulihan cadangan dari Drive ke skema BARU.
-  bun scripts/restore-backup.ts --target <skema> [--file-id <idDrive>] [--compare-with <skema>] [--drop-after]
+  bun scripts/restore-backup.ts --target <skema> [--file-id <idDrive>] [--folder-id <idFolder>] [--compare-with <skema>] [--drop-after]
     --target        skema tujuan (harus belum ada atau kosong; bukan skema aplikasi)
     --file-id       id berkas Drive; tanpa ini dipakai cadangan terbaru
+    --folder-id     id folder cadangan di Drive; tanpa ini dipakai BACKUP_FOLDER_ID, lalu tabel settings skema aplikasi
+                    (skenario bencana: skema aplikasi hilang, beri --folder-id)
     --compare-with  bandingkan jumlah baris per tabel dengan skema ini (kode keluar 1 bila beda)
     --drop-after    hapus skema target setelah selesai (uji pemulihan)
   Env opsional RESTORE_DATABASE_URL: URL mysql:// dengan hak CREATE/DROP DATABASE (bawaan DATABASE_URL).`;
@@ -346,7 +381,7 @@ export function parseRestoreArgs(argv: string[]): RestoreArgs | null {
     const arg = argv[index] as string;
     if (arg === '--drop-after') {
       dropAfter = true;
-    } else if (['--target', '--file-id', '--compare-with'].includes(arg)) {
+    } else if (['--target', '--file-id', '--folder-id', '--compare-with'].includes(arg)) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) return null;
       values[arg] = value;
@@ -361,6 +396,52 @@ export function parseRestoreArgs(argv: string[]): RestoreArgs | null {
     targetSchema,
     dropAfter,
     ...(values['--file-id'] === undefined ? {} : { fileId: values['--file-id'] }),
+    ...(values['--folder-id'] === undefined ? {} : { folderId: values['--folder-id'] }),
     ...(values['--compare-with'] === undefined ? {} : { compareWith: values['--compare-with'] }),
   };
+}
+
+/**
+ * Id folder cadangan untuk CLI pemulihan, berurutan: `--folder-id` (divalidasi), lalu `BACKUP_FOLDER_ID` di `.env`,
+ * lalu tabel `settings` SKEMA APLIKASI (`readSetting`; BUKAN koneksi admin, yang berskema lain). Pada bencana skema
+ * aplikasi bisa hilang: tanpa sumber lain galat menyuruh memakai `--folder-id`.
+ */
+export async function resolveBackupFolderId(sources: {
+  flag?: string;
+  configured: string;
+  readSetting: () => Promise<string>;
+}): Promise<string> {
+  if (sources.flag !== undefined) {
+    if (!isDriveId(sources.flag))
+      throw new RestoreError('--folder-id bukan id Google Drive yang valid');
+    return sources.flag;
+  }
+  if (sources.configured !== '') return sources.configured;
+  let stored = '';
+  try {
+    stored = await sources.readSetting();
+  } catch {
+    throw new RestoreError(
+      'Folder cadangan tidak diketahui: BACKUP_FOLDER_ID kosong dan tabel settings skema aplikasi tidak terbaca. Beri --folder-id <idFolderDrive>.',
+    );
+  }
+  if (stored === '') {
+    throw new RestoreError(
+      'Folder cadangan belum dikonfigurasi (BACKUP_FOLDER_ID kosong dan belum tercatat di settings). Beri --folder-id <idFolderDrive>.',
+    );
+  }
+  return stored;
+}
+
+/** Membuang folder kerja pemulihan lama (`job-*`) yang tertinggal proses yang terbunuh (berisi SQL seluruh basis data). */
+export async function purgeStaleRestoreDirs(root: string): Promise<number> {
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return 0;
+  }
+  const stale = names.filter((name) => name.startsWith('job-'));
+  for (const name of stale) await rm(join(root, name), { recursive: true, force: true });
+  return stale.length;
 }
