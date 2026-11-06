@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 // Tiap tes memulai proses bash (lambat di Windows); rollback menjalankan beberapa subproses.
 setDefaultTimeout(30_000);
@@ -599,5 +599,33 @@ describe('deploy.sh: pembersihan image lama', () => {
     expect(result.code).toBe(0);
     expect(result.out).toContain('rencana pembersihan');
     expect(calls()).toBe('');
+  });
+});
+
+describe('deploy.sh: folder instalasi', () => {
+  test('ROOT = folder tempat skrip berada, tak bergantung pada HOME atau direktori kerja', async () => {
+    const install = mkdtempSync(join(tmpdir(), 'qc-deploy-root-'));
+    const elsewhere = mkdtempSync(join(tmpdir(), 'qc-deploy-cwd-'));
+    try {
+      writeFileSync(join(install, 'deploy.sh'), readFileSync(SCRIPT, 'utf8'));
+      const proc = Bun.spawn(['bash', posix(join(install, 'deploy.sh')), '--dry-run'], {
+        cwd: elsewhere,
+        env: {
+          ...process.env,
+          HOME: posix(elsewhere),
+          SSH_ORIGINAL_COMMAND: `deploy staging ${SHA_NEW}`,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const out = `${await new Response(proc.stdout).text()}${await new Response(proc.stderr).text()}`;
+      expect(await proc.exited).toBe(0);
+      const reported = /root=(.*)$/m.exec(out)?.[1]?.trim() ?? '';
+      expect(reported.endsWith(basename(install))).toBe(true);
+      expect(reported).not.toContain('/root/apps/qc-app');
+    } finally {
+      rmSync(install, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 });

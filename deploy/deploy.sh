@@ -25,7 +25,9 @@
 set -euo pipefail
 umask 077
 
-ROOT=/root/apps/qc-app
+# Folder instalasi = folder tempat skrip ini berada (jalurnya sudah tertulis mutlak di `command=` authorized_keys), bukan $HOME
+# atau nilai lingkungan: tak bergantung pada pengguna dan bisa dipindah. `--root` hanya untuk tes.
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 ONLY=''
 DRY_RUN=0
 WAIT_SECONDS=150
