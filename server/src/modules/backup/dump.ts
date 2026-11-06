@@ -57,7 +57,15 @@ export function parseMysqlUrl(
   } catch {
     throw new Error(`${name} bukan URL yang valid`);
   }
-  const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  // Persen-enkode rusak (mis. "%zz") melempar URIError tanpa nama variabel: ganti dengan pesan tanpa isi URL.
+  const decode = (part: string): string => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      throw new Error(`${name} berisi persen-enkode yang rusak (mis. "%" tanpa dua digit heksa)`);
+    }
+  };
+  const database = decode(url.pathname.replace(/^\//, ''));
   if (
     url.protocol !== 'mysql:' ||
     url.hostname === '' ||
@@ -70,8 +78,8 @@ export function parseMysqlUrl(
   return {
     host: url.hostname,
     port: url.port === '' ? 3306 : Number(url.port),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
+    user: decode(url.username),
+    password: decode(url.password),
     database,
   };
 }

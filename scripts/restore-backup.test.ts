@@ -79,4 +79,12 @@ describe('RESTORE_DATABASE_URL (N1)', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('RESTORE_DATABASE_URL bukan URL yang valid');
   });
+
+  test('M4: persen-enkode rusak di sandi: galat menyebut RESTORE_DATABASE_URL, tanpa sandi dan tanpa "URI error"', async () => {
+    const result = await runWith(`mysql://qc_restore:${SENTINEL}%zz@127.0.0.1:1/`);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('RESTORE_DATABASE_URL berisi persen-enkode yang rusak');
+    expect(result.stderr).not.toContain(SENTINEL);
+    expect(result.stderr).not.toMatch(/URI error/i);
+  });
 });

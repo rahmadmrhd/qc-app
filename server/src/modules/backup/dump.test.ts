@@ -252,4 +252,30 @@ describe('parseMysqlUrl (URL pemulihan tingkat server, N1)', () => {
       expect(message).not.toMatch(/(^|[^_])DATABASE_URL/);
     }
   });
+
+  test('M4: persen-enkode rusak di sandi/pengguna/jalur memberi pesan bernama variabel yang benar, tanpa URL/sandi dan bukan "URI error"', () => {
+    const bads = [
+      `mysql://u:${SENTINEL}%zz@h:3306/`,
+      `mysql://u%:${SENTINEL}@h:3306/`,
+      `mysql://u:${SENTINEL}@h:3306/%E0%A4%A`,
+    ];
+    for (const bad of bads) {
+      for (const name of ['RESTORE_DATABASE_URL', 'DATABASE_URL']) {
+        let message = '';
+        try {
+          parseMysqlUrl(bad, { name, requireDatabase: false });
+        } catch (error) {
+          message = (error as Error).message;
+        }
+        expect(message, `${name} ${bad}`).toContain(
+          name === 'DATABASE_URL' ? 'DATABASE_URL' : 'RESTORE_DATABASE_URL',
+        );
+        expect(message).toContain('persen-enkode');
+        expect(message).not.toMatch(/URI/i);
+        expect(message).not.toContain(SENTINEL);
+        expect(message).not.toContain('%zz');
+        if (name === 'RESTORE_DATABASE_URL') expect(message).not.toMatch(/(^|[^_])DATABASE_URL/);
+      }
+    }
+  });
 });
