@@ -1,6 +1,6 @@
 # QC App — panduan untuk agen
 
-Aplikasi Quality Control: frontend React + TanStack; backend Bun + Hono + MariaDB di `server/` (hasil port dari Cloudflare Worker; `Dockerfile` dan `deploy/compose.yml` ada sejak T26; image sudah dibangun dengan pembangun klasik dan jalan di staging VPS sejak T27, tetapi BuildKit, dorong ke GHCR, dan workflow CI belum pernah berjalan nyata; Google Drive/Sheets diakses LANGSUNG lewat service account sejak T30a, jembatan Apps Script tidak lagi dipakai) dan aplikasi Google Apps Script (GAS) + Google Sheets lama di `gas/` yang masih ada sampai cutover.
+Aplikasi Quality Control: frontend React + TanStack; backend Bun + Hono + MariaDB di `server/` (hasil port dari Cloudflare Worker; `Dockerfile` dan `deploy/compose.yml` ada sejak T26; CI/CD nyata berjalan sejak 2026-11-07 (BuildKit, GHCR, deploy SSH, rollback otomatis, `pull_request_target`); production `qc.rhd.my.id` live sejak cutover 2026-11-07; Google Drive/Sheets diakses LANGSUNG lewat service account sejak T30a, jembatan Apps Script tidak lagi dipakai) dan aplikasi Google Apps Script (GAS) + Google Sheets lama di `gas/` yang tinggal sampai dipensiunkan (T35); kodenya aman di tag `gas-legacy`.
 PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 
 ## Perintah
@@ -8,7 +8,7 @@ PRD: `docs/prd/`. Rencana implementasi: `docs/superpowers/plans/`.
 - `bun run db:tunnel` — terowongan SSH ke MariaDB dev/tes di VPS; wajib hidup untuk `dev`, `db:seed`, dan tes server.
 - `bun run check` — typecheck + Biome + semua test. Butuh tunnel hidup (tanpa itu GAGAL, bukan dilewati). Tes server (`bun run --cwd server test`) dibagi ke 3 proses `bun test` paralel (bawaan; `QC_TEST_SHARDS`, maks. 4 karena `max_connections` VPS 40), tiap berkas memakai skema MariaDB sementaranya sendiri; satu berkas/folder: `bun run --cwd server test src/modules/sync`. Wajib hijau sebelum commit.
 - `bun run build` — build web (Vite, potongan JS/CSS dengan lazy load per rute) ke `server/dist` (berkas statis yang dilayani server Bun dengan fallback SPA), lalu `verify-dist`: `index.html` ada, tanpa kode mock, dan tiap potongan JS ≤ 600 KB gzip. Aplikasi Apps Script lama: `bun run build:gas` (`gas/dist` + `verify-gas-dist`); jembatan: `bun run build:bridge`.
-- `bun run push` / `bun run deploy` — push ke Apps Script / perbarui deployment tetap (`gas/deployment.json`).
+- `bun run push` / `bun run deploy` — push ke Apps Script / perbarui deployment tetap (`gas/deployment.json`). **JANGAN dijalankan sekarang**: deployment `/exec` itu kini milik halaman pengalih ke `qc.rhd.my.id` yang diunggah lewat `clasp` lokal di luar repo (spek §19 butir 14); perintah ini akan menimpanya dengan aplikasi GAS lama.
 - Bun terpasang di `~/.bun/bin`; bila `bun` tidak ditemukan di shell, tambahkan ke PATH.
 
 ## Struktur

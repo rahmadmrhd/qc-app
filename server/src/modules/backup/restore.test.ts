@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createFakeBridge, type FakeBridge } from '@server-test/fake-bridge';
-import { parseMysqlUrl } from './dump';
+import { clientArgs, parseMysqlUrl } from './dump';
 import {
   importArgs,
   parseRestoreArgs,
@@ -472,6 +472,17 @@ describe('importArgs (N1)', () => {
     expect(args).toContain('--host=qc-db');
     expect(args.join(' ')).not.toContain('rahasia');
     expect(args).not.toContain('');
+  });
+
+  test('klien impor memakai --binary-mode sebelum skema (perintah klien tak diproses); mariadb-dump tidak', () => {
+    const target = parseMysqlUrl('mysql://qc_restore:rahasia@qc-db:3306/', {
+      name: 'RESTORE_DATABASE_URL',
+      requireDatabase: false,
+    });
+    const args = importArgs(target, 'qc_restore_check');
+    expect(args).toContain('--binary-mode');
+    expect(args.indexOf('--binary-mode')).toBeLessThan(args.indexOf('qc_restore_check'));
+    expect(clientArgs(target)).not.toContain('--binary-mode');
   });
 });
 

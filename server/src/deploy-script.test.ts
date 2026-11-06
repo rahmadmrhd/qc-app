@@ -17,6 +17,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -458,6 +459,17 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     expect(result.code).toBe(1);
     expect(calls()).not.toContain(' up ');
     expect(tagIn('staging')).toBe('tag-lama');
+  });
+
+  test('pull gagal tanpa tag sebelumnya: .env dipulihkan APA ADANYA (tanpa QC_IMAGE_TAG baru), kode 1, salinan sementara dihapus', async () => {
+    const original = envFile('', null);
+    writeFileSync(join(root, 'staging', '.env'), original);
+    writeFileSync(join(state, 'pull_fail'), '1');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(1);
+    expect(readFileSync(join(root, 'staging', '.env'), 'utf8')).toBe(original);
+    expect(readdirSync(join(root, 'staging')).filter((n) => n.startsWith('.env.'))).toEqual([]);
+    expect(calls()).not.toContain(' up ');
   });
 
   test('tanpa tag sebelumnya dan gagal: kode 4 (tidak ada yang bisa dikembalikan), pesan jelas', async () => {
