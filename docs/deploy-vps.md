@@ -101,18 +101,20 @@ mkdir -p /root/apps/qc-app/build && tar -xzf /root/apps/qc-app/qc-src.tgz -C /ro
 nice -n 19 ionice -c3 docker build -t qc-app:local-<sha> /root/apps/qc-app/build
 ```
 
-Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, lalu jalankan `docker compose up -d` langsung (bukan `deploy.sh`: `pull` gagal untuk image lokal). Bangun memakai pembangun klasik dengan batas sumber daya (BuildKit tidak dapat dibatasi per build dari klien): `DOCKER_BUILDKIT=0 nice -n 19 ionice -c3 docker build --memory 1200m --memory-swap 1200m --cpu-shares 64 --cpu-quota 100000 -t qc-app:local-<sha> .`, dan pantau `MemAvailable` (hentikan bila < 600 MB). Pembatalan: `docker rmi qc-app:local-<sha>`; `rm -r /root/apps/qc-app/build /root/apps/qc-app/qc-src.tgz`.
+Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, lalu jalankan `docker compose up -d` langsung (bukan `deploy.sh`: `pull` gagal untuk image lokal, dan `deploy.sh` menolak `QC_IMAGE` yang bukan `ghcr.io/...`). Peralihan dari image lokal ke GHCR (hapus/komentari `QC_IMAGE`, `docker login ghcr.io`, deploy GHCR pertama tanpa target pengembalian): lihat "Urutan uji pertama" di `docs/ci-cd.md`. Bangun memakai pembangun klasik dengan batas sumber daya (BuildKit tidak dapat dibatasi per build dari klien): `DOCKER_BUILDKIT=0 nice -n 19 ionice -c3 docker build --memory 1200m --memory-swap 1200m --cpu-shares 64 --cpu-quota 100000 -t qc-app:local-<sha> .`, dan pantau `MemAvailable` (hentikan bila < 600 MB). Pembatalan: `docker rmi qc-app:local-<sha>`; `rm -r /root/apps/qc-app/build /root/apps/qc-app/qc-src.tgz`.
 
 ## 8. Menjalankan stack
+
+`qc-app` menjalankan migrasi saat start, jadi skema dan pengguna DB harus ada SEBELUM `qc-app` dinyalakan (bila tidak, `qc-app` gagal start berulang karena `restart: unless-stopped`). Urutannya: nyalakan `qc-db` saja, tunggu sehat, buat skema/pengguna, baru nyalakan semuanya.
 
 ```bash
 cd /root/apps/qc-app/dev
 docker compose config --quiet            # validasi (baca-saja)
-docker compose up -d                     # membuat jaringan qc-staging_default, qc-staging-db, qc-staging-app
-docker compose ps; docker inspect --format '{{.State.Health.Status}}' qc-staging-app
+docker compose up -d qc-db               # hanya MariaDB: membuat jaringan qc-staging_default dan qc-staging-db
+docker inspect --format '{{.State.Health.Status}}' qc-staging-db   # ulangi sampai: healthy
 ```
 
-`qc-app` menjalankan migrasi saat start; skema dan pengguna DB dibuat lebih dulu di `qc-staging-db` oleh pemilik/agen (root DB dari `.env`, di dalam kontainer; kata sandi tidak dicetak):
+Setelah `qc-staging-db` sehat, pemilik/agen membuat skema dan pengguna di dalam kontainer (root DB dari `.env`; kata sandi tidak dicetak dan tidak lewat argumen proses):
 
 ```sql
 CREATE DATABASE IF NOT EXISTS `qc_dev` CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin;
@@ -120,7 +122,13 @@ CREATE USER IF NOT EXISTS 'qc_dev'@'%' IDENTIFIED BY '<QC_DB_PASSWORD>';
 GRANT ALL PRIVILEGES ON `qc_dev`.* TO 'qc_dev'@'%';
 ```
 
-(production: `qc_exec`). Pembatalan: `docker compose down` (TANPA `-v`) menghentikan dan membuang kontainer/jaringan, volume tetap; `docker compose down -v` juga menghapus data (hanya bila memang ingin menghapus staging).
+(production: `qc_exec`). Lalu nyalakan sisanya:
+
+```bash
+docker compose up -d                     # membuat qc-staging-app
+docker compose ps; docker inspect --format '{{.State.Health.Status}}' qc-staging-app
+```
+ Pembatalan: `docker compose down` (TANPA `-v`) menghentikan dan membuang kontainer/jaringan, volume tetap; `docker compose down -v` juga menghapus data (hanya bila memang ingin menghapus staging).
 
 ## 9. Kunci SSH deploy (khusus, terbatas)
 
@@ -134,10 +142,12 @@ Cadangkan dan tambahkan SATU baris ke `/root/.ssh/authorized_keys`:
 
 ```bash
 cp -p /root/.ssh/authorized_keys /root/apps/qc-app/backup/authorized_keys.$(date +%Y%m%d%H%M%S)
-printf 'command="/root/apps/qc-app/deploy.sh --only dev",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding %s\n' "$(cat /root/apps/qc-app/ci-keys/qc-deploy-dev.pub)" >> /root/.ssh/authorized_keys
+printf 'restrict,command="/root/apps/qc-app/deploy.sh --only dev" %s\n' "$(cat /root/apps/qc-app/ci-keys/qc-deploy-dev.pub)" >> /root/.ssh/authorized_keys
 ```
 
-`--only dev` adalah tambahan di atas bentuk dasar `command="/root/apps/qc-app/deploy.sh"`: kunci staging tak dapat men-deploy production. Klien menjalankan `ssh -i <kunci> root@<host> "deploy dev <tag>"`; input divalidasi ketat (`deploy <dev|exec> <tag>`, tag `[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}`), tidak pernah di-eval, dan perintah lain apa pun ditolak. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy dev abc' /root/apps/qc-app/deploy.sh --only dev --dry-run`.
+`restrict` mematikan sekaligus pty, port/agent/X11 forwarding, `~/.ssh/rc`, dan penerusan tun (serta fitur baru OpenSSH yang kelak aktif bawaan), jadi opsi `no-*` terpisah tidak dipakai. `--only dev` adalah tambahan di atas bentuk dasar `command="/root/apps/qc-app/deploy.sh"`: kunci staging tak dapat men-deploy production. Klien menjalankan `ssh -i <kunci> root@<host> "deploy dev <tag>"`; input divalidasi ketat (`deploy <dev|exec> <tag>`, tag permintaan = SHA commit 40 heksa huruf kecil `[0-9a-f]{40}`; hanya tag sebelumnya yang dikembalikan boleh lebih longgar), tidak pernah di-eval, dan perintah lain apa pun ditolak. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy dev <sha-40-heksa>' /root/apps/qc-app/deploy.sh --only dev --dry-run`.
+
+Periksa juga di VPS (baca-saja, belum terverifikasi): `sshd -T | grep -i permitrootlogin` harus `prohibit-password` atau `forced-commands-only`, agar kunci root hanya dapat menjalankan perintah paksa dan tidak membuka shell lewat kata sandi.
 
 Pembatalan: hapus baris itu dari `authorized_keys` (cari komentar `qc-deploy dev`: `grep -v 'qc-deploy dev' /root/.ssh/authorized_keys > /tmp/ak && cat /tmp/ak > /root/.ssh/authorized_keys`), atau pulihkan salinan di `/root/apps/qc-app/backup/`.
 

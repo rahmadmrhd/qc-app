@@ -54,9 +54,10 @@ services:
     # Hanya loopback host: nginx host memanggil 127.0.0.1:APP_PORT (peer di dalam kontainer = gateway bridge).
     ports:
       - "127.0.0.1:${APP_PORT:?APP_PORT wajib diisi}:8788"
-    # Daftar variabel EKSPLISIT (bukan env_file): rahasia infrastruktur di .env yang sama (MARIADB_ROOT_PASSWORD,
-    # QC_DB_PASSWORD milik qc-db) tidak ikut masuk ke lingkungan aplikasi. Variabel baru di server/src/config.ts
-    # wajib ditambah di sini DAN di .env.example (dijaga server/src/deploy-files.test.ts).
+    # Daftar variabel EKSPLISIT (bukan env_file): hanya yang tertulis di bawah yang masuk ke lingkungan aplikasi, jadi
+    # MARIADB_ROOT_PASSWORD dan variabel infrastruktur lain di .env yang sama tidak ikut. QC_DB_PASSWORD tetap sampai
+    # ke aplikasi sebagai bagian DATABASE_URL (di bawah); yang tertahan hanya variabelnya. Variabel baru di
+    # server/src/config.ts wajib ditambah di sini DAN di .env.example (dijaga server/src/deploy-files.test.ts).
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
