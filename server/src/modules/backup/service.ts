@@ -10,7 +10,7 @@ import type { JobHandler, StepOutcome } from '@server/modules/jobs/consumer';
 import { findActiveJob } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { ensureLocalDir, fileDigest, LOCAL_BACKUP_KEEP, pruneLocalDumps } from './dump';
-import { backupName, wibDate, wibHour } from './names';
+import { backupName, parseBackupName, wibDate, wibHour } from './names';
 import { selectBackupsToDelete } from './retention';
 import { ensureBackupFolder, listAllEntries, uploadVerified } from './upload';
 
@@ -110,7 +110,13 @@ async function uploadStep(ctx: Parameters<JobHandler['run']>[0]): Promise<StepOu
       },
     },
   );
-  await putSetting(env, SETTING_BACKUP_LAST_SUCCESS, wibDate(nowOf(env)));
+  // Tanggal dari NAMA berkas (saat dump dimulai), bukan jam unggah selesai: dump yang mulai 23:xx dan selesai lewat
+  // tengah malam tidak boleh menandai hari berikutnya sebagai sudah dicadangkan.
+  await putSetting(
+    env,
+    SETTING_BACKUP_LAST_SUCCESS,
+    parseBackupName(name)?.date ?? wibDate(nowOf(env)),
+  );
   return { progress: 70 };
 }
 

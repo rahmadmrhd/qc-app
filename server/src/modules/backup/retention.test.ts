@@ -36,6 +36,17 @@ describe('retensi cadangan (fungsi murni)', () => {
     expect(selectBackupsToDelete(daily(3))).toEqual([]);
   });
 
+  test('pengaman minimum: 2 hari x 2 berkas (hanya 2 yang dipertahankan, < 3) -> tidak ada yang dihapus', () => {
+    // Tanpa pengaman, 2 berkas lama (terbaru per hari dipertahankan) akan dihapus; keep.size = 2 < BACKUP_MIN_KEEP.
+    const entries = [
+      { id: 'a1', name: 'qc-backup-20260114-0200.sql.gz' },
+      { id: 'a2', name: 'qc-backup-20260114-1500.sql.gz' },
+      { id: 'b1', name: 'qc-backup-20260115-0200.sql.gz' },
+      { id: 'b2', name: 'qc-backup-20260115-1500.sql.gz' },
+    ];
+    expect(selectBackupsToDelete(entries)).toEqual([]);
+  });
+
   test('sampai 7 berkas harian -> tidak ada yang dihapus', () => {
     expect(selectBackupsToDelete(daily(7))).toEqual([]);
   });

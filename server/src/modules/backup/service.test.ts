@@ -186,6 +186,24 @@ describe('job db_backup', () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
+  test('dump kejar-ketinggalan lewat tengah malam: tanggal sukses = tanggal NAMA berkas, jadi cadangan 02:00 berikutnya tetap jalan', async () => {
+    const late = Date.parse('2026-01-15T16:50:00Z'); // 23:50 WIB tgl 15
+    env.clock.set(late);
+    const base = env.BRIDGE;
+    env = await makeEnv({
+      BRIDGE: base,
+      BACKUP_DUMP: async (outputPath) => {
+        await writeFile(outputPath, gzipSync(SQL));
+        env.clock.advance(20 * 60 * 1000); // unggah selesai 00:10 WIB tgl 16
+      },
+    });
+    env.clock.set(late);
+    await runBackup();
+    expect(await getSetting(env, SETTING_BACKUP_LAST_SUCCESS)).toBe('20260115');
+    env.clock.set(Date.parse('2026-01-15T19:00:00Z')); // 02:00 WIB tgl 16
+    expect(typeof (await scheduleBackupJob(env))).toBe('string');
+  });
+
   test('retensi: 30 berkas harian + berkas tak dikenal -> tersisa 7 harian + 4 mingguan (+ yang baru), tak dikenal utuh', async () => {
     for (let index = 29; index >= 1; index--) {
       await seedDriveBackup(backupName(NOW_WIB_10 - index * DAY));
