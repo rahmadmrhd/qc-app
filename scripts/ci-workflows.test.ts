@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: ekspresi GitHub Actions (`${{ }}`) memang ditulis literal di berkas yang diperiksa
 // Penjaga keamanan workflow GitHub Actions tanpa GitHub: mengurai YAML dan menegakkan aturan yang tak boleh
-// bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, tanpa job/pemicu production (exec), tanpa injeksi
+// bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, exec hanya dari main, tanpa injeksi
 // ekspresi di skrip, izin minimal). TIDAK menjalankan workflow: hasil nyata baru diketahui di GitHub (docs/ci-cd.md).
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -97,17 +97,12 @@ describe('workflow: aturan umum (semua berkas)', () => {
 });
 
 describe('deploy-server.yml: keamanan', () => {
-  test('pemicu: push ke dev/feat/migrasi-cloudflare (BUKAN main) dan workflow_dispatch; tanpa pull_request(_target)', () => {
+  test('pemicu: push ke main/dev/feat/migrasi-cloudflare dan workflow_dispatch; tanpa pull_request(_target)', () => {
     const triggers = Object.keys(deploy.on ?? {});
     expect(triggers.sort()).toEqual(['push', 'workflow_dispatch']);
     const push = (deploy.on as { push: { branches: string[] } }).push;
-    expect([...push.branches].sort()).toEqual(['dev', 'feat/migrasi-cloudflare']);
+    expect([...push.branches].sort()).toEqual(['dev', 'feat/migrasi-cloudflare', 'main']);
     expect(codeOf(deployText)).not.toContain('pull_request');
-  });
-
-  test('production (server kantor) belum dirancang: tidak ada environment/job/target exec di kode workflow', () => {
-    expect(codeOf(deployText)).not.toMatch(/\bexec\b/);
-    expect(Object.keys(deploy.jobs).sort()).toEqual(['check', 'deploy', 'image', 'meta']);
   });
 
   test('izin minimal: contents read tingkat atas; hanya job image menulis packages; job deploy tanpa izin', () => {
@@ -146,11 +141,11 @@ describe('deploy-server.yml: keamanan', () => {
     }
   });
 
-  test('perintah SSH sesuai kontrak deploy.sh: `deploy dev <sha 40 heksa>` diterima, kunci --only dev dicocokkan', async () => {
+  test('perintah SSH sesuai kontrak deploy.sh: `deploy <dev|exec> <sha 40 heksa>` diterima, kunci --only dicocokkan', async () => {
     const deployStep = (deploy.jobs.deploy?.steps ?? []).find((s) => s.name === 'Deploy di VPS');
     expect(deployStep?.run).toContain('ssh qc-deploy "deploy $TARGET $TAG"');
     const sha = 'a'.repeat(40);
-    for (const target of ['dev']) {
+    for (const target of ['dev', 'exec']) {
       const proc = Bun.spawn(
         [
           'bash',
@@ -196,7 +191,11 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
   const script = (deploy.jobs.meta?.steps ?? []).find((s) => s.id === 'select')?.run ?? '';
   const dir = mkdtempSync(join(tmpdir(), 'qc-ci-select-'));
 
-  async function select(event: string, ref: string): Promise<{ code: number; target: string }> {
+  async function select(
+    event: string,
+    ref: string,
+    input = '',
+  ): Promise<{ code: number; target: string }> {
     const out = join(dir, `${crypto.randomUUID()}.out`);
     writeFileSync(out, '');
     const proc = Bun.spawn(['bash', '-c', script], {
@@ -204,6 +203,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
         ...process.env,
         EVENT_NAME: event,
         REF: ref,
+        INPUT_TARGET: input,
         GITHUB_OUTPUT: out.replaceAll('\\', '/'),
       },
       stdout: 'pipe',
@@ -217,14 +217,14 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     expect(script).toContain('GITHUB_OUTPUT');
   });
 
-  test('push: dev dan feat/migrasi-cloudflare -> dev; main (production belum ada), branch/tag lain ditolak', async () => {
+  test('push: main -> exec; dev dan feat/migrasi-cloudflare -> dev; branch/tag lain ditolak', async () => {
+    expect(await select('push', 'refs/heads/main')).toEqual({ code: 0, target: 'exec' });
     expect(await select('push', 'refs/heads/dev')).toEqual({ code: 0, target: 'dev' });
     expect(await select('push', 'refs/heads/feat/migrasi-cloudflare')).toEqual({
       code: 0,
       target: 'dev',
     });
     for (const ref of [
-      'refs/heads/main',
       'refs/heads/feat/lain',
       'refs/heads/main2',
       'refs/tags/v1',
@@ -235,18 +235,40 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     }
   });
 
-  test('dispatch: hanya dari main/dev/feat/migrasi-cloudflare, selalu ke dev; ref lain ditolak', async () => {
-    for (const ref of ['refs/heads/main', 'refs/heads/dev', 'refs/heads/feat/migrasi-cloudflare']) {
-      expect(await select('workflow_dispatch', ref), ref).toEqual({ code: 0, target: 'dev' });
+  test('dispatch: exec HANYA dari main; dev dari main/dev/feat; ref lain dan target aneh ditolak', async () => {
+    expect(await select('workflow_dispatch', 'refs/heads/main', 'exec')).toEqual({
+      code: 0,
+      target: 'exec',
+    });
+    expect(await select('workflow_dispatch', 'refs/heads/main', 'dev')).toEqual({
+      code: 0,
+      target: 'dev',
+    });
+    expect(await select('workflow_dispatch', 'refs/heads/dev', 'dev')).toEqual({
+      code: 0,
+      target: 'dev',
+    });
+    expect(await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'dev')).toEqual({
+      code: 0,
+      target: 'dev',
+    });
+    for (const ref of [
+      'refs/heads/dev',
+      'refs/heads/feat/migrasi-cloudflare',
+      'refs/heads/feat/lain',
+      'refs/tags/v1',
+    ]) {
+      expect((await select('workflow_dispatch', ref, 'exec')).code, `exec dari ${ref}`).toBe(1);
     }
-    for (const ref of ['refs/heads/feat/lain', 'refs/tags/v1', 'refs/pull/1/merge', '']) {
-      expect((await select('workflow_dispatch', ref)).code, ref).toBe(1);
+    expect((await select('workflow_dispatch', 'refs/heads/feat/lain', 'dev')).code).toBe(1);
+    for (const bad of ['', 'prod', 'DEV', 'dev;id', 'dev exec', '$(id)']) {
+      expect((await select('workflow_dispatch', 'refs/heads/main', bad)).code, bad).toBe(1);
     }
   });
 
   test('pemicu lain (pull_request, schedule) ditolak', async () => {
     for (const event of ['pull_request', 'pull_request_target', 'schedule', '']) {
-      expect((await select(event, 'refs/heads/dev')).code, event).toBe(1);
+      expect((await select(event, 'refs/heads/main', 'exec')).code, event).toBe(1);
     }
   });
 
