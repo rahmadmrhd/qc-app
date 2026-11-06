@@ -7,7 +7,7 @@ import {
   type ImportResult,
   prepareImport,
 } from './import-sheets';
-import { DISCARD_TABLES, tableDef } from './schema-map';
+import { AUDIT_DISCARD_FAMILIES, auditFamily, DISCARD_TABLES, tableDef } from './schema-map';
 
 export type Dump = Record<string, CellValue[][]>;
 
@@ -28,13 +28,20 @@ export function approvalFor(dump: Dump): DiscardApproval {
   return { ...template, approvedBy: 'Pemilik Produk', approvedOn: '2026-11-06' };
 }
 
-/** Dump tanpa tabel yang dibuang (tak ada yang perlu disetujui) dan tanpa berkas milik item. */
+/** Dump tanpa tabel yang dibuang (tak ada yang perlu disetujui), tanpa berkas milik item, dan tanpa audit modul buangan. */
 export function stripDiscarded(dump: Dump): Dump {
   const copy = structuredClone(dump);
   for (const def of DISCARD_TABLES) delete copy[def.name];
   const files = copy.files as CellValue[][];
   const ownerAt = (files[0] as CellValue[]).indexOf('owner_type');
   copy.files = files.filter((row, index) => index === 0 || row[ownerAt] !== 'item');
+  const audit = copy.audit_log as CellValue[][];
+  const actionAt = (audit[0] as CellValue[]).indexOf('action');
+  copy.audit_log = audit.filter(
+    (row, index) =>
+      index === 0 ||
+      !(AUDIT_DISCARD_FAMILIES as readonly string[]).includes(auditFamily(String(row[actionAt]))),
+  );
   return copy;
 }
 
@@ -332,7 +339,7 @@ export function cleanDump(): Dump {
       {
         id: 'default',
         title: 'Judul',
-        logo_file_ids: '["f2"]',
+        logo_file_ids: '["f2","f3"]',
         default_logo_id: 'f2',
         updated_at: T1,
         updated_by: 'admin@x.id',
@@ -349,10 +356,12 @@ export function cleanDump(): Dump {
         updated_by: 'admin@x.id',
       },
     ]),
-    sync_state: grid('sync_state', [
-      { resource: 'brands', seq: '5', updated_at: T1 },
-      { resource: 'items', seq: '9', updated_at: T1 },
-    ]),
+    // Sheet penghitung sengaja tidak diimpor (lingkup final pemilik 2026-11-06): ada di dump, harus diabaikan.
+    sync_state: [
+      ['resource', 'seq', 'updated_at'],
+      ['brands', '5', T1],
+      ['items', '9', T1],
+    ],
   };
 }
 

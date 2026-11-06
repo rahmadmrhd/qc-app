@@ -3,10 +3,13 @@
  * (disalin sebagai data karena skrip ini berjalan di Bun, bukan GAS); kolom MariaDB mengikuti
  * `server/migrations`. `import-sheets.test.ts` mencocokkan keduanya dengan skema nyata (information_schema).
  *
- * Keputusan pemilik 2026-11-06 (spek §14, §19 butir 9): hanya modul akses (users, roles, locations, audit) dan QR
- * (qr_designs, qr_documents, qr_defaults, qr_presets, serta berkas logo QR) yang diimpor. Data uji handover, item,
- * merk, customer, dan berkas milik item DIBUANG (`fate: 'discard'`): tidak ditulis ke target, dikosongkan di
- * target, dan dihitung/diringkas di laporan agar isinya diperiksa pemilik sebelum dibuang.
+ * LINGKUP FINAL impor (keputusan pemilik 2026-11-06, spek §14 dan §19 butir 9e): users, roles, locations,
+ * qr_designs, qr_documents, qr_presets, qr_defaults, files HANYA yang dirujuk tabel QR yang diimpor (logo desain,
+ * pustaka logo, logo bawaan preset/default), dan audit_log HANYA baris yang berkaitan dengan entitas yang diimpor
+ * (keluarga aksi `user`, `role`, `location`, `qrcode`). TIDAK diimpor: handovers, items, brands, customers,
+ * sync_state, counters, berkas milik item atau yang tak dirujuk, dan audit handover/item/brand/customer/sync. Yang
+ * dibuang (`fate: 'discard'`, `divert`) tidak ditulis ke target, dikosongkan di target, dan dihitung/diringkas di
+ * laporan agar isinya diperiksa pemilik sebelum dibuang.
  */
 
 /**
@@ -35,9 +38,26 @@ export interface TableDef {
   derivedColumns: readonly string[];
   /** `import` = ditulis ke target; `discard` = dibuang (hanya dihitung, diringkas, dan diperiksa). */
   fate: TableFate;
-  /** Baris yang nilai `column`-nya (dipangkas) sama dengan `equals` dialihkan ke ringkasan buangan `as`. */
-  divert?: { column: string; equals: string; as: string };
+  /** Baris yang nilai `column`-nya (dipangkas) memenuhi `matches` dialihkan ke ringkasan buangan `as`. */
+  divert?: { column: string; matches: (value: string) => boolean; as: string };
+  /**
+   * Nilai `column` (dipangkas) HARUS memenuhi `matches`; yang tidak menjadi galat `code` per baris (pemilik
+   * memutuskan lewat pengecualian). Dipakai audit_log agar aksi yang tak dikenal tidak diimpor atau dibuang diam-diam.
+   */
+  known?: { column: string; matches: (value: string) => boolean; code: string; message: string };
 }
+
+/** Keluarga aksi audit (bagian sebelum titik pertama pada `action`, mis. `qrcode.export` -> `qrcode`). */
+export function auditFamily(action: string): string {
+  const text = action.trim();
+  const dot = text.indexOf('.');
+  return dot < 0 ? text : text.slice(0, dot);
+}
+
+/** Keluarga aksi audit yang berkaitan dengan entitas yang diimpor: akses (user, role, location) dan QR. */
+export const AUDIT_IMPORT_FAMILIES = ['user', 'role', 'location', 'qrcode'] as const;
+/** Keluarga aksi audit milik modul yang dibuang (termasuk `*.sync.conflict`): dibuang bersama datanya. */
+export const AUDIT_DISCARD_FAMILIES = ['brand', 'item', 'customer', 'handover'] as const;
 
 function cols(spec: string): ColumnDef[] {
   return spec.split(/\s+/).map((entry) => {
@@ -78,6 +98,19 @@ export const TABLES: readonly TableDef[] = [
     columns: cols('ts:date actor action target before after'),
     derivedColumns: [],
     fate: 'import',
+    divert: {
+      column: 'action',
+      matches: (value) =>
+        (AUDIT_DISCARD_FAMILIES as readonly string[]).includes(auditFamily(value)),
+      as: 'audit_log',
+    },
+    known: {
+      column: 'action',
+      matches: (value) => (AUDIT_IMPORT_FAMILIES as readonly string[]).includes(auditFamily(value)),
+      code: 'AUDIT_AKSI_TAK_DIKENAL',
+      message:
+        'aksi audit bukan keluarga user/role/location/qrcode (diimpor) maupun brand/item/customer/handover (dibuang); putuskan dan kecualikan barisnya bila perlu',
+    },
   },
   {
     name: 'brands',
@@ -96,8 +129,9 @@ export const TABLES: readonly TableDef[] = [
     fate: 'discard',
   },
   {
-    // Berkas milik item (`owner_type = 'item'`) dibuang bersama item; logo QR (`qrlogo`) dan berkas tak berpemilik
-    // (`''`, unggahan yang belum diklaim) tetap diimpor.
+    // Berkas milik item (`owner_type = 'item'`) dibuang bersama item. Berkas lain HANYA diimpor bila dirujuk tabel QR
+    // yang diimpor (qr_designs.logo_file_id, qr_defaults.logo_file_ids/default_logo_id, qr_presets.default_logo_id);
+    // yang tak dirujuk dibuang (`files:tak-dirujuk`, `prepareImport`).
     name: 'files',
     idColumn: 'id',
     columns: cols(
@@ -105,7 +139,7 @@ export const TABLES: readonly TableDef[] = [
     ),
     derivedColumns: ['status'],
     fate: 'import',
-    divert: { column: 'owner_type', equals: 'item', as: 'files:item' },
+    divert: { column: 'owner_type', matches: (value) => value === 'item', as: 'files:item' },
   },
   {
     name: 'handovers',
@@ -161,16 +195,10 @@ export const TABLES: readonly TableDef[] = [
     derivedColumns: [],
     fate: 'import',
   },
-  {
-    // Penghitung revisi sinkron per sumber daya ('brands' | 'items'): TETAP diimpor walau barisnya dibuang, agar
-    // revisi berikutnya melanjutkan (tidak mundur di bawah revisi yang mungkin sudah dipegang klien Desktop).
-    name: 'sync_state',
-    idColumn: 'resource',
-    columns: cols('resource:id seq:int updated_at:date'),
-    derivedColumns: [],
-    fate: 'import',
-  },
 ];
+
+/** Sheet yang sengaja tidak diimpor dan tidak diperingatkan (keputusan pemilik 2026-11-06): penghitung server baru. */
+export const IGNORED_SHEETS: readonly string[] = ['sync_state', 'counters'];
 
 export function tableDef(name: string): TableDef {
   const found = TABLES.find((table) => table.name === name);
@@ -189,9 +217,8 @@ export const DISCARD_TABLES: readonly TableDef[] = TABLES.filter(
 );
 
 /**
- * Urutan INSERT yang aman untuk kunci asing (induk dulu). Tabel yang dibuang tidak ada di sini; `counters`
- * (nomor serah terima harian `st:YYYYMMDD`) terakhir. `audit_log` memakai id otomatis sehingga urutan baris
- * dump menjadi urutan id.
+ * Urutan INSERT yang aman untuk kunci asing (induk dulu). Tabel yang dibuang tidak ada di sini. `audit_log`
+ * memakai id otomatis sehingga urutan baris dump menjadi urutan id.
  */
 export const INSERT_ORDER = [
   'users',
@@ -202,14 +229,14 @@ export const INSERT_ORDER = [
   'qr_designs',
   'qr_defaults',
   'qr_presets',
-  'sync_state',
   'audit_log',
-  'counters',
 ] as const;
 
 /**
- * Tabel target yang HARUS kosong setelah impor (data uji dibuang), anak dulu (handover_comments punya kunci asing
- * ke handovers). `files` hanya baris `owner_type = 'item'` (lihat `DISCARDED_FILE_OWNER`).
+ * Tabel target yang HARUS kosong setelah impor (data uji dibuang atau tak diimpor), anak dulu (handover_comments
+ * punya kunci asing ke handovers). `counters` (nomor serah terima harian) dan `sync_state` (revisi sinkron) sengaja
+ * TIDAK diimpor (keputusan pemilik 2026-11-06): server baru menghitungnya dari nol. `files` hanya baris
+ * `owner_type = 'item'` (lihat `DISCARDED_FILE_OWNER`).
  */
 export const DISCARDED_TARGET_TABLES = [
   'handover_comments',
@@ -218,14 +245,13 @@ export const DISCARDED_TARGET_TABLES = [
   'items',
   'brands',
   'customers',
+  'counters',
+  'sync_state',
 ] as const;
 
 export const DISCARDED_FILE_OWNER = 'item';
 
 export const FILE_OWNER_TYPES = ['', 'qrlogo'] as const;
-
-/** Kunci penghitung nomor serah terima harian di tabel `counters` (cocok dengan `reserveNumbers` server). */
-export const HANDOVER_COUNTER_PREFIX = 'st:';
 
 /**
  * Panjang maksimum kolom VARCHAR di MariaDB (jumlah KARAKTER; migrasi 0001). Nilai Sheets yang lebih panjang
@@ -248,7 +274,6 @@ export const MAX_LENGTHS: Record<string, Record<string, number>> = Object.fromEn
       'id=100 title=255 subtitle=255 footer=255 default_logo_id=100 updated_at=30 updated_by=255',
     qr_presets:
       'id=100 name=255 title=255 subtitle=255 footer=255 default_logo_id=100 created_at=30 created_by=255 updated_at=30 updated_by=255',
-    sync_state: 'resource=64 updated_at=30',
   }).map(([table, spec]) => [
     table,
     Object.fromEntries(

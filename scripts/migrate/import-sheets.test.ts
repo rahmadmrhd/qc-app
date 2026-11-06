@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 
 const KEPT = IMPORT_TABLES.map((table) => table.name);
-const DISCARDED_KEYS = ['brands', 'customers', 'files:item', 'handovers', 'items'];
+const DISCARDED_KEYS = ['audit_log', 'brands', 'customers', 'files:item', 'handovers', 'items'];
 
 async function count(db: Db, table: string): Promise<number> {
   const row = await db
@@ -156,6 +156,130 @@ describe('gerbang pembuangan data uji (keputusan pemilik 2026-11-06)', () => {
   });
 });
 
+describe('lingkup final: audit dan berkas yang berkaitan (keputusan pemilik 2026-11-06)', () => {
+  const auditRow = (action: string, target = 'x') => [
+    '2026-10-03T00:00:00.000Z',
+    'a@x.id',
+    action,
+    target,
+    '',
+    '',
+  ];
+
+  test('audit: keluarga user/role/location/qrcode diimpor; brand/item/customer/handover (termasuk *.sync.conflict) dibuang dan diringkas', () => {
+    const dump = stripDiscarded(cleanDump());
+    const sheet = dump.audit_log as unknown[][];
+    for (const action of ['role.create', 'location.deactivate', 'qrcode.pdf_upload', 'user.update'])
+      sheet.push(auditRow(action));
+    for (const action of [
+      'brand.create',
+      'brand.sync.conflict',
+      'item.update',
+      'customer.rename',
+      'handover.comment',
+    ])
+      sheet.push(auditRow(action));
+    const result = prepareImport(dump);
+    expect(result.report.errors.map((e) => e.code)).toEqual(['DATA_DIBUANG_BUTUH_PERSETUJUAN']);
+    expect(result.report.discarded.audit_log?.rows).toBe(5);
+    expect(result.report.tables.audit_log).toMatchObject({ imported: 6, discarded: 5 });
+    const ok = importWithApproval(dump);
+    expect(ok.report.ok).toBe(true);
+    expect(ok.rows.audit_log?.map((row) => row.values.action)).toEqual([
+      'user.save',
+      'user.save',
+      'role.create',
+      'location.deactivate',
+      'qrcode.pdf_upload',
+      'user.update',
+    ]);
+    expect(ok.sql).not.toContain('brand.create');
+    expect(ok.sql).not.toContain('handover.comment');
+  });
+
+  test('audit: aksi tak dikenal atau kosong menghentikan impor per baris; pemilik memutuskan lewat pengecualian', () => {
+    const dump = stripDiscarded(cleanDump());
+    const sheet = dump.audit_log as unknown[][];
+    sheet.push(auditRow('export.sheets', 'Spreadsheet'));
+    sheet.push(auditRow('', 'kosong'));
+    sheet.push(auditRow('users.save'));
+    const result = prepareImport(dump);
+    expect(codes(result)).toEqual([
+      'audit_log:4:action:AUDIT_AKSI_TAK_DIKENAL',
+      'audit_log:5:action:AUDIT_AKSI_TAK_DIKENAL',
+      'audit_log:6:action:AUDIT_AKSI_TAK_DIKENAL',
+    ]);
+    expect(result.sql).toBeNull();
+    const excluded = prepareImport(dump, {
+      exclude: [
+        { table: 'audit_log', row: 4 },
+        { table: 'audit_log', row: 5 },
+        { table: 'audit_log', row: 6 },
+      ],
+    });
+    expect(excluded.report.ok).toBe(true);
+    expect(excluded.report.tables.audit_log).toMatchObject({ imported: 2, excluded: 3 });
+  });
+
+  test('audit buangan tanpa persetujuan: berhenti; dump berubah sesudah disetujui: tidak cocok', () => {
+    const dump = cleanDump();
+    expect(codes(prepareImport(dump)).filter((code) => code.startsWith('audit_log'))).toEqual([
+      'audit_log:0::DATA_DIBUANG_BUTUH_PERSETUJUAN',
+    ]);
+    const approval = approvalFor(dump);
+    const grown = structuredClone(dump);
+    (grown.audit_log as unknown[][]).push(auditRow('item.create'));
+    expect(codes(prepareImport(grown, { discardApproval: approval }))).toEqual([
+      'audit_log:0::PERSETUJUAN_TIDAK_COCOK',
+    ]);
+  });
+
+  test('berkas: hanya yang dirujuk tabel QR yang diimpor; yang tak dirujuk dibuang (dengan persetujuan), milik item dibuang', () => {
+    const dump = cleanDump();
+    (dump.files as unknown[][]).push(
+      ['f9', 'drv9', 'image/png', '1', '1', '1', 'qrlogo', 'shared', '', ''],
+      ['f8', 'drv8', 'image/png', '1', '1', '1', '', '', '', ''],
+    );
+    const result = prepareImport(dump);
+    expect(result.report.discarded['files:tak-dirujuk']?.rows).toBe(2);
+    expect(result.report.discarded['files:item']?.rows).toBe(1);
+    expect(result.report.errors.map((e) => e.table)).toContain('files:tak-dirujuk');
+    const ok = importWithApproval(dump);
+    expect(ok.report.ok).toBe(true);
+    expect(ok.rows.files?.map((row) => row.values.id)).toEqual(['f2', 'f3']);
+    expect(ok.report.tables.files).toMatchObject({ imported: 2, discarded: 3 });
+    expect(ok.sql).not.toContain("'f9'");
+  });
+
+  test('berkas dirujuk lewat logo desain, pustaka logo (daftar), logo bawaan default, dan logo bawaan preset', () => {
+    let dump = stripDiscarded(cleanDump());
+    for (const [table, column, value] of [
+      ['qr_defaults', 'logo_file_ids', '["f2"]'],
+      ['qr_defaults', 'default_logo_id', ''],
+      ['qr_presets', 'default_logo_id', ''],
+      ['qr_designs', 'logo_file_id', ''],
+    ] as const)
+      dump = mutate(dump, table, 2, column, value);
+    // f2 (pustaka) tetap; f3 kini tak dirujuk -> dibuang
+    expect(Object.keys(prepareImport(dump).report.discarded)).toEqual(['files:tak-dirujuk']);
+    expect(importWithApproval(dump).rows.files?.map((row) => row.values.id)).toEqual(['f2']);
+    for (const [table, column] of [
+      ['qr_designs', 'logo_file_id'],
+      ['qr_presets', 'default_logo_id'],
+      ['qr_defaults', 'default_logo_id'],
+    ] as const) {
+      const only = mutate(dump, table, 2, column, 'f3');
+      const kept = importWithApproval(only).rows.files?.map((row) => row.values.id);
+      expect({ table, kept }).toEqual({ table, kept: ['f2', 'f3'] });
+    }
+  });
+
+  test('rujukan QR ke berkas yang dibuang tetap yatim (galat), bukan diam-diam hilang', () => {
+    const dump = mutate(cleanDump(), 'qr_presets', 2, 'default_logo_id', 'f1');
+    expect(codes(importWithApproval(dump))).toEqual(['qr_presets:2:default_logo_id:RUJUKAN_YATIM']);
+  });
+});
+
 describe('dump bersih dijalankan ke MariaDB', () => {
   test('jumlah baris sama; tabel buangan kosong; berkas milik item tidak ikut', async () => {
     const dump = cleanDump();
@@ -166,13 +290,12 @@ describe('dump bersih dijalankan ke MariaDB', () => {
       users: 2,
       roles: 1,
       locations: 2,
-      audit_log: 3,
+      audit_log: 2,
       files: 2,
       qr_designs: 1,
       qr_documents: 1,
       qr_defaults: 1,
       qr_presets: 1,
-      sync_state: 2,
     };
     for (const name of KEPT) {
       expect({ name, n: await count(env.DB, name) }).toEqual({ name, n: expected[name] as number });
@@ -189,42 +312,16 @@ describe('dump bersih dijalankan ke MariaDB', () => {
     ]);
   });
 
-  test('penghitung: nomor ST harian dari data buangan (kunci st:), sync_state naik ke revisi tertinggi', async () => {
+  test('sync_state dan counters TIDAK diimpor (lingkup final pemilik 2026-11-06): sheet diabaikan tanpa peringatan, tabel target kosong', async () => {
     const result = importWithApproval(cleanDump());
-    expect(result.report.counters).toEqual({ 'st:20261001': 2, 'st:20261002': 7 });
-    // items.sync_rev tertinggi 7 < sync_state.items 9; brands 5 = 5: tidak berubah
-    expect(result.report.warnings.map((w) => w.code)).not.toContain('SYNC_STATE_DINAIKKAN');
+    expect(result.report.warnings.map((w) => w.code)).not.toContain('SHEET_TAK_DIKENAL');
+    expect(result.sql).not.toMatch(/INSERT INTO .(sync_state|counters)./);
+    expect(result.rows.sync_state).toBeUndefined();
+    expect(result.report.tables.sync_state).toBeUndefined();
     const env = await createTestEnv();
     await applyPlan(env.DB, result.plan as NonNullable<typeof result.plan>);
-    const counters = await env.DB.prepare('SELECT `key`, value FROM counters ORDER BY `key`').all();
-    expect(counters.results).toEqual([
-      { key: 'st:20261001', value: 2 },
-      { key: 'st:20261002', value: 7 },
-    ]);
-    const state = await env.DB.prepare(
-      'SELECT resource, seq FROM sync_state ORDER BY resource',
-    ).all();
-    expect(state.results).toEqual([
-      { resource: 'brands', seq: 5 },
-      { resource: 'items', seq: 9 },
-    ]);
-  });
-
-  test('sync_state di bawah revisi tertinggi data buangan dinaikkan; baris yang tak ada dibuat; keduanya diperingatkan', () => {
-    let dump = mutate(cleanDump(), 'sync_state', 3, 'seq', '4');
-    const lifted = importWithApproval(dump);
-    expect(lifted.report.warnings).toContainEqual(
-      expect.objectContaining({ code: 'SYNC_STATE_DINAIKKAN', table: 'sync_state' }),
-    );
-    expect(lifted.rows.sync_state?.find((r) => r.values.resource === 'items')?.values.seq).toBe(7);
-    dump = cleanDump();
-    delete dump.sync_state;
-    const created = importWithApproval(dump);
-    expect(created.report.warnings.map((w) => w.code)).toContain('SYNC_STATE_DIBUAT');
-    expect(created.rows.sync_state?.map((r) => [r.values.resource, r.values.seq]).sort()).toEqual([
-      ['brands', 5],
-      ['items', 7],
-    ]);
+    expect(await count(env.DB, 'counters')).toBe(0);
+    expect(await count(env.DB, 'sync_state')).toBe(0);
   });
 
   test('teks dengan kutip, backslash, kutip ganda JSON, emoji, CR/LF dan Ctrl-Z tersimpan persis (jalur berparameter)', async () => {
@@ -287,19 +384,19 @@ describe('dump bersih dijalankan ke MariaDB', () => {
       id: number;
       target: string;
     }>();
-    expect(rows.results.map((row) => row.target)).toEqual(['u1', 'u2', 'h1']);
+    expect(rows.results.map((row) => row.target)).toEqual(['u1', 'u2']);
   });
 
   test('INSERT berparameter: hanya penampung ?, dipecah per 200 baris', () => {
     const dump = cleanDump();
     const sheet = dump.audit_log as string[][];
     for (let i = 0; i < 450; i++)
-      sheet.push(['2026-10-03T00:00:00.000Z', 'a@x', 'tes', `t${i}`, '', "x'\\"]);
+      sheet.push(['2026-10-03T00:00:00.000Z', 'a@x', 'qrcode.tes', `t${i}`, '', "x'\\"]);
     const plan = importWithApproval(dump).plan as NonNullable<
       ReturnType<typeof importWithApproval>['plan']
     >;
     const audit = plan.transaction.filter((s) => s.sql.startsWith('INSERT INTO `audit_log`'));
-    expect(audit.map((s) => s.params.length / 6)).toEqual([200, 200, 53]);
+    expect(audit.map((s) => s.params.length / 6)).toEqual([200, 200, 52]);
     for (const statement of plan.transaction) {
       expect(statement.sql).not.toContain("'");
       expect(statement.sql.split('?').length - 1).toBe(statement.params.length);
@@ -312,7 +409,6 @@ describe('dump bersih dijalankan ke MariaDB', () => {
     };
     const sql = plan.transaction.map((s) => s.sql).join('\n');
     expect(sql).toContain('`before`, `after`');
-    expect(sql).toContain('INSERT INTO `counters` (`key`, `value`)');
     expect(sql).not.toMatch(/"before"|"after"/);
   });
 
@@ -330,6 +426,7 @@ describe('dump bersih dijalankan ke MariaDB', () => {
       INSERT INTO handover_comments (id, handover_id) VALUES ('c1', 'h1');
       INSERT INTO files (id, owner_type, owner_id) VALUES ('fx', 'item', 'i1');
       INSERT INTO counters (\`key\`, value) VALUES ('st:20260101', 9);
+      INSERT INTO sync_state (resource, seq) VALUES ('items', 9);
       INSERT INTO audit_log (ts) VALUES ('2026-01-01T00:00:00.000Z'), ('2026-01-02T00:00:00.000Z');
     `);
     await applyPlan(env.DB, plan);
@@ -345,12 +442,10 @@ describe('dump bersih dijalankan ke MariaDB', () => {
         )?.n,
       ),
     ).toBe(0);
-    expect(await count(env.DB, 'audit_log')).toBe(3);
+    expect(await count(env.DB, 'audit_log')).toBe(2);
     expect(await count(env.DB, 'files')).toBe(2);
     const min = await env.DB.prepare('SELECT MIN(id) AS m FROM audit_log').first<{ m: number }>();
     expect(Number(min?.m)).toBe(1);
-    const counters = await env.DB.prepare('SELECT `key` FROM counters ORDER BY `key`').all();
-    expect(counters.results).toEqual([{ key: 'st:20261001' }, { key: 'st:20261002' }]);
     expect(result.sql).toContain('TRUNCATE TABLE `audit_log`;\nSTART TRANSACTION;');
   });
 
@@ -537,9 +632,9 @@ describe('dump kotor menghentikan impor tanpa SQL', () => {
     expect(
       importOk(mutate(cleanDump(), 'locations', 2, 'name', '\u{1F600}'.repeat(255))).report.ok,
     ).toBe(true);
-    expect(codes(importOk(mutate(cleanDump(), 'audit_log', 2, 'action', 'a'.repeat(65))))).toEqual([
-      'audit_log:2:action:NILAI_TERLALU_PANJANG',
-    ]);
+    expect(
+      codes(importOk(mutate(cleanDump(), 'audit_log', 2, 'action', `user.${'a'.repeat(60)}`))),
+    ).toEqual(['audit_log:2:action:NILAI_TERLALU_PANJANG']);
     expect(codes(importOk(mutate(cleanDump(), 'qr_designs', 2, 'link', 'h'.repeat(2049))))).toEqual(
       ['qr_designs:2:link:NILAI_TERLALU_PANJANG'],
     );
@@ -706,12 +801,13 @@ describe('skema', () => {
       .bind(schema)
       .all<{ name: string }>();
     const runtime = ['job_blobs', 'jobs', 'rate_limits', 'schema_migrations', 'settings'];
-    const decided = new Set<string>([...KEPT, 'counters', ...DISCARDED_TARGET_TABLES, ...runtime]);
+    const decided = new Set<string>([...KEPT, ...DISCARDED_TARGET_TABLES, ...runtime]);
     expect(tables.results.map((t) => t.name).filter((name) => !decided.has(name))).toEqual([]);
-    expect([...INSERT_ORDER].map(String).sort()).toEqual([...KEPT, 'counters'].sort());
+    expect([...INSERT_ORDER].map(String).sort()).toEqual([...KEPT].sort());
     for (const name of DISCARDED_TARGET_TABLES)
       expect(tables.results.map((t) => t.name)).toContain(name);
-    expect(tableDef('files').divert?.equals).toBe('item');
+    expect(tableDef('files').divert?.matches('item')).toBe(true);
+    expect(tableDef('files').divert?.matches('qrlogo')).toBe(false);
   });
 });
 

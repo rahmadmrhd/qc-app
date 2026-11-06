@@ -12,8 +12,11 @@ import {
   userReferences,
 } from './import-sheets';
 import {
+  AUDIT_IMPORT_FAMILIES,
+  auditFamily,
   DISCARDED_FILE_OWNER,
   DISCARDED_TARGET_TABLES,
+  FILE_OWNER_TYPES,
   IMPORT_TABLES,
   type TableDef,
   writtenColumns,
@@ -23,9 +26,11 @@ import {
  * Verifikasi pasca-impor (T33): membandingkan dump Sheets dengan isi MariaDB target. Murni terhadap `DbReader`
  * (tes memakai skema MariaDB sementara; CLI memakai `mariadbReader`). Hanya MEMBACA basis data.
  *
- * Keputusan pemilik 2026-11-06 (spek §14): hanya modul akses dan QR yang diimpor; tabel handover/item/merk/customer
- * dan berkas milik item HARUS kosong di target, dan dump yang isinya akan dibuang harus disetujui pemilik (lihat
- * `DiscardApproval`; tanpa persetujuan yang cocok, verifikasi gagal dengan galat yang sama seperti impor).
+ * Lingkup final (keputusan pemilik 2026-11-06, spek §14 dan §19 butir 9e): users, roles, locations, QR, berkas
+ * yang dirujuk QR, dan audit yang berkaitan. Tabel handover/item/merk/customer/sync_state/counters, berkas milik item,
+ * dan audit modul yang dibuang HARUS kosong/tidak ada di target, dan dump yang isinya akan dibuang harus disetujui
+ * pemilik (lihat `DiscardApproval`; tanpa persetujuan yang cocok, verifikasi gagal dengan galat yang sama seperti
+ * impor).
  */
 
 export interface DbReader {
@@ -53,8 +58,7 @@ export interface VerifyReport {
   ok: boolean;
   tables: TableVerdict[];
   orphans: CheckVerdict[];
-  counters: CheckVerdict[];
-  /** Tabel buangan (handover, item, merk, customer, berkas item) harus kosong di target. */
+  /** Tabel buangan (handover, item, merk, customer, sync_state, counters, berkas item) harus kosong di target. */
   discarded: CheckVerdict[];
   problems: string[];
 }
@@ -144,6 +148,8 @@ async function checkOrphans(reader: DbReader): Promise<CheckVerdict[]> {
     'id',
   );
   const presets = await readAll(reader, 'qr_presets', ['id', 'default_logo_id'], 'id');
+  const fileRows = await readAll(reader, 'files', ['id', 'owner_type'], 'id');
+  const auditRows = await readAll(reader, 'audit_log', ['id', 'action'], 'id');
 
   const verdict = (name: string, bad: string[], total: number): CheckVerdict => ({
     name,
@@ -186,6 +192,28 @@ async function checkOrphans(reader: DbReader): Promise<CheckVerdict[]> {
     .filter((row) => cell(row.default_logo_id) !== '' && !files.has(cell(row.default_logo_id)))
     .map((row) => cell(row.id));
 
+  // Berkas di target harus berpemilik yang sah (bukan milik item) dan dirujuk tabel QR yang diimpor.
+  const referenced = new Set<string>();
+  for (const design of designs) referenced.add(cell(design.logo_file_id));
+  for (const row of defaults) {
+    referenced.add(cell(row.default_logo_id));
+    for (const id of parseStringList(cell(row.logo_file_ids)) ?? []) referenced.add(id);
+  }
+  for (const row of presets) referenced.add(cell(row.default_logo_id));
+  const badOwners = fileRows
+    .filter((row) => !(FILE_OWNER_TYPES as readonly string[]).includes(cell(row.owner_type)))
+    .map((row) => cell(row.id));
+  const unreferencedFiles = fileRows
+    .filter((row) => !referenced.has(cell(row.id)))
+    .map((row) => cell(row.id));
+  // Audit di target hanya boleh dari keluarga yang diimpor (tidak merujuk entitas yang tak diimpor).
+  const badAudit = auditRows
+    .filter(
+      (row) =>
+        !(AUDIT_IMPORT_FAMILIES as readonly string[]).includes(auditFamily(cell(row.action))),
+    )
+    .map((row) => `${cell(row.id)}:${cell(row.action)}`);
+
   return [
     verdict('users.assignments.roleIds -> roles', badRoles, users.length),
     verdict('users.assignments.locationId -> locations', badLocations, users.length),
@@ -194,6 +222,9 @@ async function checkOrphans(reader: DbReader): Promise<CheckVerdict[]> {
     verdict('qr_defaults.default_logo_id -> files', badDefaultLogo, defaults.length),
     verdict('qr_defaults.logo_file_ids -> files', badDefaultList, defaults.length),
     verdict('qr_presets.default_logo_id -> files', badPresetLogo, presets.length),
+    verdict('files.owner_type sah (tanpa berkas milik item)', badOwners, fileRows.length),
+    verdict('files dirujuk desain/default/preset QR', unreferencedFiles, fileRows.length),
+    verdict('audit_log tidak merujuk entitas yang tak diimpor', badAudit, auditRows.length),
   ];
 }
 
@@ -216,7 +247,6 @@ export async function verifyImport(
     ok: true,
     tables: [],
     orphans: [],
-    counters: [],
     discarded: [],
     problems: [],
   };
@@ -250,21 +280,7 @@ export async function verifyImport(
   report.orphans.push(...(await checkOrphans(reader)));
   report.discarded.push(...(await checkDiscardedEmpty(reader)));
 
-  const counterRows = await reader.query('SELECT `key`, value FROM `counters`');
-  const counters = new Map(counterRows.map((row) => [cell(row.key), Number(row.value)]));
-  const expectedCounters = Object.entries(prepared.report.counters);
-  for (const [key, expected] of expectedCounters) {
-    const actual = counters.get(key);
-    report.counters.push({
-      name: `counters.${key} >= data`,
-      ok: actual !== undefined && actual >= expected,
-      detail: `counters=${actual ?? 'tidak ada'}, data=${expected}`,
-    });
-  }
-
-  report.ok = [...report.tables, ...report.orphans, ...report.counters, ...report.discarded].every(
-    (entry) => entry.ok,
-  );
+  report.ok = [...report.tables, ...report.orphans, ...report.discarded].every((entry) => entry.ok);
   return report;
 }
 
@@ -291,7 +307,7 @@ function printReport(report: VerifyReport): void {
       `${table.ok ? 'LULUS' : 'GAGAL'}  ${table.table}: baris ${table.actualRows}/${table.expectedRows}, checksum ${table.actualChecksum === table.expectedChecksum ? 'sama' : 'BEDA'}`,
     );
   }
-  for (const check of [...report.orphans, ...report.counters, ...report.discarded]) {
+  for (const check of [...report.orphans, ...report.discarded]) {
     console.log(`${check.ok ? 'LULUS' : 'GAGAL'}  ${check.name}: ${check.detail}`);
   }
   for (const problem of report.problems) console.log(`GAGAL  ${problem}`);

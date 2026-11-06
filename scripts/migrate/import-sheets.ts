@@ -4,7 +4,7 @@ import {
   type ColumnDef,
   DISCARDED_TARGET_TABLES,
   FILE_OWNER_TYPES,
-  HANDOVER_COUNTER_PREFIX,
+  IGNORED_SHEETS,
   IMPORT_TABLES,
   INSERT_ORDER,
   INT32_COLUMNS,
@@ -35,8 +35,8 @@ export interface ExcludeEntry {
 }
 
 /**
- * Persetujuan pemilik untuk MEMBUANG isi dump tabel yang tidak dimigrasi (handover, item, merk, customer, berkas
- * item). Terikat pada jumlah baris dan checksum isi: dump yang berubah sesudah persetujuan membatalkannya.
+ * Persetujuan pemilik untuk MEMBUANG isi dump yang tidak dimigrasi (handover, item, merk, customer, berkas milik item
+ * atau yang tak dirujuk QR, audit modul yang dibuang). Terikat pada jumlah baris dan checksum isi: dump yang berubah sesudah persetujuan membatalkannya.
  */
 export interface DiscardApproval {
   /** Pemilik produk yang menyetujui. */
@@ -104,9 +104,10 @@ export interface ImportReport {
   tables: Record<string, TableSummary>;
   /** Jumlah angka bertulisan teks yang diubah menjadi INTEGER (rutin; tidak dirinci per baris). */
   numericText: number;
-  /** Penghitung yang ditulis ke `counters` (`st:YYYYMMDD` = nomor serah terima tertinggi per tanggal). */
-  counters: Record<string, number>;
-  /** Isi dump yang akan dibuang: kunci = nama tabel (`files:item` untuk berkas milik item). Hanya yang berisi. */
+  /**
+   * Isi dump yang akan dibuang: kunci = nama tabel (`files:item` berkas milik item, `files:tak-dirujuk` berkas yang
+   * tak dirujuk tabel QR, `audit_log` baris audit modul yang dibuang). Hanya yang berisi.
+   */
   discarded: Record<string, DiscardSummary>;
   /** Persetujuan pemilik untuk semua isi di `discarded` terpenuhi (atau tak ada yang dibuang). */
   discardApproved: boolean;
@@ -155,7 +156,6 @@ const SEP = '\u001f';
 const INSERT_CHUNK_ROWS = 200;
 const INSERT_CHUNK_BYTES = 1_000_000;
 const APPROVAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const HANDOVER_NUMBER = /^ST-(\d{8})-(\d+)$/;
 
 function cellString(value: CellValue): string {
   if (value === null || value === undefined) return '';
@@ -488,6 +488,9 @@ function readTable(
   const divertAt = def.divert
     ? def.columns.findIndex((column) => column.name === def.divert?.column)
     : -1;
+  const knownAt = def.known
+    ? def.columns.findIndex((column) => column.name === def.known?.column)
+    : -1;
 
   for (let position = 1; position < grid.length; position++) {
     const sheetRow = position + 1;
@@ -501,7 +504,7 @@ function readTable(
       summary.blank += 1;
       continue;
     }
-    if (!keep || (def.divert && (texts[divertAt] as string).trim() === def.divert.equals)) {
+    if (!keep || def.divert?.matches((texts[divertAt] as string).trim())) {
       discarded.push(texts);
       summary.discarded += 1;
       continue;
@@ -513,6 +516,16 @@ function readTable(
         sheetRow,
         'DIKECUALIKAN_PEMILIK',
         'Dikecualikan atas keputusan pemilik',
+      );
+      continue;
+    }
+    if (def.known && !def.known.matches((texts[knownAt] as string).trim())) {
+      collector.error(
+        def.name,
+        sheetRow,
+        def.known.code,
+        `${def.known.column} "${(texts[knownAt] as string).trim()}": ${def.known.message}`,
+        def.known.column,
       );
       continue;
     }
@@ -650,6 +663,25 @@ export function userReferences(
   const legacy = parseStringList(roleIds);
   if (legacy === null) return { error: 'role_ids' };
   return { roles: legacy, locations };
+}
+
+/** Kunci ringkasan buangan untuk berkas yang tak dirujuk tabel QR yang diimpor. */
+const UNREFERENCED_FILES_KEY = 'files:tak-dirujuk';
+
+/** Id berkas yang dirujuk tabel QR yang diimpor: logo desain, pustaka logo dan logo bawaan default, logo bawaan preset. */
+export function referencedFileIds(tables: Record<string, PreparedRow[]>): Set<string> {
+  const ids = new Set<string>();
+  const add = (value: unknown) => {
+    const id = String(value ?? '');
+    if (id !== '') ids.add(id);
+  };
+  for (const row of tables.qr_designs ?? []) add(row.values.logo_file_id);
+  for (const row of tables.qr_defaults ?? []) {
+    add(row.values.default_logo_id);
+    for (const id of parseStringList(String(row.values.logo_file_ids)) ?? []) add(id);
+  }
+  for (const row of tables.qr_presets ?? []) add(row.values.default_logo_id);
+  return ids;
 }
 
 function idSet(
@@ -844,7 +876,7 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   );
   const known = new Set(TABLES.map((table) => table.name));
   for (const name of Object.keys(grids)) {
-    if (!known.has(name))
+    if (!known.has(name) && !IGNORED_SHEETS.includes(name))
       collector.warn(name, 0, 'SHEET_TAK_DIKENAL', `Sheet ${name} tidak diimpor`);
   }
 
@@ -874,6 +906,19 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   );
   checkReferences(collector, rows, erroredIds);
 
+  // Berkas yang tak dirujuk tabel QR yang diimpor tidak diimpor (lingkup final pemilik 2026-11-06): dibuang dan
+  // diringkas agar isinya diperiksa pemilik (gerbang pembuangan yang sama).
+  const referenced = referencedFileIds(rows);
+  const filesDef = tableDef('files');
+  const unreferenced = (rows.files ?? []).filter((row) => !referenced.has(String(row.values.id)));
+  if (unreferenced.length > 0) {
+    rows.files = (rows.files ?? []).filter((row) => referenced.has(String(row.values.id)));
+    discardedRows[UNREFERENCED_FILES_KEY] = unreferenced.map((row) =>
+      filesDef.columns.map((column) => String(row.values[column.name] ?? '')),
+    );
+    discardDefs[UNREFERENCED_FILES_KEY] = filesDef;
+    (summaries.files as TableSummary).discarded += unreferenced.length;
+  }
   for (const row of rows.files ?? []) row.values.status = 'active';
 
   const discarded: Record<string, DiscardSummary> = {};
@@ -892,8 +937,6 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
     ),
   };
 
-  const counters = buildCounters(collector, rows, discardedRows);
-
   const report: ImportReport = {
     ok: collector.errors.length === 0,
     errors: collector.errors,
@@ -904,7 +947,6 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
       TABLES.map((def) => [def.name, summaries[def.name] as TableSummary]),
     ),
     numericText: collector.numericText,
-    counters,
     discarded,
     discardApproved,
     approvalTemplate,
@@ -914,74 +956,11 @@ export function prepareImport(dump: DumpInput, options: ImportOptions = {}): Imp
   }
 
   if (!report.ok) return { report, plan: null, sql: null, rows };
-  const plan = buildPlan(rows, counters, options.reset === true);
+  const plan = buildPlan(rows, options.reset === true);
   return { report, plan, sql: renderSql(plan), rows };
 }
 
-/**
- * Penghitung yang ditulis walau barisnya dibuang: nomor serah terima tertinggi per tanggal (`st:YYYYMMDD`, kunci
- * `reserveNumbers` server) dan baris `sync_state` yang tidak boleh di bawah revisi tertinggi merk/item yang dibuang.
- * Mengubah baris `sync_state` hasil impor (menaikkan atau membuatnya) dan menambah peringatan.
- */
-function buildCounters(
-  collector: Collector,
-  rows: Record<string, PreparedRow[]>,
-  discardedRows: Record<string, string[][]>,
-): Record<string, number> {
-  const counters: Record<string, number> = {};
-  const handovers = discardedRows.handovers ?? [];
-  const numberAt = tableDef('handovers').columns.findIndex((c) => c.name === 'number');
-  for (const row of handovers) {
-    const match = HANDOVER_NUMBER.exec((row[numberAt] as string).trim());
-    if (!match) continue;
-    const key = `${HANDOVER_COUNTER_PREFIX}${match[1]}`;
-    counters[key] = Math.max(counters[key] ?? 0, Number(match[2]));
-  }
-
-  const syncState = rows.sync_state ?? [];
-  rows.sync_state = syncState;
-  for (const resource of ['brands', 'items']) {
-    const def = tableDef(resource);
-    const revAt = def.columns.findIndex((c) => c.name === 'sync_rev');
-    let max = 0;
-    for (const row of discardedRows[resource] ?? []) {
-      const text = (row[revAt] as string).trim();
-      if (/^\d+$/.test(text) && Number.isSafeInteger(Number(text)))
-        max = Math.max(max, Number(text));
-    }
-    if (max === 0) continue;
-    const existing = syncState.find((row) => row.values.resource === resource);
-    if (existing === undefined) {
-      syncState.push({
-        table: 'sync_state',
-        sheetRow: 0,
-        values: { resource, seq: max, updated_at: '' },
-      });
-      collector.warn(
-        'sync_state',
-        0,
-        'SYNC_STATE_DIBUAT',
-        `sync_state tidak punya baris ${resource}; dibuat dengan seq ${max} (revisi tertinggi data yang dibuang)`,
-      );
-    } else if (Number(existing.values.seq) < max) {
-      collector.warn(
-        'sync_state',
-        existing.sheetRow,
-        'SYNC_STATE_DINAIKKAN',
-        `seq ${resource} ${existing.values.seq} di bawah revisi tertinggi data yang dibuang (${max}); dinaikkan`,
-        'seq',
-      );
-      existing.values.seq = max;
-    }
-  }
-  return counters;
-}
-
-function buildPlan(
-  rows: Record<string, PreparedRow[]>,
-  counters: Record<string, number>,
-  reset: boolean,
-): ImportPlan {
+function buildPlan(rows: Record<string, PreparedRow[]>, reset: boolean): ImportPlan {
   const before: string[] = [];
   const transaction: PlanStatement[] = [];
   if (reset) {
@@ -995,16 +974,6 @@ function buildPlan(
     }
   }
   for (const name of INSERT_ORDER) {
-    if (name === 'counters') {
-      transaction.push(
-        ...insertStatements(
-          'counters',
-          ['key', 'value'],
-          Object.entries(counters).map(([key, value]) => [key, value]),
-        ),
-      );
-      continue;
-    }
     const def = tableDef(name);
     const columns = writtenColumns(def);
     transaction.push(

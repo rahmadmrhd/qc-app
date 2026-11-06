@@ -56,13 +56,13 @@ const verify = (dump = cleanDump(), discardApproval = approvalFor(dump)) =>
   verifyImport(dump, reader(), { discardApproval });
 
 function failing(report: Awaited<ReturnType<typeof verifyImport>>): string[] {
-  return [...report.tables, ...report.orphans, ...report.counters, ...report.discarded]
+  return [...report.tables, ...report.orphans, ...report.discarded]
     .filter((entry) => !entry.ok)
     .map((entry) => ('table' in entry ? entry.table : entry.name));
 }
 
 describe('verifyImport', () => {
-  test('impor bersih lulus: baris, checksum isi penuh, yatim, buangan kosong, penghitung', async () => {
+  test('impor bersih lulus: baris, checksum isi penuh, yatim, buangan kosong', async () => {
     const report = await verify();
     expect(failing(report)).toEqual([]);
     expect(report.ok).toBe(true);
@@ -76,18 +76,19 @@ describe('verifyImport', () => {
       'qr_documents',
       'qr_defaults',
       'qr_presets',
-      'sync_state',
     ]);
     expect(report.tables.find((table) => table.table === 'files')).toMatchObject({
       expectedRows: 2,
       actualRows: 2,
     });
-    expect(report.orphans).toHaveLength(7);
-    expect(report.discarded).toHaveLength(7);
-    expect(report.counters.map((c) => c.name)).toEqual([
-      'counters.st:20261001 >= data',
-      'counters.st:20261002 >= data',
-    ]);
+    expect(report.tables.find((table) => table.table === 'audit_log')).toMatchObject({
+      expectedRows: 2,
+      actualRows: 2,
+    });
+    expect(report.orphans).toHaveLength(10);
+    expect(report.discarded).toHaveLength(9);
+    expect(report.discarded.map((check) => check.name)).toContain('counters kosong di target');
+    expect(report.discarded.map((check) => check.name)).toContain('sync_state kosong di target');
   });
 
   test('baris hilang -> jumlah dan checksum tabel itu gagal, tabel lain tetap lulus', async () => {
@@ -100,15 +101,42 @@ describe('verifyImport', () => {
   test('isi kolom non-kunci berubah (mis. teks audit rusak oleh escaping) -> checksum gagal walau jumlah sama', async () => {
     await exec("UPDATE audit_log SET `after` = '{}' WHERE target = 'u2'");
     const audit = (await verify()).tables.find((table) => table.table === 'audit_log');
-    expect(audit).toMatchObject({ ok: false, expectedRows: 3, actualRows: 3 });
+    expect(audit).toMatchObject({ ok: false, expectedRows: 2, actualRows: 2 });
     expect(audit?.actualChecksum).not.toBe(audit?.expectedChecksum);
     await exec("UPDATE qr_designs SET layout = 'x' WHERE id = 'q1'");
     expect(failing(await verify())).toEqual(['audit_log', 'qr_designs']);
   });
 
-  test('sync_state yang berbeda dari dump gagal', async () => {
-    await exec("UPDATE sync_state SET seq = 1 WHERE resource = 'items'");
-    expect(failing(await verify())).toEqual(['sync_state']);
+  test('sync_state dan counters TIDAK diimpor: harus kosong di target (sisa di target gagal)', async () => {
+    await exec("INSERT INTO sync_state (resource, seq) VALUES ('items', 9)");
+    await exec("INSERT INTO counters (`key`, value) VALUES ('st:20261001', 2)");
+    expect(
+      (await verify()).discarded.filter((check) => !check.ok).map((check) => check.name),
+    ).toEqual(['counters kosong di target', 'sync_state kosong di target']);
+  });
+
+  test('audit modul yang dibuang atau aksi tak dikenal di target gagal; berkas tak dirujuk atau milik item gagal', async () => {
+    await exec(
+      "INSERT INTO audit_log (ts, actor, action, target) VALUES ('2026-10-03T00:00:00.000Z', 'a', 'handover.create', 'h1')",
+    );
+    let report = await verify();
+    expect(failing(report)).toEqual([
+      'audit_log',
+      'audit_log tidak merujuk entitas yang tak diimpor',
+    ]);
+    expect(report.orphans.find((check) => !check.ok)?.detail).toContain('handover.create');
+    await importClean();
+    await exec("INSERT INTO files (id, owner_type, owner_id) VALUES ('fz', 'qrlogo', 'shared')");
+    report = await verify();
+    expect(failing(report)).toEqual(['files', 'files dirujuk desain/default/preset QR']);
+    await importClean();
+    await exec("INSERT INTO files (id, owner_type, owner_id) VALUES ('fy', 'item', 'i1')");
+    expect(
+      (await verify()).orphans.filter((check) => !check.ok).map((check) => check.name),
+    ).toEqual([
+      'files.owner_type sah (tanpa berkas milik item)',
+      'files dirujuk desain/default/preset QR',
+    ]);
   });
 
   test('rujukan yatim di target terdeteksi', async () => {
@@ -130,6 +158,8 @@ describe('verifyImport', () => {
       'qr_designs.logo_file_id -> files',
       'qr_defaults.logo_file_ids -> files',
       'qr_presets.default_logo_id -> files',
+      // f2 dan f3 tak lagi dirujuk siapa pun
+      'files dirujuk desain/default/preset QR',
     ]);
   });
 
@@ -143,28 +173,11 @@ describe('verifyImport', () => {
     expect((await verify()).ok).toBe(true);
   });
 
-  test('penghitung nomor ST di bawah data atau hilang gagal; di atas data lulus', async () => {
-    await exec("UPDATE counters SET value = 5 WHERE `key` = 'st:20261002'");
-    await exec("DELETE FROM counters WHERE `key` = 'st:20261001'");
-    const report = await verify();
-    expect(
-      report.counters
-        .filter((check) => !check.ok)
-        .map((check) => check.name)
-        .sort(),
-    ).toEqual(['counters.st:20261001 >= data', 'counters.st:20261002 >= data']);
-    expect(report.ok).toBe(false);
-    await exec("UPDATE counters SET value = 50 WHERE `key` = 'st:20261002'");
-    await exec("INSERT INTO counters (`key`, value) VALUES ('st:20261001', 2)");
-    expect((await verify()).ok).toBe(true);
-  });
-
   test('tabel kosong di target (impor belum jalan) gagal di semua tabel berisi', async () => {
     env = await createTestEnv();
     const report = await verify();
     expect(report.ok).toBe(false);
     expect(failing(report)).toContain('users');
-    expect(failing(report)).toContain('counters.st:20261002 >= data');
   });
 
   test('dump yang tidak lolos validasi impor tidak diverifikasi', async () => {
@@ -200,13 +213,13 @@ describe('verifyImport', () => {
     const dump = cleanDump();
     const sheet = dump.audit_log as string[][];
     for (let i = 0; i < 1500; i++)
-      sheet.push(['2026-10-03T00:00:00.000Z', 'a@x', 'tes', `t${i}`, '', '']);
+      sheet.push(['2026-10-03T00:00:00.000Z', 'a@x', 'user.tes', `t${i}`, '', '']);
     await importClean(dump);
     const report = await verify(dump);
     expect(report.tables.find((table) => table.table === 'audit_log')).toMatchObject({
       ok: true,
-      expectedRows: 1503,
-      actualRows: 1503,
+      expectedRows: 1502,
+      actualRows: 1502,
     });
   });
 });
