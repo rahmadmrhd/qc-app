@@ -6,6 +6,7 @@ import { gunzipSync } from 'node:zlib';
 import {
   type DumpProcess,
   dumpArgs,
+  ensureLocalDir,
   fileDigest,
   parseDatabaseUrl,
   pruneLocalDumps,
@@ -106,6 +107,25 @@ describe('runDump', () => {
     expect(seen[0]?.command[0]).toMatch(/mariadb-dump/);
     expect(seen[0]?.command.join(' ')).not.toContain(SENTINEL);
     expect(seen[0]?.env).toEqual({ MYSQL_PWD: SENTINEL });
+  });
+
+  test.skipIf(process.platform === 'win32')('dump ditulis dengan mode 0600', async () => {
+    const out = join(dir, 'qc-backup-20260115-0200.sql.gz');
+    await runDump(TARGET, out, {
+      spawn: fakeSpawn({
+        stdout: [
+          `x
+${TRAILER}`,
+        ],
+      }),
+    });
+    expect((await stat(out)).mode & 0o777).toBe(0o600);
+  });
+
+  test.skipIf(process.platform === 'win32')('ensureLocalDir membuat folder 0700', async () => {
+    const sub = join(dir, 'cadangan');
+    await ensureLocalDir(sub);
+    expect((await stat(sub)).mode & 0o777).toBe(0o700);
   });
 
   test('kode keluar bukan 0 -> gagal, tidak ada berkas jadi maupun .partial, stderr dibersihkan dari kata sandi', async () => {

@@ -146,7 +146,7 @@ export async function runDump(
       Readable.fromWeb(proc.stdout as import('node:stream/web').ReadableStream),
       tracker,
       createGzip(),
-      createWriteStream(partial),
+      createWriteStream(partial, { mode: 0o600 }),
     );
   } catch (error) {
     failure = error instanceof Error ? error : new Error(String(error));
@@ -224,5 +224,5 @@ export async function pruneLocalDumps(dir: string, keep: number): Promise<string
 
 /** Memastikan folder lokal cadangan ada. */
 export async function ensureLocalDir(dir: string): Promise<void> {
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, { recursive: true, mode: 0o700 });
 }
