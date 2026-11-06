@@ -82,6 +82,13 @@ exit 0
 const FAKE_CURL = `#!/bin/sh
 echo "curl $*" >> "$FAKE_LOG"
 tag=$(cat "$FAKE_STATE/running" 2>/dev/null)
+case "$*" in
+  *--resolve*)
+    echo "curl nginx rahasia-uji"; echo "curl nginx err rahasia-uji" >&2
+    [ -f "$FAKE_STATE/nginx_down" ] && exit 7
+    if [ -f "$FAKE_STATE/nginx_fail_all" ] || grep -qx "$tag" "$FAKE_STATE/nginx_fail_tags" 2>/dev/null; then exit 22; fi
+    exit 0 ;;
+esac
 if grep -qx "$tag" "$FAKE_STATE/ping_fail_tags" 2>/dev/null; then exit 22; fi
 exit 0
 `;
@@ -495,6 +502,102 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     const result = await run(`deploy staging ${SHA_NEW}`);
     expect(result.code).toBe(0);
     expect(calls()).toContain('qc-staging-app');
+  });
+});
+
+describe('deploy.sh: uji lewat nginx dari dalam VPS', () => {
+  const withOrigin = (origin: string) =>
+    writeFileSync(join(root, 'staging', '.env'), envFile(`APP_ORIGIN=${origin}\n`));
+  const nginxCalls = () =>
+    calls()
+      .split('\n')
+      .filter((l) => l.includes('--resolve'));
+
+  test('lulus: curl memakai --resolve host:443:127.0.0.1 dan -k, setelah ping lokal; keluaran ke log', async () => {
+    withOrigin('https://qc-dev.rhd.my.id');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    const [line] = nginxCalls();
+    expect(line).toContain('--resolve qc-dev.rhd.my.id:443:127.0.0.1');
+    expect(line).toContain(' -k ');
+    expect(line).toContain('https://qc-dev.rhd.my.id/api/ping');
+    expect(calls().indexOf('http://127.0.0.1:8790/api/ping')).toBeLessThan(
+      calls().indexOf('--resolve'),
+    );
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(readFileSync(join(root, 'staging', '.deploy.log'), 'utf8')).toContain(
+      'curl nginx rahasia-uji',
+    );
+  });
+
+  test('nginx menjawab bukan 2xx (curl exit 22, mis. 502): rollback, bukan kode 5, tanpa pembersihan image, rollback tak memanggil uji nginx', async () => {
+    withOrigin('https://qc-dev.rhd.my.id');
+    writeFileSync(
+      join(state, 'images'),
+      `${SHA_NEW}\n${'d'.repeat(40)}\n${'e'.repeat(40)}\n${'f'.repeat(40)}\n${'1'.repeat(40)}\n`,
+    );
+    writeFileSync(join(state, 'nginx_fail_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy staging ${SHA_BAD}`);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('uji lewat nginx gagal');
+    expect(tagIn('staging')).toBe('tag-lama');
+    expect(readFileSync(join(state, 'running'), 'utf8').trim()).toBe('tag-lama');
+    expect(nginxCalls().length).toBe(5); // hanya percobaan deploy; rollback memakai sehat + ping lokal saja
+    expect(calls()).not.toContain('image rm');
+  });
+
+  test('nginx tidak terjangkau (curl exit 7): kode 5, TANPA rollback, versi baru tetap aktif, tanpa pembersihan image', async () => {
+    withOrigin('https://qc-dev.rhd.my.id');
+    writeFileSync(
+      join(state, 'images'),
+      `${SHA_BAD}
+${'d'.repeat(40)}
+${'e'.repeat(40)}
+${'f'.repeat(40)}
+${'1'.repeat(40)}
+`,
+    );
+    writeFileSync(join(state, 'nginx_down'), '1');
+    const result = await run(`deploy staging ${SHA_BAD}`);
+    expect(result.code).toBe(5);
+    expect(result.out).toContain('nginx tidak terjangkau');
+    expect(result.out).toContain('tidak dikembalikan');
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(tagIn('staging')).toBe(SHA_BAD);
+    expect(readFileSync(join(state, 'running'), 'utf8').trim()).toBe(SHA_BAD);
+    expect((calls().match(/ up -d/g) ?? []).length).toBe(1);
+    expect(calls()).not.toContain('image rm');
+    expect(calls()).not.toContain('image ls');
+    expect(existsSync(join(root, 'staging', '.deploy.lock'))).toBe(false);
+  });
+
+  test('gagal terus (juga setelah rollback): rollback tetap tidak mensyaratkan nginx, kode 1', async () => {
+    withOrigin('https://qc-dev.rhd.my.id');
+    writeFileSync(join(state, 'nginx_fail_all'), '1');
+    const result = await run(`deploy staging ${SHA_BAD}`);
+    expect(result.code).toBe(1);
+    expect(tagIn('staging')).toBe('tag-lama');
+  });
+
+  for (const origin of [
+    'http://localhost:3000',
+    'https://x.example.com/path',
+    'https://x.example.com:8443',
+    '',
+  ]) {
+    test(`APP_ORIGIN ${JSON.stringify(origin)} tak valid/bukan https: dilewati dan sukses`, async () => {
+      withOrigin(origin);
+      writeFileSync(join(state, 'nginx_fail_all'), '1');
+      const result = await run(`deploy staging ${SHA_NEW}`);
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('uji lewat nginx dilewati');
+      expect(nginxCalls()).toEqual([]);
+    });
+  }
+
+  test('--dry-run menyebut uji nginx', async () => {
+    const result = await run(`deploy staging ${SHA_NEW}`, ['--dry-run']);
+    expect(result.out).toContain('lewat nginx');
   });
 });
 

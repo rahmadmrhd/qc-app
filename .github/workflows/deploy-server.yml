@@ -1,8 +1,8 @@
 name: Deploy Server
 
 # Menggantikan deploy-worker.yml (Cloudflare) untuk server Bun + MariaDB di VPS. Alur: check -> build image dan
-# dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping, kembali ke
-# tag sebelumnya bila gagal) -> uji asap lewat URL publik. Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
+# dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping lokal dan lewat nginx dari dalam
+# VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
 # - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `staging`    (qc-dev.rhd.my.id)
@@ -240,7 +240,8 @@ jobs:
 
       # Kunci SSH di VPS dibatasi `command="<INSTALL_DIR>/deploy.sh --only <env>"` (jalur mutlak lokasi deploy.sh di server; VPS pribadi: /root/apps/qc-app): yang dijalankan hanya skrip
       # itu dengan perintah di bawah sebagai SSH_ORIGINAL_COMMAND (divalidasi ketat di sisi VPS). Kode keluar:
-      # 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian gagal, 2/3 ditolak/terkunci.
+      # 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian gagal, 5 versi baru sehat dan aktif
+      # tetapi nginx tidak terjangkau (tidak dikembalikan), 2/3 ditolak/terkunci.
       - name: Deploy di VPS
         run: |
           set -uo pipefail
@@ -252,17 +253,27 @@ jobs:
             0) ;;
             1) echo "::error::Deploy gagal; VPS dikembalikan ke tag sebelumnya (lihat log di atas)." ;;
             4) echo "::error::Deploy gagal DAN pengembalian gagal: periksa VPS secara manual." ;;
+            5) echo "::error::Versi baru sehat dan aktif, tetapi nginx di VPS tidak terjangkau (systemctl status nginx / konfigurasi). TIDAK dikembalikan: ini masalah infrastruktur, bukan versi." ;;
             *) echo "::error::Deploy ditolak atau gagal (kode ${code})." ;;
           esac
           exit "$code"
 
-      - name: Uji asap
+      # INFORMATIF: uji lewat nginx yang menentukan (dan memicu rollback) dilakukan `deploy.sh` dari dalam VPS. Runner GitHub
+      # tak dapat diandalkan di sini: Cloudflare memblokir IP datacenter (403) dan origin hanya menerima IP Cloudflare.
+      - name: Uji asap publik (informatif)
+        continue-on-error: true
         env:
           APP_URL: ${{ vars.APP_URL }}
         run: |
-          set -euo pipefail
-          [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+$ ]] || { echo "::error::Variabel environment APP_URL belum diisi atau bukan https://<host>."; exit 1; }
-          curl -fsS --retry 6 --retry-delay 5 --retry-all-errors --max-time 15 "$APP_URL/api/ping"
+          set -uo pipefail
+          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            echo "::warning::Uji asap publik dilewati: variabel environment APP_URL belum diisi atau bukan https://<host>."
+            exit 0
+          fi
+          if ! curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 15 "$APP_URL/api/ping"; then
+            echo "::warning::Uji asap publik gagal (mis. Cloudflare memblokir IP runner). Tidak menggagalkan deploy: kesehatan sudah diuji deploy.sh dari dalam VPS."
+            exit 1
+          fi
           echo
 
       - name: Ringkasan

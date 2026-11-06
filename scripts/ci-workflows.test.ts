@@ -160,6 +160,17 @@ describe('deploy-server.yml: keamanan', () => {
     }
   });
 
+  test('uji asap publik dari runner informatif (continue-on-error + ::warning::); Ringkasan tetap if success()', () => {
+    const steps = stepsOf(deploy);
+    const smoke = steps.find((step) => step.name?.startsWith('Uji asap'));
+    expect(smoke).toBeDefined();
+    expect((smoke as Record<string, unknown>)['continue-on-error']).toBe(true);
+    expect(smoke?.run).toContain('::warning::');
+    expect(smoke?.run).not.toContain('::error::');
+    const summary = steps.find((step) => step.name === 'Ringkasan');
+    expect((summary as Record<string, unknown>).if).toBe('success()');
+  });
+
   test('job deploy: environment dari job meta, tanpa checkout, rahasia hanya di sini, antrean serial tanpa membatalkan', () => {
     const job = deploy.jobs.deploy as Job;
     expect(job.environment).toBe('${{ needs.meta.outputs.target }}');

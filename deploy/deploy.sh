@@ -17,7 +17,9 @@
 # ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
 # Kode keluar: 0 sukses; 1 gagal dan sudah dikembalikan ke tag sebelumnya; 2 input/konfigurasi tidak valid
-# (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin.
+# (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 5 versi baru
+# sehat dan aktif tetapi nginx host TIDAK TERJANGKAU (masalah infrastruktur, bukan versi: tidak dikembalikan dan image
+# lama tidak dibersihkan; periksa nginx). Bila nginx menjawab tetapi bukan 2xx, itu dianggap masalah versi: rollback.
 #
 # Argumen (hanya pemanggil lokal): --only staging|production (batasi lingkungan yang boleh diminta kunci ini), --dry-run
 # (validasi lalu cetak rencana; tidak menyentuh docker/berkas), --root DIR (bawaan: folder skrip ini),
@@ -95,7 +97,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "dry-run: lingkungan=$ENV_NAME tag=$TAG root=$ROOT"
-  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping; kembali ke tag sebelumnya bila gagal"
+  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping lokal; uji /api/ping lewat nginx dari dalam VPS (https://<host APP_ORIGIN>, --resolve ke 127.0.0.1, -k; dilewati bila APP_ORIGIN bukan https); kembali ke tag sebelumnya bila gagal"
   log "rencana pembersihan (hanya setelah sukses penuh; gagal tak mengubah kode keluar): hapus image repositori QC_IMAGE (bawaan GHCR) bertag SHA/local-<sha> satu per satu dengan docker image rm, kecuali tag terpakai kontainer, tag baru, tag sebelumnya, tag di .env lingkungan lain, dan QC_KEEP_IMAGES (bawaan 3) tag terbaru; tanpa prune"
   exit 0
 fi
@@ -189,6 +191,32 @@ smoke_test() {
   return 1
 }
 
+nginx_smoke_test() { # nginx_smoke_test: uji /api/ping lewat nginx host, dari DALAM VPS (keputusan pemilik 2026-11-07)
+  # Runner GitHub tak dapat menguji URL publik (Cloudflare memblokir IP datacenter dan origin hanya menerima IP Cloudflare),
+  # jadi nginx diuji di sini: host dari APP_ORIGIN diarahkan ke 127.0.0.1:443. Origin bukan https://<host> polos
+  # (mis. dev lokal) = tak ada nginx TLS yang diuji: dilewati dan dianggap lulus. Keluaran curl ke log, bukan ke pemanggil.
+  local origin host attempt
+  origin=$(env_value APP_ORIGIN)
+  if [[ ! $origin =~ ^https://([A-Za-z0-9.-]+)$ ]]; then
+    log 'uji lewat nginx dilewati: APP_ORIGIN bukan https://<host> (tanpa jalur/port)'
+    return 0
+  fi
+  host=${BASH_REMATCH[1]}
+  local rc=1
+  for attempt in 1 2 3 4 5; do
+    # -k hanya untuk uji ini: sertifikat origin Cloudflare bukan CA publik. Yang diuji adalah "nginx menjawab";
+    # verifikasi sertifikat dilakukan Cloudflare (mode SSL Full strict).
+    rc=0
+    curl -fsS -k --max-time 5 --resolve "$host:443:127.0.0.1" -o /dev/null "https://$host/api/ping" >>"$DEPLOY_LOG" 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    sleep "$POLL_SECONDS"
+  done
+  # Kode curl 22 = nginx MENJAWAB tetapi bukan 2xx (mis. 502/503/404: dapat terkait versi) -> 1 (rollback).
+  # Selain itu (7 ditolak, 28 timeout, 35/52/56 putus sebelum respons HTTP, dst.) = nginx tak terjangkau -> 2.
+  if [ "$rc" -eq 22 ]; then return 1; fi
+  return 2
+}
+
 rollback() { # rollback: kembali ke PREV_TAG dan pastikan sehat; kode keluar 1 (berhasil) atau 4
   if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
     die 4 'tidak ada tag sebelumnya yang berbeda untuk dikembalikan; periksa kontainer secara manual'
@@ -271,6 +299,15 @@ fi
 if ! smoke_test; then
   log '/api/ping gagal'
   rollback
+fi
+
+nginx_rc=0
+nginx_smoke_test || nginx_rc=$?
+if [ "$nginx_rc" -eq 1 ]; then
+  log 'uji lewat nginx gagal: nginx menjawab tetapi bukan 2xx'
+  rollback
+elif [ "$nginx_rc" -ne 0 ]; then
+  die 5 "versi baru $TAG sehat dan aktif, tetapi nginx tidak terjangkau (periksa systemctl status nginx dan konfigurasinya); tidak dikembalikan ($LOG_HINT)"
 fi
 
 cleanup_images || log 'pembersihan image dilewati (galat tak terduga; tidak memengaruhi hasil deploy)'
