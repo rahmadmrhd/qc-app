@@ -53,6 +53,8 @@ COPY server/package.json server/tsconfig.json server/
 COPY server/src server/src
 # Migrator membaca berkas SQL dari disk: WAJIB ada di image.
 COPY server/migrations server/migrations
+# CLI pemulihan cadangan (T31): dijalankan lewat `docker exec`; logikanya ada di server/src/modules/backup/restore.ts.
+COPY scripts/restore-backup.ts scripts/restore-backup.ts
 COPY --from=web-build /app/server/dist server/dist
 # Berkas tes tidak dibutuhkan runtime.
 RUN find shared server/src -name '*.test.ts' -delete

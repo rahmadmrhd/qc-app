@@ -140,6 +140,10 @@ describe('deploy: compose.yml qc-app', () => {
     expect(beforeUser).toContain('chown bun:bun /var/backups/qc');
   });
 
+  test('CLI pemulihan (T31) ikut di image agar dapat dijalankan lewat docker exec', () => {
+    expect(dockerfile).toContain('COPY scripts/restore-backup.ts scripts/restore-backup.ts');
+  });
+
   test('subnet jaringan dipatok dari variabel (I5) dan tidak memakai kolam otomatis Docker', () => {
     const [config] = compose.networks.default.ipam.config;
     expect(config?.subnet).toMatch(/^\$\{QC_SUBNET:\?/);

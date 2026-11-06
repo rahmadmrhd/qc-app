@@ -1,4 +1,4 @@
-import type { DriveFolderEntry } from '@server/core/bridge-client';
+import type { BridgeClient, DriveFolderEntry } from '@server/core/bridge-client';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -23,22 +23,28 @@ export function backupFolderIdOf(env: Env): Promise<string> {
   return folderIdOf(env, BACKUP_FOLDER_SETTING);
 }
 
-/** Semua berkas folder (semua halaman). */
-export async function listAllEntries(env: Env, folderId: string): Promise<DriveFolderEntry[]> {
-  const bridge = getBridge(env);
+/** Semua berkas folder (semua halaman) lewat klien `bridge`. */
+export async function listAllEntriesVia(
+  bridge: BridgeClient,
+  folderId: string,
+): Promise<DriveFolderEntry[]> {
   const all: DriveFolderEntry[] = [];
   let pageToken: string | undefined;
   do {
-    const page = await viaBridge(() =>
-      bridge.listFolder(folderId, {
-        pageSize: LIST_PAGE_SIZE,
-        ...(pageToken === undefined ? {} : { pageToken }),
-      }),
-    );
+    const page = await bridge.listFolder(folderId, {
+      pageSize: LIST_PAGE_SIZE,
+      ...(pageToken === undefined ? {} : { pageToken }),
+    });
     all.push(...page.files);
     pageToken = page.nextPageToken;
   } while (pageToken !== undefined);
   return all;
+}
+
+/** Semua berkas folder; kegagalan Google dilaporkan sebagai `UNAVAILABLE`. */
+export function listAllEntries(env: Env, folderId: string): Promise<DriveFolderEntry[]> {
+  const bridge = getBridge(env);
+  return viaBridge(() => listAllEntriesVia(bridge, folderId));
 }
 
 /** Berkas cadangan bernama dikenal, urut dari yang terbaru (menurut waktu di nama). */
