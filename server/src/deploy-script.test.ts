@@ -68,6 +68,14 @@ case "$*" in
     echo "rm rahasia-uji"; echo "rm err rahasia-uji" >&2
     [ -f "$FAKE_STATE/rm_fail" ] && exit 1
     exit 0 ;;
+  "exec "*)
+    echo "exec rahasia-uji"; echo "exec err rahasia-uji" >&2
+    echo "exec-env MYSQL_PWD=$MYSQL_PWD" >> "$FAKE_LOG_PRIVATE"
+    [ -f "$FAKE_STATE/db_auth_fail" ] && exit 1
+    exit 0 ;;
+  inspect*State.Running*)
+    [ -f "$FAKE_STATE/no_db" ] && exit 1
+    echo true; exit 0 ;;
   inspect*)
     tag=$(cat "$FAKE_STATE/running" 2>/dev/null)
     case "$*" in
@@ -151,6 +159,7 @@ async function run(
   env.PATH = `${posix(bin)}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? ''}`;
   env.FAKE_LOG = posix(log);
   env.FAKE_STATE = posix(state);
+  env.FAKE_LOG_PRIVATE = posix(join(root, '_private.log'));
   env.FAKE_ENV = posix(join(root, 'staging', '.env'));
   if (request !== undefined) env.SSH_ORIGINAL_COMMAND = request;
   Object.assign(env, extraEnv);
@@ -502,6 +511,79 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     const result = await run(`deploy staging ${SHA_NEW}`);
     expect(result.code).toBe(0);
     expect(calls()).toContain('qc-staging-app');
+  });
+});
+
+describe('deploy.sh: preflight kredensial DB', () => {
+  const SECRET = 'sandi-db-sentinel-9f3a';
+  const withDb = (extra = '') =>
+    writeFileSync(
+      join(root, 'staging', '.env'),
+      envFile(`QC_DB_USER=qc_dev
+QC_DB_NAME=qc_dev
+QC_DB_PASSWORD=${SECRET}
+${extra}`),
+    );
+
+  test('DB berjalan + kredensial benar: lanjut; sandi hanya lewat env (-e MYSQL_PWD), tak ada di argumen/log/stdout', async () => {
+    withDb();
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    const execLine = calls()
+      .split(String.fromCharCode(10))
+      .find((l) => l.startsWith('docker exec'));
+    expect(execLine).toContain('-e MYSQL_PWD qc-staging-db mariadb');
+    expect(execLine).toContain('-uqc_dev qc_dev');
+    expect(calls()).not.toContain(SECRET);
+    expect(result.out).not.toContain(SECRET);
+    expect(readFileSync(join(root, 'staging', '.deploy.log'), 'utf8')).not.toContain(SECRET);
+    // sandi memang sampai ke proses lewat lingkungan
+    expect(readFileSync(join(root, '_private.log'), 'utf8')).toContain(`MYSQL_PWD=${SECRET}`);
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(calls().indexOf('docker exec')).toBeLessThan(calls().indexOf(' pull '));
+  });
+
+  test('kredensial salah: kode 2, tag di .env tak berubah, tanpa pull/up, sandi tak bocor', async () => {
+    withDb();
+    writeFileSync(join(state, 'db_auth_fail'), '1');
+    const before = readFileSync(join(root, 'staging', '.env'), 'utf8');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(2);
+    expect(result.out).toContain('kredensial DB di .env tidak cocok');
+    expect(result.out).not.toContain(SECRET);
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(readFileSync(join(root, 'staging', '.env'), 'utf8')).toBe(before);
+    expect(calls()).not.toContain(' pull ');
+    expect(calls()).not.toContain(' up ');
+    expect(existsSync(join(root, 'staging', '.deploy.lock'))).toBe(false);
+  });
+
+  test('kontainer DB tidak ada: dilewati dan deploy lanjut', async () => {
+    withDb();
+    writeFileSync(join(state, 'no_db'), '1');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('preflight kredensial DB dilewati');
+    expect(calls()).not.toContain('docker exec');
+  });
+
+  test('bawaan pengguna/skema qc_<lingkungan> bila QC_DB_USER/QC_DB_NAME kosong; nama tak valid ditolak (kode 2)', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile(`QC_DB_PASSWORD=x\n`));
+    expect((await run(`deploy staging ${SHA_NEW}`)).code).toBe(0);
+    expect(calls()).toContain('-uqc_staging qc_staging');
+  });
+
+  test('QC_DB_USER tak valid: kode 2 tanpa docker exec', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile(`QC_DB_USER=a b;x\nQC_DB_PASSWORD=x\n`));
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(2);
+    expect(calls()).not.toContain('docker exec');
+  });
+
+  test('--dry-run menyebut preflight', async () => {
+    expect((await run(`deploy staging ${SHA_NEW}`, ['--dry-run'])).out).toContain(
+      'preflight kredensial DB',
+    );
   });
 });
 

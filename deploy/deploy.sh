@@ -17,7 +17,8 @@
 # ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
 # Kode keluar: 0 sukses; 1 gagal dan sudah dikembalikan ke tag sebelumnya; 2 input/konfigurasi tidak valid
-# (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 5 versi baru
+# (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 2 juga bila kredensial DB di .env
+# tidak cocok dengan database yang berjalan (preflight); 5 versi baru
 # sehat dan aktif tetapi nginx host TIDAK TERJANGKAU (masalah infrastruktur, bukan versi: tidak dikembalikan dan image
 # lama tidak dibersihkan; periksa nginx). Bila nginx menjawab tetapi bukan 2xx, itu dianggap masalah versi: rollback.
 #
@@ -97,7 +98,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "dry-run: lingkungan=$ENV_NAME tag=$TAG root=$ROOT"
-  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping lokal; uji /api/ping lewat nginx dari dalam VPS (https://<host APP_ORIGIN>, --resolve ke 127.0.0.1, -k; dilewati bila APP_ORIGIN bukan https); kembali ke tag sebelumnya bila gagal"
+  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; preflight kredensial DB (hanya bila kontainer DB berjalan: docker exec mariadb SELECT 1 dengan kata sandi lewat env MYSQL_PWD; gagal = kode 2 tanpa mengubah apa pun); docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping lokal; uji /api/ping lewat nginx dari dalam VPS (https://<host APP_ORIGIN>, --resolve ke 127.0.0.1, -k; dilewati bila APP_ORIGIN bukan https); kembali ke tag sebelumnya bila gagal"
   log "rencana pembersihan (hanya setelah sukses penuh; gagal tak mengubah kode keluar): hapus image repositori QC_IMAGE (bawaan GHCR) bertag SHA/local-<sha> satu per satu dengan docker image rm, kecuali tag terpakai kontainer, tag baru, tag sebelumnya, tag di .env lingkungan lain, dan QC_KEEP_IMAGES (bawaan 3) tag terbaru; tanpa prune"
   exit 0
 fi
@@ -273,6 +274,29 @@ cleanup_images() { # Pembersihan image lama; dipanggil HANYA setelah deploy suks
   return 0
 }
 
+db_preflight() { # Preflight kredensial DB (keputusan pemilik 2026-11-07): sebelum apa pun diubah.
+  # Kata sandi DB di .env hanya dipakai MariaDB saat inisialisasi volume; .env yang berubah (tak sengaja, atau rotasi dengan
+  # urutan terbalik) membuat aplikasi baru gagal login dan rollback (hanya mengganti tag) tak menolong. Uji hanya bila
+  # kontainer DB SEDANG berjalan (deploy pertama: dilewati). Kata sandi hanya lewat lingkungan (MYSQL_PWD), tak pernah argv/log.
+  local db_container=$NAME-db user db password running
+  running=$(docker inspect --format '{{.State.Running}}' "$db_container" 2>/dev/null || true)
+  if [ "$running" != true ]; then
+    log "preflight kredensial DB dilewati: kontainer $db_container tidak berjalan (deploy pertama?)"
+    return 0
+  fi
+  user=$(env_value QC_DB_USER)
+  [ -n "$user" ] || user=qc_$ENV_NAME
+  db=$(env_value QC_DB_NAME)
+  [ -n "$db" ] || db=qc_$ENV_NAME
+  password=$(env_value QC_DB_PASSWORD)
+  [[ $user =~ ^[A-Za-z0-9_]{1,64}$ ]] || die 2 'QC_DB_USER di .env tidak valid'
+  [[ $db =~ ^[A-Za-z0-9_]{1,64}$ ]] || die 2 'QC_DB_NAME di .env tidak valid'
+  if ! MYSQL_PWD=$password docker exec -e MYSQL_PWD "$db_container" mariadb -h 127.0.0.1 "-u$user" "$db" -e 'SELECT 1' >>"$DEPLOY_LOG" 2>&1; then
+    die 2 "kredensial DB di .env tidak cocok dengan database yang berjalan; tidak ada yang diubah (rotasi: ubah di database dulu, baru .env; lihat docs/deploy-vps.md; $LOG_HINT)"
+  fi
+  log 'preflight kredensial DB lulus'
+}
+
 # ---- 4. Deploy ----
 log "lingkungan=$ENV_NAME tag=$TAG (sebelumnya: ${PREV_TAG:-tidak ada})"
 # .env/compose.yml yang rusak (kutip tak tertutup, variabel wajib kosong) berhenti DI SINI tanpa mengubah apa pun dan
@@ -281,6 +305,7 @@ log "lingkungan=$ENV_NAME tag=$TAG (sebelumnya: ${PREV_TAG:-tidak ada})"
 if ! QC_IMAGE_TAG="$TAG" docker compose --project-directory "$DIR" -f "$DIR/compose.yml" config --quiet >/dev/null 2>&1; then
   die 2 ".env/compose.yml tidak valid; periksa di VPS: cd $DIR && docker compose config --quiet"
 fi
+db_preflight
 set_tag "$TAG" || die 2 'gagal menulis QC_IMAGE_TAG ke .env'
 
 if ! compose pull qc-app; then
