@@ -54,6 +54,16 @@ Penamaan (keputusan pemilik 2026-11-07, spek §19 butir 10): nama environment Gi
 
 CI hanya mengganti tag image (`QC_IMAGE_TAG`): berkas di folder VPS (`/root/apps/qc-app/<env>/compose.yml`, `deploy.sh`, `mariadb/qc.cnf`, `.env`) TIDAK ikut ter-deploy dari repositori. Bila sebuah komit mengubah `deploy/compose.yml`, `deploy/deploy.sh`, `deploy/mariadb/qc.cnf`, atau menambah variabel `.env` baru (mis. variabel wajib baru di `server/src/config.ts` + `compose.yml` + `.env.example`), **salin/isi manual di VPS sebelum push yang men-deploy komit itu** (langkah 4-5 `docs/deploy-vps.md`). Bila terlupa, image baru gagal `loadConfig` atau `compose config` di VPS dan deploy berakhir kode 1 (dikembalikan) atau 2 (tidak ada yang diubah): aman, tetapi memakan satu siklus deploy.
 
+### Pembersihan image lama (`QC_KEEP_IMAGES`)
+
+VPS dipakai bersama aplikasi lain, jadi tiap deploy yang SUKSES PENUH (tag baru sehat dan `/api/ping` lolos) diakhiri pembersihan image lama oleh `deploy.sh` (`cleanup_images`). Tidak pernah berjalan pada deploy gagal atau pengembalian (image tag sebelumnya adalah target pengembalian). Aturan:
+
+- Hanya repositori image stack ini (`QC_IMAGE` di `.env`, bawaan yang tertulis di `compose.yml`) dan hanya tag `<sha-40-heksa>` atau `local-<sha>`; tag lain dibiarkan. Daftar dibaca dari `docker image ls <repo>` (terurut dari yang terbaru dibuat), dihapus satu per satu dengan `docker image rm <repo>:<tag>` (tanpa `-f`; image yang masih dipakai gagal dengan aman dan diabaikan).
+- Dipertahankan: `QC_KEEP_IMAGES` tag terbaru (variabel opsional di `.env`, bawaan 3; harus `^[1-9][0-9]?$`, nilai lain = 3), tag baru, tag sebelumnya, tag yang dipakai kontainer ini, dan tag `QC_IMAGE_TAG` di `.env` lingkungan LAIN (`$ROOT/*/.env`; staging dan production memakai satu repositori GHCR, jadi deploy satu lingkungan tidak menghapus image yang lain).
+- TIDAK pernah: `docker system prune`, `docker image prune`, `docker volume prune`, atau menyentuh image, volume, dan kontainer di luar daftar di atas (termasuk image dangling).
+- Kegagalan pembersihan hanya dicatat; kode keluar deploy tetap 0. Keluaran docker masuk `.deploy.log` di VPS; log skrip hanya ringkasan (`dihapus=N gagal/dilewati=M`). `--dry-run` mencetak rencananya.
+- `QC_KEEP_IMAGES` hanya dibaca `deploy.sh` dari `.env` (bukan `config.ts`), jadi tidak ada di `compose.yml`. Berkas `deploy.sh` baru wajib disalin manual ke VPS (bagian di atas).
+
 ### Migrasi basis data dan pengembalian
 
 Migrasi diterapkan otomatis saat server start (gerbang `prepareDatabase`, sebelum `Bun.serve`). Pengembalian otomatis (`deploy.sh`) hanya mengganti image ke tag sebelumnya; **pengembalian TIDAK membatalkan migrasi**. Karena itu migrasi wajib kompatibel mundur dengan image sebelumnya: pola expand -> kontrak (tambah kolom/tabel dulu; hapus atau ganti nama kolom hanya di rilis berikutnya, setelah image yang tak lagi memakainya stabil). Migrasi destruktif yang membuat image lama rusak menjadikan pengembalian "sehat" di `/api/ping` tetapi galat di rute nyata, atau berakhir kode 4.
