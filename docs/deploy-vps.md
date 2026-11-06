@@ -86,7 +86,7 @@ Pembatalan: hapus `.env` (rahasia dapat dibangkitkan ulang; belum ada data).
 
 ## 6. Kunci service account Google
 
-Pemilik menyalin berkas kunci langsung ke `/root/apps/qc-app/<env>/secrets/google-sa.json` (`scp`, tidak lewat GitHub) lalu `chmod 600`. Compose memasangnya baca-saja ke `/run/secrets/google-sa.json` dan GAGAL bila berkas tidak ada. Sebelum T30a kode belum membacanya: berkas kosong sementara (`install -m 600 /dev/null .../google-sa.json`) cukup agar kontainer jalan. Pembatalan: hapus berkas.
+Pemilik menyalin berkas kunci langsung ke `/root/apps/qc-app/<env>/secrets/google-sa.json` (`scp`, tidak lewat GitHub) lalu `chown 1000:1000` dan `chmod 600`. PEMILIK HARUS uid 1000: kontainer berjalan sebagai pengguna `bun` (uid 1000), dan berkas milik `root` berizin 600 tidak terbaca olehnya (diverifikasi di staging 2026-11-06). Compose memasangnya baca-saja ke `/run/secrets/google-sa.json` dan GAGAL bila berkas tidak ada. Sebelum T30a kode belum membacanya: berkas kosong sementara (`install -m 600 -o 1000 -g 1000 /dev/null .../google-sa.json`) cukup agar kontainer jalan. Pembatalan: hapus berkas.
 
 ## 7. Image dan registri
 
@@ -101,7 +101,7 @@ mkdir -p /root/apps/qc-app/build && tar -xzf /root/apps/qc-app/qc-src.tgz -C /ro
 nice -n 19 ionice -c3 docker build -t qc-app:local-<sha> /root/apps/qc-app/build
 ```
 
-Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, lalu jalankan `docker compose up -d` langsung (bukan `deploy.sh`: `pull` gagal untuk image lokal). Pembatalan: `docker rmi qc-app:local-<sha>`; `rm -r /root/apps/qc-app/build /root/apps/qc-app/qc-src.tgz`.
+Untuk image lokal isi `.env`: `QC_IMAGE=qc-app` dan `QC_IMAGE_TAG=local-<sha>`, lalu jalankan `docker compose up -d` langsung (bukan `deploy.sh`: `pull` gagal untuk image lokal). Bangun memakai pembangun klasik dengan batas sumber daya (BuildKit tidak dapat dibatasi per build dari klien): `DOCKER_BUILDKIT=0 nice -n 19 ionice -c3 docker build --memory 1200m --memory-swap 1200m --cpu-shares 64 --cpu-quota 100000 -t qc-app:local-<sha> .`, dan pantau `MemAvailable` (hentikan bila < 600 MB). Pembatalan: `docker rmi qc-app:local-<sha>`; `rm -r /root/apps/qc-app/build /root/apps/qc-app/qc-src.tgz`.
 
 ## 8. Menjalankan stack
 
