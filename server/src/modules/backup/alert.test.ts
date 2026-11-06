@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { Env } from '@server/core/env';
 import { createSmtpMailer, type Mailer, type MailMessage } from '@server/core/mail';
-import { getSetting } from '@server/core/settings';
+import { getSetting, putSetting } from '@server/core/settings';
 import { startScheduler } from '@server/jobs/runner';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
@@ -12,6 +12,7 @@ import {
   SETTING_QUOTA_ALERT_AT,
 } from './alert';
 import { backupName } from './names';
+import { SETTING_BACKUP_LAST_SUCCESS } from './service';
 import { ensureBackupFolder } from './upload';
 
 const HOUR = 60 * 60 * 1000;
@@ -140,13 +141,45 @@ describe('peringatan cadangan basi', () => {
     expect(sent).toHaveLength(1);
   });
 
-  test('galat membaca Drive dilempar (tercatat oleh penjadwal) setelah pemeriksaan kuota tetap dicoba', async () => {
-    await seedBackup(HOUR); // folder cadangan ada
-    env.BRIDGE.failNext('listFolder', new Error('Drive down'));
+  test('Drive tak terbaca + tanggal sukses terakhir lama -> satu email "tak dapat diperiksa", tidak melempar', async () => {
     spyOn(console, 'error').mockImplementation(() => {});
-    env.BRIDGE.state.quota = { limit: 15 * GIB, usage: 14 * GIB };
-    await expect(checkBackupAlerts(env)).rejects.toThrow();
-    expect(sent.filter((message) => message.subject.includes('kuota'))).toHaveLength(1);
+    await seedBackup(HOUR); // folder cadangan ada
+    await putSetting(env, SETTING_BACKUP_LAST_SUCCESS, '20260110');
+    env.BRIDGE.failNext('listFolder', new Error('invalid_grant: kunci dicabut'));
+    const outcome = await checkBackupAlerts(env);
+    expect(outcome.backup).toBe('sent');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.subject).toContain('cadangan');
+    expect(sent[0]?.text).toContain('tidak dapat diperiksa');
+    // throttle 12 jam yang sama
+    env.BRIDGE.failNext('listFolder', new Error('invalid_grant'));
+    expect((await checkBackupAlerts(env)).backup).toBe('throttled');
+    expect(sent).toHaveLength(1);
+  });
+
+  test('Drive tak terbaca + tanggal sukses baru -> tanpa email (tidak melempar)', async () => {
+    spyOn(console, 'error').mockImplementation(() => {});
+    await seedBackup(HOUR);
+    await putSetting(env, SETTING_BACKUP_LAST_SUCCESS, '20260115');
+    env.BRIDGE.failNext('listFolder', new Error('Drive down'));
+    expect((await checkBackupAlerts(env)).backup).toBe('ok');
+    expect(sent).toEqual([]);
+  });
+
+  test('Drive tak terbaca + belum pernah ada catatan sukses -> email', async () => {
+    spyOn(console, 'error').mockImplementation(() => {});
+    await seedBackup(HOUR);
+    env.BRIDGE.failNext('listFolder', new Error('Drive down'));
+    expect((await checkBackupAlerts(env)).backup).toBe('sent');
+    expect(sent[0]?.text).toContain('tidak ada catatan cadangan berhasil');
+  });
+
+  test('kuota yang gagal diperiksa tidak melempar dan tidak mengirim email', async () => {
+    spyOn(console, 'error').mockImplementation(() => {});
+    await seedBackup(HOUR);
+    env.BRIDGE.failNext('storageQuota', new Error('Drive down'));
+    expect(await checkBackupAlerts(env)).toEqual({ backup: 'ok', quota: 'skipped' });
+    expect(sent).toEqual([]);
   });
 
   test('BACKUP_ENABLED tidak diset -> tidak melakukan apa pun', async () => {

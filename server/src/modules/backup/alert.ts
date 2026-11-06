@@ -2,7 +2,8 @@ import { getBridge, viaBridge } from '@server/core/bridge-client';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { getSetting, putSetting } from '@server/core/settings';
-import { parseBackupName } from './names';
+import { parseBackupName, wibDateEpoch } from './names';
+import { SETTING_BACKUP_LAST_SUCCESS } from './service';
 import { backupFolderIdOf, listAllEntries, recognizedBackups } from './upload';
 
 /** Cadangan terbaru lebih tua dari ini = basi (peringatan). */
@@ -58,25 +59,66 @@ async function sendThrottled(
   return 'sent';
 }
 
+/**
+ * Cadangan terbaru menurut daftar folder Drive. Bila Drive tak dapat dibaca (kunci dicabut/dirotasi, folder tak lagi
+ * dibagikan: justru saat cadangan paling mungkin berhenti), dipakai catatan `BACKUP_LAST_SUCCESS_DATE` dari
+ * `service.ts` (tanggal WIB cadangan terakhir yang terverifikasi, ditaksir pukul 02:00) agar peringatan tidak diam.
+ */
+async function newestBackup(
+  env: Env,
+): Promise<{ ms: number | null; name?: string; driveError?: string }> {
+  const folderId = await backupFolderIdOf(env);
+  if (folderId === '') return { ms: null };
+  try {
+    const newest = recognizedBackups(await listAllEntries(env, folderId))[0];
+    if (newest === undefined) return { ms: null };
+    return { ms: parseBackupName(newest.name)?.epochMs ?? null, name: newest.name };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(
+      `peringatan: daftar folder cadangan Drive gagal dibaca, memakai catatan lokal: ${reason}`,
+    );
+    const lastDate = await getSetting(env, SETTING_BACKUP_LAST_SUCCESS);
+    return {
+      ms: /^\d{8}$/.test(lastDate) ? wibDateEpoch(lastDate) : null,
+      driveError: reason,
+    };
+  }
+}
+
 async function checkBackup(env: Env): Promise<AlertState> {
   const now = nowOf(env);
-  const folderId = await backupFolderIdOf(env);
-  const newest =
-    folderId === '' ? undefined : recognizedBackups(await listAllEntries(env, folderId))[0];
-  const newestMs = newest === undefined ? null : (parseBackupName(newest.name)?.epochMs ?? null);
-  if (newestMs !== null && now - newestMs <= BACKUP_STALE_MS) return 'ok';
-  const detail =
-    newest === undefined || newestMs === null
-      ? 'Belum ada satu pun cadangan di folder cadangan Drive.'
-      : `Cadangan terbaru: ${newest.name} (${describeAge(now - newestMs)} lalu).`;
+  const newest = await newestBackup(env);
+  if (newest.ms !== null && now - newest.ms <= BACKUP_STALE_MS) return 'ok';
+  let detail: string;
+  if (newest.driveError !== undefined) {
+    detail =
+      newest.ms === null
+        ? 'Folder cadangan Drive tidak dapat diperiksa dan tidak ada catatan cadangan berhasil.'
+        : `Folder cadangan Drive tidak dapat diperiksa; cadangan terakhir yang tercatat berhasil sekitar ${describeAge(now - newest.ms)} lalu.`;
+    detail += ` Penyebab: ${newest.driveError}`;
+  } else if (newest.ms === null || newest.name === undefined) {
+    detail = 'Belum ada satu pun cadangan di folder cadangan Drive.';
+  } else {
+    detail = `Cadangan terbaru: ${newest.name} (${describeAge(now - newest.ms)} lalu).`;
+  }
   return sendThrottled(env, SETTING_BACKUP_ALERT_AT, {
     subject: '[QC App] Peringatan: cadangan database basi',
-    text: `${detail}\n\nCadangan harian seharusnya berjalan tiap malam (02:00 WIB). Periksa log server (job db_backup), akses service account ke folder cadangan, dan ruang Drive.`,
+    text: `${detail}\n\nCadangan harian seharusnya berjalan tiap malam (02:00 WIB). Periksa log server (job db_backup), akses service account ke folder cadangan (kunci dicabut atau folder tak lagi dibagikan), dan ruang Drive.`,
   });
 }
 
 async function checkQuota(env: Env): Promise<AlertState> {
-  const quota = await viaBridge(() => getBridge(env).storageQuota());
+  let quota: Awaited<ReturnType<ReturnType<typeof getBridge>['storageQuota']>>;
+  try {
+    quota = await viaBridge(() => getBridge(env).storageQuota());
+  } catch (error) {
+    // Kuota yang gagal diperiksa tidak melempar (peringatan cadangan di atas sudah menangani Drive yang tak terjangkau).
+    console.error(
+      `peringatan: kuota Drive gagal diperiksa: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return 'skipped';
+  }
   if (quota.limit === null || quota.limit <= 0) return 'ok';
   const threshold = env.QUOTA_ALERT_PERCENT ?? DEFAULT_QUOTA_ALERT_PERCENT;
   const percent = (quota.usage / quota.limit) * 100;
@@ -91,8 +133,8 @@ async function checkQuota(env: Env): Promise<AlertState> {
  * Pemeriksaan jam-an: peringatan email bila cadangan terbaru > 36 jam (atau belum ada) dan bila pemakaian kuota Drive
  * melewati ambang. Tiap jenis dibatasi satu email per 12 jam (waktu terakhir YANG TERKIRIM di `settings`). Tidak
  * melakukan apa pun bila cadangan tidak diaktifkan atau SMTP/penerima belum dikonfigurasi (dicatat sekali). Gagal kirim
- * email tidak dilempar (dicatat, dicoba lagi pada pemeriksaan berikutnya); galat membaca Drive dilempar setelah
- * kedua pemeriksaan dicoba.
+ * email tidak dilempar (dicatat, dicoba lagi pada pemeriksaan berikutnya). Drive yang tak terbaca tidak membuat
+ * peringatan diam: usia dihitung dari catatan lokal cadangan terakhir yang berhasil; kuota yang gagal diperiksa dilewati.
  */
 export async function checkBackupAlerts(env: Env): Promise<AlertOutcome> {
   const outcome: AlertOutcome = { backup: 'skipped', quota: 'skipped' };

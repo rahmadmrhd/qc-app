@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { backupName, isoWeekKey, parseBackupName, wibDate, wibHour } from './names';
+import { backupName, isoWeekKey, parseBackupName, wibDate, wibDateEpoch, wibHour } from './names';
 
 describe('nama berkas cadangan (WIB)', () => {
   test('backupName memakai waktu WIB (UTC+7) dan format qc-backup-YYYYMMDD-HHmm.sql.gz', () => {
@@ -34,6 +34,11 @@ describe('nama berkas cadangan (WIB)', () => {
     ]) {
       expect(parseBackupName(name)).toBeNull();
     }
+  });
+
+  test('wibDateEpoch: pukul 02:00 WIB (bawaan) pada tanggal itu, dalam UTC', () => {
+    expect(wibDateEpoch('20260115')).toBe(Date.parse('2026-01-14T19:00:00Z'));
+    expect(wibDateEpoch('20260115', 0)).toBe(Date.parse('2026-01-14T17:00:00Z'));
   });
 
   test('isoWeekKey: Senin-Minggu satu pekan, batas tahun mengikuti ISO', () => {

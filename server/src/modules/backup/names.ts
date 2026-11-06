@@ -69,6 +69,14 @@ export function parseBackupName(name: string): ParsedBackupName | null {
   };
 }
 
+/** Epoch (UTC) pukul `hour`:00 WIB pada tanggal `YYYYMMDD` (bawaan 02:00, jam cadangan terjadwal). */
+export function wibDateEpoch(date: string, hour = 2): number {
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(4, 6));
+  const d = Number(date.slice(6, 8));
+  return Date.UTC(y, m - 1, d, hour) - WIB_OFFSET_MS;
+}
+
 /** Kunci pekan ISO 8601 (`YYYY-Www`) dari `YYYYMMDD`. */
 export function isoWeekKey(date: string): string {
   const y = Number(date.slice(0, 4));
