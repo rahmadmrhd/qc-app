@@ -16,14 +16,14 @@ Aturan VPS bersama: jangan menyentuh kontainer, blok nginx, firewall, atau pengg
 ## 0. Hostname dan keputusan jalur
 
 - Staging memakai `qc-dev.rhd.my.id`, BUKAN `qc.dev.rhd.my.id`: Universal SSL Cloudflare hanya mencakup satu tingkat di bawah `rhd.my.id`, hostname dua tingkat tidak tertutup sertifikat tepinya.
-- Folder deploy `/root/apps/qc-app/{dev,exec}` menggantikan `/opt/qc/<env>`. Deploy otomatis (T28) masuk sebagai `root` dengan kunci SSH yang dibatasi `command=` ke satu skrip (lihat langkah 9). Bagian `root` ini MENUNGGU KONFIRMASI pemilik (spek §19 butir 8): alternatifnya pengguna `deploy` khusus dan folder di luar `/root`.
+- Folder deploy `/root/apps/qc-app/{dev,exec}` menggantikan `/opt/qc/<env>`. Deploy otomatis (T28) masuk sebagai `root` dengan kunci SSH yang dibatasi `command=` ke satu skrip (lihat langkah 9). Akses lewat `root` ini DIKONFIRMASI pemilik 2026-11-06 (spek §19 butir 8).
 
 ## 1. Stack dev lama (T1) yang masih berjalan di /opt/qc/dev
 
 Sejak T1 ada stack MariaDB dev di `/opt/qc/dev` (proyek compose `qc-dev`, kontainer `qc-dev-db`, jaringan `qc-dev_default` 172.18.0.0/16, `127.0.0.1:33063`). Itu DB yang dipakai pemilik lewat `bun run db:tunnel` (skema `qc_dev` dan `qc_test_*`) dan TIDAK diubah oleh pemasangan ini:
 
 - Staging memakai awalan sendiri `QC_NAME=qc-staging` (proyek `qc-staging`, kontainer `qc-staging-db`/`qc-staging-app`, jaringan `qc-staging_default`, volume `qc-staging_qc-db-data`), sehingga tidak bertabrakan nama dengan `qc-dev`. Konsekuensinya sementara ada dua kontainer MariaDB untuk "dev" (+384 MB RAM batas; periksa `free -m` dulu, lihat T29).
-- Menyatukan keduanya (staging memakai `qc-dev-db`) mengharuskan membuat ulang `qc-dev-db` dan jaringannya (subnet tetap), sehingga DB dev pemilik terputus sebentar; itu keputusan pemilik terpisah, bukan bagian prosedur ini.
+- **Keputusan pemilik 2026-11-06 ("pisahkan saja"): kedua MariaDB dev tetap terpisah** (`qc-dev-db` untuk pengembangan/tes lewat tunnel, `qc-staging-db` untuk staging); tidak ada tindakan terhadap `qc-dev-db`. Menyatukannya (staging memakai `qc-dev-db`) akan mengharuskan membuat ulang `qc-dev-db` dan jaringannya, dan tidak direncanakan.
 - Jangan menghapus `/opt/qc/dev` atau volumenya.
 
 ## 2. Pemeriksaan baca-saja (aman)
