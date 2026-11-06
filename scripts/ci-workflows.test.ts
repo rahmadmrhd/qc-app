@@ -109,7 +109,7 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   test('cache build GHA ditulis hanya oleh workflow_dispatch (token pull_request_target ditolak menulis cache)', () => {
-    expect(deployText).toMatch(/cache-to: ${{ github.event_name == 'workflow_dispatch' && /);
+    expect(deployText).toContain("cache-to: ${{ github.event_name == 'workflow_dispatch' && ");
     expect(deployText).toContain('cache-from: type=gha,scope=qc-app');
   });
 
