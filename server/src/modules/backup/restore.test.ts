@@ -349,7 +349,7 @@ describe('parseRestoreArgs', () => {
 });
 
 describe('restoreBackup: pengerasan (M2, M9)', () => {
-  test('bentuk berbahaya apa pun ditolak sebelum skema dibuat (USE tanpa backtick, perintah klien, tulisan ke skema lain)', async () => {
+  test('bentuk berbahaya yang umum ditolak sebelum skema dibuat (lapisan tambahan; batas utama = pengguna qc_restore) (USE tanpa backtick, perintah klien, tulisan ke skema lain)', async () => {
     for (const line of [
       'USE qc_dev;',
       '\\! cat /etc/passwd',
