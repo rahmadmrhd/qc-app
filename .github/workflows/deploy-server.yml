@@ -1,22 +1,24 @@
 name: Deploy Server
 
-# Menggantikan deploy-worker.yml (Cloudflare) untuk server Bun + MariaDB di VPS. Alur: check -> build image dan
-# dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping, kembali ke
-# tag sebelumnya bila gagal) -> uji asap lewat URL publik. Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
+# Server Bun + MariaDB di VPS (lingkungan DEV). Alur: check -> build image dan dorong ke GHCR (tag = SHA commit) ->
+# SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping, kembali ke tag sebelumnya bila gagal) -> uji
+# asap lewat URL publik (variabel environment APP_URL; hostname TIDAK dikunci di workflow). Lihat docs/ci-cd.md.
 #
 # Pemicu:
-# - push ke `feat/migrasi-cloudflare` atau `dev`  -> environment `dev`  (staging, qc-dev.rhd.my.id)
-# - push ke `main`                                  -> environment `exec` (production, qc.rhd.my.id)
-# - workflow_dispatch (target dev|exec)             -> `exec` HANYA dari main; `dev` dari main/dev/feat/migrasi-cloudflare
+# - push ke `feat/migrasi-cloudflare` atau `dev`            -> environment `dev` (VPS)
+# - workflow_dispatch (dari main, dev, atau feat/migrasi-cloudflare) -> environment `dev`
 # Pemicu `push` dipakai (bukan hanya workflow_dispatch) karena GitHub hanya menjalankan/menampilkan
 # workflow_dispatch bila berkas workflow ada di branch DEFAULT (main, dibekukan sampai cutover); pemicu push berjalan
 # dari berkas di branch yang di-push. Saat cutover (T34) hapus `feat/migrasi-cloudflare` dari daftar branch di bawah.
+#
+# PRODUCTION: belum ada di workflow ini. Production = server kantor (mekanisme production = server kantor, ditetapkan
+# kemudian oleh pemilik); jangan menambahkan job/environment `exec` atau pemicu `push` ke `main` sebelum rancangannya
+# ada. Deploy ke VPS TIDAK PERNAH dianggap production.
 #
 # Tanpa `pull_request`/`pull_request_target`: tidak ada kode PR tak tepercaya yang menyentuh rahasia deploy.
 on:
   push:
     branches:
-      - main
       - dev
       - feat/migrasi-cloudflare
     # Perubahan yang tak masuk ke image tidak perlu deploy.
@@ -27,24 +29,18 @@ on:
       - 'bridge/**'
       - '.superpowers/**'
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'dev = staging; exec = production (hanya dari branch main)'
-        type: choice
-        options: [dev, exec]
-        default: dev
 
 permissions:
   contents: read
 
-# Satu pipeline per environment pada satu waktu, tanpa membatalkan yang sedang berjalan (GitHub menyimpan paling
+# Satu pipeline pada satu waktu (satu environment: dev), tanpa membatalkan yang sedang berjalan (GitHub menyimpan paling
 # banyak satu run yang menunggu; run menunggu yang lebih lama dibatalkan, sehingga tag lama tak menimpa yang baru).
 concurrency:
-  group: deploy-server-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'exec' || 'dev') }}
+  group: deploy-server-dev
   cancel-in-progress: false
 
 jobs:
-  # Menentukan environment dan menolak kombinasi yang tak diizinkan, SEBELUM kode atau rahasia apa pun disentuh.
+  # Menolak ref yang tak diizinkan dan menetapkan environment (selalu dev), SEBELUM kode atau rahasia apa pun disentuh.
   meta:
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -56,28 +52,19 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
-          INPUT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
           case "$EVENT_NAME" in
             push)
               case "$REF" in
-                refs/heads/main) target=exec ;;
                 refs/heads/dev | refs/heads/feat/migrasi-cloudflare) target=dev ;;
                 *) fail "Branch tidak diizinkan untuk deploy server." ;;
               esac
               ;;
             workflow_dispatch)
-              case "$INPUT_TARGET" in
-                dev | exec) target=$INPUT_TARGET ;;
-                *) fail "Target harus dev atau exec." ;;
-              esac
               case "$REF" in
-                refs/heads/main) ;;
-                refs/heads/dev | refs/heads/feat/migrasi-cloudflare)
-                  if [ "$target" = exec ]; then fail "Target exec hanya boleh dijalankan dari branch main."; fi
-                  ;;
+                refs/heads/main | refs/heads/dev | refs/heads/feat/migrasi-cloudflare) target=dev ;;
                 *) fail "Deploy manual hanya dari main, dev, atau feat/migrasi-cloudflare." ;;
               esac
               ;;
@@ -206,7 +193,7 @@ jobs:
       - name: Deploy di VPS
         run: |
           set -uo pipefail
-          [[ $TARGET =~ ^(dev|exec)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
+          [[ $TARGET == dev ]] || { echo "::error::Target tidak valid."; exit 1; }
           [[ $TAG =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Tag image bukan SHA commit."; exit 1; }
           ssh qc-deploy "deploy $TARGET $TAG"
           code=$?

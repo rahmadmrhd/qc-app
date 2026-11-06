@@ -4,61 +4,63 @@ Workflow di `.github/workflows/`: `test.yml` (PR), `deploy-server.yml` (server B
 
 ## Server di VPS (`deploy-server.yml`)
 
-Alur satu run: **`meta`** (menentukan environment, menolak kombinasi terlarang) -> **`check`** (`bun run check` dengan MariaDB sungguhan di runner, tanpa tunnel) -> **`image`** (`docker buildx build` + dorong ke `ghcr.io/<pemilik>/qc-app:<SHA commit penuh>`; build web `bun run build` + `verify-dist` terjadi di dalam Dockerfile; cache `gha`) -> **`deploy`** (SSH ke VPS, uji asap URL publik).
+Arah dari pemilik 2026-11-06: **VPS = lingkungan DEV** (mengganti sebutan "staging"); **production = server kantor, nanti**, mekanisme dan detailnya belum ditetapkan. Karena itu `deploy-server.yml` hanya mengenal environment GitHub `dev` dan TIDAK memiliki job, environment, atau pemicu `main` untuk production; kerangkanya dibiarkan generik (hostname hanya dari variabel environment `APP_URL`) agar production dapat ditambahkan tanpa membongkar yang ada.
+
+Alur satu run: **`meta`** (menolak ref yang tak diizinkan, menetapkan environment `dev`) -> **`check`** (`bun run check` dengan MariaDB sungguhan di runner, tanpa tunnel) -> **`image`** (`docker buildx build` + dorong ke `ghcr.io/<pemilik>/qc-app:<SHA commit penuh>`; build web `bun run build` + `verify-dist` terjadi di dalam Dockerfile; cache `gha`) -> **`deploy`** (SSH ke VPS, uji asap URL publik).
 
 | Kejadian | Environment | Catatan |
 |---|---|---|
-| push ke `feat/migrasi-cloudflare` atau `dev` | `dev` (staging, `qc-dev.rhd.my.id`) | `exec` TIDAK PERNAH dari branch ini |
-| push ke `main` | `exec` (production, `qc.rhd.my.id`) | |
-| Manual (Actions -> Deploy Server -> Run workflow) | pilihan `dev`/`exec` | `exec` hanya dari `main`; `dev` dari `main`, `dev`, atau `feat/migrasi-cloudflare`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
+| push ke `feat/migrasi-cloudflare` atau `dev` | `dev` (VPS) | |
+| push ke `main` | (tidak ada) | Production = server kantor, ditetapkan kemudian; `main` sengaja TIDAK memicu deploy ke VPS |
+| Manual (Actions -> Deploy Server -> Run workflow) | `dev` | dari `main`, `dev`, atau `feat/migrasi-cloudflare`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
 
 Perubahan hanya di `docs/**`, `**/*.md`, `gas/**`, `bridge/**` tidak memicu deploy (tidak masuk ke image).
 
 ### Mengapa pemicu `push`, bukan hanya `workflow_dispatch`
 
-GitHub hanya menjalankan (dan menampilkan tombol) `workflow_dispatch` bila berkas workflow ada di **branch default** (`main`), yang dibekukan sampai cutover (spek §13 butir 1). Dokumentasi GitHub (Events that trigger workflows, diperiksa 2026-11-06): `workflow_dispatch` hanya memicu run bila berkas workflow ada di branch default, sedangkan `push` berlaku untuk workflow yang belum di-merge ke branch default. Karena itu staging sebelum cutover memakai `push` ke `feat/migrasi-cloudflare`; `workflow_dispatch` ikut ditulis agar kelak aktif sendiri begitu berkas ada di `main`. Yang tidak diverifikasi dari dokumentasi: perilaku tepat tombol Run workflow pada branch non-default dan bahwa berkas yang dipakai run `push` adalah versi pada commit yang di-push (tersirat oleh dokumentasi, tak disebut eksplisit; pengalaman `deploy.yml` di bawah konsisten).
+GitHub hanya menjalankan (dan menampilkan tombol) `workflow_dispatch` bila berkas workflow ada di **branch default** (`main`), yang dibekukan sampai cutover (spek §13 butir 1). Dokumentasi GitHub (Events that trigger workflows, diperiksa 2026-11-06): `workflow_dispatch` hanya memicu run bila berkas workflow ada di branch default, sedangkan `push` berlaku untuk workflow yang belum di-merge ke branch default. Karena itu deploy dev sebelum cutover memakai `push` ke `feat/migrasi-cloudflare`; `workflow_dispatch` ikut ditulis agar kelak aktif sendiri begitu berkas ada di `main`. Yang tidak diverifikasi dari dokumentasi: perilaku tepat tombol Run workflow pada branch non-default dan bahwa berkas yang dipakai run `push` adalah versi pada commit yang di-push (tersirat oleh dokumentasi, tak disebut eksplisit; pengalaman `deploy.yml` di bawah konsisten).
 
 ### Saat cutover (T34)
 
 1. Hapus `feat/migrasi-cloudflare` dari `on.push.branches` di `deploy-server.yml` DAN dari kedua `case` di job `meta` (push dan dispatch); `scripts/ci-workflows.test.ts` menegakkan daftar branch, jadi perbarui tesnya bersamaan.
 2. Dalam PR yang sama: hapus `deploy.yml` (GAS) dan, pada environment `dev`, ganti aturan *Deployment branches* menjadi hanya `dev` dan `main`.
-3. Merge PR ke `main` otomatis men-deploy production (`exec`). Aktifkan *Required reviewers* pada environment `exec` bila ingin persetujuan manual.
+3. Merge PR ke `main` TIDAK men-deploy apa pun ke VPS (VPS adalah dev). Deploy production ke server kantor baru ditambahkan setelah pemilik menetapkan mekanismenya.
 
 ### Yang HARUS dibuat pemilik di GitHub (workflow tidak dapat mengaturnya sendiri)
 
 Repositori -> Settings -> Environments:
 
-1. **Environment `dev`**: *Deployment branches and tags* -> *Selected branches* -> `feat/migrasi-cloudflare`, lalu tambahkan `dev` dan `main`.
-2. **Environment `exec`**: *Selected branches* -> hanya `main`. Disarankan *Required reviewers* (production).
-3. **Secret environment** (BUKAN secret repositori; buat di KEDUA environment dengan nilai milik masing-masing):
+1. **Environment `dev`**: *Deployment branches and tags* -> *Selected branches* -> `feat/migrasi-cloudflare`, lalu tambahkan `dev` dan `main` (dispatch manual dari `main`).
+2. **Secret environment `dev`** (BUKAN secret repositori):
 
 | Nama | Isi |
 |---|---|
-| `DEPLOY_SSH_KEY` | kunci PRIVAT SSH khusus deploy (ed25519) untuk environment itu, hasil langkah 9 `docs/deploy-vps.md` (satu pasang per environment; publiknya dipasang di `authorized_keys` VPS dengan `command="/root/apps/qc-app/deploy.sh --only <env>"`) |
+| `DEPLOY_SSH_KEY` | kunci PRIVAT SSH khusus deploy (ed25519), hasil langkah 9 `docs/deploy-vps.md` (publiknya dipasang di `authorized_keys` VPS dengan `command="/root/apps/qc-app/deploy.sh --only dev"`) |
 | `DEPLOY_HOST_KEY` | baris `known_hosts` host VPS, mis. `[<host>]:<port> ssh-ed25519 AAAA...` dari `ssh-keyscan -p <port> -t ed25519 <host>`; bandingkan sidik jarinya dengan `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` di VPS SEBELUM menyimpan (kunci host dipatok: koneksi ke host lain ditolak, tanpa `StrictHostKeyChecking=no`) |
 | `DEPLOY_HOST` | alamat VPS (IP atau nama) |
 | `DEPLOY_PORT` | port SSH VPS (non-standar) |
 | `DEPLOY_USER` | `root` (akses lewat kunci `command=` terbatas, dikonfirmasi pemilik 2026-11-06) |
 
-4. **Variabel environment** (Variables, bukan Secrets): `APP_URL` = `https://qc-dev.rhd.my.id` (environment `dev`) dan `https://qc.rhd.my.id` (environment `exec`), tanpa garis miring penutup. Dipakai uji asap `GET <APP_URL>/api/ping`.
-5. **Token baca GHCR di VPS** (bukan di GitHub): paket `qc-app` dibuat privat bila repositori privat. Pilihan: (a) **PAT classic dengan scope `read:packages`** milik pemilik, `docker login ghcr.io -u <pengguna>` sekali di VPS (tersimpan di `/root/.docker/config.json`, izin 600): paket tetap privat, tetapi token berumur panjang di VPS dan terkait akun pemilik, jadi buat khusus untuk ini dan atur kedaluwarsa; (b) **jadikan paket publik** (Package settings -> Change visibility): tanpa token di VPS, tetapi isi image (kode aplikasi; rahasia tak ada di image) dapat diunduh siapa pun. Rekomendasi: (a). Image tidak memuat rahasia (tes `server/src/deploy-files.test.ts`).
-6. Tidak ada rahasia lain di GitHub: `GITHUB_TOKEN` otomatis (izin `packages: write` hanya di job `image`); rahasia aplikasi (`.env`, kunci service account) hanya di VPS.
+3. **Variabel environment `dev`** (Variables, bukan Secrets): `APP_URL` = URL publik HTTPS lingkungan dev di VPS (hostname ditetapkan pemilik; workflow tidak mengunci hostname), tanpa garis miring penutup. Dipakai uji asap `GET <APP_URL>/api/ping`.
+4. **Token baca GHCR di VPS** (bukan di GitHub): paket `qc-app` dibuat privat bila repositori privat. Pilihan: (a) **PAT classic dengan scope `read:packages`** milik pemilik, `docker login ghcr.io -u <pengguna>` sekali di VPS (tersimpan di `/root/.docker/config.json`, izin 600): paket tetap privat, tetapi token berumur panjang di VPS dan terkait akun pemilik, jadi buat khusus untuk ini dan atur kedaluwarsa; (b) **jadikan paket publik** (Package settings -> Change visibility): tanpa token di VPS, tetapi isi image (kode aplikasi; rahasia tak ada di image) dapat diunduh siapa pun. Rekomendasi: (a). Image tidak memuat rahasia (tes `server/src/deploy-files.test.ts`).
+5. Tidak ada rahasia lain di GitHub: `GITHUB_TOKEN` otomatis (izin `packages: write` hanya di job `image`); rahasia aplikasi (`.env`, kunci service account) hanya di VPS.
 
 ### Urutan uji pertama (setelah pemilik mengatur di atas)
 
 1. Pastikan VPS siap (`docs/deploy-vps.md`, termasuk kunci SSH deploy langkah 9 dan `docker login ghcr.io`).
-2. Dispatch tidak tersedia sebelum cutover; cukup push ke `feat/migrasi-cloudflare` (atau komit kosong: `git commit --allow-empty -m "ci: uji deploy staging"`). Perhatikan tab Actions: `meta` -> `check` -> `image` -> `deploy`.
+2. Dispatch tidak tersedia sebelum cutover; cukup push ke `feat/migrasi-cloudflare` (atau komit kosong: `git commit --allow-empty -m "ci: uji deploy dev"`). Perhatikan tab Actions: `meta` -> `check` -> `image` -> `deploy`.
 3. Bila `image` gagal di `buildx`, perbaiki Dockerfile (build BuildKit di Actions belum pernah dijalankan; yang terbukti hanya pembangun klasik di VPS).
 4. Bila `deploy` gagal "Secret environment ... belum diisi" atau "Host key verification failed", periksa daftar di atas. Kode keluar skrip VPS: 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian juga gagal (periksa VPS manual), 2 ditolak atau `.env` salah, 3 deploy lain sedang berjalan.
-5. Uji pemulihan sekali di staging: dorong komit yang memecahkan `/api/ping` dan pastikan job gagal dan VPS kembali ke tag lama.
+5. Uji pemulihan sekali di dev: dorong komit yang memecahkan `/api/ping` dan pastikan job gagal dan VPS kembali ke tag lama.
 
 ### Keamanan workflow (ditegakkan `scripts/ci-workflows.test.ts`)
 
 - Tidak ada `pull_request`/`pull_request_target` pada `deploy-server.yml`: kode PR tak tepercaya tidak pernah menyentuh rahasia deploy.
+- Tidak ada job, environment, atau pemicu production (`exec`) di workflow ini; tes menegakkannya sampai rancangan production ada.
 - Semua aksi pihak ketiga pada `deploy-server.yml`, `test.yml`, dan aksi lokal dipatok ke SHA commit (tag mayor di komentar; diambil 2026-11-06). Perbarui dengan sengaja, bukan otomatis. (`deploy.yml` GAS lama dikecualikan: dihapus di T34.)
 - `permissions` minimal: `contents: read` di tingkat atas; hanya job `image` yang `packages: write`; job `deploy` `permissions: {}` dan tanpa checkout.
 - Tidak ada `${{ }}` di dalam skrip `run`: nilai lewat `env`, sehingga tak ada injeksi ekspresi.
-- Antrean serial per environment (`concurrency` `deploy-server-<env>`, tanpa membatalkan yang berjalan; GitHub hanya menyimpan satu run menunggu, yang lebih lama dibatalkan). Pengaman kedua: `deploy.sh` memakai kunci per lingkungan (kode 3).
+- Antrean serial (`concurrency` `deploy-server-dev`, tanpa membatalkan yang berjalan; GitHub hanya menyimpan satu run menunggu, yang lebih lama dibatalkan). Pengaman kedua: `deploy.sh` memakai kunci per lingkungan (kode 3).
 - Kunci host dipatok; kunci privat ditulis ke runner dengan izin 600 dan dihapus di langkah `always()`.
 - Uji asap publik yang gagal (mis. DNS/Cloudflare) menggagalkan job TANPA mengembalikan VPS otomatis: kesehatan aplikasi sudah diperiksa `deploy.sh` di VPS (kembali ke tag sebelumnya bila gagal); kegagalan publik dapat bersumber dari Cloudflare/DNS, bukan aplikasi.
 
