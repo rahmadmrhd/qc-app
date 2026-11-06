@@ -1,5 +1,6 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { checkBackupAlerts } from '@server/modules/backup/alert';
 import { scheduleBackupJob } from '@server/modules/backup/service';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
@@ -114,13 +115,18 @@ export async function purgeExpiredRateLimits(env: Env): Promise<number> {
 }
 
 /**
- * Detak penjadwal: menjadwalkan pembersihan QR, membersihkan `rate_limits`, dan menjadwalkan cadangan harian
- * (02:00 WIB, hanya bila diaktifkan). Semuanya dicoba walau salah satu
+ * Detak penjadwal: menjadwalkan pembersihan QR, membersihkan `rate_limits`, menjadwalkan cadangan harian
+ * (02:00 WIB), dan memeriksa peringatan cadangan basi/kuota Drive (keduanya hanya bila cadangan diaktifkan). Semuanya dicoba walau salah satu
  * gagal (galat pertama dilempar setelah keduanya dicoba, agar tercatat oleh `startLoop`).
  */
 async function schedulerTick(env: Env): Promise<void> {
   const failures: unknown[] = [];
-  for (const step of [scheduleCleanupJob, purgeExpiredRateLimits, scheduleBackupJob]) {
+  for (const step of [
+    scheduleCleanupJob,
+    purgeExpiredRateLimits,
+    scheduleBackupJob,
+    checkBackupAlerts,
+  ]) {
     try {
       await step(env);
     } catch (error) {
