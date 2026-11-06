@@ -38,7 +38,7 @@ Tujuan: membuktikan dump, impor, verifikasi, dan fitur dengan salinan data nyata
 Prasyarat gladi:
 1. Staging berjalan sehat (T27–T29: `docs/deploy-vps.md`), skema `qc_dev` sudah bermigrasi (qc-app menjalankan migrasi saat start).
 2. Klien Google langsung selesai (T30a): spreadsheet data tunggal dibagikan ke service account sebagai Editor, folder Drive QR dan dokumen QR dibagikan ke service account, kunci service account terpasang di staging (rincian di `docs/setup-google.md`; T30a selesai).
-3. Sumber dump: CLI `scripts/migrate/dump-sheets.ts` (`bun run migrate:dump`, T33) membaca spreadsheet lewat klien Google (hanya baca; sheet `export_*` tak disentuh) dan menulis `dump.json` (`{"tables": {"<sheet>": [[header...], [baris...]]}}`) yang langsung dibaca `import-sheets.ts` dan `verify-import.ts`. Dijalankan pemilik dari mesinnya dengan berkas kunci service account lokal; cara dan jaminannya di `docs/setup-google.md` S9. **[verifikasi]** CLI baru diuji dengan klien Google palsu (round-trip ke `import-sheets`); pembacaan spreadsheet produksi nyata baru terbukti pada G1 gladi pertama.
+3. Sumber dump: CLI `scripts/migrate/dump-sheets.ts` (`bun run migrate:dump`, T33) membaca spreadsheet lewat klien Google (hanya baca; sheet `export_*` tak disentuh) dan menulis `dump.json` (`{"tables": {"<sheet>": [[header...], [baris...]]}}`) yang langsung dibaca `import-sheets.ts` dan `verify-import.ts`. Dijalankan pemilik dari mesinnya dengan berkas kunci service account lokal; cara dan jaminannya di `docs/setup-google.md` S9. **Kolom legasi `audit_log.detail`** (ditemukan di G1 nyata): header `detail` masih ada di sheet produksi walau selnya dikosongkan aplikasi lama; CLI dan `import-sheets` mengabaikannya bila kosong. Bila ada sel `detail` TERISI, CLI mencetak PERINGATAN (jumlah dan nomor baris, tanpa isi) dan `import-sheets` berhenti dengan galat `KOLOM_LEGASI_TERISI` per baris: pemilik memutuskan (perbaiki di Sheets atau kecualikan baris lewat `excludes.json`). **[verifikasi]** CLI baru diuji dengan klien Google palsu (round-trip ke `import-sheets`); pembacaan spreadsheet produksi nyata baru terbukti pada G1 gladi pertama.
 
 | # | Langkah | Perintah / cara | Pelaksana |
 |---|---|---|---|
@@ -85,9 +85,10 @@ Tujuan: menjalankan `verify-import.ts` terhadap MariaDB yang hanya terjangkau da
    ```bash
    cd /root/apps/qc-app/<env>
    V=/root/apps/qc-app/<env>/verify
-   docker compose run --rm --no-deps -T --entrypoint sh      -v "$V/scripts/migrate:/app/scripts/migrate:ro" -v "$V/tsconfig.json:/app/tsconfig.json:ro" -v "$V/data:/data"      qc-app -c 'QC_IMPORT_DB_URL="$DATABASE_URL" exec bun /app/scripts/migrate/verify-import.ts --dump /data/dump.json --discard-approval /data/discard-approval.json --report /data/verify.json'
+   QC_IMAGE_TAG=<tag image yang berjalan> docker compose run --rm --no-deps -T --entrypoint sh      -v "$V/scripts/migrate:/app/scripts/migrate:ro" -v "$V/tsconfig.json:/app/tsconfig.json:ro" -v "$V/data:/data"      qc-app -c 'QC_IMPORT_DB_URL="$DATABASE_URL" exec bun /app/scripts/migrate/verify-import.ts --dump /data/dump.json --discard-approval /data/discard-approval.json --report /data/verify.json'
    echo "kode keluar: $?"
    ```
+   **Tag image**: `docker compose run` memakai `QC_IMAGE_TAG` dari `.env` folder itu (bukan tag kontainer yang kebetulan berjalan). `.env` staging HARUS menunjuk tag image yang berjalan, minimal `local-a39dc2e` (komit yang memuat `server/src/core/google`; tag lebih lama gagal `Cannot find module '@server/core/google/client'` karena `import-sheets` dan `verify-import` mengimpor modul itu). Periksa tag yang berjalan (`docker inspect --format '{{.Config.Image}}' <kontainer-app>`), lalu isi `QC_IMAGE_TAG=<tag>` di awal perintah seperti di atas (override sekali jalan, tanpa menyunting `.env`) atau perbarui `.env`. Perintah yang sama dipakai di G6 dan H9.
    Kode keluar 0 = lulus. Baca `$V/data/verify.json` bila gagal (hasil per tabel, yatim, penghitung, tabel buangan).
 3. **Bersihkan**: `rm -r "$V"` (dump dan laporan berisi data pengguna; salin dulu `verify.json` ke mesin pengembang bila perlu).
 
