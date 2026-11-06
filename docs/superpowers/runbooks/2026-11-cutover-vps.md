@@ -62,7 +62,9 @@ Syarat lulus gladi: `verify-import` lulus (kode keluar 0) dua kali berturut-turu
 ```bash
 cd /root/apps/qc-app/<env>
 PW=$(grep -E '^QC_DB_PASSWORD=' .env | tail -n1 | cut -d= -f2-)
-PW=${PW%\"}; PW=${PW#\"}; PW=${PW%\'}; PW=${PW#\'}   # buang satu pasang kutip (seperti deploy.sh)
+PW=${PW%$'\r'}; dq='"'; sq="'"
+# buang SATU pasang kutip yang cocok (logika yang sama dengan env_value di deploy.sh)
+if [[ $PW =~ ^${dq}(.*)${dq}$ ]] || [[ $PW =~ ^${sq}(.*)${sq}$ ]]; then PW=${BASH_REMATCH[1]}; fi
 MYSQL_PWD="$PW" docker exec -i -e MYSQL_PWD qc-<staging|exec>-db mariadb --default-character-set=utf8mb4 -u qc_<dev|exec> qc_<dev|exec> < import.sql
 echo "kode keluar: $?"; unset PW
 ```
