@@ -943,7 +943,7 @@ describe('files', () => {
     });
   });
 
-  test('id kosong = rute tidak ada (404); berkas > 8 MB = 413 problem+json', async () => {
+  test('id kosong = rute tidak ada (404); berkas > 10 MB = 413 problem+json, tepat 10 MB lolos', async () => {
     const folder = await folderWithBridge();
     const empty = await app.request(
       'https://qc.test/api/v1/sync/files/',
@@ -951,16 +951,31 @@ describe('files', () => {
       env,
     );
     expect(empty.status).toBe(404);
-    const big = await driveFile(folder, 'big.png', 'image/png', 'A'.repeat(11_000_000));
+    // 10 MB + 1 byte (13.981.015 karakter 'A' + '=' = 10.485.761 byte) ditolak
+    const big = await driveFile(folder, 'big.png', 'image/png', `${'A'.repeat(13_981_015)}=`);
     expect(await call('sync.file.get', { driveId: big })).toMatchObject({
       ok: false,
-      error: { code: 'VALIDATION', status: 413, fields: { driveId: 'Berkas melebihi 8 MB' } },
+      error: { code: 'VALIDATION', status: 413, fields: { driveId: 'Berkas melebihi 10 MB' } },
     });
-    // tepat di bawah batas lolos (8.000.000 byte = 10.666.668 karakter base64 dengan padding)
-    const edge = await driveFile(folder, 'edge.png', 'image/png', 'A'.repeat(10_666_664));
+    // tepat 10 MB (10.485.760 byte = 13.981.014 karakter + '==') lolos
+    const edge = await driveFile(folder, 'edge.png', 'image/png', `${'A'.repeat(13_981_014)}==`);
     const ok = await syncSend(env, 'sync.file.get', { driveId: edge });
     expect(ok.status).toBe(200);
-    expect((await ok.arrayBuffer()).byteLength).toBe(7_999_998);
+    expect((await ok.arrayBuffer()).byteLength).toBe(10_485_760);
+  });
+
+  test('pendaftaran otomatis: gambar tepat 10 MB didaftarkan, 10 MB + 1 dilaporkan missing', async () => {
+    const folder = await folderWithBridge();
+    const edge = await driveFile(folder, 'edge.png', 'image/png', `${'A'.repeat(13_981_014)}==`);
+    const big = await driveFile(folder, 'big.png', 'image/png', `${'A'.repeat(13_981_015)}=`);
+    const plan = await planDriveFiles(
+      env,
+      [edge, big],
+      await probeDriveIds(env, [edge, big]),
+      'item-1',
+    );
+    expect(plan.pending.map((file) => file.driveId)).toEqual([edge]);
+    expect(plan.missing).toEqual([big]);
   });
 
   test('probeDriveIds: 50 id baru diperiksa dengan konkurensi terbatas (<= 8, > 1), dedup tetap, hasil sama dengan berurutan', async () => {

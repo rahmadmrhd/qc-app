@@ -36,12 +36,12 @@ export function getSyncFile_(input: SyncFileGetInput): {
   const info = folderId ? platform_().driveFileInfo(input.driveId, folderId) : null;
   if (!info) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
   if (info.size > SYNC_LIMITS.fileBytes) {
-    throw appError_('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });
+    throw appError_('VALIDATION', 'Berkas melebihi 10 MB', { driveId: 'Berkas melebihi 10 MB' });
   }
   const content = platform_().driveReadFile(input.driveId, folderId);
   if (!content) throw appError_('NOT_FOUND', 'Berkas tidak ditemukan');
   if (base64ByteLength(content.base64) > SYNC_LIMITS.fileBytes) {
-    throw appError_('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' });
+    throw appError_('VALIDATION', 'Berkas melebihi 10 MB', { driveId: 'Berkas melebihi 10 MB' });
   }
   return { driveId: input.driveId, mime: content.mime, base64: content.base64 };
 }
@@ -62,7 +62,7 @@ export function probeDriveIds_(driveIds: readonly string[]): Map<string, DrivePr
  * Rencana pendaftaran (TANPA menulis): tiap id Drive dipetakan ke baris `files` yang boleh dipakai pemilik
  * `ownerId` — baris tanpa pemilik atau milik `ownerId` dipakai ulang; bila berkas Drive itu sudah dimiliki
  * entitas lain, disiapkan baris BARU untuk berkas Drive yang sama (satu foto boleh dipakai banyak item).
- * Id yang tak ada di folder aplikasi, bukan gambar JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`.
+ * Id yang tak ada di folder aplikasi, bukan gambar JPEG/PNG/WebP, atau > 10 MB dilaporkan di `missing`.
  * `pending` hanya ditulis lewat `commitDriveFiles_` setelah semua pemeriksaan entri lolos.
  */
 export function planDriveFiles_(

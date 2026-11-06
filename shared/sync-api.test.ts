@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, SYNC_API_ROUTES, type SyncRouteId, syncInputFromParts } from './api';
+import { MAX_IMAGE_BYTES } from './files';
 import { SYNC_LIMITS, SYNC_REST_API_VERSION } from './sync';
 
 // Kontrak QC Desktop versi 2 (REST `/api/v1/sync/*`): tabel rute murni, mengikuti pola `API_ROUTES`.
@@ -108,12 +109,13 @@ describe('syncInputFromParts', () => {
 });
 
 describe('batas kontrak versi 2', () => {
-  test('batas dokumen: pull 500 (200 dengan detail), push 50 (25 dengan detail), berkas 8 MB, body 5 MB', () => {
+  test('batas dokumen: pull 500 (200 dengan detail), push 50 (25 dengan detail), berkas 10 MB (= batas terima gambar), body 5 MB', () => {
     expect(SYNC_LIMITS.pullMax).toBe(500);
     expect(SYNC_LIMITS.pullMaxWithDetail).toBe(200);
     expect(SYNC_LIMITS.pushMax).toBe(50);
     expect(SYNC_LIMITS.pushMaxWithDetail).toBe(25);
-    expect(SYNC_LIMITS.fileBytes).toBe(8_000_000);
+    expect(SYNC_LIMITS.fileBytes).toBe(10_485_760);
+    expect(SYNC_LIMITS.fileBytes).toBe(MAX_IMAGE_BYTES);
     expect(SYNC_LIMITS.bodyChars).toBe(5_000_000); // karakter: dipakai aplikasi GAS
     expect(SYNC_LIMITS.bodyBytes).toBe(5_000_000); // byte: dipakai server Bun (batas baca badan)
   });

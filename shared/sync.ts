@@ -19,8 +19,12 @@ export const SYNC_LIMITS = {
   pullMaxWithDetail: 200,
   pushMax: 50,
   pushMaxWithDetail: 25,
-  /** Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte). */
-  fileBytes: 8_000_000,
+  /**
+   * Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte): SAMA dengan `MAX_IMAGE_BYTES`
+   * (`shared/files.ts`, batas terima gambar; keputusan pemilik 2026-11-06). Literal, bukan impor, agar tak bergantung
+   * pada urutan muat global GAS; `shared/sync-api.test.ts` menjaga keduanya sama.
+   */
+  fileBytes: 10_485_760,
   /** Id Drive berbeda per entri item (galeri + stiker + Markdown): membatasi panggilan Drive per permintaan. */
   driveRefsPerEntry: 50,
   failedAttempts: 10,

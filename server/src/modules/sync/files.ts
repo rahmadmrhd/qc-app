@@ -28,10 +28,10 @@ export function validateSyncFileGet(raw: unknown): SyncFileGetInput {
   return { driveId };
 }
 
-/** Berkas > 8 MB: 413 (badan problem+json tetap berkode VALIDATION dengan `fields.driveId`). */
+/** Berkas > 10 MB: 413 (badan problem+json tetap berkode VALIDATION dengan `fields.driveId`). */
 function fileTooLarge(): Error {
   return Object.assign(
-    appError('VALIDATION', 'Berkas melebihi 8 MB', { driveId: 'Berkas melebihi 8 MB' }),
+    appError('VALIDATION', 'Berkas melebihi 10 MB', { driveId: 'Berkas melebihi 10 MB' }),
     { status: 413 },
   );
 }
@@ -112,7 +112,7 @@ export async function probeDriveIds(
  * Rencana pendaftaran (TANPA menulis): tiap id Drive dipetakan ke baris `files` yang boleh dipakai pemilik
  * `ownerId` — baris tanpa pemilik atau milik `ownerId` dipakai ulang; bila berkas Drive itu sudah dimiliki
  * entitas lain, disiapkan baris BARU untuk berkas Drive yang sama. Id yang tak ada di folder aplikasi, bukan
- * gambar JPEG/PNG/WebP, atau > 8 MB dilaporkan di `missing`. `pending` ditulis lewat `commitDriveFilesStmts`.
+ * gambar JPEG/PNG/WebP, atau > 10 MB dilaporkan di `missing`. `pending` ditulis lewat `commitDriveFilesStmts`.
  */
 export async function planDriveFiles(
   env: Env,
