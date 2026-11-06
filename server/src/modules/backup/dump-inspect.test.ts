@@ -191,10 +191,11 @@ describe('pemeriksa isi dump', () => {
   });
 });
 
-describe('N3: penjaga skema', () => {
-  test('seluruh SQL migrasi lolos pemeriksa: kolom/objek baru yang bentrok dengan aturan ketahuan di CI, bukan saat pemulihan bencana', () => {
-    const dir = join(import.meta.dir, '../../../migrations');
-    const files = readdirSync(dir).filter((name) => name.endsWith('.sql'));
+describe('N3/M3: penjaga skema', () => {
+  const dir = join(import.meta.dir, '../../../migrations');
+  const files = readdirSync(dir).filter((name) => name.endsWith('.sql'));
+
+  test('SQL migrasi lolos pemeriksa pada tingkat pernyataan (badan CREATE TABLE dilewati, jadi ini BUKAN bukti dump penuh lolos)', () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const inspector = createDumpInspector('qc_restore_check');
@@ -203,5 +204,32 @@ describe('N3: penjaga skema', () => {
         inspector.end();
       }, file).not.toThrow();
     }
+  });
+
+  test('M3: skema tak memuat trigger/rutin/event (dump-nya memakai DELIMITER yang ditolak CLI pemulihan; menambahkannya = putusan sadar melonggarkan aturan)', () => {
+    for (const file of files) {
+      const sql = readFileSync(join(dir, file), 'utf8');
+      const routine =
+        /create\s+(?:or\s+replace\s+)?(?:definer\s*=\s*\S+\s+)?(?:trigger|procedure|function|event)\b/i;
+      expect(routine.test(sql), file).toBe(false);
+    }
+  });
+
+  test('M3: dump berisi trigger/rutin (DELIMITER) ditolak', () => {
+    const dump = [
+      'CREATE TABLE `a` (',
+      '  `id` int(11) NOT NULL',
+      ') ENGINE=InnoDB;',
+      '/*!50003 SET sql_mode = "" */ ;',
+      'DELIMITER ;;',
+      '/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `a_bi` BEFORE INSERT ON `a` FOR EACH ROW SET NEW.id = 1 */;;',
+      'DELIMITER ;',
+      '-- Dump completed',
+      '',
+    ].join('\n');
+    expect(() => run(dump)).toThrow(/delimiter/i);
+    expect(() => run('DELIMITER //\nCREATE PROCEDURE p() BEGIN END//\nDELIMITER ;\n')).toThrow(
+      /delimiter/i,
+    );
   });
 });
