@@ -90,8 +90,10 @@ export interface DiscardSummary {
   createdFirst: string;
   /** updated_at (atau created_at) terakhir, teks apa adanya. */
   updatedLast: string;
-  /** created_by berbeda, maks. 10 (urut abjad). */
+  /** Pelaku berbeda (created_by, atau actor untuk audit_log), maks. 10 (urut abjad). */
   creators: string[];
+  /** Jumlah baris per pelaku, maks. 10 pelaku terbanyak (menilai apakah isinya lebih dari data uji). */
+  creatorCounts: Record<string, number>;
 }
 
 export interface ImportReport {
@@ -785,21 +787,33 @@ function columnTexts(def: TableDef, rows: readonly string[][], column: string): 
   return at < 0 ? [] : rows.map((row) => (row[at] as string).trim());
 }
 
+/**
+ * Ringkasan isi buangan. Kolom waktu dan pelaku mengikuti tabelnya: `created_at`/`updated_at`/`created_by` untuk
+ * tabel biasa, `ts`/`actor` untuk audit_log (yang tak punya kolom `created_*`).
+ */
 function summarizeDiscard(def: TableDef, rows: readonly string[][]): DiscardSummary {
-  const created = columnTexts(def, rows, 'created_at').filter((text) => text !== '');
+  const has = (column: string) => def.columns.some((entry) => entry.name === column);
+  const createdColumn = has('created_at') ? 'created_at' : 'ts';
+  const actorColumn = has('created_by') ? 'created_by' : 'actor';
+  const created = columnTexts(def, rows, createdColumn).filter((text) => text !== '');
   const updated = [
     ...columnTexts(def, rows, 'updated_at'),
-    ...columnTexts(def, rows, 'created_at'),
+    ...columnTexts(def, rows, createdColumn),
   ].filter((text) => text !== '');
-  const creators = [...new Set(columnTexts(def, rows, 'created_by').filter((text) => text !== ''))]
-    .sort()
-    .slice(0, 10);
+  const byActor = new Map<string, number>();
+  for (const actor of columnTexts(def, rows, actorColumn))
+    if (actor !== '') byActor.set(actor, (byActor.get(actor) ?? 0) + 1);
+  const creators = [...byActor.keys()].sort().slice(0, 10);
+  const creatorCounts = Object.fromEntries(
+    [...byActor.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10),
+  );
   return {
     rows: rows.length,
     checksum: sha256Lines(rows.map((row) => row.join(SEP))),
     createdFirst: created.length === 0 ? '' : created.reduce((a, b) => (a <= b ? a : b)),
     updatedLast: updated.length === 0 ? '' : updated.reduce((a, b) => (a >= b ? a : b)),
     creators,
+    creatorCounts,
   };
 }
 
@@ -808,7 +822,8 @@ function formatDiscard(key: string, summary: DiscardSummary): string {
     summary.createdFirst || summary.updatedLast
       ? `, dibuat sejak ${summary.createdFirst || '?'} s.d. diubah ${summary.updatedLast || '?'}`
       : '';
-  const creators = summary.creators.length > 0 ? `, pembuat: ${summary.creators.join(', ')}` : '';
+  const counts = Object.entries(summary.creatorCounts).map(([name, n]) => `${name} (${n})`);
+  const creators = counts.length > 0 ? `, pelaku: ${counts.join(', ')}` : '';
   return `${key}: ${summary.rows} baris${range}${creators}`;
 }
 

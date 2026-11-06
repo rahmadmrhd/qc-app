@@ -83,6 +83,24 @@ describe('gerbang pembuangan data uji (keputusan pemilik 2026-11-06)', () => {
     expect(discarded.brands?.rows).toBe(2);
   });
 
+  test('ringkasan buangan audit_log memuat rentang waktu (ts) dan jumlah per pelaku (actor), bukan kosong', () => {
+    const dump = cleanDump();
+    const sheet = dump.audit_log as unknown[][];
+    sheet.push(['2026-09-01T00:00:00.000Z', 'wh@x.id', 'item.create', 'x', '', '']);
+    sheet.push(['2026-12-31T00:00:00.000Z', 'wh@x.id', 'brand.update', 'y', '', '']);
+    const summary = prepareImport(dump).report.discarded.audit_log;
+    expect(summary).toMatchObject({
+      rows: 3,
+      createdFirst: '2026-09-01T00:00:00.000Z',
+      updatedLast: '2026-12-31T00:00:00.000Z',
+      creators: ['staf@x.id', 'wh@x.id'],
+      creatorCounts: { 'wh@x.id': 2, 'staf@x.id': 1 },
+    });
+    const message = prepareImport(dump).report.errors.find((e) => e.table === 'audit_log')?.message;
+    expect(message).toContain('wh@x.id (2)');
+    expect(message).toContain('dibuat sejak 2026-09-01');
+  });
+
   test('persetujuan yang cocok persis meloloskan impor', () => {
     const result = importWithApproval(cleanDump());
     expect(result.report.errors).toEqual([]);
