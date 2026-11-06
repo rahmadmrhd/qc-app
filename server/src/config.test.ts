@@ -331,6 +331,17 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: '99999' }).smtp).toBeNull();
   });
 
+  test('BACKUP_ENABLED: kosong/true = hidup (bawaan aman), false = mati, nilai lain ConfigError', () => {
+    expect(loadConfig({ ...VALID }).backupEnabled).toBe(true);
+    expect(loadConfig({ ...VALID, BACKUP_ENABLED: '' }).backupEnabled).toBe(true);
+    expect(loadConfig({ ...VALID, BACKUP_ENABLED: 'true' }).backupEnabled).toBe(true);
+    expect(loadConfig({ ...VALID, BACKUP_ENABLED: 'false' }).backupEnabled).toBe(false);
+    expect(loadConfig({ ...VALID, BACKUP_ENABLED: 'FALSE' }).backupEnabled).toBe(false);
+    for (const bad of ['0', 'no', 'off', 'ya']) {
+      expect(errorOf({ ...VALID, BACKUP_ENABLED: bad }).message).toContain('BACKUP_ENABLED');
+    }
+  });
+
   test('QUOTA_ALERT_PERCENT: 1-99 atau ConfigError dengan nama variabel saja', () => {
     expect(loadConfig({ ...VALID, QUOTA_ALERT_PERCENT: '70' }).quotaAlertPercent).toBe(70);
     for (const bad of ['0', '100', 'banyak', '8.5']) {
