@@ -15,7 +15,7 @@ Server memanggil Drive v3 dan Sheets v4 langsung lewat `fetch` dengan token OAut
 > Service account yang dipakai bersama proyek lain: kuota Drive 15 GB-nya ikut dipakai bersama (lihat S6). Jangan menulis email service account di berkas repositori.
 
 ### S2. Pasang berkas kunci (izin 600)
-- **VPS**: salin ke `/root/apps/qc-app/<dev|exec>/secrets/google-sa.json` (lewat `scp`, bukan GitHub), lalu `chmod 600`. Compose memasangnya **baca-saja** ke kontainer sebagai `/run/secrets/google-sa.json` (`GOOGLE_SA_KEY_FILE`; bila berkas belum ada, `docker compose up` GAGAL, bukan membuat direktori kosong). Kunci tidak masuk image, tidak masuk GitHub, dan tidak pernah dibaca dari variabel lingkungan.
+- **VPS**: salin ke `/root/apps/qc-app/<dev|exec>/secrets/google-sa.json` (lewat `scp` ke nama sementara di folder itu, bukan GitHub), lalu pasang dengan `install -m 600 -o 1000 -g 1000 <sementara> google-sa.json` (pemilik WAJIB uid 1000: kontainer berjalan sebagai pengguna `bun`, berkas milik `root` berizin 600 tidak terbaca dan semua operasi Drive/Sheets menjadi `UNAVAILABLE`; `chmod 600` saja TIDAK cukup). Compose memasangnya **baca-saja** ke kontainer sebagai `/run/secrets/google-sa.json` (`GOOGLE_SA_KEY_FILE`; bila berkas belum ada, `docker compose up` GAGAL, bukan membuat direktori kosong). Kunci tidak masuk image, tidak masuk GitHub, dan tidak pernah dibaca dari variabel lingkungan.
 - **Lokal (dev)**: simpan di luar repositori atau di `scripts/google-sa-check/` (`*.json` di folder itu diabaikan git), isi `GOOGLE_SA_KEY_FILE=<jalur mutlak>` di `server/.env`.
 - Server membaca berkas hanya saat pertama dipakai; galat berkas (tak terbaca/bukan service account) menjadi `UNAVAILABLE` generik di aplikasi dan satu baris log tanpa isi kunci.
 
@@ -24,7 +24,7 @@ Server memanggil Drive v3 dan Sheets v4 langsung lewat `fetch` dengan token OAut
 2. Di dalam induk ada **subfolder per fungsi**: gambar item, PDF sumber QR, ekspor QR, cadangan SQL. Dua cara:
    - biarkan kosong: server membuat `QC App Files`, `QC App QR`, `QC App QR Dokumen` di bawah induk saat pertama dibutuhkan dan mencatat id-nya di tabel `settings`;
    - atau buat/pilih sendiri lalu isi `ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` di `.env` (id yang terisi hanya **diverifikasi**, tidak pernah dibuat atau ditimpa; folder yang tak terjangkau = galat jelas).
-3. **Folder lama** (mis. `QC App Files` milik pemilik yang sudah berisi gambar): **pindahkan** ke bawah folder induk **tanpa mengubah id** (seret di Drive; id berkas di basis data tetap valid), lalu isi `ITEM_IMAGES_FOLDER_ID` dengan id folder itu (atau biarkan kosong bila id itu sudah tercatat di tabel `settings` hasil migrasi data).
+3. **Folder lama** (mis. `QC App Files` milik pemilik yang sudah berisi gambar): **pindahkan** ke bawah folder induk **tanpa mengubah id** (seret di Drive; id berkas di basis data tetap valid), lalu isi `ITEM_IMAGES_FOLDER_ID` dengan id folder itu . Tabel `settings` TIDAK pernah diisi oleh impor data (migrasi cutover hanya mengimpor akses, QR, dan berkas yang dirujuk QR), jadi untuk folder lama id-nya WAJIB diisi di `.env`; mengosongkannya membuat server membuat folder BARU yang kosong dan berkas lama tak terbaca.
 4. Spreadsheet data tunggal (ekspor job `exports.sheets` dan sumber impor awal): bagikan ke service account sebagai **Editor**, isi `GOOGLE_SPREADSHEET_ID`. Sheet ekspor selalu berawalan `export_`; klien menolak menulis ke sheet lain.
 5. Aturan penjaga: klien hanya menyentuh folder yang tercantum (`ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID`, `ALLOWED_FOLDER_IDS` untuk tambahan di luar induk) **atau subfolder langsung dari folder induk** (diverifikasi lewat API). Berkas harus anak folder yang diminta. `createFolder` SELALU membuat folder di bawah `GOOGLE_ROOT_FOLDER_ID`. Id Drive yang masuk ke jalur URL divalidasi `^[A-Za-z0-9_-]{10,100}$` (tanpa `../`, `?`, `#`).
 
@@ -41,7 +41,7 @@ Di luar produksi semuanya opsional: tanpa konfigurasi Google, operasi Drive/Shee
 
 ### S5. Rotasi kunci
 1. Buat kunci baru di service account (S1 langkah 3) **tanpa** menghapus yang lama.
-2. Ganti berkas di VPS (`secrets/google-sa.json`, izin 600; salin ke nama sementara lalu `mv` agar atomik).
+2. Ganti berkas di VPS (`secrets/google-sa.json`): `scp` ke nama sementara di folder `secrets/`, lalu `install -m 600 -o 1000 -g 1000 <sementara> secrets/google-sa.json.baru && mv secrets/google-sa.json.baru secrets/google-sa.json` (pemilik WAJIB uid 1000 dan `mv` sesama folder agar atomik; berkas baru milik `root` membuat Google tak terbaca setelah rotasi, termasuk rotasi darurat), lalu hapus nama sementara.
 3. Restart `qc-app` (`docker compose restart qc-app`) lalu cek `GET /api/ping` dan satu unggah gambar uji.
 4. Hapus kunci lama di Console. Bila kunci bocor: hapus dulu kunci itu di Console (server tak dapat memakai Google sampai kunci baru terpasang), baru ganti berkas.
 
@@ -68,17 +68,27 @@ Berkas `--config`: `{"key": "D:/rahasia/kunci.json", "root": "...", "spreadsheet
 - **Mengaktifkan**: tidak ada saklar; cadangan berjalan otomatis bila `NODE_ENV=production`, `GOOGLE_SA_KEY_FILE`, dan `GOOGLE_ROOT_FOLDER_ID` terisi. Dev lokal tidak pernah men-dump.
 
 **Pemulihan** (uji sekali di staging sebelum cutover; jangan memulihkan ke skema aplikasi yang sedang berjalan). CLI ada di image (`/app/scripts/restore-backup.ts`). Dijalankan di VPS. Cek ringan dulu: tanpa argumen CLI harus mencetak petunjuk dan keluar 2, dan `mariadb-dump --version` harus jalan.
+
+Jalan bawaan memakai pengguna DB berhak TERBATAS, BUKAN URL admin: satu kali per lingkungan, buat pengguna `qc_restore` yang hanya boleh membuat/menghapus skema berawalan `qc\_restore\_` dan membaca skema aplikasi (untuk `--compare-with`). Jalankan di dalam kontainer DB sebagai root DB (kata sandi tidak dicetak dan tidak lewat argumen proses; kata sandi `qc_restore` heksa agar aman-URL):
+```sql
+CREATE USER IF NOT EXISTS 'qc_restore'@'%' IDENTIFIED BY '<kata-sandi-heksa-baru>';
+GRANT ALL PRIVILEGES ON `qc\_restore\_%`.* TO 'qc_restore'@'%';
+GRANT SELECT ON `<skema-aplikasi>`.* TO 'qc_restore'@'%';
+```
 ```
 docker exec <kontainer-app> bun /app/scripts/restore-backup.ts ; echo $?
 docker exec <kontainer-app> mariadb-dump --version
-read -rs -p 'Kata sandi admin DB: ' DBPW; echo
-export RESTORE_DATABASE_URL="mysql://<admin>:${DBPW}@qc-db:3306/mysql"; unset DBPW   # karakter khusus di kata sandi harus di-URL-encode
+read -rs -p 'Kata sandi qc_restore: ' DBPW; echo
+export RESTORE_DATABASE_URL="mysql://qc_restore:${DBPW}@qc-db:3306/"; unset DBPW   # tanpa nama basis data: pengguna ini hanya berhak pada skema qc_restore_*
 docker exec -e RESTORE_DATABASE_URL <kontainer-app> bun /app/scripts/restore-backup.ts \
   --target qc_restore_check --compare-with <skema-aplikasi> --drop-after
 unset RESTORE_DATABASE_URL
 ```
-`-e RESTORE_DATABASE_URL` TANPA nilai: docker mengambilnya dari lingkungan pemanggil, jadi kata sandi tidak masuk argumen proses (`ps`) maupun riwayat shell.
-CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), memverifikasi MD5 Drive, SHA-256, gunzip penuh, dan baris penutup dump, BARU kemudian membuat skema target dan mengimpor; verifikasi gagal = tidak ada yang diimpor, impor gagal = skema target dibuang. Hasil: jumlah baris per tabel dan perbandingannya dengan skema sumber (kode keluar 1 bila berbeda). Pengguna basis data aplikasi biasanya TIDAK berhak membuat skema baru: beri `RESTORE_DATABASE_URL` (URL `mysql://` dengan hak CREATE/DROP DATABASE) lewat `docker exec -e RESTORE_DATABASE_URL` (tanpa nilai, lihat di atas), atau beri hak pada skema `qc\_restore\_%` di MariaDB. Pemulihan nyata (bencana): pulihkan ke skema BARU, periksa, lalu arahkan `DATABASE_URL` ke skema itu dan restart.
+`-e RESTORE_DATABASE_URL` TANPA nilai: docker mengambilnya dari lingkungan pemanggil, jadi kata sandi tidak masuk argumen proses (`ps`) maupun riwayat shell. URL admin (hak CREATE/DROP DATABASE penuh) HANYA dipakai bila pengguna terbatas tak bisa dipakai, dan jangan memberi pengguna terbatas hak di luar `qc\_restore\_%`.
+
+CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), MENAMPILKAN nama dan tanggal cadangan yang terpilih sebelum mengimpor (periksa bahwa itu cadangan yang Anda maksud, bukan berkas yang tak dikenal), memverifikasi MD5 Drive, SHA-256, gunzip penuh, dan baris penutup dump, BARU kemudian membuat skema target dan mengimpor; verifikasi gagal = tidak ada yang diimpor, impor gagal = skema target dibuang. Hasil: jumlah baris per tabel dan perbandingannya dengan skema sumber (kode keluar 1 bila berbeda). Id folder cadangan dibaca dari skema aplikasi (`DATABASE_URL`), BUKAN dari `RESTORE_DATABASE_URL`.
+
+**Skenario bencana** (skema aplikasi hilang atau rusak, sehingga id folder di tabel `settings` tak terbaca): beri id folder cadangan langsung lewat `--folder-id <idDrive>` (id dari URL folder cadangan di Drive; urutan sumber id folder: `--folder-id`, lalu `BACKUP_FOLDER_ID`, lalu `settings` skema aplikasi bila terjangkau). Pemulihan nyata: pulihkan ke skema BARU, periksa, lalu arahkan `DATABASE_URL` ke skema itu dan restart. Catat id folder cadangan tiap lingkungan di tempat aman pemilik di luar VPS.
 
 **Peringatan email** (SMTP generik, `nodemailer`; tanpa kode khusus penyedia). Pemeriksaan jam-an mengirim email ke `ALERT_TO` bila (a) cadangan terbaru > 36 jam atau belum ada, (b) pemakaian kuota Drive > `QUOTA_ALERT_PERCENT` (bawaan 80). Tiap jenis maksimal sekali per 12 jam (waktu terakhir yang BERHASIL terkirim disimpan di `settings`: `BACKUP_ALERT_LAST_AT`, `QUOTA_ALERT_LAST_AT`); gagal kirim dicatat dan dicoba lagi pada jam berikutnya. Variabel `.env`:
 | Variabel | Isi |

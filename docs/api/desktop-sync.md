@@ -20,7 +20,7 @@ Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak komp
 - **Token:** variabel lingkungan server `SYNC_API_TOKEN` (≥ 32 karakter acak). Satu token bersama untuk Desktop. Memutar token = mengganti variabel di server lalu konfigurasi Desktop. Skema `Bearer` tak peka huruf besar/kecil; tokennya peka.
 - **Semua kegagalan sebelum autentikasi lolos** (header tidak ada, bukan skema Bearer, token salah, IP sedang diblokir pembatas, token server belum dikonfigurasi atau < 32 karakter) menghasilkan jawaban yang **sama persis**: `401` `application/problem+json` dengan `detail` "Token tidak valid" dan header `WWW-Authenticate: Bearer`. Isi jawabannya tidak membedakan sebabnya (status pembatas dapat tercermin pada waktu respons, tidak pada isi). Satu pengecualian: badan di atas ±10 MB (batas global server HTTP, di atas batas push 5 MB) ditolak `413` polos oleh server sebelum aplikasi, dan token, diperiksa. Badan permintaan **tidak dibaca** sebelum token sah, dan `422` serta `404` (berkas tidak ada, atau rute/verba tak dikenal di bawah `/sync/*`) hanya muncul setelah token sah: tanpa token, rute yang tidak ada pun dijawab 401 yang sama dan ikut dihitung pembatas.
 - **Pembatas percobaan salah:** 10 token salah dalam 10 menit memblokir **IP klien** itu selama 10 menit (permintaan bertoken benar dari IP itu pun ditolak 401 seragam); IP lain tidak terpengaruh. IP klien = alamat peer TCP; `CF-Connecting-IP` hanya dipercaya bila peer proksi tepercaya (nginx di host yang sama); IPv6 dihitung per /64. Hanya kegagalan yang dihitung: permintaan sukses tidak dihitung dan tidak pernah ditolak karena serentak (burst permintaan sah diterima semua). Penghitungan dan blokir bersifat atomik per IP, sehingga tebakan salah yang dikirim serentak pun berhenti diterima begitu kegagalan ke-10 tercatat. Permintaan sah tidak mencatat kegagalan dan tidak menghapus baris; paling banyak menyisipkan (permintaan sah pertama dari suatu IP, atau pertama sesudah baris dibuang purge) atau memperbarui penghitung bernilai 0 (pada baris yang sudah kedaluwarsa, `window_start`-nya ditulis ulang), selebihnya hanya `UPDATE` yang tak mengubah hitungan. Galat basis data sesaat (mis. deadlock berulang) dijawab 5xx dan boleh dicoba ulang. Tunggu 10 menit setelah terblokir; jangan mengulang dalam lingkaran cepat.
-- **Batas ukuran:** badan push ≤ 5 MB (melebihi → `413`, dibaca setelah token sah); berkas ≤ 8 MB; gunakan paginasi pada pull.
+- **Batas ukuran:** badan push ≤ 5 MB (melebihi → `413`, dibaca setelah token sah); berkas ≤ 10 MB; gunakan paginasi pada pull.
 - **Cache:** semua jawaban JSON `Cache-Control: no-store`. Tidak ada `ETag`/`If-Match` pada item dan merk: pull berbasis `sinceRev` dan deteksi konflik berbasis `baseRev` di badan push (§3.3). Hanya unduhan berkas yang memakai `ETag` (§2).
 
 ### Bentuk jawaban
@@ -40,7 +40,7 @@ Galat = `application/problem+json` (RFC 9457) dengan ekstensi `code`, `requestId
 | `401` | `UNAUTHENTICATED` | token salah/hilang/diblokir/belum dikonfigurasi (tidak dibedakan), `detail` selalu "Token tidak valid" |
 | `400` | `VALIDATION` | badan push bukan JSON yang valid |
 | `404` | `NOT_FOUND` | rute tidak dikenal, atau berkas tidak ada / di luar folder gambar aplikasi |
-| `413` | `VALIDATION` | badan push > 5 MB, atau berkas > 8 MB |
+| `413` | `VALIDATION` | badan push > 5 MB, atau berkas > 10 MB |
 | `422` | `VALIDATION` | query/badan tingkat permintaan salah bentuk; `fields` berisi pesan per field (kesalahan per item ada di hasil per item, lihat §3.3) |
 | `500` | `INTERNAL` | galat server; sertakan `requestId` saat melapor |
 | `503` | `UNAVAILABLE` | basis data/layanan sedang tak terjangkau; header `Retry-After: 5`; boleh dicoba ulang |
@@ -73,7 +73,7 @@ curl -s -D - -H "Authorization: Bearer $SYNC_API_TOKEN" \
 
 - Badan = **byte mentah** berkas (tanpa base64, tanpa JSON), `Content-Type` sesuai berkas (mis. `image/webp`).
 - `ETag: "<id>"` dan `Cache-Control: private, max-age=31536000, immutable`: isi berkas untuk id yang sama tidak berubah, jadi Desktop cukup menyimpan hasilnya menurut id. `If-None-Match: "<id>"` dijawab `304` tanpa badan.
-- Ukuran berkas ≤ 8 MB (lebih besar → `413`, `code` `VALIDATION`).
+- Ukuran berkas ≤ 10 MB (sama dengan batas terima gambar server; lebih besar → `413`, `code` `VALIDATION`).
 
 ---
 
