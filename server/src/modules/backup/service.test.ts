@@ -227,8 +227,15 @@ describe('job db_backup', () => {
   });
 
   test('retensi berhalaman: lebih dari satu halaman daftar tetap diproses', async () => {
+    const folderId = await ensureBackupFolder(env); // sekali: tiap pemanggilan ensure = kueri DB lewat tunnel
+    const bytes = new TextEncoder().encode('x');
     for (let index = 0; index < 205; index++) {
-      await seedDriveBackup(backupName(NOW_WIB_10 - (index + 1) * DAY));
+      await env.BRIDGE.uploadFile(
+        folderId,
+        backupName(NOW_WIB_10 - (index + 1) * DAY),
+        'application/gzip',
+        bytes,
+      );
     }
     await runBackup();
     expect((await driveNames()).filter((name) => name.startsWith('qc-backup-'))).toHaveLength(11);
