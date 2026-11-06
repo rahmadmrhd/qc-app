@@ -4,7 +4,7 @@ import { cleanupQrDocuments } from '@server/modules/qrcode/service';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { CLEANUP_REVOKE_LIMIT } from './cleanup';
 import { JOB_MAX_ATTEMPTS, runJobStep } from './consumer';
 import { findJob } from './repo';
@@ -146,10 +146,21 @@ describe('qrcodes.export dan jobs.get', () => {
     expect(
       (await requestExport({ ...made, updatedAt: '2020-01-01T00:00:00.000Z' })).error.code,
     ).toBe('CONFLICT');
-    const big = await requestExport(made, {
-      png: Uint8Array.from([...bytesOfBase64(PNG), ...new Uint8Array(800_000)]),
-    });
-    expect(big.error.code).toBe('VALIDATION');
+    // Batas ekspor 8 MB (pdf + png) ditegakkan validator; batas lama jembatan (±750 KB) sudah tidak ada (T30a).
+    const big = new Uint8Array(QR_LIMITS.exportMaxBytes + 1);
+    big.set(bytesOfBase64(PNG));
+    const tooBig = await requestExport(made, { png: big });
+    expect(tooBig.error.code).toBe('VALIDATION');
+    expect(tooBig.error.fields?.pdf).toContain('8 MB');
+    expect(
+      (
+        await requestExport(made, {
+          png: Uint8Array.from([...bytesOfBase64(PNG), ...new Uint8Array(800_000)]),
+        })
+      ).ok,
+    ).toBe(true);
+    await env.DB.prepare('DELETE FROM jobs').run();
+    await env.DB.prepare('DELETE FROM job_blobs').run();
     expect(await activeJobs()).toHaveLength(0);
     await env.DB.prepare("UPDATE qr_designs SET overflow = '1' WHERE id = ?").bind(made.id).run();
     const over = await requestExport(made);

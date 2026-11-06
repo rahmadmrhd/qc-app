@@ -2,6 +2,7 @@ import { app } from '@server/app';
 import type { Config } from '@server/config';
 import { createDb, type Db } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { createGoogleClient } from '@server/core/google/client';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startScheduler } from '@server/jobs/runner';
@@ -33,14 +34,25 @@ export interface QcServer {
 
 /** Menyusun `Env` aplikasi dari konfigurasi dan sebuah `Db`. */
 export function envFromConfig(config: Config, db: Db): Env {
+  const google = {
+    GOOGLE_SA_KEY_FILE: config.googleSaKeyFile,
+    GOOGLE_ROOT_FOLDER_ID: config.googleRootFolderId,
+    GOOGLE_SPREADSHEET_ID: config.googleSpreadsheetId,
+    ITEM_IMAGES_FOLDER_ID: config.itemImagesFolderId,
+    QR_FOLDER_ID: config.qrFolderId,
+    QR_DOC_FOLDER_ID: config.qrDocFolderId,
+    BACKUP_FOLDER_ID: config.backupFolderId,
+    ALLOWED_FOLDER_IDS: config.allowedFolderIds,
+  };
   return {
     DB: db,
+    ...google,
+    // Satu klien per proses: token OAuth service account di-cache di dalamnya (membuatnya tidak menyentuh jaringan).
+    BRIDGE: createGoogleClient(google),
     SESSION_SECRET: config.sessionSecret,
     OAUTH_CLIENT_ID: config.oauthClientId,
     OAUTH_CLIENT_SECRET: config.oauthClientSecret,
     SYNC_API_TOKEN: config.syncApiToken,
-    BRIDGE_URL: config.bridgeUrl,
-    BRIDGE_SECRET: config.bridgeSecret,
     ADMIN_EMAIL: config.adminEmail,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),

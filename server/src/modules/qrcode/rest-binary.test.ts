@@ -192,9 +192,9 @@ describe('sesi dan izin diperiksa SEBELUM badan unggahan dibaca', () => {
 });
 
 describe('POST /qrcodes/{id}/exports (multipart) dan GET /qrcodes/{id}/files/{kind}', () => {
-  test('202 + Location /api/v1/jobs/{jobId}; setelah job selesai unduhan = byte yang diunggah (PDF ~700 KB, batas jembatan)', async () => {
+  test('202 + Location /api/v1/jobs/{jobId}; setelah job selesai unduhan = byte yang diunggah (PDF ~1,2 MB: di atas batas lama jembatan ±750 KB)', async () => {
     const design = await makeDesign();
-    const pdf = fileOf(PDF_HEAD, 700_001, 3);
+    const pdf = fileOf(PDF_HEAD, 1_200_001, 3);
     const png = fileOf(PNG_HEAD, 70_000, 5);
     const accepted = await exportRequest(design, multipart(pdf, png));
     expect(accepted.status).toBe(202);

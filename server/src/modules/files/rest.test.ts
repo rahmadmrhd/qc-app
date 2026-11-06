@@ -92,7 +92,7 @@ describe('POST /files (badan mentah)', () => {
     expect((await upload(pngOf(8), { query: '' })).status).toBe(422);
   });
 
-  test('persis batas 1 MB diterima dan unduhan memberi byte yang sama (round trip)', async () => {
+  test('persis batas 10 MB diterima dan unduhan memberi byte yang sama (round trip)', async () => {
     const bytes = pngOf(MAX_IMAGE_BYTES);
     const response = await upload(bytes, { email: 'ubah@gmail.com' });
     expect(response.status).toBe(201);
@@ -111,7 +111,7 @@ describe('POST /files (badan mentah)', () => {
     expect(await jsonOf(response)).toMatchObject({
       code: 'VALIDATION',
       status: 413,
-      detail: 'Ukuran gambar maksimal 1 MB',
+      detail: 'Ukuran gambar maksimal 10 MB',
     });
     expect(env.BRIDGE.state.files.size).toBe(0);
   });
@@ -119,7 +119,7 @@ describe('POST /files (badan mentah)', () => {
   test('badan sangat besar tanpa content-length: pembacaan dihentikan setelah melewati batas (tidak dibaca seluruhnya)', async () => {
     const chunk = new Uint8Array(256 * 1024);
     let pulled = 0;
-    const total = 64; // 16 MB bila dibaca semuanya
+    const total = 80; // 20 MB bila dibaca semuanya (batas 10 MB = 40 potongan)
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
         if (pulled >= total) {
@@ -136,7 +136,7 @@ describe('POST /files (badan mentah)', () => {
       headers: { 'content-type': 'image/png' },
     });
     expect(response.status).toBe(413);
-    expect(pulled).toBeLessThan(12);
+    expect(pulled).toBeLessThan(MAX_IMAGE_BYTES / chunk.length + 4);
   });
 
   test('content-length yang sudah melewati batas ditolak tanpa membaca badan', async () => {

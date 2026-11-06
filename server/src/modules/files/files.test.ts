@@ -228,6 +228,31 @@ describe('unggah', () => {
     expect(await ensureDriveFolder(env)).toBe(first);
   });
 
+  test('ITEM_IMAGES_FOLDER_ID dari .env dipakai langsung: tidak membuat folder, tidak menulis settings, dan hanya memverifikasi', async () => {
+    const configured = { ...env, ITEM_IMAGES_FOLDER_ID: 'IMAGESFOLDER001' };
+    env.BRIDGE.state.folders.add('IMAGESFOLDER001');
+    expect(await ensureDriveFolder(configured)).toBe('IMAGESFOLDER001');
+    const saved = await uploadFile(configured, validateUploadFile(upload()), admin);
+    uploadOrder.push(saved.id);
+    expect([...env.BRIDGE.state.files.values()].map((f) => f.folderId)).toEqual([
+      'IMAGESFOLDER001',
+    ]);
+    expect(env.BRIDGE.state.folders.size).toBe(1);
+    const setting = await env.DB.prepare(
+      "SELECT value FROM settings WHERE `key` = 'DRIVE_FOLDER_ID'",
+    ).first<{ value: string }>();
+    expect(setting).toBeNull();
+    // Dibaca dari folder .env yang sama (bukan dari tabel settings yang kosong).
+    expect((await readFile(configured, { id: saved.id })).bytes.length).toBeGreaterThan(0);
+    // Folder .env tak terjangkau: galat jelas, TIDAK membuat folder pengganti.
+    env.BRIDGE.state.folders.delete('IMAGESFOLDER001');
+    const error = await captureAppErrorAsync(() => ensureDriveFolder(configured));
+    expect(error.code).toBe('INTERNAL');
+    expect(error.message).toContain('tidak dapat diakses');
+    expect(env.BRIDGE.state.folders.size).toBe(0);
+    expect(env.BRIDGE.calls.filter((c) => c.action === 'createFolder')).toHaveLength(0);
+  });
+
   test('batas berkas belum terpasang per user', async () => {
     const rows: DbStatement[] = [];
     for (let i = 0; i < MAX_UNATTACHED_UPLOADS; i++) {
@@ -382,7 +407,7 @@ describe('validasi', () => {
     );
     const huge = new Uint8Array(MAX_IMAGE_BYTES + 1);
     huge.set(bytesOfBase64(PNG));
-    expect(fieldsOf(upload({ bytes: huge }))?.bytes).toBe('Ukuran gambar maksimal 1 MB');
+    expect(fieldsOf(upload({ bytes: huge }))?.bytes).toBe('Ukuran gambar maksimal 10 MB');
     for (const bad of [0, -1, 4001, 1.5, '1', null]) {
       expect(fieldsOf(upload({ width: bad }))?.width).toBeDefined();
       expect(fieldsOf(upload({ height: bad }))?.height).toBeDefined();

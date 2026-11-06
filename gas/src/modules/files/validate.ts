@@ -1,9 +1,9 @@
 import { readObject_ } from '@gas/core/validate';
 import {
   base64ByteLength,
+  IMAGE_TARGET_BYTES,
   isBase64Text,
   isImageMime,
-  MAX_IMAGE_BYTES,
   MAX_IMAGE_DIMENSION,
   matchesImageSignature,
 } from '@shared/files';
@@ -28,7 +28,7 @@ export function validateUploadFile_(raw: unknown): GasUploadFileInput {
   if (!isImageMime(mime)) reader.fail('mime', 'Hanya JPEG, PNG, atau WebP');
   if (typeof base64 !== 'string' || !isBase64Text(base64)) {
     reader.fail('base64', 'Isi gambar tidak valid');
-  } else if (base64ByteLength(base64) > MAX_IMAGE_BYTES) {
+  } else if (base64ByteLength(base64) > IMAGE_TARGET_BYTES) {
     reader.fail('base64', 'Ukuran gambar maksimal 1 MB');
   } else if (isImageMime(mime) && !matchesImageSignature(mime, base64)) {
     reader.fail('base64', 'Isi berkas tidak sesuai jenis gambar');

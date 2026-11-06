@@ -1,6 +1,5 @@
 import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
-import { BRIDGE_BASE64_MAX_CHARS } from '@server/core/bridge-http';
 import { bytesToBase64 } from '@server/core/bytes';
 import type { ActorRef } from '@server/core/context';
 import type { Env } from '@server/core/env';
@@ -61,19 +60,9 @@ export async function requestQrExport(
 ): Promise<ExportQrJobDto> {
   const design = await loadDesign(env, input.id);
   assertExportable(design, input.expectedUpdatedAt);
-  // Jembatan Google menerima base64: konversi sekali di sini (muatan job disimpan sebagai base64).
+  // Muatan job disimpan sebagai base64 (`job_blobs`); batas ukuran sudah ditegakkan di tepi (multipart 8 MB).
   const pdfBase64 = bytesToBase64(input.pdf);
   const pngBase64 = bytesToBase64(input.png);
-  for (const [field, data] of [
-    ['pdf', pdfBase64],
-    ['png', pngBase64],
-  ] as const) {
-    if (data.length > BRIDGE_BASE64_MAX_CHARS) {
-      const message =
-        'Berkas terlalu besar untuk diteruskan ke Google Drive (maksimal sekitar 750 KB)';
-      throw appError('VALIDATION', message, { [field]: message });
-    }
-  }
   // Klik ganda / ulang yang sama: pakai job yang masih berjalan (tidak menggandakan berkas).
   const active = await findActiveJob(env, 'qr_export', { path: '$.designId', value: design.id });
   if (active) {

@@ -1,5 +1,5 @@
 import type { ImageMime } from '@shared/files';
-import { isImageMime, MAX_IMAGE_BYTES, MAX_IMAGE_SIDE } from '@shared/files';
+import { IMAGE_TARGET_BYTES, isImageMime, MAX_IMAGE_SIDE } from '@shared/files';
 import type { UploadFileInput } from '@shared/rpc';
 
 /** Skala turun agar sisi terpanjang <= `max`; tidak pernah membesarkan; sisi minimal 1 px. */
@@ -41,7 +41,7 @@ function blobToBytes(blob: Blob): Promise<Uint8Array> {
 
 /**
  * Kecilkan (maks. `MAX_IMAGE_SIDE`) dan kompres gambar di klien sebelum diunggah. Dicoba WebP dahulu
- * (JPEG bila peramban tidak mendukung), kualitas diturunkan bertahap sampai <= `MAX_IMAGE_BYTES`.
+ * (JPEG bila peramban tidak mendukung), kualitas diturunkan bertahap sampai <= `IMAGE_TARGET_BYTES` (1 MB; bukan batas terima server).
  * Bergantung pada canvas peramban, jadi diverifikasi manual di peramban (bukan di jsdom).
  */
 export async function prepareImage(
@@ -63,7 +63,7 @@ export async function prepareImage(
     const blob =
       webp && webp.type === 'image/webp' ? webp : await canvasToBlob(canvas, 'image/jpeg', quality);
     if (!blob || !isImageMime(blob.type)) continue;
-    if (blob.size <= MAX_IMAGE_BYTES) {
+    if (blob.size <= IMAGE_TARGET_BYTES) {
       return { mime: blob.type as ImageMime, bytes: await blobToBytes(blob), width, height };
     }
   }

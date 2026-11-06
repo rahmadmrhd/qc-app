@@ -5,7 +5,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { cachedFileContent } from '@server/core/file-cache';
-import { getSetting, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
+import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
 import { readObject } from '@server/core/validate';
 import type { FileRecord } from '@server/modules/files/repo';
 import { FILE_COLUMNS, insertFileStmt, toFile } from '@server/modules/files/repo';
@@ -41,7 +41,7 @@ export async function getSyncFile(
   env: Env,
   input: SyncFileGetInput,
 ): Promise<{ driveId: string; mime: string; bytes: Uint8Array }> {
-  const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
+  const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   const bridge = getBridge(env);
   const info = folderId ? await viaBridge(() => bridge.fileInfo(input.driveId, folderId)) : null;
   if (!info) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
@@ -76,7 +76,7 @@ export async function probeDriveIds(
   const unique = [...new Set(driveIds)];
   // Tanpa id Drive tidak ada yang perlu diperiksa: lewati pembacaan folder dan tabel berkas (2 round trip).
   if (unique.length === 0) return new Map();
-  const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
+  const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   const known = new Set((await filesByDriveIds(env, unique)).map((file) => file.driveId));
   const bridge = getBridge(env);
   const probes = new Map<string, DriveProbe | null>();

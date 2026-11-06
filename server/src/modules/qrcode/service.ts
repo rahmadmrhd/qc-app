@@ -6,7 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
-import { getSetting } from '@server/core/settings';
+import { folderIdOf } from '@server/core/settings';
 import { planAttachFiles } from '@server/modules/files/service';
 import { base64ByteLength } from '@shared/files';
 import type { QrContent } from '@shared/qrcode';
@@ -864,7 +864,7 @@ export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDt
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
   const driveId = input.kind === 'pdf' ? design.exportPdfDriveId : design.exportPngDriveId;
   if (driveId === '') throw appError('NOT_FOUND', 'Konfigurasi ini belum diekspor');
-  const folderId = await getSetting(env, QR_FOLDER_SETTING);
+  const folderId = await folderIdOf(env, QR_FOLDER_SETTING);
   // Izin dan rujukan konfigurasi sudah diperiksa di atas; baru sesudahnya cache memori proses dibaca.
   const content = folderId
     ? await cachedFileContent(env, folderId, driveId, async () => {

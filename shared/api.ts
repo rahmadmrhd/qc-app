@@ -104,8 +104,8 @@ export const API_ROUTES: { [M in WorkerRpcMethod]: ApiRouteDef } = {
     rawBody: {
       field: 'bytes',
       mimeField: 'mime',
-      maxBytes: 1_048_576, // = MAX_IMAGE_BYTES (shared/files.ts)
-      tooLarge: 'Ukuran gambar maksimal 1 MB',
+      maxBytes: 10_485_760, // = MAX_IMAGE_BYTES (shared/files.ts)
+      tooLarge: 'Ukuran gambar maksimal 10 MB',
     },
   },
   'files.get': {

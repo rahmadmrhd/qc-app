@@ -3,8 +3,10 @@ export type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
 
 /** Sisi terpanjang gambar setelah dikecilkan klien. */
 export const MAX_IMAGE_SIDE = 1600;
-/** Ukuran maksimum berkas hasil kompresi (byte). */
-export const MAX_IMAGE_BYTES = 1_048_576;
+/** Batas TERIMA di server (byte; batas tepi 10 MB, keputusan pemilik 2026-11-06, spek §19 butir 5). */
+export const MAX_IMAGE_BYTES = 10_485_760;
+/** Target ukuran hasil kompresi gambar di klien (byte): TETAP 1 MB, bukan batas terima server. */
+export const IMAGE_TARGET_BYTES = 1_048_576;
 /** Batas wajar lebar/tinggi yang diterima server. */
 export const MAX_IMAGE_DIMENSION = 4000;
 export const MARKDOWN_MAX_LENGTH = 20_000;

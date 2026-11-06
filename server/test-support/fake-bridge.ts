@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import type {
   BridgeClient,
   BridgeExternalFileInfo,
+  DriveFolderEntry,
   SheetsDump,
   SheetsExportChunk,
 } from '@server/core/bridge-client';
+import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
 
 export interface FakeFile {
   folderId: string;
@@ -12,6 +15,7 @@ export interface FakeFile {
   base64: string;
   shared: boolean;
   trashed: boolean;
+  appProperties?: Record<string, string>;
 }
 
 export interface FakeBridgeState {
@@ -20,6 +24,8 @@ export interface FakeBridgeState {
   external: Map<string, { name: string; mime: string; base64: string }>;
   dump: SheetsDump;
   exports: SheetsExportChunk[];
+  /** Kuota yang dilaporkan `storageQuota()`. */
+  quota: { limit: number | null; usage: number };
 }
 
 export interface FakeBridge extends BridgeClient {
@@ -44,6 +50,7 @@ export function createFakeBridge(): FakeBridge {
     external: new Map(),
     dump: {},
     exports: [],
+    quota: { limit: null, usage: 0 },
   };
   const failures = new Map<string, Error>();
   const calls: FakeBridge['calls'] = [];
@@ -160,6 +167,65 @@ export function createFakeBridge(): FakeBridge {
       const file = require(fileId);
       file.mime = mime;
       file.base64 = base64;
+    },
+    async uploadFile(folderId, name, mime, source, options) {
+      enter('uploadFile', [folderId, name, mime, options]);
+      const bytes =
+        source instanceof Uint8Array ? source : new Uint8Array(await source.arrayBuffer());
+      const id = nextId('file');
+      state.files.set(id, {
+        folderId,
+        name,
+        mime,
+        base64: bytesToBase64(bytes),
+        shared: false,
+        trashed: false,
+        ...(options?.appProperties ? { appProperties: options.appProperties } : {}),
+      });
+      return { id, size: bytes.length, md5Checksum: createHash('md5').update(bytes).digest('hex') };
+    },
+    async downloadFile(fileId, folderId) {
+      enter('downloadFile', [fileId, folderId]);
+      const file = visible(fileId, folderId);
+      if (!file) return null;
+      const bytes = base64ToBytes(file.base64);
+      return {
+        mime: file.mime,
+        size: bytes.length,
+        body: new Response(bytes).body as ReadableStream<Uint8Array>,
+      };
+    },
+    async listFolder(folderId, options) {
+      enter('listFolder', [folderId, options]);
+      const all = [...state.files.entries()]
+        .filter(([, file]) => file.folderId === folderId && !file.trashed)
+        .map(([id, file]): DriveFolderEntry => {
+          const bytes = base64ToBytes(file.base64);
+          return {
+            id,
+            name: file.name,
+            mime: file.mime,
+            size: bytes.length,
+            md5Checksum: createHash('md5').update(bytes).digest('hex'),
+            appProperties: file.appProperties ?? {},
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const size = options?.pageSize ?? 100;
+      const offset = Number(options?.pageToken ?? '0');
+      const next = offset + size;
+      return {
+        files: all.slice(offset, next),
+        ...(next < all.length ? { nextPageToken: String(next) } : {}),
+      };
+    },
+    async deleteFile(fileId) {
+      enter('deleteFile', [fileId]);
+      state.files.delete(fileId);
+    },
+    async storageQuota() {
+      enter('storageQuota', []);
+      return { ...state.quota };
     },
     async sheetsExport(chunk) {
       enter('sheetsExport', [chunk]);

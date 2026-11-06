@@ -61,8 +61,6 @@ function childEnv(overrides: Record<string, string>): Record<string, string> {
     OAUTH_CLIENT_ID: 'id',
     OAUTH_CLIENT_SECRET: 'rahasia',
     SYNC_API_TOKEN: 'token-sinkron-uji-cukup-panjang',
-    BRIDGE_URL: 'http://127.0.0.1:9/exec',
-    BRIDGE_SECRET: 'rahasia-jembatan',
     ADMIN_EMAIL: 'admin@example.com',
     HOST: '127.0.0.1',
     PORT: String(20000 + Math.floor(Math.random() * 20000)),

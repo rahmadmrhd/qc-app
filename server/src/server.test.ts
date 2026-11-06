@@ -25,8 +25,6 @@ function configFor(extra: Record<string, string> = {}): Config {
     OAUTH_CLIENT_ID: 'test-client-id',
     OAUTH_CLIENT_SECRET: 'test-client-secret',
     SYNC_API_TOKEN: TOKEN,
-    BRIDGE_URL: 'https://bridge.test/exec',
-    BRIDGE_SECRET: 'test-bridge-secret',
     ADMIN_EMAIL: 'admin@gmail.com',
     STATIC_DIR: staticDir,
     ...extra,

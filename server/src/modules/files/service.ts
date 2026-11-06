@@ -5,7 +5,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
-import { getSetting, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
+import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import type { FileOwnerType } from '@shared/files';
 import { MAX_UNATTACHED_UPLOADS } from '@shared/files';
@@ -38,13 +38,14 @@ export async function ensureNamedFolder(
   settingKey: string,
   name: string,
 ): Promise<string> {
-  const existing = await getSetting(env, settingKey);
+  // Id dari `.env` (ITEM_IMAGES_FOLDER_ID, dst.) hanya diverifikasi: tidak pernah dibuat otomatis atau ditimpa.
+  const existing = await folderIdOf(env, settingKey);
   const bridge = getBridge(env);
   if (existing) {
     if (await viaBridge(() => bridge.folderExists(existing))) return existing;
     throw appError(
       'INTERNAL',
-      `Folder Drive ${existing} tidak dapat diakses (dihapus, ada di tempat sampah, atau akun pemilik script belum punya akses Editor).`,
+      `Folder Drive ${existing} tidak dapat diakses (dihapus, ada di tempat sampah, atau service account Google belum punya akses Editor).`,
     );
   }
   const id = await viaBridge(() => bridge.createFolder(name));
@@ -79,7 +80,7 @@ export async function uploadFile(
     );
   }
   const folderId =
-    (await getSetting(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
+    (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
   const id = crypto.randomUUID();
   const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
   const bridge = getBridge(env);
@@ -133,7 +134,7 @@ export async function readFile(
     const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
     if (!isLogo && !isOwnPending) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
-  const folderId = await getSetting(env, SETTING_DRIVE_FOLDER_ID);
+  const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
   // Cache memori proses terikat folder aktif; dibaca SETELAH aturan akses di atas.
   const bridge = getBridge(env);

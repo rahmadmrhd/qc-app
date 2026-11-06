@@ -8,8 +8,6 @@ const VALID: Record<string, string> = {
   OAUTH_CLIENT_ID: 'client-id',
   OAUTH_CLIENT_SECRET: 'client-secret-rahasia',
   SYNC_API_TOKEN: 'token-sinkron-rahasia',
-  BRIDGE_URL: 'https://script.google.com/macros/s/ABC/exec',
-  BRIDGE_SECRET: 'rahasia-jembatan',
   ADMIN_EMAIL: 'admin@example.com',
 };
 
@@ -99,10 +97,10 @@ describe('loadConfig', () => {
   });
 
   test('hanya yang hilang yang disebut; nilai yang diisi tidak pernah bocor ke pesan', () => {
-    const { DATABASE_URL: _db, BRIDGE_SECRET: _bridge, ...rest } = VALID;
+    const { DATABASE_URL: _db, SYNC_API_TOKEN: _sync, ...rest } = VALID;
     const error = errorOf(rest);
     expect(error.message).toContain('DATABASE_URL');
-    expect(error.message).toContain('BRIDGE_SECRET');
+    expect(error.message).toContain('SYNC_API_TOKEN');
     expect(error.message).not.toContain('SESSION_SECRET');
     for (const value of Object.values(rest)) expect(error.message).not.toContain(value);
   });
@@ -112,7 +110,7 @@ describe('loadConfig', () => {
       ...VALID,
       DATABASE_URL: 'bukan-url-rahasia-xyz',
       SESSION_SECRET: 'pendek-xyz',
-      BRIDGE_URL: 'ftp://rahasia-xyz',
+      GOOGLE_ROOT_FOLDER_ID: '../rahasia-xyz',
       APP_ORIGIN: 'rahasia-xyz',
       PORT: '70000',
       DB_POOL_SIZE: 'banyak',
@@ -121,7 +119,7 @@ describe('loadConfig', () => {
     for (const name of [
       'DATABASE_URL',
       'SESSION_SECRET',
-      'BRIDGE_URL',
+      'GOOGLE_ROOT_FOLDER_ID',
       'APP_ORIGIN',
       'PORT',
       'DB_POOL_SIZE',
@@ -137,7 +135,12 @@ describe('loadConfig', () => {
   });
 
   test('(I3) NODE_ENV=production mewajibkan APP_ORIGIN https', () => {
-    const prod = { ...VALID, NODE_ENV: 'production' };
+    const prod = {
+      ...VALID,
+      NODE_ENV: 'production',
+      GOOGLE_SA_KEY_FILE: '/run/secrets/google-sa.json',
+      GOOGLE_ROOT_FOLDER_ID: '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123',
+    };
     expect(errorOf(prod).message).toContain('APP_ORIGIN');
     expect(errorOf({ ...prod, APP_ORIGIN: 'http://qc.example.com' }).message).toContain('https');
     expect(loadConfig({ ...prod, APP_ORIGIN: 'https://qc.example.com' }).appOrigin).toBe(
@@ -166,5 +169,105 @@ describe('loadConfig', () => {
         'rahasia-dev@example.test',
       );
     }
+  });
+
+  describe('klien Google langsung (service account, T30a)', () => {
+    const PROD = { ...VALID, NODE_ENV: 'production', APP_ORIGIN: 'https://qc.example.com' };
+    const GOOGLE = {
+      GOOGLE_SA_KEY_FILE: '/run/secrets/google-sa.json',
+      GOOGLE_ROOT_FOLDER_ID: '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123',
+    };
+
+    test('di luar produksi semuanya opsional: kosong = belum dikonfigurasi (dev tanpa Google)', () => {
+      expect(loadConfig(VALID)).toMatchObject({
+        googleSaKeyFile: '',
+        googleRootFolderId: '',
+        googleSpreadsheetId: '',
+        itemImagesFolderId: '',
+        qrFolderId: '',
+        qrDocFolderId: '',
+        backupFolderId: '',
+        allowedFolderIds: [],
+      });
+    });
+
+    test('BRIDGE_URL/BRIDGE_SECRET tidak lagi wajib dan tidak dibaca', () => {
+      const config = loadConfig({
+        ...VALID,
+        BRIDGE_URL: 'ftp://dibuang',
+        BRIDGE_SECRET: 'dibuang-xyz',
+      });
+      expect(JSON.stringify({ ...config, trustedProxy: null })).not.toContain('dibuang');
+      expect('bridgeUrl' in config || 'bridgeSecret' in config).toBe(false);
+    });
+
+    test('nilai dibaca, dipangkas, dan ALLOWED_FOLDER_IDS dipecah per koma', () => {
+      const config = loadConfig({
+        ...VALID,
+        ...GOOGLE,
+        GOOGLE_SPREADSHEET_ID: ' 1SpreadsheetIdAbCdEfGhIj ',
+        ITEM_IMAGES_FOLDER_ID: 'IMAGESFOLDER001',
+        QR_FOLDER_ID: 'QRFOLDERID00001',
+        QR_DOC_FOLDER_ID: 'QRDOCFOLDER0001',
+        BACKUP_FOLDER_ID: 'BACKUPFOLDER001',
+        ALLOWED_FOLDER_IDS: 'EXTRAFOLDER0001, EXTRAFOLDER0002 ,',
+      });
+      expect(config).toMatchObject({
+        googleSaKeyFile: GOOGLE.GOOGLE_SA_KEY_FILE,
+        googleRootFolderId: GOOGLE.GOOGLE_ROOT_FOLDER_ID,
+        googleSpreadsheetId: '1SpreadsheetIdAbCdEfGhIj',
+        itemImagesFolderId: 'IMAGESFOLDER001',
+        qrFolderId: 'QRFOLDERID00001',
+        qrDocFolderId: 'QRDOCFOLDER0001',
+        backupFolderId: 'BACKUPFOLDER001',
+        allowedFolderIds: ['EXTRAFOLDER0001', 'EXTRAFOLDER0002'],
+      });
+    });
+
+    test('id folder/spreadsheet yang bukan id Drive ditolak dengan nama variabel saja, tanpa nilainya', () => {
+      const error = errorOf({
+        ...VALID,
+        GOOGLE_ROOT_FOLDER_ID: '../rahasia-xyz',
+        GOOGLE_SPREADSHEET_ID: 'pendek',
+        ITEM_IMAGES_FOLDER_ID: 'a/b/c-rahasia-xyz',
+        QR_FOLDER_ID: 'x',
+        QR_DOC_FOLDER_ID: 'y',
+        BACKUP_FOLDER_ID: 'z',
+        ALLOWED_FOLDER_IDS: 'OKFOLDERID0001,rusak rahasia-xyz',
+      });
+      for (const name of [
+        'GOOGLE_ROOT_FOLDER_ID',
+        'GOOGLE_SPREADSHEET_ID',
+        'ITEM_IMAGES_FOLDER_ID',
+        'QR_FOLDER_ID',
+        'QR_DOC_FOLDER_ID',
+        'BACKUP_FOLDER_ID',
+        'ALLOWED_FOLDER_IDS',
+      ]) {
+        expect(error.message).toContain(name);
+      }
+      expect(error.message).not.toContain('xyz');
+    });
+
+    test('produksi mewajibkan GOOGLE_SA_KEY_FILE dan GOOGLE_ROOT_FOLDER_ID (nama saja di pesan)', () => {
+      const error = errorOf(PROD);
+      expect(error.message).toContain('GOOGLE_SA_KEY_FILE');
+      expect(error.message).toContain('GOOGLE_ROOT_FOLDER_ID');
+      expect(
+        errorOf({ ...PROD, GOOGLE_ROOT_FOLDER_ID: GOOGLE.GOOGLE_ROOT_FOLDER_ID }).message,
+      ).toContain('GOOGLE_SA_KEY_FILE');
+      expect(loadConfig({ ...PROD, ...GOOGLE }).googleSaKeyFile).toBe(GOOGLE.GOOGLE_SA_KEY_FILE);
+    });
+
+    test('kunci service account hanya dari BERKAS: isi kunci di env tidak pernah dibaca atau disimpan', () => {
+      const secret = '-----BEGIN PRIVATE KEY-----RAHASIA-xyz';
+      const config = loadConfig({
+        ...VALID,
+        GOOGLE_SA_KEY: secret,
+        GOOGLE_SA_KEY_JSON: secret,
+        GOOGLE_PRIVATE_KEY: secret,
+      });
+      expect(JSON.stringify({ ...config, trustedProxy: null })).not.toContain('RAHASIA');
+    });
   });
 });

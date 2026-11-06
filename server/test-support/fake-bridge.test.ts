@@ -86,4 +86,36 @@ describe('createFakeBridge', () => {
     await bridge.sheetsExport({ sheet: 'items', columns: ['id'], rows: [['1']], mode: 'replace' });
     expect(bridge.state.exports).toHaveLength(1);
   });
+  test('metode cadangan: uploadFile, listFolder berhalaman, downloadFile, deleteFile, storageQuota', async () => {
+    const bridge = createFakeBridge();
+    const folder = await bridge.createFolder('Cadangan');
+    const bytes = new TextEncoder().encode('isi cadangan');
+    const uploaded = await bridge.uploadFile(
+      folder,
+      'qc-backup-b.sql.gz',
+      'application/gzip',
+      new Blob([bytes]),
+      {
+        appProperties: { sha256: 'x' },
+      },
+    );
+    expect(uploaded).toMatchObject({ size: bytes.length });
+    expect(uploaded.md5Checksum).toMatch(/^[0-9a-f]{32}$/);
+    await bridge.uploadFile(folder, 'qc-backup-a.sql.gz', 'application/gzip', bytes);
+    const first = await bridge.listFolder(folder, { pageSize: 1 });
+    expect(first.files.map((f) => f.name)).toEqual(['qc-backup-a.sql.gz']);
+    const second = await bridge.listFolder(folder, { pageSize: 1, pageToken: first.nextPageToken });
+    expect(second.files[0]).toMatchObject({
+      name: 'qc-backup-b.sql.gz',
+      appProperties: { sha256: 'x' },
+    });
+    expect(second.nextPageToken).toBeUndefined();
+    const download = await bridge.downloadFile(uploaded.id, folder);
+    expect(new Uint8Array(await new Response(download?.body).arrayBuffer())).toEqual(bytes);
+    expect(await bridge.downloadFile('hilang', folder)).toBeNull();
+    await bridge.deleteFile(uploaded.id);
+    expect(bridge.state.files.has(uploaded.id)).toBe(false);
+    await bridge.deleteFile(uploaded.id);
+    expect(await bridge.storageQuota()).toEqual({ limit: null, usage: 0 });
+  });
 });

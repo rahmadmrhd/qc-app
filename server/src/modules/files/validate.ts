@@ -26,7 +26,7 @@ export function validateUploadFile(raw: unknown): UploadFileInput {
   if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
     reader.fail('bytes', 'Isi gambar tidak valid');
   } else if (bytes.length > MAX_IMAGE_BYTES) {
-    reader.fail('bytes', 'Ukuran gambar maksimal 1 MB');
+    reader.fail('bytes', 'Ukuran gambar maksimal 10 MB');
   } else if (isImageMime(mime) && !matchesImageBytesSignature(mime, bytes)) {
     reader.fail('bytes', 'Isi berkas tidak sesuai jenis gambar');
   }

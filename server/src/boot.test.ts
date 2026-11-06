@@ -85,8 +85,6 @@ describe('createServer: runner dan penjadwal menunggu persiapan basis data', () 
     OAUTH_CLIENT_ID: 'id',
     OAUTH_CLIENT_SECRET: 'rahasia',
     SYNC_API_TOKEN: 'token-sinkron-uji-cukup-panjang',
-    BRIDGE_URL: 'https://bridge.test/exec',
-    BRIDGE_SECRET: 'rahasia-jembatan',
     ADMIN_EMAIL: 'admin@example.com',
   };
 

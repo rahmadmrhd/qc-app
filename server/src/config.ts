@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { isDriveId } from '@server/core/google/settings';
 import { DEFAULT_TRUSTED_PROXY, parseTrustedProxy, type TrustedProxy } from '@server/http/proxy';
 
 /** Konfigurasi proses server, dibaca dari variabel lingkungan (Bun memuat `server/.env` saat dijalankan dari `server/`). */
@@ -11,8 +12,19 @@ export interface Config {
   oauthClientId: string;
   oauthClientSecret: string;
   syncApiToken: string;
-  bridgeUrl: string;
-  bridgeSecret: string;
+  /** Jalur berkas kunci service account Google (JSON); '' = belum dikonfigurasi (wajib di produksi). Isi kunci TIDAK pernah dari env. */
+  googleSaKeyFile: string;
+  /** Folder induk Drive; '' = belum dikonfigurasi (wajib di produksi). */
+  googleRootFolderId: string;
+  /** Spreadsheet data tunggal (ekspor/impor Sheets). */
+  googleSpreadsheetId: string;
+  /** Folder fungsi di Drive (opsional; kosong = dibuat di bawah induk dan dicatat di tabel settings). */
+  itemImagesFolderId: string;
+  qrFolderId: string;
+  qrDocFolderId: string;
+  backupFolderId: string;
+  /** Folder tambahan di luar induk yang diizinkan klien Google. */
+  allowedFolderIds: string[];
   adminEmail: string;
   /** Origin publik aplikasi: dasar redirect OAuth dan atribut `Secure` cookie (BUKAN header Host). Wajib https di produksi. */
   appOrigin: string | undefined;
@@ -53,8 +65,6 @@ const REQUIRED = [
   'OAUTH_CLIENT_ID',
   'OAUTH_CLIENT_SECRET',
   'SYNC_API_TOKEN',
-  'BRIDGE_URL',
-  'BRIDGE_SECRET',
   'ADMIN_EMAIL',
 ] as const;
 
@@ -103,9 +113,28 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (sessionSecret !== '' && sessionSecret.length < SESSION_SECRET_MIN_LENGTH) {
     problems.push(`SESSION_SECRET minimal ${SESSION_SECRET_MIN_LENGTH} karakter`);
   }
-  const bridgeUrl = get('BRIDGE_URL');
-  if (bridgeUrl !== '' && !hasProtocol(bridgeUrl, ['http:', 'https:'])) {
-    problems.push('BRIDGE_URL harus berupa URL http(s)');
+  // Id Drive masuk ke jalur URL API Google: hanya pola id yang sah (huruf, angka, _ dan -); nilai tak pernah dicantumkan.
+  const googleIds = [
+    'GOOGLE_ROOT_FOLDER_ID',
+    'GOOGLE_SPREADSHEET_ID',
+    'ITEM_IMAGES_FOLDER_ID',
+    'QR_FOLDER_ID',
+    'QR_DOC_FOLDER_ID',
+    'BACKUP_FOLDER_ID',
+  ] as const;
+  for (const name of googleIds) {
+    if (get(name) !== '' && !isDriveId(get(name))) {
+      problems.push(
+        `${name} bukan id Google Drive yang valid (huruf, angka, _ dan -; 10-100 karakter)`,
+      );
+    }
+  }
+  const allowedFolderIds = get('ALLOWED_FOLDER_IDS')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id !== '');
+  if (allowedFolderIds.some((id) => !isDriveId(id))) {
+    problems.push('ALLOWED_FOLDER_IDS harus daftar id Google Drive yang valid, dipisah koma');
   }
   const appOrigin = get('APP_ORIGIN');
   if (appOrigin !== '' && !hasProtocol(appOrigin, ['http:', 'https:'])) {
@@ -114,6 +143,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   const production = get('NODE_ENV') === 'production';
   if (production) {
+    const missingGoogle = ['GOOGLE_SA_KEY_FILE', 'GOOGLE_ROOT_FOLDER_ID'].filter(
+      (name) => get(name) === '',
+    );
+    if (missingGoogle.length > 0) {
+      problems.push(
+        `variabel Google wajib diisi bila NODE_ENV=production: ${missingGoogle.join(', ')}`,
+      );
+    }
     if (appOrigin === '') {
       problems.push('APP_ORIGIN wajib diisi bila NODE_ENV=production');
     } else if (!appOrigin.startsWith('https://')) {
@@ -154,8 +191,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     oauthClientId: get('OAUTH_CLIENT_ID'),
     oauthClientSecret: get('OAUTH_CLIENT_SECRET'),
     syncApiToken: get('SYNC_API_TOKEN'),
-    bridgeUrl,
-    bridgeSecret: get('BRIDGE_SECRET'),
+    googleSaKeyFile: get('GOOGLE_SA_KEY_FILE'),
+    googleRootFolderId: get('GOOGLE_ROOT_FOLDER_ID'),
+    googleSpreadsheetId: get('GOOGLE_SPREADSHEET_ID'),
+    itemImagesFolderId: get('ITEM_IMAGES_FOLDER_ID'),
+    qrFolderId: get('QR_FOLDER_ID'),
+    qrDocFolderId: get('QR_DOC_FOLDER_ID'),
+    backupFolderId: get('BACKUP_FOLDER_ID'),
+    allowedFolderIds,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,
     production,
