@@ -2,7 +2,8 @@ import type { HandoverOptionsDto, MeDto } from '@shared/rpc';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
+import type { HandoverBatchFormOutput } from '../schemas';
 
 const meMock = vi.hoisted(() => ({
   me: {
@@ -108,7 +109,7 @@ test('Simpan semua mengirim saveBatch dengan semua task', async () => {
 
 test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua draf', async () => {
   const onSubmit = vi.fn().mockRejectedValue(
-    new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+    new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
       tasks: 'Task 2: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
     }),
   );
@@ -127,7 +128,7 @@ test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua d
 });
 
 test('galat umum dari server ditampilkan di atas form dan draf tetap', async () => {
-  const onSubmit = vi.fn().mockRejectedValue(new RpcError('FORBIDDEN', 'Tidak punya izin', 'r2'));
+  const onSubmit = vi.fn().mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak punya izin', 'r2'));
   renderForm(onSubmit);
   fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
   await fillNote(0, 'satu');
@@ -144,7 +145,8 @@ test('validasi klien: catatan kosong menahan pengiriman', async () => {
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('batch di atas 30 task menonaktifkan tambah', async () => {
+// 29 klik userEvent + render 30 kartu Tiptap: berat saat vitest menjalankan banyak berkas paralel, jadi batas dilonggarkan.
+test('batch di atas 30 task menonaktifkan tambah', { timeout: 60_000 }, async () => {
   renderForm();
   const add = screen.getByRole('button', { name: 'Tambah task' });
   for (let i = 0; i < 29; i++) await userEvent.click(add);
@@ -170,7 +172,7 @@ test('hasil pecah tempelan WhatsApp ditambahkan sebagai kartu', async () => {
 
 test('galat server menempel pada kartu yang benar setelah kartu lain dihapus (pemetaan per id)', async () => {
   const onSubmit = vi.fn().mockRejectedValue(
-    new RpcError('VALIDATION', 'Input tidak valid', 'r1', {
+    new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
       tasks: 'Task 3: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
     }),
   );
@@ -208,3 +210,81 @@ test('tempelan 30 task muat walau ada satu kartu kosong awal (slot dihitung bena
   await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (30)' }));
   expect(cards()).toHaveLength(30);
 }, 40_000);
+
+/** Tempel `n` task WhatsApp lalu tambahkan ke batch; lokasi dipilih. */
+async function pasteTasks(
+  n: number,
+  onSubmit: (values: HandoverBatchFormOutput) => Promise<unknown>,
+  onSaved = vi.fn(),
+) {
+  render(
+    <HandoverBatchForm
+      options={options}
+      onSubmit={onSubmit}
+      onSaved={onSaved}
+      onCancel={vi.fn()}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  const text = Array.from(
+    { length: n },
+    (_, i) => `Cust ${i + 1} :\nBarang ${i + 1} = 1 unit`,
+  ).join('\n\n');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
+    target: { value: text },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
+  await userEvent.click(screen.getByRole('button', { name: `Tambahkan ke batch (${n})` }));
+  return { onSaved };
+}
+
+const sentNotes = (onSubmit: ReturnType<typeof vi.fn>) =>
+  onSubmit.mock.calls.flatMap((call) =>
+    (call[0] as { tasks: { note: string }[] }).tasks.map((task) => task.note),
+  );
+
+test('30 task dikirim dalam SATU permintaan atomik lalu onSaved(30)', async () => {
+  const onSubmit = vi.fn().mockResolvedValue([]);
+  const { onSaved } = await pasteTasks(30, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(30));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  const sent = onSubmit.mock.calls[0]?.[0] as { tasks: unknown[] };
+  expect(sent.tasks).toHaveLength(30);
+}, 60_000);
+
+test('gagal: tidak ada yang tersimpan, draf utuh (30 kartu), galat menempel pada kartu bermasalah; ulang mengirim semuanya sekali lagi', async () => {
+  const onSubmit = vi
+    .fn()
+    .mockRejectedValueOnce(
+      new ApiError('VALIDATION', 'Input tidak valid', 'r1', {
+        tasks: 'Task 8: Customer dinonaktifkan; aktifkan dulu di halaman Customer',
+      }),
+    )
+    .mockResolvedValue([]);
+  const { onSaved } = await pasteTasks(30, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/Customer dinonaktifkan/)).toBeInTheDocument();
+  expect(onSaved).not.toHaveBeenCalled();
+  // tidak ada yang dibuang dari draf dan tidak ada pemberitahuan "sudah tersimpan"
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(cards()).toHaveLength(30);
+  expect(within(cards()[7] as HTMLElement).getByRole('alert')).toHaveTextContent(
+    'Customer dinonaktifkan',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (30)' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(30));
+  expect(onSubmit).toHaveBeenCalledTimes(2);
+  expect(sentNotes(onSubmit)).toHaveLength(60);
+}, 90_000);
+
+test('galat server: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan tersimpan', async () => {
+  const onSubmit = vi.fn().mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak punya izin', 'r3'));
+  await pasteTasks(12, onSubmit);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (12)' }));
+  expect(await screen.findByText('Tidak punya izin')).toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(cards()).toHaveLength(12);
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+}, 60_000);

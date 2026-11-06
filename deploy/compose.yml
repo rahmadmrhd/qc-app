@@ -1,0 +1,114 @@
+# Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Satu proyek per lingkungan (QC_ENV = staging atau production).
+# Jalankan dari folder ini (folder instalasi <INSTALL_DIR>/<env>/; di VPS pribadi: /root/apps/qc-app/<env>/): docker compose up -d
+# Nilai dibaca dari .env di folder yang sama (lihat .env.example). TIDAK ada rahasia di berkas ini.
+# Awalan nama proyek/kontainer/jaringan/volume: QC_NAME (bawaan qc-${QC_ENV}: qc-staging, qc-production). Nama staging
+# tidak bertabrakan dengan stack dev lama T1 (proyek qc-dev, kontainer qc-dev-db) yang masih berjalan di /opt/qc/dev.
+# Pengguna/skema DB: bawaan qc_${QC_ENV}; staging yang sudah berisi data memakai qc_dev lewat QC_DB_USER/QC_DB_NAME di .env.
+name: ${QC_NAME:-qc-${QC_ENV:?QC_ENV wajib diisi}}
+
+# Subnet jaringan proyek DIPATOK agar alamat gateway bridge (peer nginx host di mata qc-app) dapat didaftarkan
+# di TRUSTED_PROXY (keputusan I5). Pilih blok 10.x yang tidak pernah dialokasikan otomatis oleh Docker
+# (kolam bawaan Docker: 172.16/12 dan 192.168/16) dan tidak dipakai jaringan Docker lain di VPS; satu subnet
+# per lingkungan (staging 10.77.10.0/24, production 10.77.20.0/24).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${QC_SUBNET:?QC_SUBNET wajib diisi, mis. 10.77.10.0/24}
+
+services:
+  qc-db:
+    image: mariadb:11.8
+    container_name: ${QC_NAME:-qc-${QC_ENV}}-db
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD wajib diisi}
+      # Skema dan pengguna aplikasi dibuat OTOMATIS oleh entrypoint MariaDB HANYA saat volume pertama kali diinisialisasi
+      # (pengguna mendapat ALL PRIVILEGES pada skema itu; kolasi skema = collation-server di mariadb/qc.cnf, utf8mb4_nopad_bin).
+      # Pada volume yang sudah terinisialisasi ketiga variabel ini DIABAIKAN. Nilainya WAJIB sama persis dengan DATABASE_URL
+      # qc-app di bawah (dijaga server/src/deploy-files.test.ts).
+      MARIADB_DATABASE: ${QC_DB_NAME:-qc_${QC_ENV}}
+      MARIADB_USER: ${QC_DB_USER:-qc_${QC_ENV}}
+      MARIADB_PASSWORD: ${QC_DB_PASSWORD:?QC_DB_PASSWORD wajib diisi}
+    ports:
+      - "127.0.0.1:${DB_PORT:?DB_PORT wajib diisi}:3306"
+    volumes:
+      - qc-db-data:/var/lib/mysql
+      - ./mariadb/qc.cnf:/etc/mysql/conf.d/qc.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+
+  qc-app:
+    image: ${QC_IMAGE:-ghcr.io/rahmadmrhd/qc-app}:${QC_IMAGE_TAG:?QC_IMAGE_TAG wajib diisi (tag SHA dari GHCR)}
+    container_name: ${QC_NAME:-qc-${QC_ENV}}-app
+    # init: proses 1 kecil yang meneruskan sinyal dan menuai proses yatim; healthcheck ada di image.
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      qc-db:
+        condition: service_healthy
+    # Hanya loopback host: nginx host memanggil 127.0.0.1:APP_PORT (peer di dalam kontainer = gateway bridge).
+    ports:
+      - "127.0.0.1:${APP_PORT:?APP_PORT wajib diisi}:8788"
+    # Daftar variabel EKSPLISIT (bukan env_file): hanya yang tertulis di bawah yang masuk ke lingkungan aplikasi, jadi
+    # MARIADB_ROOT_PASSWORD dan variabel infrastruktur lain di .env yang sama tidak ikut. QC_DB_PASSWORD tetap sampai
+    # ke aplikasi sebagai bagian DATABASE_URL (di bawah); yang tertahan hanya variabelnya. Variabel baru di
+    # server/src/config.ts wajib ditambah di sini DAN di .env.example (dijaga server/src/deploy-files.test.ts).
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8788"
+      DATABASE_URL: mysql://${QC_DB_USER:-qc_${QC_ENV}}:${QC_DB_PASSWORD:?QC_DB_PASSWORD wajib diisi}@qc-db:3306/${QC_DB_NAME:-qc_${QC_ENV}}
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN wajib diisi (https://...)}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:?TRUSTED_PROXY wajib diisi (daftar CIDR, termasuk QC_SUBNET)}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET wajib diisi}
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?OAUTH_CLIENT_ID wajib diisi}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?OAUTH_CLIENT_SECRET wajib diisi}
+      SYNC_API_TOKEN: ${SYNC_API_TOKEN:?SYNC_API_TOKEN wajib diisi}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL wajib diisi}
+      # Klien Google langsung (service account, T30a): kunci = BERKAS rahasia (volumes di bawah), bukan variabel.
+      # Folder fungsi (item/QR/cadangan) opsional: kosong = dibuat di bawah folder induk dan dicatat di tabel settings.
+      GOOGLE_SA_KEY_FILE: ${GOOGLE_SA_KEY_FILE:-/run/secrets/google-sa.json}
+      GOOGLE_ROOT_FOLDER_ID: ${GOOGLE_ROOT_FOLDER_ID:?GOOGLE_ROOT_FOLDER_ID wajib diisi (id folder induk Drive)}
+      GOOGLE_SPREADSHEET_ID: ${GOOGLE_SPREADSHEET_ID:-}
+      ITEM_IMAGES_FOLDER_ID: ${ITEM_IMAGES_FOLDER_ID:-}
+      QR_FOLDER_ID: ${QR_FOLDER_ID:-}
+      QR_DOC_FOLDER_ID: ${QR_DOC_FOLDER_ID:-}
+      BACKUP_FOLDER_ID: ${BACKUP_FOLDER_ID:-}
+      ALLOWED_FOLDER_IDS: ${ALLOWED_FOLDER_IDS:-}
+      # Cadangan malam (T30): dump disimpan sementara di volume qc-backups (3 salinan terakhir; sisanya di Drive).
+      BACKUP_LOCAL_DIR: /var/backups/qc
+      # Peringatan email (T32): cadangan basi > 36 jam dan pemakaian kuota Drive di atas ambang (bawaan 80%).
+      QUOTA_ALERT_PERCENT: ${QUOTA_ALERT_PERCENT:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      ALERT_TO: ${ALERT_TO:-}
+    volumes:
+      - qc-backups:/var/backups/qc
+      # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang
+      # baca-saja. create_host_path: false = bila berkasnya belum ada, compose GAGAL (bukan membuat direktori kosong).
+      - type: bind
+        source: ${QC_SECRETS_DIR:-./secrets}/google-sa.json
+        target: /run/secrets/google-sa.json
+        read_only: true
+        bind:
+          create_host_path: false
+
+volumes:
+  qc-db-data:
+  qc-backups:

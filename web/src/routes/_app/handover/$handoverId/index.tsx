@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { describeError } from '@/lib/rpc/describe-error';
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
+import { describeError } from '@/lib/api/describe-error';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverDetailView } from '@/modules/handover/components/handover-detail-view';
@@ -54,7 +54,7 @@ function HandoverDetailPage() {
   const task = query.data;
   if (query.isPending && readable.length > 0) return <Skeleton className="h-64 w-full" />;
   if (!task) {
-    const notFound = !(query.error instanceof RpcError) || query.error.code === 'NOT_FOUND';
+    const notFound = !(query.error instanceof ApiError) || query.error.code === 'NOT_FOUND';
     return (
       <p role="alert" className="text-sm text-destructive">
         {notFound ? 'Task tidak ditemukan di lokasi aktif.' : 'Gagal memuat task. Coba muat ulang.'}{' '}

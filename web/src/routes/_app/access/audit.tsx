@@ -1,5 +1,5 @@
 import type { AuditEntryDto } from '@shared/rpc';
-import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
@@ -23,14 +23,13 @@ import {
 } from '@/modules/access/lib/audit-actions';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import {
-  auditQueryOptions,
+  auditInfiniteQueryOptions,
   locationsQueryOptions,
   rolesQueryOptions,
 } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 
 const auditSearchSchema = z.object({
-  page: z.number().int().min(1).optional().catch(undefined),
   action: z.string().optional().catch(undefined),
   q: z.string().optional().catch(undefined),
 });
@@ -38,13 +37,13 @@ const auditSearchSchema = z.object({
 export const Route = createFileRoute('/_app/access/audit')({
   validateSearch: (search: Record<string, unknown>) => auditSearchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'access', 'view'),
-  // Tanpa loaderDeps: ganti halaman/filter/kata kunci tidak memuat ulang route (halaman tidak diganti tampilan
+  // Tanpa loaderDeps: ganti filter/kata kunci tidak memuat ulang route (halaman tidak diganti tampilan
   // "memuat"); daftar mengambil datanya sendiri dan menahan baris lama selama memuat. Loader hanya menyiapkan data
   // referensi dan memulai pengambilan daftar awal bersamaan (satu eksekusi batch) tanpa menunggunya.
   loader: async ({ context, location }) => {
     const search = auditSearchSchema.parse(location.search);
-    void context.queryClient.prefetchQuery(
-      auditQueryOptions({ page: search.page, action: search.action, query: search.q }),
+    void context.queryClient.prefetchInfiniteQuery(
+      auditInfiniteQueryOptions({ action: search.action, query: search.q }),
     );
     await Promise.all([
       context.queryClient.ensureQueryData(rolesQueryOptions()),
@@ -59,29 +58,22 @@ function AuditPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
   const { data: locations } = useSuspenseQuery(locationsQueryOptions());
-  const auditQuery = useQuery({
-    ...auditQueryOptions({ page: search.page, action: search.action, query: search.q }),
+  const auditQuery = useInfiniteQuery({
+    ...auditInfiniteQueryOptions({ action: search.action, query: search.q }),
     placeholderData: keepPreviousData,
   });
-  const result = auditQuery.data;
+  const entries = auditQuery.data?.pages.flatMap((page) => page.entries);
   const [selected, setSelected] = useState<AuditEntryDto | null>(null);
   // Kata kunci dikirim ke server; tunda agar tidak memanggil RPC pada setiap ketukan.
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) => {
     void navigate({
-      search: (prev) => ({ ...prev, q: value || undefined, page: undefined }),
+      search: (prev) => ({ ...prev, q: value || undefined }),
       replace: true,
     });
   });
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
   const locationNames = new Map(locations.map((l) => [l.id, l.name]));
-  const page = result?.page ?? search.page ?? 1;
-  const lastPage = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : page;
-
-  function goTo(next: number) {
-    void navigate({ search: (prev) => ({ ...prev, page: next <= 1 ? undefined : next }) });
-  }
-
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Log Audit</h1>
@@ -100,7 +92,6 @@ function AuditPage() {
               search: (prev) => ({
                 ...prev,
                 action: event.target.value || undefined,
-                page: undefined,
               }),
               replace: true,
             })
@@ -114,12 +105,12 @@ function AuditPage() {
           ))}
         </NativeSelect>
       </div>
-      {result ? (
+      {entries ? (
         <div
           aria-busy={auditQuery.isFetching}
           className={auditQuery.isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}
         >
-          <AuditTable entries={result.entries} onSelect={setSelected} />
+          <AuditTable entries={entries} onSelect={setSelected} />
         </div>
       ) : auditQuery.isError ? (
         <p role="alert" className="text-sm text-destructive">
@@ -130,27 +121,19 @@ function AuditPage() {
       )}
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">
-          {result ? `${result.total} catatan · halaman ${page} dari ${lastPage}` : ''}
-          {auditQuery.isFetching && result ? ' · memuat…' : ''}
+          {entries ? `${entries.length} catatan dimuat` : ''}
+          {auditQuery.isFetching && entries ? ' · memuat…' : ''}
         </span>
-        <div className="flex gap-2">
+        {auditQuery.hasNextPage ? (
           <Button
             size="sm"
             variant="outline"
-            disabled={page <= 1 || !result}
-            onClick={() => goTo(page - 1)}
+            disabled={auditQuery.isFetchingNextPage}
+            onClick={() => void auditQuery.fetchNextPage()}
           >
-            Sebelumnya
+            {auditQuery.isFetchingNextPage ? 'Memuat…' : 'Muat lebih banyak'}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!result || page >= lastPage}
-            onClick={() => goTo(page + 1)}
-          >
-            Berikutnya
-          </Button>
-        </div>
+        ) : null}
       </div>
       <Sheet
         open={selected !== null}

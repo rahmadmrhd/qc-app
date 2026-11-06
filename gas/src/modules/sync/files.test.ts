@@ -45,16 +45,16 @@ test('sync.file.get: id di luar folder, tak dikenal, atau tanpa DRIVE_FOLDER_ID 
   expect(call({ driveId: inside })).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
 });
 
-test('sync.file.get: payload tidak sah → VALIDATION; berkas > 8 MB → VALIDATION', () => {
+test('sync.file.get: payload tidak sah → VALIDATION; berkas > 10 MB → VALIDATION', () => {
   expect(call({})).toMatchObject({
     ok: false,
     error: { code: 'VALIDATION', fields: { driveId: 'Wajib diisi' } },
   });
   expect(call(null)).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });
-  const big = platform.driveCreateFile(folder, 'big.png', 'image/png', 'A'.repeat(11_000_000));
+  const big = platform.driveCreateFile(folder, 'big.png', 'image/png', 'A'.repeat(14_100_000));
   expect(call({ driveId: big })).toMatchObject({
     ok: false,
-    error: { code: 'VALIDATION', fields: { driveId: 'Berkas melebihi 8 MB' } },
+    error: { code: 'VALIDATION', fields: { driveId: 'Berkas melebihi 10 MB' } },
   });
 });
 

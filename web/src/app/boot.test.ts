@@ -1,60 +1,40 @@
-import { expect, test } from 'vitest';
-import { resolveInitialSession } from './boot';
+import type { MeDto } from '@shared/rpc';
+import { afterEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
+import { loadMe, readAuthError, resolveInitialSession } from './boot';
 
-test('sessionToken dari boot dipakai dan menggantikan token lama', () => {
-  expect(resolveInitialSession({ sessionToken: 'baru', nonce: 'n1' }, 'lama', 'n1')).toEqual({
-    token: 'baru',
-    loginUrl: null,
-    authError: null,
-    authErrorEmail: null,
+const me = { email: 'a@x.com', name: 'A' } as MeDto;
+
+afterEach(() => vi.unstubAllEnvs());
+
+test('readAuthError hanya menerima kode yang dikenal', () => {
+  expect(readAuthError('?authError=NOT_WHITELISTED')).toBe('NOT_WHITELISTED');
+  expect(readAuthError('?authError=LOGIN_FAILED')).toBe('LOGIN_FAILED');
+  expect(readAuthError('?authError=lain')).toBeNull();
+  expect(readAuthError('')).toBeNull();
+});
+
+test('sesi sah dari boot; tanpa me, galat login ditampilkan', () => {
+  expect(resolveInitialSession(me, null)).toMatchObject({ authenticated: true, email: 'a@x.com' });
+  expect(resolveInitialSession(null, 'LOGIN_FAILED')).toMatchObject({
+    authenticated: false,
+    authError: 'LOGIN_FAILED',
+    loginUrl: '/auth/login',
   });
 });
 
-test('refresh setelah login (state sudah terpakai → LOGIN_FAILED) tetap memakai token tersimpan', () => {
-  expect(resolveInitialSession({ authError: 'LOGIN_FAILED', loginUrl: 'u' }, 'tersimpan')).toEqual({
-    token: 'tersimpan',
-    loginUrl: 'u',
-    authError: null,
-    authErrorEmail: null,
+test('loadMe memanggil auth.me lewat api() (GET /api/v1/me); 401, galat server, dan jaringan = belum login', async () => {
+  const ok = vi.fn(async () => me);
+  await expect(loadMe(ok as never)).resolves.toEqual(me);
+  expect(ok).toHaveBeenCalledWith('auth.me', null);
+  const unauthorized = vi.fn(async () => {
+    throw new ApiError('UNAUTHENTICATED', 'Sesi tidak valid', 'r1', undefined, { status: 401 });
   });
-});
-
-test('NOT_WHITELISTED membuang token tersimpan dan menampilkan email', () => {
-  expect(
-    resolveInitialSession(
-      { authError: 'NOT_WHITELISTED', email: 'a@gmail.com', loginUrl: 'u' },
-      'lama',
-    ),
-  ).toEqual({
-    token: null,
-    loginUrl: 'u',
-    authError: 'NOT_WHITELISTED',
-    authErrorEmail: 'a@gmail.com',
+  await expect(loadMe(unauthorized as never)).resolves.toBeNull();
+  const broken = vi.fn(async () => {
+    throw new ApiError('INTERNAL', 'Tidak dapat menghubungi server.', '-');
   });
-});
-
-test('tanpa token sama sekali, LOGIN_FAILED ditampilkan', () => {
-  expect(resolveInitialSession({ authError: 'LOGIN_FAILED', loginUrl: 'u' }, null).authError).toBe(
-    'LOGIN_FAILED',
-  );
-  expect(resolveInitialSession({ loginUrl: 'u' }, null)).toEqual({
-    token: null,
-    loginUrl: 'u',
-    authError: null,
-    authErrorEmail: null,
-  });
-});
-
-test('sessionToken dengan nonce yang tidak cocok (login-CSRF) ditolak dan token tersimpan dipertahankan', () => {
-  const session = resolveInitialSession(
-    { sessionToken: 'penyerang', nonce: 'x', loginUrl: 'u' },
-    'milik-saya',
-    'n1',
-  );
-  expect(session.token).toBe('milik-saya');
-});
-
-test('sessionToken tanpa nonce tersimpan di browser ini ditolak', () => {
-  const session = resolveInitialSession({ sessionToken: 't', nonce: 'n1' }, null, null);
-  expect(session.token).toBeNull();
+  await expect(loadMe(broken as never)).resolves.toBeNull();
+  const offline = vi.fn(async () => Promise.reject(new TypeError('offline')));
+  await expect(loadMe(offline as never)).resolves.toBeNull();
 });

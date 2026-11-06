@@ -5,20 +5,28 @@
   "workspaces": [
     "shared",
     "gas",
-    "web"
+    "bridge",
+    "web",
+    "server"
   ],
   "scripts": {
-    "dev": "bun run --cwd web dev",
-    "build:gas": "bun run scripts/build-gas.ts",
+    "dev": "bun run scripts/dev.ts",
+    "dev:server": "bun run --cwd server dev",
+    "dev:web": "bun run --cwd web dev",
+    "migrate:dump": "bun run scripts/migrate/dump-sheets.ts",
+    "build:gas": "bun run scripts/build-gas.ts && bun run scripts/verify-gas-dist.ts",
+    "build:bridge": "bun run scripts/build-bridge.ts",
     "build:web": "bun run --cwd web build",
-    "build": "bun run build:gas && bun run build:web && bun run scripts/verify-dist.ts",
-    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck && bun run --cwd web typecheck",
+    "build": "bun run build:web && bun run scripts/verify-dist.ts",
+    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd gas typecheck && bun run --cwd bridge typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "bun test ./scripts && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd web test",
+    "test": "bun test ./scripts --path-ignore-patterns \"scripts/migrate/*.test.ts\" && bun run --cwd shared test && bun run --cwd gas test && bun run --cwd bridge test && bun run --cwd server test && bun run --cwd web test",
     "check": "bun run typecheck && bun run lint && bun run test",
-    "push": "bun run check && bun run build && bun run scripts/push.ts",
-    "deploy": "bun run push && bun run scripts/deploy.ts"
+    "push": "bun run check && bun run build:gas && bun run scripts/push.ts",
+    "deploy": "bun run push && bun run scripts/deploy.ts",
+    "db:seed": "bun run --cwd server db:seed",
+    "db:tunnel": "bun run scripts/db-tunnel.ts"
   },
   "devDependencies": {
     "@babel/parser": "^8.0.7",

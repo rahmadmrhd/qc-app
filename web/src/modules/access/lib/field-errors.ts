@@ -1,4 +1,4 @@
-import { RpcError } from '@/lib/rpc/rpc-error';
+import { ApiError } from '@/lib/api/api-error';
 
 /** Pesan per field dari galat server (mis. konflik kode/nama) agar bisa tampil di field terkait. */
 export function pickFieldErrors<K extends string>(
@@ -6,7 +6,7 @@ export function pickFieldErrors<K extends string>(
   keys: readonly K[],
 ): Partial<Record<K, string>> {
   const result: Partial<Record<K, string>> = {};
-  if (!(error instanceof RpcError)) return result;
+  if (!(error instanceof ApiError)) return result;
   for (const key of keys) {
     const message = error.fields?.[key];
     if (message) result[key] = message;

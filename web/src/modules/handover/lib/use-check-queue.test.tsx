@@ -5,11 +5,12 @@ import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), error: vi.fn() }));
-vi.mock('@/lib/rpc', () => ({ rpc: (...args: unknown[]) => mocks.rpc(...args) }));
+vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.rpc(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error } }));
 
 import { makeHandover } from '../components/test-handover';
 import { handoverKeys } from '../queries';
+import { boardColumnData, findHandoverInBoards } from './board-cache';
 import { useCheckQueue } from './use-check-queue';
 
 const items = (n: number) =>
@@ -21,7 +22,13 @@ const items = (n: number) =>
     at: '',
   }));
 const task = makeHandover({ id: 't1', locationId: 'loc-a', checklist: items(5) });
-const boardKey = handoverKeys.board(['loc-a']);
+/** Memasang keempat kolom papan lokasi A: semua task di 'new', kolom lain kosong (tujuan pindah kolom). */
+function seedBoard(client: QueryClient, tasks: HandoverDto[]) {
+  client.setQueryData(handoverKeys.column(['loc-a'], 'new'), boardColumnData(tasks));
+  for (const status of ['in_progress', 'done', 'cancelled'] as const) {
+    client.setQueryData(handoverKeys.column(['loc-a'], status), boardColumnData([]));
+  }
+}
 
 function serverAfter(checkedIdx: number[]): HandoverDto {
   const checklist = items(5).map((item) =>
@@ -37,12 +44,12 @@ function serverAfter(checkedIdx: number[]): HandoverDto {
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(boardKey, [task]);
+  seedBoard(client, [task]);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   const hook = renderHook(() => useCheckQueue('qc@x'), { wrapper });
-  const cached = () => (client.getQueryData(boardKey) as HandoverDto[])[0] as HandoverDto;
+  const cached = () => findHandoverInBoards(client, 't1') as HandoverDto;
   const ref = { id: 't1', locationId: 'loc-a' };
   return { client, hook, cached, ref };
 }
@@ -155,10 +162,7 @@ test('kegagalan butir ke-3: butir itu kembali, lainnya tetap, antrean lanjut, to
 
 test('task berbeda diproses paralel; whenIdle menunggu antrean task itu kosong', async () => {
   const { client, hook, ref } = setup();
-  client.setQueryData(boardKey, [
-    task,
-    makeHandover({ id: 't2', locationId: 'loc-a', checklist: items(2) }),
-  ]);
+  seedBoard(client, [task, makeHandover({ id: 't2', locationId: 'loc-a', checklist: items(2) })]);
   const calls = manualRpc();
   act(() => {
     hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true);

@@ -2,11 +2,21 @@ import { describe, expect, test } from 'bun:test';
 import {
   base64ByteLength,
   fileRef,
+  IMAGE_TARGET_BYTES,
   isBase64Text,
   isImageMime,
+  MAX_IMAGE_BYTES,
   matchesImageSignature,
   parseFileRef,
 } from './files';
+
+describe('batas ukuran gambar (T30a, keputusan pemilik 2026-11-06)', () => {
+  test('batas terima server (tepi) 10 MB; target pengecilan gambar di klien TIDAK ikut naik (tetap 1 MB)', () => {
+    expect(MAX_IMAGE_BYTES).toBe(10 * 1024 * 1024);
+    expect(IMAGE_TARGET_BYTES).toBe(1024 * 1024);
+    expect(IMAGE_TARGET_BYTES).toBeLessThan(MAX_IMAGE_BYTES);
+  });
+});
 
 describe('isImageMime', () => {
   test('hanya JPEG, PNG, dan WebP', () => {

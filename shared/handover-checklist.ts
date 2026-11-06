@@ -21,6 +21,7 @@ const HANDOVER_CHECK_ITEM_RE = /^- \[([ xX])\] ?(.*)$/;
 export function extractChecklist(note: string): ChecklistEntry[] {
   const out: ChecklistEntry[] = [];
   for (const line of note.split(/\r\n|\r|\n/)) {
+    if (!line.startsWith('- [')) continue;
     const m = HANDOVER_CHECK_ITEM_RE.exec(line);
     if (m) out.push({ index: out.length, text: handoverCanonicalText(m[2] ?? '') });
   }
@@ -46,11 +47,28 @@ function handoverNthIndexByText_(entries: ChecklistEntry[], text: string, k: num
 
 /** Centang yang menempel pada tiap butir `note`, sejajar dengan `extractChecklist(note)`. */
 export function matchChecks(note: string, checks: CheckState[]): Array<CheckState | null> {
-  const entries = extractChecklist(note);
+  return matchChecksToEntries(extractChecklist(note), checks);
+}
+
+/**
+ * Centang yang menempel pada tiap butir `entries` (hasil `extractChecklist`), sejajar dengan `entries`.
+ * Butir dikelompokkan per teks sekali jalan (O(butir + centang)), bukan dipindai ulang untuk tiap centang.
+ */
+export function matchChecksToEntries(
+  entries: readonly ChecklistEntry[],
+  checks: readonly CheckState[],
+): Array<CheckState | null> {
   const result: Array<CheckState | null> = entries.map(() => null);
+  if (checks.length === 0) return result;
+  const byText = new Map<string, number[]>();
+  for (const e of entries) {
+    const list = byText.get(e.text);
+    if (list) list.push(e.index);
+    else byText.set(e.text, [e.index]);
+  }
   for (const c of checks) {
-    const at = handoverNthIndexByText_(entries, c.text, c.occurrence);
-    if (at >= 0) result[at] = c;
+    const at = byText.get(handoverCanonicalText(c.text))?.[c.occurrence];
+    if (at !== undefined) result[at] = c;
   }
   return result;
 }

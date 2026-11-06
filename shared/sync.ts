@@ -1,5 +1,8 @@
 /** Kontrak sinkronisasi QC Desktop (docs/api/desktop-sync.md). Murni: tanpa API GAS/DOM. */
+/** Versi kontrak amplop RPC lama (khusus aplikasi Apps Script `gas/`, sampai dipensiunkan di T35). */
 export const SYNC_API_VERSION = 1;
+/** Versi API kontrak REST QC Desktop (`/api/v1/sync/*`, Task 25; keputusan pemilik 2026-11-06). */
+export const SYNC_REST_API_VERSION = 2;
 /** Pelaku yang tercatat di audit untuk semua perubahan lewat jalur sinkron. */
 export const SYNC_ACTOR = 'sync:desktop';
 export const SYNC_TOKEN_MIN_LENGTH = 32;
@@ -7,15 +10,21 @@ export const SYNC_RESOURCES = ['brands', 'items'] as const;
 export type SyncResource = (typeof SYNC_RESOURCES)[number];
 
 export const SYNC_LIMITS = {
-  /** Panjang maksimum body permintaan (karakter). */
+  /** Panjang maksimum body permintaan, dalam KARAKTER (`string.length`): dipakai aplikasi Apps Script `gas/`. */
   bodyChars: 5_000_000,
+  /** Ukuran maksimum body permintaan, dalam BYTE (UTF-8): dipakai server Bun (`SYNC_MAX_BODY_BYTES`, dibaca bertahap). */
+  bodyBytes: 5_000_000,
   pullDefault: 100,
   pullMax: 500,
   pullMaxWithDetail: 200,
   pushMax: 50,
   pushMaxWithDetail: 25,
-  /** Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte). */
-  fileBytes: 8_000_000,
+  /**
+   * Ukuran maksimum berkas untuk `sync.file.get` dan pendaftaran otomatis (byte): SAMA dengan `MAX_IMAGE_BYTES`
+   * (`shared/files.ts`, batas terima gambar; keputusan pemilik 2026-11-06). Literal, bukan impor, agar tak bergantung
+   * pada urutan muat global GAS; `shared/sync-api.test.ts` menjaga keduanya sama.
+   */
+  fileBytes: 10_485_760,
   /** Id Drive berbeda per entri item (galeri + stiker + Markdown): membatasi panggilan Drive per permintaan. */
   driveRefsPerEntry: 50,
   failedAttempts: 10,

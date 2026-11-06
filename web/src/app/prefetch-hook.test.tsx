@@ -40,15 +40,27 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Satu mata-mata untuk prefetch biasa dan berkursor (daftar item memakai prefetchInfiniteQuery). */
+function spyPrefetch() {
+  const spy = vi.fn();
+  vi.spyOn(client, 'prefetchQuery').mockImplementation(async (...args) => {
+    spy(...args);
+  });
+  vi.spyOn(client, 'prefetchInfiniteQuery').mockImplementation(async (...args) => {
+    spy(...args);
+  });
+  return spy;
+}
+
 test('klien diam di beranda: prefetch berjalan sekali setelah jeda', async () => {
-  const spy = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined);
+  const spy = spyPrefetch();
   renderHook(() => usePrefetchOnIdle(me), { wrapper });
   await vi.advanceTimersByTimeAsync(PREFETCH_IDLE_MS + 10);
   expect(spy).toHaveBeenCalledTimes(2); // items + brands (izin item view)
 });
 
 test('masih ada pengambilan data saat jeda habis: dicoba lagi sampai klien diam (tidak menyerah)', async () => {
-  const spy = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined);
+  const spy = spyPrefetch();
   const fetching = vi.spyOn(client, 'isFetching').mockReturnValue(1);
   renderHook(() => usePrefetchOnIdle(me), { wrapper });
   await vi.advanceTimersByTimeAsync(PREFETCH_IDLE_MS + 3 * PREFETCH_RETRY_MS);
@@ -59,7 +71,7 @@ test('masih ada pengambilan data saat jeda habis: dicoba lagi sampai klien diam 
 });
 
 test('batas percobaan: tetap prefetch setelah menunggu cukup lama; bukan di beranda = tidak ada prefetch', async () => {
-  const spy = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined);
+  const spy = spyPrefetch();
   vi.spyOn(client, 'isFetching').mockReturnValue(1);
   renderHook(() => usePrefetchOnIdle(me), { wrapper });
   await vi.advanceTimersByTimeAsync(

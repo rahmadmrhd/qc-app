@@ -5,6 +5,7 @@ import {
   normalizeNoteChecks,
   reconcileChecks,
 } from './handover-checklist';
+import { handoverCanonicalText, handoverUnescapeText } from './handover-text';
 
 const chk = (text: string, occurrence = 0) => ({
   text,
@@ -109,5 +110,82 @@ describe('handover-checklist: bentuk kanonis (mentah vs hasil serializer)', () =
     expect(r.removed).toEqual([]);
     expect(r.resets).toEqual([]);
     expect(r.checks).toEqual([chk('RB_5009_X = 1 unit')]);
+  });
+});
+
+describe('jalur cepat (CPU): setara dengan implementasi acuan', () => {
+  // Acuan: bentuk kanonis penuh tanpa jalur cepat dan pencocokan O(butir x centang) apa adanya.
+  const referenceCanonical = (text: string) =>
+    handoverUnescapeText(text).replace(/\s+/g, ' ').trim();
+  const referenceMatch = (note: string, checks: ReturnType<typeof chk>[]) => {
+    const entries = extractChecklist(note);
+    const result: Array<ReturnType<typeof chk> | null> = entries.map(() => null);
+    for (const c of checks) {
+      const target = referenceCanonical(c.text);
+      let seen = 0;
+      for (const e of entries) {
+        if (e.text !== target) continue;
+        if (seen === c.occurrence) {
+          result[e.index] = c;
+          break;
+        }
+        seen++;
+      }
+    }
+    return result;
+  };
+
+  test('handoverCanonicalText: teks biasa, spasi ganda, tab, nbsp, escape, dan entitas', () => {
+    const samples = [
+      '',
+      ' ',
+      'Router 5 = 3 pcs',
+      '  terpangkas  ',
+      'dua  spasi',
+      'tab\tdi tengah',
+      'baris\nbaru',
+      'nbsp\u00a0di sini',
+      '\u00a0awal nbsp',
+      'escape * bintang _ garis',
+      'entitas &amp; &lt;b&gt; &#65; &#x42; &nbsp; &unknown;',
+      'campur  *  &amp;  \t x',
+      'Kabel UTP cat-6 (3 m) / 5 pcs',
+      '日本語 テキスト',
+    ];
+    for (const sample of samples) {
+      expect(handoverCanonicalText(sample)).toBe(referenceCanonical(sample));
+    }
+  });
+
+  test('matchChecks: butir kembar, kemunculan ke-k, teks centang bergaya lama (escape/entitas), centang yatim', () => {
+    const note = [
+      '- [ ] Router 1',
+      '- [ ] Kabel',
+      '- [ ] Router 1',
+      '- [ ] Kabel',
+      '- [ ] Router 1',
+      '- [ ] A &amp; B',
+      '- [ ] Tabel * bintang',
+      '- [ ] C   D',
+    ].join('\n');
+    const cases = [
+      [],
+      [chk('Router 1', 0), chk('Router 1', 2), chk('Kabel', 1)],
+      [chk('Router 1', 3), chk('Hilang', 0), chk('Kabel', 5)],
+      [chk('A & B'), chk('A &amp; B', 0), chk('Tabel * bintang'), chk('C D')],
+      [chk('Router 1', 0), chk('Router 1', 0)],
+    ];
+    for (const checks of cases) {
+      expect(matchChecks(note, checks)).toEqual(referenceMatch(note, checks));
+    }
+  });
+
+  test('extractChecklist melewati baris tanpa awalan "- [" tanpa mengubah hasil', () => {
+    const note = '- [ ] A\n-[ ] bukan\n- [] bukan\n- [x]rapat\n- [ ]\n  - [ ] dalam\n- [y] salah';
+    expect(extractChecklist(note)).toEqual([
+      { index: 0, text: 'A' },
+      { index: 1, text: 'rapat' },
+      { index: 2, text: '' },
+    ]);
   });
 });

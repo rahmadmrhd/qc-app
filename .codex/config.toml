@@ -1,0 +1,19 @@
+[mcp_servers.clasp]
+command = "cmd"
+args = [
+    "/c",
+    "clasp",
+    "mcp",
+]
+
+[mcp_servers.shadcn]
+command = "cmd"
+args = [
+    "/c",
+    "bunx",
+    "--bun",
+    "shadcn@latest",
+    "mcp",
+    "--cwd",
+    "web",
+]

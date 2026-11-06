@@ -19,26 +19,11 @@ export interface ExportDesign {
 /** Logo sebagai berkas gambar (hasil `files.get`). */
 export interface ExportLogo {
   mime: string;
-  base64: string;
+  bytes: Uint8Array;
 }
 
 const PNG_DPI = 600;
 const PNG_PX_PER_MM = PNG_DPI / 25.4;
-
-export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
-export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) =>
@@ -49,20 +34,18 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-/** Menghasilkan PDF lembar dan PNG label tunggal (base64). Melempar bila isi melebihi kanvas 3 × 3 cm. */
+/** Menghasilkan PDF lembar dan PNG label tunggal (byte mentah). Melempar bila isi melebihi kanvas 3 × 3 cm. */
 export async function renderExportFiles(
   design: ExportDesign,
   logo: ExportLogo | null,
-): Promise<{ pdfBase64: string; pngBase64: string }> {
+): Promise<{ pdf: Uint8Array; png: Uint8Array }> {
   const [fonts] = await Promise.all([loadLabelFonts(), registerCanvasFonts()]);
   const matrix = qrMatrix(design.link);
   // Logo di-decode lebih dulu: rasionya menentukan ukuran kotak logo pada tata letak.
   let logoSource: { image: ImageBitmap; width: number; height: number } | null = null;
   let logoPng: Uint8Array | null = null;
   if (logo) {
-    const bitmap = await createImageBitmap(
-      new Blob([base64ToBytes(logo.base64)], { type: logo.mime }),
-    );
+    const bitmap = await createImageBitmap(new Blob([logo.bytes as BlobPart], { type: logo.mime }));
     logoSource = { image: bitmap, width: bitmap.width, height: bitmap.height };
     // pdf-lib hanya menyematkan PNG/JPEG: ubah logo (mis. WebP) menjadi PNG berlatar transparan.
     const logoCanvas = document.createElement('canvas');
@@ -93,5 +76,5 @@ export async function renderExportFiles(
     PNG_DPI,
   );
   const pdfBytes = await buildSheetPdf(layout, matrix, logoPng, fonts);
-  return { pdfBase64: bytesToBase64(pdfBytes), pngBase64: bytesToBase64(pngBytes) };
+  return { pdf: pdfBytes, png: pngBytes };
 }

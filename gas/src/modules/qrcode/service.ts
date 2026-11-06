@@ -5,6 +5,7 @@ import { appendAudit_ } from '@gas/modules/access/repo';
 import { nowIso_ } from '@gas/modules/access/service';
 import { attachFiles_ } from '@gas/modules/files/service';
 import { base64ByteLength } from '@shared/files';
+import type { GasExportQrDesignInput, GasQrFileDto, GasUploadQrPdfInput } from '@shared/gas-legacy';
 import type { QrContent } from '@shared/qrcode';
 import {
   clampQrLayout,
@@ -21,19 +22,16 @@ import {
 } from '@shared/qrcode';
 import type {
   CloneQrPdfInput,
-  ExportQrDesignInput,
   QrDefaultsDto,
   QrDesignDto,
   QrDesignRefInput,
   QrDocumentDto,
-  QrFileDto,
   QrFileInput,
   QrLogoLibraryDto,
   QrPresetDto,
   SaveQrDesignInput,
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
-  UploadQrPdfInput,
 } from '@shared/rpc';
 import { ensureQrDocFolder_, ensureQrFolder_, QR_FOLDER_PROPERTY } from './folders';
 import type {
@@ -651,7 +649,7 @@ function toQrDocumentDto_(doc: QrDocumentRecord): QrDocumentDto {
  * Unggah PDF sumber, atau ganti isi PDF yang ada dengan id Drive (dan URL) yang SAMA agar label tercetak tetap
  * valid. I/O Drive di luar lock; catatan sheet di dalam lock.
  */
-export function uploadQrPdf_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {
+export function uploadQrPdf_(input: GasUploadQrPdfInput, actor: ActorRef): QrDocumentDto {
   const out = uploadQrPdfNow_(input, actor);
   // Pembersihan oportunistik: unggahan yatim yang sudah melewati masa tenggang dicabut berbaginya.
   revokeUnusedQrDocuments_([]);
@@ -732,7 +730,7 @@ function limitQrDocumentName_(name: string): string {
   return name.length <= QR_LIMITS.documentName ? name : name.slice(0, QR_LIMITS.documentName);
 }
 
-function uploadQrPdfNow_(input: UploadQrPdfInput, actor: ActorRef): QrDocumentDto {
+function uploadQrPdfNow_(input: GasUploadQrPdfInput, actor: ActorRef): QrDocumentDto {
   const platform = platform_();
   const size = base64ByteLength(input.base64);
   if (input.replaceDocumentId) {
@@ -815,7 +813,7 @@ function assertQrFresh_(design: QrDesignRecord, expectedUpdatedAt: string): void
  * Ekspor: berkas baru dibuat di Drive DULU (di luar lock), lalu dicatat di dalam lock; berkas lama baru dibuang
  * setelah pencatatan sukses. Gagal di tengah → berkas baru dibersihkan, berkas lama utuh.
  */
-export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): QrDesignDto {
+export function exportQrDesign_(input: GasExportQrDesignInput, actor: ActorRef): QrDesignDto {
   const platform = platform_();
   const precheck = listQrDesigns_().find((row) => row.id === input.id);
   if (!precheck) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
@@ -892,7 +890,7 @@ export function exportQrDesign_(input: ExportQrDesignInput, actor: ActorRef): Qr
   return toQrDesignDto_(committed.record, committed.documents);
 }
 
-export function readQrFile_(input: QrFileInput): QrFileDto {
+export function readQrFile_(input: QrFileInput): GasQrFileDto {
   const design = listQrDesigns_().find((row) => row.id === input.id);
   if (!design) throw appError_('NOT_FOUND', 'Konfigurasi tidak ditemukan');
   const driveId = input.kind === 'pdf' ? design.exportPdfDriveId : design.exportPngDriveId;

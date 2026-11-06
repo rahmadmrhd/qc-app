@@ -1,16 +1,12 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { lazy, Suspense } from 'react';
+import { DevLoginLink } from '@/modules/auth/components/dev-login-link';
 import { LoginPanel } from '@/modules/auth/components/login-panel';
-import { getSession, getToken } from '@/modules/auth/session';
+import { getSession, isAuthenticated } from '@/modules/auth/session';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
-
-const DevLoginPicker = import.meta.env.DEV
-  ? lazy(() => import('@/modules/auth/components/dev-login-picker'))
-  : null;
 
 export const Route = createFileRoute('/login')({
   beforeLoad: () => {
-    if (getToken()) throw redirect({ to: '/' });
+    if (isAuthenticated()) throw redirect({ to: '/' });
   },
   component: LoginPage,
 });
@@ -27,11 +23,7 @@ function LoginPage() {
         authError={session.authError}
         authErrorEmail={session.authErrorEmail}
       >
-        {DevLoginPicker ? (
-          <Suspense fallback={null}>
-            <DevLoginPicker />
-          </Suspense>
-        ) : null}
+        {import.meta.env.DEV ? <DevLoginLink /> : null}
       </LoginPanel>
     </div>
   );

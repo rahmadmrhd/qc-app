@@ -13,7 +13,7 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => state.me }));
 vi.mock('@/modules/location/active-locations-context', () => ({
   useActiveLocations: () => ({ selectedIds: state.selected }),
 }));
-vi.mock('@/lib/rpc', () => ({ rpc: (...args: unknown[]) => state.rpc(...args) }));
+vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => state.rpc(...args) }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
@@ -62,22 +62,33 @@ function renderPage() {
   return handlers;
 }
 
+type BoardInput = { status?: string; locationIds?: string[]; id?: string };
+
+/** Jawaban `handovers.board` per kolom (kontrak Worker: berkursor, dengan total). */
+function pageOf(tasks: HandoverDto[], input: BoardInput) {
+  const items = tasks.filter((task) => task.status === input.status);
+  return { items, nextCursor: null, total: items.length };
+}
+
 beforeEach(() => {
   state.rpc.mockReset();
   state.selected = ['loc-a'];
   state.me = me({ handover: 'manage', qc: 'edit' });
 });
 
-test('board memuat satu RPC untuk satu lokasi (bukan get per kartu)', async () => {
-  state.rpc.mockResolvedValue([
+test('board memuat satu RPC berkursor per kolom (4), bukan get per kartu', async () => {
+  const list = [
     makeHandover({ id: '1', number: 'ST-1' }),
     makeHandover({ id: '2', number: 'ST-2' }),
     makeHandover({ id: '3', number: 'ST-3' }),
-  ]);
+  ];
+  state.rpc.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
   renderPage();
   await screen.findByText('ST-3');
-  expect(state.rpc).toHaveBeenCalledTimes(1);
-  expect(state.rpc).toHaveBeenCalledWith('handovers.board', { locationIds: ['loc-a'] });
+  expect(state.rpc).toHaveBeenCalledTimes(4);
+  for (const status of ['new', 'in_progress', 'done', 'cancelled']) {
+    expect(state.rpc).toHaveBeenCalledWith('handovers.board', { locationIds: ['loc-a'], status });
+  }
 });
 
 test('mencentang memindahkan kartu ke kolom yang sesuai tanpa memuat ulang', async () => {
@@ -90,8 +101,8 @@ test('mencentang memindahkan kartu ke kolom yang sesuai tanpa memuat ulang', asy
       task.checklist[1] as HandoverDto['checklist'][number],
     ],
   };
-  state.rpc.mockImplementation(async (method: string) =>
-    method === 'handovers.board' ? [task] : checked,
+  state.rpc.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf([task], input) : checked,
   );
   renderPage();
   await screen.findByText('ST-1');
@@ -111,14 +122,14 @@ test('mencentang memindahkan kartu ke kolom yang sesuai tanpa memuat ulang', asy
     text: 'A = 1',
     checked: true,
   });
-  // papan tidak dimuat ulang setelah centang: satu board + satu setCheck
-  expect(state.rpc.mock.calls.filter(([m]) => m === 'handovers.board')).toHaveLength(1);
+  // papan tidak dimuat ulang setelah centang: hanya empat muatan awal (satu per kolom) + satu setCheck
+  expect(state.rpc.mock.calls.filter(([m]) => m === 'handovers.board')).toHaveLength(4);
 });
 
 test('Mark done mengirim setDone dan memindahkan kartu ke Selesai', async () => {
   const task = makeHandover({ id: '1', number: 'ST-1' });
-  state.rpc.mockImplementation(async (method: string) =>
-    method === 'handovers.board' ? [task] : { ...task, status: 'done' },
+  state.rpc.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf([task], input) : { ...task, status: 'done' },
   );
   renderPage();
   await screen.findByText('ST-1');
@@ -138,8 +149,8 @@ test('centang instan: langsung tercentang dengan penanda Menyimpan; checkbox lai
   const one = makeHandover({ id: '1', number: 'ST-1' });
   const two = makeHandover({ id: '2', number: 'ST-2' });
   let release: (value: HandoverDto) => void = () => undefined;
-  state.rpc.mockImplementation((method: string, input: { id?: string }) => {
-    if (method === 'handovers.board') return Promise.resolve([one, two]);
+  state.rpc.mockImplementation((method: string, input: BoardInput) => {
+    if (method === 'handovers.board') return Promise.resolve(pageOf([one, two], input));
     if (input.id === '1') {
       return new Promise<HandoverDto>((resolve) => {
         release = resolve;
@@ -185,8 +196,8 @@ test('centang instan: langsung tercentang dengan penanda Menyimpan; checkbox lai
 
 test('Dibatalkan: Buka kembali mengirim handovers.reopen', async () => {
   const task = makeHandover({ id: '1', number: 'ST-1', status: 'cancelled' });
-  state.rpc.mockImplementation(async (method: string) =>
-    method === 'handovers.board' ? [task] : { ...task, status: 'new' },
+  state.rpc.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf([task], input) : { ...task, status: 'new' },
   );
   renderPage();
   await screen.findByText('ST-1');
@@ -213,8 +224,8 @@ test('komentar dikirim dari kartu tanpa membuka detail (komentar umum)', async (
       },
     ],
   };
-  state.rpc.mockImplementation(async (method: string) =>
-    method === 'handovers.board' ? [task] : commented,
+  state.rpc.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf([task], input) : commented,
   );
   const handlers = renderPage();
   await screen.findByText('ST-1');
@@ -237,7 +248,8 @@ test('komentar dikirim dari kartu tanpa membuka detail (komentar umum)', async (
 
 test('pengguna yang hanya QC tidak melihat More dan tombol Tambah task', async () => {
   state.me = me({ qc: 'edit' });
-  state.rpc.mockResolvedValue([makeHandover({ id: '1', number: 'ST-1' })]);
+  const only = [makeHandover({ id: '1', number: 'ST-1' })];
+  state.rpc.mockImplementation(async (_method: string, input: BoardInput) => pageOf(only, input));
   renderPage();
   await screen.findByText('ST-1');
   expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
@@ -253,7 +265,7 @@ test('belum memilih lokasi, kosong, dan galat punya tampilan jelas', async () =>
   document.body.innerHTML = '';
 
   state.selected = ['loc-a'];
-  state.rpc.mockResolvedValue([]);
+  state.rpc.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
   renderPage();
   expect(await screen.findByText(/Belum ada task/)).toBeInTheDocument();
   document.body.innerHTML = '';
@@ -261,4 +273,28 @@ test('belum memilih lokasi, kosong, dan galat punya tampilan jelas', async () =>
   state.rpc.mockRejectedValue(new Error('x'));
   renderPage();
   expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat task');
+});
+
+test('judul kolom memakai total server; "Muat lebih banyak" memuat halaman berikutnya dengan kursor', async () => {
+  const first = makeHandover({ id: '1', number: 'ST-1' });
+  const second = makeHandover({ id: '2', number: 'ST-2' });
+  state.rpc.mockImplementation(async (_method: string, input: BoardInput & { cursor?: string }) => {
+    if (input.status !== 'new') return { items: [], nextCursor: null, total: 0 };
+    return input.cursor === 'c1'
+      ? { items: [second], nextCursor: null, total: 2 }
+      : { items: [first], nextCursor: 'c1', total: 2 };
+  });
+  renderPage();
+  await screen.findByText('ST-1');
+  const column = screen.getByRole('region', { name: 'Kolom Baru' });
+  expect(within(column).getByRole('heading')).toHaveTextContent('Baru (2)');
+  expect(within(column).queryByText('ST-2')).not.toBeInTheDocument();
+  await userEvent.click(within(column).getByRole('button', { name: 'Muat lebih banyak' }));
+  await within(column).findByText('ST-2');
+  expect(state.rpc).toHaveBeenCalledWith('handovers.board', {
+    locationIds: ['loc-a'],
+    status: 'new',
+    cursor: 'c1',
+  });
+  expect(within(column).queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });

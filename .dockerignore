@@ -1,0 +1,53 @@
+# Konteks build image server (Dockerfile di akar repo). Hanya yang dibutuhkan build web dan runtime server
+# yang masuk; rahasia, dokumentasi, dan aplikasi lama (GAS, jembatan) tidak ikut terkirim ke daemon Docker.
+
+# Rahasia dan berkas lingkungan lokal: TIDAK BOLEH masuk image maupun konteks build.
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.local
+**/*.secrets.local
+**/secrets
+**/*.pem
+**/*.key
+**/*.p12
+**/*-sa.json
+**/google-sa*.json
+.clasprc.json
+
+# Repositori, CI, perkakas agen.
+.git
+.github
+.gitignore
+.dockerignore
+.superpowers
+.claude
+.mcp.json
+
+# Dependensi dan keluaran build lokal (image membangunnya sendiri).
+**/node_modules
+server/dist
+web/dist
+web/.tanstack
+gas/dist
+bridge/dist
+**/*.log
+coverage
+
+# Dokumentasi dan konfigurasi VPS (bukan bagian image).
+docs
+deploy
+**/*.md
+
+# Aplikasi GAS lama dan jembatan: hanya package.json (bun.lock mencantumkan workspace-nya).
+gas/*
+!gas/package.json
+bridge/*
+!bridge/package.json
+
+# Skrip dev/tes server tidak dibutuhkan runtime.
+server/scripts
+server/test-support
+scripts/google-sa-check
+scripts/migrate

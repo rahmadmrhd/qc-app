@@ -1,11 +1,13 @@
 import type { UserContext } from '@gas/modules/access/context';
 import { loadUserContext_ } from '@gas/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
+import type { RpcErrorBody, RpcResult } from '@shared/gas-legacy';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
-import type { RpcErrorBody, RpcInput, RpcMethod, RpcOutput, RpcResult } from '@shared/rpc';
+import type { RpcInput, RpcMethod, RpcOutput } from '@shared/rpc';
 import { appError_, isAppError_ } from './errors';
 import { platform_, withRequestCache_ } from './platform';
+import { assertRpcWritable_ } from './read-only';
 import { verifySessionToken_ } from './session';
 
 export interface RequestContext {
@@ -109,6 +111,7 @@ function handleRpcUncached_(
     if (!session) throw appError_('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
     const user = loadUserContext_(session.email);
     if (!user) throw appError_('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
+    assertRpcWritable_(method);
     const spec = route.permission;
     // anyOf kosong (hanya mungkin lewat cast) tidak boleh setara "cukup login": gagal tertutup.
     if (spec && 'anyOf' in spec && spec.anyOf.length === 0) {

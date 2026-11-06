@@ -1,4 +1,11 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type {
+  GasExportQrDesignInput,
+  GasFileContentDto,
+  GasQrFileDto,
+  GasUploadFileInput,
+  GasUploadQrPdfInput,
+} from './gas-legacy';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
@@ -9,18 +16,10 @@ export const ERROR_CODES = [
   'NOT_FOUND',
   'VALIDATION',
   'CONFLICT',
+  'UNAVAILABLE',
   'INTERNAL',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
-
-export interface RpcErrorBody {
-  code: ErrorCode;
-  message: string;
-  requestId: string;
-  fields?: Record<string, string>;
-}
-
-export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: RpcErrorBody };
 
 export type UserStatus = 'active' | 'inactive';
 
@@ -148,10 +147,10 @@ export interface FileDto {
   height: number;
 }
 
+/** Unggah gambar (kontrak Worker/REST): byte mentah; `mime` = Content-Type badan. */
 export interface UploadFileInput {
   mime: string;
-  /** Isi gambar dalam base64 baku (tanpa awalan `data:`). */
-  base64: string;
+  bytes: Uint8Array;
   width: number;
   height: number;
 }
@@ -163,7 +162,7 @@ export interface GetFileInput {
 export interface FileContentDto {
   id: string;
   mime: string;
-  base64: string;
+  bytes: Uint8Array;
 }
 export type ItemStatus = 'active' | 'inactive';
 
@@ -471,7 +470,8 @@ export interface QrDocumentDto {
 }
 export interface UploadQrPdfInput {
   name: string;
-  base64: string;
+  /** PDF mentah (badan permintaan). */
+  bytes: Uint8Array;
   replaceDocumentId?: string;
 }
 /** Salin berkas Drive (link atau fileId) ke folder aplikasi sebagai PDF sumber. */
@@ -480,11 +480,12 @@ export interface CloneQrPdfInput {
   /** Ganti isi PDF sumber yang ada dengan berkas Drive ini (URL tetap) alih-alih membuat dokumen baru. */
   replaceDocumentId?: string;
 }
+/** Ekspor QR: PDF dan PNG hasil render klien sebagai bagian multipart `pdf` dan `png`. */
 export interface ExportQrDesignInput {
   id: string;
   expectedUpdatedAt: string;
-  pdfBase64: string;
-  pngBase64: string;
+  pdf: Uint8Array;
+  png: Uint8Array;
 }
 export type QrFileKind = 'pdf' | 'png';
 export interface QrFileInput {
@@ -494,7 +495,9 @@ export interface QrFileInput {
 export interface QrFileDto {
   filename: string;
   mime: string;
-  base64: string;
+  bytes: Uint8Array;
+  /** Versi isi (ETag): berubah tiap ekspor ulang. */
+  etag: string;
 }
 
 export interface RpcContract {
@@ -509,8 +512,8 @@ export interface RpcContract {
   'access.locations.list': { input: null; output: LocationDto[] };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
-  'files.upload': { input: UploadFileInput; output: FileDto };
-  'files.get': { input: GetFileInput; output: FileContentDto };
+  'files.upload': { input: GasUploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: GasFileContentDto };
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
@@ -521,6 +524,7 @@ export interface RpcContract {
   'handovers.board': { input: ListHandoversInput; output: HandoverDto[] };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
   'handovers.save': { input: SaveHandoverInput; output: HandoverDto };
+  /** Maks. 30 task per permintaan (`HANDOVER_BATCH_MAX`), atomik: gagal = tidak ada yang tersimpan. */
   'handovers.saveBatch': { input: SaveHandoverBatchInput; output: HandoverDto[] };
   'handovers.cancel': { input: HandoverRefInput; output: HandoverDto };
   'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };
@@ -539,10 +543,10 @@ export interface RpcContract {
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
-  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.uploadPdf': { input: GasUploadQrPdfInput; output: QrDocumentDto };
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
-  'qrcodes.export': { input: ExportQrDesignInput; output: QrDesignDto };
-  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
+  'qrcodes.export': { input: GasExportQrDesignInput; output: QrDesignDto };
+  'qrcodes.file': { input: QrFileInput; output: GasQrFileDto };
 }
 
 export type RpcMethod = keyof RpcContract;
@@ -560,3 +564,110 @@ export interface BootData {
   authError?: AuthErrorCode;
   email?: string;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Kontrak Worker (migrasi Cloudflare, Spek 7.4, 8.2, 9b). BERDAMPINGAN dengan `RpcContract`
+// di atas, yang tetap menjadi kontrak Apps Script (`gas/`) dan frontend sampai Fase 4/7: gas dan
+// web tidak berubah. Setelah cutover, `RpcContract` digantikan oleh `WorkerRpcContract`.
+// ---------------------------------------------------------------------------------------------
+
+/** Halaman berkursor; `nextCursor` null = halaman terakhir. */
+export interface BoardPageInput {
+  locationIds: string[];
+  /** Kolom kanban yang dimuat (status turunan, termasuk `cancelled`). */
+  status: HandoverStatus;
+  cursor?: string;
+  /** Bawaan 20, maksimum 50; klien memuat lanjutan lewat kursor. */
+  limit?: number;
+}
+
+export interface BoardPageDto {
+  items: HandoverDto[];
+  nextCursor: string | null;
+  /** Jumlah task pada kolom itu (judul kolom). */
+  total: number;
+}
+
+export interface ListItemsPageInput {
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
+  /** Pencarian kunci (awalan/substring), opsional. */
+  query?: string;
+  status?: ItemStatus;
+}
+
+export interface ItemPageDto {
+  items: ItemSummaryDto[];
+  nextCursor: string | null;
+}
+
+export interface ListAuditPageInput {
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
+  /** Aksi persis, mis. `user.update`; kosong = semua. */
+  action?: string;
+  /** Kata kunci pada target atau pelaku. */
+  query?: string;
+}
+
+export interface AuditCursorPageDto {
+  entries: AuditEntryDto[];
+  nextCursor: string | null;
+}
+
+export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup';
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
+
+export interface GetJobInput {
+  id: string;
+}
+
+export interface JobDto {
+  id: string;
+  kind: JobKind;
+  status: JobStatus;
+  /** 0-100. */
+  progress: number;
+  result?: string;
+  error?: string;
+}
+
+/** Ekspor QR kini berupa pekerjaan latar; PDF/PNG dikirim klien lewat unggahan terpisah (Task 3.3). */
+export interface ExportQrJobDto {
+  jobId: string;
+}
+
+/** Ekspor tabel D1 ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
+export interface ExportSheetsInput {
+  tables?: string[];
+}
+export type ExportSheetsJobDto = ExportQrJobDto;
+
+type WorkerReplacedMethods =
+  | 'files.upload'
+  | 'files.get'
+  | 'qrcodes.uploadPdf'
+  | 'qrcodes.file'
+  | 'access.audit.list'
+  | 'handovers.board'
+  | 'items.list'
+  | 'qrcodes.export';
+
+export interface WorkerRpcContract extends Omit<RpcContract, WorkerReplacedMethods> {
+  'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
+  'handovers.board': { input: BoardPageInput; output: BoardPageDto };
+  'items.list': { input: ListItemsPageInput; output: ItemPageDto };
+  'files.upload': { input: UploadFileInput; output: FileDto };
+  'files.get': { input: GetFileInput; output: FileContentDto };
+  'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
+  'qrcodes.file': { input: QrFileInput; output: QrFileDto };
+  'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
+  'jobs.get': { input: GetJobInput; output: JobDto };
+  'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
+}
+
+export type WorkerRpcMethod = keyof WorkerRpcContract;
+export type WorkerRpcInput<M extends WorkerRpcMethod> = WorkerRpcContract[M]['input'];
+export type WorkerRpcOutput<M extends WorkerRpcMethod> = WorkerRpcContract[M]['output'];

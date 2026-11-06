@@ -1,0 +1,279 @@
+# QC App Desktop + Country Lock + Paket Konfigurasi: Desain
+
+| | |
+|---|---|
+| **Tanggal** | 2026-11-06 |
+| **Status** | Draf untuk persetujuan pemilik produk (belum disetujui) |
+| **Cakupan** | Proyek 1 dari 4: shell desktop, modul Country Lock, paket konfigurasi (skrip + berkas router) |
+| **Di luar cakupan** | Daftar Serial Number, Tipe, Manual Book, dashboard/ekspor spreadsheet, push notification (proyek terpisah, lihat §13) |
+| **Rujukan** | `docs/superpowers/specs/2026-11-06-countrylock-legacy-behavior.md` (inventaris perilaku aplikasi WPF lama, dibaca dari repo `rahmadmrhd/CountryLock`) |
+
+Penanda yang dipakai di dokumen ini:
+- **[Pemilik]** = diputuskan pemilik produk dalam percakapan 2026-11-06.
+- **[Pilihan perancang]** = usulan perancang yang pemilik setujui secara keseluruhan pada 2026-11-06 ("saya setuju dengan rekomendasimu"), tetapi bukan keputusan yang diucapkan pemilik satu per satu; boleh diubah bila ada alasan.
+- **[Asumsi]** = belum dikonfirmasi; lihat §15.
+
+---
+
+## 1. Latar dan tujuan
+
+Aplikasi QC lama (WPF, .NET Framework 4.7.2, repo `rahmadmrhd/CountryLock`) memuat halaman Country Lock: mengunci pengaturan negara perangkat Mikrotik dan Ubiquiti ke Indonesia dengan mengirim skrip lewat SSH. Aplikasi QC baru berbasis web (React + Bun + MariaDB, repo ini). Fitur Country Lock tidak bisa hidup di web karena browser tidak dapat membuka SSH/TCP mentah ke perangkat lokal (PWA sama saja).
+
+Tujuan: **aplikasi desktop "QC App"** yang UI-nya adalah web QC yang sama, dengan jembatan native untuk SSH, ping, dan kamera, sehingga pengguna tidak melihat perbedaan antara web dan desktop. Berkas yang dibutuhkan Country Lock (konfigurasi, skrip, dan berkas yang harus ada di router jump) dikelola di server, ditanamkan ke laptop dan ke router jump, dan ikut terbarui bila logika berubah.
+
+## 2. Tujuan, non-tujuan, anti-tujuan
+
+**Tujuan**
+- G1. UI desktop **sama persis** dengan web, tanpa dua kode UI [Pemilik].
+- G2. Fitur setara aplikasi lama: Country Lock mode tunggal, Multi-Device, OCR stiker [Pemilik, "fitur 100% sama"; urutan fase = Pilihan perancang].
+- G3. Country Lock berjalan **offline dan tanpa login**; hasilnya tersimpan lokal sampai pengguna mengunggah [Pemilik].
+- G4. Konfigurasi `.QC`, skrip inject, berkas `/temp` router, **dan konfigurasi router jump itu sendiri (skrip RouterOS `.rsc`)** dikelola di server, diedit di web, dan otomatis tertanam serta terbarui di laptop dan router jump [Pemilik; `.rsc` ditambahkan 2026-11-06].
+- G5. Perubahan logika (skrip, berkas, konfigurasi) di server sampai ke laptop dan router tanpa pemasangan ulang aplikasi.
+
+**Non-tujuan**
+- N1. Manajemen User tidak dibangun di desktop; menunya membuka web di browser [Pemilik].
+- N2. Tidak ada koneksi langsung ke MySQL, Firebase, atau Google Drive dari desktop; semua lewat API server [Pemilik].
+- N3. Tidak melacak router di server: tiap router milik satu officer/laptop dan semua berisi paket yang sama [Pemilik].
+- N4. Daftar Serial Number, Tipe, Manual Book, dashboard, spreadsheet: proyek lain.
+- N5. Tidak mendukung Windows 7/8 atau 32-bit [Pemilik: semua Windows 10/11 64-bit].
+
+**Anti-tujuan** (hasil yang dianggap gagal walau secara teknis jalan)
+- A1. Dua UI yang lama-lama berbeda.
+- A2. Inject yang melaporkan "Selesai" padahal perangkat belum benar-benar tuntas atau router berisi berkas usang.
+- A3. Kehilangan data hasil Country Lock saat offline atau crash.
+- A4. Kredensial produksi (DB, Firebase, kunci service account) tertanam di aplikasi atau repo, seperti di aplikasi lama.
+- A5. Pembaruan paket yang menimpa suntingan atau meninggalkan router dalam keadaan setengah terbarui.
+- A6. Router jump terkunci dari desktop akibat penerapan konfigurasi `.rsc` (§5.1).
+
+## 3. Arsitektur
+
+### 3.1 Monorepo dan UI bersama [Pemilik: UI sama, monorepo disetujui]
+- Workspace baru `desktop/` di monorepo `qc` (workspace yang sudah ada: `shared`, `gas`, `bridge`, `web`, `server`). `desktop/` berisi proses utama Electron, preload, dan jembatan native. **Tidak ada UI di `desktop/`**.
+- Renderer = hasil build `web/` (satu kode UI). Perbedaan perilaku lewat lapisan tipis di `web/` (mis. `platform.ts` dengan `isDesktop` dan `bridge`). Halaman Country Lock memakai `bridge` bila ada; di browser/PWA menampilkan ajakan membuka `qc://country-lock` atau mengunduh aplikasi [Pemilik].
+- Logika murni Country Lock di **workspace baru `countrylock/`** (netral runtime: dites Bun, dijalankan di Node 24 Electron dan browser): render template skrip, parser keluaran perangkat/DHCP, peta kode negara, skema konfigurasi, aturan antrean kredensial, aturan promosi OCR, kebijakan interval ping. Hanya soket (SSH, SFTP, ping) yang tinggal di `desktop/`. **Bukan di `shared/`** [koreksi 2026-11-06 saat menyusun rencana, alasan teknis]: `scripts/build-gas.ts` menyapu seluruh `shared/**/*.ts` ke build aplikasi GAS lama (sampai T35), yang melarang `class`/`enum`, mewajibkan nama top-level unik, menolak `URL`/`TextEncoder`/`Buffer`/`atob`, dan menghapus semua `import` (sehingga `zod` tidak bisa dipakai di sana). Workspace terpisah menghindari semua batas itu tanpa mengubah tujuan (satu logika bersama untuk web, desktop, dan tes).
+- **Satu build web untuk server dan desktop**: perbedaan ditentukan saat runtime (jembatan dari preload menandai `isDesktop`; alamat API dari Pengaturan), bukan oleh dua target build. Build yang sama dibundel sebagai UI dasar di installer dan disajikan server untuk web, serta menjadi bundel UI yang diunduh desktop (§3.4). Registrasi service worker PWA dimatikan saat `isDesktop`.
+- Satu daftar fungsi `bridge` bertipe di `shared/`; tes menjaga UI hanya memanggil fungsi yang ada (pola seperti `shared/api.test.ts`).
+
+### 3.2 Runtime
+- **Electron 45.x** (stabil terbaru saat ini; membundel **Node 24.x**, Chromium 156) [Pilihan perancang; Pemilik menanyakan Bun dan menerima Electron + Bun sebagai alat kerja]. Bun dipakai sebagai alat kerja (instal, build, tes, skrip), bukan runtime aplikasi. Node di laptop pengembang (26.x) tidak ikut terbawa.
+- Pengguna akhir tidak memasang Node; installer **NSIS `win-x64`**, pemasangan per pengguna tanpa hak admin, pintasan Start Menu/Desktop, entri uninstall [Pemilik: Windows 10/11 x64; bentuk installer = Pilihan perancang].
+- Pembaruan otomatis aplikasi (`electron-updater` atau setara) menggantikan `Updater.exe` lama; dan pemeriksaan **versi kontrak API** server agar desktop yang terlalu tua diminta memperbarui. Tempat distribusi installer dan halaman unduh di web: diserahkan ke builder (§14).
+- Skema URL `qc://` didaftarkan saat instalasi; satu instans aplikasi; `qc://country-lock` membawa jendela yang ada ke halaman itu [Pemilik: nama `QC App`, skema `qc://`].
+- Keamanan Electron: `contextIsolation` aktif, `nodeIntegration` mati, jembatan lewat `contextBridge` dengan argumen divalidasi; renderer hanya memuat aset lokal.
+- **UI hibrid** [Pemilik, 2026-11-06: memilih B]: installer membawa **UI dasar** yang selalu berfungsi (Country Lock harus jalan offline, G3), dan UI terbaru **diunduh dari server lalu di-cache**, disajikan lewat protokol lokal `app://`. Rincian di §3.4. Pembaruan aplikasi penuh hanya dibutuhkan bila proses utama atau jembatan berubah.
+- Penampil web admin perangkat (pengganti CefSharp lama: hanya melihat halaman admin perangkat secara manual, tanpa otomasi DOM): `webview`/`BrowserView` yang menerima sertifikat tak valid **hanya** untuk host perangkat/router yang terkonfigurasi.
+- ICMP: Node tidak punya soket raw; ping lewat `ping.exe` atau pustaka setara (builder memilih).
+
+### 3.3 Cakupan UI desktop, login, dan alamat server
+
+- **Cakupan UI [Pemilik, 2026-11-06]**: desktop menampilkan **seluruh aplikasi web** (bukan hanya Country Lock), sesuai "UI sama persis dan fitur sama". Modul lain butuh login dan server terjangkau; **hanya rute Country Lock yang lolos tanpa sesi dan tanpa server**. Konsekuensi di `web/`: penjaga rute dan boot (`GET /api/v1/me`, `query-persist`) mengecualikan rute Country Lock bila `isDesktop`; Country Lock tidak boleh bergantung pada hasil `me`.
+- **Login desktop [Pilihan perancang]**: server memakai Google OAuth `/auth/*` dengan cookie `SameSite=Lax` dan `APP_ORIGIN` tunggal, sedangkan renderer yang dibundel berasal dari origin lain (`app://`/`file://`), jadi cookie tidak dipakai. Desktop memakai **token sesi Bearer** yang diperoleh lewat browser sistem (halaman login web → `qc://auth?...` → penukaran kode satu kali di server). Menambah satu alur di kontrak auth server (dikerjakan bersama modul server fase 2). Apakah permintaan API melewati proses utama (menghindari CORS) atau server menambah daftar CORS untuk origin aplikasi: diserahkan ke builder.
+- **Alamat server dan token paket**: alamat server (VPS pribadi sekarang, server kantor di balik VPN nanti) dan token bersama unduhan paket berupa **nilai bawaan saat build yang dapat diubah di Pengaturan aplikasi**, tanpa layar setup wajib. Rotasi token atau pindah server cukup lewat Pengaturan atau pembaruan aplikasi. Token ini bukan rahasia kuat (§4.3); tidak ada kredensial produksi yang tertanam (A4).
+- **Hidup berdampingan dengan WPF lama [Pilihan perancang]**: "QC App" memakai nama aplikasi, skema `qc://`, folder data (`%APPDATA%\QC App`), dan pembaruan sendiri; **tidak** membaca atau menimpa `Documents\QC` milik WPF. Klien `/sync` (item/merk) tetap di WPF dan tidak disentuh sampai proyek terkait. Penarikan WPF dijadwalkan terpisah.
+- **Penandatanganan kode [Pilihan perancang, belum ada sertifikat diasumsikan]**: installer tanpa tanda tangan dulu; peringatan SmartScreen dicatat di panduan pemasangan, dan integritas pembaruan dijaga hash di berkas metadata pembaruan. Bila sertifikat tersedia, ditambahkan tanpa mengubah desain.
+
+### 3.4 Pengiriman UI (hibrid) [Pemilik: B; tanda tangan dan penjaga = Pilihan perancang]
+
+- **UI dasar** dibundel di installer (build web saat rilis aplikasi). Selalu tersedia, termasuk di laptop baru yang offline.
+- **Bundel UI** = build web yang sama dengan yang disajikan server untuk web. Manifest UI memuat `uiVersion`, daftar berkas dengan `sha256`, **`minBridge`** (versi jembatan minimum), dan tanda tangan. Diunduh dengan mekanisme yang sama dengan paket konfigurasi (token bersama, `ETag`, berkas beralamat hash, `Range`), dengan saluran dan versi terpisah dari paket konfigurasi.
+- **Penerapan**: unduh ke staging → verifikasi hash dan tanda tangan → ganti penunjuk secara atomik → simpan versi sebelumnya. UI baru aktif pada peluncuran berikutnya atau lewat spanduk "Muat ulang", **tidak di tengah inject yang berjalan**.
+- **Penjaga**: bila UI baru gagal dimuat (mis. dua kali berturut-turut), aplikasi kembali ke UI sebelumnya, lalu ke UI dasar; bundel itu ditandai buruk sehingga tidak diunduh ulang sampai ada `uiVersion` baru.
+- **`minBridge`**: bila bundel UI membutuhkan fungsi native yang belum ada di aplikasi terpasang, bundel itu **tidak diterapkan** dan pengguna diminta memperbarui aplikasi lewat pembaruan penuh. UI dasar tetap berfungsi.
+- **Disajikan lewat `app://`** (skema kustom istimewa dengan CSP ketat), bukan `file://` dan bukan URL server. Karena asal UI selalu lokal, jembatan SSH tidak pernah diberikan kepada halaman dari server.
+- **Tanda tangan bundel**: kunci publik tertanam di aplikasi, kunci privat di CI rilis; diverifikasi di laptop meski offline. Alasan: server kini di VPS pribadi, dan server yang disusupi tidak boleh bisa menyajikan UI yang memegang jembatan SSH ke router. Rotasi kunci membutuhkan rilis aplikasi (§15 butir 12).
+- **Kompatibilitas API**: bundel UI berasal dari build server yang sama, jadi cocok dengan server saat diunduh. Desktop yang lama offline memakai UI lama; server menolak versi kontrak yang terlalu tua dengan galat yang jelas, sedangkan Country Lock offline tidak bergantung API.
+
+## 4. Paket konfigurasi
+
+### 4.1 Isi
+Satu **paket** bernomor versi berisi:
+
+| Berkas | Tujuan | Catatan |
+|---|---|---|
+| `config.QC` | laptop | JSON; skema §4.2 |
+| Skrip inject per merk dan firmware (`MIKROTIK/*.txt`, `UBIQUITI/*.txt`) | laptop | dikirim baris per baris lewat SSH; berisi placeholder (§6.3) |
+| Berkas router jump (`role: asset`): `customblock-*.npk`, `routeros-*.npk`, `*.bin`, `system.cfg*` | **router** | hanya **disalin** ke `/temp/` di router jump (§5) |
+| Konfigurasi router jump (`role: config`): skrip RouterOS `.rsc` | **router** | **diterapkan** ke router (bukan hanya disalin); lihat §5.1 |
+
+Contoh nyata di `~/Desktop/Country Lock2` (pemilik): 8 skrip Mikrotik, 9 skrip Ubiquiti aktif + 1 salinan usang (`AF5XHD - Copy.txt`, tidak diimpor), `config.QC` versi 5. `plink.exe` dan `putty.exe` tidak dibawa paket (inject tidak memakai plink; terminal manual §6.8).
+
+Manifest (bentuk ilustrasi, final di rencana):
+```json
+{
+  "version": 6,
+  "files": [
+    { "path": "config.QC", "target": "laptop", "sha256": "…", "size": 5400 },
+    { "path": "MIKROTIK/mikrotik-ac.txt", "target": "laptop", "sha256": "…", "size": 300 },
+    { "path": "customblock-ac.npk", "target": "router", "routerPath": "/temp/customblock-ac.npk", "sha256": "…", "size": 0 }
+  ]
+}
+```
+Berkas beralamat hash (`sha256`); versi adalah bilangan bulat yang naik tiap **publikasi** (§4.3). **Tujuan tiap berkas (`laptop`/`router`) dan `routerPath` diisi eksplisit per berkas di UI admin** [Pilihan perancang], dengan saran bawaan menurut ekstensi (mis. `.npk`, `.bin`, `.cfg*`, `.rsc` → router); jenis berkas router tidak dibatasi (termasuk `.rsc`, yang disebut contoh spek lama).
+
+**Satu paket untuk semua** [Pemilik: semua router jump dan konfigurasinya sama]: tidak ada lapisan override per laptop atau per router di paket. Hal yang khas laptop (mis. `ExcludeIp`, alamat server, token) hidup di pengaturan lokal desktop, bukan di paket.
+
+### 4.2 Skema `config.QC` (JSON)
+Bentuk mengikuti `config.QC` nyata dan `ConfigFile.Read` lama (lihat lampiran §6): node `mikrotik`, `ubiquiti`, `server`, dengan `firmware` (kode → `{label, file}`), `mode.single` dan `mode.multi`, `connectVia` (`Target`|`Server`), `interfaceBridge`, `interfaceList`, `interfaceComp`. Perubahan dari aplikasi lama:
+- Peta `sshKeys` **dihapus**: `{sshKey}` diisi dari host key router saat jabat tangan SSH [Pilihan perancang]. Entri nyata `71DC07CB8FB2` memang rusak (berakhiran `==)`).
+- `version` di dalam berkas digantikan versi manifest.
+- Kunci tak dikenal **dipertahankan apa adanya** (mis. `manualCredentialInput`, ada di `config.QC` pemilik tetapi tidak ada di kode repo lama; artinya belum diketahui, §15).
+- Divalidasi dengan skema zod di `shared/` dan JSON Schema untuk editor.
+- Aturan kesalahan lama yang menyesatkan (node `mikrotik` wajib walau Multi hanya Ubiquiti) diperbaiki: yang wajib hanyalah yang dipakai mode/merk tersebut.
+- `ExcludeIp` (IP PC operator, dikecualikan dari pemindaian Multi) **bukan bagian paket**: nilainya khas laptop, jadi pengaturan lokal desktop.
+- Kata sandi perangkat/router di `config.QC` disimpan polos [Pemilik: bukan rahasia; kredensial bawaan pabrik dan router berjalan lokal].
+
+### 4.3 Server
+- Modul server baru (mis. `countrylock`) mengikuti resep `docs/adding-a-module.md`; izin baru untuk melihat/mengelola paket (nama diserahkan ke builder).
+- **Admin di web**: editor kode ala VS Code (Monaco) tertanam untuk `config.QC` dan skrip, dengan validasi JSON Schema; unggah untuk berkas biner; penguncian versi (`If-Match`/`ETag`, pola yang sudah ada) agar dua admin tidak saling menimpa; Log Audit [Pemilik: editor di web; kunci versi dan audit = Pilihan perancang].
+- **Draf lalu publikasi eksplisit, dengan riwayat dan pemulihan [Pilihan perancang]**: menyimpan hanya mengubah draf; **menerbitkan** membuat versi manifest baru yang tidak dapat diubah. Admin dapat memulihkan versi lama (menerbitkannya sebagai versi baru). Ini mencegah suntingan setengah jadi sampai ke semua laptop dan memblokir inject di semua router (A5).
+- **Unduhan klien desktop tanpa login** [Pemilik]: manifest dan berkas diambil dengan **token bersama** di header Bearer, tanpa sesi pengguna, memakai pola yang sama dengan `/sync` (token bersama + pembatas percobaan salah per IP). Token berupa variabel lingkungan sehingga bisa diganti tanpa ubah kode; server kini di VPS pribadi dan nanti di server kantor di balik VPN [Pemilik]. Endpoint baca-saja; manifest memakai `ETag` supaya desktop hanya mengunduh bila berubah.
+- Berkas biner paket disimpan di **disk server** (volume Docker, beralamat hash), bukan Google Drive dan bukan cache memori `cachedFileContent` (32 MB per proses) [Pilihan perancang]; masuk dalam cadangan server.
+- **Batas yang perlu ditangani**: badan permintaan server dibatasi 16 MB (`MAX_REQUEST_BODY_BYTES`). Berkas `.npk`/`.bin` bisa lebih besar, jadi unggahan admin memakai unggah bertahap (chunk) atau rute berbatas lebih besar; unduhan memakai streaming dengan dukungan `Range` agar dapat dilanjutkan.
+- Kontrak API final mengikuti aturan `API_ROUTES` (`shared/api.ts`) dan kernel REST yang baru stabil setelah Task 24 migrasi (§12).
+
+### 4.4 Penanaman ke laptop
+- Desktop memeriksa manifest saat dibuka, saat kembali fokus, dan berkala (≤ 1 jam), bila server terjangkau.
+- Unduh ke folder staging, verifikasi `sha256` semua berkas, baru **menjadikannya aktif** lewat pergantian penunjuk atomik; versi sebelumnya disimpan untuk pemulihan. Hasil unduhan setengah jadi tidak pernah aktif (A5).
+- Saat server tak terjangkau, paket aktif terakhir dipakai (G3). Tanpa paket sama sekali, halaman Country Lock menampilkan keadaan "belum ada paket"; unduhan pertama butuh server terjangkau sekali [Asumsi, §15].
+
+## 5. Penanaman ke router jump
+
+Skrip lama mengandalkan berkas di `/temp/` router jump: Mikrotik meng-FTP `customblock-*.npk` (dan `routeros-*.npk` untuk dua tipe) dari `/temp/` router ke target lalu me-reboot target; Ubiquiti menarik `/temp/<model>.bin` dan `system.cfg*` dari router lewat `scp` lalu `cfgmtd -w` dan `fwupdate -m`. Kunci "ke Indonesia" ada di berkas-berkas ini (`customblock` untuk Mikrotik; `system.cfg` dan firmware untuk Ubiquiti), bukan di kode aplikasi (kode lama hanya membaca negara).
+
+**Prinsip**: status paket di router disimpan **di router itu sendiri**; server tidak melacak router [Pemilik: tiap router milik satu officer dan sama].
+
+Algoritma sinkron router (dijalankan oleh `desktop/` saat router jump terjangkau dan versi paket aktif berbeda dari penanda di router, atau bila pengguna menekan "Sinkronkan router"):
+1. Baca penanda di router (berkas kecil di `/temp/`, mis. `qc-package.txt`, berisi versi dan hash tiap berkas yang dikelola).
+2. Bandingkan dengan manifest paket aktif; tentukan berkas yang hilang, berbeda ukuran/hash, atau tak lagi ada di manifest.
+3. Unggah yang perlu lewat SFTP (SSH) ke `/temp/` dengan nama sementara, periksa ukuran, lalu ganti nama; hapus **hanya** berkas yang pernah dikelola paket dan kini tak ada di manifest. Berkas lain di router tidak disentuh.
+4. Tulis penanda **terakhir**, setelah semua berkas valid. Penanda lama berarti sinkron belum selesai dan akan diulang.
+5. Tampilkan progres dan hasil; galat (router putus, ruang penuh, SFTP ditolak) tidak membuat router dianggap sinkron.
+
+**Gerbang inject** [Pilihan perancang]: inject diblokir bila **himpunan berkas bertujuan router** di penanda router (path + hash) berbeda dari yang ada di paket aktif laptop, dengan tombol "Sinkronkan router" yang tersedia. Gerbang membandingkan berkas router saja, **bukan nomor versi paket penuh**; jadi suntingan skrip atau konfigurasi (yang hanya menyentuh laptop) tidak memblokir inject. Ini menutup A2: router tidak pernah dipakai dengan berkas usang tanpa sepengetahuan operator. Berkas biner paket di-cache di laptop (ukuran total belum diketahui, §15) sehingga sinkron router bisa dilakukan tanpa server.
+
+**Memperbarui logika**: admin menyunting skrip/berkas/konfigurasi di web → manifest versi baru → desktop mengunduh paket baru (§4.4) → pada koneksi router berikutnya sinkron router mengirim hanya berkas yang berubah. Perubahan skrip/konfigurasi hanya menyentuh laptop; perubahan berkas biner menyentuh laptop dan router.
+
+### 5.1 Konfigurasi router jump (`.rsc`) [Pemilik, 2026-11-06]
+
+Selain `config.QC` dan berkas `/temp`, **konfigurasi router jump itu sendiri** (skrip RouterOS `.rsc`) dikelola di server dan disinkronkan ke router. Konfigurasi ini mendefinisikan hal-hal yang diandalkan `config.QC`: bridge yang dirujuk (`BridgeAll`, `UBNTSingle`), DHCP server yang dibaca pemindaian Multi, layanan SSH/SFTP/FTP, dan alamat `server.ip`. Karena itu `config.QC` dan konfigurasi router satu paket dan harus selaras.
+
+- Manifest membedakan `role: asset` (disalin ke `/temp/`) dan `role: config` (diterapkan). Penanda di router mencatat hash konfigurasi yang **terakhir berhasil diterapkan**.
+- Urutan penerapan [Pilihan perancang]: unggah `.rsc` ke router → **cadangan pra-penerapan** di router (`/export` dan `/system backup save`, bernama sesuai versi) → terapkan lewat SSH → verifikasi keadaan yang diharapkan (koneksi ulang, objek kunci ada) → tulis penanda **terakhir**. Penerapan yang terputus tidak meninggalkan penanda palsu.
+- **Penerapan konfigurasi tidak otomatis saat koneksi**; operator menyetujui lewat dialog yang menampilkan versi dan ringkasan, karena konfigurasi router dapat memutus sesi SSH atau mengunci akses [Pilihan perancang]. Sinkron berkas `asset` (§5) tetap dapat otomatis.
+- **Semua router jump memakai konfigurasi yang sama** [Pemilik]. Nilai khas per router (mis. *identity*) **tidak disimpan di paket**: bila perlu, diisi operator di **dialog sinkron konfigurasi** saat penerapan [Pemilik: "tidak perlu, atau bisa diatur saat sync konfigurasi dari dialog"].
+- **Mekanisme penerapan** [Pilihan perancang, bukan keputusan pemilik; ubah bila tidak cocok]: skrip **idempoten dijalankan di router yang sedang hidup** lewat `/import` (tanpa reboot); mode "keadaan penuh pada router yang direset" (`reset-configuration run-after-reset`) hanya opsional per berkas bila kelak dibutuhkan.
+- Anti-tujuan tambahan **A6**: router terkunci dari desktop (akses manajemen terputus) akibat penerapan konfigurasi.
+- Catatan kode lama: komentar `SshInjectSession` menyebut RouterOS *device-mode* memblokir `:import` pada Mikrotik uji; wajib dicek apakah router jump terkena batasan yang sama (§11).
+
+Hal teknis yang harus divalidasi di perangkat nyata (spike, §11): apakah RouterOS pada router jump melayani SFTP ke `/temp/`, apakah penggantian nama via SFTP didukung, bagaimana memverifikasi hash di RouterOS (bila tidak ada: ukuran + penanda sebagai pengaman), perilaku pada berbagai versi RouterOS.
+
+## 6. Mesin Country Lock
+
+Rincian rujukan ada di lampiran inventaris; di bawah hanya yang menentukan desain.
+
+### 6.1 Alur mode tunggal
+Pilih config (dari paket aktif; tidak lagi memilih berkas dari disk) → pilih merk → ping perangkat dan router jump (ICMP 1 dtk; interval 800/500/200 ms bergantung status) → baca serial lewat SSH tiap ping sukses → baca info penuh → auto-inject bila syarat terpenuhi, atau inject manual → rotasi interface bridge hanya setelah inject **sukses**. Penjaga re-entry (`statusCL`) diklaim sebelum kerja asinkron apa pun dan dilepas di semua jalur.
+
+### 6.2 Perintah SSH per merk (dipertahankan)
+| | Mikrotik | Ubiquiti |
+|---|---|---|
+| Serial cepat | `:put [/system routerboard get serial-number]` | `cat /proc/ubnthal/board.info \| grep board.hwaddr` |
+| Info penuh | `/system routerboard print` | `cat /proc/ubnthal/board.info` |
+| Negara | `:put [/interface wireless get wlan1]` (ambil `country=`) | `cat /tmp/system.cfg \| grep countrycode` (peta ISO numerik; Indonesia = 360) |
+
+Router jump **selalu diperlakukan sebagai Mikrotik** apa pun merk target (sintaks RouterOS untuk rotasi bridge, DHCP lease, `BridgePortSetup`).
+
+### 6.3 Eksekusi inject
+- Skrip dirender dari template dengan tujuh placeholder: `{ipTarget} {usernameTarget} {passwordTarget} {ipServer} {usernameServer} {passwordServer} {sshKey}`. `{sshKey}` kini otomatis dari host key router; `{ipServer}` tetap dipisah dari alamat SSH PC ke router (bisa berbeda karena NAT).
+- **Nilai disisipkan dengan escape yang benar** (aplikasi lama menyisipkan mentah: kutip/`$`/`"` merusak skrip) dan **kata sandi disamarkan di log** (lama: tercetak) [Pilihan perancang].
+- `connectVia`: `Server` berarti sesi SSH ke router jump (skrip Mikrotik meng-FTP dari `/temp/` router ke target), `Target` berarti sesi SSH langsung ke perangkat (skrip Ubiquiti meng-`scp` dari router). Multi mengabaikan `connectVia` dan selalu ke IP perangkat.
+- Eksekusi lewat **shell interaktif** (bukan exec-channel): pada perangkat nyata exec-channel tidak mempertahankan state antar baris di Mikrotik maupun Ubiquiti. Satu baris per kiriman, tiap baris diikuti penanda, baris berikutnya hanya setelah baris sebelumnya tuntas. Timeout 2 menit per baris, 5 menit total, koneksi 10 dtk; koneksi putus **setelah ada output** dianggap sukses (perangkat reboot/`fwupdate`), tanpa output berarti gagal. Pembatalan tidak boleh melontarkan pengecualian yang menutup aplikasi.
+- **Penanda (sentinel) untuk Mikrotik diganti ke perintah RouterOS yang valid (`:put`)**: aplikasi lama memakai `echo` yang bukan perintah RouterOS dan hasil ujinya tidak terdokumentasi. Wajib diuji di router nyata [Pilihan perancang; belum teruji].
+- Host key SSH: untuk perangkat target dan router tetap diterima otomatis seperti lama (jaringan lokal [Pemilik]); host key router direkam untuk `{sshKey}`.
+
+### 6.4 Mode Multi-Device (Ubiquiti saja)
+Identitas perangkat = MAC (bukan IP); penemuan lewat DHCP lease router (`/ip dhcp-server lease print terse … where status=bound`), interval pemindaian adaptif (1/3/5 dtk), masa tenggang 1 menit sebelum perangkat dibuang, deteksi IP diambil alih; satu loop independen per perangkat; antrean inject dengan batas paralel 1–32 (bawaan 4); aksi Inject All / Stop Antrean / Cancel All; perangkat yang sudah `Success` tidak di-inject ulang otomatis. Perbaikan atas aplikasi lama: batas dan jeda untuk retry tak berujung saat antrean kredensial habis; konkurensi diubah tanpa mengganti semafor di tengah inject (hindari `SemaphoreFullException`).
+
+### 6.5 OCR stiker
+Kamera lewat `getUserMedia`; pengenalan teks Tesseract.js dengan **satu worker yang dipakai ulang** (lama: mesin baru tiap frame); pola `{key}` pada kotak Username/Password, kandidat sah dihitung, kemunculan ke-7 (`Count > 5`) mempromosikan ke antrean kredensial, timer bersih 5 dtk, antrean dicoba berurutan lewat SSH dan semua `IsFailed` direset tiap perangkat berganti. Kredensial tertangkap hanya `\w+` (aturan lama dipertahankan).
+
+### 6.6 Data hasil dan unggah
+- Setiap perangkat yang diinject **sukses** dicatat di penyimpanan lokal yang tahan crash (SQLite; pilihan pustaka diserahkan ke builder) dengan: serial/MAC (huruf besar), merk, tipe, tanggal, stempel waktu, lokasi bila ada. **Dicatat sesudah sukses di kedua mode** [Pilihan perancang; lama: tunggal sebelum, Multi sesudah].
+- Serial yang sudah ada tidak di-auto-inject lagi (gerbang idempotensi, dipertahankan); inject manual tetap boleh dengan peringatan.
+- **Serial ganda secara lokal** [Pilihan perancang]: serial adalah kunci unik di antrean lokal; inject ulang (manual) atas serial yang sudah tercatat **tidak menimpa entri pertama** dan hanya menambah penanda "diinject ulang" (stempel waktu terakhir); entri tidak digandakan. Aplikasi lama memperbarui `Tipe` dan `Date` entri lama sebagai efek samping filter; perilaku itu tidak dipertahankan.
+- **Lokasi dipilih saat unggah** (sesudah login), bukan saat inject; aplikasi lama mewajibkan pilihan lokasi sebelum inject bagi pengguna tertentu, tetapi lokasi tidak punya sumber tanpa login [Pilihan perancang].
+- **Tipe = Data Item web** [Pemilik, 2026-11-06: sama dengan Data Item, dan **harus tersedia offline** agar Country Lock berjalan]. Katalog yang dipakai desktop: item aktif dengan `isCountryLock` (merk, tipe, stiker beserta gambarnya). Dibaca **tanpa login** lewat jalur sinkron REST berbasis token bersama dan kursor revisi (`sync_rev`) yang sudah direncanakan di migrasi (Task 25, `/api/v1/sync/*`, kontrak baru yang belum dipakai klien mana pun), lalu disimpan di cache lokal (SQLite) termasuk berkas gambar stiker, dan diperbarui secara inkremental saat server terjangkau. Pengambilan pertama butuh server terjangkau sekali. Tanpa katalog, `tipe` pada catatan opsional dan firmware dipilih manual.
+- **Kode firmware per Tipe** (memilih skrip otomatis dan mengunci kotak firmware seperti aplikasi lama) [Pemilik, 2026-11-06: **field baru `firmware` pada item web**]. Item web belum punya field ini (tidak ada di skema `items`; aplikasi lama menyimpannya di Tipe), jadi pekerjaan ini menyentuh skema `items` (migrasi baru), form item web, dan kontrak sinkron REST (field ikut dibaca desktop; perubahan field sinkron wajib menaikkan `sync_rev` dan memperbarui definisi bentuk kabel, sesuai aturan `CLAUDE.md`). Dikerjakan setelah Task 24–25 migrasi dan dikoordinasikan dengan sesi migrasi (nomor migrasi, `shared/api.ts`). Kode firmware merujuk kunci `firmware` di `config.QC` (`AC`, `5Ghz`, `WA`, dan seterusnya).
+- Pengunggahan ke server **butuh login** dan dipicu pengguna ("simpan/unggah") [Pemilik]; idempoten berdasarkan serial (serial ganda di server mengikuti kontrak proyek 2: ditolak dan ditampilkan sebagai duplikat, mengikuti perilaku `AddDataQC` lama). Hasil unggah per baris (sukses, duplikat, gagal) ditampilkan; baris sukses dihapus dari antrean.
+- Migrasi satu kali dari `list.listqc` lama (BinaryFormatter .NET) hanya bila pemilik memintanya; tidak dalam lingkup awal.
+- **Ketergantungan**: tujuan unggah adalah modul Daftar Serial Number (proyek 2). Sebelum modul itu ada, antrean lokal tetap bekerja tetapi tombol unggah dinonaktifkan [Pilihan perancang]. Bentuk kontrak unggah ditetapkan di desain proyek 2.
+
+### 6.7 Antarmuka
+Mengikuti web: halaman Country Lock memakai komponen shadcn dan pola TanStack yang sama; tampilan Multi (kartu responsif, badge status klik-untuk-filter, dialog progres inject dengan Cancel/Close, auto-tutup 1 dtk saat sukses/batal dan dibiarkan terbuka saat gagal). Detail tampilan tidak diputuskan di dokumen ini (diserahkan ke rencana implementasi, dengan komponen web yang ada sebagai acuan).
+
+### 6.8 Terminal manual
+Tombol Terminal lama menjalankan `putty.exe -ssh admin@<server>` dengan `admin` tertanam. Di desktop baru: terminal manual ke router jump memakai `server.username` dari konfigurasi; bentuknya (sesi terminal tertanam atau meluncurkan PuTTY yang dibundel) diserahkan ke builder.
+
+## 7. Perilaku lama yang wajib sama
+**Aturan paritas** [Pemilik, 2026-11-06]: yang dibangun ulang adalah perilaku **yang benar-benar dipakai**; kode usang atau tidak terpakai di aplikasi lama (mis. `InfoDevice.GetInfo` statis, `Get` BackgroundWorker, `GetMikrotikFromServer/Device`, `AutoSelect`, `ConfigCL.SN`, `Pinger.OnErrorCredential`) tidak diportir. Daftar kode mati ada di lampiran §9.
+
+Ringkas (selengkapnya di lampiran §8.1): router jump selalu Mikrotik; serial = kunci idempotensi; rotasi bridge hanya setelah sukses dan reset ke indeks 0 bila router kembali hidup; penjaga re-entry; koneksi putus-setelah-output = sukses; klasifikasi galat kredensial (pesan memuat "Permission denied" atau "username" → "Permission denied!!!", galat jaringan lain tidak memunculkan prompt kredensial); firmware terkunci otomatis bila tipe punya kode firmware; interval ping; konkurensi Multi 1–32; fallback `mode.multi → mode.single` pada pembacaan konfigurasi.
+
+## 8. Bug dan keanehan aplikasi lama yang tidak disalin
+`Merk` mode tunggal tidak pernah diisi (info perangkat kosong); `ExcludeIp` tidak tersimpan; pergantian semafor Multi; retry tanpa henti di Multi; pembaruan skrip menghapus seluruh folder `.QC`; sandi tercetak ke log; SQL interpolasi string; kredensial produksi tertanam; host key diterima buta untuk router (dipertahankan sebagai keputusan eksplisit, bukan kebetulan); `Pinger.OnErrorCredential` mati; empat salinan logika info perangkat (cukup satu).
+
+## 9. Fase
+
+| Fase | Isi | Prasyarat |
+|---|---|---|
+| 0 | Spike perangkat nyata (§11); logika murni di `shared/` + skema config; dokumen | tidak bergantung migrasi |
+| 1 | Shell Electron, jembatan SSH/ping, `qc://`, installer dengan **UI dasar dibundel** dan penyaji `app://`; Country Lock mode tunggal; antrean lokal | spike lulus |
+| 2 | Modul server paket konfigurasi + editor web + unduhan klien; sinkron router; katalog Tipe offline (cache item `isCountryLock` + gambar stiker); **pengiriman bundel UI bertanda tangan dengan `minBridge` (§3.4)** | Task 24 dan **Task 25** (REST `/sync`) migrasi selesai |
+| 3 | Mode Multi-Device | fase 1 |
+| 4 | OCR stiker | fase 1 |
+| 5 | Unggah hasil ke server | proyek 2 (Daftar Serial Number) |
+
+## 10. Kriteria sukses
+- Operator memasang installer, membuka aplikasi, dan Country Lock berjalan tanpa login dan tanpa server setelah paket pertama terunduh.
+- Admin menyunting skrip di web; di laptop yang terhubung, paket baru aktif dalam ≤ 1 jam atau saat aplikasi dibuka; pada koneksi router berikutnya hanya berkas yang berubah terkirim, dan inject sebelum itu diblokir dengan penjelasan.
+- Berkas biner baru di server sampai ke `/temp/` router jump dan tervalidasi (ukuran, penanda) sebelum dianggap sinkron; sinkron yang terputus diulang tanpa meninggalkan penanda palsu.
+- Inject pada perangkat Mikrotik dan Ubiquiti nyata menghasilkan state yang sama dengan aplikasi WPF lama (negara terkunci ke Indonesia setelah reboot), diuji berpasangan.
+- Hasil inject tidak hilang saat aplikasi crash atau ditutup; diunggah tanpa duplikat.
+- Perubahan tampilan di `web/` ikut ke desktop tanpa pekerjaan UI terpisah dan **tanpa pemasangan ulang**: laptop yang online mengunduh bundel UI baru, memverifikasinya, dan memakainya pada peluncuran berikutnya; bundel dengan `minBridge` lebih tinggi ditolak dengan permintaan memperbarui aplikasi; bundel rusak atau gagal dimuat jatuh kembali ke UI sebelumnya lalu UI dasar; Country Lock tetap berjalan di semua keadaan itu.
+
+## 11. Risiko dan validasi (spike sebelum fase 1)
+Pelaksana: perangkat dan router jump nyata hanya dimiliki **pemilik**. Pembangun menyediakan skrip spike dan **server SSH/SFTP palsu** untuk tes otomatis (dengan risiko asumsi meleset dari perangkat sungguhan); pemilik menjalankan spike di perangkat nyata dan melaporkan hasilnya. **Gerbang**: bila hasil spike mengubah desain (mis. SFTP RouterOS tidak tersedia atau sentinel `:put` tidak andal), fase 1 berhenti dan desain diperbarui dengan persetujuan pemilik sebelum lanjut [Pilihan perancang].
+
+1. Shell interaktif `ssh2` (Node 24 di Electron) ke RouterOS dan ke dropbear/BusyBox Ubiquiti: sentinel `:put` di RouterOS, ANSI/encoding keluaran, perilaku pada lebar 200 kolom dan baris panjang.
+2. SFTP dan penggantian nama ke `/temp/` RouterOS; verifikasi hash; ruang disk router; versi RouterOS yang beragam.
+3. Ekstraksi host key router dari jabat tangan `ssh2` dalam bentuk yang diterima `known_hosts` dropbear Ubiquiti (`<ip> ssh-rsa <base64>`); router yang memakai jenis kunci selain RSA.
+4. Perilaku lengkap skrip Mikrotik (`/tool fetch mode=ftp upload=yes`) memerlukan FTP aktif di perangkat target; tidak berubah dari lama, tetapi perlu dicatat di dokumentasi operasional.
+5. Ukuran total berkas router dan dampaknya pada cache laptop serta waktu sinkron.
+6. Modul native (bila ada, mis. pustaka SQLite) harus dikompilasi untuk Electron, bukan Node 26 pengembang.
+7. Penerapan `.rsc` ke router jump (§5.1): `/import` mungkin terblokir *device-mode*; perilaku cadangan (`/export`, `/system backup save`), verifikasi sesudah penerapan, dan pemulihan bila sesi terputus di tengah.
+8. Penyajian UI lewat `app://` (§3.4): perutean SPA, CSP, perilaku service worker PWA yang harus dimatikan di desktop, dan pergantian bundel atomik di Windows saat berkas sedang dipakai.
+
+## 12. Hubungan dengan migrasi VPS yang sedang berjalan
+Sesi lain mengerjakan migrasi dari Cloudflare Worker ke VPS (rencana `docs/superpowers/plans/2026-11-05-migrasi-vps-docker-rest.md`; REST selesai sampai Task 23). Fase 0 (spike, `shared/` murni, dokumen) tidak menyentuh berkas yang berubah di sana. Rute, tabel, dan migrasi `server/migrations/NNNN_*.sql` baru **menunggu Task 24 (Gerbang Fase 2)** agar tidak bentrok pada `shared/api.ts`, `shared/rpc.ts`, `server/src/modules/*`, dan nomor migrasi.
+
+## 13. Proyek terkait di luar dokumen ini
+- Proyek 2: Daftar Serial Number (pengganti daftar MAC; tempat unit lolos QC) dan Tipe; kontrak unggah hasil Country Lock.
+- Proyek 3: Manual Book. Proyek 4: dashboard inventori/laporan dan ekspor spreadsheet (pengganti Excel Interop).
+- Proyek terpisah: push notification. Web/PWA memakai Web Push; desktop tidak dapat memakai Web Push dan memakai koneksi langsung ke server (SSE/WebSocket) dengan notifikasi native. PRD PWA (`docs/prd/2026-10-26-qc-pwa.md`) sengaja menunda push; perlu PRD sendiri.
+
+## 14. Diserahkan ke builder
+Nama modul/izin/rute final; bentuk persis manifest dan penanda router; pustaka SQLite dan pustaka SSH/SFTP/OCR; bentuk terminal manual; tempat distribusi installer dan pembaruan otomatis; deteksi "aplikasi desktop terpasang" dari web (best-effort); struktur folder `desktop/`; detail visual halaman; strategi unggah bertahap berkas besar; format dan lokasi log lokal (tanpa kata sandi); bentuk manifest UI, algoritma tanda tangan, dan penerbitan bundel UI dari CI.
+
+## 15. Belum diketahui / asumsi untuk dikonfirmasi pemilik
+1. ~~Asumsi cakupan UI~~ **Dikonfirmasi pemilik 2026-11-06**: desktop menampilkan seluruh aplikasi web; hanya Country Lock yang lolos tanpa login dan tanpa server (§3.3).
+2. ~~Asumsi sumber Tipe~~ **Dikonfirmasi pemilik 2026-11-06**: Tipe = Data Item web, dan katalognya harus tersedia offline untuk Country Lock (§6.6).
+3. ~~Patokan paritas~~ **Dijawab pemilik 2026-11-06**: patokan "fitur 100% sama" adalah **kode yang benar-benar digunakan**; kode usang atau tidak terpakai tidak perlu dibangun ulang. Dipakai sebagai aturan paritas (§7). `manualCredentialInput` ada di `config.QC` pemilik tetapi tidak dibaca kode repo; sementara dipertahankan sebagai kunci tak dikenal **tanpa perilaku**, dan akan diimplementasikan hanya bila pemilik menyebut perilakunya.
+4. **[Asumsi]** Paket pertama butuh server terjangkau sekali di laptop baru; tanpa itu Country Lock tidak aktif. (Pemilik menyatakan tidak perlu login, bukan tidak perlu jaringan.)
+5. Isi dan ukuran total berkas router (`.npk`, `.bin`, `system.cfg*`), karena tidak ada di `~/Desktop/Country Lock2`.
+6. Hasil uji Mikrotik nyata untuk sentinel dan alur skrip (tugas validasi hardware di spek lama tidak dicentang).
+7. Versi RouterOS dan jenis host key pada 7 router jump.
+8. Ada tidaknya sertifikat code-signing (§3.3 mengasumsikan tidak ada).
+9. **Mekanisme penerapan konfigurasi router (§5.1)**: dipilih perancang (patch idempoten via `/import`, tanpa reboot); pemilik belum menanggapi secara eksplisit. Teruji di spike (§11).
+10. ~~Nilai khas per router~~ **Dijawab pemilik 2026-11-06**: semua router sama; *identity* tidak perlu atau diisi di dialog sinkron (§5.1). Isi `.rsc` nyata tetap dibutuhkan untuk menguji penerapan.
+11. ~~Tempat kode firmware per Tipe~~ **Dipilih pemilik 2026-11-06**: field baru `firmware` pada item web (§6.6).
+12. **Pengelolaan kunci tanda tangan bundel UI** (§3.4): siapa memegang kunci privat, di mana disimpan (rahasia CI), dan prosedur bila kunci bocor (rilis aplikasi dengan kunci publik baru). Berbeda dari sertifikat code-signing installer (butir 8).

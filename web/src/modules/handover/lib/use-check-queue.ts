@@ -2,12 +2,13 @@ import type { HandoverDto } from '@shared/rpc';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
+import { describeError } from '@/lib/api/describe-error';
 import { markStale } from '@/lib/query-cache';
-import { rpc } from '@/lib/rpc';
-import { describeError } from '@/lib/rpc/describe-error';
-import { RpcError } from '@/lib/rpc/rpc-error';
 import { accessKeys } from '@/modules/access/queries';
 import { applySavedHandover, handoverKeys } from '../queries';
+import { findHandoverInBoards, patchHandoverInBoards } from './board-cache';
 import { applyOptimisticCheck } from './optimistic-check';
 
 interface TaskQueue {
@@ -34,9 +35,7 @@ function patchCaches(
   id: string,
   patch: Patch,
 ): void {
-  queryClient.setQueriesData<HandoverDto[]>({ queryKey: handoverKeys.boards }, (list) =>
-    list ? list.map((entry) => (entry.id === id ? patch(entry) : entry)) : list,
-  );
+  patchHandoverInBoards(queryClient, id, patch);
   queryClient.setQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] }, (one) =>
     one ? patch(one) : one,
   );
@@ -46,12 +45,8 @@ function cachedHandover(
   queryClient: ReturnType<typeof useQueryClient>,
   id: string,
 ): HandoverDto | undefined {
-  for (const [, list] of queryClient.getQueriesData<HandoverDto[]>({
-    queryKey: handoverKeys.boards,
-  })) {
-    const found = list?.find((entry) => entry.id === id);
-    if (found) return found;
-  }
+  const onBoard = findHandoverInBoards(queryClient, id);
+  if (onBoard) return onBoard;
   return queryClient.getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] })[0]?.[1];
 }
 
@@ -99,7 +94,7 @@ export function useCheckQueue(by: string) {
             cachedHandover(queryClient, task.id)?.checklist.find(
               (entry) => entry.index === item.index,
             )?.text ?? item.text;
-          q.latest = await rpc('handovers.setCheck', {
+          q.latest = await api('handovers.setCheck', {
             id: task.id,
             locationId: task.locationId,
             index: item.index,
@@ -113,7 +108,7 @@ export function useCheckQueue(by: string) {
             applyOptimisticCheck(dto, item.index, !checked, '', ''),
           );
           toast.error(describeError(error));
-          if (error instanceof RpcError && error.code === 'CONFLICT') {
+          if (error instanceof ApiError && error.code === 'CONFLICT') {
             void queryClient.invalidateQueries({ queryKey: handoverKeys.all });
           }
         } finally {

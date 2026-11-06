@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { describeError } from '@/lib/rpc/describe-error';
+import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -64,9 +64,13 @@ function NewHandoverPage() {
   }
 
   async function handleBatch(values: HandoverBatchFormOutput) {
-    // Galat dilempar ke form bulk (menandai kartu bermasalah); tidak ada task yang tersimpan bila gagal.
-    const saved = await saveBatch.mutateAsync(toSaveHandoverBatchInput(values));
-    toast.success(`${saved.length} task disimpan`);
+    // SATU permintaan atomik (<= 30 task). Galat dilempar ke form bulk: kartu bermasalah ditandai dan draf utuh;
+    // navigasi hanya setelah semua task tersimpan (`onSaved`).
+    return saveBatch.mutateAsync(toSaveHandoverBatchInput(values));
+  }
+
+  function handleBatchSaved(count: number) {
+    toast.success(`${count} task disimpan`);
     toList();
   }
 
@@ -122,6 +126,7 @@ function NewHandoverPage() {
               options={options.data}
               defaultLocationId={defaultLocation}
               onSubmit={handleBatch}
+              onSaved={handleBatchSaved}
               onCancel={toList}
             />
           </div>

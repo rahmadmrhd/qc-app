@@ -11,6 +11,13 @@ export const HANDOVER_LIMITS = {
   stateJson: 40000,
 } as const;
 
+/**
+ * Maksimum task per permintaan `handovers.saveBatch` (server Bun di VPS dan Apps Script lama): 30. Formulir bulk
+ * mengirim SATU permintaan atomik. Keputusan pemilik 2026-11-05: batas 5 peninggalan anggaran CPU edge (2026-10-26/30)
+ * dibuang karena batas CPU edge hilang di VPS.
+ */
+export const HANDOVER_BATCH_MAX = HANDOVER_LIMITS.batch;
+
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
 

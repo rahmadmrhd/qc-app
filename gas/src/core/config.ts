@@ -8,7 +8,8 @@ export type ConfigKey =
   | 'OAUTH_REDIRECT_URI'
   | 'SESSION_SECRET'
   | 'ADMIN_EMAIL'
-  | 'SYNC_API_TOKEN';
+  | 'SYNC_API_TOKEN'
+  | 'READ_ONLY';
 
 /** OAUTH_REDIRECT_URI tidak wajib: bila kosong, `redirectUri_()` memakai URL web app saat runtime. */
 export const REQUIRED_CONFIG_KEYS: readonly ConfigKey[] = [
@@ -52,4 +53,9 @@ export function adminEmail_(): string {
 /** Token sinkron QC Desktop; kosong bila belum diset (sinkronisasi nonaktif). */
 export function syncToken_(): string {
   return platform_().getProperty('SYNC_API_TOKEN')?.trim() ?? '';
+}
+
+/** `READ_ONLY=1`: jendela migrasi; semua RPC tulis dan sinkron tulis ditolak (lihat `core/read-only`). */
+export function isReadOnly_(): boolean {
+  return platform_().getProperty('READ_ONLY')?.trim() === '1';
 }

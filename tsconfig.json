@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.base.json",
-  "compilerOptions": { "types": ["bun"] },
-  "include": ["scripts"]
+  "compilerOptions": {
+    "types": ["bun"],
+    "paths": {
+      "@shared/*": ["./shared/*"],
+      "@server/*": ["./server/src/*"],
+      "@server-test/*": ["./server/test-support/*"]
+    }
+  },
+  "include": ["scripts", "server/src/sql.d.ts"]
 }
