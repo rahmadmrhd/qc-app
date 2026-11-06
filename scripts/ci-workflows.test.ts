@@ -18,6 +18,7 @@ interface Step {
   if?: string;
 }
 interface Job {
+  if?: string;
   needs?: string | string[];
   environment?: string;
   permissions?: Record<string, string>;
@@ -91,18 +92,56 @@ describe('workflow: aturan umum (semua berkas)', () => {
       const text = codeOf(rawOf(name));
       if (text.includes('pull_request_target')) {
         expect(text, name).not.toMatch(/pull_request\.head/);
+        expect(text, name).not.toMatch(/head_ref|\.head\.(sha|ref|repo|label)|refs\/pull\//);
       }
     }
   });
 });
 
 describe('deploy-server.yml: keamanan', () => {
-  test('pemicu: push ke main/dev/feat/migrasi-cloudflare dan workflow_dispatch; tanpa pull_request(_target)', () => {
-    const triggers = Object.keys(deploy.on ?? {});
-    expect(triggers.sort()).toEqual(['push', 'workflow_dispatch']);
-    const push = (deploy.on as { push: { branches: string[] } }).push;
-    expect([...push.branches].sort()).toEqual(['dev', 'feat/migrasi-cloudflare', 'main']);
-    expect(codeOf(deployText)).not.toContain('pull_request');
+  test('pemicu: PR di-merge ke dev/main (pull_request_target closed), push HANYA branch kerja, dispatch; tanpa pull_request biasa', () => {
+    const on = deploy.on as {
+      pull_request_target: { types: string[]; branches: string[] };
+      push: { branches: string[] };
+    };
+    expect(Object.keys(on).sort()).toEqual(['pull_request_target', 'push', 'workflow_dispatch']);
+    // keputusan pemilik 2026-11-06 (spek §11/§13.2): push langsung ke main/dev tidak men-deploy
+    expect(on.pull_request_target.types).toEqual(['closed']);
+    expect([...on.pull_request_target.branches].sort()).toEqual(['dev', 'main']);
+    expect(on.push.branches).toEqual(['feat/migrasi-cloudflare']);
+    // `pull_request` (tanpa _target) menjalankan kode PR; `pull_request_target` dikunci pada merged (di bawah)
+    expect(codeOf(deployText)).not.toMatch(/^\s*pull_request:/m);
+  });
+
+  test('pull_request_target: job meta hanya jalan bila PR merged; semua job lain bergantung padanya', () => {
+    const metaIf = deploy.jobs.meta?.if ?? '';
+    expect(metaIf).toContain("github.event_name != 'pull_request_target'");
+    expect(metaIf).toContain('github.event.pull_request.merged == true');
+    for (const [name, job] of Object.entries(deploy.jobs)) {
+      if (name === 'meta') continue;
+      expect([job.needs ?? []].flat(), name).toContain('meta');
+    }
+    // PR yang ditutup tanpa merge tidak menggantikan run deploy yang menunggu di antrean per environment
+    expect(deploy.concurrency?.group).toContain('github.event.pull_request.merged != true');
+  });
+
+  test('checkout (fork PR tak mendapat kode/rahasia): hanya commit dari job meta (merge_commit_sha), tidak pernah head PR', () => {
+    const checkouts = Object.values(deploy.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses?.startsWith('actions/checkout'));
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const step of checkouts) {
+      expect(step.with?.ref, 'checkout harus memakai ref dari meta').toBe(
+        '${{ needs.meta.outputs.sha }}',
+      );
+    }
+    const metaEnv = (deploy.jobs.meta?.steps ?? []).find((s) => s.id === 'select')?.env ?? {};
+    expect(metaEnv.PR_MERGE_SHA).toBe('${{ github.event.pull_request.merge_commit_sha }}');
+    // tag image = commit yang dibangun (bukan github.sha, yang pada pull_request_target = ujung branch tujuan)
+    expect(deploy.jobs.image?.steps?.some((s) => JSON.stringify(s).includes('github.sha'))).toBe(
+      false,
+    );
+    expect(codeOf(deployText)).not.toMatch(/pull_request\.head|head_ref|\.head\.(sha|ref|repo)/);
   });
 
   test('izin minimal: contents read tingkat atas; hanya job image menulis packages; job deploy tanpa izin', () => {
@@ -191,11 +230,21 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
   const script = (deploy.jobs.meta?.steps ?? []).find((s) => s.id === 'select')?.run ?? '';
   const dir = mkdtempSync(join(tmpdir(), 'qc-ci-select-'));
 
+  const GITHUB_SHA = 'a'.repeat(40);
+  const MERGE_SHA = 'b'.repeat(40);
+
+  interface PrEnv {
+    merged?: string;
+    base?: string;
+    mergeSha?: string;
+  }
+
   async function select(
     event: string,
     ref: string,
     input = '',
-  ): Promise<{ code: number; target: string }> {
+    pr: PrEnv = {},
+  ): Promise<{ code: number; target: string; sha: string }> {
     const out = join(dir, `${crypto.randomUUID()}.out`);
     writeFileSync(out, '');
     const proc = Bun.spawn(['bash', '-c', script], {
@@ -203,28 +252,38 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
         ...process.env,
         EVENT_NAME: event,
         REF: ref,
+        SHA: GITHUB_SHA,
         INPUT_TARGET: input,
+        PR_MERGED: pr.merged ?? '',
+        PR_BASE_REF: pr.base ?? '',
+        PR_MERGE_SHA: pr.mergeSha ?? '',
         GITHUB_OUTPUT: out.replaceAll('\\', '/'),
       },
       stdout: 'pipe',
       stderr: 'pipe',
     });
     const code = await proc.exited;
-    return { code, target: /target=(\w+)/.exec(readFileSync(out, 'utf8'))?.[1] ?? '' };
+    const output = readFileSync(out, 'utf8');
+    return {
+      code,
+      target: /target=(\w+)/.exec(output)?.[1] ?? '',
+      sha: /sha=(\w+)/.exec(output)?.[1] ?? '',
+    };
   }
 
   test('skrip ditemukan', () => {
     expect(script).toContain('GITHUB_OUTPUT');
   });
 
-  test('push: main -> exec; dev dan feat/migrasi-cloudflare -> dev; branch/tag lain ditolak', async () => {
-    expect(await select('push', 'refs/heads/main')).toEqual({ code: 0, target: 'exec' });
-    expect(await select('push', 'refs/heads/dev')).toEqual({ code: 0, target: 'dev' });
+  test('push: HANYA feat/migrasi-cloudflare -> dev; push ke main/dev (tanpa PR) dan ref lain ditolak', async () => {
     expect(await select('push', 'refs/heads/feat/migrasi-cloudflare')).toEqual({
       code: 0,
       target: 'dev',
+      sha: GITHUB_SHA,
     });
     for (const ref of [
+      'refs/heads/main',
+      'refs/heads/dev',
       'refs/heads/feat/lain',
       'refs/heads/main2',
       'refs/tags/v1',
@@ -235,22 +294,68 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     }
   });
 
+  test('pull_request_target: hanya PR merged; main -> exec dan dev -> dev, yang dibangun = merge_commit_sha', async () => {
+    const merged = { merged: 'true', mergeSha: MERGE_SHA };
+    expect(
+      await select('pull_request_target', 'refs/heads/main', '', { ...merged, base: 'main' }),
+    ).toEqual({ code: 0, target: 'exec', sha: MERGE_SHA });
+    expect(
+      await select('pull_request_target', 'refs/heads/dev', '', { ...merged, base: 'dev' }),
+    ).toEqual({ code: 0, target: 'dev', sha: MERGE_SHA });
+  });
+
+  test('pull_request_target: PR belum merged, merge sha tak sah, branch tujuan tak cocok/tak dikenal ditolak', async () => {
+    const ok = { merged: 'true', mergeSha: MERGE_SHA, base: 'main' };
+    for (const merged of ['', 'false', 'True', '1']) {
+      expect(
+        (await select('pull_request_target', 'refs/heads/main', '', { ...ok, merged })).code,
+        `merged=${merged}`,
+      ).toBe(1);
+    }
+    for (const mergeSha of [
+      '',
+      'null',
+      'g'.repeat(40),
+      'a'.repeat(39),
+      'A'.repeat(40),
+      `${MERGE_SHA}\n`,
+    ]) {
+      expect(
+        (await select('pull_request_target', 'refs/heads/main', '', { ...ok, mergeSha })).code,
+        `mergeSha=${mergeSha}`,
+      ).toBe(1);
+    }
+    // ref run harus sama dengan branch tujuan PR, dan hanya main/dev
+    expect((await select('pull_request_target', 'refs/heads/dev', '', ok)).code).toBe(1);
+    expect(
+      (await select('pull_request_target', 'refs/heads/feat/x', '', { ...ok, base: 'feat/x' }))
+        .code,
+    ).toBe(1);
+    expect(
+      (await select('pull_request_target', 'refs/pull/1/merge', '', { ...ok, base: '' })).code,
+    ).toBe(1);
+  });
+
   test('dispatch: exec HANYA dari main; dev dari main/dev/feat; ref lain dan target aneh ditolak', async () => {
     expect(await select('workflow_dispatch', 'refs/heads/main', 'exec')).toEqual({
       code: 0,
       target: 'exec',
+      sha: GITHUB_SHA,
     });
     expect(await select('workflow_dispatch', 'refs/heads/main', 'dev')).toEqual({
       code: 0,
       target: 'dev',
+      sha: GITHUB_SHA,
     });
     expect(await select('workflow_dispatch', 'refs/heads/dev', 'dev')).toEqual({
       code: 0,
       target: 'dev',
+      sha: GITHUB_SHA,
     });
     expect(await select('workflow_dispatch', 'refs/heads/feat/migrasi-cloudflare', 'dev')).toEqual({
       code: 0,
       target: 'dev',
+      sha: GITHUB_SHA,
     });
     for (const ref of [
       'refs/heads/dev',
@@ -266,7 +371,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
     }
   });
 
-  test('pemicu lain (pull_request, schedule) ditolak', async () => {
+  test('pemicu lain (pull_request, schedule) ditolak; pull_request_target tanpa data PR yang sah juga ditolak', async () => {
     for (const event of ['pull_request', 'pull_request_target', 'schedule', '']) {
       expect((await select(event, 'refs/heads/main', 'exec')).code, event).toBe(1);
     }

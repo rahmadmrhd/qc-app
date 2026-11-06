@@ -4,22 +4,34 @@ name: Deploy Server
 # dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping, kembali ke
 # tag sebelumnya bila gagal) -> uji asap lewat URL publik. Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
-# Pemicu:
-# - push ke `feat/migrasi-cloudflare` atau `dev`  -> environment `dev`  (staging, qc-dev.rhd.my.id)
-# - push ke `main`                                  -> environment `exec` (production, qc.rhd.my.id)
-# - workflow_dispatch (target dev|exec)             -> `exec` HANYA dari main; `dev` dari main/dev/feat/migrasi-cloudflare
-# Pemicu `push` dipakai (bukan hanya workflow_dispatch) karena GitHub hanya menjalankan/menampilkan
-# workflow_dispatch bila berkas workflow ada di branch DEFAULT (main, dibekukan sampai cutover); pemicu push berjalan
-# dari berkas di branch yang di-push. Saat cutover (T34) hapus `feat/migrasi-cloudflare` dari daftar branch di bawah.
+# Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
+# - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `dev`  (staging, qc-dev.rhd.my.id)
+# - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `exec` (production, qc.rhd.my.id)
+# - push ke `feat/migrasi-cloudflare` (SEMENTARA)                  -> environment `dev`
+# - workflow_dispatch (target dev|exec)                            -> `exec` HANYA dari main; `dev` dari main/dev/feat/migrasi-cloudflare
+# Push langsung ke `main`/`dev` TIDAK men-deploy. `push` ke branch kerja hanya ada selama berkas workflow ini belum
+# di branch default: GitHub hanya menjalankan workflow_dispatch/pull_request_target bila berkas ada di branch DEFAULT
+# (main, dibekukan sampai cutover), sedangkan push berjalan dari berkas di branch yang di-push. Saat cutover (T34)
+# hapus pemicu `push` seluruhnya (dan `feat/migrasi-cloudflare` dari `case` di job `meta`).
 #
-# Tanpa `pull_request`/`pull_request_target`: tidak ada kode PR tak tepercaya yang menyentuh rahasia deploy.
+# Keamanan `pull_request_target` (menerima rahasia walau PR dari fork): job HANYA berjalan setelah PR di-merge (`if` di
+# job `meta` + pemeriksaan di skripnya), dan HANYA meng-checkout commit hasil merge (`merge_commit_sha`, kode yang sudah
+# masuk ke branch tujuan) lewat output `sha` job `meta`. Jangan menambah langkah yang meng-checkout atau menjalankan
+# head/ref PR yang belum di-merge, dan jangan menambah ekspresi di dalam `run`.
 on:
+  pull_request_target:
+    types: [closed]
+    branches: [dev, main]
+    # Perubahan yang tak masuk ke image tidak perlu deploy.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'gas/**'
+      - 'bridge/**'
+      - '.superpowers/**'
   push:
     branches:
-      - main
-      - dev
       - feat/migrasi-cloudflare
-    # Perubahan yang tak masuk ke image tidak perlu deploy.
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
@@ -39,33 +51,53 @@ permissions:
 
 # Satu pipeline per environment pada satu waktu, tanpa membatalkan yang sedang berjalan (GitHub menyimpan paling
 # banyak satu run yang menunggu; run menunggu yang lebih lama dibatalkan, sehingga tag lama tak menimpa yang baru).
+# PR yang ditutup TANPA merge (run dilewati) diberi grup sendiri agar tidak menggantikan run deploy yang menunggu.
 concurrency:
-  group: deploy-server-${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'exec' || 'dev') }}
+  group: deploy-server-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.merged != true) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/main' && 'exec' || 'dev')) }}
   cancel-in-progress: false
 
 jobs:
-  # Menentukan environment dan menolak kombinasi yang tak diizinkan, SEBELUM kode atau rahasia apa pun disentuh.
+  # Menentukan environment dan commit yang dibangun, serta menolak kombinasi yang tak diizinkan, SEBELUM kode atau
+  # rahasia apa pun disentuh. PR yang ditutup tanpa merge dilewati (bukan gagal).
   meta:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
       target: ${{ steps.select.outputs.target }}
+      sha: ${{ steps.select.outputs.sha }}
     steps:
       - name: Tentukan environment
         id: select
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
           INPUT_TARGET: ${{ inputs.target }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
+          sha=$SHA
           case "$EVENT_NAME" in
-            push)
+            pull_request_target)
+              # Hanya PR yang SUDAH di-merge; yang dibangun adalah commit hasil merge, bukan head PR.
+              [ "$PR_MERGED" = true ] || fail "PR belum di-merge."
+              [ "refs/heads/$PR_BASE_REF" = "$REF" ] || fail "Ref run tidak sama dengan branch tujuan PR."
               case "$REF" in
                 refs/heads/main) target=exec ;;
-                refs/heads/dev | refs/heads/feat/migrasi-cloudflare) target=dev ;;
-                *) fail "Branch tidak diizinkan untuk deploy server." ;;
+                refs/heads/dev) target=dev ;;
+                *) fail "Branch tujuan PR tidak diizinkan untuk deploy server." ;;
+              esac
+              sha=$PR_MERGE_SHA
+              ;;
+            push)
+              # Hanya branch kerja sementara; push ke main/dev tidak men-deploy (lewat PR yang di-merge).
+              case "$REF" in
+                refs/heads/feat/migrasi-cloudflare) target=dev ;;
+                *) fail "Push hanya men-deploy dari feat/migrasi-cloudflare; main dan dev lewat PR yang di-merge." ;;
               esac
               ;;
             workflow_dispatch)
@@ -83,7 +115,9 @@ jobs:
               ;;
             *) fail "Pemicu tidak didukung." ;;
           esac
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Commit yang dibangun bukan SHA 40 heksa."
           echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
   # Gerbang: typecheck, Biome, dan semua tes (termasuk server terhadap MariaDB sungguhan di runner).
   check:
@@ -96,8 +130,10 @@ jobs:
       QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
     steps:
       # Aksi pihak ketiga dipatok ke SHA commit (tag mayor di komentar; SHA diambil 2026-11-06).
+      # `ref` = commit yang ditentukan job `meta` (SHA pemicu, atau commit hasil merge untuk PR); bukan head PR.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
 
       - uses: ./.github/actions/mariadb
@@ -122,10 +158,11 @@ jobs:
       contents: read
       packages: write
     outputs:
-      tag: ${{ github.sha }}
+      tag: ${{ needs.meta.outputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ needs.meta.outputs.sha }}
           persist-credentials: false
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -146,7 +183,7 @@ jobs:
           context: .
           push: true
           provenance: false
-          tags: ${{ steps.name.outputs.image }}:${{ github.sha }}
+          tags: ${{ steps.name.outputs.image }}:${{ needs.meta.outputs.sha }}
           cache-from: type=gha,scope=qc-app
           cache-to: type=gha,scope=qc-app,mode=max
 
