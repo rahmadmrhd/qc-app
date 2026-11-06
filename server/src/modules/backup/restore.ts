@@ -309,7 +309,7 @@ export function createRestoreDb(db: Db): RestoreDb {
 /** Pengimpor nyata: klien `mariadb` membaca berkas .sql dari stdin; kata sandi lewat `MYSQL_PWD`, galat dibersihkan. */
 export function createMariadbImporter(target: DumpTarget) {
   return async (sqlPath: string, schema: string): Promise<void> => {
-    const proc = Bun.spawn(['mariadb', ...clientArgs(target), schema], {
+    const proc = Bun.spawn([Bun.which('mariadb') ?? 'mariadb', ...clientArgs(target), schema], {
       env: { MYSQL_PWD: target.password },
       stdin: Bun.file(sqlPath),
       stdout: 'ignore',

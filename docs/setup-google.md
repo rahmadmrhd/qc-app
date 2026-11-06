@@ -62,17 +62,23 @@ Berkas `--config`: `{"key": "D:/rahasia/kunci.json", "root": "...", "spreadsheet
 
 ### S8. Cadangan malam, pemulihan, dan peringatan (T30–T32)
 **Cadangan.** Penjadwal `qc-app` (hanya produksi dengan Google terkonfigurasi) membuat satu berkas `qc-backup-YYYYMMDD-HHmm.sql.gz` (waktu WIB) tiap malam sesudah 02:00 WIB: `mariadb-dump --single-transaction --routines` -> gzip -> unggah resumable ke folder cadangan -> verifikasi MD5 Drive dengan hitungan lokal (SHA-256 disimpan di `appProperties`) -> retensi. Bila server mati lewat 02:00, cadangan hari itu dibuat pada detak jam-an berikutnya; bila gagal, dicoba lagi tiap jam sampai berhasil.
-- **Folder cadangan**: kosongkan `BACKUP_FOLDER_ID` agar server membuat subfolder "QC App Cadangan" di bawah folder induk dan mencatat id-nya di tabel `settings`; atau isi `BACKUP_FOLDER_ID` dengan subfolder yang Anda buat sendiri di bawah folder induk (hanya diverifikasi, tidak dibuat otomatis).
+- **Folder cadangan**: kosongkan `BACKUP_FOLDER_ID` agar server membuat subfolder "QC App Cadangan" di bawah folder induk dan mencatat id-nya di tabel `settings`; atau isi `BACKUP_FOLDER_ID` dengan subfolder yang Anda buat sendiri di bawah folder induk (hanya diverifikasi, tidak dibuat otomatis). **Tiap lingkungan (staging, production) WAJIB punya folder cadangan sendiri**: nama berkas tak memuat nama lingkungan, jadi folder bersama membuat retensi satu lingkungan menghitung dan menghapus berkas lingkungan lain, dan peringatan basi lingkungan lain teredam. `BACKUP_FOLDER_ID` kosong sudah aman (tiap lingkungan menyimpan folder buatannya di tabel `settings` sendiri).
 - **Retensi** (oleh server, fungsi murni `retention.ts`): 7 harian (berkas terbaru dari 7 hari terbaru yang punya berkas) + 4 mingguan (terbaru per pekan ISO pada 4 pekan berikutnya), berdasarkan jumlah dan tanggal di NAMA berkas (bukan jam sekarang); tak pernah menghapus bila salinan tersisa kurang dari 3; nama yang bukan `qc-backup-*.sql.gz` tidak pernah disentuh. Berkas dihapus PERMANEN (sampah Drive tetap memakai kuota).
 - **Di VPS**: dump disimpan di volume `qc-backups` (`/var/backups/qc`), 3 salinan terakhir (cadangan yang gagal diunggah tetap ada di sini).
 - **Mengaktifkan**: tidak ada saklar; cadangan berjalan otomatis bila `NODE_ENV=production`, `GOOGLE_SA_KEY_FILE`, dan `GOOGLE_ROOT_FOLDER_ID` terisi. Dev lokal tidak pernah men-dump.
 
-**Pemulihan** (uji sekali di staging sebelum cutover; jangan memulihkan ke skema aplikasi yang sedang berjalan). CLI ada di image (`/app/scripts/restore-backup.ts`). Dijalankan di VPS:
+**Pemulihan** (uji sekali di staging sebelum cutover; jangan memulihkan ke skema aplikasi yang sedang berjalan). CLI ada di image (`/app/scripts/restore-backup.ts`). Dijalankan di VPS. Cek ringan dulu: tanpa argumen CLI harus mencetak petunjuk dan keluar 2, dan `mariadb-dump --version` harus jalan.
 ```
-docker exec <kontainer-app> bun /app/scripts/restore-backup.ts \
+docker exec <kontainer-app> bun /app/scripts/restore-backup.ts ; echo $?
+docker exec <kontainer-app> mariadb-dump --version
+read -rs -p 'Kata sandi admin DB: ' DBPW; echo
+export RESTORE_DATABASE_URL="mysql://<admin>:${DBPW}@qc-db:3306/mysql"; unset DBPW   # karakter khusus di kata sandi harus di-URL-encode
+docker exec -e RESTORE_DATABASE_URL <kontainer-app> bun /app/scripts/restore-backup.ts \
   --target qc_restore_check --compare-with <skema-aplikasi> --drop-after
+unset RESTORE_DATABASE_URL
 ```
-CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), memverifikasi MD5 Drive, SHA-256, gunzip penuh, dan baris penutup dump, BARU kemudian membuat skema target dan mengimpor; verifikasi gagal = tidak ada yang diimpor, impor gagal = skema target dibuang. Hasil: jumlah baris per tabel dan perbandingannya dengan skema sumber (kode keluar 1 bila berbeda). Pengguna basis data aplikasi biasanya TIDAK berhak membuat skema baru: beri `RESTORE_DATABASE_URL` (URL `mysql://` dengan hak CREATE/DROP DATABASE) lewat `docker exec -e RESTORE_DATABASE_URL=...`, atau beri hak pada skema `qc\_restore\_%` di MariaDB. Pemulihan nyata (bencana): pulihkan ke skema BARU, periksa, lalu arahkan `DATABASE_URL` ke skema itu dan restart.
+`-e RESTORE_DATABASE_URL` TANPA nilai: docker mengambilnya dari lingkungan pemanggil, jadi kata sandi tidak masuk argumen proses (`ps`) maupun riwayat shell.
+CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), memverifikasi MD5 Drive, SHA-256, gunzip penuh, dan baris penutup dump, BARU kemudian membuat skema target dan mengimpor; verifikasi gagal = tidak ada yang diimpor, impor gagal = skema target dibuang. Hasil: jumlah baris per tabel dan perbandingannya dengan skema sumber (kode keluar 1 bila berbeda). Pengguna basis data aplikasi biasanya TIDAK berhak membuat skema baru: beri `RESTORE_DATABASE_URL` (URL `mysql://` dengan hak CREATE/DROP DATABASE) lewat `docker exec -e RESTORE_DATABASE_URL` (tanpa nilai, lihat di atas), atau beri hak pada skema `qc\_restore\_%` di MariaDB. Pemulihan nyata (bencana): pulihkan ke skema BARU, periksa, lalu arahkan `DATABASE_URL` ke skema itu dan restart.
 
 **Peringatan email** (SMTP generik, `nodemailer`; tanpa kode khusus penyedia). Pemeriksaan jam-an mengirim email ke `ALERT_TO` bila (a) cadangan terbaru > 36 jam atau belum ada, (b) pemakaian kuota Drive > `QUOTA_ALERT_PERCENT` (bawaan 80). Tiap jenis maksimal sekali per 12 jam (waktu terakhir yang BERHASIL terkirim disimpan di `settings`: `BACKUP_ALERT_LAST_AT`, `QUOTA_ALERT_LAST_AT`); gagal kirim dicatat dan dicoba lagi pada jam berikutnya. Variabel `.env`:
 | Variabel | Isi |

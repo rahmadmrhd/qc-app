@@ -103,7 +103,7 @@ describe('runDump', () => {
     });
     expect(gunzipSync(await readFile(out)).toString('utf8')).toBe(sql);
     expect(await readdir(dir)).toEqual(['qc-backup-20260115-0200.sql.gz']); // tanpa .partial
-    expect(seen[0]?.command[0]).toBe('mariadb-dump');
+    expect(seen[0]?.command[0]).toMatch(/mariadb-dump/);
     expect(seen[0]?.command.join(' ')).not.toContain(SENTINEL);
     expect(seen[0]?.env).toEqual({ MYSQL_PWD: SENTINEL });
   });

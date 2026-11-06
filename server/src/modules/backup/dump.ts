@@ -132,9 +132,13 @@ export async function runDump(
       callback(null, chunk);
     },
   });
-  const proc = spawn([deps.bin ?? 'mariadb-dump', ...dumpArgs(target)], {
-    MYSQL_PWD: target.password,
-  });
+  // Jalur absolut dicari di PATH proses induk: lingkungan anak sengaja hanya berisi MYSQL_PWD.
+  const proc = spawn(
+    [deps.bin ?? Bun.which('mariadb-dump') ?? 'mariadb-dump', ...dumpArgs(target)],
+    {
+      MYSQL_PWD: target.password,
+    },
+  );
   const stderrPromise = readLimited(proc.stderr);
   let failure: Error | null = null;
   try {

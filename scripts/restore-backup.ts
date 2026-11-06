@@ -2,7 +2,8 @@
  * Pemulihan cadangan dari Drive ke skema BARU (T31). CLI tipis di atas `server/src/modules/backup/restore.ts`.
  *
  * Dijalankan di dalam kontainer aplikasi (lingkungan, klien Google, dan `mariadb` sudah ada):
- *   docker exec <kontainer-app> bun /app/scripts/restore-backup.ts --target qc_restore_check --compare-with <skema-aplikasi> --drop-after
+ *   docker exec [-e RESTORE_DATABASE_URL] <kontainer-app> bun /app/scripts/restore-backup.ts --target qc_restore_check --compare-with <skema-aplikasi> --drop-after
+ * (kata sandi admin DB: `-e RESTORE_DATABASE_URL` TANPA nilai, diambil dari lingkungan pemanggil; lihat docs/setup-google.md S8)
  *
  * Verifikasi (MD5 Drive, SHA-256, gunzip penuh, baris penutup dump) selesai SEBELUM skema dibuat; hasil yang gagal
  * tidak mengimpor apa pun. Kode keluar: 0 berhasil (dan jumlah baris sama bila `--compare-with`), 1 gagal atau
