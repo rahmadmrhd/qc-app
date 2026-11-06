@@ -12,6 +12,7 @@ import {
   importWithApproval,
   mutate,
   stripDiscarded,
+  withLegacyDetail,
 } from './fixtures';
 import {
   type DbReader,
@@ -89,6 +90,12 @@ describe('verifyImport', () => {
     expect(report.discarded).toHaveLength(9);
     expect(report.discarded.map((check) => check.name)).toContain('counters kosong di target');
     expect(report.discarded.map((check) => check.name)).toContain('sync_state kosong di target');
+  });
+
+  test('dump dengan kolom legasi audit_log.detail (kosong) diverifikasi sama dengan tanpa kolom itu', async () => {
+    const report = await verify(withLegacyDetail(cleanDump()));
+    expect(failing(report)).toEqual([]);
+    expect(report.ok).toBe(true);
   });
 
   test('baris hilang -> jumlah dan checksum tabel itu gagal, tabel lain tetap lulus', async () => {

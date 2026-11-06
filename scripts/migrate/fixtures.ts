@@ -379,3 +379,17 @@ export function mutate(
   (sheet[row - 1] as CellValue[])[header.indexOf(column)] = value;
   return copy;
 }
+
+/**
+ * Salinan dump dengan kolom legasi `detail` di akhir header `audit_log` (seperti sheet produksi: aplikasi lama
+ * mengosongkan isinya tetapi tak menghapus headernya). `details` = isi per nomor baris Sheets (bawaan kosong).
+ */
+export function withLegacyDetail(dump: Dump, details: Record<number, string> = {}): Dump {
+  const copy = structuredClone(dump);
+  const sheet = copy.audit_log as CellValue[][];
+  (sheet[0] as CellValue[]).push('detail');
+  sheet.forEach((row, index) => {
+    if (index > 0) row.push(details[index + 1] ?? '');
+  });
+  return copy;
+}

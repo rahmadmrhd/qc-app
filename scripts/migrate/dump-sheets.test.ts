@@ -6,7 +6,7 @@ import type { GoogleClient } from '@server/core/google/client';
 import type { GoogleSettings } from '@server/core/google/settings';
 import { createGoogleRig, type GoogleRig, SPREADSHEET_ID } from '@server-test/google-rig';
 import { type DumpDeps, runDumpCli } from './dump-sheets';
-import { approvalFor, cleanDump, importWithApproval } from './fixtures';
+import { approvalFor, cleanDump, importWithApproval, withLegacyDetail } from './fixtures';
 import { readDumpFile } from './import-sheets';
 import { IGNORED_SHEETS, TABLES } from './schema-map';
 
@@ -114,6 +114,75 @@ describe('runDumpCli', () => {
     expect(sheetWrites).toEqual([]);
     expect(await readFile(out, 'utf8')).not.toContain('SENTINEL-EXPORT');
     expect(book(current).get('export_rahasia')).toEqual([['id'], ['SENTINEL-EXPORT-JANGAN-BACA']]);
+  });
+
+  function seedLegacy(current: GoogleRig, details: Record<number, string> = {}): void {
+    const dump = withLegacyDetail(cleanDump(), details);
+    book(current).set(
+      'audit_log',
+      (dump.audit_log as string[][]).map((row) => row.map((cell) => String(cell ?? ''))),
+    );
+  }
+
+  test('kolom legasi detail pada audit_log (sel kosong): dump lolos, header dibawa apa adanya, impor identik', async () => {
+    const current = await seededRig();
+    seedLegacy(current);
+    const { code, out } = await run(current, ['--out', '<OUT>', '--spreadsheet', SPREADSHEET_ID]);
+    expect(code).toBe(0);
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      tables: Record<string, string[][]>;
+    };
+    expect(parsed.tables.audit_log?.[0]).toContain('detail');
+    expect(current.logs.join('\n')).not.toMatch(/peringatan|detail/i);
+    const result = importWithApproval(parsed.tables);
+    expect(result.report.errors).toEqual([]);
+    expect(result.sql).toBe(importWithApproval(cleanDump()).sql);
+  });
+
+  test('kolom legasi detail berisi data: dump tetap ditulis, peringatan memuat jumlah dan nomor baris tanpa isi sel; impor yang berhenti', async () => {
+    const current = await seededRig();
+    seedLegacy(current, { 2: 'ISI-RAHASIA-1', 3: 'ISI-RAHASIA-2' });
+    const { code, out } = await run(current, ['--out', '<OUT>', '--spreadsheet', SPREADSHEET_ID]);
+    expect(code).toBe(0);
+    const log = current.logs.join('\n');
+    expect(log).toMatch(/PERINGATAN.*audit_log.*detail.*2 baris.*2, 3/s);
+    expect(log).not.toContain('ISI-RAHASIA');
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      tables: Record<string, string[][]>;
+    };
+    const result = importWithApproval(parsed.tables);
+    expect(result.sql).toBeNull();
+    expect(result.report.errors.map((e) => e.code)).toEqual([
+      'KOLOM_LEGASI_TERISI',
+      'KOLOM_LEGASI_TERISI',
+    ]);
+  });
+
+  test('kolom tak dikenal lain di audit_log tetap menolak dump walau kolom legasi detail ada', async () => {
+    const current = await seededRig();
+    seedLegacy(current);
+    const grid = book(current).get('audit_log') as string[][];
+    grid.forEach((row, index) => {
+      row.push(index === 0 ? 'aneh' : '');
+    });
+    const { code, out } = await run(current, ['--out', '<OUT>', '--spreadsheet', SPREADSHEET_ID]);
+    expect(code).toBe(1);
+    const log = current.logs.join('\n');
+    expect(log).toMatch(/audit_log.*kolom tak dikenal.*aneh/s);
+    expect(log).not.toMatch(/kolom tak dikenal:[^\n]*detail/);
+    expect(await exists(out)).toBe(false);
+  });
+
+  test('kolom legasi detail dua kali di header tetap ditolak (ganda)', async () => {
+    const current = await seededRig();
+    seedLegacy(current);
+    const grid = book(current).get('audit_log') as string[][];
+    grid.forEach((row, index) => {
+      row.push(index === 0 ? 'detail' : '');
+    });
+    const { code } = await run(current, ['--out', '<OUT>', '--spreadsheet', SPREADSHEET_ID]);
+    expect(code).toBe(1);
+    expect(current.logs.join('\n')).toMatch(/audit_log.*kolom ganda.*detail/s);
   });
 
   test('sheet tambahan di luar pemetaan tidak ikut dump', async () => {

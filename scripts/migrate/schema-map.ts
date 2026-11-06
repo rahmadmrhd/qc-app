@@ -197,6 +197,23 @@ export const TABLES: readonly TableDef[] = [
   },
 ];
 
+/**
+ * Kolom LEGASI per sheet: boleh ada di header tetapi bukan bagian skema. `audit_log.detail` dari aplikasi lama:
+ * `migrateAuditDetail_` (`gas/src/modules/access/repo.ts`, dijalankan `setup`) memindahkan isinya ke
+ * `before`/`after` lalu MENGOSONGKAN sel-nya, tetapi header-nya tidak pernah dihapus, jadi sheet produksi masih
+ * memilikinya. Sel kosong diabaikan; sel terisi (migrasi belum menjangkau baris itu) TIDAK dihilangkan diam-diam:
+ * `import-sheets` menjadikannya galat per baris (`KOLOM_LEGASI_TERISI`) sampai pemilik memutuskan (memindahkannya di
+ * Sheets atau mengecualikan baris lewat `excludes.json`). Satu sumber untuk `dump-sheets` dan `import-sheets`
+ * (`verify-import` memakai `prepareImport`).
+ */
+export const LEGACY_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  audit_log: ['detail'],
+};
+
+export function legacyColumns(table: string): readonly string[] {
+  return LEGACY_COLUMNS[table] ?? [];
+}
+
 /** Sheet yang sengaja tidak diimpor dan tidak diperingatkan (keputusan pemilik 2026-11-06): penghitung server baru. */
 export const IGNORED_SHEETS: readonly string[] = ['sync_state', 'counters'];
 

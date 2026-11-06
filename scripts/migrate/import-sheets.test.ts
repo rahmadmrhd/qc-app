@@ -12,6 +12,7 @@ import {
   importWithApproval,
   mutate,
   stripDiscarded,
+  withLegacyDetail,
 } from './fixtures';
 import {
   type DumpInput,
@@ -940,5 +941,76 @@ describe('CLI', () => {
         'TRUNCATE TABLE `audit_log`',
       );
     });
+  });
+});
+
+describe('kolom legasi audit_log.detail', () => {
+  test('header detail dengan semua sel kosong diabaikan: hasil identik dengan tanpa kolom itu, tanpa peringatan', () => {
+    const base = importWithApproval(cleanDump());
+    const legacy = importWithApproval(withLegacyDetail(cleanDump()));
+    expect(legacy.report.errors).toEqual([]);
+    expect(legacy.sql).toBe(base.sql);
+    expect(legacy.report.warnings).toEqual(base.report.warnings);
+    expect(legacy.report.tables).toEqual(base.report.tables);
+    expect(legacy.report.discarded).toEqual(base.report.discarded);
+  });
+
+  test('detail terisi: galat per baris (nomor baris, tanpa isi sel) dan impor berhenti', () => {
+    const secret = 'RAHASIA-ISI-DETAIL';
+    const dump = withLegacyDetail(cleanDump(), { 2: secret, 3: `  ${secret}  ` });
+    const result = prepareImport(dump, { discardApproval: approvalFor(dump) });
+    expect(result.sql).toBeNull();
+    const issues = result.report.errors.filter((e) => e.code === 'KOLOM_LEGASI_TERISI');
+    expect(issues.map((e) => [e.table, e.row, e.column])).toEqual([
+      ['audit_log', 2, 'detail'],
+      ['audit_log', 3, 'detail'],
+    ]);
+    expect(JSON.stringify(result.report)).not.toContain(secret);
+    expect(issues[0]?.message).toContain('excludes.json');
+  });
+
+  test('baris yang hanya berisi detail (kolom lain kosong) tetap dilaporkan, bukan dianggap kosong', () => {
+    const dump = withLegacyDetail(cleanDump());
+    const audit = dump.audit_log as string[][];
+    audit.push(['', '', '', '', '', '', 'sisa']);
+    const result = prepareImport(dump, { discardApproval: approvalFor(dump) });
+    expect(result.report.errors.map((e) => [e.code, e.row])).toEqual([
+      ['KOLOM_LEGASI_TERISI', audit.length],
+    ]);
+  });
+
+  test('keputusan pemilik: baris dengan detail terisi dikecualikan lewat excludes.json', () => {
+    const dump = withLegacyDetail(cleanDump(), { 2: 'sisa' });
+    const result = prepareImport(dump, {
+      discardApproval: approvalFor(dump),
+      exclude: [{ table: 'audit_log', row: 2 }],
+    });
+    expect(result.report.errors).toEqual([]);
+    expect(result.report.excluded.map((e) => [e.table, e.row])).toEqual([['audit_log', 2]]);
+    expect(result.sql).not.toBeNull();
+  });
+
+  test('detail pada baris audit modul yang dibuang tidak menghalangi (barisnya dibuang seluruhnya)', () => {
+    const dump = withLegacyDetail(cleanDump());
+    const audit = dump.audit_log as string[][];
+    const header = audit[0] as string[];
+    const row = header.map(() => '');
+    row[header.indexOf('ts')] = '2026-10-01T03:00:00.000Z';
+    row[header.indexOf('action')] = 'item.create';
+    row[header.indexOf('detail')] = 'lama';
+    audit.push(row);
+    const result = prepareImport(dump, { discardApproval: approvalFor(dump) });
+    expect(result.report.errors).toEqual([]);
+  });
+
+  test('kolom tak dikenal lain di audit_log tetap diperingatkan; hanya kolom legasi yang disenyapkan', () => {
+    const dump = withLegacyDetail(cleanDump());
+    (dump.audit_log as string[][]).forEach((row, index) => {
+      row.push(index === 0 ? 'aneh' : '');
+    });
+    const warned = importWithApproval(dump).report.warnings.filter(
+      (w) => w.code === 'KOLOM_TAK_DIKENAL',
+    );
+    expect(warned.map((w) => w.column)).toEqual(['aneh']);
   });
 });

@@ -20,7 +20,7 @@ import type { SheetsDump } from '@server/core/bridge-client';
 import { isAppError } from '@server/core/errors';
 import { createGoogleClient, type GoogleClient } from '@server/core/google/client';
 import { type GoogleSettings, isDriveId } from '@server/core/google/settings';
-import { IGNORED_SHEETS, TABLES } from './schema-map';
+import { IGNORED_SHEETS, legacyColumns, TABLES } from './schema-map';
 
 export const DUMP_USAGE =
   'Pemakaian: dump-sheets.ts --out <berkas> [--spreadsheet <id>] [--key-file <jalur>] [--force]\n' +
@@ -75,6 +75,8 @@ export const DUMP_SHEETS: readonly string[] = [
 export interface DumpCheck {
   /** Satu baris per masalah, selalu diawali nama sheet. */
   errors: string[];
+  /** Peringatan (dump tetap ditulis): kolom legasi berisi data; hanya nomor baris, tanpa isi sel. */
+  warnings: string[];
   /** Jumlah baris data (tanpa header) per sheet yang ada di dump. */
   counts: Record<string, number>;
 }
@@ -86,6 +88,7 @@ export interface DumpCheck {
  */
 export function checkDump(dump: SheetsDump): DumpCheck {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const counts: Record<string, number> = {};
   for (const def of TABLES) {
     const grid = dump[def.name];
@@ -108,7 +111,8 @@ export function checkDump(dump: SheetsDump): DumpCheck {
       seen.add(name);
     }
     const missing = expected.filter((name) => !seen.has(name));
-    const unknown = [...seen].filter((name) => !expected.includes(name));
+    const legacy = legacyColumns(def.name);
+    const unknown = [...seen].filter((name) => !expected.includes(name) && !legacy.includes(name));
     if (missing.length > 0) errors.push(`${def.name}: kolom tidak ada: ${missing.join(', ')}`);
     if (unknown.length > 0) errors.push(`${def.name}: kolom tak dikenal: ${unknown.join(', ')}`);
     if (duplicated.size > 0) errors.push(`${def.name}: kolom ganda: ${[...duplicated].join(', ')}`);
@@ -121,13 +125,25 @@ export function checkDump(dump: SheetsDump): DumpCheck {
         `${def.name}: kolom tanpa nama di header berisi data (nomor kolom ${orphaned.map((index) => index + 1).join(', ')})`,
       );
     }
+    for (const name of legacy) {
+      const at = names.indexOf(name);
+      if (at < 0) continue;
+      const filled = grid.flatMap((row, index) =>
+        index > 0 && (row[at] ?? '').trim() !== '' ? [index + 1] : [],
+      );
+      if (filled.length === 0) continue;
+      const shown = filled.slice(0, 20).join(', ');
+      warnings.push(
+        `${def.name}: kolom legasi ${name} berisi data di ${filled.length} baris (nomor baris Sheets: ${shown}${filled.length > 20 ? `, dan ${filled.length - 20} lainnya` : ''}); dump tetap ditulis apa adanya, tetapi import-sheets akan berhenti pada baris itu sampai pemilik memutuskan`,
+      );
+    }
     counts[def.name] = grid.length - 1;
   }
   for (const name of IGNORED_SHEETS) {
     const grid = dump[name];
     if (grid !== undefined) counts[name] = Math.max(0, grid.length - 1);
   }
-  return { errors, counts };
+  return { errors, warnings, counts };
 }
 
 /** Keluaran `dump.json`: hanya sheet yang dipetakan (urutan tetap), bukan sheet lain yang kebetulan ada. */
@@ -235,6 +251,7 @@ export async function runDumpCli(
     return 1;
   }
 
+  for (const message of check.warnings) console.warn(`PERINGATAN ${message}`);
   let total = 0;
   console.log(`Dump ${Object.keys(check.counts).length} sheet (hanya baca) -> ${out}`);
   for (const name of DUMP_SHEETS) {

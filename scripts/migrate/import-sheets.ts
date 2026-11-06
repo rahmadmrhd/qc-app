@@ -9,6 +9,7 @@ import {
   INSERT_ORDER,
   INT32_COLUMNS,
   INT32_MAX,
+  legacyColumns,
   MAX_LENGTHS,
   TABLES,
   type TableDef,
@@ -474,7 +475,10 @@ function readTable(
         );
       }
     }
-    const known = new Set(def.columns.map((column) => column.name));
+    const known = new Set([
+      ...def.columns.map((column) => column.name),
+      ...legacyColumns(def.name),
+    ]);
     for (const name of header) {
       if (name !== '' && !known.has(name)) {
         collector.warn(
@@ -487,6 +491,10 @@ function readTable(
       }
     }
   }
+  const legacyAt = legacyColumns(def.name).flatMap((name) => {
+    const at = index.get(name);
+    return at === undefined ? [] : [{ name, at }];
+  });
   const divertAt = def.divert
     ? def.columns.findIndex((column) => column.name === def.divert?.column)
     : -1;
@@ -502,7 +510,9 @@ function readTable(
       const at = index.get(column.name);
       return at === undefined ? '' : cellString(line[at]);
     });
-    if (texts.every((text) => text.trim() === '')) {
+    // Sel legasi terisi membuat baris TIDAK kosong: tak boleh hilang diam-diam (galat di bawah, kecuali dibuang/dikecualikan).
+    const legacyFilled = legacyAt.filter(({ at }) => cellString(line[at]).trim() !== '');
+    if (legacyFilled.length === 0 && texts.every((text) => text.trim() === '')) {
       summary.blank += 1;
       continue;
     }
@@ -521,6 +531,16 @@ function readTable(
       );
       continue;
     }
+    for (const { name } of legacyFilled) {
+      collector.error(
+        def.name,
+        sheetRow,
+        'KOLOM_LEGASI_TERISI',
+        `Kolom legasi ${name} berisi data (isi tidak dicetak); aplikasi lama biasanya sudah memindahkannya ke before/after. Pindahkan di Sheets, atau kecualikan baris ini lewat excludes.json bila pemilik memutuskan membuangnya`,
+        name,
+      );
+    }
+    if (legacyFilled.length > 0) continue;
     if (def.known && !def.known.matches((texts[knownAt] as string).trim())) {
       collector.error(
         def.name,
