@@ -490,6 +490,7 @@ Pembersihan (retensi) oleh server dikerjakan di T30 (`retention.ts`); T32 hanya 
 
 ### Task 34: PR kecil ke `origin/main` (READ_ONLY) dan PR cutover
 **Files (di `origin/main`):** `gas/src/…` bendera `READ_ONLY` dibawa lewat PR kecil sendiri; **PR cutover** dari branch kerja: hapus `.github/workflows/deploy.yml` (GAS) dan `deploy-worker.yml` DALAM PR yang sama dengan penggabungan; tag `gas-legacy` pada `origin/main` sebelum merge.
+- **Pengalihan GAS `/exec` (keputusan pemilik 2026-11-07, spek §19 butir 14)**: setelah cutover terverifikasi, `/exec` (deployment id yang sama) diganti halaman pengalih ke `https://qc.rhd.my.id`, di-deploy HANYA lewat `clasp` lokal dari folder di luar repo (repo tetap bersih); halaman memuat tombol `target="_top"` karena navigasi otomatis dibatasi sandbox HtmlService. Tidak ada workflow CI untuk ini.
 - Eksekusi atas persetujuan pemilik per langkah (deploy READ_ONLY, dump, impor produksi, verifikasi, DNS, pantau).
 - **Revisi 2026-11-06**: `deploy-worker.yml` sudah dihapus di T2, jadi PR cutover hanya menghapus `deploy.yml` (GAS); jembatan Apps Script tidak lagi punya alur deploy yang perlu dijaga (server tidak memakainya sejak T30a), dan pemensiunannya ada di T35.
 
