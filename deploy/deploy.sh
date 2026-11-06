@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Skrip deploy qc-app di VPS. Dipasang di /root/apps/qc-app/deploy.sh dan dipanggil lewat kunci SSH khusus:
-#   restrict,command="/root/apps/qc-app/deploy.sh [--only staging|production]" ssh-ed25519 AAAA...
-# (`restrict` sudah mencakup no-pty/no-port-forwarding/no-agent-forwarding/no-X11-forwarding/no-user-rc dan menutup
-# fitur baru OpenSSH yang kelak aktif bawaan; periksa juga `PermitRootLogin prohibit-password` atau
-# `forced-commands-only` di sshd_config VPS.)
+# Skrip deploy qc-app di server. Dipasang di <INSTALL_DIR>/deploy.sh (VPS pribadi: /root/apps/qc-app/deploy.sh) dan dipanggil lewat kunci SSH khusus:
+#   restrict,command="<INSTALL_DIR>/deploy.sh [--only staging|production]" ssh-ed25519 AAAA...
+# (jalur di `command=` = lokasi mutlak skrip ini yang sebenarnya, di `authorized_keys` milik pengguna deploy; `restrict` sudah
+# mencakup no-pty/no-port-forwarding/no-agent-forwarding/no-X11-forwarding/no-user-rc dan menutup fitur baru OpenSSH yang
+# kelak aktif bawaan. Bila pengguna deploy = root, periksa juga `PermitRootLogin prohibit-password` atau `forced-commands-only`.)
 # Klien (GitHub Actions) menjalankan `ssh ... "deploy <staging|production> <sha-40-heksa>"`; sshd mengisi SSH_ORIGINAL_COMMAND
 # dengan teks itu dan HANYA skrip ini yang berjalan. Input itu tak tepercaya: divalidasi ketat (regex), tidak pernah
 # di-eval, tidak diekspansi shell, dan tidak pernah dicetak balik. Argumen baris perintah hanya datang dari pemanggil
@@ -20,7 +20,7 @@
 # (tidak ada yang diubah); 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin.
 #
 # Argumen (hanya pemanggil lokal): --only staging|production (batasi lingkungan yang boleh diminta kunci ini), --dry-run
-# (validasi lalu cetak rencana; tidak menyentuh docker/berkas), --root DIR (bawaan /root/apps/qc-app),
+# (validasi lalu cetak rencana; tidak menyentuh docker/berkas), --root DIR (bawaan: folder skrip ini),
 # --wait-seconds N, --poll-seconds N.
 set -euo pipefail
 umask 077
@@ -141,7 +141,7 @@ LOCK=$DIR/.deploy.lock
 mkdir "$LOCK" 2>/dev/null || die 3 "deploy lain sedang berjalan (atau kunci basi: rmdir $LOCK)"
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
-# Log keluaran docker compose: khusus root di VPS, ditimpa tiap deploy. Tidak pernah diteruskan ke pemanggil.
+# Log keluaran docker compose: hanya dapat dibaca pengguna deploy (umask 077), ditimpa tiap deploy. Tidak pernah diteruskan ke pemanggil.
 DEPLOY_LOG=$DIR/.deploy.log
 : >"$DEPLOY_LOG"
 chmod 600 "$DEPLOY_LOG" 2>/dev/null || true

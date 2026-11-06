@@ -118,7 +118,7 @@ describe('deploy: compose.yml qc-app', () => {
       'qc-backups:/var/backups/qc',
       {
         type: 'bind',
-        source: '${QC_SECRETS_DIR:-/root/apps/qc-app/${QC_ENV}/secrets}/google-sa.json',
+        source: '${QC_SECRETS_DIR:-./secrets}/google-sa.json',
         target: '/run/secrets/google-sa.json',
         read_only: true,
         bind: { create_host_path: false },

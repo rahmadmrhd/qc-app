@@ -9,7 +9,7 @@ name: Deploy Server
 # - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `production` (qc.rhd.my.id)
 # - push ke `feat/migrasi-cloudflare` (SEMENTARA)                  -> environment `staging`
 # - workflow_dispatch (target staging|production)               -> `production` HANYA dari main; `staging` dari main/dev/feat/migrasi-cloudflare
-# Nama environment GitHub = kunci deploy di VPS (folder `/root/apps/qc-app/<env>`, `deploy.sh --only`, authorized_keys): staging | production (keputusan pemilik 2026-11-07).
+# Nama environment GitHub = kunci deploy di VPS (folder `<INSTALL_DIR>/<env>` (VPS pribadi: `/root/apps/qc-app/<env>`), `deploy.sh --only`, authorized_keys): staging | production (keputusan pemilik 2026-11-07).
 # Push langsung ke `main`/`dev` TIDAK men-deploy. `push` ke branch kerja hanya ada selama berkas workflow ini belum
 # di branch default: GitHub hanya menjalankan workflow_dispatch/pull_request_target bila berkas ada di branch DEFAULT
 # (main, dibekukan sampai cutover), sedangkan push berjalan dari berkas di branch yang di-push. Saat cutover (T34)
@@ -238,7 +238,7 @@ jobs:
             echo "  ServerAliveInterval 15"
           } > "$HOME/.ssh/config"
 
-      # Kunci SSH di VPS dibatasi `command="/root/apps/qc-app/deploy.sh --only <env>"`: yang dijalankan hanya skrip
+      # Kunci SSH di VPS dibatasi `command="<INSTALL_DIR>/deploy.sh --only <env>"` (jalur mutlak lokasi deploy.sh di server; VPS pribadi: /root/apps/qc-app): yang dijalankan hanya skrip
       # itu dengan perintah di bawah sebagai SSH_ORIGINAL_COMMAND (divalidasi ketat di sisi VPS). Kode keluar:
       # 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian gagal, 2/3 ditolak/terkunci.
       - name: Deploy di VPS

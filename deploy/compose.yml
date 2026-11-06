@@ -1,5 +1,5 @@
 # Compose QC: MariaDB (qc-db) + aplikasi (qc-app). Satu proyek per lingkungan (QC_ENV = staging atau production).
-# Jalankan dari folder ini (di VPS: /root/apps/qc-app/<env>/): docker compose up -d
+# Jalankan dari folder ini (folder instalasi <INSTALL_DIR>/<env>/; di VPS pribadi: /root/apps/qc-app/<env>/): docker compose up -d
 # Nilai dibaca dari .env di folder yang sama (lihat .env.example). TIDAK ada rahasia di berkas ini.
 # Awalan nama proyek/kontainer/jaringan/volume: QC_NAME (bawaan qc-${QC_ENV}: qc-staging, qc-production). Nama staging
 # tidak bertabrakan dengan stack dev lama T1 (proyek qc-dev, kontainer qc-dev-db) yang masih berjalan di /opt/qc/dev.
@@ -96,7 +96,7 @@ services:
       # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang
       # baca-saja. create_host_path: false = bila berkasnya belum ada, compose GAGAL (bukan membuat direktori kosong).
       - type: bind
-        source: ${QC_SECRETS_DIR:-/root/apps/qc-app/${QC_ENV}/secrets}/google-sa.json
+        source: ${QC_SECRETS_DIR:-./secrets}/google-sa.json
         target: /run/secrets/google-sa.json
         read_only: true
         bind:
