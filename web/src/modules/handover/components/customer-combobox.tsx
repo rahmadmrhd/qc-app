@@ -1,6 +1,6 @@
 import { customerKey } from '@shared/handover';
 import { similarNames, suggestMatches } from '@shared/suggest';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -30,6 +30,9 @@ export function CustomerCombobox({
   currentName,
 }: CustomerComboboxProps) {
   const [open, setOpen] = useState(false);
+  // Timer penutup daftar dibatalkan saat komponen dilepas agar tak memperbarui state yang sudah tidak ada.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
   const [active, setActive] = useState(-1);
   const key = customerKey(value);
   const exact = customers.find((customer) => customerKey(customer.name) === key);
@@ -66,7 +69,7 @@ export function CustomerCombobox({
         onFocus={() => setOpen(true)}
         onBlur={() => {
           // Tunda agar klik pada saran sempat diproses sebelum daftar ditutup.
-          setTimeout(() => setOpen(false), 150);
+          closeTimer.current = setTimeout(() => setOpen(false), 150);
           onBlur?.();
         }}
         onChange={(event) => {
