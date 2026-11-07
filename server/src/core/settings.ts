@@ -9,7 +9,7 @@ export const SETTING_DRIVE_FOLDER_ID = 'DRIVE_FOLDER_ID';
  * bila kosong, folder dibuat di bawah folder induk dan dicatat di tabel `settings` seperti semula.
  */
 const FOLDER_ENV_FIELD = {
-  DRIVE_FOLDER_ID: 'ITEM_IMAGES_FOLDER_ID',
+  DRIVE_FOLDER_ID: 'ATTACHMENTS_FOLDER_ID',
   QR_FOLDER_ID: 'QR_FOLDER_ID',
   QR_DOC_FOLDER_ID: 'QR_DOC_FOLDER_ID',
   BACKUP_FOLDER_ID: 'BACKUP_FOLDER_ID',

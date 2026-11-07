@@ -28,7 +28,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 22 | Admin non-super mengedit penugasannya sendiri hingga kehilangan Kelola global | Ditolak dengan pesan jelas | FR-AS5 |
 | 23 | Buka Log Audit, detail `user.update` yang mengubah penugasan | Diff menampilkan lokasi dan role yang ditambah, diubah, dihapus | FR-AU2, FR-AU3 |
 | 24 | (Tidak berlaku lagi: migrasi `setup` aplikasi Apps Script lama; skema MariaDB dibuat migrasi server saat start) | - | NFR-L2 |
-| 25 | Dengan Google terkonfigurasi (`docs/setup-google.md`), unggah gambar pertama | Folder gambar dibuat di bawah `GOOGLE_ROOT_FOLDER_ID` (atau memakai `ITEM_IMAGES_FOLDER_ID`) dan id-nya tercatat di tabel `settings`; berkas muncul di Drive | FA1 |
+| 25 | Dengan Google terkonfigurasi (`docs/setup-google.md`), unggah gambar pertama | Folder lampiran dibuat di bawah `GOOGLE_ROOT_FOLDER_ID` (atau memakai `ATTACHMENTS_FOLDER_ID`) dan id-nya tercatat di tabel `settings`; berkas muncul di Drive | FA1 |
 | 26 | Unggah gambar kedua (atau mulai ulang server lalu unggah) | Tidak ada folder kedua; id folder sama | FA1 |
 | 27 | (Fase B) Di halaman Item, sisipkan gambar ke detail Markdown lewat tombol, tempel, dan seret; simpan | Gambar terunggah (≤ 1 MB, ≤ 1600 px), tampil di pratinjau dan di halaman detail setelah muat ulang; baris `files` bertanda pemilik item | FA2, FA3, FA5 |
 | 28 | (Fase B) Login sebagai user dengan `item: view` saja, coba unggah lewat console `api('files.upload', ...)`; lalu sisipkan Markdown berisi `<script>`, `[x](javascript:alert(1))`, dan gambar `https://` | Unggah `FORBIDDEN`; Markdown tampil sebagai teks/tautan mati tanpa eksekusi dan tanpa memuat gambar eksternal | FA3, FA6 |

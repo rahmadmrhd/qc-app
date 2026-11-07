@@ -22,7 +22,7 @@ export interface Config {
   /** Spreadsheet data tunggal (ekspor/impor Sheets). */
   googleSpreadsheetId: string;
   /** Folder fungsi di Drive (opsional; kosong = dibuat di bawah induk dan dicatat di tabel settings). */
-  itemImagesFolderId: string;
+  attachmentsFolderId: string;
   qrFolderId: string;
   qrDocFolderId: string;
   backupFolderId: string;
@@ -133,7 +133,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const googleIds = [
     'GOOGLE_ROOT_FOLDER_ID',
     'GOOGLE_SPREADSHEET_ID',
-    'ITEM_IMAGES_FOLDER_ID',
+    'ATTACHMENTS_FOLDER_ID',
     'QR_FOLDER_ID',
     'QR_DOC_FOLDER_ID',
     'BACKUP_FOLDER_ID',
@@ -247,7 +247,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     googleSaKeyFile: get('GOOGLE_SA_KEY_FILE'),
     googleRootFolderId: get('GOOGLE_ROOT_FOLDER_ID'),
     googleSpreadsheetId: get('GOOGLE_SPREADSHEET_ID'),
-    itemImagesFolderId: get('ITEM_IMAGES_FOLDER_ID'),
+    attachmentsFolderId: get('ATTACHMENTS_FOLDER_ID'),
     qrFolderId: get('QR_FOLDER_ID'),
     qrDocFolderId: get('QR_DOC_FOLDER_ID'),
     backupFolderId: get('BACKUP_FOLDER_ID'),

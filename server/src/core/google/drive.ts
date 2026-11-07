@@ -109,7 +109,7 @@ export function createDriveApi(
 > {
   const explicit = new Set(
     [
-      settings.ITEM_IMAGES_FOLDER_ID,
+      settings.ATTACHMENTS_FOLDER_ID,
       settings.QR_FOLDER_ID,
       settings.QR_DOC_FOLDER_ID,
       settings.BACKUP_FOLDER_ID,
@@ -155,7 +155,7 @@ export function createDriveApi(
   }
 
   /**
-   * Folder yang boleh disentuh: yang tercantum di konfigurasi (`ITEM_IMAGES_FOLDER_ID`, `QR_*`, `BACKUP_FOLDER_ID`,
+   * Folder yang boleh disentuh: yang tercantum di konfigurasi (`ATTACHMENTS_FOLDER_ID`, `QR_*`, `BACKUP_FOLDER_ID`,
    * `ALLOWED_FOLDER_IDS`) atau subfolder langsung dari folder induk (diverifikasi lewat API, lalu di-cache).
    */
   async function isAllowedFolder(folderId: string): Promise<boolean> {
