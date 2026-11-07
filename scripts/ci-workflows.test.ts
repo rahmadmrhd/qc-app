@@ -128,6 +128,14 @@ describe('deploy-server.yml: keamanan', () => {
     expect(deploy.concurrency?.group).toContain('github.event.pull_request.merged != true');
   });
 
+  test('label skip-deploy: PR berlabel itu melewati deploy (meta dilewati) dan tak menggantikan run yang menunggu', () => {
+    const skip = "contains(github.event.pull_request.labels.*.name, 'skip-deploy')";
+    expect(deploy.jobs.meta?.if ?? '').toContain(`!${skip}`);
+    expect(deploy.concurrency?.group).toContain(skip);
+    // label tak boleh memengaruhi dispatch manual: kondisinya hanya untuk pull_request_target
+    expect(deploy.jobs.meta?.if ?? '').toContain("github.event_name != 'pull_request_target' ||");
+  });
+
   test('checkout (fork PR tak mendapat kode/rahasia): hanya commit dari job meta (merge_commit_sha), tidak pernah head PR', () => {
     const checkouts = Object.values(deploy.jobs)
       .flatMap((job) => job.steps ?? [])
