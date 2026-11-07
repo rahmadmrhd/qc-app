@@ -414,8 +414,7 @@ async function reserveNumbers(
 }
 
 /**
- * Percobaan CAS penghitung nomor. Penulis serentak pada MariaDB benar-benar paralel (bukan diserialkan satu
- * isolate seperti di D1): tiap putaran hanya satu penulis yang menang, jadi N penulis serentak butuh sampai N
+ * Percobaan CAS penghitung nomor. Penulis serentak pada MariaDB benar-benar paralel (bukan diserialkan): tiap putaran hanya satu penulis yang menang, jadi N penulis serentak butuh sampai N
  * percobaan. 10 menutup beban nyata (beberapa admin WH menyimpan bersamaan) dan tes 6 penulis serentak.
  */
 const CREATE_TASKS_ATTEMPTS = 10;

@@ -2,7 +2,7 @@ import type { AuthErrorCode, MeDto } from '@shared/rpc';
 import { type ApiCall, api } from '@/lib/api';
 import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 
-/** Galat login dari redirect Worker (`/?authError=...`); nilai lain diabaikan. */
+/** Galat login dari redirect server (`/?authError=...`); nilai lain diabaikan. */
 export function readAuthError(search: string): AuthErrorCode | null {
   const value = new URLSearchParams(search).get('authError');
   return value === 'NOT_WHITELISTED' || value === 'LOGIN_FAILED' ? value : null;

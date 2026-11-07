@@ -38,7 +38,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     GOOGLE_SA_KEY_FILE: '',
     GOOGLE_ROOT_FOLDER_ID: '',
     GOOGLE_SPREADSHEET_ID: '',
-    ITEM_IMAGES_FOLDER_ID: '',
+    ATTACHMENTS_FOLDER_ID: '',
     QR_FOLDER_ID: '',
     QR_DOC_FOLDER_ID: '',
     BACKUP_FOLDER_ID: '',

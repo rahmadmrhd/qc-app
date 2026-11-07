@@ -586,6 +586,9 @@ async function ensureQrDocumentShared(env: Env, documentId: string): Promise<voi
   await env.DB.batch([updateQrDocumentStmt(env.DB, { ...doc, shared: true })]);
 }
 
+/** Galat pencabutan berbagi yang sudah dicatat, per `Env` (satu per proses di produksi). */
+const revokeLogged = new WeakMap<Env, Set<string>>();
+
 /**
  * Mencabut berbagi publik PDF sumber yang tidak dipakai konfigurasi mana pun: segera untuk dokumen yang baru
  * dilepas (`releasedIds`), dan setelah masa tenggang untuk unggahan yatim. Galat jembatan hanya dicatat dan
@@ -614,9 +617,15 @@ export async function revokeUnusedQrDocuments(
       await env.DB.batch([updateQrDocumentStmt(env.DB, { ...doc, shared: false })]);
       revoked += 1;
     } catch (error) {
-      console.error(
-        `qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // Pembersihan berjalan tiap jam: galat yang sama untuk dokumen yang sama dicatat sekali per proses.
+      const seen = revokeLogged.get(env) ?? new Set<string>();
+      revokeLogged.set(env, seen);
+      const key = `${doc.driveId}|${message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        console.error(`qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${message}`);
+      }
     }
   }
   return revoked;
@@ -646,7 +655,7 @@ export async function removeQrDesign(
       after: null,
     }),
   ]);
-  // I/O Drive sesudah D1. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
+  // I/O Drive sesudah database. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
   for (const driveId of [design.exportPdfDriveId, design.exportPngDriveId]) {
     if (driveId === '') continue;
     await afterQrCommit('berkas ekspor', () =>
@@ -667,7 +676,7 @@ function toQrDocumentDto(doc: QrDocumentRecord): QrDocumentDto {
 
 /**
  * Unggah PDF sumber, atau ganti isi PDF yang ada dengan id Drive (dan URL) yang SAMA agar label tercetak tetap
- * valid. Drive DULU lewat jembatan, lalu catatan D1.
+ * valid. Drive DULU lewat jembatan, lalu catatan database.
  */
 export async function uploadQrPdf(
   env: Env,

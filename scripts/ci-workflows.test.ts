@@ -109,7 +109,10 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   test('cache build GHA ditulis hanya oleh workflow_dispatch (token pull_request_target ditolak menulis cache)', () => {
-    expect(deployText).toContain("cache-to: ${{ github.event_name == 'workflow_dispatch' && ");
+    // baris LENGKAP: cabang yang tertukar (`&& '' || 'type=gha,...'`) akan membuat pull_request_target menulis cache
+    expect(deployText).toContain(
+      "cache-to: ${{ github.event_name == 'workflow_dispatch' && 'type=gha,scope=qc-app,mode=max' || '' }}",
+    );
     expect(deployText).toContain('cache-from: type=gha,scope=qc-app');
   });
 
@@ -123,6 +126,14 @@ describe('deploy-server.yml: keamanan', () => {
     }
     // PR yang ditutup tanpa merge tidak menggantikan run deploy yang menunggu di antrean per environment
     expect(deploy.concurrency?.group).toContain('github.event.pull_request.merged != true');
+  });
+
+  test('label skip-deploy: PR berlabel itu melewati deploy (meta dilewati) dan tak menggantikan run yang menunggu', () => {
+    const skip = "contains(github.event.pull_request.labels.*.name, 'skip-deploy')";
+    expect(deploy.jobs.meta?.if ?? '').toContain(`!${skip}`);
+    expect(deploy.concurrency?.group).toContain(skip);
+    // label tak boleh memengaruhi dispatch manual: kondisinya hanya untuk pull_request_target
+    expect(deploy.jobs.meta?.if ?? '').toContain("github.event_name != 'pull_request_target' ||");
   });
 
   test('checkout (fork PR tak mendapat kode/rahasia): hanya commit dari job meta (merge_commit_sha), tidak pernah head PR', () => {

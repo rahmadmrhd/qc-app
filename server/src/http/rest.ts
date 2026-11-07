@@ -26,7 +26,7 @@ import {
   pathParamNames,
   routeShape,
 } from '@shared/api';
-import type { WorkerRpcMethod } from '@shared/rpc';
+import type { RpcMethod } from '@shared/rpc';
 import type { Context } from 'hono';
 import type { Hono } from 'hono/tiny';
 
@@ -36,7 +36,7 @@ export const REST_BASE = '/api/v1';
 const BODY_VERBS: ReadonlySet<ApiVerb> = new Set<ApiVerb>(['POST', 'PUT', 'PATCH']);
 
 interface Operation {
-  id: WorkerRpcMethod;
+  id: RpcMethod;
   def: ApiRouteDef;
   created: boolean;
   verb: ApiVerb;
@@ -56,7 +56,7 @@ export function honoPath(path: string): string {
  */
 export function listOperations(): Operation[] {
   const operations: Operation[] = [];
-  for (const id of Object.keys(API_ROUTES) as WorkerRpcMethod[]) {
+  for (const id of Object.keys(API_ROUTES) as RpcMethod[]) {
     const def = API_ROUTES[id];
     operations.push({ id, def, created: false, ...routeShape(def, false) });
     if (def.create) operations.push({ id, def, created: true, ...routeShape(def, true) });

@@ -475,7 +475,7 @@ describe('logo ekstrem dan resource key Drive', () => {
   });
 });
 
-describe('parser link Drive tanpa Web API URL (runtime V8 Apps Script tidak punya URL)', () => {
+describe('parser link Drive tanpa Web API URL (shared/ tidak bergantung pada API runtime)', () => {
   const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
   const withoutUrlApi = <T>(run: () => T): T => {
     const holder = globalThis as unknown as { URL?: unknown; URLSearchParams?: unknown };

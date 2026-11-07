@@ -18,9 +18,9 @@ import { QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
 
 /**
  * Ekspor QR sebagai pekerjaan latar (Spek 9b). RPC hanya memeriksa, menyimpan muatan, dan mengantre; berkas dibuat
- * di Drive per langkah oleh consumer: PDF (0), PNG (1), pencatatan di D1 dengan CAS (2), pembuangan berkas lama
+ * di Drive per langkah oleh consumer: PDF (0), PNG (1), pencatatan di database dengan CAS (2), pembuangan berkas lama
  * dan pembersihan muatan (3). Berkas baru dibuat SEBELUM pencatatan; gagal sebelum pencatatan -> berkas baru
- * dibuang dan berkas lama utuh (perilaku gas).
+ * dibuang dan berkas lama utuh (perilaku sebelum migrasi).
  */
 
 interface ExportInput {

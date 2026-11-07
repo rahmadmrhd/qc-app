@@ -12,7 +12,7 @@ import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
 async function start() {
-  // Galat login dari redirect Worker (/?authError=...) dibaca sekali lalu dibuang dari URL.
+  // Galat login dari redirect server (/?authError=...) dibaca sekali lalu dibuang dari URL.
   const authError = readAuthError(window.location.search);
   if (authError) window.history.replaceState(null, '', window.location.pathname);
 

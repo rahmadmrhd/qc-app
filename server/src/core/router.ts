@@ -2,12 +2,7 @@ import type { UserContext } from '@server/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
-import type {
-  ErrorCode,
-  WorkerRpcInput as RpcInput,
-  WorkerRpcMethod as RpcMethod,
-  WorkerRpcOutput as RpcOutput,
-} from '@shared/rpc';
+import type { ErrorCode, RpcInput, RpcMethod, RpcOutput } from '@shared/rpc';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { DbError } from './db';
 import { type Env, nowOf } from './env';

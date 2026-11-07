@@ -5,7 +5,7 @@ import type { QrLayout, QrLinkSource, QrStyle } from '@shared/qrcode';
 import { clampQrLayout, clampQrStyle } from '@shared/qrcode';
 
 /**
- * Akses D1 modul QR. Tabel kecil (konfigurasi, dokumen, preset): daftar dibaca utuh. Penulisan memakai
+ * Akses database modul QR. Tabel kecil (konfigurasi, dokumen, preset): daftar dibaca utuh. Penulisan memakai
  * pernyataan siap-`batch()` (bersama audit) dan penjaga `updated_at` untuk konkurensi optimistis.
  */
 

@@ -8,7 +8,6 @@
 | Sumber permintaan | TASK-001, “Fitur Serah Terima QC-WH” |
 | Jenis dokumen | Spesifikasi implementasi; keputusan usulan dibedakan dari permintaan pengguna |
 | PRD sebelumnya | [Data Item & Serah Terima](2026-10-09-qc-item-serah-terima.md), terutama FH1–FH9, FQ1–FQ6, FAU1–FAU2 |
-| Rencana implementasi | [Paket pekerjaan TASK-001](../superpowers/plans/2026-10-18-qc-serah-terima-catatan-checklist.md) |
 
 ## 1. Masalah dan tujuan
 
@@ -19,10 +18,10 @@ Tujuan: WH membuat task dari hasil paste tanpa memilih item; QC membaca instruks
 ### Bukti dari proyek
 
 - `web/src/modules/handover/components/handover-form.tsx` memakai `Textarea` untuk catatan dan `ItemLinesField` untuk item × qty.
-- `shared/handover.ts`, `gas/src/modules/handover/validate.ts`, dan `web/src/modules/handover/schemas.ts` membatasi catatan 500 karakter dan mewajibkan minimal satu baris item.
+- `shared/handover.ts`, `server/src/modules/handover/validate.ts`, dan `web/src/modules/handover/schemas.ts` membatasi catatan 500 karakter dan mewajibkan minimal satu baris item.
 - `shared/rpc.ts` memisahkan summary daftar dari detail berisi baris; `web/src/routes/_app/handover/index.tsx` menampilkan `HandoversTable` dan menavigasi ke halaman detail.
 - `web/src/modules/markdown/markdown-editor.tsx` sudah memiliki editor Tulis/Pratinjau; `markdown-view.tsx` merender Markdown dengan pembatasan HTML dan URL.
-- `gas/src/modules/handover/service.ts` sudah memiliki lock, audit, dan pemeriksaan `expectedUpdatedAt` pada perubahan isi. Kode saat ini mengizinkan koreksi progres task selesai; bagian lama rencana Fase C yang melarangnya tidak dipakai sebagai acuan perilaku baru.
+- `server/src/modules/handover/service.ts` sudah memiliki lock, audit, dan pemeriksaan `expectedUpdatedAt` pada perubahan isi. Kode saat ini mengizinkan koreksi progres task selesai; bagian lama rencana Fase C yang melarangnya tidak dipakai sebagai acuan perilaku baru.
 
 ## 2. Pengguna dan izin
 
@@ -148,7 +147,7 @@ Klik area kartu yang bukan kontrol membuka dialog. Sediakan tombol “Buka detai
 
 | Kontrak | Input/hasil dan aturan |
 |---|---|
-| `handovers.board` baru | `locationIds`, `status`, `cursor?`, `limit?` (Worker, 2026-10-26): satu kolom kanban per panggilan, **berhalaman** (bawaan 20 dan maks. 50 task per halaman; semula 3 di Worker); hasil kartu note dengan semua isi, komentar, metadata, dan revisi, plus `nextCursor` dan `total`. Satu pengambilan per halaman, bukan satu RPC detail per kartu. Keputusan pemilik 2026-10-26 (CPU edge ≤ 8 ms per rute; kartu tetap penuh, ukuran halaman dikecilkan; lihat spek migrasi §7.4) **digantikan 2026-11-05 (disetujui pemilik produk): batas 3 hanyalah anggaran CPU edge Cloudflare yang tidak ada lagi di VPS; bawaan 20 dan maks. 50 seperti Apps Script (spek migrasi VPS §19 butir 2)**. |
+| `handovers.board` baru | `locationIds`, `status`, `cursor?`, `limit?` (2026-10-26): satu kolom kanban per panggilan, **berhalaman** (bawaan 20 dan maks. 50 task per halaman; semula 3); hasil kartu note dengan semua isi, komentar, metadata, dan revisi, plus `nextCursor` dan `total`. Satu pengambilan per halaman, bukan satu RPC detail per kartu. Keputusan pemilik 2026-10-26 (CPU ≤ 8 ms per rute di platform sebelumnya; kartu tetap penuh, ukuran halaman dikecilkan; lihat spek migrasi §7.4) **digantikan 2026-11-05 (disetujui pemilik produk): batas 3 hanyalah anggaran CPU platform sebelumnya yang tidak ada lagi di VPS; bawaan 20 dan maks. 50 seperti Apps Script (spek migrasi VPS §19 butir 2)**. |
 | `handovers.get` diperluas | Input lama; output dibedakan mode, memuat isi lengkap task yang boleh dibaca. |
 | `handovers.saveNote` baru | ID opsional, lokasi, customer, blok `id/kind/markdown`, `expectedRevision` wajib pada update. Create menghasilkan ID blok bila belum ada; klien tidak mengirim progres/komentar sebagai sumber kebenaran. |
 | `handovers.setNoteChecked` baru | Task/lokasi, block ID, boolean `checked` absolut, `expectedRevision`; izin `qc: edit`. Nilai sama pada revisi saat ini tidak membuat audit/progres palsu. |
@@ -176,12 +175,12 @@ Tambahkan query key koleksi board dan invalidasi daftar/detail/audit setelah mut
 | AC11 | Task legacy tetap menampilkan snapshot item, qty parsial/over-target, status, catatan, dan audit aslinya. Setup berulang tidak menggandakan/mengonversi data; endpoint lama tidak menulis task note. |
 | AC12 | Dibatalkan tidak menerima perubahan isi, centang, atau komentar. Perubahan teks checklist yang dicentang mereset centang dengan audit; penghapusan/konversi checklist dicentang ditolak. |
 | AC13 | HTML/script/URL berbahaya dari paste, Markdown, dan komentar tidak dijalankan. Payload melebihi batas ditolak utuh di server dan UI tanpa kehilangan draft. |
-| AC14 | Board mengambil isi tiap kolom lewat RPC `handovers.board` berhalaman (20 task per halaman bawaan, maks. 50; semula 3 di Worker sampai 2026-11-05; halaman berikutnya dimuat otomatis saat kolom digulir, infinite scroll) tanpa N panggilan `get`; catatan, centang, dan komentar kartu dirender saat kartu mendekati layar (lazy render); error/kosong/lokasi tak dipilih punya tampilan jelas. JSON rusak satu task tidak menimpa data atau menghilangkan kartu lain. (Diubah 2026-10-26, disetujui pemilik, dari "satu RPC board untuk seluruh koleksi".) |
+| AC14 | Board mengambil isi tiap kolom lewat RPC `handovers.board` berhalaman (20 task per halaman bawaan, maks. 50; semula 3 sampai 2026-11-05; halaman berikutnya dimuat otomatis saat kolom digulir, infinite scroll) tanpa N panggilan `get`; catatan, centang, dan komentar kartu dirender saat kartu mendekati layar (lazy render); error/kosong/lokasi tak dipilih punya tampilan jelas. JSON rusak satu task tidak menimpa data atau menghilangkan kartu lain. (Diubah 2026-10-26, disetujui pemilik, dari "satu RPC board untuk seluruh koleksi".) |
 | AC15 | Create/update/reset/check/uncheck/comment/cancel menghasilkan audit dengan pelaku dan perubahan yang terbaca; no-op centang tidak menambah audit. `bun run check` dan `bun run build` lulus. |
 
 ## 9. Kebutuhan nonfungsional dan dependensi
 
-- Ikuti keamanan render FA6 dan format teks Sheets; semua akses GAS lewat `platform_()`, tulis memakai `core/db` dalam lock, fungsi GAS mengikuti aturan nama/global scope.
+- Ikuti keamanan render FA6 dan format teks Sheets; penulisan mengikuti aturan server di `CLAUDE.md` (CAS atau kunci baris, nilai selalu di-bind).
 - Usulan batas teknis memakai pola proyek: jumlah karakter sumber Markdown seluruh blok ditambah body komentar maksimum 20.000 (`shared/files.ts`/FA7); JSON terserialisasi maksimum 40.000 karakter (FI7). Keduanya diverifikasi di server. Ini adaptasi batas proyek untuk dokumen baru, bukan kebutuhan bisnis yang telah disetujui. Kutipan/metadata tetap ikut batas JSON.
 - Ponsel 375×812 dan tema terang/gelap mengikuti NFR proyek. Catatan panjang membungkus tanpa memotong isi; checkbox dan aksi komentar berlabel dan dapat diakses keyboard. Tanpa seleksi sentuh yang andal, sediakan aksi per blok untuk memilih rentang kutipan melalui input teks.
 - Tidak menetapkan SLA/angka latensi baru. Ukuran artefak produksi tetap mengikuti `verify-dist` proyek; dependensi baru memerlukan bukti bahwa batas build masih dipenuhi.

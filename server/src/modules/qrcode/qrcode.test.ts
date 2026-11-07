@@ -505,6 +505,20 @@ describe('pencabutan berbagi PDF sumber', () => {
     expect(shared(await driveIdOf(used.id))).toBe(true);
   });
 
+  test('galat pencabutan yang sama untuk dokumen yang sama dicatat sekali walau pembersihan berulang', async () => {
+    const doc = (await upload()).data;
+    const design = (await usePdf(doc.id)).data;
+    env.BRIDGE.revokeSharing = async () => {
+      throw new Error('Berkas milik akun lain');
+    };
+    expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id })).ok).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      env.clock.advance(2 * 60 * 60 * 1000);
+      await cleanupQrDocuments(env);
+    }
+    expect(logged.filter((m) => m.includes('Berkas milik akun lain'))).toHaveLength(1);
+  });
+
   test('gagal mencabut berbagi di Drive tidak menggagalkan hapus; galat dicatat; dicoba lagi kemudian', async () => {
     const doc = (await upload()).data;
     const design = (await usePdf(doc.id)).data;

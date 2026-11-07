@@ -11,7 +11,7 @@ export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
  * Batas badan push sinkron QC Desktop (`POST /api/v1/sync/*`): 5.000.000 BYTE (UTF-8), sama dengan
- * `SYNC_LIMITS.bodyBytes` (satuan byte; `bodyChars` adalah karakter untuk aplikasi GAS; kontrak
+ * `SYNC_LIMITS.bodyBytes` (satuan byte; kontrak
  * `docs/api/desktop-sync.md`). Sengaja BUKAN `MAX_JSON_BODY_BYTES` (2 MB): push 25 item dengan detail
  * 20.000 karakter dapat mendekati 2 MB. Dibaca setelah token diverifikasi.
  */

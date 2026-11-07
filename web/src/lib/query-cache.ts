@@ -29,7 +29,7 @@ export function removeFromList<T extends { id: string }>(
 
 /**
  * Menandai data basi TANPA memuat ulang sekarang: tidak menahan navigasi setelah simpan dan tidak mengantre RPC
- * (menghemat satu permintaan ke Worker dan D1). Data yang berubah dipasang lewat `upsertInList`/`setQueryData`.
+ * (menghemat satu permintaan ke server dan database). Data yang berubah dipasang lewat `upsertInList`/`setQueryData`.
  */
 export function markStale(queryClient: QueryClient, ...keys: QueryKey[]): void {
   for (const queryKey of keys) {

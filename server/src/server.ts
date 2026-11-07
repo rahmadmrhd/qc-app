@@ -40,7 +40,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     GOOGLE_SA_KEY_FILE: config.googleSaKeyFile,
     GOOGLE_ROOT_FOLDER_ID: config.googleRootFolderId,
     GOOGLE_SPREADSHEET_ID: config.googleSpreadsheetId,
-    ITEM_IMAGES_FOLDER_ID: config.itemImagesFolderId,
+    ATTACHMENTS_FOLDER_ID: config.attachmentsFolderId,
     QR_FOLDER_ID: config.qrFolderId,
     QR_DOC_FOLDER_ID: config.qrDocFolderId,
     BACKUP_FOLDER_ID: config.backupFolderId,

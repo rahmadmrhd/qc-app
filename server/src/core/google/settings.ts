@@ -10,8 +10,8 @@ export interface GoogleSettings {
   GOOGLE_ROOT_FOLDER_ID: string;
   /** Spreadsheet data tunggal (ekspor job `exports.sheets` dan sumber impor awal). */
   GOOGLE_SPREADSHEET_ID: string;
-  /** Folder gambar item (setara kunci `settings` DRIVE_FOLDER_ID). */
-  ITEM_IMAGES_FOLDER_ID: string;
+  /** Folder lampiran: semua berkas di tabel `files` (gambar item dan lampiran lain); di luar PDF sumber QR dan hasil ekspor QR (setara kunci `settings` DRIVE_FOLDER_ID). */
+  ATTACHMENTS_FOLDER_ID: string;
   QR_FOLDER_ID: string;
   QR_DOC_FOLDER_ID: string;
   /** Folder cadangan SQL (dipakai T30). */

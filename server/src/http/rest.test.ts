@@ -9,9 +9,9 @@ import { listOperations } from '@server/http/rest';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { API_ROUTES, SYNC_API_ROUTES, type SyncRouteId } from '@shared/api';
-import type { WorkerRpcMethod } from '@shared/rpc';
+import type { RpcMethod } from '@shared/rpc';
 
-const IDS = Object.keys(API_ROUTES) as WorkerRpcMethod[];
+const IDS = Object.keys(API_ROUTES) as RpcMethod[];
 const SYNC_IDS = Object.keys(SYNC_API_ROUTES) as SyncRouteId[];
 
 let env: TestEnv;

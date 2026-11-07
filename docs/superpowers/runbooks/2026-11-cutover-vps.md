@@ -4,7 +4,7 @@
 |---|---|
 | **Rencana** | `docs/superpowers/plans/2026-11-05-migrasi-vps-docker-rest.md` Task 33 dan 34 |
 | **Spek** | `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md` §13 (branch dan koeksistensi), §14 (data dan cutover), §19 butir 9 (data uji dibuang) |
-| **Menggantikan** | `docs/superpowers/runbooks/2026-10-cutover-cloudflare.md` (rencana Cloudflare dibatalkan 2026-11-05) |
+| **Menggantikan** | runbook cutover edge serverless lama (dibatalkan 2026-11-05; dokumennya dihapus 2026-11-07) |
 | **Status** | **Draf, belum pernah dijalankan.** Tidak ada langkah di sini yang dieksekusi oleh penulisnya; gladi (Fase 0) wajib mulus dua kali berturut-turut sebelum hari-H |
 | **Lingkungan** | Staging: `https://qc-dev.rhd.my.id`, folder instalasi `<INSTALL_DIR>/staging`, kontainer `qc-staging-db` / `qc-staging-app`, skema `qc_dev`. Production: `https://qc.rhd.my.id`, folder instalasi `<INSTALL_DIR>/production`, kontainer `qc-production-db` / `qc-production-app`, skema `qc_production` (nama dari `deploy/compose.yml`, `docs/deploy-vps.md`) |
 | **Folder instalasi** | `<INSTALL_DIR>` = folder instalasi di server tempat cutover dijalankan (VPS pribadi: `/root/apps/qc-app`; server kantor nanti: jalur lain dan pengguna deploy non-root, spek §19 butir 11, `docs/deploy-vps.md` bagian 14). Ganti `<INSTALL_DIR>` pada perintah di bawah sebelum menjalankan; pengguna yang menjalankan harus anggota grup `docker` (bukan harus root) |
@@ -154,7 +154,7 @@ Jalan mundur T-1: `docker compose down` TANPA `-v`. Production masih kosong, jad
 | # | Langkah | Detail | Pelaksana |
 |---|---|---|---|
 | H1 | Umumkan jendela dimulai; minta QC Desktop **berhenti sinkron** | | pemilik |
-| H2 | **Bekukan aplikasi lama** | Set Script Property `READ_ONLY=1` di proyek Apps Script; tunggu tulis terakhir selesai (±1 menit); uji satu tulis ditolak `UNAVAILABLE` dan baca tetap jalan. Mulai jendela tulis-beku (catat jam) | pemilik, atas persetujuan pemilik |
+| H2 | **[DILEWATI 2026-11-07, spek §19 butir 16]** **Bekukan aplikasi lama** | Set Script Property `READ_ONLY=1` di proyek Apps Script; tunggu tulis terakhir selesai (±1 menit); uji satu tulis ditolak `UNAVAILABLE` dan baca tetap jalan. Mulai jendela tulis-beku (catat jam) | pemilik, atas persetujuan pemilik |
 | H3 | Dump final Sheets (setelah H2, aplikasi lama beku) | `GOOGLE_SA_KEY_FILE=<berkas kunci lokal> GOOGLE_SPREADSHEET_ID=<id> bun run migrate:dump --out <jalur di luar repositori>/dump.json` (tambah `--force` hanya bila sengaja mengganti dump lama). Keluaran konsol: jumlah baris per sheet saja; berkas 0600 berisi data pengguna: JANGAN di-commit, simpan di luar repositori. Header sheet tak cocok membatalkan dump (tanpa berkas): perbaiki di Sheets lalu ulangi (rincian: `docs/setup-google.md` S9); simpan satu salinan arsip | agen, atas persetujuan pemilik |
 | H4 | Laporan impor | `bun run scripts/migrate/import-sheets.ts --dump dump.json --out import.sql --report report.json` **tanpa `--reset`** (kode keluar 1 bila `discarded` berisi: itu diharapkan) | agen |
 | H5 | **Persetujuan pembuangan atas dump FINAL** | Pemilik memeriksa `discarded` di `report.json` (isi dump final dapat berbeda dari gladi; persetujuan gladi tidak berlaku karena checksum). Bila hanya data uji: tulis `discard-approval.json` (`approvedBy`, `approvedOn`); bila ada yang dipakai sungguhan: BERHENTI (jalan mundur) | pemilik memutuskan |
@@ -167,7 +167,7 @@ Jalan mundur T-1: `docker compose down` TANPA `-v`. Production masih kosong, jad
 | H11 | **Alihkan pengguna** | Aktifkan blok nginx production (`nginx -t` lulus baru `nginx -s reload`), alihkan DNS Cloudflare `qc` ke VPS (Proxied; SSL/TLS Full strict), umumkan URL `https://qc.rhd.my.id`; ganti URL QC Desktop ke `…/api/v1/sync` bila sudah dipakai. Sebelum langkah ini jalan mundur tidak menyentuh pengguna | pemilik, atas persetujuan pemilik |
 | H12 | Tag dan PR cutover | **Tag `gas-legacy` pada `origin/main` SEBELUM merge** (titik jalan mundur). Lalu gabungkan PR cutover dari branch kerja: hapus `.github/workflows/deploy.yml` (GAS) dan daftar `feat/migrasi-cloudflare` di `deploy-server.yml`, aturan environment `staging` menjadi hanya branch `dev` dan `main` (`docs/ci-cd.md`, "Saat cutover"); baca PERINGATAN di atas dulu. Merge memicu deploy production dari `main` (image baru, restart singkat) | pemilik, atas persetujuan pemilik |
 | H13 | Pantau 1 jam pertama | `docker logs -f qc-production-app`, `docker stats`, `free -h`, galat 5xx di log nginx, pekerjaan latar (job QR), dump malam pertama berhasil | pemilik + agen |
-| H14 | Aplikasi lama dan Sheets dibiarkan **utuh dan baca-saja** (`READ_ONLY=1` tetap) | Catat waktu selesai jendela di tabel bawah | pemilik |
+| H14 | Aplikasi lama dan Sheets dibiarkan **utuh** (`/exec` kini halaman pengalih; `READ_ONLY` tidak dipakai, §19 butir 16) | Catat waktu selesai jendela di tabel bawah | pemilik |
 
 ---
 

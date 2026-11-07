@@ -10,7 +10,7 @@ import { enqueueJob } from './service';
 import { EXPORT_TABLES } from './sheets-export';
 
 /**
- * Pemicu manual ekspor D1 -> Spreadsheet (Spek 8.3). Hanya tabel dalam `EXPORT_TABLES` yang boleh diminta;
+ * Pemicu manual ekspor database -> Spreadsheet (Spek 8.3). Hanya tabel dalam `EXPORT_TABLES` yang boleh diminta;
  * tabel operasional/rahasia (jobs, counters, rate_limits, settings, d1_migrations, job_blobs) tidak pernah.
  */
 export function validateExportSheets(raw: unknown): ExportSheetsInput {

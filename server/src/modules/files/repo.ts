@@ -60,7 +60,7 @@ export async function findActiveFile(env: Env, id: string): Promise<FileRecord |
   return row && row.drive_id.trim() !== '' ? toFile(row) : null;
 }
 
-/** Kueri berkas aktif menurut id (dipecah <= 90 parameter per kueri; batas D1 100). */
+/** Kueri berkas aktif menurut id (dipecah <= 90 parameter per kueri). */
 export function activeFilesStatements(env: Env, ids: readonly string[]): DbStatement[] {
   const statements: DbStatement[] = [];
   for (let from = 0; from < ids.length; from += 90) {
@@ -83,7 +83,7 @@ export function activeFilesFromResults(
 
 export async function findActiveFiles(env: Env, ids: readonly string[]): Promise<FileRecord[]> {
   const out: FileRecord[] = [];
-  // Batas D1: 100 parameter terikat per kueri.
+  // Dipecah per 90 parameter agar kueri tetap kecil.
   for (let from = 0; from < ids.length; from += 90) {
     const chunk = ids.slice(from, from + 90);
     const rows = await env.DB.prepare(

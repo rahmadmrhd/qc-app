@@ -82,7 +82,7 @@ export function handoverRecord(
   };
 }
 
-/** Menyisipkan task langsung ke D1 (kolom turunan dihitung seperti penulisan nyata), beserta komentarnya. */
+/** Menyisipkan task langsung ke database (kolom turunan dihitung seperti penulisan nyata), beserta komentarnya. */
 export async function seedHandover(
   env: Pick<Env, 'DB'>,
   overrides: Partial<HandoverRecord> & Pick<HandoverRecord, 'id' | 'number' | 'locationId'>,
