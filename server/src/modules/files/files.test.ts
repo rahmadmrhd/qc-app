@@ -228,8 +228,8 @@ describe('unggah', () => {
     expect(await ensureDriveFolder(env)).toBe(first);
   });
 
-  test('ITEM_IMAGES_FOLDER_ID dari .env dipakai langsung: tidak membuat folder, tidak menulis settings, dan hanya memverifikasi', async () => {
-    const configured = { ...env, ITEM_IMAGES_FOLDER_ID: 'IMAGESFOLDER001' };
+  test('ATTACHMENTS_FOLDER_ID dari .env dipakai langsung: tidak membuat folder, tidak menulis settings, dan hanya memverifikasi', async () => {
+    const configured = { ...env, ATTACHMENTS_FOLDER_ID: 'IMAGESFOLDER001' };
     env.BRIDGE.state.folders.add('IMAGESFOLDER001');
     expect(await ensureDriveFolder(configured)).toBe('IMAGESFOLDER001');
     const saved = await uploadFile(configured, validateUploadFile(upload()), admin);

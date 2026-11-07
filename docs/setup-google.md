@@ -21,12 +21,12 @@ Server memanggil Drive v3 dan Sheets v4 langsung lewat `fetch` dengan token OAut
 
 ### S3. Bagikan folder induk dan spreadsheet
 1. Di Drive pemilik, buat **satu folder induk** (mis. `QC App`; staging memakai folder induk sendiri). Bagikan ke email service account sebagai **Editor**. Salin id folder dari URL (`.../folders/<ID>`) sebagai `GOOGLE_ROOT_FOLDER_ID`.
-2. Di dalam induk ada **subfolder per fungsi**: gambar item, PDF sumber QR, ekspor QR, cadangan SQL. Dua cara:
+2. Di dalam induk ada **subfolder per fungsi**: lampiran (tabel `files`: gambar item dan lampiran lain), PDF sumber QR, ekspor QR, cadangan SQL. Dua cara:
    - biarkan kosong: server membuat `QC App Files`, `QC App QR`, `QC App QR Dokumen` di bawah induk saat pertama dibutuhkan dan mencatat id-nya di tabel `settings`;
-   - atau buat/pilih sendiri lalu isi `ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` di `.env` (id yang terisi hanya **diverifikasi**, tidak pernah dibuat atau ditimpa; folder yang tak terjangkau = galat jelas).
-3. **Folder lama** (mis. `QC App Files` milik pemilik yang sudah berisi gambar): **pindahkan** ke bawah folder induk **tanpa mengubah id** (seret di Drive; id berkas di basis data tetap valid), lalu isi `ITEM_IMAGES_FOLDER_ID` dengan id folder itu . Tabel `settings` TIDAK pernah diisi oleh impor data (migrasi cutover hanya mengimpor akses, QR, dan berkas yang dirujuk QR), jadi untuk folder lama id-nya WAJIB diisi di `.env`; mengosongkannya membuat server membuat folder BARU yang kosong dan berkas lama tak terbaca.
+   - atau buat/pilih sendiri lalu isi `ATTACHMENTS_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` di `.env` (id yang terisi hanya **diverifikasi**, tidak pernah dibuat atau ditimpa; folder yang tak terjangkau = galat jelas).
+3. **Folder lama** (mis. `QC App Files` milik pemilik yang sudah berisi gambar): **pindahkan** ke bawah folder induk **tanpa mengubah id** (seret di Drive; id berkas di basis data tetap valid), lalu isi `ATTACHMENTS_FOLDER_ID` dengan id folder itu . Tabel `settings` TIDAK pernah diisi oleh impor data (migrasi cutover hanya mengimpor akses, QR, dan berkas yang dirujuk QR), jadi untuk folder lama id-nya WAJIB diisi di `.env`; mengosongkannya membuat server membuat folder BARU yang kosong dan berkas lama tak terbaca.
 4. Spreadsheet data tunggal (ekspor job `exports.sheets` dan sumber impor awal): bagikan ke service account sebagai **Editor**, isi `GOOGLE_SPREADSHEET_ID`. Sheet ekspor selalu berawalan `export_`; klien menolak menulis ke sheet lain.
-5. Aturan penjaga: klien hanya menyentuh folder yang tercantum (`ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID`, `ALLOWED_FOLDER_IDS` untuk tambahan di luar induk) **atau subfolder langsung dari folder induk** (diverifikasi lewat API). Berkas harus anak folder yang diminta. `createFolder` SELALU membuat folder di bawah `GOOGLE_ROOT_FOLDER_ID`. Id Drive yang masuk ke jalur URL divalidasi `^[A-Za-z0-9_-]{10,100}$` (tanpa `../`, `?`, `#`).
+5. Aturan penjaga: klien hanya menyentuh folder yang tercantum (`ATTACHMENTS_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID`, `ALLOWED_FOLDER_IDS` untuk tambahan di luar induk) **atau subfolder langsung dari folder induk** (diverifikasi lewat API). Berkas harus anak folder yang diminta. `createFolder` SELALU membuat folder di bawah `GOOGLE_ROOT_FOLDER_ID`. Id Drive yang masuk ke jalur URL divalidasi `^[A-Za-z0-9_-]{10,100}$` (tanpa `../`, `?`, `#`).
 
 ### S4. Isi `.env`
 | Variabel | Isi |
@@ -34,7 +34,7 @@ Server memanggil Drive v3 dan Sheets v4 langsung lewat `fetch` dengan token OAut
 | `GOOGLE_SA_KEY_FILE` | Jalur berkas kunci (di kontainer: `/run/secrets/google-sa.json`). Wajib di produksi. |
 | `GOOGLE_ROOT_FOLDER_ID` | Id folder induk Drive. Wajib di produksi (compose menolak kosong). |
 | `GOOGLE_SPREADSHEET_ID` | Id spreadsheet data tunggal (kosong = ekspor/impor Sheets tidak tersedia). |
-| `ITEM_IMAGES_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` | Opsional (lihat S3). |
+| `ATTACHMENTS_FOLDER_ID`, `QR_FOLDER_ID`, `QR_DOC_FOLDER_ID`, `BACKUP_FOLDER_ID` | Opsional (lihat S3). |
 | `ALLOWED_FOLDER_IDS` | Opsional: id folder tambahan di luar induk, dipisah koma. |
 
 Di luar produksi semuanya opsional: tanpa konfigurasi Google, operasi Drive/Sheets gagal dengan `UNAVAILABLE` ("Google belum dikonfigurasi") dan sisa aplikasi tetap berjalan. `BRIDGE_URL`/`BRIDGE_SECRET` (peninggalan jembatan Apps Script) sudah dihapus dan diabaikan.

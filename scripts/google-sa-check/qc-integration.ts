@@ -91,7 +91,7 @@ async function main(): Promise<number> {
     GOOGLE_SA_KEY_FILE: args.key,
     GOOGLE_ROOT_FOLDER_ID: args.root,
     GOOGLE_SPREADSHEET_ID: args.spreadsheet ?? '',
-    ITEM_IMAGES_FOLDER_ID: '',
+    ATTACHMENTS_FOLDER_ID: '',
     QR_FOLDER_ID: '',
     QR_DOC_FOLDER_ID: '',
     BACKUP_FOLDER_ID: '',

@@ -38,7 +38,7 @@ export async function ensureNamedFolder(
   settingKey: string,
   name: string,
 ): Promise<string> {
-  // Id dari `.env` (ITEM_IMAGES_FOLDER_ID, dst.) hanya diverifikasi: tidak pernah dibuat otomatis atau ditimpa.
+  // Id dari `.env` (ATTACHMENTS_FOLDER_ID, dst.) hanya diverifikasi: tidak pernah dibuat otomatis atau ditimpa.
   const existing = await folderIdOf(env, settingKey);
   const bridge = getBridge(env);
   if (existing) {
@@ -53,7 +53,7 @@ export async function ensureNamedFolder(
   return setSettingIfAbsent(env, settingKey, id);
 }
 
-/** Folder gambar item; perilaku FS13 ada di `ensureNamedFolder`. */
+/** Folder lampiran (berkas di tabel `files`); perilaku FS13 ada di `ensureNamedFolder`. */
 export function ensureDriveFolder(env: Env): Promise<string> {
   return ensureNamedFolder(env, SETTING_DRIVE_FOLDER_ID, DRIVE_FOLDER_NAME);
 }
