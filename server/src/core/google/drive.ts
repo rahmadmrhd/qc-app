@@ -560,6 +560,8 @@ export function createDriveApi(
       if (!isDriveId(fileId)) return;
       const meta = await getMeta('revokeSharing', fileId);
       if (meta === null) return;
+      // Berkas di sampah: Drive menolak perubahan izin (403 cannotDeletePermission) dan tak ada yang perlu dicabut.
+      if (meta.trashed === true) return;
       await assertManaged(meta);
       const list = await http.request({
         op: 'revokeSharing',
