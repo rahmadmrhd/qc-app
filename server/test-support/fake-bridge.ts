@@ -42,7 +42,7 @@ function base64Size(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding;
 }
 
-/** Jembatan Drive/Sheets dalam memori, meniru semantik `Platform` GAS (induk folder, tempat sampah). */
+/** Jembatan Drive/Sheets dalam memori (induk folder, tempat sampah). */
 export function createFakeBridge(): FakeBridge {
   const state: FakeBridgeState = {
     folders: new Set(),

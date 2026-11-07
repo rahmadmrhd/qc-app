@@ -1,6 +1,6 @@
 /**
- * Pemetaan Sheets -> MariaDB untuk impor (T33). Kolom Sheets mengikuti `TableSchema` di `gas/src/modules/*`
- * (disalin sebagai data karena skrip ini berjalan di Bun, bukan GAS); kolom MariaDB mengikuti
+ * Pemetaan Sheets -> MariaDB untuk impor (T33). Kolom Sheets mengikuti `TableSchema` aplikasi Apps Script lama (tag `gas-legacy`, `gas/src/modules/*`)
+ * (disalin sebagai data karena skrip ini berjalan di Bun, bukan Apps Script); kolom MariaDB mengikuti
  * `server/migrations`. `import-sheets.test.ts` mencocokkan keduanya dengan skema nyata (information_schema).
  *
  * LINGKUP FINAL impor (keputusan pemilik 2026-11-06, spek §14 dan §19 butir 9e): users, roles, locations,
@@ -199,7 +199,7 @@ export const TABLES: readonly TableDef[] = [
 
 /**
  * Kolom LEGASI per sheet: boleh ada di header tetapi bukan bagian skema. `audit_log.detail` dari aplikasi lama:
- * `migrateAuditDetail_` (`gas/src/modules/access/repo.ts`, dijalankan `setup`) memindahkan isinya ke
+ * `migrateAuditDetail_` (`gas/src/modules/access/repo.ts` di tag `gas-legacy`, dijalankan `setup`) memindahkan isinya ke
  * `before`/`after` lalu MENGOSONGKAN sel-nya, tetapi header-nya tidak pernah dihapus, jadi sheet produksi masih
  * memilikinya. Sel kosong diabaikan; sel terisi (migrasi belum menjangkau baris itu) TIDAK dihilangkan diam-diam:
  * `import-sheets` menjadikannya galat per baris (`KOLOM_LEGASI_TERISI`) sampai pemilik memutuskan (memindahkannya di

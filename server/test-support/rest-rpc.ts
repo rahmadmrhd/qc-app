@@ -3,7 +3,7 @@ import type { Env } from '@server/core/env';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
 import { API_ROUTES, downloadOutput, formatEtag, toRequestParts } from '@shared/api';
-import type { WorkerRpcMethod } from '@shared/rpc';
+import type { RpcMethod } from '@shared/rpc';
 import { type CallResult, callRoute } from './call-route';
 
 /**
@@ -26,7 +26,7 @@ export async function restRpc(
   }
   let parts: ReturnType<typeof toRequestParts>;
   try {
-    parts = toRequestParts(id as WorkerRpcMethod, (input ?? null) as never);
+    parts = toRequestParts(id as RpcMethod, (input ?? null) as never);
   } catch {
     // jalur tak dapat dibentuk (mis. id sengaja dikosongkan): validator RPC yang menilai
     return callRoute(env, token, id, input, getRoutes());
@@ -60,7 +60,7 @@ export async function restRpc(
     },
     env,
   );
-  if (response.ok && API_ROUTES[id as WorkerRpcMethod].download !== undefined) {
+  if (response.ok && API_ROUTES[id as RpcMethod].download !== undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     return { ok: true, data: downloadOutput(id as never, input as never, response.headers, bytes) };
   }

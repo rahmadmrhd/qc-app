@@ -2,8 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Kabel REST tidak memuat base64: tak boleh ada sisa base64 di kontrak Worker (`shared/rpc.ts`). DTO base64
-// hanya hidup di `shared/gas-legacy.ts` (kontrak Apps Script lama) sampai `gas/` dipensiunkan.
+// Kabel REST tidak memuat base64: tak boleh ada sisa base64 di kontrak RPC (`shared/rpc.ts`).
 test('shared/rpc.ts tidak memuat base64 (selain komentar)', () => {
   const text = readFileSync(join(import.meta.dir, 'rpc.ts'), 'utf8');
   const offending = text

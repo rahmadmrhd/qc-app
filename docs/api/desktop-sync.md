@@ -233,7 +233,7 @@ curl -s -X POST -H "Authorization: Bearer $SYNC_API_TOKEN" -H "Content-Type: app
 1. Folder gambar aplikasi dikonfigurasi di server (pengaturan `DRIVE_FOLDER_ID`) **sebelum** Desktop mendorong item yang membawa gambar.
 2. Desktop mendorong seluruh isi MySQL dengan `POST /sync/items/push` secara bertahap (≤ 50 item/panggilan, ≤ 25 bila membawa `detail`). Item tanpa `uid`, `id` = id MySQL.
 3. Desktop lalu menarik (`GET /sync/items` dari `sinceRev=0`) untuk memeriksa hasilnya dan menyimpan kursor.
-4. Setelah semua cocok, proyek GAS lama (`?action=insert|update|sync|delete`) dipensiunkan dan Desktop memakai kontrak ini.
+4. Setelah semua cocok, proyek GAS lama (`?action=insert|update|sync|delete`) dipensiunkan (sudah, T35) dan Desktop memakai kontrak ini.
 
 ### 3.7 Pemetaan dari protokol lama
 

@@ -3,17 +3,15 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 // Setelah T23 kabel web hanya REST (`/api/v1`): tidak boleh ada sisa kabel RPC lama di web/, server/, dan shared/.
-// `gas/` (aplikasi Apps Script lama) tetap memakai amplop RPC sampai dipensiunkan di T35; DTO amplop untuk GAS
-// hidup di `shared/gas-legacy.ts` (berkas itu dikecualikan di bawah).
+// Aplikasi Apps Script lama (amplop RPC) sudah dipensiunkan di T35; kodenya hanya ada di tag `gas-legacy`.
 
 const ROOT = join(import.meta.dir, '..');
 const SCAN_DIRS = ['web/src', 'server/src', 'server/test-support', 'server/scripts', 'shared'];
 const EXTENSIONS = ['.ts', '.tsx'];
 const IGNORED_DIRS = new Set(['node_modules', 'dist']);
 
-/** Berkas yang sah menyebut istilah lama: DTO GAS dan tes yang membuktikan jalur lama sudah hilang. */
+/** Berkas yang sah menyebut istilah lama: tes yang membuktikan jalur lama sudah hilang. */
 const ALLOWED: Record<string, readonly string[]> = {
-  'shared/gas-legacy.ts': ['RpcResult', 'RpcErrorBody'],
   'server/src/routes.test.ts': ['/api/rpc', '/api/boot'],
   'server/src/server.test.ts': ['/api/boot'],
   'server/src/http/rest.test.ts': ['/api/rpc'],

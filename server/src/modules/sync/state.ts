@@ -3,7 +3,7 @@ import type { DbStatement, Preparer } from '@server/core/db';
 export type SyncResource = 'brands' | 'items';
 
 /**
- * Menaikkan penghitung revisi sinkron sumber daya (menggantikan `nextRev_` Apps Script). Pernyataan ini
+ * Menaikkan penghitung revisi sinkron sumber daya. Pernyataan ini
  * WAJIB berada di transaksi yang sama dengan penulisan baris yang memakai revisinya lewat
  * `syncRevExpr(resource)`: kunci baris `sync_state` yang ditahan `INSERT ... ON DUPLICATE KEY UPDATE` sampai COMMIT
  * menserialkan penulis, sehingga revisi unik dan menaik, dan subkueri `syncRevExpr` di transaksi yang sama membaca

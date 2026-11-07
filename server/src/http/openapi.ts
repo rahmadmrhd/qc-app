@@ -16,7 +16,7 @@ import {
   SYNC_API_ROUTES,
   type SyncRouteId,
 } from '@shared/api';
-import { ERROR_CODES, type WorkerRpcMethod } from '@shared/rpc';
+import { ERROR_CODES, type RpcMethod } from '@shared/rpc';
 
 // Dokumen OpenAPI 3.1 yang dibangun dari tabel `API_ROUTES` (BUKAN dari skema validator, yang ditulis tangan):
 // jalur, verba, status, parameter jalur/query, header `If-Match`/`ETag`, `operationId` = id RPC, dan ringkasan
@@ -71,7 +71,7 @@ function problemResponse(description: string): Record<string, unknown> {
 }
 
 function operationFor(
-  id: WorkerRpcMethod,
+  id: RpcMethod,
   def: ApiRouteDef,
   created: boolean,
   routes: RouteTable,
@@ -199,7 +199,7 @@ function syncOperationFor(id: SyncRouteId): {
 /** Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur relatif terhadap `servers[0].url` = `/api/v1`). */
 export function buildOpenApi(routes: RouteTable): OpenApiDocument {
   const paths: OpenApiDocument['paths'] = {};
-  for (const id of Object.keys(API_ROUTES) as WorkerRpcMethod[]) {
+  for (const id of Object.keys(API_ROUTES) as RpcMethod[]) {
     const def = API_ROUTES[id];
     for (const created of def.create ? [false, true] : [false]) {
       const { verb, path, operation } = operationFor(id, def, created, routes);

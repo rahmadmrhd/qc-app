@@ -9,9 +9,9 @@ import {
 import {
   ERROR_CODES,
   type ErrorCode,
-  type WorkerRpcInput,
-  type WorkerRpcMethod,
-  type WorkerRpcOutput,
+  type RpcInput,
+  type RpcMethod,
+  type RpcOutput,
 } from '@shared/rpc';
 import { ApiError } from './api-error';
 
@@ -27,10 +27,7 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export type ApiCall = <M extends WorkerRpcMethod>(
-  id: M,
-  input: WorkerRpcInput<M>,
-) => Promise<WorkerRpcOutput<M>>;
+export type ApiCall = <M extends RpcMethod>(id: M, input: RpcInput<M>) => Promise<RpcOutput<M>>;
 
 interface ProblemShape {
   code: ErrorCode;
@@ -124,10 +121,7 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
  */
 export function createApiClient(options: ApiClientOptions = {}): ApiCall {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
-  async function call<M extends WorkerRpcMethod>(
-    id: M,
-    input: WorkerRpcInput<M>,
-  ): Promise<WorkerRpcOutput<M>> {
+  async function call<M extends RpcMethod>(id: M, input: RpcInput<M>): Promise<RpcOutput<M>> {
     const parts = toRequestParts(id, input);
     const isDownload = API_ROUTES[id].download !== undefined;
     const doFetch = options.fetchImpl ?? fetch;
@@ -160,10 +154,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     }
     if (!response.ok) throw errorFromResponse(response.status, text);
     if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
-    if (text === '') return undefined as unknown as WorkerRpcOutput<M>;
+    if (text === '') return undefined as unknown as RpcOutput<M>;
     const data = parseJson(text);
     if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
-    return data as WorkerRpcOutput<M>;
+    return data as RpcOutput<M>;
   }
   return call;
 }

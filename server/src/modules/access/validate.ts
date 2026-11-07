@@ -16,7 +16,7 @@ import type {
 
 const USER_STATUS_VALUES = ['active', 'inactive'] as const;
 
-/** Nama berbeda dari `readAssignments_` di repo.ts: semua berkas GAS berbagi satu scope global. */
+/** Nama berbeda dari `readAssignments_` di repo.ts (dua fungsi berbeda, bukan duplikat). */
 function readAssignmentList(value: unknown, reader: ObjectReader): Assignment[] {
   if (!Array.isArray(value)) {
     reader.fail('assignments', 'Harus berupa daftar penugasan');

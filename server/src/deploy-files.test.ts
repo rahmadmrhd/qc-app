@@ -254,14 +254,11 @@ describe('deploy: Dockerfile dan .dockerignore', () => {
       '**/*.pem',
       '**/*-sa.json',
       '**/secrets',
-      'gas/*',
-      'bridge/*',
     ]) {
       expect(lines).toContain(entry);
     }
-    // package.json gas/bridge tetap masuk (bun.lock mencantumkan workspace-nya)
-    expect(lines).toContain('!gas/package.json');
-    expect(lines).toContain('!bridge/package.json');
+    // gas/ dan bridge/ sudah dipensiunkan (T35): tak ada lagi pengecualian untuk keduanya
+    expect(lines.some((line) => line.includes('gas/') || line.includes('bridge/'))).toBe(false);
   });
 });
 

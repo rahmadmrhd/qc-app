@@ -1,12 +1,11 @@
 # QC App
 
-Aplikasi web internal Quality Control. Frontend React + TanStack + shadcn/ui. Backend baru: server Bun + Hono + MariaDB (`server/`), dikembangkan lokal terhadap MariaDB dev di VPS lewat terowongan SSH. Aplikasi Google Apps Script + Google Sheets yang lama (`gas/`) masih ada sampai cutover.
+Aplikasi web internal Quality Control. Frontend React + TanStack + shadcn/ui. Backend baru: server Bun + Hono + MariaDB (`server/`), dikembangkan lokal terhadap MariaDB dev di VPS lewat terowongan SSH. Production berjalan di VPS (`docs/deploy-vps.md`, `docs/ci-cd.md`). Aplikasi Google Apps Script + Google Sheets yang lama sudah dipensiunkan (T35); kodenya hanya ada di tag `gas-legacy`.
 
 ## Prasyarat
 - [Bun](https://bun.sh) versi terbaru
 - Git
 - Akses SSH ke VPS lewat alias `rhd_vps_ipv4` (terowongan ke MariaDB dev/tes)
-- [clasp](https://github.com/google/clasp) 3.x dan `clasp login`, hanya untuk aplikasi Apps Script lama
 
 ## Mulai
 ```bash
@@ -26,14 +25,11 @@ Buka http://localhost:3000 dan tekan "Masuk sebagai pengguna dev". Tema terang/g
 | `bun run db:seed` | migrasi + data contoh ke skema `qc_dev` |
 | `bun run check` | typecheck, lint, test (butuh tunnel; tes server dibagi ke 4 proses paralel) |
 | `bun run build` | build web ke `server/dist` (dilayani server Bun) |
-| `bun run build:gas` | build `gas/dist` (aplikasi Apps Script lama) |
-| `bun run push` | check + build GAS + `clasp push` |
-| `bun run deploy` | push + perbarui deployment web app Apps Script |
 
 ## Dokumentasi
 - Pengembangan lokal server (tunnel, `.env`, seed, tes): `docs/dev-server.md`
 - Membaca log server: `docs/observability.md`
 - Menambah modul: `docs/adding-a-module.md`
-- Setup Google Cloud, Script Properties, deploy pertama aplikasi Apps Script: `docs/setup-google.md`
+- Setup Google Cloud (service account untuk Drive/Sheets): `docs/setup-google.md`
 - Checklist uji manual: `docs/e2e-checklist.md`
 - PRD: `docs/prd/`

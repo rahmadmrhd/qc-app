@@ -265,7 +265,7 @@ export function updateLocationStmt(db: Db, location: LocationRecord): DbStatemen
 }
 
 /**
- * Jalankan `batch` tulis; pelanggaran indeks UNIK (penjaga keunikan yang di Apps Script dijaga lock) dipetakan ke
+ * Jalankan `batch` tulis; pelanggaran indeks UNIK dipetakan ke
  * CONFLICT dengan pesan per kolom. `conflicts` dikunci dengan NAMA INDEKS MariaDB dari baseline (mis.
  * `users_email`, `roles_name_unique`; PRIMARY KEY bernama `PRIMARY`), sesuai `DbError.key`.
  */

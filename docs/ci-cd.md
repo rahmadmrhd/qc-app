@@ -13,7 +13,7 @@ Alur satu run: **`meta`** (menentukan environment dan commit yang dibangun, meno
 | push langsung ke `main` atau `dev` | tidak ada | tidak memicu deploy (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge) |
 | Manual (Actions -> Deploy Server -> Run workflow) | pilihan `staging`/`production` | `production` hanya dari `main`; `staging` dari `main` atau `dev`; ref lain ditolak oleh job `meta` sebelum checkout dan sebelum rahasia dibaca |
 
-Perubahan hanya di `docs/**`, `**/*.md`, `gas/**`, `bridge/**` tidak memicu deploy (tidak masuk ke image).
+Perubahan hanya di `docs/**` dan `**/*.md` tidak memicu deploy (tidak masuk ke image).
 
 ### Cutover (T34), selesai 2026-11-07
 
