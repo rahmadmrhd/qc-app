@@ -560,6 +560,8 @@ export function createDriveApi(
       if (!isDriveId(fileId)) return;
       const meta = await getMeta('revokeSharing', fileId);
       if (meta === null) return;
+      // Berkas di sampah: Drive menolak perubahan izin (403 cannotDeletePermission) dan tak ada yang perlu dicabut.
+      if (meta.trashed === true) return;
       await assertManaged(meta);
       const list = await http.request({
         op: 'revokeSharing',
@@ -579,7 +581,16 @@ export function createDriveApi(
           url: `${DRIVE}/files/${path(fileId)}/permissions/${path(permission.id)}`,
           idempotent: true,
         });
-        if (response.status !== 404 && !response.ok) await failResponse('revokeSharing', response);
+        if (response.status === 404 || response.ok) continue;
+        // Berkas milik akun lain: Drive hanya mengizinkan pemilik menghapus izin. Kondisi permanen, jadi diberi
+        // pesan yang dapat ditindaklanjuti (pemanggil mencatatnya sekali), bukan galat akses generik.
+        if (response.status === 403 && (await errorReason(response)) === 'cannotDeletePermission') {
+          throw appError(
+            'FORBIDDEN',
+            'Berkas milik akun lain: service account tidak dapat mencabut berbagi. Cabut manual di Google Drive (Bagikan > Dibatasi) atau pindahkan berkas ke sampah.',
+          );
+        }
+        await failResponse('revokeSharing', response);
       }
     },
 
