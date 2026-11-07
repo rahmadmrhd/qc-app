@@ -140,7 +140,7 @@ export interface FileDto {
   height: number;
 }
 
-/** Unggah gambar (kontrak Worker/REST): byte mentah; `mime` = Content-Type badan. */
+/** Unggah gambar (kontrak REST): byte mentah; `mime` = Content-Type badan. */
 export interface UploadFileInput {
   mime: string;
   bytes: Uint8Array;
@@ -618,7 +618,7 @@ export interface ExportQrJobDto {
   jobId: string;
 }
 
-/** Ekspor tabel D1 ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
+/** Ekspor tabel database ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
 export interface ExportSheetsInput {
   tables?: string[];
 }

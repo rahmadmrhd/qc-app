@@ -95,7 +95,7 @@ export function itemLabel(item: { brand: string; model: string }): string {
   return `${item.brand} ${item.model}`;
 }
 
-/** Nama merk dari daftar merk (cache memori isolate, <= 15 dtk); bila tak ada di sana, langsung dari D1. */
+/** Nama merk dari daftar merk (cache memori proses, <= 15 dtk); bila tak ada di sana, langsung dari database. */
 async function brandNameOf(env: Env, brandId: string): Promise<string> {
   const known = (await listBrands(env)).find((brand) => brand.id === brandId);
   if (known) return known.name;
@@ -381,10 +381,10 @@ export interface WriteItemOptions {
   status?: ItemStatus | undefined;
   /**
    * Merk bernama `input.brand` yang sudah diketahui pemanggil (`null` = pasti belum ada); `undefined` = dicari
-   * di sini (daftar cache dulu, bila tak ada langsung ke D1 sebelum membuat merk baru).
+   * di sini (daftar cache dulu, bila tak ada langsung ke database sebelum membuat merk baru).
    */
   knownBrand?: BrandRecord | null | undefined;
-  /** Hasil baca yang sudah dimuat pemanggil dalam `batch()` bersama (menghemat round trip D1). */
+  /** Hasil baca yang sudah dimuat pemanggil dalam `batch()` bersama (menghemat round trip database). */
   preloaded?: { owners: NameOwners; files: readonly FileRecord[] } | undefined;
 }
 

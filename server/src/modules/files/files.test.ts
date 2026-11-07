@@ -119,7 +119,7 @@ describe('unggah', () => {
     expect(first?.base64).toBe(PNG);
   });
 
-  test('urutan Drive dulu, lalu D1: jembatan gagal = tidak ada baris files, galat UNAVAILABLE jelas', async () => {
+  test('urutan Drive dulu, lalu database: jembatan gagal = tidak ada baris files, galat UNAVAILABLE jelas', async () => {
     await ensureDriveFolder(env);
     env.BRIDGE.failNext('createFile', new Error('Drive 500'));
     const error = await captureAppErrorAsync(() => up());
@@ -132,7 +132,7 @@ describe('unggah', () => {
     expect(await files()).toHaveLength(1);
   });
 
-  test('INSERT D1 gagal setelah Drive sukses: berkas Drive dibuang (trashFile) dan galat jelas', async () => {
+  test('INSERT database gagal setelah Drive sukses: berkas Drive dibuang (trashFile) dan galat jelas', async () => {
     const realDb = env.DB;
     env.DB = {
       prepare: (sql: string) => {
@@ -140,7 +140,7 @@ describe('unggah', () => {
           return {
             bind: () => ({
               run: async () => {
-                throw new Error('D1 down');
+                throw new Error('DB down');
               },
             }),
           };
@@ -169,7 +169,7 @@ describe('unggah', () => {
           ? {
               bind: () => ({
                 run: async () => {
-                  throw new Error('D1 down');
+                  throw new Error('DB down');
                 },
               }),
             }
@@ -274,7 +274,7 @@ describe('unggah', () => {
 });
 
 describe('baca', () => {
-  test('readFile mengembalikan isi dari catatan D1, id tak dikenal NOT_FOUND', async () => {
+  test('readFile mengembalikan isi dari catatan database, id tak dikenal NOT_FOUND', async () => {
     const saved = await up();
     expect(await readFile(env, { id: saved.id })).toEqual({
       id: saved.id,
@@ -476,7 +476,7 @@ describe('attachFiles', () => {
 });
 
 describe('penghapusan (pending_delete)', () => {
-  test('tandai di D1, buang di Drive, lalu hapus baris', async () => {
+  test('tandai di database, buang di Drive, lalu hapus baris', async () => {
     const a = await up();
     await deleteFiles(env, [a.id]);
     expect(await files()).toHaveLength(0);

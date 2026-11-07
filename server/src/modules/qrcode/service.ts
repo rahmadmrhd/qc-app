@@ -646,7 +646,7 @@ export async function removeQrDesign(
       after: null,
     }),
   ]);
-  // I/O Drive sesudah D1. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
+  // I/O Drive sesudah database. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
   for (const driveId of [design.exportPdfDriveId, design.exportPngDriveId]) {
     if (driveId === '') continue;
     await afterQrCommit('berkas ekspor', () =>
@@ -667,7 +667,7 @@ function toQrDocumentDto(doc: QrDocumentRecord): QrDocumentDto {
 
 /**
  * Unggah PDF sumber, atau ganti isi PDF yang ada dengan id Drive (dan URL) yang SAMA agar label tercetak tetap
- * valid. Drive DULU lewat jembatan, lalu catatan D1.
+ * valid. Drive DULU lewat jembatan, lalu catatan database.
  */
 export async function uploadQrPdf(
   env: Env,

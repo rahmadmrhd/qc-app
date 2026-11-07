@@ -3,7 +3,7 @@ import type { AuthErrorCode } from '@shared/rpc';
 /** Cache query tersimpan (lihat app/query-persist); dibuang saat keluar/sesi berakhir. */
 export const PERSISTED_CACHE_KEY = 'qc.cache.v1';
 
-/** Awal alur login Google (ditangani Worker; `run_worker_first` mencakup /auth/*). */
+/** Awal alur login Google (ditangani server, rute `/auth/*`). */
 export const LOGIN_URL = '/auth/login';
 
 export interface SessionState {

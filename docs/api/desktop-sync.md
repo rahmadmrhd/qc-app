@@ -9,7 +9,7 @@
 
 Dokumen ini adalah kontrak antara dua proyek terpisah. Perubahan yang tidak kompatibel menaikkan versi API (`apiVersion` pada `GET /sync/ping`).
 
-> **Catatan keputusan (REST, 2026-11-05/06, disetujui pemilik produk).** Seluruh API, termasuk sinkron QC Desktop, dikonversi ke REST pada migrasi ke VPS (spek `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md`, §2 butir 6 dan §19 butir 7). Alasan: kontrak ini belum dipakai klien mana pun, jadi tidak ada jalur kompatibilitas yang perlu dijaga. Versi 1 (amplop `{ v, method, token, payload }` ke satu endpoint, token di badan, redirect Apps Script, batas peninggalan CPU edge 5 item per push) **dihapus seluruhnya**; `POST /sync` kini menjawab 404.
+> **Catatan keputusan (REST, 2026-11-05/06, disetujui pemilik produk).** Seluruh API, termasuk sinkron QC Desktop, dikonversi ke REST pada migrasi ke VPS (spek `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md`, §2 butir 6 dan §19 butir 7). Alasan: kontrak ini belum dipakai klien mana pun, jadi tidak ada jalur kompatibilitas yang perlu dijaga. Versi 1 (amplop `{ v, method, token, payload }` ke satu endpoint, token di badan, redirect Apps Script, batas lama 5 item per push) **dihapus seluruhnya**; `POST /sync` kini menjawab 404.
 
 ---
 
@@ -290,5 +290,5 @@ Dokumen ini hanya menetapkan konvensi agar sumber daya stok memakai kerangka yan
 
 | Versi | Tanggal | Perubahan |
 |---|---|---|
-| 1 | 2026-10 (Fase B2) | Amplop RPC `{ v, method, token, payload }` ke satu endpoint (`POST /exec` Apps Script, lalu `POST /sync`); token di badan; batas peninggalan CPU edge (pull dengan detail 50, push 5 item) sempat dipakai di endpoint Worker. |
+| 1 | 2026-10 (Fase B2) | Amplop RPC `{ v, method, token, payload }` ke satu endpoint (`POST /exec` Apps Script, lalu `POST /sync`); token di badan; batas lama (pull dengan detail 50, push 5 item) sempat dipakai. |
 | 2 | 2026-11-05/06 | REST `/api/v1/sync/*` dengan `Authorization: Bearer`; galat problem+json; jawaban tanpa amplop; berkas sebagai byte mentah; semua kegagalan otentikasi seragam 401; batas push/pull dikembalikan ke nilai dokumen (pull dengan detail 200, push 50/25). Disetujui pemilik produk; alasan: kontrak belum dipakai klien mana pun. Bentuk item/merk dan semantik `rev`/`baseRev`/`overwrite` tidak berubah. |

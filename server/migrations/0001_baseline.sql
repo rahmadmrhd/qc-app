@@ -1,4 +1,4 @@
--- Skema baseline MariaDB 11.8 (terjemahan SQLite-D1 0001..0009). Satu tabel per TableSchema Sheets.
+-- Skema baseline MariaDB 11.8 (terjemahan skema SQLite lama 0001..0009). Satu tabel per TableSchema Sheets.
 --
 -- Konvensi:
 --  * Semua tabel InnoDB, utf8mb4 + utf8mb4_nopad_bin: perbandingan BYTE PERSIS (setara SQLite BINARY; 'a' <> 'a ',

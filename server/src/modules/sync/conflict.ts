@@ -15,7 +15,7 @@ export function isStaleWrite(
 
 /**
  * Galat saat memproses satu entri tidak membatalkan entri lain. Galat aplikasi (isi tidak sah, bentrok) -> `invalid`;
- * galat tak terduga (D1, jembatan) -> `error` yang boleh diulang, dan dicatat.
+ * galat tak terduga (database, Google) -> `error` yang boleh diulang, dan dicatat.
  */
 export function syncFailureResult<T>(error: unknown, index: number): SyncEntryResult<T> {
   if (isAppError(error)) {

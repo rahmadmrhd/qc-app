@@ -3,7 +3,7 @@
 Contoh: modul `item` (Data Item). Modul sudah terdaftar di `MODULES` (`shared/permissions.ts`); untuk modul yang benar-benar baru, tambahkan key dan label di sana terlebih dahulu.
 
 ## 1. Kontrak — `shared/rpc.ts` dan `shared/api.ts`
-Tambahkan DTO, input, dan entri `WorkerRpcContract` (`shared/rpc.ts`), mis. `'item.list': { input: null; output: ItemDto[] }`, lalu entri `API_ROUTES` di `shared/api.ts` (verba HTTP, jalur `/api/v1/...`, field query, `ifMatch`/`etag` untuk rute berversi, `create` untuk 201+`Location`). Satu tabel itu dipakai klien, server, dan OpenAPI; `shared/api.test.ts` gagal bila id kontrak dan tabel tidak sejalan.
+Tambahkan DTO, input, dan entri `RpcContract` (`shared/rpc.ts`), mis. `'item.list': { input: null; output: ItemDto[] }`, lalu entri `API_ROUTES` di `shared/api.ts` (verba HTTP, jalur `/api/v1/...`, field query, `ifMatch`/`etag` untuk rute berversi, `create` untuk 201+`Location`). Satu tabel itu dipakai klien, server, dan OpenAPI; `shared/api.test.ts` gagal bila id kontrak dan tabel tidak sejalan.
 
 ## 2. Backend — `server/src/modules/item/`
 - `repo.ts` — kueri MariaDB lewat adaptor `Db` (`prepare(sql).bind(...)`, `batch`, `transaction`); migrasi skema di `server/migrations/NNNN_nama.sql`.

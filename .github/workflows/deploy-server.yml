@@ -1,6 +1,6 @@
 name: Deploy Server
 
-# Menggantikan deploy-worker.yml (Cloudflare) untuk server Bun + MariaDB di VPS. Alur: check -> build image dan
+# Deploy server Bun + MariaDB di VPS. Alur: check -> build image dan
 # dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping lokal dan lewat nginx dari dalam
 # VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
