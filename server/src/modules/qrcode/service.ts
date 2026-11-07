@@ -586,6 +586,9 @@ async function ensureQrDocumentShared(env: Env, documentId: string): Promise<voi
   await env.DB.batch([updateQrDocumentStmt(env.DB, { ...doc, shared: true })]);
 }
 
+/** Galat pencabutan berbagi yang sudah dicatat, per `Env` (satu per proses di produksi). */
+const revokeLogged = new WeakMap<Env, Set<string>>();
+
 /**
  * Mencabut berbagi publik PDF sumber yang tidak dipakai konfigurasi mana pun: segera untuk dokumen yang baru
  * dilepas (`releasedIds`), dan setelah masa tenggang untuk unggahan yatim. Galat jembatan hanya dicatat dan
@@ -614,9 +617,15 @@ export async function revokeUnusedQrDocuments(
       await env.DB.batch([updateQrDocumentStmt(env.DB, { ...doc, shared: false })]);
       revoked += 1;
     } catch (error) {
-      console.error(
-        `qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // Pembersihan berjalan tiap jam: galat yang sama untuk dokumen yang sama dicatat sekali per proses.
+      const seen = revokeLogged.get(env) ?? new Set<string>();
+      revokeLogged.set(env, seen);
+      const key = `${doc.driveId}|${message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        console.error(`qrcode: berbagi PDF ${doc.driveId} tidak dapat dicabut: ${message}`);
+      }
     }
   }
   return revoked;

@@ -138,6 +138,28 @@ describe('dasar Drive: unggah, baca, info, folder', () => {
     ]);
   });
 
+  test('revokeSharing: 403 cannotDeletePermission = FORBIDDEN dengan pesan yang dapat ditindaklanjuti, tanpa log Google', async () => {
+    rig = await createGoogleRig();
+    const { client, fake } = rig;
+    const id = await client.createFile(QR_DOC_ID, 'a.pdf', 'application/pdf', B64);
+    await client.shareAnyoneWithLink(id);
+    fake.intercept = (request) =>
+      request.method === 'DELETE' && isDriveCall(request)
+        ? new Response(
+            JSON.stringify({
+              error: { code: 403, errors: [{ reason: 'cannotDeletePermission' }] },
+            }),
+            {
+              status: 403,
+            },
+          )
+        : undefined;
+    const error = await failure(client.revokeSharing(id));
+    expect(error.code).toBe('FORBIDDEN');
+    expect(error.message).toContain('Cabut manual di Google Drive');
+    expect(rig.logs.join(' ')).not.toContain('cannotDeletePermission');
+  });
+
   test('404 sesuai kontrak: baca/info null, trash/revoke sukses, rename/replace NOT_FOUND', async () => {
     rig = await createGoogleRig();
     const { client } = rig;
