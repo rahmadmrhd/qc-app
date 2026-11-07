@@ -103,13 +103,13 @@ Perubahan terjadi saat paste di editor, memakai aturan mekanis (tanpa memahami i
 - RPC `handovers.save` menerima catatan saja (tanpa baris item). RPC `setProgress`, `completeLine`, `completeAll` digantikan oleh operasi centang per butir, selesaikan task, dan komentar; ditambah `handovers.saveBatch` dan `handovers.board` (isi lengkap kartu dalam satu panggilan). Komentar memakai izin baca (`anyOf` WH/QC lihat, berlokasi); centang memakai `qc: edit`; isi dan batch memakai `handover: edit`; pembatalan tetap `handover: manage`.
 
 ## 6. Batasan proyek yang berlaku
-Aturan kode GAS di `CLAUDE.md` (akhiran `_`, nama top-level unik, tulis lewat `core/db` di dalam `withLock`, API GAS hanya lewat `platform_()`, tanpa API JS yang tidak ada di Apps Script), render Markdown aman, teks Sheets aman dari formula injection, form TanStack Form + zod, komponen shadcn, aturan performa (batching RPC, cache, `withRequestCache_`), dan jangan menaruh kode mock di build produksi. Dokumen yang wajib ikut diperbarui: PRD, `docs/e2e-checklist.md`, `CLAUDE.md`.
+Aturan di `CLAUDE.md`, render Markdown aman, teks Sheets aman dari formula injection, form TanStack Form + zod, komponen shadcn, aturan performa (batching RPC, cache, `withRequestCache_`), dan jangan menaruh kode mock di build produksi. Dokumen yang wajib ikut diperbarui: PRD, `docs/e2e-checklist.md`, `CLAUDE.md`.
 
 ## 7. Library editor dan ukuran bundel
 Saya memilih **Tiptap** (ekstensi daftar tugas dan Markdown) **[pilihan saya]**; pemilik hanya meminta pengalaman seperti Tiptap. Bundel produksi saat ini sekitar 2,4 MB (±955 KB gzip) dengan editor lama. Anggaran: tambahan paling banyak sekitar 450 KB mentah dan 150 KB gzip **[pilihan saya]**; bila lebih, pembangun melapor dan memilih alternatif sebelum lanjut. Editor lama (`markdown-editor.tsx` dan `edit-ops.ts`) dihapus bila tidak lagi dipakai.
 
 ## 8. Dokumen yang diganti
-- `docs/prd/2026-10-18-qc-serah-terima-catatan-checklist.md` dan `docs/superpowers/plans/2026-10-18-qc-serah-terima-catatan-checklist.md`: ditandai digantikan oleh dokumen ini (dialog detail dan aturan "WH/pemantau tidak boleh berkomentar" tidak berlaku; kanban/kartu dipakai, dengan bentuk yang ditetapkan di bagian 4.6).
+- `docs/prd/2026-10-18-qc-serah-terima-catatan-checklist.md`: ditandai digantikan oleh dokumen ini (dialog detail dan aturan "WH/pemantau tidak boleh berkomentar" tidak berlaku; kanban/kartu dipakai, dengan bentuk yang ditetapkan di bagian 4.6).
 - `docs/prd/2026-10-09-qc-item-serah-terima.md` (FH1–FH9, FQ1–FQ6): diperbarui agar tidak lagi menyebut item katalog dan qty pada serah terima.
 
 ## 9. Contoh penerimaan (disetujui pemilik)

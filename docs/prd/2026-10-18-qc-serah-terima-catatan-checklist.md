@@ -8,7 +8,6 @@
 | Sumber permintaan | TASK-001, “Fitur Serah Terima QC-WH” |
 | Jenis dokumen | Spesifikasi implementasi; keputusan usulan dibedakan dari permintaan pengguna |
 | PRD sebelumnya | [Data Item & Serah Terima](2026-10-09-qc-item-serah-terima.md), terutama FH1–FH9, FQ1–FQ6, FAU1–FAU2 |
-| Rencana implementasi | [Paket pekerjaan TASK-001](../superpowers/plans/2026-10-18-qc-serah-terima-catatan-checklist.md) |
 
 ## 1. Masalah dan tujuan
 
@@ -19,10 +18,10 @@ Tujuan: WH membuat task dari hasil paste tanpa memilih item; QC membaca instruks
 ### Bukti dari proyek
 
 - `web/src/modules/handover/components/handover-form.tsx` memakai `Textarea` untuk catatan dan `ItemLinesField` untuk item × qty.
-- `shared/handover.ts`, `gas/src/modules/handover/validate.ts`, dan `web/src/modules/handover/schemas.ts` membatasi catatan 500 karakter dan mewajibkan minimal satu baris item.
+- `shared/handover.ts`, `server/src/modules/handover/validate.ts`, dan `web/src/modules/handover/schemas.ts` membatasi catatan 500 karakter dan mewajibkan minimal satu baris item.
 - `shared/rpc.ts` memisahkan summary daftar dari detail berisi baris; `web/src/routes/_app/handover/index.tsx` menampilkan `HandoversTable` dan menavigasi ke halaman detail.
 - `web/src/modules/markdown/markdown-editor.tsx` sudah memiliki editor Tulis/Pratinjau; `markdown-view.tsx` merender Markdown dengan pembatasan HTML dan URL.
-- `gas/src/modules/handover/service.ts` sudah memiliki lock, audit, dan pemeriksaan `expectedUpdatedAt` pada perubahan isi. Kode saat ini mengizinkan koreksi progres task selesai; bagian lama rencana Fase C yang melarangnya tidak dipakai sebagai acuan perilaku baru.
+- `server/src/modules/handover/service.ts` sudah memiliki lock, audit, dan pemeriksaan `expectedUpdatedAt` pada perubahan isi. Kode saat ini mengizinkan koreksi progres task selesai; bagian lama rencana Fase C yang melarangnya tidak dipakai sebagai acuan perilaku baru.
 
 ## 2. Pengguna dan izin
 
@@ -181,7 +180,7 @@ Tambahkan query key koleksi board dan invalidasi daftar/detail/audit setelah mut
 
 ## 9. Kebutuhan nonfungsional dan dependensi
 
-- Ikuti keamanan render FA6 dan format teks Sheets; semua akses GAS lewat `platform_()`, tulis memakai `core/db` dalam lock, fungsi GAS mengikuti aturan nama/global scope.
+- Ikuti keamanan render FA6 dan format teks Sheets; penulisan mengikuti aturan server di `CLAUDE.md` (CAS atau kunci baris, nilai selalu di-bind).
 - Usulan batas teknis memakai pola proyek: jumlah karakter sumber Markdown seluruh blok ditambah body komentar maksimum 20.000 (`shared/files.ts`/FA7); JSON terserialisasi maksimum 40.000 karakter (FI7). Keduanya diverifikasi di server. Ini adaptasi batas proyek untuk dokumen baru, bukan kebutuhan bisnis yang telah disetujui. Kutipan/metadata tetap ikut batas JSON.
 - Ponsel 375×812 dan tema terang/gelap mengikuti NFR proyek. Catatan panjang membungkus tanpa memotong isi; checkbox dan aksi komentar berlabel dan dapat diakses keyboard. Tanpa seleksi sentuh yang andal, sediakan aksi per blok untuk memilih rentang kutipan melalui input teks.
 - Tidak menetapkan SLA/angka latensi baru. Ukuran artefak produksi tetap mengikuti `verify-dist` proyek; dependensi baru memerlukan bukti bahwa batas build masih dipenuhi.

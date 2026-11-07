@@ -5,7 +5,7 @@
 | **Status** | Draft — menunggu review |
 | **Tanggal** | 2026-10-09 |
 | **Pemilik** | rahmadm.rhd@gmail.com |
-| **Bergantung pada** | `2026-10-08-qc-fondasi-akses.md` (rilis) dan `2026-10-08-qc-lokasi-cabang.md` (sudah di `dev`) |
+| **Bergantung pada** | `2026-10-08-qc-lokasi-cabang.md` (sudah di `dev`) dan fondasi akses (sesi, izin, audit; rilis) |
 
 ---
 
@@ -18,7 +18,7 @@ Dua modul bisnis pertama QC App, ditambah jalur sinkronisasi ke QC Desktop:
 1. **Data Item**: katalog tipe barang yang **dipakai bersama semua lokasi**: merk, tipe, status *country lock*, daftar stiker yang harus ditempel, kelengkapan aksesoris, galeri gambar lampiran, dan detail/spesifikasi dalam **editor Markdown dengan sisip gambar**.
 2. **Serah Terima WH → QC**: **task** yang dibuat Gudang (WH) untuk QC: nama customer + daftar tipe beserta jumlah. QC memperbarui jumlah yang selesai, atau menandai selesai per tipe maupun per task. Field customer dan tipe punya **auto-suggest**, sebab pengguna sering menulis nama yang berbeda untuk hal yang sama.
 
-3. **Sinkronisasi dengan QC Desktop** (Fase B2): QC App menjadi sistem utama data item (migrasi dari spreadsheet dan proyek GAS lama). QC Desktop, yang terhubung ke MySQL di balik VPN, **menarik dan mendorong** data lewat endpoint API bertoken. QC App tidak pernah berbicara ke MySQL. Kontraknya ada di `docs/api/desktop-sync.md` dan dirancang generik agar stok stiker dan stok manual book dapat menyusul.
+3. **Sinkronisasi dengan QC Desktop** (Fase B2): QC App menjadi sistem utama data item (migrasi dari spreadsheet lama). QC Desktop, yang terhubung ke MySQL di balik VPN, **menarik dan mendorong** data lewat endpoint API bertoken. QC App tidak pernah berbicara ke MySQL. Kontraknya ada di `docs/api/desktop-sync.md` dan dirancang generik agar stok stiker dan stok manual book dapat menyusul.
 
 Fondasi yang dibutuhkan keduanya ikut dibangun: penyimpanan **gambar di Google Drive** dan komponen **editor Markdown**.
 
@@ -149,10 +149,10 @@ Kontrak lengkap (rute, payload, contoh, aturan konflik): `docs/api/desktop-sync.
 ## 5. Kebutuhan Non-Fungsional
 | ID | Kebutuhan |
 |---|---|
-| NFR1 | Semua penulisan sheet di dalam `withLock`; semua akses Drive hanya lewat `platform_()` (aturan GAS proyek). |
+| NFR1 | Semua akses Drive hanya lewat klien Google (`getBridge(env)`, `server/src/core/google/`). |
 | NFR2 | Frontend tidak mempercayai klien: validasi ukuran, tipe, dan jumlah dilakukan ulang di server. |
 | NFR3 | Auto-suggest berjalan **di klien** atas daftar yang sudah dimuat (item dan customer aktif berjumlah ratusan, bukan jutaan); tanpa panggilan RPC per ketikan. |
-| NFR4 | Ukuran `gas/dist/index.html` tidak melebihi 1,5 MB setelah penambahan Markdown (pantau di `verify-dist`). |
+| NFR4 | Tiap potongan JS web tetap ≤ 600 KB gzip setelah penambahan Markdown (dijaga `verify-dist`). |
 | NFR5 | Sheet baru memakai pola yang ada (`core/db`, teks aman dari formula injection) dan dibuat otomatis oleh `setup`. |
 | NFR6 | Tabel dan formulir dapat dipakai di ponsel (375×812); editor Markdown menumpuk vertikal di layar sempit. |
 | NFR7 | Mode terang dan gelap, label Indonesia, tanpa warna sebagai satu-satunya penanda (selaras fondasi). |
@@ -169,7 +169,7 @@ Kontrak lengkap (rute, payload, contoh, aturan konflik): `docs/api/desktop-sync.
 
 Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebelum C agar item sungguhan sudah ada saat task dibuat).
 
-**Catatan router:** FH6 meminta izin "salah satu dari" (`handover: view` **atau** `qc: edit` di lokasi). Router GAS perlu mendukung izin berupa daftar alternatif; ini ditambahkan di Fase A bersama penanda `qc`.
+**Catatan router:** FH6 meminta izin "salah satu dari" (`handover: view` **atau** `qc: edit` di lokasi). Router perlu mendukung izin berupa daftar alternatif; ini ditambahkan di Fase A bersama penanda `qc`.
 
 ### 6.2 Model data (sheet baru)
 | Sheet | Kolom |
@@ -184,13 +184,13 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 `key` = merk+tipe (item) atau nama (merk, customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
 ### 6.3 Kontrak RPC (garis besar; rinci di rencana)
-`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.options`, `handovers.board` (seluruh isi board satu lokasi dalam satu panggilan), `handovers.get`, `handovers.save` (catatan saja; membuat customer baru bila perlu), `handovers.saveBatch` (atomik per permintaan, maks. 30 task per permintaan di Apps Script maupun server VPS; formulir bulk mengirim SATU permintaan atomik: gagal = tidak ada yang tersimpan. **Keputusan pemilik produk 2026-11-05** menggantikan batas lama 5 task (semula 10, diturunkan 2026-10-30 demi anggaran CPU platform sebelumnya) karena batas CPU platform sebelumnya tidak ada lagi di VPS), `handovers.cancel`, `handovers.setCheck` (centang per butir, `qc: edit`), `handovers.setDone { id, locationId }` (selesaikan task, `qc: edit`; tanpa field `done`), `handovers.reopen` (buka kembali task Dibatalkan, `handover: manage`), `handovers.comment` (hanya tambah; komentar umum dengan `quote` kosong; izin lihat). Rute `setProgress`, `completeLine`, dan `completeAll` dihapus. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
+`files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.options`, `handovers.board` (seluruh isi board satu lokasi dalam satu panggilan), `handovers.get`, `handovers.save` (catatan saja; membuat customer baru bila perlu), `handovers.saveBatch` (atomik per permintaan, maks. 30 task per permintaan di server VPS; formulir bulk mengirim SATU permintaan atomik: gagal = tidak ada yang tersimpan. **Keputusan pemilik produk 2026-11-05** menggantikan batas lama 5 task (semula 10, diturunkan 2026-10-30 demi anggaran CPU platform sebelumnya) karena batas CPU platform sebelumnya tidak ada lagi di VPS), `handovers.cancel`, `handovers.setCheck` (centang per butir, `qc: edit`), `handovers.setDone { id, locationId }` (selesaikan task, `qc: edit`; tanpa field `done`), `handovers.reopen` (buka kembali task Dibatalkan, `handover: manage`), `handovers.comment` (hanya tambah; komentar umum dengan `quote` kosong; izin lihat). Rute `setProgress`, `completeLine`, dan `completeAll` dihapus. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
 
 ### 6.3b Endpoint sinkronisasi
-`registerSyncRest` (`server/src/modules/sync/rest.ts`) mendaftarkan enam rute `SYNC_API_ROUTES` (`shared/api.ts`) pada `/api/v1`, memeriksa token Bearer dan pembatas per IP, lalu memanggil tabel handler sinkron (`server/src/modules/sync/routes.ts`); badan push dibatasi 5 MB. Id handler (`sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.brands.*`, `sync.file.get`) tetap sebagai nama internal dan `operationId` OpenAPI. Versi lama (`doPost` di `gas/src/main.ts`, amplop `{ v, method, token, payload }`) hanya tinggal di aplikasi GAS yang dipensiunkan di T35. Detail di `docs/api/desktop-sync.md`.
+`registerSyncRest` (`server/src/modules/sync/rest.ts`) mendaftarkan enam rute `SYNC_API_ROUTES` (`shared/api.ts`) pada `/api/v1`, memeriksa token Bearer dan pembatas per IP, lalu memanggil tabel handler sinkron (`server/src/modules/sync/routes.ts`); badan push dibatasi 5 MB. Id handler (`sync.ping`, `sync.items.pull`, `sync.items.push`, `sync.brands.*`, `sync.file.get`) tetap sebagai nama internal dan `operationId` OpenAPI. Versi lama (amplop `{ v, method, token, payload }`) sudah dihapus bersama aplikasi Apps Script lama (T35). Detail di `docs/api/desktop-sync.md`.
 
 ### 6.4 Gambar dan Markdown
-- Drive: `DriveApp` lewat `platform_()` (`driveCreateFile`, `driveReadBase64`); folder utama dibuat `setup`. Izin Drive ditambahkan ke `appsscript.json`; Google meminta persetujuan ulang sekali saat `setup`.
+- Drive: lewat klien Google (`server/src/core/google/`); folder utama dibuat saat pertama dipakai (`docs/setup-google.md`).
 - Dokumen merujuk gambar dengan `qcfile:<fileId>`, bukan URL Drive; izin diperiksa pada setiap `files.get`.
 - Pustaka: `react-markdown` + `remark-gfm` (tanpa plugin HTML mentah); editor dibangun sendiri di atas `<textarea>` agar ringan dan sesuai build satu-berkas.
 
@@ -202,7 +202,7 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 
 ## 7. Kualitas & Pengujian
 - Fungsi murni (normalisasi dan skor saran, turunan status task) dites tabel dengan nama-nama yang bervariasi.
-- Layanan GAS dites lewat memory platform (diperluas dengan Drive palsu).
+- Layanan server dites dengan klien Google palsu (`server/test-support/fake-bridge.ts`).
 - Tes izin per method: lokasi terlarang, nonaktif, dan tak dikenal untuk rute berlokasi; `item` global dari penugasan lokal.
 - Tes frontend untuk editor (sisip gambar, pratinjau aman), form task (saran, pembuatan customer inline, penanda mirip), dan tindakan QC.
 - Mock backend memuat data contoh item, customer, dan task agar `bun run dev` dapat dicoba penuh.
@@ -229,7 +229,7 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 ## 9. Definition of Done
 **Fase A**
 - [ ] `setup` membuat folder Drive dan sheet `files`; izin Drive tercantum di `appsscript.json`.
-- [ ] Upload, ambil, dan tampil gambar bekerja dengan pemeriksaan izin dan batas ukuran. (diverifikasi E2E di halaman Item, Fase B: unggah via google.script.run, tampil data URL di sandbox HtmlService, penolakan izin)
+- [ ] Upload, ambil, dan tampil gambar bekerja dengan pemeriksaan izin dan batas ukuran. (diverifikasi E2E di halaman Item, Fase B)
 - [x] Editor Markdown (tulis, pratinjau, sisip gambar lewat tombol/paste/seret) dan render aman dites.
 - [x] Modul `qc` ada di form Role; `item` global dari semua penugasan; tes `resolveAccess` diperbarui.
 
@@ -267,10 +267,10 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 | Model customer? | Tabel master; pembuatan inline saat mengetik tanpa form tambahan. |
 | Struktur dokumen? | Satu PRD, tiga rencana bertahap. |
 | Notifikasi? | Tidak di fase ini. |
-| Hubungan spreadsheet sinkron dengan QC App? | QC App menjadi sistem utama (migrasi dari spreadsheet dan proyek GAS lama); Desktop menarik/mendorong lewat API. |
+| Hubungan spreadsheet sinkron dengan QC App? | QC App menjadi sistem utama (migrasi dari spreadsheet lama); Desktop menarik/mendorong lewat API. |
 | Sumber kebenaran data item? | Dua arah (aturan konflik FS6). |
 | Gambar lama di spreadsheet? | Memakai folder Drive yang sama (`DRIVE_FOLDER_ID` = folder lama). |
-| Akses Desktop? | Endpoint API di QC App (GAS) dengan token. |
+| Akses Desktop? | Endpoint API di QC App (server Bun) dengan token. |
 | `isCountryLock` dan token? | Boolean; satu token bersama. |
 | Proyek GAS lama? | Dipensiunkan setelah migrasi; Desktop diarahkan ke REST `/api/v1/sync/*` QC App (keputusan 2026-11-05/06; sebelumnya `/exec`). |
 | Cara Desktop membaca gambar? | `GET /sync/files/{id}` (byte mentah). |
