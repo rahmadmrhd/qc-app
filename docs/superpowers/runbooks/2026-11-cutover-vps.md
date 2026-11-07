@@ -4,7 +4,7 @@
 |---|---|
 | **Rencana** | `docs/superpowers/plans/2026-11-05-migrasi-vps-docker-rest.md` Task 33 dan 34 |
 | **Spek** | `docs/superpowers/specs/2026-11-05-migrasi-vps-docker-rest-design.md` §13 (branch dan koeksistensi), §14 (data dan cutover), §19 butir 9 (data uji dibuang) |
-| **Menggantikan** | `docs/superpowers/runbooks/2026-10-cutover-cloudflare.md` (rencana Cloudflare dibatalkan 2026-11-05) |
+| **Menggantikan** | runbook cutover edge serverless lama (dibatalkan 2026-11-05; dokumennya dihapus 2026-11-07) |
 | **Status** | **Draf, belum pernah dijalankan.** Tidak ada langkah di sini yang dieksekusi oleh penulisnya; gladi (Fase 0) wajib mulus dua kali berturut-turut sebelum hari-H |
 | **Lingkungan** | Staging: `https://qc-dev.rhd.my.id`, folder instalasi `<INSTALL_DIR>/staging`, kontainer `qc-staging-db` / `qc-staging-app`, skema `qc_dev`. Production: `https://qc.rhd.my.id`, folder instalasi `<INSTALL_DIR>/production`, kontainer `qc-production-db` / `qc-production-app`, skema `qc_production` (nama dari `deploy/compose.yml`, `docs/deploy-vps.md`) |
 | **Folder instalasi** | `<INSTALL_DIR>` = folder instalasi di server tempat cutover dijalankan (VPS pribadi: `/root/apps/qc-app`; server kantor nanti: jalur lain dan pengguna deploy non-root, spek §19 butir 11, `docs/deploy-vps.md` bagian 14). Ganti `<INSTALL_DIR>` pada perintah di bawah sebelum menjalankan; pengguna yang menjalankan harus anggota grup `docker` (bukan harus root) |

@@ -17,7 +17,7 @@ export const PREFETCH_MAX_RETRIES = 30;
 
 /**
  * Daftar yang sering dipakai, hanya yang boleh dibaca pengguna (agar tidak memicu FORBIDDEN). Semua dipicu dalam satu
- * tick (permintaan paralel ke Worker).
+ * tick (permintaan paralel ke server).
  */
 export function prefetchCommonQueries(queryClient: QueryClient, me: MeDto): void {
   if (can(me, 'item', 'view')) {

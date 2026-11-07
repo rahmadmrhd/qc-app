@@ -15,7 +15,7 @@ test('shared/rpc.ts tidak memuat base64 (selain komentar)', () => {
   expect(offending).toEqual([]);
 });
 
-test('kontrak Worker memakai byte untuk id biner', () => {
+test('kontrak RPC memakai byte untuk id biner', () => {
   const text = readFileSync(join(import.meta.dir, 'rpc.ts'), 'utf8');
   expect(text).toContain('bytes: Uint8Array');
   expect(text).toContain('pdf: Uint8Array');

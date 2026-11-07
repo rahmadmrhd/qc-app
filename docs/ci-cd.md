@@ -1,6 +1,6 @@
 # CI/CD (GitHub Actions)
 
-Workflow di `.github/workflows/`: `test.yml` (PR), dan `deploy-server.yml` (server Bun + MariaDB di VPS). Workflow deploy Apps Script lama (`deploy.yml`) dihapus saat cutover 2026-11-07; versinya tetap ada di tag `gas-legacy`. Aksi lokal bersama: `.github/actions/mariadb` (MariaDB 11.8 dengan `deploy/mariadb/qc.cnf` untuk tes server). `deploy-worker.yml` (Cloudflare) sudah dihapus; rencana Cloudflare dibatalkan 2026-11-05.
+Workflow di `.github/workflows/`: `test.yml` (PR), dan `deploy-server.yml` (server Bun + MariaDB di VPS). Workflow deploy Apps Script lama (`deploy.yml`) dihapus saat cutover 2026-11-07; versinya tetap ada di tag `gas-legacy`. Aksi lokal bersama: `.github/actions/mariadb` (MariaDB 11.8 dengan `deploy/mariadb/qc.cnf` untuk tes server).
 
 ## Server di VPS (`deploy-server.yml`)
 

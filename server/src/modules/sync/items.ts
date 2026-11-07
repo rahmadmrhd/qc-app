@@ -284,7 +284,7 @@ async function itemConflict(
   };
 }
 
-/** Keadaan bersama satu permintaan `push`: merk (dimuat langsung dari D1 sekali) dan indeks item. */
+/** Keadaan bersama satu permintaan `push`: merk (dimuat langsung dari database sekali) dan indeks item. */
 interface PushState {
   names: Map<string, string>;
   brandsByKey: Map<string, BrandRecord>;
@@ -513,7 +513,7 @@ export async function pushItems(
     env,
     checks.flatMap((check) => (check.ok ? driveIdsOf(check.value) : [])),
   );
-  // Merk (langsung dari D1) dan item yang dirujuk dimuat sekali untuk seluruh permintaan (satu round trip).
+  // Merk (langsung dari database) dan item yang dirujuk dimuat sekali untuk seluruh permintaan (satu round trip).
   const { index, brands } = await prefetchItems(
     env,
     checks.flatMap((check) => (check.ok ? [check.value] : [])),

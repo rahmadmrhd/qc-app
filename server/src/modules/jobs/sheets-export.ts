@@ -2,12 +2,12 @@ import type { SheetsExportChunk } from '@server/core/bridge-client';
 import type { Db } from '@server/core/db';
 
 /**
- * Pembaca potongan D1 untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
+ * Pembaca potongan baris database untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
  * tanpa Queue/jobs/jembatan (kabelnya Task 3.3). Satu pembacaan = satu halaman berindeks kunci (keyset),
  * sehingga consumer antrean dapat melanjutkan dari `nextKey` pada pesan berikutnya.
  */
 
-/** Baris D1 per halaman (±500, Spek 8.3). */
+/** Baris database per halaman (±500, Spek 8.3). */
 export const EXPORT_PAGE_ROWS = 500;
 /** Anggaran karakter per potongan ke jembatan; jauh di bawah batas badan jembatan 1 MB. */
 export const EXPORT_CHUNK_CHARS = 600_000;
@@ -16,7 +16,7 @@ export const EXPORT_CELL_MAX_CHARS = 50_000;
 export const EXPORT_TRUNCATION_MARK = ' [dipotong]';
 
 export interface ExportTableSpec {
-  /** Nama tabel D1. */
+  /** Nama tabel database. */
   table: string;
   /** Nama sheet tujuan; WAJIB berawalan `export_` (jembatan menolak yang lain). */
   sheet: string;
@@ -221,7 +221,7 @@ function quote(identifier: string): string {
 }
 
 /**
- * Membaca SATU halaman (satu kueri D1, berindeks kunci) setelah `afterKey` dan memecahnya menjadi potongan
+ * Membaca SATU halaman (satu kueri database, berindeks kunci) setelah `afterKey` dan memecahnya menjadi potongan
  * bila melebihi anggaran karakter. `first` = halaman pertama tabel: potongan pertamanya `replace`
  * (menimpa sheet, juga untuk tabel kosong sehingga sheet lama dibersihkan) dan membawa header.
  */

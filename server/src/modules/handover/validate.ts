@@ -239,7 +239,7 @@ export function validateAddComment(raw: unknown): AddCommentInput {
 
 /**
  * Ukuran halaman board: bawaan 20, maksimum 50 task. Keputusan pemilik 2026-11-05:
- * batas 3 peninggalan anggaran CPU edge dibuang karena batas CPU edge hilang di VPS. Klien memuat halaman
+ * batas 3 peninggalan platform sebelumnya dibuang karena tak berlaku di VPS. Klien memuat halaman
  * berikutnya otomatis (infinite scroll) lewat kursor. Di atas batas ditolak VALIDATION (pola kontrak board).
  */
 export const BOARD_DEFAULT_LIMIT = 20;

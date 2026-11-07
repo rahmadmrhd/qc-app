@@ -18,7 +18,7 @@ import {
   rejectUnknownSyncFields,
 } from './wire';
 
-/** Validasi bentuk entri item pada kabel sinkron (murni; tanpa D1). */
+/** Validasi bentuk entri item pada kabel sinkron (murni; tanpa database). */
 export interface SyncItemInput {
   uid?: string;
   id?: string;

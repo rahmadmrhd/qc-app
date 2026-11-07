@@ -195,7 +195,7 @@ describe('tabel rute', () => {
     for (const id of patches) expect(API_ROUTES[id].etag, id).toBe('updatedAt');
   });
 
-  test('semua id kontrak Worker punya entri tabel (dan sebaliknya)', () => {
+  test('semua id kontrak RPC punya entri tabel (dan sebaliknya)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
     expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as RpcMethod[]);
   });

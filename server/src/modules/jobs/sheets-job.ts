@@ -7,7 +7,7 @@ import {
   readExportPage,
 } from './sheets-export';
 
-/** Halaman D1 per langkah (subrequest: 1 D1 + ≤ 2 per potongan jembatan; tetap di bawah 50). */
+/** Halaman baris database per langkah job. */
 export const SHEETS_PAGES_PER_STEP = 4;
 
 interface SheetsInput {
@@ -32,7 +32,7 @@ function tablesOf(input: SheetsInput): ExportTableSpec[] {
 }
 
 /**
- * Ekspor D1 -> Spreadsheet (`export_<tabel>`). Tiap langkah membaca beberapa halaman berindeks dan mengirim
+ * Ekspor database -> Spreadsheet (`export_<tabel>`). Tiap langkah membaca beberapa halaman berindeks dan mengirim
  * potongan ke jembatan. Potongan pertama tiap tabel `replace` (menimpa), sehingga mengulang job menyembuhkan
  * sheet; potongan `append` yang terkirim ulang saat crash di jendela sempit dapat menggandakan baris sampai
  * ekspor berikutnya (sheet laporan hanya-baca, bukan sumber data).

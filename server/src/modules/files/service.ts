@@ -63,9 +63,9 @@ function toFileDto(file: FileRecord): FileDto {
 }
 
 /**
- * Unggah gambar. Urutan (Spek 8.2): Drive DULU lewat jembatan, lalu baris D1. Bila D1 gagal setelah Drive
+ * Unggah gambar. Urutan (Spek 8.2): Drive DULU lewat jembatan, lalu baris database. Bila database gagal setelah Drive
  * sukses, berkas Drive dibuang (best effort; yang tersisa dibersihkan cron) dan pengguna melihat galat jelas.
- * Bila jembatan gagal, tidak ada baris D1 sama sekali. Aman diulang.
+ * Bila jembatan gagal, tidak ada baris database sama sekali. Aman diulang.
  */
 export async function uploadFile(
   env: Env,
@@ -190,7 +190,7 @@ export async function attachFiles(
   if (statements.length > 0) await env.DB.batch(statements);
 }
 
-/** Langkah 1 penghapusan (Spek 8.2): tandai `pending_delete` di D1; berkas langsung tak terbaca. */
+/** Langkah 1 penghapusan (Spek 8.2): tandai `pending_delete` di database; berkas langsung tak terbaca. */
 export function markFilesPendingDelete(env: Env, ids: readonly string[]): DbStatement[] {
   return ids.map((id) =>
     env.DB.prepare("UPDATE files SET status = 'pending_delete' WHERE id = ?").bind(id),

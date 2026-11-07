@@ -64,7 +64,7 @@ function renderPage() {
 
 type BoardInput = { status?: string; locationIds?: string[]; id?: string };
 
-/** Jawaban `handovers.board` per kolom (kontrak Worker: berkursor, dengan total). */
+/** Jawaban `handovers.board` per kolom (kontrak RPC: berkursor, dengan total). */
 function pageOf(tasks: HandoverDto[], input: BoardInput) {
   const items = tasks.filter((task) => task.status === input.status);
   return { items, nextCursor: null, total: items.length };
