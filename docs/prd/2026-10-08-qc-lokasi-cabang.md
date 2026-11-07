@@ -5,7 +5,7 @@
 | **Status** | Diimplementasi — menunggu rilis dan verifikasi di deployment |
 | **Tanggal** | 2026-10-08 |
 | **Pemilik** | rahmadm.rhd@gmail.com |
-| **Bergantung pada** | `2026-10-08-qc-fondasi-akses.md` (Sub-project 1, sudah dirilis) |
+| **Bergantung pada** | fondasi akses (sesi, izin, audit; sudah dirilis) |
 
 ---
 
