@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { attachFiles } from '@server/modules/files/service';
 import { bytesOfBase64 } from '@server-test/bytes';
+import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -414,6 +415,9 @@ describe('link, logo, dan berkas', () => {
     const logo = await uploadAs('qredit@gmail.com');
     await addToLibrary(logo);
     const itemFile = await uploadAs('qredit@gmail.com');
+    // berkas item hanya terbaca bila item pemiliknya punya BU yang terlihat (noqr = item view, Semua BU)
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'item-1', brand: 'Sony', model: 'Satu' });
     await attachFiles(env, [itemFile], 'item', 'item-1');
     const mine = await uploadAs('qredit@gmail.com');
     expect((await call('qrview@gmail.com', 'files.get', { id: logo })).ok).toBe(true);

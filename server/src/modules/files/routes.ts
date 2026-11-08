@@ -1,4 +1,5 @@
 import type { RouteTable } from '@server/core/router';
+import { visibleBuIds } from '@server/modules/item/access';
 import { hasLevel } from '@shared/permissions';
 import { readFile, uploadFile } from './service';
 import { validateGetFile, validateUploadFile } from './validate';
@@ -23,13 +24,13 @@ export function filesRoutes(): Pick<RouteTable, 'files.upload' | 'files.get'> {
         ],
       },
       validate: validateGetFile,
-      // Pemegang izin item membaca semua berkas gambar; pengguna qrcode saja hanya logo (lihat readFile).
+      // Pemegang izin item membaca berkas gambar item di BU yang terlihat saja; pengguna qrcode saja hanya logo
+      // (lihat readFile).
       handler: (input, ctx) =>
-        readFile(
-          ctx.env,
-          input,
-          hasLevel(ctx.user.permissions.item, 'view') ? undefined : ctx.user.email,
-        ),
+        readFile(ctx.env, input, {
+          email: ctx.user.email,
+          itemBuIds: hasLevel(ctx.user.permissions.item, 'view') ? visibleBuIds(ctx.user) : null,
+        }),
     },
   };
 }

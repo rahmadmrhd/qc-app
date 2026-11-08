@@ -117,22 +117,52 @@ export async function uploadFile(
 }
 
 /**
+ * Pemanggil pembaca berkas. `itemBuIds`: `null` = tak punya izin `item` global (hanya logo bersama `qrlogo` dan
+ * unggahan miliknya yang belum terpasang); array = BU yang boleh dilihat user (berkas milik item hanya terbaca bila
+ * item pemiliknya beririsan dengan himpunan ini; jenis pemilik lain tak dibatasi BU).
+ */
+export interface FileViewer {
+  email: string;
+  itemBuIds: readonly string[] | null;
+}
+
+/** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
+async function itemFileVisible(
+  env: Env,
+  itemId: string,
+  itemBuIds: readonly string[],
+): Promise<boolean> {
+  if (itemBuIds.length === 0) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM item_business_units WHERE item_id = ? AND bu_id IN (${itemBuIds.map(() => '?').join(',')}) LIMIT 1`,
+  )
+    .bind(itemId, ...itemBuIds)
+    .first<{ ok: number }>();
+  return row !== null;
+}
+
+/**
  * Membaca berkas: hanya berkas aktif yang tercatat di tabel `files` yang dapat dibaca (id Drive tidak
  * pernah datang dari klien), dan hanya yang induknya folder aplikasi. Isi dibaca dari cache/jembatan (base64)
- * lalu didekode menjadi byte untuk respons mentah. `onlyLogosFor` (email pemanggil) untuk pengguna tanpa izin `item`:
- * hanya logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang.
+ * lalu didekode menjadi byte untuk respons mentah. Aturan akses (`FileViewer`) diperiksa SEBELUM cache isi dibaca;
+ * berkas di luar hak = `NOT_FOUND` yang sama dengan berkas tak ada.
  */
 export async function readFile(
   env: Env,
   input: GetFileInput,
-  onlyLogosFor?: string,
+  viewer: FileViewer,
 ): Promise<FileContentDto> {
   const record = await findActiveFile(env, input.id);
   if (!record) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
-  if (onlyLogosFor !== undefined) {
+  if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
-    const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
+    const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
     if (!isLogo && !isOwnPending) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  } else if (
+    record.ownerType === 'item' &&
+    !(await itemFileVisible(env, record.ownerId, viewer.itemBuIds))
+  ) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
   const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
