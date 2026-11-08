@@ -10,8 +10,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { describeError } from '@/lib/api/describe-error';
-import { BrandFormDialog } from '@/modules/brand/components/brand-form-dialog';
+import {
+  BrandFormDialog,
+  type BrandSaveInput,
+  type BrandSaveResult,
+  brandSaveFailure,
+} from '@/modules/brand/components/brand-form-dialog';
 import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
 import { defaultBusinessUnitIds } from '../lib/default-business-units';
 import { errorText } from '../lib/row-error';
@@ -34,7 +38,8 @@ export interface ItemFormProps {
    * Membuat merk baru (tombol "Tambah" pada field Merk); hanya disediakan bila user boleh membuat merk. Melempar galat
    * bila gagal (pesannya tampil di dialog).
    */
-  onCreateBrand?: (name: string) => Promise<BrandDto>;
+  /** Membuat merk baru (nama + BU bawaan) dari dialog "Tambah merk"; galat dikembalikan ke dialog. */
+  onCreateBrand?: (input: BrandSaveInput) => Promise<BrandDto>;
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
@@ -129,15 +134,15 @@ export function ItemForm({
   // (mode ubah) dianggap sudah dipilih, jadi mengganti merk tidak menimpanya.
   const buTouched = useRef(defaultValues.businessUnitIds.length > 0);
 
-  async function handleCreateBrand(input: { id?: string; name: string }): Promise<string | null> {
+  async function handleCreateBrand(input: BrandSaveInput): Promise<BrandSaveResult> {
     if (!onCreateBrand) return 'Anda tidak berhak membuat merk';
     try {
-      const brand = await onCreateBrand(input.name);
+      const brand = await onCreateBrand(input);
       setCreatedBrands((previous) => [...previous, brand]);
       selectBrand(brand.id, brand);
       return null;
     } catch (error) {
-      return describeError(error);
+      return brandSaveFailure(error);
     }
   }
 
@@ -381,6 +386,7 @@ export function ItemForm({
         <BrandFormDialog
           open={brandDialogOpen}
           onOpenChange={setBrandDialogOpen}
+          businessUnits={businessUnits}
           onSave={handleCreateBrand}
         />
       ) : null}

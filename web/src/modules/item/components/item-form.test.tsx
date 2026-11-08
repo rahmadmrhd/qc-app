@@ -228,7 +228,9 @@ test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim for
   const dialog = await screen.findByRole('dialog');
   await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Baru');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
-  await waitFor(() => expect(onCreateBrand).toHaveBeenCalledWith('Baru'));
+  await waitFor(() =>
+    expect(onCreateBrand).toHaveBeenCalledWith({ name: 'Baru', businessUnitIds: [] }),
+  );
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Baru');
   expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();

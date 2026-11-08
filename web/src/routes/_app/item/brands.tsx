@@ -4,14 +4,24 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import {
+  type BrandSaveInput,
+  type BrandSaveResult,
+  brandSaveFailure,
+} from '@/modules/brand/components/brand-form-dialog';
 import { BrandsManager } from '@/modules/brand/components/brands-manager';
 import { brandsQueryOptions, useSaveBrand, useSetBrandStatus } from '@/modules/brand/queries';
 
 export const Route = createFileRoute('/_app/item/brands')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
-  loader: ({ context }) => context.queryClient.ensureQueryData(brandsQueryOptions()),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(brandsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+    ]),
   component: BrandsPage,
 });
 
@@ -19,18 +29,17 @@ function BrandsPage() {
   const navigate = useNavigate();
   const me = useMe();
   const { data: brands } = useSuspenseQuery(brandsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const save = useSaveBrand();
   const setStatus = useSetBrandStatus();
 
-  async function handleSave(input: { id?: string; name: string }): Promise<string | null> {
+  async function handleSave(input: BrandSaveInput): Promise<BrandSaveResult> {
     try {
-      // Form ini belum mengatur BU bawaan (T11): mengganti nama mempertahankan himpunan yang ada, merk baru kosong.
-      const businessUnitIds = brands.find((brand) => brand.id === input.id)?.businessUnitIds ?? [];
-      await save.mutateAsync({ ...input, businessUnitIds });
+      await save.mutateAsync(input);
       toast.success(input.id ? 'Merk diperbarui' : 'Merk ditambahkan');
       return null;
     } catch (error) {
-      return describeError(error);
+      return brandSaveFailure(error);
     }
   }
 
@@ -60,6 +69,7 @@ function BrandsPage() {
       </p>
       <BrandsManager
         brands={brands}
+        businessUnits={businessUnits}
         canEdit={can(me, 'item', 'edit')}
         canManage={can(me, 'item', 'manage')}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}

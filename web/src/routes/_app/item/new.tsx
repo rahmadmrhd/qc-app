@@ -55,9 +55,7 @@ function NewItemPage() {
         businessUnits={businessUnits}
         editableBusinessUnitIds={buIdsWithLevelFor(me, 'edit')}
         onCreateBrand={
-          can(me, 'item', 'edit')
-            ? (name) => saveBrand.mutateAsync({ name, businessUnitIds: [] })
-            : undefined
+          can(me, 'item', 'edit') ? (input) => saveBrand.mutateAsync(input) : undefined
         }
         defaultValues={toItemFormDefaults()}
         submitError={submitError}
