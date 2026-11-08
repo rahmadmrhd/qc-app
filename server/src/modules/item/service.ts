@@ -44,6 +44,7 @@ import {
   insertItemStmts,
   itemBusinessUnitIdsStmt,
   itemBusinessUnitsOf,
+  itemIdsVisibleIn,
   parseStrings,
   replaceItemBusinessUnitsStmts,
   toItem,
@@ -317,20 +318,31 @@ function referencedFileIds(input: SaveItemInput): string[] {
 /**
  * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, stiker, detail):
  * tidak dikenal -> VALIDATION, sudah dipakai entitas lain -> CONFLICT. `planAttachFiles` tetap menjadi pagar.
+ *
+ * Tanpa oracle kepemilikan lintas BU (keputusan pemilik 2026-11-09): berkas yang terpasang pada item lain yang BU-nya
+ * tidak terlihat user dijawab SAMA dengan berkas tak dikenal (VALIDATION, pesan identik). CONFLICT hanya untuk berkas pada item lain yang terlihat (atau logo QR).
  */
-function assertItemFilesUsable(
+async function assertItemFilesUsable(
+  env: Env,
+  actor: UserContext,
   input: SaveItemInput,
   ownerId: string,
   found: readonly FileRecord[],
-): FileRecord[] {
+): Promise<FileRecord[]> {
   const files = new Map(found.map((file) => [file.id, file]));
+  const foreignItemIds = found
+    .filter((file) => file.ownerType === 'item' && file.ownerId !== ownerId)
+    .map((file) => file.ownerId);
+  const visibleItems = await itemIdsVisibleIn(env.DB, foreignItemIds, visibleBuIds(actor));
   const problem = (fileId: string): 'unknown' | 'taken' | null => {
     const file = files.get(fileId);
     if (!file) return 'unknown';
-    if (file.ownerType !== '' && !(file.ownerType === 'item' && file.ownerId === ownerId)) {
-      return 'taken';
+    if (file.ownerType === '') return null;
+    if (file.ownerType === 'item') {
+      if (file.ownerId === ownerId) return null;
+      return visibleItems.has(file.ownerId.trim()) ? 'taken' : 'unknown';
     }
-    return null;
+    return 'taken';
   };
   const fail = (kind: 'unknown' | 'taken', field: string, subject: string): never => {
     const message =
@@ -540,7 +552,7 @@ export async function planItemWrite(
   const owners = await loadNameOwners(env, input, key, id, existing);
   assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
-  const usableFiles = assertItemFilesUsable(input, id, context.files);
+  const usableFiles = await assertItemFilesUsable(env, actor, input, id, context.files);
   const attach = await planAttachFiles(env, referencedFileIds(input), 'item', id, usableFiles);
   const now = nowIso(env);
   const status = existing?.status ?? 'active';

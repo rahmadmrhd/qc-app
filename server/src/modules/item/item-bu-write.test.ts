@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
+import { uploadFile } from '@server/modules/files/service';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -494,5 +496,115 @@ describe('konkurensi pada himpunan BU', () => {
     );
     expect(key.code).toBe('CONFLICT');
     expect(key.fields?.aliases).toBe(`Nama lain "${typed}" sudah dipakai item lain`);
+  });
+});
+
+describe('rujukan berkas item lintas BU (tanpa oracle kepemilikan)', () => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
+  const upload = async (email: string): Promise<string> =>
+    (
+      await uploadFile(
+        env,
+        { mime: 'image/png', bytes: bytesOfBase64(PNG), width: 1, height: 1 },
+        await ctxOf(email),
+      )
+    ).id;
+  const own = (fileId: string, type: string, ownerId: string) =>
+    env.DB.prepare('UPDATE files SET owner_type = ?, owner_id = ? WHERE id = ?')
+      .bind(type, ownerId, fileId)
+      .run();
+  let fileB: string;
+
+  beforeEach(async () => {
+    await seedBrand(env, 'Rahasiamerk');
+    await seedItem(env, {
+      id: 'i-b',
+      brand: 'Rahasiamerk',
+      model: 'Tipe-Rahasia-9',
+      businessUnitIds: ['bu-b'],
+    });
+    await seedItem(env, {
+      id: 'i-ab',
+      brand: 'Sony',
+      model: 'Gabungan',
+      businessUnitIds: ['bu-a', 'bu-b'],
+    });
+    fileB = await upload('eab@gmail.com');
+    await own(fileB, 'item', 'i-b');
+  });
+
+  const fieldsOf = (error: { fields?: Record<string, string> }): string =>
+    JSON.stringify(error.fields ?? {});
+
+  test('berkas milik item BU lain yang tak terlihat = VALIDATION, identik dengan id tak ada, tanpa id/merk/tipe item itu', async () => {
+    const user = await ctxOf('ea@gmail.com'); // hanya BU A
+    const makes = [
+      (id: string) => input({ model: 'Baru', attachments: [id] }),
+      (id: string) => input({ model: 'Baru', stickers: [{ name: 'S', note: '', fileId: id }] }),
+      (id: string) => input({ model: 'Baru', detail: `![x](qcfile:${id})` }),
+    ];
+    for (const make of makes) {
+      const taken = await captureAppErrorAsync(() => saveItem(env, make(fileB), user));
+      const unknown = await captureAppErrorAsync(() => saveItem(env, make('tidak-ada-id'), user));
+      expect(taken.code).toBe('VALIDATION');
+      expect(taken.message).toBe(unknown.message);
+      expect(Object.keys(taken.fields ?? {})).toEqual(Object.keys(unknown.fields ?? {}));
+      for (const text of [taken.message, fieldsOf(taken)].map((v) => v.toLowerCase())) {
+        expect(text).not.toContain(fileB.toLowerCase());
+        expect(text).not.toContain('rahasia');
+      }
+    }
+    // berkas tak berubah pemilik, item tak tercipta
+    expect(await count('items')).toBe(2);
+    expect(
+      (
+        await env.DB.prepare('SELECT owner_id FROM files WHERE id = ?')
+          .bind(fileB)
+          .first<{ owner_id: string }>()
+      )?.owner_id,
+    ).toBe('i-b');
+  });
+
+  test('lampiran: pesan field attachments identik dengan berkas tak dikenal (VALIDATION)', async () => {
+    const user = await ctxOf('ea@gmail.com');
+    const taken = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', attachments: [fileB] }), user),
+    );
+    const unknown = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', attachments: ['tidak-ada-id'] }), user),
+    );
+    expect(taken.code).toBe('VALIDATION');
+    expect(taken.message).toBe(unknown.message);
+    expect(taken.fields).toEqual(unknown.fields);
+    expect(fieldsOf(taken).toLowerCase()).not.toContain(fileB.toLowerCase());
+  });
+
+  test('berkas milik item yang terlihat user (BU A+B) tetap CONFLICT; berkas item sendiri tetap boleh', async () => {
+    const user = await ctxOf('ea@gmail.com');
+    const visibleFile = await upload('eab@gmail.com');
+    await own(visibleFile, 'item', 'i-ab');
+    const conflict = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', attachments: [visibleFile] }), user),
+    );
+    expect(conflict.code).toBe('CONFLICT');
+    // item sendiri: berkas yang sudah melekat pada item yang sama tetap OK
+    const mine = await saveItem(env, input({ model: 'Milikku' }), user);
+    const myFile = await upload('ea@gmail.com');
+    await saveItem(
+      env,
+      input({
+        id: mine.id,
+        model: 'Milikku',
+        attachments: [myFile],
+        expectedUpdatedAt: mine.updatedAt,
+      }),
+      user,
+    );
+    const again = await saveItem(
+      env,
+      input({ id: mine.id, model: 'Milikku', attachments: [myFile] }),
+      user,
+    );
+    expect(again.attachments).toEqual([myFile]);
   });
 });

@@ -178,6 +178,28 @@ export async function itemBusinessUnitsOf(
   return result;
 }
 
+/** Dari `itemIds`, id item yang beririsan dengan `buIds` (BU yang terlihat); satu kueri per 500 id. */
+export async function itemIdsVisibleIn(
+  db: Db,
+  itemIds: readonly string[],
+  buIds: readonly string[],
+): Promise<Set<string>> {
+  const visible = new Set<string>();
+  const unique = [...new Set(itemIds)];
+  if (unique.length === 0 || buIds.length === 0) return visible;
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT item_id FROM item_business_units WHERE item_id IN (${chunk.map(() => '?').join(',')}) AND bu_id IN (${buIds.map(() => '?').join(',')})`,
+      )
+      .bind(...chunk, ...buIds)
+      .all<{ item_id: string }>();
+    for (const row of rows.results) visible.add(row.item_id.trim());
+  }
+  return visible;
+}
+
 /** Id BU yang melekat pada satu item (untuk digabung ke `batch()` baca). */
 export function itemBusinessUnitIdsStmt(db: Db, itemId: string): DbStatement {
   return db.prepare('SELECT bu_id FROM item_business_units WHERE item_id = ?').bind(itemId);
