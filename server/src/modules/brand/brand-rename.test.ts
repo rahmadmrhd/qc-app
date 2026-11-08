@@ -464,3 +464,91 @@ describe('(m3) audit status merk memakai nama dari keadaan terjaga', () => {
     expect(JSON.parse(audit?.after as string).status).toBe('inactive');
   }, 60_000);
 });
+
+describe('BU bawaan: BU yang dinonaktifkan di antara pemeriksaan dan penulisan tidak menyelinap masuk', () => {
+  const deactivate = (buId: string) =>
+    env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = ?").bind(buId).run();
+  const defaultRows = async (): Promise<number> =>
+    Number(
+      (
+        await env.DB.prepare('SELECT COUNT(*) AS n FROM brand_default_business_units').first<{
+          n: number;
+        }>()
+      )?.n,
+    );
+
+  beforeEach(async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'A', name: 'BU A' });
+  });
+
+  test('jalur buat: BU dinonaktifkan sebelum batch tulis = VALIDATION; merk dan baris BU bawaan tak tercipta', async () => {
+    const { delayed, atWrite, release } = gatedEnv(/^\s*INSERT INTO brands/);
+    const pending = captureAppErrorAsync(() =>
+      saveBrand(delayed, { name: 'Sony', businessUnitIds: ['bu-a'] }, admin),
+    );
+    await atWrite;
+    await deactivate('bu-a');
+    release();
+    const error = await pending;
+    expect(error.code).toBe('VALIDATION');
+    expect(error.fields?.businessUnitIds).toBe('BU tidak dikenal atau tidak aktif');
+    expect(
+      Number((await env.DB.prepare('SELECT COUNT(*) AS n FROM brands').first<{ n: number }>())?.n),
+    ).toBe(0);
+    expect(await defaultRows()).toBe(0);
+  }, 60_000);
+
+  test('jalur ubah: BU dinonaktifkan setelah pemeriksaan awal di transaksi tulis = VALIDATION; tanpa perubahan apa pun', async () => {
+    await seedBrand(env, 'Lama');
+    const before = await auditCount();
+    let reached!: () => void;
+    const atRead = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let fired = false;
+    // Menahan pembacaan BU bawaan sekarang (SESUDAH pembacaan BU tanpa kunci), sampai BU dinonaktifkan.
+    const hold = (statement: DbStatement): DbStatement => ({
+      bind: (...values: unknown[]) => hold(statement.bind(...values)),
+      first: () => statement.first(),
+      run: () => statement.run(),
+      all: async <T = unknown>() => {
+        if (!fired) {
+          fired = true;
+          reached();
+          await gate;
+        }
+        return statement.all<T>();
+      },
+    });
+    const delayed = {
+      ...env,
+      DB: {
+        ...env.DB,
+        transaction: <T>(fn: Parameters<typeof env.DB.transaction<T>>[0]) =>
+          env.DB.transaction<T>((tx) =>
+            fn({
+              prepare: (sql: string) =>
+                /FROM brand_default_business_units/.test(sql)
+                  ? hold(tx.prepare(sql))
+                  : tx.prepare(sql),
+            }),
+          ),
+      },
+    } as TestEnv;
+    const pending = captureAppErrorAsync(() =>
+      saveBrand(delayed, { id: 'brand-lama', name: 'Lama', businessUnitIds: ['bu-a'] }, admin),
+    );
+    await atRead;
+    await deactivate('bu-a');
+    release();
+    const error = await pending;
+    expect(error.code).toBe('VALIDATION');
+    expect(error.fields?.businessUnitIds).toBe('BU tidak dikenal atau tidak aktif');
+    expect(await defaultRows()).toBe(0);
+    expect(await auditCount()).toBe(before);
+  }, 60_000);
+});

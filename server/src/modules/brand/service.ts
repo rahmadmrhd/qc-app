@@ -1,5 +1,5 @@
 import { writeAudit } from '@server/core/audit';
-import { nameGuardStmt, runCas } from '@server/core/cas';
+import { isGuardFailure, nameGuardStmt, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement, DbTx } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -10,6 +10,7 @@ import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/cont
 import { itemKey, normalizeKey } from '@shared/items';
 import type { BrandBuBrief, BrandRecord, BrandRow } from './repo';
 import {
+  activeBuGuardStmt,
   BRAND_COLUMNS,
   brandDefaultsFromResult,
   brandDefaultsOfStatement,
@@ -61,6 +62,11 @@ export function brandSnapshot(
 const codesOf = (ids: readonly string[], bus: readonly BrandBuBrief[]): string[] =>
   sortByBuCode(ids, bus).map((id) => bus.find((bu) => bu.id === id)?.code ?? id);
 
+const inactiveBuError = () =>
+  appError('VALIDATION', 'BU tidak dikenal atau tidak aktif', {
+    businessUnitIds: 'BU tidak dikenal atau tidak aktif',
+  });
+
 /**
  * BU bawaan yang DITAMBAH (tidak ada di `current`) harus ada dan aktif; BU lama (termasuk nonaktif) boleh
  * dipertahankan. Tidak memberi hak apa pun: siapa pun yang boleh `brands.save` boleh mengaturnya.
@@ -74,11 +80,7 @@ function assertDefaultBusinessUnits(
   for (const id of requested) {
     if (current.includes(id)) continue;
     const bu = known.get(id);
-    if (bu?.status !== 'active') {
-      throw appError('VALIDATION', 'BU tidak dikenal atau tidak aktif', {
-        businessUnitIds: 'BU tidak dikenal atau tidak aktif',
-      });
-    }
+    if (bu?.status !== 'active') throw inactiveBuError();
   }
 }
 
@@ -206,6 +208,15 @@ async function updateBrand(
     const nameChanged = existing.name !== name;
     const setChanged = !sameSet(currentBuIds, requestedBuIds);
     if (!nameChanged && !setChanged) return toBrandDto(existing, sortByBuCode(currentBuIds, bus));
+    // Pemeriksaan di atas membaca tanpa kunci: ulangi untuk BU yang ditambah dengan kunci bersama di transaksi tulis.
+    const added = requestedBuIds.filter((buId) => !currentBuIds.includes(buId));
+    if (added.length > 0) {
+      try {
+        await activeBuGuardStmt(tx, added).all();
+      } catch (error) {
+        throw isGuardFailure(error) ? inactiveBuError() : error;
+      }
+    }
     const key = normalizeKey(name);
     let own: Array<{ id: string; next: string }> = [];
     if (nameChanged) {
@@ -280,11 +291,19 @@ export async function saveBrand(
   const bus = await listBuBriefs(env.DB);
   assertDefaultBusinessUnits(bus, [], input.businessUnitIds);
   const created = newBrandRecord(env, input.name, actor);
-  await batchWrite(
-    env.DB,
-    createBrandStmts(env, created, input.businessUnitIds, bus, actor),
-    BRAND_CONFLICTS,
-  );
+  // Penjaga BU aktif (kunci bersama) berada di batch yang sama dengan penulisan: BU yang dinonaktifkan di antara
+  // pemeriksaan di atas dan tulis membatalkan batch.
+  const guard =
+    input.businessUnitIds.length > 0 ? [activeBuGuardStmt(env.DB, input.businessUnitIds)] : [];
+  try {
+    await batchWrite(
+      env.DB,
+      [...guard, ...createBrandStmts(env, created, input.businessUnitIds, bus, actor)],
+      BRAND_CONFLICTS,
+    );
+  } catch (error) {
+    throw isGuardFailure(error) ? inactiveBuError() : error;
+  }
   return toBrandDto(created, sortByBuCode(input.businessUnitIds, bus));
 }
 

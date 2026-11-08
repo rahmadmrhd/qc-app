@@ -1,3 +1,4 @@
+import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import type { ItemStatus } from '@shared/contract';
@@ -89,6 +90,21 @@ export async function listBuBriefs(db: Preparer): Promise<BrandBuBrief[]> {
 
 const BRAND_DEFAULTS_SELECT =
   'SELECT d.brand_id, d.bu_id, b.code FROM brand_default_business_units d JOIN business_units b ON b.id = d.bu_id';
+
+/**
+ * Penjaga BU bawaan yang DITAMBAH: membaca baris BU dengan kunci bersama (`LOCK IN SHARE MODE`, keadaan commit
+ * terbaru) dan membatalkan transaksi (`CAS_FAIL_SQL`) bila ada yang tak aktif atau tak ada. Kunci dipegang sampai
+ * commit penulisan merk, sehingga menonaktifkan BU yang menyela menunggu dan tak dapat menyelinap masuk sebagai
+ * BU bawaan. Pemanggil memetakan `isGuardFailure` ke VALIDATION.
+ */
+export function activeBuGuardStmt(db: Preparer, ids: readonly string[]): DbStatement {
+  const unique = [...new Set(ids)];
+  return db
+    .prepare(
+      `SELECT CASE WHEN COUNT(*) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM business_units WHERE id IN (${unique.map(() => '?').join(',')}) AND status = 'active' LOCK IN SHARE MODE`,
+    )
+    .bind(unique.length, ...unique);
+}
 
 /** BU bawaan SEMUA merk (SATU kueri bergabung dengan kode BU): lihat `brandDefaultsFromResult`. */
 export function brandDefaultsStatement(db: Preparer): DbStatement {

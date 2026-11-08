@@ -182,7 +182,7 @@ describe('simpan', () => {
           saveItem(env, { ...other, aliases: ['ubiquiti es 24 250w'] }, admin),
         )
       ).fields?.aliases,
-    ).toContain('sudah dipakai item lain');
+    ).toBe('Nama lain "ubiquiti es 24 250w" sudah dipakai item lain');
     expect(
       (
         await captureAppErrorAsync(() =>
@@ -193,13 +193,17 @@ describe('simpan', () => {
     expect(
       (await captureAppErrorAsync(() => saveItem(env, { ...other, aliases: ['AIRSWITCH'] }, admin)))
         .fields?.aliases,
-    ).toContain('"AIRSWITCH" sudah dipakai item lain');
-    expect(
-      await captureAppErrorAsync(() => saveItem(env, { ...baseInput, model: 'ES24' }, admin)),
-    ).toMatchObject({
+    ).toBe('Nama lain "AIRSWITCH" sudah dipakai item lain');
+    const holder = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, model: 'ES24' }, admin),
+    );
+    expect(holder).toMatchObject({
       code: 'CONFLICT',
+      message: 'Merk dan tipe sama dengan nama lain item lain',
       fields: { model: 'Merk dan tipe sama dengan nama lain item lain' },
     });
+    // tidak membocorkan merk/tipe item pemegang (hanya ketikan user sendiri yang boleh muncul)
+    expect(JSON.stringify([holder.message, holder.fields])).not.toMatch(/ubiquiti|250w/i);
     expect(await itemCount()).toBe(1);
   });
 
