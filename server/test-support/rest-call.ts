@@ -3,7 +3,7 @@ import type { Env } from '@server/core/env';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
 import { API_ROUTES, downloadOutput, formatEtag, toRequestParts } from '@shared/api';
-import type { RpcMethod } from '@shared/rpc';
+import type { ApiId } from '@shared/contract';
 import { type CallResult, callRoute } from './call-route';
 
 /**
@@ -12,7 +12,7 @@ import { type CallResult, callRoute } from './call-route';
  * termasuk rute biner (badan mentah/multipart dan unduhan: keluaran `bytes`). Input yang bukan objek/null atau yang
  * jalurnya tak dapat dibentuk (payload rusak yang sengaja diuji pada validator) lewat `callRoute` (`runRoute` tanpa HTTP).
  */
-export async function restRpc(
+export async function restCall(
   env: Env,
   email: string,
   id: string,
@@ -26,9 +26,9 @@ export async function restRpc(
   }
   let parts: ReturnType<typeof toRequestParts>;
   try {
-    parts = toRequestParts(id as RpcMethod, (input ?? null) as never);
+    parts = toRequestParts(id as ApiId, (input ?? null) as never);
   } catch {
-    // jalur tak dapat dibentuk (mis. id sengaja dikosongkan): validator RPC yang menilai
+    // jalur tak dapat dibentuk (mis. id sengaja dikosongkan): validator rute yang menilai
     return callRoute(env, token, id, input, getRoutes());
   }
   const query = Object.entries(parts.query)
@@ -60,7 +60,7 @@ export async function restRpc(
     },
     env,
   );
-  if (response.ok && API_ROUTES[id as RpcMethod].download !== undefined) {
+  if (response.ok && API_ROUTES[id as ApiId].download !== undefined) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     return { ok: true, data: downloadOutput(id as never, input as never, response.headers, bytes) };
   }

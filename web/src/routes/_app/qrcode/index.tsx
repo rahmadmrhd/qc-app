@@ -1,4 +1,4 @@
-import type { QrDesignDto, QrFileKind } from '@shared/rpc';
+import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';

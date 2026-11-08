@@ -1,7 +1,7 @@
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
-import type { JobKind } from '@shared/rpc';
+import type { JobKind } from '@shared/contract';
 import { backupHandler } from '../backup/service';
 import { qrExportHandler } from '../qrcode/export';
 import { cleanupHandler } from './cleanup';

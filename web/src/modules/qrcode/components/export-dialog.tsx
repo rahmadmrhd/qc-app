@@ -1,4 +1,4 @@
-import type { QrDesignDto } from '@shared/rpc';
+import type { QrDesignDto } from '@shared/contract';
 import { useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';

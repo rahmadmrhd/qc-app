@@ -1,5 +1,5 @@
+import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import type { HandoverDto } from '@shared/rpc';
 import type { ReactNode } from 'react';
 import { Component, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';

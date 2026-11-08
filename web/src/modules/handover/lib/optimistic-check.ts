@@ -1,4 +1,4 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 
 /**
  * Tampilan sementara satu centang (update optimistis): HANYA butir `index` yang berubah (status turunan dan kolom

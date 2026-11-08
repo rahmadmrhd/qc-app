@@ -1,5 +1,5 @@
+import type { QrDesignDto } from '@shared/contract';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
-import type { QrDesignDto } from '@shared/rpc';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';

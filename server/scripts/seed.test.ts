@@ -77,7 +77,7 @@ describe('seed data contoh', () => {
     expect(counter?.value).toBe(6);
   });
 
-  test('dapat dijalankan ulang (idempoten) dan aplikasi dapat memakainya lewat RPC', async () => {
+  test('dapat dijalankan ulang (idempoten) dan aplikasi dapat memakainya lewat REST', async () => {
     const env = await seeded();
     await applySeed(env.DB, 'saya@example.test', NOW);
     expect(

@@ -1,4 +1,4 @@
-import type { ItemAccessoryDto } from '@shared/rpc';
+import type { ItemAccessoryDto } from '@shared/contract';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';

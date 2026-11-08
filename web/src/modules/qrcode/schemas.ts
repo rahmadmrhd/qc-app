@@ -1,3 +1,9 @@
+import type {
+  QrDesignDto,
+  QrPresetDto,
+  SaveQrDesignInput,
+  SaveQrPresetInput,
+} from '@shared/contract';
 import {
   DEFAULT_QR_LAYOUT,
   DEFAULT_QR_STYLE,
@@ -10,7 +16,6 @@ import {
   QR_LAYOUT_RANGES,
   QR_LIMITS,
 } from '@shared/qrcode';
-import type { QrDesignDto, QrPresetDto, SaveQrDesignInput, SaveQrPresetInput } from '@shared/rpc';
 import { z } from 'zod';
 
 export const QR_FIELD_KEYS = [

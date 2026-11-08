@@ -9,7 +9,7 @@ import { loadUserContext } from '@server/modules/access/context';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
-import { restRpc } from '@server-test/rest-rpc';
+import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import {
@@ -495,7 +495,7 @@ describe('penghapusan (pending_delete)', () => {
 
 describe('rute dan izin', () => {
   async function call(method: string, payload: unknown, email: string) {
-    return restRpc(env, email, method, payload);
+    return restCall(env, email, method, payload);
   }
 
   test('upload butuh item edit, baca butuh item view, dan lintas peran ditolak', async () => {
@@ -525,7 +525,7 @@ describe('rute dan izin', () => {
     });
   });
 
-  test('galat jembatan tampil sebagai UNAVAILABLE (503) lewat RPC', async () => {
+  test('galat jembatan tampil sebagai UNAVAILABLE (503) lewat REST', async () => {
     await ensureDriveFolder(env);
     env.BRIDGE.failNext('createFile', new Error('x'));
     expect(await call('files.upload', upload(), 'admin@gmail.com')).toMatchObject({

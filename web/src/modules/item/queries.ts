@@ -4,7 +4,7 @@ import type {
   ItemSummaryDto,
   SaveItemInput,
   SetItemStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import {
   infiniteQueryOptions,

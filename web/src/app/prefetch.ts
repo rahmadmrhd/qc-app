@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';

@@ -9,9 +9,9 @@ import { listOperations } from '@server/http/rest';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { API_ROUTES } from '@shared/api';
-import type { RpcMethod } from '@shared/rpc';
+import type { ApiId } from '@shared/contract';
 
-const IDS = Object.keys(API_ROUTES) as RpcMethod[];
+const IDS = Object.keys(API_ROUTES) as ApiId[];
 
 let env: TestEnv;
 let calls: Array<{ id: string; input: unknown }>;
@@ -518,7 +518,7 @@ describe('perakitan permintaan dan respons', () => {
     for (const id of IDS) expect(registered.map((operation) => operation.id)).toContain(id);
   });
 
-  test('/api/rpc sudah dihapus: 404 (tidak ada rute RPC)', async () => {
+  test('/api/rpc sudah dihapus: 404 (rute lama sudah dihapus)', async () => {
     const response = await appWith().request(
       'https://qc.test/api/rpc',
       {

@@ -1,4 +1,4 @@
-import type { SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
+import type { SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';

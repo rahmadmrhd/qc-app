@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { locationsWith } from '@/modules/auth/permissions';
 
 /**

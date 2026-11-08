@@ -3,7 +3,7 @@ import type { HandoverRecord, StoredComment } from '@server/modules/handover/rep
 import { insertHandoverStmt } from '@server/modules/handover/repo';
 import { seedLocation, seedRole, seedUser } from './access-fixtures';
 import type { CallResult } from './call-route';
-import { restRpc } from './rest-rpc';
+import { restCall } from './rest-call';
 
 export const ENV = {
   locA: 'loc-a',
@@ -48,7 +48,7 @@ export async function seedHandoverEnv(env: Pick<Env, 'DB'>): Promise<void> {
 }
 
 /**
- * Memanggil satu id sebagai user lewat kabel REST nyata (`restRpc`) dan mengembalikan bentuk `CallResult`, sehingga
+ * Memanggil satu id sebagai user lewat kabel REST nyata (`restCall`) dan mengembalikan bentuk `CallResult`, sehingga
  * semua asersi tes serah terima tetap berlaku di atas `/api/v1`.
  */
 export async function callRest(
@@ -57,7 +57,7 @@ export async function callRest(
   method: string,
   payload: unknown,
 ): Promise<CallResult> {
-  return restRpc(env, email, method, payload);
+  return restCall(env, email, method, payload);
 }
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';

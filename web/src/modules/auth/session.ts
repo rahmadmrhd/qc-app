@@ -1,4 +1,4 @@
-import type { AuthErrorCode } from '@shared/rpc';
+import type { AuthErrorCode } from '@shared/contract';
 
 /** Cache query tersimpan (lihat app/query-persist); dibuang saat keluar/sesi berakhir. */
 export const PERSISTED_CACHE_KEY = 'qc.cache.v1';

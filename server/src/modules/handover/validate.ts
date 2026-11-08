@@ -1,12 +1,5 @@
 import { appError } from '@server/core/errors';
 import { readObject } from '@server/core/validate';
-import type { HandoverStatus } from '@shared/handover';
-import {
-  customerKey,
-  HANDOVER_BATCH_MAX,
-  HANDOVER_LIMITS,
-  hasHandoverControlChars,
-} from '@shared/handover';
 import type {
   AddCommentInput,
   BoardPageInput,
@@ -17,7 +10,14 @@ import type {
   SaveHandoverInput,
   SetCheckInput,
   SetDoneInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import type { HandoverStatus } from '@shared/handover';
+import {
+  customerKey,
+  HANDOVER_BATCH_MAX,
+  HANDOVER_LIMITS,
+  hasHandoverControlChars,
+} from '@shared/handover';
 import { checklistOf } from './checklist';
 
 const MAX_LOCATION_IDS = 50;

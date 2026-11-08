@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { runPendingJobs } from '@server/jobs/runner';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
-import { qrRpc } from '@server-test/qrcode-env';
+import { qrCall } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { runJobStep } from './consumer';
 import { validateExportSheets } from './export-sheets';
@@ -30,7 +30,7 @@ afterEach(() => {
   console.error = realError;
 });
 
-const call = (email: string, payload: unknown) => qrRpc(env, email, 'exports.sheets', payload);
+const call = (email: string, payload: unknown) => qrCall(env, email, 'exports.sheets', payload);
 async function drain(): Promise<void> {
   await runPendingJobs(env);
 }
@@ -81,7 +81,7 @@ describe('exports.sheets', () => {
     ).run();
     await drain();
     const done = await call('admin2@gmail.com', {}).then(() =>
-      qrRpc(env, 'admin2@gmail.com', 'jobs.get', { id: out.data.jobId }),
+      qrCall(env, 'admin2@gmail.com', 'jobs.get', { id: out.data.jobId }),
     );
     expect(done.data).toMatchObject({ status: 'done', progress: 100 });
     expect(JSON.parse(done.data.result).tables).toBe(EXPORT_TABLES.length);
@@ -157,7 +157,7 @@ describe('exports.sheets', () => {
       throw new Error('jembatan mati');
     };
     await runJobStep(env, first.data.jobId, 3);
-    const failed = await qrRpc(env, 'admin2@gmail.com', 'jobs.get', { id: first.data.jobId });
+    const failed = await qrCall(env, 'admin2@gmail.com', 'jobs.get', { id: first.data.jobId });
     expect(failed.data).toMatchObject({ status: 'failed' });
     expect(failed.data.error).toBeTruthy();
     expect(JSON.stringify(failed.data)).not.toContain('jembatan mati');

@@ -1,5 +1,5 @@
+import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import type { HandoverDto } from '@shared/rpc';
 
 export const BOARD_STATUSES: readonly HandoverStatus[] = [
   'new',

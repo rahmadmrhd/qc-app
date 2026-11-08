@@ -1,4 +1,4 @@
-import type { AuthErrorCode, MeDto } from '@shared/rpc';
+import type { AuthErrorCode, MeDto } from '@shared/contract';
 import { type ApiCall, api } from '@/lib/api';
 import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { attachFiles } from '@server/modules/files/service';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { QR_FOLDER_SETTING } from './folders';
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 const call = (email: string, method: string, payload: unknown) =>
-  qrRpc(env, email, method, payload);
+  qrCall(env, email, method, payload);
 const PNG1 = {
   mime: 'image/png',
   bytes: bytesOfBase64('iVBORw0KGgoAAAANSUhEUg=='),
@@ -603,7 +603,7 @@ describe('pencabutan berbagi PDF sumber', () => {
     ).toBe(true);
   });
 
-  test('langkah pasca-simpan yang gagal (ubah nama berkas) tidak menggagalkan RPC setelah konfigurasi tersimpan', async () => {
+  test('langkah pasca-simpan yang gagal (ubah nama berkas) tidak menggagalkan permintaan setelah konfigurasi tersimpan', async () => {
     const doc = (await upload()).data.id;
     env.BRIDGE.renameFile = async () => {
       throw new Error('Drive sementara gagal');

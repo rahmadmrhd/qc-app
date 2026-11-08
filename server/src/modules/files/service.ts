@@ -7,9 +7,9 @@ import { appError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
+import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/contract';
 import type { FileOwnerType } from '@shared/files';
 import { MAX_UNATTACHED_UPLOADS } from '@shared/files';
-import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/rpc';
 import type { FileRecord } from './repo';
 import {
   countUnattached,

@@ -1,11 +1,11 @@
-import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
-import { extractChecklist } from '@shared/handover-checklist';
 import type {
   HandoverDto,
   HandoverSaveBase,
   SaveHandoverBatchInput,
   SaveHandoverInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
+import { extractChecklist } from '@shared/handover-checklist';
 import { z } from 'zod';
 
 export const HANDOVER_FIELD_KEYS = ['locationId', 'customerName', 'note'] as const;

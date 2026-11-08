@@ -1,4 +1,4 @@
-import type { UserDto } from '@shared/rpc';
+import type { UserDto } from '@shared/contract';
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { UsersTable } from './users-table';

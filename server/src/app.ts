@@ -50,7 +50,7 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
         : serveStatic(staticDir, c.req.method, path);
     return response ?? c.notFound();
   });
-  // Galat tak tertangani di rute (mis. konfigurasi kurang): amplop yang sama dengan RPC, galat internal disamarkan.
+  // Galat tak tertangani di rute (mis. konfigurasi kurang): jalur non-REST memakai amplop `{ ok:false, error }`, galat internal disamarkan.
   app.onError((error, c) => {
     if (isRestPath(c.req.path)) return problemResponse(toProblem(error, newRequestId()));
     const body = toErrorBody(error, newRequestId());

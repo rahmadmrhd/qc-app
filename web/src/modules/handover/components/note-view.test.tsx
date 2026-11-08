@@ -1,4 +1,4 @@
-import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/rpc';
+import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/contract';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';

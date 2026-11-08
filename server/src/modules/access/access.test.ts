@@ -6,7 +6,7 @@ import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { callRoute } from '@server-test/call-route';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { AuditEntryDto } from '@shared/rpc';
+import type { AuditEntryDto } from '@shared/contract';
 import type { UserContext } from './context';
 import { loadUserContext } from './context';
 import { listLocationDtos, saveLocation, setLocationStatus } from './location-service';
@@ -178,7 +178,7 @@ describe('user', () => {
     ).toBe('CONFLICT');
   });
 
-  test('menonaktifkan user lain langsung mencabut aksesnya, termasuk lewat RPC berikutnya', async () => {
+  test('menonaktifkan user lain langsung mencabut aksesnya, termasuk lewat permintaan berikutnya', async () => {
     const token = await signSessionToken(env, 'budi@gmail.com', env.clock.now());
     const call = () => callRoute(env, token, 'auth.me', null, getRoutes());
     expect((await call()).ok).toBe(true);

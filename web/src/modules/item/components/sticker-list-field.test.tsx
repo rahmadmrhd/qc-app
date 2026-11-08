@@ -1,4 +1,4 @@
-import type { ItemStickerDto } from '@shared/rpc';
+import type { ItemStickerDto } from '@shared/contract';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';

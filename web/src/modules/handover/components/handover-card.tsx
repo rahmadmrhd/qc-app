@@ -1,4 +1,4 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 import { MoreHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';

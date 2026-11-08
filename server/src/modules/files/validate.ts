@@ -1,11 +1,11 @@
 import { readObject } from '@server/core/validate';
+import type { GetFileInput, UploadFileInput } from '@shared/contract';
 import {
   isImageMime,
   MAX_IMAGE_BYTES,
   MAX_IMAGE_DIMENSION,
   matchesImageBytesSignature,
 } from '@shared/files';
-import type { GetFileInput, UploadFileInput } from '@shared/rpc';
 
 function isDimension(value: unknown): value is number {
   return (

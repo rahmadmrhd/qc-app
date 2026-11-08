@@ -120,7 +120,7 @@ User memiliki satu atau lebih role; role berisi level per modul (`none` < `view`
 - `computeUserContext_` menghasilkan: izin global (hanya dari penugasan "Semua lokasi") dan peta `locationId → PermissionMap` untuk lokasi aktif (gabungan penugasan lokasi itu dan penugasan "Semua lokasi"). `access` hanya ada pada izin global.
 - Level efektif tetap "tertinggi dari semua role" (`mergePermissions`), dipanggil per kelompok role.
 
-### 6.3 Kontrak RPC
+### 6.3 Kontrak API
 - Spesifikasi izin rute bertambah cakupan: `scope: 'global'` (default, perilaku sekarang) atau `scope: 'location'`. Rute berlokasi memvalidasi `locationIds` atau `locationId` terhadap peta izin konteks sebelum handler dijalankan.
 - Method baru: `access.locations.list`, `access.locations.save`, `access.locations.setStatus`. `access.users.save` menerima `assignments` menggantikan `roleIds`. `auth.me` diperluas (FR-E4).
 - Frontend: `can(me, module, level)` tetap untuk modul global; ditambah `canAt(me, module, level, locationId)` dan `locationsWith(me, module, level)`.
@@ -161,7 +161,7 @@ Idempoten; tidak ada lokasi yang perlu dibuat agar aplikasi tetap berfungsi sepe
 - [x] Admin dapat membuat, mengubah, dan menonaktifkan lokasi dari UI.
 - [x] Form User dapat mengatur penugasan; tabel Users merangkumnya.
 - [x] Pemilih lokasi multi-select di header bekerja sesuai FR-C1–C5.
-- [x] Panggilan RPC langsung dengan lokasi yang tidak diizinkan ditolak `FORBIDDEN`.
+- [x] Panggilan API langsung dengan lokasi yang tidak diizinkan ditolak `FORBIDDEN`.
 - [x] Log Audit menampilkan perubahan penugasan dan lokasi.
 - [ ] `bun run check` hijau; checklist E2E diperbarui dan lulus.
 - [x] `docs/adding-a-module.md` menjelaskan cara membuat modul berlokasi.

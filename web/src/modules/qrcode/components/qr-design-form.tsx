@@ -1,3 +1,4 @@
+import type { QrDocumentDto, QrPresetDto } from '@shared/contract';
 import {
   parseDriveFileId,
   QR_FRAME_KEYS,
@@ -5,7 +6,6 @@ import {
   QR_LAYOUT_KEYS,
   QR_LAYOUT_RANGES,
 } from '@shared/qrcode';
-import type { QrDocumentDto, QrPresetDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';

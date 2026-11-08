@@ -1,5 +1,5 @@
+import type { BrandDto } from '@shared/contract';
 import { ITEM_LIMITS } from '@shared/items';
-import type { BrandDto } from '@shared/rpc';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

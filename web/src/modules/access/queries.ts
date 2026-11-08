@@ -6,7 +6,7 @@ import type {
   SaveUserInput,
   SetLocationStatusInput,
   SetUserStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
 import {
   infiniteQueryOptions,
   queryOptions,

@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { QueryClient } from '@tanstack/react-query';
 import { expect, test } from 'vitest';
 import { requireAnyPermission } from './permissions';

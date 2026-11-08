@@ -31,7 +31,7 @@ beforeEach(async () => {
   await seedUser(env, { id: 'u-n', email: 'tanpa@gmail.com' });
 });
 
-describe('izin rute (terjemahan tes RPC lama)', () => {
+describe('izin rute (terjemahan tes lama)', () => {
   test('view membaca, edit menyimpan, hanya manage menonaktifkan; daftar tanpa detail', async () => {
     const saved = await rest.post('/items', { email: 'ubah@gmail.com', body: baseInput });
     expect(saved.status).toBe(201);

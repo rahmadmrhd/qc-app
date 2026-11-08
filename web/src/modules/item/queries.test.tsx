@@ -1,4 +1,4 @@
-import type { ItemDto, ItemSummaryDto } from '@shared/rpc';
+import type { ItemDto, ItemSummaryDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';

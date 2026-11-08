@@ -1,4 +1,4 @@
-import type { AuditSnapshot } from '@shared/rpc';
+import type { AuditSnapshot } from '@shared/contract';
 
 export type ChangeKind = 'added' | 'removed' | 'changed' | 'unchanged';
 

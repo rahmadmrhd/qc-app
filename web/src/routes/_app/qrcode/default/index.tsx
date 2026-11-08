@@ -1,4 +1,4 @@
-import type { QrPresetDto } from '@shared/rpc';
+import type { QrPresetDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';

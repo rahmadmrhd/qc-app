@@ -1,5 +1,5 @@
+import type { BrandDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import type { BrandDto } from '@shared/rpc';
 import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';

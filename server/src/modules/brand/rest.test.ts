@@ -5,7 +5,7 @@ import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
-// Padanan REST dari kontrak RPC `brands.*`: kabel baru, logika modul sama.
+// Kontrak REST `brands.*`: kabel baru, logika modul sama.
 
 let env: TestEnv;
 

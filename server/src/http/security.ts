@@ -34,12 +34,12 @@ export function newRequestId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
 }
 
-/** Jalur REST (`/api/v1` dan turunannya): galatnya problem+json, bukan amplop RPC. */
+/** Jalur REST (`/api/v1` dan turunannya): galatnya problem+json, bukan amplop JSON lama. */
 export function isRestPath(path: string): boolean {
   return path === '/api/v1' || path.startsWith('/api/v1/');
 }
 
-/** Amplop galat yang sama dengan RPC (`{ ok:false, error }`). */
+/** Amplop galat jalur non-REST (`{ ok:false, error }`), mis. `/auth/*`. */
 export function errorEnvelope(code: string, message: string) {
   return { ok: false, error: { code, message, requestId: newRequestId() } };
 }

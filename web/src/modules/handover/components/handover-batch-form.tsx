@@ -1,5 +1,5 @@
+import type { HandoverOptionsDto } from '@shared/contract';
 import { HANDOVER_BATCH_MAX } from '@shared/handover';
-import type { HandoverOptionsDto } from '@shared/rpc';
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';

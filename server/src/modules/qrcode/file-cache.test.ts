@@ -3,7 +3,7 @@ import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
 import { ensureQrFolder } from '@server/modules/qrcode/folders';
 import { readQrFile } from '@server/modules/qrcode/service';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
 const PDF1 = 'JVBERi0xLjQK';
@@ -46,15 +46,15 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
   test('qrcodes.file lewat router: tanpa izin qrcode tidak mendapat isi dari cache', async () => {
     await exportedDesign();
     await readQrFile(env, { id: 'd1', kind: 'pdf' });
-    const out = await qrRpc(env, 'noqr@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });
+    const out = await qrCall(env, 'noqr@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });
     expect(out.ok).toBe(false);
-    const ok = await qrRpc(env, 'qrview@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });
+    const ok = await qrCall(env, 'qrview@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });
     expect(ok.ok).toBe(true);
     expect(reads()).toBe(1);
   });
 
   test('unggah ulang PDF (replaceFileContent): salinan lama dibuang dan tidak dikembalikan', async () => {
-    const first = await qrRpc(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
+    const first = await qrCall(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
       name: 'm.pdf',
       bytes: bytesOfBase64(PDF1),
     });
@@ -68,7 +68,7 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
     const folderId = env.BRIDGE.state.files.get(driveId)?.folderId ?? '';
     await cache.put(fileCacheKey(folderId, driveId), 'application/pdf', PDF1);
     expect(cache.size).toBeGreaterThan(0);
-    const second = await qrRpc(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
+    const second = await qrCall(env, 'qredit@gmail.com', 'qrcodes.uploadPdf', {
       name: 'm.pdf',
       bytes: bytesOfBase64(PDF2),
       replaceDocumentId: first.data.id,

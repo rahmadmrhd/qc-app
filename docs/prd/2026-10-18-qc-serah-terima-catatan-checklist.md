@@ -19,7 +19,7 @@ Tujuan: WH membuat task dari hasil paste tanpa memilih item; QC membaca instruks
 
 - `web/src/modules/handover/components/handover-form.tsx` memakai `Textarea` untuk catatan dan `ItemLinesField` untuk item × qty.
 - `shared/handover.ts`, `server/src/modules/handover/validate.ts`, dan `web/src/modules/handover/schemas.ts` membatasi catatan 500 karakter dan mewajibkan minimal satu baris item.
-- `shared/rpc.ts` memisahkan summary daftar dari detail berisi baris; `web/src/routes/_app/handover/index.tsx` menampilkan `HandoversTable` dan menavigasi ke halaman detail.
+- `shared/contract.ts` memisahkan summary daftar dari detail berisi baris; `web/src/routes/_app/handover/index.tsx` menampilkan `HandoversTable` dan menavigasi ke halaman detail.
 - `web/src/modules/markdown/markdown-editor.tsx` sudah memiliki editor Tulis/Pratinjau; `markdown-view.tsx` merender Markdown dengan pembatasan HTML dan URL.
 - `server/src/modules/handover/service.ts` sudah memiliki lock, audit, dan pemeriksaan `expectedUpdatedAt` pada perubahan isi. Kode saat ini mengizinkan koreksi progres task selesai; bagian lama rencana Fase C yang melarangnya tidak dipakai sebagai acuan perilaku baru.
 
@@ -143,18 +143,18 @@ Klik area kartu yang bukan kontrol membuka dialog. Sediakan tombol “Buka detai
 - Tambahkan `content_mode` dan `document_json` pada `HANDOVERS_TABLE`; `note`/`handover_lines` tetap menyimpan data legacy. Dokumen JSON adalah sumber kebenaran task note; jangan menyinkronkan salinan Markdown kanonis kedua ke `note`.
 - Gunakan field progres checklist yang terpisah dari `doneUnits`/`totalUnits` legacy; tipe DTO dibedakan oleh mode sehingga UI tidak menampilkan centang sebagai unit.
 
-### RPC dan query
+### API dan query
 
 | Kontrak | Input/hasil dan aturan |
 |---|---|
-| `handovers.board` baru | `locationIds`, `status`, `cursor?`, `limit?` (2026-10-26): satu kolom kanban per panggilan, **berhalaman** (bawaan 20 dan maks. 50 task per halaman; semula 3); hasil kartu note dengan semua isi, komentar, metadata, dan revisi, plus `nextCursor` dan `total`. Satu pengambilan per halaman, bukan satu RPC detail per kartu. Keputusan pemilik 2026-10-26 (CPU ≤ 8 ms per rute di platform sebelumnya; kartu tetap penuh, ukuran halaman dikecilkan; lihat spek migrasi §7.4) **digantikan 2026-11-05 (disetujui pemilik produk): batas 3 hanyalah anggaran CPU platform sebelumnya yang tidak ada lagi di VPS; bawaan 20 dan maks. 50 seperti Apps Script (spek migrasi VPS §19 butir 2)**. |
+| `handovers.board` baru | `locationIds`, `status`, `cursor?`, `limit?` (2026-10-26): satu kolom kanban per panggilan, **berhalaman** (bawaan 20 dan maks. 50 task per halaman; semula 3); hasil kartu note dengan semua isi, komentar, metadata, dan revisi, plus `nextCursor` dan `total`. Satu pengambilan per halaman, bukan satu API detail per kartu. Keputusan pemilik 2026-10-26 (CPU ≤ 8 ms per rute di platform sebelumnya; kartu tetap penuh, ukuran halaman dikecilkan; lihat spek migrasi §7.4) **digantikan 2026-11-05 (disetujui pemilik produk): batas 3 hanyalah anggaran CPU platform sebelumnya yang tidak ada lagi di VPS; bawaan 20 dan maks. 50 seperti Apps Script (spek migrasi VPS §19 butir 2)**. |
 | `handovers.get` diperluas | Input lama; output dibedakan mode, memuat isi lengkap task yang boleh dibaca. |
 | `handovers.saveNote` baru | ID opsional, lokasi, customer, blok `id/kind/markdown`, `expectedRevision` wajib pada update. Create menghasilkan ID blok bila belum ada; klien tidak mengirim progres/komentar sebagai sumber kebenaran. |
 | `handovers.setNoteChecked` baru | Task/lokasi, block ID, boolean `checked` absolut, `expectedRevision`; izin `qc: edit`. Nilai sama pada revisi saat ini tidak membuat audit/progres palsu. |
 | `handovers.addNoteComment` baru | Task/lokasi, anchor, body, `expectedRevision`; izin `qc: edit`; mengembalikan task dengan revisi baru. |
 | `handovers.cancel` lama | Mendukung kedua mode; hanya `handover: manage`, tidak membatalkan task Selesai sesuai perilaku saat ini. |
 
-RPC progres kuantitas dan `handovers.save` lama menolak task note; RPC note menolak legacy. `completeAll` lama tidak dipakai untuk mode note. Rute baca memakai `anyOf` WH-view/QC-edit, seluruh rute tetap `scope: 'location'`; ID task harus cocok dengan lokasi yang diperiksa. Mutasi note dilakukan dalam satu lock, membaca ulang dokumen, memvalidasi revisi, menghitung status, dan menulis task serta audit melalui pola proyek. Lock bukan transaksi lintas sheet; jangan menjanjikan rollback atomik audit yang tidak disediakan platform.
+API progres kuantitas dan `handovers.save` lama menolak task note; API note menolak legacy. `completeAll` lama tidak dipakai untuk mode note. Rute baca memakai `anyOf` WH-view/QC-edit, seluruh rute tetap `scope: 'location'`; ID task harus cocok dengan lokasi yang diperiksa. Mutasi note dilakukan dalam satu lock, membaca ulang dokumen, memvalidasi revisi, menghitung status, dan menulis task serta audit melalui pola proyek. Lock bukan transaksi lintas sheet; jangan menjanjikan rollback atomik audit yang tidak disediakan platform.
 
 Tambahkan query key koleksi board dan invalidasi daftar/detail/audit setelah mutasi. Bentuk list lama tetap dapat dipertahankan untuk kompatibilitas; pencarian board mencakup nomor, customer, dan seluruh teks blok. Perubahan lokasi aktif tidak boleh menampilkan cache dari lokasi sebelumnya.
 
@@ -164,7 +164,7 @@ Tambahkan query key koleksi board dan invalidasi daftar/detail/audit setelah mut
 |---|---|
 | AC1 | WH membuat task dengan lokasi dan teks, customer kosong, tanpa item/qty; task tersimpan dan tampil pada board. Teks hanya spasi ditolak. |
 | AC2 | Paste `Router A 2 pcs\nSwitch B 1 pcs\nKirim sore` menghasilkan tiga checklist berurutan; mengubah baris ketiga menjadi paragraf mempertahankan teks dan total menjadi dua. CRLF, baris kosong, bullet, dan Markdown checkbox tidak membuat duplikat/entri kosong. |
-| AC3 | Paste di tengah teks mempertahankan bagian sebelum/sesudah; undo mengembalikan keadaan sebelumnya. Mengetik/mengubah blok memperbarui pratinjau tanpa mengganti tab atau mengirim RPC. |
+| AC3 | Paste di tengah teks mempertahankan bagian sebelum/sesudah; undo mengembalikan keadaan sebelumnya. Mengetik/mengubah blok memperbarui pratinjau tanpa mengganti tab atau mengirim API. |
 | AC4 | QC mencentang dua checklist secara bertahap: Baru → Dikerjakan → Selesai. Reload mempertahankan centang/pelaku/waktu. Batal centang membuka lagi; paragraf tidak dihitung. |
 | AC5 | WH tanpa `qc: edit` dan pemantau ditolak oleh server saat memanggil mutasi centang/komentar; QC tanpa WH-edit tidak dapat menyimpan isi. Akses task lokasi lain ditolak tanpa membocorkan isi. |
 | AC6 | Seleksi kutipan tunggal, termasuk format Markdown, emoji, dan kutipan berulang, menampilkan Komentari dan menyimpan komentar pada rentang yang benar. Seleksi kosong/lintas blok ditangani sesuai spesifikasi. |
@@ -175,7 +175,7 @@ Tambahkan query key koleksi board dan invalidasi daftar/detail/audit setelah mut
 | AC11 | Task legacy tetap menampilkan snapshot item, qty parsial/over-target, status, catatan, dan audit aslinya. Setup berulang tidak menggandakan/mengonversi data; endpoint lama tidak menulis task note. |
 | AC12 | Dibatalkan tidak menerima perubahan isi, centang, atau komentar. Perubahan teks checklist yang dicentang mereset centang dengan audit; penghapusan/konversi checklist dicentang ditolak. |
 | AC13 | HTML/script/URL berbahaya dari paste, Markdown, dan komentar tidak dijalankan. Payload melebihi batas ditolak utuh di server dan UI tanpa kehilangan draft. |
-| AC14 | Board mengambil isi tiap kolom lewat RPC `handovers.board` berhalaman (20 task per halaman bawaan, maks. 50; semula 3 sampai 2026-11-05; halaman berikutnya dimuat otomatis saat kolom digulir, infinite scroll) tanpa N panggilan `get`; catatan, centang, dan komentar kartu dirender saat kartu mendekati layar (lazy render); error/kosong/lokasi tak dipilih punya tampilan jelas. JSON rusak satu task tidak menimpa data atau menghilangkan kartu lain. (Diubah 2026-10-26, disetujui pemilik, dari "satu RPC board untuk seluruh koleksi".) |
+| AC14 | Board mengambil isi tiap kolom lewat API `handovers.board` berhalaman (20 task per halaman bawaan, maks. 50; semula 3 sampai 2026-11-05; halaman berikutnya dimuat otomatis saat kolom digulir, infinite scroll) tanpa N panggilan `get`; catatan, centang, dan komentar kartu dirender saat kartu mendekati layar (lazy render); error/kosong/lokasi tak dipilih punya tampilan jelas. JSON rusak satu task tidak menimpa data atau menghilangkan kartu lain. (Diubah 2026-10-26, disetujui pemilik, dari "satu API board untuk seluruh koleksi".) |
 | AC15 | Create/update/reset/check/uncheck/comment/cancel menghasilkan audit dengan pelaku dan perubahan yang terbaca; no-op centang tidak menambah audit. `bun run check` dan `bun run build` lulus. |
 
 ## 9. Kebutuhan nonfungsional dan dependensi

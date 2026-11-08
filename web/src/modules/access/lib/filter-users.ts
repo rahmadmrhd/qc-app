@@ -1,4 +1,4 @@
-import type { UserDto, UserStatus } from '@shared/rpc';
+import type { UserDto, UserStatus } from '@shared/contract';
 
 export interface UserFilter {
   q: string;

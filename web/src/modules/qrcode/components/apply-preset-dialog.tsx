@@ -1,4 +1,4 @@
-import type { QrPresetDto } from '@shared/rpc';
+import type { QrPresetDto } from '@shared/contract';
 import { useState } from 'react';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';

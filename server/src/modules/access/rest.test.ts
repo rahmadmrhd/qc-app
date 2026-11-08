@@ -4,7 +4,7 @@ import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
-// Padanan REST dari kontrak RPC `access.*` (users, roles, locations, audit berkursor).
+// Kontrak REST `access.*` (users, roles, locations, audit berkursor).
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -18,7 +18,7 @@ beforeEach(async () => {
   await seedUser(env, { id: 'u-plain', email: 'plain@gmail.com' });
 });
 
-describe('izin rute access (terjemahan tes RPC lama)', () => {
+describe('izin rute access (terjemahan tes lama)', () => {
   test('view boleh membaca, hanya manage boleh menulis; audit berkursor; limit di luar batas ditolak', async () => {
     const read = await rest.get('/users', { email: 'viewer@gmail.com' });
     expect(read.status).toBe(200);

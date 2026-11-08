@@ -1,4 +1,4 @@
-import type { ItemSummaryDto } from '@shared/rpc';
+import type { ItemSummaryDto } from '@shared/contract';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';

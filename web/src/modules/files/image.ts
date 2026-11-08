@@ -1,6 +1,6 @@
+import type { UploadFileInput } from '@shared/contract';
 import type { ImageMime } from '@shared/files';
 import { IMAGE_TARGET_BYTES, isImageMime, MAX_IMAGE_SIDE } from '@shared/files';
-import type { UploadFileInput } from '@shared/rpc';
 
 /** Skala turun agar sisi terpanjang <= `max`; tidak pernah membesarkan; sisi minimal 1 px. */
 export function fitWithin(

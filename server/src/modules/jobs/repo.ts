@@ -1,6 +1,6 @@
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import type { JobKind, JobStatus } from '@shared/rpc';
+import type { JobKind, JobStatus } from '@shared/contract';
 
 export interface JobRecord {
   id: string;

@@ -2,8 +2,8 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
+import type { GetJobInput, JobDto, JobKind } from '@shared/contract';
 import { hasLevel } from '@shared/permissions';
-import type { GetJobInput, JobDto, JobKind } from '@shared/rpc';
 import type { JobRecord } from './repo';
 import { findJob, insertBlobStmt, insertJobStmt } from './repo';
 

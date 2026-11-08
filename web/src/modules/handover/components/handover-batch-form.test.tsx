@@ -1,4 +1,4 @@
-import type { HandoverOptionsDto, MeDto } from '@shared/rpc';
+import type { HandoverOptionsDto, MeDto } from '@shared/contract';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';

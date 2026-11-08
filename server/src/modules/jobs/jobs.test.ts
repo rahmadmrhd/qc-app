@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { runPendingJobs, scheduleCleanupJob } from '@server/jobs/runner';
 import { cleanupQrDocuments } from '@server/modules/qrcode/service';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { CLEANUP_REVOKE_LIMIT } from './cleanup';
@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 const call = (email: string, method: string, payload: unknown) =>
-  qrRpc(env, email, method, payload);
+  qrCall(env, email, method, payload);
 
 async function makeDesign() {
   const out = await call('qredit@gmail.com', 'qrcodes.save', {
@@ -117,7 +117,7 @@ async function exportFiles() {
 const createCalls = () => env.BRIDGE.calls.filter((c) => c.action === 'createFile');
 
 describe('qrcodes.export dan jobs.get', () => {
-  test('RPC hanya mengantre: balas { jobId }, baris jobs queued tanpa muatan base64, muatan di job_blobs, belum ada berkas', async () => {
+  test('Rute hanya mengantre: balas { jobId }, baris jobs queued tanpa muatan base64, muatan di job_blobs, belum ada berkas', async () => {
     const made = await makeDesign();
     const filesBefore = createCalls().length;
     const out = await requestExport(made);
@@ -137,7 +137,7 @@ describe('qrcodes.export dan jobs.get', () => {
     });
   });
 
-  test('izin RPC: butuh edit; pemeriksaan awal: tak dikenal, versi basi, overflow, terlalu besar', async () => {
+  test('izin rute: butuh edit; pemeriksaan awal: tak dikenal, versi basi, overflow, terlalu besar', async () => {
     const made = await makeDesign();
     expect((await requestExport(made, {}, 'qrview@gmail.com')).error.code).toBe('FORBIDDEN');
     expect((await requestExport({ id: 'x', updatedAt: made.updatedAt })).error.code).toBe(

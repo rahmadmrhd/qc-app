@@ -1,4 +1,4 @@
-import type { BrandDto } from '@shared/rpc';
+import type { BrandDto } from '@shared/contract';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';

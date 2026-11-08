@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@shared/rpc';
+import type { ErrorCode } from '@shared/contract';
 
 export interface AppError extends Error {
   code: ErrorCode;

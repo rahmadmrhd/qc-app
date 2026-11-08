@@ -1,4 +1,4 @@
-import type { LocationDto } from '@shared/rpc';
+import type { LocationDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
