@@ -105,3 +105,10 @@ test('tanpa izin edit/manage tidak ada form tambah, Ubah, maupun Nonaktifkan', (
   expect(screen.queryByRole('button', { name: 'Tambah merk' })).toBeNull();
   expect(screen.queryByRole('button', { name: /Ubah|Nonaktifkan|Aktifkan/ })).toBeNull();
 });
+
+test('merk tanpa field businessUnitIds (data cache lama) tidak membuat halaman crash', () => {
+  const legacy = { id: 'b9', name: 'Warisan', status: 'active', itemCount: 0, updatedAt: '' };
+  renderManager({ brands: [legacy as unknown as BrandDto] });
+  expect(screen.getByText('Warisan')).toBeInTheDocument();
+  expect(screen.getByText('—')).toBeInTheDocument();
+});

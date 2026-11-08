@@ -6,22 +6,27 @@ import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { buIdsWithLevelFor, can, requirePermission } from '@/modules/auth/permissions';
+import { meQueryOptions } from '@/modules/auth/queries';
 import { useMe } from '@/modules/auth/use-me';
 import { brandsQueryOptions, useSaveBrand } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
 import { mergeBusinessUnits } from '@/modules/item/lib/default-business-units';
+import { assertCanEditItem } from '@/modules/item/lib/edit-access';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
 
 export const Route = createFileRoute('/_app/item/$itemId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
-  loader: ({ context, params }) =>
-    Promise.all([
+  loader: async ({ context, params }) => {
+    const [item, me] = await Promise.all([
       context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
+      context.queryClient.ensureQueryData(meQueryOptions()),
       context.queryClient.ensureQueryData(brandsQueryOptions()),
       context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
-    ]),
+    ]);
+    assertCanEditItem(me, item);
+  },
   component: EditItemPage,
 });
 

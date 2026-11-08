@@ -29,10 +29,12 @@ test('markAuthenticated menyimpan email dan menghapus error login', () => {
 test('clearSession membuang status dan cache tersimpan', () => {
   markAuthenticated('a@x.com');
   localStorage.setItem(PERSISTED_CACHE_KEY, '{}');
+  localStorage.setItem('qc.cache.v1', '{}');
   clearSession();
   expect(isAuthenticated()).toBe(false);
   expect(getSession().email).toBeNull();
   expect(localStorage.getItem(PERSISTED_CACHE_KEY)).toBeNull();
+  expect(localStorage.getItem('qc.cache.v1')).toBeNull();
 });
 
 test('storage yang tidak tersedia tidak membuat aplikasi crash', () => {

@@ -7,6 +7,11 @@ test('BU bawaan merk disaring ke BU yang boleh diisi user, urutan bawaan merk di
   expect(defaultBusinessUnitIds(brand, [])).toEqual([]);
 });
 
+test('merk tanpa field businessUnitIds (data cache lama) dianggap tanpa BU bawaan', () => {
+  expect(defaultBusinessUnitIds({}, ['bu-a'])).toEqual([]);
+  expect(defaultBusinessUnitIds({ businessUnitIds: undefined }, ['bu-a'])).toEqual([]);
+});
+
 test('merk tidak ada atau tanpa BU bawaan menghasilkan daftar kosong', () => {
   expect(defaultBusinessUnitIds(undefined, ['bu-a'])).toEqual([]);
   expect(defaultBusinessUnitIds({ businessUnitIds: [] }, ['bu-a'])).toEqual([]);
@@ -21,6 +26,6 @@ test('mergeBusinessUnits menambahkan BU melekat yang belum ada di daftar pilihan
     ]),
   ).toEqual([
     { id: 'bu-a', code: 'RTL', name: 'Retail', status: 'inactive' },
-    { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
+    { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'inactive' },
   ]);
 });

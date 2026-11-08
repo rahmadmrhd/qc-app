@@ -94,3 +94,41 @@ test('galat 409 problem+json dari server menjadi ApiError dengan fields', async 
     fields: { name: 'Nama merk sudah dipakai' },
   });
 });
+
+function invalidated(client: QueryClient) {
+  const spy = vi.spyOn(client, 'invalidateQueries');
+  return () => spy.mock.calls.map(([filters]) => String(filters?.queryKey?.join('/')));
+}
+
+function clientWrapper(client: QueryClient) {
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+}
+
+test('membuat merk baru memuat ulang merk dan audit, TIDAK item (agar form ubah item tidak ter-remount)', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidated(client);
+  const { result } = renderHook(() => useSaveBrand(), { wrapper: clientWrapper(client) });
+  result.current.mutate({ name: 'Baru', businessUnitIds: [] });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(keys()).toContain('brands');
+  expect(keys()).toContain('access/audit');
+  expect(keys()).not.toContain('items');
+});
+
+test('ganti nama dan ubah status merk ikut memuat ulang item (nama merk tampil di item)', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidated(client);
+  const rename = renderHook(() => useSaveBrand(), { wrapper: clientWrapper(client) });
+  rename.result.current.mutate({ id: 'b1', name: 'Sony Corp', businessUnitIds: [] });
+  await waitFor(() => expect(rename.result.current.isSuccess).toBe(true));
+  expect(keys()).toContain('items');
+
+  const client2 = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys2 = invalidated(client2);
+  const status = renderHook(() => useSetBrandStatus(), { wrapper: clientWrapper(client2) });
+  status.result.current.mutate({ id: 'b1', status: 'inactive' });
+  await waitFor(() => expect(status.result.current.isSuccess).toBe(true));
+  expect(keys2()).toContain('items');
+});

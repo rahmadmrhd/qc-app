@@ -35,10 +35,9 @@ export interface ItemFormProps {
   /** Id BU yang boleh diisi user (level `edit` ke atas); BU nonaktif tetap tidak ditawarkan. */
   editableBusinessUnitIds?: readonly string[];
   /**
-   * Membuat merk baru (tombol "Tambah" pada field Merk); hanya disediakan bila user boleh membuat merk. Melempar galat
-   * bila gagal (pesannya tampil di dialog).
+   * Membuat merk baru (nama + BU bawaan) dari dialog "Tambah merk"; hanya disediakan bila user boleh membuat merk.
+   * Melempar galat bila gagal (pesannya tampil di dialog).
    */
-  /** Membuat merk baru (nama + BU bawaan) dari dialog "Tambah merk"; galat dikembalikan ke dialog. */
   onCreateBrand?: (input: BrandSaveInput) => Promise<BrandDto>;
   defaultValues: ItemFormInput;
   submitError?: string | null;

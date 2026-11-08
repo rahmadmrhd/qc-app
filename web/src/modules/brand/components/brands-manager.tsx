@@ -67,11 +67,11 @@ export function BrandsManager({
               <TableRow key={brand.id}>
                 <TableCell className="font-medium">{brand.name}</TableCell>
                 <TableCell>
-                  {brand.businessUnitIds.length === 0 ? (
+                  {(brand.businessUnitIds ?? []).length === 0 ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {brand.businessUnitIds.map((buId) => {
+                      {(brand.businessUnitIds ?? []).map((buId) => {
                         const bu = buById.get(buId);
                         return bu ? (
                           <Badge key={buId} variant="outline" title={bu.name}>

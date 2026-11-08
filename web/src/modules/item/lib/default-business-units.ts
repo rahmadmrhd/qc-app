@@ -5,17 +5,19 @@ import type { BrandDto, BusinessUnitOptionDto, BusinessUnitRefDto } from '@share
  * BU bawaan di luar hak disaring, bukan ditolak diam-diam; urutan mengikuti BU bawaan merk.
  */
 export function defaultBusinessUnitIds(
-  brand: Pick<BrandDto, 'businessUnitIds'> | undefined,
+  /** `businessUnitIds` bisa hilang pada data hasil cache lama; dianggap tanpa BU bawaan. */
+  brand: Partial<Pick<BrandDto, 'businessUnitIds'>> | undefined,
   editableActiveBuIds: readonly string[],
 ): string[] {
   if (!brand) return [];
   const allowed = new Set(editableActiveBuIds);
-  return brand.businessUnitIds.filter((id) => allowed.has(id));
+  return (brand.businessUnitIds ?? []).filter((id) => allowed.has(id));
 }
 
 /**
- * Daftar BU untuk form item: pilihan dari server ditambah BU yang sudah melekat pada item tetapi tak ada di daftar
- * (dianggap aktif; label nonaktif hanya muncul bila server menandainya).
+ * Daftar BU untuk form item: pilihan dari server ditambah BU yang sudah melekat pada item tetapi tak ada di daftar.
+ * Statusnya tak diketahui, jadi ditandai nonaktif secara konservatif: tampil sebagai chip yang boleh dilepas, tetapi
+ * tak pernah ditawarkan sebagai pilihan tambah.
  */
 export function mergeBusinessUnits(
   options: readonly BusinessUnitOptionDto[],
@@ -26,6 +28,6 @@ export function mergeBusinessUnits(
     ...options,
     ...attached
       .filter((bu) => !known.has(bu.id))
-      .map((bu) => ({ ...bu, status: 'active' as const })),
+      .map((bu) => ({ ...bu, status: 'inactive' as const })),
   ];
 }
