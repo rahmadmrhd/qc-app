@@ -16,7 +16,6 @@ export interface Env extends GoogleSettings {
   SESSION_SECRET: string;
   OAUTH_CLIENT_ID: string;
   OAUTH_CLIENT_SECRET: string;
-  SYNC_API_TOKEN: string;
   /** Email super admin. */
   ADMIN_EMAIL: string;
   /**

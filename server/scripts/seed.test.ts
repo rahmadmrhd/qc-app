@@ -45,7 +45,7 @@ describe('seed data contoh', () => {
     );
   });
 
-  test('kolom turunan handover konsisten dengan isi; penghitung dan sync_state terisi', async () => {
+  test('kolom turunan handover konsisten dengan isi; penghitung terisi', async () => {
     const env = await seeded();
     const rows = await env.DB.prepare('SELECT * FROM handovers').all<{
       note: string;
@@ -75,10 +75,6 @@ describe('seed data contoh', () => {
       value: number;
     }>();
     expect(counter?.value).toBe(6);
-    const sync = await env.DB.prepare(
-      'SELECT resource, seq FROM sync_state ORDER BY resource',
-    ).all();
-    expect(sync.results).toHaveLength(2);
   });
 
   test('dapat dijalankan ulang (idempoten) dan aplikasi dapat memakainya lewat RPC', async () => {

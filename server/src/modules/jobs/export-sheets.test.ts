@@ -77,7 +77,7 @@ describe('exports.sheets', () => {
     });
 
     await env.DB.prepare(
-      "INSERT INTO brands (id, name, `key`, sync_rev) VALUES ('b1', 'Acme', 'acme', 1)",
+      "INSERT INTO brands (id, name, `key`) VALUES ('b1', 'Acme', 'acme')",
     ).run();
     await drain();
     const done = await call('admin2@gmail.com', {}).then(() =>

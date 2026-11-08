@@ -16,7 +16,6 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 const full = {
   id: 'i1',
-  externalId: '',
   brandId: 'b1',
   brand: 'Mikrotik',
   model: 'hAP',
@@ -49,7 +48,6 @@ test('toItemSummary membuang detail, stiker, aksesori, lampiran, dan metadata de
       'aliases',
       'brand',
       'brandId',
-      'externalId',
       'id',
       'imageCount',
       'isCountryLock',

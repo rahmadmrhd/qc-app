@@ -431,10 +431,10 @@ describe('ekspor Spreadsheet (sheets_export)', () => {
       const count = Math.min(500, n - from);
       const binds: Array<string | number> = [];
       for (let i = from; i < from + count; i++) {
-        binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`, i);
+        binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`);
       }
       await env.DB.prepare(
-        `INSERT INTO brands (id, name, \`key\`, sync_rev) VALUES ${Array(count).fill('(?, ?, ?, ?)').join(', ')}`,
+        `INSERT INTO brands (id, name, \`key\`) VALUES ${Array(count).fill('(?, ?, ?)').join(', ')}`,
       )
         .bind(...binds)
         .run();
@@ -473,7 +473,7 @@ describe('ekspor Spreadsheet (sheets_export)', () => {
     await drain();
     expect((await findJob(env, jobId))?.status).toBe('done');
     const sheets = new Set(env.BRIDGE.state.exports.map((c) => c.sheet));
-    expect(sheets.size).toBe(15);
+    expect(sheets.size).toBe(14);
     expect(
       env.BRIDGE.state.exports.filter((c) => c.sheet === 'export_brands').map((c) => c.mode),
     ).toEqual(['replace']);

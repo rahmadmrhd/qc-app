@@ -32,11 +32,10 @@ async function seedBrands(n: number) {
   const statements: DbStatement[] = [];
   for (let i = 0; i < n; i++) {
     statements.push(
-      env.DB.prepare('INSERT INTO brands (id, name, `key`, sync_rev) VALUES (?, ?, ?, ?)').bind(
+      env.DB.prepare('INSERT INTO brands (id, name, `key`) VALUES (?, ?, ?)').bind(
         `b${String(i).padStart(5, '0')}`,
         `Merk ${i}`,
         `merk ${i}`,
-        i,
       ),
     );
   }

@@ -15,25 +15,13 @@ export async function seedBrand(
   overrides: {
     id?: string;
     status?: 'active' | 'inactive';
-    syncRev?: number;
-    externalId?: string;
   } = {},
 ): Promise<string> {
   const id = overrides.id ?? brandIdOf(name);
   await env.DB.prepare(
-    'INSERT INTO brands (id, external_id, name, `key`, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO brands (id, name, `key`, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(
-      id,
-      overrides.externalId ?? '',
-      name,
-      normalizeKey(name),
-      overrides.status ?? 'active',
-      overrides.syncRev ?? 0,
-      SEED_TIME,
-      SEED_TIME,
-      'seed',
-    )
+    .bind(id, name, normalizeKey(name), overrides.status ?? 'active', SEED_TIME, SEED_TIME, 'seed')
     .run();
   return id;
 }
@@ -45,7 +33,6 @@ export interface SeedItem {
   model: string;
   aliases?: string[];
   status?: 'active' | 'inactive';
-  syncRev?: number;
   brandId?: string;
   key?: string;
 }
@@ -53,7 +40,7 @@ export interface SeedItem {
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
   const brandId = item.brandId ?? brandIdOf(item.brand);
   await env.DB.prepare(
-    "INSERT INTO items (id, external_id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, '', ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, ?, 'seed')",
+    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed')",
   )
     .bind(
       item.id,
@@ -63,7 +50,6 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       JSON.stringify(item.aliases ?? []),
       aliasKeysOf(item.aliases ?? []),
       item.status ?? 'active',
-      item.syncRev ?? 0,
       SEED_TIME,
       SEED_TIME,
     )

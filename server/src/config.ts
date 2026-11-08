@@ -14,7 +14,6 @@ export interface Config {
   sessionSecret: string;
   oauthClientId: string;
   oauthClientSecret: string;
-  syncApiToken: string;
   /** Jalur berkas kunci service account Google (JSON); '' = belum dikonfigurasi (wajib di produksi). Isi kunci TIDAK pernah dari env. */
   googleSaKeyFile: string;
   /** Folder induk Drive; '' = belum dikonfigurasi (wajib di produksi). */
@@ -80,7 +79,6 @@ const REQUIRED = [
   'SESSION_SECRET',
   'OAUTH_CLIENT_ID',
   'OAUTH_CLIENT_SECRET',
-  'SYNC_API_TOKEN',
   'ADMIN_EMAIL',
 ] as const;
 
@@ -243,7 +241,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sessionSecret,
     oauthClientId: get('OAUTH_CLIENT_ID'),
     oauthClientSecret: get('OAUTH_CLIENT_SECRET'),
-    syncApiToken: get('SYNC_API_TOKEN'),
     googleSaKeyFile: get('GOOGLE_SA_KEY_FILE'),
     googleRootFolderId: get('GOOGLE_ROOT_FOLDER_ID'),
     googleSpreadsheetId: get('GOOGLE_SPREADSHEET_ID'),

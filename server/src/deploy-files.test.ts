@@ -48,7 +48,7 @@ const NOT_IN_ENV_EXAMPLE = new Set([
 describe('deploy: variabel konfigurasi', () => {
   test('pembacaan config.ts terdeteksi (penjaga tes ini sendiri)', () => {
     const names = configVariables();
-    for (const expected of ['DATABASE_URL', 'TRUSTED_PROXY', 'APP_ORIGIN', 'SYNC_API_TOKEN']) {
+    for (const expected of ['DATABASE_URL', 'TRUSTED_PROXY', 'APP_ORIGIN', 'SESSION_SECRET']) {
       expect(names).toContain(expected);
     }
   });

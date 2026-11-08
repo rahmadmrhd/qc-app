@@ -7,7 +7,6 @@ const VALID: Record<string, string> = {
   SESSION_SECRET: 'rahasia-sesi-yang-cukup-panjang',
   OAUTH_CLIENT_ID: 'client-id',
   OAUTH_CLIENT_SECRET: 'client-secret-rahasia',
-  SYNC_API_TOKEN: 'token-sinkron-rahasia',
   ADMIN_EMAIL: 'admin@example.com',
 };
 
@@ -97,10 +96,10 @@ describe('loadConfig', () => {
   });
 
   test('hanya yang hilang yang disebut; nilai yang diisi tidak pernah bocor ke pesan', () => {
-    const { DATABASE_URL: _db, SYNC_API_TOKEN: _sync, ...rest } = VALID;
+    const { DATABASE_URL: _db, OAUTH_CLIENT_ID: _oauth, ...rest } = VALID;
     const error = errorOf(rest);
     expect(error.message).toContain('DATABASE_URL');
-    expect(error.message).toContain('SYNC_API_TOKEN');
+    expect(error.message).toContain('OAUTH_CLIENT_ID');
     expect(error.message).not.toContain('SESSION_SECRET');
     for (const value of Object.values(rest)) expect(error.message).not.toContain(value);
   });

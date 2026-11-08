@@ -12,21 +12,15 @@ import {
 } from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
-import type { SyncRouteTable } from '@server/modules/sync/handler';
-import { registerSyncRest } from '@server/modules/sync/rest';
-import { syncRoutes } from '@server/modules/sync/routes';
 import { getRoutes } from '@server/routes';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 /**
- * Aplikasi Hono: `/api/*` (REST `/api/v1`, termasuk `/api/v1/sync/*` untuk QC Desktop), `/auth/*`, lalu berkas statis web dengan fallback SPA. `Env` (koneksi
+ * Aplikasi Hono: `/api/*` (REST `/api/v1`), `/auth/*`, lalu berkas statis web dengan fallback SPA. `Env` (koneksi
  * dan rahasia) datang lewat `c.env`; `createServer` (server.ts) menyusunnya dari konfigurasi.
  */
-export function createApp(
-  routes: RouteTable,
-  syncTable: SyncRouteTable = syncRoutes(),
-): Hono<AppBindings> {
+export function createApp(routes: RouteTable): Hono<AppBindings> {
   const app = new Hono<AppBindings>();
 
   app.use('*', securityHeaders);
@@ -36,15 +30,13 @@ export function createApp(
   app.get('/api/ping', (c) => c.json({ ok: true }));
   // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar.
   const rest = new Hono<AppBindings>();
-  // QC Desktop (`/api/v1/sync/*`): Bearer `SYNC_API_TOKEN`, bukan sesi/cookie; didaftarkan SEBELUM penutup 404 `registerRest`.
-  registerSyncRest(rest, syncTable);
   registerRest(rest, routes);
   app.route('/api/v1', rest);
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
   // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
-  // Kabel lama QC Desktop (`POST /sync`, amplop {v,method,token,payload}) dihapus: kontrak belum dipakai klien mana pun
-  // (keputusan pemilik 2026-11-06). Jawabannya 404 problem+json untuk semua metode di `/sync` dan turunannya.
+  // Kabel lama (`POST /sync`, amplop {v,method,token,payload}) dihapus (keputusan pemilik 2026-11-06); modul sinkron
+  // REST `/api/v1/sync/*` pun dihapus (2026-11-08). Jawabannya 404 problem+json untuk semua metode di `/sync` dan turunannya.
   app.all('/sync', () => restNotFound());
   app.all('/sync/*', () => restNotFound());
 

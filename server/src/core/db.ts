@@ -135,7 +135,7 @@ const SESSION_COLLATION = 'SET NAMES utf8mb4 COLLATE utf8mb4_nopad_bin';
 /**
  * MariaDB >= 11.6.2 menyalakan `innodb_snapshot_isolation` (bawaan): pada REPEATABLE READ, menulis/mengunci baris yang
  * diubah transaksi lain SETELAH snapshot transaksi ini dibuat melempar galat 1020 ("Record has changed since last
- * read"). Penghitung bersama (`sync_state`, `counters`) dan penulisan setelah baca biasa akan sering kena. Dimatikan
+ * read"). Penghitung bersama (`counters`) dan penulisan setelah baca biasa akan sering kena. Dimatikan
  * per sesi: bacaan biasa tetap konsisten, pembacaan/penulisan mengunci tetap melihat data terbaru (perilaku MySQL).
  */
 const SESSION_SNAPSHOT_OFF = 'SET SESSION innodb_snapshot_isolation = 0';

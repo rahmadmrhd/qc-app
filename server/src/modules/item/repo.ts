@@ -2,13 +2,11 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
-import { nextSyncRev, syncRevExpr } from '@server/modules/sync/state';
 import { normalizeKey } from '@shared/items';
 import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/rpc';
 
 export interface ItemRecord {
   id: string;
-  externalId: string;
   brandId: string;
   model: string;
   key: string;
@@ -19,7 +17,6 @@ export interface ItemRecord {
   attachments: string[];
   detail: string;
   status: ItemStatus;
-  syncRev: number;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -27,7 +24,6 @@ export interface ItemRecord {
 
 export interface ItemRow {
   id: string;
-  external_id: string;
   brand_id: string;
   model: string;
   key: string;
@@ -38,7 +34,6 @@ export interface ItemRow {
   attachments: string;
   detail_md: string;
   status: string;
-  sync_rev: number;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -47,7 +42,6 @@ export interface ItemRow {
 /** Kolom `items` yang dibaca `toItem` (satu sumber kebenaran; nama = kunci `ItemRow`). */
 const ITEM_COLUMN_LIST = [
   'id',
-  'external_id',
   'brand_id',
   'model',
   '`key`',
@@ -58,7 +52,6 @@ const ITEM_COLUMN_LIST = [
   'attachments',
   'detail_md',
   'status',
-  'sync_rev',
   'created_at',
   'updated_at',
   'updated_by',
@@ -123,7 +116,6 @@ function parseAccessories(text: string): ItemAccessoryDto[] {
 export function toItem(row: ItemRow): ItemRecord {
   return {
     id: row.id.trim(),
-    externalId: row.external_id.trim(),
     brandId: row.brand_id.trim(),
     model: row.model.trim(),
     key: row.key.trim(),
@@ -134,7 +126,6 @@ export function toItem(row: ItemRow): ItemRecord {
     attachments: parseStrings(row.attachments),
     detail: row.detail_md,
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
-    syncRev: Number(row.sync_rev) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -193,15 +184,6 @@ function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): D
 }
 
 /**
- * Pernyataan pembaca revisi yang dipakai baris item: `SELECT sync_rev` di akhir penulisan item (transaksi
- * `batch()` yang sama, jadi membaca nilai yang baru ditulis; MariaDB tidak punya `UPDATE ... RETURNING`).
- * Hanya pernyataan ini yang mengembalikan baris di batch penulisan item; pemanggil membacanya dari hasil batch.
- */
-function readSyncRevStmt(db: Db, itemId: string): DbStatement {
-  return db.prepare('SELECT sync_rev FROM items WHERE id = ?').bind(itemId);
-}
-
-/**
  * Penjaga ganti nama merk (I1): pernyataan PERTAMA batch penulisan item. Mengunci baris merk (`FOR UPDATE`: menunggu
  * transaksi ganti nama yang sedang berjalan sampai COMMIT, dan menahan ganti nama baru sampai batch ini selesai) lalu
  * gagal dengan `CAS_FAIL_SQL` (galat 1690, `isGuardFailure`: seluruh batch batal) bila `brands.key` bukan lagi
@@ -216,14 +198,11 @@ export function brandKeyGuardStmt(db: Db, brandId: string, expectedKey: string):
     .bind(expectedKey, brandId);
 }
 
-/** Penyisipan item (+ `item_alias_keys`, `brands.item_count`, dan pembacaan `sync_rev` yang dipakai). */
-export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolean): DbStatement[] {
-  const revSql = createdSyncRev ? syncRevExpr('items') : '?';
+/** Penyisipan item (+ `item_alias_keys` dan `brands.item_count`). */
+export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
   const statements: DbStatement[] = [];
-  if (createdSyncRev) statements.push(nextSyncRev(db, 'items', item.createdAt));
   const binds: unknown[] = [
     item.id,
-    item.externalId,
     item.brandId,
     item.model,
     item.key,
@@ -235,24 +214,24 @@ export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolea
     JSON.stringify(item.attachments),
     item.detail,
     item.status,
+    item.createdAt,
+    item.updatedAt,
+    item.updatedBy,
   ];
-  if (!createdSyncRev) binds.push(item.syncRev);
-  binds.push(item.createdAt, item.updatedAt, item.updatedBy);
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, external_id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${revSql}, ?, ?, ?)`,
+        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...binds),
   );
   statements.push(...insertAliasKeyStmts(db, item.id, aliasKeyList(item.aliases)));
   statements.push(adjustItemCountStmt(db, item.brandId, 1));
-  statements.push(readSyncRevStmt(db, item.id));
   return statements;
 }
 
 /**
- * UPDATE seluruh kolom item; `bumpRev` menaikkan `sync_rev` dalam batch yang sama. `previous` = merk, nama
+ * UPDATE seluruh kolom item. `previous` = merk, nama
  * lain, dan `updatedAt` item SEBELUM perubahan (yang dilihat penulis): `updatedAt` dijaga CAS di `UPDATE`
  * itu sendiri (`CAS_UPDATED_AT_SET`: basi = galat 'BIGINT value is out of range' yang membatalkan seluruh batch,
  * tanpa pernyataan penjaga terpisah), dan selisih merk/nama lain menentukan baris `item_alias_keys` dan penghitung
@@ -261,19 +240,15 @@ export function insertItemStmts(db: Db, item: ItemRecord, createdSyncRev: boolea
 export function updateItemStmts(
   db: Db,
   item: ItemRecord,
-  bumpRev: boolean,
   previous: Pick<ItemRecord, 'brandId' | 'aliases' | 'updatedAt'>,
 ): DbStatement[] {
   const statements: DbStatement[] = [];
-  if (bumpRev) statements.push(nextSyncRev(db, 'items', item.updatedAt));
-  const revSql = bumpRev ? syncRevExpr('items') : 'sync_rev';
   statements.push(
     db
       .prepare(
-        `UPDATE items SET external_id = ?, brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, sync_rev = ${revSql}, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
-        item.externalId,
         item.brandId,
         item.model,
         item.key,
@@ -316,6 +291,5 @@ export function updateItemStmts(
       adjustItemCountStmt(db, item.brandId, 1),
     );
   }
-  statements.push(readSyncRevStmt(db, item.id));
   return statements;
 }

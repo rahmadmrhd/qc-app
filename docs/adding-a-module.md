@@ -61,4 +61,4 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 - **Drive/Sheets** hanya diakses lewat klien Google (`getBridge(env)` = `env.BRIDGE`, antarmuka `BridgeClient` di `server/src/core/bridge-client.ts`; implementasi service account di `server/src/core/google/`, lihat `docs/setup-google.md`); jangan memanggil API Google langsung dari modul. Isi berkas dibaca lewat `cachedFileContent` (izin diperiksa SEBELUM cache).
 
 ## Sumber daya sinkron
-Bila modul perlu disinkronkan dengan QC Desktop, ikuti bagian 5 `docs/api/desktop-sync.md`. Handler sinkron tidak menerima `UserContext`; penulisan memakai fungsi domain yang sama dengan rute REST web (mis. `planItemWrite`/`saveItem` di `server/src/modules/item/service.ts`) agar keunikan, audit, dan `sync_rev` konsisten.
+Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

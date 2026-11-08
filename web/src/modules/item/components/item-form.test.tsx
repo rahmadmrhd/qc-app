@@ -114,7 +114,6 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
   const brands = [
     {
       id: 'b1',
-      externalId: '',
       name: 'Ubiquiti',
       status: 'active' as const,
       itemCount: 1,
@@ -122,7 +121,6 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
     },
     {
       id: 'b2',
-      externalId: '',
       name: 'Lama',
       status: 'inactive' as const,
       itemCount: 0,
@@ -157,7 +155,6 @@ test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menye
   const brands = [
     {
       id: 'b2',
-      externalId: '',
       name: 'Lama',
       status: 'inactive' as const,
       itemCount: 1,
