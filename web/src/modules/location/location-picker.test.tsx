@@ -33,6 +33,7 @@ beforeEach(() => {
       qc: 'none',
       stock: 'none',
     },
+    businessUnits: [],
     locations: [
       { id: 'l-a', code: 'JKT', name: 'Jakarta', permissions: { ...none, handover: 'view' } },
       { id: 'l-b', code: 'BDG', name: 'Bandung', permissions: { ...none, handover: 'view' } },

@@ -31,6 +31,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     name: 'A',
     status: 'active',
     assignments: [],
+    buAssignments: [{ buId: 'b1', roleIds: ['r1'] }],
   },
   'access.users.setStatus': { id: 'u1', status: 'inactive' },
   'access.roles.list': null,

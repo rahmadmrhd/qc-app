@@ -22,6 +22,7 @@ beforeEach(() => {
       qc: 'none',
       stock: 'none',
     },
+    businessUnits: [],
     locations: [
       {
         id: 'l-a',
@@ -59,6 +60,7 @@ test('hanya menawarkan lokasi aktif yang boleh ditulis user', async () => {
 test('tanpa lokasi yang boleh ditulis, field dinonaktifkan dengan keterangan', () => {
   me = {
     ...me,
+    businessUnits: [],
     locations: me.locations.map((l) => ({
       ...l,
       permissions: { ...l.permissions, handover: 'view' },

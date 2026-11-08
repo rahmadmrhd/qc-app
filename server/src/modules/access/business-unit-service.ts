@@ -14,6 +14,7 @@ import {
   batchWrite,
   countItemsByBu,
   insertBusinessUnitStmt,
+  listBusinessUnitBriefs,
   loadAccessTables,
   updateBusinessUnitStmt,
 } from './repo';
@@ -66,10 +67,7 @@ export async function listBusinessUnitDtos(env: Env): Promise<BusinessUnitDto[]>
 
 /** Daftar BU ringkas (semua status) untuk pemilih; tanpa hitungan. */
 export async function listBusinessUnitOptions(env: Env): Promise<BusinessUnitOptionDto[]> {
-  const { businessUnits } = await loadAccessTables(env);
-  return businessUnits
-    .map((bu) => ({ id: bu.id, code: bu.code, name: bu.name, status: bu.status }))
-    .sort(byCode);
+  return (await listBusinessUnitBriefs(env)).sort(byCode);
 }
 
 async function dtoAfterWrite(env: Env, bu: BusinessUnitRecord): Promise<BusinessUnitDto> {

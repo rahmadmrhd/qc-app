@@ -31,6 +31,10 @@ const WORST: Inputs = {
       locationId: `${UUID}-${index}`,
       roleIds: longList(20, (role) => `${UUID}-${role}`),
     })),
+    buAssignments: longList(200, (index) => ({
+      buId: `${UUID}-${index}`,
+      roleIds: longList(20, (role) => `${UUID}-${role}`),
+    })),
   },
   'access.users.setStatus': { id: UUID, status: 'inactive' },
   'access.roles.save': {

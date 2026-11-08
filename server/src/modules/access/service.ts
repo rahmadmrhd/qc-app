@@ -5,6 +5,8 @@ import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey, resolveAccess } from '@shared/assignments';
+import type { BuAssignment } from '@shared/business-units';
+import { ALL_BU_KEY } from '@shared/business-units';
 import type {
   AuditCursorPageDto,
   DeleteRoleInput,
@@ -17,7 +19,7 @@ import type {
 } from '@shared/contract';
 import { hasLevel, sanitizePermissions } from '@shared/permissions';
 import type { UserContext } from './context';
-import type { LocationRecord, RoleRecord, UserRecord } from './repo';
+import type { BusinessUnitRecord, LocationRecord, RoleRecord, UserRecord } from './repo';
 import {
   batchWrite,
   deleteRoleStmt,
@@ -39,6 +41,10 @@ function toUserDto(user: UserRecord): UserDto {
       locationId: entry.locationId,
       roleIds: [...entry.roleIds],
     })),
+    buAssignments: user.buAssignments.map((entry) => ({
+      buId: entry.buId,
+      roleIds: [...entry.roleIds],
+    })),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     updatedBy: user.updatedBy,
@@ -46,7 +52,10 @@ function toUserDto(user: UserRecord): UserDto {
 }
 
 function usesRole(user: UserRecord, roleId: string): boolean {
-  return user.assignments.some((entry) => entry.roleIds.includes(roleId));
+  return (
+    user.assignments.some((entry) => entry.roleIds.includes(roleId)) ||
+    user.buAssignments.some((entry) => entry.roleIds.includes(roleId))
+  );
 }
 
 function toRoleDto(role: RoleRecord, users: readonly UserRecord[]): RoleDto {
@@ -80,13 +89,33 @@ function assignmentsSnapshot(assignments: readonly Assignment[]): Record<string,
   return map;
 }
 
-/** Snapshot audit: hanya field bisnis (metadata baris sudah ada di ts/actor). Penugasan memakai id. */
-export function userSnapshot(user: UserRecord): Record<string, unknown> {
+/** Peta kode BU (`*` = Semua BU; id bila BU tak lagi ada) -> role; pola `assignmentsSnapshot`. */
+function buAssignmentsSnapshot(
+  assignments: readonly BuAssignment[],
+  businessUnits: readonly BusinessUnitRecord[],
+): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const entry of assignments) {
+    const key =
+      entry.buId === null
+        ? ALL_BU_KEY
+        : (businessUnits.find((bu) => bu.id === entry.buId)?.code ?? entry.buId);
+    map[key] = [...entry.roleIds];
+  }
+  return map;
+}
+
+/** Snapshot audit: hanya field bisnis (metadata baris sudah ada di ts/actor). Penugasan memakai id/kode. */
+export function userSnapshot(
+  user: UserRecord,
+  businessUnits: readonly BusinessUnitRecord[],
+): Record<string, unknown> {
   return {
     email: user.email,
     name: user.name,
     status: user.status,
     assignments: assignmentsSnapshot(user.assignments),
+    buAssignments: buAssignmentsSnapshot(user.buAssignments, businessUnits),
   };
 }
 
@@ -124,6 +153,35 @@ function assertAssignmentsValid(
     if (!usable) {
       throw appError('VALIDATION', 'Lokasi tidak dikenal atau tidak aktif', {
         assignments: 'Lokasi tidak dikenal atau tidak aktif',
+      });
+    }
+  }
+}
+
+/**
+ * Penugasan BU: role dikenal; BU dikenal dan (aktif atau sudah tertugaskan pada user ini sebelumnya, agar
+ * menyimpan user tidak gagal karena BU yang kemudian dinonaktifkan).
+ */
+function assertBuAssignmentsValid(
+  buAssignments: readonly BuAssignment[],
+  roles: readonly RoleRecord[],
+  businessUnits: readonly BusinessUnitRecord[],
+  existing: UserRecord | undefined,
+): void {
+  const knownRoles = new Set(roles.map((role) => role.id));
+  if (buAssignments.some((entry) => entry.roleIds.some((id) => !knownRoles.has(id)))) {
+    throw appError('VALIDATION', 'Ada role yang tidak dikenal', {
+      buAssignments: 'Ada role yang tidak dikenal',
+    });
+  }
+  const previous = new Set((existing?.buAssignments ?? []).map((entry) => entry.buId));
+  for (const entry of buAssignments) {
+    if (entry.buId === null) continue;
+    const bu = businessUnits.find((item) => item.id === entry.buId);
+    const usable = bu && (bu.status === 'active' || previous.has(entry.buId));
+    if (!usable) {
+      throw appError('VALIDATION', 'BU tidak dikenal atau tidak aktif', {
+        buAssignments: 'BU tidak dikenal atau tidak aktif',
       });
     }
   }
@@ -186,14 +244,19 @@ export async function saveUser(
   actor: UserContext,
 ): Promise<UserDto> {
   const email = normalizeEmail(input.email);
-  const { users, roles, locations } = await loadAccessTables(env);
+  const { users, roles, locations, businessUnits } = await loadAccessTables(env);
   const existing = input.id ? users.find((user) => user.id === input.id) : undefined;
   assertAssignmentsValid(input.assignments, roles, locations, existing);
+  assertBuAssignmentsValid(input.buAssignments, roles, businessUnits, existing);
   if (users.some((user) => user.email === email && user.id !== input.id)) {
     throw appError('CONFLICT', 'Email sudah terdaftar', { email: 'Email sudah terdaftar' });
   }
   const now = nowIso(env);
   const assignments = input.assignments.map((entry) => ({
+    ...entry,
+    roleIds: [...entry.roleIds],
+  }));
+  const buAssignments = input.buAssignments.map((entry) => ({
     ...entry,
     roleIds: [...entry.roleIds],
   }));
@@ -214,6 +277,7 @@ export async function saveUser(
       name: input.name,
       status: input.status,
       assignments,
+      buAssignments,
       updatedAt: now,
       updatedBy: actor.email,
     };
@@ -226,8 +290,8 @@ export async function saveUser(
           actor: actor.email,
           action: 'user.update',
           target: email,
-          before: userSnapshot(existing),
-          after: userSnapshot(updated),
+          before: userSnapshot(existing, businessUnits),
+          after: userSnapshot(updated, businessUnits),
         }),
       ],
       USER_CONFLICTS,
@@ -241,7 +305,7 @@ export async function saveUser(
     name: input.name,
     status: input.status,
     assignments,
-    buAssignments: [],
+    buAssignments,
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
@@ -256,7 +320,7 @@ export async function saveUser(
         action: 'user.create',
         target: email,
         before: null,
-        after: userSnapshot(created),
+        after: userSnapshot(created, businessUnits),
       }),
     ],
     USER_CONFLICTS,
@@ -269,7 +333,7 @@ export async function setUserStatus(
   input: SetUserStatusInput,
   actor: UserContext,
 ): Promise<UserDto> {
-  const { users } = await loadAccessTables(env);
+  const { users, businessUnits } = await loadAccessTables(env);
   const existing = users.find((user) => user.id === input.id);
   if (!existing) throw appError('NOT_FOUND', 'User tidak ditemukan');
   if (existing.email === actor.email && input.status === 'inactive') {
@@ -291,8 +355,8 @@ export async function setUserStatus(
         actor: actor.email,
         action: input.status === 'active' ? 'user.activate' : 'user.deactivate',
         target: existing.email,
-        before: userSnapshot(existing),
-        after: userSnapshot(updated),
+        before: userSnapshot(existing, businessUnits),
+        after: userSnapshot(updated, businessUnits),
       }),
     ],
     USER_CONFLICTS,

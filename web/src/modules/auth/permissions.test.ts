@@ -14,6 +14,7 @@ const me: MeDto = {
     qc: 'none',
     stock: 'none',
   },
+  businessUnits: [],
   locations: [
     {
       id: 'l-a',

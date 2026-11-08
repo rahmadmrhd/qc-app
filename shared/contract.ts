@@ -1,4 +1,5 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
@@ -24,6 +25,11 @@ export interface LocationAccessDto {
   permissions: LocationPermissionMap;
 }
 
+export interface BusinessUnitAccessDto extends BusinessUnitOptionDto {
+  /** Izin efektif user di BU ini (gabungan "Semua BU" dan penugasan BU itu) untuk modul ber-BU. */
+  permissions: BuPermissionMap;
+}
+
 export interface MeDto {
   email: string;
   name: string;
@@ -32,6 +38,8 @@ export interface MeDto {
   permissions: PermissionMap;
   /** Lokasi aktif yang boleh diakses, terurut menurut kode. */
   locations: LocationAccessDto[];
+  /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
+  businessUnits: BusinessUnitAccessDto[];
 }
 
 export interface UserDto {
@@ -40,6 +48,8 @@ export interface UserDto {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
+  /** Penugasan BU (`buId: null` = Semua BU); berlaku sama di semua lokasi. */
+  buAssignments: BuAssignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -62,6 +72,7 @@ export interface SaveUserInput {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
+  buAssignments: BuAssignment[];
 }
 
 export interface SetUserStatusInput {

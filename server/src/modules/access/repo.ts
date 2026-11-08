@@ -7,7 +7,12 @@ import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { BuAssignment } from '@shared/business-units';
 import { sanitizeBuAssignments } from '@shared/business-units';
-import type { BusinessUnitStatus, LocationStatus, UserStatus } from '@shared/contract';
+import type {
+  BusinessUnitOptionDto,
+  BusinessUnitStatus,
+  LocationStatus,
+  UserStatus,
+} from '@shared/contract';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
 import type { LocationBrief, LocationBriefRow } from './location-brief';
@@ -221,6 +226,24 @@ export async function loadAccessTables(env: Env): Promise<AccessTables> {
       .map(toBusinessUnit)
       .filter((bu) => bu.id !== '' && bu.code !== ''),
   };
+}
+
+/** Ringkasan semua BU (id, kode, nama, status) tanpa metadata; dibaca langsung dari MariaDB. */
+export async function listBusinessUnitBriefs(env: Env): Promise<BusinessUnitOptionDto[]> {
+  const rows = await env.DB.prepare('SELECT id, code, name, status FROM business_units').all<{
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+  }>();
+  return rows.results
+    .map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim().toUpperCase(),
+      name: row.name.trim(),
+      status: (row.status.trim() === 'active' ? 'active' : 'inactive') as BusinessUnitStatus,
+    }))
+    .filter((bu) => bu.id !== '' && bu.code !== '');
 }
 
 /** Jumlah item per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */

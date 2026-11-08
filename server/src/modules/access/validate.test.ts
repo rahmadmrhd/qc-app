@@ -15,18 +15,20 @@ test('validateSaveUser menormalisasi email, merapikan nama, dan membuang role du
       name: '  Budi ',
       status: 'active',
       assignments: [{ locationId: null, roleIds: ['a', 'a', 'b'] }],
+      buAssignments: [{ buId: null, roleIds: ['x', 'x'] }],
     }),
   ).toEqual({
     email: 'budi@gmail.com',
     name: 'Budi',
     status: 'active',
     assignments: [{ locationId: null, roleIds: ['a', 'b'] }],
+    buAssignments: [{ buId: null, roleIds: ['x'] }],
   });
 });
 
 test('validateSaveUser mengumpulkan semua error field', () => {
   const error = captureAppError(() =>
-    validateSaveUser({ email: '', name: '', status: 'x', assignments: 'a' }),
+    validateSaveUser({ email: '', name: '', status: 'x', assignments: 'a', buAssignments: 'b' }),
   );
   expect(error.code).toBe('VALIDATION');
   expect(error.fields).toEqual({
@@ -34,6 +36,7 @@ test('validateSaveUser mengumpulkan semua error field', () => {
     name: 'Wajib diisi',
     status: 'Nilai tidak valid',
     assignments: 'Harus berupa daftar penugasan',
+    buAssignments: 'Harus berupa daftar penugasan BU',
   });
 });
 
@@ -76,10 +79,57 @@ test('validateSaveUser menolak penugasan ganda untuk satu lokasi dan entri rusak
   }
 });
 
+test('validateSaveUser: buAssignments wajib berupa daftar; BU kembar, Semua BU ganda, tanpa role, dan entri rusak ditolak', () => {
+  const base = { email: 'b@gmail.com', name: 'B', status: 'active', assignments: [] };
+  expect(captureAppError(() => validateSaveUser(base)).fields?.buAssignments).toBe(
+    'Harus berupa daftar penugasan BU',
+  );
+  expect(
+    validateSaveUser({ ...base, buAssignments: [{ buId: ' bu1 ', roleIds: [' r ', 'r'] }] })
+      .buAssignments,
+  ).toEqual([{ buId: 'bu1', roleIds: ['r'] }]);
+  for (const entries of [
+    [
+      { buId: 'bu1', roleIds: ['r'] },
+      { buId: 'bu1', roleIds: ['r'] },
+    ],
+    [
+      { buId: null, roleIds: ['r'] },
+      { buId: null, roleIds: ['r'] },
+    ],
+  ]) {
+    expect(
+      captureAppError(() => validateSaveUser({ ...base, buAssignments: entries })).fields
+        ?.buAssignments,
+    ).toBe('Satu BU hanya boleh muncul sekali');
+  }
+  for (const entry of [
+    { roleIds: ['r'] },
+    { buId: '', roleIds: ['r'] },
+    { buId: 3, roleIds: ['r'] },
+    { buId: null, roleIds: 'x' },
+    { buId: null, roleIds: [1] },
+    { buId: 'bu1', roleIds: [] },
+    { buId: null, roleIds: ['  '] },
+    'teks',
+  ]) {
+    expect(
+      captureAppError(() => validateSaveUser({ ...base, buAssignments: [entry] })).fields
+        ?.buAssignments,
+    ).toBeDefined();
+  }
+});
+
 test('validateSaveUser menolak format email salah dan input bukan objek', () => {
   expect(
     captureAppError(() =>
-      validateSaveUser({ email: 'budi', name: 'B', status: 'active', assignments: [] }),
+      validateSaveUser({
+        email: 'budi',
+        name: 'B',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+      }),
     ).fields,
   ).toEqual({ email: 'Format email tidak valid' });
   expect(captureAppError(() => validateSaveUser('teks')).fields?._).toBe(

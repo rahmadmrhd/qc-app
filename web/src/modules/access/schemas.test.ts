@@ -12,6 +12,7 @@ const user: UserDto = {
     { locationId: 'l-a', roleIds: ['basi'] },
     { locationId: 'l-b', roleIds: ['ada'] },
   ],
+  buAssignments: [],
   createdAt: '',
   updatedAt: '',
   updatedBy: '',

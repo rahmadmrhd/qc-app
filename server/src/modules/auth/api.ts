@@ -2,9 +2,10 @@ import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import type { UserContext } from '@server/modules/access/context';
 import type { LocationBrief } from '@server/modules/access/location-brief';
-import { listLocationBriefs } from '@server/modules/access/repo';
+import { listBusinessUnitBriefs, listLocationBriefs } from '@server/modules/access/repo';
 import type { LocationPermissionMap } from '@shared/assignments';
-import type { MeDto } from '@shared/contract';
+import type { BuPermissionMap } from '@shared/business-units';
+import type { BusinessUnitOptionDto, MeDto } from '@shared/contract';
 
 /**
  * Daftar lokasi `auth.me` per konteks akses: konteks dan daftar lokasi hidup di cache isolate (dibuang bersama),
@@ -33,6 +34,17 @@ function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto
   return locations;
 }
 
+/** BU yang user punya level apa pun atasnya (peta `businessUnits` konteks sudah hanya memuat BU berhak). */
+function businessUnitsOf(
+  user: UserContext,
+  briefs: readonly BusinessUnitOptionDto[],
+): MeDto['businessUnits'] {
+  return briefs
+    .filter((bu) => user.businessUnits[bu.id] !== undefined)
+    .map((bu) => ({ ...bu, permissions: user.businessUnits[bu.id] as BuPermissionMap }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
+
 /** Rute `auth.me` (REST `GET /api/v1/me`; rute HTTP `/auth/*` ada di `routes.ts`). */
 export function authApiRoutes(): Pick<RouteTable, 'auth.me'> {
   return {
@@ -44,6 +56,7 @@ export function authApiRoutes(): Pick<RouteTable, 'auth.me'> {
         isSuperAdmin: ctx.user.isSuperAdmin,
         permissions: ctx.user.permissions,
         locations: locationsOf(ctx.user, await listLocationBriefs(ctx.env)),
+        businessUnits: businessUnitsOf(ctx.user, await listBusinessUnitBriefs(ctx.env)),
       }),
     },
   };

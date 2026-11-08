@@ -68,7 +68,9 @@ function UsersPage() {
     setSubmitError(null);
     try {
       await saveUser.mutateAsync(
-        editing && editing !== 'new' ? { ...values, id: editing.id } : values,
+        editing && editing !== 'new'
+          ? { ...values, id: editing.id, buAssignments: editing.buAssignments }
+          : { ...values, buAssignments: [] },
       );
       toast.success('User disimpan');
       closeDialog();

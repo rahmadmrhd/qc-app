@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { writeAuditRows } from '@server/core/audit';
-import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
@@ -50,13 +50,25 @@ describe('izin rute access (terjemahan tes lama)', () => {
 describe('users', () => {
   test('POST buat 201 + Location, PUT ubah 200 (email tetap), PATCH status', async () => {
     const created = await rest.post('/users', {
-      body: { email: 'baru@gmail.com', name: 'Baru', status: 'active', assignments: [] },
+      body: {
+        email: 'baru@gmail.com',
+        name: 'Baru',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+      },
     });
     expect(created.status).toBe(201);
     const user = await jsonOf(created);
     expect(created.headers.get('location')).toBe(`/api/v1/users/${user.id as string}`);
     const updated = await rest.put(`/users/${user.id as string}`, {
-      body: { email: 'baru@gmail.com', name: 'Baru 2', status: 'active', assignments: [] },
+      body: {
+        email: 'baru@gmail.com',
+        name: 'Baru 2',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+      },
     });
     expect(updated.status).toBe(200);
     expect(await jsonOf(updated)).toMatchObject({ name: 'Baru 2' });
@@ -64,14 +76,53 @@ describe('users', () => {
     expect(await jsonOf(off)).toMatchObject({ status: 'inactive' });
   });
 
+  test('buAssignments: wajib ada (422), round-trip lewat REST, BU tak dikenal 422', async () => {
+    await seedBusinessUnit(env, { id: 'bu-x', code: 'XX', name: 'X' });
+    await seedRole(env, { id: 'r-bu', name: 'Item BU', permissions: { item: 'view' } });
+    const user = { email: 'bu@gmail.com', name: 'BU', status: 'active', assignments: [] };
+    const missing = await rest.post('/users', { body: user });
+    expect(missing.status).toBe(422);
+    expect(await jsonOf(missing)).toMatchObject({ fields: { buAssignments: expect.any(String) } });
+    const unknown = await rest.post('/users', {
+      body: { ...user, buAssignments: [{ buId: 'tidak-ada', roleIds: ['r-bu'] }] },
+    });
+    expect(unknown.status).toBe(422);
+    const ok = await rest.post('/users', {
+      body: { ...user, buAssignments: [{ buId: 'bu-x', roleIds: ['r-bu'] }] },
+    });
+    expect(ok.status).toBe(201);
+    expect(await jsonOf(ok)).toMatchObject({
+      buAssignments: [{ buId: 'bu-x', roleIds: ['r-bu'] }],
+    });
+    const list = (await (await rest.get('/users')).json()) as Array<{
+      email: string;
+      buAssignments: unknown;
+    }>;
+    expect(list.find((entry) => entry.email === 'bu@gmail.com')?.buAssignments).toEqual([
+      { buId: 'bu-x', roleIds: ['r-bu'] },
+    ]);
+  });
+
   test('email kembar 409; email diganti 422; status ganda aman; tidak bisa menonaktifkan diri sendiri', async () => {
     const dup = await rest.post('/users', {
-      body: { email: 'plain@gmail.com', name: 'X', status: 'active', assignments: [] },
+      body: {
+        email: 'plain@gmail.com',
+        name: 'X',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+      },
     });
     expect(dup.status).toBe(409);
     expect(await jsonOf(dup)).toMatchObject({ fields: { email: 'Email sudah terdaftar' } });
     const swap = await rest.put('/users/u-plain', {
-      body: { email: 'lain@gmail.com', name: 'X', status: 'active', assignments: [] },
+      body: {
+        email: 'lain@gmail.com',
+        name: 'X',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+      },
     });
     expect(swap.status).toBe(422);
     expect((await rest.patch('/users/u-plain', { body: { status: 'inactive' } })).status).toBe(200);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Db, DbStatement } from '@server/core/db';
-import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { loadUserContext } from './context';
 
@@ -109,5 +109,109 @@ describe('data kotor di basis data', () => {
     const campur = await loadUserContext(env, 'campur@gmail.com');
     expect(campur?.permissions.stock).toBe('view');
     expect(campur?.permissions.item).toBe('none');
+  });
+});
+
+describe('penugasan BU', () => {
+  beforeEach(async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'A', name: 'BU A' });
+    await seedBusinessUnit(env, { id: 'bu-b', code: 'B', name: 'BU B', status: 'inactive' });
+    await seedRole(env, { id: 'r-item-edit', name: 'Editor', permissions: { item: 'edit' } });
+    await seedRole(env, { id: 'r-item-view', name: 'Katalog', permissions: { item: 'view' } });
+  });
+
+  test('Semua BU berlaku untuk semua BU yang ada (termasuk nonaktif); level global item = tertinggi', async () => {
+    await seedUser(env, {
+      id: 'u1',
+      email: 'semua@gmail.com',
+      buAssignments: [{ buId: null, roleIds: ['r-item-edit'] }],
+    });
+    const ctx = await loadUserContext(env, 'semua@gmail.com');
+    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'edit' }, 'bu-b': { item: 'edit' } });
+    expect(ctx?.permissions.item).toBe('edit');
+  });
+
+  test('penugasan BU A saja hanya memberi A; digabung dengan Semua BU memberi level tertinggi', async () => {
+    await seedUser(env, {
+      id: 'u1',
+      email: 'a@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-item-edit'] }],
+    });
+    expect((await loadUserContext(env, 'a@gmail.com'))?.businessUnits).toEqual({
+      'bu-a': { item: 'edit' },
+    });
+    await seedUser(env, {
+      id: 'u2',
+      email: 'gabung@gmail.com',
+      buAssignments: [
+        { buId: null, roleIds: ['r-item-view'] },
+        { buId: 'bu-a', roleIds: ['r-item-edit'] },
+      ],
+    });
+    expect((await loadUserContext(env, 'gabung@gmail.com'))?.businessUnits).toEqual({
+      'bu-a': { item: 'edit' },
+      'bu-b': { item: 'view' },
+    });
+  });
+
+  test('BU id basi diabaikan tanpa galat; level global item tetap dari penugasan itu (tanpa akses item apa pun)', async () => {
+    await seedUser(env, {
+      id: 'u1',
+      email: 'basi@gmail.com',
+      buAssignments: [{ buId: 'bu-hilang', roleIds: ['r-item-edit'] }],
+    });
+    const ctx = await loadUserContext(env, 'basi@gmail.com');
+    expect(ctx).not.toBeNull();
+    expect(ctx?.businessUnits).toEqual({});
+    // Dokumentasi perilaku (spek 5.2): level global (Merk/Customer) = tertinggi di antara SEMUA penugasan BU,
+    // jadi penugasan basi tetap memberinya; yang tidak ia dapat hanyalah akses ke item mana pun.
+    expect(ctx?.permissions.item).toBe('edit');
+  });
+
+  test('user tanpa penugasan BU: businessUnits kosong dan item none', async () => {
+    await seedUser(env, { id: 'u1', email: 'kosong@gmail.com' });
+    const ctx = await loadUserContext(env, 'kosong@gmail.com');
+    expect(ctx?.businessUnits).toEqual({});
+    expect(ctx?.permissions.item).toBe('none');
+  });
+
+  test('role item hanya pada penugasan LOKASI tidak memberi item (perubahan disengaja)', async () => {
+    await seedUser(env, {
+      id: 'u1',
+      email: 'lokasi@gmail.com',
+      assignments: [{ locationId: null, roleIds: ['r-item-edit'] }],
+      buAssignments: [],
+    });
+    const ctx = await loadUserContext(env, 'lokasi@gmail.com');
+    expect(ctx?.permissions.item).toBe('none');
+    expect(ctx?.businessUnits).toEqual({});
+  });
+
+  test('role access pada penugasan BU tidak memberi izin modul lain', async () => {
+    await seedUser(env, {
+      id: 'u1',
+      email: 'akses@gmail.com',
+      buAssignments: [{ buId: null, roleIds: ['r-view'] }],
+    });
+    const ctx = await loadUserContext(env, 'akses@gmail.com');
+    expect(ctx?.permissions.access).toBe('none');
+    expect(ctx?.businessUnits).toEqual({});
+  });
+
+  test('super admin: semua BU manage; tanpa BU sama sekali = {} dan item manage', async () => {
+    const ctx = await loadUserContext(env, 'admin@gmail.com');
+    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'manage' }, 'bu-b': { item: 'manage' } });
+    await env.DB.prepare('DELETE FROM business_units').run();
+    const empty = await loadUserContext(env, 'admin@gmail.com');
+    expect(empty?.businessUnits).toEqual({});
+    expect(empty?.permissions.item).toBe('manage');
+  });
+
+  test('JSON bu_assignments rusak = tanpa penugasan, tanpa galat', async () => {
+    await seedUser(env, { id: 'u1', email: 'rusak@gmail.com' });
+    await env.DB.prepare("UPDATE users SET bu_assignments = '{bukan json' WHERE id = 'u1'").run();
+    const ctx = await loadUserContext(env, 'rusak@gmail.com');
+    expect(ctx?.businessUnits).toEqual({});
+    expect(ctx?.permissions.item).toBe('none');
   });
 });

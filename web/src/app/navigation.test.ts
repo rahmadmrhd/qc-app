@@ -27,6 +27,7 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
       qc: 'none',
       stock: 'none',
     },
+    businessUnits: [],
     locations: [],
   };
   expect(visibleNavGroups(groups, me).map((group) => group.label)).toEqual(['Umum']);
@@ -63,6 +64,7 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
       qc: 'none',
       stock: 'none',
     },
+    businessUnits: [],
     locations: [
       {
         id: 'l-a',
@@ -140,6 +142,7 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
         qc: 'none',
         stock: 'none',
       },
+      businessUnits: [],
       locations: [location(perms)],
     }) as MeDto;
   expect(visibleNavGroups(groups, me({ handover: 'view' }), ['l1'])).toHaveLength(1);
