@@ -1,13 +1,15 @@
-import { normalizeKey } from '@shared/items';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
-import { requirePermission } from '@/modules/auth/permissions';
-import { brandsQueryOptions } from '@/modules/brand/queries';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
+import { buIdsWithLevelFor, can, requirePermission } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { brandsQueryOptions, useSaveBrand } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
+import { mergeBusinessUnits } from '@/modules/item/lib/default-business-units';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
@@ -18,6 +20,7 @@ export const Route = createFileRoute('/_app/item/$itemId/edit')({
     Promise.all([
       context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
       context.queryClient.ensureQueryData(brandsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
     ]),
   component: EditItemPage,
 });
@@ -25,9 +28,12 @@ export const Route = createFileRoute('/_app/item/$itemId/edit')({
 function EditItemPage() {
   const { itemId } = Route.useParams();
   const navigate = useNavigate();
+  const me = useMe();
   const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
   const { data: brands } = useSuspenseQuery(brandsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const saveItem = useSaveItem();
+  const saveBrand = useSaveBrand();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
 
@@ -35,15 +41,7 @@ function EditItemPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      // Sementara (sampai field Merk dan BU di form): merk dicocokkan menurut nama, BU item tidak diubah.
-      const brandId =
-        brands.find((brand) => normalizeKey(brand.name) === normalizeKey(values.brand))?.id ?? '';
-      await saveItem.mutateAsync(
-        toSaveItemInput(values, item.id, item.updatedAt, {
-          brandId,
-          businessUnitIds: item.businessUnits.map((bu) => bu.id),
-        }),
-      );
+      await saveItem.mutateAsync(toSaveItemInput(values, item.id, item.updatedAt));
       toast.success('Item disimpan');
       await navigate({ to: '/item/$itemId', params: { itemId: item.id } });
     } catch (error) {
@@ -59,6 +57,13 @@ function EditItemPage() {
         title={`Ubah item: ${item.brand} ${item.model}`}
         key={item.updatedAt}
         brands={brands}
+        businessUnits={mergeBusinessUnits(businessUnits, item.businessUnits)}
+        editableBusinessUnitIds={buIdsWithLevelFor(me, 'edit')}
+        onCreateBrand={
+          can(me, 'item', 'edit')
+            ? (name) => saveBrand.mutateAsync({ name, businessUnitIds: [] })
+            : undefined
+        }
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}
         fieldErrors={fieldErrors}

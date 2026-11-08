@@ -14,7 +14,10 @@ const items: ItemSummaryDto[] = [
     status: 'active',
     aliases: ['AirFiber 5XHD'],
     imageCount: 2,
-    businessUnits: [],
+    businessUnits: [
+      { id: 'bu-a', code: 'RTL', name: 'Retail' },
+      { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
+    ],
     updatedAt: '',
   },
   {
@@ -34,7 +37,14 @@ const items: ItemSummaryDto[] = [
 function renderTable(props: Partial<Parameters<typeof ItemsTable>[0]> = {}) {
   const handlers = { onOpen: vi.fn(), onEdit: vi.fn(), onToggleStatus: vi.fn() };
   render(
-    <ItemsTable items={items} canEdit canManage pendingStatusId={null} {...handlers} {...props} />,
+    <ItemsTable
+      items={items}
+      canEdit={() => true}
+      canManage={() => true}
+      pendingStatusId={null}
+      {...handlers}
+      {...props}
+    />,
   );
   return handlers;
 }
@@ -53,8 +63,8 @@ test('tombol aksi mengikuti izin: view hanya Lihat; edit menambah Ubah; manage m
   const { unmount } = render(
     <ItemsTable
       items={items}
-      canEdit={false}
-      canManage={false}
+      canEdit={() => false}
+      canManage={() => false}
       pendingStatusId={null}
       onOpen={() => undefined}
       onEdit={() => undefined}
@@ -65,7 +75,7 @@ test('tombol aksi mengikuti izin: view hanya Lihat; edit menambah Ubah; manage m
   expect(screen.queryByRole('button', { name: /^Ubah/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).not.toBeInTheDocument();
   unmount();
-  renderTable({ canEdit: true, canManage: false });
+  renderTable({ canManage: () => false });
   expect(screen.getAllByRole('button', { name: /^Ubah/ })).toHaveLength(2);
   expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).not.toBeInTheDocument();
 });
@@ -85,4 +95,18 @@ test('memanggil handler untuk item yang dipilih', async () => {
 test('daftar kosong menampilkan pesan', () => {
   renderTable({ items: [] });
   expect(screen.getByText('Tidak ada item yang cocok.')).toBeInTheDocument();
+});
+
+test('menampilkan chip BU (kode) per item', () => {
+  renderTable();
+  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.getByText('WHL')).toBeInTheDocument();
+});
+
+test('hak ubah dan nonaktifkan dinilai per item', () => {
+  renderTable({ canEdit: (item) => item.id === 'i1', canManage: (item) => item.id === 'i2' });
+  expect(screen.getByRole('button', { name: 'Ubah Ubiquiti AF 5XHD' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Ubah Mikrotik hAP ac2' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Nonaktifkan Ubiquiti AF 5XHD' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Aktifkan Mikrotik hAP ac2' })).toBeInTheDocument();
 });

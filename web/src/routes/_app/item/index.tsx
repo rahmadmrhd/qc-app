@@ -8,7 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
-import { can, requirePermission } from '@/modules/auth/permissions';
+import {
+  canCreateItem,
+  canEditItem,
+  canManageItem,
+  requirePermission,
+} from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { ItemsTable } from '@/modules/item/components/items-table';
 import {
@@ -41,8 +46,7 @@ function ItemsPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
-  const canEdit = can(me, 'item', 'edit');
-  const canManage = can(me, 'item', 'manage');
+  const canCreate = canCreateItem(me);
   const list = useInfiniteQuery(itemsInfiniteQueryOptions(filterOf(search)));
   const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
@@ -72,7 +76,7 @@ function ItemsPage() {
           <Button variant="outline" onClick={() => void navigate({ to: '/item/brands' })}>
             Kelola merk
           </Button>
-          {canEdit ? (
+          {canCreate ? (
             <Button onClick={() => void navigate({ to: '/item/new' })}>Tambah item</Button>
           ) : null}
         </div>
@@ -110,8 +114,8 @@ function ItemsPage() {
       ) : null}
       <ItemsTable
         items={visible}
-        canEdit={canEdit}
-        canManage={canManage}
+        canEdit={(item) => canEditItem(me, item)}
+        canManage={(item) => canManageItem(me, item)}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
         onOpen={(item) => void navigate({ to: '/item/$itemId', params: { itemId: item.id } })}
         onEdit={(item) => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}

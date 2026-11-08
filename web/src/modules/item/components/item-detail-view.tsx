@@ -44,6 +44,11 @@ export function ItemDetailView({
           <div className="flex flex-wrap items-center gap-2">
             {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
             {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
+            {item.businessUnits.map((bu) => (
+              <Badge key={bu.id} variant="outline" title={bu.name}>
+                {bu.code}
+              </Badge>
+            ))}
           </div>
           {item.aliases.length > 0 ? (
             <p className="text-sm text-muted-foreground">

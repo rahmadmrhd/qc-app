@@ -2,7 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
-import { can, requirePermission } from '@/modules/auth/permissions';
+import { canEditItem, canManageItem, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { ItemDetailView } from '@/modules/item/components/item-detail-view';
 import { itemQueryOptions, useSetItemStatus } from '@/modules/item/queries';
@@ -36,8 +36,8 @@ function ItemDetailPage() {
   return (
     <ItemDetailView
       item={item}
-      canEdit={can(me, 'item', 'edit')}
-      canManage={can(me, 'item', 'manage')}
+      canEdit={canEditItem(me, item)}
+      canManage={canManageItem(me, item)}
       statusPending={setStatus.isPending}
       onBack={() => void navigate({ to: '/item' })}
       onEdit={() => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
