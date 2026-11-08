@@ -164,7 +164,7 @@ export async function itemBusinessUnitsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT l.item_id, b.id, b.code, b.name FROM item_business_units l JOIN business_units b ON b.id = l.bu_id WHERE l.item_id IN (${chunk.map(() => '?').join(',')}) ORDER BY b.code`,
+        `SELECT l.item_id, b.id, b.code, b.name FROM item_business_units l JOIN business_units b ON b.id = l.bu_id WHERE l.item_id IN (${chunk.map(() => '?').join(',')})`,
       )
       .bind(...chunk)
       .all<{ item_id: string; id: string; code: string; name: string }>();

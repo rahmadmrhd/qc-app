@@ -459,4 +459,40 @@ describe('konkurensi pada himpunan BU', () => {
     );
     expect(hidden.code).toBe('CONFLICT');
   });
+
+  test('konflik nama lain dijawab generik: tanpa merk/tipe item di BU yang tak terlihat user', async () => {
+    await seedBrand(env, 'Rahasiamerk');
+    await seedItem(env, {
+      id: 'i-rahasia',
+      brand: 'Rahasiamerk',
+      model: 'Tipe-Rahasia-9',
+      aliases: ['ZX-1', 'Sony ZX9'],
+      businessUnitIds: ['bu-b'],
+    });
+    const user = await ctxOf('ea@gmail.com'); // hanya edit di BU A; item rahasia di BU B
+    const text = (error: { message: string; fields?: Record<string, string> }): string =>
+      [error.message, ...Object.values(error.fields ?? {})].join(' | ').toLowerCase();
+
+    // nama lain yang user ketik bentrok dengan nama lain item BU B
+    const alias = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', aliases: ['ZX-1'] }), user),
+    );
+    expect(alias.code).toBe('CONFLICT');
+    expect(alias.fields?.aliases).toBe('Nama lain "ZX-1" sudah dipakai item lain');
+    expect(text(alias)).not.toContain('rahasia');
+
+    // merk+tipe user sama dengan nama lain item BU B
+    const model = await captureAppErrorAsync(() => saveItem(env, input({ model: 'ZX9' }), user));
+    expect(model.code).toBe('CONFLICT');
+    expect(model.fields?.model).toBe('Merk dan tipe sama dengan nama lain item lain');
+    expect(text(model)).not.toContain('rahasia');
+
+    // nama lain user sama dengan merk+tipe item BU B: hanya menggaungkan ketikan user sendiri
+    const typed = 'Rahasiamerk Tipe-Rahasia-9';
+    const key = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru2', aliases: [typed] }), user),
+    );
+    expect(key.code).toBe('CONFLICT');
+    expect(key.fields?.aliases).toBe(`Nama lain "${typed}" sudah dipakai item lain`);
+  });
 });

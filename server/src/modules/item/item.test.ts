@@ -182,7 +182,7 @@ describe('simpan', () => {
           saveItem(env, { ...other, aliases: ['ubiquiti es 24 250w'] }, admin),
         )
       ).fields?.aliases,
-    ).toContain('sudah dipakai item Ubiquiti ES 24 250W');
+    ).toContain('sudah dipakai item lain');
     expect(
       (
         await captureAppErrorAsync(() =>
@@ -193,12 +193,12 @@ describe('simpan', () => {
     expect(
       (await captureAppErrorAsync(() => saveItem(env, { ...other, aliases: ['AIRSWITCH'] }, admin)))
         .fields?.aliases,
-    ).toContain('"AIRSWITCH" sudah dipakai item Ubiquiti ES 24 250W');
+    ).toContain('"AIRSWITCH" sudah dipakai item lain');
     expect(
       await captureAppErrorAsync(() => saveItem(env, { ...baseInput, model: 'ES24' }, admin)),
     ).toMatchObject({
       code: 'CONFLICT',
-      fields: { model: 'Sama dengan nama lain item Ubiquiti ES 24 250W' },
+      fields: { model: 'Merk dan tipe sama dengan nama lain item lain' },
     });
     expect(await itemCount()).toBe(1);
   });

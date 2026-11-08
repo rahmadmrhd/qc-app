@@ -1,6 +1,5 @@
 import { writeAudit } from '@server/core/audit';
 import { runCas } from '@server/core/cas';
-import type { ActorRef } from '@server/core/context';
 import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -217,10 +216,10 @@ export async function getItemDto(
   const found = await findItem(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const view = await viewOf(env, found);
-  const visible = new Set(visibleBuIds(user));
-  if (!view.businessUnits.some((bu) => visible.has(bu.id))) {
-    throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  }
+  assertItemVisible(
+    user,
+    view.businessUnits.map((bu) => bu.id),
+  );
   return toItemDto(view);
 }
 
@@ -279,7 +278,6 @@ function nameOwnersFrom(result: { results: unknown[] } | undefined): NameOwners 
 
 /** Merk+tipe dan nama lain harus unik terhadap item lain (kunci ternormalisasi). */
 function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwners): void {
-  const label = (row: OwnerRow) => itemLabel({ brand: row.brand ?? '', model: row.model });
   if (owners.byItemKey.get(key)) {
     throw appError('CONFLICT', 'Merk dan tipe sudah dipakai item lain', {
       model: 'Merk dan tipe sudah dipakai item lain',
@@ -288,7 +286,7 @@ function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwne
   const holderRow = owners.byAliasKey.get(key);
   if (holderRow) {
     throw appError('CONFLICT', 'Merk dan tipe sama dengan nama lain item lain', {
-      model: `Sama dengan nama lain item ${label(holderRow)}`,
+      model: 'Merk dan tipe sama dengan nama lain item lain',
     });
   }
   for (const [index, aliasKey] of nameKeysOf(input, key).aliasKeys.entries()) {
@@ -300,7 +298,7 @@ function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwne
     }
     const owner = owners.byItemKey.get(aliasKey) ?? owners.byAliasKey.get(aliasKey);
     if (owner) {
-      const message = `Nama lain "${alias}" sudah dipakai item ${label(owner)}`;
+      const message = `Nama lain "${alias}" sudah dipakai item lain`;
       throw appError('CONFLICT', message, { aliases: message });
     }
   }

@@ -54,7 +54,7 @@ export function assertRequestedBusinessUnits(
   const added = requested.filter((id) => !(current ?? []).includes(id));
   for (const id of added) {
     const bu = known.get(id);
-    if (!bu || bu.status !== 'active') {
+    if (bu?.status !== 'active') {
       throw appError('VALIDATION', 'BU tidak dikenal atau tidak aktif', {
         businessUnitIds: 'BU tidak dikenal atau tidak aktif',
       });
