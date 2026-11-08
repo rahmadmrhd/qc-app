@@ -41,6 +41,8 @@ const WORST: Inputs = {
   },
   'access.locations.save': { id: UUID, code: text(10), name: text(100) },
   'access.locations.setStatus': { id: UUID, status: 'inactive' },
+  'access.businessUnits.save': { id: UUID, code: text(10), name: text(100) },
+  'access.businessUnits.setStatus': { id: UUID, status: 'inactive' },
   'brands.save': { id: UUID, name: text(ITEM_LIMITS.brand) },
   'brands.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },

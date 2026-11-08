@@ -5,9 +5,11 @@ import { assignmentKey } from '@shared/assignments';
 import type {
   DeleteRoleInput,
   ListAuditPageInput,
+  SaveBusinessUnitInput,
   SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
+  SetBusinessUnitStatusInput,
   SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/contract';
@@ -162,6 +164,27 @@ export function validateSaveLocation(raw: unknown): SaveLocationInput {
 }
 
 export function validateSetLocationStatus(raw: unknown): SetLocationStatusInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true });
+  const status = reader.oneOf('status', USER_STATUS_VALUES);
+  reader.done();
+  return { id, status };
+}
+
+/** Kode BU mengikuti aturan kode lokasi: huruf besar/angka/tanda hubung, maks. 10. */
+export function validateSaveBusinessUnit(raw: unknown): SaveBusinessUnitInput {
+  const reader = readObject(raw);
+  const id = reader.optionalId('id');
+  const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
+  const name = reader.str('name', { required: true, max: 100 });
+  if (code !== '' && code.length <= 10 && !LOCATION_CODE_PATTERN.test(code)) {
+    reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
+  }
+  reader.done();
+  return id ? { id, code, name } : { code, name };
+}
+
+export function validateSetBusinessUnitStatus(raw: unknown): SetBusinessUnitStatusInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true });
   const status = reader.oneOf('status', USER_STATUS_VALUES);

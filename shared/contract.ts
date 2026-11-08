@@ -132,6 +132,41 @@ export interface SetLocationStatusInput {
   status: LocationStatus;
 }
 
+export type BusinessUnitStatus = 'active' | 'inactive';
+
+export interface BusinessUnitRefDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** Ringkasan BU untuk pemilih (Merk, form item): tanpa hitungan dan metadata. */
+export interface BusinessUnitOptionDto extends BusinessUnitRefDto {
+  status: BusinessUnitStatus;
+}
+
+export interface BusinessUnitDto extends BusinessUnitOptionDto {
+  /** Jumlah baris `item_business_units` (item yang bertaut ke BU ini). */
+  itemCount: number;
+  /** Jumlah user yang `bu_assignments`-nya memuat BU ini secara eksplisit atau "Semua BU". */
+  userCount: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface SaveBusinessUnitInput {
+  id?: string;
+  /** Huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
+  code: string;
+  name: string;
+}
+
+export interface SetBusinessUnitStatusInput {
+  id: string;
+  status: BusinessUnitStatus;
+}
+
 export interface FileDto {
   id: string;
   mime: string;
@@ -501,6 +536,11 @@ export interface ApiContract {
   'access.locations.list': { input: null; output: LocationDto[] };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
+  'access.businessUnits.list': { input: null; output: BusinessUnitDto[] };
+  'access.businessUnits.save': { input: SaveBusinessUnitInput; output: BusinessUnitDto };
+  'access.businessUnits.setStatus': { input: SetBusinessUnitStatusInput; output: BusinessUnitDto };
+  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). */
+  'businessUnits.options': { input: null; output: BusinessUnitOptionDto[] };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
   'brands.list': { input: null; output: BrandDto[] };

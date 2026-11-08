@@ -5,7 +5,9 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
-import type { LocationStatus, UserStatus } from '@shared/contract';
+import type { BuAssignment } from '@shared/business-units';
+import { sanitizeBuAssignments } from '@shared/business-units';
+import type { BusinessUnitStatus, LocationStatus, UserStatus } from '@shared/contract';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
 import type { LocationBrief, LocationBriefRow } from './location-brief';
@@ -19,6 +21,8 @@ export interface UserRecord {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
+  /** Penugasan BU (`buId: null` = Semua BU); kosong/rusak dibaca `[]` (backfill hak lama bukan tugas pembaca). */
+  buAssignments: BuAssignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -44,6 +48,16 @@ export interface LocationRecord {
   updatedBy: string;
 }
 
+export interface BusinessUnitRecord {
+  id: string;
+  code: string;
+  name: string;
+  status: BusinessUnitStatus;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 interface UserRow {
   id: string;
   email: string;
@@ -51,6 +65,7 @@ interface UserRow {
   status: string;
   role_ids: string;
   assignments: string;
+  bu_assignments: string;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -60,6 +75,15 @@ interface RoleRow {
   name: string;
   description: string;
   permissions: string;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+}
+interface BusinessUnitRow {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -100,6 +124,12 @@ function readAssignments(row: UserRow): Assignment[] {
   return legacy.length > 0 ? [{ locationId: null, roleIds: legacy }] : [];
 }
 
+/** Penugasan BU dari kolom `bu_assignments`; kosong atau rusak = `[]`. */
+function readBuAssignments(row: UserRow): BuAssignment[] {
+  const text = row.bu_assignments.trim();
+  return text === '' ? [] : sanitizeBuAssignments(parseJson(text));
+}
+
 function toUser(row: UserRow): UserRecord {
   return {
     id: row.id.trim(),
@@ -107,6 +137,7 @@ function toUser(row: UserRow): UserRecord {
     name: row.name.trim(),
     status: row.status.trim() === 'active' ? 'active' : 'inactive',
     assignments: readAssignments(row),
+    buAssignments: readBuAssignments(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -137,10 +168,23 @@ function toLocation(row: LocationRow): LocationRecord {
   };
 }
 
+function toBusinessUnit(row: BusinessUnitRow): BusinessUnitRecord {
+  return {
+    id: row.id.trim(),
+    code: row.code.trim().toUpperCase(),
+    name: row.name.trim(),
+    status: row.status.trim() === 'active' ? 'active' : 'inactive',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    updatedBy: row.updated_by,
+  };
+}
+
 export interface AccessTables {
   users: UserRecord[];
   roles: RoleRecord[];
   locations: LocationRecord[];
+  businessUnits: BusinessUnitRecord[];
 }
 
 /** Ringkasan semua lokasi (kecil); dibaca langsung dari MariaDB (tanpa cache). */
@@ -149,17 +193,20 @@ export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
   return result.results.map(toLocationBrief);
 }
 
-/** Tiga tabel akses (kecil) dalam SATU `batch()`. */
+/** Empat tabel akses (kecil) dalam SATU `batch()`. */
 export async function loadAccessTables(env: Env): Promise<AccessTables> {
-  const [users, roles, locations] = await env.DB.batch([
+  const [users, roles, locations, businessUnits] = await env.DB.batch([
     env.DB.prepare(
-      'SELECT id, email, name, status, role_ids, assignments, created_at, updated_at, updated_by FROM users',
+      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, created_at, updated_at, updated_by FROM users',
     ),
     env.DB.prepare(
       'SELECT id, name, description, permissions, created_at, updated_at, updated_by FROM roles',
     ),
     env.DB.prepare(
       'SELECT id, code, name, status, created_at, updated_at, updated_by FROM locations',
+    ),
+    env.DB.prepare(
+      'SELECT id, code, name, status, created_at, updated_at, updated_by FROM business_units',
     ),
   ]);
   return {
@@ -170,13 +217,24 @@ export async function loadAccessTables(env: Env): Promise<AccessTables> {
     locations: ((locations?.results ?? []) as LocationRow[])
       .map(toLocation)
       .filter((location) => location.id !== '' && location.code !== ''),
+    businessUnits: ((businessUnits?.results ?? []) as BusinessUnitRow[])
+      .map(toBusinessUnit)
+      .filter((bu) => bu.id !== '' && bu.code !== ''),
   };
+}
+
+/** Jumlah item per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */
+export async function countItemsByBu(env: Env): Promise<Map<string, number>> {
+  const rows = await env.DB.prepare(
+    'SELECT bu_id, COUNT(*) AS n FROM item_business_units GROUP BY bu_id',
+  ).all<{ bu_id: string; n: number | string }>();
+  return new Map(rows.results.map((row) => [row.bu_id, Number(row.n)]));
 }
 
 export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
-      "INSERT INTO users (id, email, name, status, role_ids, assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)",
+      "INSERT INTO users (id, email, name, status, role_ids, assignments, bu_assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)",
     )
     .bind(
       user.id,
@@ -184,6 +242,7 @@ export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
       user.name,
       user.status,
       JSON.stringify(user.assignments),
+      JSON.stringify(user.buAssignments),
       user.createdAt,
       user.updatedAt,
       user.updatedBy,
@@ -193,12 +252,13 @@ export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
 export function updateUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
-      "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+      "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, bu_assignments = ?, updated_at = ?, updated_by = ? WHERE id = ?",
     )
     .bind(
       user.name,
       user.status,
       JSON.stringify(user.assignments),
+      JSON.stringify(user.buAssignments),
       user.updatedAt,
       user.updatedBy,
       user.id,
@@ -262,6 +322,22 @@ export function updateLocationStmt(db: Db, location: LocationRecord): DbStatemen
       'UPDATE locations SET name = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
     )
     .bind(location.name, location.status, location.updatedAt, location.updatedBy, location.id);
+}
+
+export function insertBusinessUnitStmt(db: Db, bu: BusinessUnitRecord): DbStatement {
+  return db
+    .prepare(
+      'INSERT INTO business_units (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    .bind(bu.id, bu.code, bu.name, bu.status, bu.createdAt, bu.updatedAt, bu.updatedBy);
+}
+
+export function updateBusinessUnitStmt(db: Db, bu: BusinessUnitRecord): DbStatement {
+  return db
+    .prepare(
+      'UPDATE business_units SET name = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+    )
+    .bind(bu.name, bu.status, bu.updatedAt, bu.updatedBy, bu.id);
 }
 
 /**

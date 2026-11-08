@@ -241,6 +241,7 @@ export async function saveUser(
     name: input.name,
     status: input.status,
     assignments,
+    buAssignments: [],
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
