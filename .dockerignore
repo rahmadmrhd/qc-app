@@ -42,4 +42,3 @@ deploy
 server/scripts
 server/test-support
 scripts/google-sa-check
-scripts/migrate
