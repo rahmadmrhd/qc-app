@@ -22,6 +22,7 @@ const item: ItemDto = {
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,
+  businessUnits: [],
   updatedAt: '2026-10-09T00:00:00.000Z',
   stickers: [
     { name: 'Label SNI', note: 'Belakang, kanan bawah', fileId: 'st1' },

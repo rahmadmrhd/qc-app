@@ -4,9 +4,10 @@ import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { listBrands } from '@server/modules/brand/repo';
 import { uploadFile } from '@server/modules/files/service';
+import { seedBusinessUnit } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
-import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { SaveItemInput } from '@shared/contract';
 import { hashText } from '@shared/items';
@@ -62,6 +63,8 @@ const itemCount = async () =>
 beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
+  // BU bawaan fixture dibuat SEBELUM konteks admin dimuat (konteks super admin memuat BU yang ada saat itu).
+  await seedBusinessUnit(env, { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' });
   const ctx = await loadUserContext(env, 'admin@gmail.com');
   if (!ctx) throw new Error('admin hilang');
   admin = ctx;
@@ -387,7 +390,7 @@ describe('batch penulisan item', () => {
     const updated = await env.DB.batch(update.statements);
     // merk sudah ada: pernyataan pertama batch adalah penjaga merk (I1)
     expect(updated[0]?.results[0]).toEqual({ guard_ok: 1 });
-    expect((await getItemDto(env, { id: 'baru-1' })).detail).toBe('berubah');
+    expect((await getItemDto(env, { id: 'baru-1' }, admin)).detail).toBe('berubah');
   });
 });
 
@@ -399,7 +402,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
       { ...baseInput, model: 'Emoji 😀', aliases: ['Mantap 😀', 'Nama 👍'], detail },
       admin,
     );
-    const got = await getItemDto(env, { id: saved.id });
+    const got = await getItemDto(env, { id: saved.id }, admin);
     expect(got.detail).toBe(detail);
     expect(got.model).toBe('Emoji 😀');
     expect(got.aliases).toEqual(['Mantap 😀', 'Nama 👍']);
@@ -417,7 +420,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
     ).results.map((r) => r.key);
     expect(keys).toEqual(['mantap', 'nama']);
     // pencarian lewat nama lain bernama emoji; menyimpan ulang tidak merusak
-    expect((await listItemPage(env, { query: 'mantap' })).items.map((i) => i.id)).toEqual([
+    expect((await listItemPage(env, { query: 'mantap' }, admin)).items.map((i) => i.id)).toEqual([
       saved.id,
     ]);
     env.clock.advance(1000);
@@ -426,7 +429,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
       { ...baseInput, id: saved.id, model: 'Emoji 😀', aliases: ['Mantap 😀'], detail },
       admin,
     );
-    expect((await getItemDto(env, { id: saved.id })).detail).toBe(detail);
+    expect((await getItemDto(env, { id: saved.id }, admin)).detail).toBe(detail);
   });
 });
 
@@ -449,7 +452,7 @@ describe('konkurensi optimistis', () => {
     expect(stale.code).toBe('CONFLICT');
     expect(stale.message).toContain('diubah orang lain');
     expect(stale.stale).toBe(true);
-    expect((await getItemDto(env, { id: first.id })).detail).toBe('awal');
+    expect((await getItemDto(env, { id: first.id }, admin)).detail).toBe('awal');
     const ok = await saveItem(
       env,
       { ...baseInput, id: first.id, detail: 'cocok', expectedUpdatedAt: first.updatedAt },
@@ -477,7 +480,7 @@ describe('konkurensi optimistis', () => {
     expect((rejected.reason as { code: string }).code).toBe('CONFLICT');
     expect((await auditActions()).filter((a) => a === 'item.update')).toHaveLength(1);
     // yang kalah dibatalkan utuh: isi tersimpan = milik pemenang
-    expect(['A', 'B']).toContain((await getItemDto(env, { id: first.id })).detail);
+    expect(['A', 'B']).toContain((await getItemDto(env, { id: first.id }, admin)).detail);
   });
 });
 
@@ -508,7 +511,7 @@ describe('CAS digabung ke UPDATE (konkurensi)', () => {
     expect(
       (await auditActions()).filter((a) => a.startsWith('item.') && a !== 'item.create'),
     ).toHaveLength(fulfilled);
-    const final = await getItemDto(env, { id: first.id });
+    const final = await getItemDto(env, { id: first.id }, admin);
     expect(final.status).toBe('inactive');
     expect(final.detail).toBe(saved.status === 'fulfilled' ? 'baru' : 'awal');
   });
@@ -586,7 +589,7 @@ describe('daftar berkursor dan get', () => {
     await seedItem(env, { id: 'i1', brand: 'Mikrotik', model: 'Z', status: 'inactive' });
     await seedItem(env, { id: 'i3', brand: 'Ubiquiti', model: 'A' });
     await seedBrand(env, 'Mikrotik');
-    const page = await listItemPage(env, {});
+    const page = await listItemPage(env, {}, admin);
     expect(page.items.map((i) => `${i.brand} ${i.model}`)).toEqual([
       'Mikrotik Z',
       'Ubiquiti A',
@@ -611,12 +614,12 @@ describe('daftar berkursor dan get', () => {
         aliases: i === 7 ? ['Tujuh'] : [],
       });
     }
-    expect((await listItemPage(env, {})).items).toHaveLength(20);
+    expect((await listItemPage(env, {}, admin)).items).toHaveLength(20);
     const seen: string[] = [];
     let cursor: string | undefined;
     let pages = 0;
     do {
-      const page = await listItemPage(env, { limit: 20, ...(cursor ? { cursor } : {}) });
+      const page = await listItemPage(env, { limit: 20, ...(cursor ? { cursor } : {}) }, admin);
       seen.push(...page.items.map((i) => i.id));
       cursor = page.nextCursor ?? undefined;
       pages++;
@@ -624,11 +627,15 @@ describe('daftar berkursor dan get', () => {
     expect(pages).toBe(3);
     expect(new Set(seen).size).toBe(45);
     expect(seen[0]).toBe('i0');
-    const inactive = await listItemPage(env, { status: 'inactive', limit: 50 });
+    const inactive = await listItemPage(env, { status: 'inactive', limit: 50 }, admin);
     expect(inactive.items).toHaveLength(9);
-    expect((await listItemPage(env, { query: 'm12' })).items.map((i) => i.id)).toEqual(['i12']);
-    expect((await listItemPage(env, { query: 'tujuh' })).items.map((i) => i.id)).toEqual(['i7']);
-    expect((await listItemPage(env, { query: 'tidak ada' })).items).toHaveLength(0);
+    expect((await listItemPage(env, { query: 'm12' }, admin)).items.map((i) => i.id)).toEqual([
+      'i12',
+    ]);
+    expect((await listItemPage(env, { query: 'tujuh' }, admin)).items.map((i) => i.id)).toEqual([
+      'i7',
+    ]);
+    expect((await listItemPage(env, { query: 'tidak ada' }, admin)).items).toHaveLength(0);
   });
 
   test('daftar tidak menyentuh kolom JSON besar (stiker, kelengkapan, detail)', async () => {
@@ -636,11 +643,11 @@ describe('daftar berkursor dan get', () => {
     await env.DB.prepare(
       "UPDATE items SET stickers = '{rusak', accessories = '{rusak', detail_md = 'xxxxxxxxxx'",
     ).run();
-    const page = await listItemPage(env, {});
+    const page = await listItemPage(env, {}, admin);
     expect(page.items).toHaveLength(1);
     // lampiran rusak = 0 gambar, bukan galat
     await env.DB.prepare("UPDATE items SET attachments = '{rusak'").run();
-    expect((await listItemPage(env, {})).items[0]?.imageCount).toBe(0);
+    expect((await listItemPage(env, {}, admin)).items[0]?.imageCount).toBe(0);
   });
 
   test('getItemDto memuat detail lengkap; id tak dikenal NOT_FOUND', async () => {
@@ -648,13 +655,13 @@ describe('daftar berkursor dan get', () => {
     await env.DB.prepare(
       'UPDATE items SET detail_md = \'# isi\', accessories = \'[{"name":"x","qty":1}]\'',
     ).run();
-    expect(await getItemDto(env, { id: 'i1' })).toMatchObject({
+    expect(await getItemDto(env, { id: 'i1' }, admin)).toMatchObject({
       detail: '# isi',
       accessories: [{ name: 'x', qty: 1 }],
     });
-    expect((await captureAppErrorAsync(() => getItemDto(env, { id: 'tidak-ada' }))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await captureAppErrorAsync(() => getItemDto(env, { id: 'tidak-ada' }, admin))).code,
+    ).toBe('NOT_FOUND');
   });
 });
 
@@ -749,7 +756,7 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
     });
     expect(racing.code).toBe('CONFLICT');
     expect(racing.fields?.aliases).toBeDefined();
-    expect((await getItemDto(env, { id: second.id })).aliases).toEqual([]);
+    expect((await getItemDto(env, { id: second.id }, admin)).aliases).toEqual([]);
   });
 
   test('nama lain sama dengan merk+tipe item lain tetap ditolak (kunci item vs nama lain)', async () => {

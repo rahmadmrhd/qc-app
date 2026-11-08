@@ -5,6 +5,7 @@ import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
@@ -13,6 +14,7 @@ import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import type {
+  BusinessUnitRefDto,
   GetItemInput,
   ItemAccessoryDto,
   ItemDto,
@@ -25,6 +27,7 @@ import type {
   SetItemStatusInput,
 } from '@shared/contract';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
+import { visibleBuIds } from './access';
 import type { ItemRecord } from './repo';
 import {
   brandKeyGuardStmt,
@@ -33,14 +36,15 @@ import {
   findItemWithBrand,
   type ItemRow,
   insertItemStmts,
+  itemBusinessUnitsOf,
   parseStrings,
   toItem,
   updateItemStmts,
 } from './repo';
 import { ITEM_PAGE_DEFAULT_LIMIT } from './validate';
 
-/** Record item beserta nama merk (dari tabel merk) untuk DTO dan audit. */
-export type ItemView = ItemRecord & { brand: string };
+/** Record item beserta nama merk (dari tabel merk) dan semua BU-nya untuk DTO dan audit. */
+export type ItemView = ItemRecord & { brand: string; businessUnits: BusinessUnitRefDto[] };
 
 function toItemSummaryDto(item: ItemView): ItemSummaryDto {
   return {
@@ -52,6 +56,7 @@ function toItemSummaryDto(item: ItemView): ItemSummaryDto {
     status: item.status,
     aliases: [...item.aliases],
     imageCount: item.attachments.length,
+    businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
   };
 }
@@ -105,7 +110,11 @@ async function brandNameOf(env: Env, brandId: string): Promise<string> {
 }
 
 async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
-  return { ...item, brand: await brandNameOf(env, item.brandId) };
+  const [brand, businessUnits] = await Promise.all([
+    brandNameOf(env, item.brandId),
+    itemBusinessUnitsOf(env.DB, [item.id]),
+  ]);
+  return { ...item, brand, businessUnits: businessUnits.get(item.id) ?? [] };
 }
 
 interface ListRow {
@@ -125,11 +134,22 @@ interface ListRow {
  * Daftar ringkas berkursor, urut menurut `key` (merk + tipe ternormalisasi; memakai indeks `items_key`).
  * TIDAK membaca/parsing kolom besar (detail, stiker, kelengkapan); jumlah gambar dihitung SQL. Hanya `aliases`
  * (kecil) di-parse untuk baris pada halaman ini.
+ *
+ * Hanya item yang beririsan dengan BU yang boleh dilihat `user` (filter di SQL, bukan di klien; pencarian ikut
+ * terfilter). Tanpa BU terlihat = halaman kosong tanpa kueri. BU tiap item pada halaman dimuat dengan SATU kueri.
  */
-export async function listItemPage(env: Env, input: ListItemsPageInput): Promise<ItemPageDto> {
+export async function listItemPage(
+  env: Env,
+  input: ListItemsPageInput,
+  user: UserContext,
+): Promise<ItemPageDto> {
   const limit = input.limit ?? ITEM_PAGE_DEFAULT_LIMIT;
-  const where: string[] = [];
-  const binds: unknown[] = [];
+  const visible = visibleBuIds(user);
+  if (visible.length === 0) return { items: [], nextCursor: null };
+  const where: string[] = [
+    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
+  ];
+  const binds: unknown[] = [...visible];
   if (input.status) {
     where.push('i.status = ?');
     binds.push(input.status);
@@ -152,6 +172,10 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
   const rows = result.results;
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
+  const businessUnits = await itemBusinessUnitsOf(
+    env.DB,
+    page.map((row) => row.id.trim()),
+  );
   return {
     items: page.map(
       (row): ItemSummaryDto => ({
@@ -163,6 +187,7 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
         status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
         aliases: parseStrings(row.aliases),
         imageCount: Number(row.image_count) || 0,
+        businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
       }),
     ),
@@ -170,10 +195,23 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
   };
 }
 
-export async function getItemDto(env: Env, input: GetItemInput): Promise<ItemDto> {
+/**
+ * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
+ * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
+ */
+export async function getItemDto(
+  env: Env,
+  input: GetItemInput,
+  user: UserContext,
+): Promise<ItemDto> {
   const found = await findItem(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  return toItemDto(await viewOf(env, found));
+  const view = await viewOf(env, found);
+  const visible = new Set(visibleBuIds(user));
+  if (!view.businessUnits.some((bu) => visible.has(bu.id))) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
+  return toItemDto(view);
 }
 
 interface OwnerRow {
@@ -443,7 +481,11 @@ export async function planItemWrite(
     updatedAt: now,
     updatedBy: actor.email,
   };
-  const afterView = (record: ItemRecord): ItemView => ({ ...record, brand: resolved.brand.name });
+  const afterView = (record: ItemRecord): ItemView => ({
+    ...record,
+    brand: resolved.brand.name,
+    businessUnits: [],
+  });
   // Merk yang sudah ada dijaga: ganti nama merk yang menyela membatalkan batch (I1); merk baru tak perlu.
   const statements: DbStatement[] =
     resolved.statements.length === 0
@@ -580,7 +622,7 @@ async function saveItemOnce(
     },
   });
   await batchItemWrite(env.DB, plan.statements);
-  return toItemDto({ ...plan.record, brand: plan.brandName });
+  return toItemDto({ ...plan.record, brand: plan.brandName, businessUnits: [] });
 }
 
 export async function setItemStatus(
@@ -601,7 +643,11 @@ async function setItemStatusOnce(
   const found = await findItemWithBrand(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const existing = found.item;
-  const before: ItemView = { ...existing, brand: found.brandName };
+  const before: ItemView = {
+    ...existing,
+    brand: found.brandName,
+    businessUnits: (await itemBusinessUnitsOf(env.DB, [existing.id])).get(existing.id) ?? [],
+  };
   if (existing.status === input.status) return toItemDto(before);
   const now = nowIso(env);
   const updated: ItemRecord = {
@@ -621,10 +667,14 @@ async function setItemStatusOnce(
         action: input.status === 'active' ? 'item.activate' : 'item.deactivate',
         target: itemLabel(before),
         before: itemSnapshot(before),
-        after: itemSnapshot({ ...updated, brand: before.brand }),
+        after: itemSnapshot({
+          ...updated,
+          brand: before.brand,
+          businessUnits: before.businessUnits,
+        }),
       }),
     ],
     ITEM_CONFLICTS,
   );
-  return toItemDto({ ...updated, brand: before.brand });
+  return toItemDto({ ...updated, brand: before.brand, businessUnits: before.businessUnits });
 }

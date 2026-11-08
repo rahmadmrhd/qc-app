@@ -125,6 +125,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     status: 'active',
     aliases: ['ES24', 'AirFiber'],
     imageCount: 1,
+    businessUnits: [],
     updatedAt: '',
     stickers: [{ name: 'Label', note: '', fileId: null }],
     accessories: [{ name: 'Kabel', qty: 1 }],

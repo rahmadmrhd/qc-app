@@ -2,7 +2,12 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
-import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/contract';
+import type {
+  BusinessUnitRefDto,
+  ItemAccessoryDto,
+  ItemStatus,
+  ItemStickerDto,
+} from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 
 export interface ItemRecord {
@@ -140,6 +145,37 @@ export function findItemStmt(db: Db, id: string): DbStatement {
 export async function findItem(env: Env, id: string): Promise<ItemRecord | null> {
   const row = await findItemStmt(env.DB, id).first<ItemRow>();
   return row ? toItem(row) : null;
+}
+
+/** Ukuran potongan daftar id pada `IN (...)`. */
+const IN_CHUNK = 500;
+
+/**
+ * BU tiap item (semua BU yang melekat, terurut menurut kode) untuk `itemIds`, dalam satu kueri per 500 id.
+ * Item tanpa baris penghubung tidak ada di peta.
+ */
+export async function itemBusinessUnitsOf(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, BusinessUnitRefDto[]>> {
+  const result = new Map<string, BusinessUnitRefDto[]>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT l.item_id, b.id, b.code, b.name FROM item_business_units l JOIN business_units b ON b.id = l.bu_id WHERE l.item_id IN (${chunk.map(() => '?').join(',')}) ORDER BY b.code`,
+      )
+      .bind(...chunk)
+      .all<{ item_id: string; id: string; code: string; name: string }>();
+    for (const row of rows.results) {
+      const list = result.get(row.item_id) ?? [];
+      list.push({ id: row.id.trim(), code: row.code.trim(), name: row.name.trim() });
+      result.set(row.item_id, list);
+    }
+  }
+  for (const list of result.values()) list.sort((a, b) => a.code.localeCompare(b.code));
+  return result;
 }
 
 /** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */

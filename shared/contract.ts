@@ -248,6 +248,8 @@ export interface ItemSummaryDto {
   status: ItemStatus;
   aliases: string[];
   imageCount: number;
+  /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
+  businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
 }
 

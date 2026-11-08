@@ -14,6 +14,7 @@ const items: ItemSummaryDto[] = [
     status: 'active',
     aliases: ['AirFiber 5XHD'],
     imageCount: 2,
+    businessUnits: [],
     updatedAt: '',
   },
   {
@@ -25,6 +26,7 @@ const items: ItemSummaryDto[] = [
     status: 'inactive',
     aliases: [],
     imageCount: 0,
+    businessUnits: [],
     updatedAt: '',
   },
 ];
