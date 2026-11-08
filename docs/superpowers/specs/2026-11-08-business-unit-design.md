@@ -2,7 +2,7 @@
 
 Status: disetujui pemilik produk 2026-11-08 ("lanjut pengerjaan BU"); rencana implementasi: `docs/superpowers/plans/2026-11-08-business-unit-tahap-1.md`. Tanggal: 2026-11-08.
 Cabang kerja: `feat/stiker-management` (dari `origin/dev`).
-Diperbarui 2026-11-09: tidak ada backfill hak lama (keputusan 14); §5.7, anti-tujuan, dan log keputusan disesuaikan.
+Diperbarui 2026-11-09: tidak ada backfill hak lama (keputusan 14); ekspor Sheets dikecualikan (16); jawaban berkas lintas BU disamakan (17); unggahan tertunda hanya untuk pengunggahnya (18); §5.3, §5.7, anti-tujuan, dan log keputusan disesuaikan.
 
 ## 1. Latar dan tujuan
 
@@ -39,6 +39,9 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 13. **Mengubah item yang berada di beberapa BU** hanya boleh dilakukan user yang berhak ubah pada **semua BU item itu** (diputuskan 2026-11-08).
 14. **Tidak ada backfill hak lama** (diputuskan 2026-11-09, pemilik produk): staging dan production belum punya data merk maupun item, jadi hak `item` pengguna lama tidak dimigrasikan ke penugasan BU. Setelah rilis, user lama tidak punya penugasan BU (tidak melihat item apa pun) sampai pemegang `access: manage` menugaskan BU kepadanya lewat form user; super admin (`ADMIN_EMAIL`) tetap berhak penuh. Ini menegaskan keputusan 11 (tidak ada migrasi data) dan menggantikan rancangan awal §5.7 (satu penugasan Semua BU hasil gabungan role lokasi) yang telah dibuang.
 15. **Field `buAssignments` wajib ada saat menyimpan user** (diputuskan 2026-11-09, pemilik produk): permintaan `access.users.save` tanpa `buAssignments` ditolak `VALIDATION` (422), tidak dianggap "pertahankan penugasan yang ada". Alasan: rilis ini mengubah sistem izin; admin dengan tab web lama yang terbuka saat deploy harus memuat ulang agar tidak menyimpan user dari form yang belum mengenal penugasan BU. Dijaga `validate.test.ts` dan `rest.test.ts`.
+16. **Ekspor Sheets tidak difilter BU** (diputuskan 2026-11-09, pemilik produk): fitur ekspor Sheets belum dibutuhkan saat ini, jadi `exports.sheets` (hanya `access: manage`) tetap mengekspor seluruh item dan dicatat sebagai pengecualian (d) anti-tujuan. Akan ditinjau bersama fitur Serial Number.
+17. **Jawaban berkas lintas BU disamakan** (diputuskan 2026-11-09, pemilik produk): `items.save` yang memasang berkas milik item di BU yang tidak terlihat user dijawab `VALIDATION` seperti berkas tidak dikenal, agar keberadaan berkas lintas BU tidak bisa diuji.
+18. **Unggahan yang belum terpasang hanya untuk pengunggahnya** (diputuskan 2026-11-09, pemilik produk): berkas tanpa pemilik (baru diunggah, belum melekat pada item) hanya dapat dibaca dan dipasang oleh pengunggahnya; user lain mendapat `NOT_FOUND`. Pembersihan berkas yatim memakai penjadwal yang sudah ada.
 
 ## 4. Lingkup tahap 1
 
@@ -57,7 +60,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 - Mengubah sistem izin lokasi yang ada.
 
 ### Anti-tujuan (dianggap gagal walau secara teknis jalan)
-- Data item bocor lintas BU lewat jalur mana pun yang dipakai **user**: daftar, jumlah, detail, pencarian, berkas gambar item, OpenAPI, atau `GET /api/v1/me`. Pengecualian yang disengaja: (a) log audit tetap terlihat utuh oleh pemegang `access: view` (administrator); (b) angka `item_count` pada halaman Merk tetap total global (angka saja, tanpa identitas item); (c) tidak ada pengecualian untuk sinkron: modul sinkron lama sudah dihapus (keputusan 12), jadi tidak ada jalur token tanpa user yang melewati filter BU.
+- Data item bocor lintas BU lewat jalur mana pun yang dipakai **user**: daftar, jumlah, detail, pencarian, berkas gambar item, OpenAPI, atau `GET /api/v1/me`. Pengecualian yang disengaja: (a) log audit tetap terlihat utuh oleh pemegang `access: view` (administrator); (b) angka `item_count` pada halaman Merk tetap total global (angka saja, tanpa identitas item); (c) tidak ada pengecualian untuk sinkron: modul sinkron lama sudah dihapus (keputusan 12), jadi tidak ada jalur token tanpa user yang melewati filter BU; (d) ekspor ke Google Sheets (`exports.sheets`, hanya `access: manage`) tidak difilter BU (keputusan 16).
 - Item yang tidak terlihat oleh siapa pun karena tidak punya BU.
 - Melemahkan izin lokasi yang sudah ada. (Hak `item` user lama tidak dimigrasikan; disengaja dan tidak ada data yang terdampak, lihat keputusan 14.)
 
@@ -71,7 +74,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 
 ### 5.2 Penugasan BU dan izin
 - Kolom baru `users.bu_assignments` (JSON, pola sama dengan `users.assignments`): daftar `{ buId: string | null, roleIds: string[] }`. `buId = null` berarti **Semua BU**. Berlaku di semua lokasi.
-- Daftar **modul ber-BU** didefinisikan di `shared/assignments.ts` (`BU_MODULES`, setara `LOCATION_MODULES`). Tahap 1: `['item']`. Tahap berikutnya menambah stiker, Manual Book/Postel, dan Serial Number tanpa mengubah kerangka.
+- Daftar **modul ber-BU** didefinisikan di `shared/business-units.ts` (`BU_MODULES`, setara `LOCATION_MODULES`). Tahap 1: `['item']`. Tahap berikutnya menambah stiker, Manual Book/Postel, dan Serial Number tanpa mengubah kerangka.
 - Hanya modul ber-BU yang dibaca dari role pada penugasan BU. Role pada penugasan BU **tidak** memberi izin modul lain (`access`, `handover`, dst.).
 - `item` dikeluarkan dari `SHARED_MODULES` (yang sekarang dihitung dari semua penugasan lokasi). `qrcode` tetap `SHARED_MODULES`.
 - `resolveAccess` menambah hasil `byBu: Record<buId, Record<BuModule, Level>>`: gabungan role penugasan "Semua BU" dan penugasan BU itu (level tertinggi per modul, seperti gabungan lokasi sekarang).
@@ -84,7 +87,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 - Setiap item wajib punya minimal satu BU aktif.
 - Jalur baca (daftar, jumlah, pencarian, detail, ekspor, OpenAPI) hanya menyertakan item yang beririsan dengan BU yang boleh dilihat user (level ≥ `view` pada BU itu), lewat `EXISTS`/`JOIN` di SQL, bukan filter di klien. Detail item di luar hak = `NOT_FOUND`, bukan "dilarang", agar keberadaan item tidak bocor.
 - **Satu item = satu record, boleh punya banyak BU** (keputusan pemilik 4: multi-select). Keunikan `items.key` (merk + tipe) dan kunci alias tetap global; item yang sama tidak diduplikasi per BU. User yang mencoba membuat item yang kuncinya sudah ada (di BU mana pun) mendapat galat konflik generik "item dengan merk dan tipe ini sudah ada" tanpa menyebut BU atau isinya (bocor hanya sebatas fakta bahwa kombinasi itu ada; dianggap wajar karena mencegah duplikat).
-- **Berkas gambar item** (`files.get` untuk berkas milik item) memakai pemeriksaan BU yang sama dengan detail item (cari BU lewat pemilik berkas; pelaksana menjaga jalur cache tetap murah). Berkas bukan milik item tidak berubah.
+- **Berkas gambar item** (`files.get` untuk berkas milik item) memakai pemeriksaan BU yang sama dengan detail item (cari BU lewat pemilik berkas; pelaksana menjaga jalur cache tetap murah). Berkas bukan milik item tidak berubah, kecuali **unggahan yang belum terpasang pada pemilik mana pun**: hanya pengunggahnya yang dapat membaca dan memasangnya, user lain mendapat `NOT_FOUND` seperti berkas tidak ada (keputusan 18). Mencoba memasang berkas milik item BU lain dijawab `VALIDATION` seperti berkas tidak dikenal, bukan `CONFLICT` (keputusan 17).
 - **BU nonaktif:** tidak bisa ditambahkan ke item atau merk, tetapi BU nonaktif yang sudah melekat tetap **memberi** hak lihat/ubah atas item lamanya dan tetap dihitung untuk aturan "minimal satu BU". Menonaktifkan BU tidak diblokir, hanya menampilkan peringatan berisi jumlah item dan user yang masih memakainya.
 - **Jalur tulis (keputusan 13):** item yang punya beberapa BU hanya boleh diubah oleh user yang berhak pada **semua** BU item itu (level `edit` atau lebih di setiap BU yang melekat). Aksi `manage` (nonaktifkan item) mengikuti aturan yang sama dengan `edit`. Sebagai konsekuensinya (keputusan saya): user hanya boleh menambahkan BU yang ia sendiri berhak ubah, dan boleh melepas BU mana pun yang sudah melekat karena ia pasti berhak di semuanya. Item dengan satu BU diubah oleh user yang berhak ubah di BU itu.
 - Tulis ke tabel penghubung dan ke `items` berada dalam satu `batch()`/transaksi dengan penjaga CAS yang sudah ada; `updated_at` item ikut diperbarui bila himpunan BU berubah.
@@ -139,6 +142,7 @@ Nama berkas/modul, nama kolom dan indeks persis, bentuk DTO, desain visual halam
 - Level global `item` (Merk dan Customer) = tertinggi di antara penugasan BU; artinya `manage` di satu BU saja sudah dapat mengubah merk dan customer yang bersifat global.
 - BU bawaan merk: siapa pun yang boleh mengubah merk.
 - Tidak ada BU awal; admin membuatnya.
+- Keputusan pelaksana (rencana, Keputusan Plan #2-#7): `businessUnits.options` (izin `item: view`) untuk pemilih BU; `ItemSummaryDto`/`ItemDto` membawa `businessUnits` (`{id, code, name}`, semua BU item); `SaveItemInput.brandId` menggantikan nama merk; `LinkField` menerima `options` + `onSearchChange` sebagai properti; `BusinessUnitDto.userCount` = user aktif yang berhak.
 
 ### Keputusan yang saya ambil (silakan koreksi)
 - BU diatur di modul izin `access`, bukan modul baru.

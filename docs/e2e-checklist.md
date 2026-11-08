@@ -153,4 +153,6 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 145 | Sebagai user yang hanya berhak di BU A, buat item dengan merk+tipe yang sudah ada di BU B | Ditolak `CONFLICT` dengan pesan generik; pesan tidak menyebut BU B, merk, atau tipe item BU B | BU FB8 |
 | 146 | Admin membuka form user yang sudah terbuka sebelum rilis, lalu menyimpan tanpa memuat ulang | Ditolak 422 (`buAssignments` wajib); setelah memuat ulang dan menyimpan, berhasil | BU FB2; keputusan 15 |
 | 147 | Buat BU di `/access/business-units`, lalu coba menghapusnya | Tidak ada tombol hapus; BU baru dan perubahannya tercatat di Log Audit | BU FB1 |
-| 148 | (Menunggu konfirmasi pemilik) Sebagai user BU A, jalankan ekspor Sheets (`exports.sheets`) | Hasil saat ini memuat seluruh item tanpa filter BU; ikuti keputusan pemilik di PRD bagian 11 sebelum mencentang | BU FB4 (pengecualian) |
+| 148 | Sebagai admin (`access: manage`), jalankan ekspor Sheets (`exports.sheets`) bila fitur dipakai | Memuat seluruh item tanpa filter BU (pengecualian yang disengaja, keputusan 16; fitur belum dipakai) | BU FB4 (pengecualian) |
+| 149 | Unggah gambar item lalu, sebagai user lain dengan `item: view`, buka UUID-nya sebelum item disimpan | `NOT_FOUND`; pengunggah tetap melihat pratinjaunya (keputusan 18) | BU FB4 |
+| 150 | Simpan item di BU A dengan id berkas milik item BU B | `VALIDATION` seperti berkas tidak dikenal, tanpa menyebut item lain (keputusan 17) | BU FB4 |

@@ -35,7 +35,7 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 
 ## Keputusan Plan (ambil dari kekosongan spek; ditandai agar pemilik bisa mengoreksi)
 
-1. **Ekspor Sheets** (`exports.sheets`, `access: manage`) mengekspor seluruh item tanpa filter BU; dicatat sebagai pengecualian (d) di spek. *Menunggu konfirmasi pemilik* (spek menyebut "ekspor" di jalur baca terfilter).
+1. **Ekspor Sheets** (`exports.sheets`, `access: manage`) mengekspor seluruh item tanpa filter BU; dicatat sebagai pengecualian (d) di spek. **Dikonfirmasi pemilik 2026-11-09 (keputusan 16 spek):** fitur ekspor Sheets belum dibutuhkan; tetap tanpa filter.
 2. Rute `businessUnits.options` (GET `/business-units/options`, izin `item: view`) memberi daftar BU ringkas untuk pemilih (Merk dan form item) bagi user tanpa `access: view`.
 3. ~~Backfill hak pengguna lama di kode saat start (`backfillBuAssignments`).~~ **Dibatalkan 2026-11-09 (keputusan 14 spek, pemilik produk):** tidak ada backfill karena belum ada data merk/item di staging dan production; `bu_assignments` kosong dibaca `[]` (tanpa penugasan BU). `bu-backfill.ts`, `legacyBuAssignments`, dan pemanggilan di `main.ts` dihapus.
 4. `ItemSummaryDto`/`ItemDto` membawa `businessUnits: BusinessUnitRefDto[]` (`{id, code, name}`, semua BU item), supaya tabel dan detail menampilkan chip tanpa kueri tambahan.
