@@ -60,5 +60,24 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
 - **Drive/Sheets** hanya diakses lewat klien Google (`getBridge(env)` = `env.BRIDGE`, antarmuka `BridgeClient` di `server/src/core/bridge-client.ts`; implementasi service account di `server/src/core/google/`, lihat `docs/setup-google.md`); jangan memanggil API Google langsung dari modul. Isi berkas dibaca lewat `cachedFileContent` (izin diperiksa SEBELUM cache).
 
+## Modul ber-BU (izin per Business Unit)
+
+Modul ber-BU diizinkan per Business Unit, bukan per lokasi. Daftarnya `BU_MODULES` di `shared/business-units.ts`; tahap 1 hanya `item`. Izinnya dihitung dari penugasan BU user (`users.bu_assignments`, `null` = Semua BU), bukan dari penugasan lokasi. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
+
+Yang sudah otomatis ikut setelah modul masuk `BU_MODULES`:
+- `resolveBuAccess` menghitung level per BU (`UserContext.businessUnits`; `MeDto.businessUnits` untuk klien).
+- `buIdsWithLevel` dan `canActOnAllBus` memeriksa level; `globalBuLevel` memberi level global untuk halaman non-BU (Merk, Customer).
+
+Yang harus dikerjakan modul sendiri:
+1. **Relasi**: tabel penghubung `<entitas>_business_units` (`<entitas>_id`, `bu_id`, kunci utama gabungan, indeks `bu_id`), ditulis dalam `batch()` bersama entitasnya dengan penjaga CAS yang ada.
+2. **Filter baca di SQL**: setiap jalur baca (daftar, jumlah, pencarian, detail, berkas) memakai `EXISTS` pada tabel penghubung dengan himpunan `visibleBuIds` (level ≥ `view`). Himpunan kosong berarti tidak ada hasil, tanpa menjalankan kueri (lihat `server/src/modules/item/`).
+3. **Di luar hak = `NOT_FOUND`**, bukan `FORBIDDEN`, agar keberadaan data tidak bocor (`assertItemVisible` sebagai pola).
+4. **Jalur tulis**: butuh level pada SEMUA BU entitas (`canActOnAllBus`). BU yang ditambah harus aktif dan user harus berhak `edit` di BU itu; BU nonaktif yang sudah melekat tetap dihitung.
+5. **Konflik keunikan**: pesan generik, tanpa menyebut BU, merk, atau nilai entitas lain.
+6. **Rute**: izin tetap `permission: { module, level }` tanpa `scope: 'location'`; penegakan BU ada di service.
+7. **Tes**: jalur baca dan tulis untuk user BU lain, user tanpa penugasan BU, pelepasan dan penambahan BU, serta konkurensi `Promise.all` untuk ubah himpunan BU.
+
+**Peringatan:** role yang sudah berisi izin modul itu, bila dipasang pada penugasan BU, langsung berlaku di BU-BU tersebut setelah modul masuk `BU_MODULES`. Tinjau role dan penugasan BU yang ada sebelum menambah modul.
+
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

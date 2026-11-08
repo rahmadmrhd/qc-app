@@ -15,6 +15,8 @@
 
 > **Pembaruan 2026-11-08 (keputusan pemilik produk):** modul sinkronisasi QC Desktop DIHAPUS: rute REST `/api/v1/sync/*`, token `SYNC_API_TOKEN`, penghitung revisi `sync_rev`, tabel `sync_state`, dan kontrak `docs/api/desktop-sync.md`. Alasan: QC Desktop dibuat ulang (Electron, tampilan sama dengan web ini, di monorepo ini; rencana `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`) dan tidak memakai kontrak itu; belum ada klien sinkron maupun item di staging/production. Seluruh butir FS1–FS12, kriteria penerimaan Fase B2, risiko token sinkron, dan keputusan penghitung revisi di bawah ditandai dihapus. Butir FS13 (`setup`/`DRIVE_FOLDER_ID`) tidak berubah. Kolom `external_id` (id MySQL) dihapus menyusul pada hari yang sama atas keputusan pemilik produk (butir FI6, migrasi `0003_hapus_external_id.sql`). Kodenya hanya ada di riwayat git.
 
+> **Pembaruan 2026-11-09 (Business Unit tahap 1, disetujui pemilik produk):** hak `item` kini dihitung **per Business Unit (BU)**, bukan dari penugasan lokasi. Item punya satu atau lebih BU; user hanya melihat item di BU yang boleh ia lihat; merk punya BU bawaan; Merk dipilih dari daftar (merk baru lewat dialog tambah). Tidak ada backfill hak `item` pengguna lama (keputusan 14). Rincian di bagian 4.1 (FP2, FP5), 4.3 (FI1, FI2, FI4, FI8), bagian 4.3b (FB1–FB9), dan log keputusan bagian 11. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
+
 Dua modul bisnis pertama QC App, ditambah jalur sinkronisasi ke QC Desktop:
 
 1. **Data Item**: katalog tipe barang yang **dipakai bersama semua lokasi**: merk, tipe, status *country lock*, daftar stiker yang harus ditempel, kelengkapan aksesoris, galeri gambar lampiran, dan detail/spesifikasi dalam **editor Markdown dengan sisip gambar**.
@@ -49,10 +51,10 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 
 | Persona | Deskripsi | Hak yang dibutuhkan |
 |---|---|---|
-| **Admin Item** | Mengelola katalog. | `item: manage` |
+| **Admin Item** | Mengelola katalog pada BU yang ia tugaskan. | `item: manage` pada semua BU item (FB5) |
 | **WH (Gudang)** | Membuat dan mengubah task untuk lokasinya. | `handover: edit` atau `manage` di lokasinya |
 | **QC** | Mengerjakan task di lokasinya. | `qc: edit` di lokasinya |
-| **Pemantau** | Hanya melihat. | `item: view`, `handover: view` |
+| **Pemantau** | Hanya melihat. | `item: view` pada BU yang ditugaskan (FB4), `handover: view` |
 | **Super Admin** | `ADMIN_EMAIL`. | Semua. |
 
 ## 4. Kebutuhan Fungsional
@@ -61,10 +63,10 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
 | FP1 | Modul izin baru **Pengerjaan QC** (kunci `qc`), berlokasi, level `none` / `edit`. | Tampil di form Role dengan label dan petunjuk level. `qc: edit` membuat user dapat melihat task di lokasinya dan memperbarui progres. |
-| FP2 | **`item` menjadi modul global bersama** (keluar dari `LOCATION_MODULES`). Level global `item` = level **tertinggi dari semua penugasan** user (lokasi mana pun, termasuk "Semua lokasi"). | Staf yang hanya ditugaskan di satu lokasi dengan role ber-`item: view` dapat memilih item dari katalog. Berbeda dengan `access`, yang tetap hanya dari "Semua lokasi". |
+| FP2 | **`item` dibatasi per Business Unit** (diubah 2026-11-08; menggantikan rancangan "`item` global bersama"). Level `item` dihitung dari penugasan BU user (`users.bu_assignments`, berlaku di semua lokasi), bukan dari penugasan lokasi. Level global `item` untuk halaman non-BU (Merk, Customer) = level **tertinggi di antara seluruh penugasan BU** user. | Staf yang hanya punya penugasan lokasi dengan role ber-`item: view` tidak melihat item. Penugasan BU diatur pemegang `access: manage` (FB2). `access` tetap hanya dari "Semua lokasi". |
 | FP3 | `handover` dan `qc` berlokasi: izin dihitung per lokasi seperti mekanisme yang ada. | Task hanya terlihat dan dapat diubah di lokasi yang diizinkan; lokasi terlarang ditolak `FORBIDDEN`. |
 | FP4 | Tingkat hak `handover`: `view` melihat task; `edit` membuat dan mengubah isi task; `manage` juga membatalkan task. | Dijelaskan di petunjuk level pada form Role. |
-| FP5 | Role yang sudah ada tetap valid. | Role dengan `item` tetap berlaku; level `item` kini berlaku global (lihat FP2). Tidak ada data item sebelum rilis ini sehingga tidak ada dampak data. |
+| FP5 | Role yang sudah ada tetap valid. | Isi role tidak berubah, tetapi role dengan `item` hanya berlaku bila dipasang pada penugasan BU (FB2). Penugasan `item` dari lokasi tidak dimigrasikan (tanpa backfill, keputusan 14); pemegang `access: manage` menugaskan BU kepada user lewat form user. Tidak ada data item sebelum rilis ini sehingga tidak ada dampak data. |
 
 ### 4.2 Fondasi file dan editor Markdown (Fase A)
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -80,14 +82,29 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 ### 4.3 Data Item (Fase B)
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
-| FI1 | Daftar item: tabel merk, tipe, country lock, status, jumlah gambar. Pencarian dan filter status lewat URL. | Butuh `item: view`. |
-| FI2 | Field item: **merk** (wajib, maks. 60), **tipe** (wajib, maks. 100), **country lock** (ya/tidak), **nama lain/alias** (daftar teks, maks. 10 @ 100), **stiker** (daftar: nama, catatan posisi/ketentuan, gambar contoh opsional; maks. 30), **kelengkapan** (daftar: nama + jumlah per unit ≥ 1; maks. 30), **gambar lampiran** (maks. 10), **detail Markdown** (FA5). | Butuh `item: edit` untuk menambah/mengubah. |
-| FI8 | **Merk adalah tabel master** (`brands`: id, id MySQL, nama, kunci ternormalisasi, status), bukan teks bebas. Item menyimpan `brand_id`. Mengetik merk di form item memberi saran dari merk yang ada; merk yang belum ada **dibuat langsung saat item disimpan** (tanpa form tambahan, dengan audit `brand.create`). Halaman **Merk** untuk tambah, **ganti nama** (berlaku ke semua item merk itu; kunci item dihitung ulang; audit `brand.update`), dan nonaktifkan/aktifkan. Merk nonaktif tidak dapat dipakai item baru. Izin memakai modul `item` (view/edit/manage). | Nama merk unik (ternormalisasi); ganti nama yang membuat merk+tipe dua item bentrok ditolak. |
+| FI1 | Daftar item: tabel merk, tipe, country lock, status, jumlah gambar. Pencarian dan filter status lewat URL. | Butuh `item: view` pada minimal satu BU item; hanya item di BU yang boleh dilihat user yang tampil (FB4). |
+| FI2 | Field item: **merk** (wajib, dipilih dari daftar merk lewat `LinkField`, maks. 60), **business unit** (wajib, minimal satu BU aktif, banyak pilihan; FB3), **tipe** (wajib, maks. 100), **country lock** (ya/tidak), **nama lain/alias** (daftar teks, maks. 10 @ 100), **stiker** (daftar: nama, catatan posisi/ketentuan, gambar contoh opsional; maks. 30), **kelengkapan** (daftar: nama + jumlah per unit ≥ 1; maks. 30), **gambar lampiran** (maks. 10), **detail Markdown** (FA5). | Butuh `item: edit` pada SEMUA BU item untuk mengubah (FB5); BU yang ditambahkan harus berhak `edit`. |
+| FI8 | **Merk adalah tabel master** (`brands`: id, id MySQL, nama, kunci ternormalisasi, status), bukan teks bebas. Item menyimpan `brand_id`. Merk dipilih dari daftar merk yang ada lewat `LinkField`; merk baru hanya dibuat lewat dialog "tambah merk" (dengan audit `brand.create`), tidak lagi lahir diam-diam dari teks yang diketik saat item disimpan (diubah 2026-11-08, spek BU 5.5). Merk punya BU bawaan (FB6). Halaman **Merk** untuk tambah, **ganti nama** (berlaku ke semua item merk itu; kunci item dihitung ulang; audit `brand.update`), dan nonaktifkan/aktifkan. Merk nonaktif tidak dapat dipakai item baru. Izin memakai modul `item` (view/edit/manage; level global, lihat FP2). | Nama merk unik (ternormalisasi); ganti nama yang membuat merk+tipe dua item bentrok ditolak. |
 | FI3 | Merk + tipe unik (dinormalisasi). | Duplikat ditolak `CONFLICT` dengan pesan di field; alias tidak boleh sama dengan merk+tipe item lain. |
-| FI4 | Nonaktifkan dan aktifkan item; tidak ada hapus. | Butuh `item: manage`. Item nonaktif tidak muncul di saran tipe pada task baru; task lama tetap menampilkannya. |
+| FI4 | Nonaktifkan dan aktifkan item; tidak ada hapus. | Butuh `item: manage` pada SEMUA BU item (FB5). Item nonaktif tidak muncul di saran tipe pada task baru; task lama tetap menampilkannya. |
 | FI5 | Halaman detail item baca-saja untuk semua yang punya `item: view`. | Menampilkan semua field, galeri, stiker dan kelengkapan sebagai daftar rapi, dan detail Markdown terender. QC memakainya sebagai acuan kerja. |
 | ~~FI6~~ | ~~Item membawa **id MySQL** (`external_id`, opsional, unik) yang semula dipakai sinkronisasi.~~ | **Dihapus 2026-11-08** (keputusan pemilik produk): kolom `external_id` (brands dan items), tampilan "ID MySQL" di halaman detail, dan field `externalId` di DTO dihapus lewat migrasi `0003_hapus_external_id.sql`. Alasan: tidak ada yang mengisinya sejak sinkron dihapus dan belum ada item di staging/production. |
 | FI7 | Batas field: nama stiker 1–100, catatan stiker ≤ 300, nama kelengkapan 1–100, jumlah kelengkapan 1–999 (bilangan bulat), alias ≤ 10 @ 100, lampiran ≤ 10, stiker ≤ 30, kelengkapan ≤ 30; total JSON per kolom ≤ 40.000 karakter. | Ditegakkan di server (dan di form); lebih dari batas ditolak dengan pesan di field. |
+
+### 4.3b Business Unit (BU, tahap 1)
+Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`. Hak per BU berdiri sendiri dari lokasi: level `none` / `view` / `edit` / `manage` per BU, sehingga satu user dapat punya hak berbeda di BU A dan BU B.
+
+| ID | Kebutuhan | Kriteria penerimaan |
+|---|---|---|
+| FB1 | **Master BU** (`business_units`: kode unik, nama unik tanpa membedakan huruf besar/kecil, status aktif/nonaktif). Dikelola di Pengaturan Akses → Business Unit (`/access/business-units`): lihat butuh `access: view`; tambah dan ubah/nonaktifkan butuh `access: manage`. BU tidak dihapus. | Tidak ada BU awal: pemegang `access: manage` membuat BU pertama. Perubahan tercatat di Log Audit (`businessunit.*`). |
+| FB2 | **Penugasan BU user** (`users.bu_assignments`): daftar `{ buId, roleIds }`; `buId` kosong = Semua BU. Terpisah dari penugasan lokasi di form user. Hanya modul ber-BU (`item`) yang dibaca dari role pada penugasan BU; role pada penugasan BU tidak memberi izin modul lain. | `access.users.save` wajib memuat `buAssignments` (tanpa itu ditolak 422, keputusan 15). User tanpa penugasan BU tidak melihat item apa pun (FB4). |
+| FB3 | **Item wajib punya minimal satu BU aktif** (relasi banyak-ke-banyak `item_business_units`). Item baru hanya bisa ditambahkan ke BU aktif yang user berhak `edit`. Sebelum ada BU aktif, simpan item ditolak dengan pesan "buat BU dulu". | Item tanpa BU tidak tersimpan. BU nonaktif tidak tampil sebagai pilihan untuk item baru. |
+| FB4 | **Filter baca per BU**: daftar, jumlah, pencarian, detail, dan berkas gambar item hanya memuat item yang beririsan dengan BU yang boleh dilihat user (level ≥ `view`). Item di luar hak = `NOT_FOUND`, bukan `FORBIDDEN`. Pengecualian yang belum final: ekspor Sheets (`exports.sheets`) belum difilter, menunggu konfirmasi (bagian 11). | Dua user BU berbeda tidak saling melihat item (daftar, detail, berkas). Tidak ada kebocoran lewat OpenAPI atau `GET /api/v1/me`. |
+| FB5 | **Aturan tulis per BU**: mengubah atau menonaktifkan item butuh level pada SEMUA BU item (keputusan 13). Menambah BU ke item hanya ke BU yang user berhak `edit`; melepas BU boleh asal user berhak di semua BU item. | Item A+B dengan `view` di B: terlihat, tetapi tidak bisa diubah. Pesan penolakan tidak menyebut BU lain. |
+| FB6 | **BU bawaan merk** (`brand_default_business_units`): merk punya nol atau lebih BU bawaan; daftar merk tetap global. Yang boleh mengubah merk (`item` global `edit`) boleh mengatur BU bawaan. Memilih merk di form item mengisi BU item dari BU bawaan bila user belum memilih BU; BU di luar hak user disaring. BU bawaan tidak memberi hak apa pun. | Merk tanpa BU bawaan: field BU kosong dan diisi manual. |
+| FB7 | **BU nonaktif**: tidak bisa ditambahkan ke item atau merk baru, tetapi BU nonaktif yang sudah melekat tetap memberi hak atas item lamanya dan tetap dihitung untuk aturan minimal satu BU. Menonaktifkan BU tidak diblokir; halaman BU hanya menampilkan peringatan berisi jumlah item dan user yang masih memakainya. | Item lama tetap terlihat user di BU nonaktif itu. |
+| FB8 | **Konflik keunikan item tetap global** (merk+tipe, nama lain). Pesan konflik generik, tanpa menyebut BU, merk, atau tipe item lain. | Item BU A tidak bisa dibuat dengan merk+tipe yang sama dengan item BU B, dan pesannya tidak menyebut BU B. |
+| FB9 | **Level global `item`** (Merk, Customer) = tertinggi di antara seluruh penugasan BU; `manage` di satu BU saja sudah memberi kelola Merk dan Customer. | Tercatat di bagian 11 sebagai keputusan spek. |
 
 ### 4.4 Customer (master, Fase C)
 | ID | Kebutuhan | Kriteria penerimaan |
@@ -175,7 +192,11 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 | Sheet | Kolom |
 |---|---|
 | `files` | `id, drive_id, mime, size, width, height, owner_type, owner_id, created_at, created_by` |
-| `items` | `id, brand, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by` (`aliases/stickers/accessories/attachments` = JSON; kolom `external_id` dihapus 2026-11-08) |
+| `items` | `id, brand_id, model, key, is_country_lock, aliases, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by` (`aliases/stickers/accessories/attachments` = JSON; kolom `external_id` dihapus 2026-11-08) |
+| `business_units` | `id, code, name, name_key, status, created_at, updated_at, updated_by` (`name_key` = nama huruf kecil, unik; migrasi `0004_business_units.sql`) |
+| `item_business_units` | `item_id, bu_id` (banyak-ke-banyak; minimal satu BU aktif per item, dijaga aplikasi) |
+| `brand_default_business_units` | `brand_id, bu_id` (BU bawaan merk; nol atau lebih, hanya mengisi form) |
+| `users` (kolom baru) | `bu_assignments` (JSON `{ buId, roleIds }`; kosong = tanpa penugasan BU; tanpa backfill) |
 | ~~`sync_state`~~ | Dihapus 2026-11-08 (migrasi `0002_hapus_sync_rev.sql`). |
 | `customers` | `id, name, key, status, created_at, updated_at, updated_by` |
 | `handovers` | `id, number, location_id, customer_id, customer_name, note, status, checks, comments, completed_at, completed_by, created_at, created_by, updated_at, updated_by` (`status` tersimpan: `open` / `cancelled`; `note` = Markdown ≤ 5.000 karakter; `checks` = centang per butir (JSON, pelaku dan waktu); `comments` = komentar beranchor (JSON, ≤ 50 per task); `completed_at/completed_by` = penanda selesai untuk task tanpa butir checklist; masing-masing dalam sel sendiri dengan batas JSON 40.000 karakter) |
@@ -217,7 +238,7 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 | XSS lewat Markdown | Pencurian sesi | FA6: tanpa HTML mentah, skema tautan dibatasi, gambar hanya `qcfile:`; tes khusus. |
 | Variasi nama tetap lolos | Customer ganda | Normalisasi + penanda mirip + halaman Customer untuk ganti nama; penggabungan di luar lingkup (dicatat). |
 | Nomor task ganda | Kekacauan rujukan | Dibuat di server di dalam lock; tes konkurensi logis. |
-| Perubahan `item` menjadi global menyentuh izin | Regresi akses | Tes `resolveAccess` ditambah; belum ada data item sehingga dampak data nol. |
+| Perubahan `item` menjadi per BU menyentuh izin | Regresi akses; user lama tidak melihat item setelah rilis | Tes `resolveAccess` dan filter BU ditambah; tanpa backfill (keputusan 14), dampak data nol karena belum ada item; pemegang `access: manage` menugaskan BU lewat form user. |
 | Batas sel 50.000 karakter | Data terpotong | Batas FA7 dan batas jumlah entri; validasi ukuran total JSON di server. |
 
 | ~~Token sinkron bocor~~ | Dihapus 2026-11-08: token dan rute sinkron tidak ada lagi. | - |
@@ -272,9 +293,11 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 | ~~Field yang disinkronkan?~~ | Dihapus 2026-11-08. |
 | ~~Kontrak hanya untuk item?~~ | Dihapus 2026-11-08: kontrak sinkron tidak ada lagi. |
 | Nama modul QC dan izin Drive? | "Pengerjaan QC" (kunci `qc`); izin Drive disetujui saat `setup`. |
+| Siapa boleh mengubah item yang berada di beberapa BU? | Hanya user yang berhak ubah di semua BU item itu (keputusan 13, 2026-11-08). |
+| Hak `item` user lama setelah rilis BU? | Tidak dibackfill (keputusan 14, 2026-11-09); admin menugaskan BU lewat form user. |
 
 ## 11. Keputusan yang Saya Ambil (mohon dikoreksi bila perlu)
-- **`item` global dihitung dari semua penugasan**, bukan hanya "Semua lokasi" (FP2), agar staf cabang dapat memilih dari katalog. `access` tetap hanya dari "Semua lokasi".
+- ~~**`item` global dihitung dari semua penugasan**, bukan hanya "Semua lokasi" (FP2), agar staf cabang dapat memilih dari katalog.~~ — **Diganti 2026-11-08** (keputusan pemilik produk, Business Unit tahap 1): `item` dibatasi per BU (FP2, FB1–FB5). `access` tetap hanya dari "Semua lokasi".
 - **Customer dikelola di bawah izin `item`** (master data), sedangkan membuatnya inline cukup `handover: edit`.
 - **Nomor task per hari** `ST-YYYYMMDD-NNN`, memakai zona waktu script.
 - **Penyelesaian bersamaan**: centang per butir dan komentar hanya tambah; isi catatan memakai pemeriksaan versi (lihat 6.6).
@@ -283,3 +306,9 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 - ~~**Daftar dan teks pada push bersifat "ganti seluruhnya"**~~ — Dihapus 2026-11-08.
 - **`setup` tidak lagi membuat folder baru bila `DRIVE_FOLDER_ID` sudah terisi tetapi tidak dapat diakses** (FS13), karena itu hampir pasti folder buatan pengguna (folder gambar lama), bukan folder yang boleh diganti diam-diam.
 - **Gambar di Markdown pada kabel memakai `drive:<id>`** dan dipetakan ke `qcfile:` di dalam QC App.
+- **Business Unit tahap 1 (2026-11-08, disetujui pemilik produk).** Hak `item` per BU dan penugasan BU user (FB1–FB2), relasi item↔BU dan minimal satu BU (FB3), filter baca dan aturan tulis per BU (FB4–FB5), BU bawaan merk dan `LinkField` (FB6, FI8). Alasan: data item harus dibatasi per BU sebelum data stiker dan Serial Number dibuat. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
+- **Mengubah item multi-BU hanya oleh user yang berhak di semua BU item (2026-11-08, keputusan 13, disetujui pemilik produk).** Alasan: user BU A tidak boleh mengubah bagian item yang juga dipakai BU B.
+- **Merk baru tidak lagi lahir dari teks (2026-11-08, spek 5.5, disetujui pemilik produk).** Menggantikan keputusan FI8 "dibuat langsung saat item disimpan". Alasan: field referensi memakai `LinkField` (pilih yang ada, tambah lewat dialog). Dialog tambah merk memakai level izin merk yang berlaku.
+- **Tanpa backfill hak `item` lama (2026-11-09, keputusan 14, disetujui pemilik produk).** Alasan: staging dan production belum punya data merk maupun item. User lama tidak melihat item sampai diberi penugasan BU lewat form user.
+- **`buAssignments` wajib saat menyimpan user (2026-11-09, keputusan 15, disetujui pemilik produk).** Alasan: admin dengan tab lama yang terbuka saat deploy harus memuat ulang agar tidak menimpa penugasan BU.
+- **Menunggu konfirmasi pemilik: ekspor Sheets (`exports.sheets`).** Saat ini ekspor memuat seluruh item tanpa filter BU (Plan BU, keputusan 1). Spek menyebut jalur baca terfilter, sehingga perlu dipilih: difilter per BU, atau dicatat sebagai pengecualian. Rekomendasi: tetap tanpa filter hanya bila pemilik menerima bahwa berkas ekspor memuat seluruh katalog; ekspor hanya bisa dipicu pemegang `access: manage`.
