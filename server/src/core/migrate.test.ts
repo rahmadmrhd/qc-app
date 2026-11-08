@@ -9,13 +9,16 @@ const newSchemaName = newTestSchemaName;
 
 const EXPECTED_TABLES = [
   'audit_log',
+  'brand_default_business_units',
   'brands',
+  'business_units',
   'counters',
   'customers',
   'files',
   'handover_comments',
   'handovers',
   'item_alias_keys',
+  'item_business_units',
   'items',
   'job_blobs',
   'jobs',
@@ -63,10 +66,11 @@ describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
-    expect(list.slice(0, 3).map((m) => m.name)).toEqual([
+    expect(list.slice(0, 4).map((m) => m.name)).toEqual([
       '0001_baseline.sql',
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
+      '0004_business_units.sql',
     ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
@@ -126,7 +130,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('20 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('23 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -141,7 +145,19 @@ describe('skema baseline', () => {
       { name: '0001_baseline.sql' },
       { name: '0002_hapus_sync_rev.sql' },
       { name: '0003_hapus_external_id.sql' },
+      { name: '0004_business_units.sql' },
     ]);
+  });
+
+  test('users.bu_assignments ada, bertipe teks panjang, bawaan kosong', async () => {
+    const column = await db
+      .prepare(
+        "SELECT data_type AS t, is_nullable AS n, column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'bu_assignments'",
+      )
+      .first<{ t: string; n: string; d: string | null }>();
+    expect(column?.t).toBe('longtext');
+    expect(column?.n).toBe('NO');
+    expect(column?.d).toBe("''");
   });
 
   test('id MySQL dihapus: tanpa kolom external_id di brands/items', async () => {
@@ -188,7 +204,10 @@ describe('skema baseline', () => {
       [
         'audit_log.audit_log_target_ts',
         'audit_log.audit_log_ts',
+        'brand_default_business_units.brand_default_business_units_bu',
         'brands.brands_key',
+        'business_units.business_units_code_unique',
+        'business_units.business_units_name_unique',
         'customers.customers_key',
         'files.files_owner',
         'files.files_pending_delete',
@@ -197,6 +216,7 @@ describe('skema baseline', () => {
         'handovers.handovers_board',
         'handovers.handovers_customer',
         'handovers.handovers_number',
+        'item_business_units.item_business_units_bu',
         'items.items_brand',
         'items.items_key',
         'items.items_status_updated',
@@ -219,6 +239,9 @@ describe('skema baseline', () => {
     expect(pks.audit_log).toBe('id');
     expect(pks.handover_comments).toBe('id');
     expect(pks.counters).toBe('key');
+    expect(pks.item_business_units).toBe('item_id,bu_id');
+    expect(pks.brand_default_business_units).toBe('brand_id,bu_id');
+    expect(pks.business_units).toBe('id');
     expect(pks.settings).toBe('key');
   });
 

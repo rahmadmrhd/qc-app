@@ -1,5 +1,6 @@
 import type { Env } from '@server/core/env';
 import type { Assignment } from '@shared/assignments';
+import type { BuAssignment } from '@shared/business-units';
 import type { PartialPermissionMap } from '@shared/permissions';
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
@@ -22,16 +23,22 @@ export async function seedUser(
     email: string;
     name?: string;
     status?: 'active' | 'inactive';
-    /** Pintasan: penugasan "Semua lokasi". `assignments` eksplisit menang. */
+    /**
+     * Pintasan: role yang sama dipakai sebagai penugasan "Semua lokasi" DAN "Semua BU" (agar tes yang memberi role
+     * `item` lewat `roleIds` tetap berlaku). `assignments`/`buAssignments` eksplisit menang atas bagiannya masing-masing.
+     */
     roleIds?: string[];
     assignments?: Assignment[];
+    buAssignments?: BuAssignment[];
   },
 ): Promise<void> {
+  const hasRoles = user.roleIds !== undefined && user.roleIds.length > 0;
   const assignments =
-    user.assignments ??
-    (user.roleIds && user.roleIds.length > 0 ? [{ locationId: null, roleIds: user.roleIds }] : []);
+    user.assignments ?? (hasRoles ? [{ locationId: null, roleIds: user.roleIds ?? [] }] : []);
+  const buAssignments: BuAssignment[] =
+    user.buAssignments ?? (hasRoles ? [{ buId: null, roleIds: user.roleIds ?? [] }] : []);
   await env.DB.prepare(
-    'INSERT INTO users (id, email, name, status, assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO users (id, email, name, status, assignments, bu_assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(
       user.id,
@@ -39,6 +46,7 @@ export async function seedUser(
       user.name ?? user.email,
       user.status ?? 'active',
       JSON.stringify(assignments),
+      JSON.stringify(buAssignments),
       SEED_TIME,
       SEED_TIME,
       'seed',
@@ -62,5 +70,17 @@ export async function seedLocation(
       SEED_TIME,
       'seed',
     )
+    .run();
+}
+
+/** BU uji; `name` bawaan = kode. Idempoten tidak dijamin: id/kode ganda melempar galat duplikat. */
+export async function seedBusinessUnit(
+  env: Pick<Env, 'DB'>,
+  bu: { id: string; code: string; name?: string; status?: 'active' | 'inactive' },
+): Promise<void> {
+  await env.DB.prepare(
+    'INSERT INTO business_units (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  )
+    .bind(bu.id, bu.code, bu.name ?? bu.code, bu.status ?? 'active', SEED_TIME, SEED_TIME, 'seed')
     .run();
 }

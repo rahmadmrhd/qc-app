@@ -33,8 +33,11 @@ const RESET_TABLES = [
   'handovers',
   'job_blobs',
   'item_alias_keys',
+  'item_business_units',
   'items',
+  'brand_default_business_units',
   'brands',
+  'business_units',
   'customers',
   'files',
   'audit_log',
@@ -48,7 +51,7 @@ const RESET_TABLES = [
 
 /**
  * Pernyataan data contoh realistis untuk MariaDB DEV: pengguna admin (`email`) + peran + lokasi + merk + customer + item +
- * beberapa task serah terima (Baru, Dikerjakan, Selesai, Dibatalkan) dengan centang dan komentar. Mengosongkan
+ * dua BU contoh (item bertaut ke BU `UM`) + beberapa task serah terima (Baru, Dikerjakan, Selesai, Dibatalkan) dengan centang dan komentar. Mengosongkan
  * tabel data terlebih dulu sehingga aman dijalankan ulang. Kolom turunan handover dihitung oleh kode produksi.
  */
 export function buildSeedStatements(email: string, nowMs: number): SeedStatement[] {
@@ -96,7 +99,17 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     sql.push(insert('locations', { ...location, status: 'active', ...meta }));
   }
 
+  // Dua BU contoh; semua user contoh bertugas di "Semua BU" (sama dengan hasil backfill hak `item` lama).
+  const businessUnits = [
+    { id: 'bu-um', code: 'UM', name: 'Umum' },
+    { id: 'bu-ent', code: 'ENT', name: 'Enterprise' },
+  ];
+  for (const bu of businessUnits) {
+    sql.push(insert('business_units', { ...bu, status: 'active', ...meta }));
+  }
+
   const everywhere = (roleId: string) => JSON.stringify([{ locationId: null, roleIds: [roleId] }]);
+  const allBu = (roleId: string) => JSON.stringify([{ buId: null, roleIds: [roleId] }]);
   const users = [
     { id: 'user-admin', email, name: 'Admin Dev', role: 'role-admin' },
     { id: 'user-wh', email: 'wh@dev.test', name: 'Staf WH', role: 'role-wh' },
@@ -111,6 +124,7 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         status: 'active',
         role_ids: '',
         assignments: everywhere(user.role),
+        bu_assignments: allBu(user.role),
         ...meta,
       }),
     );
@@ -166,6 +180,10 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         ...meta,
       }),
     );
+  });
+  // Semua item contoh milik BU `UM` (BU `ENT` sengaja kosong untuk menguji pembatasan per BU).
+  items.forEach((_item, index) => {
+    sql.push(insert('item_business_units', { item_id: `item-${index + 1}`, bu_id: 'bu-um' }));
   });
   items.forEach((item, index) => {
     for (const key of aliasKeyList(item.aliases ?? [])) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { type CallResult, callRoute } from '@server-test/call-route';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { RequestCtx } from './context';
@@ -140,10 +140,12 @@ beforeEach(async () => {
       { locationId: 'l-b', roleIds: ['r-qc-edit'] },
     ],
   });
+  await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
   await seedUser(env, {
     id: 'u6',
     email: 'itemmgr@gmail.com',
-    assignments: [{ locationId: 'l-a', roleIds: ['r-item-mgr'] }],
+    // `item` kini hanya dihitung dari penugasan BU (bukan penugasan lokasi).
+    buAssignments: [{ buId: 'bu-a', roleIds: ['r-item-mgr'] }],
   });
 });
 

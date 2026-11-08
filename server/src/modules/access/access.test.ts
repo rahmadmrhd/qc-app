@@ -85,7 +85,10 @@ describe('user', () => {
       'budi@gmail.com',
     ]);
     expect((await lastAudit()).action).toBe('user.create');
-    expect((await loadUserContext(env, 'ani@gmail.com'))?.permissions.item).toBe('edit');
+    const ani = await loadUserContext(env, 'ani@gmail.com');
+    expect(ani).not.toBeNull();
+    // `item` hanya dari penugasan BU: role item pada penugasan lokasi tidak memberi level item.
+    expect(ani?.permissions.item).toBe('none');
   });
 
   test('menolak email yang sudah terdaftar walau beda huruf besar', async () => {
