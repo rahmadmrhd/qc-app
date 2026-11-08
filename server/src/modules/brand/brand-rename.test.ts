@@ -112,7 +112,11 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
   test('205 item (dua potongan UPDATE): semua kunci baru lintas potongan, hitungan tetap', async () => {
     await seedBrand(env, 'Lama');
     await seedBulkItems('Lama', 205);
-    const saved = await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    const saved = await saveBrand(
+      env,
+      { id: 'brand-lama', name: 'Baru', businessUnitIds: [] },
+      admin,
+    );
     expect(saved.itemCount).toBe(205);
     const rows = (
       await env.DB.prepare('SELECT id, `key` FROM items ORDER BY id').all<{
@@ -133,7 +137,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
     await seedItem(env, { id: 'x1', brand: 'Lain', model: 'M 204', key: 'baru m 204' });
     const before = await auditCount();
     const error = await captureAppErrorAsync(() =>
-      saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin),
+      saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin),
     );
     expect(error.code).toBe('CONFLICT');
     expect(error.fields).toEqual({ name: 'Nama baru membuat merk dan tipe dua item bentrok' });
@@ -158,7 +162,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
       admin,
     );
     await atWrite;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     await pending;
     await assertItemKeysMatchBrands();
@@ -192,7 +196,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
       admin,
     );
     await atWrite;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     const outcome = await pending;
     expect(outcome.detail).toBe('diubah');
@@ -207,7 +211,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
     const { delayed, atWrite, release } = gatedEnv(ITEM_WRITE);
     const pending = setItemStatus(delayed, { id: 'i1', status: 'inactive' }, admin);
     await atWrite;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     await pending;
     await assertItemKeysMatchBrands();
@@ -220,7 +224,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
       await seedBrand(env, old);
       await seedItem(env, { id: `s${round}`, brand: old, model: 'Awal' });
       const settled = await Promise.allSettled([
-        saveBrand(env, { id: brandIdOf(old), name: `Baru${round}` }, admin),
+        saveBrand(env, { id: brandIdOf(old), name: `Baru${round}`, businessUnitIds: [] }, admin),
         saveItem(env, { ...ITEM_BASE, brandId: brandIdOf(old), model: `Tambah ${round}` }, admin),
         saveItem(env, { ...ITEM_BASE, brandId: brandIdOf(old), model: `Tambah B${round}` }, admin),
       ]);
@@ -245,7 +249,7 @@ describe('status merk tidak menimpa nama/kunci (I2)', () => {
     const { delayed, atWrite, release } = gatedEnv(/^\s*(INSERT INTO audit_log|UPDATE brands)/);
     const pending = setBrandStatus(delayed, { id: 'brand-lama', status: 'inactive' }, admin);
     await atWrite;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     const dto = await pending;
     expect(dto.status).toBe('inactive');
@@ -258,7 +262,7 @@ describe('status merk tidak menimpa nama/kunci (I2)', () => {
       await seedBrand(env, `Lama${round}`);
       await Promise.all([
         setBrandStatus(env, { id, status: 'inactive' }, admin),
-        saveBrand(env, { id, name: `Baru${round}` }, admin),
+        saveBrand(env, { id, name: `Baru${round}`, businessUnitIds: [] }, admin),
       ]);
       expect(await brandRow(id)).toEqual({
         name: `Baru${round}`,
@@ -327,7 +331,7 @@ describe('(N1) setItemStatus: ganti nama merk di antara dua pembacaan', () => {
     const { delayed, atRead, release } = gatedAfterRead(ITEM_READ);
     const pending = setItemStatus(delayed, { id: 'i1', status: 'inactive' }, admin);
     await atRead;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     const dto = await pending;
     expect(dto.status).toBe('inactive');
@@ -389,7 +393,7 @@ describe('(m1) pindah merk vs ganti nama merk', () => {
       admin,
     );
     await atWrite;
-    await saveBrand(env, { id: 'brand-asal', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-asal', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     const dto = await pending;
     expect(dto.brand).toBe('Tujuan');
@@ -417,7 +421,7 @@ describe('(m1) pindah merk vs ganti nama merk', () => {
           .first<{ updated_at: string }>()
       )?.updated_at as string;
       const settled = await Promise.allSettled([
-        saveBrand(env, { id: brandIdOf(from), name: `Baru${round}` }, admin),
+        saveBrand(env, { id: brandIdOf(from), name: `Baru${round}`, businessUnitIds: [] }, admin),
         saveItem(
           env,
           {
@@ -448,7 +452,7 @@ describe('(m3) audit status merk memakai nama dari keadaan terjaga', () => {
     const { delayed, atWrite, release } = gatedEnv(/^\s*(INSERT INTO audit_log|UPDATE brands)/);
     const pending = setBrandStatus(delayed, { id: 'brand-lama', status: 'inactive' }, admin);
     await atWrite;
-    await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
+    await saveBrand(env, { id: 'brand-lama', name: 'Baru', businessUnitIds: [] }, admin);
     release();
     await pending;
     const audit = await env.DB.prepare(

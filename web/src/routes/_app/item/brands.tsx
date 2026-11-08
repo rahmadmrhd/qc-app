@@ -24,7 +24,9 @@ function BrandsPage() {
 
   async function handleSave(input: { id?: string; name: string }): Promise<string | null> {
     try {
-      await save.mutateAsync(input);
+      // Form ini belum mengatur BU bawaan (T11): mengganti nama mempertahankan himpunan yang ada, merk baru kosong.
+      const businessUnitIds = brands.find((brand) => brand.id === input.id)?.businessUnitIds ?? [];
+      await save.mutateAsync({ ...input, businessUnitIds });
       toast.success(input.id ? 'Merk diperbarui' : 'Merk ditambahkan');
       return null;
     } catch (error) {

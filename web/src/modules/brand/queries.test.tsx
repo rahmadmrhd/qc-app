@@ -42,23 +42,23 @@ test('daftar merk: GET /api/v1/brands (REST)', async () => {
 
 test('simpan merk baru: POST /api/v1/brands dengan header CSRF dan badan { name }', async () => {
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ name: 'Sony' });
+  result.current.mutate({ name: 'Sony', businessUnitIds: [] });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/brands');
   expect(init.method).toBe('POST');
   expect(init.headers).toMatchObject({ 'X-Requested-With': 'qc' });
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony', businessUnitIds: [] });
 });
 
 test('ganti nama merk: PUT /api/v1/brands/{id}, id tidak ikut di badan', async () => {
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ id: 'b1', name: 'Sony Corp' });
+  result.current.mutate({ id: 'b1', name: 'Sony Corp', businessUnitIds: ['bu1'] });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/brands/b1');
   expect(init.method).toBe('PUT');
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony Corp' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony Corp', businessUnitIds: ['bu1'] });
 });
 
 test('ubah status merk: PATCH /api/v1/brands/{id} dengan badan { status }', async () => {
@@ -87,7 +87,7 @@ test('galat 409 problem+json dari server menjadi ApiError dengan fields', async 
     ),
   );
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ name: 'Sony' });
+  result.current.mutate({ name: 'Sony', businessUnitIds: [] });
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(result.current.error).toMatchObject({
     code: 'CONFLICT',

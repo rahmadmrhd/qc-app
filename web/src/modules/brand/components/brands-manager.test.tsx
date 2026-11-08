@@ -5,8 +5,15 @@ import { expect, test, vi } from 'vitest';
 import { BrandsManager } from './brands-manager';
 
 const brands: BrandDto[] = [
-  { id: 'b1', name: 'Mikrotik', status: 'active', itemCount: 2, updatedAt: '' },
-  { id: 'b2', name: 'Lama', status: 'inactive', itemCount: 0, updatedAt: '' },
+  {
+    id: 'b1',
+    name: 'Mikrotik',
+    status: 'active',
+    itemCount: 2,
+    updatedAt: '',
+    businessUnitIds: [],
+  },
+  { id: 'b2', name: 'Lama', status: 'inactive', itemCount: 0, updatedAt: '', businessUnitIds: [] },
 ];
 
 function renderManager(props: Partial<Parameters<typeof BrandsManager>[0]> = {}) {

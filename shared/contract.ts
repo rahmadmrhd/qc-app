@@ -226,11 +226,15 @@ export interface BrandDto {
   /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
   itemCount: number;
   updatedAt: string;
+  /** BU bawaan merk (terurut menurut kode BU); hanya mengisi otomatis form item, tidak memberi hak apa pun. */
+  businessUnitIds: string[];
 }
 
 export interface SaveBrandInput {
   id?: string;
   name: string;
+  /** BU bawaan (boleh kosong, tanpa kembar). Mengubah merk menggantikan himpunan lama seluruhnya. */
+  businessUnitIds: string[];
 }
 
 export interface SetBrandStatusInput {

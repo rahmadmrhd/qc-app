@@ -48,7 +48,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
   'brands.list': null,
-  'brands.save': { id: 'b1', name: 'Sony' },
+  'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
   'customers.list': null,
   'customers.rename': { id: 'c1', name: 'PT Maju' },

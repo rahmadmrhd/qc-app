@@ -65,6 +65,97 @@ export async function listBrands(
   return brandsFromResult(await brandsStatement(env).all<BrandRow>());
 }
 
+export interface BrandBuBrief {
+  id: string;
+  code: string;
+  status: ItemStatus;
+}
+
+/** Ringkasan semua BU (kecil) untuk validasi dan pengurutan BU bawaan. */
+export async function listBuBriefs(db: Preparer): Promise<BrandBuBrief[]> {
+  const result = await db.prepare('SELECT id, code, status FROM business_units').all<{
+    id: string;
+    code: string;
+    status: string;
+  }>();
+  return result.results
+    .map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      status: (row.status.trim() === 'active' ? 'active' : 'inactive') as ItemStatus,
+    }))
+    .filter((bu) => bu.id !== '');
+}
+
+const BRAND_DEFAULTS_SELECT =
+  'SELECT d.brand_id, d.bu_id, b.code FROM brand_default_business_units d JOIN business_units b ON b.id = d.bu_id';
+
+/** BU bawaan SEMUA merk (SATU kueri bergabung dengan kode BU): lihat `brandDefaultsFromResult`. */
+export function brandDefaultsStatement(db: Preparer): DbStatement {
+  return db.prepare(BRAND_DEFAULTS_SELECT);
+}
+
+/** BU bawaan satu merk (digabung ke `batch()`/transaksi pemanggil); hasilnya lewat `brandDefaultsFromResult`. */
+export function brandDefaultsOfStatement(db: Preparer, brandId: string): DbStatement {
+  return db.prepare(`${BRAND_DEFAULTS_SELECT} WHERE d.brand_id = ?`).bind(brandId);
+}
+
+/** Peta id merk -> id BU, terurut menurut kode BU (kunci urut: kode lalu id; `localeCompare`, seperti modul lain). */
+export function brandDefaultsFromResult(result: { results: unknown[] }): Map<string, string[]> {
+  const rows = result.results as Array<{ brand_id: string; bu_id: string; code: string }>;
+  const grouped = new Map<string, Array<{ id: string; code: string }>>();
+  for (const row of rows) {
+    const brandId = row.brand_id.trim();
+    const list = grouped.get(brandId) ?? [];
+    list.push({ id: row.bu_id.trim(), code: row.code.trim() });
+    grouped.set(brandId, list);
+  }
+  const map = new Map<string, string[]>();
+  for (const [brandId, list] of grouped) {
+    list.sort((a, b) => a.code.localeCompare(b.code) || a.id.localeCompare(b.id));
+    map.set(
+      brandId,
+      list.map((entry) => entry.id),
+    );
+  }
+  return map;
+}
+
+/**
+ * Mengganti himpunan BU bawaan menjadi TEPAT `ids`: hapus yang di luar `ids`, lalu sisipkan yang belum ada
+ * (`INSERT IGNORE`). Merk baru (`fresh`) hanya menyisipkan. Pemanggil menjalankannya di transaksi yang sama dengan
+ * penulisan baris merk.
+ */
+export function syncBrandDefaultsStmts(
+  db: Preparer,
+  brandId: string,
+  ids: readonly string[],
+  fresh: boolean,
+): DbStatement[] {
+  const statements: DbStatement[] = [];
+  if (!fresh) {
+    statements.push(
+      ids.length === 0
+        ? db.prepare('DELETE FROM brand_default_business_units WHERE brand_id = ?').bind(brandId)
+        : db
+            .prepare(
+              `DELETE FROM brand_default_business_units WHERE brand_id = ? AND bu_id NOT IN (${ids.map(() => '?').join(',')})`,
+            )
+            .bind(brandId, ...ids),
+    );
+  }
+  for (const buId of ids) {
+    statements.push(
+      db
+        .prepare(
+          `${fresh ? 'INSERT' : 'INSERT IGNORE'} INTO brand_default_business_units (brand_id, bu_id) VALUES (?, ?)`,
+        )
+        .bind(brandId, buId),
+    );
+  }
+  return statements;
+}
+
 /** Kueri satu merk menurut id (digabung ke `batch()` baca); hasilnya lewat `brandsFromResult`. */
 export function brandByIdStatement(env: Env, id: string): DbStatement {
   return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(id);

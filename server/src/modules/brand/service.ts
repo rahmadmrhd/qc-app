@@ -8,30 +8,82 @@ import { appError } from '@server/core/errors';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
 import { itemKey, normalizeKey } from '@shared/items';
-import type { BrandRecord, BrandRow } from './repo';
+import type { BrandBuBrief, BrandRecord, BrandRow } from './repo';
 import {
   BRAND_COLUMNS,
+  brandDefaultsFromResult,
+  brandDefaultsOfStatement,
+  brandDefaultsStatement,
   brandsFromResult,
+  brandsStatement,
   findBrandByKey,
   insertBrandStmts,
-  listBrands,
+  listBuBriefs,
   setBrandStatusStmts,
+  syncBrandDefaultsStmts,
   updateBrandStmts,
 } from './repo';
 
-function toBrandDto(brand: BrandRecord): BrandDto {
+/** Id BU diurutkan menurut kode BU (id tak dikenal di belakang, menurut id). */
+function sortByBuCode(ids: readonly string[], bus: readonly BrandBuBrief[]): string[] {
+  const code = new Map(bus.map((bu) => [bu.id, bu.code] as const));
+  return [...ids].sort((a, b) => {
+    const ca = code.get(a);
+    const cb = code.get(b);
+    if (ca !== undefined && cb !== undefined) return ca.localeCompare(cb);
+    if (ca !== undefined) return -1;
+    if (cb !== undefined) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+function toBrandDto(brand: BrandRecord, businessUnitIds: readonly string[]): BrandDto {
   return {
     id: brand.id,
     name: brand.name,
     status: brand.status,
     itemCount: brand.itemCount,
     updatedAt: brand.updatedAt,
+    businessUnitIds: [...businessUnitIds],
   };
 }
 
-export function brandSnapshot(brand: BrandRecord): Record<string, unknown> {
-  return { name: brand.name, status: brand.status };
+/** `businessUnits` (kode BU terurut) hanya dimuat oleh audit buat/ubah merk; status tidak menyentuhnya. */
+export function brandSnapshot(
+  brand: BrandRecord,
+  businessUnits?: readonly string[],
+): Record<string, unknown> {
+  return businessUnits === undefined
+    ? { name: brand.name, status: brand.status }
+    : { name: brand.name, status: brand.status, businessUnits: [...businessUnits] };
 }
+
+const codesOf = (ids: readonly string[], bus: readonly BrandBuBrief[]): string[] =>
+  sortByBuCode(ids, bus).map((id) => bus.find((bu) => bu.id === id)?.code ?? id);
+
+/**
+ * BU bawaan yang DITAMBAH (tidak ada di `current`) harus ada dan aktif; BU lama (termasuk nonaktif) boleh
+ * dipertahankan. Tidak memberi hak apa pun: siapa pun yang boleh `brands.save` boleh mengaturnya.
+ */
+function assertDefaultBusinessUnits(
+  bus: readonly BrandBuBrief[],
+  current: readonly string[],
+  requested: readonly string[],
+): void {
+  const known = new Map(bus.map((bu) => [bu.id, bu] as const));
+  for (const id of requested) {
+    if (current.includes(id)) continue;
+    const bu = known.get(id);
+    if (bu?.status !== 'active') {
+      throw appError('VALIDATION', 'BU tidak dikenal atau tidak aktif', {
+        businessUnitIds: 'BU tidak dikenal atau tidak aktif',
+      });
+    }
+  }
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((id) => b.includes(id));
 
 const BRAND_CONFLICTS = { brands_key: { field: 'name', message: 'Nama merk sudah dipakai' } };
 
@@ -49,23 +101,41 @@ function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
   };
 }
 
-/** Pernyataan penyisipan merk baru + audit `brand.create` (digabung ke `batch()` pemanggil). */
-export function createBrandStmts(env: Env, brand: BrandRecord, actor: ActorRef): DbStatement[] {
+/**
+ * Pernyataan penyisipan merk baru + BU bawaan + audit `brand.create` (digabung ke `batch()` pemanggil).
+ * `bus` = semua BU (untuk kode di audit).
+ */
+export function createBrandStmts(
+  env: Env,
+  brand: BrandRecord,
+  businessUnitIds: readonly string[],
+  bus: readonly BrandBuBrief[],
+  actor: ActorRef,
+): DbStatement[] {
   return [
     ...insertBrandStmts(env.DB, brand),
+    ...syncBrandDefaultsStmts(env.DB, brand.id, businessUnitIds, true),
     writeAudit(env.DB, {
       ts: brand.createdAt,
       actor: actor.email,
       action: 'brand.create',
       target: brand.name,
       before: null,
-      after: brandSnapshot(brand),
+      after: brandSnapshot(brand, codesOf(businessUnitIds, bus)),
     }),
   ];
 }
 
+/** Daftar merk beserta BU bawaan: dua kueri dalam SATU `batch()` (satu kueri tambahan, bukan N+1). */
 export async function listBrandDtos(env: Env): Promise<BrandDto[]> {
-  return (await listBrands(env)).map(toBrandDto).sort((a, b) => a.name.localeCompare(b.name));
+  const [brandResult, defaultResult] = await env.DB.batch([
+    brandsStatement(env),
+    brandDefaultsStatement(env.DB),
+  ]);
+  const defaults = brandDefaultsFromResult(defaultResult ?? { results: [] });
+  return brandsFromResult(brandResult ?? { results: [] })
+    .map((brand) => toBrandDto(brand, defaults.get(brand.id) ?? []))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Item per pernyataan `UPDATE` ganti nama (2 nilai terikat per item; driver tanpa batas parameter). */
@@ -115,7 +185,13 @@ async function aliasCollides(tx: DbTx, keys: readonly string[]): Promise<boolean
  * Bentrok sungguhan dengan merk+tipe item merk lain ditolak `items_key` (CONFLICT); dengan nama lain (alias) item
  * mana pun ditolak pemeriksaan alias di transaksi yang sama.
  */
-async function renameBrand(env: Env, id: string, name: string, actor: ActorRef): Promise<BrandDto> {
+async function updateBrand(
+  env: Env,
+  id: string,
+  name: string,
+  requestedBuIds: readonly string[],
+  actor: ActorRef,
+): Promise<BrandDto> {
   return env.DB.transaction(async (tx) => {
     const row = await tx
       .prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ? FOR UPDATE`)
@@ -123,32 +199,43 @@ async function renameBrand(env: Env, id: string, name: string, actor: ActorRef):
       .first<BrandRow>();
     const existing = row ? brandsFromResult({ results: [row] })[0] : undefined;
     if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
-    if (existing.name === name) return toBrandDto(existing);
+    const bus = await listBuBriefs(tx);
+    const currentBuIds =
+      brandDefaultsFromResult(await brandDefaultsOfStatement(tx, id).all()).get(id) ?? [];
+    assertDefaultBusinessUnits(bus, currentBuIds, requestedBuIds);
+    const nameChanged = existing.name !== name;
+    const setChanged = !sameSet(currentBuIds, requestedBuIds);
+    if (!nameChanged && !setChanged) return toBrandDto(existing, sortByBuCode(currentBuIds, bus));
     const key = normalizeKey(name);
-    const clash = await tx
-      .prepare('SELECT 1 AS hit FROM brands WHERE `key` = ? AND id <> ? LIMIT 1')
-      .bind(key, id)
-      .first();
-    if (clash) throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
-
-    const own = (
-      await tx
-        .prepare('SELECT id, model FROM items WHERE brand_id = ? ORDER BY id FOR UPDATE')
-        .bind(id)
-        .all<{ id: string; model: string }>()
-    ).results.map((item) => ({ id: item.id, next: itemKey(name, item.model) }));
-    if (
-      await aliasCollides(
-        tx,
-        own.map((item) => item.next),
-      )
-    ) {
-      throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });
+    let own: Array<{ id: string; next: string }> = [];
+    if (nameChanged) {
+      const clash = await tx
+        .prepare('SELECT 1 AS hit FROM brands WHERE `key` = ? AND id <> ? LIMIT 1')
+        .bind(key, id)
+        .first();
+      if (clash) throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
+      own = (
+        await tx
+          .prepare('SELECT id, model FROM items WHERE brand_id = ? ORDER BY id FOR UPDATE')
+          .bind(id)
+          .all<{ id: string; model: string }>()
+      ).results.map((item) => ({ id: item.id, next: itemKey(name, item.model) }));
+      if (
+        await aliasCollides(
+          tx,
+          own.map((item) => item.next),
+        )
+      ) {
+        throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });
+      }
     }
 
     const now = nowIso(env);
     const updated: BrandRecord = { ...existing, name, key, updatedAt: now, updatedBy: actor.email };
     for (const statement of updateBrandStmts(tx, updated)) await statement.run();
+    for (const statement of syncBrandDefaultsStmts(tx, id, requestedBuIds, false)) {
+      await statement.run();
+    }
     if (own.length > 0) {
       await tx
         .prepare('UPDATE items SET `key` = CONCAT(CHAR(1 USING utf8mb4), id) WHERE brand_id = ?')
@@ -168,10 +255,10 @@ async function renameBrand(env: Env, id: string, name: string, actor: ActorRef):
       actor: actor.email,
       action: 'brand.update',
       target: updated.name,
-      before: brandSnapshot(existing),
-      after: brandSnapshot(updated),
+      before: brandSnapshot(existing, codesOf(currentBuIds, bus)),
+      after: brandSnapshot(updated, codesOf(requestedBuIds, bus)),
     }).run();
-    return toBrandDto(updated);
+    return toBrandDto(updated, sortByBuCode(requestedBuIds, bus));
   });
 }
 
@@ -182,7 +269,7 @@ export async function saveBrand(
 ): Promise<BrandDto> {
   if (input.id) {
     try {
-      return await renameBrand(env, input.id, input.name, actor);
+      return await updateBrand(env, input.id, input.name, input.businessUnitIds, actor);
     } catch (error) {
       throw mapDuplicateError(error, BRAND_RENAME_CONFLICTS);
     }
@@ -190,9 +277,15 @@ export async function saveBrand(
   if (await findBrandByKey(env, normalizeKey(input.name))) {
     throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
   }
+  const bus = await listBuBriefs(env.DB);
+  assertDefaultBusinessUnits(bus, [], input.businessUnitIds);
   const created = newBrandRecord(env, input.name, actor);
-  await batchWrite(env.DB, createBrandStmts(env, created, actor), BRAND_CONFLICTS);
-  return toBrandDto(created);
+  await batchWrite(
+    env.DB,
+    createBrandStmts(env, created, input.businessUnitIds, bus, actor),
+    BRAND_CONFLICTS,
+  );
+  return toBrandDto(created, sortByBuCode(input.businessUnitIds, bus));
 }
 
 export async function setBrandStatus(
@@ -211,10 +304,16 @@ async function setBrandStatusOnce(
   input: SetBrandStatusInput,
   actor: ActorRef,
 ): Promise<BrandDto> {
-  const brands = await listBrands(env);
-  const existing = brands.find((brand) => brand.id === input.id);
+  const [brandResult, defaultResult] = await env.DB.batch([
+    brandsStatement(env),
+    brandDefaultsOfStatement(env.DB, input.id),
+  ]);
+  const existing = brandsFromResult(brandResult ?? { results: [] }).find(
+    (brand) => brand.id === input.id,
+  );
   if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
-  if (existing.status === input.status) return toBrandDto(existing);
+  const buIds = brandDefaultsFromResult(defaultResult ?? { results: [] }).get(existing.id) ?? [];
+  if (existing.status === input.status) return toBrandDto(existing, buIds);
   const now = nowIso(env);
   const updated: BrandRecord = {
     ...existing,
@@ -236,5 +335,5 @@ async function setBrandStatusOnce(
     }),
   ]);
   const fresh = brandsFromResult(results[2] as { results: unknown[] })[0];
-  return toBrandDto(fresh ?? updated);
+  return toBrandDto(fresh ?? updated, buIds);
 }

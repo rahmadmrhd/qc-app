@@ -118,6 +118,7 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
       status: 'active' as const,
       itemCount: 1,
       updatedAt: '',
+      businessUnitIds: [] as string[],
     },
     {
       id: 'b2',
@@ -125,6 +126,7 @@ test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan non
       status: 'inactive' as const,
       itemCount: 0,
       updatedAt: '',
+      businessUnitIds: [] as string[],
     },
   ];
   render(
@@ -159,6 +161,7 @@ test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menye
       status: 'inactive' as const,
       itemCount: 1,
       updatedAt: '',
+      businessUnitIds: [] as string[],
     },
   ];
   render(
