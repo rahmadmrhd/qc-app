@@ -7,7 +7,7 @@ import { uploadFile } from '@server/modules/files/service';
 import { seedBusinessUnit } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
-import { DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
+import { brandIdOf, DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { SaveItemInput } from '@shared/contract';
 import { hashText } from '@shared/items';
@@ -20,7 +20,8 @@ let env: TestEnv;
 let admin: UserContext;
 
 const baseInput: SaveItemInput = {
-  brand: 'Ubiquiti',
+  brandId: brandIdOf('Ubiquiti'),
+  businessUnitIds: [DEFAULT_TEST_BU_ID],
   model: 'ES 24 250W',
   isCountryLock: false,
   aliases: [],
@@ -60,11 +61,18 @@ const auditActions = async () =>
 const itemCount = async () =>
   (await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first<{ n: number }>())?.n;
 
+const linkCount = async () =>
+  Number(
+    (await env.DB.prepare('SELECT COUNT(*) AS n FROM item_business_units').first<{ n: number }>())
+      ?.n,
+  );
+
 beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
   // BU bawaan fixture dibuat SEBELUM konteks admin dimuat (konteks super admin memuat BU yang ada saat itu).
   await seedBusinessUnit(env, { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' });
+  await seedBrand(env, 'Ubiquiti');
   const ctx = await loadUserContext(env, 'admin@gmail.com');
   if (!ctx) throw new Error('admin hilang');
   admin = ctx;
@@ -97,6 +105,9 @@ describe('simpan', () => {
       createdAt: '2026-10-09T00:00:00.000Z',
     });
     expect(saved.detail).toBe(detail);
+    expect(saved.businessUnits).toEqual([
+      { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' },
+    ]);
     const audit = await lastAudit();
     expect(audit).toMatchObject({
       action: 'item.create',
@@ -104,6 +115,7 @@ describe('simpan', () => {
       before: null,
       after: {
         brand: 'Ubiquiti',
+        businessUnits: ['DEF'],
         model: 'ES 24 250W',
         isCountryLock: false,
         status: 'active',
@@ -122,7 +134,7 @@ describe('simpan', () => {
     await saveItem(env, baseInput, admin);
     for (const variant of ['es-24 250w', 'ES_24  250W', '(ES) 24, 250W']) {
       const error = await captureAppErrorAsync(() =>
-        saveItem(env, { ...baseInput, brand: 'UBIQUITI', model: variant }, admin),
+        saveItem(env, { ...baseInput, model: variant }, admin),
       );
       expect(error).toMatchObject({
         code: 'CONFLICT',
@@ -155,7 +167,7 @@ describe('simpan', () => {
 
   test('nama lain: tidak boleh sama dengan merk+tipe sendiri, merk+tipe item lain, atau nama lain item lain', async () => {
     await saveItem(env, { ...baseInput, aliases: ['AirSwitch', 'Ubiquiti ES24'] }, admin);
-    const other = { ...baseInput, brand: 'Mikrotik', model: 'CRS' };
+    const other = { ...baseInput, brandId: await seedBrand(env, 'Mikrotik'), model: 'CRS' };
     expect(
       await captureAppErrorAsync(() =>
         saveItem(env, { ...other, aliases: ['mikrotik-crs'] }, admin),
@@ -183,9 +195,7 @@ describe('simpan', () => {
         .fields?.aliases,
     ).toContain('"AIRSWITCH" sudah dipakai item Ubiquiti ES 24 250W');
     expect(
-      await captureAppErrorAsync(() =>
-        saveItem(env, { ...baseInput, brand: 'Ubiquiti', model: 'ES24' }, admin),
-      ),
+      await captureAppErrorAsync(() => saveItem(env, { ...baseInput, model: 'ES24' }, admin)),
     ).toMatchObject({
       code: 'CONFLICT',
       fields: { model: 'Sama dengan nama lain item Ubiquiti ES 24 250W' },
@@ -218,20 +228,16 @@ describe('simpan', () => {
     expect(saved.imageCount).toBe(1);
   });
 
-  test('rujukan berkas yang gagal membatalkan seluruh simpan: tidak ada item, pemilik tak berubah, tak ada merk yatim', async () => {
+  test('rujukan berkas yang gagal membatalkan seluruh simpan: tidak ada item, pemilik tak berubah, tak ada baris BU yatim', async () => {
     const [free, taken] = [await newFile(), await newFile()];
-    await saveItem(
-      env,
-      { ...baseInput, brand: 'Lain', model: 'Item', attachments: [taken] },
-      admin,
-    );
+    await saveItem(env, { ...baseInput, model: 'Item', attachments: [taken] }, admin);
     const filesBefore = JSON.stringify(
       (await env.DB.prepare('SELECT * FROM files ORDER BY id').all()).results,
     );
     expect(
       (
         await captureAppErrorAsync(() =>
-          saveItem(env, { ...baseInput, brand: 'Baru', attachments: [free, 'hilang'] }, admin),
+          saveItem(env, { ...baseInput, model: 'Baru', attachments: [free, 'hilang'] }, admin),
         )
       ).code,
     ).toBe('VALIDATION');
@@ -250,7 +256,7 @@ describe('simpan', () => {
       JSON.stringify((await env.DB.prepare('SELECT * FROM files ORDER BY id').all()).results),
     ).toBe(filesBefore);
     expect(await itemCount()).toBe(1);
-    expect((await listBrands(env)).map((b) => b.name)).toEqual(['Lain']);
+    expect(await linkCount()).toBe(1);
   });
 
   test('rujukan berkas bermasalah dilaporkan di field yang sesuai', async () => {
@@ -327,46 +333,55 @@ describe('simpan', () => {
     ).toBe('NOT_FOUND');
   });
 
-  test('merk baru dibuat langsung saat item disimpan; merk sama (kunci ternormalisasi) dipakai ulang', async () => {
-    const first = await saveItem(env, { ...baseInput, brand: 'Ubiquiti' }, admin);
-    expect((await listBrands(env)).map((b) => b.name)).toEqual(['Ubiquiti']);
-    expect(await auditActions()).toEqual(['brand.create', 'item.create']);
-    const second = await saveItem(env, { ...baseInput, brand: ' ubiquiti', model: 'AF' }, admin);
+  test('merk dipilih lewat brandId: nama dari tabel merk, tidak ada merk dibuat dari simpan item; brandId tak dikenal VALIDATION', async () => {
+    const first = await saveItem(env, baseInput, admin);
+    expect(first.brandId).toBe(brandIdOf('Ubiquiti'));
+    expect(first.brand).toBe('Ubiquiti');
+    expect(await auditActions()).toEqual(['item.create']);
     expect(await listBrands(env)).toHaveLength(1);
-    expect(second.brandId).toBe(first.brandId);
-    expect(second.brand).toBe('Ubiquiti');
+    const error = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, brandId: 'tidak-ada', model: 'AF' }, admin),
+    );
+    expect(error).toMatchObject({
+      code: 'VALIDATION',
+      fields: { brandId: 'Merk tidak ditemukan' },
+    });
+    expect(await listBrands(env)).toHaveLength(1);
+    expect(await itemCount()).toBe(1);
   });
 
   test('merk nonaktif tidak bisa dipakai item baru, tetapi item lama merk itu tetap dapat disimpan', async () => {
-    await seedBrand(env, 'Lama', { status: 'inactive' });
+    const lama = await seedBrand(env, 'Lama', { status: 'inactive' });
     expect(
-      (await captureAppErrorAsync(() => saveItem(env, { ...baseInput, brand: 'lama' }, admin)))
+      (await captureAppErrorAsync(() => saveItem(env, { ...baseInput, brandId: lama }, admin)))
         .fields,
-    ).toEqual({ brand: 'Merk dinonaktifkan; aktifkan dulu di halaman Merk' });
+    ).toEqual({ brandId: 'Merk dinonaktifkan; aktifkan dulu di halaman Merk' });
     expect(await itemCount()).toBe(0);
     await seedItem(env, { id: 'i1', brand: 'Lama', model: 'X' });
     expect(
       (
         await saveItem(
           env,
-          { ...baseInput, id: 'i1', brand: 'Lama', model: 'X', isCountryLock: true },
+          { ...baseInput, id: 'i1', brandId: lama, model: 'X', isCountryLock: true },
           admin,
         )
       ).isCountryLock,
     ).toBe(true);
   });
 
-  test('galat validasi lain tidak meninggalkan merk yatim', async () => {
-    await saveItem(env, { ...baseInput, brand: 'A', model: 'B' }, admin);
-    const before = (await listBrands(env)).length;
+  test('galat validasi tidak meninggalkan apa pun: tanpa item, baris BU, atau audit tambahan', async () => {
+    await saveItem(env, { ...baseInput, model: 'B' }, admin);
+    const audits = (await auditActions()).length;
     expect(
       (
         await captureAppErrorAsync(() =>
-          saveItem(env, { ...baseInput, brand: 'Baru', model: 'x', attachments: ['hantu'] }, admin),
+          saveItem(env, { ...baseInput, model: 'x', attachments: ['hantu'] }, admin),
         )
       ).code,
     ).toBe('VALIDATION');
-    expect(await listBrands(env)).toHaveLength(before);
+    expect(await itemCount()).toBe(1);
+    expect(await linkCount()).toBe(1);
+    expect((await auditActions()).length).toBe(audits);
   });
 });
 
@@ -581,7 +596,6 @@ describe('status', () => {
 
 describe('daftar berkursor dan get', () => {
   test('urut menurut kunci merk+tipe, memuat nonaktif, tanpa detail Markdown', async () => {
-    await seedBrand(env, 'Ubiquiti');
     await seedItem(env, { id: 'i2', brand: 'Ubiquiti', model: 'B' });
     await env.DB.prepare(
       "UPDATE items SET detail_md = 'RAHASIA', attachments = '[\"f1\",\"f2\"]' WHERE id = 'i2'",
@@ -719,7 +733,8 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
   test('pindah merk memindahkan penghitung; status tidak mengubahnya', async () => {
     const saved = await saveItem(env, baseInput, admin);
     expect(await brandCount('Ubiquiti')).toBe(1);
-    await saveItem(env, { ...baseInput, id: saved.id, brand: 'Mikrotik' }, admin);
+    const mikrotik = await seedBrand(env, 'Mikrotik');
+    await saveItem(env, { ...baseInput, id: saved.id, brandId: mikrotik }, admin);
     expect(await brandCount('Ubiquiti')).toBe(0);
     expect(await brandCount('Mikrotik')).toBe(1);
     await setItemStatus(env, { id: saved.id, status: 'inactive' }, admin);

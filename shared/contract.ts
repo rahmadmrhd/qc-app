@@ -268,7 +268,8 @@ export interface SaveItemInput {
   id?: string;
   /** `updatedAt` item saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT) agar tidak menimpa ubahan orang lain. */
   expectedUpdatedAt?: string;
-  brand: string;
+  /** Id merk yang sudah ada (merk baru dibuat lewat `brands.save`, bukan dari teks). */
+  brandId: string;
   model: string;
   isCountryLock: boolean;
   aliases: string[];
@@ -276,6 +277,8 @@ export interface SaveItemInput {
   accessories: ItemAccessoryDto[];
   attachments: string[];
   detail: string;
+  /** BU item (minimal satu, tanpa kembar). */
+  businessUnitIds: string[];
 }
 
 export interface GetItemInput {

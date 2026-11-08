@@ -90,10 +90,13 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
       detail: 'isi',
     },
     'i1',
+    undefined,
+    { brandId: 'b1', businessUnitIds: ['bu-a'] },
   );
   expect(input).toEqual({
     id: 'i1',
-    brand: 'Ubiquiti',
+    brandId: 'b1',
+    businessUnitIds: ['bu-a'],
     model: 'ES 24',
     isCountryLock: false,
     aliases: ['ES24', 'AirFiber'],

@@ -48,6 +48,7 @@ test('toItemSummary membuang detail, stiker, aksesori, lampiran, dan metadata de
       'aliases',
       'brand',
       'brandId',
+      'businessUnits',
       'id',
       'imageCount',
       'isCountryLock',

@@ -124,7 +124,8 @@ describe('seed data contoh', () => {
       token,
       'items.save',
       {
-        brand: 'Ubiquiti',
+        brandId: 'brand-ubiquiti',
+        businessUnitIds: ['bu-um'],
         model: 'Baru',
         isCountryLock: false,
         aliases: ['ER-X'],

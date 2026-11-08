@@ -8,8 +8,7 @@ import { appError, staleError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
-import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
-import { planBrandByName } from '@server/modules/brand/service';
+import { brandByIdStatement, brandsFromResult, listBrands } from '@server/modules/brand/repo';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -27,17 +26,27 @@ import type {
   SetItemStatusInput,
 } from '@shared/contract';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
-import { visibleBuIds } from './access';
+import {
+  assertCanActOnItem,
+  assertItemVisible,
+  assertRequestedBusinessUnits,
+  visibleBuIds,
+} from './access';
 import type { ItemRecord } from './repo';
 import {
+  type BusinessUnitBrief,
   brandKeyGuardStmt,
+  businessUnitBriefsFromResult,
+  businessUnitBriefsStmt,
   findItem,
   findItemStmt,
   findItemWithBrand,
   type ItemRow,
   insertItemStmts,
+  itemBusinessUnitIdsStmt,
   itemBusinessUnitsOf,
   parseStrings,
+  replaceItemBusinessUnitsStmts,
   toItem,
   updateItemStmts,
 } from './repo';
@@ -80,6 +89,7 @@ export function toItemDto(item: ItemView): ItemDto {
 export function itemSnapshot(item: ItemView, detailHash?: string): Record<string, unknown> {
   return {
     brand: item.brand,
+    businessUnits: item.businessUnits.map((bu) => bu.code).sort(),
     model: item.model,
     isCountryLock: item.isCountryLock,
     status: item.status,
@@ -393,17 +403,12 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
 }
 
 export interface WriteItemOptions {
+  /** Item yang diubah, bila pemanggil sudah memuatnya; selain itu dimuat dari `input.id` (NOT_FOUND bila tak ada). */
   existing?: ItemRecord | undefined;
   /** Hanya item baru: id yang sudah dipakai pemanggil. */
   id?: string | undefined;
-  actor: ActorRef;
-  /**
-   * Merk bernama `input.brand` yang sudah diketahui pemanggil (`null` = pasti belum ada); `undefined` = dicari
-   * di sini (daftar cache dulu, bila tak ada langsung ke database sebelum membuat merk baru).
-   */
-  knownBrand?: BrandRecord | null | undefined;
-  /** Hasil baca yang sudah dimuat pemanggil dalam `batch()` bersama (menghemat round trip database). */
-  preloaded?: { owners: NameOwners; files: readonly FileRecord[] } | undefined;
+  /** Pelaku: dipakai audit dan aturan BU (hak per BU). */
+  actor: UserContext;
 }
 
 /**
@@ -417,9 +422,8 @@ export const ITEM_CONFLICTS = {
 };
 
 /**
- * `batchWrite` untuk penulisan item di dalam `runCas`: duplikat `brands_key` (dua penulis membuat merk bernama sama
- * serentak, mis. sesudah ganti nama merk) TIDAK dipetakan ke CONFLICT melainkan dilempar apa adanya agar `runCas`
- * memuat ulang: percobaan berikutnya menemukan merk yang dibuat penulis lain dan memakainya.
+ * `batchWrite` untuk penulisan item di dalam `runCas`: duplikat `brands_key` TIDAK dipetakan ke CONFLICT melainkan
+ * dilempar apa adanya agar `runCas` memuat ulang (sisa perilaku lama; merk tak lagi dibuat dari penyimpanan item).
  */
 export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise<DbResult[]> {
   try {
@@ -434,42 +438,116 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
 
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
+/** Hasil baca awal penulisan item (satu `batch()`): item, BU-nya, merk yang dipilih, semua BU, dan berkas. */
+interface WriteContext {
+  existing: ItemRecord | undefined;
+  /** Id BU item saat ini (`null` = item baru). */
+  currentBuIds: string[] | null;
+  brand: BrandRecord | undefined;
+  allBus: BusinessUnitBrief[];
+  files: FileRecord[];
+}
+
+async function loadWriteContext(
+  env: Env,
+  input: SaveItemInput,
+  provided: ItemRecord | undefined,
+): Promise<WriteContext> {
+  const lookupId = provided?.id ?? input.id;
+  const reads: DbStatement[] = [];
+  const slots = { item: -1, links: -1 };
+  if (lookupId && !provided) {
+    slots.item = reads.length;
+    reads.push(findItemStmt(env.DB, lookupId));
+  }
+  if (lookupId) {
+    slots.links = reads.length;
+    reads.push(itemBusinessUnitIdsStmt(env.DB, lookupId));
+  }
+  const brandSlot = reads.length;
+  reads.push(brandByIdStatement(env, input.brandId));
+  const busSlot = reads.length;
+  reads.push(businessUnitBriefsStmt(env.DB));
+  const filesSlot = reads.length;
+  reads.push(...activeFilesStatements(env, referencedFileIds(input)));
+  const results = await env.DB.batch(reads);
+  let existing = provided;
+  if (slots.item >= 0) {
+    const row = results[slots.item]?.results[0] as ItemRow | undefined;
+    existing = row ? toItem(row) : undefined;
+  }
+  const currentBuIds =
+    slots.links >= 0
+      ? ((results[slots.links]?.results ?? []) as Array<{ bu_id: string }>).map((row) =>
+          row.bu_id.trim(),
+        )
+      : null;
+  return {
+    existing,
+    currentBuIds: lookupId ? (currentBuIds ?? []) : null,
+    brand: brandsFromResult(results[brandSlot] ?? { results: [] })[0],
+    allBus: businessUnitBriefsFromResult(results[busSlot] ?? { results: [] }),
+    files: activeFilesFromResults(results.slice(filesSlot)),
+  };
+}
+
 /**
- * Merencanakan penulisan item (baru atau ubah): semua pemeriksaan (keunikan, rujukan berkas, merk
- * nonaktif) dijalankan di sini; hasilnya `statements` yang HARUS dijalankan dalam satu `batch()`
- * (CAS pada `updated_at`, merk baru, penautan berkas, UPDATE/INSERT, audit) sehingga
- * atomik. Dipakai form web (`saveItem`).
+ * Merencanakan penulisan item (baru atau ubah): semua pemeriksaan (hak BU, merk, keunikan, rujukan berkas) dijalankan
+ * di sini; hasilnya `statements` yang HARUS dijalankan dalam satu `batch()` (penjaga merk, penautan berkas,
+ * UPDATE/INSERT dengan CAS pada `updated_at`, himpunan BU, audit) sehingga atomik.
+ *
+ * Aturan BU (spek 5.3, keputusan 13): item baru hanya ke BU aktif yang boleh diubah user; item yang ada hanya dapat
+ * diubah user yang berhak `edit` pada SEMUA BU item itu (item di luar BU terlihat = NOT_FOUND); BU yang ditambah
+ * harus aktif dan berhak `edit`; BU lama boleh dilepas/dipertahankan.
  */
 export async function planItemWrite(
   env: Env,
   input: SaveItemInput,
   options: WriteItemOptions,
-): Promise<{ record: ItemRecord; brandName: string; statements: DbStatement[] }> {
-  const { existing, actor } = options;
-  const key = itemKey(input.brand, input.model);
-  // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
-  const brandKey = normalizeKey(input.brand);
-  const knownBrand =
-    options.knownBrand !== undefined
-      ? options.knownBrand
-      : ((await listBrands(env)).find((brand) => brand.key === brandKey) ??
-        (await findBrandByKey(env, brandKey)));
-  if (knownBrand && knownBrand.status === 'inactive' && existing?.brandId !== knownBrand.id) {
-    const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
-    throw appError('VALIDATION', message, { brand: message });
+): Promise<{
+  record: ItemRecord;
+  brandName: string;
+  businessUnits: BusinessUnitRefDto[];
+  statements: DbStatement[];
+}> {
+  const { actor } = options;
+  const context = await loadWriteContext(env, input, options.existing);
+  const { existing, currentBuIds } = context;
+  if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  if (existing) {
+    // NOT_FOUND bila tak beririsan BU terlihat, FORBIDDEN bila tak berhak ubah di SEMUA BU item.
+    assertItemVisible(actor, currentBuIds ?? []);
+    assertCanActOnItem(actor, currentBuIds ?? [], 'edit', 'Anda tidak berhak mengubah item ini');
+    if (input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw staleError(STALE_MESSAGE);
+    }
   }
+  assertRequestedBusinessUnits(
+    actor,
+    context.allBus,
+    existing ? (currentBuIds ?? []) : null,
+    input.businessUnitIds,
+  );
+  const { brand } = context;
+  if (!brand) {
+    throw appError('VALIDATION', 'Merk tidak ditemukan', { brandId: 'Merk tidak ditemukan' });
+  }
+  // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
+  if (brand.status === 'inactive' && existing?.brandId !== brand.id) {
+    const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
+    throw appError('VALIDATION', message, { brandId: message });
+  }
+  const key = itemKey(brand.name, input.model);
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
-  const preloaded = options.preloaded ?? (await loadWriteChecks(env, input, key, id, existing));
-  assertItemNamesFree(input, key, preloaded.owners);
+  const owners = await loadNameOwners(env, input, key, id, existing);
+  assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
-  const usableFiles = assertItemFilesUsable(input, id, preloaded.files);
+  const usableFiles = assertItemFilesUsable(input, id, context.files);
   const attach = await planAttachFiles(env, referencedFileIds(input), 'item', id, usableFiles);
-  // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
-  const resolved = await planBrandByName(env, input.brand, actor, knownBrand);
   const now = nowIso(env);
   const status = existing?.status ?? 'active';
   const fields = {
-    brandId: resolved.brand.id,
+    brandId: brand.id,
     model: input.model,
     key,
     isCountryLock: input.isCountryLock,
@@ -481,16 +559,19 @@ export async function planItemWrite(
     updatedAt: now,
     updatedBy: actor.email,
   };
+  const knownBus = new Map(context.allBus.map((bu) => [bu.id, bu]));
+  const businessUnits: BusinessUnitRefDto[] = input.businessUnitIds
+    .map((buId) => knownBus.get(buId))
+    .filter((bu): bu is BusinessUnitBrief => bu !== undefined)
+    .map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }))
+    .sort((a, b) => a.code.localeCompare(b.code));
   const afterView = (record: ItemRecord): ItemView => ({
     ...record,
-    brand: resolved.brand.name,
-    businessUnits: [],
+    brand: brand.name,
+    businessUnits,
   });
-  // Merk yang sudah ada dijaga: ganti nama merk yang menyela membatalkan batch (I1); merk baru tak perlu.
-  const statements: DbStatement[] =
-    resolved.statements.length === 0
-      ? [brandKeyGuardStmt(env.DB, resolved.brand.id, brandKey)]
-      : [];
+  // Penjaga merk (ganti nama merk yang menyela membatalkan batch, I1) selalu PERTAMA: merk selalu sudah ada.
+  const statements: DbStatement[] = [brandKeyGuardStmt(env.DB, brand.id, brand.key)];
 
   if (existing) {
     const merged: ItemRecord = { ...existing, ...fields, status };
@@ -504,9 +585,9 @@ export async function planItemWrite(
       existing.detail === merged.detail ? (beforeSnapshot.detailHash as string) : undefined,
     );
     statements.push(
-      ...resolved.statements,
       ...attach,
       ...updateItemStmts(env.DB, merged, existing),
+      ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, false),
     );
     statements.push(
       writeAudit(env.DB, {
@@ -522,7 +603,7 @@ export async function planItemWrite(
         after: afterSnapshot,
       }),
     );
-    return { record: merged, brandName: resolved.brand.name, statements };
+    return { record: merged, brandName: brand.name, businessUnits, statements };
   }
 
   const created: ItemRecord = {
@@ -531,7 +612,11 @@ export async function planItemWrite(
     createdAt: now,
     ...fields,
   };
-  statements.push(...resolved.statements, ...attach, ...insertItemStmts(env.DB, created));
+  statements.push(
+    ...attach,
+    ...insertItemStmts(env.DB, created),
+    ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, true),
+  );
   statements.push(
     writeAudit(env.DB, {
       ts: now,
@@ -542,12 +627,12 @@ export async function planItemWrite(
       after: itemSnapshot(afterView(created)),
     }),
   );
-  return { record: created, brandName: resolved.brand.name, statements };
+  return { record: created, brandName: brand.name, businessUnits, statements };
 }
 
 /**
  * Item yang sudah ada tidak mengklaim kunci baru bila merk+tipe dan nama lainnya tidak berubah (kasus umum
- * penyimpanan dari Desktop: hanya detail/stiker/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
+ * penyimpanan: hanya detail/stiker/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
  * indeks unik tetap menjadi pagar bila ada rebutan.
  */
 function claimsNoNewNames(
@@ -560,32 +645,24 @@ function claimsNoNewNames(
   return existing.aliases.every((alias, index) => alias === input.aliases[index]);
 }
 
-/**
- * Pemeriksaan baca sebelum menulis (keunikan nama dan berkas) dalam SATU `batch()`; untuk penulis tanpa muatan
- * awal. Tanpa kunci baru dan tanpa rujukan berkas tidak ada round trip sama sekali.
- */
-async function loadWriteChecks(
+/** Pemilik nama (keunikan merk+tipe dan nama lain) dalam SATU kueri; tanpa kunci baru tidak ada round trip. */
+async function loadNameOwners(
   env: Env,
   input: SaveItemInput,
   key: string,
   selfId: string,
   existing?: ItemRecord,
-): Promise<{ owners: NameOwners; files: FileRecord[] }> {
-  const checkNames = !claimsNoNewNames(existing, input, key);
-  const statements = [
-    ...(checkNames ? [nameCheckStatement(env, input, key, selfId)] : []),
-    ...activeFilesStatements(env, referencedFileIds(input)),
-  ];
-  if (statements.length === 0) return { owners: NO_OWNERS, files: [] };
-  const results = await env.DB.batch(statements);
-  const offset = checkNames ? 1 : 0;
-  return {
-    owners: checkNames ? nameOwnersFrom(results[0]) : NO_OWNERS,
-    files: activeFilesFromResults(results.slice(offset)),
-  };
+): Promise<NameOwners> {
+  if (claimsNoNewNames(existing, input, key)) return NO_OWNERS;
+  const result = await nameCheckStatement(env, input, key, selfId).all();
+  return nameOwnersFrom(result);
 }
 
-export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef): Promise<ItemDto> {
+export async function saveItem(
+  env: Env,
+  input: SaveItemInput,
+  actor: UserContext,
+): Promise<ItemDto> {
   const id = input.id ?? crypto.randomUUID();
   // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: muat ulang semuanya dan ulangi.
   return runCas(() => saveItemOnce(env, input, actor, id), STALE_MESSAGE);
@@ -594,41 +671,22 @@ export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef):
 async function saveItemOnce(
   env: Env,
   input: SaveItemInput,
-  actor: ActorRef,
+  actor: UserContext,
   id: string,
 ): Promise<ItemDto> {
-  // Satu round trip baca: item yang diubah, keunikan nama, dan berkas yang dirujuk (urutan hasil di bawah).
-  const key = itemKey(input.brand, input.model);
-  const reads = [
-    ...(input.id ? [findItemStmt(env.DB, input.id)] : []),
-    nameCheckStatement(env, input, key, id),
-    ...activeFilesStatements(env, referencedFileIds(input)),
-  ];
-  const results = await env.DB.batch(reads);
-  const offset = input.id ? 1 : 0;
-  const row = input.id ? (results[0]?.results[0] as ItemRow | undefined) : undefined;
-  const existing = row ? toItem(row) : undefined;
-  if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
-    throw staleError(STALE_MESSAGE);
-  }
-  const plan = await planItemWrite(env, input, {
-    existing,
-    id,
-    actor,
-    preloaded: {
-      owners: nameOwnersFrom(results[offset]),
-      files: activeFilesFromResults(results.slice(offset + 1)),
-    },
-  });
+  const plan = await planItemWrite(env, input, { id, actor });
   await batchItemWrite(env.DB, plan.statements);
-  return toItemDto({ ...plan.record, brand: plan.brandName, businessUnits: [] });
+  return toItemDto({
+    ...plan.record,
+    brand: plan.brandName,
+    businessUnits: plan.businessUnits,
+  });
 }
 
 export async function setItemStatus(
   env: Env,
   input: SetItemStatusInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<ItemDto> {
   // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: baca ulang item dan ulangi.
   return runCas(() => setItemStatusOnce(env, input, actor), STALE_MESSAGE);
@@ -637,17 +695,18 @@ export async function setItemStatus(
 async function setItemStatusOnce(
   env: Env,
   input: SetItemStatusInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<ItemDto> {
   // Item dan merknya dibaca dalam SATU snapshot (JOIN); penjaga memeriksa kunci merk tersimpan itu (N1).
   const found = await findItemWithBrand(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const existing = found.item;
-  const before: ItemView = {
-    ...existing,
-    brand: found.brandName,
-    businessUnits: (await itemBusinessUnitsOf(env.DB, [existing.id])).get(existing.id) ?? [],
-  };
+  const businessUnits = (await itemBusinessUnitsOf(env.DB, [existing.id])).get(existing.id) ?? [];
+  const itemBuIds = businessUnits.map((bu) => bu.id);
+  // NOT_FOUND bila tak beririsan BU terlihat; menonaktifkan item multi-BU butuh `manage` pada SEMUA BU item.
+  assertItemVisible(actor, itemBuIds);
+  assertCanActOnItem(actor, itemBuIds, 'manage', 'Anda tidak berhak mengubah status item ini');
+  const before: ItemView = { ...existing, brand: found.brandName, businessUnits };
   if (existing.status === input.status) return toItemDto(before);
   const now = nowIso(env);
   const updated: ItemRecord = {
@@ -667,14 +726,10 @@ async function setItemStatusOnce(
         action: input.status === 'active' ? 'item.activate' : 'item.deactivate',
         target: itemLabel(before),
         before: itemSnapshot(before),
-        after: itemSnapshot({
-          ...updated,
-          brand: before.brand,
-          businessUnits: before.businessUnits,
-        }),
+        after: itemSnapshot({ ...updated, brand: before.brand, businessUnits }),
       }),
     ],
     ITEM_CONFLICTS,
   );
-  return toItemDto({ ...updated, brand: before.brand, businessUnits: before.businessUnits });
+  return toItemDto({ ...updated, brand: before.brand, businessUnits });
 }

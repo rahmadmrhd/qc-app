@@ -68,24 +68,6 @@ export async function listBrandDtos(env: Env): Promise<BrandDto[]> {
   return (await listBrands(env)).map(toBrandDto).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * Rencana "buat merk langsung saat mengetik" untuk penyimpanan item: bila merk (kunci ternormalisasi)
- * sudah ada, kembalikan tanpa pernyataan; jika belum, kembalikan merk baru beserta pernyataan
- * penyisipan + audit untuk digabung ke `batch()` penyimpanan item (atomik).
- */
-export async function planBrandByName(
-  env: Env,
-  name: string,
-  actor: ActorRef,
-  /** Hasil `findBrandByKey` yang sudah dimuat pemanggil (hindari kueri ganda); `undefined` = muat di sini. */
-  known?: BrandRecord | null,
-): Promise<{ brand: BrandRecord; statements: DbStatement[] }> {
-  const found = known === undefined ? await findBrandByKey(env, normalizeKey(name)) : known;
-  if (found) return { brand: found, statements: [] };
-  const created = newBrandRecord(env, name, actor);
-  return { brand: created, statements: createBrandStmts(env, created, actor) };
-}
-
 /** Item per pernyataan `UPDATE` ganti nama (2 nilai terikat per item; driver tanpa batas parameter). */
 const RENAME_ITEMS_PER_STATEMENT = 200;
 /** Kunci nama lain per pernyataan `SELECT ... IN (...)`. */

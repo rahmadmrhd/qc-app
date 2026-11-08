@@ -3,8 +3,9 @@ import type { DbStatement } from '@server/core/db';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { saveItem, setItemStatus } from '@server/modules/item/service';
+import { seedBusinessUnit } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
-import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
+import { brandIdOf, DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { itemKey } from '@shared/items';
 import { saveBrand, setBrandStatus } from './service';
@@ -18,6 +19,8 @@ let admin: UserContext;
 beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
+  // BU harus ada SEBELUM konteks super admin dimuat (konteks membaca BU yang ada saat itu)
+  await seedBusinessUnit(env, { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' });
   const ctx = await loadUserContext(env, 'admin@gmail.com');
   if (!ctx) throw new Error('admin hilang');
   admin = ctx;
@@ -35,6 +38,7 @@ const itemRow = async (id: string) =>
   env.DB.prepare('SELECT `key` FROM items WHERE id = ?').bind(id).first<{ key: string }>();
 
 const ITEM_BASE = {
+  businessUnitIds: [DEFAULT_TEST_BU_ID],
   isCountryLock: false,
   aliases: [] as string[],
   stickers: [],
@@ -148,20 +152,24 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
     await seedItem(env, { id: 'i1', brand: 'Lama', model: 'Satu' });
     const { delayed, atWrite, release } = gatedEnv(ITEM_WRITE);
     // penulis item sudah menghitung kunci `lama dua`, lalu rename selesai sebelum batch-nya jalan
-    const pending = saveItem(delayed, { ...ITEM_BASE, brand: 'Lama', model: 'Dua' }, admin);
+    const pending = saveItem(
+      delayed,
+      { ...ITEM_BASE, brandId: brandIdOf('Lama'), model: 'Dua' },
+      admin,
+    );
     await atWrite;
     await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
     release();
     await pending;
     await assertItemKeysMatchBrands();
     expect((await itemRow('i1'))?.key).toBe('baru satu');
-    // simpan basi membawa nama lama: merk "Lama" tercipta ulang dan item baru berada di sana (kunci mengikuti)
+    // merk dirujuk lewat id (bukan nama): item baru tetap di merk yang sama dan kuncinya mengikuti nama barunya
     const created = await env.DB.prepare(
       'SELECT i.`key` AS k, b.name AS brand FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.model = ?',
     )
       .bind('Dua')
       .first<{ k: string; brand: string }>();
-    expect(created).toEqual({ k: 'lama dua', brand: 'Lama' });
+    expect(created).toEqual({ k: 'baru dua', brand: 'Baru' });
   }, 60_000);
 
   test('(I1) ubah item yang sudah ada saat merknya diganti nama: kunci baru tidak ditimpa kunci lama', async () => {
@@ -177,7 +185,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
         ...ITEM_BASE,
         id: 'i1',
         expectedUpdatedAt: view?.updated_at as string,
-        brand: 'Lama',
+        brandId: brandIdOf('Lama'),
         model: 'Satu',
         detail: 'diubah',
       },
@@ -189,7 +197,7 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
     const outcome = await pending;
     expect(outcome.detail).toBe('diubah');
     await assertItemKeysMatchBrands();
-    // item tetap satu dan kunci mengikuti merk tempatnya berada sekarang (merk lama tercipta ulang oleh simpan basi)
+    // item tetap satu dan kunci mengikuti merk tempatnya berada sekarang
     expect((await itemRow('i1'))?.key).toBe(itemKey(outcome.brand, 'Satu'));
   }, 60_000);
 
@@ -213,8 +221,8 @@ describe('ganti nama merk: perilaku (pengganti tes yang dihapus)', () => {
       await seedItem(env, { id: `s${round}`, brand: old, model: 'Awal' });
       const settled = await Promise.allSettled([
         saveBrand(env, { id: brandIdOf(old), name: `Baru${round}` }, admin),
-        saveItem(env, { ...ITEM_BASE, brand: old, model: `Tambah ${round}` }, admin),
-        saveItem(env, { ...ITEM_BASE, brand: old, model: `Tambah B${round}` }, admin),
+        saveItem(env, { ...ITEM_BASE, brandId: brandIdOf(old), model: `Tambah ${round}` }, admin),
+        saveItem(env, { ...ITEM_BASE, brandId: brandIdOf(old), model: `Tambah B${round}` }, admin),
       ]);
       // ketiganya berhasil (percobaan ulang menutup penjaga yang memicu); tak ada yang ditolak diam-diam
       expect(settled.map((entry) => entry.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
@@ -371,7 +379,13 @@ describe('(m1) pindah merk vs ganti nama merk', () => {
     const { delayed, atWrite, release } = gatedEnv(ITEM_WRITE);
     const pending = saveItem(
       delayed,
-      { ...ITEM_BASE, id: 'i1', expectedUpdatedAt: updatedAt, brand: 'Tujuan', model: 'Satu' },
+      {
+        ...ITEM_BASE,
+        id: 'i1',
+        expectedUpdatedAt: updatedAt,
+        brandId: brandIdOf('Tujuan'),
+        model: 'Satu',
+      },
       admin,
     );
     await atWrite;
@@ -410,12 +424,12 @@ describe('(m1) pindah merk vs ganti nama merk', () => {
             ...ITEM_BASE,
             id: `m${round}`,
             expectedUpdatedAt: updatedAt,
-            brand: to,
+            brandId: brandIdOf(to),
             model: 'Pindah',
           },
           admin,
         ),
-        saveItem(env, { ...ITEM_BASE, brand: from, model: `Baru ${round}` }, admin),
+        saveItem(env, { ...ITEM_BASE, brandId: brandIdOf(from), model: `Baru ${round}` }, admin),
       ]);
       expect(settled.map((entry) => entry.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled']);
       await assertItemKeysMatchBrands();

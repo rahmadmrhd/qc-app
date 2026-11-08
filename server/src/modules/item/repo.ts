@@ -178,6 +178,66 @@ export async function itemBusinessUnitsOf(
   return result;
 }
 
+/** Id BU yang melekat pada satu item (untuk digabung ke `batch()` baca). */
+export function itemBusinessUnitIdsStmt(db: Db, itemId: string): DbStatement {
+  return db.prepare('SELECT bu_id FROM item_business_units WHERE item_id = ?').bind(itemId);
+}
+
+/** Ringkasan semua BU (kecil) untuk validasi tulis; digabung ke `batch()` baca. */
+export function businessUnitBriefsStmt(db: Db): DbStatement {
+  return db.prepare('SELECT id, code, name, status FROM business_units');
+}
+
+export interface BusinessUnitBrief extends BusinessUnitRefDto {
+  status: ItemStatus;
+}
+
+export function businessUnitBriefsFromResult(result: { results: unknown[] }): BusinessUnitBrief[] {
+  return (result.results as Array<{ id: string; code: string; name: string; status: string }>)
+    .map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      name: row.name.trim(),
+      status: (row.status.trim() === 'active' ? 'active' : 'inactive') as ItemStatus,
+    }))
+    .filter((bu) => bu.id !== '');
+}
+
+/**
+ * Mengganti himpunan BU item menjadi TEPAT `ids`: hapus baris di luar `ids`, lalu sisipkan yang belum ada
+ * (`INSERT IGNORE`). Tidak bergantung pada himpunan lama yang dibaca penulis, sehingga dua penulis yang lolos CAS
+ * serentak (mis. `updated_at` sama pada milidetik yang sama) tetap menghasilkan himpunan salah satunya utuh, tanpa
+ * campuran. Item baru (`fresh`) hanya menyisipkan. Pemanggil menjalankannya di `batch()` yang sama dengan `UPDATE`
+ * item (baris item terkunci sampai commit, jadi penulis lain menunggu).
+ */
+export function replaceItemBusinessUnitsStmts(
+  db: Db,
+  itemId: string,
+  ids: readonly string[],
+  fresh: boolean,
+): DbStatement[] {
+  const statements: DbStatement[] = [];
+  if (!fresh) {
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM item_business_units WHERE item_id = ? AND bu_id NOT IN (${ids.map(() => '?').join(',')})`,
+        )
+        .bind(itemId, ...ids),
+    );
+  }
+  for (const buId of ids) {
+    statements.push(
+      db
+        .prepare(
+          `${fresh ? 'INSERT' : 'INSERT IGNORE'} INTO item_business_units (item_id, bu_id) VALUES (?, ?)`,
+        )
+        .bind(itemId, buId),
+    );
+  }
+  return statements;
+}
+
 /** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */
 export interface ItemWithBrand {
   item: ItemRecord;

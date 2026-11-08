@@ -54,7 +54,7 @@ const WORST: Inputs = {
   'items.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    brand: text(ITEM_LIMITS.brand),
+    brandId: UUID,
     model: text(ITEM_LIMITS.model),
     isCountryLock: true,
     aliases: longList(ITEM_LIMITS.aliases, () => text(ITEM_LIMITS.alias)),
@@ -69,6 +69,7 @@ const WORST: Inputs = {
     })),
     attachments: longList(ITEM_LIMITS.attachments, () => UUID),
     detail: text(MARKDOWN_MAX_LENGTH),
+    businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'items.setStatus': { id: UUID, status: 'inactive' },
   'handovers.save': {

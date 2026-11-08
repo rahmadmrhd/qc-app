@@ -1,3 +1,4 @@
+import { normalizeKey } from '@shared/items';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -34,7 +35,15 @@ function EditItemPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await saveItem.mutateAsync(toSaveItemInput(values, item.id, item.updatedAt));
+      // Sementara (sampai field Merk dan BU di form): merk dicocokkan menurut nama, BU item tidak diubah.
+      const brandId =
+        brands.find((brand) => normalizeKey(brand.name) === normalizeKey(values.brand))?.id ?? '';
+      await saveItem.mutateAsync(
+        toSaveItemInput(values, item.id, item.updatedAt, {
+          brandId,
+          businessUnitIds: item.businessUnits.map((bu) => bu.id),
+        }),
+      );
       toast.success('Item disimpan');
       await navigate({ to: '/item/$itemId', params: { itemId: item.id } });
     } catch (error) {

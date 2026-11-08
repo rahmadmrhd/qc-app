@@ -39,7 +39,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
   await api('items.save', {
     id: 'a/b',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    brand: 'Sony',
+    brandId: 'b1',
     model: 'X',
     isCountryLock: false,
     aliases: [],
@@ -47,6 +47,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     accessories: [],
     attachments: [],
     detail: '',
+    businessUnitIds: ['bu1'],
   });
   const { url, init } = lastCall(fetchImpl);
   expect(url).toBe('/api/v1/items/a%2Fb');
@@ -57,7 +58,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     'If-Match': '"2026-10-09T00:00:00.000Z"',
   });
   const body = JSON.parse(String(init.body));
-  expect(body).toMatchObject({ brand: 'Sony', model: 'X' });
+  expect(body).toMatchObject({ brandId: 'b1', model: 'X' });
   expect(body).not.toHaveProperty('id');
   expect(body).not.toHaveProperty('expectedUpdatedAt');
 });

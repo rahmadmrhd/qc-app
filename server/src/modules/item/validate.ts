@@ -163,6 +163,29 @@ function readItemAttachments(value: unknown, reader: ObjectReader): string[] {
   return result;
 }
 
+/** Id BU: daftar teks tak kosong, tanpa kembar (dirapikan), minimal satu. */
+function readBusinessUnitIds(value: unknown, reader: ObjectReader): string[] {
+  if (!Array.isArray(value)) {
+    reader.fail('businessUnitIds', 'Pilih minimal satu BU');
+    return [];
+  }
+  const result: string[] = [];
+  for (const entry of value) {
+    const id = typeof entry === 'string' ? entry.trim() : '';
+    if (id === '' || id.length > 100) {
+      reader.fail('businessUnitIds', 'BU tidak valid');
+      return [];
+    }
+    if (!result.includes(id)) result.push(id);
+  }
+  if (result.length === 0) reader.fail('businessUnitIds', 'Pilih minimal satu BU');
+  if (result.length > ITEM_BU_MAX) reader.fail('businessUnitIds', `Maksimal ${ITEM_BU_MAX} BU`);
+  return result;
+}
+
+/** Batas wajar jumlah BU per item (jauh di atas data nyata; menjaga ukuran kueri). */
+const ITEM_BU_MAX = 50;
+
 function readItemDetail(value: unknown, reader: ObjectReader): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string') {
@@ -204,10 +227,7 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
-  const brand = reader.str('brand', { required: true, max: ITEM_LIMITS.brand });
-  if (brand !== '' && normalizeKey(brand) === '') {
-    reader.fail('brand', 'Merk harus memuat huruf atau angka');
-  }
+  const brandId = reader.str('brandId', { required: true, max: 100 });
   const model = reader.str('model', { required: true, max: ITEM_LIMITS.model });
   if (model !== '' && normalizeKey(model) === '') {
     reader.fail('model', 'Tipe harus memuat huruf atau angka');
@@ -220,13 +240,14 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   const accessories = readItemAccessories(reader.raw('accessories'), lists);
   const attachments = readItemAttachments(reader.raw('attachments'), lists);
   const detail = readItemDetail(reader.raw('detail'), lists);
+  const businessUnitIds = readBusinessUnitIds(reader.raw('businessUnitIds'), lists);
   checkItemJsonSize('aliases', aliases, 'nama lain', reader);
   checkItemJsonSize('stickers', stickers, 'stiker', reader);
   checkItemJsonSize('accessories', accessories, 'kelengkapan', reader);
   checkItemJsonSize('attachments', attachments, 'gambar', reader);
   reader.done();
   const input = {
-    brand,
+    brandId,
     model,
     isCountryLock: lock === true,
     aliases,
@@ -234,6 +255,7 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
     accessories,
     attachments,
     detail,
+    businessUnitIds,
   };
   return id ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...input } : input;
 }

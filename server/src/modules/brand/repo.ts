@@ -65,6 +65,11 @@ export async function listBrands(
   return brandsFromResult(await brandsStatement(env).all<BrandRow>());
 }
 
+/** Kueri satu merk menurut id (digabung ke `batch()` baca); hasilnya lewat `brandsFromResult`. */
+export function brandByIdStatement(env: Env, id: string): DbStatement {
+  return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(id);
+}
+
 /** Merk menurut kunci (kueri berindeks langsung ke MariaDB: dipakai sebelum menulis). */
 export async function findBrandByKey(env: Env, key: string): Promise<BrandRecord | null> {
   const row = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE \`key\` = ?`)

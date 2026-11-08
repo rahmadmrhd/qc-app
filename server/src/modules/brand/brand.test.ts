@@ -6,7 +6,7 @@ import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { listBrands } from './repo';
-import { listBrandDtos, planBrandByName, saveBrand, setBrandStatus } from './service';
+import { listBrandDtos, saveBrand, setBrandStatus } from './service';
 import { validateSaveBrand, validateSetBrandStatus } from './validate';
 
 let env: TestEnv;
@@ -209,21 +209,6 @@ describe('merk', () => {
     const before = await auditCount();
     expect((await saveBrand(env, { id: 'brand-alfa', name: 'Alfa' }, admin)).name).toBe('Alfa');
     expect(await auditCount()).toBe(before);
-  });
-});
-
-describe('planBrandByName (untuk penyimpanan item)', () => {
-  test('merk yang ada dipakai tanpa pernyataan; yang baru menghasilkan pernyataan atomik', async () => {
-    await seedBrand(env, 'Ubiquiti');
-    const found = await planBrandByName(env, ' ubiquiti ', admin);
-    expect(found.brand.id).toBe('brand-ubiquiti');
-    expect(found.statements).toHaveLength(0);
-    const fresh = await planBrandByName(env, 'Mikrotik', admin);
-    expect(fresh.statements.length).toBeGreaterThan(0);
-    expect(await listBrands(env)).toHaveLength(1);
-    await env.DB.batch(fresh.statements);
-    expect((await listBrands(env)).map((b) => b.name).sort()).toEqual(['Mikrotik', 'Ubiquiti']);
-    expect((await lastAudit()).action).toBe('brand.create');
   });
 });
 
