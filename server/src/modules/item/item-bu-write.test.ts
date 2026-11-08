@@ -607,4 +607,27 @@ describe('rujukan berkas item lintas BU (tanpa oracle kepemilikan)', () => {
     );
     expect(again.attachments).toEqual([myFile]);
   });
+
+  test('unggahan belum terpasang milik user lain tidak dapat dipasang: VALIDATION seperti berkas tak dikenal; milik sendiri OK', async () => {
+    const pendingOfOther = await upload('eab@gmail.com');
+    const user = await ctxOf('ea@gmail.com');
+    const taken = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', attachments: [pendingOfOther] }), user),
+    );
+    const unknown = await captureAppErrorAsync(() =>
+      saveItem(env, input({ model: 'Baru', attachments: ['tidak-ada-id'] }), user),
+    );
+    expect(taken.code).toBe('VALIDATION');
+    expect(taken.message).toBe(unknown.message);
+    expect(taken.fields).toEqual(unknown.fields);
+    expect(await count('items')).toBe(2);
+    const row = await env.DB.prepare('SELECT owner_type FROM files WHERE id = ?')
+      .bind(pendingOfOther)
+      .first<{ owner_type: string }>();
+    expect(row?.owner_type).toBe('');
+    // milik sendiri dipasang seperti biasa
+    const mineFile = await upload('ea@gmail.com');
+    const saved = await saveItem(env, input({ model: 'Baru', attachments: [mineFile] }), user);
+    expect(saved.attachments).toEqual([mineFile]);
+  });
 });

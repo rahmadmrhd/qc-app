@@ -320,7 +320,8 @@ function referencedFileIds(input: SaveItemInput): string[] {
  * tidak dikenal -> VALIDATION, sudah dipakai entitas lain -> CONFLICT. `planAttachFiles` tetap menjadi pagar.
  *
  * Tanpa oracle kepemilikan lintas BU (keputusan pemilik 2026-11-09): berkas yang terpasang pada item lain yang BU-nya
- * tidak terlihat user dijawab SAMA dengan berkas tak dikenal (VALIDATION, pesan identik). CONFLICT hanya untuk berkas pada item lain yang terlihat (atau logo QR).
+ * tidak terlihat user, dan unggahan yang belum terpasang milik user lain, dijawab SAMA dengan berkas tak dikenal
+ * (VALIDATION, pesan identik). CONFLICT hanya untuk berkas pada item lain yang terlihat (atau logo QR).
  */
 async function assertItemFilesUsable(
   env: Env,
@@ -337,7 +338,7 @@ async function assertItemFilesUsable(
   const problem = (fileId: string): 'unknown' | 'taken' | null => {
     const file = files.get(fileId);
     if (!file) return 'unknown';
-    if (file.ownerType === '') return null;
+    if (file.ownerType === '') return file.createdBy === actor.email ? null : 'unknown';
     if (file.ownerType === 'item') {
       if (file.ownerId === ownerId) return null;
       return visibleItems.has(file.ownerId.trim()) ? 'taken' : 'unknown';
@@ -553,7 +554,14 @@ export async function planItemWrite(
   assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
   const usableFiles = await assertItemFilesUsable(env, actor, input, id, context.files);
-  const attach = await planAttachFiles(env, referencedFileIds(input), 'item', id, usableFiles);
+  const attach = await planAttachFiles(
+    env,
+    referencedFileIds(input),
+    'item',
+    id,
+    usableFiles,
+    actor.email,
+  );
   const now = nowIso(env);
   const status = existing?.status ?? 'active';
   const fields = {

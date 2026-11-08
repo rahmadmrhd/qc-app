@@ -164,6 +164,10 @@ export async function readFile(
   ) {
     throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
+  // Unggahan yang belum terpasang hanya terbaca pengunggahnya (keputusan pemilik 2026-11-09), apa pun izin `item`-nya.
+  if (record.ownerType === '' && record.createdBy !== viewer.email) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
   // Cache memori proses terikat folder aktif; dibaca SETELAH aturan akses di atas.
@@ -179,7 +183,8 @@ export async function readFile(
 /**
  * Rencana penetapan pemilik berkas (dipakai simpan item/logo): memvalidasi seluruh batch dulu, lalu
  * mengembalikan pernyataan UPDATE untuk digabung ke `batch()` penyimpanan entitas (atomik). Berkas yang
- * sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang. Pernyataan memakai penjaga
+ * sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang. Unggahan yang belum terpasang hanya boleh dipasang
+ * pengunggahnya (`claimant`; milik orang lain dijawab seperti berkas tak dikenal). Pernyataan memakai penjaga
  * `owner_type = ''` sehingga rebutan berkas yang sama tidak menimpa pemilik.
  */
 export async function planAttachFiles(
@@ -189,6 +194,8 @@ export async function planAttachFiles(
   ownerId: string,
   /** Hasil `findActiveFiles` untuk `ids` yang sudah dimuat pemanggil (hindari kueri ganda). */
   preloaded?: readonly FileRecord[],
+  /** Email pemasang: unggahan belum terpasang milik orang lain = `VALIDATION` (sama dengan berkas tak dikenal). */
+  claimant?: string,
 ): Promise<DbStatement[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
@@ -198,8 +205,12 @@ export async function planAttachFiles(
   for (const id of unique) {
     const file = byId.get(id);
     if (!file) throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
-    if (file.ownerType === '') toClaim.push(file);
-    else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
+    if (file.ownerType === '') {
+      if (claimant !== undefined && file.createdBy !== claimant) {
+        throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
+      }
+      toClaim.push(file);
+    } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }
   }
@@ -215,8 +226,9 @@ export async function attachFiles(
   ids: readonly string[],
   ownerType: FileOwnerType,
   ownerId: string,
+  claimant?: string,
 ): Promise<void> {
-  const statements = await planAttachFiles(env, ids, ownerType, ownerId);
+  const statements = await planAttachFiles(env, ids, ownerType, ownerId, undefined, claimant);
   if (statements.length > 0) await env.DB.batch(statements);
 }
 

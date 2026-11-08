@@ -494,6 +494,50 @@ describe('berkas gambar item menurut BU', () => {
     ).toBe('NOT_FOUND');
   });
 
+  test('unggahan yang belum terpasang hanya terbaca pengunggahnya, juga bagi pemegang item:view; cache tak disajikan ke user lain', async () => {
+    const pending = (await up(upload(), admin)).id;
+    const mine = { email: 'admin@gmail.com', itemBuIds: ['bu-a'] };
+    expect((await readFile(env, { id: pending }, mine)).bytes).toEqual(bytesOfBase64(PNG));
+    expect(driveReads()).toBe(1);
+    const getsBefore = cache.gets;
+    const missing = await captureAppErrorAsync(() =>
+      readFile(env, { id: 'tidak-ada' }, viewer(['bu-a'])),
+    );
+    for (const ids of [['bu-a'], ['bu-a', 'bu-b'], [], null]) {
+      const other = await captureAppErrorAsync(() => readFile(env, { id: pending }, viewer(ids)));
+      expect(other.code).toBe('NOT_FOUND');
+      expect(other.message).toBe(missing.message);
+    }
+    // ditolak sebelum cache/Drive disentuh
+    expect(cache.gets).toBe(getsBefore);
+    expect(driveReads()).toBe(1);
+    // setelah terpasang pada item, user yang berhak BU membacanya seperti biasa
+    await own(pending, 'item', 'i-a');
+    expect((await readFile(env, { id: pending }, viewer(['bu-a']))).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: pending }, viewer(['bu-b'])))).code,
+    ).toBe('NOT_FOUND');
+  });
+
+  test('lewat REST: pending hanya terbaca pengunggahnya; user item:view lain NOT_FOUND', async () => {
+    await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
+    await seedUser(env, {
+      id: 'u-a',
+      email: 'a@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-view'] }],
+    });
+    const pending = (await up(upload(), admin)).id;
+    expect(await restCall(env, 'admin@gmail.com', 'files.get', { id: pending })).toMatchObject({
+      ok: true,
+    });
+    expect(await restCall(env, 'a@gmail.com', 'files.get', { id: pending })).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+  });
+
   test('jenis pemilik lain (logo) tidak dibatasi BU untuk pemegang izin item, termasuk himpunan BU kosong', async () => {
     expect((await readFile(env, { id: fileLogo }, viewer([]))).bytes).toEqual(bytesOfBase64(PNG));
   });
@@ -622,6 +666,22 @@ describe('attachFiles', () => {
     expect((await files()).filter((f) => f.owner_id === 'item-1')).toHaveLength(2);
   });
 
+  test('claimant: unggahan belum terpasang milik orang lain = VALIDATION seperti berkas tak dikenal; milik sendiri dipasang', async () => {
+    const mine = await up();
+    const unknown = await captureAppErrorAsync(() =>
+      planAttachFiles(env, ['hilang'], 'item', 'item-1', undefined, 'admin@gmail.com'),
+    );
+    const others = await captureAppErrorAsync(() =>
+      planAttachFiles(env, [mine.id], 'item', 'item-1', undefined, 'lain@gmail.com'),
+    );
+    expect(others.code).toBe('VALIDATION');
+    expect(others.message).toBe(unknown.message);
+    expect((await files())[0]?.owner_type).toBe('');
+    expect(
+      await planAttachFiles(env, [mine.id], 'item', 'item-1', undefined, 'admin@gmail.com'),
+    ).toHaveLength(1);
+  });
+
   test('menerima id ganda; planAttachFiles menghasilkan pernyataan untuk batch pemanggil', async () => {
     const a = await up();
     const statements = await planAttachFiles(env, [a.id, a.id], 'item', 'item-1');
@@ -672,6 +732,17 @@ describe('rute dan izin', () => {
       ok: false,
       error: { code: 'FORBIDDEN' },
     });
+    // unggahan yang belum terpasang hanya terbaca pengunggahnya; setelah terpasang pada item, pemegang item:view membacanya
+    expect(await call('files.get', { id }, 'lihat@gmail.com')).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(await call('files.get', { id }, 'ubah@gmail.com')).toMatchObject({ ok: true });
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'i-rute', brand: 'Sony', model: 'Rute' });
+    await env.DB.prepare("UPDATE files SET owner_type = 'item', owner_id = 'i-rute' WHERE id = ?")
+      .bind(id)
+      .run();
     expect(await call('files.get', { id }, 'lihat@gmail.com')).toMatchObject({
       ok: true,
       data: { mime: 'image/png', bytes: bytesOfBase64(PNG) },

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES } from '@shared/files';
@@ -40,6 +41,15 @@ beforeEach(async () => {
 afterEach(() => {
   console.error = realError;
 });
+
+/** Memasang berkas pada sebuah item (keadaan sesudah item disimpan): unggahan belum terpasang hanya terbaca pengunggahnya. */
+async function attachToItem(fileId: string): Promise<void> {
+  await seedBrand(env, 'Sony');
+  await seedItem(env, { id: 'i-rest', brand: 'Sony', model: 'Rest' });
+  await env.DB.prepare("UPDATE files SET owner_type = 'item', owner_id = 'i-rest' WHERE id = ?")
+    .bind(fileId)
+    .run();
+}
 
 const upload = (
   bytes: Uint8Array,
@@ -97,6 +107,7 @@ describe('POST /files (badan mentah)', () => {
     const response = await upload(bytes, { email: 'ubah@gmail.com' });
     expect(response.status).toBe(201);
     const id = (await jsonOf(response)).id as string;
+    await attachToItem(id);
     const download = await rest.get(`/files/${id}`, { email: 'lihat@gmail.com' });
     expect(download.status).toBe(200);
     const received = new Uint8Array(await download.arrayBuffer());
@@ -160,7 +171,9 @@ describe('POST /files (badan mentah)', () => {
 describe('GET /files/{id} (unduhan mengalir)', () => {
   async function uploaded(bytes = pngOf(200)) {
     const response = await upload(bytes, { email: 'ubah@gmail.com' });
-    return { id: (await jsonOf(response)).id as string, bytes };
+    const id = (await jsonOf(response)).id as string;
+    await attachToItem(id);
+    return { id, bytes };
   }
 
   test('Content-Type dari record, ETag = id, Cache-Control immutable, byte identik', async () => {
