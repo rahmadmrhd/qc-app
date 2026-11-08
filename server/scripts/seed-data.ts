@@ -42,7 +42,6 @@ const RESET_TABLES = [
   'roles',
   'locations',
   'counters',
-  'sync_state',
   'jobs',
   'rate_limits',
 ];
@@ -118,20 +117,17 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
   }
 
   const brands = ['Ubiquiti', 'Mikrotik', 'TP-Link'];
-  brands.forEach((name, index) => {
+  for (const name of brands) {
     sql.push(
       insert('brands', {
         id: `brand-${normalizeKey(name).split(' ').join('-')}`,
-        external_id: '',
         name,
         key: normalizeKey(name),
         status: 'active',
-        sync_rev: index + 1,
         ...meta,
       }),
     );
-  });
-  sql.push(insert('sync_state', { resource: 'brands', seq: brands.length, updated_at: t0 }));
+  }
 
   const items: Array<{
     brand: string;
@@ -156,7 +152,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     sql.push(
       insert('items', {
         id: `item-${index + 1}`,
-        external_id: '',
         brand_id: `brand-${normalizeKey(item.brand).split(' ').join('-')}`,
         model: item.model,
         key: itemKey(item.brand, item.model),
@@ -168,7 +163,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         attachments: '[]',
         detail_md: `## ${item.brand} ${item.model}\n\nPerangkat contoh untuk pengembangan lokal.`,
         status: item.inactive ? 'inactive' : 'active',
-        sync_rev: index + 1,
         ...meta,
       }),
     );
@@ -184,7 +178,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
       'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id)',
     ),
   );
-  sql.push(insert('sync_state', { resource: 'items', seq: items.length, updated_at: t0 }));
 
   const customers = ['PT Maju Jaya', 'CV Abadi Sentosa', 'Toko Sinar Elektronik'];
   for (const [index, name] of customers.entries()) {

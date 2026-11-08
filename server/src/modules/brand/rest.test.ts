@@ -135,19 +135,15 @@ describe('POST /brands (buat)', () => {
 });
 
 describe('PUT /brands/{id} (ganti nama)', () => {
-  test('mengganti nama, menaikkan sync_rev, 200', async () => {
+  test('mengganti nama, 200', async () => {
     const id = await seedBrand(env, 'Sony');
-    const before = await env.DB.prepare('SELECT sync_rev FROM brands WHERE id = ?')
-      .bind(id)
-      .first<{ sync_rev: number }>();
     const response = await send('PUT', `/brands/${id}`, { body: { name: 'Sony Corp' } });
     expect(response.status).toBe(200);
     expect(await json(response)).toMatchObject({ id, name: 'Sony Corp' });
-    const after = await env.DB.prepare('SELECT name, `key`, sync_rev FROM brands WHERE id = ?')
+    const after = await env.DB.prepare('SELECT name, `key` FROM brands WHERE id = ?')
       .bind(id)
-      .first<{ name: string; key: string; sync_rev: number }>();
+      .first<{ name: string; key: string }>();
     expect(after).toMatchObject({ name: 'Sony Corp', key: 'sony corp' });
-    expect(after?.sync_rev).toBeGreaterThan(before?.sync_rev ?? 0);
   });
 
   test('id badan berbeda dari jalur -> 422 dan tidak mengubah apa pun', async () => {

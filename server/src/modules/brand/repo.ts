@@ -1,19 +1,15 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { nextSyncRev, syncRevExpr } from '@server/modules/sync/state';
 import type { ItemStatus } from '@shared/rpc';
 
 export interface BrandRecord {
   id: string;
-  /** Id MySQL (diisi sinkronisasi). */
-  externalId: string;
   name: string;
   /** `normalizeKey(name)`; unik. */
   key: string;
   status: ItemStatus;
   /** Jumlah item (aktif + nonaktif) pada merk ini; dijaga setiap penulisan item (migrasi 0009). */
   itemCount: number;
-  syncRev: number;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -21,29 +17,25 @@ export interface BrandRecord {
 
 export interface BrandRow {
   id: string;
-  external_id: string;
   name: string;
   key: string;
   status: string;
   item_count: number;
-  sync_rev: number;
   created_at: string;
   updated_at: string;
   updated_by: string;
 }
 
 export const BRAND_COLUMNS =
-  'id, external_id, name, `key`, status, item_count, sync_rev, created_at, updated_at, updated_by';
+  'id, name, `key`, status, item_count, created_at, updated_at, updated_by';
 
 function toBrand(row: BrandRow): BrandRecord {
   return {
     id: row.id.trim(),
-    externalId: row.external_id.trim(),
     name: row.name.trim(),
     key: row.key.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
     itemCount: Number(row.item_count) || 0,
-    syncRev: Number(row.sync_rev) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -88,20 +80,15 @@ export function adjustItemCountStmt(db: Preparer, brandId: string, delta: 1 | -1
     .bind(delta, brandId);
 }
 
-/**
- * Pernyataan penyisipan merk baru: menaikkan revisi sinkron `brands` lalu menyisipkan baris yang memakai
- * revisi itu (satu `batch()` bersama audit oleh pemanggil).
- */
+/** Pernyataan penyisipan merk baru (satu `batch()` bersama audit oleh pemanggil). */
 export function insertBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[] {
   return [
-    nextSyncRev(db, 'brands', brand.createdAt),
     db
       .prepare(
-        `INSERT INTO brands (id, external_id, name, \`key\`, status, sync_rev, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ${syncRevExpr('brands')}, ?, ?, ?)`,
+        'INSERT INTO brands (id, name, `key`, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
         brand.id,
-        brand.externalId,
         brand.name,
         brand.key,
         brand.status,
@@ -113,7 +100,7 @@ export function insertBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[
 }
 
 /**
- * Perubahan STATUS merk: hanya menulis `status` (+ revisi sinkron dan `updated_*`), TIDAK `name`/`key`, sehingga
+ * Perubahan STATUS merk: hanya menulis `status` (+ `updated_*`), TIDAK `name`/`key`, sehingga
  * ganti nama yang selesai di antara baca dan tulis tidak tertimpa nilai basi (I2). Diikuti `SELECT` baris merk
  * terkini (hasil terakhir batch) agar DTO memuat nama sebenarnya.
  */
@@ -122,23 +109,19 @@ export function setBrandStatusStmts(
   brand: Pick<BrandRecord, 'id' | 'status' | 'updatedAt' | 'updatedBy'>,
 ): DbStatement[] {
   return [
-    nextSyncRev(db, 'brands', brand.updatedAt),
     db
-      .prepare(
-        `UPDATE brands SET status = ?, sync_rev = ${syncRevExpr('brands')}, updated_at = ?, updated_by = ? WHERE id = ?`,
-      )
+      .prepare('UPDATE brands SET status = ?, updated_at = ?, updated_by = ? WHERE id = ?')
       .bind(brand.status, brand.updatedAt, brand.updatedBy, brand.id),
     db.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(brand.id),
   ];
 }
 
-/** Ubah nama/kunci/status merk dan NAIKKAN `sync_rev` (field sinkron berubah). */
+/** Ubah nama/kunci/status merk. */
 export function updateBrandStmts(db: Preparer, brand: BrandRecord): DbStatement[] {
   return [
-    nextSyncRev(db, 'brands', brand.updatedAt),
     db
       .prepare(
-        `UPDATE brands SET name = ?, \`key\` = ?, status = ?, sync_rev = ${syncRevExpr('brands')}, updated_at = ?, updated_by = ? WHERE id = ?`,
+        'UPDATE brands SET name = ?, `key` = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
       )
       .bind(brand.name, brand.key, brand.status, brand.updatedAt, brand.updatedBy, brand.id),
   ];

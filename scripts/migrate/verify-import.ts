@@ -27,7 +27,7 @@ import {
  * (tes memakai skema MariaDB sementara; CLI memakai `mariadbReader`). Hanya MEMBACA basis data.
  *
  * Lingkup final (keputusan pemilik 2026-11-06, spek §14 dan §19 butir 9e): users, roles, locations, QR, berkas
- * yang dirujuk QR, dan audit yang berkaitan. Tabel handover/item/merk/customer/sync_state/counters, berkas milik item,
+ * yang dirujuk QR, dan audit yang berkaitan. Tabel handover/item/merk/customer/counters, berkas milik item,
  * dan audit modul yang dibuang HARUS kosong/tidak ada di target, dan dump yang isinya akan dibuang harus disetujui
  * pemilik (lihat `DiscardApproval`; tanpa persetujuan yang cocok, verifikasi gagal dengan galat yang sama seperti
  * impor).
@@ -58,7 +58,7 @@ export interface VerifyReport {
   ok: boolean;
   tables: TableVerdict[];
   orphans: CheckVerdict[];
-  /** Tabel buangan (handover, item, merk, customer, sync_state, counters, berkas item) harus kosong di target. */
+  /** Tabel buangan (handover, item, merk, customer, counters, berkas item) harus kosong di target. */
   discarded: CheckVerdict[];
   problems: string[];
 }

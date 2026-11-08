@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
-import { currentSyncRev } from '@server/modules/sync/state';
 import { getRoutes } from '@server/routes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
@@ -39,25 +38,22 @@ async function auditCount() {
 }
 
 const brandRow = async (id: string) =>
-  env.DB.prepare('SELECT name, `key`, sync_rev FROM brands WHERE id = ?')
+  env.DB.prepare('SELECT name, `key` FROM brands WHERE id = ?')
     .bind(id)
-    .first<{ name: string; key: string; sync_rev: number }>();
+    .first<{ name: string; key: string }>();
 
 const itemRow = async (id: string) =>
-  env.DB.prepare('SELECT `key`, sync_rev FROM items WHERE id = ?')
-    .bind(id)
-    .first<{ key: string; sync_rev: number }>();
+  env.DB.prepare('SELECT `key` FROM items WHERE id = ?').bind(id).first<{ key: string }>();
 
 describe('merk', () => {
-  test('membuat merk: nama dirapikan, aktif, kolom sinkron kosong, audit brand.create', async () => {
+  test('membuat merk: nama dirapikan, aktif, kolom id eksternal kosong, audit brand.create', async () => {
     const saved = await saveBrand(env, { name: 'Ubiquiti' }, admin);
     expect(saved).toMatchObject({
       name: 'Ubiquiti',
       status: 'active',
-      externalId: '',
       itemCount: 0,
     });
-    expect((await listBrands(env))[0]).toMatchObject({ key: 'ubiquiti', syncRev: 1 });
+    expect((await listBrands(env))[0]).toMatchObject({ key: 'ubiquiti' });
     expect(await lastAudit()).toMatchObject({
       action: 'brand.create',
       target: 'Ubiquiti',
@@ -84,7 +80,6 @@ describe('merk', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await listBrands(env)).toHaveLength(1);
     expect(await auditCount()).toBe(1);
-    expect(await currentSyncRev(env.DB, 'brands')).toBe(1);
   });
 
   test('mengganti nama merk: kunci semua item merk itu ikut dihitung ulang; item merk lain tak berubah', async () => {
@@ -103,31 +98,24 @@ describe('merk', () => {
     });
   });
 
-  test('ganti nama merk besar (> 90 item): semua kunci dihitung ulang, revisi item unik dan menaik, hitungan tetap', async () => {
+  test('ganti nama merk besar (> 90 item): semua kunci dihitung ulang, hitungan tetap', async () => {
     await seedBrand(env, 'Lama');
     await seedBrand(env, 'Lain');
     for (let n = 1; n <= 130; n++) {
-      await seedItem(env, { id: `i${n}`, brand: 'Lama', model: `M ${n}`, syncRev: n });
+      await seedItem(env, { id: `i${n}`, brand: 'Lama', model: `M ${n}` });
     }
-    await seedItem(env, { id: 'x1', brand: 'Lain', model: 'M 1', syncRev: 500 });
-    await env.DB.prepare(
-      "INSERT INTO sync_state (resource, seq, updated_at) VALUES ('items', 500, '')",
-    ).run();
+    await seedItem(env, { id: 'x1', brand: 'Lain', model: 'M 1' });
     const saved = await saveBrand(env, { id: 'brand-lama', name: 'Baru' }, admin);
     expect(saved.itemCount).toBe(130);
     const rows = (
-      await env.DB.prepare(
-        'SELECT id, `key`, sync_rev FROM items WHERE brand_id = ? ORDER BY sync_rev',
-      )
+      await env.DB.prepare('SELECT id, `key` FROM items WHERE brand_id = ? ORDER BY id')
         .bind('brand-lama')
-        .all<{ id: string; key: string; sync_rev: number }>()
+        .all<{ id: string; key: string }>()
     ).results;
     expect(rows).toHaveLength(130);
     expect(rows.every((row) => row.key.startsWith('baru m '))).toBe(true);
-    // revisi 501..630: unik, berurutan, > revisi lama; item merk lain tak tersentuh
-    expect(rows.map((row) => row.sync_rev)).toEqual(Array.from({ length: 130 }, (_, i) => 501 + i));
-    expect((await itemRow('x1'))?.sync_rev).toBe(500);
-    expect(await currentSyncRev(env.DB, 'items')).toBe(630);
+    // item merk lain tak tersentuh
+    expect((await itemRow('x1'))?.key).toBe('lain m 1');
     const count = await env.DB.prepare(
       "SELECT item_count AS n FROM brands WHERE id = 'brand-lama'",
     ).first<{ n: number }>();
@@ -138,7 +126,6 @@ describe('merk', () => {
     await seedBrand(env, 'Kosong');
     const saved = await saveBrand(env, { id: 'brand-kosong', name: 'Kosong 2' }, admin);
     expect(saved).toMatchObject({ name: 'Kosong 2', itemCount: 0 });
-    expect(await currentSyncRev(env.DB, 'items')).toBe(0);
   });
 
   test('ganti nama ke merk lain ditolak; ganti kapitalisasi milik sendiri diizinkan; id tak dikenal NOT_FOUND', async () => {
@@ -222,56 +209,6 @@ describe('merk', () => {
     const before = await auditCount();
     expect((await saveBrand(env, { id: 'brand-alfa', name: 'Alfa' }, admin)).name).toBe('Alfa');
     expect(await auditCount()).toBe(before);
-  });
-});
-
-describe('sync_rev', () => {
-  test('baru, ganti nama, dan status menaikkan; ganti nama juga menaikkan semua item merk itu saja', async () => {
-    const created = await saveBrand(env, { name: 'Ubiquity' }, admin);
-    const brandRev = async () => (await brandRow(created.id))?.sync_rev ?? -1;
-    expect(await brandRev()).toBe(1);
-    // penghitung item dimajukan agar revisi baru pasti lebih besar dari revisi fixture
-    await env.DB.prepare("INSERT INTO sync_state (resource, seq) VALUES ('items', 6)").run();
-    await seedItem(env, {
-      id: 'i1',
-      brand: 'Ubiquity',
-      model: 'X',
-      syncRev: 5,
-      brandId: created.id,
-    });
-    await seedItem(env, { id: 'i2', brand: 'Mikrotik', model: 'Y', syncRev: 6 });
-    await saveBrand(env, { id: created.id, name: 'Ubiquiti' }, admin);
-    expect(await brandRev()).toBe(2);
-    expect((await itemRow('i1'))?.sync_rev).toBe(7);
-    expect((await itemRow('i2'))?.sync_rev).toBe(6);
-    await setBrandStatus(env, { id: created.id, status: 'inactive' }, admin);
-    expect(await brandRev()).toBe(3);
-  });
-
-  test('tiap item mendapat revisi sendiri yang unik dan menaik', async () => {
-    const id = await seedBrand(env, 'Ubiquity');
-    for (const n of [1, 2, 3]) {
-      await seedItem(env, { id: `i${n}`, brand: 'Ubiquity', model: `M${n}` });
-    }
-    await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
-    const revs = await env.DB.prepare('SELECT sync_rev FROM items ORDER BY sync_rev').all<{
-      sync_rev: number;
-    }>();
-    expect(revs.results.map((r) => r.sync_rev)).toEqual([1, 2, 3]);
-    expect(await currentSyncRev(env.DB, 'items')).toBe(3);
-  });
-
-  test('dua perubahan bersamaan menghasilkan revisi berbeda (tanpa nomor ganda)', async () => {
-    const a = await seedBrand(env, 'Alfa');
-    const b = await seedBrand(env, 'Beta');
-    await Promise.all([
-      setBrandStatus(env, { id: a, status: 'inactive' }, admin),
-      setBrandStatus(env, { id: b, status: 'inactive' }, admin),
-    ]);
-    const rows = await env.DB.prepare('SELECT sync_rev FROM brands ORDER BY sync_rev').all<{
-      sync_rev: number;
-    }>();
-    expect(rows.results.map((r) => r.sync_rev)).toEqual([1, 2]);
   });
 });
 
@@ -363,7 +300,6 @@ describe('ganti nama merk: kasus tepi (review)', () => {
     const id = await seedBrand(env, 'Ubiquity');
     await saveBrand(env, { id, name: 'Ubiquiti' }, admin);
     expect((await brandRow(id))?.name).toBe('Ubiquiti');
-    expect(await currentSyncRev(env.DB, 'items')).toBe(0);
   });
 
   test('tipe memuat teks Unicode tak utuh (surrogate tunggal): tetap berhasil (dibandingkan per byte)', async () => {
@@ -401,14 +337,9 @@ describe('ganti nama merk: konkurensi (satu transaksi, baris dikunci)', () => {
     const final = (await brandRow(id))?.name as string;
     expect(['Satu', 'Dua']).toContain(final);
     const items = (
-      await env.DB.prepare('SELECT `key`, sync_rev FROM items ORDER BY id').all<{
-        key: string;
-        sync_rev: number;
-      }>()
+      await env.DB.prepare('SELECT `key` FROM items ORDER BY id').all<{ key: string }>()
     ).results;
     expect(items.every((row) => row.key.startsWith(`${final.toLowerCase()} m`))).toBe(true);
-    expect(new Set(items.map((row) => row.sync_rev)).size).toBe(3);
-    expect(await currentSyncRev(env.DB, 'items')).toBe(6);
     expect(await auditCount()).toBe(2);
   });
 

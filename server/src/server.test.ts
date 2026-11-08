@@ -8,10 +8,8 @@ import { signSessionToken } from './core/session';
 import { MAX_REQUEST_BODY_BYTES } from './http/body';
 import { bunServeOptions, createServer, type QcServer } from './server';
 
-const TOKEN = 't0k3n'.repeat(8);
 const HTML = '<!doctype html><html><body><div id="root">QC-SPA</div></body></html>';
 const LOOPBACK = '127.0.0.1';
-const ATTACKER = '203.0.113.7';
 
 let root: string;
 let staticDir: string;
@@ -24,7 +22,6 @@ function configFor(extra: Record<string, string> = {}): Config {
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
     OAUTH_CLIENT_SECRET: 'test-client-secret',
-    SYNC_API_TOKEN: TOKEN,
     ADMIN_EMAIL: 'admin@gmail.com',
     STATIC_DIR: staticDir,
     ...extra,
@@ -45,7 +42,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
-  env = await createTestEnv({ SYNC_API_TOKEN: TOKEN });
+  env = await createTestEnv();
   server = createServer(configFor(), { db: env.DB, background: false, env: { NOW: env.NOW } });
 });
 
@@ -78,8 +75,8 @@ describe('createServer: API', () => {
     }
     const json = await get('/api/tidak-ada');
     expect(await json.json()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
-    // /api/v1/sync/x tak dikenal: tanpa token 401 (rute tidak terungkap), dengan token sah 404
-    expect((await get('/api/v1/sync/x')).status).toBe(401);
+    // modul sinkron dihapus (2026-11-08): /api/v1/sync/* kini rute REST tak dikenal biasa
+    expect((await get('/api/v1/sync/x')).status).toBe(404);
     // jalur REST dan kabel lama /sync: problem+json
     for (const path of ['/sync', '/sync/x']) {
       const rest = await get(path);
@@ -135,111 +132,6 @@ describe('createServer: berkas statis dan fallback SPA', () => {
   });
 });
 
-describe('createServer: IP klien dan pembatas /api/v1/sync/*', () => {
-  const syncFrom = (peer: string, token: string, spoofed?: string) =>
-    server.fetch(
-      new Request('http://localhost/api/v1/sync/ping', {
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...(spoofed === undefined ? {} : { 'CF-Connecting-IP': spoofed }),
-        },
-      }),
-      peer,
-    );
-  const okOf = async (response: Response) => response.status === 200;
-  const limiterKeys = async () =>
-    (
-      await env.DB.prepare('SELECT `key` FROM rate_limits WHERE count > 0 ORDER BY `key`').all<{
-        key: string;
-      }>()
-    ).results.map((row) => row.key);
-
-  test('peer non-loopback tak bisa mengelabui pembatas dengan CF-Connecting-IP palsu', async () => {
-    for (let i = 0; i < 10; i++) await syncFrom(ATTACKER, `salah-${i}`, `198.51.100.${i}`);
-    // token benar pun ditolak: semua percobaan dihitung pada IP peer, bukan pada header acak
-    expect(await okOf(await syncFrom(ATTACKER, TOKEN, '198.51.100.200'))).toBe(false);
-    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`]);
-    // peer lain tidak ikut terblokir
-    expect(await okOf(await syncFrom('198.51.100.1', TOKEN))).toBe(true);
-  });
-
-  test('peer loopback (nginx) dipercaya: IP klien dari CF-Connecting-IP, tiap klien dihitung sendiri', async () => {
-    for (let i = 0; i < 10; i++) await syncFrom(LOOPBACK, `salah-${i}`, '198.51.100.9');
-    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '198.51.100.9'))).toBe(false);
-    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '198.51.100.10'))).toBe(true);
-    expect(await limiterKeys()).toEqual(['sync:blocked:198.51.100.9']);
-  });
-
-  test('(I4) IPv6 dihitung per /64: berganti alamat dalam /64 yang sama tidak melewati batas', async () => {
-    for (let i = 0; i < 10; i++) {
-      await syncFrom(LOOPBACK, `salah-${i}`, `2001:db8:aa:bb:${i.toString(16)}::1`);
-    }
-    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:bb:ffff::9'))).toBe(false);
-    expect(await okOf(await syncFrom(LOOPBACK, TOKEN, '2001:db8:aa:cc::1'))).toBe(true);
-    expect(await limiterKeys()).toEqual(['sync:blocked:2001:db8:aa:bb::/64']);
-  });
-});
-
-describe('createServer: TRUSTED_PROXY daftar CIDR (I5, gateway bridge Docker)', () => {
-  const GATEWAY = '172.30.0.1';
-  let dockerServer: QcServer;
-  beforeEach(() => {
-    dockerServer = createServer(configFor({ TRUSTED_PROXY: '127.0.0.1/32,172.30.0.0/24' }), {
-      db: env.DB,
-      background: false,
-      env: { NOW: env.NOW },
-    });
-  });
-  const syncFrom = (peer: string, token: string, forwarded?: string) =>
-    dockerServer.fetch(
-      new Request('http://localhost/api/v1/sync/ping', {
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...(forwarded === undefined ? {} : { 'CF-Connecting-IP': forwarded }),
-        },
-      }),
-      peer,
-    );
-  const limiterKeys = async () =>
-    (
-      await env.DB.prepare('SELECT `key` FROM rate_limits WHERE count > 0 ORDER BY `key`').all<{
-        key: string;
-      }>()
-    ).results.map((row) => row.key);
-
-  test('peer = gateway bridge (di dalam CIDR) dipercaya: pembatas menghitung per IP klien dari header, bukan per gateway', async () => {
-    for (let i = 0; i < 10; i++) await syncFrom(GATEWAY, `salah-${i}`, '198.51.100.9');
-    // klien yang diblokir ditolak walau token benar; klien lain lewat gateway yang sama tetap dilayani
-    expect((await syncFrom(GATEWAY, TOKEN, '198.51.100.9')).status).not.toBe(200);
-    expect((await syncFrom(GATEWAY, TOKEN, '198.51.100.10')).status).toBe(200);
-    expect(await limiterKeys()).toEqual(['sync:blocked:198.51.100.9']);
-  });
-
-  test('peer di luar daftar tak bisa memalsukan CF-Connecting-IP (termasuk memakai alamat gateway)', async () => {
-    for (let i = 0; i < 10; i++) await syncFrom(ATTACKER, `salah-${i}`, `198.51.100.${i}`);
-    expect((await syncFrom(ATTACKER, TOKEN, '198.51.100.200')).status).not.toBe(200);
-    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`]);
-    // memalsukan header sebagai gateway tidak menolong: yang dihitung tetap peer
-    expect((await syncFrom('172.31.0.1', 'salah', GATEWAY)).status).toBe(401);
-    expect(await limiterKeys()).toEqual([`sync:blocked:${ATTACKER}`, 'sync:fails:172.31.0.1']);
-  });
-
-  test('loopback yang tidak ada di daftar tidak dipercaya', async () => {
-    const only = createServer(configFor({ TRUSTED_PROXY: '172.30.0.0/24' }), {
-      db: env.DB,
-      background: false,
-      env: { NOW: env.NOW },
-    });
-    await only.fetch(
-      new Request('http://localhost/api/v1/sync/ping', {
-        headers: { authorization: 'Bearer salah', 'CF-Connecting-IP': '198.51.100.9' },
-      }),
-      LOOPBACK,
-    );
-    expect(await limiterKeys()).toEqual(['sync:fails:127.0.0.1']);
-  });
-});
-
 describe('createServer: batas ukuran badan (M3)', () => {
   /** Badan chunked tanpa content-length; `pulled` = jumlah potongan yang benar-benar ditarik pembaca. */
   function chunkedBody(chunks: number, chunkBytes: number) {
@@ -288,38 +180,6 @@ describe('createServer: batas ukuran badan (M3)', () => {
     }
   }, 60_000);
 
-  test('push sinkron: badan chunked tanpa content-length berhenti dibaca di batas 5 MB (413, tidak dimuat penuh)', async () => {
-    const { stream, state } = chunkedBody(40, 1024 * 1024); // 40 MB bila dibaca penuh
-    const response = await server.fetch(
-      new Request('http://localhost/api/v1/sync/items/push', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${TOKEN}` },
-        body: stream,
-        duplex: 'half',
-      }),
-      LOOPBACK,
-    );
-    expect(response.status).toBe(413);
-    expect(((await response.json()) as { code: string }).code).toBe('VALIDATION');
-    expect(state.pulled).toBeLessThan(10); // batas 5 MB (bukan 2 MB JSON, bukan 16 MB lama)
-    expect(state.pulled).toBeGreaterThanOrEqual(5);
-  }, 60_000);
-
-  test('push sinkron: token salah = 401 tanpa membaca satu potongan badan pun', async () => {
-    const { stream, state } = chunkedBody(40, 1024 * 1024);
-    const response = await server.fetch(
-      new Request('http://localhost/api/v1/sync/items/push', {
-        method: 'POST',
-        headers: { authorization: 'Bearer salah' },
-        body: stream,
-        duplex: 'half',
-      }),
-      LOOPBACK,
-    );
-    expect(response.status).toBe(401);
-    expect(state.pulled).toBeLessThanOrEqual(2); // hanya prabaca bawaan aliran, tidak dibaca oleh aplikasi
-  }, 60_000);
-
   test('REST JSON: badan chunked terlalu besar ditolak 413 VALIDATION, tidak dimuat penuh', async () => {
     const { stream, state } = chunkedBody(40, 1024 * 1024);
     // sesi sah: sejak I2 sesi diperiksa SEBELUM badan dibaca (tanpa sesi = 401 tanpa membaca apa pun)
@@ -349,7 +209,6 @@ describe('createServer: siklus hidup', () => {
   test('env disusun dari konfigurasi dan menerima timpaan tes', () => {
     expect(server.env).toMatchObject({
       SESSION_SECRET: 'test-session-secret',
-      SYNC_API_TOKEN: TOKEN,
       ADMIN_EMAIL: 'admin@gmail.com',
     });
     expect(server.env.NOW).toBe(env.NOW);

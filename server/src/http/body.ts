@@ -1,5 +1,4 @@
 import { API_ROUTES } from '@shared/api';
-import { SYNC_LIMITS } from '@shared/sync';
 
 /**
  * Batas badan JSON REST: 2 MB (keputusan pemilik 2026-11-06). Base64 sudah hilang dari kabel (berkas lewat rute
@@ -8,14 +7,6 @@ import { SYNC_LIMITS } from '@shared/sync';
  * serangan memori: badan di atasnya = 413 problem+json (code VALIDATION) tanpa dimuat penuh (`readTextLimited`).
  */
 export const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
-
-/**
- * Batas badan push sinkron QC Desktop (`POST /api/v1/sync/*`): 5.000.000 BYTE (UTF-8), sama dengan
- * `SYNC_LIMITS.bodyBytes` (satuan byte; kontrak
- * `docs/api/desktop-sync.md`). Sengaja BUKAN `MAX_JSON_BODY_BYTES` (2 MB): push 25 item dengan detail
- * 20.000 karakter dapat mendekati 2 MB. Dibaca setelah token diverifikasi.
- */
-export const SYNC_MAX_BODY_BYTES = SYNC_LIMITS.bodyBytes;
 
 /** Selisih kecil di atas batas rute biner terbesar untuk overhead HTTP/multipart yang belum terhitung di tabel. */
 const BINARY_BODY_OVERHEAD_BYTES = 64 * 1024;
@@ -31,7 +22,7 @@ export const MAX_BINARY_ROUTE_BYTES = Math.max(
 /**
  * Batas global `Bun.serve` (`maxRequestBodySize`; bawaan Bun 128 MB terlalu longgar: badan dimuat ke memori sebelum
  * autentikasi; di atasnya Bun membalas 413 tanpa menjalankan aplikasi) = rute biner terbesar di tabel `API_ROUTES`
- * (+ overhead kecil). Rute JSON REST dibatasi `MAX_JSON_BODY_BYTES`, push sinkron `SYNC_MAX_BODY_BYTES` (5 MB), dan
+ * (+ overhead kecil). Rute JSON REST dibatasi `MAX_JSON_BODY_BYTES` dan
  * rute biner `maxBytes` masing-masing, semuanya saat dibaca (setelah sesi/token diperiksa).
  */
 export const MAX_REQUEST_BODY_BYTES = MAX_BINARY_ROUTE_BYTES + BINARY_BODY_OVERHEAD_BYTES;

@@ -59,13 +59,6 @@ const auditActions = async () =>
 const itemCount = async () =>
   (await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first<{ n: number }>())?.n;
 
-const rev = async (id: string) =>
-  (
-    await env.DB.prepare('SELECT sync_rev FROM items WHERE id = ?')
-      .bind(id)
-      .first<{ sync_rev: number }>()
-  )?.sync_rev ?? -1;
-
 beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
@@ -95,7 +88,6 @@ describe('simpan', () => {
       brand: 'Ubiquiti',
       model: 'ES 24 250W',
       status: 'active',
-      externalId: '',
       isCountryLock: false,
       imageCount: 0,
       updatedBy: 'admin@gmail.com',
@@ -287,18 +279,14 @@ describe('simpan', () => {
     expect(await itemCount()).toBe(1);
   });
 
-  test('mengubah item mempertahankan id MySQL, revisi sinkron, dan waktu dibuat', async () => {
-    await seedItem(env, { id: 'i1', brand: 'Ubiquiti', model: 'ES 24 250W', syncRev: 7 });
-    await env.DB.prepare(
-      "UPDATE items SET external_id = '12', created_at = '2026-01-01T00:00:00.000Z'",
-    ).run();
+  test('mengubah item mempertahankan waktu dibuat', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Ubiquiti', model: 'ES 24 250W' });
+    await env.DB.prepare("UPDATE items SET created_at = '2026-01-01T00:00:00.000Z'").run();
     const saved = await saveItem(env, { ...baseInput, id: 'i1', isCountryLock: true }, admin);
     expect(saved).toMatchObject({
-      externalId: '12',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-10-09T00:00:00.000Z',
     });
-    expect(await rev('i1')).toBe(1);
   });
 
   test('mengubah item mencatat snapshot sebelum dan sesudah; id tak dikenal NOT_FOUND', async () => {
@@ -379,55 +367,11 @@ describe('simpan', () => {
   });
 });
 
-describe('sync_rev', () => {
-  test('baru dan setiap perubahan field sinkron naik; ubah alias saja tidak (FS11)', async () => {
-    const created = await saveItem(env, { ...baseInput }, admin);
-    expect(await rev(created.id)).toBe(1);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'] }, admin);
-    expect(await rev(created.id)).toBe(1);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
-    expect(await rev(created.id)).toBe(2);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
-    expect(await rev(created.id)).toBe(2);
-    env.clock.advance(1000);
-    await saveItem(
-      env,
-      { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru', isCountryLock: true },
-      admin,
-    );
-    expect(await rev(created.id)).toBe(3);
-    env.clock.advance(1000);
-    await setItemStatus(env, { id: created.id, status: 'inactive' }, admin);
-    expect(await rev(created.id)).toBe(4);
-  });
-
-  test('kenaikan revisi dalam batch yang sama dengan simpan: gagal = revisi tidak naik', async () => {
-    const created = await saveItem(env, baseInput, admin);
-    env.clock.advance(1000);
-    await captureAppErrorAsync(() =>
-      saveItem(env, { ...baseInput, id: created.id, detail: 'x', attachments: ['hantu'] }, admin),
-    );
-    const state = await env.DB.prepare(
-      "SELECT seq FROM sync_state WHERE resource = 'items'",
-    ).first<{
-      seq: number;
-    }>();
-    expect(state?.seq).toBe(1);
-  });
-});
-
-describe('sync_rev dibaca dari hasil batch penulisan', () => {
-  test('INSERT dan UPDATE item menyertakan SELECT sync_rev (satu-satunya hasil berisi kolom sync_rev; penjaga merk mengembalikan guard_ok) sama dengan nilai tersimpan', async () => {
+describe('batch penulisan item', () => {
+  test('INSERT dan UPDATE pada merk yang sudah ada: pernyataan pertama adalah penjaga merk (I1), baris tersimpan', async () => {
     const plan = await planItemWrite(env, baseInput, { id: 'baru-1', actor: admin });
-    const created = await env.DB.batch(plan.statements);
-    const revRows = (batch: typeof created) =>
-      batch.filter((r) => r.results.some((row) => 'sync_rev' in (row as object)));
-    const written = revRows(created)[0]?.results[0] as { sync_rev: number };
-    expect(Number(written.sync_rev)).toBe(await rev('baru-1'));
-    expect(revRows(created)).toHaveLength(1);
+    await env.DB.batch(plan.statements);
+    expect(await itemCount()).toBe(1);
     env.clock.advance(1000);
     const existing = await findItem(env, 'baru-1');
     if (!existing) throw new Error('item hilang');
@@ -441,12 +385,9 @@ describe('sync_rev dibaca dari hasil batch penulisan', () => {
       },
     );
     const updated = await env.DB.batch(update.statements);
-    expect(revRows(updated)).toHaveLength(1);
     // merk sudah ada: pernyataan pertama batch adalah penjaga merk (I1)
     expect(updated[0]?.results[0]).toEqual({ guard_ok: 1 });
-    const after = revRows(updated)[0]?.results[0] as { sync_rev: number };
-    expect(Number(after.sync_rev)).toBe(2);
-    expect(await rev('baru-1')).toBe(2);
+    expect((await getItemDto(env, { id: 'baru-1' })).detail).toBe('berubah');
   });
 });
 
@@ -521,7 +462,7 @@ describe('konkurensi optimistis', () => {
     ).toBe('tanpa');
   });
 
-  test('dua penyimpanan serentak dari versi yang sama: satu menang, satu CONFLICT, tanpa audit/revisi ganda', async () => {
+  test('dua penyimpanan serentak dari versi yang sama: satu menang, satu CONFLICT, tanpa audit ganda', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
     env.clock.advance(1000);
     const edit = (detail: string) =>
@@ -535,14 +476,14 @@ describe('konkurensi optimistis', () => {
     const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
     expect((rejected.reason as { code: string }).code).toBe('CONFLICT');
     expect((await auditActions()).filter((a) => a === 'item.update')).toHaveLength(1);
-    expect(await rev(first.id)).toBe(2);
+    // yang kalah dibatalkan utuh: isi tersimpan = milik pemenang
+    expect(['A', 'B']).toContain((await getItemDto(env, { id: first.id })).detail);
   });
 });
 
 describe('CAS digabung ke UPDATE (konkurensi)', () => {
-  test('ubah status dan simpan serentak dari versi yang sama: tak ada revisi ganda atau lompatan, yang kalah dibatalkan utuh', async () => {
+  test('ubah status dan simpan serentak dari versi yang sama: yang kalah dibatalkan utuh, tanpa audit ganda', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
-    expect(await rev(first.id)).toBe(1);
     env.clock.advance(1000);
     const [saved, status] = await Promise.allSettled([
       saveItem(
@@ -562,19 +503,14 @@ describe('CAS digabung ke UPDATE (konkurensi)', () => {
     } else {
       expect(fulfilled).toBe(2);
     }
-    // Apa pun urutannya: revisi naik tepat satu per tulis yang berhasil (batch yang kalah dibatalkan utuh), tepat satu
-    // audit per tulis yang berhasil, penghitung sinkron ikut.
-    expect(await rev(first.id)).toBe(1 + fulfilled);
+    // Apa pun urutannya: tepat satu audit per tulis yang berhasil (batch yang kalah dibatalkan utuh), dan keadaan akhir
+    // = hasil tulis yang berhasil (simpan yang kalah tidak meninggalkan perubahan sebagian).
     expect(
       (await auditActions()).filter((a) => a.startsWith('item.') && a !== 'item.create'),
     ).toHaveLength(fulfilled);
-    expect(
-      (
-        await env.DB.prepare('SELECT seq FROM sync_state WHERE resource = ?')
-          .bind('items')
-          .first<{ seq: number }>()
-      )?.seq,
-    ).toBe(1 + fulfilled);
+    const final = await getItemDto(env, { id: first.id });
+    expect(final.status).toBe('inactive');
+    expect(final.detail).toBe(saved.status === 'fulfilled' ? 'baru' : 'awal');
   });
 
   test('item dengan nama lain: CAS basi membatalkan juga perubahan baris nama lain', async () => {

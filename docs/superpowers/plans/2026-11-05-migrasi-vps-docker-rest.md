@@ -1,5 +1,7 @@
 # Backend di VPS (Docker, Bun + Hono + MariaDB) dengan API REST — Rencana Implementasi
 
+> **Catatan 2026-11-08:** modul sinkron QC Desktop (`/api/v1/sync/*`, `SYNC_API_TOKEN`, `sync_rev`, `sync_state`) yang dibahas dokumen ini dihapus atas keputusan pemilik produk (QC Desktop dibuat ulang; lihat `CLAUDE.md` dan `docs/prd/2026-10-09-qc-item-serah-terima.md`). Dokumen ini dibiarkan sebagai catatan sejarah; bagian sinkron tidak lagi berlaku.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Memindahkan backend QC App dari rencana Cloudflare Worker+D1 ke Bun + Hono + MariaDB dalam Docker di VPS pemilik, dengan API REST, rilis otomatis (GitHub Actions), cadangan ke Drive, dan cutover data dari Google Sheets.

@@ -247,13 +247,13 @@ describe('runDumpCli', () => {
     expect(await exists(out)).toBe(false);
   });
 
-  test('sheet penghitung (sync_state, counters) opsional: hilang bukan galat', async () => {
+  test('sheet penghitung (counters) opsional: hilang bukan galat', async () => {
     const current = await seededRig();
-    book(current).delete('sync_state');
+    book(current).delete('counters');
     const { code, out } = await run(current, ['--out', '<OUT>', '--spreadsheet', SPREADSHEET_ID]);
     expect(code).toBe(0);
     const parsed = JSON.parse(await readFile(out, 'utf8')) as { tables: Record<string, unknown> };
-    expect(parsed.tables.sync_state).toBeUndefined();
+    expect(parsed.tables.counters).toBeUndefined();
   });
 
   test('tabel buangan dan penghitung ikut dibaca (gerbang pembuangan butuh isinya)', async () => {
@@ -263,7 +263,7 @@ describe('runDumpCli', () => {
     const parsed = JSON.parse(await readFile(out, 'utf8')) as {
       tables: Record<string, string[][]>;
     };
-    for (const name of ['handovers', 'items', 'brands', 'customers', 'sync_state']) {
+    for (const name of ['handovers', 'items', 'brands', 'customers']) {
       expect(parsed.tables[name]?.length).toBeGreaterThan(1);
     }
   });

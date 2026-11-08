@@ -9,7 +9,6 @@ const PRODUCTION: Record<string, string> = {
   SESSION_SECRET: 'rahasia-sesi-yang-cukup-panjang',
   OAUTH_CLIENT_ID: 'client-id',
   OAUTH_CLIENT_SECRET: 'client-secret-rahasia',
-  SYNC_API_TOKEN: 'token-sinkron-rahasia',
   ADMIN_EMAIL: 'admin@example.com',
   APP_ORIGIN: 'https://qc.example.com',
   GOOGLE_SA_KEY_FILE: '/run/secrets/google-sa.json',
@@ -33,7 +32,6 @@ describe('sakelar cadangan terjadwal (BACKUP_ENABLED)', () => {
       SESSION_SECRET: 'rahasia-sesi-yang-cukup-panjang',
       OAUTH_CLIENT_ID: 'client-id',
       OAUTH_CLIENT_SECRET: 'client-secret-rahasia',
-      SYNC_API_TOKEN: 'token-sinkron-rahasia',
       ADMIN_EMAIL: 'admin@example.com',
       BACKUP_ENABLED: 'true',
     });

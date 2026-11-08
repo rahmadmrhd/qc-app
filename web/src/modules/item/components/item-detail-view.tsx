@@ -44,9 +44,6 @@ export function ItemDetailView({
           <div className="flex flex-wrap items-center gap-2">
             {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
             {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
-            {item.externalId ? (
-              <span className="text-xs text-muted-foreground">ID MySQL: {item.externalId}</span>
-            ) : null}
           </div>
           {item.aliases.length > 0 ? (
             <p className="text-sm text-muted-foreground">

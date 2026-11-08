@@ -33,7 +33,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'test-client-id',
     OAUTH_CLIENT_SECRET: 'test-client-secret',
-    SYNC_API_TOKEN: 'test-sync-token',
     // Google: tak dikonfigurasi (BRIDGE selalu klien palsu); folder fungsi dibuat dan dicatat di tabel settings.
     GOOGLE_SA_KEY_FILE: '',
     GOOGLE_ROOT_FOLDER_ID: '',

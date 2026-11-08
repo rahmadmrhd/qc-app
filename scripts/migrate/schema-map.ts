@@ -7,7 +7,7 @@
  * qr_designs, qr_documents, qr_presets, qr_defaults, files HANYA yang dirujuk tabel QR yang diimpor (logo desain,
  * pustaka logo, logo bawaan preset/default), dan audit_log HANYA baris yang berkaitan dengan entitas yang diimpor
  * (keluarga aksi `user`, `role`, `location`, `qrcode`). TIDAK diimpor: handovers, items, brands, customers,
- * sync_state, counters, berkas milik item atau yang tak dirujuk, dan audit handover/item/brand/customer/sync. Yang
+ * counters, berkas milik item atau yang tak dirujuk, dan audit handover/item/brand/customer. Yang
  * dibuang (`fate: 'discard'`, `divert`) tidak ditulis ke target, dikosongkan di target, dan dihitung/diringkas di
  * laporan agar isinya diperiksa pemilik sebelum dibuang.
  */
@@ -115,9 +115,7 @@ export const TABLES: readonly TableDef[] = [
   {
     name: 'brands',
     idColumn: 'id',
-    columns: cols(
-      'id:id external_id:ref name key:key status:enum sync_rev:int created_at:date updated_at:date updated_by',
-    ),
+    columns: cols('id:id name key:key status:enum created_at:date updated_at:date updated_by'),
     derivedColumns: [],
     fate: 'discard',
   },
@@ -154,7 +152,7 @@ export const TABLES: readonly TableDef[] = [
     name: 'items',
     idColumn: 'id',
     columns: cols(
-      'id:id external_id:ref brand_id:ref model key:key is_country_lock:enum aliases:json stickers:json accessories:json attachments:json detail_md status:enum sync_rev:int created_at:date updated_at:date updated_by',
+      'id:id brand_id:ref model key:key is_country_lock:enum aliases:json stickers:json accessories:json attachments:json detail_md status:enum created_at:date updated_at:date updated_by',
     ),
     derivedColumns: [],
     fate: 'discard',
@@ -215,7 +213,7 @@ export function legacyColumns(table: string): readonly string[] {
 }
 
 /** Sheet yang sengaja tidak diimpor dan tidak diperingatkan (keputusan pemilik 2026-11-06): penghitung server baru. */
-export const IGNORED_SHEETS: readonly string[] = ['sync_state', 'counters'];
+export const IGNORED_SHEETS: readonly string[] = ['counters'];
 
 export function tableDef(name: string): TableDef {
   const found = TABLES.find((table) => table.name === name);
@@ -251,8 +249,8 @@ export const INSERT_ORDER = [
 
 /**
  * Tabel target yang HARUS kosong setelah impor (data uji dibuang atau tak diimpor), anak dulu (handover_comments
- * punya kunci asing ke handovers). `counters` (nomor serah terima harian) dan `sync_state` (revisi sinkron) sengaja
- * TIDAK diimpor (keputusan pemilik 2026-11-06): server baru menghitungnya dari nol. `files` hanya baris
+ * punya kunci asing ke handovers). `counters` (nomor serah terima harian) sengaja TIDAK diimpor (keputusan pemilik 2026-11-06):
+ * server baru menghitungnya dari nol. `files` hanya baris
  * `owner_type = 'item'` (lihat `DISCARDED_FILE_OWNER`).
  */
 export const DISCARDED_TARGET_TABLES = [
@@ -263,7 +261,6 @@ export const DISCARDED_TARGET_TABLES = [
   'brands',
   'customers',
   'counters',
-  'sync_state',
 ] as const;
 
 export const DISCARDED_FILE_OWNER = 'item';

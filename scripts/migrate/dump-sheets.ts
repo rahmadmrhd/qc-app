@@ -8,7 +8,7 @@
  * `--spreadsheet` bawaan env `GOOGLE_SPREADSHEET_ID`, `--key-file` bawaan env `GOOGLE_SA_KEY_FILE` (isi berkas kunci
  * tidak pernah dibaca di sini, dicetak, atau dimasukkan ke dump). Yang dibaca: semua sheet yang dipetakan
  * `schema-map.ts` (tabel yang diimpor DAN yang dibuang, karena gerbang pembuangan butuh isinya) ditambah sheet
- * penghitung (`sync_state`, `counters`) bila ada; sheet `export_*` tidak pernah diminta. Header tiap sheet divalidasi
+ * penghitung (`counters`) bila ada; sheet `export_*` tidak pernah diminta. Header tiap sheet divalidasi
  * terhadap `schema-map`; satu galat membatalkan seluruh dump (tidak ada berkas setengah jadi). Keluaran
  * `{ "tables": { "<sheet>": [[header...], [baris...]] } }` ditulis atomik (berkas sementara lalu rename) dengan izin
  * 0600, tidak menimpa berkas yang ada tanpa `--force`. Konsol hanya memuat ringkasan nama sheet dan jumlah baris.

@@ -45,7 +45,6 @@ export type ItemView = ItemRecord & { brand: string };
 function toItemSummaryDto(item: ItemView): ItemSummaryDto {
   return {
     id: item.id,
-    externalId: item.externalId,
     brandId: item.brandId,
     brand: item.brand,
     model: item.model,
@@ -111,7 +110,6 @@ async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
 
 interface ListRow {
   id: string;
-  external_id: string;
   brand_id: string;
   brand_name: string | null;
   model: string;
@@ -145,7 +143,7 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
     where.push('i.`key` > ?');
     binds.push(input.cursor);
   }
-  const sql = `SELECT i.id, i.external_id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
+  const sql = `SELECT i.id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
     where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
   } ORDER BY i.\`key\` LIMIT ?`;
   const result = await env.DB.prepare(sql)
@@ -158,7 +156,6 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
     items: page.map(
       (row): ItemSummaryDto => ({
         id: row.id.trim(),
-        externalId: row.external_id.trim(),
         brandId: row.brand_id.trim(),
         brand: row.brand_name ?? '',
         model: row.model.trim(),
@@ -312,8 +309,8 @@ function assertItemFilesUsable(
   return [...found];
 }
 
-/** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
-export function itemSyncSignature(item: {
+/** Bidang item yang dibandingkan `itemContentEquals`. Alias TIDAK termasuk. */
+type ComparableItem = {
   brandId: string;
   model: string;
   isCountryLock: boolean;
@@ -322,26 +319,13 @@ export function itemSyncSignature(item: {
   stickers: readonly ItemStickerDto[];
   accessories: readonly ItemAccessoryDto[];
   status: ItemStatus;
-}): string {
-  return JSON.stringify([
-    item.brandId,
-    item.model,
-    item.isCountryLock,
-    item.attachments,
-    item.detail,
-    item.stickers,
-    item.accessories,
-    item.status,
-  ]);
-}
-
-type SyncFields = Parameters<typeof itemSyncSignature>[0];
+};
 
 /**
- * Sama dengan `itemSyncSignature(a) === itemSyncSignature(b)` tanpa menyerialkan Markdown dan daftar ke JSON
- * (perbandingan string/larik langsung; detail bisa 20.000 karakter).
+ * Apakah isi dua item sama (merk, tipe, country lock, lampiran, detail, stiker, kelengkapan, status; alias tidak
+ * dihitung). Perbandingan string/larik langsung tanpa menyerialkan ke JSON (detail bisa 20.000 karakter).
  */
-export function itemSyncEquals(a: SyncFields, b: SyncFields): boolean {
+export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean {
   if (
     a.brandId !== b.brandId ||
     a.model !== b.model ||
@@ -375,10 +359,6 @@ export interface WriteItemOptions {
   /** Hanya item baru: id yang sudah dipakai pemanggil. */
   id?: string | undefined;
   actor: ActorRef;
-  /** Hanya sinkronisasi: id MySQL yang dipetakan ke item ini. */
-  externalId?: string | undefined;
-  /** Hanya sinkronisasi: status yang diminta (default: tetap; item baru aktif). */
-  status?: ItemStatus | undefined;
   /**
    * Merk bernama `input.brand` yang sudah diketahui pemanggil (`null` = pasti belum ada); `undefined` = dicari
    * di sini (daftar cache dulu, bila tak ada langsung ke database sebelum membuat merk baru).
@@ -419,8 +399,8 @@ const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ula
 /**
  * Merencanakan penulisan item (baru atau ubah): semua pemeriksaan (keunikan, rujukan berkas, merk
  * nonaktif) dijalankan di sini; hasilnya `statements` yang HARUS dijalankan dalam satu `batch()`
- * (CAS pada `updated_at`, merk baru, penautan berkas, naiknya `sync_rev`, UPDATE/INSERT, audit) sehingga
- * atomik. Dipakai form web (`saveItem`) dan sinkronisasi.
+ * (CAS pada `updated_at`, merk baru, penautan berkas, UPDATE/INSERT, audit) sehingga
+ * atomik. Dipakai form web (`saveItem`).
  */
 export async function planItemWrite(
   env: Env,
@@ -449,7 +429,7 @@ export async function planItemWrite(
   // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
   const resolved = await planBrandByName(env, input.brand, actor, knownBrand);
   const now = nowIso(env);
-  const status = options.status ?? existing?.status ?? 'active';
+  const status = existing?.status ?? 'active';
   const fields = {
     brandId: resolved.brand.id,
     model: input.model,
@@ -471,15 +451,9 @@ export async function planItemWrite(
       : [];
 
   if (existing) {
-    const merged: ItemRecord = {
-      ...existing,
-      ...fields,
-      status,
-      externalId: options.externalId ?? existing.externalId,
-    };
-    const changed = !itemSyncEquals(existing, merged);
+    const merged: ItemRecord = { ...existing, ...fields, status };
     const onlyStatus =
-      existing.status !== status && itemSyncEquals({ ...existing, status }, merged);
+      existing.status !== status && itemContentEquals({ ...existing, status }, merged);
     const before = await viewOf(env, existing);
     // Hash Markdown O(panjang): dihitung sekali bila teksnya tidak berubah.
     const beforeSnapshot = itemSnapshot(before);
@@ -490,7 +464,7 @@ export async function planItemWrite(
     statements.push(
       ...resolved.statements,
       ...attach,
-      ...updateItemStmts(env.DB, merged, changed, existing),
+      ...updateItemStmts(env.DB, merged, existing),
     );
     statements.push(
       writeAudit(env.DB, {
@@ -511,13 +485,11 @@ export async function planItemWrite(
 
   const created: ItemRecord = {
     id,
-    externalId: options.externalId ?? '',
     status,
-    syncRev: 0,
     createdAt: now,
     ...fields,
   };
-  statements.push(...resolved.statements, ...attach, ...insertItemStmts(env.DB, created, true));
+  statements.push(...resolved.statements, ...attach, ...insertItemStmts(env.DB, created));
   statements.push(
     writeAudit(env.DB, {
       ts: now,
@@ -642,7 +614,7 @@ async function setItemStatusOnce(
     env.DB,
     [
       brandKeyGuardStmt(env.DB, existing.brandId, found.brandKey),
-      ...updateItemStmts(env.DB, updated, true, existing),
+      ...updateItemStmts(env.DB, updated, existing),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,

@@ -65,7 +65,6 @@ export function itemQueryOptions(id: string) {
 export function toItemSummary(item: ItemDto): ItemSummaryDto {
   return {
     id: item.id,
-    externalId: item.externalId,
     brandId: item.brandId,
     brand: item.brand,
     model: item.model,

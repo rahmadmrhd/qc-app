@@ -1,5 +1,7 @@
 # Backend di VPS (Docker, Bun + Hono + MariaDB) dengan API REST — rancangan
 
+> **Catatan 2026-11-08:** modul sinkron QC Desktop (`/api/v1/sync/*`, `SYNC_API_TOKEN`, `sync_rev`, `sync_state`) yang dibahas dokumen ini dihapus atas keputusan pemilik produk (QC Desktop dibuat ulang; lihat `CLAUDE.md` dan `docs/prd/2026-10-09-qc-item-serah-terima.md`). Dokumen ini dibiarkan sebagai catatan sejarah; bagian sinkron tidak lagi berlaku.
+
 | | |
 |---|---|
 | **Tanggal** | 2026-11-05 |

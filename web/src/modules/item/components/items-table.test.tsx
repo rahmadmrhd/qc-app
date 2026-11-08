@@ -7,7 +7,6 @@ import { ItemsTable } from './items-table';
 const items: ItemSummaryDto[] = [
   {
     id: 'i1',
-    externalId: '12',
     brandId: 'b1',
     brand: 'Ubiquiti',
     model: 'AF 5XHD',
@@ -19,7 +18,6 @@ const items: ItemSummaryDto[] = [
   },
   {
     id: 'i2',
-    externalId: '',
     brandId: 'b1',
     brand: 'Mikrotik',
     model: 'hAP ac2',

@@ -18,10 +18,10 @@ async function insertBrands(count: number): Promise<void> {
     const n = Math.min(500, count - from);
     const binds: Array<string | number> = [];
     for (let i = from; i < from + n; i++) {
-      binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`, i);
+      binds.push(`b${String(i).padStart(5, '0')}`, `Merk ${i}`, `merk ${i}`);
     }
     await env.DB.prepare(
-      `INSERT INTO brands (id, name, \`key\`, sync_rev) VALUES ${Array(n).fill('(?, ?, ?, ?)').join(', ')}`,
+      `INSERT INTO brands (id, name, \`key\`) VALUES ${Array(n).fill('(?, ?, ?)').join(', ')}`,
     )
       .bind(...binds)
       .run();
@@ -53,7 +53,7 @@ describe('exportTableChunks', () => {
     expect(chunks[0]?.columns[0]).toBe('id');
     expect(chunks[2]?.rows[199]?.[0]).toBe('b01199');
     // nilai angka menjadi teks
-    expect(chunks[0]?.rows[3]?.[5]).toBe('3');
+    expect(chunks[0]?.rows[3]?.[chunks[0].columns.indexOf('item_count')]).toBe('0');
   });
 
   test('jumlah baris kelipatan halaman tidak menghasilkan potongan kosong tambahan berbahaya', async () => {
@@ -67,7 +67,8 @@ describe('exportTableChunks', () => {
     const chunks = await collect('brands');
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toMatchObject({ mode: 'replace', rows: [] });
-    expect(chunks[0]?.columns).toContain('sync_rev');
+    expect(chunks[0]?.columns).toContain('item_count');
+    expect(chunks[0]?.columns).not.toContain('sync_rev');
   });
 
   test('halaman dapat dilanjutkan dari nextKey (consumer antrean)', async () => {

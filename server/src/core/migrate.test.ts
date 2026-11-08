@@ -28,7 +28,6 @@ const EXPECTED_TABLES = [
   'roles',
   'schema_migrations',
   'settings',
-  'sync_state',
   'users',
 ];
 
@@ -64,7 +63,11 @@ describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
-    expect(list[0]?.name).toBe('0001_baseline.sql');
+    expect(list.slice(0, 3).map((m) => m.name)).toEqual([
+      '0001_baseline.sql',
+      '0002_hapus_sync_rev.sql',
+      '0003_hapus_external_id.sql',
+    ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
   });
@@ -123,16 +126,41 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('21 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('20 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
-    // DDL baseline idempoten: dijalankan ulang tanpa catatan tidak melempar galat dan tak mengubah tabel.
-    const [baseline] = await loadMigrations();
-    await db.exec(baseline?.sql ?? '');
+    // DDL semua migrasi idempoten: dijalankan ulang berurutan tanpa catatan tidak melempar galat dan tak mengubah tabel
+    // (baseline membuat ulang `sync_state`, lalu 0002 menghapusnya lagi).
+    for (const migration of await loadMigrations()) await db.exec(migration.sql);
     expect(await tableNames(db)).toEqual(before);
-    const rows = await db.prepare('SELECT name FROM schema_migrations').all<{ name: string }>();
-    expect(rows.results).toEqual([{ name: '0001_baseline.sql' }]);
+    const rows = await db
+      .prepare('SELECT name FROM schema_migrations ORDER BY name')
+      .all<{ name: string }>();
+    expect(rows.results).toEqual([
+      { name: '0001_baseline.sql' },
+      { name: '0002_hapus_sync_rev.sql' },
+      { name: '0003_hapus_external_id.sql' },
+    ]);
+  });
+
+  test('id MySQL dihapus: tanpa kolom external_id di brands/items', async () => {
+    const columns = await db
+      .prepare(
+        "SELECT table_name AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND column_name = 'external_id'",
+      )
+      .all<{ t: string }>();
+    expect(columns.results).toEqual([]);
+  });
+
+  test('revisi sinkron dihapus: tanpa kolom sync_rev di brands/items dan tanpa tabel sync_state', async () => {
+    const columns = await db
+      .prepare(
+        "SELECT table_name AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND column_name = 'sync_rev'",
+      )
+      .all<{ t: string }>();
+    expect(columns.results).toEqual([]);
+    expect(await tableNames(db)).not.toContain('sync_state');
   });
 
   test('semua tabel memakai InnoDB dan utf8mb4_nopad_bin', async () => {
@@ -160,9 +188,7 @@ describe('skema baseline', () => {
       [
         'audit_log.audit_log_target_ts',
         'audit_log.audit_log_ts',
-        'brands.brands_external_id',
         'brands.brands_key',
-        'brands.brands_sync_rev',
         'customers.customers_key',
         'files.files_owner',
         'files.files_pending_delete',
@@ -172,10 +198,8 @@ describe('skema baseline', () => {
         'handovers.handovers_customer',
         'handovers.handovers_number',
         'items.items_brand',
-        'items.items_external_id',
         'items.items_key',
         'items.items_status_updated',
-        'items.items_sync_rev',
         'jobs.jobs_status_updated',
         'locations.locations_code_unique',
         'locations.locations_name_unique',
@@ -196,7 +220,6 @@ describe('skema baseline', () => {
     expect(pks.handover_comments).toBe('id');
     expect(pks.counters).toBe('key');
     expect(pks.settings).toBe('key');
-    expect(pks.sync_state).toBe('resource');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [
@@ -358,13 +381,10 @@ describe('skema baseline', () => {
       .bind('i-def', 'default-item')
       .run();
     const b = await db
-      .prepare('SELECT item_count, sync_rev FROM brands WHERE id = ?')
+      .prepare('SELECT item_count FROM brands WHERE id = ?')
       .bind('b-def')
-      .first<{
-        item_count: number;
-        sync_rev: number;
-      }>();
-    expect([Number(b?.item_count), Number(b?.sync_rev)]).toEqual([0, 0]);
+      .first<{ item_count: number }>();
+    expect(Number(b?.item_count)).toBe(0);
     const h = await db
       .prepare('SELECT board_status, status, checks FROM handovers WHERE id = ?')
       .bind('h-def')

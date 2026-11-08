@@ -155,7 +155,7 @@ describe('gerbang pembuangan data uji (keputusan pemilik 2026-11-06)', () => {
   test('isi tabel yang dibuang tidak divalidasi (JSON rusak, angka rusak, rujukan yatim tidak jadi galat)', () => {
     let dump = mutate(cleanDump(), 'handovers', 2, 'checks', '{rusak');
     dump = mutate(dump, 'handovers', 2, 'location_id', 'l-hilang');
-    dump = mutate(dump, 'brands', 2, 'sync_rev', 'abc');
+    dump = mutate(dump, 'brands', 2, 'status', 'abc');
     dump = mutate(dump, 'items', 2, 'aliases', '{rusak');
     const result = importWithApproval(dump);
     expect(result.report.errors).toEqual([]);
@@ -332,16 +332,20 @@ describe('dump bersih dijalankan ke MariaDB', () => {
     ]);
   });
 
-  test('sync_state dan counters TIDAK diimpor (lingkup final pemilik 2026-11-06): sheet diabaikan tanpa peringatan, tabel target kosong', async () => {
-    const result = importWithApproval(cleanDump());
+  test('counters TIDAK diimpor (lingkup final pemilik 2026-11-06): sheet diabaikan tanpa peringatan, tabel target kosong', async () => {
+    const dump = cleanDump();
+    dump.counters = [
+      ['name', 'value'],
+      ['ST-20261106', '4'],
+    ];
+    const result = importWithApproval(dump);
     expect(result.report.warnings.map((w) => w.code)).not.toContain('SHEET_TAK_DIKENAL');
-    expect(result.sql).not.toMatch(/INSERT INTO .(sync_state|counters)./);
-    expect(result.rows.sync_state).toBeUndefined();
-    expect(result.report.tables.sync_state).toBeUndefined();
+    expect(result.sql).not.toMatch(/INSERT INTO .counters./);
+    expect(result.rows.counters).toBeUndefined();
+    expect(result.report.tables.counters).toBeUndefined();
     const env = await createTestEnv();
     await applyPlan(env.DB, result.plan as NonNullable<typeof result.plan>);
     expect(await count(env.DB, 'counters')).toBe(0);
-    expect(await count(env.DB, 'sync_state')).toBe(0);
   });
 
   test('teks dengan kutip, backslash, kutip ganda JSON, emoji, CR/LF dan Ctrl-Z tersimpan persis (jalur berparameter)', async () => {
@@ -446,7 +450,6 @@ describe('dump bersih dijalankan ke MariaDB', () => {
       INSERT INTO handover_comments (id, handover_id) VALUES ('c1', 'h1');
       INSERT INTO files (id, owner_type, owner_id) VALUES ('fx', 'item', 'i1');
       INSERT INTO counters (\`key\`, value) VALUES ('st:20260101', 9);
-      INSERT INTO sync_state (resource, seq) VALUES ('items', 9);
       INSERT INTO audit_log (ts) VALUES ('2026-01-01T00:00:00.000Z'), ('2026-01-02T00:00:00.000Z');
     `);
     await applyPlan(env.DB, plan);
@@ -746,7 +749,7 @@ describe('penyaringan baris', () => {
       ['u1', 'a@x.id', '  Admin  '],
     ];
     dump.qr_defaults = [['id'], ['default']];
-    delete dump.sync_state;
+    delete dump.counters;
     const result = importWithApproval(dump);
     expect(result.report.errors).toEqual([]);
     expect(result.sql).toContain("'  Admin  '");

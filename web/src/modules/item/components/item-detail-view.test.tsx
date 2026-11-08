@@ -15,7 +15,6 @@ import { ItemDetailView } from './item-detail-view';
 
 const item: ItemDto = {
   id: 'i1',
-  externalId: '12',
   brandId: 'b1',
   brand: 'Ubiquiti',
   model: 'AF 5XHD',
@@ -50,7 +49,6 @@ test('menampilkan identitas, nama lain, galeri, stiker, kelengkapan, dan detail 
   renderView();
   expect(screen.getByRole('heading', { level: 1, name: 'Ubiquiti AF 5XHD' })).toBeInTheDocument();
   expect(screen.getByText('Country lock')).toBeInTheDocument();
-  expect(screen.getByText('ID MySQL: 12')).toBeInTheDocument();
   expect(screen.getByText('AirFiber 5XHD, AF-5XHD')).toBeInTheDocument();
   expect(screen.getByAltText('Gambar 1')).toBeInTheDocument();
   expect(screen.getByAltText('Gambar 2')).toBeInTheDocument();
@@ -67,7 +65,6 @@ test('bagian kosong menampilkan petunjuk, dan item nonaktif ditandai', () => {
   renderView({
     item: {
       ...item,
-      externalId: '',
       brandId: 'b1',
       aliases: [],
       attachments: [],
@@ -80,7 +77,6 @@ test('bagian kosong menampilkan petunjuk, dan item nonaktif ditandai', () => {
   });
   expect(screen.getByText('Nonaktif')).toBeInTheDocument();
   expect(screen.queryByText('Country lock')).not.toBeInTheDocument();
-  expect(screen.queryByText(/ID MySQL/)).not.toBeInTheDocument();
   expect(screen.getByText('Belum ada gambar.')).toBeInTheDocument();
   expect(screen.getByText('Belum ada stiker.')).toBeInTheDocument();
   expect(screen.getByText('Belum ada kelengkapan.')).toBeInTheDocument();

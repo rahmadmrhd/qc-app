@@ -5,7 +5,6 @@ import { scheduleBackupJob } from '@server/modules/backup/service';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
-import { SYNC_LIMITS } from '@shared/sync';
 
 /** Selang polling runner (milidetik). */
 export const JOB_RUNNER_INTERVAL_MS = 2_000;
@@ -101,13 +100,16 @@ export async function scheduleCleanupJob(env: Env): Promise<string | null> {
   return enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
 }
 
+/** Jendela terbesar baris `rate_limits` (detik): 10 menit, sama dengan lama blokir pembatas percobaan salah. */
+const RATE_LIMIT_MAX_WINDOW_SECONDS = 10 * 60;
+
 /**
- * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar, yaitu
- * lama blokir): baris sah paling lama hidup selama jendela itu, sisanya sampah yang tak pernah dibaca lagi.
+ * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar):
+ * baris sah paling lama hidup selama jendela itu, sisanya sampah yang tak pernah dibaca lagi.
  * Mengembalikan jumlah baris terhapus.
  */
 export async function purgeExpiredRateLimits(env: Env): Promise<number> {
-  const cutoff = nowOf(env) - SYNC_LIMITS.blockSeconds * 1000;
+  const cutoff = nowOf(env) - RATE_LIMIT_MAX_WINDOW_SECONDS * 1000;
   const result = await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
     .bind(cutoff)
     .run();

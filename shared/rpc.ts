@@ -175,8 +175,6 @@ export interface ItemAccessoryDto {
 
 export interface BrandDto {
   id: string;
-  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
-  externalId: string;
   name: string;
   status: ItemStatus;
   /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
@@ -196,8 +194,6 @@ export interface SetBrandStatusInput {
 
 export interface ItemSummaryDto {
   id: string;
-  /** Id MySQL (diisi sinkronisasi); kosong bila belum terpetakan. */
-  externalId: string;
   brandId: string;
   /** Nama merk (dari tabel merk). */
   brand: string;

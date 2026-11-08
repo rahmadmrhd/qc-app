@@ -6,7 +6,6 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
-import { currentSyncRev, reserveSyncRevs } from '@server/modules/sync/state';
 import { itemKey, normalizeKey } from '@shared/items';
 import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
 import type { BrandRecord, BrandRow } from './repo';
@@ -23,7 +22,6 @@ import {
 function toBrandDto(brand: BrandRecord): BrandDto {
   return {
     id: brand.id,
-    externalId: brand.externalId,
     name: brand.name,
     status: brand.status,
     itemCount: brand.itemCount,
@@ -41,12 +39,10 @@ function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
   const now = nowIso(env);
   return {
     id: crypto.randomUUID(),
-    externalId: '',
     name,
     key: normalizeKey(name),
     status: 'active',
     itemCount: 0,
-    syncRev: 0,
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
@@ -90,7 +86,7 @@ export async function planBrandByName(
   return { brand: created, statements: createBrandStmts(env, created, actor) };
 }
 
-/** Item per pernyataan `UPDATE` ganti nama (3 nilai terikat per item; driver tanpa batas parameter). */
+/** Item per pernyataan `UPDATE` ganti nama (2 nilai terikat per item; driver tanpa batas parameter). */
 const RENAME_ITEMS_PER_STATEMENT = 200;
 /** Kunci nama lain per pernyataan `SELECT ... IN (...)`. */
 const KEY_CHUNK = 500;
@@ -133,8 +129,7 @@ async function aliasCollides(tx: DbTx, keys: readonly string[]): Promise<boolean
  *  1. kunci semua item merk diberi kunci sementara unik per item (U+0001 + `id`; kunci asli tak pernah memuatnya),
  *     supaya tabrakan SEMENTARA antar item merk ini (kunci baru satu item = kunci lama item lain di merk yang sama)
  *     tidak ditolak indeks unik `items_key` yang diperiksa per baris;
- *  2. `UPDATE ... JOIN (SELECT ... UNION ALL ...)` per 200 item memasang kunci akhir dan revisi sinkron tiap item
- *     (jatah dipesan `reserveSyncRevs`; item ke-`i` dari `n` memakai `seq - (n - 1 - i)`, urut `id`).
+ *  2. `UPDATE ... JOIN (SELECT ... UNION ALL ...)` per 200 item memasang kunci akhir tiap item.
  * Bentrok sungguhan dengan merk+tipe item merk lain ditolak `items_key` (CONFLICT); dengan nama lain (alias) item
  * mana pun ditolak pemeriksaan alias di transaksi yang sama.
  */
@@ -177,16 +172,12 @@ async function renameBrand(env: Env, id: string, name: string, actor: ActorRef):
         .prepare('UPDATE items SET `key` = CONCAT(CHAR(1 USING utf8mb4), id) WHERE brand_id = ?')
         .bind(id)
         .run();
-      await reserveSyncRevs(tx, 'items', own.length, now).run();
-      const firstRev = (await currentSyncRev(tx, 'items')) - own.length + 1;
       for (let from = 0; from < own.length; from += RENAME_ITEMS_PER_STATEMENT) {
         const chunk = own.slice(from, from + RENAME_ITEMS_PER_STATEMENT);
-        const values = chunk.map(() => 'SELECT ? AS id, ? AS k, ? AS rev').join(' UNION ALL ');
+        const values = chunk.map(() => 'SELECT ? AS id, ? AS k').join(' UNION ALL ');
         await tx
-          .prepare(
-            `UPDATE items i JOIN (${values}) j ON i.id = j.id SET i.\`key\` = j.k, i.sync_rev = j.rev`,
-          )
-          .bind(...chunk.flatMap((item, offset) => [item.id, item.next, firstRev + from + offset]))
+          .prepare(`UPDATE items i JOIN (${values}) j ON i.id = j.id SET i.\`key\` = j.k`)
+          .bind(...chunk.flatMap((item) => [item.id, item.next]))
           .run();
       }
     }
@@ -262,6 +253,6 @@ async function setBrandStatusOnce(
       after: brandSnapshot(updated),
     }),
   ]);
-  const fresh = brandsFromResult(results[3] as { results: unknown[] })[0];
+  const fresh = brandsFromResult(results[2] as { results: unknown[] })[0];
   return toBrandDto(fresh ?? updated);
 }

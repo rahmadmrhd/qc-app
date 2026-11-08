@@ -54,7 +54,6 @@ export function envFromConfig(config: Config, db: Db): Env {
     SESSION_SECRET: config.sessionSecret,
     OAUTH_CLIENT_ID: config.oauthClientId,
     OAUTH_CLIENT_SECRET: config.oauthClientSecret,
-    SYNC_API_TOKEN: config.syncApiToken,
     ADMIN_EMAIL: config.adminEmail,
     // Cadangan malam hanya di produksi dengan Google terkonfigurasi dan `BACKUP_ENABLED` tidak `false` (staging memakainya untuk mati; CLI pemulihan tak terpengaruh) (dev memakai basis data bersama di VPS dan tak
     // punya mariadb-dump); `parseDatabaseUrl` hanya dipakai bila dump dijalankan (URL sudah divalidasi `loadConfig`).

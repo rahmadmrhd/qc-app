@@ -157,11 +157,9 @@ export function cleanDump(): Dump {
     brands: grid('brands', [
       {
         id: 'b1',
-        external_id: 'EXT-1',
         name: 'Acme',
         key: 'acme',
         status: 'active',
-        sync_rev: '3',
         created_at: T1,
         updated_at: T1,
         updated_by: 'seed',
@@ -171,7 +169,6 @@ export function cleanDump(): Dump {
         name: 'Beta',
         key: 'beta',
         status: 'active',
-        sync_rev: '5',
         created_at: T1,
         updated_at: T1,
         updated_by: 'seed',
@@ -291,7 +288,6 @@ export function cleanDump(): Dump {
     items: grid('items', [
       {
         id: 'i1',
-        external_id: 'EXT-I1',
         brand_id: 'b1',
         model: 'Model X',
         key: 'model x',
@@ -302,7 +298,6 @@ export function cleanDump(): Dump {
         attachments: '["f1"]',
         detail_md: '# Detail\n\nBaris "dua" dengan \'kutip\'',
         status: 'active',
-        sync_rev: '7',
         created_at: T1,
         updated_at: T1,
         updated_by: 'seed',
@@ -356,12 +351,6 @@ export function cleanDump(): Dump {
         updated_by: 'admin@x.id',
       },
     ]),
-    // Sheet penghitung sengaja tidak diimpor (lingkup final pemilik 2026-11-06): ada di dump, harus diabaikan.
-    sync_state: [
-      ['resource', 'seq', 'updated_at'],
-      ['brands', '5', T1],
-      ['items', '9', T1],
-    ],
   };
 }
 

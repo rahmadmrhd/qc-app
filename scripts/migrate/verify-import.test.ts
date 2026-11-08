@@ -87,9 +87,8 @@ describe('verifyImport', () => {
       actualRows: 2,
     });
     expect(report.orphans).toHaveLength(10);
-    expect(report.discarded).toHaveLength(9);
+    expect(report.discarded).toHaveLength(8);
     expect(report.discarded.map((check) => check.name)).toContain('counters kosong di target');
-    expect(report.discarded.map((check) => check.name)).toContain('sync_state kosong di target');
   });
 
   test('dump dengan kolom legasi audit_log.detail (kosong) diverifikasi sama dengan tanpa kolom itu', async () => {
@@ -114,12 +113,11 @@ describe('verifyImport', () => {
     expect(failing(await verify())).toEqual(['audit_log', 'qr_designs']);
   });
 
-  test('sync_state dan counters TIDAK diimpor: harus kosong di target (sisa di target gagal)', async () => {
-    await exec("INSERT INTO sync_state (resource, seq) VALUES ('items', 9)");
+  test('counters TIDAK diimpor: harus kosong di target (sisa di target gagal)', async () => {
     await exec("INSERT INTO counters (`key`, value) VALUES ('st:20261001', 2)");
     expect(
       (await verify()).discarded.filter((check) => !check.ok).map((check) => check.name),
-    ).toEqual(['counters kosong di target', 'sync_state kosong di target']);
+    ).toEqual(['counters kosong di target']);
   });
 
   test('audit modul yang dibuang atau aksi tak dikenal di target gagal; berkas tak dirujuk atau milik item gagal', async () => {

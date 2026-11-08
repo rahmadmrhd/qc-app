@@ -47,15 +47,15 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 41 | Di halaman Merk ganti nama merk yang dipakai beberapa item | Nama di daftar dan detail semua item berubah; ganti ke nama merk lain ditolak; `brand.update` di Log Audit | FI8 |
 | 42 | Nonaktifkan merk lalu buat item baru dengan merk itu | Ditolak: "aktifkan dulu di halaman Merk" | FI8 |
 | 43 | Isi `DRIVE_FOLDER_ID` dengan id folder yang tidak ada lalu jalankan `setup` | Laporan "Folder Drive TIDAK dapat diakses"; properti tidak berubah; tidak ada folder baru | FS13 |
-| 44 | Isi `SYNC_API_TOKEN` 40 karakter di `.env` server lalu mulai ulang server; `GET /sync/ping` dengan token itu; ulangi dengan token < 32 karakter di server uji | 200 untuk token 40 karakter; token server < 32 karakter atau kosong: semua permintaan 401; item/merk hasil impor membawa `rev` (kursor lama tetap valid) | FS2, FS11 |
-| 45 | `curl -H "Authorization: Bearer <token>" https://<host>/api/v1/sync/ping`; ulangi tanpa header dan dengan token salah | `{"apiVersion":2,...,"resources":["brands","items"]}`; tanpa header/token salah: 401 problem+json yang sama persis | FS1, FS2 |
-| 46 | Kirim 10 token salah berturut-turut dari satu IP, lalu satu dengan token benar dari IP itu dan dari IP lain | Semua 401 yang sama; setelah 10 kali, token benar dari IP itu pun ditolak ±10 menit (IP lain tetap bisa); setelah itu pulih | FS2 |
-| 47 | `GET /sync/items?include=detail,stickers,accessories` dari `sinceRev=0` sampai `hasMore: false` | Semua item tepat sekali; `images` berisi id Drive; `detail` memakai `drive:` | FS4 |
-| 48 | `POST /sync/items/push` item baru dengan gambar dari folder aplikasi dan Markdown `drive:` | `created`; item muncul di Data Item dengan gambar tampil; audit `sync:desktop` | FS5, FS8, FS10 |
-| 49 | Ulangi push yang sama; ubah detail di web lalu push dengan `baseRev` lama | `unchanged`; lalu `conflict` dengan `current`; Log Audit memuat `item.sync.conflict` | FS5, FS6 |
-| 50 | `GET /sync/files/{id}` untuk id di folder dan id di luar folder | Byte mentah dengan `Content-Type` dan `ETag`; 404 | FS9 |
-| 51 | Ganti nama merk di web lalu pull item | Semua item merk itu muncul lagi dengan nama baru | FS11 |
-| 52 | Dorong 50 item (dan 25 item ber-`detail`) dalam satu `POST /sync/items/push` di deployment; catat lama panggilan | Selesai dalam hitungan detik (target < 30 dtk) tanpa 413 (badan < 5 MB); hasil per item lengkap. Bila lambat, turunkan `SYNC_LIMITS.pushMax` | FS5 |
+| 44 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 45 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 46 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 47 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 48 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 49 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 50 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 51 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 52 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
 | 53 | Login WH (`handover: edit`): Serah Terima → Tambah task; ketik customer baru, tempel di editor catatan dua baris `CRS310 = 1 unt` dan `RB5009UG = 1 unt` → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; catatan tampil sebagai dua butir checklist; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
 | 54 | Buat task tanpa mengisi customer (opsional), lalu task kedua di hari yang sama dengan ejaan customer berbeda ("pt. maju  jaya") | Task tanpa customer tersimpan (daftar menampilkan "—", detail "Tanpa customer"); task kedua memakai customer yang sama (ejaan resmi), nomor `-002`, tidak ada customer ganda | FC2, FH4 |
 | 55 | Ketik nama customer mirip ("Maju Jaya PT" atau typo) | Petunjuk "Mirip: …, pakai ini?" dapat diklik; tidak memblokir simpan | FC4 |
