@@ -1,5 +1,5 @@
+import type { ItemAccessoryDto } from '@shared/contract';
 import { ITEM_LIMITS } from '@shared/items';
-import type { ItemAccessoryDto } from '@shared/rpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { rowOfError } from '../lib/row-error';

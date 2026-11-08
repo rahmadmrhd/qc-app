@@ -8,7 +8,7 @@ export interface ImageThumbProps {
   className?: string;
 }
 
-/** Gambar dari berkas aplikasi (diambil lewat RPC, privat) dengan status memuat dan gagal. */
+/** Gambar dari berkas aplikasi (diambil lewat REST, privat) dengan status memuat dan gagal. */
 export function ImageThumb({ id, alt, className }: ImageThumbProps) {
   const { url, isLoading, isError } = useFileUrl(id);
   if (isLoading) {

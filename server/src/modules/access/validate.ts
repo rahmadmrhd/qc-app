@@ -2,8 +2,6 @@ import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey } from '@shared/assignments';
-import type { PartialPermissionMap } from '@shared/permissions';
-import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 import type {
   DeleteRoleInput,
   ListAuditPageInput,
@@ -12,7 +10,9 @@ import type {
   SaveUserInput,
   SetLocationStatusInput,
   SetUserStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import type { PartialPermissionMap } from '@shared/permissions';
+import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 
 const USER_STATUS_VALUES = ['active', 'inactive'] as const;
 

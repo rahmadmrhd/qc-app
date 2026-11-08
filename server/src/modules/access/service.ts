@@ -5,7 +5,6 @@ import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey, resolveAccess } from '@shared/assignments';
-import { hasLevel, sanitizePermissions } from '@shared/permissions';
 import type {
   AuditCursorPageDto,
   DeleteRoleInput,
@@ -15,7 +14,8 @@ import type {
   SaveUserInput,
   SetUserStatusInput,
   UserDto,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { hasLevel, sanitizePermissions } from '@shared/permissions';
 import type { UserContext } from './context';
 import type { LocationRecord, RoleRecord, UserRecord } from './repo';
 import {

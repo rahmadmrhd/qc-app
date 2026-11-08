@@ -5,7 +5,7 @@ import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
-// `GET /api/v1/me` (id `auth.me`) menggantikan `/api/boot` dan `auth.me` lewat RPC.
+// `GET /api/v1/me` (id `auth.me`) menggantikan `/api/boot` dan `auth.me` lewat REST.
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;

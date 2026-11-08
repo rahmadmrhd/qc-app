@@ -14,10 +14,10 @@ import {
   type QueryKind,
   routeShape,
 } from '@shared/api';
-import { ERROR_CODES, type RpcMethod } from '@shared/rpc';
+import { type ApiId, ERROR_CODES } from '@shared/contract';
 
 // Dokumen OpenAPI 3.1 yang dibangun dari tabel `API_ROUTES` (BUKAN dari skema validator, yang ditulis tangan):
-// jalur, verba, status, parameter jalur/query, header `If-Match`/`ETag`, `operationId` = id RPC, dan ringkasan
+// jalur, verba, status, parameter jalur/query, header `If-Match`/`ETag`, `operationId` = id rute, dan ringkasan
 // izin dari `RouteDef.permission`. Skema JSON badan/respons belum dihasilkan (lihat penyimpangan 2 rencana).
 
 export interface OpenApiDocument {
@@ -69,7 +69,7 @@ function problemResponse(description: string): Record<string, unknown> {
 }
 
 function operationFor(
-  id: RpcMethod,
+  id: ApiId,
   def: ApiRouteDef,
   created: boolean,
   routes: RouteTable,
@@ -140,7 +140,7 @@ function operationFor(
 /** Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur relatif terhadap `servers[0].url` = `/api/v1`). */
 export function buildOpenApi(routes: RouteTable): OpenApiDocument {
   const paths: OpenApiDocument['paths'] = {};
-  for (const id of Object.keys(API_ROUTES) as RpcMethod[]) {
+  for (const id of Object.keys(API_ROUTES) as ApiId[]) {
     const def = API_ROUTES[id];
     for (const created of def.create ? [false, true] : [false]) {
       const { verb, path, operation } = operationFor(id, def, created, routes);

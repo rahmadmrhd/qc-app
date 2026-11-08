@@ -2,8 +2,8 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
+import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/rpc';
 
 export interface ItemRecord {
   id: string;

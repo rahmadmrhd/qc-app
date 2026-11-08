@@ -1,6 +1,6 @@
 import { readObject } from '@server/core/validate';
+import type { RenameCustomerInput, SetCustomerStatusInput } from '@shared/contract';
 import { customerKey, HANDOVER_LIMITS } from '@shared/handover';
-import type { RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
 
 const CUSTOMER_STATUS_VALUES = ['active', 'inactive'] as const;
 

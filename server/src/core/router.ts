@@ -1,8 +1,8 @@
 import type { UserContext } from '@server/modules/access/context';
 import type { LocatedModule } from '@shared/assignments';
+import type { ApiId, ApiInput, ApiOutput, ErrorCode } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
-import type { ErrorCode, RpcInput, RpcMethod, RpcOutput } from '@shared/rpc';
 import { loadRequestCtx, type RequestCtx } from './context';
 import { DbError } from './db';
 import { type Env, nowOf } from './env';
@@ -23,14 +23,14 @@ export type RoutePermissionSpec =
   | { anyOf: readonly [GlobalPermission, ...GlobalPermission[]] }
   | { anyOf: readonly [LocationPermission, ...LocationPermission[]] };
 
-export interface RouteDef<M extends RpcMethod = RpcMethod> {
+export interface RouteDef<M extends ApiId = ApiId> {
   /** Tanpa `permission` = cukup login. */
   permission?: RoutePermissionSpec;
-  validate: (raw: unknown) => RpcInput<M>;
-  handler: (input: RpcInput<M>, ctx: RequestCtx) => RpcOutput<M> | Promise<RpcOutput<M>>;
+  validate: (raw: unknown) => ApiInput<M>;
+  handler: (input: ApiInput<M>, ctx: RequestCtx) => ApiOutput<M> | Promise<ApiOutput<M>>;
 }
 
-export type RouteTable = { [M in RpcMethod]: RouteDef<M> };
+export type RouteTable = { [M in ApiId]: RouteDef<M> };
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   UNAUTHENTICATED: 401,
@@ -78,7 +78,7 @@ export interface RouteMeta {
 
 /** Hasil `authorize`: rute yang sudah lolos sesi, akun aktif, dan izin global; dipakai `execute`. */
 export interface Authorized {
-  route: RouteDef<RpcMethod>;
+  route: RouteDef<ApiId>;
   base: RequestCtx;
   locationAlternatives: readonly LocationPermission[];
 }
@@ -98,7 +98,7 @@ export async function authorize(
   if (typeof id !== 'string' || !Object.hasOwn(routes, id)) {
     throw appError('NOT_FOUND', 'Method tidak dikenal');
   }
-  const route = routes[id as RpcMethod] as unknown as RouteDef<RpcMethod>;
+  const route = routes[id as ApiId] as unknown as RouteDef<ApiId>;
 
   const session = await verifySessionToken(env, token, nowOf(env));
   if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');

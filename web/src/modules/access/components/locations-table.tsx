@@ -1,4 +1,4 @@
-import type { LocationDto } from '@shared/rpc';
+import type { LocationDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

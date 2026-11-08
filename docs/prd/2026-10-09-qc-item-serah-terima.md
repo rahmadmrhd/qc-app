@@ -70,8 +70,8 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 | ID | Kebutuhan | Kriteria penerimaan |
 |---|---|---|
 | FA1 | Gambar disimpan di **folder Drive privat** milik pemilik script, tidak dibagikan publik. | Folder dibuat otomatis oleh `setup`; id-nya disimpan di Script Property. |
-| FA2 | Upload gambar lewat RPC. Frontend mengecilkan gambar sebelum kirim. | Maks. sisi terpanjang 1600 px, dikonversi ke JPEG/WebP; server menolak > 1 MB hasil kompresi, tipe selain JPEG/PNG/WebP, dan input yang bukan gambar valid. |
-| FA3 | Gambar tampil lewat RPC (`files.get`), bukan tautan Drive. | Hanya user login dengan izin pada entitas pemilik gambar yang dapat mengambilnya; data URL di-cache TanStack Query. |
+| FA2 | Upload gambar lewat API. Frontend mengecilkan gambar sebelum kirim. | Maks. sisi terpanjang 1600 px, dikonversi ke JPEG/WebP; server menolak > 1 MB hasil kompresi, tipe selain JPEG/PNG/WebP, dan input yang bukan gambar valid. |
+| FA3 | Gambar tampil lewat API (`files.get`), bukan tautan Drive. | Hanya user login dengan izin pada entitas pemilik gambar yang dapat mengambilnya; data URL di-cache TanStack Query. |
 | FA4 | Metadata file di sheet `files`: id, id Drive, MIME, ukuran, lebar, tinggi, pemilik (jenis + id), pembuat, waktu. | Gambar terhubung ke item (lampiran, contoh stiker, atau isi Markdown). |
 | FA5 | **Komponen editor Markdown**: tab Tulis / Pratinjau, toolbar (judul, tebal, miring, daftar, tautan, kutipan, kode, **gambar**). | Menempel (paste) atau menyeret gambar ke editor mengunggahnya dan menyisipkan `![alt](qcfile:<id>)`. Tombol gambar membuka pemilih berkas. |
 | FA6 | Render Markdown **aman**. | Tanpa HTML mentah; tautan hanya `http`, `https`, `mailto`; gambar hanya skema `qcfile:` yang diselesaikan lewat `files.get`. Skrip dan atribut sembarang tidak pernah dieksekusi. |
@@ -151,7 +151,7 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 |---|---|
 | NFR1 | Semua akses Drive hanya lewat klien Google (`getBridge(env)`, `server/src/core/google/`). |
 | NFR2 | Frontend tidak mempercayai klien: validasi ukuran, tipe, dan jumlah dilakukan ulang di server. |
-| NFR3 | Auto-suggest berjalan **di klien** atas daftar yang sudah dimuat (item dan customer aktif berjumlah ratusan, bukan jutaan); tanpa panggilan RPC per ketikan. |
+| NFR3 | Auto-suggest berjalan **di klien** atas daftar yang sudah dimuat (item dan customer aktif berjumlah ratusan, bukan jutaan); tanpa panggilan API per ketikan. |
 | NFR4 | Tiap potongan JS web tetap ≤ 600 KB gzip setelah penambahan Markdown (dijaga `verify-dist`). |
 | NFR5 | Sheet baru memakai pola yang ada (`core/db`, teks aman dari formula injection) dan dibuat otomatis oleh `setup`. |
 | NFR6 | Tabel dan formulir dapat dipakai di ponsel (375×812); editor Markdown menumpuk vertikal di layar sempit. |
@@ -162,7 +162,7 @@ Fondasi akses, lokasi, penugasan, dan audit sudah ada. Menu Data Item dan Serah 
 ### 6.1 Fase
 | Fase | Isi | Rencana implementasi |
 |---|---|---|
-| **A** | Platform Drive, sheet `files`, RPC file, komponen editor Markdown, penanda `qc` di model izin, `item` menjadi global | `...-qc-fase-a-file-editor.md` |
+| **A** | Platform Drive, sheet `files`, API file, komponen editor Markdown, penanda `qc` di model izin, `item` menjadi global | `...-qc-fase-a-file-editor.md` |
 | **B** | Data Item (CRUD, alias, stiker, kelengkapan, galeri, detail, nonaktif, audit) | `...-qc-fase-b-item.md` |
 | **B2** | ~~Kerangka sinkronisasi (`doPost`, token, pembatas, tabel rute sinkron), sumber daya `items`, `sync.file.get`, pengamanan folder `setup`, kontrak `docs/api/desktop-sync.md`~~ (dihapus 2026-11-08) | `...-qc-fase-b2-sinkronisasi.md` |
 | **C** | Customer master, Serah Terima, pengerjaan QC, auto-suggest, audit | `...-qc-fase-c-serah-terima.md` |
@@ -183,7 +183,7 @@ Tiap fase dirilis dan dapat diuji sendiri. Urutan: A → B → B2 → C (B2 sebe
 
 `key` = merk+tipe (item) atau nama (merk, customer) yang dinormalisasi; dipakai untuk keunikan dan pencocokan.
 
-### 6.3 Kontrak RPC (garis besar; rinci di rencana)
+### 6.3 Kontrak API (garis besar; rinci di rencana)
 `files.upload`, `files.get`; `items.list`, `items.get`, `items.save`, `items.setStatus`; `brands.list`, `brands.save`, `brands.setStatus`; `customers.list`, `customers.rename`, `customers.setStatus`; `handovers.options`, `handovers.board` (seluruh isi board satu lokasi dalam satu panggilan), `handovers.get`, `handovers.save` (catatan saja; membuat customer baru bila perlu), `handovers.saveBatch` (atomik per permintaan, maks. 30 task per permintaan di server VPS; formulir bulk mengirim SATU permintaan atomik: gagal = tidak ada yang tersimpan. **Keputusan pemilik produk 2026-11-05** menggantikan batas lama 5 task (semula 10, diturunkan 2026-10-30 demi anggaran CPU platform sebelumnya) karena batas CPU platform sebelumnya tidak ada lagi di VPS), `handovers.cancel`, `handovers.setCheck` (centang per butir, `qc: edit`), `handovers.setDone { id, locationId }` (selesaikan task, `qc: edit`; tanpa field `done`), `handovers.reopen` (buka kembali task Dibatalkan, `handover: manage`), `handovers.comment` (hanya tambah; komentar umum dengan `quote` kosong; izin lihat). Rute `setProgress`, `completeLine`, dan `completeAll` dihapus. Rute berlokasi memakai `scope: 'location'` dan `ctx.locationIds` (resep di `docs/adding-a-module.md`).
 
 ### 6.3b ~~Endpoint sinkronisasi~~ — Dihapus 2026-11-08
@@ -245,7 +245,7 @@ Centang butir disimpan per butir sebagai set ("dicentang/tidak") di dalam lock, 
 **Fase C**
 - [x] Customer master dengan pembuatan inline, saran, dan penanda mirip; halaman Customer.
 - [x] Task serah terima berbasis catatan (buat, bulk, ubah, batalkan) dengan nomor otomatis, tempel dari WhatsApp, dan kanban/kartu (dokumen desain 2026-10-23 §9).
-- [x] QC mencentang butir, menyelesaikan task, dan berkomentar; status turunan Baru/Dikerjakan/Selesai/Dibatalkan benar; board satu RPC.
+- [x] QC mencentang butir, menyelesaikan task, dan berkomentar; status turunan Baru/Dikerjakan/Selesai/Dibatalkan benar; board satu API.
 - [x] Semua rute berlokasi menegakkan izin per lokasi; audit lengkap.
 
 **Semua fase**

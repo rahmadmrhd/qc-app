@@ -1,4 +1,4 @@
-import type { UserDto } from '@shared/rpc';
+import type { UserDto } from '@shared/contract';
 import { expect, test } from 'vitest';
 import { filterUsers } from './filter-users';
 

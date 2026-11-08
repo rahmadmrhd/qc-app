@@ -10,7 +10,7 @@ import type {
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
   UploadQrPdfInput,
-} from '@shared/rpc';
+} from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -51,7 +51,7 @@ function applyDesign(queryClient: QueryClient, saved: QrDesignDto): void {
 
 /**
  * Setelah mutasi: cache yang diubah dipasang langsung dari respons (`apply`), sisanya ditandai basi tanpa memuat ulang
- * sekarang. Dengan begitu navigasi setelah simpan tidak menunggu RPC lagi (sebelumnya simpan + muat ulang daftar).
+ * sekarang. Dengan begitu navigasi setelah simpan tidak menunggu permintaan lagi (sebelumnya simpan + muat ulang daftar).
  */
 function useQrMutation<TInput, TOutput>(
   mutationFn: (input: TInput) => Promise<TOutput>,

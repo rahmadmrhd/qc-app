@@ -1,5 +1,5 @@
+import type { BoardPageDto, HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import type { BoardPageDto, HandoverDto } from '@shared/rpc';
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { sortBoard } from './group-board';
 

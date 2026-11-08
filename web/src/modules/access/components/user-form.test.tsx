@@ -1,4 +1,4 @@
-import type { LocationDto, RoleDto } from '@shared/rpc';
+import type { LocationDto, RoleDto } from '@shared/contract';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';

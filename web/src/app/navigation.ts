@@ -1,5 +1,5 @@
+import type { MeDto } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
-import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {

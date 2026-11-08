@@ -1,4 +1,4 @@
-import type { AuditEntryDto } from '@shared/rpc';
+import type { AuditEntryDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

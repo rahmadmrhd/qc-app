@@ -1,4 +1,4 @@
-import type { JobDto } from '@shared/rpc';
+import type { JobDto } from '@shared/contract';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';

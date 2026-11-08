@@ -1,4 +1,3 @@
-import type { HandoverStatus } from '@shared/handover';
 import type {
   AddCommentInput,
   HandoverDto,
@@ -7,7 +6,8 @@ import type {
   SaveHandoverInput,
   SetCheckInput,
   SetDoneInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import type { HandoverStatus } from '@shared/handover';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   infiniteQueryOptions,

@@ -1,6 +1,6 @@
 import { readObject } from '@server/core/validate';
+import type { SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
-import type { SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
 
 const BRAND_STATUS_VALUES = ['active', 'inactive'] as const;
 

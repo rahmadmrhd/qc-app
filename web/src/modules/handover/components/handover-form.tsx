@@ -1,4 +1,4 @@
-import type { HandoverOptionsDto } from '@shared/rpc';
+import type { HandoverOptionsDto } from '@shared/contract';
 import { useForm } from '@tanstack/react-form';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';

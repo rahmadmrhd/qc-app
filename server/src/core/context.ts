@@ -2,7 +2,7 @@ import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import type { Env } from './env';
 
-/** Konteks permintaan RPC: env, pengguna beserta izinnya, dan lokasi tervalidasi (rute berlokasi). */
+/** Konteks permintaan: env, pengguna beserta izinnya, dan lokasi tervalidasi (rute berlokasi). */
 export interface RequestCtx {
   env: Env;
   requestId: string;

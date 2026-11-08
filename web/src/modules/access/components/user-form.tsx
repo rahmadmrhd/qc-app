@@ -1,5 +1,5 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
-import type { LocationDto, RoleDto } from '@shared/rpc';
+import type { LocationDto, RoleDto } from '@shared/contract';
 import { useForm } from '@tanstack/react-form';
 import { FieldError } from '@/components/field-error';
 import { NativeSelect } from '@/components/native-select';

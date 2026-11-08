@@ -1,4 +1,4 @@
-import type { CustomerDto } from '@shared/rpc';
+import type { CustomerDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';

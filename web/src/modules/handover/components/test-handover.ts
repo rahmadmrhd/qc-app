@@ -1,4 +1,4 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 
 /** Fixture DTO task untuk tes komponen (bukan berkas tes). */
 export function makeHandover(over: Partial<HandoverDto> = {}): HandoverDto {

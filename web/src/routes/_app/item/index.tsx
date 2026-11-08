@@ -1,4 +1,4 @@
-import type { ItemSummaryDto } from '@shared/rpc';
+import type { ItemSummaryDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';

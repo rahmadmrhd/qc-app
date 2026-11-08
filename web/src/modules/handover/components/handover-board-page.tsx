@@ -1,5 +1,5 @@
+import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import type { HandoverDto } from '@shared/rpc';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ export interface HandoverBoardPageProps {
   onCreate: () => void;
 }
 
-/** Halaman board: satu RPC berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
+/** Halaman board: satu permintaan berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
 export function HandoverBoardPage({
   status,
   onStatusChange,

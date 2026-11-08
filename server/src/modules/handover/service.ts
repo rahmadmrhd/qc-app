@@ -10,6 +10,19 @@ import { listLocationBriefs } from '@server/modules/access/repo';
 import type { CustomerRecord } from '@server/modules/customer/repo';
 import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
 import { lookupCustomerForWrite, planCustomerByName } from '@server/modules/customer/service';
+import type {
+  AddCommentInput,
+  BoardPageDto,
+  BoardPageInput,
+  GetHandoverInput,
+  HandoverDto,
+  HandoverOptionsDto,
+  HandoverRefInput,
+  SaveHandoverBatchInput,
+  SaveHandoverInput,
+  SetCheckInput,
+  SetDoneInput,
+} from '@shared/contract';
 import {
   customerKey,
   dateKeyOf,
@@ -26,19 +39,6 @@ import {
   noteToPlainText,
 } from '@shared/handover-comments';
 import { handoverCanonicalText } from '@shared/handover-text';
-import type {
-  AddCommentInput,
-  BoardPageDto,
-  BoardPageInput,
-  GetHandoverInput,
-  HandoverDto,
-  HandoverOptionsDto,
-  HandoverRefInput,
-  SaveHandoverBatchInput,
-  SaveHandoverInput,
-  SetCheckInput,
-  SetDoneInput,
-} from '@shared/rpc';
 import { checklistOf, matchedChecks } from './checklist';
 import type {
   CommentStats,

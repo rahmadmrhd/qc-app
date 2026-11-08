@@ -6,8 +6,8 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
+import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
 import { itemKey, normalizeKey } from '@shared/items';
-import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
 import type { BrandRecord, BrandRow } from './repo';
 import {
   BRAND_COLUMNS,

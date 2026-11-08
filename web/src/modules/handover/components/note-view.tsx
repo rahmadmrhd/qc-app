@@ -1,9 +1,9 @@
+import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/contract';
 import {
   handoverNormalizeAnchorText,
   makeAnchor,
   noteToPlainText,
 } from '@shared/handover-comments';
-import type { HandoverChecklistItemDto, HandoverCommentDto } from '@shared/rpc';
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Button } from '@/components/ui/button';

@@ -5,9 +5,9 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
+import type { LocationStatus, UserStatus } from '@shared/contract';
 import type { PartialPermissionMap } from '@shared/permissions';
 import { sanitizePermissions } from '@shared/permissions';
-import type { LocationStatus, UserStatus } from '@shared/rpc';
 import type { LocationBrief, LocationBriefRow } from './location-brief';
 import { LOCATION_BRIEF_SQL, toLocationBrief } from './location-brief';
 

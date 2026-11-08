@@ -1,6 +1,6 @@
 import { ensureQrDocFolder } from '@server/modules/qrcode/folders';
 import { seedRole, seedUser } from './access-fixtures';
-import { restRpc } from './rest-rpc';
+import { restCall } from './rest-call';
 import type { TestEnv } from './test-env';
 
 /** qrview@/qredit@/qrmanage@ = modul qrcode per level (Semua lokasi); noqr@ = item view saja. */
@@ -16,16 +16,16 @@ export async function seedQrEnv(env: TestEnv): Promise<void> {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: hasil JSON tes
-export type RpcOut = { ok: boolean; data?: any; error?: any };
+export type QrCallResult = { ok: boolean; data?: any; error?: any };
 
-/** Memanggil satu id sebagai `email` lewat kabel REST nyata (id yang belum pindah tetap lewat router RPC). */
-export async function qrRpc(
+/** Memanggil satu id sebagai `email` lewat kabel REST nyata. */
+export async function qrCall(
   env: TestEnv,
   email: string,
   method: string,
   payload: unknown,
-): Promise<RpcOut> {
-  return (await restRpc(env, email, method, payload)) as RpcOut;
+): Promise<QrCallResult> {
+  return (await restCall(env, email, method, payload)) as QrCallResult;
 }
 
 /**

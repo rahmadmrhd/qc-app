@@ -1,5 +1,5 @@
 import type { DbStatement, Preparer } from '@server/core/db';
-import type { AuditCursorPageDto, AuditEntryDto } from '@shared/rpc';
+import type { AuditCursorPageDto, AuditEntryDto } from '@shared/contract';
 import type { Env } from './env';
 
 export interface AuditInput {

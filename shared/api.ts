@@ -1,4 +1,4 @@
-import type { RpcInput, RpcMethod, RpcOutput } from './rpc';
+import type { ApiId, ApiInput, ApiOutput } from './contract';
 
 // Tabel rute REST (`/api/v1`): SATU sumber untuk klien FE (`api()`), server (kernel REST), dan OpenAPI. Murni:
 // tanpa API runtime (`shared/` murni, tanpa `URL`/`URLSearchParams`/`fetch`/`atob`), jadi query
@@ -66,7 +66,7 @@ export interface ApiDownload {
 // (`MAX_IMAGE_BYTES`, `QR_LIMITS`).
 // `api.test.ts` memastikan angka-angka ini sama dengan konstanta sumbernya.
 
-export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
+export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'auth.me': { verb: 'GET', path: '/me' },
   'access.users.list': { verb: 'GET', path: '/users' },
   'access.users.save': {
@@ -341,7 +341,7 @@ function queryText(kind: QueryKind, value: unknown): string {
  * Memecah input datar sebuah id menjadi bagian permintaan HTTP: parameter jalur, query, badan, dan `If-Match`.
  * Rute `save` memilih jalur `create` bila `input.id` tidak ada. Pada GET/DELETE semua field lewat query.
  */
-export function toRequestParts<M extends RpcMethod>(id: M, input: RpcInput<M>): RequestParts {
+export function toRequestParts<M extends ApiId>(id: M, input: ApiInput<M>): RequestParts {
   const def = API_ROUTES[id];
   const source = asRecord(input);
   const created = def.create !== undefined && !hasId(source);
@@ -439,7 +439,7 @@ const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor
  * dari header (nilai badan dengan nama sama dibuang). Galat parameter dilempar sebagai `ApiFieldIssue`.
  * Rute tanpa input (`null`) dikenali dari: GET tanpa parameter jalur dan tanpa query.
  */
-export function fromRequestParts<M extends RpcMethod>(id: M, parts: ParsedParts): unknown {
+export function fromRequestParts<M extends ApiId>(id: M, parts: ParsedParts): unknown {
   const def = API_ROUTES[id];
   const shape = routeShape(def, parts.created);
   const names = pathParamNames(shape.path);
@@ -513,7 +513,7 @@ export function fromRequestParts<M extends RpcMethod>(id: M, parts: ParsedParts)
 }
 
 /** Nilai ETag dari keluaran (`undefined` bila rute tidak berETag atau field kosong). */
-export function etagOf<M extends RpcMethod>(id: M, output: RpcOutput<M>): string | undefined {
+export function etagOf<M extends ApiId>(id: M, output: ApiOutput<M>): string | undefined {
   const field = API_ROUTES[id].etag;
   if (field === undefined || typeof output !== 'object' || output === null) return undefined;
   const value = (output as AnyRecord)[field];
@@ -597,12 +597,12 @@ export function filenameFromDisposition(header: string | null | undefined): stri
  * Keluaran sisi klien untuk rute `download`: byte dari badan respons, MIME dari Content-Type, nama berkas dari
  * Content-Disposition, field `echo` disalin dari input, dan field ETag (bila ada) dari header `ETag`.
  */
-export function downloadOutput<M extends RpcMethod>(
+export function downloadOutput<M extends ApiId>(
   id: M,
-  input: RpcInput<M>,
+  input: ApiInput<M>,
   headers: HeaderReader,
   bytes: Uint8Array,
-): RpcOutput<M> {
+): ApiOutput<M> {
   const def = API_ROUTES[id];
   const spec = def.download;
   if (spec === undefined) throw new Error(`Rute ${id} bukan unduhan`);
@@ -620,5 +620,5 @@ export function downloadOutput<M extends RpcMethod>(
     const raw = headers.get('etag');
     if (raw !== null) output[def.etag] = raw.replace(/^W\//, '').replace(/"/g, '');
   }
-  return output as RpcOutput<M>;
+  return output as ApiOutput<M>;
 }

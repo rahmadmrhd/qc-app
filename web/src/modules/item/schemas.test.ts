@@ -1,4 +1,4 @@
-import type { ItemDto } from '@shared/rpc';
+import type { ItemDto } from '@shared/contract';
 import { expect, test } from 'vitest';
 import { itemFormSchema, parseAliasLines, toItemFormDefaults, toSaveItemInput } from './schemas';
 

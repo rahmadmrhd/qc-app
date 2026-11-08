@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 
@@ -13,7 +13,7 @@ beforeEach(async () => {
 });
 
 const call = (email: string, method: string, payload: unknown) =>
-  qrRpc(env, email, method, payload);
+  qrCall(env, email, method, payload);
 const PNG1 = {
   mime: 'image/png',
   bytes: bytesOfBase64('iVBORw0KGgoAAAANSUhEUg=='),

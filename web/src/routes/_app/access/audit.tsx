@@ -1,4 +1,4 @@
-import type { AuditEntryDto } from '@shared/rpc';
+import type { AuditEntryDto } from '@shared/contract';
 import { keepPreviousData, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -64,7 +64,7 @@ function AuditPage() {
   });
   const entries = auditQuery.data?.pages.flatMap((page) => page.entries);
   const [selected, setSelected] = useState<AuditEntryDto | null>(null);
-  // Kata kunci dikirim ke server; tunda agar tidak memanggil RPC pada setiap ketukan.
+  // Kata kunci dikirim ke server; tunda agar tidak memanggil API pada setiap ketukan.
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) => {
     void navigate({
       search: (prev) => ({ ...prev, q: value || undefined }),

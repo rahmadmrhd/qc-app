@@ -1,6 +1,6 @@
 import { ALL_LOCATIONS_KEY, assignmentKey } from '@shared/assignments';
+import type { LocationDto, RoleDto, UserDto } from '@shared/contract';
 import { emptyPermissions, LEVELS, MODULES } from '@shared/permissions';
-import type { LocationDto, RoleDto, UserDto } from '@shared/rpc';
 import { z } from 'zod';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

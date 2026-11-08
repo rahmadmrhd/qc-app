@@ -1,7 +1,4 @@
 import { readObject } from '@server/core/validate';
-import { isPdfBytes, isPngBytes } from '@shared/files';
-import type { QrStyle } from '@shared/qrcode';
-import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
   CloneQrPdfInput,
   ExportQrDesignInput,
@@ -11,7 +8,10 @@ import type {
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
   UploadQrPdfInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { isPdfBytes, isPngBytes } from '@shared/files';
+import type { QrStyle } from '@shared/qrcode';
+import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 
 const QR_FILE_KINDS = ['pdf', 'png'] as const;
 const QR_LINK_SOURCES = ['url', 'pdf'] as const;

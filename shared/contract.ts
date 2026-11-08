@@ -489,7 +489,7 @@ export interface QrFileDto {
   etag: string;
 }
 
-export interface RpcContract {
+export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
   'access.users.save': { input: SaveUserInput; output: UserDto };
@@ -540,9 +540,9 @@ export interface RpcContract {
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
 
-export type RpcMethod = keyof RpcContract;
-export type RpcInput<M extends RpcMethod> = RpcContract[M]['input'];
-export type RpcOutput<M extends RpcMethod> = RpcContract[M]['output'];
+export type ApiId = keyof ApiContract;
+export type ApiInput<M extends ApiId> = ApiContract[M]['input'];
+export type ApiOutput<M extends ApiId> = ApiContract[M]['output'];
 
 export type AuthErrorCode = 'NOT_WHITELISTED' | 'LOGIN_FAILED';
 

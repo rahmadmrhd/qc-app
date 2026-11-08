@@ -7,7 +7,7 @@ export type CallResult<T = unknown> = { ok: true; data: T } | { ok: false; error
 /**
  * Menjalankan satu id rute (sesi, izin, validasi, handler) TANPA lapisan HTTP dan membungkus hasilnya sebagai
  * `CallResult`. Dipakai tes inti router dan tes yang memasukkan payload sengaja rusak ke validator; jalur kabel REST
- * diuji lewat `restClient`/`restRpc`.
+ * diuji lewat `restClient`/`restCall`.
  */
 export async function callRoute(
   env: Env,

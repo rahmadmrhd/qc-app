@@ -4,7 +4,7 @@ import type { UserContext } from '@server/modules/access/context';
 import type { LocationBrief } from '@server/modules/access/location-brief';
 import { listLocationBriefs } from '@server/modules/access/repo';
 import type { LocationPermissionMap } from '@shared/assignments';
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 
 /**
  * Daftar lokasi `auth.me` per konteks akses: konteks dan daftar lokasi hidup di cache isolate (dibuang bersama),
@@ -34,7 +34,7 @@ function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto
 }
 
 /** Rute `auth.me` (REST `GET /api/v1/me`; rute HTTP `/auth/*` ada di `routes.ts`). */
-export function authRpcRoutes(): Pick<RouteTable, 'auth.me'> {
+export function authApiRoutes(): Pick<RouteTable, 'auth.me'> {
   return {
     'auth.me': {
       validate: expectNull,

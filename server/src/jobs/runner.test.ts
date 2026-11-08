@@ -3,7 +3,7 @@ import type { DbStatement } from '@server/core/db';
 import { JOB_MAX_ATTEMPTS } from '@server/modules/jobs/consumer';
 import { findJob } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
-import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   purgeExpiredRateLimits,
@@ -174,8 +174,8 @@ describe('job gagal', () => {
     const failed = await findJob(env, id);
     expect(failed?.status).toBe('failed');
     expect(failed?.error).not.toBe('');
-    // dilihat lewat RPC jobs.get oleh pembuatnya
-    const dto = await qrRpc(env, 'qredit@gmail.com', 'jobs.get', { id });
+    // dilihat lewat `jobs.get` oleh pembuatnya
+    const dto = await qrCall(env, 'qredit@gmail.com', 'jobs.get', { id });
     expect(dto.data).toMatchObject({ id, status: 'failed' });
     expect(dto.data.error).toBe(failed?.error);
   });
@@ -186,7 +186,7 @@ describe('job gagal', () => {
     await env.DB.prepare("UPDATE jobs SET status = 'failed', error = 'Gagal tes' WHERE id = ?")
       .bind(first)
       .run();
-    const retry = await qrRpc(env, 'admin@gmail.com', 'exports.sheets', { tables: ['brands'] });
+    const retry = await qrCall(env, 'admin@gmail.com', 'exports.sheets', { tables: ['brands'] });
     expect(retry.ok).toBe(true);
     expect(retry.data.jobId).not.toBe(first);
     expect(await runPendingJobs(env)).toBe(1);

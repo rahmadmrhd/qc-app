@@ -1,5 +1,5 @@
+import type { ItemStickerDto } from '@shared/contract';
 import { ITEM_LIMITS } from '@shared/items';
-import type { ItemStickerDto } from '@shared/rpc';
 import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

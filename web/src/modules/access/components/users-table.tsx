@@ -1,5 +1,5 @@
 import { assignmentKey } from '@shared/assignments';
-import type { UserDto } from '@shared/rpc';
+import type { UserDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

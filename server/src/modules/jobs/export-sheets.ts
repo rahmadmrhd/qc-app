@@ -4,7 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { readObject } from '@server/core/validate';
-import type { ExportSheetsInput, ExportSheetsJobDto } from '@shared/rpc';
+import type { ExportSheetsInput, ExportSheetsJobDto } from '@shared/contract';
 import { findActiveJob } from './repo';
 import { enqueueJob } from './service';
 import { EXPORT_TABLES } from './sheets-export';

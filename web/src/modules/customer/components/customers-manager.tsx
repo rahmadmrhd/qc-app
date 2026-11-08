@@ -1,5 +1,5 @@
+import type { CustomerDto } from '@shared/contract';
 import { HANDOVER_LIMITS } from '@shared/handover';
-import type { CustomerDto } from '@shared/rpc';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

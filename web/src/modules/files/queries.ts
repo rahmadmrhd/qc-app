@@ -1,4 +1,4 @@
-import type { UploadFileInput } from '@shared/rpc';
+import type { UploadFileInput } from '@shared/contract';
 import { queryOptions, useMutation, useQuery } from '@tanstack/react-query';
 import { useLayoutEffect, useState } from 'react';
 import { api } from '@/lib/api';

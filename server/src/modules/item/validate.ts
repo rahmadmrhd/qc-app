@@ -1,7 +1,5 @@
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
-import { MARKDOWN_MAX_LENGTH } from '@shared/files';
-import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
 import type {
   GetItemInput,
   ItemAccessoryDto,
@@ -10,7 +8,9 @@ import type {
   ListItemsPageInput,
   SaveItemInput,
   SetItemStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { MARKDOWN_MAX_LENGTH } from '@shared/files';
+import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
 
 const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;
 

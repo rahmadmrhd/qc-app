@@ -1,8 +1,8 @@
 import type { LocatedModule } from '@shared/assignments';
 import { isLocatedModule } from '@shared/assignments';
+import type { LocationAccessDto, MeDto } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
-import type { LocationAccessDto, MeDto } from '@shared/rpc';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
 import { meQueryOptions } from './queries';

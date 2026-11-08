@@ -1,4 +1,4 @@
-import type { LocationAccessDto } from '@shared/rpc';
+import type { LocationAccessDto } from '@shared/contract';
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 import { useMe } from '@/modules/auth/use-me';
 import {

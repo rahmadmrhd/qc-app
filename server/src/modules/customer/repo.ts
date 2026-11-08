@@ -1,6 +1,6 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import type { ItemStatus } from '@shared/rpc';
+import type { ItemStatus } from '@shared/contract';
 
 export interface CustomerRecord {
   id: string;

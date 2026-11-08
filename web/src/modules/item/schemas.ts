@@ -1,6 +1,6 @@
+import type { ItemDto, SaveItemInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
-import type { ItemDto, SaveItemInput } from '@shared/rpc';
 import { z } from 'zod';
 
 /** Field yang dapat memuat pesan galat dari server (konflik, validasi). */

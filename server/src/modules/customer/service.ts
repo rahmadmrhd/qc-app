@@ -7,8 +7,8 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { batchWrite } from '@server/modules/access/repo';
+import type { CustomerDto, RenameCustomerInput, SetCustomerStatusInput } from '@shared/contract';
 import { customerKey } from '@shared/handover';
-import type { CustomerDto, RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
 import type { CustomerRecord } from './repo';
 import {
   customerByIdStmt,

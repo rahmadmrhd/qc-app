@@ -12,7 +12,6 @@ import { planBrandByName } from '@server/modules/brand/service';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
-import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import type {
   GetItemInput,
   ItemAccessoryDto,
@@ -24,7 +23,8 @@ import type {
   ListItemsPageInput,
   SaveItemInput,
   SetItemStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import type { ItemRecord } from './repo';
 import {
   brandKeyGuardStmt,

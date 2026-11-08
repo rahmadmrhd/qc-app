@@ -8,20 +8,6 @@ import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf } from '@server/core/settings';
 import { planAttachFiles } from '@server/modules/files/service';
-import { base64ByteLength } from '@shared/files';
-import type { QrContent } from '@shared/qrcode';
-import {
-  clampQrLayout,
-  clampQrStyle,
-  DEFAULT_QR_STYLE,
-  driveShareUrl,
-  labelFileName,
-  parseDriveFileId,
-  parseDriveResourceKey,
-  QR_LIMITS,
-  qrExportStatus,
-  qrPdfFileName,
-} from '@shared/qrcode';
 import type {
   CloneQrPdfInput,
   QrDefaultsDto,
@@ -36,7 +22,21 @@ import type {
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
   UploadQrPdfInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { base64ByteLength } from '@shared/files';
+import type { QrContent } from '@shared/qrcode';
+import {
+  clampQrLayout,
+  clampQrStyle,
+  DEFAULT_QR_STYLE,
+  driveShareUrl,
+  labelFileName,
+  parseDriveFileId,
+  parseDriveResourceKey,
+  QR_LIMITS,
+  qrExportStatus,
+  qrPdfFileName,
+} from '@shared/qrcode';
 import { ensureQrDocFolder, QR_FOLDER_SETTING } from './folders';
 import type {
   NewQrDesignRecord,

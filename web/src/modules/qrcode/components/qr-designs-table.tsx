@@ -1,4 +1,4 @@
-import type { QrDesignDto, QrFileKind } from '@shared/rpc';
+import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

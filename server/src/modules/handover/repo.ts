@@ -1,10 +1,10 @@
 import { CAS_VERSION_BUMP_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import type { HandoverCommentDto } from '@shared/contract';
 import type { HandoverStatus, HandoverStoredStatus } from '@shared/handover';
 import { deriveHandoverStatus } from '@shared/handover';
 import type { CheckState } from '@shared/handover-checklist';
-import type { HandoverCommentDto } from '@shared/rpc';
 import { matchedChecks } from './checklist';
 
 export type StoredComment = Omit<HandoverCommentDto, 'stale'>;

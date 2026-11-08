@@ -2,15 +2,15 @@
 
 Contoh: modul `item` (Data Item). Modul sudah terdaftar di `MODULES` (`shared/permissions.ts`); untuk modul yang benar-benar baru, tambahkan key dan label di sana terlebih dahulu.
 
-## 1. Kontrak — `shared/rpc.ts` dan `shared/api.ts`
-Tambahkan DTO, input, dan entri `RpcContract` (`shared/rpc.ts`), mis. `'item.list': { input: null; output: ItemDto[] }`, lalu entri `API_ROUTES` di `shared/api.ts` (verba HTTP, jalur `/api/v1/...`, field query, `ifMatch`/`etag` untuk rute berversi, `create` untuk 201+`Location`). Satu tabel itu dipakai klien, server, dan OpenAPI; `shared/api.test.ts` gagal bila id kontrak dan tabel tidak sejalan.
+## 1. Kontrak — `shared/contract.ts` dan `shared/api.ts`
+Tambahkan DTO, input, dan entri `ApiContract` (`shared/contract.ts`), mis. `'item.list': { input: null; output: ItemDto[] }`, lalu entri `API_ROUTES` di `shared/api.ts` (verba HTTP, jalur `/api/v1/...`, field query, `ifMatch`/`etag` untuk rute berversi, `create` untuk 201+`Location`). Satu tabel itu dipakai klien, server, dan OpenAPI; `shared/api.test.ts` gagal bila id kontrak dan tabel tidak sejalan.
 
 ## 2. Backend — `server/src/modules/item/`
 - `repo.ts` — kueri MariaDB lewat adaptor `Db` (`prepare(sql).bind(...)`, `batch`, `transaction`); migrasi skema di `server/migrations/NNNN_nama.sql`.
 - `validate.ts` — `validateXxx(raw)` yang mengembalikan input bertipe atau melempar `VALIDATION`.
 - `service.ts` — logika bisnis; penulisan berbasis baca-lalu-tulis dijaga CAS di dalam `batch()` atau `SELECT ... FOR UPDATE` (lihat "Aturan server" di `CLAUDE.md`); catat audit bila perlu. Versi usang dilempar lewat `staleError(message)` agar menjadi 412 pada rute berETag.
 - `routes.ts` — tabel `RouteTable` per modul dengan `permission: { module: 'item', level: 'view' | 'edit' | 'manage' }`; daftarkan di `server/src/routes.ts` (`getRoutes()`).
-- Test di samping berkas (`*.test.ts`, `rest.test.ts`) memakai MariaDB sungguhan lewat `createTestEnv`, `restClient`, dan `restRpc` (`server/test-support`).
+- Test di samping berkas (`*.test.ts`, `rest.test.ts`) memakai MariaDB sungguhan lewat `createTestEnv`, `restClient`, dan `restCall` (`server/test-support`).
 
 ## 3. Frontend — `web/src/modules/item/`
 - `queries.ts` — `queryOptions` + mutation (invalidate key modul).

@@ -1,4 +1,4 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -52,7 +52,7 @@ function cachedHandover(
 
 /**
  * Centang instan (update optimistis) dengan antrean serial per task:
- *  - klik langsung mengubah cache (hanya butir itu); tiap klik tetap satu RPC `handovers.setCheck`;
+ *  - klik langsung mengubah cache (hanya butir itu); tiap klik tetap satu permintaan `handovers.setCheck`;
  *  - permintaan task yang sama dikirim berurutan (satu terbang), task berbeda boleh paralel; teks butir yang
  *    dikirim diambil dari DTO terbaru di cache;
  *  - respons server menimpa cache HANYA setelah antrean task itu kosong (tanpa kedipan/rollback palsu);

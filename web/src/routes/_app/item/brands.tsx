@@ -1,4 +1,4 @@
-import type { BrandDto } from '@shared/rpc';
+import type { BrandDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';

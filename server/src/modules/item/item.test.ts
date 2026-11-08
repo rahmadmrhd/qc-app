@@ -8,8 +8,8 @@ import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import type { SaveItemInput } from '@shared/contract';
 import { hashText } from '@shared/items';
-import type { SaveItemInput } from '@shared/rpc';
 import { findItem } from './repo';
 import { getItemDto, listItemPage, planItemWrite, saveItem, setItemStatus } from './service';
 

@@ -9,15 +9,15 @@ import { dropCachedFile } from '@server/core/file-cache';
 import type { JobHandler, StepContext, StepOutcome } from '@server/modules/jobs/consumer';
 import { deleteBlobs, findActiveJob, readBlob } from '@server/modules/jobs/repo';
 import { enqueueJob } from '@server/modules/jobs/service';
+import type { ExportQrDesignInput, ExportQrJobDto } from '@shared/contract';
 import { labelFileName, qrContentHash } from '@shared/qrcode';
-import type { ExportQrDesignInput, ExportQrJobDto } from '@shared/rpc';
 import { ensureQrFolder } from './folders';
 import type { QrDesignRecord } from './repo';
 import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignStmt } from './repo';
 import { QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
 
 /**
- * Ekspor QR sebagai pekerjaan latar (Spek 9b). RPC hanya memeriksa, menyimpan muatan, dan mengantre; berkas dibuat
+ * Ekspor QR sebagai pekerjaan latar (Spek 9b). Rute hanya memeriksa, menyimpan muatan, dan mengantre; berkas dibuat
  * di Drive per langkah oleh consumer: PDF (0), PNG (1), pencatatan di database dengan CAS (2), pembuangan berkas lama
  * dan pembersihan muatan (3). Berkas baru dibuat SEBELUM pencatatan; gagal sebelum pencatatan -> berkas baru
  * dibuang dan berkas lama utuh (perilaku sebelum migrasi).

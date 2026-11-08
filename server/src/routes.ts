@@ -1,6 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { accessRoutes } from '@server/modules/access/routes';
-import { authRpcRoutes } from '@server/modules/auth/rpc';
+import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { filesRoutes } from '@server/modules/files/routes';
@@ -8,13 +8,13 @@ import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
-import type { RpcMethod } from '@shared/rpc';
+import type { ApiId } from '@shared/contract';
 
 /**
- * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
+ * Daftar LENGKAP kunci `ApiContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
  * Dipakai tes kontrak.
  */
-export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
+export const ALL_API_IDS: Record<ApiId, true> = {
   'auth.me': true,
   'access.users.list': true,
   'access.users.save': true,
@@ -70,7 +70,7 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
  */
 function realRoutes(): RouteTable {
   return {
-    ...authRpcRoutes(),
+    ...authApiRoutes(),
     ...accessRoutes(),
     ...brandRoutes(),
     ...customerRoutes(),

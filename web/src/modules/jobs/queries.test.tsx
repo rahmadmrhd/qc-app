@@ -1,12 +1,12 @@
-import type { JobDto } from '@shared/rpc';
+import type { JobDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 
-const rpcMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api', () => ({ api: rpcMock }));
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 import { awaitJob, jobPollDelay, useJob } from './queries';
 
@@ -19,7 +19,7 @@ const job = (status: JobDto['status'], extra: Partial<JobDto> = {}): JobDto => (
 });
 
 beforeEach(() => {
-  rpcMock.mockReset();
+  apiMock.mockReset();
 });
 
 test('jeda polling bertahap 1 -> 2 -> 5 detik', () => {
@@ -27,7 +27,7 @@ test('jeda polling bertahap 1 -> 2 -> 5 detik', () => {
 });
 
 test('awaitJob mengulang jobs.get dengan jeda bertahap sampai done dan melaporkan kemajuan', async () => {
-  rpcMock
+  apiMock
     .mockResolvedValueOnce(job('queued'))
     .mockResolvedValueOnce(job('running'))
     .mockResolvedValueOnce(job('running'))
@@ -37,20 +37,20 @@ test('awaitJob mengulang jobs.get dengan jeda bertahap sampai done dan melaporka
   await expect(awaitJob('j1', { sleep, onProgress: progress })).resolves.toMatchObject({
     status: 'done',
   });
-  expect(rpcMock).toHaveBeenCalledWith('jobs.get', { id: 'j1' });
+  expect(apiMock).toHaveBeenCalledWith('jobs.get', { id: 'j1' });
   expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1000, 2000, 5000]);
   expect(progress).toHaveBeenCalledTimes(4);
 });
 
 test('job gagal dilempar sebagai ApiError dengan pesan server (dapat diulang oleh pemanggil)', async () => {
-  rpcMock.mockResolvedValue(job('failed', { error: 'Jembatan Drive tidak menjawab' }));
+  apiMock.mockResolvedValue(job('failed', { error: 'Jembatan Drive tidak menjawab' }));
   const error = await awaitJob('j1', { sleep: async () => undefined }).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(ApiError);
   expect((error as ApiError).message).toBe('Jembatan Drive tidak menjawab');
 });
 
 test('useJob berhenti polling setelah job selesai', async () => {
-  rpcMock.mockResolvedValue(job('done'));
+  apiMock.mockResolvedValue(job('done'));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -59,8 +59,8 @@ test('useJob berhenti polling setelah job selesai', async () => {
     wrapper,
     initialProps: { id: null as string | null },
   });
-  expect(rpcMock).not.toHaveBeenCalled();
+  expect(apiMock).not.toHaveBeenCalled();
   rerender({ id: 'j1' });
   await waitFor(() => expect(result.current.data?.status).toBe('done'));
-  expect(rpcMock).toHaveBeenCalledTimes(1);
+  expect(apiMock).toHaveBeenCalledTimes(1);
 });

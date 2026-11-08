@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { expect, test } from 'vitest';
 import { can, canAnywhere, canAt, locationsWith } from './permissions';
 

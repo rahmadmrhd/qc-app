@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { House, Users } from 'lucide-react';
 import { expect, test } from 'vitest';
 import type { NavGroup } from './navigation';

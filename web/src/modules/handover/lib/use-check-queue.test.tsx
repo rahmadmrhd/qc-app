@@ -1,11 +1,11 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), error: vi.fn() }));
-vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.rpc(...args) }));
+const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn() }));
+vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.api(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error } }));
 
 import { makeHandover } from '../components/test-handover';
@@ -54,14 +54,14 @@ function setup() {
   return { client, hook, cached, ref };
 }
 
-/** RPC yang diselesaikan manual, urutan terbang dicatat. */
-function manualRpc() {
+/** Panggilan yang diselesaikan manual, urutan terbang dicatat. */
+function manualCall() {
   const calls: Array<{
     input: { index: number; checked: boolean };
     resolve: (value: HandoverDto) => void;
     reject: (error: Error) => void;
   }> = [];
-  mocks.rpc.mockImplementation(
+  mocks.api.mockImplementation(
     (_method: string, input: { index: number; checked: boolean }) =>
       new Promise<HandoverDto>((resolve, reject) => {
         calls.push({ input, resolve, reject });
@@ -76,18 +76,18 @@ const flush = () =>
   });
 
 beforeEach(() => {
-  mocks.rpc.mockReset();
+  mocks.api.mockReset();
   mocks.error.mockReset();
 });
 
-test('5 klik beruntun: tampilan langsung 5 tercentang, 5 RPC berurutan (satu terbang), hasil akhir = server', async () => {
+test('5 klik beruntun: tampilan langsung 5 tercentang, 5 permintaan berurutan (satu terbang), hasil akhir = server', async () => {
   const { hook, cached, ref } = setup();
-  const calls = manualRpc();
+  const calls = manualCall();
   act(() => {
     for (let i = 0; i < 5; i++)
       hook.result.current.toggle(ref, { index: i, text: `B${i} = 1` }, true);
   });
-  // tampilan instan, sebelum RPC apa pun selesai
+  // tampilan instan, sebelum permintaan apa pun selesai
   expect(cached().checklist.every((item) => item.checked)).toBe(true);
   expect(cached().status).toBe('new');
   expect(hook.result.current.isSaving('t1')).toBe(true);
@@ -101,14 +101,14 @@ test('5 klik beruntun: tampilan langsung 5 tercentang, 5 RPC berurutan (satu ter
     });
     await flush();
   }
-  expect(mocks.rpc).toHaveBeenCalledTimes(5);
+  expect(mocks.api).toHaveBeenCalledTimes(5);
   expect(cached()).toEqual(serverAfter([0, 1, 2, 3, 4]));
   expect(hook.result.current.isSaving('t1')).toBe(false);
 });
 
 test('respons lambat tidak membalik tampilan: cache baru ditimpa setelah antrean kosong', async () => {
   const { hook, cached, ref } = setup();
-  const calls = manualRpc();
+  const calls = manualCall();
   act(() => {
     hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true);
     hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true);
@@ -131,7 +131,7 @@ test('respons lambat tidak membalik tampilan: cache baru ditimpa setelah antrean
 test('kegagalan butir ke-3: butir itu kembali, lainnya tetap, antrean lanjut, toast galat, task dimuat ulang', async () => {
   const { client, hook, cached, ref } = setup();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  const calls = manualRpc();
+  const calls = manualCall();
   act(() => {
     for (let i = 0; i < 5; i++)
       hook.result.current.toggle(ref, { index: i, text: `B${i} = 1` }, true);
@@ -155,7 +155,7 @@ test('kegagalan butir ke-3: butir itu kembali, lainnya tetap, antrean lanjut, to
       ]);
     }
   }
-  expect(mocks.rpc).toHaveBeenCalledTimes(5);
+  expect(mocks.api).toHaveBeenCalledTimes(5);
   expect(mocks.error).toHaveBeenCalledTimes(1);
   expect(invalidate).toHaveBeenCalledWith({ queryKey: handoverKeys.all });
 });
@@ -163,7 +163,7 @@ test('kegagalan butir ke-3: butir itu kembali, lainnya tetap, antrean lanjut, to
 test('task berbeda diproses paralel; whenIdle menunggu antrean task itu kosong', async () => {
   const { client, hook, ref } = setup();
   seedBoard(client, [task, makeHandover({ id: 't2', locationId: 'loc-a', checklist: items(2) })]);
-  const calls = manualRpc();
+  const calls = manualCall();
   act(() => {
     hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true);
     hook.result.current.toggle(
