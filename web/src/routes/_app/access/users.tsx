@@ -13,6 +13,7 @@ import { UserForm } from '@/modules/access/components/user-form';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
 import {
+  businessUnitsQueryOptions,
   locationsQueryOptions,
   rolesQueryOptions,
   usersQueryOptions,
@@ -37,6 +38,7 @@ export const Route = createFileRoute('/_app/access/users')({
       context.queryClient.ensureQueryData(usersQueryOptions()),
       context.queryClient.ensureQueryData(rolesQueryOptions()),
       context.queryClient.ensureQueryData(locationsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitsQueryOptions()),
     ]);
   },
   component: UsersPage,
@@ -50,6 +52,7 @@ function UsersPage() {
   const { data: users } = useSuspenseQuery(usersQueryOptions());
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
   const { data: locations } = useSuspenseQuery(locationsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitsQueryOptions());
   const saveUser = useSaveUser();
   const setStatus = useSetUserStatus();
   const [editing, setEditing] = useState<UserDto | 'new' | null>(null);
@@ -57,6 +60,7 @@ function UsersPage() {
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
   const locationNames = new Map(locations.map((location) => [location.id, location.name]));
+  const businessUnitNames = new Map(businessUnits.map((unit) => [unit.id, unit.name]));
   const visible = filterUsers(users, { q: search.q ?? '', status: search.status ?? 'all' });
 
   function closeDialog() {
@@ -68,9 +72,7 @@ function UsersPage() {
     setSubmitError(null);
     try {
       await saveUser.mutateAsync(
-        editing && editing !== 'new'
-          ? { ...values, id: editing.id, buAssignments: editing.buAssignments }
-          : { ...values, buAssignments: [] },
+        editing && editing !== 'new' ? { ...values, id: editing.id } : values,
       );
       toast.success('User disimpan');
       closeDialog();
@@ -131,6 +133,7 @@ function UsersPage() {
         users={visible}
         roleNames={roleNames}
         locationNames={locationNames}
+        businessUnitNames={businessUnitNames}
         canManage={canManage}
         currentEmail={me.email}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
@@ -152,6 +155,7 @@ function UsersPage() {
               )}
               roles={roles}
               locations={locations}
+              businessUnits={businessUnits}
               submitError={submitError}
               onSubmit={handleSubmit}
               onCancel={closeDialog}

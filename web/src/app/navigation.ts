@@ -3,6 +3,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  Building2,
   ClipboardList,
   Contact,
   History,
@@ -103,6 +104,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Lokasi',
         to: '/access/locations',
         icon: MapPin,
+        permission: { module: 'access', level: 'view' },
+      },
+      {
+        label: 'Business Unit',
+        to: '/access/business-units',
+        icon: Building2,
         permission: { module: 'access', level: 'view' },
       },
       {

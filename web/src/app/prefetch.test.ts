@@ -26,6 +26,6 @@ test('hanya mem-prefetch daftar yang boleh dibaca pengguna (tanpa izin = tanpa p
   expect(keysFor(me({}))).toEqual([]);
   expect(keysFor(me({ item: 'view' })).sort()).toEqual(['brands', 'items'].sort());
   expect(keysFor(me({ qrcode: 'edit' }))).toEqual(['qrcodes', 'qrcodes']);
-  expect(keysFor(me({ access: 'manage' })).length).toBe(2);
-  expect(keysFor(me({ item: 'view', qrcode: 'view', access: 'view' })).length).toBe(6);
+  expect(keysFor(me({ access: 'manage' })).length).toBe(3);
+  expect(keysFor(me({ item: 'view', qrcode: 'view', access: 'view' })).length).toBe(7);
 });

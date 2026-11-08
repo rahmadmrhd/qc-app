@@ -1,5 +1,6 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
-import type { LocationDto, RoleDto } from '@shared/contract';
+import { ALL_BU_KEY } from '@shared/business-units';
+import type { BusinessUnitOptionDto, LocationDto, RoleDto } from '@shared/contract';
 import { useForm } from '@tanstack/react-form';
 import { FieldError } from '@/components/field-error';
 import { NativeSelect } from '@/components/native-select';
@@ -15,6 +16,7 @@ export interface UserFormProps {
   defaultValues: UserFormInput;
   roles: readonly RoleDto[];
   locations: readonly LocationDto[];
+  businessUnits: readonly BusinessUnitOptionDto[];
   submitError?: string | null;
   onSubmit: (values: UserFormOutput) => Promise<unknown>;
   onCancel: () => void;
@@ -25,6 +27,7 @@ export function UserForm({
   defaultValues,
   roles,
   locations,
+  businessUnits,
   submitError,
   onSubmit,
   onCancel,
@@ -124,7 +127,7 @@ export function UserForm({
           ];
           return (
             <fieldset className="space-y-3">
-              <legend className="text-sm font-medium">Penugasan</legend>
+              <legend className="text-sm font-medium">Penugasan lokasi</legend>
               <p className="text-xs text-muted-foreground">
                 Hak di tiap lokasi ditentukan oleh role penugasannya. Pengaturan Akses hanya berlaku
                 dari penugasan Semua lokasi.
@@ -199,6 +202,118 @@ export function UserForm({
                 onClick={() => field.handleChange([...rows, { locationId: '', roleIds: [] }])}
               >
                 Tambah penugasan
+              </Button>
+              <FieldError stacked errors={field.state.meta.errors} />
+            </fieldset>
+          );
+        }}
+      </form.Field>
+      <form.Field name="buAssignments">
+        {(field) => {
+          const rows = field.state.value;
+          const used = new Set(rows.map((row) => row.buId));
+          const update = (index: number, patch: Partial<(typeof rows)[number]>) =>
+            field.handleChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+          const optionsFor = (current: string) => [
+            ...(used.has(ALL_BU_KEY) && current !== ALL_BU_KEY
+              ? []
+              : [{ value: ALL_BU_KEY, label: 'Semua BU' }]),
+            ...businessUnits
+              .filter(
+                (unit) =>
+                  (unit.status === 'active' || unit.id === current) &&
+                  (!used.has(unit.id) || unit.id === current),
+              )
+              .map((unit) => ({
+                value: unit.id,
+                label:
+                  unit.status === 'active'
+                    ? `${unit.name} (${unit.code})`
+                    : `${unit.name} (${unit.code}) — nonaktif`,
+              })),
+            ...(current !== '' &&
+            current !== ALL_BU_KEY &&
+            !businessUnits.some((unit) => unit.id === current)
+              ? [{ value: current, label: '(BU tidak dikenal)' }]
+              : []),
+          ];
+          return (
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Penugasan BU</legend>
+              <p className="text-xs text-muted-foreground">
+                Hak BU berlaku sama di semua lokasi; hanya modul ber-BU (Data Item) yang dibaca dari
+                role di sini. User tanpa penugasan BU tidak melihat item apa pun.
+              </p>
+              {rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Belum ada penugasan BU.</p>
+              ) : null}
+              {rows.map((row, index) => (
+                <fieldset
+                  // biome-ignore lint/suspicious/noArrayIndexKey: baris penugasan tidak punya id stabil
+                  key={index}
+                  aria-label={`Penugasan BU ${index + 1}`}
+                  className="space-y-2 rounded-lg border p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <NativeSelect
+                      aria-label={`BU penugasan ${index + 1}`}
+                      value={row.buId}
+                      onChange={(event) => update(index, { buId: event.target.value })}
+                    >
+                      {row.buId === '' ? (
+                        <option value="" disabled>
+                          Pilih BU…
+                        </option>
+                      ) : null}
+                      {optionsFor(row.buId).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Hapus penugasan BU ${index + 1}`}
+                      onClick={() => field.handleChange(rows.filter((_, i) => i !== index))}
+                    >
+                      Hapus
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {roles.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Belum ada role.</p>
+                    ) : null}
+                    {roles.map((role) => (
+                      <div key={role.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`bu-assign-${index}-${role.id}`}
+                          checked={row.roleIds.includes(role.id)}
+                          onCheckedChange={(next) =>
+                            update(index, {
+                              roleIds:
+                                next === true
+                                  ? [...row.roleIds, role.id]
+                                  : row.roleIds.filter((id) => id !== role.id),
+                            })
+                          }
+                        />
+                        <Label htmlFor={`bu-assign-${index}-${role.id}`} className="font-normal">
+                          {role.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => field.handleChange([...rows, { buId: '', roleIds: [] }])}
+              >
+                Tambah penugasan BU
               </Button>
               <FieldError stacked errors={field.state.meta.errors} />
             </fieldset>

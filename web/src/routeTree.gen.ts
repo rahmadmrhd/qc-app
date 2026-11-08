@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppCustomerRouteImport } from './routes/_app/customer'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
+import { Route as AppAccessBusinessUnitsRouteImport } from './routes/_app/access/business-units'
 import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
 import { Route as AppAccessRolesRouteImport } from './routes/_app/access/roles'
 import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
@@ -61,6 +62,11 @@ const AppForbiddenRoute = AppForbiddenRouteImport.update({
 const AppAccessAuditRoute = AppAccessAuditRouteImport.update({
   id: '/access/audit',
   path: '/access/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccessBusinessUnitsRoute = AppAccessBusinessUnitsRouteImport.update({
+  id: '/access/business-units',
+  path: '/access/business-units',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAccessLocationsRoute = AppAccessLocationsRouteImport.update({
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
   '/access/audit': typeof AppAccessAuditRoute
+  '/access/business-units': typeof AppAccessBusinessUnitsRoute
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/forbidden': typeof AppForbiddenRoute
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
+  '/access/business-units': typeof AppAccessBusinessUnitsRoute
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
@@ -215,6 +223,7 @@ export interface FileRoutesById {
   '/_app/forbidden': typeof AppForbiddenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
+  '/_app/access/business-units': typeof AppAccessBusinessUnitsRoute
   '/_app/access/locations': typeof AppAccessLocationsRoute
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/customer'
     | '/forbidden'
     | '/access/audit'
+    | '/access/business-units'
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
@@ -267,6 +277,7 @@ export interface FileRouteTypes {
     | '/forbidden'
     | '/'
     | '/access/audit'
+    | '/access/business-units'
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | '/_app/forbidden'
     | '/_app/'
     | '/_app/access/audit'
+    | '/_app/access/business-units'
     | '/_app/access/locations'
     | '/_app/access/roles'
     | '/_app/access/users'
@@ -360,6 +372,13 @@ declare module '@tanstack/react-router' {
       path: '/access/audit'
       fullPath: '/access/audit'
       preLoaderRoute: typeof AppAccessAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/access/business-units': {
+      id: '/_app/access/business-units'
+      path: '/access/business-units'
+      fullPath: '/access/business-units'
+      preLoaderRoute: typeof AppAccessBusinessUnitsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/access/locations': {
@@ -496,6 +515,7 @@ interface AppRouteChildren {
   AppForbiddenRoute: typeof AppForbiddenRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccessAuditRoute: typeof AppAccessAuditRoute
+  AppAccessBusinessUnitsRoute: typeof AppAccessBusinessUnitsRoute
   AppAccessLocationsRoute: typeof AppAccessLocationsRoute
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
@@ -521,6 +541,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppForbiddenRoute: AppForbiddenRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccessAuditRoute: AppAccessAuditRoute,
+  AppAccessBusinessUnitsRoute: AppAccessBusinessUnitsRoute,
   AppAccessLocationsRoute: AppAccessLocationsRoute,
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,

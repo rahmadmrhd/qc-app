@@ -1,4 +1,5 @@
 import { assignmentKey } from '@shared/assignments';
+import { ALL_BU_KEY } from '@shared/business-units';
 import type { UserDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ export interface UsersTableProps {
   users: readonly UserDto[];
   roleNames: ReadonlyMap<string, string>;
   locationNames: ReadonlyMap<string, string>;
+  businessUnitNames: ReadonlyMap<string, string>;
   canManage: boolean;
   currentEmail: string;
   pendingStatusId: string | null;
@@ -26,6 +28,7 @@ export function UsersTable({
   users,
   roleNames,
   locationNames,
+  businessUnitNames,
   canManage,
   currentEmail,
   pendingStatusId,
@@ -40,6 +43,7 @@ export function UsersTable({
             <TableHead>Email</TableHead>
             <TableHead>Nama</TableHead>
             <TableHead>Penugasan</TableHead>
+            <TableHead>Penugasan BU</TableHead>
             <TableHead>Status</TableHead>
             {canManage ? <TableHead className="text-right">Aksi</TableHead> : null}
           </TableRow>
@@ -47,7 +51,7 @@ export function UsersTable({
         <TableBody>
           {users.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
+              <TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">
                 Tidak ada user yang cocok.
               </TableCell>
             </TableRow>
@@ -69,6 +73,22 @@ export function UsersTable({
                           entry.locationId === null
                             ? 'Semua lokasi'
                             : (locationNames.get(entry.locationId) ?? '(lokasi tidak dikenal)')
+                        }: ${entry.roleIds.map((id) => roleNames.get(id) ?? '(role dihapus)').join(', ')}`}
+                      </Badge>
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {user.buAssignments.length === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : null}
+                    {user.buAssignments.map((entry) => (
+                      <Badge key={entry.buId ?? ALL_BU_KEY} variant="outline">
+                        {`${
+                          entry.buId === null
+                            ? 'Semua BU'
+                            : (businessUnitNames.get(entry.buId) ?? '(BU tidak dikenal)')
                         }: ${entry.roleIds.map((id) => roleNames.get(id) ?? '(role dihapus)').join(', ')}`}
                       </Badge>
                     ))}

@@ -13,7 +13,11 @@ const user: UserDto = {
     { locationId: 'l-a', roleIds: ['r2', 'hilang'] },
     { locationId: 'l-x', roleIds: ['r1'] },
   ],
-  buAssignments: [],
+  buAssignments: [
+    { buId: null, roleIds: ['r1'] },
+    { buId: 'bu-a', roleIds: ['r2'] },
+    { buId: 'bu-x', roleIds: ['r1'] },
+  ],
   createdAt: '',
   updatedAt: '',
   updatedBy: '',
@@ -30,6 +34,7 @@ test('merangkum penugasan per lokasi dengan nama role, dan menandai yang tidak d
         ])
       }
       locationNames={new Map([['l-a', 'Jakarta']])}
+      businessUnitNames={new Map([['bu-a', 'Retail']])}
       canManage={false}
       currentEmail="x@gmail.com"
       pendingStatusId={null}
@@ -40,14 +45,18 @@ test('merangkum penugasan per lokasi dengan nama role, dan menandai yang tidak d
   expect(screen.getByText('Semua lokasi: Manajer')).toBeInTheDocument();
   expect(screen.getByText('Jakarta: Pemantau, (role dihapus)')).toBeInTheDocument();
   expect(screen.getByText('(lokasi tidak dikenal): Manajer')).toBeInTheDocument();
+  expect(screen.getByText('Semua BU: Manajer')).toBeInTheDocument();
+  expect(screen.getByText('Retail: Pemantau')).toBeInTheDocument();
+  expect(screen.getByText('(BU tidak dikenal): Manajer')).toBeInTheDocument();
 });
 
 test('user tanpa penugasan menampilkan tanda strip', () => {
   render(
     <UsersTable
-      users={[{ ...user, assignments: [] }]}
+      users={[{ ...user, assignments: [], buAssignments: [] }]}
       roleNames={new Map()}
       locationNames={new Map()}
+      businessUnitNames={new Map()}
       canManage={false}
       currentEmail="x@gmail.com"
       pendingStatusId={null}
@@ -55,5 +64,5 @@ test('user tanpa penugasan menampilkan tanda strip', () => {
       onToggleStatus={() => undefined}
     />,
   );
-  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getAllByText('—')).toHaveLength(2);
 });
