@@ -221,7 +221,8 @@ export function validateSaveBusinessUnit(raw: unknown): SaveBusinessUnitInput {
   const id = reader.optionalId('id');
   const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
   const name = reader.str('name', { required: true, max: 100 });
-  if (code !== '' && code.length <= 10 && !LOCATION_CODE_PATTERN.test(code)) {
+  // `toUpperCase()` dapat memanjangkan teks (mis. "ŉ" -> "ʼN"): panjang dan pola diperiksa SETELAH huruf besar.
+  if (code !== '' && (code.length > 10 || !LOCATION_CODE_PATTERN.test(code))) {
     reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
   }
   reader.done();

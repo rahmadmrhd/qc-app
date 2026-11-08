@@ -26,7 +26,7 @@ export interface UserRecord {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
-  /** Penugasan BU (`buId: null` = Semua BU); kosong/rusak dibaca `[]` (backfill hak lama bukan tugas pembaca). */
+  /** Penugasan BU (`buId: null` = Semua BU); kosong/rusak dibaca `[]` (tanpa penugasan BU). */
   buAssignments: BuAssignment[];
   createdAt: string;
   updatedAt: string;
@@ -355,12 +355,21 @@ export function insertBusinessUnitStmt(db: Db, bu: BusinessUnitRecord): DbStatem
     .bind(bu.id, bu.code, bu.name, bu.status, bu.createdAt, bu.updatedAt, bu.updatedBy);
 }
 
-export function updateBusinessUnitStmt(db: Db, bu: BusinessUnitRecord): DbStatement {
+/**
+ * Ganti nama dan setel status ditulis oleh pernyataan TERPISAH yang hanya menyentuh kolomnya sendiri: keduanya
+ * membaca baris lebih dulu tanpa kunci, jadi menulis ulang kolom yang tidak diubahnya akan membatalkan perubahan
+ * serentak (mis. ganti nama yang bersamaan dengan nonaktifkan mengaktifkan BU kembali).
+ */
+export function renameBusinessUnitStmt(db: Db, bu: BusinessUnitRecord): DbStatement {
   return db
-    .prepare(
-      'UPDATE business_units SET name = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?',
-    )
-    .bind(bu.name, bu.status, bu.updatedAt, bu.updatedBy, bu.id);
+    .prepare('UPDATE business_units SET name = ?, updated_at = ?, updated_by = ? WHERE id = ?')
+    .bind(bu.name, bu.updatedAt, bu.updatedBy, bu.id);
+}
+
+export function setBusinessUnitStatusStmt(db: Db, bu: BusinessUnitRecord): DbStatement {
+  return db
+    .prepare('UPDATE business_units SET status = ?, updated_at = ?, updated_by = ? WHERE id = ?')
+    .bind(bu.status, bu.updatedAt, bu.updatedBy, bu.id);
 }
 
 /**

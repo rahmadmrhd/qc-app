@@ -2,6 +2,7 @@
 
 Status: disetujui pemilik produk 2026-11-08 ("lanjut pengerjaan BU"); rencana implementasi: `docs/superpowers/plans/2026-11-08-business-unit-tahap-1.md`. Tanggal: 2026-11-08.
 Cabang kerja: `feat/stiker-management` (dari `origin/dev`).
+Diperbarui 2026-11-09: tidak ada backfill hak lama (keputusan 14); §5.7, anti-tujuan, dan log keputusan disesuaikan.
 
 ## 1. Latar dan tujuan
 
@@ -36,6 +37,8 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 11. Saat rilis tidak ada item di staging maupun production, jadi **tidak ada migrasi data item**.
 12. **Modul sinkron QC Desktop lama dihapus** (diputuskan 2026-11-08, pemilik produk): QC Desktop dibuat ulang dengan Electron di monorepo ini dan tidak memakai kontrak lama. Rute `/api/v1/sync/*`, `SYNC_API_TOKEN`, kolom `sync_rev` (brands, items), tabel `sync_state`, dan `docs/api/desktop-sync.md` dihapus (migrasi `0002_hapus_sync_rev.sql`, cabang `chore/hapus-sinkron-desktop`, mendahului tahap 1). Karena itu tahap 1 tidak punya jalur sinkron yang perlu difilter BU; bentuk kabel dan otorisasi BU untuk Desktop baru dibahas saat Desktop dirancang (`docs/superpowers/specs/2026-11-06-qc-desktop-country-lock-design.md`).
 13. **Mengubah item yang berada di beberapa BU** hanya boleh dilakukan user yang berhak ubah pada **semua BU item itu** (diputuskan 2026-11-08).
+14. **Tidak ada backfill hak lama** (diputuskan 2026-11-09, pemilik produk): staging dan production belum punya data merk maupun item, jadi hak `item` pengguna lama tidak dimigrasikan ke penugasan BU. Setelah rilis, user lama tidak punya penugasan BU (tidak melihat item apa pun) sampai pemegang `access: manage` menugaskan BU kepadanya lewat form user; super admin (`ADMIN_EMAIL`) tetap berhak penuh. Ini menegaskan keputusan 11 (tidak ada migrasi data) dan menggantikan rancangan awal §5.7 (satu penugasan Semua BU hasil gabungan role lokasi) yang telah dibuang.
+15. **Field `buAssignments` wajib ada saat menyimpan user** (diputuskan 2026-11-09, pemilik produk): permintaan `access.users.save` tanpa `buAssignments` ditolak `VALIDATION` (422), tidak dianggap "pertahankan penugasan yang ada". Alasan: rilis ini mengubah sistem izin; admin dengan tab web lama yang terbuka saat deploy harus memuat ulang agar tidak menyimpan user dari form yang belum mengenal penugasan BU. Dijaga `validate.test.ts` dan `rest.test.ts`.
 
 ## 4. Lingkup tahap 1
 
@@ -56,7 +59,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 ### Anti-tujuan (dianggap gagal walau secara teknis jalan)
 - Data item bocor lintas BU lewat jalur mana pun yang dipakai **user**: daftar, jumlah, detail, pencarian, berkas gambar item, OpenAPI, atau `GET /api/v1/me`. Pengecualian yang disengaja: (a) log audit tetap terlihat utuh oleh pemegang `access: view` (administrator); (b) angka `item_count` pada halaman Merk tetap total global (angka saja, tanpa identitas item); (c) tidak ada pengecualian untuk sinkron: modul sinkron lama sudah dihapus (keputusan 12), jadi tidak ada jalur token tanpa user yang melewati filter BU.
 - Item yang tidak terlihat oleh siapa pun karena tidak punya BU.
-- Melemahkan izin lokasi yang sudah ada, atau membuat hak user lama hilang diam-diam saat rilis.
+- Melemahkan izin lokasi yang sudah ada. (Hak `item` user lama tidak dimigrasikan; disengaja dan tidak ada data yang terdampak, lihat keputusan 14.)
 
 ## 5. Desain
 
@@ -108,7 +111,7 @@ Perilaku mengikuti `LinkModel` erp_pataya, diadaptasi ke pola proyek ini (TanSta
 ### 5.7 Migrasi skema dan data pengguna
 - Migrasi baru (`server/migrations/NNNN_…`), idempoten dan kompatibel mundur (tambah tabel/kolom saja; sesuai aturan expand→contract di `CLAUDE.md`).
 - **Bootstrap:** tidak ada BU awal (seed). Pemegang `access: manage` membuat BU pertama lewat halaman BU sebelum item bisa dibuat. "Semua BU" berarti seluruh BU yang ada sekarang dan yang dibuat kemudian.
-- Pengguna lama: karena `item` tidak lagi dihitung dari penugasan lokasi, migrasi mengisi `bu_assignments` setiap user yang sebelumnya punya level `item` dengan satu penugasan **Semua BU** berisi gabungan role dari seluruh penugasan lokasinya. Hasilnya hak item mereka sama seperti sebelum rilis. (Keputusan saya; lihat bagian 8.)
+- **Pengguna lama (keputusan 14, 2026-11-09): tidak ada backfill.** `item` tidak lagi dihitung dari penugasan lokasi dan `users.bu_assignments` kosong dibaca sebagai tanpa penugasan BU. Karena staging dan production belum punya merk atau item, tidak ada data yang hilang aksesnya; pemegang `access: manage` menugaskan BU kepada user lewat form user. Tidak ada kode migrasi data, hanya DDL.
 
 ## 6. Kendala dan konvensi yang wajib diikuti
 - Aturan server di `CLAUDE.md`: adaptor `Db`, CAS di `batch()`, kolasi `utf8mb4_nopad_bin` dengan kolom `key`/`name_key`, tes memakai MariaDB sungguhan dan tes konkurensi `Promise.all`.
@@ -143,5 +146,5 @@ Nama berkas/modul, nama kolom dan indeks persis, bentuk DTO, desain visual halam
 - Penugasan BU user disimpan sebagai JSON `users.bu_assignments` (pola `users.assignments`), sedangkan relasi data (item, merk) memakai tabel penghubung sesuai permintaan.
 - BU bawaan merk boleh banyak (nol atau lebih).
 - Item wajib punya minimal satu BU.
-- Pengguna lama dimigrasikan ke penugasan **Semua BU** dengan gabungan rolenya, agar hak `item` tidak berubah saat rilis.
+- ~~Pengguna lama dimigrasikan ke penugasan **Semua BU** dengan gabungan rolenya, agar hak `item` tidak berubah saat rilis.~~ **Dibatalkan** oleh pemilik produk 2026-11-09 (keputusan 14): tidak ada backfill karena belum ada data merk/item di staging dan production.
 - Detail item di luar hak BU dijawab `NOT_FOUND`.

@@ -1,4 +1,3 @@
-import type { Assignment } from './assignments';
 import type { Level, PartialPermissionMap } from './permissions';
 import { levelRank, mergePermissions } from './permissions';
 
@@ -132,21 +131,4 @@ export function canActOnAllBus(
     const permissions = byBu[buId];
     return permissions !== undefined && levelRank(permissions[module]) >= required;
   });
-}
-
-/**
- * Hak lama -> penugasan BU (backfill saat rilis BU): bila ada role (dari seluruh penugasan lokasi) yang memberi level
- * `item`, hasilnya satu penugasan "Semua BU" berisi gabungan role tak kembar dari semua penugasan; selain itu kosong.
- */
-export function legacyBuAssignments(
-  assignments: readonly Assignment[],
-  rolePermissions: ReadonlyMap<string, PartialPermissionMap>,
-): BuAssignment[] {
-  const roleIds: string[] = [];
-  for (const entry of assignments) {
-    for (const id of entry.roleIds) if (!roleIds.includes(id)) roleIds.push(id);
-  }
-  const merged = mergePermissions(permissionSources(roleIds, rolePermissions));
-  if (merged.item === 'none') return [];
-  return [{ buId: null, roleIds }];
 }

@@ -2,35 +2,50 @@ import { writeAudit } from '@server/core/audit';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { resolveBuAccess } from '@shared/business-units';
 import type {
   BusinessUnitDto,
   BusinessUnitOptionDto,
   SaveBusinessUnitInput,
   SetBusinessUnitStatusInput,
 } from '@shared/contract';
+import type { PartialPermissionMap } from '@shared/permissions';
 import type { UserContext } from './context';
-import type { BusinessUnitRecord, UserRecord } from './repo';
+import type { BusinessUnitRecord, RoleRecord, UserRecord } from './repo';
 import {
   batchWrite,
   countItemsByBu,
   insertBusinessUnitStmt,
   listBusinessUnitBriefs,
   loadAccessTables,
-  updateBusinessUnitStmt,
+  renameBusinessUnitStmt,
+  setBusinessUnitStatusStmt,
 } from './repo';
 
-/** User yang punya penugasan "Semua BU" atau penugasan eksplisit ke BU ini (dengan minimal satu role). */
-function userCountOf(buId: string, users: readonly UserRecord[]): number {
-  return users.filter((user) =>
-    user.buAssignments.some(
-      (entry) => entry.roleIds.length > 0 && (entry.buId === null || entry.buId === buId),
-    ),
+/**
+ * User AKTIF yang saat ini berhak atas BU ini: penugasan "Semua BU" atau eksplisit ke BU ini dengan role yang memberi
+ * level modul ber-BU (`item`) selain `none`. Angka ini dipakai untuk peringatan saat BU dinonaktifkan (spek 5.3).
+ */
+function userCountOf(
+  buId: string,
+  users: readonly UserRecord[],
+  rolePermissions: ReadonlyMap<string, PartialPermissionMap>,
+): number {
+  return users.filter(
+    (user) =>
+      user.status === 'active' &&
+      resolveBuAccess(user.buAssignments, rolePermissions, [buId])[buId] !== undefined,
   ).length;
+}
+
+function rolePermissionMap(roles: readonly RoleRecord[]): Map<string, PartialPermissionMap> {
+  return new Map(roles.map((role) => [role.id, role.permissions]));
 }
 
 function toBusinessUnitDto(
   bu: BusinessUnitRecord,
   users: readonly UserRecord[],
+  roles: readonly RoleRecord[],
   itemCounts: ReadonlyMap<string, number>,
 ): BusinessUnitDto {
   return {
@@ -39,7 +54,7 @@ function toBusinessUnitDto(
     name: bu.name,
     status: bu.status,
     itemCount: itemCounts.get(bu.id) ?? 0,
-    userCount: userCountOf(bu.id, users),
+    userCount: userCountOf(bu.id, users, rolePermissionMap(roles)),
     createdAt: bu.createdAt,
     updatedAt: bu.updatedAt,
     updatedBy: bu.updatedBy,
@@ -58,11 +73,11 @@ const BUSINESS_UNIT_CONFLICTS = {
 const byCode = (a: { code: string }, b: { code: string }) => a.code.localeCompare(b.code);
 
 export async function listBusinessUnitDtos(env: Env): Promise<BusinessUnitDto[]> {
-  const [{ users, businessUnits }, itemCounts] = await Promise.all([
+  const [{ users, roles, businessUnits }, itemCounts] = await Promise.all([
     loadAccessTables(env),
     countItemsByBu(env),
   ]);
-  return businessUnits.map((bu) => toBusinessUnitDto(bu, users, itemCounts)).sort(byCode);
+  return businessUnits.map((bu) => toBusinessUnitDto(bu, users, roles, itemCounts)).sort(byCode);
 }
 
 /** Daftar BU ringkas (semua status) untuk pemilih; tanpa hitungan. */
@@ -71,8 +86,11 @@ export async function listBusinessUnitOptions(env: Env): Promise<BusinessUnitOpt
 }
 
 async function dtoAfterWrite(env: Env, bu: BusinessUnitRecord): Promise<BusinessUnitDto> {
-  const [{ users }, itemCounts] = await Promise.all([loadAccessTables(env), countItemsByBu(env)]);
-  return toBusinessUnitDto(bu, users, itemCounts);
+  const [{ users, roles }, itemCounts] = await Promise.all([
+    loadAccessTables(env),
+    countItemsByBu(env),
+  ]);
+  return toBusinessUnitDto(bu, users, roles, itemCounts);
 }
 
 export async function saveBusinessUnit(
@@ -108,7 +126,7 @@ export async function saveBusinessUnit(
     await batchWrite(
       env.DB,
       [
-        updateBusinessUnitStmt(env.DB, updated),
+        renameBusinessUnitStmt(env.DB, updated),
         writeAudit(env.DB, {
           ts: now,
           actor: actor.email,
@@ -168,7 +186,7 @@ export async function setBusinessUnitStatus(
     updatedBy: actor.email,
   };
   await env.DB.batch([
-    updateBusinessUnitStmt(env.DB, updated),
+    setBusinessUnitStatusStmt(env.DB, updated),
     writeAudit(env.DB, {
       ts: now,
       actor: actor.email,

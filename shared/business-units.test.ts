@@ -6,7 +6,6 @@ import {
   canActOnAllBus,
   fullBuPermissions,
   globalBuLevel,
-  legacyBuAssignments,
   resolveBuAccess,
   sanitizeBuAssignments,
 } from './business-units';
@@ -158,50 +157,5 @@ describe('buIdsWithLevel dan canActOnAllBus', () => {
     expect(canActOnAllBus(byBu, 'item', 'edit', ['A', 'C'])).toBe(true);
     expect(canActOnAllBus(byBu, 'item', 'view', ['A', 'B', 'C'])).toBe(true);
     expect(canActOnAllBus(byBu, 'item', 'manage', ['A'])).toBe(true);
-  });
-});
-
-describe('legacyBuAssignments', () => {
-  test('tanpa role item: tidak ada penugasan BU', () => {
-    expect(legacyBuAssignments([{ locationId: null, roleIds: ['handover'] }], roles)).toEqual([]);
-    expect(legacyBuAssignments([], roles)).toEqual([]);
-  });
-
-  test('role item di dua penugasan lokasi: satu penugasan Semua BU berisi gabungan role', () => {
-    expect(
-      legacyBuAssignments(
-        [
-          { locationId: 'L1', roleIds: ['a', 'x'] },
-          { locationId: 'L2', roleIds: ['b', 'x'] },
-        ],
-        new Map<string, PartialPermissionMap>([
-          ['a', { item: 'view' }],
-          ['b', { handover: 'edit' }],
-          ['x', { qc: 'edit' }],
-        ]),
-      ),
-    ).toEqual([{ buId: null, roleIds: ['a', 'x', 'b'] }]);
-  });
-
-  test('role item pada Semua lokasi juga dihitung', () => {
-    expect(legacyBuAssignments([{ locationId: null, roleIds: ['edit'] }], roles)).toEqual([
-      { buId: null, roleIds: ['edit'] },
-    ]);
-  });
-
-  test('role gabungan dari dua penugasan lokasi', () => {
-    const map = new Map<string, PartialPermissionMap>([
-      ['a', { item: 'view' }],
-      ['b', { handover: 'view' }],
-    ]);
-    expect(
-      legacyBuAssignments(
-        [
-          { locationId: 'L1', roleIds: ['a'] },
-          { locationId: 'L2', roleIds: ['b'] },
-        ],
-        map,
-      ),
-    ).toEqual([{ buId: null, roleIds: ['a', 'b'] }]);
   });
 });

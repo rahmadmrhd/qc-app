@@ -3,8 +3,8 @@
 --
 -- EXPAND-ONLY, kompatibel mundur: hanya menambah tabel/kolom. Image sebelumnya tidak mengenal ketiganya dan tetap
 -- berjalan di atas skema ini (pengembalian otomatis `deploy.sh` hanya mengganti image, tidak membatalkan migrasi).
--- Hak `item` pengguna lama dipindahkan ke `users.bu_assignments` oleh `backfillBuAssignments` saat server start (kode,
--- bukan SQL; idempoten).
+-- Tidak ada backfill: saat rilis ini staging dan production belum punya data merk/item (keputusan pemilik 2026-11-09),
+-- jadi hak `item` lama tidak dimigrasikan; admin menugaskan BU ke user lewat halaman user.
 --
 -- Idempoten (IF NOT EXISTS): aman dijalankan ulang (DDL MariaDB tidak transaksional). Kolom string mengikuti tabel
 -- `locations`; tanpa kunci asing (BU tidak pernah dihapus, hanya dinonaktifkan; keutuhan dijaga kode dalam `batch()`).
@@ -40,5 +40,5 @@ CREATE TABLE IF NOT EXISTS brand_default_business_units (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Penugasan BU user: JSON daftar { buId: string | null, roleIds: string[] } (null = Semua BU), pola `assignments`.
--- Kosong ('') = belum pernah diisi: itulah penanda baris yang masih harus di-backfill dari hak lama.
+-- Kosong ('') dibaca sebagai tanpa penugasan BU (tidak melihat item apa pun).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bu_assignments LONGTEXT NOT NULL DEFAULT '';

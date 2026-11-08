@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Alur eksekusi mengikuti `~/.claude/CLAUDE.md` pemilik (satu putaran: implementasi semua task tanpa review per task → satu review independen + `security-audit` pada diff → putaran perbaikan); kolom **Kelas** di tiap task = model subagent yang disarankan (Haiku: mekanis; Sonnet: logika inti).
 
-**Goal:** Membatasi data item menurut Business Unit (BU) milik user, dengan hak per BU, tanpa mengubah hak pengguna lama saat rilis.
+**Goal:** Membatasi data item menurut Business Unit (BU) milik user, dengan hak per BU. (Diperbarui 2026-11-09, keputusan 14 spek: tanpa backfill hak pengguna lama; staging dan production belum punya data merk/item.)
 
 **Architecture:** Tabel master `business_units` + tabel penghubung `item_business_units` dan `brand_default_business_units`; kolom JSON `users.bu_assignments` (pola `users.assignments`); modul ber-BU generik (`BU_MODULES = ['item']`) dihitung `resolveAccess` menjadi `byBu`; semua jalur baca item difilter di SQL, jalur tulis memeriksa hak pada SEMUA BU item. Form web memakai komponen `LinkField` (pilih record, chip untuk banyak pilihan).
 
@@ -31,29 +31,28 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 2. **Bootstrap tanpa BU sama sekali** (admin pertama): `items.save` baru gagal dengan pesan jelas "buat BU dulu"; Merk/Customer tetap bisa dikelola oleh user "Semua BU" meski belum ada BU (T4, T6).
 3. **Mass assignment/IDOR**: `items.save` dengan `businessUnitIds` berisi BU yang tak dikenal, nonaktif, atau tanpa hak `edit` user → `FORBIDDEN`/`VALIDATION`; `items.get`/`files.get` untuk item/berkas BU lain tidak membocorkan keberadaan (`NOT_FOUND`) (T5, T6, T7).
 4. **Item multi-BU**: user `edit` di BU A tetapi hanya `view` di BU B tidak boleh mengubah/menonaktifkan item A+B, tetapi boleh melihatnya (T6).
-5. **Konkurensi**: dua `items.save` serentak yang mengubah himpunan BU item yang sama tidak meninggalkan baris penghubung ganda/yatim dan tidak menggandakan item (T6); backfill hak pengguna lama aman dijalankan berulang (T2).
+5. **Konkurensi**: dua `items.save` serentak yang mengubah himpunan BU item yang sama tidak meninggalkan baris penghubung ganda/yatim dan tidak menggandakan item (T6).
 
 ## Keputusan Plan (ambil dari kekosongan spek; ditandai agar pemilik bisa mengoreksi)
 
 1. **Ekspor Sheets** (`exports.sheets`, `access: manage`) mengekspor seluruh item tanpa filter BU; dicatat sebagai pengecualian (d) di spek. *Menunggu konfirmasi pemilik* (spek menyebut "ekspor" di jalur baca terfilter).
 2. Rute `businessUnits.options` (GET `/business-units/options`, izin `item: view`) memberi daftar BU ringkas untuk pemilih (Merk dan form item) bagi user tanpa `access: view`.
-3. Backfill hak pengguna lama dikerjakan **di kode saat start** (`backfillBuAssignments`, dipanggil `main.ts` setelah `prepareDatabase`), bukan SQL `JSON_TABLE`: idempoten (hanya baris `bu_assignments = ''`) dan dapat diuji unit.
+3. ~~Backfill hak pengguna lama di kode saat start (`backfillBuAssignments`).~~ **Dibatalkan 2026-11-09 (keputusan 14 spek, pemilik produk):** tidak ada backfill karena belum ada data merk/item di staging dan production; `bu_assignments` kosong dibaca `[]` (tanpa penugasan BU). `bu-backfill.ts`, `legacyBuAssignments`, dan pemanggilan di `main.ts` dihapus.
 4. `ItemSummaryDto`/`ItemDto` membawa `businessUnits: BusinessUnitRefDto[]` (`{id, code, name}`, semua BU item), supaya tabel dan detail menampilkan chip tanpa kueri tambahan.
 5. `SaveItemInput.brand` (nama) diganti `brandId` (konsekuensi LinkField, spek 5.5); merk tak lagi dibuat diam-diam dari teks.
 6. `LinkField` menerima `options` + `onSearchChange` sebagai properti (sumber data dari pemakai); Merk dan BU memfilter daftar yang sudah di-cache di klien (daftar kecil), debounce dan batas hasil dikerjakan di komponen (spek bagian 7 menyerahkannya kepada pelaksana).
-7. `BusinessUnitDto.userCount` = jumlah user yang `bu_assignments`-nya memuat BU itu secara eksplisit atau "Semua BU"; `itemCount` = jumlah baris `item_business_units`.
+7. `BusinessUnitDto.userCount` = jumlah user **aktif** yang berhak atas BU itu (penugasan eksplisit atau "Semua BU" dengan role yang memberi level `item` selain `none`; diputuskan pemilik 2026-11-09 setelah review T1-T4); `itemCount` = jumlah baris `item_business_units`.
 
 ## File Structure
 
 | Berkas | Tanggung jawab |
 |---|---|
-| `shared/business-units.ts` (baru) | Tipe & fungsi murni BU: `BU_MODULES`, `BuAssignment`, `sanitizeBuAssignments`, `resolveBuAccess`, `buIdsWithLevel`, `canActOnAllBus`, `legacyBuAssignments` |
+| `shared/business-units.ts` (baru) | Tipe & fungsi murni BU: `BU_MODULES`, `BuAssignment`, `sanitizeBuAssignments`, `resolveBuAccess`, `buIdsWithLevel`, `canActOnAllBus` |
 | `shared/assignments.ts` | `resolveAccess` menerima penugasan BU; `item` keluar dari `SHARED_MODULES` |
 | `shared/contract.ts`, `shared/api.ts` | DTO/input/rute BU, perubahan Me/User/Item/Brand |
 | `server/migrations/0004_business_units.sql` | tabel + kolom baru |
 | `server/src/modules/access/business-unit-service.ts` (baru) | master BU (pola `location-service.ts`) |
 | `server/src/modules/access/{repo,context,service,validate,routes}.ts` | catatan BU, konteks akses, penugasan BU user, rute |
-| `server/src/modules/access/bu-backfill.ts` (baru) | backfill hak lama |
 | `server/src/modules/item/{repo,service,validate,routes}.ts` | relasi item↔BU, filter baca, aturan tulis, `brandId` |
 | `server/src/modules/brand/{repo,service,validate}.ts` | BU bawaan merk |
 | `server/src/modules/files/{service,routes}.ts` | pemeriksaan BU berkas item |
@@ -80,10 +79,9 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
   - `buIdsWithLevel(byBu: Record<string, BuPermissionMap>, module: BuModule, level: Level): string[]`
   - `canActOnAllBus(byBu, module: BuModule, level: Level, buIds: readonly string[]): boolean` — `true` hanya bila `buIds` tak kosong dan tiap id punya level ≥ `level`.
   - `fullBuPermissions(): BuPermissionMap` (`{ item: 'manage' }`).
-  - `legacyBuAssignments(assignments: readonly Assignment[], rolePermissions: ReadonlyMap<string, PartialPermissionMap>): BuAssignment[]` — bila ada role (dari seluruh penugasan lokasi) yang memberi level `item` ≠ `none`: `[{ buId: null, roleIds: <gabungan role id tak kembar dari semua penugasan> }]`, selain itu `[]`.
 - Produces (di `shared/assignments.ts`): `ResolvedAccess` bertambah `byBu: Record<string, BuPermissionMap>`; `resolveAccess(assignments, rolePermissions, activeLocationIds, bu: { assignments: readonly BuAssignment[]; allBuIds: readonly string[] } = { assignments: [], allBuIds: [] })`; `global.item = globalBuLevel(bu.assignments, rolePermissions, 'item')` (sumber `item` global hanya penugasan BU); `SHARED_MODULES = ['qrcode']`.
 
-- [ ] **Step 1: Tulis tes gagal** di `shared/business-units.test.ts` (dan perbarui `assignments.test.ts`): `sanitizeBuAssignments` (bukan array → `[]`; `buId` hilang/kosong dibuang; `null` eksplisit = Semua BU; id kembar digabung); `resolveBuAccess`: "Semua BU" + penugasan BU A menggabung level tertinggi untuk A dan hanya "Semua BU" untuk B; id tak dikenal diabaikan; role tak dikenal diabaikan; `canActOnAllBus(byBu,'item','edit',[])` = `false`; `canActOnAllBus` `false` bila satu BU hanya `view`; `legacyBuAssignments` → `[]` untuk role tanpa `item`, `[{buId:null, roleIds:['a','b']}]` untuk role gabungan dari dua penugasan lokasi; `resolveAccess` `global.item` = `'none'` bila user hanya punya role `item` di penugasan lokasi (bukan penugasan BU) dan `'view'` bila role `item: view` ada di penugasan BU; `SHARED_MODULES` tidak memuat `'item'` (ubah asersi lama yang mengharapkan `item` dihitung dari penugasan lokasi).
+- [ ] **Step 1: Tulis tes gagal** di `shared/business-units.test.ts` (dan perbarui `assignments.test.ts`): `sanitizeBuAssignments` (bukan array → `[]`; `buId` hilang/kosong dibuang; `null` eksplisit = Semua BU; id kembar digabung); `resolveBuAccess`: "Semua BU" + penugasan BU A menggabung level tertinggi untuk A dan hanya "Semua BU" untuk B; id tak dikenal diabaikan; role tak dikenal diabaikan; `canActOnAllBus(byBu,'item','edit',[])` = `false`; `canActOnAllBus` `false` bila satu BU hanya `view`; `resolveAccess` `global.item` = `'none'` bila user hanya punya role `item` di penugasan lokasi (bukan penugasan BU) dan `'view'` bila role `item: view` ada di penugasan BU; `SHARED_MODULES` tidak memuat `'item'` (ubah asersi lama yang mengharapkan `item` dihitung dari penugasan lokasi).
 - [ ] **Step 2: Jalankan, pastikan gagal**: `bun run --cwd shared test` → FAIL (modul `./business-units` belum ada).
 - [ ] **Step 3: Implementasikan** `shared/business-units.ts` dengan signature di atas dan ubah `resolveAccess`/`SHARED_MODULES` di `shared/assignments.ts`. Gunakan `mergePermissions` dari `./permissions` untuk gabungan level; `sanitizeBuAssignments` boleh meniru `sanitizeAssignments`.
 - [ ] **Step 4: Jalankan**: `bun run --cwd shared test` dan `bun run typecheck` → PASS (typecheck server akan merah sampai T4: biarkan, T1 hanya menjamin `shared`; bila typecheck server gagal karena `resolveAccess`/`SHARED_MODULES`, perbaiki hanya pemanggilnya secara minimal dengan argumen bawaan).
@@ -91,24 +89,22 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 
 ---
 
-### Task 2: Migrasi `0004`, backfill hak lama, fixture tes (Kelas: Sonnet)
+### Task 2: Migrasi `0004`, fixture tes (Kelas: Sonnet; tanpa backfill, keputusan 14)
 
 **Files:**
-- Create: `server/migrations/0004_business_units.sql`, `server/src/modules/access/bu-backfill.ts`, `server/src/modules/access/bu-backfill.test.ts`
-- Modify: `server/src/main.ts` (panggil backfill), `server/src/core/migrate.test.ts`, `server/test-support/access-fixtures.ts`, `server/test-support/item-fixtures.ts`, `server/scripts/seed-data.ts` (+ `server/scripts/seed.test.ts`)
+- Create: `server/migrations/0004_business_units.sql`
+- Modify: `server/src/core/migrate.test.ts`, `server/test-support/access-fixtures.ts`, `server/test-support/item-fixtures.ts`, `server/scripts/seed-data.ts` (+ `server/scripts/seed.test.ts`)
 
 **Interfaces:**
-- Consumes: `legacyBuAssignments`, `sanitizeAssignments`, `sanitizePermissions` (T1, shared).
 - Produces: tabel `business_units(id, code, name, status, created_at, updated_at, updated_by, name_key VIRTUAL LOWER(name), UNIQUE business_units_code_unique(code), UNIQUE business_units_name_unique(name_key))`, `item_business_units(item_id, bu_id, PRIMARY KEY(item_id, bu_id), KEY item_business_units_bu(bu_id))`, `brand_default_business_units(brand_id, bu_id, PRIMARY KEY(brand_id, bu_id), KEY brand_default_business_units_bu(bu_id))`, `ALTER TABLE users ADD COLUMN IF NOT EXISTS bu_assignments LONGTEXT NOT NULL DEFAULT ''` (semua `ENGINE=InnoDB ... COLLATE=utf8mb4_nopad_bin`, kolom string mengikuti tipe tabel `locations`).
-- `backfillBuAssignments(db: Db): Promise<number>` — membaca user ber-`bu_assignments = ''`, menulis `JSON.stringify(legacyBuAssignments(<penugasan user>, <role map>))` (`'[]'` bila tak ada role `item`), mengembalikan jumlah baris. Penugasan user dibaca seperti `readAssignments` di `access/context.ts` (kolom `assignments`, fallback `role_ids` sebagai "Semua lokasi").
 - `seedBusinessUnit(env: Pick<Env,'DB'>, bu: { id: string; code: string; name?: string; status?: 'active'|'inactive' }): Promise<void>`; `seedUser` menerima `buAssignments?: BuAssignment[]` dan, bila `roleIds` dipakai tanpa `buAssignments`, menulis `bu_assignments = [{buId:null, roleIds}]` (agar tes lama yang memberi role `item` tetap berlaku); `seedItem` menerima `businessUnitIds?: string[]` (bawaan `['bu-umum']` dan memastikan BU `bu-umum` (kode `DEF`, nama "BU Bawaan Tes") ada, idempoten) lalu menyisipkan `item_business_units`.
 
-- [ ] **Step 1: Tulis tes gagal.** `migrate.test.ts`: `EXPECTED_TABLES` menjadi 23 tabel (tambah tiga), judul "23 tabel aplikasi + schema_migrations", daftar migrasi memuat `0004_business_units.sql`, indeks `business_units.business_units_code_unique`, `business_units.business_units_name_unique`, `item_business_units.item_business_units_bu`, `brand_default_business_units.brand_default_business_units_bu`, kolom `users.bu_assignments` ada. `bu-backfill.test.ts` (memakai `createTestEnv`, `seedRole`, `seedUser`): (a) user dengan role `item: edit` di dua penugasan lokasi → `bu_assignments` = `[{buId:null, roleIds:[...kedua role...]}]`; (b) user hanya role `handover` → `'[]'`; (c) user yang `bu_assignments` sudah `'[]'`/terisi tidak disentuh; (d) dijalankan dua kali → kedua kali kedua = 0 baris.
-- [ ] **Step 2: Jalankan, pastikan gagal**: `bun run --cwd server test src/core/migrate.test.ts src/modules/access/bu-backfill.test.ts` → FAIL.
-- [ ] **Step 3: Tulis migrasi** `0004_business_units.sql` (header komentar: tahap 1 BU, expand-only, kompatibel mundur) dengan DDL di atas; implementasikan `bu-backfill.ts`; panggil `await backfillBuAssignments(db)` di `server/src/main.ts` tepat setelah `prepareDatabase` (galatnya diperlakukan seperti kegagalan start: log + keluar kode 1).
+- [ ] **Step 1: Tulis tes gagal.** `migrate.test.ts`: `EXPECTED_TABLES` menjadi 23 tabel (tambah tiga), judul "23 tabel aplikasi + schema_migrations", daftar migrasi memuat `0004_business_units.sql`, indeks `business_units.business_units_code_unique`, `business_units.business_units_name_unique`, `item_business_units.item_business_units_bu`, `brand_default_business_units.brand_default_business_units_bu`, kolom `users.bu_assignments` ada.
+- [ ] **Step 2: Jalankan, pastikan gagal**: `bun run --cwd server test src/core/migrate.test.ts` → FAIL.
+- [ ] **Step 3: Tulis migrasi** `0004_business_units.sql` (header komentar: tahap 1 BU, expand-only, kompatibel mundur) dengan DDL di atas (tanpa backfill; `main.ts` tidak berubah).
 - [ ] **Step 4: Perbarui fixture dan seed:** `seedBusinessUnit`, `seedUser` ber-BU, `seedItem` ber-BU seperti di Interfaces; `seed-data.ts` membuat dua BU contoh (`UM`/"Umum" dan `ENT`/"Enterprise"), memberi user admin dev penugasan BU "Semua BU" (role admin yang sudah ada), dan menautkan tiap item contoh ke BU `UM`; sesuaikan `seed.test.ts`.
 - [ ] **Step 5: Jalankan**: `bun run --cwd server test src/core src/modules/access scripts` → PASS (suite lain memang akan merah sampai T4–T6 selesai karena `item` kini hanya dari penugasan BU; fixture di atas menjaga mayoritasnya hijau).
-- [ ] **Step 6: Commit** `git add server && git commit -m "feat(server): migrasi 0004 BU, backfill hak lama, fixture tes"`.
+- [ ] **Step 6: Commit** `git add server && git commit -m "feat(server): migrasi 0004 BU dan fixture tes"`.
 
 ---
 
@@ -149,7 +145,7 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 
 - [ ] **Step 1: Tulis tes gagal.** (a) `loadUserContext`: user ber-penugasan "Semua BU" (role `item: edit`) dengan dua BU → `businessUnits` memuat keduanya `{item:'edit'}`, `permissions.item === 'edit'`; penugasan BU A saja → hanya A; BU id basi di `bu_assignments` diabaikan tanpa galat; user tanpa penugasan BU → `businessUnits = {}`, `permissions.item === 'none'`; user hanya role `item` di penugasan LOKASI → `permissions.item === 'none'` (perubahan perilaku disengaja); super admin → semua BU `manage`, tanpa BU sama sekali → `{}` dan `permissions.item === 'manage'`; JSON `bu_assignments` rusak → `[]`. (b) `auth.me` memuat `businessUnits` terurut menurut kode dengan `permissions` yang benar dan mencakup BU nonaktif yang berhak. (c) `access.users.save`: round-trip `buAssignments`; BU nonaktif baru ditolak, BU nonaktif yang sudah ditugaskan boleh dipertahankan; dua entri BU sama → `VALIDATION`; audit `user.update` memuat `buAssignments`. (d) menghapus role yang dipakai hanya lewat penugasan BU → `CONFLICT`.
 - [ ] **Step 2: Jalankan, pastikan gagal**: `bun run --cwd server test src/modules/access src/modules/auth` → FAIL.
-- [ ] **Step 3: Implementasikan** perubahan di atas. `readBuAssignments(row)`: `bu_assignments` kosong/rusak → `[]` (BUKAN turunan legacy; itu tugas backfill).
+- [ ] **Step 3: Implementasikan** perubahan di atas. `readBuAssignments(row)`: `bu_assignments` kosong/rusak → `[]` (BUKAN turunan legacy; tidak ada backfill, keputusan 14).
 - [ ] **Step 4: Jalankan** seluruh tes server yang menyentuh izin `item` (`bun run --cwd server test src/modules src/http src/routes.test.ts`); perbaiki fixture tes yang bergantung pada `item` dari penugasan lokasi dengan `seedUser({ roleIds })` (T2 sudah menulis `bu_assignments`) atau `buAssignments` eksplisit. `bun run typecheck` untuk shared+server.
 - [ ] **Step 5: Commit** `git commit -m "feat(access): penugasan BU user, konteks akses per BU, auth.me memuat BU"`.
 
@@ -329,7 +325,7 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 
 **Interfaces:** tidak ada kode baru.
 
-- [ ] **Step 1: Perbarui dokumen:** `CLAUDE.md` (Struktur: modul BU server/web, `shared/business-units.ts`, `LinkField`; Aturan server: `item` kini dari penugasan BU, `UserContext.businessUnits`, filter BU di SQL, `NOT_FOUND` di luar hak, backfill saat start; Menambah rute REST: butir "modul ber-BU" menunjuk `BU_MODULES`), `docs/adding-a-module.md` (resep modul ber-BU), PRD item (tabel hak per BU, FI baru untuk BU/merk), `docs/e2e-checklist.md` (skenario: user BU A tak melihat item BU B; item A+B dengan `view` di B; merk bawaan mengisi BU; BU nonaktif), spek (status "Disetujui 2026-11-08", butir pengecualian yang dikonfirmasi).
+- [ ] **Step 1: Perbarui dokumen:** `CLAUDE.md` (Struktur: modul BU server/web, `shared/business-units.ts`, `LinkField`; Aturan server: `item` kini dari penugasan BU, `UserContext.businessUnits`, filter BU di SQL, `NOT_FOUND` di luar hak, tanpa backfill hak lama; Menambah rute REST: butir "modul ber-BU" menunjuk `BU_MODULES`), `docs/adding-a-module.md` (resep modul ber-BU), PRD item (tabel hak per BU, FI baru untuk BU/merk), `docs/e2e-checklist.md` (skenario: user BU A tak melihat item BU B; item A+B dengan `view` di B; merk bawaan mengisi BU; BU nonaktif), spek (status "Disetujui 2026-11-08", butir pengecualian yang dikonfirmasi).
 - [ ] **Step 2: Verifikasi penuh:** `bun run check` (typecheck + Biome + semua tes; tunnel hidup) dan `bun run build` → hijau.
 - [ ] **Step 3: Uji manual di server dev** (jangan menghentikan server :3000; pengguna dev dan data seed memakai BU `UM`/`ENT`): buka `/access/business-units`, buat BU, tugaskan user "Penugasan BU", buat item lewat form (merk LinkField + chip BU), periksa user BU berbeda tak melihat item. Catat hasil.
 - [ ] **Step 4: Commit** `git commit -m "docs: BU tahap 1 (CLAUDE.md, resep modul, PRD, checklist e2e)"`.
@@ -338,7 +334,7 @@ Input/kondisi yang diimplikasikan spek tetapi tidak dijaga satu tugas pun secara
 
 ## Self-Review
 
-**Cakupan spek:** master BU (5.1) → T3; penugasan & izin (5.2) → T1, T4; relasi item↔BU, filter baca, berkas, BU nonaktif, aturan tulis (5.3) → T5, T6, T7; BU bawaan merk (5.4) → T8, T12; `LinkField` (5.5) → T9, T11; sinkron (5.6) → tak ada pekerjaan (modul dihapus); migrasi/bootstrap/pengguna lama (5.7) → T2, T4; dokumen (bagian 4) → T13. Anti-tujuan: jalur bocor (daftar, detail, pencarian, berkas) → T5, T7; OpenAPI dan `GET /me` tidak memuat data item (`me` hanya BU milik user) → diverifikasi di T4.
+**Cakupan spek:** master BU (5.1) → T3; penugasan & izin (5.2) → T1, T4; relasi item↔BU, filter baca, berkas, BU nonaktif, aturan tulis (5.3) → T5, T6, T7; BU bawaan merk (5.4) → T8, T12; `LinkField` (5.5) → T9, T11; sinkron (5.6) → tak ada pekerjaan (modul dihapus); migrasi/bootstrap (5.7) → T2, T4 (tanpa backfill pengguna lama, keputusan 14); dokumen (bagian 4) → T13. Anti-tujuan: jalur bocor (daftar, detail, pencarian, berkas) → T5, T7; OpenAPI dan `GET /me` tidak memuat data item (`me` hanya BU milik user) → diverifikasi di T4.
 **Pemindaian langkah:** tiap langkah bertanda tangan/asersi eksplisit; tak ada "TBD".
 **Konsistensi tipe:** `BuAssignment`/`BuPermissionMap`/`canActOnAllBus`/`visibleBuIds`/`FileViewer`/`BusinessUnitRefDto` dipakai konsisten (T1 → T4–T7, T10–T11); `SaveItemInput.brandId`+`businessUnitIds` (T6) dipakai T11; `BrandDto.businessUnitIds` (T8) dipakai T11–T12.
 **Review Focus:** semua lima baris punya tes di task pemilik (T2, T4, T5, T6, T7).

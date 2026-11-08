@@ -72,8 +72,8 @@ export function readAssignments(row: { assignments: string; role_ids: string }):
 
 /**
  * Konteks akses user, dimuat LANGSUNG dari MariaDB pada setiap permintaan (tanpa cache): perubahan akses, termasuk
- * pencabutan, berlaku pada permintaan berikutnya. Satu pernyataan untuk tiga tabel kecil (users menurut email,
- * roles, locations).
+ * pencabutan, berlaku pada permintaan berikutnya. Satu pernyataan untuk empat tabel kecil (users menurut email,
+ * roles, locations, business_units).
  */
 export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
   const email = normalizeEmail(rawEmail);

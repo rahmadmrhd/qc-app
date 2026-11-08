@@ -11,6 +11,7 @@ import {
 } from './business-unit-service';
 import type { UserContext } from './context';
 import { loadUserContext } from './context';
+import { renameBusinessUnitStmt, setBusinessUnitStatusStmt } from './repo';
 
 let env: TestEnv;
 let admin: UserContext;
@@ -25,6 +26,13 @@ async function auditRows() {
     before: JSON.parse(row.before) as unknown,
     after: JSON.parse(row.after) as unknown,
   }));
+}
+
+async function rowOf(id: string) {
+  const row = await env.DB.prepare('SELECT name, status FROM business_units WHERE id = ?')
+    .bind(id)
+    .first<{ name: string; status: string }>();
+  return row;
 }
 
 async function lastAudit() {
@@ -127,7 +135,7 @@ describe('master BU', () => {
     ).toBe('NOT_FOUND');
   });
 
-  test('daftar terurut menurut kode; itemCount menghitung baris penghubung; userCount menghitung Semua BU dan penugasan eksplisit', async () => {
+  test('daftar terurut menurut kode; itemCount menghitung baris penghubung; userCount menghitung user aktif yang berhak lewat Semua BU atau penugasan eksplisit', async () => {
     await seedBusinessUnit(env, { id: 'bu-a', code: 'AAA', name: 'A' });
     await seedBusinessUnit(env, { id: 'bu-b', code: 'BBB', name: 'B' });
     await seedRole(env, { id: 'r-item', name: 'Item', permissions: { item: 'view' } });
@@ -154,6 +162,66 @@ describe('master BU', () => {
     expect(list.map((bu) => bu.code)).toEqual(['AAA', 'BBB']);
     expect(list[0]).toMatchObject({ itemCount: 2, userCount: 2 });
     expect(list[1]).toMatchObject({ itemCount: 1, userCount: 1 });
+  });
+
+  test('userCount tidak menghitung user nonaktif dan role yang tidak memberi level item', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AAA', name: 'A' });
+    await seedRole(env, { id: 'r-item', name: 'Item', permissions: { item: 'view' } });
+    await seedRole(env, { id: 'r-lain', name: 'Lain', permissions: { handover: 'edit' } });
+    await seedUser(env, {
+      id: 'u-ok',
+      email: 'ok@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-item'] }],
+    });
+    await seedUser(env, {
+      id: 'u-off',
+      email: 'off@gmail.com',
+      status: 'inactive',
+      buAssignments: [{ buId: null, roleIds: ['r-item'] }],
+    });
+    await seedUser(env, {
+      id: 'u-lain',
+      email: 'lain@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-lain'] }],
+    });
+    expect((await listBusinessUnitDtos(env))[0]).toMatchObject({ userCount: 1 });
+  });
+
+  test('ganti nama tidak menimpa status dan setel status tidak menimpa nama (baca basi)', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AAA', name: 'A', status: 'inactive' });
+    const stale = {
+      id: 'bu-a',
+      code: 'AAA',
+      name: 'Nama Baru',
+      status: 'active' as const,
+      createdAt: '2026-11-08T00:00:00.000Z',
+      updatedAt: '2026-11-08T00:00:00.000Z',
+      updatedBy: 'x@gmail.com',
+    };
+    await renameBusinessUnitStmt(env.DB, stale).run();
+    expect(await rowOf('bu-a')).toEqual({ name: 'Nama Baru', status: 'inactive' });
+    await setBusinessUnitStatusStmt(env.DB, { ...stale, name: 'Basi', status: 'active' }).run();
+    expect(await rowOf('bu-a')).toEqual({ name: 'Nama Baru', status: 'active' });
+  });
+
+  test('dua pembuatan serentak dengan kode sama: satu berhasil, satu CONFLICT pada field kode (indeks unik)', async () => {
+    const results = await Promise.allSettled([
+      saveBusinessUnit(env, { code: 'DUP', name: 'Satu' }, admin),
+      saveBusinessUnit(env, { code: 'DUP', name: 'Dua' }, admin),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected?.status === 'rejected' && (rejected.reason as { code: string }).code).toBe(
+      'CONFLICT',
+    );
+    expect(
+      rejected?.status === 'rejected' &&
+        (rejected.reason as { fields?: Record<string, string> }).fields,
+    ).toEqual({ code: 'Kode BU sudah dipakai' });
+    const rows = await env.DB.prepare('SELECT id FROM business_units WHERE code = ?')
+      .bind('DUP')
+      .all();
+    expect(rows.results).toHaveLength(1);
   });
 
   test('menonaktifkan BU yang masih dipakai TIDAK ditolak', async () => {

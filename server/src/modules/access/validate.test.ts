@@ -3,6 +3,7 @@ import { captureAppError } from '@server-test/errors';
 import {
   validateDeleteRole,
   validateListAudit,
+  validateSaveBusinessUnit,
   validateSaveRole,
   validateSaveUser,
   validateSetUserStatus,
@@ -212,4 +213,18 @@ test('validateListAudit: input kosong memakai bawaan; batas dan kursor diperiksa
       'Kursor tidak valid',
     );
   }
+});
+
+test('validateSaveBusinessUnit: kode dijadikan huruf besar dan diperiksa SETELAH huruf besar (panjang dan pola)', () => {
+  expect(validateSaveBusinessUnit({ code: ' um-1 ', name: ' Umum ' })).toEqual({
+    code: 'UM-1',
+    name: 'Umum',
+  });
+  // "ŉ" (U+0149) menjadi dua karakter ("ʼN") saat dibesarkan: 6 karakter asli = 12 karakter hasil.
+  const error = captureAppError(() => validateSaveBusinessUnit({ code: 'ŉŉŉŉŉŉ', name: 'X' }));
+  expect(error.code).toBe('VALIDATION');
+  expect(error.fields).toEqual({ code: 'Hanya huruf, angka, dan tanda hubung' });
+  expect(
+    captureAppError(() => validateSaveBusinessUnit({ code: 'A B', name: 'X' })).fields,
+  ).toEqual({ code: 'Hanya huruf, angka, dan tanda hubung' });
 });

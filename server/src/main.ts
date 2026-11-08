@@ -1,8 +1,5 @@
 import { prepareDatabase, StartupError } from '@server/boot';
 import { ConfigError, loadConfig } from '@server/config';
-import type { Db } from '@server/core/db';
-import { toDbError } from '@server/core/db';
-import { backfillBuAssignments } from '@server/modules/access/bu-backfill';
 import { bunServeOptions, createServer } from '@server/server';
 
 // Titik masuk proses server: `bun run src/main.ts` (dev: `bun run dev:server`). Konfigurasi dari variabel
@@ -18,25 +15,8 @@ try {
   process.exit(1);
 }
 
-// Migrasi lalu backfill hak lama ke penugasan BU (idempoten: hanya user ber-`bu_assignments` kosong). Gagal di salah
-// satunya = gagal start (kode 1), seperti migrasi.
-async function prepare(db: Db): Promise<string[]> {
-  const applied = await prepareDatabase(db);
-  try {
-    const backfilled = await backfillBuAssignments(db);
-    if (backfilled > 0) console.log({ evt: 'bu-backfill', users: backfilled });
-  } catch (error) {
-    throw new StartupError(
-      'migrate',
-      `Backfill penugasan BU gagal: ${toDbError(error).message}`,
-      error,
-    );
-  }
-  return applied;
-}
-
-// Runner job dan penjadwal baru berjalan SETELAH persiapan basis data (migrasi + backfill) selesai.
-const app = createServer(config, { prepare });
+// Runner job dan penjadwal baru berjalan SETELAH persiapan basis data (migrasi) selesai.
+const app = createServer(config, { prepare: prepareDatabase });
 
 // Gagal cepat dan jelas bila basis data tidak terjangkau (dev: terowongan `bun run db:tunnel` belum jalan) atau
 // sebuah migrasi gagal. Migrasi yang belum diterapkan dijalankan SEBELUM port dibuka (image Docker tidak butuh

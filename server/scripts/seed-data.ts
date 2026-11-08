@@ -99,7 +99,7 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     sql.push(insert('locations', { ...location, status: 'active', ...meta }));
   }
 
-  // Dua BU contoh; semua user contoh bertugas di "Semua BU" (sama dengan hasil backfill hak `item` lama).
+  // Dua BU contoh; semua user contoh bertugas di "Semua BU" agar bisa mencoba fitur item.
   const businessUnits = [
     { id: 'bu-um', code: 'UM', name: 'Umum' },
     { id: 'bu-ent', code: 'ENT', name: 'Enterprise' },
