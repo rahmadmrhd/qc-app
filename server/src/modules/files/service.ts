@@ -22,7 +22,8 @@ import {
 
 export const DRIVE_FOLDER_NAME = 'QC App Files';
 
-const EXTENSIONS: Record<string, string> = {
+/** Ekstensi nama berkas Drive per MIME gambar (juga dipakai pustaka gambar stiker). */
+export const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',

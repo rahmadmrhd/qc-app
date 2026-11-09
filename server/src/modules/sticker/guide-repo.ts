@@ -1,4 +1,5 @@
 import { decodeText, encodeText } from '@server/core/base64url';
+import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { GuideSort } from '@shared/stickers';
 
@@ -155,4 +156,52 @@ export function guideThumbStatement(db: Preparer, id: string): DbStatement {
       "SELECT g.id, g.thumb_mime, g.thumb FROM sticker_guide_images g JOIN files f ON f.id = g.id WHERE g.id = ? AND f.owner_type = 'stickerguide' AND f.status = 'active'",
     )
     .bind(id);
+}
+
+/** Kunci baris `counters` yang dipakai sebagai kunci serialisasi unggahan pustaka (nilainya tak bermakna). */
+const LIBRARY_LOCK_KEY = 'sticker_guide_library';
+
+/**
+ * Memastikan baris kunci ada (dipanggil SEBELUM `batch()` unggah, di luar transaksi): menyisipkan baris kunci di
+ * dalam batch oleh penulis serentak yang pertama menyebabkan deadlock pada kunci duplikat, jadi dibuat dulu dengan
+ * `INSERT IGNORE` otokomit.
+ */
+export function ensureLibraryLockStatement(db: Preparer): DbStatement {
+  return db
+    .prepare('INSERT IGNORE INTO counters (`key`, value) VALUES (?, 0)')
+    .bind(LIBRARY_LOCK_KEY);
+}
+
+/**
+ * Penjaga batas pustaka untuk digabung ke `batch()` unggah (sebelum penyisipan). Dua pernyataan: (1) menaikkan baris
+ * kunci `counters` (kunci eksklusif sampai COMMIT, jadi unggahan serentak diserialkan; `ON DUPLICATE KEY UPDATE`
+ * tetap menguncinya bila baris belum ada); (2) `SELECT` yang membatalkan batch (`CAS_FAIL_SQL`, dikenali
+ * `isGuardFailure`) bila jumlah baris pustaka sudah mencapai `max`. Hitungan dibaca SETELAH kunci didapat (pembacaan
+ * konsisten pertama transaksi ini), sehingga melihat commit penulis sebelumnya; hitung-lalu-tulis tanpa kunci akan
+ * meloloskan penulis serentak melewati batas.
+ */
+export function libraryLimitGuardStmts(db: Preparer, max: number): DbStatement[] {
+  return [
+    db
+      .prepare(
+        'INSERT INTO counters (`key`, value) VALUES (?, 1) ON DUPLICATE KEY UPDATE value = value + 1',
+      )
+      .bind(LIBRARY_LOCK_KEY),
+    db
+      .prepare(
+        `SELECT CASE WHEN (SELECT COUNT(*) FROM sticker_guide_images) < ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`,
+      )
+      .bind(max),
+  ];
+}
+
+export function insertGuideStmt(
+  db: Preparer,
+  guide: { id: string; name: string; thumbMime: string; thumb: Uint8Array; updatedAt: string },
+): DbStatement {
+  return db
+    .prepare(
+      'INSERT INTO sticker_guide_images (id, name, thumb_mime, thumb, updated_at) VALUES (?, ?, ?, ?, ?)',
+    )
+    .bind(guide.id, guide.name, guide.thumbMime, guide.thumb, guide.updatedAt);
 }

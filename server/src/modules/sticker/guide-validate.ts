@@ -1,5 +1,16 @@
+import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
-import type { GetStickerGuideThumbInput, ListStickerGuidesInput } from '@shared/contract';
+import type {
+  GetStickerGuideThumbInput,
+  ListStickerGuidesInput,
+  UploadStickerGuideInput,
+} from '@shared/contract';
+import {
+  isImageMime,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGE_DIMENSION,
+  matchesImageBytesSignature,
+} from '@shared/files';
 import { GUIDE_LIMITS, GUIDE_SORTS, type GuideSort } from '@shared/stickers';
 
 /** Memotong menurut titik kode (emoji = 1), sama dengan penghitungan batas nama di klien. */
@@ -60,6 +71,77 @@ export function validateListGuides(raw: unknown): ListStickerGuidesInput {
     unused,
     limit,
     ...(typeof cursorRaw === 'string' && cursorRaw !== '' ? { cursor: cursorRaw } : {}),
+  };
+}
+
+/** Nama gambar: dirapikan (trim), wajib, maks. `nameMax` titik kode (emoji = 1, sama dengan klien). */
+export function readGuideName(reader: ObjectReader, key: string): string {
+  const value = reader.raw(key);
+  if (typeof value !== 'string') {
+    reader.fail(key, value === undefined || value === null ? 'Wajib diisi' : 'Harus berupa teks');
+    return '';
+  }
+  const text = value.trim();
+  if (text === '') reader.fail(key, 'Wajib diisi');
+  else if ([...text].length > GUIDE_LIMITS.nameMax) {
+    reader.fail(key, `Maksimal ${GUIDE_LIMITS.nameMax} karakter`);
+  }
+  return text;
+}
+
+const THUMB_MIME_TYPES = ['image/webp', 'image/jpeg'] as const;
+
+function isDimension(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= MAX_IMAGE_DIMENSION
+  );
+}
+
+/**
+ * Unggah gambar pustaka: gambar (JPEG/PNG/WebP, maks. `MAX_IMAGE_BYTES`) dan thumbnail (WebP/JPEG, maks.
+ * `thumbMaxBytes`) divalidasi dengan tanda tangan byte terhadap MIME yang diklaim; lebar/tinggi bilangan bulat
+ * 1..`MAX_IMAGE_DIMENSION`. Isi bukan gambar = `VALIDATION` per field.
+ */
+export function validateUploadGuide(raw: unknown): UploadStickerGuideInput {
+  const reader = readObject(raw);
+  const name = readGuideName(reader, 'name');
+  const mime = reader.raw('mime');
+  const thumbMime = reader.raw('thumbMime');
+  const width = reader.raw('width');
+  const height = reader.raw('height');
+  const image = reader.raw('image');
+  const thumbnail = reader.raw('thumbnail');
+  if (!isImageMime(mime)) reader.fail('mime', 'Hanya JPEG, PNG, atau WebP');
+  const thumbType = THUMB_MIME_TYPES.find((item) => item === thumbMime);
+  if (thumbType === undefined) reader.fail('thumbMime', 'Thumbnail hanya WebP atau JPEG');
+  if (!isDimension(width)) reader.fail('width', 'Lebar tidak valid');
+  if (!isDimension(height)) reader.fail('height', 'Tinggi tidak valid');
+  if (!(image instanceof Uint8Array) || image.length === 0) {
+    reader.fail('image', 'Isi gambar tidak valid');
+  } else if (image.length > MAX_IMAGE_BYTES) {
+    reader.fail('image', 'Ukuran gambar maksimal 10 MB');
+  } else if (isImageMime(mime) && !matchesImageBytesSignature(mime, image)) {
+    reader.fail('image', 'Isi berkas tidak sesuai jenis gambar');
+  }
+  if (!(thumbnail instanceof Uint8Array) || thumbnail.length === 0) {
+    reader.fail('thumbnail', 'Thumbnail tidak valid');
+  } else if (thumbnail.length > GUIDE_LIMITS.thumbMaxBytes) {
+    reader.fail('thumbnail', 'Thumbnail terlalu besar');
+  } else if (thumbType !== undefined && !matchesImageBytesSignature(thumbType, thumbnail)) {
+    reader.fail('thumbnail', 'Isi thumbnail tidak sesuai jenis gambar');
+  }
+  reader.done();
+  return {
+    name,
+    mime: mime as string,
+    thumbMime: thumbMime as string,
+    width: width as number,
+    height: height as number,
+    image: image as Uint8Array,
+    thumbnail: thumbnail as Uint8Array,
   };
 }
 

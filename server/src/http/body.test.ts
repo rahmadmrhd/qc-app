@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
 import type { ApiId, ApiInput } from '@shared/contract';
-import { MARKDOWN_MAX_LENGTH } from '@shared/files';
+import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import { STICKER_LIMITS } from '@shared/stickers';
+import { GUIDE_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
 // Batas JSON REST 2 MB (keputusan pemilik 2026-11-06): muatan sah terbesar tiap rute JSON harus muat dengan lega.
@@ -104,6 +104,7 @@ const WORST: Inputs = {
     delta: -STICKER_LIMITS.qtyMax,
     reason: text(STICKER_LIMITS.reasonMax),
   },
+  'stickerGuides.rename': { id: UUID, name: text(GUIDE_LIMITS.nameMax) },
   'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
@@ -231,7 +232,9 @@ describe('batas badan', () => {
         def.multipart?.maxBytes ?? 0,
       ]),
     );
-    expect(binaryMax).toBe(QR_LIMITS.documentMaxBytes);
+    // Terbesar = unggah gambar pustaka (gambar 10 MB + thumbnail 40 KB + 64 KB ruang multipart), di atas PDF QR 10 MB.
+    expect(binaryMax).toBe(MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 64 * 1024);
+    expect(binaryMax).toBeGreaterThan(QR_LIMITS.documentMaxBytes);
     expect(MAX_REQUEST_BODY_BYTES).toBeGreaterThan(binaryMax);
     // Tanpa ketergantungan pada batas 16 MB lama: global = rute biner terbesar + overhead.
     expect(MAX_REQUEST_BODY_BYTES).toBe(binaryMax + 64 * 1024);

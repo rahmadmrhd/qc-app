@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { DbError } from '@server/core/db';
+import { loadUserContext } from '@server/modules/access/context';
+import { planAttachFiles } from '@server/modules/files/service';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { captureAppErrorAsync } from '@server-test/errors';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { StickerGuideDto, StickerGuidePageDto } from '@shared/contract';
+import { MAX_IMAGE_BYTES } from '@shared/files';
 import { GUIDE_LIMITS } from '@shared/stickers';
+import { uploadGuide } from './guide-service';
+import { validateUploadGuide } from './guide-validate';
 
 // Pustaka gambar stiker (3b-1): daftar, thumbnail, unggah, ganti nama, hapus, dan akses gambar penuh.
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(90_000);
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -438,5 +445,272 @@ describe('tidak dibatasi BU', () => {
     expect((await rest.get('/sticker-guides/g1/thumbnail', { email: 'bu@gmail.com' })).status).toBe(
       200,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Unggah (Task 3)
+// ---------------------------------------------------------------------------------------------------------------
+
+const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_HEAD = [0xff, 0xd8, 0xff, 0xe0];
+const GIF_HEAD = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61];
+
+function bytesOf(head: number[], size: number, seed = 1): Uint8Array {
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i++) bytes[i] = (i * 31 + seed) % 256;
+  bytes.set(head, 0);
+  return bytes;
+}
+
+const WEBP_HEAD = [0x52, 0x49, 0x46, 0x46, 0x08, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+
+interface UploadOptions {
+  query?: Record<string, string>;
+  image?: Uint8Array | null;
+  thumbnail?: Uint8Array | null;
+  email?: string | null;
+}
+
+function uploadRequest(options: UploadOptions = {}) {
+  const query = new URLSearchParams({
+    name: '  Foto   Kardus ',
+    mime: 'image/png',
+    thumbMime: 'image/webp',
+    width: '800',
+    height: '600',
+    ...options.query,
+  });
+  const form = new FormData();
+  const image = options.image === undefined ? bytesOf(PNG_HEAD, 2048) : options.image;
+  const thumbnail = options.thumbnail === undefined ? bytesOf(WEBP_HEAD, 512) : options.thumbnail;
+  if (image) form.append('image', new Blob([image], { type: 'image/png' }), 'image');
+  if (thumbnail) form.append('thumbnail', new Blob([thumbnail], { type: 'image/webp' }), 'thumb');
+  return rest.post(`/sticker-guides?${query.toString()}`, {
+    email: options.email === undefined ? 'ie@gmail.com' : options.email,
+    raw: form,
+  });
+}
+
+function uploadInput() {
+  return {
+    name: 'Foto Kardus',
+    mime: 'image/png',
+    thumbMime: 'image/webp',
+    width: 800,
+    height: 600,
+    image: bytesOf(PNG_HEAD, 2048),
+    thumbnail: bytesOf(WEBP_HEAD, 512),
+  };
+}
+
+async function counts() {
+  const files = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM files WHERE owner_type = 'stickerguide'",
+  ).first<{ n: number | string }>();
+  const guides = await env.DB.prepare('SELECT COUNT(*) AS n FROM sticker_guide_images').first<{
+    n: number | string;
+  }>();
+  return { files: Number(files?.n), guides: Number(guides?.n) };
+}
+
+const driveLive = () => [...env.BRIDGE.state.files.values()].filter((file) => !file.trashed);
+
+describe('POST /sticker-guides', () => {
+  test('201 + DTO; nama dirapikan; berkas milik stickerguide; Drive terisi', async () => {
+    const response = await uploadRequest();
+    expect(response.status).toBe(201);
+    const dto = (await response.json()) as StickerGuideDto;
+    expect(dto).toMatchObject({
+      name: 'Foto   Kardus',
+      mime: 'image/png',
+      size: 2048,
+      width: 800,
+      height: 600,
+      usageCount: 0,
+      uploadedByMe: true,
+      canRename: true,
+      canRemove: true,
+      createdAt: '2026-11-10T00:00:00.000Z',
+    });
+    const file = await env.DB.prepare(
+      'SELECT owner_type, owner_id, created_by, mime, size, status FROM files WHERE id = ?',
+    )
+      .bind(dto.id)
+      .first<Record<string, unknown>>();
+    expect(file).toMatchObject({
+      owner_type: 'stickerguide',
+      owner_id: dto.id,
+      created_by: 'ie@gmail.com',
+      mime: 'image/png',
+      status: 'active',
+    });
+    expect(driveLive()).toHaveLength(1);
+    // Thumbnail tersimpan dan terbaca kembali; daftar memuatnya.
+    const thumb = await rest.get(`/sticker-guides/${dto.id}/thumbnail`);
+    expect([...new Uint8Array(await thumb.arrayBuffer())]).toEqual([...bytesOf(WEBP_HEAD, 512)]);
+    expect(names(await list())).toEqual(['Foto   Kardus']);
+  });
+
+  test('item:edit saja boleh; sticker:edit saja, item:view, dan tanpa izin 403; tanpa sesi 401', async () => {
+    expect((await uploadRequest({ email: 'ie@gmail.com' })).status).toBe(201);
+    expect((await uploadRequest({ email: 'im@gmail.com' })).status).toBe(201);
+    for (const email of ['se@gmail.com', 'iv@gmail.com', 'sv@gmail.com', 'nol@gmail.com']) {
+      expect((await uploadRequest({ email })).status, email).toBe(403);
+    }
+    expect((await uploadRequest({ email: null })).status).toBe(401);
+    expect(await counts()).toEqual({ files: 2, guides: 2 });
+  });
+
+  test('tidak memakai kuota "unggahan yatim" (lebih dari MAX_UNATTACHED_UPLOADS)', async () => {
+    for (let i = 0; i < 3; i++) expect((await uploadRequest()).status).toBe(201);
+    const orphan = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM files WHERE owner_type = '' AND created_by = 'ie@gmail.com'",
+    ).first<{ n: number | string }>();
+    expect(Number(orphan?.n)).toBe(0);
+  });
+
+  test.each([
+    [
+      'tanda tangan palsu (PNG berisi teks)',
+      { image: new TextEncoder().encode('bukan gambar sama sekali') },
+      'image',
+    ],
+    ['gambar kosong', { image: new Uint8Array(0) }, 'image'],
+    ['gambar tak ada', { image: null }, 'image'],
+    [
+      'thumbnail > 40 KB',
+      { thumbnail: bytesOf(WEBP_HEAD, GUIDE_LIMITS.thumbMaxBytes + 1) },
+      'thumbnail',
+    ],
+    ['thumbnail bertanda tangan GIF', { thumbnail: bytesOf(GIF_HEAD, 300) }, 'thumbnail'],
+    ['thumbnail PNG (bukan webp/jpeg)', { thumbnail: bytesOf(PNG_HEAD, 300) }, 'thumbnail'],
+    ['thumbnail tak ada', { thumbnail: null }, 'thumbnail'],
+    ['thumbMime di luar daftar', { query: { thumbMime: 'image/png' } }, 'thumbMime'],
+    ['nama kosong', { query: { name: '' } }, 'name'],
+    ['nama spasi', { query: { name: '    ' } }, 'name'],
+    ['nama terlalu panjang', { query: { name: 'x'.repeat(GUIDE_LIMITS.nameMax + 1) } }, 'name'],
+    ['mime di luar daftar', { query: { mime: 'image/gif' } }, 'mime'],
+    ['mime tidak cocok dengan isi', { query: { mime: 'image/jpeg' } }, 'image'],
+    ['lebar 0', { query: { width: '0' } }, 'width'],
+    ['tinggi di atas batas', { query: { height: '4001' } }, 'height'],
+    ['lebar pecahan', { query: { width: '10.5' } }, 'width'],
+  ] as [string, UploadOptions, string][])('VALIDATION: %s', async (_label, options, field) => {
+    const response = await uploadRequest(options);
+    expect(response.status).toBe(422);
+    const body = await jsonOf(response);
+    expect(body).toMatchObject({ code: 'VALIDATION' });
+    expect(Object.keys((body.fields ?? {}) as object)).toContain(field);
+    expect(await counts()).toEqual({ files: 0, guides: 0 });
+    expect(env.BRIDGE.state.files.size).toBe(0);
+  });
+
+  test('nama persis nameMax karakter (emoji = 1) diterima; berlebih ditolak', async () => {
+    const ok = await uploadRequest({ query: { name: '😀'.repeat(GUIDE_LIMITS.nameMax) } });
+    expect(ok.status).toBe(201);
+    const over = await uploadRequest({ query: { name: '😀'.repeat(GUIDE_LIMITS.nameMax + 1) } });
+    expect(over.status).toBe(422);
+  });
+
+  test('gambar persis 10 MB diterima (JPEG, thumbnail JPEG)', async () => {
+    const response = await uploadRequest({
+      query: { mime: 'image/jpeg', thumbMime: 'image/jpeg' },
+      image: bytesOf(JPEG_HEAD, MAX_IMAGE_BYTES),
+      thumbnail: bytesOf(JPEG_HEAD, GUIDE_LIMITS.thumbMaxBytes),
+    });
+    expect(response.status).toBe(201);
+  });
+
+  test('kegagalan basis data setelah Drive: berkas Drive dibuang, tidak ada baris tersisa, INTERNAL', async () => {
+    const realError = console.error;
+    console.error = () => undefined;
+    try {
+      const failing = Object.create(env.DB, {
+        batch: {
+          value: async () => {
+            throw new DbError('boom', { errno: 1, kind: 'other' });
+          },
+        },
+      }) as TestEnv['DB'];
+      const broken: TestEnv = { ...env, DB: failing };
+      const actor = await loadUserContext(env, 'ie@gmail.com');
+      if (!actor) throw new Error('aktor hilang');
+      const error = await captureAppErrorAsync(() =>
+        uploadGuide(broken, validateUploadGuide(uploadInput()), actor),
+      );
+      expect(error.code).toBe('INTERNAL');
+      expect(env.BRIDGE.calls.map((call) => call.action)).toContain('trashFile');
+      expect(driveLive()).toHaveLength(0);
+      expect(await counts()).toEqual({ files: 0, guides: 0 });
+    } finally {
+      console.error = realError;
+    }
+  });
+
+  describe('batas pustaka', () => {
+    /** Mengisi pustaka sebanyak `count` baris (massal lewat SQL). */
+    async function fill(count: number): Promise<void> {
+      for (let from = 0; from < count; from += 500) {
+        const size = Math.min(500, count - from);
+        const ids = Array.from({ length: size }, (_, i) => `bulk-${from + i}`);
+        await env.DB.prepare(
+          `INSERT INTO files (id, drive_id, mime, size, width, height, owner_type, owner_id, created_at, created_by, status) VALUES ${ids
+            .map(
+              () =>
+                "(?, ?, 'image/png', 1, 1, 1, 'stickerguide', ?, '2026-11-10T00:00:00.000Z', 'x@gmail.com', 'active')",
+            )
+            .join(',')}`,
+        )
+          .bind(...ids.flatMap((id) => [id, `d-${id}`, id]))
+          .run();
+        await env.DB.prepare(
+          `INSERT INTO sticker_guide_images (id, name, thumb_mime, thumb, updated_at) VALUES ${ids
+            .map(() => "(?, ?, 'image/webp', X'00', '')")
+            .join(',')}`,
+        )
+          .bind(...ids.flatMap((id) => [id, id]))
+          .run();
+      }
+    }
+
+    test('pustaka terisi libraryMax: CONFLICT berpesan jelas, Drive dibersihkan, tak ada baris baru', async () => {
+      await fill(GUIDE_LIMITS.libraryMax);
+      const response = await uploadRequest();
+      expect(response.status).toBe(409);
+      expect(await jsonOf(response)).toMatchObject({
+        code: 'CONFLICT',
+        detail: 'Pustaka gambar penuh (2.000 gambar)',
+      });
+      expect(driveLive()).toHaveLength(0);
+      expect(await counts()).toEqual({
+        files: GUIDE_LIMITS.libraryMax,
+        guides: GUIDE_LIMITS.libraryMax,
+      });
+    });
+
+    test('balapan: pada libraryMax - 1, tiga unggahan serentak menghasilkan tepat 1 sukses dan 2 CONFLICT', async () => {
+      await fill(GUIDE_LIMITS.libraryMax - 1);
+      const responses = await Promise.all([uploadRequest(), uploadRequest(), uploadRequest()]);
+      const statuses = responses.map((response) => response.status).sort();
+      expect(statuses).toEqual([201, 409, 409]);
+      expect(await counts()).toEqual({
+        files: GUIDE_LIMITS.libraryMax,
+        guides: GUIDE_LIMITS.libraryMax,
+      });
+      // Tepat satu berkas Drive hidup; yang kalah dibuang.
+      expect(driveLive()).toHaveLength(1);
+    });
+  });
+});
+
+describe('gambar pustaka tidak dapat dipasang sebagai gambar lain', () => {
+  test('planAttachFiles ke sticker, item, dan qrlogo melempar', async () => {
+    const dto = (await (await uploadRequest()).json()) as StickerGuideDto;
+    for (const ownerType of ['sticker', 'item', 'qrlogo'] as const) {
+      const error = await captureAppErrorAsync(() =>
+        planAttachFiles(env, [dto.id], ownerType, 'pemilik-1', undefined, 'ie@gmail.com'),
+      );
+      expect(['VALIDATION', 'CONFLICT']).toContain(error.code);
+    }
   });
 });
