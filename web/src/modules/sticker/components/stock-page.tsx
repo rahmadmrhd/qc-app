@@ -1,5 +1,6 @@
 import type { OpnameInput, StickerStockDto } from '@shared/contract';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +52,14 @@ export function StockPage({
   // diperbarui bila stok dimuat ulang saat dialog terbuka.
   const [entry, setEntry] = useState<{ mode: StockEntryMode; stickerId: string } | null>(null);
   const entryRow = entry ? (rows.find((row) => row.stickerId === entry.stickerId) ?? null) : null;
+  // Baris hilang dari daftar saat dialog terbuka (mis. stiker nonaktif yang stoknya menjadi 0): tutup dengan bersih
+  // dan beri tahu, alih-alih menghilang diam-diam atau terbuka sendiri lagi bila baris kembali.
+  useEffect(() => {
+    if (entry !== null && entryRow === null) {
+      setEntry(null);
+      toast.info('Stok stiker berubah; dialog ditutup');
+    }
+  }, [entry, entryRow]);
   const [opnameOpen, setOpnameOpen] = useState(false);
   const codeById = new Map(locations.map((location) => [location.id, location.code]));
   const showBreakdown = locations.length > 1;
