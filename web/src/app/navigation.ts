@@ -11,6 +11,7 @@ import {
   MapPin,
   Package,
   QrCode,
+  Shapes,
   ShieldCheck,
   Tags,
   Users,
@@ -82,6 +83,17 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'handover', level: 'view', scope: 'location' },
           { module: 'qc', level: 'edit', scope: 'location' },
         ],
+      },
+    ],
+  },
+  {
+    label: 'Stiker',
+    items: [
+      {
+        label: 'Jenis Stiker',
+        to: '/sticker/types',
+        icon: Shapes,
+        permission: { module: 'sticker', level: 'view' },
       },
     ],
   },

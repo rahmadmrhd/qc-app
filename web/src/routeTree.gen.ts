@@ -24,6 +24,7 @@ import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
 import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
 import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
+import { Route as AppStickerTypesRouteImport } from './routes/_app/sticker/types'
 import { Route as AppAccessBusinessUnitsIndexRouteImport } from './routes/_app/access/business-units/index'
 import { Route as AppAccessBusinessUnitsBusinessUnitIdRouteImport } from './routes/_app/access/business-units/$businessUnitId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
@@ -111,6 +112,11 @@ const AppQrcodeNewRoute = AppQrcodeNewRouteImport.update({
   path: '/qrcode/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStickerTypesRoute = AppStickerTypesRouteImport.update({
+  id: '/sticker/types',
+  path: '/sticker/types',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAccessBusinessUnitsIndexRoute =
   AppAccessBusinessUnitsIndexRouteImport.update({
     id: '/access/business-units/',
@@ -189,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/types': typeof AppStickerTypesRoute
   '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
   '/qrcode/': typeof AppQrcodeIndexRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/types': typeof AppStickerTypesRoute
   '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
   '/qrcode': typeof AppQrcodeIndexRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   '/_app/handover/new': typeof AppHandoverNewRoute
   '/_app/item/new': typeof AppItemNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
+  '/_app/sticker/types': typeof AppStickerTypesRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/qrcode/': typeof AppQrcodeIndexRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/types'
     | '/handover/'
     | '/item/'
     | '/qrcode/'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/types'
     | '/handover'
     | '/item'
     | '/qrcode'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/_app/handover/new'
     | '/_app/item/new'
     | '/_app/qrcode/new'
+    | '/_app/sticker/types'
     | '/_app/handover/'
     | '/_app/item/'
     | '/_app/qrcode/'
@@ -463,6 +475,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQrcodeNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sticker/types': {
+      id: '/_app/sticker/types'
+      path: '/sticker/types'
+      fullPath: '/sticker/types'
+      preLoaderRoute: typeof AppStickerTypesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/access/business-units/': {
       id: '/_app/access/business-units/'
       path: '/access/business-units'
@@ -561,6 +580,7 @@ interface AppRouteChildren {
   AppHandoverNewRoute: typeof AppHandoverNewRoute
   AppItemNewRoute: typeof AppItemNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
+  AppStickerTypesRoute: typeof AppStickerTypesRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppQrcodeIndexRoute: typeof AppQrcodeIndexRoute
@@ -589,6 +609,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppHandoverNewRoute: AppHandoverNewRoute,
   AppItemNewRoute: AppItemNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
+  AppStickerTypesRoute: AppStickerTypesRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
   AppQrcodeIndexRoute: AppQrcodeIndexRoute,

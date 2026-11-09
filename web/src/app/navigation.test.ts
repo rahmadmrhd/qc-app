@@ -179,3 +179,37 @@ test('menu Customer (grup Data, item view) dan Serah Terima (grup Operasional, s
     ],
   });
 });
+
+function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
+  return {
+    email: 'a@gmail.com',
+    name: 'A',
+    isSuperAdmin: false,
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+      ...permissions,
+    },
+    businessUnits: [],
+    locations: [],
+  };
+}
+
+test('grup Stiker memuat Jenis Stiker (sticker view) dan hanya tampil bagi user ber-izin', () => {
+  const grup = NAV_GROUPS.find((group) => group.label === 'Stiker');
+  expect(grup?.items.find((entry) => entry.to === '/sticker/types')).toMatchObject({
+    label: 'Jenis Stiker',
+    permission: { module: 'sticker', level: 'view' },
+  });
+  expect(visibleNavGroups(NAV_GROUPS, stickerMe({})).map((g) => g.label)).not.toContain('Stiker');
+  const stiker = visibleNavGroups(NAV_GROUPS, stickerMe({ sticker: 'view' })).find(
+    (group) => group.label === 'Stiker',
+  );
+  expect(stiker?.items.map((entry) => entry.label)).toContain('Jenis Stiker');
+});
