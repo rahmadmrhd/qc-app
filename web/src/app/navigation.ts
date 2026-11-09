@@ -11,7 +11,9 @@ import {
   MapPin,
   Package,
   QrCode,
+  Shapes,
   ShieldCheck,
+  Sticker,
   Tags,
   Users,
 } from 'lucide-react';
@@ -82,6 +84,26 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'handover', level: 'view', scope: 'location' },
           { module: 'qc', level: 'edit', scope: 'location' },
         ],
+      },
+    ],
+  },
+  {
+    label: 'Stiker',
+    items: [
+      {
+        label: 'Stiker',
+        to: '/sticker',
+        icon: Sticker,
+        // '/sticker/stock' ditambahkan ke `excludes` oleh tugas Stok Stiker setelah rutenya ada
+        // (tipe `LinkProps['to']` menolak rute yang belum ada).
+        excludes: ['/sticker/types'],
+        permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Jenis Stiker',
+        to: '/sticker/types',
+        icon: Shapes,
+        permission: { module: 'sticker', level: 'view' },
       },
     ],
   },
