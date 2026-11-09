@@ -56,9 +56,16 @@ export function parseStockCursor(value: string): { ts: string; id: number } | nu
   return match?.[1] && match[2] ? { ts: match[1], id: Number(match[2]) } : null;
 }
 
-/** Status dan stok lokasi satu stiker (dibaca sebelum menulis; penjaga CAS di batch tetap menjadi pagar). */
+/**
+ * Status stiker dan jenisnya (dibaca sebelum menulis; penjaga CAS di batch tetap menjadi pagar). Stok masuk butuh
+ * keduanya aktif.
+ */
 export function stickerStatusStatement(db: Preparer, stickerId: string): DbStatement {
-  return db.prepare('SELECT status FROM stickers WHERE id = ?').bind(stickerId);
+  return db
+    .prepare(
+      'SELECT s.status AS status, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ?',
+    )
+    .bind(stickerId);
 }
 
 export function stockQtyStatement(
@@ -72,13 +79,14 @@ export function stockQtyStatement(
 }
 
 /**
- * Penjaga stiker aktif untuk catatan masuk, digabung ke batch: kunci bersama baris stiker (`LOCK IN SHARE MODE`)
- * dan batal (`CAS_FAIL_SQL`) bila stiker sudah dinonaktifkan; menonaktifkan stiker yang menyela menunggu commit.
+ * Penjaga stiker DAN jenis aktif untuk catatan masuk, digabung ke batch: kunci bersama baris stiker dan baris
+ * jenisnya (`LOCK IN SHARE MODE`) dan batal (`CAS_FAIL_SQL`) bila salah satunya sudah dinonaktifkan; menonaktifkan
+ * stiker atau jenis (penulis dengan kunci eksklusif pada baris yang sama) yang menyela menunggu commit.
  */
 export function stickerActiveGuardStmt(db: Preparer, stickerId: string): DbStatement {
   return db
     .prepare(
-      `SELECT CASE WHEN status = 'active' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers WHERE id = ? LOCK IN SHARE MODE`,
+      `SELECT CASE WHEN s.status = 'active' AND t.status = 'active' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? LOCK IN SHARE MODE`,
     )
     .bind(stickerId);
 }
@@ -170,7 +178,7 @@ export function stockRowsStatement(db: Preparer, locationIds: readonly string[])
 /** Stiker beserta nama jenis (satu kueri bergabung) untuk halaman Stok. */
 export function stickersWithTypeStatement(db: Preparer): DbStatement {
   return db.prepare(
-    'SELECT s.id, s.name, s.alias, s.min_qty, s.status, t.name AS type_name FROM stickers s JOIN sticker_types t ON t.id = s.type_id',
+    'SELECT s.id, s.name, s.alias, s.min_qty, s.status, t.name AS type_name, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id',
   );
 }
 

@@ -5,7 +5,7 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import type { AppError } from '@server/core/errors';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandBuBrief } from '@server/modules/brand/repo';
 import { activeBuGuardStmt, listBuBriefs } from '@server/modules/brand/repo';
@@ -46,6 +46,8 @@ import {
 } from './repo';
 
 const NAME_TAKEN_MESSAGE = 'Nama jenis sudah dipakai';
+const TYPE_STALE_MESSAGE =
+  'Jenis stiker diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 const RULE_LOCKED_MESSAGE = 'Aturan jenis tidak dapat diubah karena sudah ada stiker';
 
 /** Peta bentrok indeks unik -> pesan generik (tanpa nilai lain). */
@@ -121,6 +123,8 @@ async function updateStickerType(
   return env.DB.transaction(async (tx) => {
     const existing = await lockStickerType(tx, id);
     if (!existing) throw appError('NOT_FOUND', 'Jenis stiker tidak ditemukan');
+    // Versi yang dilihat penyimpan harus masih terkini; baris terkunci (`FOR UPDATE`) sehingga pembacaan ini pasti.
+    if (input.expectedUpdatedAt !== existing.updatedAt) throw staleError(TYPE_STALE_MESSAGE);
     if (existing.name === input.name && existing.rule === input.rule) {
       return toStickerTypeDto(existing);
     }
@@ -289,6 +293,10 @@ async function saveStickerOnce(
   const type = stickerTypesFromResult(results[0] ?? { results: [] })[0];
   const existing = input.id ? stickersFromResult(results[1] ?? { results: [] })[0] : undefined;
   if (input.id && !existing) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
+  // Versi yang dilihat penyimpan harus masih terkini (lost update); CAS `updated_at` di batch menjaga sisanya.
+  if (existing && input.expectedUpdatedAt !== existing.updatedAt) {
+    throw staleError(STICKER_STALE_MESSAGE);
+  }
   if (existing && existing.typeId !== input.typeId) {
     const message = 'Jenis stiker tidak dapat diubah';
     throw appError('VALIDATION', message, { typeId: message });

@@ -7,7 +7,7 @@ import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
 import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { StickerDto, StickerTypeDto } from '@shared/contract';
-import { saveSticker, saveStickerType, setStickerStatus } from './service';
+import { saveSticker, saveStickerType, setStickerStatus, setStickerTypeStatus } from './service';
 import { adjustStock, listStickerStock, recordStock, stockHistory } from './stock-service';
 import {
   validateAdjustStock,
@@ -207,6 +207,61 @@ describe('stok masuk dan keluar', () => {
     expect(await qtyAt(sticker.id, B)).toBe(9);
   });
 
+  test('jenis nonaktif dengan stiker aktif: masuk ditolak, keluar dan koreksi diizinkan; list membawa typeStatus', async () => {
+    const sticker = await newSticker();
+    await recordStock(env, rec(sticker.id, A, 'in', 10), admin);
+    await setStickerTypeStatus(env, { id: type.id, status: 'inactive' }, admin);
+    const refused = await captureAppErrorAsync(() =>
+      recordStock(env, rec(sticker.id, A, 'in', 5), admin),
+    );
+    expect(refused.code).toBe('VALIDATION');
+    expect(refused.fields).toHaveProperty('stickerId');
+    expect(await qtyAt(sticker.id, A)).toBe(10);
+    expect((await recordStock(env, rec(sticker.id, A, 'out', 3), admin)).qtyAfter).toBe(7);
+    expect(
+      (
+        await adjustStock(
+          env,
+          validateAdjustStock({
+            locationId: A,
+            stickerId: sticker.id,
+            delta: 1,
+            reason: 'koreksi',
+          }),
+          admin,
+        )
+      ).qtyAfter,
+    ).toBe(8);
+    const [row] = await listStickerStock(env, [A]);
+    expect(row).toMatchObject({ stickerId: sticker.id, status: 'active', typeStatus: 'inactive' });
+    // diaktifkan kembali: masuk diterima lagi
+    await setStickerTypeStatus(env, { id: type.id, status: 'active' }, admin);
+    expect((await recordStock(env, rec(sticker.id, A, 'in', 2), admin)).qtyAfter).toBe(10);
+  });
+
+  test('menonaktifkan jenis serentak dengan mencatat masuk: tak ada stok masuk yang lolos setelah jenis nonaktif', async () => {
+    for (let round = 0; round < 4; round++) {
+      const freshType = await saveStickerType(env, { name: `Jenis ${round}`, rule: 'none' }, admin);
+      const sticker = await newSticker({ typeId: freshType.id });
+      const results = await Promise.allSettled([
+        setStickerTypeStatus(env, { id: freshType.id, status: 'inactive' }, admin),
+        recordStock(env, rec(sticker.id, A, 'in', 5), admin),
+      ]);
+      const [deactivate, record] = results;
+      expect(deactivate?.status).toBe('fulfilled');
+      if (record?.status === 'rejected') {
+        expect((record.reason as { code?: string }).code).toBe('VALIDATION');
+      }
+      const row = await env.DB.prepare('SELECT status FROM sticker_types WHERE id = ?')
+        .bind(freshType.id)
+        .first<{ status: string }>();
+      expect(row?.status).toBe('inactive');
+      // stok dan riwayat konsisten: masuk lolos hanya bila tercatat lengkap
+      expect(await qtyAt(sticker.id, A)).toBe(record?.status === 'fulfilled' ? 5 : null);
+      expect(await entriesOf(sticker.id)).toHaveLength(record?.status === 'fulfilled' ? 1 : 0);
+    }
+  });
+
   test('stiker nonaktif: masuk ditolak, keluar dan koreksi diizinkan; stiker tak dikenal NOT_FOUND', async () => {
     const sticker = await newSticker();
     await recordStock(env, rec(sticker.id, A, 'in', 10), admin);
@@ -354,6 +409,7 @@ describe('daftar stok', () => {
       stickerId: active.id,
       name: 'Hijau',
       typeName: 'Umum',
+      typeStatus: 'active',
       status: 'active',
       minQty: 5,
       low: true,

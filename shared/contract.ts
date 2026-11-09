@@ -256,6 +256,8 @@ export interface StickerTypeDto {
 
 export interface SaveStickerTypeInput {
   id?: string;
+  /** `updatedAt` yang dilihat penyimpan; wajib saat `id` ada (usang = galat usang, 412 lewat If-Match). */
+  expectedUpdatedAt?: string;
   name: string;
   /** Tak dapat diubah bila jenis sudah punya stiker. */
   rule: StickerRule;
@@ -286,6 +288,8 @@ export interface StickerDto {
 
 export interface SaveStickerInput {
   id?: string;
+  /** `updatedAt` yang dilihat penyimpan; wajib saat `id` ada (usang = galat usang, 412 lewat If-Match). */
+  expectedUpdatedAt?: string;
   /** Tak dapat diubah setelah stiker dibuat. */
   typeId: string;
   name: string;
@@ -307,6 +311,8 @@ export interface StickerStockDto {
   /** Alias bila ada, selain itu nama stiker. */
   name: string;
   typeName: string;
+  /** Status jenis: jenis nonaktif menolak stok masuk (keluar, koreksi, dan opname tetap boleh). */
+  typeStatus: ItemStatus;
   status: ItemStatus;
   minQty: number;
   /** Menipis menurut total SEMUA lokasi (sama dengan `StickerDto.low`), bukan hanya lokasi yang diminta. */

@@ -73,7 +73,11 @@ describe('jenis stiker', () => {
   test('mengganti nama sendiri ke nama yang sama berbeda huruf diperbolehkan; ke nama jenis lain ditolak', async () => {
     const qc = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
     await saveStickerType(env, { name: 'Gudang', rule: 'none' }, admin);
-    const renamed = await saveStickerType(env, { id: qc.id, name: 'qc', rule: 'bu' }, admin);
+    const renamed = await saveStickerType(
+      env,
+      { id: qc.id, expectedUpdatedAt: qc.updatedAt, name: 'qc', rule: 'bu' },
+      admin,
+    );
     expect(renamed.name).toBe('qc');
     expect(await lastAudit()).toMatchObject({
       action: 'stickerType.update',
@@ -81,14 +85,22 @@ describe('jenis stiker', () => {
       after: { name: 'qc' },
     });
     const error = await captureAppErrorAsync(() =>
-      saveStickerType(env, { id: qc.id, name: 'gudang', rule: 'bu' }, admin),
+      saveStickerType(
+        env,
+        { id: qc.id, expectedUpdatedAt: renamed.updatedAt, name: 'gudang', rule: 'bu' },
+        admin,
+      ),
     );
     expect(error.fields).toEqual({ name: 'Nama jenis sudah dipakai' });
   });
 
   test('id tidak dikenal pada ubah -> NOT_FOUND', async () => {
     const error = await captureAppErrorAsync(() =>
-      saveStickerType(env, { id: 'tidak-ada', name: 'X', rule: 'bu' }, admin),
+      saveStickerType(
+        env,
+        { id: 'tidak-ada', expectedUpdatedAt: 'x', name: 'X', rule: 'bu' },
+        admin,
+      ),
     );
     expect(error.code).toBe('NOT_FOUND');
   });
@@ -107,11 +119,19 @@ describe('jenis stiker', () => {
 
   test('rule tidak dapat diubah bila sudah ada stiker; tanpa stiker boleh; sama tetap boleh', async () => {
     const type = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
-    const changed = await saveStickerType(env, { id: type.id, name: 'QC', rule: 'none' }, admin);
+    const changed = await saveStickerType(
+      env,
+      { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'QC', rule: 'none' },
+      admin,
+    );
     expect(changed.rule).toBe('none');
     await insertSticker(type.id, 'Hijau');
     const error = await captureAppErrorAsync(() =>
-      saveStickerType(env, { id: type.id, name: 'QC', rule: 'bu' }, admin),
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: changed.updatedAt, name: 'QC', rule: 'bu' },
+        admin,
+      ),
     );
     expect(error.code).toBe('VALIDATION');
     expect(error.fields).toEqual({
@@ -124,7 +144,7 @@ describe('jenis stiker', () => {
     // aturan sama + ganti nama tetap boleh
     const renamed = await saveStickerType(
       env,
-      { id: type.id, name: 'QC Baru', rule: 'none' },
+      { id: type.id, expectedUpdatedAt: changed.updatedAt, name: 'QC Baru', rule: 'none' },
       admin,
     );
     expect(renamed).toMatchObject({ name: 'QC Baru', rule: 'none', stickerCount: 1 });
@@ -170,6 +190,58 @@ describe('jenis stiker', () => {
       setStickerTypeStatus(env, { id: 'tidak-ada', status: 'inactive' }, admin),
     );
     expect(missing.code).toBe('NOT_FOUND');
+  });
+
+  test('versi: expectedUpdatedAt usang = galat usang tanpa menulis; hilang ditolak validator', async () => {
+    const type = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
+    env.clock.set(Date.parse('2026-11-09T05:00:00.000Z'));
+    const first = await saveStickerType(
+      env,
+      { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'QC Satu', rule: 'bu' },
+      admin,
+    );
+    env.clock.set(Date.parse('2026-11-09T06:00:00.000Z'));
+    const stale = await captureAppErrorAsync(() =>
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'QC Basi', rule: 'bu' },
+        admin,
+      ),
+    );
+    expect(stale.code).toBe('CONFLICT');
+    expect(stale.stale).toBe(true);
+    const row = await env.DB.prepare('SELECT name, updated_at FROM sticker_types WHERE id = ?')
+      .bind(type.id)
+      .first<{ name: string; updated_at: string }>();
+    expect(row).toEqual({ name: 'QC Satu', updated_at: first.updatedAt });
+    const missing = captureAppError(() =>
+      validateSaveStickerType({ id: type.id, name: 'X', rule: 'bu' }),
+    );
+    expect(missing.code).toBe('VALIDATION');
+    expect(missing.fields).toHaveProperty('expectedUpdatedAt');
+    expect(validateSaveStickerType({ name: 'Baru', rule: 'bu' })).not.toHaveProperty(
+      'expectedUpdatedAt',
+    );
+  });
+
+  test('dua simpan serentak dari versi yang sama: tepat satu berhasil', async () => {
+    const type = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
+    env.clock.advance(1000);
+    const results = await Promise.allSettled([
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'Satu', rule: 'bu' },
+        admin,
+      ),
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'Dua', rule: 'bu' },
+        admin,
+      ),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: 'CONFLICT', stale: true });
   });
 
   test('validator status', () => {

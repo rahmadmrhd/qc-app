@@ -1,5 +1,3 @@
-import { normalizeKey } from './items';
-
 /** Batas katalog dan stok stiker (rencana 2026-11-09, Global Constraints). */
 export const STICKER_LIMITS = {
   /** Panjang maksimum nama stiker (karakter). */
@@ -46,9 +44,4 @@ export function isLowStock(input: {
   total: number;
 }): boolean {
   return input.status === 'active' && input.minQty > 0 && input.total <= input.minQty;
-}
-
-/** Kunci kecocokan nama stiker (tak peka huruf besar/kecil dan spasi). */
-export function stickerKey(name: string): string {
-  return normalizeKey(name);
 }

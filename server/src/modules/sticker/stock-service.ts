@@ -69,10 +69,17 @@ async function applyChangeOnce(
     stickerStatusStatement(env.DB, change.stickerId),
     stockQtyStatement(env.DB, change.stickerId, change.locationId),
   ]);
-  const sticker = (statusResult?.results[0] ?? null) as { status: string } | null;
+  const sticker = (statusResult?.results[0] ?? null) as {
+    status: string;
+    type_status: string;
+  } | null;
   if (!sticker) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
   if (change.requireActive && sticker.status.trim() !== 'active') {
     const message = 'Stiker nonaktif tidak dapat menerima stok masuk';
+    throw appError('VALIDATION', message, { stickerId: message });
+  }
+  if (change.requireActive && sticker.type_status.trim() !== 'active') {
+    const message = 'Jenis stiker nonaktif; stok masuk tidak dapat dicatat';
     throw appError('VALIDATION', message, { stickerId: message });
   }
   const current = Number((qtyResult?.results[0] as { qty: number | string } | undefined)?.qty ?? 0);
@@ -190,6 +197,7 @@ export async function listStickerStock(
     min_qty: number | string;
     status: string;
     type_name: string;
+    type_status: string;
   }>) {
     const id = row.id.trim();
     const status = row.status.trim() === 'inactive' ? 'inactive' : 'active';
@@ -200,6 +208,7 @@ export async function listStickerStock(
       stickerId: id,
       name: row.alias.trim() !== '' ? row.alias.trim() : row.name.trim(),
       typeName: row.type_name.trim(),
+      typeStatus: row.type_status.trim() === 'inactive' ? 'inactive' : 'active',
       status,
       minQty,
       low: isLowStock({ status, minQty, total: allTotals.get(id) ?? 0 }),

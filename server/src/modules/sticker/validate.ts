@@ -19,13 +19,23 @@ import { parseStockCursor } from './stock-repo';
 
 const STATUS_VALUES = ['active', 'inactive'] as const;
 
+/** `expectedUpdatedAt` (dari header If-Match): wajib saat mengubah (ada `id`), diabaikan saat membuat. */
+function readExpectedUpdatedAt(reader: ObjectReader, id: string | undefined): string {
+  const value = reader.optionalId('expectedUpdatedAt');
+  if (id !== undefined && value === undefined) {
+    reader.fail('expectedUpdatedAt', 'Versi wajib diisi saat mengubah');
+  }
+  return value ?? '';
+}
+
 export function validateSaveStickerType(raw: unknown): SaveStickerTypeInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = readExpectedUpdatedAt(reader, id);
   const name = reader.str('name', { required: true, max: STICKER_LIMITS.nameMax });
   const rule = reader.oneOf('rule', STICKER_RULES);
   reader.done();
-  return id ? { id, name, rule } : { name, rule };
+  return id ? { id, expectedUpdatedAt, name, rule } : { name, rule };
 }
 
 /** Batas wajar jumlah BU per stiker (menjaga ukuran kueri; sama dengan BU bawaan merk). */
@@ -77,6 +87,7 @@ function readBuIds(value: unknown, reader: ObjectReader): string[] {
 export function validateSaveSticker(raw: unknown): SaveStickerInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = readExpectedUpdatedAt(reader, id);
   const typeId = reader.str('typeId', { required: true, max: 100 });
   const name = reader.str('name', { required: true, max: STICKER_LIMITS.nameMax });
   const alias = reader.str('alias', { max: STICKER_LIMITS.aliasMax });
@@ -85,7 +96,7 @@ export function validateSaveSticker(raw: unknown): SaveStickerInput {
   const businessUnitIds = readBuIds(reader.raw('businessUnitIds'), reader);
   reader.done();
   const base = { typeId, name, alias, fileId, minQty, businessUnitIds };
-  return id ? { id, ...base } : base;
+  return id ? { id, expectedUpdatedAt, ...base } : base;
 }
 
 export function validateSetStickerStatus(raw: unknown): SetStickerStatusInput {

@@ -8,8 +8,9 @@ import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtur
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
 import { restCall } from '@server-test/rest-call';
+import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { StickerTypeDto } from '@shared/contract';
+import type { StickerDto, StickerTypeDto } from '@shared/contract';
 import type { StickerRule } from '@shared/stickers';
 import {
   listStickers,
@@ -135,7 +136,16 @@ describe('katalog stiker', () => {
   test('jenis stiker tidak dapat diubah setelah dibuat (VALIDATION); ubah nama/alias/minQty/BU', async () => {
     const saved = await saveSticker(env, input(), admin);
     const move = await captureAppErrorAsync(() =>
-      saveSticker(env, input({ id: saved.id, typeId: none.id, businessUnitIds: [] }), admin),
+      saveSticker(
+        env,
+        input({
+          id: saved.id,
+          expectedUpdatedAt: saved.updatedAt,
+          typeId: none.id,
+          businessUnitIds: [],
+        }),
+        admin,
+      ),
     );
     expect(move.code).toBe('VALIDATION');
     expect(move.fields).toHaveProperty('typeId');
@@ -144,6 +154,7 @@ describe('katalog stiker', () => {
       env,
       input({
         id: saved.id,
+        expectedUpdatedAt: saved.updatedAt,
         name: 'Baru',
         alias: 'Hijau',
         minQty: 7,
@@ -166,7 +177,7 @@ describe('katalog stiker', () => {
       after: { name: 'Baru', minQty: 7 },
     });
     const missing = await captureAppErrorAsync(() =>
-      saveSticker(env, input({ id: 'tidak-ada' }), admin),
+      saveSticker(env, input({ id: 'tidak-ada', expectedUpdatedAt: 'x' }), admin),
     );
     expect(missing.code).toBe('NOT_FOUND');
   });
@@ -177,7 +188,11 @@ describe('katalog stiker', () => {
       n: number;
     }>();
     env.clock.set(Date.parse('2026-11-09T05:00:00.000Z'));
-    const again = await saveSticker(env, input({ id: saved.id }), admin);
+    const again = await saveSticker(
+      env,
+      input({ id: saved.id, expectedUpdatedAt: saved.updatedAt }),
+      admin,
+    );
     expect(again).toEqual(saved);
     const after = await env.DB.prepare('SELECT COUNT(*) AS n FROM audit_log').first<{
       n: number;
@@ -193,7 +208,11 @@ describe('katalog stiker', () => {
     );
     expect(rejected.code).toBe('VALIDATION');
     expect(rejected.fields).toHaveProperty('typeId');
-    const renamed = await saveSticker(env, input({ id: saved.id, name: 'Ganti' }), admin);
+    const renamed = await saveSticker(
+      env,
+      input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, name: 'Ganti' }),
+      admin,
+    );
     expect(renamed.name).toBe('Ganti');
     const unknownType = await captureAppErrorAsync(() =>
       saveSticker(env, input({ typeId: 'tidak-ada' }), admin),
@@ -218,7 +237,12 @@ describe('katalog stiker', () => {
       .run();
     const kept = await saveSticker(
       env,
-      input({ id: saved.id, businessUnitIds: ['bu-a', 'bu-x'], minQty: 3 }),
+      input({
+        id: saved.id,
+        expectedUpdatedAt: saved.updatedAt,
+        businessUnitIds: ['bu-a', 'bu-x'],
+        minQty: 3,
+      }),
       admin,
     );
     expect(kept.businessUnitIds).toEqual(['bu-a', 'bu-x']);
@@ -268,8 +292,122 @@ describe('katalog stiker', () => {
     expect(off.low).toBe(false);
     expect((await byName()).D).toBe(false);
     expect(c.low).toBe(false);
-    const fresh = await saveSticker(env, input({ id: a.id, minQty: 3 }), admin);
+    const fresh = await saveSticker(
+      env,
+      input({ id: a.id, expectedUpdatedAt: a.updatedAt, minQty: 3 }),
+      admin,
+    );
     expect(fresh.low).toBe(false);
+  });
+
+  test('versi: expectedUpdatedAt usang = galat usang tanpa menulis apa pun; hilang ditolak validator', async () => {
+    const saved = await saveSticker(env, input({ minQty: 500 }), admin);
+    env.clock.set(Date.parse('2026-11-09T05:00:00.000Z'));
+    const first = await saveSticker(
+      env,
+      input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, minQty: 2000 }),
+      admin,
+    );
+    expect(first.minQty).toBe(2000);
+    const auditBefore = await env.DB.prepare('SELECT COUNT(*) AS n FROM audit_log').first<{
+      n: number;
+    }>();
+    env.clock.set(Date.parse('2026-11-09T06:00:00.000Z'));
+    // form basi (versi pertama) tidak boleh menimpa perubahan yang sudah masuk
+    const stale = await captureAppErrorAsync(() =>
+      saveSticker(
+        env,
+        input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, alias: 'Basi', minQty: 500 }),
+        admin,
+      ),
+    );
+    expect(stale.code).toBe('CONFLICT');
+    expect(stale.stale).toBe(true);
+    const row = await env.DB.prepare('SELECT alias, min_qty, updated_at FROM stickers WHERE id = ?')
+      .bind(saved.id)
+      .first<{ alias: string; min_qty: number; updated_at: string }>();
+    expect(row).toMatchObject({ alias: '', updated_at: first.updatedAt });
+    expect(Number(row?.min_qty)).toBe(2000);
+    const auditAfter = await env.DB.prepare('SELECT COUNT(*) AS n FROM audit_log').first<{
+      n: number;
+    }>();
+    expect(Number(auditAfter?.n)).toBe(Number(auditBefore?.n));
+    const missing = captureAppError(() =>
+      validateSaveSticker({
+        id: saved.id,
+        typeId: qc.id,
+        name: 'X',
+        alias: '',
+        fileId: null,
+        minQty: 0,
+        businessUnitIds: ['bu-a'],
+      }),
+    );
+    expect(missing.code).toBe('VALIDATION');
+    expect(missing.fields).toHaveProperty('expectedUpdatedAt');
+    // membuat baru tidak butuh versi
+    expect(input({ name: 'Baru' })).not.toHaveProperty('expectedUpdatedAt');
+  });
+
+  test('dua simpan serentak dari versi yang sama: tepat satu berhasil, yang lain galat usang', async () => {
+    for (let round = 0; round < 3; round++) {
+      const saved = await saveSticker(env, input({ name: `Serentak ${round}` }), admin);
+      env.clock.advance(1000);
+      const results = await Promise.allSettled([
+        saveSticker(
+          env,
+          input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, name: saved.name, minQty: 11 }),
+          admin,
+        ),
+        saveSticker(
+          env,
+          input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, name: saved.name, minQty: 22 }),
+          admin,
+        ),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+      expect(rejected.reason).toMatchObject({ code: 'CONFLICT', stale: true });
+      const winner = results.find(
+        (r) => r.status === 'fulfilled',
+      ) as PromiseFulfilledResult<StickerDto>;
+      const row = await env.DB.prepare('SELECT min_qty FROM stickers WHERE id = ?')
+        .bind(saved.id)
+        .first<{ min_qty: number }>();
+      expect(Number(row?.min_qty)).toBe(winner.value.minQty);
+    }
+  });
+
+  test('REST: PUT /stickers/{id} dengan If-Match basi = 412; tanpa If-Match = 422; ETag = updatedAt', async () => {
+    const rest = restClient(env);
+    const body = {
+      typeId: qc.id,
+      name: 'Via REST',
+      alias: '',
+      fileId: null,
+      minQty: 1,
+      businessUnitIds: ['bu-a'],
+    };
+    const created = (await jsonOf(await rest.post('/stickers', { body }))) as unknown as StickerDto;
+    env.clock.advance(1000);
+    const noHeader = await rest.put(`/stickers/${created.id}`, { body: { ...body, minQty: 2 } });
+    expect(noHeader.status).toBe(422);
+    const ok = await rest.put(`/stickers/${created.id}`, {
+      headers: { 'if-match': `"${created.updatedAt}"` },
+      body: { ...body, minQty: 2 },
+    });
+    expect(ok.status).toBe(200);
+    const updated = (await jsonOf(ok)) as unknown as StickerDto;
+    expect(ok.headers.get('etag')).toBe(`"${updated.updatedAt}"`);
+    const stale = await rest.put(`/stickers/${created.id}`, {
+      headers: { 'if-match': `"${created.updatedAt}"` },
+      body: { ...body, minQty: 3 },
+    });
+    expect(stale.status).toBe(412);
+    const row = await env.DB.prepare('SELECT min_qty FROM stickers WHERE id = ?')
+      .bind(created.id)
+      .first<{ min_qty: number }>();
+    expect(Number(row?.min_qty)).toBe(2);
   });
 
   test('validator: minQty bulat 0..qtyMax, fileId teks atau null, nama dan alias dibatasi', () => {
@@ -394,7 +532,11 @@ describe('gambar contoh stiker', () => {
     );
     expect(fromItem.code).toBe('VALIDATION');
     // mengganti dengan null melepas rujukan di stiker
-    const cleared = await saveSticker(env, input({ id: saved.id, fileId: null }), admin);
+    const cleared = await saveSticker(
+      env,
+      input({ id: saved.id, expectedUpdatedAt: saved.updatedAt, fileId: null }),
+      admin,
+    );
     expect(cleared.fileId).toBeNull();
   });
 
@@ -507,7 +649,11 @@ describe('konkurensi jenis vs stiker', () => {
       const type = await saveStickerType(env, { name: `Aturan ${round}`, rule: 'bu' }, admin);
       const rule: StickerRule = 'none';
       const results = await Promise.allSettled([
-        saveStickerType(env, { id: type.id, name: type.name, rule }, admin),
+        saveStickerType(
+          env,
+          { id: type.id, expectedUpdatedAt: type.updatedAt, name: type.name, rule },
+          admin,
+        ),
         saveSticker(env, input({ typeId: type.id, name: `S${round}` }), admin),
       ]);
       for (const result of results) {

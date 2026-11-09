@@ -15,9 +15,9 @@ async function cookieFor(email: string) {
 async function send(
   method: string,
   path: string,
-  options: { body?: unknown; email?: string | null } = {},
+  options: { body?: unknown; email?: string | null; headers?: Record<string, string> } = {},
 ) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
   if (options.email !== null) headers.cookie = await cookieFor(options.email ?? 'admin@gmail.com');
   if (method !== 'GET') headers['x-requested-with'] = 'qc';
   if (options.body !== undefined) headers['content-type'] = 'application/json';
@@ -88,22 +88,29 @@ describe('POST/PUT /sticker-types', () => {
     expect(await json(bad)).toMatchObject({ code: 'VALIDATION' });
   });
 
-  test('PUT mengubah nama; rule terkunci bila sudah ada stiker; id tak dikenal 404', async () => {
+  const ifMatch = (updatedAt: unknown) => ({ 'if-match': `"${updatedAt as string}"` });
+
+  test('PUT mengubah nama dengan If-Match; ETag baru = updatedAt; rule terkunci bila sudah ada stiker; id tak dikenal 404', async () => {
     const created = await json(
       await send('POST', '/sticker-types', { body: { name: 'QC', rule: 'bu' } }),
     );
     const id = created.id as string;
+    env.clock.advance(1000);
     const renamed = await send('PUT', `/sticker-types/${id}`, {
+      headers: ifMatch(created.updatedAt),
       body: { name: 'QC 2', rule: 'bu' },
     });
     expect(renamed.status).toBe(200);
-    expect(await json(renamed)).toMatchObject({ id, name: 'QC 2' });
+    const body = await json(renamed);
+    expect(body).toMatchObject({ id, name: 'QC 2' });
+    expect(renamed.headers.get('etag')).toBe(`"${body.updatedAt as string}"`);
     await env.DB.prepare(
       "INSERT INTO stickers (id, type_id, name, status) VALUES ('s1', ?, 'Hijau', 'active')",
     )
       .bind(id)
       .run();
     const locked = await send('PUT', `/sticker-types/${id}`, {
+      headers: ifMatch(body.updatedAt),
       body: { name: 'QC 2', rule: 'none' },
     });
     expect(locked.status).toBe(422);
@@ -111,9 +118,40 @@ describe('POST/PUT /sticker-types', () => {
       fields: { rule: 'Aturan jenis tidak dapat diubah karena sudah ada stiker' },
     });
     const missing = await send('PUT', '/sticker-types/tidak-ada', {
+      headers: ifMatch('2026-11-09T00:00:00.000Z'),
       body: { name: 'X', rule: 'bu' },
     });
     expect(missing.status).toBe(404);
+  });
+
+  test('PUT tanpa If-Match 422 (versi wajib saat mengubah); If-Match basi 412 dan tak menulis apa pun', async () => {
+    const created = await json(
+      await send('POST', '/sticker-types', { body: { name: 'QC', rule: 'bu' } }),
+    );
+    const id = created.id as string;
+    const noHeader = await send('PUT', `/sticker-types/${id}`, {
+      body: { name: 'Tanpa Versi', rule: 'bu' },
+    });
+    expect(noHeader.status).toBe(422);
+    expect(await json(noHeader)).toMatchObject({
+      fields: { expectedUpdatedAt: expect.any(String) },
+    });
+    env.clock.advance(1000);
+    const first = await send('PUT', `/sticker-types/${id}`, {
+      headers: ifMatch(created.updatedAt),
+      body: { name: 'Pertama', rule: 'bu' },
+    });
+    expect(first.status).toBe(200);
+    const stale = await send('PUT', `/sticker-types/${id}`, {
+      headers: ifMatch(created.updatedAt),
+      body: { name: 'Basi', rule: 'bu' },
+    });
+    expect(stale.status).toBe(412);
+    expect(await json(stale)).toMatchObject({ code: 'CONFLICT' });
+    const row = await env.DB.prepare('SELECT name FROM sticker_types WHERE id = ?')
+      .bind(id)
+      .first<{ name: string }>();
+    expect(row?.name).toBe('Pertama');
   });
 });
 

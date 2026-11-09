@@ -1,13 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import type { FileOwnerType } from './files';
-import { normalizeKey } from './items';
 import {
   isLowStock,
   piecesOfCount,
   STICKER_LIMITS,
   STICKER_RULES,
   STOCK_ENTRY_KINDS,
-  stickerKey,
 } from './stickers';
 
 describe('stiker: hitungan stok', () => {
@@ -36,13 +34,6 @@ describe('stiker: stok menipis', () => {
     expect(isLowStock({ status: 'active', minQty: 50, total: 51 })).toBe(false);
     expect(isLowStock({ status: 'active', minQty: 0, total: 0 })).toBe(false);
     expect(isLowStock({ status: 'inactive', minQty: 50, total: 0 })).toBe(false);
-  });
-});
-
-describe('stiker: kunci katalog', () => {
-  test('stickerKey tak peka huruf besar/kecil dan spasi berlebih', () => {
-    expect(stickerKey('  Stiker  Hijau ')).toBe(stickerKey('stiker hijau'));
-    expect(stickerKey('  Stiker  Hijau ')).toBe(normalizeKey('stiker hijau'));
   });
 });
 

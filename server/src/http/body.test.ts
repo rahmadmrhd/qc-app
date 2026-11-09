@@ -54,9 +54,15 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
-  'stickerTypes.save': { id: UUID, name: text(STICKER_LIMITS.nameMax), rule: 'none' },
+  'stickerTypes.save': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    name: text(STICKER_LIMITS.nameMax),
+    rule: 'none',
+  },
   'stickers.save': {
     id: UUID,
+    expectedUpdatedAt: STAMP,
     typeId: UUID,
     name: text(STICKER_LIMITS.nameMax),
     alias: text(STICKER_LIMITS.aliasMax),

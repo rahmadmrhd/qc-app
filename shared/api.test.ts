@@ -51,11 +51,17 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
   'stickerTypes.list': null,
-  'stickerTypes.save': { id: 'st1', name: 'QC', rule: 'bu' },
+  'stickerTypes.save': {
+    id: 'st1',
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    name: 'QC',
+    rule: 'bu',
+  },
   'stickerTypes.setStatus': { id: 'st1', status: 'inactive' },
   'stickers.list': null,
   'stickers.save': {
     id: 's1',
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
     typeId: 'st1',
     name: 'QC',
     alias: '',
