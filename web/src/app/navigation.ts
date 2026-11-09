@@ -3,6 +3,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  Boxes,
   Building2,
   ClipboardList,
   Contact,
@@ -94,9 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Stiker',
         to: '/sticker',
         icon: Sticker,
-        // '/sticker/stock' ditambahkan ke `excludes` oleh tugas Stok Stiker setelah rutenya ada
-        // (tipe `LinkProps['to']` menolak rute yang belum ada).
-        excludes: ['/sticker/types'],
+        excludes: ['/sticker/types', '/sticker/stock'],
         permission: { module: 'sticker', level: 'view' },
       },
       {
@@ -104,6 +103,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/sticker/types',
         icon: Shapes,
         permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Stok Stiker',
+        to: '/sticker/stock',
+        icon: Boxes,
+        permission: { module: 'stickerstock', level: 'view', scope: 'location' },
       },
     ],
   },
