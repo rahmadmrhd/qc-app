@@ -112,7 +112,12 @@ export function accessRoutes(): Pick<RouteTable, AccessMethod> {
       handler: (input, ctx) => setBusinessUnitStatus(ctx.env, input, ctx.user),
     },
     'businessUnits.options': {
-      permission: { module: 'item', level: 'view' },
+      permission: {
+        anyOf: [
+          { module: 'item', level: 'view' },
+          { module: 'sticker', level: 'view' },
+        ],
+      },
       validate: expectNull,
       handler: (_input, ctx) => listBusinessUnitOptions(ctx.env),
     },

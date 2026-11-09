@@ -6,7 +6,14 @@ const loc = (id: string, perms: Record<string, string>) => ({
   id,
   code: id,
   name: id,
-  permissions: { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none', ...perms },
+  permissions: {
+    qrcode: 'none',
+    handover: 'none',
+    qc: 'none',
+    stock: 'none',
+    stickerstock: 'none',
+    ...perms,
+  },
 });
 const me = {
   email: 'a@gmail.com',
@@ -19,6 +26,8 @@ const me = {
     handover: 'none',
     qc: 'none',
     stock: 'none',
+    sticker: 'none',
+    stickerstock: 'none',
   },
   locations: [
     loc('a', { handover: 'view' }),

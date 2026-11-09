@@ -1,4 +1,13 @@
-export const MODULES = ['access', 'item', 'qrcode', 'handover', 'qc', 'stock'] as const;
+export const MODULES = [
+  'access',
+  'item',
+  'qrcode',
+  'handover',
+  'qc',
+  'stock',
+  'sticker',
+  'stickerstock',
+] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -8,6 +17,8 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   handover: 'Serah Terima QC–WH',
   qc: 'Pengerjaan QC',
   stock: 'Monitoring Stok',
+  sticker: 'Katalog Stiker',
+  stickerstock: 'Stok Stiker',
 };
 
 export const LEVELS = ['none', 'view', 'edit', 'manage'] as const;
@@ -31,6 +42,8 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   handover: ['none', 'view', 'edit', 'manage'],
   qc: ['none', 'edit'],
   stock: ['none', 'view'],
+  sticker: ['none', 'view', 'edit', 'manage'],
+  stickerstock: ['none', 'view', 'edit', 'manage'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -65,6 +78,16 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     edit: 'Melihat task di lokasi penugasan dan memperbarui progres pengerjaan (qty selesai, tandai selesai).',
   },
   stock: { view: 'Melihat monitoring stok yang belum QC.' },
+  sticker: {
+    view: 'Melihat katalog jenis dan stiker.',
+    edit: 'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
+    manage: 'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker.',
+  },
+  stickerstock: {
+    view: 'Melihat stok dan riwayat stiker di lokasi penugasan.',
+    edit: 'Melihat serta mencatat stok masuk dan keluar.',
+    manage: 'Semua akses Ubah, ditambah koreksi dan stok opname.',
+  },
 };
 
 export function levelHint(module: ModuleKey, level: Level): string {

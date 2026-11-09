@@ -31,6 +31,11 @@ const EXPECTED_TABLES = [
   'roles',
   'schema_migrations',
   'settings',
+  'sticker_business_units',
+  'sticker_stock',
+  'sticker_stock_entries',
+  'sticker_types',
+  'stickers',
   'users',
 ];
 
@@ -66,11 +71,12 @@ describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
-    expect(list.slice(0, 4).map((m) => m.name)).toEqual([
+    expect(list.slice(0, 5).map((m) => m.name)).toEqual([
       '0001_baseline.sql',
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
       '0004_business_units.sql',
+      '0005_stiker.sql',
     ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
@@ -130,7 +136,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('23 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('28 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -146,6 +152,7 @@ describe('skema baseline', () => {
       { name: '0002_hapus_sync_rev.sql' },
       { name: '0003_hapus_external_id.sql' },
       { name: '0004_business_units.sql' },
+      { name: '0005_stiker.sql' },
     ]);
   });
 
@@ -225,6 +232,12 @@ describe('skema baseline', () => {
         'locations.locations_name_unique',
         'qr_designs.qr_designs_document',
         'roles.roles_name_unique',
+        'sticker_business_units.sticker_business_units_bu',
+        'sticker_stock_entries.sticker_stock_entries_location_ts',
+        'sticker_stock_entries.sticker_stock_entries_sticker_ts',
+        'sticker_types.sticker_types_name_unique',
+        'stickers.stickers_type',
+        'stickers.stickers_type_name_unique',
         'users.users_email',
       ].sort(),
     );
@@ -242,6 +255,9 @@ describe('skema baseline', () => {
     expect(pks.item_business_units).toBe('item_id,bu_id');
     expect(pks.brand_default_business_units).toBe('brand_id,bu_id');
     expect(pks.business_units).toBe('id');
+    expect(pks.sticker_business_units).toBe('sticker_id,bu_id');
+    expect(pks.sticker_stock).toBe('sticker_id,location_id');
+    expect(pks.sticker_stock_entries).toBe('id');
     expect(pks.settings).toBe('key');
   });
 

@@ -26,6 +26,8 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [],
@@ -63,6 +65,8 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [
@@ -70,13 +74,13 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
         id: 'l-a',
         code: 'A',
         name: 'A',
-        permissions: { handover: 'view', qc: 'none', stock: 'none' },
+        permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
       {
         id: 'l-b',
         code: 'B',
         name: 'B',
-        permissions: { handover: 'none', qc: 'none', stock: 'view' },
+        permissions: { handover: 'none', qc: 'none', stock: 'view', stickerstock: 'none' },
       },
     ],
   };
@@ -127,7 +131,14 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
     id: 'l1',
     code: 'A',
     name: 'A',
-    permissions: { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none', ...permissions },
+    permissions: {
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      stickerstock: 'none',
+      ...permissions,
+    },
   });
   const me = (perms: Record<string, string>): MeDto =>
     ({
@@ -141,6 +152,8 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
         handover: 'none',
         qc: 'none',
         stock: 'none',
+        sticker: 'none',
+        stickerstock: 'none',
       },
       businessUnits: [],
       locations: [location(perms)],
@@ -165,4 +178,101 @@ test('menu Customer (grup Data, item view) dan Serah Terima (grup Operasional, s
       { module: 'qc', level: 'edit', scope: 'location' },
     ],
   });
+});
+
+function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
+  return {
+    email: 'a@gmail.com',
+    name: 'A',
+    isSuperAdmin: false,
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+      ...permissions,
+    },
+    businessUnits: [],
+    locations: [],
+  };
+}
+
+test('grup Stiker memuat Jenis Stiker (sticker view) dan hanya tampil bagi user ber-izin', () => {
+  const grup = NAV_GROUPS.find((group) => group.label === 'Stiker');
+  expect(grup?.items.find((entry) => entry.to === '/sticker/types')).toMatchObject({
+    label: 'Jenis Stiker',
+    permission: { module: 'sticker', level: 'view' },
+  });
+  expect(visibleNavGroups(NAV_GROUPS, stickerMe({})).map((g) => g.label)).not.toContain('Stiker');
+  const stiker = visibleNavGroups(NAV_GROUPS, stickerMe({ sticker: 'view' })).find(
+    (group) => group.label === 'Stiker',
+  );
+  expect(stiker?.items.map((entry) => entry.label)).toContain('Jenis Stiker');
+});
+
+test('menu Stiker (sticker view) tidak ikut aktif di Jenis Stiker', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
+  const stiker = items.find((entry) => entry.to === '/sticker');
+  const jenis = items.find((entry) => entry.to === '/sticker/types');
+  if (!stiker || !jenis) throw new Error('menu hilang');
+  expect(stiker).toMatchObject({
+    label: 'Stiker',
+    permission: { module: 'sticker', level: 'view' },
+    excludes: ['/sticker/types', '/sticker/stock'],
+  });
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(stiker, at('/sticker'))).toBe(true);
+  expect(isNavItemActive(stiker, at('/sticker/types'))).toBe(false);
+  expect(isNavItemActive(stiker, at('/sticker/stock'))).toBe(false);
+  expect(isNavItemActive(jenis, at('/sticker/types'))).toBe(true);
+  const stok = items.find((entry) => entry.to === '/sticker/stock');
+  if (!stok) throw new Error('menu hilang');
+  expect(isNavItemActive(stok, at('/sticker/stock'))).toBe(true);
+});
+
+test('Stok Stiker hanya tampil bila stickerstock view di lokasi aktif', () => {
+  const stok = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items.find(
+    (entry) => entry.to === '/sticker/stock',
+  );
+  expect(stok).toMatchObject({
+    label: 'Stok Stiker',
+    permission: { module: 'stickerstock', level: 'view', scope: 'location' },
+  });
+  const me: MeDto = {
+    ...stickerMe({ sticker: 'view' }),
+    locations: [
+      {
+        id: 'l-a',
+        code: 'A',
+        name: 'A',
+        permissions: { handover: 'none', qc: 'none', stock: 'none', stickerstock: 'view' },
+      },
+      {
+        id: 'l-b',
+        code: 'B',
+        name: 'B',
+        permissions: { handover: 'none', qc: 'none', stock: 'none', stickerstock: 'none' },
+      },
+    ],
+  };
+  const labels = (ids: string[]) =>
+    (
+      visibleNavGroups(NAV_GROUPS, me, ids).find((group) => group.label === 'Stiker')?.items ?? []
+    ).map((entry) => entry.label);
+  expect(labels(['l-a'])).toContain('Stok Stiker');
+  expect(labels(['l-b'])).not.toContain('Stok Stiker');
+  expect(labels(['l-b'])).toContain('Stiker');
+  // Tanpa izin stok di lokasi mana pun, grup Stiker tetap tampil lewat katalog tetapi tanpa Stok Stiker.
+  expect(
+    (
+      visibleNavGroups(NAV_GROUPS, stickerMe({ sticker: 'view' }), ['l-a']).find(
+        (group) => group.label === 'Stiker',
+      )?.items ?? []
+    ).map((entry) => entry.label),
+  ).not.toContain('Stok Stiker');
 });

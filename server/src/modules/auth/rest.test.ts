@@ -42,7 +42,7 @@ describe('GET /api/v1/me', () => {
           id: 'l-j',
           code: 'JKT',
           name: 'Jakarta',
-          permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+          permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
         },
       ],
     });
@@ -94,6 +94,7 @@ describe('GET /api/v1/me', () => {
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
+      stickerstock: 'manage',
     });
   });
 

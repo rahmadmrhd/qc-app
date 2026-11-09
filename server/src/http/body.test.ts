@@ -5,6 +5,7 @@ import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
 // Batas JSON REST 2 MB (keputusan pemilik 2026-11-06): muatan sah terbesar tiap rute JSON harus muat dengan lega.
@@ -53,6 +54,57 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
+  'stickerTypes.save': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    name: text(STICKER_LIMITS.nameMax),
+    rule: 'none',
+  },
+  'stickers.save': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    typeId: UUID,
+    name: text(STICKER_LIMITS.nameMax),
+    alias: text(STICKER_LIMITS.aliasMax),
+    fileId: UUID,
+    minQty: STICKER_LIMITS.qtyMax,
+    businessUnitIds: Array.from({ length: 50 }, () => UUID),
+  },
+  'stickers.setStatus': { id: UUID, status: 'inactive' },
+  'stickerStock.record': {
+    locationId: UUID,
+    stickerId: UUID,
+    kind: 'out',
+    count: {
+      rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+        sheets: STICKER_LIMITS.qtyMax,
+        perSheet: STICKER_LIMITS.qtyMax,
+      })),
+      loose: STICKER_LIMITS.qtyMax,
+    },
+    reason: text(STICKER_LIMITS.reasonMax),
+  },
+  'stickerStock.opname': {
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      expectedQty: STICKER_LIMITS.qtyMax,
+      count: {
+        rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+          sheets: STICKER_LIMITS.qtyMax,
+          perSheet: STICKER_LIMITS.qtyMax,
+        })),
+        loose: STICKER_LIMITS.qtyMax,
+      },
+    })),
+  },
+  'stickerStock.adjust': {
+    locationId: UUID,
+    stickerId: UUID,
+    delta: -STICKER_LIMITS.qtyMax,
+    reason: text(STICKER_LIMITS.reasonMax),
+  },
+  'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
   'items.save': {

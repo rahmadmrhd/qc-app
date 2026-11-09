@@ -15,6 +15,8 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     locations: [],
     businessUnits: Object.entries(levels).map(([id, level]) => ({

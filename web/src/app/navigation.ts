@@ -3,6 +3,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  Boxes,
   Building2,
   ClipboardList,
   Contact,
@@ -11,7 +12,9 @@ import {
   MapPin,
   Package,
   QrCode,
+  Shapes,
   ShieldCheck,
+  Sticker,
   Tags,
   Users,
 } from 'lucide-react';
@@ -82,6 +85,30 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'handover', level: 'view', scope: 'location' },
           { module: 'qc', level: 'edit', scope: 'location' },
         ],
+      },
+    ],
+  },
+  {
+    label: 'Stiker',
+    items: [
+      {
+        label: 'Stiker',
+        to: '/sticker',
+        icon: Sticker,
+        excludes: ['/sticker/types', '/sticker/stock'],
+        permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Jenis Stiker',
+        to: '/sticker/types',
+        icon: Shapes,
+        permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Stok Stiker',
+        to: '/sticker/stock',
+        icon: Boxes,
+        permission: { module: 'stickerstock', level: 'view', scope: 'location' },
       },
     ],
   },

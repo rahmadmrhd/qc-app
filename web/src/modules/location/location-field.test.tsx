@@ -21,6 +21,8 @@ beforeEach(() => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [
@@ -28,13 +30,13 @@ beforeEach(() => {
         id: 'l-a',
         code: 'JKT',
         name: 'Jakarta',
-        permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+        permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
       {
         id: 'l-b',
         code: 'BDG',
         name: 'Bandung',
-        permissions: { handover: 'view', qc: 'none', stock: 'none' },
+        permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
     ],
   };

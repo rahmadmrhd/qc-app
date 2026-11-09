@@ -24,6 +24,9 @@ import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
 import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
 import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
+import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
+import { Route as AppStickerStockRouteImport } from './routes/_app/sticker/stock'
+import { Route as AppStickerTypesRouteImport } from './routes/_app/sticker/types'
 import { Route as AppAccessBusinessUnitsIndexRouteImport } from './routes/_app/access/business-units/index'
 import { Route as AppAccessBusinessUnitsBusinessUnitIdRouteImport } from './routes/_app/access/business-units/$businessUnitId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
@@ -111,6 +114,21 @@ const AppQrcodeNewRoute = AppQrcodeNewRouteImport.update({
   path: '/qrcode/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStickerIndexRoute = AppStickerIndexRouteImport.update({
+  id: '/sticker/',
+  path: '/sticker/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStickerStockRoute = AppStickerStockRouteImport.update({
+  id: '/sticker/stock',
+  path: '/sticker/stock',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStickerTypesRoute = AppStickerTypesRouteImport.update({
+  id: '/sticker/types',
+  path: '/sticker/types',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAccessBusinessUnitsIndexRoute =
   AppAccessBusinessUnitsIndexRouteImport.update({
     id: '/access/business-units/',
@@ -189,9 +207,12 @@ export interface FileRoutesByFullPath {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/stock': typeof AppStickerStockRoute
+  '/sticker/types': typeof AppStickerTypesRoute
   '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
   '/qrcode/': typeof AppQrcodeIndexRoute
+  '/sticker/': typeof AppStickerIndexRoute
   '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
@@ -217,9 +238,12 @@ export interface FileRoutesByTo {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/stock': typeof AppStickerStockRoute
+  '/sticker/types': typeof AppStickerTypesRoute
   '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
   '/qrcode': typeof AppQrcodeIndexRoute
+  '/sticker': typeof AppStickerIndexRoute
   '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
@@ -247,9 +271,12 @@ export interface FileRoutesById {
   '/_app/handover/new': typeof AppHandoverNewRoute
   '/_app/item/new': typeof AppItemNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
+  '/_app/sticker/stock': typeof AppStickerStockRoute
+  '/_app/sticker/types': typeof AppStickerTypesRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/qrcode/': typeof AppQrcodeIndexRoute
+  '/_app/sticker/': typeof AppStickerIndexRoute
   '/_app/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
@@ -277,9 +304,12 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/stock'
+    | '/sticker/types'
     | '/handover/'
     | '/item/'
     | '/qrcode/'
+    | '/sticker/'
     | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
@@ -305,9 +335,12 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/stock'
+    | '/sticker/types'
     | '/handover'
     | '/item'
     | '/qrcode'
+    | '/sticker'
     | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
@@ -334,9 +367,12 @@ export interface FileRouteTypes {
     | '/_app/handover/new'
     | '/_app/item/new'
     | '/_app/qrcode/new'
+    | '/_app/sticker/stock'
+    | '/_app/sticker/types'
     | '/_app/handover/'
     | '/_app/item/'
     | '/_app/qrcode/'
+    | '/_app/sticker/'
     | '/_app/access/business-units/$businessUnitId'
     | '/_app/handover/$handoverId/edit'
     | '/_app/item/$itemId/edit'
@@ -463,6 +499,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQrcodeNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sticker/': {
+      id: '/_app/sticker/'
+      path: '/sticker'
+      fullPath: '/sticker/'
+      preLoaderRoute: typeof AppStickerIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sticker/stock': {
+      id: '/_app/sticker/stock'
+      path: '/sticker/stock'
+      fullPath: '/sticker/stock'
+      preLoaderRoute: typeof AppStickerStockRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sticker/types': {
+      id: '/_app/sticker/types'
+      path: '/sticker/types'
+      fullPath: '/sticker/types'
+      preLoaderRoute: typeof AppStickerTypesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/access/business-units/': {
       id: '/_app/access/business-units/'
       path: '/access/business-units'
@@ -561,9 +618,12 @@ interface AppRouteChildren {
   AppHandoverNewRoute: typeof AppHandoverNewRoute
   AppItemNewRoute: typeof AppItemNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
+  AppStickerStockRoute: typeof AppStickerStockRoute
+  AppStickerTypesRoute: typeof AppStickerTypesRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppQrcodeIndexRoute: typeof AppQrcodeIndexRoute
+  AppStickerIndexRoute: typeof AppStickerIndexRoute
   AppAccessBusinessUnitsBusinessUnitIdRoute: typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
   AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
@@ -589,9 +649,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppHandoverNewRoute: AppHandoverNewRoute,
   AppItemNewRoute: AppItemNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
+  AppStickerStockRoute: AppStickerStockRoute,
+  AppStickerTypesRoute: AppStickerTypesRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
   AppQrcodeIndexRoute: AppQrcodeIndexRoute,
+  AppStickerIndexRoute: AppStickerIndexRoute,
   AppAccessBusinessUnitsBusinessUnitIdRoute:
     AppAccessBusinessUnitsBusinessUnitIdRoute,
   AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,

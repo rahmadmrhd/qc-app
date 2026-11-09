@@ -52,6 +52,10 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 8. **Saran toleran di klien**: pakai `suggestMatches`/`similarNames` (`shared/suggest.ts`) atas daftar yang sudah dimuat; ambil daftar lewat rute modul itu sendiri (izin modul), bukan rute modul lain yang mungkin tidak boleh diakses user.
 9. **Menu dan guard dengan izin "salah satu dari"**: `NavItem.permission` boleh berupa daftar; guard route memakai `requireAnyPermission` (`web/src/modules/auth/permissions.ts`).
 
+### Katalog global + stok berlokasi (contoh: stiker)
+
+Satu fitur boleh memakai dua modul: katalog `sticker` (global, `SHARED_MODULES`, levelnya dari semua penugasan) dan stok `stickerstock` (berlokasi, `LOCATION_MODULES`). Rute stok memakai `scope: 'location'`; rute katalog tidak. Bila sebuah angka dihitung dari semua lokasi (mis. "menipis" = total semua lokasi), hitung di server dari seluruh baris, lalu tampilkan hanya rincian lokasi yang boleh dilihat user; angka lokasi lain tidak boleh bocor. Lihat `server/src/modules/sticker/stock-service.ts` dan `docs/superpowers/specs/2026-11-09-stiker-katalog-stok-design.md`.
+
 ## Gambar dan Markdown
 
 - **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat rute REST `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `planAttachFiles` saat entitas disimpan.

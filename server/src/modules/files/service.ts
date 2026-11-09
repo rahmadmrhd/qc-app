@@ -119,11 +119,13 @@ export async function uploadFile(
 /**
  * Pemanggil pembaca berkas. `itemBuIds`: `null` = tak punya izin `item` global (hanya logo bersama `qrlogo` dan
  * unggahan miliknya yang belum terpasang); array = BU yang boleh dilihat user (berkas milik item hanya terbaca bila
- * item pemiliknya beririsan dengan himpunan ini; jenis pemilik lain tak dibatasi BU).
+ * item pemiliknya beririsan dengan himpunan ini; jenis pemilik lain tak dibatasi BU). `canReadStickerFiles`: boleh
+ * membaca gambar contoh stiker (pemilik `sticker`): pemegang `sticker: view` atau izin `item` (katalog bersama).
  */
 export interface FileViewer {
   email: string;
   itemBuIds: readonly string[] | null;
+  canReadStickerFiles: boolean;
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
@@ -157,7 +159,9 @@ export async function readFile(
   if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
     const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
-    if (!isLogo && !isOwnPending) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+    const isSticker = record.ownerType === 'sticker' && viewer.canReadStickerFiles;
+    if (!isLogo && !isOwnPending && !isSticker)
+      throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   } else if (
     record.ownerType === 'item' &&
     !(await itemFileVisible(env, record.ownerId, viewer.itemBuIds))

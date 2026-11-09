@@ -8,4 +8,6 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   qrcode: '/qrcode',
   handover: '/handover',
   qc: '/handover',
+  sticker: '/sticker',
+  stickerstock: '/sticker/stock',
 };

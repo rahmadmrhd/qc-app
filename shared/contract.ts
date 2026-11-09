@@ -3,6 +3,7 @@ import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
+import type { StickerRule, StockCount, StockEntryKind } from './stickers';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -240,6 +241,152 @@ export interface SaveBrandInput {
 export interface SetBrandStatusInput {
   id: string;
   status: ItemStatus;
+}
+
+/** Jenis stiker (katalog stiker, tahap 3a). */
+export interface StickerTypeDto {
+  id: string;
+  name: string;
+  rule: StickerRule;
+  status: ItemStatus;
+  /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
+  stickerCount: number;
+  updatedAt: string;
+}
+
+export interface SaveStickerTypeInput {
+  id?: string;
+  /** `updatedAt` yang dilihat penyimpan; wajib saat `id` ada (usang = galat usang, 412 lewat If-Match). */
+  expectedUpdatedAt?: string;
+  name: string;
+  /** Tak dapat diubah bila jenis sudah punya stiker. */
+  rule: StickerRule;
+}
+
+export interface SetStickerTypeStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+/** Stiker (katalog stiker, tahap 3a). `low` dihitung dari total stok semua lokasi (`isLowStock`). */
+export interface StickerDto {
+  id: string;
+  typeId: string;
+  typeName: string;
+  name: string;
+  /** Nama tampilan untuk tim QC; kosong bila tidak ada. */
+  alias: string;
+  fileId: string | null;
+  /** Batas minimum stok (butir) total semua lokasi; 0 = tanpa peringatan. */
+  minQty: number;
+  status: ItemStatus;
+  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none`. */
+  businessUnitIds: string[];
+  low: boolean;
+  updatedAt: string;
+}
+
+export interface SaveStickerInput {
+  id?: string;
+  /** `updatedAt` yang dilihat penyimpan; wajib saat `id` ada (usang = galat usang, 412 lewat If-Match). */
+  expectedUpdatedAt?: string;
+  /** Tak dapat diubah setelah stiker dibuat. */
+  typeId: string;
+  name: string;
+  alias: string;
+  fileId: string | null;
+  minQty: number;
+  /** Jenis berrule `bu`: minimal satu; jenis berrule `none`: harus kosong. */
+  businessUnitIds: string[];
+}
+
+export interface SetStickerStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+/** Satu baris halaman Stok Stiker untuk lokasi yang diminta (tanpa gambar contoh). */
+export interface StickerStockDto {
+  stickerId: string;
+  /** Alias bila ada, selain itu nama stiker. */
+  name: string;
+  typeName: string;
+  /** Status jenis: jenis nonaktif menolak stok masuk (keluar, koreksi, dan opname tetap boleh). */
+  typeStatus: ItemStatus;
+  status: ItemStatus;
+  minQty: number;
+  /** Menipis menurut total SEMUA lokasi (sama dengan `StickerDto.low`), bukan hanya lokasi yang diminta. */
+  low: boolean;
+  /** Jumlah butir di lokasi yang diminta saja. */
+  total: number;
+  /** Satu entri per lokasi yang diminta (urut permintaan); 0 bila belum ada stok. */
+  byLocation: { locationId: string; qty: number }[];
+}
+
+export interface ListStickerStockInput {
+  locationIds: string[];
+}
+
+export interface RecordStockInput {
+  locationId: string;
+  stickerId: string;
+  kind: 'in' | 'out';
+  /** Tepat satu dari `quantity` atau `count`. */
+  quantity?: number;
+  count?: StockCount;
+  /** Wajib untuk `out`. */
+  reason: string;
+}
+
+export interface AdjustStockInput {
+  locationId: string;
+  stickerId: string;
+  /** Bertanda, bukan 0. */
+  delta: number;
+  /** Wajib. */
+  reason: string;
+}
+
+/** Satu baris stok opname: hitungan fisik untuk satu stiker di satu lokasi. */
+export interface OpnameRowInput {
+  stickerId: string;
+  locationId: string;
+  /** Stok tersimpan yang dilihat penghitung; berbeda dari stok sekarang = usang (seluruh permintaan ditolak). */
+  expectedQty: number;
+  count: StockCount;
+}
+
+export interface OpnameInput {
+  /** 1..100 baris, pasangan stiker x lokasi unik. */
+  rows: OpnameRowInput[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
+export interface StockEntryDto {
+  id: string;
+  stickerId: string;
+  locationId: string;
+  kind: StockEntryKind;
+  delta: number;
+  qtyAfter: number;
+  count: StockCount | null;
+  reason: string;
+  actor: string;
+  ts: string;
+}
+
+export interface StockHistoryInput {
+  locationIds: string[];
+  stickerId?: string;
+  cursor?: string;
+  /** Bawaan 50, maksimum 200. */
+  limit?: number;
+}
+
+export interface StockHistoryPageDto {
+  entries: StockEntryDto[];
+  nextCursor: string | null;
 }
 
 export interface ItemSummaryDto {
@@ -566,6 +713,17 @@ export interface ApiContract {
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
+  'stickerTypes.list': { input: null; output: StickerTypeDto[] };
+  'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
+  'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickers.list': { input: null; output: StickerDto[] };
+  'stickers.save': { input: SaveStickerInput; output: StickerDto };
+  'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
+  'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
+  'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
+  'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
+  'stickerStock.opname': { input: OpnameInput; output: StockEntryDto[] };
+  'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
   'customers.list': { input: null; output: CustomerDto[] };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };

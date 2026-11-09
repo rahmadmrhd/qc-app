@@ -29,9 +29,17 @@ import { validateGetFile, validateUploadFile } from './validate';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 
 /** Pembaca dengan izin item dan BU `bu-a`; berkas tanpa pemilik atau bukan milik item tak dibatasi BU. */
-const ALL_BU_VIEWER = { email: 'admin@gmail.com', itemBuIds: ['bu-a'] } as const;
+const ALL_BU_VIEWER = {
+  email: 'admin@gmail.com',
+  itemBuIds: ['bu-a'],
+  canReadStickerFiles: true,
+} as const;
 /** Pembaca tanpa izin item global: hanya logo bersama dan unggahan miliknya. */
-const NO_ITEM = { email: 'lain@gmail.com', itemBuIds: null } as const;
+const NO_ITEM = {
+  email: 'lain@gmail.com',
+  itemBuIds: null,
+  canReadStickerFiles: false,
+} as const;
 const JPEG = '/9j/4AAQSkZJRg==';
 
 let env: TestEnv;
@@ -442,7 +450,11 @@ describe('berkas gambar item menurut BU', () => {
     await own(fileLogo, 'qrlogo', 'shared');
   });
 
-  const viewer = (itemBuIds: readonly string[] | null) => ({ email: 'x@gmail.com', itemBuIds });
+  const viewer = (itemBuIds: readonly string[] | null) => ({
+    email: 'x@gmail.com',
+    itemBuIds,
+    canReadStickerFiles: itemBuIds !== null,
+  });
 
   test('item BU A: user BU A membaca; user BU B = NOT_FOUND dengan pesan sama dengan berkas tak ada', async () => {
     expect((await readFile(env, { id: fileA }, viewer(['bu-a']))).bytes).toEqual(
@@ -485,8 +497,13 @@ describe('berkas gambar item menurut BU', () => {
     const pending = await up(upload(), admin);
     expect((await readFile(env, { id: fileLogo }, viewer(null))).bytes).toEqual(bytesOfBase64(PNG));
     expect(
-      (await readFile(env, { id: pending.id }, { email: 'admin@gmail.com', itemBuIds: null }))
-        .bytes,
+      (
+        await readFile(
+          env,
+          { id: pending.id },
+          { email: 'admin@gmail.com', itemBuIds: null, canReadStickerFiles: false },
+        )
+      ).bytes,
     ).toEqual(bytesOfBase64(PNG));
     // tanpa izin item: berkas item tetap tertutup, walau BU-nya "cocok" tidak relevan
     expect(
@@ -496,7 +513,7 @@ describe('berkas gambar item menurut BU', () => {
 
   test('unggahan yang belum terpasang hanya terbaca pengunggahnya, juga bagi pemegang item:view; cache tak disajikan ke user lain', async () => {
     const pending = (await up(upload(), admin)).id;
-    const mine = { email: 'admin@gmail.com', itemBuIds: ['bu-a'] };
+    const mine = { email: 'admin@gmail.com', itemBuIds: ['bu-a'], canReadStickerFiles: true };
     expect((await readFile(env, { id: pending }, mine)).bytes).toEqual(bytesOfBase64(PNG));
     expect(driveReads()).toBe(1);
     const getsBefore = cache.gets;
