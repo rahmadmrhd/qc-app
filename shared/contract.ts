@@ -1,4 +1,5 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
@@ -24,6 +25,11 @@ export interface LocationAccessDto {
   permissions: LocationPermissionMap;
 }
 
+export interface BusinessUnitAccessDto extends BusinessUnitOptionDto {
+  /** Izin efektif user di BU ini (gabungan "Semua BU" dan penugasan BU itu) untuk modul ber-BU. */
+  permissions: BuPermissionMap;
+}
+
 export interface MeDto {
   email: string;
   name: string;
@@ -32,6 +38,8 @@ export interface MeDto {
   permissions: PermissionMap;
   /** Lokasi aktif yang boleh diakses, terurut menurut kode. */
   locations: LocationAccessDto[];
+  /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
+  businessUnits: BusinessUnitAccessDto[];
 }
 
 export interface UserDto {
@@ -40,6 +48,8 @@ export interface UserDto {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
+  /** Penugasan BU (`buId: null` = Semua BU); berlaku sama di semua lokasi. */
+  buAssignments: BuAssignment[];
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -62,6 +72,7 @@ export interface SaveUserInput {
   name: string;
   status: UserStatus;
   assignments: Assignment[];
+  buAssignments: BuAssignment[];
 }
 
 export interface SetUserStatusInput {
@@ -132,6 +143,41 @@ export interface SetLocationStatusInput {
   status: LocationStatus;
 }
 
+export type BusinessUnitStatus = 'active' | 'inactive';
+
+export interface BusinessUnitRefDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** Ringkasan BU untuk pemilih (Merk, form item): tanpa hitungan dan metadata. */
+export interface BusinessUnitOptionDto extends BusinessUnitRefDto {
+  status: BusinessUnitStatus;
+}
+
+export interface BusinessUnitDto extends BusinessUnitOptionDto {
+  /** Jumlah baris `item_business_units` (item yang bertaut ke BU ini). */
+  itemCount: number;
+  /** Jumlah user yang `bu_assignments`-nya memuat BU ini secara eksplisit atau "Semua BU". */
+  userCount: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface SaveBusinessUnitInput {
+  id?: string;
+  /** Huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
+  code: string;
+  name: string;
+}
+
+export interface SetBusinessUnitStatusInput {
+  id: string;
+  status: BusinessUnitStatus;
+}
+
 export interface FileDto {
   id: string;
   mime: string;
@@ -180,11 +226,15 @@ export interface BrandDto {
   /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
   itemCount: number;
   updatedAt: string;
+  /** BU bawaan merk (terurut menurut kode BU); hanya mengisi otomatis form item, tidak memberi hak apa pun. */
+  businessUnitIds: string[];
 }
 
 export interface SaveBrandInput {
   id?: string;
   name: string;
+  /** BU bawaan (boleh kosong, tanpa kembar). Mengubah merk menggantikan himpunan lama seluruhnya. */
+  businessUnitIds: string[];
 }
 
 export interface SetBrandStatusInput {
@@ -202,6 +252,8 @@ export interface ItemSummaryDto {
   status: ItemStatus;
   aliases: string[];
   imageCount: number;
+  /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
+  businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
 }
 
@@ -220,7 +272,8 @@ export interface SaveItemInput {
   id?: string;
   /** `updatedAt` item saat form dimuat; bila sudah berbeda, simpan ditolak (CONFLICT) agar tidak menimpa ubahan orang lain. */
   expectedUpdatedAt?: string;
-  brand: string;
+  /** Id merk yang sudah ada (merk baru dibuat lewat `brands.save`, bukan dari teks). */
+  brandId: string;
   model: string;
   isCountryLock: boolean;
   aliases: string[];
@@ -228,6 +281,8 @@ export interface SaveItemInput {
   accessories: ItemAccessoryDto[];
   attachments: string[];
   detail: string;
+  /** BU item (minimal satu, tanpa kembar). */
+  businessUnitIds: string[];
 }
 
 export interface GetItemInput {
@@ -501,6 +556,11 @@ export interface ApiContract {
   'access.locations.list': { input: null; output: LocationDto[] };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
+  'access.businessUnits.list': { input: null; output: BusinessUnitDto[] };
+  'access.businessUnits.save': { input: SaveBusinessUnitInput; output: BusinessUnitDto };
+  'access.businessUnits.setStatus': { input: SetBusinessUnitStatusInput; output: BusinessUnitDto };
+  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). */
+  'businessUnits.options': { input: null; output: BusinessUnitOptionDto[] };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
   'brands.list': { input: null; output: BrandDto[] };

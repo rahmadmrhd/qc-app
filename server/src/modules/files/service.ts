@@ -117,22 +117,56 @@ export async function uploadFile(
 }
 
 /**
+ * Pemanggil pembaca berkas. `itemBuIds`: `null` = tak punya izin `item` global (hanya logo bersama `qrlogo` dan
+ * unggahan miliknya yang belum terpasang); array = BU yang boleh dilihat user (berkas milik item hanya terbaca bila
+ * item pemiliknya beririsan dengan himpunan ini; jenis pemilik lain tak dibatasi BU).
+ */
+export interface FileViewer {
+  email: string;
+  itemBuIds: readonly string[] | null;
+}
+
+/** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
+async function itemFileVisible(
+  env: Env,
+  itemId: string,
+  itemBuIds: readonly string[],
+): Promise<boolean> {
+  if (itemBuIds.length === 0) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM item_business_units WHERE item_id = ? AND bu_id IN (${itemBuIds.map(() => '?').join(',')}) LIMIT 1`,
+  )
+    .bind(itemId, ...itemBuIds)
+    .first<{ ok: number }>();
+  return row !== null;
+}
+
+/**
  * Membaca berkas: hanya berkas aktif yang tercatat di tabel `files` yang dapat dibaca (id Drive tidak
  * pernah datang dari klien), dan hanya yang induknya folder aplikasi. Isi dibaca dari cache/jembatan (base64)
- * lalu didekode menjadi byte untuk respons mentah. `onlyLogosFor` (email pemanggil) untuk pengguna tanpa izin `item`:
- * hanya logo bersama (`qrlogo`) dan unggahan miliknya yang belum terpasang.
+ * lalu didekode menjadi byte untuk respons mentah. Aturan akses (`FileViewer`) diperiksa SEBELUM cache isi dibaca;
+ * berkas di luar hak = `NOT_FOUND` yang sama dengan berkas tak ada.
  */
 export async function readFile(
   env: Env,
   input: GetFileInput,
-  onlyLogosFor?: string,
+  viewer: FileViewer,
 ): Promise<FileContentDto> {
   const record = await findActiveFile(env, input.id);
   if (!record) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
-  if (onlyLogosFor !== undefined) {
+  if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
-    const isOwnPending = record.ownerType === '' && record.createdBy === onlyLogosFor;
+    const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
     if (!isLogo && !isOwnPending) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  } else if (
+    record.ownerType === 'item' &&
+    !(await itemFileVisible(env, record.ownerId, viewer.itemBuIds))
+  ) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
+  // Unggahan yang belum terpasang hanya terbaca pengunggahnya (keputusan pemilik 2026-11-09), apa pun izin `item`-nya.
+  if (record.ownerType === '' && record.createdBy !== viewer.email) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
   const folderId = await folderIdOf(env, SETTING_DRIVE_FOLDER_ID);
   if (folderId === '') throw appError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive');
@@ -149,7 +183,8 @@ export async function readFile(
 /**
  * Rencana penetapan pemilik berkas (dipakai simpan item/logo): memvalidasi seluruh batch dulu, lalu
  * mengembalikan pernyataan UPDATE untuk digabung ke `batch()` penyimpanan entitas (atomik). Berkas yang
- * sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang. Pernyataan memakai penjaga
+ * sudah dimiliki entitas lain ditolak; pemilik yang sama aman diulang. Unggahan yang belum terpasang hanya boleh dipasang
+ * pengunggahnya (`claimant`; milik orang lain dijawab seperti berkas tak dikenal). Pernyataan memakai penjaga
  * `owner_type = ''` sehingga rebutan berkas yang sama tidak menimpa pemilik.
  */
 export async function planAttachFiles(
@@ -159,6 +194,8 @@ export async function planAttachFiles(
   ownerId: string,
   /** Hasil `findActiveFiles` untuk `ids` yang sudah dimuat pemanggil (hindari kueri ganda). */
   preloaded?: readonly FileRecord[],
+  /** Email pemasang: unggahan belum terpasang milik orang lain = `VALIDATION` (sama dengan berkas tak dikenal). */
+  claimant?: string,
 ): Promise<DbStatement[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
@@ -168,8 +205,15 @@ export async function planAttachFiles(
   for (const id of unique) {
     const file = byId.get(id);
     if (!file) throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
-    if (file.ownerType === '') toClaim.push(file);
-    else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
+    if (file.ownerType === '') {
+      if (claimant !== undefined && file.createdBy !== claimant) {
+        throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
+      }
+      toClaim.push(file);
+    } else if (file.ownerType === 'item' && ownerType !== 'item') {
+      // Berkas item yang dikirim ke jalur lain (logo QR): jawab seperti berkas tak dikenal, tanpa membuka keberadaannya.
+      throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
+    } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }
   }
@@ -185,8 +229,9 @@ export async function attachFiles(
   ids: readonly string[],
   ownerType: FileOwnerType,
   ownerId: string,
+  claimant?: string,
 ): Promise<void> {
-  const statements = await planAttachFiles(env, ids, ownerType, ownerId);
+  const statements = await planAttachFiles(env, ids, ownerType, ownerId, undefined, claimant);
   if (statements.length > 0) await env.DB.batch(statements);
 }
 

@@ -39,7 +39,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
   await api('items.save', {
     id: 'a/b',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    brand: 'Sony',
+    brandId: 'b1',
     model: 'X',
     isCountryLock: false,
     aliases: [],
@@ -47,6 +47,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     accessories: [],
     attachments: [],
     detail: '',
+    businessUnitIds: ['bu1'],
   });
   const { url, init } = lastCall(fetchImpl);
   expect(url).toBe('/api/v1/items/a%2Fb');
@@ -57,19 +58,21 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     'If-Match': '"2026-10-09T00:00:00.000Z"',
   });
   const body = JSON.parse(String(init.body));
-  expect(body).toMatchObject({ brand: 'Sony', model: 'X' });
+  expect(body).toMatchObject({ brandId: 'b1', model: 'X' });
   expect(body).not.toHaveProperty('id');
   expect(body).not.toHaveProperty('expectedUpdatedAt');
 });
 
 test('POST create (tanpa id): jalur koleksi, tanpa If-Match', async () => {
   const { api, fetchImpl } = setup(() => respond({ id: 'b1' }, { status: 201 }));
-  await expect(api('brands.save', { name: 'Sony' })).resolves.toEqual({ id: 'b1' });
+  await expect(api('brands.save', { name: 'Sony', businessUnitIds: [] })).resolves.toEqual({
+    id: 'b1',
+  });
   const { url, init } = lastCall(fetchImpl);
   expect(url).toBe('/api/v1/brands');
   expect(init.method).toBe('POST');
   expect(init.headers).not.toHaveProperty('If-Match');
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony', businessUnitIds: [] });
 });
 
 test('PATCH: status di badan, id di jalur', async () => {
@@ -108,7 +111,9 @@ const problem = (code: string, status: number, extra: object = {}) =>
 
 test('problem 409 menjadi ApiError code CONFLICT dengan requestId dan fields', async () => {
   const { api } = setup(() => problem('CONFLICT', 409, { fields: { name: 'Sudah dipakai' } }));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({
     code: 'CONFLICT',
@@ -121,10 +126,14 @@ test('problem 409 menjadi ApiError code CONFLICT dengan requestId dan fields', a
 
 test('problem 412 menjadi CONFLICT walau kodenya lain; status tetap 412', async () => {
   const { api } = setup(() => problem('VALIDATION', 412));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toMatchObject({ code: 'CONFLICT', status: 412 });
   const { api: plain } = setup(() => problem('CONFLICT', 412));
-  expect(await plain('brands.save', { name: 'X' }).catch((e: unknown) => e)).toMatchObject({
+  expect(
+    await plain('brands.save', { name: 'X', businessUnitIds: [] }).catch((e: unknown) => e),
+  ).toMatchObject({
     code: 'CONFLICT',
     status: 412,
   });
@@ -203,7 +212,9 @@ test('baseUrl ditambahkan di depan /api/v1', async () => {
 
 test('413 polos dari Bun.serve (bukan problem) menjadi VALIDATION "Badan permintaan terlalu besar"', async () => {
   const { api } = setup(() => respond('Payload Too Large', { status: 413 }, 'text/plain'));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({
     code: 'VALIDATION',
@@ -312,7 +323,7 @@ test('JSON (GET/tulis) memakai cache no-store; unduhan mengikuti kebijakan cache
   const { api, fetchImpl } = setup(() => respond({ id: 'h1' }));
   await api('handovers.get', { id: 'h1', locationIds: ['l1'] });
   expect(lastCall(fetchImpl).init.cache).toBe('no-store');
-  await api('brands.save', { name: 'Sony' });
+  await api('brands.save', { name: 'Sony', businessUnitIds: [] });
   expect(lastCall(fetchImpl).init.cache).toBe('no-store');
   const download = setup(
     () => new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/png' } }),

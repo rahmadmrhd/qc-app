@@ -5,7 +5,8 @@ import { z } from 'zod';
 
 /** Field yang dapat memuat pesan galat dari server (konflik, validasi). */
 export const ITEM_FIELD_KEYS = [
-  'brand',
+  'brandId',
+  'businessUnitIds',
   'model',
   'aliases',
   'stickers',
@@ -41,15 +42,9 @@ const accessoryRowSchema = z.object({
 });
 
 export const itemFormSchema = z.object({
-  brand: z
-    .string()
-    .trim()
-    .min(1, 'Wajib diisi')
-    .max(ITEM_LIMITS.brand, `Maksimal ${ITEM_LIMITS.brand} karakter`)
-    .refine(
-      (value) => value === '' || normalizeKey(value) !== '',
-      'Merk harus memuat huruf atau angka',
-    ),
+  /** Id merk yang sudah ada (dipilih lewat LinkField; merk baru dibuat lewat dialog "tambah merk"). */
+  brandId: z.string().min(1, 'Pilih merk'),
+  businessUnitIds: z.array(z.string()).min(1, 'Pilih minimal satu BU'),
   model: z
     .string()
     .trim()
@@ -132,7 +127,8 @@ export type ItemFormOutput = z.output<typeof itemFormSchema>;
 
 export function toItemFormDefaults(item?: ItemDto): ItemFormInput {
   return {
-    brand: item?.brand ?? '',
+    brandId: item?.brandId ?? '',
+    businessUnitIds: item ? item.businessUnits.map((bu) => bu.id) : [],
     model: item?.model ?? '',
     isCountryLock: item?.isCountryLock ?? false,
     aliasesText: item ? item.aliases.join('\n') : '',
@@ -149,7 +145,8 @@ export function toSaveItemInput(
   expectedUpdatedAt?: string,
 ): SaveItemInput {
   const input: SaveItemInput = {
-    brand: values.brand.trim(),
+    brandId: values.brandId,
+    businessUnitIds: [...values.businessUnitIds],
     model: values.model.trim(),
     isCountryLock: values.isCountryLock,
     aliases: parseAliasLines(values.aliasesText),

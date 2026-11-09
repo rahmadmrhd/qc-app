@@ -22,6 +22,10 @@ const item: ItemDto = {
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,
+  businessUnits: [
+    { id: 'bu-a', code: 'RTL', name: 'Retail' },
+    { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
+  ],
   updatedAt: '2026-10-09T00:00:00.000Z',
   stickers: [
     { name: 'Label SNI', note: 'Belakang, kanan bawah', fileId: 'st1' },
@@ -117,4 +121,10 @@ test('hanya view: tidak ada Ubah dan Nonaktifkan; edit saja: ada Ubah tanpa Nona
 test('tombol status dinonaktifkan selama permintaan berjalan', () => {
   renderView({ statusPending: true });
   expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
+});
+
+test('menampilkan chip BU item', () => {
+  renderView();
+  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.getByText('WHL')).toBeInTheDocument();
 });

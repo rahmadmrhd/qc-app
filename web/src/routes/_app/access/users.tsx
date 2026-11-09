@@ -4,15 +4,21 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogHeader,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
 import { UserForm } from '@/modules/access/components/user-form';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
 import {
+  businessUnitsQueryOptions,
   locationsQueryOptions,
   rolesQueryOptions,
   usersQueryOptions,
@@ -37,6 +43,7 @@ export const Route = createFileRoute('/_app/access/users')({
       context.queryClient.ensureQueryData(usersQueryOptions()),
       context.queryClient.ensureQueryData(rolesQueryOptions()),
       context.queryClient.ensureQueryData(locationsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitsQueryOptions()),
     ]);
   },
   component: UsersPage,
@@ -50,6 +57,7 @@ function UsersPage() {
   const { data: users } = useSuspenseQuery(usersQueryOptions());
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
   const { data: locations } = useSuspenseQuery(locationsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitsQueryOptions());
   const saveUser = useSaveUser();
   const setStatus = useSetUserStatus();
   const [editing, setEditing] = useState<UserDto | 'new' | null>(null);
@@ -57,6 +65,7 @@ function UsersPage() {
 
   const roleNames = new Map(roles.map((role) => [role.id, role.name]));
   const locationNames = new Map(locations.map((location) => [location.id, location.name]));
+  const businessUnitNames = new Map(businessUnits.map((unit) => [unit.id, unit.name]));
   const visible = filterUsers(users, { q: search.q ?? '', status: search.status ?? 'all' });
 
   function closeDialog() {
@@ -129,17 +138,21 @@ function UsersPage() {
         users={visible}
         roleNames={roleNames}
         locationNames={locationNames}
+        businessUnitNames={businessUnitNames}
         canManage={canManage}
         currentEmail={me.email}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
         onEdit={(user) => setEditing(user)}
         onToggleStatus={toggleStatus}
       />
-      <Dialog open={editing !== null} onOpenChange={(open) => (open ? undefined : closeDialog())}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing === 'new' ? 'Tambah user' : 'Ubah user'}</DialogTitle>
-          </DialogHeader>
+      <FormDialog
+        open={editing !== null}
+        onOpenChange={(open) => (open ? undefined : closeDialog())}
+      >
+        <FormDialogContent>
+          <FormDialogHeader>
+            <FormDialogTitle>{editing === 'new' ? 'Tambah user' : 'Ubah user'}</FormDialogTitle>
+          </FormDialogHeader>
           {editing ? (
             <UserForm
               key={editing === 'new' ? 'new' : editing.id}
@@ -150,13 +163,14 @@ function UsersPage() {
               )}
               roles={roles}
               locations={locations}
+              businessUnits={businessUnits}
               submitError={submitError}
               onSubmit={handleSubmit}
               onCancel={closeDialog}
             />
           ) : null}
-        </DialogContent>
-      </Dialog>
+        </FormDialogContent>
+      </FormDialog>
     </div>
   );
 }

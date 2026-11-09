@@ -31,6 +31,10 @@ const WORST: Inputs = {
       locationId: `${UUID}-${index}`,
       roleIds: longList(20, (role) => `${UUID}-${role}`),
     })),
+    buAssignments: longList(200, (index) => ({
+      buId: `${UUID}-${index}`,
+      roleIds: longList(20, (role) => `${UUID}-${role}`),
+    })),
   },
   'access.users.setStatus': { id: UUID, status: 'inactive' },
   'access.roles.save': {
@@ -41,14 +45,20 @@ const WORST: Inputs = {
   },
   'access.locations.save': { id: UUID, code: text(10), name: text(100) },
   'access.locations.setStatus': { id: UUID, status: 'inactive' },
-  'brands.save': { id: UUID, name: text(ITEM_LIMITS.brand) },
+  'access.businessUnits.save': { id: UUID, code: text(10), name: text(100) },
+  'access.businessUnits.setStatus': { id: UUID, status: 'inactive' },
+  'brands.save': {
+    id: UUID,
+    name: text(ITEM_LIMITS.brand),
+    businessUnitIds: Array.from({ length: 50 }, () => UUID),
+  },
   'brands.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
   'items.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    brand: text(ITEM_LIMITS.brand),
+    brandId: UUID,
     model: text(ITEM_LIMITS.model),
     isCountryLock: true,
     aliases: longList(ITEM_LIMITS.aliases, () => text(ITEM_LIMITS.alias)),
@@ -63,6 +73,7 @@ const WORST: Inputs = {
     })),
     attachments: longList(ITEM_LIMITS.attachments, () => UUID),
     detail: text(MARKDOWN_MAX_LENGTH),
+    businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'items.setStatus': { id: UUID, status: 'inactive' },
   'handovers.save': {

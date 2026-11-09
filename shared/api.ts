@@ -94,6 +94,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     create: { verb: 'POST', path: '/locations' },
   },
   'access.locations.setStatus': { verb: 'PATCH', path: '/locations/{id}', etag: 'updatedAt' },
+  'access.businessUnits.list': { verb: 'GET', path: '/business-units' },
+  'access.businessUnits.save': {
+    verb: 'PUT',
+    path: '/business-units/{id}',
+    create: { verb: 'POST', path: '/business-units' },
+  },
+  'access.businessUnits.setStatus': {
+    verb: 'PATCH',
+    path: '/business-units/{id}',
+    etag: 'updatedAt',
+  },
+  'businessUnits.options': { verb: 'GET', path: '/business-units/options' },
   'files.upload': {
     verb: 'POST',
     path: '/files',

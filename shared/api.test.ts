@@ -31,6 +31,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     name: 'A',
     status: 'active',
     assignments: [],
+    buAssignments: [{ buId: 'b1', roleIds: ['r1'] }],
   },
   'access.users.setStatus': { id: 'u1', status: 'inactive' },
   'access.roles.list': null,
@@ -40,10 +41,14 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'access.locations.list': null,
   'access.locations.save': { id: 'l1', code: 'WH', name: 'Gudang' },
   'access.locations.setStatus': { id: 'l1', status: 'inactive' },
+  'access.businessUnits.list': null,
+  'access.businessUnits.save': { id: 'b1', code: 'UM', name: 'Umum' },
+  'access.businessUnits.setStatus': { id: 'b1', status: 'inactive' },
+  'businessUnits.options': null,
   'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
   'brands.list': null,
-  'brands.save': { id: 'b1', name: 'Sony' },
+  'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
   'customers.list': null,
   'customers.rename': { id: 'c1', name: 'PT Maju' },
@@ -76,7 +81,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'items.save': {
     id: 'i1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    brand: 'Sony',
+    brandId: 'b1',
     model: 'X',
     isCountryLock: false,
     aliases: [],
@@ -84,6 +89,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     accessories: [],
     attachments: [],
     detail: '',
+    businessUnitIds: ['bu1'],
   },
   'items.setStatus': { id: 'i1', status: 'inactive' },
   'qrcodes.list': null,
@@ -228,7 +234,7 @@ describe('toRequestParts <-> fromRequestParts', () => {
 
   test('save tanpa id memakai jalur create (POST), dengan id memakai PUT dan If-Match', () => {
     const created = toRequestParts('items.save', {
-      brand: 'Sony',
+      brandId: 'b1',
       model: 'X',
       isCountryLock: false,
       aliases: [],
@@ -236,6 +242,7 @@ describe('toRequestParts <-> fromRequestParts', () => {
       accessories: [],
       attachments: [],
       detail: '',
+      businessUnitIds: ['bu1'],
     });
     expect(created).toMatchObject({ verb: 'POST', path: '/items', ifMatch: undefined });
     const updated = toRequestParts('items.save', EXAMPLES['items.save'] as never);

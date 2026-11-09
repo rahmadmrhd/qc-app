@@ -25,4 +25,6 @@ if (typeof Element !== 'undefined') {
   Range.prototype.getClientRects ??= emptyRects;
   Range.prototype.getBoundingClientRect ??= () => new DOMRect();
   document.elementFromPoint ??= () => null;
+  // cmdk (Command) memanggil scrollIntoView pada opsi terpilih; jsdom tidak menyediakannya.
+  Element.prototype.scrollIntoView ??= () => undefined;
 }

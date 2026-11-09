@@ -3,8 +3,13 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogHeader,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { describeError } from '@/lib/api/describe-error';
 import { LocationForm } from '@/modules/access/components/location-form';
 import { LocationsTable } from '@/modules/access/components/locations-table';
@@ -82,11 +87,14 @@ function LocationsPage() {
         onEdit={(location) => setEditing(location)}
         onToggleStatus={toggleStatus}
       />
-      <Dialog open={editing !== null} onOpenChange={(open) => (open ? undefined : closeDialog())}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing === 'new' ? 'Tambah lokasi' : 'Ubah lokasi'}</DialogTitle>
-          </DialogHeader>
+      <FormDialog
+        open={editing !== null}
+        onOpenChange={(open) => (open ? undefined : closeDialog())}
+      >
+        <FormDialogContent>
+          <FormDialogHeader>
+            <FormDialogTitle>{editing === 'new' ? 'Tambah lokasi' : 'Ubah lokasi'}</FormDialogTitle>
+          </FormDialogHeader>
           {editing ? (
             <LocationForm
               key={editing === 'new' ? 'new' : editing.id}
@@ -98,8 +106,8 @@ function LocationsPage() {
               onCancel={closeDialog}
             />
           ) : null}
-        </DialogContent>
-      </Dialog>
+        </FormDialogContent>
+      </FormDialog>
     </div>
   );
 }

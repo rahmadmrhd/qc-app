@@ -8,7 +8,8 @@ import {
 } from './validate';
 
 const base = {
-  brand: ' Ubiquiti ',
+  brandId: ' brand-ubiquiti ',
+  businessUnitIds: ['bu-a'],
   model: ' ES 24 250W ',
   isCountryLock: false,
   aliases: [],
@@ -35,7 +36,8 @@ test('menormalisasi dan mengembalikan input yang sah', () => {
     }),
   ).toEqual({
     id: 'i1',
-    brand: 'Ubiquiti',
+    brandId: 'brand-ubiquiti',
+    businessUnitIds: ['bu-a'],
     model: 'ES 24 250W',
     isCountryLock: true,
     aliases: ['ES24', 'AirFiber'],
@@ -53,13 +55,27 @@ test('tanpa id menghasilkan objek tanpa properti id', () => {
   expect('id' in validateSaveItem(base)).toBe(false);
 });
 
-test('merk dan tipe wajib serta dibatasi panjangnya', () => {
-  expect(fieldsOf({ brand: '', model: '' })).toMatchObject({
-    brand: 'Wajib diisi',
+test('merk (brandId) dan tipe wajib serta dibatasi panjangnya', () => {
+  expect(fieldsOf({ brandId: '', model: '' })).toMatchObject({
+    brandId: 'Wajib diisi',
     model: 'Wajib diisi',
   });
-  expect(fieldsOf({ brand: 'x'.repeat(61) })?.brand).toBe('Maksimal 60 karakter');
+  expect(fieldsOf({ brandId: 'x'.repeat(101) })?.brandId).toBe('Maksimal 100 karakter');
   expect(fieldsOf({ model: 'x'.repeat(101) })?.model).toBe('Maksimal 100 karakter');
+});
+
+test('businessUnitIds: wajib minimal satu, tanpa kembar, id tak kosong, maksimal 50', () => {
+  expect(validateSaveItem({ ...base, businessUnitIds: [' a ', 'a', 'b'] }).businessUnitIds).toEqual(
+    ['a', 'b'],
+  );
+  for (const bad of [[], 'a', null, undefined, [''], [1], ['x'.repeat(101)]]) {
+    expect(fieldsOf({ businessUnitIds: bad })?.businessUnitIds).toBeDefined();
+  }
+  expect(fieldsOf({ businessUnitIds: [] })?.businessUnitIds).toBe('Pilih minimal satu BU');
+  expect(
+    fieldsOf({ businessUnitIds: Array.from({ length: 51 }, (_, i) => `b${i}`) })?.businessUnitIds,
+  ).toBe('Maksimal 50 BU');
+  expect('brand' in validateSaveItem(base)).toBe(false);
 });
 
 test('isCountryLock harus boolean sungguhan', () => {
@@ -152,13 +168,9 @@ test('JSON per kolom melebihi 40.000 karakter ditolak (karakter kontrol membengk
   expect(fieldsOf({ stickers })?.stickers).toBe('Data stiker terlalu besar');
 });
 
-test('merk wajib memuat huruf atau angka', () => {
-  expect(fieldsOf({ brand: '!!!' })?.brand).toBe('Merk harus memuat huruf atau angka');
-});
-
 test('tipe wajib memuat huruf atau angka (kunci tidak boleh kosong)', () => {
   expect(fieldsOf({ model: '--' })?.model).toBe('Tipe harus memuat huruf atau angka');
-  expect(validateSaveItem({ ...base, brand: '小米', model: '手机' }).model).toBe('手机');
+  expect(validateSaveItem({ ...base, model: '手机' }).model).toBe('手机');
 });
 
 test('galat daftar yang dilaporkan adalah yang PERTAMA, bukan yang terakhir', () => {

@@ -60,7 +60,11 @@ describe('assignmentKey', () => {
 
 describe('resolveAccess', () => {
   test('tanpa penugasan: izin global kosong dan tidak ada lokasi', () => {
-    expect(resolveAccess([], roles, ['A'])).toEqual({ global: emptyPermissions(), byLocation: {} });
+    expect(resolveAccess([], roles, ['A'])).toEqual({
+      global: emptyPermissions(),
+      byLocation: {},
+      byBu: {},
+    });
   });
 
   test('Semua lokasi digabung dengan penugasan lokal, level tertinggi menang (FR-P6)', () => {
@@ -118,41 +122,77 @@ describe('resolveAccess', () => {
   });
 });
 
-describe('item sebagai modul global bersama (FP2)', () => {
-  test('level item = tertinggi dari semua penugasan, termasuk penugasan lokasi tertentu', () => {
+describe('item dihitung dari penugasan BU, bukan penugasan lokasi', () => {
+  const buContext = { assignments: [], allBuIds: [] };
+
+  test('role item hanya pada penugasan lokasi tidak memberi level item (perubahan disengaja)', () => {
     const result = resolveAccess(
       [
         { locationId: 'A', roleIds: ['catalog'] },
-        { locationId: 'B', roleIds: ['catalog-edit'] },
+        { locationId: null, roleIds: ['catalog-edit'] },
       ],
       roles,
-      ['A', 'B'],
+      ['A'],
+      buContext,
     );
+    expect(result.global.item).toBe('none');
+    expect(result.byBu).toEqual({});
+  });
+
+  test('level global item = tertinggi dari semua penugasan BU', () => {
+    const result = resolveAccess([], roles, ['A'], {
+      assignments: [
+        { buId: 'X', roleIds: ['catalog'] },
+        { buId: 'Y', roleIds: ['catalog-edit'] },
+      ],
+      allBuIds: ['X', 'Y'],
+    });
     expect(result.global.item).toBe('edit');
+    expect(result.byBu).toEqual({ X: { item: 'view' }, Y: { item: 'edit' } });
+  });
+
+  test('role item pada penugasan BU: view', () => {
+    const result = resolveAccess([], roles, [], {
+      assignments: [{ buId: null, roleIds: ['catalog'] }],
+      allBuIds: ['X'],
+    });
+    expect(result.global.item).toBe('view');
+    expect(result.byBu).toEqual({ X: { item: 'view' } });
+  });
+
+  test('role access pada penugasan BU tidak memberi izin modul lain', () => {
+    const result = resolveAccess([], roles, ['A'], {
+      assignments: [{ buId: null, roleIds: ['access', 'manage'] }],
+      allBuIds: ['X'],
+    });
+    expect(result.global.access).toBe('none');
+    expect(result.global.handover).toBe('none');
     expect(result.byLocation).toEqual({});
   });
 
-  test('penugasan di lokasi nonaktif tidak menyumbang level item', () => {
-    const result = resolveAccess([{ locationId: 'MATI', roleIds: ['catalog-edit'] }], roles, ['A']);
-    expect(result.global.item).toBe('none');
-  });
-
-  test('role item pada Semua lokasi tetap berlaku', () => {
-    const result = resolveAccess([{ locationId: null, roleIds: ['catalog'] }], roles, []);
-    expect(result.global.item).toBe('view');
-  });
-
-  test('access tetap hanya dari Semua lokasi walau item dari semua penugasan', () => {
+  test('access tetap hanya dari Semua lokasi', () => {
     const result = resolveAccess(
       [
-        { locationId: 'A', roleIds: ['access', 'catalog'] },
+        { locationId: 'A', roleIds: ['access'] },
         { locationId: null, roleIds: ['view'] },
       ],
       roles,
       ['A'],
+      { assignments: [{ buId: 'X', roleIds: ['catalog'] }], allBuIds: ['X'] },
     );
     expect(result.global.access).toBe('none');
     expect(result.global.item).toBe('view');
+  });
+
+  test('tanpa argumen BU: tidak ada hak item dan byBu kosong', () => {
+    const result = resolveAccess([{ locationId: null, roleIds: ['catalog'] }], roles, []);
+    expect(result.global.item).toBe('none');
+    expect(result.byBu).toEqual({});
+  });
+
+  test('SHARED_MODULES tidak memuat item lagi, qrcode tetap', () => {
+    expect(SHARED_MODULES as readonly string[]).not.toContain('item');
+    expect(SHARED_MODULES as readonly string[]).toContain('qrcode');
   });
 });
 

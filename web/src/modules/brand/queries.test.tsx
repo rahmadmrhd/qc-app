@@ -42,23 +42,23 @@ test('daftar merk: GET /api/v1/brands (REST)', async () => {
 
 test('simpan merk baru: POST /api/v1/brands dengan header CSRF dan badan { name }', async () => {
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ name: 'Sony' });
+  result.current.mutate({ name: 'Sony', businessUnitIds: [] });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/brands');
   expect(init.method).toBe('POST');
   expect(init.headers).toMatchObject({ 'X-Requested-With': 'qc' });
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony', businessUnitIds: [] });
 });
 
 test('ganti nama merk: PUT /api/v1/brands/{id}, id tidak ikut di badan', async () => {
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ id: 'b1', name: 'Sony Corp' });
+  result.current.mutate({ id: 'b1', name: 'Sony Corp', businessUnitIds: ['bu1'] });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/brands/b1');
   expect(init.method).toBe('PUT');
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony Corp' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony Corp', businessUnitIds: ['bu1'] });
 });
 
 test('ubah status merk: PATCH /api/v1/brands/{id} dengan badan { status }', async () => {
@@ -87,10 +87,48 @@ test('galat 409 problem+json dari server menjadi ApiError dengan fields', async 
     ),
   );
   const { result } = renderHook(() => useSaveBrand(), { wrapper: wrapper() });
-  result.current.mutate({ name: 'Sony' });
+  result.current.mutate({ name: 'Sony', businessUnitIds: [] });
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(result.current.error).toMatchObject({
     code: 'CONFLICT',
     fields: { name: 'Nama merk sudah dipakai' },
   });
+});
+
+function invalidated(client: QueryClient) {
+  const spy = vi.spyOn(client, 'invalidateQueries');
+  return () => spy.mock.calls.map(([filters]) => String(filters?.queryKey?.join('/')));
+}
+
+function clientWrapper(client: QueryClient) {
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+}
+
+test('membuat merk baru memuat ulang merk dan audit, TIDAK item (agar form ubah item tidak ter-remount)', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidated(client);
+  const { result } = renderHook(() => useSaveBrand(), { wrapper: clientWrapper(client) });
+  result.current.mutate({ name: 'Baru', businessUnitIds: [] });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(keys()).toContain('brands');
+  expect(keys()).toContain('access/audit');
+  expect(keys()).not.toContain('items');
+});
+
+test('ganti nama dan ubah status merk ikut memuat ulang item (nama merk tampil di item)', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidated(client);
+  const rename = renderHook(() => useSaveBrand(), { wrapper: clientWrapper(client) });
+  rename.result.current.mutate({ id: 'b1', name: 'Sony Corp', businessUnitIds: [] });
+  await waitFor(() => expect(rename.result.current.isSuccess).toBe(true));
+  expect(keys()).toContain('items');
+
+  const client2 = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys2 = invalidated(client2);
+  const status = renderHook(() => useSetBrandStatus(), { wrapper: clientWrapper(client2) });
+  status.result.current.mutate({ id: 'b1', status: 'inactive' });
+  await waitFor(() => expect(status.result.current.isSuccess).toBe(true));
+  expect(keys2()).toContain('items');
 });

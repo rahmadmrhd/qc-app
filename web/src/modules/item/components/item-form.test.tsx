@@ -1,3 +1,4 @@
+import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -11,11 +12,44 @@ vi.mock('@/modules/files/queries', () => ({
 import { toItemFormDefaults } from '../schemas';
 import { ItemForm } from './item-form';
 
+const brands: BrandDto[] = [
+  {
+    id: 'b1',
+    name: 'Ubiquiti',
+    status: 'active',
+    itemCount: 1,
+    updatedAt: '',
+    businessUnitIds: ['bu-a', 'bu-x'],
+  },
+  { id: 'b2', name: 'Lama', status: 'inactive', itemCount: 1, updatedAt: '', businessUnitIds: [] },
+  {
+    id: 'b3',
+    name: 'Mikrotik',
+    status: 'active',
+    itemCount: 0,
+    updatedAt: '',
+    businessUnitIds: ['bu-b'],
+  },
+];
+
+const businessUnits: BusinessUnitOptionDto[] = [
+  { id: 'bu-a', code: 'RTL', name: 'Retail', status: 'active' },
+  { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
+  { id: 'bu-x', code: 'XTR', name: 'Xtra', status: 'active' },
+  { id: 'bu-old', code: 'OLD', name: 'Lama', status: 'inactive' },
+];
+
+// bu-x tidak boleh diisi user ini; bu-old nonaktif jadi tak pernah ditawarkan.
+const editableBusinessUnitIds = ['bu-a', 'bu-b', 'bu-old'];
+
 function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
     <ItemForm
       title="Form item"
+      brands={brands}
+      businessUnits={businessUnits}
+      editableBusinessUnitIds={editableBusinessUnitIds}
       defaultValues={toItemFormDefaults()}
       onSubmit={onSubmit}
       onCancel={() => undefined}
@@ -25,20 +59,33 @@ function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {
   return { onSubmit };
 }
 
+async function pickBrand(name: string) {
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(await screen.findByRole('option', { name }));
+}
+
+async function pickBusinessUnit(name: string) {
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  await userEvent.click(await screen.findByRole('option', { name }));
+  await userEvent.keyboard('{Escape}');
+}
+
 beforeEach(() => {
   uploadMock.mockReset();
 });
 
-test('merk dan tipe wajib; tidak mengirim bila kosong', async () => {
+test('merk, BU, dan tipe wajib; tidak mengirim bila kosong', async () => {
   const { onSubmit } = renderForm();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-  expect(await screen.findAllByText('Wajib diisi')).toHaveLength(2);
+  expect(await screen.findByText('Pilih minimal satu BU')).toBeInTheDocument();
+  expect(screen.getAllByRole('alert').map((node) => node.textContent)).toContain('Pilih merk');
+  expect(screen.getByText('Wajib diisi')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('mengirim nilai lengkap: country lock, nama lain per baris, stiker, kelengkapan, detail', async () => {
+test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () => {
   const { onSubmit } = renderForm();
-  await userEvent.type(screen.getByLabelText('Merk'), 'Ubiquiti');
+  await pickBrand('Mikrotik');
   await userEvent.type(screen.getByLabelText('Tipe'), 'ES 24 250W');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
   await userEvent.type(screen.getByLabelText('Nama lain'), 'ES24{enter}AirSwitch');
@@ -53,7 +100,8 @@ test('mengirim nilai lengkap: country lock, nama lain per baris, stiker, kelengk
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() =>
     expect(onSubmit).toHaveBeenCalledWith({
-      brand: 'Ubiquiti',
+      brandId: 'b3',
+      businessUnitIds: ['bu-b'],
       model: 'ES 24 250W',
       isCountryLock: true,
       aliasesText: 'ES24\nAirSwitch',
@@ -65,9 +113,160 @@ test('mengirim nilai lengkap: country lock, nama lain per baris, stiker, kelengk
   );
 });
 
+test('memilih merk berBU-bawaan mengisi chip BU; BU bawaan di luar hak disaring', async () => {
+  renderForm();
+  await pickBrand('Ubiquiti');
+  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Hapus Xtra/ })).not.toBeInTheDocument();
+});
+
+test('mengganti merk (BU belum diubah manual) mengganti isian BU bawaan', async () => {
+  renderForm();
+  await pickBrand('Ubiquiti');
+  await pickBrand('Mikrotik');
+  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus Retail (RTL)' })).not.toBeInTheDocument();
+});
+
+test('BU yang dipilih manual lebih dulu tidak ditimpa oleh BU bawaan merk', async () => {
+  renderForm();
+  await pickBusinessUnit('Wholesale (WHL)');
+  await pickBrand('Ubiquiti');
+  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus Retail (RTL)' })).not.toBeInTheDocument();
+});
+
+test('chip BU dapat dilepas, dan setelah dilepas manual merk tidak mengisi ulang', async () => {
+  renderForm();
+  await pickBrand('Ubiquiti');
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await pickBrand('Mikrotik');
+  expect(screen.queryByRole('button', { name: /^Hapus / })).not.toBeInTheDocument();
+});
+
+test('pilihan BU hanya BU aktif yang boleh diisi user, tanpa yang sudah terpilih', async () => {
+  renderForm();
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
+  expect(names).toEqual(['Retail (RTL)', 'Wholesale (WHL)']);
+});
+
+test('mode ubah: merk nonaktif tetap berlabel, BU nonaktif tampil sebagai chip yang dapat dilepas, mengganti merk tidak menimpa BU', async () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      brandId: 'b2',
+      businessUnitIds: ['bu-old', 'bu-a'],
+      model: 'X',
+    },
+  });
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Lama — nonaktif');
+  expect(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' })).toBeInTheDocument();
+  await pickBrand('Mikrotik');
+  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus Wholesale (WHL)' })).not.toBeInTheDocument();
+  // BU nonaktif yang dilepas tidak muncul lagi sebagai pilihan tambah.
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
+  expect(names).toEqual(['Wholesale (WHL)']);
+});
+
+test('merk nonaktif tidak ditawarkan pada item baru; pada item ber-merk nonaktif merk itu tetap ada di pilihan', async () => {
+  const { unmount } = render(
+    <ItemForm
+      title="Form item"
+      brands={brands}
+      defaultValues={toItemFormDefaults()}
+      onSubmit={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
+    'Ubiquiti',
+    'Mikrotik',
+  ]);
+  unmount();
+  renderForm({ defaultValues: { ...toItemFormDefaults(), brandId: 'b2' } });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
+    'Ubiquiti',
+    'Lama — nonaktif',
+    'Mikrotik',
+  ]);
+});
+
+test('baris Tambah merk hanya ada bila onCreateBrand disediakan', async () => {
+  const { unmount } = render(
+    <ItemForm
+      title="Form item"
+      brands={brands}
+      defaultValues={toItemFormDefaults()}
+      onSubmit={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect(screen.queryByRole('option', { name: 'Tambah Merk' })).not.toBeInTheDocument();
+  unmount();
+  renderForm({ onCreateBrand: vi.fn() });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect(screen.getByRole('option', { name: 'Tambah Merk' })).toBeInTheDocument();
+});
+
+test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim form item', async () => {
+  const created: BrandDto = {
+    id: 'b9',
+    name: 'Baru',
+    status: 'active',
+    itemCount: 0,
+    updatedAt: '',
+    businessUnitIds: ['bu-b'],
+  };
+  const onCreateBrand = vi.fn(async () => created);
+  const { onSubmit } = renderForm({ onCreateBrand });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Merk' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onCreateBrand).toHaveBeenCalledWith({ name: 'Baru', businessUnitIds: [] }),
+  );
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Baru');
+  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+  expect(screen.queryByText('Pilih merk')).not.toBeInTheDocument();
+});
+
+test('galat saat membuat merk tampil di dialog dan merk tidak terpilih', async () => {
+  const onCreateBrand = vi.fn(async () => {
+    throw new Error('Nama merk sudah dipakai');
+  });
+  renderForm({ onCreateBrand });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Merk' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Ubiquiti');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Merk', hidden: true })).toHaveValue('');
+});
+
+test('user tanpa BU aktif ber-edit melihat pesan di bawah field BU', () => {
+  renderForm({ editableBusinessUnitIds: [] });
+  expect(screen.getByText('Belum ada BU yang dapat Anda isi; hubungi admin.')).toBeInTheDocument();
+});
+
+test('pesan "belum ada BU" tidak tampil bila ada BU yang dapat diisi', () => {
+  renderForm();
+  expect(screen.queryByText(/Belum ada BU yang dapat Anda isi/)).not.toBeInTheDocument();
+});
+
 test('pesan galat stiker dan kelengkapan bernomor tampil di bagiannya', async () => {
   renderForm();
-  await userEvent.type(screen.getByLabelText('Merk'), 'A');
   await userEvent.type(screen.getByLabelText('Tipe'), 'B');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   await userEvent.click(screen.getByRole('button', { name: 'Tambah kelengkapan' }));
@@ -79,21 +278,28 @@ test('pesan galat stiker dan kelengkapan bernomor tampil di bagiannya', async ()
 test('galat per field dari server tampil di bawah field terkait dan galat umum sebagai alert', () => {
   renderForm({
     fieldErrors: {
-      model: 'Merk dan tipe sudah dipakai item lain',
-      aliases: 'Nama lain "ES24" sudah dipakai item X',
+      brandId: 'Merk tidak ditemukan',
+      businessUnitIds: 'BU tidak dikenal',
+      model: 'Merk dan tipe sama dengan nama lain item lain',
+      aliases: 'Nama lain "ES24" sudah dipakai item lain',
     },
     submitError: 'Terjadi kesalahan',
   });
-  expect(screen.getByText('Merk dan tipe sudah dipakai item lain')).toBeInTheDocument();
-  expect(screen.getByText('Nama lain "ES24" sudah dipakai item X')).toBeInTheDocument();
-  expect(screen.getByRole('alert')).toHaveTextContent('Terjadi kesalahan');
+  expect(screen.getByText('Merk tidak ditemukan')).toBeInTheDocument();
+  expect(screen.getByText('BU tidak dikenal')).toBeInTheDocument();
+  expect(screen.getByText('Merk dan tipe sama dengan nama lain item lain')).toBeInTheDocument();
+  expect(screen.getByText('Nama lain "ES24" sudah dipakai item lain')).toBeInTheDocument();
+  expect(screen.getAllByRole('alert').map((node) => node.textContent)).toContain(
+    'Terjadi kesalahan',
+  );
 });
 
 test('mode ubah memuat nilai awal', () => {
   renderForm({
     defaultValues: {
       ...toItemFormDefaults(),
-      brand: 'Ubiquiti',
+      brandId: 'b1',
+      businessUnitIds: ['bu-a'],
       model: 'AF 5XHD',
       isCountryLock: true,
       aliasesText: 'AirFiber',
@@ -101,7 +307,8 @@ test('mode ubah memuat nilai awal', () => {
       detail: '# isi',
     },
   });
-  expect(screen.getByLabelText('Merk')).toHaveValue('Ubiquiti');
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Ubiquiti');
+  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: 'Country lock (wajib)' })).toBeChecked();
   expect(screen.getByLabelText('Nama lain')).toHaveValue('AirFiber');
   expect(screen.getByText('2/10')).toBeInTheDocument();
@@ -110,88 +317,94 @@ test('mode ubah memuat nilai awal', () => {
   ).toHaveLength(2);
 });
 
-test('merk: saran dari merk yang ada, petunjuk merk baru, dipakai ulang, dan nonaktif', async () => {
-  const brands = [
-    {
-      id: 'b1',
-      name: 'Ubiquiti',
-      status: 'active' as const,
-      itemCount: 1,
-      updatedAt: '',
-    },
-    {
-      id: 'b2',
-      name: 'Lama',
-      status: 'inactive' as const,
-      itemCount: 0,
-      updatedAt: '',
-    },
-  ];
-  render(
-    <ItemForm
-      title="Form item"
-      brands={brands}
-      defaultValues={toItemFormDefaults()}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
-  );
-  const options = [...document.querySelectorAll('#item-brand-options option')].map((o) =>
-    o.getAttribute('value'),
-  );
-  expect(options).toEqual(['Ubiquiti']);
-  const input = screen.getByLabelText('Merk');
-  await userEvent.type(input, 'Mikrotik');
-  expect(screen.getByText(/Merk baru "Mikrotik" akan dibuat/)).toBeInTheDocument();
-  await userEvent.clear(input);
-  await userEvent.type(input, 'ubiquiti');
-  expect(screen.getByText(/Memakai merk yang sudah ada: "Ubiquiti"/)).toBeInTheDocument();
-  await userEvent.clear(input);
-  await userEvent.type(input, 'lama');
-  expect(screen.getByText(/dinonaktifkan; aktifkan dulu/)).toBeInTheDocument();
-});
-
-test('mengedit item yang merknya sudah nonaktif tidak menampilkan petunjuk menyesatkan', () => {
-  const brands = [
-    {
-      id: 'b2',
-      name: 'Lama',
-      status: 'inactive' as const,
-      itemCount: 1,
-      updatedAt: '',
-    },
-  ];
-  render(
-    <ItemForm
-      title="Form item"
-      brands={brands}
-      defaultValues={{ ...toItemFormDefaults(), brand: 'Lama', model: 'X' }}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
-  );
-  expect(screen.queryByText(/aktifkan dulu/)).toBeNull();
-});
-
 test('galat server pada sebuah field hilang begitu user mengoreksi field itu; field lain tetap', async () => {
   renderForm({
-    defaultValues: { ...toItemFormDefaults(), brand: 'Ubiquiti', model: 'ES 24' },
-    fieldErrors: { model: 'Merk dan tipe sudah dipakai item lain', aliases: 'Nama lain bentrok' },
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b1', model: 'ES 24' },
+    fieldErrors: {
+      model: 'Merk dan tipe sama dengan nama lain item lain',
+      brandId: 'Merk tidak ditemukan',
+      aliases: 'Nama lain bentrok',
+    },
   });
-  expect(screen.getByText('Merk dan tipe sudah dipakai item lain')).toBeInTheDocument();
+  expect(screen.getByText('Merk dan tipe sama dengan nama lain item lain')).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Tipe'), ' V2');
-  expect(screen.queryByText('Merk dan tipe sudah dipakai item lain')).toBeNull();
+  expect(screen.queryByText('Merk dan tipe sama dengan nama lain item lain')).toBeNull();
   expect(screen.getByText('Nama lain bentrok')).toBeInTheDocument();
+  await pickBrand('Mikrotik');
+  expect(screen.queryByText('Merk tidak ditemukan')).toBeNull();
 });
 
 test('galeri memberi alt yang memuat nama item', () => {
   renderForm({
     defaultValues: {
       ...toItemFormDefaults(),
-      brand: 'Ubiquiti',
+      brandId: 'b1',
       model: 'ES 24',
       attachments: ['f1'],
     },
   });
   expect(screen.getByAltText('Gambar 1 Ubiquiti ES 24')).toBeInTheDocument();
+});
+
+test('mengetik di field Merk menyaring daftar; klik opsi memilih merk dan mengisi BU bawaan', async () => {
+  renderForm();
+  await userEvent.type(screen.getByRole('combobox', { name: 'Merk' }), 'mikro');
+  await waitFor(() =>
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Mikrotik']),
+  );
+  await userEvent.click(screen.getByRole('option', { name: 'Mikrotik' }));
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Mikrotik');
+  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+});
+
+test('tanpa izin: baris Tambah BU dan tautan buka merk/BU tidak muncul', async () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b1', businessUnitIds: ['bu-a'] },
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  expect(screen.queryByRole('option', { name: 'Tambah BU' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /^Buka / })).not.toBeInTheDocument();
+});
+
+test('dengan izin: tombol buka merk dan label chip BU mengarah ke halaman lihat record', () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b1', businessUnitIds: ['bu-a'] },
+    openBrandHref: (id) => `/item/brands/${id}`,
+    openBusinessUnitHref: (id) => `/access/business-units/${id}`,
+  });
+  expect(screen.getByRole('link', { name: 'Buka Merk' })).toHaveAttribute(
+    'href',
+    '/item/brands/b1',
+  );
+  expect(screen.getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+    'href',
+    '/access/business-units/bu-a',
+  );
+});
+
+test('Tambah BU lewat dialog: BU baru langsung terpilih tanpa mengirim form item', async () => {
+  const onCreateBusinessUnit = vi.fn().mockResolvedValue({
+    id: 'bu-new',
+    code: 'NEW',
+    name: 'Baru',
+    status: 'active',
+    itemCount: 0,
+    userCount: 0,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: '',
+  });
+  const { onSubmit } = renderForm({ onCreateBusinessUnit });
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah BU' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Kode'), 'new');
+  await userEvent.type(within(dialog).getByLabelText('Nama'), 'Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onCreateBusinessUnit).toHaveBeenCalledWith({ code: 'NEW', name: 'Baru' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Hapus Baru (NEW)' })).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
 });

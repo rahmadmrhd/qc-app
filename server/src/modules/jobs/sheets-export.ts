@@ -47,6 +47,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'updated_at',
     'updated_by',
     'assignments',
+    'bu_assignments',
   ]),
   spec('roles', [
     'id',

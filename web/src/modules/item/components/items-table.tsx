@@ -12,8 +12,9 @@ import {
 
 export interface ItemsTableProps {
   items: readonly ItemSummaryDto[];
-  canEdit: boolean;
-  canManage: boolean;
+  /** Per item: BU item menentukan hak (keputusan 13), jadi tak cukup satu tanda global. */
+  canEdit: (item: ItemSummaryDto) => boolean;
+  canManage: (item: ItemSummaryDto) => boolean;
   pendingStatusId: string | null;
   onOpen: (item: ItemSummaryDto) => void;
   onEdit: (item: ItemSummaryDto) => void;
@@ -36,6 +37,7 @@ export function ItemsTable({
           <TableRow>
             <TableHead>Merk</TableHead>
             <TableHead>Tipe</TableHead>
+            <TableHead>BU</TableHead>
             <TableHead>Lock</TableHead>
             <TableHead className="text-right">Gambar</TableHead>
             <TableHead>Status</TableHead>
@@ -45,7 +47,7 @@ export function ItemsTable({
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 Tidak ada item yang cocok.
               </TableCell>
             </TableRow>
@@ -65,6 +67,15 @@ export function ItemsTable({
                   ) : null}
                 </TableCell>
                 <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {item.businessUnits.map((bu) => (
+                      <Badge key={bu.id} variant="outline" title={bu.name}>
+                        {bu.code}
+                      </Badge>
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell>
                   {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{item.imageCount}</TableCell>
@@ -82,7 +93,7 @@ export function ItemsTable({
                   >
                     Lihat
                   </Button>
-                  {canEdit ? (
+                  {canEdit(item) ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -92,7 +103,7 @@ export function ItemsTable({
                       Ubah
                     </Button>
                   ) : null}
-                  {canManage ? (
+                  {canManage(item) ? (
                     <Button
                       size="sm"
                       variant="ghost"

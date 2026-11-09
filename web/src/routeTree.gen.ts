@@ -21,14 +21,17 @@ import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
 import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
 import { Route as AppHandoverNewRouteImport } from './routes/_app/handover/new'
 import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
-import { Route as AppItemBrandsRouteImport } from './routes/_app/item/brands'
 import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
 import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
+import { Route as AppAccessBusinessUnitsIndexRouteImport } from './routes/_app/access/business-units/index'
+import { Route as AppAccessBusinessUnitsBusinessUnitIdRouteImport } from './routes/_app/access/business-units/$businessUnitId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
 import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
 import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
 import { Route as AppItemItemIdEditRouteImport } from './routes/_app/item/$itemId/edit'
+import { Route as AppItemBrandsIndexRouteImport } from './routes/_app/item/brands/index'
+import { Route as AppItemBrandsBrandIdRouteImport } from './routes/_app/item/brands/$brandId'
 import { Route as AppQrcodeDesignIdEditRouteImport } from './routes/_app/qrcode/$designId/edit'
 import { Route as AppQrcodeDefaultIndexRouteImport } from './routes/_app/qrcode/default/index'
 import { Route as AppQrcodeDefaultNewRouteImport } from './routes/_app/qrcode/default/new'
@@ -93,11 +96,6 @@ const AppItemIndexRoute = AppItemIndexRouteImport.update({
   path: '/item/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppItemBrandsRoute = AppItemBrandsRouteImport.update({
-  id: '/item/brands',
-  path: '/item/brands',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppItemNewRoute = AppItemNewRouteImport.update({
   id: '/item/new',
   path: '/item/new',
@@ -113,6 +111,18 @@ const AppQrcodeNewRoute = AppQrcodeNewRouteImport.update({
   path: '/qrcode/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccessBusinessUnitsIndexRoute =
+  AppAccessBusinessUnitsIndexRouteImport.update({
+    id: '/access/business-units/',
+    path: '/access/business-units/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccessBusinessUnitsBusinessUnitIdRoute =
+  AppAccessBusinessUnitsBusinessUnitIdRouteImport.update({
+    id: '/access/business-units/$businessUnitId',
+    path: '/access/business-units/$businessUnitId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppHandoverHandoverIdIndexRoute =
   AppHandoverHandoverIdIndexRouteImport.update({
     id: '/handover/$handoverId/',
@@ -133,6 +143,16 @@ const AppItemItemIdIndexRoute = AppItemItemIdIndexRouteImport.update({
 const AppItemItemIdEditRoute = AppItemItemIdEditRouteImport.update({
   id: '/item/$itemId/edit',
   path: '/item/$itemId/edit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemBrandsIndexRoute = AppItemBrandsIndexRouteImport.update({
+  id: '/item/brands/',
+  path: '/item/brands/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppItemBrandsBrandIdRoute = AppItemBrandsBrandIdRouteImport.update({
+  id: '/item/brands/$brandId',
+  path: '/item/brands/$brandId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppQrcodeDesignIdEditRoute = AppQrcodeDesignIdEditRouteImport.update({
@@ -167,18 +187,21 @@ export interface FileRoutesByFullPath {
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
   '/handover/new': typeof AppHandoverNewRoute
-  '/item/brands': typeof AppItemBrandsRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
   '/qrcode/': typeof AppQrcodeIndexRoute
+  '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
   '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/access/business-units/': typeof AppAccessBusinessUnitsIndexRoute
   '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId/': typeof AppItemItemIdIndexRoute
+  '/item/brands/': typeof AppItemBrandsIndexRoute
   '/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
@@ -192,18 +215,21 @@ export interface FileRoutesByTo {
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
   '/handover/new': typeof AppHandoverNewRoute
-  '/item/brands': typeof AppItemBrandsRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
   '/qrcode': typeof AppQrcodeIndexRoute
+  '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
   '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/access/business-units': typeof AppAccessBusinessUnitsIndexRoute
   '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId': typeof AppItemItemIdIndexRoute
+  '/item/brands': typeof AppItemBrandsIndexRoute
   '/qrcode/default': typeof AppQrcodeDefaultIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
@@ -219,18 +245,21 @@ export interface FileRoutesById {
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
   '/_app/handover/new': typeof AppHandoverNewRoute
-  '/_app/item/brands': typeof AppItemBrandsRoute
   '/_app/item/new': typeof AppItemNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/qrcode/': typeof AppQrcodeIndexRoute
+  '/_app/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
+  '/_app/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
   '/_app/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/_app/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/_app/access/business-units/': typeof AppAccessBusinessUnitsIndexRoute
   '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
+  '/_app/item/brands/': typeof AppItemBrandsIndexRoute
   '/_app/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
@@ -246,18 +275,21 @@ export interface FileRouteTypes {
     | '/access/roles'
     | '/access/users'
     | '/handover/new'
-    | '/item/brands'
     | '/item/new'
     | '/qrcode/new'
     | '/handover/'
     | '/item/'
     | '/qrcode/'
+    | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
+    | '/item/brands/$brandId'
     | '/qrcode/$designId/edit'
     | '/qrcode/default/new'
+    | '/access/business-units/'
     | '/handover/$handoverId/'
     | '/item/$itemId/'
+    | '/item/brands/'
     | '/qrcode/default/'
     | '/qrcode/default/$presetId/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -271,18 +303,21 @@ export interface FileRouteTypes {
     | '/access/roles'
     | '/access/users'
     | '/handover/new'
-    | '/item/brands'
     | '/item/new'
     | '/qrcode/new'
     | '/handover'
     | '/item'
     | '/qrcode'
+    | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
+    | '/item/brands/$brandId'
     | '/qrcode/$designId/edit'
     | '/qrcode/default/new'
+    | '/access/business-units'
     | '/handover/$handoverId'
     | '/item/$itemId'
+    | '/item/brands'
     | '/qrcode/default'
     | '/qrcode/default/$presetId/edit'
   id:
@@ -297,18 +332,21 @@ export interface FileRouteTypes {
     | '/_app/access/roles'
     | '/_app/access/users'
     | '/_app/handover/new'
-    | '/_app/item/brands'
     | '/_app/item/new'
     | '/_app/qrcode/new'
     | '/_app/handover/'
     | '/_app/item/'
     | '/_app/qrcode/'
+    | '/_app/access/business-units/$businessUnitId'
     | '/_app/handover/$handoverId/edit'
     | '/_app/item/$itemId/edit'
+    | '/_app/item/brands/$brandId'
     | '/_app/qrcode/$designId/edit'
     | '/_app/qrcode/default/new'
+    | '/_app/access/business-units/'
     | '/_app/handover/$handoverId/'
     | '/_app/item/$itemId/'
+    | '/_app/item/brands/'
     | '/_app/qrcode/default/'
     | '/_app/qrcode/default/$presetId/edit'
   fileRoutesById: FileRoutesById
@@ -404,13 +442,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppItemIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/item/brands': {
-      id: '/_app/item/brands'
-      path: '/item/brands'
-      fullPath: '/item/brands'
-      preLoaderRoute: typeof AppItemBrandsRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/item/new': {
       id: '/_app/item/new'
       path: '/item/new'
@@ -430,6 +461,20 @@ declare module '@tanstack/react-router' {
       path: '/qrcode/new'
       fullPath: '/qrcode/new'
       preLoaderRoute: typeof AppQrcodeNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/access/business-units/': {
+      id: '/_app/access/business-units/'
+      path: '/access/business-units'
+      fullPath: '/access/business-units/'
+      preLoaderRoute: typeof AppAccessBusinessUnitsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/access/business-units/$businessUnitId': {
+      id: '/_app/access/business-units/$businessUnitId'
+      path: '/access/business-units/$businessUnitId'
+      fullPath: '/access/business-units/$businessUnitId'
+      preLoaderRoute: typeof AppAccessBusinessUnitsBusinessUnitIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/handover/$handoverId/': {
@@ -458,6 +503,20 @@ declare module '@tanstack/react-router' {
       path: '/item/$itemId/edit'
       fullPath: '/item/$itemId/edit'
       preLoaderRoute: typeof AppItemItemIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/brands/': {
+      id: '/_app/item/brands/'
+      path: '/item/brands'
+      fullPath: '/item/brands/'
+      preLoaderRoute: typeof AppItemBrandsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/item/brands/$brandId': {
+      id: '/_app/item/brands/$brandId'
+      path: '/item/brands/$brandId'
+      fullPath: '/item/brands/$brandId'
+      preLoaderRoute: typeof AppItemBrandsBrandIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/qrcode/$designId/edit': {
@@ -500,18 +559,21 @@ interface AppRouteChildren {
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
   AppHandoverNewRoute: typeof AppHandoverNewRoute
-  AppItemBrandsRoute: typeof AppItemBrandsRoute
   AppItemNewRoute: typeof AppItemNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppQrcodeIndexRoute: typeof AppQrcodeIndexRoute
+  AppAccessBusinessUnitsBusinessUnitIdRoute: typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
   AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
+  AppItemBrandsBrandIdRoute: typeof AppItemBrandsBrandIdRoute
   AppQrcodeDesignIdEditRoute: typeof AppQrcodeDesignIdEditRoute
   AppQrcodeDefaultNewRoute: typeof AppQrcodeDefaultNewRoute
+  AppAccessBusinessUnitsIndexRoute: typeof AppAccessBusinessUnitsIndexRoute
   AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
   AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
+  AppItemBrandsIndexRoute: typeof AppItemBrandsIndexRoute
   AppQrcodeDefaultIndexRoute: typeof AppQrcodeDefaultIndexRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
 }
@@ -525,18 +587,22 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,
   AppHandoverNewRoute: AppHandoverNewRoute,
-  AppItemBrandsRoute: AppItemBrandsRoute,
   AppItemNewRoute: AppItemNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
   AppQrcodeIndexRoute: AppQrcodeIndexRoute,
+  AppAccessBusinessUnitsBusinessUnitIdRoute:
+    AppAccessBusinessUnitsBusinessUnitIdRoute,
   AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
   AppItemItemIdEditRoute: AppItemItemIdEditRoute,
+  AppItemBrandsBrandIdRoute: AppItemBrandsBrandIdRoute,
   AppQrcodeDesignIdEditRoute: AppQrcodeDesignIdEditRoute,
   AppQrcodeDefaultNewRoute: AppQrcodeDefaultNewRoute,
+  AppAccessBusinessUnitsIndexRoute: AppAccessBusinessUnitsIndexRoute,
   AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
   AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
+  AppItemBrandsIndexRoute: AppItemBrandsIndexRoute,
   AppQrcodeDefaultIndexRoute: AppQrcodeDefaultIndexRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
 }

@@ -72,6 +72,7 @@ export function toItemSummary(item: ItemDto): ItemSummaryDto {
     status: item.status,
     aliases: item.aliases,
     imageCount: item.imageCount,
+    businessUnits: item.businessUnits,
     updatedAt: item.updatedAt,
   };
 }

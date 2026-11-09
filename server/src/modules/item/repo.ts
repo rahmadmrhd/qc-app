@@ -2,7 +2,12 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
-import type { ItemAccessoryDto, ItemStatus, ItemStickerDto } from '@shared/contract';
+import type {
+  BusinessUnitRefDto,
+  ItemAccessoryDto,
+  ItemStatus,
+  ItemStickerDto,
+} from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 
 export interface ItemRecord {
@@ -140,6 +145,119 @@ export function findItemStmt(db: Db, id: string): DbStatement {
 export async function findItem(env: Env, id: string): Promise<ItemRecord | null> {
   const row = await findItemStmt(env.DB, id).first<ItemRow>();
   return row ? toItem(row) : null;
+}
+
+/** Ukuran potongan daftar id pada `IN (...)`. */
+const IN_CHUNK = 500;
+
+/**
+ * BU tiap item (semua BU yang melekat, terurut menurut kode) untuk `itemIds`, dalam satu kueri per 500 id.
+ * Item tanpa baris penghubung tidak ada di peta.
+ */
+export async function itemBusinessUnitsOf(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, BusinessUnitRefDto[]>> {
+  const result = new Map<string, BusinessUnitRefDto[]>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT l.item_id, b.id, b.code, b.name FROM item_business_units l JOIN business_units b ON b.id = l.bu_id WHERE l.item_id IN (${chunk.map(() => '?').join(',')})`,
+      )
+      .bind(...chunk)
+      .all<{ item_id: string; id: string; code: string; name: string }>();
+    for (const row of rows.results) {
+      const list = result.get(row.item_id) ?? [];
+      list.push({ id: row.id.trim(), code: row.code.trim(), name: row.name.trim() });
+      result.set(row.item_id, list);
+    }
+  }
+  for (const list of result.values()) list.sort((a, b) => a.code.localeCompare(b.code));
+  return result;
+}
+
+/** Dari `itemIds`, id item yang beririsan dengan `buIds` (BU yang terlihat); satu kueri per 500 id. */
+export async function itemIdsVisibleIn(
+  db: Db,
+  itemIds: readonly string[],
+  buIds: readonly string[],
+): Promise<Set<string>> {
+  const visible = new Set<string>();
+  const unique = [...new Set(itemIds)];
+  if (unique.length === 0 || buIds.length === 0) return visible;
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT item_id FROM item_business_units WHERE item_id IN (${chunk.map(() => '?').join(',')}) AND bu_id IN (${buIds.map(() => '?').join(',')})`,
+      )
+      .bind(...chunk, ...buIds)
+      .all<{ item_id: string }>();
+    for (const row of rows.results) visible.add(row.item_id.trim());
+  }
+  return visible;
+}
+
+/** Id BU yang melekat pada satu item (untuk digabung ke `batch()` baca). */
+export function itemBusinessUnitIdsStmt(db: Db, itemId: string): DbStatement {
+  return db.prepare('SELECT bu_id FROM item_business_units WHERE item_id = ?').bind(itemId);
+}
+
+/** Ringkasan semua BU (kecil) untuk validasi tulis; digabung ke `batch()` baca. */
+export function businessUnitBriefsStmt(db: Db): DbStatement {
+  return db.prepare('SELECT id, code, name, status FROM business_units');
+}
+
+export interface BusinessUnitBrief extends BusinessUnitRefDto {
+  status: ItemStatus;
+}
+
+export function businessUnitBriefsFromResult(result: { results: unknown[] }): BusinessUnitBrief[] {
+  return (result.results as Array<{ id: string; code: string; name: string; status: string }>)
+    .map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      name: row.name.trim(),
+      status: (row.status.trim() === 'active' ? 'active' : 'inactive') as ItemStatus,
+    }))
+    .filter((bu) => bu.id !== '');
+}
+
+/**
+ * Mengganti himpunan BU item menjadi TEPAT `ids`: hapus baris di luar `ids`, lalu sisipkan yang belum ada
+ * (`INSERT IGNORE`). Tidak bergantung pada himpunan lama yang dibaca penulis, sehingga dua penulis yang lolos CAS
+ * serentak (mis. `updated_at` sama pada milidetik yang sama) tetap menghasilkan himpunan salah satunya utuh, tanpa
+ * campuran. Item baru (`fresh`) hanya menyisipkan. Pemanggil menjalankannya di `batch()` yang sama dengan `UPDATE`
+ * item (baris item terkunci sampai commit, jadi penulis lain menunggu).
+ */
+export function replaceItemBusinessUnitsStmts(
+  db: Db,
+  itemId: string,
+  ids: readonly string[],
+  fresh: boolean,
+): DbStatement[] {
+  const statements: DbStatement[] = [];
+  if (!fresh) {
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM item_business_units WHERE item_id = ? AND bu_id NOT IN (${ids.map(() => '?').join(',')})`,
+        )
+        .bind(itemId, ...ids),
+    );
+  }
+  for (const buId of ids) {
+    statements.push(
+      db
+        .prepare(
+          `${fresh ? 'INSERT' : 'INSERT IGNORE'} INTO item_business_units (item_id, bu_id) VALUES (?, ?)`,
+        )
+        .bind(itemId, buId),
+    );
+  }
+  return statements;
 }
 
 /** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */

@@ -1,9 +1,11 @@
 import type {
   AuditCursorPageDto,
   DeleteRoleInput,
+  SaveBusinessUnitInput,
   SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
+  SetBusinessUnitStatusInput,
   SetLocationStatusInput,
   SetUserStatusInput,
 } from '@shared/contract';
@@ -22,7 +24,11 @@ export const accessKeys = {
   roles: ['access', 'roles'] as const,
   audit: ['access', 'audit'] as const,
   locations: ['access', 'locations'] as const,
+  businessUnits: ['access', 'businessUnits'] as const,
 };
+
+/** Daftar BU ringkas untuk pemilih (butuh `item: view`, bukan `access: view`); BUKAN bagian `accessKeys.all`. */
+export const businessUnitOptionsKey = ['businessUnits', 'options'] as const;
 
 export interface AuditFilter {
   action?: string;
@@ -65,6 +71,20 @@ export function locationsQueryOptions() {
   });
 }
 
+export function businessUnitsQueryOptions() {
+  return queryOptions({
+    queryKey: accessKeys.businessUnits,
+    queryFn: () => api('access.businessUnits.list', null),
+  });
+}
+
+export function businessUnitOptionsQueryOptions() {
+  return queryOptions({
+    queryKey: businessUnitOptionsKey,
+    queryFn: () => api('businessUnits.options', null),
+  });
+}
+
 /** Perubahan akses bisa mengubah hak user yang sedang login, jadi `auth.me` ikut di-refresh. */
 function useAccessMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
   const queryClient = useQueryClient();
@@ -73,6 +93,8 @@ function useAccessMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promi
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: accessKeys.all }),
+        // Pilihan BU di modul lain (Merk, form item) ikut basi bila BU berubah.
+        queryClient.invalidateQueries({ queryKey: businessUnitOptionsKey }),
         queryClient.invalidateQueries({ queryKey: meQueryKey }),
       ]);
     },
@@ -91,3 +113,9 @@ export const useSaveLocation = () =>
   useAccessMutation((input: SaveLocationInput) => api('access.locations.save', input));
 export const useSetLocationStatus = () =>
   useAccessMutation((input: SetLocationStatusInput) => api('access.locations.setStatus', input));
+export const useSaveBusinessUnit = () =>
+  useAccessMutation((input: SaveBusinessUnitInput) => api('access.businessUnits.save', input));
+export const useSetBusinessUnitStatus = () =>
+  useAccessMutation((input: SetBusinessUnitStatusInput) =>
+    api('access.businessUnits.setStatus', input),
+  );

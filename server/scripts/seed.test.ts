@@ -28,6 +28,30 @@ describe('seed data contoh', () => {
     expect(await loadUserContext(env, 'qc@dev.test')).not.toBeNull();
   });
 
+  test('dua BU contoh; admin dev bertugas di Semua BU dan semua item bertaut ke BU UM', async () => {
+    const env = await seeded();
+    const bus = await env.DB.prepare(
+      'SELECT id, code, name FROM business_units ORDER BY code',
+    ).all<{
+      id: string;
+      code: string;
+      name: string;
+    }>();
+    expect(bus.results).toEqual([
+      { id: 'bu-ent', code: 'ENT', name: 'Enterprise' },
+      { id: 'bu-um', code: 'UM', name: 'Umum' },
+    ]);
+    const ctx = await loadUserContext(env, 'saya@example.test');
+    expect(ctx?.permissions.item).toBe('manage');
+    const links = await env.DB.prepare(
+      'SELECT COUNT(*) AS n, COUNT(DISTINCT bu_id) AS b, MIN(bu_id) AS only FROM item_business_units',
+    ).first<{ n: number; b: number; only: string }>();
+    const items = await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first<{ n: number }>();
+    expect(Number(links?.n)).toBe(Number(items?.n));
+    expect(Number(links?.b)).toBe(1);
+    expect(links?.only).toBe('bu-um');
+  });
+
   test('data realistis: merk, item, customer, task berbagai status, komentar', async () => {
     const env = await seeded();
     const count = async (table: string) =>
@@ -100,7 +124,8 @@ describe('seed data contoh', () => {
       token,
       'items.save',
       {
-        brand: 'Ubiquiti',
+        brandId: 'brand-ubiquiti',
+        businessUnitIds: ['bu-um'],
         model: 'Baru',
         isCountryLock: false,
         aliases: ['ER-X'],

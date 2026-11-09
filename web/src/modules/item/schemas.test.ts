@@ -3,7 +3,8 @@ import { expect, test } from 'vitest';
 import { itemFormSchema, parseAliasLines, toItemFormDefaults, toSaveItemInput } from './schemas';
 
 const valid = {
-  brand: 'Ubiquiti',
+  brandId: 'b1',
+  businessUnitIds: ['bu-a'],
   model: 'ES 24 250W',
   isCountryLock: false,
   aliasesText: '',
@@ -31,9 +32,12 @@ test('input sah lolos', () => {
   expect(messages({})).toEqual([]);
 });
 
-test('merk dan tipe wajib dan dibatasi', () => {
-  expect(messages({ brand: '  ', model: '' })).toEqual(['Wajib diisi', 'Wajib diisi']);
-  expect(messages({ brand: 'x'.repeat(61) })).toEqual(['Maksimal 60 karakter']);
+test('merk dan BU wajib; tipe wajib dan dibatasi', () => {
+  expect(messages({ brandId: '', businessUnitIds: [], model: '' })).toEqual([
+    'Pilih merk',
+    'Pilih minimal satu BU',
+    'Wajib diisi',
+  ]);
   expect(messages({ model: 'x'.repeat(101) })).toEqual(['Maksimal 100 karakter']);
 });
 
@@ -81,7 +85,8 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
   const input = toSaveItemInput(
     {
       ...valid,
-      brand: ' Ubiquiti ',
+      brandId: 'b1',
+      businessUnitIds: ['bu-a'],
       model: ' ES 24 ',
       aliasesText: ' ES24 \n AirFiber ',
       stickers: [{ name: ' Label ', note: ' Belakang ', fileId: 'f1' }],
@@ -93,7 +98,8 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
   );
   expect(input).toEqual({
     id: 'i1',
-    brand: 'Ubiquiti',
+    brandId: 'b1',
+    businessUnitIds: ['bu-a'],
     model: 'ES 24',
     isCountryLock: false,
     aliases: ['ES24', 'AirFiber'],
@@ -107,7 +113,8 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
 
 test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain per baris', () => {
   expect(toItemFormDefaults()).toEqual({
-    brand: '',
+    brandId: '',
+    businessUnitIds: [],
     model: '',
     isCountryLock: false,
     aliasesText: '',
@@ -125,6 +132,10 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     status: 'active',
     aliases: ['ES24', 'AirFiber'],
     imageCount: 1,
+    businessUnits: [
+      { id: 'bu-a', code: 'RTL', name: 'Retail' },
+      { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
+    ],
     updatedAt: '',
     stickers: [{ name: 'Label', note: '', fileId: null }],
     accessories: [{ name: 'Kabel', qty: 1 }],
@@ -134,7 +145,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     updatedBy: '',
   };
   expect(toItemFormDefaults(item)).toMatchObject({
-    brand: 'Ubiquiti',
+    brandId: 'b1',
     isCountryLock: true,
     aliasesText: 'ES24\nAirFiber',
     stickers: [{ name: 'Label', note: '', fileId: null }],
@@ -143,19 +154,20 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
   });
 });
 
-test('merk hanya tanda baca ditolak skema form', () => {
-  const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: '!!!', model: 'X' });
-  expect(result.success).toBe(false);
-});
-
 test('tipe hanya tanda baca ditolak skema form', () => {
-  const result = itemFormSchema.safeParse({ ...toItemFormDefaults(), brand: 'A', model: '--' });
+  const result = itemFormSchema.safeParse({
+    ...toItemFormDefaults(),
+    brandId: 'b1',
+    businessUnitIds: ['bu-a'],
+    model: '--',
+  });
   expect(result.success).toBe(false);
 });
 
 test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
   const parsed = itemFormSchema.parse({
-    brand: 'Ubiquiti',
+    brandId: 'b1',
+    businessUnitIds: ['bu-a'],
     model: 'ES',
     isCountryLock: false,
     aliasesText: '',
@@ -169,4 +181,31 @@ test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
     expectedUpdatedAt: '2026-10-15T00:00:00.000Z',
   });
   expect('expectedUpdatedAt' in toSaveItemInput(parsed)).toBe(false);
+});
+
+test('toItemFormDefaults memuat id merk dan id BU item', () => {
+  const item = {
+    id: 'i1',
+    brandId: 'b1',
+    brand: 'Ubiquiti',
+    model: 'ES 24',
+    isCountryLock: false,
+    status: 'active',
+    aliases: [],
+    imageCount: 0,
+    businessUnits: [
+      { id: 'bu-a', code: 'RTL', name: 'Retail' },
+      { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
+    ],
+    updatedAt: '',
+    stickers: [],
+    accessories: [],
+    attachments: [],
+    detail: '',
+    createdAt: '',
+    updatedBy: '',
+  } satisfies ItemDto;
+  const defaults = toItemFormDefaults(item);
+  expect(defaults.brandId).toBe('b1');
+  expect(defaults.businessUnitIds).toEqual(['bu-a', 'bu-b']);
 });

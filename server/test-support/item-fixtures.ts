@@ -4,6 +4,9 @@ import { itemKey, normalizeKey } from '@shared/items';
 
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
+/** BU bawaan fixture item: dibuat otomatis (idempoten) bila dipakai. */
+export const DEFAULT_TEST_BU_ID = 'bu-umum';
+
 /** Id merk deterministik dari nama, agar fixture item dan fixture merk selalu cocok. */
 export function brandIdOf(name: string): string {
   return `brand-${normalizeKey(name).split(' ').join('-')}`;
@@ -35,6 +38,8 @@ export interface SeedItem {
   status?: 'active' | 'inactive';
   brandId?: string;
   key?: string;
+  /** BU item (bawaan `['bu-umum']`, dibuat otomatis bila belum ada); BU lain harus sudah di-seed pemanggil. */
+  businessUnitIds?: string[];
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
@@ -54,6 +59,19 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       SEED_TIME,
     )
     .run();
+  const businessUnitIds = item.businessUnitIds ?? [DEFAULT_TEST_BU_ID];
+  if (businessUnitIds.includes(DEFAULT_TEST_BU_ID)) {
+    await env.DB.prepare(
+      'INSERT IGNORE INTO business_units (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(DEFAULT_TEST_BU_ID, 'DEF', 'BU Bawaan Tes', 'active', SEED_TIME, SEED_TIME, 'seed')
+      .run();
+  }
+  for (const buId of businessUnitIds) {
+    await env.DB.prepare('INSERT INTO item_business_units (item_id, bu_id) VALUES (?, ?)')
+      .bind(item.id, buId)
+      .run();
+  }
   // Tabel turunan yang dijaga kode produksi (migrasi 0009): kunci nama lain dan penghitung item merk.
   for (const key of aliasKeyList(item.aliases ?? [])) {
     await env.DB.prepare('INSERT IGNORE INTO item_alias_keys (`key`, item_id) VALUES (?, ?)')
