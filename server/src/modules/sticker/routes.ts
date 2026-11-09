@@ -8,10 +8,17 @@ import {
   setStickerStatus,
   setStickerTypeStatus,
 } from './service';
-import { adjustStock, listStickerStock, recordStock, stockHistory } from './stock-service';
+import {
+  adjustStock,
+  listStickerStock,
+  opnameStock,
+  recordStock,
+  stockHistory,
+} from './stock-service';
 import {
   validateAdjustStock,
   validateListStickerStock,
+  validateOpname,
   validateRecordStock,
   validateSaveSticker,
   validateSaveStickerType,
@@ -30,6 +37,7 @@ type StickerMethod =
   | 'stickerStock.list'
   | 'stickerStock.record'
   | 'stickerStock.adjust'
+  | 'stickerStock.opname'
   | 'stickerStock.history';
 
 /**
@@ -92,6 +100,12 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod> {
           { ...input, locationId: ctx.locationIds[0] ?? input.locationId },
           ctx.user,
         ),
+    },
+    'stickerStock.opname': {
+      // `validateOpname` menurunkan `locationIds` dari semua baris: router memeriksa SETIAP lokasi.
+      permission: { module: 'stickerstock', level: 'manage', scope: 'location' },
+      validate: validateOpname,
+      handler: (input, ctx) => opnameStock(ctx.env, input, ctx.user),
     },
     'stickerStock.history': {
       permission: { module: 'stickerstock', level: 'view', scope: 'location' },

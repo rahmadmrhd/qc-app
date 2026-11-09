@@ -78,6 +78,20 @@ const WORST: Inputs = {
     },
     reason: text(STICKER_LIMITS.reasonMax),
   },
+  'stickerStock.opname': {
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      expectedQty: STICKER_LIMITS.qtyMax,
+      count: {
+        rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+          sheets: STICKER_LIMITS.qtyMax,
+          perSheet: STICKER_LIMITS.qtyMax,
+        })),
+        loose: STICKER_LIMITS.qtyMax,
+      },
+    })),
+  },
   'stickerStock.adjust': {
     locationId: UUID,
     stickerId: UUID,

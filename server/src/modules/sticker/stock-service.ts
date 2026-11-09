@@ -3,9 +3,10 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import type {
   AdjustStockInput,
+  OpnameInput,
   RecordStockInput,
   StickerStockDto,
   StockEntryDto,
@@ -21,11 +22,15 @@ import {
   encodeStockCursor,
   historyStatement,
   insertEntryStmt,
+  insertStockRowStmt,
   lastEntryStatement,
+  opnameSetStmt,
   parseStockCursor,
   stickerActiveGuardStmt,
   stickerStatusStatement,
+  stickersExistStatement,
   stickersWithTypeStatement,
+  stockPairsStatement,
   stockQtyStatement,
   stockRowsStatement,
   subtractStockStmt,
@@ -229,4 +234,90 @@ export async function stockHistory(
     entries: page.map(toStockEntry),
     nextCursor: result.results.length > limit && last ? encodeStockCursor(last) : null,
   };
+}
+
+const OPNAME_STALE_MESSAGE = 'Stok berubah sejak dihitung; hitung ulang';
+
+/** Satu pasangan stiker x lokasi; dipakai sebagai kunci peta. */
+const pairOf = (stickerId: string, locationId: string): string =>
+  JSON.stringify([stickerId, locationId]);
+
+async function opnameOnce(env: Env, input: OpnameInput, actor: ActorRef): Promise<StockEntryDto[]> {
+  const { rows } = input;
+  const [stickerResult, stockResult] = await env.DB.batch([
+    stickersExistStatement(env.DB, [...new Set(rows.map((row) => row.stickerId))]),
+    stockPairsStatement(env.DB, rows),
+  ]);
+  const known = new Set(
+    ((stickerResult?.results ?? []) as Array<{ id: string }>).map((row) => row.id.trim()),
+  );
+  const stored = new Map<string, number>();
+  for (const row of (stockResult?.results ?? []) as Array<{
+    sticker_id: string;
+    location_id: string;
+    qty: number | string;
+  }>) {
+    stored.set(pairOf(row.sticker_id.trim(), row.location_id.trim()), Number(row.qty) || 0);
+  }
+  for (const row of rows) {
+    if (!known.has(row.stickerId)) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
+  }
+  const plan = rows.map((row) => {
+    const current = stored.get(pairOf(row.stickerId, row.locationId)) ?? null;
+    return { row, current, pieces: piecesOfCount(row.count) };
+  });
+  // Satu baris usang (termasuk yang tanpa selisih) menolak seluruh permintaan sebelum menulis apa pun.
+  for (const item of plan) {
+    if ((item.current ?? 0) !== item.row.expectedQty) throw staleError(OPNAME_STALE_MESSAGE);
+  }
+  const changed = plan.filter((item) => item.pieces !== item.row.expectedQty);
+  if (changed.length === 0) return [];
+  // Urutan tulis tetap (stiker, lokasi) agar opname serentak mengunci baris dalam urutan yang sama.
+  const ordered = [...changed].sort((a, b) =>
+    pairOf(a.row.stickerId, a.row.locationId).localeCompare(
+      pairOf(b.row.stickerId, b.row.locationId),
+    ),
+  );
+  const now = nowIso(env);
+  const statements: DbStatement[] = [];
+  const readSlot = new Map<(typeof changed)[number], number>();
+  for (const item of ordered) {
+    const { row } = item;
+    statements.push(
+      item.current === null
+        ? insertStockRowStmt(env.DB, row.stickerId, row.locationId, item.pieces, now)
+        : opnameSetStmt(env.DB, row.stickerId, row.locationId, row.expectedQty, item.pieces, now),
+      insertEntryStmt(env.DB, {
+        stickerId: row.stickerId,
+        locationId: row.locationId,
+        kind: 'opname',
+        delta: item.pieces - row.expectedQty,
+        count: row.count,
+        reason: '',
+        actor: actor.email,
+        ts: now,
+      }),
+      lastEntryStatement(env.DB),
+    );
+    readSlot.set(item, statements.length - 1);
+  }
+  const results = await env.DB.batch(statements);
+  return changed.map((item) => {
+    const entry = results[readSlot.get(item) ?? -1]?.results[0] as StockEntryRow | undefined;
+    if (!entry) throw appError('INTERNAL', 'Riwayat stok gagal dicatat');
+    return toStockEntry(entry);
+  });
+}
+
+/**
+ * Stok opname atomik: satu `batch()` untuk semua baris (penjaga CAS `qty = expectedQty` per baris, riwayat
+ * `opname` dengan `count` dan selisih). Baris tanpa selisih tidak menulis riwayat. Satu baris usang membatalkan
+ * seluruhnya (`staleError`). Stiker nonaktif boleh. Izin lokasi semua baris diperiksa router (`locationIds`).
+ */
+export async function opnameStock(
+  env: Env,
+  input: OpnameInput,
+  actor: ActorRef,
+): Promise<StockEntryDto[]> {
+  return runCas(() => opnameOnce(env, input, actor), OPNAME_STALE_MESSAGE);
 }

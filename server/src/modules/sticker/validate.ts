@@ -4,6 +4,8 @@ import { validateLocationIds } from '@server/modules/handover/validate';
 import type {
   AdjustStockInput,
   ListStickerStockInput,
+  OpnameInput,
+  OpnameRowInput,
   RecordStockInput,
   SaveStickerInput,
   SaveStickerTypeInput,
@@ -153,18 +155,17 @@ function isCountPart(value: unknown): value is number {
   );
 }
 
-/** Hitungan lembar: bentuk, batas baris, dan total butir (> 0 dan <= qtyMax) diperiksa di sini. */
-function readCount(value: unknown, reader: ObjectReader): StockCount | undefined {
-  const fail = (message: string): undefined => {
-    reader.fail('count', message);
-    return undefined;
-  };
+/**
+ * Hitungan lembar: bentuk, batas baris, dan total butir (`minPieces`..qtyMax) diperiksa di sini. Mengembalikan
+ * hitungan atau pesan galat.
+ */
+function parseCount(value: unknown, minPieces: number): StockCount | string {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return fail('Hitungan tidak valid');
+    return 'Hitungan tidak valid';
   }
   const source = value as { rows?: unknown; loose?: unknown };
   if (!Array.isArray(source.rows) || source.rows.length > STICKER_LIMITS.countRows) {
-    return fail(`Maksimal ${STICKER_LIMITS.countRows} baris lembar`);
+    return `Maksimal ${STICKER_LIMITS.countRows} baris lembar`;
   }
   const rows: StockCount['rows'] = [];
   for (const row of source.rows as unknown[]) {
@@ -175,17 +176,27 @@ function readCount(value: unknown, reader: ObjectReader): StockCount | undefined
       !isCountPart(entry.sheets) ||
       !isCountPart(entry.perSheet)
     ) {
-      return fail('Jumlah lembar dan isi per lembar harus bilangan bulat tidak negatif');
+      return 'Jumlah lembar dan isi per lembar harus bilangan bulat tidak negatif';
     }
     rows.push({ sheets: entry.sheets, perSheet: entry.perSheet });
   }
-  if (!isCountPart(source.loose)) return fail('Butir lepas harus bilangan bulat tidak negatif');
+  if (!isCountPart(source.loose)) return 'Butir lepas harus bilangan bulat tidak negatif';
   const count: StockCount = { rows, loose: source.loose };
   const pieces = piecesOfCount(count);
-  if (pieces < 1 || pieces > STICKER_LIMITS.qtyMax) {
-    return fail(`Jumlah butir harus 1 sampai ${STICKER_LIMITS.qtyMax}`);
+  if (pieces < minPieces || pieces > STICKER_LIMITS.qtyMax) {
+    return `Jumlah butir harus ${minPieces} sampai ${STICKER_LIMITS.qtyMax}`;
   }
   return count;
+}
+
+/** Hitungan catatan stok masuk/keluar: minimal 1 butir; galat dilaporkan di field `count`. */
+function readCount(value: unknown, reader: ObjectReader): StockCount | undefined {
+  const parsed = parseCount(value, 1);
+  if (typeof parsed === 'string') {
+    reader.fail('count', parsed);
+    return undefined;
+  }
+  return parsed;
 }
 
 const RECORD_KINDS = ['in', 'out'] as const;
@@ -251,4 +262,60 @@ export function validateAdjustStock(raw: unknown): AdjustStockInput {
   }
   reader.done();
   return { locationId, stickerId, delta: delta as number, reason };
+}
+
+/** Kunci pasangan stiker x lokasi. */
+const pairKey = (stickerId: string, locationId: string): string =>
+  JSON.stringify([stickerId, locationId]);
+
+/**
+ * Stok opname: 1..`opnameRows` baris, pasangan stiker x lokasi unik; hitungan boleh 0 butir (stok dinolkan).
+ * `locationIds` diturunkan dari SEMUA baris (isian klien diabaikan) agar router memeriksa setiap lokasi.
+ */
+export function validateOpname(raw: unknown): OpnameInput {
+  const reader = readObject(raw);
+  const value = reader.raw('rows');
+  const rows: OpnameRowInput[] = [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > STICKER_LIMITS.opnameRows) {
+    reader.fail('rows', `Isi 1 sampai ${STICKER_LIMITS.opnameRows} baris`);
+  } else {
+    const seen = new Set<string>();
+    for (const [index, entry] of (value as unknown[]).entries()) {
+      const label = `Baris ${index + 1}`;
+      const source = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<
+        string,
+        unknown
+      >;
+      const stickerId = typeof source.stickerId === 'string' ? source.stickerId.trim() : '';
+      const locationId = typeof source.locationId === 'string' ? source.locationId.trim() : '';
+      const expected = source.expectedQty;
+      if (
+        stickerId === '' ||
+        stickerId.length > 100 ||
+        locationId === '' ||
+        locationId.length > 100
+      ) {
+        reader.fail('rows', `${label}: stiker dan lokasi wajib diisi`);
+        break;
+      }
+      if (typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0) {
+        reader.fail('rows', `${label}: stok yang dihitung harus bilangan bulat tidak negatif`);
+        break;
+      }
+      const count = parseCount(source.count, 0);
+      if (typeof count === 'string') {
+        reader.fail('rows', `${label}: ${count}`);
+        break;
+      }
+      const key = pairKey(stickerId, locationId);
+      if (seen.has(key)) {
+        reader.fail('rows', `${label}: pasangan stiker dan lokasi kembar`);
+        break;
+      }
+      seen.add(key);
+      rows.push({ stickerId, locationId, expectedQty: expected, count });
+    }
+  }
+  reader.done();
+  return { rows, locationIds: [...new Set(rows.map((row) => row.locationId))] };
 }

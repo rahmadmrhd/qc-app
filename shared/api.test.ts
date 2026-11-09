@@ -73,6 +73,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: '',
   },
   'stickerStock.adjust': { locationId: 'l1', stickerId: 's1', delta: -2, reason: 'rusak' },
+  'stickerStock.opname': {
+    rows: [{ stickerId: 's1', locationId: 'l1', expectedQty: 10, count: { rows: [], loose: 12 } }],
+  },
   'stickerStock.history': { locationIds: ['l1'], stickerId: 's1', cursor: 'c', limit: 20 },
   'customers.list': null,
   'customers.rename': { id: 'c1', name: 'PT Maju' },

@@ -341,6 +341,22 @@ export interface AdjustStockInput {
   reason: string;
 }
 
+/** Satu baris stok opname: hitungan fisik untuk satu stiker di satu lokasi. */
+export interface OpnameRowInput {
+  stickerId: string;
+  locationId: string;
+  /** Stok tersimpan yang dilihat penghitung; berbeda dari stok sekarang = usang (seluruh permintaan ditolak). */
+  expectedQty: number;
+  count: StockCount;
+}
+
+export interface OpnameInput {
+  /** 1..100 baris, pasangan stiker x lokasi unik. */
+  rows: OpnameRowInput[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
 export interface StockEntryDto {
   id: string;
   stickerId: string;
@@ -700,6 +716,7 @@ export interface ApiContract {
   'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
   'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
   'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
+  'stickerStock.opname': { input: OpnameInput; output: StockEntryDto[] };
   'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
   'customers.list': { input: null; output: CustomerDto[] };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };

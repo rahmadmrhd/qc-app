@@ -199,3 +199,59 @@ export function historyStatement(
     )
     .bind(...binds, params.limit + 1);
 }
+
+/** Stiker yang ada menurut id (satu kueri) untuk memeriksa baris opname. */
+export function stickersExistStatement(db: Preparer, ids: readonly string[]): DbStatement {
+  return db
+    .prepare(`SELECT id FROM stickers WHERE id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids);
+}
+
+/** Stok tersimpan untuk sekumpulan pasangan stiker x lokasi (satu kueri berindeks kunci utama). */
+export function stockPairsStatement(
+  db: Preparer,
+  pairs: readonly { stickerId: string; locationId: string }[],
+): DbStatement {
+  return db
+    .prepare(
+      `SELECT sticker_id, location_id, qty FROM sticker_stock WHERE (sticker_id, location_id) IN (${pairs.map(() => '(?, ?)').join(',')})`,
+    )
+    .bind(...pairs.flatMap((pair) => [pair.stickerId, pair.locationId]));
+}
+
+/**
+ * Menetapkan stok hasil hitungan dengan penjaga CAS `qty = expected` di `UPDATE`: bila stok sudah berubah sejak
+ * dihitung, `CAS_FAIL_SQL` membatalkan SELURUH batch opname (semua baris dan riwayatnya).
+ */
+export function opnameSetStmt(
+  db: Preparer,
+  stickerId: string,
+  locationId: string,
+  expectedQty: number,
+  newQty: number,
+  now: string,
+): DbStatement {
+  return db
+    .prepare(
+      `UPDATE sticker_stock SET qty = CASE WHEN qty = ? THEN ? ELSE ${CAS_FAIL_SQL} END, updated_at = ? WHERE sticker_id = ? AND location_id = ?`,
+    )
+    .bind(expectedQty, newQty, now, stickerId, locationId);
+}
+
+/**
+ * Baris stok pertama untuk pasangan yang belum punya baris (expectedQty 0). `INSERT` biasa: bila baris dibuat
+ * penulis lain di sela waktu, galat kunci utama membatalkan batch dan `runCas` memuat ulang (lalu usang).
+ */
+export function insertStockRowStmt(
+  db: Preparer,
+  stickerId: string,
+  locationId: string,
+  qty: number,
+  now: string,
+): DbStatement {
+  return db
+    .prepare(
+      'INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES (?, ?, ?, ?)',
+    )
+    .bind(stickerId, locationId, qty, now);
+}
