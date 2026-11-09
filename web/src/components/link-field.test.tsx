@@ -1,13 +1,20 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogDescription,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { LinkField, LinkMultiField, type LinkOption } from './link-field';
 
 const OPTIONS: LinkOption[] = [
   { id: 'a', label: 'Alfa' },
   { id: 'b', label: 'Bravo', description: 'kedua' },
   { id: 'c', label: 'Charlie', disabled: true },
+  { id: 'd', label: 'Delta' },
 ];
 
 afterEach(() => {
@@ -52,43 +59,111 @@ function Multi(props: MultiProps) {
   );
 }
 
-test('memilih opsi memanggil onChange(id) dan menampilkan labelnya', async () => {
+const combo = (name: string) => screen.getByRole('combobox', { name });
+const optionNames = () => screen.getAllByRole('option').map((option) => option.textContent);
+
+test('field berupa input teks bernama label; daftar baru muncul saat diklik dan berisi opsi', async () => {
+  render(<Single />);
+  const input = combo('Merk');
+  expect(input.tagName).toBe('INPUT');
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  await userEvent.click(input);
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  expect(optionNames()).toEqual(['Alfa', 'Bravokedua', 'Charlie', 'Delta']);
+});
+
+test('mengetik di field mencari (onSearchChange) dan klik mouse pada opsi memilihnya', async () => {
   const onChange = vi.fn();
   render(<Single onChange={onChange} />);
-  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
-  await userEvent.click(await screen.findByText('Bravo'));
+  await userEvent.type(combo('Merk'), 'br');
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('option', { name: /Bravo/ }));
   expect(onChange).toHaveBeenCalledWith('b');
-  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Bravo');
+  expect(combo('Merk')).toHaveValue('Bravo');
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(combo('Merk')).toHaveFocus();
+});
+
+test('mousedown pada opsi tidak memindah fokus dari input (klik pasti terpilih)', async () => {
+  render(<Single />);
+  await userEvent.click(combo('Merk'));
+  const option = screen.getByRole('option', { name: 'Alfa' });
+  const prevented = !option.dispatchEvent(
+    new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+  );
+  expect(prevented).toBe(true);
 });
 
 test('tombol X mengosongkan nilai', async () => {
   const onChange = vi.fn();
   render(<Single value="a" onChange={onChange} />);
+  expect(combo('Merk')).toHaveValue('Alfa');
   await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Merk' }));
   expect(onChange).toHaveBeenCalledWith(null);
+  expect(combo('Merk')).toHaveValue('');
   expect(screen.queryByRole('button', { name: 'Kosongkan Merk' })).not.toBeInTheDocument();
 });
 
-test('opsi disabled tidak dapat dipilih', async () => {
+test('opsi disabled tidak dapat dipilih dan dilewati panah', async () => {
   const onChange = vi.fn();
   render(<Single onChange={onChange} />);
-  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
-  await userEvent.click(await screen.findByText('Charlie'));
+  await userEvent.click(combo('Merk'));
+  await userEvent.click(screen.getByRole('option', { name: 'Charlie' }));
   expect(onChange).not.toHaveBeenCalled();
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+  // sorotan awal Alfa -> Bravo -> Delta (Charlie dilewati)
+  expect(onChange).toHaveBeenCalledWith('d');
 });
 
-test('teks tanpa pasangan dikosongkan saat daftar ditutup dan nilai tak berubah', async () => {
+test('keyboard: ArrowDown membuka daftar, ArrowDown/ArrowUp menyorot, Enter memilih', async () => {
   const onChange = vi.fn();
-  render(<Single value="a" onChange={onChange} />);
-  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
-  const search = await screen.findByRole('combobox', { name: 'Cari Merk' });
-  await userEvent.type(search, 'zzz');
-  expect(search).toHaveValue('zzz');
-  await userEvent.keyboard('{Escape}');
-  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
-  expect(await screen.findByRole('combobox', { name: 'Cari Merk' })).toHaveValue('');
+  render(<Single onChange={onChange} />);
+  combo('Merk').focus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(combo('Merk')).toHaveAttribute(
+    'aria-activedescendant',
+    screen.getByRole('option', { name: /Bravo/ }).id,
+  );
+  await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+  // dari Alfa ke atas: berputar ke opsi aktif terakhir (Delta)
+  expect(combo('Merk')).toHaveAttribute(
+    'aria-activedescendant',
+    screen.getByRole('option', { name: 'Delta' }).id,
+  );
+  await userEvent.keyboard('{Enter}');
+  expect(onChange).toHaveBeenCalledWith('d');
+});
+
+test('Enter pada daftar terbuka tidak mengirim form induk', async () => {
+  const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
+  render(
+    <form onSubmit={onSubmit}>
+      <Single />
+    </form>,
+  );
+  await userEvent.click(combo('Merk'));
+  await userEvent.keyboard('{Enter}');
+  expect(onSubmit).not.toHaveBeenCalled();
+  expect(combo('Merk')).toHaveValue('Alfa');
+});
+
+test('blur mengosongkan teks tanpa pasangan dan nilai tak berubah', async () => {
+  const onChange = vi.fn();
+  render(
+    <>
+      <Single value="a" onChange={onChange} />
+      <button type="button">lain</button>
+    </>,
+  );
+  await userEvent.click(combo('Merk'));
+  await userEvent.keyboard('zzz');
+  expect(combo('Merk')).toHaveValue('zzz');
+  await userEvent.click(screen.getByRole('button', { name: 'lain' }));
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(combo('Merk')).toHaveValue('Alfa');
   expect(onChange).not.toHaveBeenCalled();
-  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Alfa');
 });
 
 test('onSearchChange dipanggil sekali setelah debounce dengan teks terakhir', async () => {
@@ -96,14 +171,24 @@ test('onSearchChange dipanggil sekali setelah debounce dengan teks terakhir', as
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   const onSearchChange = vi.fn();
   render(<Single onSearchChange={onSearchChange} searchDebounceMs={200} />);
-  await user.click(screen.getByRole('combobox', { name: 'Merk' }));
-  await user.type(await screen.findByRole('combobox', { name: 'Cari Merk' }), 'bra');
+  await user.type(combo('Merk'), 'bra');
   expect(onSearchChange).not.toHaveBeenCalled();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250);
   });
   expect(onSearchChange).toHaveBeenCalledTimes(1);
   expect(onSearchChange).toHaveBeenCalledWith('bra');
+});
+
+test('labelOf dipakai untuk nilai yang tidak ada di options', () => {
+  render(
+    <Single
+      value="zzz"
+      options={[]}
+      labelOf={(id) => (id === 'zzz' ? 'Terpilih Lama' : undefined)}
+    />,
+  );
+  expect(combo('Merk')).toHaveValue('Terpilih Lama');
 });
 
 test('tombol Tambah hanya ada bila onCreate disediakan', async () => {
@@ -118,8 +203,19 @@ test('tombol Tambah hanya ada bila onCreate disediakan', async () => {
 
 test('hasMore menampilkan petunjuk persempit pencarian', async () => {
   render(<Single hasMore />);
-  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
-  expect(await screen.findByText('Ada hasil lain, persempit pencarian')).toBeInTheDocument();
+  await userEvent.click(combo('Merk'));
+  expect(screen.getByText('Ada hasil lain, persempit pencarian')).toBeInTheDocument();
+});
+
+test('loading menampilkan "Memuat…" dan bukan "Tidak ada hasil"; kosong menampilkan "Tidak ada hasil."', async () => {
+  const { unmount } = render(<Single options={[]} loading />);
+  await userEvent.click(combo('Merk'));
+  expect(screen.getByText('Memuat…')).toBeInTheDocument();
+  expect(screen.queryByText('Tidak ada hasil.')).not.toBeInTheDocument();
+  unmount();
+  render(<Single options={[]} />);
+  await userEvent.click(combo('Merk'));
+  expect(screen.getByText('Tidak ada hasil.')).toBeInTheDocument();
 });
 
 test('openHref menghasilkan tautan tab baru hanya bila mengembalikan string', () => {
@@ -132,28 +228,91 @@ test('openHref menghasilkan tautan tab baru hanya bila mengembalikan string', ()
   expect(screen.queryByRole('link', { name: 'Buka Merk' })).not.toBeInTheDocument();
 });
 
-test('error tampil lewat role alert', () => {
+test('error tampil lewat role alert dan menandai input', () => {
   render(<Single error="Wajib diisi" />);
   expect(screen.getByRole('alert')).toHaveTextContent('Wajib diisi');
+  expect(combo('Merk')).toHaveAttribute('aria-invalid', 'true');
 });
 
-test('multi: dua pilihan menjadi dua chip dan opsi terpilih hilang dari daftar', async () => {
+test('disabled: input tidak bisa diisi dan tanpa tombol aksi', () => {
+  render(<Single value="a" disabled onCreate={() => undefined} />);
+  expect(combo('Merk')).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Kosongkan Merk' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Tambah Merk' })).not.toBeInTheDocument();
+});
+
+test('multi: pilihan menjadi chip DI DALAM bingkai input, opsi terpilih hilang dari daftar, daftar tetap terbuka', async () => {
   const onChange = vi.fn();
   render(<Multi onChange={onChange} />);
-  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Alfa' }));
+  await userEvent.click(combo('BU'));
+  await userEvent.click(screen.getByRole('option', { name: 'Alfa' }));
   expect(onChange).toHaveBeenLastCalledWith(['a']);
   expect(screen.queryByRole('option', { name: 'Alfa' })).not.toBeInTheDocument();
-  await userEvent.click(await screen.findByRole('option', { name: /Bravo/ }));
+  await userEvent.click(screen.getByRole('option', { name: /Bravo/ }));
   expect(onChange).toHaveBeenLastCalledWith(['a', 'b']);
-  expect(screen.getByRole('button', { name: 'Hapus Alfa' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Hapus Bravo' })).toBeInTheDocument();
+  const frame = combo('BU').closest('[data-slot="link-field-frame"]') as HTMLElement;
+  expect(within(frame).getByRole('button', { name: 'Hapus Alfa' })).toBeInTheDocument();
+  expect(within(frame).getByRole('button', { name: 'Hapus Bravo' })).toBeInTheDocument();
+  expect(frame).toContainElement(combo('BU'));
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
 });
 
-test('multi: menghapus chip memanggil onChange tanpa id itu', async () => {
+test('multi: Backspace pada input kosong menghapus chip terakhir; dengan teks hanya menghapus huruf', async () => {
+  const onChange = vi.fn();
+  render(<Multi value={['a', 'b']} onChange={onChange} />);
+  await userEvent.click(combo('BU'));
+  await userEvent.keyboard('x{Backspace}');
+  expect(onChange).not.toHaveBeenCalled();
+  await userEvent.keyboard('{Backspace}');
+  expect(onChange).toHaveBeenLastCalledWith(['a']);
+  expect(screen.queryByRole('button', { name: 'Hapus Bravo' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus Alfa' })).toBeInTheDocument();
+});
+
+test('multi: tombol hapus chip memanggil onChange tanpa id itu', async () => {
   const onChange = vi.fn();
   render(<Multi value={['a', 'b']} onChange={onChange} />);
   await userEvent.click(screen.getByRole('button', { name: 'Hapus Alfa' }));
   expect(onChange).toHaveBeenCalledWith(['b']);
-  expect(screen.queryByRole('button', { name: 'Hapus Alfa' })).not.toBeInTheDocument();
+});
+
+test('multi: klik pada bingkai memfokuskan input dan membuka daftar', async () => {
+  render(<Multi value={['a']} />);
+  const frame = combo('BU').closest('[data-slot="link-field-frame"]') as HTMLElement;
+  await userEvent.click(frame);
+  expect(combo('BU')).toHaveFocus();
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+});
+
+function InDialog({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+  return (
+    <FormDialog open onOpenChange={onOpenChange}>
+      <FormDialogContent>
+        <FormDialogTitle>Dialog uji</FormDialogTitle>
+        <FormDialogDescription>uji</FormDialogDescription>
+        <Multi />
+      </FormDialogContent>
+    </FormDialog>
+  );
+}
+
+test('Escape saat daftar terbuka hanya menutup daftar; Escape berikutnya baru menutup dialog', async () => {
+  const onOpenChange = vi.fn();
+  render(<InDialog onOpenChange={onOpenChange} />);
+  await userEvent.click(combo('BU'));
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test('di dalam dialog, klik mouse pada opsi memilihnya (daftar tidak terpotong portal/popover)', async () => {
+  render(<InDialog onOpenChange={() => undefined} />);
+  await userEvent.click(combo('BU'));
+  await userEvent.click(screen.getByRole('option', { name: 'Delta' }));
+  expect(screen.getByRole('button', { name: 'Hapus Delta' })).toBeInTheDocument();
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 });

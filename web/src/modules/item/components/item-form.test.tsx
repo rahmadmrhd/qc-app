@@ -160,7 +160,7 @@ test('mode ubah: merk nonaktif tetap berlabel, BU nonaktif tampil sebagai chip y
       model: 'X',
     },
   });
-  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Lama — nonaktif');
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Lama — nonaktif');
   expect(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' })).toBeInTheDocument();
   await pickBrand('Mikrotik');
   expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
@@ -225,14 +225,14 @@ test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim for
   const onCreateBrand = vi.fn(async () => created);
   const { onSubmit } = renderForm({ onCreateBrand });
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Merk' }));
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Baru');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   await waitFor(() =>
     expect(onCreateBrand).toHaveBeenCalledWith({ name: 'Baru', businessUnitIds: [] }),
   );
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Baru');
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Baru');
   expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
   expect(screen.queryByText('Pilih merk')).not.toBeInTheDocument();
@@ -244,13 +244,11 @@ test('galat saat membuat merk tampil di dialog dan merk tidak terpilih', async (
   });
   renderForm({ onCreateBrand });
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Merk' }));
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Ubiquiti');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: 'Merk', hidden: true })).toHaveTextContent(
-    'Pilih merk',
-  );
+  expect(screen.getByRole('combobox', { name: 'Merk', hidden: true })).toHaveValue('');
 });
 
 test('user tanpa BU aktif ber-edit melihat pesan di bawah field BU', () => {
@@ -305,7 +303,7 @@ test('mode ubah memuat nilai awal', () => {
       detail: '# isi',
     },
   });
-  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveTextContent('Ubiquiti');
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Ubiquiti');
   expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: 'Country lock (wajib)' })).toBeChecked();
   expect(screen.getByLabelText('Nama lain')).toHaveValue('AirFiber');
@@ -342,4 +340,15 @@ test('galeri memberi alt yang memuat nama item', () => {
     },
   });
   expect(screen.getByAltText('Gambar 1 Ubiquiti ES 24')).toBeInTheDocument();
+});
+
+test('mengetik di field Merk menyaring daftar; klik opsi memilih merk dan mengisi BU bawaan', async () => {
+  renderForm();
+  await userEvent.type(screen.getByRole('combobox', { name: 'Merk' }), 'mikro');
+  await waitFor(() =>
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Mikrotik']),
+  );
+  await userEvent.click(screen.getByRole('option', { name: 'Mikrotik' }));
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Mikrotik');
+  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
 });
