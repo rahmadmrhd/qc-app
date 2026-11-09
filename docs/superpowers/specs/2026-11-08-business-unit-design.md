@@ -2,7 +2,7 @@
 
 Status: disetujui pemilik produk 2026-11-08 ("lanjut pengerjaan BU"); rencana implementasi: `docs/superpowers/plans/2026-11-08-business-unit-tahap-1.md`. Tanggal: 2026-11-08.
 Cabang kerja: `feat/stiker-management` (dari `origin/dev`).
-Diperbarui 2026-11-09: tidak ada backfill hak lama (keputusan 14); ekspor Sheets dikecualikan (16); jawaban berkas lintas BU disamakan (17); unggahan tertunda hanya untuk pengunggahnya (18); §5.3, §5.7, anti-tujuan, dan log keputusan disesuaikan.
+Diperbarui 2026-11-09 (lagi): bus event ditunda ke tahap 5 (keputusan 22). Diperbarui 2026-11-09: tidak ada backfill hak lama (keputusan 14); ekspor Sheets dikecualikan (16); jawaban berkas lintas BU disamakan (17); unggahan tertunda hanya untuk pengunggahnya (18); §5.3, §5.7, anti-tujuan, dan log keputusan disesuaikan.
 
 ## 1. Latar dan tujuan
 
@@ -17,7 +17,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 | Tahap | Isi |
 |---|---|
 | **1. Fondasi BU** | Master BU; penugasan BU per user dengan role per BU; kerangka izin generik "modul ber-BU"; relasi item↔BU; BU bawaan pada merk; komponen `LinkField` untuk Merk dan BU di form item. |
-| 2. Event-driven | Bus event di server. Pendengar bisa dijalankan dalam satu request atau dimasukkan ke antrean (setara Event Listener Laravel; runner job yang ada menjadi calon dasar antrean). |
+| 2. Event-driven (**ditunda ke tahap 5**, keputusan 22) | Bus event di server. Pendengar bisa dijalankan dalam satu request atau dimasukkan ke antrean (setara Event Listener Laravel; runner job yang ada menjadi calon dasar antrean). Tidak dibangun sebelum tahap 5; dirancang bersama pembahasan Serial Number. |
 | 3. Stiker | Katalog stiker (QC hijau, QC putih, Segel per BU, Country Lock, Warning Frekuensi, Warning Unifi, Manual Book, Postel; masing-masing satu gambar contoh), stok per lokasi dengan stok minimum dan riwayat, instruksi penempelan per item, penanda stiker pada gambar (satu gambar boleh memuat banyak stiker). |
 | 4. Manual Book dan Postel | Stok berkelompok (beberapa tipe item berbagi satu stiker; aturan pengelompokan Postel berbeda dari Manual Book), tautan gambar ke hasil ekspor QR Code. Stok pada tahap ini diubah manual (belum ada pemotongan otomatis). |
 | 5. Serial Number | Pencatatan Serial Number (dibatasi BU) dan pemotongan stok stiker, Manual Book, dan Postel otomatis lewat event. Sengaja dikerjakan terakhir dan **masih perlu dibahas lagi sebelum dirancang**; jangan dikerjakan sebelum pembahasan itu (keputusan pemilik 2026-11-08). |
@@ -25,7 +25,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 ## 3. Keputusan pemilik produk (dicatat 2026-11-08)
 
 1. Stok dan aturan potong stok dikerjakan **di dalam kode proyek ini**, bukan di prosedur tersimpan MySQL QC Desktop.
-2. Sistem **event-driven** diterapkan agar fitur tidak saling bersentuhan langsung (tahap 2).
+2. Sistem **event-driven** diterapkan agar fitur tidak saling bersentuhan langsung (semula tahap 2; ditunda ke tahap 5 oleh keputusan 22, tujuannya tetap).
 3. **BU dikerjakan lebih dulu** sebagai fondasi stiker dan item.
 4. Item dan stiker punya BU lewat **tabel penghubung** (banyak-ke-banyak), bukan kolom JSON.
 5. BU **membatasi data**, bukan sekadar label.
@@ -45,6 +45,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 19. **BU bawaan merk dibatasi maksimal 50 per merk** (diputuskan 2026-11-09, pemilik produk): batas ukuran kueri yang dijaga validator `brands.save` dan `body.test.ts`.
 20. **`LinkField` berupa input teks pencarian dengan chip di dalam input** (diputuskan 2026-11-09, pemilik produk, setelah uji manual di dev): menggantikan bentuk tombol + popover; lihat §5.5.
 21. **Tambah dan Buka pada `LinkField` mengikuti `LinkModel` erp, dengan izin** (diputuskan 2026-11-09, pemilik produk): aksi "Tambah {label}" berupa baris di dasar daftar saran (bukan tombol di samping input) dan ada juga di mode banyak pilihan; "Buka" (tombol panah pada mode satu pilihan, label chip pada mode banyak pilihan) mengarah ke **halaman lihat record** (`/item/brands/:id`, `/access/business-units/:id`), bukan ke daftar. Keduanya hanya muncul bila user berhak: Buka merk = `item: view`, Buka BU = `access: view`, Tambah merk = `item: edit`, Tambah BU = `access: manage`. Konsekuensi: dua halaman lihat baru (baca-saja, tanpa rute server baru), dan field BU di form item mendapat dialog "Tambah BU" (BU baru langsung terpilih). Menggantikan butir §5.5 sebelumnya bahwa tombol Tambah/panah berada di samping input.
+22. **Bus event (tahap 2) ditunda dan digabung ke tahap 5** (diputuskan 2026-11-09, pemilik produk): satu-satunya pemakai yang dibayangkan saat ini adalah pemotongan stok otomatis saat Serial Number dicatat (tahap 5); tahap 3 dan 4 mengubah stok manual dan tidak membutuhkannya. Alasan memilih event-driven (kebiasaan dengan Event Listener Laravel) tetap berlaku sebagai arah, tetapi bentuknya (pendengar sinkron dalam satu transaksi dengan pencatatan Serial Number atau pendengar antrean lewat runner job; jaminan tak ganda dan tak hilang pada potong stok) baru dapat diputuskan setelah aturan potong stok dibahas, jadi tidak dibangun lebih dulu sebagai kerangka tanpa pemakai. Urutan pengerjaan menjadi: tahap 3 (Stiker), tahap 4 (Manual Book dan Postel), lalu bus event bersama tahap 5. Peta §2 dan keputusan 2 disesuaikan; tidak ada kode yang berubah.
 
 ## 4. Lingkup tahap 1
 
