@@ -141,6 +141,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     create: { verb: 'POST', path: '/sticker-types' },
   },
   'stickerTypes.setStatus': { verb: 'PATCH', path: '/sticker-types/{id}', etag: 'updatedAt' },
+  'stickers.list': { verb: 'GET', path: '/stickers' },
+  'stickers.save': {
+    verb: 'PUT',
+    path: '/stickers/{id}',
+    create: { verb: 'POST', path: '/stickers' },
+  },
+  'stickers.setStatus': { verb: 'PATCH', path: '/stickers/{id}', etag: 'updatedAt' },
   'customers.list': { verb: 'GET', path: '/customers' },
   'customers.rename': { verb: 'PUT', path: '/customers/{id}' },
   'customers.setStatus': { verb: 'PATCH', path: '/customers/{id}', etag: 'updatedAt' },

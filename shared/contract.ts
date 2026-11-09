@@ -266,6 +266,41 @@ export interface SetStickerTypeStatusInput {
   status: ItemStatus;
 }
 
+/** Stiker (katalog stiker, tahap 3a). `low` dihitung dari total stok semua lokasi (`isLowStock`). */
+export interface StickerDto {
+  id: string;
+  typeId: string;
+  typeName: string;
+  name: string;
+  /** Nama tampilan untuk tim QC; kosong bila tidak ada. */
+  alias: string;
+  fileId: string | null;
+  /** Batas minimum stok (butir) total semua lokasi; 0 = tanpa peringatan. */
+  minQty: number;
+  status: ItemStatus;
+  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none`. */
+  businessUnitIds: string[];
+  low: boolean;
+  updatedAt: string;
+}
+
+export interface SaveStickerInput {
+  id?: string;
+  /** Tak dapat diubah setelah stiker dibuat. */
+  typeId: string;
+  name: string;
+  alias: string;
+  fileId: string | null;
+  minQty: number;
+  /** Jenis berrule `bu`: minimal satu; jenis berrule `none`: harus kosong. */
+  businessUnitIds: string[];
+}
+
+export interface SetStickerStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
 export interface ItemSummaryDto {
   id: string;
   brandId: string;
@@ -593,6 +628,9 @@ export interface ApiContract {
   'stickerTypes.list': { input: null; output: StickerTypeDto[] };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickers.list': { input: null; output: StickerDto[] };
+  'stickers.save': { input: SaveStickerInput; output: StickerDto };
+  'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
   'customers.list': { input: null; output: CustomerDto[] };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
