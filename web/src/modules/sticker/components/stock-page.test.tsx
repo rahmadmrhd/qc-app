@@ -7,6 +7,8 @@ import { StockPage, type StockPageProps } from './stock-page';
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
+const toastInfo = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { info: toastInfo, success: vi.fn(), error: vi.fn() } }));
 
 function located(permission: 'view' | 'edit' | 'manage') {
   return { handover: 'none', qc: 'none', stock: 'none', stickerstock: permission } as const;
@@ -138,6 +140,21 @@ test('"Stok saat ini" di dialog ikut diperbarui saat stok dimuat ulang dengan di
     ],
   });
   expect(within(dialog).getByText('Stok saat ini: 5 butir')).toBeInTheDocument();
+});
+
+test('baris hilang saat dialog terbuka: dialog menutup bersih dengan pemberitahuan dan tidak terbuka lagi sendiri', async () => {
+  toastInfo.mockClear();
+  const { update } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
+  await screen.findByRole('alertdialog');
+  const [first, second] = rows as [StickerStockDto, StickerStockDto];
+  update({ rows: [second] });
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(toastInfo).toHaveBeenCalledWith('Stok stiker berubah; dialog ditutup');
+  // Baris kembali: dialog tidak terbuka lagi dengan sendirinya.
+  update({ rows: [first, second] });
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(toastInfo).toHaveBeenCalledTimes(1);
 });
 
 test('pesan angka dibedakan: kosong, bukan bilangan bulat, dan melebihi batas', async () => {
