@@ -797,11 +797,15 @@ describe('POST /sticker-guides', () => {
         files: GUIDE_LIMITS.libraryMax,
         guides: GUIDE_LIMITS.libraryMax,
       });
-      // Pra-cek lolos untuk ketiganya (1.999 < 2.000): yang menegakkan batas adalah penjaga di dalam batch.
-      // Tiga berkas terkirim ke Drive, dua yang kalah dibuang; tepat satu hidup.
+      // Hanya hasil akhir yang deterministik yang ditegaskan: jumlah panggilan `createFile` bergantung waktu (pra-cek
+      // sebuah unggahan yang terlambat dapat melihat penyisipan yang sudah commit lalu menolak tanpa menyentuh Drive).
+      // Penegak batas tetap penjaga di dalam batch; berkas Drive yang kalah di batch dibuang.
       const actions = env.BRIDGE.calls.map((call) => call.action);
-      expect(actions.filter((action) => action === 'createFile')).toHaveLength(3);
-      expect(actions.filter((action) => action === 'trashFile')).toHaveLength(2);
+      const created = actions.filter((action) => action === 'createFile').length;
+      const trashed = actions.filter((action) => action === 'trashFile').length;
+      expect(created).toBeGreaterThanOrEqual(1);
+      expect(created).toBeLessThanOrEqual(3);
+      expect(created - trashed).toBe(1);
       expect(driveLive()).toHaveLength(1);
     });
   });
