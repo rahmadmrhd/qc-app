@@ -24,7 +24,7 @@ import { toBusinessUnitFormDefaults } from '@/modules/access/schemas';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 
-export const Route = createFileRoute('/_app/access/business-units')({
+export const Route = createFileRoute('/_app/access/business-units/')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'access', 'view'),
   loader: ({ context }) => context.queryClient.ensureQueryData(businessUnitsQueryOptions()),
   component: BusinessUnitsPage,

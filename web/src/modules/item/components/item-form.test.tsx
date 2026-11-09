@@ -356,3 +356,55 @@ test('mengetik di field Merk menyaring daftar; klik opsi memilih merk dan mengis
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Mikrotik');
   expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
 });
+
+test('tanpa izin: baris Tambah BU dan tautan buka merk/BU tidak muncul', async () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b1', businessUnitIds: ['bu-a'] },
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  expect(screen.queryByRole('option', { name: 'Tambah BU' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /^Buka / })).not.toBeInTheDocument();
+});
+
+test('dengan izin: tombol buka merk dan label chip BU mengarah ke halaman lihat record', () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b1', businessUnitIds: ['bu-a'] },
+    openBrandHref: (id) => `/item/brands/${id}`,
+    openBusinessUnitHref: (id) => `/access/business-units/${id}`,
+  });
+  expect(screen.getByRole('link', { name: 'Buka Merk' })).toHaveAttribute(
+    'href',
+    '/item/brands/b1',
+  );
+  expect(screen.getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+    'href',
+    '/access/business-units/bu-a',
+  );
+});
+
+test('Tambah BU lewat dialog: BU baru langsung terpilih tanpa mengirim form item', async () => {
+  const onCreateBusinessUnit = vi.fn().mockResolvedValue({
+    id: 'bu-new',
+    code: 'NEW',
+    name: 'Baru',
+    status: 'active',
+    itemCount: 0,
+    userCount: 0,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: '',
+  });
+  const { onSubmit } = renderForm({ onCreateBusinessUnit });
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah BU' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Kode'), 'new');
+  await userEvent.type(within(dialog).getByLabelText('Nama'), 'Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onCreateBusinessUnit).toHaveBeenCalledWith({ code: 'NEW', name: 'Baru' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Hapus Baru (NEW)' })).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});

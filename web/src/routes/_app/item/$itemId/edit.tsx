@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
-import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
+import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { buIdsWithLevelFor, can, requirePermission } from '@/modules/auth/permissions';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { useMe } from '@/modules/auth/use-me';
@@ -12,6 +12,7 @@ import { brandsQueryOptions, useSaveBrand } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
 import { mergeBusinessUnits } from '@/modules/item/lib/default-business-units';
 import { assertCanEditItem } from '@/modules/item/lib/edit-access';
+import { itemFormLinkAccess } from '@/modules/item/lib/link-access';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
@@ -39,6 +40,8 @@ function EditItemPage() {
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const saveItem = useSaveItem();
   const saveBrand = useSaveBrand();
+  const saveBusinessUnit = useSaveBusinessUnit();
+  const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
 
@@ -67,6 +70,11 @@ function EditItemPage() {
         onCreateBrand={
           can(me, 'item', 'edit') ? (input) => saveBrand.mutateAsync(input) : undefined
         }
+        onCreateBusinessUnit={
+          links.canCreateBusinessUnit ? (input) => saveBusinessUnit.mutateAsync(input) : undefined
+        }
+        openBrandHref={links.openBrandHref}
+        openBusinessUnitHref={links.openBusinessUnitHref}
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}
         fieldErrors={fieldErrors}

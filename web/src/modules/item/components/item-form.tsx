@@ -1,4 +1,9 @@
-import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
+import type {
+  BrandDto,
+  BusinessUnitDto,
+  BusinessUnitOptionDto,
+  SaveBusinessUnitInput,
+} from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { useForm } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
@@ -10,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
 import {
   BrandFormDialog,
   type BrandSaveInput,
@@ -39,6 +45,14 @@ export interface ItemFormProps {
    * Melempar galat bila gagal (pesannya tampil di dialog).
    */
   onCreateBrand?: (input: BrandSaveInput) => Promise<BrandDto>;
+  /**
+   * Membuat BU baru dari dialog "Tambah BU" pada field BU; hanya disediakan bila user boleh mengelola BU
+   * (`access: manage`). BU baru langsung terpilih. Melempar galat bila gagal.
+   */
+  onCreateBusinessUnit?: (input: SaveBusinessUnitInput) => Promise<BusinessUnitDto>;
+  /** Tautan ke halaman lihat merk/BU (tab baru); tidak disediakan bila user tak berhak melihatnya, sehingga tombolnya hilang. */
+  openBrandHref?: (id: string) => string | null;
+  openBusinessUnitHref?: (id: string) => string | null;
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
@@ -70,6 +84,9 @@ export function ItemForm({
   businessUnits = [],
   editableBusinessUnitIds = [],
   onCreateBrand,
+  onCreateBusinessUnit,
+  openBrandHref,
+  openBusinessUnitHref,
   defaultValues,
   title,
   submitError,
@@ -115,7 +132,14 @@ export function ItemForm({
     label: brandLabel(brand.id) ?? brand.name,
   }));
 
-  const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
+  // BU yang baru dibuat lewat dialog langsung bisa dilabeli, sebelum daftar BU dari server dimuat ulang.
+  const [createdBus, setCreatedBus] = useState<readonly BusinessUnitOptionDto[]>([]);
+  const [buDialogOpen, setBuDialogOpen] = useState(false);
+  const buById = new Map(
+    [...businessUnits, ...createdBus.filter((c) => !businessUnits.some((b) => b.id === c.id))].map(
+      (bu) => [bu.id, bu],
+    ),
+  );
   const editable = new Set(editableBusinessUnitIds);
   const addableBus = businessUnits.filter((bu) => bu.status === 'active' && editable.has(bu.id));
   const addableBuIds = addableBus.map((bu) => bu.id);
@@ -194,7 +218,7 @@ export function ItemForm({
                   field.handleBlur();
                 }}
                 onCreate={onCreateBrand ? () => setBrandDialogOpen(true) : undefined}
-                openHref={() => '/item/brands'}
+                openHref={openBrandHref}
                 error={errorText([...field.state.meta.errors, serverError('brandId')])}
               />
             )}
@@ -213,6 +237,8 @@ export function ItemForm({
                   }}
                   options={buOptions}
                   onSearchChange={setBuTerm}
+                  onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
+                  openHref={openBusinessUnitHref}
                   onChange={(ids) => {
                     buTouched.current = true;
                     field.handleChange(ids);
@@ -381,6 +407,22 @@ export function ItemForm({
           </p>
         ) : null}
       </form>
+      {onCreateBusinessUnit ? (
+        <BusinessUnitFormDialog
+          open={buDialogOpen}
+          onOpenChange={setBuDialogOpen}
+          onSave={async (input) => {
+            const bu = await onCreateBusinessUnit(input);
+            setCreatedBus((previous) => [...previous, bu]);
+            buTouched.current = true;
+            const current = form.getFieldValue('businessUnitIds');
+            if (!current.includes(bu.id))
+              form.setFieldValue('businessUnitIds', [...current, bu.id]);
+            clear('businessUnitIds');
+            return bu;
+          }}
+        />
+      ) : null}
       {onCreateBrand ? (
         <BrandFormDialog
           open={brandDialogOpen}

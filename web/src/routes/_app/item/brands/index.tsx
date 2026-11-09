@@ -15,7 +15,7 @@ import {
 import { BrandsManager } from '@/modules/brand/components/brands-manager';
 import { brandsQueryOptions, useSaveBrand, useSetBrandStatus } from '@/modules/brand/queries';
 
-export const Route = createFileRoute('/_app/item/brands')({
+export const Route = createFileRoute('/_app/item/brands/')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
   loader: ({ context }) =>
     Promise.all([
