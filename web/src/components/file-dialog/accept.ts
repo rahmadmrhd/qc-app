@@ -78,3 +78,18 @@ export function baseName(filename: string, max?: number): string {
   if (max === undefined) return collapsed;
   return [...collapsed].slice(0, max).join('').trim();
 }
+
+/** Memisahkan berkas menurut tipe: yang sah, dan yang ditolak beserta alasan (ukuran diperiksa oleh antrean unggah). */
+export function partitionByType(
+  files: readonly File[],
+  accept: readonly string[],
+): { files: File[]; rejected: { name: string; reason: string }[] } {
+  const accepted: File[] = [];
+  const rejected: { name: string; reason: string }[] = [];
+  for (const file of files) {
+    const reason = checkFile(file, { accept, maxBytes: Number.POSITIVE_INFINITY });
+    if (reason === null) accepted.push(file);
+    else rejected.push({ name: file.name, reason });
+  }
+  return { files: accepted, rejected };
+}

@@ -1,6 +1,6 @@
 import { type DragEvent, type ReactNode, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { checkFile } from './accept';
+import { partitionByType } from './accept';
 
 export interface FileDropZoneProps {
   accept: readonly string[];
@@ -36,14 +36,8 @@ export function FileDropZone({
     if (disabled || !hasFiles(event)) return;
     event.preventDefault();
     reset();
-    const accepted: File[] = [];
-    const rejected: { name: string; reason: string }[] = [];
-    for (const file of Array.from(event.dataTransfer.files)) {
-      const reason = checkFile(file, { accept, maxBytes: Number.POSITIVE_INFINITY });
-      if (reason === null) accepted.push(file);
-      else rejected.push({ name: file.name, reason });
-    }
-    if (accepted.length > 0 || rejected.length > 0) onFiles(accepted, rejected);
+    const { files, rejected } = partitionByType(Array.from(event.dataTransfer.files), accept);
+    if (files.length > 0 || rejected.length > 0) onFiles(files, rejected);
   }
 
   return (

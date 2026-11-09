@@ -2,7 +2,7 @@ import { CircleAlert, CircleCheck, RotateCcw, Trash2, Upload, X } from 'lucide-r
 import { useRef } from 'react';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
-import { formatBytes } from './accept';
+import { formatBytes, partitionByType } from './accept';
 import { FileDropZone } from './file-drop-zone';
 import { InlineName } from './inline-name';
 import type { UploadQueue } from './use-upload-queue';
@@ -15,6 +15,8 @@ export interface UploadTabProps {
   /** Panjang maksimum nama entri (karakter). */
   nameMax?: number;
   disabled?: boolean;
+  /** Pengganti penambahan langsung ke antrean (mis. aturan mode satu berkas di dialog); bawaan: tambah ke antrean. */
+  onFiles?(files: File[], rejected: { name: string; reason: string }[]): void;
 }
 
 const STATUS_LABEL = { waiting: 'Menunggu', uploading: 'Mengunggah', done: 'Selesai' } as const;
@@ -27,18 +29,22 @@ export function UploadTab({
   maxFiles,
   nameMax,
   disabled,
+  onFiles,
 }: UploadTabProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { entries, rejected } = queue;
+  const handleFiles =
+    onFiles ??
+    ((files: File[], refused: { name: string; reason: string }[]) => {
+      queue.add(files);
+      queue.addRejected(refused);
+    });
   return (
     <FileDropZone
       accept={accept}
       disabled={disabled}
       className="flex min-h-0 flex-1 flex-col gap-3"
-      onFiles={(files, refused) => {
-        queue.add(files);
-        queue.addRejected(refused);
-      }}
+      onFiles={handleFiles}
     >
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center">
         <Upload aria-hidden className="size-6 text-muted-foreground" />
@@ -61,8 +67,11 @@ export function UploadTab({
             const files = Array.from(event.target.files ?? []);
             // Pilihan yang sama dapat dipilih lagi.
             event.target.value = '';
-            // Berkas di luar `accept` yang lolos dari filter pemilih tetap ditolak di `queue.add`.
-            if (files.length > 0) queue.add(files);
+            // Pemilih berkas dapat lolos dari filter `accept` (mis. "Semua berkas"): pisahkan menurut tipe seperti drop.
+            if (files.length > 0) {
+              const split = partitionByType(files, accept);
+              handleFiles(split.files, split.rejected);
+            }
           }}
         />
         <p className="text-xs text-muted-foreground">
