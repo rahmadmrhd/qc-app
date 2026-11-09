@@ -197,7 +197,7 @@ test('merk nonaktif tidak ditawarkan pada item baru; pada item ber-merk nonaktif
   ]);
 });
 
-test('tombol Tambah merk hanya ada bila onCreateBrand disediakan', () => {
+test('baris Tambah merk hanya ada bila onCreateBrand disediakan', async () => {
   const { unmount } = render(
     <ItemForm
       title="Form item"
@@ -207,10 +207,12 @@ test('tombol Tambah merk hanya ada bila onCreateBrand disediakan', () => {
       onCancel={vi.fn()}
     />,
   );
-  expect(screen.queryByRole('button', { name: 'Tambah Merk' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect(screen.queryByRole('option', { name: 'Tambah Merk' })).not.toBeInTheDocument();
   unmount();
   renderForm({ onCreateBrand: vi.fn() });
-  expect(screen.getByRole('button', { name: 'Tambah Merk' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect(screen.getByRole('option', { name: 'Tambah Merk' })).toBeInTheDocument();
 });
 
 test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim form item', async () => {
@@ -224,7 +226,8 @@ test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim for
   };
   const onCreateBrand = vi.fn(async () => created);
   const { onSubmit } = renderForm({ onCreateBrand });
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Merk' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Merk' }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Baru');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
@@ -243,7 +246,8 @@ test('galat saat membuat merk tampil di dialog dan merk tidak terpilih', async (
     throw new Error('Nama merk sudah dipakai');
   });
   renderForm({ onCreateBrand });
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Merk' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Merk' }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama merk'), 'Ubiquiti');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));

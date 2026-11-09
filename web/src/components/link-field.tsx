@@ -24,9 +24,9 @@ interface LinkFieldCommon {
   onSearchChange?: (term: string) => void;
   /** Jeda (ms) sebelum `onSearchChange` dipanggil; bawaan 200. */
   searchDebounceMs?: number;
-  /** Tombol "Tambah" tampil hanya bila disediakan (mis. membuka dialog form master). */
+  /** Baris "Tambah {label}" di bawah daftar saran, hanya bila disediakan (mis. membuka dialog form master). */
   onCreate?: () => void;
-  /** Tautan ke record (tab baru); `null` = tidak ada tautan. */
+  /** Tautan ke record (tab baru); `null` = tidak ada tautan. Mode banyak pilihan: label chip menjadi tautan. */
   openHref?: (id: string) => string | null;
   error?: string;
   disabled?: boolean;
@@ -46,6 +46,8 @@ export interface LinkMultiFieldProps extends LinkFieldCommon {
 }
 
 const DEFAULT_DEBOUNCE_MS = 200;
+/** Id baris aksi "Tambah" di bawah daftar; bukan id record. */
+const CREATE_ID = '__link_field_create__';
 
 /** Teks pencarian lokal + panggilan `onSearchChange` yang di-debounce (tidak dipanggil saat mount). */
 function useSearchTerm(onSearchChange: ((term: string) => void) | undefined, debounceMs: number) {
@@ -123,7 +125,11 @@ function LinkFieldBase({
   const selected = new Set(selectedIds);
   const visible = multi ? options.filter((option) => !selected.has(option.id)) : options;
   const enabled = visible.filter((option) => !option.disabled);
-  const active = enabled.find((option) => option.id === activeId) ?? enabled[0];
+  const canCreate = Boolean(onCreate) && !disabled;
+  // Urutan sorotan keyboard: opsi aktif lalu baris aksi "Tambah" (seperti LinkModel erp).
+  const navigable = [...enabled.map((option) => option.id), ...(canCreate ? [CREATE_ID] : [])];
+  const activeKey = activeId !== null && navigable.includes(activeId) ? activeId : enabled[0]?.id;
+  const active = enabled.find((option) => option.id === activeKey);
   const showList = open && !disabled;
   const optionDomId = (optionId: string) => `${listId}-${optionId}`;
 
@@ -150,12 +156,12 @@ function LinkFieldBase({
   }, [showList]);
 
   // Opsi yang disorot keyboard selalu terlihat di dalam daftar yang bisa di-scroll.
-  const activeKey = showList ? active?.id : undefined;
+  const scrollKey = showList ? activeKey : undefined;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `optionDomId` hanya turunan dari `listId`
   useEffect(() => {
-    if (activeKey === undefined) return;
-    document.getElementById(optionDomId(activeKey))?.scrollIntoView?.({ block: 'nearest' });
-  }, [activeKey]);
+    if (scrollKey === undefined) return;
+    document.getElementById(optionDomId(scrollKey))?.scrollIntoView?.({ block: 'nearest' });
+  }, [scrollKey]);
 
   function pick(option: LinkOption) {
     if (option.disabled) return;
@@ -172,10 +178,15 @@ function LinkFieldBase({
       if (!disabled) setOpen(true);
       return;
     }
-    if (enabled.length === 0) return;
-    const index = active ? enabled.indexOf(active) : -1;
-    const next = enabled[(index + step + enabled.length) % enabled.length];
-    if (next) setActiveId(next.id);
+    if (navigable.length === 0) return;
+    const index = activeKey === undefined ? -1 : navigable.indexOf(activeKey);
+    const next = navigable[(index + step + navigable.length) % navigable.length];
+    if (next !== undefined) setActiveId(next);
+  }
+
+  function create() {
+    close();
+    onCreate?.();
   }
 
   const inputValue = multi || editing ? term : (displayText ?? '');
@@ -207,18 +218,19 @@ function LinkFieldBase({
                 key={chip.id}
                 className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-sm"
               >
-                <span className="truncate">{chip.label}</span>
                 {chip.href ? (
                   <a
                     href={chip.href}
                     target="_blank"
                     rel="noreferrer"
                     aria-label={`Buka ${chip.label}`}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="truncate hover:underline"
                   >
-                    <ExternalLink className="size-3.5" aria-hidden />
+                    {chip.label}
                   </a>
-                ) : null}
+                ) : (
+                  <span className="truncate">{chip.label}</span>
+                )}
                 {disabled ? null : (
                   <button
                     type="button"
@@ -242,7 +254,7 @@ function LinkFieldBase({
               aria-expanded={showList}
               aria-controls={showList ? listId : undefined}
               aria-autocomplete="list"
-              aria-activedescendant={showList && active ? optionDomId(active.id) : undefined}
+              aria-activedescendant={showList && activeKey ? optionDomId(activeKey) : undefined}
               aria-invalid={error ? true : undefined}
               aria-describedby={describedBy}
               disabled={disabled}
@@ -275,7 +287,8 @@ function LinkFieldBase({
                   // Enter pada daftar terbuka memilih opsi yang disorot dan tidak pernah mengirim form.
                   if (showList) {
                     event.preventDefault();
-                    if (active) pick(active);
+                    if (activeKey === CREATE_ID) create();
+                    else if (active) pick(active);
                   }
                 } else if (event.key === 'Backspace' && multi && term === '') {
                   const last = chips.at(-1);
@@ -304,20 +317,6 @@ function LinkFieldBase({
                 </a>
               </Button>
             ) : null}
-            {onCreate && !disabled ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                tabIndex={-1}
-                className="size-6"
-                aria-label={`Tambah ${label}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onCreate}
-              >
-                <Plus />
-              </Button>
-            ) : null}
           </div>
           {showList ? (
             <div
@@ -338,7 +337,7 @@ function LinkFieldBase({
                   aria-disabled={option.disabled || undefined}
                   className={cn(
                     'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
-                    option.id === active?.id && 'bg-muted text-foreground',
+                    option.id === activeKey && 'bg-muted text-foreground',
                     option.disabled && 'pointer-events-none opacity-50',
                   )}
                   // Jangan memindah fokus dari input: blur akan menutup daftar sebelum klik sempat dipilih.
@@ -370,6 +369,27 @@ function LinkFieldBase({
                 <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
                   Ada hasil lain, persempit pencarian
                 </p>
+              ) : null}
+              {canCreate ? (
+                <div className="sticky bottom-0 -mx-1 -mb-1 border-t bg-popover p-1">
+                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), baris tidak menerima fokus */}
+                  <div
+                    id={optionDomId(CREATE_ID)}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={false}
+                    className={cn(
+                      'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
+                      activeKey === CREATE_ID && 'bg-muted text-foreground',
+                    )}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveId(CREATE_ID)}
+                    onClick={create}
+                  >
+                    <Plus className="size-4" aria-hidden />
+                    Tambah {label}
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : null}

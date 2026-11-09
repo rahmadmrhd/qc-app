@@ -191,13 +191,53 @@ test('labelOf dipakai untuk nilai yang tidak ada di options', () => {
   expect(combo('Merk')).toHaveValue('Terpilih Lama');
 });
 
-test('tombol Tambah hanya ada bila onCreate disediakan', async () => {
+test('baris Tambah di bawah daftar hanya ada bila onCreate disediakan', async () => {
   const onCreate = vi.fn();
   const { unmount } = render(<Single />);
-  expect(screen.queryByRole('button', { name: 'Tambah Merk' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  expect(screen.queryByRole('option', { name: 'Tambah Merk' })).not.toBeInTheDocument();
   unmount();
   render(<Single onCreate={onCreate} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Merk' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Merk' }));
+  expect(onCreate).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+});
+
+test('baris Tambah dapat dicapai dengan ArrowUp dan dipilih dengan Enter', async () => {
+  const onCreate = vi.fn();
+  render(<Single onCreate={onCreate} />);
+  const input = screen.getByRole('combobox', { name: 'Merk' });
+  await userEvent.click(input);
+  await userEvent.keyboard('{ArrowUp}');
+  expect(input).toHaveAttribute(
+    'aria-activedescendant',
+    screen.getByRole('option', { name: 'Tambah Merk' }).id,
+  );
+  await userEvent.keyboard('{Enter}');
+  expect(onCreate).toHaveBeenCalledTimes(1);
+});
+
+test('mode banyak pilihan: baris Tambah ada dan label chip menjadi tautan ke record', async () => {
+  const onCreate = vi.fn();
+  render(
+    <LinkMultiField
+      id="bu"
+      label="BU"
+      options={OPTIONS}
+      value={['b']}
+      onChange={vi.fn()}
+      labelOf={(id) => OPTIONS.find((option) => option.id === id)?.label ?? id}
+      openHref={(id) => `/bu/${id}`}
+      onCreate={onCreate}
+    />,
+  );
+  const link = screen.getByRole('link', { name: `Buka ${OPTIONS[1]?.label}` });
+  expect(link).toHaveAttribute('href', '/bu/b');
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link).toHaveTextContent(OPTIONS[1]?.label ?? '');
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah BU' }));
   expect(onCreate).toHaveBeenCalledTimes(1);
 });
 
