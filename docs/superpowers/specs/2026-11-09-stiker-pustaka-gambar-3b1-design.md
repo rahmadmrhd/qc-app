@@ -75,6 +75,8 @@ Props dialog: `source`, `mode: 'single' | 'multiple'`, `accept` (kategori: `'ima
 - **Makna izin `item`**: cukup dimiliki di BU mana pun (level tertinggi di antara penugasan BU, `globalBuLevel`), bukan harus di semua BU; konsisten dengan "tanpa batas BU" dan dengan cara `files.upload` memeriksa `item: edit`.
 - **Pengunggah di DTO**: hanya nama tampilan sebagai teks, tanpa email.
 
+**Keputusan pemilik (2026-11-09, atas pertanyaan builder check): batas global 2.000 gambar di pustaka.** Alasan: gambar pustaka tidak dihitung sebagai unggahan yatim, sehingga tanpa batas satu pemegang izin ubah item bisa menghabiskan kuota Drive. Unggahan ditolak dengan galat `CONFLICT` berpesan jelas ("Pustaka gambar penuh (2.000)") bila jumlah gambar aktif sudah mencapai batas; pemeriksaan dan penyisipan dijaga agar unggahan serentak tidak melampaui batas (penjaga di dalam `batch()`, bukan hitung-lalu-tulis). Batas berupa konstanta di `shared/stickers.ts` (`GUIDE_LIBRARY_MAX`). Tidak ada pembatas laju per pengguna.
+
 **Bukan keputusan pemilik tapi dicatat:** nama berkas sumber tidak disimpan di Drive (nama Drive tetap `<uuid>.<ext>` seperti lampiran lain); gambar yang sama persis tidak dideteksi ganda.
 
 ## 4. Bukan tujuan (non-goals)
