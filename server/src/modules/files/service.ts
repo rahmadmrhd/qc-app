@@ -210,6 +210,9 @@ export async function planAttachFiles(
         throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
       }
       toClaim.push(file);
+    } else if (file.ownerType === 'item' && ownerType !== 'item') {
+      // Berkas item yang dikirim ke jalur lain (logo QR): jawab seperti berkas tak dikenal, tanpa membuka keberadaannya.
+      throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
     } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }

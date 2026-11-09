@@ -311,7 +311,14 @@ export async function saveQrLogoLibrary(
     if (input.expectedUpdatedAt !== existing.updatedAt) throw staleError();
   }
   // Logo pustaka: pemilik tetap ('qrlogo','shared') sehingga dapat dibaca/dirujuk semua pengguna qrcode.
-  const attach = await planAttachFiles(env, input.logoFileIds, 'qrlogo', 'shared');
+  const attach = await planAttachFiles(
+    env,
+    input.logoFileIds,
+    'qrlogo',
+    'shared',
+    undefined,
+    actor.email,
+  );
   const now = nowIso(env);
   const before = existing?.logoFileIds ?? [];
   if (existing && before.join(',') === input.logoFileIds.join(',')) {
@@ -501,7 +508,9 @@ async function saveQrDesignNow(
   };
   // Logo bersama: pemilik tetap ('qrlogo','shared') agar banyak konfigurasi boleh merujuk berkas yang sama.
   const attach =
-    next.logoFileId !== '' ? await planAttachFiles(env, [next.logoFileId], 'qrlogo', 'shared') : [];
+    next.logoFileId !== ''
+      ? await planAttachFiles(env, [next.logoFileId], 'qrlogo', 'shared', undefined, actor.email)
+      : [];
 
   if (!existing) {
     await env.DB.batch([

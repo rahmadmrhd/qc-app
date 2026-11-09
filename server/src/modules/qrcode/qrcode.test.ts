@@ -367,7 +367,8 @@ describe('link, logo, dan berkas', () => {
 
   test('logo: berkas tak dikenal ditolak; logo yang sama boleh dirujuk banyak konfigurasi', async () => {
     expect((await save({ logoFileId: 'tidak-ada' })).error.code).toBe('VALIDATION');
-    const up = await call('qredit@gmail.com', 'files.upload', PNG1);
+    // pengunggah = penyimpan pustaka (unggahan belum terpasang hanya dapat dipasang pengunggahnya)
+    const up = await call('qrmanage@gmail.com', 'files.upload', PNG1);
     expect(up.ok).toBe(true);
     const logo = up.data.id as string;
     expect((await save({ title: 'A', logoFileId: logo })).error.code).toBe('VALIDATION');
@@ -378,6 +379,38 @@ describe('link, logo, dan berkas', () => {
       .bind(logo)
       .first();
     expect(row).toEqual({ owner_type: 'qrlogo', owner_id: 'shared' });
+  });
+
+  test('jalur QR memasang berkas seperti jalur item: pending milik user lain dan berkas item dijawab VALIDATION identik dengan id tak dikenal', async () => {
+    const pendingOfEditor = await uploadAs('qredit@gmail.com');
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'item-1', brand: 'Sony', model: 'Rahasia-Tipe' });
+    const itemFile = await uploadAs('qrmanage@gmail.com');
+    await attachFiles(env, [itemFile], 'item', 'item-1');
+    const current = (await call('qrview@gmail.com', 'qrcodes.getDefaults', null)).data;
+    const library = (ids: string[]) =>
+      call('qrmanage@gmail.com', 'qrcodes.saveLogoLibrary', {
+        ...(current.logoUpdatedAt ? { expectedUpdatedAt: current.logoUpdatedAt } : {}),
+        logoFileIds: ids,
+      });
+    const unknown = await library(['tidak-ada-id']);
+    expect(unknown.error.code).toBe('VALIDATION');
+    for (const id of [pendingOfEditor, itemFile]) {
+      const out = await library([id]);
+      expect(out.error.code).toBe('VALIDATION');
+      expect(out.error.message).toBe(unknown.error.message);
+      expect(JSON.stringify(out.error).toLowerCase()).not.toContain('rahasia');
+      expect(JSON.stringify(out.error)).not.toContain(id);
+    }
+    // berkas tidak berubah pemilik
+    const rows = await env.DB.prepare('SELECT id, owner_type FROM files ORDER BY id').all<{
+      id: string;
+      owner_type: string;
+    }>();
+    expect(Object.fromEntries(rows.results.map((row) => [row.id, row.owner_type]))).toEqual({
+      [pendingOfEditor]: '',
+      [itemFile]: 'item',
+    });
   });
 
   async function addToLibrary(...ids: string[]) {
@@ -396,8 +429,8 @@ describe('link, logo, dan berkas', () => {
   };
 
   test('mengganti logo ke logo lain TERSIMPAN dan tercatat di audit', async () => {
-    const a = await uploadAs('qredit@gmail.com');
-    const b = await uploadAs('qredit@gmail.com');
+    const a = await uploadAs('qrmanage@gmail.com');
+    const b = await uploadAs('qrmanage@gmail.com');
     await addToLibrary(a, b);
     const made = await save({ logoFileId: a });
     env.clock.advance(60_000);
@@ -412,7 +445,7 @@ describe('link, logo, dan berkas', () => {
   });
 
   test('files.get untuk pengguna qrcode tanpa izin item: hanya logo (qrlogo) dan unggahannya sendiri yang belum terpasang', async () => {
-    const logo = await uploadAs('qredit@gmail.com');
+    const logo = await uploadAs('qrmanage@gmail.com');
     await addToLibrary(logo);
     const itemFile = await uploadAs('qredit@gmail.com');
     // berkas item hanya terbaca bila item pemiliknya punya BU yang terlihat (noqr = item view, Semua BU)
