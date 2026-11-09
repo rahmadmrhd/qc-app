@@ -4,6 +4,8 @@ Status: disetujui pemilik produk 2026-11-09 ("Setuju"). Tanggal: 2026-11-09.
 Induk: `docs/superpowers/specs/2026-11-08-business-unit-design.md` (peta tahap §2; keputusan 1-22). Cabang kerja: `feat/stiker-management`.
 Tahap 3 dipecah dua (disetujui pemilik 2026-11-09): **3a** (dokumen ini: katalog dan stok) lalu **3b** (instruksi penempelan: pustaka gambar, penanda pada gambar, tampilan di item; dirancang terpisah setelah 3a). Bagian 6 mencatat keputusan 3b agar tidak hilang.
 
+Status implementasi (2026-11-09): bagian server dan shared sudah diimplementasikan (Tugas 1-6); halaman web sedang dikerjakan (Jenis dan Stiker selesai, halaman Stok menyusul di Tugas 9). Data contoh dev dan dokumen (Tugas 10) ikut dalam tahap yang sama.
+
 ## 1. Latar dan tujuan
 
 Tim QC menempelkan beberapa jenis stiker pada barang. Pemilik produk menyebut tiga masalah nyata: (1) di gudang banyak item dengan ketentuan stiker yang berbeda-beda sehingga susah diingat; (2) stok stiker menipis tanpa disadari padahal pemesanan makan waktu lama; (3) posisi tempel perlu acuan yang konsisten. Tahap 3a menjawab masalah 2 dan menyiapkan fondasi masalah 1 dan 3 (katalog yang dirujuk oleh 3b).
