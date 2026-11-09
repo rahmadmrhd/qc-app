@@ -1,5 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
+import { type GuideMethod, guideRoutes } from './guide-routes';
 import {
   listStickers,
   listStickerTypes,
@@ -44,8 +45,9 @@ type StickerMethod =
  * Katalog stiker memakai izin modul `sticker` (global bersama): list = view, save = edit, setStatus = manage. Stok
  * memakai `stickerstock` (berlokasi): list/history = view, record = edit, adjust = manage.
  */
-export function stickerRoutes(): Pick<RouteTable, StickerMethod> {
+export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
   return {
+    ...guideRoutes(),
     'stickerTypes.list': {
       permission: { module: 'sticker', level: 'view' },
       validate: expectNull,

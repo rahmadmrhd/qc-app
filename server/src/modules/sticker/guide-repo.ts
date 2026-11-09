@@ -1,0 +1,158 @@
+import { decodeText, encodeText } from '@server/core/base64url';
+import type { DbStatement, Preparer } from '@server/core/db';
+import type { GuideSort } from '@shared/stickers';
+
+/** Baris daftar pustaka gambar: kolom pustaka + berkas (`files`) + nama tampilan pengunggah (`users`). */
+export interface GuideRow {
+  id: string;
+  name: string;
+  name_key: string;
+  mime: string;
+  size: number | string;
+  width: number | string;
+  height: number | string;
+  created_at: string;
+  created_by: string;
+  uploader_name: string | null;
+  usage_count: number | string;
+}
+
+/** Nilai kunci urut + id baris terakhir halaman sebelumnya (paginasi kunci, bukan offset). */
+export interface GuideCursor {
+  key: string | number;
+  id: string;
+}
+
+/**
+ * SATU tempat penghitungan "dipakai berapa kali" (ekspresi SQL skalar atas tabel pustaka berkode `g`). Di 3b-1 belum
+ * ada penempatan gambar, jadi selalu 0; 3b-2 menggantinya dengan subkueri penempatan (cukup mengubah fungsi ini).
+ */
+export function guideUsageCountSql(): string {
+  return '0';
+}
+
+const JOINS =
+  "FROM sticker_guide_images g JOIN files f ON f.id = g.id AND f.owner_type = 'stickerguide' AND f.status = 'active' LEFT JOIN users u ON u.email = f.created_by";
+
+const ROW_COLUMNS =
+  'g.id, g.name, g.name_key, f.mime, f.size, f.width, f.height, f.created_at, f.created_by, u.name AS uploader_name';
+
+interface SortSpec {
+  column: string;
+  direction: 'ASC' | 'DESC';
+  numeric: boolean;
+  keyOf: (row: GuideRow) => string | number;
+}
+
+/** Kolom urut per `GuideSort`: ekspresi SQL, arah, dan pengambil nilai kunci dari baris untuk kursor. */
+const SORT_SPEC: Record<GuideSort, SortSpec> = {
+  newest: {
+    column: 'f.created_at',
+    direction: 'DESC',
+    numeric: false,
+    keyOf: (row) => row.created_at,
+  },
+  oldest: {
+    column: 'f.created_at',
+    direction: 'ASC',
+    numeric: false,
+    keyOf: (row) => row.created_at,
+  },
+  nameAsc: { column: 'g.name_key', direction: 'ASC', numeric: false, keyOf: (row) => row.name_key },
+  nameDesc: {
+    column: 'g.name_key',
+    direction: 'DESC',
+    numeric: false,
+    keyOf: (row) => row.name_key,
+  },
+  sizeDesc: {
+    column: 'f.size',
+    direction: 'DESC',
+    numeric: true,
+    keyOf: (row) => Number(row.size),
+  },
+};
+
+/** Meloloskan karakter khusus `LIKE` (`!` dipakai sebagai karakter lolos: `ESCAPE '!'`, bebas dari aturan backslash). */
+export function escapeLike(text: string): string {
+  return text.replace(/[!%_]/g, '!$&');
+}
+
+export function listGuidesStatement(
+  db: Preparer,
+  query: {
+    search: string;
+    sort: GuideSort;
+    /** Email pemanggil bila hanya unggahannya; `null` = semua. */
+    mine: string | null;
+    unused: boolean;
+    cursor: GuideCursor | null;
+    limit: number;
+  },
+): DbStatement {
+  const spec = SORT_SPEC[query.sort];
+  const where: string[] = [];
+  const binds: unknown[] = [];
+  if (query.search !== '') {
+    where.push("g.name_key LIKE CONCAT('%', LOWER(?), '%') ESCAPE '!'");
+    binds.push(escapeLike(query.search));
+  }
+  if (query.mine !== null) {
+    where.push('f.created_by = ?');
+    binds.push(query.mine);
+  }
+  if (query.unused) where.push(`(${guideUsageCountSql()}) = 0`);
+  if (query.cursor) {
+    const after = spec.direction === 'ASC' ? '>' : '<';
+    where.push(`(${spec.column} ${after} ? OR (${spec.column} = ? AND g.id ${after} ?))`);
+    binds.push(query.cursor.key, query.cursor.key, query.cursor.id);
+  }
+  const sql =
+    `SELECT ${ROW_COLUMNS}, (${guideUsageCountSql()}) AS usage_count ${JOINS}` +
+    `${where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''}` +
+    ` ORDER BY ${spec.column} ${spec.direction}, g.id ${spec.direction} LIMIT ?`;
+  // limit + 1: baris tambahan hanya penanda "masih ada halaman berikutnya".
+  return db.prepare(sql).bind(...binds, query.limit + 1);
+}
+
+/** Satu gambar pustaka aktif menurut id (bentuk baris sama dengan daftar); kosong bila tak ada. */
+export function guideByIdStatement(db: Preparer, id: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT ${ROW_COLUMNS}, (${guideUsageCountSql()}) AS usage_count ${JOINS} WHERE g.id = ?`,
+    )
+    .bind(id);
+}
+
+/** Kursor buram bagi klien: `[urutan, kunci, id]` sebagai JSON base64url. */
+export function encodeGuideCursor(sort: GuideSort, row: GuideRow): string {
+  return encodeText(JSON.stringify([sort, SORT_SPEC[sort].keyOf(row), row.id]));
+}
+
+/** `null` bila rusak, bukan milik urutan ini, atau bertipe salah (pemanggil memperlakukannya sebagai tanpa kursor). */
+export function parseGuideCursor(sort: GuideSort, text: string): GuideCursor | null {
+  const decoded = decodeText(text);
+  if (decoded === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const [tag, key, id] = value as unknown[];
+  if (tag !== sort || typeof id !== 'string' || id === '' || id.length > 100) return null;
+  if (SORT_SPEC[sort].numeric) {
+    return typeof key === 'number' && Number.isFinite(key) ? { key, id } : null;
+  }
+  return typeof key === 'string' && key.length <= 255 ? { key, id } : null;
+}
+
+/** Thumbnail hanya untuk gambar pustaka AKTIF (pemilik `stickerguide`): id berkas lain tak pernah terbaca di sini. */
+export function guideThumbStatement(db: Preparer, id: string): DbStatement {
+  return db
+    .prepare(
+      "SELECT g.id, g.thumb_mime, g.thumb FROM sticker_guide_images g JOIN files f ON f.id = g.id WHERE g.id = ? AND f.owner_type = 'stickerguide' AND f.status = 'active'",
+    )
+    .bind(id);
+}
