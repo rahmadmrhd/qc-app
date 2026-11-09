@@ -31,6 +31,7 @@ import {
   guideByIdStatement,
   guideThumbStatement,
   insertGuideStmt,
+  libraryCountStatement,
   libraryLimitGuardStmts,
   listGuidesStatement,
   lockGuideStatement,
@@ -216,6 +217,12 @@ export async function uploadGuide(
   input: UploadStickerGuideInput,
   actor: UserContext,
 ): Promise<StickerGuideDto> {
+  // Pra-cek murah: pustaka yang sudah penuh menolak tanpa mengirim (sampai 10 MB) ke Drive lalu membuangnya. Hanya
+  // optimasi; penegak batas yang sebenarnya (kebal balapan) adalah penjaga di dalam `batch()` di bawah.
+  const current = await libraryCountStatement(env.DB).first<{ n: number | string }>();
+  if (Number(current?.n ?? 0) >= GUIDE_LIMITS.libraryMax) {
+    throw appError('CONFLICT', LIBRARY_FULL_MESSAGE);
+  }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
   const id = crypto.randomUUID();

@@ -770,7 +770,7 @@ describe('POST /sticker-guides', () => {
       }
     }
 
-    test('pustaka terisi libraryMax: CONFLICT berpesan jelas, Drive dibersihkan, tak ada baris baru', async () => {
+    test('pustaka terisi libraryMax: CONFLICT berpesan jelas lewat pra-cek, Drive tak disentuh, tak ada baris baru', async () => {
       await fill(GUIDE_LIMITS.libraryMax);
       const response = await uploadRequest();
       expect(response.status).toBe(409);
@@ -778,7 +778,10 @@ describe('POST /sticker-guides', () => {
         code: 'CONFLICT',
         detail: 'Pustaka gambar penuh (2.000 gambar)',
       });
-      expect(driveLive()).toHaveLength(0);
+      // Pra-cek murah: tak ada satu pun panggilan ke Drive (unggahan 10 MB tidak dikirim lalu dibuang).
+      expect(env.BRIDGE.calls.map((call) => call.action)).not.toContain('createFile');
+      expect(env.BRIDGE.calls.map((call) => call.action)).not.toContain('trashFile');
+      expect(env.BRIDGE.state.files.size).toBe(0);
       expect(await counts()).toEqual({
         files: GUIDE_LIMITS.libraryMax,
         guides: GUIDE_LIMITS.libraryMax,
@@ -794,7 +797,11 @@ describe('POST /sticker-guides', () => {
         files: GUIDE_LIMITS.libraryMax,
         guides: GUIDE_LIMITS.libraryMax,
       });
-      // Tepat satu berkas Drive hidup; yang kalah dibuang.
+      // Pra-cek lolos untuk ketiganya (1.999 < 2.000): yang menegakkan batas adalah penjaga di dalam batch.
+      // Tiga berkas terkirim ke Drive, dua yang kalah dibuang; tepat satu hidup.
+      const actions = env.BRIDGE.calls.map((call) => call.action);
+      expect(actions.filter((action) => action === 'createFile')).toHaveLength(3);
+      expect(actions.filter((action) => action === 'trashFile')).toHaveLength(2);
       expect(driveLive()).toHaveLength(1);
     });
   });

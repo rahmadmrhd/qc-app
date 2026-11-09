@@ -195,6 +195,11 @@ export function guideThumbStatement(db: Preparer, id: string): DbStatement {
     .bind(id);
 }
 
+/** Jumlah baris pustaka (untuk pra-cek murah sebelum mengirim ke Drive; BUKAN penegak batas, lihat `libraryLimitGuardStmts`). */
+export function libraryCountStatement(db: Preparer): DbStatement {
+  return db.prepare('SELECT COUNT(*) AS n FROM sticker_guide_images');
+}
+
 /** Kunci baris `counters` yang dipakai sebagai kunci serialisasi unggahan pustaka (nilainya tak bermakna). */
 const LIBRARY_LOCK_KEY = 'sticker_guide_library';
 
