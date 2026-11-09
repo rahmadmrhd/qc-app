@@ -17,7 +17,7 @@ export const MAX_UNATTACHED_UPLOADS = 50;
 export const FILE_SCHEME = 'qcfile:';
 
 /** Jenis entitas pemilik berkas. */
-export type FileOwnerType = 'item' | 'qrlogo' | 'sticker';
+export type FileOwnerType = 'item' | 'qrlogo' | 'sticker' | 'stickerguide';
 
 export function isImageMime(value: unknown): value is ImageMime {
   return typeof value === 'string' && (IMAGE_MIME_TYPES as readonly string[]).includes(value);

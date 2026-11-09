@@ -18,6 +18,7 @@ import {
 import type { ApiId, ApiInput } from './contract';
 import { MAX_IMAGE_BYTES } from './files';
 import { QR_LIMITS } from './qrcode';
+import { GUIDE_LIMITS } from './stickers';
 
 const IDS = Object.keys(API_ROUTES) as ApiId[];
 
@@ -47,6 +48,26 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'businessUnits.options': null,
   'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
+  'stickerGuides.list': {
+    search: 'kar%_\\',
+    sort: 'nameAsc',
+    mine: true,
+    unused: false,
+    cursor: 'c1',
+    limit: 40,
+  },
+  'stickerGuides.upload': {
+    name: 'Foto Kardus',
+    mime: 'image/jpeg',
+    thumbMime: 'image/webp',
+    width: 800,
+    height: 600,
+    image: new Uint8Array([255, 216, 255]),
+    thumbnail: new Uint8Array([82, 73, 70, 70]),
+  },
+  'stickerGuides.rename': { id: 'g1', name: 'Kardus Baru' },
+  'stickerGuides.remove': { id: 'g1' },
+  'stickerGuides.thumbnail': { id: 'g1' },
   'brands.list': null,
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
@@ -229,7 +250,9 @@ describe('tabel rute', () => {
   });
 
   test('rute PATCH (keluaran DTO ber-updatedAt) memberi ETag updatedAt', () => {
-    const patches = IDS.filter((id) => API_ROUTES[id].verb === 'PATCH');
+    // Pengecualian: ganti nama gambar pustaka (`StickerGuideDto` tanpa `updatedAt`, tanpa If-Match; spek 3b-1).
+    const withoutEtag: ReadonlySet<ApiId> = new Set<ApiId>(['stickerGuides.rename']);
+    const patches = IDS.filter((id) => API_ROUTES[id].verb === 'PATCH' && !withoutEtag.has(id));
     expect(patches.length).toBeGreaterThanOrEqual(5);
     for (const id of patches) expect(API_ROUTES[id].etag, id).toBe('updatedAt');
   });
@@ -523,6 +546,39 @@ describe('rute biner', () => {
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
       QR_LIMITS.exportMaxBytes + 64 * 1024,
     );
+    // pustaka gambar: gambar penuh + thumbnail + 64 KB ruang batas bagian dan header
+    expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(
+      MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 65_536,
+    );
+    expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(10_592_256);
+  });
+
+  test('stickerGuides.upload: bagian image dan thumbnail, metadata lewat query, tanpa badan JSON', () => {
+    const parts = toRequestParts('stickerGuides.upload', EXAMPLES['stickerGuides.upload']);
+    expect(parts).toMatchObject({
+      verb: 'POST',
+      path: '/sticker-guides',
+      query: {
+        name: 'Foto Kardus',
+        mime: 'image/jpeg',
+        thumbMime: 'image/webp',
+        width: '800',
+        height: '600',
+      },
+    });
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['image', 'thumbnail']);
+    expect(parts.body).toBeUndefined();
+    expect(API_ROUTES['stickerGuides.upload'].status).toBe(201);
+  });
+
+  test('stickerGuides.thumbnail: unduhan tak berubah (immutable) dengan echo id', () => {
+    expect(API_ROUTES['stickerGuides.thumbnail']).toMatchObject({
+      verb: 'GET',
+      path: '/sticker-guides/{id}/thumbnail',
+      etag: 'id',
+      binary: 'response',
+      download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
+    });
   });
 
   test('Content-Disposition: cadangan ASCII, filename* UTF-8, tanpa kutip/CRLF; terurai kembali', () => {

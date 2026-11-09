@@ -127,6 +127,46 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     binary: 'response',
     download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
   },
+  'stickerGuides.list': {
+    verb: 'GET',
+    path: '/sticker-guides',
+    query: {
+      search: 'string',
+      sort: 'string',
+      mine: 'boolean',
+      unused: 'boolean',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'stickerGuides.upload': {
+    verb: 'POST',
+    path: '/sticker-guides',
+    status: 201,
+    query: {
+      name: 'string',
+      mime: 'string',
+      thumbMime: 'string',
+      width: 'number',
+      height: 'number',
+    },
+    binary: 'multipart',
+    multipart: {
+      parts: ['image', 'thumbnail'],
+      // = MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 64 KB ruang batas bagian dan header multipart
+      maxBytes: 10_592_256,
+      tooLarge: 'Ukuran gambar maksimal 10 MB',
+    },
+  },
+  'stickerGuides.rename': { verb: 'PATCH', path: '/sticker-guides/{id}' },
+  'stickerGuides.remove': { verb: 'DELETE', path: '/sticker-guides/{id}' },
+  'stickerGuides.thumbnail': {
+    verb: 'GET',
+    path: '/sticker-guides/{id}/thumbnail',
+    etag: 'id',
+    binary: 'response',
+    download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
+  },
   'brands.list': { verb: 'GET', path: '/brands' },
   'brands.save': {
     verb: 'PUT',
