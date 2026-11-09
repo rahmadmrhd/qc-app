@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { ApiError, describeError } from '@/lib/api';
 import { baseName, checkFile } from './accept';
+import { errorText } from './error-text';
 import type { FileLibrarySource, LibraryItem } from './types';
 
 export type QueueStatus = 'waiting' | 'uploading' | 'done' | 'failed';
@@ -48,12 +48,6 @@ export interface UploadQueue {
   snapshot(): QueueEntry[];
   /** Kosongkan antrean dan daftar ditolak. */
   reset(): void;
-}
-
-function errorText(error: unknown): string {
-  if (error instanceof ApiError) return describeError(error);
-  if (error instanceof Error && error.message !== '') return error.message;
-  return 'Gagal mengunggah';
 }
 
 export function useUploadQueue(options: UploadQueueOptions): UploadQueue {
@@ -159,7 +153,7 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueue {
           const result = await sourceRef.current.upload(current.file, current.name);
           patch(entry.key, { status: 'done', result, error: null });
         } catch (error) {
-          patch(entry.key, { status: 'failed', error: errorText(error) });
+          patch(entry.key, { status: 'failed', error: errorText(error, 'Gagal mengunggah') });
         }
       }
     }
