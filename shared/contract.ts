@@ -210,7 +210,7 @@ export interface StickerGuideDto {
   uploadedBy: string;
   uploadedByMe: boolean;
   createdAt: string;
-  /** Jumlah stiker yang memakai gambar ini sebagai gambar contoh. */
+  /** Jumlah item yang memakai gambar ini sebagai gambar contoh (penempatan di item). */
   usageCount: number;
   canRename: boolean;
   canRemove: boolean;
@@ -221,7 +221,7 @@ export interface ListStickerGuidesInput {
   sort?: GuideSort;
   /** Hanya gambar yang diunggah pengguna ini. */
   mine?: boolean;
-  /** Hanya gambar yang belum dipakai stiker mana pun. */
+  /** Hanya gambar yang belum dipakai item mana pun. */
   unused?: boolean;
   cursor?: string;
   limit?: number;

@@ -60,6 +60,7 @@ function setup(source: FileLibrarySource, props: Partial<FileDialogProps> = {}) 
   const utils = render(ui());
   return {
     ...utils,
+    client,
     onSelect,
     onOpenChange,
     rerenderWith: (next: Partial<FileDialogProps>) => utils.rerender(ui(next)),
@@ -231,4 +232,48 @@ test('berkas yang dijatuhkan di tab Pustaka masuk antrean Unggah, termasuk yang 
   expect(await screen.findByRole('button', { name: 'Ubah nama a' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /Unggah/ })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/b\.gif/)).toBeInTheDocument();
+});
+
+test('hanya berkas ditolak (tanpa berkas sah): daftar penolakan tetap tampil', async () => {
+  setup(makeSource(), {
+    initialFiles: undefined,
+    initialRejected: [{ name: 'foto.heic', reason: 'Format HEIC tidak didukung' }],
+  });
+  expect(await screen.findByText(/foto.heic/)).toBeInTheDocument();
+  expect(screen.getByText(/HEIC/)).toBeInTheDocument();
+});
+
+test('setelah sukses sebagian, query pustaka diinvalidasi', async () => {
+  const user = userEvent.setup();
+  const source = makeSource();
+  vi.mocked(source.upload).mockImplementation(async (_file, name) => {
+    if (name === 'b') throw new Error('gagal');
+    return mk(`up-${name}`);
+  });
+  const { client } = setup(source, { initialFiles: [png('a.png'), png('b.png')] });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  await user.click(attachButton());
+  await screen.findByText(/1 berkas gagal diunggah/);
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['fake-files'] });
+});
+
+test('pilihan pustaka dibekukan selama mengunggah', async () => {
+  const user = userEvent.setup();
+  const source = makeSource([mk('lib1'), mk('lib2')]);
+  let release: () => void = () => undefined;
+  vi.mocked(source.upload).mockImplementation(
+    (_file, name) =>
+      new Promise<LibraryItem>((resolve) => {
+        release = () => resolve(mk(`up-${name}`));
+      }),
+  );
+  const { onSelect } = setup(source, { initialFiles: [png('a.png')] });
+  await user.click(screen.getByRole('tab', { name: /Pustaka/ }));
+  await user.click(await screen.findByRole('checkbox', { name: 'Pilih lib1' }));
+  await user.click(attachButton());
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih lib2' }));
+  expect(screen.getByRole('checkbox', { name: 'Pilih lib2' })).not.toBeChecked();
+  release();
+  await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+  expect(idsOf(onSelect)).toEqual(['lib1', 'up-a']);
 });

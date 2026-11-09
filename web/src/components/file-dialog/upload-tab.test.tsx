@@ -160,3 +160,16 @@ test('UploadTab: entri gagal menampilkan alasan dan tombol Ulangi', async () => 
   await user.click(screen.getByRole('button', { name: 'Ulangi a' }));
   expect(latest?.entries[0]?.status).toBe('waiting');
 });
+
+test('UploadTab: input berkas tidak multiple bila maxFiles = 1', () => {
+  const queue = {} as ReturnType<typeof useUploadQueue>;
+  const { container } = render(
+    <UploadTab
+      queue={{ ...queue, entries: [], rejected: [] }}
+      accept={ACCEPT}
+      maxBytes={MAX}
+      maxFiles={1}
+    />,
+  );
+  expect((container.querySelector('input[type="file"]') as HTMLInputElement).multiple).toBe(false);
+});

@@ -106,3 +106,18 @@ test('klik gambar membuka pratinjau besar', async () => {
   const dialog = await screen.findByRole('dialog');
   expect(dialog.querySelector('img')).toHaveAttribute('src', '/full/g1');
 });
+
+test('seret hanya berkas tak sah: dialog menampilkan nama dan alasan penolakan', async () => {
+  setup(true);
+  await screen.findByText('Kardus');
+  const zone = document.body.querySelector('[data-file-drop-zone]') as HTMLElement;
+  fireEvent.drop(zone, {
+    dataTransfer: {
+      files: [new File(['x'], 'foto.heic', { type: 'image/heic' })],
+      types: ['Files'],
+    },
+  });
+  expect(await screen.findByRole('dialog', { name: 'Unggah gambar' })).toBeInTheDocument();
+  expect(screen.getByText(/foto.heic/)).toBeInTheDocument();
+  expect(screen.getByText(/HEIC/)).toBeInTheDocument();
+});

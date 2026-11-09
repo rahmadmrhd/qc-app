@@ -91,7 +91,7 @@ export function LibraryTab({
   const query = useMemo(() => ({ search, sort, mine, unused }), [search, sort, mine, unused]);
   const result = useInfiniteQuery({
     queryKey: [source.key, query],
-    queryFn: ({ pageParam, signal }) => source.list(query, pageParam, signal),
+    queryFn: ({ pageParam }) => source.list(query, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last: LibraryPage) => last.nextCursor ?? undefined,
     placeholderData: keepPreviousData,

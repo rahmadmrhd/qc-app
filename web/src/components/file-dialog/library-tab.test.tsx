@@ -116,8 +116,15 @@ test('halaman pertama tampil sebagai kisi dengan thumbnail lazy', async () => {
   expect(list(source)).toHaveBeenCalledWith(
     { search: '', sort: 'newest', mine: false, unused: false },
     null,
-    expect.anything(),
   );
+});
+
+test('mount tunggal memanggil list tepat satu kali', async () => {
+  const source = makeSource([{ items: [mk('a')], nextCursor: null }]);
+  renderTab(source);
+  await screen.findByText('Gambar a');
+  expect(list(source)).toHaveBeenCalledTimes(1);
+  expect(list(source).mock.calls[0]).toHaveLength(2);
 });
 
 test('sentinel terlihat memuat halaman kedua tanpa duplikat', async () => {
@@ -132,7 +139,7 @@ test('sentinel terlihat memuat halaman kedua tanpa duplikat', async () => {
   triggerVisible();
   expect(await screen.findByText('Gambar c')).toBeInTheDocument();
   expect(screen.getAllByText('Gambar b')).toHaveLength(1);
-  expect(list(source)).toHaveBeenLastCalledWith(expect.anything(), '1', expect.anything());
+  expect(list(source)).toHaveBeenLastCalledWith(expect.anything(), '1');
   expect(screen.queryByRole('button', { name: 'Muat lebih banyak' })).not.toBeInTheDocument();
 });
 
@@ -156,11 +163,7 @@ test('cari mengirim search setelah jeda ketik', async () => {
   await user.type(screen.getByRole('searchbox', { name: 'Cari gambar' }), '50%');
   expect(list(source).mock.calls.some((call) => call[0].search !== '')).toBe(false);
   await waitFor(() =>
-    expect(list(source)).toHaveBeenLastCalledWith(
-      expect.objectContaining({ search: '50%' }),
-      null,
-      expect.anything(),
-    ),
+    expect(list(source)).toHaveBeenLastCalledWith(expect.objectContaining({ search: '50%' }), null),
   );
   // Satu kueri untuk seluruh ketikan (jeda), bukan satu per huruf.
   expect(list(source).mock.calls.filter((call) => call[0].search !== '')).toHaveLength(1);
@@ -179,7 +182,6 @@ test('filter mengirim mine dan unused', async () => {
     expect(list(source)).toHaveBeenLastCalledWith(
       expect.objectContaining({ mine: true, unused: false }),
       null,
-      expect.anything(),
     ),
   );
   await user.click(screen.getByRole('button', { name: 'Belum dipakai' }));
@@ -187,7 +189,6 @@ test('filter mengirim mine dan unused', async () => {
     expect(list(source)).toHaveBeenLastCalledWith(
       expect.objectContaining({ mine: true, unused: true }),
       null,
-      expect.anything(),
     ),
   );
 });
@@ -208,7 +209,6 @@ test('urut mengganti sort', async () => {
     expect(list(source)).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: 'nameAsc' }),
       null,
-      expect.anything(),
     ),
   );
 });

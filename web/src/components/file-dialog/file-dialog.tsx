@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/spinner';
@@ -17,7 +18,7 @@ import { LibraryTab } from './library-tab';
 import { PreviewDialog } from './preview-dialog';
 import type { FileLibrarySource, LibraryItem } from './types';
 import { UploadTab } from './upload-tab';
-import { useUploadQueue } from './use-upload-queue';
+import { type RejectedFile, useUploadQueue } from './use-upload-queue';
 
 const DEFAULT_MAX_FILES = 20;
 
@@ -43,8 +44,8 @@ export interface FileDialogProps {
   onSelect(items: LibraryItem[]): void;
 }
 
-function sameFiles(a: File[] | undefined, b: File[]): boolean {
-  return a !== undefined && a.length === b.length && a.every((file, index) => file === b[index]);
+function sameFiles(a: File[], b: File[]): boolean {
+  return a.length === b.length && a.every((file, index) => file === b[index]);
 }
 
 type TabValue = 'upload' | 'library';
@@ -68,11 +69,16 @@ export function FileDialog({
   const mimes = resolveAccept(accept, source.mimeTypes);
   const [tab, setTab] = useState<TabValue>('upload');
   const [selection, setSelection] = useState<ReadonlyMap<string, LibraryItem>>(new Map());
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const [preview, setPreview] = useState<LibraryItem | null>(null);
   const [busy, setBusy] = useState(false);
   // Penjaga sinkron: dua klik cepat tidak boleh memulai dua rangkaian unggah sebelum render berikutnya.
   const busyRef = useRef(false);
-  const consumedInitial = useRef<File[] | undefined>(undefined);
+  const queryClient = useQueryClient();
+  const consumedInitial = useRef<{ files: File[]; rejected?: RejectedFile[] } | undefined>(
+    undefined,
+  );
   const queue = useUploadQueue({
     source,
     accept: mimes,
@@ -83,12 +89,15 @@ export function FileDialog({
 
   // Berkas awal (seret-lepas) masuk antrean sekali per pembukaan; Strict Mode memanggil efek dua kali.
   useEffect(() => {
-    if (!open || !initialFiles || (initialFiles.length === 0 && !initialRejected?.length)) return;
-    if (sameFiles(consumedInitial.current, initialFiles)) return;
-    consumedInitial.current = initialFiles;
+    const files = initialFiles ?? [];
+    const refused = initialRejected ?? [];
+    if (!open || (files.length === 0 && refused.length === 0)) return;
+    const seen = consumedInitial.current;
+    if (seen && sameFiles(seen.files, files) && seen.rejected === initialRejected) return;
+    consumedInitial.current = { files, rejected: initialRejected };
     setTab('upload');
-    add(initialFiles);
-    if (initialRejected) addRejected(initialRejected);
+    add(files);
+    addRejected(refused);
   }, [open, initialFiles, initialRejected, add, addRejected]);
 
   // Menutup dialog membersihkan antrean dan pilihan.
@@ -102,6 +111,7 @@ export function FileDialog({
   }, [open, reset]);
 
   function handleFiles(files: File[], rejected: { name: string; reason: string }[]) {
+    if (busyRef.current) return;
     if (mode === 'single' && files.length > 0) {
       // Satu item saja: berkas baru menggantikan pilihan/antrean sebelumnya.
       setSelection(new Map());
@@ -113,6 +123,8 @@ export function FileDialog({
   }
 
   function toggle(item: LibraryItem) {
+    // Pilihan dibekukan selama mengunggah agar yang dilampirkan sama dengan yang terlihat saat Lampirkan ditekan.
+    if (busyRef.current) return;
     setSelection((current) => {
       const next = new Map(mode === 'single' ? [] : current);
       if (current.has(item.id)) next.delete(item.id);
@@ -131,12 +143,14 @@ export function FileDialog({
     setBusy(true);
     try {
       const uploaded = await queue.start();
+      // Yang sudah terunggah otomatis masuk pustaka: segarkan daftar (juga bila sebagian gagal).
+      if (uploaded.length > 0) void queryClient.invalidateQueries({ queryKey: [source.key] });
       if (queue.snapshot().some((entry) => entry.status === 'failed')) {
         // Ada yang gagal: dialog tetap terbuka dan tab Unggah menampilkan yang gagal.
         setTab('upload');
         return;
       }
-      onSelect([...selection.values(), ...uploaded]);
+      onSelect([...selectionRef.current.values(), ...uploaded]);
       onOpenChange(false);
     } catch (error) {
       toast.error(errorText(error, 'Gagal melampirkan gambar'));

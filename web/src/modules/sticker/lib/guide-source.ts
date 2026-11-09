@@ -17,8 +17,10 @@ import { stickerKeys } from '../keys';
  * Thumbnail dan gambar penuh dimuat langsung lewat `<img src>`: sesi lewat cookie same-origin dan respons
  * `immutable` di-cache peramban.
  */
-export const guideThumbUrl = (id: string): string => `${API_BASE}/sticker-guides/${id}/thumbnail`;
-export const guidePreviewUrl = (id: string): string => `${API_BASE}/files/${id}`;
+export const guideThumbUrl = (id: string): string =>
+  `${API_BASE}/sticker-guides/${encodeURIComponent(id)}/thumbnail`;
+export const guidePreviewUrl = (id: string): string =>
+  `${API_BASE}/files/${encodeURIComponent(id)}`;
 
 function toLibraryItem(dto: StickerGuideDto): LibraryItem {
   return {

@@ -46,6 +46,11 @@ test('URL diturunkan dari id', () => {
   expect(guidePreviewUrl('g1')).toBe('/api/v1/files/g1');
 });
 
+test('URL meloloskan id yang tidak aman', () => {
+  expect(guideThumbUrl('a/b?c')).toBe('/api/v1/sticker-guides/a%2Fb%3Fc/thumbnail');
+  expect(guidePreviewUrl('a/b?c')).toBe('/api/v1/files/a%2Fb%3Fc');
+});
+
 test('list meneruskan search/sort/mine/unused/cursor dan memetakan item', async () => {
   apiMock.mockResolvedValue({ items: [dto], nextCursor: 'c2' });
   const page = await stickerGuideSource.list(

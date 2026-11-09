@@ -60,7 +60,7 @@ export function UploadTab({
         <input
           ref={inputRef}
           type="file"
-          multiple
+          multiple={maxFiles !== 1}
           hidden
           accept={accept.join(',')}
           onChange={(event) => {
