@@ -1,5 +1,6 @@
 import type { StickerGuideDto } from '@shared/contract';
 import { IMAGE_MIME_TYPES } from '@shared/files';
+import { GUIDE_LIMITS } from '@shared/stickers';
 import type {
   FileLibrarySource,
   LibraryItem,
@@ -40,6 +41,7 @@ function toLibraryItem(dto: StickerGuideDto): LibraryItem {
 export const stickerGuideSource: FileLibrarySource = {
   key: stickerKeys.guides[0],
   mimeTypes: IMAGE_MIME_TYPES,
+  nameMax: GUIDE_LIMITS.nameMax,
   async list(query: LibraryQuery, cursor: string | null): Promise<LibraryPage> {
     const page = await api('stickerGuides.list', {
       sort: query.sort,

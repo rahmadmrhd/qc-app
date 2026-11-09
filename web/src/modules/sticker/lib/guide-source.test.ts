@@ -35,7 +35,8 @@ beforeEach(() => {
   prepareThumbnailMock.mockReset();
 });
 
-test('kunci cache dan format yang didukung', () => {
+test('kunci cache, format yang didukung, dan batas nama', () => {
+  expect(stickerGuideSource.nameMax).toBe(120);
   expect(stickerGuideSource.key).toBe('sticker-guides');
   expect(stickerGuideSource.mimeTypes).toEqual(['image/jpeg', 'image/png', 'image/webp']);
 });

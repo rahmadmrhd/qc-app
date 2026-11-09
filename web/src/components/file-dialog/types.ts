@@ -35,6 +35,8 @@ export interface FileLibrarySource {
   key: string;
   /** Format yang didukung sumber. */
   mimeTypes: readonly string[];
+  /** Panjang maksimum nama (karakter); dipakai untuk nama awal dan kolom ubah nama. */
+  nameMax?: number;
   list(query: LibraryQuery, cursor: string | null, signal?: AbortSignal): Promise<LibraryPage>;
   /** Pembuatan thumbnail dan pengecilan terjadi DI DALAM adaptor. */
   upload(file: File, name: string): Promise<LibraryItem>;
