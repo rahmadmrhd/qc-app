@@ -43,6 +43,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 17. **Jawaban berkas lintas BU disamakan** (diputuskan 2026-11-09, pemilik produk): `items.save` yang memasang berkas milik item di BU yang tidak terlihat user dijawab `VALIDATION` seperti berkas tidak dikenal, agar keberadaan berkas lintas BU tidak bisa diuji.
 18. **Unggahan yang belum terpasang hanya untuk pengunggahnya** (diputuskan 2026-11-09, pemilik produk): berkas tanpa pemilik (baru diunggah, belum melekat pada item) hanya dapat dibaca dan dipasang oleh pengunggahnya; user lain mendapat `NOT_FOUND` saat membaca (`files.get`) dan `VALIDATION` seperti berkas tak dikenal saat memasang. Berlaku untuk jalur item DAN jalur QR (pustaka logo `qrcodes.saveLogoLibrary`, desain QR): keputusan awal yang mengecualikan QR dibatalkan pemilik produk pada 2026-11-09 setelah review keamanan, karena UI QR mengunggah dan menyimpan pustaka logo oleh manager yang sama. Berkas yang sudah terpasang pada item dan dikirim ke jalur QR dijawab `VALIDATION` seperti berkas tak dikenal (bukan `CONFLICT`). Unggahan item yang tak pernah terpasang BELUM dibersihkan otomatis (hanya dibatasi 50 unggahan menggantung per user); pembersihannya dikerjakan sebagai tugas terpisah di luar BU (diputuskan pemilik 2026-11-09).
 19. **BU bawaan merk dibatasi maksimal 50 per merk** (diputuskan 2026-11-09, pemilik produk): batas ukuran kueri yang dijaga validator `brands.save` dan `body.test.ts`.
+20. **`LinkField` berupa input teks pencarian dengan chip di dalam input** (diputuskan 2026-11-09, pemilik produk, setelah uji manual di dev): menggantikan bentuk tombol + popover; lihat §5.5.
 
 ## 4. Lingkup tahap 1
 
@@ -99,6 +100,7 @@ Tolok ukur berhasil: seorang user hanya pernah menerima, dari server, data item 
 
 ### 5.5 Komponen `LinkField` (web)
 Perilaku mengikuti `LinkModel` erp_pataya, diadaptasi ke pola proyek ini (TanStack Query, shadcn, tanpa `axios`/model-name generik di server):
+- **Bentuk (keputusan 20, 2026-11-09, disetujui pemilik produk setelah uji manual di dev):** field adalah **input teks yang sekaligus menjadi kolom pencarian**, bukan tombol yang membuka popover berisi kolom cari. Mengetik langsung di field mencari dan daftar saran muncul tepat di bawahnya. Pada mode banyak pilihan, **chip terpilih berada di dalam kotak input** (gaya tags-input; Backspace pada input kosong melepas chip terakhir). Alasan: popover dua langkah (buka lalu cari) terasa berat, dan implementasi popover gagal memilih opsi dengan klik mouse serta menutup dialog induk saat Escape.
 - Nilai = **record yang sudah ada** (bukan teks bebas). Mengetik hanya mencari; teks tanpa pasangan dikosongkan saat daftar tertutup.
 - Pencarian sisi server dengan debounce, batas hasil + petunjuk "ada lagi".
 - Tombol **tambah** membuka dialog form master; setelah sukses record baru langsung terpilih. Tombol hilang bila user tidak punya izin membuat.

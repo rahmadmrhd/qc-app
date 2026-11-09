@@ -1,16 +1,16 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
 import { useState } from 'react';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogDescription,
+  FormDialogFooter,
+  FormDialogHeader,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
@@ -149,14 +149,14 @@ function BrandFormBody({ brand, businessUnits, onSave, onClose }: BrandFormBodyP
         }}
         error={buError ?? undefined}
       />
-      <DialogFooter>
+      <FormDialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Batal
         </Button>
         <Button type="submit" disabled={busy || name.trim() === ''}>
           {busy ? 'Menyimpan…' : 'Simpan'}
         </Button>
-      </DialogFooter>
+      </FormDialogFooter>
     </form>
   );
 }
@@ -170,16 +170,16 @@ export function BrandFormDialog({
   onSave,
 }: BrandFormDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{brand ? `Ubah merk ${brand.name}` : 'Tambah merk'}</DialogTitle>
-          <DialogDescription>
+    <FormDialog open={open} onOpenChange={onOpenChange}>
+      <FormDialogContent>
+        <FormDialogHeader>
+          <FormDialogTitle>{brand ? `Ubah merk ${brand.name}` : 'Tambah merk'}</FormDialogTitle>
+          <FormDialogDescription>
             {brand
               ? 'Mengganti nama berlaku untuk semua item merk ini.'
               : 'Merk baru langsung dapat dipilih.'}
-          </DialogDescription>
-        </DialogHeader>
+          </FormDialogDescription>
+        </FormDialogHeader>
         {open ? (
           <BrandFormBody
             key={brand?.id ?? 'new'}
@@ -189,7 +189,7 @@ export function BrandFormDialog({
             onClose={() => onOpenChange(false)}
           />
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </FormDialogContent>
+    </FormDialog>
   );
 }

@@ -53,7 +53,7 @@ test('merk baru: isian kosong, simpan mengirim nama dan BU bawaan kosong lalu me
   await userEvent.type(input, 'Ubiquiti');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({ name: 'Ubiquiti', businessUnitIds: [] });
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 });
 
 test('ganti nama: isian terisi nama lama, BU bawaan tampil sebagai chip, simpan mengirim id', async () => {
@@ -119,7 +119,7 @@ test('galat BU bawaan (fields.businessUnitIds) tampil di field BU; dialog tetap 
   await userEvent.type(screen.getByLabelText('Nama merk'), 'X');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText('BU tidak dikenal atau tidak aktif')).toBeInTheDocument();
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 });
 
 test('onSave yang melempar galat menampilkan pesan dan tidak membuat tombol macet', async () => {
@@ -137,7 +137,7 @@ test('Simpan nonaktif selama nama kosong; Batal menutup tanpa menyimpan', async 
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onSave).not.toHaveBeenCalled();
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 });
 
 test('Enter menyimpan dan tidak menjalar ke form induk', async () => {
@@ -147,4 +147,17 @@ test('Enter menyimpan dan tidak menjalar ke form induk', async () => {
   await userEvent.type(screen.getByLabelText('Nama merk'), 'Baru{Enter}');
   expect(onSave).toHaveBeenCalledWith({ name: 'Baru', businessUnitIds: [] });
   expect(onOuterSubmit).not.toHaveBeenCalled();
+});
+
+test('klik di luar dialog tidak menutupnya dan isian tetap; Escape menutup', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<Harness onSave={vi.fn()} />);
+  await user.type(screen.getByLabelText('Nama merk'), 'Draf');
+  const overlay = document.querySelector('[data-slot="alert-dialog-overlay"]');
+  expect(overlay).not.toBeNull();
+  await user.click(overlay as Element);
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  expect(screen.getByLabelText('Nama merk')).toHaveValue('Draf');
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 });

@@ -4,9 +4,14 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogHeader,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
 import { UserForm } from '@/modules/access/components/user-form';
@@ -140,11 +145,14 @@ function UsersPage() {
         onEdit={(user) => setEditing(user)}
         onToggleStatus={toggleStatus}
       />
-      <Dialog open={editing !== null} onOpenChange={(open) => (open ? undefined : closeDialog())}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing === 'new' ? 'Tambah user' : 'Ubah user'}</DialogTitle>
-          </DialogHeader>
+      <FormDialog
+        open={editing !== null}
+        onOpenChange={(open) => (open ? undefined : closeDialog())}
+      >
+        <FormDialogContent>
+          <FormDialogHeader>
+            <FormDialogTitle>{editing === 'new' ? 'Tambah user' : 'Ubah user'}</FormDialogTitle>
+          </FormDialogHeader>
           {editing ? (
             <UserForm
               key={editing === 'new' ? 'new' : editing.id}
@@ -161,8 +169,8 @@ function UsersPage() {
               onCancel={closeDialog}
             />
           ) : null}
-        </DialogContent>
-      </Dialog>
+        </FormDialogContent>
+      </FormDialog>
     </div>
   );
 }
