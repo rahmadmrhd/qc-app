@@ -714,3 +714,223 @@ describe('gambar pustaka tidak dapat dipasang sebagai gambar lain', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Ganti nama, hapus, dan baca gambar penuh (Task 4)
+// ---------------------------------------------------------------------------------------------------------------
+
+async function uploadAs(email: string, name = 'Kardus'): Promise<StickerGuideDto> {
+  const response = await uploadRequest({ email, query: { name } });
+  expect(response.status).toBe(201);
+  return (await response.json()) as StickerGuideDto;
+}
+
+const audits = async (action: string) =>
+  (
+    await env.DB.prepare(
+      'SELECT actor, target, `before`, `after` FROM audit_log WHERE action = ? ORDER BY id',
+    )
+      .bind(action)
+      .all<{ actor: string; target: string; before: string; after: string }>()
+  ).results;
+
+const rename = (id: string, name: unknown, email = 'ie@gmail.com') =>
+  rest.patch(`/sticker-guides/${id}`, { email, body: { name } });
+
+const remove = (id: string, email = 'ie@gmail.com') => rest.del(`/sticker-guides/${id}`, { email });
+
+describe('PATCH /sticker-guides/{id} (ganti nama)', () => {
+  test('pengunggah (item:edit): 200, nama dirapikan, audit before/after, daftar ikut berubah', async () => {
+    const guide = await uploadAs('ie@gmail.com', 'Lama');
+    const response = await rename(guide.id, '  Nama   Baru ');
+    expect(response.status).toBe(200);
+    expect(await jsonOf(response)).toMatchObject({ id: guide.id, name: 'Nama   Baru' });
+    const rows = await audits('stickerGuide.rename');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actor: 'ie@gmail.com', target: 'Nama   Baru' });
+    expect(JSON.parse(rows[0]?.before ?? '')).toEqual({ id: guide.id, name: 'Lama' });
+    expect(JSON.parse(rows[0]?.after ?? '')).toEqual({ id: guide.id, name: 'Nama   Baru' });
+    expect(names(await list('?search=baru'))).toEqual(['Nama   Baru']);
+    expect(names(await list('?search=lama'))).toEqual([]);
+  });
+
+  test('gambar orang lain: item:edit 403 (tak berubah), item:manage 200', async () => {
+    const guide = await uploadAs('uploader@gmail.com', 'Milik Budi');
+    const denied = await rename(guide.id, 'Dicuri', 'ie@gmail.com');
+    expect(denied.status).toBe(403);
+    expect(names(await list())).toEqual(['Milik Budi']);
+    expect(await audits('stickerGuide.rename')).toHaveLength(0);
+    const allowed = await rename(guide.id, 'Oleh Pengelola', 'im@gmail.com');
+    expect(allowed.status).toBe(200);
+    expect(names(await list())).toEqual(['Oleh Pengelola']);
+    expect((await audits('stickerGuide.rename'))[0]?.actor).toBe('im@gmail.com');
+  });
+
+  test('izin rute: item:edit saja; sticker:edit, item:view, tanpa izin 403; tanpa sesi 401', async () => {
+    const guide = await uploadAs('ie@gmail.com');
+    for (const email of ['se@gmail.com', 'iv@gmail.com', 'sv@gmail.com', 'nol@gmail.com']) {
+      expect((await rename(guide.id, 'X', email)).status, email).toBe(403);
+    }
+    expect(
+      (await rest.patch(`/sticker-guides/${guide.id}`, { email: null, body: { name: 'X' } }))
+        .status,
+    ).toBe(401);
+  });
+
+  test.each([
+    ['kosong', ''],
+    ['spasi', '   '],
+    ['terlalu panjang', 'x'.repeat(GUIDE_LIMITS.nameMax + 1)],
+    ['bukan teks', 123],
+    ['tak ada', undefined],
+  ])('nama %s = 422 dan tak menulis audit', async (_label, name) => {
+    const guide = await uploadAs('ie@gmail.com', 'Awal');
+    const response = await rename(guide.id, name);
+    expect(response.status).toBe(422);
+    expect(await jsonOf(response)).toMatchObject({ code: 'VALIDATION' });
+    expect(names(await list())).toEqual(['Awal']);
+    expect(await audits('stickerGuide.rename')).toHaveLength(0);
+  });
+
+  test('id tak ada, berkas non-pustaka, atau pending_delete = 404', async () => {
+    await seedGuide({ id: 'g-item', ownerType: 'item' });
+    await seedGuide({ id: 'g-del' });
+    await env.DB.prepare("UPDATE files SET status = 'pending_delete' WHERE id = 'g-del'").run();
+    for (const id of ['tidak-ada', 'g-item', 'g-del']) {
+      expect((await rename(id, 'Baru', 'im@gmail.com')).status, id).toBe(404);
+    }
+  });
+
+  test('nama sama = 200 tanpa audit baru', async () => {
+    const guide = await uploadAs('ie@gmail.com', 'Sama');
+    expect((await rename(guide.id, 'Sama')).status).toBe(200);
+    expect(await audits('stickerGuide.rename')).toHaveLength(0);
+  });
+
+  test('terakhir-menang: dua penggantian berurutan, yang terakhir tersimpan (tanpa If-Match)', async () => {
+    const guide = await uploadAs('ie@gmail.com', 'A');
+    expect((await rename(guide.id, 'B')).status).toBe(200);
+    expect((await rename(guide.id, 'C')).status).toBe(200);
+    expect(names(await list())).toEqual(['C']);
+  });
+});
+
+describe('DELETE /sticker-guides/{id} (hapus)', () => {
+  test('pengunggah: 200 {id}; baris files dan pustaka hilang, Drive dibuang, audit tertulis, thumbnail 404', async () => {
+    const guide = await uploadAs('ie@gmail.com', 'Hapus Aku');
+    expect(driveLive()).toHaveLength(1);
+    const response = await remove(guide.id);
+    expect(response.status).toBe(200);
+    expect(await jsonOf(response)).toEqual({ id: guide.id });
+    expect(await counts()).toEqual({ files: 0, guides: 0 });
+    const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM files WHERE id = ?')
+      .bind(guide.id)
+      .first<{ n: number | string }>();
+    expect(Number(left?.n)).toBe(0);
+    expect(driveLive()).toHaveLength(0);
+    expect(env.BRIDGE.calls.map((call) => call.action)).toContain('trashFile');
+    const rows = await audits('stickerGuide.remove');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actor: 'ie@gmail.com', target: 'Hapus Aku', after: 'null' });
+    expect(JSON.parse(rows[0]?.before ?? '')).toMatchObject({ id: guide.id, name: 'Hapus Aku' });
+    expect((await rest.get(`/sticker-guides/${guide.id}/thumbnail`)).status).toBe(404);
+    expect((await rest.get(`/files/${guide.id}`)).status).toBe(404);
+    expect(names(await list())).toEqual([]);
+  });
+
+  test('gambar orang lain: item:edit 403 (utuh), item:manage 200', async () => {
+    const guide = await uploadAs('uploader@gmail.com', 'Milik Budi');
+    expect((await remove(guide.id, 'ie@gmail.com')).status).toBe(403);
+    expect(await counts()).toEqual({ files: 1, guides: 1 });
+    expect(driveLive()).toHaveLength(1);
+    expect(await audits('stickerGuide.remove')).toHaveLength(0);
+    expect((await remove(guide.id, 'im@gmail.com')).status).toBe(200);
+    expect(await counts()).toEqual({ files: 0, guides: 0 });
+  });
+
+  test('izin rute: sticker:edit, item:view, tanpa izin 403; tanpa sesi 401', async () => {
+    const guide = await uploadAs('ie@gmail.com');
+    for (const email of ['se@gmail.com', 'iv@gmail.com', 'sv@gmail.com', 'nol@gmail.com']) {
+      expect((await remove(guide.id, email)).status, email).toBe(403);
+    }
+    expect((await rest.del(`/sticker-guides/${guide.id}`, { email: null })).status).toBe(401);
+    expect(await counts()).toEqual({ files: 1, guides: 1 });
+  });
+
+  test('id tak ada, hapus kedua kali, atau berkas non-pustaka = 404 (berkas lain tak tersentuh)', async () => {
+    await seedGuide({ id: 'g-item', ownerType: 'item' });
+    const guide = await uploadAs('ie@gmail.com');
+    expect((await remove('tidak-ada', 'im@gmail.com')).status).toBe(404);
+    expect((await remove('g-item', 'im@gmail.com')).status).toBe(404);
+    const itemFile = await env.DB.prepare("SELECT status FROM files WHERE id = 'g-item'").first<{
+      status: string;
+    }>();
+    expect(itemFile?.status).toBe('active');
+    expect((await remove(guide.id)).status).toBe(200);
+    expect((await remove(guide.id)).status).toBe(404);
+    expect(await audits('stickerGuide.remove')).toHaveLength(1);
+  });
+
+  test('Drive gagal dibuang: tetap 200, baris pustaka hilang, berkas pending_delete menunggu cron', async () => {
+    const realError = console.error;
+    console.error = () => undefined;
+    try {
+      const guide = await uploadAs('ie@gmail.com');
+      env.BRIDGE.failNext('trashFile', new Error('Drive mati'));
+      expect((await remove(guide.id)).status).toBe(200);
+      const file = await env.DB.prepare('SELECT status FROM files WHERE id = ?')
+        .bind(guide.id)
+        .first<{ status: string }>();
+      expect(file?.status).toBe('pending_delete');
+      expect((await counts()).guides).toBe(0);
+      expect(names(await list())).toEqual([]);
+    } finally {
+      console.error = realError;
+    }
+  });
+});
+
+describe('GET /files/{id} untuk gambar pustaka', () => {
+  test('sticker:view saja 200 dan byte utuh; item:view saja 200; tanpa keduanya 403', async () => {
+    const guide = await uploadAs('ie@gmail.com');
+    for (const email of ['sv@gmail.com', 'iv@gmail.com', 'ie@gmail.com', 'im@gmail.com']) {
+      const response = await rest.get(`/files/${guide.id}`, { email });
+      expect(response.status, email).toBe(200);
+      expect(response.headers.get('content-type')).toBe('image/png');
+      expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([
+        ...bytesOf(PNG_HEAD, 2048),
+      ]);
+    }
+    expect((await rest.get(`/files/${guide.id}`, { email: 'nol@gmail.com' })).status).toBe(403);
+    expect((await rest.get(`/files/${guide.id}`, { email: null })).status).toBe(401);
+  });
+
+  test('pemegang qrcode:view saja lolos rute tetapi gambar pustaka = 404', async () => {
+    await seedRole(env, { id: 'r-qr-view', name: 'Lihat QR', permissions: { qrcode: 'view' } });
+    await seedUser(env, { id: 'u-qv', email: 'qv@gmail.com', roleIds: ['r-qr-view'] });
+    const guide = await uploadAs('ie@gmail.com');
+    expect((await rest.get(`/files/${guide.id}`, { email: 'qv@gmail.com' })).status).toBe(404);
+  });
+
+  test('tak dibatasi BU: pengguna item di BU lain dan pemegang sticker:view tanpa BU tetap 200', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AA' });
+    await seedRole(env, { id: 'r-bu-view', name: 'Lihat BU', permissions: { item: 'view' } });
+    await seedUser(env, {
+      id: 'u-bu',
+      email: 'bu@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-bu-view'] }],
+    });
+    const guide = await uploadAs('ie@gmail.com');
+    expect((await rest.get(`/files/${guide.id}`, { email: 'bu@gmail.com' })).status).toBe(200);
+    // `sv@gmail.com` hanya punya sticker:view dan tidak punya penugasan BU sama sekali.
+    expect((await rest.get(`/files/${guide.id}`, { email: 'sv@gmail.com' })).status).toBe(200);
+  });
+
+  test('gambar yang dihapus (pending_delete) tak terbaca', async () => {
+    const guide = await uploadAs('ie@gmail.com');
+    await env.DB.prepare("UPDATE files SET status = 'pending_delete' WHERE id = ?")
+      .bind(guide.id)
+      .run();
+    expect((await rest.get(`/files/${guide.id}`, { email: 'sv@gmail.com' })).status).toBe(404);
+  });
+});

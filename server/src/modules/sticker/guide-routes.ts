@@ -1,8 +1,19 @@
 import type { RouteTable } from '@server/core/router';
-import { listGuides, readGuideThumb, uploadGuide } from './guide-service';
-import { validateGetGuideThumb, validateListGuides, validateUploadGuide } from './guide-validate';
+import { listGuides, readGuideThumb, removeGuide, renameGuide, uploadGuide } from './guide-service';
+import {
+  validateGetGuideThumb,
+  validateListGuides,
+  validateRemoveGuide,
+  validateRenameGuide,
+  validateUploadGuide,
+} from './guide-validate';
 
-export type GuideMethod = 'stickerGuides.list' | 'stickerGuides.thumbnail' | 'stickerGuides.upload';
+export type GuideMethod =
+  | 'stickerGuides.list'
+  | 'stickerGuides.thumbnail'
+  | 'stickerGuides.upload'
+  | 'stickerGuides.rename'
+  | 'stickerGuides.remove';
 
 /** Baca pustaka gambar: pemegang `item: view` ATAU `sticker: view` (tanpa batas BU). */
 const READ_PERMISSION = {
@@ -25,6 +36,17 @@ export function guideRoutes(): Pick<RouteTable, GuideMethod> {
       permission: { module: 'item', level: 'edit' },
       validate: validateUploadGuide,
       handler: (input, ctx) => uploadGuide(ctx.env, input, ctx.user),
+    },
+    // Ganti nama dan hapus: izin rute `item: edit`; handler menolak (FORBIDDEN) bila bukan pengunggah dan bukan `item: manage`.
+    'stickerGuides.rename': {
+      permission: { module: 'item', level: 'edit' },
+      validate: validateRenameGuide,
+      handler: (input, ctx) => renameGuide(ctx.env, input, ctx.user),
+    },
+    'stickerGuides.remove': {
+      permission: { module: 'item', level: 'edit' },
+      validate: validateRemoveGuide,
+      handler: (input, ctx) => removeGuide(ctx.env, input, ctx.user),
     },
     'stickerGuides.thumbnail': {
       permission: READ_PERMISSION,

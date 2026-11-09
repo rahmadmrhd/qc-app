@@ -1,3 +1,4 @@
+import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { bytesToBase64 } from '@server/core/bytes';
 import { isGuardFailure } from '@server/core/cas';
@@ -9,26 +10,33 @@ import { dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { insertFileStmt } from '@server/modules/files/repo';
-import { EXTENSIONS, ensureDriveFolder } from '@server/modules/files/service';
+import { EXTENSIONS, ensureDriveFolder, purgePendingFiles } from '@server/modules/files/service';
 import type {
   FileContentDto,
   GetStickerGuideThumbInput,
   ListStickerGuidesInput,
+  RemoveStickerGuideInput,
+  RenameStickerGuideInput,
   StickerGuideDto,
   StickerGuidePageDto,
   UploadStickerGuideInput,
 } from '@shared/contract';
 import { hasLevel } from '@shared/permissions';
 import { GUIDE_LIMITS } from '@shared/stickers';
-import type { GuideRow } from './guide-repo';
+import type { GuideRow, LockedGuideRow } from './guide-repo';
 import {
+  deleteGuideStmt,
   encodeGuideCursor,
   ensureLibraryLockStatement,
+  guideByIdStatement,
   guideThumbStatement,
   insertGuideStmt,
   libraryLimitGuardStmts,
   listGuidesStatement,
+  lockGuideStatement,
+  markGuideFilePendingDeleteStmt,
   parseGuideCursor,
+  renameGuideStmt,
 } from './guide-repo';
 
 /** Nama tampilan pengunggah bila akunnya tak ditemukan atau namanya kosong (email TIDAK PERNAH dikirim ke klien). */
@@ -103,6 +111,87 @@ export async function readGuideThumb(
     throw appError('NOT_FOUND', 'Gambar tidak ditemukan');
   }
   return { id: row.id.trim(), mime, bytes: new Uint8Array(row.thumb) };
+}
+
+const GUIDE_IN_USE_MESSAGE = 'Gambar masih dipakai';
+/** Galat MariaDB 1451: baris induk masih dirujuk kunci asing (penempatan gambar, 3b-2). */
+const ER_ROW_IS_REFERENCED = 1451;
+const GUIDE_GONE_MESSAGE = 'Gambar tidak ditemukan';
+const GUIDE_FORBIDDEN_MESSAGE =
+  'Hanya pengunggah atau pengelola item yang dapat mengubah gambar ini';
+
+/** Ganti nama (terakhir-menang, tanpa If-Match): UPDATE + audit dalam satu transaksi dengan baris terkunci. */
+export async function renameGuide(
+  env: Env,
+  input: RenameStickerGuideInput,
+  actor: UserContext,
+): Promise<StickerGuideDto> {
+  await env.DB.transaction(async (tx) => {
+    const row = await lockGuideStatement(tx, input.id).first<LockedGuideRow>();
+    if (!row) throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
+    if (!canManageGuide(actor, row.created_by)) {
+      throw appError('FORBIDDEN', GUIDE_FORBIDDEN_MESSAGE);
+    }
+    if (row.name === input.name) return;
+    const now = nowIso(env);
+    await renameGuideStmt(tx, input.id, input.name, now).run();
+    await writeAudit(tx, {
+      ts: now,
+      actor: actor.email,
+      action: 'stickerGuide.rename',
+      target: input.name,
+      before: { id: input.id, name: row.name },
+      after: { id: input.id, name: input.name },
+    }).run();
+  });
+  const updated = await guideByIdStatement(env.DB, input.id).first<GuideRow>();
+  if (!updated) throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
+  return toGuideDto(updated, actor);
+}
+
+/**
+ * Hapus gambar pustaka: bila masih dipakai (`usageCount > 0`) CONFLICT; selain itu, dalam SATU transaksi dengan
+ * baris terkunci: berkas ditandai `pending_delete`, baris pustaka dihapus, audit ditulis; lalu berkas Drive dibuang
+ * lewat `purgePendingFiles` (kegagalan Drive membiarkannya `pending_delete` untuk diulang cron; gambar sudah tak
+ * terbaca). Kunci asing penempatan (3b-2, `ON DELETE RESTRICT`) menjadi pagar atomik tambahan: galat 1451 dipetakan
+ * ke pesan yang sama.
+ */
+export async function removeGuide(
+  env: Env,
+  input: RemoveStickerGuideInput,
+  actor: UserContext,
+): Promise<{ id: string }> {
+  try {
+    await env.DB.transaction(async (tx) => {
+      const row = await lockGuideStatement(tx, input.id).first<LockedGuideRow>();
+      if (!row) throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
+      if (!canManageGuide(actor, row.created_by)) {
+        throw appError('FORBIDDEN', GUIDE_FORBIDDEN_MESSAGE);
+      }
+      if (Number(row.usage_count) > 0) throw appError('CONFLICT', GUIDE_IN_USE_MESSAGE);
+      await markGuideFilePendingDeleteStmt(tx, input.id).run();
+      await deleteGuideStmt(tx, input.id).run();
+      await writeAudit(tx, {
+        ts: nowIso(env),
+        actor: actor.email,
+        action: 'stickerGuide.remove',
+        target: row.name,
+        before: { id: input.id, name: row.name, mime: row.mime.trim(), size: Number(row.size) },
+        after: null,
+      }).run();
+    });
+  } catch (error) {
+    if (error instanceof DbError && error.errno === ER_ROW_IS_REFERENCED) {
+      throw appError('CONFLICT', GUIDE_IN_USE_MESSAGE);
+    }
+    throw error;
+  }
+  try {
+    await purgePendingFiles(env, 5);
+  } catch (error) {
+    console.error(`Pembuangan berkas Drive gambar pustaka tertunda: ${String(error)}`);
+  }
+  return { id: input.id };
 }
 
 /** `2000` -> `2.000` (pesan pustaka penuh; satu sumber angka: `GUIDE_LIMITS.libraryMax`). */

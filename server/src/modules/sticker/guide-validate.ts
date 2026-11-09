@@ -3,6 +3,8 @@ import { readObject } from '@server/core/validate';
 import type {
   GetStickerGuideThumbInput,
   ListStickerGuidesInput,
+  RemoveStickerGuideInput,
+  RenameStickerGuideInput,
   UploadStickerGuideInput,
 } from '@shared/contract';
 import {
@@ -143,6 +145,21 @@ export function validateUploadGuide(raw: unknown): UploadStickerGuideInput {
     image: image as Uint8Array,
     thumbnail: thumbnail as Uint8Array,
   };
+}
+
+export function validateRenameGuide(raw: unknown): RenameStickerGuideInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const name = readGuideName(reader, 'name');
+  reader.done();
+  return { id, name };
+}
+
+export function validateRemoveGuide(raw: unknown): RemoveStickerGuideInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
 }
 
 export function validateGetGuideThumb(raw: unknown): GetStickerGuideThumbInput {

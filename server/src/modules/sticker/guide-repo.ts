@@ -125,6 +125,43 @@ export function guideByIdStatement(db: Preparer, id: string): DbStatement {
     .bind(id);
 }
 
+/** Baris gambar pustaka yang dikunci untuk ganti nama/hapus (tanpa gabungan `users`, agar yang terkunci hanya baris gambar dan berkasnya). */
+export interface LockedGuideRow {
+  id: string;
+  name: string;
+  mime: string;
+  size: number | string;
+  created_by: string;
+  usage_count: number | string;
+}
+
+/**
+ * Mengunci baris gambar pustaka aktif (`FOR UPDATE`) di dalam transaksi tulis: ganti nama dan hapus serentak untuk
+ * gambar yang sama berurutan, dan pemeriksaan "masih dipakai" tak dapat disela. Kosong bila bukan gambar pustaka aktif.
+ */
+export function lockGuideStatement(tx: Preparer, id: string): DbStatement {
+  return tx
+    .prepare(
+      `SELECT g.id, g.name, f.mime, f.size, f.created_by, (${guideUsageCountSql()}) AS usage_count FROM sticker_guide_images g JOIN files f ON f.id = g.id AND f.owner_type = 'stickerguide' AND f.status = 'active' WHERE g.id = ? FOR UPDATE`,
+    )
+    .bind(id);
+}
+
+export function renameGuideStmt(db: Preparer, id: string, name: string, now: string): DbStatement {
+  return db
+    .prepare('UPDATE sticker_guide_images SET name = ?, updated_at = ? WHERE id = ?')
+    .bind(name, now, id);
+}
+
+export function deleteGuideStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare('DELETE FROM sticker_guide_images WHERE id = ?').bind(id);
+}
+
+/** Langkah 1 penghapusan berkas (padanan `markFilesPendingDelete`, tetapi terikat transaksi pemanggil). */
+export function markGuideFilePendingDeleteStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare("UPDATE files SET status = 'pending_delete' WHERE id = ?").bind(id);
+}
+
 /** Kursor buram bagi klien: `[urutan, kunci, id]` sebagai JSON base64url. */
 export function encodeGuideCursor(sort: GuideSort, row: GuideRow): string {
   return encodeText(JSON.stringify([sort, SORT_SPEC[sort].keyOf(row), row.id]));
