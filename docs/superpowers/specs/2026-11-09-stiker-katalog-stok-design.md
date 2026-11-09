@@ -85,6 +85,8 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 - **Tampilan di detail item: label langsung di gambar** (pilihan B pemilik), label dapat diketuk untuk melihat gambar contoh, nama, dan petunjuk posisi; di ponsel label menjadi daftar di bawah gambar.
 - **Item di dua BU**: semua stiker yang cocok ditampilkan, berlabel BU (jarang terjadi; tahap 5 menuntaskannya lewat BU Serial Number).
 - Di 3b, Manual Book dan Postel ditandai ke stiker tertentu per item; pengelompokannya di tahap 4.
+- **3b dipecah** (2026-11-09): **3b-1** pustaka gambar dan dialog berkas umum (draf: `docs/superpowers/specs/2026-11-09-stiker-pustaka-gambar-3b1-design.md`), **3b-2** penempatan di item, penanda, tampilan label, dan penggantian daftar lama.
+- **Untuk 3b-2** (keputusan pemilik 2026-11-09): yang mengatur instruksi stiker = siapa saja yang berizin ubah item; dilakukan saat menambah item baru atau pada item yang sudah ada; sifatnya opsional tetapi penting. Gambar dipilih dari pustaka atau diunggah baru (otomatis masuk pustaka). Penanda dan label seperti di atas (label langsung di gambar, pilihan B pemilik). Pilihan perancang (belum ditegaskan): penanda diberi catatan pendek opsional (pengganti kolom catatan posisi daftar lama), editor penanda berada di form item sebagai bagian "Instruksi stiker", dan item yang belum punya instruksi diberi penanda "Belum ada instruksi stiker" di daftar dan detail (pengingat tanpa memaksa).
 
 ## 7. Diserahkan kepada pembangun
 Nama tabel dan kolom pasti, bentuk DTO, tata letak halaman, urutan tugas, batas ukuran (panjang nama, jumlah baris opname per permintaan, ukuran halaman riwayat), dan isi data contoh dev.
