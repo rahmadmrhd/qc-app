@@ -22,3 +22,25 @@ export const stickerTypeFormSchema = z.object({
   rule: z.enum(STICKER_RULES),
 });
 export type StickerTypeFormValues = z.infer<typeof stickerTypeFormSchema>;
+
+/** Form stiker (batas yang sama dengan server); aturan BU diperiksa terpisah karena bergantung pada jenis. */
+export const stickerFormSchema = z.object({
+  typeId: z.string().min(1, 'Pilih jenis stiker'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Nama stiker wajib diisi')
+    .max(STICKER_LIMITS.nameMax, `Nama stiker maksimal ${STICKER_LIMITS.nameMax} karakter`),
+  alias: z
+    .string()
+    .trim()
+    .max(STICKER_LIMITS.aliasMax, `Alias maksimal ${STICKER_LIMITS.aliasMax} karakter`),
+  fileId: z.string().nullable(),
+  minQty: z
+    .number('Batas minimum harus berupa angka')
+    .int('Batas minimum harus bilangan bulat')
+    .min(0, 'Batas minimum tidak boleh negatif')
+    .max(STICKER_LIMITS.qtyMax, `Batas minimum maksimal ${STICKER_LIMITS.qtyMax}`),
+  businessUnitIds: z.array(z.string()),
+});
+export type StickerFormValues = z.infer<typeof stickerFormSchema>;

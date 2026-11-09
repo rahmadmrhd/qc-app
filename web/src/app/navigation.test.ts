@@ -213,3 +213,20 @@ test('grup Stiker memuat Jenis Stiker (sticker view) dan hanya tampil bagi user 
   );
   expect(stiker?.items.map((entry) => entry.label)).toContain('Jenis Stiker');
 });
+
+test('menu Stiker (sticker view) tidak ikut aktif di Jenis Stiker', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
+  const stiker = items.find((entry) => entry.to === '/sticker');
+  const jenis = items.find((entry) => entry.to === '/sticker/types');
+  if (!stiker || !jenis) throw new Error('menu hilang');
+  expect(stiker).toMatchObject({
+    label: 'Stiker',
+    permission: { module: 'sticker', level: 'view' },
+    excludes: ['/sticker/types'],
+  });
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(stiker, at('/sticker'))).toBe(true);
+  expect(isNavItemActive(stiker, at('/sticker/types'))).toBe(false);
+  expect(isNavItemActive(jenis, at('/sticker/types'))).toBe(true);
+});

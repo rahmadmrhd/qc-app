@@ -1,0 +1,232 @@
+import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { expect, test, vi } from 'vitest';
+import { StickersPage } from './stickers-page';
+
+vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
+vi.mock('@/modules/item/components/image-thumb', () => ({ ImageThumb: () => null }));
+
+const types: StickerTypeDto[] = [
+  { id: 'tp-bu', name: 'QC Hijau', rule: 'bu', status: 'active', stickerCount: 2, updatedAt: '' },
+  { id: 'tp-none', name: 'Segel', rule: 'none', status: 'active', stickerCount: 1, updatedAt: '' },
+  { id: 'tp-old', name: 'Lawas', rule: 'none', status: 'inactive', stickerCount: 0, updatedAt: '' },
+];
+
+const businessUnits: BusinessUnitOptionDto[] = [
+  { id: 'bu-a', code: 'RTL', name: 'Retail', status: 'active' },
+  { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
+];
+
+function sticker(overrides: Partial<StickerDto>): StickerDto {
+  return {
+    id: 's1',
+    typeId: 'tp-bu',
+    typeName: 'QC Hijau',
+    name: 'QC Hijau Besar',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    status: 'active',
+    businessUnitIds: ['bu-a'],
+    low: false,
+    updatedAt: '',
+    ...overrides,
+  };
+}
+
+const stickers: StickerDto[] = [
+  sticker({
+    id: 's1',
+    alias: 'Hijau-B',
+    minQty: 100,
+    low: true,
+    businessUnitIds: ['bu-a', 'bu-b'],
+  }),
+  sticker({
+    id: 's2',
+    typeId: 'tp-none',
+    typeName: 'Segel',
+    name: 'Segel Polos',
+    businessUnitIds: [],
+    status: 'inactive',
+  }),
+];
+
+function renderPage(props: Partial<Parameters<typeof StickersPage>[0]> = {}) {
+  const onSave = vi.fn().mockResolvedValue(null);
+  const onToggleStatus = vi.fn();
+  render(
+    <StickersPage
+      stickers={stickers}
+      types={types}
+      businessUnits={businessUnits}
+      canEdit
+      canManage
+      pendingStatusId={null}
+      onSave={onSave}
+      onToggleStatus={onToggleStatus}
+      {...props}
+    />,
+  );
+  return { onSave, onToggleStatus };
+}
+
+test('alias menggantikan nama pada tampilan; tanpa alias memakai nama', () => {
+  renderPage();
+  const first = screen.getByRole('row', { name: /Hijau-B/ });
+  expect(within(first).getByText('Hijau-B')).toBeInTheDocument();
+  expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
+});
+
+test('menampilkan jenis, BU sebagai chip, batas minimum, dan status', () => {
+  renderPage();
+  const first = screen.getByRole('row', { name: /Hijau-B/ });
+  expect(within(first).getByText('QC Hijau')).toBeInTheDocument();
+  expect(within(first).getByText('RTL')).toBeInTheDocument();
+  expect(within(first).getByText('WHL')).toBeInTheDocument();
+  expect(within(first).getByText('100')).toBeInTheDocument();
+  expect(within(first).getByText('Aktif')).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('row', { name: /Segel Polos/ })).getByText('Nonaktif'),
+  ).toBeInTheDocument();
+});
+
+test('penanda Menipis hanya muncul bila low', () => {
+  renderPage();
+  expect(
+    within(screen.getByRole('row', { name: /Hijau-B/ })).getByText('Menipis'),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('row', { name: /Segel Polos/ })).queryByText('Menipis'),
+  ).toBeNull();
+});
+
+test('filter jenis dan status menyaring baris', async () => {
+  renderPage();
+  await userEvent.selectOptions(screen.getByLabelText('Filter jenis'), 'tp-none');
+  expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
+  expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Filter jenis'), '');
+  await userEvent.selectOptions(screen.getByLabelText('Filter status'), 'inactive');
+  expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
+  expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
+});
+
+test('tombol mengikuti izin', () => {
+  renderPage({ canEdit: false, canManage: false });
+  expect(screen.queryByRole('button', { name: 'Tambah stiker' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Ubah Hijau-B' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Nonaktifkan Hijau-B' })).toBeNull();
+});
+
+test('menonaktifkan memanggil onToggleStatus', async () => {
+  const { onToggleStatus } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan Hijau-B' }));
+  expect(onToggleStatus).toHaveBeenCalledWith(stickers[0]);
+  expect(screen.getByRole('button', { name: 'Aktifkan Segel Polos' })).toBeInTheDocument();
+});
+
+test('dialog tambah: field BU hanya untuk jenis berrule bu, tersembunyi untuk jenis none', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  // Jenis nonaktif tidak ditawarkan.
+  expect(within(dialog).queryByRole('option', { name: 'Lawas' })).toBeNull();
+  expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  expect(within(dialog).getByRole('combobox', { name: 'BU' })).toBeInTheDocument();
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
+});
+
+test('tambah stiker jenis none mengirim BU kosong', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Baru');
+  await userEvent.type(within(dialog).getByLabelText('Alias'), 'SB');
+  await userEvent.type(within(dialog).getByLabelText('Batas minimum'), '50');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    typeId: 'tp-none',
+    name: 'Segel Baru',
+    alias: 'SB',
+    fileId: null,
+    minQty: 50,
+    businessUnitIds: [],
+  });
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+});
+
+test('tambah stiker jenis bu: menautkan dua BU dan mengirimnya', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Hijau Kecil');
+  for (const name of ['Retail (RTL)', 'Wholesale (WHL)']) {
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
+    await userEvent.click(await screen.findByRole('option', { name }));
+    await userEvent.keyboard('{Escape}');
+  }
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    typeId: 'tp-bu',
+    name: 'Hijau Kecil',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    businessUnitIds: ['bu-a', 'bu-b'],
+  });
+});
+
+test('jenis bu tanpa BU tidak dikirim', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Tanpa BU');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).not.toHaveBeenCalled();
+  expect(await within(dialog).findByText('Pilih minimal satu BU')).toBeInTheDocument();
+});
+
+test('ubah stiker: jenis tidak dapat diubah (teks), data terisi, id ikut dikirim', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).queryByLabelText('Jenis')).toBeNull();
+  expect(within(dialog).getByText('QC Hijau')).toBeInTheDocument();
+  expect(within(dialog).getByLabelText('Nama stiker')).toHaveValue('QC Hijau Besar');
+  expect(within(dialog).getByLabelText('Alias')).toHaveValue('Hijau-B');
+  expect(within(dialog).getByLabelText('Batas minimum')).toHaveValue(100);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    id: 's1',
+    typeId: 'tp-bu',
+    name: 'QC Hijau Besar',
+    alias: 'Hijau-B',
+    fileId: null,
+    minQty: 100,
+    businessUnitIds: ['bu-a', 'bu-b'],
+  });
+});
+
+test('pesan konflik nama dari server tampil pada field nama dan dialog tetap terbuka', async () => {
+  const { onSave } = renderPage();
+  onSave.mockResolvedValueOnce({
+    message: 'Nama stiker sudah dipakai pada jenis ini',
+    name: 'Nama stiker sudah dipakai pada jenis ini',
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Polos');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  const alert = await within(dialog).findByRole('alert');
+  expect(alert).toHaveTextContent('Nama stiker sudah dipakai pada jenis ini');
+  expect(within(dialog).getByLabelText('Nama stiker')).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+});

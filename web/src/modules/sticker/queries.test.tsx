@@ -2,7 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { stickerTypesQuery, useSaveStickerType, useSetStickerTypeStatus } from './queries';
+import {
+  stickersQuery,
+  stickerTypesQuery,
+  useSaveSticker,
+  useSaveStickerType,
+  useSetStickerStatus,
+  useSetStickerTypeStatus,
+} from './queries';
 
 const fetchMock = vi.fn(
   async (_url: string, _init?: RequestInit) =>
@@ -51,6 +58,35 @@ test('jenis baru: POST /api/v1/sticker-types; ubah: PUT dengan id di jalur', asy
   await waitFor(() => expect(lastRequest().url).toBe('/api/v1/sticker-types/t1'));
   request = lastRequest();
   expect(request.init.method).toBe('PUT');
+});
+
+test('daftar stiker: GET /api/v1/stickers; simpan baru POST, ubah PUT, status PATCH', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('[]'));
+  const queryFn = stickersQuery().queryFn as () => Promise<unknown>;
+  await expect(queryFn()).resolves.toEqual([]);
+  expect(lastRequest().url).toBe('/api/v1/stickers');
+
+  const save = renderHook(() => useSaveSticker(), { wrapper: wrapper() });
+  const input = {
+    typeId: 't1',
+    name: 'A',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    businessUnitIds: [],
+  };
+  save.result.current.mutate(input);
+  await waitFor(() => expect(save.result.current.isSuccess).toBe(true));
+  expect(lastRequest().url).toBe('/api/v1/stickers');
+  expect(lastRequest().init.method).toBe('POST');
+  save.result.current.mutate({ ...input, id: 's1' });
+  await waitFor(() => expect(lastRequest().url).toBe('/api/v1/stickers/s1'));
+  expect(lastRequest().init.method).toBe('PUT');
+
+  const status = renderHook(() => useSetStickerStatus(), { wrapper: wrapper() });
+  status.result.current.mutate({ id: 's1', status: 'inactive' });
+  await waitFor(() => expect(status.result.current.isSuccess).toBe(true));
+  expect(lastRequest().init.method).toBe('PATCH');
 });
 
 test('ubah status: PATCH /api/v1/sticker-types/{id}', async () => {

@@ -1,4 +1,9 @@
-import type { SaveStickerTypeInput, SetStickerTypeStatusInput } from '@shared/contract';
+import type {
+  SaveStickerInput,
+  SaveStickerTypeInput,
+  SetStickerStatusInput,
+  SetStickerTypeStatusInput,
+} from '@shared/contract';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';
@@ -27,6 +32,32 @@ function useStickerTypeMutation<TInput, TOutput>(mutationFn: (input: TInput) => 
     },
   });
 }
+
+export function stickersQuery() {
+  return queryOptions({
+    queryKey: stickerKeys.list,
+    queryFn: () => api('stickers.list', null),
+  });
+}
+
+/** Stiker dan jenis (jumlah stiker per jenis) serta Log Audit dimuat ulang setelah mutasi stiker. */
+function useStickerMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
+      ]);
+    },
+  });
+}
+
+export const useSaveSticker = () =>
+  useStickerMutation((input: SaveStickerInput) => api('stickers.save', input));
+export const useSetStickerStatus = () =>
+  useStickerMutation((input: SetStickerStatusInput) => api('stickers.setStatus', input));
 
 export const useSaveStickerType = () =>
   useStickerTypeMutation((input: SaveStickerTypeInput) => api('stickerTypes.save', input));
