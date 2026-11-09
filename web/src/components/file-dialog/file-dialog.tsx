@@ -32,6 +32,12 @@ export interface FileDialogProps {
   maxFiles?: number;
   /** Dari seret-lepas: tab Unggah terbuka dengan berkas sudah di antrean. */
   initialFiles?: File[];
+  /** Berkas yang sudah ditolak saat dijatuhkan (nama + alasan); ditampilkan di tab Unggah bersama `initialFiles`. */
+  initialRejected?: { name: string; reason: string }[];
+  /** Bawaan true. False = hanya pengunggahan (tanpa tab Pustaka), mis. bila pustaka sudah tampil di halaman. */
+  showLibrary?: boolean;
+  /** Teks tombol konfirmasi; bawaan 'Lampirkan'. */
+  confirmLabel?: string;
   /** Bawaan 'Pilih gambar'. */
   title?: string;
   onSelect(items: LibraryItem[]): void;
@@ -53,6 +59,9 @@ export function FileDialog({
   maxBytes,
   maxFiles = DEFAULT_MAX_FILES,
   initialFiles,
+  initialRejected,
+  showLibrary = true,
+  confirmLabel = 'Lampirkan',
   title = 'Pilih gambar',
   onSelect,
 }: FileDialogProps) {
@@ -74,12 +83,13 @@ export function FileDialog({
 
   // Berkas awal (seret-lepas) masuk antrean sekali per pembukaan; Strict Mode memanggil efek dua kali.
   useEffect(() => {
-    if (!open || !initialFiles || initialFiles.length === 0) return;
+    if (!open || !initialFiles || (initialFiles.length === 0 && !initialRejected?.length)) return;
     if (sameFiles(consumedInitial.current, initialFiles)) return;
     consumedInitial.current = initialFiles;
     setTab('upload');
     add(initialFiles);
-  }, [open, initialFiles, add]);
+    if (initialRejected) addRejected(initialRejected);
+  }, [open, initialFiles, initialRejected, add, addRejected]);
 
   // Menutup dialog membersihkan antrean dan pilihan.
   useEffect(() => {
@@ -142,6 +152,43 @@ export function FileDialog({
     onOpenChange(next);
   }
 
+  const uploadTab = (
+    <UploadTab
+      queue={queue}
+      accept={mimes}
+      maxBytes={maxBytes}
+      maxFiles={mode === 'single' ? 1 : maxFiles}
+      nameMax={source.nameMax}
+      disabled={busy}
+      onFiles={handleFiles}
+    />
+  );
+  const libraryTab = (
+    <LibraryTab
+      source={source}
+      selection={selection}
+      mode={mode}
+      onToggle={toggle}
+      onPreview={setPreview}
+      accept={mimes}
+      onFiles={handleFiles}
+      onRenamed={(item) =>
+        setSelection((current) => {
+          if (!current.has(item.id)) return current;
+          return new Map(current).set(item.id, item);
+        })
+      }
+      onRemoved={(id) =>
+        setSelection((current) => {
+          if (!current.has(id)) return current;
+          const next = new Map(current);
+          next.delete(id);
+          return next;
+        })
+      }
+    />
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -157,60 +204,33 @@ export function FileDialog({
               Unggah berkas baru atau pilih dari pustaka.
             </DialogDescription>
           </DialogHeader>
-          <Tabs
-            value={tab}
-            onValueChange={(value) => setTab(value as TabValue)}
-            className="min-h-0 flex-1"
-          >
-            <TabsList>
-              <TabsTrigger value="upload">
-                Unggah{queue.entries.length > 0 ? ` (${queue.entries.length})` : ''}
-              </TabsTrigger>
-              <TabsTrigger value="library">
-                Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="upload" className="min-h-0 flex-1 overflow-y-auto">
-              <UploadTab
-                queue={queue}
-                accept={mimes}
-                maxBytes={maxBytes}
-                maxFiles={mode === 'single' ? 1 : maxFiles}
-                nameMax={source.nameMax}
-                disabled={busy}
-                onFiles={handleFiles}
-              />
-            </TabsContent>
-            <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
-              <LibraryTab
-                source={source}
-                selection={selection}
-                mode={mode}
-                onToggle={toggle}
-                onPreview={setPreview}
-                accept={mimes}
-                onFiles={handleFiles}
-                onRenamed={(item) =>
-                  setSelection((current) => {
-                    if (!current.has(item.id)) return current;
-                    return new Map(current).set(item.id, item);
-                  })
-                }
-                onRemoved={(id) =>
-                  setSelection((current) => {
-                    if (!current.has(id)) return current;
-                    const next = new Map(current);
-                    next.delete(id);
-                    return next;
-                  })
-                }
-              />
-            </TabsContent>
-          </Tabs>
+          {showLibrary ? (
+            <Tabs
+              value={tab}
+              onValueChange={(value) => setTab(value as TabValue)}
+              className="min-h-0 flex-1"
+            >
+              <TabsList>
+                <TabsTrigger value="upload">
+                  Unggah{queue.entries.length > 0 ? ` (${queue.entries.length})` : ''}
+                </TabsTrigger>
+                <TabsTrigger value="library">
+                  Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="upload" className="min-h-0 flex-1 overflow-y-auto">
+                {uploadTab}
+              </TabsContent>
+              <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
+                {libraryTab}
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{uploadTab}</div>
+          )}
           {failed > 0 && !busy ? (
             <p role="status" className="text-sm text-destructive">
-              {failed} berkas gagal diunggah. Periksa alasannya di tab Unggah, lalu tekan Lampirkan
-              lagi; berkas yang sudah berhasil tidak diunggah ulang.
+              {`${failed} berkas gagal diunggah. Periksa alasannya di daftar unggahan, lalu tekan ${confirmLabel} lagi; berkas yang sudah berhasil tidak diunggah ulang.`}
             </p>
           ) : null}
           <DialogFooter>
@@ -224,7 +244,7 @@ export function FileDialog({
             </Button>
             <Button type="button" disabled={busy || total === 0} onClick={() => void attach()}>
               {busy ? <Spinner /> : null}
-              Lampirkan ({total})
+              {confirmLabel} ({total})
             </Button>
           </DialogFooter>
         </DialogContent>

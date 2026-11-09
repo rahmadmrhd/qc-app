@@ -25,6 +25,7 @@ import { Route as AppItemNewRouteImport } from './routes/_app/item/new'
 import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
+import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
 import { Route as AppStickerStockRouteImport } from './routes/_app/sticker/stock'
 import { Route as AppStickerTypesRouteImport } from './routes/_app/sticker/types'
 import { Route as AppAccessBusinessUnitsIndexRouteImport } from './routes/_app/access/business-units/index'
@@ -119,6 +120,11 @@ const AppStickerIndexRoute = AppStickerIndexRouteImport.update({
   path: '/sticker/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStickerLibraryRoute = AppStickerLibraryRouteImport.update({
+  id: '/sticker/library',
+  path: '/sticker/library',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppStickerStockRoute = AppStickerStockRouteImport.update({
   id: '/sticker/stock',
   path: '/sticker/stock',
@@ -207,6 +213,7 @@ export interface FileRoutesByFullPath {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/sticker/types': typeof AppStickerTypesRoute
   '/handover/': typeof AppHandoverIndexRoute
@@ -238,6 +245,7 @@ export interface FileRoutesByTo {
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/sticker/types': typeof AppStickerTypesRoute
   '/handover': typeof AppHandoverIndexRoute
@@ -271,6 +279,7 @@ export interface FileRoutesById {
   '/_app/handover/new': typeof AppHandoverNewRoute
   '/_app/item/new': typeof AppItemNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
+  '/_app/sticker/library': typeof AppStickerLibraryRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
   '/_app/sticker/types': typeof AppStickerTypesRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
@@ -304,6 +313,7 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/library'
     | '/sticker/stock'
     | '/sticker/types'
     | '/handover/'
@@ -335,6 +345,7 @@ export interface FileRouteTypes {
     | '/handover/new'
     | '/item/new'
     | '/qrcode/new'
+    | '/sticker/library'
     | '/sticker/stock'
     | '/sticker/types'
     | '/handover'
@@ -367,6 +378,7 @@ export interface FileRouteTypes {
     | '/_app/handover/new'
     | '/_app/item/new'
     | '/_app/qrcode/new'
+    | '/_app/sticker/library'
     | '/_app/sticker/stock'
     | '/_app/sticker/types'
     | '/_app/handover/'
@@ -506,6 +518,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStickerIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sticker/library': {
+      id: '/_app/sticker/library'
+      path: '/sticker/library'
+      fullPath: '/sticker/library'
+      preLoaderRoute: typeof AppStickerLibraryRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/sticker/stock': {
       id: '/_app/sticker/stock'
       path: '/sticker/stock'
@@ -618,6 +637,7 @@ interface AppRouteChildren {
   AppHandoverNewRoute: typeof AppHandoverNewRoute
   AppItemNewRoute: typeof AppItemNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
+  AppStickerLibraryRoute: typeof AppStickerLibraryRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
   AppStickerTypesRoute: typeof AppStickerTypesRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
@@ -649,6 +669,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppHandoverNewRoute: AppHandoverNewRoute,
   AppItemNewRoute: AppItemNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
+  AppStickerLibraryRoute: AppStickerLibraryRoute,
   AppStickerStockRoute: AppStickerStockRoute,
   AppStickerTypesRoute: AppStickerTypesRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,

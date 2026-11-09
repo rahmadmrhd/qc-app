@@ -202,6 +202,19 @@ test('pratinjau membuka gambar previewUrl dan dapat ditutup', async () => {
   await waitFor(() => expect(document.querySelector('img[src="/full/lib1"]')).toBeNull());
 });
 
+test('showLibrary=false: tanpa tab Pustaka, confirmLabel dipakai, initialRejected tampil', async () => {
+  setup(makeSource(), {
+    showLibrary: false,
+    confirmLabel: 'Unggah',
+    initialFiles: [png('a.png')],
+    initialRejected: [{ name: 'z.heic', reason: 'Format HEIC tidak didukung' }],
+  });
+  expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Unggah \(1\)/ })).toBeInTheDocument();
+  expect(await screen.findByText(/z\.heic/)).toBeInTheDocument();
+  expect(screen.getByText(/Format HEIC tidak didukung/)).toBeInTheDocument();
+});
+
 test('berkas yang dijatuhkan di tab Pustaka masuk antrean Unggah, termasuk yang ditolak', async () => {
   const user = userEvent.setup();
   const source = makeSource([mk('lib1')]);
