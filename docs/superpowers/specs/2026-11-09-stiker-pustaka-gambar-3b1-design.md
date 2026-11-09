@@ -1,6 +1,6 @@
 # Stiker Management, tahap 3b-1: pustaka gambar dan dialog berkas umum
 
-Status: **menunggu persetujuan pemilik produk.** Tanggal: 2026-11-09.
+Status: **dibangun (2026-11-10), menunggu review akhir dan PR.** Tanggal: 2026-11-09.
 Induk: `docs/superpowers/specs/2026-11-09-stiker-katalog-stok-design.md` (§6 mencatat keputusan 3b), `docs/superpowers/specs/2026-11-08-business-unit-design.md` (keputusan 23). Cabang kerja: `feat/stiker-pustaka-gambar` (dari `dev` setelah PR 47 untuk 3a di-merge).
 Tahap 3b dipecah dua (disetujui pemilik 2026-11-09): **3b-1** (dokumen ini) lalu **3b-2** (penempatan gambar di item, penanda gaya tag foto, tampilan label di detail item, penggantian daftar stiker lama).
 
@@ -42,7 +42,7 @@ Anti-tujuan: pustaka tidak boleh menjadi tempat lampiran item biasa, dan aturan 
 - Nama disimpan **tanpa ekstensi**, dipangkas, tidak kosong, maks. 120 karakter, dan boleh kembar (nama berkas kamera sering sama; tanpa aturan keunikan).
 - Migrasi expand-only dan idempoten (`0006_…`). Tidak ada backfill.
 - Hapus = tandai `pending_delete` di `files` dan hapus baris pustaka dalam satu `batch()`, lalu buang di Drive memakai jalur yang sudah ada (`markFilesPendingDelete` + `purgePendingFiles`).
-- Jumlah pemakaian (`usageCount`) ada di DTO sejak sekarang, bernilai 0 sampai 3b-2 menambah penempatan di item. Perhitungannya satu fungsi/kueri tunggal agar 3b-2 hanya mengganti satu tempat. **Kontrak ke 3b-2:** tabel penempatan memakai kunci asing ke tabel pustaka dengan `ON DELETE RESTRICT`, sehingga "hapus hanya bila tidak dipakai" dijaga basis data secara atomik (galat kunci asing dipetakan ke `CONFLICT` "Gambar masih dipakai"), bukan sekadar pemeriksaan sebelum hapus.
+- Jumlah pemakaian (`usageCount`) ada di DTO sejak sekarang, bernilai 0 sampai 3b-2 menambah penempatan di item. Perhitungannya satu fungsi/kueri tunggal agar 3b-2 hanya mengganti satu tempat. **Kontrak ke 3b-2:** tabel penempatan memakai kunci asing ke tabel pustaka dengan `ON DELETE RESTRICT`, sehingga "hapus hanya bila tidak dipakai" dijaga basis data secara atomik (galat kunci asing dipetakan ke `CONFLICT` "Gambar masih dipakai"), bukan sekadar pemeriksaan sebelum hapus. **3b-2 wajib menambah tes jalur `usageCount > 0` = CONFLICT** (belum teruji di 3b-1 karena selalu 0).
 - Rename: terakhir-menang (tanpa `If-Match`); hanya mengubah nama.
 - Audit: ganti nama dan hapus masuk `audit_log`; unggah tidak (sama seperti stok, rekamannya ada di tabel).
 
