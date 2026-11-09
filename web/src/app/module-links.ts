@@ -9,6 +9,5 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   handover: '/handover',
   qc: '/handover',
   sticker: '/sticker',
-  // `stickerstock` ('/sticker/stock') ditambahkan oleh tugas web setelah rutenya ada
-  // (tipe `LinkProps['to']` menolak rute yang belum ada).
+  stickerstock: '/sticker/stock',
 };
