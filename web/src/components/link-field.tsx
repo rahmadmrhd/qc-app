@@ -304,6 +304,20 @@ function LinkFieldBase({
                 </a>
               </Button>
             ) : null}
+            {onCreate && !disabled ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabIndex={-1}
+                className="size-6"
+                aria-label={`Tambah ${label}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onCreate}
+              >
+                <Plus />
+              </Button>
+            ) : null}
           </div>
           {showList ? (
             <div
@@ -360,17 +374,6 @@ function LinkFieldBase({
             </div>
           ) : null}
         </div>
-        {onCreate && !disabled ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={`Tambah ${label}`}
-            onClick={onCreate}
-          >
-            <Plus />
-          </Button>
-        ) : null}
       </div>
       {error ? (
         <p id={`${id}-error`} role="alert" className="text-sm text-destructive">
