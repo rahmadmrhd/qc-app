@@ -63,7 +63,11 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
 
   const counted = snapshot.filter((row) => counts[row.stickerId] !== undefined);
   const tooMany = counted.length > STICKER_LIMITS.opnameRows;
-  const canSubmit = locationId !== '' && counted.length > 0 && !tooMany && !busy;
+  // Total butir hasil hitung tiap baris dibatasi seperti di server; baris yang melebihi ditandai dan memblokir kirim.
+  const overLimit = counted.some(
+    (row) => piecesOfCount(cleanCount(counts[row.stickerId] as StockCount)) > STICKER_LIMITS.qtyMax,
+  );
+  const canSubmit = locationId !== '' && counted.length > 0 && !tooMany && !overLimit && !busy;
 
   function changeLocation(id: string) {
     setLocationId(id);
@@ -139,7 +143,8 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
           {snapshot.map((row) => {
             const recorded = qtyAt(row, locationId);
             const count = counts[row.stickerId];
-            const difference = count ? piecesOfCount(cleanCount(count)) - recorded : 0;
+            const pieces = count ? piecesOfCount(cleanCount(count)) : 0;
+            const difference = pieces - recorded;
             return (
               <li key={row.stickerId} className="space-y-2 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,6 +162,11 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
                 {count ? (
                   <div className="space-y-2">
                     <CountInput value={count} onChange={(next) => setCount(row.stickerId, next)} />
+                    {pieces > STICKER_LIMITS.qtyMax ? (
+                      <p role="alert" className="text-sm text-destructive">
+                        {`${row.name}: jumlah butir maksimal ${STICKER_LIMITS.qtyMax}`}
+                      </p>
+                    ) : null}
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium tabular-nums">
                         {`Selisih ${difference > 0 ? '+' : ''}${difference}`}

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
   stickersQuery,
   stickerTypesQuery,
+  useRecordStock,
   useSaveSticker,
   useSaveStickerType,
   useSetStickerStatus,
@@ -96,4 +97,33 @@ test('ubah status: PATCH /api/v1/sticker-types/{id}', async () => {
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/sticker-types/t1');
   expect(init.method).toBe('PATCH');
+});
+
+function invalidatedKeys(client: QueryClient) {
+  const spy = vi.spyOn(client, 'invalidateQueries');
+  return () => spy.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+}
+
+test('mutasi stok memuat ulang data stiker tetapi bukan Log Audit; mutasi katalog memuat ulang keduanya', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidatedKeys(client);
+  const wrap = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const stock = renderHook(() => useRecordStock(), { wrapper: wrap });
+  stock.result.current.mutate({
+    locationId: 'l1',
+    stickerId: 's1',
+    kind: 'in',
+    quantity: 1,
+    reason: '',
+  });
+  await waitFor(() => expect(stock.result.current.isSuccess).toBe(true));
+  expect(keys()).toContain(JSON.stringify(['sticker']));
+  expect(keys()).not.toContain(JSON.stringify(['access', 'audit']));
+
+  const catalog = renderHook(() => useSetStickerStatus(), { wrapper: wrap });
+  catalog.result.current.mutate({ id: 's1', status: 'inactive' });
+  await waitFor(() => expect(catalog.result.current.isSuccess).toBe(true));
+  expect(keys()).toContain(JSON.stringify(['access', 'audit']));
 });

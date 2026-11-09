@@ -47,7 +47,10 @@ export function StockPage({
   onOpname,
   onShowHistory,
 }: StockPageProps) {
-  const [entry, setEntry] = useState<{ mode: StockEntryMode; row: StickerStockDto } | null>(null);
+  // Hanya mode dan id yang disimpan; barisnya diturunkan dari `rows` terbaru agar "Stok saat ini" di dialog ikut
+  // diperbarui bila stok dimuat ulang saat dialog terbuka.
+  const [entry, setEntry] = useState<{ mode: StockEntryMode; stickerId: string } | null>(null);
+  const entryRow = entry ? (rows.find((row) => row.stickerId === entry.stickerId) ?? null) : null;
   const [opnameOpen, setOpnameOpen] = useState(false);
   const codeById = new Map(locations.map((location) => [location.id, location.code]));
   const showBreakdown = locations.length > 1;
@@ -92,6 +95,9 @@ export function StockPage({
                     <span className="font-medium">{row.name}</span>
                     {row.low ? <Badge variant="destructive">Menipis</Badge> : null}
                     {row.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
+                    {row.typeStatus === 'inactive' ? (
+                      <Badge variant="secondary">Jenis nonaktif</Badge>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell>{row.typeName}</TableCell>
@@ -108,12 +114,12 @@ export function StockPage({
                   </TableCell>
                 ) : null}
                 <TableCell className="space-x-2 text-right">
-                  {canEdit && row.status === 'active' ? (
+                  {canEdit && row.status === 'active' && row.typeStatus === 'active' ? (
                     <Button
                       size="sm"
                       variant="outline"
                       aria-label={`Catat masuk ${row.name}`}
-                      onClick={() => setEntry({ mode: 'in', row })}
+                      onClick={() => setEntry({ mode: 'in', stickerId: row.stickerId })}
                     >
                       Masuk
                     </Button>
@@ -123,7 +129,7 @@ export function StockPage({
                       size="sm"
                       variant="outline"
                       aria-label={`Catat keluar ${row.name}`}
-                      onClick={() => setEntry({ mode: 'out', row })}
+                      onClick={() => setEntry({ mode: 'out', stickerId: row.stickerId })}
                     >
                       Keluar
                     </Button>
@@ -133,7 +139,7 @@ export function StockPage({
                       size="sm"
                       variant="outline"
                       aria-label={`Koreksi ${row.name}`}
-                      onClick={() => setEntry({ mode: 'adjust', row })}
+                      onClick={() => setEntry({ mode: 'adjust', stickerId: row.stickerId })}
                     >
                       Koreksi
                     </Button>
@@ -154,7 +160,7 @@ export function StockPage({
       </div>
       <StockEntryDialog
         mode={entry?.mode ?? null}
-        sticker={entry?.row ?? null}
+        sticker={entryRow}
         onOpenChange={(open) => (open ? undefined : setEntry(null))}
         onSave={onWrite}
       />

@@ -18,10 +18,13 @@ import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { ImagePicker } from '@/modules/item/components/image-picker';
+import { isStaleSaveError, STALE_SAVE_MESSAGE } from '../lib/stale';
 import { stickerFormSchema } from '../schemas';
 
 export interface StickerSaveInput {
   id?: string;
+  /** Versi yang dilihat saat form dibuka; wajib saat ubah, tidak dikirim saat membuat. */
+  expectedUpdatedAt?: string;
   typeId: string;
   name: string;
   alias: string;
@@ -43,6 +46,7 @@ export type StickerSaveResult = string | StickerSaveFailure | null;
 
 /** Mengubah galat API menjadi hasil simpan dialog (dipakai pemanggil yang memanggil API stiker). */
 export function stickerSaveFailure(error: unknown): StickerSaveFailure {
+  if (isStaleSaveError(error)) return { message: STALE_SAVE_MESSAGE };
   return { message: describeError(error), ...pickFieldErrors(error, FIELD_KEYS) };
 }
 
@@ -87,6 +91,8 @@ function StickerFormBody({ sticker, types, businessUnits, onSave, onClose }: Bod
   const [errors, setErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
+  const [expectedUpdatedAt] = useState(sticker?.updatedAt);
 
   const selectedType = types.find((type) => type.id === typeId);
   const needsBusinessUnits = selectedType?.rule === 'bu';
@@ -136,7 +142,13 @@ function StickerFormBody({ sticker, types, businessUnits, onSave, onClose }: Bod
     let failure: StickerSaveFailure | null;
     try {
       const data = parsed.data;
-      const input: StickerSaveInput = sticker ? { id: sticker.id, ...data } : { ...data };
+      const input: StickerSaveInput = sticker
+        ? {
+            id: sticker.id,
+            ...(expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt }),
+            ...data,
+          }
+        : { ...data };
       const result = await onSave(input);
       failure = typeof result === 'string' ? { message: result } : result;
     } catch {

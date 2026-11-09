@@ -15,10 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
+import { isStaleSaveError, STALE_SAVE_MESSAGE } from '../lib/stale';
 import { STICKER_RULE_HINT, STICKER_RULE_LABEL, stickerTypeFormSchema } from '../schemas';
 
 export interface StickerTypeSaveInput {
   id?: string;
+  /** Versi yang dilihat saat form dibuka; wajib saat ubah, tidak dikirim saat membuat. */
+  expectedUpdatedAt?: string;
   name: string;
   rule: StickerRule;
 }
@@ -34,6 +37,7 @@ export type StickerTypeSaveResult = string | StickerTypeSaveFailure | null;
 
 /** Mengubah galat API menjadi hasil simpan dialog (dipakai pemanggil yang memanggil API jenis stiker). */
 export function stickerTypeSaveFailure(error: unknown): StickerTypeSaveFailure {
+  if (isStaleSaveError(error)) return { message: STALE_SAVE_MESSAGE };
   const fields = pickFieldErrors(error, ['name', 'rule'] as const);
   return { message: describeError(error), ...fields };
 }
@@ -42,7 +46,7 @@ export interface StickerTypeFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Jenis yang diubah; kosong = jenis baru. */
-  type?: Pick<StickerTypeDto, 'id' | 'name' | 'rule' | 'stickerCount'>;
+  type?: Pick<StickerTypeDto, 'id' | 'name' | 'rule' | 'stickerCount' | 'updatedAt'>;
   /** `null` = berhasil (dialog menutup sendiri); string/objek = galat yang tampil di dialog. */
   onSave: (input: StickerTypeSaveInput) => Promise<StickerTypeSaveResult>;
 }
@@ -60,6 +64,8 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
   const [nameError, setNameError] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
+  const [expectedUpdatedAt] = useState(type?.updatedAt);
   /** Aturan terkunci sesudah jenis dipakai stiker (server menolak perubahannya). */
   const ruleLocked = type !== undefined && type.stickerCount > 0;
 
@@ -74,7 +80,12 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
     let failure: StickerTypeSaveFailure | null;
     try {
       const input: StickerTypeSaveInput = type
-        ? { id: type.id, name: parsed.data.name, rule: parsed.data.rule }
+        ? {
+            id: type.id,
+            ...(expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt }),
+            name: parsed.data.name,
+            rule: parsed.data.rule,
+          }
         : { name: parsed.data.name, rule: parsed.data.rule };
       const result = await onSave(input);
       failure = typeof result === 'string' ? { message: result } : result;
