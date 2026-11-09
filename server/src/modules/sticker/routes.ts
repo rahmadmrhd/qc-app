@@ -8,11 +8,16 @@ import {
   setStickerStatus,
   setStickerTypeStatus,
 } from './service';
+import { adjustStock, listStickerStock, recordStock, stockHistory } from './stock-service';
 import {
+  validateAdjustStock,
+  validateListStickerStock,
+  validateRecordStock,
   validateSaveSticker,
   validateSaveStickerType,
   validateSetStickerStatus,
   validateSetStickerTypeStatus,
+  validateStockHistory,
 } from './validate';
 
 type StickerMethod =
@@ -21,9 +26,16 @@ type StickerMethod =
   | 'stickerTypes.setStatus'
   | 'stickers.list'
   | 'stickers.save'
-  | 'stickers.setStatus';
+  | 'stickers.setStatus'
+  | 'stickerStock.list'
+  | 'stickerStock.record'
+  | 'stickerStock.adjust'
+  | 'stickerStock.history';
 
-/** Katalog stiker memakai izin modul `sticker` (global bersama): list = view, save = edit, setStatus = manage. */
+/**
+ * Katalog stiker memakai izin modul `sticker` (global bersama): list = view, save = edit, setStatus = manage. Stok
+ * memakai `stickerstock` (berlokasi): list/history = view, record = edit, adjust = manage.
+ */
 export function stickerRoutes(): Pick<RouteTable, StickerMethod> {
   return {
     'stickerTypes.list': {
@@ -55,6 +67,36 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod> {
       permission: { module: 'sticker', level: 'manage' },
       validate: validateSetStickerStatus,
       handler: (input, ctx) => setStickerStatus(ctx.env, input, ctx.user),
+    },
+    'stickerStock.list': {
+      permission: { module: 'stickerstock', level: 'view', scope: 'location' },
+      validate: validateListStickerStock,
+      handler: (_input, ctx) => listStickerStock(ctx.env, ctx.locationIds),
+    },
+    'stickerStock.record': {
+      permission: { module: 'stickerstock', level: 'edit', scope: 'location' },
+      validate: validateRecordStock,
+      handler: (input, ctx) =>
+        recordStock(
+          ctx.env,
+          { ...input, locationId: ctx.locationIds[0] ?? input.locationId },
+          ctx.user,
+        ),
+    },
+    'stickerStock.adjust': {
+      permission: { module: 'stickerstock', level: 'manage', scope: 'location' },
+      validate: validateAdjustStock,
+      handler: (input, ctx) =>
+        adjustStock(
+          ctx.env,
+          { ...input, locationId: ctx.locationIds[0] ?? input.locationId },
+          ctx.user,
+        ),
+    },
+    'stickerStock.history': {
+      permission: { module: 'stickerstock', level: 'view', scope: 'location' },
+      validate: validateStockHistory,
+      handler: (input, ctx) => stockHistory(ctx.env, input, ctx.locationIds),
     },
   };
 }

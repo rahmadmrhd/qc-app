@@ -1,0 +1,232 @@
+import { runCas } from '@server/core/cas';
+import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
+import type { Env } from '@server/core/env';
+import { nowIso } from '@server/core/env';
+import { appError } from '@server/core/errors';
+import type {
+  AdjustStockInput,
+  RecordStockInput,
+  StickerStockDto,
+  StockEntryDto,
+  StockHistoryInput,
+  StockHistoryPageDto,
+} from '@shared/contract';
+import type { StockCount, StockEntryKind } from '@shared/stickers';
+import { isLowStock, piecesOfCount } from '@shared/stickers';
+import { stockTotalsFromResult, stockTotalsStatement } from './repo';
+import type { StockEntryRow } from './stock-repo';
+import {
+  addStockStmt,
+  encodeStockCursor,
+  historyStatement,
+  insertEntryStmt,
+  lastEntryStatement,
+  parseStockCursor,
+  stickerActiveGuardStmt,
+  stickerStatusStatement,
+  stickersWithTypeStatement,
+  stockQtyStatement,
+  stockRowsStatement,
+  subtractStockStmt,
+  toStockEntry,
+} from './stock-repo';
+
+const STALE_MESSAGE = 'Stok diubah orang lain; muat ulang halaman lalu ulangi';
+const NOT_ENOUGH_MESSAGE = 'Stok tidak cukup';
+
+interface StockChange {
+  stickerId: string;
+  locationId: string;
+  kind: StockEntryKind;
+  /** Bertanda: > 0 menambah, < 0 mengurangi. */
+  delta: number;
+  count: StockCount | null;
+  reason: string;
+  /** Catatan masuk hanya untuk stiker aktif (keluar dan koreksi boleh pada stiker nonaktif). */
+  requireActive: boolean;
+  /** Field untuk pesan galat stok tidak cukup. */
+  amountField: 'quantity' | 'delta';
+}
+
+/**
+ * Satu perubahan stok: SATU `batch()` (transaksi) berisi penjaga, pembaruan stok, riwayat (dengan `qty_after` dari
+ * stok sesudah pembaruan), dan pembacaan baris riwayat yang baru. Pengurangan memakai penjaga CAS di `UPDATE` (stok
+ * tak cukup membatalkan seluruh batch); penjaga yang gagal membuat `runCas` memuat ulang dan menjawab dengan
+ * keadaan terbaru (`VALIDATION`).
+ */
+async function applyChangeOnce(
+  env: Env,
+  change: StockChange,
+  actor: ActorRef,
+): Promise<StockEntryDto> {
+  const [statusResult, qtyResult] = await env.DB.batch([
+    stickerStatusStatement(env.DB, change.stickerId),
+    stockQtyStatement(env.DB, change.stickerId, change.locationId),
+  ]);
+  const sticker = (statusResult?.results[0] ?? null) as { status: string } | null;
+  if (!sticker) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
+  if (change.requireActive && sticker.status.trim() !== 'active') {
+    const message = 'Stiker nonaktif tidak dapat menerima stok masuk';
+    throw appError('VALIDATION', message, { stickerId: message });
+  }
+  const current = Number((qtyResult?.results[0] as { qty: number | string } | undefined)?.qty ?? 0);
+  const amount = Math.abs(change.delta);
+  if (change.delta < 0 && current < amount) {
+    throw appError('VALIDATION', NOT_ENOUGH_MESSAGE, { [change.amountField]: NOT_ENOUGH_MESSAGE });
+  }
+  const now = nowIso(env);
+  const statements: DbStatement[] = [];
+  if (change.requireActive) statements.push(stickerActiveGuardStmt(env.DB, change.stickerId));
+  statements.push(
+    change.delta > 0
+      ? addStockStmt(env.DB, change.stickerId, change.locationId, amount, now)
+      : subtractStockStmt(env.DB, change.stickerId, change.locationId, amount, now),
+    insertEntryStmt(env.DB, {
+      stickerId: change.stickerId,
+      locationId: change.locationId,
+      kind: change.kind,
+      delta: change.delta,
+      count: change.count,
+      reason: change.reason,
+      actor: actor.email,
+      ts: now,
+    }),
+    lastEntryStatement(env.DB),
+  );
+  const results = await env.DB.batch(statements);
+  const row = results[results.length - 1]?.results[0] as StockEntryRow | undefined;
+  if (!row) throw appError('INTERNAL', 'Riwayat stok gagal dicatat');
+  return toStockEntry(row);
+}
+
+function applyChange(env: Env, change: StockChange, actor: ActorRef): Promise<StockEntryDto> {
+  return runCas(() => applyChangeOnce(env, change, actor), STALE_MESSAGE);
+}
+
+/** Catat stok masuk atau keluar (jumlah langsung atau hitungan lembar). Izin lokasi diperiksa router. */
+export async function recordStock(
+  env: Env,
+  input: RecordStockInput,
+  actor: ActorRef,
+): Promise<StockEntryDto> {
+  const count = input.count ?? null;
+  const pieces = count === null ? (input.quantity ?? 0) : piecesOfCount(count);
+  return applyChange(
+    env,
+    {
+      stickerId: input.stickerId,
+      locationId: input.locationId,
+      kind: input.kind,
+      delta: input.kind === 'in' ? pieces : -pieces,
+      count,
+      reason: input.reason,
+      requireActive: input.kind === 'in',
+      amountField: 'quantity',
+    },
+    actor,
+  );
+}
+
+/** Koreksi stok (bertanda, alasan wajib); diizinkan pada stiker nonaktif. */
+export async function adjustStock(
+  env: Env,
+  input: AdjustStockInput,
+  actor: ActorRef,
+): Promise<StockEntryDto> {
+  return applyChange(
+    env,
+    {
+      stickerId: input.stickerId,
+      locationId: input.locationId,
+      kind: 'adjust',
+      delta: input.delta,
+      count: null,
+      reason: input.reason,
+      requireActive: false,
+      amountField: 'delta',
+    },
+    actor,
+  );
+}
+
+/**
+ * Daftar stok untuk lokasi yang diminta: stiker aktif (walau tanpa baris stok) atau yang stoknya > 0 di lokasi itu.
+ * SATU `batch()`: stiker+jenis, stok pada lokasi diminta, dan total SEMUA lokasi per stiker (satu kueri agregat) untuk
+ * `low`. `total` dan `byLocation` hanya memuat lokasi yang diminta.
+ */
+export async function listStickerStock(
+  env: Env,
+  locationIds: readonly string[],
+): Promise<StickerStockDto[]> {
+  const [stickerResult, stockResult, totalResult] = await env.DB.batch([
+    stickersWithTypeStatement(env.DB),
+    stockRowsStatement(env.DB, locationIds),
+    stockTotalsStatement(env.DB),
+  ]);
+  const allTotals = stockTotalsFromResult(totalResult ?? { results: [] });
+  const qtyByKey = new Map<string, number>();
+  const totalHere = new Map<string, number>();
+  for (const row of (stockResult?.results ?? []) as Array<{
+    sticker_id: string;
+    location_id: string;
+    qty: number | string;
+  }>) {
+    const stickerId = row.sticker_id.trim();
+    const qty = Number(row.qty) || 0;
+    qtyByKey.set(`${stickerId}\u0000${row.location_id.trim()}`, qty);
+    totalHere.set(stickerId, (totalHere.get(stickerId) ?? 0) + qty);
+  }
+  const rows: StickerStockDto[] = [];
+  for (const row of (stickerResult?.results ?? []) as Array<{
+    id: string;
+    name: string;
+    alias: string;
+    min_qty: number | string;
+    status: string;
+    type_name: string;
+  }>) {
+    const id = row.id.trim();
+    const status = row.status.trim() === 'inactive' ? 'inactive' : 'active';
+    const total = totalHere.get(id) ?? 0;
+    if (status !== 'active' && total <= 0) continue;
+    const minQty = Number(row.min_qty) || 0;
+    rows.push({
+      stickerId: id,
+      name: row.alias.trim() !== '' ? row.alias.trim() : row.name.trim(),
+      typeName: row.type_name.trim(),
+      status,
+      minQty,
+      low: isLowStock({ status, minQty, total: allTotals.get(id) ?? 0 }),
+      total,
+      byLocation: locationIds.map((locationId) => ({
+        locationId,
+        qty: qtyByKey.get(`${id}\u0000${locationId}`) ?? 0,
+      })),
+    });
+  }
+  return rows.sort((a, b) => a.typeName.localeCompare(b.typeName) || a.name.localeCompare(b.name));
+}
+
+/** Riwayat stok terbaru dahulu pada lokasi yang diminta (berkursor `(ts, id)`), opsional per stiker. */
+export async function stockHistory(
+  env: Env,
+  input: StockHistoryInput,
+  locationIds: readonly string[],
+): Promise<StockHistoryPageDto> {
+  const limit = input.limit ?? 50;
+  const cursor =
+    input.cursor === undefined ? undefined : (parseStockCursor(input.cursor) ?? undefined);
+  const result = await historyStatement(env.DB, {
+    locationIds,
+    ...(input.stickerId === undefined ? {} : { stickerId: input.stickerId }),
+    ...(cursor === undefined ? {} : { cursor }),
+    limit,
+  }).all<StockEntryRow>();
+  const page = result.results.slice(0, limit);
+  const last = page[page.length - 1];
+  return {
+    entries: page.map(toStockEntry),
+    nextCursor: result.results.length > limit && last ? encodeStockCursor(last) : null,
+  };
+}

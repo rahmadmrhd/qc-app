@@ -3,7 +3,7 @@ import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
-import type { StickerRule } from './stickers';
+import type { StickerRule, StockCount, StockEntryKind } from './stickers';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -299,6 +299,72 @@ export interface SaveStickerInput {
 export interface SetStickerStatusInput {
   id: string;
   status: ItemStatus;
+}
+
+/** Satu baris halaman Stok Stiker untuk lokasi yang diminta (tanpa gambar contoh). */
+export interface StickerStockDto {
+  stickerId: string;
+  /** Alias bila ada, selain itu nama stiker. */
+  name: string;
+  typeName: string;
+  status: ItemStatus;
+  minQty: number;
+  /** Menipis menurut total SEMUA lokasi (sama dengan `StickerDto.low`), bukan hanya lokasi yang diminta. */
+  low: boolean;
+  /** Jumlah butir di lokasi yang diminta saja. */
+  total: number;
+  /** Satu entri per lokasi yang diminta (urut permintaan); 0 bila belum ada stok. */
+  byLocation: { locationId: string; qty: number }[];
+}
+
+export interface ListStickerStockInput {
+  locationIds: string[];
+}
+
+export interface RecordStockInput {
+  locationId: string;
+  stickerId: string;
+  kind: 'in' | 'out';
+  /** Tepat satu dari `quantity` atau `count`. */
+  quantity?: number;
+  count?: StockCount;
+  /** Wajib untuk `out`. */
+  reason: string;
+}
+
+export interface AdjustStockInput {
+  locationId: string;
+  stickerId: string;
+  /** Bertanda, bukan 0. */
+  delta: number;
+  /** Wajib. */
+  reason: string;
+}
+
+export interface StockEntryDto {
+  id: string;
+  stickerId: string;
+  locationId: string;
+  kind: StockEntryKind;
+  delta: number;
+  qtyAfter: number;
+  count: StockCount | null;
+  reason: string;
+  actor: string;
+  ts: string;
+}
+
+export interface StockHistoryInput {
+  locationIds: string[];
+  stickerId?: string;
+  cursor?: string;
+  /** Bawaan 50, maksimum 200. */
+  limit?: number;
+}
+
+export interface StockHistoryPageDto {
+  entries: StockEntryDto[];
+  nextCursor: string | null;
 }
 
 export interface ItemSummaryDto {
@@ -631,6 +697,10 @@ export interface ApiContract {
   'stickers.list': { input: null; output: StickerDto[] };
   'stickers.save': { input: SaveStickerInput; output: StickerDto };
   'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
+  'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
+  'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
+  'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
+  'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
   'customers.list': { input: null; output: CustomerDto[] };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };

@@ -65,6 +65,25 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'stickers.setStatus': { id: UUID, status: 'inactive' },
+  'stickerStock.record': {
+    locationId: UUID,
+    stickerId: UUID,
+    kind: 'out',
+    count: {
+      rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+        sheets: STICKER_LIMITS.qtyMax,
+        perSheet: STICKER_LIMITS.qtyMax,
+      })),
+      loose: STICKER_LIMITS.qtyMax,
+    },
+    reason: text(STICKER_LIMITS.reasonMax),
+  },
+  'stickerStock.adjust': {
+    locationId: UUID,
+    stickerId: UUID,
+    delta: -STICKER_LIMITS.qtyMax,
+    reason: text(STICKER_LIMITS.reasonMax),
+  },
   'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
