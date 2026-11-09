@@ -463,7 +463,65 @@ function bytesOf(head: number[], size: number, seed = 1): Uint8Array {
   return bytes;
 }
 
-const WEBP_HEAD = [0x52, 0x49, 0x46, 0x46, 0x08, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+/** WebP extended (VP8X) dengan dimensi di header, dipadatkan sampai `size` byte. */
+function webpThumb(width: number, height: number, size = 64): Uint8Array {
+  const u24 = (value: number) => [value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff];
+  const head = [
+    0x52,
+    0x49,
+    0x46,
+    0x46,
+    0x16,
+    0,
+    0,
+    0,
+    0x57,
+    0x45,
+    0x42,
+    0x50,
+    0x56,
+    0x50,
+    0x38,
+    0x58,
+    10,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ...u24(width - 1),
+    ...u24(height - 1),
+  ];
+  const bytes = new Uint8Array(Math.max(size, head.length));
+  bytes.set(head, 0);
+  return bytes;
+}
+
+/** JPEG dengan segmen SOF0 berdimensi, dipadatkan sampai `size` byte. */
+function jpegThumb(width: number, height: number, size = 64): Uint8Array {
+  const head = [
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    0,
+    11,
+    8,
+    height >> 8,
+    height & 0xff,
+    width >> 8,
+    width & 0xff,
+    1,
+    1,
+    0x11,
+    0,
+  ];
+  const bytes = new Uint8Array(Math.max(size, head.length));
+  bytes.set(head, 0);
+  return bytes;
+}
 
 interface UploadOptions {
   query?: Record<string, string>;
@@ -483,7 +541,7 @@ function uploadRequest(options: UploadOptions = {}) {
   });
   const form = new FormData();
   const image = options.image === undefined ? bytesOf(PNG_HEAD, 2048) : options.image;
-  const thumbnail = options.thumbnail === undefined ? bytesOf(WEBP_HEAD, 512) : options.thumbnail;
+  const thumbnail = options.thumbnail === undefined ? webpThumb(320, 240, 512) : options.thumbnail;
   if (image) form.append('image', new Blob([image], { type: 'image/png' }), 'image');
   if (thumbnail) form.append('thumbnail', new Blob([thumbnail], { type: 'image/webp' }), 'thumb');
   return rest.post(`/sticker-guides?${query.toString()}`, {
@@ -500,7 +558,7 @@ function uploadInput() {
     width: 800,
     height: 600,
     image: bytesOf(PNG_HEAD, 2048),
-    thumbnail: bytesOf(WEBP_HEAD, 512),
+    thumbnail: webpThumb(320, 240, 512),
   };
 }
 
@@ -517,7 +575,7 @@ async function counts() {
 const driveLive = () => [...env.BRIDGE.state.files.values()].filter((file) => !file.trashed);
 
 describe('POST /sticker-guides', () => {
-  test('201 + DTO; nama dirapikan; berkas milik stickerguide; Drive terisi', async () => {
+  test('201 + DTO; nama dirapikan; berkas milik stickerguide; Drive terisi; Location', async () => {
     const response = await uploadRequest();
     expect(response.status).toBe(201);
     const dto = (await response.json()) as StickerGuideDto;
@@ -533,6 +591,7 @@ describe('POST /sticker-guides', () => {
       canRemove: true,
       createdAt: '2026-11-10T00:00:00.000Z',
     });
+    expect(response.headers.get('location')).toBe(`/api/v1/sticker-guides/${dto.id}`);
     const file = await env.DB.prepare(
       'SELECT owner_type, owner_id, created_by, mime, size, status FROM files WHERE id = ?',
     )
@@ -548,7 +607,7 @@ describe('POST /sticker-guides', () => {
     expect(driveLive()).toHaveLength(1);
     // Thumbnail tersimpan dan terbaca kembali; daftar memuatnya.
     const thumb = await rest.get(`/sticker-guides/${dto.id}/thumbnail`);
-    expect([...new Uint8Array(await thumb.arrayBuffer())]).toEqual([...bytesOf(WEBP_HEAD, 512)]);
+    expect([...new Uint8Array(await thumb.arrayBuffer())]).toEqual([...webpThumb(320, 240, 512)]);
     expect(names(await list())).toEqual(['Foto   Kardus']);
   });
 
@@ -580,7 +639,7 @@ describe('POST /sticker-guides', () => {
     ['gambar tak ada', { image: null }, 'image'],
     [
       'thumbnail > 40 KB',
-      { thumbnail: bytesOf(WEBP_HEAD, GUIDE_LIMITS.thumbMaxBytes + 1) },
+      { thumbnail: webpThumb(320, 240, GUIDE_LIMITS.thumbMaxBytes + 1) },
       'thumbnail',
     ],
     ['thumbnail bertanda tangan GIF', { thumbnail: bytesOf(GIF_HEAD, 300) }, 'thumbnail'],
@@ -616,9 +675,47 @@ describe('POST /sticker-guides', () => {
     const response = await uploadRequest({
       query: { mime: 'image/jpeg', thumbMime: 'image/jpeg' },
       image: bytesOf(JPEG_HEAD, MAX_IMAGE_BYTES),
-      thumbnail: bytesOf(JPEG_HEAD, GUIDE_LIMITS.thumbMaxBytes),
+      thumbnail: jpegThumb(320, 240, GUIDE_LIMITS.thumbMaxBytes),
     });
     expect(response.status).toBe(201);
+  });
+
+  test.each([
+    ['WebP 800x600', { thumbnail: webpThumb(800, 600) }],
+    ['JPEG 800x600', { thumbnail: jpegThumb(800, 600), query: { thumbMime: 'image/jpeg' } }],
+    ['WebP 401x300 (sisi terpanjang di atas batas)', { thumbnail: webpThumb(401, 300) }],
+    ['JPEG 300x401', { thumbnail: jpegThumb(300, 401), query: { thumbMime: 'image/jpeg' } }],
+    ['WebP header terpotong (hanya tanda tangan)', { thumbnail: webpThumb(320, 240).slice(0, 14) }],
+    [
+      'WebP tanpa chunk dimensi',
+      { thumbnail: bytesOf([0x52, 0x49, 0x46, 0x46, 8, 0, 0, 0, 0x57, 0x45, 0x42, 0x50], 64) },
+    ],
+    [
+      'JPEG tanpa segmen SOF',
+      { thumbnail: bytesOf([0xff, 0xd8, 0xff, 0xda], 64), query: { thumbMime: 'image/jpeg' } },
+    ],
+    [
+      'JPEG header terpotong',
+      { thumbnail: jpegThumb(320, 240).slice(0, 8), query: { thumbMime: 'image/jpeg' } },
+    ],
+  ] as [string, UploadOptions][])(
+    'thumbnail dimensi/header: %s ditolak (VALIDATION)',
+    async (_label, options) => {
+      const response = await uploadRequest(options);
+      expect(response.status).toBe(422);
+      expect(Object.keys(((await jsonOf(response)).fields ?? {}) as object)).toContain('thumbnail');
+      expect(await counts()).toEqual({ files: 0, guides: 0 });
+      expect(env.BRIDGE.state.files.size).toBe(0);
+    },
+  );
+
+  test.each([
+    ['WebP 320x240', { thumbnail: webpThumb(320, 240) }],
+    ['WebP persis 400x300', { thumbnail: webpThumb(400, 300) }],
+    ['JPEG 320x240', { thumbnail: jpegThumb(320, 240), query: { thumbMime: 'image/jpeg' } }],
+    ['JPEG persis 300x400', { thumbnail: jpegThumb(300, 400), query: { thumbMime: 'image/jpeg' } }],
+  ] as [string, UploadOptions][])('thumbnail sah: %s diterima', async (_label, options) => {
+    expect((await uploadRequest(options)).status).toBe(201);
   });
 
   test('kegagalan basis data setelah Drive: berkas Drive dibuang, tidak ada baris tersisa, INTERNAL', async () => {

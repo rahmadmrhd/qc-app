@@ -569,6 +569,7 @@ describe('rute biner', () => {
     expect(Object.keys(parts.multipart ?? {})).toEqual(['image', 'thumbnail']);
     expect(parts.body).toBeUndefined();
     expect(API_ROUTES['stickerGuides.upload'].status).toBe(201);
+    expect(API_ROUTES['stickerGuides.upload'].location).toBe('/sticker-guides/{id}');
   });
 
   test('stickerGuides.thumbnail: unduhan tak berubah (immutable) dengan echo id', () => {

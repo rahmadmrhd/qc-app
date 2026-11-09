@@ -143,6 +143,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     verb: 'POST',
     path: '/sticker-guides',
     status: 201,
+    location: '/sticker-guides/{id}',
     query: {
       name: 'string',
       mime: 'string',

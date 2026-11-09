@@ -102,6 +102,101 @@ export function matchesImageBytesSignature(mime: ImageMime, bytes: Uint8Array): 
   return bytesHaveSignature(bytes, RIFF_SIGNATURE) && bytesHaveSignature(bytes, WEBP_SIGNATURE, 8);
 }
 
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+const u16be = (bytes: Uint8Array, at: number): number =>
+  ((bytes[at] ?? 0) << 8) | (bytes[at + 1] ?? 0);
+const u16le = (bytes: Uint8Array, at: number): number =>
+  (bytes[at] ?? 0) | ((bytes[at + 1] ?? 0) << 8);
+const u24le = (bytes: Uint8Array, at: number): number =>
+  u16le(bytes, at) | ((bytes[at + 2] ?? 0) << 16);
+
+/** JPEG: segmen SOF (C0-CF kecuali DHT C4, JPG C8, DAC CC) memuat tinggi lalu lebar; segmen lain dilewati lewat panjangnya. */
+function jpegDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (!bytesHaveSignature(bytes, JPEG_SIGNATURE)) return null;
+  let at = 2;
+  while (at + 4 <= bytes.length) {
+    if (bytes[at] !== 0xff) return null;
+    const marker = bytes[at + 1] ?? 0;
+    if (marker === 0xff) {
+      at += 1; // byte pengisi
+      continue;
+    }
+    // Penanda tanpa panjang: TEM, RSTn, SOI.
+    if (marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+      at += 2;
+      continue;
+    }
+    // EOI atau SOS sebelum SOF: tak ada dimensi yang dapat dibaca.
+    if (marker === 0xd9 || marker === 0xda) return null;
+    const length = u16be(bytes, at + 2);
+    const isSof =
+      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      if (at + 9 > bytes.length) return null;
+      const height = u16be(bytes, at + 5);
+      const width = u16be(bytes, at + 7);
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    if (length < 2) return null;
+    at += 2 + length;
+  }
+  return null;
+}
+
+/** WebP: chunk pertama VP8 (lossy), VP8L (lossless), atau VP8X (extended) memuat dimensi. */
+function webpDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (!matchesImageBytesSignature('image/webp', bytes) || bytes.length < 16) return null;
+  const fourcc = String.fromCharCode(
+    bytes[12] ?? 0,
+    bytes[13] ?? 0,
+    bytes[14] ?? 0,
+    bytes[15] ?? 0,
+  );
+  let width = 0;
+  let height = 0;
+  if (fourcc === 'VP8 ') {
+    if (bytes.length < 30) return null;
+    if (bytes[23] !== 0x9d || bytes[24] !== 0x01 || bytes[25] !== 0x2a) return null;
+    width = u16le(bytes, 26) & 0x3fff;
+    height = u16le(bytes, 28) & 0x3fff;
+  } else if (fourcc === 'VP8L') {
+    if (bytes.length < 25 || bytes[20] !== 0x2f) return null;
+    const bits = u16le(bytes, 21) | (u16le(bytes, 23) << 16);
+    width = (bits & 0x3fff) + 1;
+    height = ((bits >>> 14) & 0x3fff) + 1;
+  } else if (fourcc === 'VP8X') {
+    if (bytes.length < 30) return null;
+    width = u24le(bytes, 24) + 1;
+    height = u24le(bytes, 27) + 1;
+  } else {
+    return null;
+  }
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/** PNG: IHDR (lebar lalu tinggi, 32 bit big-endian) langsung setelah tanda tangan. */
+function pngDimensions(bytes: Uint8Array): ImageDimensions | null {
+  if (!bytesHaveSignature(bytes, PNG_FILE_SIGNATURE) || bytes.length < 24) return null;
+  const word = (at: number) => (u16be(bytes, at) * 65536 + u16be(bytes, at + 2)) >>> 0;
+  const width = word(16);
+  const height = word(20);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * Lebar dan tinggi dari HEADER byte gambar (tanpa mendekode piksel);  bila header terpotong atau tak terbaca.
+ * Pemanggil memeriksa tanda tangan (matchesImageBytesSignature) terlebih dahulu bila perlu membedakan alasan galat.
+ */
+export function readImageDimensions(mime: ImageMime, bytes: Uint8Array): ImageDimensions | null {
+  if (mime === 'image/jpeg') return jpegDimensions(bytes);
+  if (mime === 'image/png') return pngDimensions(bytes);
+  return webpDimensions(bytes);
+}
+
 /** Berkas diawali "%PDF-". */
 export function isPdfBytes(bytes: Uint8Array): boolean {
   return bytesHaveSignature(bytes, PDF_FILE_SIGNATURE);

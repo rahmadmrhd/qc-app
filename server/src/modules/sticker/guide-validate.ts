@@ -12,6 +12,7 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGE_DIMENSION,
   matchesImageBytesSignature,
+  readImageDimensions,
 } from '@shared/files';
 import { GUIDE_LIMITS, GUIDE_SORTS, type GuideSort } from '@shared/stickers';
 
@@ -104,7 +105,7 @@ function isDimension(value: unknown): value is number {
 
 /**
  * Unggah gambar pustaka: gambar (JPEG/PNG/WebP, maks. `MAX_IMAGE_BYTES`) dan thumbnail (WebP/JPEG, maks.
- * `thumbMaxBytes`) divalidasi dengan tanda tangan byte terhadap MIME yang diklaim; lebar/tinggi bilangan bulat
+ * `thumbMaxBytes`, sisi terpanjang <= `thumbMaxSide` dari header) divalidasi dengan tanda tangan byte terhadap MIME yang diklaim; lebar/tinggi bilangan bulat
  * 1..`MAX_IMAGE_DIMENSION`. Isi bukan gambar = `VALIDATION` per field.
  */
 export function validateUploadGuide(raw: unknown): UploadStickerGuideInput {
@@ -134,6 +135,16 @@ export function validateUploadGuide(raw: unknown): UploadStickerGuideInput {
     reader.fail('thumbnail', 'Thumbnail terlalu besar');
   } else if (thumbType !== undefined && !matchesImageBytesSignature(thumbType, thumbnail)) {
     reader.fail('thumbnail', 'Isi thumbnail tidak sesuai jenis gambar');
+  } else if (thumbType !== undefined) {
+    // Dimensi dibaca dari header byte (tanpa mendekode piksel): sisi terpanjang <= `thumbMaxSide`.
+    const size = readImageDimensions(thumbType, thumbnail);
+    if (size === null) reader.fail('thumbnail', 'Header thumbnail tidak terbaca');
+    else if (Math.max(size.width, size.height) > GUIDE_LIMITS.thumbMaxSide) {
+      reader.fail(
+        'thumbnail',
+        `Dimensi thumbnail terlalu besar (sisi terpanjang maksimal ${GUIDE_LIMITS.thumbMaxSide} px)`,
+      );
+    }
   }
   reader.done();
   return {
