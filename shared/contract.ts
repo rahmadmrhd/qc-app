@@ -210,7 +210,7 @@ export interface StickerGuideDto {
   uploadedBy: string;
   uploadedByMe: boolean;
   createdAt: string;
-  /** Jumlah item yang memakai gambar ini sebagai gambar contoh (penempatan di item). */
+  /** Jumlah item yang memakai gambar ini sebagai gambar acuan penempelan (penempatan di item). */
   usageCount: number;
   canRename: boolean;
   canRemove: boolean;

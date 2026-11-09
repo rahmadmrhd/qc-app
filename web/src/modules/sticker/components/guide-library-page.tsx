@@ -15,7 +15,7 @@ interface UploadDialogState {
 const CLOSED: UploadDialogState = { open: false, files: [], rejected: [] };
 
 /**
- * Halaman Pustaka Gambar (gambar contoh stiker): kisi pustaka yang dapat dicari/diurut/difilter, ganti nama dan hapus
+ * Halaman Pustaka Gambar (gambar acuan penempelan stiker pada item): kisi pustaka yang dapat dicari/diurut/difilter, ganti nama dan hapus
  * lewat kartu, serta unggah lewat tombol atau seret-lepas. Tanpa izin `item: edit` halaman hanya dapat dibaca.
  */
 export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
@@ -39,7 +39,7 @@ export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
         ) : null}
       </div>
       <p className="text-sm text-muted-foreground">
-        Gambar contoh yang dipakai stiker. Seret berkas ke halaman ini untuk mengunggah.
+        Gambar acuan penempelan stiker pada item. Seret berkas ke halaman ini untuk mengunggah.
       </p>
       <LibraryTab
         source={source}

@@ -82,8 +82,8 @@ test('initialFiles: tab Unggah aktif dengan entri di antrean; judul bawaan', asy
 });
 
 test('tanpa apa pun dipilih, Lampirkan nonaktif; judul dapat diganti', () => {
-  setup(makeSource(), { title: 'Pilih gambar contoh' });
-  expect(screen.getByText('Pilih gambar contoh')).toBeInTheDocument();
+  setup(makeSource(), { title: 'Pilih berkas' });
+  expect(screen.getByText('Pilih berkas')).toBeInTheDocument();
   expect(attachButton()).toBeDisabled();
 });
 

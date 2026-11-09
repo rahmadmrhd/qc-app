@@ -39,7 +39,7 @@ function toLibraryItem(dto: StickerGuideDto): LibraryItem {
   };
 }
 
-/** Sumber `FileDialog` untuk pustaka gambar contoh stiker (rute REST `stickerGuides.*`). */
+/** Sumber `FileDialog` untuk pustaka gambar acuan penempelan stiker (rute REST `stickerGuides.*`). */
 export const stickerGuideSource: FileLibrarySource = {
   key: stickerKeys.guides[0],
   mimeTypes: IMAGE_MIME_TYPES,

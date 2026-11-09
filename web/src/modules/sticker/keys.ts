@@ -4,7 +4,7 @@ export const stickerKeys = {
   all: ['sticker'] as const,
   types: ['sticker', 'types'] as const,
   list: ['sticker', 'list'] as const,
-  /** Pustaka gambar contoh (tahap 3b-1); kunci query daftar memakai `stickerGuideSource.key` sebagai awalan. */
+  /** Pustaka gambar acuan penempelan stiker (tahap 3b-1); kunci query daftar memakai `stickerGuideSource.key` sebagai awalan. */
   guides: ['sticker-guides'] as const,
   /** Semua daftar stok (per kombinasi lokasi). */
   stocks: ['sticker', 'stock'] as const,
