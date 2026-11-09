@@ -8,6 +8,7 @@ import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
+import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
 
 /**
@@ -35,6 +36,9 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'brands.list': true,
   'brands.save': true,
   'brands.setStatus': true,
+  'stickerTypes.list': true,
+  'stickerTypes.save': true,
+  'stickerTypes.setStatus': true,
   'customers.list': true,
   'customers.rename': true,
   'customers.setStatus': true,
@@ -83,6 +87,7 @@ function realRoutes(): RouteTable {
     ...handoverRoutes(),
     ...qrcodeRoutes(),
     ...jobsRoutes(),
+    ...stickerRoutes(),
   };
 }
 

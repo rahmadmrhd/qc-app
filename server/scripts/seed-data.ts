@@ -29,6 +29,11 @@ const HOUR = 60 * MIN;
 
 /** Tabel yang dikosongkan (anak lebih dulu) sebelum data contoh dimasukkan. Tidak menyentuh `settings`. */
 const RESET_TABLES = [
+  'sticker_stock_entries',
+  'sticker_stock',
+  'sticker_business_units',
+  'stickers',
+  'sticker_types',
   'handover_comments',
   'handovers',
   'job_blobs',

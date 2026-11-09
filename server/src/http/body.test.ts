@@ -5,6 +5,7 @@ import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
 // Batas JSON REST 2 MB (keputusan pemilik 2026-11-06): muatan sah terbesar tiap rute JSON harus muat dengan lega.
@@ -53,6 +54,8 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
+  'stickerTypes.save': { id: UUID, name: text(STICKER_LIMITS.nameMax), rule: 'none' },
+  'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
   'items.save': {

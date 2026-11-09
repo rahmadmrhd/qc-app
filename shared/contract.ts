@@ -3,6 +3,7 @@ import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
+import type { StickerRule } from './stickers';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -238,6 +239,29 @@ export interface SaveBrandInput {
 }
 
 export interface SetBrandStatusInput {
+  id: string;
+  status: ItemStatus;
+}
+
+/** Jenis stiker (katalog stiker, tahap 3a). */
+export interface StickerTypeDto {
+  id: string;
+  name: string;
+  rule: StickerRule;
+  status: ItemStatus;
+  /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
+  stickerCount: number;
+  updatedAt: string;
+}
+
+export interface SaveStickerTypeInput {
+  id?: string;
+  name: string;
+  /** Tak dapat diubah bila jenis sudah punya stiker. */
+  rule: StickerRule;
+}
+
+export interface SetStickerTypeStatusInput {
   id: string;
   status: ItemStatus;
 }
@@ -566,6 +590,9 @@ export interface ApiContract {
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
+  'stickerTypes.list': { input: null; output: StickerTypeDto[] };
+  'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
+  'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
   'customers.list': { input: null; output: CustomerDto[] };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
