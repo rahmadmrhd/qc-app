@@ -121,3 +121,37 @@ test('seret hanya berkas tak sah: dialog menampilkan nama dan alasan penolakan',
   expect(screen.getByText(/foto.heic/)).toBeInTheDocument();
   expect(screen.getByText(/HEIC/)).toBeInTheDocument();
 });
+
+test('drop di judul halaman membuka dialog dengan berkas di antrean (satu dialog saja)', async () => {
+  setup(true);
+  await screen.findByText('Kardus');
+  fireEvent.drop(screen.getByRole('heading', { name: 'Pustaka Gambar' }), {
+    dataTransfer: { files: [png('baru.png')], types: ['Files'] },
+  });
+  expect(await screen.findByRole('button', { name: 'Ubah nama baru' })).toBeInTheDocument();
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+});
+
+test('drop berkas tak sah di judul membuka dialog dengan alasan penolakan', async () => {
+  setup(true);
+  await screen.findByText('Kardus');
+  fireEvent.drop(screen.getByRole('heading', { name: 'Pustaka Gambar' }), {
+    dataTransfer: {
+      files: [new File(['x'], 'foto.heic', { type: 'image/heic' })],
+      types: ['Files'],
+    },
+  });
+  expect(await screen.findByText(/foto\.heic/)).toBeInTheDocument();
+  expect(screen.getByText(/HEIC/)).toBeInTheDocument();
+});
+
+test('drop di kisi tidak menggandakan dialog (zona dalam tidak ikut menangani)', async () => {
+  setup(true);
+  await screen.findByText('Kardus');
+  fireEvent.drop(screen.getByAltText('Kardus'), {
+    dataTransfer: { files: [png('baru.png')], types: ['Files'] },
+  });
+  expect(await screen.findByRole('button', { name: 'Ubah nama baru' })).toBeInTheDocument();
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Ubah nama baru' })).toHaveLength(1);
+});

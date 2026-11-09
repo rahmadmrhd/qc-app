@@ -2,7 +2,13 @@ import { MAX_IMAGE_BYTES } from '@shared/files';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { FileDialog, type LibraryItem, LibraryTab, PreviewDialog } from '@/components/file-dialog';
+import {
+  FileDialog,
+  FileDropZone,
+  type LibraryItem,
+  LibraryTab,
+  PreviewDialog,
+} from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
 import { stickerGuideSource } from '../lib/guide-source';
 
@@ -28,35 +34,41 @@ export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
     return queryClient.invalidateQueries({ queryKey: [source.key] });
   }
 
+  function handleFiles(files: File[], rejected: { name: string; reason: string }[]) {
+    if (!canUpload) {
+      toast.error('Anda tidak memiliki izin untuk mengunggah gambar');
+      return;
+    }
+    if (files.length > 0 || rejected.length > 0) setUpload({ open: true, files, rejected });
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Pustaka Gambar</h1>
-        {canUpload ? (
-          <Button onClick={() => setUpload({ open: true, files: [], rejected: [] })}>
-            Unggah gambar
-          </Button>
-        ) : null}
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Gambar acuan penempelan stiker pada item. Seret berkas ke halaman ini untuk mengunggah.
-      </p>
-      <LibraryTab
-        source={source}
-        selection={new Map()}
-        mode="multiple"
-        selectable={false}
-        accept={source.mimeTypes}
-        onToggle={() => undefined}
-        onPreview={setPreview}
-        onFiles={(files, rejected) => {
-          if (!canUpload) {
-            toast.error('Anda tidak memiliki izin untuk mengunggah gambar');
-            return;
-          }
-          if (files.length > 0 || rejected.length > 0) setUpload({ open: true, files, rejected });
-        }}
-      />
+    <>
+      {/* Zona seret-lepas mencakup seluruh halaman; dialog di luarnya agar drop di dalam dialog tidak menggelembung ke sini. */}
+      <FileDropZone accept={source.mimeTypes} onFiles={handleFiles} className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold">Pustaka Gambar</h1>
+          {canUpload ? (
+            <Button onClick={() => setUpload({ open: true, files: [], rejected: [] })}>
+              Unggah gambar
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Gambar acuan penempelan stiker pada item. Seret berkas ke halaman ini untuk mengunggah.
+        </p>
+        <LibraryTab
+          source={source}
+          selection={new Map()}
+          mode="multiple"
+          selectable={false}
+          accept={source.mimeTypes}
+          onToggle={() => undefined}
+          onPreview={setPreview}
+          dropZone={false}
+          onFiles={handleFiles}
+        />
+      </FileDropZone>
       {canUpload ? (
         <FileDialog
           open={upload.open}
@@ -82,6 +94,6 @@ export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
         />
       ) : null}
       <PreviewDialog item={preview} onClose={() => setPreview(null)} />
-    </div>
+    </>
   );
 }

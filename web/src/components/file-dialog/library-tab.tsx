@@ -50,6 +50,8 @@ export interface LibraryTabProps {
   onFiles(files: File[], rejected: { name: string; reason: string }[]): void;
   /** Bawaan true; false = tampilan halaman (tanpa pilihan; klik kartu membuka pratinjau). */
   selectable?: boolean;
+  /** Bawaan true: tab ini menerima seret-lepas sendiri. False bila pemanggil sudah membungkusnya dengan `FileDropZone` (tanpa penanganan ganda). */
+  dropZone?: boolean;
   /** Item diganti nama / dihapus di sini: pemilik pilihan menyelaraskan salinannya. */
   onRenamed?(item: LibraryItem): void;
   onRemoved?(id: string): void;
@@ -76,6 +78,7 @@ export function LibraryTab({
   accept,
   onFiles,
   selectable = true,
+  dropZone = true,
   onRenamed,
   onRemoved,
 }: LibraryTabProps) {
@@ -164,7 +167,12 @@ export function LibraryTab({
   const showEmpty = !showSkeleton && !result.isError && items.length === 0;
 
   return (
-    <FileDropZone accept={accept} onFiles={onFiles} className="flex min-h-0 flex-1 flex-col gap-3">
+    <FileDropZone
+      accept={accept}
+      onFiles={onFiles}
+      disabled={!dropZone}
+      className="flex min-h-0 flex-1 flex-col gap-3"
+    >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search
