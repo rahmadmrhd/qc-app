@@ -26,6 +26,8 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [],
@@ -63,6 +65,8 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [
@@ -70,13 +74,13 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
         id: 'l-a',
         code: 'A',
         name: 'A',
-        permissions: { handover: 'view', qc: 'none', stock: 'none' },
+        permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
       {
         id: 'l-b',
         code: 'B',
         name: 'B',
-        permissions: { handover: 'none', qc: 'none', stock: 'view' },
+        permissions: { handover: 'none', qc: 'none', stock: 'view', stickerstock: 'none' },
       },
     ],
   };
@@ -127,7 +131,14 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
     id: 'l1',
     code: 'A',
     name: 'A',
-    permissions: { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none', ...permissions },
+    permissions: {
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      stickerstock: 'none',
+      ...permissions,
+    },
   });
   const me = (perms: Record<string, string>): MeDto =>
     ({
@@ -141,6 +152,8 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
         handover: 'none',
         qc: 'none',
         stock: 'none',
+        sticker: 'none',
+        stickerstock: 'none',
       },
       businessUnits: [],
       locations: [location(perms)],

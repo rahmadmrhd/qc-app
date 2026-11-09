@@ -72,6 +72,8 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         handover: 'manage',
         qc: 'edit',
         stock: 'view',
+        sticker: 'manage',
+        stickerstock: 'manage',
       },
     },
     {

@@ -17,19 +17,21 @@ const meMock = vi.hoisted(() => ({
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     locations: [
       {
         id: 'loc-a',
         code: 'A',
         name: 'Lokasi A',
-        permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+        permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
       {
         id: 'loc-b',
         code: 'B',
         name: 'Lokasi B',
-        permissions: { handover: 'edit', qc: 'none', stock: 'none' },
+        permissions: { handover: 'edit', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
     ],
   } as MeDto,

@@ -17,6 +17,8 @@ function clientWith(permissions: Record<string, string>): QueryClient {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     locations: [
       {
@@ -27,6 +29,7 @@ function clientWith(permissions: Record<string, string>): QueryClient {
           handover: 'none',
           qc: 'none',
           stock: 'none',
+          stickerstock: 'none',
           ...permissions,
         },
       },

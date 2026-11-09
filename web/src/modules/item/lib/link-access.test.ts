@@ -8,7 +8,16 @@ function meWith(access: Level, item: Level): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
-    permissions: { access, item, qrcode: 'none', handover: 'none', qc: 'none', stock: 'none' },
+    permissions: {
+      access,
+      item,
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+    },
     businessUnits: [],
     locations: [],
   } as unknown as MeDto;

@@ -4,12 +4,12 @@ import type { Level, ModuleKey, PartialPermissionMap, PermissionMap } from './pe
 import { mergePermissions } from './permissions';
 
 /** Modul yang izinnya dihitung per lokasi. `access` global; `item` dihitung per BU (`business-units.ts`). */
-export const LOCATION_MODULES = ['handover', 'qc', 'stock'] as const;
+export const LOCATION_MODULES = ['handover', 'qc', 'stock', 'stickerstock'] as const;
 export type LocatedModule = (typeof LOCATION_MODULES)[number];
 export type LocationPermissionMap = Record<LocatedModule, Level>;
 
 /** Modul global yang levelnya dihitung dari SEMUA penugasan lokasi berlaku, bukan hanya "Semua lokasi". */
-export const SHARED_MODULES = ['qrcode'] as const;
+export const SHARED_MODULES = ['qrcode', 'sticker'] as const;
 
 /** Kunci peta/snapshot untuk penugasan "Semua lokasi". */
 export const ALL_LOCATIONS_KEY = '*';
@@ -38,7 +38,7 @@ export function isLocatedModule(module: ModuleKey): module is LocatedModule {
 }
 
 export function fullLocationPermissions(): LocationPermissionMap {
-  return { handover: 'manage', qc: 'manage', stock: 'manage' };
+  return { handover: 'manage', qc: 'manage', stock: 'manage', stickerstock: 'manage' };
 }
 
 function cleanAssignmentIds(value: unknown): string[] {
@@ -91,7 +91,7 @@ function rolePermissionSources(
  * Izin efektif seorang user: global dan per lokasi aktif.
  * - Per lokasi: gabungan "Semua lokasi" + penugasan lokasi itu (level tertinggi per modul).
  * - Global: hanya dari "Semua lokasi" (satu-satunya sumber `access`); kecuali `SHARED_MODULES`
- *   (`qrcode`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
+ *   (`qrcode`, `sticker`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
  *   hanya dari penugasan BU (level tertinggi di antara semuanya).
  * - Per BU (`byBu`): gabungan "Semua BU" + penugasan BU itu untuk modul ber-BU.
  */

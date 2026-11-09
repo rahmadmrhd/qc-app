@@ -34,13 +34,21 @@ function me(locPerms: Record<string, string>): MeDto {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     locations: [
       {
         id: 'loc-a',
         code: 'A',
         name: 'Lokasi A',
-        permissions: { handover: 'none', qc: 'none', stock: 'none', ...locPerms },
+        permissions: {
+          handover: 'none',
+          qc: 'none',
+          stock: 'none',
+          stickerstock: 'none',
+          ...locPerms,
+        },
       },
     ],
   } as MeDto;

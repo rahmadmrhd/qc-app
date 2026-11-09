@@ -6,7 +6,13 @@ import { ACTIVE_LOCATIONS_STORAGE_KEY } from './active-locations';
 import { ActiveLocationsProvider } from './active-locations-context';
 import { LocationPicker } from './location-picker';
 
-const none = { qrcode: 'none', handover: 'none', qc: 'none', stock: 'none' } as const;
+const none = {
+  qrcode: 'none',
+  handover: 'none',
+  qc: 'none',
+  stock: 'none',
+  stickerstock: 'none',
+} as const;
 let me: MeDto;
 
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -32,6 +38,8 @@ beforeEach(() => {
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     businessUnits: [],
     locations: [

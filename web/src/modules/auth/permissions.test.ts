@@ -22,6 +22,8 @@ const me: MeDto = {
     handover: 'none',
     qc: 'none',
     stock: 'none',
+    sticker: 'none',
+    stickerstock: 'none',
   },
   businessUnits: [],
   locations: [
@@ -29,13 +31,13 @@ const me: MeDto = {
       id: 'l-a',
       code: 'A',
       name: 'A',
-      permissions: { handover: 'manage', qc: 'none', stock: 'view' },
+      permissions: { handover: 'manage', qc: 'none', stock: 'view', stickerstock: 'none' },
     },
     {
       id: 'l-b',
       code: 'B',
       name: 'B',
-      permissions: { handover: 'view', qc: 'none', stock: 'none' },
+      permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
     },
   ],
 };

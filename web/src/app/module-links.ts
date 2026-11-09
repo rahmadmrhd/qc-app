@@ -8,4 +8,6 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   qrcode: '/qrcode',
   handover: '/handover',
   qc: '/handover',
+  // `sticker` ('/sticker') dan `stickerstock` ('/sticker/stock') ditambahkan oleh tugas web
+  // setelah rutenya ada (tipe `LinkProps['to']` menolak rute yang belum ada).
 };
