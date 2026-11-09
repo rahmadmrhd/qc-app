@@ -1,5 +1,5 @@
 import type { StickerTypeDto } from '@shared/contract';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
@@ -11,6 +11,8 @@ import {
   stickerTypeSaveFailure,
 } from '@/modules/sticker/components/sticker-type-form-dialog';
 import { StickerTypesPage } from '@/modules/sticker/components/sticker-types-page';
+import { stickerKeys } from '@/modules/sticker/keys';
+import { isStaleSaveError } from '@/modules/sticker/lib/stale';
 import {
   stickerTypesQuery,
   useSaveStickerType,
@@ -25,6 +27,7 @@ export const Route = createFileRoute('/_app/sticker/types')({
 
 function StickerTypesRoute() {
   const me = useMe();
+  const queryClient = useQueryClient();
   const { data: types } = useSuspenseQuery(stickerTypesQuery());
   const save = useSaveStickerType();
   const setStatus = useSetStickerTypeStatus();
@@ -35,6 +38,9 @@ function StickerTypesRoute() {
       toast.success(input.id ? 'Jenis stiker diperbarui' : 'Jenis stiker ditambahkan');
       return null;
     } catch (error) {
+      // Versi usang: muat ulang daftar agar tabel (dan form yang dibuka ulang) memakai data terbaru.
+      if (isStaleSaveError(error))
+        void queryClient.invalidateQueries({ queryKey: stickerKeys.all });
       return stickerTypeSaveFailure(error);
     }
   }

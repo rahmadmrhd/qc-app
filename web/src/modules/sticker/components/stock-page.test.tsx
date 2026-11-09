@@ -41,6 +41,7 @@ const rows: StickerStockDto[] = [
     stickerId: 's1',
     name: 'Hijau-B',
     typeName: 'QC Hijau',
+    typeStatus: 'active',
     status: 'active',
     minQty: 100,
     low: true,
@@ -54,6 +55,7 @@ const rows: StickerStockDto[] = [
     stickerId: 's2',
     name: 'Segel Polos',
     typeName: 'Segel',
+    typeStatus: 'active',
     status: 'active',
     minQty: 0,
     low: false,
@@ -74,7 +76,7 @@ function renderPage(props: Partial<StockPageProps> = {}) {
   const onWrite = vi.fn().mockResolvedValue(null);
   const onOpname = vi.fn().mockResolvedValue(null);
   const onShowHistory = vi.fn();
-  render(
+  const element = (extra: Partial<StockPageProps> = {}) => (
     <ActiveLocationsProvider>
       <StockPage
         rows={rows}
@@ -85,11 +87,110 @@ function renderPage(props: Partial<StockPageProps> = {}) {
         onOpname={onOpname}
         onShowHistory={onShowHistory}
         {...props}
+        {...extra}
       />
-    </ActiveLocationsProvider>,
+    </ActiveLocationsProvider>
   );
-  return { onWrite, onOpname, onShowHistory };
+  const { rerender } = render(element());
+  return {
+    onWrite,
+    onOpname,
+    onShowHistory,
+    /** Memuat ulang halaman dengan data stok baru (mis. setelah refetch). */
+    update: (extra: Partial<StockPageProps>) => rerender(element(extra)),
+  };
 }
+
+test('Masuk disembunyikan bila stiker ATAU jenisnya nonaktif; Keluar dan Koreksi tetap ada', () => {
+  const [first, second] = rows as [StickerStockDto, StickerStockDto];
+  renderPage({
+    rows: [
+      { ...first, typeStatus: 'inactive' },
+      { ...second, status: 'inactive' },
+    ],
+  });
+  expect(screen.queryByRole('button', { name: 'Catat masuk Hijau-B' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Catat masuk Segel Polos' })).toBeNull();
+  for (const name of ['Hijau-B', 'Segel Polos']) {
+    expect(screen.getByRole('button', { name: `Catat keluar ${name}` })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Koreksi ${name}` })).toBeInTheDocument();
+  }
+});
+
+test('"Stok saat ini" di dialog ikut diperbarui saat stok dimuat ulang dengan dialog terbuka', async () => {
+  const { update } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  expect(within(dialog).getByText('Stok saat ini: 120 butir')).toBeInTheDocument();
+  const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
+  update({
+    rows: [
+      {
+        ...first,
+        total: 35,
+        byLocation: [
+          { locationId: 'l-a', qty: 5 },
+          { locationId: 'l-b', qty: 30 },
+        ],
+      },
+      ...rest,
+    ],
+  });
+  expect(within(dialog).getByText('Stok saat ini: 5 butir')).toBeInTheDocument();
+});
+
+test('pesan angka dibedakan: kosong, bukan bilangan bulat, dan melebihi batas', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Koreksi Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Uji');
+  const delta = within(dialog).getByLabelText('Perubahan (butir)');
+  const save = within(dialog).getByRole('button', { name: 'Simpan' });
+  await userEvent.click(save);
+  expect(within(dialog).getByText('Perubahan wajib diisi (bukan 0)')).toBeInTheDocument();
+  await userEvent.type(delta, '1.5');
+  await userEvent.click(save);
+  expect(within(dialog).getByText('Perubahan harus bilangan bulat')).toBeInTheDocument();
+  await userEvent.clear(delta);
+  await userEvent.type(delta, '2000000');
+  await userEvent.click(save);
+  expect(within(dialog).getByText(/Perubahan maksimal 1000000/)).toBeInTheDocument();
+});
+
+test('jumlah keluar: kosong, desimal, dan melebihi batas memberi pesan berbeda', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Uji');
+  const quantity = within(dialog).getByLabelText('Jumlah butir');
+  const save = within(dialog).getByRole('button', { name: 'Simpan' });
+  await userEvent.click(save);
+  expect(within(dialog).getByText('Jumlah wajib diisi (minimal 1 butir)')).toBeInTheDocument();
+  await userEvent.type(quantity, '2.5');
+  await userEvent.click(save);
+  expect(within(dialog).getByText('Jumlah harus bilangan bulat')).toBeInTheDocument();
+  await userEvent.clear(quantity);
+  await userEvent.type(quantity, '1000001');
+  await userEvent.click(save);
+  expect(within(dialog).getByText('Jumlah maksimal 1000000')).toBeInTheDocument();
+});
+
+test('opname: total butir baris melebihi batas ditandai pada baris dan Simpan nonaktif', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hitung Hijau-B' }));
+  await userEvent.type(within(dialog).getByLabelText('Lembar baris 1'), '1000');
+  await userEvent.type(within(dialog).getByLabelText('Isi per lembar baris 1'), '5000');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    'Hijau-B: jumlah butir maksimal 1000000',
+  );
+  expect(within(dialog).getByRole('button', { name: 'Simpan opname' })).toBeDisabled();
+});
 
 test('menampilkan stiker, total, penanda Menipis, dan rincian per lokasi bila lebih dari satu lokasi', () => {
   renderPage();

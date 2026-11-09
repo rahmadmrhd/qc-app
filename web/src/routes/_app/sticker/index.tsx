@@ -1,5 +1,5 @@
 import type { StickerDto } from '@shared/contract';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
@@ -12,6 +12,8 @@ import {
   stickerSaveFailure,
 } from '@/modules/sticker/components/sticker-form-dialog';
 import { StickersPage } from '@/modules/sticker/components/stickers-page';
+import { stickerKeys } from '@/modules/sticker/keys';
+import { isStaleSaveError } from '@/modules/sticker/lib/stale';
 import {
   stickersQuery,
   stickerTypesQuery,
@@ -32,6 +34,7 @@ export const Route = createFileRoute('/_app/sticker/')({
 
 function StickersRoute() {
   const me = useMe();
+  const queryClient = useQueryClient();
   const { data: stickers } = useSuspenseQuery(stickersQuery());
   const { data: types } = useSuspenseQuery(stickerTypesQuery());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
@@ -44,6 +47,9 @@ function StickersRoute() {
       toast.success(input.id ? 'Stiker diperbarui' : 'Stiker ditambahkan');
       return null;
     } catch (error) {
+      // Versi usang: muat ulang daftar agar tabel (dan form yang dibuka ulang) memakai data terbaru.
+      if (isStaleSaveError(error))
+        void queryClient.invalidateQueries({ queryKey: stickerKeys.all });
       return stickerSaveFailure(error);
     }
   }

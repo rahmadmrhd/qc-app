@@ -2,6 +2,8 @@ import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
+import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
 vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
@@ -30,7 +32,7 @@ function sticker(overrides: Partial<StickerDto>): StickerDto {
     status: 'active',
     businessUnitIds: ['bu-a'],
     low: false,
-    updatedAt: '',
+    updatedAt: '2026-11-09 11:00:00',
     ...overrides,
   };
 }
@@ -205,6 +207,7 @@ test('ubah stiker: jenis tidak dapat diubah (teks), data terisi, id ikut dikirim
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({
     id: 's1',
+    expectedUpdatedAt: '2026-11-09 11:00:00',
     typeId: 'tp-bu',
     name: 'QC Hijau Besar',
     alias: 'Hijau-B',
@@ -212,6 +215,46 @@ test('ubah stiker: jenis tidak dapat diubah (teks), data terisi, id ikut dikirim
     minQty: 100,
     businessUnitIds: ['bu-a', 'bu-b'],
   });
+});
+
+test('membuat stiker baru tidak mengirim expectedUpdatedAt', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty('expectedUpdatedAt');
+});
+
+test('versi usang (412) dijawab pesan jelas dan dialog tetap terbuka', async () => {
+  const { onSave } = renderPage();
+  onSave.mockResolvedValueOnce(
+    stickerSaveFailure(new ApiError('CONFLICT', 'basi', 'r1', undefined, { status: 412 })),
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    'Data sudah diubah orang lain; muat ulang lalu ulangi',
+  );
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+});
+
+test('konflik nama (409) bukan versi usang: pesan servernya dipertahankan', () => {
+  const failure = stickerSaveFailure(
+    new ApiError(
+      'CONFLICT',
+      'Nama stiker sudah dipakai',
+      'r1',
+      { name: 'Nama stiker sudah dipakai' },
+      {
+        status: 409,
+      },
+    ),
+  );
+  expect(failure.name).toBe('Nama stiker sudah dipakai');
+  expect(failure.message).not.toMatch(/diubah orang lain/);
 });
 
 test('pesan konflik nama dari server tampil pada field nama dan dialog tetap terbuka', async () => {

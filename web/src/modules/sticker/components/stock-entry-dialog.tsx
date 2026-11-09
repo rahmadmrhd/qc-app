@@ -73,7 +73,26 @@ function FieldError({ message }: { message: string | undefined }) {
   ) : null;
 }
 
-const MAX_MESSAGE = `bilangan bulat 1 sampai ${STICKER_LIMITS.qtyMax}`;
+/** Pesan galat jumlah butir (masuk/keluar): kosong, bukan bilangan bulat, di bawah 1, atau melebihi batas. */
+function quantityError(text: string): string | null {
+  if (text.trim() === '') return 'Jumlah wajib diisi (minimal 1 butir)';
+  const value = Number(text);
+  if (!Number.isInteger(value)) return 'Jumlah harus bilangan bulat';
+  if (value < 1) return 'Jumlah minimal 1 butir';
+  if (value > STICKER_LIMITS.qtyMax) return `Jumlah maksimal ${STICKER_LIMITS.qtyMax}`;
+  return null;
+}
+
+/** Pesan galat selisih koreksi: kosong/0, bukan bilangan bulat, atau melebihi batas. */
+function deltaError(text: string): string | null {
+  const value = Number(text);
+  if (text.trim() === '' || value === 0) return 'Perubahan wajib diisi (bukan 0)';
+  if (!Number.isInteger(value)) return 'Perubahan harus bilangan bulat';
+  if (Math.abs(value) > STICKER_LIMITS.qtyMax) {
+    return `Perubahan maksimal ${STICKER_LIMITS.qtyMax} (boleh negatif)`;
+  }
+  return null;
+}
 
 interface BodyProps {
   mode: StockEntryMode;
@@ -115,15 +134,8 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
     if (locationId === '') found.locationId = 'Pilih lokasi';
     if (reasonRequired && trimmedReason === '') found.reason = 'Alasan wajib diisi';
     if (mode === 'adjust') {
-      const value = Number(delta);
-      if (
-        delta.trim() === '' ||
-        !Number.isInteger(value) ||
-        value === 0 ||
-        Math.abs(value) > STICKER_LIMITS.qtyMax
-      ) {
-        found.delta = 'Perubahan wajib diisi (bukan 0)';
-      }
+      const problem = deltaError(delta);
+      if (problem) found.delta = problem;
       if (Object.keys(found).length > 0) return { errors: found };
       return {
         write: {
@@ -140,22 +152,16 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
     let quantityValue: number | undefined;
     let countValue: StockCount | undefined;
     if (method === 'quantity') {
-      const value = Number(quantity);
-      if (
-        quantity.trim() === '' ||
-        !Number.isInteger(value) ||
-        value < 1 ||
-        value > STICKER_LIMITS.qtyMax
-      ) {
-        found.quantity = `Jumlah harus ${MAX_MESSAGE}`;
-      } else {
-        quantityValue = value;
-      }
+      const problem = quantityError(quantity);
+      if (problem) found.quantity = problem;
+      else quantityValue = Number(quantity);
     } else {
       const cleaned = cleanCount(count);
       const pieces = piecesOfCount(cleaned);
-      if (pieces < 1 || pieces > STICKER_LIMITS.qtyMax) {
-        found.count = `Jumlah butir harus ${MAX_MESSAGE}`;
+      if (pieces < 1) {
+        found.count = 'Hitungan minimal 1 butir';
+      } else if (pieces > STICKER_LIMITS.qtyMax) {
+        found.count = `Jumlah butir maksimal ${STICKER_LIMITS.qtyMax}`;
       } else {
         countValue = cleaned;
       }

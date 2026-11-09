@@ -25,10 +25,10 @@ export function stickerTypesQuery() {
 }
 
 /**
- * Jenis, daftar stiker (nama jenis, jumlah stiker per jenis), dan Log Audit dimuat ulang setelah mutasi jenis:
- * nama jenis tampil di daftar stiker.
+ * Mutasi katalog (jenis dan stiker): data stiker (jenis, daftar, stok, riwayat) dan Log Audit dimuat ulang, karena
+ * nama jenis/stiker tampil di banyak daftar dan perubahan katalog ditulis ke audit.
  */
-function useStickerTypeMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+function useCatalogMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
@@ -38,6 +38,18 @@ function useStickerTypeMutation<TInput, TOutput>(mutationFn: (input: TInput) => 
         queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
       ]);
     },
+  });
+}
+
+/**
+ * Mutasi stok: stok, riwayat, dan daftar stiker (penanda "Menipis") dimuat ulang. Log Audit TIDAK: penulisan stok
+ * tidak masuk `audit_log` (riwayat stok punya tabel sendiri).
+ */
+function useStockMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
   });
 }
 
@@ -48,24 +60,10 @@ export function stickersQuery() {
   });
 }
 
-/** Stiker dan jenis (jumlah stiker per jenis) serta Log Audit dimuat ulang setelah mutasi stiker. */
-function useStickerMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn,
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
-        queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
-      ]);
-    },
-  });
-}
-
 export const useSaveSticker = () =>
-  useStickerMutation((input: SaveStickerInput) => api('stickers.save', input));
+  useCatalogMutation((input: SaveStickerInput) => api('stickers.save', input));
 export const useSetStickerStatus = () =>
-  useStickerMutation((input: SetStickerStatusInput) => api('stickers.setStatus', input));
+  useCatalogMutation((input: SetStickerStatusInput) => api('stickers.setStatus', input));
 
 /** Stok per lokasi yang diminta (hanya lokasi yang boleh dilihat user; satu lokasi terlarang menolak permintaan). */
 export function stickerStockQuery(locationIds: readonly string[]) {
@@ -94,15 +92,13 @@ export function stockHistoryQuery(stickerId: string, locationIds: readonly strin
 
 /** Perubahan stok memuat ulang stok, riwayat, dan daftar stiker (penanda "Menipis" bergantung pada total stok). */
 export const useRecordStock = () =>
-  useStickerMutation((input: RecordStockInput) => api('stickerStock.record', input));
+  useStockMutation((input: RecordStockInput) => api('stickerStock.record', input));
 export const useAdjustStock = () =>
-  useStickerMutation((input: AdjustStockInput) => api('stickerStock.adjust', input));
+  useStockMutation((input: AdjustStockInput) => api('stickerStock.adjust', input));
 export const useOpname = () =>
-  useStickerMutation((input: OpnameInput) => api('stickerStock.opname', input));
+  useStockMutation((input: OpnameInput) => api('stickerStock.opname', input));
 
 export const useSaveStickerType = () =>
-  useStickerTypeMutation((input: SaveStickerTypeInput) => api('stickerTypes.save', input));
+  useCatalogMutation((input: SaveStickerTypeInput) => api('stickerTypes.save', input));
 export const useSetStickerTypeStatus = () =>
-  useStickerTypeMutation((input: SetStickerTypeStatusInput) =>
-    api('stickerTypes.setStatus', input),
-  );
+  useCatalogMutation((input: SetStickerTypeStatusInput) => api('stickerTypes.setStatus', input));
