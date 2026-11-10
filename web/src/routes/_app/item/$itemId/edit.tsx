@@ -16,6 +16,12 @@ import { assertCanEditItem } from '@/modules/item/lib/edit-access';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
+import {
+  stickersQuery,
+  stickerTypesQuery,
+  useSaveSticker,
+  useSaveStickerType,
+} from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/$itemId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
@@ -25,6 +31,8 @@ export const Route = createFileRoute('/_app/item/$itemId/edit')({
       context.queryClient.ensureQueryData(meQueryOptions()),
       context.queryClient.ensureQueryData(brandsQueryOptions()),
       context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+      context.queryClient.ensureQueryData(stickersQuery()),
+      context.queryClient.ensureQueryData(stickerTypesQuery()),
     ]);
     assertCanEditItem(me, item);
   },
@@ -41,6 +49,10 @@ function EditItemPage() {
   const saveItem = useSaveItem();
   const saveBrand = useSaveBrand();
   const saveBusinessUnit = useSaveBusinessUnit();
+  const { data: stickers } = useSuspenseQuery(stickersQuery());
+  const { data: stickerTypes } = useSuspenseQuery(stickerTypesQuery());
+  const saveSticker = useSaveSticker();
+  const saveStickerType = useSaveStickerType();
   const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
@@ -75,6 +87,21 @@ function EditItemPage() {
         }
         openBrandHref={links.openBrandHref}
         openBusinessUnitHref={links.openBusinessUnitHref}
+        stickers={stickers}
+        stickerTypes={stickerTypes}
+        onCreateSticker={
+          links.canCreateSticker ? (input) => saveSticker.mutateAsync(input) : undefined
+        }
+        onCreateStickerType={
+          links.canCreateStickerType ? (input) => saveStickerType.mutateAsync(input) : undefined
+        }
+        itemId={item.id}
+        guides={item.stickerPhotos.map((photo) => ({
+          id: photo.guideId,
+          name: photo.guideName,
+          width: photo.width,
+          height: photo.height,
+        }))}
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}
         fieldErrors={fieldErrors}

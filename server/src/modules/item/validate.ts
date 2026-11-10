@@ -4,15 +4,19 @@ import type {
   GetItemInput,
   ItemAccessoryDto,
   ItemStatus,
-  ItemStickerDto,
+  ItemStickerMarkDto,
+  ItemStickerPhotoInput,
   ListItemsPageInput,
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
+import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
 const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;
+const INSTRUCTION_FILTER_VALUES = ['none'] as const;
+const STICKER_MODE_VALUES = ['has', 'missing'] as const;
 
 function isItemRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -51,52 +55,147 @@ function readItemAliases(value: unknown, reader: ObjectReader): string[] {
   return result;
 }
 
-function readItemStickers(value: unknown, reader: ObjectReader): ItemStickerDto[] {
+/** Id rujukan (gambar pustaka, stiker, jenis, BU): teks tak kosong setelah trim, maks. 100 karakter. */
+const REF_ID_MAX = 100;
+
+function readMarkTarget(value: unknown): StickerMarkTarget | 'both' | null {
+  if (!isItemRecord(value)) return null;
+  const { kind, stickerId, typeId } = value;
+  const refId = (raw: unknown): string | null =>
+    typeof raw === 'string' && raw.trim() !== '' && raw.trim().length <= REF_ID_MAX
+      ? raw.trim()
+      : null;
+  if (kind === 'sticker' || kind === 'type') {
+    const own = refId(kind === 'sticker' ? stickerId : typeId);
+    if (own === null) return null;
+    const other = kind === 'sticker' ? typeId : stickerId;
+    if (other !== undefined && other !== null && other !== '') return 'both';
+    return kind === 'sticker' ? { kind, stickerId: own } : { kind, typeId: own };
+  }
+  return null;
+}
+
+function readPhotoMarks(
+  value: unknown,
+  photoLabel: string,
+  reader: ObjectReader,
+): ItemStickerMarkDto[] | null {
+  if (value === undefined) return [];
   if (!Array.isArray(value)) {
-    reader.fail('stickers', 'Harus berupa daftar stiker');
-    return [];
+    reader.fail('stickerPhotos', `${photoLabel}: penanda harus berupa daftar`);
+    return null;
   }
-  if (value.length > ITEM_LIMITS.stickers) {
-    reader.fail('stickers', `Maksimal ${ITEM_LIMITS.stickers} stiker`);
-    return [];
+  if (value.length > INSTRUCTION_LIMITS.marks) {
+    reader.fail('stickerPhotos', `${photoLabel}: maksimal ${INSTRUCTION_LIMITS.marks} penanda`);
+    return null;
   }
-  const result: ItemStickerDto[] = [];
-  value.forEach((entry, index) => {
-    const label = `Stiker ${index + 1}`;
+  const marks: ItemStickerMarkDto[] = [];
+  for (const [index, entry] of value.entries()) {
+    const label = `${photoLabel}, penanda ${index + 1}`;
     if (!isItemRecord(entry)) {
-      reader.fail('stickers', `${label}: tidak valid`);
-      return;
+      reader.fail('stickerPhotos', `${label}: tidak valid`);
+      return null;
     }
-    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
-    if (name === '') {
-      reader.fail('stickers', `${label}: nama wajib diisi`);
-      return;
+    const coord = (raw: unknown): raw is number =>
+      typeof raw === 'number' &&
+      Number.isInteger(raw) &&
+      raw >= 0 &&
+      raw <= INSTRUCTION_LIMITS.coordMax;
+    if (!coord(entry.x) || !coord(entry.y)) {
+      reader.fail(
+        'stickerPhotos',
+        `${label}: posisi harus bilangan bulat 0–${INSTRUCTION_LIMITS.coordMax}`,
+      );
+      return null;
     }
-    if (name.length > ITEM_LIMITS.stickerName) {
-      reader.fail('stickers', `${label}: nama maksimal ${ITEM_LIMITS.stickerName} karakter`);
-      return;
+    const target = readMarkTarget(entry.target);
+    if (target === 'both') {
+      reader.fail('stickerPhotos', `${label}: pilih stiker atau jenis, bukan keduanya`);
+      return null;
+    }
+    if (target === null) {
+      reader.fail('stickerPhotos', `${label}: sasaran tidak valid`);
+      return null;
     }
     if (entry.note !== undefined && typeof entry.note !== 'string') {
-      reader.fail('stickers', `${label}: catatan harus berupa teks`);
-      return;
+      reader.fail('stickerPhotos', `${label}: catatan harus berupa teks`);
+      return null;
     }
     const note = typeof entry.note === 'string' ? entry.note.trim() : '';
-    if (note.length > ITEM_LIMITS.stickerNote) {
-      reader.fail('stickers', `${label}: catatan maksimal ${ITEM_LIMITS.stickerNote} karakter`);
-      return;
+    if (note.length > INSTRUCTION_LIMITS.markNote) {
+      reader.fail(
+        'stickerPhotos',
+        `${label}: catatan maksimal ${INSTRUCTION_LIMITS.markNote} karakter`,
+      );
+      return null;
     }
-    const rawFile = entry.fileId;
-    if (rawFile !== undefined && rawFile !== null && typeof rawFile !== 'string') {
-      reader.fail('stickers', `${label}: berkas tidak valid`);
-      return;
+    marks.push({ x: entry.x, y: entry.y, target, note });
+  }
+  return marks;
+}
+
+/**
+ * Instruksi stiker item (tahap 3b-2): daftar foto pustaka dengan catatan, label BU (kosong -> `null`), dan penanda
+ * berurutan. Hanya bentuk dan batas di sini; keberadaan foto/stiker/jenis dan keanggotaan BU diperiksa
+ * `assertInstructionRefs` (service) terhadap basis data. Pesan menyebut nomor foto/penanda (mulai 1).
+ */
+function readStickerPhotos(value: unknown, reader: ObjectReader): ItemStickerPhotoInput[] {
+  if (!Array.isArray(value)) {
+    reader.fail('stickerPhotos', 'Harus berupa daftar foto');
+    return [];
+  }
+  if (value.length > INSTRUCTION_LIMITS.photos) {
+    reader.fail('stickerPhotos', `Maksimal ${INSTRUCTION_LIMITS.photos} foto`);
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: ItemStickerPhotoInput[] = [];
+  for (const [index, entry] of value.entries()) {
+    const label = `Foto ${index + 1}`;
+    if (!isItemRecord(entry)) {
+      reader.fail('stickerPhotos', `${label}: tidak valid`);
+      return [];
     }
-    const fileId = typeof rawFile === 'string' && rawFile.trim() !== '' ? rawFile.trim() : null;
-    if (fileId !== null && fileId.length > 100) {
-      reader.fail('stickers', `${label}: berkas tidak valid`);
-      return;
+    const guideId = typeof entry.guideId === 'string' ? entry.guideId.trim() : '';
+    if (guideId === '') {
+      reader.fail('stickerPhotos', `${label}: gambar wajib dipilih`);
+      return [];
     }
-    result.push({ name, note, fileId });
-  });
+    if (guideId.length > REF_ID_MAX) {
+      reader.fail('stickerPhotos', `${label}: gambar tidak valid`);
+      return [];
+    }
+    if (seen.has(guideId)) {
+      reader.fail('stickerPhotos', `${label}: gambar sudah dipakai di foto lain`);
+      return [];
+    }
+    seen.add(guideId);
+    if (entry.caption !== undefined && typeof entry.caption !== 'string') {
+      reader.fail('stickerPhotos', `${label}: catatan harus berupa teks`);
+      return [];
+    }
+    const caption = typeof entry.caption === 'string' ? entry.caption.trim() : '';
+    if (caption.length > INSTRUCTION_LIMITS.caption) {
+      reader.fail(
+        'stickerPhotos',
+        `${label}: catatan maksimal ${INSTRUCTION_LIMITS.caption} karakter`,
+      );
+      return [];
+    }
+    const rawBu = entry.buId;
+    if (rawBu !== undefined && rawBu !== null && typeof rawBu !== 'string') {
+      reader.fail('stickerPhotos', `${label}: label BU tidak valid`);
+      return [];
+    }
+    const buId = typeof rawBu === 'string' && rawBu.trim() !== '' ? rawBu.trim() : null;
+    if (buId !== null && buId.length > REF_ID_MAX) {
+      reader.fail('stickerPhotos', `${label}: label BU tidak valid`);
+      return [];
+    }
+    const marks = readPhotoMarks(entry.marks, label, reader);
+    if (marks === null) return [];
+    result.push({ guideId, caption, buId, marks });
+  }
   return result;
 }
 
@@ -236,13 +335,12 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');
   const lists = firstErrorReader(reader);
   const aliases = readItemAliases(reader.raw('aliases'), lists);
-  const stickers = readItemStickers(reader.raw('stickers'), lists);
+  const stickerPhotos = readStickerPhotos(reader.raw('stickerPhotos'), lists);
   const accessories = readItemAccessories(reader.raw('accessories'), lists);
   const attachments = readItemAttachments(reader.raw('attachments'), lists);
   const detail = readItemDetail(reader.raw('detail'), lists);
   const businessUnitIds = readBusinessUnitIds(reader.raw('businessUnitIds'), lists);
   checkItemJsonSize('aliases', aliases, 'nama lain', reader);
-  checkItemJsonSize('stickers', stickers, 'stiker', reader);
   checkItemJsonSize('accessories', accessories, 'kelengkapan', reader);
   checkItemJsonSize('attachments', attachments, 'gambar', reader);
   reader.done();
@@ -251,7 +349,7 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
     model,
     isCountryLock: lock === true,
     aliases,
-    stickers,
+    stickerPhotos,
     accessories,
     attachments,
     detail,
@@ -300,11 +398,32 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   if (statusRaw !== undefined && statusRaw !== null && statusRaw !== '') {
     status = reader.oneOf('status', ITEM_STATUS_VALUES);
   }
+  const hasValue = (raw: unknown): boolean => raw !== undefined && raw !== null && raw !== '';
+  let instruction: 'none' | undefined;
+  if (hasValue(reader.raw('instruction'))) {
+    instruction = reader.oneOf('instruction', INSTRUCTION_FILTER_VALUES);
+  }
+  const stickerId = reader.str('stickerId', { max: 100 });
+  const typeId = reader.str('typeId', { max: 100 });
+  if (stickerId !== '' && typeId !== '') {
+    reader.fail('typeId', 'Pilih stiker atau jenis, bukan keduanya');
+  }
+  let stickerMode: 'has' | 'missing' | undefined;
+  if (hasValue(reader.raw('stickerMode'))) {
+    stickerMode = reader.oneOf('stickerMode', STICKER_MODE_VALUES);
+    if (stickerId === '' && typeId === '') {
+      reader.fail('stickerMode', 'Mode hanya berlaku bersama stiker atau jenis');
+    }
+  }
   reader.done();
   return {
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
     ...(status ? { status } : {}),
+    ...(instruction ? { instruction } : {}),
+    ...(stickerId !== '' ? { stickerId } : {}),
+    ...(typeId !== '' ? { typeId } : {}),
+    ...(stickerId !== '' || typeId !== '' ? { stickerMode: stickerMode ?? 'has' } : {}),
   };
 }

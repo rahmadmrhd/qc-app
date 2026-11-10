@@ -3,6 +3,8 @@ import type {
   BusinessUnitDto,
   BusinessUnitOptionDto,
   SaveBusinessUnitInput,
+  StickerDto,
+  StickerTypeDto,
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { useForm } from '@tanstack/react-form';
@@ -23,13 +25,25 @@ import {
   brandSaveFailure,
 } from '@/modules/brand/components/brand-form-dialog';
 import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
+import {
+  StickerFormDialog,
+  type StickerSaveInput,
+  type StickerSaveResult,
+  stickerSaveFailure,
+} from '@/modules/sticker/components/sticker-form-dialog';
+import {
+  StickerTypeFormDialog,
+  type StickerTypeSaveInput,
+  type StickerTypeSaveResult,
+  stickerTypeSaveFailure,
+} from '@/modules/sticker/components/sticker-type-form-dialog';
 import { defaultBusinessUnitIds } from '../lib/default-business-units';
-import { errorText } from '../lib/row-error';
+import { errorText, errorTexts } from '../lib/row-error';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
 import { itemFormSchema } from '../schemas';
 import { AccessoryListField } from './accessory-list-field';
 import { ImageGalleryField } from './image-gallery-field';
-import { StickerListField } from './sticker-list-field';
+import { type GuideInfo, StickerInstructionsField } from './sticker-instructions-field';
 
 export interface ItemFormProps {
   /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
@@ -53,6 +67,20 @@ export interface ItemFormProps {
   /** Tautan ke halaman lihat merk/BU (tab baru); tidak disediakan bila user tak berhak melihatnya, sehingga tombolnya hilang. */
   openBrandHref?: (id: string) => string | null;
   openBusinessUnitHref?: (id: string) => string | null;
+  /** Katalog stiker dan jenis (pilihan sasaran penanda instruksi stiker). */
+  stickers?: readonly StickerDto[];
+  stickerTypes?: readonly StickerTypeDto[];
+  /** Gambar pustaka yang dikenal untuk foto instruksi item yang diubah (nama dan dimensi). */
+  guides?: readonly GuideInfo[];
+  /** Item yang diubah (bukan sumber salin penanda bagi dirinya sendiri). */
+  itemId?: string;
+  /**
+   * Membuat stiker baru dari dialog "Tambah stiker" pada penanda; hanya disediakan bila user berhak (`sticker: edit`).
+   * Stiker baru langsung terpilih pada penanda itu. Melempar galat bila gagal (tampil di dialog).
+   */
+  onCreateSticker?: (input: StickerSaveInput) => Promise<StickerDto>;
+  /** Idem untuk jenis stiker baru. */
+  onCreateStickerType?: (input: StickerTypeSaveInput) => Promise<StickerTypeDto>;
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
@@ -87,6 +115,12 @@ export function ItemForm({
   onCreateBusinessUnit,
   openBrandHref,
   openBusinessUnitHref,
+  stickers = [],
+  stickerTypes = [],
+  guides,
+  itemId,
+  onCreateSticker,
+  onCreateStickerType,
   defaultValues,
   title,
   submitError,
@@ -156,6 +190,49 @@ export function ItemForm({
   // Pengisian otomatis dari BU bawaan merk hanya selama BU belum dipilih/diubah manual; item yang sudah punya BU
   // (mode ubah) dianggap sudah dipilih, jadi mengganti merk tidak menimpanya.
   const buTouched = useRef(defaultValues.businessUnitIds.length > 0);
+
+  // Stiker/jenis yang baru dibuat lewat dialog langsung bisa dipilih, sebelum katalog dari server dimuat ulang.
+  const [createdStickers, setCreatedStickers] = useState<readonly StickerDto[]>([]);
+  const [createdTypes, setCreatedTypes] = useState<readonly StickerTypeDto[]>([]);
+  const [stickerDialogOpen, setStickerDialogOpen] = useState(false);
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  // Penanda yang meminta stiker/jenis baru: dipanggil dengan hasilnya agar langsung terpilih di penanda itu.
+  const stickerCreated = useRef<((sticker: StickerDto) => void) | null>(null);
+  const typeCreated = useRef<((type: StickerTypeDto) => void) | null>(null);
+  const allStickers = [
+    ...stickers,
+    ...createdStickers.filter((c) => !stickers.some((sticker) => sticker.id === c.id)),
+  ];
+  const allTypes = [
+    ...stickerTypes,
+    ...createdTypes.filter((c) => !stickerTypes.some((type) => type.id === c.id)),
+  ];
+
+  async function handleCreateSticker(input: StickerSaveInput): Promise<StickerSaveResult> {
+    if (!onCreateSticker) return 'Anda tidak berhak membuat stiker';
+    try {
+      const sticker = await onCreateSticker(input);
+      setCreatedStickers((previous) => [...previous, sticker]);
+      stickerCreated.current?.(sticker);
+      return null;
+    } catch (error) {
+      return stickerSaveFailure(error);
+    }
+  }
+
+  async function handleCreateStickerType(
+    input: StickerTypeSaveInput,
+  ): Promise<StickerTypeSaveResult> {
+    if (!onCreateStickerType) return 'Anda tidak berhak membuat jenis stiker';
+    try {
+      const type = await onCreateStickerType(input);
+      setCreatedTypes((previous) => [...previous, type]);
+      typeCreated.current?.(type);
+      return null;
+    } catch (error) {
+      return stickerTypeSaveFailure(error);
+    }
+  }
 
   async function handleCreateBrand(input: BrandSaveInput): Promise<BrandSaveResult> {
     if (!onCreateBrand) return 'Anda tidak berhak membuat merk';
@@ -339,23 +416,48 @@ export function ItemForm({
           </form.Field>
         </Section>
 
-        <Section title="Stiker yang perlu ditempel" hint="QC memakai daftar ini sebagai acuan.">
-          <form.Field name="stickers">
+        <Section
+          title="Instruksi stiker"
+          hint="Foto dari pustaka gambar dengan penanda posisi stiker; QC memakainya sebagai acuan penempelan."
+        >
+          <form.Field name="stickerPhotos">
             {(field) => (
-              <div className="space-y-1.5">
-                <StickerListField
-                  value={field.state.value}
-                  error={errorText([...field.state.meta.errors, serverError('stickers')])}
-                  onChange={(rows) => {
-                    field.handleChange(rows);
-                    clear('stickers');
-                  }}
-                />
-                <FieldError
-                  stacked
-                  errors={[...field.state.meta.errors, serverError('stickers')]}
-                />
-              </div>
+              <form.Subscribe selector={(state) => state.values.businessUnitIds}>
+                {(selectedBuIds) => (
+                  <StickerInstructionsField
+                    value={field.state.value}
+                    onChange={(photos) => {
+                      field.handleChange(photos);
+                      clear('stickerPhotos');
+                    }}
+                    businessUnits={selectedBuIds.map((id) => {
+                      const bu = buById.get(id);
+                      return { id, label: bu ? buLabel(bu) : id };
+                    })}
+                    stickers={allStickers}
+                    types={allTypes}
+                    knownGuides={guides ?? []}
+                    currentItemId={itemId}
+                    errors={errorTexts([...field.state.meta.errors, serverError('stickerPhotos')])}
+                    {...(onCreateSticker
+                      ? {
+                          onCreateSticker: (created: (sticker: StickerDto) => void) => {
+                            stickerCreated.current = created;
+                            setStickerDialogOpen(true);
+                          },
+                        }
+                      : {})}
+                    {...(onCreateStickerType
+                      ? {
+                          onCreateType: (created: (type: StickerTypeDto) => void) => {
+                            typeCreated.current = created;
+                            setTypeDialogOpen(true);
+                          },
+                        }
+                      : {})}
+                  />
+                )}
+              </form.Subscribe>
             )}
           </form.Field>
         </Section>
@@ -423,6 +525,22 @@ export function ItemForm({
             clear('businessUnitIds');
             return bu;
           }}
+        />
+      ) : null}
+      {onCreateSticker ? (
+        <StickerFormDialog
+          open={stickerDialogOpen}
+          onOpenChange={setStickerDialogOpen}
+          types={allTypes}
+          businessUnits={businessUnits}
+          onSave={handleCreateSticker}
+        />
+      ) : null}
+      {onCreateStickerType ? (
+        <StickerTypeFormDialog
+          open={typeDialogOpen}
+          onOpenChange={setTypeDialogOpen}
+          onSave={handleCreateStickerType}
         />
       ) : null}
       {onCreateBrand ? (

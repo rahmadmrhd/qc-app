@@ -129,7 +129,7 @@ describe('seed data contoh', () => {
         model: 'Baru',
         isCountryLock: false,
         aliases: ['ER-X'],
-        stickers: [],
+        stickerPhotos: [],
         accessories: [],
         attachments: [],
         detail: '',

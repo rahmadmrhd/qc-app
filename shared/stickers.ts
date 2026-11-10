@@ -35,8 +35,15 @@ export const GUIDE_LIMITS = {
   thumbMaxSide: 400,
 } as const;
 
-/** Urutan daftar pustaka gambar. */
-export const GUIDE_SORTS = ['newest', 'oldest', 'nameAsc', 'nameDesc', 'sizeDesc'] as const;
+/** Urutan daftar pustaka gambar (`usageDesc` = paling sering dipakai). */
+export const GUIDE_SORTS = [
+  'newest',
+  'oldest',
+  'nameAsc',
+  'nameDesc',
+  'sizeDesc',
+  'usageDesc',
+] as const;
 export type GuideSort = (typeof GUIDE_SORTS)[number];
 
 /**
@@ -81,4 +88,58 @@ export function isLowStock(input: {
   total: number;
 }): boolean {
   return input.status === 'active' && input.minQty > 0 && input.total <= input.minQty;
+}
+
+/**
+ * Instruksi stiker per item (tahap 3b-2, spek 2026-11-10): batas foto, penanda, dan teks. Koordinat penanda
+ * bilangan bulat permil (0..`coordMax`) dari lebar/tinggi foto.
+ */
+export const INSTRUCTION_LIMITS = {
+  /** Foto instruksi per item (satu foto pustaka hanya sekali per item). */
+  photos: 10,
+  /** Penanda per foto. */
+  marks: 30,
+  /** Panjang maksimum catatan foto (karakter). */
+  caption: 200,
+  /** Panjang maksimum catatan penanda (karakter). */
+  markNote: 120,
+  /** Nilai koordinat maksimum (permil). */
+  coordMax: 1000,
+} as const;
+
+/** Sasaran penanda: tepat satu, stiker tertentu atau jenis stiker (diterjemahkan menurut BU item). */
+export type StickerMarkTarget =
+  | { kind: 'sticker'; stickerId: string }
+  | { kind: 'type'; typeId: string };
+
+/** Bentuk minimum stiker untuk pencocokan jenis -> stiker. */
+export interface MatchSticker {
+  id: string;
+  typeId: string;
+  status: 'active' | 'inactive';
+  buIds: readonly string[];
+}
+
+/** Bentuk minimum jenis stiker untuk pencocokan. */
+export interface MatchType {
+  id: string;
+  rule: StickerRule;
+}
+
+/**
+ * SATU definisi pencocokan jenis -> stiker bagi sebuah item: hanya stiker `active` berjenis itu (status jenis tidak
+ * memengaruhi); aturan `none` = semuanya; aturan `bu` = yang tertaut ke minimal satu BU item (stiker tanpa BU tidak
+ * pernah cocok). Urutan masukan dipertahankan.
+ */
+export function stickersForType(
+  type: MatchType,
+  stickers: readonly MatchSticker[],
+  itemBuIds: readonly string[],
+): MatchSticker[] {
+  const itemBus = new Set(itemBuIds);
+  return stickers.filter((sticker) => {
+    if (sticker.typeId !== type.id || sticker.status !== 'active') return false;
+    if (type.rule === 'none') return true;
+    return sticker.buIds.some((buId) => itemBus.has(buId));
+  });
 }

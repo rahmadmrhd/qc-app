@@ -53,6 +53,14 @@ function useStockMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promis
   });
 }
 
+/** Item yang memakai satu gambar pustaka (hanya yang boleh dilihat user, maks. 20); sumber fitur "salin penanda". */
+export function stickerGuideUsagesQuery(guideId: string) {
+  return queryOptions({
+    queryKey: stickerKeys.guideUsages(guideId),
+    queryFn: () => api('stickerGuides.usages', { id: guideId }),
+  });
+}
+
 export function stickersQuery() {
   return queryOptions({
     queryKey: stickerKeys.list,

@@ -29,6 +29,8 @@ const HOUR = 60 * MIN;
 
 /** Tabel yang dikosongkan (anak lebih dulu) sebelum data contoh dimasukkan. Tidak menyentuh `settings`. */
 const RESET_TABLES = [
+  'item_sticker_marks',
+  'item_sticker_photos',
   'sticker_guide_images',
   'sticker_stock_entries',
   'sticker_stock',
@@ -180,7 +182,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         is_country_lock: item.lock ? 'true' : 'false',
         aliases: JSON.stringify(aliases),
         alias_keys: aliasKeysOf(aliases),
-        stickers: JSON.stringify([{ name: 'Label SNI', note: 'Bagian belakang', fileId: null }]),
         accessories: JSON.stringify([{ name: 'Adaptor daya', qty: 1 }]),
         attachments: '[]',
         detail_md: `## ${item.brand} ${item.model}\n\nPerangkat contoh untuk pengembangan lokal.`,

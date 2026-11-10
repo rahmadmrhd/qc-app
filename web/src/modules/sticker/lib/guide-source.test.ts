@@ -126,3 +126,12 @@ test('upload: galat pengecilan diteruskan dan tidak memanggil server', async () 
   ).rejects.toThrow('Format gambar');
   expect(apiMock).not.toHaveBeenCalled();
 });
+
+test('list meneruskan urut usageDesc ke stickerGuides.list', async () => {
+  apiMock.mockResolvedValueOnce({ items: [], nextCursor: null });
+  await stickerGuideSource.list(
+    { search: '', sort: 'usageDesc', mine: false, unused: false },
+    null,
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('stickerGuides.list', { sort: 'usageDesc' });
+});

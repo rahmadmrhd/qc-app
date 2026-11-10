@@ -32,7 +32,17 @@ export function stickerTypeLinkAccess(me: MeDto | null | undefined) {
   return { canCreateStickerType: can(me, 'sticker', 'edit') };
 }
 
-/** Field Merk dan BU di form item. */
+/** Stiker: tidak ada halaman lihat; tambah butuh `sticker: edit` (sama dengan rute `stickers.save`). */
+export function stickerLinkAccess(me: MeDto | null | undefined) {
+  return { canCreateSticker: can(me, 'sticker', 'edit') };
+}
+
+/** Field Merk, BU, serta stiker dan jenis stiker (editor instruksi) di form item. */
 export function itemFormLinkAccess(me: MeDto | null | undefined) {
-  return { ...brandLinkAccess(me), ...businessUnitLinkAccess(me) };
+  return {
+    ...brandLinkAccess(me),
+    ...businessUnitLinkAccess(me),
+    ...stickerLinkAccess(me),
+    ...stickerTypeLinkAccess(me),
+  };
 }

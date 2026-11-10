@@ -45,6 +45,28 @@ test('access manage: boleh menambah BU', () => {
   expect(itemFormLinkAccess(meWith('manage', 'edit')).canCreateBusinessUnit).toBe(true);
 });
 
+function meWithSticker(sticker: Level): MeDto {
+  const me = meWith('none', 'edit');
+  return { ...me, permissions: { ...me.permissions, sticker } } as MeDto;
+}
+
+test('Tambah stiker dan jenis hanya untuk sticker edit ke atas; tidak ada tautan Buka', () => {
+  for (const level of ['none', 'view'] as const) {
+    const links = itemFormLinkAccess(meWithSticker(level));
+    expect(links.canCreateSticker).toBe(false);
+    expect(links.canCreateStickerType).toBe(false);
+  }
+  for (const level of ['edit', 'manage'] as const) {
+    const links = itemFormLinkAccess(meWithSticker(level));
+    expect(links.canCreateSticker).toBe(true);
+    expect(links.canCreateStickerType).toBe(true);
+  }
+  expect(itemFormLinkAccess(null).canCreateSticker).toBe(false);
+  expect(itemFormLinkAccess(null).canCreateStickerType).toBe(false);
+  expect('openStickerHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
+  expect('openStickerTypeHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
+});
+
 test('jenis stiker: Tambah butuh sticker edit, tanpa tautan buka (tidak ada halaman lihat)', () => {
   const withSticker = (level: Level) =>
     ({ ...meWith('none', 'none'), permissions: { sticker: level } }) as unknown as MeDto;

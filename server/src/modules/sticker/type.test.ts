@@ -254,9 +254,15 @@ describe('jenis stiker', () => {
     );
   });
 
-  test('izin rute: list=view, save=edit, setStatus=manage (modul sticker, global)', () => {
+  test('izin rute: list=view atau item:edit, save=edit, setStatus=manage (modul sticker, global)', () => {
     const routes = getRoutes();
-    expect(routes['stickerTypes.list'].permission).toEqual({ module: 'sticker', level: 'view' });
+    // 3b-2: baca juga untuk pengubah item (editor instruksi stiker); hanya baca.
+    expect(routes['stickerTypes.list'].permission).toEqual({
+      anyOf: [
+        { module: 'sticker', level: 'view' },
+        { module: 'item', level: 'edit' },
+      ],
+    });
     expect(routes['stickerTypes.save'].permission).toEqual({ module: 'sticker', level: 'edit' });
     expect(routes['stickerTypes.setStatus'].permission).toEqual({
       module: 'sticker',

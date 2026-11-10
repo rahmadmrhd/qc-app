@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
+  stickerGuideUsagesQuery,
   stickersQuery,
   stickerTypesQuery,
   useRecordStock,
@@ -45,6 +46,18 @@ test('daftar jenis stiker: GET /api/v1/sticker-types', async () => {
   const { url, init } = lastRequest();
   expect(url).toBe('/api/v1/sticker-types');
   expect(init.method).toBe('GET');
+});
+
+test('pemakaian gambar pustaka: GET /api/v1/sticker-guides/{id}/usages, kunci per gambar', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('[]'));
+  const options = stickerGuideUsagesQuery('g 1');
+  await expect((options.queryFn as () => Promise<unknown>)()).resolves.toEqual([]);
+  const { url, init } = lastRequest();
+  expect(url).toBe('/api/v1/sticker-guides/g%201/usages');
+  expect(init.method).toBe('GET');
+  expect(options.queryKey).not.toEqual(stickerGuideUsagesQuery('g2').queryKey);
+  // berada di bawah awalan pustaka: mutasi pustaka/item yang menandai `guides` ikut menandainya
+  expect(options.queryKey.slice(0, 1)).toEqual(['sticker-guides']);
 });
 
 test('jenis baru: POST /api/v1/sticker-types; ubah: PUT dengan id di jalur', async () => {

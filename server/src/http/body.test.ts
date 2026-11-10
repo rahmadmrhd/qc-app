@@ -5,7 +5,7 @@ import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import { GUIDE_LIMITS, STICKER_LIMITS } from '@shared/stickers';
+import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
 // Batas JSON REST 2 MB (keputusan pemilik 2026-11-06): muatan sah terbesar tiap rute JSON harus muat dengan lega.
@@ -115,10 +115,16 @@ const WORST: Inputs = {
     model: text(ITEM_LIMITS.model),
     isCountryLock: true,
     aliases: longList(ITEM_LIMITS.aliases, () => text(ITEM_LIMITS.alias)),
-    stickers: longList(ITEM_LIMITS.stickers, () => ({
-      name: text(ITEM_LIMITS.stickerName),
-      note: text(ITEM_LIMITS.stickerNote),
-      fileId: UUID,
+    stickerPhotos: longList(INSTRUCTION_LIMITS.photos, () => ({
+      guideId: UUID,
+      caption: text(INSTRUCTION_LIMITS.caption),
+      buId: UUID,
+      marks: longList(INSTRUCTION_LIMITS.marks, () => ({
+        x: INSTRUCTION_LIMITS.coordMax,
+        y: INSTRUCTION_LIMITS.coordMax,
+        target: { kind: 'sticker' as const, stickerId: UUID },
+        note: text(INSTRUCTION_LIMITS.markNote),
+      })),
     })),
     accessories: longList(ITEM_LIMITS.accessories, () => ({
       name: text(ITEM_LIMITS.accessoryName),

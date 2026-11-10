@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { errorText } from './error-text';
 import { FileDropZone } from './file-drop-zone';
@@ -36,6 +37,7 @@ const SORT_OPTIONS: ReadonlyArray<{ value: LibrarySort; label: string }> = [
   { value: 'nameAsc', label: 'Nama A-Z' },
   { value: 'nameDesc', label: 'Nama Z-A' },
   { value: 'sizeDesc', label: 'Ukuran terbesar' },
+  { value: 'usageDesc', label: 'Paling sering dipakai' },
 ];
 
 const SEARCH_DELAY_MS = 300;
@@ -155,7 +157,15 @@ export function LibraryTab({
       patchCaches((list) => list.filter((entry) => entry.id !== item.id));
       onRemoved?.(item.id);
     } catch (error) {
-      toast.error(errorText(error, 'Gagal menghapus gambar'));
+      if (error instanceof ApiError && error.code === 'CONFLICT') {
+        // Dipakai item lain (mis. baru dipasang setelah daftar dimuat): jelaskan dan segarkan jumlah pemakaiannya.
+        toast.error(
+          `${errorText(error)}. Lepaskan gambar dari item yang memakainya lebih dulu, lalu coba lagi.`,
+        );
+        void queryClient.invalidateQueries({ queryKey: [source.key] });
+      } else {
+        toast.error(errorText(error, 'Gagal menghapus gambar'));
+      }
     } finally {
       setBusy(item.id, false);
     }
@@ -318,6 +328,11 @@ export function LibraryTab({
                     </Button>
                   ) : null}
                 </div>
+                {inUse ? (
+                  <p className="px-2 pt-1.5 text-xs text-muted-foreground">
+                    Dipakai {item.usageCount} item
+                  </p>
+                ) : null}
                 <div className="flex items-center gap-1 p-2 text-sm">
                   <InlineName
                     value={item.name}
@@ -327,7 +342,12 @@ export function LibraryTab({
                     onSave={(name) => void rename(item, name)}
                   />
                   {item.canRemove ? (
-                    <span title={inUse ? 'Masih dipakai' : undefined} className="shrink-0">
+                    <span
+                      title={
+                        inUse ? `Dipakai ${item.usageCount} item, tidak dapat dihapus` : undefined
+                      }
+                      className="shrink-0"
+                    >
                       <Button
                         type="button"
                         variant="ghost"

@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { NoInstructionsNote } from './sticker-instructions-view';
 
 export interface ItemsTableProps {
   items: readonly ItemSummaryDto[];
@@ -59,6 +60,7 @@ export function ItemsTable({
                 <TableCell className="font-medium">{item.brand}</TableCell>
                 <TableCell>
                   <div>{item.model}</div>
+                  {item.hasInstructions ? null : <NoInstructionsNote className="block" />}
                   {item.aliases.length > 0 ? (
                     <div className="text-xs text-muted-foreground">
                       <span className="sr-only">Nama lain: </span>

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api';
 import { LibraryTab } from './library-tab';
 import type { FileLibrarySource, LibraryItem, LibraryPage, LibraryQuery } from './types';
 
@@ -203,7 +204,14 @@ test('urut mengganti sort', async () => {
     within(select)
       .getAllByRole('option')
       .map((option) => option.textContent),
-  ).toEqual(['Terbaru', 'Terlama', 'Nama A-Z', 'Nama Z-A', 'Ukuran terbesar']);
+  ).toEqual([
+    'Terbaru',
+    'Terlama',
+    'Nama A-Z',
+    'Nama Z-A',
+    'Ukuran terbesar',
+    'Paling sering dipakai',
+  ]);
   await user.selectOptions(select, 'Nama A-Z');
   await waitFor(() =>
     expect(list(source)).toHaveBeenLastCalledWith(
@@ -286,7 +294,7 @@ test('item yang masih dipakai tidak dapat dihapus; tanpa izin tidak ada ikon', a
   await screen.findByText('Gambar a');
   const used = screen.getByRole('button', { name: 'Hapus Gambar a (masih dipakai)' });
   expect(used).toBeDisabled();
-  expect(used.closest('[title="Masih dipakai"]')).not.toBeNull();
+  expect(used.closest('[title="Dipakai 2 item, tidak dapat dihapus"]')).not.toBeNull();
   expect(screen.queryByRole('button', { name: /Hapus Gambar b/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ubah nama Gambar b' })).not.toBeInTheDocument();
 });
@@ -369,4 +377,52 @@ test('drop berkas di tab Pustaka diteruskan lewat onFiles', async () => {
   const file = new File(['x'], 'a.png', { type: 'image/png' });
   fireEvent.drop(zone, { dataTransfer: { files: [file], types: ['Files'] } });
   expect(onFiles).toHaveBeenCalledWith([file], []);
+});
+
+test('urut "Paling sering dipakai" mengirim sort usageDesc', async () => {
+  const user = userEvent.setup();
+  const source = makeSource([{ items: [mk('a')], nextCursor: null }]);
+  renderTab(source);
+  await screen.findByText('Gambar a');
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: 'Urutkan' }),
+    'Paling sering dipakai',
+  );
+  await waitFor(() =>
+    expect(list(source)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'usageDesc' }),
+      null,
+    ),
+  );
+});
+
+test('kartu menampilkan "Dipakai n item" hanya untuk gambar terpakai', async () => {
+  const source = makeSource([
+    { items: [mk('a', { usageCount: 3 }), mk('b', { usageCount: 0 })], nextCursor: null },
+  ]);
+  renderTab(source);
+  await screen.findByText('Gambar a');
+  expect(screen.getAllByText(/^Dipakai \d+ item$/).map((node) => node.textContent)).toEqual([
+    'Dipakai 3 item',
+  ]);
+});
+
+test('hapus ditolak server karena masih dipakai: pesan ramah, gambar tetap, daftar dimuat ulang', async () => {
+  const user = userEvent.setup();
+  const source = makeSource([{ items: [mk('a')], nextCursor: null }]);
+  vi.mocked(source.remove).mockRejectedValueOnce(
+    new ApiError('CONFLICT', 'Gambar masih dipakai', '-'),
+  );
+  renderTab(source);
+  await screen.findByText('Gambar a');
+  const calls = list(source).mock.calls.length;
+  await user.click(screen.getByRole('button', { name: 'Hapus Gambar a' }));
+  await user.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Hapus' }),
+  );
+  await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+  expect(String(toastError.mock.calls[0]?.[0])).toContain('Gambar masih dipakai');
+  expect(String(toastError.mock.calls[0]?.[0])).toContain('item');
+  expect(screen.getByText('Gambar a')).toBeInTheDocument();
+  await waitFor(() => expect(list(source).mock.calls.length).toBeGreaterThan(calls));
 });

@@ -93,7 +93,7 @@ export async function sweepOrphanSchemas(admin: Db, now = Date.now()): Promise<s
   return dropped;
 }
 
-/** Kloning templat: `CREATE TABLE ... LIKE` per tabel, lalu kunci asing (LIKE tidak menyalinnya). */
+/** Kloning templat: `CREATE TABLE ... LIKE` per tabel, lalu kunci asing beserta aturan ON DELETE/UPDATE-nya (LIKE tidak menyalinnya). */
 async function cloneTemplate(admin: Db, schema: string): Promise<string[]> {
   const tables = (
     await admin
@@ -106,14 +106,32 @@ async function cloneTemplate(admin: Db, schema: string): Promise<string[]> {
   const fks = (
     await admin
       .prepare(
-        'SELECT constraint_name AS c, table_name AS t, column_name AS col, referenced_table_name AS rt, referenced_column_name AS rcol FROM information_schema.key_column_usage WHERE table_schema = ? AND referenced_table_name IS NOT NULL ORDER BY constraint_name, ordinal_position',
+        'SELECT k.constraint_name AS c, k.table_name AS t, k.column_name AS col, k.referenced_table_name AS rt, k.referenced_column_name AS rcol, r.delete_rule AS dr, r.update_rule AS ur FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.constraint_schema = k.constraint_schema AND r.constraint_name = k.constraint_name AND r.table_name = k.table_name WHERE k.table_schema = ? AND k.referenced_table_name IS NOT NULL ORDER BY k.constraint_name, k.ordinal_position',
       )
       .bind(TEMPLATE_SCHEMA)
-      .all<{ c: string; t: string; col: string; rt: string; rcol: string }>()
+      .all<{
+        c: string;
+        t: string;
+        col: string;
+        rt: string;
+        rcol: string;
+        dr: string;
+        ur: string;
+      }>()
   ).results;
-  const grouped = new Map<string, { t: string; rt: string; cols: string[]; rcols: string[] }>();
+  const grouped = new Map<
+    string,
+    { t: string; rt: string; cols: string[]; rcols: string[]; dr: string; ur: string }
+  >();
   for (const fk of fks) {
-    const entry = grouped.get(fk.c) ?? { t: fk.t, rt: fk.rt, cols: [], rcols: [] };
+    const entry = grouped.get(fk.c) ?? {
+      t: fk.t,
+      rt: fk.rt,
+      cols: [],
+      rcols: [],
+      dr: fk.dr,
+      ur: fk.ur,
+    };
     entry.cols.push(`\`${fk.col}\``);
     entry.rcols.push(`\`${fk.rcol}\``);
     grouped.set(fk.c, entry);
@@ -125,7 +143,7 @@ async function cloneTemplate(admin: Db, schema: string): Promise<string[]> {
     ),
     ...[...grouped].map(
       ([name, fk]) =>
-        `ALTER TABLE \`${schema}\`.\`${fk.t}\` ADD CONSTRAINT \`${name}\` FOREIGN KEY (${fk.cols.join(', ')}) REFERENCES \`${schema}\`.\`${fk.rt}\` (${fk.rcols.join(', ')})`,
+        `ALTER TABLE \`${schema}\`.\`${fk.t}\` ADD CONSTRAINT \`${name}\` FOREIGN KEY (${fk.cols.join(', ')}) REFERENCES \`${schema}\`.\`${fk.rt}\` (${fk.rcols.join(', ')}) ON DELETE ${fk.dr} ON UPDATE ${fk.ur}`,
     ),
   ];
   await admin.exec(statements.join(';\n'));
