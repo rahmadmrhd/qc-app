@@ -265,6 +265,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'qrcodes.delete': { verb: 'DELETE', path: '/qrcodes/{id}' },
   'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults' },
+  'qrcodes.itemOptions': {
+    verb: 'GET',
+    path: '/qrcode-item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
   'qrcodes.savePreset': {
     verb: 'PUT',
     path: '/qrcode-presets/{id}',

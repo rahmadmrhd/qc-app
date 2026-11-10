@@ -75,6 +75,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'qrcodes.save': true,
   'qrcodes.delete': true,
   'qrcodes.getDefaults': true,
+  'qrcodes.itemOptions': true,
   'qrcodes.savePreset': true,
   'qrcodes.clonePreset': true,
   'qrcodes.deletePreset': true,

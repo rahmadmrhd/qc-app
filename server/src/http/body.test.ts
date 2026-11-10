@@ -171,6 +171,9 @@ const WORST: Inputs = {
   'qrcodes.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,
+    name: text(QR_LIMITS.manualBookName),
+    presetId: UUID,
+    itemIds: longList(QR_LIMITS.items, () => UUID),
     title: text(QR_LIMITS.title),
     linkSource: 'url',
     link: text(QR_LIMITS.link),

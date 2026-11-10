@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { seedBusinessUnit } from '@server-test/access-fixtures';
-import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -27,6 +27,7 @@ afterEach(() => {
 
 async function design(extra: Record<string, unknown> = {}) {
   return {
+    ...(await qrManualBookFields(env)),
     title: 'Panduan',
     linkSource: 'pdf',
     link: '',

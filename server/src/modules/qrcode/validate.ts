@@ -3,6 +3,7 @@ import type {
   ClonePresetInput,
   CloneQrPdfInput,
   ExportQrDesignInput,
+  ListQrItemOptionsInput,
   QrDesignRefInput,
   QrFileInput,
   SaveQrDesignInput,
@@ -24,11 +25,22 @@ export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   // Mengubah wajib membawa versi yang dimuat: tanpa itu, perubahan orang lain bisa tertimpa diam-diam.
   if (id && !expectedUpdatedAt) reader.fail('expectedUpdatedAt', 'Wajib diisi saat mengubah');
+  const name = reader.str('name', { max: QR_LIMITS.manualBookName });
+  const presetId = reader.str('presetId', { max: 100 });
+  const itemIdsRaw = reader.raw('itemIds');
+  if (
+    !Array.isArray(itemIdsRaw) ||
+    itemIdsRaw.length > QR_LIMITS.items ||
+    itemIdsRaw.some((value) => typeof value !== 'string' || value === '' || value.length > 100)
+  ) {
+    reader.fail('itemIds', `Pilih maksimal ${QR_LIMITS.items} item`);
+  }
   const title = reader.str('title', { required: true, max: QR_LIMITS.title });
   const linkSource = reader.oneOf('linkSource', QR_LINK_SOURCES);
   const subtitle = reader.str('subtitle', { max: QR_LIMITS.subtitle });
   const footer = reader.str('footer', { max: QR_LIMITS.footer });
   for (const [key, text] of [
+    ['name', name],
     ['title', title],
     ['subtitle', subtitle],
     ['footer', footer],
@@ -63,6 +75,9 @@ export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   }
   reader.done();
   const input: SaveQrDesignInput = {
+    name,
+    presetId,
+    itemIds: [...new Set(itemIdsRaw as string[])],
     title,
     linkSource,
     link,
@@ -202,6 +217,35 @@ export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
   }
   reader.done();
   return { id, expectedUpdatedAt, pdf: pdf as Uint8Array, png: png as Uint8Array };
+}
+
+const QR_ITEM_OPTIONS_MAX_LIMIT = 50;
+
+/** Opsi item untuk pemilih: input boleh kosong; `cursor` buram (kunci item terakhir). */
+export function validateListQrItemOptions(raw: unknown): ListQrItemOptionsInput {
+  const reader = readObject(raw ?? {});
+  const cursor = reader.raw('cursor');
+  if (cursor !== undefined && cursor !== null && (typeof cursor !== 'string' || cursor === '')) {
+    reader.fail('cursor', 'Kursor tidak valid');
+  }
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > QR_ITEM_OPTIONS_MAX_LIMIT)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${QR_ITEM_OPTIONS_MAX_LIMIT}`);
+  }
+  const query = reader.str('query', { max: 100 });
+  reader.done();
+  return {
+    ...(typeof limit === 'number' ? { limit } : {}),
+    ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(query !== '' ? { query } : {}),
+  };
 }
 
 export function validateQrFile(raw: unknown): QrFileInput {

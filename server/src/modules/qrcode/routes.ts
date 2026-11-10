@@ -8,6 +8,7 @@ import {
   getQrDefaultsDto,
   getQrDesignDto,
   listQrDesignDtos,
+  qrItemOptions,
   readQrFile,
   removeQrDesign,
   saveQrDesign,
@@ -19,6 +20,7 @@ import {
   validateClonePreset,
   validateCloneQrPdf,
   validateExportQrDesign,
+  validateListQrItemOptions,
   validateQrDesignRef,
   validateQrFile,
   validateSaveQrDesign,
@@ -33,6 +35,7 @@ type QrMethod =
   | 'qrcodes.save'
   | 'qrcodes.delete'
   | 'qrcodes.getDefaults'
+  | 'qrcodes.itemOptions'
   | 'qrcodes.savePreset'
   | 'qrcodes.clonePreset'
   | 'qrcodes.deletePreset'
@@ -47,12 +50,12 @@ export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
     'qrcodes.list': {
       permission: { module: 'qrcode', level: 'view' },
       validate: expectNull,
-      handler: (_input, ctx) => listQrDesignDtos(ctx.env),
+      handler: (_input, ctx) => listQrDesignDtos(ctx.env, ctx.user),
     },
     'qrcodes.get': {
       permission: { module: 'qrcode', level: 'view' },
       validate: validateQrDesignRef,
-      handler: (input, ctx) => getQrDesignDto(ctx.env, input),
+      handler: (input, ctx) => getQrDesignDto(ctx.env, input, ctx.user),
     },
     'qrcodes.save': {
       permission: { module: 'qrcode', level: 'edit' },
@@ -63,6 +66,11 @@ export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'view' },
       validate: expectNull,
       handler: (_input, ctx) => getQrDefaultsDto(ctx.env),
+    },
+    'qrcodes.itemOptions': {
+      permission: { module: 'qrcode', level: 'edit' },
+      validate: validateListQrItemOptions,
+      handler: (input, ctx) => qrItemOptions(ctx.env, input, ctx.user),
     },
     'qrcodes.savePreset': {
       permission: { module: 'qrcode', level: 'manage' },

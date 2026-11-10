@@ -19,6 +19,8 @@ export const QR_LIMITS = {
   reason: 500,
   /** Ukuran maksimum PNG gambar contoh (`preview`) pada ekspor (byte). */
   previewMaxBytes: 512 * 1024,
+  /** Jumlah item maksimum yang dapat dipilih pada satu konfigurasi QR (Manual Book). */
+  items: 100,
 } as const;
 
 /** Bagian label yang menampung nama Manual Book pada preset (terkunci: nilainya sama dengan nama). */

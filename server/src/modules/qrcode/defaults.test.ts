@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedBusinessUnit, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrCall, qrPdfDocumentId, seedQrEnv, seedQrPreset } from '@server-test/qrcode-env';
+import {
+  qrCall,
+  qrManualBookFields,
+  qrPdfDocumentId,
+  seedQrEnv,
+  seedQrPreset,
+} from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 
@@ -206,6 +212,7 @@ describe('konfigurasi default dan pustaka logo', () => {
     const outside = await logo('qredit@gmail.com');
     await saveLibrary([inLibrary]);
     const body = async () => ({
+      ...(await qrManualBookFields(env)),
       title: 'T',
       subtitle: '',
       footer: '',

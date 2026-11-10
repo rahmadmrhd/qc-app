@@ -161,6 +161,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'qrcodes.save': {
     id: 'q1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    name: 'Nama',
+    presetId: 'p1',
+    itemIds: ['i1', 'i2'],
     title: 'T',
     linkSource: 'url',
     link: 'https://x.id',
@@ -172,6 +175,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'qrcodes.delete': { id: 'q1' },
   'qrcodes.getDefaults': null,
+  'qrcodes.itemOptions': { query: 'a7', cursor: 'k', limit: 20 },
   'qrcodes.savePreset': {
     id: 'p1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',

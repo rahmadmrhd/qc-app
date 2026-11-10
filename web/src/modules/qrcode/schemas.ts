@@ -254,8 +254,17 @@ export function toSaveQrDesignInput(
   expectedUpdatedAt?: string,
   /** Hasil pengukuran tata letak di peramban (isi tidak muat di kanvas). */
   overflow?: boolean,
+  /** Nama Manual Book, preset, dan item; placeholder sampai form QR memilihnya (UI 4a). */
+  manualBook: Pick<SaveQrDesignInput, 'name' | 'presetId' | 'itemIds'> = {
+    name: values.title,
+    presetId: '',
+    itemIds: [],
+  },
 ): SaveQrDesignInput {
   const input: SaveQrDesignInput = {
+    name: manualBook.name,
+    presetId: manualBook.presetId,
+    itemIds: manualBook.itemIds,
     title: values.title,
     linkSource: values.linkSource,
     link: values.linkSource === 'url' ? values.link : '',

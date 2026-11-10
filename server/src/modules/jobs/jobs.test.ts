@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { runPendingJobs, scheduleCleanupJob } from '@server/jobs/runner';
 import { cleanupQrDocuments } from '@server/modules/qrcode/service';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { CLEANUP_REVOKE_LIMIT } from './cleanup';
@@ -37,6 +37,7 @@ const call = (email: string, method: string, payload: unknown) =>
 
 async function makeDesign() {
   const out = await call('qredit@gmail.com', 'qrcodes.save', {
+    ...(await qrManualBookFields(env)),
     title: 'Panduan',
     linkSource: 'pdf',
     link: '',

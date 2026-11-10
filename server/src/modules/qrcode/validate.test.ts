@@ -4,6 +4,7 @@ import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
   validateClonePreset,
   validateExportQrDesign,
+  validateListQrItemOptions,
   validateQrFile,
   validateSaveQrDesign,
   validateSaveQrPreset,
@@ -11,6 +12,9 @@ import {
 } from './validate';
 
 const url = {
+  name: 'Panduan',
+  presetId: '',
+  itemIds: ['i1'],
   title: 'Panduan',
   linkSource: 'url',
   link: 'https://contoh.com/a',
@@ -163,4 +167,32 @@ test('kloning preset: id, BU, dan nama wajib; nama maks. 60', () => {
   expect(
     fieldsOf(() => validateClonePreset({ id: 'p1', buId: 'b', name: 'x'.repeat(61) })).name,
   ).toBeDefined();
+});
+
+test('simpan: nama maks. 60, itemIds berupa daftar id unik maks. 100, presetId opsional', () => {
+  expect(validateSaveQrDesign({ ...url, itemIds: ['a', 'b', 'a'] }).itemIds).toEqual(['a', 'b']);
+  expect(validateSaveQrDesign({ ...url, itemIds: [] }).itemIds).toEqual([]);
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, name: 'x'.repeat(61) })).name).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, name: '😀' })).name).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: 'a' })).itemIds).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: [''] })).itemIds).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: [1] })).itemIds).toBeDefined();
+  const many = Array.from({ length: 101 }, (_, i) => `i${i}`);
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: many })).itemIds).toContain('100');
+  const { itemIds: _omit, ...noItems } = url;
+  expect(fieldsOf(() => validateSaveQrDesign(noItems)).itemIds).toBeDefined();
+  expect(validateSaveQrDesign({ ...url, presetId: 'p1' }).presetId).toBe('p1');
+});
+
+test('opsi item: input boleh kosong; limit 1-50 bulat; kursor tak boleh kosong', () => {
+  expect(validateListQrItemOptions(null)).toEqual({});
+  expect(validateListQrItemOptions({ query: ' a7 ', limit: 5, cursor: 'k' })).toEqual({
+    query: 'a7',
+    limit: 5,
+    cursor: 'k',
+  });
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 0 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 51 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 1.5 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ cursor: '' })).cursor).toBeDefined();
 });

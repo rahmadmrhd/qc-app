@@ -8,14 +8,27 @@ import {
 } from '@server/modules/qrcode/repo';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { seedRole, seedUser } from './access-fixtures';
+import { seedBrand, seedItem } from './item-fixtures';
 import { restCall } from './rest-call';
 import type { TestEnv } from './test-env';
 
-/** qrview@/qredit@/qrmanage@ = modul qrcode per level (Semua lokasi); noqr@ = item view saja. */
+/**
+ * qrview@/qredit@/qrmanage@ = modul qrcode per level (Semua lokasi; edit/manage ditambah item view); noqr@ = item view
+ * saja.
+ */
 export async function seedQrEnv(env: TestEnv): Promise<void> {
   await seedRole(env, { id: 'r-qv', name: 'QR view', permissions: { qrcode: 'view' } });
-  await seedRole(env, { id: 'r-qe', name: 'QR edit', permissions: { qrcode: 'edit' } });
-  await seedRole(env, { id: 'r-qm', name: 'QR manage', permissions: { qrcode: 'manage' } });
+  // edit/manage juga melihat item (semua BU): konfigurasi QR wajib memilih item (spek 4a).
+  await seedRole(env, {
+    id: 'r-qe',
+    name: 'QR edit',
+    permissions: { qrcode: 'edit', item: 'view' },
+  });
+  await seedRole(env, {
+    id: 'r-qm',
+    name: 'QR manage',
+    permissions: { qrcode: 'manage', item: 'view' },
+  });
   await seedRole(env, { id: 'r-item', name: 'Item', permissions: { item: 'view' } });
   await seedUser(env, { id: 'u-qv', email: 'qrview@gmail.com', roleIds: ['r-qv'] });
   await seedUser(env, { id: 'u-qe', email: 'qredit@gmail.com', roleIds: ['r-qe'] });
@@ -118,4 +131,20 @@ export async function seedQrPreset(
   };
   await env.DB.batch([insertQrPresetStmt(env.DB, record)]);
   return record;
+}
+
+/** Item aktif BARU di BU bawaan (satu item hanya untuk satu konfigurasi QR): pasangan `qrPdfDocumentId`. */
+export async function qrItemId(env: Pick<Env, 'DB'>): Promise<string> {
+  const id = `qr-item-${crypto.randomUUID()}`;
+  await seedBrand(env, 'Merk Uji', { id: 'brand-merk-uji' }).catch(() => undefined);
+  await seedItem(env, { id, brand: 'Merk Uji', brandId: 'brand-merk-uji', model: id });
+  return id;
+}
+
+/** Bagian isian Manual Book (nama, preset, satu item baru) untuk badan `qrcodes.save` pada tes. */
+export async function qrManualBookFields(
+  env: Pick<Env, 'DB'>,
+  name = 'Manual Uji',
+): Promise<{ name: string; presetId: string; itemIds: string[] }> {
+  return { name, presetId: '', itemIds: [await qrItemId(env)] };
 }

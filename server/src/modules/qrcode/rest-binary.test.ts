@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { runPendingJobs } from '@server/jobs/runner';
-import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
@@ -39,6 +39,7 @@ async function makeDesign() {
   const response = await rest.post('/qrcodes', {
     email: 'qredit@gmail.com',
     body: {
+      ...(await qrManualBookFields(env)),
       title: 'Panduan Ö',
       linkSource: 'pdf',
       link: '',

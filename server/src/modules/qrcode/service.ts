@@ -2,22 +2,27 @@ import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { base64ToBytes, bytesToBase64, shortDigest } from '@server/core/bytes';
 import type { ActorRef } from '@server/core/context';
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf } from '@server/core/settings';
+import type { UserContext } from '@server/modules/access/context';
 import { listBusinessUnitBriefs, mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import type {
   ClonePresetInput,
   CloneQrPdfInput,
+  ListQrItemOptionsInput,
   QrDefaultsDto,
   QrDesignDto,
+  QrDesignItemDto,
   QrDesignRefInput,
   QrDocumentDto,
   QrFileDto,
   QrFileInput,
+  QrItemOptionsPageDto,
   QrLogoLibraryDto,
   QrPresetDto,
   SaveQrDesignInput,
@@ -39,7 +44,21 @@ import {
   qrExportStatus,
   qrPdfFileName,
 } from '@shared/qrcode';
+import type { StickerStatus } from '@shared/stickers';
 import { ensureQrDocFolder, QR_FOLDER_SETTING } from './folders';
+import {
+  claimItemsStmts,
+  designHasVersions,
+  designNamesOf,
+  findItemsById,
+  latestVersionsByDesign,
+  listAttachedItems,
+  noVersionsGuardStmt,
+  queryItemOptions,
+  releaseAllItemsStmt,
+  releaseItemsStmt,
+  visibleItemIds,
+} from './items';
 import type {
   NewQrDesignRecord,
   NewQrPresetRecord,
@@ -103,13 +122,62 @@ export async function qrDocumentMap(env: Env): Promise<Map<string, QrDocumentRec
   return new Map((await listQrDocuments(env)).map((doc) => [doc.id, doc]));
 }
 
+/** Bagian DTO yang bergantung pada pembaca (item terlihat menurut BU) dan versi stiker. */
+export interface QrDesignView {
+  items: QrDesignItemDto[];
+  hiddenItemCount: number;
+  stickerVersion: number;
+  stickerStatus: StickerStatus | '';
+}
+
+const EMPTY_VIEW: QrDesignView = {
+  items: [],
+  hiddenItemCount: 0,
+  stickerVersion: 0,
+  stickerStatus: '',
+};
+
+/** Tampilan per konfigurasi bagi `user`: item terlihat, jumlah tersembunyi, dan versi stiker terbaru. */
+async function designViews(env: Env, user: UserContext): Promise<Map<string, QrDesignView>> {
+  const [attached, latest] = await Promise.all([
+    listAttachedItems(env.DB),
+    latestVersionsByDesign(env.DB),
+  ]);
+  const visible = await visibleItemIds(
+    env.DB,
+    user,
+    [...attached.values()].flatMap((list) => list.map((item) => item.id)),
+  );
+  const views = new Map<string, QrDesignView>();
+  for (const designId of new Set([...attached.keys(), ...latest.keys()])) {
+    const all = attached.get(designId) ?? [];
+    const shown = all.filter((item) => visible.has(item.id));
+    const version = latest.get(designId);
+    views.set(designId, {
+      items: shown.map((item) => ({ id: item.id, brand: item.brand, model: item.model })),
+      hiddenItemCount: all.length - shown.length,
+      stickerVersion: version?.version ?? 0,
+      stickerStatus: version?.status ?? '',
+    });
+  }
+  return views;
+}
+
 export function toQrDesignDto(
   design: NewQrDesignRecord,
   documents: ReadonlyMap<string, QrDocumentRecord>,
+  view: QrDesignView = EMPTY_VIEW,
 ): QrDesignDto {
   const content = qrDesignContent(design, documents);
   return {
     id: design.id,
+    name: design.name,
+    namePlacement: design.namePlacement,
+    presetId: design.presetId,
+    items: view.items,
+    hiddenItemCount: view.hiddenItemCount,
+    stickerVersion: view.stickerVersion,
+    stickerStatus: view.stickerStatus,
     title: design.title,
     linkSource: design.linkSource,
     link: content.link,
@@ -134,8 +202,12 @@ export function toQrDesignDto(
 export function qrDesignSnapshot(
   design: NewQrDesignRecord,
   documents: ReadonlyMap<string, QrDocumentRecord>,
+  itemIds: readonly string[],
 ): Record<string, unknown> {
   return {
+    name: design.name,
+    presetId: design.presetId,
+    items: [...itemIds].sort().join(','),
     title: design.title,
     linkSource: design.linkSource,
     link: qrEffectiveLink(design, documents),
@@ -148,18 +220,36 @@ export function qrDesignSnapshot(
   };
 }
 
-export async function listQrDesignDtos(env: Env): Promise<QrDesignDto[]> {
-  const [designs, documents] = await Promise.all([listQrDesigns(env), qrDocumentMap(env)]);
+export async function listQrDesignDtos(env: Env, user: UserContext): Promise<QrDesignDto[]> {
+  const [designs, documents, views] = await Promise.all([
+    listQrDesigns(env),
+    qrDocumentMap(env),
+    designViews(env, user),
+  ]);
   return designs
-    .map((design) => toQrDesignDto(design, documents))
+    .map((design) => toQrDesignDto(design, documents, views.get(design.id)))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title));
 }
 
-export async function getQrDesignDto(env: Env, input: QrDesignRefInput): Promise<QrDesignDto> {
+export async function getQrDesignDto(
+  env: Env,
+  input: QrDesignRefInput,
+  user: UserContext,
+): Promise<QrDesignDto> {
   const designs = await listQrDesigns(env);
   const design = designs.find((row) => row.id === input.id);
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
-  return toQrDesignDto(design, await qrDocumentMap(env));
+  const [documents, views] = await Promise.all([qrDocumentMap(env), designViews(env, user)]);
+  return toQrDesignDto(design, documents, views.get(design.id));
+}
+
+/** Opsi item bagi pemilih di form QR (item aktif yang terlihat bagi pengguna menurut BU). */
+export function qrItemOptions(
+  env: Env,
+  input: ListQrItemOptionsInput,
+  user: UserContext,
+): Promise<QrItemOptionsPageDto> {
+  return queryItemOptions(env, user, input);
 }
 
 function toQrPresetDto(record: QrPresetRecord): QrPresetDto {
@@ -483,7 +573,7 @@ interface SaveOutcome {
 export async function saveQrDesign(
   env: Env,
   input: SaveQrDesignInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<QrDesignDto> {
   // Berbagi PDF (I/O Drive) sebelum menulis: PDF yang sebelumnya dicabut dibagikan lagi saat dipakai.
   const pdfId = input.linkSource === 'pdf' ? input.documentId : '';
@@ -521,7 +611,7 @@ async function afterQrCommit(label: string, run: () => Promise<unknown>): Promis
 async function saveQrDesignNow(
   env: Env,
   input: SaveQrDesignInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<SaveOutcome> {
   const designs = await listQrDesigns(env);
   const existing = input.id ? designs.find((row) => row.id === input.id) : undefined;
@@ -576,15 +666,71 @@ async function saveQrDesignNow(
     const message = 'PDF ini sudah dipakai konfigurasi QR lain; unggah atau salin PDF tersendiri';
     throw appError('VALIDATION', message, { documentId: message });
   }
+  const fieldFail = (
+    field: string,
+    message: string,
+    code: 'VALIDATION' | 'CONFLICT' = 'VALIDATION',
+  ) => appError(code, message, { [field]: message });
+
+  // Preset asal: dibutuhkan saat dibuat (penempatan nama disalin); saat mengubah hanya dicek bila berganti.
+  let preset: QrPresetRecord | undefined;
+  if (input.presetId !== '' && input.presetId !== existing?.presetId) {
+    preset = (await listQrPresets(env)).find((row) => row.id === input.presetId);
+    if (!preset) throw fieldFail('presetId', 'Konfigurasi default tidak ditemukan');
+  }
+  const namePlacement = existing ? existing.namePlacement : (preset?.namePlacement ?? '');
+
+  // Item: hanya yang terlihat bagi penyimpan yang boleh dipilih/dilepas; yang tak terlihat tetap terpasang.
+  const attached = await listAttachedItems(env.DB);
+  const ownedNow = existing ? (attached.get(existing.id) ?? []) : [];
+  const ownedIds = new Set(ownedNow.map((item) => item.id));
+  const requested = input.itemIds;
+  const fetched = await findItemsById(env.DB, requested);
+  const visible = await visibleItemIds(env.DB, actor, [
+    ...requested,
+    ...ownedNow.map((item) => item.id),
+  ]);
+  const otherNames = await designNamesOf(
+    env.DB,
+    [...fetched.values()].map((item) => item.designId),
+  );
+  for (const id of requested) {
+    const item = fetched.get(id);
+    // Item tak ada dan item di luar BU penyimpan dijawab sama (keberadaan item BU lain tidak bocor).
+    if (!item || !visible.has(id)) throw fieldFail('itemIds', 'Item tidak ditemukan');
+    if (item.designId !== '' && item.designId !== existing?.id) {
+      throw fieldFail('itemIds', itemTakenMessage(item, otherNames.get(item.designId)), 'CONFLICT');
+    }
+    if (!ownedIds.has(id) && item.status !== 'active') {
+      throw fieldFail(
+        'itemIds',
+        `Item "${item.brand} ${item.model}" nonaktif dan tidak dapat dipilih`,
+      );
+    }
+  }
+  const hiddenOwned = ownedNow.filter((item) => !visible.has(item.id)).map((item) => item.id);
+  const toAdd = requested.filter((id) => !ownedIds.has(id));
+  const toRemove = ownedNow
+    .filter((item) => visible.has(item.id) && !requested.includes(item.id))
+    .map((item) => item.id);
+  const finalIds = [...hiddenOwned, ...requested].sort();
+  // Konfigurasi baru, yang sudah punya stiker, atau yang menampung nama di label wajib bernama dan beritem;
+  // konfigurasi lama tanpa stiker boleh disimpan tanpa keduanya (baru menjadi Manual Book setelah dilengkapi).
+  const hasVersions = existing ? await designHasVersions(env.DB, existing.id) : false;
+  if (!existing || hasVersions || namePlacement !== '') {
+    if (input.name === '') throw fieldFail('name', 'Nama Manual Book wajib diisi');
+    if (finalIds.length === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
+  }
+
   const now = nowIso(env);
   const next: NewQrDesignRecord = {
     id: existing?.id ?? crypto.randomUUID(),
-    title: input.title,
+    title: namePlacement === 'title' ? input.name : input.title,
     linkSource: input.linkSource,
     link: input.linkSource === 'url' ? input.link : '',
     documentId: input.linkSource === 'pdf' ? input.documentId : '',
-    subtitle: input.subtitle,
-    footer: input.footer,
+    subtitle: namePlacement === 'subtitle' ? input.name : input.subtitle,
+    footer: namePlacement === 'footer' ? input.name : input.footer,
     logoFileId: input.logoFileId,
     layout: input.layout,
     style: input.style ?? existing?.style ?? DEFAULT_QR_STYLE,
@@ -594,10 +740,10 @@ async function saveQrDesignNow(
     exportedBy: existing?.exportedBy ?? '',
     exportPdfDriveId: existing?.exportPdfDriveId ?? '',
     exportPngDriveId: existing?.exportPngDriveId ?? '',
-    // Nama Manual Book, penempatan, dan preset asal dikelola di tugas berikutnya (4a); nilai tersimpan dipertahankan.
-    name: existing?.name ?? '',
-    namePlacement: existing?.namePlacement ?? '',
-    presetId: existing?.presetId ?? '',
+    // Penempatan nama hanya ditetapkan saat dibuat (disalin dari preset) dan tak berubah sesudahnya.
+    name: input.name,
+    namePlacement,
+    presetId: input.presetId,
     createdAt: existing?.createdAt ?? now,
     createdBy: existing?.createdBy ?? actor.email,
     updatedAt: now,
@@ -608,39 +754,53 @@ async function saveQrDesignNow(
     next.logoFileId !== ''
       ? await planAttachFiles(env, [next.logoFileId], 'qrlogo', 'shared', undefined, actor.email)
       : [];
+  const viewOf = async (record: NewQrDesignRecord): Promise<QrDesignDto> =>
+    toQrDesignDto(record, documents, (await designViews(env, actor)).get(record.id));
 
   if (!existing) {
-    await env.DB.batch([
-      insertQrDesignStmt(env.DB, next),
-      ...attach,
-      writeAudit(env.DB, {
-        ts: now,
-        actor: actor.email,
-        action: 'qrcode.create',
-        target: next.title,
-        before: null,
-        after: qrDesignSnapshot(next, documents),
-      }),
-    ]);
-    return { dto: toQrDesignDto(next, documents), released: [] };
+    await runItemBatch(
+      env,
+      [
+        insertQrDesignStmt(env.DB, next),
+        ...claimItemsStmts(env.DB, next.id, toAdd),
+        ...attach,
+        writeAudit(env.DB, {
+          ts: now,
+          actor: actor.email,
+          action: 'qrcode.create',
+          target: next.title,
+          before: null,
+          after: qrDesignSnapshot(next, documents, finalIds),
+        }),
+      ],
+      next.id,
+      toAdd,
+    );
+    return { dto: await viewOf(next), released: [] };
   }
-  const before = qrDesignSnapshot(existing, documents);
-  const after = qrDesignSnapshot(next, documents);
+  const before = qrDesignSnapshot(
+    existing,
+    documents,
+    ownedNow.map((item) => item.id),
+  );
+  const after = qrDesignSnapshot(next, documents, finalIds);
   if (JSON.stringify(before) === JSON.stringify(after)) {
     // Hanya flag "tidak muat" (laporan peramban) yang berubah: simpan diam-diam, tanpa audit dan tanpa
     // menaikkan updatedAt (agar versi yang sedang dimuat pengguna lain tidak jadi basi).
     if (existing.overflow !== next.overflow) {
       const flagged: QrDesignRecord = { ...existing, overflow: next.overflow };
       await env.DB.batch([updateQrDesignStmt(env.DB, flagged)]);
-      return { dto: toQrDesignDto(flagged, documents), released: [] };
+      return { dto: await viewOf(flagged), released: [] };
     }
-    return { dto: toQrDesignDto(existing, documents), released: [] };
+    return { dto: await viewOf(existing), released: [] };
   }
-  await runGuardedBatch(
-    env.DB,
+  await runItemBatch(
+    env,
     [
       updateQrDesignStmt(env.DB, next, existing.updatedAt),
       guardChanged(env.DB),
+      ...releaseItemsStmt(env.DB, existing.id, toRemove),
+      ...claimItemsStmts(env.DB, existing.id, toAdd),
       ...attach,
       writeAudit(env.DB, {
         ts: now,
@@ -651,15 +811,54 @@ async function saveQrDesignNow(
         after,
       }),
     ],
-    staleError,
+    existing.id,
+    toAdd,
   );
   return {
-    dto: toQrDesignDto(next, documents),
+    dto: await viewOf(next),
     released:
       existing.documentId !== '' && existing.documentId !== next.documentId
         ? [existing.documentId]
         : [],
   };
+}
+
+function itemTakenMessage(
+  item: { brand: string; model: string },
+  designName: string | undefined,
+): string {
+  return `Item "${item.brand} ${item.model}" sudah tergabung ke Manual Book "${designName ?? 'lain'}"; keluarkan dulu dari sana`;
+}
+
+/**
+ * Menulis konfigurasi beserta pemasangan item dalam SATU transaksi. Penjaga yang gagal (versi usang atau item yang
+ * direbut konfigurasi lain pada saat yang sama) membatalkan seluruhnya; bila penyebabnya item yang kini dimiliki
+ * konfigurasi lain, pesan menyebut Manual Book itu.
+ */
+async function runItemBatch(
+  env: Env,
+  statements: DbStatement[],
+  designId: string,
+  claimedIds: readonly string[],
+): Promise<void> {
+  try {
+    await runGuardedBatch(env.DB, statements, staleError);
+  } catch (error) {
+    if (claimedIds.length > 0 && (error as { stale?: boolean }).stale === true) {
+      const now = await findItemsById(env.DB, claimedIds);
+      const taken = claimedIds
+        .map((id) => now.get(id))
+        .find((item) => item !== undefined && item.designId !== '' && item.designId !== designId);
+      if (taken) {
+        const message = itemTakenMessage(
+          taken,
+          (await designNamesOf(env.DB, [taken.designId])).get(taken.designId),
+        );
+        throw appError('CONFLICT', message, { itemIds: message });
+      }
+    }
+    throw error;
+  }
 }
 
 /** Masa tenggang unggahan yang belum dipakai konfigurasi mana pun sebelum berbaginya dicabut. */
@@ -749,18 +948,29 @@ export async function removeQrDesign(
 ): Promise<QrDesignRefInput> {
   const design = (await listQrDesigns(env)).find((row) => row.id === input.id);
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
-  const documents = await qrDocumentMap(env);
-  await env.DB.batch([
-    deleteQrDesignStmt(env.DB, design.id),
-    writeAudit(env.DB, {
-      ts: nowIso(env),
-      actor: actor.email,
-      action: 'qrcode.delete',
-      target: design.title,
-      before: qrDesignSnapshot(design, documents),
-      after: null,
-    }),
-  ]);
+  const hasStickerMessage =
+    'Konfigurasi sudah punya stiker Manual Book dan tidak dapat dihapus; stiker lama dinonaktifkan di katalog';
+  if (await designHasVersions(env.DB, design.id)) throw appError('CONFLICT', hasStickerMessage);
+  const [documents, attached] = await Promise.all([qrDocumentMap(env), listAttachedItems(env.DB)]);
+  const itemIds = (attached.get(design.id) ?? []).map((item) => item.id);
+  await runGuardedBatch(
+    env.DB,
+    [
+      // Ekspor serentak yang baru melahirkan stiker membatalkan penghapusan.
+      noVersionsGuardStmt(env.DB, design.id),
+      releaseAllItemsStmt(env.DB, design.id),
+      deleteQrDesignStmt(env.DB, design.id),
+      writeAudit(env.DB, {
+        ts: nowIso(env),
+        actor: actor.email,
+        action: 'qrcode.delete',
+        target: design.title,
+        before: qrDesignSnapshot(design, documents, itemIds),
+        after: null,
+      }),
+    ],
+    () => appError('CONFLICT', hasStickerMessage),
+  );
   // I/O Drive sesudah database. Logo dan PDF sumber sengaja tidak dibuang (label tercetak tetap bisa dibuka).
   for (const driveId of [design.exportPdfDriveId, design.exportPngDriveId]) {
     if (driveId === '') continue;

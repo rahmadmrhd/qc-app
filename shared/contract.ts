@@ -693,8 +693,28 @@ export interface AddCommentInput extends HandoverRefInput {
 }
 
 // --- QR Code Label ---
+/** Item yang tergabung ke satu konfigurasi QR (Manual Book); hanya item yang terlihat bagi pembaca. */
+export interface QrDesignItemDto {
+  id: string;
+  brand: string;
+  model: string;
+}
 export interface QrDesignDto {
   id: string;
+  /** Nama Manual Book (dihasilkan dari item, boleh diedit); `''` = konfigurasi lama tanpa nama. */
+  name: string;
+  /** Bagian label yang menampung nama (terkunci ke nama); `''` = tidak ada. */
+  namePlacement: QrNamePlacement | '';
+  /** Preset asal (pembanding banner penyimpangan); `''` = tanpa preset. */
+  presetId: string;
+  /** Item yang tergabung dan terlihat bagi pembaca (BU), urut merk lalu tipe. */
+  items: QrDesignItemDto[];
+  /** Jumlah item tergabung yang tidak terlihat bagi pembaca (di luar BU-nya). */
+  hiddenItemCount: number;
+  /** Nomor versi stiker terbaru (0 = belum pernah melahirkan stiker). */
+  stickerVersion: number;
+  /** Status stiker versi terbaru; `''` bila belum ada stiker. */
+  stickerStatus: StickerStatus | '';
   title: string;
   linkSource: QrLinkSource;
   /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber. */
@@ -720,6 +740,15 @@ export interface QrDesignDto {
 export interface SaveQrDesignInput {
   id?: string;
   expectedUpdatedAt?: string;
+  /** Nama Manual Book; wajib untuk konfigurasi baru. */
+  name: string;
+  /** Preset asal (`''` = tanpa preset); saat dibuat, penempatan nama disalin dari preset ini. */
+  presetId: string;
+  /**
+   * Daftar item yang tergabung DI ANTARA item yang terlihat bagi penyimpan (daftar lengkapnya, bukan selisih); item
+   * yang tak terlihat tetap terpasang dan tidak dikirim. Konfigurasi baru wajib minimal satu.
+   */
+  itemIds: string[];
   title: string;
   linkSource: QrLinkSource;
   link: string;
@@ -794,6 +823,25 @@ export interface QrLogoLibraryDto {
 }
 export interface QrDesignRefInput {
   id: string;
+}
+/** Opsi item untuk pemilih di form QR: hanya item aktif yang terlihat bagi pengguna (BU). */
+export interface QrItemOptionDto {
+  id: string;
+  brand: string;
+  model: string;
+  /** BU item (menentukan preset yang ditawarkan). */
+  businessUnitIds: string[];
+  /** Nama Manual Book tempat item sudah tergabung; `''` = belum tergabung. */
+  manualBookName: string;
+}
+export interface ListQrItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface QrItemOptionsPageDto {
+  items: QrItemOptionDto[];
+  nextCursor: string | null;
 }
 export interface QrDocumentDto {
   id: string;
@@ -894,6 +942,7 @@ export interface ApiContract {
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
+  'qrcodes.itemOptions': { input: ListQrItemOptionsInput; output: QrItemOptionsPageDto };
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
   'qrcodes.clonePreset': { input: ClonePresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
