@@ -222,13 +222,14 @@ test('menu Stiker (sticker view) tidak ikut aktif di Jenis Stiker', () => {
   expect(stiker).toMatchObject({
     label: 'Stiker',
     permission: { module: 'sticker', level: 'view' },
-    excludes: ['/sticker/types', '/sticker/stock'],
+    excludes: ['/sticker/types', '/sticker/stock', '/sticker/library'],
   });
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
   expect(isNavItemActive(stiker, at('/sticker'))).toBe(true);
   expect(isNavItemActive(stiker, at('/sticker/types'))).toBe(false);
   expect(isNavItemActive(stiker, at('/sticker/stock'))).toBe(false);
+  expect(isNavItemActive(stiker, at('/sticker/library'))).toBe(false);
   expect(isNavItemActive(jenis, at('/sticker/types'))).toBe(true);
   const stok = items.find((entry) => entry.to === '/sticker/stock');
   if (!stok) throw new Error('menu hilang');
@@ -275,4 +276,25 @@ test('Stok Stiker hanya tampil bila stickerstock view di lokasi aktif', () => {
       )?.items ?? []
     ).map((entry) => entry.label),
   ).not.toContain('Stok Stiker');
+});
+
+test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja, dan aktif sendiri', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
+  const pustaka = items.find((entry) => entry.to === '/sticker/library');
+  if (!pustaka) throw new Error('menu hilang');
+  expect(pustaka.label).toBe('Pustaka Gambar');
+  expect(pustaka.permission).toEqual([
+    { module: 'item', level: 'view' },
+    { module: 'sticker', level: 'view' },
+  ]);
+  const labels = (me: MeDto) =>
+    visibleNavGroups(NAV_GROUPS, me)
+      .find((group) => group.label === 'Stiker')
+      ?.items.map((entry) => entry.label) ?? [];
+  expect(labels(stickerMe({}))).not.toContain('Pustaka Gambar');
+  expect(labels(stickerMe({ item: 'view' }))).toEqual(['Pustaka Gambar']);
+  expect(labels(stickerMe({ sticker: 'view' }))).toContain('Pustaka Gambar');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(pustaka, at('/sticker/library'))).toBe(true);
 });

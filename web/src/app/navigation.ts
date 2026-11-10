@@ -9,6 +9,7 @@ import {
   Contact,
   History,
   House,
+  Images,
   MapPin,
   Package,
   QrCode,
@@ -95,7 +96,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Stiker',
         to: '/sticker',
         icon: Sticker,
-        excludes: ['/sticker/types', '/sticker/stock'],
+        excludes: ['/sticker/types', '/sticker/stock', '/sticker/library'],
         permission: { module: 'sticker', level: 'view' },
       },
       {
@@ -109,6 +110,15 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/sticker/stock',
         icon: Boxes,
         permission: { module: 'stickerstock', level: 'view', scope: 'location' },
+      },
+      {
+        label: 'Pustaka Gambar',
+        to: '/sticker/library',
+        icon: Images,
+        permission: [
+          { module: 'item', level: 'view' },
+          { module: 'sticker', level: 'view' },
+        ],
       },
     ],
   },

@@ -32,6 +32,7 @@ const EXPECTED_TABLES = [
   'schema_migrations',
   'settings',
   'sticker_business_units',
+  'sticker_guide_images',
   'sticker_stock',
   'sticker_stock_entries',
   'sticker_types',
@@ -71,12 +72,13 @@ describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
-    expect(list.slice(0, 5).map((m) => m.name)).toEqual([
+    expect(list.slice(0, 6).map((m) => m.name)).toEqual([
       '0001_baseline.sql',
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
       '0004_business_units.sql',
       '0005_stiker.sql',
+      '0006_pustaka_gambar_stiker.sql',
     ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
@@ -136,7 +138,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('28 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('29 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -153,6 +155,7 @@ describe('skema baseline', () => {
       { name: '0003_hapus_external_id.sql' },
       { name: '0004_business_units.sql' },
       { name: '0005_stiker.sql' },
+      { name: '0006_pustaka_gambar_stiker.sql' },
     ]);
   });
 
@@ -233,6 +236,7 @@ describe('skema baseline', () => {
         'qr_designs.qr_designs_document',
         'roles.roles_name_unique',
         'sticker_business_units.sticker_business_units_bu',
+        'sticker_guide_images.sticker_guide_images_name',
         'sticker_stock_entries.sticker_stock_entries_location_ts',
         'sticker_stock_entries.sticker_stock_entries_sticker_ts',
         'sticker_types.sticker_types_name_unique',
@@ -256,6 +260,7 @@ describe('skema baseline', () => {
     expect(pks.brand_default_business_units).toBe('brand_id,bu_id');
     expect(pks.business_units).toBe('id');
     expect(pks.sticker_business_units).toBe('sticker_id,bu_id');
+    expect(pks.sticker_guide_images).toBe('id');
     expect(pks.sticker_stock).toBe('sticker_id,location_id');
     expect(pks.sticker_stock_entries).toBe('id');
     expect(pks.settings).toBe('key');

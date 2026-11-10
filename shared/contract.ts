@@ -3,7 +3,7 @@ import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
-import type { StickerRule, StockCount, StockEntryKind } from './stickers';
+import type { GuideSort, StickerRule, StockCount, StockEntryKind } from './stickers';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -196,6 +196,63 @@ export interface UploadFileInput {
 }
 
 export interface GetFileInput {
+  id: string;
+}
+
+/** Gambar pustaka stiker (tahap 3b-1): metadata; thumbnail diambil lewat `stickerGuides.thumbnail`. */
+export interface StickerGuideDto {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+  uploadedBy: string;
+  uploadedByMe: boolean;
+  createdAt: string;
+  /** Jumlah item yang memakai gambar ini sebagai gambar acuan penempelan (penempatan di item). */
+  usageCount: number;
+  canRename: boolean;
+  canRemove: boolean;
+}
+
+export interface ListStickerGuidesInput {
+  search?: string;
+  sort?: GuideSort;
+  /** Hanya gambar yang diunggah pengguna ini. */
+  mine?: boolean;
+  /** Hanya gambar yang belum dipakai item mana pun. */
+  unused?: boolean;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface StickerGuidePageDto {
+  items: StickerGuideDto[];
+  nextCursor: string | null;
+}
+
+/** Unggah gambar pustaka: gambar penuh dan thumbnail sebagai bagian multipart `image` dan `thumbnail`. */
+export interface UploadStickerGuideInput {
+  name: string;
+  mime: string;
+  thumbMime: string;
+  width: number;
+  height: number;
+  image: Uint8Array;
+  thumbnail: Uint8Array;
+}
+
+export interface RenameStickerGuideInput {
+  id: string;
+  name: string;
+}
+
+export interface RemoveStickerGuideInput {
+  id: string;
+}
+
+export interface GetStickerGuideThumbInput {
   id: string;
 }
 
@@ -710,6 +767,11 @@ export interface ApiContract {
   'businessUnits.options': { input: null; output: BusinessUnitOptionDto[] };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
+  'stickerGuides.list': { input: ListStickerGuidesInput; output: StickerGuidePageDto };
+  'stickerGuides.upload': { input: UploadStickerGuideInput; output: StickerGuideDto };
+  'stickerGuides.rename': { input: RenameStickerGuideInput; output: StickerGuideDto };
+  'stickerGuides.remove': { input: RemoveStickerGuideInput; output: { id: string } };
+  'stickerGuides.thumbnail': { input: GetStickerGuideThumbInput; output: FileContentDto };
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
