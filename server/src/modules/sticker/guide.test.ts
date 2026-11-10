@@ -4,6 +4,7 @@ import { loadUserContext } from '@server/modules/access/context';
 import { planAttachFiles } from '@server/modules/files/service';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
+import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { StickerGuideDto, StickerGuidePageDto } from '@shared/contract';
@@ -1040,5 +1041,218 @@ describe('GET /files/{id} untuk gambar pustaka', () => {
       .bind(guide.id)
       .run();
     expect((await rest.get(`/files/${guide.id}`, { email: 'sv@gmail.com' })).status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Pemakaian nyata pustaka (3b-2, Task 6): usageCount, unused, hapus dijaga FK, urut usageDesc, usages
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('pemakaian nyata pustaka (3b-2)', () => {
+  const place = (itemId: string, guideId: string) =>
+    env.DB.prepare(
+      "INSERT INTO item_sticker_photos (item_id, guide_id, caption, bu_id, `position`) VALUES (?, ?, '', '', 0)",
+    )
+      .bind(itemId, guideId)
+      .run();
+
+  const usages = async (guideId: string, email?: string) => {
+    const response = await rest.get(`/sticker-guides/${guideId}/usages`, email ? { email } : {});
+    expect(response.status).toBe(200);
+    return (await response.json()) as Array<{ itemId: string; label: string; status: string }>;
+  };
+
+  const itemBody = (model: string, stickerPhotos: unknown[]) => ({
+    brandId: brandIdOf('Sony'),
+    businessUnitIds: ['bu-p'],
+    model,
+    isCountryLock: false,
+    aliases: [],
+    stickerPhotos,
+    accessories: [],
+    attachments: [],
+    detail: '',
+  });
+
+  beforeEach(async () => {
+    await seedBusinessUnit(env, { id: 'bu-p', code: 'P' });
+    await seedBusinessUnit(env, { id: 'bu-q', code: 'Q' });
+    await seedBrand(env, 'Sony');
+    await seedUser(env, {
+      id: 'u-bup',
+      email: 'bup@gmail.com',
+      buAssignments: [{ buId: 'bu-p', roleIds: ['r-item-view'] }],
+    });
+  });
+
+  test('usageCount benar, unused menyembunyikan yang dipakai, item nonaktif tetap dihitung', async () => {
+    await seedGuide({ id: 'g1', name: 'Dipakai' });
+    await seedGuide({ id: 'g2', name: 'Bebas' });
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'Satu', businessUnitIds: ['bu-p'] });
+    await seedItem(env, {
+      id: 'i2',
+      brand: 'Sony',
+      model: 'Dua',
+      status: 'inactive',
+      businessUnitIds: ['bu-q'],
+    });
+    await place('i1', 'g1');
+    await place('i2', 'g1');
+    const all = await list();
+    expect(Object.fromEntries(all.items.map((item) => [item.name, item.usageCount]))).toEqual({
+      Dipakai: 2,
+      Bebas: 0,
+    });
+    expect(names(await list('?unused=true'))).toEqual(['Bebas']);
+  });
+
+  test('hapus gambar terpakai = CONFLICT "Gambar masih dipakai"; gambar dan penempatan tetap; item nonaktif menahan juga', async () => {
+    const guide = await uploadAs('ie@gmail.com', 'Terpakai');
+    await seedItem(env, {
+      id: 'i1',
+      brand: 'Sony',
+      model: 'Nonaktif',
+      status: 'inactive',
+      businessUnitIds: ['bu-p'],
+    });
+    await place('i1', guide.id);
+    const response = await remove(guide.id);
+    expect(response.status).toBe(409);
+    expect(await jsonOf(response)).toMatchObject({
+      code: 'CONFLICT',
+      detail: 'Gambar masih dipakai',
+    });
+    expect(await counts()).toEqual({ files: 1, guides: 1 });
+    expect(driveLive()).toHaveLength(1);
+    expect(await audits('stickerGuide.remove')).toHaveLength(0);
+    const placements = await env.DB.prepare('SELECT COUNT(*) AS n FROM item_sticker_photos').first<{
+      n: number | string;
+    }>();
+    expect(Number(placements?.n)).toBe(1);
+    // setelah penempatan dilepas, hapus berhasil
+    await env.DB.prepare('DELETE FROM item_sticker_photos').run();
+    expect((await remove(guide.id)).status).toBe(200);
+  });
+
+  test('FK RESTRICT menahan hapus walau pemeriksaan usageCount terlewati (galat 1451)', async () => {
+    await seedGuide({ id: 'g1', name: 'Dikunci', email: 'ie@gmail.com' });
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'Satu', businessUnitIds: ['bu-p'] });
+    await place('i1', 'g1');
+    const failure = await env.DB.prepare('DELETE FROM sticker_guide_images WHERE id = ?')
+      .bind('g1')
+      .run()
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(DbError);
+    expect((failure as DbError).errno).toBe(1451);
+  });
+
+  test('balapan: hapus gambar bersamaan dengan items.save yang memakainya; tidak ada penempatan yatim atau 500', async () => {
+    for (let round = 0; round < 4; round++) {
+      const guide = await uploadAs('ie@gmail.com', `Balapan ${round}`);
+      const created = await rest.post('/items', { body: itemBody(`Item ${round}`, []) });
+      expect(created.status).toBe(201);
+      const item = (await created.json()) as { id: string };
+      const photos = [{ guideId: guide.id, caption: '', buId: null, marks: [] }];
+      const [deleted, saved] = await Promise.all([
+        remove(guide.id),
+        rest.put(`/items/${item.id}`, { body: itemBody(`Item ${round}`, photos) }),
+      ]);
+      const pair = `${deleted.status}/${saved.status}`;
+      // salah satu menang: (hapus 200, simpan 422) atau (hapus 409, simpan 200)
+      expect(['200/422', '409/200']).toContain(pair);
+      const guideRows = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM sticker_guide_images WHERE id = ?',
+      )
+        .bind(guide.id)
+        .first<{ n: number | string }>();
+      const placementRows = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM item_sticker_photos WHERE guide_id = ?',
+      )
+        .bind(guide.id)
+        .first<{ n: number | string }>();
+      // konsisten: gambar ada <=> penempatan ada (tidak pernah penempatan tanpa gambar)
+      expect(Number(guideRows?.n)).toBe(Number(placementRows?.n));
+    }
+  });
+
+  test('urut usageDesc (paling sering dipakai; seri dipecah id) termasuk kursor halaman demi halaman', async () => {
+    await seedGuide({ id: 'g1', name: 'Satu pakai' });
+    await seedGuide({ id: 'g2', name: 'Dua pakai' });
+    await seedGuide({ id: 'g3', name: 'Nol pakai' });
+    await seedGuide({ id: 'g4', name: 'Satu pakai lain' });
+    for (const [id, model] of [
+      ['i1', 'A'],
+      ['i2', 'B'],
+      ['i3', 'C'],
+    ] as const) {
+      await seedItem(env, { id, brand: 'Sony', model, businessUnitIds: ['bu-p'] });
+    }
+    await place('i1', 'g2');
+    await place('i2', 'g2');
+    await place('i1', 'g1');
+    await place('i3', 'g4');
+    const expected = ['Dua pakai', 'Satu pakai lain', 'Satu pakai', 'Nol pakai'];
+    expect(names(await list('?sort=usageDesc'))).toEqual(expected);
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 6; i++) {
+      const page: StickerGuidePageDto = await list(
+        `?sort=usageDesc&limit=1${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`,
+      );
+      seen.push(...names(page));
+      cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    expect(seen).toEqual(expected);
+  });
+
+  test('usages: hanya item BU terlihat (urut nama), item nonaktif berstatus, tanpa item di luar BU', async () => {
+    await seedGuide({ id: 'g1' });
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'Zeta', businessUnitIds: ['bu-p'] });
+    await seedItem(env, {
+      id: 'i2',
+      brand: 'Sony',
+      model: 'Alfa',
+      status: 'inactive',
+      businessUnitIds: ['bu-p'],
+    });
+    await seedItem(env, { id: 'i3', brand: 'Sony', model: 'Rahasia', businessUnitIds: ['bu-q'] });
+    await seedItem(env, {
+      id: 'i4',
+      brand: 'Sony',
+      model: 'Dua BU',
+      businessUnitIds: ['bu-p', 'bu-q'],
+    });
+    for (const id of ['i1', 'i2', 'i3', 'i4']) await place(id, 'g1');
+    const visible = await usages('g1', 'bup@gmail.com');
+    expect(visible).toEqual([
+      { itemId: 'i2', label: 'Sony Alfa', status: 'inactive' },
+      { itemId: 'i4', label: 'Sony Dua BU', status: 'active' },
+      { itemId: 'i1', label: 'Sony Zeta', status: 'active' },
+    ]);
+    expect(JSON.stringify(visible)).not.toContain('Rahasia');
+    // admin melihat semua, termasuk item BU lain
+    expect((await usages('g1')).map((u) => u.itemId).sort()).toEqual(['i1', 'i2', 'i3', 'i4']);
+  });
+
+  test('usages: maksimal 20 item; id tak dikenal = daftar kosong; izin item:view (sticker:view saja dan tanpa izin 403)', async () => {
+    await seedGuide({ id: 'g1' });
+    for (let i = 0; i < 25; i++) {
+      const id = `i${String(i).padStart(2, '0')}`;
+      await seedItem(env, { id, brand: 'Sony', model: `M${id}`, businessUnitIds: ['bu-p'] });
+      await place(id, 'g1');
+    }
+    expect(await usages('g1')).toHaveLength(20);
+    expect(await usages('tidak-ada')).toEqual([]);
+    expect((await rest.get('/sticker-guides/g1/usages', { email: 'iv@gmail.com' })).status).toBe(
+      200,
+    );
+    for (const email of ['sv@gmail.com', 'nol@gmail.com']) {
+      expect((await rest.get('/sticker-guides/g1/usages', { email })).status, email).toBe(403);
+    }
+    expect((await rest.get('/sticker-guides/g1/usages', { email: null })).status).toBe(401);
   });
 });

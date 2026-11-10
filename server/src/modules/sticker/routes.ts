@@ -42,6 +42,18 @@ type StickerMethod =
   | 'stickerStock.history';
 
 /**
+ * Baca katalog (daftar jenis dan stiker): `sticker: view` ATAU `item: edit`. Pemegang `item: edit` membutuhkannya
+ * untuk memilih stiker/jenis di editor instruksi stiker item (3b-2) tanpa membuka halaman Stiker; hanya baca
+ * (menulis katalog tetap `sticker: edit`).
+ */
+const CATALOG_READ_PERMISSION = {
+  anyOf: [
+    { module: 'sticker', level: 'view' },
+    { module: 'item', level: 'edit' },
+  ],
+} as const;
+
+/**
  * Katalog stiker memakai izin modul `sticker` (global bersama): list = view, save = edit, setStatus = manage. Stok
  * memakai `stickerstock` (berlokasi): list/history = view, record = edit, adjust = manage.
  */
@@ -49,7 +61,7 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
   return {
     ...guideRoutes(),
     'stickerTypes.list': {
-      permission: { module: 'sticker', level: 'view' },
+      permission: CATALOG_READ_PERMISSION,
       validate: expectNull,
       handler: (_input, ctx) => listStickerTypes(ctx.env),
     },
@@ -64,7 +76,7 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
       handler: (input, ctx) => setStickerTypeStatus(ctx.env, input, ctx.user),
     },
     'stickers.list': {
-      permission: { module: 'sticker', level: 'view' },
+      permission: CATALOG_READ_PERMISSION,
       validate: expectNull,
       handler: (_input, ctx) => listStickers(ctx.env),
     },

@@ -464,7 +464,19 @@ describe('katalog stiker', () => {
 
   test('izin rute: list=view, save=edit, setStatus=manage (modul sticker); options menerima sticker view', () => {
     const routes = getRoutes();
-    expect(routes['stickers.list'].permission).toEqual({ module: 'sticker', level: 'view' });
+    // 3b-2: baca katalog juga untuk pengubah item (editor instruksi stiker), hanya baca.
+    expect(routes['stickers.list'].permission).toEqual({
+      anyOf: [
+        { module: 'sticker', level: 'view' },
+        { module: 'item', level: 'edit' },
+      ],
+    });
+    expect(routes['stickerTypes.list'].permission).toEqual({
+      anyOf: [
+        { module: 'sticker', level: 'view' },
+        { module: 'item', level: 'edit' },
+      ],
+    });
     expect(routes['stickers.save'].permission).toEqual({ module: 'sticker', level: 'edit' });
     expect(routes['stickers.setStatus'].permission).toEqual({ module: 'sticker', level: 'manage' });
   });

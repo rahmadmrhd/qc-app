@@ -2,6 +2,7 @@ import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import type {
   GetStickerGuideThumbInput,
+  ListGuideUsagesInput,
   ListStickerGuidesInput,
   RemoveStickerGuideInput,
   RenameStickerGuideInput,
@@ -167,6 +168,13 @@ export function validateRenameGuide(raw: unknown): RenameStickerGuideInput {
 }
 
 export function validateRemoveGuide(raw: unknown): RemoveStickerGuideInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
+}
+
+export function validateListGuideUsages(raw: unknown): ListGuideUsagesInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });
   reader.done();

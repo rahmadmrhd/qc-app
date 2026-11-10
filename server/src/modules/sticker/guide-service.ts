@@ -11,9 +11,12 @@ import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { EXTENSIONS, ensureDriveFolder, purgePendingFiles } from '@server/modules/files/service';
+import { visibleBuIds } from '@server/modules/item/access';
 import type {
   FileContentDto,
   GetStickerGuideThumbInput,
+  GuideUsageDto,
+  ListGuideUsagesInput,
   ListStickerGuidesInput,
   RemoveStickerGuideInput,
   RenameStickerGuideInput,
@@ -112,6 +115,33 @@ export async function readGuideThumb(
     throw appError('NOT_FOUND', 'Gambar tidak ditemukan');
   }
   return { id: row.id.trim(), mime, bytes: new Uint8Array(row.thumb) };
+}
+
+/** Maksimum item yang ditampilkan `stickerGuides.usages` (bahan fitur salin penanda). */
+const USAGES_MAX = 20;
+
+/**
+ * Item yang memakai gambar pustaka, hanya yang beririsan dengan BU yang boleh dilihat `user` (filter di SQL; item di
+ * luar BU tidak ikut, jadi jumlah dan namanya tak bocor), urut menurut kunci nama (merk + tipe), maks. 20, termasuk
+ * item nonaktif (dengan `status`). Id tak dikenal = daftar kosong (sama dengan gambar tanpa pemakai).
+ */
+export async function listGuideUsages(
+  env: Env,
+  input: ListGuideUsagesInput,
+  user: UserContext,
+): Promise<GuideUsageDto[]> {
+  const visible = visibleBuIds(user);
+  if (visible.length === 0) return [];
+  const result = await env.DB.prepare(
+    `SELECT i.id, i.model, i.status, b.name AS brand_name FROM item_sticker_photos p JOIN items i ON i.id = p.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE p.guide_id = ? AND EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(', ')})) ORDER BY i.\`key\`, i.id LIMIT ?`,
+  )
+    .bind(input.id, ...visible, USAGES_MAX)
+    .all<{ id: string; model: string; status: string; brand_name: string | null }>();
+  return result.results.map((row) => ({
+    itemId: row.id.trim(),
+    label: `${row.brand_name ?? ''} ${row.model.trim()}`.trim(),
+    status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
+  }));
 }
 
 const GUIDE_IN_USE_MESSAGE = 'Gambar masih dipakai';

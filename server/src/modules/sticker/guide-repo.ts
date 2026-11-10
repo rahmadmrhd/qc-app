@@ -25,11 +25,13 @@ export interface GuideCursor {
 }
 
 /**
- * SATU tempat penghitungan "dipakai berapa kali" (ekspresi SQL skalar atas tabel pustaka berkode `g`). Di 3b-1 belum
- * ada penempatan gambar, jadi selalu 0; 3b-2 menggantinya dengan subkueri penempatan (cukup mengubah fungsi ini).
+ * SATU tempat penghitungan "dipakai berapa kali" (ekspresi SQL skalar atas tabel pustaka berkode `g`): jumlah
+ * penempatan gambar pada item (`item_sticker_photos`, 3b-2), apa pun status itemnya (kunci asing `RESTRICT` menahan
+ * hapus tanpa memandang status, jadi hitungan dan galat hapus sejalan). Dipakai DTO, filter `unused`, urut
+ * `usageDesc`, dan pemeriksaan hapus.
  */
 export function guideUsageCountSql(): string {
-  return '0';
+  return '(SELECT COUNT(*) FROM item_sticker_photos p WHERE p.guide_id = g.id)';
 }
 
 const JOINS =
@@ -71,6 +73,12 @@ const SORT_SPEC: Record<GuideSort, SortSpec> = {
     direction: 'DESC',
     numeric: true,
     keyOf: (row) => Number(row.size),
+  },
+  usageDesc: {
+    column: guideUsageCountSql(),
+    direction: 'DESC',
+    numeric: true,
+    keyOf: (row) => Number(row.usage_count),
   },
 };
 

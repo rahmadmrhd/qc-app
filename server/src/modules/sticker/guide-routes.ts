@@ -1,8 +1,16 @@
 import type { RouteTable } from '@server/core/router';
-import { listGuides, readGuideThumb, removeGuide, renameGuide, uploadGuide } from './guide-service';
+import {
+  listGuides,
+  listGuideUsages,
+  readGuideThumb,
+  removeGuide,
+  renameGuide,
+  uploadGuide,
+} from './guide-service';
 import {
   validateGetGuideThumb,
   validateListGuides,
+  validateListGuideUsages,
   validateRemoveGuide,
   validateRenameGuide,
   validateUploadGuide,
@@ -13,7 +21,8 @@ export type GuideMethod =
   | 'stickerGuides.thumbnail'
   | 'stickerGuides.upload'
   | 'stickerGuides.rename'
-  | 'stickerGuides.remove';
+  | 'stickerGuides.remove'
+  | 'stickerGuides.usages';
 
 /** Baca pustaka gambar: pemegang `item: view` ATAU `sticker: view` (tanpa batas BU). */
 const READ_PERMISSION = {
@@ -47,6 +56,12 @@ export function guideRoutes(): Pick<RouteTable, GuideMethod> {
       permission: { module: 'item', level: 'edit' },
       validate: validateRemoveGuide,
       handler: (input, ctx) => removeGuide(ctx.env, input, ctx.user),
+    },
+    // Item pemakai gambar (bahan "salin penanda"): `item: view`, difilter BU pemanggil di servis.
+    'stickerGuides.usages': {
+      permission: { module: 'item', level: 'view' },
+      validate: validateListGuideUsages,
+      handler: (input, ctx) => listGuideUsages(ctx.env, input, ctx.user),
     },
     'stickerGuides.thumbnail': {
       permission: READ_PERMISSION,

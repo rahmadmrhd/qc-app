@@ -41,6 +41,10 @@ beforeEach(async () => {
   await seedRole(env, { id: 'r-edit', name: 'Edit Stiker', permissions: { sticker: 'edit' } });
   await seedUser(env, { id: 'u-lihat', email: 'lihat@gmail.com', roleIds: ['r-lihat'] });
   await seedUser(env, { id: 'u-edit', email: 'edit@gmail.com', roleIds: ['r-edit'] });
+  await seedRole(env, { id: 'r-item-edit', name: 'Edit Item', permissions: { item: 'edit' } });
+  await seedRole(env, { id: 'r-item-view', name: 'Lihat Item', permissions: { item: 'view' } });
+  await seedUser(env, { id: 'u-item-edit', email: 'itemedit@gmail.com', roleIds: ['r-item-edit'] });
+  await seedUser(env, { id: 'u-item-view', email: 'itemview@gmail.com', roleIds: ['r-item-view'] });
   await seedUser(env, { id: 'u-polos', email: 'polos@gmail.com' });
 });
 
@@ -57,6 +61,28 @@ describe('GET /sticker-types', () => {
     expect(await json(forbidden)).toMatchObject({ code: 'FORBIDDEN' });
     const anon = await send('GET', '/sticker-types', { email: null });
     expect(anon.status).toBe(401);
+  });
+});
+
+describe('izin baca katalog untuk editor item (3b-2)', () => {
+  test('stickerTypes.list dan stickers.list: sticker:view ATAU item:edit; item:view saja dan tanpa izin 403; tulis tetap sticker:edit', async () => {
+    for (const path of ['/sticker-types', '/stickers']) {
+      for (const email of ['lihat@gmail.com', 'itemedit@gmail.com', 'edit@gmail.com']) {
+        expect((await send('GET', path, { email })).status, `${path} ${email}`).toBe(200);
+      }
+      for (const email of ['itemview@gmail.com', 'polos@gmail.com']) {
+        const response = await send('GET', path, { email });
+        expect([path, email, response.status]).toEqual([path, email, 403]);
+        expect(await json(response)).toMatchObject({ code: 'FORBIDDEN' });
+      }
+      expect((await send('GET', path, { email: null })).status).toBe(401);
+    }
+    // pemegang item:edit hanya membaca: menulis katalog tetap butuh sticker:edit
+    const write = await send('POST', '/sticker-types', {
+      email: 'itemedit@gmail.com',
+      body: { name: 'QC', rule: 'bu' },
+    });
+    expect(write.status).toBe(403);
   });
 });
 
