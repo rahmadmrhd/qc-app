@@ -70,6 +70,7 @@ function AssignmentField({
         label: option.label,
       }))}
       onSearchChange={setTerm}
+      searchDebounceMs={0}
       onChange={(next) => onChange(next ?? '')}
       openHref={openHref}
     />
@@ -106,6 +107,7 @@ function RoleAssignmentField({
           label: role.name,
         }))}
         onSearchChange={setTerm}
+        searchDebounceMs={0}
         onChange={onChange}
       />
       {roles.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada role.</p> : null}

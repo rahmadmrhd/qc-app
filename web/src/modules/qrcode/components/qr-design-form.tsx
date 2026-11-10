@@ -243,6 +243,7 @@ export function QrDesignForm({
                   labelOf={(id) => presets.find((preset) => preset.id === id)?.name}
                   options={presetOptions(presets, presetTerm)}
                   onSearchChange={setPresetTerm}
+                  searchDebounceMs={0}
                   onChange={(id) => choosePreset(id ?? '')}
                 />
                 <p className="text-xs text-muted-foreground">

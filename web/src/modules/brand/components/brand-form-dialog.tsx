@@ -181,6 +181,7 @@ function BrandFormBody({
           }}
           options={buOptions}
           onSearchChange={setBuTerm}
+          searchDebounceMs={0}
           onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
           openHref={openBusinessUnitHref}
           onChange={(ids) => {

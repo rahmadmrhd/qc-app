@@ -62,6 +62,7 @@ export function ApplyPresetDialog({
             labelOf={(id) => presets.find((item) => item.id === id)?.name}
             options={presetOptions(presets, presetTerm)}
             onSearchChange={setPresetTerm}
+            searchDebounceMs={0}
             onChange={(id) => setPresetId(id ?? '')}
           />
           <fieldset className="space-y-1.5">

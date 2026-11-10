@@ -47,6 +47,7 @@ export function LocationField({ id, module, level, value, onChange }: LocationFi
         labelOf={labelOf}
         options={options}
         onSearchChange={setTerm}
+        searchDebounceMs={0}
         onChange={(next) => onChange(next ?? '')}
         disabled={writable.length === 0}
       />

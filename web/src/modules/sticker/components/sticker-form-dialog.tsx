@@ -275,6 +275,7 @@ function StickerFormBody({
             labelOf={(id) => allTypes.find((type) => type.id === id)?.name}
             options={typeOptions}
             onSearchChange={setTypeTerm}
+            searchDebounceMs={0}
             onCreate={onCreateType ? () => setTypeDialogOpen(true) : undefined}
             onChange={(id) => selectType(id ?? '')}
             error={errors.typeId}
@@ -362,6 +363,7 @@ function StickerFormBody({
             }}
             options={buOptions}
             onSearchChange={setBuTerm}
+            searchDebounceMs={0}
             onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
             openHref={openBusinessUnitHref}
             onChange={(ids) => {

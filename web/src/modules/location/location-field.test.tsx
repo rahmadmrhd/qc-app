@@ -1,5 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { linkOptionNames, pickLink } from '@/test/link-field';
 import { ActiveLocationsProvider } from './active-locations-context';
@@ -103,4 +104,44 @@ test('nilai lokasi yang sudah tidak tersedia ditandai, bukan diganti opsi lain',
     </ActiveLocationsProvider>,
   );
   expect(screen.getByRole('combobox', { name: 'Lokasi' })).toHaveValue('(lokasi tidak tersedia)');
+});
+
+test('mengetik lalu langsung Enter memilih lokasi yang cocok dengan teks, bukan opsi pertama', async () => {
+  const onChange = vi.fn();
+  render(
+    <ActiveLocationsProvider>
+      <LocationField id="loc" module="handover" level="view" value="" onChange={onChange} />
+    </ActiveLocationsProvider>,
+  );
+  const combobox = screen.getByRole('combobox', { name: 'Lokasi' });
+  await userEvent.click(combobox);
+  await userEvent.type(combobox, 'ban{Enter}');
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith('l-b');
+});
+
+test('tombol Kosongkan mengosongkan lokasi (onChange dengan string kosong)', async () => {
+  const onChange = vi.fn();
+  render(
+    <ActiveLocationsProvider>
+      <LocationField id="loc" module="handover" level="edit" value="l-a" onChange={onChange} />
+    </ActiveLocationsProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Lokasi' }));
+  expect(onChange).toHaveBeenCalledWith('');
+});
+
+test('nilai di luar pilihan tulis tidak ditawarkan sebagai opsi', async () => {
+  render(
+    <ActiveLocationsProvider>
+      <LocationField
+        id="loc"
+        module="handover"
+        level="edit"
+        value="l-b"
+        onChange={() => undefined}
+      />
+    </ActiveLocationsProvider>,
+  );
+  expect(await linkOptionNames(screen, 'Lokasi')).toEqual(['Jakarta (JKT)']);
 });
