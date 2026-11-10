@@ -126,6 +126,8 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
     style: DEFAULT_QR_STYLE,
     defaultLogoId: 'b',
+    buId: '',
+    namePlacement: '' as const,
     createdAt: 't',
     createdBy: 'x',
     updatedAt: 't',
@@ -157,6 +159,8 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: preset.layout,
     style: preset.style,
     defaultLogoId: 'b',
+    buId: '',
+    namePlacement: 'title',
   });
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('id');
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('expectedUpdatedAt');

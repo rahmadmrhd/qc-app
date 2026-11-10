@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
+  validateClonePreset,
   validateExportQrDesign,
   validateQrFile,
   validateSaveQrDesign,
+  validateSaveQrPreset,
   validateUploadQrPdf,
 } from './validate';
 
@@ -116,4 +118,49 @@ test('ekspor dan unduh: tanda PDF/PNG, batas gabungan 8 MB, jenis berkas', () =>
   ).toContain('8 MB');
   expect(validateQrFile({ id: 'q', kind: 'png' })).toEqual({ id: 'q', kind: 'png' });
   expect(fieldsOf(() => validateQrFile({ id: 'q', kind: 'zip' })).kind).toBeDefined();
+});
+
+const preset = {
+  name: 'Standar',
+  title: '',
+  subtitle: '',
+  footer: '',
+  layout: DEFAULT_QR_LAYOUT,
+  style: DEFAULT_QR_STYLE,
+  defaultLogoId: '',
+  buId: 'bu-a',
+  namePlacement: 'title',
+};
+
+test('preset: BU dan penempatan nama wajib; penempatan hanya title, subtitle, footer', () => {
+  expect(validateSaveQrPreset(preset)).toMatchObject({ buId: 'bu-a', namePlacement: 'title' });
+  for (const placement of ['title', 'subtitle', 'footer'] as const) {
+    expect(validateSaveQrPreset({ ...preset, namePlacement: placement }).namePlacement).toBe(
+      placement,
+    );
+  }
+  expect(
+    fieldsOf(() => validateSaveQrPreset({ ...preset, namePlacement: 'logo' })).namePlacement,
+  ).toBeDefined();
+  expect(
+    fieldsOf(() => validateSaveQrPreset({ ...preset, namePlacement: '' })).namePlacement,
+  ).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrPreset({ ...preset, buId: '' })).buId).toBeDefined();
+  const { buId: _buId, ...noBu } = preset;
+  expect(fieldsOf(() => validateSaveQrPreset(noBu)).buId).toBeDefined();
+});
+
+test('kloning preset: id, BU, dan nama wajib; nama maks. 60', () => {
+  expect(validateClonePreset({ id: 'p1', buId: 'bu-b', name: 'Salinan' })).toEqual({
+    id: 'p1',
+    buId: 'bu-b',
+    name: 'Salinan',
+  });
+  expect(
+    fieldsOf(() => validateClonePreset({ id: 'p1', buId: 'bu-b', name: ' ' })).name,
+  ).toBeDefined();
+  expect(fieldsOf(() => validateClonePreset({ id: 'p1', buId: '', name: 'S' })).buId).toBeDefined();
+  expect(
+    fieldsOf(() => validateClonePreset({ id: 'p1', buId: 'b', name: 'x'.repeat(61) })).name,
+  ).toBeDefined();
 });

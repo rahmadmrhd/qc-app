@@ -3,6 +3,7 @@ import { expectNull } from '@server/core/validate';
 import { requestQrExport } from './export';
 import {
   cloneQrPdfFromDrive,
+  cloneQrPreset,
   deleteQrPreset,
   getQrDefaultsDto,
   getQrDesignDto,
@@ -15,6 +16,7 @@ import {
   uploadQrPdf,
 } from './service';
 import {
+  validateClonePreset,
   validateCloneQrPdf,
   validateExportQrDesign,
   validateQrDesignRef,
@@ -32,6 +34,7 @@ type QrMethod =
   | 'qrcodes.delete'
   | 'qrcodes.getDefaults'
   | 'qrcodes.savePreset'
+  | 'qrcodes.clonePreset'
   | 'qrcodes.deletePreset'
   | 'qrcodes.saveLogoLibrary'
   | 'qrcodes.uploadPdf'
@@ -65,6 +68,11 @@ export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'manage' },
       validate: validateSaveQrPreset,
       handler: (input, ctx) => saveQrPreset(ctx.env, input, ctx.user),
+    },
+    'qrcodes.clonePreset': {
+      permission: { module: 'qrcode', level: 'manage' },
+      validate: validateClonePreset,
+      handler: (input, ctx) => cloneQrPreset(ctx.env, input, ctx.user),
     },
     'qrcodes.deletePreset': {
       permission: { module: 'qrcode', level: 'manage' },

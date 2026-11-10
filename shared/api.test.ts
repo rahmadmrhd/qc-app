@@ -182,7 +182,10 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     layout: 'a' as never,
     style: {} as never,
     defaultLogoId: '',
+    buId: 'bu1',
+    namePlacement: 'title',
   },
+  'qrcodes.clonePreset': { id: 'p1', buId: 'bu2', name: 'Salinan' },
   'qrcodes.deletePreset': { id: 'p1' },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',

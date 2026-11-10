@@ -192,7 +192,10 @@ const WORST: Inputs = {
     layout: DEFAULT_QR_LAYOUT,
     style: DEFAULT_QR_STYLE,
     defaultLogoId: UUID,
+    buId: UUID,
+    namePlacement: 'footer',
   },
+  'qrcodes.clonePreset': { id: UUID, buId: UUID, name: text(QR_LIMITS.presetName) },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: STAMP,
     logoFileIds: longList(QR_LIMITS.logoLibrary, () => UUID),

@@ -272,6 +272,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
   },
+  'qrcodes.clonePreset': { verb: 'POST', path: '/qrcode-presets/{id}/clone', status: 201 },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
   'qrcodes.saveLogoLibrary': {
     verb: 'PUT',

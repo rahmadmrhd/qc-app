@@ -1,5 +1,6 @@
 import { readObject } from '@server/core/validate';
 import type {
+  ClonePresetInput,
   CloneQrPdfInput,
   ExportQrDesignInput,
   QrDesignRefInput,
@@ -15,6 +16,7 @@ import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } fr
 
 const QR_FILE_KINDS = ['pdf', 'png'] as const;
 const QR_LINK_SOURCES = ['url', 'pdf'] as const;
+const QR_NAME_PLACEMENTS = ['title', 'subtitle', 'footer'] as const;
 
 export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   const reader = readObject(raw);
@@ -107,10 +109,14 @@ export function validateSaveQrPreset(raw: unknown): SaveQrPresetInput {
   if (!isQrStyle(style))
     reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
   const defaultLogoId = reader.str('defaultLogoId', { max: 100 });
+  const buId = reader.str('buId', { required: true, max: 100 });
+  const namePlacement = reader.oneOf('namePlacement', QR_NAME_PLACEMENTS);
   reader.done();
   return {
     ...(id ? { id } : {}),
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    buId,
+    namePlacement,
     name,
     title,
     subtitle,
@@ -119,6 +125,15 @@ export function validateSaveQrPreset(raw: unknown): SaveQrPresetInput {
     style: style as QrStyle,
     defaultLogoId,
   };
+}
+
+export function validateClonePreset(raw: unknown): ClonePresetInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const buId = reader.str('buId', { required: true, max: 100 });
+  const name = reader.str('name', { required: true, max: QR_LIMITS.presetName });
+  reader.done();
+  return { id, buId, name };
 }
 
 export function validateSaveQrLogoLibrary(raw: unknown): SaveQrLogoLibraryInput {

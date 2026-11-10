@@ -227,6 +227,8 @@ const preset = (id: string, name: string, title: string) => ({
   layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
   style: DEFAULT_QR_STYLE,
   defaultLogoId: '',
+  buId: '',
+  namePlacement: '' as const,
   createdAt: 't',
   createdBy: 'a',
   updatedAt: 't',

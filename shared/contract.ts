@@ -2,7 +2,7 @@ import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
-import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
+import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
 import type {
   GuideSort,
   StickerMarkTarget,
@@ -744,6 +744,10 @@ export interface QrPresetDto {
   style: QrStyle;
   /** Logo yang terpilih awal; kosong = tanpa logo. Harus bagian dari pustaka logo. */
   defaultLogoId: string;
+  /** BU pemilik preset (satu preset per BU); `''` = preset lama tanpa BU (tidak ditarik otomatis). */
+  buId: string;
+  /** Bagian label yang menampung nama Manual Book (terkunci); `''` = preset lama tanpa penempatan. */
+  namePlacement: QrNamePlacement | '';
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -767,6 +771,17 @@ export interface SaveQrPresetInput {
   layout: QrLayout;
   style: QrStyle;
   defaultLogoId: string;
+  /** BU pemilik (wajib, harus aktif; satu preset per BU). */
+  buId: string;
+  /** Bagian label yang menampung nama Manual Book. */
+  namePlacement: QrNamePlacement;
+}
+/** Kloning preset ke BU lain: seluruh isi disalin kecuali BU dan nama. */
+export interface ClonePresetInput {
+  /** Preset sumber. */
+  id: string;
+  buId: string;
+  name: string;
 }
 export interface SaveQrLogoLibraryInput {
   /** Wajib bila pustaka sudah pernah disimpan. */
@@ -880,6 +895,7 @@ export interface ApiContract {
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
+  'qrcodes.clonePreset': { input: ClonePresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };

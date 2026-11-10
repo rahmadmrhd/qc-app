@@ -230,6 +230,8 @@ export function toSaveQrPresetInput(
   values: z.output<typeof qrPresetFormSchema>,
   id?: string,
   expectedUpdatedAt?: string,
+  /** BU pemilik dan penempatan nama; placeholder sampai form preset memilihnya (UI 4a). */
+  owner: Pick<SaveQrPresetInput, 'buId' | 'namePlacement'> = { buId: '', namePlacement: 'title' },
 ): SaveQrPresetInput {
   return {
     ...(id ? { id } : {}),
@@ -241,6 +243,8 @@ export function toSaveQrPresetInput(
     layout: values.layout,
     style: values.style,
     defaultLogoId: values.logoFileId,
+    buId: owner.buId,
+    namePlacement: owner.namePlacement,
   };
 }
 

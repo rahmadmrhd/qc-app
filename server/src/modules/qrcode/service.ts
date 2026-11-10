@@ -7,8 +7,10 @@ import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf } from '@server/core/settings';
+import { listBusinessUnitBriefs, mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import type {
+  ClonePresetInput,
   CloneQrPdfInput,
   QrDefaultsDto,
   QrDesignDto,
@@ -170,6 +172,8 @@ function toQrPresetDto(record: QrPresetRecord): QrPresetDto {
     layout: record.layout,
     style: record.style,
     defaultLogoId: record.defaultLogoId,
+    buId: record.buId,
+    namePlacement: record.namePlacement,
     createdAt: record.createdAt,
     createdBy: record.createdBy,
     updatedAt: record.updatedAt,
@@ -196,7 +200,45 @@ function qrPresetSnapshot(preset: QrPresetRecord | NewQrPresetRecord): Record<st
     layout: JSON.stringify(preset.layout),
     style: JSON.stringify(preset.style),
     defaultLogoId: preset.defaultLogoId,
+    buId: preset.buId,
+    namePlacement: preset.namePlacement,
   };
+}
+
+const PRESET_CONFLICTS = {
+  qr_presets_bu_unique: {
+    field: 'buId',
+    message: 'BU ini sudah punya konfigurasi default',
+  },
+};
+
+/** BU harus ada dan aktif; satu BU paling banyak satu preset (selain `exceptId`). */
+async function assertPresetBu(
+  env: Env,
+  buId: string,
+  presets: readonly QrPresetRecord[],
+  exceptId: string | undefined,
+): Promise<void> {
+  const fail = (message: string, code: 'VALIDATION' | 'CONFLICT' = 'VALIDATION'): never => {
+    throw appError(code, message, { buId: message });
+  };
+  const bu = (await listBusinessUnitBriefs(env)).find((row) => row.id === buId);
+  if (!bu) return fail('BU tidak ditemukan');
+  if (bu.status !== 'active') return fail('BU nonaktif tidak dapat dipakai');
+  if (presets.some((row) => row.id !== exceptId && row.buId === buId)) {
+    return fail('BU ini sudah punya konfigurasi default', 'CONFLICT');
+  }
+}
+
+function assertPresetNameFree(
+  presets: readonly QrPresetRecord[],
+  name: string,
+  exceptId: string | undefined,
+): void {
+  if (presets.some((row) => row.id !== exceptId && row.name.toLowerCase() === name.toLowerCase())) {
+    const message = 'Nama sudah dipakai konfigurasi default lain';
+    throw appError('VALIDATION', message, { name: message });
+  }
 }
 
 /** Membuat atau mengubah satu konfigurasi default (nilai awal QR baru). Hanya pengaturan: tanpa hasil ekspor. */
@@ -209,16 +251,11 @@ export async function saveQrPreset(
   const existing = input.id ? presets.find((row) => row.id === input.id) : undefined;
   if (input.id && !existing) throw appError('NOT_FOUND', 'Konfigurasi default tidak ditemukan');
   if (existing && input.expectedUpdatedAt !== existing.updatedAt) throw staleError();
-  const taken = presets.some(
-    (row) => row.id !== existing?.id && row.name.toLowerCase() === input.name.toLowerCase(),
-  );
-  if (taken) {
-    const message = 'Nama sudah dipakai konfigurasi default lain';
-    throw appError('VALIDATION', message, { name: message });
-  }
+  assertPresetNameFree(presets, input.name, existing?.id);
   if (!existing && presets.length >= QR_LIMITS.presets) {
     throw appError('VALIDATION', `Konfigurasi default maksimal ${QR_LIMITS.presets}`);
   }
+  await assertPresetBu(env, input.buId, presets, existing?.id);
   const library = (await getQrDefaultsRecord(env))?.logoFileIds ?? [];
   if (input.defaultLogoId !== '' && !library.includes(input.defaultLogoId)) {
     const message = 'Logo awal harus bagian dari pustaka logo';
@@ -234,47 +271,100 @@ export async function saveQrPreset(
     layout: input.layout,
     style: input.style,
     defaultLogoId: input.defaultLogoId,
-    // Preset per BU dan penempatan nama dikelola di tugas berikutnya (4a); nilai tersimpan dipertahankan.
-    buId: existing?.buId ?? '',
-    namePlacement: existing?.namePlacement ?? '',
+    buId: input.buId,
+    namePlacement: input.namePlacement,
     createdAt: existing?.createdAt ?? now,
     createdBy: existing?.createdBy ?? actor.email,
     updatedAt: now,
     updatedBy: actor.email,
   };
   if (!existing) {
-    await env.DB.batch([
-      insertQrPresetStmt(env.DB, next),
-      writeAudit(env.DB, {
-        ts: now,
-        actor: actor.email,
-        action: 'qrcode.preset_create',
-        target: next.name,
-        before: null,
-        after: qrPresetSnapshot(next),
-      }),
-    ]);
+    try {
+      await env.DB.batch([
+        insertQrPresetStmt(env.DB, next),
+        writeAudit(env.DB, {
+          ts: now,
+          actor: actor.email,
+          action: 'qrcode.preset_create',
+          target: next.name,
+          before: null,
+          after: qrPresetSnapshot(next),
+        }),
+      ]);
+    } catch (error) {
+      throw mapDuplicateError(error, PRESET_CONFLICTS);
+    }
     return toQrPresetDto(next);
   }
   if (JSON.stringify(qrPresetSnapshot(existing)) === JSON.stringify(qrPresetSnapshot(next))) {
     return toQrPresetDto(existing);
   }
-  await runGuardedBatch(
-    env.DB,
-    [
-      updateQrPresetStmt(env.DB, next, existing.updatedAt),
-      guardChanged(env.DB),
+  try {
+    await runGuardedBatch(
+      env.DB,
+      [
+        updateQrPresetStmt(env.DB, next, existing.updatedAt),
+        guardChanged(env.DB),
+        writeAudit(env.DB, {
+          ts: now,
+          actor: actor.email,
+          action: 'qrcode.preset_update',
+          target: next.name,
+          before: qrPresetSnapshot(existing),
+          after: qrPresetSnapshot(next),
+        }),
+      ],
+      staleError,
+    );
+  } catch (error) {
+    throw mapDuplicateError(error, PRESET_CONFLICTS);
+  }
+  return toQrPresetDto(next);
+}
+
+/**
+ * Menyalin satu preset ke BU lain (spek 4a §3 butir 23): seluruh isi (gaya, tata letak, logo awal, penempatan nama)
+ * dibawa, hanya BU dan nama yang diganti. BU tujuan harus aktif dan belum punya preset.
+ */
+export async function cloneQrPreset(
+  env: Env,
+  input: ClonePresetInput,
+  actor: ActorRef,
+): Promise<QrPresetDto> {
+  const presets = await listQrPresets(env);
+  const source = presets.find((row) => row.id === input.id);
+  if (!source) throw appError('NOT_FOUND', 'Konfigurasi default tidak ditemukan');
+  if (presets.length >= QR_LIMITS.presets) {
+    throw appError('VALIDATION', `Konfigurasi default maksimal ${QR_LIMITS.presets}`);
+  }
+  assertPresetNameFree(presets, input.name, undefined);
+  await assertPresetBu(env, input.buId, presets, undefined);
+  const now = nowIso(env);
+  const next: NewQrPresetRecord = {
+    ...source,
+    id: crypto.randomUUID(),
+    name: input.name,
+    buId: input.buId,
+    createdAt: now,
+    createdBy: actor.email,
+    updatedAt: now,
+    updatedBy: actor.email,
+  };
+  try {
+    await env.DB.batch([
+      insertQrPresetStmt(env.DB, next),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,
-        action: 'qrcode.preset_update',
+        action: 'qrcode.preset_clone',
         target: next.name,
-        before: qrPresetSnapshot(existing),
+        before: { source: source.name },
         after: qrPresetSnapshot(next),
       }),
-    ],
-    staleError,
-  );
+    ]);
+  } catch (error) {
+    throw mapDuplicateError(error, PRESET_CONFLICTS);
+  }
   return toQrPresetDto(next);
 }
 
