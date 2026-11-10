@@ -1,15 +1,17 @@
-import { STICKER_LIMITS, STICKER_RULES, type StickerRule } from '@shared/stickers';
+import { STICKER_LIMITS, type StickerRule, USER_STICKER_RULES } from '@shared/stickers';
 import { z } from 'zod';
 
-/** Teks aturan jenis stiker (hanya dua nilai yang berfungsi di tahap 3a). */
+/** Teks aturan jenis stiker (`group` hanya untuk jenis sistem; pengguna tidak memilihnya, tahap 4a). */
 export const STICKER_RULE_LABEL: Record<StickerRule, string> = {
   bu: 'Menurut BU',
   none: 'Tanpa syarat',
+  group: 'Menurut kelompok item',
 };
 
 export const STICKER_RULE_HINT: Record<StickerRule, string> = {
   bu: 'Stiker pada jenis ini ditautkan ke satu atau lebih BU.',
   none: 'Stiker pada jenis ini berlaku tanpa tautan BU.',
+  group: 'Stiker pada jenis ini berlaku menurut kelompok item (dikelola aplikasi).',
 };
 
 /** Form jenis stiker (batas yang sama dengan server). */
@@ -19,7 +21,7 @@ export const stickerTypeFormSchema = z.object({
     .trim()
     .min(1, 'Nama jenis wajib diisi')
     .max(STICKER_LIMITS.nameMax, `Nama jenis maksimal ${STICKER_LIMITS.nameMax} karakter`),
-  rule: z.enum(STICKER_RULES),
+  rule: z.enum(USER_STICKER_RULES),
 });
 export type StickerTypeFormValues = z.infer<typeof stickerTypeFormSchema>;
 

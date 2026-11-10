@@ -172,6 +172,8 @@ export async function buildInstructionViews(
         { id: type.id, rule: type.rule === 'none' ? 'none' : 'bu' },
         candidates,
         itemBuIds,
+        // Sementara (Task 4 mengisinya dari `items.manual_book_design_id`): aturan `group` belum dipakai.
+        new Set<string>(),
       );
       const resolved = matched.flatMap((match) => {
         const row = stickers.get(match.id);

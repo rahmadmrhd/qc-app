@@ -14,7 +14,7 @@ import type {
   StockHistoryInput,
 } from '@shared/contract';
 import type { StockCount } from '@shared/stickers';
-import { piecesOfCount, STICKER_LIMITS, STICKER_RULES } from '@shared/stickers';
+import { piecesOfCount, STICKER_LIMITS, USER_STICKER_RULES } from '@shared/stickers';
 import { parseStockCursor } from './stock-repo';
 
 const STATUS_VALUES = ['active', 'inactive'] as const;
@@ -33,7 +33,7 @@ export function validateSaveStickerType(raw: unknown): SaveStickerTypeInput {
   const id = reader.optionalId('id');
   const expectedUpdatedAt = readExpectedUpdatedAt(reader, id);
   const name = reader.str('name', { required: true, max: STICKER_LIMITS.nameMax });
-  const rule = reader.oneOf('rule', STICKER_RULES);
+  const rule = reader.oneOf('rule', USER_STICKER_RULES);
   reader.done();
   return id ? { id, expectedUpdatedAt, name, rule } : { name, rule };
 }

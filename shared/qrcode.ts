@@ -13,7 +13,16 @@ export const QR_LIMITS = {
   presets: 50,
   presetName: 60,
   exportMaxBytes: 8 * 1024 * 1024,
+  /** Panjang maksimum nama Manual Book (karakter); sama dengan batas title agar bagian terkunci muat. */
+  manualBookName: 60,
+  /** Panjang maksimum alasan ekspor ulang yang menghasilkan versi baru (karakter). */
+  reason: 500,
+  /** Ukuran maksimum PNG gambar contoh (`preview`) pada ekspor (byte). */
+  previewMaxBytes: 512 * 1024,
 } as const;
+
+/** Bagian label yang menampung nama Manual Book pada preset (terkunci: nilainya sama dengan nama). */
+export type QrNamePlacement = 'title' | 'subtitle' | 'footer';
 
 export const LABEL_MM = 30;
 export const SHEET = { widthMm: 300, heightMm: 420, columns: 10, rows: 14 } as const;
@@ -169,10 +178,9 @@ export function driveShareUrl(fileId: string): string {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
-export function labelFileSlug(text: string, max = 40): string {
-  const slug = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+export function labelFileSlug(text: string, max = 40, keepCase = false): string {
+  const slug = (keepCase ? text : text.toLowerCase())
+    .replace(keepCase ? /[^A-Za-z0-9]+/g : /[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, max)
     .replace(/-+$/g, '');
@@ -182,6 +190,14 @@ export function labelFileSlug(text: string, max = 40): string {
 /** Nama berkas hasil ekspor/unduh dari title dan subtitle (subtitle boleh kosong), maks. 60 karakter. */
 export function labelFileName(title: string, subtitle: string): string {
   return labelFileSlug(`${title} ${subtitle}`, 60);
+}
+
+/**
+ * Nama berkas hasil ekspor Manual Book: "{nama}-{stempel}" (tanpa ekstensi). Huruf besar/kecil nama dipertahankan
+ * (spek 4a §2 butir 14); karakter selain huruf/angka menjadi "-".
+ */
+export function manualBookFileName(name: string, stampMs: string): string {
+  return `${labelFileSlug(name, 60, true)}-${stampMs}`;
 }
 
 /**
@@ -676,7 +692,7 @@ export interface QrContent {
   style: QrStyle;
 }
 
-function qrStyleSignature(style: QrStyle | undefined): unknown {
+export function qrStyleSignature(style: QrStyle | undefined): unknown {
   const source = style ?? DEFAULT_QR_STYLE;
   return [
     QR_STYLE_PARTS.map((part) =>
@@ -701,6 +717,53 @@ export function qrContentHash(content: QrContent): string {
       qrStyleSignature(content.style),
     ]),
   );
+}
+
+/** Bagian label yang dibandingkan dengan preset (banner penyimpangan; tidak pernah memblokir). */
+export type QrDeviationPart = 'title' | 'subtitle' | 'footer' | 'logo' | 'layout' | 'style';
+
+export interface QrDeviationInput {
+  title: string;
+  subtitle: string;
+  footer: string;
+  logoFileId: string;
+  layout: QrLayout;
+  style: QrStyle;
+}
+
+export interface QrDeviationPreset {
+  title: string;
+  subtitle: string;
+  footer: string;
+  defaultLogoId: string;
+  layout: QrLayout;
+  style: QrStyle;
+  /** Bagian yang menampung nama Manual Book (terkunci); `''` = tidak ada. */
+  namePlacement: QrNamePlacement | '';
+}
+
+/**
+ * Nama bagian label yang menyimpang dari preset, urut title, subtitle, footer, logo, layout, style. Teks bagian yang
+ * terkunci ke nama Manual Book tidak dihitung (nilainya memang berbeda dari preset); gayanya tetap dibandingkan.
+ */
+export function qrPresetDeviations(
+  design: QrDeviationInput,
+  preset: QrDeviationPreset,
+): QrDeviationPart[] {
+  const out: QrDeviationPart[] = [];
+  for (const part of ['title', 'subtitle', 'footer'] as const) {
+    if (preset.namePlacement === part) continue;
+    if (design[part] !== preset[part]) out.push(part);
+  }
+  if (design.logoFileId !== preset.defaultLogoId) out.push('logo');
+  if (QR_LAYOUT_KEYS.some((key) => design.layout[key] !== preset.layout[key])) out.push('layout');
+  if (
+    JSON.stringify(qrStyleSignature(design.style)) !==
+    JSON.stringify(qrStyleSignature(preset.style))
+  ) {
+    out.push('style');
+  }
+  return out;
 }
 
 export function qrExportStatus(exportedHash: string, content: QrContent): QrExportStatus {
