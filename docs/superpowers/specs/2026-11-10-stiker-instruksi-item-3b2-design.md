@@ -1,6 +1,6 @@
 # Stiker Management, tahap 3b-2: instruksi stiker per item
 
-Status: **draf menunggu persetujuan pemilik produk.** Tanggal: 2026-11-10.
+Status: **disetujui pemilik produk 2026-11-10 ("Setuju, susun rencana"); dibangun (2026-11-10), menunggu perbaikan review akhir dan PR.** Butir §3 bertanda "pilihan perancang" ikut disetujui dalam persetujuan itu kecuali dikoreksi kemudian. Tanggal: 2026-11-10.
 Induk: `docs/superpowers/specs/2026-11-09-stiker-katalog-stok-design.md` (§6 mencatat keputusan 3b), `docs/superpowers/specs/2026-11-09-stiker-pustaka-gambar-3b1-design.md` (pustaka gambar dan kontrak ke 3b-2), `docs/superpowers/specs/2026-11-08-business-unit-design.md` (keputusan 13, 17-18, 20-21, 23). Cabang kerja: dibuat dari `dev` setelah PR 48 (3b-1) di-merge.
 
 ## 1. Tujuan
@@ -31,6 +31,12 @@ Dicatat 2026-11-10 (pembahasan 3b-2):
 10. **Filter di daftar item**: "Belum ada instruksi stiker", dan filter per jenis atau stiker dalam dua mode: item yang **memakai** dan item yang **belum memakai** stiker atau jenis itu.
 11. Tiap foto punya **catatan** (field teks) yang menjelaskan bagian mana yang sedang dilihat (mis. "Kardus sisi samping"). Catatan milik penempatan (item + foto), bukan nama foto di pustaka.
 12. **Aturan LinkField** (2026-11-10, PR 49): setiap field form yang bergantung pada model/tabel lain memakai `LinkField`/`LinkMultiField`. Berlaku bagi pemilihan stiker, jenis, dan BU di editor instruksi; `StickerListField` lama (teks bebas) tidak dipertahankan.
+
+Dicatat 2026-11-10 (setelah review akhir; keputusan pemilik produk):
+13. **Peringatan salin ke sasaran nonaktif**: penanda hasil salinan yang menunjuk stiker atau jenis yang sudah nonaktif diberi tanda "nonaktif" di dialog salin dan di baris penanda sebelum Simpan (aturan server tidak berubah: sasaran baru wajib aktif).
+14. **Ketuk penanda di detail** menyorot barisnya dan menggulirnya ke area terlihat (penting di HP).
+15. **`usageCount` pustaka tetap menghitung semua penempatan** tanpa memandang BU yang terlihat (hanya jumlah yang terlihat; nama item hanya lewat `usages` yang dibatasi BU). Alasan: sejalan dengan FK `RESTRICT` yang menahan hapus. Ditinjau dan dibiarkan.
+16. **`stickers.list`/`stickerTypes.list` bagi pemegang `item: ubah`** tetap memakai DTO katalog penuh (termasuk batas minimum dan status menipis). Alasan: bukan data sensitif; menghindari DTO ringkas tambahan. Ditinjau dan dibiarkan.
 
 ## 3. Pilihan perancang (belum ditegaskan pemilik; harap dikoreksi bila keliru)
 
@@ -85,4 +91,5 @@ Bentuk komponen editor (cara menyeret, tata letak popover), nama tipe/DTO yang t
 
 - Migrasi `0007` hanya menambah tabel (expand-only); image sebelumnya tetap berjalan, hanya tidak melihat instruksi baru.
 - Rilis ini berhenti membaca/menulis `items.stickers`; isi lama tidak tampil lagi (keputusan 1). Kolom dihapus di rilis berikutnya.
+- Catatan rilis (review akhir M8): tab browser yang masih memuat bundel sebelum rilis mengirim `stickers` tanpa `stickerPhotos` sehingga setiap simpan item di tab itu ditolak (422) sampai halaman dimuat ulang; klien dan server dirilis bersama, tidak ada mode kompatibel. Pengguna diminta memuat ulang halaman setelah rilis.
 - Filter per stiker memerlukan pencocokan jenis→stiker di SQL; bila lambat pada ribuan item, tambah indeks `item_sticker_marks (sticker_id)` dan `(type_id)`.
