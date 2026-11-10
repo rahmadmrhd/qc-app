@@ -13,7 +13,7 @@ const baseInput = {
   model: 'ES 24 250W',
   isCountryLock: false,
   aliases: [] as string[],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',

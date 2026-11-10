@@ -2,12 +2,7 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
-import type {
-  BusinessUnitRefDto,
-  ItemAccessoryDto,
-  ItemStatus,
-  ItemStickerDto,
-} from '@shared/contract';
+import type { BusinessUnitRefDto, ItemAccessoryDto, ItemStatus } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 
 export interface ItemRecord {
@@ -17,7 +12,6 @@ export interface ItemRecord {
   key: string;
   isCountryLock: boolean;
   aliases: string[];
-  stickers: ItemStickerDto[];
   accessories: ItemAccessoryDto[];
   attachments: string[];
   detail: string;
@@ -34,7 +28,6 @@ export interface ItemRow {
   key: string;
   is_country_lock: string;
   aliases: string;
-  stickers: string;
   accessories: string;
   attachments: string;
   detail_md: string;
@@ -52,7 +45,6 @@ const ITEM_COLUMN_LIST = [
   '`key`',
   'is_country_lock',
   'aliases',
-  'stickers',
   'accessories',
   'attachments',
   'detail_md',
@@ -86,23 +78,6 @@ export function parseStrings(text: string): string[] {
     .filter((entry) => entry !== '');
 }
 
-function parseStickers(text: string): ItemStickerDto[] {
-  const value = parseJson(text);
-  if (!Array.isArray(value)) return [];
-  const result: ItemStickerDto[] = [];
-  for (const entry of value) {
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
-    const { name, note, fileId } = entry as Record<string, unknown>;
-    if (typeof name !== 'string' || name.trim() === '') continue;
-    result.push({
-      name: name.trim(),
-      note: typeof note === 'string' ? note.trim() : '',
-      fileId: typeof fileId === 'string' && fileId.trim() !== '' ? fileId.trim() : null,
-    });
-  }
-  return result;
-}
-
 function parseAccessories(text: string): ItemAccessoryDto[] {
   const value = parseJson(text);
   if (!Array.isArray(value)) return [];
@@ -117,7 +92,7 @@ function parseAccessories(text: string): ItemAccessoryDto[] {
   return result;
 }
 
-/** Parse penuh (JSON stiker/kelengkapan/lampiran + detail): hanya untuk `get` dan `save`. */
+/** Parse penuh (JSON kelengkapan/lampiran + detail): hanya untuk `get` dan `save`. */
 export function toItem(row: ItemRow): ItemRecord {
   return {
     id: row.id.trim(),
@@ -126,7 +101,6 @@ export function toItem(row: ItemRow): ItemRecord {
     key: row.key.trim(),
     isCountryLock: row.is_country_lock.trim() === 'true',
     aliases: parseStrings(row.aliases),
-    stickers: parseStickers(row.stickers),
     accessories: parseAccessories(row.accessories),
     attachments: parseStrings(row.attachments),
     detail: row.detail_md,
@@ -327,7 +301,6 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
     item.isCountryLock ? 'true' : 'false',
     JSON.stringify(item.aliases),
     aliasKeysOf(item.aliases),
-    JSON.stringify(item.stickers),
     JSON.stringify(item.accessories),
     JSON.stringify(item.attachments),
     item.detail,
@@ -339,7 +312,7 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...binds),
   );
@@ -364,7 +337,7 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, stickers = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
         item.brandId,
@@ -373,7 +346,6 @@ export function updateItemStmts(
         item.isCountryLock ? 'true' : 'false',
         JSON.stringify(item.aliases),
         aliasKeysOf(item.aliases),
-        JSON.stringify(item.stickers),
         JSON.stringify(item.accessories),
         JSON.stringify(item.attachments),
         item.detail,

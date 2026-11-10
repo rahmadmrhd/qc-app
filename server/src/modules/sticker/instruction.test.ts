@@ -35,7 +35,7 @@ async function count(table: string): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-const PHOTOS: ItemStickerPhotoInput[] = [
+const PHOTOS: [ItemStickerPhotoInput, ItemStickerPhotoInput, ItemStickerPhotoInput] = [
   {
     guideId: 'g2',
     caption: 'Sisi depan',
@@ -72,8 +72,8 @@ describe('instruksi stiker item: repo', () => {
   });
 
   test('muat banyak item sekaligus; item tanpa foto tidak ada di peta; daftar kosong = peta kosong', async () => {
-    await save('i1', [PHOTOS[0] as ItemStickerPhotoInput]);
-    await save('i2', [PHOTOS[2] as ItemStickerPhotoInput]);
+    await save('i1', [PHOTOS[0]]);
+    await save('i2', [PHOTOS[2]]);
     const loaded = await loadItemInstructions(env.DB, ['i1', 'i2', 'i3']);
     expect([...loaded.keys()].sort()).toEqual(['i1', 'i2']);
     expect(loaded.get('i2')?.[0]?.marks).toEqual(PHOTOS[2]?.marks ?? []);
@@ -82,8 +82,8 @@ describe('instruksi stiker item: repo', () => {
 
   test('ganti-semua menghapus yang lama dan tidak menyentuh item lain', async () => {
     await save('i1', PHOTOS);
-    await save('i2', [PHOTOS[2] as ItemStickerPhotoInput]);
-    const replacement: ItemStickerPhotoInput[] = [
+    await save('i2', [PHOTOS[2]]);
+    const replacement: [ItemStickerPhotoInput] = [
       {
         guideId: 'g3',
         caption: 'Baru',
@@ -171,8 +171,8 @@ describe('instruksi stiker item: repo', () => {
   });
 
   test('hasInstructionsOf benar hanya bila ada penanda (foto tanpa penanda = tidak ada)', async () => {
-    await save('i1', [PHOTOS[1] as ItemStickerPhotoInput]);
-    await save('i2', [PHOTOS[2] as ItemStickerPhotoInput]);
+    await save('i1', [PHOTOS[1]]);
+    await save('i2', [PHOTOS[2]]);
     expect([...(await hasInstructionsOf(env.DB, ['i1', 'i2', 'i3']))]).toEqual(['i2']);
     expect((await hasInstructionsOf(env.DB, [])).size).toBe(0);
   });

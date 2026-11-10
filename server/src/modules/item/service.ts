@@ -11,6 +11,13 @@ import { brandByIdStatement, brandsFromResult, listBrands } from '@server/module
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
+import {
+  hasInstructionsOf,
+  loadItemInstructions,
+  replaceItemInstructionStmts,
+  type StoredPhoto,
+} from '@server/modules/sticker/instruction-repo';
+import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
 import type {
   BusinessUnitRefDto,
   GetItemInput,
@@ -18,7 +25,7 @@ import type {
   ItemDto,
   ItemPageDto,
   ItemStatus,
-  ItemStickerDto,
+  ItemStickerPhotoDto,
   ItemSummaryDto,
   ListItemsPageInput,
   SaveItemInput,
@@ -52,8 +59,17 @@ import {
 } from './repo';
 import { ITEM_PAGE_DEFAULT_LIMIT } from './validate';
 
-/** Record item beserta nama merk (dari tabel merk) dan semua BU-nya untuk DTO dan audit. */
-export type ItemView = ItemRecord & { brand: string; businessUnits: BusinessUnitRefDto[] };
+/** Record item beserta nama merk (dari tabel merk), semua BU-nya, dan instruksi stiker tersimpan untuk DTO dan audit. */
+export type ItemView = ItemRecord & {
+  brand: string;
+  businessUnits: BusinessUnitRefDto[];
+  instructions: StoredPhoto[];
+};
+
+/** Ada minimal satu penanda instruksi stiker (foto tanpa penanda tidak dihitung). */
+function hasMarks(instructions: readonly StoredPhoto[]): boolean {
+  return instructions.some((photo) => photo.marks.length > 0);
+}
 
 function toItemSummaryDto(item: ItemView): ItemSummaryDto {
   return {
@@ -65,15 +81,16 @@ function toItemSummaryDto(item: ItemView): ItemSummaryDto {
     status: item.status,
     aliases: [...item.aliases],
     imageCount: item.attachments.length,
+    hasInstructions: hasMarks(item.instructions),
     businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
   };
 }
 
-export function toItemDto(item: ItemView): ItemDto {
+export function toItemDto(item: ItemView, stickerPhotos: ItemStickerPhotoDto[]): ItemDto {
   return {
     ...toItemSummaryDto(item),
-    stickers: item.stickers.map((sticker) => ({ ...sticker })),
+    stickerPhotos,
     accessories: item.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...item.attachments],
     detail: item.detail,
@@ -94,10 +111,10 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     isCountryLock: item.isCountryLock,
     status: item.status,
     aliases: [...item.aliases],
-    stickers: item.stickers.map(
-      (sticker) =>
-        `${sticker.name}${sticker.note ? ` — ${sticker.note}` : ''}${sticker.fileId ? ' · bergambar' : ''}`,
-    ),
+    stickerPhotos: {
+      photos: item.instructions.length,
+      marks: item.instructions.reduce((total, photo) => total + photo.marks.length, 0),
+    },
     accessories: item.accessories.map((accessory) => `${accessory.name} ×${accessory.qty}`),
     attachments: [...item.attachments],
     detailLength: item.detail.length,
@@ -120,11 +137,32 @@ async function brandNameOf(env: Env, brandId: string): Promise<string> {
 }
 
 async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
-  const [brand, businessUnits] = await Promise.all([
+  const [brand, businessUnits, instructions] = await Promise.all([
     brandNameOf(env, item.brandId),
     itemBusinessUnitsOf(env.DB, [item.id]),
+    loadItemInstructions(env.DB, [item.id]),
   ]);
-  return { ...item, brand, businessUnits: businessUnits.get(item.id) ?? [] };
+  return {
+    ...item,
+    brand,
+    businessUnits: businessUnits.get(item.id) ?? [],
+    instructions: instructions.get(item.id) ?? [],
+  };
+}
+
+/** Tampilan instruksi (`stickerPhotos`) sebuah item dari foto tersimpan, diterjemahkan menurut BU item. */
+async function instructionViewsOf(
+  env: Env,
+  itemId: string,
+  businessUnits: readonly BusinessUnitRefDto[],
+  instructions: readonly StoredPhoto[],
+): Promise<ItemStickerPhotoDto[]> {
+  return buildInstructionViews(
+    env,
+    itemId,
+    businessUnits.map((bu) => bu.id),
+    instructions,
+  );
 }
 
 interface ListRow {
@@ -142,7 +180,7 @@ interface ListRow {
 
 /**
  * Daftar ringkas berkursor, urut menurut `key` (merk + tipe ternormalisasi; memakai indeks `items_key`).
- * TIDAK membaca/parsing kolom besar (detail, stiker, kelengkapan); jumlah gambar dihitung SQL. Hanya `aliases`
+ * TIDAK membaca/parsing kolom besar (detail, kelengkapan); jumlah gambar dihitung SQL. Hanya `aliases`
  * (kecil) di-parse untuk baris pada halaman ini.
  *
  * Hanya item yang beririsan dengan BU yang boleh dilihat `user` (filter di SQL, bukan di klien; pencarian ikut
@@ -182,10 +220,11 @@ export async function listItemPage(
   const rows = result.results;
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
-  const businessUnits = await itemBusinessUnitsOf(
-    env.DB,
-    page.map((row) => row.id.trim()),
-  );
+  const pageIds = page.map((row) => row.id.trim());
+  const [businessUnits, withInstructions] = await Promise.all([
+    itemBusinessUnitsOf(env.DB, pageIds),
+    hasInstructionsOf(env.DB, pageIds),
+  ]);
   return {
     items: page.map(
       (row): ItemSummaryDto => ({
@@ -197,6 +236,7 @@ export async function listItemPage(
         status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
         aliases: parseStrings(row.aliases),
         imageCount: Number(row.image_count) || 0,
+        hasInstructions: withInstructions.has(row.id.trim()),
         businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
       }),
@@ -221,7 +261,10 @@ export async function getItemDto(
     user,
     view.businessUnits.map((bu) => bu.id),
   );
-  return toItemDto(view);
+  return toItemDto(
+    view,
+    await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),
+  );
 }
 
 interface OwnerRow {
@@ -305,18 +348,15 @@ function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwne
   }
 }
 
-/** Semua berkas yang dirujuk item: galeri, contoh stiker, dan gambar di dalam Markdown. */
+/** Semua berkas yang dirujuk item: galeri dan gambar di dalam Markdown. */
 function referencedFileIds(input: SaveItemInput): string[] {
   const ids: string[] = [...input.attachments];
-  for (const sticker of input.stickers) {
-    if (sticker.fileId !== null) ids.push(sticker.fileId);
-  }
   ids.push(...extractFileRefs(input.detail));
   return [...new Set(ids)];
 }
 
 /**
- * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, stiker, detail):
+ * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, detail):
  * tidak dikenal -> VALIDATION, sudah dipakai entitas lain -> CONFLICT. `planAttachFiles` tetap menjadi pagar.
  *
  * Tanpa oracle kepemilikan lintas BU (keputusan pemilik 2026-11-09): berkas yang terpasang pada item lain yang BU-nya
@@ -356,11 +396,6 @@ async function assertItemFilesUsable(
     const kind = problem(fileId);
     if (kind) fail(kind, 'attachments', 'Ada gambar lampiran');
   }
-  input.stickers.forEach((sticker, index) => {
-    if (sticker.fileId === null) return;
-    const kind = problem(sticker.fileId);
-    if (kind) fail(kind, 'stickers', `Stiker ${index + 1}: gambar`);
-  });
   for (const fileId of extractFileRefs(input.detail)) {
     const kind = problem(fileId);
     if (kind) fail(kind, 'detail', 'Ada gambar di detail');
@@ -375,13 +410,12 @@ type ComparableItem = {
   isCountryLock: boolean;
   attachments: readonly string[];
   detail: string;
-  stickers: readonly ItemStickerDto[];
   accessories: readonly ItemAccessoryDto[];
   status: ItemStatus;
 };
 
 /**
- * Apakah isi dua item sama (merk, tipe, country lock, lampiran, detail, stiker, kelengkapan, status; alias tidak
+ * Apakah isi dua item sama (merk, tipe, country lock, lampiran, detail, kelengkapan, status; alias tidak
  * dihitung). Perbandingan string/larik langsung tanpa menyerialkan ke JSON (detail bisa 20.000 karakter).
  */
 export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean {
@@ -392,18 +426,12 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
-    a.stickers.length !== b.stickers.length ||
     a.accessories.length !== b.accessories.length
   ) {
     return false;
   }
   for (let i = 0; i < a.attachments.length; i++) {
     if (a.attachments[i] !== b.attachments[i]) return false;
-  }
-  for (let i = 0; i < a.stickers.length; i++) {
-    const x = a.stickers[i] as ItemStickerDto;
-    const y = b.stickers[i] as ItemStickerDto;
-    if (x.name !== y.name || x.note !== y.note || x.fileId !== y.fileId) return false;
   }
   for (let i = 0; i < a.accessories.length; i++) {
     const x = a.accessories[i] as ItemAccessoryDto;
@@ -677,7 +705,6 @@ export async function planItemWrite(
     key,
     isCountryLock: input.isCountryLock,
     aliases: [...input.aliases],
-    stickers: input.stickers.map((sticker) => ({ ...sticker })),
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],
     detail: input.detail,
@@ -690,10 +717,15 @@ export async function planItemWrite(
     .filter((bu): bu is BusinessUnitBrief => bu !== undefined)
     .map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }))
     .sort((a, b) => a.code.localeCompare(b.code));
+  const afterInstructions: StoredPhoto[] = input.stickerPhotos.map((photo, position) => ({
+    ...photo,
+    position,
+  }));
   const afterView = (record: ItemRecord): ItemView => ({
     ...record,
     brand: brand.name,
     businessUnits,
+    instructions: afterInstructions,
   });
   // Penjaga merk (ganti nama merk yang menyela membatalkan batch, I1) selalu PERTAMA: merk selalu sudah ada.
   const statements: DbStatement[] = [brandKeyGuardStmt(env.DB, brand.id, brand.key)];
@@ -711,6 +743,7 @@ export async function planItemWrite(
     );
     statements.push(
       ...attach,
+      ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos),
       ...updateItemStmts(env.DB, merged, existing),
       ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, false),
     );
@@ -739,6 +772,7 @@ export async function planItemWrite(
   };
   statements.push(
     ...attach,
+    ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos),
     ...insertItemStmts(env.DB, created),
     ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, true),
   );
@@ -757,7 +791,7 @@ export async function planItemWrite(
 
 /**
  * Item yang sudah ada tidak mengklaim kunci baru bila merk+tipe dan nama lainnya tidak berubah (kasus umum
- * penyimpanan: hanya detail/stiker/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
+ * penyimpanan: hanya detail/instruksi/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
  * indeks unik tetap menjadi pagar bila ada rebutan.
  */
 function claimsNoNewNames(
@@ -801,11 +835,17 @@ async function saveItemOnce(
 ): Promise<ItemDto> {
   const plan = await planItemWrite(env, input, { id, actor });
   await batchItemWrite(env.DB, plan.statements);
-  return toItemDto({
-    ...plan.record,
-    brand: plan.brandName,
-    businessUnits: plan.businessUnits,
-  });
+  // Hasil dibaca ulang SETELAH batch (bukan disalin dari input): yang dikembalikan adalah yang tersimpan.
+  const stored = (await loadItemInstructions(env.DB, [id])).get(id) ?? [];
+  return toItemDto(
+    {
+      ...plan.record,
+      brand: plan.brandName,
+      businessUnits: plan.businessUnits,
+      instructions: stored,
+    },
+    await instructionViewsOf(env, id, plan.businessUnits, stored),
+  );
 }
 
 export async function setItemStatus(
@@ -831,8 +871,10 @@ async function setItemStatusOnce(
   // NOT_FOUND bila tak beririsan BU terlihat; menonaktifkan item multi-BU butuh `manage` pada SEMUA BU item.
   assertItemVisible(actor, itemBuIds);
   assertCanActOnItem(actor, itemBuIds, 'manage', 'Anda tidak berhak mengubah status item ini');
-  const before: ItemView = { ...existing, brand: found.brandName, businessUnits };
-  if (existing.status === input.status) return toItemDto(before);
+  const instructions = (await loadItemInstructions(env.DB, [existing.id])).get(existing.id) ?? [];
+  const before: ItemView = { ...existing, brand: found.brandName, businessUnits, instructions };
+  const views = await instructionViewsOf(env, existing.id, businessUnits, instructions);
+  if (existing.status === input.status) return toItemDto(before, views);
   const now = nowIso(env);
   const updated: ItemRecord = {
     ...existing,
@@ -851,10 +893,10 @@ async function setItemStatusOnce(
         action: input.status === 'active' ? 'item.activate' : 'item.deactivate',
         target: itemLabel(before),
         before: itemSnapshot(before),
-        after: itemSnapshot({ ...updated, brand: before.brand, businessUnits }),
+        after: itemSnapshot({ ...updated, brand: before.brand, businessUnits, instructions }),
       }),
     ],
     ITEM_CONFLICTS,
   );
-  return toItemDto({ ...updated, brand: before.brand, businessUnits });
+  return toItemDto({ ...updated, brand: before.brand, businessUnits, instructions }, views);
 }

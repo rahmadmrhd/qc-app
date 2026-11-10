@@ -27,7 +27,7 @@ const input = (over: Partial<SaveItemInput> = {}): SaveItemInput => ({
   model: 'Satu',
   isCountryLock: false,
   aliases: [],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',
@@ -540,7 +540,6 @@ describe('rujukan berkas item lintas BU (tanpa oracle kepemilikan)', () => {
     const user = await ctxOf('ea@gmail.com'); // hanya BU A
     const makes = [
       (id: string) => input({ model: 'Baru', attachments: [id] }),
-      (id: string) => input({ model: 'Baru', stickers: [{ name: 'S', note: '', fileId: id }] }),
       (id: string) => input({ model: 'Baru', detail: `![x](qcfile:${id})` }),
     ];
     for (const make of makes) {

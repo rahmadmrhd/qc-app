@@ -25,7 +25,7 @@ const baseInput: SaveItemInput = {
   model: 'ES 24 250W',
   isCountryLock: false,
   aliases: [],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',
@@ -87,10 +87,6 @@ describe('simpan', () => {
         ...baseInput,
         detail,
         aliases: ['ES24'],
-        stickers: [
-          { name: 'Label SNI', note: 'Belakang', fileId: null },
-          { name: 'Garansi', note: '', fileId: null },
-        ],
         accessories: [{ name: 'Kabel daya', qty: 2 }],
       },
       admin,
@@ -120,7 +116,7 @@ describe('simpan', () => {
         isCountryLock: false,
         status: 'active',
         aliases: ['ES24'],
-        stickers: ['Label SNI — Belakang', 'Garansi'],
+        stickerPhotos: { photos: 0, marks: 0 },
         accessories: ['Kabel daya ×2'],
         attachments: [],
         detailLength: detail.length,
@@ -207,14 +203,13 @@ describe('simpan', () => {
     expect(await itemCount()).toBe(1);
   });
 
-  test('gambar galeri, contoh stiker, dan Markdown ditautkan ke item dalam satu batch', async () => {
-    const [gallery, sticker, inText] = [await newFile(), await newFile(), await newFile()];
+  test('gambar galeri dan Markdown ditautkan ke item dalam satu batch', async () => {
+    const [gallery, inText] = [await newFile(), await newFile()];
     const saved = await saveItem(
       env,
       {
         ...baseInput,
         attachments: [gallery],
-        stickers: [{ name: 'Label', note: '', fileId: sticker }],
         detail: `Teks ![x](qcfile:${inText}) dan ![lagi](qcfile:${gallery})`,
       },
       admin,
@@ -226,9 +221,7 @@ describe('simpan', () => {
         owner_id: string;
       }>()
     ).results.map((f) => [f.id, f.owner_type, f.owner_id]);
-    expect(owned.sort()).toEqual(
-      [gallery, sticker, inText].map((id) => [id, 'item', saved.id]).sort(),
-    );
+    expect(owned.sort()).toEqual([gallery, inText].map((id) => [id, 'item', saved.id]).sort());
     expect(saved.imageCount).toBe(1);
   });
 
@@ -272,10 +265,6 @@ describe('simpan', () => {
       code: 'VALIDATION',
       fields: { attachments: expect.stringContaining('tidak dikenal') },
     });
-    const stk = await captureAppErrorAsync(() =>
-      saveItem(env, { ...baseInput, stickers: [{ name: 'S', note: '', fileId: ghost }] }, admin),
-    );
-    expect(stk.fields?.stickers).toBe('Stiker 1: gambar tidak dikenal; unggah ulang');
     const det = await captureAppErrorAsync(() =>
       saveItem(env, { ...baseInput, detail: `![x](qcfile:${ghost})` }, admin),
     );

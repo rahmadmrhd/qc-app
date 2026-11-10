@@ -41,7 +41,7 @@ const ITEM_BASE = {
   businessUnitIds: [DEFAULT_TEST_BU_ID],
   isCountryLock: false,
   aliases: [] as string[],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [] as string[],
   detail: '',
