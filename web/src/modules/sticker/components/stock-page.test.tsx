@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
+import { pickLink } from '@/test/link-field';
 import { StockPage, type StockPageProps } from './stock-page';
 
 let me: MeDto;
@@ -123,7 +124,7 @@ test('"Stok saat ini" di dialog ikut diperbarui saat stok dimuat ulang dengan di
   const { update } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   expect(within(dialog).getByText('Stok saat ini: 120 butir')).toBeInTheDocument();
   const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
   update({
@@ -161,7 +162,7 @@ test('pesan angka dibedakan: kosong, bukan bilangan bulat, dan melebihi batas', 
   renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Koreksi Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Uji');
   const delta = within(dialog).getByLabelText('Perubahan (butir)');
   const save = within(dialog).getByRole('button', { name: 'Simpan' });
@@ -180,7 +181,7 @@ test('jumlah keluar: kosong, desimal, dan melebihi batas memberi pesan berbeda',
   renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Uji');
   const quantity = within(dialog).getByLabelText('Jumlah butir');
   const save = within(dialog).getByRole('button', { name: 'Simpan' });
@@ -199,7 +200,7 @@ test('opname: total butir baris melebihi batas ditandai pada baris dan Simpan no
   renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(within(dialog).getByLabelText('Lembar baris 1'), '1000');
   await userEvent.type(within(dialog).getByLabelText('Isi per lembar baris 1'), '5000');
@@ -246,7 +247,7 @@ test('dialog keluar mewajibkan alasan', async () => {
   const { onWrite } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.type(within(dialog).getByLabelText('Jumlah butir'), '20');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onWrite).not.toHaveBeenCalled();
@@ -270,7 +271,7 @@ test('dialog masuk: alasan opsional dan hitungan lembar dikirim sebagai count', 
   const { onWrite } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Catat masuk Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-b');
+  await pickLink(within(dialog), 'Lokasi', 'Bandung (BDG)');
   await userEvent.selectOptions(within(dialog).getByLabelText('Cara input'), 'count');
   await userEvent.type(within(dialog).getByLabelText('Lembar baris 1'), '10');
   await userEvent.type(within(dialog).getByLabelText('Isi per lembar baris 1'), '12');
@@ -297,7 +298,7 @@ test('galat server tampil pada field jumlah dan dialog tetap terbuka', async () 
   });
   await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Segel Polos' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.type(within(dialog).getByLabelText('Jumlah butir'), '99');
   await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Uji');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
@@ -309,7 +310,7 @@ test('koreksi: perubahan bertanda dan alasan wajib', async () => {
   const { onWrite } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Koreksi Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.type(within(dialog).getByLabelText('Perubahan (butir)'), '-5');
   await userEvent.type(within(dialog).getByLabelText('Alasan'), 'Rusak');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
@@ -323,7 +324,7 @@ test('koreksi tanpa perubahan atau tanpa alasan tidak dikirim', async () => {
   const { onWrite } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Koreksi Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onWrite).not.toHaveBeenCalled();
   expect(await within(dialog).findByText('Perubahan wajib diisi (bukan 0)')).toBeInTheDocument();
@@ -334,7 +335,7 @@ test('opname mengirim expectedQty yang dilihat halaman dan hanya baris yang dihi
   const { onOpname } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   expect(within(dialog).getByText('Tercatat 120')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(within(dialog).getByLabelText('Butir lepas'), '7');
@@ -360,7 +361,7 @@ test('opname ditolak usang: pesan hitung ulang, lalu Hitung ulang memakai stok t
   });
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(within(dialog).getByLabelText('Butir lepas'), '7');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan opname' }));
@@ -377,7 +378,7 @@ test('opname tanpa baris yang dihitung tidak dapat dikirim', async () => {
   const { onOpname } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Lokasi'), 'l-a');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
   expect(within(dialog).getByRole('button', { name: 'Simpan opname' })).toBeDisabled();
   expect(onOpname).not.toHaveBeenCalled();
 });

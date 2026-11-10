@@ -1,11 +1,13 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
 import { ALL_BU_KEY } from '@shared/business-units';
 import type { BusinessUnitOptionDto, LocationDto, RoleDto } from '@shared/contract';
+import { normalizeKey } from '@shared/items';
 import { useForm } from '@tanstack/react-form';
+import { useState } from 'react';
 import { FieldError } from '@/components/field-error';
+import { LinkField, LinkMultiField } from '@/components/link-field';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { UserFormInput, UserFormOutput } from '../schemas';
@@ -17,9 +19,100 @@ export interface UserFormProps {
   roles: readonly RoleDto[];
   locations: readonly LocationDto[];
   businessUnits: readonly BusinessUnitOptionDto[];
+  /** Tautan ke halaman lihat BU (tab baru); tidak disediakan bila user tak berhak melihatnya, sehingga tombolnya hilang. */
+  openBusinessUnitHref?: (id: string) => string | null;
   submitError?: string | null;
   onSubmit: (values: UserFormOutput) => Promise<unknown>;
   onCancel: () => void;
+}
+
+interface AssignmentOption {
+  value: string;
+  label: string;
+}
+
+/** Saring opsi daftar kecil yang sudah dimuat penuh menurut teks pencarian (label, tanpa peka huruf besar/kecil). */
+function filterByTerm<T>(items: readonly T[], term: string, labelOf: (item: T) => string): T[] {
+  const key = normalizeKey(term);
+  return key === ''
+    ? [...items]
+    : items.filter((item) => normalizeKey(labelOf(item)).includes(key));
+}
+
+/** `LinkField` satu pilihan untuk baris penugasan: opsi dimuat penuh, pencarian menyaring lokal. */
+function AssignmentField({
+  id,
+  label,
+  placeholder,
+  value,
+  options,
+  onChange,
+  openHref,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  options: readonly AssignmentOption[];
+  onChange: (value: string) => void;
+  openHref?: ((id: string) => string | null) | undefined;
+}) {
+  const [term, setTerm] = useState('');
+  return (
+    <LinkField
+      id={id}
+      label={label}
+      placeholder={placeholder}
+      value={value === '' ? null : value}
+      labelOf={(selected) => options.find((option) => option.value === selected)?.label}
+      options={filterByTerm(options, term, (option) => option.label).map((option) => ({
+        id: option.value,
+        label: option.label,
+      }))}
+      onSearchChange={setTerm}
+      searchDebounceMs={0}
+      onChange={(next) => onChange(next ?? '')}
+      openHref={openHref}
+    />
+  );
+}
+
+/** `LinkMultiField` role untuk baris penugasan: role dipilih sebagai chip; opsi menyaring lokal. */
+function RoleAssignmentField({
+  id,
+  label,
+  roles,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  roles: readonly RoleDto[];
+  value: readonly string[];
+  onChange: (roleIds: string[]) => void;
+}) {
+  const [term, setTerm] = useState('');
+  return (
+    <div className="space-y-1.5">
+      <LinkMultiField
+        id={id}
+        label={label}
+        placeholder="Pilih role…"
+        value={value}
+        labelOf={(roleId) =>
+          roles.find((role) => role.id === roleId)?.name ?? '(role tidak dikenal)'
+        }
+        options={filterByTerm(roles, term, (role) => role.name).map((role) => ({
+          id: role.id,
+          label: role.name,
+        }))}
+        onSearchChange={setTerm}
+        searchDebounceMs={0}
+        onChange={onChange}
+      />
+      {roles.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada role.</p> : null}
+    </div>
+  );
 }
 
 export function UserForm({
@@ -28,6 +121,7 @@ export function UserForm({
   roles,
   locations,
   businessUnits,
+  openBusinessUnitHref,
   submitError,
   onSubmit,
   onCancel,
@@ -142,23 +236,17 @@ export function UserForm({
                   aria-label={`Penugasan ${index + 1}`}
                   className="space-y-2 rounded-lg border p-3"
                 >
-                  <div className="flex items-center gap-2">
-                    <NativeSelect
-                      aria-label={`Lokasi penugasan ${index + 1}`}
-                      value={row.locationId}
-                      onChange={(event) => update(index, { locationId: event.target.value })}
-                    >
-                      {row.locationId === '' ? (
-                        <option value="" disabled>
-                          Pilih lokasi…
-                        </option>
-                      ) : null}
-                      {optionsFor(row.locationId).map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <AssignmentField
+                        id={`assign-location-${index}`}
+                        label={`Lokasi penugasan ${index + 1}`}
+                        placeholder="Pilih lokasi…"
+                        value={row.locationId}
+                        options={optionsFor(row.locationId)}
+                        onChange={(locationId) => update(index, { locationId })}
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
@@ -169,30 +257,13 @@ export function UserForm({
                       Hapus
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {roles.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Belum ada role.</p>
-                    ) : null}
-                    {roles.map((role) => (
-                      <div key={role.id} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`assign-${index}-${role.id}`}
-                          checked={row.roleIds.includes(role.id)}
-                          onCheckedChange={(next) =>
-                            update(index, {
-                              roleIds:
-                                next === true
-                                  ? [...row.roleIds, role.id]
-                                  : row.roleIds.filter((id) => id !== role.id),
-                            })
-                          }
-                        />
-                        <Label htmlFor={`assign-${index}-${role.id}`} className="font-normal">
-                          {role.name}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+                  <RoleAssignmentField
+                    id={`assign-roles-${index}`}
+                    label={`Role penugasan ${index + 1}`}
+                    roles={roles}
+                    value={row.roleIds}
+                    onChange={(roleIds) => update(index, { roleIds })}
+                  />
                 </fieldset>
               ))}
               <Button
@@ -254,23 +325,22 @@ export function UserForm({
                   aria-label={`Penugasan BU ${index + 1}`}
                   className="space-y-2 rounded-lg border p-3"
                 >
-                  <div className="flex items-center gap-2">
-                    <NativeSelect
-                      aria-label={`BU penugasan ${index + 1}`}
-                      value={row.buId}
-                      onChange={(event) => update(index, { buId: event.target.value })}
-                    >
-                      {row.buId === '' ? (
-                        <option value="" disabled>
-                          Pilih BU…
-                        </option>
-                      ) : null}
-                      {optionsFor(row.buId).map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <AssignmentField
+                        id={`assign-bu-${index}`}
+                        label={`BU penugasan ${index + 1}`}
+                        placeholder="Pilih BU…"
+                        value={row.buId}
+                        options={optionsFor(row.buId)}
+                        onChange={(buId) => update(index, { buId })}
+                        openHref={
+                          openBusinessUnitHref
+                            ? (id) => (id === ALL_BU_KEY ? null : openBusinessUnitHref(id))
+                            : undefined
+                        }
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
@@ -281,30 +351,13 @@ export function UserForm({
                       Hapus
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {roles.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Belum ada role.</p>
-                    ) : null}
-                    {roles.map((role) => (
-                      <div key={role.id} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`bu-assign-${index}-${role.id}`}
-                          checked={row.roleIds.includes(role.id)}
-                          onCheckedChange={(next) =>
-                            update(index, {
-                              roleIds:
-                                next === true
-                                  ? [...row.roleIds, role.id]
-                                  : row.roleIds.filter((id) => id !== role.id),
-                            })
-                          }
-                        />
-                        <Label htmlFor={`bu-assign-${index}-${role.id}`} className="font-normal">
-                          {role.name}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
+                  <RoleAssignmentField
+                    id={`bu-assign-roles-${index}`}
+                    label={`Role penugasan BU ${index + 1}`}
+                    roles={roles}
+                    value={row.roleIds}
+                    onChange={(roleIds) => update(index, { roleIds })}
+                  />
                 </fieldset>
               ))}
               <Button

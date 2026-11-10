@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { pickLink } from '@/test/link-field';
 import { toPresetFormValues, toQrFormDefaults } from '../schemas';
 import { QrDesignForm } from './qr-design-form';
 
@@ -242,14 +243,14 @@ test('QR baru: wajib memilih konfigurasi default dulu; isian lain tersembunyi sa
   expect(screen.queryByText('Bingkai QR')).toBeNull();
   expect(screen.queryByText('Sumber link')).toBeNull();
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
-  await userEvent.selectOptions(screen.getByLabelText('Pilih konfigurasi default'), 'p1');
+  await pickLink(screen, 'Pilih konfigurasi default', 'Standar');
   expect(screen.getByLabelText('Title')).toHaveValue('PT Contoh');
   expect(screen.getByLabelText('Subtitle')).toHaveValue('Sub');
   expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(18);
   expect(screen.getByText('Sumber link')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
   // memilih default lain mengisi ulang semua isian
-  await userEvent.selectOptions(screen.getByLabelText('Pilih konfigurasi default'), 'p2');
+  await pickLink(screen, 'Pilih konfigurasi default', 'Promo');
   expect(screen.getByLabelText('Title')).toHaveValue('Diskon');
   expect(onSubmit).not.toHaveBeenCalled();
 });
@@ -284,7 +285,7 @@ test('ubah/duplikat: "Perbarui sesuai konfigurasi default" menyalin ulang bagian
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/selalu ikut/)).toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Terapkan' })).toBeDisabled();
-  await userEvent.selectOptions(within(dialog).getByLabelText('Konfigurasi default'), 'p1');
+  await pickLink(within(dialog), 'Konfigurasi default', 'Standar');
   await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Footer' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
   expect(screen.getByLabelText('Title')).toHaveValue('PT Contoh');

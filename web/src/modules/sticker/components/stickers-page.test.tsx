@@ -1,8 +1,9 @@
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { pickLink } from '@/test/link-field';
 import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
@@ -134,11 +135,13 @@ test('dialog tambah: field BU hanya untuk jenis berrule bu, tersembunyi untuk je
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
   // Jenis nonaktif tidak ditawarkan.
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
+  expect(await within(dialog).findByRole('option', { name: 'QC Hijau' })).toBeInTheDocument();
   expect(within(dialog).queryByRole('option', { name: 'Lawas' })).toBeNull();
   expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
   expect(within(dialog).getByRole('combobox', { name: 'BU' })).toBeInTheDocument();
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
   expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
 });
 
@@ -146,7 +149,7 @@ test('tambah stiker jenis none mengirim BU kosong', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Baru');
   await userEvent.type(within(dialog).getByLabelText('Alias'), 'SB');
   await userEvent.type(within(dialog).getByLabelText('Batas minimum'), '50');
@@ -166,7 +169,7 @@ test('tambah stiker jenis bu: menautkan dua BU dan mengirimnya', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Hijau Kecil');
   for (const name of ['Retail (RTL)', 'Wholesale (WHL)']) {
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
@@ -184,11 +187,40 @@ test('tambah stiker jenis bu: menautkan dua BU dan mengirimnya', async () => {
   });
 });
 
+test('mengganti jenis dari bu ke non-bu mengosongkan BU yang sudah dipilih (payload tanpa BU)', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
+  // Kembali ke jenis bu: pilihan BU lama tidak boleh muncul lagi.
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  expect(within(dialog).queryByText('Retail (RTL)')).toBeNull();
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave.mock.calls[0]?.[0]).toMatchObject({ typeId: 'tp-none', businessUnitIds: [] });
+});
+
+test('Simpan nonaktif selama jenis belum dipilih, dan aktif setelah jenis dikosongkan lalu dipilih lagi', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Tanpa Jenis');
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeEnabled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kosongkan Jenis' }));
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
+});
+
 test('jenis bu tanpa BU tidak dikirim', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-bu');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Tanpa BU');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onSave).not.toHaveBeenCalled();
@@ -221,7 +253,7 @@ test('membuat stiker baru tidak mengirim expectedUpdatedAt', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Baru');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty('expectedUpdatedAt');
@@ -265,11 +297,89 @@ test('pesan konflik nama dari server tampil pada field nama dan dialog tetap ter
   });
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Jenis'), 'tp-none');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Polos');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   const alert = await within(dialog).findByRole('alert');
   expect(alert).toHaveTextContent('Nama stiker sudah dipakai pada jenis ini');
   expect(within(dialog).getByLabelText('Nama stiker')).toHaveAttribute('aria-invalid', 'true');
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+});
+
+test('field Jenis memakai LinkField: Tambah Jenis hanya muncul bila user berhak', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  let dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
+  expect(within(dialog).queryByRole('option', { name: 'Tambah Jenis' })).toBeNull();
+  // Jenis nonaktif tidak ditawarkan.
+  expect(within(dialog).queryByRole('option', { name: 'Lawas' })).toBeNull();
+  cleanup();
+
+  renderPage({ onCreateType: vi.fn() });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
+  expect(within(dialog).getByRole('option', { name: 'Tambah Jenis' })).toBeInTheDocument();
+});
+
+test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (aturan bu memunculkan field BU)', async () => {
+  const created: StickerTypeDto = {
+    id: 'tp-baru',
+    name: 'Warna Baru',
+    rule: 'bu',
+    status: 'active',
+    stickerCount: 0,
+    updatedAt: '',
+  };
+  const onCreateType = vi.fn().mockResolvedValue(created);
+  const { onSave } = renderPage({ onCreateType });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
+  await userEvent.click(await within(dialog).findByRole('option', { name: 'Tambah Jenis' }));
+  const typeDialog = await screen.findByRole('alertdialog', { name: 'Tambah jenis stiker' });
+  await userEvent.type(within(typeDialog).getByLabelText('Nama jenis'), 'Warna Baru');
+  await userEvent.click(within(typeDialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(onCreateType).toHaveBeenCalledTimes(1));
+  expect(onCreateType.mock.calls[0]?.[0]).toMatchObject({ name: 'Warna Baru' });
+  const form = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
+  expect(within(form).getByRole('combobox', { name: 'Jenis' })).toHaveValue('Warna Baru');
+  // Aturan jenis baru (bu) langsung terbaca tanpa menunggu muat ulang daftar jenis.
+  expect(within(form).getByRole('combobox', { name: 'BU' })).toBeInTheDocument();
+  await userEvent.type(within(form).getByLabelText('Nama stiker'), 'Stiker Baru');
+  await pickLink(within(form), 'BU', 'Retail (RTL)');
+  await userEvent.click(within(form).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+    typeId: 'tp-baru',
+    businessUnitIds: ['bu-a'],
+  });
+});
+
+test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  let dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  expect(within(dialog).queryByRole('link', { name: /Buka/ })).toBeNull();
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
+  expect(within(dialog).queryByRole('option', { name: 'Tambah BU' })).toBeNull();
+  cleanup();
+
+  renderPage({
+    openBusinessUnitHref: (id) => `/access/business-units/${id}`,
+    onCreateBusinessUnit: vi.fn(),
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  expect(within(dialog).getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+    'href',
+    '/access/business-units/bu-a',
+  );
+  await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
+  expect(within(dialog).getByRole('option', { name: 'Tambah BU' })).toBeInTheDocument();
 });

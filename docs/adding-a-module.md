@@ -44,7 +44,7 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 
    Router memeriksa tiap lokasi (ada, aktif, level cukup); satu gagal menolak seluruh permintaan dengan `FORBIDDEN`. **Gunakan `ctx.locationIds`, bukan input mentah.** Lupa `scope: 'location'` membuat izin diperiksa secara global.
 2. **Data**: setiap baris punya kolom `location_id`; baca difilter ke `ctx.locationIds`, ubah/hapus memeriksa lokasi baris yang ada (izin ditegakkan lagi di lokasi baris itu).
-3. **Frontend**: baca dengan `useActiveLocations().selectedIds`; form tulis memakai `LocationField` (`web/src/modules/location/location-field.tsx`); menu memakai `permission: { module, level, scope: 'location' }` pada `NAV_GROUPS`; guard route memakai `requirePermission` (memeriksa minimal satu lokasi).
+3. **Frontend**: baca dengan `useActiveLocations().selectedIds`; form tulis memakai `LocationField` (`web/src/modules/location/location-field.tsx`, berbasis `LinkField`); menu memakai `permission: { module, level, scope: 'location' }` pada `NAV_GROUPS`; guard route memakai `requirePermission` (memeriksa minimal satu lokasi).
 4. **Tabel**: tampilkan kolom **Lokasi** bila `selectedIds.length > 1` (PRD FR-C5); dengan satu lokasi terpilih kolom itu tidak perlu.
 5. **Tes**: tambahkan kasus lokasi terlarang, tak dikenal, dan nonaktif untuk method baru.
 6. **Izin alternatif**: bila method boleh diakses oleh salah satu dari beberapa izin (mis. WH atau QC), pakai `permission: { anyOf: [ ... ] }`. Semua alternatif harus sama lingkupnya (semua global atau semua `scope: 'location'`); tiap lokasi yang diminta cukup memenuhi satu alternatif, dan satu lokasi yang gagal menolak seluruh permintaan.
@@ -63,6 +63,16 @@ Satu fitur boleh memakai dua modul: katalog `sticker` (global, `SHARED_MODULES`,
 - **Tampil**: `useFileUrl(id)` (`web/src/modules/files/queries.ts`) memuat byte lewat `files.get` (di-cache lama di TanStack Query) dan membuat URL objek Blob di `useEffect` (di-revoke saat komponen lepas atau data berganti; aman StrictMode). Server hanya membaca berkas yang tercatat di tabel `files`; klien tidak pernah mengirim Drive id.
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
 - **Drive/Sheets** hanya diakses lewat klien Google (`getBridge(env)` = `env.BRIDGE`, antarmuka `BridgeClient` di `server/src/core/bridge-client.ts`; implementasi service account di `server/src/core/google/`, lihat `docs/setup-google.md`); jangan memanggil API Google langsung dari modul. Isi berkas dibaca lewat `cachedFileContent` (izin diperiksa SEBELUM cache).
+
+## Field relasi di form (`LinkField`)
+
+Field form yang merujuk record model lain (merk, BU, jenis, role, lokasi pada penugasan, dst.) memakai `LinkField` (satu pilihan) atau `LinkMultiField` (banyak pilihan) dari `web/src/components/link-field.tsx`, bukan `NativeSelect`, checkbox daftar, atau teks bebas (spek BU, keputusan 24). Resep:
+1. **Opsi**: daftar kecil yang sudah dimuat disaring lokal menurut teks pencarian (`normalizeKey`); daftar besar memakai `onSearchChange` + `hasMore`. Hanya record aktif yang ditawarkan; record nonaktif yang sudah terpasang tetap tampil lewat `labelOf`.
+2. **Tambah** (`onCreate`): hanya bila ada dialog tambah dan user berhak. Dialog dirender di luar `<form>` induk, menghentikan penjalaran submit, dan record baru langsung terpilih (simpan salinan lokal sampai daftar dimuat ulang).
+3. **Buka** (`openHref`): hanya bila ada halaman lihat record dan user berhak; tanpa halaman lihat, tidak ada Buka (jangan membuat rute baru hanya untuk ini).
+4. **Izin Tambah/Buka**: fungsi di `web/src/lib/link-access.ts` (UX saja; penegakan di server).
+5. **Pengecualian**: enum/daftar tetap, filter halaman daftar, pemilih visual (gambar/logo), dan field teks bebas yang memang membuat record saat disimpan (`CustomerCombobox`).
+6. **Tes**: `pickLink` dan `linkOptionNames` di `web/src/test/link-field.ts`; uji juga bahwa Tambah/Buka hilang tanpa izin.
 
 ## Modul ber-BU (izin per Business Unit)
 

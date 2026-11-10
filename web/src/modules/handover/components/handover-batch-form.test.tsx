@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { pickLink } from '@/test/link-field';
 import type { HandoverBatchFormOutput } from '../schemas';
 
 const meMock = vi.hoisted(() => ({
@@ -93,7 +94,7 @@ test('tambah/hapus/gandakan kartu', async () => {
 
 test('Simpan semua mengirim saveBatch dengan semua task', async () => {
   const { onSubmit } = renderForm();
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
   await fillNote(0, 'satu');
   await fillNote(1, 'dua');
@@ -116,7 +117,7 @@ test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua d
     }),
   );
   renderForm(onSubmit);
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
   await fillNote(0, 'satu');
   await fillNote(1, 'dua');
@@ -132,7 +133,7 @@ test('galat server pada task ke-2 menandai kartu ke-2 dan mempertahankan semua d
 test('galat umum dari server ditampilkan di atas form dan draf tetap', async () => {
   const onSubmit = vi.fn().mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak punya izin', 'r2'));
   renderForm(onSubmit);
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   await fillNote(0, 'satu');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (1)' }));
   expect(await screen.findByText('Tidak punya izin')).toBeInTheDocument();
@@ -141,7 +142,7 @@ test('galat umum dari server ditampilkan di atas form dan draf tetap', async () 
 
 test('validasi klien: catatan kosong menahan pengiriman', async () => {
   const { onSubmit } = renderForm();
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan semua (1)' }));
   expect(await screen.findByText('Catatan wajib diisi')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
@@ -179,7 +180,7 @@ test('galat server menempel pada kartu yang benar setelah kartu lain dihapus (pe
     }),
   );
   renderForm(onSubmit);
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
   await userEvent.click(screen.getByRole('button', { name: 'Tambah task' }));
   await fillNote(0, 'satu');
@@ -227,7 +228,7 @@ async function pasteTasks(
       onCancel={vi.fn()}
     />,
   );
-  fireEvent.change(screen.getByLabelText('Lokasi'), { target: { value: 'loc-a' } });
+  await pickLink(screen, 'Lokasi', 'Lokasi A (A)');
   const text = Array.from(
     { length: n },
     (_, i) => `Cust ${i + 1} :\nBarang ${i + 1} = 1 unit`,

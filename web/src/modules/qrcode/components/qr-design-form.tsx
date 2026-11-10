@@ -10,13 +10,14 @@ import { useForm } from '@tanstack/react-form';
 import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
-import { NativeSelect } from '@/components/native-select';
+import { LinkField } from '@/components/link-field';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
+import { presetOptions } from '../lib/preset-options';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
 import type { PresetApplyParts, QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import {
@@ -115,6 +116,7 @@ export function QrDesignForm({
   const isDefaults = mode === 'defaults';
   const [applyOpen, setApplyOpen] = useState(false);
   const [presetId, setPresetId] = useState('');
+  const [presetTerm, setPresetTerm] = useState('');
   const ready = presets === undefined || presetId !== '';
   const schema = (
     isDefaults ? qrPresetFormSchema : qrDesignFormSchema
@@ -233,19 +235,17 @@ export function QrDesignForm({
               </p>
             ) : (
               <div className="space-y-1.5">
-                <Label htmlFor="qr-preset">Pilih konfigurasi default</Label>
-                <NativeSelect
+                <LinkField
                   id="qr-preset"
-                  value={presetId}
-                  onChange={(event) => choosePreset(event.target.value)}
-                >
-                  <option value="">Pilih konfigurasi default…</option>
-                  {presets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  label="Pilih konfigurasi default"
+                  placeholder="Pilih konfigurasi default…"
+                  value={presetId === '' ? null : presetId}
+                  labelOf={(id) => presets.find((preset) => preset.id === id)?.name}
+                  options={presetOptions(presets, presetTerm)}
+                  onSearchChange={setPresetTerm}
+                  searchDebounceMs={0}
+                  onChange={(id) => choosePreset(id ?? '')}
+                />
                 <p className="text-xs text-muted-foreground">
                   Isian di bawah langsung terisi dari konfigurasi ini dan dapat diubah. Memilih
                   konfigurasi lain mengisi ulang semuanya.
