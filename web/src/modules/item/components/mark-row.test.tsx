@@ -1,5 +1,5 @@
 import type { ItemStickerMarkDto, StickerDto, StickerTypeDto } from '@shared/contract';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { MarkRow, type MarkRowProps } from './mark-row';
@@ -213,4 +213,33 @@ test('disabled mematikan semua kontrol', () => {
   expect(screen.getByRole('combobox', { name: 'Stiker' })).toBeDisabled();
   expect(screen.getByRole('textbox', { name: 'Catatan penanda 1' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Hapus penanda 1' })).toBeDisabled();
+});
+
+test('sasaran stiker nonaktif diberi tanda jelas di baris (peringatan sebelum Simpan)', () => {
+  setup({ mark: { ...MARK, target: { kind: 'sticker', stickerId: 's3' } } });
+  const row = screen.getByRole('group', { name: 'Baris penanda 1' });
+  expect(within(row).getByRole('status')).toHaveTextContent('Stiker nonaktif');
+  expect(row).toHaveAttribute('data-inactive-target', 'true');
+});
+
+test('sasaran jenis nonaktif diberi tanda jelas di baris', () => {
+  setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't3' } } });
+  expect(screen.getByRole('status')).toHaveTextContent('Jenis nonaktif');
+});
+
+test('sasaran aktif atau kosong tidak diberi tanda nonaktif', () => {
+  const { unmount } = render(
+    <MarkRow
+      index={0}
+      mark={MARK}
+      stickerOptions={STICKERS}
+      typeOptions={TYPES}
+      onChange={vi.fn()}
+      onRemove={vi.fn()}
+    />,
+  );
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  unmount();
+  setup({ mark: { ...MARK, target: { kind: 'sticker', stickerId: '' } } });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

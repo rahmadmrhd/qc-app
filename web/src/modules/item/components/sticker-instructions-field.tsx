@@ -257,6 +257,8 @@ export function StickerInstructionsField({
           guideId={copying.id}
           guideName={copying.name}
           currentItemId={currentItemId}
+          stickers={stickers}
+          types={types}
           onCopy={(marks) => {
             updatePhoto(copying.id, (photo) => ({ ...photo, marks }));
             setCopyQueue((queue) => queue.slice(1));
@@ -330,6 +332,18 @@ function PhotoCard({
       marks.length >= INSTRUCTION_LIMITS.marks ? marks : [...marks, emptyMark(point)],
     );
     setSelected(markCount);
+  }
+
+  /**
+   * Memasang sasaran baru pada penanda yang meminta pembuatan stiker/jenis. Penanda dikenali lewat identitas objeknya
+   * (bukan nomor): objek penanda tak berubah selama dialog pembuatan terbuka, sedangkan nomornya dapat bergeser bila
+   * penanda lain dihapus. Bila penanda itu sudah hilang atau diganti (dihapus, disalin ulang), tidak ada yang dipasang.
+   */
+  function retarget(requester: ItemStickerMarkDto, target: ItemStickerMarkDto['target']) {
+    setMarks((marks) => {
+      const at = marks.indexOf(requester);
+      return at < 0 ? marks : marks.map((m, i) => (i === at ? { ...m, target } : m));
+    });
   }
 
   function removeMark(markIndex: number) {
@@ -454,28 +468,14 @@ function PhotoCard({
                 ? {
                     onCreateSticker: () =>
                       onCreateSticker((sticker) =>
-                        setMarks((marks) =>
-                          marks.map((m, i) =>
-                            i === markIndex
-                              ? { ...m, target: { kind: 'sticker', stickerId: sticker.id } }
-                              : m,
-                          ),
-                        ),
+                        retarget(mark, { kind: 'sticker', stickerId: sticker.id }),
                       ),
                   }
                 : {})}
               {...(onCreateType
                 ? {
                     onCreateType: () =>
-                      onCreateType((type) =>
-                        setMarks((marks) =>
-                          marks.map((m, i) =>
-                            i === markIndex
-                              ? { ...m, target: { kind: 'type', typeId: type.id } }
-                              : m,
-                          ),
-                        ),
-                      ),
+                      onCreateType((type) => retarget(mark, { kind: 'type', typeId: type.id })),
                   }
                 : {})}
             />

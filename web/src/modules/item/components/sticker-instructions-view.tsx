@@ -1,5 +1,5 @@
 import type { ItemStickerPhotoDto } from '@shared/contract';
-import { useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { guidePreviewUrl } from '@/modules/sticker/lib/guide-source';
@@ -27,6 +27,41 @@ export function NoInstructionsNote({ className }: { className?: string }) {
   );
 }
 
+/** Bingkai foto; dimensi 0 (tak diketahui): rasio diukur dari gambar saat dimuat agar posisi penanda konsisten. */
+function PhotoFrame({
+  src,
+  width,
+  height,
+  children,
+}: {
+  src: string;
+  width: number;
+  height: number;
+  children: ReactNode;
+}) {
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  const known = width > 0 && height > 0 ? { width, height } : natural;
+  return (
+    <div
+      className="relative w-full rounded-lg bg-muted"
+      style={{ aspectRatio: known ? `${known.width} / ${known.height}` : '4 / 3' }}
+    >
+      <img
+        src={src}
+        alt=""
+        className="absolute inset-0 size-full rounded-lg object-contain"
+        onLoad={(event) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            setNatural({ width: naturalWidth, height: naturalHeight });
+          }
+        }}
+      />
+      {children}
+    </div>
+  );
+}
+
 /**
  * Tampilan baca instruksi stiker: tiap foto dengan penanda bernomor (layar lebar: nama di samping nomor; ponsel: hanya
  * nomor) dan SELALU daftar di bawah foto (nomor, gambar contoh, nama, catatan, tanda nonaktif/peringatan). Mengetuk
@@ -41,6 +76,11 @@ export function StickerInstructionsView({
   multiBu = false,
 }: StickerInstructionsViewProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  // Penanda diketuk: gulirkan barisnya ke area terlihat (di ponsel daftar bisa panjang).
+  useEffect(() => {
+    if (selected !== null) rowRefs.current.get(selected)?.scrollIntoView?.({ block: 'nearest' });
+  }, [selected]);
   const hasMarks = photos.some((photo) => photo.marks.length > 0);
 
   return (
@@ -84,20 +124,11 @@ export function StickerInstructionsView({
                 ) : null}
               </div>
             ) : null}
-            <div
-              className="relative w-full rounded-lg bg-muted"
-              style={{
-                aspectRatio:
-                  photo.width > 0 && photo.height > 0
-                    ? `${photo.width} / ${photo.height}`
-                    : '4 / 3',
-              }}
+            <PhotoFrame
+              src={guidePreviewUrl(photo.guideId)}
+              width={photo.width}
+              height={photo.height}
             >
-              <img
-                src={guidePreviewUrl(photo.guideId)}
-                alt=""
-                className="absolute inset-0 size-full rounded-lg object-contain"
-              />
               {photo.marks.map((mark, markIndex) => {
                 const key = `${photoIndex}:${markIndex}`;
                 const isSelected = selected === key;
@@ -129,7 +160,7 @@ export function StickerInstructionsView({
                   </div>
                 );
               })}
-            </div>
+            </PhotoFrame>
             {photo.marks.length > 0 ? (
               <ol aria-label={`Penanda foto ${number}`} className="space-y-2">
                 {photo.marks.map((mark, markIndex) => {
@@ -138,6 +169,10 @@ export function StickerInstructionsView({
                     <li
                       // biome-ignore lint/suspicious/noArrayIndexKey: penanda tak punya id; nomor = urutan
                       key={markIndex}
+                      ref={(node) => {
+                        if (node) rowRefs.current.set(key, node);
+                        else rowRefs.current.delete(key);
+                      }}
                       data-mark={markIndex + 1}
                       data-selected={selected === key ? 'true' : undefined}
                       className="flex items-start gap-3 rounded-lg border p-2 data-[selected=true]:border-ring data-[selected=true]:ring-2 data-[selected=true]:ring-ring/50"

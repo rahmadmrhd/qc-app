@@ -230,3 +230,23 @@ test('task serah terima: butir tercentang, centang direset, kutipan, dan komenta
   expect(within(row('quote')).getByText('Kutipan')).toBeInTheDocument();
   expect(within(row('comment')).getByText('Komentar')).toBeInTheDocument();
 });
+
+test('instruksi stiker (ringkasan skalar) berlabel dan tampil sebagai sebelum → sesudah', () => {
+  render(
+    <AuditDiffView
+      before={{ model: 'ES 24', stickerPhotos: '1 foto, 2 penanda' }}
+      after={{ model: 'ES 24', stickerPhotos: '2 foto, 5 penanda' }}
+    />,
+  );
+  const field = row('stickerPhotos');
+  expect(field).toHaveAttribute('data-kind', 'changed');
+  expect(within(field).getByText('Instruksi stiker')).toBeInTheDocument();
+  expect(within(field).getByText('1 foto, 2 penanda').tagName).toBe('DEL');
+  expect(within(field).getByText('2 foto, 5 penanda').tagName).toBe('INS');
+  expect(within(field).getByText('Diubah')).toBeInTheDocument();
+});
+
+test('instruksi stiker pada item baru ditandai ditambah', () => {
+  render(<AuditDiffView before={null} after={{ stickerPhotos: '1 foto, 3 penanda' }} />);
+  expect(within(row('stickerPhotos')).getByText('1 foto, 3 penanda').tagName).toBe('INS');
+});

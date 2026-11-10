@@ -445,3 +445,126 @@ test('Tambah jenis dibungkus per penanda dan hanya ada bila disediakan', async (
   created?.({ ...TYPE_PLAIN, id: 't9', name: 'Baru' });
   await waitFor(() => expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'type', typeId: 't9' }));
 });
+
+test('Tambah stiker: menghapus penanda sebelumnya selagi dialog terbuka tetap memasang stiker baru ke penanda yang sama', async () => {
+  let created: ((sticker: StickerDto) => void) | undefined;
+  const onCreateSticker = vi.fn((done: (sticker: StickerDto) => void) => {
+    created = done;
+  });
+  renderField({
+    initial: [
+      photo('g1', {
+        marks: [
+          mark({ note: 'a' }),
+          mark({ note: 'b', target: { kind: 'sticker', stickerId: '' } }),
+        ],
+      }),
+    ],
+    onCreateSticker,
+  });
+  const row = screen.getByRole('group', { name: 'Baris penanda 2' });
+  await userEvent.click(within(row).getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
+  // penanda 1 dihapus sebelum stiker baru selesai dibuat: "b" kini penanda 1
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 1' }));
+  expect(latest[0]?.marks.map((m) => m.note)).toEqual(['b']);
+  created?.({ ...STICKER_PLAIN, id: 's9', name: 'Baru' });
+  await waitFor(() =>
+    expect(latest[0]?.marks[0]).toMatchObject({
+      note: 'b',
+      target: { kind: 'sticker', stickerId: 's9' },
+    }),
+  );
+});
+
+test('Tambah stiker: bila penanda pemintanya dihapus, stiker baru tidak dipasang ke penanda lain', async () => {
+  let created: ((sticker: StickerDto) => void) | undefined;
+  const onCreateSticker = vi.fn((done: (sticker: StickerDto) => void) => {
+    created = done;
+  });
+  renderField({
+    initial: [
+      photo('g1', {
+        marks: [
+          mark({ note: 'a', target: { kind: 'sticker', stickerId: '' } }),
+          mark({ note: 'b', target: { kind: 'sticker', stickerId: '' } }),
+        ],
+      }),
+    ],
+    onCreateSticker,
+  });
+  const row = screen.getByRole('group', { name: 'Baris penanda 2' });
+  await userEvent.click(within(row).getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 2' }));
+  const before = JSON.stringify(latest);
+  created?.({ ...STICKER_PLAIN, id: 's9', name: 'Baru' });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(JSON.stringify(latest)).toBe(before);
+  expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'sticker', stickerId: '' });
+});
+
+test('Tambah jenis: bila penanda pemintanya sudah tidak ada (dihapus lalu ada penanda baru), jenis baru tidak dipasang', async () => {
+  let created: ((type: StickerTypeDto) => void) | undefined;
+  const onCreateType = vi.fn((done: (type: StickerTypeDto) => void) => {
+    created = done;
+  });
+  renderField({
+    initial: [photo('g1', { marks: [mark({ target: { kind: 'type', typeId: '' } })] })],
+    onCreateType,
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
+  // penanda diganti dengan objek baru oleh sumber lain (salin penanda)
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 1' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah penanda pada foto 1' }));
+  created?.({ ...TYPE_PLAIN, id: 't9', name: 'Baru' });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'sticker', stickerId: '' });
+});
+
+test('penanda bersasaran nonaktif diberi tanda di baris penanda pada form', () => {
+  renderField({
+    initial: [photo('g1', { marks: [mark({ target: { kind: 'sticker', stickerId: 's2' } })] })],
+  });
+  expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
+});
+
+test('salin penanda menerima katalog agar sasaran nonaktif ditandai di ringkasan', async () => {
+  apiMock.mockImplementation(async (id: string) => {
+    if (id === 'stickerGuides.usages')
+      return [{ itemId: 'i1', label: 'Mikrotik hAP', status: 'active' }];
+    return {
+      id: 'i1',
+      stickerPhotos: [
+        {
+          guideId: 'g1',
+          guideName: 'Belakang',
+          width: 800,
+          height: 600,
+          caption: '',
+          buId: null,
+          marks: [
+            {
+              ...mark({ target: { kind: 'sticker', stickerId: 's2' } }),
+              targetName: 'Postel Lama',
+              resolved: [],
+              unresolved: false,
+            },
+          ],
+        },
+      ],
+    };
+  });
+  renderField();
+  await addPhotosFromDialog([libraryItem('g1', 1)]);
+  const dialog = await screen.findByRole('dialog', { name: /Salin penanda/ });
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'Salin penanda dari Mikrotik hAP' }),
+  );
+  expect(await within(dialog).findByText(/Postel Lama — nonaktif/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tetap salin 1 penanda' }));
+  await waitFor(() => expect(latest[0]?.marks).toHaveLength(1));
+  // setelah disalin, baris penanda menandai sasaran nonaktif
+  expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
+});

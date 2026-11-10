@@ -1,6 +1,6 @@
 import type { GuideUsageDto, ItemDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -53,6 +53,32 @@ function itemWithPhoto(guideId: string): ItemDto {
     ],
   } as unknown as ItemDto;
 }
+
+const CATALOG_STICKERS = [
+  {
+    id: 's1',
+    typeId: 't1',
+    typeName: 'Postel',
+    name: 'Stiker Postel',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    status: 'inactive' as const,
+    businessUnitIds: [],
+    low: false,
+    updatedAt: '',
+  },
+];
+const CATALOG_TYPES = [
+  {
+    id: 't1',
+    name: 'Segel',
+    rule: 'bu' as const,
+    status: 'active' as const,
+    stickerCount: 1,
+    updatedAt: '',
+  },
+];
 
 function setup(props: Partial<Parameters<typeof CopyMarksDialog>[0]> = {}) {
   const onCopy = vi.fn();
@@ -160,4 +186,48 @@ test('tanpa item pemakai yang dapat dilihat (atau hanya item ini sendiri): dialo
   apiMock.mockImplementation(async () => [USAGES[0]]);
   const { onClose } = setup();
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+});
+
+test('penanda bersasaran nonaktif: ringkasan dengan tanda "nonaktif" tampil dulu, salin menunggu konfirmasi', async () => {
+  const { onCopy } = setup({ stickers: CATALOG_STICKERS, types: CATALOG_TYPES });
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Salin penanda dari Mikrotik hAP' }),
+  );
+  const summary = await screen.findByRole('list', { name: 'Penanda yang akan disalin' });
+  const rows = within(summary).getAllByRole('listitem');
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent('Stiker Postel — nonaktif');
+  expect(rows[0]).toHaveTextContent('nonaktif');
+  expect(rows[1]).toHaveTextContent('Jenis Segel');
+  expect(rows[1]).not.toHaveTextContent('nonaktif');
+  expect(screen.getByRole('status')).toHaveTextContent('1 penanda bersasaran nonaktif');
+  expect(onCopy).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Tetap salin 2 penanda' }));
+  expect(onCopy).toHaveBeenCalledTimes(1);
+  expect(onCopy.mock.calls[0]?.[0]).toHaveLength(2);
+});
+
+test('ringkasan nonaktif: Kembali membatalkan tanpa menyalin dan tanpa menutup dialog', async () => {
+  const { onCopy, onClose } = setup({ stickers: CATALOG_STICKERS, types: CATALOG_TYPES });
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Salin penanda dari Mikrotik hAP' }),
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Kembali' }));
+  expect(onCopy).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(
+    await screen.findByRole('button', { name: 'Salin penanda dari Mikrotik hAP' }),
+  ).toBeInTheDocument();
+});
+
+test('tanpa sasaran nonaktif, salin langsung tanpa ringkasan', async () => {
+  const { onCopy } = setup({
+    stickers: [{ ...CATALOG_STICKERS[0], status: 'active' as const }] as never,
+    types: CATALOG_TYPES,
+  });
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Salin penanda dari Mikrotik hAP' }),
+  );
+  await waitFor(() => expect(onCopy).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('list', { name: 'Penanda yang akan disalin' })).not.toBeInTheDocument();
 });

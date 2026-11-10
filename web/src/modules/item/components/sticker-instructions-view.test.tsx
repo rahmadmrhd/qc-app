@@ -3,7 +3,7 @@ import type {
   ItemStickerPhotoDto,
   ResolvedStickerDto,
 } from '@shared/contract';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 
@@ -203,4 +203,36 @@ test('onEdit mencegat klik tautan untuk navigasi SPA', async () => {
   render(<StickerInstructionsView photos={[]} canEdit editHref="/item/i1/edit" onEdit={onEdit} />);
   await userEvent.click(screen.getByRole('link', { name: 'Tambahkan instruksi' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
+});
+
+test('dimensi foto 0: rasio diukur dari gambar saat dimuat', () => {
+  renderView([photo({ width: 0, height: 0 })]);
+  const group = screen.getByRole('group', { name: 'Foto instruksi 1' });
+  const frame = group.querySelector('img')?.parentElement as HTMLElement;
+  expect(frame.getAttribute('style')).toContain('4 / 3');
+  const img = group.querySelector('img') as HTMLImageElement;
+  Object.defineProperty(img, 'naturalWidth', { value: 900, configurable: true });
+  Object.defineProperty(img, 'naturalHeight', { value: 1200, configurable: true });
+  fireEvent.load(img);
+  expect(frame.getAttribute('style')).toContain('900 / 1200');
+});
+
+test('mengetuk penanda menggulir barisnya ke area terlihat; membatalkan pilihan tidak menggulir', async () => {
+  const scroll = vi.fn();
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = scroll;
+  try {
+    renderView([photo({ marks: [mark(), mark({ x: 900, y: 900 })] })]);
+    await userEvent.click(screen.getByRole('button', { name: 'Penanda 2' }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+    const row = within(screen.getByRole('list', { name: 'Penanda foto 1' })).getAllByRole(
+      'listitem',
+    )[1];
+    expect(scroll.mock.contexts[0]).toBe(row);
+    await userEvent.click(screen.getByRole('button', { name: 'Penanda 2' }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
 });

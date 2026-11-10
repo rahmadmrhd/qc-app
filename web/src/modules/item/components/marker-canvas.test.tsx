@@ -156,3 +156,22 @@ test('tanpa penanda: hanya gambar dan area ketuk', () => {
   fireEvent.click(frame, { clientX: 100, clientY: 50 });
   expect(onAdd).toHaveBeenCalledWith({ x: 0, y: 0 });
 });
+
+test('dimensi 0: rasio bingkai diukur dari gambar saat dimuat (naturalWidth/Height)', () => {
+  const { frame } = setup({ width: 0, height: 0 });
+  expect(frame.getAttribute('style')).toContain('4 / 3');
+  const img = frame.querySelector('img') as HTMLImageElement;
+  Object.defineProperty(img, 'naturalWidth', { value: 1200, configurable: true });
+  Object.defineProperty(img, 'naturalHeight', { value: 800, configurable: true });
+  fireEvent.load(img);
+  expect(frame.getAttribute('style')).toContain('1200 / 800');
+});
+
+test('dimensi dari DTO dipakai apa adanya; onLoad tidak mengubahnya', () => {
+  const { frame } = setup({ width: 800, height: 400 });
+  const img = frame.querySelector('img') as HTMLImageElement;
+  Object.defineProperty(img, 'naturalWidth', { value: 1200, configurable: true });
+  Object.defineProperty(img, 'naturalHeight', { value: 800, configurable: true });
+  fireEvent.load(img);
+  expect(frame.getAttribute('style')).toContain('800 / 400');
+});

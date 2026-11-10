@@ -22,6 +22,7 @@ const FIELD_LABELS: Record<string, string> = {
   isCountryLock: 'Country lock',
   aliases: 'Nama lain',
   stickers: 'Stiker',
+  stickerPhotos: 'Instruksi stiker',
   accessories: 'Kelengkapan',
   attachments: 'Gambar lampiran',
   detailLength: 'Panjang detail (karakter)',

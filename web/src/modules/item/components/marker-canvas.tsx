@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type PointerEvent, useRef } from 'react';
+import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { clampPermil, pointToPermil } from '../lib/sticker-instructions';
 
@@ -45,7 +45,10 @@ export function MarkerCanvas({
 }: MarkerCanvasProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<number | null>(null);
-  const aspectRatio = width > 0 && height > 0 ? `${width} / ${height}` : '4 / 3';
+  // Dimensi tak diketahui (0): rasio diukur dari gambar saat dimuat, agar permil dihitung terhadap area gambar.
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  const known = width > 0 && height > 0 ? { width, height } : natural;
+  const aspectRatio = known ? `${known.width} / ${known.height}` : '4 / 3';
 
   function pointOf(event: { clientX: number; clientY: number }) {
     const frame = frameRef.current;
@@ -111,6 +114,12 @@ export function MarkerCanvas({
         src={src}
         alt=""
         draggable={false}
+        onLoad={(event) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            setNatural({ width: naturalWidth, height: naturalHeight });
+          }
+        }}
         className="pointer-events-none absolute inset-0 size-full rounded-lg object-contain"
       />
       {marks.map((mark, index) => (

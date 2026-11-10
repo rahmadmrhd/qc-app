@@ -5,7 +5,7 @@ import { useId, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { markLabel } from '../lib/sticker-instructions';
+import { isInactiveTarget, markLabel } from '../lib/sticker-instructions';
 
 /** Jumlah saran maksimum pada daftar pilihan; sisanya dicari dengan mengetik. */
 const OPTION_LIMIT = 50;
@@ -94,6 +94,7 @@ export function MarkRow({
     });
   }
 
+  const inactiveTarget = isInactiveTarget(target, stickerOptions, typeOptions);
   const sticker = stickerLabelOptions(stickerOptions, stickerTerm);
   const type = typeLabelOptions(typeOptions, typeTerm);
 
@@ -101,6 +102,7 @@ export function MarkRow({
     <fieldset
       aria-label={`Baris penanda ${number}`}
       data-selected={selected ? 'true' : undefined}
+      data-inactive-target={inactiveTarget ? 'true' : undefined}
       className="space-y-2 rounded-lg border p-2 data-[selected=true]:border-ring data-[selected=true]:ring-2 data-[selected=true]:ring-ring/50"
       onFocus={() => onSelect?.()}
     >
@@ -194,6 +196,12 @@ export function MarkRow({
         disabled={disabled}
         onChange={(event) => onChange({ ...mark, note: event.target.value })}
       />
+      {inactiveTarget ? (
+        <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+          {target.kind === 'sticker' ? 'Stiker' : 'Jenis'} nonaktif: simpan akan ditolak bila
+          penanda ini baru bagi item. Pilih sasaran lain.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}

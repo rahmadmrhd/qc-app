@@ -68,6 +68,18 @@ export function markLabel(
     : `Jenis ${found.name}`;
 }
 
+/** Sasaran ada di katalog dan nonaktif (stiker/jenis kosong atau tak dikenal = false). */
+export function isInactiveTarget(
+  target: StickerMarkTarget,
+  stickers: readonly StickerDto[],
+  types: readonly StickerTypeDto[],
+): boolean {
+  if (target.kind === 'sticker') {
+    return stickers.find((sticker) => sticker.id === target.stickerId)?.status === 'inactive';
+  }
+  return types.find((type) => type.id === target.typeId)?.status === 'inactive';
+}
+
 export interface GroupedInstructionErrors {
   /** Pesan yang tidak menyebut foto tertentu (mis. batas jumlah foto, galat server). */
   general: string[];

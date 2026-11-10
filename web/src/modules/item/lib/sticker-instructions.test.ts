@@ -4,6 +4,7 @@ import {
   clampPermil,
   copyMarks,
   groupInstructionErrors,
+  isInactiveTarget,
   markLabel,
   moveEntry,
   pointToPermil,
@@ -151,4 +152,16 @@ test('groupInstructionErrors: pesan kembar digabung dan pesan tak berformat menj
   expect(grouped.photos.get(0)).toEqual(['pilih gambar']);
   expect(grouped.general).toEqual(['Galat server']);
   expect(groupInstructionErrors([]).general).toEqual([]);
+});
+
+test('isInactiveTarget: benar hanya bila stiker/jenis ada di katalog dan nonaktif', () => {
+  const stickers = [sticker({}), sticker({ id: 's2', status: 'inactive' })];
+  const types = [type({}), type({ id: 't2', status: 'inactive' })];
+  expect(isInactiveTarget({ kind: 'sticker', stickerId: 's1' }, stickers, types)).toBe(false);
+  expect(isInactiveTarget({ kind: 'sticker', stickerId: 's2' }, stickers, types)).toBe(true);
+  expect(isInactiveTarget({ kind: 'type', typeId: 't1' }, stickers, types)).toBe(false);
+  expect(isInactiveTarget({ kind: 'type', typeId: 't2' }, stickers, types)).toBe(true);
+  // tak dikenal atau kosong: bukan "nonaktif" (ditangani validasi/label lain)
+  expect(isInactiveTarget({ kind: 'sticker', stickerId: 'x' }, stickers, types)).toBe(false);
+  expect(isInactiveTarget({ kind: 'type', typeId: '' }, stickers, types)).toBe(false);
 });
