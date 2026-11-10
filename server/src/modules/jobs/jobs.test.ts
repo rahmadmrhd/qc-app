@@ -59,6 +59,8 @@ const exportBody = (
   expectedUpdatedAt: design.updatedAt,
   pdf: bytesOfBase64(PDF),
   png: bytesOfBase64(PNG),
+  preview: bytesOfBase64(PNG),
+  reason: '',
   ...extra,
 });
 const requestExport = (
@@ -127,7 +129,7 @@ describe('qrcodes.export dan jobs.get', () => {
     expect(await activeJobs()).toEqual([{ id: out.data.jobId, kind: 'qr_export', step: 0 }]);
     expect((await findJob(env, out.data.jobId))?.input).not.toContain(PDF);
     expect(createCalls()).toHaveLength(filesBefore);
-    expect(await blobCount(out.data.jobId)).toBe(2);
+    expect(await blobCount(out.data.jobId)).toBe(4);
     expect((await design(made.id))?.exported_hash).toBe('');
     const job = await call('qredit@gmail.com', 'jobs.get', { id: out.data.jobId });
     expect(job.data).toEqual({

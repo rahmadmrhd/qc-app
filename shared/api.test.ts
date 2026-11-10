@@ -206,6 +206,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     pdf: new Uint8Array([37, 80, 68, 70]),
     png: new Uint8Array([137, 80, 78, 71]),
+    preview: new Uint8Array([137, 80, 78, 71]),
+    reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
   'jobs.get': { id: 'j1' },
@@ -535,10 +537,11 @@ describe('rute biner', () => {
     });
   });
 
-  test('qrcodes.export: dua bagian multipart, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
+  test('qrcodes.export: tiga bagian multipart, reason di query, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
     const parts = toRequestParts('qrcodes.export', EXAMPLES['qrcodes.export']);
     expect(parts.path).toBe('/qrcodes/q1/exports');
-    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png']);
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png', 'preview']);
+    expect(parts.query).toEqual({ reason: 'Logo diganti' });
     expect(parts.ifMatch).toBe('2026-10-09T00:00:00.000Z');
     expect(parts.body).toBeUndefined();
   });
@@ -552,6 +555,7 @@ describe('rute biner', () => {
         id: 'q1',
         expectedUpdatedAt: 'x',
         pdf: new Uint8Array(),
+        reason: '',
       } as never),
     ).toThrow();
   });
@@ -561,8 +565,9 @@ describe('rute biner', () => {
     expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
     // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
-      QR_LIMITS.exportMaxBytes + 64 * 1024,
+      QR_LIMITS.exportMaxBytes + QR_LIMITS.previewMaxBytes + 64 * 1024,
     );
+    expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(8_978_432);
     // pustaka gambar: gambar penuh + thumbnail + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(
       MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 65_536,

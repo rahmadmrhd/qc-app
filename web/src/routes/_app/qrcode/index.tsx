@@ -70,6 +70,9 @@ function QrCodesPage() {
       expectedUpdatedAt: design.updatedAt,
       pdf: files.pdf,
       png: files.png,
+      // Gambar contoh dan alasan dibuat UI ekspor 4a (belum ada): kosong = ditolak server untuk versi baru.
+      preview: new Uint8Array(0),
+      reason: '',
       onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
     });
     toast.success('Hasil ekspor disimpan di Drive');

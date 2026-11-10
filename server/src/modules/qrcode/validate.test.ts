@@ -196,3 +196,37 @@ test('opsi item: input boleh kosong; limit 1-50 bulat; kursor tak boleh kosong',
   expect(fieldsOf(() => validateListQrItemOptions({ limit: 1.5 })).limit).toBeDefined();
   expect(fieldsOf(() => validateListQrItemOptions({ cursor: '' })).cursor).toBeDefined();
 });
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2]);
+const exportRaw = {
+  id: 'q1',
+  expectedUpdatedAt: '2026-11-10T00:00:00.000Z',
+  pdf: PDF_BYTES,
+  png: PNG_BYTES,
+};
+
+test('ekspor: preview opsional (kosong bila tak ada), harus PNG sah dan maks. 512 KB; reason maks. 500', () => {
+  expect(validateExportQrDesign(exportRaw)).toMatchObject({ reason: '' });
+  expect(validateExportQrDesign(exportRaw).preview).toHaveLength(0);
+  expect(
+    validateExportQrDesign({ ...exportRaw, preview: PNG_BYTES, reason: ' Logo ' }),
+  ).toMatchObject({
+    reason: 'Logo',
+  });
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: new Uint8Array([1, 2, 3]) }))
+      .preview,
+  ).toBeDefined();
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: 'x' })).preview,
+  ).toBeDefined();
+  const big = new Uint8Array(512 * 1024 + 1);
+  big.set(PNG_BYTES, 0);
+  expect(fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: big })).preview).toContain(
+    '512',
+  );
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, reason: 'x'.repeat(501) })).reason,
+  ).toBeDefined();
+});

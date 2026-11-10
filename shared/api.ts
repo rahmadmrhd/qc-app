@@ -304,11 +304,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     status: 202,
     location: '/jobs/{jobId}',
     ifMatch: 'expectedUpdatedAt',
+    query: { reason: 'string' },
     binary: 'multipart',
     multipart: {
-      parts: ['pdf', 'png'],
-      // = QR_LIMITS.exportMaxBytes (8 MB) + 64 KB ruang batas bagian dan header multipart
-      maxBytes: 8_454_144,
+      parts: ['pdf', 'png', 'preview'],
+      // = QR_LIMITS.exportMaxBytes (8 MB) + QR_LIMITS.previewMaxBytes (512 KB) + 64 KB ruang batas bagian dan header
+      maxBytes: 8_978_432,
       tooLarge: 'Ukuran hasil ekspor maksimal 8 MB',
     },
   },

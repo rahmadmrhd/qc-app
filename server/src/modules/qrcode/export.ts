@@ -9,12 +9,15 @@ import { dropCachedFile } from '@server/core/file-cache';
 import type { JobHandler, StepContext, StepOutcome } from '@server/modules/jobs/consumer';
 import { deleteBlobs, findActiveJob, readBlob } from '@server/modules/jobs/repo';
 import { enqueueJob } from '@server/modules/jobs/service';
+import { listManualBookVersions } from '@server/modules/sticker/repo';
 import type { ExportQrDesignInput, ExportQrJobDto } from '@shared/contract';
-import { labelFileName, qrContentHash } from '@shared/qrcode';
+import { isPngBytes } from '@shared/files';
+import { manualBookFileName, qrContentHash } from '@shared/qrcode';
 import { ensureQrFolder } from './folders';
+import { listAttachedItems } from './items';
 import type { QrDesignRecord } from './repo';
 import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignStmt } from './repo';
-import { QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
+import { exportStamp, QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
 
 /**
  * Ekspor QR sebagai pekerjaan latar (Spek 9b). Rute hanya memeriksa, menyimpan muatan, dan mengantre; berkas dibuat
@@ -52,7 +55,15 @@ function assertExportable(design: QrDesignRecord, expectedUpdatedAt: string): vo
   if (design.overflow) throw appError('VALIDATION', OVERFLOW_MESSAGE);
 }
 
-/** `qrcodes.export`: periksa, simpan muatan, antre; balas `{ jobId }` tanpa menunggu Drive. */
+function fieldError(field: string, message: string): Error {
+  return appError('VALIDATION', message, { [field]: message });
+}
+
+/**
+ * `qrcodes.export`: periksa, simpan muatan, antre; balas `{ jobId }` tanpa menunggu Drive. Konfigurasi tanpa item atau
+ * tanpa nama ditolak. Ekspor yang menghasilkan versi Manual Book baru (belum pernah punya stiker, atau isi label
+ * berbeda dari versi terbaru) mewajibkan gambar contoh (`preview`) dan, bila sudah punya stiker, alasan.
+ */
 export async function requestQrExport(
   env: Env,
   input: ExportQrDesignInput,
@@ -60,9 +71,33 @@ export async function requestQrExport(
 ): Promise<ExportQrJobDto> {
   const design = await loadDesign(env, input.id);
   assertExportable(design, input.expectedUpdatedAt);
-  // Muatan job disimpan sebagai base64 (`job_blobs`); batas ukuran sudah ditegakkan di tepi (multipart 8 MB).
-  const pdfBase64 = bytesToBase64(input.pdf);
-  const pngBase64 = bytesToBase64(input.png);
+  if (design.name === '') {
+    throw fieldError('name', 'Konfigurasi belum bernama; lengkapi nama Manual Book lewat Ubah');
+  }
+  if (((await listAttachedItems(env.DB)).get(design.id) ?? []).length === 0) {
+    throw fieldError('itemIds', 'Konfigurasi belum punya item; pilih minimal satu item lewat Ubah');
+  }
+  const latest = (await listManualBookVersions(env, design.id))[0];
+  const hash = qrContentHash(qrDesignContent(design, await qrDocumentMap(env)));
+  const willCreateVersion = !latest || latest.contentHash !== hash;
+  const reason = input.reason.trim();
+  if (willCreateVersion) {
+    if (latest && reason === '') {
+      throw fieldError('reason', 'Isi alasan perubahan label (wajib untuk versi baru)');
+    }
+    if (input.preview.length === 0 || !isPngBytes(input.preview)) {
+      throw fieldError('preview', 'Gambar contoh (PNG) wajib untuk versi Manual Book baru');
+    }
+  }
+  // Muatan job disimpan sebagai base64 (`job_blobs`); batas ukuran sudah ditegakkan di tepi (multipart).
+  const blobs: Record<string, string> = {
+    pdf: bytesToBase64(input.pdf),
+    png: bytesToBase64(input.png),
+  };
+  if (willCreateVersion) {
+    blobs.preview = bytesToBase64(input.preview);
+    blobs.reason = reason;
+  }
   // Klik ganda / ulang yang sama: pakai job yang masih berjalan (tidak menggandakan berkas).
   const active = await findActiveJob(env, 'qr_export', { path: '$.designId', value: design.id });
   if (active) {
@@ -70,9 +105,7 @@ export async function requestQrExport(
     if (running.expectedUpdatedAt === input.expectedUpdatedAt) return { jobId: active.id };
   }
   const payload: ExportInput = { designId: design.id, expectedUpdatedAt: input.expectedUpdatedAt };
-  const jobId = await enqueueJob(env, 'qr_export', payload, actor.email, {
-    blobs: { pdf: pdfBase64, png: pngBase64 },
-  });
+  const jobId = await enqueueJob(env, 'qr_export', payload, actor.email, { blobs });
   return { jobId };
 }
 
@@ -89,8 +122,7 @@ async function createExportFile(
   if (data === null) {
     throw appError('INTERNAL', 'Muatan ekspor tidak ditemukan; ulangi ekspor dari awal');
   }
-  const stamp = ctx.job.createdAt.replace(/[-:.TZ]/g, '');
-  const name = `${labelFileName(design.title, design.subtitle)}-${stamp}.${kind}`;
+  const name = `${manualBookFileName(design.name, exportStamp(ctx.job.createdAt))}.${kind}`;
   const mime = kind === 'pdf' ? 'application/pdf' : 'image/png';
   state[key] = await viaBridge(() => getBridge(ctx.env).createFile(folderId, name, mime, data));
   await ctx.save();
@@ -128,7 +160,7 @@ export const qrExportHandler: JobHandler = {
           const updated: QrDesignRecord = {
             ...current,
             exportedHash: qrContentHash(qrDesignContent(current, documents)),
-            exportedAt: now,
+            exportedAt: ctx.job.createdAt,
             exportedBy: ctx.job.createdBy,
             exportPdfDriveId: state.pdfDriveId ?? '',
             exportPngDriveId: state.pngDriveId ?? '',

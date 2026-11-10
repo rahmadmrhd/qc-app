@@ -208,6 +208,17 @@ export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
   const png = reader.raw('png');
   if (!(pdf instanceof Uint8Array) || !isPdfBytes(pdf)) reader.fail('pdf', 'PDF tidak valid');
   if (!(png instanceof Uint8Array) || !isPngBytes(png)) reader.fail('png', 'PNG tidak valid');
+  // Gambar contoh: bagian boleh tidak ada (kosong); bila ada harus PNG sah dan tidak melebihi batas.
+  const previewRaw = reader.raw('preview');
+  const preview = previewRaw === undefined || previewRaw === null ? new Uint8Array(0) : previewRaw;
+  if (!(preview instanceof Uint8Array)) {
+    reader.fail('preview', 'Gambar contoh tidak valid');
+  } else if (preview.length > 0 && !isPngBytes(preview)) {
+    reader.fail('preview', 'Gambar contoh harus PNG');
+  } else if (preview.length > QR_LIMITS.previewMaxBytes) {
+    reader.fail('preview', 'Ukuran gambar contoh maksimal 512 KB');
+  }
+  const reason = reader.str('reason', { max: QR_LIMITS.reason });
   if (
     pdf instanceof Uint8Array &&
     png instanceof Uint8Array &&
@@ -216,7 +227,14 @@ export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
     reader.fail('pdf', 'Ukuran hasil ekspor maksimal 8 MB');
   }
   reader.done();
-  return { id, expectedUpdatedAt, pdf: pdf as Uint8Array, png: png as Uint8Array };
+  return {
+    id,
+    expectedUpdatedAt,
+    pdf: pdf as Uint8Array,
+    png: png as Uint8Array,
+    preview: preview as Uint8Array,
+    reason,
+  };
 }
 
 const QR_ITEM_OPTIONS_MAX_LIMIT = 50;

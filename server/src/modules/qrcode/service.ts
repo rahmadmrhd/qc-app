@@ -38,6 +38,7 @@ import {
   DEFAULT_QR_STYLE,
   driveShareUrl,
   labelFileName,
+  manualBookFileName,
   parseDriveFileId,
   parseDriveResourceKey,
   QR_LIMITS,
@@ -1184,6 +1185,11 @@ async function uploadQrPdfNow(
 }
 
 /** Isi hasil ekspor (PDF/PNG) sebagai byte; `etag` = sidik id berkas Drive (berubah tiap ekspor ulang). */
+/** Stempel waktu nama berkas ekspor: digit tanggal dan waktu saja (tanpa tanda baca). */
+export function exportStamp(isoTime: string): string {
+  return isoTime.replace(/[-:.TZ]/g, '');
+}
+
 export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDto> {
   const design = (await listQrDesigns(env)).find((row) => row.id === input.id);
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
@@ -1199,7 +1205,11 @@ export async function readQrFile(env: Env, input: QrFileInput): Promise<QrFileDt
     : null;
   if (!content) throw appError('NOT_FOUND', 'Berkas hasil ekspor tidak ditemukan di Drive');
   return {
-    filename: `${labelFileName(design.title, design.subtitle)}.${input.kind}`,
+    filename: `${
+      design.name !== ''
+        ? manualBookFileName(design.name, exportStamp(design.exportedAt))
+        : labelFileName(design.title, design.subtitle)
+    }.${input.kind}`,
     mime: content.mime,
     bytes: base64ToBytes(content.base64),
     etag: await shortDigest(driveId),

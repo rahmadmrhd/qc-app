@@ -866,6 +866,13 @@ export interface ExportQrDesignInput {
   expectedUpdatedAt: string;
   pdf: Uint8Array;
   png: Uint8Array;
+  /**
+   * PNG kecil gambar contoh stiker (bagian multipart `preview`); wajib bila ekspor menghasilkan versi Manual Book
+   * baru, diabaikan bila tidak (kosong = tidak ada).
+   */
+  preview: Uint8Array;
+  /** Alasan perubahan label (query `reason`, maks. 500); wajib saat ekspor ulang yang menghasilkan versi baru. */
+  reason: string;
 }
 export type QrFileKind = 'pdf' | 'png';
 export interface QrFileInput {
