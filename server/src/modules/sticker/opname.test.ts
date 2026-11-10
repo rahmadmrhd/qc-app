@@ -426,3 +426,68 @@ describe('izin dan lokasi', () => {
     } as never);
   });
 });
+
+describe('stok opname pada stiker deprecated (tahap 4a)', () => {
+  const statusOf = async (stickerId: string) =>
+    (
+      await env.DB.prepare('SELECT status FROM stickers WHERE id = ?')
+        .bind(stickerId)
+        .first<{ status: string }>()
+    )?.status;
+
+  test('opname yang membuat total semua lokasi 0 menjadikan deprecated -> inactive; total > 0 tetap deprecated', async () => {
+    const empty = await newSticker();
+    const partial = await newSticker();
+    const live = await newSticker();
+    for (const sticker of [empty, partial, live]) {
+      await stock(sticker.id, A, 6);
+      await stock(sticker.id, B, 4);
+    }
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id IN (?, ?)")
+      .bind(empty.id, partial.id)
+      .run();
+    await opnameStock(
+      env,
+      validateOpname({
+        rows: [
+          row(empty.id, A, 6, { loose: 0 }),
+          row(empty.id, B, 4, { loose: 0 }),
+          row(partial.id, A, 6, { loose: 0 }), // B masih 4: total 4
+          row(live.id, A, 6, { loose: 0 }),
+          row(live.id, B, 4, { loose: 0 }),
+        ],
+      }),
+      admin,
+    );
+    expect(await statusOf(empty.id)).toBe('inactive');
+    expect(await statusOf(partial.id)).toBe('deprecated');
+    expect(await statusOf(live.id)).toBe('active');
+  });
+
+  test('opname serentak dengan pengurangan di lokasi lain: total 0 tetap menonaktifkan', async () => {
+    const sticker = await newSticker();
+    await stock(sticker.id, A, 5);
+    await stock(sticker.id, B, 5);
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = ?")
+      .bind(sticker.id)
+      .run();
+    const results = await Promise.allSettled([
+      opnameStock(env, validateOpname({ rows: [row(sticker.id, A, 5, { loose: 0 })] }), admin),
+      recordStock(
+        env,
+        validateRecordStock({
+          locationId: B,
+          stickerId: sticker.id,
+          kind: 'out',
+          quantity: 5,
+          reason: 'uji',
+        }),
+        admin,
+      ),
+    ]);
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(await qtyAt(sticker.id, A)).toBe(0);
+    expect(await qtyAt(sticker.id, B)).toBe(0);
+    expect(await statusOf(sticker.id)).toBe('inactive');
+  });
+});

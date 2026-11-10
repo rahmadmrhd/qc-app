@@ -78,7 +78,16 @@ const stickers: StickerDto[] = [
   },
 ];
 const types: StickerTypeDto[] = [
-  { id: 't1', name: 'Postel', rule: 'bu', status: 'active', stickerCount: 2, updatedAt: '' },
+  {
+    id: 't1',
+    name: 'Postel',
+    rule: 'bu',
+    status: 'active',
+    stickerCount: 2,
+    systemKind: '',
+    defaultMinQty: 0,
+    updatedAt: '',
+  },
 ];
 const STICKER_PLAIN = stickers[0] as StickerDto;
 const TYPE_PLAIN = types[0] as StickerTypeDto;

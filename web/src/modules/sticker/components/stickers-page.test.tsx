@@ -11,9 +11,36 @@ vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn
 vi.mock('@/modules/item/components/image-thumb', () => ({ ImageThumb: () => null }));
 
 const types: StickerTypeDto[] = [
-  { id: 'tp-bu', name: 'QC Hijau', rule: 'bu', status: 'active', stickerCount: 2, updatedAt: '' },
-  { id: 'tp-none', name: 'Segel', rule: 'none', status: 'active', stickerCount: 1, updatedAt: '' },
-  { id: 'tp-old', name: 'Lawas', rule: 'none', status: 'inactive', stickerCount: 0, updatedAt: '' },
+  {
+    id: 'tp-bu',
+    name: 'QC Hijau',
+    rule: 'bu',
+    status: 'active',
+    stickerCount: 2,
+    systemKind: '',
+    defaultMinQty: 0,
+    updatedAt: '',
+  },
+  {
+    id: 'tp-none',
+    name: 'Segel',
+    rule: 'none',
+    status: 'active',
+    stickerCount: 1,
+    systemKind: '',
+    defaultMinQty: 0,
+    updatedAt: '',
+  },
+  {
+    id: 'tp-old',
+    name: 'Lawas',
+    rule: 'none',
+    status: 'inactive',
+    stickerCount: 0,
+    systemKind: '',
+    defaultMinQty: 0,
+    updatedAt: '',
+  },
 ];
 
 const businessUnits: BusinessUnitOptionDto[] = [
@@ -330,6 +357,8 @@ test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (a
     rule: 'bu',
     status: 'active',
     stickerCount: 0,
+    systemKind: '',
+    defaultMinQty: 0,
     updatedAt: '',
   };
   const onCreateType = vi.fn().mockResolvedValue(created);

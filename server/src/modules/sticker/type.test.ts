@@ -3,6 +3,8 @@ import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { getRoutes } from '@server/routes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
+import { restCall } from '@server-test/rest-call';
+import { seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { listStickerTypes, saveStickerType, setStickerTypeStatus } from './service';
 import { validateSaveStickerType, validateSetStickerTypeStatus } from './validate';
@@ -105,8 +107,8 @@ describe('jenis stiker', () => {
     expect(error.code).toBe('NOT_FOUND');
   });
 
-  test('rule tidak dikenal (mis. group) ditolak VALIDATION oleh validator', () => {
-    const error = captureAppError(() => validateSaveStickerType({ name: 'X', rule: 'group' }));
+  test('rule tidak dikenal ditolak VALIDATION oleh validator', () => {
+    const error = captureAppError(() => validateSaveStickerType({ name: 'X', rule: 'xyz' }));
     expect(error.code).toBe('VALIDATION');
     expect(error.fields).toMatchObject({ rule: 'Nilai tidak valid' });
     expect(captureAppError(() => validateSaveStickerType({ name: '  ', rule: 'bu' })).code).toBe(
@@ -252,6 +254,63 @@ describe('jenis stiker', () => {
     expect(captureAppError(() => validateSetStickerTypeStatus({ id: 'x', status: 'y' })).code).toBe(
       'VALIDATION',
     );
+  });
+
+  test('pengguna tidak dapat membuat jenis group lewat stickerTypes.save (VALIDATION)', async () => {
+    const error = captureAppError(() =>
+      validateSaveStickerType({ name: 'Kelompok', rule: 'group' }),
+    );
+    expect(error.code).toBe('VALIDATION');
+    expect(error.fields).toMatchObject({ rule: 'Nilai tidak valid' });
+    const result = await restCall(env, 'admin@gmail.com', 'stickerTypes.save', {
+      name: 'Kelompok',
+      rule: 'group',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION' } });
+    expect(await listStickerTypes(env)).toEqual([]);
+  });
+
+  test('jenis sistem muncul di daftar dengan systemKind, aturan group, dan minimum bawaan; jenis biasa kosong', async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+      defaultMinQty: 30,
+    });
+    const biasa = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
+    expect(biasa).toMatchObject({ systemKind: '', defaultMinQty: 0 });
+    const list = await listStickerTypes(env);
+    expect(list.find((type) => type.id === 'mb')).toMatchObject({
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+      defaultMinQty: 30,
+    });
+    const viaRest = (await restCall(env, 'admin@gmail.com', 'stickerTypes.list', null)) as {
+      ok: boolean;
+      data: Array<{ id: string; systemKind: string }>;
+    };
+    expect(viaRest.data.find((type) => type.id === 'mb')?.systemKind).toBe('manual_book');
+  });
+
+  test('jenis sistem tidak dapat diubah lewat stickerTypes.save (nama maupun aturan)', async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    const [mb] = await listStickerTypes(env);
+    const error = await captureAppErrorAsync(() =>
+      saveStickerType(
+        env,
+        { id: 'mb', expectedUpdatedAt: mb?.updatedAt ?? '', name: 'Lain', rule: 'bu' },
+        admin,
+      ),
+    );
+    expect(error.code).toBe('VALIDATION');
+    expect((await listStickerTypes(env))[0]).toMatchObject({ name: 'Manual Book', rule: 'group' });
   });
 
   test('izin rute: list=view atau item:edit, save=edit, setStatus=manage (modul sticker, global)', () => {

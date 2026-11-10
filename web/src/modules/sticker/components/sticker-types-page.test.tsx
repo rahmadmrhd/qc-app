@@ -13,6 +13,8 @@ const types: StickerTypeDto[] = [
     rule: 'bu',
     status: 'active',
     stickerCount: 3,
+    systemKind: '',
+    defaultMinQty: 0,
     updatedAt: '2026-11-09 10:00:00',
   },
   {
@@ -21,6 +23,8 @@ const types: StickerTypeDto[] = [
     rule: 'none',
     status: 'inactive',
     stickerCount: 0,
+    systemKind: '',
+    defaultMinQty: 0,
     updatedAt: '2026-11-09 10:00:00',
   },
 ];

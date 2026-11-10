@@ -467,3 +467,29 @@ export async function latestManualBookStickerIds(
   }
   return result;
 }
+
+/**
+ * Apakah stiker ini versi TERBARU konfigurasinya (versi tertinggi untuk `design_id`-nya)? Stiker tanpa baris versi
+ * dianggap bukan versi terbaru.
+ */
+export async function isLatestManualBookVersion(db: Preparer, stickerId: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      'SELECT mv.version AS version, (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id) AS latest FROM manual_book_versions mv WHERE mv.sticker_id = ?',
+    )
+    .bind(stickerId)
+    .first<{ version: number | string; latest: number | string }>();
+  return row !== null && Number(row.version) >= Number(row.latest);
+}
+
+/**
+ * Penjaga di dalam `batch()`: membatalkan batch (`CAS_FAIL_SQL`) bila stiker ini bukan lagi versi terbaru
+ * konfigurasinya (versi lebih baru lahir dari ekspor serentak). Dipakai saat mengaktifkan stiker jenis sistem.
+ */
+export function latestManualBookVersionGuardStmt(db: Preparer, stickerId: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN mv.version = (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id) THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM manual_book_versions mv WHERE mv.sticker_id = ?`,
+    )
+    .bind(stickerId);
+}

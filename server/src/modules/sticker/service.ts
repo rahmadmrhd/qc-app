@@ -23,6 +23,8 @@ import type { StickerRecord, StickerTypeRecord } from './repo';
 import {
   insertStickerStmt,
   insertStickerTypeStmt,
+  isLatestManualBookVersion,
+  latestManualBookVersionGuardStmt,
   listStickerTypeRecords,
   lockStickerType,
   setStickerStatusStmt,
@@ -49,6 +51,12 @@ const NAME_TAKEN_MESSAGE = 'Nama jenis sudah dipakai';
 const TYPE_STALE_MESSAGE =
   'Jenis stiker diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 const RULE_LOCKED_MESSAGE = 'Aturan jenis tidak dapat diubah karena sudah ada stiker';
+const DEPRECATED_ACTIVATE_MESSAGE =
+  'Stiker ini sudah digantikan versi baru dan tidak dapat diaktifkan kembali';
+const NOT_LATEST_MESSAGE = 'Hanya versi terbaru Manual Book yang dapat diaktifkan';
+const SYSTEM_TYPE_MESSAGE = 'Jenis sistem dikelola aplikasi dan tidak dapat diubah';
+const SYSTEM_STICKER_MESSAGE =
+  'Stiker jenis sistem dibuat otomatis; hanya minimum stok, alias, dan status yang dapat diubah';
 
 /** Peta bentrok indeks unik -> pesan generik (tanpa nilai lain). */
 const TYPE_CONFLICTS = {
@@ -61,6 +69,8 @@ function toStickerTypeDto(type: StickerTypeRecord): StickerTypeDto {
     name: type.name,
     rule: type.rule,
     status: type.status,
+    systemKind: type.systemKind,
+    defaultMinQty: type.defaultMinQty,
     stickerCount: type.stickerCount,
     updatedAt: type.updatedAt,
   };
@@ -127,6 +137,10 @@ async function updateStickerType(
     if (!existing) throw appError('NOT_FOUND', 'Jenis stiker tidak ditemukan');
     // Versi yang dilihat penyimpan harus masih terkini; baris terkunci (`FOR UPDATE`) sehingga pembacaan ini pasti.
     if (input.expectedUpdatedAt !== existing.updatedAt) throw staleError(TYPE_STALE_MESSAGE);
+    // Jenis sistem (Manual Book, Postel) dikelola aplikasi: tak dapat diganti nama atau aturannya lewat form.
+    if (existing.systemKind !== '') {
+      throw appError('VALIDATION', SYSTEM_TYPE_MESSAGE, { name: SYSTEM_TYPE_MESSAGE });
+    }
     if (existing.name === input.name && existing.rule === input.rule) {
       return toStickerTypeDto(existing);
     }
@@ -195,8 +209,7 @@ function toStickerDto(
     alias: sticker.alias,
     fileId: sticker.fileId === '' ? null : sticker.fileId,
     minQty: sticker.minQty,
-    // Sementara (Task 3 melebarkan DTO ke `StickerStatus`): `deprecated` tampil sebagai nonaktif.
-    status: sticker.status === 'deprecated' ? 'inactive' : sticker.status,
+    status: sticker.status,
     businessUnitIds: [...businessUnitIds],
     low: isLowStock({ status: sticker.status, minQty: sticker.minQty, total }),
     updatedAt: sticker.updatedAt,
@@ -308,6 +321,17 @@ async function saveStickerOnce(
     const message = 'Jenis stiker tidak dikenal';
     throw appError('VALIDATION', message, { typeId: message });
   }
+  // Stiker jenis sistem lahir dari ekspor (bukan form katalog) dan hanya minimum stok dan alias yang dapat diubah.
+  if (type.systemKind !== '') {
+    if (!existing)
+      throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { typeId: SYSTEM_STICKER_MESSAGE });
+    if (input.name !== existing.name) {
+      throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { name: SYSTEM_STICKER_MESSAGE });
+    }
+    if ((input.fileId ?? '') !== existing.fileId) {
+      throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { fileId: SYSTEM_STICKER_MESSAGE });
+    }
+  }
   if (!existing && type.status !== 'active') {
     const message = 'Jenis stiker dinonaktifkan; aktifkan dulu di halaman Jenis';
     throw appError('VALIDATION', message, { typeId: message });
@@ -320,7 +344,7 @@ async function saveStickerOnce(
     : 0;
 
   const requested = input.businessUnitIds;
-  if (type.rule === 'none' && requested.length > 0) {
+  if ((type.rule === 'none' || type.rule === 'group') && requested.length > 0) {
     const message = 'Jenis ini tidak memakai BU';
     throw appError('VALIDATION', message, { businessUnitIds: message });
   }
@@ -453,6 +477,17 @@ async function setStickerStatusOnce(
   const total = stockTotalsFromResult(related[2] ?? { results: [] }).get(sticker.id) ?? 0;
   const typeName = type?.name ?? '';
   if (sticker.status === input.status) return toStickerDto(sticker, typeName, buIds, total);
+  // Stiker yang sudah digantikan versi baru (`deprecated`) hanya dapat menjadi nonaktif, tidak diaktifkan kembali.
+  if (sticker.status === 'deprecated' && input.status === 'active') {
+    throw appError('VALIDATION', DEPRECATED_ACTIVATE_MESSAGE, {
+      status: DEPRECATED_ACTIVATE_MESSAGE,
+    });
+  }
+  // Stiker jenis sistem hanya boleh diaktifkan bila masih versi terbaru konfigurasinya.
+  const guardLatest = input.status === 'active' && type !== undefined && type.systemKind !== '';
+  if (guardLatest && !(await isLatestManualBookVersion(env.DB, sticker.id))) {
+    throw appError('VALIDATION', NOT_LATEST_MESSAGE, { status: NOT_LATEST_MESSAGE });
+  }
   const now = nowIso(env);
   const updated: StickerRecord = {
     ...sticker,
@@ -461,6 +496,7 @@ async function setStickerStatusOnce(
     updatedBy: actor.email,
   };
   await env.DB.batch([
+    ...(guardLatest ? [latestManualBookVersionGuardStmt(env.DB, sticker.id)] : []),
     setStickerStatusStmt(env.DB, updated, sticker.updatedAt),
     writeAudit(env.DB, {
       ts: now,

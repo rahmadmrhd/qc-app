@@ -7,6 +7,8 @@ import type {
   GuideSort,
   StickerMarkTarget,
   StickerRule,
+  StickerStatus,
+  StickerSystemKind,
   StockCount,
   StockEntryKind,
 } from './stickers';
@@ -365,6 +367,10 @@ export interface StickerTypeDto {
   name: string;
   rule: StickerRule;
   status: ItemStatus;
+  /** Jenis sistem (`''` = jenis biasa): stiker dikelola aplikasi dan jenisnya tak dapat diubah lewat form katalog. */
+  systemKind: StickerSystemKind;
+  /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini (0 = tanpa peringatan). */
+  defaultMinQty: number;
   /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
   stickerCount: number;
   updatedAt: string;
@@ -395,8 +401,9 @@ export interface StickerDto {
   fileId: string | null;
   /** Batas minimum stok (butir) total semua lokasi; 0 = tanpa peringatan. */
   minQty: number;
-  status: ItemStatus;
-  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none`. */
+  /** `deprecated` = digantikan versi Manual Book yang lebih baru; hanya dapat menjadi nonaktif. */
+  status: StickerStatus;
+  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none` atau `group`. */
   businessUnitIds: string[];
   low: boolean;
   updatedAt: string;
@@ -429,7 +436,7 @@ export interface StickerStockDto {
   typeName: string;
   /** Status jenis: jenis nonaktif menolak stok masuk (keluar, koreksi, dan opname tetap boleh). */
   typeStatus: ItemStatus;
-  status: ItemStatus;
+  status: StickerStatus;
   minQty: number;
   /** Menipis menurut total SEMUA lokasi (sama dengan `StickerDto.low`), bukan hanya lokasi yang diminta. */
   low: boolean;
