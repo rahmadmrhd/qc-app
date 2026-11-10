@@ -13,7 +13,7 @@ const base = {
   model: ' ES 24 250W ',
   isCountryLock: false,
   aliases: [],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',
@@ -29,7 +29,18 @@ test('menormalisasi dan mengembalikan input yang sah', () => {
       id: 'i1',
       isCountryLock: true,
       aliases: [' ES24 ', 'Es24', '', 'AirFiber'],
-      stickers: [{ name: ' Label SNI ', note: ' Belakang ', fileId: ' f1 ' }, { name: 'Garansi' }],
+      stickerPhotos: [
+        {
+          guideId: ' g1 ',
+          caption: ' Sisi depan ',
+          buId: ' bu-a ',
+          marks: [
+            { x: 10, y: 20, target: { kind: 'sticker', stickerId: ' s1 ' }, note: ' kiri ' },
+            { x: 0, y: 1000, target: { kind: 'type', typeId: 't1' } },
+          ],
+        },
+        { guideId: 'g2', buId: '', marks: [] },
+      ],
       accessories: [{ name: ' Kabel ', qty: 2 }],
       attachments: [' a ', 'a', 'b'],
       detail: 'baris1\r\nbaris2',
@@ -41,9 +52,17 @@ test('menormalisasi dan mengembalikan input yang sah', () => {
     model: 'ES 24 250W',
     isCountryLock: true,
     aliases: ['ES24', 'AirFiber'],
-    stickers: [
-      { name: 'Label SNI', note: 'Belakang', fileId: 'f1' },
-      { name: 'Garansi', note: '', fileId: null },
+    stickerPhotos: [
+      {
+        guideId: 'g1',
+        caption: 'Sisi depan',
+        buId: 'bu-a',
+        marks: [
+          { x: 10, y: 20, target: { kind: 'sticker', stickerId: 's1' }, note: 'kiri' },
+          { x: 0, y: 1000, target: { kind: 'type', typeId: 't1' }, note: '' },
+        ],
+      },
+      { guideId: 'g2', caption: '', buId: null, marks: [] },
     ],
     accessories: [{ name: 'Kabel', qty: 2 }],
     attachments: ['a', 'b'],
@@ -95,24 +114,117 @@ test('nama lain: daftar teks, kosong dibuang, kembar (ternormalisasi) dibuang, b
   expect(fieldsOf({ aliases: eleven })?.aliases).toBe('Maksimal 10 nama lain');
 });
 
-test('stiker: nama wajib, catatan dan berkas dibatasi, pesan menyebut nomor stiker', () => {
-  expect(fieldsOf({ stickers: 'x' })?.stickers).toBe('Harus berupa daftar stiker');
-  expect(fieldsOf({ stickers: ['x'] })?.stickers).toBe('Stiker 1: tidak valid');
-  expect(fieldsOf({ stickers: [{ name: '' }] })?.stickers).toBe('Stiker 1: nama wajib diisi');
-  expect(fieldsOf({ stickers: [{ name: 'ok' }, { name: 'x'.repeat(101) }] })?.stickers).toBe(
-    'Stiker 2: nama maksimal 100 karakter',
+const photo = (override: Record<string, unknown> = {}) => ({
+  guideId: 'g1',
+  caption: '',
+  buId: null,
+  marks: [],
+  ...override,
+});
+const mark = (override: Record<string, unknown> = {}) => ({
+  x: 1,
+  y: 2,
+  target: { kind: 'sticker', stickerId: 's1' },
+  note: '',
+  ...override,
+});
+const photosError = (stickerPhotos: unknown) => fieldsOf({ stickerPhotos })?.stickerPhotos;
+
+test('instruksi stiker: wajib daftar, maksimal 10 foto, pesan menyebut nomor foto', () => {
+  expect(photosError('x')).toBe('Harus berupa daftar foto');
+  expect(photosError(undefined)).toBe('Harus berupa daftar foto');
+  expect(photosError(Array.from({ length: 11 }, (_, i) => photo({ guideId: `g${i}` })))).toBe(
+    'Maksimal 10 foto',
   );
-  expect(fieldsOf({ stickers: [{ name: 'a', note: 'x'.repeat(301) }] })?.stickers).toBe(
-    'Stiker 1: catatan maksimal 300 karakter',
+  expect(photosError(['x'])).toBe('Foto 1: tidak valid');
+  expect(photosError([photo(), 5])).toBe('Foto 2: tidak valid');
+  expect(photosError([photo({ guideId: '' })])).toBe('Foto 1: gambar wajib dipilih');
+  expect(photosError([photo({ guideId: 5 })])).toBe('Foto 1: gambar wajib dipilih');
+  expect(photosError([photo({ guideId: 'x'.repeat(101) })])).toBe('Foto 1: gambar tidak valid');
+});
+
+test('instruksi stiker: foto kembar (guideId sama) ditolak', () => {
+  expect(photosError([photo(), photo({ guideId: 'g2' }), photo({ guideId: ' g1 ' })])).toBe(
+    'Foto 3: gambar sudah dipakai di foto lain',
   );
-  expect(fieldsOf({ stickers: [{ name: 'a', note: 5 }] })?.stickers).toBe(
-    'Stiker 1: catatan harus berupa teks',
+});
+
+test('instruksi stiker: catatan foto dan label BU', () => {
+  expect(photosError([photo({ caption: 'x'.repeat(201) })])).toBe(
+    'Foto 1: catatan maksimal 200 karakter',
   );
-  expect(fieldsOf({ stickers: [{ name: 'a', fileId: 5 }] })?.stickers).toBe(
-    'Stiker 1: berkas tidak valid',
+  expect(photosError([photo(), photo({ guideId: 'g2', caption: 5 })])).toBe(
+    'Foto 2: catatan harus berupa teks',
   );
-  const many = Array.from({ length: 31 }, (_, i) => ({ name: `s${i}` }));
-  expect(fieldsOf({ stickers: many })?.stickers).toBe('Maksimal 30 stiker');
+  expect(photosError([photo({ buId: 5 })])).toBe('Foto 1: label BU tidak valid');
+  expect(photosError([photo({ buId: 'x'.repeat(101) })])).toBe('Foto 1: label BU tidak valid');
+  const ok = validateSaveItem({
+    ...base,
+    stickerPhotos: [photo({ caption: '  a  ', buId: '   ' }), photo({ guideId: 'g2', buId: null })],
+  });
+  expect(ok.stickerPhotos.map((p) => [p.caption, p.buId])).toEqual([
+    ['a', null],
+    ['', null],
+  ]);
+  const withoutLabel = { guideId: 'g3', marks: [] };
+  expect(validateSaveItem({ ...base, stickerPhotos: [withoutLabel] }).stickerPhotos).toEqual([
+    { guideId: 'g3', caption: '', buId: null, marks: [] },
+  ]);
+});
+
+test('instruksi stiker: penanda (jumlah, posisi, sasaran, catatan), pesan menyebut foto dan penanda', () => {
+  expect(photosError([photo({ marks: 'x' })])).toBe('Foto 1: penanda harus berupa daftar');
+  expect(photosError([photo({ marks: Array.from({ length: 31 }, () => mark()) })])).toBe(
+    'Foto 1: maksimal 30 penanda',
+  );
+  expect(photosError([photo({ marks: ['x'] })])).toBe('Foto 1, penanda 1: tidak valid');
+  for (const bad of [-1, 1001, 1.5, Number.NaN, '5', null, undefined]) {
+    expect(photosError([photo({ marks: [mark(), mark({ x: bad })] })])).toBe(
+      'Foto 1, penanda 2: posisi harus bilangan bulat 0–1000',
+    );
+    expect(photosError([photo(), photo({ guideId: 'g2', marks: [mark({ y: bad })] })])).toBe(
+      'Foto 2, penanda 1: posisi harus bilangan bulat 0–1000',
+    );
+  }
+  for (const target of [
+    undefined,
+    null,
+    'x',
+    {},
+    { kind: 'lain', stickerId: 's1' },
+    { kind: 'sticker' },
+    { kind: 'sticker', stickerId: '' },
+    { kind: 'sticker', stickerId: 5 },
+    { kind: 'type', typeId: '' },
+    { kind: 'type', stickerId: 's1' },
+    { kind: 'sticker', stickerId: 'x'.repeat(101) },
+  ]) {
+    expect(photosError([photo({ marks: [mark({ target })] })])).toBe(
+      'Foto 1, penanda 1: sasaran tidak valid',
+    );
+  }
+  for (const target of [
+    { kind: 'sticker', stickerId: 's', typeId: 't' },
+    { kind: 'type', typeId: 't', stickerId: 's' },
+  ]) {
+    expect(photosError([photo({ marks: [mark({ target })] })])).toBe(
+      'Foto 1, penanda 1: pilih stiker atau jenis, bukan keduanya',
+    );
+  }
+  expect(photosError([photo({ marks: [mark({ note: 'x'.repeat(121) })] })])).toBe(
+    'Foto 1, penanda 1: catatan maksimal 120 karakter',
+  );
+  expect(photosError([photo({ marks: [mark({ note: 5 })] })])).toBe(
+    'Foto 1, penanda 1: catatan harus berupa teks',
+  );
+});
+
+test('instruksi stiker: batas 10 foto dan 30 penanda yang tepat lolos', () => {
+  const marks = Array.from({ length: 30 }, (_, i) => mark({ x: i, y: 1000 - i }));
+  const photos = Array.from({ length: 10 }, (_, i) => photo({ guideId: `g${i}`, marks }));
+  expect(validateSaveItem({ ...base, stickerPhotos: photos }).stickerPhotos).toHaveLength(10);
+  const edge = photo({ marks: [mark({ x: 0, y: 1000 })] });
+  expect(validateSaveItem({ ...base, stickerPhotos: [edge] }).stickerPhotos).toHaveLength(1);
 });
 
 test('kelengkapan: nama wajib dan jumlah bilangan bulat 1–999', () => {
@@ -162,20 +274,14 @@ test('validateGetItem dan validateSetItemStatus', () => {
   });
 });
 
-test('JSON per kolom melebihi 40.000 karakter ditolak (karakter kontrol membengkak saat di-JSON)', () => {
-  const note = String.fromCharCode(1).repeat(300);
-  const stickers = Array.from({ length: 30 }, (_, i) => ({ name: `s${i}`, note }));
-  expect(fieldsOf({ stickers })?.stickers).toBe('Data stiker terlalu besar');
-});
-
 test('tipe wajib memuat huruf atau angka (kunci tidak boleh kosong)', () => {
   expect(fieldsOf({ model: '--' })?.model).toBe('Tipe harus memuat huruf atau angka');
   expect(validateSaveItem({ ...base, model: '手机' }).model).toBe('手机');
 });
 
 test('galat daftar yang dilaporkan adalah yang PERTAMA, bukan yang terakhir', () => {
-  expect(fieldsOf({ stickers: [{ name: '' }, { name: 'x'.repeat(101) }] })?.stickers).toBe(
-    'Stiker 1: nama wajib diisi',
+  expect(photosError([photo({ guideId: '' }), photo({ guideId: 'x'.repeat(101) })])).toBe(
+    'Foto 1: gambar wajib dipilih',
   );
   expect(
     fieldsOf({

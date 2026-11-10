@@ -413,6 +413,104 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
   return true;
 }
 
+/** Placeholder `?` sebanyak `count` untuk klausa `IN (...)`. */
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => '?').join(', ');
+}
+
+/**
+ * Memeriksa rujukan instruksi stiker SEBELUM menulis (tahap 3b-2), dalam SATU `batch()` baca: gambar pustaka ada
+ * (dengan berkas aktif), stiker dan jenis ada, dan label BU foto ada di antara BU item. Sasaran penanda yang BARU
+ * (belum tersimpan pada penanda item ini) wajib aktif; yang sudah tersimpan boleh nonaktif (tetap utuh). Penanda ke
+ * stiker tertentu tidak disaring BU. Gagal = `VALIDATION` pada `stickerPhotos`, pesan menyebut nomor foto/penanda.
+ */
+export async function assertInstructionRefs(env: Env, input: SaveItemInput): Promise<void> {
+  const photos = input.stickerPhotos;
+  if (photos.length === 0) return;
+  const itemBus = new Set(input.businessUnitIds);
+  photos.forEach((photo, index) => {
+    if (photo.buId !== null && !itemBus.has(photo.buId)) {
+      const message = `Foto ${index + 1}: label BU harus salah satu BU item`;
+      throw appError('VALIDATION', message, { stickerPhotos: message });
+    }
+  });
+  const guideIds = photos.map((photo) => photo.guideId);
+  const stickerIds = new Set<string>();
+  const typeIds = new Set<string>();
+  for (const photo of photos) {
+    for (const mark of photo.marks) {
+      if (mark.target.kind === 'sticker') stickerIds.add(mark.target.stickerId);
+      else typeIds.add(mark.target.typeId);
+    }
+  }
+  const reads: DbStatement[] = [
+    env.DB.prepare(
+      `SELECT g.id FROM sticker_guide_images g JOIN files f ON f.id = g.id AND f.owner_type = 'stickerguide' AND f.status = 'active' WHERE g.id IN (${placeholders(guideIds.length)})`,
+    ).bind(...guideIds),
+  ];
+  const slots = { stickers: -1, types: -1, stored: -1 };
+  if (stickerIds.size > 0) {
+    slots.stickers = reads.length;
+    reads.push(
+      env.DB.prepare(
+        `SELECT id, status FROM stickers WHERE id IN (${placeholders(stickerIds.size)})`,
+      ).bind(...stickerIds),
+    );
+  }
+  if (typeIds.size > 0) {
+    slots.types = reads.length;
+    reads.push(
+      env.DB.prepare(
+        `SELECT id, status FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+      ).bind(...typeIds),
+    );
+  }
+  if (input.id && (stickerIds.size > 0 || typeIds.size > 0)) {
+    slots.stored = reads.length;
+    reads.push(
+      env.DB.prepare('SELECT sticker_id, type_id FROM item_sticker_marks WHERE item_id = ?').bind(
+        input.id,
+      ),
+    );
+  }
+  const results = await env.DB.batch(reads);
+  const rowsOf = <T>(slot: number): T[] =>
+    slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
+  const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
+  const stickerStatus = new Map(
+    rowsOf<{ id: string; status: string }>(slots.stickers).map((row) => [row.id, row.status]),
+  );
+  const typeStatus = new Map(
+    rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
+  );
+  const stored = rowsOf<{ sticker_id: string; type_id: string }>(slots.stored);
+  const storedStickers = new Set(stored.map((row) => row.sticker_id).filter((id) => id !== ''));
+  const storedTypes = new Set(stored.map((row) => row.type_id).filter((id) => id !== ''));
+  const fail = (message: string): never => {
+    throw appError('VALIDATION', message, { stickerPhotos: message });
+  };
+  photos.forEach((photo, photoIndex) => {
+    const photoLabel = `Foto ${photoIndex + 1}`;
+    if (!knownGuides.has(photo.guideId)) fail(`${photoLabel}: gambar tidak ditemukan`);
+    photo.marks.forEach((mark, markIndex) => {
+      const label = `${photoLabel}, penanda ${markIndex + 1}`;
+      if (mark.target.kind === 'sticker') {
+        const status = stickerStatus.get(mark.target.stickerId);
+        if (status === undefined) fail(`${label}: stiker tidak ditemukan`);
+        if (status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+          fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
+        }
+      } else {
+        const status = typeStatus.get(mark.target.typeId);
+        if (status === undefined) fail(`${label}: jenis tidak ditemukan`);
+        if (status !== 'active' && !storedTypes.has(mark.target.typeId)) {
+          fail(`${label}: jenis dinonaktifkan; pilih jenis yang aktif`);
+        }
+      }
+    });
+  });
+}
+
 export interface WriteItemOptions {
   /** Item yang diubah, bila pemanggil sudah memuatnya; selain itu dimuat dari `input.id` (NOT_FOUND bila tak ada). */
   existing?: ItemRecord | undefined;
@@ -443,9 +541,17 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
     if (error instanceof DbError && error.kind === 'duplicate' && error.key === 'brands_key') {
       throw error;
     }
+    // Gambar pustaka yang dihapus tepat di antara pemeriksaan rujukan dan penulisan: kunci asing menolak foto yatim.
+    if (error instanceof DbError && error.errno === ER_NO_REFERENCED_ROW) {
+      const message = 'Gambar instruksi tidak ditemukan; muat ulang halaman lalu pilih gambar lagi';
+      throw appError('VALIDATION', message, { stickerPhotos: message });
+    }
     throw mapDuplicateError(error, ITEM_CONFLICTS);
   }
 }
+
+/** Galat MariaDB 1452: baris anak merujuk baris induk yang tidak ada (kunci asing). */
+const ER_NO_REFERENCED_ROW = 1452;
 
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
@@ -553,6 +659,7 @@ export async function planItemWrite(
   const owners = await loadNameOwners(env, input, key, id, existing);
   assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
+  await assertInstructionRefs(env, input);
   const usableFiles = await assertItemFilesUsable(env, actor, input, id, context.files);
   const attach = await planAttachFiles(
     env,
