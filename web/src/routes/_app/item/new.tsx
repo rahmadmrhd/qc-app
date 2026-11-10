@@ -13,6 +13,12 @@ import { itemFormLinkAccess } from '@/modules/item/lib/link-access';
 import { useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
+import {
+  stickersQuery,
+  stickerTypesQuery,
+  useSaveSticker,
+  useSaveStickerType,
+} from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/new')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
@@ -20,6 +26,8 @@ export const Route = createFileRoute('/_app/item/new')({
     Promise.all([
       context.queryClient.ensureQueryData(brandsQueryOptions()),
       context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+      context.queryClient.ensureQueryData(stickersQuery()),
+      context.queryClient.ensureQueryData(stickerTypesQuery()),
     ]),
   component: NewItemPage,
 });
@@ -32,6 +40,10 @@ function NewItemPage() {
   const saveItem = useSaveItem();
   const saveBrand = useSaveBrand();
   const saveBusinessUnit = useSaveBusinessUnit();
+  const { data: stickers } = useSuspenseQuery(stickersQuery());
+  const { data: stickerTypes } = useSuspenseQuery(stickerTypesQuery());
+  const saveSticker = useSaveSticker();
+  const saveStickerType = useSaveStickerType();
   const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
@@ -65,6 +77,14 @@ function NewItemPage() {
         }
         openBrandHref={links.openBrandHref}
         openBusinessUnitHref={links.openBusinessUnitHref}
+        stickers={stickers}
+        stickerTypes={stickerTypes}
+        onCreateSticker={
+          links.canCreateSticker ? (input) => saveSticker.mutateAsync(input) : undefined
+        }
+        onCreateStickerType={
+          links.canCreateStickerType ? (input) => saveStickerType.mutateAsync(input) : undefined
+        }
         defaultValues={toItemFormDefaults()}
         submitError={submitError}
         fieldErrors={fieldErrors}

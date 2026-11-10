@@ -43,7 +43,7 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     model: 'X',
     isCountryLock: false,
     aliases: [],
-    stickers: [],
+    stickerPhotos: [],
     accessories: [],
     attachments: [],
     detail: '',

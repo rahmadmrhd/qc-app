@@ -67,3 +67,36 @@ export function markLabel(
     ? `Jenis ${found.name}${INACTIVE_SUFFIX}`
     : `Jenis ${found.name}`;
 }
+
+export interface GroupedInstructionErrors {
+  /** Pesan yang tidak menyebut foto tertentu (mis. batas jumlah foto, galat server). */
+  general: string[];
+  /** Pesan per foto (indeks mulai 0), tanpa awalan "Foto N: ". */
+  photos: Map<number, string[]>;
+  /** Pesan per penanda, kunci `"<foto>:<penanda>"` (indeks mulai 0), tanpa awalan. */
+  marks: Map<string, string[]>;
+}
+
+const PHOTO_ERROR = /^Foto (\d+)(?:, penanda (\d+))?: (.+)$/;
+
+/** Memilah pesan galat skema ("Foto N: ..." dan "Foto N, penanda M: ...") menurut foto dan penanda. Kembar digabung. */
+export function groupInstructionErrors(messages: readonly string[]): GroupedInstructionErrors {
+  const grouped: GroupedInstructionErrors = { general: [], photos: new Map(), marks: new Map() };
+  const push = <K>(map: Map<K, string[]>, key: K, text: string) => {
+    const list = map.get(key) ?? [];
+    if (!list.includes(text)) list.push(text);
+    map.set(key, list);
+  };
+  for (const message of messages) {
+    const match = PHOTO_ERROR.exec(message);
+    if (!match) {
+      if (!grouped.general.includes(message)) grouped.general.push(message);
+      continue;
+    }
+    const photo = Number(match[1]) - 1;
+    const text = match[3] as string;
+    if (match[2] === undefined) push(grouped.photos, photo, text);
+    else push(grouped.marks, `${photo}:${Number(match[2]) - 1}`, text);
+  }
+  return grouped;
+}

@@ -1,4 +1,4 @@
-import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
+import type { BrandDto, BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -37,6 +37,26 @@ const businessUnits: BusinessUnitOptionDto[] = [
   { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
   { id: 'bu-x', code: 'XTR', name: 'Xtra', status: 'active' },
   { id: 'bu-old', code: 'OLD', name: 'Lama', status: 'inactive' },
+];
+
+const GUIDES = [{ id: 'g1', name: 'Belakang', width: 800, height: 600 }];
+const STICKERS: StickerDto[] = [
+  {
+    id: 's1',
+    typeId: 't1',
+    typeName: 'Postel',
+    name: 'Stiker Postel',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    status: 'active',
+    businessUnitIds: ['bu-a'],
+    low: false,
+    updatedAt: '',
+  },
+];
+const STICKER_TYPES: StickerTypeDto[] = [
+  { id: 't1', name: 'Postel', rule: 'bu', status: 'active', stickerCount: 1, updatedAt: '' },
 ];
 
 // bu-x tidak boleh diisi user ini; bu-old nonaktif jadi tak pernah ditawarkan.
@@ -89,8 +109,6 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
   await userEvent.type(screen.getByLabelText('Tipe'), 'ES 24 250W');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
   await userEvent.type(screen.getByLabelText('Nama lain'), 'ES24{enter}AirSwitch');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
-  await userEvent.type(screen.getByLabelText('Nama stiker 1'), 'Label SNI');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah kelengkapan' }));
   await userEvent.type(screen.getByLabelText('Nama kelengkapan 1'), 'Kabel daya');
   await userEvent.type(
@@ -105,7 +123,7 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
       model: 'ES 24 250W',
       isCountryLock: true,
       aliasesText: 'ES24\nAirSwitch',
-      stickers: [{ name: 'Label SNI', note: '', fileId: null }],
+      stickerPhotos: [],
       accessories: [{ name: 'Kabel daya', qty: 1 }],
       attachments: [],
       detail: '## Spesifikasi',
@@ -265,14 +283,135 @@ test('pesan "belum ada BU" tidak tampil bila ada BU yang dapat diisi', () => {
   expect(screen.queryByText(/Belum ada BU yang dapat Anda isi/)).not.toBeInTheDocument();
 });
 
-test('pesan galat stiker dan kelengkapan bernomor tampil di bagiannya', async () => {
-  renderForm();
+test('pesan galat instruksi stiker dan kelengkapan bernomor tampil di bagiannya', async () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      businessUnitIds: ['bu-a'],
+      stickerPhotos: [
+        {
+          guideId: 'g1',
+          caption: '',
+          buId: null,
+          marks: [{ x: 500, y: 500, target: { kind: 'sticker', stickerId: '' }, note: '' }],
+        },
+      ],
+    },
+    guides: GUIDES,
+  });
   await userEvent.type(screen.getByLabelText('Tipe'), 'B');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   await userEvent.click(screen.getByRole('button', { name: 'Tambah kelengkapan' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-  expect(await screen.findByText('Stiker 1: nama wajib diisi')).toBeInTheDocument();
+  expect(await screen.findByText('Pilih stiker atau jenis')).toBeInTheDocument();
   expect(screen.getByText('Kelengkapan 1: nama wajib diisi')).toBeInTheDocument();
+});
+
+test('bagian Instruksi stiker memuat foto item, penanda, dan sasaran dari katalog', () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      businessUnitIds: ['bu-a'],
+      stickerPhotos: [
+        {
+          guideId: 'g1',
+          caption: 'Belakang kardus',
+          buId: 'bu-a',
+          marks: [{ x: 100, y: 200, target: { kind: 'sticker', stickerId: 's1' }, note: 'Pojok' }],
+        },
+      ],
+    },
+    stickers: STICKERS,
+    stickerTypes: STICKER_TYPES,
+    guides: GUIDES,
+  });
+  expect(screen.getByRole('heading', { name: 'Instruksi stiker' })).toBeInTheDocument();
+  const card = screen.getByRole('group', { name: 'Foto instruksi 1' });
+  expect(within(card).getByRole('textbox', { name: 'Catatan foto 1' })).toHaveValue(
+    'Belakang kardus',
+  );
+  expect(within(card).getByRole('combobox', { name: 'Label BU foto 1' })).toHaveValue(
+    'Retail (RTL)',
+  );
+  expect(within(card).getByRole('combobox', { name: 'Stiker' })).toHaveValue('Stiker Postel');
+  expect(screen.queryByRole('button', { name: 'Tambah stiker' })).not.toBeInTheDocument();
+});
+
+test('melepas BU item mengosongkan label BU foto yang memakainya', async () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      businessUnitIds: ['bu-a', 'bu-b'],
+      stickerPhotos: [{ guideId: 'g1', caption: '', buId: 'bu-a', marks: [] }],
+    },
+    guides: GUIDES,
+  });
+  const label = screen.getByRole('combobox', { name: 'Label BU foto 1' });
+  expect(label).toHaveValue('Retail (RTL)');
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await waitFor(() =>
+    expect(screen.getByRole('combobox', { name: 'Label BU foto 1' })).toHaveValue(''),
+  );
+});
+
+test('Tambah jenis dari penanda: dialog jenis, jenis baru langsung terpilih tanpa mengirim form item', async () => {
+  const created: StickerTypeDto = {
+    id: 't9',
+    name: 'Segel',
+    rule: 'none',
+    status: 'active',
+    stickerCount: 0,
+    updatedAt: '',
+  };
+  const onCreateStickerType = vi.fn(async () => created);
+  const { onSubmit } = renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      businessUnitIds: ['bu-a'],
+      stickerPhotos: [
+        {
+          guideId: 'g1',
+          caption: '',
+          buId: null,
+          marks: [{ x: 500, y: 500, target: { kind: 'type', typeId: '' }, note: '' }],
+        },
+      ],
+    },
+    stickerTypes: STICKER_TYPES,
+    guides: GUIDES,
+    onCreateStickerType,
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Nama jenis'), 'Segel');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onCreateStickerType).toHaveBeenCalledWith({ name: 'Segel', rule: 'bu' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('combobox', { name: 'Jenis' })).toHaveValue('Jenis Segel');
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('tanpa pembuat stiker/jenis, baris Tambah tidak ada pada penanda', async () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      businessUnitIds: ['bu-a'],
+      stickerPhotos: [
+        {
+          guideId: 'g1',
+          caption: '',
+          buId: null,
+          marks: [{ x: 500, y: 500, target: { kind: 'sticker', stickerId: '' }, note: '' }],
+        },
+      ],
+    },
+    stickers: STICKERS,
+    guides: GUIDES,
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
+  expect(screen.queryByRole('option', { name: 'Tambah Stiker' })).not.toBeInTheDocument();
 });
 
 test('galat per field dari server tampil di bawah field terkait dan galat umum sebagai alert', () => {

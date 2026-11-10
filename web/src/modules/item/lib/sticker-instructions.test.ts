@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import {
   clampPermil,
   copyMarks,
+  groupInstructionErrors,
   markLabel,
   moveEntry,
   pointToPermil,
@@ -120,4 +121,34 @@ test('markLabel: id kosong menghasilkan teks kosong; id tak dikenal diberi petun
   expect(markLabel({ kind: 'type', typeId: '' }, [], [])).toBe('');
   expect(markLabel({ kind: 'sticker', stickerId: 'x' }, [], [])).toBe('Stiker tidak ditemukan');
   expect(markLabel({ kind: 'type', typeId: 'x' }, [], [])).toBe('Jenis tidak ditemukan');
+});
+
+test('groupInstructionErrors: memilah pesan menurut foto, penanda, dan umum (indeks mulai 0)', () => {
+  const grouped = groupInstructionErrors([
+    'Maksimal 10 foto instruksi',
+    'Foto 1: catatan maksimal 200 karakter',
+    'Foto 2: gambar sudah dipakai di foto lain',
+    'Foto 2, penanda 3: pilih stiker atau jenis',
+    'Foto 2, penanda 3: catatan maksimal 120 karakter',
+    'Foto 11, penanda 1: posisi harus bilangan bulat 0–1000',
+  ]);
+  expect(grouped.general).toEqual(['Maksimal 10 foto instruksi']);
+  expect(grouped.photos.get(0)).toEqual(['catatan maksimal 200 karakter']);
+  expect(grouped.photos.get(1)).toEqual(['gambar sudah dipakai di foto lain']);
+  expect(grouped.marks.get('1:2')).toEqual([
+    'pilih stiker atau jenis',
+    'catatan maksimal 120 karakter',
+  ]);
+  expect(grouped.marks.get('10:0')).toEqual(['posisi harus bilangan bulat 0–1000']);
+});
+
+test('groupInstructionErrors: pesan kembar digabung dan pesan tak berformat menjadi umum', () => {
+  const grouped = groupInstructionErrors([
+    'Foto 1: pilih gambar',
+    'Foto 1: pilih gambar',
+    'Galat server',
+  ]);
+  expect(grouped.photos.get(0)).toEqual(['pilih gambar']);
+  expect(grouped.general).toEqual(['Galat server']);
+  expect(groupInstructionErrors([]).general).toEqual([]);
 });

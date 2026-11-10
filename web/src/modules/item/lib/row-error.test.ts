@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { errorText, rowOfError } from './row-error';
+import { errorText, errorTexts, rowOfError } from './row-error';
 
 test('rowOfError membaca nomor baris dari pesan "<Awalan> N: ..." (0-based); selain itu null', () => {
   expect(rowOfError('Stiker 3: nama wajib diisi', 'Stiker')).toBe(2);
@@ -15,4 +15,12 @@ test('errorText mengambil pesan pertama dari teks atau objek berpesan; kosong = 
   expect(errorText([undefined, { message: 'Dari zod' }])).toBe('Dari zod');
   expect(errorText([undefined, null])).toBeUndefined();
   expect(errorText([])).toBeUndefined();
+});
+
+test('errorTexts mengumpulkan semua pesan unik berurutan dari teks atau objek berpesan', () => {
+  expect(errorTexts(['Satu', undefined, { message: 'Dua' }, 'Satu', '', null])).toEqual([
+    'Satu',
+    'Dua',
+  ]);
+  expect(errorTexts([])).toEqual([]);
 });
