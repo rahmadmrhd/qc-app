@@ -751,12 +751,9 @@ export async function planItemWrite(
     );
     statements.push(
       ...attach,
-      ...replaceItemInstructionStmts(
-        env.DB,
-        id,
-        input.stickerPhotos,
-        before.instructions.length === 0,
-      ),
+      // Item yang ADA: DELETE selalu dijalankan (bukan fresh), agar penulis basi gagal oleh CAS `UPDATE items`
+      // (412) dan bukan oleh duplikat PK foto.
+      ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos, false),
       ...updateItemStmts(env.DB, merged, existing),
       ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, false),
     );

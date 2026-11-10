@@ -37,10 +37,10 @@ function placeholders(count: number): string {
  * semua foto item (penanda ikut terhapus lewat kunci asing), lalu sisipkan foto dan penanda. `position` foto dan
  * penanda dari urutan larik. Batas jumlah/nilai dijaga validator, bukan di sini.
  *
- * `fresh` = item belum punya foto (item baru, atau item yang ada tetapi tanpa foto tersimpan): `DELETE` dilewati
- * (pola `replaceItemBusinessUnitsStmts`). `DELETE` pada item tanpa baris memasang kunci gap (REPEATABLE READ) yang
- * dapat membuat deadlock pada pembuatan serentak. Aman untuk item yang ada: penulisan lain pada item itu menaikkan
- * `items.updated_at`, sehingga CAS `UPDATE items` di batch yang sama menggagalkan penulis yang basi.
+ * `fresh` = item BARU: `DELETE` dilewati (pola `replaceItemBusinessUnitsStmts`), karena `DELETE` pada id yang belum
+ * punya baris memasang kunci gap (REPEATABLE READ) yang dapat membuat deadlock pada pembuatan serentak. Item yang
+ * sudah ada SELALU memakai `fresh = false`: `DELETE` berjalan lebih dulu sehingga dua penyimpan serentak dengan
+ * versi sama berakhir di CAS `UPDATE items` (412 usang), bukan di duplikat PK `(item_id, guide_id)` foto.
  */
 export function replaceItemInstructionStmts(
   db: Preparer,

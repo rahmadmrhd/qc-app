@@ -232,6 +232,37 @@ describe('simpan dan baca instruksi', () => {
   });
 });
 
+describe('simpan serentak instruksi pada item yang sama', () => {
+  test('dua items.save serentak (versi sama, item tanpa foto, gambar pustaka yang sama): tepat satu berhasil, yang lain 412 usang (bukan duplikat/500)', async () => {
+    for (let round = 0; round < 3; round++) {
+      const created = await create([], { model: `Balapan ${round}` });
+      const send = (caption: string) =>
+        rest.put(`/items/${created.id}`, {
+          headers: { 'if-match': `"${created.updatedAt}"` },
+          body: {
+            ...baseInput,
+            model: `Balapan ${round}`,
+            stickerPhotos: [photo({ guideId: 'g1', caption })],
+          },
+        });
+      env.clock.advance(1000);
+      const results = await Promise.all([send('A'), send('B')]);
+      const statuses = results.map((response) => response.status).sort();
+      expect(statuses).toEqual([200, 412]);
+      const stale = results.find((response) => response.status === 412) as Response;
+      const problem = await jsonOf(stale);
+      expect(problem).toMatchObject({ code: 'CONFLICT', status: 412 });
+      expect(JSON.stringify(problem)).not.toContain('Nama lain');
+      const rows = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM item_sticker_photos WHERE item_id = ?',
+      )
+        .bind(created.id)
+        .first<{ n: number | string }>();
+      expect(Number(rows?.n)).toBe(1);
+    }
+  });
+});
+
 describe('galat kunci asing 1452 pada penulisan item', () => {
   test('FK lain (bukan gambar pustaka) dilempar apa adanya, tidak dilabeli "gambar tidak ditemukan"', async () => {
     const { batchItemWrite } = await import('./service');
