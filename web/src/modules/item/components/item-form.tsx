@@ -290,6 +290,7 @@ export function ItemForm({
                 options={brandOptions}
                 hasMore={brandCandidates.length > BRAND_OPTION_LIMIT}
                 onSearchChange={setBrandTerm}
+                searchDebounceMs={0}
                 onChange={(id) => {
                   selectBrand(id);
                   field.handleBlur();
@@ -314,6 +315,7 @@ export function ItemForm({
                   }}
                   options={buOptions}
                   onSearchChange={setBuTerm}
+                  searchDebounceMs={0}
                   onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
                   openHref={openBusinessUnitHref}
                   onChange={(ids) => {
@@ -547,6 +549,8 @@ export function ItemForm({
           onOpenChange={setBrandDialogOpen}
           businessUnits={businessUnits}
           onSave={handleCreateBrand}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
         />
       ) : null}
     </>

@@ -3,7 +3,8 @@ import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
-import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
+import { businessUnitLinkAccess, stickerTypeLinkAccess } from '@/lib/link-access';
+import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import {
@@ -18,6 +19,7 @@ import {
   stickersQuery,
   stickerTypesQuery,
   useSaveSticker,
+  useSaveStickerType,
   useSetStickerStatus,
 } from '@/modules/sticker/queries';
 
@@ -39,7 +41,11 @@ function StickersRoute() {
   const { data: types } = useSuspenseQuery(stickerTypesQuery());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const save = useSaveSticker();
+  const saveType = useSaveStickerType();
+  const saveBusinessUnit = useSaveBusinessUnit();
   const setStatus = useSetStickerStatus();
+  const typeLinks = stickerTypeLinkAccess(me);
+  const buLinks = businessUnitLinkAccess(me);
 
   async function handleSave(input: StickerSaveInput): Promise<StickerSaveResult> {
     try {
@@ -75,6 +81,13 @@ function StickersRoute() {
       canManage={can(me, 'sticker', 'manage')}
       pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
       onSave={handleSave}
+      onCreateType={
+        typeLinks.canCreateStickerType ? (input) => saveType.mutateAsync(input) : undefined
+      }
+      onCreateBusinessUnit={
+        buLinks.canCreateBusinessUnit ? (input) => saveBusinessUnit.mutateAsync(input) : undefined
+      }
+      openBusinessUnitHref={buLinks.openBusinessUnitHref}
       onToggleStatus={toggleStatus}
     />
   );

@@ -10,7 +10,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { BrandFormDialog, type BrandSaveInput, type BrandSaveResult } from './brand-form-dialog';
+import {
+  BrandFormDialog,
+  type BrandFormDialogProps,
+  type BrandSaveInput,
+  type BrandSaveResult,
+} from './brand-form-dialog';
 
 export interface BrandsManagerProps {
   brands: readonly BrandDto[];
@@ -20,6 +25,9 @@ export interface BrandsManagerProps {
   pendingStatusId: string | null;
   /** Mengembalikan galat (tampil di dialog) atau `null` bila berhasil. */
   onSave: (input: BrandSaveInput) => Promise<BrandSaveResult>;
+  /** Diteruskan ke form merk: tambah BU dan tautan buka BU, hanya bila user berhak (lihat `lib/link-access`). */
+  onCreateBusinessUnit?: BrandFormDialogProps['onCreateBusinessUnit'];
+  openBusinessUnitHref?: BrandFormDialogProps['openBusinessUnitHref'];
   onToggleStatus: (brand: BrandDto) => void;
 }
 
@@ -31,6 +39,8 @@ export function BrandsManager({
   canManage,
   pendingStatusId,
   onSave,
+  onCreateBusinessUnit,
+  openBusinessUnitHref,
   onToggleStatus,
 }: BrandsManagerProps) {
   /** `'new'` = dialog tambah; objek = dialog ganti nama merk itu. */
@@ -122,6 +132,8 @@ export function BrandsManager({
         brand={dialog === null || dialog === 'new' ? undefined : dialog}
         businessUnits={businessUnits}
         onSave={onSave}
+        onCreateBusinessUnit={onCreateBusinessUnit}
+        openBusinessUnitHref={openBusinessUnitHref}
       />
     </div>
   );

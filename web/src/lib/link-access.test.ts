@@ -1,7 +1,12 @@
 import type { MeDto } from '@shared/contract';
 import type { Level } from '@shared/permissions';
 import { expect, test } from 'vitest';
-import { itemFormLinkAccess } from './link-access';
+import {
+  brandLinkAccess,
+  businessUnitLinkAccess,
+  itemFormLinkAccess,
+  stickerTypeLinkAccess,
+} from './link-access';
 
 function meWith(access: Level, item: Level): MeDto {
   return {
@@ -60,6 +65,20 @@ test('Tambah stiker dan jenis hanya untuk sticker edit ke atas; tidak ada tautan
   expect(itemFormLinkAccess(null).canCreateStickerType).toBe(false);
   expect('openStickerHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
   expect('openStickerTypeHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
+});
+
+test('jenis stiker: Tambah butuh sticker edit, tanpa tautan buka (tidak ada halaman lihat)', () => {
+  const withSticker = (level: Level) =>
+    ({ ...meWith('none', 'none'), permissions: { sticker: level } }) as unknown as MeDto;
+  expect(stickerTypeLinkAccess(withSticker('view')).canCreateStickerType).toBe(false);
+  expect(stickerTypeLinkAccess(withSticker('edit')).canCreateStickerType).toBe(true);
+  expect(stickerTypeLinkAccess(null).canCreateStickerType).toBe(false);
+});
+
+test('businessUnitLinkAccess dan brandLinkAccess berdiri sendiri-sendiri', () => {
+  expect(businessUnitLinkAccess(meWith('manage', 'none')).canCreateBusinessUnit).toBe(true);
+  expect(brandLinkAccess(meWith('manage', 'view')).openBrandHref?.('x')).toBe('/item/brands/x');
+  expect(brandLinkAccess(meWith('manage', 'none')).openBrandHref).toBeUndefined();
 });
 
 test('tanpa izin item view, tautan merk tidak tersedia; tanpa me semuanya tidak tersedia', () => {

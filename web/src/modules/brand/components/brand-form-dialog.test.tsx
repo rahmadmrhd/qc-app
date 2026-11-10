@@ -1,5 +1,5 @@
 import type { BusinessUnitOptionDto } from '@shared/contract';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
@@ -15,7 +15,12 @@ function Harness({
   onSave,
   brand,
   onOuterSubmit,
-}: Pick<BrandFormDialogProps, 'onSave' | 'brand'> & { onOuterSubmit?: () => void }) {
+  onCreateBusinessUnit,
+  openBusinessUnitHref,
+}: Pick<
+  BrandFormDialogProps,
+  'onSave' | 'brand' | 'onCreateBusinessUnit' | 'openBusinessUnitHref'
+> & { onOuterSubmit?: () => void }) {
   const [open, setOpen] = useState(true);
   return (
     <form
@@ -33,6 +38,8 @@ function Harness({
         brand={brand}
         businessUnits={businessUnits}
         onSave={onSave}
+        onCreateBusinessUnit={onCreateBusinessUnit}
+        openBusinessUnitHref={openBusinessUnitHref}
       />
     </form>
   );
@@ -147,6 +154,60 @@ test('Enter menyimpan dan tidak menjalar ke form induk', async () => {
   await userEvent.type(screen.getByLabelText('Nama merk'), 'Baru{Enter}');
   expect(onSave).toHaveBeenCalledWith({ name: 'Baru', businessUnitIds: [] });
   expect(onOuterSubmit).not.toHaveBeenCalled();
+});
+
+test('field BU bawaan: Buka dan Tambah BU hanya muncul bila disediakan', async () => {
+  render(<Harness onSave={vi.fn()} />);
+  await pickBusinessUnit('Retail (RTL)');
+  expect(screen.queryByRole('link', { name: /Buka/ })).toBeNull();
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU bawaan' }));
+  expect(screen.queryByRole('option', { name: 'Tambah BU bawaan' })).toBeNull();
+  cleanup();
+
+  render(
+    <Harness
+      onSave={vi.fn()}
+      openBusinessUnitHref={(id) => `/access/business-units/${id}`}
+      onCreateBusinessUnit={vi.fn()}
+    />,
+  );
+  await pickBusinessUnit('Retail (RTL)');
+  expect(screen.getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+    'href',
+    '/access/business-units/bu-a',
+  );
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU bawaan' }));
+  expect(screen.getByRole('option', { name: 'Tambah BU bawaan' })).toBeInTheDocument();
+});
+
+test('Tambah BU bawaan membuat BU lewat dialog turunan dan langsung memilihnya', async () => {
+  const onCreateBusinessUnit = vi
+    .fn()
+    .mockResolvedValue({ id: 'bu-new', code: 'NEW', name: 'Baru', status: 'active' });
+  const onSave = vi.fn().mockResolvedValue(null);
+  const onOuterSubmit = vi.fn();
+  render(
+    <Harness
+      onSave={onSave}
+      onOuterSubmit={onOuterSubmit}
+      onCreateBusinessUnit={onCreateBusinessUnit}
+    />,
+  );
+  await userEvent.type(screen.getByLabelText('Nama merk'), 'Merk X');
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU bawaan' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Tambah BU bawaan' }));
+  const buDialog = await screen.findByRole('alertdialog', { name: 'Tambah BU' });
+  await userEvent.type(within(buDialog).getByLabelText('Kode'), 'NEW');
+  await userEvent.type(within(buDialog).getByLabelText('Nama'), 'Baru');
+  await userEvent.click(within(buDialog).getByRole('button', { name: /Simpan/ }));
+  await waitFor(() => expect(onCreateBusinessUnit).toHaveBeenCalledTimes(1));
+  expect(onOuterSubmit).not.toHaveBeenCalled();
+  const brandDialog = await screen.findByRole('alertdialog', { name: 'Tambah merk' });
+  expect(within(brandDialog).getByText('Baru (NEW)')).toBeInTheDocument();
+  await userEvent.click(within(brandDialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith({ name: 'Merk X', businessUnitIds: ['bu-new'] }),
+  );
 });
 
 test('klik di luar dialog tidak menutupnya dan isian tetap; Escape menutup', async () => {

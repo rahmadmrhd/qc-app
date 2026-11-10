@@ -4,7 +4,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
-import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
+import { businessUnitLinkAccess } from '@/lib/link-access';
+import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import {
@@ -32,6 +33,8 @@ function BrandsPage() {
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const save = useSaveBrand();
   const setStatus = useSetBrandStatus();
+  const saveBusinessUnit = useSaveBusinessUnit();
+  const buLinks = businessUnitLinkAccess(me);
 
   async function handleSave(input: BrandSaveInput): Promise<BrandSaveResult> {
     try {
@@ -74,6 +77,10 @@ function BrandsPage() {
         canManage={can(me, 'item', 'manage')}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
         onSave={handleSave}
+        onCreateBusinessUnit={
+          buLinks.canCreateBusinessUnit ? (input) => saveBusinessUnit.mutateAsync(input) : undefined
+        }
+        openBusinessUnitHref={buLinks.openBusinessUnitHref}
         onToggleStatus={toggleStatus}
       />
     </div>
