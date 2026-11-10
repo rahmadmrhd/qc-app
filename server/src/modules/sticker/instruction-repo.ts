@@ -148,3 +148,47 @@ export async function hasInstructionsOf(db: Db, itemIds: readonly string[]): Pro
     .all<{ item_id: string }>();
   return new Set(rows.results.map((row) => row.item_id));
 }
+
+/** Filter instruksi stiker pada daftar item (`items.list`). */
+export interface InstructionFilter {
+  instruction?: 'none';
+  stickerId?: string;
+  typeId?: string;
+  stickerMode?: 'has' | 'missing';
+}
+
+/**
+ * Syarat `WHERE` untuk filter instruksi pada daftar item (alias tabel item `i`), dengan nilai yang harus di-bind
+ * berurutan. Pencocokan jenis -> stiker DICERMINKAN dari `stickersForType` (`shared/stickers.ts`; satu definisi
+ * dengan tampilan detail, dijaga tes kesepakatan): stiker `active` berjenis itu; aturan jenis `none` = semua,
+ * selain itu hanya yang tertaut ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
+ *
+ * - `instruction: 'none'`: item tanpa satu pun penanda (foto tanpa penanda tidak dihitung).
+ * - `stickerId`: "memakai" = penanda langsung ke stiker itu (apa pun statusnya/BU-nya), atau penanda jenis yang
+ *   menurut aturan di atas menghasilkan stiker itu bagi item.
+ * - `typeId`: "memakai" = penanda jenis itu, atau penanda langsung ke stiker berjenis itu.
+ * - `stickerMode: 'missing'` (bawaan `has`) = kebalikan "memakai"; BU terlihat tetap dijaga pemanggil.
+ */
+export function instructionFilterSql(filter: InstructionFilter): {
+  clauses: string[];
+  binds: unknown[];
+} {
+  const clauses: string[] = [];
+  const binds: unknown[] = [];
+  if (filter.instruction === 'none') {
+    clauses.push('NOT EXISTS (SELECT 1 FROM item_sticker_marks m0 WHERE m0.item_id = i.id)');
+  }
+  const negate = filter.stickerMode === 'missing' ? 'NOT ' : '';
+  if (filter.stickerId !== undefined) {
+    clauses.push(
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND (t.rule = 'none' OR EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id))))))`,
+    );
+    binds.push(filter.stickerId, filter.stickerId);
+  } else if (filter.typeId !== undefined) {
+    clauses.push(
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.type_id = ? OR (m.sticker_id <> '' AND EXISTS (SELECT 1 FROM stickers s2 WHERE s2.id = m.sticker_id AND s2.type_id = ?))))`,
+    );
+    binds.push(filter.typeId, filter.typeId);
+  }
+  return { clauses, binds };
+}

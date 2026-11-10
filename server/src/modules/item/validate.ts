@@ -15,6 +15,8 @@ import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
 import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
 const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;
+const INSTRUCTION_FILTER_VALUES = ['none'] as const;
+const STICKER_MODE_VALUES = ['has', 'missing'] as const;
 
 function isItemRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -396,11 +398,32 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   if (statusRaw !== undefined && statusRaw !== null && statusRaw !== '') {
     status = reader.oneOf('status', ITEM_STATUS_VALUES);
   }
+  const hasValue = (raw: unknown): boolean => raw !== undefined && raw !== null && raw !== '';
+  let instruction: 'none' | undefined;
+  if (hasValue(reader.raw('instruction'))) {
+    instruction = reader.oneOf('instruction', INSTRUCTION_FILTER_VALUES);
+  }
+  const stickerId = reader.str('stickerId', { max: 100 });
+  const typeId = reader.str('typeId', { max: 100 });
+  if (stickerId !== '' && typeId !== '') {
+    reader.fail('typeId', 'Pilih stiker atau jenis, bukan keduanya');
+  }
+  let stickerMode: 'has' | 'missing' | undefined;
+  if (hasValue(reader.raw('stickerMode'))) {
+    stickerMode = reader.oneOf('stickerMode', STICKER_MODE_VALUES);
+    if (stickerId === '' && typeId === '') {
+      reader.fail('stickerMode', 'Mode hanya berlaku bersama stiker atau jenis');
+    }
+  }
   reader.done();
   return {
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
     ...(status ? { status } : {}),
+    ...(instruction ? { instruction } : {}),
+    ...(stickerId !== '' ? { stickerId } : {}),
+    ...(typeId !== '' ? { typeId } : {}),
+    ...(stickerId !== '' || typeId !== '' ? { stickerMode: stickerMode ?? 'has' } : {}),
   };
 }

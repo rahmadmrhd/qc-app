@@ -307,3 +307,31 @@ test('validateListItems: bawaan, batas, kursor, kueri, dan status', () => {
   expect(captureAppError(() => validateListItems({ cursor: '' })).fields?.cursor).toBeDefined();
   expect(captureAppError(() => validateListItems({ status: 'x' })).fields?.status).toBeDefined();
 });
+
+test('validateListItems: filter instruksi (instruction, stickerId/typeId, stickerMode bawaan has)', () => {
+  expect(validateListItems({ instruction: 'none' })).toEqual({ limit: 20, instruction: 'none' });
+  expect(validateListItems({ stickerId: ' s1 ' })).toEqual({
+    limit: 20,
+    stickerId: 's1',
+    stickerMode: 'has',
+  });
+  expect(validateListItems({ typeId: 't1', stickerMode: 'missing' })).toEqual({
+    limit: 20,
+    typeId: 't1',
+    stickerMode: 'missing',
+  });
+  // nilai kosong dianggap tidak ada (seperti status)
+  expect(validateListItems({ instruction: '', stickerId: '', stickerMode: '' })).toEqual({
+    limit: 20,
+  });
+  for (const bad of [
+    { instruction: 'ada' },
+    { stickerMode: 'has' },
+    { stickerId: 's1', typeId: 't1' },
+    { stickerId: 's1', stickerMode: 'semua' },
+    { stickerId: 'x'.repeat(101) },
+  ]) {
+    const fields = captureAppError(() => validateListItems(bad)).fields;
+    expect(Object.keys(fields ?? {}).length).toBeGreaterThan(0);
+  }
+});

@@ -13,6 +13,7 @@ import { activeFilesFromResults, activeFilesStatements } from '@server/modules/f
 import { planAttachFiles } from '@server/modules/files/service';
 import {
   hasInstructionsOf,
+  instructionFilterSql,
   loadItemInstructions,
   replaceItemInstructionStmts,
   type StoredPhoto,
@@ -202,6 +203,9 @@ export async function listItemPage(
     where.push('i.status = ?');
     binds.push(input.status);
   }
+  const instructionFilter = instructionFilterSql(input);
+  where.push(...instructionFilter.clauses);
+  binds.push(...instructionFilter.binds);
   const query = normalizeKey(input.query ?? '');
   if (query !== '') {
     where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
