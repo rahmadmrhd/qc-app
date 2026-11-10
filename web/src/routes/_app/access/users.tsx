@@ -14,6 +14,7 @@ import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
+import { businessUnitLinkAccess } from '@/lib/link-access';
 import { UserForm } from '@/modules/access/components/user-form';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
@@ -164,6 +165,7 @@ function UsersPage() {
               roles={roles}
               locations={locations}
               businessUnits={businessUnits}
+              openBusinessUnitHref={businessUnitLinkAccess(me).openBusinessUnitHref}
               submitError={submitError}
               onSubmit={handleSubmit}
               onCancel={closeDialog}

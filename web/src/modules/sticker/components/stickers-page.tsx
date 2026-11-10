@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import {
   StickerFormDialog,
+  type StickerFormDialogProps,
   type StickerSaveInput,
   type StickerSaveResult,
 } from './sticker-form-dialog';
@@ -26,6 +27,10 @@ export interface StickersPageProps {
   pendingStatusId: string | null;
   /** Mengembalikan galat (tampil di dialog) atau `null` bila berhasil. */
   onSave: (input: StickerSaveInput) => Promise<StickerSaveResult>;
+  /** Diteruskan ke form stiker: tambah jenis/BU dan tautan buka BU, hanya bila user berhak (lihat `lib/link-access`). */
+  onCreateType?: StickerFormDialogProps['onCreateType'];
+  onCreateBusinessUnit?: StickerFormDialogProps['onCreateBusinessUnit'];
+  openBusinessUnitHref?: StickerFormDialogProps['openBusinessUnitHref'];
   onToggleStatus: (sticker: StickerDto) => void;
 }
 
@@ -45,6 +50,9 @@ export function StickersPage({
   canManage,
   pendingStatusId,
   onSave,
+  onCreateType,
+  onCreateBusinessUnit,
+  openBusinessUnitHref,
   onToggleStatus,
 }: StickersPageProps) {
   /** `'new'` = dialog tambah; objek = dialog ubah stiker itu. */
@@ -184,6 +192,9 @@ export function StickersPage({
         types={types}
         businessUnits={businessUnits}
         onSave={onSave}
+        onCreateType={onCreateType}
+        onCreateBusinessUnit={onCreateBusinessUnit}
+        openBusinessUnitHref={openBusinessUnitHref}
       />
     </div>
   );

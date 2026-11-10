@@ -429,6 +429,8 @@ export function ItemForm({
           onOpenChange={setBrandDialogOpen}
           businessUnits={businessUnits}
           onSave={handleCreateBrand}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
         />
       ) : null}
     </>

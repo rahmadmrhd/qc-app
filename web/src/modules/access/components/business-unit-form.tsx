@@ -38,6 +38,8 @@ export function BusinessUnitForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
+        // Form ini dipakai di dialog yang dibuka dari form lain (React meneruskan submit lewat portal): jangan menjalar.
+        event.stopPropagation();
         void form.handleSubmit();
       }}
     >

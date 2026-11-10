@@ -1,4 +1,9 @@
-import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
+import type {
+  BrandDto,
+  BusinessUnitDto,
+  BusinessUnitOptionDto,
+  SaveBusinessUnitInput,
+} from '@shared/contract';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
 import { useState } from 'react';
 import {
@@ -14,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
+import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 
 export interface BrandSaveInput {
@@ -47,12 +53,18 @@ export interface BrandFormDialogProps {
   businessUnits: readonly BusinessUnitOptionDto[];
   /** `null` = berhasil (dialog menutup sendiri); string/objek = galat yang tampil di dialog. */
   onSave: (input: BrandSaveInput) => Promise<BrandSaveResult>;
+  /** Membuat BU baru dari baris "Tambah BU bawaan" (hanya untuk `access: manage`); BU baru langsung terpilih. */
+  onCreateBusinessUnit?: (input: SaveBusinessUnitInput) => Promise<BusinessUnitDto>;
+  /** Tautan ke halaman lihat BU (tab baru); tidak disediakan bila user tak berhak melihatnya. */
+  openBusinessUnitHref?: (id: string) => string | null;
 }
 
 interface BrandFormBodyProps {
   brand?: Pick<BrandDto, 'id' | 'name' | 'businessUnitIds'>;
   businessUnits: readonly BusinessUnitOptionDto[];
   onSave: BrandFormDialogProps['onSave'];
+  onCreateBusinessUnit: BrandFormDialogProps['onCreateBusinessUnit'];
+  openBusinessUnitHref: BrandFormDialogProps['openBusinessUnitHref'];
   onClose: () => void;
 }
 
@@ -61,19 +73,33 @@ function buLabel(bu: BusinessUnitOptionDto): string {
 }
 
 /** Terpasang hanya saat dialog terbuka, sehingga isian dan galat selalu mulai bersih. */
-function BrandFormBody({ brand, businessUnits, onSave, onClose }: BrandFormBodyProps) {
+function BrandFormBody({
+  brand,
+  businessUnits,
+  onSave,
+  onCreateBusinessUnit,
+  openBusinessUnitHref,
+  onClose,
+}: BrandFormBodyProps) {
   const [name, setName] = useState(brand?.name ?? '');
   const [businessUnitIds, setBusinessUnitIds] = useState<string[]>(brand?.businessUnitIds ?? []);
   const [buTerm, setBuTerm] = useState('');
+  // BU yang baru dibuat lewat dialog langsung bisa dilabeli, sebelum daftar BU dari server dimuat ulang.
+  const [createdBus, setCreatedBus] = useState<readonly BusinessUnitOptionDto[]>([]);
+  const [buDialogOpen, setBuDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buError, setBuError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
+  const allBus = [
+    ...businessUnits,
+    ...createdBus.filter((c) => !businessUnits.some((b) => b.id === c.id)),
+  ];
+  const buById = new Map(allBus.map((bu) => [bu.id, bu]));
   const selected = new Set(businessUnitIds);
   const termKey = normalizeKey(buTerm);
   // Opsi tambah = BU aktif yang belum dipilih; BU nonaktif yang sudah melekat tetap tampil sebagai chip.
-  const buOptions: LinkOption[] = businessUnits
+  const buOptions: LinkOption[] = allBus
     .filter((bu) => bu.status === 'active' && !selected.has(bu.id))
     .filter(
       (bu) =>
@@ -82,6 +108,17 @@ function BrandFormBody({ brand, businessUnits, onSave, onClose }: BrandFormBodyP
         normalizeKey(bu.code).includes(termKey),
     )
     .map((bu) => ({ id: bu.id, label: buLabel(bu) }));
+
+  async function handleCreateBusinessUnit(input: SaveBusinessUnitInput): Promise<void> {
+    if (!onCreateBusinessUnit) throw new Error('Anda tidak berhak membuat BU');
+    const created = await onCreateBusinessUnit(input);
+    setCreatedBus((previous) => [
+      ...previous,
+      { id: created.id, code: created.code, name: created.name, status: created.status },
+    ]);
+    setBusinessUnitIds((previous) => [...previous, created.id]);
+    setBuError(null);
+  }
 
   async function submit() {
     if (busy || name.trim() === '') return;
@@ -102,62 +139,74 @@ function BrandFormBody({ brand, businessUnits, onSave, onClose }: BrandFormBodyP
   }
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        // Dialog ini bisa dibuka dari dalam form lain (form item): submit tidak boleh menjalar ke sana.
-        event.stopPropagation();
-        void submit();
-      }}
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="brand-form-name">Nama merk</Label>
-        <Input
-          id="brand-form-name"
-          autoFocus
-          maxLength={ITEM_LIMITS.brand}
-          value={name}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? 'brand-form-error' : undefined}
-          onChange={(event) => {
-            setName(event.target.value);
-            setError(null);
+    <>
+      <form
+        noValidate
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // Dialog ini bisa dibuka dari dalam form lain (form item): submit tidak boleh menjalar ke sana.
+          event.stopPropagation();
+          void submit();
+        }}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="brand-form-name">Nama merk</Label>
+          <Input
+            id="brand-form-name"
+            autoFocus
+            maxLength={ITEM_LIMITS.brand}
+            value={name}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? 'brand-form-error' : undefined}
+            onChange={(event) => {
+              setName(event.target.value);
+              setError(null);
+            }}
+          />
+          {error ? (
+            <p id="brand-form-error" role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <LinkMultiField
+          id="brand-form-business-units"
+          label="BU bawaan"
+          placeholder="Pilih BU bawaan"
+          value={businessUnitIds}
+          labelOf={(id) => {
+            const bu = buById.get(id);
+            return bu ? buLabel(bu) : id;
           }}
+          options={buOptions}
+          onSearchChange={setBuTerm}
+          onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
+          openHref={openBusinessUnitHref}
+          onChange={(ids) => {
+            setBusinessUnitIds(ids);
+            setBuError(null);
+          }}
+          error={buError ?? undefined}
         />
-        {error ? (
-          <p id="brand-form-error" role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
-      </div>
-      <LinkMultiField
-        id="brand-form-business-units"
-        label="BU bawaan"
-        placeholder="Pilih BU bawaan"
-        value={businessUnitIds}
-        labelOf={(id) => {
-          const bu = buById.get(id);
-          return bu ? buLabel(bu) : id;
-        }}
-        options={buOptions}
-        onSearchChange={setBuTerm}
-        onChange={(ids) => {
-          setBusinessUnitIds(ids);
-          setBuError(null);
-        }}
-        error={buError ?? undefined}
-      />
-      <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
-          Batal
-        </Button>
-        <Button type="submit" disabled={busy || name.trim() === ''}>
-          {busy ? 'Menyimpan…' : 'Simpan'}
-        </Button>
-      </FormDialogFooter>
-    </form>
+        <FormDialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Batal
+          </Button>
+          <Button type="submit" disabled={busy || name.trim() === ''}>
+            {busy ? 'Menyimpan…' : 'Simpan'}
+          </Button>
+        </FormDialogFooter>
+      </form>
+      {/* Dialog turunan di luar <form>: event submit dari portalnya tidak menjalar ke form merk. */}
+      {onCreateBusinessUnit ? (
+        <BusinessUnitFormDialog
+          open={buDialogOpen}
+          onOpenChange={setBuDialogOpen}
+          onSave={handleCreateBusinessUnit}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -168,6 +217,8 @@ export function BrandFormDialog({
   brand,
   businessUnits,
   onSave,
+  onCreateBusinessUnit,
+  openBusinessUnitHref,
 }: BrandFormDialogProps) {
   return (
     <FormDialog open={open} onOpenChange={onOpenChange}>
@@ -186,6 +237,8 @@ export function BrandFormDialog({
             brand={brand}
             businessUnits={businessUnits}
             onSave={onSave}
+            onCreateBusinessUnit={onCreateBusinessUnit}
+            openBusinessUnitHref={openBusinessUnitHref}
             onClose={() => onOpenChange(false)}
           />
         ) : null}
