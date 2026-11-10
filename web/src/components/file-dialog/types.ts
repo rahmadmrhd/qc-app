@@ -1,5 +1,5 @@
 /** Tipe umum dialog berkas: tidak bergantung pada jenis berkas tertentu; sumber data disuntik lewat `FileLibrarySource`. */
-export type LibrarySort = 'newest' | 'oldest' | 'nameAsc' | 'nameDesc' | 'sizeDesc';
+export type LibrarySort = 'newest' | 'oldest' | 'nameAsc' | 'nameDesc' | 'sizeDesc' | 'usageDesc';
 
 export interface LibraryQuery {
   search: string;
