@@ -112,10 +112,8 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     isCountryLock: item.isCountryLock,
     status: item.status,
     aliases: [...item.aliases],
-    stickerPhotos: {
-      photos: item.instructions.length,
-      marks: item.instructions.reduce((total, photo) => total + photo.marks.length, 0),
-    },
+    // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
+    stickerPhotos: `${item.instructions.length} foto, ${item.instructions.reduce((total, photo) => total + photo.marks.length, 0)} penanda`,
     accessories: item.accessories.map((accessory) => `${accessory.name} ×${accessory.qty}`),
     attachments: [...item.attachments],
     detailLength: item.detail.length,
@@ -574,7 +572,11 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
       throw error;
     }
     // Gambar pustaka yang dihapus tepat di antara pemeriksaan rujukan dan penulisan: kunci asing menolak foto yatim.
-    if (error instanceof DbError && error.errno === ER_NO_REFERENCED_ROW) {
+    if (
+      error instanceof DbError &&
+      error.errno === ER_NO_REFERENCED_ROW &&
+      error.message.includes(GUIDE_FK_NAME)
+    ) {
       const message = 'Gambar instruksi tidak ditemukan; muat ulang halaman lalu pilih gambar lagi';
       throw appError('VALIDATION', message, { stickerPhotos: message });
     }
@@ -584,6 +586,8 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
 
 /** Galat MariaDB 1452: baris anak merujuk baris induk yang tidak ada (kunci asing). */
 const ER_NO_REFERENCED_ROW = 1452;
+/** Nama constraint FK foto instruksi -> pustaka gambar (migrasi 0007); FK lain tidak dilabeli salah. */
+const GUIDE_FK_NAME = 'item_sticker_photos_guide_fk';
 
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
@@ -747,7 +751,12 @@ export async function planItemWrite(
     );
     statements.push(
       ...attach,
-      ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos),
+      ...replaceItemInstructionStmts(
+        env.DB,
+        id,
+        input.stickerPhotos,
+        before.instructions.length === 0,
+      ),
       ...updateItemStmts(env.DB, merged, existing),
       ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, false),
     );
@@ -776,7 +785,7 @@ export async function planItemWrite(
   };
   statements.push(
     ...attach,
-    ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos),
+    ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos, true),
     ...insertItemStmts(env.DB, created),
     ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, true),
   );

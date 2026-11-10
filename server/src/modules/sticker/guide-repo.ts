@@ -74,6 +74,8 @@ const SORT_SPEC: Record<GuideSort, SortSpec> = {
     numeric: true,
     keyOf: (row) => Number(row.size),
   },
+  // Kursor keyset memakai jumlah pemakaian yang dapat berubah di antara halaman (item disimpan saat menggulir),
+  // sehingga baris bisa terlewat atau ganda. Diterima (spek 3b-2 §4); urutan tetap deterministik per permintaan.
   usageDesc: {
     column: guideUsageCountSql(),
     direction: 'DESC',

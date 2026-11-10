@@ -25,7 +25,7 @@ async function seedGuide(id: string): Promise<void> {
 }
 
 async function save(itemId: string, photos: ItemStickerPhotoInput[]): Promise<void> {
-  await env.DB.batch(replaceItemInstructionStmts(env.DB, itemId, photos));
+  await env.DB.batch(replaceItemInstructionStmts(env.DB, itemId, photos, false));
 }
 
 async function count(table: string): Promise<number> {
@@ -61,6 +61,20 @@ beforeEach(async () => {
 });
 
 describe('instruksi stiker item: repo', () => {
+  test('fresh (item baru) melewati DELETE; bukan fresh memulai dengan DELETE (hindari kunci gap pada pembuatan serentak)', async () => {
+    const photos = [PHOTOS[0]];
+    const fresh = replaceItemInstructionStmts(env.DB, 'i-baru', photos, true);
+    const replace = replaceItemInstructionStmts(env.DB, 'i-lama', photos, false);
+    // fresh: INSERT foto + INSERT penanda; bukan fresh: DELETE + dua INSERT
+    expect(fresh).toHaveLength(2);
+    expect(replace).toHaveLength(3);
+    expect(replaceItemInstructionStmts(env.DB, 'i-baru', [], true)).toHaveLength(0);
+    expect(replaceItemInstructionStmts(env.DB, 'i-lama', [], false)).toHaveLength(1);
+    await env.DB.batch(fresh);
+    const loaded = await loadItemInstructions(env.DB, ['i-baru']);
+    expect(loaded.get('i-baru')).toEqual([{ ...PHOTOS[0], position: 0 }]);
+  });
+
   test('simpan lalu muat mengembalikan foto dan penanda berurutan persis', async () => {
     await save('i1', PHOTOS);
     const loaded = await loadItemInstructions(env.DB, ['i1']);

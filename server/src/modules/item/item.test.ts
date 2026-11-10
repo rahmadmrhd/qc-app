@@ -116,7 +116,7 @@ describe('simpan', () => {
         isCountryLock: false,
         status: 'active',
         aliases: ['ES24'],
-        stickerPhotos: { photos: 0, marks: 0 },
+        stickerPhotos: '0 foto, 0 penanda',
         accessories: ['Kabel daya ×2'],
         attachments: [],
         detailLength: detail.length,

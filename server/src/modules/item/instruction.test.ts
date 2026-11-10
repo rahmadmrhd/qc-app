@@ -232,6 +232,24 @@ describe('simpan dan baca instruksi', () => {
   });
 });
 
+describe('galat kunci asing 1452 pada penulisan item', () => {
+  test('FK lain (bukan gambar pustaka) dilempar apa adanya, tidak dilabeli "gambar tidak ditemukan"', async () => {
+    const { batchItemWrite } = await import('./service');
+    // penanda yatim: melanggar FK item_sticker_marks_photo_fk (bukan item_sticker_photos_guide_fk)
+    const failure = await batchItemWrite(env.DB, [
+      env.DB.prepare(
+        "INSERT INTO item_sticker_marks (item_id, guide_id, `position`, x, y, sticker_id, type_id, note) VALUES ('x', 'g1', 0, 1, 1, 's-a', '', '')",
+      ),
+    ]).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({ name: 'DbError', errno: 1452 });
+    expect(JSON.stringify(failure)).not.toContain('Gambar instruksi tidak ditemukan');
+    expect((failure as Error).message).toContain('item_sticker_marks_photo_fk');
+  });
+});
+
 describe('penerjemahan jenis ke stiker menurut BU item', () => {
   const typeMark = (typeId: string) => ({
     x: 1,
@@ -378,8 +396,8 @@ describe('item dev lama dan hak BU', () => {
     const audit = await env.DB.prepare(
       "SELECT `before`, `after` FROM audit_log WHERE action = 'item.update'",
     ).first<{ before: string; after: string }>();
-    expect(JSON.parse(audit?.before ?? '{}').stickerPhotos).toEqual({ photos: 1, marks: 0 });
-    expect(JSON.parse(audit?.after ?? '{}').stickerPhotos).toEqual({ photos: 2, marks: 2 });
+    expect(JSON.parse(audit?.before ?? '{}').stickerPhotos).toBe('1 foto, 0 penanda');
+    expect(JSON.parse(audit?.after ?? '{}').stickerPhotos).toBe('2 foto, 2 penanda');
     expect('stickers' in JSON.parse(audit?.after ?? '{}')).toBe(false);
   });
 });

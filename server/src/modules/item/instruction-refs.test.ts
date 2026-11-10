@@ -108,9 +108,12 @@ describe('assertInstructionRefs', () => {
 
   test('stiker/jenis nonaktif yang SUDAH tersimpan di item itu lolos; di item lain tetap ditolak', async () => {
     await env.DB.batch(
-      replaceItemInstructionStmts(env.DB, 'item-1', [
-        photo([stickerMark('s-off'), typeMark('t-off')]),
-      ]),
+      replaceItemInstructionStmts(
+        env.DB,
+        'item-1',
+        [photo([stickerMark('s-off'), typeMark('t-off')])],
+        false,
+      ),
     );
     const same = input(
       [

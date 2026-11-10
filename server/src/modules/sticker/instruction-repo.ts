@@ -36,15 +36,21 @@ function placeholders(count: number): string {
  * Pernyataan untuk mengganti SELURUH instruksi satu item (dijalankan di dalam `batch()` penyimpanan item): hapus
  * semua foto item (penanda ikut terhapus lewat kunci asing), lalu sisipkan foto dan penanda. `position` foto dan
  * penanda dari urutan larik. Batas jumlah/nilai dijaga validator, bukan di sini.
+ *
+ * `fresh` = item belum punya foto (item baru, atau item yang ada tetapi tanpa foto tersimpan): `DELETE` dilewati
+ * (pola `replaceItemBusinessUnitsStmts`). `DELETE` pada item tanpa baris memasang kunci gap (REPEATABLE READ) yang
+ * dapat membuat deadlock pada pembuatan serentak. Aman untuk item yang ada: penulisan lain pada item itu menaikkan
+ * `items.updated_at`, sehingga CAS `UPDATE items` di batch yang sama menggagalkan penulis yang basi.
  */
 export function replaceItemInstructionStmts(
   db: Preparer,
   itemId: string,
   photos: readonly ItemStickerPhotoInput[],
+  fresh: boolean,
 ): DbStatement[] {
-  const statements: DbStatement[] = [
-    db.prepare('DELETE FROM item_sticker_photos WHERE item_id = ?').bind(itemId),
-  ];
+  const statements: DbStatement[] = fresh
+    ? []
+    : [db.prepare('DELETE FROM item_sticker_photos WHERE item_id = ?').bind(itemId)];
   if (photos.length === 0) return statements;
   statements.push(
     db
