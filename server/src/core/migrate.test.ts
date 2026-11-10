@@ -19,6 +19,8 @@ const EXPECTED_TABLES = [
   'handovers',
   'item_alias_keys',
   'item_business_units',
+  'item_sticker_marks',
+  'item_sticker_photos',
   'items',
   'job_blobs',
   'jobs',
@@ -72,13 +74,14 @@ describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
     const list = await loadMigrations();
     expect(list.length).toBeGreaterThanOrEqual(1);
-    expect(list.slice(0, 6).map((m) => m.name)).toEqual([
+    expect(list.slice(0, 7).map((m) => m.name)).toEqual([
       '0001_baseline.sql',
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
       '0004_business_units.sql',
       '0005_stiker.sql',
       '0006_pustaka_gambar_stiker.sql',
+      '0007_instruksi_stiker_item.sql',
     ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
@@ -138,7 +141,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('29 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('31 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -156,6 +159,7 @@ describe('skema baseline', () => {
       { name: '0004_business_units.sql' },
       { name: '0005_stiker.sql' },
       { name: '0006_pustaka_gambar_stiker.sql' },
+      { name: '0007_instruksi_stiker_item.sql' },
     ]);
   });
 
@@ -227,6 +231,9 @@ describe('skema baseline', () => {
         'handovers.handovers_customer',
         'handovers.handovers_number',
         'item_business_units.item_business_units_bu',
+        'item_sticker_marks.item_sticker_marks_sticker',
+        'item_sticker_marks.item_sticker_marks_type',
+        'item_sticker_photos.item_sticker_photos_guide',
         'items.items_brand',
         'items.items_key',
         'items.items_status_updated',
