@@ -11,6 +11,7 @@ import { folderIdOf } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { listBusinessUnitBriefs, mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
+import { listQrVersions } from '@server/modules/sticker/manual-book';
 import type {
   ClonePresetInput,
   CloneQrPdfInput,
@@ -25,6 +26,7 @@ import type {
   QrItemOptionsPageDto,
   QrLogoLibraryDto,
   QrPresetDto,
+  QrVersionDto,
   SaveQrDesignInput,
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
@@ -242,6 +244,13 @@ export async function getQrDesignDto(
   if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
   const [documents, views] = await Promise.all([qrDocumentMap(env), designViews(env, user)]);
   return toQrDesignDto(design, documents, views.get(design.id));
+}
+
+/** Riwayat versi Manual Book sebuah konfigurasi QR (terbaru dahulu); id tak dikenal = NOT_FOUND. */
+export async function qrVersions(env: Env, input: QrDesignRefInput): Promise<QrVersionDto[]> {
+  const design = (await listQrDesigns(env)).find((row) => row.id === input.id);
+  if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+  return listQrVersions(env, design.id);
 }
 
 /** Opsi item bagi pemilih di form QR (item aktif yang terlihat bagi pengguna menurut BU). */

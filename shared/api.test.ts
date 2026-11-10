@@ -158,6 +158,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'items.setStatus': { id: 'i1', status: 'inactive' },
   'qrcodes.list': null,
   'qrcodes.get': { id: 'q1' },
+  'qrcodes.versions': { id: 'q1' },
   'qrcodes.save': {
     id: 'q1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',

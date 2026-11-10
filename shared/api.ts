@@ -256,6 +256,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'items.setStatus': { verb: 'PATCH', path: '/items/{id}', etag: 'updatedAt' },
   'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
+  'qrcodes.versions': { verb: 'GET', path: '/qrcodes/{id}/versions' },
   'qrcodes.save': {
     verb: 'PUT',
     path: '/qrcodes/{id}',

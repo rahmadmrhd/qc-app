@@ -127,6 +127,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'accessories',
     'attachments',
     'detail_md',
+    'manual_book_design_id',
     'status',
     'created_at',
     'updated_at',
@@ -134,6 +135,9 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
   ]),
   spec('qr_designs', [
     'id',
+    'name',
+    'name_placement',
+    'preset_id',
     'title',
     'link_source',
     'link',
@@ -179,6 +183,8 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
   ]),
   spec('qr_presets', [
     'id',
+    'bu_id',
+    'name_placement',
     'name',
     'title',
     'subtitle',

@@ -23,6 +23,17 @@ const realError = console.error;
 const PDF_HEAD = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
+/** PNG sah 4x3 piksel (hanya IHDR yang dibaca server) untuk gambar contoh ekspor. */
+function previewPng(seed = 7): Uint8Array {
+  const bytes = fileOf(PNG_HEAD, 200, seed);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, 4);
+  view.setUint32(20, 3);
+  return bytes;
+}
+
 function fileOf(head: number[], size: number, seed = 1): Uint8Array {
   const bytes = new Uint8Array(size);
   for (let i = 0; i < size; i++) bytes[i] = (i * 17 + seed) % 256;
@@ -65,7 +76,7 @@ async function makeDesign() {
 function multipart(
   pdf: Uint8Array | null,
   png: Uint8Array | null,
-  preview: Uint8Array | null = fileOf(PNG_HEAD, 200, 7),
+  preview: Uint8Array | null = previewPng(),
 ): FormData {
   const form = new FormData();
   if (pdf) form.append('pdf', new Blob([pdf], { type: 'application/pdf' }), 'label.pdf');

@@ -9,6 +9,7 @@ import {
   getQrDesignDto,
   listQrDesignDtos,
   qrItemOptions,
+  qrVersions,
   readQrFile,
   removeQrDesign,
   saveQrDesign,
@@ -32,6 +33,7 @@ import {
 type QrMethod =
   | 'qrcodes.list'
   | 'qrcodes.get'
+  | 'qrcodes.versions'
   | 'qrcodes.save'
   | 'qrcodes.delete'
   | 'qrcodes.getDefaults'
@@ -56,6 +58,11 @@ export function qrcodeRoutes(): Pick<RouteTable, QrMethod> {
       permission: { module: 'qrcode', level: 'view' },
       validate: validateQrDesignRef,
       handler: (input, ctx) => getQrDesignDto(ctx.env, input, ctx.user),
+    },
+    'qrcodes.versions': {
+      permission: { module: 'qrcode', level: 'view' },
+      validate: validateQrDesignRef,
+      handler: (input, ctx) => qrVersions(ctx.env, input),
     },
     'qrcodes.save': {
       permission: { module: 'qrcode', level: 'edit' },

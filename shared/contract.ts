@@ -821,6 +821,23 @@ export interface QrLogoLibraryDto {
   logoFileIds: string[];
   logoUpdatedAt: string;
 }
+/** Satu versi Manual Book sebuah konfigurasi QR (`qrcodes.versions`, terbaru dahulu). */
+export interface QrVersionDto {
+  stickerId: string;
+  version: number;
+  /** Nama stiker, `<nama Manual Book> v<n>`. */
+  name: string;
+  status: StickerStatus;
+  /** Alasan ekspor ulang yang melahirkan versi ini ('' untuk versi pertama). */
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+  /** Gambar contoh stiker (id berkas); null bila tak ada. */
+  fileId: string | null;
+  /** Total stok stiker di semua lokasi. */
+  total: number;
+}
+
 export interface QrDesignRefInput {
   id: string;
 }
@@ -946,6 +963,7 @@ export interface ApiContract {
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
   'qrcodes.list': { input: null; output: QrDesignDto[] };
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.versions': { input: QrDesignRefInput; output: QrVersionDto[] };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };

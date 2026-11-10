@@ -15,6 +15,17 @@ setDefaultTimeout(30_000);
 
 const PDF = 'JVBERi0xLjQK';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
+/** PNG sah 4x3 piksel (hanya IHDR yang dibaca server) untuk gambar contoh ekspor. */
+function previewPng(): Uint8Array {
+  const bytes = new Uint8Array(64);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, 4);
+  view.setUint32(20, 3);
+  return bytes;
+}
 let env: TestEnv;
 const realError = console.error;
 let logged: string[];
@@ -59,7 +70,7 @@ const exportBody = (
   expectedUpdatedAt: design.updatedAt,
   pdf: bytesOfBase64(PDF),
   png: bytesOfBase64(PNG),
-  preview: bytesOfBase64(PNG),
+  preview: previewPng(),
   reason: '',
   ...extra,
 });
@@ -205,7 +216,7 @@ describe('ekspor QR berjalan per langkah', () => {
       if (result.kind === 'skipped') break;
       seen.push((await findJob(env, jobId))?.progress ?? -1);
     }
-    expect(seen).toEqual([30, 60, 90, 100]);
+    expect(seen).toEqual([25, 50, 70, 90, 100]);
     const job = await call('qredit@gmail.com', 'jobs.get', { id: jobId });
     expect(job.data).toMatchObject({ status: 'done', progress: 100 });
     expect(JSON.parse(job.data.result)).toEqual({ designId: made.id });
@@ -262,7 +273,7 @@ describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
     await step(jobId, 2);
     await drain();
     expect((await findJob(env, jobId))?.status).toBe('done');
-    expect(createCalls().length - baseline).toBe(3); // pdf (1x) + png (percobaan gagal + berhasil)
+    expect(createCalls().length - baseline).toBe(4); // pdf (1x) + png (percobaan gagal + berhasil) + gambar contoh
     const pdfCreates = createCalls()
       .slice(baseline)
       .filter((c) => String(c.args[1]).endsWith('.pdf'));
@@ -314,8 +325,9 @@ describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
   test('versi konfigurasi berubah sebelum pencatatan: CONFLICT, job gagal, berkas baru dibuang, desain tidak ter-ekspor', async () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;
-    await step(jobId);
-    await step(jobId);
+    await step(jobId); // PDF
+    await step(jobId); // PNG
+    await step(jobId); // gambar contoh
     env.clock.advance(1000);
     await env.DB.prepare(
       "UPDATE qr_designs SET updated_at = '2026-10-16T03:10:00.000Z' WHERE id = ?",
@@ -344,11 +356,11 @@ describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
     // dua runner serentak menyelesaikan sisanya; seluruh job tetap selesai tepat sekali
     await Promise.all([drain(), drain()]);
     expect((await findJob(env, jobId))?.status).toBe('done');
-    expect(createCalls().length - baseline).toBe(2);
+    expect(createCalls().length - baseline).toBe(3); // pdf, png, gambar contoh
     expect((await audits()).filter((x) => x === 'qrcode.export')).toHaveLength(1);
     // langkah setelah job selesai tidak berbuat apa pun
     expect((await step(jobId)).kind).toBe('skipped');
-    expect(createCalls().length - baseline).toBe(2);
+    expect(createCalls().length - baseline).toBe(3);
   });
 
   test('pengolah yang mati meninggalkan lease: setelah lease habis, pengolah lain mengambil alih', async () => {
