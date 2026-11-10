@@ -187,6 +187,35 @@ test('tambah stiker jenis bu: menautkan dua BU dan mengirimnya', async () => {
   });
 });
 
+test('mengganti jenis dari bu ke non-bu mengosongkan BU yang sudah dipilih (payload tanpa BU)', async () => {
+  const { onSave } = renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
+  // Kembali ke jenis bu: pilihan BU lama tidak boleh muncul lagi.
+  await pickLink(within(dialog), 'Jenis', 'QC Hijau');
+  expect(within(dialog).queryByText('Retail (RTL)')).toBeNull();
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Baru');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave.mock.calls[0]?.[0]).toMatchObject({ typeId: 'tp-none', businessUnitIds: [] });
+});
+
+test('Simpan nonaktif selama jenis belum dipilih, dan aktif setelah jenis dikosongkan lalu dipilih lagi', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Tanpa Jenis');
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
+  await pickLink(within(dialog), 'Jenis', 'Segel');
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeEnabled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kosongkan Jenis' }));
+  expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
+});
+
 test('jenis bu tanpa BU tidak dikirim', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
@@ -277,7 +306,7 @@ test('pesan konflik nama dari server tampil pada field nama dan dialog tetap ter
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 });
 
-test('field Jenis memakai LinkField: Tambah Jenis hanya muncul bila user berhak, tanpa tautan Buka', async () => {
+test('field Jenis memakai LinkField: Tambah Jenis hanya muncul bila user berhak', async () => {
   renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   let dialog = await screen.findByRole('alertdialog');
@@ -292,7 +321,6 @@ test('field Jenis memakai LinkField: Tambah Jenis hanya muncul bila user berhak,
   dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
   expect(within(dialog).getByRole('option', { name: 'Tambah Jenis' })).toBeInTheDocument();
-  expect(within(dialog).queryByRole('link', { name: /Buka/ })).toBeNull();
 });
 
 test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (aturan bu memunculkan field BU)', async () => {

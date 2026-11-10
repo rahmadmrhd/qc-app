@@ -125,8 +125,8 @@ test('email terkunci saat edit dan pesan error server ditampilkan', () => {
   expect(screen.getByRole('alert')).toHaveTextContent('Email sudah terdaftar');
 });
 
-test('penugasan ke lokasi yang tidak dikenal tetap tampil jelas, tidak berpindah ke opsi lain', () => {
-  renderForm({
+test('penugasan ke lokasi yang tidak dikenal tetap tampil jelas, tidak berpindah ke opsi lain, dan idnya tetap terkirim', async () => {
+  const { onSubmit } = renderForm({
     mode: 'edit',
     defaultValues: {
       email: 'a@gmail.com',
@@ -138,6 +138,12 @@ test('penugasan ke lokasi yang tidak dikenal tetap tampil jelas, tidak berpindah
   });
   expect(screen.getByRole('combobox', { name: 'Lokasi penugasan 1' })).toHaveValue(
     '(lokasi tidak dikenal)',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await vi.waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ assignments: [{ locationId: 'hilang', roleIds: ['role-qc'] }] }),
+    ),
   );
 });
 
@@ -217,8 +223,8 @@ test('penugasan BU nonaktif yang sudah ada tampil dengan label nonaktif dan ikut
   );
 });
 
-test('penugasan ke BU yang tidak dikenal tetap tampil jelas', () => {
-  renderForm({
+test('penugasan ke BU yang tidak dikenal tetap tampil jelas dan idnya tetap terkirim', async () => {
+  const { onSubmit } = renderForm({
     mode: 'edit',
     defaultValues: {
       email: 'a@gmail.com',
@@ -230,6 +236,12 @@ test('penugasan ke BU yang tidak dikenal tetap tampil jelas', () => {
   });
   expect(screen.getByRole('combobox', { name: 'BU penugasan 1' })).toHaveValue(
     '(BU tidak dikenal)',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await vi.waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ buAssignments: [{ buId: 'hilang', roleIds: ['role-qc'] }] }),
+    ),
   );
 });
 

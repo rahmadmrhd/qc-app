@@ -98,7 +98,9 @@ function RoleAssignmentField({
         label={label}
         placeholder="Pilih role…"
         value={value}
-        labelOf={(roleId) => roles.find((role) => role.id === roleId)?.name ?? roleId}
+        labelOf={(roleId) =>
+          roles.find((role) => role.id === roleId)?.name ?? '(role tidak dikenal)'
+        }
         options={filterByTerm(roles, term, (role) => role.name).map((role) => ({
           id: role.id,
           label: role.name,

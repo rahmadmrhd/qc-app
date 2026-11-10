@@ -64,6 +64,16 @@ Satu fitur boleh memakai dua modul: katalog `sticker` (global, `SHARED_MODULES`,
 - **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
 - **Drive/Sheets** hanya diakses lewat klien Google (`getBridge(env)` = `env.BRIDGE`, antarmuka `BridgeClient` di `server/src/core/bridge-client.ts`; implementasi service account di `server/src/core/google/`, lihat `docs/setup-google.md`); jangan memanggil API Google langsung dari modul. Isi berkas dibaca lewat `cachedFileContent` (izin diperiksa SEBELUM cache).
 
+## Field relasi di form (`LinkField`)
+
+Field form yang merujuk record model lain (merk, BU, jenis, role, lokasi pada penugasan, dst.) memakai `LinkField` (satu pilihan) atau `LinkMultiField` (banyak pilihan) dari `web/src/components/link-field.tsx`, bukan `NativeSelect`, checkbox daftar, atau teks bebas (spek BU, keputusan 24). Resep:
+1. **Opsi**: daftar kecil yang sudah dimuat disaring lokal menurut teks pencarian (`normalizeKey`); daftar besar memakai `onSearchChange` + `hasMore`. Hanya record aktif yang ditawarkan; record nonaktif yang sudah terpasang tetap tampil lewat `labelOf`.
+2. **Tambah** (`onCreate`): hanya bila ada dialog tambah dan user berhak. Dialog dirender di luar `<form>` induk, menghentikan penjalaran submit, dan record baru langsung terpilih (simpan salinan lokal sampai daftar dimuat ulang).
+3. **Buka** (`openHref`): hanya bila ada halaman lihat record dan user berhak; tanpa halaman lihat, tidak ada Buka (jangan membuat rute baru hanya untuk ini).
+4. **Izin Tambah/Buka**: fungsi di `web/src/lib/link-access.ts` (UX saja; penegakan di server).
+5. **Pengecualian**: enum/daftar tetap, filter halaman daftar, pemilih visual (gambar/logo), dan field teks bebas yang memang membuat record saat disimpan (`CustomerCombobox`).
+6. **Tes**: `pickLink` dan `linkOptionNames` di `web/src/test/link-field.ts`; uji juga bahwa Tambah/Buka hilang tanpa izin.
+
 ## Modul ber-BU (izin per Business Unit)
 
 Modul ber-BU diizinkan per Business Unit, bukan per lokasi. Daftarnya `BU_MODULES` di `shared/business-units.ts`; tahap 1 hanya `item`. Izinnya dihitung dari penugasan BU user (`users.bu_assignments`, `null` = Semua BU), bukan dari penugasan lokasi. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
