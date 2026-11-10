@@ -14,6 +14,7 @@ const items: ItemSummaryDto[] = [
     status: 'active',
     aliases: ['AirFiber 5XHD'],
     imageCount: 2,
+    hasInstructions: true,
     businessUnits: [
       { id: 'bu-a', code: 'RTL', name: 'Retail' },
       { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
@@ -29,6 +30,7 @@ const items: ItemSummaryDto[] = [
     status: 'inactive',
     aliases: [],
     imageCount: 0,
+    hasInstructions: false,
     businessUnits: [],
     updatedAt: '',
   },
@@ -109,4 +111,11 @@ test('hak ubah dan nonaktifkan dinilai per item', () => {
   expect(screen.queryByRole('button', { name: 'Ubah Mikrotik hAP ac2' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Nonaktifkan Ubiquiti AF 5XHD' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Aktifkan Mikrotik hAP ac2' })).toBeInTheDocument();
+});
+
+test('tanda "Belum ada instruksi stiker" hanya pada baris tanpa instruksi', () => {
+  renderTable();
+  const marks = screen.getAllByText('Belum ada instruksi stiker');
+  expect(marks).toHaveLength(1);
+  expect(screen.getByRole('row', { name: /Mikrotik/ })).toContainElement(marks[0] as HTMLElement);
 });

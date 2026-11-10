@@ -27,9 +27,29 @@ const item: ItemDto = {
     { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
   ],
   updatedAt: '2026-10-09T00:00:00.000Z',
-  stickers: [
-    { name: 'Label SNI', note: 'Belakang, kanan bawah', fileId: 'st1' },
-    { name: 'Label garansi', note: '', fileId: null },
+  hasInstructions: true,
+  stickerPhotos: [
+    {
+      guideId: 'g1',
+      guideName: 'Belakang',
+      width: 800,
+      height: 600,
+      caption: 'Bagian belakang',
+      buId: null,
+      marks: [
+        {
+          x: 100,
+          y: 200,
+          target: { kind: 'sticker', stickerId: 's1' },
+          note: 'Belakang, kanan bawah',
+          targetName: 'Label SNI',
+          resolved: [
+            { id: 's1', name: 'Label SNI', alias: '', fileId: 'st1', buCodes: [], inactive: false },
+          ],
+          unresolved: false,
+        },
+      ],
+    },
   ],
   accessories: [
     { name: 'Adaptor PoE', qty: 1 },
@@ -56,7 +76,10 @@ test('menampilkan identitas, nama lain, galeri, stiker, kelengkapan, dan detail 
   expect(screen.getByText('AirFiber 5XHD, AF-5XHD')).toBeInTheDocument();
   expect(screen.getByAltText('Gambar 1')).toBeInTheDocument();
   expect(screen.getByAltText('Gambar 2')).toBeInTheDocument();
-  expect(screen.getByText('Label SNI')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Instruksi stiker' })).toBeInTheDocument();
+  // nama tampil di samping penanda (layar lebar) dan di daftar bawah foto
+  expect(screen.getAllByText('Label SNI')).toHaveLength(2);
+  expect(screen.getByText('Bagian belakang')).toBeInTheDocument();
   expect(screen.getByText('Belakang, kanan bawah')).toBeInTheDocument();
   expect(screen.getByAltText('Contoh Label SNI')).toBeInTheDocument();
   expect(screen.getByText('Adaptor PoE ×1')).toBeInTheDocument();
@@ -72,7 +95,8 @@ test('bagian kosong menampilkan petunjuk, dan item nonaktif ditandai', () => {
       brandId: 'b1',
       aliases: [],
       attachments: [],
-      stickers: [],
+      stickerPhotos: [],
+      hasInstructions: false,
       accessories: [],
       detail: '',
       status: 'inactive',
@@ -82,10 +106,20 @@ test('bagian kosong menampilkan petunjuk, dan item nonaktif ditandai', () => {
   expect(screen.getByText('Nonaktif')).toBeInTheDocument();
   expect(screen.queryByText('Country lock')).not.toBeInTheDocument();
   expect(screen.getByText('Belum ada gambar.')).toBeInTheDocument();
-  expect(screen.getByText('Belum ada stiker.')).toBeInTheDocument();
+  expect(screen.getByText('Belum ada instruksi stiker')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Tambahkan instruksi' })).toHaveAttribute(
+    'href',
+    '/item/i1/edit',
+  );
   expect(screen.getByText('Belum ada kelengkapan.')).toBeInTheDocument();
   expect(screen.getByText('Belum ada detail.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+});
+
+test('tanda belum ada instruksi tanpa tautan ke form bila tak boleh mengubah', () => {
+  renderView({ canEdit: false, item: { ...item, stickerPhotos: [], hasInstructions: false } });
+  expect(screen.getByText('Belum ada instruksi stiker')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Tambahkan instruksi' })).not.toBeInTheDocument();
 });
 
 test('tombol aksi mengikuti izin dan memanggil handler', async () => {

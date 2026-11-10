@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { ImageThumb } from './image-thumb';
+import { StickerInstructionsView } from './sticker-instructions-view';
 
 export interface ItemDetailViewProps {
   item: ItemDto;
@@ -24,7 +25,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** Halaman baca-saja item; QC memakainya sebagai acuan kerja (stiker, kelengkapan, spesifikasi). */
+/** Halaman baca-saja item; QC memakainya sebagai acuan kerja (instruksi stiker, kelengkapan, spesifikasi). */
 export function ItemDetailView({
   item,
   canEdit,
@@ -84,31 +85,15 @@ export function ItemDetailView({
         )}
       </Section>
 
-      <Section title="Stiker yang perlu ditempel">
-        {item.stickers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Belum ada stiker.</p>
-        ) : (
-          <ul className="space-y-3">
-            {item.stickers.map((sticker, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: nama stiker boleh sama; urutan tetap
-              <li key={index} className="flex items-start gap-3">
-                {sticker.fileId ? (
-                  <ImageThumb
-                    id={sticker.fileId}
-                    alt={`Contoh ${sticker.name}`}
-                    className="size-16 shrink-0"
-                  />
-                ) : null}
-                <div>
-                  <div className="font-medium">{sticker.name}</div>
-                  {sticker.note ? (
-                    <div className="text-sm text-muted-foreground">{sticker.note}</div>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <Section title="Instruksi stiker">
+        <StickerInstructionsView
+          photos={item.stickerPhotos}
+          canEdit={canEdit}
+          editHref={`/item/${encodeURIComponent(item.id)}/edit`}
+          onEdit={onEdit}
+          buLabels={Object.fromEntries(item.businessUnits.map((bu) => [bu.id, bu.code]))}
+          multiBu={item.businessUnits.length > 1}
+        />
       </Section>
 
       <Section title="Kelengkapan aksesoris">
