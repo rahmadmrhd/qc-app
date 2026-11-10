@@ -17,5 +17,11 @@ export function itemFormLinkAccess(me: MeDto | null | undefined) {
       : undefined,
     /** Tambah BU: butuh `access: manage` (sama dengan halaman BU). */
     canCreateBusinessUnit: can(me, 'access', 'manage'),
+    /**
+     * Tambah stiker/jenis dari editor instruksi: butuh `sticker: edit`. Tanpa tautan "Buka": stiker dan jenis tidak
+     * punya halaman lihat sendiri (pengecualian aturan LinkField, disetujui 2026-11-10).
+     */
+    canCreateSticker: can(me, 'sticker', 'edit'),
+    canCreateStickerType: can(me, 'sticker', 'edit'),
   };
 }

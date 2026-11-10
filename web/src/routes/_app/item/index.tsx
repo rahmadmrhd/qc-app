@@ -17,6 +17,7 @@ import {
 import { useMe } from '@/modules/auth/use-me';
 import { ItemsTable } from '@/modules/item/components/items-table';
 import {
+  DEFAULT_ITEM_FILTER,
   type ItemListFilter,
   itemsInfiniteQueryOptions,
   useSetItemStatus,
@@ -39,7 +40,7 @@ export const Route = createFileRoute('/_app/item/')({
 });
 
 function filterOf(search: z.infer<typeof itemsSearchSchema>): ItemListFilter {
-  return { query: search.q ?? '', status: search.status ?? 'all' };
+  return { ...DEFAULT_ITEM_FILTER, query: search.q ?? '', status: search.status ?? 'all' };
 }
 
 function ItemsPage() {
