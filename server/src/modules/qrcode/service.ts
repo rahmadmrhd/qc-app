@@ -234,6 +234,9 @@ export async function saveQrPreset(
     layout: input.layout,
     style: input.style,
     defaultLogoId: input.defaultLogoId,
+    // Preset per BU dan penempatan nama dikelola di tugas berikutnya (4a); nilai tersimpan dipertahankan.
+    buId: existing?.buId ?? '',
+    namePlacement: existing?.namePlacement ?? '',
     createdAt: existing?.createdAt ?? now,
     createdBy: existing?.createdBy ?? actor.email,
     updatedAt: now,
@@ -501,6 +504,10 @@ async function saveQrDesignNow(
     exportedBy: existing?.exportedBy ?? '',
     exportPdfDriveId: existing?.exportPdfDriveId ?? '',
     exportPngDriveId: existing?.exportPngDriveId ?? '',
+    // Nama Manual Book, penempatan, dan preset asal dikelola di tugas berikutnya (4a); nilai tersimpan dipertahankan.
+    name: existing?.name ?? '',
+    namePlacement: existing?.namePlacement ?? '',
+    presetId: existing?.presetId ?? '',
     createdAt: existing?.createdAt ?? now,
     createdBy: existing?.createdBy ?? actor.email,
     updatedAt: now,

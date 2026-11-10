@@ -152,6 +152,29 @@ export async function itemBusinessUnitsOf(
   return result;
 }
 
+/**
+ * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung. `ItemRecord`
+ * tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book tidak ada di peta.
+ */
+export async function manualBookDesignIdsOf(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT id, manual_book_design_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND manual_book_design_id <> ''`,
+      )
+      .bind(...chunk)
+      .all<{ id: string; manual_book_design_id: string }>();
+    for (const row of rows.results) result.set(row.id.trim(), row.manual_book_design_id.trim());
+  }
+  return result;
+}
+
 /** Dari `itemIds`, id item yang beririsan dengan `buIds` (BU yang terlihat); satu kueri per 500 id. */
 export async function itemIdsVisibleIn(
   db: Db,

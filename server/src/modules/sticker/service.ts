@@ -87,6 +87,8 @@ async function createStickerType(
     name: input.name,
     rule: input.rule,
     status: 'active',
+    systemKind: '',
+    defaultMinQty: 0,
     stickerCount: 0,
     createdAt: now,
     updatedAt: now,
@@ -193,7 +195,8 @@ function toStickerDto(
     alias: sticker.alias,
     fileId: sticker.fileId === '' ? null : sticker.fileId,
     minQty: sticker.minQty,
-    status: sticker.status,
+    // Sementara (Task 3 melebarkan DTO ke `StickerStatus`): `deprecated` tampil sebagai nonaktif.
+    status: sticker.status === 'deprecated' ? 'inactive' : sticker.status,
     businessUnitIds: [...businessUnitIds],
     low: isLowStock({ status: sticker.status, minQty: sticker.minQty, total }),
     updatedAt: sticker.updatedAt,

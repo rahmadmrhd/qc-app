@@ -1,4 +1,12 @@
+import type { Env } from '@server/core/env';
 import { ensureQrDocFolder } from '@server/modules/qrcode/folders';
+import {
+  insertQrDesignStmt,
+  insertQrPresetStmt,
+  type QrDesignRecord,
+  type QrPresetRecord,
+} from '@server/modules/qrcode/repo';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { seedRole, seedUser } from './access-fixtures';
 import { restCall } from './rest-call';
 import type { TestEnv } from './test-env';
@@ -49,4 +57,65 @@ export async function qrPdfDocumentId(env: TestEnv): Promise<string> {
     .bind(id, driveId, now, now)
     .run();
   return id;
+}
+
+const QR_SEED_TIME = '2026-11-10T00:00:00.000Z';
+
+/** Konfigurasi QR uji langsung ke basis data (tanpa lewat validasi layanan); bagian yang tak disebut berbawaan. */
+export async function seedQrDesign(
+  env: Pick<Env, 'DB'>,
+  design: Partial<QrDesignRecord> & { id: string },
+): Promise<QrDesignRecord> {
+  const record: QrDesignRecord = {
+    title: design.id,
+    linkSource: 'url',
+    link: 'https://contoh.test/x',
+    documentId: '',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+    overflow: false,
+    exportedHash: '',
+    exportedAt: '',
+    exportedBy: '',
+    exportPdfDriveId: '',
+    exportPngDriveId: '',
+    name: '',
+    namePlacement: '',
+    presetId: '',
+    createdAt: QR_SEED_TIME,
+    createdBy: 'seed@gmail.com',
+    updatedAt: QR_SEED_TIME,
+    updatedBy: 'seed@gmail.com',
+    ...design,
+  };
+  await env.DB.batch([insertQrDesignStmt(env.DB, record)]);
+  return record;
+}
+
+/** Preset QR uji langsung ke basis data; `buId` kosong = preset lama tanpa BU. */
+export async function seedQrPreset(
+  env: Pick<Env, 'DB'>,
+  preset: Partial<QrPresetRecord> & { id: string },
+): Promise<QrPresetRecord> {
+  const record: QrPresetRecord = {
+    name: preset.id,
+    title: '',
+    subtitle: '',
+    footer: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+    defaultLogoId: '',
+    buId: '',
+    namePlacement: '',
+    createdAt: QR_SEED_TIME,
+    createdBy: 'seed@gmail.com',
+    updatedAt: QR_SEED_TIME,
+    updatedBy: 'seed@gmail.com',
+    ...preset,
+  };
+  await env.DB.batch([insertQrPresetStmt(env.DB, record)]);
+  return record;
 }

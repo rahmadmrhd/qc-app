@@ -1,4 +1,5 @@
 import { beforeEach, expect, test } from 'bun:test';
+import { seedQrPreset } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
@@ -6,6 +7,7 @@ import {
   insertQrDesignStmt,
   listQrDesigns,
   listQrDocuments,
+  listQrPresets,
   runGuardedBatch,
   updateQrDesignStmt,
 } from './repo';
@@ -32,6 +34,9 @@ const design = {
   exportedBy: '',
   exportPdfDriveId: '',
   exportPngDriveId: '',
+  name: '',
+  namePlacement: '' as const,
+  presetId: '',
   createdAt: '2026-10-16T00:00:00.000Z',
   createdBy: 'a@x.com',
   updatedAt: '2026-10-16T00:00:00.000Z',
@@ -108,4 +113,46 @@ test('guardChanged: UPDATE bergaris yang tak mengubah baris membatalkan SELURUH 
   );
   expect((await listQrDesigns(env))[0]?.title).toBe('Basi');
   expect(await listQrDocuments(env)).toHaveLength(1);
+});
+
+test('desain: nama Manual Book, penempatan nama, dan preset asal tersimpan dan terbaca kembali', async () => {
+  await env.DB.batch([
+    insertQrDesignStmt(env.DB, {
+      ...design,
+      name: 'PBE M5-400/200',
+      namePlacement: 'subtitle',
+      presetId: 'p-1',
+    }),
+  ]);
+  expect((await listQrDesigns(env))[0]).toMatchObject({
+    name: 'PBE M5-400/200',
+    namePlacement: 'subtitle',
+    presetId: 'p-1',
+  });
+  // Nilai penempatan tak dikenal dibaca sebagai kosong.
+  await env.DB.prepare("UPDATE qr_designs SET name_placement = 'xyz' WHERE id = 'q1'").run();
+  expect((await listQrDesigns(env))[0]?.namePlacement).toBe('');
+});
+
+test('preset: kolom BU dan penempatan nama terbaca; bu_id kosong = preset lama tanpa BU', async () => {
+  await seedQrPreset(env, { id: 'p1', buId: 'bu-a', namePlacement: 'footer' });
+  await seedQrPreset(env, { id: 'p2' });
+  const presets = await listQrPresets(env);
+  expect(presets.find((p) => p.id === 'p1')).toMatchObject({
+    buId: 'bu-a',
+    namePlacement: 'footer',
+  });
+  expect(presets.find((p) => p.id === 'p2')).toMatchObject({ buId: '', namePlacement: '' });
+});
+
+test('preset: dua preset dengan bu_id sama ditolak pada indeks qr_presets_bu_unique; bu_id kosong boleh berulang', async () => {
+  await seedQrPreset(env, { id: 'p1', buId: 'bu-a' });
+  await expect(seedQrPreset(env, { id: 'p2', buId: 'bu-a' })).rejects.toMatchObject({
+    kind: 'duplicate',
+    key: 'qr_presets_bu_unique',
+  });
+  await seedQrPreset(env, { id: 'p3', buId: 'bu-b' });
+  await seedQrPreset(env, { id: 'p4' });
+  await seedQrPreset(env, { id: 'p5' });
+  expect(await listQrPresets(env)).toHaveLength(4);
 });

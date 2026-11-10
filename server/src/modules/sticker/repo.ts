@@ -1,13 +1,23 @@
 import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import type { ItemStatus } from '@shared/contract';
-import type { StickerRule } from '@shared/stickers';
+import {
+  STICKER_SYSTEM_KINDS,
+  type StickerRule,
+  type StickerStatus,
+  type StickerSystemKind,
+} from '@shared/stickers';
 
 export interface StickerTypeRecord {
   id: string;
   name: string;
   rule: StickerRule;
   status: ItemStatus;
+  /** Jenis sistem (`''` = jenis biasa); stiker pada jenis sistem dikelola aplikasi. */
+  systemKind: StickerSystemKind;
+  /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini. */
+  defaultMinQty: number;
   /** Jumlah stiker (aktif + nonaktif) pada jenis ini; dihitung saat dibaca. */
   stickerCount: number;
   createdAt: string;
@@ -20,6 +30,8 @@ export interface StickerTypeRow {
   name: string;
   rule: string;
   status: string;
+  system_kind: string;
+  default_min_qty: number | string;
   sticker_count: number | string;
   created_at: string;
   updated_at: string;
@@ -28,15 +40,27 @@ export interface StickerTypeRow {
 
 /** Kolom jenis + jumlah stiker (subkueri berindeks `stickers_type`); satu kueri, bukan N+1. */
 const TYPE_SELECT =
-  'SELECT t.id, t.name, t.rule, t.status, t.created_at, t.updated_at, t.updated_by, ' +
+  'SELECT t.id, t.name, t.rule, t.status, t.system_kind, t.default_min_qty, t.created_at, t.updated_at, t.updated_by, ' +
   '(SELECT COUNT(*) FROM stickers s WHERE s.type_id = t.id) AS sticker_count FROM sticker_types t';
+
+function toStickerRule(value: string): StickerRule {
+  const rule = value.trim();
+  return rule === 'none' || rule === 'group' ? rule : 'bu';
+}
+
+function toSystemKind(value: string): StickerSystemKind {
+  const kind = value.trim();
+  return STICKER_SYSTEM_KINDS.find((known) => known !== '' && known === kind) ?? '';
+}
 
 export function toStickerType(row: StickerTypeRow): StickerTypeRecord {
   return {
     id: row.id.trim(),
     name: row.name.trim(),
-    rule: row.rule.trim() === 'none' ? 'none' : 'bu',
+    rule: toStickerRule(row.rule),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
+    systemKind: toSystemKind(row.system_kind),
+    defaultMinQty: Number(row.default_min_qty) || 0,
     stickerCount: Number(row.sticker_count) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -74,13 +98,15 @@ export async function lockStickerType(
 export function insertStickerTypeStmt(db: Preparer, type: StickerTypeRecord): DbStatement {
   return db
     .prepare(
-      'INSERT INTO sticker_types (id, name, rule, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO sticker_types (id, name, rule, status, system_kind, default_min_qty, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       type.id,
       type.name,
       type.rule,
       type.status,
+      type.systemKind,
+      type.defaultMinQty,
       type.createdAt,
       type.updatedAt,
       type.updatedBy,
@@ -115,7 +141,7 @@ export interface StickerRecord {
   /** Kosong = tanpa gambar contoh. */
   fileId: string;
   minQty: number;
-  status: ItemStatus;
+  status: StickerStatus;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -137,6 +163,11 @@ export interface StickerRow {
 export const STICKER_COLUMNS =
   'id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by';
 
+export function toStickerStatus(value: string): StickerStatus {
+  const status = value.trim();
+  return status === 'inactive' || status === 'deprecated' ? status : 'active';
+}
+
 export function toSticker(row: StickerRow): StickerRecord {
   return {
     id: row.id.trim(),
@@ -145,7 +176,7 @@ export function toSticker(row: StickerRow): StickerRecord {
     alias: row.alias.trim(),
     fileId: row.file_id.trim(),
     minQty: Number(row.min_qty) || 0,
-    status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
+    status: toStickerStatus(row.status),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -332,4 +363,107 @@ export function syncStickerBusinessUnitsStmts(
     );
   }
   return statements;
+}
+
+/** Versi Manual Book: satu baris per stiker Manual Book (versi konfigurasi QR yang melahirkannya). */
+export interface ManualBookVersionRecord {
+  stickerId: string;
+  designId: string;
+  version: number;
+  contentHash: string;
+  /** JSON: judul, subtitle, footer, logo, tata letak, dan gaya saat versi dibuat. */
+  contentSnapshot: string;
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+interface ManualBookVersionRow {
+  sticker_id: string;
+  design_id: string;
+  version: number | string;
+  content_hash: string;
+  content_snapshot: string;
+  reason: string;
+  created_at: string;
+  created_by: string;
+}
+
+const MANUAL_BOOK_VERSION_COLUMNS =
+  'sticker_id, design_id, version, content_hash, content_snapshot, reason, created_at, created_by';
+
+function toManualBookVersion(row: ManualBookVersionRow): ManualBookVersionRecord {
+  return {
+    stickerId: row.sticker_id.trim(),
+    designId: row.design_id.trim(),
+    version: Number(row.version) || 0,
+    contentHash: row.content_hash.trim(),
+    contentSnapshot: row.content_snapshot,
+    reason: row.reason,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+  };
+}
+
+/** Menambah baris versi (digabung ke `batch()` komit ekspor); `(design_id, version)` ganda ditolak basis data. */
+export function insertManualBookVersionStmt(
+  db: Preparer,
+  record: ManualBookVersionRecord,
+): DbStatement {
+  return db
+    .prepare(
+      `INSERT INTO manual_book_versions (${MANUAL_BOOK_VERSION_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      record.stickerId,
+      record.designId,
+      record.version,
+      record.contentHash,
+      record.contentSnapshot,
+      record.reason,
+      record.createdAt,
+      record.createdBy,
+    );
+}
+
+/** Riwayat versi satu konfigurasi QR, terbaru dahulu. */
+export async function listManualBookVersions(
+  env: Pick<Env, 'DB'>,
+  designId: string,
+): Promise<ManualBookVersionRecord[]> {
+  const result = await env.DB.prepare(
+    `SELECT ${MANUAL_BOOK_VERSION_COLUMNS} FROM manual_book_versions WHERE design_id = ? ORDER BY version DESC`,
+  )
+    .bind(designId)
+    .all<ManualBookVersionRow>();
+  return result.results.map(toManualBookVersion);
+}
+
+const IN_CHUNK = 500;
+
+/**
+ * Peta id konfigurasi QR -> id stiker versi TERTINGGI (versi terbaru; status stiker tidak dilihat). Konfigurasi tanpa
+ * versi tidak ada di peta. Satu kueri per 500 id.
+ */
+export async function latestManualBookStickerIds(
+  db: Preparer,
+  designIds: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(designIds)].filter((id) => id !== '');
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT mv.design_id, mv.sticker_id FROM manual_book_versions mv WHERE mv.design_id IN (${chunk
+          .map(() => '?')
+          .join(
+            ',',
+          )}) AND mv.version = (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id)`,
+      )
+      .bind(...chunk)
+      .all<{ design_id: string; sticker_id: string }>();
+    for (const row of rows.results) result.set(row.design_id.trim(), row.sticker_id.trim());
+  }
+  return result;
 }
