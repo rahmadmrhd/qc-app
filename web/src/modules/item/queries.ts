@@ -111,6 +111,7 @@ export function toItemSummary(item: ItemDto): ItemSummaryDto {
     aliases: item.aliases,
     imageCount: item.imageCount,
     hasInstructions: item.stickerPhotos.some((photo) => photo.marks.length > 0),
+    hasManualBook: item.hasManualBook,
     businessUnits: item.businessUnits,
     updatedAt: item.updatedAt,
   };

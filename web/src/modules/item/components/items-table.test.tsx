@@ -15,6 +15,7 @@ const items: ItemSummaryDto[] = [
     aliases: ['AirFiber 5XHD'],
     imageCount: 2,
     hasInstructions: true,
+    hasManualBook: false,
     businessUnits: [
       { id: 'bu-a', code: 'RTL', name: 'Retail' },
       { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
@@ -31,6 +32,7 @@ const items: ItemSummaryDto[] = [
     aliases: [],
     imageCount: 0,
     hasInstructions: false,
+    hasManualBook: false,
     businessUnits: [],
     updatedAt: '',
   },

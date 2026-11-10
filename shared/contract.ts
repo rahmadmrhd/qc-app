@@ -559,12 +559,27 @@ export interface ItemSummaryDto {
   imageCount: number;
   /** Ada minimal satu penanda instruksi stiker. */
   hasInstructions: boolean;
+  /** Item tergabung ke konfigurasi QR (Manual Book) yang sudah punya minimal satu versi (stiker Manual Book). */
+  hasManualBook: boolean;
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
 }
 
+/** Manual Book sebuah item: konfigurasi QR yang menaunginya dan versi terbarunya. */
+export interface ItemManualBookDto {
+  designId: string;
+  /** Nama Manual Book (nama konfigurasi QR). */
+  name: string;
+  /** Versi terbaru. */
+  version: number;
+  /** Status stiker versi terbaru. */
+  status: StickerStatus;
+}
+
 export interface ItemDto extends ItemSummaryDto {
+  /** Null bila item belum punya Manual Book berversi. */
+  manualBook: ItemManualBookDto | null;
   stickerPhotos: ItemStickerPhotoDto[];
   accessories: ItemAccessoryDto[];
   /** Id berkas galeri (sheet `files`), urut. */
@@ -1054,6 +1069,8 @@ export interface ListItemsPageInput {
   /** Filter item menurut jenis stiker (bersama `stickerMode`). */
   typeId?: string;
   stickerMode?: 'has' | 'missing';
+  /** `has` = hanya item ber-Manual Book; `missing` = hanya yang belum (definisi sama dengan `hasManualBook`). */
+  manualBook?: 'has' | 'missing';
 }
 
 export interface ItemPageDto {

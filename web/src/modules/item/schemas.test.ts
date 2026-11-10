@@ -217,6 +217,8 @@ const baseItem = {
   aliases: ['ES24', 'AirFiber'],
   imageCount: 1,
   hasInstructions: true,
+  hasManualBook: false,
+  manualBook: null,
   businessUnits: [
     { id: 'bu-a', code: 'RTL', name: 'Retail' },
     { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
