@@ -5,6 +5,7 @@ import { scheduleBackupJob } from '@server/modules/backup/service';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
 /** Selang polling runner (milidetik). */
 export const JOB_RUNNER_INTERVAL_MS = 2_000;
@@ -128,6 +129,7 @@ async function schedulerTick(env: Env): Promise<void> {
     purgeExpiredRateLimits,
     scheduleBackupJob,
     checkBackupAlerts,
+    checkLowStockDigest,
   ]) {
     try {
       await step(env);

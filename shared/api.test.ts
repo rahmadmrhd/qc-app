@@ -72,6 +72,12 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'brands.list': null,
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
+  'stickerSettings.get': null,
+  'stickerSettings.save': {
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8 },
+    defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
+  },
   'stickerTypes.list': null,
   'stickerTypes.save': {
     id: 'st1',

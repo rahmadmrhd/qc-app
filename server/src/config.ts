@@ -197,7 +197,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
 
   // SMTP/ALERT_TO TIDAK pernah menggagalkan start: berkas .env di VPS dapat berisi penanda ISI_OLEH_PEMILIK. Nilai yang
-  // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi.
+  // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi. `smtp` tidak lagi
+  // bergantung pada ALERT_TO (ringkasan stok stiker memakai penerima dari Konfigurasi Stiker); peringatan cadangan tetap
+  // menuntut ALERT_TO (`checkBackupAlerts`).
   const alertTo = get('ALERT_TO')
     .split(',')
     .map((address) => address.trim())
@@ -206,7 +208,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     get('SMTP_PORT') === '' ? DEFAULT_SMTP_PORT : integerIn(get('SMTP_PORT'), 1, 65535);
   const smtpFrom = get('SMTP_FROM') || get('SMTP_USER');
   const smtp: SmtpSettings | null =
-    get('SMTP_HOST') !== '' && smtpPort !== null && smtpFrom !== '' && alertTo.length > 0
+    get('SMTP_HOST') !== '' && smtpPort !== null && smtpFrom !== ''
       ? {
           host: get('SMTP_HOST'),
           port: smtpPort,

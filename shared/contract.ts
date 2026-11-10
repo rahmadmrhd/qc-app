@@ -423,6 +423,41 @@ export interface SaveStickerInput {
   businessUnitIds: string[];
 }
 
+/** Pengaturan email ringkasan harian stok stiker menipis (Konfigurasi Stiker). */
+export interface StickerAlertSettings {
+  enabled: boolean;
+  /** Maks. 20 alamat email sah dan unik. */
+  recipients: string[];
+  /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
+  digestHour: number;
+}
+
+/** Jenis stiker beserta minimum bawaan stiker barunya, untuk halaman Konfigurasi Stiker. */
+export interface StickerSettingsTypeDto {
+  id: string;
+  name: string;
+  systemKind: StickerSystemKind;
+  /** Minimum bawaan stiker baru jenis ini (butir); 0 = tanpa peringatan. */
+  defaultMinQty: number;
+}
+
+export interface StickerSettingsDto {
+  alert: StickerAlertSettings;
+  types: StickerSettingsTypeDto[];
+  /** Versi pengaturan email ('' bila belum pernah disimpan). */
+  updatedAt: string;
+  /** Server punya SMTP terkonfigurasi (tanpa itu ringkasan tak terkirim). */
+  smtpConfigured: boolean;
+}
+
+export interface SaveStickerSettingsInput {
+  /** `updatedAt` yang dilihat penyimpan ('' bila belum pernah disimpan); usang = galat usang (412 lewat If-Match). */
+  expectedUpdatedAt: string;
+  alert: StickerAlertSettings;
+  /** Hanya jenis yang disebut yang diubah. */
+  defaults: Array<{ typeId: string; defaultMinQty: number }>;
+}
+
 export interface SetStickerStatusInput {
   id: string;
   status: ItemStatus;
@@ -935,6 +970,8 @@ export interface ApiContract {
   'stickerTypes.list': { input: null; output: StickerTypeDto[] };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickerSettings.get': { input: null; output: StickerSettingsDto };
+  'stickerSettings.save': { input: SaveStickerSettingsInput; output: StickerSettingsDto };
   'stickers.list': { input: null; output: StickerDto[] };
   'stickers.save': { input: SaveStickerInput; output: StickerDto };
   'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };

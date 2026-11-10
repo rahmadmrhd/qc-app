@@ -100,7 +100,7 @@ CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), MENAMPILKAN nama da
 | `ALERT_TO` | Penerima, dipisah koma. |
 | `QUOTA_ALERT_PERCENT` | Ambang kuota Drive (1-99, bawaan 80). |
 
-Pindah ke email kantor nanti = mengganti nilai-nilai ini di `.env` lalu `docker compose up -d`; tidak ada perubahan kode. Bila `SMTP_HOST`/`SMTP_FROM`/`ALERT_TO` kosong atau tidak valid (mis. masih `ISI_OLEH_PEMILIK`), peringatan dinonaktifkan dan satu baris log menyebutnya; aplikasi tetap berjalan. Keterbatasan yang diterima pemilik (2026-11-06): peringatan berjalan DI server, jadi tidak berbunyi bila VPS atau `qc-app` mati; dead-man's switch eksternal tidak dikerjakan (dapat ditambahkan kemudian).
+Pindah ke email kantor nanti = mengganti nilai-nilai ini di `.env` lalu `docker compose up -d`; tidak ada perubahan kode. `SMTP_*` juga dipakai email ringkasan harian stok stiker menipis (penerima, sakelar, dan jam kirim diatur di halaman Konfigurasi Stiker, tidak memakai `ALERT_TO`; `ALERT_TO` tetap hanya untuk peringatan cadangan dan kuota). Bila `SMTP_HOST`/`SMTP_FROM`/`ALERT_TO` kosong atau tidak valid (mis. masih `ISI_OLEH_PEMILIK`), peringatan dinonaktifkan dan satu baris log menyebutnya; aplikasi tetap berjalan. Keterbatasan yang diterima pemilik (2026-11-06): peringatan berjalan DI server, jadi tidak berbunyi bila VPS atau `qc-app` mati; dead-man's switch eksternal tidak dikerjakan (dapat ditambahkan kemudian).
 
 ### Troubleshooting service account
 | Gejala | Penyebab & solusi |

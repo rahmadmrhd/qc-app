@@ -1,3 +1,4 @@
+import { isValidEmail, normalizeEmail } from '@server/core/email';
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { validateLocationIds } from '@server/modules/handover/validate';
@@ -8,6 +9,7 @@ import type {
   OpnameRowInput,
   RecordStockInput,
   SaveStickerInput,
+  SaveStickerSettingsInput,
   SaveStickerTypeInput,
   SetStickerStatusInput,
   SetStickerTypeStatusInput,
@@ -329,4 +331,93 @@ export function validateOpname(raw: unknown): OpnameInput {
   }
   reader.done();
   return { rows, locationIds: [...new Set(rows.map((row) => row.locationId))] };
+}
+
+/** Batas wajar jumlah baris minimum bawaan per simpan (jenis stiker jarang melebihi puluhan). */
+const SETTINGS_DEFAULTS_MAX = 200;
+
+function readAlertSettings(
+  value: unknown,
+  reader: ObjectReader,
+): SaveStickerSettingsInput['alert'] {
+  const fallback = { enabled: false, recipients: [] as string[], digestHour: 8 };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    reader.fail('alert', 'Pengaturan email harus berupa objek');
+    return fallback;
+  }
+  const source = value as Record<string, unknown>;
+  if (typeof source.enabled !== 'boolean') reader.fail('enabled', 'Sakelar harus true atau false');
+  const hour = source.digestHour;
+  if (typeof hour !== 'number' || !Number.isInteger(hour) || hour < 0 || hour > 23) {
+    reader.fail('digestHour', 'Jam harus bilangan bulat 0 sampai 23');
+  }
+  const recipients: string[] = [];
+  if (!Array.isArray(source.recipients)) {
+    reader.fail('recipients', 'Penerima harus berupa daftar email');
+  } else if (source.recipients.length > STICKER_LIMITS.alertRecipientsMax) {
+    reader.fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
+  } else {
+    const seen = new Set<string>();
+    for (const item of source.recipients) {
+      const email = typeof item === 'string' ? normalizeEmail(item) : '';
+      if (!isValidEmail(email)) {
+        reader.fail('recipients', 'Ada alamat email yang tidak valid');
+        break;
+      }
+      if (seen.has(email)) {
+        reader.fail('recipients', `Email ganda: ${email}`);
+        break;
+      }
+      seen.add(email);
+      recipients.push(email);
+    }
+  }
+  return {
+    enabled: source.enabled === true,
+    recipients,
+    digestHour: typeof hour === 'number' ? hour : 8,
+  };
+}
+
+function readDefaults(value: unknown, reader: ObjectReader): SaveStickerSettingsInput['defaults'] {
+  if (!Array.isArray(value) || value.length > SETTINGS_DEFAULTS_MAX) {
+    reader.fail('defaults', 'Minimum bawaan harus berupa daftar (maks. 200 baris)');
+    return [];
+  }
+  const rows: SaveStickerSettingsInput['defaults'] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const typeId = typeof row.typeId === 'string' ? row.typeId.trim() : '';
+    const qty = row.defaultMinQty;
+    if (typeId === '' || typeId.length > 100 || seen.has(typeId)) {
+      reader.fail('defaults', 'Jenis stiker tidak valid atau ganda');
+      return [];
+    }
+    if (
+      typeof qty !== 'number' ||
+      !Number.isInteger(qty) ||
+      qty < 0 ||
+      qty > STICKER_LIMITS.qtyMax
+    ) {
+      reader.fail(
+        'defaults',
+        `Minimum bawaan harus bilangan bulat 0 sampai ${STICKER_LIMITS.qtyMax}`,
+      );
+      return [];
+    }
+    seen.add(typeId);
+    rows.push({ typeId, defaultMinQty: qty });
+  }
+  return rows;
+}
+
+/** `expectedUpdatedAt` boleh kosong/tak ada (penyimpanan pertama; tanpa If-Match). */
+export function validateSaveStickerSettings(raw: unknown): SaveStickerSettingsInput {
+  const reader = readObject(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
+  const alert = readAlertSettings(reader.raw('alert'), reader);
+  const defaults = readDefaults(reader.raw('defaults'), reader);
+  reader.done();
+  return { expectedUpdatedAt, alert, defaults };
 }
