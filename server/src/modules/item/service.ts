@@ -483,7 +483,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.stickers = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, status FROM stickers WHERE id IN (${placeholders(stickerIds.size)})`,
+        `SELECT s.id, s.status, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
       ).bind(...stickerIds),
     );
   }
@@ -507,8 +507,11 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
   const rowsOf = <T>(slot: number): T[] =>
     slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
   const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
-  const stickerStatus = new Map(
-    rowsOf<{ id: string; status: string }>(slots.stickers).map((row) => [row.id, row.status]),
+  const stickerRows = new Map(
+    rowsOf<{ id: string; status: string; system_kind: string }>(slots.stickers).map((row) => [
+      row.id,
+      row,
+    ]),
   );
   const typeStatus = new Map(
     rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
@@ -525,9 +528,13 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     photo.marks.forEach((mark, markIndex) => {
       const label = `${photoLabel}, penanda ${markIndex + 1}`;
       if (mark.target.kind === 'sticker') {
-        const status = stickerStatus.get(mark.target.stickerId);
-        if (status === undefined) fail(`${label}: stiker tidak ditemukan`);
-        if (status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+        const sticker = stickerRows.get(mark.target.stickerId);
+        if (sticker === undefined) fail(`${label}: stiker tidak ditemukan`);
+        // Stiker jenis sistem (Manual Book) dipilih lewat jenisnya, tak pernah sebagai sasaran langsung.
+        if ((sticker?.system_kind ?? '').trim() !== '') {
+          fail(`${label}: Stiker Manual Book dipilih lewat jenisnya`);
+        }
+        if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
           fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
         }
       } else {

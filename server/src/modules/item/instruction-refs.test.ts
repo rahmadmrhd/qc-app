@@ -128,6 +128,32 @@ describe('assertInstructionRefs', () => {
     );
   });
 
+  test('penanda ke STIKER jenis sistem ditolak; penanda ke JENIS sistem diterima', async () => {
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 's-mb', typeId: 't-mb' });
+    expect(await messageOf(input([photo([stickerMark('s-mb')])]))).toBe(
+      'Foto 1, penanda 1: Stiker Manual Book dipilih lewat jenisnya',
+    );
+    // juga ditolak untuk item yang sudah ada (stiker jenis sistem tak pernah menjadi sasaran langsung)
+    expect(await messageOf(input([photo([stickerMark('s-mb')])], { id: 'item-1' }))).toBe(
+      'Foto 1, penanda 1: Stiker Manual Book dipilih lewat jenisnya',
+    );
+    await assertInstructionRefs(env, input([photo([typeMark('t-mb')])]));
+    await assertInstructionRefs(env, input([photo([typeMark('t-mb'), stickerMark('s1')])]));
+  });
+
+  test('stiker deprecated bukan active: ditolak sebagai stiker dinonaktifkan', async () => {
+    await seedSticker(env, { id: 's-dep', typeId: 't1', status: 'deprecated', buIds: ['bu-a'] });
+    expect(await messageOf(input([photo([stickerMark('s-dep')])]))).toBe(
+      'Foto 1, penanda 1: stiker dinonaktifkan; pilih stiker yang aktif',
+    );
+  });
+
   test('label BU di luar BU item ditolak; null dan BU item lolos', async () => {
     expect(await messageOf(input([photo([], { buId: 'bu-b' })]))).toBe(
       'Foto 1: label BU harus salah satu BU item',

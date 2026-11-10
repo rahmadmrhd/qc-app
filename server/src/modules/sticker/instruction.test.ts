@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { DbError } from '@server/core/db';
+import { seedItem } from '@server-test/item-fixtures';
+import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { ItemStickerPhotoInput } from '@shared/contract';
 import {
@@ -7,6 +9,7 @@ import {
   loadItemInstructions,
   replaceItemInstructionStmts,
 } from './instruction-repo';
+import { buildInstructionViews } from './instruction-service';
 
 // Tabel dan repo instruksi stiker per item (3b-2, Task 2): ganti-semua, muat berurutan, kunci asing RESTRICT/CASCADE.
 
@@ -189,5 +192,68 @@ describe('instruksi stiker item: repo', () => {
     await save('i2', [PHOTOS[2]]);
     expect([...(await hasInstructionsOf(env.DB, ['i1', 'i2', 'i3']))]).toEqual(['i2']);
     expect((await hasInstructionsOf(env.DB, [])).size).toBe(0);
+  });
+});
+
+describe('terjemahan penanda jenis Manual Book (aturan group, 4a)', () => {
+  const photoOf = (typeId: string) => [
+    {
+      guideId: 'g1',
+      caption: '',
+      buId: null,
+      position: 0,
+      marks: [{ x: 1, y: 2, target: { kind: 'type' as const, typeId }, note: '' }],
+    },
+  ];
+  const resolvedOf = async (itemId: string, typeId = 't-mb') => {
+    const [view] = await buildInstructionViews(env, itemId, ['bu-umum'], photoOf(typeId));
+    const mark = view?.marks[0];
+    return { ids: (mark?.resolved ?? []).map((r) => r.id), unresolved: mark?.unresolved };
+  };
+
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    // konfigurasi q1: v1 sudah digantikan (deprecated), v2 terbaru dan aktif
+    await seedSticker(env, { id: 'q1-v1', typeId: 't-mb', status: 'deprecated' });
+    await seedSticker(env, { id: 'q1-v2', typeId: 't-mb' });
+    await seedManualBookVersion(env, { stickerId: 'q1-v1', designId: 'q1', version: 1 });
+    await seedManualBookVersion(env, { stickerId: 'q1-v2', designId: 'q1', version: 2 });
+    // konfigurasi q2: versi terbaru dinonaktifkan manual (v1 tetap deprecated)
+    await seedSticker(env, { id: 'q2-v1', typeId: 't-mb', status: 'deprecated' });
+    await seedSticker(env, { id: 'q2-v2', typeId: 't-mb', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'q2-v1', designId: 'q2', version: 1 });
+    await seedManualBookVersion(env, { stickerId: 'q2-v2', designId: 'q2', version: 2 });
+    // stiker jenis sistem yang tertaut BU tetapi bukan versi terbaru item mana pun: tak pernah ikut
+    await seedSticker(env, { id: 'stray', typeId: 't-mb', buIds: [] });
+  });
+
+  test('item dengan konfigurasi: resolved = stiker versi terbaru yang aktif (bukan versi lama deprecated)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Acme', model: 'A', manualBookDesignId: 'q1' });
+    expect(await resolvedOf('i1')).toEqual({ ids: ['q1-v2'], unresolved: false });
+  });
+
+  test('versi terbaru nonaktif: unresolved, tidak jatuh ke versi deprecated', async () => {
+    await seedItem(env, { id: 'i2', brand: 'Acme', model: 'B', manualBookDesignId: 'q2' });
+    expect(await resolvedOf('i2')).toEqual({ ids: [], unresolved: true });
+  });
+
+  test('item tanpa konfigurasi, atau konfigurasi tanpa stiker: unresolved', async () => {
+    await seedItem(env, { id: 'i3', brand: 'Acme', model: 'C' });
+    await seedItem(env, { id: 'i4', brand: 'Acme', model: 'D', manualBookDesignId: 'q-kosong' });
+    expect(await resolvedOf('i3')).toEqual({ ids: [], unresolved: true });
+    expect(await resolvedOf('i4')).toEqual({ ids: [], unresolved: true });
+  });
+
+  test('stiker deprecated tidak pernah muncul dan stiker lain di jenis itu tak ikut (stray)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Acme', model: 'A', manualBookDesignId: 'q1' });
+    const { ids } = await resolvedOf('i1');
+    expect(ids).not.toContain('q1-v1');
+    expect(ids).not.toContain('stray');
+    expect(ids).not.toContain('q2-v1');
   });
 });

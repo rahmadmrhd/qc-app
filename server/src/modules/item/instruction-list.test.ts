@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { brandIdOf, seedBrand } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
-import { seedGuideImage, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
+import {
+  seedGuideImage,
+  seedManualBookVersion,
+  seedSticker,
+  seedStickerType,
+} from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { ItemDto, ItemPageDto, ItemStickerMarkDto } from '@shared/contract';
 
@@ -324,5 +329,116 @@ describe('filter instruksi pada daftar item', () => {
       expect([query, response.status]).toEqual([query, 422]);
       expect(await jsonOf(response)).toMatchObject({ code: 'VALIDATION' });
     }
+  });
+});
+
+describe('aturan group (Manual Book): tes kesepakatan items.get dan filter daftar', () => {
+  const GROUP_STICKERS = ['q1-v1', 'q1-v2', 'q2-v1', 'q2-v2', 'q3-v1', 'stray'];
+  const setDesign = (model: string, designId: string) =>
+    env.DB.prepare('UPDATE items SET manual_book_design_id = ? WHERE id = ?')
+      .bind(designId, ids[model] as string)
+      .run();
+
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 't-grp',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    // q1: v1 digantikan (deprecated), v2 terbaru aktif; q2: terbaru dinonaktifkan; q3: hanya v1 deprecated
+    await seedSticker(env, { id: 'q1-v1', typeId: 't-grp', status: 'deprecated' });
+    await seedSticker(env, { id: 'q1-v2', typeId: 't-grp' });
+    await seedSticker(env, { id: 'q2-v1', typeId: 't-grp', status: 'deprecated' });
+    await seedSticker(env, { id: 'q2-v2', typeId: 't-grp', status: 'inactive' });
+    await seedSticker(env, { id: 'q3-v1', typeId: 't-grp', status: 'deprecated' });
+    // tertaut BU, tetapi bukan versi terbaru konfigurasi mana pun: aturan group tak memakai BU
+    await seedSticker(env, { id: 'stray', typeId: 't-grp', buIds: ['bu-a'] });
+    for (const [stickerId, designId, version] of [
+      ['q1-v1', 'q1', 1],
+      ['q1-v2', 'q1', 2],
+      ['q2-v1', 'q2', 1],
+      ['q2-v2', 'q2', 2],
+      ['q3-v1', 'q3', 1],
+    ] as const) {
+      await seedManualBookVersion(env, { stickerId, designId, version });
+    }
+    await createItem('G1', ['bu-a'], [typeMark('t-grp')]);
+    await createItem('G2', ['bu-a'], [typeMark('t-grp')]);
+    await createItem('G3', ['bu-a'], [typeMark('t-grp')]);
+    await createItem('G4', ['bu-a'], [typeMark('t-grp')]);
+    await createItem('G5', ['bu-b'], [typeMark('t-grp'), typeMark('t-bu')]);
+    await setDesign('G1', 'q1');
+    await setDesign('G2', 'q2');
+    await setDesign('G3', 'q3');
+    // G4 tanpa konfigurasi; G5 (BU lain) memakai q1 juga: berbagi satu Manual Book
+    await setDesign('G5', 'q1');
+  });
+
+  const itemOf = async (id: string): Promise<ItemDto> =>
+    (await (await rest.get(`/items/${id}`)).json()) as ItemDto;
+
+  test('hasil terjemahan: versi terbaru aktif saja; nonaktif, deprecated, dan tanpa konfigurasi = belum ada stiker', async () => {
+    const resolved = async (model: string) =>
+      (await itemOf(ids[model] as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ??
+      [];
+    expect(await resolved('G1')).toEqual(['q1-v2']);
+    expect(await resolved('G2')).toEqual([]);
+    expect(await resolved('G3')).toEqual([]);
+    expect(await resolved('G4')).toEqual([]);
+    expect(await resolved('G5')).toEqual(['q1-v2']);
+    expect(names(await list('?stickerId=q1-v2'))).toEqual(set('G1', 'G5'));
+    expect(await list('?stickerId=stray')).toEqual([]);
+  });
+
+  test('items.get (resolved) dan filter stickerId/typeId memberi jawaban sama untuk setiap item, mode has dan missing', async () => {
+    const everyone = Object.keys(ids);
+    const details = new Map<string, ItemDto>();
+    for (const model of everyone) details.set(model, await itemOf(ids[model] as string));
+    const usesSticker = (item: ItemDto, stickerId: string): boolean =>
+      item.stickerPhotos.some((photo) =>
+        photo.marks.some((m) => m.resolved.some((r) => r.id === stickerId)),
+      );
+    const usesType = (item: ItemDto, typeId: string): boolean =>
+      item.stickerPhotos.some((photo) =>
+        photo.marks.some((m) =>
+          m.target.kind === 'type'
+            ? m.target.typeId === typeId
+            : TYPE_OF_STICKER[m.target.stickerId] === typeId,
+        ),
+      );
+    for (const stickerId of GROUP_STICKERS) {
+      const has = new Set(await list(`?stickerId=${stickerId}&stickerMode=has`));
+      const missing = new Set(await list(`?stickerId=${stickerId}&stickerMode=missing`));
+      for (const model of everyone) {
+        const id = ids[model] as string;
+        const uses = usesSticker(details.get(model) as ItemDto, stickerId);
+        expect([model, stickerId, 'has', has.has(id)]).toEqual([model, stickerId, 'has', uses]);
+        expect([model, stickerId, 'missing', missing.has(id)]).toEqual([
+          model,
+          stickerId,
+          'missing',
+          !uses,
+        ]);
+      }
+    }
+    for (const typeId of ['t-grp', 't-bu']) {
+      const has = new Set(await list(`?typeId=${typeId}&stickerMode=has`));
+      for (const model of everyone) {
+        const uses = usesType(details.get(model) as ItemDto, typeId);
+        expect([model, typeId, has.has(ids[model] as string)]).toEqual([model, typeId, uses]);
+      }
+    }
+  });
+
+  test('versi baru menggantikan hasil: filter dan detail berpindah ke stiker terbaru yang aktif', async () => {
+    await seedSticker(env, { id: 'q1-v3', typeId: 't-grp' });
+    await seedManualBookVersion(env, { stickerId: 'q1-v3', designId: 'q1', version: 3 });
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = 'q1-v2'").run();
+    expect(names(await list('?stickerId=q1-v3'))).toEqual(set('G1', 'G5'));
+    expect(await list('?stickerId=q1-v2')).toEqual([]);
+    const resolved =
+      (await itemOf(ids.G1 as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ?? [];
+    expect(resolved).toEqual(['q1-v3']);
   });
 });
