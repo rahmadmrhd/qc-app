@@ -1,7 +1,7 @@
 import type { MeDto } from '@shared/contract';
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { linkOptionNames, pickLink } from '@/test/link-field';
 import { ActiveLocationsProvider } from './active-locations-context';
 import { LocationField } from './location-field';
 
@@ -49,13 +49,11 @@ test('hanya menawarkan lokasi aktif yang boleh ditulis user', async () => {
       <LocationField id="loc" module="handover" level="edit" value="" onChange={onChange} />
     </ActiveLocationsProvider>,
   );
-  const select = screen.getByLabelText('Lokasi');
-  const options = within(select)
-    .getAllByRole('option')
-    .map((o) => o.textContent);
+  const options = await linkOptionNames(screen, 'Lokasi');
   expect(options).toContain('Jakarta (JKT)');
   expect(options).not.toContain('Bandung (BDG)');
-  await userEvent.selectOptions(select, 'Jakarta (JKT)');
+  expect(options).not.toContain('Tambah Lokasi');
+  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
   expect(onChange).toHaveBeenCalledWith('l-a');
 });
 
@@ -73,7 +71,7 @@ test('tanpa lokasi yang boleh ditulis, field dinonaktifkan dengan keterangan', (
       <LocationField id="loc" module="handover" level="edit" value="" onChange={() => undefined} />
     </ActiveLocationsProvider>,
   );
-  expect(screen.getByLabelText('Lokasi')).toBeDisabled();
+  expect(screen.getByRole('combobox', { name: 'Lokasi' })).toBeDisabled();
   expect(screen.getByText('Tidak ada lokasi aktif yang boleh Anda ubah.')).toBeInTheDocument();
 });
 
@@ -89,9 +87,7 @@ test('nilai di luar pilihan tulis tetap tampil sesuai lokasinya (mengubah baris 
       />
     </ActiveLocationsProvider>,
   );
-  const select = screen.getByLabelText('Lokasi');
-  expect(select).toHaveValue('l-b');
-  expect(within(select).getByRole('option', { name: 'Bandung (BDG)' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Lokasi' })).toHaveValue('Bandung (BDG)');
 });
 
 test('nilai lokasi yang sudah tidak tersedia ditandai, bukan diganti opsi lain', () => {
@@ -106,9 +102,5 @@ test('nilai lokasi yang sudah tidak tersedia ditandai, bukan diganti opsi lain',
       />
     </ActiveLocationsProvider>,
   );
-  const select = screen.getByLabelText('Lokasi');
-  expect(select).toHaveValue('hilang');
-  expect(
-    within(select).getByRole('option', { name: '(lokasi tidak tersedia)' }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Lokasi' })).toHaveValue('(lokasi tidak tersedia)');
 });

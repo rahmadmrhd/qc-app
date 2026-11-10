@@ -1,7 +1,8 @@
 import type { LocatedModule } from '@shared/assignments';
+import { normalizeKey } from '@shared/items';
 import type { Level } from '@shared/permissions';
-import { NativeSelect } from '@/components/native-select';
-import { Label } from '@/components/ui/label';
+import { useState } from 'react';
+import { LinkField, type LinkOption } from '@/components/link-field';
 import { locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from './active-locations-context';
@@ -15,38 +16,41 @@ export interface LocationFieldProps {
   onChange: (locationId: string) => void;
 }
 
-/** Field Lokasi untuk form tulis modul berlokasi: hanya lokasi aktif terpilih yang boleh ditulis user. */
+/**
+ * Field Lokasi untuk form tulis modul berlokasi: hanya lokasi aktif terpilih yang boleh ditulis user. Memakai
+ * `LinkField` (spek BU keputusan 24); tanpa Tambah dan Buka karena lokasi tidak punya dialog tambah di form ini
+ * maupun halaman lihat.
+ */
 export function LocationField({ id, module, level, value, onChange }: LocationFieldProps) {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
-  const options = locationsWith(me, module, level, selectedIds);
+  const [term, setTerm] = useState('');
+  const writable = locationsWith(me, module, level, selectedIds);
   // Mengubah baris yang sudah ada: lokasinya tetap tampil walau di luar pilihan tulis atau lokasi aktif.
-  const outside = value !== '' && !options.some((location) => location.id === value);
+  const outside = value !== '' && !writable.some((location) => location.id === value);
   const known = outside ? me.locations.find((location) => location.id === value) : undefined;
+  const labelOf = (locationId: string) => {
+    const location = writable.find((item) => item.id === locationId) ?? known;
+    return location ? `${location.name} (${location.code})` : '(lokasi tidak tersedia)';
+  };
+  const key = normalizeKey(term);
+  const options: LinkOption[] = writable
+    .map((location) => ({ id: location.id, label: `${location.name} (${location.code})` }))
+    .filter((option) => key === '' || normalizeKey(option.label).includes(key));
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>Lokasi</Label>
-      <NativeSelect
+      <LinkField
         id={id}
-        value={value}
-        disabled={options.length === 0}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="" disabled>
-          Pilih lokasi…
-        </option>
-        {outside ? (
-          <option value={value} disabled>
-            {known ? `${known.name} (${known.code})` : '(lokasi tidak tersedia)'}
-          </option>
-        ) : null}
-        {options.map((location) => (
-          <option key={location.id} value={location.id}>
-            {`${location.name} (${location.code})`}
-          </option>
-        ))}
-      </NativeSelect>
-      {options.length === 0 ? (
+        label="Lokasi"
+        placeholder="Pilih lokasi…"
+        value={value === '' ? null : value}
+        labelOf={labelOf}
+        options={options}
+        onSearchChange={setTerm}
+        onChange={(next) => onChange(next ?? '')}
+        disabled={writable.length === 0}
+      />
+      {writable.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Tidak ada lokasi aktif yang boleh Anda ubah.
         </p>

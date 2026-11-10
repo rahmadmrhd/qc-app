@@ -44,7 +44,7 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 
    Router memeriksa tiap lokasi (ada, aktif, level cukup); satu gagal menolak seluruh permintaan dengan `FORBIDDEN`. **Gunakan `ctx.locationIds`, bukan input mentah.** Lupa `scope: 'location'` membuat izin diperiksa secara global.
 2. **Data**: setiap baris punya kolom `location_id`; baca difilter ke `ctx.locationIds`, ubah/hapus memeriksa lokasi baris yang ada (izin ditegakkan lagi di lokasi baris itu).
-3. **Frontend**: baca dengan `useActiveLocations().selectedIds`; form tulis memakai `LocationField` (`web/src/modules/location/location-field.tsx`); menu memakai `permission: { module, level, scope: 'location' }` pada `NAV_GROUPS`; guard route memakai `requirePermission` (memeriksa minimal satu lokasi).
+3. **Frontend**: baca dengan `useActiveLocations().selectedIds`; form tulis memakai `LocationField` (`web/src/modules/location/location-field.tsx`, berbasis `LinkField`); menu memakai `permission: { module, level, scope: 'location' }` pada `NAV_GROUPS`; guard route memakai `requirePermission` (memeriksa minimal satu lokasi).
 4. **Tabel**: tampilkan kolom **Lokasi** bila `selectedIds.length > 1` (PRD FR-C5); dengan satu lokasi terpilih kolom itu tidak perlu.
 5. **Tes**: tambahkan kasus lokasi terlarang, tak dikenal, dan nonaktif untuk method baru.
 6. **Izin alternatif**: bila method boleh diakses oleh salah satu dari beberapa izin (mis. WH atau QC), pakai `permission: { anyOf: [ ... ] }`. Semua alternatif harus sama lingkupnya (semua global atau semua `scope: 'location'`); tiap lokasi yang diminta cukup memenuhi satu alternatif, dan satu lokasi yang gagal menolak seluruh permintaan.
