@@ -3,7 +3,13 @@ import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
-import type { GuideSort, StickerRule, StockCount, StockEntryKind } from './stickers';
+import type {
+  GuideSort,
+  StickerMarkTarget,
+  StickerRule,
+  StockCount,
+  StockEntryKind,
+} from './stickers';
 
 export const ERROR_CODES = [
   'UNAUTHENTICATED',
@@ -263,12 +269,65 @@ export interface FileContentDto {
 }
 export type ItemStatus = 'active' | 'inactive';
 
-export interface ItemStickerDto {
-  name: string;
-  /** Posisi/ketentuan penempelan. */
+/** Penanda pada foto instruksi: posisi (permil 0..1000) dan sasarannya. */
+export interface ItemStickerMarkDto {
+  x: number;
+  y: number;
+  target: StickerMarkTarget;
   note: string;
-  /** Id berkas contoh (sheet `files`), atau `null`. */
+}
+
+/** Foto instruksi pada simpan item: gambar pustaka, catatan, label BU (murni tampilan), dan penanda berurutan. */
+export interface ItemStickerPhotoInput {
+  guideId: string;
+  caption: string;
+  /** Label BU foto; harus salah satu BU item, atau `null` (tanpa label). */
+  buId: string | null;
+  marks: ItemStickerMarkDto[];
+}
+
+/** Stiker hasil penerjemahan sasaran penanda. */
+export interface ResolvedStickerDto {
+  id: string;
+  name: string;
+  alias: string;
+  /** Id berkas gambar stiker, atau `null`. */
   fileId: string | null;
+  /** Kode BU stiker (terurut). */
+  buCodes: string[];
+  inactive: boolean;
+}
+
+/** Penanda untuk tampilan: sasaran + nama + stiker yang cocok untuk BU item. */
+export interface ItemStickerMarkView extends ItemStickerMarkDto {
+  /** Nama stiker atau jenis sasaran. */
+  targetName: string;
+  resolved: ResolvedStickerDto[];
+  /** Jenis tanpa stiker aktif yang cocok untuk BU item (peringatan; simpan tidak diblokir). */
+  unresolved: boolean;
+}
+
+export interface ItemStickerPhotoDto {
+  guideId: string;
+  guideName: string;
+  /** Dimensi gambar pustaka (piksel). */
+  width: number;
+  height: number;
+  caption: string;
+  buId: string | null;
+  marks: ItemStickerMarkView[];
+}
+
+/** Pemakaian gambar pustaka oleh sebuah item (`stickerGuides.usages`). */
+export interface GuideUsageDto {
+  itemId: string;
+  /** Nama tampilan item (merk + model). */
+  label: string;
+  status: ItemStatus;
+}
+
+export interface ListGuideUsagesInput {
+  id: string;
 }
 
 export interface ItemAccessoryDto {
@@ -456,13 +515,15 @@ export interface ItemSummaryDto {
   status: ItemStatus;
   aliases: string[];
   imageCount: number;
+  /** Ada minimal satu penanda instruksi stiker. */
+  hasInstructions: boolean;
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
 }
 
 export interface ItemDto extends ItemSummaryDto {
-  stickers: ItemStickerDto[];
+  stickerPhotos: ItemStickerPhotoDto[];
   accessories: ItemAccessoryDto[];
   /** Id berkas galeri (sheet `files`), urut. */
   attachments: string[];
@@ -481,7 +542,8 @@ export interface SaveItemInput {
   model: string;
   isCountryLock: boolean;
   aliases: string[];
-  stickers: ItemStickerDto[];
+  /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
+  stickerPhotos: ItemStickerPhotoInput[];
   accessories: ItemAccessoryDto[];
   attachments: string[];
   detail: string;
@@ -772,6 +834,7 @@ export interface ApiContract {
   'stickerGuides.rename': { input: RenameStickerGuideInput; output: StickerGuideDto };
   'stickerGuides.remove': { input: RemoveStickerGuideInput; output: { id: string } };
   'stickerGuides.thumbnail': { input: GetStickerGuideThumbInput; output: FileContentDto };
+  'stickerGuides.usages': { input: ListGuideUsagesInput; output: GuideUsageDto[] };
   'brands.list': { input: null; output: BrandDto[] };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
@@ -850,6 +913,13 @@ export interface ListItemsPageInput {
   /** Pencarian kunci (awalan/substring), opsional. */
   query?: string;
   status?: ItemStatus;
+  /** `none` = hanya item tanpa instruksi stiker. */
+  instruction?: 'none';
+  /** Filter item menurut penanda ke stiker tertentu (bersama `stickerMode`). */
+  stickerId?: string;
+  /** Filter item menurut jenis stiker (bersama `stickerMode`). */
+  typeId?: string;
+  stickerMode?: 'has' | 'missing';
 }
 
 export interface ItemPageDto {

@@ -168,6 +168,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     binary: 'response',
     download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
   },
+  'stickerGuides.usages': { verb: 'GET', path: '/sticker-guides/{id}/usages' },
   'brands.list': { verb: 'GET', path: '/brands' },
   'brands.save': {
     verb: 'PUT',
@@ -233,7 +234,16 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'items.list': {
     verb: 'GET',
     path: '/items',
-    query: { cursor: 'string', limit: 'number', query: 'string', status: 'string' },
+    query: {
+      cursor: 'string',
+      limit: 'number',
+      query: 'string',
+      status: 'string',
+      instruction: 'string',
+      stickerId: 'string',
+      typeId: 'string',
+      stickerMode: 'string',
+    },
   },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },
   'items.save': {
