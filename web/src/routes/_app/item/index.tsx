@@ -1,32 +1,25 @@
 import type { ItemSummaryDto } from '@shared/contract';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { z } from 'zod';
 import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import {
+  can,
   canCreateItem,
   canEditItem,
   canManageItem,
   requirePermission,
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { ItemFilters } from '@/modules/item/components/item-filters';
 import { ItemsTable } from '@/modules/item/components/items-table';
-import {
-  DEFAULT_ITEM_FILTER,
-  type ItemListFilter,
-  itemsInfiniteQueryOptions,
-  useSetItemStatus,
-} from '@/modules/item/queries';
-
-const itemsSearchSchema = z.object({
-  q: z.string().optional().catch(undefined),
-  status: z.enum(['all', 'active', 'inactive']).optional().catch(undefined),
-});
+import { filterOfSearch, itemsSearchSchema, searchPatchOf } from '@/modules/item/lib/list-filter';
+import { itemsInfiniteQueryOptions, useSetItemStatus } from '@/modules/item/queries';
+import { stickersQuery, stickerTypesQuery } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/')({
   validateSearch: (search: Record<string, unknown>) => itemsSearchSchema.parse(search),
@@ -34,21 +27,26 @@ export const Route = createFileRoute('/_app/item/')({
   // Tanpa loaderDeps: mengetik di kolom cari tidak menjalankan ulang loader; daftar memuat halamannya sendiri.
   loader: ({ context, location }) => {
     const search = itemsSearchSchema.parse(location.search);
-    return context.queryClient.ensureInfiniteQueryData(itemsInfiniteQueryOptions(filterOf(search)));
+    return context.queryClient.ensureInfiniteQueryData(
+      itemsInfiniteQueryOptions(filterOfSearch(search)),
+    );
   },
   component: ItemsPage,
 });
-
-function filterOf(search: z.infer<typeof itemsSearchSchema>): ItemListFilter {
-  return { ...DEFAULT_ITEM_FILTER, query: search.q ?? '', status: search.status ?? 'all' };
-}
 
 function ItemsPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const canCreate = canCreateItem(me);
-  const list = useInfiniteQuery(itemsInfiniteQueryOptions(filterOf(search)));
+  const filter = filterOfSearch(search);
+  const list = useInfiniteQuery(itemsInfiniteQueryOptions(filter));
+  // Katalog untuk filter stiker/jenis: hanya bagi yang boleh membacanya (`sticker: view` atau `item: edit`);
+  // tanpa itu (atau bila ditolak server) filter stiker/jenis disembunyikan, filter instruksi tetap ada.
+  const canReadCatalog = can(me, 'sticker', 'view') || can(me, 'item', 'edit');
+  const stickers = useQuery({ ...stickersQuery(), enabled: canReadCatalog, retry: false });
+  const types = useQuery({ ...stickerTypesQuery(), enabled: canReadCatalog, retry: false });
+  const showStickerFilter = canReadCatalog && stickers.isSuccess && types.isSuccess;
   const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
   const [text, setText] = useUrlSyncedText(
@@ -82,7 +80,7 @@ function ItemsPage() {
           ) : null}
         </div>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Input
           placeholder="Cari merk, tipe, atau nama lain"
           aria-label="Cari item"
@@ -107,6 +105,18 @@ function ItemsPage() {
           <option value="active">Aktif</option>
           <option value="inactive">Nonaktif</option>
         </NativeSelect>
+        <ItemFilters
+          filter={filter}
+          stickers={stickers.data ?? []}
+          types={types.data ?? []}
+          showStickerFilter={showStickerFilter}
+          onChange={(patch) =>
+            void navigate({
+              search: (prev) => ({ ...prev, ...searchPatchOf(patch) }),
+              replace: true,
+            })
+          }
+        />
       </div>
       {list.isError ? (
         <p role="alert" className="text-sm text-destructive">
