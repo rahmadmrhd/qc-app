@@ -908,3 +908,165 @@ describe('postelSoonDays', () => {
     expect(got.numbers.map((n: Json) => n.condition)).toEqual(['soon', 'valid']);
   });
 });
+
+describe('postels.save: rantai dan tukar nomor dalam satu simpan', () => {
+  const numberRows = async () =>
+    (await rows('SELECT number, number_key, seq FROM postel_numbers ORDER BY seq')).map((r) => [
+      r.number,
+      r.number_key,
+      Number(r.seq),
+    ]);
+
+  const threeNumbers = ['SN-A', 'SN-B', 'SN-C'].map((number) => ({
+    number,
+    expiresOn: '2027-03-01',
+    link: '',
+  }));
+
+  /** `numbers`: [indeks baris tersimpan, nomor baru] menurut urutan masukan. */
+  function edit(postel: Json, numbers: Array<[number, string]>) {
+    const stored = postel.numbers as Json[];
+    return {
+      id: postel.id,
+      expectedUpdatedAt: postel.updatedAt,
+      ...body({
+        numbers: numbers.map(([index, number]) => ({
+          id: stored[index].id,
+          number,
+          expiresOn: stored[index].expiresOn,
+          link: stored[index].link,
+        })),
+      }),
+    };
+  }
+
+  test('rantai tiga baris (A->B, B->C, C->D) berhasil', async () => {
+    const postel = await create({ numbers: threeNumbers });
+    const result = await call(
+      ADMIN,
+      'postels.save',
+      edit(postel, [
+        [0, 'SN-B'],
+        [1, 'SN-C'],
+        [2, 'SN-D'],
+      ]),
+    );
+    expect(result.ok).toBe(true);
+    expect(await numberRows()).toEqual([
+      ['SN-B', 'sn b', 1],
+      ['SN-C', 'sn c', 2],
+      ['SN-D', 'sn d', 3],
+    ]);
+    expect(((result.data as Json).numbers as Json[]).map((n) => [n.id, n.role])).toEqual(
+      (postel.numbers as Json[]).map((n, i) => [n.id, i === 2 ? 'active' : 'old']),
+    );
+    expect(await rows("SELECT id FROM postel_numbers WHERE number_key LIKE '#%'")).toHaveLength(0);
+  });
+
+  test('tukar dua baris berhasil', async () => {
+    const postel = await create({
+      numbers: ['SN-X', 'SN-Y'].map((number) => ({ number, expiresOn: '2027-03-01', link: '' })),
+    });
+    const result = await call(
+      ADMIN,
+      'postels.save',
+      edit(postel, [
+        [0, 'SN-Y'],
+        [1, 'SN-X'],
+      ]),
+    );
+    expect(result.ok).toBe(true);
+    expect(await numberRows()).toEqual([
+      ['SN-Y', 'sn y', 1],
+      ['SN-X', 'sn x', 2],
+    ]);
+  });
+
+  test('rantai bersama penghapusan nomor Lama dan nomor baru yang memakai kunci yang dilepas', async () => {
+    const postel = await create({ numbers: threeNumbers });
+    const stored = postel.numbers as Json[];
+    const result = await call(ADMIN, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: postel.updatedAt,
+      ...body({
+        numbers: [
+          // baris 0 dibuang (SN-A bebas), baris 1 B->A, baris 2 tetap C, baris baru memakai 'SN-B'
+          { id: stored[1].id, number: 'SN-A', expiresOn: '2027-03-01', link: '' },
+          { id: stored[2].id, number: 'SN-C', expiresOn: '2027-03-01', link: '' },
+          { number: 'SN-B', expiresOn: '2028-01-01', link: '' },
+        ],
+      }),
+    });
+    expect(result.ok).toBe(true);
+    expect((await numberRows()).map((r) => r[0])).toEqual(['SN-A', 'SN-C', 'SN-B']);
+  });
+
+  test('nomor kembar sungguhan (dengan catatan lain) tetap CONFLICT dan tidak mengubah apa pun', async () => {
+    await create({
+      itemIds: ['i3'],
+      numbers: [{ number: 'LAIN-1', expiresOn: '2027-03-01', link: '' }],
+    });
+    const postel = await create({
+      numbers: ['SN-A', 'SN-B'].map((number) => ({ number, expiresOn: '2027-03-01', link: '' })),
+    });
+    const result = await call(
+      ADMIN,
+      'postels.save',
+      edit(postel, [
+        [0, 'SN-B'],
+        [1, 'lain 1'],
+      ]),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('CONFLICT');
+    expect(result.error?.fields?.number).toBeTruthy();
+    expect(
+      (await rows('SELECT number, number_key FROM postel_numbers ORDER BY number')).map((r) => [
+        r.number,
+        r.number_key,
+      ]),
+    ).toEqual([
+      ['LAIN-1', 'lain 1'],
+      ['SN-A', 'sn a'],
+      ['SN-B', 'sn b'],
+    ]);
+  });
+
+  test('ubah hanya tautan sesudah state peringatan diubah pihak lain tidak mengembalikan state lama; ubah tanggal mereset', async () => {
+    const postel = await create({
+      numbers: [{ number: 'SN-S', expiresOn: '2027-03-01', link: '' }],
+      itemIds: ['i1'],
+    });
+    const [n1] = postel.numbers as Json[];
+    await env.DB.prepare(
+      "UPDATE postel_numbers SET alert_sent_threshold = 90, alert_sent_on = '2026-11-10' WHERE id = ?",
+    )
+      .bind(n1.id)
+      .run();
+    const linkOnly = await call(ADMIN, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: postel.updatedAt,
+      ...body({
+        itemIds: ['i1'],
+        numbers: [{ id: n1.id, number: 'SN-S', expiresOn: '2027-03-01', link: 'https://x.test/s' }],
+      }),
+    });
+    expect(linkOnly.ok).toBe(true);
+    let row = (await rows('SELECT * FROM postel_numbers WHERE id = ?', n1.id))[0];
+    expect(Number(row.alert_sent_threshold)).toBe(90);
+    expect(row.alert_sent_on).toBe('2026-11-10');
+    env.clock.advance(1000);
+    const dateChange = await call(ADMIN, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: (linkOnly.data as Json).updatedAt,
+      ...body({
+        itemIds: ['i1'],
+        numbers: [{ id: n1.id, number: 'SN-S', expiresOn: '2027-05-01', link: 'https://x.test/s' }],
+      }),
+    });
+    expect(dateChange.ok).toBe(true);
+    row = (await rows('SELECT * FROM postel_numbers WHERE id = ?', n1.id))[0];
+    expect(row.alert_sent_threshold).toBeNull();
+    expect(row.alert_sent_on).toBe('');
+  });
+});

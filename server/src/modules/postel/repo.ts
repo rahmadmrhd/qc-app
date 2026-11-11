@@ -228,6 +228,47 @@ export function updatePostelNumberStmt(db: Preparer, record: PostelNumberRecord)
     );
 }
 
+/**
+ * UPDATE isi nomor (nomor, kunci, tanggal habis, tautan, penulis) TANPA menyentuh `seq`. State peringatan hanya ditulis
+ * bila `resetAlert` (tanggal habis berubah: NULL dan ''); selain itu nilainya di basis data dibiarkan, sehingga
+ * pengirim peringatan serentak tidak tertimpa salinan basi dari pembacaan awal penyimpan.
+ */
+export function updatePostelNumberContentStmt(
+  db: Preparer,
+  record: PostelNumberRecord,
+  resetAlert: boolean,
+): DbStatement {
+  return db
+    .prepare(
+      `UPDATE postel_numbers SET number = ?, number_key = ?, expires_on = ?, link = ?, updated_at = ?, updated_by = ?, alert_sent_threshold = CASE WHEN ? THEN NULL ELSE alert_sent_threshold END, alert_sent_on = CASE WHEN ? THEN '' ELSE alert_sent_on END WHERE id = ? AND postel_id = ?`,
+    )
+    .bind(
+      record.number,
+      record.numberKey,
+      record.expiresOn,
+      record.link,
+      record.updatedAt,
+      record.updatedBy,
+      resetAlert ? 1 : 0,
+      resetAlert ? 1 : 0,
+      record.id,
+      record.postelId,
+    );
+}
+
+/** Awalan kunci sementara nomor; `normalizeKey` hanya menghasilkan huruf, angka, dan spasi, jadi tak pernah bertabrakan. */
+export const PARKED_KEY_PREFIX = '#';
+
+/**
+ * Memindahkan kunci nomor ke penampung sementara (`#<id>` dipotong agar muat VARCHAR(100)) agar rantai penggantian nomor dalam satu
+ * batch (A->B, B->C, atau tukar) tidak menabrak indeks unik di tengah jalan; nilai sebenarnya ditulis sesudahnya.
+ */
+export function parkPostelNumberKeyStmt(db: Preparer, id: string, postelId: string): DbStatement {
+  return db
+    .prepare('UPDATE postel_numbers SET number_key = ? WHERE id = ? AND postel_id = ?')
+    .bind(`${PARKED_KEY_PREFIX}${id.slice(0, 99)}`, id, postelId);
+}
+
 export function deletePostelNumberStmt(db: Preparer, id: string, postelId: string): DbStatement {
   return db.prepare('DELETE FROM postel_numbers WHERE id = ? AND postel_id = ?').bind(id, postelId);
 }

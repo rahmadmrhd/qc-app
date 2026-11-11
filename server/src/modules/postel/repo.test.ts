@@ -15,6 +15,8 @@ import {
   listPostelRecords,
   type PostelNumberRecord,
   type PostelRecord,
+  parkPostelNumberKeyStmt,
+  updatePostelNumberContentStmt,
   updatePostelNumberStmt,
   updatePostelStmt,
 } from './repo';
@@ -238,6 +240,72 @@ describe('postel_numbers', () => {
     const [after] = await listPostelNumbers(env.DB, ['p1']);
     expect(after?.alertSentThreshold).toBeNull();
     expect(after?.alertSentOn).toBe('');
+  });
+
+  test('updatePostelNumberContentStmt tidak menimpa state peringatan kecuali resetAlert', async () => {
+    await env.DB.batch([
+      insertPostelStmt(env.DB, postel()),
+      insertPostelNumberStmt(env.DB, numberRecord({ link: 'https://a.co/x', seq: 3 })),
+    ]);
+    // Pihak lain (pengirim peringatan) menulis state SESUDAH penyimpan membaca baris (salinan penyimpan: NULL).
+    await env.DB.prepare(
+      "UPDATE postel_numbers SET alert_sent_threshold = 30, alert_sent_on = '2027-01-01' WHERE id = ?",
+    )
+      .bind(numberRecord().id)
+      .run();
+    const stale = numberRecord({
+      link: 'https://baru.co',
+      alertSentThreshold: null,
+      alertSentOn: '',
+      updatedAt: T1,
+      updatedBy: 'b@gmail.com',
+    });
+    await updatePostelNumberContentStmt(env.DB, stale, false).run();
+    const [kept] = await listPostelNumbers(env.DB, ['p1']);
+    expect(kept).toMatchObject({
+      link: 'https://baru.co',
+      alertSentThreshold: 30,
+      alertSentOn: '2027-01-01',
+      updatedAt: T1,
+      updatedBy: 'b@gmail.com',
+      seq: 3,
+    });
+    await updatePostelNumberContentStmt(
+      env.DB,
+      numberRecord({ expiresOn: '2028-03-03', updatedAt: T1 }),
+      true,
+    ).run();
+    const [reset] = await listPostelNumbers(env.DB, ['p1']);
+    expect(reset).toMatchObject({
+      expiresOn: '2028-03-03',
+      alertSentThreshold: null,
+      alertSentOn: '',
+    });
+    expect(reset?.seq).toBe(3);
+  });
+
+  test('parkPostelNumberKeyStmt memindahkan kunci ke placeholder unik yang tak bentrok dengan kunci nyata', async () => {
+    await env.DB.batch([
+      insertPostelStmt(env.DB, postel()),
+      insertPostelNumberStmt(env.DB, numberRecord({ id: 'n1', numberKey: 'a 1' })),
+      insertPostelNumberStmt(env.DB, numberRecord({ id: 'n2', seq: 2, numberKey: 'a 2' })),
+    ]);
+    await parkPostelNumberKeyStmt(env.DB, 'n1', 'p1').run();
+    await parkPostelNumberKeyStmt(env.DB, 'n2', 'p1').run();
+    // kunci 'a 1' kini bebas dipakai baris lain
+    await env.DB.batch([
+      insertPostelNumberStmt(env.DB, numberRecord({ id: 'n3', seq: 3, numberKey: 'a 1' })),
+    ]);
+    const rows = await listPostelNumbers(env.DB, ['p1']);
+    expect(rows.map((row) => row.numberKey)).toEqual(['#n1', '#n2', 'a 1']);
+    // id sangat panjang tetap muat VARCHAR(100)
+    const longId = 'x'.repeat(100);
+    await env.DB.batch([
+      insertPostelNumberStmt(env.DB, numberRecord({ id: longId, seq: 4, numberKey: 'b 1' })),
+    ]);
+    await parkPostelNumberKeyStmt(env.DB, longId, 'p1').run();
+    const parked = (await listPostelNumbers(env.DB, ['p1'])).find((row) => row.id === longId);
+    expect(parked?.numberKey).toBe('#' + 'x'.repeat(99));
   });
 
   test('deletePostelNumberStmt dan deletePostelNumbersOfStmt', async () => {

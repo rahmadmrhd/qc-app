@@ -112,8 +112,8 @@ export async function findPostelItemsById(
 
 /**
  * Memasang `ids` ke catatan `postelId` di dalam `batch()`: hanya item yang belum dimiliki catatan lain (`''` atau
- * catatan ini), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang (item direbut
- * catatan lain pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
+ * catatan ini) dan aktif (item nonaktif hanya boleh yang sudah miliknya), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang (item direbut
+ * catatan lain atau dinonaktifkan pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
  */
 export function claimItemsForPostelStmts(
   db: Db,
@@ -125,8 +125,10 @@ export function claimItemsForPostelStmts(
   const marks = sorted.map(() => '?').join(',');
   return [
     db
-      .prepare(`UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND postel_id IN ('', ?)`)
-      .bind(postelId, ...sorted, postelId),
+      .prepare(
+        `UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND postel_id IN ('', ?) AND (status = 'active' OR postel_id = ?)`,
+      )
+      .bind(postelId, ...sorted, postelId, postelId),
     db
       .prepare(
         `SELECT CASE WHEN (SELECT COUNT(*) FROM items WHERE id IN (${marks}) AND postel_id = ?) <> ? THEN ${CAS_FAIL_SQL} ELSE 0 END AS guard_ok`,
@@ -153,7 +155,7 @@ export function releaseItemsFromPostelStmt(
 }
 
 /** Melepas SEMUA item sebuah catatan (hapus catatan). */
-export function releaseAllItemsFromPostelStmt(db: Db, postelId: string): DbStatement {
+export function releaseAllItemsFromPostelStmt(db: Preparer, postelId: string): DbStatement {
   return db.prepare("UPDATE items SET postel_id = '' WHERE postel_id = ?").bind(postelId);
 }
 

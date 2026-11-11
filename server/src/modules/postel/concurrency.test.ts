@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
+import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
 // Konkurensi `postels.save`: `Promise.all` atas permintaan REST nyata (bukan tiruan). Keanggotaan item dijaga CAS di
@@ -99,19 +100,70 @@ describe('postels.save serentak', () => {
       ],
       attachmentIds: [],
     });
-    const results = await Promise.all([
-      call('postels.save', edit('dari A')),
-      call('postels.save', edit('dari B')),
-    ]);
-    const ok = results.filter((r) => r.ok);
-    const failed = results.filter((r) => !r.ok);
-    expect(ok).toHaveLength(1);
-    expect(failed).toHaveLength(1);
-    expect(failed[0]?.error?.code).toBe('CONFLICT');
+    const rest = restClient(env);
+    const put = (note: string) => {
+      const { expectedUpdatedAt, id, ...rest_ } = edit(note);
+      return rest.put(`/postels/${id as string}`, {
+        headers: { 'if-match': `"${expectedUpdatedAt as string}"` },
+        body: rest_,
+      });
+    };
+    const responses = await Promise.all([put('dari A'), put('dari B')]);
+    // 412 hanya dijawab untuk galat bertanda `stale: true` pada rute berETag yang dipanggil dengan If-Match.
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 412]);
+    const winner = responses.find((r) => r.status === 200) as Response;
+    const loser = responses.find((r) => r.status === 412) as Response;
+    expect((await jsonOf(loser)).code).toBe('CONFLICT');
     const note = (await rows('SELECT note FROM postels WHERE id = ?', created.id))[0].note;
-    expect(note).toBe(ok[0]?.data?.note);
+    expect(note).toBe((await jsonOf(winner)).note);
     // Hanya satu entri audit perubahan (selain pembuatan).
     expect(await rows("SELECT id FROM audit_log WHERE action = 'postel.update'")).toHaveLength(1);
+  });
+
+  test('simpan dan hapus serentak atas catatan yang sama: keadaan akhir konsisten (tanpa baris yatim)', async () => {
+    for (let round = 0; round < 4; round++) {
+      const created = (await call('postels.save', body(['i1', 'i2'], [`R${round}-1`])))
+        .data as Json;
+      env.clock.advance(1000);
+      const numbers = created.numbers as Json[];
+      const [saved, removed] = await Promise.all([
+        call('postels.save', {
+          id: created.id,
+          expectedUpdatedAt: created.updatedAt,
+          note: `ronde ${round}`,
+          itemIds: ['i1', 'i3'],
+          numbers: [
+            {
+              id: numbers[0].id,
+              number: numbers[0].number,
+              expiresOn: numbers[0].expiresOn,
+              link: numbers[0].link,
+            },
+            { number: `R${round}-2`, expiresOn: '2028-01-01', link: '' },
+          ],
+          attachmentIds: [],
+        }),
+        call('postels.remove', { id: created.id }),
+      ]);
+      // Hapus tidak memeriksa versi: selalu berhasil. Simpan boleh menang lebih dulu atau kalah (NOT_FOUND/basi).
+      expect(removed.ok).toBe(true);
+      if (!saved.ok) expect(['NOT_FOUND', 'CONFLICT']).toContain(saved.error?.code);
+      // Invarian basis data: tidak ada catatan, nomor, atau penunjuk item yang tersisa.
+      expect(await rows('SELECT id FROM postels WHERE id = ?', created.id)).toHaveLength(0);
+      expect(
+        await rows('SELECT id FROM postel_numbers WHERE postel_id = ?', created.id),
+      ).toHaveLength(0);
+      expect(await rows('SELECT id FROM postel_numbers')).toHaveLength(0);
+      expect(await rows("SELECT id FROM items WHERE postel_id <> ''")).toHaveLength(0);
+      // Audit: catatan dihapus tepat sekali.
+      expect(
+        await rows(
+          "SELECT id FROM audit_log WHERE action = 'postel.delete' AND target = ?",
+          `postel:${created.id as string}`,
+        ),
+      ).toHaveLength(1);
+      env.clock.advance(1000);
+    }
   });
 
   test('tiga penyimpanan pertama serentak menghasilkan satu jenis dan satu stiker Postel', async () => {

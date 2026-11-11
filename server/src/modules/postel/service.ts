@@ -48,7 +48,8 @@ import {
   lockPostelRowStmt,
   type PostelNumberRecord,
   type PostelRecord,
-  updatePostelNumberStmt,
+  parkPostelNumberKeyStmt,
+  updatePostelNumberContentStmt,
   updatePostelStmt,
 } from './repo';
 
@@ -116,6 +117,7 @@ async function readPostels(
   user: UserContext,
   records: PostelRecord[],
   ids?: readonly string[],
+  withVisible = true,
 ): Promise<PostelRead> {
   const [numberRows, items, soonDays] = await Promise.all([
     listPostelNumbers(env.DB, ids),
@@ -128,11 +130,14 @@ async function readPostels(
     list.push(row);
     numbers.set(row.postelId, list);
   }
-  const visible = await itemIdsVisibleIn(
-    env.DB,
-    [...items.values()].flatMap((list) => list.map((item) => item.id)),
-    visibleBuIds(user),
-  );
+  // Ringkasan daftar tidak memakai item terlihat: lewati kueri visibilitas.
+  const visible = withVisible
+    ? await itemIdsVisibleIn(
+        env.DB,
+        [...items.values()].flatMap((list) => list.map((item) => item.id)),
+        visibleBuIds(user),
+      )
+    : new Set<string>();
   return { records, numbers, items, visible, soonDays, today: wibDateIso(nowOf(env)) };
 }
 
@@ -201,7 +206,7 @@ function toSummaryDto(record: PostelRecord, read: PostelRead): PostelSummaryDto 
 /** Semua catatan (maks. 500), urut tanggal habis nomor Aktif menaik; penyaringan dan pencarian di klien. */
 export async function listPostels(env: Env, user: UserContext): Promise<PostelListDto> {
   const records = await listPostelRecords(env.DB);
-  const read = await readPostels(env, user, records);
+  const read = await readPostels(env, user, records, undefined, false);
   const summaries = records
     .map((record) => toSummaryDto(record, read))
     .sort(
@@ -239,32 +244,39 @@ function itemTakenMessage(item: { brand: string; model: string }, activeNumber: 
 }
 
 /**
- * Menulis catatan beserta nomor dan pemasangan item dalam SATU transaksi. Penjaga yang gagal (versi usang atau item yang
- * direbut catatan lain pada saat yang sama) membatalkan seluruhnya; bila penyebabnya item yang kini dimiliki catatan
- * lain, pesan menyebut nomor Aktif catatan itu. Nomor kembar (indeks unik) menjadi `CONFLICT` pada `number`.
+ * Menulis catatan beserta nomor dan pemasangan item dalam SATU transaksi. Penjaga yang gagal membatalkan seluruhnya.
+ * Penyebabnya dipilah berurutan: (1) versi catatan sudah berubah (atau catatan hilang) = `staleError`; (2) versi masih
+ * sama dan ada item yang kini dimiliki catatan lain = `CONFLICT` pada `itemIds` dengan nomor Aktif pemilik; (3) selain
+ * itu (item dinonaktifkan atau dihapus di sela pemeriksaan dan batch) = `VALIDATION` generik "Item tidak ditemukan".
+ * Nomor kembar (indeks unik) menjadi `CONFLICT` pada `number`. `expectedUpdatedAt` kosong = catatan baru.
  */
-async function runPostelBatch(
+export async function runPostelBatch(
   env: Env,
   statements: DbStatement[],
   postelId: string,
   claimedIds: readonly string[],
+  expectedUpdatedAt = '',
 ): Promise<void> {
   try {
     await runGuardedBatch(env.DB, statements, staleError);
   } catch (error) {
     const mapped = mapDuplicateError(error, POSTEL_CONFLICTS);
     if (mapped !== error) throw mapped;
-    if (claimedIds.length > 0 && (error as { stale?: boolean }).stale === true) {
-      const now = await findPostelItemsById(env.DB, claimedIds);
-      const taken = claimedIds
-        .map((id) => now.get(id))
-        .find((item) => item !== undefined && item.postelId !== '' && item.postelId !== postelId);
-      if (taken) {
-        const message = itemTakenMessage(taken, await activeNumberOf(env, taken.postelId));
-        throw appError('CONFLICT', message, { itemIds: message });
-      }
+    if ((error as { stale?: boolean }).stale !== true) throw error;
+    if (expectedUpdatedAt !== '') {
+      const current = await findPostelRecord(env.DB, postelId);
+      if (!current || current.updatedAt !== expectedUpdatedAt) throw error;
     }
-    throw error;
+    if (claimedIds.length === 0) throw error;
+    const now = await findPostelItemsById(env.DB, claimedIds);
+    const taken = claimedIds
+      .map((id) => now.get(id))
+      .find((item) => item !== undefined && item.postelId !== '' && item.postelId !== postelId);
+    if (taken) {
+      const message = itemTakenMessage(taken, await activeNumberOf(env, taken.postelId));
+      throw appError('CONFLICT', message, { itemIds: message });
+    }
+    throw fieldFail('itemIds', 'Item tidak ditemukan');
   }
 }
 
@@ -446,7 +458,17 @@ export async function savePostel(
       guardChanged(env.DB),
       // Hapus dulu agar nomor yang dibuang dapat dipakai ulang oleh baris lain pada simpanan yang sama.
       ...removedNumbers.map((entry) => deletePostelNumberStmt(env.DB, entry.id, postelId)),
-      ...updatedNumbers.map((entry) => updatePostelNumberStmt(env.DB, entry)),
+      // Rantai/tukar nomor: kunci yang berubah diparkir dulu (placeholder unik), baru nilai sebenarnya ditulis.
+      ...updatedNumbers
+        .filter((entry) => storedById.get(entry.id)?.numberKey !== entry.numberKey)
+        .map((entry) => parkPostelNumberKeyStmt(env.DB, entry.id, postelId)),
+      ...updatedNumbers.map((entry) =>
+        updatePostelNumberContentStmt(
+          env.DB,
+          entry,
+          storedById.get(entry.id)?.expiresOn !== entry.expiresOn,
+        ),
+      ),
       ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
       ...releaseItemsFromPostelStmt(env.DB, postelId, toRemove),
       ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
@@ -461,6 +483,7 @@ export async function savePostel(
     ],
     postelId,
     toAdd,
+    existing.updatedAt,
   );
   return loadPostelDto(env, actor, postelId);
 }
@@ -470,38 +493,33 @@ export async function savePostel(
  * (stiker tidak pernah dihapus). Pembuangan berkas lampiran menyusul bersama fitur lampiran.
  */
 export async function removePostel(env: Env, id: string, actor: UserContext): Promise<null> {
-  const record = await findPostelRecord(env.DB, id);
-  if (!record) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
-  const [numbers, items] = await Promise.all([
-    listPostelNumbers(env.DB, [id]),
-    listItemsOfPostels(env.DB, [id]),
-  ]);
-  const before = postelSnapshot(
-    record,
-    numbers,
-    (items.get(id) ?? []).length,
-    record.attachments.length,
-  );
-  await runGuardedBatch(
-    env.DB,
-    [
-      // Kunci baris dulu: penyimpan serentak menunggu lalu mendapati catatan sudah hilang (basi).
-      lockPostelRowStmt(env.DB, id),
-      releaseAllItemsFromPostelStmt(env.DB, id),
-      deletePostelNumbersOfStmt(env.DB, id),
-      deletePostelStmt(env.DB, id),
-      // Catatan yang sudah dihapus pemanggil lain: tak ada baris terhapus = batal (tanpa audit ganda).
-      guardChanged(env.DB),
-      writeAudit(env.DB, {
-        ts: nowIso(env),
-        actor: actor.email,
-        action: 'postel.delete',
-        target: postelTarget(id),
-        before,
-        after: null,
-      }),
-    ],
-    () => appError('NOT_FOUND', 'Postel tidak ditemukan'),
-  );
-  return null;
+  // Satu transaksi dengan kunci baris catatan (`FOR UPDATE`) lebih dulu: snapshot audit dibaca SESUDAH kunci, jadi memuat
+  // simpanan serentak yang lebih dulu selesai; penyimpan yang menyusul menunggu lalu mendapati catatan sudah hilang.
+  return env.DB.transaction(async (tx) => {
+    if ((await lockPostelRowStmt(tx, id).first()) === null) {
+      throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+    }
+    const record = await findPostelRecord(tx, id);
+    if (!record) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+    const numbers = await listPostelNumbers(tx, [id]);
+    const items = await listItemsOfPostels(tx, [id]);
+    const before = postelSnapshot(
+      record,
+      numbers,
+      (items.get(id) ?? []).length,
+      record.attachments.length,
+    );
+    await releaseAllItemsFromPostelStmt(tx, id).run();
+    await deletePostelNumbersOfStmt(tx, id).run();
+    await deletePostelStmt(tx, id).run();
+    await writeAudit(tx, {
+      ts: nowIso(env),
+      actor: actor.email,
+      action: 'postel.delete',
+      target: postelTarget(id),
+      before,
+      after: null,
+    }).run();
+    return null;
+  });
 }
