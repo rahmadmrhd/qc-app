@@ -63,7 +63,10 @@ export function StickersPage({
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
-  const systemTypeIds = new Set(types.filter((type) => type.systemKind !== '').map((t) => t.id));
+  // Hanya Manual Book yang punya penjaga "versi terbaru"; stiker jenis sistem lain (Postel) bebas diaktifkan kembali.
+  const manualBookTypeIds = new Set(
+    types.filter((type) => type.systemKind === 'manual_book').map((t) => t.id),
+  );
   const visible = stickers.filter(
     (sticker) =>
       (typeFilter === '' || sticker.typeId === typeFilter) &&
@@ -174,12 +177,12 @@ export function StickersPage({
                         Ubah
                       </Button>
                     ) : null}
-                    {/* Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker jenis sistem
-                        yang nonaktif hanya dapat diaktifkan kembali bila versi TERBARU konfigurasinya (spek 4a §3
-                        butir 15, keputusan pemilik 2026-11-11). */}
+                    {/* Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker Manual Book yang
+                        nonaktif hanya dapat diaktifkan kembali bila versi TERBARU konfigurasinya (spek 4a §3 butir
+                        15, keputusan pemilik 2026-11-11); stiker Postel tidak dibatasi (spek 4b §3 butir 5). */}
                     {canManage &&
                     (sticker.status !== 'inactive' ||
-                      !systemTypeIds.has(sticker.typeId) ||
+                      !manualBookTypeIds.has(sticker.typeId) ||
                       sticker.latestManualBookVersion) ? (
                       <Button
                         size="sm"

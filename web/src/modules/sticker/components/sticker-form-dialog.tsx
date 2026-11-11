@@ -138,8 +138,11 @@ function StickerFormBody({
   ];
   const selectedType = allTypes.find((type) => type.id === typeId);
   const needsBusinessUnits = selectedType?.rule === 'bu';
-  // Stiker jenis sistem (Manual Book, Postel) lahir dari ekspor: hanya alias dan batas minimum yang dapat diubah.
-  const systemLocked = sticker !== undefined && (selectedType?.systemKind ?? '') !== '';
+  // Stiker jenis sistem dikelola aplikasi: nama terkunci. Manual Book (lahir dari ekspor QR) mengunci juga gambarnya;
+  // stiker Postel (satu stiker untuk seluruh catatan) boleh berganti gambar contoh.
+  const systemKind = selectedType?.systemKind ?? '';
+  const systemLocked = sticker !== undefined && systemKind !== '';
+  const imageLocked = sticker !== undefined && systemKind === 'manual_book';
   const buById = new Map(allBus.map((bu) => [bu.id, bu]));
   const selected = new Set(businessUnitIds);
   const termKey = normalizeKey(buTerm);
@@ -301,8 +304,9 @@ function StickerFormBody({
           />
           {systemLocked ? (
             <p className="text-xs text-muted-foreground">
-              Stiker jenis sistem dikelola aplikasi (lahir dari ekspor QR); nama, jenis, dan gambar
-              tidak dapat diubah di sini.
+              {systemKind === 'postel'
+                ? 'Stiker Postel dikelola aplikasi (satu stiker untuk seluruh catatan Postel); nama dan jenis tidak dapat diubah, gambar contoh boleh diganti.'
+                : 'Stiker jenis sistem dikelola aplikasi (lahir dari ekspor QR); nama, jenis, dan gambar tidak dapat diubah di sini.'}
             </p>
           ) : null}
           <FieldError
@@ -329,7 +333,7 @@ function StickerFormBody({
         </div>
         <div className="space-y-1.5">
           <p className="text-sm font-medium">Gambar contoh</p>
-          {systemLocked ? (
+          {imageLocked ? (
             fileId ? (
               <ImageThumb
                 id={fileId}
