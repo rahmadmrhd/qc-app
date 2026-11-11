@@ -5,6 +5,7 @@ import {
   IMAGE_TARGET_BYTES,
   isBase64Text,
   isImageMime,
+  isPostelFileMime,
   MAX_IMAGE_BYTES,
   matchesImageSignature,
   parseFileRef,
@@ -264,5 +265,15 @@ describe('readImageDimensions', () => {
     ]);
     expect(readImageDimensions('image/png', png)).toEqual({ width: 320, height: 240 });
     expect(readImageDimensions('image/png', png.slice(0, 20))).toBeNull();
+  });
+});
+
+describe('isPostelFileMime', () => {
+  test('menerima gambar dan PDF saja', () => {
+    expect(isPostelFileMime('application/pdf')).toBe(true);
+    expect(isPostelFileMime('image/png')).toBe(true);
+    expect(isPostelFileMime('image/gif')).toBe(false);
+    expect(isPostelFileMime('text/html')).toBe(false);
+    expect(isPostelFileMime(undefined)).toBe(false);
   });
 });

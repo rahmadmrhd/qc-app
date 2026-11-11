@@ -17,7 +17,19 @@ export const MAX_UNATTACHED_UPLOADS = 50;
 export const FILE_SCHEME = 'qcfile:';
 
 /** Jenis entitas pemilik berkas. */
-export type FileOwnerType = 'item' | 'qrlogo' | 'sticker' | 'stickerguide';
+export type FileOwnerType = 'item' | 'qrlogo' | 'sticker' | 'stickerguide' | 'postel';
+
+/** Lampiran Postel (stiker 4b): gambar dan PDF. */
+export const POSTEL_FILE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+] as const;
+
+export function isPostelFileMime(value: unknown): value is (typeof POSTEL_FILE_MIME_TYPES)[number] {
+  return typeof value === 'string' && (POSTEL_FILE_MIME_TYPES as readonly string[]).includes(value);
+}
 
 export function isImageMime(value: unknown): value is ImageMime {
   return typeof value === 'string' && (IMAGE_MIME_TYPES as readonly string[]).includes(value);
