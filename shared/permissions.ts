@@ -65,8 +65,8 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     manage: 'Semua akses Ubah, ditambah menonaktifkan item dan mengelola customer.',
   },
   qrcode: {
-    view: 'Melihat konfigurasi label QR, riwayat versi Manual Book, dan mengunduh hasil ekspor.',
-    edit: 'Melihat serta membuat, mengubah, dan mengekspor konfigurasi label (Manual Book) ke Drive.',
+    view: 'Melihat konfigurasi label QR dan mengunduh hasil ekspor.',
+    edit: 'Melihat serta membuat, mengubah, dan mengekspor konfigurasi label (Manual Book) ke Drive, termasuk melihat riwayat versi.',
     manage:
       'Semua akses Ubah, ditambah menghapus konfigurasi serta mengelola preset default per BU dan pustaka logo.',
   },

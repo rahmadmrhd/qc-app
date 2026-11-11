@@ -120,6 +120,9 @@ describe('level per modul', () => {
     expect(levelHint('qrcode', 'edit')).toContain('mengekspor');
     expect(levelHint('qrcode', 'manage')).toContain('preset default');
     expect(levelHint('qrcode', 'manage')).not.toContain('ekspor');
+    // riwayat versi hanya di halaman ubah (butuh Ubah): Lihat tidak menjanjikannya
+    expect(levelHint('qrcode', 'view')).not.toContain('riwayat');
+    expect(levelHint('qrcode', 'edit')).toContain('riwayat versi');
   });
 });
 
