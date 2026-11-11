@@ -25,8 +25,9 @@ const RENAME_FIRST_MESSAGE =
 
 /**
  * Jenis sistem Postel. Bila belum ada: pakai jenis bernama "Postel" yang belum punya stiker (diubah menjadi jenis sistem
- * beraturan `group`); bila namanya ada tetapi sudah berstiker, ditolak agar namanya diganti; selain itu jenis baru
- * dibuat. Aman dipanggil serentak (indeks unik `kind_key` dan nama): pemenang dipakai semua pemanggil.
+ * beraturan `group` dan selalu aktif, seperti semua jenis sistem, juga bila sebelumnya nonaktif); bila namanya ada
+ * tetapi sudah berstiker, ditolak agar namanya diganti; selain itu jenis baru dibuat. Aman dipanggil serentak (indeks
+ * unik `kind_key` dan nama): pemenang dipakai semua pemanggil.
  */
 export async function ensurePostelType(env: Env, actor: ActorRef): Promise<StickerTypeRecord> {
   const types = await listStickerTypeRecords(env.DB);
@@ -47,7 +48,7 @@ export async function ensurePostelType(env: Env, actor: ActorRef): Promise<Stick
         throw appError('VALIDATION', RENAME_FIRST_MESSAGE);
       }
       await env.DB.prepare(
-        "UPDATE sticker_types SET rule = 'group', system_kind = 'postel', updated_at = ?, updated_by = ? WHERE id = ? AND system_kind = '' AND (SELECT COUNT(*) FROM stickers WHERE type_id = ?) = 0",
+        "UPDATE sticker_types SET rule = 'group', system_kind = 'postel', status = 'active', updated_at = ?, updated_by = ? WHERE id = ? AND system_kind = '' AND (SELECT COUNT(*) FROM stickers WHERE type_id = ?) = 0",
       )
         .bind(now, actor.email, sameName.id, sameName.id)
         .run();

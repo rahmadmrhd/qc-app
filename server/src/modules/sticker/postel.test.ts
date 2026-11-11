@@ -96,6 +96,14 @@ describe('ensurePostelType', () => {
     expect(type.systemKind).toBe('postel');
   });
 
+  test('jenis nonaktif bernama Postel yang diadopsi menjadi aktif', async () => {
+    await seedStickerType(env, { id: 't-off', name: 'Postel', rule: 'none', status: 'inactive' });
+    const type = await ensurePostelType(env, admin);
+    expect(type.id).toBe('t-off');
+    expect(type.status).toBe('active');
+    expect(type.systemKind).toBe('postel');
+  });
+
   test('jenis bernama Postel yang sudah berstiker ditolak: ganti nama dulu', async () => {
     await seedStickerType(env, { id: 't-old', name: 'Postel', rule: 'none' });
     await seedSticker(env, { id: 's-old', typeId: 't-old', name: 'Lama' });

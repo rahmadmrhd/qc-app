@@ -394,7 +394,7 @@ describe('postels.save: lampiran', () => {
     expect(JSON.parse(audit[0].after).attachments).toBe(2);
   });
 
-  test('mengubah urutan lampiran tersimpan dan tercatat sebagai perubahan', async () => {
+  test('mengubah urutan lampiran saja tersimpan (updatedAt naik) tanpa entri audit baru; perubahan lain tetap diaudit', async () => {
     const a = await upload(pdf(), 'application/pdf');
     const b = await upload(png(), 'image/png');
     const postel = await createPostel([a.id, b.id]);
@@ -410,6 +410,21 @@ describe('postels.save: lampiran', () => {
     });
     expect(result.ok).toBe(true);
     expect((result.data.attachments as Json[]).map((x) => x.id)).toEqual([b.id, a.id]);
+    expect((result.data.updatedAt as string) > (postel.updatedAt as string)).toBe(true);
+    // before == after pada snapshot (urutan tak tercatat): tidak ada entri `postel.update`
+    expect(await rows("SELECT id FROM audit_log WHERE action = 'postel.update'")).toHaveLength(0);
+    // perubahan lain bersama urutan tetap diaudit
+    const next = await call(EDITOR, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: result.data.updatedAt,
+      ...saveBody([a.id, b.id], {
+        note: 'catatan baru',
+        numbers: [
+          { id: stored[0].id, number: stored[0].number, expiresOn: stored[0].expiresOn, link: '' },
+        ],
+      }),
+    });
+    expect(next.ok).toBe(true);
     expect(await rows("SELECT id FROM audit_log WHERE action = 'postel.update'")).toHaveLength(1);
   });
 

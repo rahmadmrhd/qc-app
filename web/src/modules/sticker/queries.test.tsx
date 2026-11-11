@@ -176,3 +176,30 @@ test('simpan pengaturan Postel: PUT dengan If-Match, hasil dipasang ke cache (bu
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(client.getQueryData(['postel', 'settings'])).toEqual(saved);
 });
+
+test('simpan pengaturan Postel menandai daftar Postel, detail, dan item basi tanpa memuat ulang; pengaturan tetap segar', async () => {
+  const saved = {
+    alert: { enabled: true, recipients: [], sendHour: 8, thresholds: [60], repeatEveryDays: 0 },
+    updatedAt: '2026-11-12 09:00:00',
+    smtpConfigured: true,
+  };
+  fetchMock.mockResolvedValueOnce(
+    new Response(JSON.stringify(saved), { headers: { 'content-type': 'application/json' } }),
+  );
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  client.setQueryData(['postel', 'list'], { postels: [], today: 'x', soonDays: 90 });
+  client.setQueryData(['postel', 'one', 'p1'], { id: 'p1' });
+  client.setQueryData(['items', 'list', 'f'], { items: [] });
+  client.setQueryData(['postel', 'settings'], { ...saved, updatedAt: 'lama' });
+  const { result } = renderHook(() => useSavePostelSettings(), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await result.current.mutateAsync({ expectedUpdatedAt: 'lama', alert: saved.alert });
+  expect(client.getQueryState(['postel', 'list'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['postel', 'one', 'p1'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['items', 'list', 'f'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['postel', 'settings'])?.isInvalidated).toBe(false);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});

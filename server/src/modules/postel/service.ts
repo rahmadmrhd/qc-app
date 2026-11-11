@@ -521,6 +521,16 @@ export async function savePostel(
     return loadPostelDto(env, actor, postelId);
   }
   const before = postelSnapshot(existing, stored, owned.length, existing.attachments.length);
+  // Hanya urutan lampiran yang berubah (himpunan sama, tak ada perubahan lain): snapshot audit tak memuat urutan, jadi
+  // entri `postel.update` akan berisi before == after (perubahan semu). Perubahan tetap disimpan, tanpa entri audit.
+  const reorderOnly =
+    existing.note === input.note &&
+    !numbersChanged &&
+    toAdd.length === 0 &&
+    toRemove.length === 0 &&
+    attachmentsChanged &&
+    JSON.stringify([...input.attachmentIds].sort()) ===
+      JSON.stringify([...existingAttachments].sort());
   await runPostelBatch(
     env,
     [
@@ -543,14 +553,18 @@ export async function savePostel(
       ...releaseItemsFromPostelStmt(env.DB, postelId, toRemove),
       ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
       ...attach.statements,
-      writeAudit(env.DB, {
-        ts: updatedAt,
-        actor: actor.email,
-        action: 'postel.update',
-        target: postelTarget(postelId),
-        before,
-        after,
-      }),
+      ...(reorderOnly
+        ? []
+        : [
+            writeAudit(env.DB, {
+              ts: updatedAt,
+              actor: actor.email,
+              action: 'postel.update',
+              target: postelTarget(postelId),
+              before,
+              after,
+            }),
+          ]),
     ],
     postelId,
     toAdd,

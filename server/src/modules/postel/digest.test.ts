@@ -364,6 +364,24 @@ describe('checkPostelExpiryDigest: klaim mem-pin tanggal habis', () => {
     expect(await stateOf(p.numberId)).toEqual({ threshold: 30, on: TODAY });
   });
 
+  test('nomor yang menjadi Lama antara pembacaan dan klaim (nomor baru ditambahkan): tidak diklaim dan tak masuk surel', async () => {
+    const p = await postel(onDay(30));
+    const restore = beforeFirstClaim(async () => {
+      // seperti postels.save yang menambah nomor baru: nomor yang dibaca sebagai Aktif kini Lama (seq lebih kecil)
+      await env.DB.prepare(
+        "INSERT INTO postel_numbers (id, postel_id, number, number_key, expires_on, link, seq, alert_sent_threshold, alert_sent_on, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, '', 2, NULL, '', ?, ?, 'seed')",
+      )
+        .bind('pt-new', p.id, 'SN-NEW', 'sn new', onDay(400), TODAY, TODAY)
+        .run();
+    });
+    expect(await checkPostelExpiryDigest(env)).toBe('skipped');
+    restore();
+    expect(sent).toHaveLength(0);
+    expect(await stateOf(p.numberId)).toEqual({ threshold: null, on: '' });
+    // nomor Aktif baru (400 hari) belum mencapai ambang: tetap tak ada surel
+    expect(await checkPostelExpiryDigest(env)).toBe('skipped');
+    expect(sent).toHaveLength(0);
+  });
 });
 
 describe('checkPostelExpiryDigest: sanitasi dan penerima', () => {

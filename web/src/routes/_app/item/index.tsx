@@ -39,8 +39,9 @@ function ItemsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const canCreate = canCreateItem(me);
-  // Postel hanya terlihat bagi pemegang `sticker: view` (server juga menyaring); tanpa itu tanda dan filter
-  // disembunyikan, dan `?postel=missing` dari URL diabaikan agar daftar tak tersaring oleh filter yang tak tampak.
+  // Server mengembalikan `hasPostel` dan menerima `postel=` bagi semua pembaca item; penyaringan di sini murni UI:
+  // tanda dan filter Postel hanya tampil bagi pemegang `sticker: view` (tanpa itu disembunyikan), dan
+  // `?postel=missing` dari URL diabaikan agar daftar tak tersaring oleh filter yang tak tampak.
   const canViewPostel = can(me, 'sticker', 'view');
   const filter = {
     ...filterOfSearch(search),
