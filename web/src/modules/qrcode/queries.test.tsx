@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { qrKeys, useDeleteQrDesign, useSaveQrDesign } from './queries';
+import { qrKeys, useClonePreset, useDeleteQrDesign, useSaveQrDesign } from './queries';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -50,4 +50,26 @@ test('hapus QR: dibuang dari daftar dan detail tanpa memuat ulang', async () => 
     'b',
   ]);
   expect(client.getQueryData(qrKeys.one('a'))).toBeUndefined();
+});
+
+test('kloning preset: preset baru dipasang ke cache defaults urut nama tanpa memuat ulang', async () => {
+  const preset = (id: string, name: string) => ({ id, name }) as never;
+  client.setQueryData(qrKeys.defaults, {
+    presets: [preset('a', 'Alfa'), preset('c', 'Charlie')],
+    logoFileIds: [],
+    logoUpdatedAt: '',
+  });
+  apiMock.mockResolvedValue(preset('b', 'Bravo'));
+  const { result } = renderHook(() => useClonePreset(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ id: 'a', buId: 'bu2', name: 'Bravo' });
+  });
+  expect(apiMock).toHaveBeenCalledTimes(1);
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.clonePreset', {
+    id: 'a',
+    buId: 'bu2',
+    name: 'Bravo',
+  });
+  const cached = client.getQueryData(qrKeys.defaults) as { presets: Array<{ id: string }> };
+  expect(cached.presets.map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
 });

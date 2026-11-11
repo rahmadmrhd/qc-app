@@ -12,6 +12,8 @@ import {
 } from './schemas';
 
 const valid = {
+  buId: '',
+  namePlacement: '' as const,
   title: 'Panduan',
   linkSource: 'url' as const,
   link: 'https://contoh.com/a',
@@ -126,8 +128,8 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
     style: DEFAULT_QR_STYLE,
     defaultLogoId: 'b',
-    buId: '',
-    namePlacement: '' as const,
+    buId: 'bu1',
+    namePlacement: 'footer' as const,
     createdAt: 't',
     createdBy: 'x',
     updatedAt: 't',
@@ -159,9 +161,19 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: preset.layout,
     style: preset.style,
     defaultLogoId: 'b',
-    buId: '',
-    namePlacement: 'title',
+    buId: 'bu1',
+    namePlacement: 'footer',
   });
+  // BU dan penempatan nama wajib dipilih pada preset.
+  const noBu = qrPresetFormSchema.safeParse({ ...toPresetFormValues(preset), buId: '' });
+  expect(noBu.success).toBe(false);
+  expect(noBu.error?.issues.map((issue) => issue.message)).toContain('Pilih Business Unit');
+  const noPlacement = qrPresetFormSchema.safeParse({
+    ...toPresetFormValues(preset),
+    namePlacement: '',
+  });
+  expect(noPlacement.success).toBe(false);
+  expect(noPlacement.error?.issues.map((issue) => issue.path[0])).toContain('namePlacement');
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('id');
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('expectedUpdatedAt');
   expect(toPresetFormValues()).toMatchObject({ name: '', title: '', logoFileId: '' });

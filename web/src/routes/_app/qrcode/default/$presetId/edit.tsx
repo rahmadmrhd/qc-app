@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
@@ -17,7 +18,11 @@ import {
 
 export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
-  loader: ({ context }) => context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+    ]),
   component: EditQrPresetPage,
 });
 
@@ -25,6 +30,7 @@ function EditQrPresetPage() {
   const { presetId } = Route.useParams();
   const navigate = useNavigate();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const preset = defaults.presets.find((item) => item.id === presetId);
   // Versi saat halaman dibuka: refetch (mis. setelah unggah) tidak me-reset form; bila pengelola lain sudah
   // menyimpan, server menjawab CONFLICT.
@@ -67,6 +73,10 @@ function EditQrPresetPage() {
         key={loadedAt}
         defaultValues={toPresetFormValues(loaded)}
         logoLibrary={defaults.logoFileIds}
+        businessUnits={businessUnits}
+        takenBuIds={
+          new Set(defaults.presets.filter((item) => item.id !== presetId).map((item) => item.buId))
+        }
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

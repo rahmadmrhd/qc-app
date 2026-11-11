@@ -1,4 +1,5 @@
 import type {
+  ClonePresetInput,
   CloneQrPdfInput,
   ExportQrDesignInput,
   JobDto,
@@ -86,6 +87,17 @@ export const useSaveQrPreset = () =>
                 comparePresets,
               ),
             }
+          : current,
+      );
+    },
+  );
+export const useClonePreset = () =>
+  useQrMutation(
+    (input: ClonePresetInput) => api('qrcodes.clonePreset', input),
+    (queryClient, saved) => {
+      queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
+        current
+          ? { ...current, presets: [...current.presets, saved].sort(comparePresets) }
           : current,
       );
     },

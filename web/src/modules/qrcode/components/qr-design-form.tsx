@@ -1,4 +1,4 @@
-import type { QrDocumentDto, QrPresetDto } from '@shared/contract';
+import type { BusinessUnitOptionDto, QrDocumentDto, QrPresetDto } from '@shared/contract';
 import {
   parseDriveFileId,
   QR_FRAME_KEYS,
@@ -11,13 +11,14 @@ import { useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField } from '@/components/link-field';
+import { NativeSelect } from '@/components/native-select';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
-import { presetOptions } from '../lib/preset-options';
+import { businessUnitOptions, presetOptions } from '../lib/preset-options';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
 import type { PresetApplyParts, QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
 import {
@@ -54,6 +55,10 @@ export interface QrDesignFormProps {
   presets?: readonly QrPresetDto[];
   /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
   updatePresets?: readonly QrPresetDto[];
+  /** Mode `defaults`: BU yang dapat dipilih sebagai pemilik preset. */
+  businessUnits?: readonly BusinessUnitOptionDto[];
+  /** Mode `defaults`: BU yang sudah punya preset lain (tampil nonaktif; satu preset per BU). */
+  takenBuIds?: ReadonlySet<string>;
   submitError?: string | null;
   fieldErrors?: Readonly<Record<string, string | undefined>>;
   onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
@@ -94,6 +99,8 @@ export function QrDesignForm({
   logoLibrary = [],
   presets,
   updatePresets,
+  businessUnits = [],
+  takenBuIds,
   submitError,
   fieldErrors,
   onSubmit,
@@ -117,6 +124,7 @@ export function QrDesignForm({
   const [applyOpen, setApplyOpen] = useState(false);
   const [presetId, setPresetId] = useState('');
   const [presetTerm, setPresetTerm] = useState('');
+  const [buTerm, setBuTerm] = useState('');
   const ready = presets === undefined || presetId !== '';
   const schema = (
     isDefaults ? qrPresetFormSchema : qrDesignFormSchema
@@ -274,6 +282,58 @@ export function QrDesignForm({
         ) : null}
         {ready ? (
           <>
+            {isDefaults ? (
+              <Section title="Business Unit dan nama Manual Book">
+                <form.Field name="buId">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <LinkField
+                        id="qr-preset-bu"
+                        label="Business Unit"
+                        placeholder="Pilih Business Unit…"
+                        value={field.state.value === '' ? null : field.state.value}
+                        labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
+                        options={businessUnitOptions(businessUnits, buTerm, takenBuIds)}
+                        onSearchChange={setBuTerm}
+                        searchDebounceMs={0}
+                        onChange={(id) => field.handleChange(id ?? '')}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Satu BU hanya punya satu konfigurasi default; QR untuk item BU ini
+                        memakainya otomatis.
+                      </p>
+                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.buId]} />
+                    </div>
+                  )}
+                </form.Field>
+                <form.Field name="namePlacement">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="qr-name-placement">Penempatan nama Manual Book</Label>
+                      <NativeSelect
+                        id="qr-name-placement"
+                        value={field.state.value}
+                        onChange={(event) =>
+                          field.handleChange(event.target.value as typeof field.state.value)
+                        }
+                      >
+                        <option value="">Pilih bagian label…</option>
+                        <option value="title">Title</option>
+                        <option value="subtitle">Subtitle</option>
+                        <option value="footer">Footer</option>
+                      </NativeSelect>
+                      <p className="text-xs text-muted-foreground">
+                        Bagian ini diisi nama Manual Book pada QR yang dibuat dari konfigurasi ini
+                        dan terkunci; gaya teksnya tetap dapat diubah.
+                      </p>
+                      <FieldError
+                        errors={[...field.state.meta.errors, fieldErrors?.namePlacement]}
+                      />
+                    </div>
+                  )}
+                </form.Field>
+              </Section>
+            ) : null}
             <Section title="Isi label">
               {isDefaults ? (
                 <form.Field name="name">
@@ -298,12 +358,28 @@ export function QrDesignForm({
                       <Label htmlFor={`qr-${name}`}>
                         {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
                       </Label>
-                      <Input
-                        id={`qr-${name}`}
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
+                      <form.Subscribe selector={(state) => state.values.namePlacement}>
+                        {(placement) => {
+                          const locked = isDefaults && placement === name;
+                          return (
+                            <>
+                              <Input
+                                id={`qr-${name}`}
+                                value={locked ? '' : field.state.value}
+                                placeholder={locked ? 'Diisi nama Manual Book' : undefined}
+                                disabled={locked}
+                                onBlur={field.handleBlur}
+                                onChange={(event) => field.handleChange(event.target.value)}
+                              />
+                              {locked ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Bagian ini diisi nama Manual Book saat QR dibuat.
+                                </p>
+                              ) : null}
+                            </>
+                          );
+                        }}
+                      </form.Subscribe>
                       <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
                       <form.Subscribe
                         selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}
@@ -647,7 +723,11 @@ export function QrDesignForm({
           <form.Subscribe selector={(state) => state.values}>
             {(values) => (
               <PreviewPane
-                values={values}
+                values={
+                  isDefaults && values.namePlacement !== ''
+                    ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
+                    : values
+                }
                 document={document}
                 sheetOpen={sheetOpen}
                 onSheetOpenChange={setSheetOpen}

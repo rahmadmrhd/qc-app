@@ -193,11 +193,18 @@ test('Simpan dan ekspor dinonaktifkan selama isi tidak muat (ekspor pasti ditola
   expect(screen.getByRole('button', { name: 'Simpan dan ekspor' })).toBeDisabled();
 });
 
-test('mode default: tanpa sumber link dan ekspor; nama wajib, title boleh kosong; logo awal dipilih dari pustaka', async () => {
+const BUS = [
+  { id: 'bu1', code: 'SPC', name: 'Spectrum', status: 'active' as const },
+  { id: 'bu2', code: 'NXT', name: 'Nexus', status: 'active' as const },
+  { id: 'bu3', code: 'OLD', name: 'Lama', status: 'inactive' as const },
+];
+
+test('mode default: tanpa sumber link dan ekspor; nama, BU, dan penempatan nama wajib; title boleh kosong; logo awal dari pustaka', async () => {
   const { onSubmit } = renderForm({
     mode: 'defaults',
     canExport: true,
     logoLibrary: ['x'],
+    businessUnits: BUS,
     defaultValues: toPresetFormValues(),
   });
   expect(screen.queryByText('Sumber link')).toBeNull();
@@ -205,9 +212,12 @@ test('mode default: tanpa sumber link dan ekspor; nama wajib, title boleh kosong
   expect(screen.getByText('Logo awal')).toBeInTheDocument();
   expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
-  expect(await screen.findByText('Wajib diisi')).toBeInTheDocument();
+  expect(await screen.findByText('Pilih Business Unit')).toBeInTheDocument();
+  expect(screen.getByText('Pilih bagian label untuk nama Manual Book')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
   await userEvent.type(screen.getByLabelText('Nama konfigurasi default'), 'Standar');
+  await pickLink(screen, 'Business Unit', 'Spectrum');
+  await userEvent.selectOptions(screen.getByLabelText('Penempatan nama Manual Book'), 'subtitle');
   await userEvent.click(screen.getByRole('radio', { name: 'Logo 1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -215,7 +225,34 @@ test('mode default: tanpa sumber link dan ekspor; nama wajib, title boleh kosong
     name: 'Standar',
     title: '',
     logoFileId: 'x',
+    buId: 'bu1',
+    namePlacement: 'subtitle',
   });
+});
+
+test('mode default: BU nonaktif tidak ditawarkan, BU yang sudah punya preset lain nonaktif; bagian terpilih diberi keterangan', async () => {
+  renderForm({
+    mode: 'defaults',
+    businessUnits: BUS,
+    takenBuIds: new Set(['bu2']),
+    defaultValues: toPresetFormValues(),
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Business Unit' }));
+  const listbox = await screen.findByRole('listbox', { name: 'Business Unit' });
+  const options = within(listbox).getAllByRole('option');
+  expect(options.map((option) => option.textContent)).toEqual([
+    expect.stringContaining('Spectrum'),
+    expect.stringContaining('Nexus'),
+  ]);
+  expect(within(listbox).getByRole('option', { name: /Nexus/ })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  await userEvent.keyboard('{Escape}');
+  await userEvent.selectOptions(screen.getByLabelText('Penempatan nama Manual Book'), 'footer');
+  expect(screen.getByLabelText('Footer')).toBeDisabled();
+  expect(screen.getAllByText(/diisi nama Manual Book/i).length).toBeGreaterThan(0);
+  expect(screen.getByLabelText('Title')).toBeEnabled();
 });
 
 const preset = (id: string, name: string, title: string) => ({

@@ -30,6 +30,8 @@ export const QR_FIELD_KEYS = [
 ] as const;
 export const QR_PRESET_FIELD_KEYS = [
   'name',
+  'buId',
+  'namePlacement',
   'title',
   'subtitle',
   'footer',
@@ -107,6 +109,9 @@ const qrFormShape = (titleRequired: boolean, nameRequired: boolean) => ({
     .max(QR_LIMITS.presetName, `Maksimal ${QR_LIMITS.presetName} karakter`)
     .refine((value) => !nameRequired || value !== '', 'Wajib diisi')
     .default(''),
+  /** Hanya konfigurasi default: BU pemilik (satu preset per BU) dan bagian label yang menampung nama Manual Book. */
+  buId: z.string(),
+  namePlacement: z.enum(['title', 'subtitle', 'footer', '']),
   title: text(QR_LIMITS.title, titleRequired),
   linkSource: z.enum(['url', 'pdf']),
   link: z.string().trim().max(QR_LIMITS.link, `Maksimal ${QR_LIMITS.link} karakter`),
@@ -120,7 +125,18 @@ const qrFormShape = (titleRequired: boolean, nameRequired: boolean) => ({
 });
 
 /** Konfigurasi default: tanpa sumber link, nama wajib, title boleh kosong. */
-export const qrPresetFormSchema = z.object(qrFormShape(false, true));
+export const qrPresetFormSchema = z.object(qrFormShape(false, true)).superRefine((value, ctx) => {
+  if (value.buId === '') {
+    ctx.addIssue({ code: 'custom', path: ['buId'], message: 'Pilih Business Unit' });
+  }
+  if (value.namePlacement === '') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['namePlacement'],
+      message: 'Pilih bagian label untuk nama Manual Book',
+    });
+  }
+});
 
 export const qrDesignFormSchema = z.object(qrFormShape(true, false)).superRefine((value, ctx) => {
   if (value.linkSource === 'url') {
@@ -168,6 +184,8 @@ export type QrFormOutput = z.output<typeof qrDesignFormSchema>;
 export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   return {
     name: '',
+    buId: '',
+    namePlacement: '',
     title: design?.title ?? '',
     linkSource: design?.linkSource ?? 'pdf',
     link: design?.linkSource === 'url' ? design.link : '',
@@ -184,6 +202,8 @@ export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
 export function toPresetFormValues(preset?: QrPresetDto): QrFormInput {
   return {
     name: preset?.name ?? '',
+    buId: preset?.buId ?? '',
+    namePlacement: preset?.namePlacement ?? '',
     title: preset?.title ?? '',
     linkSource: 'pdf',
     link: '',
@@ -230,8 +250,6 @@ export function toSaveQrPresetInput(
   values: z.output<typeof qrPresetFormSchema>,
   id?: string,
   expectedUpdatedAt?: string,
-  /** BU pemilik dan penempatan nama; placeholder sampai form preset memilihnya (UI 4a). */
-  owner: Pick<SaveQrPresetInput, 'buId' | 'namePlacement'> = { buId: '', namePlacement: 'title' },
 ): SaveQrPresetInput {
   return {
     ...(id ? { id } : {}),
@@ -243,8 +261,9 @@ export function toSaveQrPresetInput(
     layout: values.layout,
     style: values.style,
     defaultLogoId: values.logoFileId,
-    buId: owner.buId,
-    namePlacement: owner.namePlacement,
+    buId: values.buId,
+    // Skema preset menolak '' (wajib dipilih); cabang '' hanya demi tipe.
+    namePlacement: values.namePlacement === '' ? 'title' : values.namePlacement,
   };
 }
 
