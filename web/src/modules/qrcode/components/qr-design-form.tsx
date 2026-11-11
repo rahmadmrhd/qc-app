@@ -972,6 +972,7 @@ export function QrDesignForm({
       ) : null}
       <ExportChangeWarning
         open={pendingSave !== null}
+        stickerVersion={edit?.stickerVersion ?? 0}
         onCancel={() => setPendingSave(null)}
         onConfirm={() => {
           const pending = pendingSave;

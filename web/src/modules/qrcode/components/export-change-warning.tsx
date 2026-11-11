@@ -14,10 +14,13 @@ import {
  */
 export function ExportChangeWarning({
   open,
+  stickerVersion,
   onConfirm,
   onCancel,
 }: {
   open: boolean;
+  /** Versi stiker terbaru konfigurasi; 0 = diekspor sebelum tahap 4a (belum punya stiker Manual Book). */
+  stickerVersion: number;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -27,10 +30,9 @@ export function ExportChangeWarning({
         <DialogHeader>
           <DialogTitle>Label berubah sejak diekspor</DialogTitle>
           <DialogDescription>
-            Konfigurasi ini sudah pernah diekspor. Bila perubahan label ini diekspor ulang, aplikasi
-            membuat stiker Manual Book baru (versi berikutnya) di katalog, dan stiker versi lama
-            menjadi usang (nonaktif otomatis bila stoknya sudah 0). Alasan perubahan diminta saat
-            ekspor ulang. Menyimpan saja tidak mengubah stiker.
+            {stickerVersion === 0
+              ? 'Konfigurasi ini sudah pernah diekspor sebelum fitur Manual Book berversi, jadi belum punya stiker di katalog. Ekspor berikutnya melahirkan stiker Manual Book versi 1; tidak ada stiker lama yang digantikan dan alasan tidak diminta. Menyimpan saja tidak mengubah stiker.'
+              : `Konfigurasi ini sudah pernah diekspor. Bila perubahan label ini diekspor ulang, aplikasi membuat stiker Manual Book baru (v${stickerVersion + 1}) di katalog, dan stiker v${stickerVersion} menjadi usang (nonaktif otomatis bila stoknya sudah 0). Alasan perubahan diminta saat ekspor ulang. Menyimpan saja tidak mengubah stiker.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

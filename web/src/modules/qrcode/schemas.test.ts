@@ -231,4 +231,6 @@ test('toEditContext: hash ekspor hanya bila pernah diekspor; konfigurasi lama = 
   const exported = toEditContext({ ...design, exportedAt: '2026-11-10T00:00:00.000Z' });
   expect(exported.exportedHash).toBe(qrContentHash(qrContentOfDesign(design)));
   expect(toEditContext({ ...design, name: 'Nama', namePlacement: 'title' }).legacy).toBe(false);
+  expect(toEditContext({ ...design, stickerVersion: 3 }).stickerVersion).toBe(3);
+  expect(toEditContext(design).stickerVersion).toBe(0);
 });

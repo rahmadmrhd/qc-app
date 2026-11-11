@@ -232,6 +232,8 @@ export interface QrEditContext {
   exportedHash: string | null;
   /** Konfigurasi lama tanpa nama/penempatan/stiker: nama dan item boleh kosong sampai dilengkapi. */
   legacy: boolean;
+  /** Versi stiker Manual Book terbaru (0 = belum punya, mis. diekspor sebelum tahap 4a). */
+  stickerVersion: number;
 }
 
 export function toEditContext(design: QrDesignDto): QrEditContext {
@@ -242,6 +244,7 @@ export function toEditContext(design: QrDesignDto): QrEditContext {
     presetId: design.presetId,
     exportedHash: design.exportedAt === '' ? null : qrContentHash(qrContentOfDesign(design)),
     legacy: design.name === '' && design.namePlacement === '' && design.stickerVersion === 0,
+    stickerVersion: design.stickerVersion,
   };
 }
 

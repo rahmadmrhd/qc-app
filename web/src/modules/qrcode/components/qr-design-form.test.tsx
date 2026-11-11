@@ -400,6 +400,7 @@ const EDIT: QrEditContext = {
   presetId: 'p1',
   exportedHash: null,
   legacy: false,
+  stickerVersion: 1,
 };
 
 test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci mengikuti nama; menghapus semua item ditolak', async () => {
@@ -482,6 +483,7 @@ test('ubah konfigurasi lama tanpa nama/item: boleh disimpan kosong (kelonggaran)
       namePlacement: '',
       presetId: '',
       legacy: true,
+      stickerVersion: 0,
     },
     defaultValues: {
       ...toQrFormDefaults(),
@@ -530,6 +532,36 @@ test('peringatan perubahan label: muncul hanya pada konfigurasi yang pernah diek
   expect(second.onSubmit).not.toHaveBeenCalled();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan perubahan' }));
   expect(second.onSubmit).toHaveBeenCalledTimes(1);
+});
+
+test('peringatan untuk konfigurasi yang diekspor sebelum 4a (tanpa versi): tidak menyebut stiker usang, ekspor berikutnya = versi 1', async () => {
+  const base = {
+    ...toQrFormDefaults(),
+    name: 'Nama',
+    itemIds: ['i1'],
+    title: 'Judul',
+    linkSource: 'url' as const,
+    link: 'https://contoh.com',
+  };
+  const exportedHash = qrContentHash({
+    linkSource: 'url',
+    link: 'https://contoh.com',
+    title: 'Judul',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+  });
+  renderForm({
+    edit: { ...EDIT, namePlacement: '', presetId: '', exportedHash, stickerVersion: 0 },
+    defaultValues: base,
+  });
+  await userEvent.type(screen.getByLabelText('Title'), '!');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent(/versi 1/i);
+  expect(dialog).not.toHaveTextContent(/usang/i);
 });
 
 test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {
