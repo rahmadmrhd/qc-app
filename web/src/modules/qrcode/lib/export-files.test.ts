@@ -32,6 +32,9 @@ const PIXEL_PNG =
 type Call = [string, ...unknown[]];
 let calls: Call[];
 let bitmapBlobs: Blob[];
+/** Bila > 0, `toBlob` panggilan KEDUA dst. (gambar contoh; yang pertama = PNG label) menghasilkan blob sebesar ini. */
+let oversizeAfterFirst = 0;
+let blobCalls = 0;
 
 function fakeContext() {
   return new Proxy({} as Record<string, unknown>, {
@@ -50,13 +53,22 @@ function fakeContext() {
 beforeEach(() => {
   calls = [];
   bitmapBlobs = [];
+  oversizeAfterFirst = 0;
+  blobCalls = 0;
   const pixel = base64ToBytes(PIXEL_PNG);
   vi.stubGlobal('document', {
     createElement: () => ({
       width: 0,
       height: 0,
       getContext: () => fakeContext(),
-      toBlob: (done: (blob: Blob) => void) => done(new Blob([pixel], { type: 'image/png' })),
+      toBlob: (done: (blob: Blob) => void) => {
+        blobCalls += 1;
+        done(
+          oversizeAfterFirst > 0 && blobCalls > 1
+            ? new Blob([new Uint8Array(oversizeAfterFirst)], { type: 'image/png' })
+            : new Blob([pixel], { type: 'image/png' }),
+        );
+      },
     }),
   });
   vi.stubGlobal('createImageBitmap', async (blob: Blob) => {
@@ -109,4 +121,9 @@ test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disemat
   const doc = await PDFDocument.load(out.pdf);
   expect(doc.getPageCount()).toBe(1);
   expect(out.pdf.length).toBeGreaterThan(1000);
+});
+
+test('gambar contoh tetap melebihi batas server setelah sisi terkecil: galat jelas, bukan byte kebesaran', async () => {
+  oversizeAfterFirst = QR_LIMITS.previewMaxBytes + 1;
+  await expect(renderExportFiles(design, null)).rejects.toThrow(/gambar contoh/i);
 });

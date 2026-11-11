@@ -40,7 +40,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
  * bila masih terlalu besar, diperkecil bertahap. Tanpa pHYs (bukan berkas cetak).
  */
 async function renderPreview(source: HTMLCanvasElement): Promise<Uint8Array> {
-  let bytes = new Uint8Array(0);
   for (const side of PREVIEW_SIDES) {
     const size = fitPreviewSize(source.width, source.height, side);
     let canvas = source;
@@ -50,10 +49,11 @@ async function renderPreview(source: HTMLCanvasElement): Promise<Uint8Array> {
       canvas.height = size.height;
       canvas.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
     }
-    bytes = new Uint8Array(await (await canvasToBlob(canvas)).arrayBuffer());
+    const bytes = new Uint8Array(await (await canvasToBlob(canvas)).arrayBuffer());
     if (bytes.length <= QR_LIMITS.previewMaxBytes) return bytes;
   }
-  return bytes;
+  // Server menolak gambar contoh yang kebesaran (422): lebih baik gagal jelas di sini daripada setelah mengunggah.
+  throw new Error('Gambar contoh stiker terlalu besar; sederhanakan isi label lalu coba lagi');
 }
 
 /**
