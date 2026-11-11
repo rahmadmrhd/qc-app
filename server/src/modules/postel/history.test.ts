@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { writeAudit } from '@server/core/audit';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
@@ -147,6 +148,54 @@ describe('postels.history', () => {
     }
     const badCursor = await call(ADMIN, 'postels.history', { id: postel.id, cursor: 'rusak' });
     expect(badCursor.error?.code).toBe('VALIDATION');
+  });
+
+  test('kursor dengan dua baris ber-ts SAMA: id menurun, tanpa tumpang tindih atau terlewat', async () => {
+    const postel = await create();
+    const target = `postel:${postel.id as string}`;
+    const ts = '2026-12-01T00:00:00.000Z';
+    for (const note of ['a', 'b']) {
+      await writeAudit(env.DB, {
+        ts,
+        actor: ADMIN,
+        action: 'postel.update',
+        target,
+        before: { note: '' },
+        after: { note },
+      }).run();
+    }
+    const seen: Json[] = [];
+    let cursor: string | undefined;
+    for (let round = 0; round < 3; round++) {
+      const page = (
+        await call(VIEWER, 'postels.history', {
+          id: postel.id,
+          limit: 1,
+          ...(cursor ? { cursor } : {}),
+        })
+      ).data as Json;
+      expect(page.entries).toHaveLength(1);
+      seen.push(page.entries[0]);
+      cursor = page.nextCursor ?? undefined;
+    }
+    expect(cursor).toBeUndefined();
+    expect(seen.map((e) => e.ts).slice(0, 2)).toEqual([ts, ts]);
+    expect(seen.map((e) => [e.action, e.after.note])).toEqual([
+      ['postel.update', 'b'],
+      ['postel.update', 'a'],
+      ['postel.create', ''],
+    ]);
+    expect(new Set(seen.map((e) => e.id)).size).toBe(3);
+  });
+
+  test('snapshot riwayat tanpa identitas item: hanya jumlah item dan lampiran', async () => {
+    const postel = await create({ itemIds: ['i1', 'i2'] });
+    const page = (await call(VIEWER, 'postels.history', { id: postel.id })).data as Json;
+    expect(page.entries[0].after).toMatchObject({ items: 2, attachments: 0 });
+    const text = JSON.stringify(page);
+    for (const secret of ['"i1"', '"i2"', 'PBE', 'M5-400', 'M5-200']) {
+      expect(text).not.toContain(secret);
+    }
   });
 
   test('kabel REST: GET /postels/{id}/history dengan query limit dan cursor', async () => {
