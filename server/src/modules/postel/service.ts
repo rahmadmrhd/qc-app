@@ -3,7 +3,6 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
-import { getSetting } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 import { PAGE_DEFAULT_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
@@ -25,13 +24,13 @@ import type {
 import { normalizeKey } from '@shared/items';
 import {
   daysUntil,
-  POSTEL_ALERT_DEFAULTS,
   POSTEL_LIMITS,
   postelCondition,
   postelName,
   postelRoles,
   wibDateIso,
 } from '@shared/postel';
+import { readPostelAlert } from './alert';
 import {
   loadAttachmentDtos,
   planPostelAttachments,
@@ -69,8 +68,7 @@ export { queryPostelItemOptions } from './items';
 export const POSTEL_STALE_MESSAGE =
   'Postel sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
-/** Kunci pengaturan peringatan Postel di tabel `settings` (JSON; dikelola Konfigurasi Stiker). */
-export const SETTING_POSTEL_ALERT = 'POSTEL_ALERT';
+export { SETTING_POSTEL_ALERT } from './alert';
 
 /** Bentrok indeks unik nomor sertifikat; pesan generik (tidak memuat catatan pemilik nomor itu). */
 const POSTEL_CONFLICTS = {
@@ -86,24 +84,13 @@ function fieldFail(field: string, message: string, code: 'VALIDATION' | 'CONFLIC
 }
 
 /**
- * Ambang "segera habis" = ambang peringatan terbesar di `POSTEL_ALERT`. Pembacaan LONGGAR: pengaturan belum ada,
- * bukan JSON, atau tanpa ambang sah memakai `POSTEL_ALERT_DEFAULTS` (tampilan tak boleh gagal karena pengaturan rusak).
+ * Ambang "segera habis" = ambang peringatan terbesar di `POSTEL_ALERT`. Pembacaan LONGGAR lewat `readPostelAlert`:
+ * pengaturan belum ada, bukan JSON, atau tanpa ambang sah memakai `POSTEL_ALERT_DEFAULTS` (tampilan tak boleh gagal
+ * karena pengaturan rusak).
  */
 export async function postelSoonDays(env: Env): Promise<number> {
-  const fallback = Math.max(...POSTEL_ALERT_DEFAULTS.thresholds);
-  const raw = await getSetting(env, SETTING_POSTEL_ALERT);
-  if (raw === '') return fallback;
-  try {
-    const parsed = JSON.parse(raw) as { thresholds?: unknown } | null;
-    const thresholds = parsed?.thresholds;
-    if (!Array.isArray(thresholds)) return fallback;
-    const valid = thresholds.filter(
-      (value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0,
-    );
-    return valid.length > 0 ? Math.max(...valid) : fallback;
-  } catch {
-    return fallback;
-  }
+  const { alert } = await readPostelAlert(env);
+  return Math.max(...alert.thresholds);
 }
 
 /** Waktu tulis baru yang SELALU lebih besar dari `previous` (agar penjaga `updated_at` tak terkecoh jam yang sama). */

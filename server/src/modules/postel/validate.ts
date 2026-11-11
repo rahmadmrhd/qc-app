@@ -1,3 +1,5 @@
+import { isValidEmail, normalizeEmail } from '@server/core/email';
+import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { PAGE_MAX_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
 import type {
@@ -5,9 +7,11 @@ import type {
   GetPostelInput,
   ListPostelHistoryInput,
   ListPostelItemOptionsInput,
+  PostelAlertSettings,
   RemovePostelInput,
   SavePostelInput,
   SavePostelNumberInput,
+  SavePostelSettingsInput,
   UploadPostelFileInput,
 } from '@shared/contract';
 import {
@@ -17,7 +21,7 @@ import {
   matchesImageBytesSignature,
 } from '@shared/files';
 import { normalizeKey } from '@shared/items';
-import { isCalendarDate, POSTEL_LIMITS } from '@shared/postel';
+import { isCalendarDate, POSTEL_ALERT_DEFAULTS, POSTEL_LIMITS } from '@shared/postel';
 import { isHttpUrl } from '@shared/qrcode';
 import { POSTEL_ITEM_OPTIONS_MAX_LIMIT } from './items';
 
@@ -168,6 +172,97 @@ export function validateListPostelHistory(raw: unknown): ListPostelHistoryInput 
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),
   };
+}
+
+function readPostelAlert(value: unknown, reader: ObjectReader): PostelAlertSettings {
+  const fallback: PostelAlertSettings = {
+    enabled: false,
+    recipients: [],
+    sendHour: POSTEL_ALERT_DEFAULTS.sendHour,
+    thresholds: [...POSTEL_ALERT_DEFAULTS.thresholds],
+    repeatEveryDays: POSTEL_ALERT_DEFAULTS.repeatEveryDays,
+  };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    reader.fail('alert', 'Pengaturan peringatan harus berupa objek');
+    return fallback;
+  }
+  const source = value as Record<string, unknown>;
+  if (typeof source.enabled !== 'boolean') reader.fail('enabled', 'Sakelar harus true atau false');
+  const hour = source.sendHour;
+  if (typeof hour !== 'number' || !Number.isInteger(hour) || hour < 0 || hour > 23) {
+    reader.fail('sendHour', 'Jam harus bilangan bulat 0 sampai 23');
+  }
+  const repeat = source.repeatEveryDays;
+  if (
+    typeof repeat !== 'number' ||
+    !Number.isInteger(repeat) ||
+    repeat < 0 ||
+    repeat > POSTEL_LIMITS.repeatDaysMax
+  ) {
+    reader.fail(
+      'repeatEveryDays',
+      `Pengulangan harus bilangan bulat 0 sampai ${POSTEL_LIMITS.repeatDaysMax} hari`,
+    );
+  }
+  let thresholds = fallback.thresholds;
+  const rawThresholds = source.thresholds;
+  if (
+    !Array.isArray(rawThresholds) ||
+    rawThresholds.length < 1 ||
+    rawThresholds.length > POSTEL_LIMITS.thresholdsMax ||
+    rawThresholds.some(
+      (entry) =>
+        typeof entry !== 'number' ||
+        !Number.isInteger(entry) ||
+        entry < 1 ||
+        entry > POSTEL_LIMITS.thresholdDaysMax,
+    ) ||
+    new Set(rawThresholds).size !== rawThresholds.length
+  ) {
+    reader.fail(
+      'thresholds',
+      `Ambang harus 1-${POSTEL_LIMITS.thresholdsMax} bilangan bulat unik antara 1 dan ${POSTEL_LIMITS.thresholdDaysMax} hari`,
+    );
+  } else {
+    thresholds = [...(rawThresholds as number[])].sort((a, b) => b - a);
+  }
+  const recipients: string[] = [];
+  if (!Array.isArray(source.recipients)) {
+    reader.fail('recipients', 'Penerima harus berupa daftar email');
+  } else if (source.recipients.length > POSTEL_LIMITS.recipientsMax) {
+    reader.fail('recipients', `Maksimal ${POSTEL_LIMITS.recipientsMax} penerima`);
+  } else {
+    const seen = new Set<string>();
+    for (const item of source.recipients) {
+      const email = typeof item === 'string' ? normalizeEmail(item) : '';
+      if (!isValidEmail(email)) {
+        reader.fail('recipients', 'Ada alamat email yang tidak valid');
+        break;
+      }
+      if (seen.has(email)) {
+        reader.fail('recipients', `Email ganda: ${email}`);
+        break;
+      }
+      seen.add(email);
+      recipients.push(email);
+    }
+  }
+  return {
+    enabled: source.enabled === true,
+    recipients,
+    sendHour: typeof hour === 'number' ? hour : fallback.sendHour,
+    thresholds,
+    repeatEveryDays: typeof repeat === 'number' ? repeat : fallback.repeatEveryDays,
+  };
+}
+
+/** `expectedUpdatedAt` boleh kosong/tak ada (penyimpanan pertama; tanpa If-Match). */
+export function validateSavePostelSettings(raw: unknown): SavePostelSettingsInput {
+  const reader = readObject(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
+  const alert = readPostelAlert(reader.raw('alert'), reader);
+  reader.done();
+  return { expectedUpdatedAt, alert };
 }
 
 /** Opsi item untuk pemilih: input boleh kosong; `cursor` buram (kunci item terakhir). */

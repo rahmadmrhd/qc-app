@@ -351,6 +351,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
+  'postelSettings.save': {
+    verb: 'PUT',
+    path: '/postel-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
   'postels.history': {
     verb: 'GET',
     path: '/postels/{id}/history',

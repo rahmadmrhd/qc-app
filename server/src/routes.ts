@@ -93,6 +93,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'postels.save': true,
   'postels.remove': true,
   'postels.history': true,
+  'postelSettings.get': true,
+  'postelSettings.save': true,
   'postels.itemOptions': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,

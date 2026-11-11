@@ -1180,6 +1180,8 @@ export interface ApiContract {
   'postels.save': { input: SavePostelInput; output: PostelDto };
   'postels.remove': { input: RemovePostelInput; output: null };
   'postels.history': { input: ListPostelHistoryInput; output: AuditCursorPageDto };
+  'postelSettings.get': { input: null; output: PostelSettingsDto };
+  'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
@@ -1233,6 +1235,33 @@ export interface ListItemsPageInput {
 export interface ItemPageDto {
   items: ItemSummaryDto[];
   nextCursor: string | null;
+}
+
+/** Pengaturan email peringatan masa berlaku Postel (terpisah dari pengaturan stok stiker). */
+export interface PostelAlertSettings {
+  enabled: boolean;
+  /** Maks. 20 alamat email sah dan unik. */
+  recipients: string[];
+  /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
+  sendHour: number;
+  /** Hari sebelum habis; 1-5 nilai bulat 1-730, unik, disimpan menurun. */
+  thresholds: number[];
+  /** 0 = tidak mengulang; selain itu pengingat ulang tiap N hari di ambang terkecil (maks. 365). */
+  repeatEveryDays: number;
+}
+
+export interface PostelSettingsDto {
+  alert: PostelAlertSettings;
+  /** Versi pengaturan ('' bila belum pernah disimpan). */
+  updatedAt: string;
+  /** Server punya SMTP terkonfigurasi (tanpa itu ringkasan tak terkirim). */
+  smtpConfigured: boolean;
+}
+
+export interface SavePostelSettingsInput {
+  /** `updatedAt` yang dilihat penyimpan ('' bila belum pernah disimpan); usang = galat usang (412 lewat If-Match). */
+  expectedUpdatedAt: string;
+  alert: PostelAlertSettings;
 }
 
 /** Riwayat perubahan satu catatan Postel (log audit per target); halaman terbaru dahulu. */

@@ -1,5 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
+import { getPostelSettings, savePostelSettings } from './alert';
 import { readPostelFile, uploadPostelFile } from './attachments';
 import {
   getPostel,
@@ -16,6 +17,7 @@ import {
   validateListPostelItemOptions,
   validateRemovePostel,
   validateSavePostel,
+  validateSavePostelSettings,
   validateUploadPostelFile,
 } from './validate';
 
@@ -25,6 +27,8 @@ type PostelMethod =
   | 'postels.save'
   | 'postels.remove'
   | 'postels.history'
+  | 'postelSettings.get'
+  | 'postelSettings.save'
   | 'postels.itemOptions'
   | 'postelFiles.upload'
   | 'postelFiles.get';
@@ -56,6 +60,16 @@ export function postelRoutes(): Pick<RouteTable, PostelMethod> {
       permission: { module: 'sticker', level: 'view' },
       validate: validateListPostelHistory,
       handler: (input, ctx) => postelHistory(ctx.env, input.id, input),
+    },
+    'postelSettings.get': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: expectNull,
+      handler: (_input, ctx) => getPostelSettings(ctx.env),
+    },
+    'postelSettings.save': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateSavePostelSettings,
+      handler: (input, ctx) => savePostelSettings(ctx.env, input, ctx.user),
     },
     'postels.itemOptions': {
       permission: { module: 'sticker', level: 'edit' },

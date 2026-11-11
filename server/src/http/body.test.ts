@@ -214,6 +214,19 @@ const WORST: Inputs = {
     })),
     attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
   },
+  'postelSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: longList(
+        POSTEL_LIMITS.recipientsMax,
+        (index) => `u${index}-${'x'.repeat(40)}@contoh.com`,
+      ),
+      sendHour: 23,
+      thresholds: [730, 365, 90, 30, 1],
+      repeatEveryDays: POSTEL_LIMITS.repeatDaysMax,
+    },
+  },
   'qrcodes.savePreset': {
     id: UUID,
     expectedUpdatedAt: STAMP,
