@@ -3,8 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { accessKeys } from '@/modules/access/queries';
+import { itemKeys } from '@/modules/item/queries';
+import { stickerKeys } from '@/modules/sticker/keys';
 import { postelKeys } from './keys';
 import {
+  dropPostelDetail,
   postelHistoryQueryOptions,
   postelListQueryOptions,
   postelQueryOptions,
@@ -102,9 +106,10 @@ test('simpan tidak membuat cache daftar bila belum pernah dimuat', async () => {
   expect(client.getQueryData(postelKeys.list)).toBeUndefined();
 });
 
-test('hapus mengeluarkan catatan dari daftar dan membuang detail', async () => {
+test('hapus mengeluarkan catatan dari daftar tetapi TIDAK membuang detail/riwayat (halaman detail masih ter-mount)', async () => {
   client.setQueryData(postelKeys.list, { ...LIST, postels: [OTHER, { ...OTHER, id: 'p1' }] });
   client.setQueryData(postelKeys.one('p1'), dto());
+  client.setQueryData(postelKeys.history('p1'), { entries: [], nextCursor: null });
   apiMock.mockResolvedValue(null);
   const { result } = renderHook(() => useRemovePostel(), { wrapper });
   await act(() => result.current.mutateAsync({ id: 'p1' }));
@@ -112,5 +117,49 @@ test('hapus mengeluarkan catatan dari daftar dan membuang detail', async () => {
   expect(
     client.getQueryData<PostelListDto>(postelKeys.list)?.postels.map((entry) => entry.id),
   ).toEqual(['p2']);
+  expect(client.getQueryData(postelKeys.one('p1'))).toBeDefined();
+  expect(client.getQueryData(postelKeys.history('p1'))).toBeDefined();
+});
+
+test('dropPostelDetail membuang detail dan riwayat satu catatan saja', () => {
+  client.setQueryData(postelKeys.one('p1'), dto());
+  client.setQueryData(postelKeys.history('p1'), { entries: [], nextCursor: null });
+  client.setQueryData(postelKeys.one('p2'), dto({ id: 'p2' }));
+  dropPostelDetail(client, 'p1');
   expect(client.getQueryData(postelKeys.one('p1'))).toBeUndefined();
+  expect(client.getQueryData(postelKeys.history('p1'))).toBeUndefined();
+  expect(client.getQueryData(postelKeys.one('p2'))).toBeDefined();
+});
+
+const STALE_KEYS = [
+  [...stickerKeys.all, 'list'],
+  [...itemKeys.all, 'page'],
+  [...accessKeys.audit, '', ''],
+] as const;
+
+function seedStaleKeys() {
+  for (const key of STALE_KEYS) client.setQueryData(key, []);
+}
+
+function expectMarkedStale() {
+  expect(apiMock).toHaveBeenCalledTimes(1);
+  for (const key of STALE_KEYS) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+}
+
+test('simpan menandai katalog stiker, item, dan log audit basi tanpa memuat ulang', async () => {
+  seedStaleKeys();
+  apiMock.mockResolvedValue(dto());
+  const { result } = renderHook(() => useSavePostel(), { wrapper });
+  await act(() =>
+    result.current.mutateAsync({ note: '', itemIds: ['i1'], numbers: [], attachmentIds: [] }),
+  );
+  expectMarkedStale();
+});
+
+test('hapus menandai katalog stiker, item, dan log audit basi tanpa memuat ulang', async () => {
+  seedStaleKeys();
+  apiMock.mockResolvedValue(null);
+  const { result } = renderHook(() => useRemovePostel(), { wrapper });
+  await act(() => result.current.mutateAsync({ id: 'p1' }));
+  expectMarkedStale();
 });

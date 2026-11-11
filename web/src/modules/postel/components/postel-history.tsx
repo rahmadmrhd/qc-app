@@ -18,10 +18,14 @@ interface ParsedSnapshot {
   attachments: number | null;
 }
 
+/** `"<nomor> | <tanggal> | <tautan>"`: nomor boleh memuat ' | ', jadi dipecah dari kanan (tautan tanpa spasi). */
+const NUMBER_LINE = /^([\s\S]*) \| (\d{4}-\d{2}-\d{2}) \| (\S*)$/;
+
 function parseNumber(raw: unknown): SnapshotNumber | null {
   if (typeof raw !== 'string') return null;
-  const [number = '', expiresOn = '', ...link] = raw.split(' | ');
-  return { number, expiresOn, link: link.join(' | ') };
+  const match = NUMBER_LINE.exec(raw);
+  if (!match) return { number: raw, expiresOn: '', link: '' };
+  return { number: match[1] ?? '', expiresOn: match[2] ?? '', link: match[3] ?? '' };
 }
 
 function parseSnapshot(snapshot: AuditSnapshot): ParsedSnapshot | null {

@@ -152,3 +152,21 @@ test('bila ada halaman berikutnya, keterangan batas ditampilkan', async () => {
   renderHistory();
   expect(await screen.findByText(/20 perubahan terbaru/)).toBeInTheDocument();
 });
+
+test('nomor yang memuat pemisah " | " dibaca utuh dari kanan', async () => {
+  apiMock.mockResolvedValue({
+    entries: [
+      entry({
+        before: snap(['AB | 1 | 2026-12-01 | ']),
+        after: snap(['AB | 1 | 2027-12-01 | https://x.example']),
+      }),
+    ],
+    nextCursor: null,
+  });
+  renderHistory();
+  const item = (await screen.findAllByRole('listitem'))[0] as HTMLElement;
+  expect(item).toHaveTextContent('Tanggal habis AB | 1:');
+  expect(item).toHaveTextContent('Tautan AB | 1 diubah');
+  expect(item).not.toHaveTextContent('Nomor ditambah');
+  expect(item).not.toHaveTextContent('Nomor dihapus');
+});

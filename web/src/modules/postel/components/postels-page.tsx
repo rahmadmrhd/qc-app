@@ -23,12 +23,17 @@ export interface PostelsPageProps {
   canEdit: boolean;
   onNew: () => void;
   onOpen: (id: string) => void;
+  /**
+   * Tautan halaman catatan (`postelLinkAccess`): bila ada, nama menjadi tautan sungguhan (dapat dibuka di tab baru);
+   * klik biasa tetap memakai `onOpen` (navigasi router tanpa memuat ulang halaman).
+   */
+  openHref?: ((id: string) => string | null) | undefined;
 }
 
 type ConditionFilter = '' | Exclude<PostelCondition, 'valid'>;
 
 const CONDITION_FILTER_OPTIONS: { value: ConditionFilter; label: string }[] = [
-  { value: '', label: 'Semua kondisi' },
+  { value: '', label: 'Semua' },
   { value: 'soon', label: 'Segera habis' },
   { value: 'expired', label: 'Kedaluwarsa' },
 ];
@@ -39,7 +44,7 @@ const COLUMN_COUNT = 8;
  * Daftar catatan Postel (tanpa paginasi: server memberi semua catatan). Kondisi sebuah catatan = kondisi nomor
  * Aktif-nya. Pencarian menyaring nama atau nomor Aktif; urut bawaan tanggal habis nomor Aktif menaik.
  */
-export function PostelsPage({ data, canEdit, onNew, onOpen }: PostelsPageProps) {
+export function PostelsPage({ data, canEdit, onNew, onOpen, openHref }: PostelsPageProps) {
   const [search, setSearch] = useState('');
   const [condition, setCondition] = useState<ConditionFilter>('');
   const term = search.trim().toLowerCase();
@@ -115,13 +120,32 @@ export function PostelsPage({ data, canEdit, onNew, onOpen }: PostelsPageProps) 
             {visible.map((postel) => (
               <TableRow key={postel.id}>
                 <TableCell className="font-medium">
-                  <button
-                    type="button"
-                    className="text-left underline-offset-2 hover:underline"
-                    onClick={() => onOpen(postel.id)}
-                  >
-                    {postel.name}
-                  </button>
+                  {(() => {
+                    const href = openHref?.(postel.id) ?? null;
+                    return href ? (
+                      <a
+                        href={href}
+                        className="underline-offset-2 hover:underline"
+                        onClick={(event) => {
+                          // Klik modifikasi (tab baru, jendela baru) dibiarkan ke peramban.
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+                            return;
+                          event.preventDefault();
+                          onOpen(postel.id);
+                        }}
+                      >
+                        {postel.name}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-left underline-offset-2 hover:underline"
+                        onClick={() => onOpen(postel.id)}
+                      >
+                        {postel.name}
+                      </button>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell className="text-right">{postel.itemCount}</TableCell>
                 <TableCell>{postel.activeNumber}</TableCell>

@@ -204,3 +204,9 @@ test('tanpa lampiran: keterangan belum ada lampiran', () => {
   renderView();
   expect(screen.getByText('Belum ada lampiran.')).toBeInTheDocument();
 });
+
+test('busy menonaktifkan Ubah dan Hapus', () => {
+  renderView({ busy: true });
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+});

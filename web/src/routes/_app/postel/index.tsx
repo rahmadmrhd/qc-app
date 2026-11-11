@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { postelLinkAccess } from '@/lib/link-access';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { PostelsPage } from '@/modules/postel/components/postels-page';
@@ -20,6 +21,7 @@ function PostelListRoute() {
       data={data}
       canEdit={can(me, 'sticker', 'edit')}
       onNew={() => void navigate({ to: '/postel/new' })}
+      openHref={postelLinkAccess(me).openPostelHref}
       onOpen={(id) => void navigate({ to: '/postel/$postelId', params: { postelId: id } })}
     />
   );

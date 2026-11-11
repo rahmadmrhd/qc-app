@@ -1,5 +1,5 @@
 import type { PostelListDto, PostelSummaryDto } from '@shared/contract';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { pickSelect } from '@/test/link-field';
@@ -91,7 +91,7 @@ test('filter kondisi "Segera habis" menyisakan baris soon; "Kedaluwarsa" baris e
   await pickSelect(screen, 'Filter kondisi', 'Kedaluwarsa');
   expect(bodyRows()).toHaveLength(1);
   expect(bodyRows()[0]).toHaveTextContent('Alfa');
-  await pickSelect(screen, 'Filter kondisi', 'Semua kondisi');
+  await pickSelect(screen, 'Filter kondisi', 'Semua');
   expect(bodyRows()).toHaveLength(3);
 });
 
@@ -132,4 +132,23 @@ test('klik nama membuka catatan', async () => {
   const props = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Beta' }));
   expect(props.onOpen).toHaveBeenCalledWith('p-soon');
+});
+
+test('dengan openHref nama menjadi tautan; klik biasa memakai onOpen, klik modifikasi dibiarkan ke peramban', () => {
+  const props = renderPage({ openHref: (id) => `/postel/${id}` });
+  expect(screen.queryByRole('button', { name: 'Beta' })).not.toBeInTheDocument();
+  const link = screen.getByRole('link', { name: 'Beta' });
+  expect(link).toHaveAttribute('href', '/postel/p-soon');
+  // jsdom tidak mengimplementasikan navigasi dokumen: cukup pastikan klik modifikasi tidak dicegat.
+  link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+  fireEvent.click(link, { ctrlKey: true });
+  expect(props.onOpen).not.toHaveBeenCalled();
+  fireEvent.click(link);
+  expect(props.onOpen).toHaveBeenCalledWith('p-soon');
+});
+
+test('openHref yang mengembalikan null (tanpa izin) tetap memakai tombol', () => {
+  renderPage({ openHref: () => null });
+  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Beta' })).toBeInTheDocument();
 });

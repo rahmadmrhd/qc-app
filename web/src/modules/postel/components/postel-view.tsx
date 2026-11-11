@@ -32,6 +32,8 @@ export interface PostelViewProps {
   /** Dipanggil setelah pengguna mengonfirmasi hapus di dialog; galat ditangani pemanggil. */
   onRemove: () => void | Promise<void>;
   onBack?: () => void;
+  /** Hapus sedang berjalan: Ubah, Hapus, dan aksi konfirmasi dinonaktifkan (mencegah klik ganda). */
+  busy?: boolean;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -136,10 +138,17 @@ function AttachmentList({ attachments }: { attachments: readonly PostelAttachmen
 }
 
 /** Tampilan baca satu catatan Postel: nomor sertifikat, item (menurut BU pembaca), catatan, dan lampiran. */
-export function PostelView({ postel, canEdit, onEdit, onRemove, onBack }: PostelViewProps) {
+export function PostelView({
+  postel,
+  canEdit,
+  onEdit,
+  onRemove,
+  onBack,
+  busy = false,
+}: PostelViewProps) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-2xl font-semibold">{postel.name}</h1>
         <div className="flex flex-wrap gap-2">
@@ -148,9 +157,13 @@ export function PostelView({ postel, canEdit, onEdit, onRemove, onBack }: Postel
               Kembali ke daftar
             </Button>
           ) : null}
-          {canEdit ? <Button onClick={onEdit}>Ubah</Button> : null}
           {canEdit ? (
-            <Button variant="ghost" onClick={() => setConfirmRemove(true)}>
+            <Button disabled={busy} onClick={onEdit}>
+              Ubah
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button variant="ghost" disabled={busy} onClick={() => setConfirmRemove(true)}>
               Hapus
             </Button>
           ) : null}
@@ -217,6 +230,7 @@ export function PostelView({ postel, canEdit, onEdit, onRemove, onBack }: Postel
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={busy}
               onClick={() => {
                 setConfirmRemove(false);
                 void onRemove();

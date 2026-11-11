@@ -70,6 +70,11 @@ export const useSavePostel = () =>
     (queryClient, saved) => applySaved(queryClient, saved),
   );
 
+/**
+ * Hapus: daftar langsung dikurangi, tetapi kunci detail/riwayat id itu TIDAK dibuang di sini: halaman detail masih
+ * ter-mount dan akan memuat ulang id yang sudah terhapus. Pemanggil membuangnya (`dropPostelDetail`) setelah menavigasi
+ * keluar dari halaman detail.
+ */
 export const useRemovePostel = () =>
   usePostelMutation(
     (input: RemovePostelInput) => api('postels.remove', input),
@@ -79,7 +84,11 @@ export const useRemovePostel = () =>
           ? { ...current, postels: current.postels.filter((entry) => entry.id !== input.id) }
           : current,
       );
-      queryClient.removeQueries({ queryKey: postelKeys.one(input.id) });
-      queryClient.removeQueries({ queryKey: postelKeys.history(input.id) });
     },
   );
+
+/** Membuang cache detail dan riwayat satu catatan; panggil hanya setelah halaman detailnya tidak ter-mount lagi. */
+export function dropPostelDetail(queryClient: QueryClient, id: string): void {
+  queryClient.removeQueries({ queryKey: postelKeys.one(id) });
+  queryClient.removeQueries({ queryKey: postelKeys.history(id) });
+}
