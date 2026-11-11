@@ -169,8 +169,9 @@ export interface InstructionFilter {
  * berurutan. Pencocokan jenis -> stiker DICERMINKAN dari `stickersForType` (`shared/stickers.ts`; satu definisi
  * dengan tampilan detail, dijaga tes kesepakatan): stiker `active` berjenis itu; aturan jenis `none` = semua,
  * `group` = menurut jenis sistemnya: Manual Book (tahap 4a) hanya stiker versi TERBARU konfigurasi QR item
- * (`items.manual_book_design_id`), Postel (tahap 4b) semua stiker aktif jenis itu bagi item yang tertaut ke catatan Postel
- * yang ada (`HAS_POSTEL_SQL`); jenis `group` tanpa jenis sistem tak pernah cocok; selain itu hanya yang tertaut ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
+ * (`items.manual_book_design_id`), Postel (tahap 4b) semua stiker aktif jenis itu bagi item yang tertaut ke catatan
+ * Postel yang ada (`HAS_POSTEL_SQL`); jenis `group` tanpa jenis sistem tak pernah cocok; selain itu hanya yang tertaut
+ * ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
  *
  * - `instruction: 'none'`: item tanpa satu pun penanda (foto tanpa penanda tidak dihitung).
  * - `stickerId`: "memakai" = penanda langsung ke stiker itu (apa pun statusnya/BU-nya), atau penanda jenis yang

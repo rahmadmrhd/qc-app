@@ -69,8 +69,8 @@ export const STICKER_SYSTEM_KINDS = ['', 'manual_book', 'postel'] as const;
 export type StickerSystemKind = (typeof STICKER_SYSTEM_KINDS)[number];
 
 /**
- * Aturan penentuan stiker yang berlaku bagi sebuah item. `group` (tahap 4a) = menurut kelompok item (Manual Book):
- * hanya jenis sistem yang memakainya; pengguna tidak membuatnya lewat form (lihat `USER_STICKER_RULES`).
+ * Aturan penentuan stiker yang berlaku bagi sebuah item. `group` (tahap 4a) = menurut kelompok item, ditentukan per
+ * jenis sistem (Manual Book, Postel); hanya jenis sistem yang memakainya; pengguna tidak membuatnya lewat form (lihat `USER_STICKER_RULES`).
  */
 export const STICKER_RULES = ['bu', 'none', 'group'] as const;
 export type StickerRule = (typeof STICKER_RULES)[number];
@@ -145,8 +145,9 @@ export interface MatchType {
 /**
  * SATU definisi pencocokan jenis -> stiker bagi sebuah item: hanya stiker `active` berjenis itu (status jenis tidak
  * memengaruhi); aturan `none` = semuanya; aturan `bu` = yang tertaut ke minimal satu BU item (stiker tanpa BU tidak
- * pernah cocok); aturan `group` = yang `id`-nya ada di `groupStickerIds` (stiker Manual Book versi terbaru milik
- * konfigurasi item). Urutan masukan dipertahankan.
+ * pernah cocok); aturan `group` = yang `id`-nya ada di `groupStickerIds`, yang ditentukan pemanggil menurut
+ * `system_kind` jenis (`manual_book` = stiker versi terbaru konfigurasi item; `postel` = stiker jenis itu bila item
+ * tertaut ke catatan Postel yang ada). Urutan masukan dipertahankan.
  */
 export function stickersForType(
   type: MatchType,
