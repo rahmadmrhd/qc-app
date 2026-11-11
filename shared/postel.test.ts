@@ -6,12 +6,15 @@ import {
   daysBetween,
   daysUntil,
   filterPostels,
+  hasControlChars,
   isCalendarDate,
+  isPostelRecipient,
   POSTEL_ALERT_DEFAULTS,
   POSTEL_LIMITS,
   postelCondition,
   postelName,
   postelRoles,
+  stripControlChars,
   wibDateIso,
 } from './postel';
 
@@ -213,5 +216,50 @@ describe('filterPostels dan comparePostels', () => {
     const b = { ...base, id: '2', name: 'A', activeExpiresOn: '2027-01-01' };
     const c = { ...base, id: '3', name: 'A', activeExpiresOn: '2027-01-01' };
     expect(ids([b, c, a].sort(comparePostels))).toEqual(['1', '2', '3']);
+  });
+});
+
+describe('isPostelRecipient', () => {
+  test('menerima satu alamat polos', () => {
+    expect(isPostelRecipient('a@b.co')).toBe(true);
+    expect(isPostelRecipient('nama.belakang+tag@mail.example.com')).toBe(true);
+  });
+  test('menolak banyak penerima, kurung sudut, spasi, dan terlalu panjang', () => {
+    for (const bad of [
+      'x,a@b.co',
+      'a@b.co,c@d.co',
+      'a@b.co;c@d.co',
+      'Nama <a@b.co>',
+      '<a@b.co>',
+      'a@b.co c@d.co',
+      'a@b',
+      'a@b.c',
+      '',
+      `${'a'.repeat(250)}@b.co`,
+    ])
+      expect(isPostelRecipient(bad)).toBe(false);
+  });
+});
+
+describe('hasControlChars dan stripControlChars', () => {
+  test('mendeteksi newline, kontrol, pemisah Unicode, dan bidi', () => {
+    const bad = [
+      'a\nb',
+      'a\rb',
+      'a\tb',
+      'a\u0000b',
+      'a\u007Fb',
+      'a\u0085b',
+      'a\u2028b',
+      'a\u2029b',
+      'a\u202Eb',
+      'a\u2067b',
+    ];
+    for (const text of bad) expect(hasControlChars(text)).toBe(true);
+    expect(hasControlChars('SN-001/AB 12 é')).toBe(false);
+  });
+  test('stripControlChars mengganti dengan spasi tunggal', () => {
+    expect(stripControlChars('SN-1\nBcc: x@y.co\u202E')).toBe('SN-1 Bcc: x@y.co');
+    expect(stripControlChars('aman')).toBe('aman');
   });
 });

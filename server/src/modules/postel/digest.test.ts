@@ -363,6 +363,34 @@ describe('checkPostelExpiryDigest: klaim mem-pin tanggal habis', () => {
     expect(await checkPostelExpiryDigest(env)).toBe('failed');
     expect(await stateOf(p.numberId)).toEqual({ threshold: 30, on: TODAY });
   });
+
+});
+
+describe('checkPostelExpiryDigest: sanitasi dan penerima', () => {
+  test('nomor tersimpan memuat baris baru/bidi tidak memecah baris surel', async () => {
+    const p = await postel(onDay(10));
+    await env.DB.prepare('UPDATE postel_numbers SET number = ? WHERE id = ?')
+      .bind('SN-1\nBcc: x@y.co\u202E', p.numberId)
+      .run();
+    expect(await checkPostelExpiryDigest(env)).toBe('sent');
+    const text = sent[0]?.text ?? '';
+    expect(text).toContain('Nomor sertifikat: SN-1 Bcc: x@y.co');
+    expect(text.split('\n').some((line) => line.startsWith('Bcc'))).toBe(false);
+    expect(text).not.toContain('\u202E');
+  });
+
+  test('penerima tersimpan lama yang bukan satu alamat polos dibuang; semuanya tak sah = dilewati tanpa klaim', async () => {
+    const p = await postel(onDay(30));
+    await configure({ recipients: ['a@x.test', 'x,a@b.co', 'Nama <c@d.co>', 'e@f.test;g@h.test'] });
+    expect(await checkPostelExpiryDigest(env)).toBe('sent');
+    expect(sent[0]?.to).toEqual(['a@x.test']);
+    const q = await postel(onDay(30));
+    await configure({ recipients: ['x,a@b.co', 'Nama <c@d.co>'] });
+    expect(await checkPostelExpiryDigest(env)).toBe('skipped');
+    expect(sent).toHaveLength(1);
+    expect(await stateOf(q.numberId)).toEqual({ threshold: null, on: '' });
+    expect(p.numberId).not.toBe(q.numberId);
+  });
 });
 
 describe('checkPostelExpiryDigest: isi surel', () => {

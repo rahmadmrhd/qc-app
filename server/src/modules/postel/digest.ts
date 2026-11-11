@@ -2,7 +2,14 @@ import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { wibHour } from '@server/modules/backup/names';
 import type { DigestOutcome } from '@server/modules/sticker/digest';
-import { alertDue, daysUntil, postelName, wibDateIso } from '@shared/postel';
+import {
+  alertDue,
+  daysUntil,
+  isPostelRecipient,
+  postelName,
+  stripControlChars,
+  wibDateIso,
+} from '@shared/postel';
 import { readPostelAlert } from './alert';
 import { listItemsOfPostels } from './items';
 import { listPostelNumbers, type PostelNumberRecord } from './repo';
@@ -71,7 +78,9 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
   const mailer = env.MAILER;
   if (!mailer) return 'skipped';
   const { alert } = await readPostelAlert(env);
-  if (!alert.enabled || alert.recipients.length === 0) return 'skipped';
+  // Data lama dapat memuat entri yang bukan satu alamat polos (spek 4b §3 butir 8): hanya yang lolos yang dikirimi.
+  const recipients = alert.recipients.filter(isPostelRecipient);
+  if (!alert.enabled || recipients.length === 0) return 'skipped';
   const now = nowOf(env);
   if (wibHour(now) < alert.sendHour) return 'skipped';
   const today = wibDateIso(now);
@@ -127,17 +136,21 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
     const origin = env.APP_ORIGIN?.replace(/\/+$/, '') ?? '';
     const blocks = won.map((due) => {
       const { record } = due;
-      const name = postelName((itemsByPostel.get(record.postelId) ?? []).map((item) => item.model));
+      // Nomor dan nama disanitasi: baris tersimpan lama dapat memuat baris baru yang memecah badan surel.
+      const number = stripControlChars(record.number);
+      const name = stripControlChars(
+        postelName((itemsByPostel.get(record.postelId) ?? []).map((item) => item.model)),
+      );
       const lines = [
-        `- ${name === '' ? record.number : name}`,
-        `  Nomor sertifikat: ${record.number}`,
+        `- ${name === '' ? number : name}`,
+        `  Nomor sertifikat: ${number}`,
         `  Berlaku sampai: ${record.expiresOn} (${remainingText(due.daysLeft)})`,
       ];
       if (origin !== '') lines.push(`  ${origin}/postel/${record.postelId}`);
       return lines.join('\n');
     });
     await mailer.send({
-      to: alert.recipients,
+      to: recipients,
       subject: `Peringatan masa berlaku Postel: ${won.length} sertifikat`,
       text: `Sertifikat Postel berikut perlu perhatian:\n\n${blocks.join('\n\n')}\n`,
     });

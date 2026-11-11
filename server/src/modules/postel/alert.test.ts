@@ -156,6 +156,13 @@ describe('postelSettings.save', () => {
       ['repeatEveryDays', { repeatEveryDays: 1.5 }],
       ['recipients', { recipients: ['bukan-email'] }],
       ['recipients', { recipients: ['a@x.com', 'A@x.com'] }],
+      // satu entri harus tepat satu alamat polos (header surel tak boleh diselundupi banyak penerima)
+      ['recipients', { recipients: ['x,a@b.co'] }],
+      ['recipients', { recipients: ['a@b.co,c@d.co'] }],
+      ['recipients', { recipients: ['a@b.co;c@d.co'] }],
+      ['recipients', { recipients: ['Nama <a@b.co>'] }],
+      ['recipients', { recipients: ['a@b.co c@d.co'] }],
+      ['recipients', { recipients: [`${'a'.repeat(250)}@b.co`] }],
       [
         'recipients',
         { recipients: Array.from({ length: 21 }, (_, index) => `u${index}@contoh.com`) },

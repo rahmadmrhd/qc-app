@@ -160,6 +160,17 @@ test('email rusak atau ganda menolak penambahan', async () => {
   expect(await screen.findByText('Email sudah ada dalam daftar')).toBeInTheDocument();
 });
 
+test.each(['x,a@b.co', 'a@b.co,c@d.co', 'a@b.co;c@d.co', 'Nama <a@b.co>', 'a@b.co c@d.co'])(
+  '"Email lain" menolak entri yang bukan satu alamat polos: %s',
+  async (entry) => {
+    renderSettings();
+    await userEvent.type(screen.getByLabelText('Email lain'), entry);
+    await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
+    expect(await screen.findByText('Format email tidak valid')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email lain')).toHaveValue(entry);
+  },
+);
+
 test('maksimal 20 penerima', async () => {
   const many = Array.from({ length: 20 }, (_, i) => `u${i}@contoh.com`);
   renderSettings({ settings: { ...settings, alert: { ...settings.alert, recipients: many } } });

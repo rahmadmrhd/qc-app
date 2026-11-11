@@ -57,6 +57,15 @@ test('galat nomor bernomor baris: kosong, terlalu panjang, tanggal, tautan', () 
   ).toContain('Nomor 1: tautan maksimal 2000 karakter');
 });
 
+test('nomor memuat baris baru, kontrol, atau pengatur arah teks ditolak; nomor wajar lolos', () => {
+  for (const number of ['SN-1\nBcc: x', 'SN-1\tX', 'SN-1\u0000X', 'SN-1\u202EX', 'SN-1\u2028X']) {
+    expect(messages(0, values({ numbers: [row({ number })] }))).toContain(
+      'Nomor 1: tidak boleh memuat karakter kontrol atau baris baru',
+    );
+  }
+  expect(messages(0, values({ numbers: [row({ number: 'SN/001.A 12 é' })] }))).toEqual([]);
+});
+
 test('catatan maksimal 1000 karakter; lampiran maksimal 10', () => {
   expect(messages(0, values({ note: 'x'.repeat(1001) }))).toContain(
     'Catatan maksimal 1000 karakter',

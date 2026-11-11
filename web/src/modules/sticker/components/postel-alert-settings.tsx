@@ -1,6 +1,6 @@
 import type { PostelSettingsDto, SavePostelSettingsInput, UserDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import { POSTEL_LIMITS } from '@shared/postel';
+import { isPostelRecipient, POSTEL_LIMITS } from '@shared/postel';
 import { useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
@@ -9,7 +9,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const THRESHOLD_MAX = POSTEL_LIMITS.thresholdDaysMax;
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
@@ -82,7 +81,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
   function addExtra() {
     const email = extra.trim().toLowerCase();
     if (email === '') return;
-    if (!EMAIL_PATTERN.test(email)) {
+    if (!isPostelRecipient(email)) {
       fail('recipients', 'Format email tidak valid');
       return;
     }

@@ -1,4 +1,4 @@
-import { isValidEmail, normalizeEmail } from '@server/core/email';
+import { normalizeEmail } from '@server/core/email';
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { PAGE_MAX_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
@@ -21,7 +21,13 @@ import {
   matchesImageBytesSignature,
 } from '@shared/files';
 import { normalizeKey } from '@shared/items';
-import { isCalendarDate, POSTEL_ALERT_DEFAULTS, POSTEL_LIMITS } from '@shared/postel';
+import {
+  hasControlChars,
+  isCalendarDate,
+  isPostelRecipient,
+  POSTEL_ALERT_DEFAULTS,
+  POSTEL_LIMITS,
+} from '@shared/postel';
 import { isHttpUrl } from '@shared/qrcode';
 import { POSTEL_ITEM_OPTIONS_MAX_LIMIT } from './items';
 
@@ -50,6 +56,7 @@ function readNumberRow(value: unknown): SavePostelNumberInput | string {
   if (trimmed.length > POSTEL_LIMITS.numberMax) {
     return `Nomor sertifikat maksimal ${POSTEL_LIMITS.numberMax} karakter`;
   }
+  if (hasControlChars(trimmed)) return 'tidak boleh memuat karakter kontrol atau baris baru';
   if (normalizeKey(trimmed) === '') return 'Nomor sertifikat harus memuat huruf atau angka';
   if (typeof expiresOn !== 'string' || !isCalendarDate(expiresOn)) {
     return 'Tanggal habis harus tanggal kalender yang sah (YYYY-MM-DD)';
@@ -235,7 +242,7 @@ function readPostelAlert(value: unknown, reader: ObjectReader): PostelAlertSetti
     const seen = new Set<string>();
     for (const item of source.recipients) {
       const email = typeof item === 'string' ? normalizeEmail(item) : '';
-      if (!isValidEmail(email)) {
+      if (!isPostelRecipient(email)) {
         reader.fail('recipients', 'Ada alamat email yang tidak valid');
         break;
       }

@@ -508,6 +508,38 @@ describe('postels.save: nomor', () => {
     expect(result.error?.fields?.numbers).toBeTruthy();
   });
 
+  test.each([
+    ['baris baru', 'SN-1\nBcc: x@y.co'],
+    ['carriage return', 'SN-1\rX'],
+    ['tab', 'SN-1\tX'],
+    ['NUL', 'SN-1\u0000X'],
+    ['DEL', 'SN-1\u007FX'],
+    ['NEL', 'SN-1\u0085X'],
+    ['pemisah baris Unicode', 'SN-1\u2028X'],
+    ['pengatur arah teks (bidi)', 'SN-1\u202EX'],
+  ])('nomor memuat karakter kontrol ditolak: %s', async (_name, number) => {
+    const result = await call(
+      ADMIN,
+      'postels.save',
+      body({ numbers: [{ number, expiresOn: '2027-01-01', link: '' }] }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('VALIDATION');
+    expect(result.error?.fields?.numbers).toBe(
+      'Nomor 1: tidak boleh memuat karakter kontrol atau baris baru',
+    );
+    expect(await rows('SELECT id FROM postel_numbers')).toHaveLength(0);
+  });
+
+  test('nomor wajar (spasi, garis miring, titik, huruf berdiakritik) tetap diterima', async () => {
+    const result = await call(
+      ADMIN,
+      'postels.save',
+      body({ numbers: [{ number: 'SN/001.A 12 é', expiresOn: '2027-01-01', link: '' }] }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
   test('nomor kosong atau lebih dari 50 ditolak; 50 diterima', async () => {
     const empty = await call(ADMIN, 'postels.save', body({ numbers: [] }));
     expect(empty.error?.code).toBe('VALIDATION');

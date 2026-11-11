@@ -1,5 +1,5 @@
 import type { PostelAttachmentDto, PostelDto, SavePostelInput } from '@shared/contract';
-import { isCalendarDate, POSTEL_LIMITS } from '@shared/postel';
+import { hasControlChars, isCalendarDate, POSTEL_LIMITS } from '@shared/postel';
 import { z } from 'zod';
 
 /** Satu baris tabel nomor pada form; `id` hanya ada pada nomor yang sudah tersimpan. */
@@ -66,6 +66,7 @@ function checkNumbers(rows: z.infer<typeof rowSchema>[], ctx: z.RefinementCtx): 
     if (number === '') fail('nomor sertifikat wajib diisi');
     else if (number.length > POSTEL_LIMITS.numberMax)
       fail(`nomor sertifikat maksimal ${POSTEL_LIMITS.numberMax} karakter`);
+    else if (hasControlChars(number)) fail('tidak boleh memuat karakter kontrol atau baris baru');
     if (row.expiresOn === '') fail('tanggal habis wajib diisi');
     else if (!isCalendarDate(row.expiresOn)) fail('tanggal habis tidak valid');
     const link = row.link.trim();
