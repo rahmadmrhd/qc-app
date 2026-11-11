@@ -17,6 +17,7 @@ import {
 } from './api';
 import type { ApiId, ApiInput } from './contract';
 import { MAX_IMAGE_BYTES } from './files';
+import { POSTEL_LIMITS } from './postel';
 import { QR_LIMITS } from './qrcode';
 import { GUIDE_LIMITS } from './stickers';
 
@@ -232,6 +233,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'postels.remove': { id: 'p1' },
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
+  'postelFiles.get': { id: 'f1' },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };
@@ -584,6 +587,10 @@ describe('rute biner', () => {
 
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
+      POSTEL_LIMITS.attachmentMaxBytes,
+    );
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
     // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(

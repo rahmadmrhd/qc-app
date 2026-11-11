@@ -6,11 +6,13 @@ import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { getSetting } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
+import { findActiveFiles } from '@server/modules/files/repo';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemIdsVisibleIn } from '@server/modules/item/repo';
 import { guardChanged, runGuardedBatch } from '@server/modules/qrcode/repo';
 import { ensurePostelSticker } from '@server/modules/sticker/postel';
 import type {
+  PostelAttachmentDto,
   PostelDto,
   PostelListDto,
   PostelNumberDto,
@@ -27,6 +29,12 @@ import {
   postelRoles,
   wibDateIso,
 } from '@shared/postel';
+import {
+  loadAttachmentDtos,
+  planPostelAttachments,
+  purgeReleasedAttachments,
+  releaseAttachmentStmts,
+} from './attachments';
 import { postelSnapshot, postelTarget } from './audit';
 import {
   claimItemsForPostelStmts,
@@ -165,7 +173,11 @@ function postelNameOf(items: readonly PostelItem[]): string {
   return postelName(items.map((item) => item.model));
 }
 
-function toPostelDto(record: PostelRecord, read: PostelRead): PostelDto {
+function toPostelDto(
+  record: PostelRecord,
+  read: PostelRead,
+  attachments: PostelAttachmentDto[],
+): PostelDto {
   const all = read.items.get(record.id) ?? [];
   const shown = all.filter((item) => read.visible.has(item.id));
   return {
@@ -176,8 +188,7 @@ function toPostelDto(record: PostelRecord, read: PostelRead): PostelDto {
     items: shown.map((item) => ({ id: item.id, brand: item.brand, model: item.model })),
     itemCount: all.length,
     hiddenItemCount: all.length - shown.length,
-    // Lampiran dibuka pada tugas berikutnya (berkas Postel); sampai itu daftar selalu kosong.
-    attachments: [],
+    attachments,
     today: read.today,
     soonDays: read.soonDays,
     createdAt: record.createdAt,
@@ -226,7 +237,11 @@ export async function listPostels(env: Env, user: UserContext): Promise<PostelLi
 async function loadPostelDto(env: Env, user: UserContext, id: string): Promise<PostelDto> {
   const record = await findPostelRecord(env.DB, id);
   if (!record) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
-  return toPostelDto(record, await readPostels(env, user, [record], [id]));
+  const [read, attachments] = await Promise.all([
+    readPostels(env, user, [record], [id]),
+    loadAttachmentDtos(env, record.attachments),
+  ]);
+  return toPostelDto(record, read, attachments);
 }
 
 export async function getPostel(env: Env, user: UserContext, id: string): Promise<PostelDto> {
@@ -247,7 +262,8 @@ function itemTakenMessage(item: { brand: string; model: string }, activeNumber: 
  * Menulis catatan beserta nomor dan pemasangan item dalam SATU transaksi. Penjaga yang gagal membatalkan seluruhnya.
  * Penyebabnya dipilah berurutan: (1) versi catatan sudah berubah (atau catatan hilang) = `staleError`; (2) versi masih
  * sama dan ada item yang kini dimiliki catatan lain = `CONFLICT` pada `itemIds` dengan nomor Aktif pemilik; (3) selain
- * itu (item dinonaktifkan atau dihapus di sela pemeriksaan dan batch) = `VALIDATION` generik "Item tidak ditemukan".
+ * itu (item dinonaktifkan atau dihapus di sela pemeriksaan dan batch) = `VALIDATION` generik "Item tidak ditemukan";
+ * (4) lampiran yang direbut simpanan lain atau hilang di sela pemeriksaan dan batch = `VALIDATION` pada `attachmentIds`.
  * Nomor kembar (indeks unik) menjadi `CONFLICT` pada `number`. `expectedUpdatedAt` kosong = catatan baru.
  */
 export async function runPostelBatch(
@@ -256,6 +272,7 @@ export async function runPostelBatch(
   postelId: string,
   claimedIds: readonly string[],
   expectedUpdatedAt = '',
+  claimedFileIds: readonly string[] = [],
 ): Promise<void> {
   try {
     await runGuardedBatch(env.DB, statements, staleError);
@@ -267,16 +284,36 @@ export async function runPostelBatch(
       const current = await findPostelRecord(env.DB, postelId);
       if (!current || current.updatedAt !== expectedUpdatedAt) throw error;
     }
-    if (claimedIds.length === 0) throw error;
-    const now = await findPostelItemsById(env.DB, claimedIds);
-    const taken = claimedIds
-      .map((id) => now.get(id))
-      .find((item) => item !== undefined && item.postelId !== '' && item.postelId !== postelId);
-    if (taken) {
-      const message = itemTakenMessage(taken, await activeNumberOf(env, taken.postelId));
-      throw appError('CONFLICT', message, { itemIds: message });
+    if (claimedIds.length > 0) {
+      const now = await findPostelItemsById(env.DB, claimedIds);
+      const taken = claimedIds
+        .map((id) => now.get(id))
+        .find((item) => item !== undefined && item.postelId !== '' && item.postelId !== postelId);
+      if (taken) {
+        const message = itemTakenMessage(taken, await activeNumberOf(env, taken.postelId));
+        throw appError('CONFLICT', message, { itemIds: message });
+      }
+      if (claimedIds.some((id) => (now.get(id)?.status ?? 'inactive') !== 'active')) {
+        throw fieldFail('itemIds', 'Item tidak ditemukan');
+      }
     }
-    throw fieldFail('itemIds', 'Item tidak ditemukan');
+    if (claimedFileIds.length > 0) {
+      const files = new Map(
+        (await findActiveFiles(env, claimedFileIds)).map((file) => [file.id, file] as const),
+      );
+      const lost = claimedFileIds.some((id) => {
+        const file = files.get(id);
+        return (
+          !file ||
+          (file.ownerType !== '' && !(file.ownerType === 'postel' && file.ownerId === postelId))
+        );
+      });
+      if (lost) {
+        const message = 'Ada lampiran yang tidak dikenal';
+        throw fieldFail('attachmentIds', message);
+      }
+    }
+    throw error;
   }
 }
 
@@ -403,6 +440,18 @@ export async function savePostel(
     throw fieldFail('itemIds', `Maksimal ${POSTEL_LIMITS.itemsMax} item per catatan`);
   }
 
+  // Lampiran: berkas harus unggahan sendiri atau sudah milik catatan ini; selain itu dijawab sama (tak dikenal).
+  const existingAttachments = existing?.attachments ?? [];
+  const attach = await planPostelAttachments(
+    env,
+    postelId,
+    input.attachmentIds,
+    existingAttachments,
+    actor,
+  );
+  const attachmentsChanged =
+    JSON.stringify(input.attachmentIds) !== JSON.stringify(existingAttachments);
+
   const numbersChanged =
     insertedNumbers.length > 0 || updatedNumbers.length > 0 || removedNumbers.length > 0;
   if (
@@ -410,7 +459,8 @@ export async function savePostel(
     existing.note === input.note &&
     !numbersChanged &&
     toAdd.length === 0 &&
-    toRemove.length === 0
+    toRemove.length === 0 &&
+    !attachmentsChanged
   ) {
     // Tanpa perubahan: tidak ada tulisan, audit, atau kenaikan `updatedAt` (versi yang dimuat orang lain tetap sah).
     return loadPostelDto(env, actor, existing.id);
@@ -422,8 +472,7 @@ export async function savePostel(
   const next: PostelRecord = {
     id: postelId,
     note: input.note,
-    // Lampiran dikelola tugas berikutnya; sementara larik tersimpan tak berubah.
-    attachments: existing?.attachments ?? [],
+    attachments: input.attachmentIds,
     createdAt: existing?.createdAt ?? updatedAt,
     updatedAt,
     updatedBy: actor.email,
@@ -436,6 +485,7 @@ export async function savePostel(
         insertPostelStmt(env.DB, next),
         ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
         ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
+        ...attach.statements,
         writeAudit(env.DB, {
           ts: updatedAt,
           actor: actor.email,
@@ -447,6 +497,8 @@ export async function savePostel(
       ],
       postelId,
       toAdd,
+      '',
+      attach.claimedIds,
     );
     return loadPostelDto(env, actor, postelId);
   }
@@ -472,6 +524,7 @@ export async function savePostel(
       ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
       ...releaseItemsFromPostelStmt(env.DB, postelId, toRemove),
       ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
+      ...attach.statements,
       writeAudit(env.DB, {
         ts: updatedAt,
         actor: actor.email,
@@ -484,18 +537,22 @@ export async function savePostel(
     postelId,
     toAdd,
     existing.updatedAt,
+    attach.claimedIds,
   );
+  // Lampiran yang dilepas dibuang dari Drive SETELAH komit (bukan di dalam batch/transaksi yang dapat diulang).
+  await purgeReleasedAttachments(env, attach.released.length);
   return loadPostelDto(env, actor, postelId);
 }
 
 /**
  * Menghapus catatan: melepas semua itemnya dan menghapus nomornya dalam satu batch. Stiker "Postel" dan stoknya tetap
- * (stiker tidak pernah dihapus). Pembuangan berkas lampiran menyusul bersama fitur lampiran.
+ * (stiker tidak pernah dihapus). Lampirannya ditandai `pending_delete` di transaksi yang sama (langsung tak terbaca) dan
+ * berkas Drive-nya dibuang SETELAH komit.
  */
 export async function removePostel(env: Env, id: string, actor: UserContext): Promise<null> {
   // Satu transaksi dengan kunci baris catatan (`FOR UPDATE`) lebih dulu: snapshot audit dibaca SESUDAH kunci, jadi memuat
   // simpanan serentak yang lebih dulu selesai; penyimpan yang menyusul menunggu lalu mendapati catatan sudah hilang.
-  return env.DB.transaction(async (tx) => {
+  const released = await env.DB.transaction(async (tx) => {
     if ((await lockPostelRowStmt(tx, id).first()) === null) {
       throw appError('NOT_FOUND', 'Postel tidak ditemukan');
     }
@@ -510,6 +567,8 @@ export async function removePostel(env: Env, id: string, actor: UserContext): Pr
       record.attachments.length,
     );
     await releaseAllItemsFromPostelStmt(tx, id).run();
+    for (const statement of releaseAttachmentStmts(tx, id, record.attachments))
+      await statement.run();
     await deletePostelNumbersOfStmt(tx, id).run();
     await deletePostelStmt(tx, id).run();
     await writeAudit(tx, {
@@ -520,6 +579,8 @@ export async function removePostel(env: Env, id: string, actor: UserContext): Pr
       before,
       after: null,
     }).run();
-    return null;
+    return record.attachments.length;
   });
+  await purgeReleasedAttachments(env, released);
+  return null;
 }

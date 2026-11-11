@@ -1,5 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
+import { readPostelFile, uploadPostelFile } from './attachments';
 import {
   getPostel,
   listPostels,
@@ -9,9 +10,11 @@ import {
 } from './service';
 import {
   validateGetPostel,
+  validateGetPostelFile,
   validateListPostelItemOptions,
   validateRemovePostel,
   validateSavePostel,
+  validateUploadPostelFile,
 } from './validate';
 
 type PostelMethod =
@@ -19,7 +22,9 @@ type PostelMethod =
   | 'postels.get'
   | 'postels.save'
   | 'postels.remove'
-  | 'postels.itemOptions';
+  | 'postels.itemOptions'
+  | 'postelFiles.upload'
+  | 'postelFiles.get';
 
 /** Postel: baca = `sticker: view`, tulis dan pemilih item = `sticker: edit` (modul global; tanpa BU, spek 4b §3 butir 10). */
 export function postelRoutes(): Pick<RouteTable, PostelMethod> {
@@ -48,6 +53,17 @@ export function postelRoutes(): Pick<RouteTable, PostelMethod> {
       permission: { module: 'sticker', level: 'edit' },
       validate: validateListPostelItemOptions,
       handler: (input, ctx) => queryPostelItemOptions(ctx.env, ctx.user, input),
+    },
+    // Lampiran: izin diperiksa `authorize` SEBELUM badan dibaca; unduhan memeriksa akses sebelum cache isi berkas.
+    'postelFiles.upload': {
+      permission: { module: 'sticker', level: 'edit' },
+      validate: validateUploadPostelFile,
+      handler: (input, ctx) => uploadPostelFile(ctx.env, input, ctx.user),
+    },
+    'postelFiles.get': {
+      permission: { module: 'sticker', level: 'view' },
+      validate: validateGetPostelFile,
+      handler: (input, ctx) => readPostelFile(ctx.env, input, ctx.user),
     },
   };
 }

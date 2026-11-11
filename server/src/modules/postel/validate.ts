@@ -1,11 +1,19 @@
 import { readObject } from '@server/core/validate';
 import type {
+  GetPostelFileInput,
   GetPostelInput,
   ListPostelItemOptionsInput,
   RemovePostelInput,
   SavePostelInput,
   SavePostelNumberInput,
+  UploadPostelFileInput,
 } from '@shared/contract';
+import {
+  isImageMime,
+  isPdfBytes,
+  isPostelFileMime,
+  matchesImageBytesSignature,
+} from '@shared/files';
 import { normalizeKey } from '@shared/items';
 import { isCalendarDate, POSTEL_LIMITS } from '@shared/postel';
 import { isHttpUrl } from '@shared/qrcode';
@@ -109,9 +117,6 @@ export function validateSavePostel(raw: unknown): SavePostelInput {
     )
   ) {
     reader.fail('attachmentIds', `Lampiran maksimal ${POSTEL_LIMITS.attachmentsMax} berkas`);
-  } else if (attachmentIdsRaw.length > 0) {
-    // Lampiran dibuka pada tugas berikutnya (unggah dan pemasangan berkas Postel).
-    reader.fail('attachmentIds', 'Lampiran belum dapat disimpan');
   }
   reader.done();
   return {
@@ -160,4 +165,33 @@ export function validateListPostelItemOptions(raw: unknown): ListPostelItemOptio
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
   };
+}
+
+/**
+ * Unggah lampiran: MIME gambar atau PDF; 1..10 MB; isi diperiksa menurut TANDA TANGAN BYTE (MIME kiriman klien tidak
+ * dipercaya; PDF harus diawali `%PDF-`). Dimensi gambar dibaca di servis.
+ */
+export function validateUploadPostelFile(raw: unknown): UploadPostelFileInput {
+  const reader = readObject(raw);
+  const mime = reader.raw('mime');
+  const bytes = reader.raw('bytes');
+  if (!isPostelFileMime(mime)) reader.fail('mime', 'Hanya JPEG, PNG, WebP, atau PDF');
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+    reader.fail('bytes', 'Isi berkas tidak valid');
+  } else if (bytes.length > POSTEL_LIMITS.attachmentMaxBytes) {
+    reader.fail('bytes', 'Ukuran lampiran maksimal 10 MB');
+  } else if (mime === 'application/pdf') {
+    if (!isPdfBytes(bytes)) reader.fail('bytes', 'Isi berkas bukan PDF');
+  } else if (isImageMime(mime) && !matchesImageBytesSignature(mime, bytes)) {
+    reader.fail('bytes', 'Isi berkas tidak sesuai jenis gambar');
+  }
+  reader.done();
+  return { mime: mime as string, bytes: bytes as Uint8Array };
+}
+
+export function validateGetPostelFile(raw: unknown): GetPostelFileInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: MAX_ID_LENGTH });
+  reader.done();
+  return { id };
 }

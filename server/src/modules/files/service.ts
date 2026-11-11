@@ -27,6 +27,8 @@ export const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  // Lampiran Postel (4b); `files.upload` biasa tetap hanya menerima gambar.
+  'application/pdf': 'pdf',
 };
 
 /**
@@ -128,6 +130,8 @@ export interface FileViewer {
   email: string;
   itemBuIds: readonly string[] | null;
   canReadStickerFiles: boolean;
+  /** Hanya rute lampiran Postel (`sticker: view`): boleh membaca berkas berpemilik `postel`; `files.get` tidak. */
+  canReadPostelFiles?: boolean;
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
@@ -158,13 +162,18 @@ export async function readFile(
 ): Promise<FileContentDto> {
   const record = await findActiveFile(env, input.id);
   if (!record) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  // Lampiran Postel hanya lewat rutenya sendiri (izin `sticker: view`), bukan `files.get`.
+  const isPostel = record.ownerType === 'postel';
+  if (isPostel && viewer.canReadPostelFiles !== true) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
     const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
     const isSticker = record.ownerType === 'sticker' && viewer.canReadStickerFiles;
     // Gambar pustaka stiker (3b-1): pemegang `sticker: view` atau `item: view`, tanpa batas BU.
     const isGuide = record.ownerType === 'stickerguide' && viewer.canReadStickerFiles;
-    if (!isLogo && !isOwnPending && !isSticker && !isGuide)
+    if (!isLogo && !isOwnPending && !isSticker && !isGuide && !isPostel)
       throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   } else if (
     record.ownerType === 'item' &&

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { CAS_FAIL_SQL } from '@server/core/cas';
+import { insertFileStmt } from '@server/modules/files/repo';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { seedPostel } from '@server-test/postel-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -101,5 +103,42 @@ describe('runPostelBatch', () => {
     );
     expect(error.code).toBe('CONFLICT');
     expect(error.fields?.itemIds).toContain('OTHER-NEW');
+  });
+
+  describe('lampiran', () => {
+    const failing = () => [env.DB.prepare(`SELECT ${CAS_FAIL_SQL} AS boom`)];
+    const file = (id: string, ownerType: string, ownerId: string) =>
+      insertFileStmt(env.DB, {
+        id,
+        driveId: 'd',
+        mime: 'application/pdf',
+        size: 1,
+        width: 0,
+        height: 0,
+        ownerType,
+        ownerId,
+        createdAt: SEEDED,
+        createdBy: 'a@gmail.com',
+        status: 'active',
+      }).run();
+
+    test('lampiran hilang atau direbut catatan lain di sela pemeriksaan dan batch: VALIDATION pada attachmentIds', async () => {
+      await file('f-other', 'postel', 'p-other');
+      for (const id of ['f-gone', 'f-other']) {
+        const error = await failureOf(runPostelBatch(env, failing(), 'p-mine', [], SEEDED, [id]));
+        expect(error.code).toBe('VALIDATION');
+        expect(error.fields?.attachmentIds).toBe('Ada lampiran yang tidak dikenal');
+      }
+    });
+
+    test('lampiran masih sah (belum bertuan atau milik catatan ini) dan versi sama: galat tetap stale', async () => {
+      await file('f-free', '', '');
+      await file('f-mine', 'postel', 'p-mine');
+      const error = await failureOf(
+        runPostelBatch(env, failing(), 'p-mine', [], SEEDED, ['f-free', 'f-mine']),
+      );
+      expect(error.code).toBe('CONFLICT');
+      expect(error.stale).toBe(true);
+    });
   });
 });

@@ -530,7 +530,7 @@ describe('postels.save: nomor', () => {
     expect((await call(ADMIN, 'postels.save', body({ note: 'c'.repeat(1000) }))).ok).toBe(true);
   });
 
-  test('lampiran belum tersedia: attachmentIds tidak kosong ditolak', async () => {
+  test('lampiran tak dikenal: attachmentIds ditolak', async () => {
     const result = await call(ADMIN, 'postels.save', body({ attachmentIds: ['f1'] }));
     expect(result.error?.code).toBe('VALIDATION');
     expect(result.error?.fields?.attachmentIds).toBeTruthy();

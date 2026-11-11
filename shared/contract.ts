@@ -1067,6 +1067,22 @@ export interface PostelItemOptionsPageDto {
   nextCursor: string | null;
 }
 
+/** Unggah lampiran Postel: byte mentah sebagai badan, MIME sebagai Content-Type (gambar atau PDF). */
+export interface UploadPostelFileInput {
+  mime: string;
+  bytes: Uint8Array;
+}
+export interface GetPostelFileInput {
+  id: string;
+}
+export interface PostelFileContentDto {
+  id: string;
+  mime: string;
+  bytes: Uint8Array;
+  /** Nama unduhan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  filename: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -1146,6 +1162,8 @@ export interface ApiContract {
   'postels.save': { input: SavePostelInput; output: PostelDto };
   'postels.remove': { input: RemovePostelInput; output: null };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
+  'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }

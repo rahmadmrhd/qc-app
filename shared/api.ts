@@ -350,6 +350,32 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'postelFiles.upload': {
+    verb: 'POST',
+    path: '/postel-files',
+    status: 201,
+    location: '/postel-files/{id}',
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 10_485_760, // = POSTEL_LIMITS.attachmentMaxBytes = MAX_IMAGE_BYTES
+      tooLarge: 'Ukuran lampiran maksimal 10 MB',
+    },
+  },
+  'postelFiles.get': {
+    verb: 'GET',
+    path: '/postel-files/{id}',
+    etag: 'id',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      echo: ['id'],
+      cache: 'immutable',
+    },
+  },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',
