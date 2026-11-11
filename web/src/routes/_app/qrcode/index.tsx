@@ -21,7 +21,7 @@ import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
-import { isStaleExportError } from '@/modules/qrcode/lib/export-error';
+import { shouldRefreshAfterExportError } from '@/modules/qrcode/lib/export-error';
 import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
 import {
   qrDesignsQueryOptions,
@@ -83,9 +83,10 @@ function QrCodesPage() {
         onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
       });
     } catch (error) {
-      // DTO di dialog basi (versi usang, atau label berubah sehingga alasan kini wajib): muat ulang agar dialog
+      // DTO di dialog basi (versi usang, label berubah sehingga alasan kini wajib, atau job gagal di langkah komit
+      // karena konfigurasi diubah selama job): muat ulang agar dialog
       // memakai data terbaru (kotak alasan muncul bila perlu), lalu teruskan galat ke dialog.
-      if (isStaleExportError(error)) {
+      if (shouldRefreshAfterExportError(error)) {
         const fresh = await refreshQrDesign(queryClient, design.id).catch(() => null);
         if (fresh) setExporting(fresh);
       }
