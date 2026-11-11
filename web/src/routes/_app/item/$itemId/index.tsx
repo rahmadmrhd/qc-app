@@ -2,8 +2,8 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
-import { manualBookLinkAccess } from '@/lib/link-access';
-import { canEditItem, canManageItem, requirePermission } from '@/modules/auth/permissions';
+import { manualBookLinkAccess, postelLinkAccess } from '@/lib/link-access';
+import { can, canEditItem, canManageItem, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { ItemDetailView } from '@/modules/item/components/item-detail-view';
 import { itemQueryOptions, useSetItemStatus } from '@/modules/item/queries';
@@ -41,6 +41,9 @@ function ItemDetailPage() {
       canManage={canManageItem(me, item)}
       statusPending={setStatus.isPending}
       openManualBookHref={manualBookLinkAccess(me).openManualBookHref}
+      // `item.postel` bernilai null juga bagi user tanpa `sticker: view`: bagian disembunyikan lewat undefined.
+      postel={can(me, 'sticker', 'view') ? item.postel : undefined}
+      openPostelHref={postelLinkAccess(me).openPostelHref}
       onBack={() => void navigate({ to: '/item' })}
       onEdit={() => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
       onToggleStatus={toggleStatus}

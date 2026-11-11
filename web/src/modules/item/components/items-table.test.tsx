@@ -152,3 +152,24 @@ test('tanda "Belum ada QR Manual Book" hanya untuk item aktif tanpa Manual Book,
     'Belum ada instruksi stiker',
   );
 });
+
+test('tanda "Belum ada Postel" hanya untuk item aktif tanpa Postel dan hanya dengan showPostel', () => {
+  const withPostel: ItemSummaryDto = {
+    ...withManualBook,
+    id: 'i4',
+    brand: 'Juniper',
+    hasPostel: true,
+  };
+  renderTable({ items: [...items, withPostel], showPostel: true });
+  const marks = screen.getAllByText('Belum ada Postel');
+  // i1 aktif tanpa Postel; i2 nonaktif (tanpa tanda); i4 sudah punya Postel
+  expect(marks).toHaveLength(1);
+  expect(screen.getByRole('row', { name: /Ubiquiti/ })).toContainElement(marks[0] as HTMLElement);
+  expect(screen.getByRole('row', { name: /Mikrotik/ })).not.toHaveTextContent('Belum ada Postel');
+  expect(screen.getByRole('row', { name: /Juniper/ })).not.toHaveTextContent('Belum ada Postel');
+});
+
+test('tanpa showPostel (tanpa sticker view) tanda Postel tidak tampil', () => {
+  renderTable();
+  expect(screen.queryByText('Belum ada Postel')).not.toBeInTheDocument();
+});

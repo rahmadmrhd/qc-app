@@ -5,16 +5,19 @@ import { Button } from '@/components/ui/button';
 import type { ItemListFilter } from '../queries';
 
 type FilterPatch = Partial<
-  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'>
+  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel'>
 >;
 
 export interface ItemFiltersProps {
-  filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'>;
+  filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'> &
+    Partial<Pick<ItemListFilter, 'postel'>>;
   /** Katalog untuk filter stiker/jenis; tidak dipakai bila `showStickerFilter` false. */
   stickers: readonly StickerDto[];
   types: readonly StickerTypeDto[];
   /** False bila user tak boleh membaca katalog: filter stiker/jenis dan mode disembunyikan. */
   showStickerFilter?: boolean;
+  /** True bila user boleh melihat Postel (`sticker: view`): menampilkan filter "Belum ada Postel". */
+  showPostelFilter?: boolean;
   onChange: (patch: FilterPatch) => void;
 }
 
@@ -61,6 +64,7 @@ export function ItemFilters({
   stickers,
   types,
   showStickerFilter = true,
+  showPostelFilter = false,
   onChange,
 }: ItemFiltersProps) {
   const groups = showStickerFilter ? groupByType(stickers, types) : [];
@@ -78,7 +82,8 @@ export function ItemFilters({
     filter.instruction !== 'all' ||
     filter.stickerKey !== '' ||
     filter.stickerMode !== 'has' ||
-    filter.manualBook !== 'all';
+    filter.manualBook !== 'all' ||
+    (filter.postel ?? 'all') !== 'all';
 
   return (
     <>
@@ -106,6 +111,20 @@ export function ItemFilters({
         value={filter.manualBook}
         onValueChange={(next) => onChange({ manualBook: next as 'all' | 'missing' })}
       />
+      {showPostelFilter ? (
+        <Select
+          id="item-filter-postel"
+          label="Filter Postel"
+          hideLabel
+          className="sm:w-48"
+          options={[
+            { value: 'all', label: 'Semua item' },
+            { value: 'missing', label: 'Belum ada Postel' },
+          ]}
+          value={filter.postel ?? 'all'}
+          onValueChange={(next) => onChange({ postel: next as 'all' | 'missing' })}
+        />
+      ) : null}
       {showStickerFilter ? (
         <LinkField
           id="item-filter-sticker"
@@ -151,6 +170,7 @@ export function ItemFilters({
               stickerKey: '',
               stickerMode: 'has',
               manualBook: 'all',
+              postel: 'all',
             })
           }
         >

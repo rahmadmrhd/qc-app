@@ -61,3 +61,10 @@ test('aksi audit preset QR, katalog stiker, dan pengaturan stiker berlabel Indon
   }
   expect(auditActionLabel('sticker.settings')).toBe('Konfigurasi stiker diubah');
 });
+
+test('aksi audit postel.* berlabel Indonesia', () => {
+  expect(auditActionLabel('postel.create')).toBe('Postel dibuat');
+  expect(auditActionLabel('postel.update')).toBe('Postel diubah');
+  expect(auditActionLabel('postel.delete')).toBe('Postel dihapus');
+  expect(auditActionLabel('postel.settings')).toBe('Konfigurasi Postel diubah');
+});

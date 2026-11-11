@@ -47,6 +47,8 @@ function ItemsPage() {
   const stickers = useQuery({ ...stickersQuery(), enabled: canReadCatalog, retry: false });
   const types = useQuery({ ...stickerTypesQuery(), enabled: canReadCatalog, retry: false });
   const showStickerFilter = canReadCatalog && stickers.isSuccess && types.isSuccess;
+  // Postel hanya terlihat bagi pemegang `sticker: view` (server juga menyaring); tanpa itu tanda dan filter disembunyikan.
+  const canViewPostel = can(me, 'sticker', 'view');
   const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
   const [text, setText] = useUrlSyncedText(
@@ -110,6 +112,7 @@ function ItemsPage() {
           stickers={stickers.data ?? []}
           types={types.data ?? []}
           showStickerFilter={showStickerFilter}
+          showPostelFilter={canViewPostel}
           onChange={(patch) =>
             void navigate({
               search: (prev) => ({ ...prev, ...searchPatchOf(patch) }),
@@ -128,6 +131,7 @@ function ItemsPage() {
         canEdit={(item) => canEditItem(me, item)}
         canManage={(item) => canManageItem(me, item)}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
+        showPostel={canViewPostel}
         onOpen={(item) => void navigate({ to: '/item/$itemId', params: { itemId: item.id } })}
         onEdit={(item) => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
         onToggleStatus={toggleStatus}

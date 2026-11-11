@@ -21,6 +21,7 @@ test('search params memetakan pencarian, status, instruksi, stiker/jenis, dan mo
     stickerKey: 's:st1',
     stickerMode: 'missing',
     manualBook: 'all',
+    postel: 'all',
   });
   expect(filterOfSearch(itemsSearchSchema.parse({ sticker: 't:ty1' })).stickerKey).toBe('t:ty1');
 });
@@ -60,4 +61,13 @@ test('manualBook=missing dipetakan ke filter; nilai lain dibuang dan bawaan tida
   expect(DEFAULT_ITEM_FILTER.manualBook).toBe('all');
   expect(searchPatchOf({ manualBook: 'missing' })).toEqual({ manualBook: 'missing' });
   expect(searchPatchOf({ manualBook: 'all' })).toEqual({ manualBook: undefined });
+});
+
+test('postel=missing dipetakan ke filter; nilai lain dibuang dan bawaan tidak ditulis ke URL', () => {
+  expect(filterOfSearch(itemsSearchSchema.parse({ postel: 'missing' })).postel).toBe('missing');
+  expect(filterOfSearch(itemsSearchSchema.parse({ postel: 'has' })).postel).toBe('all');
+  expect(filterOfSearch(itemsSearchSchema.parse({ postel: 'x' })).postel).toBe('all');
+  expect(DEFAULT_ITEM_FILTER.postel).toBe('all');
+  expect(searchPatchOf({ postel: 'missing' })).toEqual({ postel: 'missing' });
+  expect(searchPatchOf({ postel: 'all' })).toEqual({ postel: undefined });
 });
