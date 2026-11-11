@@ -62,6 +62,7 @@ export function StickersPage({
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
+  const systemTypeIds = new Set(types.filter((type) => type.systemKind !== '').map((t) => t.id));
   const visible = stickers.filter(
     (sticker) =>
       (typeFilter === '' || sticker.typeId === typeFilter) &&
@@ -170,16 +171,18 @@ export function StickersPage({
                         Ubah
                       </Button>
                     ) : null}
-                    {/* Usang hanya dapat nonaktif (server menolak mengaktifkannya): tanpa tombol status. */}
-                    {canManage && sticker.status !== 'deprecated' ? (
+                    {/* Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker jenis sistem
+                        juga hanya boleh menjadi nonaktif (spek 4a §3 butir 15). */}
+                    {canManage &&
+                    (sticker.status !== 'inactive' || !systemTypeIds.has(sticker.typeId)) ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        aria-label={`${sticker.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${label}`}
+                        aria-label={`${sticker.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'} ${label}`}
                         disabled={pendingStatusId === sticker.id}
                         onClick={() => onToggleStatus(sticker)}
                       >
-                        {sticker.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+                        {sticker.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'}
                       </Button>
                     ) : null}
                   </TableCell>

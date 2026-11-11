@@ -443,16 +443,16 @@ const manualBookStickers: StickerDto[] = [
   }),
 ];
 
-test('status Usang tampil sebagai badge, dapat disaring, dan tidak punya tombol Aktifkan', async () => {
+test('status Usang tampil sebagai badge, dapat disaring, dan hanya dapat dinonaktifkan (tanpa Aktifkan)', async () => {
   renderPage({
     stickers: [...stickers, ...manualBookStickers],
     types: [...types, manualBookType],
   });
   const usang = screen.getByRole('row', { name: /PBE M5-400 v1/ });
   expect(within(usang).getByText('Usang')).toBeInTheDocument();
-  // Usang hanya dapat menjadi nonaktif: tak ada tombol Aktifkan maupun Nonaktifkan untuknya.
+  // Usang bertahan "sampai stok 0 atau dinonaktifkan manual" (spek 4a): hanya ada Nonaktifkan.
   expect(screen.queryByRole('button', { name: 'Aktifkan PBE M5-400 v1' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Nonaktifkan PBE M5-400 v1' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Nonaktifkan PBE M5-400 v1' })).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Filter status'), 'deprecated');
   expect(screen.getByRole('row', { name: /PBE M5-400 v1/ })).toBeInTheDocument();
   expect(screen.queryByRole('row', { name: /PBE M5-400 v2/ })).toBeNull();
@@ -493,4 +493,33 @@ test('ubah stiker jenis sistem: nama, jenis, dan gambar terkunci; minimum dan al
     minQty: 30,
     businessUnitIds: [],
   });
+});
+
+test('Nonaktifkan stiker Usang memanggil onToggleStatus dengan stikernya', async () => {
+  const { onToggleStatus } = renderPage({
+    stickers: manualBookStickers,
+    types: [manualBookType],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan PBE M5-400 v1' }));
+  expect(onToggleStatus).toHaveBeenCalledWith(manualBookStickers[0]);
+});
+
+test('stiker jenis sistem yang nonaktif tidak punya tombol Aktifkan (hanya boleh menjadi nonaktif)', () => {
+  renderPage({
+    stickers: [
+      sticker({
+        id: 'mb3',
+        typeId: 'tp-mb',
+        typeName: 'Manual Book',
+        name: 'PBE M5-400 v3',
+        businessUnitIds: [],
+        status: 'inactive',
+      }),
+      ...stickers,
+    ],
+    types: [...types, manualBookType],
+  });
+  expect(screen.queryByRole('button', { name: 'Aktifkan PBE M5-400 v3' })).toBeNull();
+  // stiker biasa yang nonaktif tetap dapat diaktifkan
+  expect(screen.getByRole('button', { name: 'Aktifkan Segel Polos' })).toBeInTheDocument();
 });

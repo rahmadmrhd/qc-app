@@ -15,6 +15,7 @@ import {
 import { StickersPage } from '@/modules/sticker/components/stickers-page';
 import { stickerKeys } from '@/modules/sticker/keys';
 import { isStaleSaveError } from '@/modules/sticker/lib/stale';
+import { nextStickerStatus } from '@/modules/sticker/lib/status';
 import {
   stickersQuery,
   stickerTypesQuery,
@@ -61,7 +62,7 @@ function StickersRoute() {
   }
 
   function toggleStatus(sticker: StickerDto) {
-    const status = sticker.status === 'active' ? 'inactive' : 'active';
+    const status = nextStickerStatus(sticker.status);
     setStatus.mutate(
       { id: sticker.id, status },
       {
