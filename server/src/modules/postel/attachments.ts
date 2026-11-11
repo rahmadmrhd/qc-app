@@ -8,7 +8,7 @@ import { findActiveFile, findActiveFiles } from '@server/modules/files/repo';
 import {
   EXTENSIONS,
   planAttachFiles,
-  purgePendingFiles,
+  purgePendingFilesById,
   readFile,
   uploadFile,
 } from '@server/modules/files/service';
@@ -20,6 +20,7 @@ import type {
 } from '@shared/contract';
 import { isImageMime, readImageDimensions } from '@shared/files';
 import { hasLevel } from '@shared/permissions';
+import { POSTEL_LIMITS } from '@shared/postel';
 
 /**
  * Lampiran catatan Postel (gambar dan PDF): berkas biasa di tabel `files` dengan pemilik `postel` (`owner_id` =
@@ -77,12 +78,21 @@ export async function uploadPostelFile(
       const message = 'Dimensi gambar tidak terbaca';
       throw appError('VALIDATION', message, { bytes: message });
     }
+    // Sebelum menulis ke Drive: dimensi di luar batas wajar (header yang menipu) ditolak.
+    if (
+      dimensions.width > POSTEL_LIMITS.attachmentSideMax ||
+      dimensions.height > POSTEL_LIMITS.attachmentSideMax
+    ) {
+      const message = `Sisi gambar maksimal ${POSTEL_LIMITS.attachmentSideMax} piksel`;
+      throw appError('VALIDATION', message, { bytes: message });
+    }
     ({ width, height } = dimensions);
   }
   const file = await uploadFile(
     env,
     { mime: input.mime, bytes: input.bytes, width, height },
     actor,
+    'Terlalu banyak lampiran yang belum dipakai. Simpan catatan Postel yang sedang diedit terlebih dulu.',
   );
   return toAttachmentDto(file);
 }
@@ -112,6 +122,7 @@ export async function readPostelFile(
         hasLevel(user.permissions.sticker, 'view') || hasLevel(user.permissions.item, 'view'),
       canReadPostelFiles: true,
     },
+    record,
   );
   return { ...content, filename: postelAttachmentFilename(record.id, record.mime) };
 }
@@ -197,10 +208,10 @@ export async function planPostelAttachments(
  * dapat diulang). Kegagalan Drive tidak menggagalkan simpan: berkas tetap `pending_delete` (tak terbaca) dan dibuang
  * penjadwal pembersihan.
  */
-export async function purgeReleasedAttachments(env: Env, count: number): Promise<void> {
-  if (count <= 0) return;
+export async function purgeReleasedAttachments(env: Env, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
   try {
-    await purgePendingFiles(env, Math.max(count, 5));
+    await purgePendingFilesById(env, ids);
   } catch (error) {
     console.error(`Pembuangan lampiran Postel tertunda: ${String(error)}`);
   }

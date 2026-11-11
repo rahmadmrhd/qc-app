@@ -540,7 +540,7 @@ export async function savePostel(
     attach.claimedIds,
   );
   // Lampiran yang dilepas dibuang dari Drive SETELAH komit (bukan di dalam batch/transaksi yang dapat diulang).
-  await purgeReleasedAttachments(env, attach.released.length);
+  await purgeReleasedAttachments(env, attach.released);
   return loadPostelDto(env, actor, postelId);
 }
 
@@ -579,7 +579,7 @@ export async function removePostel(env: Env, id: string, actor: UserContext): Pr
       before,
       after: null,
     }).run();
-    return record.attachments.length;
+    return record.attachments;
   });
   await purgeReleasedAttachments(env, released);
   return null;

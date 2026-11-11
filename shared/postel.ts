@@ -13,6 +13,8 @@ export const POSTEL_LIMITS = {
   itemsMax: 200,
   attachmentsMax: 10,
   attachmentMaxBytes: 10_485_760,
+  /** Sisi gambar lampiran terpanjang yang diterima (piksel); gambar tidak dikecilkan, jadi batasnya longgar. */
+  attachmentSideMax: 10_000,
   thresholdsMax: 5,
   thresholdDaysMax: 730,
   repeatDaysMax: 365,

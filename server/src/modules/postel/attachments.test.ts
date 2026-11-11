@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
-import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { brandIdOf, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { seedPostel } from '@server-test/postel-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
+import { seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES } from '@shared/files';
 
@@ -517,5 +518,143 @@ describe('postels.save: lampiran', () => {
     });
     const got = (await call(VIEWER, 'postels.get', { id: 'p-seed' })).data as Json;
     expect(got.attachments.map((x: Json) => x.id)).toEqual([a.id]);
+  });
+});
+
+describe('PDF Postel tidak dapat dipasang ke pemilik khusus gambar', () => {
+  test('items.save, pustaka logo QR, dan stiker menolak PDF unggahan Postel (berkas tetap belum bertuan)', async () => {
+    const file = await upload(pdf(), 'application/pdf', ADMIN);
+    const item = await call(ADMIN, 'items.save', {
+      brandId: brandIdOf('PBE'),
+      model: 'Dengan PDF',
+      isCountryLock: false,
+      aliases: [],
+      stickerPhotos: [],
+      accessories: [],
+      attachments: [file.id],
+      detail: '',
+      businessUnitIds: ['bu-umum'],
+    });
+    expect(item.ok).toBe(false);
+    expect(item.error?.code).toBe('VALIDATION');
+    const logo = await call(ADMIN, 'qrcodes.saveLogoLibrary', { logoFileIds: [file.id] });
+    expect(logo.ok).toBe(false);
+    expect(logo.error?.code).toBe('VALIDATION');
+    await seedStickerType(env, { id: 't-pdf', name: 'Jenis PDF', rule: 'none' });
+    const sticker = await call(ADMIN, 'stickers.save', {
+      typeId: 't-pdf',
+      name: 'Stiker PDF',
+      alias: '',
+      fileId: file.id,
+      minQty: 0,
+      businessUnitIds: [],
+    });
+    expect(sticker.ok).toBe(false);
+    expect(sticker.error?.code).toBe('VALIDATION');
+    const row = (await rows('SELECT owner_type, owner_id FROM files WHERE id = ?', file.id))[0];
+    expect(row).toMatchObject({ owner_type: '', owner_id: '' });
+  });
+
+  test('PDF pending milik sendiri tidak terbaca lewat files.get (404), tetap terbaca lewat postelFiles.get', async () => {
+    const file = await upload(pdf(), 'application/pdf', ADMIN);
+    expect((await rest.get(`/files/${file.id as string}`, { email: ADMIN })).status).toBe(404);
+    const ok = await rest.get(`/postel-files/${file.id as string}`, { email: ADMIN });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('content-type')).toBe('application/pdf');
+    // gambar pending milik sendiri tetap terbaca lewat files.get (perilaku lama)
+    const image = await rest.post('/files?width=10&height=10', {
+      email: ADMIN,
+      raw: png(10, 10),
+      headers: { 'content-type': 'image/png' },
+    });
+    const imageId = (await jsonOf(image)).id as string;
+    expect((await rest.get(`/files/${imageId}`, { email: ADMIN })).status).toBe(200);
+  });
+});
+
+describe('postelFiles.upload: dimensi dan batas unggahan tertunda', () => {
+  test('lebar 2^31 atau sisi > 10000 piksel ditolak sebelum menyentuh Drive; 10000 diterima', async () => {
+    for (const bytes of [png(2 ** 31, 10), png(10, 10_001), jpeg(65_535, 20)]) {
+      const mime = bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
+      const response = await uploadRaw(bytes, mime);
+      expect(response.status).toBe(422);
+      expect((await jsonOf(response)).code).toBe('VALIDATION');
+    }
+    expect(env.BRIDGE.state.files.size).toBe(0);
+    expect((await uploadRaw(png(10_000, 10_000), 'image/png')).status).toBe(201);
+  });
+
+  test('batas unggahan belum dipakai: pesan menyebut lampiran Postel (bukan gambar item)', async () => {
+    for (let index = 0; index < 50; index++) {
+      await insertFileStmt(env.DB, {
+        id: `pending-${index}`,
+        driveId: 'd',
+        mime: 'application/pdf',
+        size: 1,
+        width: 0,
+        height: 0,
+        ownerType: '',
+        ownerId: '',
+        createdAt: '2026-11-11T00:00:00.000Z',
+        createdBy: EDITOR,
+        status: 'active',
+      }).run();
+    }
+    const result = await call(EDITOR, 'postelFiles.upload', {
+      mime: 'application/pdf',
+      bytes: pdf(),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('CONFLICT');
+    expect(result.error?.message).toContain('lampiran');
+    expect(result.error?.message).not.toContain('gambar');
+    expect(result.error?.message).not.toContain('item');
+  });
+});
+
+describe('pembuangan lampiran yang dilepas', () => {
+  test('berkas yang dilepas ter-trash di Drive walau banyak baris pending_delete lain yang lebih lama', async () => {
+    for (let index = 0; index < 8; index++) {
+      const driveId = await env.BRIDGE.createFile(
+        'folder',
+        `lama-${index}.pdf`,
+        'application/pdf',
+        'AAAA',
+      );
+      await insertFileStmt(env.DB, {
+        id: `stale-${index}`,
+        driveId,
+        mime: 'application/pdf',
+        size: 1,
+        width: 0,
+        height: 0,
+        ownerType: 'postel',
+        ownerId: 'hilang',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        createdBy: 'seed@gmail.com',
+        status: 'pending_delete',
+      }).run();
+    }
+    const a = await upload(pdf(), 'application/pdf');
+    const b = await upload(png(), 'image/png');
+    const driveOf = async (id: string) =>
+      (await rows('SELECT drive_id FROM files WHERE id = ?', id))[0].drive_id as string;
+    const aDrive = await driveOf(a.id);
+    const postel = await createPostel([a.id, b.id]);
+    const stored = postel.numbers as Json[];
+    const result = await call(EDITOR, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: postel.updatedAt,
+      ...saveBody([b.id], {
+        numbers: [
+          { id: stored[0].id, number: stored[0].number, expiresOn: stored[0].expiresOn, link: '' },
+        ],
+      }),
+    });
+    expect(result.ok).toBe(true);
+    expect(env.BRIDGE.state.files.get(aDrive)?.trashed).toBe(true);
+    expect(await rows('SELECT id FROM files WHERE id = ?', a.id)).toHaveLength(0);
+    // pembuangan terarah: baris lama milik pembersihan terjadwal tidak disentuh
+    expect(await rows("SELECT id FROM files WHERE status = 'pending_delete'")).toHaveLength(8);
   });
 });
