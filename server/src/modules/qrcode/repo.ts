@@ -262,6 +262,35 @@ export function updateQrDesignContentStmt(
     );
 }
 
+/**
+ * UPDATE komit ekspor: HANYA kolom hasil ekspor (hash, waktu, pengekspor, id berkas Drive PDF/PNG), dengan CAS
+ * `updated_at`. Kolom lain (mis. `overflow` yang dilaporkan peramban tanpa menaikkan `updated_at`) tidak boleh
+ * ditimpa salinan yang dimuat job sebelumnya. Letakkan `guardChanged` langsung sesudahnya.
+ */
+export function updateQrDesignExportStmt(
+  db: Db,
+  id: string,
+  exported: Pick<
+    QrDesignRecord,
+    'exportedHash' | 'exportedAt' | 'exportedBy' | 'exportPdfDriveId' | 'exportPngDriveId'
+  >,
+  guardUpdatedAt: string,
+): DbStatement {
+  return db
+    .prepare(
+      'UPDATE qr_designs SET exported_hash = ?, exported_at = ?, exported_by = ?, export_pdf_drive_id = ?, export_png_drive_id = ? WHERE id = ? AND updated_at = ?',
+    )
+    .bind(
+      exported.exportedHash,
+      exported.exportedAt,
+      exported.exportedBy,
+      exported.exportPdfDriveId,
+      exported.exportPngDriveId,
+      id,
+      guardUpdatedAt,
+    );
+}
+
 /** Hanya menyetel flag `overflow` (laporan peramban); tanpa menyentuh kolom lain dan tanpa menaikkan `updated_at`. */
 export function setQrDesignOverflowStmt(db: Db, id: string, overflow: boolean): DbStatement {
   return db

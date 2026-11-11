@@ -147,6 +147,40 @@ describe('checkLowStockDigest', () => {
     expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261110');
   });
 
+  test('klaim gagal dikembalikan: hasil failed dan operator diberi tahu lewat console.error', async () => {
+    await withMinimum('s1', 10);
+    let sendFailed = false;
+    sendBehavior = async () => {
+      sendFailed = true;
+      throw new Error('SMTP mati');
+    };
+    const flaky: Env = {
+      ...env,
+      DB: {
+        ...env.DB,
+        prepare: (sql: string) => {
+          if (sendFailed && sql.startsWith('UPDATE settings SET value')) {
+            throw new Error('DB putus');
+          }
+          return env.DB.prepare(sql);
+        },
+      },
+    };
+    const messages: string[] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => {
+      messages.push(args.map(String).join(' '));
+    };
+    try {
+      expect(await checkLowStockDigest(flaky)).toBe('failed');
+    } finally {
+      console.error = realError;
+    }
+    expect(messages.some((message) => message.includes('gagal dikembalikan'))).toBe(true);
+    expect(messages.some((message) => message.includes('DB putus'))).toBe(true);
+    expect(messages.join(' | ')).not.toContain('a@contoh.com');
+  });
+
   test('tak ada yang menipis -> skipped (tanggal tidak ditulis)', async () => {
     await withMinimum('s1', 5);
     await stock('s1', 50);

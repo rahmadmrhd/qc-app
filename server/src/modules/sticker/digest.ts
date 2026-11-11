@@ -91,7 +91,12 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
     });
   } catch (error) {
     // Pesan galat dari `createSmtpMailer` sudah bebas SMTP_PASS. Klaim dikembalikan: dicoba lagi pada detak berikutnya.
-    await releaseDigestClaim(env, previous, today).catch(() => undefined);
+    await releaseDigestClaim(env, previous, today).catch((releaseError: unknown) => {
+      // Klaim tertinggal: surel hari ini tidak akan dicoba lagi sampai besok; operator perlu tahu.
+      console.error(
+        `peringatan: klaim ringkasan stok stiker ${today} gagal dikembalikan setelah kirim gagal; surel hari ini dapat terlewat: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+      );
+    });
     console.error(
       `peringatan: email stok stiker menipis gagal terkirim, dicoba lagi nanti: ${error instanceof Error ? error.message : String(error)}`,
     );

@@ -19,7 +19,7 @@ import { manualBookFileName, QR_LIMITS, qrContentHash } from '@shared/qrcode';
 import { ensureQrFolder } from './folders';
 import { listAttachedItems } from './items';
 import type { QrDesignRecord } from './repo';
-import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignStmt } from './repo';
+import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignExportStmt } from './repo';
 import { exportStamp, QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
 
 /**
@@ -214,8 +214,7 @@ export const qrExportHandler: JobHandler = {
           const content = qrDesignContent(current, documents);
           const hash = qrContentHash(content);
           const now = nowIso(ctx.env);
-          const updated: QrDesignRecord = {
-            ...current,
+          const exported = {
             exportedHash: hash,
             exportedAt: ctx.job.createdAt,
             exportedBy: ctx.job.createdBy,
@@ -244,7 +243,7 @@ export const qrExportHandler: JobHandler = {
             await runGuardedBatch(
               ctx.env.DB,
               [
-                updateQrDesignStmt(ctx.env.DB, updated, current.updatedAt),
+                updateQrDesignExportStmt(ctx.env.DB, current.id, exported, current.updatedAt),
                 guardChanged(ctx.env.DB),
                 ...manualBook,
                 writeAudit(ctx.env.DB, {

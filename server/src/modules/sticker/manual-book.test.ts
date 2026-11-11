@@ -176,14 +176,38 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const DESIGN_LOCK = 'SELECT id FROM qr_designs WHERE id = ? FOR UPDATE';
 
 /**
+ * Menunggu sampai sedikitnya `count` transaksi terlihat menunggu kunci (`INNODB_TRX`, `LOCK WAIT`), maksimal 15
+ * dtk. `false` bila tabelnya tidak dapat dibaca (hak akses): pemanggil jatuh ke jeda tetap.
+ */
+async function waitForLockWaiters(count: number): Promise<boolean> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      const row = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM information_schema.INNODB_TRX WHERE trx_state = 'LOCK WAIT'",
+      ).first<{ n: number | string }>();
+      if (Number(row?.n) >= count) return true;
+    } catch {
+      return false;
+    }
+    await sleep(100);
+  }
+  throw new Error(`penantang kunci tidak pernah terlihat menunggu (diharapkan ${count})`);
+}
+
+/**
  * Meniru penulis lain yang sedang memegang kunci baris (komit ekspor, penulis stok): transaksi terpisah mengunci
- * baris `lock`, `start` dijalankan (ia akan menunggu kunci), sesudah jeda `inside` dikerjakan di transaksi itu dan
- * dikomit. Hasil `start` dikembalikan bersama banyaknya transaksi pemegang dijalankan (>1 = deadlock lalu diulang).
+ * baris `lock`, `start` dijalankan (ia akan menunggu kunci), sesudah penantang TERLIHAT menunggu (poll
+ * `INNODB_TRX`; bila tak terbaca, jeda tetap 1,5 dtk) `inside` dikerjakan di transaksi itu dan dikomit. Penantang
+ * wajib belum selesai saat kunci dilepas (bila sudah, tes ini tidak membuktikan apa pun dan gagal). Hasil `start`
+ * dikembalikan bersama banyaknya transaksi pemegang dijalankan (>1 = deadlock lalu diulang). `waiters` = banyaknya
+ * penantang yang ditunggu.
  */
 async function whileLocked<T>(
   lock: { sql: string; id: string },
   inside: (tx: DbTx) => Promise<void>,
   start: () => Promise<T>,
+  waiters = 1,
 ): Promise<{ out: T; holderRuns: number }> {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -202,8 +226,23 @@ async function whileLocked<T>(
     await inside(tx);
   });
   await ready;
+  let settled = false;
   const pending = start();
-  await sleep(1500);
+  pending.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  if (await waitForLockWaiters(waiters)) await sleep(300);
+  else await sleep(1500);
+  if (settled) {
+    release();
+    await held;
+    throw new Error('penantang selesai sebelum kunci dilepas: tes tidak menguji balapan');
+  }
   release();
   await held;
   return { out: await pending, holderRuns };
@@ -388,6 +427,7 @@ describe('ekspor ulang', () => {
       { sql: DESIGN_LOCK, id: design.id },
       async () => undefined,
       () => Promise.all([runJobStep(env, a, 1), runJobStep(env, b, 1)]),
+      2,
     );
     expect(out.map((result) => result.kind).sort()).toEqual(['advanced', 'failed']);
     const failedId = out[0]?.kind === 'failed' ? a : b;
@@ -710,5 +750,31 @@ describe('job ekspor tanpa gambar contoh (melintasi deploy)', () => {
     expect(await versions(design.id)).toHaveLength(0);
     const live = [...env.BRIDGE.state.files.values()].filter((file) => !file.trashed);
     expect(live.some((file) => EXPORT_NAME.test(file.name))).toBe(false);
+  });
+});
+
+describe('komit ekspor hanya menulis kolom hasil ekspor', () => {
+  test('overflow yang dilaporkan peramban di antara muat dan komit tidak tertimpa', async () => {
+    const design = await makeDesign();
+    const current = await reload(design.id);
+    const accepted = await exportDesign(current);
+    expect(accepted.status).toBe(202);
+    const { jobId } = (await jsonOf(accepted)) as { jobId: string };
+    for (let step = 0; step < 3; step++) await runJobStep(env, jobId, 1);
+    // Langkah komit sudah memuat konfigurasi (overflow kosong) lalu menunggu kunci; peramban melapor overflow
+    // (UPDATE overflow saja, updated_at tidak naik) sebelum komit berjalan.
+    const { out } = await whileLocked(
+      { sql: DESIGN_LOCK, id: design.id },
+      async (tx) => {
+        await tx.prepare("UPDATE qr_designs SET overflow = '1' WHERE id = ?").bind(design.id).run();
+      },
+      () => runJobStep(env, jobId, 1),
+    );
+    expect(out.kind).toBe('advanced');
+    const row = await env.DB.prepare('SELECT overflow, exported_hash FROM qr_designs WHERE id = ?')
+      .bind(design.id)
+      .first<{ overflow: string; exported_hash: string }>();
+    expect(row?.overflow.trim()).toBe('1');
+    expect(row?.exported_hash.trim()).not.toBe('');
   });
 });
