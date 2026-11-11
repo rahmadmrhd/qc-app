@@ -6,6 +6,7 @@ import {
   businessUnitLinkAccess,
   itemFormLinkAccess,
   manualBookLinkAccess,
+  postelLinkAccess,
   stickerTypeLinkAccess,
 } from './link-access';
 
@@ -99,4 +100,13 @@ test('tautan ke konfigurasi QR Manual Book butuh qrcode edit (halaman ubah)', ()
     '/qrcode/d%201/edit',
   );
   expect(manualBookLinkAccess(null).openManualBookHref).toBeUndefined();
+});
+
+test('tautan ke halaman Postel hanya dengan sticker view; selain itu null', () => {
+  const withSticker = (sticker: Level) =>
+    ({ ...meWith('none', 'none'), permissions: { sticker } }) as unknown as MeDto;
+  expect(postelLinkAccess(withSticker('none')).openPostelHref('p1')).toBeNull();
+  expect(postelLinkAccess(withSticker('view')).openPostelHref('p1')).toBe('/postel/p1');
+  expect(postelLinkAccess(withSticker('edit')).openPostelHref('p 1')).toBe('/postel/p%201');
+  expect(postelLinkAccess(null).openPostelHref('p1')).toBeNull();
 });

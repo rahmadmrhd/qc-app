@@ -334,3 +334,26 @@ test('Konfigurasi Stiker butuh sticker manage dan menu Stiker tidak ikut aktif d
   expect(isNavItemActive(stiker, at('/sticker/settings'))).toBe(false);
   expect(isNavItemActive(konfigurasi, at('/sticker/settings'))).toBe(true);
 });
+
+test('grup Postel berisi Daftar Postel (sticker view): tampil dengan izin, hilang tanpa izin', () => {
+  const postel = NAV_GROUPS.find((group) => group.label === 'Postel');
+  expect(postel?.items).toHaveLength(1);
+  expect(postel?.items[0]).toMatchObject({
+    label: 'Daftar Postel',
+    to: '/postel',
+    permission: { module: 'sticker', level: 'view' },
+  });
+  const groupLabels = (permissions: Partial<MeDto['permissions']>) =>
+    visibleNavGroups(NAV_GROUPS, stickerMe(permissions)).map((group) => group.label);
+  expect(groupLabels({ sticker: 'view' })).toContain('Postel');
+  expect(groupLabels({ sticker: 'none' })).not.toContain('Postel');
+});
+
+test('Daftar Postel aktif di semua rute di bawah /postel', () => {
+  const item = NAV_GROUPS.find((group) => group.label === 'Postel')?.items[0];
+  if (!item) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  for (const path of ['/postel', '/postel/new', '/postel/p1', '/postel/p1/edit'])
+    expect(isNavItemActive(item, at(path))).toBe(true);
+});
