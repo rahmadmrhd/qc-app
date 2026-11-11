@@ -176,3 +176,20 @@ test('selama navigasi keluar belum selesai (setelah mutasi sukses) Ubah dan Hapu
   navigate();
   await waitFor(() => expect(client.getQueryData(postelKeys.one('p1'))).toBeUndefined());
 });
+
+test('onBack yang gagal: toast galat dan tombol tidak terkunci selamanya', async () => {
+  const onBack = vi.fn().mockRejectedValue(new Error('navigasi gagal'));
+  render(
+    <QueryClientProvider client={client}>
+      <Suspense fallback={<p>memuat</p>}>
+        <PostelDetail postelId="p1" canEdit onEdit={vi.fn()} onBack={onBack} />
+      </Suspense>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('heading', { level: 1, name: 'M5-400' });
+  await confirmRemove();
+  await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+  // halaman tetap ter-mount (navigasi gagal): kunci dilepas agar pengguna tidak terjebak
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Ubah' })).toBeEnabled());
+});

@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { postelUploadError, uploadPostelFile } from './upload';
+import { postelFileMime, postelUploadError, uploadPostelFile } from './upload';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async () => ({
@@ -42,4 +42,19 @@ test('postelUploadError: pesan field bytes/mime dari server apa adanya; lainnya 
   );
   expect(postelUploadError(new Error('putus'))).toBe('putus');
   expect(postelUploadError('aneh')).toBe('Gagal mengunggah lampiran');
+});
+
+test('postelFileMime: memakai file.type; bila kosong turun ke ekstensi; selain itu kosong', () => {
+  const file = (name: string, type: string) => new File(['x'], name, { type });
+  expect(postelFileMime(file('a.bin', 'image/png'))).toBe('image/png');
+  for (const [name, mime] of [
+    ['a.pdf', 'application/pdf'],
+    ['a.JPG', 'image/jpeg'],
+    ['a.jpeg', 'image/jpeg'],
+    ['a.png', 'image/png'],
+    ['a.webp', 'image/webp'],
+  ] as const)
+    expect(postelFileMime(file(name, ''))).toBe(mime);
+  expect(postelFileMime(file('a.txt', ''))).toBe('');
+  expect(postelFileMime(file('tanpa-ekstensi', ''))).toBe('');
 });

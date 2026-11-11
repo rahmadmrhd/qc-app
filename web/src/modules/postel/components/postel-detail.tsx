@@ -38,8 +38,10 @@ export function PostelDetail({ postelId, canEdit, onBack, onEdit }: PostelDetail
     toast.success('Catatan Postel dihapus');
     try {
       await onBack();
-      dropPostelDetail(queryClient, postel.id);
+    } catch (error) {
+      toast.error(describeError(error));
     } finally {
+      dropPostelDetail(queryClient, postel.id);
       setDeleting(false);
     }
   }

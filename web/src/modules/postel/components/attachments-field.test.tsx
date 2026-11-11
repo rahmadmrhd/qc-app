@@ -115,3 +115,77 @@ test('galat dari induk tampil sebagai alert', () => {
   render(<Harness error="Lampiran maksimal 10 berkas" />);
   expect(screen.getByRole('alert')).toHaveTextContent('Lampiran maksimal 10 berkas');
 });
+
+const dto = (i: number) => ({
+  id: `u${i}`,
+  mime: 'image/png',
+  size: 1,
+  filename: `lampiran-u${i}.png`,
+});
+const png = (name: string) => new File([new Uint8Array([1])], name, { type: 'image/png' });
+
+test('banyak berkas sekaligus: urutan terjaga; yang gagal dilewati dan yang berhasil dipertahankan', async () => {
+  apiMock
+    .mockResolvedValueOnce(dto(1))
+    .mockRejectedValueOnce(
+      new ApiError('VALIDATION', 'x', 'r', { bytes: 'Isi berkas tidak sesuai jenis gambar' }),
+    )
+    .mockResolvedValueOnce(dto(3));
+  render(<Harness />);
+  await choose(png('a.png'), png('b.png'), png('c.png'));
+  await screen.findByText('lampiran-u3.png');
+  const names = screen.getAllByRole('listitem').map((li) => li.textContent ?? '');
+  expect(names[0]).toContain('lampiran-u1.png');
+  expect(names[1]).toContain('lampiran-u3.png');
+  expect(names).toHaveLength(2);
+  expect(screen.getByRole('alert')).toHaveTextContent('Isi berkas tidak sesuai jenis gambar');
+});
+
+test('batas 10 menghitung unggahan yang sedang berjalan (dua pemilihan tumpang tindih)', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  apiMock.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<Harness initial={Array.from({ length: 9 }, (_, i) => row(i + 1))} />);
+  await choose(png('a.png'));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+  // 9 tersimpan + 1 berjalan = 10: pilihan kedua harus ditolak sebelum diunggah
+  await choose(png('b.png'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Maksimal 10 lampiran');
+  expect(apiMock).toHaveBeenCalledTimes(1);
+  finish(dto(10));
+  await screen.findByText('lampiran-u10.png');
+  expect(screen.getAllByRole('listitem')).toHaveLength(10);
+});
+
+test('galat berkas dikumpulkan dan tanpa duplikat', async () => {
+  render(<Harness />);
+  await choose(
+    new File(['x'], 'a.html', { type: 'text/html' }),
+    new File(['x'], 'b.html', { type: 'text/html' }),
+    new File([new Uint8Array(10_485_761)], 'besar.png', { type: 'image/png' }),
+  );
+  const alerts = await screen.findAllByRole('alert');
+  expect(alerts.map((alert) => alert.textContent)).toEqual([
+    'Hanya JPEG, PNG, WebP, atau PDF',
+    'Berkas melebihi 10 MB',
+  ]);
+  expect(apiMock).not.toHaveBeenCalled();
+});
+
+test('jenis kosong diturunkan dari ekstensi (.pdf diterima); ekstensi asing ditolak', async () => {
+  apiMock.mockResolvedValueOnce(dto(1));
+  render(<Harness />);
+  await choose(new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], 'desain.PDF', { type: '' }));
+  await screen.findByText('lampiran-u1.png');
+  expect(apiMock).toHaveBeenCalledWith('postelFiles.upload', {
+    mime: 'application/pdf',
+    bytes: expect.any(Uint8Array),
+  });
+  await choose(new File(['x'], 'catatan.txt', { type: '' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Hanya JPEG, PNG, WebP, atau PDF');
+  expect(apiMock).toHaveBeenCalledTimes(1);
+});

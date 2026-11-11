@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { PostelItemPicker } from './postel-item-picker';
@@ -82,4 +82,25 @@ test('tanpa item tersembunyi paragraf itu tidak ada; galat ditampilkan', () => {
   renderPicker({ error: 'Pilih minimal satu item' });
   expect(screen.queryByText(/tidak terlihat oleh Anda/)).not.toBeInTheDocument();
   expect(screen.getByText('Pilih minimal satu item')).toBeInTheDocument();
+});
+
+test('mengetik memanggil postels.itemOptions dengan query setelah 200 ms; chip terpilih bertahan', async () => {
+  apiMock.mockImplementation((_id: string, input: { query?: string }) =>
+    Promise.resolve(
+      input.query === 'zz'
+        ? {
+            items: [{ id: 'i7', brand: 'ACME', model: 'ZZ-1', postelNumber: '' }],
+            nextCursor: null,
+          }
+        : OPTIONS,
+    ),
+  );
+  renderPicker({ selected: [{ id: 'i1', brand: 'PBE', model: 'M5-400' }] });
+  await userEvent.type(screen.getByRole('combobox', { name: 'Item' }), 'zz');
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('postels.itemOptions', { query: 'zz', limit: 20 }),
+  );
+  expect(await screen.findByRole('option', { name: /ACME ZZ-1/ })).toBeInTheDocument();
+  // chip item terpilih tetap tampil walau tak ada di hasil pencarian
+  expect(screen.getByText('PBE M5-400')).toBeInTheDocument();
 });

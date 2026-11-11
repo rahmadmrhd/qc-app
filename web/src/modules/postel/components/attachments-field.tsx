@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import type { AttachmentRow } from '../lib/schemas';
-import { postelUploadError, uploadPostelFile } from '../lib/upload';
+import { postelFileMime, postelUploadError, uploadPostelFile } from '../lib/upload';
 
 export type { AttachmentRow } from '../lib/schemas';
 
@@ -37,49 +37,56 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
     onChange(next);
   };
   const [uploading, setUploading] = useState(0);
-  const [localError, setLocalError] = useState<string | null>(null);
+  // Unggahan yang sedang berjalan (dari semua pemilihan berkas): ikut dihitung pada batas jumlah lampiran.
+  const pendingRef = useRef(0);
+  // Galat berkas dikumpulkan (tanpa duplikat), bukan ditimpa: satu pemilihan dapat memuat beberapa berkas bermasalah.
+  const [localErrors, setLocalErrors] = useState<string[]>([]);
+  const addError = (message: string) =>
+    setLocalErrors((previous) => (previous.includes(message) ? previous : [...previous, message]));
   const busy = uploading > 0;
   // biome-ignore lint/correctness/useExhaustiveDependencies: hanya perubahan status sibuk yang dilaporkan
   useEffect(() => onBusyChange?.(busy), [busy]);
 
   async function addFiles(files: File[]) {
-    setLocalError(null);
+    setLocalErrors([]);
     for (const file of files) {
-      if (valueRef.current.length >= POSTEL_LIMITS.attachmentsMax) {
-        setLocalError(`Maksimal ${POSTEL_LIMITS.attachmentsMax} lampiran`);
+      if (valueRef.current.length + pendingRef.current >= POSTEL_LIMITS.attachmentsMax) {
+        addError(`Maksimal ${POSTEL_LIMITS.attachmentsMax} lampiran`);
         return;
       }
-      if (!isPostelFileMime(file.type)) {
-        setLocalError('Hanya JPEG, PNG, WebP, atau PDF');
+      if (!isPostelFileMime(postelFileMime(file))) {
+        addError('Hanya JPEG, PNG, WebP, atau PDF');
         continue;
       }
       if (file.size > POSTEL_LIMITS.attachmentMaxBytes) {
-        setLocalError('Berkas melebihi 10 MB');
+        addError('Berkas melebihi 10 MB');
         continue;
       }
+      pendingRef.current += 1;
       setUploading((count) => count + 1);
       try {
         const uploaded = await uploadPostelFile(file);
         commit([...valueRef.current, uploaded]);
       } catch (failure) {
-        setLocalError(postelUploadError(failure));
+        addError(postelUploadError(failure));
       } finally {
+        pendingRef.current -= 1;
         setUploading((count) => count - 1);
       }
     }
   }
 
   async function download(row: AttachmentRow) {
-    setLocalError(null);
+    setLocalErrors([]);
     try {
       const file = await api('postelFiles.get', { id: row.id });
       saveFileDownload({ bytes: file.bytes, mime: file.mime, filename: row.filename });
     } catch (failure) {
-      setLocalError(postelUploadError(failure));
+      addError(postelUploadError(failure));
     }
   }
 
-  const messages = [localError, error].filter((message): message is string => Boolean(message));
+  const messages = [...new Set([...localErrors, ...(error ? [error] : [])])];
   return (
     <div className="space-y-2">
       {value.length === 0 ? (
