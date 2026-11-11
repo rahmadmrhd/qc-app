@@ -537,9 +537,11 @@ describe('PDF Postel tidak dapat dipasang ke pemilik khusus gambar', () => {
     });
     expect(item.ok).toBe(false);
     expect(item.error?.code).toBe('VALIDATION');
+    expect(item.error?.message).toBe('Ada berkas yang tidak dikenal');
     const logo = await call(ADMIN, 'qrcodes.saveLogoLibrary', { logoFileIds: [file.id] });
     expect(logo.ok).toBe(false);
     expect(logo.error?.code).toBe('VALIDATION');
+    expect(logo.error?.message).toBe('Ada berkas yang tidak dikenal');
     await seedStickerType(env, { id: 't-pdf', name: 'Jenis PDF', rule: 'none' });
     const sticker = await call(ADMIN, 'stickers.save', {
       typeId: 't-pdf',
@@ -551,6 +553,7 @@ describe('PDF Postel tidak dapat dipasang ke pemilik khusus gambar', () => {
     });
     expect(sticker.ok).toBe(false);
     expect(sticker.error?.code).toBe('VALIDATION');
+    expect(sticker.error?.message).toBe('Gambar tidak dikenal; unggah ulang');
     const row = (await rows('SELECT owner_type, owner_id FROM files WHERE id = ?', file.id))[0];
     expect(row).toMatchObject({ owner_type: '', owner_id: '' });
   });
@@ -569,6 +572,34 @@ describe('PDF Postel tidak dapat dipasang ke pemilik khusus gambar', () => {
     });
     const imageId = (await jsonOf(image)).id as string;
     expect((await rest.get(`/files/${imageId}`, { email: ADMIN })).status).toBe(200);
+  });
+});
+
+describe('readFile: berkas non-gambar tidak menyentuh cache isi', () => {
+  test('files.get atas PDF Postel (pending milik sendiri dan lampiran terpasang) 404 tanpa membaca cache', async () => {
+    const reads: string[] = [];
+    const inner = env.FILE_CACHE;
+    if (!inner) throw new Error('FILE_CACHE tes wajib ada');
+    env.FILE_CACHE = {
+      get: async (key) => {
+        reads.push(key);
+        return inner.get(key);
+      },
+      put: (key, mime, base64) => inner.put(key, mime, base64),
+      drop: async (driveId) => inner.drop?.(driveId),
+    };
+    const pending = await upload(pdf(), 'application/pdf', ADMIN);
+    const attached = await upload(pdf(), 'application/pdf', ADMIN);
+    await createPostel([attached.id], {}, ADMIN);
+    for (const id of [pending.id, attached.id] as string[]) {
+      expect((await rest.get(`/files/${id}`, { email: ADMIN })).status).toBe(404);
+    }
+    expect(reads).toEqual([]);
+    // kontrol: rute lampiran memang membaca cache
+    expect((await rest.get(`/postel-files/${pending.id as string}`, { email: ADMIN })).status).toBe(
+      200,
+    );
+    expect(reads.length).toBe(1);
   });
 });
 
