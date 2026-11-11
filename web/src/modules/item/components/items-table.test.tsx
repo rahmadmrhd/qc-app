@@ -15,6 +15,7 @@ const items: ItemSummaryDto[] = [
     aliases: ['AirFiber 5XHD'],
     imageCount: 2,
     hasInstructions: true,
+    hasManualBook: false,
     businessUnits: [
       { id: 'bu-a', code: 'RTL', name: 'Retail' },
       { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
@@ -31,6 +32,7 @@ const items: ItemSummaryDto[] = [
     aliases: [],
     imageCount: 0,
     hasInstructions: false,
+    hasManualBook: false,
     businessUnits: [],
     updatedAt: '',
   },
@@ -118,4 +120,32 @@ test('tanda "Belum ada instruksi stiker" hanya pada baris tanpa instruksi', () =
   const marks = screen.getAllByText('Belum ada instruksi stiker');
   expect(marks).toHaveLength(1);
   expect(screen.getByRole('row', { name: /Mikrotik/ })).toContainElement(marks[0] as HTMLElement);
+});
+
+const withManualBook: ItemSummaryDto = {
+  id: 'i3',
+  brandId: 'b1',
+  brand: 'Cisco',
+  model: 'C9200',
+  isCountryLock: false,
+  status: 'active',
+  aliases: [],
+  imageCount: 0,
+  hasInstructions: true,
+  hasManualBook: true,
+  businessUnits: [],
+  updatedAt: '',
+};
+
+test('tanda "Belum ada QR Manual Book" hanya untuk item aktif tanpa Manual Book, berdampingan dengan tanda instruksi', () => {
+  renderTable({ items: [...items, withManualBook] });
+  const marks = screen.getAllByText('Belum ada QR Manual Book');
+  expect(marks).toHaveLength(1);
+  // i1 aktif tanpa Manual Book; i2 nonaktif (tanpa tanda); i3 sudah punya Manual Book
+  expect(screen.getByRole('row', { name: /Ubiquiti/ })).toContainElement(marks[0] as HTMLElement);
+  expect(screen.getByRole('row', { name: /Mikrotik/ })).not.toHaveTextContent('QR Manual Book');
+  expect(screen.getByRole('row', { name: /Cisco/ })).not.toHaveTextContent('QR Manual Book');
+  expect(screen.getByRole('row', { name: /Mikrotik/ })).toHaveTextContent(
+    'Belum ada instruksi stiker',
+  );
 });

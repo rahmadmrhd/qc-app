@@ -40,12 +40,14 @@ export interface SeedItem {
   key?: string;
   /** BU item (bawaan `['bu-umum']`, dibuat otomatis bila belum ada); BU lain harus sudah di-seed pemanggil. */
   businessUnitIds?: string[];
+  /** Konfigurasi QR (Manual Book) tempat item tergabung; bawaan `''` = belum tergabung. */
+  manualBookDesignId?: string;
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
   const brandId = item.brandId ?? brandIdOf(item.brand);
   await env.DB.prepare(
-    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed')",
+    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?)",
   )
     .bind(
       item.id,
@@ -57,6 +59,7 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       item.status ?? 'active',
       SEED_TIME,
       SEED_TIME,
+      item.manualBookDesignId ?? '',
     )
     .run();
   const businessUnitIds = item.businessUnitIds ?? [DEFAULT_TEST_BU_ID];

@@ -29,7 +29,7 @@ interface PersistedEntry {
 }
 
 /** Versi amplop; selaras dengan akhiran `PERSISTED_CACHE_KEY`. */
-const PERSIST_VERSION = 2;
+const PERSIST_VERSION = 3;
 
 interface PersistedCache {
   v: typeof PERSIST_VERSION;

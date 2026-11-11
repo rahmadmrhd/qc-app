@@ -31,11 +31,18 @@ export interface MarkRowProps {
   disabled?: boolean;
 }
 
-function stickerLabelOptions(stickers: readonly StickerDto[], term: string) {
+function stickerLabelOptions(
+  stickers: readonly StickerDto[],
+  types: readonly StickerTypeDto[],
+  term: string,
+) {
   const key = normalizeKey(term);
+  // Stiker jenis sistem (Manual Book, Postel) tidak dipilih manual: diterjemahkan otomatis lewat jenisnya.
+  const systemTypeIds = new Set(types.filter((type) => type.systemKind !== '').map((t) => t.id));
   const matches = stickers.filter(
     (sticker) =>
       sticker.status === 'active' &&
+      !systemTypeIds.has(sticker.typeId) &&
       (key === '' ||
         normalizeKey(`${sticker.name} ${sticker.alias} ${sticker.typeName}`).includes(key)),
   );
@@ -95,7 +102,7 @@ export function MarkRow({
   }
 
   const inactiveTarget = isInactiveTarget(target, stickerOptions, typeOptions);
-  const sticker = stickerLabelOptions(stickerOptions, stickerTerm);
+  const sticker = stickerLabelOptions(stickerOptions, typeOptions, stickerTerm);
   const type = typeLabelOptions(typeOptions, typeTerm);
 
   return (

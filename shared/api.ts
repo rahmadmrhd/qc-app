@@ -176,6 +176,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     create: { verb: 'POST', path: '/brands' },
   },
   'brands.setStatus': { verb: 'PATCH', path: '/brands/{id}', etag: 'updatedAt' },
+  'stickerSettings.get': { verb: 'GET', path: '/sticker-settings', etag: 'updatedAt' },
+  'stickerSettings.save': {
+    verb: 'PUT',
+    path: '/sticker-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
   'stickerTypes.list': { verb: 'GET', path: '/sticker-types' },
   'stickerTypes.save': {
     verb: 'PUT',
@@ -243,6 +250,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       stickerId: 'string',
       typeId: 'string',
       stickerMode: 'string',
+      manualBook: 'string',
     },
   },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },
@@ -256,6 +264,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'items.setStatus': { verb: 'PATCH', path: '/items/{id}', etag: 'updatedAt' },
   'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
+  'qrcodes.versions': { verb: 'GET', path: '/qrcodes/{id}/versions' },
   'qrcodes.save': {
     verb: 'PUT',
     path: '/qrcodes/{id}',
@@ -265,6 +274,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'qrcodes.delete': { verb: 'DELETE', path: '/qrcodes/{id}' },
   'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults' },
+  'qrcodes.itemOptions': {
+    verb: 'GET',
+    path: '/qrcode-item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
   'qrcodes.savePreset': {
     verb: 'PUT',
     path: '/qrcode-presets/{id}',
@@ -272,6 +286,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
   },
+  'qrcodes.clonePreset': { verb: 'POST', path: '/qrcode-presets/{id}/clone', status: 201 },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
   'qrcodes.saveLogoLibrary': {
     verb: 'PUT',
@@ -298,11 +313,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     status: 202,
     location: '/jobs/{jobId}',
     ifMatch: 'expectedUpdatedAt',
+    query: { reason: 'string' },
     binary: 'multipart',
     multipart: {
-      parts: ['pdf', 'png'],
-      // = QR_LIMITS.exportMaxBytes (8 MB) + 64 KB ruang batas bagian dan header multipart
-      maxBytes: 8_454_144,
+      parts: ['pdf', 'png', 'preview'],
+      // = QR_LIMITS.exportMaxBytes (8 MB) + QR_LIMITS.previewMaxBytes (512 KB) + 64 KB ruang batas bagian dan header
+      maxBytes: 8_978_432,
       tooLarge: 'Ukuran hasil ekspor maksimal 8 MB',
     },
   },

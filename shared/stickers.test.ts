@@ -10,8 +10,12 @@ import {
   piecesOfCount,
   STICKER_LIMITS,
   STICKER_RULES,
+  STICKER_STATUSES,
+  STICKER_SYSTEM_KINDS,
   STOCK_ENTRY_KINDS,
+  type StickerStatus,
   stickersForType,
+  USER_STICKER_RULES,
 } from './stickers';
 
 describe('stiker: hitungan stok', () => {
@@ -41,6 +45,11 @@ describe('stiker: stok menipis', () => {
     expect(isLowStock({ status: 'active', minQty: 0, total: 0 })).toBe(false);
     expect(isLowStock({ status: 'inactive', minQty: 50, total: 0 })).toBe(false);
   });
+
+  test('stiker deprecated tidak pernah dihitung menipis', () => {
+    expect(isLowStock({ status: 'deprecated', minQty: 50, total: 0 })).toBe(false);
+    expect(isLowStock({ status: 'deprecated', minQty: 50, total: 10 })).toBe(false);
+  });
 });
 
 describe('stiker: konstanta', () => {
@@ -54,7 +63,11 @@ describe('stiker: konstanta', () => {
   });
 
   test('aturan dan jenis entri stok', () => {
-    expect(STICKER_RULES).toEqual(['bu', 'none']);
+    expect(STICKER_RULES).toEqual(['bu', 'none', 'group']);
+    expect(USER_STICKER_RULES).toEqual(['bu', 'none']);
+    expect([...USER_STICKER_RULES]).not.toContain('group');
+    expect(STICKER_STATUSES).toEqual(['active', 'inactive', 'deprecated']);
+    expect(STICKER_SYSTEM_KINDS).toEqual(['', 'manual_book', 'postel']);
     expect(STOCK_ENTRY_KINDS).toEqual(['in', 'out', 'adjust', 'opname']);
   });
 
@@ -137,7 +150,7 @@ describe('stickersForType', () => {
     id: string,
     typeId: string,
     buIds: string[],
-    status: 'active' | 'inactive' = 'active',
+    status: StickerStatus = 'active',
   ): MatchSticker => ({ id, typeId, status, buIds });
   const all: MatchSticker[] = [
     sticker('s1', 't1', ['bu1']),
@@ -148,9 +161,10 @@ describe('stickersForType', () => {
     sticker('s6', 't2', ['bu1']),
   ];
   const ids = (list: MatchSticker[]) => list.map((item) => item.id);
+  const NO_GROUP: ReadonlySet<string> = new Set();
 
   test('aturan none: semua stiker aktif jenis itu; nonaktif dan jenis lain diabaikan', () => {
-    expect(ids(stickersForType({ id: 't1', rule: 'none' }, all, ['bu1']))).toEqual([
+    expect(ids(stickersForType({ id: 't1', rule: 'none' }, all, ['bu1'], NO_GROUP))).toEqual([
       's1',
       's2',
       's3',
@@ -159,12 +173,18 @@ describe('stickersForType', () => {
   });
 
   test('aturan bu: hanya stiker yang buIds-nya beririsan dengan BU item', () => {
-    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu1']))).toEqual(['s1', 's3']);
-    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu2']))).toEqual(['s2', 's3']);
+    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu1'], NO_GROUP))).toEqual([
+      's1',
+      's3',
+    ]);
+    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu2'], NO_GROUP))).toEqual([
+      's2',
+      's3',
+    ]);
   });
 
   test('item dua BU: stiker dari kedua BU, urutan masukan dipertahankan', () => {
-    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu2', 'bu1']))).toEqual([
+    expect(ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu2', 'bu1'], NO_GROUP))).toEqual([
       's1',
       's2',
       's3',
@@ -172,18 +192,36 @@ describe('stickersForType', () => {
   });
 
   test('aturan bu: stiker tanpa BU tidak pernah cocok, nonaktif diabaikan', () => {
-    const result = ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu1', 'bu2']));
+    const result = ids(stickersForType({ id: 't1', rule: 'bu' }, all, ['bu1', 'bu2'], NO_GROUP));
     expect(result).not.toContain('s4');
     expect(result).not.toContain('s5');
   });
 
   test('itemBuIds kosong: bu menghasilkan kosong, none menghasilkan semua aktif', () => {
-    expect(stickersForType({ id: 't1', rule: 'bu' }, all, [])).toEqual([]);
-    expect(ids(stickersForType({ id: 't1', rule: 'none' }, all, []))).toEqual([
+    expect(stickersForType({ id: 't1', rule: 'bu' }, all, [], NO_GROUP)).toEqual([]);
+    expect(ids(stickersForType({ id: 't1', rule: 'none' }, all, [], NO_GROUP))).toEqual([
       's1',
       's2',
       's3',
       's4',
     ]);
+  });
+
+  test('aturan group: hanya stiker aktif jenis itu yang id-nya ada di himpunan kelompok', () => {
+    const group = new Set(['s1', 's2', 's5', 's6']);
+    // s5 nonaktif dan s6 berjenis lain: tetap tersaring; BU item tidak berpengaruh.
+    expect(ids(stickersForType({ id: 't1', rule: 'group' }, all, [], group))).toEqual(['s1', 's2']);
+    expect(ids(stickersForType({ id: 't1', rule: 'group' }, all, ['bu9'], group))).toEqual([
+      's1',
+      's2',
+    ]);
+  });
+
+  test('aturan group: himpunan kosong = tidak ada stiker; deprecated tak pernah cocok', () => {
+    expect(stickersForType({ id: 't1', rule: 'group' }, all, ['bu1'], NO_GROUP)).toEqual([]);
+    const withDeprecated = [...all, sticker('s7', 't1', [], 'deprecated')];
+    expect(
+      ids(stickersForType({ id: 't1', rule: 'group' }, withDeprecated, [], new Set(['s7', 's1']))),
+    ).toEqual(['s1']);
   });
 });

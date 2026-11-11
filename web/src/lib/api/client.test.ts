@@ -300,23 +300,26 @@ test('qrcodes.uploadPdf: Content-Type application/pdf, nama dan replaceDocumentI
   expect(init.headers).toMatchObject({ 'Content-Type': 'application/pdf' });
 });
 
-test('qrcodes.export: multipart pdf+png tanpa Content-Type buatan sendiri, If-Match dari expectedUpdatedAt, 202 { jobId }', async () => {
+test('qrcodes.export: multipart pdf+png+preview dengan reason di query, tanpa Content-Type buatan sendiri, If-Match dari expectedUpdatedAt, 202 { jobId }', async () => {
   const { api, fetchImpl } = setup(() => respond({ jobId: 'j1' }, { status: 202 }));
   const out = await api('qrcodes.export', {
     id: 'q1',
     expectedUpdatedAt: '2026-10-16T00:00:00.000Z',
     pdf: new Uint8Array([1]),
     png: new Uint8Array([2, 3]),
+    preview: new Uint8Array([4, 5, 6]),
+    reason: 'Logo diganti',
   });
   expect(out).toEqual({ jobId: 'j1' });
   const { url, init } = lastCall(fetchImpl);
-  expect(url).toBe('/api/v1/qrcodes/q1/exports');
+  expect(url).toBe('/api/v1/qrcodes/q1/exports?reason=Logo+diganti');
   expect(init.headers).not.toHaveProperty('Content-Type');
   expect(init.headers).toMatchObject({ 'If-Match': '"2026-10-16T00:00:00.000Z"' });
   const form = init.body as FormData;
   expect(form).toBeInstanceOf(FormData);
   expect(await bytesOfBody(form.get('pdf') as Blob)).toEqual([1]);
   expect(await bytesOfBody(form.get('png') as Blob)).toEqual([2, 3]);
+  expect(await bytesOfBody(form.get('preview') as Blob)).toEqual([4, 5, 6]);
 });
 
 test('JSON (GET/tulis) memakai cache no-store; unduhan mengikuti kebijakan cache tabelnya (tanpa opsi)', async () => {

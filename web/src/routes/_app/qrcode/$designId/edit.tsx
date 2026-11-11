@@ -3,11 +3,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
+import { itemLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
+import { VersionHistory } from '@/modules/qrcode/components/version-history';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
   qrDefaultsQueryOptions,
@@ -15,7 +17,12 @@ import {
   useSaveQrDesign,
 } from '@/modules/qrcode/queries';
 import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
-import { QR_FIELD_KEYS, toQrFormDefaults, toSaveQrDesignInput } from '@/modules/qrcode/schemas';
+import {
+  QR_FIELD_KEYS,
+  toEditContext,
+  toQrFormDefaults,
+  toSaveQrDesignInput,
+} from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
@@ -75,10 +82,16 @@ function EditQrDesignPage() {
         }
         logoLibrary={defaults.logoFileIds}
         updatePresets={defaults.presets}
+        edit={toEditContext(loaded)}
+        openItemHref={itemLinkAccess(me).openItemHref}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
         onCancel={() => void navigate({ to: '/qrcode' })}
+      />
+      <VersionHistory
+        designId={design.id}
+        canViewImages={can(me, 'sticker', 'view') || can(me, 'item', 'view')}
       />
     </div>
   );

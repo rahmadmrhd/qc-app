@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
 import { qrDefaultsQueryOptions, useSaveQrPreset } from '@/modules/qrcode/queries';
@@ -16,13 +17,18 @@ import {
 
 export const Route = createFileRoute('/_app/qrcode/default/new')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
-  loader: ({ context }) => context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+    ]),
   component: NewQrPresetPage,
 });
 
 function NewQrPresetPage() {
   const navigate = useNavigate();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const save = useSaveQrPreset();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<QrPresetFieldErrors>({});
@@ -48,6 +54,8 @@ function NewQrPresetPage() {
         title="Konfigurasi default baru"
         defaultValues={toPresetFormValues()}
         logoLibrary={defaults.logoFileIds}
+        businessUnits={businessUnits}
+        takenBuIds={new Set(defaults.presets.map((preset) => preset.buId))}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

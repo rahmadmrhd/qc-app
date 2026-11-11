@@ -317,6 +317,14 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
     expect(config.alertTo).toEqual(['pemilik@example.test', 'lain@example.test']);
   });
 
+  test('SMTP_HOST dan SMTP_FROM tanpa ALERT_TO: smtp tetap terbentuk (ringkasan stok stiker), alertTo kosong', () => {
+    const { ALERT_TO: _omit, ...withoutTo } = SMTP;
+    const config = loadConfig({ ...VALID, ...withoutTo });
+    expect(config.smtp).not.toBeNull();
+    expect(config.smtp?.host).toBe('smtp.example.test');
+    expect(config.alertTo).toEqual([]);
+  });
+
   test('SMTP_FROM kosong memakai SMTP_USER; port kosong = 587', () => {
     const config = loadConfig({ ...VALID, ...SMTP, SMTP_FROM: '', SMTP_PORT: '' });
     expect(config.smtp?.from).toBe('qc@example.test');
@@ -324,7 +332,10 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
   });
 
   test('penanda ISI_OLEH_PEMILIK / nilai rusak TIDAK menggagalkan start: peringatan dinonaktifkan', () => {
-    expect(loadConfig({ ...VALID, ...SMTP, ALERT_TO: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
+    // ALERT_TO rusak hanya mengosongkan penerima peringatan cadangan; SMTP tetap terbentuk (ringkasan stok stiker).
+    const badTo = loadConfig({ ...VALID, ...SMTP, ALERT_TO: 'ISI_OLEH_PEMILIK' });
+    expect(badTo.smtp).not.toBeNull();
+    expect(badTo.alertTo).toEqual([]);
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_HOST: '' }).smtp).toBeNull();
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: '99999' }).smtp).toBeNull();

@@ -12,6 +12,8 @@ export const STICKER_LIMITS = {
   countRows: 20,
   /** Maksimum pasangan stiker×lokasi per stok opname. */
   opnameRows: 100,
+  /** Maksimum penerima email ringkasan stok menipis. */
+  alertRecipientsMax: 20,
 } as const;
 
 /**
@@ -58,9 +60,23 @@ export function guideNameFromFile(filename: string): string {
   return [...collapsed].slice(0, GUIDE_LIMITS.nameMax).join('').trim();
 }
 
-/** Aturan penentuan stiker yang berlaku bagi sebuah item. */
-export const STICKER_RULES = ['bu', 'none'] as const;
+/** Status stiker (tahap 4a): `deprecated` = digantikan versi Manual Book yang lebih baru, hanya bisa menjadi `inactive`. */
+export const STICKER_STATUSES = ['active', 'inactive', 'deprecated'] as const;
+export type StickerStatus = (typeof STICKER_STATUSES)[number];
+
+/** Jenis sistem (tahap 4a): `''` = jenis biasa; `manual_book` dan `postel` dikelola aplikasi, tak diubah lewat form. */
+export const STICKER_SYSTEM_KINDS = ['', 'manual_book', 'postel'] as const;
+export type StickerSystemKind = (typeof STICKER_SYSTEM_KINDS)[number];
+
+/**
+ * Aturan penentuan stiker yang berlaku bagi sebuah item. `group` (tahap 4a) = menurut kelompok item (Manual Book):
+ * hanya jenis sistem yang memakainya; pengguna tidak membuatnya lewat form (lihat `USER_STICKER_RULES`).
+ */
+export const STICKER_RULES = ['bu', 'none', 'group'] as const;
 export type StickerRule = (typeof STICKER_RULES)[number];
+
+/** Aturan yang boleh dipilih pengguna saat menyimpan jenis stiker (tanpa `group`). */
+export const USER_STICKER_RULES = ['bu', 'none'] as const;
 
 /** Jenis entri riwayat stok. */
 export const STOCK_ENTRY_KINDS = ['in', 'out', 'adjust', 'opname'] as const;
@@ -81,9 +97,9 @@ export function piecesOfCount(count: StockCount): number {
   return total;
 }
 
-/** Menipis: stiker aktif, batas minimum > 0, dan total semua lokasi <= batas. */
+/** Menipis: stiker aktif (bukan `inactive`/`deprecated`), batas minimum > 0, dan total semua lokasi <= batas. */
 export function isLowStock(input: {
-  status: 'active' | 'inactive';
+  status: StickerStatus;
   minQty: number;
   total: number;
 }): boolean {
@@ -116,7 +132,7 @@ export type StickerMarkTarget =
 export interface MatchSticker {
   id: string;
   typeId: string;
-  status: 'active' | 'inactive';
+  status: StickerStatus;
   buIds: readonly string[];
 }
 
@@ -129,17 +145,20 @@ export interface MatchType {
 /**
  * SATU definisi pencocokan jenis -> stiker bagi sebuah item: hanya stiker `active` berjenis itu (status jenis tidak
  * memengaruhi); aturan `none` = semuanya; aturan `bu` = yang tertaut ke minimal satu BU item (stiker tanpa BU tidak
- * pernah cocok). Urutan masukan dipertahankan.
+ * pernah cocok); aturan `group` = yang `id`-nya ada di `groupStickerIds` (stiker Manual Book versi terbaru milik
+ * konfigurasi item). Urutan masukan dipertahankan.
  */
 export function stickersForType(
   type: MatchType,
   stickers: readonly MatchSticker[],
   itemBuIds: readonly string[],
+  groupStickerIds: ReadonlySet<string>,
 ): MatchSticker[] {
   const itemBus = new Set(itemBuIds);
   return stickers.filter((sticker) => {
     if (sticker.typeId !== type.id || sticker.status !== 'active') return false;
     if (type.rule === 'none') return true;
+    if (type.rule === 'group') return groupStickerIds.has(sticker.id);
     return sticker.buIds.some((buId) => itemBus.has(buId));
   });
 }

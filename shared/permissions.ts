@@ -66,8 +66,9 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   },
   qrcode: {
     view: 'Melihat konfigurasi label QR dan mengunduh hasil ekspor.',
-    edit: 'Melihat serta membuat, mengubah, dan menduplikat konfigurasi label.',
-    manage: 'Semua akses Ubah, ditambah ekspor ke Drive dan menghapus konfigurasi.',
+    edit: 'Melihat serta membuat, mengubah, dan mengekspor konfigurasi label (Manual Book) ke Drive, termasuk melihat riwayat versi.',
+    manage:
+      'Semua akses Ubah, ditambah menghapus konfigurasi serta mengelola preset default per BU dan pustaka logo.',
   },
   handover: {
     view: 'Melihat task serah terima di lokasi penugasan.',
@@ -81,7 +82,8 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   sticker: {
     view: 'Melihat katalog jenis dan stiker.',
     edit: 'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
-    manage: 'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker.',
+    manage:
+      'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
   },
   stickerstock: {
     view: 'Melihat stok dan riwayat stiker di lokasi penugasan.',

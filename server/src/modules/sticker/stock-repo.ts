@@ -91,6 +91,34 @@ export function stickerActiveGuardStmt(db: Preparer, stickerId: string): DbState
     .bind(stickerId);
 }
 
+/**
+ * Mengunci baris stiker (`FOR UPDATE`) di AWAL batch yang mengurangi/menetapkan stok, supaya penulis stok serentak
+ * atas stiker yang sama berjalan berurutan: tanpa ini, dua pengurangan di lokasi berbeda masing-masing melihat stok
+ * lokasi lain yang belum di-commit dan keduanya melewatkan penonaktifan otomatis stiker `deprecated`
+ * (`inactivateDeprecatedIfEmptyStmt`). Urutan kunci tetap: baris stiker dahulu, baru baris stok.
+ */
+export function lockStickerRowStmt(db: Preparer, stickerId: string): DbStatement {
+  return db.prepare('SELECT id FROM stickers WHERE id = ? FOR UPDATE').bind(stickerId);
+}
+
+/**
+ * Penonaktifan otomatis (tahap 4a): stiker `deprecated` yang total stok SEMUA lokasi-nya mencapai 0 menjadi
+ * `inactive`, di batch yang sama dengan penulisan stok (setelah semua pembaruan stok, sebelum pembacaan ulang
+ * riwayat). Tidak berefek pada stiker yang bukan `deprecated` atau yang masih punya stok.
+ */
+export function inactivateDeprecatedIfEmptyStmt(
+  db: Preparer,
+  stickerId: string,
+  now: string,
+  actor: string,
+): DbStatement {
+  return db
+    .prepare(
+      "UPDATE stickers SET status = 'inactive', updated_at = ?, updated_by = ? WHERE id = ? AND status = 'deprecated' AND (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) = 0",
+    )
+    .bind(now, actor, stickerId, stickerId);
+}
+
 /** Menambah stok; baris dibuat saat catatan pertama (`ON DUPLICATE KEY UPDATE`). */
 export function addStockStmt(
   db: Preparer,

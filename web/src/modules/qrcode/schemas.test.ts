@@ -1,9 +1,12 @@
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import type { QrDesignDto } from '@shared/contract';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, qrContentHash } from '@shared/qrcode';
 import { expect, test } from 'vitest';
 import {
   frameRangeMessage,
+  qrContentOfDesign,
   qrDesignFormSchema,
   qrPresetFormSchema,
+  toEditContext,
   toNewDesignFromPreset,
   toPresetFormValues,
   toQrFormDefaults,
@@ -12,6 +15,11 @@ import {
 } from './schemas';
 
 const valid = {
+  name: '',
+  presetId: '',
+  itemIds: [] as string[],
+  buId: '',
+  namePlacement: '' as const,
   title: 'Panduan',
   linkSource: 'url' as const,
   link: 'https://contoh.com/a',
@@ -126,6 +134,8 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: { ...DEFAULT_QR_LAYOUT, qrSize: 18 },
     style: DEFAULT_QR_STYLE,
     defaultLogoId: 'b',
+    buId: 'bu1',
+    namePlacement: 'footer' as const,
     createdAt: 't',
     createdBy: 'x',
     updatedAt: 't',
@@ -157,8 +167,70 @@ test('konfigurasi default: nama wajib, title boleh kosong; nilai awal QR baru da
     layout: preset.layout,
     style: preset.style,
     defaultLogoId: 'b',
+    buId: 'bu1',
+    namePlacement: 'footer',
   });
+  // BU dan penempatan nama wajib dipilih pada preset.
+  const noBu = qrPresetFormSchema.safeParse({ ...toPresetFormValues(preset), buId: '' });
+  expect(noBu.success).toBe(false);
+  expect(noBu.error?.issues.map((issue) => issue.message)).toContain('Pilih Business Unit');
+  const noPlacement = qrPresetFormSchema.safeParse({
+    ...toPresetFormValues(preset),
+    namePlacement: '',
+  });
+  expect(noPlacement.success).toBe(false);
+  expect(noPlacement.error?.issues.map((issue) => issue.path[0])).toContain('namePlacement');
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('id');
   expect(toSaveQrPresetInput(values)).not.toHaveProperty('expectedUpdatedAt');
   expect(toPresetFormValues()).toMatchObject({ name: '', title: '', logoFileId: '' });
+});
+
+test('toSaveQrDesignInput membawa nama, preset, dan item dari nilai form; toQrFormDefaults memetakannya dari konfigurasi', () => {
+  const parsed = qrDesignFormSchema.parse({
+    ...valid,
+    name: 'PBE M5-400/200',
+    presetId: 'p1',
+    itemIds: ['i1', 'i2'],
+  });
+  expect(toSaveQrDesignInput(parsed)).toMatchObject({
+    name: 'PBE M5-400/200',
+    presetId: 'p1',
+    itemIds: ['i1', 'i2'],
+  });
+  const design = {
+    name: 'Nama',
+    presetId: 'p9',
+    items: [{ id: 'i7', brand: 'B', model: 'M' }],
+  } as unknown as QrDesignDto;
+  expect(toQrFormDefaults(design)).toMatchObject({
+    name: 'Nama',
+    presetId: 'p9',
+    itemIds: ['i7'],
+  });
+});
+
+test('toEditContext: hash ekspor hanya bila pernah diekspor; konfigurasi lama = tanpa nama, penempatan, dan stiker', () => {
+  const design = {
+    name: '',
+    namePlacement: '',
+    stickerVersion: 0,
+    presetId: '',
+    items: [],
+    hiddenItemCount: 0,
+    exportedAt: '',
+    linkSource: 'url',
+    link: 'https://contoh.com/a',
+    title: 'Panduan',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+  } as unknown as QrDesignDto;
+  expect(toEditContext(design)).toMatchObject({ exportedHash: null, legacy: true });
+  const exported = toEditContext({ ...design, exportedAt: '2026-11-10T00:00:00.000Z' });
+  expect(exported.exportedHash).toBe(qrContentHash(qrContentOfDesign(design)));
+  expect(toEditContext({ ...design, name: 'Nama', namePlacement: 'title' }).legacy).toBe(false);
+  expect(toEditContext({ ...design, stickerVersion: 3 }).stickerVersion).toBe(3);
+  expect(toEditContext(design).stickerVersion).toBe(0);
 });

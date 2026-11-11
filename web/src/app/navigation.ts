@@ -13,6 +13,7 @@ import {
   MapPin,
   Package,
   QrCode,
+  Settings2,
   Shapes,
   ShieldCheck,
   Sticker,
@@ -56,12 +57,6 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: { module: 'item', level: 'view' },
       },
       {
-        label: 'QR Code',
-        to: '/qrcode',
-        icon: QrCode,
-        permission: { module: 'qrcode', level: 'view' },
-      },
-      {
         label: 'Merk',
         to: '/item/brands',
         icon: Tags,
@@ -72,6 +67,17 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/customer',
         icon: Contact,
         permission: { module: 'item', level: 'view' },
+      },
+    ],
+  },
+  {
+    label: 'Manual Book',
+    items: [
+      {
+        label: 'QR Code',
+        to: '/qrcode',
+        icon: QrCode,
+        permission: { module: 'qrcode', level: 'view' },
       },
     ],
   },
@@ -96,7 +102,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Stiker',
         to: '/sticker',
         icon: Sticker,
-        excludes: ['/sticker/types', '/sticker/stock', '/sticker/library'],
+        excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
         permission: { module: 'sticker', level: 'view' },
       },
       {
@@ -119,6 +125,12 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'item', level: 'view' },
           { module: 'sticker', level: 'view' },
         ],
+      },
+      {
+        label: 'Konfigurasi Stiker',
+        to: '/sticker/settings',
+        icon: Settings2,
+        permission: { module: 'sticker', level: 'manage' },
       },
     ],
   },

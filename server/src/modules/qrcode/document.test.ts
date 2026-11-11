@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrCall, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrManualBookFields, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
@@ -102,6 +102,7 @@ describe('unggah PDF sumber', () => {
     expect((await upload({ replaceDocumentId: 'tidak-ada' })).error.code).toBe('NOT_FOUND');
     const doc = await upload({});
     const body = {
+      ...(await qrManualBookFields(env)),
       title: 'T',
       linkSource: 'pdf',
       link: '',

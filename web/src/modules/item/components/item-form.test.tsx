@@ -52,11 +52,21 @@ const STICKERS: StickerDto[] = [
     status: 'active',
     businessUnitIds: ['bu-a'],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
 ];
 const STICKER_TYPES: StickerTypeDto[] = [
-  { id: 't1', name: 'Postel', rule: 'bu', status: 'active', stickerCount: 1, updatedAt: '' },
+  {
+    id: 't1',
+    name: 'Postel',
+    rule: 'bu',
+    status: 'active',
+    stickerCount: 1,
+    systemKind: '',
+    defaultMinQty: 0,
+    updatedAt: '',
+  },
 ];
 
 // bu-x tidak boleh diisi user ini; bu-old nonaktif jadi tak pernah ditawarkan.
@@ -360,6 +370,8 @@ test('Tambah jenis dari penanda: dialog jenis, jenis baru langsung terpilih tanp
     rule: 'none',
     status: 'active',
     stickerCount: 0,
+    systemKind: '',
+    defaultMinQty: 0,
     updatedAt: '',
   };
   const onCreateStickerType = vi.fn(async () => created);

@@ -593,3 +593,111 @@ describe('izin dan lokasi', () => {
     expect(routes['stickerStock.adjust'].permission).toEqual(loc('manage'));
   });
 });
+
+describe('stiker deprecated (tahap 4a)', () => {
+  const deprecate = (stickerId: string) =>
+    env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = ?").bind(stickerId).run();
+  const statusOf = async (stickerId: string) =>
+    (
+      await env.DB.prepare('SELECT status FROM stickers WHERE id = ?')
+        .bind(stickerId)
+        .first<{ status: string }>()
+    )?.status;
+  const dtoOf = async (stickerId: string) => {
+    const { listStickers } = await import('./service');
+    return (await listStickers(env)).find((sticker) => sticker.id === stickerId);
+  };
+
+  test('stok masuk ke stiker deprecated ditolak; tidak ada baris stok atau riwayat baru', async () => {
+    const sticker = await newSticker();
+    await recordStock(env, rec(sticker.id, A, 'in', 5), admin);
+    await deprecate(sticker.id);
+    const error = await captureAppErrorAsync(() =>
+      recordStock(env, rec(sticker.id, A, 'in', 1), admin),
+    );
+    expect(error.code).toBe('VALIDATION');
+    expect(await qtyAt(sticker.id, A)).toBe(5);
+    expect(await entriesOf(sticker.id)).toHaveLength(1);
+  });
+
+  test('stok keluar yang menghabiskan total semua lokasi menjadikan deprecated -> inactive (respons dan basis data)', async () => {
+    const sticker = await newSticker({ minQty: 10 });
+    await recordStock(env, rec(sticker.id, A, 'in', 3), admin);
+    await recordStock(env, rec(sticker.id, B, 'in', 2), admin);
+    await deprecate(sticker.id);
+    await recordStock(env, rec(sticker.id, A, 'out', 3), admin);
+    // Masih ada stok di lokasi lain: tetap deprecated.
+    expect(await statusOf(sticker.id)).toBe('deprecated');
+    expect(await dtoOf(sticker.id)).toMatchObject({ status: 'deprecated', low: false });
+    await recordStock(env, rec(sticker.id, B, 'out', 2), admin);
+    expect(await statusOf(sticker.id)).toBe('inactive');
+    expect(await dtoOf(sticker.id)).toMatchObject({ status: 'inactive', low: false });
+  });
+
+  test('koreksi (adjust) negatif yang menghabiskan stok juga menonaktifkan; stiker non-deprecated tak berubah', async () => {
+    const old = await newSticker();
+    const live = await newSticker();
+    await recordStock(env, rec(old.id, A, 'in', 4), admin);
+    await recordStock(env, rec(live.id, A, 'in', 4), admin);
+    await deprecate(old.id);
+    for (const id of [old.id, live.id]) {
+      await adjustStock(
+        env,
+        validateAdjustStock({ locationId: A, stickerId: id, delta: -4, reason: 'rusak' }),
+        admin,
+      );
+    }
+    expect(await statusOf(old.id)).toBe('inactive');
+    expect(await statusOf(live.id)).toBe('active');
+  });
+
+  test('stok menipis tidak pernah dihitung untuk deprecated (daftar stok dan katalog)', async () => {
+    const sticker = await newSticker({ minQty: 10 });
+    await recordStock(env, rec(sticker.id, A, 'in', 4), admin);
+    expect((await listStickerStock(env, [A])).find((r) => r.stickerId === sticker.id)?.low).toBe(
+      true,
+    );
+    await deprecate(sticker.id);
+    const row = (await listStickerStock(env, [A])).find((r) => r.stickerId === sticker.id);
+    expect(row).toMatchObject({ status: 'deprecated', low: false, total: 4 });
+    expect((await dtoOf(sticker.id))?.low).toBe(false);
+  });
+
+  test('dua pengurangan serentak di lokasi berbeda yang menghabiskan total: stiker menjadi inactive, tanpa galat', async () => {
+    for (let round = 0; round < 4; round++) {
+      const sticker = await newSticker();
+      await recordStock(env, rec(sticker.id, A, 'in', 5), admin);
+      await recordStock(env, rec(sticker.id, B, 'in', 5), admin);
+      await deprecate(sticker.id);
+      const results = await Promise.allSettled([
+        adjustStock(
+          env,
+          validateAdjustStock({ locationId: A, stickerId: sticker.id, delta: -5, reason: 'a' }),
+          admin,
+        ),
+        adjustStock(
+          env,
+          validateAdjustStock({ locationId: B, stickerId: sticker.id, delta: -5, reason: 'b' }),
+          admin,
+        ),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+      expect(await qtyAt(sticker.id, A)).toBe(0);
+      expect(await qtyAt(sticker.id, B)).toBe(0);
+      expect(await statusOf(sticker.id)).toBe('inactive');
+    }
+  });
+
+  test('dua keluar serentak di lokasi yang sama: tepat satu penonaktifan tanpa galat', async () => {
+    const sticker = await newSticker();
+    await recordStock(env, rec(sticker.id, A, 'in', 10), admin);
+    await deprecate(sticker.id);
+    const results = await Promise.allSettled([
+      recordStock(env, rec(sticker.id, A, 'out', 5), admin),
+      recordStock(env, rec(sticker.id, A, 'out', 5), admin),
+    ]);
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    expect(await statusOf(sticker.id)).toBe('inactive');
+    expect(await qtyAt(sticker.id, A)).toBe(0);
+  });
+});

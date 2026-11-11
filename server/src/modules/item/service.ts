@@ -24,6 +24,7 @@ import type {
   GetItemInput,
   ItemAccessoryDto,
   ItemDto,
+  ItemManualBookDto,
   ItemPageDto,
   ItemStatus,
   ItemStickerPhotoDto,
@@ -48,11 +49,13 @@ import {
   findItem,
   findItemStmt,
   findItemWithBrand,
+  HAS_MANUAL_BOOK_SQL,
   type ItemRow,
   insertItemStmts,
   itemBusinessUnitIdsStmt,
   itemBusinessUnitsOf,
   itemIdsVisibleIn,
+  loadItemManualBooks,
   parseStrings,
   replaceItemBusinessUnitsStmts,
   toItem,
@@ -72,7 +75,7 @@ function hasMarks(instructions: readonly StoredPhoto[]): boolean {
   return instructions.some((photo) => photo.marks.length > 0);
 }
 
-function toItemSummaryDto(item: ItemView): ItemSummaryDto {
+function toItemSummaryDto(item: ItemView, manualBook: ItemManualBookDto | null): ItemSummaryDto {
   return {
     id: item.id,
     brandId: item.brandId,
@@ -83,14 +86,20 @@ function toItemSummaryDto(item: ItemView): ItemSummaryDto {
     aliases: [...item.aliases],
     imageCount: item.attachments.length,
     hasInstructions: hasMarks(item.instructions),
+    hasManualBook: manualBook !== null,
     businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
   };
 }
 
-export function toItemDto(item: ItemView, stickerPhotos: ItemStickerPhotoDto[]): ItemDto {
+export function toItemDto(
+  item: ItemView,
+  stickerPhotos: ItemStickerPhotoDto[],
+  manualBook: ItemManualBookDto | null,
+): ItemDto {
   return {
-    ...toItemSummaryDto(item),
+    ...toItemSummaryDto(item, manualBook),
+    manualBook: manualBook ? { ...manualBook } : null,
     stickerPhotos,
     accessories: item.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...item.attachments],
@@ -204,6 +213,8 @@ export async function listItemPage(
   const instructionFilter = instructionFilterSql(input);
   where.push(...instructionFilter.clauses);
   binds.push(...instructionFilter.binds);
+  if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
+  if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
   const query = normalizeKey(input.query ?? '');
   if (query !== '') {
     where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
@@ -223,9 +234,10 @@ export async function listItemPage(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   const pageIds = page.map((row) => row.id.trim());
-  const [businessUnits, withInstructions] = await Promise.all([
+  const [businessUnits, withInstructions, manualBooks] = await Promise.all([
     itemBusinessUnitsOf(env.DB, pageIds),
     hasInstructionsOf(env.DB, pageIds),
+    loadItemManualBooks(env.DB, pageIds),
   ]);
   return {
     items: page.map(
@@ -239,6 +251,7 @@ export async function listItemPage(
         aliases: parseStrings(row.aliases),
         imageCount: Number(row.image_count) || 0,
         hasInstructions: withInstructions.has(row.id.trim()),
+        hasManualBook: manualBooks.has(row.id.trim()),
         businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
       }),
@@ -266,6 +279,7 @@ export async function getItemDto(
   return toItemDto(
     view,
     await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),
+    (await loadItemManualBooks(env.DB, [view.id])).get(view.id) ?? null,
   );
 }
 
@@ -483,7 +497,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.stickers = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, status FROM stickers WHERE id IN (${placeholders(stickerIds.size)})`,
+        `SELECT s.id, s.status, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
       ).bind(...stickerIds),
     );
   }
@@ -507,8 +521,11 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
   const rowsOf = <T>(slot: number): T[] =>
     slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
   const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
-  const stickerStatus = new Map(
-    rowsOf<{ id: string; status: string }>(slots.stickers).map((row) => [row.id, row.status]),
+  const stickerRows = new Map(
+    rowsOf<{ id: string; status: string; system_kind: string }>(slots.stickers).map((row) => [
+      row.id,
+      row,
+    ]),
   );
   const typeStatus = new Map(
     rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
@@ -525,9 +542,13 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     photo.marks.forEach((mark, markIndex) => {
       const label = `${photoLabel}, penanda ${markIndex + 1}`;
       if (mark.target.kind === 'sticker') {
-        const status = stickerStatus.get(mark.target.stickerId);
-        if (status === undefined) fail(`${label}: stiker tidak ditemukan`);
-        if (status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+        const sticker = stickerRows.get(mark.target.stickerId);
+        if (sticker === undefined) fail(`${label}: stiker tidak ditemukan`);
+        // Stiker jenis sistem (Manual Book) dipilih lewat jenisnya, tak pernah sebagai sasaran langsung.
+        if ((sticker?.system_kind ?? '').trim() !== '') {
+          fail(`${label}: Stiker Manual Book dipilih lewat jenisnya`);
+        }
+        if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
           fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
         }
       } else {
@@ -855,6 +876,7 @@ async function saveItemOnce(
       instructions: stored,
     },
     await instructionViewsOf(env, id, plan.businessUnits, stored),
+    (await loadItemManualBooks(env.DB, [id])).get(id) ?? null,
   );
 }
 
@@ -884,7 +906,8 @@ async function setItemStatusOnce(
   const instructions = (await loadItemInstructions(env.DB, [existing.id])).get(existing.id) ?? [];
   const before: ItemView = { ...existing, brand: found.brandName, businessUnits, instructions };
   const views = await instructionViewsOf(env, existing.id, businessUnits, instructions);
-  if (existing.status === input.status) return toItemDto(before, views);
+  const manualBook = (await loadItemManualBooks(env.DB, [existing.id])).get(existing.id) ?? null;
+  if (existing.status === input.status) return toItemDto(before, views, manualBook);
   const now = nowIso(env);
   const updated: ItemRecord = {
     ...existing,
@@ -908,5 +931,9 @@ async function setItemStatusOnce(
     ],
     ITEM_CONFLICTS,
   );
-  return toItemDto({ ...updated, brand: before.brand, businessUnits, instructions }, views);
+  return toItemDto(
+    { ...updated, brand: before.brand, businessUnits, instructions },
+    views,
+    manualBook,
+  );
 }

@@ -72,6 +72,12 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'brands.list': null,
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
+  'stickerSettings.get': null,
+  'stickerSettings.save': {
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8 },
+    defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
+  },
   'stickerTypes.list': null,
   'stickerTypes.save': {
     id: 'st1',
@@ -158,9 +164,13 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'items.setStatus': { id: 'i1', status: 'inactive' },
   'qrcodes.list': null,
   'qrcodes.get': { id: 'q1' },
+  'qrcodes.versions': { id: 'q1' },
   'qrcodes.save': {
     id: 'q1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    name: 'Nama',
+    presetId: 'p1',
+    itemIds: ['i1', 'i2'],
     title: 'T',
     linkSource: 'url',
     link: 'https://x.id',
@@ -172,6 +182,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'qrcodes.delete': { id: 'q1' },
   'qrcodes.getDefaults': null,
+  'qrcodes.itemOptions': { query: 'a7', cursor: 'k', limit: 20 },
   'qrcodes.savePreset': {
     id: 'p1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
@@ -182,7 +193,10 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     layout: 'a' as never,
     style: {} as never,
     defaultLogoId: '',
+    buId: 'bu1',
+    namePlacement: 'title',
   },
+  'qrcodes.clonePreset': { id: 'p1', buId: 'bu2', name: 'Salinan' },
   'qrcodes.deletePreset': { id: 'p1' },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
@@ -199,6 +213,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     pdf: new Uint8Array([37, 80, 68, 70]),
     png: new Uint8Array([137, 80, 78, 71]),
+    preview: new Uint8Array([137, 80, 78, 71]),
+    reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
   'jobs.get': { id: 'j1' },
@@ -528,10 +544,11 @@ describe('rute biner', () => {
     });
   });
 
-  test('qrcodes.export: dua bagian multipart, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
+  test('qrcodes.export: tiga bagian multipart, reason di query, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
     const parts = toRequestParts('qrcodes.export', EXAMPLES['qrcodes.export']);
     expect(parts.path).toBe('/qrcodes/q1/exports');
-    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png']);
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png', 'preview']);
+    expect(parts.query).toEqual({ reason: 'Logo diganti' });
     expect(parts.ifMatch).toBe('2026-10-09T00:00:00.000Z');
     expect(parts.body).toBeUndefined();
   });
@@ -545,6 +562,7 @@ describe('rute biner', () => {
         id: 'q1',
         expectedUpdatedAt: 'x',
         pdf: new Uint8Array(),
+        reason: '',
       } as never),
     ).toThrow();
   });
@@ -554,8 +572,9 @@ describe('rute biner', () => {
     expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
     // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
-      QR_LIMITS.exportMaxBytes + 64 * 1024,
+      QR_LIMITS.exportMaxBytes + QR_LIMITS.previewMaxBytes + 64 * 1024,
     );
+    expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(8_978_432);
     // pustaka gambar: gambar penuh + thumbnail + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(
       MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 65_536,

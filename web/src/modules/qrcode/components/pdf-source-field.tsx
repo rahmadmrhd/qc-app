@@ -1,6 +1,6 @@
 import type { QrDocumentDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {

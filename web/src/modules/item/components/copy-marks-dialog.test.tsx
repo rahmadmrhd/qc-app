@@ -66,6 +66,7 @@ const CATALOG_STICKERS = [
     status: 'inactive' as const,
     businessUnitIds: [],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
 ];
@@ -76,6 +77,8 @@ const CATALOG_TYPES = [
     rule: 'bu' as const,
     status: 'active' as const,
     stickerCount: 1,
+    systemKind: '' as const,
+    defaultMinQty: 0,
     updatedAt: '',
   },
 ];

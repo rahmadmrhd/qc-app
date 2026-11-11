@@ -1,12 +1,19 @@
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { manualBookDesignIdsOf } from '@server/modules/item/repo';
 import type {
   ItemStickerMarkView,
   ItemStickerPhotoDto,
   ResolvedStickerDto,
 } from '@shared/contract';
-import { type MatchSticker, stickersForType } from '@shared/stickers';
+import {
+  type MatchSticker,
+  type StickerRule,
+  type StickerStatus,
+  stickersForType,
+} from '@shared/stickers';
 import type { StoredPhoto } from './instruction-repo';
+import { latestManualBookStickerIds } from './repo';
 
 interface GuideRow {
   id: string;
@@ -40,6 +47,15 @@ interface BuRow {
   code: string;
 }
 
+function toMatchStatus(status: string): StickerStatus {
+  return status === 'active' || status === 'deprecated' ? status : 'inactive';
+}
+
+function toMatchRule(rule: string): StickerRule {
+  const trimmed = rule.trim();
+  return trimmed === 'none' || trimmed === 'group' ? trimmed : 'bu';
+}
+
 function placeholders(count: number): string {
   return Array.from({ length: count }, () => '?').join(', ');
 }
@@ -52,13 +68,16 @@ function placeholders(count: number): string {
  * - Penanda ke stiker tertentu: `resolved` = stiker itu sendiri (tidak disaring BU, tetap tampil walau nonaktif dengan
  *   `inactive: true`); `targetName` = alias bila ada, selain itu nama stiker.
  * - Penanda jenis: `resolved` = `stickersForType` (stiker aktif jenis itu menurut aturan jenis dan BU item;
- *   status jenis tidak berpengaruh); `targetName` = nama jenis; tanpa kecocokan = `unresolved: true`.
+ *   status jenis tidak berpengaruh); `targetName` = nama jenis; tanpa kecocokan = `unresolved: true`. Aturan `group`
+ *   (Manual Book, tahap 4a): stiker versi TERBARU konfigurasi QR yang ditunjuk `items.manual_book_design_id` item ini,
+ *   bila aktif; item tanpa konfigurasi, atau versi terbaru yang nonaktif, = `unresolved` (tidak jatuh ke versi
+ *   `deprecated`).
  * - `buCodes` = kode BU irisan BU stiker dan BU item (terurut kode); kosong bila tak beririsan.
  * Dihitung ulang tiap dibaca, jadi perubahan BU item atau katalog sesudah simpan langsung tercermin.
  */
 export async function buildInstructionViews(
   env: Env,
-  _itemId: string,
+  itemId: string,
   itemBuIds: readonly string[],
   photos: readonly StoredPhoto[],
 ): Promise<ItemStickerPhotoDto[]> {
@@ -134,6 +153,12 @@ export async function buildInstructionViews(
   }
   const buCode = new Map(rowsOf<BuRow>(slots.bus).map((row) => [row.id, row.code]));
   const itemBus = new Set(itemBuIds);
+  // Aturan `group`: stiker versi terbaru Manual Book item ini (dua kueri kecil, hanya bila ada penanda jenis group).
+  let groupStickerIds: ReadonlySet<string> = new Set();
+  if ([...types.values()].some((type) => type.rule.trim() === 'group')) {
+    const designId = (await manualBookDesignIdsOf(env.DB, [itemId])).get(itemId) ?? '';
+    groupStickerIds = new Set((await latestManualBookStickerIds(env.DB, [designId])).values());
+  }
 
   const resolve = (row: StickerRow): ResolvedStickerDto => ({
     id: row.id,
@@ -165,13 +190,14 @@ export async function buildInstructionViews(
       const candidates: MatchSticker[] = (stickersByType.get(type.id) ?? []).map((row) => ({
         id: row.id,
         typeId: row.type_id,
-        status: row.status === 'active' ? 'active' : 'inactive',
+        status: toMatchStatus(row.status.trim()),
         buIds: buIdsOfSticker.get(row.id) ?? [],
       }));
       const matched = stickersForType(
-        { id: type.id, rule: type.rule === 'none' ? 'none' : 'bu' },
+        { id: type.id, rule: toMatchRule(type.rule) },
         candidates,
         itemBuIds,
+        groupStickerIds,
       );
       const resolved = matched.flatMap((match) => {
         const row = stickers.get(match.id);

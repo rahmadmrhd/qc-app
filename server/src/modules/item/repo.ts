@@ -2,7 +2,13 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
-import type { BusinessUnitRefDto, ItemAccessoryDto, ItemStatus } from '@shared/contract';
+import { toStickerStatus } from '@server/modules/sticker/repo';
+import type {
+  BusinessUnitRefDto,
+  ItemAccessoryDto,
+  ItemManualBookDto,
+  ItemStatus,
+} from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 
 export interface ItemRecord {
@@ -149,6 +155,72 @@ export async function itemBusinessUnitsOf(
     }
   }
   for (const list of result.values()) list.sort((a, b) => a.code.localeCompare(b.code));
+  return result;
+}
+
+/**
+ * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung. `ItemRecord`
+ * tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book tidak ada di peta.
+ */
+export async function manualBookDesignIdsOf(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT id, manual_book_design_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND manual_book_design_id <> ''`,
+      )
+      .bind(...chunk)
+      .all<{ id: string; manual_book_design_id: string }>();
+    for (const row of rows.results) result.set(row.id.trim(), row.manual_book_design_id.trim());
+  }
+  return result;
+}
+
+/**
+ * Definisi TUNGGAL "item ber-Manual Book" (alias tabel `i` = `items`): tergabung ke konfigurasi QR yang punya minimal satu
+ * versi. Dipakai filter `items.list` (`manualBook`) dan pemuat `loadItemManualBooks` (sumber `hasManualBook`/`manualBook`).
+ */
+export const HAS_MANUAL_BOOK_SQL =
+  "(i.manual_book_design_id <> '' AND EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id))";
+
+/**
+ * Manual Book tiap item (peta id item -> versi terbaru). Item tanpa Manual Book berversi tidak ada di peta. Satu kueri
+ * per 500 id.
+ */
+export async function loadItemManualBooks(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, ItemManualBookDto>> {
+  const result = new Map<string, ItemManualBookDto>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT i.id, i.manual_book_design_id AS design_id, COALESCE((SELECT d.name FROM qr_designs d WHERE d.id = i.manual_book_design_id), '') AS design_name, (SELECT MAX(m.version) FROM manual_book_versions m WHERE m.design_id = i.manual_book_design_id) AS version, COALESCE((SELECT s.status FROM manual_book_versions m JOIN stickers s ON s.id = m.sticker_id WHERE m.design_id = i.manual_book_design_id ORDER BY m.version DESC LIMIT 1), 'inactive') AS sticker_status FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_MANUAL_BOOK_SQL}`,
+      )
+      .bind(...chunk)
+      .all<{
+        id: string;
+        design_id: string;
+        design_name: string;
+        version: number | string;
+        sticker_status: string;
+      }>();
+    for (const row of rows.results) {
+      result.set(row.id.trim(), {
+        designId: row.design_id.trim(),
+        name: row.design_name.trim(),
+        version: Number(row.version) || 0,
+        status: toStickerStatus(row.sticker_status.trim()),
+      });
+    }
+  }
   return result;
 }
 

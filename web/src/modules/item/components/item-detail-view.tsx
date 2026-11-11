@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
+import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 import { ImageThumb } from './image-thumb';
+import { NoManualBookNote } from './manual-book-note';
 import { StickerInstructionsView } from './sticker-instructions-view';
 
 export interface ItemDetailViewProps {
@@ -11,6 +13,8 @@ export interface ItemDetailViewProps {
   canEdit: boolean;
   canManage: boolean;
   statusPending: boolean;
+  /** Tautan ke konfigurasi QR Manual Book item ini; tidak diberikan bila user tak berhak membukanya. */
+  openManualBookHref?: ((designId: string) => string | null) | undefined;
   onBack: () => void;
   onEdit: () => void;
   onToggleStatus: () => void;
@@ -31,6 +35,7 @@ export function ItemDetailView({
   canEdit,
   canManage,
   statusPending,
+  openManualBookHref,
   onBack,
   onEdit,
   onToggleStatus,
@@ -82,6 +87,28 @@ export function ItemDetailView({
               </li>
             ))}
           </ul>
+        )}
+      </Section>
+
+      <Section title="Manual Book">
+        {item.manualBook === null ? (
+          <NoManualBookNote className="text-sm" />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium">{item.manualBook.name}</span>
+            <Badge variant="outline">{`v${item.manualBook.version}`}</Badge>
+            <Badge variant={item.manualBook.status === 'active' ? 'default' : 'secondary'}>
+              {STICKER_STATUS_LABEL[item.manualBook.status]}
+            </Badge>
+            {openManualBookHref?.(item.manualBook.designId) ? (
+              <a
+                href={openManualBookHref(item.manualBook.designId) ?? undefined}
+                className="underline underline-offset-2"
+              >
+                Buka konfigurasi QR
+              </a>
+            ) : null}
+          </div>
         )}
       </Section>
 

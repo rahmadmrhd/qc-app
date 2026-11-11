@@ -9,6 +9,7 @@ import {
   setStickerStatus,
   setStickerTypeStatus,
 } from './service';
+import { getStickerSettings, saveStickerSettings } from './settings';
 import {
   adjustStock,
   listStickerStock,
@@ -22,6 +23,7 @@ import {
   validateOpname,
   validateRecordStock,
   validateSaveSticker,
+  validateSaveStickerSettings,
   validateSaveStickerType,
   validateSetStickerStatus,
   validateSetStickerTypeStatus,
@@ -29,6 +31,8 @@ import {
 } from './validate';
 
 type StickerMethod =
+  | 'stickerSettings.get'
+  | 'stickerSettings.save'
   | 'stickerTypes.list'
   | 'stickerTypes.save'
   | 'stickerTypes.setStatus'
@@ -60,6 +64,16 @@ const CATALOG_READ_PERMISSION = {
 export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
   return {
     ...guideRoutes(),
+    'stickerSettings.get': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: expectNull,
+      handler: (_input, ctx) => getStickerSettings(ctx.env),
+    },
+    'stickerSettings.save': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateSaveStickerSettings,
+      handler: (input, ctx) => saveStickerSettings(ctx.env, input, ctx.user),
+    },
     'stickerTypes.list': {
       permission: CATALOG_READ_PERMISSION,
       validate: expectNull,

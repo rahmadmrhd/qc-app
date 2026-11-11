@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { attachFiles } from '@server/modules/files/service';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
-import { qrCall, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { QR_FOLDER_SETTING } from './folders';
@@ -38,8 +38,15 @@ const PNG1 = {
 };
 const PDF = 'JVBERi0xLjQK';
 
+/** Nama dan item konfigurasi yang sudah ada, agar simpan-ubah tidak mengganti item. */
+const keepManualBook = (dto: { name: string; items: { id: string }[] }) => ({
+  name: dto.name,
+  itemIds: dto.items.map((item) => item.id),
+});
+
 async function input(extra: Record<string, unknown> = {}) {
   return {
+    ...(await qrManualBookFields(env)),
     title: 'Panduan',
     linkSource: 'pdf',
     link: '',
@@ -55,11 +62,12 @@ async function input(extra: Record<string, unknown> = {}) {
 async function save(payload: Record<string, unknown> = {}, email = 'qredit@gmail.com') {
   const body: Record<string, unknown> = { ...(await input()), ...payload };
   if (body.id) {
-    const current = await call('qrview@gmail.com', 'qrcodes.get', { id: body.id });
+    const current = await call('qredit@gmail.com', 'qrcodes.get', { id: body.id });
     if (current.ok) {
       // Mengubah wajib membawa versi yang dimuat; satu PDF hanya untuk satu konfigurasi.
       if (body.expectedUpdatedAt === undefined) body.expectedUpdatedAt = current.data.updatedAt;
       if (payload.documentId === undefined) body.documentId = current.data.documentId;
+      Object.assign(body, { ...keepManualBook(current.data), ...payload });
     }
   }
   return call(email, 'qrcodes.save', body);
@@ -167,6 +175,7 @@ describe('konfigurasi QR', () => {
     env.clock.advance(1000);
     const base = {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       expectedUpdatedAt: made.data.updatedAt,
@@ -258,6 +267,7 @@ describe('konfigurasi QR', () => {
     env.clock.advance(60_000);
     const { style: _omit, ...withoutStyle } = {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       expectedUpdatedAt: changed.data.updatedAt,
@@ -304,6 +314,7 @@ describe('konfigurasi QR', () => {
     const made = await save();
     const without = await call('qredit@gmail.com', 'qrcodes.save', {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       title: 'Baru',

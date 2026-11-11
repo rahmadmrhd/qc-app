@@ -39,3 +39,25 @@ test('aksi audit qrcode.* berlabel Indonesia', () => {
   }
   expect(auditActionLabel('qrcode.export')).toBe('Label QR diekspor ke Drive');
 });
+
+test('aksi audit preset QR, katalog stiker, dan pengaturan stiker berlabel Indonesia', () => {
+  for (const action of [
+    'qrcode.preset_create',
+    'qrcode.preset_update',
+    'qrcode.preset_delete',
+    'qrcode.preset_clone',
+    'qrcode.logo_library_update',
+    'sticker.create',
+    'sticker.update',
+    'sticker.status',
+    'sticker.settings',
+    'stickerType.create',
+    'stickerType.update',
+    'stickerType.status',
+    'stickerGuide.rename',
+    'stickerGuide.remove',
+  ]) {
+    expect(auditActionLabel(action)).not.toBe(action);
+  }
+  expect(auditActionLabel('sticker.settings')).toBe('Konfigurasi stiker diubah');
+});

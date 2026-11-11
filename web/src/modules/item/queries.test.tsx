@@ -25,6 +25,7 @@ const full = {
   imageCount: 1,
   updatedAt: 't2',
   hasInstructions: false,
+  hasManualBook: false,
   stickerPhotos: [{ marks: [{ x: 1 }] }],
   accessories: [{ y: 1 }],
   attachments: ['f1'],
@@ -51,6 +52,7 @@ test('toItemSummary membuang detail, foto instruksi, aksesori, lampiran, dan met
       'brandId',
       'businessUnits',
       'hasInstructions',
+      'hasManualBook',
       'id',
       'imageCount',
       'isCountryLock',
@@ -146,6 +148,37 @@ test('daftar item: filter instruksi dan stiker diteruskan ke items.list; bawaan 
     itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, stickerMode: 'missing' }),
   );
   expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('daftar item: filter Manual Book dikirim hanya bila "missing", selalu bersama status aktif (label hanya untuk item aktif)', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
+  // status "Nonaktif" tak dapat berpadu dengan "belum ada Manual Book": filter Manual Book menang (item nonaktif tak dihitung)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      manualBook: 'missing',
+      status: 'inactive',
+    }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
+  await client.fetchInfiniteQuery(itemsInfiniteQueryOptions(DEFAULT_ITEM_FILTER));
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('kunci daftar item membedakan filter Manual Book', () => {
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
 });
 
 test('kunci daftar item membedakan filter instruksi dan stiker', () => {

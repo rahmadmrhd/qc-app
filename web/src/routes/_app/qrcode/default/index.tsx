@@ -23,17 +23,24 @@ import {
 } from '@/components/ui/table';
 import { describeError } from '@/lib/api/describe-error';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
+import { ClonePresetDialog } from '@/modules/qrcode/components/clone-preset-dialog';
 import { LogoLibraryField } from '@/modules/qrcode/components/logo-library-field';
 import {
   qrDefaultsQueryOptions,
+  useClonePreset,
   useDeleteQrPreset,
   useSaveQrLogoLibrary,
 } from '@/modules/qrcode/queries';
 
 export const Route = createFileRoute('/_app/qrcode/default/')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
-  loader: ({ context }) => context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+    ]),
   component: QrPresetsPage,
 });
 
@@ -73,8 +80,12 @@ function LogoLibrarySection({ saved, version }: { saved: readonly string[]; vers
 function QrPresetsPage() {
   const navigate = useNavigate();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const remove = useDeleteQrPreset();
+  const clone = useClonePreset();
   const [deleting, setDeleting] = useState<QrPresetDto | null>(null);
+  const [cloning, setCloning] = useState<QrPresetDto | null>(null);
+  const buName = (id: string) => businessUnits.find((unit) => unit.id === id)?.name;
 
   return (
     <div className="max-w-5xl space-y-4">
@@ -90,9 +101,10 @@ function QrPresetsPage() {
         </div>
       </div>
       <p className="text-sm text-muted-foreground">
-        Saat membuat QR baru, user wajib memilih salah satu konfigurasi default; semua isian
-        (kecuali sumber link) langsung terisi darinya. Mengubah atau menghapus default tidak
-        mengubah QR yang sudah dibuat.
+        Tiap Business Unit punya satu konfigurasi default. Saat membuat QR baru dari item, default
+        BU item ditarik otomatis (item lintas BU: user memilih satu); semua isian (kecuali sumber
+        link) langsung terisi darinya. Mengubah atau menghapus default tidak mengubah QR yang sudah
+        dibuat.
       </p>
       {defaults.presets.length === 0 ? (
         <p className="rounded-md border p-6 text-center text-sm text-muted-foreground">
@@ -104,6 +116,8 @@ function QrPresetsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nama</TableHead>
+                <TableHead>Business Unit</TableHead>
+                <TableHead>Nama Manual Book di</TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>Diperbarui</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
@@ -113,6 +127,16 @@ function QrPresetsPage() {
               {defaults.presets.map((preset) => (
                 <TableRow key={preset.id}>
                   <TableCell className="font-medium">{preset.name}</TableCell>
+                  <TableCell className="text-sm">
+                    {preset.buId === '' ? (
+                      <span className="text-muted-foreground">Belum diatur</span>
+                    ) : (
+                      (buName(preset.buId) ?? '—')
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm capitalize">
+                    {preset.namePlacement === '' ? '—' : preset.namePlacement}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {preset.title || '—'}
                   </TableCell>
@@ -131,6 +155,14 @@ function QrPresetsPage() {
                         }
                       >
                         Ubah
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Kloning ${preset.name}`}
+                        onClick={() => setCloning(preset)}
+                      >
+                        Kloning ke BU lain
                       </Button>
                       <Button
                         size="sm"
@@ -153,6 +185,20 @@ function QrPresetsPage() {
         saved={defaults.logoFileIds}
         version={defaults.logoUpdatedAt}
       />
+      {cloning ? (
+        <ClonePresetDialog
+          key={cloning.id}
+          open
+          onOpenChange={(open) => (open ? undefined : setCloning(null))}
+          source={cloning}
+          businessUnits={businessUnits}
+          presets={defaults.presets}
+          onClone={async (input) => {
+            await clone.mutateAsync(input);
+            toast.success('Konfigurasi default dikloning');
+          }}
+        />
+      ) : null}
       <Dialog
         open={deleting !== null}
         onOpenChange={(open) => (open ? undefined : setDeleting(null))}

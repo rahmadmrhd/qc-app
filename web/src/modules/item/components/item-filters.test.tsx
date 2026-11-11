@@ -16,6 +16,7 @@ const sticker = (patch: Partial<StickerDto>): StickerDto => ({
   status: 'active',
   businessUnitIds: [],
   low: false,
+  latestManualBookVersion: false,
   updatedAt: '',
   ...patch,
 });
@@ -25,6 +26,8 @@ const type = (patch: Partial<StickerTypeDto>): StickerTypeDto => ({
   rule: 'bu',
   status: 'active',
   stickerCount: 1,
+  systemKind: '',
+  defaultMinQty: 0,
   updatedAt: '',
   ...patch,
 });
@@ -111,7 +114,41 @@ test('dengan pilihan stiker: mode tampil dan mengubahnya memanggil onChange', as
 test('Bersihkan filter mengembalikan bawaan dan hanya tampil bila ada filter aktif', async () => {
   const { onChange } = setup({ instruction: 'none', stickerKey: 't:t1', stickerMode: 'missing' });
   await userEvent.click(screen.getByRole('button', { name: 'Bersihkan filter' }));
-  expect(onChange).toHaveBeenCalledWith({ instruction: 'all', stickerKey: '', stickerMode: 'has' });
+  expect(onChange).toHaveBeenCalledWith({
+    instruction: 'all',
+    stickerKey: '',
+    stickerMode: 'has',
+    manualBook: 'all',
+  });
+});
+
+test('filter Manual Book: Semua / Belum ada QR Manual Book; memilih memanggil onChange', async () => {
+  const { onChange } = setup();
+  const select = screen.getByRole('combobox', { name: 'Filter Manual Book' });
+  expect(
+    within(select)
+      .getAllByRole('option')
+      .map((o) => o.textContent),
+  ).toEqual(['Semua item', 'Belum ada QR Manual Book']);
+  await userEvent.selectOptions(select, 'missing');
+  expect(onChange).toHaveBeenCalledWith({ manualBook: 'missing' });
+});
+
+test('filter Manual Book aktif memunculkan tombol Bersihkan; tetap tampil tanpa izin katalog', () => {
+  setup({ manualBook: 'missing' }, { showStickerFilter: false });
+  expect(screen.getByRole('combobox', { name: 'Filter Manual Book' })).toHaveValue('missing');
+  expect(screen.getByRole('button', { name: 'Bersihkan filter' })).toBeInTheDocument();
+});
+
+test('stiker Usang diberi tanda nonaktif seperti stiker nonaktif di pilihan filter', () => {
+  setup(
+    {},
+    {
+      stickers: [sticker({ id: 'd1', name: 'Manual v1', status: 'deprecated' })],
+      types: [type({})],
+    },
+  );
+  expect(screen.getByRole('option', { name: 'Manual v1 — nonaktif' })).toBeInTheDocument();
 });
 
 test('tanpa filter aktif tidak ada tombol Bersihkan', () => {

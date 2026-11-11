@@ -15,10 +15,16 @@ import {
   QR_FRAME_RANGES,
   QR_LAYOUT_RANGES,
   QR_LIMITS,
+  type QrContent,
+  type QrNamePlacement,
+  qrContentHash,
 } from '@shared/qrcode';
 import { z } from 'zod';
 
 export const QR_FIELD_KEYS = [
+  'name',
+  'presetId',
+  'itemIds',
   'title',
   'link',
   'documentId',
@@ -30,6 +36,8 @@ export const QR_FIELD_KEYS = [
 ] as const;
 export const QR_PRESET_FIELD_KEYS = [
   'name',
+  'buId',
+  'namePlacement',
   'title',
   'subtitle',
   'footer',
@@ -105,8 +113,13 @@ const qrFormShape = (titleRequired: boolean, nameRequired: boolean) => ({
     .string()
     .trim()
     .max(QR_LIMITS.presetName, `Maksimal ${QR_LIMITS.presetName} karakter`)
-    .refine((value) => !nameRequired || value !== '', 'Wajib diisi')
-    .default(''),
+    .refine((value) => !nameRequired || value !== '', 'Wajib diisi'),
+  /** Konfigurasi QR: preset asal ('' = tanpa) dan item yang tergabung (daftar lengkap yang terlihat). */
+  presetId: z.string(),
+  itemIds: z.array(z.string()),
+  /** Hanya konfigurasi default: BU pemilik (satu preset per BU) dan bagian label yang menampung nama Manual Book. */
+  buId: z.string(),
+  namePlacement: z.enum(['title', 'subtitle', 'footer', '']),
   title: text(QR_LIMITS.title, titleRequired),
   linkSource: z.enum(['url', 'pdf']),
   link: z.string().trim().max(QR_LIMITS.link, `Maksimal ${QR_LIMITS.link} karakter`),
@@ -120,7 +133,18 @@ const qrFormShape = (titleRequired: boolean, nameRequired: boolean) => ({
 });
 
 /** Konfigurasi default: tanpa sumber link, nama wajib, title boleh kosong. */
-export const qrPresetFormSchema = z.object(qrFormShape(false, true));
+export const qrPresetFormSchema = z.object(qrFormShape(false, true)).superRefine((value, ctx) => {
+  if (value.buId === '') {
+    ctx.addIssue({ code: 'custom', path: ['buId'], message: 'Pilih Business Unit' });
+  }
+  if (value.namePlacement === '') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['namePlacement'],
+      message: 'Pilih bagian label untuk nama Manual Book',
+    });
+  }
+});
 
 export const qrDesignFormSchema = z.object(qrFormShape(true, false)).superRefine((value, ctx) => {
   if (value.linkSource === 'url') {
@@ -167,7 +191,11 @@ export type QrFormOutput = z.output<typeof qrDesignFormSchema>;
 
 export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   return {
-    name: '',
+    name: design?.name ?? '',
+    presetId: design?.presetId ?? '',
+    itemIds: design?.items.map((item) => item.id) ?? [],
+    buId: '',
+    namePlacement: '',
     title: design?.title ?? '',
     linkSource: design?.linkSource ?? 'pdf',
     link: design?.linkSource === 'url' ? design.link : '',
@@ -180,10 +208,54 @@ export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   };
 }
 
+/** Isi label konfigurasi tersimpan (bentuk `QrContent`) untuk hash; dasar peringatan perubahan label. */
+export function qrContentOfDesign(design: QrDesignDto): QrContent {
+  return {
+    linkSource: design.linkSource,
+    link: design.link,
+    title: design.title,
+    subtitle: design.subtitle,
+    footer: design.footer,
+    logoFileId: design.logoFileId,
+    layout: design.layout,
+    style: design.style,
+  };
+}
+
+/** Konteks form untuk konfigurasi yang diubah (item tergabung, penempatan nama, hash ekspor, mode lama). */
+export interface QrEditContext {
+  items: ReadonlyArray<{ id: string; brand: string; model: string }>;
+  hiddenItemCount: number;
+  namePlacement: QrNamePlacement | '';
+  presetId: string;
+  /** Hash isi label saat dimuat bila sudah pernah diekspor; null = belum pernah (tanpa peringatan perubahan). */
+  exportedHash: string | null;
+  /** Konfigurasi lama tanpa nama/penempatan/stiker: nama dan item boleh kosong sampai dilengkapi. */
+  legacy: boolean;
+  /** Versi stiker Manual Book terbaru (0 = belum punya, mis. diekspor sebelum tahap 4a). */
+  stickerVersion: number;
+}
+
+export function toEditContext(design: QrDesignDto): QrEditContext {
+  return {
+    items: design.items,
+    hiddenItemCount: design.hiddenItemCount,
+    namePlacement: design.namePlacement,
+    presetId: design.presetId,
+    exportedHash: design.exportedAt === '' ? null : qrContentHash(qrContentOfDesign(design)),
+    legacy: design.name === '' && design.namePlacement === '' && design.stickerVersion === 0,
+    stickerVersion: design.stickerVersion,
+  };
+}
+
 /** Satu konfigurasi default sebagai nilai form (logoFileId = logo awal). Tanpa sumber link. */
 export function toPresetFormValues(preset?: QrPresetDto): QrFormInput {
   return {
     name: preset?.name ?? '',
+    presetId: '',
+    itemIds: [],
+    buId: preset?.buId ?? '',
+    namePlacement: preset?.namePlacement ?? '',
     title: preset?.title ?? '',
     linkSource: 'pdf',
     link: '',
@@ -241,6 +313,9 @@ export function toSaveQrPresetInput(
     layout: values.layout,
     style: values.style,
     defaultLogoId: values.logoFileId,
+    buId: values.buId,
+    // Skema preset menolak '' (wajib dipilih); cabang '' hanya demi tipe.
+    namePlacement: values.namePlacement === '' ? 'title' : values.namePlacement,
   };
 }
 
@@ -252,6 +327,9 @@ export function toSaveQrDesignInput(
   overflow?: boolean,
 ): SaveQrDesignInput {
   const input: SaveQrDesignInput = {
+    name: values.name,
+    presetId: values.presetId,
+    itemIds: values.itemIds,
     title: values.title,
     linkSource: values.linkSource,
     link: values.linkSource === 'url' ? values.link : '',

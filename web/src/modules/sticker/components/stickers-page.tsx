@@ -1,4 +1,5 @@
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
+import type { StickerStatus } from '@shared/stickers';
 import { useState } from 'react';
 import { NativeSelect } from '@/components/native-select';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { STICKER_STATUS_LABEL } from '../lib/status';
 import {
   StickerFormDialog,
   type StickerFormDialogProps,
@@ -34,7 +36,7 @@ export interface StickersPageProps {
   onToggleStatus: (sticker: StickerDto) => void;
 }
 
-type StatusFilter = '' | 'active' | 'inactive';
+type StatusFilter = '' | StickerStatus;
 
 /** Nama yang tampil untuk tim QC: alias bila ada, selain itu nama stiker. */
 function displayName(sticker: Pick<StickerDto, 'name' | 'alias'>): string {
@@ -60,6 +62,7 @@ export function StickersPage({
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
+  const systemTypeIds = new Set(types.filter((type) => type.systemKind !== '').map((t) => t.id));
   const visible = stickers.filter(
     (sticker) =>
       (typeFilter === '' || sticker.typeId === typeFilter) &&
@@ -98,6 +101,7 @@ export function StickersPage({
           <option value="">Semua status</option>
           <option value="active">Aktif</option>
           <option value="inactive">Nonaktif</option>
+          <option value="deprecated">Usang</option>
         </NativeSelect>
       </div>
       <div className="rounded-md border">
@@ -153,7 +157,7 @@ export function StickersPage({
                   <TableCell className="text-right tabular-nums">{sticker.minQty}</TableCell>
                   <TableCell>
                     <Badge variant={sticker.status === 'active' ? 'default' : 'secondary'}>
-                      {sticker.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                      {STICKER_STATUS_LABEL[sticker.status]}
                     </Badge>
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
@@ -167,15 +171,21 @@ export function StickersPage({
                         Ubah
                       </Button>
                     ) : null}
-                    {canManage ? (
+                    {/* Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker jenis sistem
+                        yang nonaktif hanya dapat diaktifkan kembali bila versi TERBARU konfigurasinya (spek 4a §3
+                        butir 15, keputusan pemilik 2026-11-11). */}
+                    {canManage &&
+                    (sticker.status !== 'inactive' ||
+                      !systemTypeIds.has(sticker.typeId) ||
+                      sticker.latestManualBookVersion) ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        aria-label={`${sticker.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${label}`}
+                        aria-label={`${sticker.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'} ${label}`}
                         disabled={pendingStatusId === sticker.id}
                         onClick={() => onToggleStatus(sticker)}
                       >
-                        {sticker.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+                        {sticker.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'}
                       </Button>
                     ) : null}
                   </TableCell>

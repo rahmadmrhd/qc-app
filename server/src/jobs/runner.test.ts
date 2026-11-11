@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { DbStatement } from '@server/core/db';
+import { putSetting } from '@server/core/settings';
 import { JOB_MAX_ATTEMPTS } from '@server/modules/jobs/consumer';
 import { findJob } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { qrCall, seedQrEnv } from '@server-test/qrcode-env';
+import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   purgeExpiredRateLimits,
@@ -278,6 +280,43 @@ describe('penjadwal: cadangan harian (T30)', () => {
       await waitFor(async () => (await countJobs('db_backup')) === 1);
       await sleep(60);
       expect(await countJobs('db_backup')).toBe(1);
+    } finally {
+      await stop();
+    }
+  });
+});
+
+describe('penjadwal: ringkasan stok stiker menipis (4a)', () => {
+  test('detak penjadwal memanggil ringkasan harian: satu surel ke penerima Konfigurasi Stiker, tidak berulang pada hari yang sama', async () => {
+    const sent: string[] = [];
+    await putSetting(
+      env,
+      'STICKER_ALERT',
+      JSON.stringify({
+        enabled: true,
+        recipients: ['a@contoh.com'],
+        digestHour: 8,
+        updatedAt: 't',
+      }),
+    );
+    await seedStickerType(env, { id: 't1', name: 'QC' });
+    await seedSticker(env, { id: 's1', typeId: 't1', name: 'Stiker A', minQty: 10 });
+    env.clock.set(Date.parse('2026-11-10T02:00:00.000Z')); // 09:00 WIB
+    const stop = startScheduler(
+      {
+        ...env,
+        MAILER: {
+          async send(message) {
+            sent.push(message.subject);
+          },
+        },
+      },
+      { intervalMs: 10 },
+    );
+    try {
+      await waitFor(async () => sent.length === 1);
+      await sleep(80);
+      expect(sent).toEqual(['Stok stiker menipis (1)']);
     } finally {
       await stop();
     }

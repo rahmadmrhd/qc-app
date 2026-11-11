@@ -25,6 +25,7 @@ const EXPECTED_TABLES = [
   'job_blobs',
   'jobs',
   'locations',
+  'manual_book_versions',
   'qr_defaults',
   'qr_designs',
   'qr_documents',
@@ -141,7 +142,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('31 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('32 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -160,6 +161,7 @@ describe('skema baseline', () => {
       { name: '0005_stiker.sql' },
       { name: '0006_pustaka_gambar_stiker.sql' },
       { name: '0007_instruksi_stiker_item.sql' },
+      { name: '0008_manual_book_4a.sql' },
     ]);
   });
 
@@ -236,16 +238,20 @@ describe('skema baseline', () => {
         'item_sticker_photos.item_sticker_photos_guide',
         'items.items_brand',
         'items.items_key',
+        'items.items_manual_book',
         'items.items_status_updated',
         'jobs.jobs_status_updated',
         'locations.locations_code_unique',
         'locations.locations_name_unique',
+        'manual_book_versions.manual_book_versions_design_version',
         'qr_designs.qr_designs_document',
+        'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
         'sticker_stock_entries.sticker_stock_entries_location_ts',
         'sticker_stock_entries.sticker_stock_entries_sticker_ts',
+        'sticker_types.sticker_types_kind_unique',
         'sticker_types.sticker_types_name_unique',
         'stickers.stickers_type',
         'stickers.stickers_type_name_unique',

@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { runPendingJobs } from '@server/jobs/runner';
-import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { seedItem } from '@server-test/item-fixtures';
+import {
+  qrManualBookFields,
+  qrPdfDocumentId,
+  seedQrDesign,
+  seedQrEnv,
+} from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
+import { seedManualBookVersion } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS, qrContentHash } from '@shared/qrcode';
 
 // Kabel REST biner QR: unggah PDF sumber (badan mentah), ekspor (multipart pdf+png), unduh hasil ekspor (aliran).
 
@@ -15,6 +22,17 @@ const realError = console.error;
 
 const PDF_HEAD = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** PNG sah 4x3 piksel (hanya IHDR yang dibaca server) untuk gambar contoh ekspor. */
+function previewPng(seed = 7, width = 4, height = 3): Uint8Array {
+  const bytes = fileOf(PNG_HEAD, 200, seed);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
 
 function fileOf(head: number[], size: number, seed = 1): Uint8Array {
   const bytes = new Uint8Array(size);
@@ -39,6 +57,7 @@ async function makeDesign() {
   const response = await rest.post('/qrcodes', {
     email: 'qredit@gmail.com',
     body: {
+      ...(await qrManualBookFields(env, 'Manual Uji')),
       title: 'Panduan Ö',
       linkSource: 'pdf',
       link: '',
@@ -54,10 +73,15 @@ async function makeDesign() {
   return (await jsonOf(response)) as { id: string; updatedAt: string };
 }
 
-function multipart(pdf: Uint8Array | null, png: Uint8Array | null): FormData {
+function multipart(
+  pdf: Uint8Array | null,
+  png: Uint8Array | null,
+  preview: Uint8Array | null = previewPng(),
+): FormData {
   const form = new FormData();
   if (pdf) form.append('pdf', new Blob([pdf], { type: 'application/pdf' }), 'label.pdf');
   if (png) form.append('png', new Blob([png], { type: 'image/png' }), 'label.png');
+  if (preview) form.append('preview', new Blob([preview], { type: 'image/png' }), 'preview.png');
   return form;
 }
 
@@ -66,12 +90,16 @@ const exportRequest = (
   form: FormData,
   email = 'qredit@gmail.com',
   ifMatch: string | null = design.updatedAt,
+  reason?: string,
 ) =>
-  rest.post(`/qrcodes/${design.id}/exports`, {
-    email,
-    raw: form,
-    headers: ifMatch === null ? {} : { 'if-match': `"${ifMatch}"` },
-  });
+  rest.post(
+    `/qrcodes/${design.id}/exports${reason === undefined ? '' : `?reason=${encodeURIComponent(reason)}`}`,
+    {
+      email,
+      raw: form,
+      headers: ifMatch === null ? {} : { 'if-match': `"${ifMatch}"` },
+    },
+  );
 
 describe('POST /qrcode-documents (PDF mentah)', () => {
   const upload = (bytes: Uint8Array, query = '?name=manual.pdf', email = 'qredit@gmail.com') =>
@@ -224,7 +252,9 @@ describe('POST /qrcodes/{id}/exports (multipart) dan GET /qrcodes/{id}/files/{ki
     const first = await rest.get(`/qrcodes/${design.id}/files/pdf`, { email: 'qrview@gmail.com' });
     const disposition = first.headers.get('content-disposition') ?? '';
     expect(disposition).toMatch(/^attachment; filename="[\x20-\x7e]*\.pdf"; filename\*=UTF-8''/);
-    expect(decodeURIComponent(disposition.split("UTF-8''")[1] ?? '')).toBe('panduan-sub.pdf');
+    expect(decodeURIComponent(disposition.split("UTF-8''")[1] ?? '')).toMatch(
+      /^Manual-Uji-\d{14,17}\.pdf$/,
+    );
     expect(disposition).not.toMatch(/[\r\n]/);
     const etag = first.headers.get('etag') ?? '';
     expect(etag).toMatch(/^"[A-Za-z0-9_-]{8,}"$/);
@@ -341,5 +371,189 @@ describe('POST /qrcodes/{id}/exports (multipart) dan GET /qrcodes/{id}/files/{ki
     });
     expect([400, 415, 422]).toContain(response.status);
     expect(response.headers.get('content-type')).toContain('application/problem+json');
+  });
+});
+
+describe('syarat ekspor: item, nama, alasan, gambar contoh, nama berkas', () => {
+  const okForm = () => multipart(fileOf(PDF_HEAD, 100), fileOf(PNG_HEAD, 100));
+
+  /** Konfigurasi lama langsung ke basis data; `withItem` memasang satu item (`manual_book_design_id`). */
+  async function legacyDesign(id: string, options: { name?: string; withItem?: boolean } = {}) {
+    const doc = await qrPdfDocumentId(env);
+    const record = await seedQrDesign(env, {
+      id,
+      title: 'Judul',
+      linkSource: 'pdf',
+      documentId: doc,
+      link: '',
+      name: options.name ?? '',
+    });
+    if (options.withItem !== false) {
+      await seedItem(env, { id: `item-${id}`, brand: 'Merk', model: id, manualBookDesignId: id });
+    }
+    return record;
+  }
+
+  /** Hash isi label konfigurasi seperti yang dihitung server (link efektif = URL berbagi PDF). */
+  async function currentHash(id: string): Promise<string> {
+    const dto = (await jsonOf(await rest.get(`/qrcodes/${id}`, { email: 'qredit@gmail.com' }))) as {
+      link: string;
+      title: string;
+      subtitle: string;
+      footer: string;
+      logoFileId: string;
+      layout: typeof DEFAULT_QR_LAYOUT;
+      style: typeof DEFAULT_QR_STYLE;
+    };
+    return qrContentHash({
+      linkSource: 'pdf',
+      link: dto.link,
+      title: dto.title,
+      subtitle: dto.subtitle,
+      footer: dto.footer,
+      logoFileId: dto.logoFileId,
+      layout: dto.layout,
+      style: dto.style,
+    });
+  }
+
+  test('tanpa item -> 422 pada itemIds; tanpa nama -> 422 pada name; tidak ada job yang dibuat', async () => {
+    const noItem = await legacyDesign('d-noitem', { name: 'Bernama', withItem: false });
+    const a = await exportRequest(noItem, okForm());
+    expect(a.status).toBe(422);
+    expect(await jsonOf(a)).toMatchObject({ fields: { itemIds: expect.any(String) } });
+    const noName = await legacyDesign('d-noname');
+    const b = await exportRequest(noName, okForm());
+    expect(b.status).toBe(422);
+    expect(await jsonOf(b)).toMatchObject({ fields: { name: expect.any(String) } });
+    const jobs = await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number }>();
+    expect(Number(jobs?.n)).toBe(0);
+  });
+
+  test('ekspor pertama tidak menuntut alasan; gambar contoh wajib dan harus PNG', async () => {
+    const design = await legacyDesign('d-first', { name: 'Pertama' });
+    expect((await exportRequest(design, okForm())).status).toBe(202);
+    const other = await legacyDesign('d-first2', { name: 'Pertama Dua' });
+    const missing = await exportRequest(
+      other,
+      multipart(fileOf(PDF_HEAD, 64), fileOf(PNG_HEAD, 64), null),
+    );
+    expect(missing.status).toBe(422);
+    expect(await jsonOf(missing)).toMatchObject({ fields: { preview: expect.any(String) } });
+    const notPng = await exportRequest(
+      other,
+      multipart(fileOf(PDF_HEAD, 64), fileOf(PNG_HEAD, 64), new Uint8Array([1, 2, 3, 4])),
+    );
+    expect(notPng.status).toBe(422);
+    expect(await jsonOf(notPng)).toMatchObject({ fields: { preview: expect.any(String) } });
+    const huge = await exportRequest(
+      other,
+      multipart(
+        fileOf(PDF_HEAD, 64),
+        fileOf(PNG_HEAD, 64),
+        fileOf(PNG_HEAD, QR_LIMITS.previewMaxBytes + 1),
+      ),
+    );
+    expect(huge.status).toBe(422);
+    expect(await jsonOf(huge)).toMatchObject({ fields: { preview: expect.any(String) } });
+  });
+
+  test('gambar contoh: sisi terpanjang dibatasi (IHDR raksasa kecil di byte ditolak 422, batas pas diterima)', async () => {
+    const design = await legacyDesign('d-dims', { name: 'Dimensi' });
+    const tooBig = await exportRequest(
+      design,
+      multipart(fileOf(PDF_HEAD, 64), fileOf(PNG_HEAD, 64), previewPng(7, 30000, 30000)),
+    );
+    expect(tooBig.status).toBe(422);
+    expect(await jsonOf(tooBig)).toMatchObject({ fields: { preview: expect.any(String) } });
+    const oneSide = await exportRequest(
+      design,
+      multipart(
+        fileOf(PDF_HEAD, 64),
+        fileOf(PNG_HEAD, 64),
+        previewPng(7, 3, QR_LIMITS.previewMaxSide + 1),
+      ),
+    );
+    expect(oneSide.status).toBe(422);
+    const jobs = await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number }>();
+    expect(Number(jobs?.n)).toBe(0);
+    const atLimit = await exportRequest(
+      design,
+      multipart(
+        fileOf(PDF_HEAD, 64),
+        fileOf(PNG_HEAD, 64),
+        previewPng(7, QR_LIMITS.previewMaxSide, QR_LIMITS.previewMaxSide),
+      ),
+    );
+    expect(atLimit.status).toBe(202);
+  });
+
+  test('ekspor ulang dengan label berubah: alasan wajib (422 pada reason), dengan alasan 202', async () => {
+    const design = await legacyDesign('d-again', { name: 'Ulang' });
+    await seedManualBookVersion(env, {
+      stickerId: 's-old',
+      designId: design.id,
+      version: 1,
+      contentHash: 'hash-lama',
+    });
+    const noReason = await exportRequest(design, okForm());
+    expect(noReason.status).toBe(422);
+    expect(await jsonOf(noReason)).toMatchObject({ fields: { reason: expect.any(String) } });
+    const blank = await exportRequest(
+      design,
+      okForm(),
+      'qredit@gmail.com',
+      design.updatedAt,
+      '   ',
+    );
+    expect(blank.status).toBe(422);
+    const withReason = await exportRequest(
+      design,
+      okForm(),
+      'qredit@gmail.com',
+      design.updatedAt,
+      'Logo diganti',
+    );
+    expect(withReason.status).toBe(202);
+    const tooLong = await exportRequest(
+      design,
+      okForm(),
+      'qredit@gmail.com',
+      design.updatedAt,
+      'x'.repeat(QR_LIMITS.reason + 1),
+    );
+    expect(tooLong.status).toBe(422);
+  });
+
+  test('ekspor ulang tanpa perubahan label: sukses tanpa alasan dan tanpa gambar contoh', async () => {
+    const design = await legacyDesign('d-same', { name: 'Sama' });
+    await seedManualBookVersion(env, {
+      stickerId: 's-same',
+      designId: design.id,
+      version: 1,
+      contentHash: await currentHash(design.id),
+    });
+    const accepted = await exportRequest(
+      design,
+      multipart(fileOf(PDF_HEAD, 64), fileOf(PNG_HEAD, 64), null),
+    );
+    expect(accepted.status).toBe(202);
+    await runPendingJobs(env);
+    expect(
+      await jsonOf(
+        await rest.get(`/jobs/${((await jsonOf(accepted)) as { jobId: string }).jobId}`, {
+          email: 'qredit@gmail.com',
+        }),
+      ),
+    ).toMatchObject({ status: 'done' });
+  });
+
+  test('nama berkas di Drive = <nama Manual Book>-<stempel>.pdf/.png (huruf dipertahankan)', async () => {
+    const design = await legacyDesign('d-name', { name: 'PBE M5-400/200' });
+    await exportRequest(design, okForm());
+    await runPendingJobs(env);
+    const names = [...env.BRIDGE.state.files.values()].map((file) => file.name);
+    expect(names.some((n) => /^PBE-M5-400-200-\d{14,17}\.pdf$/.test(n))).toBe(true);
+    expect(names.some((n) => /^PBE-M5-400-200-\d{14,17}\.png$/.test(n))).toBe(true);
   });
 });

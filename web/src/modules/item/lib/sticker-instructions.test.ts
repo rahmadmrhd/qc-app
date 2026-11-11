@@ -90,6 +90,7 @@ const sticker = (patch: Partial<StickerDto>): StickerDto => ({
   status: 'active',
   businessUnitIds: [],
   low: false,
+  latestManualBookVersion: false,
   updatedAt: '',
   ...patch,
 });
@@ -99,6 +100,8 @@ const type = (patch: Partial<StickerTypeDto>): StickerTypeDto => ({
   rule: 'bu',
   status: 'active',
   stickerCount: 1,
+  systemKind: '',
+  defaultMinQty: 0,
   updatedAt: '',
   ...patch,
 });

@@ -382,3 +382,14 @@ test('opname tanpa baris yang dihitung tidak dapat dikirim', async () => {
   expect(within(dialog).getByRole('button', { name: 'Simpan opname' })).toBeDisabled();
   expect(onOpname).not.toHaveBeenCalled();
 });
+
+test('stiker Usang tampil dengan badge dan tanpa tombol Masuk; Keluar dan Koreksi tetap ada', () => {
+  const [first] = rows as [StickerStockDto];
+  renderPage({ rows: [{ ...first, status: 'deprecated' }] });
+  const row = screen.getByRole('row', { name: /Hijau-B/ });
+  expect(within(row).getByText('Usang')).toBeInTheDocument();
+  expect(within(row).queryByText('Nonaktif')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Catat masuk Hijau-B' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Catat keluar Hijau-B' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Koreksi Hijau-B' })).toBeInTheDocument();
+});

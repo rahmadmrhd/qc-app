@@ -16,6 +16,7 @@ import { locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { LocationField } from '@/modules/location/location-field';
+import { STICKER_STATUS_LABEL } from '../lib/status';
 import { CountInput, cleanCount, emptyCount } from './count-input';
 
 /** Hasil kirim opname: `stale` = stok berubah sejak dihitung (seluruh permintaan ditolak server). */
@@ -151,11 +152,11 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
                   <div>
                     <span className="font-medium">{row.name}</span>
                     <span className="ml-2 text-xs text-muted-foreground">{row.typeName}</span>
-                    {row.status === 'inactive' ? (
+                    {row.status === 'active' ? null : (
                       <Badge variant="secondary" className="ml-2">
-                        Nonaktif
+                        {STICKER_STATUS_LABEL[row.status]}
                       </Badge>
-                    ) : null}
+                    )}
                   </div>
                   <span className="text-sm tabular-nums">{`Tercatat ${recorded}`}</span>
                 </div>

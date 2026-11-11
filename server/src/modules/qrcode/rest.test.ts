@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
+import { seedBusinessUnit } from '@server-test/access-fixtures';
+import { qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
@@ -16,6 +17,7 @@ beforeEach(async () => {
   env.clock.set(Date.parse('2026-10-16T03:00:00.000Z'));
   rest = restClient(env);
   await seedQrEnv(env);
+  await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
   console.error = () => undefined;
 });
 
@@ -25,6 +27,7 @@ afterEach(() => {
 
 async function design(extra: Record<string, unknown> = {}) {
   return {
+    ...(await qrManualBookFields(env)),
     title: 'Panduan',
     linkSource: 'pdf',
     link: '',
@@ -45,6 +48,8 @@ const presetBody = (extra: Record<string, unknown> = {}) => ({
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
   defaultLogoId: '',
+  buId: 'bu-a',
+  namePlacement: 'title',
   ...extra,
 });
 

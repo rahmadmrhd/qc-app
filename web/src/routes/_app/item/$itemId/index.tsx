@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
+import { manualBookLinkAccess } from '@/lib/link-access';
 import { canEditItem, canManageItem, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { ItemDetailView } from '@/modules/item/components/item-detail-view';
@@ -39,6 +40,7 @@ function ItemDetailPage() {
       canEdit={canEditItem(me, item)}
       canManage={canManageItem(me, item)}
       statusPending={setStatus.isPending}
+      openManualBookHref={manualBookLinkAccess(me).openManualBookHref}
       onBack={() => void navigate({ to: '/item' })}
       onEdit={() => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
       onToggleStatus={toggleStatus}

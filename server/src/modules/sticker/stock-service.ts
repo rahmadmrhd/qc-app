@@ -15,15 +15,17 @@ import type {
 } from '@shared/contract';
 import type { StockCount, StockEntryKind } from '@shared/stickers';
 import { isLowStock, piecesOfCount } from '@shared/stickers';
-import { stockTotalsFromResult, stockTotalsStatement } from './repo';
+import { stockTotalsFromResult, stockTotalsStatement, toStickerStatus } from './repo';
 import type { StockEntryRow } from './stock-repo';
 import {
   addStockStmt,
   encodeStockCursor,
   historyStatement,
+  inactivateDeprecatedIfEmptyStmt,
   insertEntryStmt,
   insertStockRowStmt,
   lastEntryStatement,
+  lockStickerRowStmt,
   opnameSetStmt,
   parseStockCursor,
   stickerActiveGuardStmt,
@@ -74,6 +76,10 @@ async function applyChangeOnce(
     type_status: string;
   } | null;
   if (!sticker) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
+  if (change.requireActive && sticker.status.trim() === 'deprecated') {
+    const message = 'Stiker sudah digantikan versi baru; stok masuk tidak dapat dicatat';
+    throw appError('VALIDATION', message, { stickerId: message });
+  }
   if (change.requireActive && sticker.status.trim() !== 'active') {
     const message = 'Stiker nonaktif tidak dapat menerima stok masuk';
     throw appError('VALIDATION', message, { stickerId: message });
@@ -89,6 +95,9 @@ async function applyChangeOnce(
   }
   const now = nowIso(env);
   const statements: DbStatement[] = [];
+  // Pengurangan: kunci baris stiker lebih dulu agar penonaktifan otomatis stiker `deprecated` tidak terlewat
+  // saat dua pengurangan di lokasi berbeda berjalan serentak.
+  if (change.delta < 0) statements.push(lockStickerRowStmt(env.DB, change.stickerId));
   if (change.requireActive) statements.push(stickerActiveGuardStmt(env.DB, change.stickerId));
   statements.push(
     change.delta > 0
@@ -104,8 +113,11 @@ async function applyChangeOnce(
       actor: actor.email,
       ts: now,
     }),
-    lastEntryStatement(env.DB),
   );
+  if (change.delta < 0) {
+    statements.push(inactivateDeprecatedIfEmptyStmt(env.DB, change.stickerId, now, actor.email));
+  }
+  statements.push(lastEntryStatement(env.DB));
   const results = await env.DB.batch(statements);
   const row = results[results.length - 1]?.results[0] as StockEntryRow | undefined;
   if (!row) throw appError('INTERNAL', 'Riwayat stok gagal dicatat');
@@ -200,7 +212,7 @@ export async function listStickerStock(
     type_status: string;
   }>) {
     const id = row.id.trim();
-    const status = row.status.trim() === 'inactive' ? 'inactive' : 'active';
+    const status = toStickerStatus(row.status);
     const total = totalHere.get(id) ?? 0;
     if (status !== 'active' && total <= 0) continue;
     const minQty = Number(row.min_qty) || 0;
@@ -290,6 +302,9 @@ async function opnameOnce(env: Env, input: OpnameInput, actor: ActorRef): Promis
   const now = nowIso(env);
   const statements: DbStatement[] = [];
   const readSlot = new Map<(typeof changed)[number], number>();
+  // Kunci baris stiker lebih dulu (urut id), lalu baris stok: lihat `lockStickerRowStmt`.
+  const stickerIds = [...new Set(ordered.map((item) => item.row.stickerId))].sort();
+  for (const stickerId of stickerIds) statements.push(lockStickerRowStmt(env.DB, stickerId));
   for (const item of ordered) {
     const { row } = item;
     statements.push(
@@ -309,6 +324,10 @@ async function opnameOnce(env: Env, input: OpnameInput, actor: ActorRef): Promis
       lastEntryStatement(env.DB),
     );
     readSlot.set(item, statements.length - 1);
+  }
+  // Penonaktifan otomatis stiker `deprecated` yang total stoknya menjadi 0 (sesudah semua pembaruan stok).
+  for (const stickerId of stickerIds) {
+    statements.push(inactivateDeprecatedIfEmptyStmt(env.DB, stickerId, now, actor.email));
   }
   const results = await env.DB.batch(statements);
   return changed.map((item) => {

@@ -70,7 +70,12 @@ export function StickerTypesPage({
             ) : null}
             {types.map((type) => (
               <TableRow key={type.id}>
-                <TableCell className="font-medium">{type.name}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{type.name}</span>
+                    {type.systemKind !== '' ? <Badge variant="outline">Sistem</Badge> : null}
+                  </div>
+                </TableCell>
                 <TableCell>{STICKER_RULE_LABEL[type.rule]}</TableCell>
                 <TableCell className="text-right tabular-nums">{type.stickerCount}</TableCell>
                 <TableCell>
@@ -79,7 +84,8 @@ export function StickerTypesPage({
                   </Badge>
                 </TableCell>
                 <TableCell className="space-x-2 text-right">
-                  {canEdit ? (
+                  {/* Jenis sistem dikelola aplikasi: nama dan aturannya tak dapat diubah lewat form. */}
+                  {canEdit && type.systemKind === '' ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -89,7 +95,8 @@ export function StickerTypesPage({
                       Ubah
                     </Button>
                   ) : null}
-                  {canManage ? (
+                  {/* Jenis sistem selalu aktif (keputusan pemilik 2026-11-11): tanpa tombol status. */}
+                  {canManage && type.systemKind === '' ? (
                     <Button
                       size="sm"
                       variant="outline"

@@ -1,5 +1,5 @@
 import type { StickerTypeDto } from '@shared/contract';
-import { STICKER_LIMITS, STICKER_RULES, type StickerRule } from '@shared/stickers';
+import { STICKER_LIMITS, type StickerRule, USER_STICKER_RULES } from '@shared/stickers';
 import { useState } from 'react';
 import {
   FormDialog,
@@ -150,7 +150,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
                 setRuleError(null);
               }}
             >
-              {STICKER_RULES.map((value) => (
+              {USER_STICKER_RULES.map((value) => (
                 <option key={value} value={value}>
                   {STICKER_RULE_LABEL[value]}
                 </option>

@@ -9,6 +9,7 @@ import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
+import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { StickerDto, StickerTypeDto } from '@shared/contract';
 import type { StickerRule } from '@shared/stickers';
@@ -479,6 +480,170 @@ describe('katalog stiker', () => {
     });
     expect(routes['stickers.save'].permission).toEqual({ module: 'sticker', level: 'edit' });
     expect(routes['stickers.setStatus'].permission).toEqual({ module: 'sticker', level: 'manage' });
+  });
+});
+
+describe('stiker jenis sistem dan status deprecated', () => {
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE M5 v1', minQty: 10 });
+    await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
+  });
+
+  const current = async () => (await listStickers(env)).find((sticker) => sticker.id === 'mb-1');
+  const edit = async (overrides: Record<string, unknown>) => {
+    const sticker = await current();
+    return saveSticker(
+      env,
+      validateSaveSticker({
+        id: 'mb-1',
+        expectedUpdatedAt: sticker?.updatedAt,
+        typeId: 'mb',
+        name: 'PBE M5 v1',
+        alias: '',
+        fileId: null,
+        minQty: 10,
+        businessUnitIds: [],
+        ...overrides,
+      }),
+      admin,
+    );
+  };
+
+  test('membuat stiker baru pada jenis sistem ditolak VALIDATION', async () => {
+    const error = await captureAppErrorAsync(() =>
+      saveSticker(env, input({ typeId: 'mb', name: 'Baru', businessUnitIds: [] }), admin),
+    );
+    expect(error.code).toBe('VALIDATION');
+  });
+
+  test('mengubah nama atau gambar stiker jenis sistem ditolak; jenis tetap tak dapat diganti', async () => {
+    const renamed = await captureAppErrorAsync(() => edit({ name: 'Lain' }));
+    expect(renamed.code).toBe('VALIDATION');
+    expect(renamed.fields).toHaveProperty('name');
+    const withFile = await captureAppErrorAsync(() => edit({ fileId: 'f-1' }));
+    expect(withFile.code).toBe('VALIDATION');
+    expect(withFile.fields).toHaveProperty('fileId');
+    const retyped = await captureAppErrorAsync(() => edit({ typeId: qc.id }));
+    expect(retyped.code).toBe('VALIDATION');
+    expect((await current())?.name).toBe('PBE M5 v1');
+  });
+
+  test('BU pada jenis aturan group ditolak', async () => {
+    const error = await captureAppErrorAsync(() => edit({ businessUnitIds: ['bu-a'] }));
+    expect(error.code).toBe('VALIDATION');
+    expect(error.fields).toHaveProperty('businessUnitIds');
+  });
+
+  test('minQty dan alias stiker jenis sistem dapat diubah', async () => {
+    const saved = await edit({ minQty: 40, alias: 'Manual PBE' });
+    expect(saved).toMatchObject({ minQty: 40, alias: 'Manual PBE', name: 'PBE M5 v1' });
+    expect(await current()).toMatchObject({ minQty: 40, alias: 'Manual PBE' });
+  });
+
+  test('stickers.list memuat status deprecated; low false untuk deprecated', async () => {
+    await seedSticker(env, {
+      id: 'mb-0',
+      typeId: 'mb',
+      name: 'PBE M5 v0',
+      status: 'deprecated',
+      minQty: 50,
+    });
+    const list = await listStickers(env);
+    expect(list.find((sticker) => sticker.id === 'mb-0')).toMatchObject({
+      status: 'deprecated',
+      low: false,
+    });
+    expect(list.find((sticker) => sticker.id === 'mb-1')).toMatchObject({
+      status: 'active',
+      low: true,
+    });
+  });
+
+  test('setStatus: deprecated -> active ditolak, deprecated -> inactive berhasil', async () => {
+    await seedSticker(env, { id: 'mb-0', typeId: 'mb', name: 'PBE M5 v0', status: 'deprecated' });
+    const refused = await captureAppErrorAsync(() =>
+      setStickerStatus(env, { id: 'mb-0', status: 'active' }, admin),
+    );
+    expect(refused.code).toBe('VALIDATION');
+    expect((await listStickers(env)).find((s) => s.id === 'mb-0')?.status).toBe('deprecated');
+    const off = await setStickerStatus(env, { id: 'mb-0', status: 'inactive' }, admin);
+    expect(off.status).toBe('inactive');
+  });
+
+  test('setStatus: stiker jenis sistem yang bukan versi terbaru tidak boleh diaktifkan; versi terbaru boleh', async () => {
+    await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'PBE M5 v2', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'mb-2', designId: 'q1', version: 2 });
+    await setStickerStatus(env, { id: 'mb-1', status: 'inactive' }, admin);
+    const refused = await captureAppErrorAsync(() =>
+      setStickerStatus(env, { id: 'mb-1', status: 'active' }, admin),
+    );
+    expect(refused.code).toBe('VALIDATION');
+    expect((await setStickerStatus(env, { id: 'mb-2', status: 'active' }, admin)).status).toBe(
+      'active',
+    );
+  });
+});
+
+describe('penanda versi terbaru Manual Book pada StickerDto (latestManualBookVersion)', () => {
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE M5 v1', status: 'deprecated' });
+    await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
+    await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'PBE M5 v2', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'mb-2', designId: 'q1', version: 2 });
+    // konfigurasi lain: versi terbaru dihitung per konfigurasi, bukan global
+    await seedSticker(env, { id: 'x-1', typeId: 'mb', name: 'Lain v1', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'x-1', designId: 'q2', version: 1 });
+  });
+
+  test('daftar: true hanya untuk versi tertinggi tiap konfigurasi; stiker biasa selalu false', async () => {
+    const plain = await saveSticker(env, input(), admin);
+    const list = await listStickers(env);
+    const flag = (id: string) => list.find((sticker) => sticker.id === id)?.latestManualBookVersion;
+    expect(flag('mb-1')).toBe(false);
+    expect(flag('mb-2')).toBe(true);
+    expect(flag('x-1')).toBe(true);
+    expect(flag(plain.id)).toBe(false);
+    expect(plain.latestManualBookVersion).toBe(false);
+  });
+
+  test('setStatus dan save mengembalikan penanda yang sama dengan daftar; versi terbaru nonaktif dapat diaktifkan kembali', async () => {
+    const on = await setStickerStatus(env, { id: 'mb-2', status: 'active' }, admin);
+    expect(on).toMatchObject({ status: 'active', latestManualBookVersion: true });
+    const off = await setStickerStatus(env, { id: 'mb-2', status: 'inactive' }, admin);
+    expect(off).toMatchObject({ status: 'inactive', latestManualBookVersion: true });
+    const old = await setStickerStatus(env, { id: 'mb-1', status: 'inactive' }, admin);
+    expect(old.latestManualBookVersion).toBe(false);
+    const refused = await captureAppErrorAsync(() =>
+      setStickerStatus(env, { id: 'mb-1', status: 'active' }, admin),
+    );
+    expect(refused.code).toBe('VALIDATION');
+    const saved = await saveSticker(
+      env,
+      validateSaveSticker({
+        id: 'mb-2',
+        expectedUpdatedAt: off.updatedAt,
+        typeId: 'mb',
+        name: 'PBE M5 v2',
+        alias: 'Alias',
+        fileId: null,
+        minQty: 3,
+        businessUnitIds: [],
+      }),
+      admin,
+    );
+    expect(saved.latestManualBookVersion).toBe(true);
   });
 });
 

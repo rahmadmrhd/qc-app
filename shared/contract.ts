@@ -2,11 +2,13 @@ import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
-import type { QrExportStatus, QrLayout, QrLinkSource, QrStyle } from './qrcode';
+import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
 import type {
   GuideSort,
   StickerMarkTarget,
   StickerRule,
+  StickerStatus,
+  StickerSystemKind,
   StockCount,
   StockEntryKind,
 } from './stickers';
@@ -365,6 +367,10 @@ export interface StickerTypeDto {
   name: string;
   rule: StickerRule;
   status: ItemStatus;
+  /** Jenis sistem (`''` = jenis biasa): stiker dikelola aplikasi dan jenisnya tak dapat diubah lewat form katalog. */
+  systemKind: StickerSystemKind;
+  /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini (0 = tanpa peringatan). */
+  defaultMinQty: number;
   /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
   stickerCount: number;
   updatedAt: string;
@@ -395,10 +401,16 @@ export interface StickerDto {
   fileId: string | null;
   /** Batas minimum stok (butir) total semua lokasi; 0 = tanpa peringatan. */
   minQty: number;
-  status: ItemStatus;
-  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none`. */
+  /** `deprecated` = digantikan versi Manual Book yang lebih baru; hanya dapat menjadi nonaktif. */
+  status: StickerStatus;
+  /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none` atau `group`. */
   businessUnitIds: string[];
   low: boolean;
+  /**
+   * Hanya stiker jenis sistem Manual Book: true bila ini versi TERBARU konfigurasinya (satu-satunya yang boleh
+   * diaktifkan kembali setelah dinonaktifkan). False untuk stiker biasa dan versi yang sudah digantikan.
+   */
+  latestManualBookVersion: boolean;
   updatedAt: string;
 }
 
@@ -416,6 +428,41 @@ export interface SaveStickerInput {
   businessUnitIds: string[];
 }
 
+/** Pengaturan email ringkasan harian stok stiker menipis (Konfigurasi Stiker). */
+export interface StickerAlertSettings {
+  enabled: boolean;
+  /** Maks. 20 alamat email sah dan unik. */
+  recipients: string[];
+  /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
+  digestHour: number;
+}
+
+/** Jenis stiker beserta minimum bawaan stiker barunya, untuk halaman Konfigurasi Stiker. */
+export interface StickerSettingsTypeDto {
+  id: string;
+  name: string;
+  systemKind: StickerSystemKind;
+  /** Minimum bawaan stiker baru jenis ini (butir); 0 = tanpa peringatan. */
+  defaultMinQty: number;
+}
+
+export interface StickerSettingsDto {
+  alert: StickerAlertSettings;
+  types: StickerSettingsTypeDto[];
+  /** Versi pengaturan email ('' bila belum pernah disimpan). */
+  updatedAt: string;
+  /** Server punya SMTP terkonfigurasi (tanpa itu ringkasan tak terkirim). */
+  smtpConfigured: boolean;
+}
+
+export interface SaveStickerSettingsInput {
+  /** `updatedAt` yang dilihat penyimpan ('' bila belum pernah disimpan); usang = galat usang (412 lewat If-Match). */
+  expectedUpdatedAt: string;
+  alert: StickerAlertSettings;
+  /** Hanya jenis yang disebut yang diubah. */
+  defaults: Array<{ typeId: string; defaultMinQty: number }>;
+}
+
 export interface SetStickerStatusInput {
   id: string;
   status: ItemStatus;
@@ -429,7 +476,7 @@ export interface StickerStockDto {
   typeName: string;
   /** Status jenis: jenis nonaktif menolak stok masuk (keluar, koreksi, dan opname tetap boleh). */
   typeStatus: ItemStatus;
-  status: ItemStatus;
+  status: StickerStatus;
   minQty: number;
   /** Menipis menurut total SEMUA lokasi (sama dengan `StickerDto.low`), bukan hanya lokasi yang diminta. */
   low: boolean;
@@ -517,12 +564,27 @@ export interface ItemSummaryDto {
   imageCount: number;
   /** Ada minimal satu penanda instruksi stiker. */
   hasInstructions: boolean;
+  /** Item tergabung ke konfigurasi QR (Manual Book) yang sudah punya minimal satu versi (stiker Manual Book). */
+  hasManualBook: boolean;
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
 }
 
+/** Manual Book sebuah item: konfigurasi QR yang menaunginya dan versi terbarunya. */
+export interface ItemManualBookDto {
+  designId: string;
+  /** Nama Manual Book (nama konfigurasi QR). */
+  name: string;
+  /** Versi terbaru. */
+  version: number;
+  /** Status stiker versi terbaru. */
+  status: StickerStatus;
+}
+
 export interface ItemDto extends ItemSummaryDto {
+  /** Null bila item belum punya Manual Book berversi. */
+  manualBook: ItemManualBookDto | null;
   stickerPhotos: ItemStickerPhotoDto[];
   accessories: ItemAccessoryDto[];
   /** Id berkas galeri (sheet `files`), urut. */
@@ -686,8 +748,28 @@ export interface AddCommentInput extends HandoverRefInput {
 }
 
 // --- QR Code Label ---
+/** Item yang tergabung ke satu konfigurasi QR (Manual Book); hanya item yang terlihat bagi pembaca. */
+export interface QrDesignItemDto {
+  id: string;
+  brand: string;
+  model: string;
+}
 export interface QrDesignDto {
   id: string;
+  /** Nama Manual Book (dihasilkan dari item, boleh diedit); `''` = konfigurasi lama tanpa nama. */
+  name: string;
+  /** Bagian label yang menampung nama (terkunci ke nama); `''` = tidak ada. */
+  namePlacement: QrNamePlacement | '';
+  /** Preset asal (pembanding banner penyimpangan); `''` = tanpa preset. */
+  presetId: string;
+  /** Item yang tergabung dan terlihat bagi pembaca (BU), urut merk lalu tipe. */
+  items: QrDesignItemDto[];
+  /** Jumlah item tergabung yang tidak terlihat bagi pembaca (di luar BU-nya). */
+  hiddenItemCount: number;
+  /** Nomor versi stiker terbaru (0 = belum pernah melahirkan stiker). */
+  stickerVersion: number;
+  /** Status stiker versi terbaru; `''` bila belum ada stiker. */
+  stickerStatus: StickerStatus | '';
   title: string;
   linkSource: QrLinkSource;
   /** Link efektif: URL yang diketik, atau URL berbagi PDF sumber. */
@@ -713,6 +795,15 @@ export interface QrDesignDto {
 export interface SaveQrDesignInput {
   id?: string;
   expectedUpdatedAt?: string;
+  /** Nama Manual Book; wajib untuk konfigurasi baru. */
+  name: string;
+  /** Preset asal (`''` = tanpa preset); saat dibuat, penempatan nama disalin dari preset ini. */
+  presetId: string;
+  /**
+   * Daftar item yang tergabung DI ANTARA item yang terlihat bagi penyimpan (daftar lengkapnya, bukan selisih); item
+   * yang tak terlihat tetap terpasang dan tidak dikirim. Konfigurasi baru wajib minimal satu.
+   */
+  itemIds: string[];
   title: string;
   linkSource: QrLinkSource;
   link: string;
@@ -737,6 +828,10 @@ export interface QrPresetDto {
   style: QrStyle;
   /** Logo yang terpilih awal; kosong = tanpa logo. Harus bagian dari pustaka logo. */
   defaultLogoId: string;
+  /** BU pemilik preset (satu preset per BU); `''` = preset lama tanpa BU (tidak ditarik otomatis). */
+  buId: string;
+  /** Bagian label yang menampung nama Manual Book (terkunci); `''` = preset lama tanpa penempatan. */
+  namePlacement: QrNamePlacement | '';
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -760,6 +855,17 @@ export interface SaveQrPresetInput {
   layout: QrLayout;
   style: QrStyle;
   defaultLogoId: string;
+  /** BU pemilik (wajib, harus aktif; satu preset per BU). */
+  buId: string;
+  /** Bagian label yang menampung nama Manual Book. */
+  namePlacement: QrNamePlacement;
+}
+/** Kloning preset ke BU lain: seluruh isi disalin kecuali BU dan nama. */
+export interface ClonePresetInput {
+  /** Preset sumber. */
+  id: string;
+  buId: string;
+  name: string;
 }
 export interface SaveQrLogoLibraryInput {
   /** Wajib bila pustaka sudah pernah disimpan. */
@@ -770,8 +876,42 @@ export interface QrLogoLibraryDto {
   logoFileIds: string[];
   logoUpdatedAt: string;
 }
+/** Satu versi Manual Book sebuah konfigurasi QR (`qrcodes.versions`, terbaru dahulu). */
+export interface QrVersionDto {
+  stickerId: string;
+  version: number;
+  /** Nama stiker, `<nama Manual Book> v<n>`. */
+  name: string;
+  status: StickerStatus;
+  /** Alasan ekspor ulang yang melahirkan versi ini ('' untuk versi pertama). */
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+  /** Gambar contoh stiker (id berkas); null bila tak ada. */
+  fileId: string | null;
+}
+
 export interface QrDesignRefInput {
   id: string;
+}
+/** Opsi item untuk pemilih di form QR: hanya item aktif yang terlihat bagi pengguna (BU). */
+export interface QrItemOptionDto {
+  id: string;
+  brand: string;
+  model: string;
+  /** BU item (menentukan preset yang ditawarkan). */
+  businessUnitIds: string[];
+  /** Nama Manual Book tempat item sudah tergabung; `''` = belum tergabung. */
+  manualBookName: string;
+}
+export interface ListQrItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface QrItemOptionsPageDto {
+  items: QrItemOptionDto[];
+  nextCursor: string | null;
 }
 export interface QrDocumentDto {
   id: string;
@@ -796,6 +936,13 @@ export interface ExportQrDesignInput {
   expectedUpdatedAt: string;
   pdf: Uint8Array;
   png: Uint8Array;
+  /**
+   * PNG kecil gambar contoh stiker (bagian multipart `preview`); wajib bila ekspor menghasilkan versi Manual Book
+   * baru, diabaikan bila tidak (kosong = tidak ada).
+   */
+  preview: Uint8Array;
+  /** Alasan perubahan label (query `reason`, maks. 500); wajib saat ekspor ulang yang menghasilkan versi baru. */
+  reason: string;
 }
 export type QrFileKind = 'pdf' | 'png';
 export interface QrFileInput {
@@ -841,6 +988,8 @@ export interface ApiContract {
   'stickerTypes.list': { input: null; output: StickerTypeDto[] };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickerSettings.get': { input: null; output: StickerSettingsDto };
+  'stickerSettings.save': { input: SaveStickerSettingsInput; output: StickerSettingsDto };
   'stickers.list': { input: null; output: StickerDto[] };
   'stickers.save': { input: SaveStickerInput; output: StickerDto };
   'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
@@ -869,10 +1018,13 @@ export interface ApiContract {
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
   'qrcodes.list': { input: null; output: QrDesignDto[] };
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.versions': { input: QrDesignRefInput; output: QrVersionDto[] };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
+  'qrcodes.itemOptions': { input: ListQrItemOptionsInput; output: QrItemOptionsPageDto };
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
+  'qrcodes.clonePreset': { input: ClonePresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
@@ -920,6 +1072,8 @@ export interface ListItemsPageInput {
   /** Filter item menurut jenis stiker (bersama `stickerMode`). */
   typeId?: string;
   stickerMode?: 'has' | 'missing';
+  /** `has` = hanya item ber-Manual Book; `missing` = hanya yang belum (definisi sama dengan `hasManualBook`). */
+  manualBook?: 'has' | 'missing';
 }
 
 export interface ItemPageDto {

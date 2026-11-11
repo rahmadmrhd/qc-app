@@ -13,12 +13,15 @@ import {
   LABEL_MM,
   labelFileSlug,
   layoutLabel,
+  manualBookFileName,
   parseDriveFileId,
   parseDriveResourceKey,
+  QR_LIMITS,
   QR_LOGO_BACKDROP_SCALE,
   qrContentHash,
   qrExportStatus,
   qrPdfFileName,
+  qrPresetDeviations,
   sheetCells,
 } from './qrcode';
 
@@ -516,5 +519,86 @@ describe('parser link Drive tanpa Web API URL (shared/ tidak bergantung pada API
       expect(parseDriveFileId(`https://drive.google.com/drive/folders/${id}`)).toBeNull();
       expect(parseDriveResourceKey('https://contoh.com/a?resourcekey=0-x')).toBeNull();
     });
+  });
+});
+
+describe('batas Manual Book (4a)', () => {
+  test('batas nama, alasan, dan gambar contoh', () => {
+    expect(QR_LIMITS.manualBookName).toBe(60);
+    expect(QR_LIMITS.reason).toBe(500);
+    expect(QR_LIMITS.previewMaxBytes).toBe(512 * 1024);
+    expect(QR_LIMITS.previewMaxSide).toBe(1024);
+  });
+});
+
+describe('manualBookFileName', () => {
+  test('huruf dipertahankan, karakter lain menjadi "-", stempel di belakang', () => {
+    expect(manualBookFileName('PBE M5-400/200', '20261110')).toBe('PBE-M5-400-200-20261110');
+    expect(manualBookFileName('U6-XG(-B)', '20261110')).toBe('U6-XG-B-20261110');
+  });
+
+  test('nama kosong memakai "label"; slug dipotong 60 karakter', () => {
+    expect(manualBookFileName('', '1')).toBe('label-1');
+    expect(manualBookFileName('A'.repeat(100), '1')).toBe(`${'A'.repeat(60)}-1`);
+  });
+
+  test('labelFileSlug tanpa keepCase tetap huruf kecil', () => {
+    expect(labelFileSlug('PBE M5-400/200')).toBe('pbe-m5-400-200');
+  });
+});
+
+describe('qrPresetDeviations', () => {
+  const preset = {
+    title: 'Judul',
+    subtitle: 'Sub',
+    footer: 'Kaki',
+    defaultLogoId: 'logo-1',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+    namePlacement: '' as const,
+  };
+  const same = {
+    title: 'Judul',
+    subtitle: 'Sub',
+    footer: 'Kaki',
+    logoFileId: 'logo-1',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+  };
+
+  test('kosong bila design sama dengan preset', () => {
+    expect(qrPresetDeviations(same, preset)).toEqual([]);
+  });
+
+  test('gaya beda -> ["style"]', () => {
+    const style = {
+      ...DEFAULT_QR_STYLE,
+      footer: { ...DEFAULT_QR_STYLE.footer, italic: !DEFAULT_QR_STYLE.footer.italic },
+    };
+    expect(qrPresetDeviations({ ...same, style }, preset)).toEqual(['style']);
+  });
+
+  test('teks, logo, dan tata letak yang beda disebut berurutan', () => {
+    const layout = { ...DEFAULT_QR_LAYOUT, qrSize: DEFAULT_QR_LAYOUT.qrSize - 1 };
+    expect(
+      qrPresetDeviations(
+        { ...same, title: 'Lain', subtitle: 'X', footer: 'Y', logoFileId: '', layout },
+        preset,
+      ),
+    ).toEqual(['title', 'subtitle', 'footer', 'logo', 'layout']);
+  });
+
+  test('teks bagian yang terkunci ke nama tidak dihitung, gayanya tetap dibandingkan', () => {
+    const locked = { ...preset, namePlacement: 'subtitle' as const };
+    expect(qrPresetDeviations({ ...same, subtitle: 'PBE M5-400/200' }, locked)).toEqual([]);
+    // Bagian lain tetap dihitung.
+    expect(qrPresetDeviations({ ...same, subtitle: 'N', title: 'Lain' }, locked)).toEqual([
+      'title',
+    ]);
+    const style = {
+      ...DEFAULT_QR_STYLE,
+      subtitle: { ...DEFAULT_QR_STYLE.subtitle, bold: !DEFAULT_QR_STYLE.subtitle.bold },
+    };
+    expect(qrPresetDeviations({ ...same, subtitle: 'N', style }, locked)).toEqual(['style']);
   });
 });

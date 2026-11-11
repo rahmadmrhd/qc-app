@@ -21,9 +21,11 @@ import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
+import { shouldRefreshAfterExportError } from '@/modules/qrcode/lib/export-error';
 import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
 import {
   qrDesignsQueryOptions,
+  refreshQrDesign,
   useDeleteQrDesign,
   useExportQrDesign,
 } from '@/modules/qrcode/queries';
@@ -56,7 +58,11 @@ function QrCodesPage() {
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 
-  async function confirmExport(design: QrDesignDto, report: (step: string) => void) {
+  async function confirmExport(
+    design: QrDesignDto,
+    report: (step: string) => void,
+    reason: string,
+  ) {
     if (design.logoFileId !== '') report('Memuat logo dari Drive…');
     const logo =
       design.logoFileId === ''
@@ -65,13 +71,27 @@ function QrCodesPage() {
     report('Membuat PDF lembar 10 × 14 dan PNG label…');
     const files = await renderExportFiles(design, logo);
     report('Mengirim PDF dan PNG ke server…');
-    await exportMutation.mutateAsync({
-      id: design.id,
-      expectedUpdatedAt: design.updatedAt,
-      pdf: files.pdf,
-      png: files.png,
-      onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
-    });
+    try {
+      await exportMutation.mutateAsync({
+        id: design.id,
+        expectedUpdatedAt: design.updatedAt,
+        pdf: files.pdf,
+        png: files.png,
+        // Gambar contoh stiker dikirim selalu (server mengabaikannya bila ekspor ini tidak melahirkan versi baru).
+        preview: files.preview,
+        reason,
+        onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
+      });
+    } catch (error) {
+      // DTO di dialog basi (versi usang, label berubah sehingga alasan kini wajib, atau job gagal di langkah komit
+      // karena konfigurasi diubah selama job): muat ulang agar dialog
+      // memakai data terbaru (kotak alasan muncul bila perlu), lalu teruskan galat ke dialog.
+      if (shouldRefreshAfterExportError(error)) {
+        const fresh = await refreshQrDesign(queryClient, design.id).catch(() => null);
+        if (fresh) setExporting(fresh);
+      }
+      throw error;
+    }
     toast.success('Hasil ekspor disimpan di Drive');
   }
 
@@ -122,7 +142,7 @@ function QrCodesPage() {
           design={exporting}
           open
           onOpenChange={(open) => (open ? undefined : setExporting(null))}
-          onConfirm={(report) => confirmExport(exporting, report)}
+          onConfirm={(report, reason) => confirmExport(exporting, report, reason)}
         />
       ) : null}
       <Dialog

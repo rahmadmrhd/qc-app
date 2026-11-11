@@ -18,6 +18,13 @@ const design = (over: Partial<QrDesignDto> = {}): QrDesignDto => ({
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
   overflow: false,
+  name: '',
+  namePlacement: '',
+  presetId: '',
+  items: [],
+  hiddenItemCount: 0,
+  stickerVersion: 0,
+  stickerStatus: '',
   exportStatus: 'none',
   exportedAt: '',
   exportedBy: '',
@@ -180,4 +187,43 @@ test('kolom Link dapat diklik (tab baru, aman); tanpa keterangan tambahan "PDF Â
   expect(screen.getAllByRole('link')).toHaveLength(2); // satu per baris
   expect(screen.queryByText('Link manual')).toBeNull();
   expect(screen.queryByText('Lihat PDF')).toBeNull();
+});
+
+test('kolom Item (jumlah dan nama pertama) dan Versi stiker dengan badge status', () => {
+  render(
+    <QrDesignsTable
+      designs={[
+        design({
+          id: 'a',
+          title: 'Satu',
+          items: [
+            { id: 'i1', brand: 'PBE', model: 'M5-400' },
+            { id: 'i2', brand: 'PBE', model: 'M5-200' },
+          ],
+          hiddenItemCount: 1,
+          stickerVersion: 2,
+          stickerStatus: 'active',
+        }),
+        design({ id: 'b', title: 'Dua', stickerVersion: 1, stickerStatus: 'deprecated' }),
+        design({ id: 'c', title: 'Tiga', stickerVersion: 3, stickerStatus: 'inactive' }),
+        design({ id: 'd', title: 'Empat' }),
+      ]}
+      canEdit
+      canManage
+      busyId={null}
+      {...handlers()}
+    />,
+  );
+  expect(screen.getByRole('columnheader', { name: 'Item' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Versi stiker' })).toBeInTheDocument();
+  const rows = screen.getAllByRole('row');
+  expect(rows[1]).toHaveTextContent('3 item');
+  expect(rows[1]).toHaveTextContent('PBE M5-400');
+  expect(rows[1]).toHaveTextContent('v2');
+  expect(rows[2]).toHaveTextContent('v1');
+  expect(rows[2]).toHaveTextContent('Usang');
+  expect(rows[3]).toHaveTextContent('v3');
+  expect(rows[3]).toHaveTextContent('Nonaktif');
+  expect(rows[4]).toHaveTextContent('Belum ada item');
+  expect(rows[4]).toHaveTextContent('â€”');
 });

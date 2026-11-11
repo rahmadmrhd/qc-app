@@ -54,6 +54,21 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
+  'stickerSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: Array.from(
+        { length: STICKER_LIMITS.alertRecipientsMax },
+        (_, i) => `u${i}-${'x'.repeat(40)}@contoh.com`,
+      ),
+      digestHour: 23,
+    },
+    defaults: Array.from({ length: 200 }, () => ({
+      typeId: UUID,
+      defaultMinQty: STICKER_LIMITS.qtyMax,
+    })),
+  },
   'stickerTypes.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,
@@ -171,6 +186,9 @@ const WORST: Inputs = {
   'qrcodes.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,
+    name: text(QR_LIMITS.manualBookName),
+    presetId: UUID,
+    itemIds: longList(QR_LIMITS.items, () => UUID),
     title: text(QR_LIMITS.title),
     linkSource: 'url',
     link: text(QR_LIMITS.link),
@@ -192,7 +210,10 @@ const WORST: Inputs = {
     layout: DEFAULT_QR_LAYOUT,
     style: DEFAULT_QR_STYLE,
     defaultLogoId: UUID,
+    buId: UUID,
+    namePlacement: 'footer',
   },
+  'qrcodes.clonePreset': { id: UUID, buId: UUID, name: text(QR_LIMITS.presetName) },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: STAMP,
     logoFileIds: longList(QR_LIMITS.logoLibrary, () => UUID),

@@ -116,6 +116,7 @@ export function accessRoutes(): Pick<RouteTable, AccessMethod> {
         anyOf: [
           { module: 'item', level: 'view' },
           { module: 'sticker', level: 'view' },
+          { module: 'qrcode', level: 'view' },
         ],
       },
       validate: expectNull,
