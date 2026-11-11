@@ -1,6 +1,6 @@
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { manualBookDesignIdsOf } from '@server/modules/item/repo';
+import { itemIdsWithPostel, manualBookDesignIdsOf } from '@server/modules/item/repo';
 import type {
   ItemStickerMarkView,
   ItemStickerPhotoDto,
@@ -35,6 +35,7 @@ interface TypeRow {
   id: string;
   name: string;
   rule: string;
+  system_kind: string;
 }
 
 interface StickerBuRow {
@@ -69,9 +70,10 @@ function placeholders(count: number): string {
  *   `inactive: true`); `targetName` = alias bila ada, selain itu nama stiker.
  * - Penanda jenis: `resolved` = `stickersForType` (stiker aktif jenis itu menurut aturan jenis dan BU item;
  *   status jenis tidak berpengaruh); `targetName` = nama jenis; tanpa kecocokan = `unresolved: true`. Aturan `group`
- *   (Manual Book, tahap 4a): stiker versi TERBARU konfigurasi QR yang ditunjuk `items.manual_book_design_id` item ini,
- *   bila aktif; item tanpa konfigurasi, atau versi terbaru yang nonaktif, = `unresolved` (tidak jatuh ke versi
- *   `deprecated`).
+ *   menurut jenis sistemnya. Manual Book (tahap 4a): stiker versi TERBARU konfigurasi QR yang ditunjuk
+ *   `items.manual_book_design_id` item ini, bila aktif; item tanpa konfigurasi, atau versi terbaru yang nonaktif,
+ *   = `unresolved` (tidak jatuh ke versi `deprecated`). Postel (tahap 4b): stiker aktif jenis itu bila item tertaut ke
+ *   catatan Postel yang ada, selain itu `unresolved`. Jenis `group` tanpa jenis sistem tak pernah cocok.
  * - `buCodes` = kode BU irisan BU stiker dan BU item (terurut kode); kosong bila tak beririsan.
  * Dihitung ulang tiap dibaca, jadi perubahan BU item atau katalog sesudah simpan langsung tercermin.
  */
@@ -128,7 +130,7 @@ export async function buildInstructionViews(
     slots.types = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, name, rule FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+        `SELECT id, name, rule, system_kind FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
       ).bind(...typeIds),
     );
   }
@@ -153,11 +155,27 @@ export async function buildInstructionViews(
   }
   const buCode = new Map(rowsOf<BuRow>(slots.bus).map((row) => [row.id, row.code]));
   const itemBus = new Set(itemBuIds);
-  // Aturan `group`: stiker versi terbaru Manual Book item ini (dua kueri kecil, hanya bila ada penanda jenis group).
-  let groupStickerIds: ReadonlySet<string> = new Set();
-  if ([...types.values()].some((type) => type.rule.trim() === 'group')) {
+  // Aturan `group` per jenis sistem (dua kueri kecil, hanya bila ada penanda jenis group yang bersangkutan):
+  // Manual Book = stiker versi terbaru konfigurasi item; Postel = stiker jenis itu bila item tertaut ke catatan yang ada.
+  const groupTypes = [...types.values()].filter((type) => type.rule.trim() === 'group');
+  const groupStickerIdsOf = new Map<string, ReadonlySet<string>>();
+  if (groupTypes.some((type) => type.system_kind.trim() === 'manual_book')) {
     const designId = (await manualBookDesignIdsOf(env.DB, [itemId])).get(itemId) ?? '';
-    groupStickerIds = new Set((await latestManualBookStickerIds(env.DB, [designId])).values());
+    const latest = new Set((await latestManualBookStickerIds(env.DB, [designId])).values());
+    for (const type of groupTypes) {
+      if (type.system_kind.trim() === 'manual_book') groupStickerIdsOf.set(type.id, latest);
+    }
+  }
+  if (groupTypes.some((type) => type.system_kind.trim() === 'postel')) {
+    const linked = (await itemIdsWithPostel(env.DB, [itemId])).has(itemId);
+    for (const type of groupTypes) {
+      if (type.system_kind.trim() === 'postel') {
+        groupStickerIdsOf.set(
+          type.id,
+          linked ? new Set((stickersByType.get(type.id) ?? []).map((row) => row.id)) : new Set(),
+        );
+      }
+    }
   }
 
   const resolve = (row: StickerRow): ResolvedStickerDto => ({
@@ -197,7 +215,7 @@ export async function buildInstructionViews(
         { id: type.id, rule: toMatchRule(type.rule) },
         candidates,
         itemBuIds,
-        groupStickerIds,
+        groupStickerIdsOf.get(type.id) ?? new Set(),
       );
       const resolved = matched.flatMap((match) => {
         const row = stickers.get(match.id);

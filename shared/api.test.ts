@@ -147,6 +147,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     stickerId: 's1',
     typeId: 't1',
     stickerMode: 'missing',
+    manualBook: 'has',
+    postel: 'missing',
   },
   'items.get': { id: 'i1' },
   'items.save': {

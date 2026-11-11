@@ -567,6 +567,8 @@ export interface ItemSummaryDto {
   hasInstructions: boolean;
   /** Item tergabung ke konfigurasi QR (Manual Book) yang sudah punya minimal satu versi (stiker Manual Book). */
   hasManualBook: boolean;
+  /** Item tertaut ke catatan Postel yang ada (tanpa identitas catatan; dihitung untuk semua pembaca). */
+  hasPostel: boolean;
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
@@ -583,9 +585,25 @@ export interface ItemManualBookDto {
   status: StickerStatus;
 }
 
+/** Postel sebuah item: catatan yang menaunginya dan nomor Aktifnya (kondisi dihitung terhadap tanggal WIB server). */
+export interface ItemPostelDto {
+  id: string;
+  /** Nama catatan (turunan dari tipe semua item catatan). */
+  name: string;
+  /** Nomor sertifikat Aktif (seq terbesar). */
+  number: string;
+  /** Tanggal kedaluwarsa nomor Aktif, 'YYYY-MM-DD' (WIB). */
+  expiresOn: string;
+  condition: PostelCondition;
+  /** Sisa hari sampai `expiresOn` (negatif = sudah lewat). */
+  daysLeft: number;
+}
+
 export interface ItemDto extends ItemSummaryDto {
   /** Null bila item belum punya Manual Book berversi. */
   manualBook: ItemManualBookDto | null;
+  /** Diisi hanya bila pemanggil punya `sticker: view` dan item tertaut ke catatan Postel; selain itu null. */
+  postel: ItemPostelDto | null;
   stickerPhotos: ItemStickerPhotoDto[];
   accessories: ItemAccessoryDto[];
   /** Id berkas galeri (sheet `files`), urut. */
@@ -1208,6 +1226,8 @@ export interface ListItemsPageInput {
   stickerMode?: 'has' | 'missing';
   /** `has` = hanya item ber-Manual Book; `missing` = hanya yang belum (definisi sama dengan `hasManualBook`). */
   manualBook?: 'has' | 'missing';
+  /** `has` = hanya item ber-Postel; `missing` = hanya yang belum (definisi sama dengan `hasPostel`). */
+  postel?: 'has' | 'missing';
 }
 
 export interface ItemPageDto {

@@ -29,7 +29,9 @@ const item: ItemDto = {
   updatedAt: '2026-10-09T00:00:00.000Z',
   hasInstructions: true,
   hasManualBook: false,
+  hasPostel: false,
   manualBook: null,
+  postel: null,
   stickerPhotos: [
     {
       guideId: 'g1',

@@ -1,4 +1,5 @@
 import type { Db, DbStatement, Preparer } from '@server/core/db';
+import { HAS_POSTEL_SQL } from '@server/modules/item/repo';
 import type { ItemStickerMarkDto, ItemStickerPhotoInput } from '@shared/contract';
 
 /** Foto instruksi tersimpan: urutan (`position`), label BU (`null` = tanpa label), dan penanda berurutan. */
@@ -167,8 +168,9 @@ export interface InstructionFilter {
  * Syarat `WHERE` untuk filter instruksi pada daftar item (alias tabel item `i`), dengan nilai yang harus di-bind
  * berurutan. Pencocokan jenis -> stiker DICERMINKAN dari `stickersForType` (`shared/stickers.ts`; satu definisi
  * dengan tampilan detail, dijaga tes kesepakatan): stiker `active` berjenis itu; aturan jenis `none` = semua,
- * `group` (Manual Book, tahap 4a) = hanya stiker versi TERBARU konfigurasi QR item (`items.manual_book_design_id`),
- * selain itu hanya yang tertaut ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
+ * `group` = menurut jenis sistemnya: Manual Book (tahap 4a) hanya stiker versi TERBARU konfigurasi QR item
+ * (`items.manual_book_design_id`), Postel (tahap 4b) semua stiker aktif jenis itu bagi item yang tertaut ke catatan Postel
+ * yang ada (`HAS_POSTEL_SQL`); jenis `group` tanpa jenis sistem tak pernah cocok; selain itu hanya yang tertaut ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
  *
  * - `instruction: 'none'`: item tanpa satu pun penanda (foto tanpa penanda tidak dihitung).
  * - `stickerId`: "memakai" = penanda langsung ke stiker itu (apa pun statusnya/BU-nya), atau penanda jenis yang
@@ -188,7 +190,7 @@ export function instructionFilterSql(filter: InstructionFilter): {
   const negate = filter.stickerMode === 'missing' ? 'NOT ' : '';
   if (filter.stickerId !== undefined) {
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND (t.rule = 'none' OR (t.rule = 'group' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND ${HAS_POSTEL_SQL}))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
     );
     binds.push(filter.stickerId, filter.stickerId);
   } else if (filter.typeId !== undefined) {

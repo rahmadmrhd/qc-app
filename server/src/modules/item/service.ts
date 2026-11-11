@@ -2,7 +2,7 @@ import { writeAudit } from '@server/core/audit';
 import { runCas } from '@server/core/cas';
 import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { nowIso } from '@server/core/env';
+import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
@@ -11,6 +11,7 @@ import { brandByIdStatement, brandsFromResult, listBrands } from '@server/module
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
+import { postelSoonDays } from '@server/modules/postel/service';
 import {
   hasInstructionsOf,
   instructionFilterSql,
@@ -26,6 +27,7 @@ import type {
   ItemDto,
   ItemManualBookDto,
   ItemPageDto,
+  ItemPostelDto,
   ItemStatus,
   ItemStickerPhotoDto,
   ItemSummaryDto,
@@ -34,6 +36,8 @@ import type {
   SetItemStatusInput,
 } from '@shared/contract';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
+import { hasLevel } from '@shared/permissions';
+import { wibDateIso } from '@shared/postel';
 import {
   assertCanActOnItem,
   assertItemVisible,
@@ -50,12 +54,15 @@ import {
   findItemStmt,
   findItemWithBrand,
   HAS_MANUAL_BOOK_SQL,
+  HAS_POSTEL_SQL,
   type ItemRow,
   insertItemStmts,
   itemBusinessUnitIdsStmt,
   itemBusinessUnitsOf,
   itemIdsVisibleIn,
+  itemIdsWithPostel,
   loadItemManualBooks,
+  loadItemPostels,
   parseStrings,
   replaceItemBusinessUnitsStmts,
   toItem,
@@ -75,7 +82,20 @@ function hasMarks(instructions: readonly StoredPhoto[]): boolean {
   return instructions.some((photo) => photo.marks.length > 0);
 }
 
-function toItemSummaryDto(item: ItemView, manualBook: ItemManualBookDto | null): ItemSummaryDto {
+/**
+ * Keadaan Postel sebuah item pada respons: `has` (item ber-Postel; selalu dihitung, tanpa identitas catatan) dan `detail`
+ * (ringkasan catatan; hanya bagi pemegang `sticker: view`, selain itu `null`).
+ */
+export interface ItemPostelState {
+  has: boolean;
+  detail: ItemPostelDto | null;
+}
+
+function toItemSummaryDto(
+  item: ItemView,
+  manualBook: ItemManualBookDto | null,
+  hasPostel: boolean,
+): ItemSummaryDto {
   return {
     id: item.id,
     brandId: item.brandId,
@@ -87,6 +107,7 @@ function toItemSummaryDto(item: ItemView, manualBook: ItemManualBookDto | null):
     imageCount: item.attachments.length,
     hasInstructions: hasMarks(item.instructions),
     hasManualBook: manualBook !== null,
+    hasPostel,
     businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
   };
@@ -96,10 +117,12 @@ export function toItemDto(
   item: ItemView,
   stickerPhotos: ItemStickerPhotoDto[],
   manualBook: ItemManualBookDto | null,
+  postel: ItemPostelState,
 ): ItemDto {
   return {
-    ...toItemSummaryDto(item, manualBook),
+    ...toItemSummaryDto(item, manualBook, postel.has),
     manualBook: manualBook ? { ...manualBook } : null,
+    postel: postel.detail ? { ...postel.detail } : null,
     stickerPhotos,
     accessories: item.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...item.attachments],
@@ -156,6 +179,25 @@ async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
     businessUnits: businessUnits.get(item.id) ?? [],
     instructions: instructions.get(item.id) ?? [],
   };
+}
+
+/**
+ * Postel sebuah item untuk respons detail/simpan. `has` selalu dihitung; `detail` hanya bila `user` memegang
+ * `sticker: view` (izin global; Postel di luar jangkauan izin item/BU, jadi tak dibocorkan kepada pengguna item biasa).
+ */
+async function postelStateOf(
+  env: Env,
+  user: UserContext,
+  itemId: string,
+): Promise<ItemPostelState> {
+  const has = (await itemIdsWithPostel(env.DB, [itemId])).has(itemId);
+  if (!has || !hasLevel(user.permissions.sticker, 'view')) return { has, detail: null };
+  const soonDays = await postelSoonDays(env);
+  const detail =
+    (await loadItemPostels(env.DB, [itemId], { today: wibDateIso(nowOf(env)), soonDays })).get(
+      itemId,
+    ) ?? null;
+  return { has, detail };
 }
 
 /** Tampilan instruksi (`stickerPhotos`) sebuah item dari foto tersimpan, diterjemahkan menurut BU item. */
@@ -215,6 +257,8 @@ export async function listItemPage(
   binds.push(...instructionFilter.binds);
   if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
   if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
+  if (input.postel === 'has') where.push(HAS_POSTEL_SQL);
+  if (input.postel === 'missing') where.push(`NOT ${HAS_POSTEL_SQL}`);
   const query = normalizeKey(input.query ?? '');
   if (query !== '') {
     where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
@@ -234,10 +278,11 @@ export async function listItemPage(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   const pageIds = page.map((row) => row.id.trim());
-  const [businessUnits, withInstructions, manualBooks] = await Promise.all([
+  const [businessUnits, withInstructions, manualBooks, withPostel] = await Promise.all([
     itemBusinessUnitsOf(env.DB, pageIds),
     hasInstructionsOf(env.DB, pageIds),
     loadItemManualBooks(env.DB, pageIds),
+    itemIdsWithPostel(env.DB, pageIds),
   ]);
   return {
     items: page.map(
@@ -252,6 +297,7 @@ export async function listItemPage(
         imageCount: Number(row.image_count) || 0,
         hasInstructions: withInstructions.has(row.id.trim()),
         hasManualBook: manualBooks.has(row.id.trim()),
+        hasPostel: withPostel.has(row.id.trim()),
         businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
       }),
@@ -280,6 +326,7 @@ export async function getItemDto(
     view,
     await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),
     (await loadItemManualBooks(env.DB, [view.id])).get(view.id) ?? null,
+    await postelStateOf(env, user, view.id),
   );
 }
 
@@ -544,9 +591,9 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
       if (mark.target.kind === 'sticker') {
         const sticker = stickerRows.get(mark.target.stickerId);
         if (sticker === undefined) fail(`${label}: stiker tidak ditemukan`);
-        // Stiker jenis sistem (Manual Book) dipilih lewat jenisnya, tak pernah sebagai sasaran langsung.
+        // Stiker jenis sistem (Manual Book, Postel) dipilih lewat jenisnya, tak pernah sebagai sasaran langsung.
         if ((sticker?.system_kind ?? '').trim() !== '') {
-          fail(`${label}: Stiker Manual Book dipilih lewat jenisnya`);
+          fail(`${label}: Stiker jenis sistem dipilih lewat jenisnya`);
         }
         if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
           fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
@@ -877,6 +924,7 @@ async function saveItemOnce(
     },
     await instructionViewsOf(env, id, plan.businessUnits, stored),
     (await loadItemManualBooks(env.DB, [id])).get(id) ?? null,
+    await postelStateOf(env, actor, id),
   );
 }
 
@@ -907,7 +955,8 @@ async function setItemStatusOnce(
   const before: ItemView = { ...existing, brand: found.brandName, businessUnits, instructions };
   const views = await instructionViewsOf(env, existing.id, businessUnits, instructions);
   const manualBook = (await loadItemManualBooks(env.DB, [existing.id])).get(existing.id) ?? null;
-  if (existing.status === input.status) return toItemDto(before, views, manualBook);
+  const postel = await postelStateOf(env, actor, existing.id);
+  if (existing.status === input.status) return toItemDto(before, views, manualBook, postel);
   const now = nowIso(env);
   const updated: ItemRecord = {
     ...existing,
@@ -935,5 +984,6 @@ async function setItemStatusOnce(
     { ...updated, brand: before.brand, businessUnits, instructions },
     views,
     manualBook,
+    postel,
   );
 }

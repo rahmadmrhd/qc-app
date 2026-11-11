@@ -251,6 +251,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       typeId: 'string',
       stickerMode: 'string',
       manualBook: 'string',
+      postel: 'string',
     },
   },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },

@@ -218,7 +218,9 @@ const baseItem = {
   imageCount: 1,
   hasInstructions: true,
   hasManualBook: false,
+  hasPostel: false,
   manualBook: null,
+  postel: null,
   businessUnits: [
     { id: 'bu-a', code: 'RTL', name: 'Retail' },
     { id: 'bu-b', code: 'WHL', name: 'Wholesale' },

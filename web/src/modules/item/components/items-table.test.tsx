@@ -16,6 +16,7 @@ const items: ItemSummaryDto[] = [
     imageCount: 2,
     hasInstructions: true,
     hasManualBook: false,
+    hasPostel: false,
     businessUnits: [
       { id: 'bu-a', code: 'RTL', name: 'Retail' },
       { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
@@ -33,6 +34,7 @@ const items: ItemSummaryDto[] = [
     imageCount: 0,
     hasInstructions: false,
     hasManualBook: false,
+    hasPostel: false,
     businessUnits: [],
     updatedAt: '',
   },
@@ -133,6 +135,7 @@ const withManualBook: ItemSummaryDto = {
   imageCount: 0,
   hasInstructions: true,
   hasManualBook: true,
+  hasPostel: false,
   businessUnits: [],
   updatedAt: '',
 };

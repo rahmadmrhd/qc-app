@@ -2,14 +2,18 @@ import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
+import { listItemsOfPostels } from '@server/modules/postel/items';
+import { listPostelNumbers } from '@server/modules/postel/repo';
 import { toStickerStatus } from '@server/modules/sticker/repo';
 import type {
   BusinessUnitRefDto,
   ItemAccessoryDto,
   ItemManualBookDto,
+  ItemPostelDto,
   ItemStatus,
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
+import { daysUntil, postelCondition, postelName } from '@shared/postel';
 
 export interface ItemRecord {
   id: string;
@@ -243,6 +247,70 @@ export async function loadItemManualBooks(
         status: toStickerStatus(row.sticker_status.trim()),
       });
     }
+  }
+  return result;
+}
+
+/**
+ * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi DAN catatannya masih ada (penunjuk
+ * yatim tidak dihitung). Dipakai filter `items.list` (`postel`), cabang aturan `group` jenis Postel
+ * (`instructionFilterSql`), dan `itemIdsWithPostel` (sumber `hasPostel`).
+ */
+export const HAS_POSTEL_SQL =
+  "(i.postel_id <> '' AND EXISTS (SELECT 1 FROM postels p WHERE p.id = i.postel_id))";
+
+/** Dari `itemIds`, id item ber-Postel (`HAS_POSTEL_SQL`); satu kueri per 500 id. */
+export async function itemIdsWithPostel(db: Db, itemIds: readonly string[]): Promise<Set<string>> {
+  const result = new Set<string>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT i.id FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_POSTEL_SQL}`,
+      )
+      .bind(...chunk)
+      .all<{ id: string }>();
+    for (const row of rows.results) result.add(row.id.trim());
+  }
+  return result;
+}
+
+/**
+ * Postel tiap item (peta id item -> ringkasan catatan dengan nomor Aktif). Nama = turunan dari tipe SEMUA item catatan
+ * (sama dengan `PostelDto.name`); kondisi dan sisa hari dihitung terhadap `today` (tanggal WIB) dan ambang `soonDays`.
+ * Item tanpa Postel (atau catatan tanpa nomor) tidak ada di peta.
+ */
+export async function loadItemPostels(
+  db: Db,
+  itemIds: readonly string[],
+  clock: { today: string; soonDays: number },
+): Promise<Map<string, ItemPostelDto>> {
+  const result = new Map<string, ItemPostelDto>();
+  const postelOfItem = await postelIdsOf(db, itemIds);
+  if (postelOfItem.size === 0) return result;
+  const postelIds = [...new Set(postelOfItem.values())];
+  const [numbers, members] = await Promise.all([
+    listPostelNumbers(db, postelIds),
+    listItemsOfPostels(db, postelIds),
+  ]);
+  const activeOf = new Map<string, (typeof numbers)[number]>();
+  for (const entry of numbers) {
+    const current = activeOf.get(entry.postelId);
+    if (!current || entry.seq > current.seq) activeOf.set(entry.postelId, entry);
+  }
+  for (const [itemId, postelId] of postelOfItem) {
+    const active = activeOf.get(postelId);
+    if (!active) continue;
+    const daysLeft = daysUntil(active.expiresOn, clock.today);
+    result.set(itemId, {
+      id: postelId,
+      name: postelName((members.get(postelId) ?? []).map((member) => member.model)),
+      number: active.number,
+      expiresOn: active.expiresOn,
+      condition: postelCondition(daysLeft, clock.soonDays),
+      daysLeft,
+    });
   }
   return result;
 }

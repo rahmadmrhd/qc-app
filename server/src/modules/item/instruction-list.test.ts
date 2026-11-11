@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { brandIdOf, seedBrand } from '@server-test/item-fixtures';
+import { seedPostel } from '@server-test/postel-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import {
   seedGuideImage,
@@ -53,12 +54,12 @@ async function createItem(
   ids[model] = ((await response.json()) as ItemDto).id;
 }
 
-async function list(query: string, email?: string): Promise<string[]> {
+async function list(query: string, email?: string, pageSize = 2): Promise<string[]> {
   const found: string[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {
     const sep = query === '' ? '?' : `${query}&`;
-    const url: string = `/items${sep}limit=2${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`;
+    const url: string = `/items${sep}limit=${pageSize}${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`;
     const response = await rest.get(url, email === undefined ? {} : { email });
     expect(response.status).toBe(200);
     const body = (await response.json()) as ItemPageDto;
@@ -441,4 +442,109 @@ describe('aturan group (Manual Book): tes kesepakatan items.get dan filter dafta
       (await itemOf(ids.G1 as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ?? [];
     expect(resolved).toEqual(['q1-v3']);
   });
+});
+
+describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', () => {
+  const POSTEL_STICKERS = ['s-postel', 's-postel-x'];
+  const setPostel = (model: string, postelId: string) =>
+    env.DB.prepare('UPDATE items SET postel_id = ? WHERE id = ?')
+      .bind(postelId, ids[model] as string)
+      .run();
+
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 't-postel',
+      name: 'Postel',
+      rule: 'group',
+      systemKind: 'postel',
+    });
+    await seedSticker(env, { id: 's-postel', typeId: 't-postel', name: 'Postel' });
+    // stiker nonaktif pada jenis yang sama: tak pernah menjadi hasil terjemahan jenis
+    await seedSticker(env, {
+      id: 's-postel-x',
+      typeId: 't-postel',
+      name: 'Postel Lama',
+      status: 'inactive',
+    });
+    await seedPostel(env, {
+      id: 'pp-1',
+      numbers: [{ number: 'PLG-77', expiresOn: '2027-01-01' }],
+    });
+    await createItem('P1', ['bu-a'], [typeMark('t-postel')]);
+    await createItem('P2', ['bu-b'], [typeMark('t-postel'), typeMark('t-bu')]);
+    await createItem('P3', ['bu-a'], [typeMark('t-postel')]);
+    await createItem('P4', ['bu-a'], [typeMark('t-postel')]);
+    await setPostel('P1', 'pp-1');
+    // BU lain tetapi memakai catatan yang sama: aturan group tak memakai BU
+    await setPostel('P2', 'pp-1');
+    // P3 tanpa catatan; P4 penunjuk yatim (catatan tidak ada)
+    await setPostel('P4', 'ghost');
+  });
+
+  const itemOf = async (id: string): Promise<ItemDto> =>
+    (await (await rest.get(`/items/${id}`)).json()) as ItemDto;
+  const resolvedOf = async (model: string): Promise<string[]> =>
+    (await itemOf(ids[model] as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ??
+    [];
+
+  test('hasil terjemahan: stiker Postel aktif bagi item tertaut; tanpa catatan, yatim, atau stiker nonaktif = belum ada', async () => {
+    expect(await resolvedOf('P1')).toEqual(['s-postel']);
+    expect(await resolvedOf('P2')).toEqual(['s-postel']);
+    expect(await resolvedOf('P3')).toEqual([]);
+    expect(await resolvedOf('P4')).toEqual([]);
+    const unresolved = (await itemOf(ids.P3 as string)).stickerPhotos[0]?.marks[0]?.unresolved;
+    expect(unresolved).toBe(true);
+    expect(names(await list('?stickerId=s-postel'))).toEqual(set('P1', 'P2'));
+    expect(names(await list('?stickerId=s-postel&stickerMode=missing')).includes('P3')).toBe(true);
+    expect(await list('?stickerId=s-postel-x')).toEqual([]);
+    expect(names(await list('?typeId=t-postel&stickerMode=has'))).toEqual(
+      set('P1', 'P2', 'P3', 'P4'),
+    );
+    // stiker Postel dinonaktifkan: tidak lagi terjemahan bagi siapa pun
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's-postel'").run();
+    expect(await resolvedOf('P1')).toEqual([]);
+    expect(await list('?stickerId=s-postel')).toEqual([]);
+  });
+
+  test('items.get (resolved) dan filter stickerId/typeId memberi jawaban sama untuk setiap item, pada semua keadaan stiker dan catatan', async () => {
+    const check = async (): Promise<void> => {
+      const everyone = Object.keys(ids);
+      const details = new Map<string, ItemDto>();
+      for (const model of everyone) details.set(model, await itemOf(ids[model] as string));
+      const usesSticker = (item: ItemDto, stickerId: string): boolean =>
+        item.stickerPhotos.some((photo) =>
+          photo.marks.some((m) => m.resolved.some((r) => r.id === stickerId)),
+        );
+      for (const stickerId of POSTEL_STICKERS) {
+        const has = new Set(await list(`?stickerId=${stickerId}&stickerMode=has`, undefined, 50));
+        const missing = new Set(
+          await list(`?stickerId=${stickerId}&stickerMode=missing`, undefined, 50),
+        );
+        for (const model of everyone) {
+          const id = ids[model] as string;
+          const uses = usesSticker(details.get(model) as ItemDto, stickerId);
+          expect([model, stickerId, 'has', has.has(id)]).toEqual([model, stickerId, 'has', uses]);
+          expect([model, stickerId, 'missing', missing.has(id)]).toEqual([
+            model,
+            stickerId,
+            'missing',
+            !uses,
+          ]);
+        }
+      }
+    };
+    await check();
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's-postel'").run();
+    await check();
+    // stiker Postel kedua aktif: kedua stiker aktif jenis itu menjadi hasil bagi item bercatatan
+    await env.DB.prepare(
+      "UPDATE stickers SET status = 'active' WHERE id IN ('s-postel', 's-postel-x')",
+    ).run();
+    await check();
+    await env.DB.prepare('DELETE FROM postel_numbers WHERE postel_id = ?').bind('pp-1').run();
+    await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('pp-1').run();
+    // penunjuk yatim sesudah catatan terhapus: kedua sisi sepakat (tidak ada hasil)
+    await check();
+    expect(await resolvedOf('P1')).toEqual([]);
+  }, 300_000);
 });
