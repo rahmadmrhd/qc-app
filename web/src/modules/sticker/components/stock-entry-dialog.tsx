@@ -9,7 +9,7 @@ import {
   FormDialogHeader,
   FormDialogTitle,
 } from '@/components/form-dialog';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -253,17 +253,16 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
         </div>
       ) : (
         <>
-          <div className="space-y-1.5">
-            <Label htmlFor="stock-entry-method">Cara input</Label>
-            <NativeSelect
-              id="stock-entry-method"
-              value={method}
-              onChange={(event) => setMethod(event.target.value as 'quantity' | 'count')}
-            >
-              <option value="quantity">Jumlah butir</option>
-              <option value="count">Hitung lembar</option>
-            </NativeSelect>
-          </div>
+          <Select
+            id="stock-entry-method"
+            label="Cara input"
+            options={[
+              { value: 'quantity', label: 'Jumlah butir' },
+              { value: 'count', label: 'Hitung lembar' },
+            ]}
+            value={method}
+            onValueChange={(next) => setMethod(next as 'quantity' | 'count')}
+          />
           {method === 'quantity' ? (
             <div className="space-y-1.5">
               <Label htmlFor="stock-entry-quantity">Jumlah butir</Label>
@@ -335,7 +334,7 @@ export function StockEntryDialog({ mode, sticker, onOpenChange, onSave }: StockE
   const open = mode !== null && sticker !== null;
   return (
     <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent className="max-h-[90vh] overflow-y-auto">
+      <FormDialogContent>
         <FormDialogHeader>
           <FormDialogTitle>
             {mode && sticker ? `${TITLES[mode]}: ${sticker.name}` : 'Stok stiker'}

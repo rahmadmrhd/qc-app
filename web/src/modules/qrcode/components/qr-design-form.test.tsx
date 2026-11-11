@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { linkOptionNames, pickLink } from '@/test/link-field';
+import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import type { QrEditContext } from '../schemas';
 import { toPresetFormValues, toQrFormDefaults } from '../schemas';
 import { QrDesignForm } from './qr-design-form';
@@ -231,7 +231,7 @@ test('mode default: tanpa sumber link dan ekspor; nama, BU, dan penempatan nama 
   expect(onSubmit).not.toHaveBeenCalled();
   await userEvent.type(screen.getByLabelText('Nama konfigurasi default'), 'Standar');
   await pickLink(screen, 'Business Unit', 'Spectrum');
-  await userEvent.selectOptions(screen.getByLabelText('Penempatan nama Manual Book'), 'subtitle');
+  await pickSelect(screen, 'Penempatan nama Manual Book', 'Subtitle');
   await userEvent.click(screen.getByRole('radio', { name: 'Logo 1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -263,7 +263,7 @@ test('mode default: BU nonaktif tidak ditawarkan, BU yang sudah punya preset lai
     'true',
   );
   await userEvent.keyboard('{Escape}');
-  await userEvent.selectOptions(screen.getByLabelText('Penempatan nama Manual Book'), 'footer');
+  await pickSelect(screen, 'Penempatan nama Manual Book', 'Footer');
   expect(screen.getByLabelText('Footer')).toBeDisabled();
   expect(screen.getAllByText(/diisi nama Manual Book/i).length).toBeGreaterThan(0);
   expect(screen.getByLabelText('Title')).toBeEnabled();
@@ -312,6 +312,16 @@ test('QR baru: isian tersembunyi sampai item dipilih; satu BU menarik preset oto
   expect(screen.getByLabelText('Title')).toHaveValue('Judul Standar Spectrum');
   expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(18);
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
+});
+
+test('QR baru: grup Sumber link tepat setelah grup Nama Manual Book, sebelum isi label', async () => {
+  renderForm({ presets: [SPECTRUM], defaultValues: URL_DEFAULTS });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  const titles = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+  const manualBook = titles.indexOf('Nama Manual Book');
+  expect(manualBook).toBeGreaterThanOrEqual(0);
+  expect(titles[manualBook + 1]).toBe('Sumber link');
+  expect(titles.indexOf('Isi label')).toBeGreaterThan(manualBook + 1);
 });
 
 test('bagian yang ditampung nama terkunci (disabled) dan selalu sama dengan nama; nama yang sudah diedit tidak ditimpa', async () => {

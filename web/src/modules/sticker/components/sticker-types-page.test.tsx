@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { pickSelect, selectOptionNames } from '@/test/link-field';
 import { stickerTypeSaveFailure } from './sticker-type-form-dialog';
 import { StickerTypesPage } from './sticker-types-page';
 
@@ -119,9 +120,8 @@ test('menambah jenis: aturan dapat dipilih, simpan mengirim nama dan aturan', as
   await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama jenis'), 'Postel');
-  const rule = within(dialog).getByLabelText('Aturan');
-  expect(rule).toBeEnabled();
-  await userEvent.selectOptions(rule, 'none');
+  expect(within(dialog).getByRole('combobox', { name: 'Aturan' })).toBeEnabled();
+  await pickSelect(within(dialog), 'Aturan', 'Tanpa syarat');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({ name: 'Postel', rule: 'none' });
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
@@ -165,9 +165,8 @@ test('ubah jenis tanpa stiker: aturan masih dapat dipilih', async () => {
   const { onSave } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah Segel' }));
   const dialog = await screen.findByRole('alertdialog');
-  const rule = within(dialog).getByLabelText('Aturan');
-  expect(rule).toHaveValue('none');
-  await userEvent.selectOptions(rule, 'bu');
+  expect(within(dialog).getByRole('combobox', { name: 'Aturan' })).toHaveValue('Tanpa syarat');
+  await pickSelect(within(dialog), 'Aturan', 'Menurut BU');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({
     id: 't2',
@@ -242,8 +241,5 @@ test('form jenis hanya menawarkan aturan pengguna (tanpa Menurut kelompok item)'
   renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
   const dialog = await screen.findByRole('alertdialog');
-  const options = within(dialog)
-    .getAllByRole('option')
-    .map((option) => option.textContent);
-  expect(options).toEqual(['Menurut BU', 'Tanpa syarat']);
+  expect(await selectOptionNames(within(dialog), 'Aturan')).toEqual(['Menurut BU', 'Tanpa syarat']);
 });

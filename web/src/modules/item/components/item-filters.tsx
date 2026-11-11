@@ -1,5 +1,6 @@
 import type { StickerDto, StickerTypeDto } from '@shared/contract';
-import { NativeSelect } from '@/components/native-select';
+import { LinkField, type LinkOption } from '@/components/link-field';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import type { ItemListFilter } from '../queries';
 
@@ -51,8 +52,9 @@ function groupByType(stickers: readonly StickerDto[], types: readonly StickerTyp
 
 /**
  * Filter instruksi stiker pada halaman daftar item: "Belum ada instruksi", satu pilihan stiker-atau-jenis
- * (dikelompokkan per jenis) dan mode Memakai/Belum memakai. Ini filter halaman, bukan field form: `NativeSelect`
- * dibenarkan (pengecualian aturan LinkField, spek 3b-2 §3).
+ * dan mode Memakai/Belum memakai. Pilihan stiker-atau-jenis merujuk record model lain, jadi memakai `LinkField`
+ * (keputusan pemilik 2026-11-11: aturan LinkField berlaku juga untuk filter halaman daftar); pilihan tetap
+ * (semua/belum, Memakai/Belum memakai) memakai `Select`.
  */
 export function ItemFilters({
   filter,
@@ -62,9 +64,15 @@ export function ItemFilters({
   onChange,
 }: ItemFiltersProps) {
   const groups = showStickerFilter ? groupByType(stickers, types) : [];
-  const known = new Set(
-    groups.flatMap((group) => [`t:${group.id}`, ...group.stickers.map((s) => `s:${s.id}`)]),
-  );
+  const stickerOptions: LinkOption[] = groups.flatMap((group) => [
+    { id: `t:${group.id}`, label: `Semua jenis ${group.name}${group.inactive ? INACTIVE : ''}` },
+    ...group.stickers.map((sticker) => ({
+      id: `s:${sticker.id}`,
+      label: `${sticker.name}${sticker.status === 'active' ? '' : INACTIVE}`,
+      description: group.name,
+    })),
+  ]);
+  const known = new Set(stickerOptions.map((option) => option.id));
   const unknown = showStickerFilter && filter.stickerKey !== '' && !known.has(filter.stickerKey);
   const active =
     filter.instruction !== 'all' ||
@@ -74,61 +82,64 @@ export function ItemFilters({
 
   return (
     <>
-      <NativeSelect
-        aria-label="Filter instruksi stiker"
+      <Select
+        id="item-filter-instruction"
+        label="Filter instruksi stiker"
+        hideLabel
         className="sm:w-56"
+        options={[
+          { value: 'all', label: 'Semua item' },
+          { value: 'none', label: 'Belum ada instruksi stiker' },
+        ]}
         value={filter.instruction}
-        onChange={(event) => onChange({ instruction: event.target.value as 'all' | 'none' })}
-      >
-        <option value="all">Semua item</option>
-        <option value="none">Belum ada instruksi stiker</option>
-      </NativeSelect>
-      <NativeSelect
-        aria-label="Filter Manual Book"
+        onValueChange={(next) => onChange({ instruction: next as 'all' | 'none' })}
+      />
+      <Select
+        id="item-filter-manual-book"
+        label="Filter Manual Book"
+        hideLabel
         className="sm:w-56"
+        options={[
+          { value: 'all', label: 'Semua item' },
+          { value: 'missing', label: 'Belum ada QR Manual Book' },
+        ]}
         value={filter.manualBook}
-        onChange={(event) => onChange({ manualBook: event.target.value as 'all' | 'missing' })}
-      >
-        <option value="all">Semua item</option>
-        <option value="missing">Belum ada QR Manual Book</option>
-      </NativeSelect>
+        onValueChange={(next) => onChange({ manualBook: next as 'all' | 'missing' })}
+      />
       {showStickerFilter ? (
-        <NativeSelect
-          aria-label="Filter stiker atau jenis"
+        <LinkField
+          id="item-filter-sticker"
+          label="Filter stiker atau jenis"
+          hideLabel
           className="sm:w-64"
-          value={filter.stickerKey}
-          onChange={(event) => onChange({ stickerKey: event.target.value })}
-        >
-          <option value="">Semua stiker</option>
-          {unknown ? (
-            <option value={filter.stickerKey}>
-              {filter.stickerKey.startsWith('t:') ? 'Jenis tidak dikenal' : 'Stiker tidak dikenal'}
-            </option>
-          ) : null}
-          {groups.map((group) => (
-            <optgroup key={group.id} label={group.name}>
-              <option value={`t:${group.id}`}>
-                {`Semua jenis ${group.name}${group.inactive ? INACTIVE : ''}`}
-              </option>
-              {group.stickers.map((sticker) => (
-                <option key={sticker.id} value={`s:${sticker.id}`}>
-                  {`${sticker.name}${sticker.status === 'active' ? '' : INACTIVE}`}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </NativeSelect>
+          placeholder="Semua stiker"
+          options={stickerOptions}
+          localFilter
+          highlight
+          value={filter.stickerKey === '' ? null : filter.stickerKey}
+          labelOf={(key) =>
+            unknown && key === filter.stickerKey
+              ? key.startsWith('t:')
+                ? 'Jenis tidak dikenal'
+                : 'Stiker tidak dikenal'
+              : undefined
+          }
+          onChange={(next) => onChange({ stickerKey: next ?? '' })}
+        />
       ) : null}
       {showStickerFilter && filter.stickerKey !== '' ? (
-        <NativeSelect
-          aria-label="Mode filter stiker"
+        <Select
+          id="item-filter-sticker-mode"
+          label="Mode filter stiker"
+          hideLabel
           className="sm:w-40"
+          options={[
+            { value: 'has', label: 'Memakai' },
+            { value: 'missing', label: 'Belum memakai' },
+          ]}
           value={filter.stickerMode}
-          onChange={(event) => onChange({ stickerMode: event.target.value as 'has' | 'missing' })}
-        >
-          <option value="has">Memakai</option>
-          <option value="missing">Belum memakai</option>
-        </NativeSelect>
+          onValueChange={(next) => onChange({ stickerMode: next as 'has' | 'missing' })}
+        />
       ) : null}
       {active ? (
         <Button

@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
-import { pickLink } from '@/test/link-field';
+import { pickLink, pickSelect } from '@/test/link-field';
 import { StockPage, type StockPageProps } from './stock-page';
 
 let me: MeDto;
@@ -272,7 +272,7 @@ test('dialog masuk: alasan opsional dan hitungan lembar dikirim sebagai count', 
   await userEvent.click(screen.getByRole('button', { name: 'Catat masuk Hijau-B' }));
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Bandung (BDG)');
-  await userEvent.selectOptions(within(dialog).getByLabelText('Cara input'), 'count');
+  await pickSelect(within(dialog), 'Cara input', 'Hitung lembar');
   await userEvent.type(within(dialog).getByLabelText('Lembar baris 1'), '10');
   await userEvent.type(within(dialog).getByLabelText('Isi per lembar baris 1'), '12');
   await userEvent.type(within(dialog).getByLabelText('Butir lepas'), '5');

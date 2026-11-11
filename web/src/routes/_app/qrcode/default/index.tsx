@@ -118,7 +118,6 @@ function QrPresetsPage() {
                 <TableHead>Nama</TableHead>
                 <TableHead>Business Unit</TableHead>
                 <TableHead>Nama Manual Book di</TableHead>
-                <TableHead>Title</TableHead>
                 <TableHead>Diperbarui</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
@@ -136,9 +135,6 @@ function QrPresetsPage() {
                   </TableCell>
                   <TableCell className="text-sm capitalize">
                     {preset.namePlacement === '' ? '—' : preset.namePlacement}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {preset.title || '—'}
                   </TableCell>
                   <TableCell className="text-sm">{formatAuditTime(preset.updatedAt)}</TableCell>
                   <TableCell>

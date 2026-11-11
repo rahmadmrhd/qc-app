@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api';
+import { pickSelect, selectOptionNames } from '@/test/link-field';
 import { LibraryTab } from './library-tab';
 import type { FileLibrarySource, LibraryItem, LibraryPage, LibraryQuery } from './types';
 
@@ -195,16 +196,10 @@ test('filter mengirim mine dan unused', async () => {
 });
 
 test('urut mengganti sort', async () => {
-  const user = userEvent.setup();
   const source = makeSource([{ items: [mk('a')], nextCursor: null }]);
   renderTab(source);
   await screen.findByText('Gambar a');
-  const select = screen.getByRole('combobox', { name: 'Urutkan' });
-  expect(
-    within(select)
-      .getAllByRole('option')
-      .map((option) => option.textContent),
-  ).toEqual([
+  expect(await selectOptionNames(screen, 'Urutkan')).toEqual([
     'Terbaru',
     'Terlama',
     'Nama A-Z',
@@ -212,7 +207,7 @@ test('urut mengganti sort', async () => {
     'Ukuran terbesar',
     'Paling sering dipakai',
   ]);
-  await user.selectOptions(select, 'Nama A-Z');
+  await pickSelect(screen, 'Urutkan', 'Nama A-Z');
   await waitFor(() =>
     expect(list(source)).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: 'nameAsc' }),
@@ -380,14 +375,10 @@ test('drop berkas di tab Pustaka diteruskan lewat onFiles', async () => {
 });
 
 test('urut "Paling sering dipakai" mengirim sort usageDesc', async () => {
-  const user = userEvent.setup();
   const source = makeSource([{ items: [mk('a')], nextCursor: null }]);
   renderTab(source);
   await screen.findByText('Gambar a');
-  await user.selectOptions(
-    screen.getByRole('combobox', { name: 'Urutkan' }),
-    'Paling sering dipakai',
-  );
+  await pickSelect(screen, 'Urutkan', 'Paling sering dipakai');
   await waitFor(() =>
     expect(list(source)).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: 'usageDesc' }),

@@ -10,7 +10,7 @@ import {
   FormDialogHeader,
   FormDialogTitle,
 } from '@/components/form-dialog';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
@@ -116,24 +116,24 @@ function UsersPage() {
             })
           }
         />
-        <NativeSelect
-          aria-label="Filter status"
+        <Select
+          id="users-filter-status"
+          label="Filter status"
+          hideLabel
           className="sm:w-48"
+          options={[
+            { value: 'all', label: 'Semua status' },
+            { value: 'active', label: 'Aktif' },
+            { value: 'inactive', label: 'Nonaktif' },
+          ]}
           value={search.status ?? 'all'}
-          onChange={(event) =>
+          onValueChange={(next) =>
             void navigate({
-              search: (prev) => ({
-                ...prev,
-                status: event.target.value as 'all' | 'active' | 'inactive',
-              }),
+              search: (prev) => ({ ...prev, status: next as 'all' | 'active' | 'inactive' }),
               replace: true,
             })
           }
-        >
-          <option value="all">Semua status</option>
-          <option value="active">Aktif</option>
-          <option value="inactive">Nonaktif</option>
-        </NativeSelect>
+        />
       </div>
       <UsersTable
         users={visible}

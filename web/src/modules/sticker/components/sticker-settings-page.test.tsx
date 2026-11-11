@@ -85,7 +85,8 @@ test('user nonaktif tidak ditawarkan dan yang sudah dipilih tidak muncul lagi', 
   renderPage();
   const field = within(screen.getByRole('group', { name: 'Penerima ringkasan' }));
   await userEvent.click(field.getByRole('combobox', { name: 'Penerima' }));
-  const names = (await field.findAllByRole('option')).map((option) => option.textContent ?? '');
+  // Daftar saran dirender di body (portal), bukan di dalam grup.
+  const names = (await screen.findAllByRole('option')).map((option) => option.textContent ?? '');
   expect(names.some((name) => name.includes('Budi'))).toBe(true);
   expect(names.some((name) => name.includes('Sari'))).toBe(true);
   expect(names.some((name) => name.includes('Lama'))).toBe(false);

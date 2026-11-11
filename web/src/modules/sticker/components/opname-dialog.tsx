@@ -235,7 +235,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
 export function OpnameDialog({ open, onOpenChange, rows, onSave }: OpnameDialogProps) {
   return (
     <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent className="max-h-[90vh] overflow-y-auto data-[size=default]:sm:max-w-2xl">
+      <FormDialogContent className="data-[size=default]:sm:max-w-2xl">
         <FormDialogHeader>
           <FormDialogTitle>Stok opname</FormDialogTitle>
           <FormDialogDescription>

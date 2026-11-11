@@ -439,7 +439,7 @@ export function StickerFormDialog({
   const title = sticker ? `Ubah stiker ${sticker.alias || sticker.name}` : 'Tambah stiker';
   return (
     <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent className="max-h-[90vh] overflow-y-auto">
+      <FormDialogContent>
         <FormDialogHeader>
           <FormDialogTitle>{title}</FormDialogTitle>
           <FormDialogDescription>

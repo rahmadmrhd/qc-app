@@ -6,7 +6,7 @@ import { useForm } from '@tanstack/react-form';
 import { useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { LinkField, LinkMultiField } from '@/components/link-field';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -175,19 +175,16 @@ export function UserForm({
       </form.Field>
       <form.Field name="status">
         {(field) => (
-          <div className="space-y-1.5">
-            <Label htmlFor="user-status">Status</Label>
-            <NativeSelect
-              id="user-status"
-              value={field.state.value}
-              onChange={(event) =>
-                field.handleChange(event.target.value as UserFormInput['status'])
-              }
-            >
-              <option value="active">Aktif</option>
-              <option value="inactive">Nonaktif</option>
-            </NativeSelect>
-          </div>
+          <Select
+            id="user-status"
+            label="Status"
+            options={[
+              { value: 'active', label: 'Aktif' },
+              { value: 'inactive', label: 'Nonaktif' },
+            ]}
+            value={field.state.value}
+            onValueChange={(next) => field.handleChange(next as UserFormInput['status'])}
+          />
         )}
       </form.Field>
       <form.Field name="assignments">
