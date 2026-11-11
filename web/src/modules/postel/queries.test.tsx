@@ -56,6 +56,8 @@ const OTHER = {
   condition: 'valid' as const,
   daysLeft: 400,
   oldNumberCount: 0,
+  numbers: ['Z-1'],
+  models: ['OTH-1'],
   updatedAt: 'x',
 };
 

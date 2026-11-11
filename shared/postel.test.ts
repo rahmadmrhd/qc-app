@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
   alertDue,
   alertTarget,
+  comparePostels,
   daysBetween,
   daysUntil,
+  filterPostels,
   isCalendarDate,
   POSTEL_ALERT_DEFAULTS,
   POSTEL_LIMITS,
@@ -152,5 +154,64 @@ describe('postelName', () => {
     expect(name.length).toBeGreaterThan(70);
     expect(name.endsWith('…')).toBe(true);
     expect(postelName(['A-1', 'A-2'])).toBe('A-1/2');
+  });
+});
+
+describe('filterPostels dan comparePostels', () => {
+  const base = { numbers: [] as string[], models: [] as string[], activeExpiresOn: '2027-01-01' };
+  const postels = [
+    {
+      ...base,
+      id: 'a',
+      name: 'M5-200/400',
+      numbers: ['SN-OLD-1', 'SN-002'],
+      models: ['M5-200', 'M5-400'],
+      condition: 'valid' as const,
+    },
+    {
+      ...base,
+      id: 'b',
+      name: 'U6-XG',
+      numbers: ['XG-77'],
+      models: ['U6-XG'],
+      condition: 'soon' as const,
+    },
+    {
+      ...base,
+      id: 'c',
+      name: 'AP-Pro',
+      numbers: ['PRO-9'],
+      models: ['AP-Pro'],
+      condition: 'expired' as const,
+    },
+  ];
+  const ids = (list: readonly { id: string }[]) => list.map((entry) => entry.id);
+
+  test('query kosong atau spasi: semua; kondisi all', () => {
+    expect(ids(filterPostels(postels, { query: '', condition: 'all' }))).toEqual(['a', 'b', 'c']);
+    expect(ids(filterPostels(postels, { query: '   ', condition: 'all' }))).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+  test('cocok pada nomor Lama, nomor Aktif, model, dan nama; tak peka huruf', () => {
+    expect(ids(filterPostels(postels, { query: 'sn-old', condition: 'all' }))).toEqual(['a']);
+    expect(ids(filterPostels(postels, { query: 'SN-002', condition: 'all' }))).toEqual(['a']);
+    expect(ids(filterPostels(postels, { query: 'm5-400', condition: 'all' }))).toEqual(['a']);
+    expect(ids(filterPostels(postels, { query: 'u6', condition: 'all' }))).toEqual(['b']);
+    expect(ids(filterPostels(postels, { query: 'ap-pro', condition: 'all' }))).toEqual(['c']);
+    expect(ids(filterPostels(postels, { query: 'tidak-ada', condition: 'all' }))).toEqual([]);
+  });
+  test('filter kondisi: soon hanya segera habis, expired hanya kedaluwarsa', () => {
+    expect(ids(filterPostels(postels, { query: '', condition: 'soon' }))).toEqual(['b']);
+    expect(ids(filterPostels(postels, { query: '', condition: 'expired' }))).toEqual(['c']);
+    expect(ids(filterPostels(postels, { query: 'xg', condition: 'expired' }))).toEqual([]);
+  });
+  test('comparePostels: tanggal habis menaik, lalu nama, lalu id', () => {
+    const a = { ...base, id: '1', name: 'B', activeExpiresOn: '2026-01-01' };
+    const b = { ...base, id: '2', name: 'A', activeExpiresOn: '2027-01-01' };
+    const c = { ...base, id: '3', name: 'A', activeExpiresOn: '2027-01-01' };
+    expect(ids([b, c, a].sort(comparePostels))).toEqual(['1', '2', '3']);
   });
 });

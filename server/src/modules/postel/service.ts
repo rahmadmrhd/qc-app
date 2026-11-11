@@ -23,6 +23,7 @@ import type {
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import {
+  comparePostels,
   daysUntil,
   POSTEL_LIMITS,
   postelCondition,
@@ -200,8 +201,24 @@ function toSummaryDto(record: PostelRecord, read: PostelRead): PostelSummaryDto 
     condition: active ? postelCondition(daysLeft, read.soonDays) : 'valid',
     daysLeft,
     oldNumberCount: Math.max(0, numbers.length - 1),
+    numbers: numbers.map((entry) => entry.number),
+    models: distinctModels(read.items.get(record.id) ?? []),
     updatedAt: record.updatedAt,
   };
+}
+
+/** Model item yang berbeda (tanpa beda huruf besar), tanpa merk, urut seperti nama turunan. */
+function distinctModels(items: readonly PostelItem[]): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const item of items) {
+    const model = item.model.trim();
+    const key = normalizeKey(model);
+    if (key === '' || seen.has(key)) continue;
+    seen.add(key);
+    models.push(model);
+  }
+  return models.sort((a, b) => a.localeCompare(b));
 }
 
 /** Semua catatan (maks. 500), urut tanggal habis nomor Aktif menaik; penyaringan dan pencarian di klien. */
@@ -210,16 +227,7 @@ export async function listPostels(env: Env, user: UserContext): Promise<PostelLi
   const read = await readPostels(env, user, records, undefined, false);
   const summaries = records
     .map((record) => toSummaryDto(record, read))
-    .sort(
-      (a, b) =>
-        (a.activeExpiresOn < b.activeExpiresOn
-          ? -1
-          : a.activeExpiresOn > b.activeExpiresOn
-            ? 1
-            : 0) ||
-        a.name.localeCompare(b.name) ||
-        (a.id < b.id ? -1 : 1),
-    )
+    .sort(comparePostels)
     .slice(0, POSTEL_LIMITS.listMax);
   return { postels: summaries, today: read.today, soonDays: read.soonDays };
 }

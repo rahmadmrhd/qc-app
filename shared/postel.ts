@@ -158,3 +158,49 @@ export function postelName(models: readonly string[]): string {
     return manualBookNameFromTypes(unique, max);
   return `${manualBookNameFromTypes(unique, max - 1)}…`;
 }
+
+/** Bentuk minimal ringkasan daftar yang dipakai pencarian dan urutan (cocok dengan `PostelSummaryDto`). */
+export interface PostelListable {
+  id: string;
+  name: string;
+  /** SEMUA nomor catatan (Aktif dan Lama). */
+  numbers: readonly string[];
+  /** Model item yang berbeda (tanpa merk). */
+  models: readonly string[];
+  activeExpiresOn: string;
+  condition: PostelCondition;
+}
+
+export type PostelConditionFilter = 'all' | 'soon' | 'expired';
+
+/** Urutan daftar: tanggal habis nomor Aktif menaik, lalu nama, lalu id. */
+export function comparePostels(
+  a: Pick<PostelListable, 'id' | 'name' | 'activeExpiresOn'>,
+  b: Pick<PostelListable, 'id' | 'name' | 'activeExpiresOn'>,
+): number {
+  return (
+    (a.activeExpiresOn < b.activeExpiresOn ? -1 : a.activeExpiresOn > b.activeExpiresOn ? 1 : 0) ||
+    a.name.localeCompare(b.name) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
+/**
+ * Penyaringan daftar di klien: `query` (tak peka huruf, `normalizeKey`) dicari pada nama, SEMUA nomor (Aktif dan Lama),
+ * dan model item; `condition` `soon`/`expired` hanya menyisakan catatan berkondisi itu (`all` = semua). Urutan masukan
+ * dipertahankan.
+ */
+export function filterPostels<T extends PostelListable>(
+  postels: readonly T[],
+  filter: { query: string; condition: PostelConditionFilter },
+): T[] {
+  const term = normalizeKey(filter.query);
+  return postels.filter(
+    (postel) =>
+      (filter.condition === 'all' || postel.condition === filter.condition) &&
+      (term === '' ||
+        normalizeKey(postel.name).includes(term) ||
+        postel.numbers.some((number) => normalizeKey(number).includes(term)) ||
+        postel.models.some((model) => normalizeKey(model).includes(term))),
+  );
+}

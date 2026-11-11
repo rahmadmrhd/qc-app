@@ -14,6 +14,8 @@ const summary = (over: Partial<PostelSummaryDto>): PostelSummaryDto => ({
   condition: 'valid',
   daysLeft: 200,
   oldNumberCount: 0,
+  numbers: ['AB-1'],
+  models: ['M5-400'],
   updatedAt: '2026-11-10T03:00:00.000Z',
   ...over,
 });
@@ -25,7 +27,14 @@ const list = (postels: PostelSummaryDto[]): PostelListDto => ({
 });
 
 const DATA = list([
-  summary({ id: 'p-late', name: 'Zeta', activeNumber: 'ZZ-9', activeExpiresOn: '2028-01-01' }),
+  summary({
+    id: 'p-late',
+    name: 'Zeta',
+    activeNumber: 'ZZ-9',
+    activeExpiresOn: '2028-01-01',
+    numbers: ['ZZ-9'],
+    models: ['ZT-1'],
+  }),
   summary({
     id: 'p-soon',
     name: 'Beta',
@@ -34,6 +43,8 @@ const DATA = list([
     condition: 'soon',
     daysLeft: 19,
     oldNumberCount: 2,
+    numbers: ['BETA-OLD-1', 'BETA-OLD-2', 'AB-1'],
+    models: ['BT-100', 'BT-200'],
   }),
   summary({
     id: 'p-exp',
@@ -42,6 +53,8 @@ const DATA = list([
     activeExpiresOn: '2026-10-01',
     condition: 'expired',
     daysLeft: -42,
+    numbers: ['CD-5'],
+    models: ['AL-7'],
   }),
 ]);
 
@@ -104,6 +117,22 @@ test('pencarian menemukan nomor Aktif tanpa peduli huruf besar, dan nama', async
   await userEvent.type(screen.getByRole('searchbox', { name: 'Cari Postel' }), 'zet');
   expect(bodyRows()).toHaveLength(1);
   expect(bodyRows()[0]).toHaveTextContent('ZZ-9');
+});
+
+test('pencarian menemukan nomor Lama dan model item', async () => {
+  renderPage();
+  const box = screen.getByRole('searchbox', { name: 'Cari Postel' });
+  await userEvent.type(box, 'beta-old-2');
+  expect(bodyRows()).toHaveLength(1);
+  expect(bodyRows()[0]).toHaveTextContent('Beta');
+  await userEvent.clear(box);
+  await userEvent.type(box, 'bt-200');
+  expect(bodyRows()).toHaveLength(1);
+  expect(bodyRows()[0]).toHaveTextContent('Beta');
+  await userEvent.clear(box);
+  await userEvent.type(box, 'AL-7');
+  expect(bodyRows()).toHaveLength(1);
+  expect(bodyRows()[0]).toHaveTextContent('Alfa');
 });
 
 test('tanpa hasil: keterangan tidak ada yang cocok', async () => {

@@ -1,5 +1,5 @@
 import type { PostelListDto } from '@shared/contract';
-import type { PostelCondition } from '@shared/postel';
+import { comparePostels, filterPostels, type PostelConditionFilter } from '@shared/postel';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { Select } from '@/components/select';
@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/table';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { daysLeftLabel, formatPostelDate } from '../lib/condition';
-import { comparePostels } from '../lib/summary';
 import { PostelConditionBadge } from './postel-condition-badge';
 
 export interface PostelsPageProps {
@@ -30,10 +29,8 @@ export interface PostelsPageProps {
   openHref?: ((id: string) => string | null) | undefined;
 }
 
-type ConditionFilter = '' | Exclude<PostelCondition, 'valid'>;
-
-const CONDITION_FILTER_OPTIONS: { value: ConditionFilter; label: string }[] = [
-  { value: '', label: 'Semua' },
+const CONDITION_FILTER_OPTIONS: { value: PostelConditionFilter; label: string }[] = [
+  { value: 'all', label: 'Semua' },
   { value: 'soon', label: 'Segera habis' },
   { value: 'expired', label: 'Kedaluwarsa' },
 ];
@@ -42,21 +39,15 @@ const COLUMN_COUNT = 8;
 
 /**
  * Daftar catatan Postel (tanpa paginasi: server memberi semua catatan). Kondisi sebuah catatan = kondisi nomor
- * Aktif-nya. Pencarian menyaring nama atau nomor Aktif; urut bawaan tanggal habis nomor Aktif menaik.
+ * Aktif-nya. Pencarian menyaring nama, semua nomor (Aktif dan Lama), atau model item (`filterPostels`); urut bawaan tanggal habis nomor Aktif menaik.
  */
 export function PostelsPage({ data, canEdit, onNew, onOpen, openHref }: PostelsPageProps) {
   const [search, setSearch] = useState('');
-  const [condition, setCondition] = useState<ConditionFilter>('');
-  const term = search.trim().toLowerCase();
-  const visible = [...data.postels]
-    .sort(comparePostels)
-    .filter(
-      (postel) =>
-        (condition === '' || postel.condition === condition) &&
-        (term === '' ||
-          postel.name.toLowerCase().includes(term) ||
-          postel.activeNumber.toLowerCase().includes(term)),
-    );
+  const [condition, setCondition] = useState<PostelConditionFilter>('all');
+  const visible = filterPostels([...data.postels].sort(comparePostels), {
+    query: search,
+    condition,
+  });
 
   return (
     <div className="space-y-4">
@@ -77,7 +68,7 @@ export function PostelsPage({ data, canEdit, onNew, onOpen, openHref }: PostelsP
           <Input
             type="search"
             aria-label="Cari Postel"
-            placeholder="Cari nama atau nomor Aktif"
+            placeholder="Cari nama, nomor, atau model"
             className="pl-8"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -90,7 +81,7 @@ export function PostelsPage({ data, canEdit, onNew, onOpen, openHref }: PostelsP
           className="sm:w-48"
           options={CONDITION_FILTER_OPTIONS}
           value={condition}
-          onValueChange={(next) => setCondition(next as ConditionFilter)}
+          onValueChange={(next) => setCondition(next as PostelConditionFilter)}
         />
       </div>
       <div className="rounded-md border">

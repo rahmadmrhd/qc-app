@@ -4,6 +4,7 @@ import type {
   RemovePostelInput,
   SavePostelInput,
 } from '@shared/contract';
+import { comparePostels } from '@shared/postel';
 import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -12,7 +13,7 @@ import { accessKeys } from '@/modules/access/queries';
 import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import { postelKeys } from './keys';
-import { comparePostels, toPostelSummary } from './lib/summary';
+import { toPostelSummary } from './lib/summary';
 
 export function postelListQueryOptions() {
   return queryOptions({ queryKey: postelKeys.list, queryFn: () => api('postels.list', null) });

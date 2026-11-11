@@ -124,6 +124,8 @@ describe('postels.list dan postels.get', () => {
       condition: 'valid',
       daysLeft: daysUntil('2027-09-01', '2026-11-11'),
       oldNumberCount: 1,
+      numbers: ['SN-001', 'SN-002'],
+      models: ['M5-200', 'M5-400'],
       updatedAt: postel.updatedAt,
     });
   });

@@ -1017,6 +1017,10 @@ export interface PostelSummaryDto {
   condition: PostelCondition;
   daysLeft: number;
   oldNumberCount: number;
+  /** SEMUA nomor catatan (Aktif dan Lama), urut `seq` menaik; bahan pencarian di klien. */
+  numbers: string[];
+  /** Model item yang berbeda (tanpa merk) dari SEMUA item catatan, termasuk yang tak terlihat; bahan pencarian. */
+  models: string[];
   updatedAt: string;
 }
 export interface PostelDto {

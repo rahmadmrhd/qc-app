@@ -1,4 +1,5 @@
 import type { PostelDto, PostelSummaryDto } from '@shared/contract';
+import { normalizeKey } from '@shared/items';
 
 /** Ringkasan daftar dari DTO lengkap (kondisi dan sisa hari milik nomor Aktif). */
 export function toPostelSummary(postel: PostelDto): PostelSummaryDto {
@@ -12,10 +13,21 @@ export function toPostelSummary(postel: PostelDto): PostelSummaryDto {
     condition: active?.condition ?? 'expired',
     daysLeft: active?.daysLeft ?? 0,
     oldNumberCount: postel.numbers.filter((entry) => entry.role === 'old').length,
+    numbers: postel.numbers.map((entry) => entry.number),
+    models: distinctModels(postel),
     updatedAt: postel.updatedAt,
   };
 }
 
-/** Urutan daftar: tanggal habis nomor Aktif menaik, lalu nama. */
-export const comparePostels = (a: PostelSummaryDto, b: PostelSummaryDto) =>
-  a.activeExpiresOn.localeCompare(b.activeExpiresOn) || a.name.localeCompare(b.name);
+/** Model berbeda (tanpa merk) dari item yang terlihat di DTO lengkap; daftar server dimuat ulang (cache ditandai basi). */
+function distinctModels(postel: PostelDto): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const item of postel.items) {
+    const key = normalizeKey(item.model);
+    if (key === '' || seen.has(key)) continue;
+    seen.add(key);
+    models.push(item.model);
+  }
+  return models;
+}
