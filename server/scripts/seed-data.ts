@@ -219,7 +219,7 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     );
   }
 
-  // Katalog stiker contoh (tahap 3a): tujuh jenis, beberapa stiker bertaut BU, dan stok per lokasi dengan riwayat.
+  // Katalog stiker contoh (tahap 3a): enam jenis, beberapa stiker bertaut BU, dan stok per lokasi dengan riwayat.
   // Riwayat ditulis konsisten: qty_after = stok sesudah setiap catatan; stok sisa = jumlah baris stok.
   const stickerTypes = [
     { id: 'type-qc', name: 'QC', rule: 'bu' },
@@ -228,7 +228,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     { id: 'type-warning-frekuensi', name: 'Warning Frekuensi', rule: 'none' },
     { id: 'type-warning-unifi', name: 'Warning Unifi', rule: 'none' },
     { id: 'type-manual-book', name: 'Manual Book', rule: 'none' },
-    { id: 'type-postel', name: 'Postel', rule: 'none' },
   ];
   for (const type of stickerTypes) {
     sql.push(insert('sticker_types', { ...type, status: 'active', ...meta }));

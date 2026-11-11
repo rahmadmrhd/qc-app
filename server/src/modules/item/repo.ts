@@ -1,5 +1,5 @@
 import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
-import type { Db, DbStatement } from '@server/core/db';
+import type { Db, DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
 import { toStickerStatus } from '@server/modules/sticker/repo';
@@ -177,6 +177,29 @@ export async function manualBookDesignIdsOf(
       .bind(...chunk)
       .all<{ id: string; manual_book_design_id: string }>();
     for (const row of rows.results) result.set(row.id.trim(), row.manual_book_design_id.trim());
+  }
+  return result;
+}
+
+/**
+ * Catatan Postel tiap item: peta id item -> `postels.id` untuk item yang sudah tertaut. `ItemRecord` tidak memuat kolom
+ * ini (penulisnya modul Postel, bukan `items.save`); item tanpa Postel tidak ada di peta.
+ */
+export async function postelIdsOf(
+  db: Preparer,
+  itemIds: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT id, postel_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND postel_id <> ''`,
+      )
+      .bind(...chunk)
+      .all<{ id: string; postel_id: string }>();
+    for (const row of rows.results) result.set(row.id.trim(), row.postel_id.trim());
   }
   return result;
 }
