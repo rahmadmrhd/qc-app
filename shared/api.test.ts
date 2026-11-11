@@ -217,6 +217,21 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
+  'postels.list': null,
+  'postels.get': { id: 'p1' },
+  'postels.save': {
+    id: 'p1',
+    expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    note: 'Catatan',
+    itemIds: ['i1', 'i2'],
+    numbers: [
+      { id: 'n1', number: 'SN-001', expiresOn: '2027-03-01', link: 'https://x.id/1' },
+      { number: 'SN-002', expiresOn: '2027-09-01', link: '' },
+    ],
+    attachmentIds: [],
+  },
+  'postels.remove': { id: 'p1' },
+  'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };

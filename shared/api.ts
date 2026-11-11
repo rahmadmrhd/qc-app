@@ -334,6 +334,22 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       cache: 'revalidate',
     },
   },
+  // `postels.itemOptions` didaftarkan SEBELUM rute `/postels/{id}` agar jalur statis tidak tertangkap parameter id.
+  'postels.itemOptions': {
+    verb: 'GET',
+    path: '/postels/item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
+  'postels.list': { verb: 'GET', path: '/postels' },
+  'postels.get': { verb: 'GET', path: '/postels/{id}', etag: 'updatedAt' },
+  'postels.save': {
+    verb: 'PUT',
+    path: '/postels/{id}',
+    create: { verb: 'POST', path: '/postels', status: 201 },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',

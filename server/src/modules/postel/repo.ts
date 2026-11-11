@@ -114,6 +114,11 @@ export function updatePostelStmt(
     );
 }
 
+/** Mengunci baris catatan (`FOR UPDATE`) di awal batch hapus agar penulis serentak menunggu lalu melihat hasilnya. */
+export function lockPostelRowStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare('SELECT id FROM postels WHERE id = ? FOR UPDATE').bind(id);
+}
+
 export function deletePostelStmt(db: Preparer, id: string): DbStatement {
   return db.prepare('DELETE FROM postels WHERE id = ?').bind(id);
 }

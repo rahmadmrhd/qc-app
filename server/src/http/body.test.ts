@@ -4,6 +4,7 @@ import type { ApiId, ApiInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
+import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
@@ -200,6 +201,19 @@ const WORST: Inputs = {
     style: DEFAULT_QR_STYLE,
     overflow: true,
   } as never,
+  'postels.save': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    note: text(POSTEL_LIMITS.noteMax),
+    itemIds: longList(POSTEL_LIMITS.itemsMax, () => UUID),
+    numbers: longList(POSTEL_LIMITS.numbersMax, () => ({
+      id: UUID,
+      number: text(POSTEL_LIMITS.numberMax),
+      expiresOn: '2100-12-31',
+      link: text(POSTEL_LIMITS.linkMax),
+    })),
+    attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
+  },
   'qrcodes.savePreset': {
     id: UUID,
     expectedUpdatedAt: STAMP,

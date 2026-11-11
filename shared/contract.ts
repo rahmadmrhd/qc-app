@@ -2,6 +2,7 @@ import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
+import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
 import type {
   GuideSort,
@@ -957,6 +958,115 @@ export interface QrFileDto {
   etag: string;
 }
 
+// --- Postel (stiker 4b) ---
+/** Satu nomor sertifikat sebuah catatan Postel; `role` dan `condition` dihitung (tidak disimpan). */
+export interface PostelNumberDto {
+  id: string;
+  number: string;
+  /** Tanggal kalender 'YYYY-MM-DD' (WIB); berlaku sampai akhir hari itu. */
+  expiresOn: string;
+  /** URL http(s) sertifikat; `''` = tanpa tautan. */
+  link: string;
+  /** `active` = nomor terbaru (seq terbesar), selain itu `old`. */
+  role: PostelRole;
+  condition: PostelCondition;
+  /** Sisa hari sampai `expiresOn` menurut `today` (negatif = sudah lewat). */
+  daysLeft: number;
+}
+/** Item yang tergabung ke satu catatan Postel; hanya item yang terlihat bagi pembaca (BU). */
+export interface PostelItemDto {
+  id: string;
+  brand: string;
+  model: string;
+}
+/** Lampiran catatan Postel (gambar atau PDF). */
+export interface PostelAttachmentDto {
+  id: string;
+  mime: string;
+  size: number;
+  /** Nama unduhan turunan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  filename: string;
+}
+/** Ringkasan satu catatan di daftar; kondisi dan sisa hari milik nomor Aktif. */
+export interface PostelSummaryDto {
+  id: string;
+  /** Nama turunan dari tipe item-itemnya (tidak disimpan). */
+  name: string;
+  /** Jumlah SEMUA item catatan (termasuk yang tidak terlihat bagi pembaca). */
+  itemCount: number;
+  activeNumber: string;
+  activeExpiresOn: string;
+  condition: PostelCondition;
+  daysLeft: number;
+  oldNumberCount: number;
+  updatedAt: string;
+}
+export interface PostelDto {
+  id: string;
+  name: string;
+  note: string;
+  /** Urut `seq` menaik (nomor Aktif terakhir). */
+  numbers: PostelNumberDto[];
+  /** Item yang terlihat bagi pembaca (BU), urut merk lalu tipe. */
+  items: PostelItemDto[];
+  /** Jumlah SEMUA item catatan. */
+  itemCount: number;
+  /** Jumlah item tergabung yang tidak terlihat bagi pembaca (di luar BU-nya). */
+  hiddenItemCount: number;
+  attachments: PostelAttachmentDto[];
+  /** Tanggal WIB server (`YYYY-MM-DD`): dasar `daysLeft` dan `condition`. */
+  today: string;
+  /** Ambang "segera habis" (ambang peringatan terbesar). */
+  soonDays: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface PostelListDto {
+  postels: PostelSummaryDto[];
+  today: string;
+  soonDays: number;
+}
+export interface SavePostelNumberInput {
+  /** Id nomor tersimpan milik catatan ini; tanpa id = nomor baru (menjadi Aktif). */
+  id?: string;
+  number: string;
+  expiresOn: string;
+  link: string;
+}
+/** PUT utuh: nomor, item (yang terlihat), dan lampiran diganti sesuai larik. */
+export interface SavePostelInput {
+  id?: string;
+  /** Wajib saat mengubah (If-Match); versi usang = konflik. */
+  expectedUpdatedAt?: string;
+  note: string;
+  itemIds: string[];
+  numbers: SavePostelNumberInput[];
+  attachmentIds: string[];
+}
+export interface GetPostelInput {
+  id: string;
+}
+export interface RemovePostelInput {
+  id: string;
+}
+export interface PostelItemOptionDto {
+  id: string;
+  brand: string;
+  model: string;
+  /** Nomor Aktif catatan Postel pemilik item; `''` = item belum tertaut ke Postel. */
+  postelNumber: string;
+}
+export interface ListPostelItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface PostelItemOptionsPageDto {
+  items: PostelItemOptionDto[];
+  nextCursor: string | null;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -1031,6 +1141,11 @@ export interface ApiContract {
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
+  'postels.list': { input: null; output: PostelListDto };
+  'postels.get': { input: GetPostelInput; output: PostelDto };
+  'postels.save': { input: SavePostelInput; output: PostelDto };
+  'postels.remove': { input: RemovePostelInput; output: null };
+  'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }

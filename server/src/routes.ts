@@ -7,6 +7,7 @@ import { filesRoutes } from '@server/modules/files/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
+import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
 import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
@@ -87,6 +88,11 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'qrcodes.cloneFromDrive': true,
   'qrcodes.export': true,
   'qrcodes.file': true,
+  'postels.list': true,
+  'postels.get': true,
+  'postels.save': true,
+  'postels.remove': true,
+  'postels.itemOptions': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -105,6 +111,7 @@ function realRoutes(): RouteTable {
     ...itemRoutes(),
     ...handoverRoutes(),
     ...qrcodeRoutes(),
+    ...postelRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),
   };
