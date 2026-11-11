@@ -1,5 +1,5 @@
 import type { QrPresetDto } from '@shared/contract';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -47,6 +47,13 @@ test('BU yang sudah punya preset dan BU nonaktif tidak ditawarkan', async () => 
   renderDialog();
   const dialog = screen.getByRole('dialog');
   expect(await linkOptionNames(within(dialog), 'Business Unit tujuan')).toEqual(['Arcadia']);
+});
+
+test('nama awal bukan nama sumber (nama preset unik): "<nama> (salinan)", dengan batas panjang dari QR_LIMITS', () => {
+  renderDialog();
+  const name = screen.getByLabelText('Nama preset baru');
+  expect(name).toHaveValue('Standar Spectrum (salinan)');
+  expect(name).toHaveAttribute('maxlength', String(QR_LIMITS.presetName));
 });
 
 test('memilih BU tujuan dan nama baru lalu mengirim kloning; tombol nonaktif sebelum lengkap', async () => {

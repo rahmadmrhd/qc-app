@@ -1,4 +1,5 @@
 import type { BusinessUnitOptionDto, ClonePresetInput, QrPresetDto } from '@shared/contract';
+import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { LinkField } from '@/components/link-field';
@@ -15,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
-import { businessUnitOptions } from '../lib/preset-options';
+import { businessUnitOptions, cloneNameOf } from '../lib/preset-options';
 
 export interface ClonePresetDialogProps {
   open: boolean;
@@ -40,7 +41,7 @@ export function ClonePresetDialog({
 }: ClonePresetDialogProps) {
   const [buId, setBuId] = useState('');
   const [term, setTerm] = useState('');
-  const [name, setName] = useState(source.name);
+  const [name, setName] = useState(cloneNameOf(source.name));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const taken = new Set(presets.map((preset) => preset.buId).filter((id) => id !== ''));
@@ -89,7 +90,7 @@ export function ClonePresetDialog({
             <Input
               id="qr-clone-name"
               value={name}
-              maxLength={60}
+              maxLength={QR_LIMITS.presetName}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
