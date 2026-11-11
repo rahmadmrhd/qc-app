@@ -151,3 +151,28 @@ test('selama hapus berjalan Ubah dan Hapus nonaktif dan postels.remove dipanggil
   finish(null);
   await screen.findByText('Halaman daftar');
 });
+
+test('selama navigasi keluar belum selesai (setelah mutasi sukses) Ubah dan Hapus tetap nonaktif', async () => {
+  let navigate: () => void = () => undefined;
+  const onBack = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        navigate = resolve;
+      }),
+  );
+  render(
+    <QueryClientProvider client={client}>
+      <Suspense fallback={<p>memuat</p>}>
+        <PostelDetail postelId="p1" canEdit onEdit={vi.fn()} onBack={onBack} />
+      </Suspense>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('heading', { level: 1, name: 'M5-400' });
+  await confirmRemove();
+  await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
+  expect(toastMock.success).toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeDisabled();
+  navigate();
+  await waitFor(() => expect(client.getQueryData(postelKeys.one('p1'))).toBeUndefined());
+});

@@ -139,11 +139,20 @@ test('dengan openHref nama menjadi tautan; klik biasa memakai onOpen, klik modif
   expect(screen.queryByRole('button', { name: 'Beta' })).not.toBeInTheDocument();
   const link = screen.getByRole('link', { name: 'Beta' });
   expect(link).toHaveAttribute('href', '/postel/p-soon');
-  // jsdom tidak mengimplementasikan navigasi dokumen: cukup pastikan klik modifikasi tidak dicegat.
-  link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+  // Pendengar di document berjalan SESUDAH handler React: merekam apakah klik sudah dicegat, lalu mencegah navigasi
+  // dokumen (tidak diimplementasikan jsdom).
+  const prevented: boolean[] = [];
+  const record = (event: MouseEvent) => {
+    prevented.push(event.defaultPrevented);
+    event.preventDefault();
+  };
+  document.addEventListener('click', record);
   fireEvent.click(link, { ctrlKey: true });
   expect(props.onOpen).not.toHaveBeenCalled();
   fireEvent.click(link);
+  document.removeEventListener('click', record);
+  // klik modifikasi dibiarkan ke peramban; klik biasa dicegat (preventDefault) agar tidak memuat ulang halaman
+  expect(prevented).toEqual([false, true]);
   expect(props.onOpen).toHaveBeenCalledWith('p-soon');
 });
 
