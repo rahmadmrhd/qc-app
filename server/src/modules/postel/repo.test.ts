@@ -220,6 +220,26 @@ describe('postel_numbers', () => {
     expect(row).toEqual(next);
   });
 
+  test('updatePostelNumberStmt dapat menghapus state peringatan (null dan kosong terbaca balik)', async () => {
+    await env.DB.batch([
+      insertPostelStmt(env.DB, postel()),
+      insertPostelNumberStmt(
+        env.DB,
+        numberRecord({ alertSentThreshold: 30, alertSentOn: '2027-01-01' }),
+      ),
+    ]);
+    const [before] = await listPostelNumbers(env.DB, ['p1']);
+    expect(before?.alertSentThreshold).toBe(30);
+    expect(before?.alertSentOn).toBe('2027-01-01');
+    await updatePostelNumberStmt(
+      env.DB,
+      numberRecord({ alertSentThreshold: null, alertSentOn: '', updatedAt: T1 }),
+    ).run();
+    const [after] = await listPostelNumbers(env.DB, ['p1']);
+    expect(after?.alertSentThreshold).toBeNull();
+    expect(after?.alertSentOn).toBe('');
+  });
+
   test('deletePostelNumberStmt dan deletePostelNumbersOfStmt', async () => {
     await env.DB.batch([
       insertPostelStmt(env.DB, postel()),
