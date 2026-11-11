@@ -58,7 +58,7 @@ export function markLabel(
     if (target.stickerId === '') return '';
     const found = stickers.find((sticker) => sticker.id === target.stickerId);
     if (!found) return 'Stiker tidak ditemukan';
-    return found.status === 'inactive' ? `${found.name}${INACTIVE_SUFFIX}` : found.name;
+    return found.status === 'active' ? found.name : `${found.name}${INACTIVE_SUFFIX}`;
   }
   if (target.typeId === '') return '';
   const found = types.find((type) => type.id === target.typeId);
@@ -68,14 +68,15 @@ export function markLabel(
     : `Jenis ${found.name}`;
 }
 
-/** Sasaran ada di katalog dan nonaktif (stiker/jenis kosong atau tak dikenal = false). */
+/** Sasaran ada di katalog dan tidak aktif (nonaktif atau, untuk stiker, usang); kosong atau tak dikenal = false. */
 export function isInactiveTarget(
   target: StickerMarkTarget,
   stickers: readonly StickerDto[],
   types: readonly StickerTypeDto[],
 ): boolean {
   if (target.kind === 'sticker') {
-    return stickers.find((sticker) => sticker.id === target.stickerId)?.status === 'inactive';
+    const found = stickers.find((sticker) => sticker.id === target.stickerId);
+    return found !== undefined && found.status !== 'active';
   }
   return types.find((type) => type.id === target.typeId)?.status === 'inactive';
 }

@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { STICKER_STATUS_LABEL } from '../lib/status';
 import { OpnameDialog, type OpnameSaveResult } from './opname-dialog';
 import {
   StockEntryDialog,
@@ -103,7 +104,9 @@ export function StockPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{row.name}</span>
                     {row.low ? <Badge variant="destructive">Menipis</Badge> : null}
-                    {row.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
+                    {row.status === 'active' ? null : (
+                      <Badge variant="secondary">{STICKER_STATUS_LABEL[row.status]}</Badge>
+                    )}
                     {row.typeStatus === 'inactive' ? (
                       <Badge variant="secondary">Jenis nonaktif</Badge>
                     ) : null}

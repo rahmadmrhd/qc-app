@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { pickLink } from '@/test/link-field';
+import { linkOptionNames, pickLink } from '@/test/link-field';
 import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
@@ -411,4 +411,86 @@ test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan',
   );
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
   expect(within(dialog).getByRole('option', { name: 'Tambah BU' })).toBeInTheDocument();
+});
+
+const manualBookType: StickerTypeDto = {
+  id: 'tp-mb',
+  name: 'Manual Book',
+  rule: 'group',
+  status: 'active',
+  stickerCount: 2,
+  systemKind: 'manual_book',
+  defaultMinQty: 50,
+  updatedAt: '',
+};
+
+const manualBookStickers: StickerDto[] = [
+  sticker({
+    id: 'mb1',
+    typeId: 'tp-mb',
+    typeName: 'Manual Book',
+    name: 'PBE M5-400 v1',
+    businessUnitIds: [],
+    status: 'deprecated',
+  }),
+  sticker({
+    id: 'mb2',
+    typeId: 'tp-mb',
+    typeName: 'Manual Book',
+    name: 'PBE M5-400 v2',
+    businessUnitIds: [],
+    minQty: 20,
+  }),
+];
+
+test('status Usang tampil sebagai badge, dapat disaring, dan tidak punya tombol Aktifkan', async () => {
+  renderPage({
+    stickers: [...stickers, ...manualBookStickers],
+    types: [...types, manualBookType],
+  });
+  const usang = screen.getByRole('row', { name: /PBE M5-400 v1/ });
+  expect(within(usang).getByText('Usang')).toBeInTheDocument();
+  // Usang hanya dapat menjadi nonaktif: tak ada tombol Aktifkan maupun Nonaktifkan untuknya.
+  expect(screen.queryByRole('button', { name: 'Aktifkan PBE M5-400 v1' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Nonaktifkan PBE M5-400 v1' })).toBeNull();
+  await userEvent.selectOptions(screen.getByLabelText('Filter status'), 'deprecated');
+  expect(screen.getByRole('row', { name: /PBE M5-400 v1/ })).toBeInTheDocument();
+  expect(screen.queryByRole('row', { name: /PBE M5-400 v2/ })).toBeNull();
+  expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
+});
+
+test('pemilih jenis pada Tambah stiker tidak menawarkan jenis sistem', async () => {
+  renderPage({ types: [...types, manualBookType] });
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(await linkOptionNames(within(dialog), 'Jenis')).toEqual(['QC Hijau', 'Segel']);
+});
+
+test('ubah stiker jenis sistem: nama, jenis, dan gambar terkunci; minimum dan alias dapat diubah', async () => {
+  const { onSave } = renderPage({
+    stickers: manualBookStickers,
+    types: [manualBookType],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah PBE M5-400 v2' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Nama stiker')).toBeDisabled();
+  expect(within(dialog).getByText(/dikelola aplikasi/i)).toBeInTheDocument();
+  expect(
+    within(dialog).queryByRole('button', { name: /Pilih gambar|Ganti gambar|Unggah/i }),
+  ).toBeNull();
+  await userEvent.type(within(dialog).getByLabelText('Alias'), 'MB');
+  const min = within(dialog).getByLabelText('Batas minimum');
+  await userEvent.clear(min);
+  await userEvent.type(min, '30');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    id: 'mb2',
+    expectedUpdatedAt: '2026-11-09 11:00:00',
+    typeId: 'tp-mb',
+    name: 'PBE M5-400 v2',
+    alias: 'MB',
+    fileId: null,
+    minQty: 30,
+    businessUnitIds: [],
+  });
 });

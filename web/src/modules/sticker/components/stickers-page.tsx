@@ -1,4 +1,5 @@
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
+import type { StickerStatus } from '@shared/stickers';
 import { useState } from 'react';
 import { NativeSelect } from '@/components/native-select';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { STICKER_STATUS_LABEL } from '../lib/status';
 import {
   StickerFormDialog,
   type StickerFormDialogProps,
@@ -34,7 +36,7 @@ export interface StickersPageProps {
   onToggleStatus: (sticker: StickerDto) => void;
 }
 
-type StatusFilter = '' | 'active' | 'inactive';
+type StatusFilter = '' | StickerStatus;
 
 /** Nama yang tampil untuk tim QC: alias bila ada, selain itu nama stiker. */
 function displayName(sticker: Pick<StickerDto, 'name' | 'alias'>): string {
@@ -98,6 +100,7 @@ export function StickersPage({
           <option value="">Semua status</option>
           <option value="active">Aktif</option>
           <option value="inactive">Nonaktif</option>
+          <option value="deprecated">Usang</option>
         </NativeSelect>
       </div>
       <div className="rounded-md border">
@@ -153,7 +156,7 @@ export function StickersPage({
                   <TableCell className="text-right tabular-nums">{sticker.minQty}</TableCell>
                   <TableCell>
                     <Badge variant={sticker.status === 'active' ? 'default' : 'secondary'}>
-                      {sticker.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                      {STICKER_STATUS_LABEL[sticker.status]}
                     </Badge>
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
@@ -167,7 +170,8 @@ export function StickersPage({
                         Ubah
                       </Button>
                     ) : null}
-                    {canManage ? (
+                    {/* Usang hanya dapat nonaktif (server menolak mengaktifkannya): tanpa tombol status. */}
+                    {canManage && sticker.status !== 'deprecated' ? (
                       <Button
                         size="sm"
                         variant="outline"

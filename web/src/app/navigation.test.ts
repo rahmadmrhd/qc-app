@@ -222,7 +222,7 @@ test('menu Stiker (sticker view) tidak ikut aktif di Jenis Stiker', () => {
   expect(stiker).toMatchObject({
     label: 'Stiker',
     permission: { module: 'sticker', level: 'view' },
-    excludes: ['/sticker/types', '/sticker/stock', '/sticker/library'],
+    excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
   });
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
@@ -297,4 +297,40 @@ test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja,
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
   expect(isNavItemActive(pustaka, at('/sticker/library'))).toBe(true);
+});
+
+test('grup Manual Book memuat QR Code (qrcode view), dan QR Code tidak lagi di grup Data', () => {
+  const manual = NAV_GROUPS.find((group) => group.label === 'Manual Book');
+  expect(manual?.items.find((entry) => entry.to === '/qrcode')).toMatchObject({
+    label: 'QR Code',
+    permission: { module: 'qrcode', level: 'view' },
+  });
+  const data = NAV_GROUPS.find((group) => group.label === 'Data');
+  expect(data?.items.map((entry) => entry.label)).not.toContain('QR Code');
+  const visible = visibleNavGroups(NAV_GROUPS, stickerMe({ qrcode: 'view' }));
+  expect(visible.find((group) => group.label === 'Manual Book')?.items.map((i) => i.label)).toEqual(
+    ['QR Code'],
+  );
+});
+
+test('Konfigurasi Stiker butuh sticker manage dan menu Stiker tidak ikut aktif di sana', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
+  const konfigurasi = items.find((entry) => entry.to === '/sticker/settings');
+  const stiker = items.find((entry) => entry.to === '/sticker');
+  if (!konfigurasi || !stiker) throw new Error('menu hilang');
+  expect(konfigurasi).toMatchObject({
+    label: 'Konfigurasi Stiker',
+    permission: { module: 'sticker', level: 'manage' },
+  });
+  expect(stiker.excludes).toContain('/sticker/settings');
+  const labelsOf = (permissions: Partial<MeDto['permissions']>) =>
+    visibleNavGroups(NAV_GROUPS, stickerMe(permissions))
+      .find((group) => group.label === 'Stiker')
+      ?.items.map((entry) => entry.label) ?? [];
+  expect(labelsOf({ sticker: 'edit' })).not.toContain('Konfigurasi Stiker');
+  expect(labelsOf({ sticker: 'manage' })).toContain('Konfigurasi Stiker');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(stiker, at('/sticker/settings'))).toBe(false);
+  expect(isNavItemActive(konfigurasi, at('/sticker/settings'))).toBe(true);
 });

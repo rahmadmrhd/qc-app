@@ -4,6 +4,8 @@ export const stickerKeys = {
   all: ['sticker'] as const,
   types: ['sticker', 'types'] as const,
   list: ['sticker', 'list'] as const,
+  /** Konfigurasi Stiker (minimum bawaan per jenis dan email ringkasan). */
+  settings: ['sticker', 'settings'] as const,
   /** Pustaka gambar acuan penempelan stiker (tahap 3b-1); kunci query daftar memakai `stickerGuideSource.key` sebagai awalan. */
   guides: ['sticker-guides'] as const,
   /** Item yang memakai satu gambar pustaka (di bawah awalan `guides`: ikut ditandai basi bersama pustaka). */

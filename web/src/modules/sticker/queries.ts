@@ -3,6 +3,7 @@ import type {
   OpnameInput,
   RecordStockInput,
   SaveStickerInput,
+  SaveStickerSettingsInput,
   SaveStickerTypeInput,
   SetStickerStatusInput,
   SetStickerTypeStatusInput,
@@ -60,6 +61,17 @@ export function stickerGuideUsagesQuery(guideId: string) {
     queryFn: () => api('stickerGuides.usages', { id: guideId }),
   });
 }
+
+/** Konfigurasi Stiker (`sticker: manage`): minimum bawaan per jenis dan pengaturan email ringkasan. */
+export function stickerSettingsQuery() {
+  return queryOptions({
+    queryKey: stickerKeys.settings,
+    queryFn: () => api('stickerSettings.get', null),
+  });
+}
+
+export const useSaveStickerSettings = () =>
+  useCatalogMutation((input: SaveStickerSettingsInput) => api('stickerSettings.save', input));
 
 export function stickersQuery() {
   return queryOptions({

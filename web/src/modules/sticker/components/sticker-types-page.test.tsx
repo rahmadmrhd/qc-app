@@ -212,3 +212,35 @@ test('nama kosong tidak dapat disimpan', async () => {
   expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
   expect(onSave).not.toHaveBeenCalled();
 });
+
+const systemType: StickerTypeDto = {
+  id: 't-mb',
+  name: 'Manual Book',
+  rule: 'group',
+  status: 'active',
+  stickerCount: 4,
+  systemKind: 'manual_book',
+  defaultMinQty: 50,
+  updatedAt: '2026-11-09 10:00:00',
+};
+
+test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tombol Ubah', () => {
+  renderPage({ types: [...types, systemType] });
+  const row = screen.getByRole('row', { name: /Manual Book/ });
+  expect(within(row).getByText('Menurut kelompok item')).toBeInTheDocument();
+  expect(within(row).getByText('Sistem')).toBeInTheDocument();
+  expect(within(row).queryByRole('button', { name: 'Ubah Manual Book' })).toBeNull();
+  // jenis biasa tidak diberi badge dan tetap dapat diubah
+  expect(within(screen.getByRole('row', { name: /QC Hijau/ })).queryByText('Sistem')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ubah QC Hijau' })).toBeInTheDocument();
+});
+
+test('form jenis hanya menawarkan aturan pengguna (tanpa Menurut kelompok item)', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
+  const dialog = await screen.findByRole('alertdialog');
+  const options = within(dialog)
+    .getAllByRole('option')
+    .map((option) => option.textContent);
+  expect(options).toEqual(['Menurut BU', 'Tanpa syarat']);
+});

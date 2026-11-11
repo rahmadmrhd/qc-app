@@ -577,3 +577,55 @@ test('salin penanda menerima katalog agar sasaran nonaktif ditandai di ringkasan
   // setelah disalin, baris penanda menandai sasaran nonaktif
   expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
 });
+
+const mbType: StickerTypeDto = {
+  id: 't-mb',
+  name: 'Manual Book',
+  rule: 'group',
+  status: 'active',
+  stickerCount: 2,
+  systemKind: 'manual_book',
+  defaultMinQty: 0,
+  updatedAt: '',
+};
+const mbSticker = (id: string, name: string, status: StickerDto['status']): StickerDto => ({
+  id,
+  typeId: 't-mb',
+  typeName: 'Manual Book',
+  name,
+  alias: '',
+  fileId: null,
+  minQty: 0,
+  status,
+  businessUnitIds: [],
+  low: false,
+  updatedAt: '',
+});
+
+test('pemilih stiker menyembunyikan stiker jenis sistem (dikelola aplikasi); jenisnya tetap dapat dipilih', async () => {
+  renderField({
+    initial: [photo('g1', { marks: [mark({ target: { kind: 'sticker', stickerId: '' } })] })],
+    stickers: [...stickers, mbSticker('mb2', 'PBE M5-400 v2', 'active')],
+    types: [...types, mbType],
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
+  const names = screen.getAllByRole('option').map((option) => option.textContent);
+  expect(names.some((name) => name?.includes('PBE M5-400'))).toBe(false);
+  expect(names.some((name) => name?.includes('Stiker Postel'))).toBe(true);
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(screen.getByRole('radio', { name: 'Jenis' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
+  expect(
+    screen.getAllByRole('option').some((option) => option.textContent?.includes('Manual Book')),
+  ).toBe(true);
+});
+
+test('penanda tersimpan ke stiker Usang diberi tanda nonaktif', () => {
+  renderField({
+    initial: [photo('g1', { marks: [mark({ target: { kind: 'sticker', stickerId: 'mb1' } })] })],
+    stickers: [...stickers, mbSticker('mb1', 'PBE M5-400 v1', 'deprecated')],
+    types: [...types, mbType],
+  });
+  expect(screen.getByRole('combobox', { name: 'Stiker' })).toHaveValue('PBE M5-400 v1 — nonaktif');
+  expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
+});

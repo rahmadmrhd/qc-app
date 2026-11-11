@@ -24,6 +24,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { ImagePicker } from '@/modules/item/components/image-picker';
+import { ImageThumb } from '@/modules/item/components/image-thumb';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '../lib/stale';
 import { stickerFormSchema } from '../schemas';
 import {
@@ -137,6 +138,8 @@ function StickerFormBody({
   ];
   const selectedType = allTypes.find((type) => type.id === typeId);
   const needsBusinessUnits = selectedType?.rule === 'bu';
+  // Stiker jenis sistem (Manual Book, Postel) lahir dari ekspor: hanya alias dan batas minimum yang dapat diubah.
+  const systemLocked = sticker !== undefined && (selectedType?.systemKind ?? '') !== '';
   const buById = new Map(allBus.map((bu) => [bu.id, bu]));
   const selected = new Set(businessUnitIds);
   const termKey = normalizeKey(buTerm);
@@ -154,6 +157,7 @@ function StickerFormBody({
     .filter(
       (type) =>
         type.status === 'active' &&
+        type.systemKind === '' &&
         (typeTermKey === '' || normalizeKey(type.name).includes(typeTermKey)),
     )
     .map((type) => ({ id: type.id, label: type.name }));
@@ -288,12 +292,19 @@ function StickerFormBody({
             autoFocus
             maxLength={STICKER_LIMITS.nameMax}
             value={name}
+            disabled={systemLocked}
             aria-invalid={errors.name || generalError ? true : undefined}
             onChange={(event) => {
               setName(event.target.value);
               clearError('name');
             }}
           />
+          {systemLocked ? (
+            <p className="text-xs text-muted-foreground">
+              Stiker jenis sistem dikelola aplikasi (lahir dari ekspor QR); nama, jenis, dan gambar
+              tidak dapat diubah di sini.
+            </p>
+          ) : null}
           <FieldError
             id="sticker-form-name-error"
             message={errors.name ?? generalError ?? undefined}
@@ -318,14 +329,26 @@ function StickerFormBody({
         </div>
         <div className="space-y-1.5">
           <p className="text-sm font-medium">Gambar contoh</p>
-          <ImagePicker
-            value={fileId}
-            label={name.trim() || 'stiker'}
-            onChange={(id) => {
-              setFileId(id);
-              clearError('fileId');
-            }}
-          />
+          {systemLocked ? (
+            fileId ? (
+              <ImageThumb
+                id={fileId}
+                alt={`Contoh ${name.trim() || 'stiker'}`}
+                className="size-12"
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Tidak ada gambar contoh.</p>
+            )
+          ) : (
+            <ImagePicker
+              value={fileId}
+              label={name.trim() || 'stiker'}
+              onChange={(id) => {
+                setFileId(id);
+                clearError('fileId');
+              }}
+            />
+          )}
           <FieldError id="sticker-form-file-error" message={errors.fileId} />
         </div>
         <div className="space-y-1.5">
