@@ -194,6 +194,24 @@ describe('jenis stiker', () => {
     expect(missing.code).toBe('NOT_FOUND');
   });
 
+  test('jenis sistem tidak dapat dinonaktifkan atau diaktifkan lewat setStatus (seperti ubah)', async () => {
+    await seedStickerType(env, { id: 'mb', name: 'Manual Book', systemKind: 'manual_book' });
+    const off = await captureAppErrorAsync(() =>
+      setStickerTypeStatus(env, { id: 'mb', status: 'inactive' }, admin),
+    );
+    expect(off.code).toBe('VALIDATION');
+    expect(off.message).toBe('Jenis sistem dikelola aplikasi dan tidak dapat diubah');
+    const row = await env.DB.prepare('SELECT status FROM sticker_types WHERE id = ?')
+      .bind('mb')
+      .first<{ status: string }>();
+    expect(row?.status).toBe('active');
+    // Idempotensi tak melonggarkan: status yang sama pun ditolak untuk jenis sistem (satu aturan, tanpa cabang).
+    const same = await captureAppErrorAsync(() =>
+      setStickerTypeStatus(env, { id: 'mb', status: 'active' }, admin),
+    );
+    expect(same.code).toBe('VALIDATION');
+  });
+
   test('versi: expectedUpdatedAt usang = galat usang tanpa menulis; hilang ditolak validator', async () => {
     const type = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
     env.clock.set(Date.parse('2026-11-09T05:00:00.000Z'));

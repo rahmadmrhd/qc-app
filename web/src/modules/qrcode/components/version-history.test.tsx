@@ -16,7 +16,6 @@ const version = (over: Partial<QrVersionDto>): QrVersionDto => ({
   createdAt: '2026-11-10T03:00:00.000Z',
   createdBy: 'a@x.com',
   fileId: null,
-  total: 0,
   ...over,
 });
 

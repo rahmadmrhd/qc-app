@@ -52,6 +52,7 @@ const STICKERS: StickerDto[] = [
     status: 'active',
     businessUnitIds: ['bu-a'],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
 ];

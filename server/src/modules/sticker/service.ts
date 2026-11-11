@@ -24,6 +24,8 @@ import {
   insertStickerStmt,
   insertStickerTypeStmt,
   isLatestManualBookVersion,
+  latestManualBookStickerIdsFromResult,
+  latestManualBookStickerIdsStatement,
   latestManualBookVersionGuardStmt,
   listStickerTypeRecords,
   lockStickerType,
@@ -200,6 +202,7 @@ function toStickerDto(
   typeName: string,
   businessUnitIds: readonly string[],
   total: number,
+  latestManualBookVersion: boolean,
 ): StickerDto {
   return {
     id: sticker.id,
@@ -212,8 +215,22 @@ function toStickerDto(
     status: sticker.status,
     businessUnitIds: [...businessUnitIds],
     low: isLowStock({ status: sticker.status, minQty: sticker.minQty, total }),
+    latestManualBookVersion,
     updatedAt: sticker.updatedAt,
   };
+}
+
+/** Penanda versi terbaru satu stiker: hanya jenis sistem yang dapat berstatus ini (satu kueri). */
+async function latestFlagOf(
+  env: Env,
+  stickerId: string,
+  type: StickerTypeRecord | undefined,
+): Promise<boolean> {
+  return (
+    type !== undefined &&
+    type.systemKind !== '' &&
+    (await isLatestManualBookVersion(env.DB, stickerId))
+  );
 }
 
 /** Kode BU terurut untuk audit (id tak dikenal jatuh ke id-nya). */
@@ -240,17 +257,19 @@ export function stickerSnapshot(
 
 /** Daftar stiker: SATU `batch()` (stiker, jenis, BU, dan total stok per stiker lewat satu kueri agregat). */
 export async function listStickers(env: Env): Promise<StickerDto[]> {
-  const [stickerResult, typeResult, buResult, totalResult] = await env.DB.batch([
+  const [stickerResult, typeResult, buResult, totalResult, latestResult] = await env.DB.batch([
     stickersStatement(env.DB),
     stickerTypesStatement(env.DB),
     stickerBusinessUnitsStatement(env.DB),
     stockTotalsStatement(env.DB),
+    latestManualBookStickerIdsStatement(env.DB),
   ]);
   const typeNames = new Map(
     stickerTypesFromResult(typeResult ?? { results: [] }).map((type) => [type.id, type.name]),
   );
   const bus = stickerBusinessUnitsFromResult(buResult ?? { results: [] });
   const totals = stockTotalsFromResult(totalResult ?? { results: [] });
+  const latest = latestManualBookStickerIdsFromResult(latestResult ?? { results: [] });
   return stickersFromResult(stickerResult ?? { results: [] })
     .map((sticker) =>
       toStickerDto(
@@ -258,6 +277,7 @@ export async function listStickers(env: Env): Promise<StickerDto[]> {
         typeNames.get(sticker.typeId) ?? '',
         bus.get(sticker.id) ?? [],
         totals.get(sticker.id) ?? 0,
+        latest.has(sticker.id),
       ),
     )
     .sort((a, b) => a.typeName.localeCompare(b.typeName) || a.name.localeCompare(b.name));
@@ -343,6 +363,8 @@ async function saveStickerOnce(
     ? (stockTotalsFromResult(results[3] ?? { results: [] }).get(existing.id) ?? 0)
     : 0;
 
+  const latest = existing ? await latestFlagOf(env, existing.id, type) : false;
+
   const requested = input.businessUnitIds;
   if ((type.rule === 'none' || type.rule === 'group') && requested.length > 0) {
     const message = 'Jenis ini tidak memakai BU';
@@ -373,7 +395,7 @@ async function saveStickerOnce(
     existing.minQty === input.minQty &&
     sameSet(currentBuIds, requested)
   ) {
-    return toStickerDto(existing, type.name, currentBuIds, total);
+    return toStickerDto(existing, type.name, currentBuIds, total, latest);
   }
 
   const now = nowIso(env);
@@ -413,7 +435,7 @@ async function saveStickerOnce(
       ],
       STICKER_CONFLICTS,
     );
-    return toStickerDto(updated, type.name, sortedBuIds, total);
+    return toStickerDto(updated, type.name, sortedBuIds, total, latest);
   }
 
   const created: StickerRecord = {
@@ -446,7 +468,7 @@ async function saveStickerOnce(
     ],
     STICKER_CONFLICTS,
   );
-  return toStickerDto(created, type.name, sortedBuIds, 0);
+  return toStickerDto(created, type.name, sortedBuIds, 0, false);
 }
 
 export async function saveSticker(
@@ -476,7 +498,8 @@ async function setStickerStatusOnce(
   const buIds = stickerBusinessUnitsFromResult(related[1] ?? { results: [] }).get(sticker.id) ?? [];
   const total = stockTotalsFromResult(related[2] ?? { results: [] }).get(sticker.id) ?? 0;
   const typeName = type?.name ?? '';
-  if (sticker.status === input.status) return toStickerDto(sticker, typeName, buIds, total);
+  const latest = await latestFlagOf(env, sticker.id, type);
+  if (sticker.status === input.status) return toStickerDto(sticker, typeName, buIds, total, latest);
   // Stiker yang sudah digantikan versi baru (`deprecated`) hanya dapat menjadi nonaktif, tidak diaktifkan kembali.
   if (sticker.status === 'deprecated' && input.status === 'active') {
     throw appError('VALIDATION', DEPRECATED_ACTIVATE_MESSAGE, {
@@ -507,7 +530,7 @@ async function setStickerStatusOnce(
       after: stickerSnapshot(updated, typeName, codesOf(buIds, allBus)),
     }),
   ]);
-  return toStickerDto(updated, typeName, buIds, total);
+  return toStickerDto(updated, typeName, buIds, total, latest);
 }
 
 export async function setStickerStatus(
@@ -526,6 +549,8 @@ export async function setStickerTypeStatus(
   return env.DB.transaction(async (tx) => {
     const existing = await lockStickerType(tx, input.id);
     if (!existing) throw appError('NOT_FOUND', 'Jenis stiker tidak ditemukan');
+    // Jenis sistem selalu aktif: menonaktifkannya menahan stiker Manual Book baru (keputusan pemilik 2026-11-11).
+    if (existing.systemKind !== '') throw appError('VALIDATION', SYSTEM_TYPE_MESSAGE);
     if (existing.status === input.status) return toStickerTypeDto(existing);
     const now = nowIso(env);
     const updated: StickerTypeRecord = {

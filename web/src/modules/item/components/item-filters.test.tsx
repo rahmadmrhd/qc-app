@@ -16,6 +16,7 @@ const sticker = (patch: Partial<StickerDto>): StickerDto => ({
   status: 'active',
   businessUnitIds: [],
   low: false,
+  latestManualBookVersion: false,
   updatedAt: '',
   ...patch,
 });

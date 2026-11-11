@@ -141,10 +141,13 @@ export async function qrItemId(env: Pick<Env, 'DB'>): Promise<string> {
   return id;
 }
 
-/** Bagian isian Manual Book (nama, preset, satu item baru) untuk badan `qrcodes.save` pada tes. */
+/**
+ * Bagian isian Manual Book (nama, preset, satu item baru) untuk badan `qrcodes.save` pada tes. Nama bawaan unik per
+ * panggilan karena nama Manual Book harus unik antar konfigurasi (keputusan pemilik 2026-11-11).
+ */
 export async function qrManualBookFields(
   env: Pick<Env, 'DB'>,
-  name = 'Manual Uji',
+  name = `Manual Uji ${crypto.randomUUID().slice(0, 8)}`,
 ): Promise<{ name: string; presetId: string; itemIds: string[] }> {
   return { name, presetId: '', itemIds: [await qrItemId(env)] };
 }

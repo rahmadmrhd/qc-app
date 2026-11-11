@@ -590,6 +590,63 @@ describe('stiker jenis sistem dan status deprecated', () => {
   });
 });
 
+describe('penanda versi terbaru Manual Book pada StickerDto (latestManualBookVersion)', () => {
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE M5 v1', status: 'deprecated' });
+    await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
+    await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'PBE M5 v2', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'mb-2', designId: 'q1', version: 2 });
+    // konfigurasi lain: versi terbaru dihitung per konfigurasi, bukan global
+    await seedSticker(env, { id: 'x-1', typeId: 'mb', name: 'Lain v1', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'x-1', designId: 'q2', version: 1 });
+  });
+
+  test('daftar: true hanya untuk versi tertinggi tiap konfigurasi; stiker biasa selalu false', async () => {
+    const plain = await saveSticker(env, input(), admin);
+    const list = await listStickers(env);
+    const flag = (id: string) => list.find((sticker) => sticker.id === id)?.latestManualBookVersion;
+    expect(flag('mb-1')).toBe(false);
+    expect(flag('mb-2')).toBe(true);
+    expect(flag('x-1')).toBe(true);
+    expect(flag(plain.id)).toBe(false);
+    expect(plain.latestManualBookVersion).toBe(false);
+  });
+
+  test('setStatus dan save mengembalikan penanda yang sama dengan daftar; versi terbaru nonaktif dapat diaktifkan kembali', async () => {
+    const on = await setStickerStatus(env, { id: 'mb-2', status: 'active' }, admin);
+    expect(on).toMatchObject({ status: 'active', latestManualBookVersion: true });
+    const off = await setStickerStatus(env, { id: 'mb-2', status: 'inactive' }, admin);
+    expect(off).toMatchObject({ status: 'inactive', latestManualBookVersion: true });
+    const old = await setStickerStatus(env, { id: 'mb-1', status: 'inactive' }, admin);
+    expect(old.latestManualBookVersion).toBe(false);
+    const refused = await captureAppErrorAsync(() =>
+      setStickerStatus(env, { id: 'mb-1', status: 'active' }, admin),
+    );
+    expect(refused.code).toBe('VALIDATION');
+    const saved = await saveSticker(
+      env,
+      validateSaveSticker({
+        id: 'mb-2',
+        expectedUpdatedAt: off.updatedAt,
+        typeId: 'mb',
+        name: 'PBE M5 v2',
+        alias: 'Alias',
+        fileId: null,
+        minQty: 3,
+        businessUnitIds: [],
+      }),
+      admin,
+    );
+    expect(saved.latestManualBookVersion).toBe(true);
+  });
+});
+
 describe('gambar contoh stiker', () => {
   async function upload(actor: UserContext = admin) {
     return uploadFile(

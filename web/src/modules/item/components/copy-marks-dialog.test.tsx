@@ -66,6 +66,7 @@ const CATALOG_STICKERS = [
     status: 'inactive' as const,
     businessUnitIds: [],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
 ];

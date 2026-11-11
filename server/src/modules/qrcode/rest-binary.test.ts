@@ -57,7 +57,7 @@ async function makeDesign() {
   const response = await rest.post('/qrcodes', {
     email: 'qredit@gmail.com',
     body: {
-      ...(await qrManualBookFields(env)),
+      ...(await qrManualBookFields(env, 'Manual Uji')),
       title: 'Panduan Ö',
       linkSource: 'pdf',
       link: '',

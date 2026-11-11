@@ -201,10 +201,10 @@ export async function manualBookCommitStatements(
   return statements;
 }
 
-/** Riwayat versi satu konfigurasi QR, terbaru dahulu (nama, status, gambar contoh, dan total stok tiap stiker). */
+/** Riwayat versi satu konfigurasi QR, terbaru dahulu (nama, status, dan gambar contoh tiap stiker; tanpa stok, keputusan pemilik 2026-11-11). */
 export async function listQrVersions(env: Env, designId: string): Promise<QrVersionDto[]> {
   const rows = await env.DB.prepare(
-    'SELECT mv.sticker_id, mv.version, mv.reason, mv.created_at, mv.created_by, s.name, s.status, s.file_id, (SELECT COALESCE(SUM(k.qty), 0) FROM sticker_stock k WHERE k.sticker_id = s.id) AS total FROM manual_book_versions mv JOIN stickers s ON s.id = mv.sticker_id WHERE mv.design_id = ? ORDER BY mv.version DESC',
+    'SELECT mv.sticker_id, mv.version, mv.reason, mv.created_at, mv.created_by, s.name, s.status, s.file_id FROM manual_book_versions mv JOIN stickers s ON s.id = mv.sticker_id WHERE mv.design_id = ? ORDER BY mv.version DESC',
   )
     .bind(designId)
     .all<{
@@ -216,7 +216,6 @@ export async function listQrVersions(env: Env, designId: string): Promise<QrVers
       name: string;
       status: string;
       file_id: string;
-      total: number | string;
     }>();
   return rows.results.map((row) => ({
     stickerId: row.sticker_id.trim(),
@@ -227,6 +226,5 @@ export async function listQrVersions(env: Env, designId: string): Promise<QrVers
     createdAt: row.created_at,
     createdBy: row.created_by,
     fileId: row.file_id.trim() === '' ? null : row.file_id.trim(),
-    total: Number(row.total) || 0,
   }));
 }

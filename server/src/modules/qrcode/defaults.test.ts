@@ -317,6 +317,32 @@ describe('preset per BU, kloning, dan opsi BU', () => {
     expect(move.error.fields.buId).toBeDefined();
   });
 
+  test('BU preset kemudian nonaktif: preset tetap dapat diubah selama BU-nya tidak diganti; pindah ke BU nonaktif ditolak', async () => {
+    const a = await savePreset();
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-a'").run();
+    env.clock.advance(1000);
+    const renamed = await savePreset({
+      id: a.data.id,
+      expectedUpdatedAt: a.data.updatedAt,
+      name: 'Standar baru',
+    });
+    expect(renamed.ok).toBe(true);
+    expect(renamed.data.buId).toBe('bu-a');
+    // Memindahkan ke BU nonaktif tetap ditolak; BU yang tak berubah tidak diperiksa ulang.
+    env.clock.advance(1000);
+    const move = await savePreset({
+      id: a.data.id,
+      expectedUpdatedAt: renamed.data.updatedAt,
+      name: 'Standar baru',
+      buId: 'bu-off',
+    });
+    expect(move.error.code).toBe('VALIDATION');
+    expect(move.error.fields.buId).toBe('BU nonaktif tidak dapat dipakai');
+    // Membuat preset baru untuk BU nonaktif juga tetap ditolak.
+    const created = await savePreset({ name: 'Baru', buId: 'bu-a' });
+    expect(created.error.code).toBe('VALIDATION');
+  });
+
   test('dua penyimpanan serentak untuk BU sama: tepat satu berhasil (indeks unik menjaga)', async () => {
     const [x, y] = await Promise.all([
       savePreset({ name: 'X', buId: 'bu-b' }),

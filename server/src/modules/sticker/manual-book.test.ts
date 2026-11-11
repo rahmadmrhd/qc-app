@@ -55,8 +55,8 @@ afterEach(() => {
 
 type Design = { id: string; updatedAt: string; name: string };
 
-async function makeDesign(extra: Record<string, unknown> = {}): Promise<Design> {
-  const response = await rest.post('/qrcodes', {
+async function postDesign(extra: Record<string, unknown> = {}) {
+  return rest.post('/qrcodes', {
     email: 'qredit@gmail.com',
     body: {
       ...(await qrManualBookFields(env, 'PBE M5-400')),
@@ -72,6 +72,10 @@ async function makeDesign(extra: Record<string, unknown> = {}): Promise<Design> 
       ...extra,
     },
   });
+}
+
+async function makeDesign(extra: Record<string, unknown> = {}): Promise<Design> {
+  const response = await postDesign(extra);
   expect(response.status).toBe(201);
   return (await jsonOf(response)) as Design;
 }
@@ -497,7 +501,7 @@ describe('kegagalan sebelum komit', () => {
 });
 
 describe('qrcodes.versions', () => {
-  test('urut menurun, memuat alasan, status, dan total stok; butuh qrcode view', async () => {
+  test('urut menurun, memuat alasan dan status, tanpa total stok; butuh qrcode view', async () => {
     const design = await makeDesign();
     await exportOk(design);
     await relabel(design, 'Versi Dua');
@@ -509,7 +513,6 @@ describe('qrcodes.versions', () => {
       name: string;
       status: string;
       reason: string;
-      total: number;
       fileId: string | null;
       stickerId: string;
     }>;
@@ -518,8 +521,9 @@ describe('qrcodes.versions', () => {
       name: 'PBE M5-400 v2',
       status: 'active',
       reason: 'Alasan dua',
-      total: 0,
     });
+    // Riwayat versi tak membuka total stok (keputusan pemilik 2026-11-11): qrcode:view tak boleh melihat stok.
+    for (const row of list) expect(row).not.toHaveProperty('total');
     expect(list[1]).toMatchObject({ status: 'inactive', reason: '' });
     expect(list[0]?.fileId).toBeTruthy();
     expect(
@@ -786,5 +790,119 @@ describe('komit ekspor hanya menulis kolom hasil ekspor', () => {
       .first<{ overflow: string; exported_hash: string }>();
     expect(row?.overflow.trim()).toBe('1');
     expect(row?.exported_hash.trim()).not.toBe('');
+  });
+});
+
+describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)', () => {
+  const TAKEN = 'Nama Manual Book sudah dipakai konfigurasi lain';
+  const jobsCount = async () =>
+    Number(
+      (await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number | string }>())?.n,
+    );
+
+  test('simpan: nama kembar (tanpa beda huruf besar) ditolak 422 pada field name dengan pesan generik; nama lain boleh', async () => {
+    const first = await makeDesign({ name: 'PBE M5-400' });
+    const dup = await postDesign({ name: 'pbe m5-400' });
+    expect(dup.status).toBe(422);
+    const error = await jsonOf(dup);
+    expect(error).toMatchObject({ fields: { name: TAKEN } });
+    // pesan tidak membocorkan konfigurasi lain
+    expect(JSON.stringify(error)).not.toContain(first.id);
+    expect(JSON.stringify(error)).not.toContain('PBE M5-400');
+    const other = await makeDesign({ name: 'Nama Lain' });
+    const rename = await rest.put(`/qrcodes/${other.id}`, {
+      email: 'qredit@gmail.com',
+      headers: { 'if-match': `"${other.updatedAt}"` },
+      body: {
+        ...(await (async () => {
+          const current = await reload(other.id);
+          return {
+            presetId: '',
+            itemIds: (current.items as { id: string }[]).map((item) => item.id),
+            title: 'PBE M5-400',
+            linkSource: 'pdf',
+            link: '',
+            documentId: current.documentId,
+            subtitle: '',
+            footer: '',
+            logoFileId: '',
+            layout: current.layout,
+            style: current.style,
+          };
+        })()),
+        name: 'PBE M5-400',
+      },
+    });
+    expect(rename.status).toBe(422);
+    expect(await jsonOf(rename)).toMatchObject({ fields: { name: TAKEN } });
+    // menyimpan ulang konfigurasi dengan namanya sendiri tetap boleh
+    expect((await relabel(first, 'Label Baru')).id).toBe(first.id);
+  });
+
+  test('ekspor: bentrok nama (data kembar) ditolak 422 pada field name sebelum job, berkas Drive, atau stiker', async () => {
+    const a = await makeDesign({ name: 'PBE M5-400' });
+    const b = await makeDesign({ name: 'Lain' });
+    await env.DB.prepare("UPDATE qr_designs SET name = 'pbe m5-400' WHERE id = ?").bind(b.id).run();
+    const filesBefore = driveNames().length;
+    for (const design of [a, b]) {
+      const current = await reload(design.id);
+      const refused = await exportDesign(current);
+      expect(refused.status).toBe(422);
+      expect(await jsonOf(refused)).toMatchObject({ fields: { name: TAKEN } });
+    }
+    expect(await jobsCount()).toBe(0);
+    expect(driveNames().length).toBe(filesBefore);
+    expect(await stickers()).toHaveLength(0);
+  });
+
+  test('komit job yang melewati rute dengan nama kembar: gagal CONFLICT, tanpa stiker kembar dan tanpa versi', async () => {
+    const a = await makeDesign({ name: 'PBE M5-400' });
+    await exportOk(a);
+    const b = await makeDesign({ name: 'Lain' });
+    await env.DB.prepare("UPDATE qr_designs SET name = 'pbe m5-400' WHERE id = ?").bind(b.id).run();
+    const current = await reload(b.id);
+    const jobId = await enqueueJob(
+      env,
+      'qr_export',
+      { designId: b.id, expectedUpdatedAt: current.updatedAt },
+      'qredit@gmail.com',
+      {
+        blobs: {
+          pdf: bytesToBase64(pdfBytes()),
+          png: bytesToBase64(pngBytes()),
+          preview: bytesToBase64(pngBytes(9)),
+          reason: '',
+        },
+      },
+    );
+    await runPendingJobs(env);
+    const job = (await jsonOf(await rest.get(`/jobs/${jobId}`, { email: 'qredit@gmail.com' }))) as {
+      status: string;
+      error: string;
+    };
+    expect(job.status).toBe('failed');
+    expect(job.error).toContain('Nama stiker Manual Book sudah dipakai konfigurasi lain');
+    expect((await stickers()).map((row) => row.name)).toEqual(['PBE M5-400 v1']);
+    expect(await versions(b.id)).toHaveLength(0);
+  });
+
+  test('dua simpanan serentak dengan nama sama: tanpa galat server, dan tidak pernah ada dua stiker bernama sama', async () => {
+    const [x, y] = await Promise.all([
+      postDesign({ name: 'Serentak' }),
+      postDesign({ name: 'Serentak' }),
+    ]);
+    expect([x.status, y.status].every((status) => status === 201 || status === 422)).toBe(true);
+    expect([x.status, y.status]).toContain(201);
+    const ids: string[] = [];
+    for (const response of [x, y])
+      if (response.status === 201) ids.push(((await jsonOf(response)) as Design).id);
+    for (const id of ids) {
+      const refusedOrAccepted = await exportDesign(await reload(id));
+      // Bila keduanya lolos balapan, keduanya terkunci sampai salah satu diganti nama (nama kembar terlihat).
+      expect(refusedOrAccepted.status).toBe(ids.length === 2 ? 422 : 202);
+    }
+    await runPendingJobs(env);
+    const names = (await stickers()).map((row) => row.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

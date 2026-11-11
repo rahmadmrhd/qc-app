@@ -468,6 +468,19 @@ export async function latestManualBookStickerIds(
   return result;
 }
 
+/** Id stiker yang versi TERBARU konfigurasinya (SEMUA konfigurasi; digabung ke `batch()` baca daftar). */
+export function latestManualBookStickerIdsStatement(db: Preparer): DbStatement {
+  return db.prepare(
+    'SELECT mv.sticker_id FROM manual_book_versions mv WHERE mv.version = (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id)',
+  );
+}
+
+export function latestManualBookStickerIdsFromResult(result: { results: unknown[] }): Set<string> {
+  return new Set(
+    (result.results as Array<{ sticker_id: string }>).map((row) => row.sticker_id.trim()),
+  );
+}
+
 /**
  * Apakah stiker ini versi TERBARU konfigurasinya (versi tertinggi untuk `design_id`-nya)? Stiker tanpa baris versi
  * dianggap bukan versi terbaru.

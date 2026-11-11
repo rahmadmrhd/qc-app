@@ -314,6 +314,31 @@ const PRESET_CONFLICTS = {
   },
 };
 
+export const MANUAL_BOOK_NAME_TAKEN_MESSAGE = 'Nama Manual Book sudah dipakai konfigurasi lain';
+
+/**
+ * Nama Manual Book tak boleh sama (tanpa beda huruf besar, sama dengan kunci nama stiker `<nama> vN`) dengan
+ * konfigurasi LAIN (`exceptId`; '' = tak ada yang dikecualikan). Pesan generik: tidak menyebut konfigurasi atau BU
+ * pemilik nama (tak membocorkan data di luar hak penyimpan). Pelindung terakhir ada di komit ekspor
+ * (`stickers_type_name_unique`); balapan dua simpanan serentak yang lolos bersamaan terkunci di ekspor.
+ */
+export async function assertManualBookNameFree(
+  env: Env,
+  name: string,
+  exceptId: string,
+): Promise<void> {
+  const taken = await env.DB.prepare(
+    "SELECT 1 AS taken FROM qr_designs WHERE id <> ? AND name <> '' AND LOWER(name) = LOWER(?) LIMIT 1",
+  )
+    .bind(exceptId, name)
+    .first<{ taken: number }>();
+  if (taken) {
+    throw appError('VALIDATION', MANUAL_BOOK_NAME_TAKEN_MESSAGE, {
+      name: MANUAL_BOOK_NAME_TAKEN_MESSAGE,
+    });
+  }
+}
+
 /** BU harus ada dan aktif; satu BU paling banyak satu preset (selain `exceptId`). */
 async function assertPresetBu(
   env: Env,
@@ -357,7 +382,11 @@ export async function saveQrPreset(
   if (!existing && presets.length >= QR_LIMITS.presets) {
     throw appError('VALIDATION', `Konfigurasi default maksimal ${QR_LIMITS.presets}`);
   }
-  await assertPresetBu(env, input.buId, presets, existing?.id);
+  // BU yang tak berubah tidak diperiksa ulang: preset yang BU-nya kemudian nonaktif tetap dapat diubah/diganti
+  // namanya (keputusan pemilik 2026-11-11); BU baru (preset baru atau pindah BU) wajib ada, aktif, dan belum punya preset.
+  if (!existing || existing.buId !== input.buId) {
+    await assertPresetBu(env, input.buId, presets, existing?.id);
+  }
   const library = (await getQrDefaultsRecord(env))?.logoFileIds ?? [];
   if (input.defaultLogoId !== '' && !library.includes(input.defaultLogoId)) {
     const message = 'Logo awal harus bagian dari pustaka logo';
@@ -733,6 +762,8 @@ async function saveQrDesignNow(
     if (input.name === '') throw fieldFail('name', 'Nama Manual Book wajib diisi');
     if (finalIds.length === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
   }
+  // Nama Manual Book unik antar konfigurasi (tanpa beda huruf besar, seperti kunci nama stiker `<nama> vN`).
+  if (input.name !== '') await assertManualBookNameFree(env, input.name, existing?.id ?? '');
   // Kelonggaran dipakai: komit ekspor serentak (tidak menaikkan `updated_at`) dapat melahirkan versi sesudah
   // pembacaan di atas, jadi batch simpan menjaganya ulang (`noVersionsGuardStmt`, sesudah kunci baris dari UPDATE).
   const usesRelaxation = existing !== undefined && (input.name === '' || finalIds.length === 0);

@@ -61,6 +61,7 @@ const stickers: StickerDto[] = [
     status: 'active',
     businessUnitIds: [],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
   {
@@ -74,6 +75,7 @@ const stickers: StickerDto[] = [
     status: 'inactive',
     businessUnitIds: [],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '',
   },
 ];
@@ -599,6 +601,7 @@ const mbSticker = (id: string, name: string, status: StickerDto['status']): Stic
   status,
   businessUnitIds: [],
   low: false,
+  latestManualBookVersion: false,
   updatedAt: '',
 });
 

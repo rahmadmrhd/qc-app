@@ -20,7 +20,13 @@ import { ensureQrFolder } from './folders';
 import { listAttachedItems } from './items';
 import type { QrDesignRecord } from './repo';
 import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignExportStmt } from './repo';
-import { exportStamp, QR_STALE_MESSAGE, qrDesignContent, qrDocumentMap } from './service';
+import {
+  assertManualBookNameFree,
+  exportStamp,
+  QR_STALE_MESSAGE,
+  qrDesignContent,
+  qrDocumentMap,
+} from './service';
 
 /**
  * Ekspor QR sebagai pekerjaan latar (Spek 9b). Rute hanya memeriksa, menyimpan muatan, dan mengantre; berkas dibuat
@@ -91,6 +97,8 @@ export async function requestQrExport(
   if (design.name === '') {
     throw fieldError('name', 'Konfigurasi belum bernama; lengkapi nama Manual Book lewat Ubah');
   }
+  // Nama kembar (data lama atau simpanan serentak) ditolak di tepi, sebelum job dan berkas Drive apa pun.
+  await assertManualBookNameFree(env, design.name, design.id);
   const items = (await listAttachedItems(env.DB)).get(design.id) ?? [];
   if (items.length === 0) {
     throw fieldError('itemIds', 'Konfigurasi belum punya item; pilih minimal satu item lewat Ubah');

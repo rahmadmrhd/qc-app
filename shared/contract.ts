@@ -406,6 +406,11 @@ export interface StickerDto {
   /** BU tertaut (terurut menurut kode BU); kosong untuk jenis berrule `none` atau `group`. */
   businessUnitIds: string[];
   low: boolean;
+  /**
+   * Hanya stiker jenis sistem Manual Book: true bila ini versi TERBARU konfigurasinya (satu-satunya yang boleh
+   * diaktifkan kembali setelah dinonaktifkan). False untuk stiker biasa dan versi yang sudah digantikan.
+   */
+  latestManualBookVersion: boolean;
   updatedAt: string;
 }
 
@@ -884,8 +889,6 @@ export interface QrVersionDto {
   createdBy: string;
   /** Gambar contoh stiker (id berkas); null bila tak ada. */
   fileId: string | null;
-  /** Total stok stiker di semua lokasi. */
-  total: number;
 }
 
 export interface QrDesignRefInput {
