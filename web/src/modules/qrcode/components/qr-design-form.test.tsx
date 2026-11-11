@@ -421,7 +421,7 @@ test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci meng
   expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('Nama Tersimpan');
   expect(screen.getByLabelText('Subtitle')).toBeDisabled();
   expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Tersimpan');
-  // item tak terlihat tetap terpasang: menghapus semua item yang terlihat diperbolehkan (spek 4a §3 butir 17)
+  // item tak terlihat tetap terpasang: menghapus semua item yang terlihat diperbolehkan (spek 4a §3 butir 18)
   await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
   await userEvent.type(screen.getByLabelText('Title'), 'x');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));

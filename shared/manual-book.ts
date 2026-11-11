@@ -1,5 +1,5 @@
 /**
- * Nama otomatis Manual Book dari tipe item (tahap 4a, spek 2026-11-10 §2 butir 6 dan §3 butir 24). Murni: hanya
+ * Nama otomatis Manual Book dari tipe item (tahap 4a, spek 2026-11-10 §2 butir 6 dan §3 butir 17). Murni: hanya
  * teks tipe item yang dipakai (merk dan BU tidak ikut).
  */
 

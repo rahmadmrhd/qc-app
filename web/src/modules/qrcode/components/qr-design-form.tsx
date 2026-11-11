@@ -338,7 +338,7 @@ export function QrDesignForm({
             <form.Field
               name="itemIds"
               validators={{
-                // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 17): daftar terlihat boleh kosong.
+                // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 18): daftar terlihat boleh kosong.
                 onSubmit: ({ value }) =>
                   requireItems && value.length === 0 && (edit?.hiddenItemCount ?? 0) === 0
                     ? 'Pilih minimal satu item'

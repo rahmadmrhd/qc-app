@@ -80,7 +80,7 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
     queryFn: ({ pageParam }) =>
       api('items.list', {
         ...(filter.query.trim() !== '' ? { query: filter.query.trim() } : {}),
-        // "Belum ada QR Manual Book" hanya berlaku bagi item aktif (spek 4a §3 butir 19, keputusan pemilik 2026-11-11).
+        // "Belum ada QR Manual Book" hanya berlaku bagi item aktif (spek 4a §3 butir 20, keputusan pemilik 2026-11-11).
         ...(filter.manualBook === 'missing'
           ? { status: 'active' as const }
           : filter.status !== 'all'

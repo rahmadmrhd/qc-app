@@ -454,7 +454,7 @@ export async function saveQrPreset(
 }
 
 /**
- * Menyalin satu preset ke BU lain (spek 4a §3 butir 23): seluruh isi (gaya, tata letak, logo awal, penempatan nama)
+ * Menyalin satu preset ke BU lain (spek 4a §3 butir 24): seluruh isi (gaya, tata letak, logo awal, penempatan nama)
  * dibawa, hanya BU dan nama yang diganti. BU tujuan harus aktif dan belum punya preset.
  */
 export async function cloneQrPreset(
