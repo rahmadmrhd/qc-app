@@ -24,13 +24,13 @@ const PDF_HEAD = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /** PNG sah 4x3 piksel (hanya IHDR yang dibaca server) untuk gambar contoh ekspor. */
-function previewPng(seed = 7): Uint8Array {
+function previewPng(seed = 7, width = 4, height = 3): Uint8Array {
   const bytes = fileOf(PNG_HEAD, 200, seed);
   const view = new DataView(bytes.buffer);
   view.setUint32(8, 13);
   bytes.set([0x49, 0x48, 0x44, 0x52], 12);
-  view.setUint32(16, 4);
-  view.setUint32(20, 3);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
   return bytes;
 }
 
@@ -456,6 +456,36 @@ describe('syarat ekspor: item, nama, alasan, gambar contoh, nama berkas', () => 
     );
     expect(huge.status).toBe(422);
     expect(await jsonOf(huge)).toMatchObject({ fields: { preview: expect.any(String) } });
+  });
+
+  test('gambar contoh: sisi terpanjang dibatasi (IHDR raksasa kecil di byte ditolak 422, batas pas diterima)', async () => {
+    const design = await legacyDesign('d-dims', { name: 'Dimensi' });
+    const tooBig = await exportRequest(
+      design,
+      multipart(fileOf(PDF_HEAD, 64), fileOf(PNG_HEAD, 64), previewPng(7, 30000, 30000)),
+    );
+    expect(tooBig.status).toBe(422);
+    expect(await jsonOf(tooBig)).toMatchObject({ fields: { preview: expect.any(String) } });
+    const oneSide = await exportRequest(
+      design,
+      multipart(
+        fileOf(PDF_HEAD, 64),
+        fileOf(PNG_HEAD, 64),
+        previewPng(7, 3, QR_LIMITS.previewMaxSide + 1),
+      ),
+    );
+    expect(oneSide.status).toBe(422);
+    const jobs = await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number }>();
+    expect(Number(jobs?.n)).toBe(0);
+    const atLimit = await exportRequest(
+      design,
+      multipart(
+        fileOf(PDF_HEAD, 64),
+        fileOf(PNG_HEAD, 64),
+        previewPng(7, QR_LIMITS.previewMaxSide, QR_LIMITS.previewMaxSide),
+      ),
+    );
+    expect(atLimit.status).toBe(202);
   });
 
   test('ekspor ulang dengan label berubah: alasan wajib (422 pada reason), dengan alasan 202', async () => {

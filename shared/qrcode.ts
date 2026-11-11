@@ -19,6 +19,8 @@ export const QR_LIMITS = {
   reason: 500,
   /** Ukuran maksimum PNG gambar contoh (`preview`) pada ekspor (byte). */
   previewMaxBytes: 512 * 1024,
+  /** Sisi terpanjang maksimum PNG gambar contoh (piksel; dibaca dari header, pola thumbnail 3b-1). */
+  previewMaxSide: 1024,
   /** Jumlah item maksimum yang dapat dipilih pada satu konfigurasi QR (Manual Book). */
   items: 100,
 } as const;

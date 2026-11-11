@@ -15,7 +15,7 @@ import { manualBookCommitStatements } from '@server/modules/sticker/manual-book'
 import { listManualBookVersions } from '@server/modules/sticker/repo';
 import type { ExportQrDesignInput, ExportQrJobDto } from '@shared/contract';
 import { isPngBytes, readImageDimensions } from '@shared/files';
-import { manualBookFileName, qrContentHash } from '@shared/qrcode';
+import { manualBookFileName, QR_LIMITS, qrContentHash } from '@shared/qrcode';
 import { ensureQrFolder } from './folders';
 import { listAttachedItems } from './items';
 import type { QrDesignRecord } from './repo';
@@ -65,6 +65,13 @@ function assertExportable(design: QrDesignRecord, expectedUpdatedAt: string): vo
   if (design.overflow) throw appError('VALIDATION', OVERFLOW_MESSAGE);
 }
 
+const PREVIEW_SIDE_MESSAGE = `Gambar contoh terlalu besar (sisi terpanjang maksimal ${QR_LIMITS.previewMaxSide} px)`;
+
+/** Sisi terpanjang gambar contoh (dari header PNG) tidak boleh melebihi batas; ukuran byte kecil bisa menyamar. */
+function previewDimensionsOk(size: { width: number; height: number }): boolean {
+  return Math.max(size.width, size.height) <= QR_LIMITS.previewMaxSide;
+}
+
 function fieldError(field: string, message: string): Error {
   return appError('VALIDATION', message, { [field]: message });
 }
@@ -99,11 +106,15 @@ export async function requestQrExport(
     if (input.preview.length === 0 || !isPngBytes(input.preview)) {
       throw fieldError('preview', 'Gambar contoh (PNG) wajib untuk versi Manual Book baru');
     }
-    if (!readImageDimensions('image/png', input.preview)) {
+    const dimensions = readImageDimensions('image/png', input.preview);
+    if (!dimensions) {
       throw fieldError(
         'preview',
         'Gambar contoh (PNG) tidak dapat dibaca; buat ulang gambar contoh',
       );
+    }
+    if (!previewDimensionsOk(dimensions)) {
+      throw fieldError('preview', PREVIEW_SIDE_MESSAGE);
     }
   }
   // Muatan job disimpan sebagai base64 (`job_blobs`); batas ukuran sudah ditegakkan di tepi (multipart).
@@ -154,6 +165,8 @@ async function createPreviewFile(ctx: StepContext): Promise<void> {
   const bytes = base64ToBytes(data);
   const dimensions = readImageDimensions('image/png', bytes);
   if (!dimensions) throw appError('INTERNAL', 'Gambar contoh tidak valid; ulangi ekspor dari awal');
+  // Periksa ulang di sini: job dapat diantrekan tanpa melalui rute (muatan lama atau pengisian langsung).
+  if (!previewDimensionsOk(dimensions)) throw appError('VALIDATION', PREVIEW_SIDE_MESSAGE);
   const fileId = crypto.randomUUID();
   const folderId = await ensureDriveFolder(ctx.env);
   state.previewDriveId = await viaBridge(() =>

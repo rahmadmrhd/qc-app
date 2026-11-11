@@ -527,6 +527,7 @@ describe('batas Manual Book (4a)', () => {
     expect(QR_LIMITS.manualBookName).toBe(60);
     expect(QR_LIMITS.reason).toBe(500);
     expect(QR_LIMITS.previewMaxBytes).toBe(512 * 1024);
+    expect(QR_LIMITS.previewMaxSide).toBe(1024);
   });
 });
 
