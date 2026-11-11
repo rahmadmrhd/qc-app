@@ -119,6 +119,34 @@ describe('checkLowStockDigest', () => {
     expect(sent).toHaveLength(2);
   });
 
+  test('dua pemanggil serentak (dua proses atas DB yang sama): tepat satu surel', async () => {
+    await withMinimum('s1', 10);
+    sendBehavior = () => new Promise((resolve) => setTimeout(resolve, 200));
+    const outcomes = await Promise.all([checkLowStockDigest(env), checkLowStockDigest(env)]);
+    expect([...outcomes].sort()).toEqual(['sent', 'skipped']);
+    expect(sent).toHaveLength(1);
+    expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261110');
+  });
+
+  test('klaim yang dikembalikan saat kirim gagal: pemanggil lain boleh mengirim pada detak berikutnya', async () => {
+    await withMinimum('s1', 10);
+    await putSetting(env, SETTING_STICKER_DIGEST_LAST_DATE, '20261109');
+    sendBehavior = async () => {
+      throw new Error('SMTP mati');
+    };
+    const realError = console.error;
+    console.error = () => undefined;
+    try {
+      expect(await checkLowStockDigest(env)).toBe('failed');
+    } finally {
+      console.error = realError;
+    }
+    expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261109');
+    sendBehavior = async () => undefined;
+    expect(await checkLowStockDigest(env)).toBe('sent');
+    expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261110');
+  });
+
   test('tak ada yang menipis -> skipped (tanggal tidak ditulis)', async () => {
     await withMinimum('s1', 5);
     await stock('s1', 50);

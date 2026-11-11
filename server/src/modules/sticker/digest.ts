@@ -1,6 +1,6 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
-import { getSetting, putSetting } from '@server/core/settings';
+import { getSetting } from '@server/core/settings';
 import { wibDate, wibHour } from '@server/modules/backup/names';
 import { readStickerAlert } from './settings';
 
@@ -10,7 +10,7 @@ import { readStickerAlert } from './settings';
  * sakelar cadangan. Penerima dari Konfigurasi Stiker (tabel `settings`), bukan `ALERT_TO`.
  */
 
-/** Tanggal WIB (`YYYYMMDD`) ringkasan terakhir yang BERHASIL terkirim. */
+/** Tanggal WIB (`YYYYMMDD`) ringkasan terakhir yang diklaim untuk dikirim (dikembalikan bila kirim gagal). */
 export const SETTING_STICKER_DIGEST_LAST_DATE = 'STICKER_DIGEST_LAST_DATE';
 
 export interface LowStockRow {
@@ -38,6 +38,32 @@ export async function lowStockRows(env: Env): Promise<LowStockRow[]> {
 
 export type DigestOutcome = 'sent' | 'skipped' | 'failed';
 
+/**
+ * Mengklaim tanggal kirim secara atomik (CAS pada nilai lama) SEBELUM surel dikirim: beberapa proses atas DB yang
+ * sama (dev di `qc_dev`, container yang tumpang-tindih saat deploy) tidak mengirim dobel. Hanya satu pemanggil yang
+ * mendapat `true`. Baris belum ada = pemenang `INSERT IGNORE`.
+ */
+async function claimDigestDate(env: Env, previous: string, today: string): Promise<boolean> {
+  const updated = await env.DB.prepare(
+    'UPDATE settings SET value = ? WHERE `key` = ? AND value = ?',
+  )
+    .bind(today, SETTING_STICKER_DIGEST_LAST_DATE, previous)
+    .run();
+  if (updated.meta.changes > 0) return true;
+  if (previous !== '') return false;
+  const inserted = await env.DB.prepare('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)')
+    .bind(SETTING_STICKER_DIGEST_LAST_DATE, today)
+    .run();
+  return inserted.meta.changes > 0;
+}
+
+/** Mengembalikan klaim (hanya bila masih milik kita) agar detak berikutnya mengulang kirim. */
+async function releaseDigestClaim(env: Env, previous: string, today: string): Promise<void> {
+  await env.DB.prepare('UPDATE settings SET value = ? WHERE `key` = ? AND value = ?')
+    .bind(previous, SETTING_STICKER_DIGEST_LAST_DATE, today)
+    .run();
+}
+
 export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const mailer = env.MAILER;
   if (!mailer) return 'skipped';
@@ -46,9 +72,11 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const now = nowOf(env);
   if (wibHour(now) < alert.digestHour) return 'skipped';
   const today = wibDate(now);
-  if ((await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)) === today) return 'skipped';
+  const previous = await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE);
+  if (previous === today) return 'skipped';
   const rows = await lowStockRows(env);
   if (rows.length === 0) return 'skipped';
+  if (!(await claimDigestDate(env, previous, today))) return 'skipped';
   const lines = rows.map(
     (row) => `- ${row.name} (${row.typeName}): stok ${row.total}, minimum ${row.minQty}`,
   );
@@ -62,12 +90,12 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
       text: `Stiker berikut stoknya menipis (total semua lokasi):\n\n${lines.join('\n')}${link}\n`,
     });
   } catch (error) {
-    // Pesan galat dari `createSmtpMailer` sudah bebas SMTP_PASS. Tanggal tidak ditulis: dicoba lagi pada detak berikutnya.
+    // Pesan galat dari `createSmtpMailer` sudah bebas SMTP_PASS. Klaim dikembalikan: dicoba lagi pada detak berikutnya.
+    await releaseDigestClaim(env, previous, today).catch(() => undefined);
     console.error(
       `peringatan: email stok stiker menipis gagal terkirim, dicoba lagi nanti: ${error instanceof Error ? error.message : String(error)}`,
     );
     return 'failed';
   }
-  await putSetting(env, SETTING_STICKER_DIGEST_LAST_DATE, today);
   return 'sent';
 }
