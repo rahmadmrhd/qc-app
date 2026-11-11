@@ -204,7 +204,15 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
                 step={1}
                 className="w-28"
                 aria-label={`Pengingat ${index + 1} (hari sebelum habis)`}
-                aria-invalid={errors[`threshold-${index}`] ? true : undefined}
+                aria-invalid={errors[`threshold-${index}`] || errors.thresholds ? true : undefined}
+                aria-describedby={
+                  [
+                    errors[`threshold-${index}`] ? `postel-alert-threshold-${index}-error` : null,
+                    errors.thresholds ? 'postel-alert-thresholds-error' : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
                 value={value}
                 onChange={(event) => {
                   setThresholds((current) =>
@@ -233,14 +241,18 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
               </Button>
             </div>
             {errors[`threshold-${index}`] ? (
-              <p role="alert" className="text-sm text-destructive">
+              <p
+                id={`postel-alert-threshold-${index}-error`}
+                role="alert"
+                className="text-sm text-destructive"
+              >
                 {errors[`threshold-${index}`]}
               </p>
             ) : null}
           </div>
         ))}
         {errors.thresholds ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p id="postel-alert-thresholds-error" role="alert" className="text-sm text-destructive">
             {errors.thresholds}
           </p>
         ) : null}
@@ -266,6 +278,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           className="w-28"
           value={repeat}
           aria-invalid={errors.repeat ? true : undefined}
+          aria-describedby={errors.repeat ? 'postel-alert-repeat-error' : undefined}
           onChange={(event) => {
             setRepeat(event.target.value);
             fail('repeat', undefined);
@@ -276,7 +289,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           pengulangan.
         </p>
         {errors.repeat ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p id="postel-alert-repeat-error" role="alert" className="text-sm text-destructive">
             {errors.repeat}
           </p>
         ) : null}
@@ -307,6 +320,8 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
               type="email"
               className="w-72"
               value={extra}
+              aria-invalid={errors.recipients ? true : undefined}
+              aria-describedby={errors.recipients ? 'postel-alert-recipients-error' : undefined}
               onChange={(event) => setExtra(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -325,7 +340,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           ditambahkan.
         </p>
         {errors.recipients ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p id="postel-alert-recipients-error" role="alert" className="text-sm text-destructive">
             {errors.recipients}
           </p>
         ) : null}

@@ -187,9 +187,14 @@ test('onBack yang gagal: toast galat dan tombol tidak terkunci selamanya', async
     </QueryClientProvider>,
   );
   await screen.findByRole('heading', { level: 1, name: 'M5-400' });
+  const getBefore = callsFor('postels.get').length;
   await confirmRemove();
   await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
-  // halaman tetap ter-mount (navigasi gagal): kunci dilepas agar pengguna tidak terjebak
+  // halaman tetap ter-mount (navigasi gagal): cache detail TIDAK dibuang dan kunci dilepas agar pengguna tidak terjebak
+  expect(client.getQueryData(postelKeys.one('p1'))).toBeDefined();
   await waitFor(() => expect(screen.getByRole('button', { name: 'Ubah' })).toBeEnabled());
+  // membuang cache saat masih ter-mount akan memicu muat ulang id terhapus
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(callsFor('postels.get')).toHaveLength(getBefore);
 });

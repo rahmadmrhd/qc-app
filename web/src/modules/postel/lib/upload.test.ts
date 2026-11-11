@@ -57,4 +57,10 @@ test('postelFileMime: memakai file.type; bila kosong turun ke ekstensi; selain i
     expect(postelFileMime(file(name, ''))).toBe(mime);
   expect(postelFileMime(file('a.txt', ''))).toBe('');
   expect(postelFileMime(file('tanpa-ekstensi', ''))).toBe('');
+  // tanpa titik bukan ekstensi; nama pewarisan objek tidak memetakan
+  expect(postelFileMime(file('pdf', ''))).toBe('');
+  expect(postelFileMime(file('constructor', ''))).toBe('');
+  expect(postelFileMime(file('x.constructor', ''))).toBe('');
+  expect(postelFileMime(file('x.toString', ''))).toBe('');
+  expect(postelFileMime(file('arsip.tar.pdf', ''))).toBe('application/pdf');
 });

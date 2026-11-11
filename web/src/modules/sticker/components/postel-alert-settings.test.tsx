@@ -173,3 +173,36 @@ test('onSave mengembalikan teks galat => tampil sebagai alert', async () => {
   await save();
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
 });
+
+test('pesan galat dihubungkan ke inputnya lewat aria-describedby', async () => {
+  renderSettings();
+  const threshold = screen.getByLabelText('Pengingat 3 (hari sebelum habis)');
+  await userEvent.clear(threshold);
+  await userEvent.type(threshold, '0');
+  const repeat = screen.getByLabelText('Ulangi setiap (hari)');
+  await userEvent.clear(repeat);
+  await userEvent.type(repeat, '999');
+  await userEvent.type(screen.getByLabelText('Email lain'), 'rusak');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
+  const extraError = (screen.getByLabelText('Email lain').getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent);
+  expect(extraError).toContain('Format email tidak valid');
+  await save();
+  const describedBy = (element: HTMLElement) =>
+    (element.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent);
+  expect(describedBy(threshold)).toContain('Pengingat 3: bilangan bulat 1 sampai 730');
+  expect(describedBy(repeat)).toContain('Ulangi setiap: bilangan bulat 0 sampai 365');
+});
+
+test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async () => {
+  renderSettings();
+  const third = screen.getByLabelText('Pengingat 3 (hari sebelum habis)');
+  await userEvent.clear(third);
+  await userEvent.type(third, '60');
+  await save();
+  const message = await screen.findByText('Pengingat tidak boleh kembar');
+  expect(third.getAttribute('aria-describedby')).toContain(message.id);
+});

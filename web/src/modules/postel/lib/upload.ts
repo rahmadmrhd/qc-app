@@ -3,13 +3,13 @@ import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 
-const MIME_BY_EXTENSION: Record<string, string> = {
-  pdf: 'application/pdf',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-};
+const MIME_BY_EXTENSION = new Map<string, string>([
+  ['pdf', 'application/pdf'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['png', 'image/png'],
+  ['webp', 'image/webp'],
+]);
 
 /**
  * Jenis berkas: `file.type`; bila kosong (sebagian peramban/OS tak mengisinya) diturunkan dari ekstensi. Hanya untuk UX:
@@ -17,8 +17,9 @@ const MIME_BY_EXTENSION: Record<string, string> = {
  */
 export function postelFileMime(file: File): string {
   if (file.type !== '') return file.type;
-  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-  return MIME_BY_EXTENSION[extension] ?? '';
+  // Ekstensi harus didahului titik: nama "pdf" (tanpa titik) bukan ekstensi.
+  const extension = /\.([^./\\]+)$/.exec(file.name)?.[1]?.toLowerCase() ?? '';
+  return MIME_BY_EXTENSION.get(extension) ?? '';
 }
 
 /**

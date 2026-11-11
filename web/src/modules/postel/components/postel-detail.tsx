@@ -38,10 +38,11 @@ export function PostelDetail({ postelId, canEdit, onBack, onEdit }: PostelDetail
     toast.success('Catatan Postel dihapus');
     try {
       await onBack();
+      // Hanya setelah navigasi keluar berhasil: membuangnya saat halaman masih ter-mount memicu muat ulang id terhapus.
+      dropPostelDetail(queryClient, postel.id);
     } catch (error) {
       toast.error(describeError(error));
     } finally {
-      dropPostelDetail(queryClient, postel.id);
       setDeleting(false);
     }
   }
