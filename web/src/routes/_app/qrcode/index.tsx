@@ -56,7 +56,11 @@ function QrCodesPage() {
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 
-  async function confirmExport(design: QrDesignDto, report: (step: string) => void) {
+  async function confirmExport(
+    design: QrDesignDto,
+    report: (step: string) => void,
+    reason: string,
+  ) {
     if (design.logoFileId !== '') report('Memuat logo dari Drive…');
     const logo =
       design.logoFileId === ''
@@ -70,9 +74,9 @@ function QrCodesPage() {
       expectedUpdatedAt: design.updatedAt,
       pdf: files.pdf,
       png: files.png,
-      // Gambar contoh dan alasan dibuat UI ekspor 4a (belum ada): kosong = ditolak server untuk versi baru.
-      preview: new Uint8Array(0),
-      reason: '',
+      // Gambar contoh stiker dikirim selalu (server mengabaikannya bila ekspor ini tidak melahirkan versi baru).
+      preview: files.preview,
+      reason,
       onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
     });
     toast.success('Hasil ekspor disimpan di Drive');
@@ -125,7 +129,7 @@ function QrCodesPage() {
           design={exporting}
           open
           onOpenChange={(open) => (open ? undefined : setExporting(null))}
-          onConfirm={(report) => confirmExport(exporting, report)}
+          onConfirm={(report, reason) => confirmExport(exporting, report, reason)}
         />
       ) : null}
       <Dialog

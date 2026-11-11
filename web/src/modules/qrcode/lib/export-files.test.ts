@@ -2,7 +2,7 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -93,6 +93,10 @@ test('tanpa logo: PDF 1 halaman dan PNG ber-pHYs; logo tidak didekode', async ()
   expect([...png.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   expect(Buffer.from(png).includes(Buffer.from('pHYs'))).toBe(true);
   expect(bitmapBlobs).toHaveLength(0);
+  // gambar contoh stiker: PNG sah dari kanvas yang sama, tanpa pHYs 600 dpi, di bawah batas server
+  expect([...out.preview.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  expect(out.preview.length).toBeGreaterThan(0);
+  expect(out.preview.length).toBeLessThanOrEqual(QR_LIMITS.previewMaxBytes);
 });
 
 test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disematkan ke PDF sebagai PNG', async () => {

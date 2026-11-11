@@ -24,6 +24,7 @@ export const qrKeys = {
   list: ['qrcodes', 'list'] as const,
   defaults: ['qrcodes', 'defaults'] as const,
   one: (id: string) => ['qrcodes', 'one', id] as const,
+  versions: (id: string) => ['qrcodes', 'versions', id] as const,
 };
 
 export function qrDesignsQueryOptions() {
@@ -42,6 +43,14 @@ export function qrItemOptionsQueryOptions(query: string) {
   return queryOptions({
     queryKey: [...qrKeys.all, 'itemOptions', query] as const,
     queryFn: () => api('qrcodes.itemOptions', { ...(query === '' ? {} : { query }), limit: 20 }),
+  });
+}
+
+/** Riwayat versi Manual Book satu konfigurasi (terbaru dahulu). */
+export function qrVersionsQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: qrKeys.versions(id),
+    queryFn: () => api('qrcodes.versions', { id }),
   });
 }
 

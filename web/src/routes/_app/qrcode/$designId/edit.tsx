@@ -9,6 +9,7 @@ import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
 import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
+import { VersionHistory } from '@/modules/qrcode/components/version-history';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
   qrDefaultsQueryOptions,
@@ -87,6 +88,10 @@ function EditQrDesignPage() {
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
         onCancel={() => void navigate({ to: '/qrcode' })}
+      />
+      <VersionHistory
+        designId={design.id}
+        canViewImages={can(me, 'sticker', 'view') || can(me, 'item', 'view')}
       />
     </div>
   );
