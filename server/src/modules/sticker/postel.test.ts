@@ -13,7 +13,14 @@ import {
   POSTEL_STICKER_NAME,
   POSTEL_TYPE_NAME,
 } from './postel';
-import { listStickers, listStickerTypes, saveSticker, setStickerStatus } from './service';
+import {
+  listStickers,
+  listStickerTypes,
+  saveSticker,
+  saveStickerType,
+  setStickerStatus,
+  setStickerTypeStatus,
+} from './service';
 import { validateSaveSticker, validateSetStickerStatus } from './validate';
 
 // Jenis sistem dan stiker Postel (spek 4b §3/§4): dibuat idempoten, nama terkunci, gambar boleh diganti; aturan kunci
@@ -21,6 +28,8 @@ import { validateSaveSticker, validateSetStickerStatus } from './validate';
 
 setDefaultTimeout(60_000);
 
+const POSTEL_MESSAGE =
+  'Stiker Postel dibuat otomatis; hanya minimum stok, alias, gambar, dan status yang dapat diubah';
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
 
 let env: TestEnv;
@@ -147,6 +156,7 @@ describe('aturan stiker jenis Postel', () => {
       ),
     );
     expect(error.code).toBe('VALIDATION');
+    expect(error.message).toBe(POSTEL_MESSAGE);
   });
 
   test('nama terkunci; gambar, minimum, dan alias dapat diubah', async () => {
@@ -154,6 +164,7 @@ describe('aturan stiker jenis Postel', () => {
     const renamed = await captureAppErrorAsync(() => editPostel(stickerId, { name: 'Lain' }));
     expect(renamed.code).toBe('VALIDATION');
     expect(renamed.fields).toHaveProperty('name');
+    expect(renamed.message).toBe(POSTEL_MESSAGE);
 
     const file = await upload();
     const saved = await editPostel(stickerId, { fileId: file.id, minQty: 5, alias: 'Sertifikat' });
@@ -181,6 +192,29 @@ describe('aturan stiker jenis Postel', () => {
       admin,
     );
     expect(on.status).toBe('active');
+  });
+});
+
+describe('jenis Postel dikelola aplikasi', () => {
+  test('stickerTypes.save dan setStatus terhadap jenis postel ditolak', async () => {
+    const { typeId } = await ensurePostelSticker(env, admin);
+    const type = (await listStickerTypes(env)).find((row) => row.id === typeId);
+    if (!type) throw new Error('jenis Postel hilang');
+    const renamed = await captureAppErrorAsync(() =>
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'Lain', rule: 'group' },
+        admin,
+      ),
+    );
+    expect(renamed.code).toBe('VALIDATION');
+    const off = await captureAppErrorAsync(() =>
+      setStickerTypeStatus(env, { id: type.id, status: 'inactive' }, admin),
+    );
+    expect(off.code).toBe('VALIDATION');
+    const after = (await listStickerTypes(env)).find((row) => row.id === typeId);
+    expect(after?.name).toBe(POSTEL_TYPE_NAME);
+    expect(after?.status).toBe('active');
   });
 });
 

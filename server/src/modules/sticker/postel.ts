@@ -29,16 +29,23 @@ const RENAME_FIRST_MESSAGE =
  * dibuat. Aman dipanggil serentak (indeks unik `kind_key` dan nama): pemenang dipakai semua pemanggil.
  */
 export async function ensurePostelType(env: Env, actor: ActorRef): Promise<StickerTypeRecord> {
+  const types = await listStickerTypeRecords(env.DB);
+  const existing = types.find((type) => type.systemKind === 'postel');
+  if (existing) return existing;
   const find = async (): Promise<StickerTypeRecord | undefined> =>
     (await listStickerTypeRecords(env.DB)).find((type) => type.systemKind === 'postel');
-  const existing = await find();
-  if (existing) return existing;
   const now = nowIso(env);
-  const types = await listStickerTypeRecords(env.DB);
-  const sameName = types.find((type) => type.name.toLowerCase() === POSTEL_TYPE_NAME.toLowerCase());
+  const sameName = types.find(
+    (type) => type.systemKind === '' && type.name.toLowerCase() === POSTEL_TYPE_NAME.toLowerCase(),
+  );
   try {
     if (sameName) {
-      if (sameName.stickerCount > 0) throw appError('VALIDATION', RENAME_FIRST_MESSAGE);
+      if (sameName.stickerCount > 0) {
+        // Pemanggil serentak lain mungkin sudah membuat jenis sistem: pakai pemenangnya, bukan galat palsu.
+        const winner = await find();
+        if (winner) return winner;
+        throw appError('VALIDATION', RENAME_FIRST_MESSAGE);
+      }
       await env.DB.prepare(
         "UPDATE sticker_types SET rule = 'group', system_kind = 'postel', updated_at = ?, updated_by = ? WHERE id = ? AND system_kind = '' AND (SELECT COUNT(*) FROM stickers WHERE type_id = ?) = 0",
       )
