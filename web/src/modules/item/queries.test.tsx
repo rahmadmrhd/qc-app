@@ -150,12 +150,27 @@ test('daftar item: filter instruksi dan stiker diteruskan ke items.list; bawaan 
   expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
 });
 
-test('daftar item: filter Manual Book dikirim hanya bila "missing"', async () => {
+test('daftar item: filter Manual Book dikirim hanya bila "missing", selalu bersama status aktif (label hanya untuk item aktif)', async () => {
   apiMock.mockResolvedValue({ items: [], nextCursor: null });
   await client.fetchInfiniteQuery(
     itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' }),
   );
-  expect(apiMock).toHaveBeenLastCalledWith('items.list', { manualBook: 'missing' });
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
+  // status "Nonaktif" tak dapat berpadu dengan "belum ada Manual Book": filter Manual Book menang (item nonaktif tak dihitung)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      manualBook: 'missing',
+      status: 'inactive',
+    }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
   await client.fetchInfiniteQuery(itemsInfiniteQueryOptions(DEFAULT_ITEM_FILTER));
   expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
 });

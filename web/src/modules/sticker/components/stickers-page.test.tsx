@@ -60,6 +60,7 @@ function sticker(overrides: Partial<StickerDto>): StickerDto {
     status: 'active',
     businessUnitIds: ['bu-a'],
     low: false,
+    latestManualBookVersion: false,
     updatedAt: '2026-11-09 11:00:00',
     ...overrides,
   };
@@ -71,6 +72,7 @@ const stickers: StickerDto[] = [
     alias: 'Hijau-B',
     minQty: 100,
     low: true,
+    latestManualBookVersion: false,
     businessUnitIds: ['bu-a', 'bu-b'],
   }),
   sticker({
@@ -504,7 +506,7 @@ test('Nonaktifkan stiker Usang memanggil onToggleStatus dengan stikernya', async
   expect(onToggleStatus).toHaveBeenCalledWith(manualBookStickers[0]);
 });
 
-test('stiker jenis sistem yang nonaktif tidak punya tombol Aktifkan (hanya boleh menjadi nonaktif)', () => {
+test('stiker jenis sistem yang nonaktif: Aktifkan hanya untuk versi terbaru konfigurasinya (keputusan pemilik 2026-11-11)', () => {
   renderPage({
     stickers: [
       sticker({
@@ -515,11 +517,22 @@ test('stiker jenis sistem yang nonaktif tidak punya tombol Aktifkan (hanya boleh
         businessUnitIds: [],
         status: 'inactive',
       }),
+      sticker({
+        id: 'mb4',
+        typeId: 'tp-mb',
+        typeName: 'Manual Book',
+        name: 'PBE M5-400 v4',
+        businessUnitIds: [],
+        status: 'inactive',
+        latestManualBookVersion: true,
+      }),
       ...stickers,
     ],
     types: [...types, manualBookType],
   });
+  // versi lama (bukan terbaru) tak dapat diaktifkan kembali; versi terbaru yang dinonaktifkan dapat
   expect(screen.queryByRole('button', { name: 'Aktifkan PBE M5-400 v3' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Aktifkan PBE M5-400 v4' })).toBeInTheDocument();
   // stiker biasa yang nonaktif tetap dapat diaktifkan
   expect(screen.getByRole('button', { name: 'Aktifkan Segel Polos' })).toBeInTheDocument();
 });

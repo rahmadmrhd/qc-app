@@ -230,9 +230,12 @@ test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tomb
   expect(within(row).getByText('Menurut kelompok item')).toBeInTheDocument();
   expect(within(row).getByText('Sistem')).toBeInTheDocument();
   expect(within(row).queryByRole('button', { name: 'Ubah Manual Book' })).toBeNull();
+  // jenis sistem selalu aktif: tanpa Nonaktifkan/Aktifkan (keputusan pemilik 2026-11-11)
+  expect(within(row).queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).toBeNull();
   // jenis biasa tidak diberi badge dan tetap dapat diubah
   expect(within(screen.getByRole('row', { name: /QC Hijau/ })).queryByText('Sistem')).toBeNull();
   expect(screen.getByRole('button', { name: 'Ubah QC Hijau' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Nonaktifkan QC Hijau' })).toBeInTheDocument();
 });
 
 test('form jenis hanya menawarkan aturan pengguna (tanpa Menurut kelompok item)', async () => {

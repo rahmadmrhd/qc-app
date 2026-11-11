@@ -95,7 +95,8 @@ export function StickerTypesPage({
                       Ubah
                     </Button>
                   ) : null}
-                  {canManage ? (
+                  {/* Jenis sistem selalu aktif (keputusan pemilik 2026-11-11): tanpa tombol status. */}
+                  {canManage && type.systemKind === '' ? (
                     <Button
                       size="sm"
                       variant="outline"

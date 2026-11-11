@@ -172,9 +172,12 @@ export function StickersPage({
                       </Button>
                     ) : null}
                     {/* Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker jenis sistem
-                        juga hanya boleh menjadi nonaktif (spek 4a §3 butir 15). */}
+                        yang nonaktif hanya dapat diaktifkan kembali bila versi TERBARU konfigurasinya (spek 4a §3
+                        butir 15, keputusan pemilik 2026-11-11). */}
                     {canManage &&
-                    (sticker.status !== 'inactive' || !systemTypeIds.has(sticker.typeId)) ? (
+                    (sticker.status !== 'inactive' ||
+                      !systemTypeIds.has(sticker.typeId) ||
+                      sticker.latestManualBookVersion) ? (
                       <Button
                         size="sm"
                         variant="outline"
