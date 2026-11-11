@@ -48,6 +48,7 @@ import {
   qrPdfFileName,
 } from '@shared/qrcode';
 import type { StickerStatus } from '@shared/stickers';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { ensureQrDocFolder, QR_FOLDER_SETTING } from './folders';
 import {
   claimItemsStmts,
@@ -331,6 +332,43 @@ export async function assertManualBookNameFree(
     "SELECT 1 AS taken FROM qr_designs WHERE id <> ? AND name <> '' AND LOWER(name) = LOWER(?) LIMIT 1",
   )
     .bind(exceptId, name)
+    .first<{ taken: number }>();
+  if (taken) {
+    throw appError('VALIDATION', MANUAL_BOOK_NAME_TAKEN_MESSAGE, {
+      name: MANUAL_BOOK_NAME_TAKEN_MESSAGE,
+    });
+  }
+}
+
+/**
+ * Nama stiker yang AKAN lahir (`<nama> v<versi>`, dipotong ke batas nama stiker seperti di komit ekspor) tak boleh
+ * sama (tanpa beda huruf besar, setara `name_key`) dengan stiker jenis sistem Manual Book mana pun yang bukan milik
+ * konfigurasi ini (`designId`; milik sendiri = punya baris `manual_book_versions` dengan `design_id` itu). Menutup
+ * "nama stiker historis": nama lama konfigurasi lain yang pernah diekspor tetap tinggal di katalog. Pesan generik.
+ * `version` kosong = versi berikutnya menurut basis data (jalur simpan).
+ */
+export async function assertManualBookStickerNameFree(
+  env: Env,
+  name: string,
+  designId: string,
+  version?: number,
+): Promise<void> {
+  const next =
+    version ??
+    Number(
+      (
+        await env.DB.prepare(
+          'SELECT COALESCE(MAX(version), 0) AS v FROM manual_book_versions WHERE design_id = ?',
+        )
+          .bind(designId)
+          .first<{ v: number | string }>()
+      )?.v,
+    ) + 1;
+  const stickerName = `${name} v${next}`.slice(0, STICKER_LIMITS.nameMax);
+  const taken = await env.DB.prepare(
+    "SELECT 1 AS taken FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE t.system_kind = 'manual_book' AND LOWER(s.name) = LOWER(?) AND s.id NOT IN (SELECT sticker_id FROM manual_book_versions WHERE design_id = ?) LIMIT 1",
+  )
+    .bind(stickerName, designId)
     .first<{ taken: number }>();
   if (taken) {
     throw appError('VALIDATION', MANUAL_BOOK_NAME_TAKEN_MESSAGE, {
@@ -763,7 +801,10 @@ async function saveQrDesignNow(
     if (finalIds.length === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
   }
   // Nama Manual Book unik antar konfigurasi (tanpa beda huruf besar, seperti kunci nama stiker `<nama> vN`).
-  if (input.name !== '') await assertManualBookNameFree(env, input.name, existing?.id ?? '');
+  if (input.name !== '') {
+    await assertManualBookNameFree(env, input.name, existing?.id ?? '');
+    await assertManualBookStickerNameFree(env, input.name, existing?.id ?? '');
+  }
   // Kelonggaran dipakai: komit ekspor serentak (tidak menaikkan `updated_at`) dapat melahirkan versi sesudah
   // pembacaan di atas, jadi batch simpan menjaganya ulang (`noVersionsGuardStmt`, sesudah kunci baris dari UPDATE).
   const usesRelaxation = existing !== undefined && (input.name === '' || finalIds.length === 0);

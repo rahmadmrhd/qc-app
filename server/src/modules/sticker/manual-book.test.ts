@@ -954,4 +954,105 @@ describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)
     const names = (await stickers()).map((row) => row.name);
     expect(new Set(names).size).toBe(names.length);
   });
+
+  describe('nama stiker historis (keputusan pemilik 2026-11-11)', () => {
+    /** Ganti nama + judul lewat simpan (judul berubah agar hash berubah). */
+    async function renameDesign(design: Design, name: string, title: string) {
+      const current = await reload(design.id);
+      env.clock.advance(1000);
+      const response = await rest.put(`/qrcodes/${design.id}`, {
+        email: 'qredit@gmail.com',
+        headers: { 'if-match': `"${current.updatedAt}"` },
+        body: {
+          name,
+          presetId: '',
+          itemIds: (current.items as { id: string }[]).map((item) => item.id),
+          title,
+          linkSource: 'pdf',
+          link: '',
+          documentId: current.documentId,
+          subtitle: '',
+          footer: '',
+          logoFileId: '',
+          layout: current.layout,
+          style: current.style,
+        },
+      });
+      expect(response.status).toBe(200);
+      return (await jsonOf(response)) as Design;
+    }
+
+    async function setupHistoric() {
+      const a = await makeDesign({ name: 'X' });
+      await exportOk(a); // stiker "X v1"
+      await renameDesign(a, 'Y', 'Judul Y');
+      await exportOk(a, 'Ganti nama'); // stiker "Y v2"
+      expect((await stickers()).map((row) => row.name)).toEqual(['X v1', 'Y v2']);
+      const b = await makeDesign({ name: 'Z' });
+      return { a, b };
+    }
+
+    test('ekspor B bernama "X" ditolak 422 sebelum job, berkas Drive, atau stiker; pesan generik', async () => {
+      const { a, b } = await setupHistoric();
+      await env.DB.prepare("UPDATE qr_designs SET name = 'x' WHERE id = ?").bind(b.id).run();
+      const jobsBefore = await jobsCount();
+      const filesBefore = driveNames().length;
+      const stickersBefore = (await stickers()).length;
+      const refused = await exportDesign(await reload(b.id));
+      expect(refused.status).toBe(422);
+      const error = await jsonOf(refused);
+      expect(error).toMatchObject({ fields: { name: TAKEN } });
+      expect(JSON.stringify(error)).not.toContain(a.id);
+      expect(JSON.stringify(error)).not.toContain('X v1');
+      expect(JSON.stringify(error)).not.toContain('Y');
+      expect(await jobsCount()).toBe(jobsBefore);
+      expect(driveNames().length).toBe(filesBefore);
+      expect((await stickers()).length).toBe(stickersBefore);
+    });
+
+    test('simpan B bernama "X" juga ditolak 422 pada field name (nama stiker yang akan lahir sudah ada)', async () => {
+      await setupHistoric();
+      const refused = await postDesign({ name: 'X' });
+      expect(refused.status).toBe(422);
+      expect(await jsonOf(refused)).toMatchObject({ fields: { name: TAKEN } });
+    });
+
+    test('ekspor ulang A dengan namanya sendiri tetap boleh (versi baru dan hash sama)', async () => {
+      const { a } = await setupHistoric();
+      const same = await exportDesign(await reload(a.id)); // hash sama: tanpa versi baru
+      expect(same.status).toBe(202);
+      await runPendingJobs(env);
+      await renameDesign(a, 'Y', 'Judul Y2');
+      await exportOk(a, 'Label lagi'); // versi baru "Y v3"
+      expect((await stickers()).map((row) => row.name)).toEqual(['X v1', 'Y v2', 'Y v3']);
+    });
+
+    test('komit job yang melewati rute (balapan tersisa) tetap gagal CONFLICT tanpa stiker kembar', async () => {
+      const { b } = await setupHistoric();
+      await env.DB.prepare("UPDATE qr_designs SET name = 'X' WHERE id = ?").bind(b.id).run();
+      const current = await reload(b.id);
+      const jobId = await enqueueJob(
+        env,
+        'qr_export',
+        { designId: b.id, expectedUpdatedAt: current.updatedAt },
+        'qredit@gmail.com',
+        {
+          blobs: {
+            pdf: bytesToBase64(pdfBytes()),
+            png: bytesToBase64(pngBytes()),
+            preview: bytesToBase64(pngBytes(9)),
+            reason: '',
+          },
+        },
+      );
+      await runPendingJobs(env);
+      const job = (await jsonOf(
+        await rest.get(`/jobs/${jobId}`, { email: 'qredit@gmail.com' }),
+      )) as { status: string; error: string };
+      expect(job.status).toBe('failed');
+      expect(job.error).toContain('Nama stiker Manual Book sudah dipakai konfigurasi lain');
+      expect((await stickers()).map((row) => row.name)).toEqual(['X v1', 'Y v2']);
+      expect(await versions(b.id)).toHaveLength(0);
+    });
+  });
 });

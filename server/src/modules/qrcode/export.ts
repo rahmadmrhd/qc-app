@@ -22,6 +22,7 @@ import type { QrDesignRecord } from './repo';
 import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignExportStmt } from './repo';
 import {
   assertManualBookNameFree,
+  assertManualBookStickerNameFree,
   exportStamp,
   QR_STALE_MESSAGE,
   qrDesignContent,
@@ -108,6 +109,8 @@ export async function requestQrExport(
   const willCreateVersion = !latest || latest.contentHash !== hash;
   const reason = input.reason.trim();
   if (willCreateVersion) {
+    // Nama stiker yang akan lahir (`<nama> v<n>`) tak boleh sudah dipakai stiker konfigurasi lain (nama historis).
+    await assertManualBookStickerNameFree(env, design.name, design.id, (latest?.version ?? 0) + 1);
     if (latest && reason === '') {
       throw fieldError('reason', 'Isi alasan perubahan label (wajib untuk versi baru)');
     }
