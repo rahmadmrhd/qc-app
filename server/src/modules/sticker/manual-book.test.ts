@@ -10,6 +10,7 @@ import { jsonOf, restClient } from '@server-test/rest-client';
 import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { setStickerStatus } from './service';
 
 // Stiker Manual Book berversi yang lahir dari ekspor konfigurasi QR (spek 4a): jenis sistem, stiker, versi, stiker
 // lama deprecated/inactive, idempotensi, dan kegagalan sebelum komit.
@@ -703,6 +704,54 @@ describe('konkurensi dengan komit ekspor', () => {
     const rows = await stickers();
     expect(rows.find((row) => row.name === 'PBE M5-400 v1')?.status).toBe('deprecated');
     expect(rows.find((row) => row.name === 'PBE M5-400 v2')?.status).toBe('active');
+  });
+});
+
+describe('aktivasi stiker versi terbaru vs komit ekspor serentak', () => {
+  test('v2 (terbaru) nonaktif diaktifkan ketika komit v3 menyela: aktivasi ditolak, hanya v3 yang active', async () => {
+    const design = await makeDesign();
+    await exportOk(design);
+    await relabel(design, 'Label Dua');
+    await exportOk(design, 'Alasan dua');
+    const v2 = (await stickers()).find((row) => row.name === 'PBE M5-400 v2');
+    if (!v2) throw new Error('v2 hilang');
+    await setStickerStatus(env, { id: v2.id, status: 'inactive' }, { email: 'qredit@gmail.com' });
+    // Komit ekspor v3 mengunci baris v2 (stiker terbaru) lebih dulu, lalu melahirkan v3 dan melepas kunci.
+    const { out } = await whileLocked(
+      { sql: 'SELECT id FROM stickers WHERE id = ? FOR UPDATE', id: v2.id },
+      async (tx) => {
+        await tx
+          .prepare(
+            "INSERT INTO stickers (id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by) VALUES ('s-v3', ?, 'PBE M5-400 v3', '', '', 0, 'active', 't', 't', 'x')",
+          )
+          .bind(v2.type_id)
+          .run();
+        await tx
+          .prepare(
+            "INSERT INTO manual_book_versions (sticker_id, design_id, version, content_hash, content_snapshot, reason, created_at, created_by) VALUES ('s-v3', ?, 3, 'h3', '{}', 'r', 't', 'x')",
+          )
+          .bind(design.id)
+          .run();
+      },
+      async () => {
+        try {
+          await setStickerStatus(
+            env,
+            { id: v2.id, status: 'active' },
+            { email: 'qredit@gmail.com' },
+          );
+          return 'activated';
+        } catch (error) {
+          return (error as { message?: string }).message ?? 'galat';
+        }
+      },
+    );
+    expect(out).toBe('Hanya versi terbaru Manual Book yang dapat diaktifkan');
+    const rows = await stickers();
+    expect(rows.filter((row) => row.status === 'active').map((row) => row.name)).toEqual([
+      'PBE M5-400 v3',
+    ]);
+    expect(rows.find((row) => row.name === 'PBE M5-400 v2')?.status).toBe('inactive');
   });
 });
 

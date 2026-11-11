@@ -508,7 +508,7 @@ async function setStickerStatusOnce(
   }
   // Stiker jenis sistem hanya boleh diaktifkan bila masih versi terbaru konfigurasinya.
   const guardLatest = input.status === 'active' && type !== undefined && type.systemKind !== '';
-  if (guardLatest && !(await isLatestManualBookVersion(env.DB, sticker.id))) {
+  if (guardLatest && !latest) {
     throw appError('VALIDATION', NOT_LATEST_MESSAGE, { status: NOT_LATEST_MESSAGE });
   }
   const now = nowIso(env);
@@ -518,9 +518,13 @@ async function setStickerStatusOnce(
     updatedAt: now,
     updatedBy: actor.email,
   };
+  // Penjaga versi terbaru ditaruh SESUDAH `UPDATE`: UPDATE menunggu kunci baris stiker (komit ekspor mengunci baris
+  // versi terbaru lebih dulu), dan pembacaan konsisten pertama di transaksi ini baru terjadi sesudah kunci didapat,
+  // sehingga penjaga melihat versi yang baru saja dikomit ekspor serentak. Penjaga di depan akan membaca snapshot
+  // lama dan meloloskan dua stiker `active` sekaligus. `latest` di atas hanya pemeriksaan awal (pesan yang jelas).
   await env.DB.batch([
-    ...(guardLatest ? [latestManualBookVersionGuardStmt(env.DB, sticker.id)] : []),
     setStickerStatusStmt(env.DB, updated, sticker.updatedAt),
+    ...(guardLatest ? [latestManualBookVersionGuardStmt(env.DB, sticker.id)] : []),
     writeAudit(env.DB, {
       ts: now,
       actor: actor.email,

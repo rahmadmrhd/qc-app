@@ -498,6 +498,10 @@ export async function isLatestManualBookVersion(db: Preparer, stickerId: string)
 /**
  * Penjaga di dalam `batch()`: membatalkan batch (`CAS_FAIL_SQL`) bila stiker ini bukan lagi versi terbaru
  * konfigurasinya (versi lebih baru lahir dari ekspor serentak). Dipakai saat mengaktifkan stiker jenis sistem.
+ * WAJIB ditaruh SESUDAH `UPDATE` stiker di batch yang sama: ini SELECT biasa (tanpa kunci) pada REPEATABLE READ,
+ * snapshotnya dibuat pada pembacaan pertama transaksi. Sesudah `UPDATE` (yang menunggu kunci baris stiker yang
+ * dipegang komit ekspor), snapshot dibuat setelah komit itu selesai dan melihat versi baru; di depan `UPDATE`
+ * penjaga membaca snapshot lama dan dapat meloloskan dua stiker `active`.
  */
 export function latestManualBookVersionGuardStmt(db: Preparer, stickerId: string): DbStatement {
   return db
