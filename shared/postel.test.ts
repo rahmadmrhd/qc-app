@@ -37,6 +37,8 @@ describe('wibDateIso', () => {
 describe('isCalendarDate', () => {
   test('menerima tanggal kalender nyata', () => {
     expect(isCalendarDate('2028-02-29')).toBe(true);
+    expect(isCalendarDate('2100-12-31')).toBe(true);
+    expect(isCalendarDate('2000-01-01')).toBe(true);
   });
   test('menolak tanggal tidak nyata, format longgar, dan tahun di luar rentang', () => {
     for (const value of ['2027-02-29', '2026-13-01', '1999-12-31', '2101-01-01', '2026-1-5', '']) {
@@ -147,6 +149,7 @@ describe('postelName', () => {
     const models = Array.from({ length: 30 }, (_, i) => `AB${String(i).padStart(2, '0')}-XYZ`);
     const name = postelName(models);
     expect(name.length).toBeLessThanOrEqual(80);
+    expect(name.length).toBeGreaterThan(70);
     expect(name.endsWith('…')).toBe(true);
     expect(postelName(['A-1', 'A-2'])).toBe('A-1/2');
   });
