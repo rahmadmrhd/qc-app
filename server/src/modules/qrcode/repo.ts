@@ -226,6 +226,59 @@ export function updateQrDesignStmt(
     .bind(...values, design.id, ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]));
 }
 
+const EXPORT_COLUMN_NAMES: ReadonlySet<string> = new Set([
+  'exported_hash',
+  'exported_at',
+  'exported_by',
+  'export_pdf_drive_id',
+  'export_png_drive_id',
+]);
+
+/**
+ * UPDATE isi konfigurasi TANPA kolom hasil ekspor (hash, waktu, pengekspor, id berkas Drive). Dipakai simpan biasa:
+ * komit ekspor menulis kolom itu TANPA menaikkan `updated_at`, sehingga CAS `updated_at` tetap lolos meski salinan
+ * konfigurasi yang dipegang penyimpan sudah basi; menulis ulang kolom itu dari salinan basi akan menimpa berkas
+ * ekspor yang baru di-commit. Penjaga `guardUpdatedAt` dan `guardChanged` seperti `updateQrDesignStmt`.
+ */
+export function updateQrDesignContentStmt(
+  db: Db,
+  design: QrDesignRecord,
+  guardUpdatedAt?: string,
+): DbStatement {
+  const values = designValues(design);
+  const pairs = DESIGN_COLUMNS.split(', ')
+    .map((name, index) => [name, values[index]] as const)
+    .filter(([name]) => name !== 'id' && !EXPORT_COLUMN_NAMES.has(name));
+  return db
+    .prepare(
+      `UPDATE qr_designs SET ${pairs.map(([name]) => `${name} = ?`).join(', ')} WHERE id = ?${
+        guardUpdatedAt === undefined ? '' : ' AND updated_at = ?'
+      }`,
+    )
+    .bind(
+      ...pairs.map(([, value]) => value as string | number),
+      design.id,
+      ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]),
+    );
+}
+
+/** Hanya menyetel flag `overflow` (laporan peramban); tanpa menyentuh kolom lain dan tanpa menaikkan `updated_at`. */
+export function setQrDesignOverflowStmt(db: Db, id: string, overflow: boolean): DbStatement {
+  return db
+    .prepare('UPDATE qr_designs SET overflow = ? WHERE id = ?')
+    .bind(overflow ? '1' : '', id);
+}
+
+/**
+ * Mengunci baris konfigurasi (`FOR UPDATE`) di AWAL batch yang bergantung pada keadaan versi Manual Book (hapus,
+ * simpan dengan kelonggaran). Komit ekspor memulai batch-nya dengan `UPDATE qr_designs` (kunci yang sama) tanpa
+ * menaikkan `updated_at`, jadi keduanya saling menunggu: pembacaan penjaga sesudah kunci ini melihat komit
+ * ekspor yang lebih dulu selesai, dan komit ekspor yang menyusul melihat baris sudah terhapus (basi).
+ */
+export function lockQrDesignRowStmt(db: Db, id: string): DbStatement {
+  return db.prepare('SELECT id FROM qr_designs WHERE id = ? FOR UPDATE').bind(id);
+}
+
 export function deleteQrDesignStmt(db: Db, id: string): DbStatement {
   return db.prepare('DELETE FROM qr_designs WHERE id = ?').bind(id);
 }

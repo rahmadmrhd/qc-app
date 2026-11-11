@@ -18,6 +18,7 @@ import {
   type StickerTypeRecord,
   toStickerStatus,
 } from './repo';
+import { lockStickerRowStmt } from './stock-repo';
 
 /**
  * Stiker Manual Book (tahap 4a): lahir dari ekspor konfigurasi QR dan berversi. Jenis sistem `manual_book` (aturan
@@ -114,6 +115,10 @@ export async function manualBookCommitStatements(
   const latest = versions[0];
   if (latest && latest.contentHash === input.hash) return [];
   if (!input.preview) {
+    // Job yang diantrekan sebelum rilis ini (tanpa blob gambar contoh) dan belum pernah berversi: komit tanpa versi,
+    // bukan galat; konfigurasi menjadi Manual Book pada ekspor ulang berikutnya. Konfigurasi yang sudah berversi
+    // tidak pernah sampai ke sini tanpa gambar contoh (rute mewajibkannya), jadi itu galat sungguhan.
+    if (!latest) return [];
     throw appError('INTERNAL', 'Gambar contoh ekspor tidak ditemukan; ulangi ekspor dari awal');
   }
   const type = await ensureManualBookType(env, input.actor);
@@ -139,21 +144,15 @@ export async function manualBookCommitStatements(
     updatedBy: input.actor,
   };
   const { content } = input;
-  const statements: DbStatement[] = [
-    insertStickerStmt(env.DB, sticker),
-    insertFileStmt(env.DB, {
-      id: input.preview.fileId,
-      driveId: input.preview.driveId,
-      mime: 'image/png',
-      size: input.preview.size,
-      width: input.preview.width,
-      height: input.preview.height,
-      ownerType: 'sticker',
-      ownerId: stickerId,
-      createdAt: input.now,
-      createdBy: input.actor,
-      status: 'active',
-    }),
+  const statements: DbStatement[] = [];
+  if (latest) {
+    // Urutan kunci sama dengan penulis stok (`lockStickerRowStmt`: baris stiker dulu, baru baris stok): tanpa ini
+    // kunci bersama di baris stok di bawah dapat berbalik dengan penulis stok dan menjadi deadlock.
+    statements.push(lockStickerRowStmt(env.DB, latest.stickerId));
+  }
+  statements.push(
+    // Baris versi PERTAMA: `UNIQUE (design_id, version)` menolak ekspor serentak yang membuat versi sama dengan
+    // galat duplikat tepat di sini (dipetakan menjadi basi), sebelum insert stiker menabrak nama unik yang sama.
     insertManualBookVersionStmt(env.DB, {
       stickerId,
       designId: design.id,
@@ -172,10 +171,24 @@ export async function manualBookCommitStatements(
       createdAt: input.now,
       createdBy: input.actor,
     }),
-  ];
+    insertStickerStmt(env.DB, sticker),
+    insertFileStmt(env.DB, {
+      id: input.preview.fileId,
+      driveId: input.preview.driveId,
+      mime: 'image/png',
+      size: input.preview.size,
+      width: input.preview.width,
+      height: input.preview.height,
+      ownerType: 'sticker',
+      ownerId: stickerId,
+      createdAt: input.now,
+      createdBy: input.actor,
+      status: 'active',
+    }),
+  );
   if (latest) {
     statements.push(
-      // Kunci bersama baris stok dulu agar total dibaca setelah penulis stok serentak komit (keluar/koreksi/opname
+      // Kunci bersama baris stok agar total dibaca setelah penulis stok serentak komit (keluar/koreksi/opname
       // yang menyentuh 0 memakai pernyataan penonaktifan yang sama pada stiker `deprecated`).
       env.DB.prepare(
         'SELECT 1 AS locked FROM sticker_stock WHERE sticker_id = ? LOCK IN SHARE MODE',

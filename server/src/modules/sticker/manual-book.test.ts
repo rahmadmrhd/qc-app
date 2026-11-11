@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { bytesToBase64 } from '@server/core/bytes';
+import type { DbTx } from '@server/core/db';
 import { runPendingJobs } from '@server/jobs/runner';
 import { JOB_MAX_ATTEMPTS, runJobStep } from '@server/modules/jobs/consumer';
+import { enqueueJob } from '@server/modules/jobs/service';
+import { QR_STALE_MESSAGE } from '@server/modules/qrcode/service';
 import { qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
@@ -19,16 +23,16 @@ const realError = console.error;
 const PDF_HEAD = [0x25, 0x50, 0x44, 0x46, 0x2d];
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-/** PNG sah 4x3 piksel (hanya IHDR yang dibaca server) dengan isi acak tambahan. */
-function pngBytes(seed = 1): Uint8Array {
+/** PNG sah (hanya IHDR yang dibaca server; bawaan 4x3 piksel) dengan isi acak tambahan. */
+function pngBytes(seed = 1, width = 4, height = 3): Uint8Array {
   const bytes = new Uint8Array(64);
   for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 13 + seed) % 256;
   bytes.set(PNG_HEAD, 0);
   const view = new DataView(bytes.buffer);
   view.setUint32(8, 13); // panjang IHDR
   bytes.set([0x49, 0x48, 0x44, 0x52], 12);
-  view.setUint32(16, 4); // lebar
-  view.setUint32(20, 3); // tinggi
+  view.setUint32(16, width);
+  view.setUint32(20, height);
   return bytes;
 }
 function pdfBytes(seed = 1): Uint8Array {
@@ -167,6 +171,43 @@ async function versions(designId: string) {
 /** Berkas ekspor (PDF/PNG label); PDF sumber QR dan gambar contoh bernama lain. */
 const EXPORT_NAME = /^PBE-M5-400-\d+\.(pdf|png)$/;
 const driveNames = () => [...env.BRIDGE.state.files.values()].map((file) => file.name);
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const DESIGN_LOCK = 'SELECT id FROM qr_designs WHERE id = ? FOR UPDATE';
+
+/**
+ * Meniru penulis lain yang sedang memegang kunci baris (komit ekspor, penulis stok): transaksi terpisah mengunci
+ * baris `lock`, `start` dijalankan (ia akan menunggu kunci), sesudah jeda `inside` dikerjakan di transaksi itu dan
+ * dikomit. Hasil `start` dikembalikan bersama banyaknya transaksi pemegang dijalankan (>1 = deadlock lalu diulang).
+ */
+async function whileLocked<T>(
+  lock: { sql: string; id: string },
+  inside: (tx: DbTx) => Promise<void>,
+  start: () => Promise<T>,
+): Promise<{ out: T; holderRuns: number }> {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  let holderRuns = 0;
+  const held = env.DB.transaction(async (tx) => {
+    holderRuns++;
+    await tx.prepare(lock.sql).bind(lock.id).first();
+    locked();
+    await gate;
+    await inside(tx);
+  });
+  await ready;
+  const pending = start();
+  await sleep(1500);
+  release();
+  await held;
+  return { out: await pending, holderRuns };
+}
 
 describe('ekspor pertama', () => {
   test('membuat jenis Manual Book, satu stiker v1 aktif ber-min default jenis, baris versi, dan gambar contoh milik stiker', async () => {
@@ -320,16 +361,40 @@ describe('ekspor ulang', () => {
     expect(driveNames().length).toBeGreaterThan(before);
   });
 
-  test('dua ekspor ulang serentak dengan label berubah: tepat satu versi baru', async () => {
+  test('dua job ekspor serentak yang melahirkan versi sama: satu menang, yang kalah gagal stale (bukan konflik nama)', async () => {
     const design = await makeDesign();
     await exportOk(design);
     await relabel(design, 'Label Baru');
     const current = await reload(design.id);
-    const [a, b] = await Promise.all([
-      exportDesign(current, { reason: 'A' }),
-      exportDesign(current, { reason: 'B' }),
-    ]);
-    expect([a.status, b.status].every((status) => status === 202 || status === 412)).toBe(true);
+    const payload = { designId: design.id, expectedUpdatedAt: current.updatedAt };
+    const blobs = (reason: string) => ({
+      pdf: bytesToBase64(pdfBytes()),
+      png: bytesToBase64(pngBytes()),
+      preview: bytesToBase64(pngBytes(9)),
+      reason,
+    });
+    // Dua job langsung diantrekan (melewati penyatuan `findActiveJob` di rute) agar komitnya benar-benar berebut.
+    const a = await enqueueJob(env, 'qr_export', payload, 'qredit@gmail.com', {
+      blobs: blobs('A'),
+    });
+    const b = await enqueueJob(env, 'qr_export', payload, 'qredit@gmail.com', {
+      blobs: blobs('B'),
+    });
+    for (const jobId of [a, b])
+      for (let step = 0; step < 3; step++) await runJobStep(env, jobId, 1);
+    // Kunci baris konfigurasi ditahan agar kedua komit sudah menyusun pernyataannya (sama-sama melihat v1)
+    // sebelum berebut; dilepas sesudah jeda.
+    const { out } = await whileLocked(
+      { sql: DESIGN_LOCK, id: design.id },
+      async () => undefined,
+      () => Promise.all([runJobStep(env, a, 1), runJobStep(env, b, 1)]),
+    );
+    expect(out.map((result) => result.kind).sort()).toEqual(['advanced', 'failed']);
+    const failedId = out[0]?.kind === 'failed' ? a : b;
+    const failed = (await jsonOf(
+      await rest.get(`/jobs/${failedId}`, { email: 'qredit@gmail.com' }),
+    )) as { status: string; error: string };
+    expect(failed).toMatchObject({ status: 'failed', error: QR_STALE_MESSAGE });
     await runPendingJobs(env);
     const v = await versions(design.id);
     expect(v.map((row) => row.version)).toEqual([1, 2]);
@@ -413,5 +478,237 @@ describe('qrcodes.versions', () => {
     expect(
       (await rest.get('/qrcodes/tidak-ada/versions', { email: 'qrview@gmail.com' })).status,
     ).toBe(404);
+  });
+});
+
+describe('konkurensi dengan komit ekspor', () => {
+  /** Konfigurasi lama tanpa penempatan nama (kelonggaran: boleh tanpa nama/item selama belum berversi). */
+  async function legacyDesign() {
+    const design = await makeDesign();
+    await env.DB.prepare("UPDATE qr_designs SET name_placement = '' WHERE id = ?")
+      .bind(design.id)
+      .run();
+    return design;
+  }
+  const saveBody = (current: Record<string, unknown>, extra: Record<string, unknown>) => ({
+    name: current.name,
+    presetId: '',
+    itemIds: (current.items as { id: string }[]).map((item) => item.id),
+    title: 'Judul Baru',
+    linkSource: 'pdf',
+    link: '',
+    documentId: current.documentId,
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: current.layout,
+    style: current.style,
+    ...extra,
+  });
+  const ownedItems = async (designId: string) =>
+    Number(
+      (
+        await env.DB.prepare('SELECT COUNT(*) AS n FROM items WHERE manual_book_design_id = ?')
+          .bind(designId)
+          .first<{ n: number | string }>()
+      )?.n,
+    );
+  const seedMbSticker = async (name: string) => {
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 's-x', typeId: 't-mb', name });
+  };
+  const insertVersion = (tx: DbTx, designId: string) =>
+    tx
+      .prepare(
+        "INSERT INTO manual_book_versions (sticker_id, design_id, version, content_hash, content_snapshot, reason, created_at, created_by) VALUES ('s-x', ?, 1, 'h', '{}', '', 't', 'x')",
+      )
+      .bind(designId)
+      .run();
+
+  test('hapus vs komit ekspor serentak: hapus ditolak, konfigurasi dan item utuh, tanpa versi yatim', async () => {
+    const design = await makeDesign();
+    await seedMbSticker('PBE M5-400 v1');
+    const itemsBefore = await ownedItems(design.id);
+    expect(itemsBefore).toBeGreaterThan(0);
+    // Komit ekspor menahan baris konfigurasi dan melahirkan versi (updated_at tidak naik) sesudah hapus lolos
+    // pembacaan awalnya.
+    const { out } = await whileLocked(
+      { sql: DESIGN_LOCK, id: design.id },
+      async (tx) => {
+        await insertVersion(tx, design.id);
+      },
+      () => rest.del(`/qrcodes/${design.id}`, { email: 'qrmanage@gmail.com' }),
+    );
+    expect(out.status).toBe(409);
+    expect((await rest.get(`/qrcodes/${design.id}`, { email: 'qredit@gmail.com' })).status).toBe(
+      200,
+    );
+    expect(await ownedItems(design.id)).toBe(itemsBefore);
+    expect(await versions(design.id)).toHaveLength(1);
+  });
+
+  test('simpan tanpa nama/item (kelonggaran) vs komit ekspor serentak: ditolak 412, nama tetap', async () => {
+    const design = await legacyDesign();
+    await seedMbSticker('PBE M5-400 v1');
+    const current = await reload(design.id);
+    const { out } = await whileLocked(
+      { sql: DESIGN_LOCK, id: design.id },
+      async (tx) => {
+        await insertVersion(tx, design.id);
+      },
+      () =>
+        rest.put(`/qrcodes/${design.id}`, {
+          email: 'qredit@gmail.com',
+          headers: { 'if-match': `"${current.updatedAt}"` },
+          body: saveBody({ ...current, items: [] }, { name: '' }),
+        }),
+    );
+    expect(out.status).toBe(412);
+    const row = await env.DB.prepare('SELECT name, title FROM qr_designs WHERE id = ?')
+      .bind(design.id)
+      .first<{ name: string; title: string }>();
+    expect(row?.name).toBe(current.name);
+    expect(row?.title).not.toBe('Judul Baru');
+    expect(await ownedItems(design.id)).toBeGreaterThan(0);
+  });
+
+  test('simpan vs komit ekspor serentak: hasil ekspor yang baru commit tidak tertimpa salinan basi', async () => {
+    const design = await legacyDesign();
+    const current = await reload(design.id);
+    const { out } = await whileLocked(
+      { sql: DESIGN_LOCK, id: design.id },
+      async (tx) => {
+        await tx
+          .prepare(
+            "UPDATE qr_designs SET exported_hash = 'H-baru', exported_at = 'T-baru', exported_by = 'x@y', export_pdf_drive_id = 'pdf-baru', export_png_drive_id = 'png-baru' WHERE id = ?",
+          )
+          .bind(design.id)
+          .run();
+      },
+      () =>
+        rest.put(`/qrcodes/${design.id}`, {
+          email: 'qredit@gmail.com',
+          headers: { 'if-match': `"${current.updatedAt}"` },
+          body: saveBody(current, {}),
+        }),
+    );
+    expect(out.status).toBe(200);
+    const row = await env.DB.prepare(
+      'SELECT title, exported_hash, exported_at, exported_by, export_pdf_drive_id, export_png_drive_id FROM qr_designs WHERE id = ?',
+    )
+      .bind(design.id)
+      .first<Record<string, string>>();
+    expect(row).toMatchObject({
+      title: 'Judul Baru',
+      exported_hash: 'H-baru',
+      exported_at: 'T-baru',
+      exported_by: 'x@y',
+      export_pdf_drive_id: 'pdf-baru',
+      export_png_drive_id: 'png-baru',
+    });
+  });
+
+  test('komit ekspor mengunci baris stiker lama lebih dulu (urutan sama dengan penulis stok): tanpa deadlock', async () => {
+    const design = await makeDesign();
+    await exportOk(design);
+    const [v1] = await stickers();
+    await env.DB.prepare(
+      'INSERT INTO locations (id, code, name, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('loc1', 'L1', 'Gudang', 'active', 't', 't', 's')
+      .run();
+    await env.DB.prepare(
+      'INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES (?, ?, 5, ?)',
+    )
+      .bind(v1?.id, 'loc1', 't')
+      .run();
+    await relabel(design, 'Label Baru');
+    const current = await reload(design.id);
+    const accepted = await exportDesign(current, { reason: 'Ganti' });
+    expect(accepted.status).toBe(202);
+    const { jobId } = (await jsonOf(accepted)) as { jobId: string };
+    for (let step = 0; step < 3; step++) await runJobStep(env, jobId, 1);
+    // Penulis stok: kunci baris stiker dulu, baru mengubah baris stok.
+    const { out, holderRuns } = await whileLocked(
+      { sql: 'SELECT id FROM stickers WHERE id = ? FOR UPDATE', id: v1?.id ?? '' },
+      async (tx) => {
+        await tx
+          .prepare('UPDATE sticker_stock SET qty = 3 WHERE sticker_id = ?')
+          .bind(v1?.id)
+          .run();
+      },
+      () => runJobStep(env, jobId, 1),
+    );
+    expect(holderRuns).toBe(1);
+    expect(out.kind).toBe('advanced');
+    const rows = await stickers();
+    expect(rows.find((row) => row.name === 'PBE M5-400 v1')?.status).toBe('deprecated');
+    expect(rows.find((row) => row.name === 'PBE M5-400 v2')?.status).toBe('active');
+  });
+});
+
+describe('job ekspor tanpa gambar contoh (melintasi deploy)', () => {
+  test('tanpa blob preview dan tanpa versi: komit tanpa versi/stiker, berkas ekspor tetap sah, tanpa yatim', async () => {
+    const design = await makeDesign();
+    const current = await reload(design.id);
+    const jobId = await enqueueJob(
+      env,
+      'qr_export',
+      { designId: design.id, expectedUpdatedAt: current.updatedAt },
+      'qredit@gmail.com',
+      { blobs: { pdf: bytesToBase64(pdfBytes()), png: bytesToBase64(pngBytes()) } },
+    );
+    await runPendingJobs(env);
+    const job = (await jsonOf(await rest.get(`/jobs/${jobId}`, { email: 'qredit@gmail.com' }))) as {
+      status: string;
+    };
+    expect(job.status).toBe('done');
+    expect(await stickers()).toHaveLength(0);
+    expect(await versions(design.id)).toHaveLength(0);
+    const row = await env.DB.prepare(
+      'SELECT exported_hash, export_pdf_drive_id, export_png_drive_id FROM qr_designs WHERE id = ?',
+    )
+      .bind(design.id)
+      .first<{ exported_hash: string; export_pdf_drive_id: string; export_png_drive_id: string }>();
+    expect(row?.exported_hash).not.toBe('');
+    const live = [...env.BRIDGE.state.files.values()].filter(
+      (file) => !file.trashed && EXPORT_NAME.test(file.name),
+    );
+    expect(live).toHaveLength(2);
+    expect(row?.export_pdf_drive_id.trim()).not.toBe('');
+    expect(row?.export_png_drive_id.trim()).not.toBe('');
+  });
+
+  test('gambar contoh ber-IHDR raksasa pada job (melewati rute): job gagal, berkas dibuang, tanpa stiker', async () => {
+    const design = await makeDesign();
+    const current = await reload(design.id);
+    const jobId = await enqueueJob(
+      env,
+      'qr_export',
+      { designId: design.id, expectedUpdatedAt: current.updatedAt },
+      'qredit@gmail.com',
+      {
+        blobs: {
+          pdf: bytesToBase64(pdfBytes()),
+          png: bytesToBase64(pngBytes()),
+          preview: bytesToBase64(pngBytes(9, 30000, 30000)),
+          reason: '',
+        },
+      },
+    );
+    await runPendingJobs(env);
+    const job = (await jsonOf(await rest.get(`/jobs/${jobId}`, { email: 'qredit@gmail.com' }))) as {
+      status: string;
+    };
+    expect(job.status).toBe('failed');
+    expect(await stickers()).toHaveLength(0);
+    expect(await versions(design.id)).toHaveLength(0);
+    const live = [...env.BRIDGE.state.files.values()].filter((file) => !file.trashed);
+    expect(live.some((file) => EXPORT_NAME.test(file.name))).toBe(false);
   });
 });

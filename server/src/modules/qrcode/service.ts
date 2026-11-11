@@ -81,9 +81,11 @@ import {
   listQrDesigns,
   listQrDocuments,
   listQrPresets,
+  lockQrDesignRowStmt,
   runGuardedBatch,
+  setQrDesignOverflowStmt,
   updateQrDefaultsStmt,
-  updateQrDesignStmt,
+  updateQrDesignContentStmt,
   updateQrDocumentStmt,
   updateQrPresetStmt,
 } from './repo';
@@ -731,6 +733,9 @@ async function saveQrDesignNow(
     if (input.name === '') throw fieldFail('name', 'Nama Manual Book wajib diisi');
     if (finalIds.length === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
   }
+  // Kelonggaran dipakai: komit ekspor serentak (tidak menaikkan `updated_at`) dapat melahirkan versi sesudah
+  // pembacaan di atas, jadi batch simpan menjaganya ulang (`noVersionsGuardStmt`, sesudah kunci baris dari UPDATE).
+  const usesRelaxation = existing !== undefined && (input.name === '' || finalIds.length === 0);
 
   const now = nowIso(env);
   const next: NewQrDesignRecord = {
@@ -799,7 +804,7 @@ async function saveQrDesignNow(
     // menaikkan updatedAt (agar versi yang sedang dimuat pengguna lain tidak jadi basi).
     if (existing.overflow !== next.overflow) {
       const flagged: QrDesignRecord = { ...existing, overflow: next.overflow };
-      await env.DB.batch([updateQrDesignStmt(env.DB, flagged)]);
+      await env.DB.batch([setQrDesignOverflowStmt(env.DB, existing.id, next.overflow)]);
       return { dto: await viewOf(flagged), released: [] };
     }
     return { dto: await viewOf(existing), released: [] };
@@ -807,8 +812,10 @@ async function saveQrDesignNow(
   await runItemBatch(
     env,
     [
-      updateQrDesignStmt(env.DB, next, existing.updatedAt),
+      // Tanpa kolom hasil ekspor: komit ekspor serentak tidak boleh ditimpa salinan basi.
+      updateQrDesignContentStmt(env.DB, next, existing.updatedAt),
       guardChanged(env.DB),
+      ...(usesRelaxation ? [noVersionsGuardStmt(env.DB, existing.id)] : []),
       ...releaseItemsStmt(env.DB, existing.id, toRemove),
       ...claimItemsStmts(env.DB, existing.id, toAdd),
       ...attach,
@@ -824,8 +831,20 @@ async function saveQrDesignNow(
     existing.id,
     toAdd,
   );
+  // Kolom hasil ekspor tidak ikut ditulis di atas: DTO memakai nilainya yang terbaru, bukan salinan awal.
+  const settled = (await listQrDesigns(env)).find((row) => row.id === existing.id);
+  const saved: NewQrDesignRecord = settled
+    ? {
+        ...next,
+        exportedHash: settled.exportedHash,
+        exportedAt: settled.exportedAt,
+        exportedBy: settled.exportedBy,
+        exportPdfDriveId: settled.exportPdfDriveId,
+        exportPngDriveId: settled.exportPngDriveId,
+      }
+    : next;
   return {
-    dto: await viewOf(next),
+    dto: await viewOf(saved),
     released:
       existing.documentId !== '' && existing.documentId !== next.documentId
         ? [existing.documentId]
@@ -966,7 +985,10 @@ export async function removeQrDesign(
   await runGuardedBatch(
     env.DB,
     [
-      // Ekspor serentak yang baru melahirkan stiker membatalkan penghapusan.
+      // Kunci baris konfigurasi dulu: komit ekspor (tidak menaikkan `updated_at`) memegang kunci yang sama, jadi
+      // penjaga berikutnya melihat versi yang baru lahir (hapus dibatalkan) atau komit ekspor menunggu dan
+      // mendapati baris sudah terhapus (ekspor basi).
+      lockQrDesignRowStmt(env.DB, design.id),
       noVersionsGuardStmt(env.DB, design.id),
       releaseAllItemsStmt(env.DB, design.id),
       deleteQrDesignStmt(env.DB, design.id),
