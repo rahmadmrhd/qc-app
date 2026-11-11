@@ -1,5 +1,5 @@
 import type { ItemDto } from '@shared/contract';
-import { cleanup, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 
@@ -237,11 +237,15 @@ test('bagian Postel: nama, nomor, tanggal habis, badge kondisi, dan tautan Buka'
   expect(screen.getByRole('link', { name: 'Buka Postel' })).toHaveAttribute('href', '/postel/p1');
 });
 
-test('tautan Buka Postel tak tampil bila openPostelHref tak ada atau mengembalikan null', () => {
-  const first = renderView({ postel: postelInfo });
+test('tautan Buka Postel tak tampil bila openPostelHref tidak diberikan', () => {
+  renderView({ postel: postelInfo });
+  expect(screen.getByText('M5-200/400')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
-  cleanup();
-  renderView({ postel: postelInfo, openPostelHref: () => null });
+});
+
+test('tautan Buka Postel tak tampil bila openPostelHref mengembalikan null', () => {
+  const openPostelHref = vi.fn(() => null);
+  renderView({ postel: postelInfo, openPostelHref });
   expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
-  expect(first).toBeDefined();
+  expect(openPostelHref).toHaveBeenCalledTimes(1);
 });

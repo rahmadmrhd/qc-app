@@ -52,6 +52,7 @@ export function ItemDetailView({
   onEdit,
   onToggleStatus,
 }: ItemDetailViewProps) {
+  const postelHref = postel ? (openPostelHref?.(postel.id) ?? null) : null;
   return (
     <div className="max-w-4xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -136,11 +137,8 @@ export function ItemDetailView({
                 Berlaku sampai {formatPostelDate(postel.expiresOn)}
               </span>
               <PostelConditionBadge condition={postel.condition} />
-              {openPostelHref?.(postel.id) ? (
-                <a
-                  href={openPostelHref(postel.id) ?? undefined}
-                  className="underline underline-offset-2"
-                >
+              {postelHref ? (
+                <a href={postelHref} className="underline underline-offset-2">
                   Buka Postel
                 </a>
               ) : null}

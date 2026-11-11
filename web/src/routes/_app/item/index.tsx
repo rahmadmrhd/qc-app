@@ -39,7 +39,13 @@ function ItemsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const canCreate = canCreateItem(me);
-  const filter = filterOfSearch(search);
+  // Postel hanya terlihat bagi pemegang `sticker: view` (server juga menyaring); tanpa itu tanda dan filter
+  // disembunyikan, dan `?postel=missing` dari URL diabaikan agar daftar tak tersaring oleh filter yang tak tampak.
+  const canViewPostel = can(me, 'sticker', 'view');
+  const filter = {
+    ...filterOfSearch(search),
+    postel: canViewPostel ? (search.postel ?? 'all') : ('all' as const),
+  };
   const list = useInfiniteQuery(itemsInfiniteQueryOptions(filter));
   // Katalog untuk filter stiker/jenis: hanya bagi yang boleh membacanya (`sticker: view` atau `item: edit`);
   // tanpa itu (atau bila ditolak server) filter stiker/jenis disembunyikan, filter instruksi tetap ada.
@@ -47,8 +53,6 @@ function ItemsPage() {
   const stickers = useQuery({ ...stickersQuery(), enabled: canReadCatalog, retry: false });
   const types = useQuery({ ...stickerTypesQuery(), enabled: canReadCatalog, retry: false });
   const showStickerFilter = canReadCatalog && stickers.isSuccess && types.isSuccess;
-  // Postel hanya terlihat bagi pemegang `sticker: view` (server juga menyaring); tanpa itu tanda dan filter disembunyikan.
-  const canViewPostel = can(me, 'sticker', 'view');
   const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
   const [text, setText] = useUrlSyncedText(
