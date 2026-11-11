@@ -132,3 +132,40 @@ test('keluar (clearSession) juga membuang kunci cache versi lama', () => {
   clearSession();
   expect(localStorage.getItem('qc.cache.v1')).toBeNull();
 });
+
+test('cache versi 2 (QrDesignDto lama tanpa items/stickerVersion) tidak dipulihkan dan dibuang', () => {
+  const owner = login('a@x.com');
+  localStorage.setItem(
+    'qc.cache.v2',
+    JSON.stringify({
+      v: 2,
+      owner,
+      savedAt: Date.now(),
+      entries: [{ key: ['qrcodes', 'list'], data: [{ id: 'd1' }], updatedAt: Date.now() }],
+    }),
+  );
+  const client = new QueryClient();
+  expect(restoreQueryCache(client, owner)).toBe(0);
+  expect(client.getQueryData(['qrcodes', 'list'])).toBeUndefined();
+  expect(localStorage.getItem('qc.cache.v2')).toBeNull();
+  // keluar juga membuang kunci v2 yang tertinggal
+  localStorage.setItem('qc.cache.v2', '{}');
+  clearSession();
+  expect(localStorage.getItem('qc.cache.v2')).toBeNull();
+});
+
+test('amplop versi 2 di bawah kunci sekarang juga ditolak', () => {
+  const owner = login('a@x.com');
+  localStorage.setItem(
+    PERSISTED_CACHE_KEY,
+    JSON.stringify({
+      v: 2,
+      owner,
+      savedAt: Date.now(),
+      entries: [{ key: ['qrcodes', 'list'], data: [{ id: 'd1' }], updatedAt: Date.now() }],
+    }),
+  );
+  const client = new QueryClient();
+  expect(restoreQueryCache(client, owner)).toBe(0);
+  expect(client.getQueryData(['qrcodes', 'list'])).toBeUndefined();
+});

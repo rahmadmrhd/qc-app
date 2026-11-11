@@ -5,9 +5,9 @@ import type { AuthErrorCode } from '@shared/contract';
  * amplopnya setiap bentuk data yang disimpan berubah (mis. field baru pada `MeDto`/`BrandDto`), dan daftarkan kunci
  * lama di `LEGACY_PERSISTED_CACHE_KEYS` agar ikut dibersihkan.
  */
-export const PERSISTED_CACHE_KEY = 'qc.cache.v2';
+export const PERSISTED_CACHE_KEY = 'qc.cache.v3';
 /** Kunci versi lama: tak pernah dibaca lagi, hanya dibuang (restore dan keluar). */
-export const LEGACY_PERSISTED_CACHE_KEYS: readonly string[] = ['qc.cache.v1'];
+export const LEGACY_PERSISTED_CACHE_KEYS: readonly string[] = ['qc.cache.v1', 'qc.cache.v2'];
 
 /** Awal alur login Google (ditangani server, rute `/auth/*`). */
 export const LOGIN_URL = '/auth/login';
