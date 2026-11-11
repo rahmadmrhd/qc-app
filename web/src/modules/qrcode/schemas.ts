@@ -15,10 +15,16 @@ import {
   QR_FRAME_RANGES,
   QR_LAYOUT_RANGES,
   QR_LIMITS,
+  type QrContent,
+  type QrNamePlacement,
+  qrContentHash,
 } from '@shared/qrcode';
 import { z } from 'zod';
 
 export const QR_FIELD_KEYS = [
+  'name',
+  'presetId',
+  'itemIds',
   'title',
   'link',
   'documentId',
@@ -107,8 +113,10 @@ const qrFormShape = (titleRequired: boolean, nameRequired: boolean) => ({
     .string()
     .trim()
     .max(QR_LIMITS.presetName, `Maksimal ${QR_LIMITS.presetName} karakter`)
-    .refine((value) => !nameRequired || value !== '', 'Wajib diisi')
-    .default(''),
+    .refine((value) => !nameRequired || value !== '', 'Wajib diisi'),
+  /** Konfigurasi QR: preset asal ('' = tanpa) dan item yang tergabung (daftar lengkap yang terlihat). */
+  presetId: z.string(),
+  itemIds: z.array(z.string()),
   /** Hanya konfigurasi default: BU pemilik (satu preset per BU) dan bagian label yang menampung nama Manual Book. */
   buId: z.string(),
   namePlacement: z.enum(['title', 'subtitle', 'footer', '']),
@@ -183,7 +191,9 @@ export type QrFormOutput = z.output<typeof qrDesignFormSchema>;
 
 export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   return {
-    name: '',
+    name: design?.name ?? '',
+    presetId: design?.presetId ?? '',
+    itemIds: design?.items.map((item) => item.id) ?? [],
     buId: '',
     namePlacement: '',
     title: design?.title ?? '',
@@ -198,10 +208,49 @@ export function toQrFormDefaults(design?: QrDesignDto): QrFormInput {
   };
 }
 
+/** Isi label konfigurasi tersimpan (bentuk `QrContent`) untuk hash; dasar peringatan perubahan label. */
+export function qrContentOfDesign(design: QrDesignDto): QrContent {
+  return {
+    linkSource: design.linkSource,
+    link: design.link,
+    title: design.title,
+    subtitle: design.subtitle,
+    footer: design.footer,
+    logoFileId: design.logoFileId,
+    layout: design.layout,
+    style: design.style,
+  };
+}
+
+/** Konteks form untuk konfigurasi yang diubah (item tergabung, penempatan nama, hash ekspor, mode lama). */
+export interface QrEditContext {
+  items: ReadonlyArray<{ id: string; brand: string; model: string }>;
+  hiddenItemCount: number;
+  namePlacement: QrNamePlacement | '';
+  presetId: string;
+  /** Hash isi label saat dimuat bila sudah pernah diekspor; null = belum pernah (tanpa peringatan perubahan). */
+  exportedHash: string | null;
+  /** Konfigurasi lama tanpa nama/penempatan/stiker: nama dan item boleh kosong sampai dilengkapi. */
+  legacy: boolean;
+}
+
+export function toEditContext(design: QrDesignDto): QrEditContext {
+  return {
+    items: design.items,
+    hiddenItemCount: design.hiddenItemCount,
+    namePlacement: design.namePlacement,
+    presetId: design.presetId,
+    exportedHash: design.exportedAt === '' ? null : qrContentHash(qrContentOfDesign(design)),
+    legacy: design.name === '' && design.namePlacement === '' && design.stickerVersion === 0,
+  };
+}
+
 /** Satu konfigurasi default sebagai nilai form (logoFileId = logo awal). Tanpa sumber link. */
 export function toPresetFormValues(preset?: QrPresetDto): QrFormInput {
   return {
     name: preset?.name ?? '',
+    presetId: '',
+    itemIds: [],
     buId: preset?.buId ?? '',
     namePlacement: preset?.namePlacement ?? '',
     title: preset?.title ?? '',
@@ -273,17 +322,11 @@ export function toSaveQrDesignInput(
   expectedUpdatedAt?: string,
   /** Hasil pengukuran tata letak di peramban (isi tidak muat di kanvas). */
   overflow?: boolean,
-  /** Nama Manual Book, preset, dan item; placeholder sampai form QR memilihnya (UI 4a). */
-  manualBook: Pick<SaveQrDesignInput, 'name' | 'presetId' | 'itemIds'> = {
-    name: values.title,
-    presetId: '',
-    itemIds: [],
-  },
 ): SaveQrDesignInput {
   const input: SaveQrDesignInput = {
-    name: manualBook.name,
-    presetId: manualBook.presetId,
-    itemIds: manualBook.itemIds,
+    name: values.name,
+    presetId: values.presetId,
+    itemIds: values.itemIds,
     title: values.title,
     linkSource: values.linkSource,
     link: values.linkSource === 'url' ? values.link : '',

@@ -1,14 +1,28 @@
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import type { QrPresetDto } from '@shared/contract';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, qrContentHash } from '@shared/qrcode';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { pickLink } from '@/test/link-field';
+import { linkOptionNames, pickLink } from '@/test/link-field';
+import type { QrEditContext } from '../schemas';
 import { toPresetFormValues, toQrFormDefaults } from '../schemas';
 import { QrDesignForm } from './qr-design-form';
 
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
+
+const ITEM_OPTIONS = [
+  { id: 'i1', brand: 'PBE', model: 'M5-400', businessUnitIds: ['bu1'], manualBookName: '' },
+  { id: 'i2', brand: 'PBE', model: 'M5-200', businessUnitIds: ['bu1'], manualBookName: '' },
+  { id: 'i3', brand: 'Nexus', model: 'N1', businessUnitIds: ['bu2'], manualBookName: '' },
+  { id: 'i4', brand: 'Lama', model: 'L1', businessUnitIds: ['bu1'], manualBookName: 'Manual Lama' },
+];
+
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  apiMock.mockReset();
+  apiMock.mockResolvedValue({ items: ITEM_OPTIONS, nextCursor: null });
 });
 
 function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = {}) {
@@ -272,33 +286,202 @@ const preset = (id: string, name: string, title: string) => ({
   updatedBy: 'a',
 });
 
-test('QR baru: wajib memilih konfigurasi default dulu; isian lain tersembunyi sampai dipilih, lalu terisi dari default', async () => {
-  const { onSubmit } = renderForm({
-    presets: [preset('p1', 'Standar', 'PT Contoh'), preset('p2', 'Promo', 'Diskon')],
-    defaultValues: toQrFormDefaults(),
-  });
-  expect(screen.getByLabelText('Pilih konfigurasi default')).toBeInTheDocument();
+const presetOf = (id: string, name: string, extra: Partial<QrPresetDto> = {}) => ({
+  ...preset(id, name, `Judul ${name}`),
+  ...extra,
+});
+const URL_DEFAULTS = {
+  ...toQrFormDefaults(),
+  linkSource: 'url' as const,
+  link: 'https://contoh.com',
+};
+const SPECTRUM = presetOf('p1', 'Standar Spectrum', { buId: 'bu1', namePlacement: 'subtitle' });
+const NEXUS = presetOf('p2', 'Standar Nexus', { buId: 'bu2', namePlacement: 'footer' });
+
+test('QR baru: isian tersembunyi sampai item dipilih; satu BU menarik preset otomatis, nama dibuat dari tipe item', async () => {
+  renderForm({ presets: [SPECTRUM, NEXUS], defaultValues: toQrFormDefaults() });
+  expect(screen.getByRole('combobox', { name: 'Item' })).toBeInTheDocument();
   expect(screen.queryByLabelText('Title')).toBeNull();
   expect(screen.queryByText('Bingkai QR')).toBeNull();
-  expect(screen.queryByText('Sumber link')).toBeNull();
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
-  await pickLink(screen, 'Pilih konfigurasi default', 'Standar');
-  expect(screen.getByLabelText('Title')).toHaveValue('PT Contoh');
-  expect(screen.getByLabelText('Subtitle')).toHaveValue('Sub');
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  await pickLink(screen, 'Item', 'PBE M5-200');
+  expect(screen.getByText(/Standar Spectrum/)).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Pilih konfigurasi default' })).toBeNull();
+  expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('M5-400/200');
+  expect(screen.getByLabelText('Title')).toHaveValue('Judul Standar Spectrum');
   expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(18);
-  expect(screen.getByText('Sumber link')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
-  // memilih default lain mengisi ulang semua isian
-  await pickLink(screen, 'Pilih konfigurasi default', 'Promo');
-  expect(screen.getByLabelText('Title')).toHaveValue('Diskon');
+});
+
+test('bagian yang ditampung nama terkunci (disabled) dan selalu sama dengan nama; nama yang sudah diedit tidak ditimpa', async () => {
+  const { onSubmit } = renderForm({ presets: [SPECTRUM], defaultValues: URL_DEFAULTS });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  expect(screen.getByLabelText('Subtitle')).toBeDisabled();
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('M5-400');
+  const name = screen.getByLabelText('Nama Manual Book');
+  await userEvent.clear(name);
+  await userEvent.type(name, 'Nama Saya');
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Saya');
+  await pickLink(screen, 'Item', 'PBE M5-200');
+  expect(name).toHaveValue('Nama Saya');
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Saya');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({
+    name: 'Nama Saya',
+    presetId: 'p1',
+    subtitle: 'Nama Saya',
+    itemIds: ['i1', 'i2'],
+  });
+});
+
+test('item lintas BU: pengguna memilih satu preset dari BU item; isian tersembunyi sampai dipilih', async () => {
+  renderForm({ presets: [SPECTRUM, NEXUS, presetOf('p3', 'Lain', { buId: 'bu9' })] });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  await pickLink(screen, 'Item', 'Nexus N1');
+  expect(screen.getByRole('combobox', { name: 'Pilih konfigurasi default' })).toBeInTheDocument();
+  expect(screen.queryByLabelText('Title')).toBeNull();
+  expect(await linkOptionNames(screen, 'Pilih konfigurasi default')).toEqual([
+    'Standar Spectrum',
+    'Standar Nexus',
+  ]);
+  await userEvent.keyboard('{Escape}');
+  await pickLink(screen, 'Pilih konfigurasi default', 'Standar Nexus');
+  expect(screen.getByLabelText('Title')).toHaveValue('Judul Standar Nexus');
+  expect(screen.getByLabelText('Footer')).toBeDisabled();
+});
+
+test('BU item tanpa preset: boleh memilih preset mana pun atau "Tanpa preset" (nama tidak terkunci)', async () => {
+  const { onSubmit } = renderForm({
+    presets: [presetOf('p3', 'Lain', { buId: 'bu9' })],
+    defaultValues: URL_DEFAULTS,
+  });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  expect(screen.queryByLabelText('Title')).toBeNull();
+  await pickLink(screen, 'Pilih konfigurasi default', /Tanpa preset/);
+  expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('M5-400');
+  expect(screen.getByLabelText('Title')).toBeEnabled();
+  expect(screen.getByLabelText('Subtitle')).toBeEnabled();
+  await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ presetId: '', title: 'Panduan' });
+});
+
+test('QR baru tanpa konfigurasi default sama sekali: tetap dapat dibuat setelah memilih item', async () => {
+  renderForm({ presets: [], defaultValues: toQrFormDefaults() });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  expect(screen.getByText(/nilai bawaan aplikasi/)).toBeInTheDocument();
+  expect(screen.getByLabelText('Title')).toBeInTheDocument();
+});
+
+test('item milik Manual Book lain tidak dapat dipilih', async () => {
+  renderForm({ presets: [SPECTRUM] });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  const row = await screen.findByRole('option', { name: /Lama L1/ });
+  expect(row).toHaveAttribute('aria-disabled', 'true');
+  expect(row).toHaveTextContent('Manual Lama');
+});
+
+test('banner penyimpangan muncul saat gaya diubah dari preset dan tidak memblokir simpan', async () => {
+  renderForm({ presets: [SPECTRUM], defaultValues: toQrFormDefaults() });
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  expect(screen.queryByRole('status')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Miring Title' }));
+  const banner = await screen.findByRole('status');
+  expect(banner).toHaveTextContent('Standar Spectrum');
+  expect(banner).toHaveTextContent('Gaya');
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
+});
+
+const EDIT: QrEditContext = {
+  items: [{ id: 'i1', brand: 'PBE', model: 'M5-400' }],
+  hiddenItemCount: 2,
+  namePlacement: 'subtitle',
+  presetId: 'p1',
+  exportedHash: null,
+  legacy: false,
+};
+
+test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci mengikuti nama; menghapus semua item ditolak', async () => {
+  const { onSubmit } = renderForm({
+    edit: EDIT,
+    updatePresets: [SPECTRUM],
+    defaultValues: {
+      ...toQrFormDefaults(),
+      name: 'Nama Tersimpan',
+      itemIds: ['i1'],
+      presetId: 'p1',
+    },
+  });
+  expect(screen.getByRole('button', { name: 'Hapus PBE M5-400' })).toBeInTheDocument();
+  expect(screen.getByText(/2 item lain tergabung/)).toBeInTheDocument();
+  expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('Nama Tersimpan');
+  expect(screen.getByLabelText('Subtitle')).toBeDisabled();
+  expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Tersimpan');
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
+  await userEvent.type(screen.getByLabelText('Title'), 'x');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByText('Pilih minimal satu item')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('QR baru tanpa konfigurasi default: pesan dan tidak ada isian lain', () => {
-  renderForm({ presets: [], defaultValues: toQrFormDefaults() });
-  expect(screen.getByText(/Belum ada konfigurasi default/)).toBeInTheDocument();
-  expect(screen.queryByLabelText('Title')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
+test('ubah konfigurasi lama tanpa nama/item: boleh disimpan kosong (kelonggaran)', async () => {
+  const { onSubmit } = renderForm({
+    edit: {
+      ...EDIT,
+      items: [],
+      hiddenItemCount: 0,
+      namePlacement: '',
+      presetId: '',
+      legacy: true,
+    },
+    defaultValues: {
+      ...toQrFormDefaults(),
+      title: 'Lama',
+      linkSource: 'url',
+      link: 'https://contoh.com',
+    },
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+});
+
+test('peringatan perubahan label: muncul hanya pada konfigurasi yang pernah diekspor dan labelnya berubah, tidak saat hanya item berubah', async () => {
+  const base = {
+    ...toQrFormDefaults(),
+    name: 'Nama',
+    itemIds: ['i1'],
+    title: 'Judul',
+    linkSource: 'url' as const,
+    link: 'https://contoh.com',
+  };
+  const exportedHash = qrContentHash({
+    linkSource: 'url',
+    link: 'https://contoh.com',
+    title: 'Judul',
+    subtitle: '',
+    footer: '',
+    logoFileId: '',
+    layout: DEFAULT_QR_LAYOUT,
+    style: DEFAULT_QR_STYLE,
+  });
+  const edit = { ...EDIT, namePlacement: '' as const, presetId: '', exportedHash };
+  const first = renderForm({ edit, defaultValues: base });
+  // hanya item berubah: tanpa dialog
+  await pickLink(screen, 'Item', 'PBE M5-200');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(first.onSubmit).toHaveBeenCalledTimes(1);
+  first.unmount();
+  // label berubah: dialog, simpan baru berjalan setelah dikonfirmasi
+  const second = renderForm({ edit, defaultValues: base });
+  await userEvent.type(screen.getByLabelText('Title'), '!');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent(/stiker Manual Book baru/i);
+  expect(second.onSubmit).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan perubahan' }));
+  expect(second.onSubmit).toHaveBeenCalledTimes(1);
 });
 
 test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {

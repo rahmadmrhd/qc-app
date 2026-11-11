@@ -37,6 +37,15 @@ export function stickerLinkAccess(me: MeDto | null | undefined) {
   return { canCreateSticker: can(me, 'sticker', 'edit') };
 }
 
+/** Item pada form QR Manual Book: halaman lihat butuh `item: view`; tanpa Tambah (item dibuat di Data Item). */
+export function itemLinkAccess(me: MeDto | null | undefined) {
+  return {
+    openItemHref: can(me, 'item', 'view')
+      ? (id: string) => `/item/${encodeURIComponent(id)}`
+      : undefined,
+  };
+}
+
 /** Field Merk, BU, serta stiker dan jenis stiker (editor instruksi) di form item. */
 export function itemFormLinkAccess(me: MeDto | null | undefined) {
   return {

@@ -37,6 +37,14 @@ export function qrDefaultsQueryOptions() {
   });
 }
 
+/** Opsi item untuk pemilih form QR: pencarian di server (hanya item aktif yang terlihat bagi pengguna). */
+export function qrItemOptionsQueryOptions(query: string) {
+  return queryOptions({
+    queryKey: [...qrKeys.all, 'itemOptions', query] as const,
+    queryFn: () => api('qrcodes.itemOptions', { ...(query === '' ? {} : { query }), limit: 20 }),
+  });
+}
+
 export function qrDesignQueryOptions(id: string) {
   return queryOptions({ queryKey: qrKeys.one(id), queryFn: () => api('qrcodes.get', { id }) });
 }

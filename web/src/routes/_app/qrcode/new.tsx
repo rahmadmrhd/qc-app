@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
+import { itemLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -53,6 +54,7 @@ function NewQrDesignPage() {
         defaultValues={toQrFormDefaults()}
         logoLibrary={defaults.logoFileIds}
         presets={defaults.presets}
+        openItemHref={itemLinkAccess(me).openItemHref}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
