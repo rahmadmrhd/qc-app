@@ -24,13 +24,7 @@ import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
 import { businessUnitOptions, presetOptions } from '../lib/preset-options';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
-import type {
-  PresetApplyParts,
-  QrEditContext,
-  QrFieldErrors,
-  QrFormInput,
-  QrFormOutput,
-} from '../schemas';
+import type { PresetApplyParts, QrEditContext, QrFormInput, QrFormOutput } from '../schemas';
 import {
   frameRangeMessage,
   layoutRangeMessage,

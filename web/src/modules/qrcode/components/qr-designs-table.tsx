@@ -167,17 +167,15 @@ export function QrDesignsTable({
                       </>
                     ) : null}
                     {canEdit ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          aria-label={`Ubah ${design.title}`}
-                          onClick={() => onEdit(design)}
-                        >
-                          Ubah
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        aria-label={`Ubah ${design.title}`}
+                        onClick={() => onEdit(design)}
+                      >
+                        Ubah
+                      </Button>
                     ) : null}
                     {canEdit ? (
                       <Button
@@ -195,17 +193,15 @@ export function QrDesignsTable({
                       </Button>
                     ) : null}
                     {canManage ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          aria-label={`Hapus ${design.title}`}
-                          onClick={() => onDelete(design)}
-                        >
-                          Hapus
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={busy}
+                        aria-label={`Hapus ${design.title}`}
+                        onClick={() => onDelete(design)}
+                      >
+                        Hapus
+                      </Button>
                     ) : null}
                   </div>
                 </TableCell>

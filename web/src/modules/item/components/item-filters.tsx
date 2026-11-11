@@ -3,10 +3,12 @@ import { NativeSelect } from '@/components/native-select';
 import { Button } from '@/components/ui/button';
 import type { ItemListFilter } from '../queries';
 
-type FilterPatch = Partial<Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode'>>;
+type FilterPatch = Partial<
+  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'>
+>;
 
 export interface ItemFiltersProps {
-  filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode'>;
+  filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'>;
   /** Katalog untuk filter stiker/jenis; tidak dipakai bila `showStickerFilter` false. */
   stickers: readonly StickerDto[];
   types: readonly StickerTypeDto[];
@@ -65,7 +67,10 @@ export function ItemFilters({
   );
   const unknown = showStickerFilter && filter.stickerKey !== '' && !known.has(filter.stickerKey);
   const active =
-    filter.instruction !== 'all' || filter.stickerKey !== '' || filter.stickerMode !== 'has';
+    filter.instruction !== 'all' ||
+    filter.stickerKey !== '' ||
+    filter.stickerMode !== 'has' ||
+    filter.manualBook !== 'all';
 
   return (
     <>
@@ -77,6 +82,15 @@ export function ItemFilters({
       >
         <option value="all">Semua item</option>
         <option value="none">Belum ada instruksi stiker</option>
+      </NativeSelect>
+      <NativeSelect
+        aria-label="Filter Manual Book"
+        className="sm:w-56"
+        value={filter.manualBook}
+        onChange={(event) => onChange({ manualBook: event.target.value as 'all' | 'missing' })}
+      >
+        <option value="all">Semua item</option>
+        <option value="missing">Belum ada QR Manual Book</option>
       </NativeSelect>
       {showStickerFilter ? (
         <NativeSelect
@@ -98,7 +112,7 @@ export function ItemFilters({
               </option>
               {group.stickers.map((sticker) => (
                 <option key={sticker.id} value={`s:${sticker.id}`}>
-                  {`${sticker.name}${sticker.status === 'inactive' ? INACTIVE : ''}`}
+                  {`${sticker.name}${sticker.status === 'active' ? '' : INACTIVE}`}
                 </option>
               ))}
             </optgroup>
@@ -120,7 +134,14 @@ export function ItemFilters({
         <Button
           type="button"
           variant="ghost"
-          onClick={() => onChange({ instruction: 'all', stickerKey: '', stickerMode: 'has' })}
+          onClick={() =>
+            onChange({
+              instruction: 'all',
+              stickerKey: '',
+              stickerMode: 'has',
+              manualBook: 'all',
+            })
+          }
         >
           Bersihkan filter
         </Button>

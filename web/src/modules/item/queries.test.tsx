@@ -150,6 +150,22 @@ test('daftar item: filter instruksi dan stiker diteruskan ke items.list; bawaan 
   expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
 });
 
+test('daftar item: filter Manual Book dikirim hanya bila "missing"', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { manualBook: 'missing' });
+  await client.fetchInfiniteQuery(itemsInfiniteQueryOptions(DEFAULT_ITEM_FILTER));
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('kunci daftar item membedakan filter Manual Book', () => {
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
+});
+
 test('kunci daftar item membedakan filter instruksi dan stiker', () => {
   const base = itemKeys.page(DEFAULT_ITEM_FILTER);
   expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, instruction: 'none' })).not.toEqual(base);

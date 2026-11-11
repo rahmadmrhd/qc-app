@@ -16,6 +16,8 @@ export const itemsSearchSchema = z.object({
     .catch(undefined),
   /** Hanya `missing` ditulis ke URL (bawaan `has`); berlaku bersama `sticker`. */
   mode: z.enum(['has', 'missing']).optional().catch(undefined),
+  /** Hanya `missing` ("Belum ada QR Manual Book") ditulis ke URL. */
+  manualBook: z.literal('missing').optional().catch(undefined),
 });
 export type ItemsSearch = z.infer<typeof itemsSearchSchema>;
 
@@ -29,11 +31,12 @@ export function filterOfSearch(search: ItemsSearch): ItemListFilter {
     stickerKey,
     // Mode hanya bermakna bersama pilihan stiker/jenis.
     stickerMode: stickerKey !== '' ? (search.mode ?? 'has') : 'has',
+    manualBook: search.manualBook ?? 'all',
   };
 }
 
 type StickerFilterPatch = Partial<
-  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode'>
+  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'>
 >;
 
 /** Perubahan filter -> perubahan search params; nilai bawaan menjadi `undefined` (hilang dari URL). */
@@ -49,6 +52,9 @@ export function searchPatchOf(patch: StickerFilterPatch): Partial<ItemsSearch> {
   }
   if (patch.stickerMode !== undefined) {
     result.mode = patch.stickerMode === 'missing' ? 'missing' : undefined;
+  }
+  if (patch.manualBook !== undefined) {
+    result.manualBook = patch.manualBook === 'missing' ? 'missing' : undefined;
   }
   return result;
 }

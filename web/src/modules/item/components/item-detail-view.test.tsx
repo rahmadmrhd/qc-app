@@ -164,3 +164,42 @@ test('menampilkan chip BU item', () => {
   expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
   expect(screen.getByText('WHL')).toBeInTheDocument();
 });
+
+const withManualBook: ItemDto = {
+  ...item,
+  hasManualBook: true,
+  manualBook: { designId: 'd1', name: 'PBE M5-400', version: 2, status: 'active' },
+};
+
+test('bagian Manual Book: nama, versi, status, dan tautan bila diberi', () => {
+  renderView({
+    item: withManualBook,
+    openManualBookHref: (id) => `/qrcode/${id}/edit`,
+  });
+  expect(screen.getByRole('heading', { name: 'Manual Book' })).toBeInTheDocument();
+  expect(screen.getByText('PBE M5-400')).toBeInTheDocument();
+  expect(screen.getByText('v2')).toBeInTheDocument();
+  expect(screen.getByText('Aktif')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Buka konfigurasi QR' })).toHaveAttribute(
+    'href',
+    '/qrcode/d1/edit',
+  );
+});
+
+test('Manual Book tanpa tautan bila tak berhak; status Usang berlabel', () => {
+  renderView({
+    item: {
+      ...withManualBook,
+      manualBook: { designId: 'd1', name: 'PBE M5-400', version: 1, status: 'deprecated' },
+    },
+  });
+  expect(screen.getByText('PBE M5-400')).toBeInTheDocument();
+  expect(screen.getByText('Usang')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Buka konfigurasi QR' })).toBeNull();
+});
+
+test('item tanpa Manual Book menampilkan keterangan kosong', () => {
+  renderView();
+  expect(screen.getByRole('heading', { name: 'Manual Book' })).toBeInTheDocument();
+  expect(screen.getByText('Belum ada QR Manual Book')).toBeInTheDocument();
+});

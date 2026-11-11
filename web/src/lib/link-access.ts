@@ -46,6 +46,18 @@ export function itemLinkAccess(me: MeDto | null | undefined) {
   };
 }
 
+/**
+ * Konfigurasi QR Manual Book milik item (detail item): tautan ke halaman ubah konfigurasi, jadi butuh `qrcode: edit`
+ * (sama dengan rute `/qrcode/$designId/edit`).
+ */
+export function manualBookLinkAccess(me: MeDto | null | undefined) {
+  return {
+    openManualBookHref: can(me, 'qrcode', 'edit')
+      ? (designId: string) => `/qrcode/${encodeURIComponent(designId)}/edit`
+      : undefined,
+  };
+}
+
 /** Field Merk, BU, serta stiker dan jenis stiker (editor instruksi) di form item. */
 export function itemFormLinkAccess(me: MeDto | null | undefined) {
   return {

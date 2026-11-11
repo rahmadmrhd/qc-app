@@ -20,6 +20,7 @@ test('search params memetakan pencarian, status, instruksi, stiker/jenis, dan mo
     instruction: 'none',
     stickerKey: 's:st1',
     stickerMode: 'missing',
+    manualBook: 'all',
   });
   expect(filterOfSearch(itemsSearchSchema.parse({ sticker: 't:ty1' })).stickerKey).toBe('t:ty1');
 });
@@ -48,4 +49,15 @@ test('searchPatchOf: nilai bawaan menjadi undefined agar hilang dari URL; memili
   expect(searchPatchOf({ stickerMode: 'has' })).toEqual({ mode: undefined });
   // mengosongkan pilihan stiker ikut membersihkan mode
   expect(searchPatchOf({ stickerKey: '' })).toEqual({ sticker: undefined, mode: undefined });
+});
+
+test('manualBook=missing dipetakan ke filter; nilai lain dibuang dan bawaan tidak ditulis ke URL', () => {
+  expect(filterOfSearch(itemsSearchSchema.parse({ manualBook: 'missing' })).manualBook).toBe(
+    'missing',
+  );
+  expect(filterOfSearch(itemsSearchSchema.parse({ manualBook: 'has' })).manualBook).toBe('all');
+  expect(filterOfSearch(itemsSearchSchema.parse({ manualBook: 'x' })).manualBook).toBe('all');
+  expect(DEFAULT_ITEM_FILTER.manualBook).toBe('all');
+  expect(searchPatchOf({ manualBook: 'missing' })).toEqual({ manualBook: 'missing' });
+  expect(searchPatchOf({ manualBook: 'all' })).toEqual({ manualBook: undefined });
 });

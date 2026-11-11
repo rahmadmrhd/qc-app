@@ -29,6 +29,8 @@ export interface ItemListFilter {
   stickerKey: string;
   /** Bersama `stickerKey`: item yang memakai (`has`) atau belum memakai (`missing`) stiker/jenis itu. */
   stickerMode: 'has' | 'missing';
+  /** `missing` = hanya item yang belum punya Manual Book berversi (QR Manual Book). */
+  manualBook: 'all' | 'missing';
 }
 
 export const DEFAULT_ITEM_FILTER: ItemListFilter = {
@@ -37,6 +39,7 @@ export const DEFAULT_ITEM_FILTER: ItemListFilter = {
   instruction: 'all',
   stickerKey: '',
   stickerMode: 'has',
+  manualBook: 'all',
 };
 
 /** `stickerKey` -> parameter `stickerId`/`typeId` + `stickerMode` untuk `items.list`; kosong/tak dikenal = tanpa filter. */
@@ -65,6 +68,7 @@ export const itemKeys = {
       filter.instruction,
       filter.stickerKey,
       filter.stickerMode,
+      filter.manualBook,
     ] as const,
   one: (id: string) => ['items', 'one', id] as const,
 };
@@ -79,6 +83,7 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
         ...(filter.status !== 'all' ? { status: filter.status } : {}),
         ...(filter.instruction === 'none' ? { instruction: 'none' as const } : {}),
         ...stickerFilterInput(filter),
+        ...(filter.manualBook === 'missing' ? { manualBook: 'missing' as const } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,

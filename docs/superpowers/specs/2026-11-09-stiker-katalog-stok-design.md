@@ -4,6 +4,8 @@ Status: disetujui pemilik produk 2026-11-09 ("Setuju"). Tanggal: 2026-11-09.
 Induk: `docs/superpowers/specs/2026-11-08-business-unit-design.md` (peta tahap §2; keputusan 1-22). Cabang kerja: `feat/stiker-management`.
 Tahap 3 dipecah dua (disetujui pemilik 2026-11-09): **3a** (dokumen ini: katalog dan stok) lalu **3b** (instruksi penempelan: pustaka gambar, penanda pada gambar, tampilan di item; dirancang terpisah setelah 3a). Bagian 6 mencatat keputusan 3b agar tidak hilang.
 
+Pembaruan tahap 4a (2026-11-10, disetujui pemilik produk; spek `docs/superpowers/specs/2026-11-10-stiker-manual-book-4a-design.md`): status stiker bertambah `deprecated` (Usang: digantikan versi Manual Book yang lebih baru; hanya dapat menjadi nonaktif, tak boleh menerima stok masuk), `sticker_types` mendapat `system_kind` (jenis sistem Manual Book/Postel dikelola aplikasi) dan `default_min_qty`, aturan jenis bertambah `group` (menurut kelompok item; hanya jenis sistem, tak dipilih pengguna), perhitungan `low` (menipis) mengabaikan stiker bukan `active` (nonaktif dan `deprecated`), dan halaman **Konfigurasi Stiker** (`/sticker/settings`, `sticker: manage`) memuat minimum bawaan per jenis dan email ringkasan harian stok menipis. Butir keputusan di bawah yang bertentangan (daftar aturan jenis di butir 2; notifikasi di butir 9 dan non-goals: sekarang ada email ringkasan harian, bukan notifikasi dalam aplikasi) dibaca menurut pembaruan ini.
+
 Status implementasi (2026-11-09): bagian server dan shared sudah diimplementasikan (Tugas 1-6); halaman web sedang dikerjakan (Jenis dan Stiker selesai, halaman Stok menyusul di Tugas 9). Data contoh dev dan dokumen (Tugas 10) ikut dalam tahap yang sama.
 
 ## 1. Latar dan tujuan
@@ -36,14 +38,14 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 ## 3. Keputusan pemilik produk (dicatat 2026-11-09)
 
 1. **Stiker dan stok tidak dibatasi BU.** Siapa pun yang berizin mengelola stok dapat mengelola stok untuk BU mana pun, tetapi **tetap dibatasi lokasi**. Tautan BU pada stiker hanya dipakai untuk menentukan stiker mana yang berlaku bagi sebuah item (3b), bukan untuk membatasi akses.
-2. **Jenis stiker membawa aturan penentuan stiker**: menurut BU item, menurut kelompok item, atau tanpa syarat. Contoh sekarang: QC Hijau (Spectrum, Teakwave), QC Putih (Voltech), Segel berbeda per BU (menurut BU); Manual Book dan Postel (menurut kelompok item, tahap 4); stiker lain tanpa syarat, dengan kemungkinan berubah di masa depan.
+2. **Jenis stiker membawa aturan penentuan stiker**: menurut BU item, menurut kelompok item (`group`, dibangun di tahap 4a hanya untuk jenis sistem; tidak dipilih pengguna di form jenis), atau tanpa syarat. Contoh sekarang: QC Hijau (Spectrum, Teakwave), QC Putih (Voltech), Segel berbeda per BU (menurut BU); Manual Book dan Postel (menurut kelompok item, tahap 4); stiker lain tanpa syarat, dengan kemungkinan berubah di masa depan.
 3. **Jenis dan stiker dapat ditambah dan dinonaktifkan** oleh admin (bukan daftar tetap di kode).
 4. **Stiker punya nama dan alias**: nama untuk admin, alias (opsional) untuk tampilan tim QC. Contoh: nama "QC Spectrum/Teakwave", alias "Stiker Hijau". Bila alias ada, alias yang tampil.
 5. **Stok hanya total butir**, tanpa pelacakan batch (isi per lembar berbeda tiap batch cetak). Stok dicatat per lokasi dan dijumlahkan.
 6. **Batas minimum satu angka per stiker**, berlaku untuk total semua lokasi (bukan per lokasi).
 7. **Alat stok masuk dan stok opname menerima lembar × isi per lembar**: satu atau beberapa baris "jumlah lembar × isi per lembar" (isi boleh berbeda per baris) ditambah butir lepas; sistem menjumlahkannya menjadi butir. Stok opname menetapkan stok menjadi angka hasil hitung dan mencatat selisihnya sebagai penyesuaian di riwayat.
 8. **Stok diubah manual** di tahap 3 dan 4; pemotongan otomatis menunggu Serial Number (tahap 5).
-9. **Notifikasi menipis ditunda** sampai PWA dibangun.
+9. **Notifikasi menipis di dalam aplikasi ditunda** sampai PWA dibangun. *(Tahap 4a, keputusan pemilik 2026-11-10: peringatan stok menipis berupa satu email ringkasan harian, diatur di halaman Konfigurasi Stiker; notifikasi dalam aplikasi tetap menunggu PWA.)*
 
 ### Pilihan perancang yang belum ditegaskan pemilik (harap dikoreksi bila keliru)
 - **Izin**: dua modul izin baru, bukan memakai ulang `stock` (modul `stock` sudah ada dengan arti "Monitoring Stok yang belum QC", hanya level lihat, tanpa halaman; mengubah artinya akan mengubah makna izin role yang memegangnya). `sticker` bersifat global (katalog: jenis, stiker, batas minimum). `stickerstock` bersifat berlokasi (`LOCATION_MODULES`, stok per lokasi). Level kedua modul: lihat, ubah, kelola. `stickerstock`: lihat = baca stok dan riwayat; ubah = catat masuk dan keluar; kelola = koreksi dan stok opname. `sticker`: lihat = baca katalog; ubah = tambah/ubah stiker dan jenis, termasuk batas minimum; kelola = nonaktifkan dan aktifkan.
@@ -71,7 +73,7 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 ## 5. Perilaku yang diharapkan
 
 - **Halaman** (menu baru): Jenis stiker, Stiker (daftar, form dengan `LinkMultiField` untuk BU dan unggah gambar contoh, aktif/nonaktif), Stok (per stiker: total, rincian per lokasi yang boleh dilihat, penanda "Menipis", catat masuk/keluar/koreksi, alat stok opname, riwayat).
-- **Menipis** berarti total semua lokasi ≤ batas minimum (stiker aktif dengan batas > 0). Penanda dihitung server dari total seluruh lokasi walau pengguna hanya berhak atas sebagian lokasi; angka rinci hanya untuk lokasi yang berhak.
+- **Menipis** berarti total semua lokasi ≤ batas minimum (stiker aktif dengan batas > 0; stiker nonaktif dan `deprecated` tidak dihitung menipis, tahap 4a). Penanda dihitung server dari total seluruh lokasi walau pengguna hanya berhak atas sebagian lokasi; angka rinci hanya untuk lokasi yang berhak.
 - **Stok keluar dan koreksi** wajib alasan singkat; masuk dan opname boleh tanpa alasan.
 - **Nonaktif** menyembunyikan stiker/jenis dari pilihan baru tetapi riwayat dan stok tetap terbaca.
 - Pola proyek: REST lewat `API_ROUTES`, validasi server, versi usang lewat `staleError`, tes MariaDB sungguhan, komponen shadcn, `LinkField` untuk pilihan BU, `FormDialog` untuk form dialog.

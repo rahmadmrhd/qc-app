@@ -10,7 +10,7 @@ import {
 } from '@server-test/qrcode-env';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, qrContentHash } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, qrContentHash } from '@shared/qrcode';
 
 setDefaultTimeout(60_000);
 

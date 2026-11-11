@@ -5,6 +5,7 @@ import {
   brandLinkAccess,
   businessUnitLinkAccess,
   itemFormLinkAccess,
+  manualBookLinkAccess,
   stickerTypeLinkAccess,
 } from './link-access';
 
@@ -87,4 +88,15 @@ test('tanpa izin item view, tautan merk tidak tersedia; tanpa me semuanya tidak 
   expect(none.openBrandHref).toBeUndefined();
   expect(none.openBusinessUnitHref).toBeUndefined();
   expect(none.canCreateBusinessUnit).toBe(false);
+});
+
+test('tautan ke konfigurasi QR Manual Book butuh qrcode edit (halaman ubah)', () => {
+  const base = meWith('none', 'none');
+  const withQr = (qrcode: Level) =>
+    ({ ...base, permissions: { ...base.permissions, qrcode } }) as MeDto;
+  expect(manualBookLinkAccess(withQr('view')).openManualBookHref).toBeUndefined();
+  expect(manualBookLinkAccess(withQr('edit')).openManualBookHref?.('d 1')).toBe(
+    '/qrcode/d%201/edit',
+  );
+  expect(manualBookLinkAccess(null).openManualBookHref).toBeUndefined();
 });
