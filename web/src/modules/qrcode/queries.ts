@@ -69,6 +69,13 @@ function applyDesign(queryClient: QueryClient, saved: QrDesignDto): void {
   queryClient.setQueryData(qrKeys.one(saved.id), saved);
 }
 
+/** Memuat ulang satu konfigurasi dari server dan memasangnya ke daftar dan detail (DTO basi setelah galat 412/422). */
+export async function refreshQrDesign(queryClient: QueryClient, id: string): Promise<QrDesignDto> {
+  const fresh = await api('qrcodes.get', { id });
+  applyDesign(queryClient, fresh);
+  return fresh;
+}
+
 /**
  * Setelah mutasi: cache yang diubah dipasang langsung dari respons (`apply`), sisanya ditandai basi tanpa memuat ulang
  * sekarang. Dengan begitu navigasi setelah simpan tidak menunggu permintaan lagi (sebelumnya simpan + muat ulang daftar).

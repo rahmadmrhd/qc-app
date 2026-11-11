@@ -7,6 +7,7 @@ import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import {
   qrKeys,
+  refreshQrDesign,
   useClonePreset,
   useDeleteQrDesign,
   useExportQrDesign,
@@ -135,4 +136,14 @@ test('simpan, ekspor, dan hapus QR menandai basi cache stiker dan item (tanpa me
     expect(stale(itemKeys.one('i1'))).toBe(true);
     expect(stale(['items', 'list', '', 'all', 'all', '', 'has', 'all'])).toBe(true);
   }
+});
+
+test('refreshQrDesign memuat konfigurasi terbaru dan memasangnya ke daftar dan detail', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'Lama', '2026-10-01T00:00:00.000Z')]);
+  const fresh = design('a', 'Baru', '2026-10-05T00:00:00.000Z');
+  apiMock.mockResolvedValue(fresh);
+  expect(await refreshQrDesign(client, 'a')).toEqual(fresh);
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.get', { id: 'a' });
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[])[0]?.title).toBe('Baru');
+  expect(client.getQueryData(qrKeys.one('a'))).toEqual(fresh);
 });
