@@ -22,8 +22,8 @@ import {
 import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
-import { daysLeftLabel, formatPostelDate, numberStatusLabel } from '../lib/condition';
-import { PostelConditionBadge } from './postel-condition-badge';
+import { daysLeftLabel, formatPostelDate } from '../lib/condition';
+import { NumberStatus } from './number-status';
 
 export interface PostelViewProps {
   postel: PostelDto;
@@ -62,16 +62,7 @@ function NumberRow({ entry }: { entry: PostelNumberDto }) {
       <TableCell>{formatPostelDate(entry.expiresOn)}</TableCell>
       <TableCell>{daysLeftLabel(entry.daysLeft)}</TableCell>
       <TableCell>
-        {entry.role === 'old' && entry.condition !== 'expired' ? (
-          <span className="text-sm text-muted-foreground">
-            {numberStatusLabel(entry.role, entry.condition)}
-          </span>
-        ) : (
-          <PostelConditionBadge
-            condition={entry.condition}
-            label={numberStatusLabel(entry.role, entry.condition)}
-          />
-        )}
+        <NumberStatus role={entry.role} condition={entry.condition} />
       </TableCell>
       <TableCell>
         {isWebUrl(entry.link) ? (

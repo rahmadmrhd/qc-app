@@ -22,6 +22,14 @@ export function postelQueryOptions(id: string) {
   return queryOptions({ queryKey: postelKeys.one(id), queryFn: () => api('postels.get', { id }) });
 }
 
+/** Opsi item untuk pemilih form Postel: pencarian di server (hanya item aktif yang terlihat bagi pengguna). */
+export function postelItemOptionsQueryOptions(query: string) {
+  return queryOptions({
+    queryKey: [...postelKeys.all, 'itemOptions', query] as const,
+    queryFn: () => api('postels.itemOptions', { ...(query === '' ? {} : { query }), limit: 20 }),
+  });
+}
+
 /** Riwayat perubahan satu catatan: 20 entri terbaru. */
 export function postelHistoryQueryOptions(id: string) {
   return queryOptions({

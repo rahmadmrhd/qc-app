@@ -10,6 +10,7 @@ import { postelKeys } from './keys';
 import {
   dropPostelDetail,
   postelHistoryQueryOptions,
+  postelItemOptionsQueryOptions,
   postelListQueryOptions,
   postelQueryOptions,
   useRemovePostel,
@@ -162,4 +163,15 @@ test('hapus menandai katalog stiker, item, dan log audit basi tanpa memuat ulang
   const { result } = renderHook(() => useRemovePostel(), { wrapper });
   await act(() => result.current.mutateAsync({ id: 'p1' }));
   expectMarkedStale();
+});
+
+test('opsi item: query kosong tanpa field query; dengan kata kunci memakai limit 20', async () => {
+  apiMock.mockResolvedValue(null);
+  await (postelItemOptionsQueryOptions('').queryFn as () => Promise<unknown>)();
+  expect(apiMock).toHaveBeenLastCalledWith('postels.itemOptions', { limit: 20 });
+  await (postelItemOptionsQueryOptions('m5').queryFn as () => Promise<unknown>)();
+  expect(apiMock).toHaveBeenLastCalledWith('postels.itemOptions', { query: 'm5', limit: 20 });
+  expect(postelItemOptionsQueryOptions('a').queryKey).not.toEqual(
+    postelItemOptionsQueryOptions('b').queryKey,
+  );
 });
