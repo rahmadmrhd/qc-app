@@ -1161,6 +1161,7 @@ export interface ApiContract {
   'postels.get': { input: GetPostelInput; output: PostelDto };
   'postels.save': { input: SavePostelInput; output: PostelDto };
   'postels.remove': { input: RemovePostelInput; output: null };
+  'postels.history': { input: ListPostelHistoryInput; output: AuditCursorPageDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
@@ -1212,6 +1213,14 @@ export interface ListItemsPageInput {
 export interface ItemPageDto {
   items: ItemSummaryDto[];
   nextCursor: string | null;
+}
+
+/** Riwayat perubahan satu catatan Postel (log audit per target); halaman terbaru dahulu. */
+export interface ListPostelHistoryInput {
+  id: string;
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
 }
 
 export interface ListAuditPageInput {

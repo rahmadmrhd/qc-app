@@ -1,4 +1,4 @@
-import { writeAudit } from '@server/core/audit';
+import { listAuditByTarget, writeAudit } from '@server/core/audit';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
@@ -6,12 +6,15 @@ import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { getSetting } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
+import { PAGE_DEFAULT_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
 import { findActiveFiles } from '@server/modules/files/repo';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemIdsVisibleIn } from '@server/modules/item/repo';
 import { guardChanged, runGuardedBatch } from '@server/modules/qrcode/repo';
 import { ensurePostelSticker } from '@server/modules/sticker/postel';
 import type {
+  AuditCursorPageDto,
+  ListPostelHistoryInput,
   PostelAttachmentDto,
   PostelDto,
   PostelListDto,
@@ -242,6 +245,26 @@ async function loadPostelDto(env: Env, user: UserContext, id: string): Promise<P
     loadAttachmentDtos(env, record.attachments),
   ]);
   return toPostelDto(record, read, attachments);
+}
+
+/**
+ * Riwayat perubahan satu catatan: entri log audit bertarget `postel:<id>`, terbaru dahulu. Catatan yang tak ada (atau
+ * sudah dihapus) = `NOT_FOUND`; riwayat catatan terhapus tetap di log audit umum. Snapshot hanya memuat isi bisnis
+ * (jumlah item dan lampiran, bukan identitasnya), jadi aman bagi setiap pemegang `sticker: view`.
+ */
+export async function postelHistory(
+  env: Env,
+  id: string,
+  input: ListPostelHistoryInput,
+): Promise<AuditCursorPageDto> {
+  if ((await findPostelRecord(env.DB, id)) === null) {
+    throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+  }
+  const cursor = input.cursor ? parseAuditCursor(input.cursor) : null;
+  return listAuditByTarget(env, postelTarget(id), {
+    ...(cursor ? { cursor } : {}),
+    limit: input.limit ?? PAGE_DEFAULT_LIMIT,
+  });
 }
 
 export async function getPostel(env: Env, user: UserContext, id: string): Promise<PostelDto> {

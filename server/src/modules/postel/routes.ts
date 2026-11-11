@@ -4,6 +4,7 @@ import { readPostelFile, uploadPostelFile } from './attachments';
 import {
   getPostel,
   listPostels,
+  postelHistory,
   queryPostelItemOptions,
   removePostel,
   savePostel,
@@ -11,6 +12,7 @@ import {
 import {
   validateGetPostel,
   validateGetPostelFile,
+  validateListPostelHistory,
   validateListPostelItemOptions,
   validateRemovePostel,
   validateSavePostel,
@@ -22,6 +24,7 @@ type PostelMethod =
   | 'postels.get'
   | 'postels.save'
   | 'postels.remove'
+  | 'postels.history'
   | 'postels.itemOptions'
   | 'postelFiles.upload'
   | 'postelFiles.get';
@@ -48,6 +51,11 @@ export function postelRoutes(): Pick<RouteTable, PostelMethod> {
       permission: { module: 'sticker', level: 'edit' },
       validate: validateRemovePostel,
       handler: (input, ctx) => removePostel(ctx.env, input.id, ctx.user),
+    },
+    'postels.history': {
+      permission: { module: 'sticker', level: 'view' },
+      validate: validateListPostelHistory,
+      handler: (input, ctx) => postelHistory(ctx.env, input.id, input),
     },
     'postels.itemOptions': {
       permission: { module: 'sticker', level: 'edit' },

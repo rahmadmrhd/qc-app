@@ -232,6 +232,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     attachmentIds: [],
   },
   'postels.remove': { id: 'p1' },
+  'postels.history': { id: 'p1', cursor: 'c1', limit: 20 },
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
   'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
   'postelFiles.get': { id: 'f1' },

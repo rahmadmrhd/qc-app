@@ -350,6 +350,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'postels.history': {
+    verb: 'GET',
+    path: '/postels/{id}/history',
+    query: { cursor: 'string', limit: 'number' },
+  },
   'postelFiles.upload': {
     verb: 'POST',
     path: '/postel-files',

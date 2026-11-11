@@ -1,7 +1,9 @@
 import { readObject } from '@server/core/validate';
+import { PAGE_MAX_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
 import type {
   GetPostelFileInput,
   GetPostelInput,
+  ListPostelHistoryInput,
   ListPostelItemOptionsInput,
   RemovePostelInput,
   SavePostelInput,
@@ -138,6 +140,34 @@ export function validateGetPostel(raw: unknown): GetPostelInput {
 
 export function validateRemovePostel(raw: unknown): RemovePostelInput {
   return validateGetPostel(raw);
+}
+
+/** Riwayat: `id` wajib; `cursor` = kursor audit (`<ts>~<id>`), `limit` 1..50 (bawaan 20 di servis). */
+export function validateListPostelHistory(raw: unknown): ListPostelHistoryInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: MAX_ID_LENGTH });
+  const cursor = reader.raw('cursor');
+  if (
+    cursor !== undefined &&
+    cursor !== null &&
+    (typeof cursor !== 'string' || !parseAuditCursor(cursor))
+  ) {
+    reader.fail('cursor', 'Kursor tidak valid');
+  }
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > PAGE_MAX_LIMIT)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${PAGE_MAX_LIMIT}`);
+  }
+  reader.done();
+  return {
+    id,
+    ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(typeof limit === 'number' ? { limit } : {}),
+  };
 }
 
 /** Opsi item untuk pemilih: input boleh kosong; `cursor` buram (kunci item terakhir). */
