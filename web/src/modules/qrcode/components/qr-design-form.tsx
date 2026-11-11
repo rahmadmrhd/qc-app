@@ -257,6 +257,8 @@ export function QrDesignForm({
     for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
       form.setFieldValue(key, patch[key] as never);
     }
+    // Bagian label yang terkunci ke nama tidak boleh tertimpa isi preset (efek penguncian tak berjalan ulang di sini).
+    if (lockedPart !== '') form.setFieldValue(lockedPart, form.state.values.name);
   }
 
   function applyDocument(next: QrDocumentDto) {
@@ -336,8 +338,11 @@ export function QrDesignForm({
             <form.Field
               name="itemIds"
               validators={{
+                // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 17): daftar terlihat boleh kosong.
                 onSubmit: ({ value }) =>
-                  requireItems && value.length === 0 ? 'Pilih minimal satu item' : undefined,
+                  requireItems && value.length === 0 && (edit?.hiddenItemCount ?? 0) === 0
+                    ? 'Pilih minimal satu item'
+                    : undefined,
               }}
             >
               {(field) => (

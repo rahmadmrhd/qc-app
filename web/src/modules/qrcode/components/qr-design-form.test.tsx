@@ -411,6 +411,8 @@ test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci meng
       name: 'Nama Tersimpan',
       itemIds: ['i1'],
       presetId: 'p1',
+      linkSource: 'url',
+      link: 'https://contoh.com',
     },
   });
   expect(screen.getByRole('button', { name: 'Hapus PBE M5-400' })).toBeInTheDocument();
@@ -418,11 +420,57 @@ test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci meng
   expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('Nama Tersimpan');
   expect(screen.getByLabelText('Subtitle')).toBeDisabled();
   expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Tersimpan');
+  // item tak terlihat tetap terpasang: menghapus semua item yang terlihat diperbolehkan (spek 4a §3 butir 17)
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
+  await userEvent.type(screen.getByLabelText('Title'), 'x');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit.mock.calls[0]?.[0].itemIds).toEqual([]);
+});
+
+test('ubah tanpa item tak terlihat: menghapus semua item ditolak', async () => {
+  const { onSubmit } = renderForm({
+    edit: { ...EDIT, hiddenItemCount: 0 },
+    updatePresets: [SPECTRUM],
+    defaultValues: {
+      ...toQrFormDefaults(),
+      name: 'Nama Tersimpan',
+      itemIds: ['i1'],
+      presetId: 'p1',
+    },
+  });
   await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
   await userEvent.type(screen.getByLabelText('Title'), 'x');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText('Pilih minimal satu item')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('"Perbarui sesuai konfigurasi default" tidak menimpa bagian label yang terkunci ke nama', async () => {
+  renderForm({
+    edit: { ...EDIT, namePlacement: 'title', hiddenItemCount: 0 },
+    updatePresets: [SPECTRUM],
+    defaultValues: {
+      ...toQrFormDefaults(),
+      name: 'Nama Tersimpan',
+      title: 'Nama Tersimpan',
+      itemIds: ['i1'],
+      presetId: 'p1',
+      linkSource: 'url',
+      link: 'https://contoh.com',
+    },
+  });
+  expect(screen.getByLabelText('Title')).toHaveValue('Nama Tersimpan');
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Perbarui sesuai konfigurasi default' }),
+  );
+  const dialog = await screen.findByRole('dialog');
+  await pickLink(within(dialog), 'Konfigurasi default', 'Standar Spectrum');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
+  // title preset tidak boleh menimpa bagian yang terkunci ke nama; bagian lain ikut preset
+  expect(screen.getByLabelText('Title')).toHaveValue('Nama Tersimpan');
+  expect(screen.getByLabelText('Subtitle')).toHaveValue(SPECTRUM.subtitle);
+  expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('Nama Tersimpan');
 });
 
 test('ubah konfigurasi lama tanpa nama/item: boleh disimpan kosong (kelonggaran)', async () => {
