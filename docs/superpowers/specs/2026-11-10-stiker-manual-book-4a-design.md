@@ -85,7 +85,7 @@ Anti-tujuan: tidak ada Postel (4b); tidak ada notifikasi di dalam aplikasi (menj
 
 ## 6. Di luar lingkup / berikutnya
 
-4b: Postel (kelompok item, nomor sertifikat, masa berlaku, link, lampiran; tanpa field nama; peringatan masa berlaku lewat email di halaman Konfigurasi Stiker). Notifikasi di dalam aplikasi: PRD PWA. Serial Number dan pemotongan stok otomatis: tahap 5.
+4b: Postel (kelompok item, nomor sertifikat, masa berlaku, link, lampiran; tanpa field nama; peringatan masa berlaku lewat email di halaman Konfigurasi Stiker); dibangun 2026-11-12, spek `docs/superpowers/specs/2026-11-11-stiker-postel-4b-design.md`. Notifikasi di dalam aplikasi: PRD PWA. Serial Number dan pemotongan stok otomatis: tahap 5.
 
 ## 7. Risiko dan pertanyaan terbuka
 
