@@ -23,24 +23,43 @@ interface DueNumber {
 }
 
 /**
- * Mengklaim state satu nomor: berhasil hanya bila state di basis data masih sama dengan yang dibaca (CAS NULL-aman pada
- * ambang). Hanya satu pemanggil serentak yang mendapat `true`.
+ * Mengklaim state satu nomor: berhasil hanya bila tanggal habis DAN state di basis data masih sama dengan yang dibaca
+ * (CAS NULL-aman pada ambang). Tanggal ikut dipin: `postels.save` yang memperpanjang tanggal mengembalikan state ke
+ * NULL/'' (sama dengan nilai yang dibaca), jadi tanpa pin klaim atas tanggal lama bisa lolos dan menahan peringatan
+ * tanggal baru. Hanya satu pemanggil serentak yang mendapat `true`.
  */
 async function claimNumber(env: Env, due: DueNumber, today: string): Promise<boolean> {
   const result = await env.DB.prepare(
-    'UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ?',
+    'UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND expires_on = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ?',
   )
-    .bind(due.claimed, today, due.record.id, due.record.alertSentOn, due.record.alertSentThreshold)
+    .bind(
+      due.claimed,
+      today,
+      due.record.id,
+      due.record.expiresOn,
+      due.record.alertSentOn,
+      due.record.alertSentThreshold,
+    )
     .run();
   return result.meta.changes === 1;
 }
 
-/** Mengembalikan klaim ke state lama, hanya bila state masih nilai klaim kita (tidak menimpa pihak lain). */
+/**
+ * Mengembalikan klaim ke state lama, hanya bila tanggal dan state masih nilai klaim kita (tidak menimpa klaim pihak lain
+ * atas tanggal yang sudah diperpanjang).
+ */
 async function releaseNumber(env: Env, due: DueNumber, today: string): Promise<void> {
   await env.DB.prepare(
-    'UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ?',
+    'UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND expires_on = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ?',
   )
-    .bind(due.record.alertSentThreshold, due.record.alertSentOn, due.record.id, today, due.claimed)
+    .bind(
+      due.record.alertSentThreshold,
+      due.record.alertSentOn,
+      due.record.id,
+      due.record.expiresOn,
+      today,
+      due.claimed,
+    )
     .run();
 }
 

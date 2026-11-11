@@ -180,6 +180,23 @@ describe('postelSettings.save', () => {
     expect(edge.ok).toBe(true);
   });
 
+  test('baris POSTEL_ALERT yang ada tetapi kosong: simpan berhasil (UPDATE, bukan INSERT duplikat) dan tetap CAS', async () => {
+    await env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)')
+      .bind(SETTING_POSTEL_ALERT, '')
+      .run();
+    const first = await save();
+    expect(first.ok).toBe(true);
+    expect(first.data.updatedAt).not.toBe('');
+    // simpan kedua dengan versi usang ('' lama) tetap ditolak
+    env.clock.advance(60_000);
+    expect((await save()).error.code).toBe('CONFLICT');
+    expect((await save({ expectedUpdatedAt: first.data.updatedAt })).ok).toBe(true);
+    const rows = await env.DB.prepare('SELECT COUNT(*) AS c FROM settings WHERE `key` = ?')
+      .bind(SETTING_POSTEL_ALERT)
+      .first<{ c: number | string }>();
+    expect(Number(rows?.c)).toBe(1);
+  });
+
   test('versi pengaturan peringatan dan pengaturan stok terpisah: menyimpan satu tidak mengubah yang lain', async () => {
     const stockSave = await call(MANAGER, 'stickerSettings.save', {
       expectedUpdatedAt: '',

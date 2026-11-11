@@ -272,6 +272,99 @@ describe('checkPostelExpiryDigest: konkurensi dan kegagalan', () => {
   });
 });
 
+describe('checkPostelExpiryDigest: klaim mem-pin tanggal habis', () => {
+  /** Menyisipkan `mutate` tepat sebelum pernyataan klaim pertama dijalankan (setelah pembacaan nomor, sebelum klaim). */
+  function beforeFirstClaim(mutate: () => Promise<void>) {
+    const real = env.DB;
+    let fired = false;
+    const wrapStatement = <T extends object>(statement: T): T =>
+      new Proxy(statement, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target);
+          if (prop === 'run') {
+            return async () => {
+              if (!fired) {
+                fired = true;
+                await mutate();
+              }
+              return (value as () => Promise<unknown>).call(target);
+            };
+          }
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    env.DB = new Proxy(real, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target);
+        if (prop !== 'prepare') return typeof value === 'function' ? value.bind(target) : value;
+        return (sql: string) => {
+          const prepared = target.prepare(sql);
+          if (!sql.startsWith('UPDATE postel_numbers SET alert_sent_threshold')) return prepared;
+          return new Proxy(prepared, {
+            get(inner, key) {
+              const member = Reflect.get(inner, key, inner);
+              if (key === 'bind') {
+                return (...args: unknown[]) =>
+                  wrapStatement((member as (...a: unknown[]) => object).apply(inner, args));
+              }
+              return typeof member === 'function' ? member.bind(inner) : member;
+            },
+          });
+        };
+      },
+    });
+    return () => {
+      env.DB = real;
+    };
+  }
+
+  test('tanggal diperpanjang antara pembacaan dan klaim: klaim tidak berhasil, tak ada surel, state tetap; putaran berikut menilai ulang', async () => {
+    const p = await postel(onDay(30));
+    const restore = beforeFirstClaim(async () => {
+      // seperti postels.save yang mengubah tanggal: state direset (sama dengan nilai yang dibaca) dan tanggal berganti
+      await env.DB.prepare(
+        "UPDATE postel_numbers SET expires_on = ?, alert_sent_threshold = NULL, alert_sent_on = '' WHERE id = ?",
+      )
+        .bind(onDay(200), p.numberId)
+        .run();
+    });
+    expect(await checkPostelExpiryDigest(env)).toBe('skipped');
+    restore();
+    expect(sent).toHaveLength(0);
+    expect(await stateOf(p.numberId)).toEqual({ threshold: null, on: '' });
+    // tanggal baru 200 hari: belum ada ambang tercapai
+    expect(await checkPostelExpiryDigest(env)).toBe('skipped');
+    // diperpanjang lagi ke 29 hari: dinilai ulang dengan tanggal baru dan terkirim
+    await env.DB.prepare('UPDATE postel_numbers SET expires_on = ? WHERE id = ?')
+      .bind(onDay(29), p.numberId)
+      .run();
+    expect(await checkPostelExpiryDigest(env)).toBe('sent');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain(onDay(29));
+    expect(await stateOf(p.numberId)).toEqual({ threshold: 30, on: TODAY });
+  });
+
+  test('pemulihan tidak menimpa klaim pihak lain atas tanggal yang sudah diperpanjang (nilai klaim sama)', async () => {
+    const p = await postel(onDay(30));
+    sendBehavior = async () => {
+      // selagi kirim berjalan: tanggal diperpanjang (state direset) lalu nomor diklaim pihak lain dengan nilai yang SAMA
+      await env.DB.prepare(
+        "UPDATE postel_numbers SET expires_on = ?, alert_sent_threshold = NULL, alert_sent_on = '' WHERE id = ?",
+      )
+        .bind(onDay(29), p.numberId)
+        .run();
+      await env.DB.prepare(
+        'UPDATE postel_numbers SET alert_sent_threshold = 30, alert_sent_on = ? WHERE id = ?',
+      )
+        .bind(TODAY, p.numberId)
+        .run();
+      throw new Error('SMTP mati');
+    };
+    expect(await checkPostelExpiryDigest(env)).toBe('failed');
+    expect(await stateOf(p.numberId)).toEqual({ threshold: 30, on: TODAY });
+  });
+});
+
 describe('checkPostelExpiryDigest: isi surel', () => {
   test('(j) banyak Postel: satu surel urut sisa hari menaik; tanpa merk dan kata item; memuat nama, nomor, tanggal, tautan', async () => {
     const far = await postel(onDay(25), { model: 'M5-400' });

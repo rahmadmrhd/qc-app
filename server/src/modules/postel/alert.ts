@@ -136,22 +136,26 @@ export async function savePostelSettings(
   const now = nowIso(env);
   const stored: StoredAlert = { ...input.alert, updatedAt: now };
   const value = JSON.stringify(stored);
-  const statements: DbStatement[] =
-    current.raw === ''
-      ? [
-          env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)').bind(
-            SETTING_POSTEL_ALERT,
-            value,
-          ),
-        ]
-      : [
-          env.DB.prepare('UPDATE settings SET value = ? WHERE `key` = ? AND value = ?').bind(
-            value,
-            SETTING_POSTEL_ALERT,
-            current.raw,
-          ),
-          guardChanged(env),
-        ];
+  // Keberadaan BARIS yang menentukan INSERT atau UPDATE (baris bernilai '' tetap harus di-UPDATE, bukan di-INSERT ulang).
+  const rowExists =
+    (await env.DB.prepare('SELECT 1 AS present FROM settings WHERE `key` = ?')
+      .bind(SETTING_POSTEL_ALERT)
+      .first<{ present: number }>()) !== null;
+  const statements: DbStatement[] = !rowExists
+    ? [
+        env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)').bind(
+          SETTING_POSTEL_ALERT,
+          value,
+        ),
+      ]
+    : [
+        env.DB.prepare('UPDATE settings SET value = ? WHERE `key` = ? AND value = ?').bind(
+          value,
+          SETTING_POSTEL_ALERT,
+          current.raw,
+        ),
+        guardChanged(env),
+      ];
   statements.push(
     writeAudit(env.DB, {
       ts: now,
