@@ -177,14 +177,17 @@ const DESIGN_LOCK = 'SELECT id FROM qr_designs WHERE id = ? FOR UPDATE';
 
 /**
  * Menunggu sampai sedikitnya `count` transaksi terlihat menunggu kunci (`INNODB_TRX`, `LOCK WAIT`), maksimal 15
- * dtk. `false` bila tabelnya tidak dapat dibaca (hak akses): pemanggil jatuh ke jeda tetap.
+ * dtk. Hanya transaksi pada skema tes ini yang dihitung (join `PROCESSLIST` menurut `DB`): shard tes paralel memakai
+ * server MariaDB yang sama dan penantang milik shard lain tidak boleh memenuhi hitungan ini.
+ * Catatan: membaca `INNODB_TRX`/`PROCESSLIST` butuh hak PROCESS; pengguna tes pada MariaDB dev lewat tunnel TIDAK memilikinya
+ * (galat 1227), sehingga di sana polling selalu jatuh ke jeda tetap (`false`); polling bekerja di lingkungan yang memberi hak itu (mis. CI). `false` bila tabelnya tidak dapat dibaca (hak akses): pemanggil jatuh ke jeda tetap.
  */
 async function waitForLockWaiters(count: number): Promise<boolean> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     try {
       const row = await env.DB.prepare(
-        "SELECT COUNT(*) AS n FROM information_schema.INNODB_TRX WHERE trx_state = 'LOCK WAIT'",
+        "SELECT COUNT(*) AS n FROM information_schema.INNODB_TRX t JOIN information_schema.PROCESSLIST p ON p.ID = t.trx_mysql_thread_id WHERE t.trx_state = 'LOCK WAIT' AND p.DB = DATABASE()",
       ).first<{ n: number | string }>();
       if (Number(row?.n) >= count) return true;
     } catch {
