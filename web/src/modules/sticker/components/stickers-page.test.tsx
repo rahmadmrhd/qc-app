@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { linkOptionNames, pickLink } from '@/test/link-field';
+import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
@@ -136,11 +136,11 @@ test('penanda Menipis hanya muncul bila low', () => {
 
 test('filter jenis dan status menyaring baris', async () => {
   renderPage();
-  await userEvent.selectOptions(screen.getByLabelText('Filter jenis'), 'tp-none');
+  await pickLink(screen, 'Filter jenis', 'Segel');
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
-  await userEvent.selectOptions(screen.getByLabelText('Filter jenis'), '');
-  await userEvent.selectOptions(screen.getByLabelText('Filter status'), 'inactive');
+  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Filter jenis' }));
+  await pickSelect(screen, 'Filter status', 'Nonaktif');
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
 });
@@ -165,8 +165,8 @@ test('dialog tambah: field BU hanya untuk jenis berrule bu, tersembunyi untuk je
   const dialog = await screen.findByRole('alertdialog');
   // Jenis nonaktif tidak ditawarkan.
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
-  expect(await within(dialog).findByRole('option', { name: 'QC Hijau' })).toBeInTheDocument();
-  expect(within(dialog).queryByRole('option', { name: 'Lawas' })).toBeNull();
+  expect(await screen.findByRole('option', { name: 'QC Hijau' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'Lawas' })).toBeNull();
   expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
   expect(within(dialog).getByRole('combobox', { name: 'BU' })).toBeInTheDocument();
@@ -340,16 +340,16 @@ test('field Jenis memakai LinkField: Tambah Jenis hanya muncul bila user berhak'
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   let dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
-  expect(within(dialog).queryByRole('option', { name: 'Tambah Jenis' })).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Tambah Jenis' })).toBeNull();
   // Jenis nonaktif tidak ditawarkan.
-  expect(within(dialog).queryByRole('option', { name: 'Lawas' })).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Lawas' })).toBeNull();
   cleanup();
 
   renderPage({ onCreateType: vi.fn() });
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
-  expect(within(dialog).getByRole('option', { name: 'Tambah Jenis' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'Tambah Jenis' })).toBeInTheDocument();
 });
 
 test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (aturan bu memunculkan field BU)', async () => {
@@ -368,7 +368,7 @@ test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (a
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'Jenis' }));
-  await userEvent.click(await within(dialog).findByRole('option', { name: 'Tambah Jenis' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Tambah Jenis' }));
   const typeDialog = await screen.findByRole('alertdialog', { name: 'Tambah jenis stiker' });
   await userEvent.type(within(typeDialog).getByLabelText('Nama jenis'), 'Warna Baru');
   await userEvent.click(within(typeDialog).getByRole('button', { name: 'Simpan' }));
@@ -396,7 +396,7 @@ test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan',
   await pickLink(within(dialog), 'BU', 'Retail (RTL)');
   expect(within(dialog).queryByRole('link', { name: /Buka/ })).toBeNull();
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
-  expect(within(dialog).queryByRole('option', { name: 'Tambah BU' })).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Tambah BU' })).toBeNull();
   cleanup();
 
   renderPage({
@@ -412,7 +412,7 @@ test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan',
     '/access/business-units/bu-a',
   );
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
-  expect(within(dialog).getByRole('option', { name: 'Tambah BU' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'Tambah BU' })).toBeInTheDocument();
 });
 
 const manualBookType: StickerTypeDto = {
@@ -455,7 +455,7 @@ test('status Usang tampil sebagai badge, dapat disaring, dan hanya dapat dinonak
   // Usang bertahan "sampai stok 0 atau dinonaktifkan manual" (spek 4a): hanya ada Nonaktifkan.
   expect(screen.queryByRole('button', { name: 'Aktifkan PBE M5-400 v1' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Nonaktifkan PBE M5-400 v1' })).toBeInTheDocument();
-  await userEvent.selectOptions(screen.getByLabelText('Filter status'), 'deprecated');
+  await pickSelect(screen, 'Filter status', 'Usang');
   expect(screen.getByRole('row', { name: /PBE M5-400 v1/ })).toBeInTheDocument();
   expect(screen.queryByRole('row', { name: /PBE M5-400 v2/ })).toBeNull();
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();

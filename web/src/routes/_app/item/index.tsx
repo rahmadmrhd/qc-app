@@ -2,7 +2,7 @@ import type { ItemSummaryDto } from '@shared/contract';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/describe-error';
@@ -87,24 +87,24 @@ function ItemsPage() {
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
-        <NativeSelect
-          aria-label="Filter status"
+        <Select
+          id="items-filter-status"
+          label="Filter status"
+          hideLabel
           className="sm:w-48"
+          options={[
+            { value: 'all', label: 'Semua status' },
+            { value: 'active', label: 'Aktif' },
+            { value: 'inactive', label: 'Nonaktif' },
+          ]}
           value={search.status ?? 'all'}
-          onChange={(event) =>
+          onValueChange={(next) =>
             void navigate({
-              search: (prev) => ({
-                ...prev,
-                status: event.target.value as 'all' | 'active' | 'inactive',
-              }),
+              search: (prev) => ({ ...prev, status: next as 'all' | 'active' | 'inactive' }),
               replace: true,
             })
           }
-        >
-          <option value="all">Semua status</option>
-          <option value="active">Aktif</option>
-          <option value="inactive">Nonaktif</option>
-        </NativeSelect>
+        />
         <ItemFilters
           filter={filter}
           stickers={stickers.data ?? []}

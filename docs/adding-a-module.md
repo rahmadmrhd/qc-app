@@ -66,13 +66,13 @@ Satu fitur boleh memakai dua modul: katalog `sticker` (global, `SHARED_MODULES`,
 
 ## Field relasi di form (`LinkField`)
 
-Field form yang merujuk record model lain (merk, BU, jenis, role, lokasi pada penugasan, dst.) memakai `LinkField` (satu pilihan) atau `LinkMultiField` (banyak pilihan) dari `web/src/components/link-field.tsx`, bukan `NativeSelect`, checkbox daftar, atau teks bebas (spek BU, keputusan 24). Resep:
+Field form yang merujuk record model lain (merk, BU, jenis, role, lokasi pada penugasan, dst.) memakai `LinkField` (satu pilihan) atau `LinkMultiField` (banyak pilihan) dari `web/src/components/link-field.tsx`, bukan `Select`, checkbox daftar, atau teks bebas (spek BU, keputusan 24-25); filter relasi di halaman daftar juga `LinkField`. Resep:
 1. **Opsi**: daftar kecil yang sudah dimuat disaring lokal menurut teks pencarian (`normalizeKey`); daftar besar memakai `onSearchChange` + `hasMore`. Hanya record aktif yang ditawarkan; record nonaktif yang sudah terpasang tetap tampil lewat `labelOf`.
 2. **Tambah** (`onCreate`): hanya bila ada dialog tambah dan user berhak. Dialog dirender di luar `<form>` induk, menghentikan penjalaran submit, dan record baru langsung terpilih (simpan salinan lokal sampai daftar dimuat ulang).
 3. **Buka** (`openHref`): hanya bila ada halaman lihat record dan user berhak; tanpa halaman lihat, tidak ada Buka (jangan membuat rute baru hanya untuk ini).
 4. **Izin Tambah/Buka**: fungsi di `web/src/lib/link-access.ts` (UX saja; penegakan di server).
-5. **Pengecualian**: enum/daftar tetap, filter halaman daftar, pemilih visual (gambar/logo), dan field teks bebas yang memang membuat record saat disimpan (`CustomerCombobox`).
-6. **Tes**: `pickLink` dan `linkOptionNames` di `web/src/test/link-field.ts`; uji juga bahwa Tambah/Buka hilang tanpa izin.
+5. **Pengecualian**: enum/daftar tetap (pakai `Select`/`MultiSelect` dari `web/src/components/select.tsx`, bukan `<select>` bawaan), pemilih visual (gambar/logo), dan field teks bebas yang memang membuat record saat disimpan (`CustomerCombobox`). Daftar record yang seluruhnya sudah dimuat (mis. jenis stiker pada filter) memakai `LinkField` dengan `localFilter`/`highlight`.
+6. **Tes**: `pickLink` dan `linkOptionNames` (alias `pickSelect`/`selectOptionNames` untuk `Select`) di `web/src/test/link-field.ts`; uji juga bahwa Tambah/Buka hilang tanpa izin.
 
 ## Modul ber-BU (izin per Business Unit)
 

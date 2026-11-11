@@ -8,7 +8,7 @@ import {
   FormDialogDescription,
   FormDialogTitle,
 } from '@/components/form-dialog';
-import { LinkField, LinkMultiField, type LinkOption } from './link-field';
+import { LinkField, LinkMultiField, type LinkOption, placeList } from './link-field';
 
 const OPTIONS: LinkOption[] = [
   { id: 'a', label: 'Alfa' },
@@ -355,4 +355,61 @@ test('di dalam dialog, klik mouse pada opsi memilihnya (daftar tidak terpotong p
   await userEvent.click(screen.getByRole('option', { name: 'Delta' }));
   expect(screen.getByRole('button', { name: 'Hapus Delta' })).toBeInTheDocument();
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+});
+
+test('daftar saran dirender di body (portal), bukan di dalam kontainer yang bisa terpotong', async () => {
+  const { container } = render(<Single />);
+  await userEvent.click(combo('Merk'));
+  const listbox = await screen.findByRole('listbox', { name: 'Merk' });
+  expect(container.contains(listbox)).toBe(false);
+  expect(listbox.parentElement).toBe(document.body);
+  expect(listbox.style.position === 'fixed' || listbox.className.includes('fixed')).toBe(true);
+  expect(listbox.style.pointerEvents).toBe('auto');
+});
+
+test('daftar saran ditutup dan dilepas dari body saat dipilih', async () => {
+  render(<Single />);
+  await userEvent.click(combo('Merk'));
+  await userEvent.click(await screen.findByRole('option', { name: 'Alfa' }));
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(document.body.querySelector('[data-slot="link-field-list"]')).toBeNull();
+});
+
+function rectAt(top: number, height: number): DOMRect {
+  return {
+    left: 100,
+    width: 300,
+    top,
+    bottom: top + height,
+    right: 400,
+    height,
+    x: 100,
+    y: top,
+    toJSON: () => ({}),
+  };
+}
+
+test('placeList: ruang bawah cukup, daftar dibuka ke bawah dengan tinggi maksimum 240', () => {
+  const place = placeList(rectAt(100, 32), 800);
+  expect(place.top).toBe(136);
+  expect(place.bottom).toBeUndefined();
+  expect(place.maxHeight).toBe(240);
+  expect(place.left).toBe(100);
+  expect(place.width).toBe(300);
+});
+
+test('placeList: ruang bawah sempit tetapi atas lega, daftar dibuka ke atas dan menempel pada input', () => {
+  const place = placeList(rectAt(700, 32), 800);
+  expect(place.top).toBeUndefined();
+  expect(place.bottom).toBe(800 - 700 + 4);
+  expect(place.maxHeight).toBe(240);
+});
+
+test('placeList: ruang bawah dan atas sama-sama sempit, tinggi dipangkas ke ruang yang ada', () => {
+  const down = placeList(rectAt(50, 32), 200);
+  expect(down.top).toBe(86);
+  expect(down.maxHeight).toBe(200 - 82 - 8 - 4);
+  const up = placeList(rectAt(120, 32), 200);
+  expect(up.bottom).toBe(200 - 120 + 4);
+  expect(up.maxHeight).toBe(120 - 8 - 4);
 });

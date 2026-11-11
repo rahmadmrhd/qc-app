@@ -50,7 +50,7 @@ function FormDialogContent({
     >
       {children}
       <AlertDialogPrimitive.Cancel asChild>
-        <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
+        <Button variant="ghost" className="absolute top-2 right-2 z-20" size="icon-sm">
           <XIcon />
           <span className="sr-only">Tutup</span>
         </Button>

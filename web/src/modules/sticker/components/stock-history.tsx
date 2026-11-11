@@ -165,7 +165,7 @@ export function StockHistoryDialog({
 }: StockHistoryDialogProps) {
   return (
     <Dialog open={sticker !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{sticker ? `Riwayat ${sticker.name}` : 'Riwayat stok'}</DialogTitle>
           <DialogDescription>

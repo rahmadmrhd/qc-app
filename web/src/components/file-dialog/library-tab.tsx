@@ -7,7 +7,7 @@ import {
 import { Eye, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Spinner } from '@/components/spinner';
 import {
   AlertDialog,
@@ -198,18 +198,15 @@ export function LibraryTab({
             onChange={(event) => setSearchText(event.target.value)}
           />
         </div>
-        <NativeSelect
-          aria-label="Urutkan"
+        <Select
+          id="library-sort"
+          label="Urutkan"
+          hideLabel
           className="sm:w-44"
+          options={SORT_OPTIONS}
           value={sort}
-          onChange={(event) => setSort(event.target.value as LibrarySort)}
-        >
-          {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </NativeSelect>
+          onValueChange={(next) => setSort(next as LibrarySort)}
+        />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button

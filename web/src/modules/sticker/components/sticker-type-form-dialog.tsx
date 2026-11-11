@@ -9,7 +9,7 @@ import {
   FormDialogHeader,
   FormDialogTitle,
 } from '@/components/form-dialog';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -140,30 +140,23 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
           </>
         ) : (
           <>
-            <Label htmlFor="sticker-type-rule">Aturan</Label>
-            <NativeSelect
+            <Select
               id="sticker-type-rule"
+              label="Aturan"
+              options={USER_STICKER_RULES.map((value) => ({
+                value,
+                label: STICKER_RULE_LABEL[value],
+              }))}
               value={rule}
-              aria-invalid={ruleError ? true : undefined}
-              onChange={(event) => {
-                setRule(event.target.value as StickerRule);
+              error={ruleError ?? undefined}
+              onValueChange={(next) => {
+                setRule(next as StickerRule);
                 setRuleError(null);
               }}
-            >
-              {USER_STICKER_RULES.map((value) => (
-                <option key={value} value={value}>
-                  {STICKER_RULE_LABEL[value]}
-                </option>
-              ))}
-            </NativeSelect>
+            />
             <p className="text-xs text-muted-foreground">{STICKER_RULE_HINT[rule]}</p>
           </>
         )}
-        {ruleError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {ruleError}
-          </p>
-        ) : null}
       </div>
       <FormDialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>

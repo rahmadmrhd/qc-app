@@ -91,7 +91,7 @@ function RolesPage() {
         open={editing !== null}
         onOpenChange={(open) => (open ? undefined : closeDialog())}
       >
-        <FormDialogContent className="max-h-[90svh] overflow-y-auto">
+        <FormDialogContent>
           <FormDialogHeader>
             <FormDialogTitle>{editing === 'new' ? 'Tambah role' : 'Ubah role'}</FormDialogTitle>
           </FormDialogHeader>

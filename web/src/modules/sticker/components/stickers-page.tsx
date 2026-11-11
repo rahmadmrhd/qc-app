@@ -1,7 +1,8 @@
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import type { StickerStatus } from '@shared/stickers';
 import { useState } from 'react';
-import { NativeSelect } from '@/components/native-select';
+import { LinkField } from '@/components/link-field';
+import { Select } from '@/components/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -79,30 +80,32 @@ export function StickersPage({
         Katalog stiker beserta BU dan batas minimum stok. Stiker tidak dihapus, hanya dinonaktifkan.
       </p>
       <div className="flex flex-wrap gap-2">
-        <NativeSelect
-          aria-label="Filter jenis"
+        <LinkField
+          id="sticker-filter-type"
+          label="Filter jenis"
+          hideLabel
           className="w-48"
-          value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value)}
-        >
-          <option value="">Semua jenis</option>
-          {types.map((type) => (
-            <option key={type.id} value={type.id}>
-              {type.name}
-            </option>
-          ))}
-        </NativeSelect>
-        <NativeSelect
-          aria-label="Filter status"
+          placeholder="Semua jenis"
+          options={types.map((type) => ({ id: type.id, label: type.name }))}
+          localFilter
+          highlight
+          value={typeFilter === '' ? null : typeFilter}
+          onChange={(next) => setTypeFilter(next ?? '')}
+        />
+        <Select
+          id="sticker-filter-status"
+          label="Filter status"
+          hideLabel
           className="w-40"
+          options={[
+            { value: '', label: 'Semua status' },
+            { value: 'active', label: 'Aktif' },
+            { value: 'inactive', label: 'Nonaktif' },
+            { value: 'deprecated', label: 'Usang' },
+          ]}
           value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-        >
-          <option value="">Semua status</option>
-          <option value="active">Aktif</option>
-          <option value="inactive">Nonaktif</option>
-          <option value="deprecated">Usang</option>
-        </NativeSelect>
+          onValueChange={(next) => setStatusFilter(next as StatusFilter)}
+        />
       </div>
       <div className="rounded-md border">
         <Table>

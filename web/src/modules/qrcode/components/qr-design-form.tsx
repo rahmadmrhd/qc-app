@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField } from '@/components/link-field';
-import { NativeSelect } from '@/components/native-select';
+import { Select } from '@/components/select';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -477,6 +477,82 @@ export function QrDesignForm({
                 </form.Field>
               </Section>
             ) : null}
+            {isDefaults ? null : (
+              <Section title="Sumber link">
+                <form.Subscribe selector={(state) => state.values}>
+                  {(values) => {
+                    if (values.linkSource !== 'url') return null;
+                    const driveLink = parseDriveFileId(values.link) !== null;
+                    return (
+                      <div className="space-y-2 rounded-md border p-3">
+                        <p className="text-sm text-muted-foreground">
+                          Link saat ini (bukan salinan di aplikasi):{' '}
+                          <span className="break-all">{values.link}</span>
+                        </p>
+                        {driveLink ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={legacyCloning || pdfBusy}
+                            onClick={() => void cloneLegacy(values.link)}
+                          >
+                            {legacyCloning ? (
+                              <BusyLabel>Menyalin…</BusyLabel>
+                            ) : (
+                              'Salin link ini ke Drive aplikasi'
+                            )}
+                          </Button>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau
+                            salin berkas dari Drive di bawah untuk menggantinya.
+                          </p>
+                        )}
+                        {legacyCloning ? (
+                          <p role="status" className="text-sm">
+                            <BusyLabel>
+                              Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
+                            </BusyLabel>
+                          </p>
+                        ) : null}
+                        {legacyError ? (
+                          <p role="alert" className="text-sm text-destructive">
+                            {legacyError}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  }}
+                </form.Subscribe>
+                <form.Field name="documentId">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <PdfSourceField
+                        document={document}
+                        onDocument={applyDocument}
+                        onBusyChange={setPdfBusy}
+                        onUpload={async (file, replaceId) =>
+                          uploadPdf.mutateAsync({
+                            name: limitDocumentName(file.name),
+                            bytes: new Uint8Array(await file.arrayBuffer()),
+                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                          })
+                        }
+                        onClone={(source, replaceId) =>
+                          cloneQrPdf.mutateAsync({
+                            source,
+                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                          })
+                        }
+                      />
+                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
+                      <FieldError errors={[fieldErrors?.link]} />
+                    </div>
+                  )}
+                </form.Field>
+              </Section>
+            )}
             {manualBookFlow ? (
               <form.Subscribe selector={(state) => state.values}>
                 {(values) => {
@@ -538,19 +614,20 @@ export function QrDesignForm({
                 <form.Field name="namePlacement">
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="qr-name-placement">Penempatan nama Manual Book</Label>
-                      <NativeSelect
+                      <Select
                         id="qr-name-placement"
+                        label="Penempatan nama Manual Book"
+                        placeholder="Pilih bagian label…"
+                        options={[
+                          { value: 'title', label: 'Title' },
+                          { value: 'subtitle', label: 'Subtitle' },
+                          { value: 'footer', label: 'Footer' },
+                        ]}
                         value={field.state.value}
-                        onChange={(event) =>
-                          field.handleChange(event.target.value as typeof field.state.value)
+                        onValueChange={(next) =>
+                          field.handleChange(next as typeof field.state.value)
                         }
-                      >
-                        <option value="">Pilih bagian label…</option>
-                        <option value="title">Title</option>
-                        <option value="subtitle">Subtitle</option>
-                        <option value="footer">Footer</option>
-                      </NativeSelect>
+                      />
                       <p className="text-xs text-muted-foreground">
                         Bagian ini diisi nama Manual Book pada QR yang dibuat dari konfigurasi ini
                         dan terkunci; gaya teksnya tetap dapat diubah.
@@ -685,83 +762,6 @@ export function QrDesignForm({
                 </form.Field>
               ))}
             </Section>
-
-            {isDefaults ? null : (
-              <Section title="Sumber link">
-                <form.Subscribe selector={(state) => state.values}>
-                  {(values) => {
-                    if (values.linkSource !== 'url') return null;
-                    const driveLink = parseDriveFileId(values.link) !== null;
-                    return (
-                      <div className="space-y-2 rounded-md border p-3">
-                        <p className="text-sm text-muted-foreground">
-                          Link saat ini (bukan salinan di aplikasi):{' '}
-                          <span className="break-all">{values.link}</span>
-                        </p>
-                        {driveLink ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={legacyCloning || pdfBusy}
-                            onClick={() => void cloneLegacy(values.link)}
-                          >
-                            {legacyCloning ? (
-                              <BusyLabel>Menyalin…</BusyLabel>
-                            ) : (
-                              'Salin link ini ke Drive aplikasi'
-                            )}
-                          </Button>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau
-                            salin berkas dari Drive di bawah untuk menggantinya.
-                          </p>
-                        )}
-                        {legacyCloning ? (
-                          <p role="status" className="text-sm">
-                            <BusyLabel>
-                              Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
-                            </BusyLabel>
-                          </p>
-                        ) : null}
-                        {legacyError ? (
-                          <p role="alert" className="text-sm text-destructive">
-                            {legacyError}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  }}
-                </form.Subscribe>
-                <form.Field name="documentId">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <PdfSourceField
-                        document={document}
-                        onDocument={applyDocument}
-                        onBusyChange={setPdfBusy}
-                        onUpload={async (file, replaceId) =>
-                          uploadPdf.mutateAsync({
-                            name: limitDocumentName(file.name),
-                            bytes: new Uint8Array(await file.arrayBuffer()),
-                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                          })
-                        }
-                        onClone={(source, replaceId) =>
-                          cloneQrPdf.mutateAsync({
-                            source,
-                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                          })
-                        }
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
-                      <FieldError errors={[fieldErrors?.link]} />
-                    </div>
-                  )}
-                </form.Field>
-              </Section>
-            )}
 
             <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'}>
               <form.Field name="logoFileId">
