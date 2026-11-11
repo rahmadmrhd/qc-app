@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { bytesToBase64 } from '@server/core/bytes';
-import type { DbTx } from '@server/core/db';
+import { DbError, type DbTx } from '@server/core/db';
 import { runPendingJobs } from '@server/jobs/runner';
 import { JOB_MAX_ATTEMPTS, runJobStep } from '@server/modules/jobs/consumer';
 import { enqueueJob } from '@server/modules/jobs/service';
@@ -175,12 +175,17 @@ const driveNames = () => [...env.BRIDGE.state.files.values()].map((file) => file
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const DESIGN_LOCK = 'SELECT id FROM qr_designs WHERE id = ? FOR UPDATE';
 
+/** Kode galat MariaDB 1227: pengguna tes tidak punya hak PROCESS (kasus MariaDB dev lewat tunnel). */
+const ER_SPECIFIC_ACCESS_DENIED = 1227;
+
 /**
  * Menunggu sampai sedikitnya `count` transaksi terlihat menunggu kunci (`INNODB_TRX`, `LOCK WAIT`), maksimal 15
  * dtk. Hanya transaksi pada skema tes ini yang dihitung (join `PROCESSLIST` menurut `DB`): shard tes paralel memakai
  * server MariaDB yang sama dan penantang milik shard lain tidak boleh memenuhi hitungan ini.
  * Catatan: membaca `INNODB_TRX`/`PROCESSLIST` butuh hak PROCESS; pengguna tes pada MariaDB dev lewat tunnel TIDAK memilikinya
- * (galat 1227), sehingga di sana polling selalu jatuh ke jeda tetap (`false`); polling bekerja di lingkungan yang memberi hak itu (mis. CI). `false` bila tabelnya tidak dapat dibaca (hak akses): pemanggil jatuh ke jeda tetap.
+ * (galat 1227), sehingga di sana polling selalu jatuh ke jeda tetap (`false`); polling bekerja di lingkungan yang memberi hak itu (mis. CI).
+ * Jeda tetap TIDAK membuktikan balapan terjadi (penantang bisa saja belum sampai menunggu kunci); ia hanya
+ * memperkecil peluang hijau palsu. Hanya galat 1227 yang diterima sebagai alasan jatuh ke jeda; galat lain dilempar. `false` bila tabelnya tidak dapat dibaca (hak akses): pemanggil jatuh ke jeda tetap.
  */
 async function waitForLockWaiters(count: number): Promise<boolean> {
   const deadline = Date.now() + 15_000;
@@ -190,8 +195,10 @@ async function waitForLockWaiters(count: number): Promise<boolean> {
         "SELECT COUNT(*) AS n FROM information_schema.INNODB_TRX t JOIN information_schema.PROCESSLIST p ON p.ID = t.trx_mysql_thread_id WHERE t.trx_state = 'LOCK WAIT' AND p.DB = DATABASE()",
       ).first<{ n: number | string }>();
       if (Number(row?.n) >= count) return true;
-    } catch {
-      return false;
+    } catch (error) {
+      // Hanya "tanpa hak PROCESS" (1227) yang boleh jatuh ke jeda tetap; galat lain (SQL salah, koneksi) dilempar.
+      if (error instanceof DbError && error.errno === ER_SPECIFIC_ACCESS_DENIED) return false;
+      throw error;
     }
     await sleep(100);
   }
