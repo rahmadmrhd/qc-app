@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { beginBusy, isBusy, resetBusyForTests } from './busy';
 import {
   isSafeToReload,
+  isUnsafeForDisplay,
   resetSafeReloadForTests,
   setMutationSource,
   subscribeSafety,
@@ -10,6 +11,7 @@ import {
 import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
 
 beforeEach(() => {
+  vi.useFakeTimers();
   resetSafeReloadForTests();
   resetBusyForTests();
   resetUnsavedChangesForTests();
@@ -71,4 +73,49 @@ test('subscribeSafety memberi tahu saat registri sibuk, formulir kotor, atau cac
   hook.unmount();
   beginBusy();
   expect(listener).toHaveBeenCalledTimes(4);
+});
+
+test('M-d: sibuk singkat (200 ms) tidak dianggap tidak aman UNTUK TAMPILAN, tetapi tetap menghalangi muat ulang; sibuk >= 1 dtk menjadi tidak aman untuk tampilan dan memberi tahu pelanggan', () => {
+  const listener = vi.fn();
+  subscribeSafety(listener);
+  const end = beginBusy();
+  expect(isSafeToReload()).toBe(false);
+  expect(isUnsafeForDisplay()).toBe(false);
+  vi.advanceTimersByTime(200);
+  end();
+  vi.advanceTimersByTime(5_000);
+  expect(isUnsafeForDisplay()).toBe(false);
+  expect(isSafeToReload()).toBe(true);
+
+  const endLong = beginBusy();
+  listener.mockClear();
+  vi.advanceTimersByTime(999);
+  expect(isUnsafeForDisplay()).toBe(false);
+  vi.advanceTimersByTime(2);
+  expect(isUnsafeForDisplay()).toBe(true);
+  expect(listener).toHaveBeenCalled();
+  endLong();
+  expect(isUnsafeForDisplay()).toBe(false);
+});
+
+test('M-d: mutasi react-query yang berjalan lama juga tidak aman untuk tampilan setelah 1 dtk; formulir kotor seketika', () => {
+  let count = 1;
+  let notify: () => void = () => undefined;
+  setMutationSource({
+    isMutating: () => count,
+    subscribe: (callback) => {
+      notify = callback;
+      return () => undefined;
+    },
+  });
+  notify();
+  expect(isUnsafeForDisplay()).toBe(false);
+  vi.advanceTimersByTime(1_100);
+  expect(isUnsafeForDisplay()).toBe(true);
+  count = 0;
+  notify();
+  expect(isUnsafeForDisplay()).toBe(false);
+  const hook = renderHook(() => useUnsavedChanges(true));
+  expect(isUnsafeForDisplay()).toBe(true);
+  hook.unmount();
 });

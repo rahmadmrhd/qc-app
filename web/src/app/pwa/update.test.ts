@@ -811,6 +811,11 @@ test('R5: formulir belum disimpan: tidak memuat ulang pada pemicu apa pun dan sp
 test('R5: penulisan berjalan (registri sibuk atau mutasi): tidak memuat ulang dan spanduk tampil', () => {
   const end = beginBusy();
   const { reg, view, hook } = armed();
+  // M-d: spanduk karena sibuk hanya setelah sibuk bertahan >= 1 dtk.
+  expect(hook.result.current.visible).toBe(false);
+  act(() => {
+    vi.advanceTimersByTime(1_100);
+  });
   expect(hook.result.current.visible).toBe(true);
   act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
@@ -1033,4 +1038,17 @@ test('R5: attachNavigationTrigger hanya meneruskan perpindahan path sungguhan (b
   expect(reg.updateSW).not.toHaveBeenCalled();
   act(() => handler({ fromLocation: {}, toLocation: { href: '/item' }, pathChanged: true }));
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
+});
+
+test('M-d: sibuk singkat tidak menampilkan spanduk, tetapi tetap menghalangi muat ulang otomatis seketika', () => {
+  const { reg, view, hook } = armed();
+  const end = beginBusy();
+  act(() => notifyNavigation());
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(hook.result.current.visible).toBe(false);
+  act(() => end());
+  act(() => notifyNavigation());
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });

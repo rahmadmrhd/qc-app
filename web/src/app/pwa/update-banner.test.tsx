@@ -34,7 +34,11 @@ function fakeWorker() {
 // onNeedRefresh untuk SW yang menunggu; `registration.waiting` dapat diganti untuk meniru deploy berikutnya.
 // busy (bawaan true): ada penulisan berjalan sehingga TIDAK aman dan spanduk tampil saat versi baru siap.
 function startFake(opts: { busy?: boolean } = {}) {
-  if (opts.busy ?? true) beginBusy();
+  if (opts.busy ?? true) {
+    beginBusy();
+    // Spanduk karena sibuk hanya tampil bila sibuk bertahan >= 1 dtk (M-d).
+    vi.advanceTimersByTime(1_100);
+  }
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
   const reload = vi.fn();
   const store = new Map<string, string>();
@@ -256,6 +260,9 @@ test('R5: spanduk tampil saat tidak aman dan hilang sendiri begitu aman kembali'
   const fake = startFake({ busy: false });
   render(<PwaUpdateBanner />);
   fake.announce();
+  act(() => {
+    vi.advanceTimersByTime(1_100);
+  });
   expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
   act(() => end());
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
@@ -267,5 +274,40 @@ test('R5: galat muat potongan menampilkan spanduk walau aman', () => {
   fake.announce();
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
   act(() => notifyChunkLoadFailure());
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+});
+
+test('M-d: penulisan singkat (200 ms) tidak memunculkan spanduk; penulisan lama (> 1 dtk) memunculkannya', () => {
+  const fake = startFake({ busy: false });
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  const end = beginBusy();
+  act(() => {
+    vi.advanceTimersByTime(200);
+  });
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  act(() => end());
+  act(() => {
+    vi.advanceTimersByTime(2_000);
+  });
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  const endLong = beginBusy();
+  act(() => {
+    vi.advanceTimersByTime(1_100);
+  });
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+  act(() => endLong());
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+});
+
+test('M-d: formulir belum disimpan memunculkan spanduk seketika (tanpa jeda)', () => {
+  const fake = startFake({ busy: false });
+  render(
+    <>
+      <Dirty />
+      <PwaUpdateBanner />
+    </>,
+  );
+  fake.announce();
   expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
 });

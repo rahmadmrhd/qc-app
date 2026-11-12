@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
-import { isSafeToReload, subscribeSafety } from './safe-reload';
+import { isSafeToReload, isUnsafeForDisplay, subscribeSafety } from './safe-reload';
 
 /** Bentuk `registerSW` dari `virtual:pwa-register` yang dipakai di sini (disuntik agar mudah dites). */
 export type RegisterSW = (options: {
@@ -495,14 +495,14 @@ function dismiss() {
 }
 
 // Snapshot primitif (bit): 1 = ada pembaruan, 2 = disembunyikan ("Nanti"), 4 = muat ulang tertunda, 8 = tidak aman
-// dimuat ulang, 16 = halaman rusak (galat muat potongan), 32 = percobaan otomatis versi ini sudah dilakukan,
+// dimuat ulang (untuk tampilan: formulir kotor seketika atau penulisan >= 1 dtk), 16 = halaman rusak (galat muat potongan), 32 = percobaan otomatis versi ini sudah dilakukan,
 // 64 = muat ulang yang tertunda dimulai otomatis.
 function snapshot(): number {
   return (
     (needRefresh ? 1 : 0) |
     (dismissed ? 2 : 0) |
     (cancelPending ? 4 : 0) |
-    (isSafeToReload() ? 0 : 8) |
+    (isUnsafeForDisplay() ? 8 : 0) |
     (urgent ? 16 : 0) |
     (autoTried() ? 32 : 0) |
     (autoInitiated && cancelPending ? 64 : 0)
