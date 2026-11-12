@@ -19,7 +19,11 @@ type RegisterOptions = Parameters<RegisterSW>[0];
 
 // Window palsu minimal: navigator, document (pendengar + visibilityState), dan penghitung waktu.
 function fakeWindow(
-  options: { serviceWorker?: boolean; onLine?: boolean; storage?: 'ok' | 'throws' | 'none' } = {},
+  options: {
+    serviceWorker?: boolean;
+    onLine?: boolean;
+    storage?: 'ok' | 'throws' | 'none' | 'probe-only';
+  } = {},
 ) {
   const listeners = new Map<string, Set<(event?: unknown) => void>>();
   const doc = {
@@ -45,6 +49,10 @@ function fakeWindow(
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => {
       if (options.storage === 'throws') throw new Error('kuota penuh');
+      // Probe lulus, penulisan sesudahnya melempar (kuota penuh di tengah sesi).
+      if (options.storage === 'probe-only' && key !== 'qc-pwa-probe') {
+        throw new Error('kuota penuh');
+      }
       store.set(key, value);
     },
     removeItem: (key: string) => void store.delete(key),
@@ -921,8 +929,46 @@ test('I1: jalur installing: menjadi tidak aman sebelum SW selesai dipasang atau 
       act(() => sw.setState('redundant'));
     }
     expect(view.location.reload, mode).not.toHaveBeenCalled();
+    // A1: SW baru TIDAK boleh diaktifkan (SKIP_WAITING) selagi tidak aman.
+    expect(reg.updateSW, mode).not.toHaveBeenCalled();
     expect(hook.result.current.pending, mode).toBe(false);
+    expect(hook.result.current.visible, mode).toBe(true);
+    expect(sw.listenerCount(), mode).toBe(0);
   }
+});
+
+test('A1: jalur installing yang tetap aman: setelah installed SW diaktifkan dan halaman dimuat ulang tepat sekali', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const sw = fakeWorker();
+  Object.assign(reg.registration, { installing: sw.worker });
+  notifyChunkLoadFailure();
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => notifyNavigation());
+  Object.assign(reg.registration, { waiting: {}, installing: null });
+  act(() => sw.setState('installed'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.pending).toBe(false);
+});
+
+test('A1: klik Muat ulang manual pada jalur installing tidak diperiksa aman (keputusan pengguna)', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const sw = fakeWorker();
+  Object.assign(reg.registration, { installing: sw.worker });
+  notifyChunkLoadFailure();
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.reload());
+  beginBusy();
+  Object.assign(reg.registration, { waiting: {}, installing: null });
+  act(() => sw.setState('installed'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
 });
 
 test('I1: klik Muat ulang oleh pengguna tidak diblokir oleh pemeriksaan aman (keputusan pengguna)', () => {
@@ -1051,4 +1097,46 @@ test('M-d: sibuk singkat tidak menampilkan spanduk, tetapi tetap menghalangi mua
   expect(reg.updateSW).toHaveBeenCalledWith(true);
   act(() => view.fire('controllerchange'));
   expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('A2: penanda macet TIDAK dihapus selama SW masih installing; dihapus hanya bila tak ada SW menunggu maupun dipasang', () => {
+  const stuckWhileInstalling = fakeRegister({ waiting: false });
+  const sw = fakeWorker();
+  Object.assign(stuckWhileInstalling.registration, { installing: sw.worker });
+  const first = fakeWindow();
+  first.store.set('qc-pwa-auto-stuck', '1');
+  startPwaUpdates({ register: stuckWhileInstalling.register, win: first.win });
+  stuckWhileInstalling.registerSw();
+  expect(first.store.get('qc-pwa-auto-stuck')).toBe('1');
+
+  resetPwaUpdateForTests();
+  const idle = fakeRegister({ waiting: false });
+  const second = fakeWindow();
+  second.store.set('qc-pwa-auto-stuck', '1');
+  startPwaUpdates({ register: idle.register, win: second.win });
+  idle.registerSw();
+  expect(second.store.has('qc-pwa-auto-stuck')).toBe(false);
+});
+
+test('A3: penulisan pembatas melempar di tengah sesi (probe lulus): tidak ada percobaan otomatis, hanya spanduk', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow({ storage: 'probe-only' });
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  // Probe lulus saat start, jadi pada awalnya percobaan dianggap boleh (tampil menunggu pemicu)...
+  expect(hook.result.current.visible).toBe(false);
+  act(() => notifyNavigation());
+  // ...tetapi menulis pembatas gagal: batalkan, tanpa SKIP_WAITING, dan spanduk tampil.
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.visible).toBe(true);
+});
+
+test('A4: kunci probe tidak tertinggal di sessionStorage', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  expect(view.store.has('qc-pwa-probe')).toBe(false);
 });

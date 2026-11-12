@@ -113,17 +113,23 @@ function setPending(cancel: (() => void) | undefined) {
   if (changed) for (const listener of listeners) listener();
 }
 
+/**
+ * Muat ulang otomatis: periksa ulang "aman" (keadaan dapat berubah selama menunggu SW). Bila kini tidak aman,
+ * batalkan: spanduk tampil (percobaan sudah tercatat) dan Muat ulang oleh pengguna memuat ulang langsung. Klik
+ * pengguna sendiri tidak diperiksa (keputusannya). Mengembalikan true bila dibatalkan. Dipakai SEBELUM mengaktifkan
+ * SW yang baru selesai dipasang (SKIP_WAITING) dan sebelum memuat ulang.
+ */
+function abortAutoIfUnsafe(): boolean {
+  if (!autoInitiated || isSafeToReload()) return false;
+  autoInitiated = false;
+  reloadRequested = false;
+  emit();
+  return true;
+}
+
 function reloadPage(win: Window) {
   if (reloading) return;
-  // Muat ulang otomatis: periksa ulang "aman" TEPAT sebelum memuat ulang (keadaan dapat berubah selama menunggu
-  // SW). Bila kini tidak aman, batalkan: spanduk tampil (percobaan sudah tercatat) dan Muat ulang oleh pengguna
-  // memuat ulang langsung. Klik pengguna sendiri tidak diperiksa (keputusannya).
-  if (autoInitiated && !isSafeToReload()) {
-    autoInitiated = false;
-    reloadRequested = false;
-    emit();
-    return;
-  }
+  if (abortAutoIfUnsafe()) return;
   reloading = true;
   win.location.reload();
 }
@@ -253,7 +259,7 @@ export function startPwaUpdates(options: {
       // pertama tidak menganggapnya "baru" dan membatalkan Nanti.
       if (needRefresh) announcedWaiting = registered?.waiting ?? null;
       // Halaman dimuat tanpa SW menunggu: yang macet sebelumnya sudah beres; percobaan otomatis boleh lagi.
-      if (autoStuck && !registered?.waiting) {
+      if (autoStuck && !registered?.waiting && !registered?.installing) {
         autoStuck = false;
         clearAutoStuck(win);
         emit();
@@ -308,11 +314,13 @@ function readAutoReloadGuard(win: Window): number {
   }
 }
 
-function writeAutoReloadGuard(win: Window): void {
+/** Menulis pembatas lintas muat ulang; false bila gagal (mis. kuota penuh di tengah sesi). */
+function writeAutoReloadGuard(win: Window): boolean {
   try {
     win.sessionStorage?.setItem(AUTO_RELOAD_GUARD_KEY, String(Date.now()));
+    return true;
   } catch {
-    // Tak mungkin sampai sini: percobaan otomatis hanya dilakukan bila penyimpanan dapat dipakai.
+    return false;
   }
 }
 
@@ -339,7 +347,8 @@ function markAutoStuck(win: Window): void {
   try {
     win.sessionStorage?.setItem(AUTO_STUCK_KEY, '1');
   } catch {
-    // Dibiarkan: penyimpanan tak dapat dipakai berarti tak ada percobaan otomatis sejak awal.
+    // Penyimpanan rusak di tengah sesi: pembatas tak terjamin, tidak ada percobaan otomatis lagi.
+    autoStorageUnavailable = true;
   }
 }
 
@@ -349,7 +358,9 @@ function storageUsable(win: Window): boolean {
     const storage = win.sessionStorage;
     if (!storage) return false;
     storage.setItem('qc-pwa-probe', '1');
-    return storage.getItem('qc-pwa-probe') === '1';
+    const ok = storage.getItem('qc-pwa-probe') === '1';
+    storage.removeItem('qc-pwa-probe');
+    return ok;
   } catch {
     return false;
   }
@@ -366,8 +377,13 @@ function maybeAutoReload(): void {
   // Tanpa registrasi dikenal, "SKIP_WAITING" tak berarti (kecuali halaman rusak): jangan menebak.
   if (!currentRegistration && !urgent) return;
   if (autoTried() || !isSafeToReload()) return;
+  // Pembatas tak dapat ditulis: tanpa penyimpanan yang dapat dipakai tidak ada percobaan otomatis (hanya spanduk).
+  if (!writeAutoReloadGuard(win)) {
+    autoStorageUnavailable = true;
+    emit();
+    return;
+  }
   autoAttempted = true;
-  writeAutoReloadGuard(win);
   startReload(true);
   emit();
 }
@@ -475,6 +491,8 @@ function startReload(auto: boolean) {
   // SW baru masih dipasang (mis. potongan gagal sebelum selesai): tunggu dulu, jangan memuat ulang cangkang lama.
   if (registration?.installing && updateSW) {
     waitForInstall(win, registration.installing, () => {
+      // Tidak aman sebelum SW baru diaktifkan: jangan SKIP_WAITING (versi baru tidak boleh mengambil alih halaman).
+      if (abortAutoIfUnsafe()) return;
       if (currentRegistration?.waiting && updateSW) activateWaiting(win);
       else reloadPage(win);
     });
