@@ -14,6 +14,8 @@ const DEFAULT_INTERVAL_MS = 30 * 60_000;
 const MAX_INTERVAL_MS = 60 * 60_000;
 // Pemeriksaan karena fokus/visibilitas yang berdekatan dilipat menjadi satu.
 const EVENT_CHECK_DEBOUNCE_MS = 2_000;
+// Batas menunggu SW baru yang masih dipasang sebelum menyerah dan memuat ulang halaman.
+const INSTALL_WAIT_MS = 15_000;
 
 let needRefresh = false;
 // "Nanti": spanduk disembunyikan untuk sisa pemuatan halaman ini (tidak disimpan; pemicu baru mereset).
@@ -23,6 +25,10 @@ let currentWin: Window | undefined;
 let currentRegistration: ServiceWorkerRegistration | undefined;
 // Hanya tab yang pengguna menekan "Muat ulang" boleh dimuat ulang; tab lain menunggu persetujuannya sendiri.
 let reloadRequested = false;
+// Memeriksa pembaruan registrasi yang terpakai (no-op bila belum ada); diisi startPwaUpdates.
+let runCheck: () => void = () => undefined;
+// True selama tab ini menunggu SW baru yang masih dipasang (mencegah penunggu ganda pada klik berulang).
+let installWaiting = false;
 const listeners = new Set<() => void>();
 
 /** Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan. */
@@ -42,9 +48,19 @@ export function isChunkLoadError(error: unknown): boolean {
   );
 }
 
-/** Menyalakan spanduk "Ada versi baru" karena muat potongan gagal; tidak memuat ulang apa pun. */
+/** Tanpa jaringan, potongan yang gagal dimuat bukan bukti ada versi baru (mis. membuka /qrcode saat offline). */
+function isOffline(): boolean {
+  return (currentWin ?? window).navigator.onLine === false;
+}
+
+/**
+ * Menyalakan spanduk "Ada versi baru" karena muat potongan gagal dan memeriksa pembaruan; tidak memuat ulang apa
+ * pun. Saat offline tidak melakukan apa-apa.
+ */
 export function notifyChunkLoadFailure(): void {
+  if (isOffline()) return;
   setNeedRefresh(true);
+  runCheck();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -74,6 +90,7 @@ export function startPwaUpdates(options: {
   currentWin = win;
   currentRegistration = undefined;
   reloadRequested = false;
+  installWaiting = false;
 
   function check() {
     if (stopped || !registration || win.navigator.onLine === false) return;
@@ -110,11 +127,17 @@ export function startPwaUpdates(options: {
     },
     onRegisterError: () => undefined,
   });
+  runCheck = check;
   // Cangkang lama dapat meminta potongan lazy yang sudah tak ada di server setelah deploy: ajak pengguna memuat
-  // ulang (tanpa muat ulang otomatis, FR-P12) alih-alih membiarkan galat muat rute.
+  // ulang lewat spanduk (FR-P11/P12) dan periksa pembaruan. `preventDefault` menekan muat ulang otomatis
+  // TanStack Router (isModuleNotFoundError), yang kini digantikan spanduk dan tombol "Muat ulang" (FR-P13);
+  // impor rute itu sendiri lalu bernilai undefined dan ErrorView mengarahkan pengguna ke "Muat ulang".
+  // Saat offline tidak ada bukti versi baru: biarkan penanganan bawaan.
   const onPreloadError = (event: Event) => {
+    if (isOffline()) return;
     setNeedRefresh(true);
     event.preventDefault();
+    check();
   };
   win.document.addEventListener('visibilitychange', onVisibility);
   win.addEventListener('focus', checkOnEvent);
@@ -132,19 +155,55 @@ export function startPwaUpdates(options: {
     currentWin = undefined;
     currentRegistration = undefined;
     reloadRequested = false;
+    installWaiting = false;
+    runCheck = () => undefined;
   };
+}
+
+/** Menunggu SW yang sedang dipasang selesai (installed/activated/redundant) atau batas waktu, lalu memanggil `done`. */
+function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
+  installWaiting = true;
+  let timer: ReturnType<Window['setTimeout']> | undefined;
+  const finish = () => {
+    worker.removeEventListener('statechange', onChange);
+    if (timer !== undefined) win.clearTimeout(timer);
+    installWaiting = false;
+    done();
+  };
+  const onChange = () => {
+    if (
+      worker.state === 'installed' ||
+      worker.state === 'activated' ||
+      worker.state === 'redundant'
+    ) {
+      finish();
+    }
+  };
+  worker.addEventListener('statechange', onChange);
+  timer = win.setTimeout(finish, INSTALL_WAIT_MS);
 }
 
 function reload() {
   reloadRequested = true;
-  // SKIP_WAITING hanya berefek bila ada SW yang menunggu pada registrasi yang terpakai. Selain itu (tak ada
-  // registrasi: gagal/belum selesai/dev/tanpa serviceWorker; atau SW sudah diaktifkan jendela lain) pesan itu
-  // no-op dan tombol tampak mati: muat ulang halaman langsung.
-  if (currentRegistration?.waiting && updateSW) {
+  const win = currentWin ?? window;
+  const registration = currentRegistration;
+  // SKIP_WAITING hanya berefek bila ada SW yang menunggu pada registrasi yang terpakai.
+  if (registration?.waiting && updateSW) {
     void updateSW(true);
     return;
   }
-  (currentWin ?? window).location.reload();
+  // SW baru masih dipasang (mis. potongan gagal sebelum selesai): tunggu dulu, jangan memuat ulang cangkang lama.
+  if (registration?.installing && updateSW) {
+    if (installWaiting) return;
+    waitForInstall(win, registration.installing, () => {
+      if (currentRegistration?.waiting && updateSW) void updateSW(true);
+      else win.location.reload();
+    });
+    return;
+  }
+  // Selain itu (tak ada registrasi: gagal/belum selesai/dev/tanpa serviceWorker; atau SW sudah diaktifkan jendela
+  // lain) SKIP_WAITING no-op dan tombol tampak mati: muat ulang halaman langsung.
+  win.location.reload();
 }
 
 function dismiss() {
@@ -188,5 +247,7 @@ export function resetPwaUpdateForTests(): void {
   currentWin = undefined;
   currentRegistration = undefined;
   reloadRequested = false;
+  installWaiting = false;
+  runCheck = () => undefined;
   for (const listener of listeners) listener();
 }

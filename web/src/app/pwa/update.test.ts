@@ -36,6 +36,8 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
     removeEventListener: doc.removeEventListener,
     setInterval: (fn: () => void, ms: number) => globalThis.setInterval(fn, ms),
     clearInterval: (id: ReturnType<typeof setInterval>) => globalThis.clearInterval(id),
+    setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms),
+    clearTimeout: (id: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(id),
   } as unknown as Window;
   return {
     win,
@@ -270,7 +272,7 @@ test('reload() tanpa SW yang menunggu (sudah diaktifkan tab lain) langsung memua
   expect(view.location.reload).toHaveBeenCalledTimes(1);
 });
 
-test('vite:preloadError menyalakan needRefresh, mencegah galat ganda, tanpa muat ulang otomatis', () => {
+test('vite:preloadError menyalakan needRefresh dan menekan muat ulang otomatis router (diganti spanduk), tanpa muat ulang sendiri', () => {
   const reg = fakeRegister();
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
@@ -293,7 +295,7 @@ test('pembersih juga melepas pendengar vite:preloadError', () => {
   expect(usePwaUpdateSnapshotForTests()).toBe(false);
 });
 
-test('tombol Muat ulang setelah preloadError tanpa SW menunggu memuat ulang halaman (cangkang baru terunduh)', () => {
+test('tombol Muat ulang setelah preloadError tanpa SW menunggu dan tanpa SW terpasang memuat ulang halaman', () => {
   const reg = fakeRegister({ waiting: false });
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
@@ -387,4 +389,113 @@ test('N9: pembersih mengosongkan rujukan modul sehingga reload() memakai window,
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test('N5: offline, vite:preloadError tidak menyalakan spanduk dan tidak mencegah penanganan bawaan', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow({ onLine: false });
+  startPwaUpdates({ register: reg.register, win: view.win });
+  const event = { preventDefault: vi.fn() };
+  view.fire('vite:preloadError', event);
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+  expect(event.preventDefault).not.toHaveBeenCalled();
+});
+
+test('N5: offline, notifyChunkLoadFailure tidak menyalakan spanduk (dengan atau tanpa startPwaUpdates)', () => {
+  const view = fakeWindow({ onLine: false });
+  const reg = fakeRegister();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  notifyChunkLoadFailure();
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+  stop();
+  const offline = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  try {
+    notifyChunkLoadFailure();
+    expect(usePwaUpdateSnapshotForTests()).toBe(false);
+  } finally {
+    offline.mockRestore();
+  }
+});
+
+test('N3: vite:preloadError dan notifyChunkLoadFailure memeriksa pembaruan (registration.update)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.update.mockClear();
+  view.fire('vite:preloadError', { preventDefault: vi.fn() });
+  expect(reg.update).toHaveBeenCalledTimes(1);
+  notifyChunkLoadFailure();
+  expect(reg.update).toHaveBeenCalledTimes(2);
+});
+
+function fakeWorker(state: ServiceWorkerState = 'installing') {
+  const listeners = new Set<() => void>();
+  const worker = {
+    state,
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+  };
+  return {
+    worker: worker as unknown as ServiceWorker,
+    setState: (next: ServiceWorkerState) => {
+      worker.state = next;
+      for (const listener of [...listeners]) listener();
+    },
+    listenerCount: () => listeners.size,
+  };
+}
+
+test('N3: SW baru masih installing: Muat ulang menunggu sampai installed lalu mengaktifkannya (bukan memuat ulang cangkang lama)', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const installing = fakeWorker();
+  Object.assign(reg.registration, { installing: installing.worker });
+  notifyChunkLoadFailure();
+  const hook = renderHook(() => usePwaUpdate());
+  hook.result.current.reload();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  // SW baru selesai dipasang dan kini menunggu.
+  Object.assign(reg.registration, { waiting: {}, installing: null });
+  installing.setState('installed');
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(installing.listenerCount()).toBe(0);
+});
+
+test('N3: SW baru gagal dipasang (redundant) atau melewati batas waktu: halaman dimuat ulang', () => {
+  for (const mode of ['redundant', 'timeout'] as const) {
+    resetPwaUpdateForTests();
+    const reg = fakeRegister({ waiting: false });
+    const view = fakeWindow();
+    const stop = startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    const installing = fakeWorker();
+    Object.assign(reg.registration, { installing: installing.worker });
+    notifyChunkLoadFailure();
+    renderHook(() => usePwaUpdate()).result.current.reload();
+    expect(view.location.reload).not.toHaveBeenCalled();
+    if (mode === 'redundant') installing.setState('redundant');
+    else vi.advanceTimersByTime(20_000);
+    expect(view.location.reload, mode).toHaveBeenCalledTimes(1);
+    expect(reg.updateSW).not.toHaveBeenCalled();
+    stop();
+  }
+});
+
+test('N3: klik berulang saat menunggu SW installing tidak menumpuk penunggu', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const installing = fakeWorker();
+  Object.assign(reg.registration, { installing: installing.worker });
+  notifyChunkLoadFailure();
+  const hook = renderHook(() => usePwaUpdate());
+  hook.result.current.reload();
+  hook.result.current.reload();
+  expect(installing.listenerCount()).toBe(1);
 });
