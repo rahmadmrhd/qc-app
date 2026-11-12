@@ -230,6 +230,74 @@ describe('ringkasan hantu dan notifikasi berantai (Review Focus 4)', () => {
   });
 });
 
+describe('tunggu dibuang saat task Selesai (F7)', () => {
+  test('save yang membuat task Selesai membuang baris dan butir tunggu task itu', async () => {
+    await seed(items(2));
+    await check(QC, 0, 'butir 1');
+    await check(QC2, 0, 'butir 1');
+    expect(await pendingCount()).toBeGreaterThan(0);
+    env.clock.advance(1000);
+    // Membuang butir terakhir yang belum dicentang: sisa butir semuanya tercentang -> Selesai.
+    const out = await call(WH, 'handovers.save', {
+      ...ref,
+      customerName: 'PT Maju',
+      note: '- [ ] butir 1',
+    });
+    expect(out.ok).toBe(true);
+    expect(out.data.status).toBe('done');
+    expect(await pendingCount()).toBe(0);
+    env.clock.set(T0 + CHECK_WINDOW_MS + 60_000);
+    expect(await flushDueCheckSummaries(env)).toBe(0);
+    expect(await rows('checked')).toEqual([]);
+  });
+
+  test('setDone membuang tunggu task itu (tanpa ringkasan hantu)', async () => {
+    await seed(items(2));
+    await check(QC2, 0, 'butir 1');
+    expect(await pendingCount()).toBeGreaterThan(0);
+    env.clock.advance(1000);
+    expect((await call(QC, 'handovers.setDone', ref)).ok).toBe(true);
+    expect(await pendingCount()).toBe(0);
+    env.clock.set(T0 + CHECK_WINDOW_MS + 60_000);
+    expect(await flushDueCheckSummaries(env)).toBe(0);
+    expect(await rows('checked')).toEqual([]);
+  });
+});
+
+describe('balapan setCheck dan flush (F7)', () => {
+  test('Promise.all([setCheck, flush]) berulang: tiap butir berbalik terhitung tepat sekali (tanpa ganda atau hilang)', async () => {
+    const rounds = 4;
+    await seed(`${items(4 + rounds)}
+- [ ] sisa`);
+    for (let i = 0; i < 4; i++) await check(QC, i, `butir ${i + 1}`);
+    // Pada saat jendela jatuh tempo, centang baru dan flush berlomba memegang baris tunggu yang sama.
+    for (let i = 0; i < rounds; i++) {
+      env.clock.set(T0 + CHECK_WINDOW_MS + i * CHECK_WINDOW_MS);
+      const index = 4 + i;
+      const [out] = await Promise.all([
+        call(QC, 'handovers.setCheck', {
+          ...ref,
+          index,
+          text: `butir ${index + 1}`,
+          checked: true,
+        }),
+        flushDueCheckSummaries(env),
+      ]);
+      expect(out.ok).toBe(true);
+    }
+    env.clock.set(T0 + (rounds + 2) * CHECK_WINDOW_MS);
+    await flushDueCheckSummaries(env);
+    expect(await pendingCount()).toBe(0);
+    const viewer = (await rows('checked')).filter((r) => r.recipient === 'viewer@gmail.com');
+    expect(viewer.reduce((sum, r) => sum + r.count, 0)).toBe(4 + rounds);
+    // Setiap penerima WH mendapat jumlah ringkasan dan total yang sama.
+    for (const email of WH_SIDE) {
+      const own = (await rows('checked')).filter((r) => r.recipient === email);
+      expect(own.reduce((sum, r) => sum + r.count, 0)).toBe(4 + rounds);
+    }
+  });
+});
+
 describe('akses saat dilepas', () => {
   test('penerima dihitung saat flush: pengguna yang dinonaktifkan tidak menerima', async () => {
     await seed(items(2));
