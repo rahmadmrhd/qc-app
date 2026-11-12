@@ -503,7 +503,7 @@ test('N3: klik berulang saat menunggu SW installing tidak menumpuk penunggu', ()
   expect(installing.listenerCount()).toBe(1);
 });
 
-test('N4: update() yang menemukan SW menunggu BARU menyalakan needRefresh tanpa onNeedRefresh pustaka dan mereset Nanti', async () => {
+test('N4/B1: deploy berikutnya muncul lagi setelah Nanti pada urutan nyata (installing lalu installed), tanpa focus kedua', async () => {
   const reg = fakeRegister();
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
@@ -518,15 +518,64 @@ test('N4: update() yang menemukan SW menunggu BARU menyalakan needRefresh tanpa 
   view.fire('focus');
   await vi.advanceTimersByTimeAsync(0);
   expect(hook.result.current.dismissed).toBe(true);
-  // Deploy berikutnya: SW menunggu yang lain; pustaka tak mengirim onNeedRefresh lagi.
-  Object.assign(reg.registration, { waiting: { name: 'sw2' } });
+  // Deploy berikutnya: update() selesai SAAT sw2 masih installing (waiting baru terisi setelah pra-cache).
+  const sw2 = fakeWorker();
+  reg.update.mockImplementationOnce(async () => {
+    Object.assign(reg.registration, { installing: sw2.worker });
+  });
   vi.advanceTimersByTime(5_000);
   view.fire('focus');
   await vi.advanceTimersByTimeAsync(0);
+  expect(hook.result.current.dismissed).toBe(true);
+  // Pra-cache selesai: waiting berganti dan statechange installed -> spanduk muncul tanpa pemeriksaan lagi.
+  Object.assign(reg.registration, { waiting: { name: 'sw2' }, installing: null });
+  act(() => sw2.setState('installed'));
   expect(hook.result.current.dismissed).toBe(false);
   expect(hook.result.current.needRefresh).toBe(true);
+  expect(sw2.listenerCount()).toBe(0);
 });
 
+test('B1: pembersih melepas pendengar statechange SW yang sedang dipasang; redundant juga melepasnya', async () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  const sw = fakeWorker();
+  reg.update.mockImplementation(async () => {
+    Object.assign(reg.registration, { installing: sw.worker });
+  });
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(sw.listenerCount()).toBe(1);
+  stop();
+  expect(sw.listenerCount()).toBe(0);
+
+  const redundant = fakeWorker();
+  const reg2 = fakeRegister({ waiting: false });
+  reg2.update.mockImplementation(async () => {
+    Object.assign(reg2.registration, { installing: redundant.worker });
+  });
+  startPwaUpdates({ register: reg2.register, win: fakeWindow().win });
+  reg2.registerSw();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(redundant.listenerCount()).toBe(1);
+  act(() => redundant.setState('redundant'));
+  expect(redundant.listenerCount()).toBe(0);
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+});
+
+test('B2: SW yang sama tidak membatalkan Nanti walau onNeedRefresh pustaka tiba sebelum registrasi diketahui', async () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  // Pustaka mengumumkan SW menunggu SEBELUM onRegisteredSW (registration belum diketahui).
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.dismiss());
+  expect(hook.result.current.dismissed).toBe(true);
+  reg.registerSw();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(hook.result.current.dismissed).toBe(true);
+});
 test('N4: Muat ulang memasang controllerchange sendiri sehingga muat ulang terjadi walau pustaka tak memanggil onNeedReload (tepat sekali)', () => {
   const reg = fakeRegister();
   const view = fakeWindow();

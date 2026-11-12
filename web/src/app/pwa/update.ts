@@ -103,6 +103,9 @@ export function startPwaUpdates(options: {
   // SW menunggu terakhir yang sudah diumumkan; pembanding agar "Nanti" bertahan untuk SW yang sama tetapi deploy
   // berikutnya muncul lagi (workbox-window berhenti memanggil onNeedRefresh setelah pembaruan eksternal pertama).
   let announcedWaiting: ServiceWorker | null = null;
+  // Pembatal pendengar statechange pada SW yang sedang dipasang (dilepas di pembersih).
+  const disposers = new Set<() => void>();
+  let watchedInstalling: ServiceWorker | null = null;
 
   function announceWaiting() {
     const waiting = registration?.waiting ?? null;
@@ -111,13 +114,34 @@ export function startPwaUpdates(options: {
     setNeedRefresh(true);
   }
 
+  // registration.update() selesai SAAT SW baru masih `installing` (`waiting` baru terisi sesudah pra-cache), jadi
+  // pengumuman menunggu transisi ke `installed` alih-alih pemeriksaan berikutnya (sampai ±30 menit kemudian).
+  function watchInstalling() {
+    const installing = registration?.installing ?? null;
+    if (stopped || !installing || installing === watchedInstalling) return;
+    watchedInstalling = installing;
+    const onChange = () => {
+      if (installing.state === 'installed') announceWaiting();
+      if (installing.state !== 'installing') dispose();
+    };
+    const dispose = () => {
+      installing.removeEventListener('statechange', onChange);
+      disposers.delete(dispose);
+    };
+    installing.addEventListener('statechange', onChange);
+    disposers.add(dispose);
+  }
+
   function check() {
     if (stopped || !registration || win.navigator.onLine === false) return;
     try {
       // Galat jaringan/peramban pada pemeriksaan pembaruan tidak boleh mengganggu aplikasi.
       registration
         .update()
-        .then(announceWaiting)
+        .then(() => {
+          announceWaiting();
+          watchInstalling();
+        })
         .catch(() => undefined);
     } catch {
       // Dibiarkan.
@@ -148,6 +172,9 @@ export function startPwaUpdates(options: {
     onRegisteredSW: (_swUrl, registered) => {
       registration = registered;
       currentRegistration = registered;
+      // Pustaka dapat mengumumkan SW menunggu sebelum registrasi diketahui: samakan pembanding agar pemeriksaan
+      // pertama tidak menganggapnya "baru" dan membatalkan Nanti.
+      if (needRefresh) announcedWaiting = registered?.waiting ?? null;
       check();
     },
     onRegisterError: () => undefined,
@@ -171,6 +198,7 @@ export function startPwaUpdates(options: {
 
   return () => {
     stopped = true;
+    for (const dispose of [...disposers]) dispose();
     win.document.removeEventListener('visibilitychange', onVisibility);
     win.removeEventListener('focus', checkOnEvent);
     win.removeEventListener('vite:preloadError', onPreloadError);

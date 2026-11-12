@@ -12,6 +12,22 @@ import { PwaUpdateBanner } from './update-banner';
 
 type Listener = (event?: unknown) => void;
 
+function fakeWorker() {
+  const listeners = new Set<() => void>();
+  const worker = {
+    state: 'installing',
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+  };
+  return {
+    worker: worker as unknown as ServiceWorker,
+    setState: (next: string) => {
+      worker.state = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
 // Memulai pemeriksaan pembaruan dengan register dan jendela palsu. `announce` meniru pustaka yang memanggil
 // onNeedRefresh untuk SW yang menunggu; `registration.waiting` dapat diganti untuk meniru deploy berikutnya.
 function startFake() {
@@ -51,6 +67,7 @@ function startFake() {
   return {
     updateSW,
     reload,
+    update,
     registration,
     announce: () => act(() => options.onNeedRefresh?.()),
     fire: (type: string, event?: unknown) =>
@@ -124,7 +141,7 @@ test('tata letak tetap di bawah dan muat di layar sempit', () => {
   expect(banner.className).toMatch(/\bmax-w-/);
 });
 
-test('Nanti menyembunyikan spanduk tanpa memuat ulang; SW yang sama tetap tersembunyi, SW baru dari pemeriksaan menampilkannya lagi', async () => {
+test('Nanti menyembunyikan spanduk tanpa memuat ulang; SW yang sama tetap tersembunyi, deploy berikutnya (installing lalu installed) menampilkannya lagi', async () => {
   const fake = startFake();
   render(<PwaUpdateBanner />);
   fake.announce();
@@ -135,11 +152,16 @@ test('Nanti menyembunyikan spanduk tanpa memuat ulang; SW yang sama tetap tersem
   // Pemeriksaan berikutnya menemukan SW menunggu yang sama: tetap tersembunyi.
   await fake.fire('focus');
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
-  // Deploy berikutnya: SW menunggu baru. Pustaka (workbox-window) tidak lagi memanggil onNeedRefresh pada
-  // pembaruan eksternal kedua, jadi pemicunya adalah perbandingan registration.waiting setelah update().
-  Object.assign(fake.registration, { waiting: { name: 'sw2' } });
+  // Deploy berikutnya: update() selesai saat SW baru masih installing; waiting baru terisi setelah pra-cache.
+  const installing = fakeWorker();
+  fake.update.mockImplementationOnce(async () => {
+    Object.assign(fake.registration, { installing: installing.worker });
+  });
   vi.advanceTimersByTime(5_000);
   await fake.fire('focus');
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  Object.assign(fake.registration, { waiting: { name: 'sw2' }, installing: null });
+  act(() => installing.setState('installed'));
   expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
 });
 
