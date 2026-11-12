@@ -5,6 +5,7 @@ directories:
   output: dist-app
 files:
   - dist/**
+  - '!dist/spike/**'
   - package.json
 asar: true
 # Tanpa modul native yang perlu dikompilasi ulang; node:sqlite dan ssh2 (JS murni) cukup.

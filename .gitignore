@@ -30,3 +30,4 @@ web/.tanstack/
 # build QC Desktop
 desktop/dist/
 desktop/dist-app/
+desktop/spike-report-*.json
