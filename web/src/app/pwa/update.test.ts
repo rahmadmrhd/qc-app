@@ -26,7 +26,12 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
     }),
   };
   const nav: Record<string, unknown> = { onLine: options.onLine ?? true };
-  if (options.serviceWorker ?? true) nav.serviceWorker = {};
+  if (options.serviceWorker ?? true) {
+    nav.serviceWorker = {
+      addEventListener: doc.addEventListener,
+      removeEventListener: doc.removeEventListener,
+    };
+  }
   const location = { reload: vi.fn() };
   const win = {
     navigator: nav,
@@ -498,4 +503,44 @@ test('N3: klik berulang saat menunggu SW installing tidak menumpuk penunggu', ()
   hook.result.current.reload();
   hook.result.current.reload();
   expect(installing.listenerCount()).toBe(1);
+});
+
+test('N4: update() yang menemukan SW menunggu BARU menyalakan needRefresh tanpa onNeedRefresh pustaka dan mereset Nanti', async () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  await vi.advanceTimersByTimeAsync(0);
+  // SW menunggu pertama (sw1) diumumkan lewat pemeriksaan saat terdaftar.
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.needRefresh).toBe(true);
+  act(() => hook.result.current.dismiss());
+  expect(hook.result.current.dismissed).toBe(true);
+  // SW yang sama setelah pemeriksaan berikutnya: tetap disembunyikan.
+  view.fire('focus');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(hook.result.current.dismissed).toBe(true);
+  // Deploy berikutnya: SW menunggu yang lain; pustaka tak mengirim onNeedRefresh lagi.
+  Object.assign(reg.registration, { waiting: { name: 'sw2' } });
+  vi.advanceTimersByTime(5_000);
+  view.fire('focus');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(hook.result.current.dismissed).toBe(false);
+  expect(hook.result.current.needRefresh).toBe(true);
+});
+
+test('N4: Muat ulang memasang controllerchange sendiri sehingga muat ulang terjadi walau pustaka tak memanggil onNeedReload (tepat sekali)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  renderHook(() => usePwaUpdate()).result.current.reload();
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  view.fire('controllerchange');
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  // Pustaka juga memanggil onNeedReload untuk peristiwa yang sama: jangan memuat ulang dua kali.
+  reg.needReload();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });

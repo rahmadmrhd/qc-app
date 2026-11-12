@@ -29,6 +29,8 @@ let reloadRequested = false;
 let runCheck: () => void = () => undefined;
 // True selama tab ini menunggu SW baru yang masih dipasang (mencegah penunggu ganda pada klik berulang).
 let installWaiting = false;
+// Hindari memuat ulang dua kali untuk satu peristiwa (pendengar controllerchange sendiri + onNeedReload pustaka).
+let reloading = false;
 const listeners = new Set<() => void>();
 
 /** Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan. */
@@ -63,6 +65,12 @@ export function notifyChunkLoadFailure(): void {
   runCheck();
 }
 
+function reloadPage(win: Window) {
+  if (reloading) return;
+  reloading = true;
+  win.location.reload();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -91,12 +99,26 @@ export function startPwaUpdates(options: {
   currentRegistration = undefined;
   reloadRequested = false;
   installWaiting = false;
+  reloading = false;
+  // SW menunggu terakhir yang sudah diumumkan; pembanding agar "Nanti" bertahan untuk SW yang sama tetapi deploy
+  // berikutnya muncul lagi (workbox-window berhenti memanggil onNeedRefresh setelah pembaruan eksternal pertama).
+  let announcedWaiting: ServiceWorker | null = null;
+
+  function announceWaiting() {
+    const waiting = registration?.waiting ?? null;
+    if (stopped || !waiting || waiting === announcedWaiting) return;
+    announcedWaiting = waiting;
+    setNeedRefresh(true);
+  }
 
   function check() {
     if (stopped || !registration || win.navigator.onLine === false) return;
     try {
       // Galat jaringan/peramban pada pemeriksaan pembaruan tidak boleh mengganggu aplikasi.
-      registration.update().catch(() => undefined);
+      registration
+        .update()
+        .then(announceWaiting)
+        .catch(() => undefined);
     } catch {
       // Dibiarkan.
     }
@@ -117,9 +139,12 @@ export function startPwaUpdates(options: {
     immediate: true,
     // Tanpa ini pustaka memuat ulang SETIAP tab saat salah satu mengaktifkan versi baru (draf tab lain hilang).
     onNeedReload: () => {
-      if (reloadRequested) win.location.reload();
+      if (reloadRequested) reloadPage(win);
     },
-    onNeedRefresh: () => setNeedRefresh(true),
+    onNeedRefresh: () => {
+      announcedWaiting = registration?.waiting ?? announcedWaiting;
+      setNeedRefresh(true);
+    },
     onRegisteredSW: (_swUrl, registered) => {
       registration = registered;
       currentRegistration = registered;
@@ -156,6 +181,7 @@ export function startPwaUpdates(options: {
     currentRegistration = undefined;
     reloadRequested = false;
     installWaiting = false;
+    reloading = false;
     runCheck = () => undefined;
   };
 }
@@ -183,27 +209,39 @@ function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
   timer = win.setTimeout(finish, INSTALL_WAIT_MS);
 }
 
+/**
+ * Mengaktifkan SW yang menunggu dan memuat ulang begitu ia mengendalikan halaman. Pendengar `controllerchange`
+ * dipasang sendiri karena pendengar `controlling` milik pustaka tak selalu terpasang (mis. spanduk dinyalakan oleh
+ * pemeriksaan kami atau oleh galat muat potongan, bukan oleh peristiwa `waiting` pustaka).
+ */
+function activateWaiting(win: Window) {
+  win.navigator.serviceWorker?.addEventListener?.('controllerchange', () => reloadPage(win), {
+    once: true,
+  });
+  void updateSW?.(true);
+}
+
 function reload() {
   reloadRequested = true;
   const win = currentWin ?? window;
   const registration = currentRegistration;
   // SKIP_WAITING hanya berefek bila ada SW yang menunggu pada registrasi yang terpakai.
   if (registration?.waiting && updateSW) {
-    void updateSW(true);
+    activateWaiting(win);
     return;
   }
   // SW baru masih dipasang (mis. potongan gagal sebelum selesai): tunggu dulu, jangan memuat ulang cangkang lama.
   if (registration?.installing && updateSW) {
     if (installWaiting) return;
     waitForInstall(win, registration.installing, () => {
-      if (currentRegistration?.waiting && updateSW) void updateSW(true);
-      else win.location.reload();
+      if (currentRegistration?.waiting && updateSW) activateWaiting(win);
+      else reloadPage(win);
     });
     return;
   }
   // Selain itu (tak ada registrasi: gagal/belum selesai/dev/tanpa serviceWorker; atau SW sudah diaktifkan jendela
   // lain) SKIP_WAITING no-op dan tombol tampak mati: muat ulang halaman langsung.
-  win.location.reload();
+  reloadPage(win);
 }
 
 function dismiss() {
@@ -248,6 +286,7 @@ export function resetPwaUpdateForTests(): void {
   currentRegistration = undefined;
   reloadRequested = false;
   installWaiting = false;
+  reloading = false;
   runCheck = () => undefined;
   for (const listener of listeners) listener();
 }

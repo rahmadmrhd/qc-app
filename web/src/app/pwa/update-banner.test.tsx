@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
 import {
   notifyChunkLoadFailure,
@@ -54,7 +54,7 @@ function startFake() {
     registration,
     announce: () => act(() => options.onNeedRefresh?.()),
     fire: (type: string, event?: unknown) =>
-      act(() => {
+      act(async () => {
         for (const listener of listeners.get(type) ?? []) listener(event);
       }),
   };
@@ -66,8 +66,13 @@ function Dirty() {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   resetPwaUpdateForTests();
   resetUnsavedChangesForTests();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 test('tanpa pembaruan tidak merender apa pun', () => {
@@ -119,14 +124,22 @@ test('tata letak tetap di bawah dan muat di layar sempit', () => {
   expect(banner.className).toMatch(/\bmax-w-/);
 });
 
-test('Nanti menyembunyikan spanduk tanpa memuat ulang; versi baru lain menampilkannya lagi', async () => {
+test('Nanti menyembunyikan spanduk tanpa memuat ulang; SW yang sama tetap tersembunyi, SW baru dari pemeriksaan menampilkannya lagi', async () => {
   const fake = startFake();
   render(<PwaUpdateBanner />);
   fake.announce();
   await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
   expect(fake.updateSW).not.toHaveBeenCalled();
-  fake.announce();
+  expect(fake.reload).not.toHaveBeenCalled();
+  // Pemeriksaan berikutnya menemukan SW menunggu yang sama: tetap tersembunyi.
+  await fake.fire('focus');
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  // Deploy berikutnya: SW menunggu baru. Pustaka (workbox-window) tidak lagi memanggil onNeedRefresh pada
+  // pembaruan eksternal kedua, jadi pemicunya adalah perbandingan registration.waiting setelah update().
+  Object.assign(fake.registration, { waiting: { name: 'sw2' } });
+  vi.advanceTimersByTime(5_000);
+  await fake.fire('focus');
   expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
 });
 
