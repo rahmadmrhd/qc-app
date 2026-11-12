@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
@@ -28,7 +29,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {visibleNavGroups(NAV_GROUPS, me, selectedIds).map((group) => (
+        {visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
