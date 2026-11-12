@@ -39,3 +39,17 @@ test('denylist tetap menolak rute server saat ada query string', () => {
     expect(denied(`${pathname}${query}`), `${pathname}${query}`).toBe(true);
   }
 });
+
+test('titik di dalam query (mis. q=a/b.c) bukan berkas: rute klien tetap dijawab cangkang', () => {
+  for (const route of ['/handover?q=a/b.c', '/item?search=x/y.z']) {
+    expect(denied(route), route).toBe(false);
+  }
+  for (const route of [
+    '/sw.js',
+    '/manifest.webmanifest',
+    '/icons/icon-192.png',
+    '/icons/a.png?v=1',
+  ]) {
+    expect(denied(route), route).toBe(true);
+  }
+});

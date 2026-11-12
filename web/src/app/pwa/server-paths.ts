@@ -12,5 +12,6 @@ export const SERVER_PATH_DENYLIST: RegExp[] = [
   /^\/api(?:[/?]|$)/,
   /^\/auth(?:[/?]|$)/,
   /^\/sync(?:[/?]|$)/,
-  /\/[^/?]+\.[^/]+$/,
+  // Hanya pada PATH (sebelum `?`): titik di dalam query, mis. `/handover?q=a/b.c`, bukan berkas.
+  /^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/,
 ];

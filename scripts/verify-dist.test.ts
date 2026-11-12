@@ -98,7 +98,7 @@ const INDEX_HTML = `<!doctype html><html><head>
 <link rel="manifest" href="/manifest.webmanifest">
 </head></html>`;
 
-const DENYLIST = String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/\/[^/?]+\.[^/]+$/]`;
+const DENYLIST = String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/]`;
 
 /** Bentuk `sw.js` hasil `generateSW` (diperkecil) dengan daftar pra-cache dan denylist yang dapat diganti. */
 function swOf(
@@ -272,6 +272,13 @@ describe('checkPwa', () => {
     expect(checkPwa(healthyDist({ sw: missingAuth })).join()).toContain('/auth/callback?code=1');
     const noDenylistAtAll = swOf().replace(/\{denylist:.*\}\)\)/, '{})');
     expect(checkPwa(healthyDist({ sw: noDenylistAtAll })).join()).toContain('denylist');
+  });
+
+  test('denylist yang mengenai titik di dalam query (/handover?q=a/b.c) ditolak', () => {
+    const queryDot = swOf({
+      denylist: String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/\/[^/?]+\.[^/]+$/]`,
+    });
+    expect(checkPwa(healthyDist({ sw: queryDot })).join()).toContain('/handover?q=a/b.c');
   });
 
   test('denylist yang terlalu luas (menolak rute klien) ditolak', () => {

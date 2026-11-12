@@ -60,8 +60,15 @@ const distPath = (reference: string): string => reference.replace(/^\/+/, '');
 const SERVER_ROUTE = /^\/?(?:api|auth|sync)(?:[/?]|$)/;
 
 /** Rute yang harus tertolak oleh denylist navigasi (FR-P8) dan rute klien yang harus tetap dijawab cangkang. */
-const MUST_DENY = ['/auth/callback?code=1', '/api/ping', '/sync'];
-const MUST_ALLOW = ['/', '/?authError=x', '/handover?x=1'];
+const MUST_DENY = [
+  '/auth/callback?code=1',
+  '/api/ping',
+  '/sync',
+  '/sw.js',
+  '/manifest.webmanifest',
+  '/icons/icon-192.png',
+];
+const MUST_ALLOW = ['/', '/?authError=x', '/handover?x=1', '/handover?q=a/b.c'];
 
 const MANIFEST_FIELDS = [
   'name',

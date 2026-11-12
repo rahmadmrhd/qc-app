@@ -31,6 +31,8 @@ test('denylist membiarkan rute klien (termasuk awalan yang mirip rute server) di
     '/?authError=x',
     '/handover',
     '/handover?x=1',
+    '/handover?q=a/b.c',
+    '/item?search=x/y.z',
     '/item/brands/abc',
     '/apiary',
     '/authors',
