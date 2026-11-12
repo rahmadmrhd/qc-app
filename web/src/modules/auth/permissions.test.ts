@@ -24,6 +24,8 @@ const me: MeDto = {
     stock: 'none',
     sticker: 'none',
     stickerstock: 'none',
+    serial: 'none',
+    serialservice: 'none',
   },
   businessUnits: [],
   locations: [
@@ -82,7 +84,13 @@ function bu(
   level: 'none' | 'view' | 'edit' | 'manage',
   status: 'active' | 'inactive' = 'active',
 ) {
-  return { id, code: id.toUpperCase(), name: id, status, permissions: { item: level } };
+  return {
+    id,
+    code: id.toUpperCase(),
+    name: id,
+    status,
+    permissions: { item: level, serial: 'none' as const, serialservice: 'none' as const },
+  };
 }
 
 const ref = (id: string) => ({ id, code: id.toUpperCase(), name: id });

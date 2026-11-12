@@ -372,7 +372,9 @@ describe('penugasan BU user', () => {
     await saveUser(env, { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-qc'] }] }, admin);
     const ctx = await contextOf('ani@gmail.com');
     expect(ctx.permissions.item).toBe('edit');
-    expect(ctx.businessUnits).toEqual({ 'bu-um': { item: 'edit' } });
+    expect(ctx.businessUnits).toEqual({
+      'bu-um': { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
   });
 
   test('BU tidak dikenal atau nonaktif baru ditolak; BU nonaktif yang sudah ditugaskan boleh dipertahankan', async () => {

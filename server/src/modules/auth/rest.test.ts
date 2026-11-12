@@ -67,8 +67,20 @@ describe('GET /api/v1/me', () => {
       permissions: { item: string };
     };
     expect(body.businessUnits).toEqual([
-      { id: 'bu-a', code: 'AA', name: 'Alfa', status: 'inactive', permissions: { item: 'edit' } },
-      { id: 'bu-z', code: 'ZZ', name: 'Zed', status: 'active', permissions: { item: 'view' } },
+      {
+        id: 'bu-a',
+        code: 'AA',
+        name: 'Alfa',
+        status: 'inactive',
+        permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+      },
+      {
+        id: 'bu-z',
+        code: 'ZZ',
+        name: 'Zed',
+        status: 'active',
+        permissions: { item: 'view', serial: 'none', serialservice: 'none' },
+      },
     ]);
     expect(body.permissions.item).toBe('edit');
   });
@@ -79,7 +91,13 @@ describe('GET /api/v1/me', () => {
     expect(kosong.businessUnits).toEqual([]);
     const admin = await jsonOf(await rest.get('/me'));
     expect(admin.businessUnits).toEqual([
-      { id: 'bu-a', code: 'AA', name: 'Alfa', status: 'active', permissions: { item: 'manage' } },
+      {
+        id: 'bu-a',
+        code: 'AA',
+        name: 'Alfa',
+        status: 'active',
+        permissions: { item: 'manage', serial: 'manage', serialservice: 'manage' },
+      },
     ]);
   });
 

@@ -30,6 +30,8 @@ beforeEach(() => {
       stock: 'none',
       sticker: 'view',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [
