@@ -25,9 +25,13 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
   };
   const nav: Record<string, unknown> = { onLine: options.onLine ?? true };
   if (options.serviceWorker ?? true) nav.serviceWorker = {};
+  const location = { reload: vi.fn() };
   const win = {
     navigator: nav,
     document: doc,
+    location,
+    addEventListener: doc.addEventListener,
+    removeEventListener: doc.removeEventListener,
     setInterval: (fn: () => void, ms: number) => globalThis.setInterval(fn, ms),
     clearInterval: (id: ReturnType<typeof setInterval>) => globalThis.clearInterval(id),
   } as unknown as Window;
@@ -35,6 +39,7 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
     win,
     doc,
     nav,
+    location,
     fire: (type: string) => {
       for (const listener of listeners.get(type) ?? []) listener();
     },
@@ -42,10 +47,13 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
   };
 }
 
-function fakeRegister() {
+function fakeRegister(opts: { waiting?: boolean } = {}) {
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
   const update = vi.fn().mockResolvedValue(undefined);
-  const registration = { update } as unknown as ServiceWorkerRegistration;
+  const registration = {
+    update,
+    waiting: opts.waiting === false ? null : {},
+  } as unknown as ServiceWorkerRegistration;
   let options: RegisterOptions = {};
   const register: RegisterSW = (given) => {
     options = given;
@@ -58,6 +66,7 @@ function fakeRegister() {
     registration,
     registerSw: () => options.onRegisteredSW?.('/sw.js', registration),
     needRefresh: () => options.onNeedRefresh?.(),
+    needReload: () => options.onNeedReload?.(),
     options: () => options,
   };
 }
@@ -180,7 +189,7 @@ test('pembersih melepas pendengar dan interval', () => {
   const view = fakeWindow();
   const stop = startPwaUpdates({ register: reg.register, win: view.win, intervalMs: 60_000 });
   reg.registerSw();
-  expect(view.listenerCount()).toBe(1);
+  expect(view.listenerCount()).toBe(2);
   expect(vi.getTimerCount()).toBe(1);
   stop();
   expect(view.listenerCount()).toBe(0);
@@ -201,4 +210,57 @@ test('reload() memanggil fungsi pembaruan dengan true dan tidak ada muat ulang s
   hook.result.current.reload();
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
   expect(reg.updateSW).toHaveBeenCalledWith(true);
+});
+
+test('jendela kembali fokus memicu pemeriksaan; focus + visibilitychange berdekatan tidak berlipat', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.update.mockClear();
+  view.fire('focus');
+  expect(reg.update).toHaveBeenCalledTimes(1);
+  view.fire('visibilitychange');
+  view.fire('focus');
+  expect(reg.update).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(5_000);
+  view.fire('focus');
+  expect(reg.update).toHaveBeenCalledTimes(2);
+});
+
+test('onNeedReload dari pembaruan yang tidak diminta tab ini TIDAK memuat ulang (draf tab lain aman)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  reg.needReload();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(usePwaUpdateSnapshotForTests()).toBe(true);
+});
+
+test('onNeedReload sesudah tab ini menekan Muat ulang memuat ulang halaman', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  hook.result.current.reload();
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  reg.needReload();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('reload() tanpa SW yang menunggu (sudah diaktifkan tab lain) langsung memuat ulang halaman', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  hook.result.current.reload();
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });

@@ -18,6 +18,9 @@ function startFake() {
     win: {
       navigator: { serviceWorker: {} },
       document: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      location: { reload: () => undefined },
       setInterval: () => 0,
       clearInterval: () => undefined,
     } as unknown as Window,
