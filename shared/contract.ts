@@ -1,6 +1,7 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
+import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
@@ -1191,6 +1192,9 @@ export interface ApiContract {
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
+  'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
+  'notifications.markRead': { input: MarkNotificationReadInput; output: { ok: true } };
+  'notifications.markAllRead': { input: Record<string, never>; output: { count: number } };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
@@ -1316,6 +1320,22 @@ export interface ExportQrJobDto {
 }
 
 /** Ekspor tabel database ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
+/** Lonceng notifikasi Serah Terima (spek 2026-11-12). `limit` bawaan 30, dibatasi maksimum 100. */
+export interface ListNotificationsInput {
+  limit?: number;
+  /** Kursor `createdAt|id` dari `nextCursor` halaman sebelumnya. */
+  before?: string;
+}
+export interface NotificationListDto {
+  items: NotificationDto[];
+  /** Jumlah belum dibaca di lokasi yang masih berhak dibaca pemanggil. */
+  unread: number;
+  nextCursor: string | null;
+}
+export interface MarkNotificationReadInput {
+  id: string;
+}
+
 export interface ExportSheetsInput {
   tables?: string[];
 }

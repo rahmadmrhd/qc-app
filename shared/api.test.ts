@@ -249,6 +249,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
   'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
   'postelFiles.get': { id: 'f1' },
+  'notifications.list': { limit: 30, before: '2026-11-12T00:00:00.000Z|n1' },
+  'notifications.markRead': { id: 'n1' },
+  'notifications.markAllRead': {},
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };

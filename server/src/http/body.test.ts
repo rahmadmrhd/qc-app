@@ -247,6 +247,8 @@ const WORST: Inputs = {
     logoFileIds: longList(QR_LIMITS.logoLibrary, () => UUID),
   },
   'qrcodes.cloneFromDrive': { source: text(2000), replaceDocumentId: UUID },
+  'notifications.markRead': { id: UUID },
+  'notifications.markAllRead': {},
   'exports.sheets': { tables: longList(50, () => text(100)) },
 };
 

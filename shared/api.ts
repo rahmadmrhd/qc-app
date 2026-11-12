@@ -389,6 +389,14 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       cache: 'immutable',
     },
   },
+  'notifications.list': {
+    verb: 'GET',
+    path: '/notifications',
+    query: { limit: 'number', before: 'string' },
+  },
+  // `read-all` (2 segmen) tidak bertabrakan dengan `/notifications/{id}/read` (3 segmen).
+  'notifications.markAllRead': { verb: 'POST', path: '/notifications/read-all' },
+  'notifications.markRead': { verb: 'POST', path: '/notifications/{id}/read' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',
