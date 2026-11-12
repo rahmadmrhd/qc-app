@@ -234,3 +234,12 @@ test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async 
   const message = await screen.findByText('Pengingat tidak boleh kembar');
   expect(third.getAttribute('aria-describedby')).toContain(message.id);
 });
+
+test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
+  renderSettings();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(screen.getByLabelText('Email lain'));
+  expect(hasUnsavedChanges()).toBe(false);
+});
