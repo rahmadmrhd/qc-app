@@ -112,6 +112,23 @@ test('install() memanggil prompt() sekali lalu mengosongkan peristiwa', async ()
   expect(prompt).toHaveBeenCalledTimes(1);
 });
 
+test('prompt() yang ditolak atau melempar tidak menjadi unhandled rejection', async () => {
+  const { prompt } = firePrompt();
+  prompt.mockRejectedValueOnce(new Error('bukan dari gestur pengguna'));
+  const { result } = renderHook(() => useInstall());
+  await act(async () => {
+    await expect(result.current.install()).resolves.toBeUndefined();
+  });
+  expect(prompt).toHaveBeenCalledTimes(1);
+  const second = firePrompt();
+  second.prompt.mockImplementationOnce(() => {
+    throw new Error('sinkron');
+  });
+  await act(async () => {
+    await expect(result.current.install()).resolves.toBeUndefined();
+  });
+});
+
 test('pembersih melepas pendengar', () => {
   stopCapture?.();
   stopCapture = undefined;

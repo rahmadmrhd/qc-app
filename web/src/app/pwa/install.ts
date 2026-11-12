@@ -72,7 +72,11 @@ async function install(): Promise<void> {
   // Peristiwa hanya boleh dipakai sekali.
   deferred = null;
   emit();
-  await event.prompt();
+  try {
+    await event.prompt();
+  } catch {
+    // prompt() dapat ditolak (peristiwa kedaluwarsa, di luar gestur); bukan galat yang perlu ditampilkan.
+  }
 }
 
 /** Status ajakan pasang dan aksinya; `install` hanya bermakna pada status `prompt`. */

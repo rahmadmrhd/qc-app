@@ -28,7 +28,7 @@ export function InstallIosDialog({
         </DialogHeader>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
           <li>
-            Ketuk tombol <strong>Bagikan</strong> di Safari (ikon kotak dengan panah ke atas).
+            Ketuk tombol <strong>Bagikan</strong> di peramban (ikon kotak dengan panah ke atas).
           </li>
           <li>
             Pilih <strong>Tambahkan ke Layar Utama</strong>.

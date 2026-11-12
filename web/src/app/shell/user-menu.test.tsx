@@ -51,6 +51,9 @@ test('status ios-manual: memilih Pasang aplikasi membuka petunjuk Bagikan lalu T
   const dialog = await screen.findByRole('dialog');
   expect(dialog).toHaveTextContent('Bagikan');
   expect(dialog).toHaveTextContent('Tambahkan ke Layar Utama');
+  // Netral peramban: iOS 16.4+ mengizinkan Chrome/Firefox, jadi jangan menyebut Safari.
+  expect(dialog).toHaveTextContent('tombol Bagikan di peramban');
+  expect(dialog).not.toHaveTextContent('Safari');
   expect(installMock.install).not.toHaveBeenCalled();
 });
 
