@@ -590,7 +590,7 @@ describe('postels.save: item', () => {
     // Tidak ada yang berubah.
     expect(await rows('SELECT id FROM postels')).toHaveLength(1);
     expect(
-      (await rows("SELECT id FROM items WHERE postel_id = ''")).map((r) => r.id).sort(),
+      (await rows('SELECT id FROM items WHERE postel_id IS NULL')).map((r) => r.id).sort(),
     ).toEqual(['i2', 'i3']);
   });
 
@@ -652,7 +652,7 @@ describe('postels.save: item', () => {
         (r) => r.id,
       ),
     ).toEqual(['i1', 'i3']);
-    expect((await rows("SELECT postel_id FROM items WHERE id = 'i2'"))[0].postel_id).toBe('');
+    expect((await rows("SELECT postel_id FROM items WHERE id = 'i2'"))[0].postel_id).toBeNull();
     expect((result.data as Json).name).toBe('M2-300/M5-400');
   });
 

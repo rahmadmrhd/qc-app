@@ -91,6 +91,67 @@ describe('loadMigrations', () => {
   });
 });
 
+describe('0010_postel_kunci_asing', () => {
+  const INSERT_ITEM =
+    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id, postel_id) VALUES (?, 'b', ?, ?, 'false', '[]', '', '[]', '[]', '[]', '', 'active', 't', 't', 's', '', ?)";
+
+  test("data 0009 dinormalkan sebelum kunci asing dipasang: '' dan penunjuk yatim jadi NULL, nomor yatim dibuang, data sah utuh", async () => {
+    const db = await freshDb();
+    try {
+      const all = await loadMigrations();
+      await applyMigrations(
+        db,
+        all.filter((m) => m.name < '0010'),
+      );
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p1', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      await db.prepare(INSERT_ITEM).bind('i-kosong', 'A', 'a', '').run();
+      await db.prepare(INSERT_ITEM).bind('i-sah', 'B', 'b', 'p1').run();
+      await db.prepare(INSERT_ITEM).bind('i-yatim', 'C', 'c', 'hilang').run();
+      for (const [id, postelId] of [
+        ['n-sah', 'p1'],
+        ['n-yatim', 'hilang'],
+      ] as const) {
+        await db
+          .prepare(
+            'INSERT INTO postel_numbers (id, postel_id, number, number_key, seq) VALUES (?, ?, ?, ?, 1)',
+          )
+          .bind(id, postelId, id, id)
+          .run();
+      }
+      expect(await applyMigrations(db, all)).toEqual(['0010_postel_kunci_asing.sql']);
+      const items = await db
+        .prepare('SELECT id, postel_id FROM items ORDER BY id')
+        .all<{ id: string; postel_id: string | null }>();
+      expect(items.results).toEqual([
+        { id: 'i-kosong', postel_id: null },
+        { id: 'i-sah', postel_id: 'p1' },
+        { id: 'i-yatim', postel_id: null },
+      ]);
+      const numbers = await db
+        .prepare('SELECT id FROM postel_numbers ORDER BY id')
+        .all<{ id: string }>();
+      expect(numbers.results).toEqual([{ id: 'n-sah' }]);
+      // kunci asing aktif: menautkan ke catatan yang tak ada ditolak, menghapus catatan melepas item dan nomornya
+      const bad = db
+        .prepare("UPDATE items SET postel_id = 'tidak-ada' WHERE id = 'i-kosong'")
+        .run();
+      await expect(bad).rejects.toBeInstanceOf(DbError);
+      await db.prepare("DELETE FROM postels WHERE id = 'p1'").run();
+      const left = await db
+        .prepare("SELECT postel_id FROM items WHERE id = 'i-sah'")
+        .first<{ postel_id: string | null }>();
+      expect(left?.postel_id).toBeNull();
+      expect((await db.prepare('SELECT id FROM postel_numbers').all()).results).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  }, 120_000);
+});
+
 describe('applyMigrations (migrator)', () => {
   test('menerapkan berurutan, mencatat, dan melewati yang sudah tercatat', async () => {
     const db = await freshDb();
@@ -165,6 +226,7 @@ describe('skema baseline', () => {
       { name: '0007_instruksi_stiker_item.sql' },
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
+      { name: '0010_postel_kunci_asing.sql' },
     ]);
   });
 
