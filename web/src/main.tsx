@@ -41,6 +41,11 @@ async function start() {
     void router.navigate({ to: '/login' });
   });
 
+  // Mutasi react-query yang berjalan membuat tidak aman memuat ulang (muat ulang otomatis hanya bila aman).
+  setMutationSource({
+    isMutating: () => queryClient.isMutating(),
+    subscribe: (callback) => queryClient.getMutationCache().subscribe(callback),
+  });
   const root = document.getElementById('app');
   if (!root) throw new Error('Elemen #app tidak ditemukan');
   createRoot(root).render(
@@ -53,11 +58,6 @@ async function start() {
       </ThemeProvider>
     </StrictMode>,
   );
-  // Mutasi react-query yang berjalan membuat tidak aman memuat ulang (muat ulang otomatis hanya bila aman).
-  setMutationSource({
-    isMutating: () => queryClient.isMutating(),
-    subscribe: (callback) => queryClient.getMutationCache().subscribe(callback),
-  });
   // Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya. Versi baru dipakai otomatis
   // bila aman, pada perpindahan halaman atau saat tab kembali terlihat (keputusan pemilik 2026-11-13).
   if (import.meta.env.PROD) {

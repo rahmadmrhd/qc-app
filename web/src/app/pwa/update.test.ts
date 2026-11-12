@@ -18,7 +18,9 @@ import {
 type RegisterOptions = Parameters<RegisterSW>[0];
 
 // Window palsu minimal: navigator, document (pendengar + visibilityState), dan penghitung waktu.
-function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {}) {
+function fakeWindow(
+  options: { serviceWorker?: boolean; onLine?: boolean; storage?: 'ok' | 'throws' | 'none' } = {},
+) {
   const listeners = new Map<string, Set<(event?: unknown) => void>>();
   const doc = {
     visibilityState: 'visible' as DocumentVisibilityState,
@@ -37,15 +39,19 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
       removeEventListener: doc.removeEventListener,
     };
   }
-  const location = { reload: vi.fn(), assign: vi.fn() };
+  const location = { reload: vi.fn() };
   const store = new Map<string, string>();
   const sessionStorage = {
     getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => void store.set(key, value),
+    setItem: (key: string, value: string) => {
+      if (options.storage === 'throws') throw new Error('kuota penuh');
+      store.set(key, value);
+    },
+    removeItem: (key: string) => void store.delete(key),
   };
   const win = {
     navigator: nav,
-    sessionStorage,
+    ...(options.storage === 'none' ? {} : { sessionStorage }),
     document: doc,
     location,
     addEventListener: doc.addEventListener,
@@ -756,29 +762,26 @@ function armed(opts: { waiting?: boolean } = {}) {
   return { reg, view, hook, stop };
 }
 
-test('R5: aman + berpindah halaman: SW diaktifkan lalu tepat satu muat ulang ke URL TUJUAN; spanduk tidak tampil', () => {
+test('R5/M-a: aman + berpindah halaman: SW diaktifkan lalu tepat satu muat ulang (location.reload, bukan assign); spanduk tidak tampil', () => {
   const { reg, view, hook } = armed();
   expect(hook.result.current.needRefresh).toBe(true);
   expect(hook.result.current.visible).toBe(false);
-  act(() => notifyNavigation('/handover?x=1'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).toHaveBeenCalledWith(true);
-  expect(view.location.assign).not.toHaveBeenCalled();
-  act(() => view.fire('controllerchange'));
-  expect(view.location.assign).toHaveBeenCalledTimes(1);
-  expect(view.location.assign).toHaveBeenCalledWith('/handover?x=1');
   expect(view.location.reload).not.toHaveBeenCalled();
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
   reg.needReload();
-  expect(view.location.assign).toHaveBeenCalledTimes(1);
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });
 
-test('R5: berpindah lagi saat muat ulang sedang berjalan memperbarui URL tujuan, tanpa penunggu ganda', () => {
+test('R5: berpindah lagi saat muat ulang sedang berjalan tidak menumpuk penunggu', () => {
   const { reg, view } = armed();
-  act(() => notifyNavigation('/a'));
-  act(() => notifyNavigation('/b'));
+  act(() => notifyNavigation());
+  act(() => notifyNavigation());
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
   act(() => view.fire('controllerchange'));
-  expect(view.location.assign).toHaveBeenCalledTimes(1);
-  expect(view.location.assign).toHaveBeenCalledWith('/b');
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });
 
 test('R5: aman + tab kembali terlihat: muat ulang otomatis (halaman yang sama); tab tersembunyi tidak', () => {
@@ -791,18 +794,17 @@ test('R5: aman + tab kembali terlihat: muat ulang otomatis (halaman yang sama); 
   expect(reg.updateSW).toHaveBeenCalledWith(true);
   act(() => view.fire('controllerchange'));
   expect(view.location.reload).toHaveBeenCalledTimes(1);
-  expect(view.location.assign).not.toHaveBeenCalled();
 });
 
 test('R5: formulir belum disimpan: tidak memuat ulang pada pemicu apa pun dan spanduk tampil', () => {
   const dirty = renderHook(() => useUnsavedChanges(true));
   const { reg, view, hook } = armed();
   expect(hook.result.current.visible).toBe(true);
-  act(() => notifyNavigation('/x'));
+  act(() => notifyNavigation());
   view.doc.visibilityState = 'visible';
   act(() => view.fire('visibilitychange'));
   expect(reg.updateSW).not.toHaveBeenCalled();
-  expect(view.location.assign).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
   dirty.unmount();
 });
 
@@ -810,15 +812,15 @@ test('R5: penulisan berjalan (registri sibuk atau mutasi): tidak memuat ulang da
   const end = beginBusy();
   const { reg, view, hook } = armed();
   expect(hook.result.current.visible).toBe(true);
-  act(() => notifyNavigation('/x'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
   end();
   // Mutasi react-query yang berjalan sama saja.
   let count = 1;
   setMutationSource({ isMutating: () => count, subscribe: () => () => undefined });
-  act(() => notifyNavigation('/x'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
-  expect(view.location.assign).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
   count = 0;
 });
 
@@ -829,10 +831,10 @@ test('R5: kotor lalu disimpan lalu berpindah halaman: spanduk hilang sendiri dan
   act(() => dirty.unmount());
   expect(hook.result.current.visible).toBe(false);
   expect(reg.updateSW).not.toHaveBeenCalled();
-  act(() => notifyNavigation('/saved'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).toHaveBeenCalledWith(true);
   act(() => view.fire('controllerchange'));
-  expect(view.location.assign).toHaveBeenCalledWith('/saved');
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });
 
 test('R5: galat muat potongan (rusak) tetap menampilkan spanduk walau aman', () => {
@@ -842,22 +844,136 @@ test('R5: galat muat potongan (rusak) tetap menampilkan spanduk walau aman', () 
   expect(hook.result.current.visible).toBe(true);
 });
 
-test('R5: satu percobaan otomatis per versi; setelah itu tidak mengulang dan spanduk tampil', () => {
+test('R5: satu percobaan otomatis per versi; setelah batas waktu (aman) memuat ulang sekali, tidak mengulang', () => {
   const { reg, view, hook } = armed();
-  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
-  // Percobaan selesai (batas waktu) tanpa SW mengambil alih: tidak mengulang, spanduk tampil.
   act(() => {
     vi.advanceTimersByTime(11_000);
   });
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
   expect(hook.result.current.pending).toBe(false);
-  expect(hook.result.current.visible).toBe(true);
-  act(() => notifyNavigation('/b'));
+  act(() => notifyNavigation());
   view.doc.visibilityState = 'visible';
   act(() => view.fire('visibilitychange'));
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
-  expect(view.location.assign).toHaveBeenCalledTimes(1);
-  expect(view.location.assign).toHaveBeenCalledWith('/a');
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('I1: menjadi tidak aman selama menunggu pengambilalihan (controllerchange): tidak memuat ulang, spanduk tampil, lalu Muat ulang memuat ulang langsung', () => {
+  const { reg, view, hook } = armed();
+  act(() => notifyNavigation());
+  expect(hook.result.current.visible).toBe(false);
+  const end = beginBusy();
+  // SW baru sudah aktif: tidak ada lagi SW menunggu.
+  Object.assign(reg.registration, { waiting: null });
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.pending).toBe(false);
+  expect(hook.result.current.visible).toBe(true);
+  reg.needReload();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  end();
+  // Pengguna menekan Muat ulang: memuat ulang langsung (SW baru sudah aktif).
+  act(() => hook.result.current.reload());
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('I1: menjadi tidak aman selama menunggu (batas waktu): tidak memuat ulang dan spanduk tampil', () => {
+  const { view, hook } = armed();
+  act(() => notifyNavigation());
+  const form = renderHook(() => useUnsavedChanges(true));
+  act(() => {
+    vi.advanceTimersByTime(11_000);
+  });
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.visible).toBe(true);
+  expect(hook.result.current.pending).toBe(false);
+  form.unmount();
+});
+
+test('I1: jalur installing: menjadi tidak aman sebelum SW selesai dipasang atau gagal: tidak memuat ulang', () => {
+  for (const mode of ['installed', 'redundant'] as const) {
+    resetPwaUpdateForTests();
+    resetBusyForTests();
+    const reg = fakeRegister({ waiting: false });
+    const view = fakeWindow();
+    startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    const sw = fakeWorker();
+    Object.assign(reg.registration, { installing: sw.worker });
+    // Halaman rusak menyalakan status versi baru; pindah halaman (aman) memulai penantian pemasangan.
+    notifyChunkLoadFailure();
+    const hook = renderHook(() => usePwaUpdate());
+    act(() => notifyNavigation());
+    expect(hook.result.current.pending, mode).toBe(true);
+    beginBusy();
+    if (mode === 'installed') {
+      Object.assign(reg.registration, { waiting: {}, installing: null });
+      act(() => sw.setState('installed'));
+      act(() => view.fire('controllerchange'));
+    } else {
+      act(() => sw.setState('redundant'));
+    }
+    expect(view.location.reload, mode).not.toHaveBeenCalled();
+    expect(hook.result.current.pending, mode).toBe(false);
+  }
+});
+
+test('I1: klik Muat ulang oleh pengguna tidak diblokir oleh pemeriksaan aman (keputusan pengguna)', () => {
+  const { view, hook } = armed();
+  beginBusy();
+  act(() => hook.result.current.reload());
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('M-b: percobaan otomatis yang berakhir di batas waktu menyimpan penanda macet tanpa kedaluwarsa; muat halaman berikutnya hanya spanduk', () => {
+  const first = armed();
+  act(() => notifyNavigation());
+  act(() => {
+    vi.advanceTimersByTime(11_000);
+  });
+  expect(first.view.store.get('qc-pwa-auto-stuck')).toBe('1');
+  // Halaman berikutnya, jauh setelah pembatas 60 dtk, SW masih menunggu: hanya spanduk.
+  vi.advanceTimersByTime(10 * 60_000);
+  resetPwaUpdateForTests();
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  view.store.set('qc-pwa-auto-stuck', '1');
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.visible).toBe(true);
+  act(() => notifyNavigation());
+  expect(reg.updateSW).not.toHaveBeenCalled();
+});
+
+test('M-b: penanda macet dihapus saat tak ada lagi SW menunggu (halaman dimuat dengan SW baru yang aktif)', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  view.store.set('qc-pwa-auto-stuck', '1');
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  expect(view.store.has('qc-pwa-auto-stuck')).toBe(false);
+});
+
+test('M-b: sessionStorage melempar atau tidak ada: TIDAK ada percobaan otomatis (hanya spanduk)', () => {
+  for (const storage of ['throws', 'none'] as const) {
+    resetPwaUpdateForTests();
+    const reg = fakeRegister();
+    const view = fakeWindow({ storage });
+    startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    reg.needRefresh();
+    const hook = renderHook(() => usePwaUpdate());
+    expect(hook.result.current.visible, storage).toBe(true);
+    act(() => notifyNavigation());
+    view.doc.visibilityState = 'visible';
+    act(() => view.fire('visibilitychange'));
+    expect(reg.updateSW, storage).not.toHaveBeenCalled();
+  }
 });
 
 test('R5: pembatas lintas muat ulang (sessionStorage): setelah muat ulang otomatis barusan, tidak mengulang dan spanduk tampil', () => {
@@ -869,13 +985,13 @@ test('R5: pembatas lintas muat ulang (sessionStorage): setelah muat ulang otomat
   reg.needRefresh();
   const hook = renderHook(() => usePwaUpdate());
   expect(hook.result.current.visible).toBe(true);
-  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
 });
 
 test('R5: percobaan otomatis mencatat waktu di sessionStorage', () => {
   const { view } = armed();
-  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation());
   expect(Number(view.store.get('qc-pwa-auto-reload'))).toBeGreaterThan(0);
 });
 
@@ -884,9 +1000,9 @@ test('R5: tanpa registrasi dan bukan galat muat potongan, tidak ada muat ulang o
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
   reg.needRefresh();
-  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
-  expect(view.location.assign).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
 });
 
 test('R5: tanpa versi baru (needRefresh mati) berpindah halaman tidak memuat ulang', () => {
@@ -894,7 +1010,7 @@ test('R5: tanpa versi baru (needRefresh mati) berpindah halaman tidak memuat ula
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
   reg.registerSw();
-  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation());
   expect(reg.updateSW).not.toHaveBeenCalled();
 });
 

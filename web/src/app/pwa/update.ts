@@ -23,6 +23,9 @@ const ACTIVATE_WAIT_MS = 10_000;
 // SW baru tak kunjung mengambil alih); spanduk yang tampil.
 const AUTO_RELOAD_GUARD_KEY = 'qc-pwa-auto-reload';
 const AUTO_RELOAD_GUARD_MS = 60_000;
+// Penanda "macet" tanpa kedaluwarsa: percobaan otomatis berakhir di batas waktu (SW baru tak mengambil alih). Selama
+// ada, hanya spanduk; dihapus saat halaman dimuat tanpa SW menunggu.
+const AUTO_STUCK_KEY = 'qc-pwa-auto-stuck';
 
 let needRefresh = false;
 // "Nanti": spanduk disembunyikan untuk sisa pemuatan halaman ini (tidak disimpan; pemicu baru mereset).
@@ -46,10 +49,12 @@ let urgent = false;
 let autoAttempted = false;
 // Sampai kapan percobaan otomatis diblokir oleh pembatas lintas muat ulang (epoch ms).
 let autoGuardUntil = 0;
+// Penanda macet dari muat ulang otomatis sebelumnya masih berlaku.
+let autoStuck = false;
+// sessionStorage tak dapat dipakai (tidak ada atau melempar): pembatas tak dapat dijamin, jadi hanya spanduk.
+let autoStorageUnavailable = false;
 // Muat ulang yang sedang menunggu dimulai otomatis (spanduk disembunyikan selama itu).
 let autoInitiated = false;
-// URL tujuan muat ulang otomatis karena pindah halaman (undefined = muat ulang halaman ini).
-let reloadTarget: string | undefined;
 // Hindari memuat ulang dua kali untuk satu peristiwa (pendengar controllerchange sendiri + onNeedReload pustaka).
 let reloading = false;
 const listeners = new Set<() => void>();
@@ -74,7 +79,7 @@ function markUrgent(): void {
 
 /** Percobaan otomatis untuk versi ini sudah dilakukan (atau diblokir pembatas lintas muat ulang). */
 function autoTried(): boolean {
-  return autoAttempted || Date.now() < autoGuardUntil;
+  return autoAttempted || autoStuck || autoStorageUnavailable || Date.now() < autoGuardUntil;
 }
 
 /** Galat muat potongan JS/CSS dinamis (cangkang lama meminta berkas yang sudah diganti oleh deploy baru). */
@@ -110,12 +115,17 @@ function setPending(cancel: (() => void) | undefined) {
 
 function reloadPage(win: Window) {
   if (reloading) return;
+  // Muat ulang otomatis: periksa ulang "aman" TEPAT sebelum memuat ulang (keadaan dapat berubah selama menunggu
+  // SW). Bila kini tidak aman, batalkan: spanduk tampil (percobaan sudah tercatat) dan Muat ulang oleh pengguna
+  // memuat ulang langsung. Klik pengguna sendiri tidak diperiksa (keputusannya).
+  if (autoInitiated && !isSafeToReload()) {
+    autoInitiated = false;
+    reloadRequested = false;
+    emit();
+    return;
+  }
   reloading = true;
-  const target = reloadTarget;
-  reloadTarget = undefined;
-  // Pindah halaman memicu muat ulang: langsung ke URL tujuan (bukan halaman lama).
-  if (target !== undefined) win.location.assign(target);
-  else win.location.reload();
+  win.location.reload();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -148,6 +158,8 @@ export function startPwaUpdates(options: {
   currentWin = win;
   currentRegistration = undefined;
   autoGuardUntil = readAutoReloadGuard(win);
+  autoStuck = readAutoStuck(win);
+  autoStorageUnavailable = !storageUsable(win);
   reloadRequested = false;
   cancelPending = undefined;
   reloading = false;
@@ -240,6 +252,12 @@ export function startPwaUpdates(options: {
       // Pustaka dapat mengumumkan SW menunggu sebelum registrasi diketahui: samakan pembanding agar pemeriksaan
       // pertama tidak menganggapnya "baru" dan membatalkan Nanti.
       if (needRefresh) announcedWaiting = registered?.waiting ?? null;
+      // Halaman dimuat tanpa SW menunggu: yang macet sebelumnya sudah beres; percobaan otomatis boleh lagi.
+      if (autoStuck && !registered?.waiting) {
+        autoStuck = false;
+        clearAutoStuck(win);
+        emit();
+      }
       check();
     },
     onRegisterError: () => undefined,
@@ -277,7 +295,6 @@ export function startPwaUpdates(options: {
     reloadRequested = false;
     reloading = false;
     autoInitiated = false;
-    reloadTarget = undefined;
     runCheck = () => undefined;
   };
 }
@@ -295,35 +312,72 @@ function writeAutoReloadGuard(win: Window): void {
   try {
     win.sessionStorage?.setItem(AUTO_RELOAD_GUARD_KEY, String(Date.now()));
   } catch {
-    // Penyimpanan tak tersedia: pembatas dalam memori (autoTriedKey) tetap berlaku.
+    // Tak mungkin sampai sini: percobaan otomatis hanya dilakukan bila penyimpanan dapat dipakai.
+  }
+}
+
+function readAutoStuck(win: Window): boolean {
+  try {
+    return win.sessionStorage?.getItem(AUTO_STUCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function clearAutoStuck(win: Window): void {
+  try {
+    win.sessionStorage?.removeItem(AUTO_STUCK_KEY);
+  } catch {
+    // Dibiarkan.
+  }
+}
+
+/** Percobaan otomatis berakhir di batas waktu tanpa SW mengambil alih: tandai macet (tanpa kedaluwarsa). */
+function markAutoStuck(win: Window): void {
+  if (!autoInitiated) return;
+  autoStuck = true;
+  try {
+    win.sessionStorage?.setItem(AUTO_STUCK_KEY, '1');
+  } catch {
+    // Dibiarkan: penyimpanan tak dapat dipakai berarti tak ada percobaan otomatis sejak awal.
+  }
+}
+
+/** sessionStorage dapat ditulis dan dibaca (pembatas lintas muat ulang bergantung padanya). */
+function storageUsable(win: Window): boolean {
+  try {
+    const storage = win.sessionStorage;
+    if (!storage) return false;
+    storage.setItem('qc-pwa-probe', '1');
+    return storage.getItem('qc-pwa-probe') === '1';
+  } catch {
+    return false;
   }
 }
 
 /**
  * Muat ulang OTOMATIS pada "saat wajar" (pindah halaman, tab kembali terlihat) bila ada versi baru dan AMAN
  * (`isSafeToReload`: tanpa formulir belum tersimpan dan tanpa penulisan berjalan). Satu percobaan per versi; setelah
- * itu spanduk. `href` = URL tujuan perpindahan halaman (undefined: muat ulang halaman ini).
+ * itu spanduk. Keamanan diperiksa lagi tepat sebelum memuat ulang (`reloadPage`).
  */
-function maybeAutoReload(href?: string): void {
+function maybeAutoReload(): void {
   const win = currentWin;
-  if (!win || !needRefresh || reloading) return;
-  if (cancelPending) {
-    // Sedang menunggu SW: perpindahan berikutnya hanya mengubah tujuan muat ulang.
-    if (autoInitiated && href !== undefined) reloadTarget = href;
-    return;
-  }
+  if (!win || !needRefresh || reloading || cancelPending) return;
   // Tanpa registrasi dikenal, "SKIP_WAITING" tak berarti (kecuali halaman rusak): jangan menebak.
   if (!currentRegistration && !urgent) return;
   if (autoTried() || !isSafeToReload()) return;
   autoAttempted = true;
   writeAutoReloadGuard(win);
-  startReload(href, true);
+  startReload(true);
   emit();
 }
 
-/** Pemicu perpindahan halaman (dari router): muat ulang otomatis ke URL tujuan bila ada versi baru dan aman. */
-export function notifyNavigation(href: string): void {
-  maybeAutoReload(href);
+/**
+ * Pemicu perpindahan halaman (dari router): muat ulang otomatis bila ada versi baru dan aman. Selalu
+ * `location.reload()`: saat muat ulang berjalan, navigasi sudah dikomit sehingga URL saat ini = tujuan.
+ */
+export function notifyNavigation(): void {
+  maybeAutoReload();
 }
 
 /** Router minimal yang dibutuhkan untuk mendengar perpindahan (dipenuhi `router.subscribe` TanStack). */
@@ -341,7 +395,7 @@ export interface NavigationSource {
 /** Menghubungkan perpindahan halaman nyata (bukan muat awal, bukan ubah query/hash) ke `notifyNavigation`. */
 export function attachNavigationTrigger(router: NavigationSource): () => void {
   return router.subscribe('onBeforeNavigate', (event) => {
-    if (event.fromLocation && event.pathChanged) notifyNavigation(event.toLocation.href);
+    if (event.fromLocation && event.pathChanged) notifyNavigation();
   });
 }
 
@@ -367,7 +421,10 @@ function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
     }
   };
   worker.addEventListener('statechange', onChange);
-  timer = win.setTimeout(finish, INSTALL_WAIT_MS);
+  timer = win.setTimeout(() => {
+    markAutoStuck(win);
+    finish();
+  }, INSTALL_WAIT_MS);
   setPending(cancel);
 }
 
@@ -390,21 +447,23 @@ function activateWaiting(win: Window) {
     reloadPage(win);
   };
   container?.addEventListener?.('controllerchange', onControllerChange, { once: true });
-  timer = win.setTimeout(onControllerChange, ACTIVATE_WAIT_MS);
+  timer = win.setTimeout(() => {
+    markAutoStuck(win);
+    onControllerChange();
+  }, ACTIVATE_WAIT_MS);
   setPending(cancel);
   void updateSW?.(true);
 }
 
 /** Tombol Muat ulang (klik pengguna). */
 function reload() {
-  startReload(undefined, false);
+  startReload(false);
 }
 
-function startReload(href: string | undefined, auto: boolean) {
+function startReload(auto: boolean) {
   // Sudah menunggu (installing/pengambilalihan): klik ulang tidak menumpuk penunggu.
   if (cancelPending) return;
   autoInitiated = auto;
-  reloadTarget = href;
   reloadRequested = true;
   const win = currentWin ?? window;
   const registration = currentRegistration;
@@ -503,8 +562,9 @@ export function resetPwaUpdateForTests(): void {
   urgent = false;
   autoAttempted = false;
   autoGuardUntil = 0;
+  autoStuck = false;
+  autoStorageUnavailable = false;
   autoInitiated = false;
-  reloadTarget = undefined;
   runCheck = () => undefined;
   for (const listener of listeners) listener();
 }

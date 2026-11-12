@@ -37,6 +37,7 @@ function startFake(opts: { busy?: boolean } = {}) {
   if (opts.busy ?? true) beginBusy();
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
   const reload = vi.fn();
+  const store = new Map<string, string>();
   const listeners = new Map<string, Set<Listener>>();
   const add = (type: string, listener: Listener) => {
     if (!listeners.has(type)) listeners.set(type, new Set());
@@ -62,7 +63,12 @@ function startFake(opts: { busy?: boolean } = {}) {
       document: { addEventListener: add, removeEventListener: remove },
       addEventListener: add,
       removeEventListener: remove,
-      location: { reload, assign: vi.fn() },
+      location: { reload },
+      sessionStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+        removeItem: (key: string) => void store.delete(key),
+      },
       setInterval: () => 0,
       clearInterval: () => undefined,
       setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms),
