@@ -333,6 +333,28 @@ test('koreksi tanpa perubahan atau tanpa alasan tidak dikirim', async () => {
   expect(within(dialog).getByText('Alasan wajib diisi')).toBeInTheDocument();
 });
 
+test('stok negatif tampil "Kurang N" di dialog stok keluar dan opname', async () => {
+  const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
+  renderPage({
+    rows: [{ ...first, total: -2, byLocation: [{ locationId: 'l-a', qty: -2 }] }, ...rest],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
+  expect(within(dialog).getByText('Stok saat ini: Kurang 2')).toBeInTheDocument();
+});
+
+test('opname menampilkan stok tercatat negatif sebagai "Kurang N"', async () => {
+  const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
+  renderPage({
+    rows: [{ ...first, total: -2, byLocation: [{ locationId: 'l-a', qty: -2 }] }, ...rest],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
+  expect(within(dialog).getByText('Tercatat Kurang 2')).toBeInTheDocument();
+});
+
 test('opname mengirim expectedQty yang dilihat halaman dan hanya baris yang dihitung', async () => {
   const { onOpname } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
