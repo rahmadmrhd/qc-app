@@ -394,3 +394,40 @@ test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan
     locationId: 'l2',
   });
 });
+
+test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai; catatan hanya spasi bukan perubahan', async () => {
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Ubah data' }));
+  const dialog = await screen.findByRole('dialog');
+  const noteInput = within(dialog).getByLabelText('Catatan');
+  await userEvent.clear(noteInput);
+  await userEvent.type(noteInput, 'catatan A');
+  const serialInput = within(dialog).getByLabelText('Serial');
+  await userEvent.type(serialInput, ' ');
+
+  // Orang lain mengubah catatan dan tanggal uji; serial hanya bertambah spasi di sisi pengguna.
+  const fresh = {
+    ...SERIAL,
+    note: 'catatan B',
+    testDate: '2026-11-09',
+    updatedAt: '2026-11-13T03:00:00.000Z',
+  };
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.update') {
+      state = { serial: fresh, events: state.events };
+      return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
+    }
+    return original?.(id, input);
+  });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await within(dialog).findByRole('status');
+  // Catatan: pengguna dan orang lain sama-sama mengubah, nilainya berbeda: ditandai.
+  expect(within(dialog).getByText(/Diubah orang lain menjadi: catatan B/)).toBeInTheDocument();
+  // Tanggal uji belum disentuh pengguna: diganti nilai server tanpa tanda.
+  expect(within(dialog).getByLabelText('Tanggal uji')).toHaveValue('2026-11-09');
+  expect(within(dialog).queryByText(/Diubah orang lain menjadi: 2026-11-09/)).toBeNull();
+  // Serial hanya ditambah spasi (setelah normalisasi tak berubah): mengikuti server, tanpa tanda.
+  expect(within(dialog).getByLabelText('Serial')).toHaveValue('ABC123');
+  expect(within(dialog).getByLabelText('Catatan')).toHaveValue('catatan A');
+});

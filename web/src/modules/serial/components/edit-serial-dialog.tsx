@@ -35,6 +35,16 @@ export interface EditSerialDialogProps {
 
 type FieldErrors = Partial<Record<keyof SerialEditable, string>>;
 
+/** Penanda bidang yang juga diubah orang lain: simpan akan menimpa nilai server itu. */
+function ConflictNote({ text }: { text: string | undefined }) {
+  if (!text) return null;
+  return (
+    <p className="text-xs text-amber-700 dark:text-amber-400">
+      Diubah orang lain menjadi: {text}. Menyimpan akan menimpanya.
+    </p>
+  );
+}
+
 /**
  * Ubah data serial (serial, item, tanggal uji, sample, catatan, lokasi). BU, status, dan stiker tidak dapat diubah di
  * sini. Server membandingkan dengan data sekarang: hanya bidang yang berbeda yang tercatat sebagai perubahan.
@@ -45,6 +55,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   // Data dasar pembanding: nilai server saat dialog dibuka, diperbarui bila server memberi versi lebih baru (412).
   const [base, setBase] = useState(serial);
   const [notice, setNotice] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<FieldErrors>({});
   const [serialText, setSerialText] = useState(serial.serial);
   const [item, setItem] = useState({ id: serial.itemId, label: serial.itemLabel });
   const [testDate, setTestDate] = useState(serial.testDate);
@@ -87,14 +98,54 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
       const fresh = (
         await queryClient.fetchQuery({ ...serialDetailQueryOptions(serial.id), staleTime: 0 })
       ).serial;
-      if (serialText === base.serial) setSerialText(fresh.serial);
-      if (item.id === base.itemId) setItem({ id: fresh.itemId, label: fresh.itemLabel });
-      if (testDate === base.testDate) setTestDate(fresh.testDate);
-      if (sample === base.sample) setSample(fresh.sample);
-      if (note === base.note) setNote(fresh.note);
-      if (location.id === base.locationId) {
+      const mine = {
+        serial: normalizeSerial(serialText),
+        itemId: item.id,
+        testDate,
+        sample,
+        note: note.trim(),
+        locationId: location.id,
+      };
+      const theirs = {
+        serial: fresh.serial,
+        itemId: fresh.itemId,
+        testDate: fresh.testDate,
+        sample: fresh.sample,
+        note: fresh.note,
+        locationId: fresh.locationId,
+      };
+      const before = {
+        serial: base.serial,
+        itemId: base.itemId,
+        testDate: base.testDate,
+        sample: base.sample,
+        note: base.note,
+        locationId: base.locationId,
+      };
+      const next: FieldErrors = {};
+      const show: Record<keyof SerialEditable, string> = {
+        serial: fresh.serial,
+        itemId: fresh.itemLabel,
+        testDate: fresh.testDate,
+        sample: fresh.sample ? 'Sample' : 'Bukan sample',
+        note: fresh.note === '' ? '(kosong)' : fresh.note,
+        locationId: fresh.locationName,
+      };
+      for (const field of Object.keys(mine) as (keyof typeof mine)[]) {
+        if (mine[field] === before[field]) continue; // belum diubah pengguna: diganti nilai server di bawah
+        if (theirs[field] !== before[field] && theirs[field] !== mine[field]) {
+          next[field] = show[field];
+        }
+      }
+      if (mine.serial === before.serial) setSerialText(fresh.serial);
+      if (mine.itemId === before.itemId) setItem({ id: fresh.itemId, label: fresh.itemLabel });
+      if (mine.testDate === before.testDate) setTestDate(fresh.testDate);
+      if (mine.sample === before.sample) setSample(fresh.sample);
+      if (mine.note === before.note) setNote(fresh.note);
+      if (mine.locationId === before.locationId) {
         setLocation({ id: fresh.locationId, label: fresh.locationName });
       }
+      setConflicts(next);
       setBase(fresh);
       setNotice(
         `${STALE_SAVE_MESSAGE}. Bidang yang belum Anda ubah diperbarui ke data terbaru; periksa lalu simpan lagi.`,
@@ -107,6 +158,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   async function submit() {
     setError(null);
     setNotice(null);
+    setConflicts({});
     setFieldErrors({});
     try {
       await update.mutateAsync({
@@ -168,6 +220,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
               onChange={(event) => setSerialText(event.target.value)}
             />
             <FieldError errors={[fieldErrors.serial]} />
+            <ConflictNote text={conflicts.serial} />
           </div>
           <LinkField
             id="edit-item"
@@ -185,6 +238,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             }
             error={fieldErrors.itemId}
           />
+          <ConflictNote text={conflicts.itemId} />
           <div className="space-y-1.5">
             <Label htmlFor="edit-date">Tanggal uji</Label>
             <Input
@@ -195,6 +249,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
               onChange={(event) => setTestDate(event.target.value)}
             />
             <FieldError errors={[fieldErrors.testDate]} />
+            <ConflictNote text={conflicts.testDate} />
           </div>
           <SerialLocationField
             id="edit-location"
@@ -204,6 +259,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             onChange={(id, label) => setLocation({ id, label })}
             error={fieldErrors.locationId}
           />
+          <ConflictNote text={conflicts.locationId} />
           <div className="flex items-center gap-2">
             <Checkbox
               id="edit-sample"
@@ -212,6 +268,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             />
             <Label htmlFor="edit-sample">Sample</Label>
           </div>
+          <ConflictNote text={conflicts.sample} />
           <div className="space-y-1.5">
             <Label htmlFor="edit-note">Catatan</Label>
             <Input
@@ -221,6 +278,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
               onChange={(event) => setNote(event.target.value)}
             />
             <FieldError errors={[fieldErrors.note]} />
+            <ConflictNote text={conflicts.note} />
           </div>
           {notice ? (
             <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
