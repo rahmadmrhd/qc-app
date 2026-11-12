@@ -17,22 +17,24 @@ bun run scripts/gen-ui-signing-key.ts C:\jalur\pribadi\qc.ui-signing-key.pem
 - Di Windows izin `0600` tidak berlaku: simpan di folder pribadi, jangan di dalam repositori atau folder yang disinkronkan publik.
 - Buat **cadangan** kunci privat di tempat aman (pengelola kata sandi atau brankas terenkripsi). Kunci privat hilang = harus merilis aplikasi desktop baru dengan kunci publik baru.
 
-## 2. Simpan kunci privat sebagai secret GitHub
+## 2. Simpan kunci privat sebagai secret GitHub (environment terbatas)
 
-Simpan ISI berkas `.ui-signing-key.pem` sebagai secret **tingkat repositori** bernama `UI_SIGNING_KEY` (Settings > Secrets and variables > Actions > Repository secrets). Job `image` pada `.github/workflows/deploy-server.yml` tidak memakai `environment`, sehingga secret environment tidak terbaca di sana (lihat `docs/ci-cd.md`). Jangan menempelkan kunci ke issue, PR, log, atau obrolan.
+Simpan ISI berkas `.ui-signing-key.pem` sebagai secret bernama `UI_SIGNING_KEY` pada **environment** GitHub yang dibatasi ke branch terproteksi (idealnya hanya `production`/`main`; Settings > Environments > Deployment branches). Jangan memakai secret repositori biasa: ia terbaca oleh workflow mana pun di repositori, termasuk yang diubah di branch PR. Job `image` pada `.github/workflows/deploy-server.yml` saat ini tidak memakai `environment`, jadi untuk membaca secret environment job itu perlu `environment:` (langkah 3). Jangan menempelkan kunci ke issue, PR, log, atau obrolan.
 
 ## 3. Pasang secret di build image
 
 Status saat ini: `Dockerfile` sudah menandatangani manifest bila secret BuildKit `ui_signing_key` diberikan, tetapi workflow CI **belum** meneruskannya. Langkah pemasangan (mengubah workflow dan tes penjaganya):
 
-1. Di `.github/workflows/deploy-server.yml`, pada langkah `docker/build-push-action` tambahkan di `with:`
+1. Di `.github/workflows/deploy-server.yml`, pada job `image` tambahkan `environment:` yang memegang secret, dan pada langkah `docker/build-push-action` tambahkan di `with:`
    ```
    secrets: |
      ui_signing_key=${{ secrets.UI_SIGNING_KEY }}
    ```
-   (juga di `test.yml` bila image diuji; tanpa itu image hanya tak ditandatangani). Nilai berada di `with`, bukan `run`, jadi aturan "tanpa `${{ }}` di `run`" tidak terlanggar.
-2. Sesuaikan `scripts/ci-workflows.test.ts` dan `docs/ci-cd.md` dengan perubahan itu (tes menegakkan pola workflow).
-3. Uji lokal tanpa CI: `docker build --secret id=ui_signing_key,src=C:\jalur\pribadi\qc.ui-signing-key.pem -t qc-app .` lalu pastikan `GET /api/desktop/ui-manifest` pada kontainer menjawab 200 dengan `{ manifest, signature }`.
+   Nilai berada di `with`, bukan `run`, jadi aturan "tanpa `${{ }}` di `run`" tidak terlanggar.
+2. Sesuaikan `scripts/ci-workflows.test.ts` dan `docs/ci-cd.md` dengan perubahan itu (tes menegakkan pola workflow, termasuk `permissions` dan `environment` job).
+3. **LARANGAN: jangan menambahkan `UI_SIGNING_KEY` ke `test.yml` atau workflow lain yang berjalan pada `pull_request`.** Job itu menjalankan kode PR yang belum ditinjau (Dockerfile dan `scripts/` dari HEAD PR); kunci yang tersedia di sana dapat dibocorkan atau dipakai menandatangani bundel UI pilihan penyerang, dan itu meruntuhkan seluruh tujuan tanda tangan (spek §3.4). Kunci hanya untuk job `image` di `deploy-server.yml` yang membangun kode hasil merge. Image dari `test.yml` memang tidak ditandatangani.
+4. Uji lokal tanpa CI: `docker build --secret id=ui_signing_key,src=C:\jalur\pribadi\qc.ui-signing-key.pem -t qc-app .` lalu pastikan `GET /api/desktop/ui-manifest` pada kontainer menjawab 200 dengan `{ manifest, signature }`.
+5. **Cache BuildKit tidak memperhitungkan isi secret.** Setelah memasang kunci pertama kali atau memutarnya, langkah tanda tangan dapat diambil dari cache lama (tanpa `.sig`, atau dengan `.sig` kunci lama) bila konteks build tidak berubah. Jalankan sekali build tanpa cache untuk langkah itu (dispatch manual dengan `scope` cache GHA baru atau hapus cache `qc-app` di Actions > Caches; lokal: `docker build --no-cache-filter web-build ...`) dan pastikan `ui-manifest` menjawab 200 dengan tanda tangan baru.
 
 ## 4. Tanam kunci publik di aplikasi
 
