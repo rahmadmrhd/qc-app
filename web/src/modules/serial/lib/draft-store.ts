@@ -5,6 +5,17 @@ const PREFIX = 'qc.serial.draft:';
 
 const key = (ownerKey: string) => `${PREFIX}${ownerKey}`;
 
+/**
+ * Setelah `clearAllDrafts` (keluar), penulisan draf dihentikan sampai `resumeDraftWrites`: halaman Catat Serial yang
+ * dilepas oleh navigasi keluar akan menyimpan isi terakhirnya di cleanup, dan itu tidak boleh menghidupkan draf lagi.
+ */
+let writesSuspended = false;
+
+/** Memulai sesi kerja baru (halaman Catat Serial dibuka): penulisan draf kembali diizinkan. */
+export function resumeDraftWrites(): void {
+  writesSuspended = false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -114,6 +125,7 @@ export function loadDraft(ownerKey: string): StagingRow[] {
 
 /** `false` bila gagal menyimpan (kuota penuh atau storage diblokir); tidak pernah melempar. */
 export function saveDraft(ownerKey: string, rows: readonly StagingRow[]): boolean {
+  if (writesSuspended) return true;
   try {
     if (rows.length === 0) {
       localStorage.removeItem(key(ownerKey));
@@ -136,6 +148,7 @@ export function clearDraft(ownerKey: string): void {
 
 /** Membuang draf semua pemilik di perangkat ini (keluar dari aplikasi). */
 export function clearAllDrafts(): void {
+  writesSuspended = true;
   try {
     const keys: string[] = [];
     for (let index = 0; index < localStorage.length; index++) {

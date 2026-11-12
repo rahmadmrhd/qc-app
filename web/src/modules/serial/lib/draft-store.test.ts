@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { addSerials, type Defaults, type StagingRow } from './draft';
-import { clearAllDrafts, clearDraft, loadDraft, saveDraft } from './draft-store';
+import { clearAllDrafts, clearDraft, loadDraft, resumeDraftWrites, saveDraft } from './draft-store';
 
 const defaults: Defaults = {
   itemId: 'i1',
@@ -26,6 +26,7 @@ function rows(count: number): StagingRow[] {
 }
 
 afterEach(() => {
+  resumeDraftWrites();
   vi.restoreAllMocks();
   localStorage.clear();
 });
@@ -112,4 +113,14 @@ test('storage yang melempar tidak membuat apa pun gagal', () => {
   expect(loadDraft('a@x.com')).toEqual([]);
   expect(() => clearDraft('a@x.com')).not.toThrow();
   expect(() => clearAllDrafts()).not.toThrow();
+});
+
+test('setelah clearAllDrafts penulisan draf ditahan sampai resumeDraftWrites', () => {
+  const data = rows(2);
+  clearAllDrafts();
+  expect(saveDraft('a@x.com', data)).toBe(true);
+  expect(localStorage.getItem('qc.serial.draft:a@x.com')).toBeNull();
+  resumeDraftWrites();
+  expect(saveDraft('a@x.com', data)).toBe(true);
+  expect(loadDraft('a@x.com')).toEqual(data);
 });
