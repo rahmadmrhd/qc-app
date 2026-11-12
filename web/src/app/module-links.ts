@@ -10,4 +10,6 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   qc: '/handover',
   sticker: '/sticker',
   stickerstock: '/sticker/stock',
+  serial: '/serial',
+  serialservice: '/serial',
 };
