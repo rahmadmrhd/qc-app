@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { getBridge } from '@/lib/platform';
+import { CountryLockPage } from '@/modules/countrylock/components/country-lock-page';
 import { OpenInDesktop } from '@/modules/countrylock/components/open-in-desktop';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 
@@ -9,6 +11,8 @@ export const Route = createFileRoute('/country-lock')({
 });
 
 function CountryLockRoute() {
+  // Di aplikasi desktop (jembatan ada) tampil halaman Country Lock; di peramban hanya ajakan membuka desktop.
+  const bridge = getBridge();
   return (
     <div className="flex min-h-svh flex-col bg-muted/40">
       <header className="flex items-center justify-between gap-2 border-b bg-background px-4 py-2">
@@ -21,7 +25,7 @@ function CountryLockRoute() {
         </div>
       </header>
       <main className="flex flex-1 items-start justify-center p-4">
-        <OpenInDesktop />
+        {bridge ? <CountryLockPage bridge={bridge} /> : <OpenInDesktop />}
       </main>
     </div>
   );
