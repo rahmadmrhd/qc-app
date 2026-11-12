@@ -342,6 +342,17 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: { query: 'string', cursor: 'string', limit: 'number' },
   },
   'postels.list': { verb: 'GET', path: '/postels' },
+  // Serial Number: rute statis (`item-options`, `sticker-options`) didaftarkan SEBELUM `/serials/{id}` kelak.
+  'serials.itemOptions': {
+    verb: 'GET',
+    path: '/serials/item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
+  'serials.stickerOptions': {
+    verb: 'GET',
+    path: '/serials/sticker-options',
+    query: { itemId: 'string', buId: 'string' },
+  },
   'postels.get': { verb: 'GET', path: '/postels/{id}', etag: 'updatedAt' },
   'postels.save': {
     verb: 'PUT',

@@ -82,7 +82,10 @@ describe('resolveBuAccess', () => {
       roles,
       ['A', 'B'],
     );
-    expect(result).toEqual({ A: { item: 'edit', serial: 'none', serialservice: 'none' }, B: { item: 'view', serial: 'none', serialservice: 'none' } });
+    expect(result).toEqual({
+      A: { item: 'edit', serial: 'none', serialservice: 'none' },
+      B: { item: 'view', serial: 'none', serialservice: 'none' },
+    });
   });
 
   test('penugasan hanya untuk satu BU tidak memberi hak di BU lain', () => {

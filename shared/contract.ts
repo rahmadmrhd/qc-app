@@ -1190,6 +1190,8 @@ export interface ApiContract {
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
+  'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
@@ -1371,6 +1373,30 @@ export type SerialRowResult = {
   id?: string;
   serial?: string;
 };
+/** Item yang dapat dipilih pencatat serial (hanya bidang yang dibutuhkan), dengan BU yang boleh ia tulis. */
+export interface SerialItemOptionDto {
+  id: string;
+  /** "Merk Model". */
+  label: string;
+  buIds: string[];
+  buOptions: { id: string; code: string }[];
+}
+export interface ListSerialItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialItemOptionsPageDto {
+  items: SerialItemOptionDto[];
+  nextCursor: string | null;
+}
+export interface SerialStickerOptionsInput {
+  itemId: string;
+  buId: string;
+}
+export interface SerialStickerOptionsDto {
+  stickers: ApplicableStickerDto[];
+}
 /** Stiker yang berlaku bagi item pada sebuah BU (bahan daftar centang). */
 export interface ApplicableStickerDto {
   id: string;

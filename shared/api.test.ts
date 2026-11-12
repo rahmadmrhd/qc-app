@@ -247,6 +247,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'postels.history': { id: 'p1', cursor: 'c1', limit: 20 },
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
   'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
   'postelFiles.get': { id: 'f1' },
   'jobs.get': { id: 'j1' },

@@ -201,7 +201,10 @@ describe('item dihitung dari penugasan BU, bukan penugasan lokasi', () => {
       allBuIds: ['X', 'Y'],
     });
     expect(result.global.item).toBe('edit');
-    expect(result.byBu).toEqual({ X: { item: 'view', serial: 'none', serialservice: 'none' }, Y: { item: 'edit', serial: 'none', serialservice: 'none' } });
+    expect(result.byBu).toEqual({
+      X: { item: 'view', serial: 'none', serialservice: 'none' },
+      Y: { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
   });
 
   test('role serial: global.serial mengikuti penugasan BU (Semua BU maupun BU tertentu), bukan penugasan lokasi', () => {
