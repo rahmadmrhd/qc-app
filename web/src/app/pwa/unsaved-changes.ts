@@ -9,7 +9,8 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-function subscribe(listener: () => void): () => void {
+/** Berlangganan perubahan status "belum disimpan" (juga dipakai `safe-reload`). */
+export function subscribeUnsavedChanges(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -35,7 +36,7 @@ export function hasUnsavedChanges(): boolean {
 }
 
 export function useHasUnsavedChanges(): boolean {
-  return useSyncExternalStore(subscribe, hasUnsavedChanges, () => false);
+  return useSyncExternalStore(subscribeUnsavedChanges, hasUnsavedChanges, () => false);
 }
 
 export function resetUnsavedChangesForTests(): void {

@@ -5,7 +5,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
 import { startInstallCapture } from '@/app/pwa/install';
-import { startPwaUpdates } from '@/app/pwa/update';
+import { setMutationSource } from '@/app/pwa/safe-reload';
+import { attachNavigationTrigger, startPwaUpdates } from '@/app/pwa/update';
 import { PwaUpdateBanner } from '@/app/pwa/update-banner';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
@@ -52,8 +53,17 @@ async function start() {
       </ThemeProvider>
     </StrictMode>,
   );
-  // Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya.
-  if (import.meta.env.PROD) startPwaUpdates({ register: registerSW });
+  // Mutasi react-query yang berjalan membuat tidak aman memuat ulang (muat ulang otomatis hanya bila aman).
+  setMutationSource({
+    isMutating: () => queryClient.isMutating(),
+    subscribe: (callback) => queryClient.getMutationCache().subscribe(callback),
+  });
+  // Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya. Versi baru dipakai otomatis
+  // bila aman, pada perpindahan halaman atau saat tab kembali terlihat (keputusan pemilik 2026-11-13).
+  if (import.meta.env.PROD) {
+    startPwaUpdates({ register: registerSW });
+    attachNavigationTrigger(router);
+  }
 }
 
 void start();

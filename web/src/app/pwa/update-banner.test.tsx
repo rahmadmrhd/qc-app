@@ -1,6 +1,8 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beginBusy, resetBusyForTests } from './busy';
+import { resetSafeReloadForTests } from './safe-reload';
 import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
 import {
   notifyChunkLoadFailure,
@@ -30,7 +32,9 @@ function fakeWorker() {
 
 // Memulai pemeriksaan pembaruan dengan register dan jendela palsu. `announce` meniru pustaka yang memanggil
 // onNeedRefresh untuk SW yang menunggu; `registration.waiting` dapat diganti untuk meniru deploy berikutnya.
-function startFake() {
+// busy (bawaan true): ada penulisan berjalan sehingga TIDAK aman dan spanduk tampil saat versi baru siap.
+function startFake(opts: { busy?: boolean } = {}) {
+  if (opts.busy ?? true) beginBusy();
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
   const reload = vi.fn();
   const listeners = new Map<string, Set<Listener>>();
@@ -58,7 +62,7 @@ function startFake() {
       document: { addEventListener: add, removeEventListener: remove },
       addEventListener: add,
       removeEventListener: remove,
-      location: { reload },
+      location: { reload, assign: vi.fn() },
       setInterval: () => 0,
       clearInterval: () => undefined,
       setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms),
@@ -87,6 +91,8 @@ function Dirty() {
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   resetPwaUpdateForTests();
+  resetSafeReloadForTests();
+  resetBusyForTests();
   resetUnsavedChangesForTests();
 });
 
@@ -214,20 +220,46 @@ test('N6: tanpa elemen main, Nanti tetap berfungsi tanpa galat', async () => {
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
 });
 
-test('B4: selama menunggu, tombol Muat ulang menampilkan Memuat… dan nonaktif; Nanti tetap dapat dipakai', async () => {
+test('B4/N1: selama menunggu, Muat ulang menampilkan Memuat… (aria-disabled) dan Nanti diabaikan (aria-disabled)', async () => {
   const fake = startFake();
   render(<PwaUpdateBanner />);
   fake.announce();
   await userEvent.click(screen.getByRole('button', { name: 'Muat ulang' }));
   const busy = screen.getByRole('button', { name: 'Memuat…' });
-  // N2: aria-disabled (bukan disabled) agar fokus papan ketik tidak hilang; klik ulang diabaikan.
   expect(busy).toHaveAttribute('aria-disabled', 'true');
   expect(busy).not.toBeDisabled();
   await userEvent.click(busy);
   expect(fake.updateSW).toHaveBeenCalledTimes(1);
-  expect(fake.updateSW).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  const later = screen.getByRole('button', { name: 'Nanti' });
+  expect(later).toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(later);
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+  await fake.fire('controllerchange');
+  expect(fake.reload).toHaveBeenCalledTimes(1);
+});
+
+test('R5: aman (tanpa penulisan, formulir bersih): spanduk TIDAK tampil walau versi baru siap', () => {
+  const fake = startFake({ busy: false });
+  const { container } = render(<PwaUpdateBanner />);
+  fake.announce();
+  expect(container).toBeEmptyDOMElement();
+});
+
+test('R5: spanduk tampil saat tidak aman dan hilang sendiri begitu aman kembali', () => {
+  const end = beginBusy();
+  const fake = startFake({ busy: false });
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+  act(() => end());
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
-  fake.fire('controllerchange');
-  expect(fake.reload).not.toHaveBeenCalled();
+});
+
+test('R5: galat muat potongan menampilkan spanduk walau aman', () => {
+  const fake = startFake({ busy: false });
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  act(() => notifyChunkLoadFailure());
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
 });

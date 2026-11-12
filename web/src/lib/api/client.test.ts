@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest';
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
 import { createApiClient } from './client';
 
@@ -375,4 +376,40 @@ test('unduhan gagal: badan problem+json dibaca sebagai teks (ApiError), bukan by
   const error = await api('files.get', { id: 'x' }).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({ code: 'NOT_FOUND', message: 'Berkas tidak ditemukan' });
+});
+
+test('permintaan tulis menandai registri sibuk selama berjalan (termasuk saat gagal); GET tidak', async () => {
+  resetBusyForTests();
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { api } = setup(async () => {
+    await gate;
+    return respond({ id: 'b1' });
+  });
+  const pending = api('brands.save', { id: 'b1', name: 'X' } as never);
+  expect(isBusy()).toBe(true);
+  release();
+  await pending;
+  expect(isBusy()).toBe(false);
+
+  const failing = setup(() => respond({ code: 'VALIDATION', detail: 'x' }, { status: 400 }));
+  await expect(failing.api('brands.save', { id: 'b1', name: 'X' } as never)).rejects.toBeInstanceOf(
+    ApiError,
+  );
+  expect(isBusy()).toBe(false);
+
+  let releaseGet: () => void = () => undefined;
+  const getGate = new Promise<void>((resolve) => {
+    releaseGet = resolve;
+  });
+  const reading = setup(async () => {
+    await getGate;
+    return respond([]);
+  });
+  const read = reading.api('brands.list', null);
+  expect(isBusy()).toBe(false);
+  releaseGet();
+  await read;
 });

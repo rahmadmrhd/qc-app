@@ -1,8 +1,13 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beginBusy, resetBusyForTests } from './busy';
+import { resetSafeReloadForTests, setMutationSource } from './safe-reload';
+import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
 import {
+  attachNavigationTrigger,
   isChunkLoadError,
   notifyChunkLoadFailure,
+  notifyNavigation,
   type RegisterSW,
   resetPwaUpdateForTests,
   startPwaUpdates,
@@ -32,9 +37,15 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
       removeEventListener: doc.removeEventListener,
     };
   }
-  const location = { reload: vi.fn() };
+  const location = { reload: vi.fn(), assign: vi.fn() };
+  const store = new Map<string, string>();
+  const sessionStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+  };
   const win = {
     navigator: nav,
+    sessionStorage,
     document: doc,
     location,
     addEventListener: doc.addEventListener,
@@ -49,6 +60,7 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
     doc,
     nav,
     location,
+    store,
     fire: (type: string, event?: unknown) => {
       for (const listener of listeners.get(type) ?? []) listener(event);
     },
@@ -90,6 +102,9 @@ function fakeRegister(opts: { waiting?: boolean } = {}) {
 beforeEach(() => {
   vi.useFakeTimers();
   resetPwaUpdateForTests();
+  resetSafeReloadForTests();
+  resetBusyForTests();
+  resetUnsavedChangesForTests();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -633,7 +648,7 @@ test('B4: controllerchange yang tak kunjung datang: setelah batas waktu halaman 
   expect(hook.result.current.pending).toBe(false);
 });
 
-test('B4: Nanti membatalkan muat ulang yang tertunda (pengambilalihan SW dan penunggu installing)', () => {
+test('N1: selama fase menunggu (pending) Nanti diabaikan: tak membatalkan, tak menyembunyikan, muat ulang tetap berlanjut', () => {
   for (const mode of ['activate', 'installing'] as const) {
     resetPwaUpdateForTests();
     const reg = fakeRegister({ waiting: mode === 'activate' });
@@ -647,15 +662,14 @@ test('B4: Nanti membatalkan muat ulang yang tertunda (pengambilalihan SW dan pen
     act(() => hook.result.current.reload());
     expect(hook.result.current.pending, mode).toBe(true);
     act(() => hook.result.current.dismiss());
-    expect(hook.result.current.pending, mode).toBe(false);
-    expect(hook.result.current.dismissed, mode).toBe(true);
-    act(() => {
-      view.fire('controllerchange');
-      sw.setState('installed');
-      reg.needReload();
-      vi.advanceTimersByTime(30_000);
-    });
-    expect(view.location.reload, mode).not.toHaveBeenCalled();
+    expect(hook.result.current.pending, mode).toBe(true);
+    expect(hook.result.current.dismissed, mode).toBe(false);
+    if (mode === 'installing') {
+      Object.assign(reg.registration, { waiting: {}, installing: null });
+      act(() => sw.setState('installed'));
+    }
+    act(() => view.fire('controllerchange'));
+    expect(view.location.reload, mode).toHaveBeenCalledTimes(1);
   }
 });
 
@@ -728,4 +742,179 @@ test('N5: jalur penuh installing -> installed -> klik Muat ulang -> controllerch
   reg.needReload();
   vi.advanceTimersByTime(30_000);
   expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+// ---- Putaran 5: muat ulang otomatis bila aman (keputusan pemilik 2026-11-13)
+
+function armed(opts: { waiting?: boolean } = {}) {
+  const reg = fakeRegister(opts);
+  const view = fakeWindow();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  return { reg, view, hook, stop };
+}
+
+test('R5: aman + berpindah halaman: SW diaktifkan lalu tepat satu muat ulang ke URL TUJUAN; spanduk tidak tampil', () => {
+  const { reg, view, hook } = armed();
+  expect(hook.result.current.needRefresh).toBe(true);
+  expect(hook.result.current.visible).toBe(false);
+  act(() => notifyNavigation('/handover?x=1'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(view.location.assign).not.toHaveBeenCalled();
+  act(() => view.fire('controllerchange'));
+  expect(view.location.assign).toHaveBeenCalledTimes(1);
+  expect(view.location.assign).toHaveBeenCalledWith('/handover?x=1');
+  expect(view.location.reload).not.toHaveBeenCalled();
+  reg.needReload();
+  expect(view.location.assign).toHaveBeenCalledTimes(1);
+});
+
+test('R5: berpindah lagi saat muat ulang sedang berjalan memperbarui URL tujuan, tanpa penunggu ganda', () => {
+  const { reg, view } = armed();
+  act(() => notifyNavigation('/a'));
+  act(() => notifyNavigation('/b'));
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.assign).toHaveBeenCalledTimes(1);
+  expect(view.location.assign).toHaveBeenCalledWith('/b');
+});
+
+test('R5: aman + tab kembali terlihat: muat ulang otomatis (halaman yang sama); tab tersembunyi tidak', () => {
+  const { reg, view } = armed();
+  view.doc.visibilityState = 'hidden';
+  act(() => view.fire('visibilitychange'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  view.doc.visibilityState = 'visible';
+  act(() => view.fire('visibilitychange'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(view.location.assign).not.toHaveBeenCalled();
+});
+
+test('R5: formulir belum disimpan: tidak memuat ulang pada pemicu apa pun dan spanduk tampil', () => {
+  const dirty = renderHook(() => useUnsavedChanges(true));
+  const { reg, view, hook } = armed();
+  expect(hook.result.current.visible).toBe(true);
+  act(() => notifyNavigation('/x'));
+  view.doc.visibilityState = 'visible';
+  act(() => view.fire('visibilitychange'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.assign).not.toHaveBeenCalled();
+  dirty.unmount();
+});
+
+test('R5: penulisan berjalan (registri sibuk atau mutasi): tidak memuat ulang dan spanduk tampil', () => {
+  const end = beginBusy();
+  const { reg, view, hook } = armed();
+  expect(hook.result.current.visible).toBe(true);
+  act(() => notifyNavigation('/x'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  end();
+  // Mutasi react-query yang berjalan sama saja.
+  let count = 1;
+  setMutationSource({ isMutating: () => count, subscribe: () => () => undefined });
+  act(() => notifyNavigation('/x'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.assign).not.toHaveBeenCalled();
+  count = 0;
+});
+
+test('R5: kotor lalu disimpan lalu berpindah halaman: spanduk hilang sendiri dan muat ulang otomatis berlaku', () => {
+  const dirty = renderHook(() => useUnsavedChanges(true));
+  const { reg, view, hook } = armed();
+  expect(hook.result.current.visible).toBe(true);
+  act(() => dirty.unmount());
+  expect(hook.result.current.visible).toBe(false);
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  act(() => notifyNavigation('/saved'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.assign).toHaveBeenCalledWith('/saved');
+});
+
+test('R5: galat muat potongan (rusak) tetap menampilkan spanduk walau aman', () => {
+  const { hook } = armed();
+  expect(hook.result.current.visible).toBe(false);
+  act(() => notifyChunkLoadFailure());
+  expect(hook.result.current.visible).toBe(true);
+});
+
+test('R5: satu percobaan otomatis per versi; setelah itu tidak mengulang dan spanduk tampil', () => {
+  const { reg, view, hook } = armed();
+  act(() => notifyNavigation('/a'));
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+  // Percobaan selesai (batas waktu) tanpa SW mengambil alih: tidak mengulang, spanduk tampil.
+  act(() => {
+    vi.advanceTimersByTime(11_000);
+  });
+  expect(hook.result.current.pending).toBe(false);
+  expect(hook.result.current.visible).toBe(true);
+  act(() => notifyNavigation('/b'));
+  view.doc.visibilityState = 'visible';
+  act(() => view.fire('visibilitychange'));
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+  expect(view.location.assign).toHaveBeenCalledTimes(1);
+  expect(view.location.assign).toHaveBeenCalledWith('/a');
+});
+
+test('R5: pembatas lintas muat ulang (sessionStorage): setelah muat ulang otomatis barusan, tidak mengulang dan spanduk tampil', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  view.store.set('qc-pwa-auto-reload', String(Date.now()));
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.visible).toBe(true);
+  act(() => notifyNavigation('/a'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+});
+
+test('R5: percobaan otomatis mencatat waktu di sessionStorage', () => {
+  const { view } = armed();
+  act(() => notifyNavigation('/a'));
+  expect(Number(view.store.get('qc-pwa-auto-reload'))).toBeGreaterThan(0);
+});
+
+test('R5: tanpa registrasi dan bukan galat muat potongan, tidak ada muat ulang otomatis', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.needRefresh();
+  act(() => notifyNavigation('/a'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.assign).not.toHaveBeenCalled();
+});
+
+test('R5: tanpa versi baru (needRefresh mati) berpindah halaman tidak memuat ulang', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  act(() => notifyNavigation('/a'));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+});
+
+test('R5: attachNavigationTrigger hanya meneruskan perpindahan path sungguhan (bukan muat awal atau ubah query)', () => {
+  const { reg } = armed();
+  let handler: (event: {
+    fromLocation?: unknown;
+    toLocation: { href: string };
+    pathChanged: boolean;
+  }) => void = () => undefined;
+  const off = vi.fn();
+  attachNavigationTrigger({
+    subscribe: (_type, fn) => {
+      handler = fn;
+      return off;
+    },
+  });
+  act(() => handler({ toLocation: { href: '/' }, pathChanged: true }));
+  act(() => handler({ fromLocation: {}, toLocation: { href: '/?q=1' }, pathChanged: false }));
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  act(() => handler({ fromLocation: {}, toLocation: { href: '/item' }, pathChanged: true }));
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
 });

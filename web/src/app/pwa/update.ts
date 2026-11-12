@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import { isSafeToReload, subscribeSafety } from './safe-reload';
 
 /** Bentuk `registerSW` dari `virtual:pwa-register` yang dipakai di sini (disuntik agar mudah dites). */
 export type RegisterSW = (options: {
@@ -18,6 +19,10 @@ const EVENT_CHECK_DEBOUNCE_MS = 2_000;
 const INSTALL_WAIT_MS = 15_000;
 // Batas menunggu SW yang sudah diminta aktif mengambil alih halaman (controllerchange) sebelum memuat ulang saja.
 const ACTIVATE_WAIT_MS = 10_000;
+// Pembatas lintas muat ulang: setelah muat ulang otomatis, tidak mengulang otomatis dalam jendela ini (cegah loop bila
+// SW baru tak kunjung mengambil alih); spanduk yang tampil.
+const AUTO_RELOAD_GUARD_KEY = 'qc-pwa-auto-reload';
+const AUTO_RELOAD_GUARD_MS = 60_000;
 
 let needRefresh = false;
 // "Nanti": spanduk disembunyikan untuk sisa pemuatan halaman ini (tidak disimpan; pemicu baru mereset).
@@ -32,16 +37,44 @@ let runCheck: () => void = () => undefined;
 // Pembatal penunggu yang berjalan (SW baru masih dipasang, atau menunggu SW mengambil alih). Terisi = "pending":
 // tombol Muat ulang menampilkan umpan balik, klik ulang diabaikan, dan Nanti/pembersih membatalkannya.
 let cancelPending: (() => void) | undefined;
+// Muat ulang OTOMATIS bila aman (keputusan pemilik 2026-11-13): hanya pada pemicu (pindah halaman, tab kembali
+// terlihat), satu percobaan per versi, lalu spanduk.
+// Halaman rusak (galat muat potongan): spanduk tampil walau aman.
+let urgent = false;
+// Percobaan otomatis sudah dilakukan pada halaman ini (satu percobaan per versi: setiap pemuatan halaman memuat
+// satu versi, dan muat ulang yang berhasil membuang keadaan ini).
+let autoAttempted = false;
+// Sampai kapan percobaan otomatis diblokir oleh pembatas lintas muat ulang (epoch ms).
+let autoGuardUntil = 0;
+// Muat ulang yang sedang menunggu dimulai otomatis (spanduk disembunyikan selama itu).
+let autoInitiated = false;
+// URL tujuan muat ulang otomatis karena pindah halaman (undefined = muat ulang halaman ini).
+let reloadTarget: string | undefined;
 // Hindari memuat ulang dua kali untuk satu peristiwa (pendengar controllerchange sendiri + onNeedReload pustaka).
 let reloading = false;
 const listeners = new Set<() => void>();
+
+function emit(): void {
+  for (const listener of listeners) listener();
+}
 
 /** Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan. */
 function setNeedRefresh(value: boolean): void {
   if (needRefresh === value && !(value && dismissed)) return;
   needRefresh = value;
   dismissed = false;
-  for (const listener of listeners) listener();
+  emit();
+}
+
+function markUrgent(): void {
+  if (urgent) return;
+  urgent = true;
+  emit();
+}
+
+/** Percobaan otomatis untuk versi ini sudah dilakukan (atau diblokir pembatas lintas muat ulang). */
+function autoTried(): boolean {
+  return autoAttempted || Date.now() < autoGuardUntil;
 }
 
 /** Galat muat potongan JS/CSS dinamis (cangkang lama meminta berkas yang sudah diganti oleh deploy baru). */
@@ -64,6 +97,7 @@ function isOffline(): boolean {
  */
 export function notifyChunkLoadFailure(): void {
   if (isOffline()) return;
+  markUrgent();
   setNeedRefresh(true);
   runCheck();
 }
@@ -77,13 +111,20 @@ function setPending(cancel: (() => void) | undefined) {
 function reloadPage(win: Window) {
   if (reloading) return;
   reloading = true;
-  win.location.reload();
+  const target = reloadTarget;
+  reloadTarget = undefined;
+  // Pindah halaman memicu muat ulang: langsung ke URL tujuan (bukan halaman lama).
+  if (target !== undefined) win.location.assign(target);
+  else win.location.reload();
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+  // Spanduk bergantung pada "aman": ikut berubah saat formulir/penulisan/mutasi berubah.
+  const offSafety = subscribeSafety(listener);
   return () => {
     listeners.delete(listener);
+    offSafety();
   };
 }
 
@@ -106,6 +147,7 @@ export function startPwaUpdates(options: {
   let lastEventCheckAt = Number.NEGATIVE_INFINITY;
   currentWin = win;
   currentRegistration = undefined;
+  autoGuardUntil = readAutoReloadGuard(win);
   reloadRequested = false;
   cancelPending = undefined;
   reloading = false;
@@ -165,7 +207,10 @@ export function startPwaUpdates(options: {
   }
 
   function onVisibility() {
-    if (win.document.visibilityState === 'visible') checkOnEvent();
+    if (win.document.visibilityState !== 'visible') return;
+    // Tab kembali terlihat: saat yang wajar untuk memakai versi baru bila aman (tanpa spanduk).
+    maybeAutoReload();
+    checkOnEvent();
   }
 
   updateSW = options.register({
@@ -207,6 +252,7 @@ export function startPwaUpdates(options: {
   // Saat offline tidak ada bukti versi baru: biarkan penanganan bawaan.
   const onPreloadError = (event: Event) => {
     if (isOffline()) return;
+    markUrgent();
     setNeedRefresh(true);
     event.preventDefault();
     check();
@@ -230,8 +276,73 @@ export function startPwaUpdates(options: {
     cancelPending?.();
     reloadRequested = false;
     reloading = false;
+    autoInitiated = false;
+    reloadTarget = undefined;
     runCheck = () => undefined;
   };
+}
+
+function readAutoReloadGuard(win: Window): number {
+  try {
+    const stored = Number(win.sessionStorage?.getItem(AUTO_RELOAD_GUARD_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored + AUTO_RELOAD_GUARD_MS : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeAutoReloadGuard(win: Window): void {
+  try {
+    win.sessionStorage?.setItem(AUTO_RELOAD_GUARD_KEY, String(Date.now()));
+  } catch {
+    // Penyimpanan tak tersedia: pembatas dalam memori (autoTriedKey) tetap berlaku.
+  }
+}
+
+/**
+ * Muat ulang OTOMATIS pada "saat wajar" (pindah halaman, tab kembali terlihat) bila ada versi baru dan AMAN
+ * (`isSafeToReload`: tanpa formulir belum tersimpan dan tanpa penulisan berjalan). Satu percobaan per versi; setelah
+ * itu spanduk. `href` = URL tujuan perpindahan halaman (undefined: muat ulang halaman ini).
+ */
+function maybeAutoReload(href?: string): void {
+  const win = currentWin;
+  if (!win || !needRefresh || reloading) return;
+  if (cancelPending) {
+    // Sedang menunggu SW: perpindahan berikutnya hanya mengubah tujuan muat ulang.
+    if (autoInitiated && href !== undefined) reloadTarget = href;
+    return;
+  }
+  // Tanpa registrasi dikenal, "SKIP_WAITING" tak berarti (kecuali halaman rusak): jangan menebak.
+  if (!currentRegistration && !urgent) return;
+  if (autoTried() || !isSafeToReload()) return;
+  autoAttempted = true;
+  writeAutoReloadGuard(win);
+  startReload(href, true);
+  emit();
+}
+
+/** Pemicu perpindahan halaman (dari router): muat ulang otomatis ke URL tujuan bila ada versi baru dan aman. */
+export function notifyNavigation(href: string): void {
+  maybeAutoReload(href);
+}
+
+/** Router minimal yang dibutuhkan untuk mendengar perpindahan (dipenuhi `router.subscribe` TanStack). */
+export interface NavigationSource {
+  subscribe: (
+    type: 'onBeforeNavigate',
+    listener: (event: {
+      fromLocation?: unknown;
+      toLocation: { href: string };
+      pathChanged: boolean;
+    }) => void,
+  ) => () => void;
+}
+
+/** Menghubungkan perpindahan halaman nyata (bukan muat awal, bukan ubah query/hash) ke `notifyNavigation`. */
+export function attachNavigationTrigger(router: NavigationSource): () => void {
+  return router.subscribe('onBeforeNavigate', (event) => {
+    if (event.fromLocation && event.pathChanged) notifyNavigation(event.toLocation.href);
+  });
 }
 
 /** Menunggu SW yang sedang dipasang selesai (installed/activated/redundant) atau batas waktu, lalu memanggil `done`. */
@@ -284,9 +395,16 @@ function activateWaiting(win: Window) {
   void updateSW?.(true);
 }
 
+/** Tombol Muat ulang (klik pengguna). */
 function reload() {
+  startReload(undefined, false);
+}
+
+function startReload(href: string | undefined, auto: boolean) {
   // Sudah menunggu (installing/pengambilalihan): klik ulang tidak menumpuk penunggu.
   if (cancelPending) return;
+  autoInitiated = auto;
+  reloadTarget = href;
   reloadRequested = true;
   const win = currentWin ?? window;
   const registration = currentRegistration;
@@ -309,19 +427,27 @@ function reload() {
 }
 
 function dismiss() {
-  // Nanti membatalkan muat ulang yang tertunda; pengguna sudah berubah pikiran.
-  if (cancelPending) {
-    reloadRequested = false;
-    cancelPending();
-  }
+  // Selama fase menunggu (SW dipasang/mengambil alih) Nanti diabaikan: SKIP_WAITING sudah terkirim dan tak dapat
+  // dibatalkan (keputusan pemilik 2026-11-13, N1).
+  if (cancelPending) return;
   if (!needRefresh || dismissed) return;
   dismissed = true;
   for (const listener of listeners) listener();
 }
 
-// Snapshot primitif (bit): 1 = ada pembaruan, 2 = disembunyikan ("Nanti"), 4 = muat ulang tertunda.
+// Snapshot primitif (bit): 1 = ada pembaruan, 2 = disembunyikan ("Nanti"), 4 = muat ulang tertunda, 8 = tidak aman
+// dimuat ulang, 16 = halaman rusak (galat muat potongan), 32 = percobaan otomatis versi ini sudah dilakukan,
+// 64 = muat ulang yang tertunda dimulai otomatis.
 function snapshot(): number {
-  return (needRefresh ? 1 : 0) | (dismissed ? 2 : 0) | (cancelPending ? 4 : 0);
+  return (
+    (needRefresh ? 1 : 0) |
+    (dismissed ? 2 : 0) |
+    (cancelPending ? 4 : 0) |
+    (isSafeToReload() ? 0 : 8) |
+    (urgent ? 16 : 0) |
+    (autoTried() ? 32 : 0) |
+    (autoInitiated && cancelPending ? 64 : 0)
+  );
 }
 
 /**
@@ -331,6 +457,11 @@ function snapshot(): number {
 export function usePwaUpdate(): {
   needRefresh: boolean;
   dismissed: boolean;
+  /**
+   * Spanduk harus tampil: ada versi baru, tidak disembunyikan, DAN (halaman rusak, atau tidak aman dimuat ulang, atau
+   * percobaan otomatis sudah dilakukan). Saat aman, versi baru dipakai otomatis pada pemicu tanpa spanduk.
+   */
+  visible: boolean;
   /** Muat ulang sedang menunggu (SW dipasang/mengambil alih): tombol memberi umpan balik dan klik ulang diabaikan. */
   pending: boolean;
   reload: () => void;
@@ -341,6 +472,11 @@ export function usePwaUpdate(): {
     () => ({
       needRefresh: (value & 1) !== 0,
       dismissed: (value & 2) !== 0,
+      visible:
+        (value & 1) !== 0 &&
+        (value & 2) === 0 &&
+        (value & (8 | 16 | 32)) !== 0 &&
+        (value & 64) === 0,
       pending: (value & 4) !== 0,
       reload,
       dismiss,
@@ -364,6 +500,11 @@ export function resetPwaUpdateForTests(): void {
   cancelPending?.();
   cancelPending = undefined;
   reloading = false;
+  urgent = false;
+  autoAttempted = false;
+  autoGuardUntil = 0;
+  autoInitiated = false;
+  reloadTarget = undefined;
   runCheck = () => undefined;
   for (const listener of listeners) listener();
 }

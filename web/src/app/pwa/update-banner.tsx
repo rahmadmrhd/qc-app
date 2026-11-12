@@ -15,9 +15,9 @@ function restoreFocus() {
 
 /** Spanduk "Ada versi baru" (FR-P11-P13): tidak memuat ulang sendiri; peringatan bila ada formulir belum disimpan. */
 export function PwaUpdateBanner() {
-  const { needRefresh, dismissed, pending, reload, dismiss } = usePwaUpdate();
+  const { visible, pending, reload, dismiss } = usePwaUpdate();
   const unsaved = useHasUnsavedChanges();
-  if (!needRefresh || dismissed) return null;
+  if (!visible) return null;
   return (
     <div
       role="status"
@@ -36,7 +36,11 @@ export function PwaUpdateBanner() {
         <Button
           size="sm"
           variant="outline"
+          aria-disabled={pending}
+          className="aria-disabled:opacity-50"
           onClick={() => {
+            // Selama menunggu SW mengambil alih, Nanti diabaikan (SKIP_WAITING sudah terkirim).
+            if (pending) return;
             dismiss();
             restoreFocus();
           }}

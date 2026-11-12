@@ -13,6 +13,7 @@ import {
   ERROR_CODES,
   type ErrorCode,
 } from '@shared/contract';
+import { beginBusy } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
 
 /** Awalan jalur REST; jalur tabel (`/brands/{id}`) relatif terhadapnya. */
@@ -121,8 +122,21 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
  */
 export function createApiClient(options: ApiClientOptions = {}): ApiCall {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
+  // Permintaan tulis menandai registri "sibuk" selama berjalan: muat ulang otomatis (PWA) tidak boleh memotongnya.
   async function call<M extends ApiId>(id: M, input: ApiInput<M>): Promise<ApiOutput<M>> {
     const parts = toRequestParts(id, input);
+    const end = parts.verb === 'GET' ? undefined : beginBusy();
+    try {
+      return await perform(id, input, parts);
+    } finally {
+      end?.();
+    }
+  }
+  async function perform<M extends ApiId>(
+    id: M,
+    input: ApiInput<M>,
+    parts: RequestParts,
+  ): Promise<ApiOutput<M>> {
     const isDownload = API_ROUTES[id].download !== undefined;
     const doFetch = options.fetchImpl ?? fetch;
     let response: Response;
