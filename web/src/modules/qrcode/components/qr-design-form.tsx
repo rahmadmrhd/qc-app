@@ -12,6 +12,7 @@ import {
 } from '@shared/qrcode';
 import { useForm, useStore } from '@tanstack/react-form';
 import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField } from '@/components/link-field';
@@ -208,6 +209,7 @@ export function QrDesignForm({
       await onSubmit(values, options);
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   const activePreset = presets?.find((preset) => preset.id === effectivePreset);
   const lockedPart = newFlow ? (activePreset?.namePlacement ?? '') : (edit?.namePlacement ?? '');
