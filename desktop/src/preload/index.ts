@@ -3,6 +3,7 @@
 // jalur berkas tidak pernah sampai ke renderer. Validasi ada di proses utama (`ipc.ts`).
 
 import {
+  AUTH_CHANGE_EVENT,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
@@ -33,6 +34,19 @@ const bridge: QcBridge = {
       ipcRenderer.on(INJECT_PROGRESS_EVENT, listener);
       return () => {
         ipcRenderer.removeListener(INJECT_PROGRESS_EVENT, listener);
+      };
+    },
+  },
+  auth: {
+    status: () => invoke(BRIDGE_CHANNELS.authStatus),
+    login: () => invoke(BRIDGE_CHANNELS.authLogin),
+    logout: () => invoke(BRIDGE_CHANNELS.authLogout),
+    onChange: (cb) => {
+      // Hanya `AuthStatus` (tanpa token) yang diteruskan; objek `event` Electron tidak bocor.
+      const listener = (_event: unknown, payload: Parameters<typeof cb>[0]): void => cb(payload);
+      ipcRenderer.on(AUTH_CHANGE_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(AUTH_CHANGE_EVENT, listener);
       };
     },
   },

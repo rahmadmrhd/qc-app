@@ -12,6 +12,7 @@ import type { AddResult, PendingEntry } from './pending';
 import type { Brand } from './script-template';
 
 export {
+  AUTH_CHANGE_EVENT,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
@@ -66,6 +67,13 @@ export type RouterInfoResult =
   | { ok: true; serial: string; model: string }
   | { ok: false; error: 'PERMISSION_DENIED' | 'UNAVAILABLE' };
 
+/** Status login desktop untuk renderer: TIDAK pernah memuat token. */
+export interface AuthStatus {
+  signedIn: boolean;
+  email: string | null;
+  serverUrl: string;
+}
+
 export interface QcBridge {
   version: number;
   package: {
@@ -81,6 +89,13 @@ export interface QcBridge {
     run(req: InjectRequest): Promise<InjectResult>;
     cancel(id: string): Promise<void>;
     onProgress(cb: (e: { id: string } & InjectProgressDto) => void): () => void;
+  };
+  auth: {
+    status(): Promise<AuthStatus>;
+    /** Membuka peramban sistem untuk login; hasilnya datang lewat `onChange`. */
+    login(): Promise<void>;
+    logout(): Promise<void>;
+    onChange(cb: (s: AuthStatus) => void): () => void;
   };
   pending: {
     list(): Promise<PendingEntry[]>;
@@ -174,6 +189,9 @@ export const BRIDGE_ARGS = {
   pendingList: z.tuple([]),
   pendingAdd: z.tuple([PendingEntrySchema]),
   pendingRemove: z.tuple([SerialArgSchema]),
+  authStatus: z.tuple([]),
+  authLogin: z.tuple([]),
+  authLogout: z.tuple([]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
 // --- Teks progres aman untuk renderer ------------------------------------------------------

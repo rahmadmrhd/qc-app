@@ -9,10 +9,20 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { INJECT_PROGRESS_EVENT } from '@countrylock/bridge-channels';
-import { app, type BrowserWindow, dialog, ipcMain, net, protocol, safeStorage } from 'electron';
+import { AUTH_CHANGE_EVENT, INJECT_PROGRESS_EVENT } from '@countrylock/bridge-channels';
+import {
+  app,
+  type BrowserWindow,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  safeStorage,
+  shell,
+} from 'electron';
 import { createApiProxy } from './api-proxy';
 import { APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
+import { createLoginFlow, type LoginFlow } from './auth/login-flow';
 import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
@@ -46,7 +56,7 @@ function uiRoot(): string {
 function routeFromArgv(argv: readonly string[]): string | null {
   for (const arg of argv) {
     const parsed = arg.startsWith('qc://') ? parseQcUrl(arg) : null;
-    if (parsed) return parsed.route;
+    if (parsed?.route) return parsed.route;
   }
   return null;
 }
@@ -107,6 +117,25 @@ async function runSmokeUi(): Promise<void> {
   }
 }
 
+/** URL `qc://auth?...` pada argumen proses (cold start atau second-instance). */
+function authUrlsFromArgv(argv: readonly string[]): string[] {
+  return argv.filter((arg) => arg.startsWith('qc://') && parseQcUrl(arg)?.auth !== undefined);
+}
+
+/** Peramban sistem hanya dibuka untuk https atau http localhost/127.0.0.1 (pengembangan). */
+function isOpenableLoginUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:') return true;
+    return (
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    );
+  } catch {
+    return false;
+  }
+}
+
 function runApp(): void {
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -114,15 +143,36 @@ function runApp(): void {
   }
 
   let mainWindow: BrowserWindow | null = null;
+  let loginFlow: LoginFlow | null = null;
   const initialRoute = routeFromArgv(process.argv) ?? '/country-lock';
-
-  app.on('second-instance', (_event, argv) => {
-    const route = routeFromArgv(argv);
+  // Callback yang tiba sebelum aplikasi siap ditahan; alur login hanya menerima yang cocok dengan
+  // login yang sedang berjalan, jadi URL asing/ulang diabaikan olehnya.
+  const earlyAuthUrls: string[] = authUrlsFromArgv(process.argv);
+  const dispatchAuthUrl = (url: string): void => {
+    if (loginFlow) void loginFlow.handleCallback(url);
+    else earlyAuthUrls.push(url);
+  };
+  const focusWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
-      if (route) void mainWindow.loadURL(`app://qc${route}`);
     }
+  };
+
+  app.on('second-instance', (_event, argv) => {
+    const route = routeFromArgv(argv);
+    for (const url of authUrlsFromArgv(argv)) dispatchAuthUrl(url);
+    focusWindow();
+    if (route && mainWindow && !mainWindow.isDestroyed()) {
+      void mainWindow.loadURL(`app://qc${route}`);
+    }
+  });
+
+  // macOS mengirim tautan protokol lewat open-url (di Windows lewat argumen proses).
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    if (parseQcUrl(url)?.auth) dispatchAuthUrl(url);
+    focusWindow();
   });
 
   app.whenReady().then(() => {
@@ -142,12 +192,29 @@ function runApp(): void {
           }
         : null,
     );
+    const emitAuth = (status: unknown): void => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(AUTH_CHANGE_EVENT, status);
+      }
+    };
+    // Login lewat peramban sistem (PKCE); hanya satu login berjalan.
+    const flow = createLoginFlow({
+      settings: () => settings.get(),
+      tokens,
+      openExternal: async (url) => {
+        if (!isOpenableLoginUrl(url)) throw new Error('Alamat login tidak diizinkan');
+        await shell.openExternal(url);
+      },
+      fetchImpl: net.fetch as typeof fetch,
+      onChange: emitAuth,
+    });
+    loginFlow = flow;
     // /api dan /auth diteruskan proses utama ke server (net.fetch); token tak pernah ke renderer.
     const proxy = createApiProxy({
       settings: () => settings.get(),
       tokens,
       fetchImpl: net.fetch as typeof fetch,
-      onUnauthenticated: () => undefined,
+      onUnauthenticated: () => emitAuth(flow.status()),
     });
     protocol.handle(APP_SCHEME, createAppHandler(uiRoot(), proxy));
     let pending: ReturnType<typeof openPendingStore>;
@@ -177,6 +244,7 @@ function runApp(): void {
       fetchHostKey,
       runInject: runInjectDetailed,
       pending,
+      auth: { status: () => flow.status(), start: () => flow.start(), logout: () => flow.logout() },
       emitProgress: (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(INJECT_PROGRESS_EVENT, event);
@@ -190,6 +258,7 @@ function runApp(): void {
       mainWindow = null;
     });
     app.on('will-quit', () => pending.close());
+    for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
   });
 
   app.on('window-all-closed', () => app.quit());

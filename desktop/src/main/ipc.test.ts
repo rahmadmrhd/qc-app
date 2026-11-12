@@ -58,6 +58,11 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
     fetchHostKey: vi.fn(async () => ({ type: 'ssh-rsa', base64: 'QUFBQUhPU1RLRVk=' })),
     runInject: vi.fn(async (): Promise<InjectOutcome> => ({ ok: true, reason: 'completed' })),
     pending: store,
+    auth: {
+      status: vi.fn(() => ({ signedIn: false, email: null, serverUrl: DEFAULT_SERVER_URL })),
+      start: vi.fn(async () => undefined),
+      logout: vi.fn(),
+    },
     emitProgress: (e) => progress.push(e),
     ...overrides,
   };
@@ -227,6 +232,65 @@ describe('registerIpc', () => {
       await expect(bad.call(BRIDGE_CHANNELS.packageChooseDir)).rejects.toThrow(/config\.QC/);
       expect(bad.saved.packageDir).toBeNull();
       bad.store.close();
+    });
+  });
+
+  describe('auth', () => {
+    test('status, login, dan logout meneruskan ke layanan login; status tanpa token', async () => {
+      const { deps, call, store } = setup();
+      expect(await call(BRIDGE_CHANNELS.authStatus)).toEqual({
+        signedIn: false,
+        email: null,
+        serverUrl: DEFAULT_SERVER_URL,
+      });
+      await call(BRIDGE_CHANNELS.authLogin);
+      expect(deps.auth.start).toHaveBeenCalledOnce();
+      await call(BRIDGE_CHANNELS.authLogout);
+      expect(deps.auth.logout).toHaveBeenCalledOnce();
+      store.close();
+    });
+
+    test('argumen apa pun pada kanal auth ditolak sebelum menyentuh layanan', async () => {
+      const { deps, call, store } = setup();
+      for (const channel of [
+        BRIDGE_CHANNELS.authStatus,
+        BRIDGE_CHANNELS.authLogin,
+        BRIDGE_CHANNELS.authLogout,
+      ]) {
+        await expect(call(channel, 'https://jahat.example'), channel).rejects.toThrow(
+          /Argumen tidak valid/,
+        );
+        await expect(
+          call(channel, { serverUrl: 'https://jahat.example' }),
+          channel,
+        ).rejects.toThrow(/Argumen tidak valid/);
+      }
+      expect(deps.auth.start).not.toHaveBeenCalled();
+      expect(deps.auth.logout).not.toHaveBeenCalled();
+      store.close();
+    });
+
+    test('galat login ke renderer berpesan terkontrol (tanpa detail/token dari layanan)', async () => {
+      const { call, store } = setup({
+        auth: {
+          status: () => ({ signedIn: false, email: null, serverUrl: DEFAULT_SERVER_URL }),
+          start: async () => {
+            throw new Error('rinci dengan TOKEN-RAHASIA');
+          },
+          logout: () => undefined,
+        },
+      });
+      const error = (await call(BRIDGE_CHANNELS.authLogin).catch((e: unknown) => e)) as Error;
+      expect(error.message).toBe('Tidak dapat membuka peramban sistem untuk login');
+      expect(error.message).not.toContain('TOKEN-RAHASIA');
+      store.close();
+    });
+
+    test('pengirim tak dipercaya tidak dapat memicu login', async () => {
+      const { deps, call, store } = setup({ isTrustedSender: () => false });
+      await expect(call(BRIDGE_CHANNELS.authLogin)).rejects.toThrow(/tidak dipercaya/);
+      expect(deps.auth.start).not.toHaveBeenCalled();
+      store.close();
     });
   });
 

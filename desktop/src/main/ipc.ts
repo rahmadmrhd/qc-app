@@ -5,6 +5,7 @@
 // Mode inject: Fase 0-1 hanya mode tunggal ('single'); `InjectRequest` tidak membawa mode.
 
 import {
+  type AuthStatus,
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
   type DeviceInfoResult,
@@ -59,6 +60,8 @@ export interface IpcDeps {
   fetchHostKey(opts: HostKeyOptions): Promise<HostKey>;
   runInject(opts: InjectOptions): Promise<InjectOutcome>;
   pending: PendingStore;
+  /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
+  auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
   emitProgress(event: { id: string } & InjectProgressDto): void;
   /** Task 14 memasang pemeriksaan asal pengirim (hanya `app://qc`); bila ada dan false, ditolak. */
@@ -184,6 +187,26 @@ export function registerIpc(deps: IpcDeps): void {
   handle(BRIDGE_CHANNELS.injectCancel, async (_event, ...args) => {
     const [id] = parseArgs(BRIDGE_ARGS.injectCancel, args);
     running.get(id)?.abort();
+  });
+
+  handle(BRIDGE_CHANNELS.authStatus, async (_event, ...args): Promise<AuthStatus> => {
+    parseArgs(BRIDGE_ARGS.authStatus, args);
+    return deps.auth.status();
+  });
+
+  handle(BRIDGE_CHANNELS.authLogin, async (_event, ...args) => {
+    parseArgs(BRIDGE_ARGS.authLogin, args);
+    try {
+      await deps.auth.start();
+    } catch {
+      // Pesan asli dibuang: hanya pesan terkontrol yang sampai ke renderer.
+      throw new IpcError('Tidak dapat membuka peramban sistem untuk login');
+    }
+  });
+
+  handle(BRIDGE_CHANNELS.authLogout, async (_event, ...args) => {
+    parseArgs(BRIDGE_ARGS.authLogout, args);
+    deps.auth.logout();
   });
 
   handle(BRIDGE_CHANNELS.pendingList, async (_event, ...args): Promise<PendingEntry[]> => {

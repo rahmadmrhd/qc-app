@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 1;
+export const BRIDGE_VERSION = 2;
 export const MIN_BRIDGE_VERSION = 1;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -17,7 +17,12 @@ export const BRIDGE_CHANNELS = {
   pendingList: 'qc:pending:list',
   pendingAdd: 'qc:pending:add',
   pendingRemove: 'qc:pending:remove',
+  authStatus: 'qc:auth:status',
+  authLogin: 'qc:auth:login',
+  authLogout: 'qc:auth:logout',
 } as const satisfies Record<string, string>;
 
 /** Kanal peristiwa satu arah proses utama -> renderer (`webContents.send`); bukan `handle`. */
 export const INJECT_PROGRESS_EVENT = 'qc:inject:progress';
+/** Peristiwa status login berubah (proses utama -> renderer); isinya hanya `AuthStatus`, tanpa token. */
+export const AUTH_CHANGE_EVENT = 'qc:auth:change';

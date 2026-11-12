@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  AUTH_CHANGE_EVENT,
+  BRIDGE_ARGS,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   DeviceRequestSchema,
@@ -123,11 +125,11 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(1);
+    expect(BRIDGE_VERSION).toBe(2);
     expect(MIN_BRIDGE_VERSION).toBe(1);
     const values = Object.values(BRIDGE_CHANNELS);
     expect(new Set(values).size).toBe(values.length);
-    for (const channel of [...values, INJECT_PROGRESS_EVENT]) {
+    for (const channel of [...values, INJECT_PROGRESS_EVENT, AUTH_CHANGE_EVENT]) {
       expect(channel).toMatch(/^qc:[a-z]+:[A-Za-z]+$/);
     }
   });
@@ -160,5 +162,18 @@ describe('stripTerminalControl', () => {
       'Perangkat tidak menjawab (é ü)',
     );
     expect(stripTerminalControl('')).toBe('');
+  });
+});
+
+describe('kanal auth (BRIDGE_VERSION 2)', () => {
+  test('MIN_BRIDGE_VERSION tetap 1 agar UI tetap menerima jembatan lama; kanal auth tak menerima argumen', () => {
+    expect(MIN_BRIDGE_VERSION).toBe(1);
+    expect(BRIDGE_CHANNELS.authStatus).toBe('qc:auth:status');
+    expect(BRIDGE_CHANNELS.authLogin).toBe('qc:auth:login');
+    expect(BRIDGE_CHANNELS.authLogout).toBe('qc:auth:logout');
+    for (const schema of [BRIDGE_ARGS.authStatus, BRIDGE_ARGS.authLogin, BRIDGE_ARGS.authLogout]) {
+      expect(schema.safeParse([]).success).toBe(true);
+      expect(schema.safeParse(['https://jahat.example']).success).toBe(false);
+    }
   });
 });

@@ -4,6 +4,7 @@
 
 import { BRIDGE_VERSION } from '@countrylock/bridge-channels';
 import type {
+  AuthStatus,
   InjectProgressDto,
   InjectRequest,
   InjectResult,
@@ -18,6 +19,7 @@ export type FakeOverrides = {
   device?: Partial<QcBridge['device']>;
   inject?: Partial<QcBridge['inject']>;
   pending?: Partial<QcBridge['pending']>;
+  auth?: Partial<QcBridge['auth']>;
 };
 
 export interface FakeBridge extends QcBridge {
@@ -127,6 +129,17 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
         injectRequests.push(req);
         return run(req);
       },
+    },
+    auth: {
+      status: async (): Promise<AuthStatus> => ({
+        signedIn: false,
+        email: null,
+        serverUrl: 'https://qc.rhd.my.id',
+      }),
+      login: async () => undefined,
+      logout: async () => undefined,
+      onChange: () => () => undefined,
+      ...overrides.auth,
     },
     pending: {
       list: async () => [...pendingList],
