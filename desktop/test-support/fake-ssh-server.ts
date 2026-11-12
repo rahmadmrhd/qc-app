@@ -48,10 +48,8 @@ function hostKeyFor(type: FakeHostKeyType): HostKey {
           privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
           publicKeyEncoding: { type: 'spki', format: 'pem' },
         }).privateKey
-      : generateKeyPairSync('ed25519', {
-          privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-          publicKeyEncoding: { type: 'spki', format: 'pem' },
-        }).privateKey;
+      : // ssh2 hanya membaca ed25519 berformat OpenSSH, yang tak dapat diekspor oleh node:crypto.
+        utils.generateKeyPairSync('ed25519').private;
   const parsed = utils.parseKey(pem);
   if (parsed instanceof Error) throw parsed;
   const key = (Array.isArray(parsed) ? parsed[0] : parsed) as { getPublicSSH(): Buffer };
