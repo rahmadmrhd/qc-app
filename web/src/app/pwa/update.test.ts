@@ -591,3 +591,82 @@ test('N4: Muat ulang memasang controllerchange sendiri sehingga muat ulang terja
   reg.needReload();
   expect(view.location.reload).toHaveBeenCalledTimes(1);
 });
+
+test('B4: selama menunggu pengambilalihan SW, pending menyala; controllerchange memuat ulang dan menghapus pending; klik ulang diabaikan', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.pending).toBe(false);
+  act(() => hook.result.current.reload());
+  expect(hook.result.current.pending).toBe(true);
+  act(() => hook.result.current.reload());
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.pending).toBe(false);
+});
+
+test('B4: controllerchange yang tak kunjung datang: setelah batas waktu halaman dimuat ulang (tidak buntu)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.reload());
+  vi.advanceTimersByTime(9_000);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  act(() => {
+    vi.advanceTimersByTime(2_000);
+  });
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.pending).toBe(false);
+});
+
+test('B4: Nanti membatalkan muat ulang yang tertunda (pengambilalihan SW dan penunggu installing)', () => {
+  for (const mode of ['activate', 'installing'] as const) {
+    resetPwaUpdateForTests();
+    const reg = fakeRegister({ waiting: mode === 'activate' });
+    const view = fakeWindow();
+    startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    const sw = fakeWorker();
+    if (mode === 'installing') Object.assign(reg.registration, { installing: sw.worker });
+    notifyChunkLoadFailure();
+    const hook = renderHook(() => usePwaUpdate());
+    act(() => hook.result.current.reload());
+    expect(hook.result.current.pending, mode).toBe(true);
+    act(() => hook.result.current.dismiss());
+    expect(hook.result.current.pending, mode).toBe(false);
+    expect(hook.result.current.dismissed, mode).toBe(true);
+    act(() => {
+      view.fire('controllerchange');
+      sw.setState('installed');
+      reg.needReload();
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(view.location.reload, mode).not.toHaveBeenCalled();
+  }
+});
+
+test('B4: pembersih membatalkan penunggu yang berjalan (timer dan pendengar dilepas, tanpa muat ulang)', () => {
+  for (const mode of ['activate', 'installing'] as const) {
+    resetPwaUpdateForTests();
+    const reg = fakeRegister({ waiting: mode === 'activate' });
+    const view = fakeWindow();
+    const stop = startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    const sw = fakeWorker();
+    if (mode === 'installing') Object.assign(reg.registration, { installing: sw.worker });
+    notifyChunkLoadFailure();
+    renderHook(() => usePwaUpdate()).result.current.reload();
+    stop();
+    expect(view.listenerCount(), mode).toBe(0);
+    expect(sw.listenerCount(), mode).toBe(0);
+    vi.advanceTimersByTime(30_000);
+    expect(view.location.reload, mode).not.toHaveBeenCalled();
+  }
+});

@@ -16,6 +16,8 @@ const MAX_INTERVAL_MS = 60 * 60_000;
 const EVENT_CHECK_DEBOUNCE_MS = 2_000;
 // Batas menunggu SW baru yang masih dipasang sebelum menyerah dan memuat ulang halaman.
 const INSTALL_WAIT_MS = 15_000;
+// Batas menunggu SW yang sudah diminta aktif mengambil alih halaman (controllerchange) sebelum memuat ulang saja.
+const ACTIVATE_WAIT_MS = 10_000;
 
 let needRefresh = false;
 // "Nanti": spanduk disembunyikan untuk sisa pemuatan halaman ini (tidak disimpan; pemicu baru mereset).
@@ -27,8 +29,9 @@ let currentRegistration: ServiceWorkerRegistration | undefined;
 let reloadRequested = false;
 // Memeriksa pembaruan registrasi yang terpakai (no-op bila belum ada); diisi startPwaUpdates.
 let runCheck: () => void = () => undefined;
-// True selama tab ini menunggu SW baru yang masih dipasang (mencegah penunggu ganda pada klik berulang).
-let installWaiting = false;
+// Pembatal penunggu yang berjalan (SW baru masih dipasang, atau menunggu SW mengambil alih). Terisi = "pending":
+// tombol Muat ulang menampilkan umpan balik, klik ulang diabaikan, dan Nanti/pembersih membatalkannya.
+let cancelPending: (() => void) | undefined;
 // Hindari memuat ulang dua kali untuk satu peristiwa (pendengar controllerchange sendiri + onNeedReload pustaka).
 let reloading = false;
 const listeners = new Set<() => void>();
@@ -65,6 +68,12 @@ export function notifyChunkLoadFailure(): void {
   runCheck();
 }
 
+function setPending(cancel: (() => void) | undefined) {
+  const changed = (cancelPending === undefined) !== (cancel === undefined);
+  cancelPending = cancel;
+  if (changed) for (const listener of listeners) listener();
+}
+
 function reloadPage(win: Window) {
   if (reloading) return;
   reloading = true;
@@ -98,7 +107,7 @@ export function startPwaUpdates(options: {
   currentWin = win;
   currentRegistration = undefined;
   reloadRequested = false;
-  installWaiting = false;
+  cancelPending = undefined;
   reloading = false;
   // SW menunggu terakhir yang sudah diumumkan; pembanding agar "Nanti" bertahan untuk SW yang sama tetapi deploy
   // berikutnya muncul lagi (workbox-window berhenti memanggil onNeedRefresh setelah pembaruan eksternal pertama).
@@ -207,8 +216,8 @@ export function startPwaUpdates(options: {
     updateSW = undefined;
     currentWin = undefined;
     currentRegistration = undefined;
+    cancelPending?.();
     reloadRequested = false;
-    installWaiting = false;
     reloading = false;
     runCheck = () => undefined;
   };
@@ -216,12 +225,14 @@ export function startPwaUpdates(options: {
 
 /** Menunggu SW yang sedang dipasang selesai (installed/activated/redundant) atau batas waktu, lalu memanggil `done`. */
 function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
-  installWaiting = true;
   let timer: ReturnType<Window['setTimeout']> | undefined;
-  const finish = () => {
+  const cancel = () => {
     worker.removeEventListener('statechange', onChange);
     if (timer !== undefined) win.clearTimeout(timer);
-    installWaiting = false;
+    setPending(undefined);
+  };
+  const finish = () => {
+    cancel();
     done();
   };
   const onChange = () => {
@@ -235,21 +246,36 @@ function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
   };
   worker.addEventListener('statechange', onChange);
   timer = win.setTimeout(finish, INSTALL_WAIT_MS);
+  setPending(cancel);
 }
 
 /**
  * Mengaktifkan SW yang menunggu dan memuat ulang begitu ia mengendalikan halaman. Pendengar `controllerchange`
  * dipasang sendiri karena pendengar `controlling` milik pustaka tak selalu terpasang (mis. spanduk dinyalakan oleh
- * pemeriksaan kami atau oleh galat muat potongan, bukan oleh peristiwa `waiting` pustaka).
+ * pemeriksaan kami atau oleh galat muat potongan, bukan oleh peristiwa `waiting` pustaka). Bila peristiwa itu tak
+ * kunjung datang, halaman dimuat ulang setelah batas waktu agar tombol tidak buntu.
  */
 function activateWaiting(win: Window) {
-  win.navigator.serviceWorker?.addEventListener?.('controllerchange', () => reloadPage(win), {
-    once: true,
-  });
+  const container = win.navigator.serviceWorker;
+  let timer: ReturnType<Window['setTimeout']> | undefined;
+  const cancel = () => {
+    container?.removeEventListener?.('controllerchange', onControllerChange);
+    if (timer !== undefined) win.clearTimeout(timer);
+    setPending(undefined);
+  };
+  const onControllerChange = () => {
+    cancel();
+    reloadPage(win);
+  };
+  container?.addEventListener?.('controllerchange', onControllerChange, { once: true });
+  timer = win.setTimeout(onControllerChange, ACTIVATE_WAIT_MS);
+  setPending(cancel);
   void updateSW?.(true);
 }
 
 function reload() {
+  // Sudah menunggu (installing/pengambilalihan): klik ulang tidak menumpuk penunggu.
+  if (cancelPending) return;
   reloadRequested = true;
   const win = currentWin ?? window;
   const registration = currentRegistration;
@@ -260,7 +286,6 @@ function reload() {
   }
   // SW baru masih dipasang (mis. potongan gagal sebelum selesai): tunggu dulu, jangan memuat ulang cangkang lama.
   if (registration?.installing && updateSW) {
-    if (installWaiting) return;
     waitForInstall(win, registration.installing, () => {
       if (currentRegistration?.waiting && updateSW) activateWaiting(win);
       else reloadPage(win);
@@ -273,15 +298,19 @@ function reload() {
 }
 
 function dismiss() {
+  // Nanti membatalkan muat ulang yang tertunda; pengguna sudah berubah pikiran.
+  if (cancelPending) {
+    reloadRequested = false;
+    cancelPending();
+  }
   if (!needRefresh || dismissed) return;
   dismissed = true;
   for (const listener of listeners) listener();
 }
 
-// Snapshot primitif: 0 = tak ada pembaruan, 1 = ada dan tampil, 2 = ada tetapi disembunyikan ("Nanti").
+// Snapshot primitif (bit): 1 = ada pembaruan, 2 = disembunyikan ("Nanti"), 4 = muat ulang tertunda.
 function snapshot(): number {
-  if (!needRefresh) return 0;
-  return dismissed ? 2 : 1;
+  return (needRefresh ? 1 : 0) | (dismissed ? 2 : 0) | (cancelPending ? 4 : 0);
 }
 
 /**
@@ -291,12 +320,20 @@ function snapshot(): number {
 export function usePwaUpdate(): {
   needRefresh: boolean;
   dismissed: boolean;
+  /** Muat ulang sedang menunggu (SW dipasang/mengambil alih): tombol memberi umpan balik dan klik ulang diabaikan. */
+  pending: boolean;
   reload: () => void;
   dismiss: () => void;
 } {
   const value = useSyncExternalStore(subscribe, snapshot, () => 0);
   return useMemo(
-    () => ({ needRefresh: value !== 0, dismissed: value === 2, reload, dismiss }),
+    () => ({
+      needRefresh: (value & 1) !== 0,
+      dismissed: (value & 2) !== 0,
+      pending: (value & 4) !== 0,
+      reload,
+      dismiss,
+    }),
     [value],
   );
 }
@@ -313,7 +350,8 @@ export function resetPwaUpdateForTests(): void {
   currentWin = undefined;
   currentRegistration = undefined;
   reloadRequested = false;
-  installWaiting = false;
+  cancelPending?.();
+  cancelPending = undefined;
   reloading = false;
   runCheck = () => undefined;
   for (const listener of listeners) listener();

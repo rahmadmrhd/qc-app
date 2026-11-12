@@ -15,7 +15,7 @@ function restoreFocus() {
 
 /** Spanduk "Ada versi baru" (FR-P11-P13): tidak memuat ulang sendiri; peringatan bila ada formulir belum disimpan. */
 export function PwaUpdateBanner() {
-  const { needRefresh, dismissed, reload, dismiss } = usePwaUpdate();
+  const { needRefresh, dismissed, pending, reload, dismiss } = usePwaUpdate();
   const unsaved = useHasUnsavedChanges();
   if (!needRefresh || dismissed) return null;
   return (
@@ -43,8 +43,8 @@ export function PwaUpdateBanner() {
         >
           Nanti
         </Button>
-        <Button size="sm" onClick={reload}>
-          Muat ulang
+        <Button size="sm" onClick={reload} disabled={pending} aria-busy={pending}>
+          {pending ? 'Memuat…' : 'Muat ulang'}
         </Button>
       </div>
     </div>

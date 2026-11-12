@@ -1,6 +1,7 @@
 import type { ErrorComponentProps } from '@tanstack/react-router';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect } from 'react';
+import { useHasUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { isChunkLoadError, notifyChunkLoadFailure, usePwaUpdate } from '@/app/pwa/update';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,8 @@ import { describeError } from '@/lib/api/describe-error';
 
 export function ErrorView({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
-  const { needRefresh, reload } = usePwaUpdate();
+  const { needRefresh, pending, reload } = usePwaUpdate();
+  const unsaved = useHasUnsavedChanges();
   // Potongan rute hilang setelah deploy: nyalakan spanduk "Ada versi baru" agar pengguna memuat ulang.
   useEffect(() => {
     if (isChunkLoadError(error)) notifyChunkLoadFailure();
@@ -21,12 +23,16 @@ export function ErrorView({ error, reset }: ErrorComponentProps) {
           <p>{describeError(error)}</p>
           {/* Dengan versi baru tersedia, galat rute umumnya berasal dari potongan lama yang hilang. */}
           {needRefresh && (
-            <p>Versi baru aplikasi tersedia. Muat ulang untuk memperbaiki halaman ini.</p>
+            <p>
+              {unsaved
+                ? 'Ada formulir yang belum disimpan; perubahan itu akan hilang bila dimuat ulang.'
+                : 'Versi baru aplikasi tersedia; muat ulang bila galat berlanjut.'}
+            </p>
           )}
           <div className="flex flex-wrap gap-2">
             {needRefresh && (
-              <Button size="sm" onClick={reload}>
-                Muat ulang
+              <Button size="sm" onClick={reload} disabled={pending} aria-busy={pending}>
+                {pending ? 'Memuat…' : 'Muat ulang'}
               </Button>
             )}
             <Button

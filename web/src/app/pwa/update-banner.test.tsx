@@ -61,6 +61,8 @@ function startFake() {
       location: { reload },
       setInterval: () => 0,
       clearInterval: () => undefined,
+      setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms),
+      clearTimeout: (id: ReturnType<typeof setTimeout>) => globalThis.clearTimeout(id),
     } as unknown as Window,
   });
   options.onRegisteredSW?.('/sw.js', registration);
@@ -210,4 +212,18 @@ test('N6: tanpa elemen main, Nanti tetap berfungsi tanpa galat', async () => {
   fake.announce();
   await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+});
+
+test('B4: selama menunggu, tombol Muat ulang menampilkan Memuat… dan nonaktif; Nanti tetap dapat dipakai', async () => {
+  const fake = startFake();
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  await userEvent.click(screen.getByRole('button', { name: 'Muat ulang' }));
+  const busy = screen.getByRole('button', { name: 'Memuat…' });
+  expect(busy).toBeDisabled();
+  expect(fake.updateSW).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  fake.fire('controllerchange');
+  expect(fake.reload).not.toHaveBeenCalled();
 });
