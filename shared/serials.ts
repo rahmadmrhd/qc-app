@@ -42,12 +42,19 @@ export const SERIAL_LIMITS = {
   /** Maks. pilihan stiker per baris (server `saveBatch`/`act` dan berkas `.qcsn` memakai batas yang sama). */
   picksMax: 20,
   /**
-   * Pencarian banyak serial lewat `serials.list` (GET, jadi masuk URL): maks. baris dan maks. karakter teksnya.
-   * Menjaga URL di bawah ~4 KB (nginx bawaan `large_client_header_buffers 4 8k`); lebih banyak = paginasi/ekspor.
+   * Pencarian banyak serial lewat `serials.list` (GET, jadi masuk URL): maks. serial dan maks. panjang teks setelah
+   * percent-encode (`listSerialsEncodedMax`, lihat `listSerialsTooLong`). Menjaga URL di bawah ~4 KB (nginx bawaan
+   * `large_client_header_buffers 4 8k`); lebih banyak = paginasi/ekspor.
    */
   listSerialsMax: 50,
-  listSerialsChars: 3300,
+  listSerialsEncodedMax: 4000,
 } as const;
+
+/** Panjang `serials` setelah `encodeURIComponent` melebihi batas URL: karakter non-ASCII/tanda baca membengkak 3-9x. */
+export function listSerialsTooLong(text: string): boolean {
+  const normalized = text.replace(/\r\n|\r/g, '\n');
+  return encodeURIComponent(normalized).length > SERIAL_LIMITS.listSerialsEncodedMax;
+}
 
 const MAC_COLON_DASH = /^[0-9A-F]{2}([:-])(?:[0-9A-F]{2}\1){4}[0-9A-F]{2}$/;
 const MAC_DOTTED = /^[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}$/;

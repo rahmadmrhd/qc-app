@@ -1469,6 +1469,11 @@ export interface ListSerialItemOptionsInput {
   query?: string;
   cursor?: string;
   limit?: number;
+  /**
+   * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU
+   * ber-`serial: edit` pengguna (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
+   */
+  itemIds?: string[];
 }
 export interface SerialItemOptionsPageDto {
   items: SerialItemOptionDto[];

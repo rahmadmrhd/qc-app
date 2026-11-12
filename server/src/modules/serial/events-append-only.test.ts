@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 import { Glob } from 'bun';
 
 /**
@@ -27,7 +28,7 @@ const FORBIDDEN: readonly { name: string; pattern: RegExp }[] = [
   },
 ];
 
-const SRC = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const SRC = fileURLToPath(new URL('../../', import.meta.url));
 
 async function productionSources(): Promise<string[]> {
   const files: string[] = [];

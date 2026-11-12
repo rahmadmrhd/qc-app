@@ -346,7 +346,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'serials.itemOptions': {
     verb: 'GET',
     path: '/serials/item-options',
-    query: { query: 'string', cursor: 'string', limit: 'number' },
+    query: { query: 'string', cursor: 'string', limit: 'number', itemIds: 'list' },
   },
   'serials.stickerOptions': {
     verb: 'GET',

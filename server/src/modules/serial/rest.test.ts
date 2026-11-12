@@ -6,6 +6,7 @@ import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { seedGuideImage, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { validateListSerialItemOptions } from './validate';
 
 setDefaultTimeout(60_000);
 
@@ -105,6 +106,53 @@ describe('serials.itemOptions', () => {
       .data as Json;
     expect(second.items.map((i: Json) => i.id)).toEqual(['i-b']);
     expect(second.nextCursor).toBeNull();
+  });
+
+  test('itemIds: tepat item itu (label biasa), id lintas BU/nonaktif/tak ada tidak bocor, query dan limit diabaikan', async () => {
+    const exact = (
+      await call(WRITER, 'serials.itemOptions', {
+        itemIds: ['i-a2', 'i-a1'],
+        query: 'tidak-cocok',
+        limit: 1,
+      })
+    ).data as Json;
+    // Urut menurut kunci item; query dan limit diabaikan; pencatat tak melihat BU B pada buOptions.
+    expect(exact.items.map((i: Json) => i.id)).toEqual(['i-a1', 'i-a2']);
+    expect(exact.items[0]).toEqual({
+      id: 'i-a1',
+      label: 'Merk Alfa',
+      buIds: ['bu-a'],
+      buOptions: [{ id: 'bu-a', code: 'A' }],
+    });
+    expect(exact.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
+    expect(exact.nextCursor).toBeNull();
+    // i-b hanya di BU B (di luar hak tulis pencatat), i-off nonaktif, 'hilang' tak ada: diam-diam tidak dikembalikan.
+    const hidden = (
+      await call(WRITER, 'serials.itemOptions', { itemIds: ['i-b', 'i-off', 'hilang', 'i-a1'] })
+    ).data as Json;
+    expect(hidden.items.map((i: Json) => i.id)).toEqual(['i-a1']);
+    expect(JSON.stringify(hidden)).not.toContain('Gamma');
+    // Pengguna dua BU melihat i-b; daftar kosong = hasil kosong.
+    const both = (await call(BOTH, 'serials.itemOptions', { itemIds: ['i-b'] })).data as Json;
+    expect(both.items.map((i: Json) => i.id)).toEqual(['i-b']);
+    const empty = (await call(WRITER, 'serials.itemOptions', { itemIds: [] })).data as Json;
+    expect(empty.items).toEqual([]);
+  });
+
+  test('itemIds lewat REST GET (daftar dipisah koma) dan validator: lebih dari 50 atau elemen tak valid ditolak', async () => {
+    const tooMany = Array.from({ length: 51 }, (_, i) => `i${i}`);
+    expect((await call(WRITER, 'serials.itemOptions', { itemIds: tooMany })).error?.code).toBe(
+      'VALIDATION',
+    );
+    // Lewat REST, daftar dikirim sebagai teks dipisah koma: elemen kosong atau bertipe lain runtuh menjadi teks, jadi
+    // bentuk elemen diperiksa langsung pada validator.
+    expect(() => validateListSerialItemOptions({ itemIds: [''] })).toThrow();
+    expect(() => validateListSerialItemOptions({ itemIds: [5] })).toThrow();
+    expect(() => validateListSerialItemOptions({ itemIds: 'i-a1' })).toThrow();
+    expect(validateListSerialItemOptions({ itemIds: ['a', 'a', 'b'] }).itemIds).toEqual(['a', 'b']);
+    expect((await call(VIEWER, 'serials.itemOptions', { itemIds: ['i-a1'] })).error?.code).toBe(
+      'FORBIDDEN',
+    );
   });
 
   test('validator: limit di luar 1-50 ditolak', async () => {

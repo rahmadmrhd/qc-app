@@ -17,6 +17,7 @@ import type {
 import { hasControlChars } from '@shared/postel';
 import {
   isIsoDate,
+  listSerialsTooLong,
   normalizeSerial,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
@@ -26,6 +27,8 @@ import {
 
 export const SERIAL_ITEM_OPTIONS_DEFAULT_LIMIT = 20;
 export const SERIAL_ITEM_OPTIONS_MAX_LIMIT = 50;
+/** Maks. id item pada `serials.itemOptions` mode `itemIds` (GET: ikut URL). */
+export const SERIAL_ITEM_IDS_MAX = 50;
 export const SERIAL_LIST_DEFAULT_LIMIT = 50;
 export const SERIAL_LIST_MAX_LIMIT = 100;
 
@@ -48,11 +51,23 @@ export function validateListSerialItemOptions(raw: unknown): ListSerialItemOptio
     reader.fail('limit', `Batas halaman harus 1-${SERIAL_ITEM_OPTIONS_MAX_LIMIT}`);
   }
   const query = reader.str('query', { max: 100 });
+  const itemIdsRaw = reader.raw('itemIds');
+  let itemIds: string[] | undefined;
+  if (itemIdsRaw !== undefined && itemIdsRaw !== null) {
+    if (
+      !Array.isArray(itemIdsRaw) ||
+      itemIdsRaw.length > SERIAL_ITEM_IDS_MAX ||
+      !itemIdsRaw.every((id) => isText(id, 100))
+    ) {
+      reader.fail('itemIds', `Maksimal ${SERIAL_ITEM_IDS_MAX} id item yang valid`);
+    } else itemIds = [...new Set(itemIdsRaw as string[])];
+  }
   reader.done();
   return {
     ...(typeof limit === 'number' ? { limit } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
+    ...(itemIds !== undefined ? { itemIds } : {}),
   };
 }
 
@@ -167,7 +182,7 @@ export function validateGetSerial(raw: unknown): GetSerialInput {
 
 const LIST_STATUS: readonly string[] = SERIAL_STATUSES;
 
-/** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. `SERIAL_LIMITS.listSerialsMax` serial dan `listSerialsChars` karakter (GET: URL harus muat). */
+/** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. `SERIAL_LIMITS.listSerialsMax` serial dan `listSerialsEncodedMax` karakter ter-encode (GET: URL harus muat). */
 export function validateSerialList(raw: unknown): SerialListInput {
   const reader = readObject(raw ?? {});
   const query = reader.str('query', { max: 100 });
@@ -191,8 +206,11 @@ export function validateSerialList(raw: unknown): SerialListInput {
       SERIAL_LIMITS.listSerialsMax
     ) {
       reader.fail('serials', `Maksimal ${SERIAL_LIMITS.listSerialsMax} serial per pencarian`);
-    } else if (serialsRaw.length > SERIAL_LIMITS.listSerialsChars) {
-      reader.fail('serials', 'Daftar serial terlalu panjang');
+    } else if (listSerialsTooLong(serialsRaw)) {
+      reader.fail(
+        'serials',
+        'Daftar serial terlalu panjang (karakter khusus memakan lebih banyak ruang URL)',
+      );
     } else serials = serialsRaw;
   }
   const limit = reader.raw('limit');

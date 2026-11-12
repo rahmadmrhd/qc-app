@@ -159,6 +159,27 @@ describe('serials.list', () => {
     expect(exact.items.map((i: Json) => i.id).sort()).toEqual(['a1', 'a3']);
   });
 
+  test('awalan dengan metakarakter LIKE (% _ !) dicocokkan apa adanya', async () => {
+    for (const [id, serial] of [
+      ['m1', 'A%1'],
+      ['m2', 'A_1'],
+      ['m3', 'A!1'],
+      ['m4', 'AX1'],
+      ['m5', 'A1'],
+    ] as const) {
+      await seedSerial(env, { id, serial });
+    }
+    const idsOf = async (query: string): Promise<string[]> =>
+      ((await call(SERIAL_USERS.writer, 'serials.list', { query })).data as Json).items
+        .map((i: Json) => i.id)
+        .sort();
+    expect(await idsOf('A%')).toEqual(['m1']);
+    expect(await idsOf('A_')).toEqual(['m2']);
+    expect(await idsOf('A!')).toEqual(['m3']);
+    expect(await idsOf('A')).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+    expect(await idsOf('%')).toEqual([]);
+  });
+
   test('kursor: tiga halaman berukuran 2 tanpa baris terlewat atau ganda; limit 101 ditolak', async () => {
     for (let i = 1; i <= 5; i++) {
       await seedSerial(env, {
@@ -198,9 +219,16 @@ describe('serials.list', () => {
     const many = Array.from({ length: 51 }, (_, i) => `S${i}`).join('\n');
     const tooMany = await call(SERIAL_USERS.writer, 'serials.list', { serials: many });
     expect(tooMany.error?.code).toBe('VALIDATION');
-    const long = Array.from({ length: 50 }, () => 'X'.repeat(70)).join('\n');
-    expect((await call(SERIAL_USERS.writer, 'serials.list', { serials: long })).error?.code).toBe(
-      'VALIDATION',
-    );
+    // Batas dihitung atas teks ter-encode: 50 x 64 karakter non-ASCII/tanda baca jauh melewati 8 KB URL.
+    const cjk = Array.from({ length: 50 }, () => '漢'.repeat(64)).join('\n');
+    const slashes = Array.from({ length: 50 }, () => '/'.repeat(64)).join('\n');
+    for (const serials of [cjk, slashes]) {
+      expect((await call(SERIAL_USERS.writer, 'serials.list', { serials })).error?.code).toBe(
+        'VALIDATION',
+      );
+    }
+    // 50 serial ASCII alfanumerik sepanjang 64 tetap sah.
+    const ascii = Array.from({ length: 50 }, (_, i) => `${i}`.padEnd(64, 'X')).join('\n');
+    expect((await call(SERIAL_USERS.writer, 'serials.list', { serials: ascii })).ok).toBe(true);
   });
 });

@@ -247,7 +247,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'postels.history': { id: 'p1', cursor: 'c1', limit: 20 },
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
-  'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20, itemIds: ['i1', 'i2'] },
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
   'serials.locationOptions': null,
   'serials.get': { id: 's1' },

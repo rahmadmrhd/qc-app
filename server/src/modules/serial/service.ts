@@ -105,21 +105,31 @@ export async function queryItemOptions(
     `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${placeholders(writable.length)}))`,
   ];
   const binds: unknown[] = [...writable];
-  const query = normalizeKey(input.query ?? '');
-  if (query !== '') {
-    where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
-    binds.push(query, query);
+  // Mode id: tepat item-item itu (filter BU/status IDENTIK dengan pencarian); query/cursor/limit diabaikan.
+  const byIds = input.itemIds !== undefined;
+  if (byIds) {
+    const ids = input.itemIds ?? [];
+    if (ids.length === 0) return { items: [], nextCursor: null };
+    where.push(`i.id IN (${placeholders(ids.length)})`);
+    binds.push(...ids);
+  } else {
+    const query = normalizeKey(input.query ?? '');
+    if (query !== '') {
+      where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
+      binds.push(query, query);
+    }
+    if (input.cursor) {
+      where.push('i.`key` > ?');
+      binds.push(input.cursor);
+    }
   }
-  if (input.cursor) {
-    where.push('i.`key` > ?');
-    binds.push(input.cursor);
-  }
+  const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
     `SELECT i.id, b.name AS brand_name, i.model, i.\`key\` FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
-    .bind(...binds, limit + 1)
+    .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();
-  const page = rows.results.slice(0, limit);
+  const page = rows.results.slice(0, effectiveLimit);
   const last = page[page.length - 1];
   const links = new Map<string, { id: string; code: string }[]>();
   if (page.length > 0) {
@@ -143,7 +153,10 @@ export async function queryItemOptions(
       buOptions,
     };
   });
-  return { items, nextCursor: rows.results.length > limit && last ? last.key : null };
+  return {
+    items,
+    nextCursor: !byIds && rows.results.length > limit && last ? last.key : null,
+  };
 }
 
 /** Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user atau item di luar BU itu = `NOT_FOUND`. */
