@@ -249,6 +249,10 @@ const WORST: Inputs = {
   'qrcodes.cloneFromDrive': { source: text(2000), replaceDocumentId: UUID },
   'notifications.markRead': { id: UUID },
   'notifications.markAllRead': {},
+  'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },
+  'push.unsubscribe': { endpoint: text(2000) },
+  'push.setPreference': { enabled: true },
+  'push.reportPermission': { state: 'granted' },
   'exports.sheets': { tables: longList(50, () => text(100)) },
 };
 

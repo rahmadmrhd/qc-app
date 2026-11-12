@@ -397,6 +397,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   // `read-all` (2 segmen) tidak bertabrakan dengan `/notifications/{id}/read` (3 segmen).
   'notifications.markAllRead': { verb: 'POST', path: '/notifications/read-all' },
   'notifications.markRead': { verb: 'POST', path: '/notifications/{id}/read' },
+  'push.config': { verb: 'GET', path: '/push/config' },
+  'push.subscribe': { verb: 'POST', path: '/push/subscriptions' },
+  'push.unsubscribe': { verb: 'POST', path: '/push/unsubscribe' },
+  'push.setPreference': { verb: 'PUT', path: '/push/preference' },
+  'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
+  'push.status': { verb: 'GET', path: '/push/status' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',

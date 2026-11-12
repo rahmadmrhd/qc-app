@@ -8,6 +8,7 @@ import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { createWebPushSender } from '@server/modules/notification/web-push';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -67,6 +68,9 @@ export function envFromConfig(config: Config, db: Db): Env {
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
     ALERT_TO: config.alertTo,
+    ...(config.vapid === null
+      ? {}
+      : { PUSH: createWebPushSender(config.vapid), VAPID_PUBLIC_KEY: config.vapid.publicKey }),
     QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),

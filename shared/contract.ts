@@ -1195,6 +1195,12 @@ export interface ApiContract {
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
   'notifications.markRead': { input: MarkNotificationReadInput; output: { ok: true } };
   'notifications.markAllRead': { input: Record<string, never>; output: { count: number } };
+  'push.config': { input: null; output: PushConfigDto };
+  'push.subscribe': { input: PushSubscribeInput; output: { ok: true } };
+  'push.unsubscribe': { input: PushUnsubscribeInput; output: { ok: true } };
+  'push.setPreference': { input: PushPreferenceInput; output: { enabled: boolean } };
+  'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
+  'push.status': { input: null; output: PushUserStatusDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
@@ -1334,6 +1340,36 @@ export interface NotificationListDto {
 }
 export interface MarkNotificationReadInput {
   id: string;
+}
+
+/** Push notifikasi (spek 2026-11-12 §5.2). */
+export interface PushConfigDto {
+  /** Push tersedia (kunci VAPID terkonfigurasi di server). */
+  enabled: boolean;
+  /** Kunci publik VAPID (teks URL-safe) untuk `pushManager.subscribe`; kosong bila tidak tersedia. */
+  publicKey: string;
+}
+export interface PushSubscribeInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+export interface PushUnsubscribeInput {
+  endpoint: string;
+}
+export interface PushPreferenceInput {
+  enabled: boolean;
+}
+export type PushPermissionState = 'granted' | 'denied' | 'default';
+export interface PushPermissionInput {
+  state: PushPermissionState;
+}
+/** Status push per pengguna: dihitung dari hasil pengiriman nyata; tanpa pengenal perangkat atau rincian galat. */
+export type PushUserState = 'active' | 'none' | 'failing' | 'disabled' | 'denied';
+export interface PushUserStatusDto {
+  email: string;
+  name: string;
+  state: PushUserState;
 }
 
 export interface ExportSheetsInput {

@@ -6,6 +6,7 @@ import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { flushDueCheckSummaries } from '@server/modules/notification/flush';
+import { deliverPendingPushes } from '@server/modules/notification/push';
 import { purgeOldNotifications } from '@server/modules/notification/repo';
 import { checkPostelExpiryDigest } from '@server/modules/postel/digest';
 import { checkLowStockDigest } from '@server/modules/sticker/digest';
@@ -163,8 +164,8 @@ export function startScheduler(
 }
 
 /**
- * Putaran latar notifikasi Serah Terima: melepas ringkasan centang yang jatuh tempo tiap `intervalMs` (bawaan 30
- * dtk). Terpisah dari antrean job (satu job pada satu waktu), sehingga job panjang seperti cadangan tidak menunda
+ * Putaran latar notifikasi Serah Terima: melepas ringkasan centang yang jatuh tempo lalu mengirim push untuk
+ * notifikasi yang menunggu, tiap `intervalMs` (bawaan 30 dtk). Terpisah dari antrean job (satu job pada satu waktu), sehingga job panjang seperti cadangan tidak menunda
  * pelepasan. Mengembalikan fungsi penghenti (lihat `startLoop`).
  */
 export function startNotificationLoop(
@@ -173,7 +174,10 @@ export function startNotificationLoop(
 ): () => Promise<void> {
   return startLoop(
     'notifikasi',
-    () => flushDueCheckSummaries(env),
+    async () => {
+      await flushDueCheckSummaries(env);
+      await deliverPendingPushes(env);
+    },
     options.intervalMs ?? NOTIFICATION_LOOP_INTERVAL_MS,
   );
 }
