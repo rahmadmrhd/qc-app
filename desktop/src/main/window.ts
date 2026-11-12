@@ -3,6 +3,7 @@
 
 import { BrowserWindow, session } from 'electron';
 import { APP_ORIGIN, isAppUrl } from './app-protocol';
+import { shouldBlockReloadKey } from './ui/reload-gate';
 
 export interface WindowOptions {
   preloadPath: string;
@@ -10,6 +11,8 @@ export interface WindowOptions {
   route: string;
   /** `false` untuk smoke tanpa antarmuka. */
   show?: boolean;
+  /** Pintasan muat ulang (F5, Ctrl+R) diblokir selama ini mengembalikan true (inject berjalan). */
+  blockReload?: () => boolean;
 }
 
 export function createMainWindow(opts: WindowOptions): BrowserWindow {
@@ -36,6 +39,10 @@ export function createMainWindow(opts: WindowOptions): BrowserWindow {
   contents.on('will-navigate', (event, url) => blockForeign(event, url));
   contents.on('will-redirect', (event, url) => blockForeign(event, url));
   contents.on('will-attach-webview', (event) => event.preventDefault());
+  // Memuat ulang di tengah inject membuang hasilnya (serial tak tercatat, risiko inject ulang).
+  contents.on('before-input-event', (event, input) => {
+    if (shouldBlockReloadKey(input, opts.blockReload?.() ?? false)) event.preventDefault();
+  });
 
   void win.loadURL(`${APP_ORIGIN}${opts.route}`);
   return win;

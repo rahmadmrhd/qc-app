@@ -335,6 +335,42 @@ describe('registerIpc', () => {
       expect(ipc.isInjecting()).toBe(false);
       store.close();
     });
+
+    test('onInjectIdle dipanggil saat inject terakhir selesai (sukses maupun gagal), tidak sebelumnya', async () => {
+      let release: () => void = () => undefined;
+      let started: () => void = () => undefined;
+      const startedPromise = new Promise<void>((r) => {
+        started = r;
+      });
+      const onInjectIdle = vi.fn();
+      const failing = vi.fn(async () => {
+        throw new Error('putus');
+      });
+      const { call, store, deps } = setup({
+        onInjectIdle,
+        runInject: vi.fn(
+          () =>
+            new Promise<InjectOutcome>((resolveOutcome) => {
+              started();
+              release = () => resolveOutcome({ ok: true, reason: 'completed' });
+            }),
+        ),
+      });
+      const running = call(BRIDGE_CHANNELS.injectRun, injectReq());
+      await startedPromise;
+      expect(onInjectIdle).not.toHaveBeenCalled();
+      release();
+      await running;
+      expect(onInjectIdle).toHaveBeenCalledTimes(1);
+
+      // Gagal juga melapor idle.
+      (deps.runInject as unknown as { mockImplementation(f: unknown): void }).mockImplementation(
+        failing,
+      );
+      await call(BRIDGE_CHANNELS.injectRun, injectReq({ id: 'lain' }));
+      expect(onInjectIdle).toHaveBeenCalledTimes(2);
+      store.close();
+    });
   });
 
   describe('pending', () => {

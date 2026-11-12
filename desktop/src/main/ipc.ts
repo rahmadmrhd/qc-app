@@ -66,6 +66,11 @@ export interface IpcDeps {
   ui: { reload(): Promise<void> };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
   emitProgress(event: { id: string } & InjectProgressDto): void;
+  /**
+   * Dipanggil saat inject terakhir yang berjalan selesai (berhasil, gagal, atau dibatalkan);
+   * proses utama memakainya untuk melepas pemuatan halaman yang ditunda selama inject.
+   */
+  onInjectIdle?(): void;
   /** Task 14 memasang pemeriksaan asal pengirim (hanya `app://qc`); bila ada dan false, ditolak. */
   isTrustedSender?(event: IpcEventLike): boolean;
 }
@@ -316,6 +321,7 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
       return failed('Terjadi galat saat menyiapkan inject');
     } finally {
       running.delete(req.id);
+      if (running.size === 0) deps.onInjectIdle?.();
     }
   }
 }

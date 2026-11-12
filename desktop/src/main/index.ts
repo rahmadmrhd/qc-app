@@ -40,6 +40,8 @@ import { fetchHostKey } from './ssh/host-key';
 import { runInjectDetailed } from './ssh/inject-session';
 import { openPendingStore } from './store/pending-store';
 import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
+import { createReloadGate, type ReloadGate } from './ui/reload-gate';
+import { createRenderProbe } from './ui/render-probe';
 import { createUiBundleManager } from './ui/ui-bundle';
 import { createMainWindow, lockDownSession } from './window';
 
@@ -143,6 +145,13 @@ function isOpenableLoginUrl(url: string): boolean {
   }
 }
 
+/** Masa tenang setelah inject berakhir sebelum halaman tertunda dimuat (pending.add renderer). */
+const RELOAD_SETTLE_MS = 1500;
+const RENDER_PROBE_INTERVAL_MS = 500;
+const RENDER_PROBE_TIMEOUT_MS = 10_000;
+/** Akar web (`<div id="app">` di web/index.html) berisi anak = React sudah mount. */
+const ROOT_FILLED_SCRIPT = "(document.getElementById('app')?.childElementCount ?? 0) > 0";
+
 function runApp(): void {
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -151,6 +160,7 @@ function runApp(): void {
 
   let mainWindow: BrowserWindow | null = null;
   let loginFlow: LoginFlow | null = null;
+  let reloadGate: ReloadGate | null = null;
   const initialRoute = routeFromArgv(process.argv) ?? '/country-lock';
   // Callback yang tiba sebelum aplikasi siap ditahan; alur login hanya menerima yang cocok dengan
   // login yang sedang berjalan, jadi URL asing/ulang diabaikan olehnya.
@@ -171,7 +181,10 @@ function runApp(): void {
     for (const url of authUrlsFromArgv(argv)) dispatchAuthUrl(url);
     focusWindow();
     if (route && mainWindow && !mainWindow.isDestroyed()) {
-      void mainWindow.loadURL(`app://qc${route}`);
+      // Ditunda bila inject berjalan: memuat halaman baru membuang hasil inject dari renderer.
+      const url = `app://qc${route}`;
+      if (reloadGate) reloadGate.load(url);
+      else void mainWindow.loadURL(url);
     }
   });
 
@@ -249,6 +262,15 @@ function runApp(): void {
       return;
     }
 
+    reloadGate = createReloadGate({
+      isInjecting: () => ipcHandle?.isInjecting() ?? false,
+      load: (url) => {
+        if (mainWindow && !mainWindow.isDestroyed()) void mainWindow.loadURL(url);
+      },
+      settleMs: RELOAD_SETTLE_MS,
+    });
+    const gate = reloadGate;
+
     ipcHandle = registerIpc({
       ipcMain,
       settings,
@@ -280,10 +302,15 @@ function runApp(): void {
           mainWindow?.webContents.reloadIgnoringCache();
         },
       },
+      onInjectIdle: () => gate.notifyIdle(),
       isTrustedSender: (event) => isAppUrl(event.senderFrame?.url ?? ''),
     });
 
-    mainWindow = createMainWindow({ preloadPath: PRELOAD_PATH, route: initialRoute });
+    mainWindow = createMainWindow({
+      preloadPath: PRELOAD_PATH,
+      route: initialRoute,
+      blockReload: () => gate.isReloadBlocked(),
+    });
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
@@ -298,16 +325,34 @@ function runApp(): void {
         contents.send(UI_UPDATE_READY_EVENT, { uiVersion });
       }
     };
-    contents.on('did-finish-load', () => {
-      if (!isAppUrl(contents.getURL())) return;
-      bundles.markLoadOk();
-      announceReady();
+    // `did-finish-load` hanya berarti index.html terkirim. UI dianggap sehat bila akar web (#app)
+    // terisi dalam batas waktu; bundel yang rusak secara logika (layar kosong) tak pernah mengisinya,
+    // lalu `markLoadFailed()` menjalankan rantai pemulihan (dua kali gagal -> previous -> dasar).
+    const recover = (): void => {
+      if (bundles.markLoadFailed() !== 'none') gate.load(`${APP_ORIGIN}${initialRoute}`);
+    };
+    const probe = createRenderProbe({
+      check: async () =>
+        !contents.isDestroyed() && (await contents.executeJavaScript(ROOT_FILLED_SCRIPT)) === true,
+      onOk: () => {
+        bundles.markLoadOk();
+        announceReady();
+      },
+      onFailed: () => {
+        if (!contents.isDestroyed()) recover();
+      },
+      intervalMs: RENDER_PROBE_INTERVAL_MS,
+      timeoutMs: RENDER_PROBE_TIMEOUT_MS,
     });
+    contents.on('did-start-loading', () => probe.cancel());
+    contents.on('did-finish-load', () => {
+      if (isAppUrl(contents.getURL())) probe.start();
+    });
+    mainWindow.on('closed', () => probe.cancel());
     contents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
       // -3 = navigasi dibatalkan (bukan kegagalan muat).
       if (!isMainFrame || errorCode === -3) return;
-      if (bundles.markLoadFailed() !== 'none')
-        void contents.loadURL(`${APP_ORIGIN}${initialRoute}`);
+      recover();
     });
 
     // Pemeriksaan pembaruan UI: saat dibuka, saat jendela fokus (jarak >= 10 menit), dan tiap jam.
