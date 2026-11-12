@@ -16,10 +16,15 @@ COPY package.json bun.lock ./
 COPY shared/package.json shared/
 COPY web/package.json web/
 COPY server/package.json server/
+# Workspace lain di package.json akar juga wajib tercantum agar bun.lock konsisten; `desktop` (Electron) tidak
+# dipasang di image (lihat `--filter` di bawah), hanya manifestnya yang dibutuhkan.
+COPY countrylock/package.json countrylock/
+COPY desktop/package.json desktop/
 
 # ---- Tahap 1: build web (Vite) ke /app/server/dist, lalu pemeriksaan verify-dist ----
 FROM manifests AS web-build
-RUN bun install --frozen-lockfile
+# `!@qc/desktop`: Electron dan dependensi aplikasi desktop tidak ikut terpasang di image server.
+RUN bun install --frozen-lockfile --filter '!@qc/desktop'
 COPY tsconfig.base.json ./
 COPY shared shared
 COPY countrylock countrylock

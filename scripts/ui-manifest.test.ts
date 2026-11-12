@@ -298,6 +298,20 @@ describe('integrasi build', () => {
     expect(build.indexOf('build-ui-manifest.ts')).toBeGreaterThan(build.indexOf('verify-dist.ts'));
   });
 
+  test('Dockerfile: semua workspace akar disalin manifestnya sebelum install, dan desktop (Electron) tak dipasang', () => {
+    const root = path.join(import.meta.dir, '..');
+    const dockerfile = readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+    const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+    for (const workspace of pkg.workspaces as string[]) {
+      expect(dockerfile).toContain(`COPY ${workspace}/package.json ${workspace}/`);
+    }
+    const manifestsEnd = dockerfile.indexOf('FROM manifests AS web-build');
+    expect(dockerfile.indexOf('COPY desktop/package.json')).toBeLessThan(manifestsEnd);
+    expect(dockerfile).toMatch(/^RUN bun install --frozen-lockfile --filter '!@qc\/desktop'\s*$/m);
+    // sumber desktop tak pernah disalin ke image
+    expect(dockerfile).not.toMatch(/^COPY desktop (desktop|\.)/m);
+  });
+
   test('Dockerfile: tanda tangan hanya lewat secret BuildKit opsional, tanpa kunci di ARG/ENV', () => {
     const dockerfile = readFileSync(path.join(import.meta.dir, '..', 'Dockerfile'), 'utf8');
     expect(dockerfile).toContain('--mount=type=secret,id=ui_signing_key,required=false');

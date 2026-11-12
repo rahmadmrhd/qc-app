@@ -62,7 +62,7 @@ async function desktopBrowserFlow(
   const start = await app.request(startUrl(challenge, state), {}, env);
   const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
   const login = await app.request(
-    'https://qc.test/auth/login',
+    new URL(start.headers.get('location') as string, 'https://qc.test').href,
     { headers: { cookie: desktopCookie } },
     env,
   );
@@ -150,7 +150,7 @@ describe('GET /auth/desktop/start', () => {
     const challenge = await s256(newVerifier());
     const response = await app.request(startUrl(challenge, 'state-uji-1234'), {}, env);
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/auth/login');
+    expect(response.headers.get('location')).toBe('/auth/login?desktop=1');
     const cookie = cookieOf(response, 'qc_desktop') as string;
     expect(cookie).toMatch(/HttpOnly/);
     expect(cookie).toMatch(/Secure/);
@@ -201,6 +201,46 @@ describe('alur login desktop', () => {
     expect(response.headers.get('location')).toBe('/');
     expect(cookieOf(response, 'qc_session')).toBeDefined();
     expect(cookieOf(response, 'qc_desktop')).toBeUndefined();
+  });
+
+  test('start desktop lalu /auth/login web biasa: cookie qc_desktop dibuang dan callback memasang qc_session (bukan qc://)', async () => {
+    mockGoogle({ id_token: idToken({}) });
+    const start = await app.request(startUrl(await s256(newVerifier()), 'state-uji-1234'), {}, env);
+    const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
+    // login desktop dibatalkan; pengguna lalu login web biasa di peramban yang sama
+    const webLogin = await app.request(
+      'https://qc.test/auth/login',
+      { headers: { cookie: desktopCookie } },
+      env,
+    );
+    expect(cookieOf(webLogin, 'qc_desktop')).toMatch(/Max-Age=0/);
+    const oauthCookie = `qc_oauth=${cookieValue(cookieOf(webLogin, 'qc_oauth') as string)}`;
+    const googleState = new URL(webLogin.headers.get('location') as string).searchParams.get(
+      'state',
+    );
+    // peramban membuang cookie yang dihapus; tapi walau cookie lama tetap terkirim, callback harus memberi kode desktop
+    // hanya bila putaran login itu diawali desktop; di sini cookie sudah dihapus, jadi hanya qc_oauth yang terkirim
+    const response = await app.request(
+      `https://qc.test/auth/callback?code=gcode&state=${googleState}`,
+      { headers: { cookie: oauthCookie } },
+      env,
+    );
+    expect(response.headers.get('location')).toBe('/');
+    expect(cookieOf(response, 'qc_session')).toBeDefined();
+    expect(response.headers.get('location')?.startsWith('qc://')).toBe(false);
+  });
+
+  test('/auth/login?desktop=1 mempertahankan cookie qc_desktop; tanpa cookie tidak menghapus apa pun', async () => {
+    const start = await app.request(startUrl(await s256(newVerifier()), 'state-uji-1234'), {}, env);
+    const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
+    const keep = await app.request(
+      'https://qc.test/auth/login?desktop=1',
+      { headers: { cookie: desktopCookie } },
+      env,
+    );
+    expect(cookieOf(keep, 'qc_desktop')).toBeUndefined();
+    const none = await app.request('https://qc.test/auth/login', {}, env);
+    expect(cookieOf(none, 'qc_desktop')).toBeUndefined();
   });
 
   test('cookie qc_desktop palsu tidak memicu alur desktop (jatuh ke login web biasa)', async () => {

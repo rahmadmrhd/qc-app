@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { app } from '@server/app';
@@ -29,9 +29,17 @@ afterEach(() => {
   rmSync(dist, { recursive: true, force: true });
 });
 
+/** mtime tetap (detik bulat): perbandingan memo berdasar mtime tak bergantung presisi sistem berkas. */
+const T0 = new Date('2026-01-01T00:00:00.000Z');
+const later = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
+
 function publish(): void {
-  writeFileSync(path.join(dist, 'ui-manifest.json'), MANIFEST_JSON);
-  writeFileSync(path.join(dist, 'ui-manifest.sig'), SIGNATURE);
+  const manifestPath = path.join(dist, 'ui-manifest.json');
+  const sigPath = path.join(dist, 'ui-manifest.sig');
+  writeFileSync(manifestPath, MANIFEST_JSON);
+  writeFileSync(sigPath, SIGNATURE);
+  utimesSync(manifestPath, T0, T0);
+  utimesSync(sigPath, T0, T0);
 }
 
 describe('GET /api/desktop/ui-manifest', () => {
@@ -83,6 +91,7 @@ describe('GET /api/desktop/ui-manifest', () => {
     );
     expect(stale.status).toBe(200);
     writeFileSync(path.join(dist, 'ui-manifest.sig'), 'd'.repeat(86));
+    utimesSync(path.join(dist, 'ui-manifest.sig'), later(5), later(5));
     const changed = await app.request(
       URL_MANIFEST,
       { headers: { 'if-none-match': etag } },
@@ -131,6 +140,51 @@ describe('GET /api/desktop/ui-manifest', () => {
     const response = await app.request(URL_MANIFEST, {}, withDist(dist));
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain(dist);
+  });
+
+  test('memo per proses berdasar mtime+size: dipakai selama sama, diperbarui bila berkas berubah', async () => {
+    publish();
+    const manifestPath = path.join(dist, 'ui-manifest.json');
+    const sigPath = path.join(dist, 'ui-manifest.sig');
+    const first = await app.request(URL_MANIFEST, {}, withDist(dist));
+    const firstBody = (await first.json()) as { manifest: { uiVersion: string } };
+    expect(firstBody.manifest.uiVersion).toBe('a'.repeat(64));
+
+    // isi berbeda tetapi ukuran dan mtime sama: memo dipakai (bukti tak membaca ulang)
+    const other = MANIFEST_JSON.replace('a'.repeat(64), 'e'.repeat(64));
+    expect(other.length).toBe(MANIFEST_JSON.length);
+    writeFileSync(manifestPath, other);
+    utimesSync(manifestPath, T0, T0);
+    const memo = await app.request(URL_MANIFEST, {}, withDist(dist));
+    expect(((await memo.json()) as { manifest: { uiVersion: string } }).manifest.uiVersion).toBe(
+      'a'.repeat(64),
+    );
+
+    // mtime berubah: memo basi diperbarui
+    utimesSync(manifestPath, later(5), later(5));
+    const fresh = await app.request(URL_MANIFEST, {}, withDist(dist));
+    expect(((await fresh.json()) as { manifest: { uiVersion: string } }).manifest.uiVersion).toBe(
+      'e'.repeat(64),
+    );
+
+    // tanda tangan berubah (ukuran sama, mtime berbeda): ikut diperbarui
+    writeFileSync(sigPath, 'd'.repeat(86));
+    utimesSync(sigPath, later(5), later(5));
+    const resigned = await app.request(URL_MANIFEST, {}, withDist(dist));
+    expect(((await resigned.json()) as { signature: string }).signature).toBe('d'.repeat(86));
+
+    // berkas dihapus: 404 (memo tak menyajikan manifest yang sudah hilang)
+    rmSync(sigPath);
+    expect((await app.request(URL_MANIFEST, {}, withDist(dist))).status).toBe(404);
+  });
+
+  test('manifest di atas 2 MB ditolak (404) tanpa menyajikan isinya', async () => {
+    const huge = JSON.stringify({ ...MANIFEST, pad: 'x'.repeat(2 * 1024 * 1024 + 10) });
+    writeFileSync(path.join(dist, 'ui-manifest.json'), huge);
+    writeFileSync(path.join(dist, 'ui-manifest.sig'), SIGNATURE);
+    const response = await app.request(URL_MANIFEST, {}, withDist(dist));
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('xxxx');
   });
 
   test('awalan /api lain tak membelokkan rute; jalur turunan dan metode tulis tidak dikenal', async () => {

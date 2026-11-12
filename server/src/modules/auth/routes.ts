@@ -37,6 +37,12 @@ import { createLogin, exchangeCodeForEmail, OAUTH_STATE_TTL_MS, verifyLoginState
 export const authApp = new Hono<AppBindings>();
 
 authApp.get('/login', async (c) => {
+  // Cookie `qc_desktop` hanya hidup untuk putaran yang diawali `/auth/desktop/start` (yang mengarahkan ke
+  // `/login?desktop=1`). Login web biasa membuangnya agar login desktop yang dibatalkan tak membajak login web
+  // berikutnya di peramban yang sama (callback memberi kode `qc://` hanya bila cookie ini ada).
+  if (c.req.query('desktop') !== '1' && getCookie(c, DESKTOP_COOKIE) !== undefined) {
+    deleteCookie(c, DESKTOP_COOKIE, { path: '/auth', secure: cookieSecure(c.env) });
+  }
   const { url, stateCookie } = await createLogin(c.env, c.req.raw);
   setCookie(c, OAUTH_COOKIE, stateCookie, {
     httpOnly: true,
@@ -65,7 +71,7 @@ authApp.get('/desktop/start', async (c) => {
     path: '/auth',
     maxAge: DESKTOP_START_TTL_MS / 1000,
   });
-  return c.redirect('/auth/login', 302);
+  return c.redirect('/auth/login?desktop=1', 302);
 });
 
 authApp.get('/callback', async (c) => {
