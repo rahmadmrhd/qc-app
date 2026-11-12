@@ -1,0 +1,183 @@
+import type { NotificationListDto } from '@shared/contract';
+import type { NotificationDto } from '@shared/notifications';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { savePersistedQueryCache } from '@/app/query-persist';
+import {
+  ANONYMOUS_SESSION,
+  clearSession,
+  initSession,
+  PERSISTED_CACHE_KEY,
+} from '@/modules/auth/session';
+import { NotificationBell } from './notification-bell';
+import { notificationKeys } from './queries';
+
+const apiMock = vi.hoisted(() => vi.fn());
+const navigateMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateMock }));
+
+function note(overrides: Partial<NotificationDto> = {}): NotificationDto {
+  return {
+    id: 'n1',
+    kind: 'done',
+    handoverId: 'h1',
+    locationId: 'l-a',
+    number: 'ST-20261112-001',
+    customerName: 'PT Maju',
+    actor: 'Budi',
+    count: 0,
+    preview: '',
+    createdAt: '2026-11-12T03:00:00.000Z',
+    readAt: '',
+    ...overrides,
+  };
+}
+
+let state: NotificationListDto;
+
+beforeEach(() => {
+  apiMock.mockReset();
+  navigateMock.mockReset();
+  state = { items: [note()], unread: 1, nextCursor: null };
+  apiMock.mockImplementation(async (id: string, input?: { id?: string }) => {
+    if (id === 'notifications.list') return state;
+    if (id === 'notifications.markRead') {
+      return { ok: true, _id: input?.id };
+    }
+    if (id === 'notifications.markAllRead') return { count: state.unread };
+    throw new Error(`id tak terduga: ${id}`);
+  });
+});
+
+afterEach(() => {
+  clearSession();
+  localStorage.clear();
+});
+
+function mount() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <NotificationBell />
+    </QueryClientProvider>,
+  );
+  return { queryClient, ...view };
+}
+
+const trigger = () => screen.getByRole('button', { name: /^Notifikasi/ });
+
+test('jumlah belum dibaca tampil pada ikon; tersembunyi bila 0; 99+ bila lebih', async () => {
+  state = { items: [], unread: 3, nextCursor: null };
+  const first = mount();
+  expect(await screen.findByText('3')).toBeInTheDocument();
+  expect(trigger()).toHaveAccessibleName('Notifikasi, 3 belum dibaca');
+  first.unmount();
+
+  state = { items: [], unread: 0, nextCursor: null };
+  const second = mount();
+  await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+  expect(trigger()).toHaveAccessibleName('Notifikasi');
+  expect(screen.queryByText('0')).not.toBeInTheDocument();
+  second.unmount();
+
+  state = { items: [], unread: 150, nextCursor: null };
+  mount();
+  expect(await screen.findByText('99+')).toBeInTheDocument();
+});
+
+test('daftar memakai judul notifikasi dan nama customer; cuplikan sebagai teks biasa', async () => {
+  state = {
+    items: [
+      note({ id: 'n1', kind: 'done' }),
+      note({
+        id: 'n2',
+        kind: 'commented',
+        actor: 'Sari',
+        preview: '<b>tebal</b> cek lagi',
+        readAt: '2026-11-12T04:00:00.000Z',
+      }),
+    ],
+    unread: 1,
+    nextCursor: null,
+  };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
+  expect(await screen.findByText('Budi menyelesaikan task ST-20261112-001')).toBeInTheDocument();
+  expect(screen.getByText('Sari mengomentari task ST-20261112-001')).toBeInTheDocument();
+  expect(screen.getAllByText('PT Maju')).toHaveLength(2);
+  // Cuplikan tidak diinterpretasikan sebagai HTML.
+  expect(screen.getByText('<b>tebal</b> cek lagi')).toBeInTheDocument();
+  expect(document.querySelector('b')).toBeNull();
+});
+
+test('klik butir menandainya dibaca lalu menavigasi ke detail task', async () => {
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
+  await userEvent.click(await screen.findByText('Budi menyelesaikan task ST-20261112-001'));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('notifications.markRead', { id: 'n1' }));
+  expect(navigateMock).toHaveBeenCalledWith({
+    to: '/handover/$handoverId',
+    params: { handoverId: 'h1' },
+  });
+  await waitFor(() => expect(trigger()).toHaveAccessibleName('Notifikasi'));
+});
+
+test('butir ringkasan batch (tanpa task) menavigasi ke daftar Serah Terima', async () => {
+  state = {
+    items: [note({ id: 'n9', kind: 'createdBatch', handoverId: '', number: '', count: 30 })],
+    unread: 1,
+    nextCursor: null,
+  };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
+  await userEvent.click(await screen.findByText('Budi membuat 30 task baru'));
+  expect(navigateMock).toHaveBeenCalledWith({ to: '/handover' });
+});
+
+test('butir yang sudah dibaca tidak memanggil markRead lagi', async () => {
+  state = { items: [note({ readAt: '2026-11-12T04:00:00.000Z' })], unread: 0, nextCursor: null };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Notifikasi' }));
+  await userEvent.click(await screen.findByText('Budi menyelesaikan task ST-20261112-001'));
+  expect(apiMock).not.toHaveBeenCalledWith('notifications.markRead', expect.anything());
+  expect(navigateMock).toHaveBeenCalled();
+});
+
+test('"Tandai semua dibaca" memanggil rute dan mengosongkan penanda', async () => {
+  state = {
+    items: [note({ id: 'n1' }), note({ id: 'n2', kind: 'cancelled' })],
+    unread: 2,
+    nextCursor: null,
+  };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 2 belum dibaca/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Tandai semua dibaca' }));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('notifications.markAllRead', {}));
+  await waitFor(() => expect(trigger()).toHaveAccessibleName('Notifikasi'));
+  expect(screen.getByRole('button', { name: 'Tandai semua dibaca' })).toBeDisabled();
+});
+
+test('keadaan kosong menampilkan teks Indonesia', async () => {
+  state = { items: [], unread: 0, nextCursor: null };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Notifikasi' }));
+  expect(await screen.findByText('Belum ada notifikasi.')).toBeInTheDocument();
+});
+
+test('kunci query notifikasi TIDAK disimpan oleh query-persist', () => {
+  initSession({ ...ANONYMOUS_SESSION, authenticated: true, email: 'a@x.com' });
+  const client = new QueryClient();
+  client.setQueryData(notificationKeys.list, {
+    items: [note({ preview: 'RAHASIA' })],
+    unread: 1,
+    nextCursor: null,
+  });
+  client.setQueryData(['brands', 'list'], [{ id: 'b1' }]);
+  savePersistedQueryCache(client);
+  const saved = localStorage.getItem(PERSISTED_CACHE_KEY) ?? '';
+  expect(saved).not.toContain('RAHASIA');
+  expect(saved).not.toContain('notifications');
+});
