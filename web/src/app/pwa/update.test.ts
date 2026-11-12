@@ -59,9 +59,12 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
 function fakeRegister(opts: { waiting?: boolean } = {}) {
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
   const update = vi.fn().mockResolvedValue(undefined);
+  const regListeners = new Set<() => void>();
   const registration = {
     update,
     waiting: opts.waiting === false ? null : {},
+    addEventListener: (_type: string, listener: () => void) => regListeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => regListeners.delete(listener),
   } as unknown as ServiceWorkerRegistration;
   let options: RegisterOptions = {};
   const register: RegisterSW = (given) => {
@@ -74,6 +77,10 @@ function fakeRegister(opts: { waiting?: boolean } = {}) {
     update,
     registration,
     registerSw: () => options.onRegisteredSW?.('/sw.js', registration),
+    fireUpdateFound: () => {
+      for (const listener of [...regListeners]) listener();
+    },
+    updateFoundListenerCount: () => regListeners.size,
     needRefresh: () => options.onNeedRefresh?.(),
     needReload: () => options.onNeedReload?.(),
     options: () => options,
@@ -669,4 +676,56 @@ test('B4: pembersih membatalkan penunggu yang berjalan (timer dan pendengar dile
     vi.advanceTimersByTime(30_000);
     expect(view.location.reload, mode).not.toHaveBeenCalled();
   }
+});
+
+test('N4/putaran 4: pembaruan SW yang dimulai peramban sendiri (updatefound) juga dipantau tanpa menunggu pemeriksaan berikutnya; pendengar dilepas oleh pembersih', async () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reg.updateFoundListenerCount()).toBe(1);
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.dismiss());
+  expect(hook.result.current.dismissed).toBe(true);
+  reg.update.mockClear();
+  // Peramban memulai pembaruan sendiri: SW baru installing, tanpa update() dari kita.
+  const sw2 = fakeWorker();
+  Object.assign(reg.registration, { installing: sw2.worker });
+  act(() => reg.fireUpdateFound());
+  expect(reg.update).not.toHaveBeenCalled();
+  expect(sw2.listenerCount()).toBe(1);
+  Object.assign(reg.registration, { waiting: { name: 'sw2' }, installing: null });
+  act(() => sw2.setState('installed'));
+  expect(hook.result.current.dismissed).toBe(false);
+  expect(hook.result.current.needRefresh).toBe(true);
+  stop();
+  expect(reg.updateFoundListenerCount()).toBe(0);
+});
+
+test('N5: jalur penuh installing -> installed -> klik Muat ulang -> controllerchange: muat ulang tepat sekali dan pending kembali false', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const sw2 = fakeWorker();
+  Object.assign(reg.registration, { installing: sw2.worker });
+  notifyChunkLoadFailure();
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.reload());
+  expect(hook.result.current.pending).toBe(true);
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  // SW baru selesai dipasang: pending tetap menyala (tanpa kedipan) sampai SW mengambil alih.
+  Object.assign(reg.registration, { waiting: {}, installing: null });
+  act(() => sw2.setState('installed'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(hook.result.current.pending).toBe(true);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.pending).toBe(false);
+  // Peristiwa ganda dari pustaka dan batas waktu tidak memuat ulang lagi.
+  reg.needReload();
+  vi.advanceTimersByTime(30_000);
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
 });

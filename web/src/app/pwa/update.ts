@@ -181,6 +181,17 @@ export function startPwaUpdates(options: {
     onRegisteredSW: (_swUrl, registered) => {
       registration = registered;
       currentRegistration = registered;
+      // Pembaruan SW yang dimulai peramban sendiri (navigasi, pemeriksaan 24 jam) juga dipantau, tanpa menunggu
+      // pemeriksaan kita berikutnya; pustaka berhenti memanggil onNeedRefresh setelah pembaruan eksternal pertama.
+      if (registered?.addEventListener) {
+        const onUpdateFound = () => watchInstalling();
+        registered.addEventListener('updatefound', onUpdateFound);
+        const disposeUpdateFound = () => {
+          registered.removeEventListener('updatefound', onUpdateFound);
+          disposers.delete(disposeUpdateFound);
+        };
+        disposers.add(disposeUpdateFound);
+      }
       // Pustaka dapat mengumumkan SW menunggu sebelum registrasi diketahui: samakan pembanding agar pemeriksaan
       // pertama tidak menganggapnya "baru" dan membatalkan Nanti.
       if (needRefresh) announcedWaiting = registered?.waiting ?? null;

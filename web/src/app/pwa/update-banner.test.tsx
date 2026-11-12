@@ -220,7 +220,11 @@ test('B4: selama menunggu, tombol Muat ulang menampilkan Memuat… dan nonaktif;
   fake.announce();
   await userEvent.click(screen.getByRole('button', { name: 'Muat ulang' }));
   const busy = screen.getByRole('button', { name: 'Memuat…' });
-  expect(busy).toBeDisabled();
+  // N2: aria-disabled (bukan disabled) agar fokus papan ketik tidak hilang; klik ulang diabaikan.
+  expect(busy).toHaveAttribute('aria-disabled', 'true');
+  expect(busy).not.toBeDisabled();
+  await userEvent.click(busy);
+  expect(fake.updateSW).toHaveBeenCalledTimes(1);
   expect(fake.updateSW).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();

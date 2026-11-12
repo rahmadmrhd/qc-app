@@ -105,7 +105,14 @@ test('B4: tombol Muat ulang di ErrorView menampilkan Memuat… dan nonaktif sela
   options.onRegisteredSW?.('/sw.js', registration as unknown as ServiceWorkerRegistration);
   act(() => options.onNeedRefresh?.());
   render(<ErrorView error={new Error('x')} reset={() => undefined} info={info} />);
+  // N2: live region sudah ada (kosong) sebelum klik agar perubahan diumumkan pembaca layar.
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
   await userEvent.click(screen.getByRole('button', { name: 'Muat ulang' }));
   expect(updateSW).toHaveBeenCalledWith(true);
-  expect(screen.getByRole('button', { name: 'Memuat…' })).toBeDisabled();
+  const busy = screen.getByRole('button', { name: 'Memuat…' });
+  expect(busy).toHaveAttribute('aria-disabled', 'true');
+  expect(busy).not.toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent(/memuat/i);
+  await userEvent.click(busy);
+  expect(updateSW).toHaveBeenCalledTimes(1);
 });

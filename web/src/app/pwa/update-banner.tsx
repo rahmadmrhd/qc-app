@@ -43,7 +43,13 @@ export function PwaUpdateBanner() {
         >
           Nanti
         </Button>
-        <Button size="sm" onClick={reload} disabled={pending} aria-busy={pending}>
+        <Button
+          size="sm"
+          onClick={reload}
+          aria-disabled={pending}
+          aria-busy={pending}
+          className="aria-disabled:opacity-50"
+        >
           {pending ? 'Memuat…' : 'Muat ulang'}
         </Button>
       </div>

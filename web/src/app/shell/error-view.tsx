@@ -29,9 +29,19 @@ export function ErrorView({ error, reset }: ErrorComponentProps) {
                 : 'Versi baru aplikasi tersedia; muat ulang bila galat berlanjut.'}
             </p>
           )}
+          {/* Live region: pembaca layar mengumumkan bahwa muat ulang sedang berjalan (tombol tak lagi nonaktif/hilang fokus). */}
+          <p role="status" className="sr-only">
+            {pending ? 'Memuat versi baru…' : ''}
+          </p>
           <div className="flex flex-wrap gap-2">
             {needRefresh && (
-              <Button size="sm" onClick={reload} disabled={pending} aria-busy={pending}>
+              <Button
+                size="sm"
+                onClick={reload}
+                aria-disabled={pending}
+                aria-busy={pending}
+                className="aria-disabled:opacity-50"
+              >
                 {pending ? 'Memuat…' : 'Muat ulang'}
               </Button>
             )}
