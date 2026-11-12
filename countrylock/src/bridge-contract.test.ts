@@ -128,7 +128,7 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
     expect(BRIDGE_VERSION).toBe(3);
-    expect(MIN_BRIDGE_VERSION).toBe(1);
+    expect(MIN_BRIDGE_VERSION).toBe(2);
     const values = Object.values(BRIDGE_CHANNELS);
     expect(new Set(values).size).toBe(values.length);
     for (const channel of [
@@ -173,8 +173,8 @@ describe('stripTerminalControl', () => {
 });
 
 describe('kanal auth (BRIDGE_VERSION 2)', () => {
-  test('MIN_BRIDGE_VERSION tetap 1 agar UI tetap menerima jembatan lama; kanal auth tak menerima argumen', () => {
-    expect(MIN_BRIDGE_VERSION).toBe(1);
+  test('MIN_BRIDGE_VERSION 2 (UI memakai bridge.auth, jadi jembatan v1 ditolak); kanal auth tak menerima argumen', () => {
+    expect(MIN_BRIDGE_VERSION).toBe(2);
     expect(BRIDGE_CHANNELS.authStatus).toBe('qc:auth:status');
     expect(BRIDGE_CHANNELS.authLogin).toBe('qc:auth:login');
     expect(BRIDGE_CHANNELS.authLogout).toBe('qc:auth:logout');
@@ -187,6 +187,7 @@ describe('kanal auth (BRIDGE_VERSION 2)', () => {
 
 describe('UI_MIN_BRIDGE_VERSION', () => {
   test('tidak melebihi BRIDGE_VERSION saat ini dan paling rendah 1 (dinaikkan hanya bila UI butuh fungsi jembatan baru)', () => {
+    // Bundel UI yang diunduh tak boleh meminta jembatan yang lebih rendah dari yang dibutuhkan web.
     expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(MIN_BRIDGE_VERSION);
     expect(UI_MIN_BRIDGE_VERSION).toBeLessThanOrEqual(BRIDGE_VERSION);
   });

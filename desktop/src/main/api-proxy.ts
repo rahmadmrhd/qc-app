@@ -35,6 +35,23 @@ const DROP_RESPONSE_HEADERS = [
   'connection',
 ];
 
+/**
+ * Respons proxy dilayani di origin `app://qc`, yang memegang `window.qcBridge`. Bila rute server
+ * pernah menjawab HTML (atau ada navigasi tingkat atas ke sana), dokumen itu akan berjalan dengan
+ * hak halaman aplikasi. CSP `default-src 'none'; sandbox` melumpuhkan skrip dan menaruh dokumen di
+ * origin buram; `nosniff` mencegah tipe isi ditebak. Header ini tak memengaruhi `<img>`,
+ * `fetch`, dan unduhan (CSP hanya berlaku bagi dokumen dan worker), dan selalu menimpa milik server.
+ */
+const HARDENING_HEADERS: ReadonlyArray<readonly [string, string]> = [
+  ['Content-Security-Policy', "default-src 'none'; sandbox"],
+  ['X-Content-Type-Options', 'nosniff'],
+];
+
+function hardened(response: Response): Response {
+  for (const [name, value] of HARDENING_HEADERS) response.headers.set(name, value);
+  return response;
+}
+
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 export interface ApiProxyDeps {
@@ -96,7 +113,7 @@ function isCleanPath(pathname: string): boolean {
 export function createApiProxy(deps: ApiProxyDeps): (request: Request) => Promise<Response> {
   const doFetch = deps.fetchImpl ?? fetch;
 
-  return async (request) => {
+  const handle = async (request: Request): Promise<Response> => {
     let url: URL;
     try {
       url = new URL(request.url);
@@ -157,7 +174,9 @@ export function createApiProxy(deps: ApiProxyDeps): (request: Request) => Promis
       );
     }
 
-    if (upstream.status === 401 && stored) {
+    // Hapus token hanya bila MASIH token yang dipakai permintaan ini: 401 terlambat dari token lama
+    // tak boleh menghapus token hasil login ulang (atau memanggil ulang keluar yang sudah terjadi).
+    if (upstream.status === 401 && stored && deps.tokens.get()?.token === stored.token) {
       deps.tokens.clear();
       deps.onUnauthenticated();
     }
@@ -170,4 +189,6 @@ export function createApiProxy(deps: ApiProxyDeps): (request: Request) => Promis
       headers: responseHeaders,
     });
   };
+
+  return async (request) => hardened(await handle(request));
 }

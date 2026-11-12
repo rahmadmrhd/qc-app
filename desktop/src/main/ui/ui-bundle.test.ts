@@ -449,3 +449,88 @@ describe('pemulihan (markLoadFailed / markLoadOk)', () => {
     expect(readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
   });
 });
+
+describe('identitas aplikasi (kunci publik dan versi jembatan) pada state.json (M6 b/c)', () => {
+  /** Unduh, terapkan, lalu kembalikan versinya. */
+  async function activateV1(over: Partial<UiBundleDeps> = {}): Promise<string> {
+    current = build(BASE_FILES);
+    const m = manager(over);
+    await m.checkForUpdate();
+    expect(m.applyReady()).toBe(true);
+    return current.uiVersion;
+  }
+
+  test('state.json mencatat sidik kunci publik (bukan kuncinya) dan versi jembatan', async () => {
+    await activateV1();
+    const raw = readFileSync(join(dir, 'state.json'), 'utf8');
+    const state = JSON.parse(raw) as { keyId: string; bridgeVersion: number };
+    expect(state.keyId).toBe(sha(KEYS.publicPem.trim()));
+    expect(state.bridgeVersion).toBe(2);
+    expect(raw).not.toContain('BEGIN PUBLIC KEY');
+  });
+
+  test('identitas sama: bundel aktif tetap dipakai pada peluncuran berikutnya', async () => {
+    const v = await activateV1();
+    expect(manager().activeRoot()).toBe(join(dir, 'versions', v));
+  });
+
+  test('kunci publik berganti di rilis aplikasi baru: kembali ke UI dasar dan bundel lama dibuang', async () => {
+    const v = await activateV1();
+    const m = manager({ publicKeyPem: OTHER_KEYS.publicPem });
+    expect(m.activeRoot()).toBe(baseline);
+    expect(versionsOnDisk()).toEqual([]);
+    expect(existsSync(join(dir, 'versions', v))).toBe(false);
+    // keadaan tersimpan sudah memakai identitas baru: peluncuran berikutnya tak mengulang
+    const state = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')) as {
+      active: string | null;
+      keyId: string;
+    };
+    expect(state.active).toBeNull();
+    expect(state.keyId).toBe(sha(OTHER_KEYS.publicPem.trim()));
+  });
+
+  test('kunci diganti jadi null (pembaruan dimatikan) juga kembali ke dasar', async () => {
+    await activateV1();
+    expect(manager({ publicKeyPem: null }).activeRoot()).toBe(baseline);
+  });
+
+  test('versi jembatan aplikasi berganti: kembali ke dasar, previous dan ready ikut dibuang', async () => {
+    const first = await activateV1();
+    // bundel kedua jadi aktif (previous = first), lalu bundel ketiga menunggu (ready)
+    manifestEtag = '"etag-2"';
+    current = build({ ...BASE_FILES, 'index.html': '<html>v2</html>' });
+    const m = manager();
+    await m.checkForUpdate();
+    m.applyReady();
+    manifestEtag = '"etag-3"';
+    current = build({ ...BASE_FILES, 'index.html': '<html>v3</html>' });
+    await m.checkForUpdate();
+    expect(m.readyVersion()).not.toBeNull();
+    expect(versionsOnDisk()).toContain(first);
+
+    const upgraded = manager({ bridgeVersion: 3 });
+    expect(upgraded.activeRoot()).toBe(baseline);
+    expect(upgraded.readyVersion()).toBeNull();
+    expect(versionsOnDisk()).toEqual([]);
+  });
+
+  test('setelah kembali ke dasar, pemeriksaan berikutnya mengunduh ulang (ETag lama dibuang) dan versi bad diberi kesempatan baru', async () => {
+    await activateV1();
+    const upgraded = manager({ bridgeVersion: 3 });
+    requests = [];
+    const result = await upgraded.checkForUpdate();
+    expect(result.status).toBe('ready');
+    expect(requests.some((r) => r.includes('[inm]'))).toBe(false);
+  });
+
+  test('state.json lama tanpa identitas dan berisi bundel aktif: kembali ke dasar', async () => {
+    const v = await activateV1();
+    const file = join(dir, 'state.json');
+    const state = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    delete state.keyId;
+    delete state.bridgeVersion;
+    writeFileSync(file, JSON.stringify(state));
+    expect(manager().activeRoot()).toBe(baseline);
+    expect(existsSync(join(dir, 'versions', v))).toBe(false);
+  });
+});

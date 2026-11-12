@@ -1,6 +1,6 @@
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createApiProxy, isProxyRoute } from './api-proxy';
 import { createTokenStore, type TokenStore } from './auth/token-store';
 import { DEFAULT_SERVER_URL, type Settings } from './settings';
@@ -165,6 +165,39 @@ describe('header', () => {
     expect(seen[0]?.headers.authorization).toBeUndefined();
   });
 
+  test('M1: semua respons proxy (sukses, galat server, dan yang dibuat proxy) membawa CSP terkunci dan nosniff', async () => {
+    const expectHardened = (res: Response) => {
+      expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    };
+    // Server menjawab HTML dan mencoba menimpa kebijakan: yang dipakai tetap milik proxy.
+    respond = (_s, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'text/html',
+        'Content-Security-Policy': 'default-src *',
+        'X-Content-Type-Options': 'sniff',
+      });
+      res.end('<script>window.qcBridge</script>');
+    };
+    expectHardened(await proxy()(req('/api/v1/html')));
+    respond = (_s, res) => {
+      res.writeHead(500);
+      res.end('x');
+    };
+    expectHardened(await proxy()(req('/api/v1/gagal')));
+    expectHardened(await proxy()(req('/api/jahat')));
+    expectHardened(await proxy()(req('/api/v1/x', { method: 'OPTIONS' })));
+    expectHardened(
+      await proxy()(req('/auth/logout', { method: 'POST', headers: { 'X-Requested-With': 'qc' } })),
+    );
+    // Server mati.
+    expectHardened(
+      await proxy({ settings: () => ({ packageDir: null, serverUrl: 'http://127.0.0.1:1' }) })(
+        req('/api/v1/me'),
+      ),
+    );
+  });
+
   test('Set-Cookie dari server tidak diteruskan ke renderer', async () => {
     respond = (_s, res) => {
       res.writeHead(200, {
@@ -191,6 +224,46 @@ describe('perilaku', () => {
     expect(await res.text()).toBe('{"code":"UNAUTHENTICATED"}');
     expect(tokens.get()).toBeNull();
     expect(unauthenticated).toBe(1);
+  });
+
+  test('M2: 401 untuk permintaan berbekal token lama TIDAK menghapus token baru hasil login ulang', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    respond = (_s, res) => {
+      // Server menahan jawaban sampai pengguna keluar lalu masuk lagi.
+      void gate.then(() => {
+        res.writeHead(401, { 'Content-Type': 'application/problem+json' });
+        res.end('{"code":"UNAUTHENTICATED"}');
+      });
+    };
+    const pending = proxy()(req('/api/v1/me'));
+    await vi.waitFor(() => expect(seen.length).toBe(1));
+    tokens.set({ token: 'TOKEN-BARU', email: 'a@b.co', expiresAt: 9_999_999_999_999 });
+    release();
+    expect((await pending).status).toBe(401);
+    expect(tokens.get()?.token).toBe('TOKEN-BARU');
+    expect(unauthenticated).toBe(0);
+  });
+
+  test('M2: 401 setelah pengguna keluar (token sudah kosong) tidak memanggil onUnauthenticated lagi', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    respond = (_s, res) => {
+      void gate.then(() => {
+        res.writeHead(401);
+        res.end();
+      });
+    };
+    const pending = proxy()(req('/api/v1/me'));
+    await vi.waitFor(() => expect(seen.length).toBe(1));
+    tokens.clear();
+    release();
+    expect((await pending).status).toBe(401);
+    expect(unauthenticated).toBe(0);
   });
 
   test('401 tanpa token tersimpan diteruskan tanpa memanggil onUnauthenticated (tanpa banjir peristiwa)', async () => {

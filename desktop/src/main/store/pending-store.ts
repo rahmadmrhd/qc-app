@@ -50,7 +50,7 @@ export function openPendingStore(file: string): PendingStore {
     // Pragma pertama yang menyentuh berkas: berkas yang bukan SQLite gagal di sini.
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
     db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA synchronous = NORMAL');
+    db.exec('PRAGMA synchronous = FULL');
     db.exec(`CREATE TABLE IF NOT EXISTS pending (
       serial TEXT PRIMARY KEY NOT NULL,
       brand TEXT NOT NULL,

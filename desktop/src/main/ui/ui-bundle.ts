@@ -59,6 +59,10 @@ interface State {
   bad: string[];
   failures: number;
   etag: string | null;
+  /** Sidik kunci publik aplikasi yang menulis keadaan ini (`null` = belum tercatat). */
+  keyId: string | null;
+  /** `bridgeVersion` aplikasi yang menulis keadaan ini (`null` = belum tercatat). */
+  bridgeVersion: number | null;
 }
 
 type ManifestFetch =
@@ -93,11 +97,27 @@ function destinationOf(root: string, path: string): string {
 class Rejected extends Error {}
 
 function emptyState(): State {
-  return { active: null, previous: null, ready: null, bad: [], failures: 0, etag: null };
+  return {
+    active: null,
+    previous: null,
+    ready: null,
+    bad: [],
+    failures: 0,
+    etag: null,
+    keyId: null,
+    bridgeVersion: null,
+  };
 }
 
 function versionOrNull(value: unknown): string | null {
   return typeof value === 'string' && HEX64.test(value) ? value : null;
+}
+
+/** Sidik kunci publik pembaruan UI (sha256 PEM); `'none'` bila pembaruan dimatikan. */
+function keyIdOf(publicKeyPem: string | null): string {
+  return publicKeyPem === null
+    ? 'none'
+    : createHash('sha256').update(publicKeyPem.trim()).digest('hex');
 }
 
 function readState(file: string): State {
@@ -120,6 +140,11 @@ function readState(file: string): State {
       bad,
       failures,
       etag: typeof raw.etag === 'string' && raw.etag.length <= 256 ? raw.etag : null,
+      keyId: typeof raw.keyId === 'string' && raw.keyId.length <= 128 ? raw.keyId : null,
+      bridgeVersion:
+        typeof raw.bridgeVersion === 'number' && Number.isInteger(raw.bridgeVersion)
+          ? raw.bridgeVersion
+          : null,
     };
   } catch {
     return emptyState();
@@ -132,6 +157,7 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   const stagingDir = join(deps.dir, 'staging');
   const stateFile = join(deps.dir, 'state.json');
   const state = readState(stateFile);
+  const keyId = keyIdOf(deps.publicKeyPem);
   let inflight: Promise<UpdateResult> | null = null;
 
   const versionDir = (version: string): string => join(versionsDir, version);
@@ -141,6 +167,8 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   const persist = (): void => {
     try {
       mkdirSync(deps.dir, { recursive: true });
+      state.keyId = keyId;
+      state.bridgeVersion = deps.bridgeVersion;
       const temp = `${stateFile}.${process.pid}.tmp`;
       writeFileSync(temp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
       renameSync(temp, stateFile);
@@ -164,6 +192,22 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   const markBad = (version: string): void => {
     if (!state.bad.includes(version)) state.bad = [...state.bad, version].slice(-MAX_BAD);
   };
+
+  // Awal: keadaan ditulis aplikasi lain (kunci publik atau versi jembatan berbeda, mis. setelah
+  // pembaruan aplikasi atau rotasi/pencabutan kunci): bundel yang pernah diverifikasi dengan kunci
+  // lama atau untuk jembatan lama tak dipercaya lagi. Kembali ke UI dasar yang terkemas bersama
+  // aplikasi ini; ETag dan daftar bad dikosongkan agar server diperiksa ulang dari nol.
+  const hasBundles = state.active !== null || state.previous !== null || state.ready !== null;
+  if (hasBundles && (state.keyId !== keyId || state.bridgeVersion !== deps.bridgeVersion)) {
+    state.active = null;
+    state.previous = null;
+    state.ready = null;
+    state.bad = [];
+    state.failures = 0;
+    state.etag = null;
+    prune();
+    persist();
+  }
 
   // Awal: bundel aktif yang berkasnya hilang/rusak diabaikan (kembali ke dasar).
   if (state.active && !usable(state.active)) {

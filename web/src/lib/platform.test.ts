@@ -24,8 +24,14 @@ describe('platform', () => {
     expect(getBridge()).toBeNull();
   });
 
+  test('versi 1 (tanpa bridge.auth) ditolak getBridge tetapi tetap desktop', () => {
+    win.qcBridge = { version: 1 };
+    expect(getBridge()).toBeNull();
+    expect(isDesktop()).toBe(true);
+  });
+
   test('versi cukup → bridge dikembalikan dan isDesktop true', () => {
-    const bridge = { version: 1 };
+    const bridge = { version: 2 };
     win.qcBridge = bridge;
     expect(getBridge()).toBe(bridge);
     expect(isDesktop()).toBe(true);

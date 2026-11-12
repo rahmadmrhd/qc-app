@@ -3,7 +3,7 @@
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
 export const BRIDGE_VERSION = 3;
-export const MIN_BRIDGE_VERSION = 1;
+export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
 export const BRIDGE_CHANNELS = {
