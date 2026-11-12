@@ -431,3 +431,40 @@ test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai;
   expect(within(dialog).getByLabelText('Serial')).toHaveValue('ABC123');
   expect(within(dialog).getByLabelText('Catatan')).toHaveValue('catatan A');
 });
+
+test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain ditandai; sample yang sama-sama diubah tidak', async () => {
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Ubah data' }));
+  const dialog = await screen.findByRole('dialog');
+  await pickLink(within(dialog), 'Lokasi', 'Surabaya (SBY)');
+  await pickLink(within(dialog), 'Item', 'Aruba 2930');
+  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Sample' }));
+
+  // Orang lain mengubah lokasi (ke Bandung), item (ke Lain BU), dan sample (ke true) juga.
+  const fresh = {
+    ...SERIAL,
+    locationId: 'l3',
+    locationName: 'Bandung',
+    itemId: 'i9',
+    itemLabel: 'Lain BU',
+    sample: true,
+    updatedAt: '2026-11-13T03:00:00.000Z',
+  };
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.update') {
+      state = { serial: fresh, events: state.events };
+      return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
+    }
+    return original?.(id, input);
+  });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await within(dialog).findByRole('status');
+  expect(within(dialog).getByText(/Diubah orang lain menjadi: Bandung/)).toBeInTheDocument();
+  expect(within(dialog).getByText(/Diubah orang lain menjadi: Lain BU/)).toBeInTheDocument();
+  // Sample: nilai server sama dengan nilai pengguna, jadi tak ada konflik.
+  expect(within(dialog).queryByText(/Diubah orang lain menjadi: Sample/)).toBeNull();
+  expect(within(dialog).queryByText(/Diubah orang lain menjadi: Bukan sample/)).toBeNull();
+  // Nilai pengguna dipertahankan sampai ia memutuskan.
+  expect(within(dialog).getByRole('combobox', { name: 'Lokasi' })).toHaveValue('Surabaya (SBY)');
+});
