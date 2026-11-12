@@ -43,9 +43,10 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     const known = new Set(current);
     const added = split.serials.filter((serial) => !known.has(serial));
     if (added.length === 0) return 'duplicate';
-    if (current.length >= SERIAL_SEARCH_MAX) return 'rejected';
-    setText([...current, ...added].slice(0, SERIAL_SEARCH_MAX).join('\n'));
-    return added.length > SERIAL_SEARCH_MAX - current.length ? 'rejected' : 'added';
+    const merged = normalizeSearchText([...current, ...added].join('\n'));
+    if (merged.count === current.length) return 'rejected';
+    setText(merged.text);
+    return merged.capped ? 'rejected' : 'added';
   }
 
   return (
@@ -69,7 +70,9 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             role={normalized.capped ? 'alert' : undefined}
           >
             {normalized.capped
-              ? `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
+              ? normalized.tooLong
+                ? `Daftar terlalu panjang untuk satu pencarian: hanya ${normalized.count} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
+                : `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
               : normalized.count > 0
                 ? `${normalized.count} serial dicari (maks. ${SERIAL_SEARCH_MAX})`
                 : 'Tempel banyak serial sekaligus atau pindai.'}

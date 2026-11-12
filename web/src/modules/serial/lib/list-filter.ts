@@ -1,5 +1,6 @@
 import {
   isIsoDate,
+  listSerialsTooLong,
   normalizeSerial,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
@@ -28,22 +29,35 @@ export const serialSearchSchema = z.object({
 export type SerialSearch = z.infer<typeof serialSearchSchema>;
 
 /**
- * Teks pencarian -> serial ternormalisasi satu per baris, dibatasi `SERIAL_SEARCH_MAX`; `dropped` = jumlah serial sah
- * (unik) di atas batas yang diabaikan.
+ * Teks pencarian -> serial ternormalisasi satu per baris. Yang dipertahankan adalah awalan daftar: berhenti di serial
+ * pertama yang membuat jumlah melebihi `SERIAL_SEARCH_MAX` atau panjang URL ter-encode melebihi batas
+ * (`listSerialsTooLong`, fungsi bersama dengan server). `dropped` = serial sah (unik) yang diabaikan; `tooLong` = berhenti
+ * karena panjang, bukan jumlah.
  */
 export function normalizeSearchText(text: string): {
   text: string;
   count: number;
   capped: boolean;
   dropped: number;
+  tooLong: boolean;
 } {
-  const split = splitSerialInput(text, Number.MAX_SAFE_INTEGER);
-  const kept = split.serials.slice(0, SERIAL_SEARCH_MAX);
+  const all = splitSerialInput(text, Number.MAX_SAFE_INTEGER).serials;
+  const kept: string[] = [];
+  let tooLong = false;
+  for (const serial of all) {
+    if (kept.length >= SERIAL_SEARCH_MAX) break;
+    if (listSerialsTooLong([...kept, serial].join('\n'))) {
+      tooLong = true;
+      break;
+    }
+    kept.push(serial);
+  }
   return {
     text: kept.join('\n'),
     count: kept.length,
-    capped: split.serials.length > SERIAL_SEARCH_MAX,
-    dropped: Math.max(0, split.serials.length - SERIAL_SEARCH_MAX),
+    capped: all.length > kept.length,
+    dropped: all.length - kept.length,
+    tooLong,
   };
 }
 

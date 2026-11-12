@@ -1,4 +1,4 @@
-import { SERIAL_LIMITS } from '@shared/serials';
+import { listSerialsTooLong, SERIAL_LIMITS } from '@shared/serials';
 import { expect, test } from 'vitest';
 import {
   filterOfSearch,
@@ -43,4 +43,30 @@ test('filterOfSearch: satu serial = query, banyak = serials, filter lain diterus
     from: '2026-11-01',
     to: '2026-11-30',
   });
+});
+
+test('normalizeSearchText: serial panjang non-ASCII dipotong menurut listSerialsTooLong (fungsi bersama dengan server)', () => {
+  const wide = Array.from(
+    { length: 40 },
+    (_, index) => `${String.fromCharCode(233).repeat(60)}${index}`,
+  );
+  const result = normalizeSearchText(wide.join(String.fromCharCode(10)));
+  expect(result.tooLong).toBe(true);
+  expect(result.capped).toBe(true);
+  expect(result.count).toBeGreaterThan(0);
+  expect(result.count).toBeLessThan(40);
+  expect(result.dropped).toBe(40 - result.count);
+  expect(listSerialsTooLong(result.text)).toBe(false);
+  // Serial berikutnya akan melewati batas: awalan yang dipertahankan sudah maksimal.
+  expect(listSerialsTooLong(`${result.text}${String.fromCharCode(10)}${wide[result.count]}`)).toBe(
+    true,
+  );
+  // Serial ASCII biasa: batas jumlah (bukan panjang) yang berlaku.
+  const plain = normalizeSearchText(
+    Array.from({ length: 60 }, (_, index) => `S${String(index).padStart(60, '0')}`).join(
+      String.fromCharCode(10),
+    ),
+  );
+  expect(plain.tooLong).toBe(false);
+  expect(plain.count).toBe(SERIAL_SEARCH_MAX);
 });

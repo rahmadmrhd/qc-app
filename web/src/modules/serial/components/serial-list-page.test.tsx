@@ -1,4 +1,5 @@
 import type { MeDto, SerialSummaryDto } from '@shared/contract';
+import { listSerialsTooLong } from '@shared/serials';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -244,4 +245,28 @@ test('editor (serial: edit) memuat semua lokasi aktif dari serials.locationOptio
   const names = await linkOptionNames(screen, 'Filter lokasi');
   expect(names).toEqual(['Jakarta (JKT)', 'Surabaya (SBY)']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(true);
+});
+
+test('tempelan serial lebar melebihi panjang URL: pesan khusus dan hanya awalan yang dikirim', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const nl = String.fromCharCode(10);
+  const wide = Array.from(
+    { length: 40 },
+    (_, index) => `${String.fromCharCode(233).repeat(60)}${index}`,
+  );
+  fireEvent.change(screen.getByLabelText('Cari serial (satu per baris)'), {
+    target: { value: wide.join(nl) },
+  });
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Daftar terlalu panjang untuk satu pencarian',
+  );
+  await waitFor(
+    () => {
+      const sent = lastListInput().serials as string;
+      expect(sent.split(nl).length).toBeLessThan(40);
+      expect(listSerialsTooLong(sent)).toBe(false);
+    },
+    { timeout: 3000 },
+  );
 });
