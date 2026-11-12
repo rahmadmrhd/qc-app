@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   isIsoDate,
+  listSerialsTooLong,
   normalizeSerial,
   SERIAL_LIMITS,
   serialProblem,
@@ -76,5 +77,50 @@ describe('isIsoDate', () => {
     for (const bad of ['2026-13-01', '2026-02-30', '12-11-2026', '2026-1-1', '']) {
       expect(isIsoDate(bad)).toBe(false);
     }
+  });
+});
+
+describe('listSerialsTooLong', () => {
+  const MAX = SERIAL_LIMITS.listSerialsEncodedMax;
+
+  test('tepat di batas ter-encode lolos, satu lebih ditolak', () => {
+    expect(listSerialsTooLong('A'.repeat(MAX))).toBe(false);
+    expect(listSerialsTooLong('A'.repeat(MAX + 1))).toBe(true);
+  });
+
+  test('baris baru dihitung 3 karakter (%0A) dan CRLF/CR dinormalkan menjadi satu', () => {
+    // n x 'A' + 1 baris baru = n + 3 karakter ter-encode.
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\n`)).toBe(false);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 2)}\n`)).toBe(true);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\r\n`)).toBe(false);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\r`)).toBe(false);
+  });
+
+  test("karakter ! ' ( ) ~ dihitung 3 karakter seperti URLSearchParams, bukan 1 seperti encodeURIComponent", () => {
+    for (const char of ['!', "'", '(', ')', '~']) {
+      const encodedThree = new URLSearchParams({ serials: char })
+        .toString()
+        .slice('serials='.length);
+      expect(encodedThree.length).toBe(3);
+      const fits = Math.floor(MAX / 3);
+      expect(listSerialsTooLong(char.repeat(fits))).toBe(false);
+      expect(listSerialsTooLong(char.repeat(fits + 1))).toBe(true);
+    }
+    // 50 x 64 '~': lolos bila dihitung 1 karakter, tetapi terkirim ~9,6 KB.
+    expect(listSerialsTooLong(Array.from({ length: 50 }, () => '~'.repeat(64)).join('\n'))).toBe(
+      true,
+    );
+  });
+
+  test('karakter non-ASCII membengkak sesuai percent-encode UTF-8', () => {
+    // 'é' = 2 byte = 6 karakter ter-encode.
+    expect(listSerialsTooLong('é'.repeat(Math.floor(MAX / 6)))).toBe(false);
+    expect(listSerialsTooLong('é'.repeat(Math.floor(MAX / 6) + 1))).toBe(true);
+  });
+
+  test('serial ASCII alfanumerik biasa (50 x 64) lolos', () => {
+    expect(listSerialsTooLong(Array.from({ length: 50 }, () => 'X'.repeat(64)).join('\n'))).toBe(
+      false,
+    );
   });
 });

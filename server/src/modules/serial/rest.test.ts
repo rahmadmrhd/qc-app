@@ -139,6 +139,20 @@ describe('serials.itemOptions', () => {
     expect(empty.items).toEqual([]);
   });
 
+  test('itemIds: limit/query/cursor tak valid diabaikan (bukan ditolak)', async () => {
+    const result = await call(WRITER, 'serials.itemOptions', {
+      itemIds: ['i-a1'],
+      limit: 999,
+      query: 'x'.repeat(500),
+      cursor: 12345,
+    });
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).items.map((i: Json) => i.id)).toEqual(['i-a1']);
+    // Tanpa itemIds, limit tak valid tetap ditolak.
+    const plain = await call(WRITER, 'serials.itemOptions', { limit: 999 });
+    expect(plain.error?.code).toBe('VALIDATION');
+  });
+
   test('itemIds lewat REST GET (daftar dipisah koma) dan validator: lebih dari 50 atau elemen tak valid ditolak', async () => {
     const tooMany = Array.from({ length: 51 }, (_, i) => `i${i}`);
     expect((await call(WRITER, 'serials.itemOptions', { itemIds: tooMany })).error?.code).toBe(

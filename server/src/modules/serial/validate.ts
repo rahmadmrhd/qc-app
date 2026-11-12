@@ -32,9 +32,25 @@ export const SERIAL_ITEM_IDS_MAX = 50;
 export const SERIAL_LIST_DEFAULT_LIMIT = 50;
 export const SERIAL_LIST_MAX_LIMIT = 100;
 
-/** Opsi item untuk pencatat: input boleh kosong; `cursor` buram (kunci item terakhir). */
+/**
+ * Opsi item untuk pencatat: input boleh kosong; `cursor` buram (kunci item terakhir). Bila `itemIds` ada (mode id),
+ * `query`, `cursor`, dan `limit` DIABAIKAN sepenuhnya (nilai tak valid pun tidak ditolak), sesuai kontrak.
+ */
 export function validateListSerialItemOptions(raw: unknown): ListSerialItemOptionsInput {
   const reader = readObject(raw ?? {});
+  const itemIdsRaw = reader.raw('itemIds');
+  if (itemIdsRaw !== undefined && itemIdsRaw !== null) {
+    // `cursor`/`limit`/`query` sengaja tidak dibaca: pada mode id nilainya (valid atau tidak) diabaikan.
+    if (
+      !Array.isArray(itemIdsRaw) ||
+      itemIdsRaw.length > SERIAL_ITEM_IDS_MAX ||
+      !itemIdsRaw.every((id) => isText(id, 100))
+    ) {
+      reader.fail('itemIds', `Maksimal ${SERIAL_ITEM_IDS_MAX} id item yang valid`);
+    }
+    reader.done();
+    return { itemIds: [...new Set(itemIdsRaw as string[])] };
+  }
   const cursor = reader.raw('cursor');
   if (cursor !== undefined && cursor !== null && (typeof cursor !== 'string' || cursor === '')) {
     reader.fail('cursor', 'Kursor tidak valid');
@@ -51,23 +67,11 @@ export function validateListSerialItemOptions(raw: unknown): ListSerialItemOptio
     reader.fail('limit', `Batas halaman harus 1-${SERIAL_ITEM_OPTIONS_MAX_LIMIT}`);
   }
   const query = reader.str('query', { max: 100 });
-  const itemIdsRaw = reader.raw('itemIds');
-  let itemIds: string[] | undefined;
-  if (itemIdsRaw !== undefined && itemIdsRaw !== null) {
-    if (
-      !Array.isArray(itemIdsRaw) ||
-      itemIdsRaw.length > SERIAL_ITEM_IDS_MAX ||
-      !itemIdsRaw.every((id) => isText(id, 100))
-    ) {
-      reader.fail('itemIds', `Maksimal ${SERIAL_ITEM_IDS_MAX} id item yang valid`);
-    } else itemIds = [...new Set(itemIdsRaw as string[])];
-  }
   reader.done();
   return {
     ...(typeof limit === 'number' ? { limit } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
-    ...(itemIds !== undefined ? { itemIds } : {}),
   };
 }
 

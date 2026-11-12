@@ -50,10 +50,15 @@ export const SERIAL_LIMITS = {
   listSerialsEncodedMax: 4000,
 } as const;
 
-/** Panjang `serials` setelah `encodeURIComponent` melebihi batas URL: karakter non-ASCII/tanda baca membengkak 3-9x. */
+/**
+ * Panjang `serials` setelah di-encode untuk URL melebihi batas: karakter non-ASCII/tanda baca membengkak 3-9x.
+ * Dihitung KONSERVATIF mengikuti pengirim web (`URLSearchParams`), yang juga meng-encode `! ' ( ) ~` (3 karakter,
+ * tidak seperti `encodeURIComponent`) dan spasi/baris baru (3 karakter di sini). Satu sumber untuk server dan web.
+ */
 export function listSerialsTooLong(text: string): boolean {
   const normalized = text.replace(/\r\n|\r/g, '\n');
-  return encodeURIComponent(normalized).length > SERIAL_LIMITS.listSerialsEncodedMax;
+  const extra = (normalized.match(/[!'()~]/g) ?? []).length * 2;
+  return encodeURIComponent(normalized).length + extra > SERIAL_LIMITS.listSerialsEncodedMax;
 }
 
 const MAC_COLON_DASH = /^[0-9A-F]{2}([:-])(?:[0-9A-F]{2}\1){4}[0-9A-F]{2}$/;
