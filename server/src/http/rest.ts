@@ -2,10 +2,10 @@ import { appError, isAppError } from '@server/core/errors';
 import { logRequest } from '@server/core/log';
 import {
   authorize,
+  credentialOf,
   execute,
   type RouteMeta,
   type RouteTable,
-  readCookie,
 } from '@server/core/router';
 import { SESSION_COOKIE } from '@server/core/session';
 import { MAX_JSON_BODY_BYTES, readBytesLimited, readTextLimited } from '@server/http/body';
@@ -174,7 +174,7 @@ function handlerFor(operation: Operation, routes: RouteTable) {
       // Izin berlokasi butuh input tervalidasi, jadi diperiksa di `execute`.
       const authorized = await authorize(
         c.env,
-        readCookie(request, SESSION_COOKIE),
+        credentialOf(request, SESSION_COOKIE),
         id,
         routes,
         meta,

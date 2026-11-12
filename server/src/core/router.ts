@@ -7,7 +7,7 @@ import { loadRequestCtx, type RequestCtx } from './context';
 import { DbError } from './db';
 import { type Env, nowOf } from './env';
 import { appError, isAppError } from './errors';
-import { verifySessionToken } from './session';
+import { type SessionPayload, verifyDesktopToken, verifySessionToken } from './session';
 
 export type GlobalPermission = {
   module: Exclude<ModuleKey, LocatedModule>;
@@ -70,6 +70,45 @@ export function readCookie(request: Request, name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Token dari header `Authorization: Bearer <token>`: HANYA skema `Bearer` (huruf besar-kecil persis), tepat satu spasi,
+ * tanpa spasi tambahan atau bagian lain. `null` bila header tidak ada ATAU bentuknya salah.
+ */
+export function bearerTokenOf(request: Request): string | null {
+  const header = request.headers.get('authorization');
+  if (header === null || !header.startsWith('Bearer ')) return null;
+  const token = header.slice('Bearer '.length);
+  return token === '' || /\s/.test(token) ? null : token;
+}
+
+/** Kredensial Bearer dari permintaan; `bearer: null` = header ada tetapi bentuknya salah (ditolak, tanpa jatuh ke cookie). */
+export interface BearerCredential {
+  bearer: string | null;
+}
+
+function isBearerCredential(value: unknown): value is BearerCredential {
+  return typeof value === 'object' && value !== null && 'bearer' in value;
+}
+
+/**
+ * Kredensial permintaan untuk `authorize`: bila header `Authorization` ada, Bearer SAJA yang dipakai (salah = 401,
+ * cookie diabaikan); bila tidak ada, token cookie sesi web.
+ */
+export function credentialOf(request: Request, cookieName: string): unknown {
+  if (request.headers.has('authorization')) return { bearer: bearerTokenOf(request) };
+  return readCookie(request, cookieName);
+}
+
+/** Sesi dari kredensial: token Bearer harus `typ: 'desktop'`, token cookie tanpa `typ`. */
+export async function sessionOfCredential(
+  env: Env,
+  credential: unknown,
+  now: number,
+): Promise<SessionPayload | null> {
+  if (isBearerCredential(credential)) return verifyDesktopToken(env, credential.bearer, now);
+  return verifySessionToken(env, credential, now);
+}
+
 /** Jejak satu permintaan yang diisi `runRoute` untuk log pemanggil (`userId` terisi setelah sesi sah). */
 export interface RouteMeta {
   requestId: string;
@@ -100,7 +139,7 @@ export async function authorize(
   }
   const route = routes[id as ApiId] as unknown as RouteDef<ApiId>;
 
-  const session = await verifySessionToken(env, token, nowOf(env));
+  const session = await sessionOfCredential(env, token, nowOf(env));
   if (!session) throw appError('UNAUTHENTICATED', 'Sesi tidak valid atau sudah berakhir');
   const base = await loadRequestCtx(env, session.email, meta.requestId);
   if (!base) throw appError('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
