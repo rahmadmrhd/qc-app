@@ -116,25 +116,22 @@ export function createLoginFlow(deps: LoginFlowDeps): LoginFlow {
       try {
         await deps.openExternal(url.toString());
       } catch {
+        // Dilaporkan lewat penolakan `start()` (bukan `onChange`): UI tak boleh melihat kegagalan palsu.
         pending = null;
-        notify();
         throw new Error('Tidak dapat membuka peramban sistem');
       }
-      notify();
     },
 
     async handleCallback(rawUrl) {
       const parsed = parseQcUrl(rawUrl);
       const callback = parsed?.auth;
       const login = pending;
-      if (
-        !callback ||
-        !login ||
-        now() - login.startedAt > LOGIN_MAX_AGE_MS ||
-        !sameString(callback.state, login.state)
-      ) {
-        // Kedaluwarsa dilepas; state asing tak menghapus login sah yang sedang menunggu.
-        if (login && now() - login.startedAt > LOGIN_MAX_AGE_MS) pending = null;
+      // `onChange` hanya untuk hasil nyata login yang berjalan (sukses, penukaran gagal, kedaluwarsa).
+      // Callback asing, ganda, tak sah, atau tanpa login berjalan diabaikan DIAM-DIAM: kalau tidak, UI
+      // menampilkan "login gagal" padahal login sah masih menunggu.
+      if (!callback || !login || !sameString(callback.state, login.state)) return false;
+      if (now() - login.startedAt > LOGIN_MAX_AGE_MS) {
+        pending = null;
         notify();
         return false;
       }

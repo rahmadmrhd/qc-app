@@ -17,6 +17,9 @@ type Phase = 'idle' | 'waiting' | 'checking';
 /** Batas tunggu login di browser sebelum UI menyerah (kode login berlaku 2 menit; ini jaring pengaman). */
 export const LOGIN_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** Batas memeriksa sesi (`me`) setelah login; server yang menggantung tak boleh membuat UI menunggu selamanya. */
+export const LOGIN_CHECK_TIMEOUT_MS = 30 * 1000;
+
 const LOGIN_FAILED_MESSAGE = 'Login belum berhasil. Coba lagi.';
 
 /**
@@ -55,7 +58,8 @@ export function DesktopLoginAction({
       setPhase('checking');
       void (async () => {
         const { me, unreachable } = await latest.current.loadMeState();
-        if (!alive) return;
+        // Jawaban terlambat (setelah batas waktu memeriksa) diabaikan.
+        if (!alive || phaseRef.current !== 'checking') return;
         if (me) {
           latest.current.onSignedIn?.(me);
           return;
@@ -82,6 +86,17 @@ export function DesktopLoginAction({
       setPhase('idle');
       setError(LOGIN_FAILED_MESSAGE);
     }, LOGIN_WAIT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [phase, setPhase]);
+
+  // Memeriksa sesi tanpa kabar: menyerah setelah batas waktu (pesan yang sama dengan login gagal).
+  useEffect(() => {
+    if (phase !== 'checking') return;
+    const timer = setTimeout(() => {
+      if (phaseRef.current !== 'checking') return;
+      setPhase('idle');
+      setError(LOGIN_FAILED_MESSAGE);
+    }, LOGIN_CHECK_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [phase, setPhase]);
 

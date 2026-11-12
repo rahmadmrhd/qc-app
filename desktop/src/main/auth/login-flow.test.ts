@@ -232,14 +232,13 @@ describe('handleCallback', () => {
 });
 
 describe('status dan onChange', () => {
-  test('onChange dipanggil di setiap jalur dan tidak pernah memuat token', async () => {
+  test('onChange hanya untuk hasil nyata: sukses, logout; tidak pernah memuat token', async () => {
     const f = flow();
     await f.start();
-    await f.handleCallback(callbackUrl('zzzzzzzzzzzzzzzz')); // diabaikan
+    await f.handleCallback(callbackUrl('zzzzzzzzzzzzzzzz')); // asing: diabaikan
     await f.handleCallback(callbackUrl(STATE_1)); // sukses
     f.logout();
-    expect(changes.length).toBeGreaterThanOrEqual(4);
-    expect(changes.map((c) => c.signedIn)).toContain(true);
+    expect(changes.map((c) => c.signedIn)).toEqual([true, false]);
     expect(changes[changes.length - 1]).toEqual({
       signedIn: false,
       email: null,
@@ -249,6 +248,57 @@ describe('status dan onChange', () => {
       expect(Object.keys(change).sort()).toEqual(['email', 'serverUrl', 'signedIn']);
     }
     expect(JSON.stringify(changes)).not.toContain(TOKEN);
+  });
+
+  test('N2: start dan callback yang diabaikan TIDAK memancarkan onChange (login sah tetap menunggu)', async () => {
+    const f = flow();
+    await f.start();
+    expect(changes).toHaveLength(0);
+    await f.handleCallback(callbackUrl('zzzzzzzzzzzzzzzz')); // state asing
+    await f.handleCallback('bukan url'); // tak sah
+    await f.handleCallback('qc://country-lock'); // bukan auth
+    await f.handleCallback(`qc://auth?code=${CODE}`); // tanpa state
+    expect(changes).toHaveLength(0);
+    // Login sah masih dapat selesai dan dilaporkan sekali.
+    expect(await f.handleCallback(callbackUrl(STATE_1))).toBe(true);
+    expect(changes.map((c) => c.signedIn)).toEqual([true]);
+    // Callback ganda setelah selesai (tanpa login berjalan): diabaikan tanpa pemberitahuan.
+    expect(await f.handleCallback(callbackUrl(STATE_1))).toBe(false);
+    expect(changes).toHaveLength(1);
+  });
+
+  test('N2: tanpa login berjalan, callback tidak memancarkan onChange', async () => {
+    expect(await flow().handleCallback(callbackUrl(STATE_1))).toBe(false);
+    expect(changes).toHaveLength(0);
+  });
+
+  test('N2: kegagalan penukaran untuk login yang berjalan dilaporkan sekali (signedIn false)', async () => {
+    fetchResult = async () => new Response('{}', { status: 401 });
+    const f = flow();
+    await f.start();
+    expect(await f.handleCallback(callbackUrl(STATE_1))).toBe(false);
+    expect(changes.map((c) => c.signedIn)).toEqual([false]);
+  });
+
+  test('N2: kedaluwarsa untuk login yang berjalan dilaporkan sekali (signedIn false)', async () => {
+    const f = flow();
+    await f.start();
+    clock += 10 * 60 * 1000 + 1;
+    expect(await f.handleCallback(callbackUrl(STATE_1))).toBe(false);
+    expect(changes.map((c) => c.signedIn)).toEqual([false]);
+    // Callback berikutnya (login sudah dilepas) diam.
+    expect(await f.handleCallback(callbackUrl(STATE_1))).toBe(false);
+    expect(changes).toHaveLength(1);
+  });
+
+  test('N2: openExternal gagal tidak memancarkan onChange (galat lewat penolakan start)', async () => {
+    openResult = async () => {
+      throw new Error('x');
+    };
+    await flow()
+      .start()
+      .catch(() => undefined);
+    expect(changes).toHaveLength(0);
   });
 
   test('status awal belum masuk dengan alamat server bawaan', () => {

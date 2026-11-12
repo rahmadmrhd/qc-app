@@ -1,28 +1,30 @@
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { hasUiBridge, startUiUpdateWatch, useUiUpdateReady } from '@/app/ui-update-store';
 import { Button } from '@/components/ui/button';
 import { getBridge } from '@/lib/platform';
 
 /**
  * Spanduk "Versi UI baru tersedia" di aplikasi desktop: bundel UI baru sudah diunduh dan diverifikasi
- * (`bridge.ui.onUpdateReady`); tombol "Muat ulang" menerapkannya lewat `bridge.ui.reload()` (proses utama
- * menunda bila sedang ada inject berjalan). Tidak menampilkan apa pun di peramban.
+ * (pengumuman `bridge.ui.onUpdateReady`, ditampung `ui-update-store` sejak aplikasi start); tombol "Muat ulang"
+ * menerapkannya lewat `bridge.ui.reload()` (proses utama menunda bila ada inject berjalan). Tidak menampilkan
+ * apa pun di peramban atau pada jembatan tanpa `bridge.ui` (versi < 3).
  */
 export function UiUpdateBanner() {
-  const bridge = getBridge();
-  const [ready, setReady] = useState(false);
+  const ready = useUiUpdateReady();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
+  // Pengaman bila `main.tsx` belum memulai pemantauan (idempoten).
   useEffect(() => {
-    if (!bridge) return;
-    return bridge.ui.onUpdateReady(() => setReady(true));
-  }, [bridge]);
+    startUiUpdateWatch();
+  }, []);
 
-  if (!bridge || !ready) return null;
+  const bridge = getBridge();
+  if (!hasUiBridge(bridge) || !ready) return null;
 
   async function reload() {
-    if (!bridge) return;
+    if (!hasUiBridge(bridge)) return;
     setBusy(true);
     setFailed(false);
     try {
