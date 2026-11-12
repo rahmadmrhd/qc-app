@@ -4,6 +4,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
+import { startInstallCapture } from '@/app/pwa/install';
 import { startPwaUpdates } from '@/app/pwa/update';
 import { PwaUpdateBanner } from '@/app/pwa/update-banner';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
@@ -15,6 +16,9 @@ import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
 async function start() {
+  // beforeinstallprompt dapat tiba sebelum React dirender; tangkap sejak awal (FR-P5).
+  startInstallCapture();
+
   // Galat login dari redirect server (/?authError=...) dibaca sekali lalu dibuang dari URL.
   const authError = readAuthError(window.location.search);
   if (authError) window.history.replaceState(null, '', window.location.pathname);
