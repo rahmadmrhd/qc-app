@@ -26,6 +26,8 @@ const EXPECTED_TABLES = [
   'jobs',
   'locations',
   'manual_book_versions',
+  'postel_numbers',
+  'postels',
   'qr_defaults',
   'qr_designs',
   'qr_documents',
@@ -142,7 +144,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('32 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('34 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -162,6 +164,7 @@ describe('skema baseline', () => {
       { name: '0006_pustaka_gambar_stiker.sql' },
       { name: '0007_instruksi_stiker_item.sql' },
       { name: '0008_manual_book_4a.sql' },
+      { name: '0009_postel_4b.sql' },
     ]);
   });
 
@@ -239,11 +242,15 @@ describe('skema baseline', () => {
         'items.items_brand',
         'items.items_key',
         'items.items_manual_book',
+        'items.items_postel',
         'items.items_status_updated',
         'jobs.jobs_status_updated',
         'locations.locations_code_unique',
         'locations.locations_name_unique',
         'manual_book_versions.manual_book_versions_design_version',
+        'postel_numbers.postel_numbers_expiry',
+        'postel_numbers.postel_numbers_key',
+        'postel_numbers.postel_numbers_seq',
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',

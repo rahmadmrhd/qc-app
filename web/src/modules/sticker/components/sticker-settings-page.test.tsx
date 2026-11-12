@@ -6,7 +6,7 @@ import { pickLink } from '@/test/link-field';
 import { StickerSettingsPage, type StickerSettingsPageProps } from './sticker-settings-page';
 
 const settings: StickerSettingsDto = {
-  alert: { enabled: true, recipients: ['qc@contoh.com'], digestHour: 8 },
+  alert: { enabled: true, recipients: ['qc@contoh.com'], digestHour: 8, intervalDays: 1 },
   types: [
     { id: 't-bu', name: 'QC Hijau', systemKind: '', defaultMinQty: 0 },
     { id: 't-mb', name: 'Manual Book', systemKind: 'manual_book', defaultMinQty: 50 },
@@ -62,9 +62,26 @@ test('menyimpan: expectedUpdatedAt, alert, dan hanya jenis yang minimumnya berub
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({
     expectedUpdatedAt: '2026-11-10 09:00:00',
-    alert: { enabled: true, recipients: ['qc@contoh.com'], digestHour: 9 },
+    alert: { enabled: true, recipients: ['qc@contoh.com'], digestHour: 9, intervalDays: 1 },
     defaults: [{ typeId: 't-bu', defaultMinQty: 25 }],
   });
+});
+
+test('selang kirim (hari): tampil, ikut dikirim saat simpan, dan di luar 1-365 ditolak', async () => {
+  const { onSave } = renderPage();
+  const interval = screen.getByLabelText('Kirim setiap (hari)');
+  expect(interval).toHaveValue(1);
+  await userEvent.clear(interval);
+  await userEvent.type(interval, '0');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(
+    await screen.findByText(/Selang harus bilangan bulat 1 sampai 365 hari/),
+  ).toBeInTheDocument();
+  expect(onSave).not.toHaveBeenCalled();
+  await userEvent.clear(interval);
+  await userEvent.type(interval, '7');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSave.mock.calls[0]?.[0].alert.intervalDays).toBe(7);
 });
 
 test('penerima: memilih user aktif, menambah email bebas, dan menghapus', async () => {
@@ -114,7 +131,10 @@ test('email tidak valid, ganda, atau melebihi 20 penerima ditolak dengan pesan',
 test('batas 20 penerima', async () => {
   const many = Array.from({ length: 20 }, (_, index) => `u${index}@contoh.com`);
   renderPage({
-    settings: { ...settings, alert: { enabled: true, recipients: many, digestHour: 8 } },
+    settings: {
+      ...settings,
+      alert: { enabled: true, recipients: many, digestHour: 8, intervalDays: 1 },
+    },
   });
   await userEvent.type(screen.getByLabelText('Email lain'), 'lebih@contoh.com');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));

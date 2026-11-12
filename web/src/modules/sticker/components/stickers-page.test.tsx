@@ -536,3 +536,63 @@ test('stiker jenis sistem yang nonaktif: Aktifkan hanya untuk versi terbaru konf
   // stiker biasa yang nonaktif tetap dapat diaktifkan
   expect(screen.getByRole('button', { name: 'Aktifkan Segel Polos' })).toBeInTheDocument();
 });
+
+const postelType: StickerTypeDto = {
+  id: 'tp-pt',
+  name: 'Postel',
+  rule: 'group',
+  status: 'active',
+  stickerCount: 1,
+  systemKind: 'postel',
+  defaultMinQty: 10,
+  updatedAt: '',
+};
+
+const postelSticker = (overrides: Partial<StickerDto> = {}) =>
+  sticker({
+    id: 'pt1',
+    typeId: 'tp-pt',
+    typeName: 'Postel',
+    name: 'Postel',
+    businessUnitIds: [],
+    fileId: 'f-lama',
+    minQty: 10,
+    ...overrides,
+  });
+
+test('ubah stiker Postel: hanya nama yang terkunci; gambar contoh tetap dapat diganti', async () => {
+  const { onSave } = renderPage({ stickers: [postelSticker()], types: [postelType] });
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Postel' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Nama stiker')).toBeDisabled();
+  expect(within(dialog).getByRole('button', { name: /Ganti gambar/ })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /Hapus gambar contoh/ })).toBeInTheDocument();
+  await userEvent.type(within(dialog).getByLabelText('Alias'), 'PT');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    id: 'pt1',
+    expectedUpdatedAt: '2026-11-09 11:00:00',
+    typeId: 'tp-pt',
+    name: 'Postel',
+    alias: 'PT',
+    fileId: 'f-lama',
+    minQty: 10,
+    businessUnitIds: [],
+  });
+});
+
+test('stiker Postel yang nonaktif dapat diaktifkan kembali oleh pengelola', async () => {
+  const inactive = postelSticker({ status: 'inactive' });
+  const { onToggleStatus } = renderPage({ stickers: [inactive], types: [postelType] });
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan Postel' }));
+  expect(onToggleStatus).toHaveBeenCalledWith(inactive);
+});
+
+test('Aktifkan stiker Postel nonaktif tidak tampil bagi non-pengelola', () => {
+  renderPage({
+    stickers: [postelSticker({ status: 'inactive' })],
+    types: [postelType],
+    canManage: false,
+  });
+  expect(screen.queryByRole('button', { name: 'Aktifkan Postel' })).toBeNull();
+});

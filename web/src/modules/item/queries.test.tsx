@@ -26,6 +26,7 @@ const full = {
   updatedAt: 't2',
   hasInstructions: false,
   hasManualBook: false,
+  hasPostel: false,
   stickerPhotos: [{ marks: [{ x: 1 }] }],
   accessories: [{ y: 1 }],
   attachments: ['f1'],
@@ -53,6 +54,7 @@ test('toItemSummary membuang detail, foto instruksi, aksesori, lampiran, dan met
       'businessUnits',
       'hasInstructions',
       'hasManualBook',
+      'hasPostel',
       'id',
       'imageCount',
       'isCountryLock',
@@ -173,6 +175,34 @@ test('daftar item: filter Manual Book dikirim hanya bila "missing", selalu bersa
   });
   await client.fetchInfiniteQuery(itemsInfiniteQueryOptions(DEFAULT_ITEM_FILTER));
   expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('daftar item: filter Postel dikirim hanya bila "missing", selalu bersama status aktif', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { status: 'active', postel: 'missing' });
+  // status "Nonaktif" tak dapat berpadu dengan "belum ada Postel" (item nonaktif tak dihitung)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing', status: 'inactive' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { status: 'active', postel: 'missing' });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing', manualBook: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+    postel: 'missing',
+  });
+  expect(DEFAULT_ITEM_FILTER.postel).toBe('all');
+});
+
+test('kunci daftar item membedakan filter Postel', () => {
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, postel: 'missing' })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
 });
 
 test('kunci daftar item membedakan filter Manual Book', () => {

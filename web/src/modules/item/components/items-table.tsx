@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { NoManualBookNote } from './manual-book-note';
+import { NoPostelNote } from './no-postel-note';
 import { NoInstructionsNote } from './sticker-instructions-view';
 
 export interface ItemsTableProps {
@@ -65,6 +66,9 @@ export function ItemsTable({
                   {/* Hanya item aktif: item nonaktif tak lagi memerlukan label Manual Book. */}
                   {item.status === 'active' && !item.hasManualBook ? (
                     <NoManualBookNote className="block" />
+                  ) : null}
+                  {item.status === 'active' && !item.hasPostel ? (
+                    <NoPostelNote className="block" />
                   ) : null}
                   {item.aliases.length > 0 ? (
                     <div className="text-xs text-muted-foreground">

@@ -660,6 +660,24 @@ describe('attachFiles', () => {
     await attachFiles(env, [], 'item', 'item-1');
   });
 
+  test('berkas milik catatan Postel yang dikirim dari jalur lain = VALIDATION generik (bukan CONFLICT); jalur Postel lain tetap CONFLICT', async () => {
+    const a = await up();
+    await attachFiles(env, [a.id], 'postel', 'postel-1');
+    const unknown = await captureAppErrorAsync(() =>
+      attachFiles(env, ['hilang'], 'item', 'item-1'),
+    );
+    for (const owner of ['item', 'sticker', 'qrlogo', 'stickerguide'] as const) {
+      const error = await captureAppErrorAsync(() => attachFiles(env, [a.id], owner, 'x-1'));
+      expect(error.code).toBe('VALIDATION');
+      expect(error.message).toBe(unknown.message);
+    }
+    expect(
+      (await captureAppErrorAsync(() => attachFiles(env, [a.id], 'postel', 'postel-2'))).code,
+    ).toBe('CONFLICT');
+    await attachFiles(env, [a.id], 'postel', 'postel-1');
+    expect((await files())[0]?.owner_id).toBe('postel-1');
+  });
+
   test('atomik: batch yang gagal tidak mengubah pemilik berkas mana pun; ulang yang sah berhasil', async () => {
     const a = await up();
     const b = await up();

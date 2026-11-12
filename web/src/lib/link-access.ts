@@ -58,6 +58,15 @@ export function manualBookLinkAccess(me: MeDto | null | undefined) {
   };
 }
 
+/** Halaman lihat catatan Postel (`/postel/$postelId`): butuh `sticker: view`; tanpa izin = tanpa tautan (`null`). */
+export function postelLinkAccess(me: MeDto | null | undefined) {
+  const allowed = can(me, 'sticker', 'view');
+  return {
+    openPostelHref: (id: string): string | null =>
+      allowed ? `/postel/${encodeURIComponent(id)}` : null,
+  };
+}
+
 /** Field Merk, BU, serta stiker dan jenis stiker (editor instruksi) di form item. */
 export function itemFormLinkAccess(me: MeDto | null | undefined) {
   return {

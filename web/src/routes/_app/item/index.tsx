@@ -39,6 +39,8 @@ function ItemsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const canCreate = canCreateItem(me);
+  // Label dan filter "Belum ada Postel" tampil bagi semua pembaca item, sama seperti Manual Book
+  // (keputusan pemilik 2026-11-12, spek 4b §7 butir 5).
   const filter = filterOfSearch(search);
   const list = useInfiniteQuery(itemsInfiniteQueryOptions(filter));
   // Katalog untuk filter stiker/jenis: hanya bagi yang boleh membacanya (`sticker: view` atau `item: edit`);

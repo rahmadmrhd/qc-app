@@ -4,6 +4,7 @@ import type { ApiId, ApiInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
+import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
@@ -63,6 +64,7 @@ const WORST: Inputs = {
         (_, i) => `u${i}-${'x'.repeat(40)}@contoh.com`,
       ),
       digestHour: 23,
+      intervalDays: 1,
     },
     defaults: Array.from({ length: 200 }, () => ({
       typeId: UUID,
@@ -200,6 +202,32 @@ const WORST: Inputs = {
     style: DEFAULT_QR_STYLE,
     overflow: true,
   } as never,
+  'postels.save': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    note: text(POSTEL_LIMITS.noteMax),
+    itemIds: longList(POSTEL_LIMITS.itemsMax, () => UUID),
+    numbers: longList(POSTEL_LIMITS.numbersMax, () => ({
+      id: UUID,
+      number: text(POSTEL_LIMITS.numberMax),
+      expiresOn: '2100-12-31',
+      link: text(POSTEL_LIMITS.linkMax),
+    })),
+    attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
+  },
+  'postelSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: longList(
+        POSTEL_LIMITS.recipientsMax,
+        (index) => `u${index}-${'x'.repeat(40)}@contoh.com`,
+      ),
+      sendHour: 23,
+      thresholds: [730, 365, 90, 30, 1],
+      repeatEveryDays: POSTEL_LIMITS.repeatDaysMax,
+    },
+  },
   'qrcodes.savePreset': {
     id: UUID,
     expectedUpdatedAt: STAMP,

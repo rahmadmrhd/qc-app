@@ -1,11 +1,14 @@
-import type { ItemDto } from '@shared/contract';
+import type { ItemDto, ItemPostelDto } from '@shared/contract';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
+import { PostelConditionBadge } from '@/modules/postel/components/postel-condition-badge';
+import { formatPostelDate } from '@/modules/postel/lib/condition';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 import { ImageThumb } from './image-thumb';
 import { NoManualBookNote } from './manual-book-note';
+import { NoPostelNote } from './no-postel-note';
 import { StickerInstructionsView } from './sticker-instructions-view';
 
 export interface ItemDetailViewProps {
@@ -15,6 +18,13 @@ export interface ItemDetailViewProps {
   statusPending: boolean;
   /** Tautan ke konfigurasi QR Manual Book item ini; tidak diberikan bila user tak berhak membukanya. */
   openManualBookHref?: ((designId: string) => string | null) | undefined;
+  /**
+   * Postel item: `undefined` = user tak boleh melihat Postel (`sticker: view`; bagian disembunyikan, jangan disimpulkan
+   * dari `null` karena server juga mengirim `null` bagi yang tak berhak), `null` = belum ada Postel.
+   */
+  postel?: ItemPostelDto | null | undefined;
+  /** Tautan ke halaman Postel; tidak diberikan/`null` bila user tak berhak membukanya. */
+  openPostelHref?: ((postelId: string) => string | null) | undefined;
   onBack: () => void;
   onEdit: () => void;
   onToggleStatus: () => void;
@@ -36,10 +46,13 @@ export function ItemDetailView({
   canManage,
   statusPending,
   openManualBookHref,
+  postel,
+  openPostelHref,
   onBack,
   onEdit,
   onToggleStatus,
 }: ItemDetailViewProps) {
+  const postelHref = postel ? (openPostelHref?.(postel.id) ?? null) : null;
   return (
     <div className="max-w-4xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -111,6 +124,36 @@ export function ItemDetailView({
           </div>
         )}
       </Section>
+
+      {postel === undefined ? (
+        // Tanpa `sticker: view` ringkasan Postel disembunyikan (spek 4b butir 10), tetapi keterangan "Belum ada
+        // Postel" tampil bagi semua pembaca item seperti Manual Book (keputusan pemilik 2026-11-12).
+        item.hasPostel ? null : (
+          <Section title="Postel">
+            <NoPostelNote className="text-sm" />
+          </Section>
+        )
+      ) : (
+        <Section title="Postel">
+          {postel === null ? (
+            <NoPostelNote className="text-sm" />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{postel.name}</span>
+              <Badge variant="outline">{postel.number}</Badge>
+              <span className="text-muted-foreground">
+                Berlaku sampai {formatPostelDate(postel.expiresOn)}
+              </span>
+              <PostelConditionBadge condition={postel.condition} />
+              {postelHref ? (
+                <a href={postelHref} className="underline underline-offset-2">
+                  Buka Postel
+                </a>
+              ) : null}
+            </div>
+          )}
+        </Section>
+      )}
 
       <Section title="Instruksi stiker">
         <StickerInstructionsView

@@ -340,7 +340,7 @@ function readAlertSettings(
   value: unknown,
   reader: ObjectReader,
 ): SaveStickerSettingsInput['alert'] {
-  const fallback = { enabled: false, recipients: [] as string[], digestHour: 8 };
+  const fallback = { enabled: false, recipients: [] as string[], digestHour: 8, intervalDays: 1 };
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     reader.fail('alert', 'Pengaturan email harus berupa objek');
     return fallback;
@@ -350,6 +350,19 @@ function readAlertSettings(
   const hour = source.digestHour;
   if (typeof hour !== 'number' || !Number.isInteger(hour) || hour < 0 || hour > 23) {
     reader.fail('digestHour', 'Jam harus bilangan bulat 0 sampai 23');
+  }
+  // Klien lama (halaman yang belum dimuat ulang) tidak mengirim selang: dibaca sebagai tiap hari.
+  const interval = source.intervalDays === undefined ? 1 : source.intervalDays;
+  if (
+    typeof interval !== 'number' ||
+    !Number.isInteger(interval) ||
+    interval < 1 ||
+    interval > STICKER_LIMITS.alertIntervalDaysMax
+  ) {
+    reader.fail(
+      'intervalDays',
+      `Selang harus bilangan bulat 1 sampai ${STICKER_LIMITS.alertIntervalDaysMax} hari`,
+    );
   }
   const recipients: string[] = [];
   if (!Array.isArray(source.recipients)) {
@@ -376,6 +389,7 @@ function readAlertSettings(
     enabled: source.enabled === true,
     recipients,
     digestHour: typeof hour === 'number' ? hour : 8,
+    intervalDays: typeof interval === 'number' ? interval : 1,
   };
 }
 

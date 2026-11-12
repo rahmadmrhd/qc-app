@@ -296,6 +296,7 @@ describe('penjadwal: ringkasan stok stiker menipis (4a)', () => {
         enabled: true,
         recipients: ['a@contoh.com'],
         digestHour: 8,
+        intervalDays: 1,
         updatedAt: 't',
       }),
     );

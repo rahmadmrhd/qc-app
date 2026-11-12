@@ -12,6 +12,7 @@ import type {
   StickerAlertSettings,
   StickerSettingsDto,
 } from '@shared/contract';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { listStickerTypeRecords } from './repo';
 
 /**
@@ -25,7 +26,12 @@ export const SETTING_STICKER_ALERT = 'STICKER_ALERT';
 export const STICKER_SETTINGS_STALE_MESSAGE =
   'Pengaturan sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
-const DEFAULT_ALERT: StickerAlertSettings = { enabled: false, recipients: [], digestHour: 8 };
+const DEFAULT_ALERT: StickerAlertSettings = {
+  enabled: false,
+  recipients: [],
+  digestHour: 8,
+  intervalDays: 1,
+};
 
 interface StoredAlert extends StickerAlertSettings {
   updatedAt: string;
@@ -37,6 +43,7 @@ function parseStored(raw: string): StoredAlert | null {
     const value = JSON.parse(raw) as Partial<StoredAlert> | null;
     if (typeof value !== 'object' || value === null) return null;
     const hour = Number(value.digestHour);
+    const interval = Number(value.intervalDays);
     return {
       enabled: value.enabled === true,
       recipients: Array.isArray(value.recipients)
@@ -44,6 +51,13 @@ function parseStored(raw: string): StoredAlert | null {
         : [],
       digestHour:
         Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_ALERT.digestHour,
+      // Data tersimpan sebelum ada selang tidak memuatnya: dibaca sebagai tiap hari (perilaku lama).
+      intervalDays:
+        Number.isInteger(interval) &&
+        interval >= 1 &&
+        interval <= STICKER_LIMITS.alertIntervalDaysMax
+          ? interval
+          : DEFAULT_ALERT.intervalDays,
       updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
     };
   } catch {
@@ -148,11 +162,13 @@ export async function saveStickerSettings(
         enabled: current.alert.enabled,
         recipients: current.alert.recipients.join(','),
         digestHour: current.alert.digestHour,
+        intervalDays: current.alert.intervalDays,
       },
       after: {
         enabled: input.alert.enabled,
         recipients: input.alert.recipients.join(','),
         digestHour: input.alert.digestHour,
+        intervalDays: input.alert.intervalDays,
         defaults: changedDefaults
           .map((row) => `${knownTypes.get(row.typeId)?.name ?? row.typeId}=${row.defaultMinQty}`)
           .join(', '),

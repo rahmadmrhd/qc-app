@@ -3,10 +3,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
+  postelSettingsQueryOptions,
   stickerGuideUsagesQuery,
   stickersQuery,
   stickerTypesQuery,
   useRecordStock,
+  useSavePostelSettings,
   useSaveSticker,
   useSaveStickerType,
   useSetStickerStatus,
@@ -139,4 +141,65 @@ test('mutasi stok memuat ulang data stiker tetapi bukan Log Audit; mutasi katalo
   catalog.result.current.mutate({ id: 's1', status: 'inactive' });
   await waitFor(() => expect(catalog.result.current.isSuccess).toBe(true));
   expect(keys()).toContain(JSON.stringify(['access', 'audit']));
+});
+
+test('pengaturan Postel: GET /api/v1/postel-settings dengan kunci sendiri', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('{}'));
+  await (postelSettingsQueryOptions().queryFn as () => Promise<unknown>)();
+  const { url, init } = lastRequest();
+  expect(url).toBe('/api/v1/postel-settings');
+  expect(init.method).toBe('GET');
+  expect(postelSettingsQueryOptions().queryKey).toEqual(['postel', 'settings']);
+});
+
+test('simpan pengaturan Postel: PUT dengan If-Match, hasil dipasang ke cache (bukan memuat ulang)', async () => {
+  const saved = {
+    alert: { enabled: true, recipients: [], sendHour: 8, thresholds: [30], repeatEveryDays: 0 },
+    updatedAt: '2026-11-12 09:00:00',
+    smtpConfigured: true,
+  };
+  fetchMock.mockResolvedValueOnce(
+    new Response(JSON.stringify(saved), { headers: { 'content-type': 'application/json' } }),
+  );
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  client.setQueryData(['postel', 'settings'], { ...saved, updatedAt: 'lama' });
+  const { result } = renderHook(() => useSavePostelSettings(), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await result.current.mutateAsync({ expectedUpdatedAt: 'lama', alert: saved.alert });
+  const { url, init } = lastRequest();
+  expect(url).toBe('/api/v1/postel-settings');
+  expect(init.method).toBe('PUT');
+  expect(new Headers(init.headers).get('If-Match')).toContain('lama');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(client.getQueryData(['postel', 'settings'])).toEqual(saved);
+});
+
+test('simpan pengaturan Postel menandai daftar Postel, detail, dan item basi tanpa memuat ulang; pengaturan tetap segar', async () => {
+  const saved = {
+    alert: { enabled: true, recipients: [], sendHour: 8, thresholds: [60], repeatEveryDays: 0 },
+    updatedAt: '2026-11-12 09:00:00',
+    smtpConfigured: true,
+  };
+  fetchMock.mockResolvedValueOnce(
+    new Response(JSON.stringify(saved), { headers: { 'content-type': 'application/json' } }),
+  );
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  client.setQueryData(['postel', 'list'], { postels: [], today: 'x', soonDays: 90 });
+  client.setQueryData(['postel', 'one', 'p1'], { id: 'p1' });
+  client.setQueryData(['items', 'list', 'f'], { items: [] });
+  client.setQueryData(['postel', 'settings'], { ...saved, updatedAt: 'lama' });
+  const { result } = renderHook(() => useSavePostelSettings(), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await result.current.mutateAsync({ expectedUpdatedAt: 'lama', alert: saved.alert });
+  expect(client.getQueryState(['postel', 'list'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['postel', 'one', 'p1'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['items', 'list', 'f'])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(['postel', 'settings'])?.isInvalidated).toBe(false);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

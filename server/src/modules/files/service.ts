@@ -9,7 +9,7 @@ import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server
 import type { UserContext } from '@server/modules/access/context';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/contract';
 import type { FileOwnerType } from '@shared/files';
-import { MAX_UNATTACHED_UPLOADS } from '@shared/files';
+import { isImageMime, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import type { FileRecord } from './repo';
 import {
   countUnattached,
@@ -27,6 +27,8 @@ export const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  // Lampiran Postel (4b); `files.upload` biasa tetap hanya menerima gambar.
+  'application/pdf': 'pdf',
 };
 
 /**
@@ -72,13 +74,12 @@ export async function uploadFile(
   env: Env,
   input: UploadFileInput,
   actor: UserContext,
+  /** Pesan batas unggahan tertunda yang sesuai formulir pemanggil (bawaan: pesan gambar item). */
+  limitMessage = 'Terlalu banyak gambar yang belum dipakai. Simpan item yang sedang diedit terlebih dulu.',
 ): Promise<FileDto> {
   // Batas berkas yatim per user: yang belum ditautkan ke entitas tidak boleh menumpuk tanpa batas.
   if ((await countUnattached(env, actor.email)) >= MAX_UNATTACHED_UPLOADS) {
-    throw appError(
-      'CONFLICT',
-      'Terlalu banyak gambar yang belum dipakai. Simpan item yang sedang diedit terlebih dulu.',
-    );
+    throw appError('CONFLICT', limitMessage);
   }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
@@ -128,6 +129,8 @@ export interface FileViewer {
   email: string;
   itemBuIds: readonly string[] | null;
   canReadStickerFiles: boolean;
+  /** Hanya rute lampiran Postel (`sticker: view`): boleh membaca berkas berpemilik `postel`; `files.get` tidak. */
+  canReadPostelFiles?: boolean;
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
@@ -155,16 +158,27 @@ export async function readFile(
   env: Env,
   input: GetFileInput,
   viewer: FileViewer,
+  /** Baris berkas yang sudah dimuat pemanggil (hindari kueri ganda); `undefined` = muat di sini. */
+  preloaded?: FileRecord | null,
 ): Promise<FileContentDto> {
-  const record = await findActiveFile(env, input.id);
+  const record = preloaded === undefined ? await findActiveFile(env, input.id) : preloaded;
   if (!record) throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  // Berkas non-gambar (PDF lampiran Postel) tidak pernah disajikan lewat rute gambar (`files.get`): hanya rute lampiran.
+  if (!isImageMime(record.mime) && viewer.canReadPostelFiles !== true) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
+  // Lampiran Postel hanya lewat rutenya sendiri (izin `sticker: view`), bukan `files.get`.
+  const isPostel = record.ownerType === 'postel';
+  if (isPostel && viewer.canReadPostelFiles !== true) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
     const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
     const isSticker = record.ownerType === 'sticker' && viewer.canReadStickerFiles;
     // Gambar pustaka stiker (3b-1): pemegang `sticker: view` atau `item: view`, tanpa batas BU.
     const isGuide = record.ownerType === 'stickerguide' && viewer.canReadStickerFiles;
-    if (!isLogo && !isOwnPending && !isSticker && !isGuide)
+    if (!isLogo && !isOwnPending && !isSticker && !isGuide && !isPostel)
       throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   } else if (
     record.ownerType === 'item' &&
@@ -213,13 +227,21 @@ export async function planAttachFiles(
   for (const id of unique) {
     const file = byId.get(id);
     if (!file) throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
+    // Hanya lampiran Postel yang boleh berupa non-gambar (PDF); pemilik lain (item, contoh stiker, logo QR) wajib gambar.
+    if (ownerType !== 'postel' && !isImageMime(file.mime)) {
+      throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
+    }
     if (file.ownerType === '') {
       if (claimant !== undefined && file.createdBy !== claimant) {
         throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
       }
       toClaim.push(file);
-    } else if (file.ownerType === 'item' && ownerType !== 'item') {
-      // Berkas item yang dikirim ke jalur lain (logo QR): jawab seperti berkas tak dikenal, tanpa membuka keberadaannya.
+    } else if (
+      (file.ownerType === 'item' && ownerType !== 'item') ||
+      (file.ownerType === 'postel' && ownerType !== 'postel')
+    ) {
+      // Berkas item atau Postel yang dikirim ke jalur lain (logo QR, stiker): jawab seperti berkas tak dikenal, tanpa
+      // membuka keberadaannya (pemilik Postel hanya terlihat bagi pembaca modul Postel).
       throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
     } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
@@ -260,9 +282,28 @@ export async function purgePendingFiles(env: Env, limit = 20): Promise<number> {
   )
     .bind(limit)
     .all<Parameters<typeof toFile>[0]>();
+  return purgeRows(env, rows.results);
+}
+
+/** Seperti `purgePendingFiles` tetapi hanya untuk `ids` (yang berstatus `pending_delete`): pembuangan terarah sesudah komit. */
+export async function purgePendingFilesById(env: Env, ids: readonly string[]): Promise<number> {
+  let purged = 0;
+  for (let from = 0; from < ids.length; from += 90) {
+    const chunk = ids.slice(from, from + 90);
+    const rows = await env.DB.prepare(
+      `SELECT ${FILE_COLUMNS} FROM files WHERE status = 'pending_delete' AND id IN (${chunk.map(() => '?').join(',')})`,
+    )
+      .bind(...chunk)
+      .all<Parameters<typeof toFile>[0]>();
+    purged += await purgeRows(env, rows.results);
+  }
+  return purged;
+}
+
+async function purgeRows(env: Env, results: Parameters<typeof toFile>[0][]): Promise<number> {
   const bridge = getBridge(env);
   let purged = 0;
-  for (const row of rows.results) {
+  for (const row of results) {
     const file = toFile(row);
     try {
       await bridge.trashFile(file.driveId);

@@ -129,8 +129,11 @@ export async function listAudit(env: Env, params: ListAuditParams): Promise<Audi
   const result = await env.DB.prepare(sql)
     .bind(...binds, params.limit + 1)
     .all<AuditRow>();
-  const rows = result.results;
-  const page = rows.slice(0, params.limit);
+  return toCursorPage(result.results, params.limit);
+}
+
+function toCursorPage(rows: readonly AuditRow[], limit: number): AuditCursorPageDto {
+  const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
     entries: page.map(
@@ -144,6 +147,35 @@ export async function listAudit(env: Env, params: ListAuditParams): Promise<Audi
         after: parseSnapshot(row.after),
       }),
     ),
-    nextCursor: rows.length > params.limit && last ? encodeAuditCursor(last) : null,
+    nextCursor: rows.length > limit && last ? encodeAuditCursor(last) : null,
   };
+}
+
+export interface ListAuditByTargetParams {
+  /** `<ts>~<id>` dari halaman sebelumnya. */
+  cursor?: { ts: string; id: number };
+  limit: number;
+}
+
+/**
+ * Riwayat satu target persis (mis. `postel:<id>`), terbaru dahulu, berhalaman berbasis `(ts, id)` lewat indeks
+ * `audit_log_target_ts`. Hanya halaman ini yang di-parse JSON-nya.
+ */
+export async function listAuditByTarget(
+  env: Env,
+  target: string,
+  params: ListAuditByTargetParams,
+): Promise<AuditCursorPageDto> {
+  const binds: unknown[] = [target];
+  let cursorSql = '';
+  if (params.cursor) {
+    cursorSql = ' AND (ts < ? OR (ts = ? AND id < ?))';
+    binds.push(params.cursor.ts, params.cursor.ts, params.cursor.id);
+  }
+  const result = await env.DB.prepare(
+    `SELECT id, ts, actor, action, target, \`before\`, \`after\` FROM audit_log WHERE target = ?${cursorSql} ORDER BY ts DESC, id DESC LIMIT ?`,
+  )
+    .bind(...binds, params.limit + 1)
+    .all<AuditRow>();
+  return toCursorPage(result.results, params.limit);
 }

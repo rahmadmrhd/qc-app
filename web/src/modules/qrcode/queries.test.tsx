@@ -95,6 +95,7 @@ function seedCatalogCaches() {
       stickerKey: '',
       stickerMode: 'has',
       manualBook: 'all',
+      postel: 'all',
     }),
     { pages: [], pageParams: [] },
   );
@@ -134,7 +135,7 @@ test('simpan, ekspor, dan hapus QR menandai basi cache stiker dan item (tanpa me
     await run();
     expect(stale(stickerKeys.list)).toBe(true);
     expect(stale(itemKeys.one('i1'))).toBe(true);
-    expect(stale(['items', 'list', '', 'all', 'all', '', 'has', 'all'])).toBe(true);
+    expect(stale(['items', 'list', '', 'all', 'all', '', 'has', 'all', 'all'])).toBe(true);
   }
 });
 

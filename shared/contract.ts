@@ -2,6 +2,7 @@ import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
+import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
 import type {
   GuideSort,
@@ -435,6 +436,8 @@ export interface StickerAlertSettings {
   recipients: string[];
   /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
   digestHour: number;
+  /** Selang minimum antar ringkasan (hari, 1-365): 1 = tiap hari bila ada stok menipis; bawaan 1. */
+  intervalDays: number;
 }
 
 /** Jenis stiker beserta minimum bawaan stiker barunya, untuk halaman Konfigurasi Stiker. */
@@ -566,6 +569,8 @@ export interface ItemSummaryDto {
   hasInstructions: boolean;
   /** Item tergabung ke konfigurasi QR (Manual Book) yang sudah punya minimal satu versi (stiker Manual Book). */
   hasManualBook: boolean;
+  /** Item tertaut ke catatan Postel yang ada (tanpa identitas catatan; dihitung untuk semua pembaca). */
+  hasPostel: boolean;
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
@@ -582,9 +587,25 @@ export interface ItemManualBookDto {
   status: StickerStatus;
 }
 
+/** Postel sebuah item: catatan yang menaunginya dan nomor Aktifnya (kondisi dihitung terhadap tanggal WIB server). */
+export interface ItemPostelDto {
+  id: string;
+  /** Nama catatan (turunan dari tipe semua item catatan). */
+  name: string;
+  /** Nomor sertifikat Aktif (seq terbesar). */
+  number: string;
+  /** Tanggal kedaluwarsa nomor Aktif, 'YYYY-MM-DD' (WIB). */
+  expiresOn: string;
+  condition: PostelCondition;
+  /** Sisa hari sampai `expiresOn` (negatif = sudah lewat). */
+  daysLeft: number;
+}
+
 export interface ItemDto extends ItemSummaryDto {
   /** Null bila item belum punya Manual Book berversi. */
   manualBook: ItemManualBookDto | null;
+  /** Diisi hanya bila pemanggil punya `sticker: view` dan item tertaut ke catatan Postel; selain itu null. */
+  postel: ItemPostelDto | null;
   stickerPhotos: ItemStickerPhotoDto[];
   accessories: ItemAccessoryDto[];
   /** Id berkas galeri (sheet `files`), urut. */
@@ -957,6 +978,135 @@ export interface QrFileDto {
   etag: string;
 }
 
+// --- Postel (stiker 4b) ---
+/** Satu nomor sertifikat sebuah catatan Postel; `role` dan `condition` dihitung (tidak disimpan). */
+export interface PostelNumberDto {
+  id: string;
+  number: string;
+  /** Tanggal kalender 'YYYY-MM-DD' (WIB); berlaku sampai akhir hari itu. */
+  expiresOn: string;
+  /** URL http(s) sertifikat; `''` = tanpa tautan. */
+  link: string;
+  /** `active` = nomor terbaru (seq terbesar), selain itu `old`. */
+  role: PostelRole;
+  condition: PostelCondition;
+  /** Sisa hari sampai `expiresOn` menurut `today` (negatif = sudah lewat). */
+  daysLeft: number;
+}
+/** Item yang tergabung ke satu catatan Postel; hanya item yang terlihat bagi pembaca (BU). */
+export interface PostelItemDto {
+  id: string;
+  brand: string;
+  model: string;
+}
+/** Lampiran catatan Postel (gambar atau PDF). */
+export interface PostelAttachmentDto {
+  id: string;
+  mime: string;
+  size: number;
+  /** Nama unduhan turunan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  filename: string;
+}
+/** Ringkasan satu catatan di daftar; kondisi dan sisa hari milik nomor Aktif. */
+export interface PostelSummaryDto {
+  id: string;
+  /** Nama turunan dari tipe item-itemnya (tidak disimpan). */
+  name: string;
+  /** Jumlah SEMUA item catatan (termasuk yang tidak terlihat bagi pembaca). */
+  itemCount: number;
+  activeNumber: string;
+  activeExpiresOn: string;
+  condition: PostelCondition;
+  daysLeft: number;
+  oldNumberCount: number;
+  /** SEMUA nomor catatan (Aktif dan Lama), urut `seq` menaik; bahan pencarian di klien. */
+  numbers: string[];
+  /** Model item yang berbeda (tanpa merk) dari SEMUA item catatan, termasuk yang tak terlihat; bahan pencarian. */
+  models: string[];
+  updatedAt: string;
+}
+export interface PostelDto {
+  id: string;
+  name: string;
+  note: string;
+  /** Urut `seq` menaik (nomor Aktif terakhir). */
+  numbers: PostelNumberDto[];
+  /** Item yang terlihat bagi pembaca (BU), urut merk lalu tipe. */
+  items: PostelItemDto[];
+  /** Jumlah SEMUA item catatan. */
+  itemCount: number;
+  /** Jumlah item tergabung yang tidak terlihat bagi pembaca (di luar BU-nya). */
+  hiddenItemCount: number;
+  attachments: PostelAttachmentDto[];
+  /** Tanggal WIB server (`YYYY-MM-DD`): dasar `daysLeft` dan `condition`. */
+  today: string;
+  /** Ambang "segera habis" (ambang peringatan terbesar). */
+  soonDays: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface PostelListDto {
+  postels: PostelSummaryDto[];
+  today: string;
+  soonDays: number;
+}
+export interface SavePostelNumberInput {
+  /** Id nomor tersimpan milik catatan ini; tanpa id = nomor baru (menjadi Aktif). */
+  id?: string;
+  number: string;
+  expiresOn: string;
+  link: string;
+}
+/** PUT utuh: nomor, item (yang terlihat), dan lampiran diganti sesuai larik. */
+export interface SavePostelInput {
+  id?: string;
+  /** Wajib saat mengubah (If-Match); versi usang = konflik. */
+  expectedUpdatedAt?: string;
+  note: string;
+  itemIds: string[];
+  numbers: SavePostelNumberInput[];
+  attachmentIds: string[];
+}
+export interface GetPostelInput {
+  id: string;
+}
+export interface RemovePostelInput {
+  id: string;
+}
+export interface PostelItemOptionDto {
+  id: string;
+  brand: string;
+  model: string;
+  /** Nomor Aktif catatan Postel pemilik item; `''` = item belum tertaut ke Postel. */
+  postelNumber: string;
+}
+export interface ListPostelItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface PostelItemOptionsPageDto {
+  items: PostelItemOptionDto[];
+  nextCursor: string | null;
+}
+
+/** Unggah lampiran Postel: byte mentah sebagai badan, MIME sebagai Content-Type (gambar atau PDF). */
+export interface UploadPostelFileInput {
+  mime: string;
+  bytes: Uint8Array;
+}
+export interface GetPostelFileInput {
+  id: string;
+}
+export interface PostelFileContentDto {
+  id: string;
+  mime: string;
+  bytes: Uint8Array;
+  /** Nama unduhan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  filename: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: null; output: UserDto[] };
@@ -1031,6 +1181,16 @@ export interface ApiContract {
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
+  'postels.list': { input: null; output: PostelListDto };
+  'postels.get': { input: GetPostelInput; output: PostelDto };
+  'postels.save': { input: SavePostelInput; output: PostelDto };
+  'postels.remove': { input: RemovePostelInput; output: null };
+  'postels.history': { input: ListPostelHistoryInput; output: AuditCursorPageDto };
+  'postelSettings.get': { input: null; output: PostelSettingsDto };
+  'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
+  'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
+  'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
@@ -1074,11 +1234,48 @@ export interface ListItemsPageInput {
   stickerMode?: 'has' | 'missing';
   /** `has` = hanya item ber-Manual Book; `missing` = hanya yang belum (definisi sama dengan `hasManualBook`). */
   manualBook?: 'has' | 'missing';
+  /** `has` = hanya item ber-Postel; `missing` = hanya yang belum (definisi sama dengan `hasPostel`). */
+  postel?: 'has' | 'missing';
 }
 
 export interface ItemPageDto {
   items: ItemSummaryDto[];
   nextCursor: string | null;
+}
+
+/** Pengaturan email peringatan masa berlaku Postel (terpisah dari pengaturan stok stiker). */
+export interface PostelAlertSettings {
+  enabled: boolean;
+  /** Maks. 20 alamat email sah dan unik. */
+  recipients: string[];
+  /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
+  sendHour: number;
+  /** Hari sebelum habis; 1-5 nilai bulat 1-730, unik, disimpan menurun. */
+  thresholds: number[];
+  /** 0 = tidak mengulang; selain itu pengingat ulang tiap N hari di ambang terkecil (maks. 365). */
+  repeatEveryDays: number;
+}
+
+export interface PostelSettingsDto {
+  alert: PostelAlertSettings;
+  /** Versi pengaturan ('' bila belum pernah disimpan). */
+  updatedAt: string;
+  /** Server punya SMTP terkonfigurasi (tanpa itu ringkasan tak terkirim). */
+  smtpConfigured: boolean;
+}
+
+export interface SavePostelSettingsInput {
+  /** `updatedAt` yang dilihat penyimpan ('' bila belum pernah disimpan); usang = galat usang (412 lewat If-Match). */
+  expectedUpdatedAt: string;
+  alert: PostelAlertSettings;
+}
+
+/** Riwayat perubahan satu catatan Postel (log audit per target); halaman terbaru dahulu. */
+export interface ListPostelHistoryInput {
+  id: string;
+  cursor?: string;
+  /** Bawaan 20, maksimum 50. */
+  limit?: number;
 }
 
 export interface ListAuditPageInput {

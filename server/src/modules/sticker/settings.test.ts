@@ -20,6 +20,7 @@ const alert = (over: Record<string, unknown> = {}) => ({
   enabled: true,
   recipients: ['a@contoh.com', 'b@contoh.com'],
   digestHour: 9,
+  intervalDays: 1,
   ...over,
 });
 
@@ -43,7 +44,12 @@ describe('stickerSettings.get', () => {
   test('bawaan: nonaktif, tanpa penerima, jam 8; memuat jenis beserta minimum bawaan; smtpConfigured false tanpa MAILER', async () => {
     const out = await call('sm@gmail.com', 'stickerSettings.get', null);
     expect(out.ok).toBe(true);
-    expect(out.data.alert).toEqual({ enabled: false, recipients: [], digestHour: 8 });
+    expect(out.data.alert).toEqual({
+      enabled: false,
+      recipients: [],
+      digestHour: 8,
+      intervalDays: 1,
+    });
     expect(out.data.updatedAt).toBe('');
     expect(out.data.smtpConfigured).toBe(false);
     expect(out.data.types).toEqual([
@@ -90,6 +96,7 @@ describe('stickerSettings.save', () => {
     expect(JSON.parse(await getSetting(env, SETTING_STICKER_ALERT))).toMatchObject({
       enabled: true,
       digestHour: 9,
+      intervalDays: 1,
     });
     const audit = await env.DB.prepare('SELECT action FROM audit_log').all<{ action: string }>();
     expect(audit.results.map((r) => r.action)).toEqual(['sticker.settings']);
@@ -142,6 +149,22 @@ describe('stickerSettings.save', () => {
     for (const hour of [-1, 24, 1.5]) {
       expect((await save({ alert: alert({ digestHour: hour }) })).error.code).toBe('VALIDATION');
     }
+  });
+
+  test('selang kirim: 1-365 hari tersimpan; di luar itu, pecahan, atau bukan angka -> 422; tanpa field = 1 (klien lama)', async () => {
+    const first = await save({ alert: alert({ intervalDays: 7 }) });
+    expect(first.data.alert.intervalDays).toBe(7);
+    for (const bad of [0, 366, 1.5, '3', null]) {
+      const out = await save({
+        alert: alert({ intervalDays: bad }),
+        expectedUpdatedAt: first.data.updatedAt,
+      });
+      expect(out.error.code).toBe('VALIDATION');
+      expect(out.error.fields.intervalDays).toBeDefined();
+    }
+    const { intervalDays: _omit, ...legacy } = alert();
+    const legacySave = await save({ alert: legacy, expectedUpdatedAt: first.data.updatedAt });
+    expect(legacySave.data.alert.intervalDays).toBe(1);
   });
 
   test('minimum bawaan: jenis tak dikenal, negatif, atau pecahan -> 422; hanya jenis yang disebut berubah', async () => {

@@ -7,6 +7,7 @@ import {
   Building2,
   ClipboardList,
   Contact,
+  FileBadge,
   History,
   House,
   Images,
@@ -78,6 +79,17 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/qrcode',
         icon: QrCode,
         permission: { module: 'qrcode', level: 'view' },
+      },
+    ],
+  },
+  {
+    label: 'Postel',
+    items: [
+      {
+        label: 'Daftar Postel',
+        to: '/postel',
+        icon: FileBadge,
+        permission: { module: 'sticker', level: 'view' },
       },
     ],
   },

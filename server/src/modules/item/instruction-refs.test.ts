@@ -137,14 +137,28 @@ describe('assertInstructionRefs', () => {
     });
     await seedSticker(env, { id: 's-mb', typeId: 't-mb' });
     expect(await messageOf(input([photo([stickerMark('s-mb')])]))).toBe(
-      'Foto 1, penanda 1: Stiker Manual Book dipilih lewat jenisnya',
+      'Foto 1, penanda 1: Stiker jenis sistem dipilih lewat jenisnya',
     );
     // juga ditolak untuk item yang sudah ada (stiker jenis sistem tak pernah menjadi sasaran langsung)
     expect(await messageOf(input([photo([stickerMark('s-mb')])], { id: 'item-1' }))).toBe(
-      'Foto 1, penanda 1: Stiker Manual Book dipilih lewat jenisnya',
+      'Foto 1, penanda 1: Stiker jenis sistem dipilih lewat jenisnya',
     );
     await assertInstructionRefs(env, input([photo([typeMark('t-mb')])]));
     await assertInstructionRefs(env, input([photo([typeMark('t-mb'), stickerMark('s1')])]));
+  });
+
+  test('stiker Postel (jenis sistem) ditolak dengan pesan generik yang sama; jenis Postel diterima', async () => {
+    await seedStickerType(env, {
+      id: 't-postel',
+      name: 'Postel',
+      rule: 'group',
+      systemKind: 'postel',
+    });
+    await seedSticker(env, { id: 's-postel', typeId: 't-postel', name: 'Postel' });
+    expect(await messageOf(input([photo([stickerMark('s-postel')])]))).toBe(
+      'Foto 1, penanda 1: Stiker jenis sistem dipilih lewat jenisnya',
+    );
+    await assertInstructionRefs(env, input([photo([typeMark('t-postel')])]));
   });
 
   test('stiker deprecated bukan active: ditolak sebagai stiker dinonaktifkan', async () => {

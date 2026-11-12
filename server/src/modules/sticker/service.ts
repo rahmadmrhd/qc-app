@@ -59,6 +59,8 @@ const NOT_LATEST_MESSAGE = 'Hanya versi terbaru Manual Book yang dapat diaktifka
 const SYSTEM_TYPE_MESSAGE = 'Jenis sistem dikelola aplikasi dan tidak dapat diubah';
 const SYSTEM_STICKER_MESSAGE =
   'Stiker jenis sistem dibuat otomatis; hanya minimum stok, alias, dan status yang dapat diubah';
+const POSTEL_STICKER_MESSAGE =
+  'Stiker Postel dibuat otomatis; hanya minimum stok, alias, gambar, dan status yang dapat diubah';
 
 /** Peta bentrok indeks unik -> pesan generik (tanpa nilai lain). */
 const TYPE_CONFLICTS = {
@@ -220,7 +222,7 @@ function toStickerDto(
   };
 }
 
-/** Penanda versi terbaru satu stiker: hanya jenis sistem yang dapat berstatus ini (satu kueri). */
+/** Penanda versi terbaru satu stiker: hanya jenis sistem Manual Book yang dapat berstatus ini (satu kueri). */
 async function latestFlagOf(
   env: Env,
   stickerId: string,
@@ -228,7 +230,7 @@ async function latestFlagOf(
 ): Promise<boolean> {
   return (
     type !== undefined &&
-    type.systemKind !== '' &&
+    type.systemKind === 'manual_book' &&
     (await isLatestManualBookVersion(env.DB, stickerId))
   );
 }
@@ -343,12 +345,14 @@ async function saveStickerOnce(
   }
   // Stiker jenis sistem lahir dari ekspor (bukan form katalog) dan hanya minimum stok dan alias yang dapat diubah.
   if (type.systemKind !== '') {
-    if (!existing)
-      throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { typeId: SYSTEM_STICKER_MESSAGE });
+    const lockedMessage =
+      type.systemKind === 'postel' ? POSTEL_STICKER_MESSAGE : SYSTEM_STICKER_MESSAGE;
+    if (!existing) throw appError('VALIDATION', lockedMessage, { typeId: lockedMessage });
     if (input.name !== existing.name) {
-      throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { name: SYSTEM_STICKER_MESSAGE });
+      throw appError('VALIDATION', lockedMessage, { name: lockedMessage });
     }
-    if ((input.fileId ?? '') !== existing.fileId) {
+    // Gambar stiker Manual Book mengikuti ekspor; gambar stiker Postel boleh diganti (spek 4b).
+    if (type.systemKind === 'manual_book' && (input.fileId ?? '') !== existing.fileId) {
       throw appError('VALIDATION', SYSTEM_STICKER_MESSAGE, { fileId: SYSTEM_STICKER_MESSAGE });
     }
   }
@@ -506,8 +510,9 @@ async function setStickerStatusOnce(
       status: DEPRECATED_ACTIVATE_MESSAGE,
     });
   }
-  // Stiker jenis sistem hanya boleh diaktifkan bila masih versi terbaru konfigurasinya.
-  const guardLatest = input.status === 'active' && type !== undefined && type.systemKind !== '';
+  // Stiker Manual Book hanya boleh diaktifkan bila masih versi terbaru konfigurasinya (Postel bebas).
+  const guardLatest =
+    input.status === 'active' && type !== undefined && type.systemKind === 'manual_book';
   if (guardLatest && !latest) {
     throw appError('VALIDATION', NOT_LATEST_MESSAGE, { status: NOT_LATEST_MESSAGE });
   }

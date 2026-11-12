@@ -31,6 +31,8 @@ export interface ItemListFilter {
   stickerMode: 'has' | 'missing';
   /** `missing` = hanya item yang belum punya Manual Book berversi (QR Manual Book). */
   manualBook: 'all' | 'missing';
+  /** `missing` = hanya item aktif yang belum punya Postel (catatan nomor Postel). */
+  postel: 'all' | 'missing';
 }
 
 export const DEFAULT_ITEM_FILTER: ItemListFilter = {
@@ -40,6 +42,7 @@ export const DEFAULT_ITEM_FILTER: ItemListFilter = {
   stickerKey: '',
   stickerMode: 'has',
   manualBook: 'all',
+  postel: 'all',
 };
 
 /** `stickerKey` -> parameter `stickerId`/`typeId` + `stickerMode` untuk `items.list`; kosong/tak dikenal = tanpa filter. */
@@ -69,6 +72,7 @@ export const itemKeys = {
       filter.stickerKey,
       filter.stickerMode,
       filter.manualBook,
+      filter.postel,
     ] as const,
   one: (id: string) => ['items', 'one', id] as const,
 };
@@ -81,7 +85,8 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
       api('items.list', {
         ...(filter.query.trim() !== '' ? { query: filter.query.trim() } : {}),
         // "Belum ada QR Manual Book" hanya berlaku bagi item aktif (spek 4a §3 butir 20, keputusan pemilik 2026-11-11).
-        ...(filter.manualBook === 'missing'
+        // Label "Belum ada Postel" (seperti Manual Book) juga hanya bagi item aktif: filternya memaksa status aktif.
+        ...(filter.manualBook === 'missing' || filter.postel === 'missing'
           ? { status: 'active' as const }
           : filter.status !== 'all'
             ? { status: filter.status }
@@ -89,6 +94,7 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
         ...(filter.instruction === 'none' ? { instruction: 'none' as const } : {}),
         ...stickerFilterInput(filter),
         ...(filter.manualBook === 'missing' ? { manualBook: 'missing' as const } : {}),
+        ...(filter.postel === 'missing' ? { postel: 'missing' as const } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,
@@ -122,6 +128,7 @@ export function toItemSummary(item: ItemDto): ItemSummaryDto {
     imageCount: item.imageCount,
     hasInstructions: item.stickerPhotos.some((photo) => photo.marks.length > 0),
     hasManualBook: item.hasManualBook,
+    hasPostel: item.hasPostel,
     businessUnits: item.businessUnits,
     updatedAt: item.updatedAt,
   };

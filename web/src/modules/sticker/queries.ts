@@ -2,6 +2,7 @@ import type {
   AdjustStockInput,
   OpnameInput,
   RecordStockInput,
+  SavePostelSettingsInput,
   SaveStickerInput,
   SaveStickerSettingsInput,
   SaveStickerTypeInput,
@@ -15,7 +16,10 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
+import { itemKeys } from '@/modules/item/queries';
+import { postelKeys } from '@/modules/postel/keys';
 import { stickerKeys } from './keys';
 
 export function stickerTypesQuery() {
@@ -72,6 +76,31 @@ export function stickerSettingsQuery() {
 
 export const useSaveStickerSettings = () =>
   useCatalogMutation((input: SaveStickerSettingsInput) => api('stickerSettings.save', input));
+
+/** Pengaturan peringatan masa berlaku Postel (`sticker: manage`; terpisah dari pengaturan stok: versi sendiri). */
+export function postelSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: postelKeys.settings,
+    queryFn: () => api('postelSettings.get', null),
+  });
+}
+
+/**
+ * Hasil simpan langsung dipasang ke cache (versi baru = isian di halaman mulai dari data terbaru); audit ditandai basi.
+ * Ambang peringatan terbesar = ambang "segera habis" (`soonDays`), jadi kondisi di daftar/detail Postel dan item ikut
+ * ditandai basi (tanpa memuat ulang sekarang).
+ */
+export const useSavePostelSettings = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SavePostelSettingsInput) => api('postelSettings.save', input),
+    onSuccess: (saved) => {
+      markStale(queryClient, accessKeys.audit, postelKeys.all, itemKeys.all);
+      // Sesudah markStale: pengaturan yang baru disimpan tetap segar (setQueryData membersihkan tanda basi).
+      queryClient.setQueryData(postelKeys.settings, saved);
+    },
+  });
+};
 
 export function stickersQuery() {
   return queryOptions({

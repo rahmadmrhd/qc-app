@@ -5,8 +5,8 @@ import { wibDate, wibHour } from '@server/modules/backup/names';
 import { readStickerAlert } from './settings';
 
 /**
- * Email ringkasan harian stok stiker menipis (tahap 4a): satu surel per hari pada/setelah jam yang diatur (WIB),
- * hanya bila ada stiker yang menipis. Dipanggil penjadwal jam-an (`checkLowStockDigest`); tidak bergantung pada
+ * Email ringkasan stok stiker menipis (tahap 4a): paling banyak satu surel per hari pada/setelah jam yang diatur (WIB),
+ * dan tiap `intervalDays` hari (bawaan 1 = tiap hari), hanya bila ada stiker yang menipis. Dipanggil penjadwal jam-an (`checkLowStockDigest`); tidak bergantung pada
  * sakelar cadangan. Penerima dari Konfigurasi Stiker (tabel `settings`), bukan `ALERT_TO`.
  */
 
@@ -37,6 +37,19 @@ export async function lowStockRows(env: Env): Promise<LowStockRow[]> {
 }
 
 export type DigestOutcome = 'sent' | 'skipped' | 'failed';
+
+/** Selisih hari kalender antara dua tanggal `YYYYMMDD`; NaN bila salah satunya tak terbaca. */
+function daysBetweenCompact(from: string, to: string): number {
+  const parse = (value: string) =>
+    /^\d{8}$/.test(value)
+      ? Date.UTC(
+          Number(value.slice(0, 4)),
+          Number(value.slice(4, 6)) - 1,
+          Number(value.slice(6, 8)),
+        )
+      : Number.NaN;
+  return Math.round((parse(to) - parse(from)) / 86_400_000);
+}
 
 /**
  * Mengklaim tanggal kirim secara atomik (CAS pada nilai lama) SEBELUM surel dikirim: beberapa proses atas DB yang
@@ -74,6 +87,9 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const today = wibDate(now);
   const previous = await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE);
   if (previous === today) return 'skipped';
+  // Selang minimum antar ringkasan (1 = tiap hari); tanggal terakhir yang tak terbaca atau kosong = belum pernah kirim.
+  const elapsed = previous === '' ? Number.POSITIVE_INFINITY : daysBetweenCompact(previous, today);
+  if (Number.isFinite(elapsed) && elapsed < alert.intervalDays) return 'skipped';
   const rows = await lowStockRows(env);
   if (rows.length === 0) return 'skipped';
   if (!(await claimDigestDate(env, previous, today))) return 'skipped';

@@ -18,6 +18,7 @@ const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;
 const INSTRUCTION_FILTER_VALUES = ['none'] as const;
 const STICKER_MODE_VALUES = ['has', 'missing'] as const;
 const MANUAL_BOOK_FILTER_VALUES = ['has', 'missing'] as const;
+const POSTEL_FILTER_VALUES = ['has', 'missing'] as const;
 
 function isItemRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -420,6 +421,10 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   if (hasValue(reader.raw('manualBook'))) {
     manualBook = reader.oneOf('manualBook', MANUAL_BOOK_FILTER_VALUES);
   }
+  let postel: 'has' | 'missing' | undefined;
+  if (hasValue(reader.raw('postel'))) {
+    postel = reader.oneOf('postel', POSTEL_FILTER_VALUES);
+  }
   reader.done();
   return {
     limit: limit as number,
@@ -431,5 +436,6 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
     ...(typeId !== '' ? { typeId } : {}),
     ...(stickerId !== '' || typeId !== '' ? { stickerMode: stickerMode ?? 'has' } : {}),
     ...(manualBook ? { manualBook } : {}),
+    ...(postel ? { postel } : {}),
   };
 }

@@ -42,12 +42,14 @@ export interface SeedItem {
   businessUnitIds?: string[];
   /** Konfigurasi QR (Manual Book) tempat item tergabung; bawaan `''` = belum tergabung. */
   manualBookDesignId?: string;
+  /** Catatan Postel tempat item tertaut; bawaan `''` = belum tertaut. */
+  postelId?: string;
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
   const brandId = item.brandId ?? brandIdOf(item.brand);
   await env.DB.prepare(
-    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?)",
+    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id, postel_id) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?, ?)",
   )
     .bind(
       item.id,
@@ -60,6 +62,7 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       SEED_TIME,
       SEED_TIME,
       item.manualBookDesignId ?? '',
+      item.postelId ?? '',
     )
     .run();
   const businessUnitIds = item.businessUnitIds ?? [DEFAULT_TEST_BU_ID];

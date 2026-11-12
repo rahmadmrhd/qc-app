@@ -29,7 +29,9 @@ const item: ItemDto = {
   updatedAt: '2026-10-09T00:00:00.000Z',
   hasInstructions: true,
   hasManualBook: false,
+  hasPostel: false,
   manualBook: null,
+  postel: null,
   stickerPhotos: [
     {
       guideId: 'g1',
@@ -202,4 +204,54 @@ test('item tanpa Manual Book menampilkan keterangan kosong', () => {
   renderView();
   expect(screen.getByRole('heading', { name: 'Manual Book' })).toBeInTheDocument();
   expect(screen.getByText('Belum ada QR Manual Book')).toBeInTheDocument();
+});
+
+const postelInfo = {
+  id: 'p1',
+  name: 'M5-200/400',
+  number: 'AB-1',
+  expiresOn: '2026-12-01',
+  condition: 'soon' as const,
+  daysLeft: 19,
+};
+
+test('tanpa izin sticker view: item tanpa Postel tetap menampilkan keterangan kosong', () => {
+  renderView({ postel: undefined });
+  expect(screen.getByRole('heading', { name: 'Postel' })).toBeInTheDocument();
+  expect(screen.getByText('Belum ada Postel')).toBeInTheDocument();
+});
+
+test('tanpa izin sticker view: item yang sudah ber-Postel menyembunyikan seluruh bagian Postel', () => {
+  renderView({ postel: undefined, item: { ...item, hasPostel: true } });
+  expect(screen.queryByRole('heading', { name: 'Postel' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Belum ada Postel')).not.toBeInTheDocument();
+});
+
+test('bagian Postel: null menampilkan keterangan kosong', () => {
+  renderView({ postel: null });
+  expect(screen.getByRole('heading', { name: 'Postel' })).toBeInTheDocument();
+  expect(screen.getByText('Belum ada Postel')).toBeInTheDocument();
+});
+
+test('bagian Postel: nama, nomor, tanggal habis, badge kondisi, dan tautan Buka', () => {
+  renderView({ postel: postelInfo, openPostelHref: (id) => `/postel/${id}` });
+  expect(screen.getByRole('heading', { name: 'Postel' })).toBeInTheDocument();
+  expect(screen.getByText('M5-200/400')).toBeInTheDocument();
+  expect(screen.getByText('AB-1')).toBeInTheDocument();
+  expect(screen.getByText(/1 Des(?:ember)? 2026/)).toBeInTheDocument();
+  expect(screen.getByText('Segera habis')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Buka Postel' })).toHaveAttribute('href', '/postel/p1');
+});
+
+test('tautan Buka Postel tak tampil bila openPostelHref tidak diberikan', () => {
+  renderView({ postel: postelInfo });
+  expect(screen.getByText('M5-200/400')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
+});
+
+test('tautan Buka Postel tak tampil bila openPostelHref mengembalikan null', () => {
+  const openPostelHref = vi.fn(() => null);
+  renderView({ postel: postelInfo, openPostelHref });
+  expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
+  expect(openPostelHref).toHaveBeenCalledTimes(1);
 });

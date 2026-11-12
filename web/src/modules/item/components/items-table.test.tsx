@@ -16,6 +16,7 @@ const items: ItemSummaryDto[] = [
     imageCount: 2,
     hasInstructions: true,
     hasManualBook: false,
+    hasPostel: false,
     businessUnits: [
       { id: 'bu-a', code: 'RTL', name: 'Retail' },
       { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
@@ -33,6 +34,7 @@ const items: ItemSummaryDto[] = [
     imageCount: 0,
     hasInstructions: false,
     hasManualBook: false,
+    hasPostel: false,
     businessUnits: [],
     updatedAt: '',
   },
@@ -133,6 +135,7 @@ const withManualBook: ItemSummaryDto = {
   imageCount: 0,
   hasInstructions: true,
   hasManualBook: true,
+  hasPostel: false,
   businessUnits: [],
   updatedAt: '',
 };
@@ -148,4 +151,25 @@ test('tanda "Belum ada QR Manual Book" hanya untuk item aktif tanpa Manual Book,
   expect(screen.getByRole('row', { name: /Mikrotik/ })).toHaveTextContent(
     'Belum ada instruksi stiker',
   );
+});
+
+test('tanda "Belum ada Postel" hanya untuk item aktif tanpa Postel', () => {
+  const withPostel: ItemSummaryDto = {
+    ...withManualBook,
+    id: 'i4',
+    brand: 'Juniper',
+    hasPostel: true,
+  };
+  renderTable({ items: [...items, withPostel] });
+  const marks = screen.getAllByText('Belum ada Postel');
+  // i1 aktif tanpa Postel; i2 nonaktif (tanpa tanda); i4 sudah punya Postel
+  expect(marks).toHaveLength(1);
+  expect(screen.getByRole('row', { name: /Ubiquiti/ })).toContainElement(marks[0] as HTMLElement);
+  expect(screen.getByRole('row', { name: /Mikrotik/ })).not.toHaveTextContent('Belum ada Postel');
+  expect(screen.getByRole('row', { name: /Juniper/ })).not.toHaveTextContent('Belum ada Postel');
+});
+
+test('tanda "Belum ada Postel" tampil tanpa syarat izin sticker (parity Manual Book)', () => {
+  renderTable();
+  expect(screen.getAllByText('Belum ada Postel')).toHaveLength(1);
 });

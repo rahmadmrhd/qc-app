@@ -17,6 +17,7 @@ import {
 } from './api';
 import type { ApiId, ApiInput } from './contract';
 import { MAX_IMAGE_BYTES } from './files';
+import { POSTEL_LIMITS } from './postel';
 import { QR_LIMITS } from './qrcode';
 import { GUIDE_LIMITS } from './stickers';
 
@@ -75,7 +76,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'stickerSettings.get': null,
   'stickerSettings.save': {
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
-    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8 },
+    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
     defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
   },
   'stickerTypes.list': null,
@@ -146,6 +147,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     stickerId: 's1',
     typeId: 't1',
     stickerMode: 'missing',
+    manualBook: 'has',
+    postel: 'missing',
   },
   'items.get': { id: 'i1' },
   'items.save': {
@@ -217,6 +220,35 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
+  'postels.list': null,
+  'postels.get': { id: 'p1' },
+  'postels.save': {
+    id: 'p1',
+    expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    note: 'Catatan',
+    itemIds: ['i1', 'i2'],
+    numbers: [
+      { id: 'n1', number: 'SN-001', expiresOn: '2027-03-01', link: 'https://x.id/1' },
+      { number: 'SN-002', expiresOn: '2027-09-01', link: '' },
+    ],
+    attachmentIds: [],
+  },
+  'postels.remove': { id: 'p1' },
+  'postelSettings.get': null,
+  'postelSettings.save': {
+    expectedUpdatedAt: '2026-11-11T00:00:00.000Z',
+    alert: {
+      enabled: true,
+      recipients: ['a@contoh.com'],
+      sendHour: 8,
+      thresholds: [90, 60, 30],
+      repeatEveryDays: 7,
+    },
+  },
+  'postels.history': { id: 'p1', cursor: 'c1', limit: 20 },
+  'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
+  'postelFiles.get': { id: 'f1' },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };
@@ -569,6 +601,10 @@ describe('rute biner', () => {
 
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
+      POSTEL_LIMITS.attachmentMaxBytes,
+    );
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
     // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
