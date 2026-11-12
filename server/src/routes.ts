@@ -99,6 +99,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'postels.itemOptions': true,
   'serials.itemOptions': true,
   'serials.stickerOptions': true,
+  'serials.locationOptions': true,
   'serials.saveBatch': true,
   'serials.get': true,
   'serials.list': true,

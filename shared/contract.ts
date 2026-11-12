@@ -1192,6 +1192,7 @@ export interface ApiContract {
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
+  'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
   'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
   'serials.get': { input: GetSerialInput; output: GetSerialOutput };
   'serials.list': { input: SerialListInput; output: SerialListOutput };
@@ -1472,6 +1473,16 @@ export interface ListSerialItemOptionsInput {
 export interface SerialItemOptionsPageDto {
   items: SerialItemOptionDto[];
   nextCursor: string | null;
+}
+/** Lokasi aktif yang boleh dipilih saat mencatat serial (tanpa penugasan lokasi: spek §3 butir 3, §11 butir 8). */
+export interface SerialLocationOptionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface SerialLocationOptionsDto {
+  /** Semua lokasi AKTIF, urut kode. */
+  locations: SerialLocationOptionDto[];
 }
 export interface SerialStickerOptionsInput {
   itemId: string;

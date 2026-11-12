@@ -249,6 +249,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
   'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
+  'serials.locationOptions': null,
   'serials.get': { id: 's1' },
   'serials.update': {
     id: 's1',

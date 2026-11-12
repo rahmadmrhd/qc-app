@@ -120,6 +120,28 @@ describe('serials.itemOptions', () => {
   });
 });
 
+describe('serials.locationOptions', () => {
+  test('semua lokasi AKTIF urut kode, tanpa filter penugasan lokasi', async () => {
+    await seedLocation(env, { id: 'l-z', code: 'ZZ', name: 'Terakhir' });
+    await seedLocation(env, { id: 'l-a', code: 'AA', name: 'Pertama' });
+    await seedLocation(env, { id: 'l-off', code: 'BB', name: 'Mati', status: 'inactive' });
+    // pencatat@ tidak punya penugasan lokasi sama sekali, tetapi tetap melihat semua lokasi aktif.
+    const result = await call(WRITER, 'serials.locationOptions', null);
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).locations).toEqual([
+      { id: 'l-a', code: 'AA', name: 'Pertama' },
+      { id: 'l-z', code: 'ZZ', name: 'Terakhir' },
+    ]);
+    const both = await call(BOTH, 'serials.locationOptions', null);
+    expect((both.data as Json).locations).toHaveLength(2);
+  });
+
+  test('serial view saja atau tanpa peran: FORBIDDEN', async () => {
+    expect((await call(VIEWER, 'serials.locationOptions', null)).error?.code).toBe('FORBIDDEN');
+    expect((await call(NOBU, 'serials.locationOptions', null)).error?.code).toBe('FORBIDDEN');
+  });
+});
+
 describe('serials.stickerOptions', () => {
   beforeEach(async () => {
     await seedGuideImage(env, { id: 'g1' });
@@ -306,6 +328,23 @@ describe('serials.saveBatch', () => {
     expect(await count('serials')).toBe(1);
   });
 
+  test('5 permintaan serentak dengan clientId SAMA: semua created dengan id sama, stok dipotong sekali', async () => {
+    const same = row({ stickers: [{ stickerId: 's1', qty: 1 }] });
+    const outs = await Promise.all(Array.from({ length: 5 }, () => save(WRITER, [same])));
+    const flat = outs.flatMap(resultsOf);
+    expect(flat.map((r) => r.result)).toEqual([
+      'created',
+      'created',
+      'created',
+      'created',
+      'created',
+    ]);
+    expect(new Set(flat.map((r) => r.id)).size).toBe(1);
+    expect(await stockOf('s1')).toBe(4);
+    expect(await count('serials')).toBe(1);
+    expect(await count('serial_events')).toBe(1);
+  });
+
   test('retry clientId: created dengan id sama, stok tidak berubah, satu serials', async () => {
     const same = row();
     const first = resultsOf(await save(WRITER, [same]))[0];
@@ -345,6 +384,29 @@ describe('serials.saveBatch', () => {
       result: 'invalid',
       message: 'Stiker tidak berlaku bagi item ini',
     });
+    expect(await count('serials')).toBe(0);
+  });
+
+  test('stiker kembar atau lebih dari 20 pilihan: invalid dengan pesan daftar tidak valid', async () => {
+    const twice = await save(WRITER, [
+      row({
+        stickers: [
+          { stickerId: 's1', qty: 1 },
+          { stickerId: 's1', qty: 2 },
+        ],
+      }),
+    ]);
+    expect(resultsOf(twice)[0]).toMatchObject({
+      result: 'invalid',
+      message: 'Daftar stiker tidak valid',
+    });
+    const many = await save(WRITER, [
+      row({
+        serial: 'SN-BANYAK',
+        stickers: Array.from({ length: 21 }, (_, i) => ({ stickerId: `s${i}`, qty: 1 })),
+      }),
+    ]);
+    expect(resultsOf(many)[0]).toMatchObject({ result: 'invalid' });
     expect(await count('serials')).toBe(0);
   });
 

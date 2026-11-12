@@ -123,6 +123,33 @@ describe('parseQcsn tingkat baris', () => {
     expect(result.problems[0]?.row).toBe(2);
   });
 
+  test('stiker melebihi batas server (20) atau kembar: baris bermasalah, baris lain tetap', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({
+      stickerId: `s${i}`,
+      stickerLabel: `S${i}`,
+      qty: 1,
+    }));
+    const twenty = many.slice(0, 20);
+    const result = parseQcsn(
+      file([
+        row({ clientId: 'aaaaaaaa-0000-0000-0000-000000000001', stickers: twenty }),
+        row({ clientId: 'aaaaaaaa-0000-0000-0000-000000000002', stickers: many }),
+        row({
+          clientId: 'aaaaaaaa-0000-0000-0000-000000000003',
+          stickers: [
+            { stickerId: 's1', stickerLabel: 'Stiker', qty: 1 },
+            { stickerId: 's1', stickerLabel: 'Stiker', qty: 2 },
+          ],
+        }),
+      ]),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rows).toHaveLength(1);
+    expect(result.problems.map((p) => p.row)).toEqual([2, 3]);
+    expect(result.problems[1]?.message).toContain('kembar');
+  });
+
   test('stiker, reinjectedAt, dan buId opsional diterima', () => {
     const result = parseQcsn(
       file([

@@ -39,6 +39,14 @@ export const SERIAL_LIMITS = {
   tableRows: 1000,
   batchRows: 200,
   stickerQtyMax: 99,
+  /** Maks. pilihan stiker per baris (server `saveBatch`/`act` dan berkas `.qcsn` memakai batas yang sama). */
+  picksMax: 20,
+  /**
+   * Pencarian banyak serial lewat `serials.list` (GET, jadi masuk URL): maks. baris dan maks. karakter teksnya.
+   * Menjaga URL di bawah ~4 KB (nginx bawaan `large_client_header_buffers 4 8k`); lebih banyak = paginasi/ekspor.
+   */
+  listSerialsMax: 50,
+  listSerialsChars: 3300,
 } as const;
 
 const MAC_COLON_DASH = /^[0-9A-F]{2}([:-])(?:[0-9A-F]{2}\1){4}[0-9A-F]{2}$/;

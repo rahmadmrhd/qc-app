@@ -253,8 +253,9 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     binds.push(filter.createdBy);
   }
   if (filter.prefixes !== undefined && filter.prefixes.length > 0) {
-    where.push(`(${filter.prefixes.map(() => 'LEFT(s.serial, CHAR_LENGTH(?)) = ?').join(' OR ')})`);
-    for (const prefix of filter.prefixes) binds.push(prefix, prefix);
+    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_bu_serial` dapat dipakai; metakarakter di-escape.
+    where.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
+    for (const prefix of filter.prefixes) binds.push(`${escapeLike(prefix)}%`);
   }
   if (filter.serials !== undefined) {
     if (filter.serials.length === 0) return [];
@@ -272,6 +273,11 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     .bind(...binds, filter.limit + 1)
     .all<SerialRow>();
   return rows.results;
+}
+
+/** Meng-escape `%`, `_`, dan karakter escape `!` agar awalan dicocokkan apa adanya oleh `LIKE ... ESCAPE '!'`. */
+export function escapeLike(value: string): string {
+  return value.replace(/[!%_]/g, (char) => `!${char}`);
 }
 
 export type SerialColumn =

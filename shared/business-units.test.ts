@@ -26,7 +26,7 @@ describe('konstanta', () => {
     expect(fullBuPermissions()).toEqual({
       item: 'manage',
       serial: 'manage',
-      serialservice: 'manage',
+      serialservice: 'edit',
     });
   });
 });

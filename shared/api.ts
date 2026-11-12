@@ -353,6 +353,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serials/sticker-options',
     query: { itemId: 'string', buId: 'string' },
   },
+  'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
   'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
   'serials.list': {
     verb: 'GET',

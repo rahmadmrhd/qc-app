@@ -2,8 +2,10 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 
 /**
- * Bus event kecil (tahap 5a): modul penerbit (serial) tidak mengimpor modul pendengar (stiker). Pendengar
- * TIDAK menulis sendiri: ia menyusun pernyataan SQL yang dipasang penerbit ke dalam `batch()` yang sama, sehingga
+ * Bus event kecil (tahap 5a): kode penerbit (serial) hanya memanggil `statementsFor` dan tidak mengenal isi pendengar
+ * (stiker). Pendaftaran pendengar terjadi lewat impor efek-samping `@server/modules/sticker/serial-listener` di
+ * `serial/service.ts` (titik perakitan; satu-satunya tempat modul serial menyentuh modul stiker, dan hanya agar
+ * pendengar terdaftar). Pendengar TIDAK menulis sendiri: ia menyusun pernyataan SQL yang dipasang penerbit ke dalam `batch()` yang sama, sehingga
  * efek samping (mis. pemotongan stok) atomik dengan penulisan penerbit. Pendengar didaftarkan sekali saat modul
  * dimuat (`onEvent` idempoten per pasangan jenis dan fungsi).
  */

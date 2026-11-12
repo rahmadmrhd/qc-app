@@ -186,15 +186,20 @@ describe('serials.list', () => {
     expect(tooBig.error?.code).toBe('VALIDATION');
   });
 
-  test('validator: status tidak dikenal, tanggal rusak, lebih dari 200 baris serials', async () => {
+  test('validator: status tidak dikenal, tanggal rusak, lebih dari 50 serial atau teks terlalu panjang', async () => {
     expect((await call(SERIAL_USERS.writer, 'serials.list', { status: 'x' })).error?.code).toBe(
       'VALIDATION',
     );
     expect(
       (await call(SERIAL_USERS.writer, 'serials.list', { from: '2026-13-01' })).error?.code,
     ).toBe('VALIDATION');
-    const many = Array.from({ length: 201 }, (_, i) => `S${i}`).join('\n');
-    expect((await call(SERIAL_USERS.writer, 'serials.list', { serials: many })).error?.code).toBe(
+    const fifty = Array.from({ length: 50 }, (_, i) => `S${i}`).join('\n');
+    expect((await call(SERIAL_USERS.writer, 'serials.list', { serials: fifty })).ok).toBe(true);
+    const many = Array.from({ length: 51 }, (_, i) => `S${i}`).join('\n');
+    const tooMany = await call(SERIAL_USERS.writer, 'serials.list', { serials: many });
+    expect(tooMany.error?.code).toBe('VALIDATION');
+    const long = Array.from({ length: 50 }, () => 'X'.repeat(70)).join('\n');
+    expect((await call(SERIAL_USERS.writer, 'serials.list', { serials: long })).error?.code).toBe(
       'VALIDATION',
     );
   });

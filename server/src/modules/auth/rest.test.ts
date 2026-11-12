@@ -96,7 +96,7 @@ describe('GET /api/v1/me', () => {
         code: 'AA',
         name: 'Alfa',
         status: 'active',
-        permissions: { item: 'manage', serial: 'manage', serialservice: 'manage' },
+        permissions: { item: 'manage', serial: 'manage', serialservice: 'edit' },
       },
     ]);
   });

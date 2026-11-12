@@ -44,7 +44,7 @@ describe('akses BU serial', () => {
   });
 
   test('super admin (semua BU manage) melihat dan menulis semua BU', () => {
-    const all = { item: 'manage', serial: 'manage', serialservice: 'manage' } as const;
+    const all = { item: 'manage', serial: 'manage', serialservice: 'edit' } as const;
     const ctx = user({ A: all, B: all }, true);
     expect(readableBuIds(ctx).sort()).toEqual(['A', 'B']);
     expect(writableBuIds(ctx).sort()).toEqual(['A', 'B']);

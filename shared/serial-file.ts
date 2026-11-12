@@ -9,7 +9,6 @@ export const QCSN_MAX_ROWS = 1000;
 const LABEL_MAX = 255;
 const ID_MAX = 100;
 const STAMP_MAX = 40;
-const STICKERS_MAX = 200;
 const CLIENT_ID = /^[A-Za-z0-9-]{8,100}$/;
 
 export interface QcsnSticker {
@@ -187,13 +186,16 @@ function readRow(raw: unknown): QcsnRow | Fail {
 
   const stickers = own(raw, 'stickers');
   if (stickers !== undefined) {
-    if (!Array.isArray(stickers) || stickers.length > STICKERS_MAX) {
-      return { error: 'stickers harus berupa daftar' };
+    if (!Array.isArray(stickers) || stickers.length > SERIAL_LIMITS.picksMax) {
+      return { error: `stickers harus berupa daftar (maks. ${SERIAL_LIMITS.picksMax})` };
     }
     const list: QcsnSticker[] = [];
+    const seen = new Set<string>();
     for (const entry of stickers) {
       const sticker = readSticker(entry);
       if (isFail(sticker)) return sticker;
+      if (seen.has(sticker.stickerId)) return { error: 'stiker kembar dalam satu baris' };
+      seen.add(sticker.stickerId);
       list.push(sticker);
     }
     result.stickers = list;

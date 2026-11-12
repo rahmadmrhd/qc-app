@@ -167,6 +167,23 @@ describe('serials.act: recheck', () => {
     expect(foreign.error?.code).toBe('VALIDATION');
   });
 
+  test('lokasi serial sudah nonaktif: cek ulang tanpa mengganti lokasi tetap diterima (eksplisit maupun tidak)', async () => {
+    await env.DB.prepare("UPDATE locations SET status = 'inactive' WHERE id = 'loc-sby'").run();
+    const implicit = await act({ message: 'cek di tempat' });
+    expect(implicit.ok).toBe(true);
+    expect(implicit.data).toMatchObject({ locationId: 'loc-sby' });
+    const updatedAt = (implicit.data as Json).updatedAt as string;
+    const explicit = await act({ locationId: 'loc-sby' }, { at: updatedAt });
+    expect(explicit.ok).toBe(true);
+    // Memindahkan KE lokasi nonaktif tetap ditolak.
+    await env.DB.prepare("UPDATE locations SET status = 'inactive' WHERE id = 'loc-jkt'").run();
+    const moved = await act(
+      { locationId: 'loc-jkt' },
+      { at: (explicit.data as Json).updatedAt as string },
+    );
+    expect(moved.error?.code).toBe('VALIDATION');
+  });
+
   test('status selain good atau di luar qc: CONFLICT; tanggal masa depan VALIDATION; lokasi tak dikenal VALIDATION', async () => {
     await env.DB.prepare("UPDATE serials SET status = 'failed' WHERE id = 'sn1'").run();
     const conflict = await act({});

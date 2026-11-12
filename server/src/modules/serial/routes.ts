@@ -1,8 +1,10 @@
 import type { RouteTable } from '@server/core/router';
+import { expectNull } from '@server/core/validate';
 import {
   actOnSerial,
   getSerial,
   listSerials,
+  locationOptions,
   queryItemOptions,
   saveSerialBatch,
   stickerOptions,
@@ -23,6 +25,7 @@ import {
 type SerialMethod =
   | 'serials.itemOptions'
   | 'serials.stickerOptions'
+  | 'serials.locationOptions'
   | 'serials.saveBatch'
   | 'serials.get'
   | 'serials.list'
@@ -53,6 +56,12 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: { module: 'serial', level: 'edit' },
       validate: validateSerialStickerOptions,
       handler: (input, ctx) => stickerOptions(ctx.env, ctx.user, input),
+    },
+    // Gerbang kasar `serial: edit`; setiap lokasi aktif boleh dipilih (tanpa filter penugasan lokasi).
+    'serials.locationOptions': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: expectNull,
+      handler: (_input, ctx) => locationOptions(ctx.env),
     },
     'serials.list': {
       permission: READ_PERMISSION,

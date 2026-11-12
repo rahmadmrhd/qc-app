@@ -66,7 +66,7 @@ export function validateSerialStickerOptions(raw: unknown): SerialStickerOptions
 
 const CLIENT_ID = /^[A-Za-z0-9-]{8,100}$/;
 /** Batas pilihan stiker per baris (menjaga muatan terburuk 200 baris di bawah batas badan JSON). */
-export const SERIAL_PICKS_MAX = 20;
+export const SERIAL_PICKS_MAX = SERIAL_LIMITS.picksMax;
 
 /** Bentuk permintaan saja: setiap baris dinilai sendiri oleh `parseSerialRow` (baris rusak = hasil `invalid`). */
 export function validateSaveSerialBatch(raw: unknown): SaveSerialBatchInput {
@@ -137,7 +137,7 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
     ) {
       return fail('Daftar stiker tidak valid');
     }
-    if (seen.has(pick.stickerId)) return fail('Stiker tidak berlaku bagi item ini');
+    if (seen.has(pick.stickerId)) return fail('Daftar stiker tidak valid');
     seen.add(pick.stickerId);
     stickers.push({ stickerId: pick.stickerId, qty });
   }
@@ -167,7 +167,7 @@ export function validateGetSerial(raw: unknown): GetSerialInput {
 
 const LIST_STATUS: readonly string[] = SERIAL_STATUSES;
 
-/** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. 200 baris sebelum normalisasi. */
+/** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. `SERIAL_LIMITS.listSerialsMax` serial dan `listSerialsChars` karakter (GET: URL harus muat). */
 export function validateSerialList(raw: unknown): SerialListInput {
   const reader = readObject(raw ?? {});
   const query = reader.str('query', { max: 100 });
@@ -186,8 +186,13 @@ export function validateSerialList(raw: unknown): SerialListInput {
   let serials = '';
   if (serialsRaw !== undefined && serialsRaw !== null) {
     if (typeof serialsRaw !== 'string') reader.fail('serials', 'Harus berupa teks');
-    else if (serialsRaw.split(/\r\n|\r|\n/).length > SERIAL_LIMITS.batchRows) {
-      reader.fail('serials', `Maksimal ${SERIAL_LIMITS.batchRows} baris`);
+    else if (
+      serialsRaw.split(/\r\n|\r|\n/).filter((line) => line.trim() !== '').length >
+      SERIAL_LIMITS.listSerialsMax
+    ) {
+      reader.fail('serials', `Maksimal ${SERIAL_LIMITS.listSerialsMax} serial per pencarian`);
+    } else if (serialsRaw.length > SERIAL_LIMITS.listSerialsChars) {
+      reader.fail('serials', 'Daftar serial terlalu panjang');
     } else serials = serialsRaw;
   }
   const limit = reader.raw('limit');

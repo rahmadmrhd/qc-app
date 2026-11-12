@@ -6,6 +6,8 @@ import { appError, isAppError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
+// Impor efek-samping: mendaftarkan pendengar stok bus event (`core/events.ts`). Kode di berkas ini tidak memakai
+// apa pun dari modul stiker; pemotongan stok hanya datang lewat `statementsFor`.
 import '@server/modules/sticker/serial-listener';
 import type {
   GetSerialInput,
@@ -22,6 +24,7 @@ import type {
   SerialItemOptionsPageDto,
   SerialListInput,
   SerialListOutput,
+  SerialLocationOptionsDto,
   SerialRowInput,
   SerialRowResult,
   SerialStickerOptionsDto,
@@ -159,6 +162,20 @@ export async function stickerOptions(
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };
 }
 
+/** Semua lokasi AKTIF (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi penugasan lokasi. */
+export async function locationOptions(env: Env): Promise<SerialLocationOptionsDto> {
+  const rows = await env.DB.prepare(
+    "SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id",
+  ).all<{ id: string; code: string; name: string }>();
+  return {
+    locations: rows.results.map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      name: row.name,
+    })),
+  };
+}
+
 const DUPLICATE_MESSAGE = 'Serial sudah terdaftar';
 const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak dapat dipakai';
 const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
@@ -180,6 +197,52 @@ function idempotent(row: SerialRowInput, id: string): SerialRowResult {
   return { clientId: row.clientId, result: 'created', message: '', id, serial: row.serial };
 }
 
+type Applicable = Awaited<ReturnType<typeof applicableStickersOf>>;
+
+/**
+ * Memo kueri rujukan untuk SATU permintaan `saveBatch`: item aktif per (item, BU), lokasi aktif per id, dan stiker
+ * yang berlaku per (item, BU) dihitung sekali walau banyak baris memakainya (tanpa memo: ±8 kueri per baris lewat
+ * tunnel). Hanya hidup selama permintaan itu; hasil per baris dan atomisitas tak berubah.
+ */
+export class SerialLookupMemo {
+  private readonly items = new Map<string, Promise<boolean>>();
+  private readonly locations = new Map<string, Promise<string | null>>();
+  private readonly stickers = new Map<string, Promise<Map<string, Applicable[number]>>>();
+
+  constructor(private readonly env: Env) {}
+
+  activeItemInBu(itemId: string, buId: string): Promise<boolean> {
+    const key = `${itemId}\u0000${buId}`;
+    let found = this.items.get(key);
+    if (!found) {
+      found = activeItemInBu(this.env.DB, itemId, buId);
+      this.items.set(key, found);
+    }
+    return found;
+  }
+
+  activeLocationName(locationId: string): Promise<string | null> {
+    let found = this.locations.get(locationId);
+    if (!found) {
+      found = activeLocationName(this.env.DB, locationId);
+      this.locations.set(locationId, found);
+    }
+    return found;
+  }
+
+  applicable(itemId: string, buId: string): Promise<Map<string, Applicable[number]>> {
+    const key = `${itemId}\u0000${buId}`;
+    let found = this.stickers.get(key);
+    if (!found) {
+      found = applicableStickersOf(this.env, itemId, buId).then(
+        (list) => new Map(list.map((sticker) => [sticker.id, sticker])),
+      );
+      this.stickers.set(key, found);
+    }
+    return found;
+  }
+}
+
 /**
  * Satu baris, atomik sendiri: serial + stiker + kejadian `recorded` + pernyataan pendengar bus (pemotongan stok)
  * dalam SATU `batch()`. Aturan: bentuk, hak tulis BU, `clientId` idempoten, item/lokasi/stiker, lalu tulis.
@@ -189,6 +252,7 @@ export async function createSerialOnce(
   rawRow: unknown,
   user: UserContext,
   today: string,
+  memo: SerialLookupMemo = new SerialLookupMemo(env),
 ): Promise<SerialRowResult> {
   const parsed = parseSerialRow(rawRow, today);
   if (!parsed.ok) {
@@ -203,12 +267,14 @@ export async function createSerialOnce(
       ? idempotent(row, existing.id)
       : failRow(row, 'Baris tidak valid');
   }
-  if (!(await activeItemInBu(env.DB, row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
-  const locationName = await activeLocationName(env.DB, row.locationId);
+  if (!(await memo.activeItemInBu(row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
+  const locationName = await memo.activeLocationName(row.locationId);
   if (locationName === null) return failRow(row, LOCATION_MESSAGE);
-  const applicable = new Map(
-    (await applicableStickersOf(env, row.itemId, row.buId)).map((sticker) => [sticker.id, sticker]),
-  );
+  // Stiker hanya dimuat bila baris memilihnya (baris tanpa stiker tak butuh daftar yang berlaku).
+  const applicable =
+    row.stickers.length > 0
+      ? await memo.applicable(row.itemId, row.buId)
+      : new Map<string, Applicable[number]>();
   const picked = row.stickers.map((pick) => ({ pick, sticker: applicable.get(pick.stickerId) }));
   if (picked.some((entry) => entry.sticker === undefined)) return failRow(row, STICKER_MESSAGE);
 
@@ -276,12 +342,12 @@ export async function createSerialOnce(
     };
   } catch (error) {
     if (error instanceof DbError && error.kind === 'duplicate') {
-      if (error.key === 'serials_client_id') {
-        // Balapan retry: baca ulang dan perlakukan seperti pemeriksaan idempoten.
-        const again = await findSerialByClientId(env.DB, row.clientId);
-        if (again && again.buId === row.buId && again.serial === row.serial) {
-          return idempotent(row, again.id);
-        }
+      // Balapan retry: InnoDB dapat melaporkan indeks `serials_bu_serial` (bukan `serials_client_id`) untuk baris
+      // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
+      // ini terbit (penulis kedua menunggu kuncinya), sehingga bacaan ulang melihatnya.
+      const again = await findSerialByClientId(env.DB, row.clientId);
+      if (again && again.buId === row.buId && again.serial === row.serial) {
+        return idempotent(row, again.id);
       }
       const mapped = mapDuplicateError(error, SERIAL_CONFLICTS) as { message?: string };
       return {
@@ -312,8 +378,9 @@ export async function saveSerialBatch(
 ): Promise<SaveSerialBatchOutput> {
   const today = wibDateIso(nowOf(env));
   const results: SerialRowResult[] = [];
+  const memo = new SerialLookupMemo(env);
   for (const row of input.rows) {
-    results.push(await createSerialOnce(env, row, user, today));
+    results.push(await createSerialOnce(env, row, user, today, memo));
   }
   return { results };
 }
@@ -681,9 +748,8 @@ export async function actOnSerial(
       set.location_id = locationId;
       changes.push({ field: 'location', from: locationName, to: name });
       locationName = name;
-    } else if ((await activeLocationName(env.DB, locationId)) === null) {
-      throw validationError('locationId', LOCATION_MESSAGE);
     }
+    // Lokasi yang tidak diganti boleh sudah nonaktif: hanya lokasi BARU yang wajib aktif (diperiksa di atas).
     data = { result: 'pass', locationId, locationName };
 
     const current = new Map(

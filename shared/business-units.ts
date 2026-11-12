@@ -18,8 +18,9 @@ export interface BuAssignment {
   roleIds: string[];
 }
 
+/** Izin penuh per BU (super admin): level tertinggi yang ada di tiap modul (`serialservice` hanya sampai `edit`). */
 export function fullBuPermissions(): BuPermissionMap {
-  return { item: 'manage', serial: 'manage', serialservice: 'manage' };
+  return { item: 'manage', serial: 'manage', serialservice: 'edit' };
 }
 
 function cleanIds(value: unknown): string[] {
