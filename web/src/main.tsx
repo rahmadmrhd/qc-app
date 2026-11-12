@@ -1,8 +1,11 @@
+import { registerSW } from 'virtual:pwa-register';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
+import { startPwaUpdates } from '@/app/pwa/update';
+import { PwaUpdateBanner } from '@/app/pwa/update-banner';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
@@ -40,10 +43,13 @@ async function start() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
+          <PwaUpdateBanner />
         </QueryClientProvider>
       </ThemeProvider>
     </StrictMode>,
   );
+  // Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya.
+  if (import.meta.env.PROD) startPwaUpdates({ register: registerSW });
 }
 
 void start();
