@@ -200,26 +200,21 @@ export async function deliverPendingPushes(
     const results = await Promise.all(
       subs.results.map(async (sub) => ({
         sub,
-        // Slot kirim dibagi seluruh putaran; anggaran habis saat antre = ditunda (tak dihitung gagal).
-        result: await limitSend(
-          async (): Promise<PushSendResult | 'deferred'> =>
-            Date.now() > deadline
-              ? 'deferred'
-              : sendWithTimeout(
-                  push,
-                  { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-                  payload,
-                  sendTimeoutMs,
-                ),
+        // Slot kirim dibagi seluruh putaran. Anggaran hanya diperiksa SEBELUM sebuah notifikasi dimulai: sekali
+        // dimulai, semua langganannya dikirim sampai selesai (dibatasi batas waktu per kirim).
+        result: await limitSend(() =>
+          sendWithTimeout(
+            push,
+            { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+            payload,
+            sendTimeoutMs,
+          ),
         ),
       })),
     );
-    // Semua langganan tertunda oleh anggaran: biarkan `pending` untuk putaran berikutnya.
-    if (results.every(({ result }) => result === 'deferred')) return;
     const stamp = nowIso(env);
     let anyOk = false;
     for (const { sub, result } of results) {
-      if (result === 'deferred') continue;
       if (result.ok) {
         anyOk = true;
         await env.DB.prepare(
@@ -243,7 +238,8 @@ export async function deliverPendingPushes(
     await setPushState(env, row.id, anyOk ? 'sent' : 'failed');
     if (anyOk) sent++;
   };
-  // Pekerja berkonkurensi terbatas; anggaran habis = berhenti mengambil notifikasi baru (tetap `pending`).
+  // Pekerja berkonkurensi terbatas; anggaran habis = berhenti mengambil notifikasi baru (tetap `pending`); yang sudah
+  // dimulai diselesaikan.
   const queue = [...pending.results];
   const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
     for (let row = queue.shift(); row !== undefined; row = queue.shift()) {

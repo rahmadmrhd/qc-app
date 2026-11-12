@@ -294,6 +294,28 @@ describe('pengiriman paralel dan anggaran waktu (F2)', () => {
     expect(await states()).toEqual(['sent', 'sent']);
   });
 
+  test('anggaran habis di tengah satu notifikasi: semua langganannya tetap dikirim, notifikasi yang belum dimulai tetap pending', async () => {
+    for (let i = 0; i < 4; i++) await subscribe(VIEWER, `m${i}`);
+    await insert(
+      note({ number: 'ST-1' }),
+      note({ number: 'ST-2', createdAt: new Date(NOW + 1).toISOString() }),
+    );
+    let started = 0;
+    useSender({
+      async send() {
+        started++;
+        // Lebih lama dari anggaran, dan konkurensi 1 membuat langganan 2-4 baru mulai setelah anggaran habis.
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        return { ok: true };
+      },
+    });
+    const sent = await deliverPendingPushes(env, { concurrency: 1, budgetMs: 1_200 });
+    expect(sent).toBe(1);
+    expect(started).toBe(4);
+    expect(await states()).toEqual(['sent', 'pending']);
+    expect((await subRows(VIEWER)).every((sub) => sub.fail_count === 0)).toBe(true);
+  });
+
   test('anggaran habis di tengah putaran: yang sedang berjalan selesai, sisanya pending, tanpa menaikkan fail_count', async () => {
     await subscribe(VIEWER, 'a');
     await insert(
