@@ -12,6 +12,9 @@
     },
     "countrylock": {
       "name": "@qc/countrylock",
+      "dependencies": {
+        "zod": "^4.6.5",
+      },
     },
     "desktop": {
       "name": "@qc/desktop",
