@@ -1,6 +1,7 @@
 import type { CustomerDto } from '@shared/contract';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,11 @@ export function CustomersManager({
   // Galat milik satu baris (id), supaya tidak tampil di baris lain.
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Sedang mengubah nama dan isiannya berbeda dari nama tersimpan.
+  useUnsavedChanges(
+    editingId !== null &&
+      name !== (customers.find((customer) => customer.id === editingId)?.name ?? name),
+  );
   const editRef = useRef<HTMLInputElement>(null);
   // Mengubah: fokus langsung ke isian agar pengguna keyboard tidak harus mencarinya.
   useEffect(() => {
