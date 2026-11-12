@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { onEvent, resetEventListenersForTest } from '@server/core/events';
+import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { seedGuideImage, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
@@ -151,5 +153,225 @@ describe('serials.stickerOptions', () => {
   test('validator: itemId dan buId wajib', async () => {
     const result = await call(WRITER, 'serials.stickerOptions', { itemId: '', buId: '' });
     expect(result.error?.code).toBe('VALIDATION');
+  });
+});
+
+describe('serials.saveBatch', () => {
+  const LOC = 'loc-1';
+  let counter = 0;
+  const cid = () => `cid${String(++counter).padStart(8, '0')}-0000-4000-8000-000000000000`;
+
+  async function stockOf(stickerId: string): Promise<number | null> {
+    const found = await env.DB.prepare(
+      'SELECT qty FROM sticker_stock WHERE sticker_id = ? AND location_id = ?',
+    )
+      .bind(stickerId, LOC)
+      .first<{ qty: number | string }>();
+    return found ? Number(found.qty) : null;
+  }
+  const count = async (table: string): Promise<number> =>
+    Number(
+      (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number | string }>())
+        ?.n ?? 0,
+    );
+
+  function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      clientId: cid(),
+      serial: 'SN-0001',
+      itemId: 'i-a1',
+      buId: 'bu-a',
+      testDate: '2026-11-12',
+      locationId: LOC,
+      sample: false,
+      note: '',
+      status: 'good',
+      stickers: [
+        { stickerId: 's1', qty: 1 },
+        { stickerId: 's2', qty: 2 },
+      ],
+      ...overrides,
+    };
+  }
+  const save = (email: string, rows: Record<string, unknown>[]) =>
+    call(email, 'serials.saveBatch', { rows });
+  const resultsOf = (out: CallOut): Json[] => (out.data as Json).results;
+
+  beforeEach(async () => {
+    env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
+    await seedLocation(env, { id: LOC, code: 'WH' });
+    await seedGuideImage(env, { id: 'g1' });
+    await seedStickerType(env, { id: 't1', name: 'Jenis', rule: 'none' });
+    await seedSticker(env, { id: 's1', typeId: 't1', name: 'Stiker Satu' });
+    await seedSticker(env, { id: 's2', typeId: 't1', name: 'Stiker Dua' });
+    for (const itemId of ['i-a1', 'i-a2']) {
+      await env.DB.prepare(
+        "INSERT INTO item_sticker_photos (item_id, guide_id, caption, bu_id, `position`) VALUES (?, 'g1', '', '', 0)",
+      )
+        .bind(itemId)
+        .run();
+      for (const [position, stickerId] of ['s1', 's2'].entries()) {
+        await env.DB.prepare(
+          "INSERT INTO item_sticker_marks (item_id, guide_id, `position`, x, y, sticker_id, type_id, note) VALUES (?, 'g1', ?, 1, 1, ?, '', '')",
+        )
+          .bind(itemId, position, stickerId)
+          .run();
+      }
+    }
+    await env.DB.prepare(
+      "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('s1', ?, 5, ''), ('s2', ?, 0, '')",
+    )
+      .bind(LOC, LOC)
+      .run();
+  });
+
+  test('mencatat serial dan memotong stok per stiker tercentang', async () => {
+    const out = await save(WRITER, [row()]);
+    expect(resultsOf(out)[0]).toMatchObject({ result: 'created', serial: 'SN-0001' });
+    expect(await stockOf('s1')).toBe(4);
+    expect(await stockOf('s2')).toBe(-2);
+    expect(await count('serials')).toBe(1);
+    expect(await count('serial_stickers')).toBe(2);
+    const events = await env.DB.prepare(
+      'SELECT seq, type, occurred_on, actor_team, data_json FROM serial_events',
+    ).all<{
+      seq: number;
+      type: string;
+      occurred_on: string;
+      actor_team: string;
+      data_json: string;
+    }>();
+    expect(events.results).toHaveLength(1);
+    expect(events.results[0]).toMatchObject({
+      seq: 1,
+      type: 'recorded',
+      occurred_on: '2026-11-12',
+      actor_team: 'qc',
+    });
+    expect(JSON.parse(events.results[0]?.data_json ?? '{}')).toEqual({
+      stickers: [
+        { stickerId: 's1', name: 'Stiker Satu', qty: 1 },
+        { stickerId: 's2', name: 'Stiker Dua', qty: 2 },
+      ],
+      locationId: LOC,
+      locationName: 'WH',
+    });
+    const entry = await env.DB.prepare(
+      "SELECT kind, delta, serial_id, serial_event_id FROM sticker_stock_entries WHERE sticker_id = 's2'",
+    ).first<{ kind: string; delta: number | string; serial_id: string; serial_event_id: string }>();
+    expect(entry).toMatchObject({ kind: 'serial' });
+    expect(Number(entry?.delta)).toBe(-2);
+    expect(entry?.serial_id).not.toBe('');
+  });
+
+  test('stiker yang tidak dicentang tidak dipotong; sample tetap memotong', async () => {
+    await save(WRITER, [row({ stickers: [{ stickerId: 's1', qty: 1 }], sample: true })]);
+    expect(await stockOf('s1')).toBe(4);
+    expect(await stockOf('s2')).toBe(0);
+  });
+
+  test('serial yang sama di BU lain tercatat terpisah', async () => {
+    const out = await save(BOTH, [
+      row(),
+      row({ buId: 'bu-b', itemId: 'i-a2' }),
+      row({ itemId: 'i-a2' }),
+    ]);
+    expect(resultsOf(out).map((r) => r.result)).toEqual(['created', 'created', 'duplicate']);
+    expect(await count('serials')).toBe(2);
+  });
+
+  test('duplikat di BU yang sama, termasuk varian MAC', async () => {
+    const first = await save(WRITER, [row({ serial: '4C5E0C1A2B3D', stickers: [] })]);
+    expect(resultsOf(first)[0].result).toBe('created');
+    const out = await save(WRITER, [
+      row({ serial: '4C:5E:0C:1A:2B:3D', stickers: [] }),
+      row({ serial: '4c-5e-0c-1a-2b-3d', stickers: [] }),
+    ]);
+    for (const result of resultsOf(out)) {
+      expect(result).toMatchObject({ result: 'duplicate', message: 'Serial sudah terdaftar' });
+    }
+    expect(await count('serials')).toBe(1);
+  });
+
+  test('5 permintaan serentak dengan serial sama: satu created, empat duplicate, stok dipotong sekali', async () => {
+    const outs = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        save(WRITER, [row({ stickers: [{ stickerId: 's1', qty: 1 }] })]),
+      ),
+    );
+    const flat = outs.flatMap(resultsOf).map((r) => r.result);
+    expect(flat.filter((r) => r === 'created')).toHaveLength(1);
+    expect(flat.filter((r) => r === 'duplicate')).toHaveLength(4);
+    expect(await stockOf('s1')).toBe(4);
+    expect(await count('serials')).toBe(1);
+  });
+
+  test('retry clientId: created dengan id sama, stok tidak berubah, satu serials', async () => {
+    const same = row();
+    const first = resultsOf(await save(WRITER, [same]))[0];
+    const again = resultsOf(await save(WRITER, [same]))[0];
+    expect(again).toMatchObject({ result: 'created', id: first.id });
+    expect(await stockOf('s1')).toBe(4);
+    expect(await count('serials')).toBe(1);
+    expect(await count('serial_events')).toBe(1);
+    // clientId yang sama dengan serial lain: invalid, bukan idempoten.
+    const clash = resultsOf(await save(WRITER, [{ ...same, serial: 'LAIN' }]))[0];
+    expect(clash.result).toBe('invalid');
+  });
+
+  test('sebagian baris gagal tidak menggagalkan yang lain; invalid tidak membocorkan item', async () => {
+    const out = await save(BOTH, [
+      row({ serial: 'AB\u0000C' }),
+      row({ serial: 'SN-2', itemId: 'i-b' }), // item hanya di BU B, dikirim untuk BU A
+      row({ serial: 'SN-3' }),
+    ]);
+    const results = resultsOf(out);
+    expect(results.map((r) => r.result)).toEqual(['invalid', 'invalid', 'created']);
+    expect(JSON.stringify(results[1])).not.toContain('Gamma');
+    expect(results[1].message).toBe('Item tidak ditemukan atau tidak dapat dipakai');
+  });
+
+  test('hak: serial view saja FORBIDDEN; BU lain invalid; 201 baris VALIDATION; stiker tak berlaku invalid', async () => {
+    expect((await save(VIEWER, [row()])).error?.code).toBe('FORBIDDEN');
+    const other = await save(WRITER, [row({ buId: 'bu-b', itemId: 'i-a2' })]);
+    expect(resultsOf(other)[0].result).toBe('invalid');
+    const tooMany = await save(
+      WRITER,
+      Array.from({ length: 201 }, () => row({ stickers: [] })),
+    );
+    expect(tooMany.error?.code).toBe('VALIDATION');
+    const foreign = await save(WRITER, [row({ stickers: [{ stickerId: 'tidak-ada', qty: 1 }] })]);
+    expect(resultsOf(foreign)[0]).toMatchObject({
+      result: 'invalid',
+      message: 'Stiker tidak berlaku bagi item ini',
+    });
+    expect(await count('serials')).toBe(0);
+  });
+
+  test('tanggal uji di masa depan, lokasi tak dikenal, status selain good: invalid', async () => {
+    const out = await save(WRITER, [
+      row({ testDate: '2026-11-13', stickers: [] }),
+      row({ serial: 'X2', locationId: 'hilang', stickers: [] }),
+      row({ serial: 'X3', status: 'failed', stickers: [] }),
+    ]);
+    expect(resultsOf(out).map((r) => r.result)).toEqual(['invalid', 'invalid', 'invalid']);
+    expect(resultsOf(out)[1].message).toBe('Lokasi tidak ditemukan');
+  });
+
+  test('batch atomik per baris: galat pada pernyataan pendengar membatalkan serial, stiker, dan riwayat', async () => {
+    resetEventListenersForTest();
+    onEvent('serial.recorded', () => [env.DB.prepare('SELECT * FROM tabel_tidak_ada')]);
+    try {
+      const out = await save(WRITER, [row()]);
+      expect(resultsOf(out)[0]).toMatchObject({ result: 'error' });
+      expect(JSON.stringify(out)).not.toContain('tabel_tidak_ada');
+    } finally {
+      resetEventListenersForTest();
+      registerSerialStockListeners();
+    }
+    expect(await count('serials')).toBe(0);
+    expect(await count('serial_stickers')).toBe(0);
+    expect(await count('serial_events')).toBe(0);
+    expect(await stockOf('s1')).toBe(5);
   });
 });

@@ -1192,6 +1192,12 @@ export interface ApiContract {
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
+  'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
+  'serials.get': { input: GetSerialInput; output: GetSerialOutput };
+  'serials.list': { input: SerialListInput; output: SerialListOutput };
+  'serials.update': { input: UpdateSerialInput; output: SerialDto };
+  'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
+  'serials.act': { input: SerialActInput; output: SerialDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'jobs.get': { input: GetJobInput; output: JobDto };
@@ -1373,6 +1379,83 @@ export type SerialRowResult = {
   id?: string;
   serial?: string;
 };
+export interface SaveSerialBatchInput {
+  rows: SerialRowInput[];
+}
+export interface SaveSerialBatchOutput {
+  results: SerialRowResult[];
+}
+export interface GetSerialInput {
+  id: string;
+}
+export interface GetSerialOutput {
+  serial: SerialDto;
+  /** Menaik menurut `seq`, maks. 500. */
+  events: SerialEventDto[];
+}
+export interface SerialListInput {
+  /** Awalan serial (dinormalisasi). */
+  query?: string;
+  /** Teks tempelan, satu serial per baris (maks. 200 baris sebelum normalisasi): hanya yang persis cocok. */
+  serials?: string;
+  buId?: string;
+  itemId?: string;
+  locationId?: string;
+  status?: SerialStatus;
+  /** Rentang `test_date` inklusif (`YYYY-MM-DD`). */
+  from?: string;
+  to?: string;
+  createdBy?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialListOutput {
+  items: SerialSummaryDto[];
+  nextCursor: string | null;
+}
+/** Bidang catatan serial yang boleh diubah (BU, status, dan stiker tidak). */
+export interface SerialEditable {
+  serial: string;
+  itemId: string;
+  testDate: string;
+  sample: boolean;
+  note: string;
+  locationId: string;
+}
+export interface UpdateSerialInput extends SerialEditable {
+  id: string;
+  expectedUpdatedAt: string;
+}
+export interface UpdateSerialBatchRowInput {
+  id: string;
+  expectedUpdatedAt: string;
+  fields: Partial<SerialEditable>;
+}
+export interface UpdateSerialBatchInput {
+  rows: UpdateSerialBatchRowInput[];
+}
+export interface UpdateSerialBatchRowResult {
+  id: string;
+  result: 'updated' | 'duplicate' | 'stale' | 'invalid' | 'error';
+  message: string;
+  updatedAt?: string;
+}
+export interface UpdateSerialBatchOutput {
+  results: UpdateSerialBatchRowResult[];
+}
+export interface SerialActInput {
+  id: string;
+  expectedUpdatedAt: string;
+  action: 'note' | 'recheck';
+  /** Tanggal kejadian `YYYY-MM-DD`, tidak di masa depan. */
+  occurredOn: string;
+  /** Markdown, maks. `SERIAL_LIMITS.messageMax`. */
+  message: string;
+  /** Lokasi cek ulang (bawaan lokasi serial sekarang). */
+  locationId?: string;
+  /** Jumlah BARU per stiker pada cek ulang (tidak boleh turun). */
+  stickers?: SerialStickerPick[];
+}
 /** Item yang dapat dipilih pencatat serial (hanya bidang yang dibutuhkan), dengan BU yang boleh ia tulis. */
 export interface SerialItemOptionDto {
   id: string;
