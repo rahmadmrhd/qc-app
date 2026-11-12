@@ -130,3 +130,45 @@ describe('createAppHandler', () => {
     expect((await handler(new Request('app://lain/assets/x.js'))).status).toBe(403);
   });
 });
+
+describe('API lewat proxy', () => {
+  test('CSP: connect-src hanya self (renderer hanya memanggil app://qc/api sesama origin)', () => {
+    const connect = APP_CSP.split('; ').find((d) => d.startsWith('connect-src'));
+    expect(connect).toBe("connect-src 'self'");
+    expect(APP_CSP).not.toMatch(/https?:/);
+  });
+
+  test('jalur /api/ dan /auth/ diserahkan ke proxy, bukan ke penyaji berkas', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ui-'));
+    try {
+      writeFileSync(join(dir, 'index.html'), '<html></html>');
+      const calls: string[] = [];
+      const handler = createAppHandler(dir, async (request) => {
+        calls.push(request.url);
+        return new Response('dari-proxy', { status: 200 });
+      });
+      expect(await (await handler(new Request('app://qc/api/v1/me'))).text()).toBe('dari-proxy');
+      expect(await (await handler(new Request('app://qc/auth/logout'))).text()).toBe('dari-proxy');
+      expect(calls).toEqual(['app://qc/api/v1/me', 'app://qc/auth/logout']);
+      // rute UI tetap dilayani berkas
+      expect(
+        (await handler(new Request('app://qc/country-lock'))).headers.get('content-type'),
+      ).toContain('text/html');
+      expect(calls).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('tanpa proxy, /api/ dan /auth/ = 404 (bukan index.html)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ui-'));
+    try {
+      writeFileSync(join(dir, 'index.html'), '<html></html>');
+      const handler = createAppHandler(dir);
+      expect((await handler(new Request('app://qc/api/v1/me'))).status).toBe(404);
+      expect((await handler(new Request('app://qc/auth/login'))).status).toBe(404);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

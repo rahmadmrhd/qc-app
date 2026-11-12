@@ -10,8 +10,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INJECT_PROGRESS_EVENT } from '@countrylock/bridge-channels';
-import { app, type BrowserWindow, dialog, ipcMain, protocol } from 'electron';
+import { app, type BrowserWindow, dialog, ipcMain, net, protocol, safeStorage } from 'electron';
+import { createApiProxy } from './api-proxy';
 import { APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
+import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
 import { registerIpc } from './ipc';
@@ -124,13 +126,30 @@ function runApp(): void {
   });
 
   app.whenReady().then(() => {
-    protocol.handle(APP_SCHEME, createAppHandler(uiRoot()));
     lockDownSession();
     // `qc://` didaftarkan hanya pada aplikasi terkemas (tanpa menulis registri saat pengembangan).
     if (app.isPackaged) app.setAsDefaultProtocolClient('qc');
 
     const userData = app.getPath('userData');
     const settings = createSettingsStore(join(userData, 'settings.json'));
+    // Token Bearer: terenkripsi safeStorage bila tersedia; bila tidak, hanya di memori.
+    const tokens = createTokenStore(
+      join(userData, 'auth.json'),
+      safeStorage.isEncryptionAvailable()
+        ? {
+            encrypt: (plain) => safeStorage.encryptString(plain),
+            decrypt: (data) => safeStorage.decryptString(data),
+          }
+        : null,
+    );
+    // /api dan /auth diteruskan proses utama ke server (net.fetch); token tak pernah ke renderer.
+    const proxy = createApiProxy({
+      settings: () => settings.get(),
+      tokens,
+      fetchImpl: net.fetch as typeof fetch,
+      onUnauthenticated: () => undefined,
+    });
+    protocol.handle(APP_SCHEME, createAppHandler(uiRoot(), proxy));
     let pending: ReturnType<typeof openPendingStore>;
     try {
       pending = openPendingStore(join(userData, 'pending.db'));

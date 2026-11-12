@@ -10,6 +10,7 @@ import { secretForms } from '@countrylock/script-template';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type IpcDeps, type IpcEventLike, registerIpc } from './ipc';
 import { type LoadedPackage, loadLocalPackage, PackageError } from './package/local-folder';
+import { DEFAULT_SERVER_URL, type Settings } from './settings';
 import type { InjectOptions, InjectOutcome } from './ssh/inject-session';
 import { SENTINEL_BY_BRAND } from './ssh/strategy';
 import { openPendingStore } from './store/pending-store';
@@ -39,7 +40,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
   const handlers = new Map<string, Listener>();
   const store = openPendingStore(join(tmp, 'pending.db'));
   const progress: Array<{ id: string } & InjectProgressDto> = [];
-  const saved: { packageDir: string | null } = { packageDir };
+  const saved: Settings = { packageDir, serverUrl: DEFAULT_SERVER_URL };
   const deps: IpcDeps = {
     ipcMain: { handle: (channel, listener) => void handlers.set(channel, listener) },
     settings: {

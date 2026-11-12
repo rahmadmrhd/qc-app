@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
+import { isProxyRoute } from './api-proxy';
 
 export const APP_SCHEME = 'app';
 export const APP_HOST = 'qc';
@@ -125,9 +126,32 @@ function baseHeaders(contentType: string, csp: string): Record<string, string> {
   };
 }
 
-/** Penangan `protocol.handle('app', ...)`: jalur tak sah 403, berkas tak ada 404. */
-export function createAppHandler(root: string): (request: Request) => Promise<Response> {
+/** Awalan `/api` dan `/auth` bukan berkas UI: diserahkan ke proxy API (proses utama). */
+function isApiPath(requestUrl: string): boolean {
+  try {
+    return isProxyRoute(new URL(requestUrl).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Penangan `protocol.handle('app', ...)`: jalur tak sah 403, berkas tak ada 404. Jalur `/api/` dan
+ * `/auth/` diserahkan ke `proxy`; tanpa proxy (mis. `--smoke-ui`, agar tak menyentuh jaringan) 404.
+ */
+export function createAppHandler(
+  root: string,
+  proxy?: (request: Request) => Promise<Response>,
+): (request: Request) => Promise<Response> {
   return async (request) => {
+    if (isApiPath(request.url)) {
+      return proxy
+        ? proxy(request)
+        : new Response('Tidak ditemukan', {
+            status: 404,
+            headers: baseHeaders('text/plain', APP_CSP),
+          });
+    }
     const file = resolveAppFile(root, request.url);
     if (file === null) {
       return new Response('Terlarang', {
