@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { type FakeSshServer, startFakeSshServer } from '../test-support/fake-ssh-server';
 import {
+  desktopRootFrom,
   gateVerdict,
   parseArgs,
   runChecks,
@@ -153,7 +156,7 @@ describe('runChecks', () => {
     expect(report.router.importBlocked).toBe('unknown');
   });
 
-  test('kredensial router salah: berhenti setelah satu percobaan (cegah penguncian akun)', async () => {
+  test('kredensial router salah: berhenti setelah sambungan percobaan pertama (tanpa ulang)', async () => {
     const server = await router();
     const env = routerEnv(server);
     env.router.password = 'salah';
@@ -245,5 +248,106 @@ describe('gateVerdict', () => {
     expect(fail({ sftpPut: false }).pass).toBe(false);
     expect(fail({ sftpRename: false }).pass).toBe(false);
     expect(fail({ importBlocked: true }).reasons).toEqual(['/import diblokir device-mode']);
+  });
+});
+
+describe('sandi kosong eksplisit (A1)', () => {
+  test('--router-empty-password: sandi kosong tanpa variabel lingkungan', () => {
+    const result = parseArgs(
+      ['--router', '10.0.0.1', '--router-user', 'admin', '--router-empty-password'],
+      {},
+    );
+    expect(result.router.password).toBe('');
+  });
+
+  test('--ubnt-empty-password untuk Ubiquiti; router tetap dari variabel lingkungan', () => {
+    const result = parseArgs(
+      [
+        '--router',
+        '10.0.0.1',
+        '--router-user',
+        'admin',
+        '--ubnt',
+        '10.0.0.9',
+        '--ubnt-user',
+        'ubnt',
+        '--ubnt-empty-password',
+      ],
+      { SPIKE_ROUTER_PASSWORD: 'dari-env' },
+    );
+    expect(result.router.password).toBe('dari-env');
+    expect(result.ubiquiti?.password).toBe('');
+  });
+
+  test('bendera sandi kosong bersama variabel yang terisi ditolak (saling eksklusif)', () => {
+    expect(() =>
+      parseArgs(['--router', 'x', '--router-user', 'a', '--router-empty-password'], {
+        SPIKE_ROUTER_PASSWORD: 'terisi',
+      }),
+    ).toThrow(/tidak boleh dipakai bersama/);
+  });
+
+  test('tanpa bendera dan tanpa variabel tetap galat (pesan menunjuk bendera)', () => {
+    expect(() => parseArgs(['--router', 'x', '--router-user', 'a'], {})).toThrow(
+      /--router-empty-password/,
+    );
+    expect(() =>
+      parseArgs(['--router', 'x', '--router-user', 'a'], { SPIKE_ROUTER_PASSWORD: '' }),
+    ).toThrow(/SPIKE_ROUTER_PASSWORD/);
+  });
+
+  test('--ubnt-empty-password tanpa --ubnt ditolak; bendera tidak menerima nilai sandi', () => {
+    expect(() =>
+      parseArgs(['--router', 'x', '--router-user', 'a', '--ubnt-empty-password'], {
+        SPIKE_ROUTER_PASSWORD: 'p',
+      }),
+    ).toThrow(/Ubiquiti butuh --ubnt/);
+    expect(() =>
+      parseArgs(['--router', 'x', '--router-user', 'a', '--router-empty-password=rahasia'], {}),
+    ).toThrow(/variabel lingkungan/);
+  });
+
+  test('runChecks pada router bersandi kosong berjalan penuh', async () => {
+    const server = await startFakeSshServer({
+      username: USER,
+      password: '',
+      shell: 'routeros',
+      deviceMode: { mode: 'advanced' },
+    });
+    servers.push(server);
+    const env = routerEnv(server);
+    env.router.password = '';
+    const report = await runChecks(env);
+    expect(report.router.hostKeyType).toBe('ssh-rsa');
+    expect(report.router.sentinelPut).toBe('ok');
+    expect(report.router.sftpPut).toBe(true);
+  });
+});
+
+describe('waktu uji penanda dihitung sejak baris pertama ditulis (A2)', () => {
+  test('pembukaan shell yang lambat tidak menghasilkan sentinelPut ok palsu', async () => {
+    // Konsol menggambar ulang ketikan (token dua kali seketika) dan shell butuh 900 ms untuk
+    // terbuka. Diukur sejak progres `sending` (perilaku lama), selisihnya >= 300 ms tampak "ok".
+    const server = await startFakeSshServer({
+      username: USER,
+      password: ROUTER_PASSWORD,
+      shell: 'routeros',
+      echoTwice: true,
+      shellOpenDelayMs: 900,
+    });
+    servers.push(server);
+    const env = routerEnv(server);
+    env.timeouts = { connectMs: 3000, perLineMs: 3000, commandMs: 3000 };
+    const report = await runChecks(env);
+    expect(report.router.sentinelPut).toBe('error');
+    expect(report.notes.join('\n')).toMatch(/TIDAK menandai selesainya baris/);
+  });
+});
+
+describe('lokasi laporan (A9)', () => {
+  test('desktopRootFrom: sumber (spike/) dan bundel (dist/spike/) sama-sama menunjuk ke desktop/', () => {
+    const root = join(tmpdir(), 'x', 'desktop');
+    expect(desktopRootFrom(join(root, 'spike', 'hardware-spike.ts'))).toBe(root);
+    expect(desktopRootFrom(join(root, 'dist', 'spike', 'hardware-spike.js'))).toBe(root);
   });
 });

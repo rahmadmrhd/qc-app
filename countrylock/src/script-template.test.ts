@@ -8,6 +8,7 @@ import {
   renderScript,
   ScriptRenderError,
   type ScriptValues,
+  secretForms,
 } from './script-template';
 
 const FIXTURE_DIR = join(import.meta.dir, '..', 'fixtures', 'country-lock2');
@@ -170,5 +171,48 @@ describe('renderScript', () => {
         expect((error as ScriptRenderError).code).toBe('CONTROL_CHARACTER');
       }
     }
+  });
+});
+
+describe('secretForms', () => {
+  test('memuat bentuk mentah dan semua bentuk sisipan, terpanjang dulu, tanpa duplikat', () => {
+    const forms = secretForms('a"b$c');
+    expect(forms).toContain('a"b$c');
+    // Escape Mikrotik/Ubiquiti dalam kutip ganda: a\"b\$c.
+    expect(forms).toContain('a\\"b\\$c');
+    expect(new Set(forms).size).toBe(forms.length);
+    for (let i = 1; i < forms.length; i += 1) {
+      expect((forms[i - 1] as string).length).toBeGreaterThanOrEqual((forms[i] as string).length);
+    }
+  });
+
+  test('kutip tunggal: bentuk escape dan bentuk terbungkus', () => {
+    const forms = secretForms("a b'c");
+    expect(forms).toContain("a b'\\''c");
+    expect(forms).toContain("'a b'\\''c'");
+  });
+
+  test('setiap bentuk yang benar-benar disisipkan renderScript tertutup oleh secretForms', () => {
+    const value = 'p"a$s ?`\\x\'y';
+    const forms = secretForms(value);
+    const cases: [string, Brand][] = [
+      ['x="{passwordTarget}"', 'mikrotik'],
+      ['x="{passwordTarget}"', 'ubiquiti'],
+      ["x='{passwordTarget}'", 'ubiquiti'],
+      ['x={passwordTarget}', 'ubiquiti'],
+    ];
+    for (const [raw, brand] of cases) {
+      const out = renderScript(raw, { passwordTarget: value }, brand);
+      const masked = forms.reduce((text, form) => text.split(form).join('****'), out);
+      // Hanya sisa skrip di sekitar sandi yang boleh tertinggal (kutip tunggal pembungkus boleh ikut
+      // tersamarkan karena bentuk terbungkus juga terdaftar).
+      expect(masked.replaceAll("'", '')).toBe(
+        raw.replace('{passwordTarget}', '****').replaceAll("'", ''),
+      );
+    }
+  });
+
+  test('string kosong tidak menghasilkan bentuk (tidak boleh menyamarkan semuanya)', () => {
+    expect(secretForms('')).toEqual([]);
   });
 });

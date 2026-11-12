@@ -2,7 +2,7 @@
 // interface bridge. Murni: skrip datang sebagai peta yang sudah dibaca pemanggil.
 
 import type { BrandConfig, CountryLockConfig } from './config';
-import { type Brand, renderScript } from './script-template';
+import { type Brand, renderScript, secretForms } from './script-template';
 
 export interface ConnectTarget {
   host: string;
@@ -14,6 +14,12 @@ export interface InjectPlan {
   connect: ConnectTarget;
   script: string;
   scriptKey: string;
+  /**
+   * Kata sandi target dan server beserta SEMUA bentuk sisipannya di skrip (mentah dan escape),
+   * tanpa string kosong. Pemanggil (IPC, Task 13) WAJIB meneruskannya ke `runInject({ secrets })`
+   * agar progres/log tidak membocorkan sandi, termasuk bentuk terescape pada baris yang di-echo pty.
+   */
+  secrets: string[];
 }
 
 export type PlanErrorCode = 'FIRMWARE_UNKNOWN' | 'SCRIPT_MISSING' | 'BRAND_MISSING';
@@ -77,7 +83,10 @@ export function planInject(input: {
     },
     brand,
   );
-  return { connect, script, scriptKey: key };
+  const secrets = [
+    ...new Set([...secretForms(target.password), ...secretForms(config.server.password)]),
+  ].sort((a, b) => b.length - a.length);
+  return { connect, script, scriptKey: key, secrets };
 }
 
 export type PingKind = 'success' | 'unreachable' | 'timeout' | 'error';

@@ -24,8 +24,11 @@ ditambahkan ke `/var/etc/persistent/.ssh/known_hosts` di Ubiquiti (sama dengan y
 produksi; aman diulang karena memakai `grep -q ... ||`). Bila ada berkas uji yang gagal dihapus, laporan
 memuat catatan `BERKAS UJI TERSISA di router: ...`: hapus manual (`/file remove`).
 
-Router yang salah kredensial atau tak terjangkau menghentikan semua cek router setelah SATU percobaan
-login (supaya tidak memicu penguncian akun).
+Router yang salah kredensial atau tak terjangkau menghentikan semua cek router setelah SATU sambungan
+percobaan (pemeriksaan host key). Catatan akurat: `ssh2` dikonfigurasi dengan `tryKeyboard`, jadi pada
+sandi yang salah sambungan itu dapat menghitung hingga DUA kegagalan autentikasi di router (`password`
+lalu `keyboard-interactive` dengan sandi yang sama). Bila router memakai pembatas gagal-login yang ketat,
+pastikan sandi benar sebelum menjalankan; tidak ada percobaan ulang otomatis.
 
 ## Prasyarat
 
@@ -50,6 +53,13 @@ $env:SPIKE_UBNT_PASSWORD = [System.Net.NetworkCredential]::new('', $p).Password
 # Router saja:
 bun run --cwd desktop spike -- --router <IP-router> --router-user <pengguna-router>
 
+# Router dengan SANDI KOSONG (config.QC nyata memakai server.password ""): JANGAN isi variabelnya
+# (di PowerShell `$env:SPIKE_ROUTER_PASSWORD = ''` justru menghapus variabel, jadi tidak dapat
+# dibedakan dari "belum diatur") dan tambahkan bendera eksplisit:
+bun run --cwd desktop spike -- --router <IP-router> --router-user <pengguna-router> --router-empty-password
+# Untuk Ubiquiti bersandi kosong: --ubnt-empty-password. Bendera tidak boleh dipakai bersama
+# variabel lingkungan yang terisi (galat), dan tanpa bendera maupun variabel CLI menolak berjalan.
+
 # Router + Ubiquiti (tambahkan --router-from-ubnt bila alamat router yang terlihat dari
 # perangkat Ubiquiti berbeda dari <IP-router>, mis. karena NAT):
 bun run --cwd desktop spike -- --router <IP-router> --router-user <pengguna-router> `
@@ -62,8 +72,8 @@ Remove-Item Env:SPIKE_ROUTER_PASSWORD, Env:SPIKE_UBNT_PASSWORD -ErrorAction Sile
 Opsi lain: `--router-port`, `--ubnt-port` (bila SSH tidak di port 22). Proses memakan sekitar satu
 sampai dua menit (penanda `echo` di RouterOS sengaja menunggu batas waktu 10 detik).
 
-Hasilnya dicetak ke layar dan ditulis ke `desktop/spike-report-<tanggal>.json` (berkas ini diabaikan git;
-tanpa kata sandi). CLI menutup dengan baris `GERBANG: lolos/TIDAK lolos` menurut aturan di bawah.
+Hasilnya dicetak ke layar dan ditulis ke `desktop/spike-report-<tanggal>.json`, SELALU di folder `desktop/`
+terlepas dari direktori kerja saat perintah dijalankan (berkas ini diabaikan git; tanpa kata sandi). CLI menutup dengan baris `GERBANG: lolos/TIDAK lolos` menurut aturan di bawah.
 
 ## Cara menafsirkan (aturan gerbang, rencana Task 9 Step 6)
 

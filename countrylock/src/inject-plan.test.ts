@@ -162,6 +162,28 @@ describe('planInject', () => {
     }
   });
 
+  test('plan.secrets memuat kata sandi target dan server beserta semua bentuk sisipannya, tanpa string kosong', () => {
+    const base = {
+      config,
+      brand: 'mikrotik' as const,
+      mode: 'single' as const,
+      firmwareCode: 'AC',
+      scripts,
+      sshKey: '',
+    };
+    const plan = planInject({
+      ...base,
+      target: { ip: '192.168.88.77', username: 'admin', password: 'a"b$c' },
+    });
+    expect(plan.secrets).toContain('a"b$c');
+    expect(plan.secrets).toContain('a\\"b\\$c');
+    expect(plan.secrets).not.toContain('');
+    // Sandi server config.QC nyata kosong: tidak menambah apa pun.
+    expect(config.server.password).toBe('');
+    // Bentuk terescape yang benar-benar tampil di skrip termuat di secrets.
+    expect(plan.script).toContain('password="a\\"b\\$c"');
+  });
+
   test('scriptKey = folder/file', () => {
     const brand = config.brands.ubiquiti;
     if (!brand) throw new Error('fixture tanpa ubiquiti');

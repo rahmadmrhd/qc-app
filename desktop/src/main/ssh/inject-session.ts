@@ -39,10 +39,21 @@ export interface InjectOptions {
   script: string;
   sentinel: SentinelStrategy;
   dropPolicy?: DropPolicy;
-  /** Nilai rahasia tambahan (mis. kata sandi lain dalam skrip) yang disamarkan di progres. */
+  /**
+   * Nilai rahasia tambahan yang disamarkan di progres. Pemanggil (IPC, Task 13) WAJIB meneruskan
+   * `plan.secrets` dari `planInject` (countrylock): memuat kata sandi target/server beserta semua
+   * bentuk sisipannya di skrip (escape Mikrotik/Ubiquiti, kutip tunggal), karena pty meng-echo
+   * baris skrip dalam bentuk TERESCAPE yang tidak cocok dengan sandi mentah. Sandi sambungan
+   * (`password`) selalu ikut disamarkan otomatis.
+   */
   secrets?: readonly string[];
   timeouts?: Partial<{ connectMs: number; perLineMs: number; overallMs: number }>;
   onProgress(p: InjectProgress): void;
+  /**
+   * Dipanggil tepat sebelum tiap baris skrip (bukan penanda) ditulis ke shell. Harness spike
+   * memakainya untuk mengukur waktu uji penanda sejak baris uji benar-benar terkirim.
+   */
+  onLineSent?(lineIndex: number): void;
   signal?: AbortSignal;
 }
 
@@ -77,6 +88,27 @@ export function maskSecrets(text: string, secrets: readonly string[]): string {
   );
   let out = text;
   for (const secret of ordered) out = out.split(secret).join('****');
+  return out;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Penyamaran untuk aliran keluaran SEBELUM dipecah per baris: seperti `maskSecrets`, tetapi juga
+ * menangkap rahasia yang terbelah oleh `\r`/`\n` sisipan perangkat (pembungkusan baris pada
+ * terminal 200 kolom). Terpanjang dulu agar bentuk escape tidak menyisakan potongan.
+ */
+export function maskStream(text: string, secrets: readonly string[]): string {
+  const ordered = [...new Set(secrets.filter((s) => s.length > 0))].sort(
+    (a, b) => b.length - a.length,
+  );
+  let out = text;
+  for (const secret of ordered) {
+    const pattern = [...secret].map(escapeRegExp).join('[\\r\\n]*');
+    out = out.replace(new RegExp(pattern, 'g'), '****');
+  }
   return out;
 }
 
@@ -250,7 +282,8 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
         }
         carry = scan.slice(Math.max(0, scan.length - (token.length - 1)));
       }
-      lineBuffer += text;
+      // Samarkan sebelum dipecah per baris (sandi dapat terbelah \r/\n sisipan perangkat).
+      lineBuffer = maskStream(lineBuffer + text, secrets);
       const parts = lineBuffer.split(/[\r\n]/);
       lineBuffer = parts.pop() ?? '';
       for (const part of parts) forward(part);
@@ -283,7 +316,10 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
     };
 
     // Putus di tengah skrip (reboot/fwupdate memutus sesi): putuskan sukses atau gagal menurut kebijakan.
-    const dropped = (lineIndex: number, written: boolean): InjectOutcome => {
+    const dropped = async (lineIndex: number, written: boolean): Promise<InjectOutcome> => {
+      // Beri kesempatan data yang sudah diterima soket (mis. banner sebelum putus) dibaca dulu:
+      // peristiwa 'close' klien dapat mendahului penyaluran data aliran.
+      await new Promise<void>((resolve) => setImmediate(resolve));
       const isLast = lineIndex === lines.length - 1;
       const treatAsDone = receivedAnyOutput && (dropPolicy === 'legacy' || (isLast && written));
       if (treatAsDone) {
@@ -304,14 +340,19 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
 
     for (let i = 0; i < lines.length; i += 1) {
       if (cancelled) return cancelledOutcome();
-      if (closed) return dropped(i, false);
+      if (closed) return await dropped(i, false);
 
       token = `__QC_INJECT_${randomBytes(4).toString('hex')}__`;
       hits = 0;
       carry = '';
       const line = lines[i] as string;
+      try {
+        opts.onLineSent?.(i);
+      } catch {
+        // Pengamat tidak boleh menjatuhkan sesi.
+      }
       if (!writeLine(line) || !writeLine(sentinelCommand(opts.sentinel, token))) {
-        return dropped(i, false);
+        return await dropped(i, false);
       }
 
       const deadline = Math.min(Date.now() + limits.perLineMs, overallDeadline);
@@ -325,7 +366,7 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
           'Gagal: timeout menunggu penyelesaian baris script.',
         );
       }
-      if (hits < 2) return dropped(i, true);
+      if (hits < 2) return await dropped(i, true);
     }
 
     return finish(true, 'completed', 'completed', 'Selesai.');

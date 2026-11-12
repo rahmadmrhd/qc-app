@@ -65,10 +65,36 @@ function escapeSingleQuoted(value: string): string {
   return value.replace(/'/g, "'\\''");
 }
 
+function escapeMikrotikDouble(value: string): string {
+  return value.replace(/[\\"$?]/g, '\\$&');
+}
+
+function escapeUbiquitiDouble(value: string): string {
+  return value.replace(/[\\"$`]/g, '\\$&');
+}
+
+/**
+ * Semua bentuk sebuah nilai rahasia yang dapat tampil pada baris skrip yang dikirim (dan di-echo
+ * pty): mentah, escape Mikrotik dalam kutip ganda, escape Ubiquiti dalam kutip ganda, di dalam
+ * kutip tunggal, dan dibungkus kutip tunggal. Terpanjang dulu (supaya penyamaran tidak menyisakan
+ * potongan bentuk escape); string kosong tidak pernah dikembalikan.
+ */
+export function secretForms(value: string): string[] {
+  if (value === '') return [];
+  const forms = new Set([
+    value,
+    escapeMikrotikDouble(value),
+    escapeUbiquitiDouble(value),
+    escapeSingleQuoted(value),
+    `'${escapeSingleQuoted(value)}'`,
+  ]);
+  return [...forms].sort((a, b) => b.length - a.length);
+}
+
 function quoteValue(name: string, value: string, brand: Brand, context: Context): string {
   if (SAFE_VALUE.test(value)) return value;
   if (brand === 'mikrotik') {
-    if (context === 'double') return value.replace(/[\\"$?]/g, '\\$&');
+    if (context === 'double') return escapeMikrotikDouble(value);
     throw new ScriptRenderError(
       'UNSAFE_BARE_VALUE',
       `Nilai {${name}} mengandung karakter tak aman tetapi ditempatkan di luar tanda kutip pada skrip; ` +
@@ -76,7 +102,7 @@ function quoteValue(name: string, value: string, brand: Brand, context: Context)
     );
   }
   // Ubiquiti (BusyBox ash).
-  if (context === 'double') return value.replace(/[\\"$`]/g, '\\$&');
+  if (context === 'double') return escapeUbiquitiDouble(value);
   if (context === 'single') return escapeSingleQuoted(value);
   return `'${escapeSingleQuoted(value)}'`;
 }

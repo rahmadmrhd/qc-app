@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
+import { renderScript, secretForms } from '@countrylock/script-template';
 import { afterEach, describe, expect, test } from 'vitest';
 import { type FakeSshServer, startFakeSshServer } from '../../../test-support/fake-ssh-server';
 import {
   type InjectOptions,
   type InjectProgress,
   maskSecrets,
+  maskStream,
   runInject,
   sentinelCommand,
 } from './inject-session';
@@ -232,5 +234,118 @@ describe('runInject', () => {
     expect(all).not.toContain(PASSWORD);
     expect(all).not.toContain(extra);
     expect(all).toContain('****');
+  });
+});
+
+describe('penyamaran sandi bentuk terescape (B1)', () => {
+  /** Tidak satu pun bentuk sisipan yang boleh muncul di progres; `****` harus ada. */
+  function expectMasked(progress: InjectProgress[], forms: readonly string[]): void {
+    const all = progress.map((p) => p.message).join('\n');
+    for (const form of forms) expect(all).not.toContain(form);
+    expect(all).toContain('****');
+  }
+
+  test('Mikrotik: sandi a"b$c (escape a\\"b\\$c di echo pty) tidak muncul dalam bentuk apa pun', async () => {
+    const value = 'a"b$c';
+    const script = renderScript(
+      'echo user=admin password="{passwordTarget}"',
+      { passwordTarget: value },
+      'mikrotik',
+    );
+    const received: string[] = [];
+    const server = await fake('busybox', { onLine: (l) => received.push(l) });
+    const { result, progress } = run(server, script, 'echo', { secrets: secretForms(value) });
+    expect(await result).toBe(true);
+    // Bukti tes menggigit: perangkat memang menerima/meng-echo bentuk terescape.
+    expect(received.some((l) => l.includes('a\\"b\\$c'))).toBe(true);
+    expectMasked(progress, secretForms(value));
+  });
+
+  test("Ubiquiti: sandi a b'c (dibungkus 'a b'\\''c') tidak muncul dalam bentuk apa pun", async () => {
+    const value = "a b'c";
+    const script = renderScript(
+      'echo scp x@{passwordTarget}',
+      { passwordTarget: value },
+      'ubiquiti',
+    );
+    const received: string[] = [];
+    const server = await fake('busybox', { onLine: (l) => received.push(l) });
+    const { result, progress } = run(server, script, 'echo', { secrets: secretForms(value) });
+    expect(await result).toBe(true);
+    expect(received.some((l) => l.includes("'a b'\\''c'"))).toBe(true);
+    expectMasked(progress, secretForms(value));
+  });
+
+  test('sandi yang terbelah \\r\\n pembungkus baris perangkat tetap tersamarkan', async () => {
+    const value = 'Sup3r"Secr$tPass';
+    const script = renderScript(
+      'echo user=admin password="{passwordTarget}"',
+      { passwordTarget: value },
+      'mikrotik',
+    );
+    const server = await fake('busybox', { wrapEchoAt: 9 });
+    const { result, progress } = run(server, script, 'echo', { secrets: secretForms(value) });
+    expect(await result).toBe(true);
+    const all = progress.map((p) => p.message).join('\n');
+    for (const form of secretForms(value)) expect(all).not.toContain(form);
+    // Tak ada potongan sandi yang tertinggal di sekitar pembungkus baris.
+    expect(all).not.toMatch(/Sup3r|Secr|tPass/);
+    expect(all).toContain('****');
+  });
+
+  test('maskStream: terpanjang dulu dan menyamarkan rahasia yang diselingi CR/LF', () => {
+    expect(maskStream('p=ab\r\ncd x', ['abcd'])).toBe('p=**** x');
+    expect(maskStream('a\\"b', ['a"b', 'a\\"b'])).toBe('****');
+    expect(maskStream('kosong', [''])).toBe('kosong');
+  });
+});
+
+describe('kebijakan putus: banner dan baris pertama (A7)', () => {
+  test('last-line-only: putus tepat setelah baris pertama (skrip 3 baris) → false', async () => {
+    const server = await fake('busybox', { dropAfterLine: 1 });
+    const { result, progress } = run(server, 'one\ntwo\nthree', 'echo', {
+      dropPolicy: 'last-line-only',
+    });
+    expect(await result).toBe(false);
+    expect(progress.at(-1)?.stage).toBe('failed');
+  });
+
+  test('banner: legacy menganggap putus segera setelah shell dibuka SUKSES (sukses palsu), last-line-only gagal', async () => {
+    // Perangkat nyata (RouterOS/BusyBox) selalu mengirim banner/prompt begitu shell terbuka, jadi
+    // `receivedAnyOutput` hampir selalu true: kebijakan `legacy` praktis berarti "putus kapan pun
+    // = sukses" (perilaku aplikasi lama, spek §6.3). Tes ini menjaga risiko itu tetap terlihat.
+    const script = 'one\ntwo\nthree';
+    const withBanner = await fake('busybox', { dropAfterLine: 0, banner: '[admin@router] > ' });
+    const legacy = run(withBanner, script, 'echo');
+    expect(await legacy.result).toBe(true);
+
+    const strict = run(withBanner, script, 'echo', { dropPolicy: 'last-line-only' });
+    expect(await strict.result).toBe(false);
+
+    // Tanpa banner dan tanpa keluaran: legacy pun gagal.
+    const silent = await fake('busybox', { dropAfterLine: 0 });
+    const bad = run(silent, script, 'echo', { timeouts: { perLineMs: 2000 } });
+    expect(await bad.result).toBe(false);
+  });
+});
+
+describe('kata sandi kosong dan onLineSent', () => {
+  test('kata sandi sambungan kosong dapat dipakai (router bersandi kosong)', async () => {
+    const server = await startFakeSshServer({ username: USER, password: '', shell: 'busybox' });
+    servers.push(server);
+    const { result } = run(server, 'one', 'echo', { password: '' });
+    expect(await result).toBe(true);
+  });
+
+  test('onLineSent dipanggil sekali per baris skrip, sebelum baris itu ditulis', async () => {
+    const order: string[] = [];
+    const server = await fake('busybox', { onLine: (l) => order.push(`srv:${l}`) });
+    const { result } = run(server, 'one\ntwo', 'echo', {
+      onLineSent: (i) => order.push(`sent:${i}`),
+    });
+    expect(await result).toBe(true);
+    expect(order.filter((o) => o.startsWith('sent:'))).toEqual(['sent:0', 'sent:1']);
+    expect(order.indexOf('sent:0')).toBeLessThan(order.indexOf('srv:one'));
+    expect(order.indexOf('sent:1')).toBeLessThan(order.indexOf('srv:two'));
   });
 });

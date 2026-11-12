@@ -26,6 +26,15 @@ export interface FakeSshServerOptions {
   deviceMode?: { mode: string; importBlocked?: boolean };
   /** Simulasi konsol yang menggambar ulang ketikan: echo tiap baris tampil dua kali. */
   echoTwice?: boolean;
+  /** Teks yang dikirim segera setelah shell dibuka (banner/prompt; perangkat nyata selalu punya). */
+  banner?: string;
+  /** Tunda pembukaan shell (ms): perangkat yang lambat menyiapkan pty/banner. */
+  shellOpenDelayMs?: number;
+  /**
+   * Bungkus echo baris SKRIP (bukan penanda) dengan `\r\n` tiap N karakter, seperti terminal lebar
+   * terbatas; menguji penyamaran sandi yang terbelah baris.
+   */
+  wrapEchoAt?: number;
   /** BusyBox: sumber berkas untuk `scp <u>@<h>:<jauh> <lokal>`; undefined = berkas tak ada. */
   scpSource?(remotePath: string): Buffer | undefined;
 }
@@ -255,8 +264,9 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
         const session = acceptSession();
         session.on('pty', (accept) => accept?.());
         session.on('shell', (accept) => {
-          const stream = accept();
-          runShell(stream, () => conn.end());
+          const open = () => runShell(accept(), () => conn.end());
+          if (opts.shellOpenDelayMs) setTimeout(open, opts.shellOpenDelayMs);
+          else open();
         });
         session.on('exec', (accept, _reject, info) => {
           const stream = accept();
@@ -287,10 +297,18 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
       stream.end();
       hangUp();
     };
+    if (opts.banner) send(opts.banner);
     if (opts.dropAfterLine === 0) {
       dropNow();
       return;
     }
+    const echoOf = (line: string): string => {
+      const width = opts.wrapEchoAt;
+      if (!width || SENTINEL_LINE.test(line)) return `${line}\r\n`;
+      const chunks: string[] = [];
+      for (let at = 0; at < line.length; at += width) chunks.push(line.slice(at, at + width));
+      return `${chunks.join('\r\n')}\r\n`;
+    };
 
     let inbuf = '';
     let scriptLines = 0;
@@ -316,8 +334,8 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
         inbuf = inbuf.slice(match.index + 1);
         if (line.trim() === '') continue;
         // Echo pty: ketikan tampil segera, sebelum perintah dieksekusi.
-        send(`${line}\r\n`);
-        if (opts.echoTwice) send(`${line}\r\n`);
+        send(echoOf(line));
+        if (opts.echoTwice) send(echoOf(line));
         opts.onLine?.(line);
         if (!SENTINEL_LINE.test(line)) {
           scriptLines += 1;

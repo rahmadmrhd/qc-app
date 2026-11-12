@@ -11,7 +11,7 @@
 // ditambahkan di /var/etc/persistent/.ssh/known_hosts, persis seperti skrip produksi.
 
 import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client, type SFTPWrapper, type Stats } from 'ssh2';
 import { type HostKey, HostKeyError, probeHostKey } from '../src/main/ssh/host-key';
@@ -179,8 +179,9 @@ async function injectCheck(
   minElapsedMs?: number,
 ): Promise<{ result: CheckResult; output: string[] }> {
   const output: string[] = [];
-  // Waktu dihitung sejak shell dibuka (tahap `sending`), tanpa waktu koneksi dan autentikasi.
-  let shellOpenedAt = 0;
+  // Waktu dihitung sejak baris uji PERTAMA benar-benar ditulis ke shell (`onLineSent`), jadi
+  // lamanya koneksi, autentikasi, banner, dan pembukaan shell tidak menggelembungkan hasil.
+  let firstLineSentAt = 0;
   const outcome = await runInjectDetailed({
     host: target.host,
     ...(target.port !== undefined ? { port: target.port } : {}),
@@ -190,12 +191,14 @@ async function injectCheck(
     sentinel: strategy,
     secrets: session.secrets,
     timeouts: { connectMs: session.timeouts.connectMs, perLineMs },
+    onLineSent: (index) => {
+      if (index === 0) firstLineSentAt = Date.now();
+    },
     onProgress: (p: InjectProgress) => {
-      if (p.stage === 'sending') shellOpenedAt = Date.now();
       if (p.stage === 'running') output.push(p.message);
     },
   });
-  const elapsedMs = Date.now() - shellOpenedAt;
+  const elapsedMs = firstLineSentAt === 0 ? 0 : Date.now() - firstLineSentAt;
   let result: CheckResult = outcome.ok ? 'ok' : outcome.reason === 'timeout' ? 'timeout' : 'error';
   if (!outcome.ok) {
     session.note(
@@ -242,7 +245,7 @@ export async function runChecks(env: SpikeEnv): Promise<SpikeReport> {
   };
 
   // 1. Host key sekaligus gerbang: kredensial salah atau router mati berhenti di sini (satu
-  // percobaan login, agar tidak memicu penguncian akun di router nyata).
+  // sambungan percobaan, tanpa ulang; `tryKeyboard` dapat menghitung hingga dua kegagalan auth).
   let hostKey: HostKey | null = null;
   try {
     hostKey = await probeHostKey({
@@ -461,7 +464,13 @@ export function gateVerdict(report: SpikeReport): { pass: boolean; reasons: stri
 const USAGE = `Pemakaian:
   bun run --cwd desktop spike -- --router <ip> --router-user <pengguna> [--router-port <port>]
       [--ubnt <ip> --ubnt-user <pengguna> [--ubnt-port <port>] [--router-from-ubnt <ip>]]
-Kata sandi HANYA dari variabel lingkungan SPIKE_ROUTER_PASSWORD dan SPIKE_UBNT_PASSWORD.`;
+Kata sandi HANYA dari variabel lingkungan SPIKE_ROUTER_PASSWORD dan SPIKE_UBNT_PASSWORD.
+Sandi kosong (mis. router jump bawaan): jangan isi variabelnya dan tambahkan --router-empty-password
+(atau --ubnt-empty-password). Di PowerShell $env:X = '' menghapus variabel, sebab itu bendera ini ada.`;
+
+// Bendera tanpa nilai: sandi kosong HARUS eksplisit karena `$env:X = ''` di PowerShell menghapus
+// variabel (tidak dapat dibedakan dari "belum diatur"). Bendera ini bukan sandi dan bukan nilai.
+const EMPTY_PASSWORD_FLAGS = new Set(['--router-empty-password', '--ubnt-empty-password']);
 
 const KNOWN_FLAGS = new Set([
   '--router',
@@ -487,16 +496,39 @@ function parsePort(value: string | undefined, flag: string): number | undefined 
   return port;
 }
 
+/** Sandi dari env, atau kosong HANYA bila bendera eksplisit; keduanya sekaligus ditolak. */
+function resolvePassword(
+  fromEnv: string | undefined,
+  explicitEmpty: boolean,
+  envName: string,
+  flag: string,
+): string {
+  if (explicitEmpty) {
+    if (fromEnv)
+      throw new Error(`${flag} tidak boleh dipakai bersama variabel ${envName} yang terisi`);
+    return '';
+  }
+  if (!fromEnv) {
+    throw new Error(`Variabel lingkungan ${envName} belum diatur (sandi kosong: pakai ${flag})`);
+  }
+  return fromEnv;
+}
+
 /** Mengurai argumen CLI; kata sandi hanya dibaca dari `env`, tidak pernah dari argumen. */
 export function parseArgs(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
 ): SpikeEnv {
   const values = new Map<string, string>();
+  const emptyFlags = new Set<string>();
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
     const eq = arg.indexOf('=');
     const flag = eq === -1 ? arg : arg.slice(0, eq);
+    if (EMPTY_PASSWORD_FLAGS.has(arg)) {
+      emptyFlags.add(arg);
+      continue;
+    }
     if (/pass|pwd|secret/i.test(flag)) {
       throw new Error(
         'Kata sandi tidak boleh lewat argumen; pakai variabel lingkungan SPIKE_ROUTER_PASSWORD / SPIKE_UBNT_PASSWORD',
@@ -514,8 +546,12 @@ export function parseArgs(
   const routerUser = values.get('--router-user');
   if (!routerHost) throw new Error('Argumen --router wajib');
   if (!routerUser) throw new Error('Argumen --router-user wajib');
-  const routerPassword = env.SPIKE_ROUTER_PASSWORD;
-  if (!routerPassword) throw new Error('Variabel lingkungan SPIKE_ROUTER_PASSWORD belum diatur');
+  const routerPassword = resolvePassword(
+    env.SPIKE_ROUTER_PASSWORD,
+    emptyFlags.has('--router-empty-password'),
+    'SPIKE_ROUTER_PASSWORD',
+    '--router-empty-password',
+  );
 
   const routerPort = parsePort(values.get('--router-port'), '--router-port');
   const result: SpikeEnv = {
@@ -531,8 +567,12 @@ export function parseArgs(
   if (ubntHost) {
     const ubntUser = values.get('--ubnt-user');
     if (!ubntUser) throw new Error('Argumen --ubnt-user wajib bila --ubnt dipakai');
-    const ubntPassword = env.SPIKE_UBNT_PASSWORD;
-    if (!ubntPassword) throw new Error('Variabel lingkungan SPIKE_UBNT_PASSWORD belum diatur');
+    const ubntPassword = resolvePassword(
+      env.SPIKE_UBNT_PASSWORD,
+      emptyFlags.has('--ubnt-empty-password'),
+      'SPIKE_UBNT_PASSWORD',
+      '--ubnt-empty-password',
+    );
     const ubntPort = parsePort(values.get('--ubnt-port'), '--ubnt-port');
     const fromDevice = values.get('--router-from-ubnt');
     result.ubiquiti = {
@@ -545,6 +585,7 @@ export function parseArgs(
         : {}),
     };
   } else if (
+    emptyFlags.has('--ubnt-empty-password') ||
     values.has('--ubnt-user') ||
     values.has('--ubnt-port') ||
     values.has('--router-from-ubnt')
@@ -552,6 +593,17 @@ export function parseArgs(
     throw new Error('Argumen Ubiquiti butuh --ubnt');
   }
   return result;
+}
+
+/**
+ * Akar `desktop/` dari lokasi berkas skrip: `desktop/spike/*.ts` (sumber) atau
+ * `desktop/dist/spike/*.js` (hasil bundel). Laporan ditulis di sana, bukan di direktori kerja,
+ * supaya selalu tertangkap `.gitignore` (desktop/spike-report-*.json).
+ */
+export function desktopRootFrom(scriptPath: string): string {
+  const dir = dirname(resolve(scriptPath));
+  const parent = dirname(dir);
+  return basename(dir) === 'spike' && basename(parent) === 'dist' ? dirname(parent) : parent;
 }
 
 async function main(): Promise<void> {
@@ -564,11 +616,14 @@ async function main(): Promise<void> {
   }
   console.log('Menjalankan spike; ini dapat memakan satu-dua menit...');
   const report = await runChecks(env);
-  const file = `spike-report-${report.meta.generatedAt.slice(0, 10)}.json`;
+  const file = join(
+    desktopRootFrom(fileURLToPath(import.meta.url)),
+    `spike-report-${report.meta.generatedAt.slice(0, 10)}.json`,
+  );
   const json = `${JSON.stringify(report, null, 2)}\n`;
   writeFileSync(file, json, 'utf8');
   console.log(json);
-  console.log(`Laporan ditulis ke ${resolve(file)} (tanpa kata sandi).`);
+  console.log(`Laporan ditulis ke ${file} (tanpa kata sandi).`);
   const verdict = gateVerdict(report);
   console.log(
     verdict.pass
