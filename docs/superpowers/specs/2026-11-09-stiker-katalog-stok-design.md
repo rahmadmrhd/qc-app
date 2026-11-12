@@ -4,6 +4,8 @@ Status: disetujui pemilik produk 2026-11-09 ("Setuju"). Tanggal: 2026-11-09.
 Induk: `docs/superpowers/specs/2026-11-08-business-unit-design.md` (peta tahap §2; keputusan 1-22). Cabang kerja: `feat/stiker-management`.
 Tahap 3 dipecah dua (disetujui pemilik 2026-11-09): **3a** (dokumen ini: katalog dan stok) lalu **3b** (instruksi penempelan: pustaka gambar, penanda pada gambar, tampilan di item; dirancang terpisah setelah 3a). Bagian 6 mencatat keputusan 3b agar tidak hilang.
 
+Pembaruan tahap 5 (2026-11-12, keputusan pemilik produk; spek `docs/superpowers/specs/2026-11-12-serial-number-design.md`): **stok boleh menjadi negatif akibat pemotongan Serial Number otomatis**, agar kekurangan stiker terlihat; stok keluar manual dan opname **tetap tidak boleh** membuat stok negatif. Kendala `CHECK (qty >= 0)` di `0005_stiker.sql` dicabut oleh migrasi tahap 5 (pelonggaran kompatibel mundur), stiker `deprecated` menjadi `inactive` saat total stok `<= 0`, dan pemotongan tidak pernah dikembalikan otomatis. Butir di bawah yang bertentangan (anti-tujuan "stok negatif", butir 8, dan `sticker_stock` "tidak boleh negatif") dibaca menurut pembaruan ini.
+
 Pembaruan tahap 4b (2026-11-12; spek `docs/superpowers/specs/2026-11-11-stiker-postel-4b-design.md`): jenis sistem `postel` (aturan `group`) berisi satu stiker "Postel" yang dibuat otomatis saat catatan Postel pertama disimpan; pada form katalog hanya minimum, alias, status, dan gambarnya yang dapat diubah (nama terkunci), dan stiker itu dapat dinonaktifkan serta diaktifkan kembali kapan saja.
 
 Pembaruan tahap 4a (2026-11-10, disetujui pemilik produk; spek `docs/superpowers/specs/2026-11-10-stiker-manual-book-4a-design.md`): status stiker bertambah `deprecated` (Usang: digantikan versi Manual Book yang lebih baru; hanya dapat menjadi nonaktif, tak boleh menerima stok masuk), `sticker_types` mendapat `system_kind` (jenis sistem Manual Book/Postel dikelola aplikasi) dan `default_min_qty`, aturan jenis bertambah `group` (menurut kelompok item; hanya jenis sistem, tak dipilih pengguna), perhitungan `low` (menipis) mengabaikan stiker bukan `active` (nonaktif dan `deprecated`), dan halaman **Konfigurasi Stiker** (`/sticker/settings`, `sticker: manage`) memuat minimum bawaan per jenis dan email ringkasan harian stok menipis. Butir keputusan di bawah yang bertentangan (daftar aturan jenis di butir 2; notifikasi di butir 9 dan non-goals: sekarang ada email ringkasan harian, bukan notifikasi dalam aplikasi) dibaca menurut pembaruan ini.
@@ -28,13 +30,13 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 ### Bukan tujuan (non-goals)
 - Instruksi penempelan, pustaka gambar, penanda pada gambar, tampilan di detail item (3b).
 - Pengelompokan item untuk Manual Book dan Postel, stok berkelompok, tautan ke hasil ekspor QR (tahap 4).
-- Pemotongan stok otomatis dan bus event (tahap 5; keputusan 22 spek BU).
+- Pemotongan stok otomatis dan bus event (tahap 5; keputusan 22 spek BU; dirancang di `docs/superpowers/specs/2026-11-12-serial-number-design.md`).
 - **Notifikasi** stok menipis (menunggu pembangunan PWA); 3a hanya menandainya di layar.
 - Pelacakan stok per batch cetak.
 - Pembatasan BU pada stiker dan stok.
 
 ### Anti-tujuan
-- Stok negatif atau catatan yang bisa diubah diam-diam: riwayat tidak boleh diedit atau dihapus.
+- Stok negatif akibat stok keluar manual atau opname (stok negatif hanya boleh akibat pemotongan Serial Number otomatis; keputusan pemilik 2026-11-12) atau catatan yang bisa diubah diam-diam: riwayat tidak boleh diedit atau dihapus.
 - Membuat tim QC menghitung ulang konversi lembar ke butir secara manual berulang-ulang.
 
 ## 3. Keputusan pemilik produk (dicatat 2026-11-09)
@@ -46,7 +48,7 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 5. **Stok hanya total butir**, tanpa pelacakan batch (isi per lembar berbeda tiap batch cetak). Stok dicatat per lokasi dan dijumlahkan.
 6. **Batas minimum satu angka per stiker**, berlaku untuk total semua lokasi (bukan per lokasi).
 7. **Alat stok masuk dan stok opname menerima lembar × isi per lembar**: satu atau beberapa baris "jumlah lembar × isi per lembar" (isi boleh berbeda per baris) ditambah butir lepas; sistem menjumlahkannya menjadi butir. Stok opname menetapkan stok menjadi angka hasil hitung dan mencatat selisihnya sebagai penyesuaian di riwayat.
-8. **Stok diubah manual** di tahap 3 dan 4; pemotongan otomatis menunggu Serial Number (tahap 5).
+8. **Stok diubah manual** di tahap 3 dan 4; pemotongan otomatis menunggu Serial Number (tahap 5; dirancang 2026-11-12 di `docs/superpowers/specs/2026-11-12-serial-number-design.md`: dipotong menurut daftar centang stiker yang ditempel, tanpa pengembalian otomatis).
 9. **Notifikasi menipis di dalam aplikasi ditunda** sampai PWA dibangun. *(Tahap 4a, keputusan pemilik 2026-11-10: peringatan stok menipis berupa satu email ringkasan harian, diatur di halaman Konfigurasi Stiker; notifikasi dalam aplikasi tetap menunggu PWA.)*
 
 ### Pilihan perancang yang belum ditegaskan pemilik (harap dikoreksi bila keliru)
@@ -66,7 +68,7 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 - `sticker_types`: id, nama, aturan penentuan, status, urutan.
 - `stickers`: id, jenis, nama, alias, berkas gambar contoh (satu), batas minimum (butir), status, versi untuk penjaga CAS.
 - `sticker_business_units`: tabel penghubung stiker ↔ BU (pola yang sama dengan `item_business_units`; keputusan 4 spek BU).
-- `sticker_stock`: stiker, lokasi, jumlah butir; kunci gabungan stiker+lokasi; tidak boleh negatif.
+- `sticker_stock`: stiker, lokasi, jumlah butir; kunci gabungan stiker+lokasi; tidak boleh negatif kecuali akibat pemotongan Serial Number otomatis (keputusan pemilik 2026-11-12; kendala `CHECK` dicabut oleh migrasi tahap 5).
 - `sticker_stock_entries` (riwayat, hanya ditambah): stiker, lokasi, jenis catatan (masuk, keluar, koreksi, opname), perubahan butir, stok sesudahnya, rincian input (lembar, isi per lembar, butir lepas) bila ada, alasan, pengguna, waktu.
 - Migrasi baru `NNNN_*.sql`, hanya DDL dan expand-only.
 - Penulisan stok memakai pola CAS di dalam `batch()` (lihat "Aturan server" `CLAUDE.md`); keluar yang melebihi stok ditolak.
