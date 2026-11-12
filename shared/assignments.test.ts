@@ -18,6 +18,7 @@ const roles = new Map<string, PartialPermissionMap>([
   ['qc', { qc: 'edit' }],
   ['catalog', { item: 'view' }],
   ['catalog-edit', { item: 'edit' }],
+  ['serial-edit', { serial: 'edit' }],
 ]);
 
 describe('sanitizeAssignments', () => {
@@ -200,7 +201,32 @@ describe('item dihitung dari penugasan BU, bukan penugasan lokasi', () => {
       allBuIds: ['X', 'Y'],
     });
     expect(result.global.item).toBe('edit');
-    expect(result.byBu).toEqual({ X: { item: 'view' }, Y: { item: 'edit' } });
+    expect(result.byBu).toEqual({ X: { item: 'view', serial: 'none', serialservice: 'none' }, Y: { item: 'edit', serial: 'none', serialservice: 'none' } });
+  });
+
+  test('role serial: global.serial mengikuti penugasan BU (Semua BU maupun BU tertentu), bukan penugasan lokasi', () => {
+    const everywhere = resolveAccess([], roles, [], {
+      assignments: [{ buId: null, roleIds: ['serial-edit'] }],
+      allBuIds: ['X'],
+    });
+    expect(everywhere.global.serial).toBe('edit');
+    expect(everywhere.byBu).toEqual({ X: { item: 'none', serial: 'edit', serialservice: 'none' } });
+
+    const specific = resolveAccess([], roles, [], {
+      assignments: [{ buId: 'X', roleIds: ['serial-edit'] }],
+      allBuIds: ['X', 'Y'],
+    });
+    expect(specific.global.serial).toBe('edit');
+    expect(specific.byBu).toEqual({ X: { item: 'none', serial: 'edit', serialservice: 'none' } });
+
+    const onlyLocation = resolveAccess(
+      [{ locationId: null, roleIds: ['serial-edit'] }],
+      roles,
+      ['A'],
+      { assignments: [], allBuIds: ['X'] },
+    );
+    expect(onlyLocation.global.serial).toBe('none');
+    expect(onlyLocation.byBu).toEqual({});
   });
 
   test('role item pada penugasan BU: view', () => {
@@ -209,7 +235,7 @@ describe('item dihitung dari penugasan BU, bukan penugasan lokasi', () => {
       allBuIds: ['X'],
     });
     expect(result.global.item).toBe('view');
-    expect(result.byBu).toEqual({ X: { item: 'view' } });
+    expect(result.byBu).toEqual({ X: { item: 'view', serial: 'none', serialservice: 'none' } });
   });
 
   test('role access pada penugasan BU tidak memberi izin modul lain', () => {
