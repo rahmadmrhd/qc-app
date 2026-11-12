@@ -1,5 +1,11 @@
+import { SERIAL_LIMITS } from '@shared/serials';
 import { expect, test } from 'vitest';
-import { filterOfSearch, normalizeSearchText, serialSearchSchema } from './list-filter';
+import {
+  filterOfSearch,
+  normalizeSearchText,
+  SERIAL_SEARCH_MAX,
+  serialSearchSchema,
+} from './list-filter';
 
 test('schema membuang nilai tak sah alih-alih menggagalkan URL', () => {
   const parsed = serialSearchSchema.parse({
@@ -11,12 +17,17 @@ test('schema membuang nilai tak sah alih-alih menggagalkan URL', () => {
   expect(parsed).toEqual({ to: '2026-11-30' });
 });
 
-test('normalizeSearchText: normalisasi, buang ganda dan baris kosong, batas 200', () => {
-  expect(normalizeSearchText(' abc \n\n4c:5e:0c:1a:2b:3d\nABC').text).toBe('ABC\n4C5E0C1A2B3D');
-  const many = Array.from({ length: 250 }, (_, index) => `S${index}`).join('\n');
-  const result = normalizeSearchText(many);
-  expect(result.count).toBe(200);
+test('normalizeSearchText: normalisasi, buang ganda dan baris kosong, batas = SERIAL_LIMITS.listSerialsMax', () => {
+  expect(normalizeSearchText(' abc \n \n4c:5e:0c:1a:2b:3d\nABC').text).toBe('ABC\n4C5E0C1A2B3D');
+  expect(SERIAL_SEARCH_MAX).toBe(SERIAL_LIMITS.listSerialsMax);
+  const lines = Array.from({ length: SERIAL_SEARCH_MAX + 7 }, (_, index) => `S${index}`);
+  const result = normalizeSearchText(lines.join('\n'));
+  expect(result.count).toBe(SERIAL_SEARCH_MAX);
   expect(result.capped).toBe(true);
+  expect(result.dropped).toBe(7);
+  const exact = normalizeSearchText(lines.slice(0, SERIAL_SEARCH_MAX).join('\n'));
+  expect(exact.capped).toBe(false);
+  expect(exact.dropped).toBe(0);
 });
 
 test('filterOfSearch: satu serial = query, banyak = serials, filter lain diteruskan', () => {

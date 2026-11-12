@@ -43,8 +43,9 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     const known = new Set(current);
     const added = split.serials.filter((serial) => !known.has(serial));
     if (added.length === 0) return 'duplicate';
+    if (current.length >= SERIAL_SEARCH_MAX) return 'rejected';
     setText([...current, ...added].slice(0, SERIAL_SEARCH_MAX).join('\n'));
-    return 'added';
+    return added.length > SERIAL_SEARCH_MAX - current.length ? 'rejected' : 'added';
   }
 
   return (
@@ -61,10 +62,17 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             value={text}
             onChange={(event) => setText(event.target.value)}
           />
-          <p className="text-xs text-muted-foreground">
-            {normalized.count > 0
-              ? `${normalized.count} serial dicari${normalized.capped ? ` (dibatasi ${SERIAL_SEARCH_MAX})` : ''}`
-              : 'Tempel banyak serial sekaligus atau pindai.'}
+          <p
+            className={
+              normalized.capped ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+            }
+            role={normalized.capped ? 'alert' : undefined}
+          >
+            {normalized.capped
+              ? `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
+              : normalized.count > 0
+                ? `${normalized.count} serial dicari (maks. ${SERIAL_SEARCH_MAX})`
+                : 'Tempel banyak serial sekaligus atau pindai.'}
           </p>
         </div>
         <SerialScanInput id="serial-search-scan" label="Pindai untuk mencari" onSubmit={scan} />

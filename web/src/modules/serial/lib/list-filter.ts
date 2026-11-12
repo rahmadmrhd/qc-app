@@ -1,9 +1,15 @@
-import { isIsoDate, normalizeSerial, SERIAL_STATUSES, splitSerialInput } from '@shared/serials';
+import {
+  isIsoDate,
+  normalizeSerial,
+  SERIAL_LIMITS,
+  SERIAL_STATUSES,
+  splitSerialInput,
+} from '@shared/serials';
 import { z } from 'zod';
 import type { SerialListFilter } from '../queries';
 
-/** Pencarian banyak serial di server: maks. 200 baris (`SerialListInput.serials`). */
-export const SERIAL_SEARCH_MAX = 200;
+/** Pencarian banyak serial di server: maks. `SERIAL_LIMITS.listSerialsMax` serial (`SerialListInput.serials`, GET: URL harus muat). */
+export const SERIAL_SEARCH_MAX = SERIAL_LIMITS.listSerialsMax;
 
 const isoDate = z.string().refine(isIsoDate).optional().catch(undefined);
 
@@ -21,14 +27,24 @@ export const serialSearchSchema = z.object({
 });
 export type SerialSearch = z.infer<typeof serialSearchSchema>;
 
-/** Teks pencarian -> serial ternormalisasi satu per baris (dibatasi `SERIAL_SEARCH_MAX`). */
+/**
+ * Teks pencarian -> serial ternormalisasi satu per baris, dibatasi `SERIAL_SEARCH_MAX`; `dropped` = jumlah serial sah
+ * (unik) di atas batas yang diabaikan.
+ */
 export function normalizeSearchText(text: string): {
   text: string;
   count: number;
   capped: boolean;
+  dropped: number;
 } {
-  const split = splitSerialInput(text, SERIAL_SEARCH_MAX);
-  return { text: split.serials.join('\n'), count: split.serials.length, capped: split.truncated };
+  const split = splitSerialInput(text, Number.MAX_SAFE_INTEGER);
+  const kept = split.serials.slice(0, SERIAL_SEARCH_MAX);
+  return {
+    text: kept.join('\n'),
+    count: kept.length,
+    capped: split.serials.length > SERIAL_SEARCH_MAX,
+    dropped: Math.max(0, split.serials.length - SERIAL_SEARCH_MAX),
+  };
 }
 
 /**
