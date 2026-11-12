@@ -16,6 +16,11 @@ export function resumeDraftWrites(): void {
   writesSuspended = false;
 }
 
+/** `true` setelah keluar (draf dibuang dan penulisan ditahan) sampai halaman Catat Serial dibuka lagi. */
+export function draftWritesSuspended(): boolean {
+  return writesSuspended;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

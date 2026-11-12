@@ -2,6 +2,7 @@ import { createFileRoute, useBlocker } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { requirePermission } from '@/modules/auth/permissions';
 import { RecordPage } from '@/modules/serial/components/record-page';
+import { shouldBlockLeave, shouldWarnBeforeUnload } from '@/modules/serial/lib/leave-guard';
 
 export const Route = createFileRoute('/_app/serial/new')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serial', 'edit'),
@@ -14,8 +15,8 @@ const LEAVE_MESSAGE =
 function NewSerialRoute() {
   const dirty = useRef(false);
   useBlocker({
-    shouldBlockFn: () => dirty.current && !window.confirm(LEAVE_MESSAGE),
-    enableBeforeUnload: () => dirty.current,
+    shouldBlockFn: () => shouldBlockLeave(dirty.current, () => window.confirm(LEAVE_MESSAGE)),
+    enableBeforeUnload: () => shouldWarnBeforeUnload(dirty.current),
   });
   return (
     <div className="max-w-7xl">
