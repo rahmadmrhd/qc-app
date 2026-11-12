@@ -22,6 +22,8 @@ Rencana ini ditulis sebelum beberapa perubahan di repo. Penyesuaian berikut berl
 4. **Komit:** langkah "Commit" dijalankan (sesi eksekusi ini diberi izin oleh pemilik lewat sesi pembuatnya); tidak ada `push` dan tidak ada PR.
 5. **Cakupan eksekusi sesi ini:** Task 1–9. Task 9 Step 6 adalah gerbang spike perangkat nyata yang dijalankan **pemilik**; spek §9 menetapkan "spike lulus" sebagai prasyarat Fase 1 dan §11 menyatakan Fase 1 berhenti bila hasil spike mengubah desain, jadi eksekusi berhenti sesudah Task 9 (Step 5) sampai pemilik melaporkan hasilnya (Task 10 dst. memakai `SENTINEL_BY_BRAND` dan tidak boleh dilanjutkan dengan asumsi).
 
+6. **Catatan dari review akhir Task 1–9 untuk task berikutnya (2026-11-12):** (a) Task 11: `folder` dan `file` dari `config.QC` wajib divalidasi sebelum membaca disk (tolak `..`, jalur absolut, dan pemisah `\`/`/`). (b) Task 13: `inject.run` wajib meneruskan `plan.secrets` ke `runInject` (penyamaran memakai semua bentuk sandi yang disisipkan, termasuk bentuk escape); keluaran perangkat hanya boleh sampai ke renderer setelah urutan ANSI/karakter kontrol dibuang atau dirender sebagai teks (Task 17 tidak boleh merender sebagai HTML). Urutan ANSI di tengah sandi masih dapat menggagalkan penyamaran, jadi buang ANSI sebelum menyamarkan bila memungkinkan. (c) Task 14/18: Electron fuses (`RunAsNode`, `OnlyLoadAppFromAsar`, dan sejenisnya) belum diatur; menunggu keputusan pemilik karena di luar spek.
+
 ## Global Constraints
 
 - Electron **45.0.0** (terbit 2026-10-21, ≥ 14 hari; membawa Node 24.x). Naikkan ke patch 45.x hanya bila sudah berumur ≥ 14 hari. Windows 10/11 **x64** saja; installer NSIS, pemasangan per pengguna tanpa hak admin.
