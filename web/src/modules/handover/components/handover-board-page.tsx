@@ -9,6 +9,7 @@ import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { readableLocationIds } from '../lib/readable-locations';
+import { scopedLocationIds } from '../lib/search';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
@@ -24,6 +25,8 @@ import { HandoverBoard } from './handover-board';
 export interface HandoverBoardPageProps {
   /** Filter daftar kartu ponsel (search param rute). */
   status: HandoverStatus | 'all';
+  /** Lokasi dari URL (notifikasi): papan memuat lokasi ini, bukan pilihan lokasi header. */
+  locationId?: string;
   onStatusChange: (status: HandoverStatus | 'all') => void;
   onOpen: (id: string) => void;
   onEdit: (id: string) => void;
@@ -33,6 +36,7 @@ export interface HandoverBoardPageProps {
 /** Halaman board: satu permintaan berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
 export function HandoverBoardPage({
   status,
+  locationId,
   onStatusChange,
   onOpen,
   onEdit,
@@ -42,7 +46,7 @@ export function HandoverBoardPage({
   const queryClient = useQueryClient();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dibaca user (WH view ke atas atau QC edit); selebihnya tidak diminta.
-  const readable = readableLocationIds(me, selectedIds);
+  const readable = readableLocationIds(me, scopedLocationIds(locationId, selectedIds));
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
   const board = useHandoverBoard(readable);
   const setDone = useSetDone();

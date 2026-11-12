@@ -2,6 +2,7 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
+import { listLocationBriefs } from '@server/modules/access/repo';
 import { matchedChecks } from '@server/modules/handover/checklist';
 import type { HandoverRecord } from '@server/modules/handover/repo';
 import { deriveHandoverStatus } from '@shared/handover';
@@ -171,6 +172,9 @@ export async function planCreateNotifications(
   });
   if (recipients.length === 0) return [];
   const actorName = await actorDisplayName(env, input.actor.email);
+  // `customer_name` memuat NAMA LOKASI pada `createdBatch` (spek §4.3: "N task baru di <lokasi>").
+  const locations = await listLocationBriefs(env);
+  const locationName = locations.find((row) => row.id === first.locationId)?.name ?? '';
   return insertNotificationStmts(
     env.DB,
     recipients.map((recipient) => ({
@@ -179,7 +183,7 @@ export async function planCreateNotifications(
       handoverId: '',
       locationId: first.locationId,
       number: '',
-      customerName: '',
+      customerName: locationName,
       actorEmail: normalizeEmail(input.actor.email),
       actorName,
       count: input.records.length,

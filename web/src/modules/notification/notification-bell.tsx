@@ -35,8 +35,16 @@ export function NotificationBell() {
   const openItem = (item: NotificationDto) => {
     if (item.readAt === '') markRead.mutate(item.id);
     setOpen(false);
-    if (item.handoverId === '') void navigate({ to: '/handover' });
-    else void navigate({ to: '/handover/$handoverId', params: { handoverId: item.handoverId } });
+    // `loc` membawa lokasi notifikasi: halaman memuat task/papan lokasi itu walau tidak terpilih di header.
+    if (item.handoverId === '') {
+      void navigate({ to: '/handover', search: { loc: item.locationId } });
+    } else {
+      void navigate({
+        to: '/handover/$handoverId',
+        params: { handoverId: item.handoverId },
+        search: { loc: item.locationId },
+      });
+    }
   };
 
   return (
@@ -108,7 +116,7 @@ export function NotificationBell() {
                         <span className={cn('block', isUnread && 'font-medium')}>
                           {notificationTitle(item)}
                         </span>
-                        {item.customerName !== '' ? (
+                        {item.customerName !== '' && item.kind !== 'createdBatch' ? (
                           <span className="block truncate text-muted-foreground">
                             {item.customerName}
                           </span>

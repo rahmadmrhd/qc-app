@@ -118,23 +118,34 @@ test('klik butir menandainya dibaca lalu menavigasi ke detail task', async () =>
   await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
   await userEvent.click(await screen.findByText('Budi menyelesaikan task ST-20261112-001'));
   await waitFor(() => expect(apiMock).toHaveBeenCalledWith('notifications.markRead', { id: 'n1' }));
+  // Membawa lokasi notifikasi, sehingga task terbuka walau lokasinya tak terpilih di header.
   expect(navigateMock).toHaveBeenCalledWith({
     to: '/handover/$handoverId',
     params: { handoverId: 'h1' },
+    search: { loc: 'l-a' },
   });
   await waitFor(() => expect(trigger()).toHaveAccessibleName('Notifikasi'));
 });
 
 test('butir ringkasan batch (tanpa task) menavigasi ke daftar Serah Terima', async () => {
   state = {
-    items: [note({ id: 'n9', kind: 'createdBatch', handoverId: '', number: '', count: 30 })],
+    items: [
+      note({
+        id: 'n9',
+        kind: 'createdBatch',
+        handoverId: '',
+        number: '',
+        count: 30,
+        customerName: 'Lokasi A',
+      }),
+    ],
     unread: 1,
     nextCursor: null,
   };
   mount();
   await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
-  await userEvent.click(await screen.findByText('Budi membuat 30 task baru'));
-  expect(navigateMock).toHaveBeenCalledWith({ to: '/handover' });
+  await userEvent.click(await screen.findByText('Budi membuat 30 task baru di Lokasi A'));
+  expect(navigateMock).toHaveBeenCalledWith({ to: '/handover', search: { loc: 'l-a' } });
 });
 
 test('butir yang sudah dibaca tidak memanggil markRead lagi', async () => {

@@ -69,12 +69,17 @@ describe('handoverEventsOf', () => {
 });
 
 describe('notificationTitle', () => {
-  const base = { actor: 'Budi', number: 'ST-20261112-001', count: 3 };
+  const base = { actor: 'Budi', number: 'ST-20261112-001', count: 3, customerName: 'PT Maju' };
   test('teks per jenis', () => {
     expect(notificationTitle({ ...base, kind: 'created' })).toBe(
       'Budi membuat task ST-20261112-001',
     );
-    expect(notificationTitle({ ...base, kind: 'createdBatch' })).toBe('Budi membuat 3 task baru');
+    expect(notificationTitle({ ...base, kind: 'createdBatch', customerName: '' })).toBe(
+      'Budi membuat 3 task baru',
+    );
+    expect(notificationTitle({ ...base, kind: 'createdBatch', customerName: 'Lokasi A' })).toBe(
+      'Budi membuat 3 task baru di Lokasi A',
+    );
     expect(notificationTitle({ ...base, kind: 'updated' })).toBe(
       'Budi mengubah task ST-20261112-001',
     );
@@ -140,7 +145,7 @@ describe('pushPayloadOf', () => {
     const payload = pushPayloadOf(dto({ kind: 'done', preview: '' }));
     expect(payload.title).toBe('Budi menyelesaikan task ST-20261112-001');
     expect(payload.body).toBe('ST-20261112-001 - PT Maju');
-    expect(payload.url).toBe('/handover/h1');
+    expect(payload.url).toBe('/handover/h1?loc=loc-a');
     expect(payload.tag).toBe('done:h1');
   });
 
@@ -155,9 +160,25 @@ describe('pushPayloadOf', () => {
     const payload = pushPayloadOf(
       dto({ kind: 'createdBatch', handoverId: '', number: '', customerName: '', count: 30 }),
     );
-    expect(payload.url).toBe('/handover');
+    expect(payload.url).toBe('/handover?loc=loc-a');
     expect(payload.title).toBe('Budi membuat 30 task baru');
     expect(payload.body).not.toBe('');
     expect(payload.tag).toBe('createdBatch:');
+  });
+
+  test('createdBatch menyebut lokasi di judul dan body; url membawa lokasi yang di-escape', () => {
+    const payload = pushPayloadOf(
+      dto({
+        kind: 'createdBatch',
+        handoverId: '',
+        number: '',
+        customerName: 'Lokasi A',
+        count: 30,
+        locationId: 'loc a/1',
+      }),
+    );
+    expect(payload.title).toBe('Budi membuat 30 task baru di Lokasi A');
+    expect(payload.body).toBe('Lokasi A');
+    expect(payload.url).toBe('/handover?loc=loc%20a%2F1');
   });
 });

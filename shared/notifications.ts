@@ -44,6 +44,7 @@ export interface NotificationDto {
   locationId: string;
   /** Nomor task `ST-...`; kosong untuk `createdBatch`. */
   number: string;
+  /** Nama customer task; untuk `createdBatch` berisi NAMA LOKASI (spek §4.3: "N task baru di <lokasi>"). */
   customerName: string;
   /** Nama pelaku. */
   actor: string;
@@ -58,13 +59,14 @@ export interface NotificationDto {
 
 /** Judul notifikasi (Indonesia), dipakai lonceng dan push. */
 export function notificationTitle(
-  n: Pick<NotificationDto, 'kind' | 'actor' | 'number' | 'count'>,
+  n: Pick<NotificationDto, 'kind' | 'actor' | 'number' | 'count' | 'customerName'>,
 ): string {
   switch (n.kind) {
     case 'created':
       return `${n.actor} membuat task ${n.number}`;
     case 'createdBatch':
-      return `${n.actor} membuat ${n.count} task baru`;
+      // `customerName` = nama lokasi pada jenis ini.
+      return `${n.actor} membuat ${n.count} task baru${n.customerName === '' ? '' : ` di ${n.customerName}`}`;
     case 'updated':
       return `${n.actor} mengubah task ${n.number}`;
     case 'cancelled':
@@ -128,6 +130,15 @@ export function handoverEventsOf(
 }
 
 /**
+ * Tujuan buka notifikasi: detail task (`/handover/<id>`) atau daftar untuk `createdBatch`; `loc` membawa lokasi
+ * notifikasi agar halaman memuat task/papan lokasi itu walau tidak terpilih di pemilih lokasi header (spek §5.1).
+ */
+export function handoverUrlOf(n: Pick<NotificationDto, 'handoverId' | 'locationId'>): string {
+  const base = n.handoverId === '' ? '/handover' : `/handover/${encodeURIComponent(n.handoverId)}`;
+  return n.locationId === '' ? base : `${base}?loc=${encodeURIComponent(n.locationId)}`;
+}
+
+/**
  * Muatan push (spek §6): judul + nomor task dan nama customer saja. Isi catatan dan teks komentar (`preview`)
  * TIDAK pernah ikut, karena tampil di layar kunci perangkat.
  */
@@ -141,7 +152,7 @@ export function pushPayloadOf(n: NotificationDto): {
   return {
     title: notificationTitle(n),
     body: body === '' ? 'Serah Terima' : body,
-    url: n.handoverId === '' ? '/handover' : `/handover/${n.handoverId}`,
+    url: handoverUrlOf(n),
     tag: `${n.kind}:${n.handoverId}`,
   };
 }

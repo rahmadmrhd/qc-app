@@ -45,12 +45,13 @@ interface Row {
   number: string;
   actor_email: string;
   actor_name: string;
+  customer_name: string;
   preview: string;
 }
 
 async function rows(): Promise<Row[]> {
   const result = await env.DB.prepare(
-    'SELECT recipient, kind, `count`, handover_id, number, actor_email, actor_name, preview FROM notifications ORDER BY recipient, kind',
+    'SELECT recipient, kind, `count`, handover_id, number, actor_email, actor_name, customer_name, preview FROM notifications ORDER BY recipient, kind',
   ).all<Row>();
   return result.results.map((row) => ({ ...row, count: Number(row.count) }));
 }
@@ -213,6 +214,7 @@ describe('saveBatch', () => {
       handover_id: '',
       number: '',
       actor_email: WH,
+      customer_name: 'Lokasi A',
     });
   });
 

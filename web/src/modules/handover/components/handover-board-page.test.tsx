@@ -306,3 +306,64 @@ test('judul kolom memakai total server; "Muat lebih banyak" memuat halaman berik
   });
   expect(within(column).queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
+
+test('locationId dari URL (notifikasi): papan memuat lokasi itu, bukan pilihan header; lokasi tanpa hak tidak diminta', async () => {
+  const base = me({ handover: 'view' });
+  const loc = base.locations[0] as MeDto['locations'][number];
+  state.me = {
+    ...base,
+    locations: [
+      loc,
+      { ...loc, id: 'loc-b', code: 'B', name: 'Lokasi B' },
+      {
+        ...loc,
+        id: 'loc-s',
+        code: 'S',
+        name: 'Lokasi S',
+        permissions: { ...loc.permissions, handover: 'none' },
+      },
+    ],
+  };
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <HandoverBoardPage
+        status="all"
+        locationId="loc-b"
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onCreate={vi.fn()}
+        onStatusChange={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(state.api).toHaveBeenCalledWith('handovers.board', {
+      locationIds: ['loc-b'],
+      status: 'new',
+    }),
+  );
+  expect(state.api).not.toHaveBeenCalledWith(
+    'handovers.board',
+    expect.objectContaining({ locationIds: ['loc-a'] }),
+  );
+  view.unmount();
+  state.api.mockClear();
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <HandoverBoardPage
+        status="all"
+        locationId="loc-s"
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onCreate={vi.fn()}
+        onStatusChange={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(state.api).not.toHaveBeenCalled();
+});
