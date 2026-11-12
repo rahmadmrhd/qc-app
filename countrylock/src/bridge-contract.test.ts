@@ -14,6 +14,7 @@ import {
   SerialArgSchema,
   stripTerminalControl,
 } from './bridge-contract';
+import { UI_MIN_BRIDGE_VERSION } from './ui-manifest';
 
 const validInject = {
   id: 'run-1',
@@ -175,5 +176,12 @@ describe('kanal auth (BRIDGE_VERSION 2)', () => {
       expect(schema.safeParse([]).success).toBe(true);
       expect(schema.safeParse(['https://jahat.example']).success).toBe(false);
     }
+  });
+});
+
+describe('UI_MIN_BRIDGE_VERSION', () => {
+  test('tidak melebihi BRIDGE_VERSION saat ini dan paling rendah 1 (dinaikkan hanya bila UI butuh fungsi jembatan baru)', () => {
+    expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(MIN_BRIDGE_VERSION);
+    expect(UI_MIN_BRIDGE_VERSION).toBeLessThanOrEqual(BRIDGE_VERSION);
   });
 });

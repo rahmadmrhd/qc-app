@@ -12,6 +12,7 @@ import {
 } from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
+import { desktopApp } from '@server/modules/desktop/routes';
 import { getRoutes } from '@server/routes';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -35,6 +36,8 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
   // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
+  // Manifest UI bertanda tangan untuk pembaruan UI aplikasi desktop (publik, tanpa sesi).
+  app.route('/api/desktop', desktopApp);
   // Kabel lama (`POST /sync`, amplop {v,method,token,payload}) dihapus (keputusan pemilik 2026-11-06); modul sinkron
   // REST `/api/v1/sync/*` pun dihapus (2026-11-08). Jawabannya 404 problem+json untuk semua metode di `/sync` dan turunannya.
   app.all('/sync', () => restNotFound());

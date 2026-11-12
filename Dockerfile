@@ -22,9 +22,20 @@ FROM manifests AS web-build
 RUN bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY shared shared
+COPY countrylock countrylock
 COPY web web
 COPY scripts scripts
+# `bun run build` juga membuat server/dist/ui-manifest.json (daftar berkas + hash untuk pembaruan UI desktop).
 RUN bun run build
+# Tanda tangan manifest UI (Ed25519) hanya bila secret BuildKit `ui_signing_key` (isi berkas PEM PKCS8) diberikan:
+# `docker build --secret id=ui_signing_key,src=<berkas>`. Tanpa secret, langkah dilewati dan /api/desktop/ui-manifest
+# menjawab 404 (desktop memakai UI dasarnya). Kunci hanya ada di mount sementara, tidak masuk lapisan image.
+RUN --mount=type=secret,id=ui_signing_key,required=false \
+    if [ -f /run/secrets/ui_signing_key ]; then \
+      bun run scripts/sign-ui-manifest.ts --key /run/secrets/ui_signing_key; \
+    else \
+      echo "ui_signing_key tidak diberikan: manifest UI tidak ditandatangani (pembaruan UI desktop nonaktif)"; \
+    fi
 
 # ---- Tahap 2: dependensi produksi server saja (hono, mysql2) ----
 FROM manifests AS prod-deps
