@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { runBusy } from '@/app/pwa/busy';
 import { baseName, checkFile } from './accept';
 import { errorText } from './error-text';
 import type { FileLibrarySource, LibraryItem } from './types';
@@ -165,7 +166,8 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueue {
 
   const start = useCallback((): Promise<LibraryItem[]> => {
     if (inflight.current) return inflight.current;
-    const promise = run().finally(() => {
+    // Seluruh antrean (termasuk celah antar berkas) = penulisan berjalan: muat ulang otomatis PWA tak boleh memotongnya.
+    const promise = runBusy(run).finally(() => {
       inflight.current = null;
     });
     inflight.current = promise;

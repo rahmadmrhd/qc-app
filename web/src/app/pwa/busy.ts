@@ -18,6 +18,16 @@ export function beginBusy(): () => void {
   };
 }
 
+/** Menjalankan `fn` dengan registri sibuk menyala sampai selesai (berhasil atau gagal). */
+export async function runBusy<T>(fn: () => Promise<T>): Promise<T> {
+  const end = beginBusy();
+  try {
+    return await fn();
+  } finally {
+    end();
+  }
+}
+
 export function isBusy(): boolean {
   return tokens.size > 0;
 }

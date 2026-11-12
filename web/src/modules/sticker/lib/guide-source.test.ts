@@ -12,6 +12,7 @@ vi.mock('@/modules/files/thumbnail', () => ({
   prepareThumbnail: (...args: unknown[]) => prepareThumbnailMock(...args),
 }));
 
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { guidePreviewUrl, guideThumbUrl, stickerGuideSource } from './guide-source';
 
 const dto: StickerGuideDto = {
@@ -134,4 +135,23 @@ test('list meneruskan urut usageDesc ke stickerGuides.list', async () => {
     null,
   );
   expect(apiMock).toHaveBeenLastCalledWith('stickerGuides.list', { sort: 'usageDesc' });
+});
+
+test('I2: unggah (siapkan gambar dan thumbnail, lalu kirim) menandai registri sibuk sepanjang alur, termasuk saat gagal', async () => {
+  resetBusyForTests();
+  let finishImage: (value: unknown) => void = () => undefined;
+  prepareImageMock.mockReturnValue(new Promise((resolve) => (finishImage = resolve)));
+  prepareThumbnailMock.mockResolvedValue({ mime: 'image/webp', bytes: new Uint8Array(1) });
+  apiMock.mockResolvedValue(dto);
+  const pending = stickerGuideSource.upload(new File(['x'], 'a.png', { type: 'image/png' }), 'A');
+  expect(isBusy()).toBe(true);
+  finishImage({ mime: 'image/webp', width: 1, height: 1, bytes: new Uint8Array(1) });
+  await pending;
+  expect(isBusy()).toBe(false);
+
+  prepareImageMock.mockRejectedValue(new Error('rusak'));
+  await expect(
+    stickerGuideSource.upload(new File(['x'], 'b.png', { type: 'image/png' }), 'B'),
+  ).rejects.toThrow('rusak');
+  expect(isBusy()).toBe(false);
 });
