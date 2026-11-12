@@ -9,6 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import { isPermissionDenied } from '@countrylock/device-info';
 import { Client, type ClientChannel } from 'ssh2';
+import { StreamMasker } from './stream-mask';
 
 export type SentinelStrategy = 'echo' | 'put';
 /**
@@ -91,27 +92,6 @@ export function maskSecrets(text: string, secrets: readonly string[]): string {
   return out;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Penyamaran untuk aliran keluaran SEBELUM dipecah per baris: seperti `maskSecrets`, tetapi juga
- * menangkap rahasia yang terbelah oleh `\r`/`\n` sisipan perangkat (pembungkusan baris pada
- * terminal 200 kolom). Terpanjang dulu agar bentuk escape tidak menyisakan potongan.
- */
-export function maskStream(text: string, secrets: readonly string[]): string {
-  const ordered = [...new Set(secrets.filter((s) => s.length > 0))].sort(
-    (a, b) => b.length - a.length,
-  );
-  let out = text;
-  for (const secret of ordered) {
-    const pattern = [...secret].map(escapeRegExp).join('[\\r\\n]*');
-    out = out.replace(new RegExp(pattern, 'g'), '****');
-  }
-  return out;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -122,9 +102,10 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
   const dropPolicy: DropPolicy = opts.dropPolicy ?? 'legacy';
   const secrets = [opts.password, ...(opts.secrets ?? [])];
 
-  const emit = (stage: InjectStage, message: string): void => {
+  // `premasked`: pesan sudah melewati StreamMasker (jangan disamarkan ulang).
+  const emit = (stage: InjectStage, message: string, premasked = false): void => {
     try {
-      opts.onProgress({ stage, message: maskSecrets(message, secrets) });
+      opts.onProgress({ stage, message: premasked ? message : maskSecrets(message, secrets) });
     } catch {
       // Pemanggil progres tidak boleh menjatuhkan sesi.
     }
@@ -194,7 +175,10 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
     }
   };
 
+  // Diisi saat shell terbuka: mengosongkan baris keluaran yang masih ditahan penyamar.
+  let flushOutput: () => void = () => {};
   const finish = (ok: boolean, reason: InjectReason, stage: InjectStage, message: string) => {
+    flushOutput();
     emit(stage, message);
     return { ok, reason } satisfies InjectOutcome;
   };
@@ -261,12 +245,19 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
     let token = '';
     let hits = 0;
     let carry = '';
-    let lineBuffer = '';
+    // Penyamar aliran: menahan ekor yang dapat berupa awalan rahasia, tidak merusak token penanda,
+    // dan tidak menyamarkan ulang hasil penyamaran.
+    const masker = new StreamMasker(secrets);
 
     const forward = (rawLine: string): void => {
       const line = rawLine.trim();
       if (line === '' || SENTINEL_ANY.test(line)) return;
-      emit('running', line);
+      emit('running', line, true);
+    };
+    flushOutput = () => {
+      const lines = masker.flush();
+      flushOutput = () => {};
+      for (const line of lines) forward(line);
     };
     stream.on('data', (chunk: Buffer) => {
       receivedAnyOutput = true;
@@ -282,11 +273,7 @@ export async function runInjectDetailed(opts: InjectOptions): Promise<InjectOutc
         }
         carry = scan.slice(Math.max(0, scan.length - (token.length - 1)));
       }
-      // Samarkan sebelum dipecah per baris (sandi dapat terbelah \r/\n sisipan perangkat).
-      lineBuffer = maskStream(lineBuffer + text, secrets);
-      const parts = lineBuffer.split(/[\r\n]/);
-      lineBuffer = parts.pop() ?? '';
-      for (const part of parts) forward(part);
+      for (const line of masker.push(text)) forward(line);
       nudge();
     });
     stream.on('close', () => {

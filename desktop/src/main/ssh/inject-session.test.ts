@@ -6,7 +6,6 @@ import {
   type InjectOptions,
   type InjectProgress,
   maskSecrets,
-  maskStream,
   runInject,
   sentinelCommand,
 } from './inject-session';
@@ -237,6 +236,18 @@ describe('runInject', () => {
   });
 });
 
+/** Potongan sandi (4 karakter) dari bentuk mana pun yang masih tampak di keluaran. */
+function fragmentsLeaked(output: string, forms: readonly string[]): string[] {
+  const leaked = new Set<string>();
+  for (const form of forms) {
+    for (let at = 0; at + 4 <= form.length; at += 1) {
+      const fragment = form.slice(at, at + 4);
+      if (output.includes(fragment)) leaked.add(fragment);
+    }
+  }
+  return [...leaked];
+}
+
 describe('penyamaran sandi bentuk terescape (B1)', () => {
   /** Tidak satu pun bentuk sisipan yang boleh muncul di progres; `****` harus ada. */
   function expectMasked(progress: InjectProgress[], forms: readonly string[]): void {
@@ -293,10 +304,60 @@ describe('penyamaran sandi bentuk terescape (B1)', () => {
     expect(all).toContain('****');
   });
 
-  test('maskStream: terpanjang dulu dan menyamarkan rahasia yang diselingi CR/LF', () => {
-    expect(maskStream('p=ab\r\ncd x', ['abcd'])).toBe('p=**** x');
-    expect(maskStream('a\\"b', ['a"b', 'a\\"b'])).toBe('****');
-    expect(maskStream('kosong', [''])).toBe('kosong');
+  test('sandi terbelah di batas potongan data (potongan ke-2, ke-3, dst.) tetap tersamarkan (N1)', async () => {
+    const value = 'Sup3r"Secr$tPass';
+    const script = renderScript(
+      'echo user=admin password="{passwordTarget}"',
+      { passwordTarget: value },
+      'mikrotik',
+    );
+    // Ukuran potongan berbeda menggeser batas ke tempat berbeda di dalam sandi.
+    for (const size of [3, 4, 7]) {
+      const server = await fake('busybox', { echoChunkSize: size });
+      const { result, progress } = run(server, script, 'echo', { secrets: secretForms(value) });
+      expect(await result).toBe(true);
+      const all = progress.map((p) => p.message).join('\n');
+      for (const form of secretForms(value)) expect(all).not.toContain(form);
+      expect(fragmentsLeaked(all, secretForms(value))).toEqual([]);
+      expect(all).toContain('****');
+    }
+  });
+
+  test('sandi terbelah \\r\\n DAN potongan data sekaligus tetap tersamarkan', async () => {
+    const value = 'Sup3r"Secr$tPass';
+    const script = renderScript(
+      'echo user=admin password="{passwordTarget}"',
+      { passwordTarget: value },
+      'mikrotik',
+    );
+    const server = await fake('busybox', { wrapEchoAt: 6, echoChunkSize: 8 });
+    const { result, progress } = run(server, script, 'echo', { secrets: secretForms(value) });
+    expect(await result).toBe(true);
+    const all = progress.map((p) => p.message).join('\n');
+    expect(fragmentsLeaked(all, secretForms(value))).toEqual([]);
+  });
+
+  test('sandi berisi * tidak menggelembungkan progres (N2)', async () => {
+    const server = await fake('busybox');
+    const { result, progress } = run(server, 'echo a*b*c', 'echo', { secrets: ['*'] });
+    expect(await result).toBe(true);
+    for (const p of progress) expect(p.message.length).toBeLessThan(200);
+    const all = progress.map((p) => p.message).join('\n');
+    expect(all).toContain('a****b****c');
+  });
+
+  test('sandi pendek tidak merusak token penanda: baris penanda tidak bocor ke progres (N3)', async () => {
+    // Token acak berisi huruf/angka heksadesimal; sandi `a`, `1`, `AB12` akan memotongnya bila
+    // penyamaran mendahului saringan penanda.
+    const server = await fake('busybox');
+    for (let i = 0; i < 5; i += 1) {
+      const { result, progress } = run(server, 'one\ntwo', 'echo', {
+        secrets: ['a', '1', 'b', 'c', 'd', 'e', 'f', 'AB12'],
+      });
+      expect(await result).toBe(true);
+      expect(progress.some((p) => p.message.includes('QC_INJECT'))).toBe(false);
+      expect(progress.some((p) => p.message.includes('INJECT'))).toBe(false);
+    }
   });
 });
 

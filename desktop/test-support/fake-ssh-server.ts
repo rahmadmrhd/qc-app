@@ -35,6 +35,11 @@ export interface FakeSshServerOptions {
    * terbatas; menguji penyamaran sandi yang terbelah baris.
    */
   wrapEchoAt?: number;
+  /**
+   * Kirim echo baris SKRIP dalam potongan N karakter dengan jeda antar potongan (tiap potongan
+   * tiba sebagai peristiwa data terpisah); menguji penyamaran sandi yang terbelah antar potongan.
+   */
+  echoChunkSize?: number;
   /** BusyBox: sumber berkas untuk `scp <u>@<h>:<jauh> <lokal>`; undefined = berkas tak ada. */
   scpSource?(remotePath: string): Buffer | undefined;
 }
@@ -284,18 +289,37 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
     hangUp: () => void,
   ): void {
     let dead = false;
+    // Semua tulisan lewat satu rantai agar urutan (echo, potongan berjeda, keluaran) terjaga.
+    let chain: Promise<void> = Promise.resolve();
+    const enqueue = (task: () => void | Promise<void>) => {
+      chain = chain.then(task);
+    };
     const die = () => {
       dead = true;
     };
     stream.on('close', die);
     stream.on('error', die);
     const send = (text: string) => {
-      if (!dead && text) stream.write(text);
+      enqueue(() => {
+        if (!dead && text) stream.write(text);
+      });
     };
+    const sendInPieces = (text: string, size: number) => {
+      enqueue(async () => {
+        for (let at = 0; at < text.length && !dead; at += size) {
+          stream.write(text.slice(at, at + size));
+          await delay(25);
+        }
+      });
+    };
+    let halted = false;
     const dropNow = () => {
-      dead = true;
-      stream.end();
-      hangUp();
+      halted = true;
+      enqueue(() => {
+        dead = true;
+        stream.end();
+        hangUp();
+      });
     };
     if (opts.banner) send(opts.banner);
     if (opts.dropAfterLine === 0) {
@@ -318,7 +342,7 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
     const drain = async () => {
       if (draining) return;
       draining = true;
-      while (!dead && queue.length > 0) {
+      while (!dead && !halted && queue.length > 0) {
         const line = queue.shift() as string;
         send(await execute(execContext, line));
       }
@@ -329,12 +353,16 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
       inbuf += chunk.toString('utf8');
       for (;;) {
         const match = /[\r\n]/.exec(inbuf);
-        if (!match || dead) break;
+        if (!match || dead || halted) break;
         const line = inbuf.slice(0, match.index);
         inbuf = inbuf.slice(match.index + 1);
         if (line.trim() === '') continue;
         // Echo pty: ketikan tampil segera, sebelum perintah dieksekusi.
-        send(echoOf(line));
+        if (opts.echoChunkSize && !SENTINEL_LINE.test(line)) {
+          sendInPieces(echoOf(line), opts.echoChunkSize);
+        } else {
+          send(echoOf(line));
+        }
         if (opts.echoTwice) send(echoOf(line));
         opts.onLine?.(line);
         if (!SENTINEL_LINE.test(line)) {
