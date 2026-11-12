@@ -170,3 +170,22 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 162 | Masuk sebagai pengguna dengan `sticker: view` saja lalu buka `/postel` dan detailnya | Daftar dan detail terbaca; tidak ada tombol Ubah, Tambah, atau Hapus; membuka `/postel/new` atau `/postel/<id>/edit` langsung ditolak (izin `sticker: edit` diperlukan) | Spek 4b |
 | 163 | Di `/postel` cari memakai nomor Lama sebuah catatan, lalu model item (tanpa merk) dan sebagian nomor Aktif | Catatan itu tampil pada tiap pencarian; pencarian tak peka huruf besar/kecil; nomor yang tidak ada di catatan mana pun menampilkan "Tidak ada Postel yang cocok." | Spek 4b |
 | 164 | Di `/sticker/settings` isi "Kirim setiap (hari)" pada ringkasan stok menipis dengan 3, simpan, lalu biarkan stok menipis dan tunggu tiga hari jam kirim | Ringkasan terkirim pada hari pertama, tidak terkirim hari ke-2 dan ke-3, terkirim lagi hari ke-4 selama masih ada stok menipis; nilai 0 atau 366 ditolak dengan pesan; nilai 1 = tiap hari seperti sebelumnya | Spek 4a keputusan 14 (pemilik 2026-11-12) |
+
+## PWA Fase 1
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 165 | Pasang aplikasi di Android Chrome lewat menu "Pasang aplikasi" atau "Tambahkan ke layar utama" | Aplikasi terpasang dengan ikon QC; terbuka tanpa bilah alamat (mode mandiri) | PWA FR-P2, FR-P4, FR-P5 |
+| 166 | Pasang di iOS Safari lewat "Tambahkan ke Layar Utama", lalu buka dari ikon | Aplikasi mandiri membuka halaman aplikasi, bukan peramban; ikon 180×180 tampil; menu "Pasang aplikasi" menampilkan petunjuk singkat | PWA FR-P2, FR-P4, FR-P5 |
+| 167 | Pasang di desktop (Chrome atau Edge) lewat butir "Pasang aplikasi" di menu pengguna | Jendela aplikasi terbuka sendiri dengan ikon QC; tidak ada pop-up pemasangan yang mengganggu | PWA FR-P4, FR-P5 |
+| 168 | Buka aplikasi, tutup, lalu buka lagi (kunjungan kedua) | Cangkang tampil lebih cepat; berkas JS/CSS berhash yang tidak berubah tidak diunduh ulang (DevTools → Network) | PWA FR-P6 |
+| 169 | Buka rute langsung (mis. `/handover`) lalu refresh saat mode pesawat | Cangkang tampil dari cache; aplikasi menampilkan keadaan galat jaringan yang jelas, bukan halaman kosong | PWA FR-P7 |
+| 170 | Login Google penuh di mode terpasang (Android dan iOS) | Callback OAuth selesai; aplikasi kembali dalam keadaan sudah login | PWA FR-P8 |
+| 171 | Buka `/auth/callback?code=x&state=y` langsung di peramban | Dijawab server, bukan cangkang `index.html` | PWA FR-P8 |
+| 172 | Deploy versi baru ke staging, lalu buka aplikasi yang sudah terpasang | Spanduk "Ada versi baru" muncul; halaman tidak dimuat ulang sendiri | PWA FR-P11, FR-P12 |
+| 173 | Isi formulir tanpa menyimpan, lalu tunggu spanduk muncul | Spanduk menyebut ada formulir yang belum disimpan; setelah "Muat ulang" ditekan, versi baru dimuat | PWA FR-P13, FR-P12 |
+| 174 | Ganti tema ke Gelap, lalu ke Terang, di dalam aplikasi | Warna bilah sistem (`theme-color`) di Android ikut berubah sesuai tema | PWA FR-P3 |
+| 175 | Keluar (logout) dari aplikasi terpasang, lalu periksa DevTools → Application → Storage dan Cache | Data perangkat dibersihkan (cache query tersimpan dan data pengguna tidak tersisa); login ulang berhasil | PWA FR-P14 |
+| 176 | Buka DevTools → Application → Manifest dan Service Workers | Manifest terbaca tanpa galat (nama, ikon, `theme_color`); service worker aktif; Console tanpa galat | PWA FR-P1, FR-P6 |
