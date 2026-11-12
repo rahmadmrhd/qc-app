@@ -10,27 +10,54 @@ import {
 } from './update';
 import { PwaUpdateBanner } from './update-banner';
 
-// Memulai pemeriksaan pembaruan dengan register palsu; mengembalikan pemicu "versi baru siap" dan updateSW.
+type Listener = (event?: unknown) => void;
+
+// Memulai pemeriksaan pembaruan dengan register dan jendela palsu. `announce` meniru pustaka yang memanggil
+// onNeedRefresh untuk SW yang menunggu; `registration.waiting` dapat diganti untuk meniru deploy berikutnya.
 function startFake() {
   const updateSW = vi.fn(async (_reload?: boolean) => undefined);
-  let needRefresh: (() => void) | undefined;
-  const register: RegisterSW = (options) => {
-    needRefresh = options.onNeedRefresh;
+  const reload = vi.fn();
+  const listeners = new Map<string, Set<Listener>>();
+  const add = (type: string, listener: Listener) => {
+    if (!listeners.has(type)) listeners.set(type, new Set());
+    listeners.get(type)?.add(listener);
+  };
+  const remove = (type: string, listener: Listener) => listeners.get(type)?.delete(listener);
+  const update = vi.fn().mockResolvedValue(undefined);
+  const registration = {
+    update,
+    waiting: { name: 'sw1' },
+  } as unknown as ServiceWorkerRegistration & {
+    waiting: unknown;
+  };
+  let options: Parameters<RegisterSW>[0] = {};
+  const register: RegisterSW = (given) => {
+    options = given;
     return updateSW;
   };
   startPwaUpdates({
     register,
     win: {
-      navigator: { serviceWorker: {} },
-      document: { addEventListener: () => undefined, removeEventListener: () => undefined },
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      location: { reload: () => undefined },
+      navigator: { serviceWorker: { addEventListener: add, removeEventListener: remove } },
+      document: { addEventListener: add, removeEventListener: remove },
+      addEventListener: add,
+      removeEventListener: remove,
+      location: { reload },
       setInterval: () => 0,
       clearInterval: () => undefined,
     } as unknown as Window,
   });
-  return { updateSW, announce: () => act(() => needRefresh?.()) };
+  options.onRegisteredSW?.('/sw.js', registration);
+  return {
+    updateSW,
+    reload,
+    registration,
+    announce: () => act(() => options.onNeedRefresh?.()),
+    fire: (type: string, event?: unknown) =>
+      act(() => {
+        for (const listener of listeners.get(type) ?? []) listener(event);
+      }),
+  };
 }
 
 function Dirty() {

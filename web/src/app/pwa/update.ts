@@ -25,21 +25,12 @@ let currentRegistration: ServiceWorkerRegistration | undefined;
 let reloadRequested = false;
 const listeners = new Set<() => void>();
 
-/**
- * Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan.
- * Mengembalikan true bila status berhasil diperbarui (penangan preloadError baru mencegah galat bila berhasil).
- */
-function setNeedRefresh(value: boolean): boolean {
-  try {
-    if (needRefresh !== value || (value && dismissed)) {
-      needRefresh = value;
-      dismissed = false;
-      for (const listener of listeners) listener();
-    }
-    return true;
-  } catch {
-    return false;
-  }
+/** Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan. */
+function setNeedRefresh(value: boolean): void {
+  if (needRefresh === value && !(value && dismissed)) return;
+  needRefresh = value;
+  dismissed = false;
+  for (const listener of listeners) listener();
 }
 
 /** Galat muat potongan JS/CSS dinamis (cangkang lama meminta berkas yang sudah diganti oleh deploy baru). */
@@ -122,7 +113,7 @@ export function startPwaUpdates(options: {
   // Cangkang lama dapat meminta potongan lazy yang sudah tak ada di server setelah deploy: ajak pengguna memuat
   // ulang (tanpa muat ulang otomatis, FR-P12) alih-alih membiarkan galat muat rute.
   const onPreloadError = (event: Event) => {
-    if (!setNeedRefresh(true)) return;
+    setNeedRefresh(true);
     event.preventDefault();
   };
   win.document.addEventListener('visibilitychange', onVisibility);
@@ -136,17 +127,24 @@ export function startPwaUpdates(options: {
     win.removeEventListener('focus', checkOnEvent);
     win.removeEventListener('vite:preloadError', onPreloadError);
     win.clearInterval(timer);
+    // Lepas rujukan ke jendela/registrasi lama; status spanduk (needRefresh/dismissed) sengaja dibiarkan.
+    updateSW = undefined;
+    currentWin = undefined;
+    currentRegistration = undefined;
+    reloadRequested = false;
   };
 }
 
 function reload() {
   reloadRequested = true;
-  // Bila tak ada SW yang menunggu (sudah diaktifkan jendela lain), pesan SKIP_WAITING tak berefek: muat ulang langsung.
-  if (currentRegistration && !currentRegistration.waiting) {
-    currentWin?.location.reload();
+  // SKIP_WAITING hanya berefek bila ada SW yang menunggu pada registrasi yang terpakai. Selain itu (tak ada
+  // registrasi: gagal/belum selesai/dev/tanpa serviceWorker; atau SW sudah diaktifkan jendela lain) pesan itu
+  // no-op dan tombol tampak mati: muat ulang halaman langsung.
+  if (currentRegistration?.waiting && updateSW) {
+    void updateSW(true);
     return;
   }
-  void updateSW?.(true);
+  (currentWin ?? window).location.reload();
 }
 
 function dismiss() {

@@ -204,12 +204,15 @@ test('pembersih melepas pendengar dan interval', () => {
 
 test('reload() memanggil fungsi pembaruan dengan true dan tidak ada muat ulang sebelumnya', () => {
   const reg = fakeRegister();
-  startPwaUpdates({ register: reg.register, win: fakeWindow().win });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
   const hook = renderHook(() => usePwaUpdate());
   act(() => reg.needRefresh());
   expect(hook.result.current.needRefresh).toBe(true);
   expect(reg.updateSW).not.toHaveBeenCalled();
   hook.result.current.reload();
+  expect(view.location.reload).not.toHaveBeenCalled();
   expect(reg.updateSW).toHaveBeenCalledTimes(1);
   expect(reg.updateSW).toHaveBeenCalledWith(true);
 });
@@ -338,4 +341,50 @@ test('dismiss menyembunyikan tanpa membatalkan needRefresh; pemicu baru mereset'
   act(() => hook.result.current.dismiss());
   act(() => notifyChunkLoadFailure());
   expect(hook.result.current.dismissed).toBe(false);
+});
+
+test('N1: tanpa registrasi SW terpakai (registrasi gagal/belum selesai) Muat ulang memuat ulang halaman', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  // registerSw() tidak pernah dipanggil: registrasi gagal atau belum selesai.
+  view.fire('vite:preloadError', { preventDefault: vi.fn() });
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.needRefresh).toBe(true);
+  hook.result.current.reload();
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('N1: tanpa startPwaUpdates sama sekali (dev/tanpa serviceWorker) Muat ulang memuat ulang window', () => {
+  const reload = vi.fn();
+  vi.stubGlobal('location', { reload });
+  try {
+    notifyChunkLoadFailure();
+    const hook = renderHook(() => usePwaUpdate());
+    expect(hook.result.current.needRefresh).toBe(true);
+    hook.result.current.reload();
+    expect(reload).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('N9: pembersih mengosongkan rujukan modul sehingga reload() memakai window, bukan jendela lama', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  stop();
+  const reload = vi.fn();
+  vi.stubGlobal('location', { reload });
+  try {
+    notifyChunkLoadFailure();
+    renderHook(() => usePwaUpdate()).result.current.reload();
+    expect(view.location.reload).not.toHaveBeenCalled();
+    expect(reg.updateSW).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
