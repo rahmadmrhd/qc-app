@@ -1,4 +1,4 @@
-import type { Db, DbStatement } from '@server/core/db';
+import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import {
@@ -52,7 +52,10 @@ function clip(value: string, max: number): string {
  * INSERT baris notifikasi baru (`push_state` bawaan 'pending', `read_at` kosong), dipotong per 100 baris per
  * pernyataan. Daftar kosong = tanpa pernyataan. `preview` dipotong ke `NOTIFICATION_PREVIEW_MAX` karakter.
  */
-export function insertNotificationStmts(db: Db, rows: readonly NewNotification[]): DbStatement[] {
+export function insertNotificationStmts(
+  db: Preparer,
+  rows: readonly NewNotification[],
+): DbStatement[] {
   const statements: DbStatement[] = [];
   for (let from = 0; from < rows.length; from += INSERT_CHUNK) {
     const chunk = rows.slice(from, from + INSERT_CHUNK);

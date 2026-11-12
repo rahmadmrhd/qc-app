@@ -6,7 +6,7 @@ import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
-import { startJobRunner, startScheduler } from '@server/jobs/runner';
+import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 
 export interface ServerOptions {
@@ -84,7 +84,8 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   const env: Env = { ...envFromConfig(config, db), ...options.env };
   let stops: Array<() => Promise<void>> = [];
   const startBackground = () => {
-    if (options.background !== false) stops = [startJobRunner(env), startScheduler(env)];
+    if (options.background !== false)
+      stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
     (result) => {

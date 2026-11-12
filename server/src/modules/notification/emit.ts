@@ -13,6 +13,7 @@ import {
   type NotificationKind,
   type NotificationSide,
 } from '@shared/notifications';
+import { dropPendingStatements, pendingCheckStatements } from './flush';
 import { type Recipient, resolveRecipients } from './recipients';
 import { insertNotificationStmts, type NewNotification } from './repo';
 
@@ -77,7 +78,8 @@ function recipientsCache(env: Env, locationId: string, excludeEmail: string) {
 
 /**
  * Pernyataan notifikasi untuk satu penulisan task. Daftar kosong bila tak ada kejadian. `checked` tidak menjadi
- * baris notifikasi: ia masuk tabel tunggu penggabungan (`pendingCheckStatements`).
+ * baris notifikasi: ia masuk tabel tunggu penggabungan (`pendingCheckStatements`). `done` membuang tabel tunggu
+ * task itu (Selesai mengalahkan centang, spek §4.2).
  */
 export async function planNotifications(env: Env, change: HandoverChange): Promise<DbStatement[]> {
   const events = handoverEventsOf(
@@ -93,9 +95,10 @@ export async function planNotifications(env: Env, change: HandoverChange): Promi
   const rows: NewNotification[] = [];
   for (const kind of events) {
     if (kind === 'checked') {
-      statements.push(...pendingCheckStatements(env, change, actorName));
+      statements.push(...pendingChecked(env, change, actorName));
       continue;
     }
+    if (kind === 'done') statements.push(...dropPendingStatements(env.DB, after.id));
     const recipients = await recipientsOf(NOTIFICATION_SIDE[kind]);
     for (const recipient of recipients) {
       rows.push(notificationRow(kind, recipient, change, actorName));
@@ -126,16 +129,19 @@ function notificationRow(
   };
 }
 
-/**
- * Tabel tunggu penggabungan centang (Task 5): untuk sementara tanpa pernyataan, jadi centang belum menghasilkan
- * notifikasi apa pun.
- */
-function pendingCheckStatements(
-  _env: Env,
-  _change: HandoverChange,
-  _actorName: string,
-): DbStatement[] {
-  return [];
+/** Pernyataan tabel tunggu untuk satu centang/lepas centang; tanpa `toggledItem` (tak seharusnya) tidak ada. */
+function pendingChecked(env: Env, change: HandoverChange, actorName: string): DbStatement[] {
+  if (change.toggledItem === undefined) return [];
+  return pendingCheckStatements(env.DB, {
+    handoverId: change.after.id,
+    actorEmail: normalizeEmail(change.actor.email),
+    actorName,
+    locationId: change.after.locationId,
+    number: change.after.number,
+    customerName: change.customerName,
+    now: change.now,
+    item: change.toggledItem,
+  });
 }
 
 /**
