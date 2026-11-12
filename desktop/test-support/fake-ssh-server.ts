@@ -24,6 +24,10 @@ export interface FakeSshServerOptions {
   hostKeyType?: FakeHostKeyType;
   /** RouterOS: keluaran `/system device-mode print` dan apakah `/import` diblokir (spike T9). */
   deviceMode?: { mode: string; importBlocked?: boolean };
+  /** Perintah exec-channel (kunci = teks perintah persis) -> keluaran; didahulukan dari bawaan. */
+  execMap?: Record<string, string>;
+  /** Dipanggil untuk tiap perintah exec-channel yang diterima. */
+  onExec?(command: string): void;
   /** Simulasi konsol yang menggambar ulang ketikan: echo tiap baris tampil dua kali. */
   echoTwice?: boolean;
   /** Teks yang dikirim segera setelah shell dibuka (banner/prompt; perangkat nyata selalu punya). */
@@ -275,7 +279,8 @@ export function startFakeSshServer(opts: FakeSshServerOptions): Promise<FakeSshS
         });
         session.on('exec', (accept, _reject, info) => {
           const stream = accept();
-          stream.write(execRouterOs(opts, files, info.command));
+          opts.onExec?.(info.command);
+          stream.write(opts.execMap?.[info.command] ?? execRouterOs(opts, files, info.command));
           stream.exit(0);
           stream.end();
         });
