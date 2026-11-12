@@ -194,7 +194,7 @@ export async function manualBookCommitStatements(
         'SELECT 1 AS locked FROM sticker_stock WHERE sticker_id = ? LOCK IN SHARE MODE',
       ).bind(latest.stickerId),
       env.DB.prepare(
-        "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) = 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
+        "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) <= 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
       ).bind(latest.stickerId, input.now, input.actor, latest.stickerId),
     );
   }

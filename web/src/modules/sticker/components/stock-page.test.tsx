@@ -395,3 +395,22 @@ test('stiker Usang tampil dengan badge dan tanpa tombol Masuk; Keluar dan Koreks
   expect(screen.getByRole('button', { name: 'Catat keluar Hijau-B' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Koreksi Hijau-B' })).toBeInTheDocument();
 });
+
+test('stok negatif (pemotongan Serial Number) tampil "Kurang N" dengan warna peringatan', () => {
+  const [first] = rows as [StickerStockDto];
+  renderPage({
+    rows: [
+      {
+        ...first,
+        total: -2,
+        byLocation: [
+          { locationId: 'l-a', qty: -2 },
+          { locationId: 'l-b', qty: 0 },
+        ],
+      },
+    ],
+  });
+  const total = screen.getAllByText('Kurang 2')[0];
+  expect(total).toBeInTheDocument();
+  expect(total?.className).toContain('text-destructive');
+});

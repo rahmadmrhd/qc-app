@@ -80,9 +80,14 @@ export type StickerRule = (typeof STICKER_RULES)[number];
 /** Aturan yang boleh dipilih pengguna saat menyimpan jenis stiker (tanpa `group`). */
 export const USER_STICKER_RULES = ['bu', 'none'] as const;
 
-/** Jenis entri riwayat stok. */
-export const STOCK_ENTRY_KINDS = ['in', 'out', 'adjust', 'opname'] as const;
+/** Jenis entri riwayat stok; `serial` = pemotongan otomatis oleh pencatatan Serial Number (boleh membuat stok negatif). */
+export const STOCK_ENTRY_KINDS = ['in', 'out', 'adjust', 'opname', 'serial'] as const;
 export type StockEntryKind = (typeof STOCK_ENTRY_KINDS)[number];
+
+/** Stok untuk tampilan: negatif (akibat pemotongan Serial Number) ditulis "Kurang N". */
+export function formatStockQty(qty: number): string {
+  return qty < 0 ? `Kurang ${-qty}` : String(qty);
+}
 
 /** Hitungan stok: baris lembar (lembar × isi per lembar) dan butir lepas. */
 export interface StockCount {
