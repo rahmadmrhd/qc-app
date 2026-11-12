@@ -2,12 +2,14 @@ import type { MeDto } from '@shared/contract';
 import { expect, test } from 'vitest';
 import {
   buIdsWithLevelFor,
+  buIdsWithLevelOf,
   can,
   canAnywhere,
   canAt,
   canCreateItem,
   canEditItem,
   canManageItem,
+  canWriteSerials,
   locationsWith,
 } from './permissions';
 
@@ -138,4 +140,31 @@ test('helper BU tahan terhadap me hasil pemulihan cache lama tanpa businessUnits
   expect(canEditItem(stale, { businessUnits: [ref('a')] })).toBe(false);
   expect(canManageItem(stale, { businessUnits: [ref('a')] })).toBe(false);
   expect(canCreateItem(stale)).toBe(false);
+});
+
+function serialBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
+  return {
+    ...bu(id, 'none'),
+    permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+  };
+}
+
+test('buIdsWithLevelOf: per modul ber-BU, campuran level', () => {
+  const user = meWithBus([
+    serialBu('a', 'manage'),
+    serialBu('b', 'edit'),
+    serialBu('c', 'view'),
+    bu('d', 'manage'),
+  ]);
+  expect(buIdsWithLevelOf(user, 'serial', 'edit')).toEqual(['a', 'b']);
+  expect(buIdsWithLevelOf(user, 'serial', 'view')).toEqual(['a', 'b', 'c']);
+  expect(buIdsWithLevelOf(user, 'item', 'manage')).toEqual(['d']);
+  expect(buIdsWithLevelOf(user, 'serialservice', 'view')).toEqual([]);
+});
+
+test('canWriteSerials: butuh edit pada minimal satu BU', () => {
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
+  expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
+  expect(canWriteSerials(null)).toBe(false);
 });

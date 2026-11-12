@@ -1,5 +1,6 @@
 import type { LocatedModule } from '@shared/assignments';
 import { isLocatedModule } from '@shared/assignments';
+import type { BuModule } from '@shared/business-units';
 import type {
   BusinessUnitAccessDto,
   BusinessUnitRefDto,
@@ -84,11 +85,25 @@ function itemBusinessUnits(me: MeDto | null | undefined): readonly BusinessUnitA
   return me?.businessUnits ?? [];
 }
 
+/** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul ber-BU `module`. */
+export function buIdsWithLevelOf(
+  me: MeDto | null | undefined,
+  module: BuModule,
+  level: Level,
+): string[] {
+  return itemBusinessUnits(me)
+    .filter((bu) => hasLevel(bu.permissions[module], level))
+    .map((bu) => bu.id);
+}
+
 /** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
 export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): string[] {
-  return itemBusinessUnits(me)
-    .filter((bu) => hasLevel(bu.permissions.item, level))
-    .map((bu) => bu.id);
+  return buIdsWithLevelOf(me, 'item', level);
+}
+
+/** Mencatat serial: level `edit` pada minimal satu BU. */
+export function canWriteSerials(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
 }
 
 function hasLevelOnAllBus(

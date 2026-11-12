@@ -142,6 +142,37 @@ test('mode note tidak menampilkan tombol gambar; mode item menampilkannya', () =
   expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
 });
 
+test('mode message tidak menampilkan tombol gambar dan tidak memicu unggah saat tempel gambar', async () => {
+  render(<Harness mode="message" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  expect(screen.queryByRole('button', { name: 'Gambar' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Pilih gambar')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Checklist' })).toBeInTheDocument();
+  const paste = new Event('paste', { cancelable: true });
+  Object.assign(paste, { clipboardData: { files: [png('tempel.png')], types: ['Files'] } });
+  const handled = editor.options.editorProps.handlePaste?.(
+    editor.view,
+    paste as ClipboardEvent,
+    null as never,
+  );
+  expect(handled).toBe(false);
+  expect(uploadMock).not.toHaveBeenCalled();
+});
+
+test('centang task list dapat diubah pada mode message, terkunci pada mode note', async () => {
+  const { unmount } = render(<Harness mode="message" initial="- [ ] satu" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  const box = (await screen.findByRole('checkbox')) as HTMLInputElement;
+  await userEvent.click(box);
+  await waitFor(() => expect(lastValue).toContain('- [x] satu'));
+  unmount();
+  lastValue = '';
+  render(<Harness mode="note" initial="- [ ] satu" />);
+  const locked = (await screen.findByRole('checkbox')) as HTMLInputElement;
+  await userEvent.click(locked);
+  expect(lastValue).toBe('');
+});
+
 test('tidak ada HTML mentah di keluaran', async () => {
   const { container } = render(
     <Harness

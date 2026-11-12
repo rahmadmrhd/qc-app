@@ -1,0 +1,116 @@
+import type { GetSerialOutput, SerialDto, SerialListOutput } from '@shared/contract';
+import type { InfiniteData } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { stickerKeys } from '@/modules/sticker/keys';
+import { serialKeys } from './keys';
+import {
+  serialItemOptionsQueryOptions,
+  useActSerial,
+  useSaveSerialBatch,
+  useUpdateSerial,
+} from './queries';
+
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
+
+const dto = (over: Partial<SerialDto> = {}): SerialDto => ({
+  id: 's1',
+  buId: 'b1',
+  buCode: 'BU1',
+  serial: 'ABC123',
+  itemId: 'i1',
+  itemLabel: 'Cisco C9200',
+  testDate: '2026-11-10',
+  sample: false,
+  locationId: 'l1',
+  locationName: 'Jakarta',
+  status: 'good',
+  custody: 'qc',
+  createdAt: '2026-11-10T03:00:00.000Z',
+  note: '',
+  recordedLocationId: 'l1',
+  stickers: [],
+  openCaseId: null,
+  createdBy: 'a@x.com',
+  updatedAt: '2026-11-10T03:00:00.000Z',
+  updatedBy: 'a@x.com',
+  ...over,
+});
+
+let client: QueryClient;
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={client}>{children}</QueryClientProvider>
+);
+
+beforeEach(() => {
+  apiMock.mockReset();
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+});
+
+test('opsi item: kata kunci kosong tidak dikirim, batas 20', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchQuery(serialItemOptionsQueryOptions(''));
+  await client.fetchQuery(serialItemOptionsQueryOptions('c92'));
+  expect(apiMock).toHaveBeenNthCalledWith(1, 'serials.itemOptions', { limit: 20 });
+  expect(apiMock).toHaveBeenNthCalledWith(2, 'serials.itemOptions', { query: 'c92', limit: 20 });
+});
+
+test('simpan massal menandai daftar dan katalog stiker basi tanpa memuat ulang', async () => {
+  apiMock.mockResolvedValue({ results: [] });
+  const spy = vi.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useSaveSerialBatch(), { wrapper });
+  await act(() => result.current.mutateAsync({ rows: [] }));
+  const keys = spy.mock.calls.map((call) => call[0]?.queryKey);
+  expect(keys).toContainEqual(serialKeys.list);
+  expect(keys).toContainEqual(stickerKeys.all);
+});
+
+test('ubah serial menempel hasil ke detail dan baris daftar', async () => {
+  const before = dto();
+  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), { serial: before, events: [] });
+  client.setQueryData<InfiniteData<SerialListOutput, string | undefined>>(serialKeys.page({}), {
+    pages: [{ items: [before], nextCursor: null }],
+    pageParams: [undefined],
+  });
+  const saved = dto({ serial: 'XYZ', updatedAt: '2026-11-11T03:00:00.000Z' });
+  apiMock.mockResolvedValue(saved);
+  const { result } = renderHook(() => useUpdateSerial(), { wrapper });
+  await act(() =>
+    result.current.mutateAsync({
+      id: 's1',
+      expectedUpdatedAt: before.updatedAt,
+      serial: 'XYZ',
+      itemId: 'i1',
+      testDate: '2026-11-10',
+      sample: false,
+      note: '',
+      locationId: 'l1',
+    }),
+  );
+  expect(client.getQueryData<GetSerialOutput>(serialKeys.one('s1'))?.serial.serial).toBe('XYZ');
+  const list = client.getQueryData<InfiniteData<SerialListOutput>>(serialKeys.page({}));
+  expect(list?.pages[0]?.items[0]?.serial).toBe('XYZ');
+});
+
+test('aksi (catatan/cek ulang) memasang serial terbaru ke detail', async () => {
+  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), { serial: dto(), events: [] });
+  apiMock.mockResolvedValue(
+    dto({ locationName: 'Surabaya', updatedAt: '2026-11-12T03:00:00.000Z' }),
+  );
+  const { result } = renderHook(() => useActSerial(), { wrapper });
+  await act(() =>
+    result.current.mutateAsync({
+      id: 's1',
+      expectedUpdatedAt: '2026-11-10T03:00:00.000Z',
+      action: 'recheck',
+      occurredOn: '2026-11-12',
+      message: '',
+    }),
+  );
+  expect(client.getQueryData<GetSerialOutput>(serialKeys.one('s1'))?.serial.locationName).toBe(
+    'Surabaya',
+  );
+});
