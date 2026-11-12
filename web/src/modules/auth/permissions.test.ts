@@ -9,6 +9,7 @@ import {
   canCreateItem,
   canEditItem,
   canManageItem,
+  canUseSerialLocationOptions,
   canWriteSerials,
   locationsWith,
 } from './permissions';
@@ -167,4 +168,14 @@ test('canWriteSerials: butuh edit pada minimal satu BU', () => {
   expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
   expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
   expect(canWriteSerials(null)).toBe(false);
+});
+
+test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions)', () => {
+  const withSerial = (level: 'none' | 'view' | 'edit' | 'manage') =>
+    ({ ...me, permissions: { ...me.permissions, serial: level } }) as MeDto;
+  expect(canUseSerialLocationOptions(withSerial('view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withSerial('none'))).toBe(false);
+  expect(canUseSerialLocationOptions(withSerial('edit'))).toBe(true);
+  expect(canUseSerialLocationOptions(withSerial('manage'))).toBe(true);
+  expect(canUseSerialLocationOptions(null)).toBe(false);
 });

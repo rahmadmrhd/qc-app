@@ -2,7 +2,9 @@ import { normalizeKey } from '@shared/items';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField } from '@/components/link-field';
-import { toLocationOptions } from '../lib/locations';
+import { canUseSerialLocationOptions } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { meLocationOptions, toLocationOptions } from '../lib/locations';
 import { serialLocationOptionsQueryOptions } from '../queries';
 
 export interface SerialLocationFieldProps {
@@ -33,9 +35,14 @@ export function SerialLocationField({
   error,
   disabled,
 }: SerialLocationFieldProps) {
-  const { data, isPending } = useQuery(serialLocationOptionsQueryOptions());
+  const me = useMe();
+  const fromServer = canUseSerialLocationOptions(me);
+  const { data, isPending } = useQuery({
+    ...serialLocationOptionsQueryOptions(),
+    enabled: fromServer,
+  });
   const [term, setTerm] = useState('');
-  const all = toLocationOptions(data?.locations ?? []);
+  const all = fromServer ? toLocationOptions(data?.locations ?? []) : meLocationOptions(me);
   const key = normalizeKey(term);
   const options = all.filter((option) => key === '' || normalizeKey(option.label).includes(key));
   return (
@@ -49,7 +56,7 @@ export function SerialLocationField({
         (locationId === value && valueLabel ? valueLabel : locationId)
       }
       options={options}
-      loading={isPending}
+      loading={fromServer && isPending}
       onSearchChange={setTerm}
       searchDebounceMs={0}
       onChange={(next) =>

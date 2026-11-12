@@ -101,6 +101,14 @@ export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): s
   return buIdsWithLevelOf(me, 'item', level);
 }
 
+/**
+ * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` global). Pembaca tanpa izin itu memakai
+ * lokasi dari `me.locations` agar tidak memicu 403 (perilaku sementara menunggu keputusan pemilik soal filter pembaca).
+ */
+export function canUseSerialLocationOptions(me: MeDto | null | undefined): boolean {
+  return can(me, 'serial', 'edit');
+}
+
 /** Mencatat serial: level `edit` pada minimal satu BU. */
 export function canWriteSerials(me: MeDto | null | undefined): boolean {
   return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;

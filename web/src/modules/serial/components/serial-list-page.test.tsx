@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { pickLink, pickSelect } from '@/test/link-field';
+import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { type SerialSearch, serialSearchSchema } from '../lib/list-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -219,4 +219,29 @@ test('tempelan melebihi batas: pesan jelas, hanya serial pertama yang dicari', a
       expect((lastListInput().serials as string).split(String.fromCharCode(10))).toHaveLength(50),
     { timeout: 3000 },
   );
+});
+
+test('pembaca tanpa serial: edit tidak memanggil serials.locationOptions; filter lokasi memakai lokasi miliknya', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const names = await linkOptionNames(screen, 'Filter lokasi');
+  expect(names).toEqual(['Jakarta (JKT)']);
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(false);
+});
+
+test('pembaca serialservice: view juga tidak memanggil serials.locationOptions', async () => {
+  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  renderPage();
+  await screen.findByText('ABC123');
+  await linkOptionNames(screen, 'Filter lokasi');
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(false);
+});
+
+test('editor (serial: edit) memuat semua lokasi aktif dari serials.locationOptions', async () => {
+  me = { ...me, permissions: { ...me.permissions, serial: 'edit' } };
+  renderPage();
+  await screen.findByText('ABC123');
+  const names = await linkOptionNames(screen, 'Filter lokasi');
+  expect(names).toEqual(['Jakarta (JKT)', 'Surabaya (SBY)']);
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(true);
 });
