@@ -63,16 +63,17 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
       start: vi.fn(async () => undefined),
       logout: vi.fn(),
     },
+    ui: { reload: vi.fn(async () => undefined) },
     emitProgress: (e) => progress.push(e),
     ...overrides,
   };
-  registerIpc(deps);
+  const ipc = registerIpc(deps);
   const call = (channel: string, ...args: unknown[]) => {
     const handler = handlers.get(channel);
     if (!handler) throw new Error(`kanal tak terdaftar: ${channel}`);
     return Promise.resolve(handler({}, ...args));
   };
-  return { deps, handlers, call, progress, saved, store };
+  return { deps, handlers, call, progress, saved, store, ipc };
 }
 
 const injectReq = (patch: Record<string, unknown> = {}) => ({
@@ -290,6 +291,48 @@ describe('registerIpc', () => {
       const { deps, call, store } = setup({ isTrustedSender: () => false });
       await expect(call(BRIDGE_CHANNELS.authLogin)).rejects.toThrow(/tidak dipercaya/);
       expect(deps.auth.start).not.toHaveBeenCalled();
+      store.close();
+    });
+  });
+
+  describe('ui', () => {
+    test('ui.reload meneruskan ke proses utama; argumen apa pun ditolak; pengirim tak dipercaya ditolak', async () => {
+      const { deps, call, store } = setup();
+      await call(BRIDGE_CHANNELS.uiReload);
+      expect(deps.ui.reload).toHaveBeenCalledOnce();
+      await expect(call(BRIDGE_CHANNELS.uiReload, 'jalur-apa-saja')).rejects.toThrow(
+        /Argumen tidak valid/,
+      );
+      expect(deps.ui.reload).toHaveBeenCalledOnce();
+      store.close();
+      const untrusted = setup({ isTrustedSender: () => false });
+      await expect(untrusted.call(BRIDGE_CHANNELS.uiReload)).rejects.toThrow(/tidak dipercaya/);
+      expect(untrusted.deps.ui.reload).not.toHaveBeenCalled();
+      untrusted.store.close();
+    });
+
+    test('registerIpc melaporkan inject berjalan lewat isInjecting (dipakai pengelola bundel UI)', async () => {
+      let release: () => void = () => undefined;
+      let started: () => void = () => undefined;
+      const startedPromise = new Promise<void>((r) => {
+        started = r;
+      });
+      const { ipc, call, store } = setup({
+        runInject: vi.fn(
+          () =>
+            new Promise<InjectOutcome>((resolveOutcome) => {
+              started();
+              release = () => resolveOutcome({ ok: true, reason: 'completed' });
+            }),
+        ),
+      });
+      expect(ipc.isInjecting()).toBe(false);
+      const running = call(BRIDGE_CHANNELS.injectRun, injectReq());
+      await startedPromise;
+      expect(ipc.isInjecting()).toBe(true);
+      release();
+      await running;
+      expect(ipc.isInjecting()).toBe(false);
       store.close();
     });
   });

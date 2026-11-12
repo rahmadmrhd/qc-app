@@ -13,6 +13,7 @@ import {
   PendingEntrySchema,
   SerialArgSchema,
   stripTerminalControl,
+  UI_UPDATE_READY_EVENT,
 } from './bridge-contract';
 import { UI_MIN_BRIDGE_VERSION } from './ui-manifest';
 
@@ -126,11 +127,16 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(2);
+    expect(BRIDGE_VERSION).toBe(3);
     expect(MIN_BRIDGE_VERSION).toBe(1);
     const values = Object.values(BRIDGE_CHANNELS);
     expect(new Set(values).size).toBe(values.length);
-    for (const channel of [...values, INJECT_PROGRESS_EVENT, AUTH_CHANGE_EVENT]) {
+    for (const channel of [
+      ...values,
+      INJECT_PROGRESS_EVENT,
+      AUTH_CHANGE_EVENT,
+      UI_UPDATE_READY_EVENT,
+    ]) {
       expect(channel).toMatch(/^qc:[a-z]+:[A-Za-z]+$/);
     }
   });

@@ -9,7 +9,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AUTH_CHANGE_EVENT, INJECT_PROGRESS_EVENT } from '@countrylock/bridge-channels';
+import {
+  AUTH_CHANGE_EVENT,
+  BRIDGE_VERSION,
+  INJECT_PROGRESS_EVENT,
+  UI_UPDATE_READY_EVENT,
+} from '@countrylock/bridge-channels';
 import {
   app,
   type BrowserWindow,
@@ -21,7 +26,7 @@ import {
   shell,
 } from 'electron';
 import { createApiProxy } from './api-proxy';
-import { APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
+import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
 import { createLoginFlow, type LoginFlow } from './auth/login-flow';
 import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
@@ -34,6 +39,8 @@ import { collectSmokeReport } from './smoke';
 import { fetchHostKey } from './ssh/host-key';
 import { runInjectDetailed } from './ssh/inject-session';
 import { openPendingStore } from './store/pending-store';
+import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
+import { createUiBundleManager } from './ui/ui-bundle';
 import { createMainWindow, lockDownSession } from './window';
 
 const smoke = process.argv.includes('--smoke');
@@ -216,7 +223,22 @@ function runApp(): void {
       fetchImpl: net.fetch as typeof fetch,
       onUnauthenticated: () => emitAuth(flow.status()),
     });
-    protocol.handle(APP_SCHEME, createAppHandler(uiRoot(), proxy));
+    // UI: bundel terunduh yang aktif bila ada, selain itu UI dasar terkemas. Bundel baru baru
+    // diterapkan pada peluncuran berikutnya atau `ui.reload()`, tidak pernah di tengah inject.
+    let ipcHandle: { isInjecting(): boolean } | null = null;
+    const bundles = createUiBundleManager({
+      dir: join(userData, 'ui'),
+      baselineDir: uiRoot(),
+      serverUrl: () => settings.get().serverUrl,
+      publicKeyPem: UI_PUBLIC_KEY_PEM,
+      bridgeVersion: BRIDGE_VERSION,
+      isBusy: () => ipcHandle?.isInjecting() ?? false,
+      fetchImpl: net.fetch as typeof fetch,
+    });
+    protocol.handle(
+      APP_SCHEME,
+      createAppHandler(() => bundles.activeRoot(), proxy),
+    );
     let pending: ReturnType<typeof openPendingStore>;
     try {
       pending = openPendingStore(join(userData, 'pending.db'));
@@ -227,7 +249,7 @@ function runApp(): void {
       return;
     }
 
-    registerIpc({
+    ipcHandle = registerIpc({
       ipcMain,
       settings,
       loadPackage: loadLocalPackage,
@@ -250,6 +272,14 @@ function runApp(): void {
           mainWindow.webContents.send(INJECT_PROGRESS_EVENT, event);
         }
       },
+      ui: {
+        reload: async () => {
+          // Tidak berbuat apa-apa saat inject berjalan: memuat ulang akan memutus tampilan sesi.
+          if (ipcHandle?.isInjecting()) return;
+          bundles.applyReady();
+          mainWindow?.webContents.reloadIgnoringCache();
+        },
+      },
       isTrustedSender: (event) => isAppUrl(event.senderFrame?.url ?? ''),
     });
 
@@ -258,6 +288,43 @@ function runApp(): void {
       mainWindow = null;
     });
     app.on('will-quit', () => pending.close());
+
+    // Pemulihan UI: muat berhasil mereset hitungan; dua kegagalan berturut-turut kembali ke bundel
+    // sebelumnya lalu ke UI dasar (dan memuat ulang).
+    const contents = mainWindow.webContents;
+    const announceReady = (): void => {
+      const uiVersion = bundles.readyVersion();
+      if (uiVersion && !contents.isDestroyed()) {
+        contents.send(UI_UPDATE_READY_EVENT, { uiVersion });
+      }
+    };
+    contents.on('did-finish-load', () => {
+      if (!isAppUrl(contents.getURL())) return;
+      bundles.markLoadOk();
+      announceReady();
+    });
+    contents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+      // -3 = navigasi dibatalkan (bukan kegagalan muat).
+      if (!isMainFrame || errorCode === -3) return;
+      if (bundles.markLoadFailed() !== 'none')
+        void contents.loadURL(`${APP_ORIGIN}${initialRoute}`);
+    });
+
+    // Pemeriksaan pembaruan UI: saat dibuka, saat jendela fokus (jarak >= 10 menit), dan tiap jam.
+    let lastCheck = 0;
+    const runCheck = async (minGapMs: number): Promise<void> => {
+      if (Date.now() - lastCheck < minGapMs) return;
+      lastCheck = Date.now();
+      try {
+        const result = await bundles.checkForUpdate();
+        if (result.status === 'ready') announceReady();
+      } catch {
+        // Pemeriksaan tak boleh menjatuhkan aplikasi.
+      }
+    };
+    void runCheck(0);
+    mainWindow.on('focus', () => void runCheck(10 * 60 * 1000));
+    setInterval(() => void runCheck(0), 60 * 60 * 1000).unref();
     for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
   });
 

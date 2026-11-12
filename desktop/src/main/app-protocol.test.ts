@@ -172,3 +172,22 @@ describe('API lewat proxy', () => {
     }
   });
 });
+
+describe('akar UI dinamis', () => {
+  test('akar berupa fungsi dievaluasi tiap permintaan (bundel aktif dapat berganti)', async () => {
+    const a = mkdtempSync(join(tmpdir(), 'qc-ui-a-'));
+    const b = mkdtempSync(join(tmpdir(), 'qc-ui-b-'));
+    try {
+      writeFileSync(join(a, 'index.html'), 'A');
+      writeFileSync(join(b, 'index.html'), 'B');
+      let active = a;
+      const handler = createAppHandler(() => active);
+      expect(await (await handler(new Request('app://qc/country-lock'))).text()).toBe('A');
+      active = b;
+      expect(await (await handler(new Request('app://qc/country-lock'))).text()).toBe('B');
+    } finally {
+      rmSync(a, { recursive: true, force: true });
+      rmSync(b, { recursive: true, force: true });
+    }
+  });
+});

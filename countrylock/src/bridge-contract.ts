@@ -17,6 +17,7 @@ export {
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
+  UI_UPDATE_READY_EVENT,
 } from './bridge-channels';
 
 // --- Tipe kontrak -------------------------------------------------------------------------
@@ -74,6 +75,11 @@ export interface AuthStatus {
   serverUrl: string;
 }
 
+/** Pemberitahuan bundel UI baru siap diterapkan (tanpa isi bundel). */
+export interface UiUpdateInfo {
+  uiVersion: string;
+}
+
 export interface QcBridge {
   version: number;
   package: {
@@ -96,6 +102,12 @@ export interface QcBridge {
     login(): Promise<void>;
     logout(): Promise<void>;
     onChange(cb: (s: AuthStatus) => void): () => void;
+  };
+  ui: {
+    /** Bundel UI baru siap; diterapkan pada peluncuran berikutnya atau lewat `reload()`. */
+    onUpdateReady(cb: (info: UiUpdateInfo) => void): () => void;
+    /** Menerapkan bundel siap (bila tak ada inject berjalan) lalu memuat ulang jendela. */
+    reload(): Promise<void>;
   };
   pending: {
     list(): Promise<PendingEntry[]>;
@@ -192,6 +204,7 @@ export const BRIDGE_ARGS = {
   authStatus: z.tuple([]),
   authLogin: z.tuple([]),
   authLogout: z.tuple([]),
+  uiReload: z.tuple([]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
 // --- Teks progres aman untuk renderer ------------------------------------------------------

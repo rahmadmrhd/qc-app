@@ -140,7 +140,8 @@ function isApiPath(requestUrl: string): boolean {
  * `/auth/` diserahkan ke `proxy`; tanpa proxy (mis. `--smoke-ui`, agar tak menyentuh jaringan) 404.
  */
 export function createAppHandler(
-  root: string,
+  /** Akar berkas UI; fungsi dievaluasi tiap permintaan (bundel aktif dapat berganti). */
+  rootOf: string | (() => string),
   proxy?: (request: Request) => Promise<Response>,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
@@ -152,6 +153,7 @@ export function createAppHandler(
             headers: baseHeaders('text/plain', APP_CSP),
           });
     }
+    const root = typeof rootOf === 'function' ? rootOf() : rootOf;
     const file = resolveAppFile(root, request.url);
     if (file === null) {
       return new Response('Terlarang', {

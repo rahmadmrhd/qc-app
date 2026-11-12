@@ -62,6 +62,8 @@ export interface IpcDeps {
   pending: PendingStore;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
+  /** Menerapkan bundel UI siap dan memuat ulang jendela (proses utama yang memutuskan boleh/tidaknya). */
+  ui: { reload(): Promise<void> };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
   emitProgress(event: { id: string } & InjectProgressDto): void;
   /** Task 14 memasang pemeriksaan asal pengirim (hanya `app://qc`); bila ada dan false, ditolak. */
@@ -112,7 +114,7 @@ function sanitizeProgress(text: string, secrets: readonly string[]): string {
   return clean.length > MAX_PROGRESS_CHARS ? `${clean.slice(0, MAX_PROGRESS_CHARS)}...` : clean;
 }
 
-export function registerIpc(deps: IpcDeps): void {
+export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
   const running = new Map<string, AbortController>();
   let current: LoadedPackage | null = null;
 
@@ -209,6 +211,11 @@ export function registerIpc(deps: IpcDeps): void {
     deps.auth.logout();
   });
 
+  handle(BRIDGE_CHANNELS.uiReload, async (_event, ...args) => {
+    parseArgs(BRIDGE_ARGS.uiReload, args);
+    await deps.ui.reload();
+  });
+
   handle(BRIDGE_CHANNELS.pendingList, async (_event, ...args): Promise<PendingEntry[]> => {
     parseArgs(BRIDGE_ARGS.pendingList, args);
     return deps.pending.list();
@@ -223,6 +230,9 @@ export function registerIpc(deps: IpcDeps): void {
     const [serial] = parseArgs(BRIDGE_ARGS.pendingRemove, args);
     deps.pending.remove(serial);
   });
+
+  // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject.
+  return { isInjecting: () => running.size > 0 };
 
   async function runInjectRequest(req: InjectRequest): Promise<InjectResult> {
     // Sandi yang diketahui sejauh ini; diperluas setelah paket dimuat. Semua pesan hasil disamarkan.

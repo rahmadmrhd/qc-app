@@ -7,6 +7,7 @@ import {
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
+  UI_UPDATE_READY_EVENT,
 } from '@countrylock/bridge-channels';
 import type { QcBridge } from '@countrylock/bridge-contract';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -49,6 +50,17 @@ const bridge: QcBridge = {
         ipcRenderer.removeListener(AUTH_CHANGE_EVENT, listener);
       };
     },
+  },
+  ui: {
+    onUpdateReady: (cb) => {
+      // Hanya `UiUpdateInfo` yang diteruskan; objek `event` Electron tidak bocor ke renderer.
+      const listener = (_event: unknown, payload: Parameters<typeof cb>[0]): void => cb(payload);
+      ipcRenderer.on(UI_UPDATE_READY_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(UI_UPDATE_READY_EVENT, listener);
+      };
+    },
+    reload: () => invoke(BRIDGE_CHANNELS.uiReload),
   },
   pending: {
     list: () => invoke(BRIDGE_CHANNELS.pendingList),
