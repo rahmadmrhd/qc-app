@@ -174,10 +174,23 @@ export function startNotificationLoop(
 ): () => Promise<void> {
   return startLoop(
     'notifikasi',
-    async () => {
-      await flushDueCheckSummaries(env);
-      await deliverPendingPushes(env);
-    },
+    () => notificationTick(env),
     options.intervalMs ?? NOTIFICATION_LOOP_INTERVAL_MS,
   );
+}
+
+/**
+ * Satu putaran notifikasi: pelepasan ringkasan centang DAN pengiriman push dijalankan keduanya; galat pada satu
+ * langkah tidak membatalkan yang lain (pola `schedulerTick`), galat pertama dilempar setelah semuanya dicoba.
+ */
+export async function notificationTick(env: Env): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of [flushDueCheckSummaries, deliverPendingPushes]) {
+    try {
+      await step(env);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
 }

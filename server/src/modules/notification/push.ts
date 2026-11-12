@@ -28,6 +28,65 @@ export const PUSH_MAX_AGE_MS = 10 * 60 * 1000;
 const DELIVER_BATCH = 200;
 /** Kegagalan berturut-turut pada SEMUA langganan pengguna sebelum status dinilai `failing`. */
 export const PUSH_FAILING_THRESHOLD = 3;
+/** Banyak notifikasi yang diproses bersamaan dan banyak pengiriman `send` yang berjalan bersamaan (seluruh putaran). */
+const DELIVER_CONCURRENCY = 5;
+/** Batas waktu satu `send`; melewatinya = gagal (bukan `gone`: langganan tidak dihapus). */
+const SEND_TIMEOUT_MS = 15_000;
+/**
+ * Anggaran waktu satu putaran (jam dinding nyata): setelah lewat, notifikasi yang belum disentuh tetap `pending`
+ * untuk putaran berikutnya (atau `skipped` bila sudah basi), agar endpoint yang menggantung tidak menunda ringkasan
+ * centang dan push pengguna lain.
+ */
+const ROUND_BUDGET_MS = 60_000;
+
+/** Opsi pengiriman; hanya tes yang mengubahnya. */
+export interface DeliverOptions {
+  concurrency?: number;
+  sendTimeoutMs?: number;
+  budgetMs?: number;
+}
+
+/** `send` dengan batas waktu: pengirim yang menggantung dianggap gagal (galat umum, bukan `gone`). */
+async function sendWithTimeout(
+  push: PushSender,
+  sub: PushSubscriptionInfo,
+  payload: string,
+  timeoutMs: number,
+): Promise<PushSendResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<PushSendResult>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, gone: false, error: 'waktu habis' }), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      push
+        .send(sub, payload)
+        .catch((): PushSendResult => ({ ok: false, gone: false, error: 'galat pengirim' })),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Pembatas konkurensi sederhana: paling banyak `limit` tugas berjalan; sisanya antre FIFO. */
+function createLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  const release = (): void => {
+    active--;
+    queue.shift()?.();
+  };
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
+    active++;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
 
 interface PendingRow {
   id: string;
@@ -69,7 +128,10 @@ async function setPushState(
  * minimal satu sukses = `sent`, semua gagal = `failed` (dan `fail_count` naik). Satu putaran pada satu waktu
  * (`startNotificationLoop`). Mengembalikan jumlah notifikasi yang `sent`.
  */
-export async function deliverPendingPushes(env: Env): Promise<number> {
+export async function deliverPendingPushes(
+  env: Env,
+  options: DeliverOptions = {},
+): Promise<number> {
   const pending = await env.DB.prepare(
     "SELECT id, recipient, kind, handover_id, location_id, number, customer_name, actor_name, `count`, created_at FROM notifications WHERE push_state = 'pending' ORDER BY created_at, id LIMIT ?",
   )
@@ -77,6 +139,10 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
     .all<PendingRow>();
   const push = env.PUSH;
   const now = nowOf(env);
+  const concurrency = options.concurrency ?? DELIVER_CONCURRENCY;
+  const sendTimeoutMs = options.sendTimeoutMs ?? SEND_TIMEOUT_MS;
+  const deadline = Date.now() + (options.budgetMs ?? ROUND_BUDGET_MS);
+  const limitSend = createLimiter(concurrency);
   const contexts = new Map<string, Promise<UserContext | null>>();
   const contextOf = (email: string): Promise<UserContext | null> => {
     let hit = contexts.get(email);
@@ -87,15 +153,16 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
     return hit;
   };
   let sent = 0;
-  for (const row of pending.results) {
+  /** Memproses satu notifikasi; `continue` lama menjadi `return`. */
+  const processRow = async (row: PendingRow): Promise<void> => {
     if (push === undefined || now - Date.parse(row.created_at) > PUSH_MAX_AGE_MS) {
       await setPushState(env, row.id, 'skipped');
-      continue;
+      return;
     }
     const user = await contextOf(row.recipient);
     if (user === null || !hasReadAccess(user, row.location_id)) {
       await setPushState(env, row.id, 'skipped');
-      continue;
+      return;
     }
     const prefs = await env.DB.prepare(
       'SELECT push_enabled FROM notification_prefs WHERE recipient = ?',
@@ -104,7 +171,7 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
       .first<{ push_enabled: number | string }>();
     if (prefs !== null && Number(prefs.push_enabled) === 0) {
       await setPushState(env, row.id, 'skipped');
-      continue;
+      return;
     }
     const subs = await env.DB.prepare(
       'SELECT endpoint_hash, endpoint, p256dh, auth FROM push_subscriptions WHERE recipient = ?',
@@ -113,7 +180,7 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
       .all<SubRow>();
     if (subs.results.length === 0) {
       await setPushState(env, row.id, 'skipped');
-      continue;
+      return;
     }
     const dto: NotificationDto = {
       id: row.id,
@@ -133,14 +200,26 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
     const results = await Promise.all(
       subs.results.map(async (sub) => ({
         sub,
-        result: await push
-          .send({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload)
-          .catch((): PushSendResult => ({ ok: false, gone: false, error: 'galat pengirim' })),
+        // Slot kirim dibagi seluruh putaran; anggaran habis saat antre = ditunda (tak dihitung gagal).
+        result: await limitSend(
+          async (): Promise<PushSendResult | 'deferred'> =>
+            Date.now() > deadline
+              ? 'deferred'
+              : sendWithTimeout(
+                  push,
+                  { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+                  payload,
+                  sendTimeoutMs,
+                ),
+        ),
       })),
     );
+    // Semua langganan tertunda oleh anggaran: biarkan `pending` untuk putaran berikutnya.
+    if (results.every(({ result }) => result === 'deferred')) return;
     const stamp = nowIso(env);
     let anyOk = false;
     for (const { sub, result } of results) {
+      if (result === 'deferred') continue;
       if (result.ok) {
         anyOk = true;
         await env.DB.prepare(
@@ -163,6 +242,15 @@ export async function deliverPendingPushes(env: Env): Promise<number> {
     }
     await setPushState(env, row.id, anyOk ? 'sent' : 'failed');
     if (anyOk) sent++;
-  }
+  };
+  // Pekerja berkonkurensi terbatas; anggaran habis = berhenti mengambil notifikasi baru (tetap `pending`).
+  const queue = [...pending.results];
+  const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
+    for (let row = queue.shift(); row !== undefined; row = queue.shift()) {
+      if (Date.now() > deadline) return;
+      await processRow(row);
+    }
+  });
+  await Promise.all(workers);
   return sent;
 }

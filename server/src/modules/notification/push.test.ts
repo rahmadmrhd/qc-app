@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { startNotificationLoop } from '@server/jobs/runner';
+import { notificationTick, startNotificationLoop } from '@server/jobs/runner';
 import { createFakePush, type FakePush } from '@server-test/fake-push';
 import { ENV, seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { deliverPendingPushes, PUSH_MAX_AGE_MS } from './push';
+import { deliverPendingPushes, PUSH_MAX_AGE_MS, type PushSender } from './push';
 import { endpointHash } from './push-service';
 import { insertNotificationStmts, type NewNotification } from './repo';
 
@@ -115,10 +115,13 @@ describe('deliverPendingPushes', () => {
       const parsed = JSON.parse(payload) as Record<string, string>;
       expect(Object.keys(parsed).sort()).toEqual(['body', 'tag', 'title', 'url']);
     }
-    const first = JSON.parse(push.sent[0]?.payload ?? '{}') as Record<string, string>;
+    // Urutan kirim antar notifikasi tidak dijamin (diproses paralel): ambil menurut tag.
+    const first = push.sent
+      .map(({ payload }) => JSON.parse(payload) as Record<string, string>)
+      .find((parsed) => parsed.tag === 'commented:h1') as Record<string, string>;
     expect(first.title).toBe('Qi mengomentari task ST-20261015-001');
     expect(first.body).toBe('ST-20261015-001 - PT Maju');
-    expect(first.url).toBe('/handover/h1');
+    expect(first.url).toBe(`/handover/h1?loc=${ENV.locA}`);
     expect(first.tag).toBe('commented:h1');
   });
 
@@ -214,8 +217,8 @@ describe('deliverPendingPushes', () => {
     expect(await deliverPendingPushes(env)).toBe(2);
     expect(push.sent.map((s) => s.sub.endpoint)).toEqual([shared, shared]);
     const bodies = push.sent.map((s) => (JSON.parse(s.payload) as { body: string }).body);
-    expect(bodies[0]).toContain('ST-V');
-    expect(bodies[1]).toContain('ST-Q');
+    expect(bodies.some((body) => body.includes('ST-V'))).toBe(true);
+    expect(bodies.some((body) => body.includes('ST-Q'))).toBe(true);
   });
 
   test('gone menghapus langganan semua pengguna yang berbagi endpoint', async () => {
@@ -226,6 +229,89 @@ describe('deliverPendingPushes', () => {
     await deliverPendingPushes(env);
     expect(await subRows(VIEWER)).toEqual([]);
     expect(await subRows(QC)).toEqual([]);
+  });
+});
+
+describe('pengiriman paralel dan anggaran waktu (F2)', () => {
+  const useSender = (sender: PushSender) => {
+    (env as { PUSH?: PushSender }).PUSH = sender;
+  };
+
+  test('pengiriman paralel dibatasi konkurensi dan semuanya tetap terkirim', async () => {
+    for (let i = 0; i < 12; i++) await subscribe(VIEWER, `p${i}`);
+    await insert(note());
+    let active = 0;
+    let peak = 0;
+    let total = 0;
+    useSender({
+      async send() {
+        active++;
+        peak = Math.max(peak, active);
+        total++;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        active--;
+        return { ok: true };
+      },
+    });
+    expect(await deliverPendingPushes(env, { concurrency: 3 })).toBe(1);
+    expect(total).toBe(12);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(3);
+  });
+
+  test('endpoint yang menggantung kena batas waktu: pengguna lain tetap terkirim, langganan tidak dihapus', async () => {
+    await subscribe(VIEWER, 'macet');
+    await subscribe(QC, 'normal');
+    await insert(
+      note({ recipient: VIEWER, number: 'ST-V' }),
+      note({ recipient: QC, number: 'ST-Q', createdAt: new Date(NOW + 1).toISOString() }),
+    );
+    useSender({
+      send: (sub) =>
+        sub.endpoint === EP('macet')
+          ? new Promise<never>(() => undefined)
+          : Promise.resolve({ ok: true }),
+    });
+    const started = Date.now();
+    expect(await deliverPendingPushes(env, { sendTimeoutMs: 100 })).toBe(1);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(await states()).toEqual(['failed', 'sent']);
+    // Tidak ada penghapusan otomatis: baris tetap ada, hanya fail_count naik.
+    const subs = await subRows(VIEWER);
+    expect(subs).toHaveLength(1);
+    expect(subs[0]?.fail_count).toBe(1);
+    expect(subs[0]?.last_error).toBe('waktu habis');
+  });
+
+  test('anggaran putaran habis: notifikasi yang belum disentuh tetap pending untuk putaran berikutnya', async () => {
+    await subscribe(VIEWER, 'a');
+    await insert(note(), note({ number: 'ST-2', createdAt: new Date(NOW + 1).toISOString() }));
+    expect(await deliverPendingPushes(env, { budgetMs: -1 })).toBe(0);
+    expect(push.sent).toHaveLength(0);
+    expect(await states()).toEqual(['pending', 'pending']);
+    // Putaran berikutnya (anggaran normal) menuntaskannya.
+    expect(await deliverPendingPushes(env)).toBe(2);
+    expect(await states()).toEqual(['sent', 'sent']);
+  });
+
+  test('anggaran habis di tengah putaran: yang sedang berjalan selesai, sisanya pending, tanpa menaikkan fail_count', async () => {
+    await subscribe(VIEWER, 'a');
+    await insert(
+      note({ number: 'ST-1' }),
+      note({ number: 'ST-2', createdAt: new Date(NOW + 1).toISOString() }),
+      note({ number: 'ST-3', createdAt: new Date(NOW + 2).toISOString() }),
+    );
+    useSender({
+      async send() {
+        // Lebih lama dari anggaran: setelah kirim pertama selesai, anggaran sudah habis.
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
+        return { ok: true };
+      },
+    });
+    const sent = await deliverPendingPushes(env, { concurrency: 1, budgetMs: 1_500 });
+    expect(sent).toBe(1);
+    expect(await states()).toEqual(['sent', 'pending', 'pending']);
+    expect((await subRows(VIEWER))[0]?.fail_count).toBe(0);
   });
 });
 
@@ -243,5 +329,41 @@ describe('putaran latar', () => {
     } finally {
       await stop();
     }
+  });
+
+  /** Env dengan DB yang melempar untuk SQL berisi `failOn` dan mencatat semua SQL yang disiapkan. */
+  function envFailing(failOn: string): { env: typeof env; sql: string[] } {
+    const sql: string[] = [];
+    const db = new Proxy(env.DB, {
+      get(target, prop, receiver) {
+        if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
+        return (text: string) => {
+          sql.push(text);
+          if (text.includes(failOn)) throw new Error('galat-sengaja');
+          return target.prepare(text);
+        };
+      },
+    });
+    return { env: { ...env, DB: db } as typeof env, sql };
+  }
+
+  test('galat pelepasan ringkasan tak membatalkan pengiriman push dalam satu putaran (F5)', async () => {
+    await subscribe(VIEWER, 'a');
+    await insert(note());
+    const broken = envFailing('FROM notification_pending');
+    await expect(notificationTick(broken.env)).rejects.toThrow('galat-sengaja');
+    expect(push.sent).toHaveLength(1);
+    expect(await states()).toEqual(['sent']);
+  });
+
+  test('galat pengiriman push tak membatalkan pelepasan ringkasan dalam satu putaran (F5)', async () => {
+    const broken = envFailing('FROM notifications WHERE push_state');
+    await expect(notificationTick(broken.env)).rejects.toThrow('galat-sengaja');
+    // Langkah pelepasan tetap dijalankan walau urutannya mendahului push yang gagal.
+    expect(broken.sql.some((text) => text.includes('FROM notification_pending'))).toBe(true);
+  });
+
+  test('putaran sehat tidak melempar', async () => {
+    await expect(notificationTick(env)).resolves.toBeUndefined();
   });
 });
