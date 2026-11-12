@@ -20,9 +20,12 @@ import { Label } from '@/components/ui/label';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
-import { serialKeys } from '../keys';
 import { todayWib } from '../lib/locations';
-import { serialItemOptionsQueryOptions, useUpdateSerial } from '../queries';
+import {
+  serialDetailQueryOptions,
+  serialItemOptionsQueryOptions,
+  useUpdateSerial,
+} from '../queries';
 import { SerialLocationField } from './serial-location-field';
 
 export interface EditSerialDialogProps {
@@ -39,6 +42,9 @@ type FieldErrors = Partial<Record<keyof SerialEditable, string>>;
 export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   const queryClient = useQueryClient();
   const update = useUpdateSerial();
+  // Data dasar pembanding: nilai server saat dialog dibuka, diperbarui bila server memberi versi lebih baru (412).
+  const [base, setBase] = useState(serial);
+  const [notice, setNotice] = useState<string | null>(null);
   const [serialText, setSerialText] = useState(serial.serial);
   const [item, setItem] = useState({ id: serial.itemId, label: serial.itemLabel });
   const [testDate, setTestDate] = useState(serial.testDate);
@@ -58,12 +64,12 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   const normalized = normalizeSerial(serialText);
   const serialInvalid = serialProblem(normalized) !== null;
   const changed =
-    normalized !== serial.serial ||
-    item.id !== serial.itemId ||
-    testDate !== serial.testDate ||
-    sample !== serial.sample ||
-    note.trim() !== serial.note ||
-    location.id !== serial.locationId;
+    normalized !== base.serial ||
+    item.id !== base.itemId ||
+    testDate !== base.testDate ||
+    sample !== base.sample ||
+    note.trim() !== base.note ||
+    location.id !== base.locationId;
   const today = todayWib();
   const valid =
     !serialInvalid &&
@@ -72,13 +78,40 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
     item.id !== '' &&
     location.id !== '';
 
+  /**
+   * Versi usang (412): muat data terbaru dan ganti HANYA bidang yang belum diubah pengguna; bidang yang sudah diubah
+   * dipertahankan. Dengan begitu simpan ulang tidak mengembalikan perubahan orang lain ke nilai lama.
+   */
+  async function rebase() {
+    try {
+      const fresh = (
+        await queryClient.fetchQuery({ ...serialDetailQueryOptions(serial.id), staleTime: 0 })
+      ).serial;
+      if (serialText === base.serial) setSerialText(fresh.serial);
+      if (item.id === base.itemId) setItem({ id: fresh.itemId, label: fresh.itemLabel });
+      if (testDate === base.testDate) setTestDate(fresh.testDate);
+      if (sample === base.sample) setSample(fresh.sample);
+      if (note === base.note) setNote(fresh.note);
+      if (location.id === base.locationId) {
+        setLocation({ id: fresh.locationId, label: fresh.locationName });
+      }
+      setBase(fresh);
+      setNotice(
+        `${STALE_SAVE_MESSAGE}. Bidang yang belum Anda ubah diperbarui ke data terbaru; periksa lalu simpan lagi.`,
+      );
+    } catch (loadError) {
+      setError(describeError(loadError));
+    }
+  }
+
   async function submit() {
     setError(null);
+    setNotice(null);
     setFieldErrors({});
     try {
       await update.mutateAsync({
         id: serial.id,
-        expectedUpdatedAt: serial.updatedAt,
+        expectedUpdatedAt: base.updatedAt,
         serial: normalized,
         itemId: item.id,
         testDate,
@@ -89,8 +122,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
       onClose();
     } catch (caught) {
       if (isStaleSaveError(caught)) {
-        setError(`${STALE_SAVE_MESSAGE}. Data dimuat ulang; periksa lalu simpan lagi.`);
-        void queryClient.invalidateQueries({ queryKey: serialKeys.one(serial.id) });
+        await rebase();
         return;
       }
       if (caught instanceof ApiError && caught.fields) {
@@ -190,6 +222,11 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             />
             <FieldError errors={[fieldErrors.note]} />
           </div>
+          {notice ? (
+            <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+              {notice}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}

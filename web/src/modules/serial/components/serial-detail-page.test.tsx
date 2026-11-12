@@ -295,6 +295,7 @@ test('versi usang (412) menampilkan pesan dan memuat ulang detail', async () => 
   const before = calls('serials.get').length;
   await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
+  expect(screen.getByRole('alert')).toHaveTextContent('lokasi dan jumlah stiker dikembalikan');
   await waitFor(() => expect(calls('serials.get').length).toBeGreaterThan(before));
   // Pesan pengguna tidak hilang.
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue('halo');
@@ -337,4 +338,51 @@ test('dialog ubah data mengirim data lengkap dan menampilkan "Serial sudah terda
   const names = await linkOptionNames(within(dialog), 'Item');
   expect(names).toContain('Aruba 2930');
   expect(names).not.toContain('Lain BU');
+});
+
+test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan simpan ulang memakai versi baru', async () => {
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Ubah data' }));
+  const dialog = await screen.findByRole('dialog');
+  const noteInput = within(dialog).getByLabelText('Catatan');
+  await userEvent.clear(noteInput);
+  await userEvent.type(noteInput, 'catatan A');
+
+  // Orang lain memindahkan lokasi ke Surabaya sementara dialog terbuka.
+  const fresh = {
+    ...SERIAL,
+    locationId: 'l2',
+    locationName: 'Surabaya',
+    updatedAt: '2026-11-13T03:00:00.000Z',
+  };
+  const original = apiMock.getMockImplementation();
+  let updates = 0;
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.update') {
+      updates++;
+      if (updates === 1) {
+        state = { serial: fresh, events: state.events };
+        return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
+      }
+      return Promise.resolve(fresh);
+    }
+    return original?.(id, input);
+  });
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(await within(dialog).findByRole('status')).toHaveTextContent(
+    'Data sudah diubah orang lain',
+  );
+  // Lokasi mengikuti server (belum disentuh pengguna); catatan pengguna dipertahankan.
+  expect(within(dialog).getByRole('combobox', { name: 'Lokasi' })).toHaveValue('Surabaya (SBY)');
+  expect(within(dialog).getByLabelText('Catatan')).toHaveValue('catatan A');
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(calls('serials.update')).toHaveLength(2));
+  expect(calls('serials.update')[1]?.[1]).toMatchObject({
+    id: 's1',
+    expectedUpdatedAt: '2026-11-13T03:00:00.000Z',
+    note: 'catatan A',
+    locationId: 'l2',
+  });
 });

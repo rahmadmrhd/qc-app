@@ -27,7 +27,7 @@ interface StickerRow {
   base: number;
 }
 
-const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman dimuat ulang; pesan Anda tetap ada, periksa lalu kirim lagi.`;
+const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman dimuat ulang: pesan Anda tetap ada, tetapi lokasi dan jumlah stiker dikembalikan ke data terbaru. Atur ulang bila perlu, lalu kirim lagi.`;
 
 function qtyOf(serial: SerialDto): Map<string, number> {
   return new Map(serial.stickers.map((sticker) => [sticker.stickerId, sticker.qty]));
