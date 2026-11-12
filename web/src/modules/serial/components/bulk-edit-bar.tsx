@@ -2,6 +2,7 @@ import { SERIAL_LIMITS } from '@shared/serials';
 import { useState } from 'react';
 import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BulkPatch } from '../lib/draft';
@@ -28,6 +29,7 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
   const [location, setLocation] = useState({ id: '', label: '' });
   const [sample, setSample] = useState('');
   const [note, setNote] = useState('');
+  const [clearNote, setClearNote] = useState(false);
 
   const itemIncomplete = item.itemId !== '' && item.buId === '';
   const dirty =
@@ -35,7 +37,8 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
     testDate !== '' ||
     location.id !== '' ||
     sample !== '' ||
-    note.trim() !== '';
+    note.trim() !== '' ||
+    clearNote;
 
   function apply() {
     const patch: BulkPatch = {};
@@ -51,13 +54,15 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
       patch.locationLabel = location.label;
     }
     if (sample !== '') patch.sample = sample === 'yes';
-    if (note.trim() !== '') patch.note = note.trim();
+    if (clearNote) patch.note = '';
+    else if (note.trim() !== '') patch.note = note.trim();
     onApply(patch);
     setItem(EMPTY_ITEM_BU);
     setTestDate('');
     setLocation({ id: '', label: '' });
     setSample('');
     setNote('');
+    setClearNote(false);
   }
 
   return (
@@ -108,10 +113,21 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
           <Input
             id="bulk-note"
             value={note}
+            disabled={clearNote}
             maxLength={SERIAL_LIMITS.noteMax}
             placeholder="Kosong = tidak diubah"
             onChange={(event) => setNote(event.target.value)}
           />
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="bulk-clear-note"
+              checked={clearNote}
+              onCheckedChange={(on) => setClearNote(on === true)}
+            />
+            <Label htmlFor="bulk-clear-note" className="text-xs font-normal">
+              Kosongkan catatan
+            </Label>
+          </div>
         </div>
       </div>
       <Button type="button" size="sm" disabled={!dirty || itemIncomplete} onClick={apply}>

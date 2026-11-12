@@ -163,7 +163,13 @@ export function SerialScanInput({
           const pasted = event.clipboardData.getData('text');
           if (!/[\r\n]/.test(pasted)) return;
           event.preventDefault();
-          submit(pasted);
+          // Teks yang sudah diketik ikut terkirim (tempelan disisipkan di kursor), lalu kolom dikosongkan.
+          const field = event.currentTarget;
+          const start = field.selectionStart ?? value.length;
+          const end = field.selectionEnd ?? start;
+          const text = `${value.slice(0, start)}${pasted}${value.slice(end)}`;
+          setValue('');
+          submit(text);
         }}
       />
       <p

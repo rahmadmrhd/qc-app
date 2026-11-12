@@ -116,3 +116,12 @@ test('disabled tidak menerima masukan', async () => {
   expect(input).toHaveValue('');
   expect(onSubmit).not.toHaveBeenCalled();
 });
+
+test('tempel bergaris-baru menyertakan teks yang sudah diketik dan mengosongkan kolom', async () => {
+  const { onSubmit, input } = setup();
+  await userEvent.type(input, 'ABC');
+  await userEvent.paste(`D${String.fromCharCode(10)}E`);
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit).toHaveBeenCalledWith(`ABCD${String.fromCharCode(10)}E`);
+  expect(input).toHaveValue('');
+});
