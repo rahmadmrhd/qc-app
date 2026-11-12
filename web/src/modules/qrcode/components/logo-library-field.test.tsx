@@ -22,8 +22,9 @@ beforeEach(() => {
 
 test('I2: menambah logo menandai registri sibuk sejak pengecilan sampai unggah selesai', async () => {
   let finish: (value: unknown) => void = () => undefined;
+  let finishUpload: (value: unknown) => void = () => undefined;
   mocks.prepare.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-  mocks.mutateAsync.mockResolvedValue({ id: 'logo1' });
+  mocks.mutateAsync.mockReturnValue(new Promise((resolve) => (finishUpload = resolve)));
   const onLibraryChange = vi.fn();
   render(<LogoLibraryField library={[]} onLibraryChange={onLibraryChange} />);
   await userEvent.upload(
@@ -31,7 +32,13 @@ test('I2: menambah logo menandai registri sibuk sejak pengecilan sampai unggah s
     new File([new Uint8Array(4)], 'l.png', { type: 'image/png' }),
   );
   expect(isBusy()).toBe(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(isBusy()).toBe(true);
   finish({ mime: 'image/png', bytes: new Uint8Array(1) });
+  await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalled());
+  // A5: tetap sibuk selama unggah menggantung.
+  expect(isBusy()).toBe(true);
+  finishUpload({ id: 'logo1' });
   await waitFor(() => expect(onLibraryChange).toHaveBeenCalledWith(['logo1']));
   expect(isBusy()).toBe(false);
 });

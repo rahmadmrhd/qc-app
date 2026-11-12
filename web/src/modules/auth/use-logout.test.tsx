@@ -74,6 +74,10 @@ test('M-f: POST /auth/logout dan pembersihan menandai registri sibuk sampai sele
   const { result } = renderHook(() => useLogout(), { wrapper });
   result.current();
   expect(isBusy()).toBe(true);
+  // A5: tetap sibuk selama POST menggantung, bukan hanya sinkron setelah pemanggilan.
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(isBusy()).toBe(true);
+  expect(navigate).not.toHaveBeenCalled();
   release();
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
   await waitFor(() => expect(isBusy()).toBe(false));

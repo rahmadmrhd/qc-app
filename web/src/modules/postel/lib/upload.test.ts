@@ -72,6 +72,9 @@ test('I2: unggah lampiran Postel menandai registri sibuk selama berjalan dan mel
   apiMock.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
   const pending = uploadPostelFile(new File([new Uint8Array(4)], 'a.png', { type: 'image/png' }));
   expect(isBusy()).toBe(true);
+  // A5: tetap sibuk selama permintaan menggantung (setelah microtask berjalan).
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(isBusy()).toBe(true);
   release({ id: 'f1' });
   await pending;
   expect(isBusy()).toBe(false);

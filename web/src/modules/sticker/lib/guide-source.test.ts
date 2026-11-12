@@ -140,12 +140,20 @@ test('list meneruskan urut usageDesc ke stickerGuides.list', async () => {
 test('I2: unggah (siapkan gambar dan thumbnail, lalu kirim) menandai registri sibuk sepanjang alur, termasuk saat gagal', async () => {
   resetBusyForTests();
   let finishImage: (value: unknown) => void = () => undefined;
+  let finishApi: (value: unknown) => void = () => undefined;
   prepareImageMock.mockReturnValue(new Promise((resolve) => (finishImage = resolve)));
   prepareThumbnailMock.mockResolvedValue({ mime: 'image/webp', bytes: new Uint8Array(1) });
-  apiMock.mockResolvedValue(dto);
+  apiMock.mockReturnValue(new Promise((resolve) => (finishApi = resolve)));
   const pending = stickerGuideSource.upload(new File(['x'], 'a.png', { type: 'image/png' }), 'A');
   expect(isBusy()).toBe(true);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(isBusy()).toBe(true);
   finishImage({ mime: 'image/webp', width: 1, height: 1, bytes: new Uint8Array(1) });
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  // A5: tetap sibuk selama permintaan kirim menggantung.
+  expect(apiMock).toHaveBeenCalled();
+  expect(isBusy()).toBe(true);
+  finishApi(dto);
   await pending;
   expect(isBusy()).toBe(false);
 
