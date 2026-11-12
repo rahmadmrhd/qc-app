@@ -184,8 +184,12 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 169 | Buka rute langsung (mis. `/handover`) lalu refresh saat mode pesawat | Cangkang tampil dari cache; aplikasi menampilkan keadaan galat jaringan yang jelas, bukan halaman kosong | PWA FR-P7 |
 | 170 | Login Google penuh di mode terpasang (Android dan iOS) | Callback OAuth selesai; aplikasi kembali dalam keadaan sudah login | PWA FR-P8 |
 | 171 | Buka `/auth/callback?code=x&state=y` langsung di peramban | Dijawab server, bukan cangkang `index.html` | PWA FR-P8 |
-| 172 | Deploy versi baru ke staging, lalu buka aplikasi yang sudah terpasang | Spanduk "Ada versi baru" muncul; halaman tidak dimuat ulang sendiri | PWA FR-P11, FR-P12 |
-| 173 | Isi formulir tanpa menyimpan, lalu tunggu spanduk muncul | Spanduk menyebut ada formulir yang belum disimpan; setelah "Muat ulang" ditekan, versi baru dimuat | PWA FR-P13, FR-P12 |
+| 172 | Deploy versi baru ke staging saat tidak ada formulir terisi, lalu pindah halaman di aplikasi yang sudah terpasang | Setelah pindah halaman, versi baru dimuat sendiri tanpa spanduk | PWA FR-P11, FR-P12 |
+| 173 | Deploy versi baru saat ada formulir terisi tanpa disimpan (mis. draf task), lalu tunggu | Spanduk "Ada versi baru" muncul dan menyebut ada formulir belum tersimpan; halaman TIDAK dimuat ulang otomatis; isian tetap utuh; setelah "Muat ulang" ditekan, versi baru dimuat | PWA FR-P13, FR-P12 |
 | 174 | Ganti tema ke Gelap, lalu ke Terang, di dalam aplikasi | Warna bilah sistem (`theme-color`) di Android ikut berubah sesuai tema | PWA FR-P3 |
 | 175 | Keluar (logout) dari aplikasi terpasang, lalu periksa DevTools → Application → Storage dan Cache | Data perangkat dibersihkan (cache query tersimpan dan data pengguna tidak tersisa); login ulang berhasil | PWA FR-P14 |
 | 176 | Buka DevTools → Application → Manifest dan Service Workers | Manifest terbaca tanpa galat (nama, ikon, `theme_color`); service worker aktif; Console tanpa galat | PWA FR-P1, FR-P6 |
+| 177 | Saat spanduk tampil (formulir belum tersimpan), simpan atau kosongkan formulir | Spanduk hilang sendiri; versi baru dimuat otomatis pada pemicu berikutnya (pindah halaman atau tab kembali terlihat) | PWA FR-P12 |
+| 178 | Centang checklist tepat ketika versi baru sudah siap (centang sedang dikirim) | Centang tidak terputus dan tidak hilang; muat ulang otomatis ditunda sampai penulisan selesai | PWA FR-P12, FR-P13 |
+| 179 | Dengan tidak ada formulir terisi, pindah ke aplikasi lain lalu kembali ke tab aplikasi | Bila versi baru sudah siap, versi baru dimuat ulang otomatis | PWA FR-P12 |
+| 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" dalam beberapa detik | Tombol "Nanti" tidak aktif selama versi baru diaktifkan; sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu | PWA FR-P12 |
