@@ -1,8 +1,9 @@
 import { normalizeKey } from '@shared/items';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField } from '@/components/link-field';
-import { useMe } from '@/modules/auth/use-me';
-import { serialLocationOptions } from '../lib/locations';
+import { toLocationOptions } from '../lib/locations';
+import { serialLocationOptionsQueryOptions } from '../queries';
 
 export interface SerialLocationFieldProps {
   id: string;
@@ -32,9 +33,9 @@ export function SerialLocationField({
   error,
   disabled,
 }: SerialLocationFieldProps) {
-  const me = useMe();
+  const { data, isPending } = useQuery(serialLocationOptionsQueryOptions());
   const [term, setTerm] = useState('');
-  const all = serialLocationOptions(me);
+  const all = toLocationOptions(data?.locations ?? []);
   const key = normalizeKey(term);
   const options = all.filter((option) => key === '' || normalizeKey(option.label).includes(key));
   return (
@@ -48,6 +49,7 @@ export function SerialLocationField({
         (locationId === value && valueLabel ? valueLabel : locationId)
       }
       options={options}
+      loading={isPending}
       onSearchChange={setTerm}
       searchDebounceMs={0}
       onChange={(next) =>

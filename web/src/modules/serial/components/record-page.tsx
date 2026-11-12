@@ -22,10 +22,11 @@ import {
 } from '../lib/draft';
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
-import { serialLocationOptions, todayWib } from '../lib/locations';
+import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import {
   serialItemOptionsQueryOptions,
+  serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
 } from '../queries';
@@ -249,6 +250,14 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   async function handleImported(result: QcsnImport, fileName: string) {
     setImporting(true);
     try {
+      const loadLocations = async () => {
+        try {
+          const data = await queryClient.fetchQuery(serialLocationOptionsQueryOptions());
+          return toLocationOptions(data.locations);
+        } catch {
+          return null;
+        }
+      };
       const deps: VerifyDeps = {
         findItem: async (itemId, label) => {
           const page = await queryClient.fetchQuery(serialItemOptionsQueryOptions(label.trim()));
@@ -259,7 +268,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
           const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
         },
-        locations: serialLocationOptions(me),
+        locations: await loadLocations(),
       };
       // Pindaian dan suntingan boleh terjadi selama verifikasi menunggu: hasilnya digabung ke tabel TERBARU.
       const snapshot = rowsRef.current;

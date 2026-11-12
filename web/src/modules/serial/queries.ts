@@ -52,6 +52,15 @@ export function serialItemOptionsQueryOptions(query: string) {
   });
 }
 
+/** Semua lokasi aktif untuk pemilih lokasi serial (bukan lokasi penugasan pengguna: spek §3 butir 3). */
+export function serialLocationOptionsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.locationOptions,
+    queryFn: () => api('serials.locationOptions', null),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Stiker yang berlaku bagi (item, BU): bahan daftar centang stiker. */
 export function serialStickerOptionsQueryOptions(itemId: string, buId: string) {
   return queryOptions({

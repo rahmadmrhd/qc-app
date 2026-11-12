@@ -12,8 +12,8 @@ export interface VerifyDeps {
   findItem(itemId: string, label: string): Promise<ItemLookup | null>;
   /** Stiker yang berlaku bagi (item, BU); melempar `ApiError` NOT_FOUND bila pasangan tidak sah. */
   stickersOf(itemId: string, buId: string): Promise<{ id: string; name: string }[]>;
-  /** Lokasi yang dapat dipilih (id dan label). */
-  locations: readonly { id: string; label: string }[];
+  /** Lokasi yang dapat dipilih (id dan label); `null` = daftar gagal dimuat (baris ditandai belum terverifikasi). */
+  locations: readonly { id: string; label: string }[] | null;
 }
 
 export const VERIFY_FAILED_MESSAGE =
@@ -90,7 +90,9 @@ export async function verifyImported(
     }),
   );
 
-  const locations = new Map(deps.locations.map((location) => [location.id, location.label]));
+  const locations = deps.locations
+    ? new Map(deps.locations.map((location) => [location.id, location.label]))
+    : null;
   let unresolved = 0;
   let unverified = 0;
   const next = rows.map((row, index): StagingRow => {
@@ -126,9 +128,13 @@ export async function verifyImported(
       }
     }
 
-    const locationLabel = locations.get(row.locationId);
-    if (locationLabel === undefined) flags.push('location');
-    else result = { ...result, locationLabel };
+    if (locations === null) {
+      failed = true;
+    } else {
+      const locationLabel = locations.get(row.locationId);
+      if (locationLabel === undefined) flags.push('location');
+      else result = { ...result, locationLabel };
+    }
 
     if (flags.length > 0) {
       unresolved++;

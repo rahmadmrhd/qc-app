@@ -166,6 +166,14 @@ beforeEach(() => {
         ],
       });
     }
+    if (id === 'serials.locationOptions') {
+      return Promise.resolve({
+        locations: [
+          { id: 'l1', code: 'JKT', name: 'Jakarta' },
+          { id: 'l2', code: 'SBY', name: 'Surabaya' },
+        ],
+      });
+    }
     if (id === 'serials.itemOptions') {
       return Promise.resolve({
         items: [

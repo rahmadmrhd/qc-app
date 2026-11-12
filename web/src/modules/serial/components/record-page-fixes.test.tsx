@@ -33,6 +33,14 @@ const STICKERS: Record<string, { id: string; name: string }[]> = {
 let saveCalls: { rows: { clientId: string; serial: string; stickers: unknown[] }[] }[] = [];
 
 function baseApi(id: string, input: Record<string, unknown>) {
+  if (id === 'serials.locationOptions') {
+    return Promise.resolve({
+      locations: [
+        { id: 'l1', code: 'JKT', name: 'Jakarta' },
+        { id: 'l2', code: 'SBY', name: 'Surabaya' },
+      ],
+    });
+  }
   if (id === 'serials.itemOptions') return Promise.resolve({ items: ITEMS, nextCursor: null });
   if (id === 'serials.stickerOptions') {
     const list = STICKERS[String(input.itemId)];
@@ -59,18 +67,6 @@ function baseApi(id: string, input: Record<string, unknown>) {
   return Promise.reject(new Error(`api tak dikenal: ${id}`));
 }
 
-const location = (id: string, code: string, name: string) => ({
-  id,
-  code,
-  name,
-  permissions: {
-    handover: 'none' as const,
-    qc: 'none' as const,
-    stock: 'none' as const,
-    stickerstock: 'none' as const,
-  },
-});
-
 beforeEach(() => {
   localStorage.clear();
   saveCalls = [];
@@ -93,7 +89,7 @@ beforeEach(() => {
       serialservice: 'none',
     },
     businessUnits: [],
-    locations: [location('l1', 'JKT', 'Jakarta'), location('l2', 'SBY', 'Surabaya')],
+    locations: [],
   };
 });
 
@@ -319,4 +315,24 @@ test('ubah massal dapat mengosongkan catatan', async () => {
   await userEvent.click(screen.getByRole('checkbox', { name: 'Kosongkan catatan' }));
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
   expect(screen.getByLabelText('Catatan A1')).toHaveValue('');
+});
+
+test('daftar lokasi gagal dimuat saat impor: baris ditandai belum terverifikasi, bukan lokasi tak ditemukan', async () => {
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serials.locationOptions' ? Promise.reject(new Error('putus')) : baseApi(id, input),
+  );
+  renderPage();
+  await uploadRows(stagingRows(['LOC1']));
+  await waitFor(() => expect(serialValues()).toEqual(['LOC1']));
+  const tr = dataRows()[0] as HTMLElement;
+  expect(within(tr).getByText(/belum dapat diverifikasi/)).toBeInTheDocument();
+  expect(within(tr).queryByText(/lokasi \(tidak ditemukan\)/)).toBeNull();
+});
+
+test('pencatat tanpa penugasan lokasi tetap dapat memilih lokasi dari serials.locationOptions', async () => {
+  expect(me.locations).toEqual([]);
+  renderPage();
+  await pickDefaults();
+  await paste('A1');
+  expect(within(dataRows()[0] as HTMLElement).getByText('Jakarta (JKT)')).toBeInTheDocument();
 });

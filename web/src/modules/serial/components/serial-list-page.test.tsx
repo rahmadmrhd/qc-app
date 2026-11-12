@@ -93,6 +93,14 @@ beforeEach(() => {
           : { items: PAGE_1, nextCursor: 'c1' },
       );
     }
+    if (id === 'serials.locationOptions') {
+      return Promise.resolve({
+        locations: [
+          { id: 'l1', code: 'JKT', name: 'Jakarta' },
+          { id: 'l2', code: 'SBY', name: 'Surabaya' },
+        ],
+      });
+    }
     if (id === 'serials.itemOptions') {
       return Promise.resolve({
         items: [
@@ -194,4 +202,21 @@ test('tanpa hasil menampilkan pesan kosong', async () => {
   );
   renderPage();
   expect(await screen.findByText('Tidak ada serial yang cocok.')).toBeInTheDocument();
+});
+
+test('tempelan melebihi batas: pesan jelas, hanya serial pertama yang dicari', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const many = Array.from({ length: 57 }, (_, index) => `S${index}`).join(String.fromCharCode(10));
+  fireEvent.change(screen.getByLabelText('Cari serial (satu per baris)'), {
+    target: { value: many },
+  });
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'hanya 50 serial pertama yang dicari, 7 serial lain diabaikan',
+  );
+  await waitFor(
+    () =>
+      expect((lastListInput().serials as string).split(String.fromCharCode(10))).toHaveLength(50),
+    { timeout: 3000 },
+  );
 });

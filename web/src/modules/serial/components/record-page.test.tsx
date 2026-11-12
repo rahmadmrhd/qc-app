@@ -35,6 +35,14 @@ function installApi() {
   saveCalls = [];
   resultFor = () => 'created';
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.locationOptions') {
+      return Promise.resolve({
+        locations: [
+          { id: 'l1', code: 'JKT', name: 'Jakarta' },
+          { id: 'l2', code: 'SBY', name: 'Surabaya' },
+        ],
+      });
+    }
     if (id === 'serials.itemOptions') return Promise.resolve({ items: ITEMS, nextCursor: null });
     if (id === 'serials.stickerOptions') {
       const list = STICKERS[String(input.itemId)];
@@ -84,10 +92,8 @@ beforeEach(() => {
       serialservice: 'none',
     },
     businessUnits: [],
-    locations: [
-      { id: 'l1', code: 'JKT', name: 'Jakarta', permissions: noLocationPermissions() },
-      { id: 'l2', code: 'SBY', name: 'Surabaya', permissions: noLocationPermissions() },
-    ],
+    // Tanpa penugasan lokasi: pilihan lokasi serial datang dari serials.locationOptions.
+    locations: [],
   };
 });
 
@@ -95,15 +101,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   apiMock.mockReset();
 });
-
-function noLocationPermissions() {
-  return {
-    handover: 'none' as const,
-    qc: 'none' as const,
-    stock: 'none' as const,
-    stickerstock: 'none' as const,
-  };
-}
 
 function renderPage(props: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
