@@ -1,5 +1,6 @@
 import type {
   GetSerialOutput,
+  ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SerialActInput,
   SerialDto,
@@ -49,6 +50,15 @@ export function serialItemOptionsQueryOptions(query: string) {
   return queryOptions({
     queryKey: serialKeys.itemOptions(query),
     queryFn: () => api('serials.itemOptions', { ...(query === '' ? {} : { query }), limit: 20 }),
+  });
+}
+
+/** Item menurut id (verifikasi impor `.qcsn`): server mengembalikan tepat item yang ada dan terlihat bagi pengguna (maks. 50 id). */
+export function serialItemsByIdQueryOptions(itemIds: readonly string[]) {
+  const input: ListSerialItemOptionsInput = { itemIds: [...itemIds] };
+  return queryOptions({
+    queryKey: serialKeys.itemsById(itemIds),
+    queryFn: () => api('serials.itemOptions', input),
   });
 }
 

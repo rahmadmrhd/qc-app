@@ -7,9 +7,16 @@ export interface ItemLookup {
   buOptions: { id: string; code: string }[];
 }
 
+/** Banyak id item per permintaan `serials.itemOptions` (batas server) dan jumlah permintaan verifikasi serentak. */
+export const ITEM_IDS_PER_REQUEST = 50;
+export const VERIFY_CONCURRENCY = 4;
+
 export interface VerifyDeps {
-  /** `null` = item tidak ditemukan; galat dilempar bila pencarian gagal (jaringan/server). */
-  findItem(itemId: string, label: string): Promise<ItemLookup | null>;
+  /**
+   * Item menurut id (bukan menurut label berkas): hanya yang ada dan terlihat bagi pengguna yang dikembalikan; id yang
+   * tak kembali = tidak ditemukan. Maks. `ITEM_IDS_PER_REQUEST` id; galat dilempar bila gagal (jaringan/server).
+   */
+  findItems(itemIds: readonly string[]): Promise<ItemLookup[]>;
   /** Stiker yang berlaku bagi (item, BU); melempar `ApiError` NOT_FOUND bila pasangan tidak sah. */
   stickersOf(itemId: string, buId: string): Promise<{ id: string; name: string }[]>;
   /** Lokasi yang dapat dipilih (id dan label); `null` = daftar gagal dimuat (baris ditandai belum terverifikasi). */
@@ -35,6 +42,24 @@ export interface VerifyReport {
   unverified: number;
 }
 
+/** Menjalankan `fn` atas `items` dengan paling banyak `limit` pekerjaan serentak (urutan hasil = urutan masukan). */
+export async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 type ItemResult = ItemLookup | null | 'error';
 type PairResult = { id: string; name: string }[] | null | 'error';
 
@@ -48,19 +73,20 @@ export async function verifyImported(
   rows: readonly StagingRow[],
   deps: VerifyDeps,
 ): Promise<VerifyReport> {
-  const itemIds = new Map<string, string>();
-  for (const row of rows) if (row.itemId !== '') itemIds.set(row.itemId, row.itemLabel);
-
+  const itemIds = [...new Set(rows.map((row) => row.itemId).filter((id) => id !== ''))];
+  const chunks: string[][] = [];
+  for (let at = 0; at < itemIds.length; at += ITEM_IDS_PER_REQUEST) {
+    chunks.push(itemIds.slice(at, at + ITEM_IDS_PER_REQUEST));
+  }
   const items = new Map<string, ItemResult>();
-  await Promise.all(
-    [...itemIds].map(async ([id, label]) => {
-      try {
-        items.set(id, await deps.findItem(id, label));
-      } catch {
-        items.set(id, 'error');
-      }
-    }),
-  );
+  await mapLimit(chunks, VERIFY_CONCURRENCY, async (chunk) => {
+    try {
+      const found = new Map((await deps.findItems(chunk)).map((item) => [item.id, item]));
+      for (const id of chunk) items.set(id, found.get(id) ?? null);
+    } catch {
+      for (const id of chunk) items.set(id, 'error');
+    }
+  });
 
   // BU akhir tiap baris (kosong = belum dapat ditentukan).
   const resolved = rows.map((row) => {
@@ -80,15 +106,13 @@ export async function verifyImported(
     }
   });
   const stickers = new Map<string, PairResult>();
-  await Promise.all(
-    [...pairs].map(async ([key, pair]) => {
-      try {
-        stickers.set(key, await deps.stickersOf(pair.itemId, pair.buId));
-      } catch (error) {
-        stickers.set(key, isReferenceError(error) ? null : 'error');
-      }
-    }),
-  );
+  await mapLimit([...pairs], VERIFY_CONCURRENCY, async ([key, pair]) => {
+    try {
+      stickers.set(key, await deps.stickersOf(pair.itemId, pair.buId));
+    } catch (error) {
+      stickers.set(key, isReferenceError(error) ? null : 'error');
+    }
+  });
 
   const locations = deps.locations
     ? new Map(deps.locations.map((location) => [location.id, location.label]))

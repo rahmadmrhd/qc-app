@@ -43,7 +43,13 @@ function installApi() {
         ],
       });
     }
-    if (id === 'serials.itemOptions') return Promise.resolve({ items: ITEMS, nextCursor: null });
+    if (id === 'serials.itemOptions') {
+      const ids = input.itemIds as string[] | undefined;
+      return Promise.resolve({
+        items: ids ? ITEMS.filter((item) => ids.includes(item.id)) : ITEMS,
+        nextCursor: null,
+      });
+    }
     if (id === 'serials.stickerOptions') {
       const list = STICKERS[String(input.itemId)];
       if (!list) return Promise.reject(new Error('tidak ditemukan'));

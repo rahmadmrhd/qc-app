@@ -41,7 +41,13 @@ function baseApi(id: string, input: Record<string, unknown>) {
       ],
     });
   }
-  if (id === 'serials.itemOptions') return Promise.resolve({ items: ITEMS, nextCursor: null });
+  if (id === 'serials.itemOptions') {
+    const ids = input.itemIds as string[] | undefined;
+    return Promise.resolve({
+      items: ids ? ITEMS.filter((item) => ids.includes(item.id)) : ITEMS,
+      nextCursor: null,
+    });
+  }
   if (id === 'serials.stickerOptions') {
     const list = STICKERS[String(input.itemId)];
     if (!list) return Promise.reject(new ApiError('NOT_FOUND', 'Tidak ditemukan', '-'));
@@ -335,4 +341,31 @@ test('pencatat tanpa penugasan lokasi tetap dapat memilih lokasi dari serials.lo
   await pickDefaults();
   await paste('A1');
   expect(within(dataRows()[0] as HTMLElement).getByText('Jakarta (JKT)')).toBeInTheDocument();
+});
+
+test('impor: item dicocokkan menurut id (bukan label berkas); label usang disegarkan, berkas tanpa label tak bermasalah, id hantu ditandai', async () => {
+  const [base] = stagingRows(['IMP1']);
+  if (!base) throw new Error('seed');
+  const rows: StagingRow[] = [
+    { ...base, clientId: 'row-renamed001', serial: 'RENAMED', itemLabel: 'Cisco LAMA' },
+    { ...base, clientId: 'row-nolabel001', serial: 'NOLABEL', itemLabel: '' },
+    { ...base, clientId: 'row-ghost00001', serial: 'GHOST', itemId: 'iHantu', itemLabel: 'Hantu' },
+  ];
+  renderPage();
+  await uploadRows(rows);
+  await waitFor(() => expect(serialValues()).toEqual(['RENAMED', 'NOLABEL', 'GHOST']));
+  expect(within(rowOf('RENAMED')).getByText('Cisco C9200')).toBeInTheDocument();
+  expect(within(rowOf('RENAMED')).queryByText(/tidak ditemukan/)).toBeNull();
+  expect(within(rowOf('NOLABEL')).getByText('Cisco C9200')).toBeInTheDocument();
+  expect(within(rowOf('NOLABEL')).queryByText(/tidak ditemukan/)).toBeNull();
+  expect(
+    within(rowOf('GHOST')).getByText('Pilih ulang item (tidak ditemukan)'),
+  ).toBeInTheDocument();
+  const byId = apiMock.mock.calls.filter(
+    (call) => call[0] === 'serials.itemOptions' && Array.isArray(call[1]?.itemIds),
+  );
+  expect(byId).toHaveLength(1);
+  const sent = byId[0]?.[1] as { itemIds: string[]; query?: string };
+  expect([...sent.itemIds].sort()).toEqual(['i1', 'iHantu']);
+  expect(sent.query).toBeUndefined();
 });

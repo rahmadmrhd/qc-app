@@ -25,7 +25,7 @@ import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import {
-  serialItemOptionsQueryOptions,
+  serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
@@ -259,10 +259,13 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         }
       };
       const deps: VerifyDeps = {
-        findItem: async (itemId, label) => {
-          const page = await queryClient.fetchQuery(serialItemOptionsQueryOptions(label.trim()));
-          const hit = page.items.find((entry) => entry.id === itemId);
-          return hit ? { id: hit.id, label: hit.label, buOptions: hit.buOptions } : null;
+        findItems: async (itemIds) => {
+          const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
+          return page.items.map((item) => ({
+            id: item.id,
+            label: item.label,
+            buOptions: item.buOptions,
+          }));
         },
         stickersOf: async (itemId, buId) => {
           const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
