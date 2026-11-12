@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createRenderProbe } from './render-probe';
+import { createRenderProbe, RENDER_PROBE_TIMEOUT_MS } from './render-probe';
+
+test('batas probe 15 dtk, di atas batas boot web (8 dtk) dengan sisa untuk render', () => {
+  const WEB_BOOT_ME_TIMEOUT_MS = 8_000;
+  expect(RENDER_PROBE_TIMEOUT_MS).toBe(15_000);
+  expect(RENDER_PROBE_TIMEOUT_MS).toBeGreaterThan(WEB_BOOT_ME_TIMEOUT_MS + 5_000);
+});
 
 beforeEach(() => {
   vi.useFakeTimers();

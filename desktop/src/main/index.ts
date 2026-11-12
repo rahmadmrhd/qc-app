@@ -41,7 +41,7 @@ import { runInjectDetailed } from './ssh/inject-session';
 import { openPendingStore } from './store/pending-store';
 import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
 import { createReloadGate, type ReloadGate } from './ui/reload-gate';
-import { createRenderProbe } from './ui/render-probe';
+import { createRenderProbe, RENDER_PROBE_TIMEOUT_MS } from './ui/render-probe';
 import { createUiBundleManager } from './ui/ui-bundle';
 import { createMainWindow, lockDownSession } from './window';
 
@@ -148,7 +148,6 @@ function isOpenableLoginUrl(url: string): boolean {
 /** Masa tenang setelah inject berakhir sebelum halaman tertunda dimuat (pending.add renderer). */
 const RELOAD_SETTLE_MS = 1500;
 const RENDER_PROBE_INTERVAL_MS = 500;
-const RENDER_PROBE_TIMEOUT_MS = 10_000;
 /** Akar web (`<div id="app">` di web/index.html) berisi anak = React sudah mount. */
 const ROOT_FILLED_SCRIPT = "(document.getElementById('app')?.childElementCount ?? 0) > 0";
 

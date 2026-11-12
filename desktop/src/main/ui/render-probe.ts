@@ -5,6 +5,12 @@
 // tidak terisi sampai batas waktu = `onFailed` (rantai pemulihan: dua kali gagal -> previous ->
 // dasar). Logika waktu murni (tanpa Electron) agar dapat diuji dengan timer palsu.
 
+/**
+ * Batas tunggu akar UI terisi. Harus lebih besar dari batas boot web (`GET /api/v1/me` 8 dtk di desktop,
+ * `web/src/app/boot.ts`) agar server yang menjatuhkan paket tidak terbaca sebagai bundel UI rusak.
+ */
+export const RENDER_PROBE_TIMEOUT_MS = 15_000;
+
 export interface RenderProbeDeps {
   /** `true` bila akar UI sudah terisi; melempar (mis. konteks halaman hilang) dihitung `false`. */
   check(): Promise<boolean>;

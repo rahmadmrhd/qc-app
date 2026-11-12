@@ -6,7 +6,7 @@ import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
  * Versi jembatan minimum yang dibutuhkan UI yang dibangun dari repo ini. Dinaikkan HANYA bila UI memakai fungsi
  * jembatan baru (`BRIDGE_VERSION` di `bridge-channels.ts`); aplikasi dengan jembatan lebih rendah tidak menerapkan bundel.
  */
-export const UI_MIN_BRIDGE_VERSION = 2;
+export const UI_MIN_BRIDGE_VERSION = 3;
 
 export interface UiManifestFile {
   /** Jalur relatif terhadap akar `server/dist`, pemisah `/`, tanpa awalan `/`. */

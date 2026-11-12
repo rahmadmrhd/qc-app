@@ -191,4 +191,9 @@ describe('UI_MIN_BRIDGE_VERSION', () => {
     expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(MIN_BRIDGE_VERSION);
     expect(UI_MIN_BRIDGE_VERSION).toBeLessThanOrEqual(BRIDGE_VERSION);
   });
+
+  test('minimal 3: UI web memakai bridge.ui (onUpdateReady/reload, diperkenalkan di jembatan v3)', () => {
+    // Bundel yang diunduh memakai `bridge.ui`; di aplikasi dengan jembatan v2 spanduk pembaruan akan error.
+    expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(3);
+  });
 });
