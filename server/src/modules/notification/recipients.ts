@@ -1,6 +1,6 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
-import { loadUserContext, type UserContext } from '@server/modules/access/context';
+import { loadActiveUserContexts, type UserContext } from '@server/modules/access/context';
 import type { NotificationSide } from '@shared/notifications';
 import { hasLevel } from '@shared/permissions';
 
@@ -53,18 +53,13 @@ export async function resolveRecipients(
   env: Env,
   input: { locationId: string; side: NotificationSide; excludeEmail: string },
 ): Promise<Recipient[]> {
-  const rows = await env.DB.prepare("SELECT email FROM users WHERE status = 'active'").all<{
-    email: string;
-  }>();
   const exclude = normalizeEmail(input.excludeEmail);
-  const emails = [
-    ...new Set(rows.results.map((row) => normalizeEmail(row.email)).filter((e) => e !== '')),
-  ].filter((email) => email !== exclude);
-  const contexts = await Promise.all(emails.map((email) => loadUserContext(env, email)));
+  // Dua kueri untuk semua user aktif (tabel peran/lokasi/BU dimuat sekali), bukan satu kueri per user.
+  const contexts = await loadActiveUserContexts(env);
   const recipients: Recipient[] = [];
   const seen = new Set<string>();
   for (const user of contexts) {
-    if (user === null || seen.has(user.email)) continue;
+    if (user.email === exclude || seen.has(user.email)) continue;
     if (!onSide(user, input.locationId, input.side)) continue;
     seen.add(user.email);
     recipients.push({ email: user.email, name: user.name });

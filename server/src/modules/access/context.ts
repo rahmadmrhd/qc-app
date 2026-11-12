@@ -70,33 +70,51 @@ export function readAssignments(row: { assignments: string; role_ids: string }):
   return roleIds.length > 0 ? [{ locationId: null, roleIds }] : [];
 }
 
-/**
- * Konteks akses user, dimuat LANGSUNG dari MariaDB pada setiap permintaan (tanpa cache): perubahan akses, termasuk
- * pencabutan, berlaku pada permintaan berikutnya. Satu pernyataan untuk empat tabel kecil (users menurut email,
- * roles, locations, business_units).
- */
-export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
-  const email = normalizeEmail(rawEmail);
-  if (email === '') return null;
-  const result = await env.DB.prepare(ACCESS_SQL).bind(email).all<AccessRow>();
+/** Tabel bersama (peran, lokasi, BU) yang sama untuk semua user: dimuat sekali untuk banyak user sekaligus. */
+interface SharedAccess {
+  roleRows: { id: string; permissions: string }[];
+  briefRows: LocationBriefRow[];
+  buIds: string[];
+}
+
+function userRowOf(row: AccessRow): UserRow {
+  return {
+    id: row.a,
+    name: row.b,
+    status: row.c ?? '',
+    role_ids: row.d ?? '',
+    assignments: row.e ?? '',
+    bu_assignments: row.f ?? '',
+  };
+}
+
+/** Memisahkan baris hasil `UNION` menjadi baris user (bila ada) dan tabel bersama. */
+function partitionAccessRows(rows: readonly AccessRow[]): {
+  record: UserRow | null;
+  shared: SharedAccess;
+} {
   let record: UserRow | null = null;
-  const roleRows: { id: string; permissions: string }[] = [];
-  const briefRows: LocationBriefRow[] = [];
-  const buIds: string[] = [];
-  for (const row of result.results) {
-    if (row.k === 'u') {
-      record = {
-        id: row.a,
-        name: row.b,
-        status: row.c ?? '',
-        role_ids: row.d ?? '',
-        assignments: row.e ?? '',
-        bu_assignments: row.f ?? '',
-      };
-    } else if (row.k === 'r') roleRows.push({ id: row.a, permissions: row.b });
-    else if (row.k === 'b') buIds.push(row.a);
-    else briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
+  const shared: SharedAccess = { roleRows: [], briefRows: [], buIds: [] };
+  for (const row of rows) {
+    if (row.k === 'u') record = userRowOf(row);
+    else if (row.k === 'r') shared.roleRows.push({ id: row.a, permissions: row.b });
+    else if (row.k === 'b') shared.buIds.push(row.a);
+    else shared.briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
   }
+  return { record, shared };
+}
+
+/**
+ * SATU-SATUNYA definisi perhitungan hak akses: dari baris user (atau null) dan tabel bersama. Dipakai
+ * `loadUserContext` (satu user) dan `loadActiveUserContexts` (banyak user dengan tabel bersama dimuat sekali).
+ */
+function buildUserContext(
+  env: Env,
+  email: string,
+  record: UserRow | null,
+  shared: SharedAccess,
+): UserContext | null {
+  const { roleRows, briefRows, buIds } = shared;
   const briefs = briefRows.map(toLocationBrief);
   const activeLocationIds = briefs.filter((brief) => brief.active).map((brief) => brief.id);
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');
@@ -132,4 +150,45 @@ export async function loadUserContext(env: Env, rawEmail: string): Promise<UserC
     locations: access.byLocation,
     businessUnits: access.byBu,
   };
+}
+
+/**
+ * Konteks akses user, dimuat LANGSUNG dari MariaDB pada setiap permintaan (tanpa cache): perubahan akses, termasuk
+ * pencabutan, berlaku pada permintaan berikutnya. Satu pernyataan untuk empat tabel kecil (users menurut email,
+ * roles, locations, business_units).
+ */
+export async function loadUserContext(env: Env, rawEmail: string): Promise<UserContext | null> {
+  const email = normalizeEmail(rawEmail);
+  if (email === '') return null;
+  const result = await env.DB.prepare(ACCESS_SQL).bind(email).all<AccessRow>();
+  const { record, shared } = partitionAccessRows(result.results);
+  return buildUserContext(env, email, record, shared);
+}
+
+/** Tabel bersama saja (tanpa baris user): bentuk `UNION` sama dengan `ACCESS_SQL` agar dipartisi oleh kode yang sama. */
+const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c, NULL AS d, NULL AS e, NULL AS f FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL FROM business_units`;
+
+/**
+ * Konteks akses SEMUA user berstatus `active` dengan hanya dua kueri (user + tabel bersama), bukan satu kueri
+ * per user. Hasil identik dengan `loadUserContext` per user (definisi izin yang sama: `buildUserContext`).
+ * Dipakai penentuan penerima notifikasi.
+ */
+export async function loadActiveUserContexts(env: Env): Promise<UserContext[]> {
+  const [users, shared] = await Promise.all([
+    env.DB.prepare(
+      "SELECT id, email, name, status, role_ids, assignments, bu_assignments FROM users WHERE status = 'active'",
+    ).all<UserRow & { email: string }>(),
+    env.DB.prepare(SHARED_ACCESS_SQL).all<AccessRow>(),
+  ]);
+  const sharedAccess = partitionAccessRows(shared.results).shared;
+  const contexts: UserContext[] = [];
+  const seen = new Set<string>();
+  for (const user of users.results) {
+    const email = normalizeEmail(user.email);
+    if (email === '' || seen.has(email)) continue;
+    seen.add(email);
+    const context = buildUserContext(env, email, user, sharedAccess);
+    if (context !== null) contexts.push(context);
+  }
+  return contexts;
 }
