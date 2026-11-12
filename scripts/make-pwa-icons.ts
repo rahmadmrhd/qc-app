@@ -172,6 +172,7 @@ export function faviconSvg(): string {
   const tail = (radius: number) =>
     `${n(Q_CENTER.x + radius * DIAG)} ${n(Q_CENTER.y + radius * DIAG)}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <title>QC App</title>
   <rect width="100" height="100" rx="${n(CORNER)}" fill="#0a0a0a"/>
   <g fill="none" stroke="#fafafa" stroke-width="${stroke}">
     <circle cx="${n(Q_CENTER.x)}" cy="${n(Q_CENTER.y)}" r="${ring}"/>
