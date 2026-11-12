@@ -1,6 +1,7 @@
 import type { BusinessUnitOptionDto, ClonePresetInput, QrPresetDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { LinkField } from '@/components/link-field';
 import { BusyLabel } from '@/components/spinner';
@@ -44,6 +45,7 @@ export function ClonePresetDialog({
   const [name, setName] = useState(cloneNameOf(source.name));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useUnsavedChanges(open && (buId !== '' || name !== cloneNameOf(source.name)));
   const taken = new Set(presets.map((preset) => preset.buId).filter((id) => id !== ''));
   const options = businessUnitOptions(businessUnits, term).filter(
     (option) => !taken.has(option.id),

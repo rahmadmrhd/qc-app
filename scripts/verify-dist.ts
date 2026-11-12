@@ -68,7 +68,15 @@ const MUST_DENY = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
 ];
-const MUST_ALLOW = ['/', '/?authError=x', '/handover?x=1', '/handover?q=a/b.c'];
+const MUST_ALLOW = [
+  '/',
+  '/?authError=x',
+  '/handover?x=1',
+  '/handover?q=a/b.c',
+  '/apiary',
+  '/authors',
+  '/item/brands/abc',
+];
 
 const MANIFEST_FIELDS = [
   'name',

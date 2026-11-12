@@ -281,6 +281,15 @@ describe('checkPwa', () => {
     expect(checkPwa(healthyDist({ sw: queryDot })).join()).toContain('/handover?q=a/b.c');
   });
 
+  test('denylist berawalan luas (/api tanpa pembatas) menolak rute klien /apiary dan /authors', () => {
+    const prefixy = swOf({
+      denylist: String.raw`[/^\/api/,/^\/auth/,/^\/sync(?:[/?]|$)/,/^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/]`,
+    });
+    const text = checkPwa(healthyDist({ sw: prefixy })).join();
+    expect(text).toContain('/apiary');
+    expect(text).toContain('/authors');
+  });
+
   test('denylist yang terlalu luas (menolak rute klien) ditolak', () => {
     const greedy = swOf({ denylist: String.raw`[/^\/api/,/^\/auth/,/^\/sync/,/^\/handover/]` });
     expect(checkPwa(healthyDist({ sw: greedy })).join()).toContain('/handover?x=1');
