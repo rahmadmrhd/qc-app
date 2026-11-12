@@ -1,0 +1,9 @@
+{
+  "name": "@qc/countrylock",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -10,6 +10,9 @@
         "typescript": "^7.0.2",
       },
     },
+    "countrylock": {
+      "name": "@qc/countrylock",
+    },
     "server": {
       "name": "@qc/server",
       "dependencies": {
@@ -230,6 +233,8 @@
     "@pdf-lib/standard-fonts": ["@pdf-lib/standard-fonts@1.0.0", "", { "dependencies": { "pako": "^1.0.6" } }, "sha512-hU30BK9IUN/su0Mn9VdlVKsWBS6GyhVfqjwl1FjZN4TxP6cCw0jP2w7V3Hf5uX7M0AZJ16vey9yE0ny7Sa59ZA=="],
 
     "@pdf-lib/upng": ["@pdf-lib/upng@1.0.1", "", { "dependencies": { "pako": "^1.0.10" } }, "sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ=="],
+
+    "@qc/countrylock": ["@qc/countrylock@workspace:countrylock"],
 
     "@qc/server": ["@qc/server@workspace:server"],
 

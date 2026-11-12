@@ -1,0 +1,6 @@
+export HOME=/var/etc/persistent
+mkdir -p /var/etc/persistent/.ssh && touch /var/etc/persistent/.ssh/known_hosts
+grep -q "{ipServer} ssh-rsa" /var/etc/persistent/.ssh/known_hosts || echo {ipServer} ssh-rsa {sshKey} >> /var/etc/persistent/.ssh/known_hosts
+scp {usernameServer}@{ipServer}:/temp/2WA.bin /tmp/fwupdate.bin
+scp {usernameServer}@{ipServer}:/temp/system.cfg /tmp/
+cfgmtd -w -p /tmp/ && /sbin/fwupdate -m
