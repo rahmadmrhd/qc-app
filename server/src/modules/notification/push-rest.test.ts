@@ -147,6 +147,27 @@ describe('push.subscribe / unsubscribe', () => {
     expect(Number(oldest?.n)).toBe(0);
   });
 
+  test('batas langganan per pengguna tahan subscribe serentak (tak pernah melewati batas)', async () => {
+    for (let i = 0; i < PUSH_LIMITS.perUser - 2; i++) {
+      env.clock.advance(1000);
+      expect((await subscribe(WH, `https://push.example.test/awal${i}`)).status).toBe(200);
+    }
+    // Sisa ruang 2; 8 permintaan serentak dengan endpoint berbeda.
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => subscribe(WH, `https://push.example.test/serentak${i}`)),
+    );
+    for (const response of responses) expect(response.status).toBe(200);
+    expect(await subCount(WH)).toBe(PUSH_LIMITS.perUser);
+    // Preferensi bawaan tak berubah oleh baris kunci yang dibuat `subscribe`.
+    const pref = await env.DB.prepare(
+      'SELECT push_enabled, permission FROM notification_prefs WHERE recipient = ?',
+    )
+      .bind(WH)
+      .first<{ push_enabled: number | string; permission: string }>();
+    expect(Number(pref?.push_enabled)).toBe(1);
+    expect(pref?.permission).toBe('default');
+  });
+
   test('tanpa sesi -> 401', async () => {
     const response = await rest.post('/push/subscriptions', {
       email: null,

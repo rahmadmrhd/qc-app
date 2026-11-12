@@ -214,4 +214,11 @@ describe('purgeOldNotifications', () => {
     const left = await listNotifications(env, ME, { locationIds: ['loc-a'], limit: 10 });
     expect(left.items.map((n) => n.number)).toEqual(['NEW']);
   });
+
+  test('ada indeks yang dimulai dari created_at untuk pembersihan (migrasi 0012)', async () => {
+    const rows = await env.DB.prepare(
+      "SHOW INDEX FROM notifications WHERE Key_name = 'notifications_created'",
+    ).all<{ Column_name: string; Seq_in_index: number | string }>();
+    expect(rows.results.map((r) => r.Column_name)).toEqual(['created_at']);
+  });
 });

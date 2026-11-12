@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import type { DbStatement } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -41,30 +40,44 @@ export async function subscribePush(
   const recipient = normalizeEmail(user.email);
   const hash = endpointHash(input.endpoint);
   const now = nowIso(env);
-  const own = await env.DB.prepare(
-    'SELECT endpoint_hash FROM push_subscriptions WHERE recipient = ? ORDER BY created_at, endpoint_hash',
-  )
-    .bind(recipient)
-    .all<{ endpoint_hash: string }>();
-  const statements: DbStatement[] = [];
-  const known = own.results.some((row) => row.endpoint_hash === hash);
-  if (!known && own.results.length >= PUSH_LIMITS.perUser) {
-    // Batas per pengguna: langganan paling lama (kemungkinan perangkat lama) diganti.
-    const overflow = own.results.length - PUSH_LIMITS.perUser + 1;
-    for (const row of own.results.slice(0, overflow)) {
-      statements.push(
-        env.DB.prepare(
-          'DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ?',
-        ).bind(row.endpoint_hash, recipient),
-      );
+  // Batas per pengguna dijaga serial lewat kunci baris `notification_prefs` milik pengguna: tanpa ini, `subscribe`
+  // serentak sama-sama melihat < batas lalu sama-sama menambah (melewati 20). Baris dibuat bila belum ada (nilai
+  // bawaan = perilaku tanpa baris) lalu dikunci `FOR UPDATE`; transaksi memuat ulang daftar langganan di bawah kunci.
+  await env.DB.transaction(async (tx) => {
+    await tx
+      .prepare(
+        'INSERT INTO notification_prefs (recipient, updated_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE recipient = recipient',
+      )
+      .bind(recipient, now)
+      .run();
+    await tx
+      .prepare('SELECT recipient FROM notification_prefs WHERE recipient = ? FOR UPDATE')
+      .bind(recipient)
+      .first();
+    const own = await tx
+      .prepare(
+        'SELECT endpoint_hash FROM push_subscriptions WHERE recipient = ? ORDER BY created_at, endpoint_hash',
+      )
+      .bind(recipient)
+      .all<{ endpoint_hash: string }>();
+    const known = own.results.some((row) => row.endpoint_hash === hash);
+    if (!known && own.results.length >= PUSH_LIMITS.perUser) {
+      // Batas per pengguna: langganan paling lama (kemungkinan perangkat lama) diganti.
+      const overflow = own.results.length - PUSH_LIMITS.perUser + 1;
+      for (const row of own.results.slice(0, overflow)) {
+        await tx
+          .prepare('DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ?')
+          .bind(row.endpoint_hash, recipient)
+          .run();
+      }
     }
-  }
-  statements.push(
-    env.DB.prepare(
-      "INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE endpoint = VALUES(endpoint), p256dh = VALUES(p256dh), auth = VALUES(auth), fail_count = 0, last_error = '', last_error_at = ''",
-    ).bind(hash, recipient, input.endpoint, input.p256dh, input.auth, now),
-  );
-  await env.DB.batch(statements);
+    await tx
+      .prepare(
+        "INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE endpoint = VALUES(endpoint), p256dh = VALUES(p256dh), auth = VALUES(auth), fail_count = 0, last_error = '', last_error_at = ''",
+      )
+      .bind(hash, recipient, input.endpoint, input.p256dh, input.auth, now)
+      .run();
+  });
   return { ok: true };
 }
 
