@@ -163,7 +163,7 @@ Selain `config.QC` dan berkas `/temp`, **konfigurasi router jump itu sendiri** (
 - **Semua router jump memakai konfigurasi yang sama** [Pemilik]. Nilai khas per router (mis. *identity*) **tidak disimpan di paket**: bila perlu, diisi operator di **dialog sinkron konfigurasi** saat penerapan [Pemilik: "tidak perlu, atau bisa diatur saat sync konfigurasi dari dialog"].
 - **Mekanisme penerapan** [Pilihan perancang, bukan keputusan pemilik; ubah bila tidak cocok]: skrip **idempoten dijalankan di router yang sedang hidup** lewat `/import` (tanpa reboot); mode "keadaan penuh pada router yang direset" (`reset-configuration run-after-reset`) hanya opsional per berkas bila kelak dibutuhkan.
 - Anti-tujuan tambahan **A6**: router terkunci dari desktop (akses manajemen terputus) akibat penerapan konfigurasi.
-- Catatan kode lama: komentar `SshInjectSession` menyebut RouterOS *device-mode* memblokir `:import` pada Mikrotik uji; wajib dicek apakah router jump terkena batasan yang sama (§11).
+- Catatan kode lama: komentar `SshInjectSession` menyebut RouterOS *device-mode* memblokir `:import` pada Mikrotik uji; wajib dicek apakah router jump terkena batasan yang sama (§11). **Dijawab pemilik 2026-11-12:** router jump dipastikan sudah di-*unlock* sehingga `:import` tidak diblokir *device-mode*; spike (§11 butir 7) tetap mengukurnya sebagai konfirmasi di perangkat nyata, bukan lagi risiko terbuka.
 
 Hal teknis yang harus divalidasi di perangkat nyata (spike, §11): apakah RouterOS pada router jump melayani SFTP ke `/temp/`, apakah penggantian nama via SFTP didukung, bagaimana memverifikasi hash di RouterOS (bila tidak ada: ukuran + penanda sebagai pengaman), perilaku pada berbagai versi RouterOS.
 
@@ -188,7 +188,7 @@ Router jump **selalu diperlakukan sebagai Mikrotik** apa pun merk target (sintak
 - **Nilai disisipkan dengan escape yang benar** (aplikasi lama menyisipkan mentah: kutip/`$`/`"` merusak skrip) dan **kata sandi disamarkan di log** (lama: tercetak) [Pilihan perancang].
 - `connectVia`: `Server` berarti sesi SSH ke router jump (skrip Mikrotik meng-FTP dari `/temp/` router ke target), `Target` berarti sesi SSH langsung ke perangkat (skrip Ubiquiti meng-`scp` dari router). Multi mengabaikan `connectVia` dan selalu ke IP perangkat.
 - Eksekusi lewat **shell interaktif** (bukan exec-channel): pada perangkat nyata exec-channel tidak mempertahankan state antar baris di Mikrotik maupun Ubiquiti. Satu baris per kiriman, tiap baris diikuti penanda, baris berikutnya hanya setelah baris sebelumnya tuntas. Timeout 2 menit per baris, 5 menit total, koneksi 10 dtk; koneksi putus **setelah ada output** dianggap sukses (perangkat reboot/`fwupdate`), tanpa output berarti gagal. Pembatalan tidak boleh melontarkan pengecualian yang menutup aplikasi.
-- **Penanda (sentinel) untuk Mikrotik diganti ke perintah RouterOS yang valid (`:put`)**: aplikasi lama memakai `echo` yang bukan perintah RouterOS dan hasil ujinya tidak terdokumentasi. Wajib diuji di router nyata [Pilihan perancang; belum teruji].
+- **Penanda (sentinel) untuk Mikrotik diganti ke perintah RouterOS yang valid (`:put`)**: aplikasi lama memakai `echo` yang bukan perintah RouterOS dan hasil ujinya tidak terdokumentasi. Wajib diuji di router nyata [Pilihan perancang]. **Dikonfirmasi pemilik 2026-11-12:** `:put` memang penanda yang benar untuk RouterOS (`echo` bukan perintah RouterOS); uji andal-tidaknya pada router nyata tetap dilakukan harness spike sebagai konfirmasi sebelum Task 18.
 - Host key SSH: untuk perangkat target dan router tetap diterima otomatis seperti lama (jaringan lokal [Pemilik]); host key router direkam untuk `{sshKey}`.
 
 ### 6.4 Mode Multi-Device (Ubiquiti saja)
@@ -242,6 +242,8 @@ Ringkas (selengkapnya di lampiran §8.1): router jump selalu Mikrotik; serial = 
 - Perubahan tampilan di `web/` ikut ke desktop tanpa pekerjaan UI terpisah dan **tanpa pemasangan ulang**: laptop yang online mengunduh bundel UI baru, memverifikasinya, dan memakainya pada peluncuran berikutnya; bundel dengan `minBridge` lebih tinggi ditolak dengan permintaan memperbarui aplikasi; bundel rusak atau gagal dimuat jatuh kembali ke UI sebelumnya lalu UI dasar; Country Lock tetap berjalan di semua keadaan itu.
 
 ## 11. Risiko dan validasi (spike sebelum fase 1)
+
+**Keputusan pemilik 2026-11-12 (menyesuaikan gerbang):** pemilik menyatakan (a) penanda RouterOS yang benar adalah `:put`, (b) router jump sudah di-*unlock* sehingga `:import` tidak diblokir, (c) SFTP ke `/temp/` sejauh ini didukung, dan (d) `{sshKey}` diambil saat konek ke router jump (kunci tersimpan di `config.QC` semuanya RSA). Berdasarkan itu, **Task 10–17 (shell desktop dan Country Lock mode tunggal) dikerjakan tanpa menunggu laporan spike**; harness spike tetap dijalankan pemilik di perangkat nyata sebagai **konfirmasi sebelum Task 18**, dan bila hasilnya menyimpang (mis. `:put` tak andal, SFTP/rename gagal, `:import` terblokir) Fase 1 berhenti dan desain diperbarui dengan persetujuan pemilik seperti semula. Pernyataan pemilik adalah dasar keputusan, bukan hasil ukur.
 Pelaksana: perangkat dan router jump nyata hanya dimiliki **pemilik**. Pembangun menyediakan skrip spike dan **server SSH/SFTP palsu** untuk tes otomatis (dengan risiko asumsi meleset dari perangkat sungguhan); pemilik menjalankan spike di perangkat nyata dan melaporkan hasilnya. **Gerbang**: bila hasil spike mengubah desain (mis. SFTP RouterOS tidak tersedia atau sentinel `:put` tidak andal), fase 1 berhenti dan desain diperbarui dengan persetujuan pemilik sebelum lanjut [Pilihan perancang].
 
 1. Shell interaktif `ssh2` (Node 24 di Electron) ke RouterOS dan ke dropbear/BusyBox Ubiquiti: sentinel `:put` di RouterOS, ANSI/encoding keluaran, perilaku pada lebar 200 kolom dan baris panjang.
@@ -271,7 +273,7 @@ Nama modul/izin/rute final; bentuk persis manifest dan penanda router; pustaka S
 4. **[Asumsi]** Paket pertama butuh server terjangkau sekali di laptop baru; tanpa itu Country Lock tidak aktif. (Pemilik menyatakan tidak perlu login, bukan tidak perlu jaringan.)
 5. Isi dan ukuran total berkas router (`.npk`, `.bin`, `system.cfg*`), karena tidak ada di `~/Desktop/Country Lock2`.
 6. Hasil uji Mikrotik nyata untuk sentinel dan alur skrip (tugas validasi hardware di spek lama tidak dicentang).
-7. Versi RouterOS dan jenis host key pada 7 router jump.
+7. Versi RouterOS dan jenis host key pada 7 router jump. **Sebagian terjawab 2026-11-12:** ketujuh kunci pada `sshKeys` di `config.QC` nyata berawalan `AAAAB3NzaC1yc2EA` (= `ssh-rsa`), jadi router jump yang ada memakai kunci RSA; `{sshKey}` memang diambil dari host key router saat jabat tangan (tidak disimpan manual) sesuai §4.2. Versi RouterOS tetap belum diketahui.
 8. Ada tidaknya sertifikat code-signing (§3.3 mengasumsikan tidak ada).
 9. **Mekanisme penerapan konfigurasi router (§5.1)**: dipilih perancang (patch idempoten via `/import`, tanpa reboot); pemilik belum menanggapi secara eksplisit. Teruji di spike (§11).
 10. ~~Nilai khas per router~~ **Dijawab pemilik 2026-11-06**: semua router sama; *identity* tidak perlu atau diisi di dialog sinkron (§5.1). Isi `.rsc` nyata tetap dibutuhkan untuk menguji penerapan.
