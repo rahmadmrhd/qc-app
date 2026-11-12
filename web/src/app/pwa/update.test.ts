@@ -323,3 +323,19 @@ test('notifyChunkLoadFailure menyalakan needRefresh', () => {
   notifyChunkLoadFailure();
   expect(usePwaUpdateSnapshotForTests()).toBe(true);
 });
+
+test('dismiss menyembunyikan tanpa membatalkan needRefresh; pemicu baru mereset', () => {
+  const reg = fakeRegister();
+  startPwaUpdates({ register: reg.register, win: fakeWindow().win });
+  reg.needRefresh();
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.dismissed).toBe(false);
+  act(() => hook.result.current.dismiss());
+  expect(hook.result.current.needRefresh).toBe(true);
+  expect(hook.result.current.dismissed).toBe(true);
+  act(() => reg.needRefresh());
+  expect(hook.result.current.dismissed).toBe(false);
+  act(() => hook.result.current.dismiss());
+  act(() => notifyChunkLoadFailure());
+  expect(hook.result.current.dismissed).toBe(false);
+});

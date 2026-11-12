@@ -16,6 +16,8 @@ const MAX_INTERVAL_MS = 60 * 60_000;
 const EVENT_CHECK_DEBOUNCE_MS = 2_000;
 
 let needRefresh = false;
+// "Nanti": spanduk disembunyikan untuk sisa pemuatan halaman ini (tidak disimpan; pemicu baru mereset).
+let dismissed = false;
 let updateSW: ((reloadPage?: boolean) => Promise<void>) | undefined;
 let currentWin: Window | undefined;
 let currentRegistration: ServiceWorkerRegistration | undefined;
@@ -23,11 +25,15 @@ let currentRegistration: ServiceWorkerRegistration | undefined;
 let reloadRequested = false;
 const listeners = new Set<() => void>();
 
-/** Mengembalikan true bila status berhasil diperbarui (dipakai penangan yang baru mencegah galat bila berhasil). */
+/**
+ * Menyalakan (atau mematikan) status versi baru; menyalakan juga memunculkan lagi spanduk yang disembunyikan.
+ * Mengembalikan true bila status berhasil diperbarui (penangan preloadError baru mencegah galat bila berhasil).
+ */
 function setNeedRefresh(value: boolean): boolean {
   try {
-    if (needRefresh !== value) {
+    if (needRefresh !== value || (value && dismissed)) {
       needRefresh = value;
+      dismissed = false;
       for (const listener of listeners) listener();
     }
     return true;
@@ -143,14 +149,33 @@ function reload() {
   void updateSW?.(true);
 }
 
-/** Status pembaruan: `needRefresh` menyala bila versi baru sudah diunduh; `reload` mengaktifkannya dan memuat ulang. */
-export function usePwaUpdate(): { needRefresh: boolean; reload: () => void } {
-  const value = useSyncExternalStore(
-    subscribe,
-    () => needRefresh,
-    () => false,
+function dismiss() {
+  if (!needRefresh || dismissed) return;
+  dismissed = true;
+  for (const listener of listeners) listener();
+}
+
+// Snapshot primitif: 0 = tak ada pembaruan, 1 = ada dan tampil, 2 = ada tetapi disembunyikan ("Nanti").
+function snapshot(): number {
+  if (!needRefresh) return 0;
+  return dismissed ? 2 : 1;
+}
+
+/**
+ * Status pembaruan: `needRefresh` menyala bila versi baru sudah diunduh; `dismissed` bila pengguna memilih "Nanti";
+ * `reload` mengaktifkannya dan memuat ulang.
+ */
+export function usePwaUpdate(): {
+  needRefresh: boolean;
+  dismissed: boolean;
+  reload: () => void;
+  dismiss: () => void;
+} {
+  const value = useSyncExternalStore(subscribe, snapshot, () => 0);
+  return useMemo(
+    () => ({ needRefresh: value !== 0, dismissed: value === 2, reload, dismiss }),
+    [value],
   );
-  return useMemo(() => ({ needRefresh: value, reload }), [value]);
 }
 
 /** Hanya untuk tes: membaca status tanpa memasang hook. */
@@ -160,6 +185,7 @@ export function usePwaUpdateSnapshotForTests(): boolean {
 
 export function resetPwaUpdateForTests(): void {
   needRefresh = false;
+  dismissed = false;
   updateSW = undefined;
   currentWin = undefined;
   currentRegistration = undefined;

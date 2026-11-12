@@ -4,9 +4,9 @@ import { usePwaUpdate } from './update';
 
 /** Spanduk "Ada versi baru" (FR-P11-P13): tidak memuat ulang sendiri; peringatan bila ada formulir belum disimpan. */
 export function PwaUpdateBanner() {
-  const { needRefresh, reload } = usePwaUpdate();
+  const { needRefresh, dismissed, reload, dismiss } = usePwaUpdate();
   const unsaved = useHasUnsavedChanges();
-  if (!needRefresh) return null;
+  if (!needRefresh || dismissed) return null;
   return (
     <div
       role="status"
@@ -21,9 +21,14 @@ export function PwaUpdateBanner() {
             : 'Muat ulang untuk memakai versi terbaru.'}
         </p>
       </div>
-      <Button size="sm" onClick={reload} className="shrink-0">
-        Muat ulang
-      </Button>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={dismiss}>
+          Nanti
+        </Button>
+        <Button size="sm" onClick={reload}>
+          Muat ulang
+        </Button>
+      </div>
     </div>
   );
 }

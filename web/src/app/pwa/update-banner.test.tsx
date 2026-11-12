@@ -2,7 +2,12 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
-import { type RegisterSW, resetPwaUpdateForTests, startPwaUpdates } from './update';
+import {
+  notifyChunkLoadFailure,
+  type RegisterSW,
+  resetPwaUpdateForTests,
+  startPwaUpdates,
+} from './update';
 import { PwaUpdateBanner } from './update-banner';
 
 // Memulai pemeriksaan pembaruan dengan register palsu; mengembalikan pemicu "versi baru siap" dan updateSW.
@@ -85,4 +90,40 @@ test('tata letak tetap di bawah dan muat di layar sempit', () => {
   expect(banner.className).toMatch(/\bbottom-\d/);
   expect(banner.className).toMatch(/\binset-x-\d/);
   expect(banner.className).toMatch(/\bmax-w-/);
+});
+
+test('Nanti menyembunyikan spanduk tanpa memuat ulang; versi baru lain menampilkannya lagi', async () => {
+  const fake = startFake();
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  expect(fake.updateSW).not.toHaveBeenCalled();
+  fake.announce();
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+});
+
+test('Nanti lalu galat muat potongan (pemicu baru) menampilkan spanduk lagi', async () => {
+  const fake = startFake();
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  act(() => notifyChunkLoadFailure());
+  expect(screen.getByTestId('pwa-update-banner')).toBeInTheDocument();
+});
+
+test('dengan formulir kotor, peringatan tampil sebelum spanduk ditutup dengan Nanti', async () => {
+  const fake = startFake();
+  render(
+    <>
+      <Dirty />
+      <PwaUpdateBanner />
+    </>,
+  );
+  fake.announce();
+  expect(screen.getByText(/hilang bila dimuat ulang/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Nanti' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
 });
