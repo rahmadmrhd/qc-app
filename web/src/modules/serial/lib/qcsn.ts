@@ -88,15 +88,32 @@ export interface QcsnImport {
   problems: QcsnProblem[];
   /** Berkas tak dapat dipakai sama sekali (alasan untuk pengguna); `null` bila sebagian atau seluruh baris terbaca. */
   fatal: string | null;
+  /** Peringatan (bukan galat): checksum tidak cocok pada berkas yang sebagian barisnya bermasalah. */
+  warning: string | null;
+}
+
+const CHECKSUM_WARNING = 'Checksum berkas tidak cocok; isi berkas mungkin rusak atau diubah';
+
+/** Checksum atas baris mentah berkas (termasuk yang bermasalah); `null` bila bentuknya tak dapat dihitung. */
+async function rawChecksum(text: string): Promise<string | null> {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const rows = (parsed as { rows?: unknown }).rows;
+    if (!Array.isArray(rows)) return null;
+    return await checksumOf(rows as QcsnRow[]);
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Membaca berkas `.qcsn`: struktur dan baris divalidasi `parseQcsn`; checksum diperiksa bila semua baris terbaca
- * (baris bermasalah membuat checksum atas baris sah tak dapat dibandingkan; masalahnya sudah dilaporkan per baris).
+ * Membaca berkas `.qcsn`: struktur dan baris divalidasi `parseQcsn`. Checksum selalu diperiksa: atas baris sah bila
+ * semuanya terbaca (tidak cocok = fatal), atau atas baris mentah bila ada yang bermasalah (tidak cocok = peringatan,
+ * baris sah tetap diimpor).
  */
 export async function importQcsn(text: string): Promise<QcsnImport> {
   const parsed = parseQcsn(text);
-  if (!parsed.ok) return { rows: [], problems: [], fatal: parsed.message };
+  if (!parsed.ok) return { rows: [], problems: [], fatal: parsed.message, warning: null };
   if (parsed.problems.length === 0) {
     const expected = await checksumOf(parsed.rows);
     if (expected !== parsed.file.checksum) {
@@ -104,8 +121,16 @@ export async function importQcsn(text: string): Promise<QcsnImport> {
         rows: [],
         problems: [],
         fatal: 'Berkas rusak atau terpotong (checksum tidak cocok)',
+        warning: null,
       };
     }
+    return { rows: parsed.rows, problems: [], fatal: null, warning: null };
   }
-  return { rows: parsed.rows, problems: parsed.problems, fatal: null };
+  const raw = await rawChecksum(text);
+  return {
+    rows: parsed.rows,
+    problems: parsed.problems,
+    fatal: null,
+    warning: raw === parsed.file.checksum ? null : CHECKSUM_WARNING,
+  };
 }

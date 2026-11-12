@@ -1,4 +1,4 @@
-import { QCSN_MAX_ROWS } from '@shared/serial-file';
+import { QCSN_MAX_ROWS, qcsnCanonical } from '@shared/serial-file';
 import { expect, test } from 'vitest';
 import { addSerials, type Defaults, type StagingRow } from './draft';
 import { exportableRows, exportQcsn, importQcsn } from './qcsn';
@@ -106,11 +106,23 @@ test('1.001 baris, versi lebih baru, bukan berkas QC, dan bukan JSON: fatal', as
   expect((await importQcsn('bukan json')).fatal).not.toBeNull();
 });
 
-test('baris bermasalah dilaporkan tanpa menggagalkan berkas', async () => {
-  const base = JSON.parse(await exportQcsn(rows(['A1', 'B2']), APP, NOW));
-  base.rows[1].testDate = 'kemarin';
-  const result = await importQcsn(JSON.stringify(base));
-  expect(result.fatal).toBeNull();
-  expect(result.rows.map((row) => row.serial)).toEqual(['A1']);
-  expect(result.problems).toEqual([{ row: 2, message: expect.stringContaining('testDate') }]);
+test('baris bermasalah: checksum atas baris mentah utuh = tanpa peringatan; berubah = peringatan, baris sah tetap masuk', async () => {
+  const BEL = String.fromCharCode(7);
+  const file = JSON.parse(await exportQcsn(rows(['A1', 'B2']), APP, NOW));
+  file.rows[1].serial = `bad${BEL}x`;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(qcsnCanonical(file.rows)),
+  );
+  file.checksum = `sha256:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  const intact = await importQcsn(JSON.stringify(file));
+  expect(intact.fatal).toBeNull();
+  expect(intact.rows.map((row) => row.serial)).toEqual(['A1']);
+  expect(intact.problems).toHaveLength(1);
+  expect(intact.warning).toBeNull();
+  file.rows[0].note = 'diubah';
+  const tampered = await importQcsn(JSON.stringify(file));
+  expect(tampered.fatal).toBeNull();
+  expect(tampered.rows.map((row) => row.serial)).toEqual(['A1']);
+  expect(tampered.warning).toMatch(/checksum/i);
 });
