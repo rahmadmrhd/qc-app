@@ -196,7 +196,7 @@ async function createPostel(
 }
 
 describe('postelFiles.upload', () => {
-  test('PNG: 201 + Location + dimensi terbaca; berkas belum bertuan dan tidak dibagikan di Drive', async () => {
+  test('PNG: 201 + Location, dimensi tidak disimpan; berkas belum bertuan dan tidak dibagikan di Drive', async () => {
     const bytes = png(640, 480);
     const response = await uploadRaw(bytes, 'image/png');
     expect(response.status).toBe(201);
@@ -211,7 +211,7 @@ describe('postelFiles.upload', () => {
       created_by: EDITOR,
       status: 'active',
     });
-    expect([Number(row.width), Number(row.height)]).toEqual([640, 480]);
+    expect([Number(row.width), Number(row.height)]).toEqual([0, 0]);
     const stored = [...env.BRIDGE.state.files.values()][0];
     expect(stored?.mime).toBe('image/png');
     expect(stored?.shared).toBe(false);
@@ -228,15 +228,15 @@ describe('postelFiles.upload', () => {
     expect(stored?.shared).toBe(false);
   });
 
-  test('WebP dan JPEG diterima dengan dimensi dari header', async () => {
+  test('WebP dan JPEG diterima (dimensi tidak disimpan)', async () => {
     const w = await upload(webp(100, 50), 'image/webp');
     const j = await upload(jpeg(320, 200), 'image/jpeg');
     expect(w.filename).toMatch(/\.webp$/);
     expect(j.filename).toMatch(/\.jpg$/);
     const dims = await rows('SELECT mime, width, height FROM files ORDER BY mime');
     expect(dims.map((r) => [r.mime, Number(r.width), Number(r.height)])).toEqual([
-      ['image/jpeg', 320, 200],
-      ['image/webp', 100, 50],
+      ['image/jpeg', 0, 0],
+      ['image/webp', 0, 0],
     ]);
   });
 
@@ -619,15 +619,17 @@ describe('readFile: berkas non-gambar tidak menyentuh cache isi', () => {
 });
 
 describe('postelFiles.upload: dimensi dan batas unggahan tertunda', () => {
-  test('lebar 2^31 atau sisi > 10000 piksel ditolak sebelum menyentuh Drive; 10000 diterima', async () => {
-    for (const bytes of [png(2 ** 31, 10), png(10, 10_001), jpeg(65_535, 20)]) {
-      const mime = bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
-      const response = await uploadRaw(bytes, mime);
-      expect(response.status).toBe(422);
-      expect((await jsonOf(response)).code).toBe('VALIDATION');
+  test('dimensi gambar tidak dibatasi dan tidak disimpan: header besar atau menipu tetap diterima, lebar/tinggi 0', async () => {
+    // Termasuk lebar 2^31 (melampaui INT bila disimpan) dan sisi > 10000 piksel: lampiran hanya diunduh.
+    for (const bytes of [png(2 ** 31, 10), png(10, 10_001), png(30_000, 30_000)]) {
+      const response = await uploadRaw(bytes, 'image/png');
+      expect(response.status).toBe(201);
+      const id = (await jsonOf(response)).id as string;
+      const row = await env.DB.prepare('SELECT width, height FROM files WHERE id = ?')
+        .bind(id)
+        .first<{ width: number; height: number }>();
+      expect(row).toEqual({ width: 0, height: 0 });
     }
-    expect(env.BRIDGE.state.files.size).toBe(0);
-    expect((await uploadRaw(png(10_000, 10_000), 'image/png')).status).toBe(201);
   });
 
   test('batas unggahan belum dipakai: pesan menyebut lampiran Postel (bukan gambar item)', async () => {

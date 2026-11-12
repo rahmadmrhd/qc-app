@@ -28,10 +28,10 @@ test('postelUploadError: pesan field bytes/mime dari server apa adanya; lainnya 
   expect(
     postelUploadError(
       new ApiError('VALIDATION', 'Data tidak valid', 'r', {
-        bytes: 'Sisi gambar maksimal 10000 piksel',
+        bytes: 'Dimensi gambar tidak terbaca',
       }),
     ),
-  ).toBe('Sisi gambar maksimal 10000 piksel');
+  ).toBe('Dimensi gambar tidak terbaca');
   expect(
     postelUploadError(
       new ApiError('VALIDATION', 'x', 'r', { mime: 'Hanya JPEG, PNG, WebP, atau PDF' }),

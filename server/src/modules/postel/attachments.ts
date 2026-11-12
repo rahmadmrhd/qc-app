@@ -20,7 +20,6 @@ import type {
 } from '@shared/contract';
 import { isImageMime, readImageDimensions } from '@shared/files';
 import { hasLevel } from '@shared/permissions';
-import { POSTEL_LIMITS } from '@shared/postel';
 
 /**
  * Lampiran catatan Postel (gambar dan PDF): berkas biasa di tabel `files` dengan pemilik `postel` (`owner_id` =
@@ -62,35 +61,24 @@ export async function loadAttachmentDtos(
 }
 
 /**
- * Unggah lampiran: tanda tangan byte sudah dicek validator; dimensi gambar dibaca dari header (tidak terbaca = ditolak),
- * PDF disimpan dengan lebar dan tinggi 0. Drive dulu lalu baris database (lihat `uploadFile`).
+ * Unggah lampiran: tanda tangan byte sudah dicek validator; header gambar harus terbaca (tidak terbaca = ditolak), tanpa
+ * batas dimensi; lebar dan tinggi disimpan 0 untuk semua lampiran. Drive dulu lalu baris database (lihat `uploadFile`).
  */
 export async function uploadPostelFile(
   env: Env,
   input: UploadPostelFileInput,
   actor: UserContext,
 ): Promise<PostelAttachmentDto> {
-  let width = 0;
-  let height = 0;
-  if (isImageMime(input.mime)) {
-    const dimensions = readImageDimensions(input.mime, input.bytes);
-    if (dimensions === null) {
-      const message = 'Dimensi gambar tidak terbaca';
-      throw appError('VALIDATION', message, { bytes: message });
-    }
-    // Sebelum menulis ke Drive: dimensi di luar batas wajar (header yang menipu) ditolak.
-    if (
-      dimensions.width > POSTEL_LIMITS.attachmentSideMax ||
-      dimensions.height > POSTEL_LIMITS.attachmentSideMax
-    ) {
-      const message = `Sisi gambar maksimal ${POSTEL_LIMITS.attachmentSideMax} piksel`;
-      throw appError('VALIDATION', message, { bytes: message });
-    }
-    ({ width, height } = dimensions);
+  // Lampiran hanya diunduh (tak pernah dirender di halaman atau dikecilkan), jadi dimensinya tidak dipakai dan tidak
+  // dibatasi: kolom `files.width/height` diisi 0 seperti PDF (tanpa risiko luapan INT dari header yang menipu).
+  // Header yang tak terbaca tetap ditolak sebagai pemeriksaan keutuhan gambar.
+  if (isImageMime(input.mime) && readImageDimensions(input.mime, input.bytes) === null) {
+    const message = 'Dimensi gambar tidak terbaca';
+    throw appError('VALIDATION', message, { bytes: message });
   }
   const file = await uploadFile(
     env,
-    { mime: input.mime, bytes: input.bytes, width, height },
+    { mime: input.mime, bytes: input.bytes, width: 0, height: 0 },
     actor,
     'Terlalu banyak lampiran yang belum dipakai. Simpan catatan Postel yang sedang diedit terlebih dulu.',
   );
