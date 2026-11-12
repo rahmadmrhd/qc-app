@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { can, requireAnyPermission } from '@/modules/auth/permissions';
+import { canWriteSerials, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { SerialListPage } from '@/modules/serial/components/serial-list-page';
 import { serialSearchSchema } from '@/modules/serial/lib/list-filter';
@@ -25,7 +25,7 @@ function SerialListRoute() {
         void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
       }
       onOpen={(id) => void navigate({ to: '/serial/$serialId', params: { serialId: id } })}
-      onNew={can(me, 'serial', 'edit') ? () => void navigate({ to: '/serial/new' }) : undefined}
+      onNew={canWriteSerials(me) ? () => void navigate({ to: '/serial/new' }) : undefined}
     />
   );
 }

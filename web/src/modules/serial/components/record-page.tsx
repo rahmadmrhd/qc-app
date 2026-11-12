@@ -1,6 +1,6 @@
-import { isIsoDate, SERIAL_LIMITS } from '@shared/serials';
+import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,10 +20,15 @@ import {
   toBatches,
   toRowInput,
 } from '../lib/draft';
-import { clearDraft, loadDraft, saveDraft } from '../lib/draft-store';
-import { todayWib } from '../lib/locations';
+import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
+import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
+import { serialLocationOptions, todayWib } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
-import { serialStickerOptionsQueryOptions, useSaveSerialBatch } from '../queries';
+import {
+  serialItemOptionsQueryOptions,
+  serialStickerOptionsQueryOptions,
+  useSaveSerialBatch,
+} from '../queries';
 import { BulkEditBar } from './bulk-edit-bar';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
@@ -42,6 +47,8 @@ interface SaveSummary {
   created: number;
   duplicate: number;
   failed: number;
+  /** Baris yang tidak dikirim karena item atau BU-nya tidak lagi sah (ditandai di tabel). */
+  skipped: number;
 }
 
 export interface RecordPageProps {
@@ -82,9 +89,16 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
     parts.push(`${report.rejected.length} ditolak (${report.rejected.slice(0, 3).join(', ')})`);
   }
   if (report.truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris tabel tercapai`);
-  const feedback: ScanFeedback =
-    report.added > 0 ? 'added' : report.duplicates > 0 ? 'duplicate' : 'rejected';
-  const tone: NoticeTone = report.added > 0 && !report.truncated ? 'info' : 'warn';
+  // Tambahan sebagian (ada yang ditolak atau terpotong) tidak berbunyi nada sukses.
+  const partial = report.rejected.length > 0 || report.truncated;
+  const feedback: ScanFeedback = partial
+    ? 'rejected'
+    : report.added > 0
+      ? 'added'
+      : report.duplicates > 0
+        ? 'duplicate'
+        : 'rejected';
+  const tone: NoticeTone = report.added > 0 && !partial ? 'info' : 'warn';
   return { feedback, notice: { tone, text: parts.join('; ') || 'Tidak ada serial yang dibaca' } };
 }
 
@@ -98,10 +112,10 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
-  const setAllRows = (next: StagingRow[]) => {
+  const setAllRows = useCallback((next: StagingRow[]) => {
     rowsRef.current = next;
     setRows(next);
-  };
+  }, []);
 
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
@@ -116,7 +130,11 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   const [draftFailed, setDraftFailed] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  // Draf otomatis (ditunda); saat halaman ditutup, isi terakhir langsung disimpan.
+  // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
+  useEffect(() => {
+    resumeDraftWrites();
+  }, []);
+  // Draf otomatis (ditunda); saat halaman ditutup, isi terakhir langsung disimpan (kecuali sesudah keluar).
   useEffect(() => {
     const timer = setTimeout(() => setDraftFailed(!saveDraft(ownerKey, rows)), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
@@ -161,40 +179,53 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     return feedback;
   }
 
-  function patchRow(clientId: string, change: (row: StagingRow) => StagingRow) {
-    setAllRows(rowsRef.current.map((row) => (row.clientId === clientId ? change(row) : row)));
-  }
-
-  const select = (clientId: string, selected: boolean) =>
-    patchRow(clientId, (row) => ({ ...row, selected }));
-  const selectAll = (selected: boolean) =>
-    setAllRows(rowsRef.current.map((row) => ({ ...row, selected })));
-  const edit = (clientId: string, patch: Partial<StagingRow>) =>
-    patchRow(clientId, (row) => ({ ...clearOutcome(row), ...patch }));
-
-  function commitSerial(clientId: string, serial: string): string | null {
-    if (rowsRef.current.some((row) => row.clientId !== clientId && row.serial === serial)) {
-      return 'Serial sudah ada di tabel';
-    }
-    edit(clientId, { serial });
-    return null;
-  }
-
-  function removeOne(clientId: string) {
-    setAllRows(removeRows(rowsRef.current, new Set([clientId])));
-  }
+  // Handler baris stabil (hanya membaca `rowsRef`) agar `memo(RowView)` mencegah render ulang ribuan sel.
+  const patchRow = useCallback(
+    (clientId: string, change: (row: StagingRow) => StagingRow) =>
+      setAllRows(rowsRef.current.map((row) => (row.clientId === clientId ? change(row) : row))),
+    [setAllRows],
+  );
+  const select = useCallback(
+    (clientId: string, selected: boolean) =>
+      patchRow(clientId, (row) => (row.selected === selected ? row : { ...row, selected })),
+    [patchRow],
+  );
+  const selectAll = useCallback(
+    (selected: boolean) => setAllRows(rowsRef.current.map((row) => ({ ...row, selected }))),
+    [setAllRows],
+  );
+  const edit = useCallback(
+    (clientId: string, patch: Partial<StagingRow>) =>
+      patchRow(clientId, (row) => ({ ...clearOutcome(row), ...patch })),
+    [patchRow],
+  );
+  const commitSerial = useCallback(
+    (clientId: string, serial: string): string | null => {
+      if (rowsRef.current.some((row) => row.clientId !== clientId && row.serial === serial)) {
+        return 'Serial sudah ada di tabel';
+      }
+      edit(clientId, { serial });
+      return null;
+    },
+    [edit],
+  );
+  const removeOne = useCallback(
+    (clientId: string) => setAllRows(removeRows(rowsRef.current, new Set([clientId]))),
+    [setAllRows],
+  );
+  const openDetail = useCallback((clientId: string) => setDetailId(clientId), []);
 
   function selectedIds(): Set<string> {
     return new Set(rowsRef.current.filter((row) => row.selected).map((row) => row.clientId));
   }
 
+  function clearSelectedOutcome(row: StagingRow): StagingRow {
+    return row.selected ? clearOutcome(row) : row;
+  }
+
   function applyBulkEdit(patch: BulkPatch) {
     setAllRows(applyBulk(rowsRef.current, selectedIds(), patch).map(clearSelectedOutcome));
     setNotice({ tone: 'info', text: `${selectedCount} baris diubah` });
-  }
-
-  function clearSelectedOutcome(row: StagingRow): StagingRow {
-    return row.selected ? clearOutcome(row) : row;
   }
 
   function applyDetail(result: RowDetailResult) {
@@ -218,48 +249,42 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   async function handleImported(result: QcsnImport, fileName: string) {
     setImporting(true);
     try {
-      const before = rowsRef.current;
-      const merged = fromQcsnRows(before, result.rows);
-      const fresh = merged.rows.slice(before.length);
-      // Rujukan item/BU/stiker dari berkas diperiksa ke server; yang tak ditemukan wajib dipilih ulang.
-      const pairs = new Map<string, { itemId: string; buId: string }>();
-      for (const row of fresh) {
-        if (row.itemId !== '' && row.buId !== '') {
-          pairs.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
+      const deps: VerifyDeps = {
+        findItem: async (itemId, label) => {
+          const page = await queryClient.fetchQuery(serialItemOptionsQueryOptions(label.trim()));
+          const hit = page.items.find((entry) => entry.id === itemId);
+          return hit ? { id: hit.id, label: hit.label, buOptions: hit.buOptions } : null;
+        },
+        stickersOf: async (itemId, buId) => {
+          const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
+          return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
+        },
+        locations: serialLocationOptions(me),
+      };
+      // Pindaian dan suntingan boleh terjadi selama verifikasi menunggu: hasilnya digabung ke tabel TERBARU.
+      const snapshot = rowsRef.current;
+      const first = fromQcsnRows(snapshot, result.rows);
+      const verified = await verifyImported(first.rows.slice(snapshot.length), deps);
+      const latest = rowsRef.current;
+      const knownSerials = new Set(latest.map((row) => normalizeSerial(row.serial)));
+      const knownIds = new Set(latest.map((row) => row.clientId));
+      const additions: StagingRow[] = [];
+      let skipped = first.skipped;
+      let truncated = first.truncated;
+      for (const row of verified.rows) {
+        if (knownSerials.has(row.serial) || knownIds.has(row.clientId)) {
+          skipped++;
+        } else if (latest.length + additions.length >= SERIAL_LIMITS.tableRows) {
+          skipped++;
+          truncated = true;
+        } else {
+          additions.push(row);
         }
       }
-      const known = new Map<string, Set<string> | null>();
-      await Promise.all(
-        [...pairs].map(async ([key, pair]) => {
-          try {
-            const data = await queryClient.fetchQuery(
-              serialStickerOptionsQueryOptions(pair.itemId, pair.buId),
-            );
-            known.set(key, new Set(data.stickers.map((sticker) => sticker.id)));
-          } catch {
-            known.set(key, null);
-          }
-        }),
-      );
-      let unresolved = 0;
-      const checked = fresh.map((row): StagingRow => {
-        const stickerIds = known.get(`${row.itemId}|${row.buId}`);
-        if (stickerIds === null) {
-          unresolved++;
-          return { ...row, stickers: null, unresolved: ['item'] };
-        }
-        if (stickerIds !== undefined && row.stickers !== null) {
-          if (row.stickers.some((sticker) => !stickerIds.has(sticker.stickerId))) {
-            unresolved++;
-            return { ...row, stickers: null, unresolved: ['stickers'] };
-          }
-        }
-        return row;
-      });
-      setAllRows([...before, ...checked]);
+      setAllRows([...latest, ...additions]);
       const parts = [
-        `${fileName}: ${merged.added} baris baru`,
-        `${merged.skipped} dilewati (sudah ada)`,
+        `${fileName}: ${additions.length} baris baru`,
+        `${skipped} dilewati (sudah ada)`,
       ];
       if (result.problems.length > 0) {
         parts.push(
@@ -269,12 +294,21 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
             .join(', ')})`,
         );
       }
-      if (unresolved > 0) parts.push(`${unresolved} baris perlu memilih ulang item atau stiker`);
-      if (merged.truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris tabel tercapai`);
-      setNotice({
-        tone: result.problems.length > 0 || unresolved > 0 || merged.truncated ? 'warn' : 'info',
-        text: parts.join('; '),
-      });
+      if (verified.unresolved > 0) {
+        parts.push(`${verified.unresolved} baris perlu memilih ulang item, lokasi, atau stiker`);
+      }
+      if (verified.unverified > 0) {
+        parts.push(`${verified.unverified} baris belum dapat diverifikasi (jaringan atau server)`);
+      }
+      if (truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris tabel tercapai`);
+      if (result.warning) parts.push(result.warning);
+      const warn =
+        result.problems.length > 0 ||
+        verified.unresolved > 0 ||
+        verified.unverified > 0 ||
+        truncated ||
+        result.warning !== null;
+      setNotice({ tone: warn ? 'warn' : 'info', text: parts.join('; ') });
       setSummary(null);
     } finally {
       setImporting(false);
@@ -303,6 +337,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     setNotice(null);
     setSummary(null);
     try {
+      // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
+      const sendIds = new Set(current.map((row) => row.clientId));
       // Baris yang pilihan stikernya belum dimuat memakai bawaan: semua stiker yang berlaku.
       const pending = new Map<string, { itemId: string; buId: string }>();
       for (const row of current) {
@@ -310,40 +346,55 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
           pending.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
         }
       }
-      const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
-      try {
-        await Promise.all(
-          [...pending].map(async ([key, pair]) => {
-            const data = await queryClient.fetchQuery(
-              serialStickerOptionsQueryOptions(pair.itemId, pair.buId),
-            );
-            defaultsByPair.set(
-              key,
-              data.stickers.map((sticker) => ({
-                stickerId: sticker.id,
-                name: sticker.name,
-                qty: sticker.defaultQty,
-              })),
-            );
-          }),
-        );
-      } catch (error) {
-        setNotice({
-          tone: 'error',
-          text: `Stiker yang berlaku gagal dimuat: ${describeError(error)}`,
-        });
-        return;
-      }
-      setAllRows(
-        rowsRef.current.map((row) =>
-          row.stickers === null
-            ? { ...row, stickers: defaultsByPair.get(`${row.itemId}|${row.buId}`) ?? [] }
-            : row,
+      const entries = [...pending];
+      const settled = await Promise.allSettled(
+        entries.map(([, pair]) =>
+          queryClient.fetchQuery(serialStickerOptionsQueryOptions(pair.itemId, pair.buId)),
         ),
       );
+      const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
+      const badPairs = new Set<string>();
+      for (const [index, outcome] of settled.entries()) {
+        const key = entries[index]?.[0] ?? '';
+        if (outcome.status === 'fulfilled') {
+          defaultsByPair.set(
+            key,
+            outcome.value.stickers.map((sticker) => ({
+              stickerId: sticker.id,
+              name: sticker.name,
+              qty: sticker.defaultQty,
+            })),
+          );
+        } else if (isReferenceError(outcome.reason)) {
+          badPairs.add(key);
+        } else {
+          // Gangguan jaringan atau server: tidak ada baris yang ditandai salah; seluruh simpan dihentikan.
+          setNotice({
+            tone: 'error',
+            text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
+          });
+          return;
+        }
+      }
+      let skipped = 0;
+      setAllRows(
+        rowsRef.current.map((row) => {
+          if (!sendIds.has(row.clientId) || row.stickers !== null) return row;
+          const key = `${row.itemId}|${row.buId}`;
+          if (badPairs.has(key)) {
+            sendIds.delete(row.clientId);
+            skipped++;
+            return {
+              ...clearOutcome(row),
+              unresolved: ['item'] as ('item' | 'location' | 'stickers')[],
+            };
+          }
+          return { ...row, stickers: defaultsByPair.get(key) ?? [] };
+        }),
+      );
 
-      const batches = toBatches(rowsRef.current);
-      const tally: SaveSummary = { created: 0, duplicate: 0, failed: 0 };
+      const batches = toBatches(rowsRef.current.filter((row) => sendIds.has(row.clientId)));
+      const tally: SaveSummary = { created: 0, duplicate: 0, failed: 0, skipped };
       for (const [index, batch] of batches.entries()) {
         try {
           const output = await saveBatch.mutateAsync({ rows: batch.map(toRowInput) });
@@ -434,7 +485,6 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         id="serial-scan"
         label="Pindai atau tempel serial (satu per baris)"
         onSubmit={addText}
-        disabled={saving}
         autoFocus
       />
 
@@ -456,7 +506,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         </p>
       ) : null}
 
-      {selectedCount > 0 ? (
+      {selectedCount > 0 && !saving ? (
         <BulkEditBar
           count={selectedCount}
           onApply={applyBulkEdit}
@@ -493,11 +543,12 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
       ) : (
         <StagingTable
           rows={rows}
+          disabled={saving}
           onSelect={select}
           onSelectAll={selectAll}
           onEdit={edit}
           onCommitSerial={commitSerial}
-          onOpenDetail={setDetailId}
+          onOpenDetail={openDetail}
           onRemove={removeOne}
         />
       )}
@@ -505,6 +556,9 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
       {summary ? (
         <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           Dibuat {summary.created}, duplikat {summary.duplicate}, gagal {summary.failed}.
+          {summary.skipped > 0
+            ? ` ${summary.skipped} baris tidak dikirim karena item atau Business Unit-nya tidak lagi sah.`
+            : ''}
           {rows.length > 0 ? ' Baris yang tersisa masih ada di tabel.' : ''}
         </p>
       ) : null}
@@ -546,7 +600,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         ) : null}
       </div>
 
-      {detailRow ? (
+      {detailRow && !saving ? (
         <RowDetailDialog
           key={detailRow.clientId}
           row={detailRow}

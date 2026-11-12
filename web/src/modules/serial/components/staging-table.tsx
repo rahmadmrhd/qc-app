@@ -1,4 +1,4 @@
-import { normalizeSerial, SERIAL_LIMITS, serialProblem } from '@shared/serials';
+import { isIsoDate, normalizeSerial, SERIAL_LIMITS, serialProblem } from '@shared/serials';
 import { memo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,8 @@ export interface StagingTableProps {
   onCommitSerial: (clientId: string, serial: string) => string | null;
   onOpenDetail: (clientId: string) => void;
   onRemove: (clientId: string) => void;
+  /** Penyimpanan berjalan: seluruh sel dikunci agar suntingan tidak hilang saat baris dihapus oleh hasil `created`. */
+  disabled?: boolean;
 }
 
 /** Penanda sebuah baris: hasil dari server, rujukan yang harus dipilih ulang, atau kolom wajib yang kosong. */
@@ -34,6 +36,7 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
   if (row.itemId === '') return { tone: 'warn', text: 'Item belum dipilih' };
   if (row.buId === '') return { tone: 'warn', text: 'Business Unit belum dipilih' };
   if (row.locationId === '') return { tone: 'warn', text: 'Lokasi belum dipilih' };
+  if (!isIsoDate(row.testDate)) return { tone: 'warn', text: 'Tanggal uji belum diisi' };
   return { tone: 'ok', text: '' };
 }
 
@@ -53,10 +56,11 @@ interface SerialCellProps {
   clientId: string;
   serial: string;
   onCommitSerial: StagingTableProps['onCommitSerial'];
+  disabled: boolean;
 }
 
 /** Sel serial: dinormalisasi saat keluar sel; serial ganda di tabel atau tak sah ditolak dan nilai lama dikembalikan. */
-function SerialCell({ clientId, serial, onCommitSerial }: SerialCellProps) {
+function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellProps) {
   const [text, setText] = useState(serial);
   const [error, setError] = useState<string | null>(null);
   // Nilai berubah dari luar (mis. dipulihkan): ikuti.
@@ -94,6 +98,7 @@ function SerialCell({ clientId, serial, onCommitSerial }: SerialCellProps) {
         aria-invalid={error ? true : undefined}
         className="h-8 w-44 font-mono"
         value={text}
+        disabled={disabled}
         maxLength={SERIAL_LIMITS.serialMax * 4}
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
@@ -110,7 +115,8 @@ function SerialCell({ clientId, serial, onCommitSerial }: SerialCellProps) {
   );
 }
 
-interface RowViewProps extends Omit<StagingTableProps, 'rows' | 'onSelectAll'> {
+interface RowViewProps extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled'> {
+  disabled: boolean;
   row: StagingRow;
   index: number;
 }
@@ -123,6 +129,7 @@ const RowView = memo(function RowView({
   onCommitSerial,
   onOpenDetail,
   onRemove,
+  disabled,
 }: RowViewProps) {
   const status = rowStatus(row);
   return (
@@ -141,12 +148,18 @@ const RowView = memo(function RowView({
           className="size-4 accent-primary"
           aria-label={`Pilih baris ${row.serial}`}
           checked={row.selected}
+          disabled={disabled}
           onChange={(event) => onSelect(row.clientId, event.target.checked)}
         />
       </td>
       <td className="px-2 py-1.5 text-xs text-muted-foreground tabular-nums">{index + 1}</td>
       <td className="px-2 py-1">
-        <SerialCell clientId={row.clientId} serial={row.serial} onCommitSerial={onCommitSerial} />
+        <SerialCell
+          clientId={row.clientId}
+          serial={row.serial}
+          onCommitSerial={onCommitSerial}
+          disabled={disabled}
+        />
       </td>
       <td className="max-w-48 px-2 py-1.5 text-sm">
         <span className="block truncate" title={row.itemLabel}>
@@ -160,6 +173,7 @@ const RowView = memo(function RowView({
           aria-label={`Tanggal uji ${row.serial}`}
           className="h-8 w-36"
           value={row.testDate}
+          disabled={disabled}
           onChange={(event) => onEdit(row.clientId, { testDate: event.target.value })}
         />
       </td>
@@ -174,6 +188,7 @@ const RowView = memo(function RowView({
           className="size-4 accent-primary"
           aria-label={`Sample ${row.serial}`}
           checked={row.sample}
+          disabled={disabled}
           onChange={(event) => onEdit(row.clientId, { sample: event.target.checked })}
         />
       </td>
@@ -182,6 +197,7 @@ const RowView = memo(function RowView({
           aria-label={`Catatan ${row.serial}`}
           className="h-8 w-44"
           value={row.note}
+          disabled={disabled}
           maxLength={SERIAL_LIMITS.noteMax}
           onChange={(event) => onEdit(row.clientId, { note: event.target.value })}
         />
@@ -198,6 +214,7 @@ const RowView = memo(function RowView({
           variant="ghost"
           size="sm"
           aria-label={`Detail ${row.serial}`}
+          disabled={disabled}
           onClick={() => onOpenDetail(row.clientId)}
         >
           Detail
@@ -207,6 +224,7 @@ const RowView = memo(function RowView({
           variant="ghost"
           size="sm"
           aria-label={`Hapus ${row.serial}`}
+          disabled={disabled}
           onClick={() => onRemove(row.clientId)}
         >
           Hapus
@@ -225,6 +243,7 @@ export function StagingTable({
   onCommitSerial,
   onOpenDetail,
   onRemove,
+  disabled = false,
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
   return (
@@ -239,6 +258,7 @@ export function StagingTable({
                 className="size-4 accent-primary"
                 aria-label="Pilih semua baris"
                 checked={allSelected}
+                disabled={disabled}
                 onChange={(event) => onSelectAll(event.target.checked)}
               />
             </th>
@@ -285,6 +305,7 @@ export function StagingTable({
               onCommitSerial={onCommitSerial}
               onOpenDetail={onOpenDetail}
               onRemove={onRemove}
+              disabled={disabled}
             />
           ))}
         </tbody>
