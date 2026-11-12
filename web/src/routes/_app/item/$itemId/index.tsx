@@ -41,7 +41,8 @@ function ItemDetailPage() {
       canManage={canManageItem(me, item)}
       statusPending={setStatus.isPending}
       openManualBookHref={manualBookLinkAccess(me).openManualBookHref}
-      // `item.postel` bernilai null juga bagi user tanpa `sticker: view`: bagian disembunyikan lewat undefined.
+      // `item.postel` bernilai null juga bagi user tanpa `sticker: view`: ringkasan disembunyikan lewat undefined
+      // (keterangan "Belum ada Postel" tetap tampil dari `item.hasPostel`).
       postel={can(me, 'sticker', 'view') ? item.postel : undefined}
       openPostelHref={postelLinkAccess(me).openPostelHref}
       onBack={() => void navigate({ to: '/item' })}

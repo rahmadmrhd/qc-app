@@ -19,8 +19,6 @@ export interface ItemsTableProps {
   canEdit: (item: ItemSummaryDto) => boolean;
   canManage: (item: ItemSummaryDto) => boolean;
   pendingStatusId: string | null;
-  /** True bila user boleh melihat Postel (`sticker: view`); tanpa itu tanda "Belum ada Postel" tak ditampilkan. */
-  showPostel?: boolean;
   onOpen: (item: ItemSummaryDto) => void;
   onEdit: (item: ItemSummaryDto) => void;
   onToggleStatus: (item: ItemSummaryDto) => void;
@@ -31,7 +29,6 @@ export function ItemsTable({
   canEdit,
   canManage,
   pendingStatusId,
-  showPostel = false,
   onOpen,
   onEdit,
   onToggleStatus,
@@ -70,7 +67,7 @@ export function ItemsTable({
                   {item.status === 'active' && !item.hasManualBook ? (
                     <NoManualBookNote className="block" />
                   ) : null}
-                  {showPostel && item.status === 'active' && !item.hasPostel ? (
+                  {item.status === 'active' && !item.hasPostel ? (
                     <NoPostelNote className="block" />
                   ) : null}
                   {item.aliases.length > 0 ? (

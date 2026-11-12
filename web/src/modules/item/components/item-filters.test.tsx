@@ -122,13 +122,13 @@ test('Bersihkan filter mengembalikan bawaan dan hanya tampil bila ada filter akt
   });
 });
 
-test('filter Postel tersembunyi tanpa showPostelFilter', () => {
+test('filter Postel selalu tampil bagi pembaca item (parity Manual Book)', () => {
   setup();
-  expect(screen.queryByRole('combobox', { name: 'Filter Postel' })).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toBeInTheDocument();
 });
 
 test('filter Postel: Semua item / Belum ada Postel; memilih memanggil onChange', async () => {
-  const { onChange } = setup({}, { showPostelFilter: true });
+  const { onChange } = setup();
   expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toHaveAttribute(
     'id',
     'item-filter-postel',
@@ -142,7 +142,7 @@ test('filter Postel: Semua item / Belum ada Postel; memilih memanggil onChange',
 });
 
 test('filter Postel aktif memunculkan Bersihkan filter yang ikut mengosongkan postel', async () => {
-  const { onChange } = setup({ postel: 'missing' }, { showPostelFilter: true });
+  const { onChange } = setup({ postel: 'missing' });
   expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toHaveValue('Belum ada Postel');
   await userEvent.click(screen.getByRole('button', { name: 'Bersihkan filter' }));
   expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ postel: 'all' }));

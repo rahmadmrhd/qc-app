@@ -16,8 +16,6 @@ export interface ItemFiltersProps {
   types: readonly StickerTypeDto[];
   /** False bila user tak boleh membaca katalog: filter stiker/jenis dan mode disembunyikan. */
   showStickerFilter?: boolean;
-  /** True bila user boleh melihat Postel (`sticker: view`): menampilkan filter "Belum ada Postel". */
-  showPostelFilter?: boolean;
   onChange: (patch: FilterPatch) => void;
 }
 
@@ -64,7 +62,6 @@ export function ItemFilters({
   stickers,
   types,
   showStickerFilter = true,
-  showPostelFilter = false,
   onChange,
 }: ItemFiltersProps) {
   const groups = showStickerFilter ? groupByType(stickers, types) : [];
@@ -111,20 +108,18 @@ export function ItemFilters({
         value={filter.manualBook}
         onValueChange={(next) => onChange({ manualBook: next as 'all' | 'missing' })}
       />
-      {showPostelFilter ? (
-        <Select
-          id="item-filter-postel"
-          label="Filter Postel"
-          hideLabel
-          className="sm:w-48"
-          options={[
-            { value: 'all', label: 'Semua item' },
-            { value: 'missing', label: 'Belum ada Postel' },
-          ]}
-          value={filter.postel ?? 'all'}
-          onValueChange={(next) => onChange({ postel: next as 'all' | 'missing' })}
-        />
-      ) : null}
+      <Select
+        id="item-filter-postel"
+        label="Filter Postel"
+        hideLabel
+        className="sm:w-48"
+        options={[
+          { value: 'all', label: 'Semua item' },
+          { value: 'missing', label: 'Belum ada Postel' },
+        ]}
+        value={filter.postel ?? 'all'}
+        onValueChange={(next) => onChange({ postel: next as 'all' | 'missing' })}
+      />
       {showStickerFilter ? (
         <LinkField
           id="item-filter-sticker"

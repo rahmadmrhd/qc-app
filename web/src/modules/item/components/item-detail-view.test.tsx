@@ -215,8 +215,14 @@ const postelInfo = {
   daysLeft: 19,
 };
 
-test('bagian Postel tersembunyi bila postel undefined (tanpa izin sticker view)', () => {
+test('tanpa izin sticker view: item tanpa Postel tetap menampilkan keterangan kosong', () => {
   renderView({ postel: undefined });
+  expect(screen.getByRole('heading', { name: 'Postel' })).toBeInTheDocument();
+  expect(screen.getByText('Belum ada Postel')).toBeInTheDocument();
+});
+
+test('tanpa izin sticker view: item yang sudah ber-Postel menyembunyikan seluruh bagian Postel', () => {
+  renderView({ postel: undefined, item: { ...item, hasPostel: true } });
   expect(screen.queryByRole('heading', { name: 'Postel' })).not.toBeInTheDocument();
   expect(screen.queryByText('Belum ada Postel')).not.toBeInTheDocument();
 });

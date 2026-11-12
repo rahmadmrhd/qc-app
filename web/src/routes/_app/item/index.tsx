@@ -39,14 +39,9 @@ function ItemsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const canCreate = canCreateItem(me);
-  // Server mengembalikan `hasPostel` dan menerima `postel=` bagi semua pembaca item; penyaringan di sini murni UI:
-  // tanda dan filter Postel hanya tampil bagi pemegang `sticker: view` (tanpa itu disembunyikan), dan
-  // `?postel=missing` dari URL diabaikan agar daftar tak tersaring oleh filter yang tak tampak.
-  const canViewPostel = can(me, 'sticker', 'view');
-  const filter = {
-    ...filterOfSearch(search),
-    postel: canViewPostel ? (search.postel ?? 'all') : ('all' as const),
-  };
+  // Label dan filter "Belum ada Postel" tampil bagi semua pembaca item, sama seperti Manual Book
+  // (keputusan pemilik 2026-11-12, spek 4b §7 butir 5).
+  const filter = filterOfSearch(search);
   const list = useInfiniteQuery(itemsInfiniteQueryOptions(filter));
   // Katalog untuk filter stiker/jenis: hanya bagi yang boleh membacanya (`sticker: view` atau `item: edit`);
   // tanpa itu (atau bila ditolak server) filter stiker/jenis disembunyikan, filter instruksi tetap ada.
@@ -117,7 +112,6 @@ function ItemsPage() {
           stickers={stickers.data ?? []}
           types={types.data ?? []}
           showStickerFilter={showStickerFilter}
-          showPostelFilter={canViewPostel}
           onChange={(patch) =>
             void navigate({
               search: (prev) => ({ ...prev, ...searchPatchOf(patch) }),
@@ -136,7 +130,6 @@ function ItemsPage() {
         canEdit={(item) => canEditItem(me, item)}
         canManage={(item) => canManageItem(me, item)}
         pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
-        showPostel={canViewPostel}
         onOpen={(item) => void navigate({ to: '/item/$itemId', params: { itemId: item.id } })}
         onEdit={(item) => void navigate({ to: '/item/$itemId/edit', params: { itemId: item.id } })}
         onToggleStatus={toggleStatus}

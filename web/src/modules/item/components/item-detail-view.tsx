@@ -125,7 +125,15 @@ export function ItemDetailView({
         )}
       </Section>
 
-      {postel === undefined ? null : (
+      {postel === undefined ? (
+        // Tanpa `sticker: view` ringkasan Postel disembunyikan (spek 4b butir 10), tetapi keterangan "Belum ada
+        // Postel" tampil bagi semua pembaca item seperti Manual Book (keputusan pemilik 2026-11-12).
+        item.hasPostel ? null : (
+          <Section title="Postel">
+            <NoPostelNote className="text-sm" />
+          </Section>
+        )
+      ) : (
         <Section title="Postel">
           {postel === null ? (
             <NoPostelNote className="text-sm" />
