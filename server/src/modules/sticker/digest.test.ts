@@ -27,6 +27,7 @@ async function configure(alert: Record<string, unknown> = {}) {
       enabled: true,
       recipients: ['a@contoh.com', 'b@contoh.com'],
       digestHour: 8,
+      intervalDays: 1,
       updatedAt: 't',
       ...alert,
     }),
@@ -117,6 +118,44 @@ describe('checkLowStockDigest', () => {
     env.clock.advance(24 * 60 * 60 * 1000);
     expect(await checkLowStockDigest(env)).toBe('sent');
     expect(sent).toHaveLength(2);
+  });
+
+  test('selang 3 hari: hari ke-1 dan ke-2 dilewati, hari ke-3 terkirim; tanpa stok menipis tanggal tidak maju', async () => {
+    await configure({ intervalDays: 3 });
+    await withMinimum('s1', 10);
+    const day = 24 * 60 * 60 * 1000;
+    expect(await checkLowStockDigest(env)).toBe('sent'); // 10 Nov
+    env.clock.advance(day);
+    expect(await checkLowStockDigest(env)).toBe('skipped'); // 11 Nov
+    env.clock.advance(day);
+    expect(await checkLowStockDigest(env)).toBe('skipped'); // 12 Nov
+    env.clock.advance(day);
+    expect(await checkLowStockDigest(env)).toBe('sent'); // 13 Nov
+    expect(sent).toHaveLength(2);
+    expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261113');
+  });
+
+  test('selang tercapai tetapi tidak ada stok menipis: tidak terkirim dan tanggal terakhir tidak berubah', async () => {
+    await configure({ intervalDays: 2 });
+    await putSetting(env, SETTING_STICKER_DIGEST_LAST_DATE, '20261107');
+    expect(await checkLowStockDigest(env)).toBe('skipped');
+    expect(await getSetting(env, SETTING_STICKER_DIGEST_LAST_DATE)).toBe('20261107');
+  });
+
+  test('pengaturan tersimpan tanpa intervalDays (data lama) dibaca tiap hari', async () => {
+    await putSetting(
+      env,
+      SETTING_STICKER_ALERT,
+      JSON.stringify({
+        enabled: true,
+        recipients: ['a@contoh.com'],
+        digestHour: 8,
+        updatedAt: 't',
+      }),
+    );
+    await withMinimum('s1', 10);
+    await putSetting(env, SETTING_STICKER_DIGEST_LAST_DATE, '20261109');
+    expect(await checkLowStockDigest(env)).toBe('sent');
   });
 
   test('dua pemanggil serentak (dua proses atas DB yang sama): tepat satu surel', async () => {

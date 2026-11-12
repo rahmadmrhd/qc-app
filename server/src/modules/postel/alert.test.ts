@@ -207,7 +207,7 @@ describe('postelSettings.save', () => {
   test('versi pengaturan peringatan dan pengaturan stok terpisah: menyimpan satu tidak mengubah yang lain', async () => {
     const stockSave = await call(MANAGER, 'stickerSettings.save', {
       expectedUpdatedAt: '',
-      alert: { enabled: true, recipients: ['s@contoh.com'], digestHour: 9 },
+      alert: { enabled: true, recipients: ['s@contoh.com'], digestHour: 9, intervalDays: 1 },
       defaults: [],
     });
     expect(stockSave.ok).toBe(true);
@@ -221,7 +221,7 @@ describe('postelSettings.save', () => {
     env.clock.advance(60_000);
     const stockNext = await call(MANAGER, 'stickerSettings.save', {
       expectedUpdatedAt: stockBefore.updatedAt,
-      alert: { enabled: false, recipients: [], digestHour: 8 },
+      alert: { enabled: false, recipients: [], digestHour: 8, intervalDays: 1 },
       defaults: [],
     });
     expect(stockNext.ok).toBe(true);

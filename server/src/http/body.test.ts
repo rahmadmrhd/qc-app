@@ -64,6 +64,7 @@ const WORST: Inputs = {
         (_, i) => `u${i}-${'x'.repeat(40)}@contoh.com`,
       ),
       digestHour: 23,
+      intervalDays: 1,
     },
     defaults: Array.from({ length: 200 }, () => ({
       typeId: UUID,

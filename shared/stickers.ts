@@ -14,6 +14,8 @@ export const STICKER_LIMITS = {
   opnameRows: 100,
   /** Maksimum penerima email ringkasan stok menipis. */
   alertRecipientsMax: 20,
+  /** Interval kirim ringkasan stok menipis terpanjang (hari); 1 = tiap hari. */
+  alertIntervalDaysMax: 365,
 } as const;
 
 /**

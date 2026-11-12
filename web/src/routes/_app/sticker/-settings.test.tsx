@@ -37,7 +37,7 @@ let postelState: PostelSettingsDto;
 beforeEach(() => {
   apiMock.mockReset();
   stickerState = {
-    alert: { enabled: false, recipients: [], digestHour: 8 },
+    alert: { enabled: false, recipients: [], digestHour: 8, intervalDays: 1 },
     types: [{ id: 't1', name: 'QC Hijau', systemKind: '', defaultMinQty: 0 }],
     updatedAt: 'sticker-v1',
     smtpConfigured: true,

@@ -36,6 +36,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
   );
   const [enabled, setEnabled] = useState(settings.alert.enabled);
   const [hour, setHour] = useState(String(settings.alert.digestHour));
+  const [intervalText, setIntervalText] = useState(String(settings.alert.intervalDays));
   const [recipients, setRecipients] = useState<string[]>(settings.alert.recipients);
   const [extra, setExtra] = useState('');
   const [term, setTerm] = useState('');
@@ -99,6 +100,15 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
     if (hour.trim() === '' || !Number.isInteger(digestHour) || digestHour < 0 || digestHour > 23) {
       next.digestHour = 'Jam harus bilangan bulat 0 sampai 23';
     }
+    const intervalDays = Number(intervalText);
+    if (
+      intervalText.trim() === '' ||
+      !Number.isInteger(intervalDays) ||
+      intervalDays < 1 ||
+      intervalDays > STICKER_LIMITS.alertIntervalDaysMax
+    ) {
+      next.intervalDays = `Selang harus bilangan bulat 1 sampai ${STICKER_LIMITS.alertIntervalDaysMax} hari`;
+    }
     const changed: SaveStickerSettingsInput['defaults'] = [];
     for (const type of settings.types) {
       const qty = parseQty(defaults[type.id] ?? '');
@@ -117,7 +127,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
     try {
       message = await onSave({
         expectedUpdatedAt: settings.updatedAt,
-        alert: { enabled, recipients, digestHour },
+        alert: { enabled, recipients, digestHour, intervalDays },
         defaults: changed,
       });
     } catch {
@@ -218,11 +228,37 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             }}
           />
           <p className="text-xs text-muted-foreground">
-            Ringkasan dikirim sekali sehari, paling awal pada jam ini.
+            Ringkasan dikirim paling awal pada jam ini, hanya bila ada stok yang menipis.
           </p>
           {errors.digestHour ? (
             <p role="alert" className="text-sm text-destructive">
               {errors.digestHour}
+            </p>
+          ) : null}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sticker-alert-interval">Kirim setiap (hari)</Label>
+          <Input
+            id="sticker-alert-interval"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={STICKER_LIMITS.alertIntervalDaysMax}
+            step={1}
+            className="w-24"
+            value={intervalText}
+            aria-invalid={errors.intervalDays ? true : undefined}
+            onChange={(event) => {
+              setIntervalText(event.target.value);
+              fail('intervalDays', undefined);
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            1 = tiap hari selama masih ada stok menipis; 7 = paling banyak sekali seminggu.
+          </p>
+          {errors.intervalDays ? (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.intervalDays}
             </p>
           ) : null}
         </div>

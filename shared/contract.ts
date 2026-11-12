@@ -436,6 +436,8 @@ export interface StickerAlertSettings {
   recipients: string[];
   /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
   digestHour: number;
+  /** Selang minimum antar ringkasan (hari, 1-365): 1 = tiap hari bila ada stok menipis; bawaan 1. */
+  intervalDays: number;
 }
 
 /** Jenis stiker beserta minimum bawaan stiker barunya, untuk halaman Konfigurasi Stiker. */

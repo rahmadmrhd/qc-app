@@ -76,7 +76,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'stickerSettings.get': null,
   'stickerSettings.save': {
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
-    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8 },
+    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
     defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
   },
   'stickerTypes.list': null,
