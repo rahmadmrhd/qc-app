@@ -4,6 +4,7 @@ import { addSerials, type StagingRow } from './draft';
 import {
   ITEM_IDS_PER_REQUEST,
   type ItemLookup,
+  isQueryableItemId,
   mapLimit,
   VERIFY_CONCURRENCY,
   verifyImported,
@@ -125,4 +126,33 @@ test('stikerOptions dibatasi serentak dan NOT_FOUND pasangan menandai item', asy
   expect(peak).toBeLessThanOrEqual(VERIFY_CONCURRENCY);
   expect(report.rows[3]?.unresolved).toEqual(['item']);
   expect(report.unresolved).toBe(1);
+});
+
+test('id item beracun disaring sebelum dipotong: tidak menjatuhkan id sah dalam potongan yang sama', async () => {
+  const poison = [`x${String.fromCharCode(44)}`, String.fromCharCode(44), 'a'.repeat(101), '   '];
+  const ids = [...Array.from({ length: 10 }, (_, index) => `i${index}`), ...poison];
+  const requested: string[][] = [];
+  const report = await verifyImported(rowsFor(ids.map((id) => ({ id }))), {
+    findItems: async (chunk) => {
+      requested.push([...chunk]);
+      return chunk.map((id) => lookup(id));
+    },
+    stickersOf: async () => [],
+    locations,
+  });
+  expect(requested).toHaveLength(1);
+  expect(requested[0]).toEqual(Array.from({ length: 10 }, (_, index) => `i${index}`));
+  expect(report.unverified).toBe(0);
+  expect(report.unresolved).toBe(poison.length);
+  expect(report.rows.slice(0, 10).every((row) => row.unresolved === undefined)).toBe(true);
+  for (const row of report.rows.slice(10)) expect(row.unresolved).toEqual(['item']);
+});
+
+test('isQueryableItemId: kosong, koma, dan lebih dari 100 unit UTF-16 ditolak', () => {
+  expect(isQueryableItemId('abc-123')).toBe(true);
+  expect(isQueryableItemId('a'.repeat(100))).toBe(true);
+  expect(isQueryableItemId('a'.repeat(101))).toBe(false);
+  expect(isQueryableItemId('')).toBe(false);
+  expect(isQueryableItemId('  ')).toBe(false);
+  expect(isQueryableItemId('a,b')).toBe(false);
 });

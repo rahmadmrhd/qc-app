@@ -11,6 +11,11 @@ export interface ItemLookup {
 export const ITEM_IDS_PER_REQUEST = 50;
 export const VERIFY_CONCURRENCY = 4;
 
+/** Id yang boleh dikirim di `serials.itemOptions` (`itemIds`): tak kosong, maks. 100 unit UTF-16, tanpa koma. */
+export function isQueryableItemId(id: string): boolean {
+  return id.trim() !== '' && id.length <= 100 && !id.includes(',');
+}
+
 export interface VerifyDeps {
   /**
    * Item menurut id (bukan menurut label berkas): hanya yang ada dan terlihat bagi pengguna yang dikembalikan; id yang
@@ -73,12 +78,21 @@ export async function verifyImported(
   rows: readonly StagingRow[],
   deps: VerifyDeps,
 ): Promise<VerifyReport> {
-  const itemIds = [...new Set(rows.map((row) => row.itemId).filter((id) => id !== ''))];
+  // Id yang pasti ditolak server (kosong, >100 unit UTF-16, atau memuat koma yang memecah daftar GET) disaring SEBELUM
+  // dipotong: satu id beracun tidak boleh menjatuhkan id sah lain dalam potongan yang sama. Id itu dianggap tak ditemukan.
+  const unusable = new Set<string>();
+  const itemIds: string[] = [];
+  for (const id of new Set(rows.map((row) => row.itemId))) {
+    if (id === '') continue;
+    if (isQueryableItemId(id)) itemIds.push(id);
+    else unusable.add(id);
+  }
   const chunks: string[][] = [];
   for (let at = 0; at < itemIds.length; at += ITEM_IDS_PER_REQUEST) {
     chunks.push(itemIds.slice(at, at + ITEM_IDS_PER_REQUEST));
   }
   const items = new Map<string, ItemResult>();
+  for (const id of unusable) items.set(id, null);
   await mapLimit(chunks, VERIFY_CONCURRENCY, async (chunk) => {
     try {
       const found = new Map((await deps.findItems(chunk)).map((item) => [item.id, item]));
