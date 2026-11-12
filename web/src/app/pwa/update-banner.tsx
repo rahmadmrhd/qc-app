@@ -2,6 +2,17 @@ import { Button } from '@/components/ui/button';
 import { useHasUnsavedChanges } from './unsaved-changes';
 import { usePwaUpdate } from './update';
 
+/** Spanduk yang dilepas dari DOM menjatuhkan fokus ke body: pindahkan ke area utama agar pengguna keyboard/pembaca layar tak kehilangan posisi. */
+function restoreFocus() {
+  const main = document.querySelector<HTMLElement>('main');
+  if (!main) return;
+  if (!main.hasAttribute('tabindex')) {
+    main.setAttribute('tabindex', '-1');
+    main.style.outline = 'none';
+  }
+  main.focus({ preventScroll: true });
+}
+
 /** Spanduk "Ada versi baru" (FR-P11-P13): tidak memuat ulang sendiri; peringatan bila ada formulir belum disimpan. */
 export function PwaUpdateBanner() {
   const { needRefresh, dismissed, reload, dismiss } = usePwaUpdate();
@@ -22,7 +33,14 @@ export function PwaUpdateBanner() {
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={dismiss}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            dismiss();
+            restoreFocus();
+          }}
+        >
           Nanti
         </Button>
         <Button size="sm" onClick={reload}>

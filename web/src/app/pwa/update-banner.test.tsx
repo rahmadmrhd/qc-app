@@ -167,3 +167,25 @@ test('dengan formulir kotor, peringatan tampil sebelum spanduk ditutup dengan Na
   await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
   expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
 });
+
+test('N6: setelah Nanti fokus pindah ke area utama, bukan hilang ke body', async () => {
+  const fake = startFake();
+  render(
+    <>
+      <main data-testid="main">isi</main>
+      <PwaUpdateBanner />
+    </>,
+  );
+  fake.announce();
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+  expect(screen.getByTestId('main')).toHaveFocus();
+});
+
+test('N6: tanpa elemen main, Nanti tetap berfungsi tanpa galat', async () => {
+  const fake = startFake();
+  render(<PwaUpdateBanner />);
+  fake.announce();
+  await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+  expect(screen.queryByTestId('pwa-update-banner')).not.toBeInTheDocument();
+});
