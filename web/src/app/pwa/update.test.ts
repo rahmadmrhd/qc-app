@@ -414,12 +414,10 @@ test('N5: offline, notifyChunkLoadFailure tidak menyalakan spanduk (dengan atau 
   expect(usePwaUpdateSnapshotForTests()).toBe(false);
   stop();
   const offline = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-  try {
-    notifyChunkLoadFailure();
-    expect(usePwaUpdateSnapshotForTests()).toBe(false);
-  } finally {
-    offline.mockRestore();
-  }
+  notifyChunkLoadFailure();
+  const lit = usePwaUpdateSnapshotForTests();
+  offline.mockRestore();
+  expect(lit).toBe(false);
 });
 
 test('N3: vite:preloadError dan notifyChunkLoadFailure memeriksa pembaruan (registration.update)', () => {
