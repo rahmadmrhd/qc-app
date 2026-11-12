@@ -100,6 +100,8 @@ async function rawChecksum(text: string): Promise<string | null> {
     const parsed: unknown = JSON.parse(text);
     const rows = (parsed as { rows?: unknown }).rows;
     if (!Array.isArray(rows)) return null;
+    if (rows.some((row) => typeof row !== 'object' || row === null || Array.isArray(row)))
+      return null;
     return await checksumOf(rows as QcsnRow[]);
   } catch {
     return null;
@@ -131,6 +133,7 @@ export async function importQcsn(text: string): Promise<QcsnImport> {
     rows: parsed.rows,
     problems: parsed.problems,
     fatal: null,
-    warning: raw === parsed.file.checksum ? null : CHECKSUM_WARNING,
+    // Checksum mentah yang tak dapat dihitung (mis. baris bukan objek) bukan bukti berkas rusak: cukup laporan per baris.
+    warning: raw === null || raw === parsed.file.checksum ? null : CHECKSUM_WARNING,
   };
 }

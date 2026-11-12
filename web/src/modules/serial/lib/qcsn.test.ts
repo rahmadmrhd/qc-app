@@ -126,3 +126,13 @@ test('baris bermasalah: checksum atas baris mentah utuh = tanpa peringatan; beru
   expect(tampered.rows.map((row) => row.serial)).toEqual(['A1']);
   expect(tampered.warning).toMatch(/checksum/i);
 });
+
+test('baris bermasalah yang bukan objek tidak memicu peringatan checksum palsu', async () => {
+  const file = JSON.parse(await exportQcsn(rows(['A1', 'B2']), APP, NOW));
+  file.rows[1] = null;
+  const result = await importQcsn(JSON.stringify(file));
+  expect(result.fatal).toBeNull();
+  expect(result.rows.map((row) => row.serial)).toEqual(['A1']);
+  expect(result.problems).toHaveLength(1);
+  expect(result.warning).toBeNull();
+});
