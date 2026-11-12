@@ -1,6 +1,7 @@
 import type { AuthErrorCode, MeDto } from '@shared/contract';
 import { type ApiCall, api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';
+import { isDesktop } from '@/lib/platform';
 import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 
 /** Galat login dari redirect server (`/?authError=...`); nilai lain diabaikan. */
@@ -39,12 +40,39 @@ export interface MeState {
  * 401 = belum login. Galat lain (jaringan/5xx) tetap menghasilkan `me: null` agar halaman login bisa tampil, dengan
  * `unreachable` menandai server yang tak terjangkau.
  */
-export async function loadMeState(call: ApiCall = api): Promise<MeState> {
+export async function loadMeState(
+  call: ApiCall = api,
+  options: { timeoutMs?: number } = {},
+): Promise<MeState> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return { me: (await call('auth.me', null)) ?? null, unreachable: false };
+    const request = call('auth.me', null);
+    // Batas waktu opsional: server yang menjatuhkan paket tak pernah menjawab; tanpa batas, boot menggantung.
+    const timeout =
+      options.timeoutMs === undefined
+        ? null
+        : new Promise<'timeout'>((resolve) => {
+            timer = setTimeout(() => resolve('timeout'), options.timeoutMs);
+          });
+    const result = timeout ? await Promise.race([request, timeout]) : await request;
+    if (result === 'timeout') {
+      request.catch(() => undefined); // jawaban terlambat/galatnya diabaikan
+      return { me: null, unreachable: true };
+    }
+    return { me: result ?? null, unreachable: false };
   } catch (error) {
     return { me: null, unreachable: isServerUnreachable(error) };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/** Batas tunggu `GET /api/v1/me` saat boot di desktop; di atasnya halaman login (server tak terjangkau) tampil. */
+export const DESKTOP_BOOT_ME_TIMEOUT_MS = 8000;
+
+/** Pemuatan `me` saat boot: dengan batas waktu hanya di desktop (peramban tidak berubah). */
+export function loadMeForBoot(call: ApiCall = api): Promise<MeState> {
+  return loadMeState(call, isDesktop() ? { timeoutMs: DESKTOP_BOOT_ME_TIMEOUT_MS } : {});
 }
 
 /** Seperti `loadMeState` tetapi hanya mengembalikan `me` (kosong = belum login atau galat). */

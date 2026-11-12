@@ -1,6 +1,6 @@
 import type { QcBridge } from '@countrylock/bridge-contract';
 import type { MeDto } from '@shared/contract';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadMeState as defaultLoadMeState, type MeState } from '@/app/boot';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,11 @@ export interface DesktopLoginActionProps {
 
 type Phase = 'idle' | 'waiting' | 'checking';
 
+/** Batas tunggu login di browser sebelum UI menyerah (kode login berlaku 2 menit; ini jaring pengaman). */
+export const LOGIN_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
+
+const LOGIN_FAILED_MESSAGE = 'Login belum berhasil. Coba lagi.';
+
 /**
  * Tombol login di aplikasi desktop: `bridge.auth.login()` membuka browser sistem (bukan tautan
  * `/auth/login`); hasilnya datang lewat `bridge.auth.onChange`. Saat `signedIn`, `me` dimuat ulang
@@ -24,7 +29,13 @@ export function DesktopLoginAction({
   loadMeState = defaultLoadMeState,
   onSignedIn,
 }: DesktopLoginActionProps) {
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhaseState] = useState<Phase>('idle');
+  // Pendengar `onChange` stabil, jadi fase terkini dibaca lewat ref (selalu diperbarui bersama state).
+  const phaseRef = useRef<Phase>('idle');
+  const setPhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhaseState(next);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   // Pendengar dipasang sekali; versi terbaru callback dibaca lewat ref agar tak perlu berlangganan ulang.
   const latest = useRef({ loadMeState, onSignedIn });
@@ -33,7 +44,14 @@ export function DesktopLoginAction({
   useEffect(() => {
     let alive = true;
     const off = bridge.auth.onChange((status) => {
-      if (!status.signedIn) return;
+      if (!status.signedIn) {
+        // Penukaran kode gagal atau state kedaluwarsa memancarkan signedIn:false: jangan menggantung.
+        if (phaseRef.current === 'waiting') {
+          setPhase('idle');
+          setError(LOGIN_FAILED_MESSAGE);
+        }
+        return;
+      }
       setPhase('checking');
       void (async () => {
         const { me, unreachable } = await latest.current.loadMeState();
@@ -54,7 +72,18 @@ export function DesktopLoginAction({
       alive = false;
       off();
     };
-  }, [bridge]);
+  }, [bridge, setPhase]);
+
+  // Menunggu tanpa kabar (callback hilang, aplikasi ditutup-buka): menyerah setelah batas waktu.
+  useEffect(() => {
+    if (phase !== 'waiting') return;
+    const timer = setTimeout(() => {
+      if (phaseRef.current !== 'waiting') return;
+      setPhase('idle');
+      setError(LOGIN_FAILED_MESSAGE);
+    }, LOGIN_WAIT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [phase, setPhase]);
 
   async function start() {
     setError(null);

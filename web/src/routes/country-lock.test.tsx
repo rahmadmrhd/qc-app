@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, expect, test } from 'vitest';
 import { createAppRouter } from '@/app/router';
 import { ANONYMOUS_SESSION, initSession, markAuthenticated } from '@/modules/auth/session';
@@ -56,4 +56,28 @@ test('/country-lock bagi pengguna yang sudah login menampilkan tautan kembali ke
     await screen.findByRole('link', { name: 'Kembali ke aplikasi' }, { timeout: 8000 }),
   ).toHaveAttribute('href', '/');
   expect(screen.queryByRole('link', { name: 'Masuk' })).not.toBeInTheDocument();
+});
+
+test('/country-lock di desktop menampilkan spanduk pembaruan UI saat bundel baru siap; tidak di peramban', async () => {
+  let emit: (info: { uiVersion: string }) => void = () => undefined;
+  (window as unknown as { qcBridge?: unknown }).qcBridge = createFakeBridge({
+    ui: {
+      onUpdateReady: (cb) => {
+        emit = cb;
+        return () => undefined;
+      },
+    },
+  });
+  window.history.replaceState(null, '', '/country-lock');
+  const router = createAppRouter(new QueryClient());
+  render(
+    <ThemeProvider>
+      <RouterProvider router={router} />
+    </ThemeProvider>,
+  );
+  await screen.findByRole('combobox', { name: 'Merk' }, { timeout: 8000 });
+  expect(screen.queryByText(/versi ui baru tersedia/i)).not.toBeInTheDocument();
+  act(() => emit({ uiVersion: 'v2' }));
+  expect(await screen.findByText(/versi ui baru tersedia/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Muat ulang' })).toBeInTheDocument();
 });

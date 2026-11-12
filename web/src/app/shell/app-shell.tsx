@@ -7,6 +7,7 @@ import { LocationPicker } from '@/modules/location/location-picker';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
+import { UiUpdateBanner } from './ui-update-banner';
 import { UserMenu } from './user-menu';
 
 export function AppShell() {
@@ -17,6 +18,7 @@ export function AppShell() {
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
+            <UiUpdateBanner />
             <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
               <SidebarTrigger />
               <div className="ml-auto flex items-center gap-1">
