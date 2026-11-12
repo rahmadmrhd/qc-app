@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
+  isChunkLoadError,
+  notifyChunkLoadFailure,
   type RegisterSW,
   resetPwaUpdateForTests,
   startPwaUpdates,
@@ -12,14 +14,14 @@ type RegisterOptions = Parameters<RegisterSW>[0];
 
 // Window palsu minimal: navigator, document (pendengar + visibilityState), dan penghitung waktu.
 function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {}) {
-  const listeners = new Map<string, Set<() => void>>();
+  const listeners = new Map<string, Set<(event?: unknown) => void>>();
   const doc = {
     visibilityState: 'visible' as DocumentVisibilityState,
-    addEventListener: vi.fn((type: string, listener: () => void) => {
+    addEventListener: vi.fn((type: string, listener: (event?: unknown) => void) => {
       if (!listeners.has(type)) listeners.set(type, new Set());
       listeners.get(type)?.add(listener);
     }),
-    removeEventListener: vi.fn((type: string, listener: () => void) => {
+    removeEventListener: vi.fn((type: string, listener: (event?: unknown) => void) => {
       listeners.get(type)?.delete(listener);
     }),
   };
@@ -40,8 +42,8 @@ function fakeWindow(options: { serviceWorker?: boolean; onLine?: boolean } = {})
     doc,
     nav,
     location,
-    fire: (type: string) => {
-      for (const listener of listeners.get(type) ?? []) listener();
+    fire: (type: string, event?: unknown) => {
+      for (const listener of listeners.get(type) ?? []) listener(event);
     },
     listenerCount: () => [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
   };
@@ -189,7 +191,7 @@ test('pembersih melepas pendengar dan interval', () => {
   const view = fakeWindow();
   const stop = startPwaUpdates({ register: reg.register, win: view.win, intervalMs: 60_000 });
   reg.registerSw();
-  expect(view.listenerCount()).toBe(2);
+  expect(view.listenerCount()).toBe(3);
   expect(vi.getTimerCount()).toBe(1);
   stop();
   expect(view.listenerCount()).toBe(0);
@@ -263,4 +265,61 @@ test('reload() tanpa SW yang menunggu (sudah diaktifkan tab lain) langsung memua
   hook.result.current.reload();
   expect(reg.updateSW).not.toHaveBeenCalled();
   expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('vite:preloadError menyalakan needRefresh, mencegah galat ganda, tanpa muat ulang otomatis', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  const event = { preventDefault: vi.fn() };
+  view.fire('vite:preloadError', event);
+  expect(usePwaUpdateSnapshotForTests()).toBe(true);
+  expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(reg.updateSW).not.toHaveBeenCalled();
+});
+
+test('pembersih juga melepas pendengar vite:preloadError', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  stop();
+  const event = { preventDefault: vi.fn() };
+  view.fire('vite:preloadError', event);
+  expect(event.preventDefault).not.toHaveBeenCalled();
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+});
+
+test('tombol Muat ulang setelah preloadError tanpa SW menunggu memuat ulang halaman (cangkang baru terunduh)', () => {
+  const reg = fakeRegister({ waiting: false });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  view.fire('vite:preloadError', { preventDefault: vi.fn() });
+  const hook = renderHook(() => usePwaUpdate());
+  expect(hook.result.current.needRefresh).toBe(true);
+  hook.result.current.reload();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('isChunkLoadError mengenali galat muat potongan dinamis; galat lain tidak', () => {
+  for (const message of [
+    'Failed to fetch dynamically imported module: https://x/assets/qrcode-abc.js',
+    'error loading dynamically imported module',
+    'Importing a module script failed.',
+    'Unable to preload CSS for /assets/a.css',
+  ]) {
+    expect(isChunkLoadError(new TypeError(message)), message).toBe(true);
+  }
+  const chunk = new Error('x');
+  chunk.name = 'ChunkLoadError';
+  expect(isChunkLoadError(chunk)).toBe(true);
+  expect(isChunkLoadError(new Error('Gagal menyimpan'))).toBe(false);
+  expect(isChunkLoadError('Failed to fetch dynamically imported module')).toBe(false);
+});
+
+test('notifyChunkLoadFailure menyalakan needRefresh', () => {
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+  notifyChunkLoadFailure();
+  expect(usePwaUpdateSnapshotForTests()).toBe(true);
 });

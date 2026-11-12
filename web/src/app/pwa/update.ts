@@ -23,10 +23,31 @@ let currentRegistration: ServiceWorkerRegistration | undefined;
 let reloadRequested = false;
 const listeners = new Set<() => void>();
 
-function setNeedRefresh(value: boolean) {
-  if (needRefresh === value) return;
-  needRefresh = value;
-  for (const listener of listeners) listener();
+/** Mengembalikan true bila status berhasil diperbarui (dipakai penangan yang baru mencegah galat bila berhasil). */
+function setNeedRefresh(value: boolean): boolean {
+  try {
+    if (needRefresh !== value) {
+      needRefresh = value;
+      for (const listener of listeners) listener();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Galat muat potongan JS/CSS dinamis (cangkang lama meminta berkas yang sudah diganti oleh deploy baru). */
+export function isChunkLoadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'ChunkLoadError') return true;
+  return /dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(
+    error.message,
+  );
+}
+
+/** Menyalakan spanduk "Ada versi baru" karena muat potongan gagal; tidak memuat ulang apa pun. */
+export function notifyChunkLoadFailure(): void {
+  setNeedRefresh(true);
 }
 
 function subscribe(listener: () => void): () => void {
@@ -92,14 +113,22 @@ export function startPwaUpdates(options: {
     },
     onRegisterError: () => undefined,
   });
+  // Cangkang lama dapat meminta potongan lazy yang sudah tak ada di server setelah deploy: ajak pengguna memuat
+  // ulang (tanpa muat ulang otomatis, FR-P12) alih-alih membiarkan galat muat rute.
+  const onPreloadError = (event: Event) => {
+    if (!setNeedRefresh(true)) return;
+    event.preventDefault();
+  };
   win.document.addEventListener('visibilitychange', onVisibility);
   win.addEventListener('focus', checkOnEvent);
+  win.addEventListener('vite:preloadError', onPreloadError);
   const timer = win.setInterval(check, intervalMs);
 
   return () => {
     stopped = true;
     win.document.removeEventListener('visibilitychange', onVisibility);
     win.removeEventListener('focus', checkOnEvent);
+    win.removeEventListener('vite:preloadError', onPreloadError);
     win.clearInterval(timer);
   };
 }
