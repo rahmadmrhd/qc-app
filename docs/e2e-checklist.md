@@ -170,3 +170,28 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 162 | Masuk sebagai pengguna dengan `sticker: view` saja lalu buka `/postel` dan detailnya | Daftar dan detail terbaca; tidak ada tombol Ubah, Tambah, atau Hapus; membuka `/postel/new` atau `/postel/<id>/edit` langsung ditolak (izin `sticker: edit` diperlukan) | Spek 4b |
 | 163 | Di `/postel` cari memakai nomor Lama sebuah catatan, lalu model item (tanpa merk) dan sebagian nomor Aktif | Catatan itu tampil pada tiap pencarian; pencarian tak peka huruf besar/kecil; nomor yang tidak ada di catatan mana pun menampilkan "Tidak ada Postel yang cocok." | Spek 4b |
 | 164 | Di `/sticker/settings` isi "Kirim setiap (hari)" pada ringkasan stok menipis dengan 3, simpan, lalu biarkan stok menipis dan tunggu tiga hari jam kirim | Ringkasan terkirim pada hari pertama, tidak terkirim hari ke-2 dan ke-3, terkirim lagi hari ke-4 selama masih ada stok menipis; nilai 0 atau 366 ditolak dengan pesan; nilai 1 = tiap hari seperti sebelumnya | Spek 4a keputusan 14 (pemilik 2026-11-12) |
+
+## Notifikasi Serah Terima (tahap 5)
+
+Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (matriks §3). Uji di staging dengan tiga akun: WH (`handover: edit` di lokasi JKT), QC (`qc: edit` di JKT), dan akun ketiga untuk pencabutan akses. Lonceng ada di header (ikon dengan jumlah belum dibaca). Pelaku tidak pernah menerima notifikasi atas aksinya sendiri.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| N1 | WH membuat task baru di JKT | QC menerima satu notifikasi "task baru"; WH tidak menerima apa pun | §3 Task baru dibuat |
+| N2 | WH mengubah catatan task | QC menerima satu notifikasi "diubah" tanpa cuplikan catatan; WH tidak menerima | §3 Task diubah |
+| N3 | QC mengubah catatan task | WH tidak menerima notifikasi "diubah" (sisi QC saja yang menerima) | §3 Task diubah |
+| N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
+| N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |
+| N6 | QC menekan Mark done pada task | WH menerima satu notifikasi "selesai"; QC tidak | §3 Task selesai |
+| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 5 menit | §3 Butir dicentang |
+| N8 | WH menulis komentar pada task | QC menerima notifikasi komentar; WH (penulis) tidak | §3 Komentar |
+| N9 | QC menulis komentar pada task | WH menerima notifikasi komentar; QC (penulis) tidak | §3 Komentar |
+| N10 | Akun yang punya `qc: edit` dan `handover: view` sekaligus di JKT; WH membuat task | Akun itu menerima TEPAT satu notifikasi | §3 aturan umum |
+| N11 | Kirim ulang centang dengan nilai yang sama (mis. panggilan API langsung) | Tidak ada kejadian baru; jumlah notifikasi tidak bertambah | §3 (keadaan benar-benar berubah) |
+| N12 | QC mencentang lima butir dalam sekitar dua menit pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 5 menit sejak centang pertama | §4.2 |
+| N13 | QC mencentang butir terakhir pada task | WH menerima satu notifikasi "selesai", tidak ada ringkasan centang tambahan untuk rangkaian itu | §4.2 |
+| N14 | Tandai satu notifikasi dibaca, lalu "tandai semua dibaca" | Penanda belum dibaca dan jumlah pada ikon lonceng hilang | §5.1 |
+| N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
+| N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
+| N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
+| N18 | Push: izin peramban, langganan, dan terima push di perangkat | Belum dapat diuji. Uji setelah service worker, permintaan izin, dan banner tersedia (Fase 1 PRD PWA), dengan VAPID terisi di staging | §5.2 |
