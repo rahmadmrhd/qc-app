@@ -4,6 +4,7 @@ import type { HandoverStatus } from './handover';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
+import type { SerialCustody, SerialEventType, SerialStatus } from './serials';
 import type {
   GuideSort,
   StickerMarkTarget,
@@ -1291,6 +1292,93 @@ export interface ListAuditPageInput {
 export interface AuditCursorPageDto {
   entries: AuditEntryDto[];
   nextCursor: string | null;
+}
+
+// --- Serial Number (tahap 5a) ---
+
+/** Pilihan stiker pada satu serial: jumlah per stiker (1..`SERIAL_LIMITS.stickerQtyMax`). */
+export interface SerialStickerPick {
+  stickerId: string;
+  qty: number;
+}
+export interface SerialStickerDto {
+  stickerId: string;
+  name: string;
+  alias: string;
+  qty: number;
+}
+/** Satu perubahan field pada kejadian `data_changed`; `null` = kosong. */
+export interface SerialChangeDto {
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+export interface SerialEventDto {
+  id: string;
+  seq: number;
+  type: SerialEventType;
+  occurredOn: string;
+  createdAt: string;
+  actorName: string;
+  actorTeam: 'qc' | 'service' | 'system';
+  /** Markdown, boleh kosong. */
+  message: string;
+  changes: SerialChangeDto[];
+  data: Record<string, unknown>;
+}
+export interface SerialSummaryDto {
+  id: string;
+  buId: string;
+  buCode: string;
+  serial: string;
+  itemId: string;
+  itemLabel: string;
+  testDate: string;
+  sample: boolean;
+  locationId: string;
+  locationName: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  createdAt: string;
+}
+export interface SerialDto extends SerialSummaryDto {
+  note: string;
+  recordedLocationId: string;
+  stickers: SerialStickerDto[];
+  openCaseId: string | null;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+/** Satu baris pada `serials.saveBatch`; `clientId` = kunci idempoten per baris. */
+export interface SerialRowInput {
+  clientId: string;
+  serial: string;
+  itemId: string;
+  buId: string;
+  testDate: string;
+  locationId: string;
+  sample: boolean;
+  note: string;
+  /** Tahap 5a hanya menerima `good`. */
+  status: 'good';
+  stickers: SerialStickerPick[];
+}
+export type SerialRowResult = {
+  clientId: string;
+  result: 'created' | 'duplicate' | 'invalid' | 'error';
+  message: string;
+  id?: string;
+  serial?: string;
+};
+/** Stiker yang berlaku bagi item pada sebuah BU (bahan daftar centang). */
+export interface ApplicableStickerDto {
+  id: string;
+  name: string;
+  alias: string;
+  typeName: string;
+  /** Jumlah awal saat tercentang; selalu 1. */
+  defaultQty: number;
 }
 
 export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup';
