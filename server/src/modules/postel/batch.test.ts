@@ -26,8 +26,8 @@ async function failureOf(promise: Promise<unknown>): Promise<any> {
 async function ownerOf(itemId: string): Promise<string> {
   const row = await env.DB.prepare('SELECT postel_id FROM items WHERE id = ?')
     .bind(itemId)
-    .first<{ postel_id: string }>();
-  return row?.postel_id.trim() ?? '';
+    .first<{ postel_id: string | null }>();
+  return (row?.postel_id ?? '').trim();
 }
 
 beforeEach(async () => {

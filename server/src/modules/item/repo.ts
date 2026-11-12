@@ -199,7 +199,7 @@ export async function postelIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, postel_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND postel_id <> ''`,
+        `SELECT id, postel_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND postel_id IS NOT NULL`,
       )
       .bind(...chunk)
       .all<{ id: string; postel_id: string }>();
@@ -252,12 +252,12 @@ export async function loadItemManualBooks(
 }
 
 /**
- * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi DAN catatannya masih ada (penunjuk
- * yatim tidak dihitung). Dipakai filter `items.list` (`postel`), cabang aturan `group` jenis Postel
- * (`instructionFilterSql`), dan `itemIdsWithPostel` (sumber `hasPostel`).
+ * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi. Kunci asing `items_postel_fk`
+ * (migrasi 0010, `ON DELETE SET NULL`) menjamin penunjuk terisi selalu menunjuk catatan yang ada, jadi tak perlu
+ * `EXISTS` lagi (penunjuk yatim tak mungkin ada). Dipakai filter `items.list` (`postel`), cabang aturan `group` jenis
+ * Postel (`instructionFilterSql`), dan `itemIdsWithPostel` (sumber `hasPostel`).
  */
-export const HAS_POSTEL_SQL =
-  "(i.postel_id <> '' AND EXISTS (SELECT 1 FROM postels p WHERE p.id = i.postel_id))";
+export const HAS_POSTEL_SQL = '(i.postel_id IS NOT NULL)';
 
 /** Dari `itemIds`, id item ber-Postel (`HAS_POSTEL_SQL`); satu kueri per 500 id. */
 export async function itemIdsWithPostel(db: Db, itemIds: readonly string[]): Promise<Set<string>> {

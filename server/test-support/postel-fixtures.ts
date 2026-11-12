@@ -27,8 +27,9 @@ export interface SeedPostelInput {
 /** Catatan Postel uji beserta nomor dan penunjuk item. Mengembalikan id catatan. */
 export async function seedPostel(env: Pick<Env, 'DB'>, input: SeedPostelInput): Promise<string> {
   const id = input.id ?? `postel-${crypto.randomUUID()}`;
+  // Upsert: `seedItem({ postelId })` sudah dapat membuat catatan kosong ber-id sama (kunci asing `items_postel_fk`).
   await env.DB.prepare(
-    'INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE note = VALUES(note), attachments = VALUES(attachments)',
   )
     .bind(
       id,

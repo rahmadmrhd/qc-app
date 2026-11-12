@@ -26,7 +26,7 @@ export interface PostelItem {
   brand: string;
   model: string;
   status: 'active' | 'inactive';
-  /** Catatan Postel pemilik; `''` = belum tertaut. */
+  /** Catatan Postel pemilik; `''` = belum tertaut (di basis data: `NULL`, kunci asing `items_postel_fk`). */
   postelId: string;
 }
 
@@ -35,7 +35,7 @@ interface ItemRow {
   brand_name: string | null;
   model: string;
   status: string;
-  postel_id: string;
+  postel_id: string | null;
 }
 
 function toPostelItem(row: ItemRow): PostelItem {
@@ -44,7 +44,7 @@ function toPostelItem(row: ItemRow): PostelItem {
     brand: row.brand_name ?? '',
     model: row.model.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
-    postelId: row.postel_id.trim(),
+    postelId: (row.postel_id ?? '').trim(),
   };
 }
 
@@ -65,7 +65,7 @@ export async function listItemsOfPostels(
 ): Promise<Map<string, PostelItem[]>> {
   const rows: ItemRow[] = [];
   if (postelIds === undefined) {
-    const result = await db.prepare(`${ITEM_SELECT} WHERE i.postel_id <> ''`).all<ItemRow>();
+    const result = await db.prepare(`${ITEM_SELECT} WHERE i.postel_id IS NOT NULL`).all<ItemRow>();
     rows.push(...result.results);
   } else {
     const unique = [...new Set(postelIds)];
@@ -111,7 +111,7 @@ export async function findPostelItemsById(
 }
 
 /**
- * Memasang `ids` ke catatan `postelId` di dalam `batch()`: hanya item yang belum dimiliki catatan lain (`''` atau
+ * Memasang `ids` ke catatan `postelId` di dalam `batch()`: hanya item yang belum dimiliki catatan lain (`NULL` atau
  * catatan ini) dan aktif (item nonaktif hanya boleh yang sudah miliknya), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang (item direbut
  * catatan lain atau dinonaktifkan pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
  */
@@ -126,7 +126,7 @@ export function claimItemsForPostelStmts(
   return [
     db
       .prepare(
-        `UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND postel_id IN ('', ?) AND (status = 'active' OR postel_id = ?)`,
+        `UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND (postel_id IS NULL OR postel_id = ?) AND (status = 'active' OR postel_id = ?)`,
       )
       .bind(postelId, ...sorted, postelId, postelId),
     db
@@ -148,15 +148,18 @@ export function releaseItemsFromPostelStmt(
   return [
     db
       .prepare(
-        `UPDATE items SET postel_id = '' WHERE postel_id = ? AND id IN (${sorted.map(() => '?').join(',')})`,
+        `UPDATE items SET postel_id = NULL WHERE postel_id = ? AND id IN (${sorted.map(() => '?').join(',')})`,
       )
       .bind(postelId, ...sorted),
   ];
 }
 
-/** Melepas SEMUA item sebuah catatan (hapus catatan). */
+/**
+ * Melepas SEMUA item sebuah catatan (hapus catatan). Kunci asing `items_postel_fk` (`ON DELETE SET NULL`) menjamin hal
+ * yang sama di basis data; pernyataan ini tetap dikirim agar urutan dan hitungan baris batch tak berubah.
+ */
 export function releaseAllItemsFromPostelStmt(db: Preparer, postelId: string): DbStatement {
-  return db.prepare("UPDATE items SET postel_id = '' WHERE postel_id = ?").bind(postelId);
+  return db.prepare('UPDATE items SET postel_id = NULL WHERE postel_id = ?').bind(postelId);
 }
 
 interface OptionRow {
@@ -164,7 +167,7 @@ interface OptionRow {
   brand_name: string | null;
   model: string;
   key: string;
-  postel_id: string;
+  postel_id: string | null;
 }
 
 /**
@@ -200,7 +203,9 @@ export async function queryPostelItemOptions(
     .all<OptionRow>();
   const page = rows.results.slice(0, limit);
   const last = page[page.length - 1];
-  const postelIds = [...new Set(page.map((row) => row.postel_id.trim()))].filter((id) => id !== '');
+  const postelIds = [...new Set(page.map((row) => (row.postel_id ?? '').trim()))].filter(
+    (id) => id !== '',
+  );
   const activeNumbers = new Map<string, string>();
   for (const number of await listPostelNumbers(env.DB, postelIds)) {
     // Terurut `seq` menaik per catatan: yang terakhir = nomor Aktif.
@@ -211,7 +216,7 @@ export async function queryPostelItemOptions(
       id: row.id.trim(),
       brand: row.brand_name ?? '',
       model: row.model.trim(),
-      postelNumber: activeNumbers.get(row.postel_id.trim()) ?? '',
+      postelNumber: activeNumbers.get((row.postel_id ?? '').trim()) ?? '',
     }),
   );
   return { items, nextCursor: rows.results.length > limit && last ? last.key : null };

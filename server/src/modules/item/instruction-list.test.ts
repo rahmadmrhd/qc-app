@@ -477,8 +477,10 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     await setPostel('P1', 'pp-1');
     // BU lain tetapi memakai catatan yang sama: aturan group tak memakai BU
     await setPostel('P2', 'pp-1');
-    // P3 tanpa catatan; P4 penunjuk yatim (catatan tidak ada)
+    // P3 tanpa catatan; P4 ditautkan ke catatan yang lalu dihapus (kunci asing melepasnya, bukan penunjuk yatim)
+    await seedPostel(env, { id: 'ghost', numbers: [] });
     await setPostel('P4', 'ghost');
+    await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('ghost').run();
   });
 
   const itemOf = async (id: string): Promise<ItemDto> =>
@@ -487,7 +489,7 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     (await itemOf(ids[model] as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ??
     [];
 
-  test('hasil terjemahan: stiker Postel aktif bagi item tertaut; tanpa catatan, yatim, atau stiker nonaktif = belum ada', async () => {
+  test('hasil terjemahan: stiker Postel aktif bagi item tertaut; tanpa catatan, catatan dihapus, atau stiker nonaktif = belum ada', async () => {
     expect(await resolvedOf('P1')).toEqual(['s-postel']);
     expect(await resolvedOf('P2')).toEqual(['s-postel']);
     expect(await resolvedOf('P3')).toEqual([]);
@@ -543,7 +545,7 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     await check();
     await env.DB.prepare('DELETE FROM postel_numbers WHERE postel_id = ?').bind('pp-1').run();
     await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('pp-1').run();
-    // penunjuk yatim sesudah catatan terhapus: kedua sisi sepakat (tidak ada hasil)
+    // catatan terhapus (item terlepas lewat ON DELETE SET NULL): kedua sisi sepakat (tidak ada hasil)
     await check();
     expect(await resolvedOf('P1')).toEqual([]);
   }, 300_000);

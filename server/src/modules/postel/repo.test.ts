@@ -327,20 +327,56 @@ describe('postel_numbers', () => {
 });
 
 describe('items.postel_id', () => {
-  test('bawaan kosong; postelIdsOf memetakan hanya item yang tertaut', async () => {
+  test('bawaan NULL; postelIdsOf memetakan hanya item yang tertaut', async () => {
     await seedItem(env, { id: 'i1', brand: 'Ruijie', model: 'RG-1' });
     await seedItem(env, { id: 'i2', brand: 'Ruijie', model: 'RG-2', postelId: 'p1' });
     await seedItem(env, { id: 'i3', brand: 'Ruijie', model: 'RG-3', postelId: 'p1' });
     const row = await env.DB.prepare('SELECT postel_id FROM items WHERE id = ?')
       .bind('i1')
-      .first<{ postel_id: string }>();
-    expect(row?.postel_id).toBe('');
+      .first<{ postel_id: string | null }>();
+    expect(row?.postel_id).toBeNull();
     const map = await postelIdsOf(env.DB, ['i1', 'i2', 'i3', 'tidak-ada']);
     expect([...map.entries()].sort()).toEqual([
       ['i2', 'p1'],
       ['i3', 'p1'],
     ]);
     expect((await postelIdsOf(env.DB, [])).size).toBe(0);
+  });
+});
+
+// Kunci asing migrasi 0010: basis data sendiri menolak penunjuk yatim dan melepas/menghapus anak saat catatan dihapus,
+// tanpa bergantung pada kode aplikasi.
+describe('kunci asing ke postels (0010)', () => {
+  const ER_NO_REFERENCED_ROW = 1452;
+
+  test('menautkan item ke catatan yang tak ada ditolak (1452); nomor tanpa catatan juga', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Ruijie', model: 'RG-1' });
+    const item = await failureOf(
+      env.DB.prepare('UPDATE items SET postel_id = ? WHERE id = ?').bind('tidak-ada', 'i1').run(),
+    );
+    expect(item.errno).toBe(ER_NO_REFERENCED_ROW);
+    const number = await failureOf(
+      insertPostelNumberStmt(env.DB, numberRecord({ postelId: 'tidak-ada' })).run(),
+    );
+    expect(number.errno).toBe(ER_NO_REFERENCED_ROW);
+  });
+
+  test('DELETE catatan langsung (tanpa kode aplikasi): item terlepas (NULL) dan nomornya ikut terhapus', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Ruijie', model: 'RG-1' });
+    await seedItem(env, { id: 'i2', brand: 'Ruijie', model: 'RG-2' });
+    await seedPostel(env, {
+      id: 'p1',
+      itemIds: ['i1'],
+      numbers: [{ number: 'AB 1', expiresOn: '2027-03-01' }],
+    });
+    await seedPostel(env, { id: 'p2', itemIds: ['i2'], numbers: [] });
+    await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('p1').run();
+    expect([...(await postelIdsOf(env.DB, ['i1', 'i2'])).entries()]).toEqual([['i2', 'p2']]);
+    expect(await listPostelNumbers(env.DB, ['p1'])).toEqual([]);
+    const left = await env.DB.prepare('SELECT postel_id FROM items WHERE id = ?')
+      .bind('i1')
+      .first<{ postel_id: string | null }>();
+    expect(left?.postel_id).toBeNull();
   });
 });
 

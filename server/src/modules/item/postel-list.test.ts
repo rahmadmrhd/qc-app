@@ -8,7 +8,7 @@ import type { ItemDto, ItemPageDto } from '@shared/contract';
 import { postelName } from '@shared/postel';
 
 // Postel pada item (4b, Task 7): `hasPostel` di daftar, `postel` di detail (hanya bagi pemegang `sticker: view`),
-// filter `postel=has|missing` (satu definisi: items.postel_id terisi DAN catatannya ada), dan `items.save` yang tidak
+// filter `postel=has|missing` (satu definisi: items.postel_id terisi; kunci asing menjamin catatannya ada), dan `items.save` yang tidak
 // menyentuh penunjuk (ditulis HANYA modul Postel).
 
 setDefaultTimeout(90_000);
@@ -20,7 +20,7 @@ const ITEMS: Array<{ id: string; model: string; bus: string[]; postel: string }>
   { id: 'i-1', model: 'Satu', bus: ['bu-a'], postel: '' },
   { id: 'i-2', model: 'Dua', bus: ['bu-a'], postel: 'p-1' },
   { id: 'i-3', model: 'Tiga', bus: ['bu-a'], postel: 'p-1' },
-  // penunjuk yatim (catatan tak ada): bukan "ber-Postel"
+  // catatan 'ghost' dihapus setelah ditautkan: kunci asing (ON DELETE SET NULL) melepas item, jadi bukan "ber-Postel"
   { id: 'i-4', model: 'Empat', bus: ['bu-a'], postel: 'ghost' },
   // BU lain: tidak terlihat bagi user BU A
   { id: 'i-5', model: 'Lima', bus: ['bu-b'], postel: 'p-2' },
@@ -63,6 +63,7 @@ beforeEach(async () => {
       postelId: item.postel,
     });
   }
+  await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('ghost').run();
   // p-1: nomor lama (kedaluwarsa) + nomor Aktif 21 hari lagi ("segera habis" dengan ambang bawaan 90)
   await seedPostel(env, {
     id: 'p-1',
@@ -92,7 +93,7 @@ async function list(query: string, email?: string): Promise<ItemPageDto['items']
 const modelsOf = (items: ItemPageDto['items']): string[] => items.map((i) => i.model).sort();
 
 describe('hasPostel pada daftar item', () => {
-  test('tanpa penunjuk = false; penunjuk yatim = false; tertaut ke catatan yang ada = true', async () => {
+  test('tanpa penunjuk = false; catatannya sudah dihapus (item terlepas) = false; tertaut ke catatan yang ada = true', async () => {
     const all = await list('');
     const flags = Object.fromEntries(all.map((item) => [item.model, item.hasPostel]));
     expect(flags).toEqual({
@@ -182,7 +183,7 @@ describe('postel pada detail item', () => {
     expect((await get('i-2')).postel).toMatchObject({ condition: 'valid', daysLeft: 21 });
   });
 
-  test('null bagi item tanpa Postel dan penunjuk yatim (hasPostel false)', async () => {
+  test('null bagi item tanpa Postel dan item yang catatannya sudah dihapus (hasPostel false)', async () => {
     for (const id of ['i-1', 'i-4', 'i-6']) {
       const item = await get(id);
       expect([id, item.postel, item.hasPostel]).toEqual([id, null, false]);

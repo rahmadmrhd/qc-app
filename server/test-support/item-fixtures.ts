@@ -42,12 +42,23 @@ export interface SeedItem {
   businessUnitIds?: string[];
   /** Konfigurasi QR (Manual Book) tempat item tergabung; bawaan `''` = belum tergabung. */
   manualBookDesignId?: string;
-  /** Catatan Postel tempat item tertaut; bawaan `''` = belum tertaut. */
+  /**
+   * Catatan Postel tempat item tertaut; bawaan tak tertaut (`NULL`). Karena `items.postel_id` ber-kunci-asing
+   * (`items_postel_fk`), catatan kosong (tanpa nomor) dibuat bila belum ada; `seedPostel` dengan id yang sama
+   * kemudian mengisinya (upsert).
+   */
   postelId?: string;
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
   const brandId = item.brandId ?? brandIdOf(item.brand);
+  if (item.postelId !== undefined && item.postelId !== '') {
+    await env.DB.prepare(
+      'INSERT IGNORE INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+      .bind(item.postelId, '', '[]', SEED_TIME, SEED_TIME, 'seed')
+      .run();
+  }
   await env.DB.prepare(
     "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id, postel_id) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?, ?)",
   )
@@ -62,7 +73,7 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       SEED_TIME,
       SEED_TIME,
       item.manualBookDesignId ?? '',
-      item.postelId ?? '',
+      item.postelId === undefined || item.postelId === '' ? null : item.postelId,
     )
     .run();
   const businessUnitIds = item.businessUnitIds ?? [DEFAULT_TEST_BU_ID];
