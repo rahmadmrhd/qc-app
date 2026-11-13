@@ -5,6 +5,9 @@ import { scheduleBackupJob } from '@server/modules/backup/service';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { flushDueCheckSummaries } from '@server/modules/notification/flush';
+import { deliverPendingPushes } from '@server/modules/notification/push';
+import { purgeOldNotifications } from '@server/modules/notification/repo';
 import { checkPostelExpiryDigest } from '@server/modules/postel/digest';
 import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
@@ -12,6 +15,8 @@ import { checkLowStockDigest } from '@server/modules/sticker/digest';
 export const JOB_RUNNER_INTERVAL_MS = 2_000;
 /** Selang penjadwal pembersihan (satu jam). */
 export const SCHEDULER_INTERVAL_MS = 60 * 60 * 1000;
+/** Detak putaran latar notifikasi (30 detik): melepas ringkasan centang yang jendelanya habis. */
+export const NOTIFICATION_LOOP_INTERVAL_MS = 30_000;
 /** Jumlah id job yang dibaca per pemindaian. */
 const SCAN_LIMIT = 20;
 
@@ -132,6 +137,7 @@ async function schedulerTick(env: Env): Promise<void> {
     checkBackupAlerts,
     checkLowStockDigest,
     checkPostelExpiryDigest,
+    purgeOldNotifications,
   ]) {
     try {
       await step(env);
@@ -155,4 +161,36 @@ export function startScheduler(
     () => schedulerTick(env),
     options.intervalMs ?? SCHEDULER_INTERVAL_MS,
   );
+}
+
+/**
+ * Putaran latar notifikasi Serah Terima: melepas ringkasan centang yang jatuh tempo lalu mengirim push untuk
+ * notifikasi yang menunggu, tiap `intervalMs` (bawaan 30 dtk). Terpisah dari antrean job (satu job pada satu waktu), sehingga job panjang seperti cadangan tidak menunda
+ * pelepasan. Mengembalikan fungsi penghenti (lihat `startLoop`).
+ */
+export function startNotificationLoop(
+  env: Env,
+  options: { intervalMs?: number } = {},
+): () => Promise<void> {
+  return startLoop(
+    'notifikasi',
+    () => notificationTick(env),
+    options.intervalMs ?? NOTIFICATION_LOOP_INTERVAL_MS,
+  );
+}
+
+/**
+ * Satu putaran notifikasi: pelepasan ringkasan centang DAN pengiriman push dijalankan keduanya; galat pada satu
+ * langkah tidak membatalkan yang lain (pola `schedulerTick`), galat pertama dilempar setelah semuanya dicoba.
+ */
+export async function notificationTick(env: Env): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of [flushDueCheckSummaries, deliverPendingPushes]) {
+    try {
+      await step(env);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
 }

@@ -133,7 +133,7 @@ export function HandoverBatchForm({
       }}
     >
       <FormHeader
-        title="Tambah banyak task"
+        title="Tambah task"
         onCancel={onCancel}
         submitting={submitting}
         submitLabel={`Simpan semua (${cards.length})`}

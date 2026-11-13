@@ -56,10 +56,10 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 50 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
 | 51 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
 | 52 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
-| 53 | Login WH (`handover: edit`): Serah Terima → Tambah task; ketik customer baru, tempel di editor catatan dua baris `CRS310 = 1 unt` dan `RB5009UG = 1 unt` → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; catatan tampil sebagai dua butir checklist; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
+| 53 | Login WH (`handover: edit`): Serah Terima → Tambah task (langsung form bulk, satu kartu); ketik customer baru, tempel di editor catatan kartu dua baris `CRS310 = 1 unt` dan `RB5009UG = 1 unt` → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; catatan tampil sebagai dua butir checklist; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
 | 54 | Buat task tanpa mengisi customer (opsional), lalu task kedua di hari yang sama dengan ejaan customer berbeda ("pt. maju  jaya") | Task tanpa customer tersimpan (daftar menampilkan "—", detail "Tanpa customer"); task kedua memakai customer yang sama (ejaan resmi), nomor `-002`, tidak ada customer ganda | FC2, FH4 |
 | 55 | Ketik nama customer mirip ("Maju Jaya PT" atau typo) | Petunjuk "Mirip: …, pakai ini?" dapat diklik; tidak memblokir simpan | FC4 |
-| 56 | Buka form Tambah task sebagai WH | Hanya ada customer (opsional) dan editor catatan; tidak ada kolom item, tipe, atau qty, dan tidak ada tautan "Tambah item baru" | FH2 |
+| 56 | Buka form Tambah task sebagai WH | Langsung form bulk tanpa pengalih "Satu task"/"Banyak task": lokasi, panel Tempel dari WhatsApp, dan satu kartu berisi customer (opsional) dan editor catatan; tidak ada kolom item, tipe, atau qty, dan tidak ada tautan "Tambah item baru" | FH2 |
 | 57 | Login QC (`qc: edit`): buka task Baru; centang satu butir, lalu butir kedua; tekan Mark done | Status Baru → Dikerjakan → Selesai; nama dan waktu centang tampil; audit `handover.check` per butir dan `handover.done` | FQ1, FQ2, FQ4 |
 | 58 | Dua QC membuka task yang sama dan mencentang butir berbeda, lalu butir yang sama, hampir bersamaan | Tidak ada centang yang hilang; mencentang butir yang sama tidak saling membatalkan | FQ1 |
 | 59 | Buka task Dibatalkan sebagai QC lalu sebagai WH; buka task Selesai sebagai QC dan WH | Dibatalkan: QC tidak melihat Mark done, centang ditolak (API langsung → `CONFLICT`); "Buka kembali" hanya tampil untuk WH dengan `handover: manage`. Selesai: tidak ada Mark done dan tidak ada Buka kembali | FH7, FQ6 |
@@ -115,8 +115,8 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 109 | Ubah "Jarak antarbagian" pada QR tanpa subtitle | Posisi QR tidak bergeser; hanya jarak title ↔ subtitle berubah | FQR41 |
 | 110 | Daftar QR tidak punya tombol Duplikat; pakai PDF yang sudah dipakai QR lain pada QR kedua | Tombol Duplikat tidak ada; PDF yang sudah dipakai QR lain ditolak; tidak ada info "dipakai N konfigurasi" | FQR42 |
 | 111 | Ubah QR yang sudah punya PDF: unggah ulang, lalu "Ganti dari Drive" | Tidak ada opsi "Pakai PDF baru"; keduanya mengganti isi dan URL tetap (dengan konfirmasi) | FQR43 |
-| 112 | Sebagai WH (`handover: edit`), di Buat task tempel satu tempelan WhatsApp "Orderan Online" berisi dua baris `= 1 unt` | Satu task dengan usulan customer "Orderan Online" dan dua butir checklist; awalan pesan WhatsApp dibuang bila ada | Desain 2026-10-23 §4.2, §9 (contoh 1) |
-| 113 | Pada jalur bulk, tempel empat contoh pemilik secara terpisah (satu per satu) | Hasil 1, 2, 1, dan 3 task; customer sesuai contoh; butir checklist dan paragraf catatan sesuai contoh; WH dapat mengoreksi sebelum simpan | Desain 2026-10-23 §4.3, §9 (contoh 1–4) |
+| 112 | Sebagai WH (`handover: edit`), di panel Tempel dari WhatsApp pada Tambah task, tempel satu tempelan "Orderan Online" berisi dua baris `= 1 unt` lalu Pecah | Satu task dengan usulan customer "Orderan Online" dan catatan hasil pecah tampil di editor (dua butir checklist, bukan teks `- [ ]` mentah); awalan pesan WhatsApp dibuang bila ada | Desain 2026-10-23 §4.2, §9 (contoh 1) |
+| 113 | Pada jalur bulk, tempel empat contoh pemilik secara terpisah (satu per satu) | Hasil 1, 2, 1, dan 3 task; customer sesuai contoh; butir checklist dan paragraf catatan sesuai contoh; WH dapat mengoreksi customer dan catatan (di editor) sebelum ditambahkan dan disimpan | Desain 2026-10-23 §4.3, §9 (contoh 1–4) |
 | 114 | Pada batch, biarkan satu task tidak valid (mis. catatan > 5.000 karakter) lalu Simpan semua | Tidak ada task yang tersimpan; task bermasalah ditunjuk; draf seluruh task tetap utuh | Desain 2026-10-23 §4.3, §9 |
 | 115 | Di kartu, centang satu butir; tekan Mark done; lalu lihat kartu di kolom Selesai | Kartu pindah kolom tanpa muat ulang dan tanpa membuka detail; Mark done mencentang semua butir; kartu Selesai tidak menampilkan Mark done maupun Buka kembali | Desain 2026-10-23 §4.4, §4.6, §12.1 |
 | 116 | Sebagai QC, pilih teks catatan di desktop lalu di ponsel 375 px, tekan "Balas", kirim komentar | Tombol "Balas" muncul di dekat seleksi (tanpa klik kanan); komentar tampil dengan kutipan yang ditandai | Desain 2026-10-23 §4.5 |
@@ -170,6 +170,31 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 162 | Masuk sebagai pengguna dengan `sticker: view` saja lalu buka `/postel` dan detailnya | Daftar dan detail terbaca; tidak ada tombol Ubah, Tambah, atau Hapus; membuka `/postel/new` atau `/postel/<id>/edit` langsung ditolak (izin `sticker: edit` diperlukan) | Spek 4b |
 | 163 | Di `/postel` cari memakai nomor Lama sebuah catatan, lalu model item (tanpa merk) dan sebagian nomor Aktif | Catatan itu tampil pada tiap pencarian; pencarian tak peka huruf besar/kecil; nomor yang tidak ada di catatan mana pun menampilkan "Tidak ada Postel yang cocok." | Spek 4b |
 | 164 | Di `/sticker/settings` isi "Kirim setiap (hari)" pada ringkasan stok menipis dengan 3, simpan, lalu biarkan stok menipis dan tunggu tiga hari jam kirim | Ringkasan terkirim pada hari pertama, tidak terkirim hari ke-2 dan ke-3, terkirim lagi hari ke-4 selama masih ada stok menipis; nilai 0 atau 366 ditolak dengan pesan; nilai 1 = tiap hari seperti sebelumnya | Spek 4a keputusan 14 (pemilik 2026-11-12) |
+
+## Notifikasi Serah Terima (tahap 5)
+
+Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (matriks §3). Uji di staging dengan tiga akun: WH (`handover: edit` di lokasi JKT), QC (`qc: edit` di JKT), dan akun ketiga untuk pencabutan akses. Lonceng ada di header (ikon dengan jumlah belum dibaca). Pelaku tidak pernah menerima notifikasi atas aksinya sendiri.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| N1 | WH membuat task baru di JKT | QC menerima satu notifikasi "task baru" dengan cuplikan isi catatan (satu baris, tanpa penanda daftar); WH tidak menerima apa pun | §3 Task baru dibuat, §6 |
+| N2 | WH mengubah catatan task | QC menerima satu notifikasi "diubah" dengan cuplikan catatan yang baru; WH tidak menerima | §3 Task diubah, §6 |
+| N3 | QC mengubah catatan task | WH tidak menerima notifikasi "diubah" (sisi QC saja yang menerima) | §3 Task diubah |
+| N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
+| N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |
+| N6 | QC menekan Mark done pada task | WH menerima satu notifikasi "selesai"; QC tidak | §3 Task selesai |
+| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 5 menit | §3 Butir dicentang |
+| N8 | WH menulis komentar pada task | QC menerima notifikasi komentar; WH (penulis) tidak | §3 Komentar |
+| N9 | QC menulis komentar pada task | WH menerima notifikasi komentar; QC (penulis) tidak | §3 Komentar |
+| N10 | Akun yang punya `qc: edit` dan `handover: view` sekaligus di JKT; WH membuat task | Akun itu menerima TEPAT satu notifikasi | §3 aturan umum |
+| N11 | Kirim ulang centang dengan nilai yang sama (mis. panggilan API langsung) | Tidak ada kejadian baru; jumlah notifikasi tidak bertambah | §3 (keadaan benar-benar berubah) |
+| N12 | QC mencentang lima butir dalam sekitar dua menit pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 5 menit sejak centang pertama | §4.2 |
+| N13 | QC mencentang butir terakhir pada task | WH menerima satu notifikasi "selesai", tidak ada ringkasan centang tambahan untuk rangkaian itu | §4.2 |
+| N14 | Tandai satu notifikasi dibaca, lalu "tandai semua dibaca" | Penanda belum dibaca dan jumlah pada ikon lonceng hilang | §5.1 |
+| N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
+| N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
+| N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
+| N18 | Push: izin peramban, langganan, dan terima push di perangkat | Belum dapat diuji. Uji setelah service worker, permintaan izin, dan banner tersedia (Fase 1 PRD PWA), dengan VAPID terisi di staging | §5.2 |
 
 ## PWA Fase 1
 
