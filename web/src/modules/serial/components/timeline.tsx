@@ -1,4 +1,5 @@
 import type { SerialEventDto } from '@shared/contract';
+import type { Components } from 'react-markdown';
 import { Badge } from '@/components/ui/badge';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import {
@@ -110,7 +111,15 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
-function EventCard({ event, latest }: { event: SerialEventDto; latest: boolean }) {
+function EventCard({
+  event,
+  latest,
+  markdownComponents,
+}: {
+  event: SerialEventDto;
+  latest: boolean;
+  markdownComponents: Components | undefined;
+}) {
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -136,7 +145,9 @@ function EventCard({ event, latest }: { event: SerialEventDto; latest: boolean }
         </div>
         <div className="text-right">
           <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
-          <p className="text-xs text-muted-foreground">dicatat {formatStamp(event.createdAt)}</p>
+          {event.createdAt !== '' ? (
+            <p className="text-xs text-muted-foreground">dicatat {formatStamp(event.createdAt)}</p>
+          ) : null}
         </div>
       </div>
       {details.length > 0 ? (
@@ -147,7 +158,11 @@ function EventCard({ event, latest }: { event: SerialEventDto; latest: boolean }
         </ul>
       ) : null}
       {event.message.trim() !== '' ? (
-        <MarkdownView source={event.message} className="mt-3 text-sm" />
+        <MarkdownView
+          source={event.message}
+          className="mt-3 text-sm"
+          {...(markdownComponents ? { components: markdownComponents } : {})}
+        />
       ) : null}
       {event.changes.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
@@ -176,9 +191,12 @@ function EventCard({ event, latest }: { event: SerialEventDto; latest: boolean }
 export function Timeline({
   events,
   markLatest = false,
+  markdownComponents,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
+  /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
+  markdownComponents?: Components;
 }) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
@@ -186,7 +204,12 @@ export function Timeline({
   return (
     <ol aria-label="Linimasa" className="space-y-3">
       {events.map((event, index) => (
-        <EventCard key={event.id} event={event} latest={markLatest && index === 0} />
+        <EventCard
+          key={event.id}
+          event={event}
+          latest={markLatest && index === 0}
+          markdownComponents={markdownComponents}
+        />
       ))}
     </ol>
   );
