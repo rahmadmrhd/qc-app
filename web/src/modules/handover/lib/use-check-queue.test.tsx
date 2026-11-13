@@ -26,6 +26,7 @@ import {
   resumeOutboxWrites,
   suspendOutboxWrites,
 } from './check-outbox';
+import { isItemSending, resetSendingForTests } from './outbox-status';
 import { useCheckQueue } from './use-check-queue';
 
 const items = (n: number) =>
@@ -94,6 +95,7 @@ beforeEach(() => {
   resumeOutboxWrites();
   localStorage.clear();
   resetBusyForTests();
+  resetSendingForTests();
   mocks.api.mockReset();
   mocks.error.mockReset();
   mocks.info.mockReset();
@@ -372,4 +374,66 @@ test('A5: setCheck langsung berhasil meminta pengurasan antrean (no-op bila antr
   act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
   await flush();
   expect(mocks.requestFlush).toHaveBeenCalledTimes(1);
+});
+
+test('klik online: butir mengirim selama api berjalan lalu bersih', async () => {
+  const { hook, ref } = setup();
+  const calls = manualCall();
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(calls).toHaveLength(1);
+  expect(isItemSending('t1', 1)).toBe(true);
+  expect(isItemSending('t1', 0)).toBe(false);
+  await act(async () => {
+    calls[0]?.resolve(serverAfter([1]));
+  });
+  await flush();
+  expect(isItemSending('t1', 1)).toBe(false);
+});
+
+test('UNAVAILABLE: butir masuk antrean dan tidak lagi mengirim', async () => {
+  const { hook, ref } = setup();
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(readOutbox('qc@x')).toHaveLength(1);
+  expect(isItemSending('t1', 1)).toBe(false);
+});
+
+test('dua klik beruntun pada butir yang sama: tetap mengirim sampai keduanya selesai', async () => {
+  const { hook, ref } = setup();
+  const calls = manualCall();
+  act(() => {
+    hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true);
+    hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, false);
+  });
+  await flush();
+  expect(calls).toHaveLength(1);
+  expect(isItemSending('t1', 1)).toBe(true);
+  await act(async () => {
+    calls[0]?.resolve(serverAfter([1]));
+  });
+  await flush();
+  expect(calls).toHaveLength(2);
+  expect(isItemSending('t1', 1)).toBe(true);
+  await act(async () => {
+    calls[1]?.resolve(serverAfter([]));
+  });
+  await flush();
+  expect(isItemSending('t1', 1)).toBe(false);
+});
+
+test('klik langsung ditolak CONFLICT atau FORBIDDEN: status bersih dan butir dikembalikan', async () => {
+  for (const code of ['CONFLICT', 'FORBIDDEN'] as const) {
+    localStorage.clear();
+    resetSendingForTests();
+    const { hook, cached, ref } = setup();
+    mocks.api.mockRejectedValue(new ApiError(code, 'Ditolak', '-'));
+    act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+    await flush();
+    expect(isItemSending('t1', 1)).toBe(false);
+    expect(cached().checklist[1]?.checked).toBe(false);
+    expect(readOutbox('qc@x')).toEqual([]);
+    hook.unmount();
+  }
 });

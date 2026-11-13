@@ -12,8 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { LogoutConfirmDialog } from '@/modules/auth/logout-confirm-dialog';
 import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
+import { countAllOutboxEntries } from '@/modules/handover/lib/check-outbox';
 import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
 
 export function UserMenu() {
@@ -22,6 +24,7 @@ export function UserMenu() {
   const install = useInstall();
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const initials = (me.name || me.email).slice(0, 2).toUpperCase();
   return (
     <>
@@ -55,7 +58,14 @@ export function UserMenu() {
             <BellRing />
             Notifikasi push
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={logout}>
+          <DropdownMenuItem
+            onSelect={() => {
+              // Keluar membuang antrean centang di perangkat (semua pemilik): peringatkan dulu bila ada isinya.
+              const count = countAllOutboxEntries();
+              if (count > 0) setLogoutOpen(true);
+              else logout();
+            }}
+          >
             <LogOut />
             Keluar
           </DropdownMenuItem>
@@ -64,6 +74,15 @@ export function UserMenu() {
       {/* Di luar DropdownMenu agar tidak ikut tertutup bersama menu. */}
       <InstallIosDialog open={iosHelpOpen} onOpenChange={setIosHelpOpen} />
       {pushOpen && <PushSettingsDialog onClose={() => setPushOpen(false)} />}
+      {logoutOpen && (
+        <LogoutConfirmDialog
+          onCancel={() => setLogoutOpen(false)}
+          onConfirm={() => {
+            setLogoutOpen(false);
+            logout();
+          }}
+        />
+      )}
     </>
   );
 }

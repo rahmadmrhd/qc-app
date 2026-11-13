@@ -89,7 +89,7 @@ export function HandoverCard({
 }: HandoverCardProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   // Centang yang menunggu terkirim tetap tampak tercentang walau refetch tiba lebih dulu dari pengiriman.
-  const { dto: handover, pendingIndexes } = useOutboxOverlay(serverHandover, owner);
+  const { dto: handover, itemStates } = useOutboxOverlay(serverHandover, owner);
   const cancelled = handover.status === 'cancelled';
   const total = handover.checklist.length;
   const checked = handover.checklist.filter((item) => item.checked).length;
@@ -138,7 +138,7 @@ export function HandoverCard({
             canCheck={canMarkDone && !cancelled && !pending}
             canComment={!cancelled}
             compact
-            pendingIndexes={pendingIndexes}
+            itemStates={itemStates}
             onCheck={onCheck}
             onComment={onComment}
           />

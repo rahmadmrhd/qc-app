@@ -142,6 +142,6 @@ test('antrean centang di perangkat: butir tampil tercentang dengan penanda walau
   setup({ owner: 'qc@x' });
   expect(screen.getByRole('checkbox', { name: /B = 2/ })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: /A = 1/ })).not.toBeChecked();
-  expect(screen.getByText('Menunggu terkirim')).toBeInTheDocument();
+  expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
   localStorage.clear();
 });

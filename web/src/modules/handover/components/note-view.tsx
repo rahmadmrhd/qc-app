@@ -4,12 +4,14 @@ import {
   makeAnchor,
   noteToPlainText,
 } from '@shared/handover-comments';
+import { Clock, LoaderCircle } from 'lucide-react';
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { collectNoteText, rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
+import type { ItemSendState } from '../lib/outbox-status';
 import { CommentComposer } from './comment-composer';
 
 export interface NoteViewProps {
@@ -20,8 +22,8 @@ export interface NoteViewProps {
   canComment: boolean;
   /** Tampilan ringkas (kartu): komentar lebih kecil, kutipan dipotong. */
   compact?: boolean;
-  /** Indeks butir yang centangnya masih menunggu terkirim (antrean di perangkat). */
-  pendingIndexes?: ReadonlySet<number>;
+  /** Status kirim per indeks butir: `waiting` = di antrean perangkat, `sending` = permintaan sedang berjalan. */
+  itemStates?: ReadonlyMap<number, ItemSendState>;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -106,7 +108,7 @@ export function NoteView({
   canCheck,
   canComment,
   compact = false,
-  pendingIndexes,
+  itemStates,
   onCheck,
   onComment,
 }: NoteViewProps) {
@@ -232,9 +234,18 @@ export function NoteView({
               />
               <span>{content}</span>
             </label>
-            {pendingIndexes?.has(item.index) ? (
+            {itemStates?.get(item.index) === 'sending' ? (
               <span data-note-meta="" className="ml-6 block text-xs italic text-muted-foreground">
-                Menunggu terkirim
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="mr-1 inline size-3 animate-spin align-[-2px]"
+                />
+                Mengirim…
+              </span>
+            ) : itemStates?.get(item.index) === 'waiting' ? (
+              <span data-note-meta="" className="ml-6 block text-xs italic text-muted-foreground">
+                <Clock aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" />
+                Belum terkirim
               </span>
             ) : item.checked && item.by !== '' ? (
               <span data-note-meta="" className="ml-6 block text-xs text-muted-foreground">
@@ -246,7 +257,7 @@ export function NoteView({
         );
       },
     };
-  }, [note, checklist, canCheck, onCheck, pendingIndexes]);
+  }, [note, checklist, canCheck, onCheck, itemStates]);
 
   return (
     <div ref={wrapperRef} className="relative space-y-3">

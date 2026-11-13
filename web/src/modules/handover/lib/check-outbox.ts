@@ -56,9 +56,10 @@ function isEntry(value: unknown): value is OutboxEntry {
   );
 }
 
-export function readOutbox(owner: string): OutboxEntry[] {
+/** Membaca satu kunci antrean; entri tak valid dibuang, amplop rusak/berversi lain = kosong. */
+function readKey(key: string): OutboxEntry[] {
   try {
-    const raw = localStorage.getItem(outboxKey(owner));
+    const raw = localStorage.getItem(key);
     if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return [];
@@ -68,6 +69,10 @@ export function readOutbox(owner: string): OutboxEntry[] {
   } catch {
     return [];
   }
+}
+
+export function readOutbox(owner: string): OutboxEntry[] {
+  return readKey(outboxKey(owner));
 }
 
 // Pelanggan + penghitung versi (snapshot `useSyncExternalStore`).
@@ -161,11 +166,15 @@ export function hasEntriesForTask(owner: string, taskId: string): boolean {
   return readOutbox(owner).some((entry) => entry.taskId === taskId);
 }
 
+/** Entri sudah lewat 24 jam, atau bertanggal terlalu jauh di masa depan (jam perangkat salah): tak akan dikirim. */
+export function isExpiredEntry(entry: OutboxEntry, now: number): boolean {
+  return now - entry.at > OUTBOX_MAX_AGE_MS || entry.at - now > OUTBOX_MAX_FUTURE_SKEW_MS;
+}
+
 /** Membuang entri yang lebih tua dari 24 jam dan mengembalikannya (untuk toast "kedaluwarsa"). */
 export function purgeExpired(owner: string, now: number): OutboxEntry[] {
   const current = readOutbox(owner);
-  const isExpired = (entry: OutboxEntry) =>
-    now - entry.at > OUTBOX_MAX_AGE_MS || entry.at - now > OUTBOX_MAX_FUTURE_SKEW_MS;
+  const isExpired = (entry: OutboxEntry) => isExpiredEntry(entry, now);
   const expired = current.filter(isExpired);
   if (expired.length === 0) return [];
   if (
@@ -190,6 +199,19 @@ function outboxKeys(): string[] {
     // Penyimpanan tak tersedia.
   }
   return keys;
+}
+
+/**
+ * Jumlah entri VALID dan belum kedaluwarsa dari SEMUA kunci `qc.outbox:*` (semua pemilik): yang akan terbuang bila
+ * keluar. Entri kedaluwarsa tak dihitung (tak akan pernah terkirim). 0 bila penyimpanan tak tersedia atau amplop rusak.
+ */
+export function countAllOutboxEntries(): number {
+  const now = Date.now();
+  let total = 0;
+  for (const key of outboxKeys()) {
+    total += readKey(key).filter((entry) => !isExpiredEntry(entry, now)).length;
+  }
+  return total;
 }
 
 /** Keluar eksplisit: buang SEMUA antrean (sesi kedaluwarsa/401 tidak memanggil ini). */
