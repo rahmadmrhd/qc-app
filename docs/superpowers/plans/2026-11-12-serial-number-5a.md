@@ -4,7 +4,7 @@
 
 **Goal:** Pencatatan Serial Number (SN) per BU dengan tabel sementara, ubah massal, berkas `.qcsn`, pemindai fisik, daftar centang stiker yang memotong stok otomatis (boleh negatif), riwayat bergaya tiket (jenis `recorded`, `data_changed`, `recheck`, `note`), izin ber-BU `serial`, serta daftar dan detail.
 
-**Architecture:** Modul server baru `server/src/modules/serial/` (repo, service, validate, routes) di belakang REST `/api/v1/serials*`; fungsi murni di `shared/serials.ts` dan `shared/serial-file.ts`; satu migrasi `0011_serial_number.sql` (expand-only, ditambah pencabutan `CHECK` stok); pemotongan stok disusun sebagai pernyataan SQL (`serialDeductStmts` di `stock-repo.ts`) ke dalam `batch()` tiap baris serial lewat bus event kecil (`server/src/core/events.ts`). Web: `web/src/modules/serial/` dengan tabel sementara yang disimpan di `localStorage`.
+**Architecture:** Modul server baru `server/src/modules/serial/` (repo, service, validate, routes) di belakang REST `/api/v1/serials*`; fungsi murni di `shared/serials.ts` dan `shared/serial-file.ts`; satu migrasi `0012_serial_number.sql` (expand-only, ditambah pencabutan `CHECK` stok); pemotongan stok disusun sebagai pernyataan SQL (`serialDeductStmts` di `stock-repo.ts`) ke dalam `batch()` tiap baris serial lewat bus event kecil (`server/src/core/events.ts`). Web: `web/src/modules/serial/` dengan tabel sementara yang disimpan di `localStorage`.
 
 **Tech Stack:** Bun, Hono, MariaDB 11.8 (adaptor `Db`), TypeScript, React + TanStack (Router, Query, Form), Tiptap, vitest (web), `bun:test` (server, shared).
 
@@ -43,7 +43,7 @@
 | `shared/serials.ts` (+`.test.ts`) | Konstanta, `normalizeSerial`, `serialProblem`, `splitSerialInput`, tipe status/kejadian |
 | `shared/serial-file.ts` (+`.test.ts`) | Tipe `.qcsn`, `validateQcsn`, `qcsnCanonical` |
 | `shared/contract.ts`, `shared/api.ts` | DTO dan id rute `serials.*` |
-| `server/migrations/0011_serial_number.sql` | Tabel baru, kolom entri stok, pencabutan `CHECK` |
+| `server/migrations/0012_serial_number.sql` | Tabel baru, kolom entri stok, pencabutan `CHECK` |
 | `server/src/core/events.ts` | Bus event kecil (pendengar berbentuk penyusun pernyataan) |
 | `server/src/modules/sticker/stock-repo.ts` | `serialDeductStmts`, `insertEntryStmt` memuat kolom serial, ambang `<= 0` |
 | `server/src/modules/serial/{access,applicable,repo,service,validate,routes}.ts` | BU, stiker berlaku, SQL, aturan, validator, rute |
@@ -125,9 +125,9 @@ export function qcsnCanonical(rows: readonly QcsnRow[]): string; // bentuk kanon
 
 ---
 
-### Task 4: Migrasi `0011_serial_number.sql` [Sonnet]
+### Task 4: Migrasi `0012_serial_number.sql` [Sonnet]
 
-**Files:** Create `server/migrations/0011_serial_number.sql`; Modify `server/src/core/migrate.test.ts` (`EXPECTED_TABLES` :208-231 dan daftar nama migrasi).
+**Files:** Create `server/migrations/0012_serial_number.sql`; Modify `server/src/core/migrate.test.ts` (`EXPECTED_TABLES` :208-231 dan daftar nama migrasi).
 
 - [ ] **Step 1: Tes.** Perbarui `migrate.test.ts`: tiga tabel baru (`serials`, `serial_stickers`, `serial_events`) di `EXPECTED_TABLES` dan nama migrasi baru di daftar; tambah tes: `INSERT INTO sticker_stock` dengan `qty = -3` berhasil setelah migrasi; menjalankan migrasi dua kali tidak gagal (idempoten).
 - [ ] **Step 2:** `bun run --cwd server test src/core/migrate.test.ts` → FAIL.
@@ -414,9 +414,9 @@ Perilaku: `<textarea>` satu baris yang tumbuh; **Enter** (tanpa Shift) mengirim 
 
 ### Task 17: Dokumentasi, `CLAUDE.md`, verifikasi akhir [Haiku untuk dokumen; verifikasi oleh pengendali]
 
-**Files:** Modify `CLAUDE.md` (bagian Struktur: modul Serial Number; aturan stok negatif dari pemotongan SN dan pengecualian migrasi `0011`; modul izin `serial`/`serialservice`; format `.qcsn`; bus event kecil), `docs/adding-a-module.md` (peringatan: modul BU baru juga harus masuk loop `shared/assignments.ts`), `docs/ci-cd.md` (catatan rollback: image sebelum 5a membaca stok negatif sebagai angka biasa; `CHECK` dicabut), spek 5a status "dibangun".
+**Files:** Modify `CLAUDE.md` (bagian Struktur: modul Serial Number; aturan stok negatif dari pemotongan SN dan pengecualian migrasi `0012`; modul izin `serial`/`serialservice`; format `.qcsn`; bus event kecil), `docs/adding-a-module.md` (peringatan: modul BU baru juga harus masuk loop `shared/assignments.ts`), `docs/ci-cd.md` (catatan rollback: image sebelum 5a membaca stok negatif sebagai angka biasa; `CHECK` dicabut), spek 5a status "dibangun".
 
 - [ ] **Step 1:** perbarui dokumen sesuai spek §10 butir 4.
 - [ ] **Step 2:** `bun run check` PASS penuh (tunnel hidup); `bun run build` PASS (`verify-dist`: tiap potongan ≤ 600 KB gzip).
 - [ ] **Step 3:** uji manual di `bun run dev` (login "Masuk sebagai pengguna dev"): catat tiga serial dengan pemindai simulasi (ketik + Enter), ubah massal lokasi, simpan, buka detail, cek ulang dengan kenaikan stiker, ekspor lalu impor `.qcsn`, periksa stok negatif tampil "Kurang N".
-- [ ] **Step 4: Commit** `docs(serial): dokumentasi tahap 5a`. Siapkan PR ke `dev` (migrasi `0011` diterapkan otomatis saat start; tidak ada variabel `.env` baru).
+- [ ] **Step 4: Commit** `docs(serial): dokumentasi tahap 5a`. Siapkan PR ke `dev` (migrasi `0012` diterapkan otomatis saat start; tidak ada variabel `.env` baru).

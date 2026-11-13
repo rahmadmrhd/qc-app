@@ -235,7 +235,7 @@ describe('skema baseline', () => {
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
       { name: '0010_postel_kunci_asing.sql' },
-      { name: '0011_serial_number.sql' },
+      { name: '0012_serial_number.sql' },
     ]);
   });
 
