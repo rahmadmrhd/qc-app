@@ -179,6 +179,22 @@ describe('tur membuka menu sendiri', () => {
     await waitFor(() => expect(itemVisible()).toBeNull());
   });
 
+  test('menu ditutup tur saat langkah berganti: fokus tidak dicuri kembali ke tombol pemicu', async () => {
+    render(<Page />);
+    start(
+      entryOf([
+        step({ buka: 'theme-toggle', target: 'theme-menu', text: 'Terbuka' }),
+        step({ target: 'notification-bell', text: 'Tanpa menu' }),
+      ]),
+    );
+    await screen.findByText('Terbuka');
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    const card = (await screen.findByText('Tanpa menu')).closest('[tabindex="-1"]') as HTMLElement;
+    await waitFor(() => expect(itemVisible()).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(card.contains(document.activeElement)).toBe(true);
+  });
+
   test('pindah dari satu menu ke menu lain: yang lama menutup, yang baru terbuka', async () => {
     render(<Page />);
     start(

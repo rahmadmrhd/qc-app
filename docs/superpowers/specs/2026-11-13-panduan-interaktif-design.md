@@ -205,7 +205,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   dilewati; tur tidak macet. Pengecualian: langkah yang targetnya bergantung data (kartu task di papan; ditandai
   `langkah.teksJikaKosong`) TIDAK dilewati melainkan tampil sebagai kartu di tengah layar tanpa sorotan, dengan teks
   pengganti yang menjelaskan keadaannya dan demo `tip` langsung terputar (keputusan 2026-11-14, butir H); langkah itu
-  tetap terhitung pada "Langkah x dari N". Langkah yang `izin`-nya gugur tetap dibuang di awal. Di ponsel, langkah
+  tetap terhitung pada "Langkah x dari N". Kartu contoh bersifat sementara: targetnya terus diamati dan, bila muncul
+  belakangan (jaringan lambat), kartu beralih ke sorotan asli; target yang sudah terbukti kosong tak ditunggu lagi
+  oleh langkah berikutnya yang bertarget sama. Langkah yang menu pemicunya tak dirender saat tur dimulai (mis.
+  pemilih lokasi untuk satu lokasi) dibuang di awal bersama langkah yang menyorot pemicu itu, agar "Langkah x dari N"
+  tak melompat. Demo kartu contoh sepenuhnya tak dapat dioperasikan (tak membuka komposer asli, tak memasang status
+  "belum disimpan"). Langkah yang `izin`-nya gugur tetap dibuang di awal. Di ponsel, langkah
   yang menyorot menu membuka sidebar lebih dulu.
 - Penempatan kartu langkah (desktop; ponsel selalu menempel di dasar layar): dihitung dari ukuran kartu yang
   SEBENARNYA (diukur ulang saat isinya tumbuh, mis. demo `tip` selesai dimuat malas), memilih di antara posisi di

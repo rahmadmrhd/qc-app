@@ -10,10 +10,10 @@ const WH_VIEW: GuidePermission = { module: 'handover', level: 'view', scope: 'lo
 const WH_EDIT: GuidePermission = { module: 'handover', level: 'edit', scope: 'location' };
 const QC_EDIT: GuidePermission = { module: 'qc', level: 'edit', scope: 'location' };
 
-// Demo kartu task contoh (kartu PALSU dari komponen asli dengan data contoh); entri `tip` dan adegannya milik
-// `handover-tips.ts`. Dipakai langkah checklist/komentar, juga sebagai kartu pengganti saat papan kosong.
-
 /**
+ * Demo kartu task contoh (kartu PALSU dari komponen asli dengan data contoh): entri `tip` dan adegannya milik
+ * `handover-tips.ts`, dipakai langkah checklist/komentar dan sebagai kartu pengganti saat papan kosong.
+ *
  * Panduan dasar Serah Terima (spek 7 butir 2). Izin panduan = izin item sidebar Serah Terima (sisi WH `view` atau
  * sisi QC `edit`); langkah sisi WH (menambah task) dan sisi QC (mencentang) punya `izin` sendiri sehingga satu
  * panduan melayani keduanya. Target `data-tour`: `handover-board` (`handover-board-page.tsx`), `handover-checklist`

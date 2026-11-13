@@ -18,10 +18,26 @@ import {
  */
 const QUOTE = DEMO_ITEMS[0];
 
+/** Menelan klik dan tombol Enter/Spasi di seluruh bingkai: kartu asli ini tak boleh membuka komposer sungguhan. */
+function blockInteraction(event: { preventDefault: () => void; stopPropagation: () => void }) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+/**
+ * Adegan pilih-teks tak dapat dibungkus `inert` (seleksi programatiknya bisa dilepas peramban pada simpul inert),
+ * jadi dibuat tak dapat dioperasikan lewat penelan peristiwa tahap tangkap: tombol "Tambah komentar"/"Balas" aslinya
+ * tampil tetapi tak berfungsi, sehingga `CommentComposer` (yang memasang status "belum disimpan") tak pernah terbuka.
+ */
 function SelectFrame() {
   const ref = useDemoSelection(QUOTE);
   return (
-    <div ref={ref}>
+    <div
+      ref={ref}
+      className="pointer-events-none"
+      onClickCapture={blockInteraction}
+      onKeyDownCapture={blockInteraction}
+    >
       <DemoHandoverCard handover={demoHandover(0)} interactiveLook={false} />
     </div>
   );

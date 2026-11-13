@@ -1,6 +1,7 @@
 import { HANDOVER_LIMITS } from '@shared/handover';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { hasUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import type { DemoScene } from '@/modules/guide/lib/demo-types';
 import { ChecklistDemoScenes } from './checklist-demo';
 import { CommentDemoScenes } from './comment-demo';
@@ -94,6 +95,19 @@ describe('demo tip-handover-komentar', () => {
   test('(a) teks butir pertama terseleksi (seleksi asli peramban)', async () => {
     ATTEMPT(CommentDemoScenes, 0);
     await waitFor(() => expect(window.getSelection()?.toString()).toBe(DEMO_ITEMS[0]));
+  });
+
+  test('(a) tombol pada kartu tak berfungsi: tak membuka komposer dan tak memasang status belum disimpan', async () => {
+    const { container } = ATTEMPT(CommentDemoScenes, 0);
+    await waitFor(() => expect(window.getSelection()?.toString()).toBe(DEMO_ITEMS[0]));
+    const buttons = [...container.querySelectorAll('button')];
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      fireEvent.click(button);
+      fireEvent.keyDown(button, { key: 'Enter' });
+    }
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(hasUnsavedChanges()).toBe(false);
   });
 
   test('seleksi dilepas saat bingkai ditutup', async () => {

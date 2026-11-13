@@ -210,6 +210,21 @@ describe('navigasi dan target', () => {
     expect(screen.getByText('Lintas halaman')).toBeInTheDocument();
   });
 
+  test('langkah yang menu pemicunya tak dirender dibuang di awal: nomor langkah tak melompat', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ text: 'Satu' }),
+          step({ target: 'location-picker', text: 'Pemicu lokasi' }),
+          step({ target: 'location-menu', buka: 'location-picker', text: 'Isi menu lokasi' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Satu')).toBeInTheDocument();
+    expect(screen.getByText('Langkah 1 dari 1')).toBeInTheDocument();
+  });
+
   test('tidak menavigasi bila sudah berada di route langkah', async () => {
     state.pathname = '/item';
     render(<Page entry={entryOf([step({ route: '/item', text: 'Sudah di sini' })])} />);
@@ -611,6 +626,35 @@ describe('langkah yang bergantung data jatuh ke kartu contoh (keputusan pemilik 
     const card = text.closest('[tabindex="-1"]') as HTMLElement;
     expect(card.style.top).toBe('50%');
     expect(card.style.left).toBe('50%');
+  });
+
+  test('papan yang baru termuat belakangan: kartu contoh beralih ke sorotan target asli', async () => {
+    render(<Page entry={entryOf([missing()])} />);
+    await startTour();
+    await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    const late = document.createElement('button');
+    late.dataset.tour = 'tidak-ada';
+    late.dataset.late = '1';
+    document.body.append(late);
+    expect(await screen.findByText('Teks sorotan')).toBeInTheDocument();
+    expect(screen.queryByText('Papan masih kosong, ini contoh kartunya:')).toBeNull();
+    expect(screen.getByTestId('tour-highlight')).toBeInTheDocument();
+  });
+
+  test('dua langkah berturut-turut bertarget kosong sama: keduanya jatuh ke kartu contoh', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          missing({ text: 'Satu' }),
+          missing({ text: 'Dua', teksJikaKosong: 'Masih kosong juga:' }),
+        ])}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Masih kosong juga:')).toBeInTheDocument();
+    expect(screen.getByText('Langkah 2 dari 2')).toBeInTheDocument();
   });
 
   test('tur tidak macet: Lanjut maju, dan selesai menulis penanda seperti biasa', async () => {

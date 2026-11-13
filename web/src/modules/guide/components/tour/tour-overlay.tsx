@@ -13,7 +13,7 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { stepsFor } from '../../lib/offer';
-import { useSetTourMenu } from '../../lib/tour-menu';
+import { useMarkTourActive, useSetTourMenu } from '../../lib/tour-menu';
 import type { GuideEntry, GuideStep } from '../../lib/types';
 import { useGuideStore } from '../../lib/use-guide-store';
 import { TourStepCard } from './tour-step-card';
@@ -82,6 +82,25 @@ function useOptionalSidebar(): ReturnType<typeof useSidebar> | null {
     return null;
   }
 }
+
+/**
+ * Membuang langkah yang menu pemicunya tak dirender saat tur dimulai (mis. pemilih lokasi hanya ada bila lokasi > 1),
+ * beserta langkah yang menyorot pemicu itu sendiri, supaya "Langkah x dari N" tak melompat dan tur tak menunggu
+ * batas waktu untuk elemen yang pasti tak ada.
+ */
+function withoutMissingMenus(steps: readonly GuideStep[]): GuideStep[] {
+  const missing = new Set<string>();
+  for (const step of steps) {
+    if (step.buka && !document.querySelector(selectorOf(step.buka))) missing.add(step.buka);
+  }
+  if (missing.size === 0) return [...steps];
+  return steps.filter(
+    (step) => !(step.buka && missing.has(step.buka)) && !missing.has(step.target),
+  );
+}
+
+/** Lama (ms) kartu contoh terus mengamati targetnya yang bergantung data sebelum menyerah. */
+const FALLBACK_WATCH_MS = 60_000;
 
 /** Elemen yang menerima ketikan/penggeseran kursor: tombol panah tidak boleh dibajak tur. */
 function isEditable(target: EventTarget | null): boolean {
@@ -231,7 +250,11 @@ export default function TourOverlay({
 
   // Daftar langkah DIBEKUKAN saat tur dimulai: mengganti lokasi aktif atau izin yang berubah di tengah tur tak boleh
   // menggeser indeks (kartu salah teks) atau membuat `tour.active` tanpa kartu.
-  const [steps] = useState(() => stepsFor(entry, me, selectedIds));
+  const [steps] = useState(() => withoutMissingMenus(stepsFor(entry, me, selectedIds)));
+  useMarkTourActive();
+  // Target bergantung data yang sudah terbukti kosong pada tur ini: langkah berikutnya bertarget sama langsung jatuh
+  // ke kartu contoh tanpa menunggu batas waktu lagi.
+  const emptyTargets = useRef(new Set<string>());
   // Ada formulir berdraf: mulai dari langkah yang berlaku di halaman ini, bukan menavigasi keluar dan membuang draf.
   const [index, setIndex] = useState(() =>
     hasUnsavedChanges() ? firstStepOnPage(steps, pathname) : 0,
@@ -366,7 +389,11 @@ export default function TourOverlay({
         bar.setOpenMobile(true);
         openedSidebar.current = true;
       }
-      const wait = waitForTarget(step.target, targetWaitMs);
+      // Target yang sudah terbukti kosong tak ditunggu lagi (langkah data-bergantung berturut-turut tak membeku 3 dtk).
+      const knownEmpty = step.teksJikaKosong !== undefined && emptyTargets.current.has(step.target);
+      const wait = knownEmpty
+        ? { promise: Promise.resolve(document.querySelector(selectorOf(step.target))), cancel() {} }
+        : waitForTarget(step.target, targetWaitMs);
       cancelWait = wait.cancel;
       const found = await wait.promise;
       if (cancelled || aborted.current) return;
@@ -376,11 +403,13 @@ export default function TourOverlay({
           return;
         }
         // Target bergantung data tak ada: kartu contoh di tengah layar (tetap terhitung sebagai langkah).
+        emptyTargets.current.add(step.target);
         if (expectedPath.current === null) expectedPath.current = latest.current.pathname;
         shown.current += 1;
         setFallback(index);
         return;
       }
+      emptyTargets.current.delete(step.target);
       // Halaman tujuan klik pengguna sudah terbentuk: mulai dari sini setiap perpindahan lain membatalkan tur.
       if (expectedPath.current === null) expectedPath.current = latest.current.pathname;
       if (openedSidebar.current && !found.closest('[data-sidebar="sidebar"]')) {
@@ -464,6 +493,37 @@ export default function TourOverlay({
       observer.disconnect();
     };
   }, [target, step, index, targetWaitMs, advance]);
+
+  // Kartu contoh bersifat sementara: papan yang baru termuat belakangan (jaringan lambat) tetap disorot begitu
+  // targetnya muncul, tidak terjebak pada teks "masih kosong".
+  useEffect(() => {
+    if (!inFallback || !step) return;
+    const wait = waitForTarget(step.target, FALLBACK_WATCH_MS);
+    let stale = false;
+    void wait.promise.then((found) => {
+      if (stale || !found || aborted.current) return;
+      emptyTargets.current.delete(step.target);
+      setFallback(null);
+      setLocated({ index, element: found });
+      setRect(found.getBoundingClientRect());
+    });
+    return () => {
+      stale = true;
+      wait.cancel();
+    };
+  }, [inFallback, step, index]);
+
+  // Menu Radix masuk dengan animasi zoom: ukur sekali lagi sesudah animasinya selesai (pengukuran 2 bingkai pertama
+  // bisa lebih kecil beberapa piksel dan atribut `style` tak berubah sehingga pengamat tak terpicu).
+  useEffect(() => {
+    if (!target || !step?.buka) return;
+    const timer = setTimeout(() => {
+      if (!target.isConnected) return;
+      const next = target.getBoundingClientRect();
+      setRect((current) => (sameRect(current, next) ? current : next));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [target, step?.buka]);
 
   // Langkah `click`: maju begitu targetnya diklik (setelah penangan aplikasi sendiri selesai).
   useEffect(() => {
