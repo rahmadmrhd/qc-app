@@ -124,18 +124,20 @@ export function HandoverCard({
           </Badge>
         </div>
 
-        <LazyNote handover={handover}>
-          <NoteView
-            note={handover.note}
-            checklist={handover.checklist}
-            comments={handover.comments}
-            canCheck={canMarkDone && !cancelled && !pending}
-            canComment={!cancelled}
-            compact
-            onCheck={onCheck}
-            onComment={onComment}
-          />
-        </LazyNote>
+        <div data-tour="handover-checklist">
+          <LazyNote handover={handover}>
+            <NoteView
+              note={handover.note}
+              checklist={handover.checklist}
+              comments={handover.comments}
+              canCheck={canMarkDone && !cancelled && !pending}
+              canComment={!cancelled}
+              compact
+              onCheck={onCheck}
+              onComment={onComment}
+            />
+          </LazyNote>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span className="flex gap-3">

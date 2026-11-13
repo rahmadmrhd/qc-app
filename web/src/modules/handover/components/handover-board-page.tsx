@@ -115,10 +115,17 @@ export function HandoverBoardPage({
   return (
     // Desktop: tinggi halaman = sisa viewport (header 3,5 rem + padding 3 rem) agar HANYA daftar kartu tiap kolom
     // yang bergulir; ponsel bergulir normal.
-    <div className="flex min-h-0 flex-col gap-4 md:h-[calc(100svh-6.5rem)]">
+    <div
+      data-tour="handover-board"
+      className="flex min-h-0 flex-col gap-4 md:h-[calc(100svh-6.5rem)]"
+    >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Serah Terima</h1>
-        {canCreate ? <Button onClick={onCreate}>Tambah task</Button> : null}
+        {canCreate ? (
+          <Button data-tour="handover-new" onClick={onCreate}>
+            Tambah task
+          </Button>
+        ) : null}
       </div>
       <NoLocationNotice />
       {readable.length === 0 ? (

@@ -1,5 +1,6 @@
 import type { GuideEntry } from '../lib/types';
 import { DEVICE_GUIDES } from './device';
+import { HANDOVER_GUIDES } from './handover';
 import { DASAR_LAYOUT } from './layout';
 
 /**
@@ -7,4 +8,8 @@ import { DASAR_LAYOUT } from './layout';
  * `catalog.test.ts` menjaganya sejalan dengan `shared/guides.ts`, rute, `data-tour` di sumber, dan klip;
  * `module-coverage.test.ts` menjaga tiap modul berhalaman punya panduan `dasar` (atau tercatat belum).
  */
-export const GUIDE_CATALOG: readonly GuideEntry[] = [DASAR_LAYOUT, ...DEVICE_GUIDES];
+export const GUIDE_CATALOG: readonly GuideEntry[] = [
+  DASAR_LAYOUT,
+  ...DEVICE_GUIDES,
+  ...HANDOVER_GUIDES,
+];

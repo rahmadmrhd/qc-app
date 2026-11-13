@@ -17,9 +17,6 @@ const MODULES_WITHOUT_GUIDE_YET: readonly string[] = [
   'stickerstock',
   'serial',
   'serialservice',
-  // Panduan Serah Terima dibangun di Task 11; Task 11 menghapus kedua baris ini.
-  'handover',
-  'qc',
 ];
 
 function modulesWithDasar(): Set<string> {

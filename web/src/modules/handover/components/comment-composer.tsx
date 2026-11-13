@@ -34,6 +34,7 @@ export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerPr
 
   return (
     <form
+      data-tour="handover-comment"
       className="space-y-2 rounded-md border bg-card p-3"
       onSubmit={(event) => {
         event.preventDefault();

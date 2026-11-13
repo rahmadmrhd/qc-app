@@ -3,6 +3,9 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { DemoCue, DemoScene } from '../lib/demo-types';
 
+/** Lama kartu langkah teks (klip yang belum ada/gagal dimuat) sebelum pemutar berganti adegan. */
+export const TEXT_SCENE_MS = 4000;
+
 interface PlayerState {
   index: number;
   paused: boolean;
@@ -66,6 +69,20 @@ function StepList({ scenes }: { scenes: readonly DemoScene[] }) {
   );
 }
 
+function StepCard({ number, text }: { number: number; text: string }) {
+  return (
+    <div className="flex min-h-24 items-start gap-3 p-3 text-sm" aria-live="polite">
+      <span
+        aria-hidden
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground"
+      >
+        {number}
+      </span>
+      <p>{text}</p>
+    </div>
+  );
+}
+
 function ClipScene({
   scene,
   paused,
@@ -113,31 +130,37 @@ function ClipScene({
 
 /**
  * Pemutar demo tooltip (spek 4.6): adegan `kode` bergantian menurut `durationMs`, adegan `klip` memutar video
- * tanpa suara dengan keterangan mengikuti `cues`. Berulang dari adegan pertama. Klip tanpa `berkas`, klip yang
- * gagal dimuat, atau `prefers-reduced-motion` = seluruh keterangan tampil sebagai daftar langkah bernomor.
+ * tanpa suara dengan keterangan mengikuti `cues`. Berulang dari adegan pertama. Klip tanpa `berkas` atau yang gagal
+ * dimuat tampil sebagai kartu langkah bernomor untuk adegan itu saja (berganti seperti adegan kode, `TEXT_SCENE_MS`);
+ * adegan lain tetap beranimasi. `prefers-reduced-motion` menjatuhkan SELURUH pemutar ke daftar langkah bernomor.
  */
 export function DemoPlayer({ scenes }: { scenes: readonly DemoScene[] }) {
   const [state, dispatch] = useReducer(reducer, { index: 0, paused: false });
   const reduced = usePrefersReducedMotion();
-  const [clipFailed, setClipFailed] = useState(false);
+  const [failedClips, setFailedClips] = useState<ReadonlySet<number>>(() => new Set());
   const [clipCaption, setClipCaption] = useState<string | null>(null);
 
   const count = scenes.length;
   const index = Math.min(state.index, Math.max(count - 1, 0));
   const scene = scenes[index];
-  const unplayable =
-    clipFailed || scenes.some((candidate) => candidate.kind === 'klip' && !candidate.berkas);
-  const fallback = reduced || unplayable;
+  // Klip tanpa `berkas` atau yang gagal dimuat tampil sebagai kartu langkah teks untuk adegan itu saja.
+  const textClip =
+    scene?.kind === 'klip' && (!scene.berkas || failedClips.has(index)) ? scene : null;
+  const fallback = reduced;
 
   // Keterangan klip mengikuti video; tiap pindah adegan kembali ke keterangan dasar.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `index` sengaja memicu reset keterangan
   useEffect(() => setClipCaption(null), [index]);
 
   useEffect(() => {
-    if (fallback || state.paused || !scene || scene.kind !== 'kode') return;
-    const timer = setTimeout(() => dispatch({ type: 'next', count }), scene.durationMs);
+    if (fallback || state.paused || !scene) return;
+    let duration: number;
+    if (scene.kind === 'kode') duration = scene.durationMs;
+    else if (textClip) duration = TEXT_SCENE_MS;
+    else return; // klip yang diputar: berganti lewat `ended`
+    const timer = setTimeout(() => dispatch({ type: 'next', count }), duration);
     return () => clearTimeout(timer);
-  }, [fallback, state.paused, scene, count]);
+  }, [fallback, state.paused, scene, textClip, count]);
 
   if (count === 0) return null;
   if (fallback) return <StepList scenes={scenes} />;
@@ -148,6 +171,8 @@ export function DemoPlayer({ scenes }: { scenes: readonly DemoScene[] }) {
       <div className="overflow-hidden rounded-md border bg-card">
         {scene.kind === 'kode' ? (
           scene.render()
+        ) : textClip ? (
+          <StepCard number={index + 1} text={textClip.caption} />
         ) : (
           <ClipScene
             // Video baru per adegan agar waktu cue dan `src` tidak terbawa.
@@ -157,13 +182,15 @@ export function DemoPlayer({ scenes }: { scenes: readonly DemoScene[] }) {
             loop={count === 1}
             onCaption={setClipCaption}
             onEnded={() => dispatch({ type: 'next', count })}
-            onError={() => setClipFailed(true)}
+            onError={() => setFailedClips((current) => new Set(current).add(index))}
           />
         )}
       </div>
-      <p className="min-h-10 text-sm" aria-live="polite">
-        {scene.kind === 'klip' ? (clipCaption ?? scene.caption) : scene.caption}
-      </p>
+      {textClip ? null : (
+        <p className="min-h-10 text-sm" aria-live="polite">
+          {scene.kind === 'klip' ? (clipCaption ?? scene.caption) : scene.caption}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <button
           type="button"
