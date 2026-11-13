@@ -44,7 +44,6 @@ import {
   SERIAL_CUSTODIES,
   SERIAL_EVENT_TYPES,
   SERIAL_LIMITS,
-  SERIAL_STATUS_LABELS,
   SERIAL_STATUSES,
   type SerialCustody,
   type SerialEventType,
@@ -53,13 +52,7 @@ import {
 } from '@shared/serials';
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
-import {
-  insertCaseStmt,
-  loadCases,
-  reserveCaseNumber,
-  runWithCaseNumber,
-  type SerialCaseRow,
-} from './case-repo';
+import { loadCases, type SerialCaseRow } from './case-repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -202,7 +195,7 @@ export async function locationOptions(env: Env): Promise<SerialLocationOptionsDt
 }
 
 const DUPLICATE_MESSAGE = 'Serial sudah terdaftar';
-const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak bisa dipakai';
+export const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak bisa dipakai';
 export const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
 const LOCATION_LOCKED_MESSAGE =
   'Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis';
@@ -313,20 +306,14 @@ export async function createSerialOnce(
   const eventId = crypto.randomUUID();
   const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
-  const failed = row.status === 'failed';
-  const caseId = failed ? crypto.randomUUID() : '';
-  const damage = failed ? (row.damage ?? '') : '';
-  // Menyusun SELURUH batch satu baris; baris tidak lolos memesan nomor LP (diulang bila penghitung diperebutkan).
+  // Menyusun SELURUH batch satu baris (baris `saveBatch` selalu `good`; yang bermasalah lewat Lapor Rusak).
   const buildStatements = async (): Promise<DbStatement[]> => {
-    const reservation = failed ? await reserveCaseNumber(env, today.replaceAll('-', '')) : null;
     const actor = {
       actorId: user.userId ?? '',
       actorName: user.name,
       actorTeam: 'qc' as const,
     };
     return [
-      // Penghitung nomor LP paling depan: rebutan muncul sebagai kegagalan penjaganya dan diulang.
-      ...(reservation?.statements ?? []),
       insertSerialStmt(env.DB, {
         id: serialId,
         clientId: row.clientId,
@@ -337,25 +324,11 @@ export async function createSerialOnce(
         sample: row.sample,
         note: row.note,
         locationId: row.locationId,
-        status: failed ? 'failed' : 'good',
-        openCaseId: caseId,
+        status: 'good',
+        openCaseId: '',
         now,
         actorEmail,
       }),
-      ...(reservation
-        ? [
-            insertCaseStmt(env.DB, {
-              id: caseId,
-              number: reservation.number,
-              serialId,
-              buId: row.buId,
-              openedOn: today,
-              damage,
-              now,
-              actorEmail,
-            }),
-          ]
-        : []),
       ...stickerPicks.map((pick) =>
         insertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty),
       ),
@@ -378,7 +351,6 @@ export async function createSerialOnce(
           })),
           locationId: row.locationId,
           locationName,
-          ...(failed ? { status: 'failed', damage } : {}),
           ...(row.source === undefined ? {} : { source: row.source }),
         },
       }),
@@ -390,44 +362,10 @@ export async function createSerialOnce(
         actor: actorEmail,
         now,
       })),
-      ...(reservation
-        ? [
-            insertEventStmt(env.DB, {
-              id: crypto.randomUUID(),
-              serialId,
-              caseId,
-              seq: 2,
-              type: 'report_failure',
-              occurredOn: today,
-              now,
-              ...actor,
-              message: '',
-              changes: [
-                {
-                  field: 'status',
-                  from: SERIAL_STATUS_LABELS.good,
-                  to: SERIAL_STATUS_LABELS.failed,
-                },
-                { field: 'damage', from: null, to: damage },
-              ],
-              data: { caseNumber: reservation.number, damage },
-            }),
-          ]
-        : []),
     ];
   };
   try {
-    if (failed) {
-      await runWithCaseNumber(
-        env,
-        serialId,
-        null,
-        async () => env.DB.batch(await buildStatements()),
-        'Serial Number sedang diproses orang lain; coba lagi',
-      );
-    } else {
-      await env.DB.batch(await buildStatements());
-    }
+    await env.DB.batch(await buildStatements());
     return {
       clientId: row.clientId,
       result: 'created',
@@ -497,12 +435,11 @@ function toCase(row: SerialCaseRow): SerialCaseDto {
     number: row.number,
     openedOn: row.opened_on,
     closedOn: orNull(row.closed_on),
-    damage: row.damage,
     outcome: outcome === 'good' || outcome === 'broken' ? outcome : null,
   };
 }
 
-function toSummary(row: SerialRow): SerialSummaryDto {
+export function toSummary(row: SerialRow): SerialSummaryDto {
   const status = row.status.trim();
   const custody = row.custody.trim();
   return {

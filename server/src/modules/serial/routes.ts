@@ -2,7 +2,9 @@ import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
+import { listSerialCases } from './case-list';
 import { serialHistory } from './history';
+import { lookupSerials, reportNewSerial } from './report';
 import {
   getSerial,
   listSerials,
@@ -25,8 +27,11 @@ import {
   validateSaveSerialServiceSettings,
   validateSaveSerialSettings,
   validateSerialAct,
+  validateSerialCaseList,
   validateSerialHistory,
   validateSerialList,
+  validateSerialLookup,
+  validateSerialReportNew,
   validateSerialStickerOptions,
   validateUpdateSerial,
   validateUpdateSerialBatch,
@@ -37,6 +42,8 @@ type SerialMethod =
   | 'serials.stickerOptions'
   | 'serials.locationOptions'
   | 'serials.serviceLocations'
+  | 'serials.lookup'
+  | 'serials.reportNew'
   | 'serials.saveBatch'
   | 'serials.get'
   | 'serials.list'
@@ -47,7 +54,8 @@ type SerialMethod =
   | 'serialSettings.get'
   | 'serialSettings.save'
   | 'serialServiceSettings.get'
-  | 'serialServiceSettings.save';
+  | 'serialServiceSettings.save'
+  | 'serialCases.list';
 
 /** Pembaca serial: level `view` pada `serial` ATAU `serialservice` (BU dibatasi handler). */
 const READ_PERMISSION = {
@@ -88,6 +96,23 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: { module: 'serial', level: 'edit' },
       validate: expectNull,
       handler: async (_input, ctx) => ({ locations: await effectiveServiceLocations(ctx.env) }),
+    },
+    // Lapor Rusak (halaman dan tombol di detail): `serial: edit`; pencarian hanya pada BU yang boleh ditulis.
+    'serials.lookup': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: validateSerialLookup,
+      handler: (input, ctx) => lookupSerials(ctx.env, ctx.user, input),
+    },
+    'serials.reportNew': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: validateSerialReportNew,
+      handler: (input, ctx) => reportNewSerial(ctx.env, input, ctx.user),
+    },
+    // Daftar Laporan: pembaca serial ATAU serialservice (BU dibatasi handler; tidak dibatasi status serial).
+    'serialCases.list': {
+      permission: READ_PERMISSION,
+      validate: validateSerialCaseList,
+      handler: (input, ctx) => listSerialCases(ctx.env, ctx.user, input),
     },
     'serials.list': {
       permission: READ_PERMISSION,

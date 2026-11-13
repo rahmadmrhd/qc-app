@@ -1,7 +1,9 @@
-// `serials.act` 5b: aksi tim servis (baris 5-8 dan 17 tabel transisi) dan batas `serialservice`.
+// `serials.act` alur laporan rusak (2026-11-14): aksi tim servis (baris 3-7 dan 14 tabel transisi), Terima otomatis,
+// dan batas `serialservice`.
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { onEvent, resetEventListenersForTest } from '@server/core/events';
 import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
+import { seedLocation } from '@server-test/access-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -24,23 +26,25 @@ beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
   await seedSerialWorld(env);
+  await seedLocation(env, { id: 'loc-off', code: 'OFF', name: 'Gudang tutup', status: 'inactive' });
 });
 
 const act = (
   action: string,
   extra: Record<string, unknown> = {},
-  options: { email?: string; id?: string; at?: string } = {},
+  options: { email?: string; id?: string; at?: string; occurredOn?: string } = {},
 ) =>
   call(options.email ?? SVC, 'serials.act', {
     id: options.id ?? 'sn1',
     expectedUpdatedAt: options.at ?? AT,
     action,
-    occurredOn: TODAY,
+    occurredOn: options.occurredOn ?? TODAY,
     message: '',
     ...extra,
   });
 
-const CASE = { id: 'case-1', number: 'LP-20261110-001', damage: 'Layar retak' };
+const CASE = { id: 'case-1', number: 'LP-20261110-001', originLocationId: 'loc-sby' };
+/** Serial di tim servis (Jakarta). `transit` = baru dikirim dari Surabaya pada 2026-11-10. */
 const seedAt = (status: string, custody: string, over: Record<string, unknown> = {}) =>
   seedSerial(env, {
     id: 'sn1',
@@ -48,6 +52,7 @@ const seedAt = (status: string, custody: string, over: Record<string, unknown> =
     status,
     custody,
     openCase: CASE,
+    locationId: custody === 'transit' ? 'loc-sby' : 'loc-jkt',
     ...(custody === 'transit'
       ? {
           transitFromLocationId: 'loc-sby',
@@ -61,7 +66,7 @@ const seedAt = (status: string, custody: string, over: Record<string, unknown> =
 const eventsOf = async () =>
   (
     await env.DB.prepare(
-      'SELECT seq, case_id, type, actor_team, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq',
+      'SELECT seq, case_id, type, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq',
     )
       .bind('sn1')
       .all<{
@@ -69,17 +74,28 @@ const eventsOf = async () =>
         case_id: string;
         type: string;
         actor_team: string;
+        message: string;
         changes_json: string;
         data_json: string;
       }>()
   ).results;
 
 const serialRow = async () =>
-  env.DB.prepare('SELECT status, custody, location_id, open_case_id FROM serials WHERE id = ?')
+  env.DB.prepare(
+    'SELECT status, custody, location_id, open_case_id, transit_from_location_id, transit_to_location_id, transit_on FROM serials WHERE id = ?',
+  )
     .bind('sn1')
-    .first<{ status: string; custody: string; location_id: string; open_case_id: string }>();
+    .first<{
+      status: string;
+      custody: string;
+      location_id: string;
+      open_case_id: string;
+      transit_from_location_id: string;
+      transit_to_location_id: string;
+      transit_on: string;
+    }>();
 
-describe('receive oleh servis (baris 5)', () => {
+describe('receive oleh servis (baris 3)', () => {
   test('at_service/transit: custody service, lokasi = tujuan, hari di jalan, tim service', async () => {
     await seedAt('at_service', 'transit');
     const result = await act('receive');
@@ -98,6 +114,15 @@ describe('receive oleh servis (baris 5)', () => {
     });
   });
 
+  test('tanggal terima sebelum tanggal kirim: VALIDATION occurredOn; toLocationId pada terima servis: VALIDATION', async () => {
+    await seedAt('at_service', 'transit');
+    const early = await act('receive', {}, { occurredOn: '2026-11-09' });
+    expect(early.error?.code).toBe('VALIDATION');
+    expect(Object.keys(early.error?.fields ?? {})).toContain('occurredOn');
+    expect((await act('receive', { toLocationId: 'loc-sby' })).error?.code).toBe('VALIDATION');
+    expect((await serialRow())?.custody).toBe('transit');
+  });
+
   test('receive oleh tim QC pada at_service: FORBIDDEN', async () => {
     await seedAt('at_service', 'transit');
     expect((await act('receive', {}, { email: SERIAL_USERS.writer })).error?.code).toBe(
@@ -106,57 +131,221 @@ describe('receive oleh servis (baris 5)', () => {
   });
 });
 
-describe('diagnosis, rusak, dan kirim balik (baris 6, 7, 8)', () => {
-  test('service_diagnosis: at_service/service menjadi service_repair, damage kasus diperbarui', async () => {
-    await seedAt('at_service', 'service', { locationId: 'loc-jkt' });
-    const result = await act('service_diagnosis', { damage: 'Motherboard rusak, bisa diganti' });
+describe('diagnosis (baris 4-6)', () => {
+  test('stage diagnosis dari at_service/service: status diagnosis, kustodi tetap service, catatan opsional', async () => {
+    await seedAt('at_service', 'service');
+    const result = await act('service_diagnosis', { stage: 'diagnosis' });
     expect(result.ok).toBe(true);
-    expect(result.data.status).toBe('service_repair');
-    expect(result.data.openCase.damage).toBe('Motherboard rusak, bisa diganti');
+    expect(result.data).toMatchObject({ status: 'diagnosis', custody: 'service' });
+    const event = (await eventsOf())[1];
+    expect(event).toMatchObject({
+      type: 'service_diagnosis',
+      actor_team: 'service',
+      case_id: 'case-1',
+    });
+    expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
+      { field: 'status', from: 'Di servis', to: 'Diagnosis' },
+    ]);
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({ stage: 'diagnosis' });
+  });
+
+  test('stage repairing dari diagnosis: Sedang diperbaiki; diagnosis ulang dari service_repair boleh', async () => {
+    await seedAt('diagnosis', 'service');
+    const repairing = await act('service_diagnosis', { stage: 'repairing', message: 'Ganti PSU' });
+    expect(repairing.data.status).toBe('service_repair');
+    expect((await eventsOf())[1]?.message).toBe('Ganti PSU');
+    const again = await act(
+      'service_diagnosis',
+      { stage: 'diagnosis' },
+      { at: repairing.data.updatedAt },
+    );
+    expect(again.data.status).toBe('diagnosis');
+  });
+
+  test('tanpa stage atau stage tak dikenal: VALIDATION', async () => {
+    await seedAt('at_service', 'service');
+    const none = await act('service_diagnosis');
+    expect(none.error?.code).toBe('VALIDATION');
+    expect(Object.keys(none.error?.fields ?? {})).toContain('stage');
+    expect((await act('service_diagnosis', { stage: 'rusak' })).error?.code).toBe('VALIDATION');
+    expect((await act('note', { message: 'x', stage: 'done' })).error?.code).toBe('VALIDATION');
+  });
+
+  test('stage done dari service_repair: recheck/transit, asal = lokasi servis, tujuan = lokasi QC asal laporan', async () => {
+    await seedAt('service_repair', 'service');
+    const result = await act('service_diagnosis', { stage: 'done', message: 'Sudah diganti' });
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({
+      status: 'recheck',
+      custody: 'transit',
+      locationId: 'loc-jkt',
+      transitFromLocationId: 'loc-jkt',
+      transitToLocationId: 'loc-sby',
+      transitOn: TODAY,
+    });
     const event = (await eventsOf())[1];
     expect(event).toMatchObject({ type: 'service_diagnosis', actor_team: 'service' });
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+      stage: 'done',
+      leg: 'to_qc',
+      toLocationName: 'Surabaya',
+    });
     expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
-      { field: 'status', from: 'Di servis', to: 'Perbaikan servis' },
-      { field: 'damage', from: 'Layar retak', to: 'Motherboard rusak, bisa diganti' },
+      { field: 'status', from: 'Sedang diperbaiki', to: 'Menunggu cek ulang' },
+      { field: 'custody', from: 'Di servis', to: 'Dalam pengiriman' },
     ]);
   });
 
-  test('service_diagnosis sebelum receive (custody transit): CONFLICT', async () => {
+  test('stage done: lokasi QC asal nonaktif tetap jadi tujuan (Terima QC yang meminta lokasi lain)', async () => {
+    await seedAt('service_repair', 'service', {
+      openCase: { ...CASE, originLocationId: 'loc-off' },
+    });
+    const result = await act('service_diagnosis', { stage: 'done' });
+    expect(result.data.transitToLocationId).toBe('loc-off');
+  });
+
+  test('stage done tanpa lokasi QC asal tercatat: lokasi saat dicatat bila aktif, selain itu lokasi unit sekarang', async () => {
+    await seedAt('service_repair', 'service', {
+      openCase: { ...CASE, originLocationId: '' },
+      recordedLocationId: 'loc-sby',
+    });
+    const first = await act('service_diagnosis', { stage: 'done' });
+    expect(first.data.transitToLocationId).toBe('loc-sby');
+    await env.DB.prepare('DELETE FROM serial_events').run();
+    await env.DB.prepare('DELETE FROM serial_cases').run();
+    await env.DB.prepare('DELETE FROM serials').run();
+    await seedAt('service_repair', 'service', {
+      openCase: { ...CASE, originLocationId: '' },
+      recordedLocationId: 'loc-off',
+    });
+    const second = await act('service_diagnosis', { stage: 'done' });
+    expect(second.data.transitToLocationId).toBe('loc-jkt');
+  });
+
+  test('diagnosis langsung dari custody transit: dua kejadian (receive otomatis lalu service_diagnosis) dalam satu batch', async () => {
     await seedAt('at_service', 'transit');
-    expect((await act('service_diagnosis', { damage: 'x' })).error?.code).toBe('CONFLICT');
-    expect((await act('declare_broken')).error?.code).toBe('CONFLICT');
+    const result = await act('service_diagnosis', { stage: 'diagnosis' });
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({
+      status: 'diagnosis',
+      custody: 'service',
+      locationId: 'loc-jkt',
+      transitToLocationId: null,
+    });
+    const events = await eventsOf();
+    expect(events.map((event) => [event.seq, event.type, event.actor_team, event.case_id])).toEqual(
+      [
+        [1, 'recorded', 'qc', ''],
+        [2, 'receive', 'service', 'case-1'],
+        [3, 'service_diagnosis', 'service', 'case-1'],
+      ],
+    );
+    expect(JSON.parse(events[1]?.data_json ?? '{}')).toMatchObject({
+      leg: 'at_service',
+      auto: true,
+      daysInTransit: 2,
+    });
+    expect(JSON.parse(events[1]?.changes_json ?? '[]')).toEqual([
+      { field: 'custody', from: 'Dalam pengiriman', to: 'Di servis' },
+      { field: 'location', from: 'Surabaya', to: 'Jakarta' },
+    ]);
+    // Aksi sendiri: hanya perubahan status (kustodi sudah service sesudah Terima otomatis).
+    expect(JSON.parse(events[2]?.changes_json ?? '[]')).toEqual([
+      { field: 'status', from: 'Di servis', to: 'Diagnosis' },
+    ]);
   });
 
-  test('service_diagnosis tanpa damage: VALIDATION', async () => {
+  test('diagnosis selesai langsung dari transit: kembali ke transit dengan asal = lokasi servis, tujuan = lokasi QC asal', async () => {
+    await seedAt('at_service', 'transit');
+    const result = await act('service_diagnosis', { stage: 'done' });
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({
+      status: 'recheck',
+      custody: 'transit',
+      transitFromLocationId: 'loc-jkt',
+      transitToLocationId: 'loc-sby',
+    });
+    const events = await eventsOf();
+    expect(events.map((event) => event.type)).toEqual(['recorded', 'receive', 'service_diagnosis']);
+    expect(JSON.parse(events[2]?.changes_json ?? '[]')).toEqual([
+      { field: 'status', from: 'Di servis', to: 'Menunggu cek ulang' },
+      { field: 'custody', from: 'Di servis', to: 'Dalam pengiriman' },
+    ]);
+  });
+
+  test('diagnosis dari transit dengan tanggal sebelum tanggal kirim: VALIDATION occurredOn, tanpa efek; tanggal sama lolos', async () => {
+    await seedAt('at_service', 'transit');
+    const early = await act(
+      'service_diagnosis',
+      { stage: 'diagnosis' },
+      { occurredOn: '2026-11-09' },
+    );
+    expect(early.error?.code).toBe('VALIDATION');
+    expect(Object.keys(early.error?.fields ?? {})).toContain('occurredOn');
+    expect(await eventsOf()).toHaveLength(1);
+    expect((await serialRow())?.custody).toBe('transit');
+    const ok = await act('service_diagnosis', { stage: 'diagnosis' }, { occurredOn: '2026-11-10' });
+    expect(ok.ok).toBe(true);
+  });
+
+  test('diagnosis oleh tim QC: FORBIDDEN; pada status Lolos atau Dilaporkan: CONFLICT', async () => {
     await seedAt('at_service', 'service');
-    expect((await act('service_diagnosis', {})).error?.code).toBe('VALIDATION');
+    expect(
+      (await act('service_diagnosis', { stage: 'done' }, { email: SERIAL_USERS.writer })).error
+        ?.code,
+    ).toBe('FORBIDDEN');
+    await env.DB.prepare("UPDATE serials SET status = 'reported', custody = 'qc'").run();
+    expect((await act('service_diagnosis', { stage: 'done' })).error?.code).toBe('CONFLICT');
+  });
+});
+
+describe('declare_broken: Rusak (baris 7)', () => {
+  test('dari at_service/transit (Terima otomatis) dan dari diagnosis: broken, laporan outcome broken, tim service', async () => {
+    await seedAt('at_service', 'transit');
+    const fromTransit = await act('declare_broken', {
+      message: 'Motherboard tidak bisa diperbaiki',
+    });
+    expect(fromTransit.ok).toBe(true);
+    expect(fromTransit.data).toMatchObject({
+      status: 'broken',
+      custody: 'service',
+      locationId: 'loc-jkt',
+      openCaseId: null,
+    });
+    expect(fromTransit.data.cases[0]).toMatchObject({ closedOn: TODAY, outcome: 'broken' });
+    const events = await eventsOf();
+    expect(events.map((event) => event.type)).toEqual(['recorded', 'receive', 'declare_broken']);
+    expect(events[2]).toMatchObject({
+      actor_team: 'service',
+      case_id: 'case-1',
+      message: 'Motherboard tidak bisa diperbaiki',
+    });
+    expect(JSON.parse(events[2]?.data_json ?? '{}')).toMatchObject({
+      caseNumber: 'LP-20261110-001',
+      outcome: 'broken',
+    });
+
+    await env.DB.prepare('DELETE FROM serial_events').run();
+    await env.DB.prepare('DELETE FROM serial_cases').run();
+    await env.DB.prepare('DELETE FROM serials').run();
+    await seedAt('diagnosis', 'service');
+    const fromDiagnosis = await act('declare_broken', { message: 'Rusak total' });
+    expect(fromDiagnosis.data.status).toBe('broken');
   });
 
-  test('declare_broken dari at_service dan dari service_repair: broken, kasus outcome broken, tim service', async () => {
-    for (const status of ['at_service', 'service_repair']) {
-      env = await createTestEnv();
-      env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
-      await seedSerialWorld(env);
-      await seedAt(status, 'service');
-      const result = await act('declare_broken', { message: 'Tidak bisa diperbaiki' });
-      expect(result.ok).toBe(true);
-      expect(result.data).toMatchObject({ status: 'broken', openCaseId: null, openCase: null });
-      const c = await env.DB.prepare(
-        "SELECT closed_on, outcome FROM serial_cases WHERE id = 'case-1'",
-      ).first<{ closed_on: string; outcome: string }>();
-      expect(c).toEqual({ closed_on: TODAY, outcome: 'broken' });
-      const event = (await eventsOf())[1];
-      expect(event).toMatchObject({
-        type: 'declare_broken',
-        actor_team: 'service',
-        case_id: 'case-1',
-      });
-      expect((await serialRow())?.open_case_id).toBe('');
-    }
-  });
-
-  test('declare_broken memanggil pendengar serial.declared_broken tepat sekali dengan id yang benar', async () => {
+  test('tanpa catatan atau hanya spasi: VALIDATION pada message, tanpa efek', async () => {
     await seedAt('service_repair', 'service');
+    for (const message of ['', '  \n']) {
+      const out = await act('declare_broken', { message });
+      expect(out.error?.code).toBe('VALIDATION');
+      expect(Object.keys(out.error?.fields ?? {})).toContain('message');
+    }
+    expect((await serialRow())?.status).toBe('service_repair');
+    expect(await eventsOf()).toHaveLength(1);
+  });
+
+  test('memanggil pendengar serial.declared_broken tepat sekali dengan id yang benar (event aksi, bukan receive)', async () => {
+    await seedAt('at_service', 'transit');
     const seen: unknown[] = [];
     resetEventListenersForTest();
     registerSerialStockListeners();
@@ -165,20 +354,23 @@ describe('diagnosis, rusak, dan kirim balik (baris 6, 7, 8)', () => {
       return [];
     });
     try {
-      const result = await act('declare_broken');
+      const result = await act('declare_broken', { message: 'Rusak' });
       expect(result.ok).toBe(true);
     } finally {
       resetEventListenersForTest();
       registerSerialStockListeners();
     }
-    const event = (await eventsOf())[1];
+    const declared = (await eventsOf()).at(-1);
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ serialId: 'sn1', caseId: 'case-1' });
-    expect((seen[0] as { eventId: string }).eventId).toBeTruthy();
-    expect(event?.type).toBe('declare_broken');
+    const eventId = await env.DB.prepare(
+      "SELECT id FROM serial_events WHERE serial_id = 'sn1' AND type = 'declare_broken'",
+    ).first<{ id: string }>();
+    expect((seen[0] as { eventId: string }).eventId).toBe(eventId?.id as string);
+    expect(declared?.type).toBe('declare_broken');
   });
 
-  test('declare_broken yang batal (stale) tidak memicu pendengar', async () => {
+  test('yang batal (stale) tidak memicu pendengar', async () => {
     await seedAt('service_repair', 'service');
     let calls = 0;
     resetEventListenersForTest();
@@ -188,7 +380,11 @@ describe('diagnosis, rusak, dan kirim balik (baris 6, 7, 8)', () => {
       return [];
     });
     try {
-      const stale = await act('declare_broken', {}, { at: '2026-01-01T00:00:00.000Z' });
+      const stale = await act(
+        'declare_broken',
+        { message: 'x' },
+        { at: '2026-01-01T00:00:00.000Z' },
+      );
       expect(stale.error?.code).toBe('CONFLICT');
     } finally {
       resetEventListenersForTest();
@@ -197,8 +393,8 @@ describe('diagnosis, rusak, dan kirim balik (baris 6, 7, 8)', () => {
     expect(calls).toBe(0);
   });
 
-  test('galat pada pernyataan terakhir (pendengar) membatalkan declare_broken seluruhnya', async () => {
-    await seedAt('service_repair', 'service');
+  test('galat pada pernyataan terakhir (pendengar) membatalkan declare_broken seluruhnya, termasuk Terima otomatis', async () => {
+    await seedAt('at_service', 'transit');
     resetEventListenersForTest();
     registerSerialStockListeners();
     onEvent('serial.declared_broken', (e) => [
@@ -207,141 +403,122 @@ describe('diagnosis, rusak, dan kirim balik (baris 6, 7, 8)', () => {
     const realError = console.error;
     console.error = () => undefined;
     try {
-      expect((await act('declare_broken')).ok).toBe(false);
+      expect((await act('declare_broken', { message: 'x' })).ok).toBe(false);
     } finally {
       console.error = realError;
       resetEventListenersForTest();
       registerSerialStockListeners();
     }
-    expect(await serialRow()).toMatchObject({ status: 'service_repair', open_case_id: 'case-1' });
+    expect(await serialRow()).toMatchObject({
+      status: 'at_service',
+      custody: 'transit',
+      open_case_id: 'case-1',
+    });
     const c = await env.DB.prepare(
       "SELECT closed_on, outcome FROM serial_cases WHERE id = 'case-1'",
-    ).first<{
-      closed_on: string;
-      outcome: string;
-    }>();
+    ).first<{ closed_on: string; outcome: string }>();
     expect(c).toEqual({ closed_on: '', outcome: '' });
     expect((await eventsOf()).length).toBe(1);
   });
+});
 
-  test('send kembali ke QC dari service_repair: recheck/transit, lokasi tujuan tercatat', async () => {
-    await seedAt('service_repair', 'service', { locationId: 'loc-jkt' });
-    const result = await act('send', { toLocationId: 'loc-sby', shipmentNote: 'Kurir internal' });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
-      status: 'recheck',
-      custody: 'transit',
-      locationId: 'loc-jkt',
-      transitFromLocationId: 'loc-jkt',
-      transitToLocationId: 'loc-sby',
-    });
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'send', actor_team: 'service' });
-    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
-      leg: 'to_qc',
-      shipmentNote: 'Kurir internal',
-    });
-  });
-
-  test('alur utuh: kirim ke servis, diterima, diagnosis, kirim balik, diterima QC, cek ulang lolos', async () => {
+describe('alur utuh', () => {
+  test('lapor, kirim, terima, diagnosis, diperbaiki, selesai, terima QC, cek ulang lolos', async () => {
     await seedSerial(env, {
       id: 'sn1',
       serial: 'AB12',
-      status: 'failed',
-      openCase: CASE,
       stickers: [{ stickerId: 's1', qty: 1 }],
     });
-    const sent = await act('send', { toLocationId: 'loc-jkt' }, { email: SERIAL_USERS.hybrid });
+    await env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)')
+      .bind('SERIAL_SERVICE_LOCATIONS', JSON.stringify({ locationIds: ['loc-jkt'], updatedAt: AT }))
+      .run();
+    const QC = SERIAL_USERS.hybrid;
+    const reported = await act('report_failure', { message: 'Mati total' }, { email: QC });
+    const sent = await act(
+      'send',
+      { message: 'Kirim' },
+      { email: QC, at: reported.data.updatedAt },
+    );
     expect(sent.ok).toBe(true);
     const received = await act('receive', {}, { at: sent.data.updatedAt });
-    const diagnosed = await act(
+    const diagnosis = await act(
       'service_diagnosis',
-      { damage: 'Ganti PSU' },
+      { stage: 'diagnosis' },
       { at: received.data.updatedAt },
     );
-    const back = await act('send', { toLocationId: 'loc-sby' }, { at: diagnosed.data.updatedAt });
-    const atQc = await act('receive', {}, { at: back.data.updatedAt, email: SERIAL_USERS.writer });
-    expect(atQc.data).toMatchObject({ status: 'recheck', custody: 'qc', locationId: 'loc-sby' });
-    const done = await act(
-      'recheck_pass',
-      {},
-      { at: atQc.data.updatedAt, email: SERIAL_USERS.writer },
+    const repairing = await act(
+      'service_diagnosis',
+      { stage: 'repairing' },
+      { at: diagnosis.data.updatedAt },
     );
-    expect(done.data).toMatchObject({ status: 'good', openCaseId: null });
+    const done = await act(
+      'service_diagnosis',
+      { stage: 'done' },
+      { at: repairing.data.updatedAt },
+    );
+    expect(done.data).toMatchObject({
+      status: 'recheck',
+      custody: 'transit',
+      transitToLocationId: 'loc-sby',
+    });
+    const atQc = await act('receive', {}, { at: done.data.updatedAt, email: QC });
+    expect(atQc.data).toMatchObject({ status: 'recheck', custody: 'qc', locationId: 'loc-sby' });
+    const pass = await act('recheck_pass', {}, { at: atQc.data.updatedAt, email: QC });
+    expect(pass.data).toMatchObject({ status: 'good', openCaseId: null });
     expect((await eventsOf()).map((e) => [e.type, e.actor_team])).toEqual([
       ['recorded', 'qc'],
+      ['report_failure', 'qc'],
       ['send', 'qc'],
       ['receive', 'service'],
       ['service_diagnosis', 'service'],
-      ['send', 'service'],
+      ['service_diagnosis', 'service'],
+      ['service_diagnosis', 'service'],
       ['receive', 'qc'],
       ['recheck_pass', 'qc'],
     ]);
+    expect(pass.data.cases[0]).toMatchObject({ outcome: 'good', closedOn: TODAY });
   });
 });
 
-describe('note dan batas serialservice (baris 16, 17)', () => {
+describe('note dan batas serialservice (baris 13, 14)', () => {
   test('note pada service_repair: tim service oleh servis, tim qc oleh pencatat', async () => {
     await seedAt('service_repair', 'service');
     const bySvc = await act('note', { message: 'Menunggu suku cadang' });
     expect(bySvc.ok).toBe(true);
     const byQc = await act(
       'note',
-      { message: 'Info dari QC' },
+      { message: 'QC menunggu' },
       { email: SERIAL_USERS.writer, at: bySvc.data.updatedAt },
     );
     expect(byQc.ok).toBe(true);
-    expect((await eventsOf()).map((e) => e.actor_team)).toEqual(['qc', 'service', 'qc']);
+    expect((await eventsOf()).slice(1).map((e) => e.actor_team)).toEqual(['service', 'qc']);
   });
 
   test('pemegang kedua modul: note pada at_service = tim service', async () => {
     await seedAt('at_service', 'service');
-    await act('note', { message: 'x' }, { email: SERIAL_USERS.hybrid });
+    const out = await act('note', { message: 'x' }, { email: SERIAL_USERS.hybrid });
+    expect(out.ok).toBe(true);
     expect((await eventsOf())[1]?.actor_team).toBe('service');
   });
 
-  test('serialservice pada good, failed, recheck: aksi yang ada tetapi bukan miliknya FORBIDDEN, yang tak ada CONFLICT', async () => {
-    // F = baris tabel ada tetapi modulnya bukan serialservice; C = tak ada baris untuk aksi itu pada status tersebut.
-    const expectations: Record<string, Record<string, 'FORBIDDEN' | 'CONFLICT'>> = {
-      good: {
-        note: 'FORBIDDEN',
-        recheck: 'FORBIDDEN',
-        report_failure: 'FORBIDDEN',
-        send: 'FORBIDDEN',
-        attempt_repair: 'CONFLICT',
-        recheck_pass: 'CONFLICT',
-      },
-      failed: {
-        note: 'FORBIDDEN',
-        attempt_repair: 'FORBIDDEN',
-        send: 'FORBIDDEN',
-        recheck: 'CONFLICT',
-        report_failure: 'CONFLICT',
-        recheck_pass: 'CONFLICT',
-      },
-      recheck: {
-        note: 'FORBIDDEN',
-        recheck_pass: 'FORBIDDEN',
-        recheck: 'CONFLICT',
-        report_failure: 'CONFLICT',
-        attempt_repair: 'CONFLICT',
-        send: 'CONFLICT',
-      },
-    };
-    const inputs: Record<string, Record<string, unknown>> = {
-      note: { message: 'x' },
-      report_failure: { damage: 'x' },
-      send: { toLocationId: 'loc-jkt' },
-    };
-    for (const [status, table] of Object.entries(expectations)) {
-      env = await createTestEnv();
-      env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
-      await seedSerialWorld(env);
-      await seedAt(status, 'qc');
-      for (const [action, code] of Object.entries(table)) {
-        const out = await act(action, inputs[action] ?? {});
-        expect([status, action, out.error?.code]).toEqual([status, action, code]);
-      }
+  test('serialservice pada good, reported, recheck: aksi yang ada tetapi bukan miliknya FORBIDDEN, yang tak ada CONFLICT', async () => {
+    for (const [status, custody] of [
+      ['good', 'qc'],
+      ['reported', 'qc'],
+      ['recheck', 'qc'],
+    ] as const) {
+      await env.DB.prepare('DELETE FROM serial_events').run();
+      await env.DB.prepare('DELETE FROM serial_cases').run();
+      await env.DB.prepare('DELETE FROM serials').run();
+      await seedAt(status, custody, {
+        locationId: 'loc-sby',
+        ...(status === 'good' ? { openCase: undefined } : {}),
+      });
+      expect((await act('note', { message: 'x' })).error?.code, status).toBe('FORBIDDEN');
+      expect((await act('declare_broken', { message: 'x' })).error?.code, status).toBe('CONFLICT');
+      expect((await act('service_diagnosis', { stage: 'done' })).error?.code, status).toBe(
+        'CONFLICT',
+      );
       expect((await serialRow())?.status).toBe(status);
     }
   });
@@ -353,7 +530,7 @@ describe('note dan batas serialservice (baris 16, 17)', () => {
     );
   });
 
-  test('serialservice tidak dapat mencatat, mengubah, atau memilih stiker: FORBIDDEN', async () => {
+  test('serialservice tidak dapat mencatat, mengubah, atau memilih stiker/lokasi: FORBIDDEN', async () => {
     await seedAt('at_service', 'service');
     const row = {
       clientId: 'client-baru-1',
@@ -364,7 +541,6 @@ describe('note dan batas serialservice (baris 16, 17)', () => {
       locationId: 'loc-sby',
       sample: false,
       note: '',
-      status: 'good',
     };
     expect((await call(SVC, 'serials.saveBatch', { rows: [row] })).error?.code).toBe('FORBIDDEN');
     expect(
@@ -391,15 +567,8 @@ describe('note dan batas serialservice (baris 16, 17)', () => {
     expect(
       (await call(SVC, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-a' })).error?.code,
     ).toBe('FORBIDDEN');
-  });
-
-  test('serialservice: edit boleh memuat pilihan lokasi (keputusan pemilik 2026-11-13); serialservice view saja tidak', async () => {
-    const ok = await call(SVC, 'serials.locationOptions', null);
-    expect(ok.ok).toBe(true);
-    expect(ok.data.locations.map((l: { id: string }) => l.id)).toEqual(['loc-jkt', 'loc-sby']);
-    expect((await call(SERIAL_USERS.service, 'serials.locationOptions', null)).error?.code).toBe(
-      'FORBIDDEN',
-    );
+    // Tim servis tidak lagi memilih lokasi (keputusan rancangan §3 butir h).
+    expect((await call(SVC, 'serials.locationOptions', null)).error?.code).toBe('FORBIDDEN');
   });
 
   test('serialservice view saja tidak dapat beraksi: FORBIDDEN di gerbang rute', async () => {

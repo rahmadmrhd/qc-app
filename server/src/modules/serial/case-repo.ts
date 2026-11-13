@@ -59,7 +59,6 @@ export interface NewCase {
   serialId: string;
   buId: string;
   openedOn: string;
-  damage: string;
   now: string;
   actorEmail: string;
 }
@@ -67,20 +66,24 @@ export interface NewCase {
 export function insertCaseStmt(db: Preparer, c: NewCase): DbStatement {
   return db
     .prepare(
-      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, damage, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .bind(c.id, c.number, c.serialId, c.buId, c.openedOn, c.damage, c.now, c.actorEmail, c.now);
+    .bind(c.id, c.number, c.serialId, c.buId, c.openedOn, c.now, c.actorEmail, c.now);
 }
 
-export function updateCaseDamageStmt(
+/**
+ * Mencatat lokasi QC asal laporan (lokasi unit saat Kirim ke servis); dipulihkan sebagai lokasi unit saat Terima di QC.
+ * Dipasang ke `batch()` aksi kirim (kasus ada: dimuat dalam percobaan yang sama; serial yang sama terkunci CAS).
+ */
+export function setCaseOriginStmt(
   db: Preparer,
   caseId: string,
-  damage: string,
+  locationId: string,
   now: string,
 ): DbStatement {
   return db
-    .prepare('UPDATE serial_cases SET damage = ?, updated_at = ? WHERE id = ?')
-    .bind(damage, now, caseId);
+    .prepare('UPDATE serial_cases SET origin_location_id = ?, updated_at = ? WHERE id = ?')
+    .bind(locationId, now, caseId);
 }
 
 /**
@@ -108,13 +111,15 @@ export interface SerialCaseRow {
   bu_id: string;
   opened_on: string;
   closed_on: string;
-  damage: string;
   outcome: string;
+  /** Lokasi QC asal (diisi saat Kirim ke servis); '' bila belum pernah dikirim. */
+  origin_location_id: string;
   created_at: string;
+  created_by: string;
 }
 
 const CASE_COLUMNS =
-  'id, number, serial_id, bu_id, opened_on, closed_on, damage, outcome, created_at';
+  'id, number, serial_id, bu_id, opened_on, closed_on, outcome, origin_location_id, created_at, created_by';
 
 /** Semua kasus sebuah serial, terbaru dulu. */
 export async function loadCases(db: Preparer, serialId: string): Promise<SerialCaseRow[]> {
