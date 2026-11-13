@@ -4,6 +4,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
+import { startOutboxSync } from '@/app/outbox-sync';
 import { startInstallCapture } from '@/app/pwa/install';
 import { setMutationSource } from '@/app/pwa/safe-reload';
 import { attachNavigationTrigger, startPwaUpdates } from '@/app/pwa/update';
@@ -11,10 +12,23 @@ import { PwaUpdateBanner } from '@/app/pwa/update-banner';
 import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
+import { startServerStatus } from '@/app/server-status';
+import { OfflineScreen } from '@/app/shell/offline-screen';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
+
+/**
+ * Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya. Versi baru dipakai otomatis
+ * bila aman, pada perpindahan halaman atau saat tab kembali terlihat (keputusan pemilik 2026-11-13).
+ * `router` kosong pada jalur boot offline (tanpa router, tanpa pemicu navigasi).
+ */
+function startServiceWorker(router?: Parameters<typeof attachNavigationTrigger>[0]) {
+  if (!import.meta.env.PROD) return;
+  startPwaUpdates({ register: registerSW });
+  if (router) attachNavigationTrigger(router);
+}
 
 async function start() {
   // beforeinstallprompt dapat tiba sebelum React dirender; tangkap sejak awal (FR-P5).
@@ -26,6 +40,21 @@ async function start() {
 
   // Sesi cookie diverifikasi server (GET /api/v1/me) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
   const me = await loadMe();
+  const root = document.getElementById('app');
+  if (!root) throw new Error('Elemen #app tidak ditemukan');
+  // Server tidak terjangkau saat boot: layar "Tidak ada koneksi" saja (tanpa router/query client). Service worker
+  // tetap didaftarkan agar cangkang aplikasi dan pembaruan versi jalan; sesi tidak disentuh (FR-P7).
+  if (me === 'unavailable') {
+    createRoot(root).render(
+      <StrictMode>
+        <ThemeProvider>
+          <OfflineScreen onRetry={() => window.location.reload()} />
+        </ThemeProvider>
+      </StrictMode>,
+    );
+    startServiceWorker();
+    return;
+  }
   initSession(resolveInitialSession(me, authError));
   if (me) {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
@@ -33,6 +62,10 @@ async function start() {
     queryClient.setQueryData(meQueryKey, me);
   }
   startQueryPersistence(queryClient);
+  // Spanduk "data terakhir" saat server tidak tersedia (FR-P16).
+  startServerStatus(queryClient);
+  // Antrean centang di perangkat dikirim ulang di foreground saat server pulih (FR-P17); hanya untuk sesi sah.
+  if (me) startOutboxSync(queryClient);
 
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {
@@ -46,8 +79,6 @@ async function start() {
     isMutating: () => queryClient.isMutating(),
     subscribe: (callback) => queryClient.getMutationCache().subscribe(callback),
   });
-  const root = document.getElementById('app');
-  if (!root) throw new Error('Elemen #app tidak ditemukan');
   createRoot(root).render(
     <StrictMode>
       <ThemeProvider>
@@ -58,12 +89,7 @@ async function start() {
       </ThemeProvider>
     </StrictMode>,
   );
-  // Service worker hanya ada pada build produksi (FR-P11); dev tidak mendaftarkannya. Versi baru dipakai otomatis
-  // bila aman, pada perpindahan halaman atau saat tab kembali terlihat (keputusan pemilik 2026-11-13).
-  if (import.meta.env.PROD) {
-    startPwaUpdates({ register: registerSW });
-    attachNavigationTrigger(router);
-  }
+  startServiceWorker(router);
 }
 
 void start();

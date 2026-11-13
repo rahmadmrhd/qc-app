@@ -4,14 +4,22 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  requestFlush: vi.fn(),
+}));
 vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.api(...args) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error, info: mocks.info } }));
+vi.mock('@/app/outbox-sync', () => ({ requestOutboxFlush: () => mocks.requestFlush() }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import { ApiError } from '@/lib/api/api-error';
 import { makeHandover } from '../components/test-handover';
 import { handoverKeys } from '../queries';
 import { boardColumnData, findHandoverInBoards } from './board-cache';
+import { enqueueCheck, OUTBOX_MAX_ENTRIES, readOutbox } from './check-outbox';
 import { useCheckQueue } from './use-check-queue';
 
 const items = (n: number) =>
@@ -77,9 +85,12 @@ const flush = () =>
   });
 
 beforeEach(() => {
+  localStorage.clear();
   resetBusyForTests();
   mocks.api.mockReset();
   mocks.error.mockReset();
+  mocks.info.mockReset();
+  mocks.requestFlush.mockReset();
 });
 
 test('5 klik beruntun: tampilan langsung 5 tercentang, 5 permintaan berurutan (satu terbang), hasil akhir = server', async () => {
@@ -210,4 +221,94 @@ test('antrean centang yang belum kosong menandai registri sibuk (agar muat ulang
   });
   await flush();
   expect(isBusy()).toBe(false);
+});
+
+const unavailable = () => new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-');
+
+test('UNAVAILABLE: centang diantrekan di perangkat, tampilan dipertahankan, tanpa galat dan tanpa muat ulang', async () => {
+  const { client, hook, cached, ref } = setup();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  const queued = readOutbox('qc@x');
+  expect(queued).toHaveLength(1);
+  expect(queued[0]).toMatchObject({
+    taskId: 't1',
+    locationId: 'loc-a',
+    index: 1,
+    text: 'B1 = 1',
+    checked: true,
+  });
+  expect(cached().checklist[1]?.checked).toBe(true);
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: handoverKeys.all });
+  expect(mocks.error).not.toHaveBeenCalled();
+  expect(mocks.info).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.isSaving('t1')).toBe(false);
+});
+
+test('penyimpanan antrean penuh: butir dikembalikan dan galat biasa tampil', async () => {
+  const { client, hook, cached, ref } = setup();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  for (let i = 0; i < OUTBOX_MAX_ENTRIES; i++) {
+    enqueueCheck('qc@x', {
+      taskId: `lain${i}`,
+      locationId: 'loc-a',
+      index: 0,
+      text: 'x',
+      checked: true,
+      at: Date.now(),
+    });
+  }
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(cached().checklist[1]?.checked).toBe(false);
+  expect(mocks.error).toHaveBeenCalledTimes(1);
+  expect(readOutbox('qc@x')).toHaveLength(OUTBOX_MAX_ENTRIES);
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: handoverKeys.all });
+});
+
+test('galat selain UNAVAILABLE (CONFLICT) tidak diantrekan: perilaku lama', async () => {
+  const { hook, cached, ref } = setup();
+  mocks.api.mockRejectedValue(new ApiError('CONFLICT', 'Catatan berubah', '-'));
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(readOutbox('qc@x')).toEqual([]);
+  expect(cached().checklist[1]?.checked).toBe(false);
+  expect(mocks.error).toHaveBeenCalledTimes(1);
+  expect(mocks.info).not.toHaveBeenCalled();
+});
+
+test('butir yang sama diklik dua kali saat offline: satu entri bernilai terakhir', async () => {
+  const { hook, ref } = setup();
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => {
+    hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true);
+    hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, false);
+  });
+  await flush();
+  const queued = readOutbox('qc@x');
+  expect(queued).toHaveLength(1);
+  expect(queued[0]?.checked).toBe(false);
+  // Klik kedua melihat entri antrean milik task ini dan langsung masuk antrean (tanpa permintaan kedua).
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+});
+
+test('task masih punya entri antrean: klik baru masuk antrean, tidak dikirim langsung, lalu meminta pengurasan', async () => {
+  const { hook, ref } = setup();
+  enqueueCheck('qc@x', {
+    taskId: 't1',
+    locationId: 'loc-a',
+    index: 3,
+    text: 'B3 = 1',
+    checked: true,
+    at: Date.now(),
+  });
+  act(() => hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true));
+  await flush();
+  expect(mocks.api).not.toHaveBeenCalled();
+  expect(readOutbox('qc@x').map((entry) => entry.index)).toEqual([3, 0]);
+  expect(mocks.requestFlush).toHaveBeenCalledTimes(1);
+  expect(mocks.error).not.toHaveBeenCalled();
 });

@@ -6,6 +6,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { enqueueCheck } from '../lib/check-outbox';
 import { HandoverDetailView } from './handover-detail-view';
 import { makeHandover } from './test-handover';
 
@@ -126,4 +127,21 @@ test('komentar tampil dengan kutipan, isi, dan label usang', () => {
   );
   expect(screen.getByText('Mohon cek')).toBeInTheDocument();
   expect(screen.getByText('usang')).toBeInTheDocument();
+});
+
+test('antrean centang di perangkat: butir tampil tercentang dengan penanda walau DTO belum memuatnya', () => {
+  localStorage.clear();
+  enqueueCheck('qc@x', {
+    taskId: 'h1',
+    locationId: 'loc-a',
+    index: 1,
+    text: 'B = 2',
+    checked: true,
+    at: Date.now(),
+  });
+  setup({ owner: 'qc@x' });
+  expect(screen.getByRole('checkbox', { name: /B = 2/ })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: /A = 1/ })).not.toBeChecked();
+  expect(screen.getByText('Menunggu terkirim')).toBeInTheDocument();
+  localStorage.clear();
 });

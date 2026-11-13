@@ -8,7 +8,7 @@ vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
-import { PERSISTED_CACHE_KEY } from './session';
+import { clearSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
 
 let client: QueryClient;
@@ -111,4 +111,22 @@ test('draf dibuang dan penulisan ditahan SEBELUM navigasi ke /login (halaman Cat
   await waitFor(() => expect(navigate).toHaveBeenCalled());
   expect(suspendedAtNavigate).toBe(true);
   expect(draftAtNavigate).toBeNull();
+});
+
+test('keluar membuang antrean centang semua pemilik, kunci lain tetap (FR-P14, FR-P19)', async () => {
+  localStorage.setItem('qc.outbox:a@x.com', '{}');
+  localStorage.setItem('qc.outbox:b@x.com', '{}');
+  localStorage.setItem('tema', 'gelap');
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
+  expect(localStorage.getItem('qc.outbox:b@x.com')).toBeNull();
+  expect(localStorage.getItem('tema')).toBe('gelap');
+});
+
+test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', () => {
+  localStorage.setItem('qc.outbox:a@x.com', '{}');
+  clearSession();
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBe('{}');
 });
