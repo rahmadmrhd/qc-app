@@ -1,6 +1,6 @@
 import type { LocationAccessDto, MeDto } from '@shared/contract';
 import { describe, expect, test } from 'vitest';
-import { greetingDue, hasAccess, offeredGuides, stepsFor } from './offer';
+import { eligibleGuides, greetingDue, hasAccess, offeredGuides, stepsFor } from './offer';
 import type { GuideEntry, GuideStep } from './types';
 
 function me(overrides: Partial<MeDto> = {}): MeDto {
@@ -211,5 +211,43 @@ describe('greetingDue', () => {
   });
   test('false bila sapaan-awal sudah tercatat', () => {
     expect(greetingDue(new Map([['sapaan-awal', 1]]))).toBe(false);
+  });
+});
+
+describe('eligibleGuides', () => {
+  test('memuat semua panduan yang berhak, termasuk yang sudah selesai; tanpa tip/sapaan', () => {
+    const catalog = [
+      entry({ id: 'a' }),
+      entry({ id: 'tip-a', kind: 'tip' }),
+      entry({ id: 'sapaan-awal', kind: 'sapaan', izin: undefined }),
+      entry({ id: 'pwa', status: 'diturunkan', izin: undefined }),
+    ];
+    expect(eligibleGuides({ me: viewer, catalog }).map((o) => o.entry.id)).toEqual(['a', 'pwa']);
+  });
+
+  test('tanpa izin atau tanpa langkah yang berlaku: tidak ikut', () => {
+    const catalog = [
+      entry({ id: 'x', izin: { module: 'access', level: 'manage' } }),
+      entry({ id: 'y', steps: [step({ izin: { module: 'access', level: 'manage' } })] }),
+    ];
+    expect(eligibleGuides({ me: viewer, catalog })).toEqual([]);
+  });
+
+  test('panduan baru ikut walau dasarnya belum selesai', () => {
+    const catalog = [
+      entry({ id: 'dasar-x', covers: ['baru-x'] }),
+      entry({ id: 'baru-x', kind: 'baru' }),
+    ];
+    expect(eligibleGuides({ me: viewer, catalog }).map((o) => o.entry.id)).toEqual([
+      'dasar-x',
+      'baru-x',
+    ]);
+  });
+
+  test('membawa stepCount per pengguna', () => {
+    const catalog = [
+      entry({ steps: [step(), step({ izin: { module: 'access', level: 'manage' } })] }),
+    ];
+    expect(eligibleGuides({ me: viewer, catalog })[0]?.stepCount).toBe(1);
   });
 });

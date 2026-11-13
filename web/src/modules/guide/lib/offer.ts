@@ -72,6 +72,26 @@ function dasarOf(baru: GuideEntry, catalog: readonly GuideEntry[]): GuideEntry[]
 }
 
 /**
+ * Semua panduan yang berhak bagi pengguna (untuk dialog Panduan di menu profil): tanpa memeriksa selesai/belum,
+ * prasyarat `baru`, atau `derived`; hanya yang punya langkah berlaku (N >= 1). `tip` dan `sapaan` tidak ikut.
+ */
+export function eligibleGuides(input: {
+  me: MeDto;
+  catalog: readonly GuideEntry[];
+  activeLocationIds?: readonly string[];
+}): GuideOffer[] {
+  const { me, catalog, activeLocationIds } = input;
+  const result: GuideOffer[] = [];
+  for (const entry of catalog) {
+    if (entry.kind === 'tip' || entry.kind === 'sapaan') continue;
+    if (!hasAccess(me, entry.izin, activeLocationIds)) continue;
+    const stepCount = stepsFor(entry, me, activeLocationIds).length;
+    if (stepCount > 0) result.push({ entry, stepCount });
+  }
+  return result;
+}
+
+/**
  * Aturan penawaran (spek 4.2): berhak, dan (belum ada catatan atau versi tersimpan lebih rendah), dan (bukan `baru`
  * atau `dasar` modulnya sudah selesai). Panduan `diturunkan` hanya menurut `derived` (keadaan perangkat), tidak
  * pernah membaca `done`. Panduan tanpa langkah yang berlaku bagi pengguna (N = 0) tidak ditawarkan. `tip` dan

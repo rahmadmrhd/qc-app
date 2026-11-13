@@ -2,7 +2,7 @@ import type { GuideProgressDto } from '@shared/guides';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   email: 'a@qc.local',
@@ -30,6 +30,9 @@ function wrapper() {
 const calls = (id: string) => state.api.mock.calls.filter(([called]) => called === id);
 
 let server: GuideProgressDto[];
+
+// Spy pada Storage.prototype tak boleh bocor ke tes berikutnya bila sebuah asersi gagal sebelum pemulihan.
+afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   localStorage.clear();
@@ -120,7 +123,10 @@ describe('akun bersama (perangkat)', () => {
     await act(() => result.current.reset('dasar-layout'));
     expect(state.api).not.toHaveBeenCalled();
     expect(Object.fromEntries(readDone('a@qc.local'))).toEqual({ 'handover-dasar': 1 });
-    expect(Object.fromEntries(result.current.done)).toEqual({ 'handover-dasar': 1 });
+    // Pembaruan cache sampai ke observer secara asinkron (notifyManager): tunggu, jangan baca sinkron.
+    await waitFor(() =>
+      expect(Object.fromEntries(result.current.done)).toEqual({ 'handover-dasar': 1 }),
+    );
   });
 
   test('Review Focus 5: baris di server diabaikan dan guides.list tak pernah dipanggil', async () => {
