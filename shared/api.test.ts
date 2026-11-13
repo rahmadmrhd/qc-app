@@ -313,6 +313,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'push.setPreference': { enabled: false },
   'push.reportPermission': { state: 'denied' },
   'push.status': null,
+  'guides.list': null,
+  'guides.mark': { id: 'dasar-layout', version: 1 },
+  'guides.reset': { id: 'dasar-layout' },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };

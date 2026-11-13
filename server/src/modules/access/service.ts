@@ -45,6 +45,7 @@ function toUserDto(user: UserRecord): UserDto {
       buId: entry.buId,
       roleIds: [...entry.roleIds],
     })),
+    sharedAccount: false, // SEMENTARA, diganti Task 2
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     updatedBy: user.updatedBy,

@@ -76,6 +76,7 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     permissions: {
       access: 'none',
       item: 'none',

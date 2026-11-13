@@ -4,6 +4,7 @@ import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { filesRoutes } from '@server/modules/files/routes';
+import { guideRoutes } from '@server/modules/guide/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
@@ -119,6 +120,9 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.setPreference': true,
   'push.reportPermission': true,
   'push.status': true,
+  'guides.list': true,
+  'guides.mark': true,
+  'guides.reset': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -139,6 +143,7 @@ function realRoutes(): RouteTable {
     ...qrcodeRoutes(),
     ...postelRoutes(),
     ...notificationRoutes(),
+    ...guideRoutes(),
     ...pushRoutes(),
     ...serialRoutes(),
     ...jobsRoutes(),

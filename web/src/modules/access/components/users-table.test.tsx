@@ -18,6 +18,7 @@ const user: UserDto = {
     { buId: 'bu-a', roleIds: ['r2'] },
     { buId: 'bu-x', roleIds: ['r1'] },
   ],
+  sharedAccount: false,
   createdAt: '',
   updatedAt: '',
   updatedBy: '',

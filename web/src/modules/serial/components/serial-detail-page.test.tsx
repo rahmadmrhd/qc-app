@@ -103,6 +103,7 @@ function meWith(serial: 'view' | 'edit'): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     permissions: {
       access: 'none',
       item: 'none',

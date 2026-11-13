@@ -24,6 +24,7 @@ function user(email: string, name: string, status: UserDto['status'] = 'active')
     status,
     assignments: [],
     buAssignments: [],
+    sharedAccount: false,
     createdAt: '',
     updatedAt: '',
     updatedBy: '',

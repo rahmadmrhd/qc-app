@@ -1,5 +1,6 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
@@ -52,6 +53,8 @@ export interface MeDto {
   locations: LocationAccessDto[];
   /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
   businessUnits: BusinessUnitAccessDto[];
+  /** Akun bersama (dipakai beberapa orang): panduan interaktif tidak otomatis muncul. */
+  sharedAccount: boolean;
 }
 
 export interface UserDto {
@@ -62,6 +65,8 @@ export interface UserDto {
   assignments: Assignment[];
   /** Penugasan BU (`buId: null` = Semua BU); berlaku sama di semua lokasi. */
   buAssignments: BuAssignment[];
+  /** Akun bersama (dipakai beberapa orang); lihat `MeDto.sharedAccount`. */
+  sharedAccount: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -85,6 +90,17 @@ export interface SaveUserInput {
   status: UserStatus;
   assignments: Assignment[];
   buAssignments: BuAssignment[];
+  /** Tidak dikirim = tidak berubah (user baru: false). */
+  sharedAccount?: boolean;
+}
+
+export interface MarkGuideInput {
+  id: string;
+  version: number;
+}
+
+export interface ResetGuideInput {
+  id: string;
 }
 
 export interface SetUserStatusInput {
@@ -1211,6 +1227,9 @@ export interface ApiContract {
   'push.setPreference': { input: PushPreferenceInput; output: { enabled: boolean } };
   'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
   'push.status': { input: null; output: PushUserStatusDto[] };
+  'guides.list': { input: null; output: GuideProgressDto[] };
+  'guides.mark': { input: MarkGuideInput; output: GuideProgressDto[] };
+  'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }

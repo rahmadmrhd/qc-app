@@ -18,6 +18,7 @@ const me: MeDto = {
   email: 'a@gmail.com',
   name: 'A',
   isSuperAdmin: false,
+  sharedAccount: false,
   permissions: {
     access: 'view',
     item: 'view',

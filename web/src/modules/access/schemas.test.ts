@@ -18,6 +18,7 @@ const user: UserDto = {
     { locationId: 'l-b', roleIds: ['ada'] },
   ],
   buAssignments: [],
+  sharedAccount: false,
   createdAt: '',
   updatedAt: '',
   updatedBy: '',
