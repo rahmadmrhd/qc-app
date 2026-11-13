@@ -40,6 +40,9 @@ const EXPECTED_TABLES = [
   'rate_limits',
   'roles',
   'schema_migrations',
+  'serial_events',
+  'serial_stickers',
+  'serials',
   'settings',
   'sticker_business_units',
   'sticker_guide_images',
@@ -127,11 +130,12 @@ describe('0010_postel_kunci_asing', () => {
           .bind(id, postelId, id, id)
           .run();
       }
-      // Migrasi setelah 0010 (0011, 0012, ...) ikut diterapkan; yang diuji di sini adalah 0010, jadi cukup menegaskan
-      // bahwa ia yang pertama dijalankan.
-      const applied = await applyMigrations(db, all);
-      expect(applied[0]).toBe('0010_postel_kunci_asing.sql');
-      expect(applied).toEqual(all.filter((m) => m.name >= '0010').map((m) => m.name));
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0010_postel_kunci_asing.sql'),
+        ),
+      ).toEqual(['0010_postel_kunci_asing.sql']);
       const items = await db
         .prepare('SELECT id, postel_id FROM items ORDER BY id')
         .all<{ id: string; postel_id: string | null }>();
@@ -155,6 +159,74 @@ describe('0010_postel_kunci_asing', () => {
         .first<{ postel_id: string | null }>();
       expect(left?.postel_id).toBeNull();
       expect((await db.prepare('SELECT id FROM postel_numbers').all()).results).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  }, 120_000);
+});
+
+describe('0011_postel_stiker_per_catatan', () => {
+  const INSERT_STICKER =
+    "INSERT INTO stickers (id, type_id, name, created_at, updated_at, updated_by) VALUES (?, ?, ?, 't', 't', 's')";
+  const INSERT_TYPE =
+    "INSERT INTO sticker_types (id, name, rule, system_kind, created_at, updated_at, updated_by) VALUES (?, ?, 'group', ?, 't', 't', 's')";
+
+  test('stiker Manual Book yang ada diberi awalan (idempoten); kolom sticker_id NULL, unik, dan kunci asing RESTRICT', async () => {
+    const db = await freshDb();
+    try {
+      const all = await loadMigrations();
+      await applyMigrations(
+        db,
+        all.filter((m) => m.name < '0011'),
+      );
+      await db.prepare(INSERT_TYPE).bind('t-mb', 'Manual Book', 'manual_book').run();
+      await db.prepare(INSERT_TYPE).bind('t-pos', 'Postel', 'postel').run();
+      await db.prepare(INSERT_STICKER).bind('s-mb', 't-mb', 'PBE M5-400 v1').run();
+      await db.prepare(INSERT_STICKER).bind('s-pos', 't-pos', 'Postel').run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p1', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      // Hanya sampai 0011: migrasi sesudahnya (mis. 0012 serial) punya tesnya sendiri dan tak boleh ikut di sini.
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0011_postel_stiker_per_catatan.sql'),
+        ),
+      ).toEqual(['0011_postel_stiker_per_catatan.sql']);
+      const names = await db
+        .prepare('SELECT id, name FROM stickers ORDER BY id')
+        .all<{ id: string; name: string }>();
+      expect(names.results).toEqual([
+        { id: 's-mb', name: 'Manual Book - PBE M5-400 v1' },
+        { id: 's-pos', name: 'Postel' },
+      ]);
+      const postel = await db
+        .prepare("SELECT sticker_id FROM postels WHERE id = 'p1'")
+        .first<{ sticker_id: string | null }>();
+      expect(postel?.sticker_id).toBeNull();
+      // kunci asing: stiker harus ada; satu stiker hanya milik satu catatan; stiker milik catatan tak dapat dihapus
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 'tidak-ada' WHERE id = 'p1'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p1'").run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p2', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p2'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await expect(
+        db.prepare("DELETE FROM stickers WHERE id = 's-pos'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      // menghapus catatan tidak menyentuh stikernya
+      await db.prepare("DELETE FROM postels WHERE id = 'p1'").run();
+      expect(
+        (await db.prepare("SELECT id FROM stickers WHERE id = 's-pos'").all()).results,
+      ).toHaveLength(1);
     } finally {
       await db.close();
     }
@@ -214,7 +286,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('39 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('42 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -236,9 +308,43 @@ describe('skema baseline', () => {
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
       { name: '0010_postel_kunci_asing.sql' },
-      { name: '0011_notifikasi.sql' },
-      { name: '0012_push_notifikasi.sql' },
+      { name: '0011_postel_stiker_per_catatan.sql' },
+      { name: '0012_serial_number.sql' },
+      { name: '0013_notifikasi.sql' },
+      { name: '0014_push_notifikasi.sql' },
     ]);
+  });
+
+  test('stok stiker boleh negatif (CHECK dicabut) dan entri stok punya kolom serial', async () => {
+    await db
+      .prepare(
+        "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('s-neg', 'l-neg', -3, '')",
+      )
+      .run();
+    const row = await db
+      .prepare("SELECT qty FROM sticker_stock WHERE sticker_id = 's-neg' AND location_id = 'l-neg'")
+      .first<{ qty: number | string }>();
+    expect(Number(row?.qty)).toBe(-3);
+    const columns = await db
+      .prepare(
+        "SELECT column_name AS c FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sticker_stock_entries' AND column_name IN ('serial_id', 'serial_event_id') ORDER BY column_name",
+      )
+      .all<{ c: string }>();
+    expect(columns.results.map((r) => r.c)).toEqual(['serial_event_id', 'serial_id']);
+  });
+
+  test('serials: serial unik per (BU, serial) dan client_id unik', async () => {
+    const insert = (id: string, clientId: string, bu: string, serial: string) =>
+      db
+        .prepare(
+          'INSERT INTO serials (id, client_id, bu_id, serial, item_id) VALUES (?, ?, ?, ?, ?)',
+        )
+        .bind(id, clientId, bu, serial, 'item-1')
+        .run();
+    await insert('a', 'ca', 'bu1', 'SN1');
+    await insert('b', 'cb', 'bu2', 'SN1');
+    await expect(insert('c', 'cc', 'bu1', 'SN1')).rejects.toBeInstanceOf(DbError);
+    await expect(insert('d', 'ca', 'bu3', 'SN9')).rejects.toBeInstanceOf(DbError);
   });
 
   test('users.bu_assignments ada, bertipe teks panjang, bawaan kosong', async () => {
@@ -328,10 +434,19 @@ describe('skema baseline', () => {
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
+        'postels.postels_sticker',
         'push_subscriptions.push_subscriptions_recipient',
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
+        'serial_events.serial_events_seq',
+        'serial_stickers.serial_stickers_sticker',
+        'serials.serials_bu_created',
+        'serials.serials_bu_serial',
+        'serials.serials_client_id',
+        'serials.serials_item',
+        'serials.serials_location',
+        'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
         'sticker_stock_entries.sticker_stock_entries_location_ts',

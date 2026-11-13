@@ -367,3 +367,18 @@ test('locationId dari URL (notifikasi): papan memuat lokasi itu, bukan pilihan h
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(state.api).not.toHaveBeenCalled();
 });
+
+test('akun tanpa penugasan lokasi melihat peringatan penugasan lokasi; yang punya lokasi tidak', async () => {
+  state.api.mockResolvedValue({ items: [], nextCursor: null, total: 0 });
+  state.me = { ...me({}), locations: [] };
+  state.selected = [];
+  renderPage();
+  expect(await screen.findByText(/belum ditugaskan ke lokasi mana pun/)).toBeInTheDocument();
+});
+
+test('akun dengan lokasi tidak melihat peringatan penugasan lokasi', async () => {
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  renderPage();
+  await screen.findByText('Serah Terima');
+  expect(screen.queryByText(/belum ditugaskan ke lokasi mana pun/)).toBeNull();
+});

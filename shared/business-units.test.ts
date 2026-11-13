@@ -20,10 +20,14 @@ const roles = new Map<string, PartialPermissionMap>([
 ]);
 
 describe('konstanta', () => {
-  test('modul ber-BU tahap 1 hanya item; kunci Semua BU = bintang', () => {
-    expect([...BU_MODULES]).toEqual(['item']);
+  test('modul ber-BU: item, serial, serialservice; kunci Semua BU = bintang', () => {
+    expect([...BU_MODULES]).toEqual(['item', 'serial', 'serialservice']);
     expect(ALL_BU_KEY).toBe('*');
-    expect(fullBuPermissions()).toEqual({ item: 'manage' });
+    expect(fullBuPermissions()).toEqual({
+      item: 'manage',
+      serial: 'manage',
+      serialservice: 'edit',
+    });
   });
 });
 
@@ -78,12 +82,15 @@ describe('resolveBuAccess', () => {
       roles,
       ['A', 'B'],
     );
-    expect(result).toEqual({ A: { item: 'edit' }, B: { item: 'view' } });
+    expect(result).toEqual({
+      A: { item: 'edit', serial: 'none', serialservice: 'none' },
+      B: { item: 'view', serial: 'none', serialservice: 'none' },
+    });
   });
 
   test('penugasan hanya untuk satu BU tidak memberi hak di BU lain', () => {
     expect(resolveBuAccess([{ buId: 'A', roleIds: ['manage'] }], roles, ['A', 'B'])).toEqual({
-      A: { item: 'manage' },
+      A: { item: 'manage', serial: 'none', serialservice: 'none' },
     });
   });
 
@@ -101,12 +108,12 @@ describe('resolveBuAccess', () => {
       roles,
       ['A', 'B', 'C'],
     );
-    expect(result).toEqual({ C: { item: 'view' } });
+    expect(result).toEqual({ C: { item: 'view', serial: 'none', serialservice: 'none' } });
   });
 
   test('hanya modul ber-BU yang dibaca: role access/handover tidak memberi apa pun di BU', () => {
     const result = resolveBuAccess([{ buId: null, roleIds: ['handover', 'access'] }], roles, ['A']);
-    expect(result).toEqual({ A: { item: 'view' } });
+    expect(result).toEqual({ A: { item: 'view', serial: 'none', serialservice: 'none' } });
   });
 });
 
@@ -132,9 +139,9 @@ describe('globalBuLevel', () => {
 
 describe('buIdsWithLevel dan canActOnAllBus', () => {
   const byBu = {
-    A: { item: 'manage' },
-    B: { item: 'view' },
-    C: { item: 'edit' },
+    A: { item: 'manage', serial: 'none', serialservice: 'none' },
+    B: { item: 'view', serial: 'none', serialservice: 'none' },
+    C: { item: 'edit', serial: 'none', serialservice: 'none' },
   } as const;
 
   test('buIdsWithLevel menyaring BU menurut level minimum', () => {

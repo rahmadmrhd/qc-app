@@ -2,6 +2,7 @@ import type { StickerSettingsDto, UserDto } from '@shared/contract';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { pickLink } from '@/test/link-field';
 import { StickerSettingsPage, type StickerSettingsPageProps } from './sticker-settings-page';
 
@@ -46,7 +47,15 @@ test('menampilkan minimum bawaan tiap jenis (jenis sistem diberi label) dan peng
   expect(screen.getByLabelText('Minimum bawaan QC Hijau')).toHaveValue(0);
   expect(screen.getByLabelText('Minimum bawaan Manual Book')).toHaveValue(50);
   expect(screen.getByText('Sistem')).toBeInTheDocument();
-  expect(screen.getByLabelText('Kirim ringkasan harian stok menipis')).toBeChecked();
+  expect(screen.getByLabelText('Kirim ringkasan harian stok menipis dan habis')).toBeChecked();
+  expect(
+    screen.getByText(/Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang/),
+  ).toBeInTheDocument();
+  const explanation = screen.getByText(/Bagian "Habis"/).textContent ?? '';
+  expect(explanation).toContain('apa pun minimumnya');
+  expect(explanation).toContain('minimum lebih dari 0');
+  expect(explanation).toContain('minimum 0 tidak pernah menipis');
+  expect(explanation).toContain('Stiker nonaktif dan stiker usang (deprecated) tidak dihitung');
   expect(screen.getByLabelText('Jam kirim (WIB)')).toHaveValue(8);
   expect(screen.getByText('qc@contoh.com')).toBeInTheDocument();
 });
@@ -176,4 +185,14 @@ test('galat dari server tampil dan tombol Simpan pulih', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
+});
+
+test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
+  resetUnsavedChangesForTests();
+  renderPage();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(screen.getByLabelText('Email lain'));
+  expect(hasUnsavedChanges()).toBe(false);
 });

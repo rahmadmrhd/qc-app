@@ -11,6 +11,7 @@ import { pushRoutes } from '@server/modules/notification/push-routes';
 import { notificationRoutes } from '@server/modules/notification/routes';
 import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
+import { serialRoutes } from '@server/modules/serial/routes';
 import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
 
@@ -98,6 +99,15 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'postelSettings.get': true,
   'postelSettings.save': true,
   'postels.itemOptions': true,
+  'serials.itemOptions': true,
+  'serials.stickerOptions': true,
+  'serials.locationOptions': true,
+  'serials.saveBatch': true,
+  'serials.get': true,
+  'serials.list': true,
+  'serials.update': true,
+  'serials.updateBatch': true,
+  'serials.act': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'notifications.list': true,
@@ -130,6 +140,7 @@ function realRoutes(): RouteTable {
     ...postelRoutes(),
     ...notificationRoutes(),
     ...pushRoutes(),
+    ...serialRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),
   };

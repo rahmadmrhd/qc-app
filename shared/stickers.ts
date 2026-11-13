@@ -71,6 +71,37 @@ export const STICKER_SYSTEM_KINDS = ['', 'manual_book', 'postel'] as const;
 export type StickerSystemKind = (typeof STICKER_SYSTEM_KINDS)[number];
 
 /**
+ * Awalan nama stiker jenis sistem di katalog (keputusan pemilik 2026-11-12): agar stiker Manual Book dan Postel tak
+ * tertukar dengan stiker lain. Nama TERSIMPAN berawalan ini (bukan hanya tampilan), jadi muncul sama di katalog, stok,
+ * riwayat, instruksi item, dan email.
+ */
+export const SYSTEM_STICKER_PREFIX = {
+  manual_book: 'Manual Book - ',
+  postel: 'Postel - ',
+} as const;
+
+/** Nama stiker Manual Book `Manual Book - <nama konfigurasi> v<versi>`, dipotong ke `nameMax`. */
+export function manualBookStickerName(designName: string, version: number): string {
+  return `${SYSTEM_STICKER_PREFIX.manual_book}${designName} v${version}`.slice(
+    0,
+    STICKER_LIMITS.nameMax,
+  );
+}
+
+/**
+ * Nama stiker Postel `Postel - <nama Postel>` ditambah `suffix` (pembeda bila namanya bentrok dengan stiker Postel
+ * lain). Bagian nama dipotong lebih dulu agar `suffix` selalu utuh dan totalnya <= `nameMax`.
+ */
+export function postelStickerName(postelName: string, suffix = ''): string {
+  return (
+    `${SYSTEM_STICKER_PREFIX.postel}${postelName}`.slice(
+      0,
+      STICKER_LIMITS.nameMax - suffix.length,
+    ) + suffix
+  );
+}
+
+/**
  * Aturan penentuan stiker yang berlaku bagi sebuah item. `group` (tahap 4a) = menurut kelompok item, ditentukan per
  * jenis sistem (Manual Book, Postel); hanya jenis sistem yang memakainya; pengguna tidak membuatnya lewat form (lihat `USER_STICKER_RULES`).
  */
@@ -80,9 +111,14 @@ export type StickerRule = (typeof STICKER_RULES)[number];
 /** Aturan yang boleh dipilih pengguna saat menyimpan jenis stiker (tanpa `group`). */
 export const USER_STICKER_RULES = ['bu', 'none'] as const;
 
-/** Jenis entri riwayat stok. */
-export const STOCK_ENTRY_KINDS = ['in', 'out', 'adjust', 'opname'] as const;
+/** Jenis entri riwayat stok; `serial` = pemotongan otomatis oleh pencatatan Serial Number (boleh membuat stok negatif). */
+export const STOCK_ENTRY_KINDS = ['in', 'out', 'adjust', 'opname', 'serial'] as const;
 export type StockEntryKind = (typeof STOCK_ENTRY_KINDS)[number];
+
+/** Stok untuk tampilan: negatif (akibat pemotongan Serial Number) ditulis "Kurang N". */
+export function formatStockQty(qty: number): string {
+  return qty < 0 ? `Kurang ${-qty}` : String(qty);
+}
 
 /** Hitungan stok: baris lembar (lembar × isi per lembar) dan butir lepas. */
 export interface StockCount {
@@ -106,6 +142,25 @@ export function isLowStock(input: {
   total: number;
 }): boolean {
   return input.status === 'active' && input.minQty > 0 && input.total <= input.minQty;
+}
+
+/** Habis: stiker aktif dengan total semua lokasi <= 0 (termasuk negatif), apa pun nilai minimumnya. */
+export function isOutOfStock(input: { status: StickerStatus; total: number }): boolean {
+  return input.status === 'active' && input.total <= 0;
+}
+
+/**
+ * Bagian pada ringkasan harian stok: "Habis" (`isOutOfStock`) lebih dulu, lalu "Menipis" (`isLowStock`) untuk yang
+ * belum habis; stiker yang habis TIDAK diulang di bagian menipis. `null` = tidak masuk ringkasan. Definisi `low` pada
+ * halaman Stok (`isLowStock`) tidak berubah.
+ */
+export function stockDigestSection(input: {
+  status: StickerStatus;
+  minQty: number;
+  total: number;
+}): 'out' | 'low' | null {
+  if (isOutOfStock(input)) return 'out';
+  return isLowStock(input) ? 'low' : null;
 }
 
 /**

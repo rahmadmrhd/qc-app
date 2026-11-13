@@ -1,5 +1,5 @@
 import { listAuditByTarget, writeAudit } from '@server/core/audit';
-import type { DbStatement } from '@server/core/db';
+import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
@@ -10,7 +10,7 @@ import { findActiveFiles } from '@server/modules/files/repo';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemIdsVisibleIn } from '@server/modules/item/repo';
 import { guardChanged, runGuardedBatch } from '@server/modules/qrcode/repo';
-import { ensurePostelSticker } from '@server/modules/sticker/postel';
+import { ensurePostelType } from '@server/modules/sticker/postel';
 import type {
   AuditCursorPageDto,
   ListPostelHistoryInput,
@@ -54,6 +54,7 @@ import {
   findPostelRecord,
   insertPostelNumberStmt,
   insertPostelStmt,
+  linkPostelStickerStmt,
   listPostelNumbers,
   listPostelRecords,
   lockPostelRowStmt,
@@ -63,6 +64,13 @@ import {
   updatePostelNumberContentStmt,
   updatePostelStmt,
 } from './repo';
+import {
+  newPostelStickerStmt,
+  pickPostelStickerName,
+  postelStickerBase,
+  renameStickerStmt,
+  retirePostelSticker,
+} from './stickers';
 
 export { queryPostelItemOptions } from './items';
 
@@ -74,6 +82,10 @@ export { SETTING_POSTEL_ALERT } from './alert';
 /** Bentrok indeks unik nomor sertifikat; pesan generik (tidak memuat catatan pemilik nomor itu). */
 const POSTEL_CONFLICTS = {
   postel_numbers_key: { field: 'number', message: 'Nomor sertifikat sudah dipakai' },
+  stickers_type_name_unique: {
+    field: 'itemIds',
+    message: 'Nama stiker Postel bentrok dengan catatan lain; simpan ulang',
+  },
 };
 
 function staleError(): Error {
@@ -296,9 +308,12 @@ export async function runPostelBatch(
     await runGuardedBatch(env.DB, statements, staleError);
   } catch (error) {
     const mapped = mapDuplicateError(error, POSTEL_CONFLICTS);
-    if (mapped !== error) throw mapped;
-    if ((error as { stale?: boolean }).stale !== true) throw error;
-    if (expectedUpdatedAt !== '') {
+    // Bentrok nama stiker bisa hanya akibat sampingan kalah berebut item (dua catatan memasang item sama menurunkan nama
+    // yang sama): sebab sebenarnya dipilah di bawah lebih dulu, bentrok nama dilaporkan bila bukan itu sebabnya.
+    const nameClash = error instanceof DbError && error.key === 'stickers_type_name_unique';
+    if (mapped !== error && !nameClash) throw mapped;
+    if (!nameClash && (error as { stale?: boolean }).stale !== true) throw error;
+    if (!nameClash && expectedUpdatedAt !== '') {
       const current = await findPostelRecord(env.DB, postelId);
       if (!current || current.updatedAt !== expectedUpdatedAt) throw error;
     }
@@ -331,7 +346,7 @@ export async function runPostelBatch(
         throw fieldFail('attachmentIds', message);
       }
     }
-    throw error;
+    throw nameClash ? mapped : error;
   }
 }
 
@@ -484,13 +499,44 @@ export async function savePostel(
     return loadPostelDto(env, actor, existing.id);
   }
 
-  // Jenis dan stiker Postel lahir malas saat catatan pertama disimpan; idempoten dan aman serentak.
-  await ensurePostelSticker(env, actor);
+  // Stiker katalog catatan ini (satu per catatan): jenis Postel lahir malas (idempoten, aman serentak); stiker baru
+  // dibuat di batch yang sama dengan catatannya (catatan baru, atau catatan lama yang belum bersiker), dan namanya
+  // disamakan dengan nama turunan bila berubah (item ditambah/dikurangi; keputusan pemilik 2026-11-12).
+  const type = await ensurePostelType(env, actor);
+  const finalItems: PostelItem[] = [
+    ...requested.flatMap((id) => {
+      const item = fetched.get(id);
+      return item ? [item] : [];
+    }),
+    ...hiddenOwned,
+  ];
+  const activeNumber = [...finalNumbers].sort((a, b) => b.seq - a.seq)[0]?.number ?? '';
+  const stickerBase = postelStickerBase(finalItems);
+  const stickerNow = nowIso(env);
+  let stickerId = existing?.stickerId ?? '';
+  const stickerStatements: DbStatement[] = [];
+  const stickerName = await pickPostelStickerName(
+    env.DB,
+    type.id,
+    stickerBase,
+    activeNumber,
+    stickerId,
+  );
+  if (stickerId === '') {
+    const created = newPostelStickerStmt(env.DB, type, stickerName, actor.email, stickerNow);
+    stickerId = created.stickerId;
+    stickerStatements.push(created.statement);
+  } else {
+    stickerStatements.push(
+      renameStickerStmt(env.DB, stickerId, stickerName, actor.email, stickerNow),
+    );
+  }
 
   const next: PostelRecord = {
     id: postelId,
     note: input.note,
     attachments: input.attachmentIds,
+    stickerId,
     createdAt: existing?.createdAt ?? updatedAt,
     updatedAt,
     updatedBy: actor.email,
@@ -500,6 +546,7 @@ export async function savePostel(
     await runPostelBatch(
       env,
       [
+        ...stickerStatements,
         insertPostelStmt(env.DB, next),
         ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
         ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
@@ -536,6 +583,8 @@ export async function savePostel(
     [
       updatePostelStmt(env.DB, next, existing.updatedAt),
       guardChanged(env.DB),
+      ...stickerStatements,
+      ...(existing.stickerId === '' ? [linkPostelStickerStmt(env.DB, postelId, stickerId)] : []),
       // Hapus dulu agar nomor yang dibuang dapat dipakai ulang oleh baris lain pada simpanan yang sama.
       ...removedNumbers.map((entry) => deletePostelNumberStmt(env.DB, entry.id, postelId)),
       // Rantai/tukar nomor: kunci yang berubah diparkir dulu (placeholder unik), baru nilai sebenarnya ditulis.
@@ -577,9 +626,9 @@ export async function savePostel(
 }
 
 /**
- * Menghapus catatan: melepas semua itemnya dan menghapus nomornya dalam satu batch. Stiker "Postel" dan stoknya tetap
- * (stiker tidak pernah dihapus). Lampirannya ditandai `pending_delete` di transaksi yang sama (langsung tak terbaca) dan
- * berkas Drive-nya dibuang SETELAH komit.
+ * Menghapus catatan: melepas semua itemnya dan menghapus nomornya dalam satu batch. Stiker catatan itu menjadi nonaktif
+ * (stok 0) atau usang (masih berstok) dan stoknya tetap terbaca (stiker tidak pernah dihapus). Lampirannya ditandai
+ * `pending_delete` di transaksi yang sama (langsung tak terbaca) dan berkas Drive-nya dibuang SETELAH komit.
  */
 export async function removePostel(env: Env, id: string, actor: UserContext): Promise<null> {
   // Satu transaksi dengan kunci baris catatan (`FOR UPDATE`) lebih dulu: snapshot audit dibaca SESUDAH kunci, jadi memuat
@@ -598,6 +647,7 @@ export async function removePostel(env: Env, id: string, actor: UserContext): Pr
       (items.get(id) ?? []).length,
       record.attachments.length,
     );
+    await retirePostelSticker(tx, record.stickerId, actor.email, nowIso(env));
     await releaseAllItemsFromPostelStmt(tx, id).run();
     for (const statement of releaseAttachmentStmts(tx, id, record.attachments))
       await statement.run();

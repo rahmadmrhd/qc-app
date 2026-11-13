@@ -98,7 +98,7 @@ const TOOLS: Tool[] = [
 
 export interface WysiwygToolbarProps {
   editor: Editor | null;
-  mode: 'item' | 'note';
+  mode: 'item' | 'note' | 'message';
   disabled: boolean;
   onPickImage: () => void;
 }

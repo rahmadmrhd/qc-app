@@ -5,6 +5,7 @@ import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
+import type { SerialCustody, SerialEventType, SerialStatus } from './serials';
 import type {
   GuideSort,
   StickerMarkTarget,
@@ -1190,6 +1191,15 @@ export interface ApiContract {
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
+  'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
+  'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
+  'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
+  'serials.get': { input: GetSerialInput; output: GetSerialOutput };
+  'serials.list': { input: SerialListInput; output: SerialListOutput };
+  'serials.update': { input: UpdateSerialInput; output: SerialDto };
+  'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
+  'serials.act': { input: SerialActInput; output: SerialDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
@@ -1301,6 +1311,219 @@ export interface ListAuditPageInput {
 export interface AuditCursorPageDto {
   entries: AuditEntryDto[];
   nextCursor: string | null;
+}
+
+// --- Serial Number (tahap 5a) ---
+
+/** Pilihan stiker pada satu serial: jumlah per stiker (1..`SERIAL_LIMITS.stickerQtyMax`). */
+export interface SerialStickerPick {
+  stickerId: string;
+  qty: number;
+}
+export type SerialStickerStatus = 'active' | 'inactive' | 'deprecated';
+export interface SerialStickerDto {
+  stickerId: string;
+  name: string;
+  alias: string;
+  qty: number;
+  /** Status stiker saat ini; jumlah stiker `inactive` tidak dapat dinaikkan pada cek ulang (`deprecated` boleh). */
+  stickerStatus: SerialStickerStatus;
+}
+/** Satu perubahan field pada kejadian `data_changed`; `null` = kosong. */
+export interface SerialChangeDto {
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+export interface SerialEventDto {
+  id: string;
+  seq: number;
+  type: SerialEventType;
+  occurredOn: string;
+  createdAt: string;
+  actorName: string;
+  actorTeam: 'qc' | 'service' | 'system';
+  /** Markdown, boleh kosong. */
+  message: string;
+  changes: SerialChangeDto[];
+  data: Record<string, unknown>;
+}
+export interface SerialSummaryDto {
+  id: string;
+  buId: string;
+  buCode: string;
+  serial: string;
+  itemId: string;
+  itemLabel: string;
+  testDate: string;
+  sample: boolean;
+  locationId: string;
+  locationName: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  createdAt: string;
+}
+export interface SerialDto extends SerialSummaryDto {
+  note: string;
+  recordedLocationId: string;
+  stickers: SerialStickerDto[];
+  openCaseId: string | null;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+/** Satu baris pada `serials.saveBatch`; `clientId` = kunci idempoten per baris. */
+export interface SerialRowInput {
+  clientId: string;
+  serial: string;
+  itemId: string;
+  buId: string;
+  testDate: string;
+  locationId: string;
+  sample: boolean;
+  note: string;
+  /** Tahap 5a hanya menerima `good`. */
+  status: 'good';
+  /**
+   * Stiker yang ditempel. TIDAK dikirim (undefined) = SEMUA stiker yang berlaku bagi (item, BU) dengan `defaultQty`
+   * (sama dengan bawaan web dan `.qcsn`); `[]` eksplisit = tanpa stiker. Maks. 20 pilihan eksplisit.
+   */
+  stickers?: SerialStickerPick[];
+}
+export type SerialRowResult = {
+  clientId: string;
+  result: 'created' | 'duplicate' | 'invalid' | 'error';
+  message: string;
+  id?: string;
+  serial?: string;
+};
+export interface SaveSerialBatchInput {
+  rows: SerialRowInput[];
+}
+export interface SaveSerialBatchOutput {
+  results: SerialRowResult[];
+}
+export interface GetSerialInput {
+  id: string;
+}
+export interface GetSerialOutput {
+  serial: SerialDto;
+  /** Maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun). */
+  events: SerialEventDto[];
+  /** Ada kejadian lebih lama yang tidak dimuat (hanya 500 terbaru yang dikembalikan). */
+  eventsTruncated: boolean;
+}
+export interface SerialListInput {
+  /** Awalan serial (dinormalisasi). */
+  query?: string;
+  /** Teks tempelan, satu serial per baris (maks. 200 baris sebelum normalisasi): hanya yang persis cocok. */
+  serials?: string;
+  buId?: string;
+  itemId?: string;
+  locationId?: string;
+  status?: SerialStatus;
+  /** Rentang `test_date` inklusif (`YYYY-MM-DD`). */
+  from?: string;
+  to?: string;
+  createdBy?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialListOutput {
+  items: SerialSummaryDto[];
+  nextCursor: string | null;
+}
+/** Bidang catatan serial yang boleh diubah (BU, status, dan stiker tidak). */
+export interface SerialEditable {
+  serial: string;
+  itemId: string;
+  testDate: string;
+  sample: boolean;
+  note: string;
+  locationId: string;
+}
+export interface UpdateSerialInput extends SerialEditable {
+  id: string;
+  expectedUpdatedAt: string;
+}
+export interface UpdateSerialBatchRowInput {
+  id: string;
+  expectedUpdatedAt: string;
+  fields: Partial<SerialEditable>;
+}
+export interface UpdateSerialBatchInput {
+  rows: UpdateSerialBatchRowInput[];
+}
+export interface UpdateSerialBatchRowResult {
+  id: string;
+  result: 'updated' | 'duplicate' | 'stale' | 'invalid' | 'error';
+  message: string;
+  updatedAt?: string;
+}
+export interface UpdateSerialBatchOutput {
+  results: UpdateSerialBatchRowResult[];
+}
+export interface SerialActInput {
+  id: string;
+  expectedUpdatedAt: string;
+  action: 'note' | 'recheck';
+  /** Tanggal kejadian `YYYY-MM-DD`, tidak di masa depan. */
+  occurredOn: string;
+  /** Markdown, maks. `SERIAL_LIMITS.messageMax`. */
+  message: string;
+  /** Lokasi cek ulang (bawaan lokasi serial sekarang). */
+  locationId?: string;
+  /** Jumlah BARU per stiker pada cek ulang (tidak boleh turun). */
+  stickers?: SerialStickerPick[];
+}
+/** Item yang dapat dipilih pencatat serial (hanya bidang yang dibutuhkan), dengan BU yang boleh ia tulis. */
+export interface SerialItemOptionDto {
+  id: string;
+  /** "Merk Model". */
+  label: string;
+  buIds: string[];
+  buOptions: { id: string; code: string }[];
+}
+export interface ListSerialItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  /**
+   * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU dalam
+   * cakupan pengguna: pencatat = BU ber-level `serial: edit`; pembaca saja = BU ber-level view atau lebih pada
+   * `serial`/`serialservice` (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
+   */
+  itemIds?: string[];
+}
+export interface SerialItemOptionsPageDto {
+  items: SerialItemOptionDto[];
+  nextCursor: string | null;
+}
+/** Lokasi aktif yang boleh dipilih saat mencatat serial (tanpa penugasan lokasi: spek §3 butir 3, §11 butir 8). */
+export interface SerialLocationOptionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface SerialLocationOptionsDto {
+  /** Semua lokasi AKTIF, urut kode. */
+  locations: SerialLocationOptionDto[];
+}
+export interface SerialStickerOptionsInput {
+  itemId: string;
+  buId: string;
+}
+export interface SerialStickerOptionsDto {
+  stickers: ApplicableStickerDto[];
+}
+/** Stiker yang berlaku bagi item pada sebuah BU (bahan daftar centang). */
+export interface ApplicableStickerDto {
+  id: string;
+  name: string;
+  alias: string;
+  typeName: string;
+  /** Jumlah awal saat tercentang; selalu 1. */
+  defaultQty: number;
 }
 
 export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup';

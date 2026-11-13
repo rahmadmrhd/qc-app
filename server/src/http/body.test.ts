@@ -6,6 +6,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { SERIAL_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
@@ -202,6 +203,54 @@ const WORST: Inputs = {
     style: DEFAULT_QR_STYLE,
     overflow: true,
   } as never,
+  // Catatan terpanjang berkarakter 3-byte (karakter kontrol ditolak validator, jadi bukan escape 6-byte).
+  'serials.saveBatch': {
+    rows: longList(SERIAL_LIMITS.batchRows, () => ({
+      clientId: UUID,
+      serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+      itemId: UUID,
+      buId: UUID,
+      testDate: '2026-11-12',
+      locationId: UUID,
+      sample: true,
+      note: '漢'.repeat(SERIAL_LIMITS.noteMax),
+      status: 'good' as const,
+      stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+    })),
+  },
+  'serials.update': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+    itemId: UUID,
+    testDate: '2026-11-12',
+    sample: true,
+    note: '\u6f22'.repeat(SERIAL_LIMITS.noteMax),
+    locationId: UUID,
+  },
+  'serials.updateBatch': {
+    rows: longList(SERIAL_LIMITS.batchRows, () => ({
+      id: UUID,
+      expectedUpdatedAt: STAMP,
+      fields: {
+        serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+        itemId: UUID,
+        testDate: '2026-11-12',
+        sample: true,
+        note: '\u6f22'.repeat(SERIAL_LIMITS.noteMax),
+        locationId: UUID,
+      },
+    })),
+  },
+  'serials.act': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    action: 'recheck',
+    occurredOn: '2026-11-12',
+    message: '\u6f22'.repeat(SERIAL_LIMITS.messageMax),
+    locationId: UUID,
+    stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+  },
   'postels.save': {
     id: UUID,
     expectedUpdatedAt: STAMP,

@@ -59,6 +59,8 @@ const NOT_LATEST_MESSAGE = 'Hanya versi terbaru Manual Book yang dapat diaktifka
 const SYSTEM_TYPE_MESSAGE = 'Jenis sistem dikelola aplikasi dan tidak dapat diubah';
 const SYSTEM_STICKER_MESSAGE =
   'Stiker jenis sistem dibuat otomatis; hanya minimum stok, alias, dan status yang dapat diubah';
+const POSTEL_GONE_MESSAGE =
+  'Catatan Postel stiker ini sudah dihapus; stiker tidak dapat diaktifkan kembali';
 const POSTEL_STICKER_MESSAGE =
   'Stiker Postel dibuat otomatis; hanya minimum stok, alias, gambar, dan status yang dapat diubah';
 
@@ -510,7 +512,16 @@ async function setStickerStatusOnce(
       status: DEPRECATED_ACTIVATE_MESSAGE,
     });
   }
-  // Stiker Manual Book hanya boleh diaktifkan bila masih versi terbaru konfigurasinya (Postel bebas).
+  // Stiker Postel milik catatan yang sudah dihapus tak berguna lagi: tidak dapat diaktifkan kembali.
+  if (input.status === 'active' && type !== undefined && type.systemKind === 'postel') {
+    const tied = await env.DB.prepare('SELECT 1 AS tied FROM postels WHERE sticker_id = ? LIMIT 1')
+      .bind(sticker.id)
+      .first<{ tied: number }>();
+    if (!tied) {
+      throw appError('VALIDATION', POSTEL_GONE_MESSAGE, { status: POSTEL_GONE_MESSAGE });
+    }
+  }
+  // Stiker Manual Book hanya boleh diaktifkan bila masih versi terbaru konfigurasinya.
   const guardLatest =
     input.status === 'active' && type !== undefined && type.systemKind === 'manual_book';
   if (guardLatest && !latest) {

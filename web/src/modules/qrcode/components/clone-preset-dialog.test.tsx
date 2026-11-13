@@ -2,7 +2,8 @@ import type { QrPresetDto } from '@shared/contract';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { linkOptionNames, pickLink } from '@/test/link-field';
 import { ClonePresetDialog } from './clone-preset-dialog';
 
@@ -42,6 +43,17 @@ function renderDialog(onClone = vi.fn().mockResolvedValue(undefined)) {
   );
   return onClone;
 }
+
+beforeEach(() => {
+  resetUnsavedChangesForTests();
+});
+
+test('mengubah nama salinan mendaftarkan perubahan belum disimpan; nilai awal tidak', async () => {
+  renderDialog();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Nama preset baru'), ' baru');
+  expect(hasUnsavedChanges()).toBe(true);
+});
 
 test('BU yang sudah punya preset dan BU nonaktif tidak ditawarkan', async () => {
   renderDialog();

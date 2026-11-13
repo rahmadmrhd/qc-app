@@ -127,7 +127,10 @@ describe('penugasan BU', () => {
       buAssignments: [{ buId: null, roleIds: ['r-item-edit'] }],
     });
     const ctx = await loadUserContext(env, 'semua@gmail.com');
-    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'edit' }, 'bu-b': { item: 'edit' } });
+    expect(ctx?.businessUnits).toEqual({
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-b': { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
     expect(ctx?.permissions.item).toBe('edit');
   });
 
@@ -138,7 +141,7 @@ describe('penugasan BU', () => {
       buAssignments: [{ buId: 'bu-a', roleIds: ['r-item-edit'] }],
     });
     expect((await loadUserContext(env, 'a@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
     });
     await seedUser(env, {
       id: 'u2',
@@ -149,8 +152,8 @@ describe('penugasan BU', () => {
       ],
     });
     expect((await loadUserContext(env, 'gabung@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit' },
-      'bu-b': { item: 'view' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-b': { item: 'view', serial: 'none', serialservice: 'none' },
     });
   });
 
@@ -200,7 +203,10 @@ describe('penugasan BU', () => {
 
   test('super admin: semua BU manage; tanpa BU sama sekali = {} dan item manage', async () => {
     const ctx = await loadUserContext(env, 'admin@gmail.com');
-    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'manage' }, 'bu-b': { item: 'manage' } });
+    expect(ctx?.businessUnits).toEqual({
+      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit' },
+      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit' },
+    });
     await env.DB.prepare('DELETE FROM business_units').run();
     const empty = await loadUserContext(env, 'admin@gmail.com');
     expect(empty?.businessUnits).toEqual({});

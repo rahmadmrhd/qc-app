@@ -216,4 +216,4 @@ export function isPostelRecipient(email: string): boolean {
 }
 
 // Pembersihan karakter kontrol dipindah ke modul netral `./text` (dipakai juga notifikasi); diekspor ulang agar impor lama tetap.
-export { hasControlChars, stripControlChars } from './text';
+export { hasBidiControls, hasControlChars, stripControlChars } from './text';

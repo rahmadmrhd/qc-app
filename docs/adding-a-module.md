@@ -76,7 +76,7 @@ Field form yang merujuk record model lain (merk, BU, jenis, role, lokasi pada pe
 
 ## Modul ber-BU (izin per Business Unit)
 
-Modul ber-BU diizinkan per Business Unit, bukan per lokasi. Daftarnya `BU_MODULES` di `shared/business-units.ts`; tahap 1 hanya `item`. Izinnya dihitung dari penugasan BU user (`users.bu_assignments`, `null` = Semua BU), bukan dari penugasan lokasi. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
+Modul ber-BU diizinkan per Business Unit, bukan per lokasi. Daftarnya `BU_MODULES` di `shared/business-units.ts`; saat ini `item`, `serial`, dan `serialservice` (Serial Number 5a). Izinnya dihitung dari penugasan BU user (`users.bu_assignments`, `null` = Semua BU), bukan dari penugasan lokasi. Spek: `docs/superpowers/specs/2026-11-08-business-unit-design.md`.
 
 Yang sudah otomatis ikut setelah modul masuk `BU_MODULES`:
 - `resolveBuAccess` menghitung level per BU (`UserContext.businessUnits`; `MeDto.businessUnits` untuk klien).
@@ -92,6 +92,8 @@ Yang harus dikerjakan modul sendiri:
 7. **Tes**: jalur baca dan tulis untuk user BU lain, user tanpa penugasan BU, pelepasan dan penambahan BU, serta konkurensi `Promise.all` untuk ubah himpunan BU.
 
 **Peringatan:** role yang sudah berisi izin modul itu, bila dipasang pada penugasan BU, langsung berlaku di BU-BU tersebut setelah modul masuk `BU_MODULES`. Tinjau role dan penugasan BU yang ada sebelum menambah modul.
+
+**Peringatan (5a):** modul ber-BU baru WAJIB masuk `BU_MODULES`. Loop override global di `resolveAccess` (`shared/assignments.ts`) menghitung `global[module]` dari `globalBuLevel` lewat `for (const module of BU_MODULES)`, jadi tidak ada daftar terpisah di `assignments.ts` yang perlu diubah.
 
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

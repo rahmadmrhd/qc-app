@@ -1,5 +1,5 @@
 -- Backend push notifikasi Serah Terima (spek 2026-11-12-notifikasi-serah-terima-design.md §5.2): langganan Web Push dan
--- preferensi push per pengguna. (`notifications.push_state` sudah ada di 0011.)
+-- preferensi push per pengguna. (`notifications.push_state` sudah ada di 0013.)
 --
 -- EXPAND-ONLY, kompatibel mundur: hanya tabel baru dan satu indeks tambahan; image sebelumnya tak mengenalnya dan tetap berjalan di atas skema ini.
 -- Idempoten (CREATE TABLE IF NOT EXISTS). Tanpa kunci asing (penerima dikunci email ternormalisasi).
@@ -33,6 +33,6 @@ CREATE TABLE IF NOT EXISTS notification_prefs (
   PRIMARY KEY (recipient)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
--- Indeks pembersihan notifikasi lama (`purgeOldNotifications` menyaring `created_at` saja; indeks 0011 dimulai dari
+-- Indeks pembersihan notifikasi lama (`purgeOldNotifications` menyaring `created_at` saja; indeks 0013 dimulai dari
 -- `recipient`/`push_state`). Idempoten; menambah indeks pada tabel yang sudah ada kompatibel mundur.
 CREATE INDEX IF NOT EXISTS notifications_created ON notifications (created_at);

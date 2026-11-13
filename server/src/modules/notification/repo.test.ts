@@ -215,7 +215,7 @@ describe('purgeOldNotifications', () => {
     expect(left.items.map((n) => n.number)).toEqual(['NEW']);
   });
 
-  test('ada indeks yang dimulai dari created_at untuk pembersihan (migrasi 0012)', async () => {
+  test('ada indeks yang dimulai dari created_at untuk pembersihan (migrasi 0014)', async () => {
     const rows = await env.DB.prepare(
       "SHOW INDEX FROM notifications WHERE Key_name = 'notifications_created'",
     ).all<{ Column_name: string; Seq_in_index: number | string }>();

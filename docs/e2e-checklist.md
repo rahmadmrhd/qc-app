@@ -195,3 +195,28 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
 | N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
 | N18 | Push: izin peramban, langganan, dan terima push di perangkat | Belum dapat diuji. Uji setelah service worker, permintaan izin, dan banner tersedia (Fase 1 PRD PWA), dengan VAPID terisi di staging | §5.2 |
+
+## PWA Fase 1
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 165 | Pasang aplikasi di Android Chrome lewat menu "Pasang aplikasi" atau "Tambahkan ke layar utama" | Aplikasi terpasang dengan ikon QC; terbuka tanpa bilah alamat (mode mandiri) | PWA FR-P2, FR-P4, FR-P5 |
+| 166 | Pasang di iOS Safari lewat "Tambahkan ke Layar Utama", lalu buka dari ikon | Aplikasi mandiri membuka halaman aplikasi, bukan peramban; ikon 180×180 tampil; menu "Pasang aplikasi" menampilkan petunjuk singkat | PWA FR-P2, FR-P4, FR-P5 |
+| 167 | Pasang di desktop (Chrome atau Edge) lewat butir "Pasang aplikasi" di menu pengguna | Jendela aplikasi terbuka sendiri dengan ikon QC; tidak ada pop-up pemasangan yang mengganggu | PWA FR-P4, FR-P5 |
+| 168 | Buka aplikasi, tutup, lalu buka lagi (kunjungan kedua) | Cangkang tampil lebih cepat; berkas JS/CSS berhash yang tidak berubah tidak diunduh ulang (DevTools → Network) | PWA FR-P6 |
+| 169 | Buka rute langsung (mis. `/handover`) lalu refresh saat mode pesawat | Cangkang tampil dari cache; aplikasi menampilkan keadaan galat jaringan yang jelas, bukan halaman kosong | PWA FR-P7 |
+| 170 | Login Google penuh di mode terpasang (Android dan iOS) | Callback OAuth selesai; aplikasi kembali dalam keadaan sudah login | PWA FR-P8 |
+| 171 | Buka `/auth/callback?code=x&state=y` langsung di peramban | Dijawab server, bukan cangkang `index.html` | PWA FR-P8 |
+| 172 | Deploy versi baru ke staging saat tidak ada formulir terisi, lalu pindah halaman di aplikasi yang sudah terpasang | Setelah pindah halaman, versi baru dimuat sendiri tanpa spanduk | PWA FR-P11, FR-P12 |
+| 173 | Deploy versi baru saat ada formulir terisi tanpa disimpan (mis. draf task), lalu tunggu | Spanduk "Ada versi baru" muncul dan menyebut ada formulir belum tersimpan; halaman TIDAK dimuat ulang otomatis; isian tetap utuh; setelah "Muat ulang" ditekan, versi baru dimuat | PWA FR-P13, FR-P12 |
+| 174 | Ganti tema ke Gelap, lalu ke Terang, di dalam aplikasi | Warna bilah sistem (`theme-color`) di Android ikut berubah sesuai tema | PWA FR-P3 |
+| 175 | Keluar (logout) dari aplikasi terpasang, lalu periksa DevTools → Application → Storage dan Cache | Data perangkat dibersihkan (cache query tersimpan dan data pengguna tidak tersisa); login ulang berhasil | PWA FR-P14 |
+| 176 | Buka DevTools → Application → Manifest dan Service Workers | Manifest terbaca tanpa galat (nama, ikon, `theme_color`); service worker aktif; Console tanpa galat | PWA FR-P1, FR-P6 |
+| 177 | Saat spanduk tampil (formulir belum tersimpan), simpan atau kosongkan formulir | Spanduk hilang sendiri; versi baru dimuat otomatis pada pemicu berikutnya (pindah halaman atau tab kembali terlihat) | PWA FR-P12 |
+| 178 | Centang checklist tepat ketika versi baru sudah siap (centang sedang dikirim) | Centang tidak terputus dan tidak hilang; muat ulang otomatis ditunda sampai penulisan selesai | PWA FR-P12, FR-P13 |
+| 179 | Dengan tidak ada formulir terisi, pindah ke aplikasi lain lalu kembali ke tab aplikasi | Bila versi baru sudah siap, versi baru dimuat ulang otomatis | PWA FR-P12 |
+| 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
+| 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
+| 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |

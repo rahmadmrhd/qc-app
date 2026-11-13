@@ -1,7 +1,24 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { CommentComposer } from './comment-composer';
+
+beforeEach(() => {
+  resetUnsavedChangesForTests();
+});
+
+test('draf komentar terdaftar sebagai belum disimpan; kosong atau dilepas tidak', async () => {
+  const view = render(<CommentComposer quote="x" onSubmit={vi.fn()} onCancel={() => undefined} />);
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'draf');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(screen.getByRole('textbox', { name: 'Komentar' }));
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'lagi');
+  view.unmount();
+  expect(hasUnsavedChanges()).toBe(false);
+});
 
 test('menampilkan kutipan, mengirim isi, dan menutup setelah berhasil', async () => {
   const onSubmit = vi.fn().mockResolvedValue(undefined);

@@ -1,5 +1,5 @@
 import type { BuAssignment, BuPermissionMap } from './business-units';
-import { globalBuLevel, resolveBuAccess } from './business-units';
+import { BU_MODULES, globalBuLevel, resolveBuAccess } from './business-units';
 import type { Level, ModuleKey, PartialPermissionMap, PermissionMap } from './permissions';
 import { mergePermissions } from './permissions';
 
@@ -116,7 +116,9 @@ export function resolveAccess(
     applicable.flatMap((entry) => rolePermissionSources(entry.roleIds, rolePermissions)),
   );
   for (const module of SHARED_MODULES) global[module] = shared[module];
-  global.item = globalBuLevel(bu.assignments, rolePermissions, 'item');
+  for (const module of BU_MODULES) {
+    global[module] = globalBuLevel(bu.assignments, rolePermissions, module);
+  }
 
   const byLocation: Record<string, LocationPermissionMap> = {};
   for (const locationId of activeLocationIds) {

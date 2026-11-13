@@ -28,6 +28,8 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [],
@@ -67,6 +69,8 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [
@@ -154,6 +158,8 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
         stock: 'none',
         sticker: 'none',
         stickerstock: 'none',
+        serial: 'none',
+        serialservice: 'none',
       },
       businessUnits: [],
       locations: [location(perms)],
@@ -194,6 +200,8 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
       ...permissions,
     },
     businessUnits: [],
@@ -356,4 +364,53 @@ test('Daftar Postel aktif di semua rute di bawah /postel', () => {
     fuzzy ? path.startsWith(to) : path === to;
   for (const path of ['/postel', '/postel/new', '/postel/p1', '/postel/p1/edit'])
     expect(isNavItemActive(item, at(path))).toBe(true);
+});
+
+function meWithSerial(
+  serial: 'none' | 'view' | 'edit',
+  serialservice: 'none' | 'view' = 'none',
+): MeDto {
+  return {
+    email: 'a@gmail.com',
+    name: 'A',
+    isSuperAdmin: false,
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+      serial,
+      serialservice,
+    },
+    businessUnits: [],
+    locations: [],
+  };
+}
+
+const serialItems = (me: MeDto) =>
+  visibleNavGroups(NAV_GROUPS, me)
+    .find((group) => group.label === 'Serial Number')
+    ?.items.map((entry) => entry.label);
+
+test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
+  expect(serialItems(meWithSerial('none'))).toBeUndefined();
+  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial']);
+  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial']);
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial', 'Catat Serial']);
+});
+
+test('Daftar Serial tidak ikut aktif di Catat Serial', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  const list = items.find((entry) => entry.to === '/serial');
+  const record = items.find((entry) => entry.to === '/serial/new');
+  if (!list || !record) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(list, at('/serial/new'))).toBe(false);
+  expect(isNavItemActive(record, at('/serial/new'))).toBe(true);
+  expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
 });

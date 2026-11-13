@@ -2,8 +2,9 @@ import { ALL_LOCATIONS_KEY } from '@shared/assignments';
 import { ALL_BU_KEY } from '@shared/business-units';
 import type { BusinessUnitOptionDto, LocationDto, RoleDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { LinkField, LinkMultiField } from '@/components/link-field';
 import { Select } from '@/components/select';
@@ -133,6 +134,7 @@ export function UserForm({
       await onSubmit(userFormSchema.parse(value));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   return (
     <form

@@ -15,7 +15,7 @@
 - Penerima dikunci dengan **email ternormalisasi** (`normalizeEmail`, `server/src/core/email.ts`), bukan `users.id`.
 - Jendela penggabungan centang `CHECK_WINDOW_MS = 300_000` (5 menit, tetap sejak centang pertama); detak putaran latar notifikasi 30 detik; umur notifikasi `NOTIFICATION_RETENTION_DAYS = 90` (pilihan perancang).
 - Sisi QC = `qc: edit` di lokasi task; sisi WH = `handover: view` ke atas di lokasi task; "semua" = salah satunya. Hanya lokasi **aktif**.
-- Migrasi expand-only, idempoten (`IF NOT EXISTS`), nomor `0011` dan `0012` (terakhir di `dev` saat ini `0010`; pesan nomor ke sesi lain dan periksa `ls server/migrations` sebelum mulai).
+- Migrasi expand-only, idempoten (`IF NOT EXISTS`), nomor `0013` dan `0014` (awalnya direncanakan `0011` dan `0012`, direnomori 2026-11-13 karena `dev` sudah memakai `0011` dan `0012` untuk Postel per catatan dan Serial Number; saat rencana ditulis terakhir `0010`; pesan nomor ke sesi lain dan periksa `ls server/migrations` sebelum mulai).
 - `Db`: parameter `?` berurutan, nilai selalu di-bind, kolom `key`/`before`/`after` berbacktick, `SUM`/`COUNT` dibungkus `Number()`, kolasi `utf8mb4_nopad_bin`. Penulisan yang bergantung pada pembacaan dijaga CAS di `batch()` atau `FOR UPDATE`.
 - Tidak membaca `process.env` di luar `config.ts` dan `main.ts`. Variabel baru di `server/src/config.ts` wajib ada di `deploy/compose.yml` DAN `deploy/.env.example` (dijaga `server/src/deploy-files.test.ts`). `loadConfig` tidak boleh gagal karena variabel push (kosong atau tak valid = push dinonaktifkan).
 - Rute baru: id di `shared/contract.ts` (`ApiContract`) dan `shared/api.ts` (`API_ROUTES`), validator dan handler di modul, daftarkan di `server/src/routes.ts` (`ALL_API_IDS` dan `getRoutes()`), tes `rest.test.ts` lewat `restClient`/`restCall`. Rute JSON bermuatan badan wajib masuk tabel `server/src/http/body.test.ts`.
@@ -60,7 +60,7 @@
 ### Task 2: Migrasi dan repo notifikasi
 
 **Files:**
-- Create: `server/migrations/0011_notifikasi.sql`, `server/src/modules/notification/repo.ts`, `server/src/modules/notification/repo.test.ts`
+- Create: `server/migrations/0013_notifikasi.sql`, `server/src/modules/notification/repo.ts`, `server/src/modules/notification/repo.test.ts`
 
 **Interfaces:**
 - Consumes: `NotificationDto`, `NotificationKind` (Task 1); `Db`, `DbStatement` (`server/src/core/db.ts`).
@@ -77,7 +77,7 @@
 
 - [ ] **Step 1: Tulis tes `repo.test.ts`** (`createTestEnv`): urutan daftar terbaru dulu; kursor menghasilkan halaman berikutnya tanpa tumpang tindih; `locationIds` memfilter dan kosong = `[]`; `countUnread` memakai filter lokasi yang sama; `markRead` pada id milik orang lain mengembalikan `false` dan tidak mengubah apa pun; `markAllRead` hanya milik pemanggil; `purgeOldNotifications` membuang baris berumur 91 hari dan menyisakan 89 hari (jam `env.NOW`).
 - [ ] **Step 2: Jalankan** `bun run --cwd server test src/modules/notification/repo` → FAIL.
-- [ ] **Step 3: Tulis migrasi** `0011_notifikasi.sql` (tiga tabel di atas, `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin`, `IF NOT EXISTS`) dan implementasi repo mengikuti pola `server/src/modules/postel/repo.ts`.
+- [ ] **Step 3: Tulis migrasi** `0013_notifikasi.sql` (tiga tabel di atas, `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin`, `IF NOT EXISTS`) dan implementasi repo mengikuti pola `server/src/modules/postel/repo.ts`.
 - [ ] **Step 4: Jalankan tes** → PASS (templat tes memperbarui diri dari hash migrasi).
 - [ ] **Step 5: Commit** `feat(server): tabel dan repo notifikasi`.
 
@@ -172,7 +172,7 @@
 ### Task 7: Backend push siap pakai
 
 **Files:**
-- Create: `server/migrations/0012_push_notifikasi.sql`, `server/src/modules/notification/push.ts` (pengirim dan putaran kirim), `server/src/modules/notification/push-routes.ts` (atau digabung `routes.ts`), `server/src/modules/notification/web-push.ts` (pengirim nyata), `server/test-support/fake-push.ts`, `server/src/modules/notification/push.test.ts`, `server/src/modules/notification/push-rest.test.ts`
+- Create: `server/migrations/0014_push_notifikasi.sql`, `server/src/modules/notification/push.ts` (pengirim dan putaran kirim), `server/src/modules/notification/push-routes.ts` (atau digabung `routes.ts`), `server/src/modules/notification/web-push.ts` (pengirim nyata), `server/test-support/fake-push.ts`, `server/src/modules/notification/push.test.ts`, `server/src/modules/notification/push-rest.test.ts`
 - Modify: `server/src/core/env.ts` (`PUSH?: PushSender`), `server/src/config.ts`, `server/src/server.ts` (`envFromConfig` memasang `PUSH`), `deploy/compose.yml`, `deploy/.env.example`, `shared/contract.ts`, `shared/api.ts`, `server/src/routes.ts`, `server/src/http/body.test.ts`, `server/package.json` (bila memakai `web-push`)
 
 **Interfaces:**

@@ -16,6 +16,26 @@ function isControlOrBidi(code: number): boolean {
   );
 }
 
+function isBidi(code: number): boolean {
+  return (
+    code === 0x061c ||
+    code === 0x200e ||
+    code === 0x200f ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+/**
+ * Apakah `text` memuat pengatur arah teks Unicode (U+061C, U+200E/F, U+202A-202E, U+2066-2069). Berbeda dari
+ * `hasControlChars`, baris baru dan karakter kontrol lain TIDAK dihitung, dan huruf Arab/Ibrani biasa lolos; dipakai
+ * untuk teks multibaris (mis. pesan kejadian serial) yang boleh memuat baris baru.
+ */
+export function hasBidiControls(text: string): boolean {
+  for (let i = 0; i < text.length; i++) if (isBidi(text.charCodeAt(i))) return true;
+  return false;
+}
+
 /** Apakah `text` memuat karakter kontrol, pemisah baris, atau pengatur arah teks. */
 export function hasControlChars(text: string): boolean {
   for (let i = 0; i < text.length; i++) if (isControlOrBidi(text.charCodeAt(i))) return true;

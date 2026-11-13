@@ -9,6 +9,7 @@ import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 import { createWebPushSender } from '@server/modules/notification/web-push';
+import { backfillPostelStickers } from '@server/modules/postel/stickers';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -92,7 +93,16 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
-    (result) => {
+    async (result) => {
+      // Hanya di jalur nyata (ada persiapan basis data): catatan Postel lama dibekali stiker per catatan. Galatnya
+      // dicatat tanpa menggagalkan start (pengisi idempoten, diulang pada start berikutnya).
+      if (options.prepare) {
+        try {
+          await backfillPostelStickers(env);
+        } catch (error) {
+          console.error('Pengisian stiker Postel gagal:', error);
+        }
+      }
       startBackground();
       return result;
     },

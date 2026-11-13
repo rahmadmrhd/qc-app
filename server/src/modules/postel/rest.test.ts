@@ -217,7 +217,7 @@ describe('postels.save: membuat', () => {
     const stickers = ((await call(ADMIN, 'stickers.list', null)).data as Json[]).filter(
       (s) => s.typeId === postelTypes[0].id,
     );
-    expect(stickers.map((s) => s.name)).toEqual(['Postel']);
+    expect(stickers.map((s) => s.name)).toEqual(['Postel - M5-200/400']);
 
     expect(
       (await rows('SELECT id FROM items WHERE postel_id = ? ORDER BY id', postel.id)).map(
@@ -239,7 +239,7 @@ describe('postels.save: membuat', () => {
     });
   });
 
-  test('menyimpan catatan kedua tidak membuat jenis atau stiker Postel baru', async () => {
+  test('menyimpan catatan kedua tidak membuat jenis baru, tetapi stiker baru milik catatan itu', async () => {
     await create();
     await create({
       itemIds: ['i3'],
@@ -247,8 +247,11 @@ describe('postels.save: membuat', () => {
     });
     const types = (await call(ADMIN, 'stickerTypes.list', null)).data as Json[];
     expect(types.filter((t) => t.systemKind === 'postel')).toHaveLength(1);
-    const count = (await rows("SELECT COUNT(*) AS n FROM stickers WHERE name = 'Postel'"))[0];
-    expect(Number(count.n)).toBe(1);
+    const count = (await rows('SELECT COUNT(*) AS n FROM stickers'))[0];
+    expect(Number(count.n)).toBe(2);
+    expect(
+      (await rows('SELECT DISTINCT sticker_id FROM postels WHERE sticker_id IS NOT NULL')).length,
+    ).toBe(2);
   });
 
   test('simpan yang gagal validasi tidak membuat jenis Postel', async () => {
@@ -783,11 +786,11 @@ describe('postels.save: item tak terlihat (BU)', () => {
 });
 
 describe('postels.remove', () => {
-  test('melepas item, menghapus nomor, menulis audit; stiker Postel dan stok tetap', async () => {
+  test('melepas item, menghapus nomor, menulis audit; stiker catatan itu menjadi usang dan stoknya tetap', async () => {
     await seedLocation(env, { id: 'loc-1', code: 'WH' });
     const postel = await create({ note: 'akan dihapus' });
     const stickers = (await call(ADMIN, 'stickers.list', null)).data as Json[];
-    const sticker = stickers.find((s) => s.name === 'Postel') as Json;
+    const sticker = stickers.find((s) => s.name.startsWith('Postel - ')) as Json;
     const stock = await call(ADMIN, 'stickerStock.record', {
       locationId: 'loc-1',
       stickerId: sticker.id,
@@ -810,7 +813,11 @@ describe('postels.remove', () => {
     expect(audit[0]).toMatchObject({ target: `postel:${postel.id as string}`, actor: EDITOR });
     expect(JSON.parse(audit[0].before).note).toBe('akan dihapus');
     expect(audit[0].after).toBe('null');
-    expect(await rows("SELECT id FROM stickers WHERE name = 'Postel'")).toHaveLength(1);
+    // Stiker catatan itu tetap (stok 5 > 0): usang, bukan nonaktif; riwayat stok tetap.
+    expect(await rows('SELECT id FROM stickers WHERE id = ?', sticker.id)).toHaveLength(1);
+    expect((await rows('SELECT status FROM stickers WHERE id = ?', sticker.id))[0].status).toBe(
+      'deprecated',
+    );
     expect(await rows('SELECT id FROM sticker_stock_entries')).toHaveLength(1);
     // Item bebas dipakai lagi.
     expect(

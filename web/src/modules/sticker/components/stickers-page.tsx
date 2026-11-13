@@ -63,7 +63,7 @@ export function StickersPage({
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const buById = new Map(businessUnits.map((bu) => [bu.id, bu]));
-  // Hanya Manual Book yang punya penjaga "versi terbaru"; stiker jenis sistem lain (Postel) bebas diaktifkan kembali.
+  // Hanya Manual Book yang punya penjaga "versi terbaru"; stiker Postel bebas diaktifkan kembali selama catatannya masih ada (server menolak bila catatannya sudah dihapus).
   const manualBookTypeIds = new Set(
     types.filter((type) => type.systemKind === 'manual_book').map((t) => t.id),
   );

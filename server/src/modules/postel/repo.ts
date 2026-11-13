@@ -11,6 +11,8 @@ export interface PostelRecord {
   note: string;
   /** Id berkas (`files`), urutan larik = urutan tampil. */
   attachments: string[];
+  /** Stiker katalog milik catatan ini (`postels.sticker_id`); `''` = belum bersiker (NULL di basis data). */
+  stickerId: string;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -55,13 +57,14 @@ function parseIdList(value: string): string[] {
   }
 }
 
-const POSTEL_COLUMNS = 'id, note, attachments, created_at, updated_at, updated_by';
+const POSTEL_COLUMNS = 'id, note, attachments, sticker_id, created_at, updated_at, updated_by';
 
 function toPostel(row: Row): PostelRecord {
   return {
     id: text(row.id).trim(),
     note: text(row.note),
     attachments: parseIdList(text(row.attachments)),
+    stickerId: text(row.sticker_id).trim(),
     createdAt: text(row.created_at),
     updatedAt: text(row.updated_at),
     updatedBy: text(row.updated_by),
@@ -83,11 +86,12 @@ export async function findPostelRecord(db: Preparer, id: string): Promise<Postel
 
 export function insertPostelStmt(db: Preparer, record: PostelRecord): DbStatement {
   return db
-    .prepare(`INSERT INTO postels (${POSTEL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)`)
+    .prepare(`INSERT INTO postels (${POSTEL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .bind(
       record.id,
       record.note,
       JSON.stringify(record.attachments),
+      record.stickerId === '' ? null : record.stickerId,
       record.createdAt,
       record.updatedAt,
       record.updatedBy,
@@ -112,6 +116,13 @@ export function updatePostelStmt(
       record.id,
       expectedUpdatedAt,
     );
+}
+
+/** Menautkan stiker ke catatan yang belum bersiker (catatan lama): 0 baris berubah bila sudah bersiker. */
+export function linkPostelStickerStmt(db: Preparer, id: string, stickerId: string): DbStatement {
+  return db
+    .prepare('UPDATE postels SET sticker_id = ? WHERE id = ? AND sticker_id IS NULL')
+    .bind(stickerId, id);
 }
 
 /** Mengunci baris catatan (`FOR UPDATE`) di awal batch hapus agar penulis serentak menunggu lalu melihat hasilnya. */
