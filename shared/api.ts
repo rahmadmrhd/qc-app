@@ -354,6 +354,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: { itemId: 'string', buId: 'string' },
   },
   'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
+  'serials.serviceLocations': { verb: 'GET', path: '/serials/service-locations' },
+  'serials.lookup': { verb: 'GET', path: '/serials/lookup', query: { serial: 'string' } },
+  'serials.reportNew': { verb: 'POST', path: '/serials/report', status: 200 },
   'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
   'serials.list': {
     verb: 'GET',
@@ -408,6 +411,22 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serial-settings',
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
+  },
+  'serialServiceSettings.get': {
+    verb: 'GET',
+    path: '/serial-service-settings',
+    etag: 'updatedAt',
+  },
+  'serialServiceSettings.save': {
+    verb: 'PUT',
+    path: '/serial-service-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'serialCases.list': {
+    verb: 'GET',
+    path: '/serial-cases',
+    query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
   },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {

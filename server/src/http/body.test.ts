@@ -215,9 +215,7 @@ const WORST: Inputs = {
       locationId: UUID,
       sample: true,
       note: '😀'.repeat(SERIAL_LIMITS.noteMax),
-      // Terburuk: baris tidak lolos dengan kerusakan maksimum (4-byte seperti catatan) dan `source`.
-      status: 'failed' as const,
-      damage: '😀'.repeat(SERIAL_LIMITS.damageMax),
+      // Terburuk: catatan maksimum (4-byte) dan `source`.
       source: 'countrylock' as const,
       stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
     })),
@@ -249,13 +247,24 @@ const WORST: Inputs = {
   'serials.act': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    // Terburuk: cek ulang tidak lolos (field terbanyak) dengan pesan 4-byte per karakter dan kerusakan maksimum.
+    // Terburuk: cek ulang tidak lolos (field terbanyak) dengan pesan 4-byte per karakter dan 20 stiker tercentang.
     action: 'recheck_fail',
     occurredOn: '2026-11-12',
     message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
-    damage: text(SERIAL_LIMITS.damageMax),
+    stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
+  },
+  'serials.reportNew': {
+    serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+    itemId: UUID,
+    buId: UUID,
     locationId: UUID,
-    stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    occurredOn: '2026-11-14',
+  },
+  // Konfigurasi lokasi servis: lokasi aktif sebanyak-banyaknya (jauh di atas data nyata).
+  'serialServiceSettings.save': {
+    expectedUpdatedAt: STAMP,
+    locationIds: longList(500, () => UUID),
   },
   'postels.save': {
     id: UUID,
