@@ -1,4 +1,4 @@
-// Tes migrasi 0013 (kasus tidak lolos Serial Number 5b) terhadap MariaDB nyata di VPS (butuh `bun run db:tunnel`).
+// Tes migrasi 0015 (kasus tidak lolos Serial Number 5b) terhadap MariaDB nyata di VPS (butuh `bun run db:tunnel`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createDb, type Db, DbError } from '@server/core/db';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
@@ -15,10 +15,10 @@ beforeAll(async () => {
   await admin.exec(`CREATE DATABASE \`${name}\``);
   db = createDb({ url: URL_NO_DB, database: name, connectionLimit: 3 });
   const all = await loadMigrations();
-  // Sampai 0012 dulu: INSERT gaya 5a dibuktikan kompatibel SEBELUM kolom/tabel 0013 ada, lalu 0013 diterapkan di atasnya.
+  // Semua migrasi sebelum 0015 dulu: INSERT gaya 5a dibuktikan kompatibel SEBELUM kolom/tabel 0015 ada, lalu 0015 diterapkan di atasnya.
   await applyMigrations(
     db,
-    all.filter((m) => m.name <= '0012_serial_number.sql'),
+    all.filter((m) => m.name < '0015_serial_cases.sql'),
   );
 }, 60_000);
 
@@ -40,18 +40,18 @@ const insertCase = (id: string, number: string) =>
     .bind(id, number, 's1', 'bu1')
     .run();
 
-describe('migrasi 0013 serial_cases', () => {
-  test('baris serials gaya 5a (sebelum 0013) tetap ada dan mendapat transit_on kosong', async () => {
+describe('migrasi 0015 serial_cases', () => {
+  test('baris serials gaya 5a (sebelum 0015) tetap ada dan mendapat transit_on kosong', async () => {
     await insertSerial('s1', 'SN1');
     const all = await loadMigrations();
-    expect(await applyMigrations(db, all)).toEqual(['0013_serial_cases.sql']);
+    expect(await applyMigrations(db, all)).toEqual(['0015_serial_cases.sql']);
     const row = await db
       .prepare("SELECT transit_on FROM serials WHERE id = 's1'")
       .first<{ transit_on: string }>();
     expect(row?.transit_on).toBe('');
   });
 
-  test('INSERT serials gaya 5a (tanpa transit_on) tetap berhasil sesudah 0013', async () => {
+  test('INSERT serials gaya 5a (tanpa transit_on) tetap berhasil sesudah 0015', async () => {
     await insertSerial('s2', 'SN2');
     const row = await db
       .prepare("SELECT transit_on, open_case_id FROM serials WHERE id = 's2'")
@@ -86,8 +86,8 @@ describe('migrasi 0013 serial_cases', () => {
   });
 
   test('menjalankan migrasi dua kali tidak gagal', async () => {
-    const migration = (await loadMigrations()).find((m) => m.name === '0013_serial_cases.sql');
-    if (!migration) throw new Error('0013 tidak ditemukan');
+    const migration = (await loadMigrations()).find((m) => m.name === '0015_serial_cases.sql');
+    if (!migration) throw new Error('0015 tidak ditemukan');
     await db.exec(migration.sql);
     await db.exec(migration.sql);
   });

@@ -306,7 +306,7 @@ describe('skema baseline', () => {
       { name: '0010_postel_kunci_asing.sql' },
       { name: '0011_postel_stiker_per_catatan.sql' },
       { name: '0012_serial_number.sql' },
-      { name: '0013_serial_cases.sql' },
+      { name: '0015_serial_cases.sql' },
     ]);
   });
 
