@@ -14,7 +14,7 @@ import type {
   UpdateSerialBatchRowInput,
   UpdateSerialInput,
 } from '@shared/contract';
-import { hasControlChars } from '@shared/postel';
+import { hasBidiControls, hasControlChars } from '@shared/postel';
 import {
   isIsoDate,
   listSerialsTooLong,
@@ -137,6 +137,7 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
     return fail('Catatan tidak valid');
   }
   if (source.status !== 'good') return fail('Status belum didukung');
+  // `stickers` tidak dikirim = semua stiker yang berlaku (diselesaikan service); `[]` = sengaja tanpa stiker.
   const stickersRaw = source.stickers === undefined ? [] : source.stickers;
   if (!Array.isArray(stickersRaw) || stickersRaw.length > SERIAL_PICKS_MAX) {
     return fail('Daftar stiker tidak valid');
@@ -172,7 +173,7 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
       sample: source.sample,
       note,
       status: 'good',
-      stickers,
+      ...(source.stickers === undefined ? {} : { stickers }),
     },
   };
 }
@@ -348,6 +349,8 @@ export function validateSerialAct(raw: unknown): SerialActInput {
     if (typeof messageRaw !== 'string') reader.fail('message', 'Harus berupa teks');
     else if ([...messageRaw].length > SERIAL_LIMITS.messageMax) {
       reader.fail('message', `Maksimal ${SERIAL_LIMITS.messageMax} karakter`);
+    } else if (hasBidiControls(messageRaw)) {
+      reader.fail('message', 'Catatan memuat karakter pengatur arah teks yang tidak diizinkan');
     } else message = messageRaw;
   }
   if (action === 'note' && message.trim() === '') reader.fail('message', 'Catatan wajib diisi');

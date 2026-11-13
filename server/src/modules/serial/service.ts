@@ -29,6 +29,8 @@ import type {
   SerialRowResult,
   SerialStickerOptionsDto,
   SerialStickerOptionsInput,
+  SerialStickerPick,
+  SerialStickerStatus,
   SerialSummaryDto,
   UpdateSerialBatchInput,
   UpdateSerialBatchOutput,
@@ -88,9 +90,9 @@ interface OptionRow {
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(',');
 
 /**
- * Opsi item bagi pemilih di form pencatatan: hanya item AKTIF yang beririsan dengan BU tempat user berlevel
- * `serial: edit` (tanpa syarat `item: view`), berkursor menurut `key`, dengan pencarian. Hanya bidang yang dibutuhkan;
- * `buOptions` hanya BU yang boleh ditulis user (BU lain item itu tidak bocor).
+ * Opsi item bagi pemilih di form pencatatan dan filter daftar: hanya item AKTIF yang beririsan dengan BU tempat user
+ * berlevel `serial: edit` (tanpa syarat `item: view`; pembaca saja: BU yang boleh dibacanya), berkursor menurut `key`, dengan pencarian. Hanya bidang yang dibutuhkan;
+ * `buOptions` hanya BU dalam cakupan user itu (BU lain item itu tidak bocor).
  */
 export async function queryItemOptions(
   env: Env,
@@ -98,13 +100,16 @@ export async function queryItemOptions(
   input: ListSerialItemOptionsInput,
 ): Promise<SerialItemOptionsPageDto> {
   const limit = input.limit ?? SERIAL_ITEM_OPTIONS_DEFAULT_LIMIT;
+  // Pencatat (`serial: edit`) memilih dari BU ber-level edit; pembaca saja (view pada `serial`/`serialservice`) dari BU
+  // yang boleh dibacanya (bahan filter daftar). Bidang yang keluar sama minimalnya; di luar hak diam-diam tak muncul.
   const writable = writableBuIds(user);
-  if (writable.length === 0) return { items: [], nextCursor: null };
+  const scope = writable.length > 0 ? writable : readableBuIds(user);
+  if (scope.length === 0) return { items: [], nextCursor: null };
   const where = [
     "i.status = 'active'",
-    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${placeholders(writable.length)}))`,
+    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${placeholders(scope.length)}))`,
   ];
-  const binds: unknown[] = [...writable];
+  const binds: unknown[] = [...scope];
   // Mode id: tepat item-item itu (filter BU/status IDENTIK dengan pencarian); query/cursor/limit diabaikan.
   const byIds = input.itemIds !== undefined;
   if (byIds) {
@@ -134,9 +139,9 @@ export async function queryItemOptions(
   const links = new Map<string, { id: string; code: string }[]>();
   if (page.length > 0) {
     const linkRows = await env.DB.prepare(
-      `SELECT l.item_id, l.bu_id, bu.code FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(writable.length)}) ORDER BY bu.code, l.bu_id`,
+      `SELECT l.item_id, l.bu_id, bu.code FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(scope.length)}) ORDER BY bu.code, l.bu_id`,
     )
-      .bind(...page.map((row) => row.id), ...writable)
+      .bind(...page.map((row) => row.id), ...scope)
       .all<{ item_id: string; bu_id: string; code: string }>();
     for (const row of linkRows.results) {
       const list = links.get(row.item_id.trim()) ?? [];
@@ -283,18 +288,21 @@ export async function createSerialOnce(
   if (!(await memo.activeItemInBu(row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
   const locationName = await memo.activeLocationName(row.locationId);
   if (locationName === null) return failRow(row, LOCATION_MESSAGE);
-  // Stiker hanya dimuat bila baris memilihnya (baris tanpa stiker tak butuh daftar yang berlaku).
+  // Stiker hanya dimuat bila perlu: `[]` eksplisit tak butuh daftar yang berlaku; tidak dikirim = semua yang berlaku.
   const applicable =
-    row.stickers.length > 0
+    row.stickers === undefined || row.stickers.length > 0
       ? await memo.applicable(row.itemId, row.buId)
       : new Map<string, Applicable[number]>();
-  const picked = row.stickers.map((pick) => ({ pick, sticker: applicable.get(pick.stickerId) }));
+  const stickerPicks: SerialStickerPick[] =
+    row.stickers ??
+    [...applicable.values()].map((sticker) => ({ stickerId: sticker.id, qty: sticker.defaultQty }));
+  const picked = stickerPicks.map((pick) => ({ pick, sticker: applicable.get(pick.stickerId) }));
   if (picked.some((entry) => entry.sticker === undefined)) return failRow(row, STICKER_MESSAGE);
 
   const now = nowIso(env);
   const serialId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
-  const picks = row.stickers.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
+  const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
   try {
     const statements = [
@@ -311,7 +319,7 @@ export async function createSerialOnce(
         now,
         actorEmail,
       }),
-      ...row.stickers.map((pick) =>
+      ...stickerPicks.map((pick) =>
         insertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty),
       ),
       insertEventStmt(env.DB, {
@@ -422,6 +430,11 @@ function toSummary(row: SerialRow): SerialSummaryDto {
   };
 }
 
+function toStickerStatus(status: string | null): SerialStickerStatus {
+  const value = (status ?? '').trim();
+  return value === 'active' || value === 'deprecated' ? value : 'inactive';
+}
+
 function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
   return {
     ...toSummary(row),
@@ -432,6 +445,7 @@ function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
       name: sticker.name ?? '',
       alias: sticker.alias ?? '',
       qty: Number(sticker.qty),
+      stickerStatus: toStickerStatus(sticker.status),
     })),
     openCaseId: row.open_case_id.trim() === '' ? null : row.open_case_id.trim(),
     createdBy: row.created_by,
@@ -476,15 +490,15 @@ export async function loadSerialDto(env: Env, user: UserContext, id: string): Pr
   return toDto(row, await loadSerialStickers(env.DB, row.id.trim()));
 }
 
-/** Detail serial beserta linimasa kejadian (menaik menurut `seq`, maks. 500). */
+/** Detail serial beserta linimasa: maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun); `eventsTruncated` bila ada yang lebih lama. */
 export async function getSerial(
   env: Env,
   user: UserContext,
   input: GetSerialInput,
 ): Promise<GetSerialOutput> {
   const serial = await loadSerialDto(env, user, input.id);
-  const events = await loadSerialEvents(env.DB, serial.id);
-  return { serial, events: events.map(toEvent) };
+  const { events, truncated } = await loadSerialEvents(env.DB, serial.id);
+  return { serial, events: events.map(toEvent), eventsTruncated: truncated };
 }
 
 function encodeSerialCursor(row: { created_at: string; id: string }): string {
@@ -768,7 +782,11 @@ export async function actOnSerial(
     const current = new Map(
       (await loadSerialStickers(env.DB, serialId)).map((sticker) => [
         sticker.sticker_id.trim(),
-        { qty: Number(sticker.qty), name: sticker.name ?? '' },
+        {
+          qty: Number(sticker.qty),
+          name: sticker.name ?? '',
+          status: toStickerStatus(sticker.status),
+        },
       ]),
     );
     const requested = input.stickers ?? [];
@@ -787,6 +805,9 @@ export async function actOnSerial(
       const existing = current.get(pick.stickerId);
       if (existing && pick.qty < existing.qty) {
         throw validationError('stickers', 'Jumlah stiker tidak boleh diturunkan');
+      }
+      if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
+        throw validationError('stickers', 'Stiker nonaktif tidak dapat ditambah jumlahnya');
       }
       if (!existing && !applicable.has(pick.stickerId)) {
         throw validationError('stickers', 'Stiker tidak berlaku bagi item ini');

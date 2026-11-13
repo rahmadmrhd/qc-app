@@ -6,6 +6,7 @@ import {
   daysBetween,
   daysUntil,
   filterPostels,
+  hasBidiControls,
   hasControlChars,
   isCalendarDate,
   isPostelRecipient,
@@ -261,5 +262,26 @@ describe('hasControlChars dan stripControlChars', () => {
   test('stripControlChars mengganti dengan spasi tunggal', () => {
     expect(stripControlChars('SN-1\nBcc: x@y.co\u202E')).toBe('SN-1 Bcc: x@y.co');
     expect(stripControlChars('aman')).toBe('aman');
+  });
+});
+
+describe('hasBidiControls', () => {
+  test('menolak tiap pengatur arah teks Unicode', () => {
+    const codes = [0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e];
+    for (let code = 0x2066; code <= 0x2069; code++) codes.push(code);
+    for (const code of codes) {
+      expect(hasBidiControls(`abc${String.fromCharCode(code)}def`)).toBe(true);
+    }
+  });
+
+  test('baris baru dan huruf Arab/Ibrani biasa lolos', () => {
+    expect(hasBidiControls('baris satu\nbaris dua\r\n\ttab')).toBe(false);
+    expect(hasBidiControls('مرحبا بالعالم')).toBe(false);
+    expect(hasBidiControls('שלום עולם')).toBe(false);
+    expect(hasBidiControls('')).toBe(false);
+    // Batas rentang: karakter tepat di luar tidak ikut.
+    expect(hasBidiControls(String.fromCharCode(0x2029))).toBe(false);
+    expect(hasBidiControls(String.fromCharCode(0x202f))).toBe(false);
+    expect(hasBidiControls(String.fromCharCode(0x206a))).toBe(false);
   });
 });

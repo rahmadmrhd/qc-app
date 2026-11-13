@@ -1310,11 +1310,14 @@ export interface SerialStickerPick {
   stickerId: string;
   qty: number;
 }
+export type SerialStickerStatus = 'active' | 'inactive' | 'deprecated';
 export interface SerialStickerDto {
   stickerId: string;
   name: string;
   alias: string;
   qty: number;
+  /** Status stiker saat ini; jumlah stiker `inactive` tidak dapat dinaikkan pada cek ulang (`deprecated` boleh). */
+  stickerStatus: SerialStickerStatus;
 }
 /** Satu perubahan field pada kejadian `data_changed`; `null` = kosong. */
 export interface SerialChangeDto {
@@ -1371,7 +1374,11 @@ export interface SerialRowInput {
   note: string;
   /** Tahap 5a hanya menerima `good`. */
   status: 'good';
-  stickers: SerialStickerPick[];
+  /**
+   * Stiker yang ditempel. TIDAK dikirim (undefined) = SEMUA stiker yang berlaku bagi (item, BU) dengan `defaultQty`
+   * (sama dengan bawaan web dan `.qcsn`); `[]` eksplisit = tanpa stiker. Maks. 20 pilihan eksplisit.
+   */
+  stickers?: SerialStickerPick[];
 }
 export type SerialRowResult = {
   clientId: string;
@@ -1391,8 +1398,10 @@ export interface GetSerialInput {
 }
 export interface GetSerialOutput {
   serial: SerialDto;
-  /** Menaik menurut `seq`, maks. 500. */
+  /** Maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun). */
   events: SerialEventDto[];
+  /** Ada kejadian lebih lama yang tidak dimuat (hanya 500 terbaru yang dikembalikan). */
+  eventsTruncated: boolean;
 }
 export interface SerialListInput {
   /** Awalan serial (dinormalisasi). */

@@ -113,6 +113,25 @@ export function isLowStock(input: {
   return input.status === 'active' && input.minQty > 0 && input.total <= input.minQty;
 }
 
+/** Habis: stiker aktif dengan total semua lokasi <= 0 (termasuk negatif), apa pun nilai minimumnya. */
+export function isOutOfStock(input: { status: StickerStatus; total: number }): boolean {
+  return input.status === 'active' && input.total <= 0;
+}
+
+/**
+ * Bagian pada ringkasan harian stok: "Habis" (`isOutOfStock`) lebih dulu, lalu "Menipis" (`isLowStock`) untuk yang
+ * belum habis; stiker yang habis TIDAK diulang di bagian menipis. `null` = tidak masuk ringkasan. Definisi `low` pada
+ * halaman Stok (`isLowStock`) tidak berubah.
+ */
+export function stockDigestSection(input: {
+  status: StickerStatus;
+  minQty: number;
+  total: number;
+}): 'out' | 'low' | null {
+  if (isOutOfStock(input)) return 'out';
+  return isLowStock(input) ? 'low' : null;
+}
+
 /**
  * Instruksi stiker per item (tahap 3b-2, spek 2026-11-10): batas foto, penanda, dan teks. Koordinat penanda
  * bilangan bulat permil (0..`coordMax`) dari lebar/tinggi foto.

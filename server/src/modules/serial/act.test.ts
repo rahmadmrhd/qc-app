@@ -88,6 +88,22 @@ describe('serials.act: note', () => {
     expect(await stock('s1', 'loc-sby')).toBe(10);
   });
 
+  test('pesan memuat pengatur arah teks Unicode ditolak (note dan recheck); Arab/Ibrani dan baris baru lolos', async () => {
+    const codes = [0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e];
+    for (let code = 0x2066; code <= 0x2069; code++) codes.push(code);
+    for (const code of codes) {
+      const message = `abc${String.fromCharCode(code)}def`;
+      const note = await act({ action: 'note', message });
+      expect(note.error?.code).toBe('VALIDATION');
+      expect(JSON.stringify(note.error)).toContain('message');
+    }
+    const recheck = await act({ action: 'recheck', message: 'ok‮evil' });
+    expect(recheck.error?.code).toBe('VALIDATION');
+    expect((await events()).length).toBe(1);
+    const fine = await act({ action: 'note', message: 'baris satu\nمرحبا بالعالم\nשלום עולם' });
+    expect(fine.ok).toBe(true);
+  });
+
   test('pesan kosong: VALIDATION', async () => {
     expect((await act({ action: 'note', message: '  ' })).error?.code).toBe('VALIDATION');
   });
@@ -141,6 +157,44 @@ describe('serials.act: recheck', () => {
       { stickerId: 's1', name: 'Segel A', qtyFrom: 1, qtyTo: 2 },
     ]);
     expect(result.data.stickers.find((s: Json) => s.stickerId === 's1').qty).toBe(2);
+  });
+
+  test('stiker nonaktif tidak dapat dinaikkan; deprecated boleh; jumlah sama diabaikan; DTO membawa stickerStatus', async () => {
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's1'").run();
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = 's2'").run();
+    const eventsBefore = (await events()).length;
+    const rejected = await act({
+      stickers: [
+        { stickerId: 's1', qty: 2 },
+        { stickerId: 's2', qty: 1 },
+      ],
+    });
+    expect(rejected.error?.code).toBe('VALIDATION');
+    expect(JSON.stringify(rejected.error)).toContain(
+      'Stiker nonaktif tidak dapat ditambah jumlahnya',
+    );
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+    expect((await events()).length).toBe(eventsBefore);
+    // Jumlah sama pada stiker nonaktif diabaikan; deprecated dinaikkan lolos dan memotong stok.
+    const ok = await act({
+      stickers: [
+        { stickerId: 's1', qty: 1 },
+        { stickerId: 's2', qty: 3 },
+      ],
+    });
+    expect(ok.ok).toBe(true);
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+    expect(await stock('s2', 'loc-sby')).toBe(8);
+    const statuses = Object.fromEntries(
+      (ok.data.stickers as Json[]).map((sticker) => [sticker.stickerId, sticker.stickerStatus]),
+    );
+    expect(statuses).toEqual({ s1: 'inactive', s2: 'deprecated' });
+    // Penurunan tetap ditolak.
+    const lowered = await act(
+      { stickers: [{ stickerId: 's2', qty: 1 }] },
+      { at: ok.data.updatedAt },
+    );
+    expect(lowered.error?.code).toBe('VALIDATION');
   });
 
   test('stiker belum tercatat yang berlaku ditambahkan; tidak berlaku atau menurunkan jumlah: VALIDATION', async () => {

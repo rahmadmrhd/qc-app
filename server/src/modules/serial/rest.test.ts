@@ -16,6 +16,7 @@ const WRITER = 'pencatat@gmail.com';
 const VIEWER = 'pelihat@gmail.com';
 const BOTH = 'dua-bu@gmail.com';
 const NOBU = 'tanpa-bu@gmail.com';
+const SERVICE = 'servis-b@gmail.com';
 
 let env: TestEnv;
 
@@ -50,6 +51,12 @@ beforeEach(async () => {
     ],
   });
   await seedUser(env, { id: 'u-nobu', email: NOBU, assignments: [], buAssignments: [] });
+  await seedRole(env, { id: 'r-svc', name: 'Servis view', permissions: { serialservice: 'view' } });
+  await seedUser(env, {
+    id: 'u-svc',
+    email: SERVICE,
+    buAssignments: [{ buId: 'bu-b', roleIds: ['r-svc'] }],
+  });
   await seedBrand(env, 'Merk');
   await seedItem(env, { id: 'i-a1', brand: 'Merk', model: 'Alfa', businessUnitIds: ['bu-a'] });
   await seedItem(env, {
@@ -164,9 +171,6 @@ describe('serials.itemOptions', () => {
     expect(() => validateListSerialItemOptions({ itemIds: [5] })).toThrow();
     expect(() => validateListSerialItemOptions({ itemIds: 'i-a1' })).toThrow();
     expect(validateListSerialItemOptions({ itemIds: ['a', 'a', 'b'] }).itemIds).toEqual(['a', 'b']);
-    expect((await call(VIEWER, 'serials.itemOptions', { itemIds: ['i-a1'] })).error?.code).toBe(
-      'FORBIDDEN',
-    );
   });
 
   test('validator: limit di luar 1-50 ditolak', async () => {
@@ -174,11 +178,29 @@ describe('serials.itemOptions', () => {
     expect(result.error?.code).toBe('VALIDATION');
   });
 
-  test('tanpa penugasan BU atau serial view saja: FORBIDDEN', async () => {
-    const nobu = await call(NOBU, 'serials.itemOptions', {});
-    expect(nobu.error?.code).toBe('FORBIDDEN');
-    const viewer = await call(VIEWER, 'serials.itemOptions', {});
-    expect(viewer.error?.code).toBe('FORBIDDEN');
+  test('tanpa peran sama sekali: FORBIDDEN', async () => {
+    expect((await call(NOBU, 'serials.itemOptions', {})).error?.code).toBe('FORBIDDEN');
+  });
+
+  test('pembaca (serial view) melihat item aktif BU yang boleh dibacanya; BU lain tak bocor; itemIds berlaku', async () => {
+    const viewer = (await call(VIEWER, 'serials.itemOptions', {})).data as Json;
+    expect(viewer.items.map((i: Json) => i.id)).toEqual(['i-a1', 'i-a2']);
+    // i-a2 juga di BU B, tetapi pembaca hanya berhak di BU A.
+    expect(viewer.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
+    expect(viewer.items[1].buIds).toEqual(['bu-a']);
+    const byIds = (await call(VIEWER, 'serials.itemOptions', { itemIds: ['i-a1', 'i-b', 'i-off'] }))
+      .data as Json;
+    expect(byIds.items.map((i: Json) => i.id)).toEqual(['i-a1']);
+    expect(JSON.stringify(byIds)).not.toContain('Gamma');
+  });
+
+  test('pembaca serialservice view di BU B melihat item BU B saja', async () => {
+    const service = (await call(SERVICE, 'serials.itemOptions', {})).data as Json;
+    expect(service.items.map((i: Json) => i.id)).toEqual(['i-a2', 'i-b']);
+    expect(service.items[0].buOptions).toEqual([{ id: 'bu-b', code: 'B' }]);
+    const outside = (await call(SERVICE, 'serials.itemOptions', { itemIds: ['i-a1'] }))
+      .data as Json;
+    expect(outside.items).toEqual([]);
   });
 });
 
@@ -346,6 +368,33 @@ describe('serials.saveBatch', () => {
     expect(entry).toMatchObject({ kind: 'serial' });
     expect(Number(entry?.delta)).toBe(-2);
     expect(entry?.serial_id).not.toBe('');
+  });
+
+  test('stickers tidak dikirim = semua stiker yang berlaku (defaultQty 1); [] eksplisit = tanpa stiker', async () => {
+    const all = await save(WRITER, [row({ serial: 'SN-ALL', stickers: undefined })]);
+    expect(resultsOf(all)[0]).toMatchObject({ result: 'created' });
+    expect(await stockOf('s1')).toBe(4);
+    expect(await stockOf('s2')).toBe(-1);
+    const stored = await env.DB.prepare(
+      'SELECT sticker_id, qty FROM serial_stickers ORDER BY sticker_id',
+    ).all<{ sticker_id: string; qty: number | string }>();
+    expect(stored.results.map((r) => [r.sticker_id, Number(r.qty)])).toEqual([
+      ['s1', 1],
+      ['s2', 1],
+    ]);
+    const event = await env.DB.prepare('SELECT data_json FROM serial_events').first<{
+      data_json: string;
+    }>();
+    expect(JSON.parse(event?.data_json ?? '{}').stickers).toEqual([
+      // Daftar yang berlaku terurut menurut nama stiker.
+      { stickerId: 's2', name: 'Stiker Dua', qty: 1 },
+      { stickerId: 's1', name: 'Stiker Satu', qty: 1 },
+    ]);
+    const none = await save(WRITER, [row({ serial: 'SN-NONE', stickers: [] })]);
+    expect(resultsOf(none)[0]).toMatchObject({ result: 'created' });
+    // Stok tidak berubah lagi oleh baris `stickers: []`; tidak ada baris serial_stickers baru.
+    expect(await stockOf('s1')).toBe(4);
+    expect(await count('serial_stickers')).toBe(2);
   });
 
   test('stiker yang tidak dicentang tidak dipotong; sample tetap memotong', async () => {

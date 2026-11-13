@@ -51,15 +51,46 @@ describe('serials.get', () => {
       recordedLocationId: 'loc-sby',
     });
     expect(data.serial.stickers).toEqual([
-      { stickerId: 's1', name: 'Segel A', alias: '', qty: 1 },
-      { stickerId: 's2', name: 'Segel B', alias: '', qty: 2 },
+      { stickerId: 's1', name: 'Segel A', alias: '', qty: 1, stickerStatus: 'active' },
+      { stickerId: 's2', name: 'Segel B', alias: '', qty: 2, stickerStatus: 'active' },
     ]);
-    expect(data.events.map((e: Json) => e.seq)).toEqual([1, 2, 3]);
+    expect(data.events.map((e: Json) => e.seq)).toEqual([3, 2, 1]);
+    expect(data.eventsTruncated).toBe(false);
     expect(data.events[1]).toMatchObject({
       type: 'data_changed',
       changes: [{ field: 'serial', from: 'AB12', to: 'AB13' }],
       data: { k: 1 },
     });
+  });
+
+  test('kejadian: 500 terbaru, terbaru di atas; eventsTruncated hanya bila lebih dari 500', async () => {
+    await seedSerial(env, { id: 'big', serial: 'BIG-1' });
+    const addEvents = async (from: number, to: number): Promise<void> => {
+      const values: string[] = [];
+      const binds: unknown[] = [];
+      for (let seq = from; seq <= to; seq++) {
+        values.push("(?, 'big', '', ?, 'note', '2026-11-12', 't', 'u', 'U', 'qc', ?, '[]', '{}')");
+        binds.push(`ev-${seq}`, seq, `catatan ${seq}`);
+      }
+      await env.DB.prepare(
+        `INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES ${values.join(', ')}`,
+      )
+        .bind(...binds)
+        .run();
+    };
+    await addEvents(2, 500); // total tepat 500 (seq 1 = recorded)
+    const exact = (await call(SERIAL_USERS.writer, 'serials.get', { id: 'big' })).data as Json;
+    expect(exact.events).toHaveLength(500);
+    expect(exact.eventsTruncated).toBe(false);
+    expect(exact.events[0].seq).toBe(500);
+    expect(exact.events[499].seq).toBe(1);
+    await addEvents(501, 505);
+    const over = (await call(SERIAL_USERS.writer, 'serials.get', { id: 'big' })).data as Json;
+    expect(over.events).toHaveLength(500);
+    expect(over.eventsTruncated).toBe(true);
+    expect(over.events[0].seq).toBe(505);
+    expect(over.events[499].seq).toBe(6);
+    expect(over.events[0].message).toBe('catatan 505');
   });
 
   test('BU di luar hak: NOT_FOUND (bukan FORBIDDEN); pembaca serialservice boleh; tanpa izin FORBIDDEN', async () => {

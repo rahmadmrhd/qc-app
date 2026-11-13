@@ -160,6 +160,7 @@ export interface SerialStickerRow {
   name: string | null;
   alias: string | null;
   qty: number | string;
+  status: string | null;
 }
 
 export async function loadSerialStickers(
@@ -168,7 +169,7 @@ export async function loadSerialStickers(
 ): Promise<SerialStickerRow[]> {
   const rows = await db
     .prepare(
-      'SELECT ss.sticker_id, st.name, st.alias, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id',
+      'SELECT ss.sticker_id, st.name, st.alias, st.status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id',
     )
     .bind(serialId)
     .all<SerialStickerRow>();
@@ -190,14 +191,24 @@ export interface SerialEventRow {
 
 export const EVENTS_MAX = 500;
 
-export async function loadSerialEvents(db: Preparer, serialId: string): Promise<SerialEventRow[]> {
+/**
+ * Kejadian serial: maks. `EVENTS_MAX` yang TERBARU, terurut terbaru di atas (`seq` menurun). Dimuat satu baris lebih
+ * banyak untuk mengetahui apakah ada yang terpotong.
+ */
+export async function loadSerialEvents(
+  db: Preparer,
+  serialId: string,
+): Promise<{ events: SerialEventRow[]; truncated: boolean }> {
   const rows = await db
     .prepare(
-      'SELECT id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq ASC LIMIT ?',
+      'SELECT id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq DESC LIMIT ?',
     )
-    .bind(serialId, EVENTS_MAX)
+    .bind(serialId, EVENTS_MAX + 1)
     .all<SerialEventRow>();
-  return rows.results;
+  return {
+    events: rows.results.slice(0, EVENTS_MAX),
+    truncated: rows.results.length > EVENTS_MAX,
+  };
 }
 
 export interface SerialListFilter {

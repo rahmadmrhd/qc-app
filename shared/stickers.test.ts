@@ -7,6 +7,7 @@ import {
   guideNameFromFile,
   INSTRUCTION_LIMITS,
   isLowStock,
+  isOutOfStock,
   type MatchSticker,
   piecesOfCount,
   STICKER_LIMITS,
@@ -16,6 +17,7 @@ import {
   STOCK_ENTRY_KINDS,
   type StickerStatus,
   stickersForType,
+  stockDigestSection,
   USER_STICKER_RULES,
 } from './stickers';
 
@@ -237,5 +239,32 @@ describe('stickersForType', () => {
     expect(
       ids(stickersForType({ id: 't1', rule: 'group' }, withDeprecated, [], new Set(['s7', 's1']))),
     ).toEqual(['s1']);
+  });
+});
+
+describe('stiker: habis dan bagian ringkasan harian', () => {
+  test('habis = aktif dan total <= 0, apa pun minimumnya (termasuk 0 dan negatif)', () => {
+    expect(isOutOfStock({ status: 'active', total: 0 })).toBe(true);
+    expect(isOutOfStock({ status: 'active', total: -3 })).toBe(true);
+    expect(isOutOfStock({ status: 'active', total: 1 })).toBe(false);
+    expect(isOutOfStock({ status: 'inactive', total: 0 })).toBe(false);
+    expect(isOutOfStock({ status: 'deprecated', total: -1 })).toBe(false);
+  });
+
+  test('bagian ringkasan: habis lebih dulu, menipis hanya yang belum habis, selain itu tidak masuk', () => {
+    const base = { status: 'active' as const };
+    expect(stockDigestSection({ ...base, minQty: 0, total: 0 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 10, total: 0 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 5, total: -3 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 10, total: 4 })).toBe('low');
+    expect(stockDigestSection({ ...base, minQty: 5, total: 5 })).toBe('low');
+    expect(stockDigestSection({ ...base, minQty: 0, total: 4 })).toBeNull();
+    expect(stockDigestSection({ ...base, minQty: 5, total: 6 })).toBeNull();
+    expect(stockDigestSection({ status: 'inactive', minQty: 5, total: 0 })).toBeNull();
+    expect(stockDigestSection({ status: 'deprecated', minQty: 5, total: 0 })).toBeNull();
+  });
+
+  test('isLowStock sendiri tidak berubah (halaman Stok): minimum 0 tetap tak menipis', () => {
+    expect(isLowStock({ status: 'active', minQty: 0, total: 0 })).toBe(false);
   });
 });

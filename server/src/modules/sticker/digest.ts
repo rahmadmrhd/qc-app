@@ -2,38 +2,59 @@ import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { getSetting } from '@server/core/settings';
 import { wibDate, wibHour } from '@server/modules/backup/names';
+import { formatStockQty, stockDigestSection } from '@shared/stickers';
 import { readStickerAlert } from './settings';
 
 /**
- * Email ringkasan stok stiker menipis (tahap 4a): paling banyak satu surel per hari pada/setelah jam yang diatur (WIB),
- * dan tiap `intervalDays` hari (bawaan 1 = tiap hari), hanya bila ada stiker yang menipis. Dipanggil penjadwal jam-an (`checkLowStockDigest`); tidak bergantung pada
+ * Email ringkasan stok stiker (tahap 4a; bagian "Habis" sejak keputusan pemilik 2026-11-13): paling banyak satu surel
+ * per hari pada/setelah jam yang diatur (WIB), dan tiap `intervalDays` hari (bawaan 1 = tiap hari), hanya bila ada
+ * stiker yang habis atau menipis. Dipanggil penjadwal jam-an (`checkLowStockDigest`); tidak bergantung pada
  * sakelar cadangan. Penerima dari Konfigurasi Stiker (tabel `settings`), bukan `ALERT_TO`.
  */
 
 /** Tanggal WIB (`YYYYMMDD`) ringkasan terakhir yang diklaim untuk dikirim (dikembalikan bila kirim gagal). */
 export const SETTING_STICKER_DIGEST_LAST_DATE = 'STICKER_DIGEST_LAST_DATE';
 
-export interface LowStockRow {
+export interface DigestStockRow {
   name: string;
   typeName: string;
   total: number;
   minQty: number;
 }
 
+export interface StockDigestRows {
+  /** Habis: stiker aktif dengan total semua lokasi <= 0, apa pun minimumnya (`isOutOfStock`). */
+  out: DigestStockRow[];
+  /** Menipis: aktif, minimum > 0, total <= minimum, dan belum habis (`stockDigestSection`). */
+  low: DigestStockRow[];
+}
+
 /**
- * Stiker menipis: aktif (bukan `inactive`/`deprecated`), minimum > 0, dan total stok SEMUA lokasi <= minimum. Definisi
- * sama dengan `isLowStock` (`shared/stickers.ts`).
+ * Isi ringkasan harian: stiker AKTIF (bukan `inactive`/`deprecated`) yang habis (total semua lokasi <= 0, juga
+ * negatif, minimum berapa pun) atau menipis (minimum > 0 dan total <= minimum, belum habis). Pembagian bagian
+ * memakai `stockDigestSection` (`shared/stickers.ts`), sama dengan definisi `isLowStock` untuk kolom menipis.
  */
-export async function lowStockRows(env: Env): Promise<LowStockRow[]> {
+export async function stockDigestRows(env: Env): Promise<StockDigestRows> {
   const result = await env.DB.prepare(
-    "SELECT s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' AND s.min_qty > 0 GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= s.min_qty ORDER BY t.name, s.name",
+    "SELECT s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= 0 OR (s.min_qty > 0 AND COALESCE(SUM(k.qty), 0) <= s.min_qty) ORDER BY t.name, s.name",
   ).all<{ name: string; type_name: string; min_qty: number | string; total: number | string }>();
-  return result.results.map((row) => ({
-    name: row.name.trim(),
-    typeName: row.type_name.trim(),
-    total: Number(row.total) || 0,
-    minQty: Number(row.min_qty) || 0,
-  }));
+  const rows: StockDigestRows = { out: [], low: [] };
+  for (const row of result.results) {
+    const entry: DigestStockRow = {
+      name: row.name.trim(),
+      typeName: row.type_name.trim(),
+      total: Number(row.total) || 0,
+      minQty: Number(row.min_qty) || 0,
+    };
+    const section = stockDigestSection({
+      status: 'active',
+      minQty: entry.minQty,
+      total: entry.total,
+    });
+    if (section === 'out') rows.out.push(entry);
+    else if (section === 'low') rows.low.push(entry);
+  }
+  return rows;
 }
 
 export type DigestOutcome = 'sent' | 'skipped' | 'failed';
@@ -90,20 +111,36 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   // Selang minimum antar ringkasan (1 = tiap hari); tanggal terakhir yang tak terbaca atau kosong = belum pernah kirim.
   const elapsed = previous === '' ? Number.POSITIVE_INFINITY : daysBetweenCompact(previous, today);
   if (Number.isFinite(elapsed) && elapsed < alert.intervalDays) return 'skipped';
-  const rows = await lowStockRows(env);
-  if (rows.length === 0) return 'skipped';
+  const { out, low } = await stockDigestRows(env);
+  if (out.length === 0 && low.length === 0) return 'skipped';
   if (!(await claimDigestDate(env, previous, today))) return 'skipped';
-  const lines = rows.map(
-    (row) => `- ${row.name} (${row.typeName}): stok ${row.total}, minimum ${row.minQty}`,
-  );
+  const sections: string[] = [];
+  if (out.length > 0) {
+    const lines = out.map(
+      (row) => `- ${row.name} (${row.typeName}): stok ${formatStockQty(row.total)}`,
+    );
+    sections.push(`Habis (total semua lokasi 0 atau kurang):\n\n${lines.join('\n')}`);
+  }
+  if (low.length > 0) {
+    const lines = low.map(
+      (row) => `- ${row.name} (${row.typeName}): stok ${row.total}, minimum ${row.minQty}`,
+    );
+    sections.push(`Menipis (total semua lokasi):\n\n${lines.join('\n')}`);
+  }
+  const subject = `Stok stiker: ${[
+    out.length > 0 ? `${out.length} habis` : null,
+    low.length > 0 ? `${low.length} menipis` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(', ')}`;
   const link = env.APP_ORIGIN
     ? `\n\nLihat stok: ${env.APP_ORIGIN.replace(/\/+$/, '')}/sticker/stock`
     : '';
   try {
     await mailer.send({
       to: alert.recipients,
-      subject: `Stok stiker menipis (${rows.length})`,
-      text: `Stiker berikut stoknya menipis (total semua lokasi):\n\n${lines.join('\n')}${link}\n`,
+      subject,
+      text: `${sections.join('\n\n')}${link}\n`,
     });
   } catch (error) {
     // Pesan galat dari `createSmtpMailer` sudah bebas SMTP_PASS. Klaim dikembalikan: dicoba lagi pada detak berikutnya.

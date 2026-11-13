@@ -43,12 +43,14 @@ const READ_PERMISSION = {
 
 /**
  * Serial Number (modul ber-BU `serial`): izin rute memakai level global `serial` (tertinggi di antara penugasan BU);
- * pembatasan per BU dilakukan handler. Pemilih item dan stiker serta pencatatan butuh `serial: edit`.
+ * pembatasan per BU dilakukan handler. Pemilih item terbuka bagi pembaca (`serial`/`serialservice: view`); pemilih stiker,
+ * lokasi, dan pencatatan butuh `serial: edit`.
  */
 export function serialRoutes(): Pick<RouteTable, SerialMethod> {
   return {
+    // Terbuka bagi pembaca (filter item di daftar); cakupan BU dihitung handler.
     'serials.itemOptions': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: READ_PERMISSION,
       validate: validateListSerialItemOptions,
       handler: (input, ctx) => queryItemOptions(ctx.env, ctx.user, input),
     },
