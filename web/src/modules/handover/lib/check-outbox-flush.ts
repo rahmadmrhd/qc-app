@@ -89,8 +89,10 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
       }
       try {
         deps.onSent?.(saved, next);
-      } catch {
-        // Gagal memasang hasil ke cache tak boleh membuat entri yang sudah terkirim tertinggal (terkirim dua kali).
+      } catch (error) {
+        // Gagal memasang hasil ke cache tak boleh membuat entri yang sudah terkirim tertinggal (terkirim dua kali);
+        // dicatat ke konsol agar bug pemasangan cache tidak tak terlihat.
+        console.error('Gagal memasang hasil antrean centang ke cache', error);
       }
       // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
       removeEntries(owner, [next.id]);

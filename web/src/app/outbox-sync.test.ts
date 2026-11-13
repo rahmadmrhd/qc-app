@@ -65,6 +65,8 @@ afterEach(() => {
   stop?.();
   stop = undefined;
   vi.useRealTimers();
+  // Stub global (mis. `navigator.locks`) tak boleh bocor ke tes lain bila asersi gagal di tengah tes.
+  vi.unstubAllGlobals();
   initSession(ANONYMOUS_SESSION);
 });
 
@@ -303,7 +305,6 @@ test('A8: dengan navigator.locks, pengurasan berjalan di dalam kunci "qc-outbox-
   await settle();
   expect(request).toHaveBeenCalledWith('qc-outbox-flush', expect.any(Function));
   expect(mocks.api).toHaveBeenCalledTimes(1);
-  vi.unstubAllGlobals();
 });
 
 test('M1: kunci dipegang tab lain: putaran MENUNGGU, lalu mengirim entri yang tersisa begitu kunci lepas', async () => {
@@ -320,7 +321,6 @@ test('M1: kunci dipegang tab lain: putaran MENUNGGU, lalu mengirim entri yang te
   expect(mocks.api).toHaveBeenCalledTimes(1);
   expect(readOutbox(OWNER)).toEqual([]);
   expect(mocks.error).not.toHaveBeenCalled();
-  vi.unstubAllGlobals();
 });
 
 test('M1: tab lain sudah menguras selama menunggu: antrean dibaca ulang, tidak ada kirim dan tidak ada galat', async () => {
@@ -334,7 +334,6 @@ test('M1: tab lain sudah menguras selama menunggu: antrean dibaca ulang, tidak a
   await settle();
   expect(mocks.api).not.toHaveBeenCalled();
   expect(mocks.error).not.toHaveBeenCalled();
-  vi.unstubAllGlobals();
 });
 
 test('startOutboxSync mengizinkan penulisan antrean lagi (sesi kerja baru setelah keluar)', async () => {

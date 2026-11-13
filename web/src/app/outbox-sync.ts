@@ -122,7 +122,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
       if (locks) {
         // Beberapa tab akun yang sama: satu menguras, yang lain MENUNGGU kuncinya (tanpa `ifAvailable`, jadi tak ada
         // putaran yang hilang) lalu membaca ulang antrean: sudah dikuras tab lain = tak ada yang dikirim. Pemegang kunci
-        // selalu selesai dalam batas waktu kirim, jadi tak ada deadlock.
+        // dibatasi waktu kirim (30 dtk), jadi tak ada deadlock; tab tersembunyi yang timernya ditahan peramban dapat
+        // menunda pelepasan kunci lebih lama, dan itu diterima.
         await locks.request(FLUSH_LOCK, async () => {
           if (!stopped && readOutbox(owner).length > 0) await drainNow();
         });
