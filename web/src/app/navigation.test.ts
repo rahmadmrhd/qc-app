@@ -417,3 +417,45 @@ test('Daftar Serial Number tidak ikut aktif di Catat Serial Number', () => {
   expect(isNavItemActive(record, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
 });
+
+function meManagingSerial(levels: ('edit' | 'manage')[], isSuperAdmin = false): MeDto {
+  const base = meWithSerial('edit');
+  // Izin global = level tertinggi di antara BU (super admin: semua modul manage).
+  const global = isSuperAdmin || levels.includes('manage') ? 'manage' : 'edit';
+  return {
+    ...base,
+    isSuperAdmin,
+    permissions: { ...base.permissions, serial: global },
+    businessUnits: levels.map((level, index) => ({
+      id: `b${index}`,
+      code: `B${index}`,
+      name: `BU ${index}`,
+      status: 'active' as const,
+      permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+    })),
+  };
+}
+
+test('menu Pengaturan Serial Number hanya bagi pengelola di semua BU (atau super admin); tidak ikut aktif di Daftar', () => {
+  expect(serialItems(meManagingSerial(['edit']))).toEqual([
+    'Daftar Serial Number',
+    'Catat Serial Number',
+  ]);
+  // Manage hanya di sebagian BU: tersembunyi (server menolak karena penerima bersifat global).
+  expect(serialItems(meManagingSerial(['manage', 'edit']))).toEqual([
+    'Daftar Serial Number',
+    'Catat Serial Number',
+  ]);
+  expect(serialItems(meManagingSerial(['manage', 'manage']))).toEqual([
+    'Daftar Serial Number',
+    'Catat Serial Number',
+    'Pengaturan',
+  ]);
+  expect(serialItems(meManagingSerial(['edit'], true))).toContain('Pengaturan');
+  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  const list = items.find((entry) => entry.to === '/serial');
+  if (!list) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(list, at('/serial/settings'))).toBe(false);
+});
