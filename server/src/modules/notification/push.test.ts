@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { notificationTick, startNotificationLoop } from '@server/jobs/runner';
 import { createFakePush, type FakePush } from '@server-test/fake-push';
-import { ENV, seedHandoverEnv } from '@server-test/handover-env';
+import { callRest, ENV, seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   deliverPendingPushes,
@@ -12,6 +12,7 @@ import {
 } from './push';
 import { endpointHash } from './push-service';
 import { insertNotificationStmts, type NewNotification } from './repo';
+import { wakeNotifications } from './wake';
 
 setDefaultTimeout(60_000);
 
@@ -496,6 +497,95 @@ describe('putaran latar', () => {
     } finally {
       await stop();
     }
+  });
+
+  async function waitFor(condition: () => boolean, ms = 10_000): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (!condition() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  test('wakeNotifications mengirim seketika, tanpa menunggu detak (detak 60 dtk)', async () => {
+    await subscribe(VIEWER, 'a');
+    await insert(note());
+    const stop = startNotificationLoop(env, { intervalMs: 60_000 });
+    try {
+      await waitFor(() => push.sent.length === 1);
+      expect(push.sent).toHaveLength(1);
+      await insert(note({ preview: 'KEDUA' }));
+      const started = Date.now();
+      wakeNotifications();
+      await waitFor(() => push.sent.length === 2);
+      expect(push.sent).toHaveLength(2);
+      // Tanpa bangun-bangun, notifikasi kedua baru terkirim pada detak berikutnya (60 dtk).
+      expect(Date.now() - started).toBeLessThan(10_000);
+    } finally {
+      await stop();
+    }
+  });
+
+  test('task yang disimpan langsung terkirim ke sisi QC lewat jalur tulis (tanpa menunggu detak)', async () => {
+    const endpoint = await subscribe(QC, 'qc-hp');
+    const stop = startNotificationLoop(env, { intervalMs: 60_000 });
+    try {
+      // Biarkan putaran pertama (kosong) selesai: yang diuji adalah bangun-bangun dari penulisan, bukan detak.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const out = (await callRest(env, 'wh@gmail.com', 'handovers.save', {
+        locationId: ENV.locA,
+        customerName: 'PT Baru',
+        note: '- [ ] X',
+      })) as { ok: boolean };
+      expect(out.ok).toBe(true);
+      await waitFor(() => push.sent.length >= 1);
+      expect(push.sent).toHaveLength(1);
+      expect(push.sent[0]?.sub.endpoint).toBe(endpoint);
+      // Status ditulis setelah pengiriman selesai: tunggu sebentar sebelum dibaca.
+      let current = await states();
+      for (let i = 0; i < 100 && current.join() !== 'sent'; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        current = await states();
+      }
+      expect(current).toEqual(['sent']);
+    } finally {
+      await stop();
+    }
+  });
+
+  test('bangun-bangun berulang saat pengiriman berjalan: tiap notifikasi terkirim tepat sekali (tanpa tumpang tindih)', async () => {
+    await subscribe(VIEWER, 'a');
+    await insert(note({ preview: 'SATU' }));
+    let calls = 0;
+    const original = push.send.bind(push);
+    push.send = async (sub, payload) => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return original(sub, payload);
+    };
+    const stop = startNotificationLoop(env, { intervalMs: 60_000 });
+    try {
+      await waitFor(() => calls >= 1);
+      await insert(note({ preview: 'DUA' }));
+      for (let i = 0; i < 5; i += 1) wakeNotifications();
+      await waitFor(() => push.sent.length === 2);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(calls).toBe(2);
+      expect(push.sent).toHaveLength(2);
+      expect(await states()).toEqual(['sent', 'sent']);
+    } finally {
+      await stop();
+    }
+  });
+
+  test('stop() melepas penunjuk: wakeNotifications sesudahnya tidak berbuat apa-apa dan tidak melempar', async () => {
+    await subscribe(VIEWER, 'a');
+    const stop = startNotificationLoop(env, { intervalMs: 60_000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await stop();
+    await insert(note());
+    expect(() => wakeNotifications()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(push.sent).toHaveLength(0);
   });
 
   /** Env dengan DB yang melempar untuk SQL berisi `failOn` dan mencatat semua SQL yang disiapkan. */
