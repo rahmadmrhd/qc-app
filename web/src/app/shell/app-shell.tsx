@@ -26,7 +26,7 @@ export function AppShell() {
           {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
           <TourProvider renderTip={renderTourTip}>
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset className="min-w-0">
               <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                 <SidebarTrigger data-tour="sidebar-trigger" />
                 <div className="ml-auto flex items-center gap-1">
