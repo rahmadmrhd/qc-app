@@ -55,6 +55,14 @@ export function wasSynced(email: string): boolean {
   return read(() => sessionStorage, keyOf(SYNCED_KEY, email)) === '1';
 }
 
+/** Peristiwa di `window` saat penautan perangkat ke sebuah akun berhasil (agar tampilan terbuka ikut menyegarkan diri). */
+export const SYNCED_EVENT = 'qc:push-synced';
+
 export function markSynced(email: string): void {
   write(() => sessionStorage, keyOf(SYNCED_KEY, email), '1');
+  try {
+    window.dispatchEvent(new Event(SYNCED_EVENT));
+  } catch {
+    // Tanpa window (mis. lingkungan non-peramban): tak ada tampilan yang perlu disegarkan.
+  }
 }

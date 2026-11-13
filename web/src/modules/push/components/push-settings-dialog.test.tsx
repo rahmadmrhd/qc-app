@@ -1,6 +1,6 @@
 import type { PushConfigDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -118,6 +118,34 @@ describe('PushSettingsDialog', () => {
     expect(screen.getByTestId('push-device-status')).toHaveTextContent('dimatikan untuk akunmu');
   });
 
+  test('laporan izin dari dialog hanya dari PWA terpasang: tab peramban biasa tidak melaporkan', async () => {
+    const { requestPermission } = device({ permission: 'default', standalone: false });
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Aktifkan di perangkat ini' }));
+    await waitFor(() => expect(requestPermission).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(state.sync).toHaveBeenCalled());
+    expect(state.api.mock.calls.filter(([id]) => id === 'push.reportPermission')).toHaveLength(0);
+  });
+
+  test('penautan selesai saat dialog terbuka: status ikut menjadi aktif tanpa render ulang manual', async () => {
+    device({ permission: 'granted' });
+    mount();
+    expect(await screen.findByText(/belum tertaut/)).toBeInTheDocument();
+    state.linked = true;
+    act(() => markSynced('a@qc.local'));
+    expect(await screen.findByText('Aktif di perangkat ini.')).toBeInTheDocument();
+  });
+
+  test('preferensi dimatikan: hanya alasan yang tampil, bukan "belum tertaut"', async () => {
+    state.config = { enabled: true, publicKey: 'KUNCI', userEnabled: false };
+    device({ permission: 'granted' });
+    mount();
+    expect(await screen.findByTestId('push-device-status')).toHaveTextContent(
+      'dimatikan untuk akunmu',
+    );
+    expect(screen.getByTestId('push-device-status')).not.toHaveTextContent('belum tertaut');
+  });
+
   test('izin ditolak: langkah menyalakan kembali tampil dan tombol aktifkan TIDAK ada', async () => {
     const { requestPermission } = device({ permission: 'denied' });
     mount();
@@ -133,7 +161,7 @@ describe('PushSettingsDialog', () => {
     const { requestPermission } = device({ permission: 'default' });
     mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Aktifkan di perangkat ini' }));
-    await waitFor(() => expect(state.sync).toHaveBeenCalledWith(state.config));
+    await waitFor(() => expect(state.sync).toHaveBeenCalledWith(state.config, 'a@qc.local'));
     expect(requestPermission).toHaveBeenCalledTimes(1);
     expect(state.api).toHaveBeenCalledWith('push.reportPermission', { state: 'granted' });
     await waitFor(() => expect(toast.success).toHaveBeenCalled());

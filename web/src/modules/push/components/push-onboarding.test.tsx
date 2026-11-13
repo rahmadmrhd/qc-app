@@ -73,7 +73,7 @@ describe('dialog pra-izin', () => {
     expect(await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' })).toBeInTheDocument();
     expect(requestPermission).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
-    await waitFor(() => expect(state.sync).toHaveBeenCalledWith(state.config));
+    await waitFor(() => expect(state.sync).toHaveBeenCalledWith(state.config, 'a@qc.local'));
     expect(requestPermission).toHaveBeenCalledTimes(1);
     await waitFor(() =>
       expect(state.api).toHaveBeenCalledWith('push.reportPermission', { state: 'granted' }),
@@ -191,6 +191,25 @@ describe('izin sudah diberikan', () => {
     window.dispatchEvent(new Event('focus'));
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(state.sync).toHaveBeenCalledTimes(2);
+  });
+
+  test('gagal terus: dicoba ulang saat fokus paling banyak 3 kali; berpindah ke latar tidak memicu percobaan', async () => {
+    device({ permission: 'granted', standalone: true });
+    state.sync.mockRejectedValue(new Error('host ditolak'));
+    mount();
+    await waitFor(() => expect(state.sync).toHaveBeenCalledTimes(1));
+    const visibility = vi.spyOn(document, 'visibilityState', 'get');
+    visibility.mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(state.sync).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue('visible');
+    for (let i = 0; i < 6; i++) {
+      window.dispatchEvent(new Event('focus'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(state.sync).toHaveBeenCalledTimes(3);
+    visibility.mockRestore();
   });
 
   test('gagal berlangganan: tidak ditandai tersinkron dan tidak melempar', async () => {

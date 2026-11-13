@@ -27,21 +27,37 @@ test('pemanggilan bersamaan berbagi satu alur; setelah selesai alur baru dapat d
         finish = resolve as (value: 'subscribed') => void;
       }),
   );
-  const first = syncThisDevice(config);
-  const second = syncThisDevice(config);
+  const first = syncThisDevice(config, 'a@qc.local');
+  const second = syncThisDevice(config, 'a@qc.local');
   await vi.waitFor(() => expect(state.subscribe).toHaveBeenCalledTimes(1));
   finish('subscribed');
   expect(await first).toBe('subscribed');
   expect(await second).toBe('subscribed');
   expect(state.subscribe).toHaveBeenCalledTimes(1);
   state.subscribe.mockResolvedValueOnce('subscribed');
-  await syncThisDevice(config);
+  await syncThisDevice(config, 'a@qc.local');
   expect(state.subscribe).toHaveBeenCalledTimes(2);
+});
+
+test('akun berbeda tidak berbagi alur yang sedang berjalan', async () => {
+  const finishers: Array<(value: 'subscribed') => void> = [];
+  state.subscribe.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finishers.push(resolve as (value: 'subscribed') => void);
+      }),
+  );
+  const a = syncThisDevice(config, 'a@qc.local');
+  const b = syncThisDevice(config, 'b@qc.local');
+  await vi.waitFor(() => expect(state.subscribe).toHaveBeenCalledTimes(2));
+  for (const finish of finishers) finish('subscribed');
+  expect(await a).toBe('subscribed');
+  expect(await b).toBe('subscribed');
 });
 
 test('galat tidak membuat alur macet: pemanggilan berikutnya jalan lagi', async () => {
   state.subscribe.mockRejectedValueOnce(new Error('ditolak'));
-  await expect(syncThisDevice(config)).rejects.toThrow('ditolak');
+  await expect(syncThisDevice(config, 'a@qc.local')).rejects.toThrow('ditolak');
   state.subscribe.mockResolvedValueOnce('subscribed');
-  expect(await syncThisDevice(config)).toBe('subscribed');
+  expect(await syncThisDevice(config, 'a@qc.local')).toBe('subscribed');
 });

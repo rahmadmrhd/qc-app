@@ -1,6 +1,6 @@
 import type { PushConfigDto } from '@shared/contract';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { isIosBrowser, isStandalone } from '@/app/pwa/install';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMe } from '@/modules/auth/use-me';
-import { markAsked, markSynced, wasSynced } from '../lib/storage';
+import { markAsked, markSynced, SYNCED_EVENT, wasSynced } from '../lib/storage';
 import { getPushRegistration } from '../lib/subscribe';
 import { type DevicePermission, devicePermission, platformOf, reenableSteps } from '../lib/support';
 import { syncThisDevice } from '../lib/sync';
@@ -90,9 +90,14 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
       if (result === 'default') result = await window.Notification.requestPermission();
       if (result === 'unsupported') throw new Error('push tidak didukung');
       setPermission(result);
-      if (result !== 'default') reportPushPermission(result).catch(() => undefined);
+      // Sama seperti onboarding: hanya dari PWA terpasang dan tanpa `default`, agar tab peramban tidak menimpa nilai
+      // satu pengguna di server dari perangkat lain.
+      if (result !== 'default' && isStandalone(window)) {
+        reportPushPermission(result).catch(() => undefined);
+      }
       if (result === 'granted') {
-        if ((await syncThisDevice(current)) === 'unavailable') throw new Error('langganan gagal');
+        if ((await syncThisDevice(current, email)) === 'unavailable')
+          throw new Error('langganan gagal');
         markSynced(email);
       }
       return result;
@@ -104,6 +109,17 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
     onError: () => toast.error('Gagal mengaktifkan notifikasi push. Coba lagi nanti.'),
   });
 
+  // Penautan oleh onboarding (atau tombol di sini) selesai saat dialog terbuka: segarkan status.
+  const [, setSyncTick] = useState(0);
+  useEffect(() => {
+    const onSynced = () => {
+      setSyncTick((tick) => tick + 1);
+      void queryClient.invalidateQueries({ queryKey: ['push', 'device'] });
+    };
+    window.addEventListener(SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(SYNCED_EVENT, onSynced);
+  }, [queryClient]);
+
   // Tertaut = ada langganan peramban DAN sudah disinkronkan ke akun ini pada sesi ini; langganan milik akun lain di
   // perangkat yang sama tidak cukup (akun ini belum tentu punya barisnya di server).
   const linked = device.data === undefined ? undefined : device.data && wasSynced(email);
@@ -112,6 +128,11 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
     data === undefined
       ? undefined
       : deviceKind({ config: data, permission, standalone, ios, linked: linked });
+  // Preferensi dimatikan: status tertaut/belum tertaut tak relevan (dan menyesatkan), tampilkan alasannya saja.
+  const pushOff =
+    data !== undefined &&
+    !data.userEnabled &&
+    (kind === 'default' || kind === 'checking' || kind === 'linked' || kind === 'unlinked');
   const canActivate = kind === 'default' || kind === 'unlinked';
 
   return (
@@ -153,13 +174,10 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
               <p className="text-muted-foreground">
                 {kind === 'denied'
                   ? `Izin ditolak di peramban. ${reenableSteps(platformOf())}`
-                  : DEVICE_TEXT[kind]}
+                  : pushOff
+                    ? 'Push sedang dimatikan untuk akunmu; nyalakan kotak di atas untuk menerimanya.'
+                    : DEVICE_TEXT[kind]}
               </p>
-              {!data.userEnabled && kind !== 'server-off' && (
-                <p className="mt-1 text-muted-foreground">
-                  Push sedang dimatikan untuk akunmu; nyalakan kotak di atas untuk menerimanya.
-                </p>
-              )}
             </div>
           </div>
         )}

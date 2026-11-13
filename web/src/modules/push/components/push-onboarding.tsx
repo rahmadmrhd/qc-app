@@ -30,6 +30,9 @@ import {
 import { syncThisDevice } from '../lib/sync';
 import { pushConfigQueryOptions, reportPushPermission } from '../queries';
 
+/** Batas percobaan penautan yang gagal per pemasangan komponen (mis. host layanan push ditolak server). */
+const MAX_SYNC_FAILURES = 3;
+
 /** Spanduk pengingat saat izin notifikasi ditolak: lonceng tetap jalan, langkah menyalakan kembali menurut perangkat. */
 export function DeniedBanner({
   platform,
@@ -81,11 +84,13 @@ export function PushOnboarding() {
   const [focusTick, setFocusTick] = useState(0);
   const reported = useRef<string | null>(null);
   const syncing = useRef(false);
+  const syncFailures = useRef(0);
 
   useEffect(() => {
     const refresh = () => {
       setPermission(devicePermission());
-      setFocusTick((tick) => tick + 1);
+      // Hanya saat terlihat: berpindah ke latar (visibilitychange hidden) tidak boleh memicu percobaan ulang.
+      if (document.visibilityState === 'visible') setFocusTick((tick) => tick + 1);
     };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
@@ -115,14 +120,17 @@ export function PushOnboarding() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `focusTick` sengaja hanya pemicu percobaan ulang
   useEffect(() => {
     if (!active || !config || permission !== 'granted' || !userEnabled) return;
-    if (wasSynced(email) || syncing.current) return;
+    if (wasSynced(email) || syncing.current || syncFailures.current >= MAX_SYNC_FAILURES) return;
     syncing.current = true;
-    syncThisDevice(config)
+    syncThisDevice(config, email)
       .then((result) => {
         if (result === 'subscribed') markSynced(email);
+        else syncFailures.current += 1;
       })
       .catch(() => {
-        // Gagal berlangganan (layanan push tak terjangkau, dsb.): dicoba lagi pada sesi berikutnya.
+        // Gagal berlangganan (layanan push tak terjangkau, dsb.): dicoba lagi saat jendela fokus, paling banyak
+        // `MAX_SYNC_FAILURES` kali per pemasangan; selebihnya pada sesi berikutnya.
+        syncFailures.current += 1;
       })
       .finally(() => {
         syncing.current = false;
