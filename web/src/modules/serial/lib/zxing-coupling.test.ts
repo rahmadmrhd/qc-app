@@ -2,18 +2,23 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ZXING_WASM_SHA256, ZXING_WASM_VERSION } from 'barcode-detector/ponyfill';
 import { expect, test } from 'vitest';
+import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
+import { ZXING_OVERRIDES } from './barcode-fallback';
 
 /**
  * Glue emscripten dibundel DI DALAM `barcode-detector`, sedangkan berkas `.wasm` diambil dari paket terpisah
  * `zxing-wasm`. Keduanya harus versi yang sama; kalau tidak, galat baru tampak saat runtime. Tes ini gagal bila
  * salah satu paket dinaikkan tanpa yang lain.
  */
-const webPackage = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+// Jalur diturunkan dari lokasi berkas tes ini (web/src/modules/serial/lib), bukan dari direktori kerja.
+const webDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const webPackage = JSON.parse(readFileSync(join(webDir, 'package.json'), 'utf8')) as {
   dependencies: Record<string, string>;
 };
-const require = createRequire(join(process.cwd(), 'package.json'));
+const require = createRequire(join(webDir, 'package.json'));
 const wasmFile = require.resolve('zxing-wasm/reader/zxing_reader.wasm');
 
 test('zxing-wasm dipatok persis dan sama dengan versi yang dipakai glue barcode-detector', () => {
@@ -34,10 +39,8 @@ test('berkas .wasm berasal dari paket zxing-wasm dan hash-nya sama dengan yang d
   expect(hash).toBe(ZXING_WASM_SHA256);
 });
 
-test('barcode-fallback mengimpor .wasm dari zxing-wasm/reader (bukan salinan atau URL lain)', () => {
-  const source = readFileSync(
-    join(process.cwd(), 'src/modules/serial/lib/barcode-fallback.ts'),
-    'utf8',
-  );
-  expect(source).toContain("from 'zxing-wasm/reader/zxing_reader.wasm?url'");
+test('barcode-fallback menunjuk ke .wasm paket zxing-wasm/reader (bukan salinan atau URL lain)', () => {
+  // Nilai ekspor, bukan teks sumber: URL yang dipakai pemuat harus sama dengan hasil impor `?url` dari paket yang dijaga
+  // dua tes di atas; mengganti impor di barcode-fallback ke berkas lain membuat tes ini gagal.
+  expect(ZXING_OVERRIDES.locateFile('zxing_reader.wasm', 'https://cdn.example/')).toBe(wasmUrl);
 });
