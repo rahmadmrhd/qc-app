@@ -238,6 +238,8 @@ test('cek ulang mengirim serials.act dengan expectedUpdatedAt dan menampilkan ka
   renderPage();
   await screen.findByRole('region', { name: 'Update baru' });
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveAttribute('data-mode', 'message');
+  expect(screen.getByLabelText('Tanggal')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Tanggal kejadian')).not.toBeInTheDocument();
   await pickSelect(screen, 'Jenis update', 'Cek ulang');
   await pickLink(screen, 'Lokasi cek ulang', 'Surabaya (SBY)');
   const kurangi = await screen.findByRole('button', { name: 'Kurangi Stiker A' });

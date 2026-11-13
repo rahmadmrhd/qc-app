@@ -140,7 +140,7 @@ export function ActComposer({ serial }: ActComposerProps) {
           onValueChange={(next) => setAction(next === 'recheck' ? 'recheck' : 'note')}
         />
         <div className="space-y-1.5">
-          <Label htmlFor="act-date">Tanggal kejadian</Label>
+          <Label htmlFor="act-date">Tanggal</Label>
           <Input
             id="act-date"
             type="date"
