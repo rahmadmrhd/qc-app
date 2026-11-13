@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { isGuardFailure } from '@server/core/cas';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { seedLocation } from '@server-test/access-fixtures';
@@ -74,6 +75,64 @@ const deduct = (
       now: '2026-11-12T00:00:00.000Z',
     }),
   );
+
+describe('serialDeductStmts: rejectInactive (kenaikan stiker pada cek ulang)', () => {
+  const deductRaise = (picks: { stickerId: string; qty: number }[]) =>
+    env.DB.batch(
+      serialDeductStmts(env.DB, {
+        serialId: 'sn-1',
+        eventId: 'ev-r',
+        locationId: A,
+        picks,
+        actor: 'admin@gmail.com',
+        now: '2026-11-12T00:00:00.000Z',
+        rejectInactive: true,
+      }),
+    );
+
+  test('stiker inactive: seluruh batch batal (guard CAS), stok dan riwayat tak berubah, termasuk stiker lain di batch', async () => {
+    const off = await newSticker();
+    const ok = await newSticker();
+    await stockIn(off.id, 5);
+    await stockIn(ok.id, 5);
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = ?").bind(off.id).run();
+    let failure: unknown;
+    try {
+      await deductRaise([
+        { stickerId: ok.id, qty: 1 },
+        { stickerId: off.id, qty: 1 },
+      ]);
+    } catch (error) {
+      failure = error;
+    }
+    expect(isGuardFailure(failure)).toBe(true);
+    expect(await qtyAt(off.id)).toBe(5);
+    expect(await qtyAt(ok.id)).toBe(5);
+    const entries = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM sticker_stock_entries WHERE kind = 'serial'",
+    ).first<{ n: number | string }>();
+    expect(Number(entries?.n)).toBe(0);
+  });
+
+  test('stiker active dan deprecated lolos dan terpotong; tanpa flag, inactive tetap dipotong (pencatatan baru)', async () => {
+    const active = await newSticker();
+    const dep = await newSticker();
+    const off = await newSticker();
+    for (const sticker of [active, dep, off]) await stockIn(sticker.id, 5);
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = ?")
+      .bind(dep.id)
+      .run();
+    await deductRaise([
+      { stickerId: active.id, qty: 2 },
+      { stickerId: dep.id, qty: 2 },
+    ]);
+    expect(await qtyAt(active.id)).toBe(3);
+    expect(await qtyAt(dep.id)).toBe(3);
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = ?").bind(off.id).run();
+    await deduct([{ stickerId: off.id, qty: 1 }], { serialId: 'sn-2', eventId: 'ev-2' });
+    expect(await qtyAt(off.id)).toBe(4);
+  });
+});
 
 describe('serialDeductStmts', () => {
   test('stok 1, potong 3 -> -2; satu entri kind serial dengan serial_id dan serial_event_id', async () => {

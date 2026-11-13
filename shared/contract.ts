@@ -1479,8 +1479,9 @@ export interface ListSerialItemOptionsInput {
   cursor?: string;
   limit?: number;
   /**
-   * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU
-   * ber-`serial: edit` pengguna (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
+   * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU dalam
+   * cakupan pengguna: pencatat = BU ber-level `serial: edit`; pembaca saja = BU ber-level view atau lebih pada
+   * `serial`/`serialservice` (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
    */
   itemIds?: string[];
 }

@@ -102,6 +102,18 @@ export function lockStickerRowStmt(db: Preparer, stickerId: string): DbStatement
 }
 
 /**
+ * Penjaga stiker TIDAK `inactive` (`CAS_FAIL_SQL` bila nonaktif; baris stiker yang tak ada = tanpa baris = lolos, dan
+ * ditangkap kunci asing penulisan stok). Dipakai setelah `lockStickerRowStmt` dalam batch yang sama.
+ */
+export function stickerNotInactiveGuardStmt(db: Preparer, stickerId: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN status <> 'inactive' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers WHERE id = ?`,
+    )
+    .bind(stickerId);
+}
+
+/**
  * Penonaktifan otomatis (tahap 4a): stiker `deprecated` yang total stok SEMUA lokasi-nya mencapai 0 atau kurang (negatif
  * akibat pemotongan Serial Number) menjadi `inactive`, di batch yang sama dengan penulisan stok (setelah semua pembaruan stok, sebelum pembacaan ulang
  * riwayat). Tidak berefek pada stiker yang bukan `deprecated` atau yang masih punya stok.
@@ -212,6 +224,12 @@ export function serialDeductStmts(
     picks: readonly SerialDeduction[];
     actor: string;
     now: string;
+    /**
+     * Tolak (`CAS_FAIL_SQL`, seluruh batch batal) bila salah satu stiker berstatus `inactive`, diperiksa SETELAH kunci
+     * baris stiker (`FOR UPDATE`) sehingga penonaktifan serentak menunggu/terlihat. Dipakai kenaikan jumlah stiker
+     * pada cek ulang (keputusan pemilik 2026-11-13: stiker nonaktif tak dapat ditambah); stiker `deprecated` lolos.
+     */
+    rejectInactive?: boolean;
   },
 ): DbStatement[] {
   const merged = new Map<string, number>();
@@ -221,6 +239,9 @@ export function serialDeductStmts(
   const ordered = [...merged.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const statements: DbStatement[] = [];
   for (const [stickerId] of ordered) statements.push(lockStickerRowStmt(db, stickerId));
+  if (args.rejectInactive) {
+    for (const [stickerId] of ordered) statements.push(stickerNotInactiveGuardStmt(db, stickerId));
+  }
   for (const [stickerId, qty] of ordered) {
     statements.push(
       addStockStmt(db, stickerId, args.locationId, -qty, args.now),

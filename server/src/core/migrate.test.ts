@@ -183,7 +183,13 @@ describe('0011_postel_stiker_per_catatan', () => {
           "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p1', '', '[]', 't', 't', 's')",
         )
         .run();
-      expect(await applyMigrations(db, all)).toEqual(['0011_postel_stiker_per_catatan.sql']);
+      // Hanya sampai 0011: migrasi sesudahnya (mis. 0012 serial) punya tesnya sendiri dan tak boleh ikut di sini.
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0011_postel_stiker_per_catatan.sql'),
+        ),
+      ).toEqual(['0011_postel_stiker_per_catatan.sql']);
       const names = await db
         .prepare('SELECT id, name FROM stickers ORDER BY id')
         .all<{ id: string; name: string }>();
