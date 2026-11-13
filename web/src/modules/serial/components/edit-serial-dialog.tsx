@@ -72,6 +72,8 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
     .filter((option) => option.buIds.includes(serial.buId))
     .map((option) => ({ id: option.id, label: option.label }));
 
+  // Selama dalam pengiriman atau di servis, lokasi hanya berubah lewat Kirim/Terima (server menolak ubah lokasi).
+  const locationLocked = base.custody !== 'qc';
   const normalized = normalizeSerial(serialText);
   const serialInvalid = serialProblem(normalized) !== null;
   const changed =
@@ -258,7 +260,14 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             valueLabel={location.label}
             onChange={(id, label) => setLocation({ id, label })}
             error={fieldErrors.locationId}
+            disabled={locationLocked}
           />
+          {locationLocked ? (
+            <p className="text-xs text-muted-foreground">
+              Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis.
+              Lokasi berubah lewat aksi Kirim dan Terima.
+            </p>
+          ) : null}
           <ConflictNote text={conflicts.locationId} />
           <div className="flex items-center gap-2">
             <Checkbox
