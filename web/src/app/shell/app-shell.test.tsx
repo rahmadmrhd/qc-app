@@ -67,6 +67,9 @@ vi.mock('@/modules/theme/theme-toggle', () => ({ ThemeToggle: stubs.make('theme'
 vi.mock('@/modules/push/components/push-onboarding', () => ({
   PushOnboarding: stubs.make('push'),
 }));
+vi.mock('@/modules/guide/components/guide-banner', () => ({
+  GuideBanner: stubs.make('guide-banner'),
+}));
 vi.mock('@/modules/guide/components/guide-greeting', () => ({
   GuideGreeting: stubs.make('greeting'),
 }));
@@ -114,4 +117,12 @@ test('langkah ber-tip menampilkan pemutar demo bila adegannya terdaftar', async 
 test('GuideGreeting dipasang di cangkang', () => {
   render(<AppShell />);
   expect(screen.getByTestId('greeting')).toBeInTheDocument();
+});
+
+test('GuideBanner dipasang di atas area utama', () => {
+  render(<AppShell />);
+  const banner = screen.getByTestId('guide-banner');
+  // SidebarInset dan AppShell sama-sama <main> (bersarang): yang terdalam memuat Outlet.
+  const main = screen.getAllByRole('main').at(-1) as HTMLElement;
+  expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
