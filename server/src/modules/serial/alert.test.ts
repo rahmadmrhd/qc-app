@@ -215,6 +215,27 @@ describe('declare_broken dan antrean job', () => {
     expect(sent[0]?.text).not.toContain('Buka:');
   });
 
+  test('serialBrokenMail: nama pelaku berupa alamat surel diganti bagian lokal; nama kosong menjadi Admin', () => {
+    const base = {
+      serial: 'AB12',
+      buCode: 'A',
+      buName: 'A',
+      itemLabel: 'Merk Alfa',
+      itemModel: 'Alfa',
+      caseNumber: 'LP-1',
+      locationName: 'Surabaya',
+      reportedOn: '2026-11-10',
+      brokenOn: '2026-11-12',
+      note: 'Mati',
+      link: '',
+      linkExpiresOn: '',
+    };
+    const byEmail = serialBrokenMail({ ...base, actorName: 'super.admin@gmail.com' });
+    expect(byEmail.text).toContain('Oleh: super.admin\n');
+    expect(byEmail.text).not.toContain('@');
+    expect(serialBrokenMail({ ...base, actorName: '' }).text).toContain('Oleh: Admin\n');
+  });
+
   test('serialBrokenMail: karakter kontrol dan pengatur arah dibersihkan; subjek satu baris; catatan per baris', () => {
     const mail = serialBrokenMail({
       serial: 'AB\nBcc: x@y.co',

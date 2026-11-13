@@ -10,7 +10,7 @@ import { readFile } from '@server/modules/files/service';
 import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import type { SerialPublicEventDto, SerialPublicReportDto } from '@shared/serial-public';
-import { reportLinkExpiresAt } from '@shared/serials';
+import { publicActorName, reportLinkExpiresAt } from '@shared/serials';
 import { getCookie } from 'hono/cookie';
 import { Hono } from 'hono/tiny';
 import { readableBuIds } from './access';
@@ -139,7 +139,7 @@ publicSerialApp.get('/serial-reports/:token', async (c) => {
         seq: event.seq,
         type: event.type,
         occurredOn: event.occurredOn,
-        actorName: event.actorName,
+        actorName: publicActorName(event.actorName),
         actorTeam: event.actorTeam,
         message: event.message,
         changes: event.changes.map((change) => ({

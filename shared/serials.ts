@@ -215,3 +215,14 @@ export function isIsoDate(value: string): boolean {
     date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
   );
 }
+
+/**
+ * Nama pelaku yang aman ditampilkan di surel dan halaman publik (tanpa alamat surel pengguna, rancangan §4.7/§4.8):
+ * akun tanpa nama tersimpan tercatat dengan alamat surelnya sebagai nama, jadi nilai yang memuat "@" diganti bagian
+ * lokal sebelum "@". Nama kosong (atau bagian lokal kosong) menjadi "Admin".
+ */
+export function publicActorName(name: string): string {
+  const trimmed = name.trim();
+  const shown = trimmed.includes('@') ? (trimmed.split('@')[0] ?? '').trim() : trimmed;
+  return shown === '' ? 'Admin' : shown;
+}

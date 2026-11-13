@@ -3,6 +3,7 @@ import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  publicActorName,
   reportLinkExpiresAt,
   SERIAL_ACTIONS,
   SERIAL_EVENT_TYPES,
@@ -197,5 +198,16 @@ describe('status dan aksi alur laporan rusak', () => {
     expect(SERIAL_EVENT_TYPES).toContain('identify_damage');
     expect(SERIAL_EVENT_TYPES).toContain('attempt_repair');
     expect([...SERVICE_DIAGNOSIS_STAGES]).toEqual(['diagnosis', 'repairing', 'done']);
+  });
+});
+
+describe('publicActorName (nama pelaku tanpa alamat surel)', () => {
+  test('nama biasa tetap; surel diganti bagian lokal; kosong menjadi Admin', () => {
+    expect(publicActorName('Budi Servis')).toBe('Budi Servis');
+    expect(publicActorName('  Wati  ')).toBe('Wati');
+    expect(publicActorName('super.admin@gmail.com')).toBe('super.admin');
+    expect(publicActorName('@gmail.com')).toBe('Admin');
+    expect(publicActorName('')).toBe('Admin');
+    expect(publicActorName('   ')).toBe('Admin');
   });
 });

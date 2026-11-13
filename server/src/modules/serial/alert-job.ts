@@ -5,7 +5,7 @@ import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { markdownToPlain } from '@shared/markdown-plain';
 import { isPostelRecipient, stripControlChars, wibDateIso } from '@shared/postel';
-import { reportLinkExpiresAt } from '@shared/serials';
+import { publicActorName, reportLinkExpiresAt } from '@shared/serials';
 import type { JobHandler, StepOutcome } from '../jobs/consumer';
 import { readSerialAlert } from './alert';
 import { signReportToken } from './public-link';
@@ -93,7 +93,7 @@ export function serialBrokenMail(snapshot: SerialBrokenSnapshot): {
     `Lokasi unit: ${clean(snapshot.locationName)}`,
     `Dilaporkan: ${clean(snapshot.reportedOn)}`,
     `Dinyatakan rusak: ${clean(snapshot.brokenOn)}`,
-    `Oleh: ${clean(snapshot.actorName)}`,
+    `Oleh: ${clean(publicActorName(snapshot.actorName))}`,
     '',
     'Catatan:',
     noteLines === '' ? '-' : noteLines,

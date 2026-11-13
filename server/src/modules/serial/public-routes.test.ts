@@ -225,6 +225,25 @@ describe('GET /api/public/serial-reports/:token', () => {
     expect(text.toLowerCase()).not.toContain('"data"');
   });
 
+  test('nama pelaku berupa alamat surel atau kosong: DTO publik menampilkan bagian lokal atau Admin, tanpa "@"', async () => {
+    const { caseId } = await brokenReport('PUB-ADM', 9);
+    await env.DB.prepare(
+      "UPDATE serial_events SET actor_name = '' WHERE case_id = ? AND type = 'declare_broken'",
+    )
+      .bind(caseId)
+      .run();
+    await env.DB.prepare(
+      "UPDATE serial_events SET actor_name = ? WHERE case_id = ? AND type = 'report_failure'",
+    )
+      .bind('pencatat@gmail.com', caseId)
+      .run();
+    const body = (await (await report(await tokenFor(caseId))).json()) as Json;
+    const names = body.events.map((e: Json) => e.actorName);
+    expect(names).toContain('pencatat');
+    expect(names).toContain('Admin');
+    expect(JSON.stringify(body)).not.toContain('@');
+  });
+
   test('header respons: Cache-Control no-store dan Referrer-Policy no-referrer', async () => {
     const { caseId } = await brokenReport('PUB-3', 3);
     const ok = await report(await tokenFor(caseId));
