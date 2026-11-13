@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -332,6 +332,23 @@ describe('hanya menyorot', () => {
 });
 
 describe('sidebar di layar sempit', () => {
+  test('menekan kartu tur tidak sampai ke pendengar dokumen (agar Sheet modal tak menutup sendiri)', async () => {
+    const onDocumentPointerDown = vi.fn();
+    document.addEventListener('pointerdown', onDocumentPointerDown);
+    try {
+      render(<Page entry={entryOf([step({ text: 'Kartu uji' })])} />);
+      await startTour();
+      const card = (await screen.findByText('Kartu uji')).closest('[tabindex="-1"]') as HTMLElement;
+      onDocumentPointerDown.mockClear();
+      fireEvent.pointerDown(card);
+      expect(onDocumentPointerDown).not.toHaveBeenCalled();
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Target B' }));
+      expect(onDocumentPointerDown).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('pointerdown', onDocumentPointerDown);
+    }
+  });
+
   function SidebarProbe() {
     const { openMobile } = useSidebar();
     return openMobile ? (

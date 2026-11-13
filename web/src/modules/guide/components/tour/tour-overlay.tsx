@@ -275,6 +275,9 @@ export default function TourOverlay({
       aria-label="Panduan"
       aria-live="polite"
       className="pointer-events-none fixed inset-0 z-[200]"
+      // Di ponsel sidebar terbuka sebagai Sheet modal Radix: menekan kartu/penahan tur (di luar kontennya) akan
+      // dianggap "klik di luar" dan menutup sidebar yang sedang disorot. Hentikan penjalaran ke pendengar dokumen.
+      onPointerDown={(event) => event.stopPropagation()}
     >
       {box && step ? (
         <>
