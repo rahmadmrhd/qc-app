@@ -52,15 +52,39 @@ async function subCount(recipient?: string): Promise<number> {
 describe('push.config', () => {
   test('tanpa pengirim: enabled false; dengan pengirim dan kunci: enabled true + kunci publik', async () => {
     const off = await rest.get('/push/config', { email: WH });
-    expect(await jsonOf(off)).toEqual({ enabled: false, publicKey: '' });
+    expect(await jsonOf(off)).toEqual({ enabled: false, publicKey: '', userEnabled: true });
     const withPush = await createTestEnv({ PUSH: createFakePush(), VAPID_PUBLIC_KEY: 'KUNCI' });
     await seedHandoverEnv(withPush);
     const on = await restClient(withPush).get('/push/config', { email: WH });
-    expect(await jsonOf(on)).toEqual({ enabled: true, publicKey: 'KUNCI' });
+    expect(await jsonOf(on)).toEqual({ enabled: true, publicKey: 'KUNCI', userEnabled: true });
   });
 
   test('tanpa sesi -> 401', async () => {
     expect((await rest.get('/push/config', { email: null })).status).toBe(401);
+  });
+
+  test('userEnabled mengikuti preferensi pemanggil (bawaan aktif) dan tak memengaruhi pengguna lain', async () => {
+    const withPush = await createTestEnv({ PUSH: createFakePush(), VAPID_PUBLIC_KEY: 'KUNCI' });
+    await seedHandoverEnv(withPush);
+    const client = restClient(withPush);
+    const read = async (email: string) =>
+      (await jsonOf(await client.get('/push/config', { email }))) as { userEnabled: boolean };
+    expect((await read(WH)).userEnabled).toBe(true);
+    await client.put('/push/preference', { email: WH, body: { enabled: false } });
+    expect((await read(WH)).userEnabled).toBe(false);
+    expect((await read(QC)).userEnabled).toBe(true);
+    await client.put('/push/preference', { email: WH, body: { enabled: true } });
+    expect((await read(WH)).userEnabled).toBe(true);
+  });
+
+  test('push nonaktif di server: userEnabled tetap mengikuti preferensi tersimpan', async () => {
+    await rest.put('/push/preference', { email: WH, body: { enabled: false } });
+    const off = (await jsonOf(await rest.get('/push/config', { email: WH }))) as {
+      enabled: boolean;
+      publicKey: string;
+      userEnabled: boolean;
+    };
+    expect(off).toEqual({ enabled: false, publicKey: '', userEnabled: false });
   });
 });
 

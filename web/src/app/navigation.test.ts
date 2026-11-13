@@ -417,3 +417,17 @@ test('Daftar Serial Number tidak ikut aktif di Catat Serial Number', () => {
   expect(isNavItemActive(record, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
 });
+
+test('grup Pengaturan Akses memuat Status Push (access view) dan hanya tampil bagi user ber-izin', () => {
+  const grup = NAV_GROUPS.find((group) => group.label === 'Pengaturan Akses');
+  expect(grup?.items.find((entry) => entry.to === '/access/push')).toMatchObject({
+    label: 'Status Push',
+    permission: { module: 'access', level: 'view' },
+  });
+  const labels = (access: 'none' | 'view') =>
+    visibleNavGroups(NAV_GROUPS, stickerMe({ access }))
+      .flatMap((group) => group.items)
+      .map((entry) => entry.label);
+  expect(labels('view')).toContain('Status Push');
+  expect(labels('none')).not.toContain('Status Push');
+});
