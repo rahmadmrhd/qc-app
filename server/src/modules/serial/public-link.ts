@@ -32,7 +32,10 @@ function fromBase64Url(text: string): Uint8Array | null {
   }
 }
 
-async function hmacKey(raw: ArrayBuffer | Uint8Array, usage: 'sign' | 'verify'): Promise<CryptoKey> {
+async function hmacKey(
+  raw: ArrayBuffer | Uint8Array,
+  usage: 'sign' | 'verify',
+): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
 }
 
