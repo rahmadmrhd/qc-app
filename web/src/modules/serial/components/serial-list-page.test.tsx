@@ -41,6 +41,10 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
   locationName: 'Jakarta',
   status: 'good',
   custody: 'qc',
+  transitToLocationId: null,
+  transitToLocationName: null,
+  transitOn: null,
+  openCaseNumber: null,
   createdAt: '2026-11-10T03:00:00.000Z',
   ...over,
 });
