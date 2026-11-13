@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { formatClock, resetServerStatusForTests, startServerStatus } from '../server-status';
@@ -36,7 +36,8 @@ test('menampilkan teks persis dengan jam data terakhir (role=status), lalu hilan
       })
       .catch(() => {});
   });
-  const banner = screen.getByRole('status');
+  // Notifikasi cache memakai `setTimeout(0)`: tunggu spanduk muncul, jangan baca DOM langsung (flaky di CI lambat).
+  const banner = await screen.findByRole('status');
   expect(banner.textContent).toBe(
     `Server sedang tidak tersedia — menampilkan data terakhir (${formatClock(updatedAt)})`,
   );
@@ -48,5 +49,5 @@ test('menampilkan teks persis dengan jam data terakhir (role=status), lalu hilan
       staleTime: 0,
     });
   });
-  expect(screen.queryByRole('status')).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 });

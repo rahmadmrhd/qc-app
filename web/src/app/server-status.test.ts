@@ -23,14 +23,23 @@ afterEach(() => {
   client.clear();
 });
 
+/**
+ * Event QueryCache/MutationCache dikirim TanStack lewat penjadwal `setTimeout(0)`, jadi pelanggan baru tahu pada
+ * macrotask berikutnya. Menunggu satu macrotask membuat asersi tidak bergantung pada kecepatan mesin (di CI lambat,
+ * membaca status langsung setelah `await fetchQuery` bisa mendahului notifikasi).
+ */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 /** Refetch yang gagal: `fetchQuery` pada query basi menjalankan queryFn dan menyimpan galatnya. */
 async function failFetch(key: unknown[], error: Error = unavailable()) {
   await client
     .fetchQuery({ queryKey: key, queryFn: () => Promise.reject(error), staleTime: 0 })
     .catch(() => {});
+  await settle();
 }
 async function okFetch(key: unknown[], data: unknown = 'ok') {
   await client.fetchQuery({ queryKey: key, queryFn: () => Promise.resolve(data), staleTime: 0 });
+  await settle();
 }
 
 test('query whitelist berdata lalu refetch gagal UNAVAILABLE: menyala dengan waktu dataUpdatedAt', async () => {
@@ -64,6 +73,7 @@ test('sukses mutasi memadamkan', async () => {
     .getMutationCache()
     .build(client, { mutationFn: () => Promise.resolve('ok') })
     .execute(undefined);
+  await settle();
   expect(getServerStatus().unavailableSince).toBeNull();
 });
 
@@ -74,6 +84,7 @@ test('setQueryData manual (patch optimistis) saat menyala tidak memadamkan', asy
   expect(since).not.toBeNull();
   client.setQueryData(['handovers', 'board'], { rows: [] });
   client.setQueryData(['handovers', 'get', 't1'], { id: 't1' });
+  await settle();
   expect(getServerStatus().unavailableSince).toBe(since);
 });
 
@@ -82,6 +93,7 @@ test('setelah dipadamkan sukses lain, penulisan manual tidak menyalakan lagi', a
   await failFetch(['auth', 'me']);
   await okFetch(['handovers', 'board']);
   client.setQueryData(['handovers', 'get', 't1'], { id: 't1' });
+  await settle();
   expect(getServerStatus().unavailableSince).toBeNull();
 });
 
