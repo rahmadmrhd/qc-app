@@ -30,8 +30,10 @@ export interface QcsnRow {
   locationLabel: string;
   sample: boolean;
   note: string;
-  /** Tahap 5a hanya menerima `good`. */
-  status: 'good';
+  /** `failed` = langsung dicatat tidak lolos (5b): wajib `damage`. */
+  status: 'good' | 'failed';
+  /** Kerusakan (satu baris, maks. 200); ada hanya bila `status` = `failed`. Kunci opsional: pembaca 5a menolak baris `failed`. */
+  damage?: string;
   source: 'manual' | 'countrylock';
   capturedAt: string;
   reinjectedAt?: string;
@@ -153,7 +155,15 @@ function readRow(raw: unknown): QcsnRow | Fail {
   const note = readText(raw, 'note', SERIAL_LIMITS.noteMax, { required: false });
   if (isFail(note)) return note;
   const status = own(raw, 'status');
-  if (status !== 'good') return { error: 'status belum didukung (hanya good)' };
+  if (status !== 'good' && status !== 'failed') {
+    return { error: 'status harus good atau failed' };
+  }
+  let damage: string | undefined;
+  if (status === 'failed') {
+    const text = readText(raw, 'damage', SERIAL_LIMITS.damageMax);
+    if (isFail(text)) return text;
+    damage = text.trim();
+  }
   const source = own(raw, 'source');
   if (source !== 'manual' && source !== 'countrylock') {
     return { error: 'source harus manual atau countrylock' };
@@ -173,10 +183,11 @@ function readRow(raw: unknown): QcsnRow | Fail {
     locationLabel,
     sample,
     note,
-    status: 'good',
+    status,
     source,
     capturedAt,
   };
+  if (damage !== undefined) result.damage = damage;
 
   if (own(raw, 'reinjectedAt') !== undefined) {
     const reinjectedAt = readText(raw, 'reinjectedAt', STAMP_MAX);
@@ -290,6 +301,7 @@ export function qcsnCanonical(rows: readonly QcsnRow[]): string {
       sample: row.sample,
       note: row.note,
       status: row.status,
+      ...(row.damage !== undefined ? { damage: row.damage } : {}),
       source: row.source,
       capturedAt: row.capturedAt,
       ...(row.reinjectedAt !== undefined ? { reinjectedAt: row.reinjectedAt } : {}),

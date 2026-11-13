@@ -1,4 +1,5 @@
 import type { Env } from '@server/core/env';
+import { registerSerialAlertListener } from '@server/modules/serial/alert-listener';
 import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from './access-fixtures';
 import { seedBrand, seedItem } from './item-fixtures';
@@ -17,6 +18,14 @@ export const SERIAL_USERS = {
   both: 'dua-bu@gmail.com',
   /** Tanpa peran. */
   nobu: 'tanpa-bu@gmail.com',
+  /** `serialservice: edit` di BU A saja (tim servis). */
+  svcEdit: 'servis-edit@gmail.com',
+  /** `serial: edit` DAN `serialservice: edit` di BU A. */
+  hybrid: 'hibrida@gmail.com',
+  /** `serial: edit` di BU A, `serial: view` di BU B. */
+  mixed: 'edit-a-lihat-b@gmail.com',
+  /** `serialservice: edit` di BU B saja. */
+  svcB: 'servis-b@gmail.com',
 } as const;
 
 /**
@@ -28,6 +37,7 @@ export async function seedSerialWorld(env: Env): Promise<void> {
   // Daftar pendengar bus event adalah keadaan modul bersama satu proses `bun test`; tes lain (mis. `core/events.test.ts`)
   // mengosongkannya. Pendaftaran idempoten, jadi tes serial tidak bergantung pada urutan berkas dalam proses.
   registerSerialStockListeners();
+  registerSerialAlertListener();
   await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
   await seedBusinessUnit(env, { id: 'bu-b', code: 'B' });
   await seedRole(env, { id: 'r-edit', name: 'Serial edit', permissions: { serial: 'edit' } });
@@ -36,6 +46,39 @@ export async function seedSerialWorld(env: Env): Promise<void> {
     id: 'r-svc',
     name: 'Servis view',
     permissions: { serialservice: 'view' },
+  });
+  await seedRole(env, {
+    id: 'r-svc-edit',
+    name: 'Servis edit',
+    permissions: { serialservice: 'edit' },
+  });
+  await seedRole(env, {
+    id: 'r-both-mod',
+    name: 'Serial dan servis edit',
+    permissions: { serial: 'edit', serialservice: 'edit' },
+  });
+  await seedUser(env, {
+    id: 'u-svc-edit',
+    email: SERIAL_USERS.svcEdit,
+    buAssignments: [{ buId: 'bu-a', roleIds: ['r-svc-edit'] }],
+  });
+  await seedUser(env, {
+    id: 'u-hybrid',
+    email: SERIAL_USERS.hybrid,
+    buAssignments: [{ buId: 'bu-a', roleIds: ['r-both-mod'] }],
+  });
+  await seedUser(env, {
+    id: 'u-mixed',
+    email: SERIAL_USERS.mixed,
+    buAssignments: [
+      { buId: 'bu-a', roleIds: ['r-edit'] },
+      { buId: 'bu-b', roleIds: ['r-view'] },
+    ],
+  });
+  await seedUser(env, {
+    id: 'u-svc-b',
+    email: SERIAL_USERS.svcB,
+    buAssignments: [{ buId: 'bu-b', roleIds: ['r-svc-edit'] }],
   });
   await seedUser(env, {
     id: 'u-w',
@@ -121,6 +164,11 @@ export interface SeedSerial {
   updatedAt?: string;
   clientId?: string;
   stickers?: { stickerId: string; qty: number }[];
+  /** Kasus terbuka (status tidak lolos dan seterusnya): disisipkan ke `serial_cases` dan `open_case_id` serial. */
+  openCase?: { id: string; number: string; damage?: string; openedOn?: string };
+  transitFromLocationId?: string;
+  transitToLocationId?: string;
+  transitOn?: string;
 }
 
 /** Catatan serial langsung ke basis data (tanpa stok) beserta kejadian `recorded` bernomor 1. */
@@ -149,6 +197,38 @@ export async function seedSerial(env: Env, serial: SeedSerial): Promise<void> {
       serial.createdBy ?? 'seed@gmail.com',
     )
     .run();
+  if (serial.openCase) {
+    await env.DB.prepare(
+      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, damage, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        serial.openCase.id,
+        serial.openCase.number,
+        serial.id,
+        serial.buId ?? 'bu-a',
+        serial.openCase.openedOn ?? '2026-11-12',
+        serial.openCase.damage ?? 'Layar retak',
+        createdAt,
+        'seed@gmail.com',
+        createdAt,
+      )
+      .run();
+    await env.DB.prepare('UPDATE serials SET open_case_id = ? WHERE id = ?')
+      .bind(serial.openCase.id, serial.id)
+      .run();
+  }
+  if (serial.transitToLocationId) {
+    await env.DB.prepare(
+      'UPDATE serials SET transit_from_location_id = ?, transit_to_location_id = ?, transit_on = ? WHERE id = ?',
+    )
+      .bind(
+        serial.transitFromLocationId ?? location,
+        serial.transitToLocationId,
+        serial.transitOn ?? '2026-11-12',
+        serial.id,
+      )
+      .run();
+  }
   for (const sticker of serial.stickers ?? []) {
     await env.DB.prepare(
       'INSERT INTO serial_stickers (serial_id, sticker_id, qty) VALUES (?, ?, ?)',

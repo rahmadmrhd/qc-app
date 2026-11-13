@@ -1,7 +1,9 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
+import { actOnSerial } from './act';
+import { getSerialSettings, saveSerialSettings } from './alert';
+import { serialHistory } from './history';
 import {
-  actOnSerial,
   getSerial,
   listSerials,
   locationOptions,
@@ -15,7 +17,9 @@ import {
   validateGetSerial,
   validateListSerialItemOptions,
   validateSaveSerialBatch,
+  validateSaveSerialSettings,
   validateSerialAct,
+  validateSerialHistory,
   validateSerialList,
   validateSerialStickerOptions,
   validateUpdateSerial,
@@ -31,7 +35,10 @@ type SerialMethod =
   | 'serials.list'
   | 'serials.update'
   | 'serials.updateBatch'
-  | 'serials.act';
+  | 'serials.act'
+  | 'serials.history'
+  | 'serialSettings.get'
+  | 'serialSettings.save';
 
 /** Pembaca serial: level `view` pada `serial` ATAU `serialservice` (BU dibatasi handler). */
 const READ_PERMISSION = {
@@ -59,9 +66,16 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateSerialStickerOptions,
       handler: (input, ctx) => stickerOptions(ctx.env, ctx.user, input),
     },
-    // Gerbang kasar `serial: edit`; setiap lokasi aktif boleh dipilih (tanpa filter penugasan lokasi).
+    // Setiap lokasi aktif boleh dipilih (tanpa filter penugasan lokasi). Terbuka juga bagi tim servis
+    // (`serialservice: edit`) agar dapat memilih lokasi tujuan saat mengirim balik ke QC (keputusan pemilik 2026-11-13,
+    // mengubah spek §3 butir 19).
     'serials.locationOptions': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: {
+        anyOf: [
+          { module: 'serial', level: 'edit' },
+          { module: 'serialservice', level: 'edit' },
+        ],
+      },
       validate: expectNull,
       handler: (_input, ctx) => locationOptions(ctx.env),
     },
@@ -69,6 +83,11 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateSerialList,
       handler: (input, ctx) => listSerials(ctx.env, ctx.user, input),
+    },
+    'serials.history': {
+      permission: READ_PERMISSION,
+      validate: validateSerialHistory,
+      handler: (input, ctx) => serialHistory(ctx.env, ctx.user, input),
     },
     'serials.get': {
       permission: READ_PERMISSION,
@@ -85,10 +104,28 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateUpdateSerialBatch,
       handler: (input, ctx) => updateSerialBatch(ctx.env, input, ctx.user),
     },
+    // Gerbang kasar: `serial: edit` ATAU `serialservice: edit`. Modul yang berlaku per aksi ditentukan tabel transisi
+    // (`shared/serial-flow.ts`) menurut STATUS serial pada BU-nya, dinilai di `act.ts`.
     'serials.act': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: {
+        anyOf: [
+          { module: 'serial', level: 'edit' },
+          { module: 'serialservice', level: 'edit' },
+        ],
+      },
       validate: validateSerialAct,
       handler: (input, ctx) => actOnSerial(ctx.env, input, ctx.user),
+    },
+    // Penerima surel bersifat global: pemeriksaan "semua BU" ada di handler (`assertCanManageSerialSettings`).
+    'serialSettings.get': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: expectNull,
+      handler: (_input, ctx) => getSerialSettings(ctx.env, ctx.user),
+    },
+    'serialSettings.save': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateSaveSerialSettings,
+      handler: (input, ctx) => saveSerialSettings(ctx.env, input, ctx.user),
     },
     'serials.saveBatch': {
       permission: { module: 'serial', level: 'edit' },

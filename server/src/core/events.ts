@@ -20,9 +20,18 @@ export interface SerialStockPayload {
   now: string;
 }
 
+/** Serial dinyatakan rusak (5b): pendengar antrean memasang job surel ke `batch()` aksi, atomik dengan aksinya. */
+export interface SerialBrokenPayload {
+  serialId: string;
+  caseId: string;
+  eventId: string;
+  now: string;
+}
+
 export interface EventPayloads {
   'serial.recorded': SerialStockPayload;
   'serial.stickers_added': SerialStockPayload;
+  'serial.declared_broken': SerialBrokenPayload;
 }
 
 type AnyListener = StatementListener<never>;

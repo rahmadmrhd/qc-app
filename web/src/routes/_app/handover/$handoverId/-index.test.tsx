@@ -37,6 +37,7 @@ function me(): MeDto {
     email: 'u@qc.local',
     name: 'U',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',

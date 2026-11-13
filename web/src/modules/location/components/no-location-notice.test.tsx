@@ -19,6 +19,7 @@ beforeEach(() => {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {} as MeDto['permissions'],
     businessUnits: [],
     locations: [],

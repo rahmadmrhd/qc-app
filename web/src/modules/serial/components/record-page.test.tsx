@@ -9,6 +9,8 @@ import { exportQcsn } from '../lib/qcsn';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
+const toastSuccess = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -85,6 +87,7 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -108,7 +111,9 @@ afterEach(() => {
   apiMock.mockReset();
 });
 
-function renderPage(props: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+function renderPage(
+  props: { onDirtyChange?: (dirty: boolean) => void; onAllSaved?: (created: number) => void } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -319,6 +324,8 @@ function stagingRows(serials: string[]): StagingRow[] {
       locationLabel: 'Jakarta (JKT)',
       sample: false,
       note: '',
+      status: 'good',
+      damage: '',
     },
     () => `row-${String(++n).padStart(8, '0')}`,
     () => '2026-11-12T10:00:00.000Z',
@@ -392,4 +399,69 @@ test('halaman tidak memuat elemen select atau option bawaan', async () => {
   await paste('A1');
   expect(container.querySelector('select, option, optgroup')).toBeNull();
   expect(document.querySelector('select, option, optgroup')).toBeNull();
+});
+
+test('semua baris tersimpan: onAllSaved dipanggil dan draft localStorage kosong', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1\nA2');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await waitFor(() => expect(onAllSaved).toHaveBeenCalledTimes(1), { timeout: 10_000 });
+  expect(onAllSaved).toHaveBeenCalledWith(2);
+  expect(toastSuccess).toHaveBeenCalledWith('Serial Number berhasil disimpan');
+  expect(screen.queryAllByRole('row')).toHaveLength(0);
+  const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
+  expect(draft === null || draft === '[]').toBe(true);
+});
+
+test('sebagian gagal (duplikat): tidak berpindah halaman; baris sukses keluar, baris gagal tersisa', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1\nA2');
+  resultFor = (row) => (row.serial === 'A2' ? 'duplicate' : 'created');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await waitFor(() => expect(serialValues()).toEqual(['A2']));
+  expect(onAllSaved).not.toHaveBeenCalled();
+});
+
+test('galat jaringan: tidak berpindah halaman', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1');
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serials.saveBatch' ? Promise.reject(new Error('putus')) : original?.(id, input),
+  );
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+  expect(onAllSaved).not.toHaveBeenCalled();
+});
+
+test('halaman ditinggalkan saat simpan berjalan: onAllSaved tidak dipanggil dan draf disinkronkan', async () => {
+  const onAllSaved = vi.fn();
+  const view = renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1');
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation(async (id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.saveBatch') await gate;
+    return original?.(id, input);
+  });
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Menyimpan/ })).toBeDisabled());
+  view.unmount();
+  release();
+  await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 10_000 });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(onAllSaved).not.toHaveBeenCalled();
+  // Baris sudah tersimpan: draf tidak lagi memuatnya.
+  const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
+  expect(draft === null || draft === '[]').toBe(true);
 });

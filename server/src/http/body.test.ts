@@ -203,7 +203,8 @@ const WORST: Inputs = {
     style: DEFAULT_QR_STYLE,
     overflow: true,
   } as never,
-  // Catatan terpanjang berkarakter 3-byte (karakter kontrol ditolak validator, jadi bukan escape 6-byte).
+  // Catatan dan kerusakan terpanjang berkarakter 4-byte (validator menghitung titik kode; karakter kontrol ditolak,
+  // jadi bukan escape 6-byte).
   'serials.saveBatch': {
     rows: longList(SERIAL_LIMITS.batchRows, () => ({
       clientId: UUID,
@@ -213,8 +214,11 @@ const WORST: Inputs = {
       testDate: '2026-11-12',
       locationId: UUID,
       sample: true,
-      note: '漢'.repeat(SERIAL_LIMITS.noteMax),
-      status: 'good' as const,
+      note: '😀'.repeat(SERIAL_LIMITS.noteMax),
+      // Terburuk: baris tidak lolos dengan kerusakan maksimum (4-byte seperti catatan) dan `source`.
+      status: 'failed' as const,
+      damage: '😀'.repeat(SERIAL_LIMITS.damageMax),
+      source: 'countrylock' as const,
       stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
     })),
   },
@@ -245,9 +249,11 @@ const WORST: Inputs = {
   'serials.act': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    action: 'recheck',
+    // Terburuk: cek ulang tidak lolos (field terbanyak) dengan pesan 4-byte per karakter dan kerusakan maksimum.
+    action: 'recheck_fail',
     occurredOn: '2026-11-12',
-    message: '\u6f22'.repeat(SERIAL_LIMITS.messageMax),
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    damage: text(SERIAL_LIMITS.damageMax),
     locationId: UUID,
     stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
   },
@@ -263,6 +269,17 @@ const WORST: Inputs = {
       link: text(POSTEL_LIMITS.linkMax),
     })),
     attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
+  },
+  // 20 penerima sepanjang 254 karakter (batas alamat).
+  'serialSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: longList(
+        SERIAL_LIMITS.alertRecipientsMax,
+        (index) => `${'x'.repeat(240 - String(index).length)}${index}@abcdefgh.com`,
+      ),
+    },
   },
   'postelSettings.save': {
     expectedUpdatedAt: STAMP,
@@ -329,9 +346,16 @@ describe('batas badan', () => {
       sizes.push([id, bytes]);
       expect(bytes, id).toBeLessThan(MAX_JSON_BODY_BYTES);
     }
-    // Terbesar nyata = saveBatch 30 x 5.000 karakter terburuk (~0,9 MB); pastikan ada ruang minimal 2x.
-    const max = Math.max(...sizes.map(([, bytes]) => bytes));
+    // Invarian ruang minimal 2x berlaku untuk semua rute KECUALI `serials.saveBatch`.
+    const SAVE_BATCH = 'serials.saveBatch';
+    const max = Math.max(...sizes.filter(([id]) => id !== SAVE_BATCH).map(([, bytes]) => bytes));
     expect(max * 2).toBeLessThan(MAX_JSON_BODY_BYTES);
+    // Pengecualian (keputusan pemilik 2026-11-13): 200 baris x catatan dan kerusakan sepenuhnya emoji 4-byte
+    // (~1,29 MB, 61% batas) bukan skenario nyata, jadi margin 2x tidak dipaksakan. Batas atas konkret ~1,3 MB tetap
+    // menangkap regresi ukuran (mis. baris atau batas karakter bertambah) sebelum menyentuh 2 MB.
+    const saveBatchBytes = sizes.find(([id]) => id === SAVE_BATCH)?.[1] ?? 0;
+    expect(saveBatchBytes).toBeGreaterThan(0);
+    expect(saveBatchBytes).toBeLessThanOrEqual(1_300_000);
   });
 
   test('batas JSON 2 MB; batas global Bun.serve diturunkan dari tabel rute biner', () => {

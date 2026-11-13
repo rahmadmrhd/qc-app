@@ -7,11 +7,15 @@ import { describeError } from '@/lib/api/describe-error';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
+import { todayWib } from '../lib/locations';
+import { lastShipmentNote } from '../lib/transit';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
 import { ActComposer } from './act-composer';
+import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
-import { Timeline } from './timeline';
+import { SerialStepper } from './serial-stepper';
+import { TimelineTabs } from './timeline-tabs';
 
 export interface SerialDetailPageProps {
   serialId: string;
@@ -99,7 +103,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
       </div>
     );
   }
-  const { serial, events, eventsTruncated } = detail.data;
+  const { serial, events } = detail.data;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
 
   return (
@@ -116,8 +120,18 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
             <Badge variant={serial.status === 'good' ? 'secondary' : 'destructive'}>
               {STATUS_LABEL[serial.status]}
             </Badge>
-            <Badge variant="outline">{CUSTODY_LABEL[serial.custody]}</Badge>
+            <Badge variant="outline">
+              {serial.custody === 'transit'
+                ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
+                : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
+            </Badge>
+            {serial.openCase ? (
+              <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
+            ) : null}
           </div>
+          {serial.openCase?.damage ? (
+            <p className="text-sm text-muted-foreground">Kerusakan: {serial.openCase.damage}</p>
+          ) : null}
         </div>
         {canWrite ? (
           <Button variant="outline" onClick={() => setEditing(true)}>
@@ -125,12 +139,14 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
           </Button>
         ) : null}
       </div>
+      <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      <CustodyPanel serial={serial} shipmentNote={lastShipmentNote(events)} today={todayWib()} />
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">
         <h2 className="text-sm font-semibold">Riwayat</h2>
-        <Timeline events={events} truncated={eventsTruncated} />
+        <TimelineTabs serial={serial} />
       </section>
-      {canWrite ? <ActComposer serial={serial} /> : null}
+      <ActComposer serial={serial} />
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
     </div>
   );

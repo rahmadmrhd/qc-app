@@ -71,3 +71,65 @@ describe('serial_events hanya bertambah', () => {
     ).toBe(false);
   });
 });
+
+/**
+ * Kasus Serial Number (`serial_cases`, 5b): tidak pernah dihapus; satu-satunya yang boleh meng-`UPDATE`-nya adalah
+ * `case-repo.ts` (mengisi kerusakan dan menutup kasus lewat penjaga CAS). Kode lain wajib lewat berkas itu.
+ */
+const CASE_FORBIDDEN: readonly { name: string; pattern: RegExp }[] = [
+  { name: 'DELETE FROM serial_cases', pattern: /\bDELETE\s+FROM\s+`?serial_cases\b/i },
+  { name: 'REPLACE INTO serial_cases', pattern: /\bREPLACE\s+INTO\s+`?serial_cases\b/i },
+  { name: 'TRUNCATE serial_cases', pattern: /\bTRUNCATE\s+(?:TABLE\s+)?`?serial_cases\b/i },
+  { name: 'DELETE ... JOIN serial_cases', pattern: /\bDELETE\b[^;]*?\bJOIN\s+`?serial_cases\b/is },
+];
+const CASE_UPDATE: readonly { name: string; pattern: RegExp }[] = [
+  { name: 'UPDATE serial_cases', pattern: /\bUPDATE\s+`?serial_cases\b/i },
+  { name: 'UPDATE ... JOIN serial_cases', pattern: /\bUPDATE\b[^;]*?\bJOIN\s+`?serial_cases\b/is },
+  {
+    name: 'INSERT serial_cases ... ON DUPLICATE KEY UPDATE',
+    pattern:
+      /\bINSERT\s+(?:IGNORE\s+)?INTO\s+`?serial_cases\b[^;]*?ON\s+DUPLICATE\s+KEY\s+UPDATE/is,
+  },
+];
+
+describe('serial_cases: tanpa hapus, UPDATE hanya lewat case-repo', () => {
+  test('tak ada DELETE, REPLACE, atau TRUNCATE pada serial_cases; UPDATE hanya di case-repo.ts', async () => {
+    const files = await productionSources();
+    const offenders: string[] = [];
+    for (const file of files) {
+      const text = await Bun.file(file).text();
+      for (const { name, pattern } of CASE_FORBIDDEN) {
+        if (pattern.test(text)) offenders.push(`${file}: ${name}`);
+      }
+      if (file.replaceAll('\\', '/').endsWith('/modules/serial/case-repo.ts')) continue;
+      for (const { name, pattern } of CASE_UPDATE) {
+        if (pattern.test(text)) offenders.push(`${file}: ${name} di luar case-repo.ts`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test('case-repo.ts memang memuat UPDATE serial_cases dan pemindai menangkap polanya (kontrol positif)', async () => {
+    const repo = await Bun.file(`${SRC}modules/serial/case-repo.ts`).text();
+    expect(CASE_UPDATE.some(({ pattern }) => pattern.test(repo))).toBe(true);
+    for (const sample of [
+      'delete from `serial_cases` where id = ?',
+      'REPLACE INTO serial_cases (id) VALUES (?)',
+      'TRUNCATE TABLE serial_cases',
+    ]) {
+      expect(CASE_FORBIDDEN.some(({ pattern }) => pattern.test(sample))).toBe(true);
+    }
+    for (const sample of [
+      'UPDATE serial_cases SET damage = ?',
+      'UPDATE serials s JOIN serial_cases c ON c.id = s.open_case_id SET c.damage = ?',
+    ]) {
+      expect(CASE_UPDATE.some(({ pattern }) => pattern.test(sample))).toBe(true);
+    }
+    // INSERT biasa tidak melanggar.
+    expect(
+      [...CASE_FORBIDDEN, ...CASE_UPDATE].some(({ pattern }) =>
+        pattern.test('INSERT INTO serial_cases (id) VALUES (?)'),
+      ),
+    ).toBe(false);
+  });
+});
