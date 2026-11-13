@@ -1200,6 +1200,8 @@ export interface ApiContract {
   'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
   'serials.act': { input: SerialActInput; output: SerialDto };
   'serials.history': { input: SerialHistoryInput; output: SerialHistoryOutput };
+  'serialSettings.get': { input: null; output: SerialSettingsDto };
+  'serialSettings.save': { input: SaveSerialSettingsInput; output: SerialSettingsDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'jobs.get': { input: GetJobInput; output: JobDto };

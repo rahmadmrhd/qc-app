@@ -21,6 +21,7 @@ import {
   type SerialStatus,
 } from '@shared/serials';
 import { assertSerialVisible, modulesOn } from './access';
+import './alert-listener';
 import { applicableStickersOf } from './applicable';
 import {
   closeCaseStmt,

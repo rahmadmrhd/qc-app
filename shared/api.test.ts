@@ -251,6 +251,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
   'serials.locationOptions': null,
   'serials.get': { id: 's1' },
+  'serialSettings.get': null,
+  'serialSettings.save': {
+    expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+    alert: { enabled: true, recipients: ['a@contoh.com'] },
+  },
   'serials.history': { id: 's1', group: 'checks', caseId: 'c1', cursor: '12', limit: 50 },
   'serials.update': {
     id: 's1',

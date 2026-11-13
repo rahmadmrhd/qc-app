@@ -73,6 +73,8 @@ export const SERIAL_LIMITS = {
   /** Riwayat per serial (`serials.history`): bawaan dan maks. kejadian per halaman. */
   historyDefaultLimit: 50,
   historyMaxLimit: 100,
+  /** Maks. penerima surel "rusak" (satu daftar global). */
+  alertRecipientsMax: 20,
 } as const;
 
 /** Aksi pada `serials.act` (spek §5.3). */

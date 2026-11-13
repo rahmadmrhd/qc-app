@@ -402,6 +402,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'serialSettings.get': { verb: 'GET', path: '/serial-settings', etag: 'updatedAt' },
+  'serialSettings.save': {
+    verb: 'PUT',
+    path: '/serial-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {
     verb: 'PUT',

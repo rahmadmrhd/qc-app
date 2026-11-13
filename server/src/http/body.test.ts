@@ -269,6 +269,17 @@ const WORST: Inputs = {
     })),
     attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
   },
+  // 20 penerima sepanjang 254 karakter (batas alamat).
+  'serialSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: longList(
+        SERIAL_LIMITS.alertRecipientsMax,
+        (index) => `${'x'.repeat(240 - String(index).length)}${index}@abcdefgh.com`,
+      ),
+    },
+  },
   'postelSettings.save': {
     expectedUpdatedAt: STAMP,
     alert: {

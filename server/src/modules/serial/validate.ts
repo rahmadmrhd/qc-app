@@ -1,9 +1,11 @@
+import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
 import { readObject } from '@server/core/validate';
 import type {
   GetSerialInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
+  SaveSerialSettingsInput,
   SerialActInput,
   SerialEditable,
   SerialHistoryInput,
@@ -16,7 +18,7 @@ import type {
   UpdateSerialInput,
 } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
-import { hasBidiControls, hasControlChars } from '@shared/postel';
+import { hasBidiControls, hasControlChars, isPostelRecipient } from '@shared/postel';
 import {
   isIsoDate,
   listSerialsTooLong,
@@ -556,4 +558,46 @@ export function validateSerialAct(raw: unknown): SerialActInput {
   }
   reader.done();
   return out as unknown as SerialActInput;
+}
+
+/**
+ * Pengaturan surel Serial Number rusak: `expectedUpdatedAt` boleh kosong (penyimpanan pertama); penerima maks.
+ * `alertRecipientsMax`, tiap entri SATU alamat polos (`isPostelRecipient`, tanpa beda huruf besar/kecil), tanpa ganda.
+ */
+export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInput {
+  const reader = readObject(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
+  const value = reader.raw('alert');
+  const recipients: string[] = [];
+  let enabled = false;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    reader.fail('alert', 'Pengaturan peringatan harus berupa objek');
+  } else {
+    const source = value as Record<string, unknown>;
+    if (typeof source.enabled !== 'boolean')
+      reader.fail('enabled', 'Sakelar harus true atau false');
+    enabled = source.enabled === true;
+    if (!Array.isArray(source.recipients)) {
+      reader.fail('recipients', 'Penerima harus berupa daftar email');
+    } else if (source.recipients.length > SERIAL_LIMITS.alertRecipientsMax) {
+      reader.fail('recipients', `Maksimal ${SERIAL_LIMITS.alertRecipientsMax} penerima`);
+    } else {
+      const seen = new Set<string>();
+      for (const item of source.recipients) {
+        const email = typeof item === 'string' ? normalizeEmail(item) : '';
+        if (!isPostelRecipient(email)) {
+          reader.fail('recipients', 'Ada alamat email yang tidak valid');
+          break;
+        }
+        if (seen.has(email)) {
+          reader.fail('recipients', `Email ganda: ${email}`);
+          break;
+        }
+        seen.add(email);
+        recipients.push(email);
+      }
+    }
+  }
+  reader.done();
+  return { expectedUpdatedAt, alert: { enabled, recipients } };
 }

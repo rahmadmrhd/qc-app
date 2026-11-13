@@ -107,6 +107,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.updateBatch': true,
   'serials.act': true,
   'serials.history': true,
+  'serialSettings.get': true,
+  'serialSettings.save': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'jobs.get': true,

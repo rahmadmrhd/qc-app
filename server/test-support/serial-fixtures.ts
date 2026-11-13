@@ -1,4 +1,5 @@
 import type { Env } from '@server/core/env';
+import { registerSerialAlertListener } from '@server/modules/serial/alert-listener';
 import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from './access-fixtures';
 import { seedBrand, seedItem } from './item-fixtures';
@@ -36,6 +37,7 @@ export async function seedSerialWorld(env: Env): Promise<void> {
   // Daftar pendengar bus event adalah keadaan modul bersama satu proses `bun test`; tes lain (mis. `core/events.test.ts`)
   // mengosongkannya. Pendaftaran idempoten, jadi tes serial tidak bergantung pada urutan berkas dalam proses.
   registerSerialStockListeners();
+  registerSerialAlertListener();
   await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
   await seedBusinessUnit(env, { id: 'bu-b', code: 'B' });
   await seedRole(env, { id: 'r-edit', name: 'Serial edit', permissions: { serial: 'edit' } });

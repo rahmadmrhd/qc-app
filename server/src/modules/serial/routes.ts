@@ -1,6 +1,7 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import { actOnSerial } from './act';
+import { getSerialSettings, saveSerialSettings } from './alert';
 import { serialHistory } from './history';
 import {
   getSerial,
@@ -16,6 +17,7 @@ import {
   validateGetSerial,
   validateListSerialItemOptions,
   validateSaveSerialBatch,
+  validateSaveSerialSettings,
   validateSerialAct,
   validateSerialHistory,
   validateSerialList,
@@ -34,7 +36,9 @@ type SerialMethod =
   | 'serials.update'
   | 'serials.updateBatch'
   | 'serials.act'
-  | 'serials.history';
+  | 'serials.history'
+  | 'serialSettings.get'
+  | 'serialSettings.save';
 
 /** Pembaca serial: level `view` pada `serial` ATAU `serialservice` (BU dibatasi handler). */
 const READ_PERMISSION = {
@@ -111,6 +115,17 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       },
       validate: validateSerialAct,
       handler: (input, ctx) => actOnSerial(ctx.env, input, ctx.user),
+    },
+    // Penerima surel bersifat global: pemeriksaan "semua BU" ada di handler (`assertCanManageSerialSettings`).
+    'serialSettings.get': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: expectNull,
+      handler: (_input, ctx) => getSerialSettings(ctx.env, ctx.user),
+    },
+    'serialSettings.save': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateSaveSerialSettings,
+      handler: (input, ctx) => saveSerialSettings(ctx.env, input, ctx.user),
     },
     'serials.saveBatch': {
       permission: { module: 'serial', level: 'edit' },
