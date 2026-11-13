@@ -30,9 +30,14 @@ export function endpointHash(endpoint: string): string {
  * Konfigurasi push untuk klien. `userEnabled` = preferensi push pemanggil (`notification_prefs.push_enabled`; tanpa
  * baris = aktif bawaan, spek §5.2), dibawa di sini agar klien dapat menampilkan saklar tanpa rute baru.
  */
-export async function pushConfig(env: Env, user: Pick<UserContext, 'email'>): Promise<PushConfigDto> {
+export async function pushConfig(
+  env: Env,
+  user: Pick<UserContext, 'email'>,
+): Promise<PushConfigDto> {
   const enabled = env.PUSH !== undefined && (env.VAPID_PUBLIC_KEY ?? '') !== '';
-  const pref = await env.DB.prepare('SELECT push_enabled FROM notification_prefs WHERE recipient = ?')
+  const pref = await env.DB.prepare(
+    'SELECT push_enabled FROM notification_prefs WHERE recipient = ?',
+  )
     .bind(normalizeEmail(user.email))
     .first<{ push_enabled: number | string }>();
   return {
