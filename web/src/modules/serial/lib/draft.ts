@@ -43,6 +43,8 @@ export interface Defaults {
   locationLabel: string;
   sample: boolean;
   note: string;
+  /** Pilihan stiker bawaan; `null`/tidak ada = semua yang berlaku (diselesaikan saat simpan). Disalin ke tiap baris. */
+  stickers?: StagingSticker[] | null;
 }
 
 export interface AddReport {
@@ -109,7 +111,7 @@ export function addSerials(
       note: defaults.note,
       capturedAt: nowIso(),
       source: 'manual',
-      stickers: null,
+      stickers: defaults.stickers ? defaults.stickers.map((sticker) => ({ ...sticker })) : null,
       selected: false,
     });
     added++;

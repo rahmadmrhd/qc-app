@@ -265,7 +265,7 @@ test('gangguan jaringan saat memuat stiker menghentikan simpan tanpa menandai ba
     id === 'serials.stickerOptions' ? Promise.reject(new Error('putus')) : baseApi(id, input),
   );
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
-  expect(await screen.findByText(/Stiker yang berlaku gagal dimuat/)).toBeInTheDocument();
+  expect(await screen.findByText(/Stiker yang berlaku gagal dimuat: /)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);
   expect(dataRows()[0]).toHaveAttribute('data-result', 'ok');
 });
@@ -368,4 +368,73 @@ test('impor: item dicocokkan menurut id (bukan label berkas); label usang disega
   const sent = byId[0]?.[1] as { itemIds: string[]; query?: string };
   expect([...sent.itemIds].sort()).toEqual(['i1', 'iHantu']);
   expect(sent.query).toBeUndefined();
+});
+
+test('bawaan rombongan: tanpa item tampil petunjuk; item terpilih menampilkan stiker yang berlaku, semua tercentang jumlah awal', async () => {
+  renderPage();
+  expect(
+    screen.getByText('Pilih item dan Business Unit untuk melihat stiker yang berlaku.'),
+  ).toBeInTheDocument();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  expect(await screen.findByRole('checkbox', { name: 'Stiker A' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Stiker B' })).toBeChecked();
+  expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('1');
+  expect(screen.getByLabelText('Jumlah Stiker B')).toHaveTextContent('1');
+});
+
+test('bawaan rombongan: item tanpa stiker berlaku menampilkan pesan', async () => {
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serials.stickerOptions' ? Promise.resolve({ stickers: [] }) : baseApi(id, input),
+  );
+  renderPage();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  expect(
+    await screen.findByText('Tidak ada stiker yang berlaku bagi item ini.'),
+  ).toBeInTheDocument();
+});
+
+test('bawaan rombongan: bawaan tak diubah = stickers null (semua yang berlaku saat simpan); diubah = salinan eksplisit untuk baris sesudahnya saja', async () => {
+  renderPage();
+  await pickDefaults();
+  await screen.findByRole('checkbox', { name: 'Stiker A' });
+  await paste('A1');
+  // Ubah bawaan: Stiker B dilepas, jumlah Stiker A menjadi 3.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Stiker B' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
+  expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('3');
+  await paste('B2');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await waitFor(() => expect(saveCalls).toHaveLength(1));
+  const byserial = new Map(saveCalls[0]?.rows.map((row) => [row.serial, row.stickers]));
+  // A1 ditambah sebelum bawaan diubah: semua stiker yang berlaku dengan jumlah awal.
+  expect(byserial.get('A1')).toEqual([
+    { stickerId: 's1', qty: 1 },
+    { stickerId: 's2', qty: 1 },
+  ]);
+  // B2 sesudahnya: salinan pilihan eksplisit.
+  expect(byserial.get('B2')).toEqual([{ stickerId: 's1', qty: 3 }]);
+});
+
+test('bawaan rombongan: mengganti item mengembalikan pilihan ke bawaan semua tercentang', async () => {
+  renderPage();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Stiker B' }));
+  expect(screen.getByRole('checkbox', { name: 'Stiker B' })).not.toBeChecked();
+  await pickLink(screen, 'Item', 'Aruba 2930');
+  expect(await screen.findByRole('checkbox', { name: 'Stiker C' })).toBeChecked();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  expect(await screen.findByRole('checkbox', { name: 'Stiker B' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Stiker A' })).toBeChecked();
+});
+
+test('bawaan rombongan: semua stiker dilepas = baris baru tanpa stiker (eksplisit kosong)', async () => {
+  renderPage();
+  await pickDefaults();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Stiker B' }));
+  await paste('NONE1');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await waitFor(() => expect(saveCalls).toHaveLength(1));
+  expect(saveCalls[0]?.rows[0]?.stickers).toEqual([]);
 });

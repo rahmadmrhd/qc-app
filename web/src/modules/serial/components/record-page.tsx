@@ -37,6 +37,7 @@ import { RowDetailDialog, type RowDetailResult } from './row-detail-dialog';
 import { SerialLocationField } from './serial-location-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
 import { rowStatus, StagingTable } from './staging-table';
+import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
 type NoticeTone = 'info' | 'warn' | 'error';
 interface Notice {
@@ -123,6 +124,9 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
+  // Pilihan stiker bawaan: `null` = belum diubah (semua yang berlaku tercentang, baris baru `stickers: null`).
+  const [stickerChoice, setStickerChoice] = useState<Map<string, number> | null>(null);
+  const applicable = useApplicableStickers(item.itemId, item.buId);
 
   const [notice, setNotice] = useState<Notice | null>(null);
   const [summary, setSummary] = useState<SaveSummary | null>(null);
@@ -163,6 +167,14 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     locationLabel: location.label,
     sample,
     note: note.trim(),
+    // Bawaan tak diubah: `null` (diselesaikan saat simpan); diubah: salinan pilihan eksplisit (nama + jumlah).
+    stickers:
+      stickerChoice === null
+        ? null
+        : applicable.options.flatMap((sticker) => {
+            const qty = stickerChoice.get(sticker.id);
+            return qty === undefined ? [] : [{ stickerId: sticker.id, name: sticker.name, qty }];
+          }),
   });
 
   function addText(text: string): ScanFeedback {
@@ -455,7 +467,11 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
             label="Item"
             buFieldLabel="Business Unit"
             value={item}
-            onChange={setItem}
+            onChange={(next) => {
+              // Item/BU bawaan diganti: pilihan stiker lama tidak berlaku, kembali ke semua tercentang.
+              if (next.itemId !== item.itemId || next.buId !== item.buId) setStickerChoice(null);
+              setItem(next);
+            }}
           />
           <SerialLocationField
             id="default-location"
@@ -489,6 +505,15 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
               onCheckedChange={(on) => setSample(on === true)}
             />
             <Label htmlFor="default-sample">Sample</Label>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <StickerChecklist
+              idPrefix="default"
+              state={applicable.state}
+              options={applicable.options}
+              chosen={stickerChoice ?? defaultStickerChoice(applicable.options)}
+              onChange={setStickerChoice}
+            />
           </div>
         </div>
       </section>

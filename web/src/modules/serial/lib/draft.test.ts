@@ -194,3 +194,15 @@ test('fromQcsnRows: melewati serial dan clientId yang sudah ada', () => {
     stickers: [{ stickerId: 's1', name: 'Stiker', qty: 3 }],
   });
 });
+
+test('addSerials: bawaan stickers disalin per baris (bukan referensi bersama); tanpa bawaan = null', () => {
+  const picks = [{ stickerId: 's1', name: 'Stiker A', qty: 2 }];
+  const withPicks = addSerials([], 'A1\nB2', { ...defaults, stickers: picks }, counter(), now);
+  const [first, second] = withPicks.rows;
+  expect(first?.stickers).toEqual(picks);
+  expect(second?.stickers).toEqual(picks);
+  expect(first?.stickers).not.toBe(picks);
+  expect(first?.stickers).not.toBe(second?.stickers);
+  const plain = addSerials([], 'C3', defaults, counter(), now);
+  expect(plain.rows[0]?.stickers).toBeNull();
+});
