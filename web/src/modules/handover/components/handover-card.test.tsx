@@ -198,7 +198,7 @@ test('antrean centang di perangkat: kartu papan menampilkan butir tercentang den
   });
   setup({ owner: 'qc@x' });
   expect(screen.getByRole('checkbox', { name: /A = 1/ })).toBeChecked();
-  expect(screen.getByText('Menunggu terkirim')).toBeInTheDocument();
+  expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
   expect(screen.getByText('1/2')).toBeInTheDocument();
   localStorage.clear();
 });

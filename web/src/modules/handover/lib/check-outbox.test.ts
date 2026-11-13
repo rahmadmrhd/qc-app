@@ -2,8 +2,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { makeHandover } from '../components/test-handover';
 import {
   clearAllOutboxes,
+  countAllOutboxEntries,
   enqueueCheck,
   hasEntriesForTask,
+  isExpiredEntry,
   OUTBOX_MAX_AGE_MS,
   OUTBOX_MAX_ENTRIES,
   OUTBOX_MAX_FUTURE_SKEW_MS,
@@ -219,4 +221,50 @@ test('clearAllOutboxes tetap bisa membuang walau penulisan ditahan', () => {
   suspendOutboxWrites();
   clearAllOutboxes();
   expect(localStorage.getItem(outboxKey(OWNER))).toBeNull();
+});
+
+const fresh = (over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) =>
+  entry({ at: Date.now(), ...over });
+
+test('countAllOutboxEntries menjumlah entri semua pemilik', () => {
+  enqueueCheck(OWNER, fresh({ index: 0 }));
+  enqueueCheck(OWNER, fresh({ index: 1, text: 'B = 2' }));
+  enqueueCheck('b@x.com', fresh({ index: 0 }));
+  expect(countAllOutboxEntries()).toBe(3);
+});
+
+test('countAllOutboxEntries mengabaikan entri tak valid dan amplop rusak', () => {
+  enqueueCheck(OWNER, fresh());
+  const valid = { ...fresh({ index: 4 }), id: 'ok' };
+  localStorage.setItem(
+    outboxKey('b@x.com'),
+    JSON.stringify({ v: 1, entries: [{ id: 'x' }, valid, 'bukan-entri'] }),
+  );
+  localStorage.setItem(outboxKey('c@x.com'), '{rusak');
+  localStorage.setItem(outboxKey('d@x.com'), JSON.stringify({ v: 99, entries: [valid] }));
+  localStorage.setItem('kunci-lain', JSON.stringify({ v: 1, entries: [valid] }));
+  expect(countAllOutboxEntries()).toBe(2);
+});
+
+test('countAllOutboxEntries nol tanpa kunci apa pun', () => {
+  expect(countAllOutboxEntries()).toBe(0);
+});
+
+test('countAllOutboxEntries mengabaikan entri lebih dari 24 jam dan bertanggal jauh di masa depan', () => {
+  const now = Date.now();
+  enqueueCheck(OWNER, fresh({ index: 0 }));
+  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2', at: now - OUTBOX_MAX_AGE_MS - 60_000 }));
+  enqueueCheck(
+    'b@x.com',
+    entry({ index: 2, text: 'C = 3', at: now + OUTBOX_MAX_FUTURE_SKEW_MS + 60_000 }),
+  );
+  expect(countAllOutboxEntries()).toBe(1);
+});
+
+test('isExpiredEntry: tepat 24 jam tidak, lewat 1 ms ya; masa depan > 5 menit ya', () => {
+  const e = { ...entry({ at: 1_000 }), id: 'x' };
+  expect(isExpiredEntry(e, 1_000 + OUTBOX_MAX_AGE_MS)).toBe(false);
+  expect(isExpiredEntry(e, 1_000 + OUTBOX_MAX_AGE_MS + 1)).toBe(true);
+  expect(isExpiredEntry(e, 1_000 - OUTBOX_MAX_FUTURE_SKEW_MS)).toBe(false);
+  expect(isExpiredEntry(e, 1_000 - OUTBOX_MAX_FUTURE_SKEW_MS - 1)).toBe(true);
 });

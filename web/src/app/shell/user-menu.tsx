@@ -12,9 +12,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { LogoutConfirmDialog } from '@/modules/auth/logout-confirm-dialog';
 import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideMenuDialog } from '@/modules/guide/components/guide-menu-dialog';
+import { countAllOutboxEntries } from '@/modules/handover/lib/check-outbox';
 import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
 
 export function UserMenu() {
@@ -24,6 +26,7 @@ export function UserMenu() {
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const initials = (me.name || me.email).slice(0, 2).toUpperCase();
   return (
     <>
@@ -61,7 +64,14 @@ export function UserMenu() {
             <BellRing />
             Notifikasi push
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={logout}>
+          <DropdownMenuItem
+            onSelect={() => {
+              // Keluar membuang antrean centang di perangkat (semua pemilik): peringatkan dulu bila ada isinya.
+              const count = countAllOutboxEntries();
+              if (count > 0) setLogoutOpen(true);
+              else logout();
+            }}
+          >
             <LogOut />
             Keluar
           </DropdownMenuItem>
@@ -71,6 +81,15 @@ export function UserMenu() {
       <InstallIosDialog open={iosHelpOpen} onOpenChange={setIosHelpOpen} />
       {pushOpen && <PushSettingsDialog onClose={() => setPushOpen(false)} />}
       {guideOpen && <GuideMenuDialog onClose={() => setGuideOpen(false)} />}
+      {logoutOpen && (
+        <LogoutConfirmDialog
+          onCancel={() => setLogoutOpen(false)}
+          onConfirm={() => {
+            setLogoutOpen(false);
+            logout();
+          }}
+        />
+      )}
     </>
   );
 }

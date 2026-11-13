@@ -3,6 +3,7 @@ import { useRouter } from '@tanstack/react-router';
 import { runBusy } from '@/app/pwa/busy';
 import { CSRF_HEADERS } from '@/lib/api/client';
 import { clearAllOutboxes, suspendOutboxWrites } from '@/modules/handover/lib/check-outbox';
+import { clearSending } from '@/modules/handover/lib/outbox-status';
 import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
 import { clearSession } from './session';
 
@@ -34,6 +35,8 @@ export function useLogout(): () => void {
       clearAllDrafts();
       // Antrean centang di perangkat (Fase 2, FR-P14/P19) dibuang saat keluar eksplisit; sesi kedaluwarsa tidak membuangnya.
       clearAllOutboxes();
+      // Penanda "mengirim" (memori) ikut dibuang: permintaan lama yang masih terbang tak boleh menempel ke sesi berikutnya.
+      clearSending();
       queryClient.clear();
       await router.navigate({ to: '/login' });
     });

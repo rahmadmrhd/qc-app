@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { type OutboxEntry, purgeExpired, readOutbox, removeEntries } from './check-outbox';
+import { beginSending } from './outbox-status';
 
 export interface FlushDeps {
   owner: string;
@@ -79,45 +80,51 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
     const next = readOutbox(owner).find((entry) => !tried.has(entry.id));
     if (!next) break;
     tried.add(next.id);
+    // Ditandai "mengirim" sampai SESUDAH entri dihapus (semua jalur), supaya penanda tak berkedip ke "Belum terkirim".
+    const end = beginSending(next.taskId, next.index);
     try {
-      const saved = await deps.send(next);
-      if (!deps.isOwnerActive()) {
-        // Sudah terkirim: hapus agar tak terkirim dua kali, tapi jangan menyentuh cache pemilik yang sudah berganti.
-        removeEntries(owner, [next.id]);
-        result.stoppedBy = 'owner-changed';
-        break;
-      }
       try {
-        deps.onSent?.(saved, next);
+        const saved = await deps.send(next);
+        if (!deps.isOwnerActive()) {
+          // Sudah terkirim: hapus agar tak terkirim dua kali, tapi jangan menyentuh cache pemilik yang sudah berganti.
+          removeEntries(owner, [next.id]);
+          result.stoppedBy = 'owner-changed';
+          break;
+        }
+        try {
+          deps.onSent?.(saved, next);
+        } catch (error) {
+          // Gagal memasang hasil ke cache tak boleh membuat entri yang sudah terkirim tertinggal (terkirim dua kali);
+          // dicatat ke konsol agar bug pemasangan cache tidak tak terlihat.
+          console.error('Gagal memasang hasil antrean centang ke cache', error);
+        }
+        // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
+        removeEntries(owner, [next.id]);
+        result.sent.push(saved);
       } catch (error) {
-        // Gagal memasang hasil ke cache tak boleh membuat entri yang sudah terkirim tertinggal (terkirim dua kali);
-        // dicatat ke konsol agar bug pemasangan cache tidak tak terlihat.
-        console.error('Gagal memasang hasil antrean centang ke cache', error);
+        if (error instanceof ApiError && error.code === 'UNAVAILABLE') {
+          result.stoppedBy = 'unavailable';
+          break;
+        }
+        if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') {
+          result.stoppedBy = 'unauthenticated';
+          break;
+        }
+        if (!(error instanceof ApiError) || !REJECTION_CODES.has(error.code)) {
+          // INTERNAL (502/504 polos dari proksi, dst.) atau galat tak terduga: bukan penolakan; entri tetap.
+          result.stoppedBy = 'server-error';
+          break;
+        }
+        // Ditolak server (CONFLICT, FORBIDDEN, NOT_FOUND, VALIDATION): dibuang dan tidak diulang (FR-P18).
+        if (!deps.isOwnerActive()) {
+          result.stoppedBy = 'owner-changed';
+          break;
+        }
+        removeEntries(owner, [next.id]);
+        result.rejected.push({ entry: next, reason: describeError(error) });
       }
-      // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
-      removeEntries(owner, [next.id]);
-      result.sent.push(saved);
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'UNAVAILABLE') {
-        result.stoppedBy = 'unavailable';
-        break;
-      }
-      if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') {
-        result.stoppedBy = 'unauthenticated';
-        break;
-      }
-      if (!(error instanceof ApiError) || !REJECTION_CODES.has(error.code)) {
-        // INTERNAL (502/504 polos dari proksi, dst.) atau galat tak terduga: bukan penolakan; entri tetap.
-        result.stoppedBy = 'server-error';
-        break;
-      }
-      // Ditolak server (CONFLICT, FORBIDDEN, NOT_FOUND, VALIDATION): dibuang dan tidak diulang (FR-P18).
-      if (!deps.isOwnerActive()) {
-        result.stoppedBy = 'owner-changed';
-        break;
-      }
-      removeEntries(owner, [next.id]);
-      result.rejected.push({ entry: next, reason: describeError(error) });
+    } finally {
+      end();
     }
   }
   return result;

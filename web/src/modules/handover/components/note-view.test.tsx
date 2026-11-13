@@ -265,16 +265,25 @@ test('M-D: seleksi lintas butir tercentang tidak memuat teks "oleh … · waktu"
   expect(onComment.mock.calls[0]?.[0].quote).toBe('A = 1\nB = 2');
 });
 
-test('"Menunggu terkirim" hanya untuk indeks di pendingIndexes', () => {
-  setup({ pendingIndexes: new Set([1]) });
-  expect(screen.getAllByText('Menunggu terkirim')).toHaveLength(1);
+test('"Belum terkirim" hanya untuk butir berstatus waiting', () => {
+  setup({ itemStates: new Map([[1, 'waiting']]) });
+  expect(screen.getAllByText('Belum terkirim')).toHaveLength(1);
   const label = screen.getByRole('checkbox', { name: /B = 2/ }).closest('li');
-  expect(label?.textContent).toContain('Menunggu terkirim');
+  expect(label?.textContent).toContain('Belum terkirim');
   const first = screen.getByRole('checkbox', { name: /A = 1/ }).closest('li');
-  expect(first?.textContent).not.toContain('Menunggu terkirim');
+  expect(first?.textContent).not.toContain('Belum terkirim');
 });
 
-test('tanpa pendingIndexes tidak ada penanda', () => {
+test('"Mengirim…" untuk butir berstatus sending', () => {
+  setup({ itemStates: new Map([[0, 'sending']]) });
+  expect(screen.getAllByText('Mengirim…')).toHaveLength(1);
+  const first = screen.getByRole('checkbox', { name: /A = 1/ }).closest('li');
+  expect(first?.textContent).toContain('Mengirim…');
+  expect(screen.queryByText('Belum terkirim')).not.toBeInTheDocument();
+});
+
+test('tanpa itemStates tidak ada penanda', () => {
   setup();
-  expect(screen.queryByText('Menunggu terkirim')).not.toBeInTheDocument();
+  expect(screen.queryByText('Belum terkirim')).not.toBeInTheDocument();
+  expect(screen.queryByText('Mengirim…')).not.toBeInTheDocument();
 });

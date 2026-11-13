@@ -13,6 +13,7 @@ import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
+import { OutboxChip } from './outbox-chip';
 import { ServerStatusBanner } from './server-status-banner';
 import { UserMenu } from './user-menu';
 
@@ -30,6 +31,7 @@ export function AppShell() {
                 <SidebarTrigger data-tour="sidebar-trigger" />
                 <div className="ml-auto flex items-center gap-1">
                   <LocationPicker />
+                  <OutboxChip />
                   <NotificationBell />
                   <ThemeToggle />
                   <UserMenu />
