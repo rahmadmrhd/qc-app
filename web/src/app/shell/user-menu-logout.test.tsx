@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -15,7 +15,7 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
   PushSettingsDialog: () => null,
 }));
 
-import { enqueueCheck, readOutbox } from '@/modules/handover/lib/check-outbox';
+import { enqueueCheck, readOutbox, removeEntries } from '@/modules/handover/lib/check-outbox';
 import { UserMenu } from './user-menu';
 
 const queue = (owner: string, index: number) =>
@@ -82,4 +82,32 @@ test('entri milik pemilik lain ikut terhitung', async () => {
   render(<UserMenu />);
   await clickKeluar();
   expect(await screen.findByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
+});
+
+test('antrean dikosongkan saat dialog terbuka: teks berubah menjadi aman untuk keluar', async () => {
+  queue('rina@qc.local', 0);
+  render(<UserMenu />);
+  await clickKeluar();
+  expect(await screen.findByText(/1 perubahan belum terkirim/)).toBeInTheDocument();
+  act(() =>
+    removeEntries(
+      'rina@qc.local',
+      readOutbox('rina@qc.local').map((e) => e.id),
+    ),
+  );
+  expect(
+    await screen.findByText('Semua perubahan sudah terkirim. Aman untuk keluar.'),
+  ).toBeInTheDocument();
+  expect(logoutMock).not.toHaveBeenCalled();
+});
+
+test('entri baru saat dialog terbuka: angka naik', async () => {
+  queue('rina@qc.local', 0);
+  render(<UserMenu />);
+  await clickKeluar();
+  expect(await screen.findByText(/1 perubahan belum terkirim/)).toBeInTheDocument();
+  act(() => {
+    queue('rina@qc.local', 1);
+  });
+  expect(await screen.findByText(/2 perubahan belum terkirim/)).toBeInTheDocument();
 });

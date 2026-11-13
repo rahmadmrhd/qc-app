@@ -21,13 +21,28 @@ test('tanpa antrean: tidak ada teks perubahan menunggu', () => {
   expect(screen.queryByText(/perubahan Anda/)).not.toBeInTheDocument();
 });
 
-test('dengan dua entri: menampilkan jumlahnya aman di perangkat', () => {
+test('dengan dua entri: menampilkan jumlah perubahan yang menunggu dikirim', () => {
   queue(0);
   queue(1);
   render(<OfflineScreen onRetry={vi.fn()} />);
   expect(
-    screen.getByText('2 perubahan Anda aman di perangkat dan akan dikirim begitu koneksi kembali.'),
+    screen.getByText(
+      '2 perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim.',
+    ),
   ).toBeInTheDocument();
+});
+
+test('entri lebih dari 24 jam tidak dihitung', () => {
+  enqueueCheck('rina@qc.local', {
+    taskId: 'h1',
+    locationId: 'loc-a',
+    index: 0,
+    text: 'Lama',
+    checked: true,
+    at: Date.now() - 25 * 60 * 60 * 1000,
+  });
+  render(<OfflineScreen onRetry={vi.fn()} />);
+  expect(screen.queryByText(/perubahan menunggu dikirim/)).not.toBeInTheDocument();
 });
 
 test('menampilkan judul dan teks, tombol "Coba lagi" memanggil onRetry', async () => {

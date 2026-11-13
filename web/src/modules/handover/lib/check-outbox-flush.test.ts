@@ -255,3 +255,22 @@ test('pemilik berganti di tengah kirim tetap membersihkan status', async () => {
   expect(result.stoppedBy).toBe('owner-changed');
   expect(isItemSending('t1', 0)).toBe(false);
 });
+
+test('status dibersihkan pada UNAUTHENTICATED dan INTERNAL', async () => {
+  for (const failure of [err('UNAUTHENTICATED'), err('INTERNAL')]) {
+    localStorage.clear();
+    queue(0);
+    let seenSending = false;
+    const result = await flushOutbox(
+      deps({
+        send: async () => {
+          seenSending = isItemSending('t1', 0);
+          throw failure;
+        },
+      }),
+    );
+    expect(seenSending).toBe(true);
+    expect(result.stoppedBy).not.toBe('none');
+    expect(isItemSending('t1', 0)).toBe(false);
+  }
+});

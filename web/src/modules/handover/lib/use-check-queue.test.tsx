@@ -422,3 +422,18 @@ test('dua klik beruntun pada butir yang sama: tetap mengirim sampai keduanya sel
   await flush();
   expect(isItemSending('t1', 1)).toBe(false);
 });
+
+test('klik langsung ditolak CONFLICT atau FORBIDDEN: status bersih dan butir dikembalikan', async () => {
+  for (const code of ['CONFLICT', 'FORBIDDEN'] as const) {
+    localStorage.clear();
+    resetSendingForTests();
+    const { hook, cached, ref } = setup();
+    mocks.api.mockRejectedValue(new ApiError(code, 'Ditolak', '-'));
+    act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+    await flush();
+    expect(isItemSending('t1', 1)).toBe(false);
+    expect(cached().checklist[1]?.checked).toBe(false);
+    expect(readOutbox('qc@x')).toEqual([]);
+    hook.unmount();
+  }
+});

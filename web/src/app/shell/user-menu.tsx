@@ -24,8 +24,7 @@ export function UserMenu() {
   const install = useInstall();
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
-  /** Jumlah entri antrean yang akan terbuang; `null` = dialog konfirmasi keluar tertutup. */
-  const [logoutCount, setLogoutCount] = useState<number | null>(null);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const initials = (me.name || me.email).slice(0, 2).toUpperCase();
   return (
     <>
@@ -63,7 +62,7 @@ export function UserMenu() {
             onSelect={() => {
               // Keluar membuang antrean centang di perangkat (semua pemilik): peringatkan dulu bila ada isinya.
               const count = countAllOutboxEntries();
-              if (count > 0) setLogoutCount(count);
+              if (count > 0) setLogoutOpen(true);
               else logout();
             }}
           >
@@ -75,12 +74,11 @@ export function UserMenu() {
       {/* Di luar DropdownMenu agar tidak ikut tertutup bersama menu. */}
       <InstallIosDialog open={iosHelpOpen} onOpenChange={setIosHelpOpen} />
       {pushOpen && <PushSettingsDialog onClose={() => setPushOpen(false)} />}
-      {logoutCount !== null && (
+      {logoutOpen && (
         <LogoutConfirmDialog
-          count={logoutCount}
-          onCancel={() => setLogoutCount(null)}
+          onCancel={() => setLogoutOpen(false)}
           onConfirm={() => {
-            setLogoutCount(null);
+            setLogoutOpen(false);
             logout();
           }}
         />

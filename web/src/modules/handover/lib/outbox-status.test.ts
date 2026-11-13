@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import {
   beginSending,
+  clearSending,
   isItemSending,
   resetSendingForTests,
   sendingVersion,
@@ -56,4 +57,30 @@ test('subscribeSending dipanggil saat tanda berubah dan sendingVersion naik', ()
   unsubscribe();
   beginSending('t', 1);
   expect(listener).toHaveBeenCalledTimes(2);
+});
+
+test('clearSending mengosongkan semua tanda dan memberi tahu pendengar', () => {
+  const listener = vi.fn();
+  subscribeSending(listener);
+  beginSending('t', 0);
+  beginSending('u', 3);
+  listener.mockClear();
+  const v0 = sendingVersion();
+  clearSending();
+  expect(isItemSending('t', 0)).toBe(false);
+  expect(isItemSending('u', 3)).toBe(false);
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(sendingVersion()).toBeGreaterThan(v0);
+});
+
+test('end() lama sesudah clearSending tidak menghapus tanda baru', () => {
+  const oldEnd = beginSending('t', 0);
+  clearSending();
+  const newEnd = beginSending('t', 0);
+  oldEnd();
+  expect(isItemSending('t', 0)).toBe(true);
+  newEnd();
+  expect(isItemSending('t', 0)).toBe(false);
+  oldEnd();
+  expect(isItemSending('t', 0)).toBe(false);
 });

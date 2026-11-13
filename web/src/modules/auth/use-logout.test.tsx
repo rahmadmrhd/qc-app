@@ -12,6 +12,11 @@ import {
   outboxWritesSuspended,
   resumeOutboxWrites,
 } from '@/modules/handover/lib/check-outbox';
+import {
+  beginSending,
+  isItemSending,
+  resetSendingForTests,
+} from '@/modules/handover/lib/outbox-status';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
 import { clearSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
@@ -24,6 +29,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const cachesStub = { delete: vi.fn(), keys: vi.fn(), open: vi.fn(), match: vi.fn(), has: vi.fn() };
 
 beforeEach(() => {
+  resetSendingForTests();
   resetBusyForTests();
   vi.clearAllMocks();
   localStorage.clear();
@@ -129,6 +135,20 @@ test('keluar membuang antrean centang semua pemilik, kunci lain tetap (FR-P14, F
   expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
   expect(localStorage.getItem('qc.outbox:b@x.com')).toBeNull();
   expect(localStorage.getItem('tema')).toBe('gelap');
+});
+
+test('keluar membersihkan penanda "mengirim" walau permintaan masih terbang', async () => {
+  const end = beginSending('h1', 0);
+  expect(isItemSending('h1', 0)).toBe(true);
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(isItemSending('h1', 0)).toBe(false);
+  // Permintaan lama yang selesai belakangan tidak boleh mengganggu tanda sesi baru.
+  const next = beginSending('h1', 0);
+  end();
+  expect(isItemSending('h1', 0)).toBe(true);
+  next();
 });
 
 test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', () => {

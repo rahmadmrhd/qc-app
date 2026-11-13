@@ -14,7 +14,7 @@ export function OfflineScreen({ onRetry }: { onRetry: () => void }) {
         </p>
         {queued > 0 && (
           <p className="text-sm text-muted-foreground">
-            {`${queued} perubahan Anda aman di perangkat dan akan dikirim begitu koneksi kembali.`}
+            {`${queued} perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim.`}
           </p>
         )}
         <Button onClick={onRetry}>Coba lagi</Button>

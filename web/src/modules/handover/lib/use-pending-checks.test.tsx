@@ -91,3 +91,29 @@ test('entri antrean yang sedang dikirim berstatus sending lalu waiting', () => {
   act(() => end());
   expect([...result.current.itemStates]).toEqual([[0, 'waiting']]);
 });
+
+test('entri dengan teks tidak cocok: sending pada indeksnya tidak menandai butir itu', () => {
+  enqueueCheck(OWNER, entry({ text: 'sudah beda' }));
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  act(() => {
+    beginSending(dto.id, 0);
+  });
+  expect(result.current.itemStates.size).toBe(0);
+});
+
+test('dua tanda kirim bertumpuk pada butir sama: tetap sending sampai keduanya selesai', () => {
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  let end1: () => void = () => {};
+  let end2: () => void = () => {};
+  act(() => {
+    end1 = beginSending(dto.id, 0);
+    end2 = beginSending(dto.id, 0);
+  });
+  expect([...result.current.itemStates]).toEqual([[0, 'sending']]);
+  act(() => end1());
+  expect([...result.current.itemStates]).toEqual([[0, 'sending']]);
+  act(() => end2());
+  expect(result.current.itemStates.size).toBe(0);
+});

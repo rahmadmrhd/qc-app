@@ -32,8 +32,13 @@ export function useOutboxOverlay(
         itemStates.set(entry.index, 'waiting');
       }
     }
+    const queuedIndexes = new Set(entries.map((entry) => entry.index));
     for (const item of dto.checklist) {
-      if (isItemSending(dto.id, item.index)) itemStates.set(item.index, 'sending');
+      if (!isItemSending(dto.id, item.index)) continue;
+      // Indeks yang punya entri antrean: hanya bila entri itu memang untuk butir ini (teks cocok); selain itu yang
+      // terkirim adalah centang lama untuk butir yang sudah berubah. Tanpa entri = centang langsung.
+      if (queuedIndexes.has(item.index) && itemStates.get(item.index) !== 'waiting') continue;
+      itemStates.set(item.index, 'sending');
     }
     const overlaid =
       entries.length === 0
