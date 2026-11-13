@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -7,6 +8,7 @@ const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import * as deviceDb from '@/lib/device-db';
 import {
   enqueueCheck,
   outboxWritesSuspended,
@@ -20,6 +22,12 @@ import {
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
 import { clearSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
+
+// Pembungkus tipis atas modul nyata agar penghapusan toko perangkat dapat dibuat gagal.
+vi.mock('@/lib/device-db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/device-db')>();
+  return { ...actual, clearDeviceDb: vi.fn(actual.clearDeviceDb) };
+});
 
 let client: QueryClient;
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -40,6 +48,8 @@ beforeEach(() => {
   vi.stubGlobal('caches', cachesStub);
 });
 afterEach(() => {
+  deviceDb.resetDeviceDbForTests();
+  (globalThis as { indexedDB?: unknown }).indexedDB = undefined;
   resumeDraftWrites();
   resumeOutboxWrites();
   vi.unstubAllEnvs();
@@ -210,4 +220,43 @@ test('M6: penulisan antrean sudah ditahan SEBELUM POST /auth/logout selesai (kli
   expect(Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'))).toEqual([]);
   release();
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+});
+
+function seedDeviceStore() {
+  deviceDb.resetDeviceDbForTests();
+  globalThis.indexedDB = new IDBFactory();
+  const base = { owner: 'a@x.com', v: 1, savedAt: 1 };
+  return Promise.all([
+    deviceDb.writeRecords('columns', [{ ...base, key: 'a@x.com|l1|new', data: {} }], 40),
+    deviceDb.writeRecords(
+      'tasks',
+      [{ ...base, key: 'a@x.com|h1', locationIds: ['l1'], dto: {} }],
+      100,
+    ),
+  ]);
+}
+
+test('keluar mengosongkan papan dan detail task di IndexedDB sebelum navigasi ke /login', async () => {
+  await seedDeviceStore();
+  expect(await deviceDb.readAllRecords('columns')).toHaveLength(1);
+  let columnsAtNavigate = -1;
+  let tasksAtNavigate = -1;
+  navigate.mockImplementationOnce(async () => {
+    columnsAtNavigate = (await deviceDb.readAllRecords('columns')).length;
+    tasksAtNavigate = (await deviceDb.readAllRecords('tasks')).length;
+  });
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  await waitFor(() => expect(columnsAtNavigate).toBe(0));
+  expect(tasksAtNavigate).toBe(0);
+});
+
+test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan sesi dan navigasi', async () => {
+  vi.mocked(deviceDb.clearDeviceDb).mockRejectedValueOnce(new Error('idb gagal'));
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(client.getQueryCache().getAll()).toHaveLength(0);
+  await waitFor(() => expect(isBusy()).toBe(false));
 });

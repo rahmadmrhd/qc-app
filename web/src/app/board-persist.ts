@@ -211,7 +211,11 @@ export function startBoardPersistence(queryClient: QueryClient): {
 export async function clearBoardStore(): Promise<void> {
   generation += 1;
   pending.clear();
-  await clearDeviceDb();
+  try {
+    await clearDeviceDb();
+  } catch {
+    // Tidak pernah menolak: keluar tak boleh terhambat.
+  }
 }
 
 export function resetBoardPersistForTests(): void {
