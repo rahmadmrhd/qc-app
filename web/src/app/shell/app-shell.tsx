@@ -9,6 +9,7 @@ import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
+import { ServerStatusBanner } from './server-status-banner';
 import { UserMenu } from './user-menu';
 
 export function AppShell() {
@@ -28,6 +29,7 @@ export function AppShell() {
                 <UserMenu />
               </div>
             </header>
+            <ServerStatusBanner />
             <PushOnboarding />
             <main className="flex-1 p-4 md:p-6">
               <Outlet />

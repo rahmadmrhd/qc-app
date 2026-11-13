@@ -229,3 +229,20 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
 | 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
 | 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |
+
+## PWA Fase 2
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 183 | Matikan jaringan (mode pesawat), lalu buka aplikasi terpasang dari ikon | Layar "Tidak ada koneksi" dengan tombol "Coba lagi", bukan halaman login; setelah jaringan kembali, "Coba lagi" memuat aplikasi dalam keadaan login | PWA FR-P7, FR-P15 |
+| 184 | Saat sudah login dan beranda terbuka, matikan jaringan, lalu pindah ke halaman yang memuat data tersimpan (mis. Merk) | Spanduk "Server sedang tidak tersedia — menampilkan data terakhir (hh:mm)" tampil dengan jam data; halaman lain tanpa data tersimpan menampilkan galat biasa dengan "Coba lagi" | PWA FR-P16 |
+| 185 | Nyalakan jaringan lagi dan tunggu atau buka halaman lain | Spanduk hilang sendiri setelah permintaan berikutnya berhasil | PWA FR-P16 |
+| 186 | Buka detail task, matikan jaringan, lalu centang satu butir (dan klik butir yang sama lagi) | Centang tampak tersimpan dengan penanda "Menunggu terkirim"; satu toast info (tidak menumpuk); tidak ada toast galat | PWA FR-P17 |
+| 187 | Nyalakan jaringan lagi (tanpa memuat ulang halaman) | Centang tertunda terkirim sendiri, penanda hilang; centang tampil dengan nama dan waktu dari server; riwayat audit mencatat satu centang per butir | PWA FR-P17 |
+| 188 | Centang saat offline, tutup aplikasi, buka lagi saat online | Centang tertunda terkirim saat aplikasi dibuka; tidak ada yang hilang atau terkirim ganda | PWA FR-P17 |
+| 189 | Centang saat offline, lalu minta orang lain menyelesaikan atau membatalkan task itu sebelum Anda online | Saat online muncul "N perubahan centang tidak dapat dikirim" beserta alasannya; entri dibuang dan tidak diulang | PWA FR-P18 |
+| 190 | Ubah jam perangkat maju lebih dari 24 jam setelah mengantre centang offline, lalu online | Entri dibuang dengan pemberitahuan kedaluwarsa; tidak terkirim | PWA FR-P19 |
+| 191 | Centang saat offline, lalu Keluar; login sebagai pengguna lain di perangkat yang sama dan online | Antrean pemilik pertama tidak pernah terkirim; DevTools → Application → Local Storage tidak menyisakan kunci `qc.outbox:*` | PWA FR-P14, FR-P19 |
+| 192 | Saat offline, coba aksi lain (buat task, simpan item, tambah komentar) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |

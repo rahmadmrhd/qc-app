@@ -6,6 +6,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { enqueueCheck } from '../lib/check-outbox';
 import { HandoverCard } from './handover-card';
 import { makeHandover } from './test-handover';
 
@@ -183,4 +184,21 @@ test('task Dibatalkan tetap tampil dengan labelnya', () => {
   setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.getByText('Dibatalkan')).toBeInTheDocument();
   expect(screen.getByText('Dibatalkan').className).toContain('text-red-800');
+});
+
+test('antrean centang di perangkat: kartu papan menampilkan butir tercentang dengan penanda', () => {
+  localStorage.clear();
+  enqueueCheck('qc@x', {
+    taskId: 'h1',
+    locationId: 'loc-a',
+    index: 0,
+    text: 'A = 1',
+    checked: true,
+    at: Date.now(),
+  });
+  setup({ owner: 'qc@x' });
+  expect(screen.getByRole('checkbox', { name: /A = 1/ })).toBeChecked();
+  expect(screen.getByText('Menunggu terkirim')).toBeInTheDocument();
+  expect(screen.getByText('1/2')).toBeInTheDocument();
+  localStorage.clear();
 });

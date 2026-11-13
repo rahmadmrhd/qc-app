@@ -78,6 +78,7 @@ function HandoverDetailPage() {
   return (
     <HandoverDetailView
       handover={task}
+      owner={me.email}
       locationName={locationName}
       canEdit={canAt(me, 'handover', 'edit', task.locationId)}
       canCancel={canAt(me, 'handover', 'manage', task.locationId)}
