@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   mark: vi.fn(),
   api: vi.fn(),
   mobile: false,
+  permissions: { item: 'view' } as Record<string, string>,
+  sidebarEverOpened: false,
 }));
 
 vi.mock('@tanstack/react-router', () => ({
@@ -23,7 +25,7 @@ vi.mock('@/modules/auth/use-me', () => ({
       email: 'a@qc.local',
       name: 'A',
       isSuperAdmin: false,
-      permissions: { item: 'view' },
+      permissions: state.permissions,
       locations: [],
       businessUnits: [],
       sharedAccount: false,
@@ -41,6 +43,7 @@ vi.mock('@/lib/api', async () => ({
 }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => state.mobile }));
 
+import { resetUnsavedChangesForTests, useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import type { GuideEntry, GuideStep } from '../../lib/types';
 import { TourProvider, useTour } from './tour-provider';
@@ -100,6 +103,8 @@ beforeAll(async () => {
 beforeEach(() => {
   state.pathname = '/';
   state.mobile = false;
+  state.permissions = { item: 'view' };
+  state.sidebarEverOpened = false;
   state.navigate.mockReset();
   state.navigate.mockResolvedValue(undefined);
   state.mark.mockReset();
@@ -107,6 +112,7 @@ beforeEach(() => {
   state.api.mockReset();
 });
 afterEach(() => {
+  resetUnsavedChangesForTests();
   for (const node of document.querySelectorAll('[data-late]')) node.remove();
 });
 
@@ -351,6 +357,7 @@ describe('sidebar di layar sempit', () => {
 
   function SidebarProbe() {
     const { openMobile } = useSidebar();
+    if (openMobile) state.sidebarEverOpened = true;
     return openMobile ? (
       <nav data-sidebar="sidebar">
         <button type="button" data-tour="menu-item">
@@ -365,7 +372,7 @@ describe('sidebar di layar sempit', () => {
     render(
       <SidebarProvider>
         <Page
-          entry={entryOf([step({ target: 'menu-item', text: 'Pilih menu ini' })])}
+          entry={entryOf([step({ target: 'menu-item', text: 'Pilih menu ini', inSidebar: true })])}
           extra={<SidebarProbe />}
         />
       </SidebarProvider>,
@@ -373,5 +380,192 @@ describe('sidebar di layar sempit', () => {
     await startTour();
     expect(await screen.findByText('Pilih menu ini')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Item menu' })).toBeInTheDocument();
+  });
+
+  test('M11: langkah yang bukan menu tidak membuka sidebar walau targetnya hilang', async () => {
+    state.mobile = true;
+    render(
+      <SidebarProvider>
+        <Page
+          entry={entryOf([
+            step({ target: 'hantu', text: 'Bukan menu' }),
+            step({ target: 'b', text: 'Sesudah' }),
+          ])}
+          extra={<SidebarProbe />}
+        />
+      </SidebarProvider>,
+    );
+    await startTour();
+    expect(await screen.findByText('Sesudah')).toBeInTheDocument();
+    expect(state.sidebarEverOpened).toBe(false);
+  });
+});
+
+describe('ketahanan mesin (putaran perbaikan review)', () => {
+  function mountTour(entry: GuideEntry) {
+    const view = render(<Page entry={entry} />);
+    return { refresh: () => view.rerender(<Page entry={entry} />), view };
+  }
+
+  test('I1: pengguna pindah halaman sendiri = tur dibatalkan tanpa penanda dan tanpa navigasi', async () => {
+    const { refresh } = mountTour(
+      entryOf([
+        step({ text: 'Langkah satu' }),
+        step({ target: 'b', text: 'Langkah dua', route: '/lain' }),
+      ]),
+    );
+    await startTour();
+    await screen.findByText('Langkah satu');
+    state.pathname = '/dipilih-pengguna';
+    refresh();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(state.navigate).not.toHaveBeenCalled();
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('I1: perpindahan halaman yang dimulai mesin tidak membatalkan tur', async () => {
+    state.navigate.mockImplementation(async ({ to }: { to: string }) => {
+      state.pathname = to;
+    });
+    const { refresh } = mountTour(
+      entryOf([
+        step({ text: 'Langkah satu' }),
+        step({ target: 'b', text: 'Langkah dua', route: '/lain' }),
+      ]),
+    );
+    await startTour();
+    await userEvent.click(await screen.findByRole('button', { name: 'Lanjut' }));
+    await screen.findByText('Langkah dua');
+    refresh();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText('Langkah dua')).toBeInTheDocument();
+  });
+
+  test('I1: halaman berubah akibat klik pengguna pada langkah click tidak membatalkan tur', async () => {
+    state.navigate.mockResolvedValue(undefined);
+    const { refresh } = mountTour(
+      entryOf([
+        step({ text: 'Klik A', advance: 'click' }),
+        step({ target: 'b', text: 'Di halaman tujuan', route: '/tujuan' }),
+      ]),
+    );
+    await startTour();
+    await screen.findByText('Klik A');
+    await userEvent.click(screen.getByRole('button', { name: 'Target A' }));
+    state.pathname = '/tujuan';
+    refresh();
+    expect(await screen.findByText('Di halaman tujuan')).toBeInTheDocument();
+  });
+
+  test('M1: daftar langkah dibekukan saat mulai; izin dicabut di tengah tur tidak mengubah kartu', async () => {
+    const { refresh } = mountTour(
+      entryOf([
+        step({ text: 'Langkah satu', izin: { module: 'item', level: 'view' } }),
+        step({ target: 'b', text: 'Langkah dua' }),
+      ]),
+    );
+    await startTour();
+    await screen.findByText('Langkah satu');
+    state.permissions = {};
+    refresh();
+    expect(screen.getByText('Langkah satu')).toBeInTheDocument();
+    expect(screen.getByText('Langkah 1 dari 2')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Langkah dua')).toBeInTheDocument();
+  });
+
+  test('M1: tur tanpa langkah yang berlaku menutup diri (tidak ada active tanpa kartu)', async () => {
+    state.permissions = {};
+    render(<Page entry={entryOf([step({ izin: { module: 'item', level: 'view' } })])} />);
+    await userEvent.click(screen.getByRole('button', { name: /Mulai tur/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Mulai tur' })).toBeInTheDocument();
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('M2: navigasi yang melempar galat melewati langkah, tur tidak macet', async () => {
+    state.navigate.mockRejectedValueOnce(new Error('ditolak'));
+    mountTour(
+      entryOf([
+        step({ target: 'a', text: 'Gagal pindah', route: '/rusak' }),
+        step({ target: 'b', text: 'Berikutnya' }),
+      ]),
+    );
+    await startTour();
+    expect(await screen.findByText('Berikutnya')).toBeInTheDocument();
+    expect(screen.queryByText('Gagal pindah')).toBeNull();
+  });
+
+  function DirtyForm() {
+    useUnsavedChanges(true);
+    return null;
+  }
+
+  test('M13: formulir berdraf: mulai dari langkah pertama yang ada di halaman ini, tanpa menavigasi keluar', async () => {
+    state.pathname = '/form';
+    render(
+      <Page
+        extra={<DirtyForm />}
+        entry={entryOf([
+          step({ target: 'hantu', text: 'Papan', route: '/' }),
+          step({ target: 'a', text: 'Ada di sini' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Ada di sini')).toBeInTheDocument();
+    expect(screen.queryByText('Papan')).toBeNull();
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+
+  test('M13: formulir berdraf: langkah yang menuntut pindah halaman dilewati (draf tak dibuang)', async () => {
+    state.pathname = '/form';
+    render(
+      <Page
+        extra={<DirtyForm />}
+        entry={entryOf([
+          step({ target: 'a', text: 'Di halaman ini' }),
+          step({ target: 'b', text: 'Di halaman lain', route: '/lain' }),
+          step({ target: 'field', text: 'Terakhir di sini' }),
+        ])}
+      />,
+    );
+    await startTour();
+    await userEvent.click(await screen.findByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Terakhir di sini')).toBeInTheDocument();
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+
+  test('M13: tanpa draf, mulai dari langkah pertama dan menavigasi bila perlu', async () => {
+    mountTour(
+      entryOf([step({ target: 'a', text: 'Pertama', route: '/mulai' }), step({ target: 'b' })]),
+    );
+    await startTour();
+    await screen.findByText('Pertama');
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/mulai' });
+  });
+
+  test('M10: fokus kembali ke elemen semula saat tur ditutup', async () => {
+    mountTour(entryOf([step(), step({ target: 'b' })]));
+    const starter = screen.getByRole('button', { name: /Mulai tur/ });
+    await userEvent.click(starter);
+    await screen.findByText('Teks langkah');
+    expect(document.activeElement).not.toBe(starter);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(document.activeElement).toBe(starter);
+  });
+
+  test('M10: ArrowRight diabaikan saat fokus di kolom teks', async () => {
+    mountTour(entryOf([step({ text: 'Satu' }), step({ target: 'b', text: 'Dua' })]));
+    await startTour();
+    await screen.findByText('Satu');
+    screen.getByLabelText('Isian').focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(screen.getByText('Satu')).toBeInTheDocument();
+    expect(screen.queryByText('Dua')).toBeNull();
   });
 });

@@ -22,6 +22,11 @@ export interface GuideStep {
   /** Langkah hanya muncul bagi yang berhak (dihitung per pengguna). */
   izin?: GuideAccess;
   tip?: string;
+  /**
+   * Target berada di sidebar: di layar sempit (sidebar tertutup) mesin tur membukanya lebih dulu. Tanpa ini
+   * sidebar ponsel tidak pernah dibuka, mis. untuk target yang memang tak ada (papan kosong, satu lokasi).
+   */
+  inSidebar?: boolean;
 }
 
 export interface GuideEntry {
@@ -37,6 +42,11 @@ export interface GuideEntry {
   /** Awalan rute tempat banner panduan ini boleh muncul; kosong = tanpa banner. */
   halaman?: string;
   steps: readonly GuideStep[];
+  /**
+   * Hanya untuk `kind: 'baru'`: id panduan `dasar` induknya. Panduan `baru` baru ditawarkan setelah `dasar` itu
+   * selesai (spek 4.2); tes katalog mewajibkan field ini dan keberadaan entrinya.
+   */
+  dasar?: string;
   /** Id panduan `baru` yang sudah tercakup bila panduan `dasar` ini selesai (= `GUIDE_COVERS`). */
   covers?: readonly string[];
 }

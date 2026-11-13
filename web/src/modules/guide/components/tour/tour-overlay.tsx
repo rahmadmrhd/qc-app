@@ -5,15 +5,15 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
+import { hasUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { stepsFor } from '../../lib/offer';
-import type { GuideEntry } from '../../lib/types';
+import type { GuideEntry, GuideStep } from '../../lib/types';
 import { useGuideStore } from '../../lib/use-guide-store';
 import { TourStepCard } from './tour-step-card';
 
@@ -82,6 +82,26 @@ function useOptionalSidebar(): ReturnType<typeof useSidebar> | null {
   }
 }
 
+/** Elemen yang menerima ketikan/penggeseran kursor: tombol panah tidak boleh dibajak tur. */
+function isEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return true;
+  return target.isContentEditable === true || target.getAttribute('contenteditable') === 'true';
+}
+
+/**
+ * Indeks mulai bila ada formulir berdraf: langkah pertama yang berlaku di halaman ini (tanpa `route` lain dan
+ * targetnya ada), supaya memulai tur tidak menavigasi keluar dan membuang draf. Tak ada = langkah pertama.
+ */
+function firstStepOnPage(steps: readonly GuideStep[], pathname: string): number {
+  const found = steps.findIndex(
+    (step) =>
+      (step.route === undefined || step.route === pathname) &&
+      document.querySelector(selectorOf(step.target)) !== null,
+  );
+  return found < 0 ? 0 : found;
+}
+
 function prefersReducedMotion(): boolean {
   try {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -118,8 +138,13 @@ export default function TourOverlay({
   const { mark } = useGuideStore();
   const sidebar = useOptionalSidebar();
 
-  const steps = useMemo(() => stepsFor(entry, me, selectedIds), [entry, me, selectedIds]);
-  const [index, setIndex] = useState(0);
+  // Daftar langkah DIBEKUKAN saat tur dimulai: mengganti lokasi aktif atau izin yang berubah di tengah tur tak boleh
+  // menggeser indeks (kartu salah teks) atau membuat `tour.active` tanpa kartu.
+  const [steps] = useState(() => stepsFor(entry, me, selectedIds));
+  // Ada formulir berdraf: mulai dari langkah yang berlaku di halaman ini, bukan menavigasi keluar dan membuang draf.
+  const [index, setIndex] = useState(() =>
+    hasUnsavedChanges() ? firstStepOnPage(steps, pathname) : 0,
+  );
   // Target yang sudah ditemukan, TERIKAT ke indeks langkahnya: begitu `index` berganti, target langkah lama tak lagi
   // berlaku pada render yang sama (tanpa ini kartu langkah baru sempat tampil sebentar di posisi sorotan lama, dan
   // pendengar klik/keyboard langkah lama bisa menangkap peristiwa untuk langkah baru).
@@ -135,6 +160,40 @@ export default function TourOverlay({
   const finished = useRef(false);
   const openedSidebar = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Halaman yang diharapkan selama tur: diubah mesin sendiri (navigasi langkah ber-route) atau dilonggarkan setelah
+  // klik pada langkah `click` (klik itu boleh membawa ke halaman lain; `null` = terima perubahan berikutnya).
+  // Perpindahan halaman di luar itu = pengguna meninggalkan tur: tur dibatalkan tanpa penanda (spek 4.3).
+  const expectedPath = useRef<string | null>(pathname);
+  const aborted = useRef(false);
+  // Elemen yang fokus sebelum tur dimulai, untuk dikembalikan saat tur ditutup (aksesibilitas keyboard).
+  const previousFocus = useRef<Element | null>(
+    typeof document === 'undefined' ? null : document.activeElement,
+  );
+
+  useEffect(
+    () => () => {
+      const previous = previousFocus.current;
+      const active = document.activeElement;
+      const lost = !active || active === document.body;
+      if (lost && previous instanceof HTMLElement && previous.isConnected) {
+        previous.focus({ preventScroll: true });
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (aborted.current || finished.current) return;
+    if (expectedPath.current === null) {
+      expectedPath.current = pathname;
+      return;
+    }
+    if (pathname !== expectedPath.current) {
+      aborted.current = true;
+      finished.current = true;
+      latest.current.onExit();
+    }
+  }, [pathname]);
 
   const advance = useCallback((from: number) => {
     if (advancedFrom.current >= from) return;
@@ -144,6 +203,7 @@ export default function TourOverlay({
 
   // Menjalankan satu langkah: navigasi bila perlu, menunggu target, lalu menampilkannya (atau melewatinya).
   useEffect(() => {
+    if (aborted.current) return;
     const step = latest.current.steps[index];
     if (!step) {
       if (finished.current) return;
@@ -164,21 +224,41 @@ export default function TourOverlay({
     void (async () => {
       const { navigate: go, pathname: here, sidebar: bar } = latest.current;
       if (step.route && here !== step.route) {
-        await go({ to: step.route as LinkProps['to'] });
-        if (cancelled) return;
+        // Ada draf yang belum disimpan: jangan menavigasi keluar (draf akan terbuang); langkah ini dilewati.
+        if (hasUnsavedChanges()) {
+          advance(index);
+          return;
+        }
+        expectedPath.current = step.route;
+        try {
+          await go({ to: step.route as LinkProps['to'] });
+        } catch {
+          // Navigasi ditolak/gagal dimuat: langkah dilewati, tur tidak macet tanpa kartu.
+          if (!cancelled) advance(index);
+          return;
+        }
+        if (cancelled || aborted.current) return;
       }
-      if (!document.querySelector(selectorOf(step.target)) && bar?.isMobile && !bar.openMobile) {
+      // Sidebar ponsel dibuka HANYA untuk langkah yang menyorot menu; target lain yang hilang cukup dilewati.
+      if (
+        step.inSidebar &&
+        !document.querySelector(selectorOf(step.target)) &&
+        bar?.isMobile &&
+        !bar.openMobile
+      ) {
         bar.setOpenMobile(true);
         openedSidebar.current = true;
       }
       const wait = waitForTarget(step.target, targetWaitMs);
       cancelWait = wait.cancel;
       const found = await wait.promise;
-      if (cancelled) return;
+      if (cancelled || aborted.current) return;
       if (!found) {
         advance(index);
         return;
       }
+      // Halaman tujuan klik pengguna sudah terbentuk: mulai dari sini setiap perpindahan lain membatalkan tur.
+      if (expectedPath.current === null) expectedPath.current = latest.current.pathname;
       if (openedSidebar.current && !found.closest('[data-sidebar="sidebar"]')) {
         latest.current.sidebar?.setOpenMobile(false);
         openedSidebar.current = false;
@@ -205,12 +285,32 @@ export default function TourOverlay({
     [],
   );
 
-  // Menghitung ulang sorotan saat tampilan berubah; target yang lepas dari DOM = langkah dilewati.
+  // Menghitung ulang sorotan saat tampilan berubah. Target yang lepas dari DOM (dirender ulang, atau halaman
+  // berganti) ditunggu muncul lagi sampai `targetWaitMs`: ketemu = sorotan pindah ke elemen baru, tidak ketemu =
+  // dilewati. Bila penyebabnya pengguna pindah halaman, efek pembatalan di atas menutup tur lebih dulu.
+  const step = steps[index];
   useEffect(() => {
-    if (!target) return;
+    if (!target || !step) return;
+    let stale = false;
+    let relocating = false;
+    let cancelWait: () => void = () => undefined;
+    const relocate = async () => {
+      if (relocating) return;
+      relocating = true;
+      const wait = waitForTarget(step.target, targetWaitMs);
+      cancelWait = wait.cancel;
+      const found = await wait.promise;
+      if (stale || aborted.current) return;
+      if (found) {
+        setLocated({ index, element: found });
+        setRect(found.getBoundingClientRect());
+      } else {
+        advance(index);
+      }
+    };
     const update = () => {
       if (!target.isConnected) {
-        advance(index);
+        void relocate();
         return;
       }
       setRect(target.getBoundingClientRect());
@@ -220,18 +320,21 @@ export default function TourOverlay({
     const observer = new MutationObserver(update);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => {
+      stale = true;
+      cancelWait();
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
       observer.disconnect();
     };
-  }, [target, index, advance]);
+  }, [target, step, index, targetWaitMs, advance]);
 
   // Langkah `click`: maju begitu targetnya diklik (setelah penangan aplikasi sendiri selesai).
-  const step = steps[index];
   useEffect(() => {
     if (!target || step?.advance !== 'click') return;
     const onClick = (event: MouseEvent) => {
       if (event.target instanceof Node && target.contains(event.target)) {
+        // Klik ini boleh membawa ke halaman lain: terima perpindahan berikutnya sebagai bagian dari tur.
+        expectedPath.current = null;
         setTimeout(() => advance(index), 0);
       }
     };
@@ -245,7 +348,12 @@ export default function TourOverlay({
       if (event.key === 'Escape') {
         event.stopPropagation();
         latest.current.onExit();
-      } else if (event.key === 'ArrowRight' && target && step?.advance === 'next') {
+      } else if (
+        event.key === 'ArrowRight' &&
+        target &&
+        step?.advance === 'next' &&
+        !isEditable(event.target)
+      ) {
         advance(index);
       }
     };
