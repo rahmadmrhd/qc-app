@@ -319,6 +319,8 @@ function stagingRows(serials: string[]): StagingRow[] {
       locationLabel: 'Jakarta (JKT)',
       sample: false,
       note: '',
+      status: 'good',
+      damage: '',
     },
     () => `row-${String(++n).padStart(8, '0')}`,
     () => '2026-11-12T10:00:00.000Z',

@@ -107,6 +107,12 @@ export const STEP_ORDER = [
 
 export const TEAM_LABEL = { qc: 'QC', service: 'Servis', system: 'Sistem' } as const;
 
+/** Status saat mencatat: hanya Lolos atau Tidak lolos (yang lain lahir dari aksi pada detail). */
+export const RECORD_STATUS_OPTIONS = [
+  { value: 'good', label: STATUS_LABEL.good },
+  { value: 'failed', label: STATUS_LABEL.failed },
+];
+
 export const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as SerialStatus[]).map((value) => ({
   value,
   label: STATUS_LABEL[value],

@@ -22,6 +22,8 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: false,
   note: '',
+  status: 'good',
+  damage: '',
 };
 
 function counter() {
@@ -173,6 +175,7 @@ test('fromQcsnRows: melewati serial dan clientId yang sudah ada', () => {
       serial: 'A1',
       sample: false,
       note: '',
+      status: 'good' as const,
       source: 'manual' as const,
     },
     {
@@ -181,6 +184,7 @@ test('fromQcsnRows: melewati serial dan clientId yang sudah ada', () => {
       serial: 'B2',
       sample: true,
       note: 'n',
+      status: 'good' as const,
       source: 'countrylock' as const,
       stickers: [{ stickerId: 's1', stickerLabel: 'Stiker', qty: 3 }],
     },
@@ -205,4 +209,40 @@ test('addSerials: bawaan stickers disalin per baris (bukan referensi bersama); t
   expect(first?.stickers).not.toBe(second?.stickers);
   const plain = addSerials([], 'C3', defaults, counter(), now);
   expect(plain.rows[0]?.stickers).toBeNull();
+});
+
+test('baris Tidak lolos: bawaan status/kerusakan disalin; toRowInput mengirim damage hanya untuk failed', () => {
+  const failed = addSerials(
+    [],
+    'A1\nB2',
+    { ...defaults, status: 'failed', damage: 'LED mati' },
+    counter(),
+    now,
+  ).rows.map((row) => ({ ...row, stickers: [] }));
+  expect(failed.map((row) => [row.status, row.damage])).toEqual([
+    ['failed', 'LED mati'],
+    ['failed', 'LED mati'],
+  ]);
+  expect(toRowInput({ ...(failed[0] as StagingRow), damage: '  LED mati  ' })).toMatchObject({
+    status: 'failed',
+    damage: 'LED mati',
+  });
+  const good = toRowInput({ ...(failed[0] as StagingRow), status: 'good' });
+  expect(good.status).toBe('good');
+  expect(good).not.toHaveProperty('damage');
+  expect(good).not.toHaveProperty('source');
+  expect(toRowInput({ ...(failed[0] as StagingRow), source: 'countrylock' }).source).toBe(
+    'countrylock',
+  );
+});
+
+test('applyBulk mengubah status dan kerusakan baris terpilih saja', () => {
+  const rows = addSerials([], 'A1\nB2\nC3', defaults, counter(), now).rows;
+  const ids = new Set(rows.slice(0, 2).map((row) => row.clientId));
+  const next = applyBulk(rows, ids, { status: 'failed', damage: 'Kipas rusak' });
+  expect(next.map((row) => [row.status, row.damage])).toEqual([
+    ['failed', 'Kipas rusak'],
+    ['failed', 'Kipas rusak'],
+    ['good', ''],
+  ]);
 });
