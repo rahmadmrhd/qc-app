@@ -350,6 +350,45 @@ describe('restoreBoardCache', () => {
         { ...goodTask, dto: { ...dto('h1'), checklist: 'x' } },
       ],
       [
+        'item kolom {}',
+        'columns',
+        'l1|new',
+        { data: { pages: [{ items: [{}], nextCursor: null, total: 1 }], pageParams: [undefined] } },
+      ],
+      [
+        'item kolom tanpa checklist',
+        'columns',
+        'l1|new',
+        {
+          data: {
+            pages: [{ items: [{ ...dto('a'), checklist: undefined }], nextCursor: null, total: 1 }],
+            pageParams: [undefined],
+          },
+        },
+      ],
+      [
+        'item kolom tanpa comments',
+        'columns',
+        'l1|new',
+        {
+          data: {
+            pages: [{ items: [{ ...dto('a'), comments: undefined }], nextCursor: null, total: 1 }],
+            pageParams: [undefined],
+          },
+        },
+      ],
+      [
+        'item kolom ber-id bukan string',
+        'columns',
+        'l1|new',
+        {
+          data: {
+            pages: [{ items: [{ ...dto('a'), id: 5 }], nextCursor: null, total: 1 }],
+            pageParams: [undefined],
+          },
+        },
+      ],
+      [
         'dto.comments bukan larik',
         'tasks',
         'h1',

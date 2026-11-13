@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/api-error';
@@ -65,9 +65,19 @@ function HandoverDetailPage() {
 
   // Penolakan server (task tak ada/bukan di lokasi ini/akses dicabut) otoritatif: data awal dari papan atau data
   // lama tidak boleh menutupinya. `UNAVAILABLE` tetap mempertahankan data (spanduk "data terakhir").
-  const denied =
+  // Dilatch per task+lokasi: galat UNAVAILABLE berikutnya menimpa `error` tetapi mempertahankan `data`, dan data yang
+  // sudah ditolak tidak boleh muncul lagi; hanya sukses (jawaban server baru) yang melepasnya.
+  const deniedScope = useRef<string | null>(null);
+  const scope = `${handoverId}|${readableKey}`;
+  if (
     query.error instanceof ApiError &&
-    (query.error.code === 'NOT_FOUND' || query.error.code === 'FORBIDDEN');
+    (query.error.code === 'NOT_FOUND' || query.error.code === 'FORBIDDEN')
+  ) {
+    deniedScope.current = scope;
+  } else if (query.status === 'success') {
+    deniedScope.current = null;
+  }
+  const denied = deniedScope.current === scope;
   const task = denied ? undefined : query.data;
   if (query.isPending && readable.length > 0) return <Skeleton className="h-64 w-full" />;
   if (!task) {

@@ -72,20 +72,25 @@ function isColumnData(data: unknown): data is BoardColumnData {
     (page) =>
       isObject(page) &&
       Array.isArray(page.items) &&
-      page.items.every(isObject) &&
+      page.items.every(isHandoverShape) &&
       typeof page.total === 'number' &&
       (page.nextCursor === null || typeof page.nextCursor === 'string'),
   );
 }
 
-function isTaskDto(dto: unknown, id: string): dto is HandoverDto {
+/** Bentuk minimum task yang dibaca UI (kartu papan dan detail); dipakai bersama oleh kolom dan detail. */
+function isHandoverShape(value: unknown): value is HandoverDto {
   return (
-    isObject(dto) &&
-    dto.id === id &&
-    typeof dto.locationId === 'string' &&
-    Array.isArray(dto.checklist) &&
-    Array.isArray(dto.comments)
+    isObject(value) &&
+    typeof value.id === 'string' &&
+    typeof value.locationId === 'string' &&
+    Array.isArray(value.checklist) &&
+    Array.isArray(value.comments)
   );
+}
+
+function isTaskDto(dto: unknown, id: string): dto is HandoverDto {
+  return isHandoverShape(dto) && dto.id === id;
 }
 
 interface RestorePlan {

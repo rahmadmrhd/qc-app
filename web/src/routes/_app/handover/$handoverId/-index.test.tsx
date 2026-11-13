@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { type ComponentType, Suspense } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
@@ -76,6 +76,7 @@ async function mount(search: { loc?: string }, prepare?: (client: QueryClient) =
       </Suspense>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 const getCalls = () => state.api.mock.calls.filter(([id]) => id === 'handovers.get');
@@ -162,4 +163,23 @@ test('task dari kolom lokasi lain (di luar lokasi yang dibuka): tidak di-seed', 
   await mount({ loc: 'loc-b' }, seedBoard(['loc-a'], 'loc-a'));
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.queryByText('ST-SEED')).toBeNull();
+});
+
+test('penolakan server dilatch: UNAVAILABLE sesudahnya tidak memunculkan lagi data yang ditolak; sukses memulihkan', async () => {
+  state.api.mockRejectedValue(new ApiError('NOT_FOUND', 'ditolak', 'r1'));
+  const client = await mount({}, seedBoard(['loc-a'], 'loc-a'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Task tidak ditemukan');
+  const refetch = () =>
+    act(() => client.refetchQueries({ queryKey: ['handovers', 'one', 'h1', ['loc-a']] }));
+
+  state.api.mockRejectedValue(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'));
+  await refetch();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Task tidak ditemukan');
+  expect(screen.queryByText('ST-SEED')).toBeNull();
+
+  // Akses dipulihkan: sukses mengembalikan data server.
+  state.api.mockResolvedValue(makeHandover({ id: 'h1', number: 'ST-BARU', locationId: 'loc-a' }));
+  await refetch();
+  await screen.findByText('ST-BARU');
+  expect(screen.queryByRole('alert')).toBeNull();
 });
