@@ -232,6 +232,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   - Klip belum tersedia saat rilis TIDAK menghalangi rilis: adegan `klip` yang `berkas`-nya belum diisi memakai
     fallback daftar langkah bernomor. Tes katalog hanya memeriksa bahwa berkas yang DIDEKLARASIKAN ada; adegan
     tanpa `berkas` lolos. Jadi panduan PWA/push dan Serah Terima dapat rilis lebih dulu, klipnya menyusul.
+  - **Kartu contoh untuk langkah tanpa data** (keputusan pemilik 2026-11-14, bagian 6 butir F): langkah yang menyorot
+    isi papan (checklist, status, komentar pada task) tidak bergantung pada ada-tidaknya task sungguhan. Penjelasannya
+    adalah demo `kode` milik entri `tip` (`tip-handover-checklist`, `tip-handover-komentar`) yang merender komponen
+    asli (`HandoverCard`/`NoteView`) dengan data contoh yang dibuat di sisi klien, diberi lencana "Contoh". Demo tidak
+    menyentuh data, halaman, kueri, atau penyimpanan apa pun selain titik penanda `tip`, dan kartu contoh bukan target
+    `data-tour` (tur tak pernah menyorotnya).
   - Satu tooltip dapat memakai keduanya berurutan.
 
 ### 4.7 Perawatan (agar panduan tidak basi)
@@ -311,6 +317,13 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     pesan lain; ketuk ikon salin dengan toast "Disalin"), bukan adegan `klip` tanpa berkas. Alasan: urutan terbalik
     membingungkan, dan teks langkah tanpa gambar kurang membantu. Diubah: 4.6 (jenis adegan) dan kalimat status di
     kepala dokumen. Infrastruktur klip (`klipUrl`, pemutar, tes konvensi) tetap untuk kasus lain.
+  - **F. Kartu contoh sebagai demo `kode`, bukan data palsu di halaman (2026-11-14, usul pemilik produk).** Untuk
+    pengguna yang papannya kosong (tak ada kartu untuk disorot) dan untuk langkah memilih teks lalu memberi komentar
+    yang belum dijelaskan, penjelasannya diwujudkan sebagai demo `kode` (entri `tip`) yang merender kartu task contoh
+    dari komponen asli dengan data contoh, bukan dengan menaruh data palsu di papan atau halaman. Alasan: tidak
+    mencemari data atau kueri, tampilan selalu sama dengan aplikasi, dan memakai sistem demo yang sudah ada. Id
+    penanda baru `tip-handover-checklist` dan `tip-handover-komentar` (versi 1) masuk `shared/guides.ts`. Diubah: 4.6
+    (bullet kartu contoh).
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
