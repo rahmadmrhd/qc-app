@@ -162,18 +162,35 @@ test('kode diambil dari body (bukan dari status): 422, 401, 403, 404, 503, 500',
   });
 });
 
-test('galat jaringan menjadi INTERNAL dengan pesan koneksi', async () => {
+test('galat jaringan menjadi UNAVAILABLE dengan pesan koneksi', async () => {
   const { api } = setup(() => {
     throw new TypeError('Failed to fetch');
   });
   const error = await api('brands.list', null).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({
-    code: 'INTERNAL',
-    message: 'Tidak dapat menghubungi server. Periksa koneksi Anda.',
+    code: 'UNAVAILABLE',
+    message: 'Tidak ada koneksi',
     requestId: '-',
   });
   expect((error as Error).cause).toBeInstanceOf(TypeError);
+});
+
+test('badan respons yang gagal dibaca juga menjadi UNAVAILABLE', async () => {
+  const cause = new TypeError('network error');
+  const { api } = setup(() => {
+    const response = respond([]);
+    vi.spyOn(response, 'text').mockRejectedValue(cause);
+    return response;
+  });
+  const error = await api('brands.list', null).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toMatchObject({
+    code: 'UNAVAILABLE',
+    message: 'Tidak ada koneksi',
+    requestId: '-',
+  });
+  expect((error as Error).cause).toBe(cause);
 });
 
 test('badan bukan problem (halaman galat proksi) dipetakan dari status', async () => {

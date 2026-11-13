@@ -156,15 +156,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
       if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
       else text = await response.text();
     } catch (error) {
-      throw new ApiError(
-        'INTERNAL',
-        'Tidak dapat menghubungi server. Periksa koneksi Anda.',
-        '-',
-        undefined,
-        {
-          cause: error,
-        },
-      );
+      // Offline, DNS gagal, atau badan terputus: server tidak terjangkau (FR-P15); UI menampilkan data terakhir/antrean.
+      throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-', undefined, { cause: error });
     }
     if (!response.ok) throw errorFromResponse(response.status, text);
     if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
