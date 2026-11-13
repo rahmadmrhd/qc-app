@@ -1,9 +1,10 @@
-import type { MeDto, SerialSettingsDto } from '@shared/contract';
+import type { MeDto, SerialServiceSettingsDto, SerialSettingsDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { pickLink } from '@/test/link-field';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async () => ({
@@ -18,6 +19,7 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 import { SerialSettingsView } from './serial-settings-view';
 
 let state: SerialSettingsDto;
+let serviceState: SerialServiceSettingsDto;
 
 const meWith = (access: 'none' | 'view'): MeDto => ({
   email: 'a@x.com',
@@ -60,30 +62,45 @@ beforeEach(() => {
     updatedAt: 'v1',
     smtpConfigured: true,
   };
-  apiMock.mockImplementation((id: string, input: { alert?: SerialSettingsDto['alert'] }) => {
-    switch (id) {
-      case 'serialSettings.get':
-        return Promise.resolve(structuredClone(state));
-      case 'serialSettings.save': {
-        state = { ...state, alert: input.alert as SerialSettingsDto['alert'], updatedAt: 'v2' };
-        return Promise.resolve(structuredClone(state));
+  serviceState = { locationIds: [], updatedAt: 's1' };
+  apiMock.mockImplementation(
+    (id: string, input: { alert?: SerialSettingsDto['alert']; locationIds?: string[] }) => {
+      switch (id) {
+        case 'serialServiceSettings.get':
+          return Promise.resolve(structuredClone(serviceState));
+        case 'serialServiceSettings.save':
+          serviceState = { locationIds: input.locationIds ?? [], updatedAt: 's2' };
+          return Promise.resolve(structuredClone(serviceState));
+        case 'serials.locationOptions':
+          return Promise.resolve({
+            locations: [
+              { id: 'l1', code: 'JKT', name: 'Jakarta' },
+              { id: 'l2', code: 'SBY', name: 'Surabaya' },
+            ],
+          });
+        case 'serialSettings.get':
+          return Promise.resolve(structuredClone(state));
+        case 'serialSettings.save': {
+          state = { ...state, alert: input.alert as SerialSettingsDto['alert'], updatedAt: 'v2' };
+          return Promise.resolve(structuredClone(state));
+        }
+        case 'access.users.list':
+          return Promise.resolve([
+            {
+              id: 'u1',
+              email: 'budi@x.com',
+              name: 'Budi',
+              status: 'active',
+              roleIds: [],
+              assignments: [],
+              buAssignments: [],
+            },
+          ]);
+        default:
+          return Promise.reject(new Error(`api tak dikenal: ${id}`));
       }
-      case 'access.users.list':
-        return Promise.resolve([
-          {
-            id: 'u1',
-            email: 'budi@x.com',
-            name: 'Budi',
-            status: 'active',
-            roleIds: [],
-            assignments: [],
-            buAssignments: [],
-          },
-        ]);
-      default:
-        return Promise.reject(new Error(`api tak dikenal: ${id}`));
-    }
-  });
+    },
+  );
 });
 
 test('judul, saklar, dan simpan mengirim expectedUpdatedAt dengan penerima email', async () => {
@@ -187,4 +204,46 @@ test('tanpa izin Akses daftar user tidak dimuat dan placeholder meminta email ma
   renderView();
   await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
   expect(calls('access.users.list')).toHaveLength(0);
+});
+
+test('lokasi tim servis: dimuat kosong dengan keterangan, dipilih lalu disimpan dengan ETag', async () => {
+  renderView();
+  const form = await screen.findByRole('form', { name: 'Lokasi tim servis' });
+  expect(form).toHaveTextContent('Kosong berarti semua lokasi dianggap lokasi servis');
+  await pickLink(screen, 'Lokasi tim servis', 'Surabaya (SBY)');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan lokasi servis' }));
+  await waitFor(() => expect(calls('serialServiceSettings.save')).toHaveLength(1));
+  expect(calls('serialServiceSettings.save')[0]?.[1]).toEqual({
+    expectedUpdatedAt: 's1',
+    locationIds: ['l2'],
+  });
+  // Versi baru dimuat: isian mengikuti data tersimpan.
+  expect(await screen.findByText('Surabaya (SBY)')).toBeInTheDocument();
+});
+
+test('lokasi tim servis: lokasi tersimpan yang sudah nonaktif tampil sebagai Lokasi tidak aktif dan bisa dihapus', async () => {
+  serviceState = { locationIds: ['l1', 'l-lama'], updatedAt: 's1' };
+  renderView();
+  await screen.findByRole('form', { name: 'Lokasi tim servis' });
+  expect(await screen.findByText('Jakarta (JKT)')).toBeInTheDocument();
+  expect(screen.getByText('Lokasi tidak aktif')).toBeInTheDocument();
+});
+
+test('lokasi tim servis: versi usang (412) menampilkan pesan dan memuat ulang', async () => {
+  renderView();
+  await screen.findByRole('form', { name: 'Lokasi tim servis' });
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: unknown) => {
+    if (id === 'serialServiceSettings.save') {
+      serviceState = { locationIds: ['l1'], updatedAt: 's9' };
+      return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
+    }
+    return original?.(id, input);
+  });
+  await pickLink(screen, 'Lokasi tim servis', 'Surabaya (SBY)');
+  const before = calls('serialServiceSettings.get').length;
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan lokasi servis' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
+  await waitFor(() => expect(calls('serialServiceSettings.get').length).toBeGreaterThan(before));
+  expect(await screen.findByText('Jakarta (JKT)')).toBeInTheDocument();
 });
