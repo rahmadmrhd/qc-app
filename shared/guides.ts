@@ -7,6 +7,8 @@ export const GUIDE_IDS = [
   'dasar-layout',
   'handover-dasar',
   'tip-handover-tempel-wa',
+  'tip-handover-checklist',
+  'tip-handover-komentar',
 ] as const;
 export type GuideId = (typeof GUIDE_IDS)[number];
 
@@ -19,6 +21,8 @@ export const GUIDE_VERSIONS: Record<GuideId, number> = {
   'dasar-layout': 1,
   'handover-dasar': 1,
   'tip-handover-tempel-wa': 1,
+  'tip-handover-checklist': 1,
+  'tip-handover-komentar': 1,
 };
 
 /**

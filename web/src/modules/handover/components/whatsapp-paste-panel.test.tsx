@@ -120,7 +120,7 @@ test('ikon info di samping judul panel membuka demo Tempel dari WhatsApp', async
   await userEvent.click(icon);
   expect(
     await screen.findByText(
-      'Salin semua pesan orderannya sekaligus dari WhatsApp.',
+      'Mulai dari WhatsApp: buka chat yang berisi orderan.',
       {},
       { timeout: 5000 },
     ),
