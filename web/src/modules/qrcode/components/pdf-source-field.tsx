@@ -1,6 +1,7 @@
 import type { QrDocumentDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {
@@ -45,6 +46,8 @@ export function PdfSourceField({
   };
   const [copied, setCopied] = useState(false);
   const [driveSource, setDriveSource] = useState('');
+  // Tautan Drive yang sudah ditempel dan PDF yang menunggu konfirmasi ada di luar TanStack Form: daftarkan sendiri.
+  useUnsavedChanges(driveSource.trim() !== '' || pending !== null);
   // Unggah ulang SELALU mengganti isi PDF yang terpasang (URL tetap); PDF baru hanya saat belum ada PDF.
   const replacing = document !== null;
 

@@ -2,6 +2,7 @@ import type { PostelSettingsDto, SavePostelSettingsInput, UserDto } from '@share
 import { normalizeKey } from '@shared/items';
 import { isPostelRecipient, POSTEL_LIMITS } from '@shared/postel';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,14 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(
+    enabled !== alert.enabled ||
+      hour !== String(alert.sendHour) ||
+      repeat !== String(alert.repeatEveryDays) ||
+      thresholds.join(',') !== alert.thresholds.map(String).join(',') ||
+      recipients.join('|') !== alert.recipients.join('|') ||
+      extra.trim() !== '',
+  );
 
   const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
   const chosen = new Set(recipients);

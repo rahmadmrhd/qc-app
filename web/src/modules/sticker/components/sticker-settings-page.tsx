@@ -2,6 +2,7 @@ import type { SaveStickerSettingsInput, StickerSettingsDto, UserDto } from '@sha
 import { normalizeKey } from '@shared/items';
 import { STICKER_LIMITS } from '@shared/stickers';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,14 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(
+    enabled !== settings.alert.enabled ||
+      hour !== String(settings.alert.digestHour) ||
+      intervalText !== String(settings.alert.intervalDays) ||
+      recipients.join('|') !== settings.alert.recipients.join('|') ||
+      extra.trim() !== '' ||
+      settings.types.some((type) => defaults[type.id] !== String(type.defaultMinQty)),
+  );
 
   const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
   const chosen = new Set(recipients);

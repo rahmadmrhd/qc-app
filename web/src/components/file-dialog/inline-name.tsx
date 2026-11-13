@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,8 @@ export function InlineName({ value, onSave, maxLength, readOnly, className }: In
   const [draft, setDraft] = useState<string | null>(null);
   // Esc menutup editor lalu fokus lepas: blur sesudahnya tidak boleh menyimpan.
   const settled = useRef(false);
+  // Nama yang sedang diketik dan berbeda dari nilai tersimpan belum disimpan (FR-P13).
+  useUnsavedChanges(draft !== null && draft.trim() !== value);
 
   if (readOnly) {
     return (
