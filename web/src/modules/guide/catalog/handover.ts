@@ -1,4 +1,8 @@
-import { WHATSAPP_TIP_ID } from '@/modules/handover/guide/tip-ids';
+import {
+  CHECKLIST_TIP_ID,
+  COMMENT_TIP_ID,
+  WHATSAPP_TIP_ID,
+} from '@/modules/handover/guide/tip-ids';
 import { registerDemoLoader } from '../lib/demo-types';
 import type { GuideEntry, GuidePermission } from '../lib/types';
 
@@ -8,8 +12,6 @@ const QC_EDIT: GuidePermission = { module: 'qc', level: 'edit', scope: 'location
 
 // Demo kartu task contoh (kartu PALSU dari komponen asli dengan data contoh); entri `tip` dan adegannya milik
 // `handover-tips.ts`. Dipakai langkah checklist/komentar, juga sebagai kartu pengganti saat papan kosong.
-const CHECKLIST_TIP_ID = 'tip-handover-checklist';
-const COMMENT_TIP_ID = 'tip-handover-komentar';
 
 /**
  * Panduan dasar Serah Terima (spek 7 butir 2). Izin panduan = izin item sidebar Serah Terima (sisi WH `view` atau
@@ -47,7 +49,7 @@ export const HANDOVER_DASAR: GuideEntry = {
     },
     {
       target: 'handover-checklist',
-      text: 'Mau kasih komentar? Pilih sepotong teks di catatan, nanti muncul kotak komentar untuk bagian itu. Komentarnya terlihat oleh tim WH dan QC di task tersebut. Lihat contohnya.',
+      text: 'Mau kasih komentar? Pilih sepotong teks di catatan, nanti muncul tombol Balas untuk menulis komentar di bagian itu. Komentarnya terlihat oleh tim WH dan QC di task tersebut. Lihat contohnya.',
       teksJikaKosong:
         'Papan masih kosong, jadi belum ada kartu task. Begitu ada, kamu bisa memilih sepotong teks di catatan lalu memberi komentar seperti contoh ini:',
       advance: 'next',
