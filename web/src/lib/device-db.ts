@@ -17,20 +17,38 @@ const DB_NAME = 'qc-device';
 const DB_VERSION = 1;
 const STORES: DeviceStoreName[] = ['columns', 'tasks'];
 
+/** Batas menunggu `indexedDB.open`; lewat dari ini koneksi dianggap tidak ada (hasil terlambat ditutup). */
+export const OPEN_TIMEOUT_MS = 3000;
+
 let connection: Promise<IDBDatabase | null> | null = null;
 
-function openConnection(): Promise<IDBDatabase | null> {
+/** `drop` melepas koneksi tersimpan HANYA bila masih milik percobaan buka ini (tak menimpa koneksi yang lebih baru). */
+function openConnection(drop: () => void): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (db: IDBDatabase | null) => {
+      if (settled) {
+        // Jawaban terlambat (sesudah batas waktu atau galat): koneksinya tak dipakai siapa pun, jangan bocor.
+        try {
+          db?.close();
+        } catch {
+          // Diabaikan.
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      if (!db) drop();
+      resolve(db);
+    };
     try {
       if (typeof indexedDB === 'undefined') {
-        resolve(null);
+        finish(null);
         return;
       }
       const request = indexedDB.open(DB_NAME, DB_VERSION);
-      const fail = () => {
-        connection = null;
-        resolve(null);
-      };
+      timer = setTimeout(() => finish(null), OPEN_TIMEOUT_MS);
       request.onupgradeneeded = () => {
         const db = request.result;
         for (const name of STORES) {
@@ -41,27 +59,35 @@ function openConnection(): Promise<IDBDatabase | null> {
       };
       request.onsuccess = () => {
         const db = request.result;
-        const drop = () => {
-          connection = null;
-        };
-        db.onversionchange = () => {
-          db.close();
-          drop();
-        };
-        db.onclose = drop;
-        resolve(db);
+        if (!settled) {
+          db.onversionchange = () => {
+            db.close();
+            drop();
+          };
+          db.onclose = drop;
+        }
+        finish(db);
       };
-      request.onerror = fail;
-      request.onblocked = fail;
+      request.onerror = () => finish(null);
+      request.onblocked = () => finish(null);
     } catch {
-      connection = null;
-      resolve(null);
+      finish(null);
     }
   });
 }
 
 function getDb(): Promise<IDBDatabase | null> {
-  connection ??= openConnection();
+  if (!connection) {
+    // `drop` bisa terpanggil sinkron (tanpa IndexedDB) sebelum `attempt` terisi: tandai dan lepas sesudahnya.
+    let dropped = false;
+    let attempt: Promise<IDBDatabase | null> | undefined;
+    attempt = openConnection(() => {
+      dropped = true;
+      if (connection === attempt) connection = null;
+    });
+    connection = dropped ? null : attempt;
+    return attempt;
+  }
   return connection;
 }
 

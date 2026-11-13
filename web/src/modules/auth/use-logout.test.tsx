@@ -260,3 +260,16 @@ test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan 
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   await waitFor(() => expect(isBusy()).toBe(false));
 });
+
+test('pembersihan toko perangkat yang menggantung: keluar tetap selesai dalam batas waktu (sesi, cache, navigasi)', async () => {
+  vi.mocked(deviceDb.clearDeviceDb).mockImplementationOnce(
+    () => new Promise<void>(() => undefined),
+  );
+  client.setQueryData(['items'], [{ id: 'i1' }]);
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  // Batas waktu pembersihan toko (BOARD_CLEAR_TIMEOUT_MS) lebih pendek dari batas tunggu ini.
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }), { timeout: 5000 });
+  expect(client.getQueryCache().getAll()).toHaveLength(0);
+  await waitFor(() => expect(isBusy()).toBe(false));
+});

@@ -21,6 +21,8 @@ import { handoverKeys } from '@/modules/handover/queries';
 export const BOARD_STORE_VERSION = 1;
 /** Batas baca IndexedDB sebelum router dibuat; hasil yang terlambat tidak diterapkan. */
 export const BOARD_RESTORE_TIMEOUT_MS = 1500;
+/** Batas menunggu pembersihan toko saat keluar; lewat dari ini keluar tetap dilanjutkan (tanpa galat). */
+export const BOARD_CLEAR_TIMEOUT_MS = 1500;
 /** Penundaan penggabungan tulis setelah sukses query. */
 export const BOARD_SAVE_DELAY_MS = 1500;
 
@@ -215,6 +217,22 @@ export async function clearBoardStore(): Promise<void> {
     await clearDeviceDb();
   } catch {
     // Tidak pernah menolak: keluar tak boleh terhambat.
+  }
+}
+
+/**
+ * `clearBoardStore` dengan batas waktu: IndexedDB yang macet tak boleh menggantung keluar (layar pengguna lama tetap
+ * tampil). Timeout bukan galat; tulis lama tetap tertahan oleh `generation` yang sudah naik.
+ */
+export async function clearBoardStoreWithin(timeoutMs = BOARD_CLEAR_TIMEOUT_MS): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([clearBoardStore(), timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

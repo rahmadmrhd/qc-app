@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearDeviceDb,
   type DeviceRecord,
   deleteRecords,
+  OPEN_TIMEOUT_MS,
   readAllRecords,
   resetDeviceDbForTests,
   writeRecords,
@@ -94,5 +95,44 @@ describe('device-db', () => {
     expect(await writeRecords('columns', [rec('k1', 1)], 10)).toBe(false);
     await expect(deleteRecords('columns', ['k1'])).resolves.toBeUndefined();
     await expect(clearDeviceDb()).resolves.toBeUndefined();
+  });
+});
+
+describe('device-db: open yang tidak pernah menjawab', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('selesai ke nilai aman setelah batas waktu, membuka ulang pada panggilan berikutnya, dan menutup hasil terlambat', async () => {
+    const real = new IDBFactory();
+    const requests: IDBOpenDBRequest[] = [];
+    const open = vi.fn((name: string, version?: number) => {
+      if (open.mock.calls.length === 1) {
+        const hanging = {} as IDBOpenDBRequest;
+        requests.push(hanging);
+        return hanging;
+      }
+      return real.open(name, version);
+    });
+    globalThis.indexedDB = { open } as unknown as IDBFactory;
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const pending = readAllRecords('columns');
+    await vi.advanceTimersByTimeAsync(OPEN_TIMEOUT_MS);
+    expect(await pending).toEqual([]);
+    vi.useRealTimers();
+
+    // Panggilan berikutnya mencoba membuka ulang (koneksi tersimpan direset).
+    expect(await writeRecords('columns', [rec('k1', 1)], 10)).toBe(true);
+    expect(open).toHaveBeenCalledTimes(2);
+
+    // Jawaban `open` pertama yang datang terlambat menutup koneksinya dan tidak menimpa koneksi baru.
+    const close = vi.fn();
+    const late = requests[0] as { result?: unknown; onsuccess?: () => void };
+    late.result = { close };
+    late.onsuccess?.();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect((await readAllRecords('columns')).map((r) => r.key)).toEqual(['k1']);
+    expect(open).toHaveBeenCalledTimes(2);
   });
 });
