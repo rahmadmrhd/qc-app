@@ -431,3 +431,94 @@ test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serial
   expect(names).toEqual(['Cisco C9200']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.itemOptions')).toBe(true);
 });
+
+function withBus(
+  levels: [string, 'none' | 'view' | 'edit', 'none' | 'view' | 'edit'][],
+): MeDto['businessUnits'] {
+  return levels.map(([id, serial, serialservice]) => ({
+    id,
+    code: id.toUpperCase(),
+    name: `Unit ${id}`,
+    status: 'active' as const,
+    permissions: { item: 'none' as const, serial, serialservice },
+  }));
+}
+
+test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus terbuka', async () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-13T03:00:00.000Z') });
+  try {
+    apiMock.mockImplementation((id: string) =>
+      id === 'serials.list'
+        ? Promise.resolve({
+            items: [
+              row({
+                id: 's7',
+                serial: 'KIRIM1',
+                status: 'at_service',
+                custody: 'transit',
+                transitOn: '2026-11-10',
+                transitToLocationId: 'l2',
+                transitToLocationName: 'Surabaya',
+                openCaseNumber: 'LP-20261110-001',
+              }),
+              row({
+                id: 's8',
+                serial: 'DIAM1',
+                status: 'failed',
+                openCaseNumber: 'LP-20261112-004',
+              }),
+            ],
+            nextCursor: null,
+          })
+        : Promise.resolve({ locations: [], items: [], nextCursor: null }),
+    );
+    renderPage();
+    expect(await screen.findByText('KIRIM1')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row');
+    const sending = within(rows[1] as HTMLElement);
+    expect(sending.getByText('Dalam pengiriman · 3 hari')).toBeInTheDocument();
+    expect(sending.getByText('ke Surabaya')).toBeInTheDocument();
+    expect(sending.getByText('LP-20261110-001')).toBeInTheDocument();
+    const still = within(rows[2] as HTMLElement);
+    expect(still.getByText('Di QC')).toBeInTheDocument();
+    expect(still.getByText('LP-20261112-004')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('filter posisi masuk masukan serials.list lewat Select', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ custody: 'transit' }));
+  await pickSelect(screen, 'Filter posisi', 'Semua posisi');
+  await waitFor(() => expect(lastListInput()).not.toHaveProperty('custody'));
+});
+
+test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan mengirim buId', async () => {
+  me = {
+    ...me,
+    businessUnits: withBus([
+      ['b1', 'view', 'none'],
+      ['b2', 'none', 'view'],
+      ['b3', 'none', 'none'],
+    ]),
+  };
+  renderPage();
+  await screen.findByText('ABC123');
+  const names = await linkOptionNames(screen, 'Filter BU');
+  expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
+  await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ buId: 'b2' }));
+});
+
+test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  expect(lastListInput()).not.toHaveProperty('createdBy');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
+});
