@@ -47,8 +47,14 @@ function HandoverDetailPage() {
   // Hanya lokasi yang boleh dibaca user: satu lokasi terlarang menolak seluruh permintaan.
   const readable = readableLocationIds(me, scopedLocationIds(search.loc, selectedIds));
   const queryClient = useQueryClient();
-  // Task yang hanya terlihat di papan tetap terbuka offline dari data kartu (dimuat ulang saat dibuka).
-  const seed = useMemo(() => findBoardSeed(queryClient, handoverId), [queryClient, handoverId]);
+  // Task yang hanya terlihat di papan tetap terbuka offline dari data kartu (dimuat ulang saat dibuka), tetapi hanya
+  // dari kolom lokasi yang boleh dibaca.
+  const readableKey = readable.join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `readableKey` mewakili isi `readable` (larik baru tiap render)
+  const seed = useMemo(
+    () => findBoardSeed(queryClient, handoverId, readable),
+    [queryClient, handoverId, readableKey],
+  );
   const query = useQuery(handoverQueryOptions(handoverId, readable, seed));
   const setDone = useSetDone();
   const addComment = useAddComment();
@@ -57,10 +63,15 @@ function HandoverDetailPage() {
   const reopen = useReopenHandover();
   const pending = setDone.isPending || cancel.isPending || reopen.isPending;
 
-  const task = query.data;
+  // Penolakan server (task tak ada/bukan di lokasi ini/akses dicabut) otoritatif: data awal dari papan atau data
+  // lama tidak boleh menutupinya. `UNAVAILABLE` tetap mempertahankan data (spanduk "data terakhir").
+  const denied =
+    query.error instanceof ApiError &&
+    (query.error.code === 'NOT_FOUND' || query.error.code === 'FORBIDDEN');
+  const task = denied ? undefined : query.data;
   if (query.isPending && readable.length > 0) return <Skeleton className="h-64 w-full" />;
   if (!task) {
-    const notFound = !(query.error instanceof ApiError) || query.error.code === 'NOT_FOUND';
+    const notFound = !(query.error instanceof ApiError) || denied;
     return (
       <p role="alert" className="text-sm text-destructive">
         {notFound ? 'Task tidak ditemukan di lokasi aktif.' : 'Gagal memuat task. Coba muat ulang.'}{' '}

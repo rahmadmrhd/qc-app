@@ -85,7 +85,7 @@ test('detail dibuka dari data papan: tampil seketika, offline tetap berdata dan 
   client.setQueryData(handoverKeys.column(['l1'], 'new'), boardColumnData([onBoard]), {
     updatedAt: 1234,
   });
-  const seed = findBoardSeed(client, 'h1');
+  const seed = findBoardSeed(client, 'h1', ['l1']);
   const observer = new QueryObserver(client, handoverQueryOptions('h1', ['l1'], seed));
   expect(observer.getCurrentResult().data).toEqual(onBoard);
   const unsubscribe = observer.subscribe(() => undefined);
@@ -109,7 +109,7 @@ test('detail dari data papan tetap dimuat ulang saat dibuka dan diganti hasil se
     { updatedAt: Date.now() },
   );
   const observer = new QueryObserver(client, {
-    ...handoverQueryOptions('h1', ['l1'], findBoardSeed(client, 'h1')),
+    ...handoverQueryOptions('h1', ['l1'], findBoardSeed(client, 'h1', ['l1'])),
     staleTime: 60_000,
   });
   const unsubscribe = observer.subscribe(() => undefined);

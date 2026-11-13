@@ -75,15 +75,28 @@ export interface BoardSeed {
 /**
  * Task `id` dari kolom papan yang berdata beserta waktu data kolomnya (yang terbaru bila ada di beberapa kolom).
  * Dipakai sebagai data awal detail task yang belum pernah dibuka, supaya tetap terbuka saat server tidak terjangkau.
+ * Hanya dari kolom yang kunci lokasinya SELURUHNYA ada di `readable` dan hanya bila lokasi task ada di `readable`
+ * (cache papan bisa memuat lokasi lain atau lokasi yang aksesnya sudah dicabut); `readable` kosong = tanpa seed.
  */
-export function findBoardSeed(queryClient: QueryClient, id: string): BoardSeed | undefined {
+export function findBoardSeed(
+  queryClient: QueryClient,
+  id: string,
+  readable: readonly string[],
+): BoardSeed | undefined {
+  if (readable.length === 0) return undefined;
   let best: BoardSeed | undefined;
   for (const query of queryClient.getQueryCache().findAll({ queryKey: BOARD_KEY })) {
     const data = query.state.data as BoardColumnData | undefined;
-    if (!data) continue;
+    const columnIds = query.queryKey[2];
+    if (!data || !Array.isArray(columnIds) || !columnIds.every((l) => readable.includes(l)))
+      continue;
     for (const page of data.pages) {
       const found = page.items.find((item) => item.id === id);
-      if (found && (!best || query.state.dataUpdatedAt > best.updatedAt)) {
+      if (
+        found &&
+        readable.includes(found.locationId) &&
+        (!best || query.state.dataUpdatedAt > best.updatedAt)
+      ) {
         best = { dto: found, updatedAt: query.state.dataUpdatedAt };
       }
     }

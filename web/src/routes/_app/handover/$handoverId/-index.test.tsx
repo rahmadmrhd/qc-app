@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { type ComponentType, Suspense } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
 import { makeHandover } from '@/modules/handover/components/test-handover';
+import { boardColumnData, boardColumnKey } from '@/modules/handover/lib/board-cache';
 
 const state = vi.hoisted(() => ({
   me: null as unknown as MeDto,
@@ -60,12 +62,13 @@ function me(): MeDto {
   } as MeDto;
 }
 
-async function mount(search: { loc?: string }) {
+async function mount(search: { loc?: string }, prepare?: (client: QueryClient) => void) {
   vi.spyOn(Route, 'useParams').mockReturnValue({ handoverId: 'h1' } as never);
   vi.spyOn(Route, 'useSearch').mockReturnValue(search as never);
   const Component = Route.options.component as ComponentType & { preload?: () => Promise<void> };
   await Component.preload?.();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  prepare?.(client);
   render(
     <QueryClientProvider client={client}>
       <Suspense fallback={<p>memuat</p>}>
@@ -111,4 +114,52 @@ test('loc tanpa hak baca task (atau tak dikenal): tidak meminta ke server, tampi
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent('Task tidak ditemukan'),
   );
   expect(getCalls()).toHaveLength(0);
+});
+
+// Data kartu di papan (cache) hanya data awal: jawaban server tetap otoritatif (Fase 3 Tahap B, review A-I1).
+const seedBoard =
+  (columnIds: string[], locationId: string, number = 'ST-SEED') =>
+  (client: QueryClient) =>
+    client.setQueryData(
+      boardColumnKey(columnIds, 'new'),
+      boardColumnData([makeHandover({ id: 'h1', number, locationId })]),
+      { updatedAt: 1234 },
+    );
+
+for (const code of ['NOT_FOUND', 'FORBIDDEN'] as const) {
+  test(`seed papan + ${code} dari server: tampil "tidak ditemukan", data papan tidak dipakai`, async () => {
+    state.api.mockRejectedValue(new ApiError(code, 'ditolak', 'r1'));
+    await mount({}, seedBoard(['loc-a'], 'loc-a'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Task tidak ditemukan');
+    expect(screen.queryByText('ST-SEED')).toBeNull();
+  });
+}
+
+test('seed papan + UNAVAILABLE: data papan tetap tampil', async () => {
+  state.api.mockRejectedValue(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'));
+  await mount({}, seedBoard(['loc-a'], 'loc-a'));
+  await screen.findByText('ST-SEED');
+  await waitFor(() => expect(getCalls()).toHaveLength(1));
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText('ST-SEED')).toBeInTheDocument();
+});
+
+test('seed papan + sukses: data server menggantikan data papan', async () => {
+  await mount({}, seedBoard(['loc-a'], 'loc-a'));
+  await screen.findByText('ST-B');
+  expect(screen.queryByText('ST-SEED')).toBeNull();
+});
+
+test('readable kosong: papan lokasi itu tidak menjadi seed dan tidak tampil', async () => {
+  await mount({ loc: 'loc-s' }, seedBoard(['loc-s'], 'loc-s'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Task tidak ditemukan');
+  expect(screen.queryByText('ST-SEED')).toBeNull();
+  expect(getCalls()).toHaveLength(0);
+});
+
+test('task dari kolom lokasi lain (di luar lokasi yang dibuka): tidak di-seed', async () => {
+  state.api.mockRejectedValue(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'));
+  await mount({ loc: 'loc-b' }, seedBoard(['loc-a'], 'loc-a'));
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(screen.queryByText('ST-SEED')).toBeNull();
 });
