@@ -273,3 +273,5 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 203 | Ganti akun Google di perangkat yang sama | Data papan akun lama tidak terlihat | PWA FR-P21 |
 | 204 | Keluar, lalu buka DevTools → Application → IndexedDB `qc-device` | Basis data kosong (tanpa rekaman) | PWA FR-P21 |
 | 205 | Sesi kedaluwarsa (401), lalu login ulang pemilik yang sama | Papan lama masih tersedia sebagai data awal sebelum data server datang | PWA FR-P21 |
+| 206 | Buka detail task dari lokasi A, ganti lokasi aktif ke B, lalu buka tautan detail task milik lokasi A | Tampil "Task tidak ditemukan di lokasi aktif."; data task tidak tampil | PWA FR-P21 |
+| 207 | Pada peramban yang IndexedDB-nya macet atau diblokir (mis. mode privat tertentu), tekan Keluar | Aplikasi keluar ke halaman login dalam beberapa detik; tidak menggantung | PWA FR-P21 |

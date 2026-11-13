@@ -217,13 +217,15 @@ Keputusan pemilik produk atas pertanyaan terbuka (2026-11-13):
 Yang masih menunggu: persetujuan dokumen ini secara keseluruhan.
 
 Keputusan saya untuk Tahap B (2026-11-14; mohon dikoreksi; **menunggu pengesahan pemilik produk**):
-- (a) Kolom dibatasi 40 rekaman terbaru (`BOARD_STORE_LIMITS.columns`): pilihan lokasi yang berganti bisa melahirkan kombinasi kunci tanpa batas.
-- (b) Rekaman membawa `v` (`BOARD_STORE_VERSION`) dan `owner`; rekaman usang dibuang agar bentuk DTO yang berubah antar rilis tidak merusak tampilan.
+- (a) Kolom dibatasi 40 rekaman terbaru (`BOARD_STORE_LIMITS.columns`): pilihan lokasi yang berganti bisa melahirkan kombinasi kunci tanpa batas. Ukuran terburuk tidak dibatasi byte (40 kolom x 50 task, DTO membawa komentar); praktisnya jauh lebih kecil karena task berulang antar kolom. Bila kuota penyimpanan terlampaui, penulisan gagal diam-diam sampai keluar.
+- (b) Rekaman membawa `v` (`BOARD_STORE_VERSION`) dan `owner`; rekaman usang dibuang agar bentuk DTO yang berubah antar rilis tidak merusak tampilan. Pembuangan rekaman pemilik lain tetap dijalankan walau pemulihan melewati batas 1,5 dtk, dan data pulihan divalidasi bentuknya sebelum dipasang; rekaman rusak dibuang.
 - (c) Pemotongan kolom hanya pada halaman utuh (`board-snapshot.ts`), sehingga `nextCursor` tetap sah; akibatnya sebuah kolom yang tersimpan bisa memuat kurang dari 50 task.
 - (d) Hanya sukses query non-`manual` yang ditulis. Hasil mutasi yang dipasang manual baru tersimpan pada muat ulang berikutnya; tidak berdampak karena data pulihan selalu dimuat ulang saat basi.
 - (e) Label "data terakhir hh:mm" tampil lewat spanduk Fase 2 saat server gagal dihubungi. Selama muat ulang normal sesudah boot tidak ada label. Tafsiran "selalu berlabel" di §6 dikoreksi ke tafsiran ini.
-- (f) Detail task dibuka dari data papan bila belum pernah dibuka (`findBoardSeed`, Task 5).
-- (g) Flush pada `pagehide` bersifat usaha terbaik, karena penulisan IndexedDB bersifat asinkron.
+- (f) Detail task dibuka dari data papan bila belum pernah dibuka (`findBoardSeed`, Task 5), dan hanya bila lokasi task itu termasuk lokasi yang boleh dibaca pengguna di rute itu. Jawaban server `NOT_FOUND`/`FORBIDDEN` selalu otoritatif; data seed tidak ditampilkan menggantikannya. `refetchOnMount: 'always'` menambah satu permintaan setiap detail dibuka (detail yang baru dimuat kurang dari 60 dtk tetap dimuat ulang).
+- (g) Flush pada `pagehide` bersifat usaha terbaik, karena penulisan IndexedDB bersifat asinkron. Pembersihan toko saat keluar dibatasi waktu 1,5 dtk sehingga Keluar tidak pernah menggantung.
+- (h) Label "data terakhir" dapat terlalu baru bagi sebagian isi kolom pulihan setelah "muat lagi" berhasil, karena semantik TanStack: `dataUpdatedAt` hanya satu per query. Diterima.
+- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C.
 
 ## 10. Dampak ke dokumen lain (dikerjakan saat tiap tahap)
 
