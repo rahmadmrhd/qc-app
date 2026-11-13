@@ -47,7 +47,10 @@ test('menampilkan minimum bawaan tiap jenis (jenis sistem diberi label) dan peng
   expect(screen.getByLabelText('Minimum bawaan QC Hijau')).toHaveValue(0);
   expect(screen.getByLabelText('Minimum bawaan Manual Book')).toHaveValue(50);
   expect(screen.getByText('Sistem')).toBeInTheDocument();
-  expect(screen.getByLabelText('Kirim ringkasan harian stok menipis')).toBeChecked();
+  expect(screen.getByLabelText('Kirim ringkasan harian stok menipis dan habis')).toBeChecked();
+  expect(
+    screen.getByText(/Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang/),
+  ).toBeInTheDocument();
   expect(screen.getByLabelText('Jam kirim (WIB)')).toHaveValue(8);
   expect(screen.getByText('qc@contoh.com')).toBeInTheDocument();
 });

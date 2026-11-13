@@ -159,7 +159,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
       <p className="text-sm text-muted-foreground">
         Email ringkasan harian berisi nomor Postel Aktif yang mendekati atau melewati tanggal habis
         (hanya nama Postel, tanpa nama atau jumlah item). Penerimanya terpisah dari penerima
-        ringkasan stok menipis.
+        ringkasan stok menipis dan habis.
       </p>
       {settings.smtpConfigured ? null : (
         <p
