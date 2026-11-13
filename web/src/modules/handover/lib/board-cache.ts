@@ -66,6 +66,31 @@ export function findHandoverInBoards(
   return undefined;
 }
 
+export interface BoardSeed {
+  dto: HandoverDto;
+  /** Waktu data kolom papan yang memuat task (bukan waktu sekarang), supaya label "data terakhir" jujur. */
+  updatedAt: number;
+}
+
+/**
+ * Task `id` dari kolom papan yang berdata beserta waktu data kolomnya (yang terbaru bila ada di beberapa kolom).
+ * Dipakai sebagai data awal detail task yang belum pernah dibuka, supaya tetap terbuka saat server tidak terjangkau.
+ */
+export function findBoardSeed(queryClient: QueryClient, id: string): BoardSeed | undefined {
+  let best: BoardSeed | undefined;
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: BOARD_KEY })) {
+    const data = query.state.data as BoardColumnData | undefined;
+    if (!data) continue;
+    for (const page of data.pages) {
+      const found = page.items.find((item) => item.id === id);
+      if (found && (!best || query.state.dataUpdatedAt > best.updatedAt)) {
+        best = { dto: found, updatedAt: query.state.dataUpdatedAt };
+      }
+    }
+  }
+  return best;
+}
+
 /** Task `id` dari cache: papan lebih dulu, lalu cache detail (`['handovers', 'one', id]`). */
 export function findCachedHandover(queryClient: QueryClient, id: string): HandoverDto | undefined {
   const onBoard = findHandoverInBoards(queryClient, id);

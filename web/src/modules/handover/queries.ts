@@ -20,7 +20,7 @@ import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { customerKeys } from '@/modules/customer/queries';
-import { boardColumnKey, upsertHandoverInBoards } from './lib/board-cache';
+import { type BoardSeed, boardColumnKey, upsertHandoverInBoards } from './lib/board-cache';
 import { BOARD_STATUSES } from './lib/group-board';
 
 const sorted = (ids: readonly string[]) => [...ids].sort();
@@ -92,11 +92,23 @@ export function useHandoverBoard(locationIds: readonly string[]) {
   };
 }
 
-export function handoverQueryOptions(id: string, locationIds: readonly string[]) {
+/**
+ * Detail satu task. `seed` (task yang sama dari kolom papan, `findBoardSeed`) menjadi data awal dengan waktu aslinya
+ * dan selalu dimuat ulang saat dibuka, jadi perilaku daring tidak berubah tetapi task yang hanya terlihat di papan tetap
+ * terbuka saat server tidak terjangkau.
+ */
+export function handoverQueryOptions(id: string, locationIds: readonly string[], seed?: BoardSeed) {
   return queryOptions({
     queryKey: handoverKeys.one(id, locationIds),
     queryFn: () => api('handovers.get', { id, locationIds: [...locationIds] }),
     enabled: locationIds.length > 0,
+    ...(seed
+      ? {
+          initialData: seed.dto,
+          initialDataUpdatedAt: seed.updatedAt,
+          refetchOnMount: 'always' as const,
+        }
+      : {}),
   });
 }
 

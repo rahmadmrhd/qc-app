@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/api-error';
@@ -7,6 +8,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverDetailView } from '@/modules/handover/components/handover-detail-view';
+import { findBoardSeed } from '@/modules/handover/lib/board-cache';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
   handoverSearchSchema,
@@ -44,8 +46,10 @@ function HandoverDetailPage() {
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi yang boleh dibaca user: satu lokasi terlarang menolak seluruh permintaan.
   const readable = readableLocationIds(me, scopedLocationIds(search.loc, selectedIds));
-  const query = useQuery(handoverQueryOptions(handoverId, readable));
   const queryClient = useQueryClient();
+  // Task yang hanya terlihat di papan tetap terbuka offline dari data kartu (dimuat ulang saat dibuka).
+  const seed = useMemo(() => findBoardSeed(queryClient, handoverId), [queryClient, handoverId]);
+  const query = useQuery(handoverQueryOptions(handoverId, readable, seed));
   const setDone = useSetDone();
   const addComment = useAddComment();
   const checks = useCheckQueue(me.email);
