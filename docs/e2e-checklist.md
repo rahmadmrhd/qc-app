@@ -194,7 +194,16 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
 | N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
 | N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
-| N18 | Push: izin peramban, langganan, dan terima push di perangkat | Belum dapat diuji. Uji setelah service worker, permintaan izin, dan banner tersedia (Fase 1 PRD PWA), dengan VAPID terisi di staging | §5.2 |
+| N18a | **Belum teruji di perangkat nyata; butuh `VAPID_*` terisi di staging.** Android (Chrome, aplikasi terpasang): login pertama | Dialog "Aktifkan notifikasi?" tampil; klik Aktifkan memunculkan dialog izin peramban SEKALI; setelah Izinkan, notifikasi muncul saat WH membuat task di lokasi QC itu (aplikasi tertutup juga) | §5.2 |
+| N18b | Klik notifikasi push | Aplikasi terbuka/terfokus di task terkait dengan `?loc=` benar; tidak ada tab kosong | §5.2 |
+| N18c | Login pertama di aplikasi terpasang, jawab "Nanti" | Tidak ditanya lagi pada muat ulang; menu profil "Notifikasi push" menawarkan "Aktifkan di perangkat ini" | §5.2 |
+| N18d | Tolak izin peramban | Tidak ada permintaan ulang; banner pengingat dengan langkah sesuai platform tampil, tidak lagi dalam 7 hari setelah ditutup; Status Push admin menunjukkan "Izin ditolak"; lonceng tetap menerima semuanya | §5.2 |
+| N18e | Nyalakan kembali izin lewat pengaturan peramban/OS lalu fokuskan aplikasi | Banner hilang, perangkat tertaut otomatis, push diterima | §5.2 |
+| N18f | Matikan kotak "Terima notifikasi push" di menu profil, lalu picu notifikasi | Tidak ada push; lonceng tetap terisi; Status Push admin menunjukkan "Dimatikan pengguna"; menyalakan kembali memulihkan push | §5.2 |
+| N18g | Logout lalu picu notifikasi untuk akun itu | Perangkat tetap menerima push (keputusan pemilik 2026-11-12); login akun lain di perangkat yang sama = kedua akun menerima notifikasinya masing-masing | §5.2 |
+| N18h | iPhone/iPad (iOS 16.4+): buka di Safari biasa, lalu pasang ke layar utama dan login | Di Safari biasa pengaturan push menjelaskan harus dipasang dan tidak meminta izin; setelah dipasang alurnya sama seperti N18a | §5.2 |
+| N18i | Desktop Chrome dan Firefox (aplikasi terpasang dan tab biasa) | Tab biasa: izin hanya lewat menu profil; terpasang: dialog pra-izin; push diterima | §5.2 |
+| N18j | Buka `/access/push` sebagai admin (`access: view`) dan sebagai pengguna tanpa izin itu | Admin melihat tabel status (bermasalah dulu) tanpa pengenal perangkat; pengguna tanpa izin tidak melihat menunya dan tidak dapat membuka halamannya | §10 |
 
 ## PWA Fase 1
 
