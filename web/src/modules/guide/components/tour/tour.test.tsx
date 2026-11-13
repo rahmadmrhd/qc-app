@@ -1,0 +1,348 @@
+import type { MeDto } from '@shared/contract';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+const state = vi.hoisted(() => ({
+  pathname: '/',
+  navigate: vi.fn(),
+  mark: vi.fn(),
+  api: vi.fn(),
+  mobile: false,
+}));
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => state.navigate,
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: state.pathname } }),
+}));
+vi.mock('@/modules/auth/use-me', () => ({
+  useMe: () =>
+    ({
+      email: 'a@qc.local',
+      name: 'A',
+      isSuperAdmin: false,
+      permissions: { item: 'view' },
+      locations: [],
+      businessUnits: [],
+      sharedAccount: false,
+    }) as unknown as MeDto,
+}));
+vi.mock('@/modules/location/active-locations-context', () => ({
+  useActiveLocations: () => ({ available: [], selectedIds: [], toggle: () => undefined }),
+}));
+vi.mock('../../lib/use-guide-store', () => ({
+  useGuideStore: () => ({ ready: true, done: new Map(), mark: state.mark, reset: vi.fn() }),
+}));
+vi.mock('@/lib/api', async () => ({
+  ...(await vi.importActual<object>('@/lib/api')),
+  api: (...args: unknown[]) => state.api(...args),
+}));
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => state.mobile }));
+
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
+import type { GuideEntry, GuideStep } from '../../lib/types';
+import { TourProvider, useTour } from './tour-provider';
+
+function step(overrides: Partial<GuideStep> = {}): GuideStep {
+  return { target: 'a', text: 'Teks langkah', advance: 'next', ...overrides };
+}
+
+function entryOf(steps: GuideStep[], overrides: Partial<GuideEntry> = {}): GuideEntry {
+  return {
+    id: 'dasar-layout',
+    kind: 'dasar',
+    status: 'disimpan',
+    version: 1,
+    title: 'Panduan uji',
+    steps,
+    ...overrides,
+  };
+}
+
+function Starter({ entry }: { entry: GuideEntry }) {
+  const tour = useTour();
+  return (
+    <button type="button" onClick={() => tour.start(entry)}>
+      Mulai tur{tour.active ? ' (aktif)' : ''}
+    </button>
+  );
+}
+
+/** Halaman uji: tiga target, satu input yang tak boleh disentuh tur, dan tombol Mulai. */
+function Page({ entry, extra }: { entry: GuideEntry; extra?: ReactNode }) {
+  return (
+    <TourProvider targetWaitMs={80} renderTip={(id) => <div data-testid="demo">demo {id}</div>}>
+      <Starter entry={entry} />
+      <button type="button" data-tour="a">
+        Target A
+      </button>
+      <button type="button" data-tour="b">
+        Target B
+      </button>
+      <input aria-label="Isian" data-tour="field" defaultValue="" />
+      {extra}
+    </TourProvider>
+  );
+}
+
+async function startTour() {
+  await userEvent.click(screen.getByRole('button', { name: /Mulai tur/ }));
+  return screen.findByRole('dialog', { name: 'Panduan' });
+}
+
+// Pemuatan malas pertama (kompilasi modul) bisa lebih lama dari batas findBy bawaan; panaskan dulu.
+beforeAll(async () => {
+  await import('./tour-overlay');
+}, 30_000);
+
+beforeEach(() => {
+  state.pathname = '/';
+  state.mobile = false;
+  state.navigate.mockReset();
+  state.navigate.mockResolvedValue(undefined);
+  state.mark.mockReset();
+  state.mark.mockResolvedValue(undefined);
+  state.api.mockReset();
+});
+afterEach(() => {
+  for (const node of document.querySelectorAll('[data-late]')) node.remove();
+});
+
+describe('menyorot dan maju', () => {
+  test('(a) start menyorot target dan kartu menampilkan teks langkah', async () => {
+    render(<Page entry={entryOf([step({ text: 'Ini tombol A' })])} />);
+    const dialog = await startTour();
+    expect(dialog).toBeInTheDocument();
+    expect(await screen.findByText('Ini tombol A')).toBeInTheDocument();
+    expect(screen.getByTestId('tour-highlight')).toBeInTheDocument();
+  });
+
+  test('(b) langkah next maju dengan tombol Lanjut dan berakhir dengan Selesai', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ text: 'Langkah satu' }),
+          step({ target: 'b', text: 'Langkah dua' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Langkah satu')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Langkah dua')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+  });
+
+  test('ArrowRight memajukan langkah next', async () => {
+    render(<Page entry={entryOf([step({ text: 'Satu' }), step({ target: 'b', text: 'Dua' })])} />);
+    await startTour();
+    await screen.findByText('Satu');
+    await userEvent.keyboard('{ArrowRight}');
+    expect(await screen.findByText('Dua')).toBeInTheDocument();
+  });
+
+  test('(c) langkah click maju otomatis saat target diklik', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ text: 'Klik A', advance: 'click' }),
+          step({ target: 'b', text: 'Sesudah klik' }),
+        ])}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Klik A');
+    expect(screen.queryByRole('button', { name: 'Lanjut' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Target A' }));
+    expect(await screen.findByText('Sesudah klik')).toBeInTheDocument();
+  });
+});
+
+describe('navigasi dan target', () => {
+  test('(d) langkah dengan route berbeda menavigasi lalu menunggu target muncul', async () => {
+    state.navigate.mockImplementation(async () => {
+      setTimeout(() => {
+        const late = document.createElement('button');
+        late.dataset.tour = 'late';
+        late.dataset.late = '1';
+        document.body.append(late);
+      }, 20);
+    });
+    render(
+      <Page entry={entryOf([step({ target: 'late', route: '/item', text: 'Di halaman baru' })])} />,
+    );
+    await startTour();
+    expect(await screen.findByText('Di halaman baru')).toBeInTheDocument();
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/item' });
+  });
+
+  test('tidak menavigasi bila sudah berada di route langkah', async () => {
+    state.pathname = '/item';
+    render(<Page entry={entryOf([step({ route: '/item', text: 'Sudah di sini' })])} />);
+    await startTour();
+    await screen.findByText('Sudah di sini');
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+
+  test('(e) target tidak muncul dalam batas waktu: langkah dilewati dan tur tidak macet', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ target: 'hantu', text: 'Langkah hantu' }),
+          step({ target: 'b', text: 'Langkah nyata' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Langkah nyata')).toBeInTheDocument();
+    expect(screen.queryByText('Langkah hantu')).toBeNull();
+  });
+
+  test('semua target hilang: tur berhenti sendiri tanpa menulis penanda', async () => {
+    render(<Page entry={entryOf([step({ target: 'hantu' }), step({ target: 'hantu2' })])} />);
+    await userEvent.click(screen.getByRole('button', { name: /Mulai tur/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull(), {
+      timeout: 2000,
+    });
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('(f) langkah dengan izin tidak terpenuhi dilewati seluruhnya', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ text: 'Untuk semua' }),
+          step({ target: 'b', text: 'Hanya admin', izin: { module: 'access', level: 'manage' } }),
+        ])}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Untuk semua');
+    // Langkah admin gugur: yang pertama sekaligus terakhir.
+    expect(screen.getByRole('button', { name: 'Selesai' })).toBeInTheDocument();
+    expect(screen.queryByText('Hanya admin')).toBeNull();
+  });
+});
+
+describe('demo tip', () => {
+  test('(g) langkah dengan tip menampilkan adegan demo di kartu', async () => {
+    render(<Page entry={entryOf([step({ text: 'Lihat demo', tip: 'tip-handover-tempel-wa' })])} />);
+    await startTour();
+    expect(await screen.findByTestId('demo')).toHaveTextContent('demo tip-handover-tempel-wa');
+  });
+
+  test('langkah tanpa tip tidak menampilkan demo', async () => {
+    render(<Page entry={entryOf([step()])} />);
+    await startTour();
+    await screen.findByText('Teks langkah');
+    expect(screen.queryByTestId('demo')).toBeNull();
+  });
+});
+
+describe('menutup dan menyelesaikan', () => {
+  test('(h) Esc menutup tur tanpa menulis penanda', async () => {
+    render(<Page entry={entryOf([step(), step({ target: 'b' })])} />);
+    await startTour();
+    await screen.findByText('Teks langkah');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('(h) tombol Tutup menutup tur tanpa menulis penanda', async () => {
+    render(<Page entry={entryOf([step(), step({ target: 'b' })])} />);
+    await startTour();
+    await screen.findByText('Teks langkah');
+    await userEvent.click(screen.getByRole('button', { name: 'Tutup panduan' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('(h) langkah terakhir memanggil mark(id, version, covers) tepat sekali', async () => {
+    const entry = entryOf([step(), step({ target: 'b', text: 'Terakhir' })], {
+      version: 3,
+      covers: ['tip-handover-tempel-wa'],
+    });
+    render(<Page entry={entry} />);
+    await startTour();
+    await userEvent.click(await screen.findByRole('button', { name: 'Lanjut' }));
+    await screen.findByText('Terakhir');
+    await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).toHaveBeenCalledTimes(1);
+    expect(state.mark).toHaveBeenCalledWith('dasar-layout', 3, ['tip-handover-tempel-wa']);
+  });
+
+  test('gagal menulis penanda tidak membuat tur macet', async () => {
+    state.mark.mockRejectedValue(new Error('offline'));
+    render(<Page entry={entryOf([step()])} />);
+    await startTour();
+    await userEvent.click(await screen.findByRole('button', { name: 'Selesai' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+  });
+});
+
+describe('hanya menyorot', () => {
+  test('(i) tur tidak mengubah field dan tidak memanggil api', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ target: 'field', text: 'Isian ini', advance: 'next' }),
+          step({ target: 'a', text: 'Tombol' }),
+        ])}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Isian ini');
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    await screen.findByText('Tombol');
+    await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+    expect(screen.getByLabelText('Isian')).toHaveValue('');
+    expect(state.api).not.toHaveBeenCalled();
+  });
+
+  test('langkah next menahan klik langsung ke target di bawah sorotan', async () => {
+    render(<Page entry={entryOf([step({ text: 'Jangan tekan' })])} />);
+    await startTour();
+    await screen.findByText('Jangan tekan');
+    expect(screen.getByTestId('tour-blocker')).toBeInTheDocument();
+  });
+
+  test('langkah click tidak memasang penahan klik', async () => {
+    render(<Page entry={entryOf([step({ advance: 'click' })])} />);
+    await startTour();
+    await screen.findByText('Teks langkah');
+    expect(screen.queryByTestId('tour-blocker')).toBeNull();
+  });
+});
+
+describe('sidebar di layar sempit', () => {
+  function SidebarProbe() {
+    const { openMobile } = useSidebar();
+    return openMobile ? (
+      <nav data-sidebar="sidebar">
+        <button type="button" data-tour="menu-item">
+          Item menu
+        </button>
+      </nav>
+    ) : null;
+  }
+
+  test('membuka sidebar lebih dulu bila target menu belum ada di ponsel', async () => {
+    state.mobile = true;
+    render(
+      <SidebarProvider>
+        <Page
+          entry={entryOf([step({ target: 'menu-item', text: 'Pilih menu ini' })])}
+          extra={<SidebarProbe />}
+        />
+      </SidebarProvider>,
+    );
+    await startTour();
+    expect(await screen.findByText('Pilih menu ini')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Item menu' })).toBeInTheDocument();
+  });
+});
