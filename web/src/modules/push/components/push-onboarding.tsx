@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { BellOff } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isStandalone } from '@/app/pwa/install';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +32,38 @@ import { pushConfigQueryOptions, reportPushPermission } from '../queries';
 
 /** Batas percobaan penautan yang gagal per pemasangan komponen (mis. host layanan push ditolak server). */
 const MAX_SYNC_FAILURES = 3;
+
+// Status "dialog/banner onboarding sedang (atau akan segera) tampil", dibaca komponen lain (mis. sapaan panduan)
+// agar tidak menumpuk dua dialog sekaligus. Diisi `PushOnboarding` lewat layout effect supaya pembaca tak sempat
+// merender satu bingkai pun dengan nilai usang.
+let blockingActive = false;
+const blockingListeners = new Set<() => void>();
+
+function setBlockingActive(value: boolean): void {
+  if (blockingActive === value) return;
+  blockingActive = value;
+  for (const listener of blockingListeners) listener();
+}
+
+function subscribeBlocking(listener: () => void): () => void {
+  blockingListeners.add(listener);
+  return () => {
+    blockingListeners.delete(listener);
+  };
+}
+
+/**
+ * True selama `PushOnboarding` menampilkan dialog pra-izin atau banner izin ditolak, atau akan menampilkannya
+ * (konfigurasi push belum termuat, atau syaratnya terpenuhi dan efeknya belum jalan). Tanpa `PushOnboarding`
+ * terpasang nilainya false.
+ */
+export function useBlockingOnboardingActive(): boolean {
+  return useSyncExternalStore(
+    subscribeBlocking,
+    () => blockingActive,
+    () => false,
+  );
+}
 
 /** Spanduk pengingat saat izin notifikasi ditolak: lonceng tetap jalan, langkah menyalakan kembali menurut perangkat. */
 export function DeniedBanner({
@@ -75,7 +107,7 @@ export function DeniedBanner({
  */
 export function PushOnboarding() {
   const { email } = useMe();
-  const { data: config } = useQuery(pushConfigQueryOptions());
+  const { data: config, isPending: configPending } = useQuery(pushConfigQueryOptions());
   const [permission, setPermission] = useState<DevicePermission>(() => devicePermission());
   const [askOpen, setAskOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
@@ -102,6 +134,23 @@ export function PushOnboarding() {
 
   const active = config?.enabled === true && permission !== 'unsupported';
   const userEnabled = config?.userEnabled === true;
+
+  // Sinyal untuk komponen lain (lihat `useBlockingOnboardingActive`): dialog/banner terbuka, atau syaratnya sudah
+  // terpenuhi pada render ini dan efek yang membukanya belum jalan.
+  const askPending =
+    active && permission === 'default' && userEnabled && isStandalone(window) && !wasAsked(email);
+  const bannerPending =
+    active && permission === 'denied' && userEnabled && bannerDue(email, Date.now());
+  const blocking =
+    configPending ||
+    askOpen ||
+    askPending ||
+    bannerPending ||
+    (bannerOpen && permission === 'denied');
+  useLayoutEffect(() => {
+    setBlockingActive(blocking);
+  }, [blocking]);
+  useLayoutEffect(() => () => setBlockingActive(false), []);
 
   // Laporkan izin peramban ke server sekali per nilai per sesi. Hanya dari PWA terpasang (konteks yang memang diminta
   // izin) dan tanpa `default`: tab peramban lain atau perangkat lain milik pengguna yang sama tidak boleh menimpa

@@ -18,7 +18,7 @@ vi.mock('@/lib/api', async () => ({
 vi.mock('../lib/sync', () => ({ syncThisDevice: (...args: unknown[]) => state.sync(...args) }));
 
 import { markAsked, markSynced } from '../lib/storage';
-import { PushOnboarding } from './push-onboarding';
+import { PushOnboarding, useBlockingOnboardingActive } from './push-onboarding';
 
 type Permission = 'default' | 'granted' | 'denied';
 
@@ -256,5 +256,53 @@ describe('push tidak tersedia atau dimatikan', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(reportCalls()).toHaveLength(0);
     expect(state.sync).not.toHaveBeenCalled();
+  });
+});
+
+describe('useBlockingOnboardingActive', () => {
+  function Probe() {
+    return <span data-testid="blocking">{String(useBlockingOnboardingActive())}</span>;
+  }
+  function mountWithProbe() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <PushOnboarding />
+        <Probe />
+      </QueryClientProvider>,
+    );
+  }
+
+  test('true selama dialog pra-izin tampil, false setelah Nanti', async () => {
+    device({ permission: 'default', standalone: true });
+    mountWithProbe();
+    await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' });
+    expect(screen.getByTestId('blocking')).toHaveTextContent('true');
+    await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+    await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
+  });
+
+  test('true selama banner izin ditolak tampil, false setelah Tutup', async () => {
+    device({ permission: 'denied', standalone: true });
+    mountWithProbe();
+    await screen.findByTestId('push-denied-banner');
+    expect(screen.getByTestId('blocking')).toHaveTextContent('true');
+    await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+    await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
+  });
+
+  test('false bila push tidak tersedia (tak ada dialog/banner) setelah konfigurasi termuat', async () => {
+    state.config = { enabled: false, publicKey: '', userEnabled: true };
+    device({ permission: 'default', standalone: true });
+    mountWithProbe();
+    await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
+  });
+
+  test('kembali false saat PushOnboarding dilepas', async () => {
+    device({ permission: 'default', standalone: true });
+    const view = mountWithProbe();
+    await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' });
+    view.unmount();
+    expect(render(<Probe />).getByTestId('blocking')).toHaveTextContent('false');
   });
 });

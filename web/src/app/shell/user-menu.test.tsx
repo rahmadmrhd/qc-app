@@ -25,6 +25,16 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
   ),
 }));
 
+vi.mock('@/modules/guide/components/guide-menu-dialog', () => ({
+  GuideMenuDialog: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Panduan">
+      <button type="button" onClick={onClose}>
+        tutup-panduan
+      </button>
+    </div>
+  ),
+}));
+
 import { UserMenu } from './user-menu';
 
 async function openMenu() {
@@ -81,4 +91,13 @@ test('butir Notifikasi push membuka dan menutup pengaturan push', async () => {
   expect(await screen.findByRole('dialog', { name: 'Notifikasi push' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'tutup-push' }));
   expect(screen.queryByRole('dialog', { name: 'Notifikasi push' })).not.toBeInTheDocument();
+});
+
+test('butir Panduan membuka dan menutup dialog panduan', async () => {
+  render(<UserMenu />);
+  await openMenu();
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Panduan' }));
+  expect(await screen.findByRole('dialog', { name: 'Panduan' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'tutup-panduan' }));
+  expect(screen.queryByRole('dialog', { name: 'Panduan' })).not.toBeInTheDocument();
 });
