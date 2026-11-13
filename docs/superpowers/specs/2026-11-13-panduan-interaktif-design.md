@@ -1,9 +1,10 @@
 # Panduan interaktif (tur, tooltip demo, kartu panduan) — desain
 
-Tanggal: 2026-11-13. Status: disetujui pemilik produk (2026-11-13), lanjut ke rencana implementasi. Keputusan tambahan
-pemilik produk 2026-11-14 (bagian 6) sudah dicatat di sini; butir A dan B belum ada di kode (lihat catatan di bagian 6),
-sehingga status belum diubah menjadi "diimplementasikan".
-Konteks: aplikasi QC (web React + TanStack, server Bun + Hono + MariaDB). Dokumen ini hanya merancang; belum ada kode.
+Tanggal: 2026-11-13. Status: diimplementasikan (2026-11-14); disetujui pemilik produk 2026-11-13, dengan keputusan
+tambahan pemilik produk 2026-11-14 (bagian 6) yang sudah masuk kode dan tes. Klip rekaman (PWA, push, tempel dari
+WhatsApp) menunggu rekaman pemilik; panduan tetap berjalan tanpa klip lewat fallback teks per adegan.
+Konteks: aplikasi QC (web React + TanStack, server Bun + Hono + MariaDB). Dokumen ini merancang fitur; implementasinya
+ada di `web/src/modules/guide/`, `server/src/modules/guide/`, dan `shared/guides.ts`.
 Status panduan disimpan dengan dua cara menurut jenis akun (individu atau bersama), sehingga fitur ini menyentuh
 web dan server (bagian 4.3).
 
@@ -299,10 +300,9 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   - **D. Klarifikasi (bukan perubahan perilaku):** (i) `berkas` klip = nama polos, URL `klipUrl()` = `/klip/<berkas>`
     (4.6); (ii) pindah halaman di luar langkah tur membatalkan tur tanpa penanda (4.3); (iii) panduan `baru` menyebut
     `dasar` induknya di katalog, field `dasar` (4.1).
-  - **Catatan status.** Butir A dan B belum ada di kode pada saat catatan ini: `deriveDeviceGuides` (`device.ts`)
-    belum memeriksa dukungan/VAPID/`userEnabled`, dan menu (`guide-menu-dialog.tsx`) belum menyembunyikan panduan
-    turunan yang tak berlaku. Pekerjaan kode untuk keduanya menyusul; sampai itu spek tidak berstatus
-    "diimplementasikan". Pertanyaan terbuka: tidak ada yang baru.
+  - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
+    `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
+    memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
 
 ## 7. Cakupan tahap awal dan urutan
 
