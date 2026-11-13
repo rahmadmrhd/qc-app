@@ -129,7 +129,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
               : `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
             : normalized.count > 0
               ? `${normalized.count} serial dicari (maks. ${SERIAL_SEARCH_MAX})`
-              : 'Ketik, tempel, pindai dengan pemindai (Enter), atau pakai kamera.'}
+              : 'Ketik, tempel, scan (Enter), atau pakai kamera.'}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

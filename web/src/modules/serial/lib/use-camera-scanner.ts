@@ -15,14 +15,14 @@ export type CameraErrorKind =
 
 export const CAMERA_ERROR_TEXT: Record<CameraErrorKind, string> = {
   insecure:
-    'Kamera hanya bisa dipakai lewat koneksi aman (HTTPS). Buka aplikasi lewat alamat https:// atau ketik serial secara manual.',
-  unsupported: 'Peramban ini tidak mendukung akses kamera. Ketik serial secara manual.',
+    'Kamera hanya bisa dipakai lewat koneksi aman (HTTPS). Buka aplikasi lewat alamat https:// atau ketik serial manual.',
+  unsupported: 'Browser ini tidak mendukung akses kamera. Ketik serial manual.',
   denied:
-    'Izin kamera ditolak. Izinkan kamera untuk situs ini di pengaturan peramban, lalu coba lagi.',
-  notfound: 'Kamera tidak ditemukan di perangkat ini. Ketik serial secara manual.',
+    'Izin kamera ditolak. Izinkan kamera untuk situs ini di pengaturan browser, lalu coba lagi.',
+  notfound: 'Kamera tidak ditemukan di perangkat ini. Ketik serial manual.',
   busy: 'Kamera sedang dipakai aplikasi lain atau tidak bisa dibuka. Tutup aplikasi itu, lalu coba lagi.',
-  loader: 'Pemindai gagal dimuat. Periksa koneksi lalu coba lagi, atau ketik serial secara manual.',
-  unknown: 'Kamera tidak dapat dibuka. Coba lagi atau ketik serial secara manual.',
+  loader: 'Fitur scan gagal dimuat. Cek koneksi lalu coba lagi, atau ketik serial manual.',
+  unknown: 'Kamera tidak bisa dibuka. Coba lagi atau ketik serial manual.',
 };
 
 export interface CameraDevice {

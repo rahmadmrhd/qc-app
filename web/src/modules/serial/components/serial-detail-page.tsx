@@ -61,7 +61,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
   return (
     <section aria-label="Ringkasan" className="rounded-lg border p-4">
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Fact label="Test Date (pertama)">{formatDay(serial.testDate)}</Fact>
+        <Fact label="Tanggal uji (pertama)">{formatDay(serial.testDate)}</Fact>
         <Fact label="Terakhir lolos">{lastPass ? formatDay(lastPass) : '—'}</Fact>
         <Fact label="Lokasi awal">{firstLocation || '—'}</Fact>
         <Fact label="Lokasi terakhir">{serial.locationName}</Fact>

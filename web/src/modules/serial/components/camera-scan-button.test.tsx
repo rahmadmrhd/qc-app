@@ -10,22 +10,22 @@ afterEach(() => {
 
 test('tombol tersembunyi bila peramban tak punya mediaDevices/getUserMedia (bukan HTTPS)', () => {
   render(<CameraScanButton onScan={() => 'added'} />);
-  expect(screen.queryByRole('button', { name: 'Pindai dengan kamera' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Scan dengan kamera' })).not.toBeInTheDocument();
   Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
   render(<CameraScanButton onScan={() => 'added'} />);
-  expect(screen.queryByRole('button', { name: 'Pindai dengan kamera' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Scan dengan kamera' })).not.toBeInTheDocument();
 });
 
 test('kolom pindai menampilkan tombol kamera hanya bila getUserMedia tersedia', () => {
   const view = render(<SerialScanInput id="scan" label="Pindai serial" onSubmit={() => 'added'} />);
-  expect(screen.queryByRole('button', { name: 'Pindai dengan kamera' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Scan dengan kamera' })).not.toBeInTheDocument();
   view.unmount();
   Object.defineProperty(navigator, 'mediaDevices', {
     value: { getUserMedia: vi.fn() },
     configurable: true,
   });
   render(<SerialScanInput id="scan" label="Pindai serial" onSubmit={() => 'added'} />);
-  expect(screen.getByRole('button', { name: 'Pindai dengan kamera' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Scan dengan kamera' })).toBeInTheDocument();
 });
 
 test('tombol dinonaktifkan mengikuti disabled dan membuka dialog (dimuat malas) bila diklik', async () => {
@@ -37,11 +37,11 @@ test('tombol dinonaktifkan mengikuti disabled dan membuka dialog (dimuat malas) 
     configurable: true,
   });
   const view = render(<CameraScanButton onScan={() => 'added'} disabled />);
-  expect(screen.getByRole('button', { name: 'Pindai dengan kamera' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Scan dengan kamera' })).toBeDisabled();
   view.unmount();
 
   render(<CameraScanButton onScan={() => 'added'} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Pindai dengan kamera' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
   expect(await screen.findByRole('dialog')).toBeInTheDocument();
   expect(await screen.findByRole('alert')).toHaveTextContent('Izin kamera ditolak');
 });

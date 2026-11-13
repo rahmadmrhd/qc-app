@@ -170,9 +170,7 @@ describe('serials.act: recheck', () => {
       ],
     });
     expect(rejected.error?.code).toBe('VALIDATION');
-    expect(JSON.stringify(rejected.error)).toContain(
-      'Stiker nonaktif tidak dapat ditambah jumlahnya',
-    );
+    expect(JSON.stringify(rejected.error)).toContain('Jumlah stiker nonaktif tidak bisa ditambah');
     expect(await stock('s1', 'loc-sby')).toBe(10);
     expect((await events()).length).toBe(eventsBefore);
     // Jumlah sama pada stiker nonaktif diabaikan; deprecated dinaikkan lolos dan memotong stok.

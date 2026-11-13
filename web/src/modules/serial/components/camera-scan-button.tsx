@@ -17,7 +17,7 @@ export interface CameraScanButtonProps {
 }
 
 /**
- * Tombol ikon "Pindai dengan kamera" yang membuka dialog kamera. Tersembunyi bila peramban tak punya
+ * Tombol ikon "Scan dengan kamera" yang membuka dialog kamera. Tersembunyi bila peramban tak punya
  * `getUserMedia` (bukan HTTPS, atau tak didukung): pindai fisik, ketik, dan tempel tetap jalan.
  */
 export function CameraScanButton({ onScan, disabled = false, className }: CameraScanButtonProps) {
@@ -31,8 +31,8 @@ export function CameraScanButton({ onScan, disabled = false, className }: Camera
         size="icon-sm"
         className={className}
         disabled={disabled}
-        aria-label="Pindai dengan kamera"
-        title="Pindai dengan kamera"
+        aria-label="Scan dengan kamera"
+        title="Scan dengan kamera"
         onClick={() => setOpen(true)}
       >
         <Camera aria-hidden />

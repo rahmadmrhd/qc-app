@@ -94,9 +94,9 @@ function CameraScanBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Pindai dengan kamera</DialogTitle>
+        <DialogTitle>Scan dengan kamera</DialogTitle>
         <DialogDescription>
-          Arahkan kamera ke QR atau barcode. Kamera tetap menyala untuk pembacaan berikutnya.
+          Arahkan kamera ke QR atau barcode. Kamera tetap menyala untuk scan berikutnya.
         </DialogDescription>
       </DialogHeader>
 
@@ -118,7 +118,7 @@ function CameraScanBody({
             role="status"
             className="absolute inset-0 flex items-center justify-center bg-black/60 p-4 text-center text-sm text-white"
           >
-            Memuat kamera dan pemindai...
+            Menyiapkan kamera…
           </p>
         ) : null}
         {state.status === 'error' ? (

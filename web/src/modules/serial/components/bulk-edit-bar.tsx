@@ -71,10 +71,10 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
         <h2 className="text-sm font-semibold">Ubah massal ({count} baris terpilih)</h2>
         <div className="flex gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onClearSelection}>
-            Batal pilih
+            Batalkan pilihan
           </Button>
           <Button type="button" variant="destructive" size="sm" onClick={onRemove}>
-            Hapus terpilih
+            Hapus yang dipilih
           </Button>
         </div>
       </div>

@@ -29,7 +29,7 @@ interface StickerRow {
   inactive: boolean;
 }
 
-const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman dimuat ulang: pesan Anda tetap ada, tetapi lokasi dan jumlah stiker dikembalikan ke data terbaru. Atur ulang bila perlu, lalu kirim lagi.`;
+const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Pesan Anda tetap ada, tapi lokasi dan jumlah stiker kembali ke data terbaru. Atur lagi kalau perlu, lalu kirim ulang.`;
 
 function qtyOf(serial: SerialDto): Map<string, number> {
   return new Map(serial.stickers.map((sticker) => [sticker.stickerId, sticker.qty]));
@@ -126,12 +126,12 @@ export function ActComposer({ serial }: ActComposerProps) {
   }
 
   return (
-    <section aria-label="Pembaruan baru" className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-sm font-semibold">Pembaruan baru</h2>
+    <section aria-label="Update baru" className="space-y-3 rounded-lg border p-4">
+      <h2 className="text-sm font-semibold">Update baru</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <Select
           id="act-action"
-          label="Aksi"
+          label="Jenis update"
           value={effectiveAction}
           options={[
             { value: 'note', label: 'Catatan' },
@@ -161,7 +161,7 @@ export function ActComposer({ serial }: ActComposerProps) {
           />
           {rows.length > 0 ? (
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Stiker (jumlah tidak dapat dikurangi)</legend>
+              <legend className="text-sm font-medium">Stiker (jumlah tidak bisa dikurangi)</legend>
               <ul className="space-y-2">
                 {rows.map((row) => {
                   const value = qty.get(row.stickerId) ?? row.base;
@@ -171,7 +171,7 @@ export function ActComposer({ serial }: ActComposerProps) {
                         <span className="block truncate">{row.name}</span>
                         {row.inactive ? (
                           <span className="block text-xs text-muted-foreground">
-                            Stiker nonaktif: jumlah tidak dapat ditambah
+                            Stiker nonaktif: jumlah tidak bisa ditambah
                           </span>
                         ) : null}
                       </span>

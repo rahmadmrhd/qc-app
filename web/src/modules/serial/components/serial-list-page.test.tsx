@@ -18,7 +18,7 @@ vi.mock('./camera-scan-button', () => ({
   CameraScanButton: ({ onScan }: { onScan: (text: string) => unknown }) => (
     <button
       type="button"
-      aria-label="Pindai dengan kamera"
+      aria-label="Scan dengan kamera"
       onClick={() => onScan('bbb222\nAAA111\nccc333')}
     >
       kamera
@@ -126,7 +126,7 @@ beforeEach(() => {
   });
 });
 
-test('merender baris dengan kolom Test Date, status, posisi, dan sample; paginasi kursor', async () => {
+test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; paginasi kursor', async () => {
   renderPage();
   expect(await screen.findByText('ABC123')).toBeInTheDocument();
   const rows = screen.getAllByRole('row');
@@ -135,7 +135,7 @@ test('merender baris dengan kolom Test Date, status, posisi, dan sample; paginas
   expect(within(rows[1] as HTMLElement).getByText('Di QC')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Tidak lolos')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Ya')).toBeInTheDocument();
-  expect(screen.getByRole('columnheader', { name: 'Test Date' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Tanggal uji' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
   expect(await screen.findByText('LAST1')).toBeInTheDocument();
   expect(listCalls().at(-1)?.[1]).toMatchObject({ cursor: 'c1' });
@@ -212,7 +212,7 @@ test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan 
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)');
   await userEvent.type(field, 'aaa111{Enter}');
-  await userEvent.click(screen.getByRole('button', { name: 'Pindai dengan kamera' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
   expect(field).toHaveValue('AAA111\nBBB222\nCCC333');
   expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
   expect(screen.getByText('3 serial dicari (maks. 50)')).toBeInTheDocument();

@@ -81,13 +81,13 @@ export function Timeline({
   truncated?: boolean;
 }) {
   if (events.length === 0) {
-    return <p className="text-sm text-muted-foreground">Belum ada kejadian.</p>;
+    return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
   return (
     <div className="space-y-3">
       {truncated ? (
         <p role="note" className="text-xs text-muted-foreground">
-          Hanya 500 kejadian terbaru yang dimuat; kejadian yang lebih lama tidak ditampilkan.
+          Hanya 500 entri terbaru yang ditampilkan; yang lebih lama tidak dimuat.
         </p>
       ) : null}
       <ol aria-label="Linimasa" className="space-y-3">

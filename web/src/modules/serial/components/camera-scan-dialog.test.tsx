@@ -151,13 +151,13 @@ test('senter tampil hanya bila trek mendukung dan menerapkan constraint torch', 
 
   const unsupported = setup({ stream: fakeStream() });
   await waitFor(() => expect(unsupported.getUserMedia).toHaveBeenCalled());
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   expect(screen.queryByRole('button', { name: /senter/ })).not.toBeInTheDocument();
 });
 
 test('pemilih kamera hanya bila ada lebih dari satu perangkat; memilih memulai ulang aliran', async () => {
   const single = setup({ devices: VIDEO_DEVICES.slice(0, 1) });
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   expect(screen.queryByRole('combobox', { name: 'Kamera' })).not.toBeInTheDocument();
   single.unmount();
 
@@ -213,21 +213,21 @@ test('keadaan memuat tampil sebelum kamera siap', async () => {
         resolveEngine = resolve;
       }),
   });
-  expect(screen.getByRole('status')).toHaveTextContent('Memuat kamera');
+  expect(screen.getByRole('status')).toHaveTextContent('Menyiapkan kamera');
   resolveEngine(ctx.engine);
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
 });
 
 test('aliran dimatikan saat dialog ditutup (Tutup) dan saat unmount', async () => {
   const closed = setup();
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
   expect(closed.onOpenChange).toHaveBeenCalledWith(false);
   closed.unmount();
   expect(closed.track.stop).toHaveBeenCalled();
 
   const unmounted = setup();
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   expect(unmounted.track.stop).not.toHaveBeenCalled();
   unmounted.unmount();
   expect(unmounted.track.stop).toHaveBeenCalledTimes(1);
@@ -235,7 +235,7 @@ test('aliran dimatikan saat dialog ditutup (Tutup) dan saat unmount', async () =
 
 test('dialog ditutup lewat prop open=false mematikan aliran', async () => {
   const ctx = setup();
-  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   ctx.rerender(
     <CameraScanDialog open={false} onOpenChange={() => undefined} onScan={() => 'added'} />,
   );

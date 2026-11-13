@@ -195,7 +195,7 @@ export async function locationOptions(env: Env): Promise<SerialLocationOptionsDt
 }
 
 const DUPLICATE_MESSAGE = 'Serial sudah terdaftar';
-const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak dapat dipakai';
+const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak bisa dipakai';
 const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 const SERIAL_CONFLICTS = {
@@ -385,7 +385,7 @@ export async function createSerialOnce(
     return {
       clientId: row.clientId,
       result: 'error',
-      message: 'Serial gagal disimpan; coba lagi',
+      message: 'Serial gagal disimpan. Coba lagi',
       serial: row.serial,
     };
   }
@@ -544,7 +544,7 @@ export async function listSerials(
   };
 }
 
-const STALE_MESSAGE = 'Serial diubah orang lain; muat ulang halaman lalu ulangi';
+const STALE_MESSAGE = 'Serial sudah diubah orang lain. Muat ulang halaman, lalu coba lagi';
 
 /** Stempel baru yang selalu lebih besar dari yang lama (jam yang sama = +1 ms) agar CAS `updated_at` tak tertipu. */
 function nextStamp(now: string, previous: string): string {
@@ -719,7 +719,7 @@ export async function updateSerialBatch(
     } catch (error) {
       if (!isAppError(error)) {
         console.error('serials.updateBatch: baris gagal', error instanceof Error ? error.name : '');
-        results.push({ id, result: 'error', message: 'Serial gagal diubah; coba lagi' });
+        results.push({ id, result: 'error', message: 'Serial gagal diubah. Coba lagi' });
       } else if (error.stale) {
         results.push({ id, result: 'stale', message: error.message });
       } else if (error.code === 'CONFLICT') {
@@ -765,7 +765,7 @@ export async function actOnSerial(
   if (input.action === 'recheck') {
     eventType = 'recheck';
     if (row.status.trim() !== 'good' || row.custody.trim() !== 'qc') {
-      throw appError('CONFLICT', 'Serial tidak dapat dicek ulang pada keadaan ini');
+      throw appError('CONFLICT', 'Serial tidak bisa dicek ulang dalam kondisi ini');
     }
     const locationId = input.locationId ?? row.location_id.trim();
     let locationName = row.location_name ?? '';
@@ -804,10 +804,10 @@ export async function actOnSerial(
     for (const pick of requested) {
       const existing = current.get(pick.stickerId);
       if (existing && pick.qty < existing.qty) {
-        throw validationError('stickers', 'Jumlah stiker tidak boleh diturunkan');
+        throw validationError('stickers', 'Jumlah stiker tidak boleh dikurangi');
       }
       if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
-        throw validationError('stickers', 'Stiker nonaktif tidak dapat ditambah jumlahnya');
+        throw validationError('stickers', 'Jumlah stiker nonaktif tidak bisa ditambah');
       }
       if (!existing && !applicable.has(pick.stickerId)) {
         throw validationError('stickers', 'Stiker tidak berlaku bagi item ini');
