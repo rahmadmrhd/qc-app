@@ -20,6 +20,8 @@ export interface SerialScanInputProps {
   onSubmit(text: string): ScanFeedback;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Teks umpan balik pengganti (mis. "Dicari" bagi pencarian, bukan "Ditambahkan"). */
+  feedbackText?: Partial<Record<ScanFeedback, string>>;
 }
 
 export function SerialScanInput({
@@ -28,6 +30,7 @@ export function SerialScanInput({
   onSubmit,
   disabled = false,
   autoFocus = false,
+  feedbackText,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
   const { feedback, announce } = useScanFeedback();
@@ -97,7 +100,7 @@ export function SerialScanInput({
         aria-live="polite"
         className={cn('min-h-4 text-xs', feedback ? FEEDBACK_TEXT_COLOR[feedback] : '')}
       >
-        {feedback ? FEEDBACK_TEXT[feedback] : ''}
+        {feedback ? (feedbackText?.[feedback] ?? FEEDBACK_TEXT[feedback]) : ''}
       </p>
     </div>
   );

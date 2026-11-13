@@ -21,14 +21,20 @@ const CASE_PREFIX = 'case:';
 
 export interface TimelineTabsProps {
   serial: SerialDto;
+  /** Tab laporan yang terbuka lebih dulu; id yang bukan laporan serial ini diabaikan. */
+  initialCaseId?: string;
 }
 
 /**
  * Linimasa bertab: Semua, satu tab per laporan (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
  * berkursor (terbaru di atas) dengan tombol "Muat yang lebih lama"; jumlah di tab dari `counts` server.
  */
-export function TimelineTabs({ serial }: TimelineTabsProps) {
-  const [tab, setTab] = useState<string>('all');
+export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
+  const [tab, setTab] = useState<string>(() =>
+    initialCaseId && serial.cases.some((entry) => entry.id === initialCaseId)
+      ? `${CASE_PREFIX}${initialCaseId}`
+      : 'all',
+  );
   const caseId = tab.startsWith(CASE_PREFIX) ? tab.slice(CASE_PREFIX.length) : undefined;
   const group = caseId ? 'all' : (tab as 'all' | 'checks' | 'changes');
   const history = useInfiniteQuery(

@@ -20,6 +20,8 @@ import { TimelineTabs } from './timeline-tabs';
 export interface SerialDetailPageProps {
   serialId: string;
   onBack: () => void;
+  /** Laporan yang langsung dibuka di tab linimasa (dari daftar Laporan). */
+  caseId?: string;
 }
 
 /** Kejadian yang berarti "lolos": pencatatan awal dan cek ulang yang lolos. */
@@ -83,7 +85,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
 }
 
 /** Detail serial bergaya tiket: kepala, ringkasan, linimasa (terbaru di atas), kotak pembaruan baru, dan ubah data. */
-export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
+export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageProps) {
   const me = useMe();
   const detail = useQuery(serialDetailQueryOptions(serialId));
   const [editing, setEditing] = useState(false);
@@ -149,7 +151,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
             onPick={setActing}
           />
         </div>
-        <TimelineTabs serial={serial} />
+        <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
       </section>
       {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
