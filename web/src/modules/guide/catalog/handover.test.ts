@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { LocationAccessDto, MeDto } from '@shared/contract';
 import { GUIDE_IDS, GUIDE_VERSIONS } from '@shared/guides';
 import { describe, expect, test } from 'vitest';
-import { getDemoScenes } from '../lib/demo-types';
+import { getDemoScenes, loadDemoScenes } from '../lib/demo-types';
 import { offeredGuides } from '../lib/offer';
 import { HANDOVER_DASAR, HANDOVER_TIP_WA } from './handover';
 import { GUIDE_CATALOG } from './index';
@@ -38,6 +40,26 @@ function offerFor(user: MeDto) {
   }).find((offer) => offer.entry.id === 'handover-dasar');
 }
 
+describe('muat malas adegan demo', () => {
+  // Harus berjalan SEBELUM tes lain di berkas ini yang memuat adegan (registri adalah keadaan modul).
+  test('memuat katalog tidak memuat atau mengeksekusi adegan demo', () => {
+    expect(getDemoScenes(HANDOVER_TIP_WA.id)).toBeUndefined();
+  });
+
+  test('katalog hanya mengimpor adegan secara dinamis (tanpa import statis whatsapp-demo)', () => {
+    const source = readFileSync(join(__dirname, 'handover.ts'), 'utf8');
+    expect(source).not.toMatch(/^import[^;]*whatsapp-demo/m);
+    expect(source).toMatch(/import\('@\/modules\/handover\/guide\/whatsapp-demo'\)/);
+  });
+
+  test('loadDemoScenes memuat sekali lalu menyimpan hasilnya', async () => {
+    const first = await loadDemoScenes(HANDOVER_TIP_WA.id);
+    expect(first?.length).toBeGreaterThan(0);
+    expect(getDemoScenes(HANDOVER_TIP_WA.id)).toBe(first);
+    expect(await loadDemoScenes(HANDOVER_TIP_WA.id)).toBe(first);
+  });
+});
+
 describe('panduan Serah Terima', () => {
   test('id terdaftar di GUIDE_IDS dengan versi yang sama, dan ada di katalog', () => {
     for (const entry of [HANDOVER_DASAR, HANDOVER_TIP_WA]) {
@@ -70,10 +92,10 @@ describe('panduan Serah Terima', () => {
     expect(offerFor(nobody)).toBeUndefined();
   });
 
-  test('langkah panel tempel menyematkan demo tip yang terdaftar di registri', () => {
+  test('langkah panel tempel menyematkan demo tip yang terdaftar di registri', async () => {
     const pasteStep = HANDOVER_DASAR.steps.find((step) => step.target === 'handover-paste-panel');
     expect(pasteStep?.tip).toBe(HANDOVER_TIP_WA.id);
-    expect(getDemoScenes(HANDOVER_TIP_WA.id)?.length).toBeGreaterThan(0);
+    expect((await loadDemoScenes(HANDOVER_TIP_WA.id))?.length).toBeGreaterThan(0);
   });
 
   test('izin panduan sama dengan item sidebar: WH view atau QC edit, keduanya per lokasi', () => {

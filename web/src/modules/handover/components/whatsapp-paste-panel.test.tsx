@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+// Mendaftarkan pemuat malas demo (seperti di aplikasi, tempat katalog selalu dimuat).
+import '@/modules/guide/catalog/handover';
 import { WhatsappPastePanel } from './whatsapp-paste-panel';
 
 // Ikon info membaca penanda panduan; di sini penanda tidak relevan.

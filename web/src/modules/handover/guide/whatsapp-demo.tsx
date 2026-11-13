@@ -2,9 +2,6 @@ import { splitWhatsappBatch } from '@shared/handover-paste';
 import { Check } from 'lucide-react';
 import type { DemoScene } from '@/modules/guide/lib/demo-types';
 
-/** Id entri `tip` katalog yang memakai demo ini (`shared/guides.ts`). */
-export const WHATSAPP_TIP_ID = 'tip-handover-tempel-wa';
-
 /**
  * Teks contoh dua pesan WhatsApp, dalam bentuk yang dikenali `splitWhatsappBatch`. Hasil adegan "Pecah" dihitung
  * fungsi aslinya atas teks ini, jadi demo tidak basi bila aturan pemecahnya berubah.
