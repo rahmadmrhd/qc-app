@@ -24,6 +24,7 @@ import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draf
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
+import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
@@ -121,6 +122,17 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
 
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
+  // Hanya satu lokasi yang dapat dipilih: jadi bawaan, sekali saja (pengguna yang mengosongkannya tak diisi lagi).
+  const { locations: pickableLocations } = useSerialLocations();
+  const defaultLocationDecided = useRef(false);
+  useEffect(() => {
+    if (defaultLocationDecided.current || pickableLocations.length === 0) return;
+    defaultLocationDecided.current = true;
+    const [only] = toLocationOptions(pickableLocations);
+    if (only && pickableLocations.length === 1) {
+      setLocation((current) => (current.id === '' ? { id: only.id, label: only.label } : current));
+    }
+  }, [pickableLocations]);
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
