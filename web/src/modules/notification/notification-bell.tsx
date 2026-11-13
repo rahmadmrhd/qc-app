@@ -54,6 +54,7 @@ export function NotificationBell() {
           variant="ghost"
           size="icon"
           className="relative"
+          data-tour="notification-bell"
           aria-label={unread > 0 ? `Notifikasi, ${unread} belum dibaca` : 'Notifikasi'}
         >
           <Bell />

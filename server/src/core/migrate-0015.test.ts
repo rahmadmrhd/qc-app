@@ -44,7 +44,13 @@ describe('migrasi 0015 serial_cases', () => {
   test('baris serials gaya 5a (sebelum 0015) tetap ada dan mendapat transit_on kosong', async () => {
     await insertSerial('s1', 'SN1');
     const all = await loadMigrations();
-    expect(await applyMigrations(db, all)).toEqual(['0015_serial_cases.sql']);
+    // Hanya sampai 0015: migrasi yang lebih baru (0016 dst.) bukan urusan tes ini dan tak boleh mengubah hasilnya.
+    expect(
+      await applyMigrations(
+        db,
+        all.filter((m) => m.name <= '0015_serial_cases.sql'),
+      ),
+    ).toEqual(['0015_serial_cases.sql']);
     const row = await db
       .prepare("SELECT transit_on FROM serials WHERE id = 's1'")
       .first<{ transit_on: string }>();

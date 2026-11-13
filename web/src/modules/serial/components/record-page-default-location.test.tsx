@@ -32,6 +32,7 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     canManageSerialSettings: false,
     permissions: {
       access: 'none',

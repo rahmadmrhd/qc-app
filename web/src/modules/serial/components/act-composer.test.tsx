@@ -42,6 +42,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
     name: 'A',
     isSuperAdmin: false,
     canManageSerialSettings: false,
+    sharedAccount: false,
     permissions: {
       access: 'none',
       item: 'none',

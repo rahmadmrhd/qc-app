@@ -15,6 +15,7 @@ const EXPECTED_TABLES = [
   'counters',
   'customers',
   'files',
+  'guide_progress',
   'handover_comments',
   'handovers',
   'item_alias_keys',
@@ -314,6 +315,7 @@ describe('skema baseline', () => {
       { name: '0013_notifikasi.sql' },
       { name: '0014_push_notifikasi.sql' },
       { name: '0015_serial_cases.sql' },
+      { name: '0016_panduan_interaktif.sql' },
     ]);
   });
 
@@ -358,6 +360,33 @@ describe('skema baseline', () => {
     expect(column?.t).toBe('longtext');
     expect(column?.n).toBe('NO');
     expect(column?.d).toBe("''");
+  });
+
+  test('users.shared_account ada, bertipe tinyint, tidak null, bawaan 0', async () => {
+    const column = await db
+      .prepare(
+        "SELECT data_type AS t, is_nullable AS n, column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'shared_account'",
+      )
+      .first<{ t: string; n: string; d: string | null }>();
+    expect(column?.t).toBe('tinyint');
+    expect(column?.n).toBe('NO');
+    expect(column?.d).toBe('0');
+  });
+
+  test('guide_progress: kunci utama (recipient, guide_id), tanpa kunci asing', async () => {
+    expect(await tableNames(db)).toContain('guide_progress');
+    const pk = await db
+      .prepare(
+        "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND index_name = 'PRIMARY'",
+      )
+      .first<{ c: string }>();
+    expect(pk?.c).toBe('recipient,guide_id');
+    const fks = await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND constraint_type = 'FOREIGN KEY'",
+      )
+      .first<{ n: number }>();
+    expect(Number(fks?.n)).toBe(0);
   });
 
   test('id MySQL dihapus: tanpa kolom external_id di brands/items', async () => {
@@ -489,6 +518,7 @@ describe('skema baseline', () => {
     expect(pks.notification_pending_items).toBe('handover_id,actor_email,item_key');
     expect(pks.push_subscriptions).toBe('endpoint_hash,recipient');
     expect(pks.notification_prefs).toBe('recipient');
+    expect(pks.guide_progress).toBe('recipient,guide_id');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [

@@ -30,6 +30,8 @@ export async function seedUser(
     roleIds?: string[];
     assignments?: Assignment[];
     buAssignments?: BuAssignment[];
+    /** Akun bersama (`users.shared_account`); bawaan false. */
+    sharedAccount?: boolean;
   },
 ): Promise<void> {
   const hasRoles = user.roleIds !== undefined && user.roleIds.length > 0;
@@ -38,7 +40,7 @@ export async function seedUser(
   const buAssignments: BuAssignment[] =
     user.buAssignments ?? (hasRoles ? [{ buId: null, roleIds: user.roleIds ?? [] }] : []);
   await env.DB.prepare(
-    'INSERT INTO users (id, email, name, status, assignments, bu_assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO users (id, email, name, status, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(
       user.id,
@@ -47,6 +49,7 @@ export async function seedUser(
       user.status ?? 'active',
       JSON.stringify(assignments),
       JSON.stringify(buAssignments),
+      user.sharedAccount === true ? 1 : 0,
       SEED_TIME,
       SEED_TIME,
       'seed',

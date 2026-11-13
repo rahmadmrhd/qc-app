@@ -126,6 +126,7 @@ export function HandoverBatchForm({
   return (
     <form
       noValidate
+      data-tour="handover-batch-form"
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();

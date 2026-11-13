@@ -61,7 +61,12 @@ export function UsersTable({
             return (
               <TableRow key={user.id}>
                 <TableCell className="font-medium">{user.email}</TableCell>
-                <TableCell>{user.name}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>{user.name}</span>
+                    {user.sharedAccount ? <Badge variant="outline">Akun bersama</Badge> : null}
+                  </div>
+                </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
                     {user.assignments.length === 0 ? (

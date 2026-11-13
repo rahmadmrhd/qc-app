@@ -6,6 +6,16 @@ import { ApiError } from '@/lib/api/api-error';
 import { pickLink } from '@/test/link-field';
 import type { HandoverBatchFormOutput } from '../schemas';
 
+// Ikon info di panel tempel membaca penanda panduan; di sini penanda tidak relevan.
+vi.mock('@/modules/guide/lib/use-guide-store', () => ({
+  useGuideStore: () => ({
+    ready: true,
+    done: new Map<string, number>(),
+    mark: vi.fn(async () => undefined),
+    reset: vi.fn(async () => undefined),
+  }),
+}));
+
 const meMock = vi.hoisted(() => ({
   me: {
     email: 'wh@qc.local',

@@ -90,6 +90,7 @@ test('mengirim nilai yang sudah dinormalisasi, termasuk penugasan', async () => 
       email: 'budi@gmail.com',
       name: 'Budi',
       status: 'active',
+      sharedAccount: false,
       assignments: [{ locationId: null, roleIds: ['role-qc'] }],
       buAssignments: [],
     }),
@@ -132,6 +133,7 @@ test('penugasan ke lokasi yang tidak dikenal tetap tampil jelas, tidak berpindah
       email: 'a@gmail.com',
       name: 'A',
       status: 'active',
+      sharedAccount: false,
       assignments: [{ locationId: 'hilang', roleIds: ['role-qc'] }],
       buAssignments: [],
     },
@@ -167,6 +169,7 @@ test('mengirim buAssignments: Semua BU menjadi null dan BU tertentu tetap id-nya
       email: 'b@gmail.com',
       name: 'B',
       status: 'active',
+      sharedAccount: false,
       assignments: [],
       buAssignments: [
         { buId: null, roleIds: ['role-qc'] },
@@ -208,6 +211,7 @@ test('penugasan BU nonaktif yang sudah ada tampil dengan label nonaktif dan ikut
       email: 'a@gmail.com',
       name: 'A',
       status: 'active',
+      sharedAccount: false,
       assignments: [],
       buAssignments: [{ buId: 'bu-mati', roleIds: ['role-qc'] }],
     },
@@ -230,6 +234,7 @@ test('penugasan ke BU yang tidak dikenal tetap tampil jelas dan idnya tetap terk
       email: 'a@gmail.com',
       name: 'A',
       status: 'active',
+      sharedAccount: false,
       assignments: [],
       buAssignments: [{ buId: 'hilang', roleIds: ['role-qc'] }],
     },
@@ -252,6 +257,7 @@ test('penugasan BU: tautan Buka hanya muncul bila disediakan dan tidak untuk "Se
       email: 'a@gmail.com',
       name: 'A',
       status: 'active',
+      sharedAccount: false,
       assignments: [],
       buAssignments: [
         { buId: 'bu-a', roleIds: ['role-qc'] },
@@ -268,6 +274,7 @@ test('penugasan BU: tautan Buka hanya muncul bila disediakan dan tidak untuk "Se
       email: 'a@gmail.com',
       name: 'A',
       status: 'active',
+      sharedAccount: false,
       assignments: [],
       buAssignments: [
         { buId: 'bu-a', roleIds: ['role-qc'] },
@@ -280,4 +287,31 @@ test('penugasan BU: tautan Buka hanya muncul bila disediakan dan tidak untuk "Se
     '/access/business-units/bu-a',
   );
   expect(screen.getAllByRole('link', { name: /Buka/ })).toHaveLength(1);
+});
+
+test('opsi Akun bersama tampil dengan keterangan dan terkirim saat dicentang', async () => {
+  const { onSubmit } = renderForm();
+  const checkbox = screen.getByRole('checkbox', { name: 'Akun bersama' });
+  expect(checkbox).not.toBeChecked();
+  expect(screen.getByText(/Panduan ditampilkan ulang di tiap perangkat/)).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Email'), 'bersama@gmail.com');
+  await userEvent.type(screen.getByLabelText('Nama'), 'Meja QC');
+  await userEvent.click(checkbox);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await vi.waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ sharedAccount: true })),
+  );
+});
+
+test('Akun bersama terpasang dari defaultValues saat edit', () => {
+  renderForm({
+    mode: 'edit',
+    defaultValues: {
+      ...toUserFormDefaults(),
+      email: 'a@gmail.com',
+      name: 'A',
+      sharedAccount: true,
+    },
+  });
+  expect(screen.getByRole('checkbox', { name: 'Akun bersama' })).toBeChecked();
 });

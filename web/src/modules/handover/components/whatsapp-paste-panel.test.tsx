@@ -1,7 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+// Mendaftarkan pemuat malas demo (seperti di aplikasi, tempat katalog selalu dimuat).
+import '@/modules/guide/catalog/handover';
 import { WhatsappPastePanel } from './whatsapp-paste-panel';
+
+// Ikon info membaca penanda panduan; di sini penanda tidak relevan.
+vi.mock('@/modules/guide/lib/use-guide-store', () => ({
+  useGuideStore: () => ({
+    ready: true,
+    done: new Map<string, number>(),
+    mark: vi.fn(async () => undefined),
+    reset: vi.fn(async () => undefined),
+  }),
+}));
 
 const EX1 = 'Orderan Online :\nCRS310 = 1 unt\nRB5009UG = 1 unt';
 const EX2 = [
@@ -98,4 +110,19 @@ test('mengubah tempelan menghapus pesan status sebelumnya', async () => {
   expect(screen.getByText('1 task ditambahkan ke batch.')).toBeInTheDocument();
   paste('baru');
   expect(screen.queryByText('1 task ditambahkan ke batch.')).not.toBeInTheDocument();
+});
+
+test('ikon info di samping judul panel membuka demo Tempel dari WhatsApp', async () => {
+  setup();
+  const heading = screen.getByRole('heading', { name: 'Tempel dari WhatsApp' });
+  const icon = screen.getByRole('button', { name: 'Cara tempel banyak pesan sekaligus' });
+  expect(heading.parentElement).toContainElement(icon);
+  await userEvent.click(icon);
+  expect(
+    await screen.findByText(
+      'Salin semua pesan orderannya sekaligus dari WhatsApp.',
+      {},
+      { timeout: 5000 },
+    ),
+  ).toBeInTheDocument();
 });
