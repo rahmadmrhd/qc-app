@@ -109,6 +109,9 @@ test('runtimeCaching: tepat satu aturan CacheFirst untuk aset berhash same-origi
   if (!rule) throw new Error('aturan tidak ada');
   expect(rule.handler).toBe('CacheFirst');
   expect(ruleMatches(rule, '/assets/x-abc123.js')).toBe(true);
+  // Cadangan WASM pemindai kamera ikut di-cache saat dipakai (tidak dipra-cache: bukan js/css/html/png/svg/woff2).
+  expect(ruleMatches(rule, '/assets/zxing_reader-abc123.wasm')).toBe(true);
+  expect(pwaOptions.workbox?.globPatterns?.join(',')).not.toContain('wasm');
   for (const path of ['/api/v1/me', '/auth/login', '/sync', '/handover', '/']) {
     expect(ruleMatches(rule, path), path).toBe(false);
   }

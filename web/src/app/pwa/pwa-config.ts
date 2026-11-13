@@ -58,8 +58,12 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     runtimeCaching: [
       {
         // Potongan berhash yang tidak dipra-cache (terlalu besar, mis. halaman QR): cache saat pertama dipakai.
+        // `.wasm` = cadangan pemindai kamera (zxing-wasm, ~400 KB gzip; hanya dimuat bila peramban tak punya
+        // `BarcodeDetector`): tidak dipra-cache, tetapi tersimpan setelah pemakaian pertama agar kamera tetap jalan offline.
         urlPattern: ({ url, sameOrigin }) =>
-          sameOrigin && url.pathname.startsWith('/assets/') && /\.(?:js|css)$/.test(url.pathname),
+          sameOrigin &&
+          url.pathname.startsWith('/assets/') &&
+          /\.(?:js|css|wasm)$/.test(url.pathname),
         handler: 'CacheFirst',
         options: {
           cacheName: 'qc-assets',

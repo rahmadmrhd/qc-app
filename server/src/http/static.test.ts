@@ -18,6 +18,10 @@ beforeAll(() => {
   writeFileSync(path.join(dir, 'workbox-abc.js'), 'export {};');
   writeFileSync(path.join(dir, 'icons', 'icon-192.png'), Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
   writeFileSync(path.join(dir, 'assets', 'a-abc123.js'), 'export {};');
+  writeFileSync(
+    path.join(dir, 'assets', 'zxing_reader-abc123.wasm'),
+    Uint8Array.from([0, 0x61, 0x73, 0x6d]),
+  );
 });
 
 afterAll(() => {
@@ -29,6 +33,13 @@ function serve(pathname: string, method = 'GET'): Response {
   if (response === null) throw new Error(`serveStatic mengembalikan null untuk ${pathname}`);
   return response;
 }
+
+test('berkas .wasm cadangan pemindai kamera: application/wasm (kompilasi streaming) dan cache panjang', () => {
+  const response = serve('/assets/zxing_reader-abc123.wasm');
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toBe('application/wasm');
+  expect(response.headers.get('cache-control')).toContain('immutable');
+});
 
 describe('berkas PWA', () => {
   test('/sw.js: 200, no-cache, tipe JavaScript', async () => {
