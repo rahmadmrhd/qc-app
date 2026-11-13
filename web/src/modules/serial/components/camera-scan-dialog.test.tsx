@@ -399,3 +399,146 @@ test('fokus awal tidak jatuh ke kolom ketik manual (papan ketik ponsel); tetap d
   expect(screen.getByLabelText('Ketik serial manual')).not.toHaveFocus();
   expect(dialog.contains(document.activeElement)).toBe(true);
 });
+
+test('dalam keadaan galat, tab tersembunyi lalu terlihat TIDAK memicu percobaan lagi; Coba lagi tetap jalan', async () => {
+  const getUserMedia = vi.fn(async () => {
+    throw Object.assign(new Error('x'), { name: 'NotAllowedError' });
+  });
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+  render(<CameraScanDialog open onOpenChange={() => undefined} onScan={() => 'added'} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.denied);
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+  setHidden(true);
+  setHidden(false);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.denied);
+
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+});
+
+test('batas waktu memuat pemindai: gagal dimuat dengan Coba lagi; hasil terlambat tidak menimpa keadaan galat', async () => {
+  let finishLate: () => void = () => undefined;
+  let hang = true;
+  const purge = vi.fn();
+  class Detector {
+    detect = vi.fn(async () => []);
+  }
+  const createEngine = () =>
+    createBarcodeEngine({
+      native: undefined,
+      formats: SCAN_FORMATS,
+      loadFallback: () =>
+        loadWasmBarcodeDetector(
+          async () => ({
+            BarcodeDetector: Detector,
+            purgeZXingModule: purge,
+            prepareZXingModule: () =>
+              hang
+                ? new Promise((resolve) => {
+                    finishLate = () => resolve({});
+                  })
+                : Promise.resolve({}),
+          }),
+          60,
+        ),
+    });
+  const ctx = setup({ createEngine });
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
+  expect(purge).toHaveBeenCalledTimes(1);
+  expect(ctx.track.stop).toHaveBeenCalled();
+
+  // Pemuatan yang lambat akhirnya selesai: keadaan galat tetap, kamera tidak menyala sendiri.
+  finishLate();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  expect(screen.getByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
+  expect(ctx.getUserMedia).toHaveBeenCalledTimes(1);
+
+  hang = false;
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+});
+
+test('restart cepat: pemuatan run lama yang selesai terlambat tidak menimpa pratinjau, trek, atau senter run baru', async () => {
+  const first = fakeStream({ torch: true });
+  const second = fakeStream({ torch: true });
+  let resolveFirst: (stream: MediaStream) => void = () => undefined;
+  const getUserMedia = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(second.stream);
+  setMediaDevices({ getUserMedia, enumerateDevices: vi.fn(async () => []) });
+  const { engine } = fakeEngine();
+  render(
+    <CameraScanDialog
+      open
+      onOpenChange={() => undefined}
+      onScan={() => 'added'}
+      createEngine={async () => engine}
+    />,
+  );
+  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+  // Run pertama masih menunggu izin; tab disembunyikan dan ditampilkan lagi = run kedua.
+  setHidden(true);
+  setHidden(false);
+  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+  const toggle = await screen.findByRole('button', { name: 'Nyalakan senter' });
+  const video = screen.getByLabelText('Pratinjau kamera') as HTMLVideoElement;
+  expect(video.srcObject).toBe(second.stream);
+
+  // Run pertama baru selesai sekarang: alirannya dihentikan, milik run kedua tidak disentuh.
+  await act(async () => {
+    resolveFirst(first.stream);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(first.track.stop).toHaveBeenCalled();
+  expect(second.track.stop).not.toHaveBeenCalled();
+  expect(video.srcObject).toBe(second.stream);
+  await userEvent.click(toggle);
+  expect(second.track.applyConstraints).toHaveBeenCalledWith({ advanced: [{ torch: true }] });
+  expect(first.track.applyConstraints).not.toHaveBeenCalled();
+  expect(await screen.findByRole('button', { name: 'Matikan senter' })).toBeInTheDocument();
+});
+
+test('senter: applyConstraints yang selesai setelah restart tidak mengubah tombol senter run baru', async () => {
+  const first = fakeStream({ torch: true });
+  const second = fakeStream({ torch: true });
+  let finishConstraint: () => void = () => undefined;
+  first.track.applyConstraints.mockImplementation(
+    () =>
+      new Promise<undefined>((resolve) => {
+        finishConstraint = () => resolve(undefined);
+      }),
+  );
+  const getUserMedia = vi.fn().mockResolvedValueOnce(first.stream).mockResolvedValue(second.stream);
+  setMediaDevices({ getUserMedia, enumerateDevices: vi.fn(async () => []) });
+  const { engine } = fakeEngine();
+  render(
+    <CameraScanDialog
+      open
+      onOpenChange={() => undefined}
+      onScan={() => 'added'}
+      createEngine={async () => engine}
+    />,
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Nyalakan senter' }));
+  setHidden(true);
+  setHidden(false);
+  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+  await screen.findByRole('button', { name: 'Nyalakan senter' });
+  await act(async () => {
+    finishConstraint();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(screen.getByRole('button', { name: 'Nyalakan senter' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+});

@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createBarcodeEngine, SCAN_FORMATS, ScannerLoadError } from './barcode-engine';
-import { loadWasmBarcodeDetector, type PonyfillModule, ZXING_OVERRIDES } from './barcode-fallback';
+import {
+  loadWasmBarcodeDetector,
+  type PonyfillModule,
+  SCANNER_LOAD_TIMEOUT_MS,
+  ZXING_OVERRIDES,
+} from './barcode-fallback';
 
 class FakeDetector {
   async detect() {
@@ -67,6 +72,30 @@ describe('loadWasmBarcodeDetector', () => {
     await expect(loadWasmBarcodeDetector(load)).rejects.toThrow('offline');
     expect(await loadWasmBarcodeDetector(load)).toBe(FakeDetector);
     expect(purge).toHaveBeenCalledTimes(1);
+  });
+
+  test('batas waktu: pemuatan yang menggantung gagal, modul dibuang, hasil terlambat diabaikan', async () => {
+    let finishLate: () => void = () => undefined;
+    const prepare = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          finishLate = () => resolve({});
+        }),
+    );
+    const { load, purge } = fakeModule(prepare);
+    await expect(loadWasmBarcodeDetector(load, 20)).rejects.toThrow('melewati batas');
+    expect(purge).toHaveBeenCalledTimes(1);
+    finishLate();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(purge).toHaveBeenCalledTimes(1);
+  });
+
+  test('batas waktu bernama 20 detik dan pemuat yang selesai tepat waktu tidak kena batas', async () => {
+    expect(SCANNER_LOAD_TIMEOUT_MS).toBe(20_000);
+    const { load, purge } = fakeModule(vi.fn(async () => ({})));
+    expect(await loadWasmBarcodeDetector(load, 20)).toBe(FakeDetector);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(purge).not.toHaveBeenCalled();
   });
 
   test('locateFile: .wasm dari bundel sendiri (bukan CDN), berkas lain mengikuti awalan', () => {

@@ -30,25 +30,47 @@ export interface PonyfillModule {
 const importPonyfill = (): Promise<PonyfillModule> =>
   import('barcode-detector/ponyfill') as unknown as Promise<PonyfillModule>;
 
+/** Batas waktu memuat cadangan WASM (impor + unduh + kompilasi); lewat dari ini = gagal dimuat (Coba lagi). */
+export const SCANNER_LOAD_TIMEOUT_MS = 20_000;
+
 /**
  * Konstruktor ponyfill memulai pemuatan `.wasm` TANPA menunggu dan menelan galatnya, sehingga unduhan/kompilasi yang
  * gagal baru tampak sebagai `detect()` yang selalu melempar. Karena itu modul disiapkan dan ditunggu di sini: galat
- * sampai ke `createBarcodeEngine` (keadaan "gagal dimuat" dengan Coba lagi). Saat gagal modul dibuang dari cache
- * pustaka agar percobaan berikutnya benar-benar mengunduh ulang.
+ * sampai ke `createBarcodeEngine` (keadaan "gagal dimuat" dengan Coba lagi). Saat gagal (termasuk melewati
+ * `timeoutMs`) modul dibuang dari cache pustaka agar percobaan berikutnya benar-benar mengunduh ulang; hasil yang
+ * datang terlambat sesudah itu diabaikan (tidak ada yang menunggunya dan tak tersimpan di cache).
  */
 export async function loadWasmBarcodeDetector(
   load: () => Promise<PonyfillModule> = importPonyfill,
+  timeoutMs: number = SCANNER_LOAD_TIMEOUT_MS,
 ): Promise<BarcodeDetectorConstructor> {
-  const { BarcodeDetector, prepareZXingModule, purgeZXingModule } = await load();
-  try {
+  let purge: (() => void) | null = null;
+  const prepare = async (): Promise<BarcodeDetectorConstructor> => {
+    const { BarcodeDetector, prepareZXingModule, purgeZXingModule } = await load();
+    purge = purgeZXingModule;
     await prepareZXingModule({
       overrides: ZXING_OVERRIDES,
       equalityFn: Object.is,
       fireImmediately: true,
     });
+    return BarcodeDetector as BarcodeDetectorConstructor;
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Pemuat pemindai melewati batas ${timeoutMs} ms`)),
+      timeoutMs,
+    );
+  });
+  const loading = prepare();
+  // Hasil/galat yang datang setelah batas waktu dilewati sengaja tidak ditangani siapa pun.
+  loading.catch(() => undefined);
+  try {
+    return await Promise.race([loading, timeout]);
   } catch (error) {
-    purgeZXingModule();
+    (purge as (() => void) | null)?.();
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return BarcodeDetector as BarcodeDetectorConstructor;
 }

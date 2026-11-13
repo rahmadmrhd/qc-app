@@ -116,23 +116,34 @@ export function useCameraScanner({
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  // Tab tersembunyi: kamera dilepas sepenuhnya (trek dihentikan, loop berhenti) dan dinyalakan lagi saat terlihat.
-  const [pageVisible, setPageVisible] = useState(() => !document.hidden);
+  // Tab tersembunyi: kamera dilepas sepenuhnya (trek dihentikan, loop berhenti) dan dinyalakan lagi saat terlihat. HANYA
+  // bila kamera sedang jalan (memuat atau memindai): dalam keadaan galat tab tak menyentuh apa pun, pesan galat tetap
+  // dan pengguna yang menekan "Coba lagi" (tidak ada percobaan otomatis yang memunculkan ulang izin/galat).
+  const [paused, setPaused] = useState(() => document.hidden);
+  const statusRef = useRef<CameraState['status']>('loading');
+  statusRef.current = state.status;
   useEffect(() => {
     if (!open) return;
-    const onChange = () => setPageVisible(!document.hidden);
-    onChange();
+    const onChange = () => {
+      if (document.hidden) {
+        if (statusRef.current !== 'error') setPaused(true);
+      } else {
+        setPaused(false);
+      }
+    };
     document.addEventListener('visibilitychange', onChange);
     return () => document.removeEventListener('visibilitychange', onChange);
   }, [open]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` hanya pemicu jalan ulang ("Coba lagi").
   useEffect(() => {
-    if (!open || !pageVisible) return;
+    if (!open || paused) return;
     let cancelled = false;
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let engine: BarcodeEngine | null = null;
+    // Trek milik run ini: `stop()` hanya membersihkan keadaan bersama (trackRef, srcObject) bila masih miliknya.
+    let ownTrack: MediaStreamTrack | null = null;
 
     // Tiap (re)start: "Menyiapkan kamera…" dan senter kembali MATI (trek baru selalu mulai tanpa senter).
     setState({ status: 'loading' });
@@ -142,10 +153,13 @@ export function useCameraScanner({
     const stop = () => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
-      for (const track of stream?.getTracks() ?? []) track.stop();
+      const own = stream;
+      for (const track of own?.getTracks() ?? []) track.stop();
       stream = null;
-      trackRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
+      if (ownTrack !== null && trackRef.current === ownTrack) trackRef.current = null;
+      ownTrack = null;
+      const video = videoRef.current;
+      if (video && own !== null && video.srcObject === own) video.srcObject = null;
     };
 
     const fail = (kind: CameraErrorKind) => {
@@ -182,6 +196,7 @@ export function useCameraScanner({
 
       const track = stream.getVideoTracks()[0];
       trackRef.current = track ?? null;
+      ownTrack = track ?? null;
       const capabilities = (track?.getCapabilities?.() ?? {}) as TorchCapabilities;
       setTorchSupported(capabilities.torch === true);
       setActiveDeviceId(track?.getSettings?.().deviceId ?? '');
@@ -217,8 +232,8 @@ export function useCameraScanner({
       const tick = async () => {
         timer = null;
         if (cancelled || !engine) return;
-        // Tab tersembunyi: tidak membaca bingkai (peramban pun menahan timer); lanjut setelah terlihat lagi.
-        if (!document.hidden && video.readyState >= 2) {
+        // Tab tersembunyi tak sampai sini: kamera dilepas (efek dibersihkan) dan dimulai ulang saat terlihat.
+        if (video.readyState >= 2) {
           try {
             for (const payload of await engine.detect(video)) {
               if (cancelled) return;
@@ -238,16 +253,17 @@ export function useCameraScanner({
       cancelled = true;
       stop();
     };
-  }, [open, pageVisible, deviceId, attempt]);
+  }, [open, paused, deviceId, attempt]);
 
   const setTorch = useCallback(async (on: boolean) => {
     const track = trackRef.current;
     if (!track) return;
     try {
       await track.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] });
-      setTorchOn(on);
+      // Kamera sempat dimulai ulang selagi menunggu: trek ini sudah tidak berlaku, jangan ubah tampilan senter.
+      if (trackRef.current === track) setTorchOn(on);
     } catch {
-      setTorchOn(false);
+      if (trackRef.current === track) setTorchOn(false);
     }
   }, []);
 
