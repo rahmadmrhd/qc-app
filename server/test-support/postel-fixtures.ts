@@ -19,6 +19,8 @@ export interface SeedPostelInput {
   id?: string;
   note?: string;
   attachments?: string[];
+  /** Stiker katalog catatan ini (`postels.sticker_id`; stiker harus sudah di-seed pemanggil); kosong = belum bersiker. */
+  stickerId?: string;
   /** Item (sudah di-seed) yang ditautkan: mengisi `items.postel_id`. */
   itemIds?: string[];
   numbers: SeedPostelNumber[];
@@ -29,12 +31,13 @@ export async function seedPostel(env: Pick<Env, 'DB'>, input: SeedPostelInput): 
   const id = input.id ?? `postel-${crypto.randomUUID()}`;
   // Upsert: `seedItem({ postelId })` sudah dapat membuat catatan kosong ber-id sama (kunci asing `items_postel_fk`).
   await env.DB.prepare(
-    'INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE note = VALUES(note), attachments = VALUES(attachments)',
+    'INSERT INTO postels (id, note, attachments, sticker_id, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE note = VALUES(note), attachments = VALUES(attachments), sticker_id = VALUES(sticker_id)',
   )
     .bind(
       id,
       input.note ?? '',
       JSON.stringify(input.attachments ?? []),
+      input.stickerId ?? null,
       SEED_TIME,
       SEED_TIME,
       'seed',

@@ -254,8 +254,8 @@ export async function loadItemManualBooks(
 /**
  * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi. Kunci asing `items_postel_fk`
  * (migrasi 0010, `ON DELETE SET NULL`) menjamin penunjuk terisi selalu menunjuk catatan yang ada, jadi tak perlu
- * `EXISTS` lagi (penunjuk yatim tak mungkin ada). Dipakai filter `items.list` (`postel`), cabang aturan `group` jenis
- * Postel (`instructionFilterSql`), dan `itemIdsWithPostel` (sumber `hasPostel`).
+ * `EXISTS` lagi (penunjuk yatim tak mungkin ada). Dipakai filter `items.list` (`postel`) dan `itemIdsWithPostel`
+ * (sumber `hasPostel`); aturan `group` jenis Postel memakai stiker milik catatan (`postelStickerIdsOf`).
  */
 export const HAS_POSTEL_SQL = '(i.postel_id IS NOT NULL)';
 
@@ -272,6 +272,30 @@ export async function itemIdsWithPostel(db: Db, itemIds: readonly string[]): Pro
       .bind(...chunk)
       .all<{ id: string }>();
     for (const row of rows.results) result.add(row.id.trim());
+  }
+  return result;
+}
+
+/**
+ * Stiker Postel yang berlaku bagi item (peta id item -> id stiker): stiker milik catatan Postel item itu
+ * (`postels.sticker_id`). Item tanpa Postel, atau Postel yang belum bersiker, tidak ada di peta. Sumber aturan `group`
+ * jenis Postel pada tampilan instruksi (cermin SQL: `instructionFilterSql`).
+ */
+export async function postelStickerIdsOf(
+  db: Db,
+  itemIds: readonly string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(itemIds)];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const rows = await db
+      .prepare(
+        `SELECT i.id, p.sticker_id FROM items i JOIN postels p ON p.id = i.postel_id WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND p.sticker_id IS NOT NULL`,
+      )
+      .bind(...chunk)
+      .all<{ id: string; sticker_id: string }>();
+    for (const row of rows.results) result.set(row.id.trim(), row.sticker_id.trim());
   }
   return result;
 }

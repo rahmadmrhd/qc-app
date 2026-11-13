@@ -149,7 +149,7 @@ function StickerFormBody({
   const selectedType = allTypes.find((type) => type.id === typeId);
   const needsBusinessUnits = selectedType?.rule === 'bu';
   // Stiker jenis sistem dikelola aplikasi: nama terkunci. Manual Book (lahir dari ekspor QR) mengunci juga gambarnya;
-  // stiker Postel (satu stiker untuk seluruh catatan) boleh berganti gambar contoh.
+  // stiker Postel (satu per catatan Postel) boleh berganti gambar contoh.
   const systemKind = selectedType?.systemKind ?? '';
   const systemLocked = sticker !== undefined && systemKind !== '';
   const imageLocked = sticker !== undefined && systemKind === 'manual_book';
@@ -315,7 +315,7 @@ function StickerFormBody({
           {systemLocked ? (
             <p className="text-xs text-muted-foreground">
               {systemKind === 'postel'
-                ? 'Stiker Postel dikelola aplikasi (satu stiker untuk seluruh catatan Postel); nama dan jenis tidak dapat diubah, gambar contoh boleh diganti.'
+                ? 'Stiker Postel dikelola aplikasi (satu stiker untuk tiap catatan Postel, namanya mengikuti nama Postel); nama dan jenis tidak dapat diubah, gambar contoh boleh diganti.'
                 : 'Stiker jenis sistem dikelola aplikasi (lahir dari ekspor QR); nama, jenis, dan gambar tidak dapat diubah di sini.'}
             </p>
           ) : null}

@@ -7,7 +7,9 @@ import {
   INSTRUCTION_LIMITS,
   isLowStock,
   type MatchSticker,
+  manualBookStickerName,
   piecesOfCount,
+  postelStickerName,
   STICKER_LIMITS,
   STICKER_RULES,
   STICKER_STATUSES,
@@ -223,5 +225,25 @@ describe('stickersForType', () => {
     expect(
       ids(stickersForType({ id: 't1', rule: 'group' }, withDeprecated, [], new Set(['s7', 's1']))),
     ).toEqual(['s1']);
+  });
+});
+
+describe('nama stiker jenis sistem berawalan (keputusan pemilik 2026-11-12)', () => {
+  test('Manual Book: "Manual Book - <nama> v<versi>"', () => {
+    expect(manualBookStickerName('PBE M5-400', 2)).toBe('Manual Book - PBE M5-400 v2');
+  });
+
+  test('Postel: "Postel - <nama>" dengan pembeda opsional', () => {
+    expect(postelStickerName('M5-200/400')).toBe('Postel - M5-200/400');
+    expect(postelStickerName('AC-100', ' (SN-9)')).toBe('Postel - AC-100 (SN-9)');
+  });
+
+  test('dipotong ke batas nama; pembeda Postel tetap utuh dan Manual Book tak melebihi batas', () => {
+    const long = 'X'.repeat(500);
+    expect(postelStickerName(long)).toHaveLength(STICKER_LIMITS.nameMax);
+    const withSuffix = postelStickerName(long, ' (SN-9)');
+    expect(withSuffix).toHaveLength(STICKER_LIMITS.nameMax);
+    expect(withSuffix.endsWith(' (SN-9)')).toBe(true);
+    expect(manualBookStickerName(long, 3)).toHaveLength(STICKER_LIMITS.nameMax);
   });
 });
