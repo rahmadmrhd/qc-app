@@ -5,7 +5,7 @@ import type { GuideEntry } from '../lib/types';
 
 const state = vi.hoisted(() => ({
   ready: true,
-  offers: [] as { entry: GuideEntry; stepCount: number }[],
+  offers: [] as { entry: GuideEntry; stepCount: number; updated?: boolean }[],
   pathname: '/handover',
   tourActive: false,
   blocking: false,
@@ -66,6 +66,17 @@ describe('GuideBanner', () => {
     expect(screen.getByRole('button', { name: 'Mulai' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nanti' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sudah paham' })).toBeInTheDocument();
+  });
+
+  test('N1: panduan yang diperbarui menampilkan label "Diperbarui"', () => {
+    state.offers = [{ entry: entry(), stepCount: 4, updated: true }];
+    render(<GuideBanner />);
+    expect(screen.getByTestId('guide-banner')).toHaveTextContent('Diperbarui');
+  });
+
+  test('N1: panduan baru pertama kali tanpa label "Diperbarui"', () => {
+    render(<GuideBanner />);
+    expect(screen.getByTestId('guide-banner')).not.toHaveTextContent('Diperbarui');
   });
 
   test('cocok juga di anak rute halaman', () => {

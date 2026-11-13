@@ -1,6 +1,7 @@
 import { useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
 import { NAV_GROUPS } from '@/app/navigation';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMe } from '@/modules/auth/use-me';
 import { useBlockingOnboardingActive } from '@/modules/push/components/push-onboarding';
@@ -89,6 +90,11 @@ export function GuideBanner() {
       <p className="min-w-0 flex-1">
         <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
         <span className="text-muted-foreground">Ada panduan {stepCount} langkah.</span>
+        {offer.updated ? (
+          <Badge variant="secondary" className="ml-2 align-middle">
+            Diperbarui
+          </Badge>
+        ) : null}
       </p>
       <div className="flex shrink-0 flex-wrap gap-2">
         <Button type="button" size="sm" onClick={() => tour.start(entry)}>

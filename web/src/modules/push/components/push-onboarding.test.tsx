@@ -298,6 +298,30 @@ describe('useBlockingOnboardingActive', () => {
     await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
   });
 
+  test('M14: localStorage terblokir: setelah Nanti sinyal kembali false (tak macet true)', async () => {
+    device({ permission: 'default', standalone: true });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('terblokir');
+    });
+    mountWithProbe();
+    await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' });
+    await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
+    await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
+    vi.restoreAllMocks();
+  });
+
+  test('M14: localStorage terblokir: setelah menutup banner izin ditolak sinyal kembali false', async () => {
+    device({ permission: 'denied', standalone: true });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('terblokir');
+    });
+    mountWithProbe();
+    await screen.findByTestId('push-denied-banner');
+    await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+    await waitFor(() => expect(screen.getByTestId('blocking')).toHaveTextContent('false'));
+    vi.restoreAllMocks();
+  });
+
   test('kembali false saat PushOnboarding dilepas', async () => {
     device({ permission: 'default', standalone: true });
     const view = mountWithProbe();

@@ -13,17 +13,17 @@ interface SilentBoundaryProps {
  * `errorComponent` router. Panduan hanya pelengkap: diam saja (`fallback`, bawaan tak ada) dan beri tahu pemanggil.
  */
 export class SilentBoundary extends Component<SilentBoundaryProps, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch(error: unknown, _info: ErrorInfo) {
+  override componentDidCatch(error: unknown, _info: ErrorInfo) {
     this.props.onError?.(error);
   }
 
-  render() {
+  override render() {
     return this.state.failed ? (this.props.fallback ?? null) : this.props.children;
   }
 }

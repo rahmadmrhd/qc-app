@@ -111,6 +111,9 @@ export function PushOnboarding() {
   const [permission, setPermission] = useState<DevicePermission>(() => devicePermission());
   const [askOpen, setAskOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
+  // Efek pembuka dialog/banner sudah memutuskan (lihat `blocking`).
+  const [askEvaluated, setAskEvaluated] = useState(false);
+  const [bannerEvaluated, setBannerEvaluated] = useState(false);
   const [busy, setBusy] = useState(false);
   // Naik tiap jendela fokus: memberi kesempatan mencoba lagi penautan yang gagal dalam sesi yang sama.
   const [focusTick, setFocusTick] = useState(0);
@@ -135,12 +138,13 @@ export function PushOnboarding() {
   const active = config?.enabled === true && permission !== 'unsupported';
   const userEnabled = config?.userEnabled === true;
 
-  // Sinyal untuk komponen lain (lihat `useBlockingOnboardingActive`): dialog/banner terbuka, atau syaratnya sudah
-  // terpenuhi pada render ini dan efek yang membukanya belum jalan.
-  const askPending =
-    active && permission === 'default' && userEnabled && isStandalone(window) && !wasAsked(email);
-  const bannerPending =
-    active && permission === 'denied' && userEnabled && bannerDue(email, Date.now());
+  // Sinyal untuk komponen lain (lihat `useBlockingOnboardingActive`): dialog/banner benar-benar terbuka (state),
+  // atau syaratnya terpenuhi dan efek yang memutuskan membukanya belum sempat jalan (`*Evaluated`, state agar
+  // render ulang terjadi begitu efek selesai). Sengaja TIDAK membaca ulang storage tiap render: bila penyimpanan
+  // terblokir, penanda "sudah ditanya/ditampilkan" tak pernah tersimpan dan sinyal akan macet true.
+  const askCandidate = active && permission === 'default' && userEnabled && isStandalone(window);
+  const askPending = askCandidate && !askEvaluated;
+  const bannerPending = active && permission === 'denied' && userEnabled && !bannerEvaluated;
   const blocking =
     configPending ||
     askOpen ||
@@ -189,13 +193,16 @@ export function PushOnboarding() {
   // Dialog pra-izin: hanya PWA terpasang, izin belum pernah ditentukan, dan belum pernah ditanya.
   useEffect(() => {
     if (!active || permission !== 'default' || !userEnabled) return;
-    if (!isStandalone(window) || wasAsked(email)) return;
+    if (!isStandalone(window)) return;
+    setAskEvaluated(true);
+    if (wasAsked(email)) return;
     setAskOpen(true);
   }, [active, permission, userEnabled, email]);
 
   // Banner izin ditolak: dicatat saat ditampilkan, jadi muat ulang tidak menampilkannya lagi dalam 7 hari.
   useEffect(() => {
     if (!active || permission !== 'denied' || !userEnabled) return;
+    setBannerEvaluated(true);
     const now = Date.now();
     if (!bannerDue(email, now)) return;
     markBannerShown(email, now);

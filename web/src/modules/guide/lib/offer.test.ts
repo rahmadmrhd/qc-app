@@ -1,4 +1,5 @@
 import type { LocationAccessDto, MeDto } from '@shared/contract';
+import { GUIDE_VERSIONS } from '@shared/guides';
 import { describe, expect, test } from 'vitest';
 import { eligibleGuides, greetingDue, hasAccess, offeredGuides, stepsFor } from './offer';
 import type { GuideEntry, GuideStep } from './types';
@@ -111,7 +112,7 @@ describe('offeredGuides', () => {
 
   describe('panduan baru', () => {
     const dasar = entry({ id: 'dasar-x', kind: 'dasar', covers: ['baru-x'] });
-    const baru = entry({ id: 'baru-x', kind: 'baru' });
+    const baru = entry({ id: 'baru-x', kind: 'baru', dasar: 'dasar-x' });
 
     test('tidak ditawari sebelum dasar modulnya selesai', () => {
       expect(ids({ catalog: [dasar, baru] })).toEqual(['dasar-x']);
@@ -126,13 +127,28 @@ describe('offeredGuides', () => {
       expect(ids({ catalog: [v2, baru], done: new Map([['dasar-x', 1]]) })).toEqual(['dasar-x']);
     });
 
-    test('dasar terkait lewat modul izin yang sama (tanpa covers)', () => {
-      const dasarTanpaCovers = entry({ id: 'dasar-y', kind: 'dasar' });
-      const baruY = entry({ id: 'baru-y', kind: 'baru' });
-      expect(ids({ catalog: [dasarTanpaCovers, baruY] })).toEqual(['dasar-y']);
-      expect(ids({ catalog: [dasarTanpaCovers, baruY], done: new Map([['dasar-y', 1]]) })).toEqual([
+    test('M3: prasyarat hanya dasar yang disebut eksplisit, bukan irisan modul izin', () => {
+      const lain = entry({ id: 'dasar-lain', kind: 'dasar' });
+      const baruY = entry({ id: 'baru-y', kind: 'baru', dasar: 'dasar-x' });
+      // `dasar-lain` seizin dengan baru-y tetapi bukan induknya: tak menahan; `dasar-x` selesai.
+      expect(ids({ catalog: [dasar, lain, baruY], done: new Map([['dasar-x', 1]]) })).toEqual([
+        'dasar-lain',
         'baru-y',
       ]);
+    });
+
+    test('M3: baru tanpa izin (tata letak) tetap menunggu dasar-layout', () => {
+      const layout = entry({ id: 'dasar-layout', kind: 'dasar', izin: undefined });
+      const baruLayout = entry({
+        id: 'baru-layout',
+        kind: 'baru',
+        izin: undefined,
+        dasar: 'dasar-layout',
+      });
+      expect(ids({ me: me(), catalog: [layout, baruLayout] })).toEqual(['dasar-layout']);
+      expect(
+        ids({ me: me(), catalog: [layout, baruLayout], done: new Map([['dasar-layout', 1]]) }),
+      ).toEqual(['baru-layout']);
     });
 
     test('dasar yang langkahnya gugur bagi pengguna tidak menahan baru', () => {
@@ -140,8 +156,27 @@ describe('offeredGuides', () => {
       expect(ids({ catalog: [kosong, baru] })).toEqual(['baru-x']);
     });
 
-    test('baru tanpa dasar sama sekali ditawari biasa', () => {
+    test('baru yang dasarnya tak ada di katalog ditawari biasa (tes katalog menjaganya)', () => {
       expect(ids({ catalog: [baru] })).toEqual(['baru-x']);
+    });
+  });
+
+  describe('N1: label "Diperbarui"', () => {
+    test('updated true bila versi tersimpan ada tetapi lebih rendah dari katalog', () => {
+      const [first] = offer({ catalog: [entry({ version: 2 })], done: new Map([['g1', 1]]) });
+      expect(first?.updated).toBe(true);
+    });
+    test('updated false bila belum pernah selesai', () => {
+      expect(offer({ catalog: [entry({ version: 2 })] })[0]?.updated).toBe(false);
+    });
+    test('updated false untuk panduan diturunkan', () => {
+      const turunan = entry({ id: 'pwa', status: 'diturunkan', izin: undefined });
+      const result = offer({
+        catalog: [turunan],
+        derived: new Map([['pwa', true]]),
+        done: new Map([['pwa', 0]]),
+      });
+      expect(result[0]?.updated).toBe(false);
     });
   });
 
@@ -209,8 +244,12 @@ describe('greetingDue', () => {
     expect(greetingDue(new Map())).toBe(true);
     expect(greetingDue(new Map([['lain', 1]]))).toBe(true);
   });
-  test('false bila sapaan-awal sudah tercatat', () => {
+  test('false bila sapaan-awal sudah tercatat pada versi terdaftar', () => {
     expect(greetingDue(new Map([['sapaan-awal', 1]]))).toBe(false);
+  });
+  test('M4: true bila versi tersimpan lebih rendah dari GUIDE_VERSIONS', () => {
+    expect(greetingDue(new Map([['sapaan-awal', 0]]))).toBe(true);
+    expect(greetingDue(new Map([['sapaan-awal', GUIDE_VERSIONS['sapaan-awal'] - 1]]))).toBe(true);
   });
 });
 

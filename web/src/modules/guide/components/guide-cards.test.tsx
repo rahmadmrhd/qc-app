@@ -5,8 +5,12 @@ import type { GuideEntry } from '../lib/types';
 
 const state = vi.hoisted(() => ({
   ready: true,
-  offers: [] as { entry: GuideEntry; stepCount: number }[],
+  offers: [] as { entry: GuideEntry; stepCount: number; updated?: boolean }[],
+  blocking: false,
   start: vi.fn(),
+}));
+vi.mock('@/modules/push/components/push-onboarding', () => ({
+  useBlockingOnboardingActive: () => state.blocking,
 }));
 vi.mock('../lib/use-offered-guides', () => ({
   useOfferedGuides: () => ({ ready: state.ready, offers: state.ready ? state.offers : [] }),
@@ -23,6 +27,7 @@ function entry(id: string, title: string): GuideEntry {
 
 beforeEach(() => {
   state.ready = true;
+  state.blocking = false;
   state.offers = [];
   state.start.mockReset();
 });
@@ -56,5 +61,26 @@ describe('GuideCards', () => {
     state.offers = [{ entry: entry('a', 'X'), stepCount: 2 }];
     const { container } = render(<GuideCards />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  test('M5: ditunda selama dialog/banner PushOnboarding tampil, muncul begitu hilang', () => {
+    state.blocking = true;
+    state.offers = [{ entry: entry('a', 'X'), stepCount: 2 }];
+    const view = render(<GuideCards />);
+    expect(view.container).toBeEmptyDOMElement();
+    state.blocking = false;
+    view.rerender(<GuideCards />);
+    expect(screen.getByText('X')).toBeInTheDocument();
+  });
+
+  test('N1: label "Diperbarui" hanya pada panduan yang pernah selesai di versi lama', () => {
+    state.offers = [
+      { entry: entry('a', 'Lama'), stepCount: 2, updated: true },
+      { entry: entry('b', 'Baru'), stepCount: 2 },
+    ];
+    render(<GuideCards />);
+    expect(screen.getAllByText('Diperbarui')).toHaveLength(1);
+    const card = screen.getByText('Lama').closest('[data-slot="card"]') as HTMLElement;
+    expect(card).toHaveTextContent('Diperbarui');
   });
 });

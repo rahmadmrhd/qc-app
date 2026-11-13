@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import type { ModuleKey } from '@shared/permissions';
+import { GUIDE_VERSIONS } from '@shared/guides';
 import { canAnywhere } from '@/modules/auth/permissions';
 import type { GuideAccess, GuideEntry, GuidePermission, GuideStep } from './types';
 
@@ -7,6 +7,8 @@ export interface GuideOffer {
   entry: GuideEntry;
   /** Jumlah langkah yang lolos izin bagi pengguna ini (selalu >= 1 pada panduan yang ditawarkan). */
   stepCount: number;
+  /** Pernah diselesaikan tetapi pada versi lebih rendah dari katalog (label "Diperbarui", spek 4.7). */
+  updated: boolean;
 }
 
 /** Penanda sapaan login (4.4 spek); entri katalog biasa dengan penanda di penyimpanan yang sama. */
@@ -47,28 +49,22 @@ export function stepsFor(
   return entry.steps.filter((step) => hasAccess(me, step.izin, activeLocationIds));
 }
 
-/** True bila sapaan login belum pernah ditanyakan (penanda `sapaan-awal` belum ada). */
+/**
+ * True bila sapaan login belum ditanyakan pada versi terdaftar (`GUIDE_VERSIONS`): tak ada penanda, atau versi
+ * tersimpan lebih rendah (aturan yang sama dengan penawaran panduan lain, spek 4.2).
+ */
 export function greetingDue(done: ReadonlyMap<string, number>): boolean {
-  return !done.has(GREETING_ID);
-}
-
-function modulesOf(access: GuideAccess | undefined): Set<ModuleKey> {
-  return new Set(access === undefined ? [] : alternatives(access).map((item) => item.module));
+  return (done.get(GREETING_ID) ?? 0) < GUIDE_VERSIONS[GREETING_ID];
 }
 
 /**
- * Panduan `dasar` yang menjadi syarat sebuah panduan `baru`: yang mencakupnya (`covers`) atau yang modul izinnya
- * beririsan dengan izin panduan `baru` itu ("dasar modul itu", spek 4.2).
+ * Panduan `dasar` yang menjadi syarat sebuah panduan `baru` (spek 4.2): yang disebut eksplisit lewat
+ * `entry.dasar`. Tak ada penyimpulan dari irisan izin: panduan tata letak (tanpa izin) pun punya induk jelas.
+ * Tes katalog mewajibkan setiap entri `baru` menyebut `dasar` yang ada.
  */
 function dasarOf(baru: GuideEntry, catalog: readonly GuideEntry[]): GuideEntry[] {
-  const modules = modulesOf(baru.izin);
-  return catalog.filter(
-    (candidate) =>
-      candidate.kind === 'dasar' &&
-      candidate.status === 'disimpan' &&
-      (candidate.covers?.includes(baru.id) === true ||
-        [...modulesOf(candidate.izin)].some((module) => modules.has(module))),
-  );
+  if (baru.dasar === undefined) return [];
+  return catalog.filter((candidate) => candidate.id === baru.dasar && candidate.kind === 'dasar');
 }
 
 /**
@@ -86,7 +82,7 @@ export function eligibleGuides(input: {
     if (entry.kind === 'tip' || entry.kind === 'sapaan') continue;
     if (!hasAccess(me, entry.izin, activeLocationIds)) continue;
     const stepCount = stepsFor(entry, me, activeLocationIds).length;
-    if (stepCount > 0) result.push({ entry, stepCount });
+    if (stepCount > 0) result.push({ entry, stepCount, updated: false });
   }
   return result;
 }
@@ -124,7 +120,10 @@ export function offeredGuides(input: {
     }
     const stepCount = stepsFor(entry, me, activeLocationIds).length;
     if (stepCount === 0) continue;
-    offers.push({ entry, stepCount });
+    // N1 (spek 4.7): "Diperbarui" = pernah diselesaikan pada versi lebih rendah dari katalog.
+    const saved = done.get(entry.id);
+    const updated = entry.status === 'disimpan' && saved !== undefined && saved < entry.version;
+    offers.push({ entry, stepCount, updated });
   }
   return offers;
 }
