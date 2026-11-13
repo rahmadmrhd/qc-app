@@ -43,8 +43,22 @@ const base = {
   email: 'a@gmail.com',
   name: 'A',
   status: 'active' as const,
+  sharedAccount: false,
   buAssignments: [],
 };
+
+test('toUserFormDefaults: akun bersama bawaan false dan mengikuti user.sharedAccount', () => {
+  expect(toUserFormDefaults().sharedAccount).toBe(false);
+  expect(toUserFormDefaults(user).sharedAccount).toBe(false);
+  expect(toUserFormDefaults({ ...user, sharedAccount: true }).sharedAccount).toBe(true);
+});
+
+test('userFormSchema meneruskan sharedAccount', () => {
+  expect(
+    userFormSchema.parse({ ...base, assignments: [], sharedAccount: true }).sharedAccount,
+  ).toBe(true);
+  expect(userFormSchema.parse({ ...base, assignments: [] }).sharedAccount).toBe(false);
+});
 
 test('skema mengubah tanda bintang menjadi null dan menerima penugasan sah', () => {
   expect(

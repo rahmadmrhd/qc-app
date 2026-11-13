@@ -27,6 +27,8 @@ export const userFormSchema = z.object({
     .refine((value) => value.length === 0 || EMAIL_PATTERN.test(value), 'Format email tidak valid'),
   name: z.string().trim().min(1, 'Wajib diisi').max(100, 'Maksimal 100 karakter'),
   status: z.enum(['active', 'inactive']),
+  /** Akun bersama (dipakai beberapa orang): panduan ditampilkan ulang di tiap perangkat. */
+  sharedAccount: z.boolean(),
   assignments: z.array(assignmentRowSchema).superRefine((rows, ctx) => {
     const seen = new Set<string>();
     rows.forEach((row, index) => {
@@ -95,6 +97,7 @@ export function toUserFormDefaults(
         email: user.email,
         name: user.name,
         status: user.status,
+        sharedAccount: user.sharedAccount,
         assignments: user.assignments
           .map((entry) => ({
             locationId: assignmentKey(entry.locationId),
@@ -108,7 +111,14 @@ export function toUserFormDefaults(
           }))
           .filter((entry) => entry.roleIds.length > 0),
       }
-    : { email: '', name: '', status: 'active', assignments: [], buAssignments: [] };
+    : {
+        email: '',
+        name: '',
+        status: 'active',
+        sharedAccount: false,
+        assignments: [],
+        buAssignments: [],
+      };
 }
 
 export const locationFormSchema = z.object({
