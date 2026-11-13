@@ -8,6 +8,7 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'edit',

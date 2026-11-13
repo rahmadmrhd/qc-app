@@ -6,8 +6,12 @@ import { SerialSettingsView } from '@/modules/serial/components/serial-settings-
 export const Route = createFileRoute('/_app/serial/settings')({
   beforeLoad: async ({ context }) => {
     await requirePermission(context.queryClient, 'serial', 'manage');
-    // Daftar penerima bersifat global: hanya pengelola di semua BU (atau super admin), sama seperti aturan server.
-    const me = await context.queryClient.ensureQueryData(meQueryOptions());
+    // Daftar penerima bersifat global: penandanya dihitung server di `auth.me` (aturan yang sama dengan penjaga rute).
+    // `me` lama dari localStorage (sebelum penanda ada) dimuat ulang dulu agar pengelola sah tidak salah ditolak.
+    let me = await context.queryClient.ensureQueryData(meQueryOptions());
+    if (me.canManageSerialSettings === undefined) {
+      me = await context.queryClient.fetchQuery(meQueryOptions());
+    }
     if (!canManageSerialSettings(me)) throw redirect({ to: '/forbidden' });
   },
   component: SerialSettingsView,

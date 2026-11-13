@@ -20,6 +20,7 @@ const me: MeDto = {
   email: 'a@gmail.com',
   name: 'A',
   isSuperAdmin: false,
+  canManageSerialSettings: false,
   permissions: {
     access: 'view',
     item: 'view',
@@ -209,15 +210,13 @@ test('serialActorModules: modul yang dipegang pada level edit di BU itu (campura
   expect(serialActorModules(null, 'a')).toEqual({ serial: false, serialservice: false });
 });
 
-test('canManageSerialSettings: super admin, atau serial: manage di SEMUA BU yang terlihat', () => {
-  expect(
-    canManageSerialSettings(meWithBus([serialBu('a', 'manage'), serialBu('b', 'manage')])),
-  ).toBe(true);
-  expect(canManageSerialSettings(meWithBus([serialBu('a', 'manage'), serialBu('b', 'edit')]))).toBe(
-    false,
-  );
-  expect(canManageSerialSettings(meWithBus([serialBu('a', 'edit')]))).toBe(false);
-  expect(canManageSerialSettings(meWithBus([]))).toBe(false);
-  expect(canManageSerialSettings({ ...meWithBus([]), isSuperAdmin: true })).toBe(true);
+test('canManageSerialSettings membaca penanda dari server (auth.me), bukan menghitung dari BU', () => {
+  const base = meWithBus([serialBu('a', 'manage')]);
+  expect(canManageSerialSettings({ ...base, canManageSerialSettings: true })).toBe(true);
+  // Pengelola sebagian BU: penanda server false walau level manage ada di BU yang terlihat.
+  expect(canManageSerialSettings({ ...base, canManageSerialSettings: false })).toBe(false);
+  // `me` lama dari localStorage tanpa penanda dianggap tidak berhak sampai dimuat ulang.
+  const { canManageSerialSettings: _omit, ...legacy } = base;
+  expect(canManageSerialSettings(legacy as typeof base)).toBe(false);
   expect(canManageSerialSettings(null)).toBe(false);
 });

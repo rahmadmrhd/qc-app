@@ -70,12 +70,17 @@ export async function readSerialAlert(
  * 2026-11-13). Selain itu `FORBIDDEN`.
  */
 export async function assertCanManageSerialSettings(env: Env, user: UserContext): Promise<void> {
-  if (user.isSuperAdmin) return;
-  const rows = await env.DB.prepare('SELECT id FROM business_units').all<{ id: string }>();
-  const allBuIds = rows.results.map((row) => row.id.trim());
-  if (!canActOnAllBus(user.businessUnits, 'serial', 'manage', allBuIds)) {
+  if (!(await canManageSerialSettings(env, user))) {
     throw appError('FORBIDDEN', 'Pengaturan ini hanya untuk pengelola Serial Number di semua BU');
   }
+}
+
+/** Aturan tunggal izin pengaturan penerima: dipakai penjaga rute DAN `auth.me` (penanda menu di web). */
+export async function canManageSerialSettings(env: Env, user: UserContext): Promise<boolean> {
+  if (user.isSuperAdmin) return true;
+  const rows = await env.DB.prepare('SELECT id FROM business_units').all<{ id: string }>();
+  const allBuIds = rows.results.map((row) => row.id.trim());
+  return canActOnAllBus(user.businessUnits, 'serial', 'manage', allBuIds);
 }
 
 export async function getSerialSettings(env: Env, user: UserContext): Promise<SerialSettingsDto> {

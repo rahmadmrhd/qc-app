@@ -97,6 +97,7 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',

@@ -23,6 +23,7 @@ const meWith = (access: 'none' | 'view'): MeDto => ({
   email: 'a@x.com',
   name: 'A',
   isSuperAdmin: false,
+  canManageSerialSettings: false,
   permissions: {
     access,
     item: 'none',
@@ -157,7 +158,7 @@ test('versi usang (412): pesan tampil dan pengaturan dimuat ulang ke data terbar
   expect(screen.getByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
 });
 
-test('FORBIDDEN dari server tampil sebagai pesan (pengguna bukan pengelola di semua BU)', async () => {
+test('galat FORBIDDEN dari server tetap tampil sebagai pesan', async () => {
   apiMock.mockImplementation((id: string) =>
     id === 'serialSettings.get'
       ? Promise.reject(

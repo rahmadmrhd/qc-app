@@ -19,6 +19,7 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'view',
@@ -60,6 +61,7 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -149,6 +151,7 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
       email: 'a@gmail.com',
       name: 'A',
       isSuperAdmin: false,
+      canManageSerialSettings: false,
       permissions: {
         access: 'none',
         item: 'none',
@@ -191,6 +194,7 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -374,6 +378,7 @@ function meWithSerial(
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -415,13 +420,19 @@ test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan de
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
 });
 
-function meManagingSerial(levels: ('edit' | 'manage')[], isSuperAdmin = false): MeDto {
+function meManagingSerial(
+  levels: ('edit' | 'manage')[],
+  canManageSettings: boolean,
+  isSuperAdmin = false,
+): MeDto {
   const base = meWithSerial('edit');
   // Izin global = level tertinggi di antara BU (super admin: semua modul manage).
   const global = isSuperAdmin || levels.includes('manage') ? 'manage' : 'edit';
   return {
     ...base,
     isSuperAdmin,
+    // Penanda dihitung server (`auth.me`); di sini diset langsung sesuai skenario.
+    canManageSerialSettings: canManageSettings,
     permissions: { ...base.permissions, serial: global },
     businessUnits: levels.map((level, index) => ({
       id: `b${index}`,
@@ -433,15 +444,18 @@ function meManagingSerial(levels: ('edit' | 'manage')[], isSuperAdmin = false): 
   };
 }
 
-test('menu Pengaturan Serial Number hanya bagi pengelola di semua BU (atau super admin); tidak ikut aktif di Daftar', () => {
-  expect(serialItems(meManagingSerial(['edit']))).toEqual(['Daftar Serial Number']);
-  // Manage hanya di sebagian BU: tersembunyi (server menolak karena penerima bersifat global).
-  expect(serialItems(meManagingSerial(['manage', 'edit']))).toEqual(['Daftar Serial Number']);
-  expect(serialItems(meManagingSerial(['manage', 'manage']))).toEqual([
+test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSettings; tidak ikut aktif di Daftar', () => {
+  expect(serialItems(meManagingSerial(['edit'], false))).toEqual(['Daftar Serial Number']);
+  // Pengelola sebagian BU: server menghitung penanda false (penerima bersifat global), jadi menu tidak muncul.
+  expect(serialItems(meManagingSerial(['manage'], false))).toEqual(['Daftar Serial Number']);
+  expect(serialItems(meManagingSerial(['manage', 'edit'], false))).toEqual([
+    'Daftar Serial Number',
+  ]);
+  expect(serialItems(meManagingSerial(['manage', 'manage'], true))).toEqual([
     'Daftar Serial Number',
     'Pengaturan',
   ]);
-  expect(serialItems(meManagingSerial(['edit'], true))).toContain('Pengaturan');
+  expect(serialItems(meManagingSerial(['edit'], true, true))).toContain('Pengaturan');
   const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
   const list = items.find((entry) => entry.to === '/serial');
   if (!list) throw new Error('menu hilang');

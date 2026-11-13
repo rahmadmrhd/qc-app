@@ -46,6 +46,11 @@ export interface MeDto {
   email: string;
   name: string;
   isSuperAdmin: boolean;
+  /**
+   * Boleh membaca/mengubah penerima surel "Serial Number rusak" (`serialSettings.get|save`): dihitung server dengan
+   * aturan penjaga rute itu (super admin, atau `serial: manage` pada SETIAP BU). Hanya untuk menampilkan menu.
+   */
+  canManageSerialSettings: boolean;
   /** Izin GLOBAL: hanya dari penugasan "Semua lokasi" (satu-satunya sumber modul `access`). */
   permissions: PermissionMap;
   /** Lokasi aktif yang boleh diakses, terurut menurut kode. */

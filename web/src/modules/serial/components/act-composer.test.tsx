@@ -41,6 +41,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',

@@ -120,15 +120,11 @@ export function serialActorModules(me: MeDto | null | undefined, buId: string): 
 }
 
 /**
- * Mengatur penerima surel Serial Number rusak: super admin, atau `serial: manage` di SEMUA BU yang terlihat bagi
- * pengguna (cermin server: "manage di setiap BU"; `me` hanya memuat BU berhak, jadi BU yang tak terlihat tak dapat
- * dicek di sini dan server tetap yang memutuskan).
+ * Mengatur penerima surel Serial Number rusak: penanda dihitung SERVER (`auth.me`, aturan yang sama dengan penjaga
+ * `serialSettings.get|save`: super admin, atau `serial: manage` pada setiap BU).
  */
 export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
-  if (!me) return false;
-  if (me.isSuperAdmin) return true;
-  const units = itemBusinessUnits(me);
-  return units.length > 0 && units.every((bu) => hasLevel(bu.permissions.serial, 'manage'));
+  return me?.canManageSerialSettings === true;
 }
 
 /** Mencatat serial: level `edit` pada minimal satu BU. */
