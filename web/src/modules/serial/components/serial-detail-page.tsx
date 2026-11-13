@@ -7,6 +7,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
+import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
 import { ActComposer } from './act-composer';
 import { EditSerialDialog } from './edit-serial-dialog';
@@ -29,10 +30,19 @@ export function lastPassDate(events: readonly SerialEventDto[]): string | null {
   return dates.at(-1) ?? null;
 }
 
-function recordedLocationName(events: readonly SerialEventDto[]): string {
+/**
+ * Lokasi awal: nama dari kejadian `recorded` bila ada; bila tidak (linimasa terpotong, kejadian pertama tidak termuat)
+ * dicari menurut `serial.recordedLocationId` di daftar lokasi yang dikenal pengguna.
+ */
+function recordedLocationName(
+  events: readonly SerialEventDto[],
+  recordedLocationId: string,
+  known: readonly { id: string; name: string }[],
+): string {
   const recorded = events.find((event) => event.type === 'recorded');
   const name = recorded?.data.locationName;
-  return typeof name === 'string' ? name : '';
+  if (typeof name === 'string' && name !== '') return name;
+  return known.find((location) => location.id === recordedLocationId)?.name ?? '';
 }
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -46,7 +56,8 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 
 function Summary({ serial, events }: { serial: SerialDto; events: readonly SerialEventDto[] }) {
   const lastPass = lastPassDate(events);
-  const firstLocation = recordedLocationName(events);
+  const { locations } = useSerialLocations();
+  const firstLocation = recordedLocationName(events, serial.recordedLocationId, locations);
   return (
     <section aria-label="Ringkasan" className="rounded-lg border p-4">
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

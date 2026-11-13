@@ -522,3 +522,43 @@ test('galat server pada stickers dan message (karakter pengatur arah) tampil lew
   expect(alert).toHaveTextContent('Stiker nonaktif tidak dapat ditambah jumlahnya');
   expect(alert).toHaveTextContent('Pesan memuat karakter pengatur arah teks');
 });
+
+test('linimasa terpotong tanpa kejadian recorded: "Lokasi awal" tetap tampil dari recordedLocationId (editor: serials.locationOptions)', async () => {
+  state = {
+    ...state,
+    events: state.events.filter((event) => event.type !== 'recorded'),
+    eventsTruncated: true,
+  };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  await waitFor(() => {
+    const awal = within(summary).getByText('Lokasi awal').parentElement as HTMLElement;
+    expect(within(awal).getByText('Surabaya')).toBeInTheDocument();
+  });
+});
+
+test('linimasa terpotong: pembaca tanpa serial: edit memakai me.locations untuk "Lokasi awal"', async () => {
+  me = meWith('view');
+  state = {
+    ...state,
+    events: state.events.filter((event) => event.type !== 'recorded'),
+    eventsTruncated: true,
+  };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const awal = within(summary).getByText('Lokasi awal').parentElement as HTMLElement;
+  expect(within(awal).getByText('Surabaya')).toBeInTheDocument();
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(false);
+});
+
+test('lokasi awal tak dikenal dan kejadian recorded tidak termuat: tampil "—" (bukan galat)', async () => {
+  state = {
+    serial: { ...SERIAL, recordedLocationId: 'lHantu' },
+    events: state.events.filter((event) => event.type !== 'recorded'),
+    eventsTruncated: true,
+  };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const awal = within(summary).getByText('Lokasi awal').parentElement as HTMLElement;
+  expect(within(awal).getByText('—')).toBeInTheDocument();
+});
