@@ -24,7 +24,7 @@ export interface TimelineTabsProps {
 }
 
 /**
- * Linimasa bertab: Semua, satu tab per kasus (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
+ * Linimasa bertab: Semua, satu tab per laporan (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
  * berkursor (terbaru di atas) dengan tombol "Muat yang lebih lama"; jumlah di tab dari `counts` server.
  */
 export function TimelineTabs({ serial }: TimelineTabsProps) {
@@ -68,7 +68,7 @@ export function TimelineTabs({ serial }: TimelineTabsProps) {
           </p>
         ) : (
           <>
-            <Timeline events={events} />
+            <Timeline events={events} markLatest={tab === 'all'} />
             {history.hasNextPage ? (
               <Button
                 type="button"

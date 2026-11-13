@@ -110,7 +110,7 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
-function EventCard({ event }: { event: SerialEventDto }) {
+function EventCard({ event, latest }: { event: SerialEventDto; latest: boolean }) {
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -122,6 +122,11 @@ function EventCard({ event }: { event: SerialEventDto }) {
             {eventTitle(event)}
             {location ? (
               <span className="font-normal text-muted-foreground"> di {location}</span>
+            ) : null}
+            {latest ? (
+              <Badge variant="secondary" className="ml-2 align-middle">
+                Terbaru
+              </Badge>
             ) : null}
           </p>
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -164,15 +169,24 @@ function EventCard({ event }: { event: SerialEventDto }) {
   );
 }
 
-/** Daftar kartu riwayat serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya. */
-export function Timeline({ events }: { events: readonly SerialEventDto[] }) {
+/**
+ * Daftar kartu riwayat serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya. `markLatest`
+ * memberi badge "Terbaru" pada entri paling atas (seq tertinggi); dipakai tab Semua.
+ */
+export function Timeline({
+  events,
+  markLatest = false,
+}: {
+  events: readonly SerialEventDto[];
+  markLatest?: boolean;
+}) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
   return (
     <ol aria-label="Linimasa" className="space-y-3">
-      {events.map((event) => (
-        <EventCard key={event.id} event={event} />
+      {events.map((event, index) => (
+        <EventCard key={event.id} event={event} latest={markLatest && index === 0} />
       ))}
     </ol>
   );

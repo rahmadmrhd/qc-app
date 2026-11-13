@@ -1,3 +1,4 @@
+import type { SerialLocationOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { useState } from 'react';
 import { LinkField } from '@/components/link-field';
@@ -17,6 +18,8 @@ export interface SerialLocationFieldProps {
   className?: string;
   error?: string | undefined;
   disabled?: boolean;
+  /** Daftar pilihan tertentu (mis. lokasi servis); tanpa ini = semua lokasi yang dapat dipilih di modul serial. */
+  locations?: readonly SerialLocationOptionDto[];
 }
 
 /** Pilih lokasi serial (`LinkField`, tanpa Tambah dan Buka). */
@@ -31,8 +34,10 @@ export function SerialLocationField({
   className,
   error,
   disabled,
+  locations: restrictTo,
 }: SerialLocationFieldProps) {
-  const { locations, isPending } = useSerialLocations();
+  const { locations: known, isPending } = useSerialLocations();
+  const locations = restrictTo ?? known;
   const [term, setTerm] = useState('');
   const all = toLocationOptions(locations);
   const key = normalizeKey(term);
@@ -48,7 +53,7 @@ export function SerialLocationField({
         (locationId === value && valueLabel ? valueLabel : locationId)
       }
       options={options}
-      loading={isPending}
+      loading={restrictTo === undefined && isPending}
       onSearchChange={setTerm}
       searchDebounceMs={0}
       onChange={(next) =>

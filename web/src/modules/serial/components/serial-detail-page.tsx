@@ -4,14 +4,14 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
-import { buIdsWithLevelOf } from '@/modules/auth/permissions';
+import { buIdsWithLevelOf, serialActorModules } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { todayWib } from '../lib/locations';
-import { lastShipmentNote } from '../lib/transit';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
-import { ActComposer } from './act-composer';
+import { ActButtons, type ActKind } from './act-buttons';
+import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
 import { SerialStepper } from './serial-stepper';
@@ -87,6 +87,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
   const me = useMe();
   const detail = useQuery(serialDetailQueryOptions(serialId));
   const [editing, setEditing] = useState(false);
+  const [acting, setActing] = useState<ActKind | null>(null);
 
   if (detail.isPending) {
     return <p className="text-sm text-muted-foreground">Memuat…</p>;
@@ -129,9 +130,6 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
               <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
             ) : null}
           </div>
-          {serial.openCase?.damage ? (
-            <p className="text-sm text-muted-foreground">Kerusakan: {serial.openCase.damage}</p>
-          ) : null}
         </div>
         {canWrite ? (
           <Button variant="outline" onClick={() => setEditing(true)}>
@@ -140,13 +138,20 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
         ) : null}
       </div>
       <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
-      <CustodyPanel serial={serial} shipmentNote={lastShipmentNote(events)} today={todayWib()} />
+      <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">
-        <h2 className="text-sm font-semibold">Riwayat</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Riwayat</h2>
+          <ActButtons
+            state={{ status: serial.status, custody: serial.custody }}
+            actor={serialActorModules(me, serial.buId)}
+            onPick={setActing}
+          />
+        </div>
         <TimelineTabs serial={serial} />
       </section>
-      <ActComposer serial={serial} />
+      {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
     </div>
   );

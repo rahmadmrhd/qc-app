@@ -4,14 +4,12 @@ import { daysBetweenDates } from '../lib/transit';
 
 export interface CustodyPanelProps {
   serial: SerialDto;
-  /** Catatan pengiriman dari kejadian `send` terakhir, bila ada. */
-  shipmentNote: string | null;
   /** Hari ini menurut WIB (`YYYY-MM-DD`). */
   today: string;
 }
 
-/** Panel pengiriman yang sedang berjalan (custody `transit`): asal, tujuan, catatan, dan lama belum diterima. */
-export function CustodyPanel({ serial, shipmentNote, today }: CustodyPanelProps) {
+/** Panel pengiriman yang sedang berjalan (custody `transit`): asal, tujuan, tanggal kirim, dan lama belum diterima. */
+export function CustodyPanel({ serial, today }: CustodyPanelProps) {
   if (serial.custody !== 'transit') return null;
   const days = serial.transitOn ? daysBetweenDates(serial.transitOn, today) : null;
   return (
@@ -25,14 +23,10 @@ export function CustodyPanel({ serial, shipmentNote, today }: CustodyPanelProps)
         {' → '}
         <span className="font-medium">{serial.transitToLocationName ?? '—'}</span>
       </p>
-      <dl className="grid gap-2 text-sm sm:grid-cols-3">
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-xs text-muted-foreground">Tanggal kirim</dt>
           <dd>{serial.transitOn ? formatDay(serial.transitOn) : '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Catatan pengiriman</dt>
-          <dd>{shipmentNote ?? '—'}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Lama</dt>
