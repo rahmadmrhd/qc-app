@@ -77,7 +77,7 @@ Tolok ukur berhasil: admin dapat mengelola jenis dan stiker; petugas dapat menca
 ## 5. Perilaku yang diharapkan
 
 - **Halaman** (menu baru): Jenis stiker, Stiker (daftar, form dengan `LinkMultiField` untuk BU dan unggah gambar contoh, aktif/nonaktif), Stok (per stiker: total, rincian per lokasi yang boleh dilihat, penanda "Menipis", catat masuk/keluar/koreksi, alat stok opname, riwayat).
-- **Menipis** berarti total semua lokasi ≤ batas minimum (stiker aktif dengan batas > 0; stiker nonaktif dan `deprecated` tidak dihitung menipis, tahap 4a). Penanda dihitung server dari total seluruh lokasi walau pengguna hanya berhak atas sebagian lokasi; angka rinci hanya untuk lokasi yang berhak.
+- **Menipis** berarti total semua lokasi ≤ batas minimum (stiker aktif dengan batas > 0; stiker nonaktif dan `deprecated` tidak dihitung menipis, tahap 4a; email ringkasan harian juga memuat bagian "Habis" untuk stiker aktif bertotal <= 0 apa pun minimumnya, keputusan pemilik 2026-11-13, spek Serial Number §3 butir 28). Penanda dihitung server dari total seluruh lokasi walau pengguna hanya berhak atas sebagian lokasi; angka rinci hanya untuk lokasi yang berhak.
 - **Stok keluar dan koreksi** wajib alasan singkat; masuk dan opname boleh tanpa alasan.
 - **Nonaktif** menyembunyikan stiker/jenis dari pilihan baru tetapi riwayat dan stok tetap terbaca.
 - Pola proyek: REST lewat `API_ROUTES`, validasi server, versi usang lewat `staleError`, tes MariaDB sungguhan, komponen shadcn, `LinkField` untuk pilihan BU, `FormDialog` untuk form dialog.
