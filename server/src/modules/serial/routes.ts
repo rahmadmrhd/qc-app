@@ -1,6 +1,7 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import { actOnSerial } from './act';
+import { serialHistory } from './history';
 import {
   getSerial,
   listSerials,
@@ -16,6 +17,7 @@ import {
   validateListSerialItemOptions,
   validateSaveSerialBatch,
   validateSerialAct,
+  validateSerialHistory,
   validateSerialList,
   validateSerialStickerOptions,
   validateUpdateSerial,
@@ -31,7 +33,8 @@ type SerialMethod =
   | 'serials.list'
   | 'serials.update'
   | 'serials.updateBatch'
-  | 'serials.act';
+  | 'serials.act'
+  | 'serials.history';
 
 /** Pembaca serial: level `view` pada `serial` ATAU `serialservice` (BU dibatasi handler). */
 const READ_PERMISSION = {
@@ -76,6 +79,11 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateSerialList,
       handler: (input, ctx) => listSerials(ctx.env, ctx.user, input),
+    },
+    'serials.history': {
+      permission: READ_PERMISSION,
+      validate: validateSerialHistory,
+      handler: (input, ctx) => serialHistory(ctx.env, ctx.user, input),
     },
     'serials.get': {
       permission: READ_PERMISSION,

@@ -6,6 +6,7 @@ import type {
   SaveSerialBatchInput,
   SerialActInput,
   SerialEditable,
+  SerialHistoryInput,
   SerialListInput,
   SerialRowInput,
   SerialStickerOptionsInput,
@@ -21,9 +22,11 @@ import {
   listSerialsTooLong,
   normalizeSerial,
   SERIAL_ACTIONS,
+  SERIAL_CUSTODIES,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
   type SerialAction,
+  type SerialCustody,
   type SerialStatus,
   serialProblem,
 } from '@shared/serials';
@@ -200,6 +203,38 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
   };
 }
 
+/** Riwayat per serial: `limit` 1-100 (bawaan 50); kursor = `seq` terakhir (bilangan bulat tak negatif). */
+export function validateSerialHistory(raw: unknown): SerialHistoryInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const group = reader.str('group', { max: 16 });
+  if (group !== '' && group !== 'all' && group !== 'checks' && group !== 'changes') {
+    reader.fail('group', 'Kelompok tidak valid');
+  }
+  const caseId = reader.str('caseId', { max: 100 });
+  const cursor = reader.str('cursor', { max: 12 });
+  if (cursor !== '' && !/^\d{1,12}$/.test(cursor)) reader.fail('cursor', 'Kursor tidak valid');
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > SERIAL_LIMITS.historyMaxLimit)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${SERIAL_LIMITS.historyMaxLimit}`);
+  }
+  reader.done();
+  return {
+    id,
+    ...(group !== '' ? { group: group as SerialHistoryInput['group'] } : {}),
+    ...(caseId !== '' ? { caseId } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(typeof limit === 'number' ? { limit } : {}),
+  };
+}
+
 export function validateGetSerial(raw: unknown): GetSerialInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });
@@ -208,6 +243,7 @@ export function validateGetSerial(raw: unknown): GetSerialInput {
 }
 
 const LIST_STATUS: readonly string[] = SERIAL_STATUSES;
+const LIST_CUSTODY: readonly string[] = SERIAL_CUSTODIES;
 
 /** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. `SERIAL_LIMITS.listSerialsMax` serial dan `listSerialsEncodedMax` karakter ter-encode (GET: URL harus muat). */
 export function validateSerialList(raw: unknown): SerialListInput {
@@ -219,6 +255,9 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const createdBy = reader.str('createdBy', { max: 255 });
   const status = reader.str('status', { max: 32 });
   if (status !== '' && !LIST_STATUS.includes(status)) reader.fail('status', 'Status tidak valid');
+  const custody = reader.str('custody', { max: 16 });
+  if (custody !== '' && !LIST_CUSTODY.includes(custody))
+    reader.fail('custody', 'Posisi tidak valid');
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
   const to = reader.str('to', { max: 10 });
@@ -259,6 +298,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(itemId !== '' ? { itemId } : {}),
     ...(locationId !== '' ? { locationId } : {}),
     ...(status !== '' ? { status: status as SerialStatus } : {}),
+    ...(custody !== '' ? { custody: custody as SerialCustody } : {}),
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),

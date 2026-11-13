@@ -563,7 +563,7 @@ function parseJson<T>(text: string, fallback: T): T {
   }
 }
 
-function toEvent(row: SerialEventRow): SerialEventDto {
+export function toEvent(row: SerialEventRow): SerialEventDto {
   const type = row.type.trim();
   const team = row.actor_team.trim();
   const changes = parseJson<SerialChangeDto[]>(row.changes_json, []);
@@ -633,6 +633,7 @@ export async function listSerials(
   if (input.itemId !== undefined) filter.itemId = input.itemId;
   if (input.locationId !== undefined) filter.locationId = input.locationId;
   if (input.status !== undefined) filter.status = input.status;
+  if (input.custody !== undefined) filter.custody = input.custody;
   if (input.from !== undefined) filter.from = input.from;
   if (input.to !== undefined) filter.to = input.to;
   if (input.createdBy !== undefined) filter.createdBy = input.createdBy;

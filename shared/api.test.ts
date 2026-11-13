@@ -251,6 +251,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
   'serials.locationOptions': null,
   'serials.get': { id: 's1' },
+  'serials.history': { id: 's1', group: 'checks', caseId: 'c1', cursor: '12', limit: 50 },
   'serials.update': {
     id: 's1',
     expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
@@ -280,6 +281,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     itemId: 'i1',
     locationId: 'l1',
     status: 'good',
+    custody: 'transit',
     from: '2026-11-01',
     to: '2026-11-12',
     createdBy: 'a@x.com',

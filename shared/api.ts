@@ -365,12 +365,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       itemId: 'string',
       locationId: 'string',
       status: 'string',
+      custody: 'string',
       from: 'string',
       to: 'string',
       createdBy: 'string',
       cursor: 'string',
       limit: 'number',
     },
+  },
+  'serials.history': {
+    verb: 'GET',
+    path: '/serials/{id}/history',
+    query: { group: 'string', caseId: 'string', cursor: 'string', limit: 'number' },
   },
   'serials.get': { verb: 'GET', path: '/serials/{id}' },
   'serials.update': {

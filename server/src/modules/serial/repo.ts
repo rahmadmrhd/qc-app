@@ -237,6 +237,7 @@ export interface SerialListFilter {
   itemId?: string;
   locationId?: string;
   status?: string;
+  custody?: string;
   from?: string;
   to?: string;
   createdBy?: string;
@@ -265,6 +266,10 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
   if (filter.status !== undefined) {
     where.push('s.status = ?');
     binds.push(filter.status);
+  }
+  if (filter.custody !== undefined) {
+    where.push('s.custody = ?');
+    binds.push(filter.custody);
   }
   if (filter.from !== undefined) {
     where.push('s.test_date >= ?');
