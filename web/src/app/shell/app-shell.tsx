@@ -2,6 +2,7 @@ import { Outlet } from '@tanstack/react-router';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useMe } from '@/modules/auth/use-me';
+import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
 import { TourProvider } from '@/modules/guide/components/tour/tour-provider';
 import { renderTourTip } from '@/modules/guide/components/tour/tour-tip';
@@ -35,6 +36,7 @@ export function AppShell() {
               </header>
               <PushOnboarding />
               <GuideGreeting />
+              <GuideBanner />
               <main className="flex-1 p-4 md:p-6">
                 <Outlet />
               </main>
