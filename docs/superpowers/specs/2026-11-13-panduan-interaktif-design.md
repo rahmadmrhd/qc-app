@@ -1,6 +1,8 @@
 # Panduan interaktif (tur, tooltip demo, kartu panduan) — desain
 
-Tanggal: 2026-11-13. Status: disetujui pemilik produk (2026-11-13), lanjut ke rencana implementasi.
+Tanggal: 2026-11-13. Status: disetujui pemilik produk (2026-11-13), lanjut ke rencana implementasi. Keputusan tambahan
+pemilik produk 2026-11-14 (bagian 6) sudah dicatat di sini; butir A dan B belum ada di kode (lihat catatan di bagian 6),
+sehingga status belum diubah menjadi "diimplementasikan".
 Konteks: aplikasi QC (web React + TanStack, server Bun + Hono + MariaDB). Dokumen ini hanya merancang; belum ada kode.
 Status panduan disimpan dengan dua cara menurut jenis akun (individu atau bersama), sehingga fitur ini menyentuh
 web dan server (bagian 4.3).
@@ -67,6 +69,9 @@ Satu daftar di kode web (`web/src/modules/guide/`). Tiap entri:
 - Untuk `dasar`: daftar id panduan `baru` modul itu yang sudah tercakup (lihat 4.2); daftar ini ada di
   `shared/guides.ts` karena server ikut memakainya (penyimpanan akun individu).
 
+Untuk `baru`: field `dasar` wajib berisi id panduan `dasar` induknya (klarifikasi 2026-11-14, bagian 6); tes katalog
+mewajibkan field itu dan keberadaan entrinya.
+
 Daftar id, versi, dan cakupan `dasar` → `baru` (tanpa teks/langkah) ada di `shared/guides.ts` agar server dapat
 memvalidasi id dan memperluas penanda. Tes menjaga daftar itu sama dengan katalog web.
 
@@ -99,7 +104,9 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   image lama mengabaikannya). Bawaan 0 = individu. Ikut di `UserDto.sharedAccount`, `SaveUserInput.sharedAccount`,
   dan `MeDto.sharedAccount` (boolean). Diatur di form pengguna Pengaturan Akses (opsi "Akun bersama" dengan
   keterangan singkat) dan tampil sebagai penanda di tabel pengguna. Izin dan pencatatan perubahannya sama dengan
-  field pengguna lain (`access: manage`).
+  field pengguna lain (`access: manage`). Keputusan pemilik 2026-11-14: ekspor Sheets `export_users` menambah
+  kolom `shared_account` (0/1) di kanan, sebagai kolom data biasa (alasan: tes paritas skema-ekspor). Kolom itu
+  sudah ada di `server/src/modules/jobs/sheets-export.ts`.
 - **Satu antarmuka penyimpanan di klien** (`GuideStore`: baca penanda, tulis penanda, reset satu panduan) dengan dua
   implementasi: server (akun individu) dan perangkat (akun bersama). Aturan penawaran, banner, dan mesin tur tidak
   peduli yang mana; pemilihnya `me.sharedAccount`, yang sudah ada saat aplikasi dibuka.
@@ -131,14 +138,19 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   lagi), tetapi dapat membuka panduan lewat menu profil "Ulangi".
 - Panduan `diturunkan` (pasang PWA, aktifkan push): tidak ada penanda tersimpan. "Pasang PWA" ditawarkan selama
   aplikasi belum berjalan terpasang (mode tampilan `standalone`) dan perangkat mendukung pemasangan; "Aktifkan push"
-  ditawarkan selama izin notifikasi peramban bukan `granted` atau perangkat belum berlangganan. "Ulangi" hanya
-  membuka panduannya kembali.
+  ditawarkan selama izin notifikasi peramban bukan `granted` atau perangkat belum berlangganan. Keputusan pemilik
+  2026-11-14 (bagian 6, butir A): panduan push HANYA ditawarkan bila peramban mendukung push (izin peramban bukan
+  `unsupported`), server punya VAPID (`push.config.enabled`), dan pengguna belum mematikan notifikasi push
+  (`userEnabled` bukan `false`). Menu "Panduan" (4.4) hanya memuat panduan `diturunkan` yang berlaku bagi perangkat
+  itu (butir B). "Ulangi" pada panduan `diturunkan` membuka panduannya kembali; tidak ada penanda yang ditulis.
 - Klien memakai SATU fungsi penawaran dengan dua sumber status (`GuideStore` menurut jenis akun, dan keadaan
   perangkat untuk panduan `diturunkan`).
   `PushOnboarding` yang sudah ada tidak diganti: dialog pra-izinnya tetap yang meminta izin; panduan `diturunkan`
   hanya menjelaskan dan mengarahkan ke dialog/menu yang sama, dan tidak muncul bersamaan dengan dialog itu (penawaran
   ditunda selama `PushOnboarding` sedang menampilkan dialog atau banner).
-- Progres sebagian tidak disimpan: tur yang terputus dimulai dari awal.
+- Progres sebagian tidak disimpan: tur yang terputus dimulai dari awal. Klarifikasi 2026-11-14 (bagian 6, butir D.ii):
+  pengguna yang pindah ke halaman lain di luar langkah tur membatalkan tur itu tanpa menulis penanda (mesin tur
+  menghentikannya seperti dibatalkan; panduan tetap ditawarkan lagi).
 
 ### 4.4 Titik masuk
 
@@ -160,7 +172,10 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   N dihitung per pengguna: hanya langkah yang lolos `izin` per langkah (4.5).
 - **Titik penanda di item sidebar** yang punya panduan belum selesai bagi pengguna itu (penanda ringan tanpa
   mengganggu); hilang saat panduannya selesai.
-- **Menu profil: item "Panduan"**: semua panduan yang berhak, dengan "Ulangi" bagi yang sudah selesai.
+- **Menu profil: item "Panduan"**: semua panduan yang berhak, dengan "Ulangi" bagi yang sudah selesai. Keputusan
+  pemilik 2026-11-14 (butir B): panduan `diturunkan` (PWA/push) hanya tampil bila berlaku bagi perangkat itu. PWA
+  tidak tampil bila "Pasang aplikasi" tak tersedia atau aplikasi sudah terpasang; push tidak tampil bila syarat
+  butir A tak terpenuhi. Alasan: "Ulangi" tak boleh membuka langkah yang menyuruh memilih menu yang tak ada.
 - **Sapaan login pertama**: SATU dialog "Mau tur singkat?" (menawarkan panduan dasar). "Nanti" = tidak ditanya lagi.
 - Tidak ada pop-up beruntun saat rilis pertama untuk pengguna lama: hanya sapaan satu kali, kartu, banner
   kontekstual satu per halaman, dan titik penanda sidebar.
@@ -206,7 +221,9 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
     (memilih/menyalin banyak pesan di WhatsApp yang caranya berbeda di HP dan WA Web, menu pasang PWA di peramban, dialog
     izin notifikasi). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
     hanya saat tooltip dibuka (`preload="none"`), disajikan sebagai berkas statis, tidak dipra-cache. Letak:
-    `web/public/klip/<id-panduan>-<n>.webm` (ikut ke `server/dist` dan image Docker seperti berkas statis lain);
+    `web/public/klip/<id-panduan>-<n>.webm` (ikut ke `server/dist` dan image Docker seperti berkas statis lain).
+    Konvensi `berkas` (klarifikasi 2026-11-14, butir D.i): nama polos tanpa path (mis. `tip-a-1.webm`); URL dibangun
+    `klipUrl()` menjadi `/klip/<berkas>`;
     batas 1 MB per klip (sekitar 8 detik, tanpa suara, lebar <= 720 px).
   - Klip belum tersedia saat rilis TIDAK menghalangi rilis: adegan `klip` yang `berkas`-nya belum diisi memakai
     fallback daftar langkah bernomor. Tes katalog hanya memeriksa bahwa berkas yang DIDEKLARASIKAN ada; adegan
@@ -269,6 +286,23 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   perangkat.
 - Akibat keputusan penyimpanan menurut jenis akun: ada migrasi 0015 (kolom `users.shared_account` dan tabel
   `guide_progress`), tiga rute REST, dan perubahan form/tabel pengguna di Pengaturan Akses.
+- Keputusan tambahan pemilik produk 2026-11-14 (disetujui lewat tanya-jawab di sesi; tanggal absolut 2026-11-14):
+  - **A. Panduan push hanya bila berlaku.** Panduan `perangkat-push` ditawarkan hanya bila peramban mendukung push,
+    server punya VAPID (`push.config.enabled`), dan pengguna belum mematikan notifikasi push (`userEnabled` bukan
+    `false`). Alasan: menghindari kartu yang tak bisa diselesaikan (Safari iOS di tab biasa, staging tanpa VAPID) dan
+    selaras anti-tujuan "tidak mengganggu". Diubah: 4.3 (aturan panduan `diturunkan`).
+  - **B. Menu "Panduan" menyembunyikan panduan turunan yang tak berlaku.** Menu hanya memuat panduan `diturunkan`
+    yang berlaku bagi perangkat itu; "Ulangi" membuka panduannya kembali. Alasan: "Ulangi" tak boleh membuka langkah
+    yang menyuruh memilih menu yang tak ada. Diubah: 4.3 dan 4.4 (item menu profil).
+  - **C. Kolom ekspor `shared_account`.** Ekspor Sheets `export_users` menambah kolom `shared_account` (0/1) di
+    kanan. Alasan: tes paritas skema-ekspor; kolom data biasa. Dicatat di 4.3.
+  - **D. Klarifikasi (bukan perubahan perilaku):** (i) `berkas` klip = nama polos, URL `klipUrl()` = `/klip/<berkas>`
+    (4.6); (ii) pindah halaman di luar langkah tur membatalkan tur tanpa penanda (4.3); (iii) panduan `baru` menyebut
+    `dasar` induknya di katalog, field `dasar` (4.1).
+  - **Catatan status.** Butir A dan B belum ada di kode pada saat catatan ini: `deriveDeviceGuides` (`device.ts`)
+    belum memeriksa dukungan/VAPID/`userEnabled`, dan menu (`guide-menu-dialog.tsx`) belum menyembunyikan panduan
+    turunan yang tak berlaku. Pekerjaan kode untuk keduanya menyusul; sampai itu spek tidak berstatus
+    "diimplementasikan". Pertanyaan terbuka: tidak ada yang baru.
 
 ## 7. Cakupan tahap awal dan urutan
 
