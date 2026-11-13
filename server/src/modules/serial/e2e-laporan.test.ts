@@ -526,12 +526,13 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     }
   });
 
-  test('(f4) pembatas laju: 20 kegagalan dari satu IP membuat permintaan berikutnya (juga bertoken sah) 429', async () => {
+  test('(f4) pembatas laju: 20 kegagalan dari satu IP membuat kegagalan berikutnya 429, tautan sah tetap 200', async () => {
     const ip = '198.51.100.99';
     for (let attempt = 0; attempt < 20; attempt++) {
       expect((await fetchPublic(`/serial-reports/salah-${attempt}`, ip)).status).toBe(404);
     }
-    const blocked = await fetchPublic(`/serial-reports/${token}`, ip);
+    expect((await fetchPublic(`/serial-reports/${token}`, ip)).status).toBe(200);
+    const blocked = await fetchPublic('/serial-reports/salah-lagi', ip);
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('content-type')).toContain('application/problem+json');
     expect(blocked.headers.get('cache-control')).toBe('no-store');

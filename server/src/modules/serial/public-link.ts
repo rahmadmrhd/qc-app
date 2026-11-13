@@ -45,13 +45,13 @@ async function derivedKey(secret: string, usage: 'sign' | 'verify'): Promise<Cry
   return hmacKey(derived, usage);
 }
 
-/** Membuat token untuk laporan `caseId` yang berlaku sampai `expiresAtMs` (dibulatkan ke detik penuh ke atas). */
+/** Membuat token untuk laporan `caseId` yang berlaku sampai `expiresAtMs` (disimpan dalam detik penuh, dibulatkan ke bawah). */
 export async function signReportToken(
   secret: string,
   caseId: string,
   expiresAtMs: number,
 ): Promise<string> {
-  const expSeconds = Math.ceil(expiresAtMs / 1000);
+  const expSeconds = Math.floor(expiresAtMs / 1000);
   const payload = `${VERSION}.${caseId}.${expSeconds}`;
   const key = await derivedKey(secret, 'sign');
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(payload)));
@@ -83,7 +83,8 @@ export async function verifyReportToken(
     encoder.encode(`${version}.${caseId}.${exp}`),
   );
   if (!valid) return null;
-  // Batas inklusif: tepat pada detik kedaluwarsa masih berlaku, 1 ms sesudahnya sudah tidak.
-  if (nowMs > Number(exp) * 1000) return null;
+  // Token membawa detik penuh (dibulatkan ke bawah): sah sampai akhir detik itu (:59.999), 1 ms sesudahnya tidak.
+  // Dengan `reportLinkExpiresAt` (23:59:59.999 WIB) token tidak pernah sah sampai 00:00:00.000 hari berikutnya.
+  if (nowMs > Number(exp) * 1000 + 999) return null;
   return { caseId };
 }

@@ -320,21 +320,25 @@ describe('GET /api/public/serial-reports/:token', () => {
     expect(response.status).toBe(404);
   });
 
-  test('pembatas laju: 20 kegagalan dari satu IP membuat permintaan berikutnya 429, IP lain dan jendela baru tidak', async () => {
-    const { caseId } = await brokenReport('PUB-7', 7);
+  test('pembatas laju: 20 kegagalan dari satu IP membuat kegagalan berikutnya 429; tautan sah tetap 200; IP lain dan jendela baru tidak terblokir', async () => {
+    const { caseId, imageId } = await brokenReport('PUB-7', 7);
     const good = await tokenFor(caseId);
     const ip = '198.51.100.9';
     for (let attempt = 0; attempt < 20; attempt++) {
       expect((await report(`salah-${attempt}`, { ip })).status).toBe(404);
     }
-    const blocked = await report(good, { ip });
+    const blocked = await report('salah-lagi', { ip });
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('content-type')).toContain('application/problem+json');
-    expect((await file(good, 'apa-saja', { ip })).status).toBe(429);
-    expect((await report(good, { ip: '198.51.100.10' })).status).toBe(200);
-    // Jendela 10 menit berlalu: boleh lagi.
-    env.clock.advance(10 * 60_000 + 1000);
+    expect((await file('salah-lagi', imageId, { ip })).status).toBe(429);
+    // Tautan SAH tetap dilayani walau IP sudah diblokir (pembatas hanya menahan jalur kegagalan).
     expect((await report(good, { ip })).status).toBe(200);
+    expect((await file(good, imageId, { ip })).status).toBe(200);
+    expect((await report('salah-lagi', { ip })).status).toBe(429);
+    expect((await report('salah-lagi', { ip: '198.51.100.10' })).status).toBe(404);
+    // Jendela 10 menit berlalu: kegagalan dihitung dari awal lagi.
+    env.clock.advance(10 * 60_000 + 1000);
+    expect((await report('salah-lagi', { ip })).status).toBe(404);
   });
 
   test('permintaan sukses tidak menghabiskan jatah kegagalan', async () => {
@@ -410,5 +414,23 @@ describe('GET /api/public/serial-reports/:token/files/:fileId', () => {
       .bind(one.serialId, one.caseId, TODAY, md(other.imageId))
       .run();
     expect((await file(await tokenFor(one.caseId), other.imageId)).status).toBe(404);
+  });
+});
+
+describe('indeks serial_events_case (K1)', () => {
+  test('kueri linimasa dan pemeriksaan berkas berpredikat serial_id memakai indeks berawalan serial_id (bukan pindai penuh)', async () => {
+    for (const sql of [
+      'SELECT id FROM serial_events WHERE serial_id = ? AND case_id = ? ORDER BY seq ASC LIMIT ?',
+      'SELECT message FROM serial_events WHERE serial_id = ? AND case_id = ?',
+    ]) {
+      const binds = sql.includes('LIMIT') ? ['s', 'c', 5] : ['s', 'c'];
+      const plan = await env.DB.prepare(`EXPLAIN ${sql}`)
+        .bind(...binds)
+        .all<{ key: string | null }>();
+      // Kolom terdepan kedua indeks adalah serial_id: tanpa predikat itu MariaDB memindai seluruh tabel (key NULL).
+      expect(plan.results.map((row) => row.key)).toEqual([
+        expect.stringMatching(/^serial_events_(case|seq)$/),
+      ]);
+    }
   });
 });

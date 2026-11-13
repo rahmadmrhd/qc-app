@@ -84,11 +84,22 @@ async function recordFailure(c: PublicContext): Promise<void> {
   }
 }
 
-/** Token sah dan laporannya ada: baris laporan; selain itu `null` (kegagalan dihitung oleh pemanggil). */
+/**
+ * Token sah (verifikasi murah, tanpa DB, SEBELUM pembatas) dan laporannya ada: baris laporan; selain itu `null`.
+ * Tautan sah tidak pernah diblokir pembatas (pembatas hanya menahan jalur kegagalan), jadi satu IP bersama (NAT kantor)
+ * yang kebanjiran token salah tidak mengunci pemegang tautan sah.
+ */
 async function resolveToken(c: PublicContext, token: string) {
   const verified = await verifyReportToken(c.env.SESSION_SECRET, token, nowOf(c.env));
   if (!verified) return null;
   return loadCase(c.env.DB, verified.caseId);
+}
+
+/** Jalur kegagalan token: 429 bila IP sudah melewati batas, selain itu catat kegagalan dan jawab 404 seragam. */
+async function rejectToken(c: PublicContext): Promise<Response> {
+  if (await isBlocked(c)) return tooMany();
+  await recordFailure(c);
+  return notFound();
 }
 
 async function viewerCanOpen(
@@ -107,27 +118,20 @@ async function viewerCanOpen(
 
 publicSerialApp.get('/serial-reports/:token', async (c) => {
   try {
-    if (await isBlocked(c)) return tooMany();
     const found = await resolveToken(c, c.req.param('token'));
-    if (!found) {
-      await recordFailure(c);
-      return notFound();
-    }
+    if (!found) return rejectToken(c);
     const [serialRow, bu, events] = await Promise.all([
       loadSerialRow(c.env.DB, found.serial_id),
       c.env.DB.prepare('SELECT name FROM business_units WHERE id = ?')
         .bind(found.bu_id)
         .first<{ name: string }>(),
       c.env.DB.prepare(
-        'SELECT id, case_id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE case_id = ? ORDER BY seq ASC LIMIT ?',
+        'SELECT id, case_id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? AND case_id = ? ORDER BY seq ASC LIMIT ?',
       )
-        .bind(found.id, EVENTS_MAX)
+        .bind(found.serial_id, found.id, EVENTS_MAX)
         .all<SerialEventRow>(),
     ]);
-    if (!serialRow) {
-      await recordFailure(c);
-      return notFound();
-    }
+    if (!serialRow) return rejectToken(c);
     const unit = toSummary(serialRow);
     const closedOn = found.closed_on.trim();
     const expiresAt = reportLinkExpiresAt(closedOn);
@@ -180,16 +184,14 @@ publicSerialApp.get('/serial-reports/:token', async (c) => {
 
 publicSerialApp.get('/serial-reports/:token/files/:fileId', async (c) => {
   try {
-    if (await isBlocked(c)) return tooMany();
     const found = await resolveToken(c, c.req.param('token'));
-    if (!found) {
-      await recordFailure(c);
-      return notFound();
-    }
+    if (!found) return rejectToken(c);
     const fileId = c.req.param('fileId');
     // Berkas hanya boleh dilayani bila dirujuk pesan kejadian LAPORAN INI dan milik serial laporan ini.
-    const messages = await c.env.DB.prepare('SELECT message FROM serial_events WHERE case_id = ?')
-      .bind(found.id)
+    const messages = await c.env.DB.prepare(
+      'SELECT message FROM serial_events WHERE serial_id = ? AND case_id = ?',
+    )
+      .bind(found.serial_id, found.id)
       .all<{ message: string }>();
     const referenced = new Set(messages.results.flatMap((row) => extractFileRefs(row.message)));
     if (!referenced.has(fileId)) return notFound();
