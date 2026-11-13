@@ -95,7 +95,7 @@ export function PushOnboarding() {
 
   // Laporkan izin peramban ke server sekali per nilai per sesi.
   useEffect(() => {
-    if (!active || permission === 'unsupported') return;
+    if (!active) return;
     const marker = `${email}:${permission}`;
     if (reported.current === marker) return;
     reported.current = marker;
