@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Tanggal** | 2026-11-12 |
-| **Status** | Draf untuk persetujuan pemilik produk (belum disetujui) |
+| **Status** | Disetujui pemilik produk (2026-11-12; konfirmasi ulang 2026-11-13). Butir §11 yang belum dikonfirmasi tetap terbuka |
 | **Cakupan** | Notifikasi untuk modul Serah Terima: kotak notifikasi (lonceng) di aplikasi dan push |
 | **Di luar cakupan** | Email untuk Serah Terima; notifikasi untuk modul lain; saluran desktop native (proyek Desktop); semua pekerjaan PWA di luar push (lihat §9) |
 | **Rujukan** | `docs/prd/2026-10-26-qc-pwa.md` (service worker, pemasangan), `docs/superpowers/specs/2026-11-06-qc-desktop-country-lock-design.md` §13 (push ditunda, desktop memakai koneksi langsung) |
@@ -148,3 +148,8 @@ Skema tabel notifikasi dan langganan push; pustaka Web Push dan kunci VAPID (pen
 2. Isi push tanpa cuplikan catatan/komentar (§6).
 3. Lonceng tidak dapat dimatikan, dan hanya push yang dapat dimatikan pengguna (§5.1, §5.2).
 4. ~~Push setelah logout~~ **Diputuskan pemilik 2026-11-12**: perangkat tetap menerima push setelah logout (§5.2). Sisa untuk dikonfirmasi: satu langganan boleh terhubung ke lebih dari satu pengguna di perangkat yang sama.
+
+### Keputusan setelah implementasi
+- **Param `loc` pada tautan notifikasi** (diputuskan pemilik produk 2026-11-13, menjawab temuan review akhir): mengklik notifikasi dari lonceng membuka halaman Serah Terima dengan param `?loc=<id lokasi task>`, sehingga task di lokasi yang sedang tidak aktif di pemilih header tetap terbuka. Papan (kanban/kartu) membatasi muatannya ke lokasi itu selama param ada, tanpa penanda filter di tampilan; pemilih lokasi header tidak berubah. Ini sengaja dan bukan cacat. Penanda filter lokasi di papan dapat ditambahkan nanti bila diinginkan.
+- **Judul notifikasi `createdBatch`** memuat nama lokasi ("N task baru di <lokasi>"; nama disimpan di kolom `customer_name`), mengikuti §4.3.
+- **Tidak dikerjakan (belum diputuskan)**: allowlist host layanan push (pertahanan SSRF berlapis; saat ini validasi https, port 443, tolak IP literal/localhost/host privat, redirect manual, timeout) dan penghapusan otomatis langganan yang gagal terus. Keduanya menunggu keputusan pemilik.
