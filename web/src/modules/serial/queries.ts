@@ -2,8 +2,11 @@ import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
+  SaveSerialSettingsInput,
   SerialActInput,
   SerialDto,
+  SerialHistoryInput,
+  SerialHistoryOutput,
   SerialListInput,
   SerialListOutput,
   SerialSummaryDto,
@@ -35,6 +38,28 @@ export function serialListQueryOptions(filter: SerialListFilter = {}) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: SerialListOutput) => last.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Riwayat satu serial (tab linimasa): kursor = `seq` terakhir; `counts` ikut di tiap halaman. */
+export type SerialHistoryFilter = Omit<SerialHistoryInput, 'cursor'>;
+
+export function serialHistoryInfiniteQueryOptions(input: SerialHistoryFilter) {
+  return infiniteQueryOptions({
+    queryKey: serialKeys.historyPage(input.id, input.group ?? 'all', input.caseId ?? ''),
+    queryFn: ({ pageParam }) =>
+      api('serials.history', { ...input, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: SerialHistoryOutput) => last.nextCursor ?? undefined,
+  });
+}
+
+/** Pengaturan penerima surel Serial Number rusak (global; hanya pengelola di semua BU). */
+export function serialSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.settings,
+    queryFn: () => api('serialSettings.get', null),
+    retry: false,
   });
 }
 
@@ -127,6 +152,8 @@ function applySaved(queryClient: QueryClient, saved: SerialDto): void {
   );
   patchLists(queryClient, saved);
   void queryClient.invalidateQueries({ queryKey: serialKeys.one(saved.id) });
+  // Aksi/ubah data menambah entri riwayat: tab yang sedang terbuka dimuat ulang, tab lain ditandai basi.
+  void queryClient.invalidateQueries({ queryKey: serialKeys.history(saved.id) });
 }
 
 export function useSaveSerialBatch() {
@@ -157,7 +184,9 @@ export function useUpdateSerialBatch() {
     mutationFn: (input: UpdateSerialBatchInput) => api('serials.updateBatch', input),
     onSuccess: (_output, input) => {
       markStale(queryClient, serialKeys.list, accessKeys.audit);
-      for (const row of input.rows) markStale(queryClient, serialKeys.one(row.id));
+      for (const row of input.rows) {
+        markStale(queryClient, serialKeys.one(row.id), serialKeys.history(row.id));
+      }
     },
   });
 }
@@ -169,6 +198,18 @@ export function useActSerial() {
     onSuccess: (saved) => {
       applySaved(queryClient, saved);
       markStale(queryClient, stickerKeys.all, accessKeys.audit);
+    },
+  });
+}
+
+export function useSaveSerialSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SaveSerialSettingsInput) => api('serialSettings.save', input),
+    onSuccess: (saved) => {
+      markStale(queryClient, accessKeys.audit);
+      // Sesudah markStale: pengaturan yang baru disimpan tetap segar (versi baru = isian mulai dari data terbaru).
+      queryClient.setQueryData(serialKeys.settings, saved);
     },
   });
 }

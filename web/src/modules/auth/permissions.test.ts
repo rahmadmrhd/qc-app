@@ -9,9 +9,11 @@ import {
   canCreateItem,
   canEditItem,
   canManageItem,
+  canManageSerialSettings,
   canUseSerialLocationOptions,
   canWriteSerials,
   locationsWith,
+  serialActorModules,
 } from './permissions';
 
 const me: MeDto = {
@@ -170,12 +172,52 @@ test('canWriteSerials: butuh edit pada minimal satu BU', () => {
   expect(canWriteSerials(null)).toBe(false);
 });
 
-test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions)', () => {
-  const withSerial = (level: 'none' | 'view' | 'edit' | 'manage') =>
-    ({ ...me, permissions: { ...me.permissions, serial: level } }) as MeDto;
-  expect(canUseSerialLocationOptions(withSerial('view'))).toBe(false);
-  expect(canUseSerialLocationOptions(withSerial('none'))).toBe(false);
-  expect(canUseSerialLocationOptions(withSerial('edit'))).toBe(true);
-  expect(canUseSerialLocationOptions(withSerial('manage'))).toBe(true);
+test('canUseSerialLocationOptions: serial: edit ATAU serialservice: edit global (gerbang serials.locationOptions)', () => {
+  const withLevels = (
+    serial: 'none' | 'view' | 'edit' | 'manage',
+    serialservice: 'none' | 'view' | 'edit' | 'manage' = 'none',
+  ) => ({ ...me, permissions: { ...me.permissions, serial, serialservice } }) as MeDto;
+  expect(canUseSerialLocationOptions(withLevels('view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('none'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('edit'))).toBe(true);
+  expect(canUseSerialLocationOptions(withLevels('manage'))).toBe(true);
+  expect(canUseSerialLocationOptions(withLevels('none', 'view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('none', 'edit'))).toBe(true);
   expect(canUseSerialLocationOptions(null)).toBe(false);
+});
+
+function serviceBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
+  return {
+    ...bu(id, 'none'),
+    permissions: { item: 'none' as const, serial: 'none' as const, serialservice: level },
+  };
+}
+
+test('serialActorModules: modul yang dipegang pada level edit di BU itu (campuran BU)', () => {
+  const user = meWithBus([
+    {
+      ...serialBu('a', 'edit'),
+      permissions: { item: 'none', serial: 'edit', serialservice: 'view' },
+    },
+    serviceBu('b', 'edit'),
+    serialBu('c', 'view'),
+  ]);
+  expect(serialActorModules(user, 'a')).toEqual({ serial: true, serialservice: false });
+  expect(serialActorModules(user, 'b')).toEqual({ serial: false, serialservice: true });
+  expect(serialActorModules(user, 'c')).toEqual({ serial: false, serialservice: false });
+  expect(serialActorModules(user, 'zzz')).toEqual({ serial: false, serialservice: false });
+  expect(serialActorModules(null, 'a')).toEqual({ serial: false, serialservice: false });
+});
+
+test('canManageSerialSettings: super admin, atau serial: manage di SEMUA BU yang terlihat', () => {
+  expect(
+    canManageSerialSettings(meWithBus([serialBu('a', 'manage'), serialBu('b', 'manage')])),
+  ).toBe(true);
+  expect(canManageSerialSettings(meWithBus([serialBu('a', 'manage'), serialBu('b', 'edit')]))).toBe(
+    false,
+  );
+  expect(canManageSerialSettings(meWithBus([serialBu('a', 'edit')]))).toBe(false);
+  expect(canManageSerialSettings(meWithBus([]))).toBe(false);
+  expect(canManageSerialSettings({ ...meWithBus([]), isSuperAdmin: true })).toBe(true);
+  expect(canManageSerialSettings(null)).toBe(false);
 });
