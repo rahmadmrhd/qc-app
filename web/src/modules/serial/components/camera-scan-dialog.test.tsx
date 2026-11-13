@@ -1,0 +1,257 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { type BarcodeEngine, ScannerLoadError } from '../lib/barcode-engine';
+import { CAMERA_DUPLICATE_WINDOW_MS } from '../lib/camera-payload';
+import type { ScanFeedback } from '../lib/scan-feedback';
+import { CAMERA_ERROR_TEXT } from '../lib/use-camera-scanner';
+import { CameraScanDialog } from './camera-scan-dialog';
+
+interface FakeTrack {
+  stop: ReturnType<typeof vi.fn>;
+  getCapabilities: () => Record<string, unknown>;
+  getSettings: () => { deviceId: string };
+  applyConstraints: ReturnType<typeof vi.fn>;
+}
+
+function fakeStream(options: { torch?: boolean } = {}) {
+  const track: FakeTrack = {
+    stop: vi.fn(),
+    getCapabilities: () => (options.torch ? { torch: true } : {}),
+    getSettings: () => ({ deviceId: 'cam-1' }),
+    applyConstraints: vi.fn(async () => undefined),
+  };
+  const stream = {
+    getTracks: () => [track],
+    getVideoTracks: () => [track],
+  } as unknown as MediaStream;
+  return { stream, track };
+}
+
+function setMediaDevices(value: unknown) {
+  Object.defineProperty(navigator, 'mediaDevices', { value, configurable: true });
+}
+
+const VIDEO_DEVICES = [
+  { kind: 'videoinput', deviceId: 'cam-1', label: 'Kamera belakang' },
+  { kind: 'videoinput', deviceId: 'cam-2', label: 'Kamera depan' },
+  { kind: 'audioinput', deviceId: 'mic', label: 'Mikrofon' },
+];
+
+/** Mesin palsu: `queue` diisi tes; tiap `detect` mengembalikan isi antrean saat itu. */
+function fakeEngine() {
+  const state = { current: [] as string[] };
+  const engine: BarcodeEngine = { kind: 'native', detect: vi.fn(async () => [...state.current]) };
+  return { engine, state };
+}
+
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  Object.defineProperty(HTMLMediaElement.prototype, 'readyState', {
+    get: () => 4,
+    configurable: true,
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+  Reflect.deleteProperty(HTMLMediaElement.prototype, 'readyState');
+});
+
+interface SetupOptions {
+  stream?: ReturnType<typeof fakeStream>;
+  devices?: unknown[];
+  result?: ScanFeedback;
+  createEngine?: () => Promise<BarcodeEngine>;
+}
+
+function setup(options: SetupOptions = {}) {
+  const media = options.stream ?? fakeStream();
+  const getUserMedia = vi.fn(async (_constraints?: unknown) => media.stream);
+  setMediaDevices({
+    getUserMedia,
+    enumerateDevices: vi.fn(async () => options.devices ?? VIDEO_DEVICES.slice(0, 1)),
+  });
+  const { engine, state } = fakeEngine();
+  let time = 5_000_000;
+  const onScan = vi.fn((_text: string): ScanFeedback => options.result ?? 'added');
+  const onOpenChange = vi.fn();
+  const view = render(
+    <CameraScanDialog
+      open
+      onOpenChange={onOpenChange}
+      onScan={onScan}
+      createEngine={options.createEngine ?? (async () => engine)}
+      now={() => time}
+    />,
+  );
+  return {
+    ...media,
+    ...view,
+    state,
+    engine,
+    onScan,
+    onOpenChange,
+    getUserMedia,
+    advance: (ms: number) => {
+      time += ms;
+    },
+  };
+}
+
+test('mode berkelanjutan: payload banyak baris dipecah, bacaan sama dalam jendela tidak diteruskan dua kali', async () => {
+  const ctx = setup();
+  ctx.state.current = ['aaa111\nbbb222'];
+  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
+  expect(ctx.onScan).toHaveBeenCalledWith('AAA111\nBBB222');
+  // Kamera tetap menyala dan terus membaca bingkai yang sama: tidak ada pengiriman ulang.
+  const calls = vi.mocked(ctx.engine.detect).mock.calls.length;
+  await waitFor(() =>
+    expect(vi.mocked(ctx.engine.detect).mock.calls.length).toBeGreaterThan(calls + 1),
+  );
+  expect(ctx.onScan).toHaveBeenCalledTimes(1);
+  expect(ctx.track.stop).not.toHaveBeenCalled();
+
+  // Hilang dari pandangan lebih lama dari jendela, lalu terlihat lagi: diteruskan lagi.
+  ctx.state.current = [];
+  ctx.advance(CAMERA_DUPLICATE_WINDOW_MS + 1);
+  const afterGap = vi.mocked(ctx.engine.detect).mock.calls.length;
+  await waitFor(() =>
+    expect(vi.mocked(ctx.engine.detect).mock.calls.length).toBeGreaterThan(afterGap),
+  );
+  ctx.state.current = ['AAA111'];
+  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(2));
+  expect(ctx.onScan).toHaveBeenLastCalledWith('AAA111');
+});
+
+test('umpan balik per bacaan: diterima, duplikat, ditolak', async () => {
+  for (const [result, text] of [
+    ['added', 'Ditambahkan'],
+    ['duplicate', 'Sudah ada'],
+    ['rejected', 'Ditolak'],
+  ] as const) {
+    const ctx = setup({ result });
+    ctx.state.current = ['SN1'];
+    expect(await screen.findByText(`${text}: SN1`)).toBeInTheDocument();
+    ctx.unmount();
+  }
+});
+
+test('senter tampil hanya bila trek mendukung dan menerapkan constraint torch', async () => {
+  const supported = setup({ stream: fakeStream({ torch: true }) });
+  const button = await screen.findByRole('button', { name: 'Nyalakan senter' });
+  await userEvent.click(button);
+  expect(supported.track.applyConstraints).toHaveBeenCalledWith({ advanced: [{ torch: true }] });
+  expect(await screen.findByRole('button', { name: 'Matikan senter' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  supported.unmount();
+
+  const unsupported = setup({ stream: fakeStream() });
+  await waitFor(() => expect(unsupported.getUserMedia).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: /senter/ })).not.toBeInTheDocument();
+});
+
+test('pemilih kamera hanya bila ada lebih dari satu perangkat; memilih memulai ulang aliran', async () => {
+  const single = setup({ devices: VIDEO_DEVICES.slice(0, 1) });
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  expect(screen.queryByRole('combobox', { name: 'Kamera' })).not.toBeInTheDocument();
+  single.unmount();
+
+  const multi = setup({ devices: VIDEO_DEVICES });
+  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await waitFor(() => expect(multi.getUserMedia).toHaveBeenCalledTimes(2));
+  expect(multi.getUserMedia.mock.calls[1]?.[0]).toMatchObject({
+    video: { deviceId: { exact: 'cam-2' } },
+  });
+  // Aliran lama dimatikan saat berpindah kamera.
+  expect(multi.track.stop).toHaveBeenCalled();
+});
+
+test.each([
+  ['NotAllowedError', 'denied'],
+  ['NotFoundError', 'notfound'],
+  ['NotReadableError', 'busy'],
+  ['Aneh', 'unknown'],
+] as const)('galat getUserMedia %s menampilkan pesan jelas', async (name, kind) => {
+  const getUserMedia = vi.fn(async () => {
+    throw Object.assign(new Error('x'), { name });
+  });
+  setMediaDevices({ getUserMedia });
+  render(<CameraScanDialog open onOpenChange={() => undefined} onScan={() => 'added'} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT[kind]);
+  expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+});
+
+test('konteks tidak aman (bukan HTTPS) dan peramban tanpa kamera: pesan jelas tanpa Coba lagi', async () => {
+  Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true });
+  render(<CameraScanDialog open onOpenChange={() => undefined} onScan={() => 'added'} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('HTTPS');
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+});
+
+test('pemuat pemindai gagal: pesan jelas dan aliran kamera dimatikan', async () => {
+  const ctx = setup({
+    createEngine: async () => {
+      throw new ScannerLoadError();
+    },
+  });
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
+  expect(ctx.track.stop).toHaveBeenCalled();
+});
+
+test('keadaan memuat tampil sebelum kamera siap', async () => {
+  let resolveEngine: (engine: BarcodeEngine) => void = () => undefined;
+  const ctx = setup({
+    createEngine: () =>
+      new Promise<BarcodeEngine>((resolve) => {
+        resolveEngine = resolve;
+      }),
+  });
+  expect(screen.getByRole('status')).toHaveTextContent('Memuat kamera');
+  resolveEngine(ctx.engine);
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+});
+
+test('aliran dimatikan saat dialog ditutup (Tutup) dan saat unmount', async () => {
+  const closed = setup();
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+  expect(closed.onOpenChange).toHaveBeenCalledWith(false);
+  closed.unmount();
+  expect(closed.track.stop).toHaveBeenCalled();
+
+  const unmounted = setup();
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  expect(unmounted.track.stop).not.toHaveBeenCalled();
+  unmounted.unmount();
+  expect(unmounted.track.stop).toHaveBeenCalledTimes(1);
+});
+
+test('dialog ditutup lewat prop open=false mematikan aliran', async () => {
+  const ctx = setup();
+  await waitFor(() => expect(screen.queryByText(/Memuat kamera/)).not.toBeInTheDocument());
+  ctx.rerender(
+    <CameraScanDialog open={false} onOpenChange={() => undefined} onScan={() => 'added'} />,
+  );
+  await waitFor(() => expect(ctx.track.stop).toHaveBeenCalled());
+});
+
+test('ketik manual + Enter memakai jalur onScan yang sama dan mengosongkan kolom', async () => {
+  const ctx = setup();
+  const input = screen.getByLabelText('Ketik serial manual');
+  await userEvent.type(input, 'manual-1{Enter}');
+  expect(ctx.onScan).toHaveBeenCalledWith('manual-1');
+  expect(input).toHaveValue('');
+  expect(await screen.findByText('Ditambahkan: manual-1')).toBeInTheDocument();
+  // Ketik manual tidak terkena jendela bacaan ulang: pengguna sengaja mengirimnya lagi.
+  await userEvent.type(input, 'manual-1{Enter}');
+  expect(ctx.onScan).toHaveBeenCalledTimes(2);
+  await userEvent.type(input, '{Enter}');
+  expect(ctx.onScan).toHaveBeenCalledTimes(2);
+});
