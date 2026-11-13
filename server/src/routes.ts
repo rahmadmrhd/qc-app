@@ -7,6 +7,8 @@ import { filesRoutes } from '@server/modules/files/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
+import { pushRoutes } from '@server/modules/notification/push-routes';
+import { notificationRoutes } from '@server/modules/notification/routes';
 import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
 import { serialRoutes } from '@server/modules/serial/routes';
@@ -108,6 +110,15 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.act': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
+  'notifications.list': true,
+  'notifications.markRead': true,
+  'notifications.markAllRead': true,
+  'push.config': true,
+  'push.subscribe': true,
+  'push.unsubscribe': true,
+  'push.setPreference': true,
+  'push.reportPermission': true,
+  'push.status': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -127,6 +138,8 @@ function realRoutes(): RouteTable {
     ...handoverRoutes(),
     ...qrcodeRoutes(),
     ...postelRoutes(),
+    ...notificationRoutes(),
+    ...pushRoutes(),
     ...serialRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),

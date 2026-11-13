@@ -99,6 +99,10 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       ALERT_TO: ${ALERT_TO:-}
+      # Web Push notifikasi Serah Terima: kunci VAPID (kosong/tak valid = push dinonaktifkan; lihat deploy/.env.example).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     volumes:
       - qc-backups:/var/backups/qc
       # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang
