@@ -1,8 +1,8 @@
 # Panduan interaktif (tur, tooltip demo, kartu panduan) — desain
 
 Tanggal: 2026-11-13. Status: diimplementasikan (2026-11-14); disetujui pemilik produk 2026-11-13, dengan keputusan
-tambahan pemilik produk 2026-11-14 (bagian 6) yang sudah masuk kode dan tes. Klip rekaman (PWA, push, tempel dari
-WhatsApp) menunggu rekaman pemilik; panduan tetap berjalan tanpa klip lewat fallback teks per adegan.
+tambahan pemilik produk 2026-11-14 (bagian 6) yang sudah masuk kode dan tes. Klip rekaman (PWA, push) menunggu
+rekaman pemilik; panduan tetap berjalan tanpa klip lewat fallback teks per adegan.
 Konteks: aplikasi QC (web React + TanStack, server Bun + Hono + MariaDB). Dokumen ini merancang fitur; implementasinya
 ada di `web/src/modules/guide/`, `server/src/modules/guide/`, dan `shared/guides.ts`.
 Status panduan disimpan dengan dua cara menurut jenis akun (individu atau bersama), sehingga fitur ini menyentuh
@@ -217,10 +217,13 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   - **`kode`**: adegan HTML/CSS yang dimainkan langsung untuk apa yang terjadi DI DALAM aplikasi. Hasil yang
     ditampilkan dihitung fungsi asli bila ada (mis. adegan "Pecah" memakai `splitWhatsappBatch` di
     `shared/handover-paste.ts` pada teks contoh), sehingga tidak basi bila aturan berubah. Mengikuti tema
-    terang/gelap otomatis. Gelembung chat dalam adegan adalah ilustrasi generik, bukan tiruan aplikasi WhatsApp.
+    terang/gelap otomatis. Aplikasi lain yang sering dibutuhkan peragaannya, terutama chat WhatsApp, juga adegan `kode`
+    yang meniru tata letaknya (bilah atas, latar chat, bubble masuk/keluar, bilah pilihan; keputusan pemilik
+    2026-11-14, bagian 6 butir E): hanya tiruan tampilan dengan skema warna sendiri yang tetap terbaca di terang dan
+    gelap, tanpa logo, gambar, atau aset resmi.
   - **`klip`**: video pendek berulang (WebM/MP4, tanpa suara, sekitar 8 detik) untuk yang terjadi DI LUAR aplikasi
-    (memilih/menyalin banyak pesan di WhatsApp yang caranya berbeda di HP dan WA Web, menu pasang PWA di peramban, dialog
-    izin notifikasi). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
+    dan tak dapat ditiru layout-nya dengan wajar (menu pasang PWA di peramban, dialog izin notifikasi). Demo
+    "Tempel dari WhatsApp" TIDAK lagi memakai klip: memilih lalu menyalin pesan ditiru sebagai adegan `kode` (butir E). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
     hanya saat tooltip dibuka (`preload="none"`), disajikan sebagai berkas statis, tidak dipra-cache. Letak:
     `web/public/klip/<id-panduan>-<n>.webm` (ikut ke `server/dist` dan image Docker seperti berkas statis lain).
     Konvensi `berkas` (klarifikasi 2026-11-14, butir D.i): nama polos tanpa path (mis. `tip-a-1.webm`); URL dibangun
@@ -229,6 +232,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   - Klip belum tersedia saat rilis TIDAK menghalangi rilis: adegan `klip` yang `berkas`-nya belum diisi memakai
     fallback daftar langkah bernomor. Tes katalog hanya memeriksa bahwa berkas yang DIDEKLARASIKAN ada; adegan
     tanpa `berkas` lolos. Jadi panduan PWA/push dan Serah Terima dapat rilis lebih dulu, klipnya menyusul.
+  - **Kartu contoh untuk langkah tanpa data** (keputusan pemilik 2026-11-14, bagian 6 butir F): langkah yang menyorot
+    isi papan (checklist, status, komentar pada task) tidak bergantung pada ada-tidaknya task sungguhan. Penjelasannya
+    adalah demo `kode` milik entri `tip` (`tip-handover-checklist`, `tip-handover-komentar`) yang merender komponen
+    asli (`HandoverCard`/`NoteView`) dengan data contoh yang dibuat di sisi klien, diberi lencana "Contoh". Demo tidak
+    menyentuh data, halaman, kueri, atau penyimpanan apa pun selain titik penanda `tip`, dan kartu contoh bukan target
+    `data-tour` (tur tak pernah menyorotnya).
   - Satu tooltip dapat memakai keduanya berurutan.
 
 ### 4.7 Perawatan (agar panduan tidak basi)
@@ -257,7 +266,8 @@ dirujuk ada berkasnya.
    tiap fitur baru menambah pekerjaan besar. Ditolak.
 
 Untuk demo tooltip: rekaman semua (sederhana, tetapi klip bisa basi tanpa terdeteksi tes) vs demo dari kode semua
-(tidak bisa meniru WhatsApp, menu peramban, dan dialog izin sistem) vs **gabungan, dipilih per langkah
+(awalnya dinilai tak bisa meniru WhatsApp, menu peramban, dan dialog izin sistem; tiruan WhatsApp akhirnya dibuat
+sebagai kode, lihat bagian 6 butir E) vs **gabungan, dipilih per langkah
 (dipilih pemilik 2026-11-13)**.
 
 Untuk status: database per akun saja (pada akun bersama, orang kedua tidak akan pernah melihat panduan) vs
@@ -300,6 +310,20 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   - **D. Klarifikasi (bukan perubahan perilaku):** (i) `berkas` klip = nama polos, URL `klipUrl()` = `/klip/<berkas>`
     (4.6); (ii) pindah halaman di luar langkah tur membatalkan tur tanpa penanda (4.3); (iii) panduan `baru` menyebut
     `dasar` induknya di katalog, field `dasar` (4.1).
+  - **E. Demo WhatsApp sebagai adegan `kode` yang meniru WhatsApp (2026-11-14, diminta pemilik produk setelah
+    mencoba tur langsung).** Urutan demo dikoreksi menjadi: pilih pesan di WhatsApp, salin, tempel di kotak, tekan
+    Pecah, lalu hasil kartu task (sebelumnya langkah memilih pesan muncul terakhir). Langkah di WhatsApp kini empat
+    bingkai `kode` yang meniru tampilan WhatsApp (chat biasa; tekan lama satu bubble dengan bilah pilihan "1"; ketuk
+    pesan lain; ketuk ikon salin dengan toast "Disalin"), bukan adegan `klip` tanpa berkas. Alasan: urutan terbalik
+    membingungkan, dan teks langkah tanpa gambar kurang membantu. Diubah: 4.6 (jenis adegan) dan kalimat status di
+    kepala dokumen. Infrastruktur klip (`klipUrl`, pemutar, tes konvensi) tetap untuk kasus lain.
+  - **F. Kartu contoh sebagai demo `kode`, bukan data palsu di halaman (2026-11-14, usul pemilik produk).** Untuk
+    pengguna yang papannya kosong (tak ada kartu untuk disorot) dan untuk langkah memilih teks lalu memberi komentar
+    yang belum dijelaskan, penjelasannya diwujudkan sebagai demo `kode` (entri `tip`) yang merender kartu task contoh
+    dari komponen asli dengan data contoh, bukan dengan menaruh data palsu di papan atau halaman. Alasan: tidak
+    mencemari data atau kueri, tampilan selalu sama dengan aplikasi, dan memakai sistem demo yang sudah ada. Id
+    penanda baru `tip-handover-checklist` dan `tip-handover-komentar` (versi 1) masuk `shared/guides.ts`. Diubah: 4.6
+    (bullet kartu contoh).
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
