@@ -1,7 +1,15 @@
 import type { SerialEventDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
-import { EVENT_LABEL, FIELD_LABEL, formatDay, formatStamp, TEAM_LABEL } from '../lib/labels';
+import {
+  EVENT_LABEL,
+  FIELD_LABEL,
+  formatDay,
+  formatStamp,
+  legEventLabel,
+  STATUS_LABEL,
+  TEAM_LABEL,
+} from '../lib/labels';
 
 /** Ringkasan stiker pada kejadian `recorded`: nama dan jumlah dari `data.stickers` (tanpa angka stok). */
 function recordedStickers(event: SerialEventDto): string[] {
@@ -21,17 +29,87 @@ function recordedLocation(event: SerialEventDto): string {
   return typeof name === 'string' ? name : '';
 }
 
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/** Judul kartu: kirim/terima menurut leg, selain itu label jenis riwayat. */
+function eventTitle(event: SerialEventDto): string {
+  if (event.type === 'send' || event.type === 'receive') {
+    return legEventLabel(event.type, event.data.leg);
+  }
+  return EVENT_LABEL[event.type];
+}
+
+/** Rincian per jenis riwayat dari `data` (kasus, kerusakan, kirim/terima, hasil cek ulang). */
+function eventDetails(event: SerialEventDto): string[] {
+  const { data } = event;
+  const caseNumber = text(data.caseNumber);
+  const damage = text(data.damage);
+  const details: string[] = [];
+  switch (event.type) {
+    case 'recorded':
+      if (data.status === 'failed') {
+        details.push(
+          `Dicatat langsung sebagai ${STATUS_LABEL.failed}${damage ? `: ${damage}` : ''}`,
+        );
+      }
+      break;
+    case 'report_failure':
+      details.push(`Kasus ${caseNumber || '—'} dibuka${damage ? `: ${damage}` : ''}`);
+      break;
+    case 'identify_damage':
+    case 'service_diagnosis':
+      if (damage) details.push(`Kerusakan: ${damage}`);
+      if (caseNumber) details.push(`Kasus ${caseNumber}`);
+      break;
+    case 'declare_broken':
+      details.push(`Kasus ${caseNumber || '—'} ditutup: rusak`);
+      break;
+    case 'recheck_pass':
+      if (caseNumber) details.push(`Kasus ${caseNumber} ditutup: lolos`);
+      break;
+    case 'recheck_fail':
+      if (caseNumber) details.push(`Kasus ${caseNumber} masih terbuka`);
+      if (damage) details.push(`Kerusakan: ${damage}`);
+      break;
+    case 'recheck':
+      if (data.result === 'pass' || data.result === 'fail') {
+        details.push(`Hasil: ${data.result === 'pass' ? STATUS_LABEL.good : STATUS_LABEL.failed}`);
+      }
+      break;
+    case 'send':
+    case 'receive': {
+      const from = text(data.fromLocationName);
+      const to = text(data.toLocationName);
+      if (from || to) details.push(`${from || '—'} → ${to || '—'}`);
+      const note = text(data.shipmentNote);
+      if (note) details.push(`Catatan pengiriman: ${note}`);
+      if (event.type === 'receive' && typeof data.daysInTransit === 'number') {
+        details.push(
+          data.daysInTransit === 0
+            ? 'Diterima di hari yang sama'
+            : `Lama di perjalanan: ${data.daysInTransit} hari`,
+        );
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return details;
+}
+
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
 function EventCard({ event }: { event: SerialEventDto }) {
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
+  const details = eventDetails(event);
   return (
     <li className="relative rounded-lg border bg-card p-4" data-seq={event.seq}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-0.5">
           <p className="text-sm font-semibold">
-            {EVENT_LABEL[event.type]}
+            {eventTitle(event)}
             {location ? (
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
@@ -46,6 +124,13 @@ function EventCard({ event }: { event: SerialEventDto }) {
           <p className="text-xs text-muted-foreground">dicatat {formatStamp(event.createdAt)}</p>
         </div>
       </div>
+      {details.length > 0 ? (
+        <ul aria-label="Rincian" className="mt-3 space-y-0.5 text-sm">
+          {details.map((detail) => (
+            <li key={detail}>{detail}</li>
+          ))}
+        </ul>
+      ) : null}
       {event.message.trim() !== '' ? (
         <MarkdownView source={event.message} className="mt-3 text-sm" />
       ) : null}
@@ -69,32 +154,16 @@ function EventCard({ event }: { event: SerialEventDto }) {
   );
 }
 
-/**
- * Linimasa kejadian serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya, tidak diurutkan ulang.
- * `truncated` = server hanya memuat 500 kejadian terbaru.
- */
-export function Timeline({
-  events,
-  truncated = false,
-}: {
-  events: readonly SerialEventDto[];
-  truncated?: boolean;
-}) {
+/** Daftar kartu riwayat serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya. */
+export function Timeline({ events }: { events: readonly SerialEventDto[] }) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
   return (
-    <div className="space-y-3">
-      {truncated ? (
-        <p role="note" className="text-xs text-muted-foreground">
-          Hanya 500 entri terbaru yang ditampilkan; yang lebih lama tidak dimuat.
-        </p>
-      ) : null}
-      <ol aria-label="Linimasa" className="space-y-3">
-        {events.map((event) => (
-          <EventCard key={event.id} event={event} />
-        ))}
-      </ol>
-    </div>
+    <ol aria-label="Linimasa" className="space-y-3">
+      {events.map((event) => (
+        <EventCard key={event.id} event={event} />
+      ))}
+    </ol>
   );
 }
