@@ -309,8 +309,8 @@ describe('restoreBoardCache', () => {
     expect(client.getQueryCache().findAll()).toHaveLength(0);
     await sleep(400);
     expect(client.getQueryCache().findAll()).toHaveLength(0);
-    expect((await readAllRecords('columns')).map((r) => r.key)).toEqual([OWNER + '|l1|new']);
-    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([OWNER + '|h1']);
+    expect((await readAllRecords('columns')).map((r) => r.key)).toEqual([`${OWNER}|l1|new`]);
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([`${OWNER}|h1`]);
     vi.mocked(deviceDb.readAllRecords).mockImplementation(actual);
   });
 
@@ -378,8 +378,8 @@ describe('restoreBoardCache', () => {
             : client.getQueryData(handoverKeys.one('h1', ['l1'])),
         ).toBeUndefined();
         await sleep(30);
-        expect((await readAllRecords(store)).map((r) => r.key)).not.toContain(OWNER + '|' + rest);
-        expect((await readAllRecords('columns')).map((r) => r.key)).toContain(OWNER + '|l2|new');
+        expect((await readAllRecords(store)).map((r) => r.key)).not.toContain(`${OWNER}|${rest}`);
+        expect((await readAllRecords('columns')).map((r) => r.key)).toContain(`${OWNER}|l2|new`);
       });
     }
   });
