@@ -41,6 +41,11 @@ i. Nama pelaku yang menyatakan Rusak ikut di surel dan halaman publik.
 j. Halaman publik menyembunyikan angka stok stiker dan alamat surel pengguna; nama pelaku tampil.
 k. Gambar pada surel tidak disematkan (jumlahnya disebut, dilihat lewat tautan).
 l. Surel tetap teks polos (`core/mail.ts` hanya mendukung teks).
+m. Terima otomatis menulis dua kejadian (`receive` lalu aksinya) dalam satu `batch()` (§4.1).
+n. Lokasi QC asal diisi saat Kirim ke servis; Terima (QC) meminta lokasi hanya bila lokasi asal sudah nonaktif.
+o. Cek ulang tanpa field lokasi; Cek ulang massal 5c memakai kontrak stiker centang.
+p. Rute baru `serials.serviceLocations` memberi lokasi servis efektif bagi `serial: edit`.
+q. Pembacaan serial oleh `serialservice` tidak dibatasi status (tetap seperti 5b); hanya aksi yang dibatasi.
 
 ## 4. Perilaku
 ### 4.1 Status dan alur
@@ -60,12 +65,16 @@ Status serial (`serials.status`, `VARCHAR(32)` tanpa batasan): `good` Lolos, `re
 
 Dihapus: Tidak lolos, identifikasi kerusakan, perbaikan QC sebagai aksi tersendiri, "nyatakan rusak" sebagai aksi tersendiri, `send`/`receive` antar lokasi, `send` kembali ke QC (diganti Selesai), dan field Kerusakan. Kasus (`serial_cases`) dan nomor `LP-YYYYMMDD-NNN` tetap; kolom `damage` dibiarkan (tidak diisi lagi), dihapus pada rilis berikutnya. Aksi di luar tabel ditolak seperti 5b (`CONFLICT`, `FORBIDDEN`, `VALIDATION`). Satu laporan aktif per serial (diperiksa di server, bukan hanya UI); permintaan serentak diselesaikan lewat CAS seperti 5b.
 
-Unit yang dilaporkan menyimpan lokasi QC asalnya (di laporan); dipakai saat tujuan kembali. Pemeriksaan "lokasi tujuan harus beda dengan lokasi sekarang" (`act.ts`) dicabut: kirim dari QC Surabaya ke servis Surabaya sah.
+Pemeriksaan "lokasi tujuan harus beda dengan lokasi sekarang" (`act.ts`) dicabut: kirim dari QC Surabaya ke servis Surabaya sah.
 
-Aksi `serialservice` tetap dibatasi menurut STATUS serial (butir 14 spek induk) dan himpunan status yang boleh dibaca servis ditambah `diagnosis`.
+Aksi `serialservice` tetap dibatasi menurut STATUS serial (butir 14 spek induk; `diagnosis` ditambahkan ke `SERVICE_STATUSES` di `shared/serial-flow.ts`). **Pembacaan tidak dibatasi status**, seperti 5b: `serialservice: view` membaca semua serial di BU-nya.
+
+**Terima otomatis.** Diagnosis dari custody `transit` (atau cek ulang dari custody `transit` di QC) menulis DUA kejadian dalam satu `batch()`: `receive` otomatis (tanggal dan lokasi sama dengan aturan Terima biasa, termasuk "tanggal tidak sebelum tanggal kirim", sehingga aturan itu berlaku untuk tanggal dialog) lalu kejadian aksinya. Linimasa dan hitungan "N hari belum diterima" tidak berubah. Stok stiker pada cek ulang dihitung di lokasi SESUDAH terima otomatis.
+
+**Lokasi QC asal.** Diisi saat Kirim ke servis dengan lokasi unit saat itu (kolom di laporan; laporan lama yang sudah dikirim diisi dari lokasi asal kejadian kirim, yang lain tidak perlu karena diisi saat kirim). Terima (QC) memulihkannya sebagai lokasi unit. Bila lokasi itu sudah nonaktif, dialog Terima (QC) meminta lokasi aktif lain (satu-satunya kasus field lokasi muncul di sana).
 
 ### 4.2 Cek ulang dan stiker
-Daftar stiker pada cek ulang berupa centang, awalnya kosong. Tiap stiker yang dicentang menambah **1** pada jumlah tempel serial itu dan memotong stok 1 di lokasi cek ulang (entri stok terkait kejadian), termasuk stiker yang belum pernah ditempel. Stiker `inactive` tidak dapat dicentang; `deprecated` boleh (butir 24). Menggantikan 5b (§5.2: masukan jumlah naik). Tambah Serial Number tidak berubah (masih memilih stiker dan jumlah di awal).
+Daftar stiker pada cek ulang berupa centang, awalnya kosong. Tiap stiker yang dicentang menambah **1** pada jumlah tempel serial itu dan memotong stok 1 di lokasi cek ulang (entri stok terkait kejadian), termasuk stiker yang belum pernah ditempel. Stiker `inactive` tidak dapat dicentang; `deprecated` boleh (butir 24). Menggantikan 5b (§5.2: masukan jumlah naik); kontrak `recheck.stickers` berubah dari jumlah absolut menjadi daftar id yang dicentang, dan Cek ulang massal 5c (§12 spek induk) memakai kontrak baru. Cek ulang tidak lagi punya field `locationId` (pindah lokasi = bagian 3); lokasi cek ulang = lokasi unit (setelah terima otomatis bila `transit`). Cek ulang gagal pada `reported`/`recheck` berlaku untuk custody `qc` atau `transit`. Tambah Serial Number tidak berubah (masih memilih stiker dan jumlah di awal).
 
 ### 4.3 Lapor Rusak
 Halaman Lapor Rusak (menu di grup Serial Number, `serial: edit`) dan tombol Lapor rusak di detail serial berbagi satu komponen dan satu aturan:
@@ -81,10 +90,10 @@ Tambah Serial Number tidak punya kolom status dan "Catat langsung Tidak lolos" d
 Di detail serial, tombol update berada di baris yang sama dengan label "Riwayat", satu tombol per aksi yang tersedia (`availableActions`, satu sumber dengan server). Tiap tombol membuka dialog: catatan (Markdown; gambar pesan maks. 10 seperti 5b), tanggal kejadian, dan isian khas: Kirim ke servis (lokasi bila konfigurasi servis punya lebih dari satu lokasi aktif; otomatis bila hanya satu), Diagnosis (pilihan status: Diagnosis, Sedang diperbaiki, Selesai, Rusak), Cek ulang (hasil dan centang stiker, §4.2), Terima (tanggal; tidak lebih awal dari tanggal kirim). Field update lama yang inline di halaman diganti dialog ini. Entri riwayat terbaru (urutan terbaru, seq tertinggi) diberi badge "Terbaru".
 
 ### 4.5 Halaman Laporan
-Rute `/serial/reports`, menu "Laporan" di grup Serial Number, tampil bagi pemegang `serial` atau `serialservice` pada minimal satu BU. Daftar laporan saja (bukan serial): nomor LP, serial, item (merk dan tipe), BU, status, lama pada status sekarang, pelapor, ringkasan (baris pertama catatan laporan, maks. 120 karakter); filter status (aktif, selesai) dan BU; baris menuju detail serial pada tab laporan itu. Tim servis (hanya `serialservice`) melihat laporan yang statusnya boleh dibaca servis (§4.1) dan dapat menindak dari detail. Berkursor seperti `serials.list`.
+Rute `/serial/reports`, menu "Laporan" di grup Serial Number, tampil bagi pemegang `serial` atau `serialservice` pada minimal satu BU. Daftar laporan saja (bukan serial): nomor LP, serial, item (merk dan tipe), BU, status, lama pada status sekarang, pelapor, ringkasan (baris pertama catatan laporan, maks. 120 karakter); filter status (aktif, selesai) dan BU; baris menuju detail serial pada tab laporan itu. Tim servis (hanya `serialservice`) melihat semua laporan di BU-nya (pembacaan tidak dibatasi status), filter bawaan "aktif", dan dapat menindak dari detail pada status servis. Berkursor seperti `serials.list`.
 
 ### 4.6 Konfigurasi lokasi tim servis
-`/serial/settings` mendapat bagian "Lokasi tim servis" (`LinkMultiField`, lokasi aktif), global, disimpan di tabel `settings` (kunci baru; ETag/`If-Match` sendiri), hak `canManageSerialSettings`. Kosong = semua lokasi aktif. Lokasi nonaktif yang masih tercantum diabaikan saat memilih tujuan; bila setelah itu tak ada yang aktif, dipakai semua lokasi aktif. Kirim ke servis membaca daftar ini di server (klien mengirim lokasi hanya bila ada lebih dari satu pilihan; server memvalidasi bahwa lokasi termasuk daftar).
+`/serial/settings` mendapat bagian "Lokasi tim servis" (`LinkMultiField`, lokasi aktif), global, disimpan di tabel `settings` (kunci baru; ETag/`If-Match` sendiri), hak `canManageSerialSettings`. Kosong = semua lokasi aktif. Lokasi nonaktif yang masih tercantum diabaikan saat memilih tujuan; bila setelah itu tak ada yang aktif, dipakai semua lokasi aktif. Kirim ke servis membaca daftar ini di server (klien mengirim lokasi hanya bila ada lebih dari satu pilihan; server memvalidasi bahwa lokasi termasuk daftar). Klien mendapat daftar efektif lewat rute baru `serials.serviceLocations` (`serial: edit`, mengembalikan hanya lokasi servis efektif sesuai aturan di atas; tidak memuat daftar penerima surel dan tidak membuka `serialSettings.get`).
 
 ### 4.7 Surel "rusak"
 Dikirim hanya saat aksi Diagnosis dengan pilihan Rusak berhasil (job `serial_alert` seperti 5b, at-least-once). Penerima = daftar `SERIAL_ALERT`. Teks polos:
@@ -105,7 +114,10 @@ Menggantikan butir 40 (i).
 Nomor migrasi berikutnya setelah `0016`. `failed`, `qc_repair` → `reported`. `at_service`, `service_repair`, `recheck`, `broken`, `good` tetap. Serial `good` berkustodi `transit` (sisa kirim antar lokasi) → custody `qc`, lokasi = lokasi tujuan. Laporan lama diisi lokasi QC asal dari kejadian kirim ke servis bila ada. Kejadian lama tidak diubah (hanya bertambah); riwayat lama yang bertipe aksi yang sudah dihapus tetap dirender dengan label lamanya.
 
 ## 5. Dampak pada dokumen lain (dikerjakan bersama kodenya)
-Spek induk: §3 butir 40 diperbarui (persetujuan; (b),(c),(d),(i),(p) digantikan; OQ-4 dan 5 dicabut), butir baru 43 dan seterusnya untuk keputusan di atas, §4.3 (laporan: lokasi asal), §4.6 (surel dan tautan), §5.2 (stiker centang), §5.3 (tabel), §9 (halaman Lapor Rusak dan Laporan), §11. `CLAUDE.md` bullet Serial Number dan aturan REST bertoken. `docs/ci-cd.md` (rollback ke image 5b membaca status baru; tautan bertanda tangan bergantung `SESSION_SECRET`). `docs/adding-a-module.md` bila ada pelajaran.
+Spek induk: §3 butir 40 diperbarui (persetujuan; (b),(c),(d),(i),(p) digantikan; OQ-4 dan 5 dicabut), butir baru 43 dan seterusnya untuk keputusan di atas, §4.3 (laporan: lokasi asal), §4.6 (surel dan tautan), §5.2 (stiker centang), §5.3 (tabel), §9 (halaman Lapor Rusak dan Laporan), §11. `CLAUDE.md` bullet Serial Number dan aturan REST bertoken. `docs/ci-cd.md` (rollback ke image 5b membaca status baru; tautan bertanda tangan bergantung `SESSION_SECRET`). `docs/adding-a-module.md` bila ada pelajaran. Kode: komentar dan tes OQ-13 di `server/src/modules/serial/alert-job.ts` (surel tanpa pesan, nama, atau surel pelaku) diganti sesuai §4.7.
+
+## 5a. Pertanyaan terbuka
+Catatan pada serial Rusak (klaim vendor, unit pengganti): kejadian `note` memakai `caseId` = laporan terbuka, yang kosong setelah Rusak, jadi catatan itu kini tidak masuk linimasa laporan dan tidak terbaca di halaman publik. Apakah catatan itu menempel ke laporan yang sudah ditutup, dan apakah tampil di halaman publik selama tautan hidup? Menunggu keputusan pemilik produk.
 
 ## 6. Pendekatan yang dipertimbangkan
 - **A (dipilih)**: ganti status di mana-mana, data lama dipetakan sekali. Paling bersih; risiko rollback diterima karena baru di staging.
