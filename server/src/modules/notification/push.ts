@@ -35,6 +35,16 @@ export const PUSH_FAILING_THRESHOLD = 3;
  */
 export const PUSH_PRUNE_FAIL_COUNT = 10;
 export const PUSH_PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Kegagalan yang boleh memicu pemangkasan: respons layanan push (`http NNN`) atau endpoint tersimpan yang tak lagi
+ * lolos kebijakan (`endpoint ditolak`, permanen). Galat sisi server (`jaringan`, `timeout`, `waktu habis`, `internal`,
+ * `galat pengirim`: egress mati, kunci VAPID rusak) tidak memicunya, agar gangguan di sisi kita tidak menghapus
+ * langganan yang sehat.
+ */
+function prunableFailure(error: string): boolean {
+  return error.startsWith('http ') || error === 'endpoint ditolak';
+}
 /** Banyak notifikasi yang diproses bersamaan dan banyak pengiriman `send` yang berjalan bersamaan (seluruh putaran). */
 const DELIVER_CONCURRENCY = 5;
 /** Batas waktu satu `send`; melewatinya = gagal (bukan `gone`: langganan tidak dihapus). */
@@ -242,16 +252,19 @@ export async function deliverPendingPushes(
           .bind(stamp, result.error.slice(0, 100), sub.endpoint_hash, row.recipient)
           .run();
         // Pangkas langganan yang sudah lama tidak pernah berhasil (bandingkan teks ISO: format sama dengan `nowIso`).
-        await env.DB.prepare(
-          "DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ? AND fail_count >= ? AND (CASE WHEN last_ok_at <> '' THEN last_ok_at ELSE created_at END) < ?",
-        )
-          .bind(
-            sub.endpoint_hash,
-            row.recipient,
-            PUSH_PRUNE_FAIL_COUNT,
-            new Date(now - PUSH_PRUNE_AFTER_MS).toISOString(),
+        // Hanya dinilai bila kegagalan INI berasal dari layanan push atau kebijakan endpoint, bukan dari sisi server.
+        if (prunableFailure(result.error)) {
+          await env.DB.prepare(
+            "DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ? AND fail_count >= ? AND (CASE WHEN last_ok_at <> '' THEN last_ok_at ELSE created_at END) < ?",
           )
-          .run();
+            .bind(
+              sub.endpoint_hash,
+              row.recipient,
+              PUSH_PRUNE_FAIL_COUNT,
+              new Date(now - PUSH_PRUNE_AFTER_MS).toISOString(),
+            )
+            .run();
+        }
       }
     }
     await setPushState(env, row.id, anyOk ? 'sent' : 'failed');

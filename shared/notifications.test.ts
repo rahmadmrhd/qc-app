@@ -157,6 +157,12 @@ describe('pushPayloadOf', () => {
     }
   });
 
+  test('push memakai preview tersimpan apa adanya, sama dengan yang tampil di lonceng', () => {
+    const preview = notificationPreviewText('- 1. Kabel');
+    expect(preview).toBe('1. Kabel');
+    expect(pushPayloadOf(dto({ preview })).body).toBe(`ST-20261112-001 - PT Maju\n${preview}`);
+  });
+
   test('body hanya preview bila tanpa nomor dan customer; tetap berisi bila semuanya kosong', () => {
     expect(pushPayloadOf(dto({ number: '', customerName: '', preview: 'Isi' })).body).toBe('Isi');
     expect(pushPayloadOf(dto({ number: '', customerName: '', preview: '' })).body).toBe(
@@ -178,6 +184,36 @@ describe('notificationPreviewText', () => {
     );
     expect(notificationPreviewText('')).toBe('');
     expect(notificationPreviewText('  \n  ')).toBe('');
+  });
+
+  test('escape Markdown dan entitas HTML dari editor didekode; penanda centang tetap dibuang', () => {
+    expect(
+      notificationPreviewText(
+        '- [ ] RB\\_5009\\_X = 1 unit\n- [ ] Kabel UTP &amp; konektor = 2 pcs\n&lt;urgent&gt; &#35;7',
+      ),
+    ).toBe('RB_5009_X = 1 unit · Kabel UTP & konektor = 2 pcs · <urgent> #7');
+  });
+
+  test('pemisah baris Unicode (NEL, U+2028, U+2029) dan CR tunggal memecah baris; tetap satu baris', () => {
+    const [nel, ls, ps] = [0x85, 0x2028, 0x2029].map((code) => String.fromCharCode(code));
+    const result = notificationPreviewText(`a${ls}b${ps}c${nel}d\re`);
+    expect(result).toBe('a · b · c · d · e');
+    expect(/[\n\r\u0085\u2028\u2029]/.test(result)).toBe(false);
+  });
+
+  test('karakter kontrol dan pengatur arah teks (bidi) dibuang', () => {
+    const rlo = String.fromCharCode(0x202e);
+    const pdf = String.fromCharCode(0x202c);
+    const lri = String.fromCharCode(0x2066);
+    const pdi = String.fromCharCode(0x2069);
+    expect(notificationPreviewText(`${rlo}abc${pdf} def${String.fromCharCode(7)}g`)).toBe(
+      'abc def g',
+    );
+    expect(notificationPreviewText(`x${lri}y${pdi}`)).toBe('x y');
+  });
+
+  test('entitas yang menghasilkan baris baru tidak merusak jaminan satu baris', () => {
+    expect(notificationPreviewText('a&#10;b')).toBe('a b');
   });
 });
 

@@ -179,6 +179,33 @@ describe('deliverPendingPushes', () => {
       expect(await names()).toEqual([]);
     });
 
+    test('galat sisi server (timeout, jaringan, internal) tidak memicu pemangkasan walau ambang dan umur terpenuhi', async () => {
+      for (const error of ['timeout', 'jaringan', 'internal', 'waktu habis', 'galat pengirim']) {
+        const sub = await subscribe(VIEWER, `srv-${error.replace(' ', '-')}`, {
+          failCount: PUSH_PRUNE_FAIL_COUNT + 3,
+          createdAt: OLD,
+        });
+        push.setResult(sub, { ok: false, gone: false, error });
+      }
+      await insert(note());
+      await deliverPendingPushes(env);
+      const rows = await subRows(VIEWER);
+      expect(rows).toHaveLength(5);
+      // fail_count tetap naik (status admin "pengiriman gagal"), hanya penghapusannya yang tak terjadi.
+      expect(rows.every((s) => s.fail_count === PUSH_PRUNE_FAIL_COUNT + 4)).toBe(true);
+    });
+
+    test('endpoint tersimpan yang ditolak kebijakan (allowlist menyempit) ikut dipangkas', async () => {
+      const stale = await subscribe(VIEWER, 'stale', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      push.setResult(stale, { ok: false, gone: false, error: 'endpoint ditolak' });
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([]);
+    });
+
     test('belum mencapai ambang kegagalan -> tetap, walau sudah lama', async () => {
       const slow = await subscribe(VIEWER, 'slow', {
         failCount: PUSH_PRUNE_FAIL_COUNT - 2,

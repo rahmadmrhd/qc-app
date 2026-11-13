@@ -1,4 +1,6 @@
 import type { HandoverStatus } from './handover';
+import { handoverUnescapeText } from './handover-text';
+import { stripControlChars } from './postel';
 
 // Aturan murni notifikasi Serah Terima (spek 2026-11-12-notifikasi-serah-terima-design.md). Tanpa API runtime/DOM.
 
@@ -140,14 +142,19 @@ export function handoverUrlOf(n: Pick<NotificationDto, 'handoverId' | 'locationI
 
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
 
+/** Pemisah baris: CRLF, LF, CR tunggal, NEL, dan pemisah baris/paragraf Unicode (U+2028/U+2029). */
+const LINE_BREAK = /\r\n|[\n\r\u0085\u2028\u2029]/;
+
 /**
- * Cuplikan satu baris dari teks Markdown (catatan atau komentar): penanda daftar/centang dibuang, baris kosong
- * dilewati, baris digabung dengan " · ". Dipakai saat notifikasi dibuat (disimpan sebagai `preview`) dan oleh push.
+ * Cuplikan satu baris dari teks Markdown (catatan atau komentar): penanda daftar/centang dibuang, escape Markdown
+ * dan entitas HTML dari editor didekode (`handoverUnescapeText`), karakter kontrol dan pengatur arah teks dibuang
+ * (`stripControlChars`), baris kosong dilewati, baris digabung dengan " · ". Dipakai SAAT notifikasi dibuat dan
+ * hasilnya disimpan sebagai `preview`; lonceng dan push menampilkan nilai tersimpan itu apa adanya.
  */
 export function notificationPreviewText(text: string): string {
   return text
-    .split(/\r?\n/)
-    .map((line) => line.replace(LIST_MARKER, '').trim())
+    .split(LINE_BREAK)
+    .map((line) => stripControlChars(handoverUnescapeText(line.replace(LIST_MARKER, ''))))
     .filter((line) => line !== '')
     .join(' · ');
 }
@@ -163,8 +170,9 @@ export function pushPayloadOf(n: NotificationDto): {
   tag: string;
 } {
   const head = [n.number, n.customerName].filter((part) => part !== '').join(' - ');
-  const preview = notificationPreviewText(n.preview);
-  const body = [head, preview].filter((part) => part !== '').join('\n');
+  // `preview` sudah rata dan terbersih (dibentuk `notificationPreviewText` saat notifikasi dibuat): dipakai apa adanya
+  // agar isi push sama dengan lonceng.
+  const body = [head, n.preview].filter((part) => part !== '').join('\n');
   return {
     title: notificationTitle(n),
     body: body === '' ? 'Serah Terima' : body,

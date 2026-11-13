@@ -182,13 +182,13 @@ test('kunci query notifikasi TIDAK disimpan oleh query-persist', () => {
   initSession({ ...ANONYMOUS_SESSION, authenticated: true, email: 'a@x.com' });
   const client = new QueryClient();
   client.setQueryData(notificationKeys.list, {
-    items: [note({ preview: 'RAHASIA' })],
+    items: [note({ preview: 'ISI-NOTIFIKASI' })],
     unread: 1,
     nextCursor: null,
   });
   client.setQueryData(['brands', 'list'], [{ id: 'b1' }]);
   savePersistedQueryCache(client);
   const saved = localStorage.getItem(PERSISTED_CACHE_KEY) ?? '';
-  expect(saved).not.toContain('RAHASIA');
+  expect(saved).not.toContain('ISI-NOTIFIKASI');
   expect(saved).not.toContain('notifications');
 });
