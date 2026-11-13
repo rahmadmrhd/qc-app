@@ -108,6 +108,7 @@ async function stickerRaise(
   requested: readonly { stickerId: string; qty: number }[],
   user: UserContext,
   now: string,
+  retried: boolean,
 ): Promise<StickerRaise> {
   const serialId = row.id.trim();
   const current = new Map(
@@ -140,6 +141,10 @@ async function stickerRaise(
       throw validationError('stickers', 'Jumlah stiker tidak boleh diturunkan');
     }
     if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
+      // Percobaan ke-2 dan seterusnya hanya terjadi setelah batch dibatalkan penjaga; stiker yang baru terlihat nonaktif
+      // berarti dinonaktifkan serentak (spek §3 butir 24): jawab usang (CONFLICT/412), bukan VALIDATION. Stiker yang
+      // SUDAH nonaktif sebelum permintaan tetap VALIDATION pada field `stickers` (percobaan pertama).
+      if (retried) throw staleError(STALE_MESSAGE);
       throw validationError('stickers', 'Stiker nonaktif tidak dapat ditambah jumlahnya');
     }
     if (!existing && !applicable.has(pick.stickerId)) {
@@ -197,7 +202,8 @@ export async function actOnSerial(
     throw validationError('occurredOn', 'Tanggal tidak boleh di masa depan');
   }
   const withCase = opensCase(input);
-  const attempt = () => applyAct(env, input, user, today, withCase);
+  let tries = 0;
+  const attempt = () => applyAct(env, input, user, today, withCase, tries++ > 0);
   try {
     if (withCase) {
       await runWithCaseNumber(env, input.id, input.expectedUpdatedAt, attempt, STALE_MESSAGE);
@@ -216,6 +222,7 @@ async function applyAct(
   user: UserContext,
   today: string,
   withCase: boolean,
+  retried: boolean,
 ): Promise<void> {
   const row = await loadSerialRow(env.DB, input.id);
   if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
@@ -390,6 +397,7 @@ async function applyAct(
         input.stickers ?? [],
         user,
         now,
+        retried,
       );
       tail.push(...raise.statements);
       const checkData: Record<string, unknown> = { locationId, locationName };

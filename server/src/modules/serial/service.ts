@@ -421,7 +421,7 @@ export async function createSerialOnce(
         serialId,
         null,
         async () => env.DB.batch(await buildStatements()),
-        'Nomor kasus sedang diperebutkan; coba lagi',
+        'Serial Number sedang diproses orang lain; coba lagi',
       );
     } else {
       await env.DB.batch(await buildStatements());
@@ -457,7 +457,7 @@ export async function createSerialOnce(
     return {
       clientId: row.clientId,
       result: 'error',
-      message: 'Serial gagal disimpan; coba lagi',
+      message: 'Serial Number gagal disimpan; coba lagi',
       serial: row.serial,
     };
   }
@@ -650,7 +650,7 @@ export async function listSerials(
   };
 }
 
-export const STALE_MESSAGE = 'Serial diubah orang lain; muat ulang halaman lalu ulangi';
+export const STALE_MESSAGE = 'Serial Number diubah orang lain; muat ulang halaman lalu ulangi';
 
 /** Stempel baru yang selalu lebih besar dari yang lama (jam yang sama = +1 ms) agar CAS `updated_at` tak tertipu. */
 export function nextStamp(now: string, previous: string): string {
@@ -826,7 +826,7 @@ export async function updateSerialBatch(
     } catch (error) {
       if (!isAppError(error)) {
         console.error('serials.updateBatch: baris gagal', error instanceof Error ? error.name : '');
-        results.push({ id, result: 'error', message: 'Serial gagal diubah; coba lagi' });
+        results.push({ id, result: 'error', message: 'Serial Number gagal diubah; coba lagi' });
       } else if (error.stale) {
         results.push({ id, result: 'stale', message: error.message });
       } else if (error.code === 'CONFLICT') {

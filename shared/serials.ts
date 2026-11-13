@@ -93,7 +93,7 @@ export const SERIAL_ACTIONS = [
 ] as const;
 export type SerialAction = (typeof SERIAL_ACTIONS)[number];
 
-/** Tim pelaku kejadian (`actor_team`); `system` hanya untuk kejadian yang dibuat sistem. */
+/** Tim pelaku kejadian (`actor_team`): QC atau tim servis. */
 export type SerialTeam = 'qc' | 'service';
 
 /** Nomor kasus tidak lolos: `LP-YYYYMMDD-NNN` (urutan minimal 3 digit; lebih dari 999 menjadi lebih panjang). */

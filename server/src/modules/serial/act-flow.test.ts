@@ -633,4 +633,45 @@ describe('atomisitas', () => {
     ).first<{ qty: number }>();
     expect(Number(qty?.qty)).toBe(1);
   });
+
+  test('recheck_fail: stiker dinonaktifkan serentak (setelah dibaca, sebelum batch) = CONFLICT usang, tanpa efek; sudah nonaktif sebelumnya = VALIDATION', async () => {
+    await seedFailed({ status: 'recheck' });
+    resetEventListenersForTest();
+    registerSerialStockListeners();
+    // Meniru penyunting lain: stiker dinonaktifkan tepat setelah pemeriksaan di sisi aplikasi (sekali saja).
+    let fired = false;
+    onEvent('serial.stickers_added', async (e) => {
+      if (!fired) {
+        fired = true;
+        await e.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's1'").run();
+      }
+      return [];
+    });
+    // Pendengar stok terdaftar SESUDAH pengganggu agar penjaga stiker nonaktif ikut membatalkan batch.
+    registerSerialStockListeners();
+    let out: CallOut;
+    try {
+      out = await act('recheck_fail', {
+        damage: 'Masih mati',
+        stickers: [{ stickerId: 's1', qty: 4 }],
+      });
+    } finally {
+      resetEventListenersForTest();
+      registerSerialStockListeners();
+    }
+    expect(out.ok).toBe(false);
+    expect(out.error?.code).toBe('CONFLICT');
+    expect(out.error?.message).toContain('Serial Number diubah orang lain');
+    expect(await serialRow()).toMatchObject({ status: 'recheck', open_case_id: 'case-1' });
+    expect((await eventsOf()).length).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+
+    // Sekarang s1 SUDAH nonaktif sebelum permintaan: VALIDATION pada field `stickers`.
+    const again = await act('recheck_fail', {
+      damage: 'Masih mati',
+      stickers: [{ stickerId: 's1', qty: 4 }],
+    });
+    expect(again.error?.code).toBe('VALIDATION');
+    expect(Object.keys(again.error?.fields ?? {})).toContain('stickers');
+  });
 });
