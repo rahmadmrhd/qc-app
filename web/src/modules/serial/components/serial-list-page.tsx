@@ -10,6 +10,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { describeError } from '@/lib/api/describe-error';
+import { canUseSerialLocationOptions } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
 import { serialListQueryOptions } from '../queries';
@@ -25,6 +28,7 @@ export interface SerialListPageProps {
 
 /** Daftar serial berkursor dengan filter di URL; baris dibuka ke halaman detail. */
 export function SerialListPage({ search, onSearchChange, onOpen, onNew }: SerialListPageProps) {
+  const me = useMe();
   const list = useInfiniteQuery(serialListQueryOptions(filterOfSearch(search)));
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
   return (
@@ -33,6 +37,7 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
         <h1 className="text-2xl font-semibold">Daftar Serial</h1>
         {onNew ? <Button onClick={onNew}>Catat serial</Button> : null}
       </div>
+      <NoLocationNotice relevant={!canUseSerialLocationOptions(me)} />
       <SerialFilters search={search} onChange={onSearchChange} />
       {list.isError ? (
         <p role="alert" className="text-sm text-destructive">

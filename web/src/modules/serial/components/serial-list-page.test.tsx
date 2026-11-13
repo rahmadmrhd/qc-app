@@ -270,3 +270,26 @@ test('tempelan serial lebar melebihi panjang URL: pesan khusus dan hanya awalan 
     { timeout: 3000 },
   );
 });
+
+test('pembaca tanpa penugasan lokasi: peringatan tampil di daftar serial; editor atau yang punya lokasi tidak melihatnya', async () => {
+  me = { ...me, locations: [] };
+  const { unmount } = renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.getByText(/belum ditugaskan ke lokasi mana pun/)).toBeInTheDocument();
+  unmount();
+
+  // Editor memakai serials.locationOptions: tidak bergantung penugasan, jadi tanpa peringatan.
+  me = { ...me, permissions: { ...me.permissions, serial: 'edit' } };
+  renderPage();
+  await screen.findAllByText('ABC123');
+  expect(screen.queryByText(/belum ditugaskan ke lokasi mana pun/)).toBeNull();
+});
+
+test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serials.itemOptions tanpa gerbang edit', async () => {
+  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  renderPage();
+  await screen.findByText('ABC123');
+  const names = await linkOptionNames(screen, 'Filter item');
+  expect(names).toEqual(['Cisco C9200']);
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.itemOptions')).toBe(true);
+});
