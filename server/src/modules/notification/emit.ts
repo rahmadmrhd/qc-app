@@ -13,6 +13,7 @@ import {
   NOTIFICATION_SIDE,
   type NotificationKind,
   type NotificationSide,
+  notificationPreviewText,
 } from '@shared/notifications';
 import { dropPendingStatements, pendingCheckStatements } from './flush';
 import { type Recipient, resolveRecipients } from './recipients';
@@ -108,6 +109,16 @@ export async function planNotifications(env: Env, change: HandoverChange): Promi
   return [...insertNotificationStmts(env.DB, rows), ...statements];
 }
 
+/**
+ * Cuplikan notifikasi (keputusan pemilik 2026-11-13: data tampil penuh): isi catatan untuk task baru/diubah, teks
+ * komentar untuk komentar; jenis lain kosong. Diratakan satu baris; pemotongan ke batas di `insertNotificationStmts`.
+ */
+function previewOf(kind: NotificationKind, change: HandoverChange): string {
+  if (kind === 'commented') return notificationPreviewText(change.commentBody ?? '');
+  if (kind === 'created' || kind === 'updated') return notificationPreviewText(change.after.note);
+  return '';
+}
+
 function notificationRow(
   kind: NotificationKind,
   recipient: Recipient,
@@ -125,7 +136,7 @@ function notificationRow(
     actorEmail: normalizeEmail(change.actor.email),
     actorName,
     count: 0,
-    preview: kind === 'commented' ? (change.commentBody ?? '') : '',
+    preview: previewOf(kind, change),
     createdAt: change.now,
   };
 }

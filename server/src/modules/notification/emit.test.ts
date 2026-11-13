@@ -79,7 +79,8 @@ describe('kejadian menurut tabel spek 3', () => {
       handover_id: out.data.id,
       number: out.data.number,
       actor_email: WH,
-      preview: '',
+      // Cuplikan = isi catatan, penanda daftar/centang dibuang (keputusan pemilik 2026-11-13).
+      preview: 'X',
     });
   });
 
@@ -95,6 +96,8 @@ describe('kejadian menurut tabel spek 3', () => {
     expect(list.map((r) => [r.recipient, r.kind])).toEqual([[QC, 'updated']]);
     expect(list[0]?.number).toBe('ST-20261015-001');
     expect(list[0]?.actor_email).toBe(WH);
+    // Cuplikan memuat catatan BARU (diratakan satu baris).
+    expect(list[0]?.preview).toBe('A = 1 · B = 2 · C = 3');
   });
 
   test('save identik -> nol baris notifikasi', async () => {

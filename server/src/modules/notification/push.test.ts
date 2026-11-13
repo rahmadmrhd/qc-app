@@ -46,7 +46,7 @@ function note(overrides: Partial<NewNotification> = {}): NewNotification {
     actorEmail: QC,
     actorName: 'Qi',
     count: 0,
-    preview: 'RAHASIA-ISI-KOMENTAR',
+    preview: 'ISI-KOMENTAR',
     createdAt: new Date(NOW).toISOString(),
     ...overrides,
   };
@@ -113,7 +113,7 @@ describe('deliverPendingPushes', () => {
     expect(push.sent).toHaveLength(2);
   });
 
-  test('muatan hanya nomor, customer, judul, url, tag; tanpa cuplikan komentar/catatan', async () => {
+  test('muatan: judul, body (nomor - customer + cuplikan isi), url, tag; tanpa kolom lain', async () => {
     await subscribe(VIEWER, 'a');
     await insert(
       note(),
@@ -122,7 +122,7 @@ describe('deliverPendingPushes', () => {
     await deliverPendingPushes(env);
     expect(push.sent).toHaveLength(2);
     for (const { payload } of push.sent) {
-      expect(payload).not.toContain('RAHASIA-ISI-KOMENTAR');
+      expect(payload).toContain('ISI-KOMENTAR');
       const parsed = JSON.parse(payload) as Record<string, string>;
       expect(Object.keys(parsed).sort()).toEqual(['body', 'tag', 'title', 'url']);
     }
@@ -131,7 +131,7 @@ describe('deliverPendingPushes', () => {
       .map(({ payload }) => JSON.parse(payload) as Record<string, string>)
       .find((parsed) => parsed.tag === 'commented:h1') as Record<string, string>;
     expect(first.title).toBe('Qi mengomentari task ST-20261015-001');
-    expect(first.body).toBe('ST-20261015-001 - PT Maju');
+    expect(first.body).toBe('ST-20261015-001 - PT Maju\nISI-KOMENTAR');
     expect(first.url).toBe(`/handover/h1?loc=${ENV.locA}`);
     expect(first.tag).toBe('commented:h1');
   });

@@ -102,7 +102,7 @@ Satu kejadian di server menghasilkan **satu catatan notifikasi per penerima**. S
 - **Bila pengguna menolak**: tidak dapat dipaksa dan tidak diminta berulang (permintaan berulang membuat peramban menyembunyikan dialog). Aplikasi menampilkan **banner pengingat** dengan langkah menyalakan kembali menurut perangkat, dibatasi frekuensinya, dan **admin dapat melihat status push per pengguna** [Pemilik].
 - Status push per pengguna dihitung dari **hasil pengiriman nyata**, bukan hanya dari "pernah mengizinkan": langganan dapat dihapus peramban atau iOS secara diam-diam, dan server hanya mengetahuinya dari galat saat mengirim.
 - iOS: push hanya untuk PWA yang dipasang di layar utama (batasan platform).
-- **Logout tidak menghentikan push** [Pemilik, 2026-11-12]: perangkat tetap menerima push untuk pengguna yang sudah logout, selaras dengan keputusan bahwa antrean sinkron tetap berjalan setelah logout. Karena satu langganan push melekat pada peramban (bukan pada akun), satu langganan boleh terhubung ke lebih dari satu pengguna bila beberapa akun login di perangkat yang sama; masing-masing menerima notifikasi miliknya [Pilihan perancang]. Privasi layar kunci dijaga oleh aturan §6 (tanpa isi catatan atau komentar).
+- **Logout tidak menghentikan push** [Pemilik, 2026-11-12]: perangkat tetap menerima push untuk pengguna yang sudah logout, selaras dengan keputusan bahwa antrean sinkron tetap berjalan setelah logout. Karena satu langganan push melekat pada peramban (bukan pada akun), satu langganan boleh terhubung ke lebih dari satu pengguna bila beberapa akun login di perangkat yang sama; masing-masing menerima notifikasi miliknya [Pilihan perancang]. Data yang tampil di layar kunci mengikuti §6 (ditampilkan penuh, keputusan pemilik 2026-11-13); pemilik menilai data Serah Terima tidak begitu sensitif, termasuk di perangkat yang dipakai bergantian.
 - Pengguna yang izinnya dicabut atau akunnya dinonaktifkan berhenti menerima push segera: akun aktif dan izin lokasi diperiksa **saat push dikirim**, bukan hanya saat notifikasi dibuat (A3) [Pilihan perancang].
 
 ### 5.3 Desktop (di luar cakupan, tetapi tidak boleh dihalangi)
@@ -110,7 +110,7 @@ Electron tidak memakai Web Push; spek Desktop §13 menyebut koneksi langsung ke 
 
 ## 6. Isi dan privasi [Pilihan perancang]
 
-- Push dan lonceng menyebut jenis kejadian, nomor task (`ST-…`), dan nama customer. **Isi catatan dan teks komentar tidak ditampilkan di push** (layar kunci perangkat); lonceng boleh menampilkan cuplikan karena berada di dalam aplikasi yang sudah login. Pemilik belum mengonfirmasi ini.
+- **Data ditampilkan penuh di push dan lonceng** [Pemilik, 2026-11-13, menggantikan usulan semula yang menyembunyikan isi di push]: jenis kejadian, nomor task (`ST-…`), nama customer, dan **cuplikan isi**: isi catatan untuk task baru dan task diubah, teks komentar untuk komentar. Tujuannya agar pengguna menangkap task lebih cepat tanpa membuka aplikasi. Alasan pemilik: data Serah Terima tidak begitu sensitif. Cuplikan diratakan menjadi satu baris (penanda daftar/centang dibuang, baris digabung dengan " · ") dan dipotong 140 karakter (`NOTIFICATION_PREVIEW_MAX`); ringkasan centang dan "N task baru" (`createdBatch`) tanpa cuplikan karena yang diringkas banyak butir/task.
 - Teks berbahasa Indonesia.
 
 ## 7. Batasan dari kode yang ada
@@ -142,12 +142,13 @@ Electron tidak memakai Web Push; spek Desktop §13 menyebut koneksi langsung ke 
 
 Skema tabel notifikasi dan langganan push; pustaka Web Push dan kunci VAPID (penyimpanan rahasia mengikuti aturan `.env`/`compose`); umur penyimpanan notifikasi dan jadwal pembersihan; cara lonceng memperbarui diri (polling saat fokus dan berkala, atau koneksi langsung); teks dan tata letak notifikasi, banner, dan halaman status push admin; batas frekuensi banner pengingat; izin admin untuk melihat status push (usulan: izin modul `access`, memakai izin yang sudah ada). Halaman status hanya memuat status per **pengguna** (aktif, tidak ada langganan, izin ditolak, pengiriman gagal), tanpa pengenal perangkat atau rincian galat [Pilihan perancang].
 
-## 11. Belum dikonfirmasi pemilik
+## 11. Konfirmasi pemilik
 
-1. Penggabungan `saveBatch` menjadi satu ringkasan (§4.3).
-2. Isi push tanpa cuplikan catatan/komentar (§6).
-3. Lonceng tidak dapat dimatikan, dan hanya push yang dapat dimatikan pengguna (§5.1, §5.2).
-4. ~~Push setelah logout~~ **Diputuskan pemilik 2026-11-12**: perangkat tetap menerima push setelah logout (§5.2). Sisa untuk dikonfirmasi: satu langganan boleh terhubung ke lebih dari satu pengguna di perangkat yang sama.
+Semua butir sudah dijawab (2026-11-13):
+1. ~~Penggabungan `saveBatch` menjadi satu ringkasan (§4.3).~~ **Disetujui pemilik 2026-11-13.**
+2. ~~Isi push tanpa cuplikan catatan/komentar (§6).~~ **Diubah pemilik 2026-11-13**: data ditampilkan penuh, termasuk cuplikan isi di push (§6).
+3. ~~Lonceng tidak dapat dimatikan, dan hanya push yang dapat dimatikan pengguna (§5.1, §5.2).~~ **Disetujui pemilik 2026-11-13.**
+4. ~~Push setelah logout~~ **Diputuskan pemilik 2026-11-12**: perangkat tetap menerima push setelah logout (§5.2). ~~Satu langganan boleh terhubung ke lebih dari satu pengguna di perangkat yang sama.~~ **Disetujui pemilik 2026-11-13.**
 
 ### Keputusan setelah implementasi
 - **Param `loc` pada tautan notifikasi** (diputuskan pemilik produk 2026-11-13, menjawab temuan review akhir): mengklik notifikasi dari lonceng membuka halaman Serah Terima dengan param `?loc=<id lokasi task>`, sehingga task di lokasi yang sedang tidak aktif di pemilih header tetap terbuka. Papan (kanban/kartu) membatasi muatannya ke lokasi itu selama param ada, tanpa penanda filter di tampilan; pemilih lokasi header tidak berubah. Ini sengaja dan bukan cacat. Penanda filter lokasi di papan dapat ditambahkan nanti bila diinginkan.

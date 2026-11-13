@@ -9,6 +9,7 @@ import {
   NOTIFICATION_RETENTION_DAYS,
   NOTIFICATION_SIDE,
   type NotificationDto,
+  notificationPreviewText,
   notificationTitle,
   pushPayloadOf,
 } from './notifications';
@@ -149,12 +150,54 @@ describe('pushPayloadOf', () => {
     expect(payload.tag).toBe('done:h1');
   });
 
-  test('preview (teks komentar atau catatan) tidak pernah ikut', () => {
-    for (const kind of ['commented', 'updated'] as const) {
-      const payload = pushPayloadOf(dto({ kind, preview: 'RAHASIA-ISI' }));
-      expect(JSON.stringify(payload)).not.toContain('RAHASIA-ISI');
+  test('preview (catatan atau komentar) ikut di body setelah nomor dan customer (keputusan 2026-11-13)', () => {
+    for (const kind of ['commented', 'updated', 'created'] as const) {
+      const payload = pushPayloadOf(dto({ kind, preview: 'Cek kabel LAN' }));
+      expect(payload.body).toBe('ST-20261112-001 - PT Maju\nCek kabel LAN');
     }
   });
+
+  test('body hanya preview bila tanpa nomor dan customer; tetap berisi bila semuanya kosong', () => {
+    expect(pushPayloadOf(dto({ number: '', customerName: '', preview: 'Isi' })).body).toBe('Isi');
+    expect(pushPayloadOf(dto({ number: '', customerName: '', preview: '' })).body).toBe(
+      'Serah Terima',
+    );
+  });
+});
+
+describe('notificationPreviewText', () => {
+  test('membuang penanda daftar dan centang, melewati baris kosong, menggabung dengan " · "', () => {
+    expect(notificationPreviewText('- [ ] A = 1\n- [x] B = 2\n\n* C\n3. D\n1) E')).toBe(
+      'A = 1 · B = 2 · C · D · E',
+    );
+  });
+
+  test('teks biasa dan CRLF; kosong tetap kosong; tanda hubung di tengah kalimat dipertahankan', () => {
+    expect(notificationPreviewText('Tolong cek\r\nlagi - sekarang')).toBe(
+      'Tolong cek · lagi - sekarang',
+    );
+    expect(notificationPreviewText('')).toBe('');
+    expect(notificationPreviewText('  \n  ')).toBe('');
+  });
+});
+
+describe('pushPayloadOf (lanjutan)', () => {
+  function dto(overrides: Partial<NotificationDto>): NotificationDto {
+    return {
+      id: 'n1',
+      kind: 'commented',
+      handoverId: 'h1',
+      locationId: 'loc-a',
+      number: 'ST-20261112-001',
+      customerName: 'PT Maju',
+      actor: 'Budi',
+      count: 0,
+      preview: '',
+      createdAt: '2026-11-12T00:00:00.000Z',
+      readAt: '',
+      ...overrides,
+    };
+  }
 
   test('createdBatch tanpa task: url ke daftar, body tidak kosong', () => {
     const payload = pushPayloadOf(

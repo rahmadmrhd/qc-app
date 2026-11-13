@@ -50,7 +50,7 @@ export interface NotificationDto {
   actor: string;
   /** Jumlah butir (`checked`) atau jumlah task (`createdBatch`); selain itu 0. */
   count: number;
-  /** Cuplikan teks untuk lonceng saja; TIDAK dikirim lewat push. */
+  /** Cuplikan satu baris (maks. `NOTIFICATION_PREVIEW_MAX`): catatan (task baru/diubah) atau teks komentar; ikut dikirim lewat push. */
   preview: string;
   createdAt: string;
   /** Kosong = belum dibaca. */
@@ -138,9 +138,23 @@ export function handoverUrlOf(n: Pick<NotificationDto, 'handoverId' | 'locationI
   return n.locationId === '' ? base : `${base}?loc=${encodeURIComponent(n.locationId)}`;
 }
 
+const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
+
 /**
- * Muatan push (spek §6): judul + nomor task dan nama customer saja. Isi catatan dan teks komentar (`preview`)
- * TIDAK pernah ikut, karena tampil di layar kunci perangkat.
+ * Cuplikan satu baris dari teks Markdown (catatan atau komentar): penanda daftar/centang dibuang, baris kosong
+ * dilewati, baris digabung dengan " · ". Dipakai saat notifikasi dibuat (disimpan sebagai `preview`) dan oleh push.
+ */
+export function notificationPreviewText(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(LIST_MARKER, '').trim())
+    .filter((line) => line !== '')
+    .join(' · ');
+}
+
+/**
+ * Muatan push (spek §6; keputusan pemilik 2026-11-13: data ditampilkan penuh agar task cepat ditangkap): judul,
+ * lalu nomor task - nama customer, lalu cuplikan isi (`preview`: catatan task baru/diubah atau teks komentar).
  */
 export function pushPayloadOf(n: NotificationDto): {
   title: string;
@@ -148,7 +162,9 @@ export function pushPayloadOf(n: NotificationDto): {
   url: string;
   tag: string;
 } {
-  const body = [n.number, n.customerName].filter((part) => part !== '').join(' - ');
+  const head = [n.number, n.customerName].filter((part) => part !== '').join(' - ');
+  const preview = notificationPreviewText(n.preview);
+  const body = [head, preview].filter((part) => part !== '').join('\n');
   return {
     title: notificationTitle(n),
     body: body === '' ? 'Serah Terima' : body,

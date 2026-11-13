@@ -177,8 +177,8 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 
 | # | Langkah | Hasil yang diharapkan | Spek |
 |---|---|---|---|
-| N1 | WH membuat task baru di JKT | QC menerima satu notifikasi "task baru"; WH tidak menerima apa pun | §3 Task baru dibuat |
-| N2 | WH mengubah catatan task | QC menerima satu notifikasi "diubah" tanpa cuplikan catatan; WH tidak menerima | §3 Task diubah |
+| N1 | WH membuat task baru di JKT | QC menerima satu notifikasi "task baru" dengan cuplikan isi catatan (satu baris, tanpa penanda daftar); WH tidak menerima apa pun | §3 Task baru dibuat, §6 |
+| N2 | WH mengubah catatan task | QC menerima satu notifikasi "diubah" dengan cuplikan catatan yang baru; WH tidak menerima | §3 Task diubah, §6 |
 | N3 | QC mengubah catatan task | WH tidak menerima notifikasi "diubah" (sisi QC saja yang menerima) | §3 Task diubah |
 | N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
 | N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |

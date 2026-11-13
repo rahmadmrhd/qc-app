@@ -105,6 +105,7 @@ interface PendingRow {
   customer_name: string;
   actor_name: string;
   count: number | string;
+  preview: string;
   created_at: string;
 }
 
@@ -131,7 +132,7 @@ async function setPushState(
  * Mengirim push untuk notifikasi `pending`; tiap baris berakhir `sent`, `skipped`, atau `failed`. Dilewati
  * (`skipped`) bila: pengirim tidak dikonfigurasi, notifikasi lebih tua dari 10 menit, akun tidak lagi aktif atau
  * tidak lagi berhak di lokasi notifikasi (diperiksa SAAT KIRIM, A3), preferensi push dimatikan, atau tak ada
- * langganan. Muatan dari `pushPayloadOf` (tanpa cuplikan catatan/komentar). Langganan `gone` (404/410) dihapus;
+ * langganan. Muatan dari `pushPayloadOf` (termasuk cuplikan catatan/komentar). Langganan `gone` (404/410) dihapus;
  * minimal satu sukses = `sent`, semua gagal = `failed` (dan `fail_count` naik). Satu putaran pada satu waktu
  * (`startNotificationLoop`). Mengembalikan jumlah notifikasi yang `sent`.
  */
@@ -140,7 +141,7 @@ export async function deliverPendingPushes(
   options: DeliverOptions = {},
 ): Promise<number> {
   const pending = await env.DB.prepare(
-    "SELECT id, recipient, kind, handover_id, location_id, number, customer_name, actor_name, `count`, created_at FROM notifications WHERE push_state = 'pending' ORDER BY created_at, id LIMIT ?",
+    "SELECT id, recipient, kind, handover_id, location_id, number, customer_name, actor_name, `count`, preview, created_at FROM notifications WHERE push_state = 'pending' ORDER BY created_at, id LIMIT ?",
   )
     .bind(DELIVER_BATCH)
     .all<PendingRow>();
@@ -198,8 +199,8 @@ export async function deliverPendingPushes(
       customerName: row.customer_name,
       actor: row.actor_name,
       count: Number(row.count),
-      // Cuplikan tidak pernah dikirim lewat push (layar kunci); `pushPayloadOf` juga tidak memakainya.
-      preview: '',
+      // Cuplikan ikut dikirim (keputusan pemilik 2026-11-13: data tampil penuh agar task cepat ditangkap).
+      preview: row.preview,
       createdAt: row.created_at,
       readAt: '',
     };
