@@ -16,6 +16,7 @@ import type {
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
   SerialActInput,
+  SerialCaseDto,
   SerialChangeDto,
   SerialDto,
   SerialEditable,
@@ -52,6 +53,7 @@ import {
 } from '@shared/serials';
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
+import { loadCases, type SerialCaseRow } from './case-repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -316,6 +318,8 @@ export async function createSerialOnce(
         sample: row.sample,
         note: row.note,
         locationId: row.locationId,
+        status: 'good',
+        openCaseId: '',
         now,
         actorEmail,
       }),
@@ -325,6 +329,7 @@ export async function createSerialOnce(
       insertEventStmt(env.DB, {
         id: eventId,
         serialId,
+        caseId: '',
         seq: 1,
         type: 'recorded',
         occurredOn: today,
@@ -410,6 +415,24 @@ const SERIAL_STATUS_SET: readonly string[] = SERIAL_STATUSES;
 const SERIAL_CUSTODY_SET: readonly string[] = SERIAL_CUSTODIES;
 const EVENT_TYPE_SET: readonly string[] = SERIAL_EVENT_TYPES;
 
+/** Kolom teks `NOT NULL DEFAULT ''` -> `null` bila kosong. */
+function orNull(value: string): string | null {
+  const text = value.trim();
+  return text === '' ? null : text;
+}
+
+function toCase(row: SerialCaseRow): SerialCaseDto {
+  const outcome = row.outcome.trim();
+  return {
+    id: row.id.trim(),
+    number: row.number,
+    openedOn: row.opened_on,
+    closedOn: orNull(row.closed_on),
+    damage: row.damage,
+    outcome: outcome === 'good' || outcome === 'broken' ? outcome : null,
+  };
+}
+
 function toSummary(row: SerialRow): SerialSummaryDto {
   const status = row.status.trim();
   const custody = row.custody.trim();
@@ -426,11 +449,10 @@ function toSummary(row: SerialRow): SerialSummaryDto {
     locationName: row.location_name ?? '',
     status: (SERIAL_STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
     custody: (SERIAL_CUSTODY_SET.includes(custody) ? custody : 'qc') as SerialCustody,
-    // Diisi T8 (get/list); sampai itu kosong.
-    transitToLocationId: null,
-    transitToLocationName: null,
-    transitOn: null,
-    openCaseNumber: null,
+    transitToLocationId: orNull(row.transit_to_location_id),
+    transitToLocationName: orNull(row.transit_to_name ?? ''),
+    transitOn: orNull(row.transit_on),
+    openCaseNumber: orNull(row.open_case_number ?? ''),
     createdAt: row.created_at,
   };
 }
@@ -440,7 +462,9 @@ function toStickerStatus(status: string | null): SerialStickerStatus {
   return value === 'active' || value === 'deprecated' ? value : 'inactive';
 }
 
-function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
+function toDto(row: SerialRow, stickers: SerialStickerRow[], caseRows: SerialCaseRow[]): SerialDto {
+  const cases = caseRows.map(toCase);
+  const openCaseId = orNull(row.open_case_id);
   return {
     ...toSummary(row),
     note: row.note,
@@ -452,12 +476,11 @@ function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
       qty: Number(sticker.qty),
       stickerStatus: toStickerStatus(sticker.status),
     })),
-    openCaseId: row.open_case_id.trim() === '' ? null : row.open_case_id.trim(),
-    // Diisi T8; sampai itu kosong.
-    transitFromLocationId: null,
-    transitFromLocationName: null,
-    openCase: null,
-    cases: [],
+    openCaseId,
+    transitFromLocationId: orNull(row.transit_from_location_id),
+    transitFromLocationName: orNull(row.transit_from_name ?? ''),
+    openCase: openCaseId === null ? null : (cases.find((c) => c.id === openCaseId) ?? null),
+    cases,
     createdBy: row.created_by,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -480,7 +503,7 @@ function toEvent(row: SerialEventRow): SerialEventDto {
   const data = parseJson<Record<string, unknown>>(row.data_json, {});
   return {
     id: row.id.trim(),
-    caseId: null,
+    caseId: orNull(row.case_id),
     seq: Number(row.seq),
     type: (EVENT_TYPE_SET.includes(type) ? type : 'note') as SerialEventType,
     occurredOn: row.occurred_on,
@@ -498,7 +521,11 @@ export async function loadSerialDto(env: Env, user: UserContext, id: string): Pr
   const row = await loadSerialRow(env.DB, id);
   if (!row) throw appError('NOT_FOUND', 'Serial tidak ditemukan');
   assertSerialVisible(user, row.bu_id.trim());
-  return toDto(row, await loadSerialStickers(env.DB, row.id.trim()));
+  const [stickers, cases] = await Promise.all([
+    loadSerialStickers(env.DB, row.id.trim()),
+    loadCases(env.DB, row.id.trim()),
+  ]);
+  return toDto(row, stickers, cases);
 }
 
 /** Detail serial beserta linimasa: maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun); `eventsTruncated` bila ada yang lebih lama. */
@@ -665,6 +692,7 @@ async function updateOnce(
       insertNextEventStmt(env.DB, {
         id: crypto.randomUUID(),
         serialId: row.id.trim(),
+        caseId: '',
         type: 'data_changed',
         occurredOn: today,
         now,
@@ -863,6 +891,7 @@ export async function actOnSerial(
     insertNextEventStmt(env.DB, {
       id: eventId,
       serialId,
+      caseId: '',
       type: eventType,
       occurredOn: input.occurredOn,
       now,
