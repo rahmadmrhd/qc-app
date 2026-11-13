@@ -79,13 +79,14 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
 
   // Enter (juga penutup bacaan pemindai fisik) menetapkan baris tempat kursor berada lewat `commitSearchLine`; baris lain
   // tidak disentuh. Umpan balik sama dengan kolom pindai (nada, getar, kilat).
-  function commitCurrentLine(field: HTMLTextAreaElement) {
+  function commitCurrentLine(field: HTMLTextAreaElement): boolean {
     const value = textRef.current;
     const result = commitSearchLine(value, field.selectionStart ?? value.length);
-    if (result === null) return;
+    if (result === null) return false;
     announce(result.feedback);
     caretRef.current = result.caret;
     applyText(result.text);
+    return true;
   }
 
   return (
@@ -121,6 +122,12 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               commitCurrentLine(event.currentTarget);
+              return;
+            }
+            // Banyak pemindai menutup bacaan dengan Tab (seperti di SerialScanInput): dianggap terminator HANYA bila
+            // baris yang sedang ditulis tidak kosong; Tab pada baris kosong dan Shift+Tab memindahkan fokus seperti biasa.
+            if (event.key === 'Tab' && !event.shiftKey && commitCurrentLine(event.currentTarget)) {
+              event.preventDefault();
             }
           }}
         />

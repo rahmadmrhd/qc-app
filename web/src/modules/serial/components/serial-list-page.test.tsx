@@ -255,6 +255,38 @@ test('Enter di baris tengah menetapkan baris itu saja', async () => {
   expect(field.selectionStart).toBe(8);
 });
 
+test('Tab menjadi penutup bacaan hanya bila baris yang ditulis tidak kosong', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  await userEvent.type(field, 'aaa111{Tab}');
+  expect(field).toHaveValue('AAA111\n');
+  expect(field).toHaveFocus();
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  await userEvent.type(field, 'AAA111{Tab}');
+  expect(screen.getByText('Sudah ada')).toBeInTheDocument();
+  expect(field).toHaveValue('AAA111\n');
+  expect(field).toHaveFocus();
+  // Baris kosong: Tab memindahkan fokus seperti biasa dan tidak mengubah teks.
+  await userEvent.tab();
+  expect(field).not.toHaveFocus();
+  expect(field).toHaveValue('AAA111\n');
+});
+
+test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  field.focus();
+  await userEvent.tab();
+  expect(field).not.toHaveFocus();
+  fireEvent.change(field, { target: { value: 'bbb222' } });
+  field.focus();
+  await userEvent.tab({ shift: true });
+  expect(field).toHaveValue('bbb222');
+  expect(field).not.toHaveFocus();
+});
+
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
   renderPage();
   await screen.findByText('ABC123');
