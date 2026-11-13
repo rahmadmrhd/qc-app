@@ -7,7 +7,7 @@ import { insertFileStmt } from '@server/modules/files/repo';
 import type { QrDesignRecord } from '@server/modules/qrcode/repo';
 import type { QrVersionDto } from '@shared/contract';
 import type { QrContent } from '@shared/qrcode';
-import { STICKER_LIMITS } from '@shared/stickers';
+import { manualBookStickerName } from '@shared/stickers';
 import {
   insertManualBookVersionStmt,
   insertStickerStmt,
@@ -134,7 +134,7 @@ export async function manualBookCommitStatements(
   const sticker: StickerRecord = {
     id: stickerId,
     typeId: type.id,
-    name: `${design.name} v${version}`.slice(0, STICKER_LIMITS.nameMax),
+    name: manualBookStickerName(design.name, version),
     alias: '',
     fileId: input.preview.fileId,
     minQty,

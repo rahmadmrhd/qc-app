@@ -5,14 +5,10 @@ import { uploadFile } from '@server/modules/files/service';
 import { validateUploadFile } from '@server/modules/files/validate';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
+import { seedPostel } from '@server-test/postel-fixtures';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import {
-  ensurePostelSticker,
-  ensurePostelType,
-  POSTEL_STICKER_NAME,
-  POSTEL_TYPE_NAME,
-} from './postel';
+import { ensurePostelType, POSTEL_TYPE_NAME } from './postel';
 import {
   listStickers,
   listStickerTypes,
@@ -23,8 +19,9 @@ import {
 } from './service';
 import { validateSaveSticker, validateSetStickerStatus } from './validate';
 
-// Jenis sistem dan stiker Postel (spek 4b §3/§4): dibuat idempoten, nama terkunci, gambar boleh diganti; aturan kunci
-// Manual Book tak berubah.
+// Jenis sistem dan stiker Postel (spek 4b §3/§4, stiker per catatan sejak 2026-11-12): jenis dibuat idempoten, nama
+// stiker terkunci, gambar boleh diganti; aturan kunci Manual Book tak berubah. Lahirnya stiker per catatan diuji di
+// `postel/stickers.test.ts` dan `postel/rest.test.ts`.
 
 setDefaultTimeout(60_000);
 
@@ -54,6 +51,21 @@ async function upload() {
     validateUploadFile({ mime: 'image/png', bytes: bytesOfBase64(PNG), width: 1, height: 1 }),
     admin,
   );
+}
+
+const STICKER_NAME = 'Postel - Uji';
+
+/** Stiker Postel yang lahir bersama sebuah catatan (di sini disemai langsung pada jenis Postel). */
+async function postelSticker(): Promise<{ typeId: string; stickerId: string }> {
+  const type = await ensurePostelType(env, admin);
+  await seedSticker(env, { id: 's-postel', typeId: type.id, name: STICKER_NAME });
+  // Stiker Postel selalu milik sebuah catatan; tanpa catatan pemiliknya stiker tak dapat diaktifkan kembali.
+  await seedPostel(env, {
+    id: 'p-owner',
+    stickerId: 's-postel',
+    numbers: [{ number: 'OWN-1', expiresOn: '2027-01-01' }],
+  });
+  return { typeId: type.id, stickerId: 's-postel' };
 }
 
 const editPostel = async (stickerId: string, overrides: Record<string, unknown>) => {
@@ -114,41 +126,34 @@ describe('ensurePostelType', () => {
   });
 });
 
-describe('ensurePostelSticker', () => {
-  test('tiga pemanggilan serentak menghasilkan satu jenis dan satu stiker bernama Postel', async () => {
+describe('ensurePostelType serentak', () => {
+  test('tiga pemanggilan serentak (jenis lama bernama Postel) menghasilkan satu jenis', async () => {
     await seedStickerType(env, { id: 't-old', name: 'Postel', rule: 'none', defaultMinQty: 7 });
     const results = await Promise.all([
-      ensurePostelSticker(env, admin),
-      ensurePostelSticker(env, admin),
-      ensurePostelSticker(env, admin),
+      ensurePostelType(env, admin),
+      ensurePostelType(env, admin),
+      ensurePostelType(env, admin),
     ]);
-    expect(new Set(results.map((row) => row.stickerId)).size).toBe(1);
-    expect(new Set(results.map((row) => row.typeId)).size).toBe(1);
+    expect(new Set(results.map((row) => row.id)).size).toBe(1);
     expect(await count(POSTEL_TYPES_SQL)).toBe(1);
-    expect(await count("SELECT COUNT(*) AS n FROM stickers WHERE name = 'Postel'")).toBe(1);
-    const sticker = (await listStickers(env)).find((row) => row.id === results[0]?.stickerId);
-    expect(sticker?.name).toBe(POSTEL_STICKER_NAME);
-    expect(sticker?.minQty).toBe(7);
-    expect(sticker?.status).toBe('active');
+    expect(results[0]?.defaultMinQty).toBe(7);
   });
 
-  test('serentak dari nol (jenis juga belum ada): tetap satu jenis dan satu stiker', async () => {
+  test('serentak dari nol (jenis juga belum ada): tetap satu jenis, tanpa stiker', async () => {
     const results = await Promise.all([
-      ensurePostelSticker(env, admin),
-      ensurePostelSticker(env, admin),
-      ensurePostelSticker(env, admin),
+      ensurePostelType(env, admin),
+      ensurePostelType(env, admin),
+      ensurePostelType(env, admin),
     ]);
-    expect(new Set(results.map((row) => row.stickerId)).size).toBe(1);
+    expect(new Set(results.map((row) => row.id)).size).toBe(1);
     expect(await count(POSTEL_TYPES_SQL)).toBe(1);
-    expect(await count('SELECT COUNT(*) AS n FROM stickers')).toBe(1);
-    const types = await listStickerTypes(env);
-    expect(types.find((type) => type.systemKind === 'postel')?.stickerCount).toBe(1);
+    expect(await count('SELECT COUNT(*) AS n FROM stickers')).toBe(0);
   });
 });
 
 describe('aturan stiker jenis Postel', () => {
   test('membuat stiker baru pada jenis postel ditolak VALIDATION', async () => {
-    const { typeId } = await ensurePostelSticker(env, admin);
+    const { typeId } = await postelSticker();
     const error = await captureAppErrorAsync(() =>
       saveSticker(
         env,
@@ -168,7 +173,7 @@ describe('aturan stiker jenis Postel', () => {
   });
 
   test('nama terkunci; gambar, minimum, dan alias dapat diubah', async () => {
-    const { stickerId } = await ensurePostelSticker(env, admin);
+    const { stickerId } = await postelSticker();
     const renamed = await captureAppErrorAsync(() => editPostel(stickerId, { name: 'Lain' }));
     expect(renamed.code).toBe('VALIDATION');
     expect(renamed.fields).toHaveProperty('name');
@@ -179,12 +184,12 @@ describe('aturan stiker jenis Postel', () => {
     expect(saved.fileId).toBe(file.id);
     expect(saved.minQty).toBe(5);
     expect(saved.alias).toBe('Sertifikat');
-    expect(saved.name).toBe(POSTEL_STICKER_NAME);
+    expect(saved.name).toBe(STICKER_NAME);
     expect(saved.latestManualBookVersion).toBe(false);
   });
 
   test('nonaktifkan lalu aktifkan kembali berhasil', async () => {
-    const { stickerId } = await ensurePostelSticker(env, admin);
+    const { stickerId } = await postelSticker();
     const off = await setStickerStatus(
       env,
       validateSetStickerStatus({
@@ -205,7 +210,7 @@ describe('aturan stiker jenis Postel', () => {
 
 describe('jenis Postel dikelola aplikasi', () => {
   test('stickerTypes.save dan setStatus terhadap jenis postel ditolak', async () => {
-    const { typeId } = await ensurePostelSticker(env, admin);
+    const { typeId } = await postelSticker();
     const type = (await listStickerTypes(env)).find((row) => row.id === typeId);
     if (!type) throw new Error('jenis Postel hilang');
     const renamed = await captureAppErrorAsync(() =>

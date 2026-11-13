@@ -34,6 +34,7 @@ function postel(overrides: Partial<PostelRecord> = {}): PostelRecord {
     id: 'p1',
     note: 'catatan',
     attachments: [],
+    stickerId: '',
     createdAt: T0,
     updatedAt: T0,
     updatedBy: 'a@gmail.com',

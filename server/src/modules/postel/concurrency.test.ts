@@ -166,7 +166,7 @@ describe('postels.save serentak', () => {
     }
   });
 
-  test('tiga penyimpanan pertama serentak menghasilkan satu jenis dan satu stiker Postel', async () => {
+  test('tiga penyimpanan pertama serentak menghasilkan satu jenis dan tiga stiker (satu per catatan)', async () => {
     const results = await Promise.all([
       call('postels.save', body(['i1'], ['T-1'])),
       call('postels.save', body(['i2'], ['T-2'])),
@@ -176,8 +176,13 @@ describe('postels.save serentak', () => {
     const types = await rows("SELECT id FROM sticker_types WHERE system_kind = 'postel'");
     expect(types).toHaveLength(1);
     const stickers = await rows('SELECT id, name FROM stickers WHERE type_id = ?', types[0].id);
-    expect(stickers).toHaveLength(1);
-    expect(stickers[0].name).toBe('Postel');
+    expect(stickers).toHaveLength(3);
+    expect(stickers.map((s) => s.name).sort()).toEqual([
+      'Postel - M-i1',
+      'Postel - M-i2',
+      'Postel - M-i3',
+    ]);
     expect(await rows('SELECT id FROM postels')).toHaveLength(3);
+    expect(await rows('SELECT DISTINCT sticker_id FROM postels')).toHaveLength(3);
   });
 });

@@ -48,7 +48,7 @@ import {
   qrPdfFileName,
 } from '@shared/qrcode';
 import type { StickerStatus } from '@shared/stickers';
-import { STICKER_LIMITS } from '@shared/stickers';
+import { manualBookStickerName } from '@shared/stickers';
 import { ensureQrDocFolder, QR_FOLDER_SETTING } from './folders';
 import {
   claimItemsStmts,
@@ -364,7 +364,7 @@ export async function assertManualBookStickerNameFree(
           .first<{ v: number | string }>()
       )?.v,
     ) + 1;
-  const stickerName = `${name} v${next}`.slice(0, STICKER_LIMITS.nameMax);
+  const stickerName = manualBookStickerName(name, next);
   const taken = await env.DB.prepare(
     "SELECT 1 AS taken FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE t.system_kind = 'manual_book' AND LOWER(s.name) = LOWER(?) AND s.id NOT IN (SELECT sticker_id FROM manual_book_versions WHERE design_id = ?) LIMIT 1",
   )
