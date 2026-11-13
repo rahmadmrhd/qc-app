@@ -14,7 +14,12 @@ export const DASAR_LAYOUT: GuideEntry = {
   version: 1,
   title: 'Mengenal tampilan aplikasi',
   steps: [
-    { target: 'sidebar-menu', text: 'Menu di sini mengikuti akses kamu.', advance: 'next' },
+    {
+      target: 'sidebar-menu',
+      text: 'Menu di sini mengikuti akses kamu.',
+      advance: 'next',
+      inSidebar: true,
+    },
     {
       target: 'location-picker',
       text: 'Pilih lokasi aktif: daftar di halaman ikut berubah.',

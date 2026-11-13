@@ -1,5 +1,6 @@
 import { lazy, type ReactNode, Suspense } from 'react';
 import { getDemoScenes } from '../../lib/demo-types';
+import { SilentBoundary } from './silent-boundary';
 
 // Pemutar demo dimuat malas: tidak ikut potongan utama, hanya diunduh saat langkah ber-`tip` pertama tampil.
 const DemoPlayer = lazy(() =>
@@ -14,8 +15,10 @@ export function renderTourTip(tipId: string): ReactNode {
   const scenes = getDemoScenes(tipId);
   if (!scenes || scenes.length === 0) return null;
   return (
-    <Suspense fallback={null}>
-      <DemoPlayer scenes={scenes} />
-    </Suspense>
+    <SilentBoundary>
+      <Suspense fallback={null}>
+        <DemoPlayer scenes={scenes} />
+      </Suspense>
+    </SilentBoundary>
   );
 }

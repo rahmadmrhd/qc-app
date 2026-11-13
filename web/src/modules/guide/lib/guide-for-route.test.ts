@@ -13,7 +13,7 @@ function offer(id: string, halaman?: string): GuideOffer {
     halaman,
     steps: [],
   };
-  return { entry, stepCount: 1 };
+  return { entry, stepCount: 1, updated: false };
 }
 
 describe('guideForRoute', () => {

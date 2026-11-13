@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import type { GuideEntry } from '../../lib/types';
+import { SilentBoundary } from './silent-boundary';
 
 // Mesin tur dimuat malas: potongan JS terpisah, hanya diunduh saat tur pertama dimulai.
 const TourOverlay = lazy(() => import('./tour-overlay'));
@@ -48,15 +49,18 @@ export function TourProvider({ children, renderTip, targetWaitMs }: TourProvider
     <TourContext.Provider value={value}>
       {children}
       {entry ? (
-        <Suspense fallback={null}>
-          <TourOverlay
-            key={entry.id}
-            entry={entry}
-            onExit={close}
-            renderTip={renderTip}
-            targetWaitMs={targetWaitMs}
-          />
-        </Suspense>
+        // Gagal memuat potongan malas tur (offline, deploy di antara muat halaman dan klik) = tur ditutup, bukan
+        // menjatuhkan cangkang aplikasi ke halaman galat.
+        <SilentBoundary key={entry.id} onError={close}>
+          <Suspense fallback={null}>
+            <TourOverlay
+              entry={entry}
+              onExit={close}
+              renderTip={renderTip}
+              targetWaitMs={targetWaitMs}
+            />
+          </Suspense>
+        </SilentBoundary>
       ) : null}
     </TourContext.Provider>
   );
