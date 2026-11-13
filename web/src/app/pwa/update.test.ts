@@ -23,6 +23,10 @@ function fakeWindow(
     serviceWorker?: boolean;
     onLine?: boolean;
     storage?: 'ok' | 'throws' | 'none' | 'probe-only';
+    /** Nama Cache Storage yang ada; `undefined` = peramban tanpa `caches`. */
+    cacheNames?: string[];
+    /** `caches.delete` melempar (mis. peramban memblokir). */
+    cacheDeleteThrows?: boolean;
   } = {},
 ) {
   const listeners = new Map<string, Set<(event?: unknown) => void>>();
@@ -57,8 +61,16 @@ function fakeWindow(
     },
     removeItem: (key: string) => void store.delete(key),
   };
+  const cacheNames = options.cacheNames ? [...options.cacheNames] : undefined;
+  const cacheDelete = vi.fn(async (name: string) => {
+    if (options.cacheDeleteThrows) throw new Error('diblokir');
+    const index = cacheNames?.indexOf(name) ?? -1;
+    if (index >= 0) cacheNames?.splice(index, 1);
+    return index >= 0;
+  });
   const win = {
     navigator: nav,
+    ...(cacheNames ? { caches: { keys: async () => [...cacheNames], delete: cacheDelete } } : {}),
     ...(options.storage === 'none' ? {} : { sessionStorage }),
     document: doc,
     location,
@@ -75,6 +87,8 @@ function fakeWindow(
     nav,
     location,
     store,
+    cacheNames: () => cacheNames,
+    cacheDelete,
     fire: (type: string, event?: unknown) => {
       for (const listener of listeners.get(type) ?? []) listener(event);
     },
@@ -336,7 +350,7 @@ test('pembersih juga melepas pendengar vite:preloadError', () => {
   expect(usePwaUpdateSnapshotForTests()).toBe(false);
 });
 
-test('tombol Muat ulang setelah preloadError tanpa SW menunggu dan tanpa SW terpasang memuat ulang halaman', () => {
+test('tombol Muat ulang setelah preloadError tanpa SW menunggu dan tanpa SW terpasang tidak memuat ulang cangkang basi seketika (lihat "pemulihan:")', () => {
   const reg = fakeRegister({ waiting: false });
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
@@ -344,8 +358,10 @@ test('tombol Muat ulang setelah preloadError tanpa SW menunggu dan tanpa SW terp
   view.fire('vite:preloadError', { preventDefault: vi.fn() });
   const hook = renderHook(() => usePwaUpdate());
   expect(hook.result.current.needRefresh).toBe(true);
-  hook.result.current.reload();
-  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  act(() => hook.result.current.reload());
+  // Dulu: reload() langsung, dijawab SW lama dengan index.html lama (galat berulang sampai hard refresh).
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.pending).toBe(true);
 });
 
 test('isChunkLoadError mengenali galat muat potongan dinamis; galat lain tidak', () => {
@@ -1139,4 +1155,183 @@ test('A4: kunci probe tidak tertinggal di sessionStorage', () => {
   const view = fakeWindow();
   startPwaUpdates({ register: reg.register, win: view.win });
   expect(view.store.has('qc-pwa-probe')).toBe(false);
+});
+
+// Pemulihan cangkang basi (2026-11-14): cangkang lama yang dilayani SW lama meminta potongan lazy yang sudah dihapus
+// deploy baru; muat ulang yang dijawab SW lama dengan index.html lama dari pra-cache tidak memulihkan apa pun.
+function brokenShell(
+  options: { update?: (registration: ServiceWorkerRegistration) => Promise<void> } = {},
+) {
+  const reg = fakeRegister({ waiting: false });
+  const order: string[] = [];
+  const unregister = vi.fn(async () => {
+    order.push('unregister');
+    return true;
+  });
+  Object.assign(reg.registration, { unregister, installing: null });
+  const customUpdate = options.update;
+  if (customUpdate) reg.update.mockImplementation(() => customUpdate(reg.registration));
+  const view = fakeWindow({
+    cacheNames: ['workbox-precache-v2-https://qc.example/', 'qc-assets', 'cache-lain'],
+  });
+  view.location.reload.mockImplementation(() => order.push('reload'));
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  view.fire('vite:preloadError', { preventDefault: vi.fn() });
+  const hook = renderHook(() => usePwaUpdate());
+  return { reg, view, hook, unregister, order, stop };
+}
+
+test('pemulihan: halaman rusak dan tak ada SW menunggu/memasang: Muat ulang membuang SW + cache Workbox lalu memuat ulang', async () => {
+  const { view, hook, unregister, order } = brokenShell();
+  act(() => hook.result.current.reload());
+  // Menunggu hasil update() dulu: belum memuat ulang cangkang basi.
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.pending).toBe(true);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(unregister).toHaveBeenCalledTimes(1);
+  expect(view.cacheNames()).toEqual(['cache-lain']);
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(order).toEqual(['unregister', 'reload']);
+  expect(hook.result.current.pending).toBe(false);
+});
+
+test('pemulihan: update() menemukan SW baru yang menunggu: dipakai lewat jalur aktivasi, tanpa membuang apa pun', async () => {
+  const { reg, view, hook, unregister } = brokenShell({
+    update: async (registration) => {
+      Object.assign(registration, { waiting: {} });
+    },
+  });
+  act(() => hook.result.current.reload());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(unregister).not.toHaveBeenCalled();
+  expect(view.cacheNames()).toHaveLength(3);
+  expect(view.location.reload).not.toHaveBeenCalled();
+  act(() => view.fire('controllerchange'));
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('pemulihan: update() menemukan SW baru yang masih dipasang: menunggu installed lalu mengaktifkannya', async () => {
+  const sw = fakeWorker();
+  const { reg, view, hook, unregister } = brokenShell({
+    update: async (registration) => {
+      Object.assign(registration, { installing: sw.worker });
+    },
+  });
+  act(() => hook.result.current.reload());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(unregister).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  Object.assign(reg.registration, { waiting: {}, installing: null });
+  act(() => sw.setState('installed'));
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  expect(unregister).not.toHaveBeenCalled();
+});
+
+test('pemulihan: update() tak kunjung selesai: setelah batas waktu cangkang basi dipulihkan', async () => {
+  const { view, hook, unregister } = brokenShell({ update: () => new Promise(() => undefined) });
+  act(() => hook.result.current.reload());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(7_000);
+  });
+  expect(unregister).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_000);
+  });
+  expect(unregister).toHaveBeenCalledTimes(1);
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('pemulihan: update() ditolak, unregister gagal, atau caches.delete melempar: tetap memuat ulang tepat sekali', async () => {
+  for (const mode of ['update', 'unregister', 'caches'] as const) {
+    resetPwaUpdateForTests();
+    const reg = fakeRegister({ waiting: false });
+    const unregister = vi.fn(async () => {
+      if (mode === 'unregister') throw new Error('gagal');
+      return true;
+    });
+    Object.assign(reg.registration, { unregister, installing: null });
+    if (mode === 'update') reg.update.mockRejectedValue(new Error('jaringan'));
+    const view = fakeWindow({
+      cacheNames: ['qc-assets'],
+      cacheDeleteThrows: mode === 'caches',
+    });
+    const stop = startPwaUpdates({ register: reg.register, win: view.win });
+    reg.registerSw();
+    view.fire('vite:preloadError', { preventDefault: vi.fn() });
+    const hook = renderHook(() => usePwaUpdate());
+    act(() => hook.result.current.reload());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(view.location.reload, mode).toHaveBeenCalledTimes(1);
+    stop();
+  }
+});
+
+test('pemulihan: tanpa Cache Storage di peramban: tetap membuang SW dan memuat ulang', async () => {
+  const reg = fakeRegister({ waiting: false });
+  const unregister = vi.fn().mockResolvedValue(true);
+  Object.assign(reg.registration, { unregister, installing: null });
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  view.fire('vite:preloadError', { preventDefault: vi.fn() });
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => hook.result.current.reload());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(unregister).toHaveBeenCalledTimes(1);
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+});
+
+test('pemulihan: klik berulang saat menunggu tidak menumpuk; pembersih membatalkan tanpa memuat ulang', async () => {
+  const { view, hook, unregister, stop } = brokenShell({
+    update: () => new Promise(() => undefined),
+  });
+  act(() => hook.result.current.reload());
+  act(() => hook.result.current.reload());
+  expect(hook.result.current.pending).toBe(true);
+  stop();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(unregister).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+});
+
+test('pemulihan: pemicu otomatis yang menjadi tidak aman (formulir belum tersimpan) tidak membuang apa pun', async () => {
+  const { view, hook, unregister } = brokenShell({ update: () => new Promise(() => undefined) });
+  act(() => notifyNavigation());
+  expect(hook.result.current.pending).toBe(true);
+  const form = renderHook(() => useUnsavedChanges(true));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(9_000);
+  });
+  expect(unregister).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  expect(hook.result.current.visible).toBe(true);
+  form.unmount();
+});
+
+test('pemulihan: tanpa halaman rusak (bukan galat muat potongan) klik Muat ulang tetap langsung memuat ulang', () => {
+  const reg = fakeRegister({ waiting: false });
+  const unregister = vi.fn().mockResolvedValue(true);
+  Object.assign(reg.registration, { unregister, installing: null });
+  const view = fakeWindow({ cacheNames: ['qc-assets'] });
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  reg.needRefresh();
+  renderHook(() => usePwaUpdate()).result.current.reload();
+  expect(view.location.reload).toHaveBeenCalledTimes(1);
+  expect(unregister).not.toHaveBeenCalled();
 });
