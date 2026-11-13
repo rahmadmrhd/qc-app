@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.api(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.error } }));
 
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { makeHandover } from '../components/test-handover';
 import { handoverKeys } from '../queries';
 import { boardColumnData, findHandoverInBoards } from './board-cache';
@@ -76,6 +77,7 @@ const flush = () =>
   });
 
 beforeEach(() => {
+  resetBusyForTests();
   mocks.api.mockReset();
   mocks.error.mockReset();
 });
@@ -185,4 +187,27 @@ test('task berbeda diproses paralel; whenIdle menunggu antrean task itu kosong',
   });
   await waiting;
   expect(idle).toBe(true);
+});
+
+test('antrean centang yang belum kosong menandai registri sibuk (agar muat ulang otomatis tidak memotong penyimpanan)', async () => {
+  const { hook, ref } = setup();
+  const calls = manualCall();
+  expect(isBusy()).toBe(false);
+  act(() => {
+    hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true);
+    hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true);
+  });
+  expect(isBusy()).toBe(true);
+  await flush();
+  await act(async () => {
+    calls[0]?.resolve(serverAfter([0]));
+  });
+  await flush();
+  // Permintaan kedua masih antre/terbang: tetap sibuk.
+  expect(isBusy()).toBe(true);
+  await act(async () => {
+    calls[1]?.resolve(serverAfter([0, 1]));
+  });
+  await flush();
+  expect(isBusy()).toBe(false);
 });

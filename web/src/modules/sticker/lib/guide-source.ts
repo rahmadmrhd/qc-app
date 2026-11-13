@@ -1,6 +1,7 @@
 import type { StickerGuideDto } from '@shared/contract';
 import { IMAGE_MIME_TYPES } from '@shared/files';
 import { GUIDE_LIMITS } from '@shared/stickers';
+import { runBusy } from '@/app/pwa/busy';
 import type {
   FileLibrarySource,
   LibraryItem,
@@ -54,20 +55,23 @@ export const stickerGuideSource: FileLibrarySource = {
     });
     return { items: page.items.map(toLibraryItem), nextCursor: page.nextCursor };
   },
-  async upload(file, name) {
-    // Berurutan (bukan paralel): dua decode gambar besar sekaligus memboroskan memori ponsel.
-    const image = await prepareImage(file);
-    const thumbnail = await prepareThumbnail(file);
-    const dto = await api('stickerGuides.upload', {
-      name,
-      mime: image.mime,
-      thumbMime: thumbnail.mime,
-      width: image.width,
-      height: image.height,
-      image: image.bytes,
-      thumbnail: thumbnail.bytes,
+  upload(file, name) {
+    // Siapkan + kirim = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
+    return runBusy(async () => {
+      // Berurutan (bukan paralel): dua decode gambar besar sekaligus memboroskan memori ponsel.
+      const image = await prepareImage(file);
+      const thumbnail = await prepareThumbnail(file);
+      const dto = await api('stickerGuides.upload', {
+        name,
+        mime: image.mime,
+        thumbMime: thumbnail.mime,
+        width: image.width,
+        height: image.height,
+        image: image.bytes,
+        thumbnail: thumbnail.bytes,
+      });
+      return toLibraryItem(dto);
     });
-    return toLibraryItem(dto);
   },
   async rename(id, name) {
     return toLibraryItem(await api('stickerGuides.rename', { id, name }));

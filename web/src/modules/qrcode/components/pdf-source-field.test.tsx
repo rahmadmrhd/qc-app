@@ -1,7 +1,12 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { PdfSourceField } from './pdf-source-field';
+
+beforeEach(() => {
+  resetUnsavedChangesForTests();
+});
 
 const doc = {
   id: 'd1',
@@ -161,4 +166,32 @@ test('salin dari Drive: selama proses tampil keterangan langkah dan tombol bersp
     'Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…',
   );
   expect(screen.getByRole('button', { name: 'Menyalin…' })).toBeDisabled();
+});
+
+test('M-g: tautan Drive yang sudah ditempel atau PDF yang menunggu konfirmasi terdaftar sebagai belum disimpan', async () => {
+  render(
+    <PdfSourceField
+      document={doc}
+      onDocument={vi.fn()}
+      onUpload={vi.fn().mockResolvedValue(doc)}
+      onClone={vi.fn()}
+    />,
+  );
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  const dialog = await screen.findByRole('dialog');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('M-g: tautan Drive yang ditempel (belum dipakai) terdaftar dan terlepas bila dikosongkan', async () => {
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
+  const drive = screen.getByRole('textbox');
+  await userEvent.type(drive, 'https://drive.google.com/file/d/abc/view');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(drive);
+  expect(hasUnsavedChanges()).toBe(false);
 });

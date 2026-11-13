@@ -1,6 +1,7 @@
 import type { PostelDto, SavePostelInput } from '@shared/contract';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FormHeader } from '@/components/form-header';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -70,6 +71,7 @@ export function PostelForm({
       setSubmitError(await onSubmit(toSavePostelInput(value, postel)));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   return (
     <form

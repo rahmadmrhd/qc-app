@@ -6,6 +6,7 @@ import type {
 } from '@shared/contract';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
   FormDialog,
   FormDialogContent,
@@ -90,6 +91,11 @@ function BrandFormBody({
   const [error, setError] = useState<string | null>(null);
   const [buError, setBuError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(
+    name !== (brand?.name ?? '') ||
+      [...businessUnitIds].sort().join('|') !==
+        [...(brand?.businessUnitIds ?? [])].sort().join('|'),
+  );
 
   const allBus = [
     ...businessUnits,

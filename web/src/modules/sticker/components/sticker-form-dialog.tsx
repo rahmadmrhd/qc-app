@@ -8,6 +8,7 @@ import type {
 import { normalizeKey } from '@shared/items';
 import { STICKER_LIMITS } from '@shared/stickers';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
   FormDialog,
   FormDialogContent,
@@ -128,6 +129,15 @@ function StickerFormBody({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(
+    typeId !== (sticker?.typeId ?? '') ||
+      name !== (sticker?.name ?? '') ||
+      alias !== (sticker?.alias ?? '') ||
+      fileId !== (sticker?.fileId ?? null) ||
+      minQty !== (sticker ? String(sticker.minQty) : '') ||
+      [...businessUnitIds].sort().join('|') !==
+        [...(sticker?.businessUnitIds ?? [])].sort().join('|'),
+  );
   // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
   const [expectedUpdatedAt] = useState(sticker?.updatedAt);
 

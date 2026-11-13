@@ -37,6 +37,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { toHandoverFormDefaults } from '../schemas';
 import { HandoverForm } from './handover-form';
 
@@ -47,6 +48,7 @@ const options: HandoverOptionsDto = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetUnsavedChangesForTests();
 });
 
 function renderForm(props: Partial<Parameters<typeof HandoverForm>[0]> = {}) {
@@ -79,6 +81,13 @@ test('form task tunggal tidak punya pemilihan item; mengirim {locationId, custom
     customerName: 'Perusahaan Baru',
     note: '- [ ] RB5009',
   });
+});
+
+test('mengetik di formulir mendaftarkan perubahan belum disimpan; formulir bersih tidak', async () => {
+  renderForm();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
+  expect(hasUnsavedChanges()).toBe(true);
 });
 
 test('customer boleh kosong, tetapi catatan kosong ditolak dengan pesan jelas', async () => {

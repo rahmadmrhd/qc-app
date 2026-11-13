@@ -42,4 +42,5 @@ Berkas ini tidak masuk git; `server/.env.example` adalah contoh tanpa rahasia. V
 
 - Google (Drive/Sheets) hanya tersedia lokal bila `GOOGLE_SA_KEY_FILE` dan `GOOGLE_ROOT_FOLDER_ID` diisi di `server/.env` (kunci service account dari berkas di luar repositori; sebaiknya folder induk uji sendiri, bukan produksi). Tanpa itu, unggah berkas, ekspor, dan fitur QR yang memakai Drive gagal dengan `UNAVAILABLE` ("Google belum dikonfigurasi").
 - `http://localhost:8788` melayani build web dari `server/dist` (jalankan `bun run build`); untuk pengembangan UI pakai `http://localhost:3000` (Vite, hot reload).
+- Service worker (PWA) nonaktif di `bun run dev`; untuk mencoba PWA jalankan `bun run build` lalu buka `http://localhost:8788`, yang melayani `server/dist`. Ikon sementara (monogram "QC") dibangkitkan ulang dengan `bun run scripts/make-pwa-icons.ts` atau diganti dengan PNG logo resmi di `web/public/`.
 - Uji API tanpa UI: `curl -b cookie -H "X-Requested-With: qc" http://localhost:8788/api/v1/me` (kabel web = REST `/api/v1`; daftar lengkap rute: `GET /api/openapi.json`, butuh sesi).

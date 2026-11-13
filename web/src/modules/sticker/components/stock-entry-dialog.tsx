@@ -1,6 +1,7 @@
 import type { AdjustStockInput, RecordStockInput, StickerStockDto } from '@shared/contract';
 import { formatStockQty, piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
   FormDialog,
   FormDialogContent,
@@ -119,6 +120,13 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(
+    quantity.trim() !== '' ||
+      delta.trim() !== '' ||
+      reason.trim() !== '' ||
+      count.loose !== 0 ||
+      count.rows.some((row) => row.sheets !== 0 || row.perSheet !== 0),
+  );
 
   const currentQty = sticker.byLocation.find((entry) => entry.locationId === locationId)?.qty;
   const reasonRequired = mode !== 'in';

@@ -1,5 +1,6 @@
 import { splitWhatsappBatch } from '@shared/handover-paste';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,6 +26,7 @@ export interface WhatsappPastePanelProps {
 export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps) {
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<PastedTask[] | null>(null);
+  useUnsavedChanges(text.trim() !== '' || preview !== null);
 
   const tooLong = text.length > MAX_PASTE_CHARS;
 

@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import type { FileLibrarySource, LibraryItem } from './types';
 import { useUploadQueue } from './use-upload-queue';
 
@@ -231,4 +232,27 @@ test('galat non-ApiError memakai pesannya; addRejected menambah penolakan; snaps
   expect(result.current.snapshot()[0]?.status).toBe('failed');
   act(() => result.current.addRejected([{ name: 'z.gif', reason: 'GIF tidak didukung' }]));
   expect(result.current.rejected).toEqual([{ name: 'z.gif', reason: 'GIF tidak didukung' }]);
+});
+
+test('I2: seluruh antrean unggah (termasuk celah antar berkas) menandai registri sibuk sampai selesai', async () => {
+  resetBusyForTests();
+  const releases: Array<() => void> = [];
+  const source = fakeSource(
+    (_file, name) =>
+      new Promise((resolve) => {
+        releases.push(() => resolve(itemOf(name)));
+      }),
+  );
+  const hook = setup(source);
+  act(() => hook.result.current.add([png('a.png'), png('b.png')]));
+  let done: Promise<unknown> = Promise.resolve();
+  act(() => {
+    done = hook.result.current.start();
+  });
+  expect(isBusy()).toBe(true);
+  await act(async () => {
+    for (const release of releases.splice(0)) release();
+    await done;
+  });
+  expect(isBusy()).toBe(false);
 });

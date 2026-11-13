@@ -2,6 +2,7 @@ import type { StickerSettingsDto, UserDto } from '@shared/contract';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { pickLink } from '@/test/link-field';
 import { StickerSettingsPage, type StickerSettingsPageProps } from './sticker-settings-page';
 
@@ -176,4 +177,14 @@ test('galat dari server tampil dan tombol Simpan pulih', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
+});
+
+test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
+  resetUnsavedChangesForTests();
+  renderPage();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(screen.getByLabelText('Email lain'));
+  expect(hasUnsavedChanges()).toBe(false);
 });
