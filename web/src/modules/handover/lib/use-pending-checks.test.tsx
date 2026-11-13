@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, expect, test } from 'vitest';
 import { makeHandover } from '../components/test-handover';
 import { enqueueCheck, readOutbox, removeEntries } from './check-outbox';
+import { beginSending, resetSendingForTests } from './outbox-status';
 import { useOutboxOverlay } from './use-pending-checks';
 
 const OWNER = 'a@x.com';
@@ -15,13 +16,16 @@ const entry = (over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) => ({
   ...over,
 });
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  resetSendingForTests();
+});
 
-test('tanpa entri: dto dikembalikan apa adanya dan tidak ada indeks tertunda', () => {
+test('tanpa entri: dto dikembalikan apa adanya dan tidak ada status butir', () => {
   const dto = makeHandover();
   const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
   expect(result.current.dto).toBe(dto);
-  expect(result.current.pendingIndexes.size).toBe(0);
+  expect(result.current.itemStates.size).toBe(0);
 });
 
 test('entri antrean mencentang butir dan menandainya; berubah saat antrean berubah', () => {
@@ -31,7 +35,7 @@ test('entri antrean mencentang butir dan menandainya; berubah saat antrean berub
     enqueueCheck(OWNER, entry());
   });
   expect(result.current.dto.checklist[0]?.checked).toBe(true);
-  expect([...result.current.pendingIndexes]).toEqual([0]);
+  expect([...result.current.itemStates]).toEqual([[0, 'waiting']]);
   act(() =>
     removeEntries(
       OWNER,
@@ -47,7 +51,43 @@ test('entri dengan teks yang sudah berubah dan task lain diabaikan; owner kosong
   const dto = makeHandover();
   const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
   expect(result.current.dto.checklist[0]?.checked).toBe(false);
-  expect(result.current.pendingIndexes.size).toBe(0);
+  expect(result.current.itemStates.size).toBe(0);
   const empty = renderHook(() => useOutboxOverlay(dto, ''));
   expect(empty.result.current.dto).toBe(dto);
+});
+
+test('tanpa apa pun: peta status identik antar render', () => {
+  const dto = makeHandover();
+  const { result, rerender } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  const first = result.current.itemStates;
+  rerender();
+  expect(result.current.itemStates).toBe(first);
+});
+
+test('butir tanpa entri tetapi sedang dikirim langsung berstatus sending', () => {
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  let end: () => void = () => {};
+  act(() => {
+    end = beginSending(dto.id, 0);
+  });
+  expect([...result.current.itemStates]).toEqual([[0, 'sending']]);
+  act(() => end());
+  expect(result.current.itemStates.size).toBe(0);
+});
+
+test('entri antrean yang sedang dikirim berstatus sending lalu waiting', () => {
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  act(() => {
+    enqueueCheck(OWNER, entry());
+  });
+  expect([...result.current.itemStates]).toEqual([[0, 'waiting']]);
+  let end: () => void = () => {};
+  act(() => {
+    end = beginSending(dto.id, 0);
+  });
+  expect([...result.current.itemStates]).toEqual([[0, 'sending']]);
+  act(() => end());
+  expect([...result.current.itemStates]).toEqual([[0, 'waiting']]);
 });

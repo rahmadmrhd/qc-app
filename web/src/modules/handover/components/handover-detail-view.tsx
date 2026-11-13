@@ -62,7 +62,7 @@ export function HandoverDetailView({
 }: HandoverDetailViewProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   // Centang yang menunggu terkirim tetap tampak tercentang walau refetch tiba lebih dulu dari pengiriman.
-  const { dto: handover, pendingIndexes } = useOutboxOverlay(serverHandover, owner);
+  const { dto: handover, itemStates } = useOutboxOverlay(serverHandover, owner);
   const cancelled = handover.status === 'cancelled';
   const actions = handoverActions(handover.status, {
     canMarkDone: canProgress,
@@ -129,7 +129,7 @@ export function HandoverDetailView({
           comments={handover.comments}
           canCheck={canProgress && !cancelled && !pending}
           canComment={!cancelled}
-          pendingIndexes={pendingIndexes}
+          itemStates={itemStates}
           onCheck={onCheck}
           onComment={onComment}
         />
