@@ -182,7 +182,7 @@ export function useCameraScanner({
           audio: false,
           video: deviceId
             ? { deviceId: { exact: deviceId } }
-            : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
+            : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
         });
       } catch (error) {
         return fail(classifyCameraError(error));
