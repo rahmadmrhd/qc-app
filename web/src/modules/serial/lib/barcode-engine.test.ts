@@ -84,3 +84,24 @@ test('tanpa pilihan sama sekali: ScannerLoadError', async () => {
     }),
   ).rejects.toBeInstanceOf(ScannerLoadError);
 });
+
+test('detectCodes membawa kotak pembatas dan tidak menyaring duplikat; detect tetap teks unik', async () => {
+  const detect = vi.fn(async () => [
+    { rawValue: 'A', boundingBox: { x: 1, y: 2, width: 3, height: 4 } },
+    { rawValue: 'A' },
+    { rawValue: '' },
+  ]);
+  class Detector {
+    detect = detect;
+  }
+  const engine = await createBarcodeEngine({
+    native: Detector as unknown as BarcodeDetectorConstructor,
+    loadFallback: vi.fn(),
+    formats: SCAN_FORMATS,
+  });
+  expect(await engine.detectCodes(source)).toEqual([
+    { text: 'A', box: { x: 1, y: 2, width: 3, height: 4 } },
+    { text: 'A', box: null },
+  ]);
+  expect(await engine.detect(source)).toEqual(['A']);
+});

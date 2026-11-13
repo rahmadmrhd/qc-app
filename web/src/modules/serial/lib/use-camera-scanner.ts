@@ -1,5 +1,7 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { type BarcodeEngine, createBarcodeEngine, ScannerLoadError } from './barcode-engine';
+import { createScanCapturer } from './scan-capture';
+import { pickNearestCenter } from './scan-region';
 
 /** Jeda antar pembacaan bingkai (~8 fps); cukup untuk label dan hemat baterai. */
 export const SCAN_INTERVAL_MS = 120;
@@ -229,16 +231,19 @@ export function useCameraScanner({
       if (cancelled) return stop();
       setState({ status: 'scanning' });
 
+      const capture = createScanCapturer();
       const tick = async () => {
         timer = null;
         if (cancelled || !engine) return;
         // Tab tersembunyi tak sampai sini: kamera dilepas (efek dibersihkan) dan dimulai ulang saat terlihat.
         if (video.readyState >= 2) {
           try {
-            for (const payload of await engine.detect(video)) {
-              if (cancelled) return;
-              onPayloadRef.current(payload);
-            }
+            // Hanya piksel di dalam bingkai yang dibaca, dan dari beberapa kode di bingkai hanya yang paling
+            // dekat tengah yang diteruskan (label nyata sering memuat kode lain yang tak diperlukan).
+            const { source, center } = capture(video);
+            const payload = pickNearestCenter(await engine.detectCodes(source), center);
+            if (cancelled) return;
+            if (payload !== null) onPayloadRef.current(payload);
           } catch {
             // Bingkai gagal dibaca: coba bingkai berikutnya.
           }
