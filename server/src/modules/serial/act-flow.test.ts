@@ -285,6 +285,29 @@ describe('send dan receive (baris 4, 9, 14, 15)', () => {
     ]);
   });
 
+  test('receive: tanggal terima sebelum tanggal kirim = VALIDATION pada occurredOn, tanpa efek; tanggal sama atau lebih akhir lolos', async () => {
+    await seedOne({
+      status: 'recheck',
+      custody: 'transit',
+      transitFromLocationId: 'loc-jkt',
+      transitToLocationId: 'loc-sby',
+      transitOn: '2026-11-09',
+      locationId: 'loc-jkt',
+      openCase: { id: 'case-1', number: 'LP-20261108-001' },
+    });
+    const early = await act('receive', { occurredOn: '2026-11-08' });
+    expect(early.error?.code).toBe('VALIDATION');
+    expect(early.error?.message).toBe('Tanggal terima tidak boleh sebelum tanggal kirim');
+    expect(Object.keys(early.error?.fields ?? {})).toContain('occurredOn');
+    expect(await serialRow()).toMatchObject({ custody: 'transit', location_id: 'loc-jkt' });
+    expect((await eventsOf()).length).toBe(1);
+    const same = await act('receive', { occurredOn: '2026-11-09' });
+    expect(same.ok).toBe(true);
+    expect(JSON.parse((await eventsOf())[1]?.data_json ?? '{}')).toMatchObject({
+      daysInTransit: 0,
+    });
+  });
+
   test('send dan receive antar lokasi pada good', async () => {
     await seedOne();
     const sent = await act('send', { toLocationId: 'loc-jkt' });

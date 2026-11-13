@@ -358,6 +358,10 @@ async function applyAct(
       break;
     }
     case 'receive': {
+      // Keputusan pemilik 2026-11-13: tanggal terima tidak boleh mendahului tanggal kirim (ISO, jadi perbandingan teks sah).
+      if (row.transit_on !== '' && input.occurredOn < row.transit_on) {
+        throw validationError('occurredOn', 'Tanggal terima tidak boleh sebelum tanggal kirim');
+      }
       const targetId = row.transit_to_location_id.trim();
       const targetName = row.transit_to_name ?? currentLocationName;
       if (targetId !== '' && targetId !== currentLocationId) {

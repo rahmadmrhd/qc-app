@@ -204,6 +204,8 @@ export async function locationOptions(env: Env): Promise<SerialLocationOptionsDt
 const DUPLICATE_MESSAGE = 'Serial sudah terdaftar';
 const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak dapat dipakai';
 export const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
+const LOCATION_LOCKED_MESSAGE =
+  'Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis';
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
@@ -739,6 +741,8 @@ async function updateOnce(
     });
   }
   if (fields.locationId !== undefined && fields.locationId !== row.location_id.trim()) {
+    // Keputusan pemilik 2026-11-13: lokasi hanya berubah lewat alur kirim/terima selama custody bukan QC.
+    if (row.custody !== 'qc') throw validationError('locationId', LOCATION_LOCKED_MESSAGE);
     const name = await activeLocationName(env.DB, fields.locationId);
     if (name === null) throw validationError('locationId', LOCATION_MESSAGE);
     set.location_id = fields.locationId;
