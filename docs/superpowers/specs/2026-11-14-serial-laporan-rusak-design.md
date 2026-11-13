@@ -25,7 +25,7 @@ Setelah memakai 5b, pemilik produk menilai alur laporan kerusakan terlalu panjan
 5. Serial Rusak boleh diberi catatan (klaim vendor, unit pengganti): hanya catatan, tanpa mekanisme baru; unit pengganti dicatat sebagai serial baru lewat Tambah Serial Number.
 6. Lokasi tim servis menjadi konfigurasi (`LinkMultiField`); kirim ke servis membacanya. Kirim antar lokasi dihapus total.
 7. Surel "rusak" dikirim hanya ketika tim servis menyatakan Rusak. Subjek memuat Serial Number, tipe item, dan kode BU. Isi dan tautan bertanda tangan: §5.8.
-8. Halaman publik tautan menampilkan seluruh linimasa laporan dan detail unit (pemilik menerima bahwa percakapan internal ikut terbaca pemegang tautan).
+8. Halaman publik tautan menampilkan linimasa laporan dalam lingkup nomor LP itu dan detail unit (§5a); pemilik menerima bahwa percakapan internal selama laporan terbuka ikut terbaca pemegang tautan.
 9. Pengguna yang membuka tautan sambil login dengan izin pada serial itu masuk ke halaman biasa dengan semua izinnya.
 
 ## 3. Pilihan perancang (belum dilihat pemilik; dapat ditolak per butir)
@@ -105,7 +105,7 @@ Menggantikan butir 40 (i).
 ### 4.8 Tautan bertanda tangan dan halaman publik
 - Token: id laporan, waktu kedaluwarsa, tanda tangan HMAC dengan kunci turunan dari `SESSION_SECRET` (label tujuan khusus, sehingga tidak dapat dipakai membuat sesi; tanpa variabel `.env` baru). Perbandingan tanda tangan tetap-waktu.
 - Kedaluwarsa = tanggal laporan selesai (ditutup) + 30 hari, akhir hari WIB. Untuk surel Rusak, laporan ditutup saat itu juga.
-- Halaman publik (route di luar layout login, mis. `/laporan/<token>`) hanya baca: seluruh linimasa laporan dan detail unit dengan DTO publik khusus (daftar putih field; tanpa angka stok, tanpa alamat surel). Gambar pesan dilayani lewat rute biner bertoken yang memeriksa bahwa berkas milik pesan pada laporan itu.
+- Halaman publik (route di luar layout login, mis. `/laporan/<token>`) hanya baca: linimasa laporan dalam lingkup nomor LP itu (§5a) dan detail unit dengan DTO publik khusus (daftar putih field; tanpa angka stok, tanpa alamat surel). Gambar pesan dilayani lewat rute biner bertoken yang memeriksa bahwa berkas milik pesan pada laporan itu.
 - Token salah atau kedaluwarsa dijawab 404 yang sama; kegagalan dibatasi per IP dengan tabel `rate_limits` yang sudah ada; `Cache-Control: no-store`, `Referrer-Policy: no-referrer`; token tidak dicatat di log server.
 - Pemegang tautan yang login dan berizin pada serial itu diarahkan ke halaman biasa (semua izin normal); yang tidak berizin atau tidak login melihat halaman publik. Token tidak pernah menambah izin.
 - Diterima: tautan tidak dapat dicabut per laporan sebelum kedaluwarsa dan terbaca oleh siapa pun yang menerima forward surel; pencabutan massal hanya lewat mengganti `SESSION_SECRET` (mengeluarkan semua sesi). Bila kelak perlu, tambah penanda pencabut per laporan.
@@ -116,8 +116,8 @@ Nomor migrasi berikutnya setelah `0016`. `failed`, `qc_repair` → `reported`. `
 ## 5. Dampak pada dokumen lain (dikerjakan bersama kodenya)
 Spek induk: §3 butir 40 diperbarui (persetujuan; (b),(c),(d),(i),(p) digantikan; OQ-4 dan 5 dicabut), butir baru 43 dan seterusnya untuk keputusan di atas, §4.3 (laporan: lokasi asal), §4.6 (surel dan tautan), §5.2 (stiker centang), §5.3 (tabel), §9 (halaman Lapor Rusak dan Laporan), §11. `CLAUDE.md` bullet Serial Number dan aturan REST bertoken. `docs/ci-cd.md` (rollback ke image 5b membaca status baru; tautan bertanda tangan bergantung `SESSION_SECRET`). `docs/adding-a-module.md` bila ada pelajaran. Kode: komentar dan tes OQ-13 di `server/src/modules/serial/alert-job.ts` (surel tanpa pesan, nama, atau surel pelaku) diganti sesuai §4.7.
 
-## 5a. Pertanyaan terbuka
-Catatan pada serial Rusak (klaim vendor, unit pengganti): kejadian `note` memakai `caseId` = laporan terbuka, yang kosong setelah Rusak, jadi catatan itu kini tidak masuk linimasa laporan dan tidak terbaca di halaman publik. Apakah catatan itu menempel ke laporan yang sudah ditutup, dan apakah tampil di halaman publik selama tautan hidup? Menunggu keputusan pemilik produk.
+## 5a. Lingkup linimasa laporan (keputusan pemilik 2026-11-14)
+Linimasa laporan, baik di tab laporan maupun di halaman publik, adalah **kejadian yang termasuk lingkup nomor LP itu**: yang membawa `caseId` laporan tersebut, dari dibuka sampai ditutup (lapor, kirim, terima, diagnosis, cek ulang, catatan selama laporan terbuka, termasuk terima otomatis). Di luar lingkup dan TIDAK ditampilkan: pencatatan awal serial, laporan lain pada serial yang sama (tiap LP punya linimasanya sendiri), dan catatan yang ditulis sesudah Rusak (klaim vendor, unit pengganti: `caseId` kosong karena laporan sudah ditutup). Catatan itu tetap terbaca di riwayat serial (internal, `serials.history`). Detail unit pada halaman publik (serial, item, BU, lokasi, tanggal uji, sample) tidak berubah. Ini mempertahankan perilaku kode saat ini dan melindungi catatan klaim vendor dari pemegang tautan.
 
 ## 6. Pendekatan yang dipertimbangkan
 - **A (dipilih)**: ganti status di mana-mana, data lama dipetakan sekali. Paling bersih; risiko rollback diterima karena baru di staging.
