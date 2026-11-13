@@ -14,6 +14,18 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
+vi.mock('./camera-scan-button', () => ({
+  CameraScanButton: ({ onScan }: { onScan: (text: string) => unknown }) => (
+    <button
+      type="button"
+      aria-label="Scan dengan kamera"
+      onClick={() => onScan('bbb222\nAAA111\nccc333')}
+    >
+      kamera
+    </button>
+  ),
+}));
+
 import { SerialListPage } from './serial-list-page';
 
 const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
@@ -114,7 +126,7 @@ beforeEach(() => {
   });
 });
 
-test('merender baris dengan kolom Test Date, status, posisi, dan sample; paginasi kursor', async () => {
+test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; paginasi kursor', async () => {
   renderPage();
   expect(await screen.findByText('ABC123')).toBeInTheDocument();
   const rows = screen.getAllByRole('row');
@@ -123,7 +135,7 @@ test('merender baris dengan kolom Test Date, status, posisi, dan sample; paginas
   expect(within(rows[1] as HTMLElement).getByText('Di QC')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Tidak lolos')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Ya')).toBeInTheDocument();
-  expect(screen.getByRole('columnheader', { name: 'Test Date' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Tanggal uji' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
   expect(await screen.findByText('LAST1')).toBeInTheDocument();
   expect(listCalls().at(-1)?.[1]).toMatchObject({ cursor: 'c1' });
@@ -157,18 +169,140 @@ test('satu serial dikirim sebagai awalan (query)', async () => {
   await waitFor(() => expect(lastListInput()).toMatchObject({ query: 'ABC' }), { timeout: 3000 });
 });
 
-test('hasil pindai ditambahkan ke daftar pencarian tanpa duplikat', async () => {
+test('hanya ada satu field pencarian serial (tanpa field "Pindai untuk mencari")', async () => {
   renderPage();
   await screen.findByText('ABC123');
-  const scan = screen.getByLabelText('Pindai untuk mencari');
-  await userEvent.type(scan, 'aaa111{Enter}');
-  await userEvent.type(scan, 'bbb222{Enter}');
-  await userEvent.type(scan, 'AAA111{Enter}');
+  expect(screen.queryByLabelText('Pindai untuk mencari')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('textbox', { name: /serial/i })).toHaveLength(1);
+});
+
+test('Enter menetapkan baris yang ditulis: sah tetap dan pindah baris, duplikat dibuang dengan umpan balik', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'aaa111{Enter}');
+  expect(field).toHaveValue('AAA111\n');
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  await userEvent.type(field, 'bbb222{Enter}');
+  expect(field).toHaveValue('AAA111\nBBB222\n');
+  await userEvent.type(field, 'AAA111{Enter}');
   expect(screen.getByText('Sudah ada')).toBeInTheDocument();
-  expect(screen.getByLabelText('Cari serial (satu per baris)')).toHaveValue('AAA111\nBBB222');
+  expect(field).toHaveValue('AAA111\nBBB222\n');
   await waitFor(() => expect(lastListInput()).toMatchObject({ serials: 'AAA111\nBBB222' }), {
     timeout: 3000,
   });
+  // Baris baru di ujung tidak dihapus oleh gema URL setelah jeda.
+  expect(field).toHaveValue('AAA111\nBBB222\n');
+});
+
+test('Enter pada baris tak sah menolak dan membuang barisnya; baris kosong diabaikan', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'AAA111{Enter}');
+  await userEvent.type(field, `${'X'.repeat(200)}{Enter}`);
+  expect(screen.getByText('Ditolak')).toBeInTheDocument();
+  expect(field).toHaveValue('AAA111\n');
+  await userEvent.type(field, '{Enter}');
+  expect(field).toHaveValue('AAA111\n');
+});
+
+test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan tak sah ditangani', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'aaa111{Enter}');
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
+  expect(field).toHaveValue('AAA111\nBBB222\nCCC333');
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  expect(screen.getByText('3 serial dicari (maks. 50)')).toBeInTheDocument();
+});
+
+test('Enter tidak membuang sisa teks yang melebihi batas, juga setelah gema URL', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  const many = Array.from({ length: 80 }, (_, i) => `S${String(i).padStart(3, '0')}`).join('\n');
+  fireEvent.change(field, { target: { value: `${many}\nbaru` } });
+  expect(screen.getByRole('alert')).toHaveTextContent('Terlalu banyak serial');
+  field.setSelectionRange(field.value.length, field.value.length);
+  await userEvent.type(field, '{Enter}');
+  expect(field.value.split('\n').filter(Boolean)).toHaveLength(81);
+  await waitFor(() => expect(lastListInput()).toHaveProperty('serials'), { timeout: 3000 });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(field.value.split('\n').filter(Boolean)).toHaveLength(81);
+  expect(screen.getByRole('alert')).toHaveTextContent('Terlalu banyak serial');
+});
+
+test('hasil kamera menambah baris di ujung tanpa mengubah awalan yang sedang diketik', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'ab' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
+  expect(field.value).toBe('ab\nBBB222\nAAA111\nCCC333');
+});
+
+test('Enter di baris tengah menetapkan baris itu saja', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'aaa\nbbb\nccc' } });
+  field.focus();
+  field.setSelectionRange(5, 5);
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('aaa\nBBB\nccc');
+  expect(field.selectionStart).toBe(8);
+});
+
+test('Enter berturut-turut di baris tengah yang sudah normal: kursor selalu pindah ke baris berikutnya', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'AAA\nBBB\nCCC\nDDD' } });
+  field.focus();
+  field.setSelectionRange(1, 1);
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('AAA\nBBB\nCCC\nDDD');
+  expect(field.selectionStart).toBe(4);
+  // Teks dan umpan balik sama dengan sebelumnya (tanpa render ulang): kursor tetap harus maju.
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('AAA\nBBB\nCCC\nDDD');
+  expect(field.selectionStart).toBe(8);
+  await userEvent.keyboard('{Enter}');
+  expect(field.selectionStart).toBe(12);
+});
+
+test('Tab menjadi penutup bacaan hanya bila baris yang ditulis tidak kosong', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  await userEvent.type(field, 'aaa111{Tab}');
+  expect(field).toHaveValue('AAA111\n');
+  expect(field).toHaveFocus();
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  await userEvent.type(field, 'AAA111{Tab}');
+  expect(screen.getByText('Sudah ada')).toBeInTheDocument();
+  expect(field).toHaveValue('AAA111\n');
+  expect(field).toHaveFocus();
+  // Baris kosong: Tab memindahkan fokus seperti biasa dan tidak mengubah teks.
+  await userEvent.tab();
+  expect(field).not.toHaveFocus();
+  expect(field).toHaveValue('AAA111\n');
+});
+
+test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  field.focus();
+  await userEvent.tab();
+  expect(field).not.toHaveFocus();
+  fireEvent.change(field, { target: { value: 'bbb222' } });
+  field.focus();
+  await userEvent.tab({ shift: true });
+  expect(field).toHaveValue('bbb222');
+  expect(field).not.toHaveFocus();
 });
 
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {

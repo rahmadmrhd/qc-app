@@ -123,7 +123,7 @@ async function pickDefaults() {
 }
 
 async function paste(text: string) {
-  await userEvent.click(screen.getByLabelText('Pindai atau tempel serial (satu per baris)'));
+  await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
   await userEvent.paste(text);
   // Tempelan satu baris hanya mengisi kolom; Enter (seperti pemindai) yang mengirimnya.
   if (!text.includes(String.fromCharCode(10))) await userEvent.keyboard('{Enter}');
@@ -154,7 +154,7 @@ test('serial ganda menampilkan pesan dan tidak menambah baris', async () => {
   await paste('abc123\nxyz789');
   await paste('ABC123');
   expect(dataRows()).toHaveLength(2);
-  expect(screen.getByText(/1 ganda dilewati/)).toBeInTheDocument();
+  expect(screen.getByText(/1 duplikat dilewati/)).toBeInTheDocument();
   expect(screen.getByText('Sudah ada')).toBeInTheDocument();
 });
 
@@ -207,7 +207,7 @@ test('mengganti item pada baris mengosongkan stiker; detail memuat ulang dengan 
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
   await pickLink(screen, 'Item (ubah massal)', 'Aruba 2930');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
-  expect(screen.getByText('Semua yang berlaku')).toBeInTheDocument();
+  expect(screen.getByText('Semua stiker yang berlaku')).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('button', { name: 'Detail A1' }));
   const next = await screen.findByRole('dialog');
@@ -374,7 +374,7 @@ test('kuota penuh menampilkan peringatan draf tidak tersimpan otomatis', async (
   renderPage();
   await pickDefaults();
   await paste('A1');
-  expect(await screen.findByText(/Draf tidak tersimpan otomatis/)).toBeInTheDocument();
+  expect(await screen.findByText(/Draft tidak tersimpan otomatis/)).toBeInTheDocument();
 });
 
 test('onDirtyChange mengikuti isi tabel', async () => {

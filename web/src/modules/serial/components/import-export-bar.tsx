@@ -16,7 +16,7 @@ export interface ImportExportBarProps {
   disabled?: boolean;
   /** Hasil membaca berkas (struktur sah); pemanggil yang menambahkan barisnya ke tabel dan melaporkan. */
   onImported: (result: QcsnImport, fileName: string) => void;
-  /** Berkas tidak dapat dibaca atau tidak sah sama sekali. */
+  /** Berkas tidak bisa dibaca atau tidak sah sama sekali. */
   onImportFailed: (message: string) => void;
   onExported: (info: { exported: number; skipped: number }) => void;
 }
@@ -28,7 +28,7 @@ function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error ?? new Error('Berkas tidak dapat dibaca'));
+    reader.onerror = () => reject(reader.error ?? new Error('Berkas tidak bisa dibaca'));
     reader.readAsText(file);
   });
 }
@@ -57,7 +57,7 @@ export function ImportExportBar({
       if (result.fatal !== null) onImportFailed(result.fatal);
       else onImported(result, file.name);
     } catch {
-      onImportFailed('Berkas tidak dapat dibaca');
+      onImportFailed('Berkas tidak bisa dibaca');
     }
   }
 

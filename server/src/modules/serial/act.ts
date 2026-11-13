@@ -138,14 +138,14 @@ async function stickerRaise(
   for (const pick of requested) {
     const existing = current.get(pick.stickerId);
     if (existing && pick.qty < existing.qty) {
-      throw validationError('stickers', 'Jumlah stiker tidak boleh diturunkan');
+      throw validationError('stickers', 'Jumlah stiker tidak boleh dikurangi');
     }
     if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
       // Percobaan ke-2 dan seterusnya hanya terjadi setelah batch dibatalkan penjaga; stiker yang baru terlihat nonaktif
       // berarti dinonaktifkan serentak (spek §3 butir 24): jawab usang (CONFLICT/412), bukan VALIDATION. Stiker yang
       // SUDAH nonaktif sebelum permintaan tetap VALIDATION pada field `stickers` (percobaan pertama).
       if (retried) throw staleError(STALE_MESSAGE);
-      throw validationError('stickers', 'Stiker nonaktif tidak dapat ditambah jumlahnya');
+      throw validationError('stickers', 'Jumlah stiker nonaktif tidak bisa ditambah');
     }
     if (!existing && !applicable.has(pick.stickerId)) {
       throw validationError('stickers', 'Stiker tidak berlaku bagi item ini');

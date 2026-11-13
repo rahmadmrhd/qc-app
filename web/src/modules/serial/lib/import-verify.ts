@@ -29,7 +29,7 @@ export interface VerifyDeps {
 }
 
 export const VERIFY_FAILED_MESSAGE =
-  'Rujukan belum dapat diverifikasi (jaringan atau server); impor ulang berkas atau coba simpan lagi';
+  'Rujukan belum bisa diverifikasi (jaringan atau server). Impor ulang berkas atau coba simpan lagi';
 
 /** Galat yang berarti rujukannya memang tidak sah (bukan gangguan jaringan atau server). */
 export function isReferenceError(error: unknown): boolean {

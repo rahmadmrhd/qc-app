@@ -478,7 +478,7 @@ describe('serials.saveBatch', () => {
     const results = resultsOf(out);
     expect(results.map((r) => r.result)).toEqual(['invalid', 'invalid', 'created']);
     expect(JSON.stringify(results[1])).not.toContain('Gamma');
-    expect(results[1].message).toBe('Item tidak ditemukan atau tidak dapat dipakai');
+    expect(results[1].message).toBe('Item tidak ditemukan atau tidak bisa dipakai');
   });
 
   test('hak: serial view saja FORBIDDEN; BU lain invalid; 201 baris VALIDATION; stiker tak berlaku invalid', async () => {

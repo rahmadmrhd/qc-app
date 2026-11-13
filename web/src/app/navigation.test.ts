@@ -398,12 +398,15 @@ const serialItems = (me: MeDto) =>
 
 test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
   expect(serialItems(meWithSerial('none'))).toBeUndefined();
-  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial']);
-  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial']);
-  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial', 'Catat Serial']);
+  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number']);
+  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number']);
+  expect(serialItems(meWithSerial('edit'))).toEqual([
+    'Daftar Serial Number',
+    'Catat Serial Number',
+  ]);
 });
 
-test('Daftar Serial tidak ikut aktif di Catat Serial', () => {
+test('Daftar Serial Number tidak ikut aktif di Catat Serial Number', () => {
   const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
   const list = items.find((entry) => entry.to === '/serial');
   const record = items.find((entry) => entry.to === '/serial/new');

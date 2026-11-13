@@ -40,7 +40,7 @@ function ConflictNote({ text }: { text: string | undefined }) {
   if (!text) return null;
   return (
     <p className="text-xs text-amber-700 dark:text-amber-400">
-      Diubah orang lain menjadi: {text}. Menyimpan akan menimpanya.
+      Orang lain sudah mengubahnya jadi: {text}. Kalau disimpan, perubahan itu tertimpa.
     </p>
   );
 }
@@ -148,7 +148,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
       setConflicts(next);
       setBase(fresh);
       setNotice(
-        `${STALE_SAVE_MESSAGE}. Bidang yang belum Anda ubah diperbarui ke data terbaru; periksa lalu simpan lagi.`,
+        `${STALE_SAVE_MESSAGE}. Field yang belum Anda ubah sudah diperbarui ke data terbaru. Cek dulu, lalu simpan lagi.`,
       );
     } catch (loadError) {
       setError(describeError(loadError));
@@ -205,7 +205,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
         <DialogHeader>
           <DialogTitle>Ubah data serial</DialogTitle>
           <DialogDescription>
-            Perubahan dicatat di linimasa. Business Unit, status, dan stiker tidak dapat diubah di
+            Perubahan dicatat di riwayat. Business Unit, status, dan stiker tidak bisa diubah di
             sini; stok stiker tidak terpengaruh.
           </DialogDescription>
         </DialogHeader>

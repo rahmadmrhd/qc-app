@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import {
+  FEEDBACK_FLASH,
+  FEEDBACK_TEXT,
+  FEEDBACK_TEXT_COLOR,
+  type ScanFeedback,
+  useScanFeedback,
+} from '../lib/scan-feedback';
+import { CameraScanButton } from './camera-scan-button';
 
-export type ScanFeedback = 'added' | 'duplicate' | 'rejected';
+export type { ScanFeedback };
 
 export interface SerialScanInputProps {
   id: string;
@@ -14,49 +22,6 @@ export interface SerialScanInputProps {
   autoFocus?: boolean;
 }
 
-const FEEDBACK_TEXT: Record<ScanFeedback, string> = {
-  added: 'Ditambahkan',
-  duplicate: 'Sudah ada',
-  rejected: 'Ditolak',
-};
-
-const FEEDBACK_FLASH: Record<ScanFeedback, string> = {
-  added: 'border-emerald-500 bg-emerald-500/10',
-  duplicate: 'border-amber-500 bg-amber-500/10',
-  rejected: 'border-destructive bg-destructive/10',
-};
-
-const FEEDBACK_TEXT_COLOR: Record<ScanFeedback, string> = {
-  added: 'text-emerald-600 dark:text-emerald-400',
-  duplicate: 'text-amber-600 dark:text-amber-400',
-  rejected: 'text-destructive',
-};
-
-/** Nada berbeda per hasil; satu-satunya isyarat bunyi yang dipakai pemindai fisik tanpa melihat layar. */
-const FEEDBACK_TONE: Record<ScanFeedback, { frequency: number; seconds: number }> = {
-  added: { frequency: 880, seconds: 0.08 },
-  duplicate: { frequency: 440, seconds: 0.16 },
-  rejected: { frequency: 220, seconds: 0.28 },
-};
-
-const FEEDBACK_VIBRATION: Record<ScanFeedback, number | number[]> = {
-  added: 30,
-  duplicate: [40, 40, 40],
-  rejected: 200,
-};
-
-const FLASH_MS = 1200;
-
-type AudioContextConstructor = new () => AudioContext;
-
-function audioContextConstructor(): AudioContextConstructor | undefined {
-  const scope = window as unknown as {
-    AudioContext?: AudioContextConstructor;
-    webkitAudioContext?: AudioContextConstructor;
-  };
-  return scope.AudioContext ?? scope.webkitAudioContext;
-}
-
 export function SerialScanInput({
   id,
   label,
@@ -65,58 +30,11 @@ export function SerialScanInput({
   autoFocus = false,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
-  const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
+  const { feedback, announce } = useScanFeedback();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const audioRef = useRef<AudioContext | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-      try {
-        void audioRef.current?.close();
-      } catch {
-        // Tidak penting.
-      }
-    },
-    [],
-  );
-
-  function beep(result: ScanFeedback) {
-    try {
-      const Context = audioContextConstructor();
-      if (!Context) return;
-      audioRef.current ??= new Context();
-      const context = audioRef.current;
-      const tone = FEEDBACK_TONE[result];
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.frequency.value = tone.frequency;
-      gain.gain.value = 0.08;
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + tone.seconds);
-    } catch {
-      // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
-    }
-  }
-
-  function vibrate(result: ScanFeedback) {
-    try {
-      navigator.vibrate?.(FEEDBACK_VIBRATION[result]);
-    } catch {
-      // Tidak didukung.
-    }
-  }
 
   function submit(text: string) {
-    const result = onSubmit(text);
-    setFeedback(result);
-    beep(result);
-    vibrate(result);
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
+    announce(onSubmit(text));
     inputRef.current?.focus();
   }
 
@@ -130,7 +48,10 @@ export function SerialScanInput({
 
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <CameraScanButton onScan={onSubmit} disabled={disabled} />
+      </div>
       <Textarea
         id={id}
         ref={inputRef}
