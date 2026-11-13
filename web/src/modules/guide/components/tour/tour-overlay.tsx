@@ -13,6 +13,7 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { stepsFor } from '../../lib/offer';
+import { useSetTourMenu } from '../../lib/tour-menu';
 import type { GuideEntry, GuideStep } from '../../lib/types';
 import { useGuideStore } from '../../lib/use-guide-store';
 import { TourStepCard } from './tour-step-card';
@@ -110,6 +111,13 @@ function prefersReducedMotion(): boolean {
   }
 }
 
+/** Kartu langkah cadangan (target bergantung data tak ada): di tengah layar, tanpa sorotan. */
+const CENTERED_CARD: CSSProperties = {
+  left: '50%',
+  top: '50%',
+  transform: 'translate(-50%, -50%)',
+};
+
 function cardStyle(rect: DOMRect): CSSProperties {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -117,7 +125,40 @@ function cardStyle(rect: DOMRect): CSSProperties {
   const left = Math.min(Math.max(rect.left, EDGE), Math.max(EDGE, width - CARD_WIDTH - EDGE));
   if (height - rect.bottom >= CARD_HEIGHT_GUESS) return { left, top: rect.bottom + EDGE };
   if (rect.top >= CARD_HEIGHT_GUESS) return { left, bottom: height - rect.top + EDGE };
+  // Sorotan besar (isi menu terbuka): taruh kartu di sampingnya supaya tidak menutupi yang disorot.
+  const top = Math.min(Math.max(rect.top, EDGE), Math.max(EDGE, height - CARD_HEIGHT_GUESS - EDGE));
+  const leftOfRect = rect.left - HIGHLIGHT_PADDING - EDGE - CARD_WIDTH;
+  if (leftOfRect >= EDGE) return { left: leftOfRect, top };
+  const rightOfRect = rect.right + HIGHLIGHT_PADDING + EDGE;
+  if (rightOfRect + CARD_WIDTH + EDGE <= width) return { left: rightOfRect, top };
   return { left, bottom: EDGE };
+}
+
+function sameRect(a: DOMRect | null, b: DOMRect): boolean {
+  return (
+    a !== null &&
+    a.top === b.top &&
+    a.left === b.left &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
+
+/** Menunggu `count` bingkai animasi (menu Radix baru terposisi setelah terpasang); `setTimeout` bila tak ada rAF. */
+function nextFrames(count: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      setTimeout(resolve, 32 * count);
+      return;
+    }
+    let left = count;
+    const tick = () => {
+      left -= 1;
+      if (left <= 0) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 /**
@@ -151,10 +192,14 @@ export default function TourOverlay({
   const [located, setLocated] = useState<{ index: number; element: Element } | null>(null);
   const target = located?.index === index ? located.element : null;
   const [rect, setRect] = useState<DOMRect | null>(null);
+  // Langkah ber-`teksJikaKosong` yang targetnya tak muncul: tampil sebagai kartu contoh di tengah layar.
+  const [fallback, setFallback] = useState<number | null>(null);
+  const inFallback = fallback === index;
+  const setMenu = useSetTourMenu();
 
   // Nilai terbaru untuk efek yang hanya boleh berjalan ulang saat langkah berganti.
-  const latest = useRef({ pathname, navigate, sidebar, mark, onExit, steps, entry });
-  latest.current = { pathname, navigate, sidebar, mark, onExit, steps, entry };
+  const latest = useRef({ pathname, navigate, sidebar, mark, onExit, steps, entry, setMenu });
+  latest.current = { pathname, navigate, sidebar, mark, onExit, steps, entry, setMenu };
   const shown = useRef(0);
   const advancedFrom = useRef(-1);
   const finished = useRef(false);
@@ -206,6 +251,7 @@ export default function TourOverlay({
     if (aborted.current) return;
     const step = latest.current.steps[index];
     if (!step) {
+      latest.current.setMenu(null);
       if (finished.current) return;
       finished.current = true;
       const { mark: write, entry: current, onExit: exit } = latest.current;
@@ -217,8 +263,17 @@ export default function TourOverlay({
         .finally(exit);
       return;
     }
+    // Menu yang diminta langkah ini dibuka sekarang (murni UI), menu langkah lama ditutup. Pemicu yang tak ada di
+    // layar (mis. pemilih lokasi untuk satu lokasi) = langkah dilewati segera, tanpa menunggu batas waktu.
+    if (step.buka && !document.querySelector(selectorOf(step.buka))) {
+      latest.current.setMenu(null);
+      advance(index);
+      return;
+    }
+    latest.current.setMenu(step.buka ?? null);
     setLocated(null);
     setRect(null);
+    setFallback(null);
     let cancelled = false;
     let cancelWait: () => void = () => undefined;
     void (async () => {
@@ -254,7 +309,14 @@ export default function TourOverlay({
       const found = await wait.promise;
       if (cancelled || aborted.current) return;
       if (!found) {
-        advance(index);
+        if (step.teksJikaKosong === undefined) {
+          advance(index);
+          return;
+        }
+        // Target bergantung data tak ada: kartu contoh di tengah layar (tetap terhitung sebagai langkah).
+        if (expectedPath.current === null) expectedPath.current = latest.current.pathname;
+        shown.current += 1;
+        setFallback(index);
         return;
       }
       // Halaman tujuan klik pengguna sudah terbentuk: mulai dari sini setiap perpindahan lain membatalkan tur.
@@ -267,6 +329,11 @@ export default function TourOverlay({
         block: 'center',
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
+      if (step.buka) {
+        // Isi menu Radix baru terposisi beberapa bingkai setelah terpasang: sorotan jangan diukur sebelum itu.
+        await nextFrames(2);
+        if (cancelled || aborted.current) return;
+      }
       shown.current += 1;
       setLocated({ index, element: found });
       setRect(found.getBoundingClientRect());
@@ -277,10 +344,11 @@ export default function TourOverlay({
     };
   }, [index, targetWaitMs, advance]);
 
-  // Menutup sidebar yang kita buka saat tur berakhir.
+  // Menutup sidebar dan menu yang kita buka saat tur berakhir (selesai, dibatalkan, atau Esc).
   useEffect(
     () => () => {
       if (openedSidebar.current) latest.current.sidebar?.setOpenMobile(false);
+      latest.current.setMenu(null);
     },
     [],
   );
@@ -313,12 +381,19 @@ export default function TourOverlay({
         void relocate();
         return;
       }
-      setRect(target.getBoundingClientRect());
+      const next = target.getBoundingClientRect();
+      setRect((current) => (sameRect(current, next) ? current : next));
     };
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
     const observer = new MutationObserver(update);
-    observer.observe(document.body, { childList: true, subtree: true });
+    // `style`: pembungkus popper Radix berpindah lewat atribut style saat menu terposisi/diposisikan ulang.
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style'],
+    });
     return () => {
       stale = true;
       cancelWait();
@@ -350,8 +425,8 @@ export default function TourOverlay({
         latest.current.onExit();
       } else if (
         event.key === 'ArrowRight' &&
-        target &&
-        step?.advance === 'next' &&
+        (target || inFallback) &&
+        (step?.advance === 'next' || inFallback) &&
         !isEditable(event.target)
       ) {
         advance(index);
@@ -359,12 +434,12 @@ export default function TourOverlay({
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [target, step?.advance, index, advance]);
+  }, [target, inFallback, step?.advance, index, advance]);
 
   // Fokus ke kartu tiap langkah agar pengguna keyboard/pembaca layar langsung berada di penjelasan.
   useEffect(() => {
-    if (target) cardRef.current?.focus({ preventScroll: true });
-  }, [target]);
+    if (target || inFallback) cardRef.current?.focus({ preventScroll: true });
+  }, [target, inFallback]);
 
   const reduced = prefersReducedMotion();
   const box =
@@ -415,6 +490,18 @@ export default function TourOverlay({
             onClose={() => latest.current.onExit()}
           />
         </>
+      ) : inFallback && step ? (
+        <TourStepCard
+          step={{ ...step, text: step.teksJikaKosong ?? step.text, advance: 'next' }}
+          position={index + 1}
+          total={steps.length}
+          isLast={index === steps.length - 1}
+          tip={step.tip ? renderTip?.(step.tip) : undefined}
+          style={CENTERED_CARD}
+          cardRef={cardRef}
+          onNext={() => advance(index)}
+          onClose={() => latest.current.onExit()}
+        />
       ) : null}
     </div>
   );

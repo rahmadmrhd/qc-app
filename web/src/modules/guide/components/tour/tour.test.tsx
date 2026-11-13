@@ -569,3 +569,98 @@ describe('ketahanan mesin (putaran perbaikan review)', () => {
     expect(screen.queryByText('Dua')).toBeNull();
   });
 });
+
+describe('langkah yang bergantung data jatuh ke kartu contoh (keputusan pemilik 2026-11-14)', () => {
+  const missing = (overrides: Partial<GuideStep> = {}) =>
+    step({
+      target: 'tidak-ada',
+      text: 'Teks sorotan',
+      teksJikaKosong: 'Papan masih kosong, ini contoh kartunya:',
+      tip: 'tip-contoh',
+      ...overrides,
+    });
+
+  test('target tak muncul: kartu di tengah layar tanpa sorotan, menampilkan demo dan teks pengganti', async () => {
+    render(<Page entry={entryOf([missing()])} />);
+    await startTour();
+    const text = await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    expect(screen.queryByText('Teks sorotan')).toBeNull();
+    expect(screen.queryByTestId('tour-highlight')).toBeNull();
+    expect(screen.getByTestId('demo')).toHaveTextContent('demo tip-contoh');
+    const card = text.closest('[tabindex="-1"]') as HTMLElement;
+    expect(card.style.top).toBe('50%');
+    expect(card.style.left).toBe('50%');
+  });
+
+  test('tur tidak macet: Lanjut maju, dan selesai menulis penanda seperti biasa', async () => {
+    render(<Page entry={entryOf([missing(), step({ target: 'b', text: 'Sesudahnya' })])} />);
+    await startTour();
+    await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    expect(screen.getByText('Langkah 1 dari 2')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Sesudahnya')).toBeInTheDocument();
+    expect(screen.getByText('Langkah 2 dari 2')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).toHaveBeenCalledWith('dasar-layout', 1, undefined);
+  });
+
+  test('langkah click tanpa target tetap bisa dimajukan (ArrowRight), tanpa petunjuk klik', async () => {
+    render(
+      <Page
+        entry={entryOf([missing({ advance: 'click' }), step({ target: 'b', text: 'Sesudahnya' })])}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    expect(screen.queryByText(/Klik bagian yang disorot/)).toBeNull();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(await screen.findByText('Sesudahnya')).toBeInTheDocument();
+  });
+
+  test('Esc menutup tur dari kartu contoh tanpa menulis penanda', async () => {
+    render(<Page entry={entryOf([missing()])} />);
+    await startTour();
+    await screen.findByText('Papan masih kosong, ini contoh kartunya:');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).not.toHaveBeenCalled();
+  });
+
+  test('target ada: sorotan nyata dipakai dengan teks langkah, bukan teks pengganti', async () => {
+    render(<Page entry={entryOf([missing({ target: 'a' })])} />);
+    await startTour();
+    expect(await screen.findByText('Teks sorotan')).toBeInTheDocument();
+    expect(screen.getByTestId('tour-highlight')).toBeInTheDocument();
+    expect(screen.queryByText('Papan masih kosong, ini contoh kartunya:')).toBeNull();
+  });
+
+  test('tanpa teksJikaKosong langkah yang targetnya hilang tetap dilewati diam-diam', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ target: 'tidak-ada', text: 'Hilang' }),
+          step({ target: 'b', text: 'Berikutnya' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Berikutnya')).toBeInTheDocument();
+    expect(screen.queryByText('Hilang')).toBeNull();
+  });
+
+  test('langkah yang izinnya gugur dibuang di awal: tak ada kartu contoh', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          missing({ izin: { module: 'access', level: 'manage' } }),
+          step({ target: 'b', text: 'Berikutnya' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Berikutnya')).toBeInTheDocument();
+    expect(screen.getByText('Langkah 1 dari 1')).toBeInTheDocument();
+    expect(screen.queryByText('Papan masih kosong, ini contoh kartunya:')).toBeNull();
+  });
+});

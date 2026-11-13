@@ -8,11 +8,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTourMenu } from '@/modules/guide/lib/tour-menu';
 import { useActiveLocations } from './active-locations-context';
 
 /** Pemilih multi-select lokasi aktif; disembunyikan bila user hanya punya satu lokasi. */
 export function LocationPicker() {
   const { available, selectedIds, toggle } = useActiveLocations();
+  const tourMenu = useTourMenu('location-picker');
   if (available.length <= 1) return null;
   const label =
     selectedIds.length === available.length
@@ -21,7 +23,7 @@ export function LocationPicker() {
         ? (available.find((location) => location.id === selectedIds[0])?.name ?? '1 lokasi')
         : `${selectedIds.length} lokasi`;
   return (
-    <DropdownMenu>
+    <DropdownMenu {...tourMenu.rootProps}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -33,7 +35,12 @@ export function LocationPicker() {
           {label}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-52">
+      <DropdownMenuContent
+        align="end"
+        className="min-w-52"
+        data-tour="location-menu"
+        {...tourMenu.contentProps}
+      >
         <DropdownMenuLabel>Lokasi aktif</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {available.map((location) => (

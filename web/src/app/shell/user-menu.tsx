@@ -16,6 +16,7 @@ import { LogoutConfirmDialog } from '@/modules/auth/logout-confirm-dialog';
 import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideMenuDialog } from '@/modules/guide/components/guide-menu-dialog';
+import { useTourMenu } from '@/modules/guide/lib/tour-menu';
 import { countAllOutboxEntries } from '@/modules/handover/lib/check-outbox';
 import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
 
@@ -27,10 +28,11 @@ export function UserMenu() {
   const [pushOpen, setPushOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const tourMenu = useTourMenu('user-menu');
   const initials = (me.name || me.email).slice(0, 2).toUpperCase();
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu {...tourMenu.rootProps}>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="gap-2 px-2" data-tour="user-menu">
             <Avatar className="size-7">
@@ -39,14 +41,20 @@ export function UserMenu() {
             <span className="hidden text-sm sm:inline">{me.name}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="flex flex-col">
+        <DropdownMenuContent
+          align="end"
+          className="w-56"
+          data-tour="user-menu-content"
+          {...tourMenu.contentProps}
+        >
+          <DropdownMenuLabel className="flex flex-col" data-tour="user-menu-account">
             <span>{me.name}</span>
             <span className="text-xs font-normal text-muted-foreground">{me.email}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {install.state !== 'unavailable' && (
             <DropdownMenuItem
+              data-tour="user-menu-install"
               onSelect={() => {
                 if (install.state === 'prompt') void install.install();
                 else setIosHelpOpen(true);
@@ -60,7 +68,7 @@ export function UserMenu() {
             <GraduationCap />
             Panduan
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setPushOpen(true)}>
+          <DropdownMenuItem data-tour="user-menu-push" onSelect={() => setPushOpen(true)}>
             <BellRing />
             Notifikasi push
           </DropdownMenuItem>
