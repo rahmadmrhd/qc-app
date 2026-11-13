@@ -56,3 +56,20 @@ test('nilai awal berasal dari URL tanpa mengirim apa pun', () => {
   act(() => vi.advanceTimersByTime(1000));
   expect(commit).not.toHaveBeenCalled();
 });
+
+test('ignoreTrailingWhitespace: baris baru di ujung tidak dihapus oleh gema URL yang dipangkas', () => {
+  const commit = vi.fn();
+  const { result, rerender } = renderHook(
+    ({ url }) => useUrlSyncedText(url, commit, 300, { ignoreTrailingWhitespace: true }),
+    { initialProps: { url: '' } },
+  );
+  act(() => result.current[1]('AAA\n'));
+  act(() => vi.advanceTimersByTime(300));
+  expect(commit).toHaveBeenCalledWith('AAA\n');
+  rerender({ url: 'AAA' });
+  expect(result.current[0]).toBe('AAA\n');
+  // Perubahan di ujung saja tidak memicu pengiriman baru.
+  act(() => result.current[1]('AAA\n\n'));
+  act(() => vi.advanceTimersByTime(300));
+  expect(commit).toHaveBeenCalledTimes(1);
+});

@@ -8,6 +8,7 @@ import {
 } from '@shared/serials';
 import { z } from 'zod';
 import type { SerialListFilter } from '../queries';
+import type { ScanFeedback } from './scan-feedback';
 
 /** Pencarian banyak serial di server: maks. `SERIAL_LIMITS.listSerialsMax` serial (`SerialListInput.serials`, GET: URL harus muat). */
 export const SERIAL_SEARCH_MAX = SERIAL_LIMITS.listSerialsMax;
@@ -59,6 +60,28 @@ export function normalizeSearchText(text: string): {
     dropped: all.length - kept.length,
     tooLong,
   };
+}
+
+/**
+ * Menambahkan hasil pindai/tempel (satu atau banyak serial, satu per baris) ke daftar pencarian tanpa duplikat.
+ * `text` = daftar baru (tak berubah bila ditolak atau sudah ada semua); `feedback`: `added` bila ada yang masuk,
+ * `duplicate` bila semuanya sudah ada, `rejected` bila tak satu pun sah atau daftar penuh (yang muat tetap masuk).
+ */
+export function mergeScanned(
+  currentText: string,
+  input: string,
+): { text: string; feedback: ScanFeedback } {
+  const split = splitSerialInput(input);
+  if (split.serials.length === 0) return { text: currentText, feedback: 'rejected' };
+  const current = normalizeSearchText(currentText)
+    .text.split('\n')
+    .filter((line) => line !== '');
+  const known = new Set(current);
+  const added = split.serials.filter((serial) => !known.has(serial));
+  if (added.length === 0) return { text: currentText, feedback: 'duplicate' };
+  const merged = normalizeSearchText([...current, ...added].join('\n'));
+  if (merged.count === current.length) return { text: currentText, feedback: 'rejected' };
+  return { text: merged.text, feedback: merged.capped ? 'rejected' : 'added' };
 }
 
 /**

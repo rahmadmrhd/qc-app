@@ -1,7 +1,8 @@
 import { listSerialsTooLong, SERIAL_LIMITS } from '@shared/serials';
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   filterOfSearch,
+  mergeScanned,
   normalizeSearchText,
   SERIAL_SEARCH_MAX,
   serialSearchSchema,
@@ -69,4 +70,26 @@ test('normalizeSearchText: serial panjang non-ASCII dipotong menurut listSerials
   );
   expect(plain.tooLong).toBe(false);
   expect(plain.count).toBe(SERIAL_SEARCH_MAX);
+});
+
+describe('mergeScanned', () => {
+  test('menambah serial baru tanpa duplikat dan menormalkannya', () => {
+    expect(mergeScanned('AAA111', 'bbb222\nAAA111\n4c:5e:0c:1a:2b:3d')).toEqual({
+      text: 'AAA111\nBBB222\n4C5E0C1A2B3D',
+      feedback: 'added',
+    });
+  });
+
+  test('semua sudah ada: duplicate; tak ada yang sah: rejected; teks tak berubah', () => {
+    expect(mergeScanned('AAA111', 'aaa111')).toEqual({ text: 'AAA111', feedback: 'duplicate' });
+    expect(mergeScanned('AAA111', 'X'.repeat(200))).toEqual({
+      text: 'AAA111',
+      feedback: 'rejected',
+    });
+  });
+
+  test('daftar penuh: ditolak', () => {
+    const full = Array.from({ length: SERIAL_SEARCH_MAX }, (_, i) => `S${i}`).join('\n');
+    expect(mergeScanned(full, 'EXTRA').feedback).toBe('rejected');
+  });
 });

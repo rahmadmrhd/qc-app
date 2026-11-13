@@ -14,6 +14,18 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
+vi.mock('./camera-scan-button', () => ({
+  CameraScanButton: ({ onScan }: { onScan: (text: string) => unknown }) => (
+    <button
+      type="button"
+      aria-label="Pindai dengan kamera"
+      onClick={() => onScan('bbb222\nAAA111\nccc333')}
+    >
+      kamera
+    </button>
+  ),
+}));
+
 import { SerialListPage } from './serial-list-page';
 
 const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
@@ -157,18 +169,53 @@ test('satu serial dikirim sebagai awalan (query)', async () => {
   await waitFor(() => expect(lastListInput()).toMatchObject({ query: 'ABC' }), { timeout: 3000 });
 });
 
-test('hasil pindai ditambahkan ke daftar pencarian tanpa duplikat', async () => {
+test('hanya ada satu field pencarian serial (tanpa field "Pindai untuk mencari")', async () => {
   renderPage();
   await screen.findByText('ABC123');
-  const scan = screen.getByLabelText('Pindai untuk mencari');
-  await userEvent.type(scan, 'aaa111{Enter}');
-  await userEvent.type(scan, 'bbb222{Enter}');
-  await userEvent.type(scan, 'AAA111{Enter}');
+  expect(screen.queryByLabelText('Pindai untuk mencari')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('textbox', { name: /serial/i })).toHaveLength(1);
+});
+
+test('Enter menetapkan baris yang ditulis: sah tetap dan pindah baris, duplikat dibuang dengan umpan balik', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'aaa111{Enter}');
+  expect(field).toHaveValue('AAA111\n');
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  await userEvent.type(field, 'bbb222{Enter}');
+  expect(field).toHaveValue('AAA111\nBBB222\n');
+  await userEvent.type(field, 'AAA111{Enter}');
   expect(screen.getByText('Sudah ada')).toBeInTheDocument();
-  expect(screen.getByLabelText('Cari serial (satu per baris)')).toHaveValue('AAA111\nBBB222');
+  expect(field).toHaveValue('AAA111\nBBB222\n');
   await waitFor(() => expect(lastListInput()).toMatchObject({ serials: 'AAA111\nBBB222' }), {
     timeout: 3000,
   });
+  // Baris baru di ujung tidak dihapus oleh gema URL setelah jeda.
+  expect(field).toHaveValue('AAA111\nBBB222\n');
+});
+
+test('Enter pada baris tak sah menolak dan membuang barisnya; baris kosong diabaikan', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'AAA111{Enter}');
+  await userEvent.type(field, `${'X'.repeat(200)}{Enter}`);
+  expect(screen.getByText('Ditolak')).toBeInTheDocument();
+  expect(field).toHaveValue('AAA111\n');
+  await userEvent.type(field, '{Enter}');
+  expect(field).toHaveValue('AAA111\n');
+});
+
+test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan tak sah ditangani', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)');
+  await userEvent.type(field, 'aaa111{Enter}');
+  await userEvent.click(screen.getByRole('button', { name: 'Pindai dengan kamera' }));
+  expect(field).toHaveValue('AAA111\nBBB222\nCCC333');
+  expect(screen.getByText('Ditambahkan')).toBeInTheDocument();
+  expect(screen.getByText('3 serial dicari (maks. 50)')).toBeInTheDocument();
 });
 
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
