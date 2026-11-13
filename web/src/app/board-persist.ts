@@ -1,4 +1,5 @@
 import type { HandoverDto } from '@shared/contract';
+import type { HandoverStatus } from '@shared/handover';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   clearDeviceDb,
@@ -59,11 +60,85 @@ function isOwnedAndCurrent(record: DeviceRecord, owner: string): boolean {
   return record.owner === owner && record.v === BOARD_STORE_VERSION;
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Pemeriksaan bentuk ringan data kolom tersimpan; rekaman rusak dibuang, bukan dipasang (UI bisa melempar). */
+function isColumnData(data: unknown): data is BoardColumnData {
+  if (!isObject(data) || !Array.isArray(data.pages) || !Array.isArray(data.pageParams))
+    return false;
+  if (data.pages.length !== data.pageParams.length) return false;
+  return data.pages.every(
+    (page) =>
+      isObject(page) &&
+      Array.isArray(page.items) &&
+      page.items.every(isObject) &&
+      typeof page.total === 'number' &&
+      (page.nextCursor === null || typeof page.nextCursor === 'string'),
+  );
+}
+
+function isTaskDto(dto: unknown, id: string): dto is HandoverDto {
+  return (
+    isObject(dto) &&
+    dto.id === id &&
+    typeof dto.locationId === 'string' &&
+    Array.isArray(dto.checklist) &&
+    Array.isArray(dto.comments)
+  );
+}
+
+interface RestorePlan {
+  columns: { ref: { locationIds: string[]; status: HandoverStatus }; record: ColumnRecord }[];
+  tasks: { id: string; record: TaskRecord }[];
+}
+
+/** Memilah rekaman: yang sah dipasang, sisanya (pemilik lain, versi lain, bentuk rusak) dibuang dari toko. */
+function planRestore(owner: string, columns: DeviceRecord[], tasks: DeviceRecord[]): RestorePlan {
+  const plan: RestorePlan = { columns: [], tasks: [] };
+  const junkColumns: string[] = [];
+  const junkTasks: string[] = [];
+  for (const record of columns as ColumnRecord[]) {
+    const rest = isOwnedAndCurrent(record, owner) ? keyRest(record) : null;
+    const cut = rest?.lastIndexOf('|') ?? -1;
+    const ref =
+      rest !== null && cut >= 0
+        ? parseBoardQueryKey([
+            ...handoverKeys.boards,
+            rest.slice(0, cut) === '' ? [] : rest.slice(0, cut).split(','),
+            rest.slice(cut + 1),
+          ])
+        : null;
+    if (ref?.kind === 'column' && isColumnData(record.data)) {
+      plan.columns.push({ ref: { locationIds: ref.locationIds, status: ref.status }, record });
+    } else {
+      junkColumns.push(record.key);
+    }
+  }
+  for (const record of tasks as TaskRecord[]) {
+    const id = isOwnedAndCurrent(record, owner) ? keyRest(record) : null;
+    if (
+      id &&
+      Array.isArray(record.locationIds) &&
+      record.locationIds.every((l) => typeof l === 'string') &&
+      isTaskDto(record.dto, id)
+    ) {
+      plan.tasks.push({ id, record });
+    } else {
+      junkTasks.push(record.key);
+    }
+  }
+  void deleteRecords('columns', junkColumns);
+  void deleteRecords('tasks', junkTasks);
+  return plan;
+}
+
 /**
  * Memasang papan dan detail task tersimpan ke cache SEBELUM router dibuat (hanya untuk sesi yang sah; `owner` =
- * email hasil GET /api/v1/me). Rekaman milik pemilik lain atau berversi lain dibuang. Dipasang manual dengan
- * `updatedAt` = `savedAt` asli, jadi label "data terakhir" jujur dan penyimpan tidak menulis ulang dengan waktu baru.
- * Dibalap dengan batas waktu; tidak pernah menolak.
+ * email hasil GET /api/v1/me). Rekaman milik pemilik lain, berversi lain, atau berbentuk rusak dibuang. Dipasang manual
+ * dengan `updatedAt` = `savedAt` asli, jadi label "data terakhir" jujur dan penyimpan tidak menulis ulang dengan waktu
+ * baru. Dibalap dengan batas waktu: bila terlambat, data TIDAK dipasang tetapi pembacaan selesai di latar dan
+ * pembuangan rekaman yang tak sah tetap berjalan. Tidak pernah menolak.
  */
 export async function restoreBoardCache(
   queryClient: QueryClient,
@@ -76,38 +151,21 @@ export async function restoreBoardCache(
     const timeout = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), options.timeoutMs ?? BOARD_RESTORE_TIMEOUT_MS);
     });
-    const read = Promise.all([readAllRecords('columns'), readAllRecords('tasks')]);
-    const result = await Promise.race([read, timeout]);
+    const read = Promise.all([readAllRecords('columns'), readAllRecords('tasks')]).then(
+      ([columns, tasks]) => planRestore(owner, columns, tasks),
+    );
+    const plan = await Promise.race([read, timeout]);
     clearTimeout(timer);
-    if (!result || startedAt !== generation) return 0;
-    const [columns, tasks] = result;
-
-    const staleColumns = columns.filter((r) => !isOwnedAndCurrent(r, owner)).map((r) => r.key);
-    const staleTasks = tasks.filter((r) => !isOwnedAndCurrent(r, owner)).map((r) => r.key);
-    void deleteRecords('columns', staleColumns);
-    void deleteRecords('tasks', staleTasks);
+    if (!plan || startedAt !== generation) return 0;
 
     let restored = 0;
-    for (const record of columns as ColumnRecord[]) {
-      if (!isOwnedAndCurrent(record, owner)) continue;
-      const rest = keyRest(record);
-      const cut = rest?.lastIndexOf('|') ?? -1;
-      if (rest === null || cut < 0 || !record.data) continue;
-      const ref = parseBoardQueryKey([
-        ...handoverKeys.boards,
-        rest.slice(0, cut) === '' ? [] : rest.slice(0, cut).split(','),
-        rest.slice(cut + 1),
-      ]);
-      if (ref?.kind !== 'column') continue;
+    for (const { ref, record } of plan.columns) {
       const key = handoverKeys.column(ref.locationIds, ref.status);
       if (queryClient.getQueryData(key) !== undefined) continue;
       queryClient.setQueryData(key, record.data, { updatedAt: record.savedAt });
       restored++;
     }
-    for (const record of tasks as TaskRecord[]) {
-      if (!isOwnedAndCurrent(record, owner)) continue;
-      const id = keyRest(record);
-      if (!id || !record.dto || !Array.isArray(record.locationIds)) continue;
+    for (const { id, record } of plan.tasks) {
       const key = handoverKeys.one(id, record.locationIds);
       if (queryClient.getQueryData(key) !== undefined) continue;
       queryClient.setQueryData(key, record.dto, { updatedAt: record.savedAt });

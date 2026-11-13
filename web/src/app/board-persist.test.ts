@@ -31,7 +31,7 @@ const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function dto(id: string): HandoverDto {
-  return { id, locationId: 'l1' } as HandoverDto;
+  return { id, locationId: 'l1', checklist: [], comments: [] } as unknown as HandoverDto;
 }
 function page(n: number, prefix: string, nextCursor: string | null): BoardPageDto {
   return {
@@ -208,13 +208,15 @@ describe('penyimpan papan', () => {
     expect(await readAllRecords('columns')).toEqual([]);
   });
 
-  it('balapan keluar (c): sesi yang sama masuk lagi tak menghidupkan tulis lama', async () => {
+  it('balapan keluar (c): sesi yang sama masuk lagi tak menghidupkan tulis lama (tulis kedua sesudah clear)', async () => {
     await fetchColumn();
+    await fetchTask('h1');
     void persistence.flush();
     await clearBoardStore();
     login();
     await settle();
     expect(await readAllRecords('columns')).toEqual([]);
+    expect(await readAllRecords('tasks')).toEqual([]);
   });
 });
 
@@ -292,6 +294,94 @@ describe('restoreBoardCache', () => {
     await sleep(200);
     expect(client.getQueryCache().findAll()).toHaveLength(0);
     vi.mocked(deviceDb.readAllRecords).mockImplementation(actual);
+  });
+
+  it('timeout: pembuangan rekaman pemilik lain/versi lain tetap berjalan sesudah bacaan lambat selesai', async () => {
+    await seedStore();
+    const actual = await vi
+      .importActual<typeof import('@/lib/device-db')>('@/lib/device-db')
+      .then((m) => m.readAllRecords);
+    vi.mocked(deviceDb.readAllRecords).mockImplementation(async (store) => {
+      await sleep(100);
+      return actual(store);
+    });
+    expect(await restoreBoardCache(client, OWNER, { timeoutMs: 20 })).toBe(0);
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+    await sleep(400);
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+    expect((await readAllRecords('columns')).map((r) => r.key)).toEqual([OWNER + '|l1|new']);
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([OWNER + '|h1']);
+    vi.mocked(deviceDb.readAllRecords).mockImplementation(actual);
+  });
+
+  describe('bentuk rekaman rusak dibuang dan tidak dipasang', () => {
+    const goodTask = { locationIds: ['l1'], dto: dto('h1') };
+    const cases: [string, 'columns' | 'tasks', string, Record<string, unknown>][] = [
+      ['data.pages bukan larik', 'columns', 'l1|new', { data: { pages: 'x', pageParams: [] } }],
+      [
+        'panjang pages dan pageParams berbeda',
+        'columns',
+        'l1|new',
+        { data: { pages: [page(1, 'a', null)], pageParams: [] } },
+      ],
+      [
+        'page.items bukan larik',
+        'columns',
+        'l1|new',
+        { data: { pages: [{ items: 'x', nextCursor: null, total: 1 }], pageParams: [undefined] } },
+      ],
+      [
+        'page.total bukan angka',
+        'columns',
+        'l1|new',
+        { data: { pages: [{ items: [], nextCursor: null, total: '1' }], pageParams: [undefined] } },
+      ],
+      [
+        'page.nextCursor bukan string atau null',
+        'columns',
+        'l1|new',
+        { data: { pages: [{ items: [], nextCursor: 5, total: 1 }], pageParams: [undefined] } },
+      ],
+      ['dto.id tidak cocok dengan kunci', 'tasks', 'h1', { ...goodTask, dto: dto('lain') }],
+      [
+        'dto.checklist bukan larik',
+        'tasks',
+        'h1',
+        { ...goodTask, dto: { ...dto('h1'), checklist: 'x' } },
+      ],
+      [
+        'dto.comments bukan larik',
+        'tasks',
+        'h1',
+        { ...goodTask, dto: { ...dto('h1'), comments: undefined } },
+      ],
+      [
+        'dto.locationId bukan string',
+        'tasks',
+        'h1',
+        { ...goodTask, dto: { ...dto('h1'), locationId: 5 } },
+      ],
+    ];
+    for (const [name, store, rest, extra] of cases) {
+      it(name, async () => {
+        await deviceDb.writeRecords(store, [record(OWNER, rest, extra)], 10);
+        await deviceDb.writeRecords(
+          'columns',
+          [record(OWNER, 'l2|new', { data: columnData() })],
+          10,
+        );
+        expect(await restoreBoardCache(client, OWNER)).toBe(1);
+        expect(client.getQueryData(handoverKeys.column(['l2'], 'new'))).toEqual(columnData());
+        expect(
+          store === 'columns'
+            ? client.getQueryData(handoverKeys.column(['l1'], 'new'))
+            : client.getQueryData(handoverKeys.one('h1', ['l1'])),
+        ).toBeUndefined();
+        await sleep(30);
+        expect((await readAllRecords(store)).map((r) => r.key)).not.toContain(OWNER + '|' + rest);
+        expect((await readAllRecords('columns')).map((r) => r.key)).toContain(OWNER + '|l2|new');
+      });
+    }
   });
 
   it('tanpa IndexedDB: tidak menolak', async () => {
