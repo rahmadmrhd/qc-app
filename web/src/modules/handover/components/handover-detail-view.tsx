@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { handoverActions } from '../lib/actions';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
+import { useOutboxOverlay } from '../lib/use-pending-checks';
 import { CancelDialog } from './cancel-dialog';
 import { NoteView } from './note-view';
 
 export interface HandoverDetailViewProps {
   handover: HandoverDto;
+  /** Pemilik antrean centang di perangkat (email akun); kosong = tanpa penempelan centang tertunda. */
+  owner?: string;
   locationName: string;
   /** WH: `handover: edit` di lokasi task. */
   canEdit: boolean;
@@ -42,7 +45,8 @@ function Meta({ label, value }: { label: string; value: string }) {
 }
 
 export function HandoverDetailView({
-  handover,
+  handover: serverHandover,
+  owner = '',
   locationName,
   canEdit,
   canCancel,
@@ -57,6 +61,8 @@ export function HandoverDetailView({
   onComment,
 }: HandoverDetailViewProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Centang yang menunggu terkirim tetap tampak tercentang walau refetch tiba lebih dulu dari pengiriman.
+  const { dto: handover, pendingIndexes } = useOutboxOverlay(serverHandover, owner);
   const cancelled = handover.status === 'cancelled';
   const actions = handoverActions(handover.status, {
     canMarkDone: canProgress,
@@ -123,6 +129,7 @@ export function HandoverDetailView({
           comments={handover.comments}
           canCheck={canProgress && !cancelled && !pending}
           canComment={!cancelled}
+          pendingIndexes={pendingIndexes}
           onCheck={onCheck}
           onComment={onComment}
         />

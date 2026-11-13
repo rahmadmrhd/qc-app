@@ -20,6 +20,8 @@ export interface NoteViewProps {
   canComment: boolean;
   /** Tampilan ringkas (kartu): komentar lebih kecil, kutipan dipotong. */
   compact?: boolean;
+  /** Indeks butir yang centangnya masih menunggu terkirim (antrean di perangkat). */
+  pendingIndexes?: ReadonlySet<number>;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -104,6 +106,7 @@ export function NoteView({
   canCheck,
   canComment,
   compact = false,
+  pendingIndexes,
   onCheck,
   onComment,
 }: NoteViewProps) {
@@ -229,7 +232,11 @@ export function NoteView({
               />
               <span>{content}</span>
             </label>
-            {item.checked && item.by !== '' ? (
+            {pendingIndexes?.has(item.index) ? (
+              <span data-note-meta="" className="ml-6 block text-xs italic text-muted-foreground">
+                Menunggu terkirim
+              </span>
+            ) : item.checked && item.by !== '' ? (
               <span data-note-meta="" className="ml-6 block text-xs text-muted-foreground">
                 oleh {item.by} · {formatTime(item.at)}
               </span>
@@ -239,7 +246,7 @@ export function NoteView({
         );
       },
     };
-  }, [note, checklist, canCheck, onCheck]);
+  }, [note, checklist, canCheck, onCheck, pendingIndexes]);
 
   return (
     <div ref={wrapperRef} className="relative space-y-3">

@@ -83,6 +83,20 @@ function recipientsCache(env: Env, locationId: string, excludeEmail: string) {
  * baris notifikasi: ia masuk tabel tunggu penggabungan (`pendingCheckStatements`). `done` membuang tabel tunggu
  * task itu (Selesai mengalahkan centang, spek §4.2).
  */
+/**
+ * Apakah perubahan ini menghasilkan notifikasi yang harus segera dikirim. Centang biasa (`checked`) hanya masuk tabel
+ * tunggu penggabungan 5 menit, jadi tidak perlu membangunkan putaran pengirim (centang adalah penulisan paling sering);
+ * centang yang menyelesaikan task menghasilkan `done` dan tetap membangunkan. Aturan kejadian sama dengan
+ * `planNotifications` (`handoverEventsOf`).
+ */
+export function needsImmediateDelivery(change: HandoverChange): boolean {
+  return handoverEventsOf(
+    change.action,
+    change.before === null ? null : snapOf(change.before),
+    snapOf(change.after),
+  ).some((kind) => kind !== 'checked');
+}
+
 export async function planNotifications(env: Env, change: HandoverChange): Promise<DbStatement[]> {
   const events = handoverEventsOf(
     change.action,

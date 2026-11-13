@@ -194,7 +194,16 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
 | N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
 | N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
-| N18 | Push: izin peramban, langganan, dan terima push di perangkat | Belum dapat diuji. Uji setelah service worker, permintaan izin, dan banner tersedia (Fase 1 PRD PWA), dengan VAPID terisi di staging | §5.2 |
+| N18a | **Belum teruji di perangkat nyata; butuh `VAPID_*` terisi di staging.** Android (Chrome, aplikasi terpasang): login pertama | Dialog "Aktifkan notifikasi?" tampil; klik Aktifkan memunculkan dialog izin peramban SEKALI; setelah Izinkan, notifikasi muncul saat WH membuat task di lokasi QC itu (aplikasi tertutup juga) | §5.2 |
+| N18b | Klik notifikasi push | Aplikasi terbuka/terfokus di task terkait dengan `?loc=` benar; tidak ada tab kosong | §5.2 |
+| N18c | Login pertama di aplikasi terpasang, jawab "Nanti" | Tidak ditanya lagi pada muat ulang; menu profil "Notifikasi push" menawarkan "Aktifkan di perangkat ini" | §5.2 |
+| N18d | Tolak izin peramban | Tidak ada permintaan ulang; banner pengingat dengan langkah sesuai platform tampil, tidak lagi dalam 7 hari setelah ditutup; Status Push admin menunjukkan "Izin ditolak"; lonceng tetap menerima semuanya | §5.2 |
+| N18e | Nyalakan kembali izin lewat pengaturan peramban/OS lalu fokuskan aplikasi | Banner hilang, perangkat tertaut otomatis, push diterima | §5.2 |
+| N18f | Matikan kotak "Terima notifikasi push" di menu profil, lalu picu notifikasi | Tidak ada push; lonceng tetap terisi; Status Push admin menunjukkan "Dimatikan pengguna"; menyalakan kembali memulihkan push | §5.2 |
+| N18g | Logout lalu picu notifikasi untuk akun itu | Perangkat tetap menerima push (keputusan pemilik 2026-11-12); login akun lain di perangkat yang sama = kedua akun menerima notifikasinya masing-masing | §5.2 |
+| N18h | iPhone/iPad (iOS 16.4+): buka di Safari biasa, lalu pasang ke layar utama dan login | Di Safari biasa pengaturan push menjelaskan harus dipasang dan tidak meminta izin; setelah dipasang alurnya sama seperti N18a | §5.2 |
+| N18i | Desktop Chrome dan Firefox (aplikasi terpasang dan tab biasa) | Tab biasa: izin hanya lewat menu profil; terpasang: dialog pra-izin; push diterima | §5.2 |
+| N18j | Buka `/access/push` sebagai admin (`access: view`) dan sebagai pengguna tanpa izin itu | Admin melihat tabel status (bermasalah dulu) tanpa pengenal perangkat; pengguna tanpa izin tidak melihat menunya dan tidak dapat membuka halamannya | §10 |
 
 ## PWA Fase 1
 
@@ -220,3 +229,20 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
 | 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
 | 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |
+
+## PWA Fase 2
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 183 | Matikan jaringan (mode pesawat), lalu buka aplikasi terpasang dari ikon | Layar "Tidak ada koneksi" dengan tombol "Coba lagi", bukan halaman login; setelah jaringan kembali, "Coba lagi" memuat aplikasi dalam keadaan login | PWA FR-P7, FR-P15 |
+| 184 | Saat sudah login dan beranda terbuka, matikan jaringan, lalu pindah ke halaman yang memuat data tersimpan (mis. Merk) | Spanduk "Server sedang tidak tersedia — menampilkan data terakhir (hh:mm)" tampil dengan jam data; halaman lain tanpa data tersimpan menampilkan galat biasa dengan "Coba lagi" | PWA FR-P16 |
+| 185 | Nyalakan jaringan lagi dan tunggu atau buka halaman lain | Spanduk hilang sendiri setelah permintaan berikutnya berhasil | PWA FR-P16 |
+| 186 | Buka detail task, matikan jaringan, lalu centang satu butir (dan klik butir yang sama lagi) | Centang tampak tersimpan dengan penanda "Menunggu terkirim"; satu toast info (tidak menumpuk); tidak ada toast galat | PWA FR-P17 |
+| 187 | Nyalakan jaringan lagi (tanpa memuat ulang halaman) | Centang tertunda terkirim sendiri, penanda hilang; centang tampil dengan nama dan waktu dari server; riwayat audit mencatat satu centang per butir | PWA FR-P17 |
+| 188 | Centang saat offline, tutup aplikasi, buka lagi saat online | Centang tertunda terkirim saat aplikasi dibuka; tidak ada yang hilang atau terkirim ganda | PWA FR-P17 |
+| 189 | Centang saat offline, lalu minta orang lain menyelesaikan atau membatalkan task itu sebelum Anda online | Saat online muncul "N perubahan centang tidak dapat dikirim" beserta alasannya; entri dibuang dan tidak diulang | PWA FR-P18 |
+| 190 | Ubah jam perangkat maju lebih dari 24 jam setelah mengantre centang offline, lalu online | Entri dibuang dengan pemberitahuan kedaluwarsa; tidak terkirim | PWA FR-P19 |
+| 191 | Centang saat offline, lalu Keluar; login sebagai pengguna lain di perangkat yang sama dan online | Antrean pemilik pertama tidak pernah terkirim; DevTools → Application → Local Storage tidak menyisakan kunci `qc.outbox:*` | PWA FR-P14, FR-P19 |
+| 192 | Saat offline, coba aksi lain (buat task, simpan item, tambah komentar) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |

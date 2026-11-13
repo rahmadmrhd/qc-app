@@ -3,6 +3,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  BellRing,
   Boxes,
   Building2,
   ClipboardList,
@@ -203,6 +204,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Log Audit',
         to: '/access/audit',
         icon: History,
+        permission: { module: 'access', level: 'view' },
+      },
+      {
+        label: 'Status Push',
+        to: '/access/push',
+        icon: BellRing,
         permission: { module: 'access', level: 'view' },
       },
     ],

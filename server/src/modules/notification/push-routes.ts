@@ -31,7 +31,7 @@ export function pushRoutes(): Pick<RouteTable, PushMethod> {
   return {
     'push.config': {
       validate: expectNull,
-      handler: (_input, ctx) => pushConfig(ctx.env),
+      handler: (_input, ctx) => pushConfig(ctx.env, ctx.user),
     },
     'push.subscribe': {
       validate: validatePushSubscribe,

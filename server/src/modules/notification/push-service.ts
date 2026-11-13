@@ -26,9 +26,25 @@ export function endpointHash(endpoint: string): string {
   return createHash('sha256').update(endpoint).digest('hex');
 }
 
-export function pushConfig(env: Env): PushConfigDto {
+/**
+ * Konfigurasi push untuk klien. `userEnabled` = preferensi push pemanggil (`notification_prefs.push_enabled`; tanpa
+ * baris = aktif bawaan, spek §5.2), dibawa di sini agar klien dapat menampilkan saklar tanpa rute baru.
+ */
+export async function pushConfig(
+  env: Env,
+  user: Pick<UserContext, 'email'>,
+): Promise<PushConfigDto> {
   const enabled = env.PUSH !== undefined && (env.VAPID_PUBLIC_KEY ?? '') !== '';
-  return { enabled, publicKey: enabled ? (env.VAPID_PUBLIC_KEY ?? '') : '' };
+  const pref = await env.DB.prepare(
+    'SELECT push_enabled FROM notification_prefs WHERE recipient = ?',
+  )
+    .bind(normalizeEmail(user.email))
+    .first<{ push_enabled: number | string }>();
+  return {
+    enabled,
+    publicKey: enabled ? (env.VAPID_PUBLIC_KEY ?? '') : '',
+    userEnabled: pref === null ? true : Number(pref.push_enabled) !== 0,
+  };
 }
 
 /** Idempoten: mendaftar ulang endpoint yang sama memperbarui kunci dan mereset hitungan gagal baris milik pemanggil. */

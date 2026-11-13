@@ -72,6 +72,7 @@ export function HandoverBoardPage({
   const bindings = (handover: HandoverDto) => {
     const ref = { id: handover.id, locationId: handover.locationId };
     return {
+      owner: me.email,
       canMarkDone: canAt(me, 'qc', 'edit', handover.locationId),
       canEdit: canAt(me, 'handover', 'edit', handover.locationId),
       canCancel: canAt(me, 'handover', 'manage', handover.locationId),

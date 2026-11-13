@@ -16,6 +16,7 @@ import { Route as AppCustomerRouteImport } from './routes/_app/customer'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
+import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
 import { Route as AppAccessRolesRouteImport } from './routes/_app/access/roles'
 import { Route as AppAccessUsersRouteImport } from './routes/_app/access/users'
 import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
@@ -82,6 +83,11 @@ const AppAccessAuditRoute = AppAccessAuditRouteImport.update({
 const AppAccessLocationsRoute = AppAccessLocationsRouteImport.update({
   id: '/access/locations',
   path: '/access/locations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccessPushRoute = AppAccessPushRouteImport.update({
+  id: '/access/push',
+  path: '/access/push',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAccessRolesRoute = AppAccessRolesRouteImport.update({
@@ -262,6 +268,7 @@ export interface FileRoutesByFullPath {
   '/forbidden': typeof AppForbiddenRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/locations': typeof AppAccessLocationsRoute
+  '/access/push': typeof AppAccessPushRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
   '/handover/new': typeof AppHandoverNewRoute
@@ -303,6 +310,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/locations': typeof AppAccessLocationsRoute
+  '/access/push': typeof AppAccessPushRoute
   '/access/roles': typeof AppAccessRolesRoute
   '/access/users': typeof AppAccessUsersRoute
   '/handover/new': typeof AppHandoverNewRoute
@@ -346,6 +354,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
   '/_app/access/locations': typeof AppAccessLocationsRoute
+  '/_app/access/push': typeof AppAccessPushRoute
   '/_app/access/roles': typeof AppAccessRolesRoute
   '/_app/access/users': typeof AppAccessUsersRoute
   '/_app/handover/new': typeof AppHandoverNewRoute
@@ -389,6 +398,7 @@ export interface FileRouteTypes {
     | '/forbidden'
     | '/access/audit'
     | '/access/locations'
+    | '/access/push'
     | '/access/roles'
     | '/access/users'
     | '/handover/new'
@@ -430,6 +440,7 @@ export interface FileRouteTypes {
     | '/'
     | '/access/audit'
     | '/access/locations'
+    | '/access/push'
     | '/access/roles'
     | '/access/users'
     | '/handover/new'
@@ -472,6 +483,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/access/audit'
     | '/_app/access/locations'
+    | '/_app/access/push'
     | '/_app/access/roles'
     | '/_app/access/users'
     | '/_app/handover/new'
@@ -561,6 +573,13 @@ declare module '@tanstack/react-router' {
       path: '/access/locations'
       fullPath: '/access/locations'
       preLoaderRoute: typeof AppAccessLocationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/access/push': {
+      id: '/_app/access/push'
+      path: '/access/push'
+      fullPath: '/access/push'
+      preLoaderRoute: typeof AppAccessPushRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/access/roles': {
@@ -803,6 +822,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppAccessAuditRoute: typeof AppAccessAuditRoute
   AppAccessLocationsRoute: typeof AppAccessLocationsRoute
+  AppAccessPushRoute: typeof AppAccessPushRoute
   AppAccessRolesRoute: typeof AppAccessRolesRoute
   AppAccessUsersRoute: typeof AppAccessUsersRoute
   AppHandoverNewRoute: typeof AppHandoverNewRoute
@@ -844,6 +864,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppAccessAuditRoute: AppAccessAuditRoute,
   AppAccessLocationsRoute: AppAccessLocationsRoute,
+  AppAccessPushRoute: AppAccessPushRoute,
   AppAccessRolesRoute: AppAccessRolesRoute,
   AppAccessUsersRoute: AppAccessUsersRoute,
   AppHandoverNewRoute: AppHandoverNewRoute,

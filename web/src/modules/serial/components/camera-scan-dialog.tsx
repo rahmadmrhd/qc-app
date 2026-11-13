@@ -21,6 +21,7 @@ import {
   type ScanFeedback,
   useScanFeedback,
 } from '../lib/scan-feedback';
+import { SCAN_FRAME } from '../lib/scan-region';
 import { CAMERA_ERROR_TEXT, useCameraScanner } from '../lib/use-camera-scanner';
 
 export interface CameraScanDialogProps {
@@ -106,23 +107,42 @@ function CameraScanBody({
       <DialogHeader>
         <DialogTitle>Scan dengan kamera</DialogTitle>
         <DialogDescription>
-          Arahkan kamera ke QR atau barcode. Kamera tetap menyala untuk scan berikutnya.
+          Arahkan QR atau barcode ke dalam bingkai. Kamera tetap menyala untuk scan berikutnya.
         </DialogDescription>
       </DialogHeader>
 
+      {/* Viewport persegi 1:1 (sisi = min(lebar dialog, 55dvh)): sama di ponsel potret/landscape dan desktop. */}
       <div
+        data-testid="camera-viewport"
         className={cn(
-          'relative overflow-hidden rounded-md border-2 border-transparent bg-black',
+          'relative mx-auto aspect-square w-[min(100%,55dvh)] overflow-hidden rounded-md border-2 border-transparent bg-black',
           feedback !== null && FEEDBACK_FLASH[feedback],
         )}
       >
         <video
           ref={camera.videoRef}
           aria-label="Pratinjau kamera"
-          className="aspect-[4/3] w-full object-cover"
+          className="absolute inset-0 size-full object-cover"
           playsInline
           muted
         />
+        {/* Area scan: hanya kode di dalam bingkai yang dibaca (ukuran bingkai = SCAN_FRAME, sama dengan pemotongan). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <div
+            data-testid="scan-frame"
+            className="rounded-lg border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"
+            style={{
+              width: `${SCAN_FRAME.width * 100}%`,
+              height: `${SCAN_FRAME.height * 100}%`,
+            }}
+          />
+        </div>
+        <p className="pointer-events-none absolute inset-x-0 bottom-2 px-2 text-center text-xs text-white drop-shadow">
+          Arahkan kode ke dalam bingkai
+        </p>
         {state.status === 'loading' ? (
           <p
             role="status"

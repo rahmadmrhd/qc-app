@@ -1668,6 +1668,8 @@ export interface PushConfigDto {
   enabled: boolean;
   /** Kunci publik VAPID (teks URL-safe) untuk `pushManager.subscribe`; kosong bila tidak tersedia. */
   publicKey: string;
+  /** Preferensi push pemanggil (bawaan aktif); lonceng tidak terpengaruh. */
+  userEnabled: boolean;
 }
 export interface PushSubscribeInput {
   endpoint: string;

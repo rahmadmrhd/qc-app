@@ -463,3 +463,17 @@ test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSett
     fuzzy ? path.startsWith(to) : path === to;
   expect(isNavItemActive(list, at('/serial/settings'))).toBe(false);
 });
+
+test('grup Pengaturan Akses memuat Status Push (access view) dan hanya tampil bagi user ber-izin', () => {
+  const grup = NAV_GROUPS.find((group) => group.label === 'Pengaturan Akses');
+  expect(grup?.items.find((entry) => entry.to === '/access/push')).toMatchObject({
+    label: 'Status Push',
+    permission: { module: 'access', level: 'view' },
+  });
+  const labels = (access: 'none' | 'view') =>
+    visibleNavGroups(NAV_GROUPS, stickerMe({ access }))
+      .flatMap((group) => group.items)
+      .map((entry) => entry.label);
+  expect(labels('view')).toContain('Status Push');
+  expect(labels('none')).not.toContain('Status Push');
+});

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { callRest, ENV, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { seedCustomer } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { setNotificationWakeHandler } from './wake';
 
 // Puluhan permintaan berurutan ke MariaDB lewat terowongan SSH.
 setDefaultTimeout(60_000);
@@ -298,5 +299,75 @@ describe('nama pelaku', () => {
     await call(WH, 'handovers.cancel', ref);
     const last = (await rows()).find((r) => r.kind === 'cancelled');
     expect(last?.actor_name).toBe(WH);
+  });
+});
+
+describe('membangunkan putaran pengirim setelah commit', () => {
+  /** Mencatat tiap sinyal bangun-bangun selama `run`. */
+  async function wakes(run: () => Promise<void>): Promise<number> {
+    let count = 0;
+    const release = setNotificationWakeHandler(() => {
+      count += 1;
+    });
+    try {
+      await run();
+    } finally {
+      release();
+    }
+    return count;
+  }
+
+  test('centang biasa hanya menunggu penggabungan: tidak membangunkan', async () => {
+    await seed('- [ ] A = 1\n- [ ] B = 2');
+    const count = await wakes(async () => {
+      expect(
+        (await call(QC, 'handovers.setCheck', { ...ref, index: 0, text: 'A = 1', checked: true }))
+          .ok,
+      ).toBe(true);
+    });
+    expect(count).toBe(0);
+  });
+
+  test('centang yang menyelesaikan task, komentar, dan task baru membangunkan; penulisan gagal tidak', async () => {
+    await seed('- [ ] A = 1');
+    expect(
+      await wakes(async () => {
+        await call(QC, 'handovers.setCheck', { ...ref, index: 0, text: 'A = 1', checked: true });
+      }),
+    ).toBe(1);
+    expect(
+      await wakes(async () => {
+        await call(WH, 'handovers.comment', {
+          ...ref,
+          quote: '',
+          before: '',
+          after: '',
+          body: 'Halo',
+        });
+      }),
+    ).toBe(1);
+    expect(
+      await wakes(async () => {
+        await call(WH, 'handovers.save', {
+          locationId: ENV.locA,
+          customerName: 'PT Baru',
+          note: '- [ ] X',
+        });
+      }),
+    ).toBe(1);
+    // Penulisan yang ditolak (task tak ada) tidak pernah sampai ke commit, jadi tidak membangunkan.
+    expect(
+      await wakes(async () => {
+        const out = await call(WH, 'handovers.comment', {
+          id: 'tidak-ada',
+          locationId: ENV.locA,
+          quote: '',
+          before: '',
+          after: '',
+          body: 'Halo',
+        });
+        expect(out.ok).toBe(false);
+      }),
+    ).toBe(0);
   });
 });

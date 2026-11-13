@@ -42,6 +42,11 @@ function keyId(key: readonly unknown[]): string {
   return key.map(String).join('/');
 }
 
+/** Apakah query dengan kunci ini termasuk data referensi yang disimpan (dipakai spanduk status server, FR-P16). */
+export function isPersistedQueryKey(key: readonly unknown[]): boolean {
+  return PERSISTED_KEYS.has(keyId(key));
+}
+
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
 /** `owner` = email pengguna yang sesinya sudah diverifikasi server (GET /api/v1/me); cache milik orang lain dibuang. */
 export function restoreQueryCache(queryClient: QueryClient, owner: string | null): number {
