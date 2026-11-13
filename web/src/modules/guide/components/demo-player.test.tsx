@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DemoScene } from '../lib/demo-types';
-import { DemoPlayer } from './demo-player';
+import { DemoPlayer, TEXT_SCENE_MS } from './demo-player';
 
 const scenes: DemoScene[] = [
   { kind: 'kode', caption: 'Salin semua pesan', durationMs: 1000, render: () => <p>adegan-1</p> },
@@ -91,33 +91,61 @@ describe('adegan kode', () => {
   });
 });
 
-describe('fallback daftar langkah bernomor', () => {
-  const steps = [
+describe('fallback per adegan', () => {
+  const mixed = [
     { kind: 'kode', caption: 'Salin semua pesan', durationMs: 1000, render: () => <p>adegan-1</p> },
     { kind: 'klip', caption: 'Pilih banyak pesan di WhatsApp' },
+    {
+      kind: 'kode',
+      caption: 'Hasilnya jadi kartu',
+      durationMs: 1000,
+      render: () => <p>adegan-3</p>,
+    },
   ] satisfies DemoScene[];
 
-  test('adegan klip tanpa berkas: seluruh keterangan jadi daftar bernomor tanpa animasi', () => {
-    render(<DemoPlayer scenes={steps} />);
-    const items = screen.getAllByRole('listitem');
-    expect(items.map((item) => item.textContent)).toEqual([
-      'Salin semua pesan',
-      'Pilih banyak pesan di WhatsApp',
-    ]);
-    expect(screen.getByRole('list').tagName).toBe('OL');
+  test('klip tanpa berkas tampil sebagai langkah teks; adegan kode tetap berganti', () => {
+    const { container } = render(<DemoPlayer scenes={mixed} />);
+    expect(screen.getByText('adegan-1')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(1000));
+    // Adegan klip tanpa berkas: kartu langkah bernomor, tanpa elemen video, keterangan tampil sekali.
+    expect(screen.getAllByText('Pilih banyak pesan di WhatsApp')).toHaveLength(1);
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(container.querySelector('video')).toBeNull();
     expect(screen.queryByText('adegan-1')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Jeda' })).not.toBeInTheDocument();
+
+    // Ikut berganti seperti adegan kode (TEXT_SCENE_MS), lalu adegan kode berikutnya beranimasi lagi.
+    act(() => vi.advanceTimersByTime(TEXT_SCENE_MS - 1));
+    expect(screen.getByText('Pilih banyak pesan di WhatsApp')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText('adegan-3')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByText('adegan-1')).toBeInTheDocument();
   });
 
-  test('klip dengan galat muat beralih ke daftar bernomor', () => {
-    const klip: DemoScene[] = [{ kind: 'klip', caption: 'Menu pasang', berkas: '/klip/x-1.webm' }];
-    const { container } = render(<DemoPlayer scenes={klip} />);
+  test('Jeda juga menghentikan kartu langkah teks', () => {
+    render(<DemoPlayer scenes={mixed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Adegan 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jeda' }));
+    act(() => vi.advanceTimersByTime(TEXT_SCENE_MS * 3));
+    expect(screen.getByText('Pilih banyak pesan di WhatsApp')).toBeInTheDocument();
+  });
+
+  test('klip dengan galat muat menjadi langkah teks untuk adegan itu saja', () => {
+    const scenesWithClip: DemoScene[] = [
+      { kind: 'klip', caption: 'Menu pasang', berkas: '/klip/x-1.webm' },
+      { kind: 'kode', caption: 'Lalu begini', durationMs: 1000, render: () => <p>adegan-k</p> },
+    ];
+    const { container } = render(<DemoPlayer scenes={scenesWithClip} />);
     const video = container.querySelector('video');
     expect(video).not.toBeNull();
     fireEvent.error(video as HTMLVideoElement);
-    expect(screen.getByRole('list').tagName).toBe('OL');
-    expect(screen.getByText('Menu pasang')).toBeInTheDocument();
     expect(container.querySelector('video')).toBeNull();
+    expect(screen.getByText('Menu pasang')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Adegan 2' }));
+    expect(screen.getByText('adegan-k')).toBeInTheDocument();
   });
 
   test('prefers-reduced-motion: daftar bernomor, tanpa adegan atau timer', () => {
