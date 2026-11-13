@@ -35,6 +35,7 @@ const EXPECTED_TABLES = [
   'rate_limits',
   'roles',
   'schema_migrations',
+  'serial_cases',
   'serial_events',
   'serial_stickers',
   'serials',
@@ -281,7 +282,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('37 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('38 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -305,6 +306,7 @@ describe('skema baseline', () => {
       { name: '0010_postel_kunci_asing.sql' },
       { name: '0011_postel_stiker_per_catatan.sql' },
       { name: '0012_serial_number.sql' },
+      { name: '0013_serial_cases.sql' },
     ]);
   });
 
@@ -427,11 +429,16 @@ describe('skema baseline', () => {
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
+        'serial_cases.serial_cases_bu_opened',
+        'serial_cases.serial_cases_number',
+        'serial_cases.serial_cases_serial',
+        'serial_events.serial_events_case',
         'serial_events.serial_events_seq',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
         'serials.serials_bu_serial',
         'serials.serials_client_id',
+        'serials.serials_custody',
         'serials.serials_item',
         'serials.serials_location',
         'serials.serials_status',
