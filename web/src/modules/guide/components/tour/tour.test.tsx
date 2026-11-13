@@ -157,7 +157,11 @@ describe('menyorot dan maju', () => {
     await screen.findByText('Klik A');
     expect(screen.queryByRole('button', { name: 'Lanjut' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Target A' }));
-    expect(await screen.findByText('Sesudah klik')).toBeInTheDocument();
+    const next = await screen.findByText('Sesudah klik');
+    // Penjaga balapan: kartu langkah berikutnya tidak boleh sempat tampil lalu dibongkar (posisi sorotan lama).
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(next).toBeInTheDocument();
+    expect(screen.getAllByText('Sesudah klik')).toHaveLength(1);
   });
 });
 
@@ -274,6 +278,14 @@ describe('menutup dan menyelesaikan', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
     expect(state.mark).toHaveBeenCalledTimes(1);
     expect(state.mark).toHaveBeenCalledWith('dasar-layout', 3, ['tip-handover-tempel-wa']);
+  });
+
+  test('panduan diturunkan tidak menulis penanda saat selesai (tak ada penanda tersimpan)', async () => {
+    render(<Page entry={entryOf([step()], { id: 'perangkat-pwa', status: 'diturunkan' })} />);
+    await startTour();
+    await userEvent.click(await screen.findByRole('button', { name: 'Selesai' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Panduan' })).toBeNull());
+    expect(state.mark).not.toHaveBeenCalled();
   });
 
   test('gagal menulis penanda tidak membuat tur macet', async () => {

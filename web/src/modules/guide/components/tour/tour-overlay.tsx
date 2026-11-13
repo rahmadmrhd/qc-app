@@ -120,7 +120,11 @@ export default function TourOverlay({
 
   const steps = useMemo(() => stepsFor(entry, me, selectedIds), [entry, me, selectedIds]);
   const [index, setIndex] = useState(0);
-  const [target, setTarget] = useState<Element | null>(null);
+  // Target yang sudah ditemukan, TERIKAT ke indeks langkahnya: begitu `index` berganti, target langkah lama tak lagi
+  // berlaku pada render yang sama (tanpa ini kartu langkah baru sempat tampil sebentar di posisi sorotan lama, dan
+  // pendengar klik/keyboard langkah lama bisa menangkap peristiwa untuk langkah baru).
+  const [located, setLocated] = useState<{ index: number; element: Element } | null>(null);
+  const target = located?.index === index ? located.element : null;
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   // Nilai terbaru untuk efek yang hanya boleh berjalan ulang saat langkah berganti.
@@ -145,13 +149,15 @@ export default function TourOverlay({
       if (finished.current) return;
       finished.current = true;
       const { mark: write, entry: current, onExit: exit } = latest.current;
-      const finish = shown.current > 0 ? write(current.id, current.version, current.covers) : null;
+      // Panduan `diturunkan` (PWA/push) tak punya penanda tersimpan: id-nya bukan bagian `GUIDE_IDS` di server.
+      const stored = current.status === 'disimpan' && shown.current > 0;
+      const finish = stored ? write(current.id, current.version, current.covers) : null;
       Promise.resolve(finish)
         .catch(() => undefined)
         .finally(exit);
       return;
     }
-    setTarget(null);
+    setLocated(null);
     setRect(null);
     let cancelled = false;
     let cancelWait: () => void = () => undefined;
@@ -182,7 +188,7 @@ export default function TourOverlay({
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
       shown.current += 1;
-      setTarget(found);
+      setLocated({ index, element: found });
       setRect(found.getBoundingClientRect());
     })();
     return () => {
@@ -253,14 +259,15 @@ export default function TourOverlay({
   }, [target]);
 
   const reduced = prefersReducedMotion();
-  const box = rect
-    ? {
-        top: rect.top - HIGHLIGHT_PADDING,
-        left: rect.left - HIGHLIGHT_PADDING,
-        width: rect.width + HIGHLIGHT_PADDING * 2,
-        height: rect.height + HIGHLIGHT_PADDING * 2,
-      }
-    : null;
+  const box =
+    target && rect
+      ? {
+          top: rect.top - HIGHLIGHT_PADDING,
+          left: rect.left - HIGHLIGHT_PADDING,
+          width: rect.width + HIGHLIGHT_PADDING * 2,
+          height: rect.height + HIGHLIGHT_PADDING * 2,
+        }
+      : null;
 
   return (
     <div
