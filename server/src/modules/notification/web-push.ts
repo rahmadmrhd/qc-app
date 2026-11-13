@@ -1,3 +1,4 @@
+import { decodeBytes, encodeBytes } from '@server/core/base64url';
 import type { PushSender } from './push';
 import { pushEndpointError } from './push-endpoint';
 
@@ -44,17 +45,17 @@ export const PUSH_PAYLOAD_MAX_BYTES = 3993;
 
 const encoder = new TextEncoder();
 
+/**
+ * Base64url kunci/token kecil (kunci VAPID, kunci langganan, JWT) lewat `core/base64url.ts`, satu-satunya tempat
+ * yang boleh memakai atob/btoa di server (pagar di `files.test.ts`). Melempar bila bukan base64url yang sah.
+ */
 export function base64UrlDecode(text: string): Uint8Array {
-  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
-  return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  const bytes = decodeBytes(text);
+  if (bytes === null) throw new Error('base64url tidak sah');
+  return bytes;
 }
 
-export function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+export const base64UrlEncode = encodeBytes;
 
 function concat(...parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));

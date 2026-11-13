@@ -26,8 +26,13 @@ const EXPECTED_TABLES = [
   'jobs',
   'locations',
   'manual_book_versions',
+  'notification_pending',
+  'notification_pending_items',
+  'notification_prefs',
+  'notifications',
   'postel_numbers',
   'postels',
+  'push_subscriptions',
   'qr_defaults',
   'qr_designs',
   'qr_documents',
@@ -122,7 +127,11 @@ describe('0010_postel_kunci_asing', () => {
           .bind(id, postelId, id, id)
           .run();
       }
-      expect(await applyMigrations(db, all)).toEqual(['0010_postel_kunci_asing.sql']);
+      // Migrasi setelah 0010 (0011, 0012, ...) ikut diterapkan; yang diuji di sini adalah 0010, jadi cukup menegaskan
+      // bahwa ia yang pertama dijalankan.
+      const applied = await applyMigrations(db, all);
+      expect(applied[0]).toBe('0010_postel_kunci_asing.sql');
+      expect(applied).toEqual(all.filter((m) => m.name >= '0010').map((m) => m.name));
       const items = await db
         .prepare('SELECT id, postel_id FROM items ORDER BY id')
         .all<{ id: string; postel_id: string | null }>();
@@ -205,7 +214,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('34 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('39 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -227,6 +236,8 @@ describe('skema baseline', () => {
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
       { name: '0010_postel_kunci_asing.sql' },
+      { name: '0011_notifikasi.sql' },
+      { name: '0012_push_notifikasi.sql' },
     ]);
   });
 
@@ -310,9 +321,14 @@ describe('skema baseline', () => {
         'locations.locations_code_unique',
         'locations.locations_name_unique',
         'manual_book_versions.manual_book_versions_design_version',
+        'notification_pending.notification_pending_release',
+        'notifications.notifications_created',
+        'notifications.notifications_push',
+        'notifications.notifications_recipient',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
+        'push_subscriptions.push_subscriptions_recipient',
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
@@ -346,6 +362,11 @@ describe('skema baseline', () => {
     expect(pks.sticker_stock).toBe('sticker_id,location_id');
     expect(pks.sticker_stock_entries).toBe('id');
     expect(pks.settings).toBe('key');
+    expect(pks.notifications).toBe('id');
+    expect(pks.notification_pending).toBe('handover_id,actor_email');
+    expect(pks.notification_pending_items).toBe('handover_id,actor_email,item_key');
+    expect(pks.push_subscriptions).toBe('endpoint_hash,recipient');
+    expect(pks.notification_prefs).toBe('recipient');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [
