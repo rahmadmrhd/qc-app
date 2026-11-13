@@ -1,7 +1,7 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
+import { actOnSerial } from './act';
 import {
-  actOnSerial,
   getSerial,
   listSerials,
   locationOptions,
