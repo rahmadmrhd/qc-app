@@ -16,13 +16,12 @@ import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { fileQueryOptions } from '@/modules/files/queries';
 import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { shouldRefreshAfterExportError } from '@/modules/qrcode/lib/export-error';
-import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
+import { prepareExportFiles } from '@/modules/qrcode/lib/prepare-export';
 import {
   qrDesignsQueryOptions,
   refreshQrDesign,
@@ -63,13 +62,7 @@ function QrCodesPage() {
     report: (step: string) => void,
     reason: string,
   ) {
-    if (design.logoFileId !== '') report('Memuat logo dari Drive…');
-    const logo =
-      design.logoFileId === ''
-        ? null
-        : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
-    report('Membuat PDF lembar 10 × 14 dan PNG label…');
-    const files = await renderExportFiles(design, logo);
+    const files = await prepareExportFiles(queryClient, design, report);
     report('Mengirim PDF dan PNG ke server…');
     try {
       await exportMutation.mutateAsync({
