@@ -1,9 +1,10 @@
 import { splitWhatsappBatch } from '@shared/handover-paste';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { NoteEditor } from './note-editor';
 
 /** Batas teks tempelan batch (30 task × 5.000 karakter); lebih dari ini tidak dipecah. */
 const MAX_PASTE_CHARS = 150_000;
@@ -26,6 +27,7 @@ export interface WhatsappPastePanelProps {
 export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps) {
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<PastedTask[] | null>(null);
+  const baseId = useId();
   useUnsavedChanges(text.trim() !== '' || preview !== null);
 
   const tooLong = text.length > MAX_PASTE_CHARS;
@@ -60,7 +62,8 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
         <p className="text-sm text-muted-foreground">
           Tempel beberapa orderan sekaligus. Setiap pesan WhatsApp memulai task baru; baris tanpa
           jumlah yang langsung diikuti baris item (contoh “PT Maju,” atau “Orderan Online :”)
-          menjadi judul dan usulan customer. Periksa hasilnya sebelum ditambahkan.
+          menjadi judul dan usulan customer. Periksa dan sunting hasilnya di editor sebelum
+          ditambahkan.
         </p>
       </div>
       <Textarea
@@ -92,13 +95,17 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
                   value={task.customerName}
                   onChange={(event) => patch(index, { customerName: event.target.value })}
                 />
-                <Textarea
-                  aria-label={`Catatan task ${index + 1}`}
-                  rows={3}
-                  className="font-mono text-xs"
-                  value={task.note}
-                  onChange={(event) => patch(index, { note: event.target.value })}
-                />
+                <div className="space-y-1.5">
+                  <span id={`${baseId}-note-${index}`} className="text-sm font-medium">
+                    {`Catatan task ${index + 1}`}
+                  </span>
+                  <NoteEditor
+                    id={`${baseId}-note-field-${index}`}
+                    labelledBy={`${baseId}-note-${index}`}
+                    value={task.note}
+                    onChange={(note) => patch(index, { note })}
+                  />
+                </div>
               </li>
             ))}
           </ul>

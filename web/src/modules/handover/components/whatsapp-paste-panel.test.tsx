@@ -1,6 +1,13 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+
+// Editor catatan (Tiptap) menarik modul unggah gambar; tidak dipakai di mode catatan.
+vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
+vi.mock('@/modules/files/queries', () => ({
+  useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
+}));
+
 import { WhatsappPastePanel } from './whatsapp-paste-panel';
 
 const EX1 = 'Orderan Online :\nCRS310 = 1 unt\nRB5009UG = 1 unt';
@@ -51,12 +58,11 @@ test('empat contoh pemilik terpecah 1, 2, 1, 3 task dengan usulan customer', asy
   for (const [text, count, names] of expected) {
     const { split } = setup();
     await split(text);
-    const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(count);
+    // Butir checklist di editor juga `listitem`, jadi baris dihitung lewat field customer tiap task.
+    const customers = screen.getAllByLabelText(/^Customer task \d+$/);
+    expect(customers).toHaveLength(count);
     names.forEach((name, i) => {
-      expect(within(rows[i] as HTMLElement).getByLabelText(`Customer task ${i + 1}`)).toHaveValue(
-        name,
-      );
+      expect(customers[i]).toHaveValue(name);
     });
     document.body.innerHTML = '';
   }
@@ -74,14 +80,26 @@ test('usulan customer dapat diganti sebelum ditambahkan', async () => {
   ]);
 });
 
-test('catatan hasil pecah dapat disunting sebelum ditambahkan', async () => {
+test('catatan hasil pecah tampil di editor Tiptap, bukan textarea mentah', async () => {
+  const { split } = setup();
+  await split(EX1);
+  const note = await screen.findByRole('textbox', { name: 'Catatan task 1' });
+  expect(note).toHaveAttribute('contenteditable', 'true');
+  expect(note.tagName).not.toBe('TEXTAREA');
+  // Markdown `- [ ]` dirender sebagai checklist, bukan teks mentah.
+  await waitFor(() => expect(note).toHaveTextContent('CRS310 = 1 unt'));
+  expect(note).not.toHaveTextContent('- [ ]');
+});
+
+test('catatan hasil pecah dapat disunting di editor sebelum ditambahkan', async () => {
   const { onAdd, split } = setup();
   await split(EX1);
-  const note = screen.getByLabelText('Catatan task 1');
-  await userEvent.clear(note);
-  await userEvent.type(note, 'diganti');
+  const note = await screen.findByRole('textbox', { name: 'Catatan task 1' });
+  await userEvent.type(note, ' diganti');
   await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (1)' }));
-  expect(onAdd.mock.calls[0]?.[0][0]).toMatchObject({ note: 'diganti' });
+  const added = onAdd.mock.calls[0]?.[0][0];
+  expect(added.note).toContain('diganti');
+  expect(added.note).toContain('CRS310 = 1 unt');
 });
 
 test('tempelan kosong tidak menambah task', async () => {
