@@ -348,6 +348,24 @@ test('A4: teks toast berbeda: koneksi hanya untuk jalur UNAVAILABLE, netral bila
   expect(mocks.info.mock.calls[0]?.[1]).toEqual({ id: 'check-outbox-queued' });
 });
 
+test('M4: jalur "task masih punya entri antrean" memakai teks koneksi bila navigator.onLine false', async () => {
+  const { hook, ref } = setup();
+  enqueueCheck('qc@x', {
+    taskId: 't1',
+    locationId: 'loc-a',
+    index: 3,
+    text: 'B3 = 1',
+    checked: true,
+    at: Date.now(),
+  });
+  const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+  act(() => hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true));
+  await flush();
+  online.mockRestore();
+  expect(mocks.info.mock.calls[0]?.[0]).toMatch(/Tidak ada koneksi/);
+  expect(mocks.info.mock.calls[0]?.[1]).toEqual({ id: 'check-outbox-queued' });
+});
+
 test('A5: setCheck langsung berhasil meminta pengurasan antrean (no-op bila antrean kosong)', async () => {
   const { hook, ref } = setup();
   mocks.api.mockResolvedValue(serverAfter([1]));

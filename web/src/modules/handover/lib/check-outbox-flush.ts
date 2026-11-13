@@ -28,15 +28,28 @@ export interface FlushResult {
   stoppedBy: 'none' | 'unavailable' | 'server-error' | 'unauthenticated' | 'owner-changed';
 }
 
-/** Pengiriman bawaan: satu `handovers.setCheck` per entri. */
+/** Batas waktu satu pengiriman: fetch yang menggantung tak boleh menahan pengurasan (dan kunci antar-tab) selamanya. */
+export const OUTBOX_SEND_TIMEOUT_MS = 30_000;
+
+/**
+ * Pengiriman bawaan: satu `handovers.setCheck` per entri dengan batas waktu. Abort dipetakan klien ke
+ * `UNAVAILABLE`, jadi entri tetap dan pengurasan berhenti. (`AbortController` + `setTimeout`, bukan
+ * `AbortSignal.timeout`, agar tersedia di mana-mana dan dapat diuji dengan timer palsu.)
+ */
 export function sendOutboxEntry(entry: OutboxEntry): Promise<HandoverDto> {
-  return api('handovers.setCheck', {
-    id: entry.taskId,
-    locationId: entry.locationId,
-    index: entry.index,
-    text: entry.text,
-    checked: entry.checked,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OUTBOX_SEND_TIMEOUT_MS);
+  return api(
+    'handovers.setCheck',
+    {
+      id: entry.taskId,
+      locationId: entry.locationId,
+      index: entry.index,
+      text: entry.text,
+      checked: entry.checked,
+    },
+    { signal: controller.signal },
+  ).finally(() => clearTimeout(timer));
 }
 
 /** Hanya penolakan nyata dari server yang membuang entri (FR-P18); selain itu entri dipertahankan. */
@@ -74,7 +87,11 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
         result.stoppedBy = 'owner-changed';
         break;
       }
-      deps.onSent?.(saved, next);
+      try {
+        deps.onSent?.(saved, next);
+      } catch {
+        // Gagal memasang hasil ke cache tak boleh membuat entri yang sudah terkirim tertinggal (terkirim dua kali).
+      }
       // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
       removeEntries(owner, [next.id]);
       result.sent.push(saved);

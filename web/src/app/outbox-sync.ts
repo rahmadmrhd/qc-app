@@ -22,7 +22,7 @@ import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
 export const OUTBOX_FLUSH_MIN_GAP_MS = 3_000;
 
-/** Kunci Web Locks: hanya satu tab per perangkat yang menguras antrean (tab lain melewati putarannya). */
+/** Kunci Web Locks: satu tab per perangkat menguras antrean (tab lain menunggu giliran lalu membaca ulang antrean). */
 const FLUSH_LOCK = 'qc-outbox-flush';
 
 let requestFlush: (() => void) | null = null;
@@ -81,11 +81,10 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   let lastStart = Number.NEGATIVE_INFINITY;
   let stopped = false;
 
-  // Hasil server dipasang per entri (sinkron, sebelum entri dihapus): tanpa kedipan dan tanpa celah bagi klik lain.
-  // Dilewati bila entri lain task itu masih menyusul (yang terakhir yang dipasang) atau cache sudah lebih baru.
-  const onSent = (saved: HandoverDto, entry: { id: string }) => {
-    if (readOutbox(owner).some((other) => other.taskId === saved.id && other.id !== entry.id))
-      return;
+  // Hasil server SELALU dipasang per entri (sinkron, sebelum entri dihapus): tanpa kedipan dan tanpa celah bagi klik
+  // lain; bila pengurasan berhenti di tengah task, butir yang sudah terkirim tetap tercentang di cache, dan entri yang
+  // tersisa ditempel overlay (`useOutboxOverlay`). Dilewati hanya bila cache sudah lebih baru.
+  const onSent = (saved: HandoverDto) => {
     if (cacheIsNewer(queryClient, saved)) return;
     applySavedHandover(queryClient, saved);
   };
@@ -121,9 +120,11 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
     try {
       const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
       if (locks) {
-        // Beberapa tab akun yang sama: hanya satu yang menguras; yang lain melewati putaran ini.
-        await locks.request(FLUSH_LOCK, { ifAvailable: true }, async (lock) => {
-          if (lock) await drainNow();
+        // Beberapa tab akun yang sama: satu menguras, yang lain MENUNGGU kuncinya (tanpa `ifAvailable`, jadi tak ada
+        // putaran yang hilang) lalu membaca ulang antrean: sudah dikuras tab lain = tak ada yang dikirim. Pemegang kunci
+        // selalu selesai dalam batas waktu kirim, jadi tak ada deadlock.
+        await locks.request(FLUSH_LOCK, async () => {
+          if (!stopped && readOutbox(owner).length > 0) await drainNow();
         });
       } else {
         await drainNow();

@@ -74,13 +74,11 @@ test('antrean tidak kosong saat start langsung dikuras; hasilnya dipasang ke cac
   stop = startOutboxSync(client);
   await settle();
   expect(mocks.api).toHaveBeenCalledTimes(1);
-  expect(mocks.api).toHaveBeenCalledWith('handovers.setCheck', {
-    id: 't1',
-    locationId: 'loc-a',
-    index: 0,
-    text: 'B0',
-    checked: true,
-  });
+  expect(mocks.api).toHaveBeenCalledWith(
+    'handovers.setCheck',
+    { id: 't1', locationId: 'loc-a', index: 0, text: 'B0', checked: true },
+    { signal: expect.any(AbortSignal) },
+  );
   expect(readOutbox(OWNER)).toEqual([]);
   expect(isBusy()).toBe(false);
 });
@@ -211,7 +209,7 @@ test('fungsi berhenti melepas semua pemicu', async () => {
   expect(mocks.api).not.toHaveBeenCalled();
 });
 
-test('A3: saved dipasang per entri, dilewati bila entri lain task itu masih menyusul (hanya yang terakhir dipasang)', async () => {
+test('I1: saved SELALU dipasang per entri, juga bila entri lain task itu masih menyusul', async () => {
   const key = handoverKeys.one('t1', ['loc-a']);
   client.setQueryData(key, makeHandover({ id: 't1', note: 'awal' }));
   queue(0);
@@ -230,7 +228,7 @@ test('A3: saved dipasang per entri, dilewati bila entri lain task itu masih meny
   });
   stop = startOutboxSync(client);
   await settle();
-  expect(noteSeenDuringSecondCall).toEqual(['awal']); // saved #1 dilewati: entri #2 masih menyusul
+  expect(noteSeenDuringSecondCall).toEqual(['server-1']); // saved #1 langsung dipasang
   expect(client.getQueryData<{ note: string }>(key)?.note).toBe('server-2');
 });
 
@@ -288,35 +286,53 @@ test('A6: UNAUTHENTICATED saat pengurasan melapor ke penangan 401 global dan ent
   setUnauthenticatedHandler(() => undefined);
 });
 
-test('A8: dengan navigator.locks, pengurasan berjalan di dalam kunci "qc-outbox-flush" (ifAvailable)', async () => {
-  const request = vi.fn(
-    async (_name: string, _opts: unknown, cb: (lock: unknown) => Promise<void>) =>
-      cb({ name: 'qc-outbox-flush' }),
-  );
+/** Stub Web Locks: `holder` menahan kunci (tab lain yang sedang menguras) sampai dilepas; permintaan MENUNGGU. */
+function stubLocks(holder: Promise<void> = Promise.resolve()) {
+  const request = vi.fn(async (_name: string, cb: (lock: unknown) => Promise<void>) => {
+    await holder;
+    return cb({ name: 'qc-outbox-flush' });
+  });
   vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+  return request;
+}
+
+test('A8: dengan navigator.locks, pengurasan berjalan di dalam kunci "qc-outbox-flush"', async () => {
+  const request = stubLocks();
   queue(0);
   stop = startOutboxSync(client);
   await settle();
-  expect(request).toHaveBeenCalledWith(
-    'qc-outbox-flush',
-    { ifAvailable: true },
-    expect.any(Function),
-  );
+  expect(request).toHaveBeenCalledWith('qc-outbox-flush', expect.any(Function));
   expect(mocks.api).toHaveBeenCalledTimes(1);
   vi.unstubAllGlobals();
 });
 
-test('A8: kunci tidak diberikan (tab lain menguras) = putaran dilewati tanpa galat dan entri tetap', async () => {
-  const request = vi.fn(async (_n: string, _o: unknown, cb: (lock: unknown) => Promise<void>) =>
-    cb(null),
-  );
-  vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+test('M1: kunci dipegang tab lain: putaran MENUNGGU, lalu mengirim entri yang tersisa begitu kunci lepas', async () => {
+  let release: () => void = () => undefined;
+  const request = stubLocks(new Promise<void>((resolve) => (release = resolve)));
   queue(0);
   stop = startOutboxSync(client);
   await settle();
-  expect(request).toHaveBeenCalled();
+  expect(request).toHaveBeenCalledTimes(1);
   expect(mocks.api).not.toHaveBeenCalled();
   expect(readOutbox(OWNER)).toHaveLength(1);
+  release();
+  await settle();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(mocks.error).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+});
+
+test('M1: tab lain sudah menguras selama menunggu: antrean dibaca ulang, tidak ada kirim dan tidak ada galat', async () => {
+  let release: () => void = () => undefined;
+  stubLocks(new Promise<void>((resolve) => (release = resolve)));
+  queue(0);
+  stop = startOutboxSync(client);
+  await settle();
+  localStorage.clear(); // tab lain mengirim dan mengosongkan antrean
+  release();
+  await settle();
+  expect(mocks.api).not.toHaveBeenCalled();
   expect(mocks.error).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
 });
@@ -328,4 +344,70 @@ test('startOutboxSync mengizinkan penulisan antrean lagi (sesi kerja baru setela
   suspendOutboxWrites();
   stop = startOutboxSync(client);
   expect(outboxWritesSuspended()).toBe(false);
+});
+
+const serverAfterFirst = () =>
+  makeHandover({
+    id: 't1',
+    updatedAt: '2026-11-13T10:00:00.000Z',
+    checklist: [
+      { index: 0, text: 'B0', checked: true, by: 'srv@x', at: '2026-11-13T10:00:00.000Z' },
+      { index: 1, text: 'B1', checked: false, by: '', at: '' },
+    ],
+  });
+
+for (const [label, failure] of [
+  ['UNAVAILABLE', new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-')],
+  ['INTERNAL', new ApiError('INTERNAL', 'Respons server tidak valid', '-')],
+  ['UNAUTHENTICATED', new ApiError('UNAUTHENTICATED', 'Sesi berakhir', '-')],
+  ['CONFLICT (ditolak)', new ApiError('CONFLICT', 'Task sudah selesai', '-')],
+] as const) {
+  test(`I1: e1 sukses lalu e2 gagal ${label}: butir e1 tetap tercentang di cache`, async () => {
+    setUnauthenticatedHandler(() => undefined);
+    const key = handoverKeys.one('t1', ['loc-a']);
+    client.setQueryData(key, makeHandover({ id: 't1' }));
+    queue(0);
+    queue(1);
+    mocks.api.mockReset().mockResolvedValueOnce(serverAfterFirst()).mockRejectedValueOnce(failure);
+    stop = startOutboxSync(client);
+    await settle();
+    expect(mocks.api).toHaveBeenCalledTimes(2);
+    const cached = client.getQueryData<ReturnType<typeof makeHandover>>(key);
+    expect(cached?.checklist[0]?.checked).toBe(true);
+    // e2 tetap di antrean (kecuali ditolak) dan ditempel overlay di atas cache.
+    expect(readOutbox(OWNER).map((entry) => entry.index)).toEqual(
+      label.startsWith('CONFLICT') ? [] : [1],
+    );
+  });
+}
+
+test('M2: pengiriman yang menggantung dibatalkan setelah 30 dtk: entri tetap, running dilepas, pemicu berikutnya jalan', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  vi.setSystemTime(new Date('2026-11-13T10:00:00Z'));
+  const hangs = (_id: string, _input: unknown, options?: { signal?: AbortSignal }) =>
+    new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () =>
+        reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-')),
+      );
+    });
+  mocks.api.mockReset().mockImplementation(hangs);
+  const tick = async (ms = 0) => {
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(ms);
+  };
+  queue(0);
+  stop = startOutboxSync(client);
+  await tick();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  expect(isBusy()).toBe(true);
+  await tick(1_000);
+  window.dispatchEvent(new Event('online')); // masih menggantung: running menahan putaran kedua
+  await tick(1_000);
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  await tick(30_000);
+  expect(isBusy()).toBe(false);
+  expect(readOutbox(OWNER)).toHaveLength(1);
+  window.dispatchEvent(new Event('online'));
+  await tick();
+  expect(mocks.api).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
 });

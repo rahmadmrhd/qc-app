@@ -190,3 +190,16 @@ test('onSent dipanggil per entri SEBELUM entri dihapus dari antrean', async () =
   expect(seen).toEqual([1]);
   expect(readOutbox(OWNER)).toEqual([]);
 });
+
+test('M3: onSent yang melempar tidak menghalangi penghapusan entri dan pengurasan lanjut', async () => {
+  queue(0);
+  queue(1);
+  const onSent = vi.fn(() => {
+    throw new Error('gagal memasang cache');
+  });
+  const result = await flushOutbox(deps({ onSent }));
+  expect(onSent).toHaveBeenCalledTimes(2);
+  expect(result.sent).toHaveLength(2);
+  expect(result.stoppedBy).toBe('none');
+  expect(readOutbox(OWNER)).toEqual([]);
+});

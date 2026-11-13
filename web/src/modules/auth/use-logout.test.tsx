@@ -160,3 +160,34 @@ test('A1: keluar menahan penulisan antrean centang SEBELUM navigasi; penulisan s
   ).toBe(false);
   expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
 });
+
+test('M6: penulisan antrean sudah ditahan SEBELUM POST /auth/logout selesai (klik gagal UNAVAILABLE saat POST menggantung tak menulis antrean)', async () => {
+  let release: () => void = () => undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(new Response(null, { status: 204 }));
+        }),
+    ),
+  );
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(navigate).not.toHaveBeenCalled(); // POST masih menggantung
+  expect(outboxWritesSuspended()).toBe(true);
+  expect(
+    enqueueCheck('a@x.com', {
+      taskId: 't',
+      locationId: 'l',
+      index: 0,
+      text: 'x',
+      checked: true,
+      at: Date.now(),
+    }),
+  ).toBe(false);
+  expect(Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'))).toEqual([]);
+  release();
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+});

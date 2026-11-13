@@ -126,7 +126,8 @@ export function useCheckQueue(by: string) {
           // klik langsung, agar urutan per task terjaga.
           if (hasEntriesForTask(by, task.id)) {
             if (queueIt()) {
-              notifyQueued(false);
+              // Antre karena task masih punya entri: teks koneksi hanya bila peramban memang offline.
+              notifyQueued(typeof navigator !== 'undefined' && navigator.onLine === false);
               requestOutboxFlush();
               return;
             }
