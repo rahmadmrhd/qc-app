@@ -1,5 +1,5 @@
 import { batchGuarded } from '@server/core/cas';
-import { DbError } from '@server/core/db';
+import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
@@ -44,6 +44,7 @@ import {
   SERIAL_CUSTODIES,
   SERIAL_EVENT_TYPES,
   SERIAL_LIMITS,
+  SERIAL_STATUS_LABELS,
   SERIAL_STATUSES,
   type SerialCustody,
   type SerialEventType,
@@ -52,7 +53,13 @@ import {
 } from '@shared/serials';
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
-import { loadCases, type SerialCaseRow } from './case-repo';
+import {
+  insertCaseStmt,
+  loadCases,
+  reserveCaseNumber,
+  runWithCaseNumber,
+  type SerialCaseRow,
+} from './case-repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -304,8 +311,20 @@ export async function createSerialOnce(
   const eventId = crypto.randomUUID();
   const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
-  try {
-    const statements = [
+  const failed = row.status === 'failed';
+  const caseId = failed ? crypto.randomUUID() : '';
+  const damage = failed ? (row.damage ?? '') : '';
+  // Menyusun SELURUH batch satu baris; baris tidak lolos memesan nomor LP (diulang bila penghitung diperebutkan).
+  const buildStatements = async (): Promise<DbStatement[]> => {
+    const reservation = failed ? await reserveCaseNumber(env, today.replaceAll('-', '')) : null;
+    const actor = {
+      actorId: user.userId ?? '',
+      actorName: user.name,
+      actorTeam: 'qc' as const,
+    };
+    return [
+      // Penghitung nomor LP paling depan: rebutan muncul sebagai kegagalan penjaganya dan diulang.
+      ...(reservation?.statements ?? []),
       insertSerialStmt(env.DB, {
         id: serialId,
         clientId: row.clientId,
@@ -316,11 +335,25 @@ export async function createSerialOnce(
         sample: row.sample,
         note: row.note,
         locationId: row.locationId,
-        status: 'good',
-        openCaseId: '',
+        status: failed ? 'failed' : 'good',
+        openCaseId: caseId,
         now,
         actorEmail,
       }),
+      ...(reservation
+        ? [
+            insertCaseStmt(env.DB, {
+              id: caseId,
+              number: reservation.number,
+              serialId,
+              buId: row.buId,
+              openedOn: today,
+              damage,
+              now,
+              actorEmail,
+            }),
+          ]
+        : []),
       ...stickerPicks.map((pick) =>
         insertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty),
       ),
@@ -332,9 +365,7 @@ export async function createSerialOnce(
         type: 'recorded',
         occurredOn: today,
         now,
-        actorId: user.userId ?? '',
-        actorName: user.name,
-        actorTeam: 'qc',
+        ...actor,
         message: '',
         changes: [],
         data: {
@@ -345,6 +376,8 @@ export async function createSerialOnce(
           })),
           locationId: row.locationId,
           locationName,
+          ...(failed ? { status: 'failed', damage } : {}),
+          ...(row.source === undefined ? {} : { source: row.source }),
         },
       }),
       ...(await statementsFor(env, 'serial.recorded', {
@@ -355,8 +388,44 @@ export async function createSerialOnce(
         actor: actorEmail,
         now,
       })),
+      ...(reservation
+        ? [
+            insertEventStmt(env.DB, {
+              id: crypto.randomUUID(),
+              serialId,
+              caseId,
+              seq: 2,
+              type: 'report_failure',
+              occurredOn: today,
+              now,
+              ...actor,
+              message: '',
+              changes: [
+                {
+                  field: 'status',
+                  from: SERIAL_STATUS_LABELS.good,
+                  to: SERIAL_STATUS_LABELS.failed,
+                },
+                { field: 'damage', from: null, to: damage },
+              ],
+              data: { caseNumber: reservation.number, damage },
+            }),
+          ]
+        : []),
     ];
-    await env.DB.batch(statements);
+  };
+  try {
+    if (failed) {
+      await runWithCaseNumber(
+        env,
+        serialId,
+        null,
+        async () => env.DB.batch(await buildStatements()),
+        'Nomor kasus sedang diperebutkan; coba lagi',
+      );
+    } else {
+      await env.DB.batch(await buildStatements());
+    }
     return {
       clientId: row.clientId,
       result: 'created',

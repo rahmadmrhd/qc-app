@@ -139,7 +139,24 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
   ) {
     return fail('Catatan tidak valid');
   }
-  if (source.status !== 'good') return fail('Status belum didukung');
+  if (source.status !== 'good' && source.status !== 'failed') return fail('Status tidak valid');
+  // `damage` wajib (satu baris, maks. 200) bila langsung dicatat tidak lolos; pada `good` diabaikan.
+  let damage = '';
+  if (source.status === 'failed') {
+    const text = typeof source.damage === 'string' ? source.damage.trim() : '';
+    if (text === '') return fail('Isi dulu kerusakannya');
+    if ([...text].length > SERIAL_LIMITS.damageMax || hasControlChars(text)) {
+      return fail('Kerusakan tidak valid (satu baris, maks. 200 karakter)');
+    }
+    damage = text;
+  }
+  if (
+    source.source !== undefined &&
+    source.source !== 'manual' &&
+    source.source !== 'countrylock'
+  ) {
+    return fail('Asal catatan tidak valid');
+  }
   // `stickers` tidak dikirim = semua stiker yang berlaku (diselesaikan service); `[]` = sengaja tanpa stiker.
   const stickersRaw = source.stickers === undefined ? [] : source.stickers;
   if (!Array.isArray(stickersRaw) || stickersRaw.length > SERIAL_PICKS_MAX) {
@@ -175,7 +192,9 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
       locationId: source.locationId,
       sample: source.sample,
       note,
-      status: 'good',
+      status: source.status,
+      ...(source.status === 'failed' ? { damage } : {}),
+      ...(source.source === undefined ? {} : { source: source.source }),
       ...(source.stickers === undefined ? {} : { stickers }),
     },
   };

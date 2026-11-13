@@ -214,7 +214,10 @@ const WORST: Inputs = {
       locationId: UUID,
       sample: true,
       note: '漢'.repeat(SERIAL_LIMITS.noteMax),
-      status: 'good' as const,
+      // Terburuk: baris tidak lolos dengan kerusakan maksimum (3-byte seperti catatan) dan `source`.
+      status: 'failed' as const,
+      damage: '漢'.repeat(SERIAL_LIMITS.damageMax),
+      source: 'countrylock' as const,
       stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
     })),
   },
