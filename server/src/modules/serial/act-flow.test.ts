@@ -684,7 +684,7 @@ describe('atomisitas', () => {
     }
     expect(out.ok).toBe(false);
     expect(out.error?.code).toBe('CONFLICT');
-    expect(out.error?.message).toContain('Serial Number diubah orang lain');
+    expect(out.error?.message).toContain('Serial Number sudah diubah orang lain');
     expect(await serialRow()).toMatchObject({ status: 'recheck', open_case_id: 'case-1' });
     expect((await eventsOf()).length).toBe(1);
     expect(await stock('s1', 'loc-sby')).toBe(10);
