@@ -118,20 +118,70 @@ const CENTERED_CARD: CSSProperties = {
   transform: 'translate(-50%, -50%)',
 };
 
-function cardStyle(rect: DOMRect): CSSProperties {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  if (width < 640) return { left: EDGE, right: EDGE, bottom: EDGE };
-  const left = Math.min(Math.max(rect.left, EDGE), Math.max(EDGE, width - CARD_WIDTH - EDGE));
-  if (height - rect.bottom >= CARD_HEIGHT_GUESS) return { left, top: rect.bottom + EDGE };
-  if (rect.top >= CARD_HEIGHT_GUESS) return { left, bottom: height - rect.top + EDGE };
-  // Sorotan besar (isi menu terbuka): taruh kartu di sampingnya supaya tidak menutupi yang disorot.
-  const top = Math.min(Math.max(rect.top, EDGE), Math.max(EDGE, height - CARD_HEIGHT_GUESS - EDGE));
-  const leftOfRect = rect.left - HIGHLIGHT_PADDING - EDGE - CARD_WIDTH;
-  if (leftOfRect >= EDGE) return { left: leftOfRect, top };
-  const rightOfRect = rect.right + HIGHLIGHT_PADDING + EDGE;
-  if (rightOfRect + CARD_WIDTH + EDGE <= width) return { left: rightOfRect, top };
-  return { left, bottom: EDGE };
+/**
+ * Kotak seluruh menu terbuka yang memuat target langkah ber-`buka` (kartu menghindarinya, bukan hanya butir yang
+ * disorot, supaya butir menu lain tetap terbaca). `null` bila langkah tak membuka menu atau target di luar menu.
+ */
+function openMenuRect(target: Element | null, step: GuideStep | undefined): DOMRect | null {
+  if (!target || !step?.buka) return null;
+  const menu = target.closest(
+    '[role="menu"], [data-radix-popper-content-wrapper], [role="dialog"]',
+  );
+  return menu ? menu.getBoundingClientRect() : null;
+}
+
+interface CardSize {
+  width: number;
+  height: number;
+}
+
+/** Luas irisan dua persegi panjang (0 bila tak beririsan). */
+function overlapArea(
+  a: { left: number; top: number; width: number; height: number },
+  b: { left: number; top: number; width: number; height: number },
+): number {
+  const w = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+  const h = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/**
+ * Letak kartu dari ukuran aslinya (bukan tebakan): kandidat bawah, atas, kiri, dan kanan sorotan, masing-masing
+ * dijepit ke dalam layar; yang paling sedikit menutupi sorotan menang (kandidat lebih awal bila seri). Kartu yang
+ * tumbuh setelah demo termuat tak lagi keluar layar, dan isi menu terbuka tak tertutup bila ada ruang di sisinya.
+ */
+function cardStyle(rect: DOMRect, size: CardSize, avoid: DOMRect | null = null): CSSProperties {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (vw < 640) return { left: EDGE, right: EDGE, bottom: EDGE };
+  const maxLeft = Math.max(EDGE, vw - size.width - EDGE);
+  const maxTop = Math.max(EDGE, vh - size.height - EDGE);
+  const clampX = (x: number) => Math.min(Math.max(x, EDGE), maxLeft);
+  const clampY = (y: number) => Math.min(Math.max(y, EDGE), maxTop);
+  const below = { left: clampX(rect.left), top: clampY(rect.bottom + EDGE) };
+  const candidates = [
+    below,
+    { left: clampX(rect.left), top: clampY(rect.top - size.height - EDGE) },
+    { left: clampX(rect.left - HIGHLIGHT_PADDING - EDGE - size.width), top: clampY(rect.top) },
+    { left: clampX(rect.right + HIGHLIGHT_PADDING + EDGE), top: clampY(rect.top) },
+  ];
+  const lit = {
+    left: rect.left - HIGHLIGHT_PADDING,
+    top: rect.top - HIGHLIGHT_PADDING,
+    width: rect.width + HIGHLIGHT_PADDING * 2,
+    height: rect.height + HIGHLIGHT_PADDING * 2,
+  };
+  let best = below;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const box = { ...candidate, ...size };
+    const score = overlapArea(box, lit) + (avoid ? overlapArea(box, avoid) : 0);
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 function sameRect(a: DOMRect | null, b: DOMRect): boolean {
@@ -205,6 +255,11 @@ export default function TourOverlay({
   const finished = useRef(false);
   const openedSidebar = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Ukuran kartu yang sebenarnya (tumbuh saat demo dimuat malas): dipantau supaya letaknya dihitung ulang.
+  const [cardSize, setCardSize] = useState<CardSize>({
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT_GUESS,
+  });
   // Halaman yang diharapkan selama tur: diubah mesin sendiri (navigasi langkah ber-route) atau dilonggarkan setelah
   // klik pada langkah `click` (klik itu boleh membawa ke halaman lain; `null` = terima perubahan berikutnya).
   // Perpindahan halaman di luar itu = pengguna meninggalkan tur: tur dibatalkan tanpa penanda (spek 4.3).
@@ -227,8 +282,15 @@ export default function TourOverlay({
     [],
   );
 
+  // Hanya PERUBAHAN `pathname` yang diperiksa: efek yang dijalankan ulang tanpa perubahan (StrictMode dev memanggil
+  // efek dua kali) akan membandingkan `pathname` render lama dengan `expectedPath` yang sudah diset mesin untuk
+  // langkah berrute dan keliru menutup tur yang baru dimulai dari halaman lain.
+  const seenPath = useRef(pathname);
   useEffect(() => {
     if (aborted.current || finished.current) return;
+    const changed = seenPath.current !== pathname;
+    seenPath.current = pathname;
+    if (!changed) return;
     if (expectedPath.current === null) {
       expectedPath.current = pathname;
       return;
@@ -436,6 +498,23 @@ export default function TourOverlay({
     return () => document.removeEventListener('keydown', onKey, true);
   }, [target, inFallback, step?.advance, index, advance]);
 
+  // Mengukur kartu (dan mengukur ulang saat isinya tumbuh). Tanpa ResizeObserver/tata letak (jsdom) ukuran tebakan dipakai.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || (!target && !inFallback) || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const { width, height } = card.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+      setCardSize((current) =>
+        current.width === width && current.height === height ? current : { width, height },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [target, inFallback]);
+
   // Fokus ke kartu tiap langkah agar pengguna keyboard/pembaca layar langsung berada di penjelasan.
   useEffect(() => {
     if (target || inFallback) cardRef.current?.focus({ preventScroll: true });
@@ -484,7 +563,7 @@ export default function TourOverlay({
             total={steps.length}
             isLast={index === steps.length - 1}
             tip={step.tip ? renderTip?.(step.tip) : undefined}
-            style={cardStyle(rect as DOMRect)}
+            style={cardStyle(rect as DOMRect, cardSize, openMenuRect(target, step))}
             cardRef={cardRef}
             onNext={() => advance(index)}
             onClose={() => latest.current.onExit()}

@@ -207,6 +207,13 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   pengganti yang menjelaskan keadaannya dan demo `tip` langsung terputar (keputusan 2026-11-14, butir H); langkah itu
   tetap terhitung pada "Langkah x dari N". Langkah yang `izin`-nya gugur tetap dibuang di awal. Di ponsel, langkah
   yang menyorot menu membuka sidebar lebih dulu.
+- Penempatan kartu langkah (desktop; ponsel selalu menempel di dasar layar): dihitung dari ukuran kartu yang
+  SEBENARNYA (diukur ulang saat isinya tumbuh, mis. demo `tip` selesai dimuat malas), memilih di antara posisi di
+  bawah, atas, kiri, dan kanan sorotan yang paling sedikit menutupi sorotan dan, pada langkah `buka`, seluruh menu
+  yang terbuka, selalu dijepit di dalam layar; tinggi kartu dibatasi tinggi layar dan isinya menggulir. Popover ikon
+  info (4.6) membatasi tingginya pada ruang yang tersedia (`--radix-popover-content-available-height`) dan
+  menggulir di dalamnya. Pemeriksaan "pengguna meninggalkan tur" hanya membandingkan saat `pathname` benar-benar
+  berubah (efek yang dijalankan ulang oleh StrictMode tidak boleh menutup tur yang baru berpindah rute).
 - Dimuat malas (potongan JS terpisah). Mesin: pustaka kecil atau tulis sendiri; diputuskan di rencana implementasi
   (lihat bagian 8).
 - Hormati `prefers-reduced-motion` dan dapat dioperasikan dengan keyboard.

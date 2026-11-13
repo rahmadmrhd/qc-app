@@ -1,7 +1,7 @@
 import type { MeDto } from '@shared/contract';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { type ReactNode, StrictMode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -187,6 +187,27 @@ describe('navigasi dan target', () => {
     await startTour();
     expect(await screen.findByText('Di halaman baru')).toBeInTheDocument();
     expect(state.navigate).toHaveBeenCalledWith({ to: '/item' });
+  });
+
+  test('StrictMode (efek dipanggil dua kali): tur berlangkah berrute lain tidak tertutup sendiri', async () => {
+    state.navigate.mockImplementation(async () => {
+      setTimeout(() => {
+        const late = document.createElement('button');
+        late.dataset.tour = 'late';
+        late.dataset.late = '1';
+        document.body.append(late);
+      }, 20);
+    });
+    render(
+      <StrictMode>
+        <Page entry={entryOf([step({ target: 'late', route: '/item', text: 'Lintas halaman' })])} />
+      </StrictMode>,
+    );
+    await startTour();
+    expect(await screen.findByText('Lintas halaman')).toBeInTheDocument();
+    // Penjaga: pemeriksaan "pengguna pindah halaman" tak boleh menutup tur hanya karena efeknya dijalankan ulang.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText('Lintas halaman')).toBeInTheDocument();
   });
 
   test('tidak menavigasi bila sudah berada di route langkah', async () => {
