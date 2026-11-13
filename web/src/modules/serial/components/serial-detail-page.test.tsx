@@ -829,3 +829,23 @@ test('lokasi awal tak dikenal dan kejadian recorded tidak termuat: tampil "—" 
   const awal = within(summary).getByText('Lokasi awal').parentElement as HTMLElement;
   expect(within(awal).getByText('—')).toBeInTheDocument();
 });
+
+test('dialog ubah data: lokasi dikunci dengan keterangan selama dalam pengiriman atau di servis, aktif di QC', async () => {
+  state = { ...state, serial: { ...SERIAL, status: 'at_service', custody: 'transit' } };
+  const { unmount } = renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Ubah data' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('combobox', { name: 'Lokasi' })).toBeDisabled();
+  expect(
+    within(dialog).getByText(
+      /Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman/,
+    ),
+  ).toBeInTheDocument();
+  unmount();
+  state = { ...state, serial: { ...SERIAL } };
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Ubah data' }));
+  const open = await screen.findByRole('dialog');
+  expect(within(open).getByRole('combobox', { name: 'Lokasi' })).toBeEnabled();
+  expect(within(open).queryByText(/Lokasi tidak bisa diubah selama/)).toBeNull();
+});
