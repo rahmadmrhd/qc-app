@@ -70,7 +70,11 @@ test('simpan massal menandai daftar dan katalog stiker basi tanpa memuat ulang',
 
 test('ubah serial menempel hasil ke detail dan baris daftar', async () => {
   const before = dto();
-  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), { serial: before, events: [] });
+  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), {
+    serial: before,
+    events: [],
+    eventsTruncated: false,
+  });
   client.setQueryData<InfiniteData<SerialListOutput, string | undefined>>(serialKeys.page({}), {
     pages: [{ items: [before], nextCursor: null }],
     pageParams: [undefined],
@@ -96,7 +100,11 @@ test('ubah serial menempel hasil ke detail dan baris daftar', async () => {
 });
 
 test('aksi (catatan/cek ulang) memasang serial terbaru ke detail', async () => {
-  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), { serial: dto(), events: [] });
+  client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), {
+    serial: dto(),
+    events: [],
+    eventsTruncated: false,
+  });
   apiMock.mockResolvedValue(
     dto({ locationName: 'Surabaya', updatedAt: '2026-11-12T03:00:00.000Z' }),
   );

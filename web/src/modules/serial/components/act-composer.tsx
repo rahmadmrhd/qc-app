@@ -25,6 +25,8 @@ interface StickerRow {
   name: string;
   /** Jumlah tersimpan (batas bawah: tidak dapat diturunkan); 0 = stiker belum ditempel. */
   base: number;
+  /** Stiker nonaktif: jumlahnya tidak dapat dinaikkan (server menolak); `deprecated` tetap boleh. */
+  inactive: boolean;
 }
 
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman dimuat ulang: pesan Anda tetap ada, tetapi lokasi dan jumlah stiker dikembalikan ke data terbaru. Atur ulang bila perlu, lalu kirim lagi.`;
@@ -67,13 +69,15 @@ export function ActComposer({ serial }: ActComposerProps) {
       stickerId: sticker.stickerId,
       name: sticker.name,
       base: sticker.qty,
+      inactive: sticker.stickerStatus === 'inactive',
     })),
     ...(options.data?.stickers ?? [])
       .filter((sticker) => !base.has(sticker.id))
-      .map((sticker) => ({ stickerId: sticker.id, name: sticker.name, base: 0 })),
+      .map((sticker) => ({ stickerId: sticker.id, name: sticker.name, base: 0, inactive: false })),
   ];
 
   function step(row: StickerRow, delta: number) {
+    if (row.inactive && delta > 0) return;
     const next = new Map(qty);
     const current = next.get(row.stickerId) ?? row.base;
     next.set(
@@ -163,7 +167,14 @@ export function ActComposer({ serial }: ActComposerProps) {
                   const value = qty.get(row.stickerId) ?? row.base;
                   return (
                     <li key={row.stickerId} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
+                      <span className="min-w-0 flex-1 text-sm">
+                        <span className="block truncate">{row.name}</span>
+                        {row.inactive ? (
+                          <span className="block text-xs text-muted-foreground">
+                            Stiker nonaktif: jumlah tidak dapat ditambah
+                          </span>
+                        ) : null}
+                      </span>
                       <div className="flex items-center gap-1">
                         <Button
                           type="button"
@@ -186,7 +197,7 @@ export function ActComposer({ serial }: ActComposerProps) {
                           variant="outline"
                           size="icon-xs"
                           aria-label={`Tambah ${row.name}`}
-                          disabled={value >= SERIAL_LIMITS.stickerQtyMax}
+                          disabled={row.inactive || value >= SERIAL_LIMITS.stickerQtyMax}
                           onClick={() => step(row, 1)}
                         >
                           <Plus aria-hidden />

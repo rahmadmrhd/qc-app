@@ -48,7 +48,7 @@ const SERIAL: SerialDto = {
   createdAt: '2026-11-10T03:00:00.000Z',
   note: 'catatan awal',
   recordedLocationId: 'l2',
-  stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2 }],
+  stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
   openCaseId: null,
   createdBy: 'budi@x.com',
   updatedAt: '2026-11-11T03:00:00.000Z',
@@ -94,7 +94,7 @@ const EVENTS: SerialEventDto[] = [
     occurredOn: '2026-11-11',
     changes: [{ field: 'location', from: 'Surabaya', to: 'Jakarta' }],
   }),
-];
+].sort((a, b) => b.seq - a.seq); // urutan server: terbaru di atas
 
 let state: GetSerialOutput;
 
@@ -154,7 +154,7 @@ const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id
 
 beforeEach(() => {
   apiMock.mockReset();
-  state = { serial: SERIAL, events: EVENTS };
+  state = { serial: SERIAL, events: EVENTS, eventsTruncated: false };
   me = meWith('edit');
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.get') return Promise.resolve(structuredClone(state));
@@ -196,7 +196,6 @@ beforeEach(() => {
       state = {
         serial: nextSerial,
         events: [
-          ...state.events,
           event({
             id: 'e4',
             seq: 4,
@@ -204,7 +203,9 @@ beforeEach(() => {
             occurredOn: act.occurredOn,
             message: act.message,
           }),
+          ...state.events,
         ],
+        eventsTruncated: false,
       };
       return Promise.resolve(nextSerial);
     }
@@ -212,7 +213,7 @@ beforeEach(() => {
   });
 });
 
-test('merender kepala, ringkasan, dan linimasa menaik dengan chip perubahan', async () => {
+test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) dengan chip perubahan', async () => {
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
   expect(screen.getByText('Cisco C9200')).toBeInTheDocument();
@@ -227,7 +228,7 @@ test('merender kepala, ringkasan, dan linimasa menaik dengan chip perubahan', as
     name: '',
   });
   const top = cards.filter((card) => card.hasAttribute('data-seq'));
-  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
+  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['3', '2', '1']);
   expect(screen.getByText('Lokasi: Surabaya → Jakarta')).toBeInTheDocument();
   expect(screen.getByText(/Stiker ditempel dan stok dipotong: Stiker A ×2/)).toBeInTheDocument();
   expect(screen.getByText('dicek')).toBeInTheDocument();
@@ -369,7 +370,7 @@ test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan
     if (id === 'serials.update') {
       updates++;
       if (updates === 1) {
-        state = { serial: fresh, events: state.events };
+        state = { serial: fresh, events: state.events, eventsTruncated: false };
         return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
       }
       return Promise.resolve(fresh);
@@ -415,7 +416,7 @@ test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai;
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events };
+      state = { serial: fresh, events: state.events, eventsTruncated: false };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -453,7 +454,7 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events };
+      state = { serial: fresh, events: state.events, eventsTruncated: false };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -467,4 +468,57 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
   expect(within(dialog).queryByText(/Diubah orang lain menjadi: Bukan sample/)).toBeNull();
   // Nilai pengguna dipertahankan sampai ia memutuskan.
   expect(within(dialog).getByRole('combobox', { name: 'Lokasi' })).toHaveValue('Surabaya (SBY)');
+});
+
+test('linimasa terpotong: catatan "hanya 500 kejadian terbaru" tampil; tidak tampil bila tidak terpotong', async () => {
+  state = { ...state, eventsTruncated: true };
+  const { unmount } = renderPage();
+  expect(await screen.findByRole('note')).toHaveTextContent('Hanya 500 kejadian terbaru');
+  unmount();
+  state = { ...state, eventsTruncated: false };
+  renderPage();
+  await screen.findByRole('heading', { name: 'ABC123' });
+  expect(screen.queryByText(/Hanya 500 kejadian terbaru/)).toBeNull();
+});
+
+test('cek ulang: penaik jumlah stiker nonaktif dimatikan dengan keterangan; deprecated tetap boleh', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      stickers: [
+        { stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'inactive' },
+        { stickerId: 'st2', name: 'Stiker B', alias: '', qty: 1, stickerStatus: 'deprecated' },
+      ],
+    },
+  };
+  renderPage();
+  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  await pickSelect(screen, 'Aksi', 'Cek ulang');
+  expect(await screen.findByRole('button', { name: 'Tambah Stiker A' })).toBeDisabled();
+  expect(screen.getByText('Stiker nonaktif: jumlah tidak dapat ditambah')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Tambah Stiker B' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
+  expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('2');
+});
+
+test('galat server pada stickers dan message (karakter pengatur arah) tampil lewat jalur galat yang ada', async () => {
+  renderPage();
+  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serials.act'
+      ? Promise.reject(
+          new ApiError('VALIDATION', 'Data tidak valid', '-', {
+            stickers: 'Stiker nonaktif tidak dapat ditambah jumlahnya',
+            message: 'Pesan memuat karakter pengatur arah teks',
+          }),
+        )
+      : original?.(id, input),
+  );
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('Stiker nonaktif tidak dapat ditambah jumlahnya');
+  expect(alert).toHaveTextContent('Pesan memuat karakter pengatur arah teks');
 });

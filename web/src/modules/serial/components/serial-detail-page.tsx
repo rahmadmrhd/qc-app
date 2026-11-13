@@ -67,7 +67,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
   );
 }
 
-/** Detail serial bergaya tiket: kepala, ringkasan, linimasa (menaik), kotak pembaruan baru, dan ubah data. */
+/** Detail serial bergaya tiket: kepala, ringkasan, linimasa (terbaru di atas), kotak pembaruan baru, dan ubah data. */
 export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
   const me = useMe();
   const detail = useQuery(serialDetailQueryOptions(serialId));
@@ -88,7 +88,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
       </div>
     );
   }
-  const { serial, events } = detail.data;
+  const { serial, events, eventsTruncated } = detail.data;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
 
   return (
@@ -117,7 +117,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">
         <h2 className="text-sm font-semibold">Riwayat</h2>
-        <Timeline events={events} />
+        <Timeline events={events} truncated={eventsTruncated} />
       </section>
       {canWrite ? <ActComposer serial={serial} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}

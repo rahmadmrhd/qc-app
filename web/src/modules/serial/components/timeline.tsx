@@ -69,17 +69,32 @@ function EventCard({ event }: { event: SerialEventDto }) {
   );
 }
 
-/** Linimasa kejadian serial, menaik menurut urutan kejadian. */
-export function Timeline({ events }: { events: readonly SerialEventDto[] }) {
-  const ordered = [...events].sort((a, b) => a.seq - b.seq);
-  if (ordered.length === 0) {
+/**
+ * Linimasa kejadian serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya, tidak diurutkan ulang.
+ * `truncated` = server hanya memuat 500 kejadian terbaru.
+ */
+export function Timeline({
+  events,
+  truncated = false,
+}: {
+  events: readonly SerialEventDto[];
+  truncated?: boolean;
+}) {
+  if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada kejadian.</p>;
   }
   return (
-    <ol aria-label="Linimasa" className="space-y-3">
-      {ordered.map((event) => (
-        <EventCard key={event.id} event={event} />
-      ))}
-    </ol>
+    <div className="space-y-3">
+      {truncated ? (
+        <p role="note" className="text-xs text-muted-foreground">
+          Hanya 500 kejadian terbaru yang dimuat; kejadian yang lebih lama tidak ditampilkan.
+        </p>
+      ) : null}
+      <ol aria-label="Linimasa" className="space-y-3">
+        {events.map((event) => (
+          <EventCard key={event.id} event={event} />
+        ))}
+      </ol>
+    </div>
   );
 }
