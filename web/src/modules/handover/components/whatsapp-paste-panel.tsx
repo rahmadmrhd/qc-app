@@ -4,7 +4,7 @@ import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { TipButton } from '@/modules/guide/components/tip-button';
-import { WHATSAPP_TIP_ID, WhatsappDemoScenes } from '../guide/whatsapp-demo';
+import { WHATSAPP_TIP_ID } from '../guide/tip-ids';
 
 /** Batas teks tempelan batch (30 task × 5.000 karakter); lebih dari ini tidak dipecah. */
 const MAX_PASTE_CHARS = 150_000;
@@ -66,11 +66,7 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
       <div>
         <div className="flex items-center gap-1">
           <h2 className="text-base font-semibold">Tempel dari WhatsApp</h2>
-          <TipButton
-            tipId={WHATSAPP_TIP_ID}
-            label="Cara tempel banyak pesan sekaligus"
-            scenes={WhatsappDemoScenes}
-          />
+          <TipButton tipId={WHATSAPP_TIP_ID} label="Cara tempel banyak pesan sekaligus" />
         </div>
         <p className="text-sm text-muted-foreground">
           Tempel beberapa orderan sekaligus. Setiap pesan WhatsApp memulai task baru; baris tanpa

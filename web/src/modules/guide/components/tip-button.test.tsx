@@ -11,7 +11,7 @@ const store = vi.hoisted(() => ({
 }));
 vi.mock('../lib/use-guide-store', () => ({ useGuideStore: () => store }));
 
-import { registerDemoScenes } from '../lib/demo-types';
+import { registerDemoLoader, registerDemoScenes } from '../lib/demo-types';
 import { TipButton } from './tip-button';
 
 const LABEL = 'Cara tempel banyak pesan sekaligus';
@@ -64,6 +64,24 @@ describe('ikon dan titik penanda', () => {
     const { container } = render(<TipButton tipId={TIP} label={LABEL} />);
     expect(container.querySelector('[data-slot="tip-dot"]')).toBeNull();
     expect(screen.getByRole('button', { name: LABEL })).toBeInTheDocument();
+  });
+});
+
+describe('versi penanda', () => {
+  test('penanda versi lama (lebih rendah dari versi katalog) = titik muncul lagi dan ditulis ulang saat dibuka', async () => {
+    store.done = new Map([[TIP, 0]]);
+    const user = userEvent.setup();
+    const { container } = render(<TipButton tipId={TIP} label={LABEL} />);
+    expect(container.querySelector('[data-slot="tip-dot"]')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: LABEL }));
+    await screen.findByText('adegan-1');
+    expect(store.mark).toHaveBeenCalledWith(TIP, 1);
+  });
+
+  test('penanda versi sama atau lebih baru = tanpa titik', () => {
+    store.done = new Map([[TIP, 2]]);
+    const { container } = render(<TipButton tipId={TIP} label={LABEL} />);
+    expect(container.querySelector('[data-slot="tip-dot"]')).toBeNull();
   });
 });
 
@@ -158,7 +176,7 @@ describe('membuka', () => {
 
   test('klip dimuat dengan preload="none" dan tidak ada video sebelum dibuka', async () => {
     registerDemoScenes('tip-klip', [
-      { kind: 'klip', caption: 'Menu pasang', berkas: '/klip/tip-klip-1.webm' },
+      { kind: 'klip', caption: 'Menu pasang', berkas: 'tip-klip-1.webm' },
     ]);
     const user = userEvent.setup();
     const { baseElement } = render(<TipButton tipId="tip-klip" label="Cara pasang" />);
@@ -166,6 +184,32 @@ describe('membuka', () => {
     await user.click(screen.getByRole('button', { name: 'Cara pasang' }));
     await screen.findByText('Menu pasang');
     expect(baseElement.querySelector('video')).toHaveAttribute('preload', 'none');
+  });
+
+  test('adegan dimuat malas lewat pemuat terdaftar hanya setelah dibuka', async () => {
+    const loader = vi.fn(
+      async () =>
+        [
+          { kind: 'kode', caption: 'Malas', durationMs: 60_000, render: () => <p>adegan-malas</p> },
+        ] satisfies DemoScene[],
+    );
+    registerDemoLoader('tip-malas', loader);
+    const user = userEvent.setup();
+    render(<TipButton tipId="tip-malas" label="Cara malas" />);
+    expect(loader).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Cara malas' }));
+    expect(await screen.findByText('adegan-malas')).toBeInTheDocument();
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  test('pemuat yang gagal menampilkan keterangan sementara dan tidak merusak tooltip', async () => {
+    registerDemoLoader('tip-gagal', async () => {
+      throw new Error('chunk gagal');
+    });
+    const user = userEvent.setup();
+    render(<TipButton tipId="tip-gagal" label="Cara gagal" />);
+    await user.click(screen.getByRole('button', { name: 'Cara gagal' }));
+    expect(await screen.findByText('Demonya sedang disiapkan.')).toBeInTheDocument();
   });
 
   test('adegan dapat diberikan lewat prop dan mengalahkan daftar terdaftar', async () => {

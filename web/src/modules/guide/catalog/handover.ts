@@ -1,5 +1,5 @@
-import { WHATSAPP_TIP_ID, WhatsappDemoScenes } from '@/modules/handover/guide/whatsapp-demo';
-import { registerDemoScenes } from '../lib/demo-types';
+import { WHATSAPP_TIP_ID } from '@/modules/handover/guide/tip-ids';
+import { registerDemoLoader } from '../lib/demo-types';
 import type { GuideEntry, GuidePermission } from '../lib/types';
 
 const WH_VIEW: GuidePermission = { module: 'handover', level: 'view', scope: 'location' };
@@ -11,9 +11,9 @@ const QC_EDIT: GuidePermission = { module: 'qc', level: 'edit', scope: 'location
  * sisi QC `edit`); langkah sisi WH (menambah task) dan sisi QC (mencentang) punya `izin` sendiri sehingga satu
  * panduan melayani keduanya. Target `data-tour`: `handover-board` (`handover-board-page.tsx`), `handover-checklist`
  * (`handover-card.tsx`, `handover-detail-view.tsx`), `handover-new` (tombol Tambah task), `handover-batch-form`
- * (`handover-batch-form.tsx`), `handover-paste-panel` (`whatsapp-paste-panel.tsx`), dan `handover-comment`
- * (`comment-composer.tsx`, hanya ada saat komentar sedang ditulis). Tur tidak mengisi field apa pun: demo tempel
- * WhatsApp ditampilkan lewat `tip`, bukan dengan menempel sungguhan.
+ * (`handover-batch-form.tsx`), dan `handover-paste-panel` (`whatsapp-paste-panel.tsx`). Komentar disebut di teks
+ * langkah checklist (komposernya baru ada saat teks dipilih, jadi tak bisa disorot). Tur tidak mengisi field apa
+ * pun: demo tempel WhatsApp ditampilkan lewat `tip`, bukan dengan menempel sungguhan.
  */
 export const HANDOVER_DASAR: GuideEntry = {
   id: 'handover-dasar',
@@ -75,7 +75,11 @@ export const HANDOVER_TIP_WA: GuideEntry = {
   steps: [],
 };
 
-// Demo yang sama dipakai ikon info (`TipButton`) dan langkah tur yang menyematkannya.
-registerDemoScenes(WHATSAPP_TIP_ID, WhatsappDemoScenes);
+// Demo yang sama dipakai ikon info (`TipButton`) dan langkah tur yang menyematkannya. Dimuat malas: katalog hanya
+// metadata, adegannya (JSX, `splitWhatsappBatch`) baru diunduh saat demo dibuka.
+registerDemoLoader(WHATSAPP_TIP_ID, async () => {
+  const { WhatsappDemoScenes } = await import('@/modules/handover/guide/whatsapp-demo');
+  return WhatsappDemoScenes;
+});
 
 export const HANDOVER_GUIDES: readonly GuideEntry[] = [HANDOVER_DASAR, HANDOVER_TIP_WA];
