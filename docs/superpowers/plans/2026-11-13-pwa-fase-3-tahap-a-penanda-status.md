@@ -124,6 +124,8 @@ Input atau kondisi yang tidak tersentuh tes tugas biasa, tetapi paling mungkin m
 - [ ] **Step 5: Jalankan tes, typecheck, lint.** Perintah Step 2 → PASS; `bun run --cwd web test src/modules/handover/lib/use-check-queue.test.tsx` → tetap PASS (refaktor `findCachedHandover`); `bun run --cwd web typecheck`; `bun run lint`.
 - [ ] **Step 6: Commit.** `git add web/src && git commit -m "feat(pwa): chip penghitung perubahan belum terkirim di header"`
 
+**Revisi pasca-review:** hitungan chip di header memakai `useAllOutboxCount` (semua pemilik, tanpa prop `count`) dan melewatkan entri kedaluwarsa lewat `isExpiredEntry`, sejalan dengan spek §5.
+
 ---
 
 ### Task 4: Peringatan saat keluar bila masih ada yang belum terkirim
@@ -150,6 +152,8 @@ Input atau kondisi yang tidak tersentuh tes tugas biasa, tetapi paling mungkin m
 - [ ] **Step 5: Jalankan tes, typecheck, lint.** Perintah Step 2 → PASS; `bun run --cwd web typecheck`; `bun run lint`.
 - [ ] **Step 6: Commit.** `git add web/src && git commit -m "feat(pwa): peringatan sebelum keluar bila masih ada perubahan belum terkirim"`
 
+**Revisi pasca-review:** dialog keluar memakai `useAllOutboxCount` (tanpa prop `count`), sehingga angkanya dibaca langsung dari antrean selama dialog terbuka; hitungan mengabaikan entri kedaluwarsa lewat `isExpiredEntry`; bila nol, teks dialog berubah menjadi "Semua perubahan sudah terkirim. Aman untuk keluar." Prop `count` di atas tidak dipakai lagi.
+
 ---
 
 ### Task 5: Jumlah antrean di layar "Tidak ada koneksi"
@@ -162,11 +166,13 @@ Input atau kondisi yang tidak tersentuh tes tugas biasa, tetapi paling mungkin m
 - Consumes: `countAllOutboxEntries()` dari Task 4.
 - Produces: `OfflineScreen({ onRetry })` tidak berubah tanda tangannya; menghitung sendiri saat dirender.
 
-- [ ] **Step 1: Tulis tes.** `tanpa antrean: tidak ada teks perubahan menunggu`; `dengan dua entri: menampilkan "2 perubahan Anda aman di perangkat dan akan dikirim begitu koneksi kembali."` (seed lewat `enqueueCheck`; tanpa sesi/me).
+- [ ] **Step 1: Tulis tes.** `tanpa antrean: tidak ada teks perubahan menunggu`; `dengan dua entri: menampilkan "2 perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim."` (seed lewat `enqueueCheck`; tanpa sesi/me).
 - [ ] **Step 2: Jalankan tes, pastikan gagal.** `bun run --cwd web test src/app/shell/offline-screen.test.tsx` → kasus baru FAIL.
 - [ ] **Step 3: Implementasikan.** Paragraf kedua `text-sm text-muted-foreground` hanya bila hitungan > 0; kalimat persis seperti di Step 1 dengan angka sebenarnya. Hanya hitungan, tanpa isi.
 - [ ] **Step 4: Jalankan tes, typecheck, lint.** PASS dan bersih.
 - [ ] **Step 5: Commit.** `git add web/src/app/shell && git commit -m "feat(pwa): jumlah perubahan belum terkirim di layar Tidak ada koneksi"`
+
+**Revisi pasca-review:** hitungan layar "Tidak ada koneksi" mengabaikan entri kedaluwarsa (`isExpiredEntry`), sejalan dengan spek §5 (entri lewat 24 jam tidak dihitung).
 
 ---
 
