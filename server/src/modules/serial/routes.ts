@@ -59,9 +59,16 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateSerialStickerOptions,
       handler: (input, ctx) => stickerOptions(ctx.env, ctx.user, input),
     },
-    // Gerbang kasar `serial: edit`; setiap lokasi aktif boleh dipilih (tanpa filter penugasan lokasi).
+    // Setiap lokasi aktif boleh dipilih (tanpa filter penugasan lokasi). Terbuka juga bagi tim servis
+    // (`serialservice: edit`) agar dapat memilih lokasi tujuan saat mengirim balik ke QC (keputusan pemilik 2026-11-13,
+    // mengubah spek §3 butir 19).
     'serials.locationOptions': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: {
+        anyOf: [
+          { module: 'serial', level: 'edit' },
+          { module: 'serialservice', level: 'edit' },
+        ],
+      },
       validate: expectNull,
       handler: (_input, ctx) => locationOptions(ctx.env),
     },
