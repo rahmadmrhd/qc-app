@@ -228,6 +228,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   const submitDisabled =
     act.isPending ||
+    // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
+    (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||

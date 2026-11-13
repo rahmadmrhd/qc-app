@@ -174,7 +174,7 @@ test('canWriteSerials: butuh edit pada minimal satu BU', () => {
   expect(canWriteSerials(null)).toBe(false);
 });
 
-test('canUseSerialLocationOptions: serial: edit ATAU serialservice: edit global (gerbang serials.locationOptions)', () => {
+test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions; tim servis tidak memilih lokasi lagi)', () => {
   const withLevels = (
     serial: 'none' | 'view' | 'edit' | 'manage',
     serialservice: 'none' | 'view' | 'edit' | 'manage' = 'none',
@@ -184,7 +184,7 @@ test('canUseSerialLocationOptions: serial: edit ATAU serialservice: edit global 
   expect(canUseSerialLocationOptions(withLevels('edit'))).toBe(true);
   expect(canUseSerialLocationOptions(withLevels('manage'))).toBe(true);
   expect(canUseSerialLocationOptions(withLevels('none', 'view'))).toBe(false);
-  expect(canUseSerialLocationOptions(withLevels('none', 'edit'))).toBe(true);
+  expect(canUseSerialLocationOptions(withLevels('none', 'edit'))).toBe(false);
   expect(canUseSerialLocationOptions(null)).toBe(false);
 });
 

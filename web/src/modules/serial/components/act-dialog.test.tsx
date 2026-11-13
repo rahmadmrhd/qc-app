@@ -189,7 +189,7 @@ const labelsOf = (serial: SerialDto, actor: MeDto) =>
     },
   ).map((spec) => spec.label);
 
-test('tombol sesuai status dan peran: satu per aksi, tanpa <select>', () => {
+test('tombol sesuai status dan peran: satu per aksi', () => {
   expect(labelsOf(SERIAL, meWith('edit'))).toEqual(['Lapor rusak', 'Cek ulang', 'Catatan']);
   expect(labelsOf(REPORTED, meWith('edit'))).toEqual(['Kirim ke servis', 'Cek ulang', 'Catatan']);
   expect(labelsOf(AT_SERVICE_TRANSIT, meWith('none', 'edit'))).toEqual([
@@ -268,6 +268,28 @@ test('Kirim ke servis: satu lokasi servis = tanpa field dan tanpa toLocationId; 
   await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
   expect(lastAct()).toMatchObject({ action: 'send', message: '' });
   expect(lastAct()).not.toHaveProperty('toLocationId');
+});
+
+test('Kirim ke servis: tombol kirim nonaktif selama daftar lokasi servis belum dimuat', async () => {
+  let release: (value: unknown) => void = () => {};
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const base = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input?: unknown) =>
+    id === 'serials.serviceLocations' ? pending : base?.(id, input),
+  );
+  serviceLocations = [
+    { id: 'l9', code: 'SRV', name: 'Servis Pusat' },
+    { id: 'l8', code: 'SR2', name: 'Servis Dua' },
+  ];
+  renderDialog(REPORTED, 'send');
+  const send = screen.getByRole('button', { name: 'Kirim ke servis' });
+  expect(send).toBeDisabled();
+  release({ locations: serviceLocations });
+  await screen.findByRole('combobox', { name: 'Lokasi servis' });
+  expect(send).toBeDisabled();
+  expect(calls('serials.act')).toHaveLength(0);
 });
 
 test('Kirim ke servis: banyak lokasi servis = LinkField hanya berisi lokasi servis dan wajib dipilih', async () => {
