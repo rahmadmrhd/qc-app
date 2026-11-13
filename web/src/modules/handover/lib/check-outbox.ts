@@ -56,9 +56,10 @@ function isEntry(value: unknown): value is OutboxEntry {
   );
 }
 
-export function readOutbox(owner: string): OutboxEntry[] {
+/** Membaca satu kunci antrean; entri tak valid dibuang, amplop rusak/berversi lain = kosong. */
+function readKey(key: string): OutboxEntry[] {
   try {
-    const raw = localStorage.getItem(outboxKey(owner));
+    const raw = localStorage.getItem(key);
     if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return [];
@@ -68,6 +69,10 @@ export function readOutbox(owner: string): OutboxEntry[] {
   } catch {
     return [];
   }
+}
+
+export function readOutbox(owner: string): OutboxEntry[] {
+  return readKey(outboxKey(owner));
 }
 
 // Pelanggan + penghitung versi (snapshot `useSyncExternalStore`).
@@ -190,6 +195,16 @@ function outboxKeys(): string[] {
     // Penyimpanan tak tersedia.
   }
   return keys;
+}
+
+/**
+ * Jumlah entri VALID dari SEMUA kunci `qc.outbox:*` (semua pemilik): yang akan terbuang bila keluar. 0 bila
+ * penyimpanan tak tersedia atau amplop rusak.
+ */
+export function countAllOutboxEntries(): number {
+  let total = 0;
+  for (const key of outboxKeys()) total += readKey(key).length;
+  return total;
 }
 
 /** Keluar eksplisit: buang SEMUA antrean (sesi kedaluwarsa/401 tidak memanggil ini). */

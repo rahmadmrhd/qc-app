@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { makeHandover } from '../components/test-handover';
 import {
   clearAllOutboxes,
+  countAllOutboxEntries,
   enqueueCheck,
   hasEntriesForTask,
   OUTBOX_MAX_AGE_MS,
@@ -219,4 +220,28 @@ test('clearAllOutboxes tetap bisa membuang walau penulisan ditahan', () => {
   suspendOutboxWrites();
   clearAllOutboxes();
   expect(localStorage.getItem(outboxKey(OWNER))).toBeNull();
+});
+
+test('countAllOutboxEntries menjumlah entri semua pemilik', () => {
+  enqueueCheck(OWNER, entry({ index: 0 }));
+  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }));
+  enqueueCheck('b@x.com', entry({ index: 0 }));
+  expect(countAllOutboxEntries()).toBe(3);
+});
+
+test('countAllOutboxEntries mengabaikan entri tak valid dan amplop rusak', () => {
+  enqueueCheck(OWNER, entry());
+  const valid = { ...entry({ index: 4 }), id: 'ok' };
+  localStorage.setItem(
+    outboxKey('b@x.com'),
+    JSON.stringify({ v: 1, entries: [{ id: 'x' }, valid, 'bukan-entri'] }),
+  );
+  localStorage.setItem(outboxKey('c@x.com'), '{rusak');
+  localStorage.setItem(outboxKey('d@x.com'), JSON.stringify({ v: 99, entries: [valid] }));
+  localStorage.setItem('kunci-lain', JSON.stringify({ v: 1, entries: [valid] }));
+  expect(countAllOutboxEntries()).toBe(2);
+});
+
+test('countAllOutboxEntries nol tanpa kunci apa pun', () => {
+  expect(countAllOutboxEntries()).toBe(0);
 });
