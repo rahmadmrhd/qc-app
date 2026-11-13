@@ -1,5 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { visibleBuIds } from '@server/modules/item/access';
+import { readableBuIds } from '@server/modules/serial/access';
 import { hasLevel } from '@shared/permissions';
 import { readFile, uploadFile } from './service';
 import { validateGetFile, validateUploadFile } from './validate';
@@ -12,6 +13,9 @@ export function filesRoutes(): Pick<RouteTable, 'files.upload' | 'files.get'> {
           { module: 'item', level: 'edit' },
           { module: 'qrcode', level: 'edit' },
           { module: 'sticker', level: 'edit' },
+          // Gambar pada pesan kejadian serial (5b): pencatat dan tim servis.
+          { module: 'serial', level: 'edit' },
+          { module: 'serialservice', level: 'edit' },
         ],
       },
       validate: validateUploadFile,
@@ -23,6 +27,8 @@ export function filesRoutes(): Pick<RouteTable, 'files.upload' | 'files.get'> {
           { module: 'item', level: 'view' },
           { module: 'qrcode', level: 'view' },
           { module: 'sticker', level: 'view' },
+          { module: 'serial', level: 'view' },
+          { module: 'serialservice', level: 'view' },
         ],
       },
       validate: validateGetFile,
@@ -35,6 +41,7 @@ export function filesRoutes(): Pick<RouteTable, 'files.upload' | 'files.get'> {
           canReadStickerFiles:
             hasLevel(ctx.user.permissions.sticker, 'view') ||
             hasLevel(ctx.user.permissions.item, 'view'),
+          serialBuIds: readableBuIds(ctx.user),
         }),
     },
   };
