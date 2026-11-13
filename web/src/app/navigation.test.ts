@@ -400,21 +400,18 @@ test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
   expect(serialItems(meWithSerial('none'))).toBeUndefined();
   expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number']);
   expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number']);
-  expect(serialItems(meWithSerial('edit'))).toEqual([
-    'Daftar Serial Number',
-    'Catat Serial Number',
-  ]);
+  // Mencatat dimulai dari tombol Tambah di daftar: tanpa menu "Catat Serial Number" (keputusan pemilik 2026-11-13).
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial Number']);
 });
 
-test('Daftar Serial Number tidak ikut aktif di Catat Serial Number', () => {
+test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan detail', () => {
   const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  expect(items.some((entry) => entry.to === '/serial/new')).toBe(false);
   const list = items.find((entry) => entry.to === '/serial');
-  const record = items.find((entry) => entry.to === '/serial/new');
-  if (!list || !record) throw new Error('menu hilang');
+  if (!list) throw new Error('menu hilang');
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(list, at('/serial/new'))).toBe(false);
-  expect(isNavItemActive(record, at('/serial/new'))).toBe(true);
+  expect(isNavItemActive(list, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
 });
 
@@ -437,18 +434,11 @@ function meManagingSerial(levels: ('edit' | 'manage')[], isSuperAdmin = false): 
 }
 
 test('menu Pengaturan Serial Number hanya bagi pengelola di semua BU (atau super admin); tidak ikut aktif di Daftar', () => {
-  expect(serialItems(meManagingSerial(['edit']))).toEqual([
-    'Daftar Serial Number',
-    'Catat Serial Number',
-  ]);
+  expect(serialItems(meManagingSerial(['edit']))).toEqual(['Daftar Serial Number']);
   // Manage hanya di sebagian BU: tersembunyi (server menolak karena penerima bersifat global).
-  expect(serialItems(meManagingSerial(['manage', 'edit']))).toEqual([
-    'Daftar Serial Number',
-    'Catat Serial Number',
-  ]);
+  expect(serialItems(meManagingSerial(['manage', 'edit']))).toEqual(['Daftar Serial Number']);
   expect(serialItems(meManagingSerial(['manage', 'manage']))).toEqual([
     'Daftar Serial Number',
-    'Catat Serial Number',
     'Pengaturan',
   ]);
   expect(serialItems(meManagingSerial(['edit'], true))).toContain('Pengaturan');

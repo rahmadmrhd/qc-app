@@ -108,7 +108,9 @@ afterEach(() => {
   apiMock.mockReset();
 });
 
-function renderPage(props: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+function renderPage(
+  props: { onDirtyChange?: (dirty: boolean) => void; onAllSaved?: (created: number) => void } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -394,4 +396,42 @@ test('halaman tidak memuat elemen select atau option bawaan', async () => {
   await paste('A1');
   expect(container.querySelector('select, option, optgroup')).toBeNull();
   expect(document.querySelector('select, option, optgroup')).toBeNull();
+});
+
+test('semua baris tersimpan: onAllSaved dipanggil dan draft localStorage kosong', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1\nA2');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await waitFor(() => expect(onAllSaved).toHaveBeenCalledTimes(1));
+  expect(onAllSaved).toHaveBeenCalledWith(2);
+  expect(screen.queryAllByRole('row')).toHaveLength(0);
+  const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
+  expect(draft === null || draft === '[]').toBe(true);
+});
+
+test('sebagian gagal (duplikat): tidak berpindah halaman; baris sukses keluar, baris gagal tersisa', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1\nA2');
+  resultFor = (row) => (row.serial === 'A2' ? 'duplicate' : 'created');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await waitFor(() => expect(serialValues()).toEqual(['A2']));
+  expect(onAllSaved).not.toHaveBeenCalled();
+});
+
+test('galat jaringan: tidak berpindah halaman', async () => {
+  const onAllSaved = vi.fn();
+  renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1');
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serials.saveBatch' ? Promise.reject(new Error('putus')) : original?.(id, input),
+  );
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+  expect(onAllSaved).not.toHaveBeenCalled();
 });

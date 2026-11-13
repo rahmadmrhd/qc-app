@@ -53,9 +53,11 @@ const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status:
 
 function Harness({
   onOpen = () => undefined,
+  onNew,
   initial = {},
 }: {
   onOpen?: (id: string) => void;
+  onNew?: () => void;
   initial?: Record<string, unknown>;
 }) {
   const [search, setSearch] = useState<SerialSearch>(serialSearchSchema.parse(initial));
@@ -64,15 +66,24 @@ function Harness({
       search={search}
       onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
       onOpen={onOpen}
+      onNew={onNew}
     />
   );
 }
 
-function renderPage(onOpen?: (id: string) => void, initial?: Record<string, unknown>) {
+function renderPage(
+  onOpen?: (id: string) => void,
+  initial?: Record<string, unknown>,
+  onNew?: () => void,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(onOpen ? { onOpen } : {})} {...(initial ? { initial } : {})} />
+      <Harness
+        {...(onOpen ? { onOpen } : {})}
+        {...(initial ? { initial } : {})}
+        {...(onNew ? { onNew } : {})}
+      />
     </QueryClientProvider>,
   );
 }
@@ -535,4 +546,15 @@ test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async 
   expect(screen.queryByDisplayValue('b-rahasia-123')).toBeNull();
   expect(screen.queryByText('b-rahasia-123')).toBeNull();
   expect(screen.getByDisplayValue('BU tidak dikenal')).toBeInTheDocument();
+});
+
+test('tombol "Tambah Serial Number" hanya tampil bila ada jalan masuk mencatat, dan memanggilnya', async () => {
+  const { unmount } = renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: 'Tambah Serial Number' })).toBeNull();
+  unmount();
+  const onNew = vi.fn();
+  renderPage(undefined, undefined, onNew);
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambah Serial Number' }));
+  expect(onNew).toHaveBeenCalledTimes(1);
 });

@@ -1,4 +1,4 @@
-import { createFileRoute, useBlocker } from '@tanstack/react-router';
+import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { requirePermission } from '@/modules/auth/permissions';
 import { RecordPage } from '@/modules/serial/components/record-page';
@@ -14,6 +14,7 @@ const LEAVE_MESSAGE =
 
 function NewSerialRoute() {
   const dirty = useRef(false);
+  const navigate = useNavigate();
   useBlocker({
     shouldBlockFn: () => shouldBlockLeave(dirty.current, () => window.confirm(LEAVE_MESSAGE)),
     enableBeforeUnload: () => shouldWarnBeforeUnload(dirty.current),
@@ -23,6 +24,11 @@ function NewSerialRoute() {
       <RecordPage
         onDirtyChange={(value) => {
           dirty.current = value;
+        }}
+        // Semua baris tersimpan: kembali ke daftar tanpa konfirmasi keluar (draft sudah kosong).
+        onAllSaved={() => {
+          dirty.current = false;
+          void navigate({ to: '/serial' });
         }}
       />
     </div>

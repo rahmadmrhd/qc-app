@@ -15,7 +15,6 @@ import {
   MapPin,
   Package,
   QrCode,
-  ScanBarcode,
   Settings,
   Settings2,
   Shapes,
@@ -119,17 +118,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Daftar Serial Number',
         to: '/serial',
         icon: ListChecks,
-        excludes: ['/serial/new', '/serial/settings'],
+        excludes: ['/serial/settings'],
         permission: [
           { module: 'serial', level: 'view' },
           { module: 'serialservice', level: 'view' },
         ],
-      },
-      {
-        label: 'Catat Serial Number',
-        to: '/serial/new',
-        icon: ScanBarcode,
-        permission: { module: 'serial', level: 'edit' },
       },
       {
         label: 'Pengaturan',

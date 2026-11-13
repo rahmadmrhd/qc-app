@@ -60,7 +60,7 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Daftar Serial Number</h1>
-        {onNew ? <Button onClick={onNew}>Catat Serial Number</Button> : null}
+        {onNew ? <Button onClick={onNew}>Tambah Serial Number</Button> : null}
       </div>
       <NoLocationNotice relevant={!canUseSerialLocationOptions(me)} />
       <SerialFilters search={search} onChange={onSearchChange} />

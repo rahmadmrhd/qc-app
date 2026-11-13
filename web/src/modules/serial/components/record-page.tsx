@@ -1,6 +1,7 @@
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Select } from '@/components/select';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -59,6 +60,11 @@ interface SaveSummary {
 export interface RecordPageProps {
   /** Dipanggil saat tabel sementara berubah antara kosong dan berisi (untuk konfirmasi keluar halaman). */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Dipanggil setelah Simpan bila SEMUA baris tersimpan (tanpa sisa error, duplikat, atau baris yang tak dikirim, dan
+   * draft kosong): pemanggil membawa pengguna kembali ke daftar. Bila ada yang gagal, halaman tetap terbuka.
+   */
+  onAllSaved?: (created: number) => void;
 }
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
@@ -108,7 +114,7 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 }
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
-export function RecordPage({ onDirtyChange }: RecordPageProps) {
+export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
   const saveBatch = useSaveSerialBatch();
@@ -381,6 +387,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     setSaving(true);
     setNotice(null);
     setSummary(null);
+    let allSaved = false;
+    let savedCount = 0;
     try {
       // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
       const sendIds = new Set(current.map((row) => row.clientId));
@@ -465,8 +473,21 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         }
       }
       setSummary(tally);
+      // Baris `created` (termasuk simpan ulang `clientId` yang sama) sudah keluar dari draft; semuanya sukses bila tak ada
+      // yang gagal, ganda, atau tak terkirim, dan tidak ada baris baru yang masuk selama menyimpan.
+      savedCount = tally.created;
+      allSaved =
+        tally.failed === 0 &&
+        tally.duplicate === 0 &&
+        tally.skipped === 0 &&
+        rowsRef.current.length === 0;
     } finally {
       setSaving(false);
+    }
+    if (allSaved && onAllSaved) {
+      clearDraft(ownerKey);
+      toast.success('Serial Number berhasil disimpan');
+      onAllSaved(savedCount);
     }
   }
 
