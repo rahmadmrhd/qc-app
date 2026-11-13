@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { STATUS_OPTIONS } from '../lib/labels';
 import {
+  commitSearchLine,
   mergeScanned,
   normalizeSearchText,
   SERIAL_SEARCH_MAX,
@@ -30,6 +31,9 @@ export interface SerialFiltersProps {
   onChange: (patch: Partial<SerialSearch>) => void;
 }
 
+/** Bentuk teks pencarian yang dikirim ke URL (gema URL yang sama tidak menimpa teks mentah yang sedang diedit). */
+const normalizeSearchTextValue = (value: string) => normalizeSearchText(value).text;
+
 const STATUS_FILTER_OPTIONS = [{ value: '', label: 'Semua status' }, ...STATUS_OPTIONS];
 
 /** Filter daftar serial: pencarian banyak serial (tempel atau pindai), item, lokasi, status, dan rentang tanggal uji. */
@@ -44,7 +48,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     search.sn ?? '',
     (value) => onChange({ sn: normalizeSearchText(value).text || undefined }),
     undefined,
-    { ignoreTrailingWhitespace: true },
+    { normalize: normalizeSearchTextValue },
   );
   const normalized = normalizeSearchText(text);
 
@@ -52,6 +56,14 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
   const textRef = useRef(text);
   textRef.current = text;
   const { feedback, announce } = useScanFeedback();
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const caretRef = useRef<number | null>(null);
+  // Kursor ditempatkan setelah teks baru dirender (Enter memindahkannya ke awal baris berikutnya).
+  useLayoutEffect(() => {
+    if (caretRef.current === null) return;
+    fieldRef.current?.setSelectionRange(caretRef.current, caretRef.current);
+    caretRef.current = null;
+  });
 
   function applyText(next: string) {
     textRef.current = next;
@@ -65,21 +77,15 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     return result;
   }
 
-  // Enter (juga penutup bacaan pemindai fisik) menetapkan baris yang sedang ditulis lewat `mergeScanned`: sah = tetap
-  // dan kursor pindah ke baris baru; duplikat atau tak sah = baris dibuang, dengan umpan balik yang sama dengan kolom
-  // pindai (nada, getar, kilat).
+  // Enter (juga penutup bacaan pemindai fisik) menetapkan baris tempat kursor berada lewat `commitSearchLine`; baris lain
+  // tidak disentuh. Umpan balik sama dengan kolom pindai (nada, getar, kilat).
   function commitCurrentLine(field: HTMLTextAreaElement) {
     const value = textRef.current;
-    const caret = field.selectionStart ?? value.length;
-    const start = caret === 0 ? 0 : value.lastIndexOf('\n', caret - 1) + 1;
-    const lineEnd = value.indexOf('\n', caret);
-    const end = lineEnd === -1 ? value.length : lineEnd;
-    const line = value.slice(start, end);
-    if (line.trim() === '') return;
-    const rest = `${value.slice(0, start)}${value.slice(end + 1)}`.replace(/\n+$/, '');
-    const { text: next, feedback: result } = mergeScanned(rest, line);
-    announce(result);
-    applyText(next === '' ? '' : `${next}\n`);
+    const result = commitSearchLine(value, field.selectionStart ?? value.length);
+    if (result === null) return;
+    announce(result.feedback);
+    caretRef.current = result.caret;
+    applyText(result.text);
   }
 
   return (
@@ -99,6 +105,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         </div>
         <Textarea
           id="serial-search"
+          ref={fieldRef}
           rows={3}
           className={cn(
             'font-mono transition-colors',

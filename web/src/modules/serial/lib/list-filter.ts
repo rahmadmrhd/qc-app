@@ -4,6 +4,7 @@ import {
   normalizeSerial,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
+  serialProblem,
   splitSerialInput,
 } from '@shared/serials';
 import { z } from 'zod';
@@ -62,10 +63,23 @@ export function normalizeSearchText(text: string): {
   };
 }
 
+/** Serial ternormalisasi dari tiap baris teks pencarian (baris kosong dilewati; baris tak sah ikut dinormalkan apa adanya). */
+function lineKeys(text: string): Set<string> {
+  const keys = new Set<string>();
+  for (const line of text.split('\n')) {
+    const normalized = normalizeSerial(line);
+    if (normalized !== '') keys.add(normalized);
+  }
+  return keys;
+}
+
 /**
- * Menambahkan hasil pindai/tempel (satu atau banyak serial, satu per baris) ke daftar pencarian tanpa duplikat.
- * `text` = daftar baru (tak berubah bila ditolak atau sudah ada semua); `feedback`: `added` bila ada yang masuk,
- * `duplicate` bila semuanya sudah ada, `rejected` bila tak satu pun sah atau daftar penuh (yang muat tetap masuk).
+ * Menambahkan hasil scan kamera (satu atau banyak serial, satu per baris) ke ujung daftar pencarian tanpa duplikat.
+ * HANYA baris yang ditambahkan yang dinormalkan: teks yang sudah ada dibiarkan mentah (baris yang belum sah, sedang
+ * diketik, atau melebihi batas tidak dibuang atau diubah diam-diam; peringatan batas tetap tampil dari teksnya).
+ * Konsekuensi yang disengaja: menambah baris kedua mengubah arti pencarian dari awalan menjadi cocok persis.
+ * `feedback`: `added` bila semua yang baru masuk, `duplicate` bila semuanya sudah ada, `rejected` bila tak satu pun
+ * sah atau daftar penuh; serial yang masih muat tetap masuk, sisanya tidak (umpan balik `rejected`).
  */
 export function mergeScanned(
   currentText: string,
@@ -73,15 +87,53 @@ export function mergeScanned(
 ): { text: string; feedback: ScanFeedback } {
   const split = splitSerialInput(input);
   if (split.serials.length === 0) return { text: currentText, feedback: 'rejected' };
-  const current = normalizeSearchText(currentText)
-    .text.split('\n')
-    .filter((line) => line !== '');
-  const known = new Set(current);
+  const known = lineKeys(currentText);
   const added = split.serials.filter((serial) => !known.has(serial));
   if (added.length === 0) return { text: currentText, feedback: 'duplicate' };
-  const merged = normalizeSearchText([...current, ...added].join('\n'));
-  if (merged.count === current.length) return { text: currentText, feedback: 'rejected' };
-  return { text: merged.text, feedback: merged.capped ? 'rejected' : 'added' };
+  const base = currentText.replace(/\n+$/, '');
+  const accepted: string[] = [];
+  for (const serial of added) {
+    const candidate = [...(base === '' ? [] : [base]), ...accepted, serial].join('\n');
+    if (normalizeSearchText(candidate).capped) break;
+    accepted.push(serial);
+  }
+  if (accepted.length === 0) return { text: currentText, feedback: 'rejected' };
+  const text = [...(base === '' ? [] : [base]), ...accepted].join('\n');
+  return { text, feedback: accepted.length === added.length ? 'added' : 'rejected' };
+}
+
+/**
+ * Enter pada field pencarian (juga penutup bacaan pemindai fisik): menetapkan baris tempat kursor berada (seluruh
+ * baris, bukan hanya bagian sebelum kursor); baris lain TIDAK disentuh dan tetap di tempatnya.
+ * - tak sah atau sudah ada di baris lain: baris dibuang, umpan balik `rejected`/`duplicate`;
+ * - sah: dinormalkan di tempat, kursor pindah ke awal baris berikutnya (baris baru bila ini baris terakhir);
+ *   umpan balik `rejected` bila daftar menjadi melebihi batas (baris tetap ada, peringatan batas tampil).
+ * Mengembalikan `null` bila baris kosong (Enter tak berbuat apa-apa).
+ */
+export function commitSearchLine(
+  value: string,
+  caret: number,
+): { text: string; caret: number; feedback: ScanFeedback } | null {
+  const start = caret <= 0 ? 0 : value.lastIndexOf('\n', caret - 1) + 1;
+  const lineEnd = value.indexOf('\n', Math.max(caret, start));
+  const end = lineEnd === -1 ? value.length : lineEnd;
+  const raw = value.slice(start, end);
+  if (raw.trim() === '') return null;
+  const before = value.slice(0, start);
+  const after = lineEnd === -1 ? '' : value.slice(end + 1);
+  const normalized = normalizeSerial(raw);
+  if (serialProblem(normalized) !== null) {
+    return { text: before + after, caret: before.length, feedback: 'rejected' };
+  }
+  if (lineKeys(`${before}\n${after}`).has(normalized)) {
+    return { text: before + after, caret: before.length, feedback: 'duplicate' };
+  }
+  const text = `${before}${normalized}\n${after}`;
+  return {
+    text,
+    caret: before.length + normalized.length + 1,
+    feedback: normalizeSearchText(text).capped ? 'rejected' : 'added',
+  };
 }
 
 /**

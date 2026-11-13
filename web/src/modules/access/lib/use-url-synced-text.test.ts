@@ -2,6 +2,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useUrlSyncedText } from './use-url-synced-text';
 
+const trimEnd = (value: string) => value.trimEnd();
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -57,10 +59,10 @@ test('nilai awal berasal dari URL tanpa mengirim apa pun', () => {
   expect(commit).not.toHaveBeenCalled();
 });
 
-test('ignoreTrailingWhitespace: baris baru di ujung tidak dihapus oleh gema URL yang dipangkas', () => {
+test('normalize: baris baru di ujung tidak dihapus oleh gema URL yang dipangkas', () => {
   const commit = vi.fn();
   const { result, rerender } = renderHook(
-    ({ url }) => useUrlSyncedText(url, commit, 300, { ignoreTrailingWhitespace: true }),
+    ({ url }) => useUrlSyncedText(url, commit, 300, { normalize: trimEnd }),
     { initialProps: { url: '' } },
   );
   act(() => result.current[1]('AAA\n'));

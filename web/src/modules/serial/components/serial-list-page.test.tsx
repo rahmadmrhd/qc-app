@@ -218,6 +218,43 @@ test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan 
   expect(screen.getByText('3 serial dicari (maks. 50)')).toBeInTheDocument();
 });
 
+test('Enter tidak membuang sisa teks yang melebihi batas, juga setelah gema URL', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  const many = Array.from({ length: 80 }, (_, i) => `S${String(i).padStart(3, '0')}`).join('\n');
+  fireEvent.change(field, { target: { value: `${many}\nbaru` } });
+  expect(screen.getByRole('alert')).toHaveTextContent('Terlalu banyak serial');
+  field.setSelectionRange(field.value.length, field.value.length);
+  await userEvent.type(field, '{Enter}');
+  expect(field.value.split('\n').filter(Boolean)).toHaveLength(81);
+  await waitFor(() => expect(lastListInput()).toHaveProperty('serials'), { timeout: 3000 });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(field.value.split('\n').filter(Boolean)).toHaveLength(81);
+  expect(screen.getByRole('alert')).toHaveTextContent('Terlalu banyak serial');
+});
+
+test('hasil kamera menambah baris di ujung tanpa mengubah awalan yang sedang diketik', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'ab' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
+  expect(field.value).toBe('ab\nBBB222\nAAA111\nCCC333');
+});
+
+test('Enter di baris tengah menetapkan baris itu saja', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'aaa\nbbb\nccc' } });
+  field.focus();
+  field.setSelectionRange(5, 5);
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('aaa\nBBB\nccc');
+  expect(field.selectionStart).toBe(8);
+});
+
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
   renderPage();
   await screen.findByText('ABC123');

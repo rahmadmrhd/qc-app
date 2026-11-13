@@ -5,14 +5,15 @@ import { useEffect, useRef, useState } from 'react';
  * (mis. klik menu tanpa filter). `pushed` mengingat nilai terakhir yang dikirim, jadi gema dari URL
  * tidak dianggap perubahan luar, dan nilai lama tidak "hidup kembali" setelah URL dikosongkan.
  *
- * `ignoreTrailingWhitespace`: spasi/baris baru di ujung teks tidak dihitung (nilai di URL biasanya sudah dipangkas), jadi
- * baris baru yang baru diketik atau di-Enter tidak dihapus oleh gema URL; tanpa ini kursor kembali ke baris sebelumnya.
+ * `normalize` (opsional): bentuk yang benar-benar dikirim ke URL oleh `commit` (mis. dipangkas atau dinormalkan). Gema URL
+ * yang sama dengan `normalize(teks)` tidak dianggap perubahan luar, jadi teks mentah yang sedang diedit (baris baru di ujung,
+ * baris yang belum sah, kelebihan batas) tidak ditimpa nilai URL yang sudah dinormalkan. Tanpa opsi ini teks dibandingkan apa adanya.
  */
 export function useUrlSyncedText(
   urlValue: string,
   commit: (value: string) => void,
   delayMs = 350,
-  { ignoreTrailingWhitespace = false }: { ignoreTrailingWhitespace?: boolean } = {},
+  { normalize }: { normalize?: (value: string) => string } = {},
 ) {
   const [text, setText] = useState(urlValue);
   const pushed = useRef(urlValue);
@@ -26,14 +27,14 @@ export function useUrlSyncedText(
   }, [urlValue]);
 
   useEffect(() => {
-    const comparable = ignoreTrailingWhitespace ? text.trimEnd() : text;
+    const comparable = normalize ? normalize(text) : text;
     if (comparable === pushed.current) return;
     const timer = setTimeout(() => {
       pushed.current = comparable;
       commitRef.current(text);
     }, delayMs);
     return () => clearTimeout(timer);
-  }, [text, delayMs, ignoreTrailingWhitespace]);
+  }, [text, delayMs, normalize]);
 
   return [text, setText] as const;
 }

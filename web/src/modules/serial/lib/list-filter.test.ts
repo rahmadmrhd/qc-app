@@ -1,6 +1,7 @@
 import { listSerialsTooLong, SERIAL_LIMITS } from '@shared/serials';
 import { describe, expect, test } from 'vitest';
 import {
+  commitSearchLine,
   filterOfSearch,
   mergeScanned,
   normalizeSearchText,
@@ -91,5 +92,70 @@ describe('mergeScanned', () => {
   test('daftar penuh: ditolak', () => {
     const full = Array.from({ length: SERIAL_SEARCH_MAX }, (_, i) => `S${i}`).join('\n');
     expect(mergeScanned(full, 'EXTRA').feedback).toBe('rejected');
+  });
+});
+
+describe('mergeScanned (teks yang sudah ada dibiarkan mentah)', () => {
+  test('hanya baris yang ditambahkan yang dinormalkan; sisa teks tak diubah', () => {
+    expect(mergeScanned('ab\nbaris tak sah \u0001', 'xyz').text).toBe(
+      'ab\nbaris tak sah \u0001\nXYZ',
+    );
+    expect(mergeScanned('ab\n\n', 'xyz').text).toBe('ab\nXYZ');
+  });
+
+  test('daftar mentah yang sudah melebihi batas tidak dipangkas dan tidak ditambah', () => {
+    const raw = Array.from({ length: SERIAL_SEARCH_MAX + 30 }, (_, i) => `s${i}`).join('\n');
+    expect(mergeScanned(raw, 'baru')).toEqual({ text: raw, feedback: 'rejected' });
+  });
+
+  test('sebagian muat: yang muat masuk, umpan balik rejected', () => {
+    const almost = Array.from({ length: SERIAL_SEARCH_MAX - 1 }, (_, i) => `S${i}`).join('\n');
+    const result = mergeScanned(almost, 'AAA\nBBB');
+    expect(result.feedback).toBe('rejected');
+    expect(result.text.endsWith('\nAAA')).toBe(true);
+    expect(result.text).not.toContain('BBB');
+  });
+});
+
+describe('commitSearchLine', () => {
+  test('baris terakhir sah: dinormalkan, baris baru ditambahkan, kursor di sana', () => {
+    expect(commitSearchLine('AAA\nbbb', 7)).toEqual({
+      text: 'AAA\nBBB\n',
+      caret: 8,
+      feedback: 'added',
+    });
+  });
+
+  test('baris tengah sah: dinormalkan di tempat, baris lain tak berubah, kursor ke awal baris berikutnya', () => {
+    expect(commitSearchLine('aaa\nccc\nddd', 5)).toEqual({
+      text: 'aaa\nCCC\nddd',
+      caret: 8,
+      feedback: 'added',
+    });
+  });
+
+  test('duplikat atau tak sah: hanya baris itu dibuang; baris lain (mentah, di luar batas) tetap', () => {
+    expect(commitSearchLine('AAA\naaa', 7)).toEqual({
+      text: 'AAA\n',
+      caret: 4,
+      feedback: 'duplicate',
+    });
+    expect(commitSearchLine('sisa mentah\nA\u0001B', 15)).toEqual({
+      text: 'sisa mentah\n',
+      caret: 12,
+      feedback: 'rejected',
+    });
+  });
+
+  test('baris kosong tidak berbuat apa-apa', () => {
+    expect(commitSearchLine('AAA\n', 4)).toBeNull();
+    expect(commitSearchLine('', 0)).toBeNull();
+  });
+
+  test('melebihi batas: baris tetap, umpan balik rejected', () => {
+    const full = `${Array.from({ length: SERIAL_SEARCH_MAX }, (_, i) => `S${i}`).join('\n')}\nEXTRA`;
+    const result = commitSearchLine(full, full.length);
+    expect(result?.feedback).toBe('rejected');
+    expect(result?.text).toBe(`${full}\n`);
   });
 });
