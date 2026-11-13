@@ -12,7 +12,7 @@ export type GuideId = (typeof GUIDE_IDS)[number];
 
 /**
  * Versi tiap panduan. Menaikkan versi membuat panduan itu muncul lagi bagi pengguna yang sudah menyelesaikan versi
- * lama (progres tersimpan `version` terakhir yang diselesaikan/dilewati).
+ * lama (progres tersimpan = `version` terakhir yang diselesaikan).
  */
 export const GUIDE_VERSIONS: Record<GuideId, number> = {
   'sapaan-awal': 1,
@@ -27,7 +27,7 @@ export const GUIDE_VERSIONS: Record<GuideId, number> = {
  */
 export const GUIDE_COVERS: Partial<Record<GuideId, readonly GuideId[]>> = {};
 
-/** Progres satu panduan milik pemanggil: versi terakhir yang diselesaikan atau dilewati. */
+/** Progres satu panduan milik pemanggil: versi terakhir yang diselesaikan. */
 export interface GuideProgressDto {
   id: GuideId;
   version: number;
