@@ -229,3 +229,31 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
 | 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
 | 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |
+
+## Panduan interaktif (2026-11-13)
+
+Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Pengaturan Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| G1 | Login pertama dengan akun individu yang belum pernah menjawab sapaan | Dialog "Mau tur singkat?" tampil sekali; "Nanti" tidak ditanya lagi pada muat ulang dan menu profil "Panduan" tetap ada | 4.4 Sapaan login |
+| G2 | Mulai tur "Dasar layout" dari sapaan atau menu profil > Panduan | Sidebar, pemilih lokasi, lonceng, tema, dan menu profil disorot berurutan; tidak ada field yang terisi atau berubah | 4.5 |
+| G3 | Jalankan tur Serah Terima dengan akun WH, lalu dengan akun QC | Langkah sesuai sisi akun (langkah tanpa izin dilewati, bukan tampil sebagai teks); tur berhenti sebelum tombol simpan/kirim; di tab Network tidak ada permintaan tulis handover | 4.5, 4.1 |
+| G4 | Buka ikon info "Tempel dari WhatsApp" setelah tur selesai | Ikon tetap ada di tempatnya; demo bergerak berjalan, tombol jeda dan titik adegan bisa diketuk; titik penanda hilang setelah pernah dibuka | 4.6 |
+| G5 | Ikon info di perangkat tanpa gerakan (kurangi gerakan di OS) dan saat offline | Keterangan tampil sebagai daftar langkah bernomor; tidak ada galat di konsol | 4.6 |
+| G6 | Selesaikan tur dengan akun individu di peramban A, lalu login akun sama di peramban B | Panduan yang sudah selesai tidak ditawarkan lagi di peramban B; penanda dimuat dari server | 4.3 |
+| G7 | Selesaikan tur dengan akun bersama di peramban A, lalu login akun sama di peramban B | Panduan ditawarkan lagi di peramban B (disengaja); di peramban A tetap tidak ditawarkan | 4.3 |
+| G8 | Ulangi tur dari menu profil "Ulangi" pada panduan yang sudah selesai | Tur berjalan dari awal tanpa mengubah penanda selain yang ditulis saat tur selesai | 4.4 |
+| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Pengaturan Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
+| G10 | Buka `/handover` pertama kali (panduan belum selesai) | Banner "Pertama kali di ...? Ada panduan N langkah." tampil dengan Mulai, Nanti, dan Sudah paham; N hanya menghitung langkah yang lolos izin akun | 4.4 Banner |
+| G11 | Tekan "Nanti" lalu buka tab baru aplikasi | Banner tidak tampil di sesi tab itu; di sesi tab baru banner muncul lagi selama panduan belum selesai | 4.4 Banner |
+| G12 | Tekan "Sudah paham" pada banner panduan `dasar` | Banner hilang dan tidak muncul lagi; panduan `baru` yang tercakup ikut tertutup; panduan tetap ada di menu profil "Panduan" | 4.4, 4.2 |
+| G13 | Lihat sidebar saat ada panduan belum selesai, lalu selesaikannya | Titik penanda pada item sidebar yang bersangkutan tampil, lalu hilang setelah panduan selesai | 4.4 Titik penanda |
+| G14 | Akun tanpa izin `handover` (mis. hanya `item: view`) | Panduan Serah Terima tidak ditawarkan di kartu, banner, atau menu; tidak ada titik penanda di menu Serah Terima | 4.2 |
+| G15 | Akun individu saat `guides.list` gagal (matikan jaringan lalu buka aplikasi) | Tidak ada penawaran panduan sama sekali (tidak menampilkan "semua belum selesai"); aplikasi tetap berfungsi | 4.3 Pemuatan |
+| G16 | Buka peramban yang belum memasang PWA di Android Chrome dan iOS Safari | Panduan "Pasang PWA" ditawarkan; setelah dipasang dan dibuka dari ikon, panduan itu tidak ditawarkan lagi | 4.3 Diturunkan |
+| G17 | Login di aplikasi terpasang dengan izin notifikasi `default` (bersamaan dengan dialog pra-izin push) | Panduan push tidak muncul bersamaan dengan dialog pra-izin; penawarannya menunggu dialog itu selesai | 4.3 Diturunkan |
+| G18 | Di ponsel (layar sempit), mulai tur yang menyorot menu sidebar | Sidebar terbuka lebih dulu bila perlu; kartu tur tidak menutupi item sidebar yang sedang disorot; langkah berikutnya tetap berjalan | 4.5, dan tes fokus kartu tur vs sidebar ponsel |
+| G19 | Di perangkat nyata (Android Chrome dan iOS Safari, aplikasi terpasang dan tab biasa): jalankan tur dengan sentuhan | Kartu tur dapat digeser/dibaca, tombol Lanjut dan Lewati dapat diketuk, tidak ada elemen yang tertutup keyboard; tur tidak macet saat pindah rute | 4.5 |
+| G20 | Tooltip dengan klip (bila sudah direkam) dibuka di jaringan lambat | Klip diunduh hanya saat tooltip dibuka (`preload="none"`); tanpa klip, tampil daftar langkah bernomor; tidak ada klip yang dipra-cache oleh service worker | 4.6, 9 |
+| G21 | Pengguna tanpa izin apa pun pada modul panduan yang dimaksud membuka rute tujuan tur langsung | Tur tidak memunculkan target yang tak berhak; langkah dilewati atau jatuh ke penjelasan teks; tidak macet | 4.5 |
