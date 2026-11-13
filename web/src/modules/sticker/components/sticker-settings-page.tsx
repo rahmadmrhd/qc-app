@@ -201,9 +201,10 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
       <section className="space-y-3 rounded-lg border p-4">
         <h2 className="text-base font-semibold">Ringkasan harian stok menipis dan habis</h2>
         <p className="text-sm text-muted-foreground">
-          Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang (apa pun
-          minimumnya). Bagian "Menipis": stiker aktif yang stoknya di bawah atau sama dengan minimum
-          tetapi belum habis. Stiker nonaktif tidak dihitung.
+          Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang, apa pun
+          minimumnya. Bagian "Menipis": stiker aktif dengan minimum lebih dari 0 yang stoknya di
+          bawah atau sama dengan minimum tetapi belum habis (minimum 0 tidak pernah menipis). Stiker
+          nonaktif dan stiker usang (deprecated) tidak dihitung.
         </p>
         {settings.smtpConfigured ? null : (
           <p

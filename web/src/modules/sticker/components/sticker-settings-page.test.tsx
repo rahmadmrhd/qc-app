@@ -51,6 +51,11 @@ test('menampilkan minimum bawaan tiap jenis (jenis sistem diberi label) dan peng
   expect(
     screen.getByText(/Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang/),
   ).toBeInTheDocument();
+  const explanation = screen.getByText(/Bagian "Habis"/).textContent ?? '';
+  expect(explanation).toContain('apa pun minimumnya');
+  expect(explanation).toContain('minimum lebih dari 0');
+  expect(explanation).toContain('minimum 0 tidak pernah menipis');
+  expect(explanation).toContain('Stiker nonaktif dan stiker usang (deprecated) tidak dihitung');
   expect(screen.getByLabelText('Jam kirim (WIB)')).toHaveValue(8);
   expect(screen.getByText('qc@contoh.com')).toBeInTheDocument();
 });
