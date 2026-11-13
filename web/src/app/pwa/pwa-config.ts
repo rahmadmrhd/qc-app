@@ -16,7 +16,9 @@ export const PRECACHE_MAX_FILE_BYTES = 1_000_000;
  * Konfigurasi `vite-plugin-pwa` (Workbox `generateSW`) di satu tempat.
  *
  * Titik perluasan: skrip service worker tambahan (mis. penanganan pesan atau fitur Fase 2) ditambahkan lewat
- * `workbox.importScripts` (berkas statis di `web/public/`), BUKAN dengan beralih ke `injectManifest`.
+ * `workbox.importScripts` (berkas statis di `web/public/`), BUKAN dengan beralih ke `injectManifest`. Dipakai oleh
+ * `push-sw.js` (handler push dan klik notifikasi Serah Terima); berkas itu tidak dipra-cache (`globIgnores`) agar
+ * selalu diambil ulang saat peramban memeriksa pembaruan service worker.
  *
  * Aturan keras: service worker TIDAK boleh men-cache atau menjawab `/api`, `/auth`, `/sync`, dan tidak boleh
  * menyimpan jawaban API atau isi berkas pengguna di Cache Storage (FR-P8, NFR-P3). Karena itu `runtimeCaching`
@@ -50,6 +52,8 @@ export const pwaOptions: Partial<VitePWAOptions> = {
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+    globIgnores: ['push-sw.js'],
+    importScripts: ['push-sw.js'],
     maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_BYTES,
     navigateFallback: '/index.html',
     navigateFallbackDenylist: SERVER_PATH_DENYLIST,
