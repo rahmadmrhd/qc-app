@@ -42,9 +42,19 @@ export interface CameraScanDialogProps {
  * payload yang sama tidak dikirim ulang dalam `CAMERA_DUPLICATE_WINDOW_MS`. Aliran kamera dimatikan saat ditutup.
  */
 export function CameraScanDialog({ open, onOpenChange, ...rest }: CameraScanDialogProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        ref={contentRef}
+        className="sm:max-w-md"
+        // Fokus awal ke cangkang dialog (bukan elemen tabbable pertama = kolom ketik manual): papan ketik ponsel tidak
+        // muncul dan menutupi pratinjau, sementara fokus tetap di dalam dialog (Escape, Tab, dan pembaca layar jalan).
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          contentRef.current?.focus();
+        }}
+      >
         {/* Isi hanya dipasang selama dialog terbuka: unmount = efek kamera dibersihkan = aliran dimatikan. */}
         <CameraScanBody onClose={() => onOpenChange(false)} {...rest} />
       </DialogContent>

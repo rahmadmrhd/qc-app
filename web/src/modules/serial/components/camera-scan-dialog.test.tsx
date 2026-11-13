@@ -1,7 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { type BarcodeEngine, ScannerLoadError } from '../lib/barcode-engine';
+import {
+  type BarcodeEngine,
+  createBarcodeEngine,
+  SCAN_FORMATS,
+  ScannerLoadError,
+} from '../lib/barcode-engine';
+import { loadWasmBarcodeDetector } from '../lib/barcode-fallback';
 import { CAMERA_DUPLICATE_WINDOW_MS } from '../lib/camera-payload';
 import type { ScanFeedback } from '../lib/scan-feedback';
 import { CAMERA_ERROR_TEXT } from '../lib/use-camera-scanner';
@@ -57,6 +63,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, 'mediaDevices');
   Reflect.deleteProperty(HTMLMediaElement.prototype, 'readyState');
+  Reflect.deleteProperty(document, 'hidden');
 });
 
 interface SetupOptions {
@@ -64,11 +71,20 @@ interface SetupOptions {
   devices?: unknown[];
   result?: ScanFeedback;
   createEngine?: () => Promise<BarcodeEngine>;
+  /** Tiap getUserMedia mengembalikan aliran baru (uji restart); semua tercatat di `streams`. */
+  freshStreams?: boolean;
+  torch?: boolean;
 }
 
 function setup(options: SetupOptions = {}) {
   const media = options.stream ?? fakeStream();
-  const getUserMedia = vi.fn(async (_constraints?: unknown) => media.stream);
+  const streams = [media];
+  const getUserMedia = vi.fn(async (_constraints?: unknown) => {
+    if (!options.freshStreams || getUserMedia.mock.calls.length === 1) return media.stream;
+    const fresh = fakeStream({ torch: options.torch === true });
+    streams.push(fresh);
+    return fresh.stream;
+  });
   setMediaDevices({
     getUserMedia,
     enumerateDevices: vi.fn(async () => options.devices ?? VIDEO_DEVICES.slice(0, 1)),
@@ -89,6 +105,7 @@ function setup(options: SetupOptions = {}) {
   return {
     ...media,
     ...view,
+    streams,
     state,
     engine,
     onScan,
@@ -254,4 +271,131 @@ test('ketik manual + Enter memakai jalur onScan yang sama dan mengosongkan kolom
   expect(ctx.onScan).toHaveBeenCalledTimes(2);
   await userEvent.type(input, '{Enter}');
   expect(ctx.onScan).toHaveBeenCalledTimes(2);
+});
+
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+test('tab tersembunyi melepas kamera dan tab terlihat menyalakannya lagi tanpa galat; pilihan kamera dipertahankan', async () => {
+  const ctx = setup({ freshStreams: true, devices: VIDEO_DEVICES });
+  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  const running = ctx.streams[1];
+  expect(running?.track.stop).not.toHaveBeenCalled();
+
+  setHidden(true);
+  await waitFor(() => expect(running?.track.stop).toHaveBeenCalled());
+  expect(ctx.getUserMedia).toHaveBeenCalledTimes(2);
+
+  setHidden(false);
+  await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(3));
+  expect(ctx.getUserMedia.mock.calls[2]?.[0]).toMatchObject({
+    video: { deviceId: { exact: 'cam-2' } },
+  });
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+test('tab tersembunyi lalu dialog ditutup: tidak ada aliran baru dan tidak ada yang bocor', async () => {
+  const ctx = setup({ freshStreams: true });
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  setHidden(true);
+  await waitFor(() => expect(ctx.track.stop).toHaveBeenCalledTimes(1));
+  ctx.unmount();
+  setHidden(false);
+  expect(ctx.getUserMedia).toHaveBeenCalledTimes(1);
+  expect(ctx.streams).toHaveLength(1);
+  expect(ctx.track.stop).toHaveBeenCalledTimes(1);
+});
+
+test('senter default MATI dan kembali mati setiap kamera dimulai ulang', async () => {
+  const ctx = setup({
+    freshStreams: true,
+    torch: true,
+    stream: fakeStream({ torch: true }),
+    devices: VIDEO_DEVICES,
+  });
+  const toggle = await screen.findByRole('button', { name: 'Nyalakan senter' });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await userEvent.click(toggle);
+  expect(await screen.findByRole('button', { name: 'Matikan senter' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  // Ganti kamera = restart: senter mati lagi.
+  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
+  expect(await screen.findByRole('button', { name: 'Nyalakan senter' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  // Kembali dari tab tersembunyi = restart: tetap mati.
+  await userEvent.click(screen.getByRole('button', { name: 'Nyalakan senter' }));
+  await screen.findByRole('button', { name: 'Matikan senter' });
+  setHidden(true);
+  setHidden(false);
+  await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(3));
+  expect(await screen.findByRole('button', { name: 'Nyalakan senter' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+});
+
+test('galat unduh WASM sungguhan sampai ke "Fitur scan gagal dimuat" dengan Coba lagi, tanpa loop diam-diam', async () => {
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  let failing = true;
+  const purge = vi.fn();
+  class Detector {
+    detect = vi.fn(async () => []);
+  }
+  const createEngine = () =>
+    createBarcodeEngine({
+      native: undefined,
+      formats: SCAN_FORMATS,
+      loadFallback: () =>
+        loadWasmBarcodeDetector(async () => ({
+          BarcodeDetector: Detector,
+          purgeZXingModule: purge,
+          prepareZXingModule: async () => {
+            if (failing) throw new Error('wasm 404');
+            return {};
+          },
+        })),
+    });
+  const ctx = setup({ createEngine });
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
+  expect(CAMERA_ERROR_TEXT.loader).toContain('Fitur scan gagal dimuat');
+  expect(purge).toHaveBeenCalledTimes(1);
+  expect(ctx.track.stop).toHaveBeenCalled();
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(consoleError).not.toHaveBeenCalled();
+
+  failing = false;
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  consoleError.mockRestore();
+});
+
+test('konteks aman tetapi tanpa getUserMedia: pesan "tidak mendukung", tanpa Coba lagi', async () => {
+  Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+  Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
+  render(<CameraScanDialog open onOpenChange={() => undefined} onScan={() => 'added'} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.unsupported);
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+});
+
+test('fokus awal tidak jatuh ke kolom ketik manual (papan ketik ponsel); tetap di dalam dialog', async () => {
+  setup();
+  const dialog = await screen.findByRole('dialog');
+  await waitFor(() => expect(dialog).toHaveFocus());
+  expect(screen.getByLabelText('Ketik serial manual')).not.toHaveFocus();
+  expect(dialog.contains(document.activeElement)).toBe(true);
 });

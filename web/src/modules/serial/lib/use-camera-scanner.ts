@@ -116,15 +116,25 @@ export function useCameraScanner({
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Tab tersembunyi: kamera dilepas sepenuhnya (trek dihentikan, loop berhenti) dan dinyalakan lagi saat terlihat.
+  const [pageVisible, setPageVisible] = useState(() => !document.hidden);
+  useEffect(() => {
+    if (!open) return;
+    const onChange = () => setPageVisible(!document.hidden);
+    onChange();
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, [open]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` hanya pemicu jalan ulang ("Coba lagi").
   useEffect(() => {
-    if (!open) return;
+    if (!open || !pageVisible) return;
     let cancelled = false;
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let engine: BarcodeEngine | null = null;
 
+    // Tiap (re)start: "Menyiapkan kamera…" dan senter kembali MATI (trek baru selalu mulai tanpa senter).
     setState({ status: 'loading' });
     setTorchSupported(false);
     setTorchOn(false);
@@ -228,7 +238,7 @@ export function useCameraScanner({
       cancelled = true;
       stop();
     };
-  }, [open, deviceId, attempt]);
+  }, [open, pageVisible, deviceId, attempt]);
 
   const setTorch = useCallback(async (on: boolean) => {
     const track = trackRef.current;
