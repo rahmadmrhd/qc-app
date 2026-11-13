@@ -20,10 +20,6 @@ export interface StagingRow {
   locationLabel: string;
   sample: boolean;
   note: string;
-  /** Hasil pengecekan saat dicatat; `failed` langsung membuka kasus (wajib `damage`). */
-  status: 'good' | 'failed';
-  /** Kerusakan (satu baris, maks. `damageMax`); hanya berlaku bila `status` = `failed`. */
-  damage: string;
   /** Waktu baris ditambahkan (ISO); ikut ke berkas `.qcsn`. */
   capturedAt: string;
   source: 'manual' | 'countrylock';
@@ -47,8 +43,6 @@ export interface Defaults {
   locationLabel: string;
   sample: boolean;
   note: string;
-  status: 'good' | 'failed';
-  damage: string;
   /** Pilihan stiker bawaan; `null`/tidak ada = semua yang berlaku (diselesaikan saat simpan). Disalin ke tiap baris. */
   stickers?: StagingSticker[] | null;
 }
@@ -72,8 +66,6 @@ export type BulkPatch = Partial<
     | 'locationLabel'
     | 'sample'
     | 'note'
-    | 'status'
-    | 'damage'
   >
 >;
 
@@ -117,8 +109,6 @@ export function addSerials(
       locationLabel: defaults.locationLabel,
       sample: defaults.sample,
       note: defaults.note,
-      status: defaults.status,
-      damage: defaults.damage,
       capturedAt: nowIso(),
       source: 'manual',
       stickers: defaults.stickers ? defaults.stickers.map((sticker) => ({ ...sticker })) : null,
@@ -193,9 +183,7 @@ export function toRowInput(row: StagingRow): SerialRowInput {
     locationId: row.locationId,
     sample: row.sample,
     note: row.note,
-    status: row.status,
-    // Kerusakan hanya untuk baris Tidak lolos; `countrylock` ikut dicatat (bawaan `manual` tak perlu dikirim).
-    ...(row.status === 'failed' ? { damage: row.damage.trim() } : {}),
+    // `countrylock` ikut dicatat (bawaan `manual` tak perlu dikirim).
     ...(row.source === 'countrylock' ? { source: 'countrylock' as const } : {}),
     stickers: row.stickers.map((sticker) => ({ stickerId: sticker.stickerId, qty: sticker.qty })),
   };
@@ -243,8 +231,6 @@ export function fromQcsnRows(
       locationLabel: entry.locationLabel,
       sample: entry.sample,
       note: entry.note,
-      status: entry.status,
-      damage: entry.damage ?? '',
       capturedAt: entry.capturedAt,
       source: entry.source,
       stickers: entry.stickers

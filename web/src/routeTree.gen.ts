@@ -29,6 +29,8 @@ import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
 import { Route as AppSerialIndexRouteImport } from './routes/_app/serial/index'
 import { Route as AppSerialNewRouteImport } from './routes/_app/serial/new'
+import { Route as AppSerialReportRouteImport } from './routes/_app/serial/report'
+import { Route as AppSerialReportsRouteImport } from './routes/_app/serial/reports'
 import { Route as AppSerialSettingsRouteImport } from './routes/_app/serial/settings'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
 import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
@@ -148,6 +150,16 @@ const AppSerialIndexRoute = AppSerialIndexRouteImport.update({
 const AppSerialNewRoute = AppSerialNewRouteImport.update({
   id: '/serial/new',
   path: '/serial/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialReportRoute = AppSerialReportRouteImport.update({
+  id: '/serial/report',
+  path: '/serial/report',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialReportsRoute = AppSerialReportsRouteImport.update({
+  id: '/serial/reports',
+  path: '/serial/reports',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSerialSettingsRoute = AppSerialSettingsRouteImport.update({
@@ -276,6 +288,8 @@ export interface FileRoutesByFullPath {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/report': typeof AppSerialReportRoute
+  '/serial/reports': typeof AppSerialReportsRoute
   '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
@@ -318,6 +332,8 @@ export interface FileRoutesByTo {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/report': typeof AppSerialReportRoute
+  '/serial/reports': typeof AppSerialReportsRoute
   '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
@@ -362,6 +378,8 @@ export interface FileRoutesById {
   '/_app/postel/new': typeof AppPostelNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
   '/_app/serial/new': typeof AppSerialNewRoute
+  '/_app/serial/report': typeof AppSerialReportRoute
+  '/_app/serial/reports': typeof AppSerialReportsRoute
   '/_app/serial/settings': typeof AppSerialSettingsRoute
   '/_app/sticker/library': typeof AppStickerLibraryRoute
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
@@ -406,6 +424,8 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/report'
+    | '/serial/reports'
     | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
@@ -448,6 +468,8 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/report'
+    | '/serial/reports'
     | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
@@ -491,6 +513,8 @@ export interface FileRouteTypes {
     | '/_app/postel/new'
     | '/_app/qrcode/new'
     | '/_app/serial/new'
+    | '/_app/serial/report'
+    | '/_app/serial/reports'
     | '/_app/serial/settings'
     | '/_app/sticker/library'
     | '/_app/sticker/settings'
@@ -666,6 +690,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSerialNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/serial/report': {
+      id: '/_app/serial/report'
+      path: '/serial/report'
+      fullPath: '/serial/report'
+      preLoaderRoute: typeof AppSerialReportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/serial/reports': {
+      id: '/_app/serial/reports'
+      path: '/serial/reports'
+      fullPath: '/serial/reports'
+      preLoaderRoute: typeof AppSerialReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/serial/settings': {
       id: '/_app/serial/settings'
       path: '/serial/settings'
@@ -830,6 +868,8 @@ interface AppRouteChildren {
   AppPostelNewRoute: typeof AppPostelNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
   AppSerialNewRoute: typeof AppSerialNewRoute
+  AppSerialReportRoute: typeof AppSerialReportRoute
+  AppSerialReportsRoute: typeof AppSerialReportsRoute
   AppSerialSettingsRoute: typeof AppSerialSettingsRoute
   AppStickerLibraryRoute: typeof AppStickerLibraryRoute
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
@@ -872,6 +912,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostelNewRoute: AppPostelNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
   AppSerialNewRoute: AppSerialNewRoute,
+  AppSerialReportRoute: AppSerialReportRoute,
+  AppSerialReportsRoute: AppSerialReportsRoute,
   AppSerialSettingsRoute: AppSerialSettingsRoute,
   AppStickerLibraryRoute: AppStickerLibraryRoute,
   AppStickerSettingsRoute: AppStickerSettingsRoute,

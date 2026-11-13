@@ -86,18 +86,14 @@ function readRow(raw: unknown): StagingRow | null {
   if (typeof sample !== 'boolean') return null;
   const source = text(raw, 'source');
   if (source !== 'manual' && source !== 'countrylock') return null;
-  // Draf lama (sebelum 5b) tanpa status/kerusakan dipulihkan sebagai Lolos; nilai yang ada tapi tak dikenal membuang baris.
-  const statusRaw = Object.hasOwn(raw, 'status') ? raw.status : 'good';
-  if (statusRaw !== 'good' && statusRaw !== 'failed') return null;
-  const damage = Object.hasOwn(raw, 'damage') ? raw.damage : '';
-  if (typeof damage !== 'string') return null;
+  // Draf 5b yang masih memuat baris Tidak lolos: baris itu dibuang (Serial Number bermasalah kini dicatat lewat Lapor
+  // rusak, bukan lewat draf). Draf lama tanpa kunci `status` tetap dipulihkan sebagai Lolos.
+  if (Object.hasOwn(raw, 'status') && raw.status !== 'good') return null;
   const stickers = readStickers(Object.hasOwn(raw, 'stickers') ? raw.stickers : null);
   if (stickers === undefined) return null;
   const row: StagingRow = {
     ...values,
     sample,
-    status: statusRaw,
-    damage,
     source,
     stickers,
     selected: false,

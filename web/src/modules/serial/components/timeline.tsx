@@ -7,7 +7,6 @@ import {
   formatDay,
   formatStamp,
   legEventLabel,
-  STATUS_LABEL,
   TEAM_LABEL,
 } from '../lib/labels';
 
@@ -31,6 +30,13 @@ function recordedLocation(event: SerialEventDto): string {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
+/** Tahap diagnosis (`data.stage`); kejadian lama tanpa `stage` tidak menampilkan baris tahap. */
+const DIAGNOSIS_STAGE_LABEL: Record<string, string> = {
+  diagnosis: 'Diagnosis',
+  repairing: 'Sedang diperbaiki',
+  done: 'Selesai, kembali ke QC untuk cek ulang',
+};
+
 /** Judul kartu: kirim/terima menurut leg, selain itu label jenis riwayat. */
 function eventTitle(event: SerialEventDto): string {
   if (event.type === 'send' || event.type === 'receive') {
@@ -39,7 +45,10 @@ function eventTitle(event: SerialEventDto): string {
   return EVENT_LABEL[event.type];
 }
 
-/** Rincian per jenis riwayat dari `data` (kasus, kerusakan, kirim/terima, hasil cek ulang). */
+/**
+ * Rincian per jenis riwayat dari `data` (laporan, kirim/terima, hasil cek ulang). Bagian `damage`, `shipmentNote`, dan
+ * status Tidak lolos hanya ada pada kejadian lama (sebelum alur laporan rusak dipangkas) dan tetap dirender apa adanya.
+ */
 function eventDetails(event: SerialEventDto): string[] {
   const { data } = event;
   const caseNumber = text(data.caseNumber);
@@ -48,32 +57,33 @@ function eventDetails(event: SerialEventDto): string[] {
   switch (event.type) {
     case 'recorded':
       if (data.status === 'failed') {
-        details.push(
-          `Dicatat langsung sebagai ${STATUS_LABEL.failed}${damage ? `: ${damage}` : ''}`,
-        );
+        details.push(`Dicatat langsung sebagai Tidak lolos${damage ? `: ${damage}` : ''}`);
       }
       break;
     case 'report_failure':
-      details.push(`Kasus ${caseNumber || '—'} dibuka${damage ? `: ${damage}` : ''}`);
+      details.push(`Laporan ${caseNumber || '—'} dibuka${damage ? `: ${damage}` : ''}`);
       break;
     case 'identify_damage':
-    case 'service_diagnosis':
+    case 'service_diagnosis': {
+      const stage = DIAGNOSIS_STAGE_LABEL[text(data.stage)];
+      if (stage) details.push(`Tahap: ${stage}`);
       if (damage) details.push(`Kerusakan: ${damage}`);
-      if (caseNumber) details.push(`Kasus ${caseNumber}`);
+      if (caseNumber) details.push(`Laporan ${caseNumber}`);
       break;
+    }
     case 'declare_broken':
-      details.push(`Kasus ${caseNumber || '—'} ditutup: rusak`);
+      details.push(`Laporan ${caseNumber || '—'} ditutup: rusak`);
       break;
     case 'recheck_pass':
-      if (caseNumber) details.push(`Kasus ${caseNumber} ditutup: lolos`);
+      if (caseNumber) details.push(`Laporan ${caseNumber} ditutup: lolos`);
       break;
     case 'recheck_fail':
-      if (caseNumber) details.push(`Kasus ${caseNumber} masih terbuka`);
+      if (caseNumber) details.push(`Laporan ${caseNumber} masih terbuka`);
       if (damage) details.push(`Kerusakan: ${damage}`);
       break;
     case 'recheck':
       if (data.result === 'pass' || data.result === 'fail') {
-        details.push(`Hasil: ${data.result === 'pass' ? STATUS_LABEL.good : STATUS_LABEL.failed}`);
+        details.push(`Hasil: ${data.result === 'pass' ? 'Lolos' : 'Tidak lolos'}`);
       }
       break;
     case 'send':

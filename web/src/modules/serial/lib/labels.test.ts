@@ -21,32 +21,31 @@ test('label kirim/terima mengikuti leg; baris lain memakai label aksi', () => {
   const labels = SERIAL_FLOW.filter((row) => row.action === 'send' || row.action === 'receive').map(
     flowRowLabel,
   );
-  expect(labels).toEqual([
-    'Kirim ke servis',
-    'Terima di servis',
-    'Kirim balik ke QC',
-    'Terima di QC',
-    'Kirim antar lokasi',
-    'Terima antar lokasi',
-  ]);
-  expect(flowRowLabel({ action: 'declare_broken' })).toBe('Nyatakan rusak');
-  expect(Object.keys(LEG_LABEL)).toHaveLength(5);
+  expect(labels).toEqual(['Kirim ke servis', 'Terima di servis', 'Terima di QC']);
+  expect(flowRowLabel({ action: 'report_failure' })).toBe('Lapor rusak');
+  expect(flowRowLabel({ action: 'service_diagnosis' })).toBe('Diagnosis');
+  // `to_qc` dan `between` hanya untuk merender kejadian lama.
+  expect(Object.keys(LEG_LABEL).sort()).toEqual(
+    ['at_qc', 'at_service', 'between', 'to_qc', 'to_service'].sort(),
+  );
 });
 
-test('judul kartu kirim/terima menurut leg; leg tak dikenal jatuh ke label dasar', () => {
+test('judul kartu kirim/terima menurut leg; leg lama tetap dirender; leg tak dikenal jatuh ke label dasar', () => {
   expect(legEventLabel('send', 'to_service')).toBe('Dikirim ke servis');
   expect(legEventLabel('receive', 'at_qc')).toBe('Diterima di QC');
+  expect(legEventLabel('send', 'between')).toBe('Dikirim antar lokasi');
+  expect(legEventLabel('send', 'to_qc')).toBe('Dikirim balik ke QC');
   expect(legEventLabel('send', undefined)).toBe('Dikirim');
 });
 
 test('urutan tahap: tujuh tahap, tahap terakhir Lolos / Rusak', () => {
   expect(STEP_ORDER.map((step) => step.label)).toEqual([
     'Lolos',
-    'Tidak lolos',
-    'Perbaikan QC',
+    'Dilaporkan',
     'Di servis',
-    'Perbaikan servis',
-    'Cek ulang',
+    'Diagnosis',
+    'Sedang diperbaiki',
+    'Menunggu cek ulang',
     'Lolos / Rusak',
   ]);
 });

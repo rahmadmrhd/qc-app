@@ -144,13 +144,12 @@ test('aksi memuat ulang riwayat serial itu (awalan history) dan menandai stok st
       expectedUpdatedAt: '2026-11-10T03:00:00.000Z',
       action: 'report_failure',
       occurredOn: '2026-11-12',
-      message: '',
-      damage: 'Port mati',
+      message: 'Port 3 mati',
     }),
   );
   expect(apiMock).toHaveBeenCalledWith(
     'serials.act',
-    expect.objectContaining({ action: 'report_failure', damage: 'Port mati' }),
+    expect.objectContaining({ action: 'report_failure', message: 'Port 3 mati' }),
   );
   const keys = spy.mock.calls.map((call) => call[0]?.queryKey);
   expect(keys).toContainEqual(serialKeys.history('s1'));

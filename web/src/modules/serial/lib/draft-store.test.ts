@@ -12,8 +12,6 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: false,
   note: '',
-  status: 'good',
-  damage: '',
 };
 
 function rows(count: number): StagingRow[] {
@@ -127,26 +125,19 @@ test('setelah clearAllDrafts penulisan draf ditahan sampai resumeDraftWrites', (
   expect(loadDraft('a@x.com')).toEqual(data);
 });
 
-test('draf lama tanpa status/kerusakan dipulihkan sebagai Lolos; baris Tidak lolos dipulihkan utuh', () => {
+test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b Tidak lolos) dibuang', () => {
   const [first, second] = rows(2) as [StagingRow, StagingRow];
-  const { status: _s, damage: _d, ...legacy } = first;
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
-    JSON.stringify([legacy, { ...second, status: 'failed', damage: 'Port mati' }]),
+    JSON.stringify([first, { ...second, status: 'failed', damage: 'Port mati' }]),
   );
-  const loaded = loadDraft('a@x.com');
-  expect(loaded[0]).toMatchObject({ status: 'good', damage: '' });
-  expect(loaded[1]).toMatchObject({ status: 'failed', damage: 'Port mati' });
-});
-
-test('status tak dikenal atau kerusakan bukan teks membuang baris itu', () => {
-  const [first, second] = rows(2) as [StagingRow, StagingRow];
+  expect(loadDraft('a@x.com')).toEqual([first]);
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
     JSON.stringify([
-      { ...first, status: 'broken' },
-      { ...second, damage: 5 },
+      { ...first, status: 'good' },
+      { ...second, status: 'broken' },
     ]),
   );
-  expect(loadDraft('a@x.com')).toEqual([]);
+  expect(loadDraft('a@x.com')).toEqual([first]);
 });

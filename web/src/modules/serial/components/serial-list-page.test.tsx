@@ -49,7 +49,7 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
   ...over,
 });
 
-const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'failed' })];
+const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'reported' })];
 
 function Harness({
   onOpen = () => undefined,
@@ -156,7 +156,7 @@ test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; pagin
   expect(within(rows[1] as HTMLElement).getByText('10 Nov 2026')).toBeInTheDocument();
   expect(within(rows[1] as HTMLElement).getByText('Lolos')).toBeInTheDocument();
   expect(within(rows[1] as HTMLElement).getByText('Di QC')).toBeInTheDocument();
-  expect(within(rows[2] as HTMLElement).getByText('Tidak lolos')).toBeInTheDocument();
+  expect(within(rows[2] as HTMLElement).getByText('Dilaporkan')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Ya')).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Tanggal uji' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
@@ -331,8 +331,8 @@ test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', a
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
   renderPage();
   await screen.findByText('ABC123');
-  await pickSelect(screen, 'Filter status', 'Tidak lolos');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'failed' }));
+  await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'reported' }));
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
   await waitFor(() => expect(lastListInput()).toMatchObject({ locationId: 'l1' }));
   await pickLink(screen, 'Filter item', 'Cisco C9200');
@@ -343,7 +343,7 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   });
   await waitFor(() =>
     expect(lastListInput()).toMatchObject({
-      status: 'failed',
+      status: 'reported',
       locationId: 'l1',
       itemId: 'i1',
       from: '2026-11-01',
@@ -483,7 +483,7 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
               row({
                 id: 's8',
                 serial: 'DIAM1',
-                status: 'failed',
+                status: 'reported',
                 openCaseNumber: 'LP-20261112-004',
               }),
             ],
