@@ -18,7 +18,7 @@ const queue = (index: number) =>
 
 test('tanpa antrean: tidak ada teks perubahan menunggu', () => {
   render(<OfflineScreen onRetry={vi.fn()} />);
-  expect(screen.queryByText(/perubahan Anda/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/perubahan menunggu dikirim/)).not.toBeInTheDocument();
 });
 
 test('dengan dua entri: menampilkan jumlah perubahan yang menunggu dikirim', () => {

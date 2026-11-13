@@ -117,3 +117,17 @@ test('dua tanda kirim bertumpuk pada butir sama: tetap sending sampai keduanya s
   act(() => end2());
   expect(result.current.itemStates.size).toBe(0);
 });
+
+test('entri kedaluwarsa (> 24 jam) tidak menempel dan tidak menandai butir; entri segar tetap waiting', () => {
+  enqueueCheck(OWNER, entry({ at: Date.now() - 25 * 3600_000 }));
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  expect(result.current.dto).toBe(dto);
+  expect(result.current.itemStates.size).toBe(0);
+  act(() => {
+    enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }));
+  });
+  expect(result.current.dto.checklist[0]?.checked).toBe(false);
+  expect(result.current.dto.checklist[1]?.checked).toBe(true);
+  expect([...result.current.itemStates]).toEqual([[1, 'waiting']]);
+});

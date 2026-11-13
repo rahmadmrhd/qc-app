@@ -1,6 +1,12 @@
 import type { HandoverDto } from '@shared/contract';
 import { useMemo, useSyncExternalStore } from 'react';
-import { outboxVersion, overlayPendingChecks, readOutbox, subscribeOutbox } from './check-outbox';
+import {
+  isExpiredEntry,
+  outboxVersion,
+  overlayPendingChecks,
+  readOutbox,
+  subscribeOutbox,
+} from './check-outbox';
 import {
   type ItemSendState,
   isItemSending,
@@ -24,8 +30,14 @@ export function useOutboxOverlay(
   const sendVersion = useSyncExternalStore(subscribeSending, sendingVersion, sendingVersion);
   // biome-ignore lint/correctness/useExhaustiveDependencies: versi memicu pembacaan ulang antrean (localStorage) dan penanda kirim
   return useMemo(() => {
+    // Entri kedaluwarsa tak akan dikirim (dibuang pengurasan berikutnya): jangan ditempel atau ditandai.
+    const now = Date.now();
     const entries =
-      owner === '' ? [] : readOutbox(owner).filter((entry) => entry.taskId === dto.id);
+      owner === ''
+        ? []
+        : readOutbox(owner).filter(
+            (entry) => entry.taskId === dto.id && !isExpiredEntry(entry, now),
+          );
     const itemStates = new Map<number, ItemSendState>();
     for (const entry of entries) {
       if (dto.checklist.some((item) => item.index === entry.index && item.text === entry.text)) {
