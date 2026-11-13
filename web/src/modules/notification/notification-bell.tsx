@@ -3,11 +3,11 @@ import { notificationTitle } from '@shared/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Bell } from 'lucide-react';
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useTourMenu } from '@/modules/guide/lib/tour-menu';
 import { notificationsQueryOptions, useMarkAllRead, useMarkRead } from './queries';
 
 /** Jumlah pada ikon dibatasi agar tidak melebar. */
@@ -24,7 +24,8 @@ function formatTime(iso: string): string {
  * terkait. Selalu bekerja (tanpa izin peramban). Cuplikan `preview` ditampilkan sebagai teks biasa.
  */
 export function NotificationBell() {
-  const [open, setOpen] = useState(false);
+  const tourMenu = useTourMenu('notification-bell');
+  const setOpen = tourMenu.setOpen;
   const navigate = useNavigate();
   const query = useQuery(notificationsQueryOptions());
   const markRead = useMarkRead();
@@ -48,7 +49,7 @@ export function NotificationBell() {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover {...tourMenu.rootProps}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -68,7 +69,12 @@ export function NotificationBell() {
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 gap-0 p-0 sm:w-96">
+      <PopoverContent
+        align="end"
+        className="w-80 gap-0 p-0 sm:w-96"
+        data-tour="notification-menu"
+        {...tourMenu.contentProps}
+      >
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
           <h2 className="text-sm font-medium">Notifikasi</h2>
           <Button

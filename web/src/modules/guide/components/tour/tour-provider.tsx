@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { TourMenuProvider } from '../../lib/tour-menu';
 import type { GuideEntry } from '../../lib/types';
 import { SilentBoundary } from './silent-boundary';
 
@@ -47,21 +48,23 @@ export function TourProvider({ children, renderTip, targetWaitMs }: TourProvider
 
   return (
     <TourContext.Provider value={value}>
-      {children}
-      {entry ? (
-        // Gagal memuat potongan malas tur (offline, deploy di antara muat halaman dan klik) = tur ditutup, bukan
-        // menjatuhkan cangkang aplikasi ke halaman galat.
-        <SilentBoundary key={entry.id} onError={close}>
-          <Suspense fallback={null}>
-            <TourOverlay
-              entry={entry}
-              onExit={close}
-              renderTip={renderTip}
-              targetWaitMs={targetWaitMs}
-            />
-          </Suspense>
-        </SilentBoundary>
-      ) : null}
+      <TourMenuProvider>
+        {children}
+        {entry ? (
+          // Gagal memuat potongan malas tur (offline, deploy di antara muat halaman dan klik) = tur ditutup, bukan
+          // menjatuhkan cangkang aplikasi ke halaman galat.
+          <SilentBoundary key={entry.id} onError={close}>
+            <Suspense fallback={null}>
+              <TourOverlay
+                entry={entry}
+                onExit={close}
+                renderTip={renderTip}
+                targetWaitMs={targetWaitMs}
+              />
+            </Suspense>
+          </SilentBoundary>
+        ) : null}
+      </TourMenuProvider>
     </TourContext.Provider>
   );
 }

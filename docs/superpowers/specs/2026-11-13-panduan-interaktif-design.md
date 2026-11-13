@@ -187,7 +187,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Langkah yang menunggu klik pengguna lanjut otomatis begitu elemen diklik. Tur berhenti SEBELUM tombol simpan/kirim
   mana pun dan tidak pernah memanggil rute tulis.
 - Tur HANYA menyorot dan menjelaskan: tidak mengisi atau mengubah isi field mana pun (tidak ada isi contoh yang
-  dimasukkan ke editor, jadi tidak menyentuh draf atau `useUnsavedChanges`).
+  dimasukkan ke editor, jadi tidak menyentuh draf atau `useUnsavedChanges`). Satu-satunya hal yang boleh ia lakukan
+  sendiri adalah MEMBUKA menu (keputusan 2026-11-14, butir G): langkah dapat meminta sebuah menu terbuka
+  (`langkah.buka: 'location-picker' | 'notification-bell' | 'theme-toggle' | 'user-menu'`) supaya isinya bisa
+  disorot. Pembukaan murni UI (membuka dan menutup menu; tanpa klik sintetis, tanpa mengubah data, tanpa rute tulis),
+  menu menutup saat langkah berganti, tur selesai, atau tur dibatalkan (Esc/Tutup), dan menu yang sudah dibuka
+  pengguna sendiri tidak ditutup paksa.
 - Peragaan hasil (mis. tempel banyak pesan menjadi banyak kartu) tetap lewat demo tooltip (4.6), dan demo itu MASUK
   ke alur tur (keputusan pemilik 2026-11-13): sebuah langkah dapat menyematkan adegan demo milik sebuah entri `tip`
   (`langkah.tip: '<id tip>'`) di dalam gelembung langkahnya, lengkap dengan keterangan per adegan. Pengguna menontonnya
@@ -196,8 +201,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Langkah yang `izin`-nya tidak terpenuhi pengguna (mis. langkah sisi QC bagi akun yang hanya `handover: view`)
   dilewati seluruhnya, bukan ditampilkan sebagai teks. Dengan `izin` per langkah, satu panduan Serah Terima melayani
   sisi WH dan sisi QC tanpa dipecah, dan jumlah langkah pada kartu dihitung per pengguna.
-- Target tidak ada (izin lebih rendah, daftar kosong, sidebar tertutup di ponsel): langkah dilewati atau jatuh ke
-  penjelasan teks; tur tidak macet. Di ponsel, langkah yang menyorot menu membuka sidebar lebih dulu.
+- Target tidak ada (sidebar tertutup di ponsel, butir menu bersyarat, pemicu menu yang tak dirender): langkah
+  dilewati; tur tidak macet. Pengecualian: langkah yang targetnya bergantung data (kartu task di papan; ditandai
+  `langkah.teksJikaKosong`) TIDAK dilewati melainkan tampil sebagai kartu di tengah layar tanpa sorotan, dengan teks
+  pengganti yang menjelaskan keadaannya dan demo `tip` langsung terputar (keputusan 2026-11-14, butir H); langkah itu
+  tetap terhitung pada "Langkah x dari N". Langkah yang `izin`-nya gugur tetap dibuang di awal. Di ponsel, langkah
+  yang menyorot menu membuka sidebar lebih dulu.
 - Dimuat malas (potongan JS terpisah). Mesin: pustaka kecil atau tulis sendiri; diputuskan di rencana implementasi
   (lihat bagian 8).
 - Hormati `prefers-reduced-motion` dan dapat dioperasikan dengan keyboard.
@@ -324,6 +333,24 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     mencemari data atau kueri, tampilan selalu sama dengan aplikasi, dan memakai sistem demo yang sudah ada. Id
     penanda baru `tip-handover-checklist` dan `tip-handover-komentar` (versi 1) masuk `shared/guides.ts`. Diubah: 4.6
     (bullet kartu contoh).
+  - **G. Tur membuka menu sendiri dan menjelaskan isinya (2026-11-14, masukan pemilik produk setelah mencoba tur
+    langsung: panduan lokasi, notifikasi, tema, info pengguna, pasang aplikasi, dan push "tidak detail").** Langkah
+    tidak lagi berhenti pada tombol pemicu: mesin tur membuka sendiri popover/dropdown-nya (`langkah.buka`, 4.5) lalu
+    menyorot dan menjelaskan isinya (daftar lokasi yang bisa dicentang, daftar kabar, pilihan tema, nama + email akun
+    dan butir menu profil, butir "Pasang aplikasi" dengan bedanya Android/iOS, butir "Notifikasi push" dengan alur
+    izin dan saklarnya). Menu dibuka lewat state kecil yang di-OR-kan ke `open` komponen menu (bukan klik sintetis) dan
+    dibuat non-modal selama dipaksa tur, supaya kartu tur tetap dapat diklik dan menu tak menutup sendiri. Alasan:
+    tombol saja tidak mengajarkan isi menu. Diubah: 4.5 (kalimat "tidak mengubah apa pun" dilonggarkan hanya untuk
+    membuka menu).
+  - **H. Langkah bergantung data jatuh ke kartu contoh; ditambah langkah komentar (2026-11-14, jawaban pemilik
+    produk atas pertanyaan "bagaimana jika tak ada datanya").** Langkah checklist Serah Terima (umum dan sisi QC)
+    yang targetnya (kartu task) tak ada di papan kosong tidak lagi dilewati diam-diam: tampil sebagai kartu tur di
+    tengah layar tanpa sorotan, dengan teks "Papan masih kosong, ..." dan demo kartu contoh (butir F) langsung terputar
+    (`langkah.teksJikaKosong`). Ditambah satu langkah baru memilih sepotong teks lalu memberi komentar
+    (`tip-handover-komentar`, tanpa `izin` tambahan karena komentar terbuka bagi pembaca WH maupun QC). Alasan:
+    pengguna baru di papan kosong tak pernah belajar soal checklist, komentar, dan centang, dan nomor "Langkah x dari
+    N" melompat. Diubah: 4.5 (kalimat "langkah dilewati atau jatuh ke penjelasan teks" dipertegas); jumlah langkah
+    panduan Serah Terima menjadi 3 (WH lihat), 4 (QC), 6 (WH tulis), 7 (keduanya).
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.

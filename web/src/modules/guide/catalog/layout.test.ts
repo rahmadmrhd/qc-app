@@ -2,7 +2,13 @@ import type { MeDto } from '@shared/contract';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetInstallForTests, startInstallCapture } from '@/app/pwa/install';
 import { offeredGuides } from '../lib/offer';
-import { deriveDeviceGuides, deviceGuideRelevance, readPushSubscribed } from './device';
+import {
+  deriveDeviceGuides,
+  deviceGuideRelevance,
+  PERANGKAT_PUSH,
+  PERANGKAT_PWA,
+  readPushSubscribed,
+} from './device';
 import { GUIDE_CATALOG } from './index';
 import { DASAR_LAYOUT } from './layout';
 
@@ -204,14 +210,40 @@ describe('dasar-layout', () => {
     expect(layout?.stepCount).toBe(DASAR_LAYOUT.steps.length);
   });
 
-  test('urutan langkah: sidebar, lokasi, lonceng, tema, menu profil', () => {
-    expect(DASAR_LAYOUT.steps.map((step) => step.target)).toEqual([
-      'sidebar-menu',
-      'location-picker',
-      'notification-bell',
-      'theme-toggle',
-      'user-menu',
+  test('urutan langkah: tiap tombol disusul isi menunya yang dibuka tur (lokasi, lonceng, tema, profil)', () => {
+    expect(DASAR_LAYOUT.steps.map((step) => [step.target, step.buka])).toEqual([
+      ['sidebar-menu', undefined],
+      ['location-picker', undefined],
+      ['location-menu', 'location-picker'],
+      ['notification-bell', undefined],
+      ['notification-menu', 'notification-bell'],
+      ['theme-toggle', undefined],
+      ['theme-menu', 'theme-toggle'],
+      ['user-menu', undefined],
+      ['user-menu-account', 'user-menu'],
+      ['user-menu-content', 'user-menu'],
     ]);
+  });
+
+  test('langkah isi menu menjelaskan isinya (bukan sekadar tombol pemicu)', () => {
+    const text = (target: string) =>
+      DASAR_LAYOUT.steps.find((step) => step.target === target)?.text ?? '';
+    expect(text('location-menu')).toMatch(/centang/i);
+    expect(text('notification-menu')).toMatch(/buka|task/i);
+    expect(text('theme-menu')).toMatch(/Terang/);
+    expect(text('theme-menu')).toMatch(/Gelap/);
+    expect(text('user-menu-account')).toMatch(/email/i);
+    expect(text('user-menu-content')).toMatch(/Pasang aplikasi/);
+  });
+
+  test('panduan perangkat membuka menu profil dan menyorot butirnya', () => {
+    expect(PERANGKAT_PWA.steps[0]).toMatchObject({
+      buka: 'user-menu',
+      target: 'user-menu-install',
+    });
+    expect(PERANGKAT_PWA.steps[0]?.text).toMatch(/iPhone|iOS/);
+    expect(PERANGKAT_PUSH.steps[0]).toMatchObject({ buka: 'user-menu', target: 'user-menu-push' });
+    expect(PERANGKAT_PUSH.steps[0]?.text).toMatch(/izin/i);
   });
 
   test('panduan perangkat hanya ditawarkan menurut keadaan perangkat', () => {

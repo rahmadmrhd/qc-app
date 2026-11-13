@@ -17,8 +17,9 @@ export const PERANGKAT_PWA: GuideEntry = {
   title: 'Pasang aplikasi di perangkat',
   steps: [
     {
-      target: 'user-menu',
-      text: 'Buka menu profil ini, lalu pilih "Pasang aplikasi" biar QC App muncul di layar utama dan terbuka seperti aplikasi biasa.',
+      target: 'user-menu-install',
+      buka: 'user-menu',
+      text: 'Ini dia "Pasang aplikasi". Di Android atau komputer, kalau diklik muncul kotak konfirmasi dari peramban, tinggal setujui. Di iPhone atau iPad, muncul petunjuk: ketuk tombol Bagikan di Safari, lalu pilih "Tambah ke Layar Utama". Setelah terpasang, QC App muncul di layar utama dan terbuka seperti aplikasi biasa.',
       advance: 'next',
     },
   ],
@@ -32,8 +33,9 @@ export const PERANGKAT_PUSH: GuideEntry = {
   title: 'Aktifkan notifikasi push',
   steps: [
     {
-      target: 'user-menu',
-      text: 'Buka menu profil ini, lalu pilih "Notifikasi push" dan izinkan, biar kabar penting masuk walau aplikasi sedang tertutup.',
+      target: 'user-menu-push',
+      buka: 'user-menu',
+      text: 'Klik "Notifikasi push" untuk membuka pengaturannya: ada saklar untuk menyalakan atau mematikan push di akunmu, plus status izin peramban di perangkat ini. Kalau peramban minta izin, pilih Izinkan. Kalau sudah telanjur diblokir, dialognya menunjukkan cara menyalakannya lagi. Dengan push aktif, kabar penting masuk walau aplikasi sedang tertutup.',
       advance: 'next',
     },
   ],
