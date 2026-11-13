@@ -552,14 +552,24 @@ describe('putaran latar', () => {
     }
   });
 
-  test('bangun-bangun berulang saat pengiriman berjalan: tiap notifikasi terkirim tepat sekali (tanpa tumpang tindih)', async () => {
+  test('bangun-bangun berulang saat pengiriman berjalan: tiap notifikasi terkirim tepat sekali, tanpa tumpang tindih', async () => {
     await subscribe(VIEWER, 'a');
     await insert(note({ preview: 'SATU' }));
     let calls = 0;
+    let active = 0;
+    let maxActive = 0;
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
     const original = push.send.bind(push);
     push.send = async (sub, payload) => {
       calls += 1;
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      // Pengiriman pertama ditahan sampai semua bangun-bangun diberikan: dijamin terjadi saat putaran berjalan.
+      if (calls === 1) await gate;
+      active -= 1;
       return original(sub, payload);
     };
     const stop = startNotificationLoop(env, { intervalMs: 60_000 });
@@ -567,17 +577,36 @@ describe('putaran latar', () => {
       await waitFor(() => calls >= 1);
       await insert(note({ preview: 'DUA' }));
       for (let i = 0; i < 5; i += 1) wakeNotifications();
+      open();
       await waitFor(() => push.sent.length === 2);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 300));
       expect(calls).toBe(2);
+      expect(maxActive).toBe(1);
       expect(push.sent).toHaveLength(2);
       expect(await states()).toEqual(['sent', 'sent']);
     } finally {
+      open();
       await stop();
     }
   });
 
-  test('stop() melepas penunjuk: wakeNotifications sesudahnya tidak berbuat apa-apa dan tidak melempar', async () => {
+  test('stop() satu putaran tidak mencabut penunjuk putaran lain (identitas dicek saat melepas)', async () => {
+    await subscribe(VIEWER, 'a');
+    const stopA = startNotificationLoop(env, { intervalMs: 60_000 });
+    const stopB = startNotificationLoop(env, { intervalMs: 60_000 });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await stopA();
+      await insert(note());
+      wakeNotifications();
+      await waitFor(() => push.sent.length === 1);
+      expect(push.sent).toHaveLength(1);
+    } finally {
+      await stopB();
+    }
+  });
+
+  test('setelah stop(), wakeNotifications tidak berbuat apa-apa dan tidak melempar', async () => {
     await subscribe(VIEWER, 'a');
     const stop = startNotificationLoop(env, { intervalMs: 60_000 });
     await new Promise((resolve) => setTimeout(resolve, 200));

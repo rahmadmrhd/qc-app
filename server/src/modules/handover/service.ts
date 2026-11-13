@@ -10,7 +10,11 @@ import { listLocationBriefs } from '@server/modules/access/repo';
 import type { CustomerRecord } from '@server/modules/customer/repo';
 import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
 import { lookupCustomerForWrite, planCustomerByName } from '@server/modules/customer/service';
-import { planCreateNotifications, planNotifications } from '@server/modules/notification/emit';
+import {
+  needsImmediateDelivery,
+  planCreateNotifications,
+  planNotifications,
+} from '@server/modules/notification/emit';
 import { wakeNotifications } from '@server/modules/notification/wake';
 import type {
   AddCommentInput,
@@ -712,7 +716,7 @@ async function writeTaskChange(
     false,
   );
   // Kejadian dihitung dari keadaan sebelum/sesudah dan digabung ke batch yang sama (atomik).
-  const notifications = await planNotifications(env, {
+  const change = {
     action: event.action,
     actor,
     now,
@@ -720,7 +724,8 @@ async function writeTaskChange(
     after: saved,
     customerName: loaded.customerName,
     toggledItem: event.toggledItem,
-  });
+  };
+  const notifications = await planNotifications(env, change);
   await env.DB.batch([
     updateHandoverStmt(env.DB, saved, handover.version),
     writeAudit(env.DB, {
@@ -733,7 +738,8 @@ async function writeTaskChange(
     }),
     ...notifications,
   ]);
-  wakeNotifications();
+  // Centang biasa hanya menunggu penggabungan 5 menit: tak perlu membangunkan putaran pengirim.
+  if (needsImmediateDelivery(change)) wakeNotifications();
   return saved;
 }
 
