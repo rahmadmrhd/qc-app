@@ -15,6 +15,15 @@ vi.mock('@/modules/auth/use-me', () => ({
   useMe: () => ({ name: 'Rina', email: 'rina@qc.local' }),
 }));
 vi.mock('@/modules/auth/use-logout', () => ({ useLogout: () => logoutMock }));
+vi.mock('@/modules/push/components/push-settings-dialog', () => ({
+  PushSettingsDialog: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Notifikasi push">
+      <button type="button" onClick={onClose}>
+        tutup-push
+      </button>
+    </div>
+  ),
+}));
 
 import { UserMenu } from './user-menu';
 
@@ -63,4 +72,13 @@ test('butir Keluar tetap berfungsi', async () => {
   await openMenu();
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Keluar' }));
   expect(logoutMock).toHaveBeenCalledTimes(1);
+});
+
+test('butir Notifikasi push membuka dan menutup pengaturan push', async () => {
+  render(<UserMenu />);
+  await openMenu();
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Notifikasi push' }));
+  expect(await screen.findByRole('dialog', { name: 'Notifikasi push' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'tutup-push' }));
+  expect(screen.queryByRole('dialog', { name: 'Notifikasi push' })).not.toBeInTheDocument();
 });

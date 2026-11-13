@@ -1,4 +1,4 @@
-import { Download, LogOut } from 'lucide-react';
+import { BellRing, Download, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { useInstall } from '@/app/pwa/install';
 import { InstallIosDialog } from '@/app/pwa/install-dialog';
@@ -14,12 +14,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
+import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
 
 export function UserMenu() {
   const me = useMe();
   const logout = useLogout();
   const install = useInstall();
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
   const initials = (me.name || me.email).slice(0, 2).toUpperCase();
   return (
     <>
@@ -49,6 +51,10 @@ export function UserMenu() {
               Pasang aplikasi
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem onSelect={() => setPushOpen(true)}>
+            <BellRing />
+            Notifikasi push
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={logout}>
             <LogOut />
             Keluar
@@ -57,6 +63,7 @@ export function UserMenu() {
       </DropdownMenu>
       {/* Di luar DropdownMenu agar tidak ikut tertutup bersama menu. */}
       <InstallIosDialog open={iosHelpOpen} onOpenChange={setIosHelpOpen} />
+      {pushOpen && <PushSettingsDialog onClose={() => setPushOpen(false)} />}
     </>
   );
 }
