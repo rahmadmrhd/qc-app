@@ -27,7 +27,7 @@ export function UserMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="gap-2 px-2">
+          <Button variant="ghost" className="gap-2 px-2" data-tour="user-menu">
             <Avatar className="size-7">
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>

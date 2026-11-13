@@ -27,7 +27,7 @@ export function AppSidebar() {
           <span className="hidden group-data-[collapsible=icon]:inline">QC</span>
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent data-tour="sidebar-menu">
         {visibleNavGroups(NAV_GROUPS, me, selectedIds).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>

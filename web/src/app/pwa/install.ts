@@ -66,6 +66,11 @@ function currentState(): InstallState {
   return 'unavailable';
 }
 
+/** Status ajakan pasang saat ini tanpa hook (hanya membaca; dipakai panduan `perangkat-pwa`). */
+export function getInstallState(): InstallState {
+  return currentState();
+}
+
 async function install(): Promise<void> {
   const event = deferred;
   if (!event) return;
