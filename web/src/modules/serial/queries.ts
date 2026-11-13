@@ -94,6 +94,10 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     locationName: serial.locationName,
     status: serial.status,
     custody: serial.custody,
+    transitToLocationId: serial.transitToLocationId,
+    transitToLocationName: serial.transitToLocationName,
+    transitOn: serial.transitOn,
+    openCaseNumber: serial.openCaseNumber,
     createdAt: serial.createdAt,
   };
 }

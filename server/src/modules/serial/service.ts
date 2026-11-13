@@ -426,6 +426,11 @@ function toSummary(row: SerialRow): SerialSummaryDto {
     locationName: row.location_name ?? '',
     status: (SERIAL_STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
     custody: (SERIAL_CUSTODY_SET.includes(custody) ? custody : 'qc') as SerialCustody,
+    // Diisi T8 (get/list); sampai itu kosong.
+    transitToLocationId: null,
+    transitToLocationName: null,
+    transitOn: null,
+    openCaseNumber: null,
     createdAt: row.created_at,
   };
 }
@@ -448,6 +453,11 @@ function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
       stickerStatus: toStickerStatus(sticker.status),
     })),
     openCaseId: row.open_case_id.trim() === '' ? null : row.open_case_id.trim(),
+    // Diisi T8; sampai itu kosong.
+    transitFromLocationId: null,
+    transitFromLocationName: null,
+    openCase: null,
+    cases: [],
     createdBy: row.created_by,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -470,6 +480,7 @@ function toEvent(row: SerialEventRow): SerialEventDto {
   const data = parseJson<Record<string, unknown>>(row.data_json, {});
   return {
     id: row.id.trim(),
+    caseId: null,
     seq: Number(row.seq),
     type: (EVENT_TYPE_SET.includes(type) ? type : 'note') as SerialEventType,
     occurredOn: row.occurred_on,

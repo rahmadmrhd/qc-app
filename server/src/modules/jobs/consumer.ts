@@ -1,6 +1,6 @@
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
-import { isAppError } from '@server/core/errors';
+import { appError, isAppError } from '@server/core/errors';
 import type { JobKind } from '@shared/contract';
 import { backupHandler } from '../backup/service';
 import { qrExportHandler } from '../qrcode/export';
@@ -51,6 +51,9 @@ function handlerOf(kind: JobKind): JobHandler {
       return cleanupHandler;
     case 'db_backup':
       return backupHandler;
+    case 'serial_alert':
+      // Pengolahnya dipasang di T9; sampai itu job jenis ini tak boleh ada.
+      throw appError('INTERNAL', 'Pengolah job serial_alert belum dipasang');
   }
 }
 
