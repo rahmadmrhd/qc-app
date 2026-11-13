@@ -48,7 +48,49 @@ export const SERIAL_LIMITS = {
    */
   listSerialsMax: 50,
   listSerialsEncodedMax: 4000,
+  /** Maks. kerusakan (satu baris) pada kasus tidak lolos (5b). */
+  damageMax: 200,
+  /** Maks. catatan pengiriman (satu baris, 5b). */
+  shipmentNoteMax: 200,
+  /** Maks. gambar yang boleh disisipkan pada satu pesan kejadian (5b; default perancang OQ-11). */
+  messageImagesMax: 10,
+  /** Riwayat per serial (`serials.history`): bawaan dan maks. kejadian per halaman. */
+  historyDefaultLimit: 50,
+  historyMaxLimit: 100,
 } as const;
+
+/** Aksi pada `serials.act` (spek §5.3). */
+export const SERIAL_ACTIONS = [
+  'note',
+  'recheck',
+  'report_failure',
+  'identify_damage',
+  'attempt_repair',
+  'send',
+  'receive',
+  'service_diagnosis',
+  'declare_broken',
+  'recheck_pass',
+  'recheck_fail',
+] as const;
+export type SerialAction = (typeof SERIAL_ACTIONS)[number];
+
+/** Tim pelaku kejadian (`actor_team`); `system` hanya untuk kejadian yang dibuat sistem. */
+export type SerialTeam = 'qc' | 'service';
+
+/** Nomor kasus tidak lolos: `LP-YYYYMMDD-NNN` (urutan minimal 3 digit; lebih dari 999 menjadi lebih panjang). */
+export function serialCaseNumber(dateKey: string, sequence: number): string {
+  return `LP-${dateKey}-${String(sequence).padStart(3, '0')}`;
+}
+
+/** Kelompok jenis kejadian untuk tab linimasa (`serials.history` `group`). */
+export const SERIAL_HISTORY_GROUPS: {
+  checks: readonly SerialEventType[];
+  changes: readonly SerialEventType[];
+} = {
+  checks: ['recorded', 'recheck', 'recheck_pass', 'recheck_fail'],
+  changes: ['data_changed'],
+};
 
 /**
  * Panjang `serials` setelah di-encode untuk URL melebihi batas: karakter non-ASCII/tanda baca membengkak 3-9x.
