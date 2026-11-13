@@ -19,6 +19,10 @@ const EVENT_CHECK_DEBOUNCE_MS = 2_000;
 const INSTALL_WAIT_MS = 15_000;
 // Batas menunggu SW yang sudah diminta aktif mengambil alih halaman (controllerchange) sebelum memuat ulang saja.
 const ACTIVATE_WAIT_MS = 10_000;
+// Pemulihan cangkang basi (halaman rusak, tak ada SW baru): batas menunggu hasil `registration.update()`, dan batas
+// pembersihan (unregister + hapus cache) sebelum memuat ulang saja.
+const RECOVER_UPDATE_WAIT_MS = 8_000;
+const RECOVER_PURGE_WAIT_MS = 5_000;
 // Pembatas lintas muat ulang: setelah muat ulang otomatis, tidak mengulang otomatis dalam jendela ini (cegah loop bila
 // SW baru tak kunjung mengambil alih); spanduk yang tampil.
 const AUTO_RELOAD_GUARD_KEY = 'qc-pwa-auto-reload';
@@ -444,6 +448,96 @@ function waitForInstall(win: Window, worker: ServiceWorker, done: () => void) {
   setPending(cancel);
 }
 
+/** Menunggu SW yang sedang dipasang, lalu mengaktifkannya (atau memuat ulang bila ia gagal/melewati batas waktu). */
+function waitForNewWorker(win: Window, installing: ServiceWorker) {
+  waitForInstall(win, installing, () => {
+    // Tidak aman sebelum SW baru diaktifkan: jangan SKIP_WAITING (versi baru tidak boleh mengambil alih halaman).
+    if (abortAutoIfUnsafe()) return;
+    if (currentRegistration?.waiting && updateSW) activateWaiting(win);
+    else reloadPage(win);
+  });
+}
+
+/**
+ * Pemulihan cangkang basi: menunggu `registration.update()` (terbatas `RECOVER_UPDATE_WAIT_MS`); bila SW baru muncul,
+ * pakai jalur aktivasi yang ada; bila tidak, lepas pendaftaran SW lama dan hapus Cache Storage milik Workbox lalu
+ * muat ulang agar cangkang baru diambil dari jaringan (SW didaftarkan ulang saat boot). Hanya menyentuh cache
+ * pra-cache/aset Workbox: tidak ada jawaban API atau isi berkas di sana (FR-P8, NFR-P3).
+ */
+function recoverStaleShell(win: Window, registration: ServiceWorkerRegistration) {
+  let timer: ReturnType<Window['setTimeout']> | undefined;
+  let cancelled = false;
+  let settled = false;
+  const cancel = () => {
+    cancelled = true;
+    if (timer !== undefined) win.clearTimeout(timer);
+    setPending(undefined);
+  };
+  const settle = () => {
+    if (settled || cancelled) return;
+    settled = true;
+    if (timer !== undefined) win.clearTimeout(timer);
+    setPending(undefined);
+    // Pemicu otomatis tidak boleh membuang apa pun bila kini tidak aman (formulir/penulisan); klik pengguna boleh.
+    if (abortAutoIfUnsafe()) return;
+    const current = currentRegistration ?? registration;
+    if (current.waiting && updateSW) {
+      activateWaiting(win);
+      return;
+    }
+    if (current.installing && updateSW) {
+      waitForNewWorker(win, current.installing);
+      return;
+    }
+    // Tetap pending (tombol "Memuat…") selama pembersihan; pembersih halaman membatalkannya.
+    setPending(cancel);
+    void purgeStaleShell(win, registration).then(() => {
+      if (cancelled) return;
+      setPending(undefined);
+      reloadPage(win);
+    });
+  };
+  timer = win.setTimeout(settle, RECOVER_UPDATE_WAIT_MS);
+  setPending(cancel);
+  try {
+    void registration.update().then(settle, settle);
+  } catch {
+    settle();
+  }
+}
+
+/** Melepas pendaftaran SW lama dan menghapus Cache Storage Workbox; galat apa pun diabaikan (muat ulang tetap jalan). */
+async function purgeStaleShell(
+  win: Window,
+  registration: ServiceWorkerRegistration,
+): Promise<void> {
+  const work = (async () => {
+    try {
+      await registration.unregister();
+    } catch {
+      // Dibiarkan: tetap hapus cache dan muat ulang.
+    }
+    try {
+      const store = win.caches;
+      if (!store) return;
+      const names = await store.keys();
+      await Promise.all(names.filter(isWorkboxCache).map((name) => store.delete(name)));
+    } catch {
+      // Dibiarkan.
+    }
+  })();
+  // Pembersihan yang macet tidak boleh membuat tombol buntu.
+  await Promise.race([
+    work,
+    new Promise<void>((resolve) => win.setTimeout(resolve, RECOVER_PURGE_WAIT_MS)),
+  ]);
+}
+
+/** Cache milik Workbox di aplikasi ini: pra-cache (`workbox-precache*`) dan aset lazy (`qc-assets`, `pwa-config.ts`). */
+function isWorkboxCache(name: string): boolean {
+  return name.startsWith('workbox-precache') || name === 'qc-assets';
+}
+
 /**
  * Mengaktifkan SW yang menunggu dan memuat ulang begitu ia mengendalikan halaman. Pendengar `controllerchange`
  * dipasang sendiri karena pendengar `controlling` milik pustaka tak selalu terpasang (mis. spanduk dinyalakan oleh
@@ -490,12 +584,14 @@ function startReload(auto: boolean) {
   }
   // SW baru masih dipasang (mis. potongan gagal sebelum selesai): tunggu dulu, jangan memuat ulang cangkang lama.
   if (registration?.installing && updateSW) {
-    waitForInstall(win, registration.installing, () => {
-      // Tidak aman sebelum SW baru diaktifkan: jangan SKIP_WAITING (versi baru tidak boleh mengambil alih halaman).
-      if (abortAutoIfUnsafe()) return;
-      if (currentRegistration?.waiting && updateSW) activateWaiting(win);
-      else reloadPage(win);
-    });
+    waitForNewWorker(win, registration.installing);
+    return;
+  }
+  // Halaman rusak (potongan lazy hilang di server) dan belum ada SW baru: pemeriksaan pembaruan mungkin belum selesai,
+  // dan muat ulang biasa akan dijawab SW LAMA dengan index.html lama dari pra-cache (galat yang sama berulang sampai
+  // hard refresh). Tunggu hasil pemeriksaan (terbatas waktu), lalu pulihkan cangkang bila tetap tak ada SW baru.
+  if (urgent && registration && updateSW) {
+    recoverStaleShell(win, registration);
     return;
   }
   // Selain itu (tak ada registrasi: gagal/belum selesai/dev/tanpa serviceWorker; atau SW sudah diaktifkan jendela
