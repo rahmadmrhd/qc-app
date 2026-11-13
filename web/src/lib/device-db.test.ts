@@ -128,7 +128,7 @@ describe('device-db: open yang tidak pernah menjawab', () => {
 
     // Jawaban `open` pertama yang datang terlambat menutup koneksinya dan tidak menimpa koneksi baru.
     const close = vi.fn();
-    const late = requests[0] as { result?: unknown; onsuccess?: () => void };
+    const late = requests[0] as unknown as { result?: unknown; onsuccess?: () => void };
     late.result = { close };
     late.onsuccess?.();
     expect(close).toHaveBeenCalledTimes(1);
