@@ -255,6 +255,24 @@ test('Enter di baris tengah menetapkan baris itu saja', async () => {
   expect(field.selectionStart).toBe(8);
 });
 
+test('Enter berturut-turut di baris tengah yang sudah normal: kursor selalu pindah ke baris berikutnya', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: 'AAA\nBBB\nCCC\nDDD' } });
+  field.focus();
+  field.setSelectionRange(1, 1);
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('AAA\nBBB\nCCC\nDDD');
+  expect(field.selectionStart).toBe(4);
+  // Teks dan umpan balik sama dengan sebelumnya (tanpa render ulang): kursor tetap harus maju.
+  await userEvent.keyboard('{Enter}');
+  expect(field.value).toBe('AAA\nBBB\nCCC\nDDD');
+  expect(field.selectionStart).toBe(8);
+  await userEvent.keyboard('{Enter}');
+  expect(field.selectionStart).toBe(12);
+});
+
 test('Tab menjadi penutup bacaan hanya bila baris yang ditulis tidak kosong', async () => {
   renderPage();
   await screen.findByText('ABC123');

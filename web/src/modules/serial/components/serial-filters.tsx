@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Input } from '@/components/ui/input';
@@ -56,14 +57,6 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
   const textRef = useRef(text);
   textRef.current = text;
   const { feedback, announce } = useScanFeedback();
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const caretRef = useRef<number | null>(null);
-  // Kursor ditempatkan setelah teks baru dirender (Enter memindahkannya ke awal baris berikutnya).
-  useLayoutEffect(() => {
-    if (caretRef.current === null) return;
-    fieldRef.current?.setSelectionRange(caretRef.current, caretRef.current);
-    caretRef.current = null;
-  });
 
   function applyText(next: string) {
     textRef.current = next;
@@ -83,9 +76,13 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     const value = textRef.current;
     const result = commitSearchLine(value, field.selectionStart ?? value.length);
     if (result === null) return false;
-    announce(result.feedback);
-    caretRef.current = result.caret;
-    applyText(result.text);
+    // Render sinkron lalu kursor diatur langsung: tidak bergantung pada ada-tidaknya perubahan state (teks dan umpan
+    // balik bisa sama dengan sebelumnya, mis. Enter berturut-turut pada baris yang sudah normal).
+    flushSync(() => {
+      announce(result.feedback);
+      applyText(result.text);
+    });
+    field.setSelectionRange(result.caret, result.caret);
     return true;
   }
 
@@ -106,7 +103,6 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         </div>
         <Textarea
           id="serial-search"
-          ref={fieldRef}
           rows={3}
           className={cn(
             'font-mono transition-colors',
