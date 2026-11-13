@@ -6,8 +6,9 @@ import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
-import { startJobRunner, startScheduler } from '@server/jobs/runner';
+import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
 
 export interface ServerOptions {
@@ -68,6 +69,9 @@ export function envFromConfig(config: Config, db: Db): Env {
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
     ALERT_TO: config.alertTo,
+    ...(config.vapid === null
+      ? {}
+      : { PUSH: createWebPushSender(config.vapid), VAPID_PUBLIC_KEY: config.vapid.publicKey }),
     QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),
@@ -85,7 +89,8 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   const env: Env = { ...envFromConfig(config, db), ...options.env };
   let stops: Array<() => Promise<void>> = [];
   const startBackground = () => {
-    if (options.background !== false) stops = [startJobRunner(env), startScheduler(env)];
+    if (options.background !== false)
+      stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
     async (result) => {

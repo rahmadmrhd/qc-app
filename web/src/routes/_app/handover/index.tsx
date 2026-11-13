@@ -21,24 +21,26 @@ function HandoversPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const status = statusFromSearch(search);
+  const { loc } = search;
   return (
     <HandoverBoardPage
       status={status}
+      locationId={loc}
       onStatusChange={(next) =>
-        void navigate({ to: '/handover', search: searchFromStatus(next), replace: true })
+        void navigate({ to: '/handover', search: searchFromStatus(next, loc), replace: true })
       }
       onOpen={(handoverId) =>
         void navigate({
           to: '/handover/$handoverId',
           params: { handoverId },
-          search: searchFromStatus(status),
+          search: searchFromStatus(status, loc),
         })
       }
       onEdit={(handoverId) =>
         void navigate({
           to: '/handover/$handoverId/edit',
           params: { handoverId },
-          search: searchFromStatus(status),
+          search: searchFromStatus(status, loc),
         })
       }
       onCreate={() => void navigate({ to: '/handover/new' })}
