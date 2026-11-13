@@ -14,6 +14,22 @@ export type SerialStatus = (typeof SERIAL_STATUSES)[number];
 export const SERIAL_CUSTODIES = ['qc', 'transit', 'service'] as const;
 export type SerialCustody = (typeof SERIAL_CUSTODIES)[number];
 
+/** Label status/posisi untuk chip perubahan di riwayat (server) dan tampilan (web memakai teks yang sama). */
+export const SERIAL_STATUS_LABELS: Record<SerialStatus, string> = {
+  good: 'Lolos',
+  failed: 'Tidak lolos',
+  qc_repair: 'Perbaikan QC',
+  at_service: 'Di servis',
+  service_repair: 'Perbaikan servis',
+  recheck: 'Cek ulang',
+  broken: 'Rusak',
+};
+export const SERIAL_CUSTODY_LABELS: Record<SerialCustody, string> = {
+  qc: 'Di QC',
+  transit: 'Dalam pengiriman',
+  service: 'Di servis',
+};
+
 export const SERIAL_EVENT_TYPES = [
   'recorded',
   'data_changed',

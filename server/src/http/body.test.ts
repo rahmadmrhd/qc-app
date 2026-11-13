@@ -245,9 +245,11 @@ const WORST: Inputs = {
   'serials.act': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    action: 'recheck',
+    // Terburuk: cek ulang tidak lolos (field terbanyak) dengan pesan 4-byte per karakter dan kerusakan maksimum.
+    action: 'recheck_fail',
     occurredOn: '2026-11-12',
-    message: '\u6f22'.repeat(SERIAL_LIMITS.messageMax),
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    damage: text(SERIAL_LIMITS.damageMax),
     locationId: UUID,
     stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
   },

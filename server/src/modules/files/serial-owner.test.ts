@@ -20,7 +20,7 @@ const png = (size = 16): Uint8Array => {
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
 
-const SVC_EDIT = 'servis-edit@gmail.com';
+const SVC_EDIT = SERIAL_USERS.svcEdit;
 const B_VIEW = 'lihat-b@gmail.com';
 const ITEM_ALL = 'item-semua@gmail.com';
 const STICKER_VIEW = 'stiker@gmail.com';
@@ -30,21 +30,11 @@ beforeEach(async () => {
   rest = restClient(env);
   await seedSerialWorld(env);
   await seedRole(env, {
-    id: 'r-svc-edit',
-    name: 'Servis edit',
-    permissions: { serialservice: 'edit' },
-  });
-  await seedRole(env, {
     id: 'r-item-manage',
     name: 'Item manage',
     permissions: { item: 'manage' },
   });
   await seedRole(env, { id: 'r-sticker', name: 'Stiker view', permissions: { sticker: 'view' } });
-  await seedUser(env, {
-    id: 'u-svc-edit',
-    email: SVC_EDIT,
-    buAssignments: [{ buId: 'bu-a', roleIds: ['r-svc-edit'] }],
-  });
   await seedUser(env, {
     id: 'u-b-view',
     email: B_VIEW,

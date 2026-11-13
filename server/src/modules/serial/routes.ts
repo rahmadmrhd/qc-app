@@ -85,8 +85,15 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateUpdateSerialBatch,
       handler: (input, ctx) => updateSerialBatch(ctx.env, input, ctx.user),
     },
+    // Gerbang kasar: `serial: edit` ATAU `serialservice: edit`. Modul yang berlaku per aksi ditentukan tabel transisi
+    // (`shared/serial-flow.ts`) menurut STATUS serial pada BU-nya, dinilai di `act.ts`.
     'serials.act': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: {
+        anyOf: [
+          { module: 'serial', level: 'edit' },
+          { module: 'serialservice', level: 'edit' },
+        ],
+      },
       validate: validateSerialAct,
       handler: (input, ctx) => actOnSerial(ctx.env, input, ctx.user),
     },

@@ -517,7 +517,7 @@ function toEvent(row: SerialEventRow): SerialEventDto {
 /** Serial lengkap dengan stiker (nama) untuk DTO; BU di luar hak baca = `NOT_FOUND`. */
 export async function loadSerialDto(env: Env, user: UserContext, id: string): Promise<SerialDto> {
   const row = await loadSerialRow(env.DB, id);
-  if (!row) throw appError('NOT_FOUND', 'Serial tidak ditemukan');
+  if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
   assertSerialVisible(user, row.bu_id.trim());
   const [stickers, cases] = await Promise.all([
     loadSerialStickers(env.DB, row.id.trim()),
@@ -600,7 +600,7 @@ export async function loadWritableRow(
 ): Promise<SerialRow> {
   const row = await loadSerialRow(env.DB, id);
   if (!row || !canWriteBu(user, row.bu_id.trim())) {
-    throw appError('NOT_FOUND', 'Serial tidak ditemukan');
+    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
   }
   if (row.updated_at !== expectedUpdatedAt) throw staleError(STALE_MESSAGE);
   return row;
@@ -762,7 +762,7 @@ export async function updateSerialBatch(
       } else if (error.code === 'CONFLICT') {
         results.push({ id, result: 'duplicate', message: error.message });
       } else if (error.code === 'NOT_FOUND') {
-        results.push({ id, result: 'invalid', message: 'Serial tidak ditemukan' });
+        results.push({ id, result: 'invalid', message: 'Serial Number tidak ditemukan' });
       } else {
         results.push({ id, result: 'invalid', message: error.message });
       }
