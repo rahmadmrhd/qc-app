@@ -45,7 +45,7 @@ function toUserDto(user: UserRecord): UserDto {
       buId: entry.buId,
       roleIds: [...entry.roleIds],
     })),
-    sharedAccount: false, // SEMENTARA, diganti Task 2
+    sharedAccount: user.sharedAccount,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     updatedBy: user.updatedBy,
@@ -117,6 +117,7 @@ export function userSnapshot(
     status: user.status,
     assignments: assignmentsSnapshot(user.assignments),
     buAssignments: buAssignmentsSnapshot(user.buAssignments, businessUnits),
+    sharedAccount: user.sharedAccount,
   };
 }
 
@@ -279,6 +280,8 @@ export async function saveUser(
       status: input.status,
       assignments,
       buAssignments,
+      // Tak dikirim = pertahankan nilai yang ada.
+      sharedAccount: input.sharedAccount ?? existing.sharedAccount,
       updatedAt: now,
       updatedBy: actor.email,
     };
@@ -307,6 +310,7 @@ export async function saveUser(
     status: input.status,
     assignments,
     buAssignments,
+    sharedAccount: input.sharedAccount ?? false,
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
