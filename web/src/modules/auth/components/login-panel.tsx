@@ -1,4 +1,4 @@
-import type { AuthErrorCode } from '@shared/rpc';
+import type { AuthErrorCode } from '@shared/contract';
 import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';

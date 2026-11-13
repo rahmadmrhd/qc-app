@@ -53,7 +53,7 @@ describe('logRequest', () => {
     ]) {
       logRequest({ evt: 'rest', requestId: 'r', method: 'm', ok: false, code, ms: 1 });
     }
-    logRequest({ evt: 'sync', requestId: 'r', method: 'm', ok: false, code: 'INTERNAL', ms: 1 });
+    logRequest({ evt: 'rest', requestId: 'r', method: 'm', ok: false, code: 'INTERNAL', ms: 1 });
     expect(calls.map((c) => c.level)).toEqual([
       'warn',
       'warn',

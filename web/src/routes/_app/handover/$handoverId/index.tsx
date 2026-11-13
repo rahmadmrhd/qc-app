@@ -10,6 +10,7 @@ import { HandoverDetailView } from '@/modules/handover/components/handover-detai
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
   handoverSearchSchema,
+  scopedLocationIds,
   searchFromStatus,
   statusFromSearch,
 } from '@/modules/handover/lib/search';
@@ -36,12 +37,13 @@ export const Route = createFileRoute('/_app/handover/$handoverId/')({
 
 function HandoverDetailPage() {
   const { handoverId } = Route.useParams();
-  const listSearch = searchFromStatus(statusFromSearch(Route.useSearch()));
+  const search = Route.useSearch();
+  const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
   const navigate = useNavigate();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi yang boleh dibaca user: satu lokasi terlarang menolak seluruh permintaan.
-  const readable = readableLocationIds(me, selectedIds);
+  const readable = readableLocationIds(me, scopedLocationIds(search.loc, selectedIds));
   const query = useQuery(handoverQueryOptions(handoverId, readable));
   const queryClient = useQueryClient();
   const setDone = useSetDone();

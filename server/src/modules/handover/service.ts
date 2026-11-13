@@ -11,6 +11,25 @@ import type { CustomerRecord } from '@server/modules/customer/repo';
 import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
 import { lookupCustomerForWrite, planCustomerByName } from '@server/modules/customer/service';
 import {
+  needsImmediateDelivery,
+  planCreateNotifications,
+  planNotifications,
+} from '@server/modules/notification/emit';
+import { wakeNotifications } from '@server/modules/notification/wake';
+import type {
+  AddCommentInput,
+  BoardPageDto,
+  BoardPageInput,
+  GetHandoverInput,
+  HandoverDto,
+  HandoverOptionsDto,
+  HandoverRefInput,
+  SaveHandoverBatchInput,
+  SaveHandoverInput,
+  SetCheckInput,
+  SetDoneInput,
+} from '@shared/contract';
+import {
   customerKey,
   dateKeyOf,
   deriveHandoverStatus,
@@ -26,19 +45,7 @@ import {
   noteToPlainText,
 } from '@shared/handover-comments';
 import { handoverCanonicalText } from '@shared/handover-text';
-import type {
-  AddCommentInput,
-  BoardPageDto,
-  BoardPageInput,
-  GetHandoverInput,
-  HandoverDto,
-  HandoverOptionsDto,
-  HandoverRefInput,
-  SaveHandoverBatchInput,
-  SaveHandoverInput,
-  SetCheckInput,
-  SetDoneInput,
-} from '@shared/rpc';
+import type { HandoverAction } from '@shared/notifications';
 import { checklistOf, matchedChecks } from './checklist';
 import type {
   CommentStats,
@@ -498,12 +505,15 @@ async function createTasks(
       }
       // Penghitung nomor (CAS), customer baru, task, lalu audit: INSERT banyak-baris, bukan satu pernyataan per
       // baris (batch 5 task = 3-4 pernyataan, bukan 12). Atomik dalam satu `batch()`.
+      const notifications = await planCreateNotifications(env, { records, actor, now });
       await env.DB.batch([
         ...reservation.statements,
         ...insertCustomerStmts(env.DB, newCustomers),
         ...insertHandoverStmts(env.DB, records),
         ...writeAuditRows(env.DB, audits),
+        ...notifications,
       ]);
+      wakeNotifications();
       return records.map((record) => toHandoverDto(record, record.customerName, []));
     },
     'Nomor task sedang direbut penulis lain; coba lagi',
@@ -589,6 +599,14 @@ export async function saveHandover(
       updatedBy: actor.email,
       version: current.version + 1,
     };
+    const notifications = await planNotifications(env, {
+      action: 'save',
+      actor,
+      now,
+      before: current,
+      after: saved,
+      customerName: saved.customerName,
+    });
     await env.DB.batch([
       ...(plan?.statements ?? []),
       updateHandoverStmt(env.DB, saved, current.version),
@@ -600,7 +618,9 @@ export async function saveHandover(
         before: audit.before,
         after: audit.after,
       }),
+      ...notifications,
     ]);
+    wakeNotifications();
     return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
 }
@@ -676,6 +696,7 @@ async function writeTaskChange(
   action: string,
   actor: ActorRef,
   now: string,
+  event: { action: HandoverAction; toggledItem?: { text: string; occurrence: number } },
 ): Promise<HandoverRecord> {
   const handover = loaded.record;
   const saved: HandoverRecord = {
@@ -694,6 +715,17 @@ async function writeTaskChange(
     }),
     false,
   );
+  // Kejadian dihitung dari keadaan sebelum/sesudah dan digabung ke batch yang sama (atomik).
+  const change = {
+    action: event.action,
+    actor,
+    now,
+    before: handover,
+    after: saved,
+    customerName: loaded.customerName,
+    toggledItem: event.toggledItem,
+  };
+  const notifications = await planNotifications(env, change);
   await env.DB.batch([
     updateHandoverStmt(env.DB, saved, handover.version),
     writeAudit(env.DB, {
@@ -704,7 +736,10 @@ async function writeTaskChange(
       before: audit.before,
       after: audit.after,
     }),
+    ...notifications,
   ]);
+  // Centang biasa hanya menunggu penggabungan 5 menit: tak perlu membangunkan putaran pengirim.
+  if (needsImmediateDelivery(change)) wakeNotifications();
   return saved;
 }
 
@@ -741,6 +776,7 @@ export async function setCheck(
       input.checked ? 'handover.check' : 'handover.uncheck',
       actor,
       now,
+      { action: 'check', toggledItem: { text: entry.text, occurrence } },
     );
     return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
@@ -783,6 +819,7 @@ export async function setDone(
       'handover.done',
       actor,
       now,
+      { action: 'done' },
     );
     return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
@@ -846,6 +883,15 @@ export async function addComment(
     }),
     false,
   );
+  const notifications = await planNotifications(env, {
+    action: 'comment',
+    actor,
+    now,
+    before: handover,
+    after: handover,
+    customerName: loaded.customerName,
+    commentBody: input.body,
+  });
   // Penjaga di batch yang sama: batas 50 komentar / 40.000 karakter dan status belum dibatalkan dihitung
   // ulang oleh SQL saat menulis, sehingga komentar serentak tidak melewati batas.
   try {
@@ -881,7 +927,9 @@ export async function addComment(
         before: null,
         after: audit.after,
       }),
+      ...notifications,
     ]);
+    wakeNotifications();
   } catch (error) {
     if (isGuardFailure(error)) {
       throw appError(
@@ -926,6 +974,7 @@ export async function cancelHandover(
       'handover.cancel',
       actor,
       nowIso(env),
+      { action: 'cancel' },
     );
     return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);
@@ -949,6 +998,7 @@ export async function reopenHandover(
       'handover.uncancel',
       actor,
       nowIso(env),
+      { action: 'reopen' },
     );
     return toDtoAfter(saved, loaded);
   }, STALE_MESSAGE);

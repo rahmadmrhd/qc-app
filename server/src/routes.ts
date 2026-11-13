@@ -1,20 +1,25 @@
 import type { RouteTable } from '@server/core/router';
 import { accessRoutes } from '@server/modules/access/routes';
-import { authRpcRoutes } from '@server/modules/auth/rpc';
+import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { filesRoutes } from '@server/modules/files/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
+import { pushRoutes } from '@server/modules/notification/push-routes';
+import { notificationRoutes } from '@server/modules/notification/routes';
+import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
-import type { RpcMethod } from '@shared/rpc';
+import { serialRoutes } from '@server/modules/serial/routes';
+import { stickerRoutes } from '@server/modules/sticker/routes';
+import type { ApiId } from '@shared/contract';
 
 /**
- * Daftar LENGKAP kunci `RpcContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
+ * Daftar LENGKAP kunci `ApiContract` (kompilator memastikan tepat sama: kurang atau lebih = galat tipe).
  * Dipakai tes kontrak.
  */
-export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
+export const ALL_API_IDS: Record<ApiId, true> = {
   'auth.me': true,
   'access.users.list': true,
   'access.users.save': true,
@@ -26,11 +31,34 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
   'access.locations.list': true,
   'access.locations.save': true,
   'access.locations.setStatus': true,
+  'access.businessUnits.list': true,
+  'access.businessUnits.save': true,
+  'access.businessUnits.setStatus': true,
+  'businessUnits.options': true,
   'files.upload': true,
   'files.get': true,
+  'stickerGuides.list': true,
+  'stickerGuides.upload': true,
+  'stickerGuides.rename': true,
+  'stickerGuides.remove': true,
+  'stickerGuides.thumbnail': true,
+  'stickerGuides.usages': true,
   'brands.list': true,
   'brands.save': true,
   'brands.setStatus': true,
+  'stickerSettings.get': true,
+  'stickerSettings.save': true,
+  'stickerTypes.list': true,
+  'stickerTypes.save': true,
+  'stickerTypes.setStatus': true,
+  'stickers.list': true,
+  'stickers.save': true,
+  'stickers.setStatus': true,
+  'stickerStock.list': true,
+  'stickerStock.record': true,
+  'stickerStock.adjust': true,
+  'stickerStock.opname': true,
+  'stickerStock.history': true,
   'customers.list': true,
   'customers.rename': true,
   'customers.setStatus': true,
@@ -50,16 +78,47 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
   'items.setStatus': true,
   'qrcodes.list': true,
   'qrcodes.get': true,
+  'qrcodes.versions': true,
   'qrcodes.save': true,
   'qrcodes.delete': true,
   'qrcodes.getDefaults': true,
+  'qrcodes.itemOptions': true,
   'qrcodes.savePreset': true,
+  'qrcodes.clonePreset': true,
   'qrcodes.deletePreset': true,
   'qrcodes.saveLogoLibrary': true,
   'qrcodes.uploadPdf': true,
   'qrcodes.cloneFromDrive': true,
   'qrcodes.export': true,
   'qrcodes.file': true,
+  'postels.list': true,
+  'postels.get': true,
+  'postels.save': true,
+  'postels.remove': true,
+  'postels.history': true,
+  'postelSettings.get': true,
+  'postelSettings.save': true,
+  'postels.itemOptions': true,
+  'serials.itemOptions': true,
+  'serials.stickerOptions': true,
+  'serials.locationOptions': true,
+  'serials.saveBatch': true,
+  'serials.get': true,
+  'serials.list': true,
+  'serials.update': true,
+  'serials.updateBatch': true,
+  'serials.act': true,
+  'postelFiles.upload': true,
+  'postelFiles.get': true,
+  'notifications.list': true,
+  'notifications.markRead': true,
+  'notifications.markAllRead': true,
+  'push.config': true,
+  'push.subscribe': true,
+  'push.unsubscribe': true,
+  'push.setPreference': true,
+  'push.reportPermission': true,
+  'push.status': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -70,7 +129,7 @@ export const ALL_RPC_METHODS: Record<RpcMethod, true> = {
  */
 function realRoutes(): RouteTable {
   return {
-    ...authRpcRoutes(),
+    ...authApiRoutes(),
     ...accessRoutes(),
     ...brandRoutes(),
     ...customerRoutes(),
@@ -78,7 +137,12 @@ function realRoutes(): RouteTable {
     ...itemRoutes(),
     ...handoverRoutes(),
     ...qrcodeRoutes(),
+    ...postelRoutes(),
+    ...notificationRoutes(),
+    ...pushRoutes(),
+    ...serialRoutes(),
     ...jobsRoutes(),
+    ...stickerRoutes(),
   };
 }
 

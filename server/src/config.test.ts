@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { ConfigError, DEFAULT_DB_POOL_SIZE, DEFAULT_PORT, loadConfig } from './config';
 import { DEFAULT_TRUSTED_PROXY, isTrustedPeer, parseTrustedProxy } from './http/proxy';
+import { base64UrlEncode } from './modules/notification/web-push';
 
 const VALID: Record<string, string> = {
   DATABASE_URL: 'mysql://qc_dev:rahasia-db@127.0.0.1:33063/qc_dev',
   SESSION_SECRET: 'rahasia-sesi-yang-cukup-panjang',
   OAUTH_CLIENT_ID: 'client-id',
   OAUTH_CLIENT_SECRET: 'client-secret-rahasia',
-  SYNC_API_TOKEN: 'token-sinkron-rahasia',
   ADMIN_EMAIL: 'admin@example.com',
 };
 
@@ -97,10 +97,10 @@ describe('loadConfig', () => {
   });
 
   test('hanya yang hilang yang disebut; nilai yang diisi tidak pernah bocor ke pesan', () => {
-    const { DATABASE_URL: _db, SYNC_API_TOKEN: _sync, ...rest } = VALID;
+    const { DATABASE_URL: _db, OAUTH_CLIENT_ID: _oauth, ...rest } = VALID;
     const error = errorOf(rest);
     expect(error.message).toContain('DATABASE_URL');
-    expect(error.message).toContain('SYNC_API_TOKEN');
+    expect(error.message).toContain('OAUTH_CLIENT_ID');
     expect(error.message).not.toContain('SESSION_SECRET');
     for (const value of Object.values(rest)) expect(error.message).not.toContain(value);
   });
@@ -318,6 +318,14 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
     expect(config.alertTo).toEqual(['pemilik@example.test', 'lain@example.test']);
   });
 
+  test('SMTP_HOST dan SMTP_FROM tanpa ALERT_TO: smtp tetap terbentuk (ringkasan stok stiker), alertTo kosong', () => {
+    const { ALERT_TO: _omit, ...withoutTo } = SMTP;
+    const config = loadConfig({ ...VALID, ...withoutTo });
+    expect(config.smtp).not.toBeNull();
+    expect(config.smtp?.host).toBe('smtp.example.test');
+    expect(config.alertTo).toEqual([]);
+  });
+
   test('SMTP_FROM kosong memakai SMTP_USER; port kosong = 587', () => {
     const config = loadConfig({ ...VALID, ...SMTP, SMTP_FROM: '', SMTP_PORT: '' });
     expect(config.smtp?.from).toBe('qc@example.test');
@@ -325,7 +333,10 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
   });
 
   test('penanda ISI_OLEH_PEMILIK / nilai rusak TIDAK menggagalkan start: peringatan dinonaktifkan', () => {
-    expect(loadConfig({ ...VALID, ...SMTP, ALERT_TO: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
+    // ALERT_TO rusak hanya mengosongkan penerima peringatan cadangan; SMTP tetap terbentuk (ringkasan stok stiker).
+    const badTo = loadConfig({ ...VALID, ...SMTP, ALERT_TO: 'ISI_OLEH_PEMILIK' });
+    expect(badTo.smtp).not.toBeNull();
+    expect(badTo.alertTo).toEqual([]);
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: 'ISI_OLEH_PEMILIK' }).smtp).toBeNull();
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_HOST: '' }).smtp).toBeNull();
     expect(loadConfig({ ...VALID, ...SMTP, SMTP_PORT: '99999' }).smtp).toBeNull();
@@ -354,5 +365,53 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
   test('SMTP_PASS tidak pernah muncul di pesan galat konfigurasi', () => {
     const error = errorOf({ ...VALID, ...SMTP, SESSION_SECRET: '' });
     expect(error.message).not.toContain('sandi-aplikasi-rahasia');
+  });
+});
+
+describe('loadConfig: VAPID (push)', () => {
+  async function vapidPair() {
+    const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair;
+    const publicKey = base64UrlEncode(
+      new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
+    );
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
+    return { VAPID_PUBLIC_KEY: publicKey, VAPID_PRIVATE_KEY: jwk.d as string };
+  }
+
+  test('bawaan: vapid null; start tidak gagal', () => {
+    expect(loadConfig(VALID).vapid).toBeNull();
+  });
+
+  test('kunci sah + subject eksplisit atau APP_ORIGIN https dirakit', async () => {
+    const pair = await vapidPair();
+    const explicit = loadConfig({ ...VALID, ...pair, VAPID_SUBJECT: 'mailto:ops@example.test' });
+    expect(explicit.vapid).toEqual({
+      publicKey: pair.VAPID_PUBLIC_KEY,
+      privateKey: pair.VAPID_PRIVATE_KEY,
+      subject: 'mailto:ops@example.test',
+    });
+    const fromOrigin = loadConfig({ ...VALID, ...pair, APP_ORIGIN: 'https://qc.example.com' });
+    expect(fromOrigin.vapid?.subject).toBe('https://qc.example.com');
+  });
+
+  test('kosong, penanda, kunci rusak, atau tanpa subject = push dinonaktifkan, bukan galat', async () => {
+    const pair = await vapidPair();
+    expect(
+      loadConfig({
+        ...VALID,
+        VAPID_PUBLIC_KEY: 'ISI_OLEH_PEMILIK',
+        VAPID_PRIVATE_KEY: 'ISI_OLEH_PEMILIK',
+      }).vapid,
+    ).toBeNull();
+    expect(
+      loadConfig({ ...VALID, ...pair, VAPID_PRIVATE_KEY: 'pendek', VAPID_SUBJECT: 'mailto:a@b.co' })
+        .vapid,
+    ).toBeNull();
+    // Tanpa VAPID_SUBJECT dan APP_ORIGIN bukan https = tak ada subject sah.
+    expect(loadConfig({ ...VALID, ...pair }).vapid).toBeNull();
+    expect(loadConfig({ ...VALID, ...pair, VAPID_SUBJECT: 'bukan-subject' }).vapid).toBeNull();
   });
 });

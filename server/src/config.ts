@@ -4,6 +4,7 @@ import { isValidEmail } from '@server/core/email';
 import { isDriveId } from '@server/core/google/settings';
 import type { SmtpSettings } from '@server/core/mail';
 import { DEFAULT_TRUSTED_PROXY, parseTrustedProxy, type TrustedProxy } from '@server/http/proxy';
+import { isValidVapidKeys } from '@server/modules/notification/web-push';
 
 /** Konfigurasi proses server, dibaca dari variabel lingkungan (Bun memuat `server/.env` saat dijalankan dari `server/`). */
 export interface Config {
@@ -14,7 +15,6 @@ export interface Config {
   sessionSecret: string;
   oauthClientId: string;
   oauthClientSecret: string;
-  syncApiToken: string;
   /** Jalur berkas kunci service account Google (JSON); '' = belum dikonfigurasi (wajib di produksi). Isi kunci TIDAK pernah dari env. */
   googleSaKeyFile: string;
   /** Folder induk Drive; '' = belum dikonfigurasi (wajib di produksi). */
@@ -36,6 +36,8 @@ export interface Config {
   smtp: SmtpSettings | null;
   /** Penerima peringatan (`ALERT_TO`, dipisah koma; entri yang bukan alamat email dibuang). */
   alertTo: string[];
+  /** Kunci VAPID Web Push; `null` = tidak diisi/tidak valid (push dinonaktifkan, aplikasi tetap berjalan). */
+  vapid: VapidSettings | null;
   /** Ambang peringatan pemakaian kuota Drive, persen (`QUOTA_ALERT_PERCENT`, bawaan 80). */
   quotaAlertPercent: number;
   adminEmail: string;
@@ -60,6 +62,13 @@ export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_DB_POOL_SIZE = 8;
 export const DEFAULT_SMTP_PORT = 587;
+
+/** Kunci VAPID (RFC 8292) untuk Web Push: publik 65 byte dan privat 32 byte (base64url), `subject` = `mailto:` atau URL https. */
+export interface VapidSettings {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+}
 export const DEFAULT_QUOTA_ALERT_PERCENT = 80;
 export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
 const SESSION_SECRET_MIN_LENGTH = 16;
@@ -80,7 +89,6 @@ const REQUIRED = [
   'SESSION_SECRET',
   'OAUTH_CLIENT_ID',
   'OAUTH_CLIENT_SECRET',
-  'SYNC_API_TOKEN',
   'ADMIN_EMAIL',
 ] as const;
 
@@ -199,7 +207,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
 
   // SMTP/ALERT_TO TIDAK pernah menggagalkan start: berkas .env di VPS dapat berisi penanda ISI_OLEH_PEMILIK. Nilai yang
-  // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi.
+  // tak dapat dipakai = peringatan dinonaktifkan (dicatat saat dibutuhkan), bukan galat konfigurasi. `smtp` tidak lagi
+  // bergantung pada ALERT_TO (ringkasan stok stiker memakai penerima dari Konfigurasi Stiker); peringatan cadangan tetap
+  // menuntut ALERT_TO (`checkBackupAlerts`).
   const alertTo = get('ALERT_TO')
     .split(',')
     .map((address) => address.trim())
@@ -208,7 +218,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     get('SMTP_PORT') === '' ? DEFAULT_SMTP_PORT : integerIn(get('SMTP_PORT'), 1, 65535);
   const smtpFrom = get('SMTP_FROM') || get('SMTP_USER');
   const smtp: SmtpSettings | null =
-    get('SMTP_HOST') !== '' && smtpPort !== null && smtpFrom !== '' && alertTo.length > 0
+    get('SMTP_HOST') !== '' && smtpPort !== null && smtpFrom !== ''
       ? {
           host: get('SMTP_HOST'),
           port: smtpPort,
@@ -216,6 +226,19 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
           user: get('SMTP_USER'),
           pass: get('SMTP_PASS'),
           from: smtpFrom,
+        }
+      : null;
+
+  // VAPID (push) TIDAK pernah menggagalkan start (seperti SMTP): kosong, penanda ISI_OLEH_PEMILIK, atau kunci tak valid =
+  // push dinonaktifkan. Rahasia hanya dibaca dari env, tak pernah dicatat. `subject` bawaan = APP_ORIGIN bila https.
+  const vapidSubject = get('VAPID_SUBJECT') || (appOrigin.startsWith('https://') ? appOrigin : '');
+  const vapid: VapidSettings | null =
+    isValidVapidKeys(get('VAPID_PUBLIC_KEY'), get('VAPID_PRIVATE_KEY')) &&
+    /^(mailto:[^\s]+|https:\/\/[^\s]+)$/.test(vapidSubject)
+      ? {
+          publicKey: get('VAPID_PUBLIC_KEY'),
+          privateKey: get('VAPID_PRIVATE_KEY'),
+          subject: vapidSubject,
         }
       : null;
 
@@ -243,7 +266,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sessionSecret,
     oauthClientId: get('OAUTH_CLIENT_ID'),
     oauthClientSecret: get('OAUTH_CLIENT_SECRET'),
-    syncApiToken: get('SYNC_API_TOKEN'),
     googleSaKeyFile: get('GOOGLE_SA_KEY_FILE'),
     googleRootFolderId: get('GOOGLE_ROOT_FOLDER_ID'),
     googleSpreadsheetId: get('GOOGLE_SPREADSHEET_ID'),
@@ -258,6 +280,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     backupEnabled: backupEnabledRaw !== 'false',
     smtp,
     alertTo,
+    vapid,
     quotaAlertPercent,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,

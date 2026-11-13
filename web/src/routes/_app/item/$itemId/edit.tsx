@@ -3,30 +3,57 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
+import { itemFormLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
-import { requirePermission } from '@/modules/auth/permissions';
-import { brandsQueryOptions } from '@/modules/brand/queries';
+import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
+import { buIdsWithLevelFor, can, requirePermission } from '@/modules/auth/permissions';
+import { meQueryOptions } from '@/modules/auth/queries';
+import { useMe } from '@/modules/auth/use-me';
+import { brandsQueryOptions, useSaveBrand } from '@/modules/brand/queries';
 import { ItemForm } from '@/modules/item/components/item-form';
+import { mergeBusinessUnits } from '@/modules/item/lib/default-business-units';
+import { assertCanEditItem } from '@/modules/item/lib/edit-access';
 import { itemQueryOptions, useSaveItem } from '@/modules/item/queries';
 import type { ItemFieldErrors, ItemFormOutput } from '@/modules/item/schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '@/modules/item/schemas';
+import {
+  stickersQuery,
+  stickerTypesQuery,
+  useSaveSticker,
+  useSaveStickerType,
+} from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/$itemId/edit')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
-  loader: ({ context, params }) =>
-    Promise.all([
+  loader: async ({ context, params }) => {
+    const [item, me] = await Promise.all([
       context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),
+      context.queryClient.ensureQueryData(meQueryOptions()),
       context.queryClient.ensureQueryData(brandsQueryOptions()),
-    ]),
+      context.queryClient.ensureQueryData(businessUnitOptionsQueryOptions()),
+      context.queryClient.ensureQueryData(stickersQuery()),
+      context.queryClient.ensureQueryData(stickerTypesQuery()),
+    ]);
+    assertCanEditItem(me, item);
+  },
   component: EditItemPage,
 });
 
 function EditItemPage() {
   const { itemId } = Route.useParams();
   const navigate = useNavigate();
+  const me = useMe();
   const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
   const { data: brands } = useSuspenseQuery(brandsQueryOptions());
+  const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const saveItem = useSaveItem();
+  const saveBrand = useSaveBrand();
+  const saveBusinessUnit = useSaveBusinessUnit();
+  const { data: stickers } = useSuspenseQuery(stickersQuery());
+  const { data: stickerTypes } = useSuspenseQuery(stickerTypesQuery());
+  const saveSticker = useSaveSticker();
+  const saveStickerType = useSaveStickerType();
+  const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
 
@@ -50,6 +77,31 @@ function EditItemPage() {
         title={`Ubah item: ${item.brand} ${item.model}`}
         key={item.updatedAt}
         brands={brands}
+        businessUnits={mergeBusinessUnits(businessUnits, item.businessUnits)}
+        editableBusinessUnitIds={buIdsWithLevelFor(me, 'edit')}
+        onCreateBrand={
+          can(me, 'item', 'edit') ? (input) => saveBrand.mutateAsync(input) : undefined
+        }
+        onCreateBusinessUnit={
+          links.canCreateBusinessUnit ? (input) => saveBusinessUnit.mutateAsync(input) : undefined
+        }
+        openBrandHref={links.openBrandHref}
+        openBusinessUnitHref={links.openBusinessUnitHref}
+        stickers={stickers}
+        stickerTypes={stickerTypes}
+        onCreateSticker={
+          links.canCreateSticker ? (input) => saveSticker.mutateAsync(input) : undefined
+        }
+        onCreateStickerType={
+          links.canCreateStickerType ? (input) => saveStickerType.mutateAsync(input) : undefined
+        }
+        itemId={item.id}
+        guides={item.stickerPhotos.map((photo) => ({
+          id: photo.guideId,
+          name: photo.guideName,
+          width: photo.width,
+          height: photo.height,
+        }))}
         defaultValues={toItemFormDefaults(item)}
         submitError={submitError}
         fieldErrors={fieldErrors}

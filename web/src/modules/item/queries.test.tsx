@@ -1,4 +1,4 @@
-import type { ItemDto, ItemSummaryDto } from '@shared/rpc';
+import type { ItemDto, ItemSummaryDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -16,7 +16,6 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 const full = {
   id: 'i1',
-  externalId: '',
   brandId: 'b1',
   brand: 'Mikrotik',
   model: 'hAP',
@@ -25,7 +24,10 @@ const full = {
   aliases: ['a'],
   imageCount: 1,
   updatedAt: 't2',
-  stickers: [{ x: 1 }],
+  hasInstructions: false,
+  hasManualBook: false,
+  hasPostel: false,
+  stickerPhotos: [{ marks: [{ x: 1 }] }],
   accessories: [{ y: 1 }],
   attachments: ['f1'],
   detail: 'Markdown panjang',
@@ -43,13 +45,16 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 
-test('toItemSummary membuang detail, stiker, aksesori, lampiran, dan metadata detail', () => {
+test('toItemSummary membuang detail, foto instruksi, aksesori, lampiran, dan metadata detail', () => {
   expect(Object.keys(toItemSummary(full)).sort()).toEqual(
     [
       'aliases',
       'brand',
       'brandId',
-      'externalId',
+      'businessUnits',
+      'hasInstructions',
+      'hasManualBook',
+      'hasPostel',
       'id',
       'imageCount',
       'isCountryLock',
@@ -58,6 +63,15 @@ test('toItemSummary membuang detail, stiker, aksesori, lampiran, dan metadata de
       'updatedAt',
     ].sort(),
   );
+});
+
+test('toItemSummary mengisi hasInstructions dari penanda pada foto mana pun', () => {
+  const photo = (marks: unknown[]) => ({ marks });
+  const withPhotos = (stickerPhotos: unknown[]) =>
+    toItemSummary({ ...full, stickerPhotos } as unknown as ItemDto);
+  expect(withPhotos([]).hasInstructions).toBe(false);
+  expect(withPhotos([photo([])]).hasInstructions).toBe(false);
+  expect(withPhotos([photo([]), photo([{ x: 1 }])]).hasInstructions).toBe(true);
 });
 
 const listData = (items: ItemSummaryDto[], nextCursor: string | null = null) => ({
@@ -80,7 +94,7 @@ test('simpan item: item yang sudah termuat diganti di tempat dengan ringkasan sa
   expect(items).toHaveLength(1);
   expect(items[0]?.model).toBe('hAP');
   expect('detail' in (items[0] ?? {})).toBe(false);
-  expect('stickers' in (items[0] ?? {})).toBe(false);
+  expect('stickerPhotos' in (items[0] ?? {})).toBe(false);
   expect(data.pages[0]?.nextCursor).toBe('c1');
   expect(client.getQueryData(itemKeys.one('i1'))).toEqual(full);
   // daftar ditandai basi (item baru/berubah muncul sesuai filter saat dibuka lagi) tanpa muat ulang sekarang
@@ -92,7 +106,11 @@ test('daftar item: pencarian dan status dikirim ke server bersama kursor', async
   apiMock.mockImplementation(async (_method: string, input: { cursor?: string }) =>
     input.cursor ? { items: [], nextCursor: null } : { items: [], nextCursor: 'c1' },
   );
-  const options = itemsInfiniteQueryOptions({ query: ' es 24 ', status: 'active' });
+  const options = itemsInfiniteQueryOptions({
+    ...DEFAULT_ITEM_FILTER,
+    query: ' es 24 ',
+    status: 'active',
+  });
   const first = await client.fetchInfiniteQuery({ ...options, pages: 2 });
   expect(apiMock).toHaveBeenNthCalledWith(1, 'items.list', { query: 'es 24', status: 'active' });
   expect(apiMock).toHaveBeenNthCalledWith(2, 'items.list', {
@@ -104,4 +122,98 @@ test('daftar item: pencarian dan status dikirim ke server bersama kursor', async
   apiMock.mockClear();
   await client.fetchInfiniteQuery(itemsInfiniteQueryOptions());
   expect(apiMock).toHaveBeenCalledWith('items.list', {});
+});
+
+test('daftar item: filter instruksi dan stiker diteruskan ke items.list; bawaan tidak mengirimnya', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, instruction: 'none' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { instruction: 'none' });
+
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, stickerKey: 's:st1', stickerMode: 'has' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { stickerId: 'st1', stickerMode: 'has' });
+
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      stickerKey: 't:ty1',
+      stickerMode: 'missing',
+    }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { typeId: 'ty1', stickerMode: 'missing' });
+
+  // mode tanpa pilihan stiker/jenis tidak dikirim (server menolaknya)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, stickerMode: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('daftar item: filter Manual Book dikirim hanya bila "missing", selalu bersama status aktif (label hanya untuk item aktif)', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
+  // status "Nonaktif" tak dapat berpadu dengan "belum ada Manual Book": filter Manual Book menang (item nonaktif tak dihitung)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      manualBook: 'missing',
+      status: 'inactive',
+    }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+  });
+  await client.fetchInfiniteQuery(itemsInfiniteQueryOptions(DEFAULT_ITEM_FILTER));
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {});
+});
+
+test('daftar item: filter Postel dikirim hanya bila "missing", selalu bersama status aktif', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { status: 'active', postel: 'missing' });
+  // status "Nonaktif" tak dapat berpadu dengan "belum ada Postel" (item nonaktif tak dihitung)
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing', status: 'inactive' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { status: 'active', postel: 'missing' });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, postel: 'missing', manualBook: 'missing' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    status: 'active',
+    manualBook: 'missing',
+    postel: 'missing',
+  });
+  expect(DEFAULT_ITEM_FILTER.postel).toBe('all');
+});
+
+test('kunci daftar item membedakan filter Postel', () => {
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, postel: 'missing' })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
+});
+
+test('kunci daftar item membedakan filter Manual Book', () => {
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, manualBook: 'missing' })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
+});
+
+test('kunci daftar item membedakan filter instruksi dan stiker', () => {
+  const base = itemKeys.page(DEFAULT_ITEM_FILTER);
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, instruction: 'none' })).not.toEqual(base);
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, stickerKey: 's:a' })).not.toEqual(base);
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, stickerMode: 'missing' })).not.toEqual(base);
 });

@@ -8,7 +8,7 @@ export function createAppRouter(queryClient: QueryClient) {
     routeTree,
     history: createBrowserHistory(),
     context: { queryClient },
-    // Tanpa prefetch saat hover: data dimuat saat navigasi saja (tiap prefetch = satu permintaan RPC tambahan).
+    // Tanpa prefetch saat hover: data dimuat saat navigasi saja (tiap prefetch = satu permintaan tambahan).
     defaultPreload: false,
     // Pindah halaman hanya menunggu DATA: tampilkan "memuat" segera (setelah 100 ms agar data yang sudah di-cache
     // tidak berkedip) dan pertahankan 300 ms agar tidak berkedip-kedip.

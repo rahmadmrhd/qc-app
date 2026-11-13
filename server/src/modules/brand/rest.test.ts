@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { app } from '@server/app';
 import { signSessionToken } from '@server/core/session';
-import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
-// Padanan REST dari kontrak RPC `brands.*`: kabel baru, logika modul sama.
+// Kontrak REST `brands.*`: kabel baru, logika modul sama.
 
 let env: TestEnv;
 
@@ -69,7 +69,9 @@ describe('GET /brands', () => {
 
 describe('POST /brands (buat)', () => {
   test('201 + Location + isi merk baru; nama dirapikan', async () => {
-    const response = await send('POST', '/brands', { body: { name: '  Ubiquiti ' } });
+    const response = await send('POST', '/brands', {
+      body: { name: '  Ubiquiti ', businessUnitIds: [] },
+    });
     expect(response.status).toBe(201);
     const brand = await json(response);
     expect(brand).toMatchObject({ name: 'Ubiquiti', status: 'active', itemCount: 0 });
@@ -82,11 +84,16 @@ describe('POST /brands (buat)', () => {
 
   test('izin edit cukup; hanya lihat 403 dan tidak menulis apa pun', async () => {
     expect(
-      (await send('POST', '/brands', { email: 'edit@gmail.com', body: { name: 'A' } })).status,
+      (
+        await send('POST', '/brands', {
+          email: 'edit@gmail.com',
+          body: { name: 'A', businessUnitIds: [] },
+        })
+      ).status,
     ).toBe(201);
     const forbidden = await send('POST', '/brands', {
       email: 'lihat@gmail.com',
-      body: { name: 'B' },
+      body: { name: 'B', businessUnitIds: [] },
     });
     expect(forbidden.status).toBe(403);
     expect(
@@ -95,9 +102,11 @@ describe('POST /brands (buat)', () => {
   });
 
   test('nama kembar (ternormalisasi) -> 409 dengan fields.name; tidak ada baris baru', async () => {
-    await send('POST', '/brands', { body: { name: 'Ubiquiti' } });
+    await send('POST', '/brands', { body: { name: 'Ubiquiti', businessUnitIds: [] } });
     for (const duplicate of ['ubiquiti', ' UBIQUITI ']) {
-      const response = await send('POST', '/brands', { body: { name: duplicate } });
+      const response = await send('POST', '/brands', {
+        body: { name: duplicate, businessUnitIds: [] },
+      });
       expect(response.status).toBe(409);
       expect(await json(response)).toMatchObject({
         code: 'CONFLICT',
@@ -111,7 +120,7 @@ describe('POST /brands (buat)', () => {
 
   test('nama kosong atau tanpa huruf/angka -> 422 dengan fields.name', async () => {
     for (const name of ['', '--']) {
-      const response = await send('POST', '/brands', { body: { name } });
+      const response = await send('POST', '/brands', { body: { name, businessUnitIds: [] } });
       expect(response.status).toBe(422);
       expect(await json(response)).toMatchObject({
         code: 'VALIDATION',
@@ -122,7 +131,9 @@ describe('POST /brands (buat)', () => {
 
   test('id pada badan jalur buat ditolak (tidak mengubah lewat POST)', async () => {
     const id = await seedBrand(env, 'Sony');
-    const response = await send('POST', '/brands', { body: { id, name: 'Lain' } });
+    const response = await send('POST', '/brands', {
+      body: { id, name: 'Lain', businessUnitIds: [] },
+    });
     expect(response.status).toBe(422);
     expect(
       (
@@ -135,25 +146,25 @@ describe('POST /brands (buat)', () => {
 });
 
 describe('PUT /brands/{id} (ganti nama)', () => {
-  test('mengganti nama, menaikkan sync_rev, 200', async () => {
+  test('mengganti nama, 200', async () => {
     const id = await seedBrand(env, 'Sony');
-    const before = await env.DB.prepare('SELECT sync_rev FROM brands WHERE id = ?')
-      .bind(id)
-      .first<{ sync_rev: number }>();
-    const response = await send('PUT', `/brands/${id}`, { body: { name: 'Sony Corp' } });
+    const response = await send('PUT', `/brands/${id}`, {
+      body: { name: 'Sony Corp', businessUnitIds: [] },
+    });
     expect(response.status).toBe(200);
     expect(await json(response)).toMatchObject({ id, name: 'Sony Corp' });
-    const after = await env.DB.prepare('SELECT name, `key`, sync_rev FROM brands WHERE id = ?')
+    const after = await env.DB.prepare('SELECT name, `key` FROM brands WHERE id = ?')
       .bind(id)
-      .first<{ name: string; key: string; sync_rev: number }>();
+      .first<{ name: string; key: string }>();
     expect(after).toMatchObject({ name: 'Sony Corp', key: 'sony corp' });
-    expect(after?.sync_rev).toBeGreaterThan(before?.sync_rev ?? 0);
   });
 
   test('id badan berbeda dari jalur -> 422 dan tidak mengubah apa pun', async () => {
     const id = await seedBrand(env, 'Sony');
     await seedBrand(env, 'LG');
-    const response = await send('PUT', `/brands/${id}`, { body: { id: 'brand-lg', name: 'X' } });
+    const response = await send('PUT', `/brands/${id}`, {
+      body: { id: 'brand-lg', name: 'X', businessUnitIds: [] },
+    });
     expect(response.status).toBe(422);
     expect(
       (
@@ -167,10 +178,12 @@ describe('PUT /brands/{id} (ganti nama)', () => {
   test('nama milik merk lain -> 409; merk tidak ada -> 404', async () => {
     const id = await seedBrand(env, 'Sony');
     await seedBrand(env, 'LG');
-    const clash = await send('PUT', `/brands/${id}`, { body: { name: 'lg' } });
+    const clash = await send('PUT', `/brands/${id}`, { body: { name: 'lg', businessUnitIds: [] } });
     expect(clash.status).toBe(409);
     expect(await json(clash)).toMatchObject({ fields: { name: 'Nama merk sudah dipakai' } });
-    const missing = await send('PUT', '/brands/tidak-ada', { body: { name: 'Baru' } });
+    const missing = await send('PUT', '/brands/tidak-ada', {
+      body: { name: 'Baru', businessUnitIds: [] },
+    });
     expect(missing.status).toBe(404);
     expect(await json(missing)).toMatchObject({ code: 'NOT_FOUND' });
   });
@@ -239,4 +252,85 @@ test('merk yang dipakai item tidak dapat dihapus: tidak ada rute DELETE /brands/
   ).toBe(1);
   const list = (await (await send('GET', '/brands')).json()) as Array<{ itemCount: number }>;
   expect(list[0]?.itemCount).toBe(1);
+});
+
+describe('BU bawaan merk (REST)', () => {
+  beforeEach(async () => {
+    env.clock.set(Date.parse('2026-11-08T00:00:00.000Z'));
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'A', name: 'BU A' });
+    await seedBusinessUnit(env, { id: 'bu-b', code: 'B', name: 'BU B' });
+    await seedBusinessUnit(env, { id: 'bu-x', code: 'X', name: 'BU Nonaktif', status: 'inactive' });
+  });
+
+  test('POST: dua BU bawaan terkembali terurut menurut kode dan muncul di GET /brands (satu kueri tambahan)', async () => {
+    const response = await send('POST', '/brands', {
+      body: { name: 'Sony', businessUnitIds: ['bu-b', 'bu-a'] },
+    });
+    expect(response.status).toBe(201);
+    expect(await json(response)).toMatchObject({ name: 'Sony', businessUnitIds: ['bu-a', 'bu-b'] });
+    const list = (await (await send('GET', '/brands')).json()) as Array<Record<string, unknown>>;
+    expect(list).toMatchObject([{ name: 'Sony', businessUnitIds: ['bu-a', 'bu-b'] }]);
+  });
+
+  test('businessUnitIds wajib dan harus daftar: hilang atau bukan daftar = 422 di fields.businessUnitIds', async () => {
+    for (const body of [{ name: 'A' }, { name: 'A', businessUnitIds: 'bu-a' }]) {
+      const response = await send('POST', '/brands', { body });
+      expect(response.status).toBe(422);
+      expect(await json(response)).toMatchObject({
+        code: 'VALIDATION',
+        fields: { businessUnitIds: expect.any(String) },
+      });
+    }
+    expect(
+      (await env.DB.prepare('SELECT COUNT(*) AS n FROM brands').first<{ n: number }>())?.n,
+    ).toBe(0);
+  });
+
+  test('BU tak dikenal atau nonaktif yang baru ditambah = 422 dan merk tidak tercipta', async () => {
+    for (const businessUnitIds of [['tidak-ada'], ['bu-x']]) {
+      const response = await send('POST', '/brands', { body: { name: 'Lama', businessUnitIds } });
+      expect(response.status).toBe(422);
+      expect(await json(response)).toMatchObject({
+        code: 'VALIDATION',
+        fields: { businessUnitIds: expect.any(String) },
+      });
+    }
+    expect(
+      (await env.DB.prepare('SELECT COUNT(*) AS n FROM brands').first<{ n: number }>())?.n,
+    ).toBe(0);
+  });
+
+  test('user item:edit global tanpa penugasan BU boleh mengatur BU bawaan di BU mana pun', async () => {
+    const response = await send('POST', '/brands', {
+      email: 'edit@gmail.com',
+      body: { name: 'Baru', businessUnitIds: ['bu-b'] },
+    });
+    expect(response.status).toBe(201);
+    expect(await json(response)).toMatchObject({ businessUnitIds: ['bu-b'] });
+    const hanyaLihat = await send('POST', '/brands', {
+      email: 'lihat@gmail.com',
+      body: { name: 'Lain', businessUnitIds: ['bu-b'] },
+    });
+    expect(hanyaLihat.status).toBe(403);
+  });
+
+  test('PUT hanya mengubah BU bawaan (nama sama): 200, updatedAt naik, himpunan tersimpan', async () => {
+    const created = await json(
+      await send('POST', '/brands', { body: { name: 'Sony', businessUnitIds: ['bu-a'] } }),
+    );
+    env.clock.set(Date.parse('2026-11-08T01:00:00.000Z'));
+    const response = await send('PUT', `/brands/${created.id as string}`, {
+      body: { name: 'Sony', businessUnitIds: ['bu-b'] },
+    });
+    expect(response.status).toBe(200);
+    const updated = await json(response);
+    expect(updated.businessUnitIds).toEqual(['bu-b']);
+    expect(updated.updatedAt).not.toBe(created.updatedAt);
+    const rows = await env.DB.prepare(
+      'SELECT bu_id FROM brand_default_business_units WHERE brand_id = ?',
+    )
+      .bind(created.id as string)
+      .all<{ bu_id: string }>();
+    expect(rows.results.map((row) => row.bu_id.trim())).toEqual(['bu-b']);
+  });
 });

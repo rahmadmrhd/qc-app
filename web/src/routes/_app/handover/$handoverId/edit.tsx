@@ -1,4 +1,4 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { HandoverForm } from '@/modules/handover/components/handover-form';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
   handoverSearchSchema,
+  scopedLocationIds,
   searchFromStatus,
   statusFromSearch,
 } from '@/modules/handover/lib/search';
@@ -36,11 +37,17 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
 
 function EditHandoverPage() {
   const { handoverId } = Route.useParams();
-  const listSearch = searchFromStatus(statusFromSearch(Route.useSearch()));
+  const search = Route.useSearch();
+  const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
   const navigate = useNavigate();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
-  const detail = useQuery(handoverQueryOptions(handoverId, readableLocationIds(me, selectedIds)));
+  const detail = useQuery(
+    handoverQueryOptions(
+      handoverId,
+      readableLocationIds(me, scopedLocationIds(search.loc, selectedIds)),
+    ),
+  );
   const locationId = detail.data?.locationId;
   const options = useQuery(handoverOptionsQueryOptions(locationId ? [locationId] : []));
   const save = useSaveHandover();

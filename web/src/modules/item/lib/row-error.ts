@@ -19,3 +19,17 @@ export function errorText(errors: ReadonlyArray<unknown>): string | undefined {
   }
   return undefined;
 }
+
+/** Semua pesan (unik, berurutan) dari daftar galat teks atau objek berpesan; kosong dilewati. */
+export function errorTexts(errors: ReadonlyArray<unknown>): string[] {
+  const texts: string[] = [];
+  for (const error of errors) {
+    let message = '';
+    if (typeof error === 'string') message = error;
+    else if (error && typeof error === 'object' && 'message' in error) {
+      message = String((error as { message: unknown }).message);
+    }
+    if (message !== '' && !texts.includes(message)) texts.push(message);
+  }
+  return texts;
+}

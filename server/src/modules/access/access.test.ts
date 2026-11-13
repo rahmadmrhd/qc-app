@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { listAudit, writeAudit, writeAuditRows } from '@server/core/audit';
 import { signSessionToken } from '@server/core/session';
 import { getRoutes } from '@server/routes';
-import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { callRoute } from '@server-test/call-route';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { AuditEntryDto } from '@shared/rpc';
+import type { BuAssignment } from '@shared/business-units';
+import type { AuditEntryDto, SaveUserInput } from '@shared/contract';
 import type { UserContext } from './context';
 import { loadUserContext } from './context';
 import { listLocationDtos, saveLocation, setLocationStatus } from './location-service';
@@ -16,9 +17,16 @@ import {
   listUserDtos,
   removeRole,
   saveRole,
-  saveUser,
+  saveUser as saveUserRaw,
   setUserStatus,
 } from './service';
+
+/** Tes lama tidak peduli penugasan BU: bawaan `[]` (menggantikan penugasan BU yang ada). */
+const saveUser = (
+  env: TestEnv,
+  input: Omit<SaveUserInput, 'buAssignments'> & { buAssignments?: BuAssignment[] },
+  actor: UserContext,
+) => saveUserRaw(env, { buAssignments: [], ...input }, actor);
 
 const everywhere = (...roleIds: string[]) => [{ locationId: null, roleIds }];
 
@@ -72,7 +80,13 @@ describe('user', () => {
     expect(await loadUserContext(env, 'ani@gmail.com')).toBeNull();
     const created = await saveUser(
       env,
-      { email: 'ani@gmail.com', name: 'Ani', status: 'active', assignments: everywhere('r-qc') },
+      {
+        email: 'ani@gmail.com',
+        name: 'Ani',
+        status: 'active',
+        assignments: everywhere('r-qc'),
+        buAssignments: [{ buId: null, roleIds: ['r-qc'] }],
+      },
       admin,
     );
     expect(created).toMatchObject({
@@ -85,6 +99,7 @@ describe('user', () => {
       'budi@gmail.com',
     ]);
     expect((await lastAudit()).action).toBe('user.create');
+    // `item` hanya dari penugasan BU (role r-qc memberi item: edit di penugasan "Semua BU").
     expect((await loadUserContext(env, 'ani@gmail.com'))?.permissions.item).toBe('edit');
   });
 
@@ -178,7 +193,7 @@ describe('user', () => {
     ).toBe('CONFLICT');
   });
 
-  test('menonaktifkan user lain langsung mencabut aksesnya, termasuk lewat RPC berikutnya', async () => {
+  test('menonaktifkan user lain langsung mencabut aksesnya, termasuk lewat permintaan berikutnya', async () => {
     const token = await signSessionToken(env, 'budi@gmail.com', env.clock.now());
     const call = () => callRoute(env, token, 'auth.me', null, getRoutes());
     expect((await call()).ok).toBe(true);
@@ -240,7 +255,7 @@ describe('user', () => {
     expect((await listRoleDtos(env)).find((r) => r.id === 'r-access')?.userCount).toBe(2);
     expect(await lastAudit()).toMatchObject({
       action: 'user.create',
-      after: { assignments: { '*': ['r-qc'], 'l-a': ['r-access'] } },
+      after: { assignments: { '*': ['r-qc'], 'l-a': ['r-access'] }, buAssignments: {} },
     });
   });
 
@@ -317,6 +332,116 @@ describe('user', () => {
     ).toEqual(['r-access', 'r-qc']);
     // Super admin boleh mengubah penugasan siapa pun.
     expect((await saveUser(env, { ...base, assignments: [] }, admin)).assignments).toEqual([]);
+  });
+});
+
+describe('penugasan BU user', () => {
+  beforeEach(async () => {
+    await seedBusinessUnit(env, { id: 'bu-um', code: 'UM', name: 'Umum' });
+    await seedBusinessUnit(env, { id: 'bu-ent', code: 'ENT', name: 'Enterprise' });
+    await seedBusinessUnit(env, { id: 'bu-mati', code: 'MATI', name: 'Mati', status: 'inactive' });
+  });
+
+  const base = { email: 'ani@gmail.com', name: 'Ani', status: 'active' as const, assignments: [] };
+
+  test('round-trip buAssignments di UserDto; audit memuat peta kode BU (atau *) ke role', async () => {
+    const created = await saveUser(
+      env,
+      {
+        ...base,
+        buAssignments: [
+          { buId: null, roleIds: ['r-qc'] },
+          { buId: 'bu-ent', roleIds: ['r-access'] },
+        ],
+      },
+      admin,
+    );
+    expect(created.buAssignments).toEqual([
+      { buId: null, roleIds: ['r-qc'] },
+      { buId: 'bu-ent', roleIds: ['r-access'] },
+    ]);
+    const listed = (await listUserDtos(env)).find((u) => u.email === 'ani@gmail.com');
+    expect(listed?.buAssignments).toEqual(created.buAssignments);
+    expect(await lastAudit()).toMatchObject({
+      action: 'user.create',
+      after: { buAssignments: { '*': ['r-qc'], ENT: ['r-access'] } },
+    });
+  });
+
+  test('perubahan penugasan BU langsung berlaku: permissions.item global dan hak per BU', async () => {
+    await saveUser(env, { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-qc'] }] }, admin);
+    const ctx = await contextOf('ani@gmail.com');
+    expect(ctx.permissions.item).toBe('edit');
+    expect(ctx.businessUnits).toEqual({
+      'bu-um': { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
+  });
+
+  test('BU tidak dikenal atau nonaktif baru ditolak; BU nonaktif yang sudah ditugaskan boleh dipertahankan', async () => {
+    for (const buId of ['tidak-ada', 'bu-mati']) {
+      expect(
+        await captureAppErrorAsync(() =>
+          saveUser(env, { ...base, buAssignments: [{ buId, roleIds: ['r-qc'] }] }, admin),
+        ),
+      ).toMatchObject({
+        code: 'VALIDATION',
+        fields: { buAssignments: 'BU tidak dikenal atau tidak aktif' },
+      });
+    }
+    await seedUser(env, {
+      id: 'u-lama',
+      email: 'lama@gmail.com',
+      buAssignments: [{ buId: 'bu-mati', roleIds: ['r-qc'] }],
+    });
+    const saved = await saveUser(
+      env,
+      {
+        id: 'u-lama',
+        email: 'lama@gmail.com',
+        name: 'Lama Baru',
+        status: 'active',
+        assignments: [],
+        buAssignments: [{ buId: 'bu-mati', roleIds: ['r-qc'] }],
+      },
+      admin,
+    );
+    expect(saved.buAssignments).toEqual([{ buId: 'bu-mati', roleIds: ['r-qc'] }]);
+  });
+
+  test('role tidak dikenal pada penugasan BU ditolak', async () => {
+    expect(
+      await captureAppErrorAsync(() =>
+        saveUser(
+          env,
+          { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-hilang'] }] },
+          admin,
+        ),
+      ),
+    ).toMatchObject({
+      code: 'VALIDATION',
+      fields: { buAssignments: 'Ada role yang tidak dikenal' },
+    });
+  });
+
+  test('role yang hanya dipakai penugasan BU dihitung di userCount dan tidak dapat dihapus', async () => {
+    await seedRole(env, { id: 'r-bu-saja', name: 'Hanya BU', permissions: { item: 'view' } });
+    await saveUser(
+      env,
+      { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-bu-saja'] }] },
+      admin,
+    );
+    expect((await listRoleDtos(env)).find((r) => r.id === 'r-bu-saja')?.userCount).toBe(1);
+    expect(
+      await captureAppErrorAsync(() => removeRole(env, { id: 'r-bu-saja' }, admin)),
+    ).toMatchObject({ code: 'CONFLICT', message: 'Role masih dipakai oleh 1 user' });
+  });
+
+  test('menyimpan user lain (status/nama) tidak menghapus penugasan BU; setUserStatus mempertahankannya', async () => {
+    await saveUser(env, { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-qc'] }] }, admin);
+    const ani = (await listUserDtos(env)).find((u) => u.email === 'ani@gmail.com');
+    await setUserStatus(env, { id: ani?.id ?? '', status: 'inactive' }, admin);
+    const after = (await listUserDtos(env)).find((u) => u.email === 'ani@gmail.com');
+    expect(after?.buAssignments).toEqual([{ buId: 'bu-um', roleIds: ['r-qc'] }]);
   });
 });
 
@@ -448,6 +573,7 @@ describe('audit atomik dan snapshot', () => {
         name: 'Ani',
         status: 'active',
         assignments: { '*': ['r-qc'] },
+        buAssignments: {},
       },
     });
   });
@@ -472,12 +598,14 @@ describe('audit atomik dan snapshot', () => {
         name: 'Budi',
         status: 'active',
         assignments: { '*': ['r-qc', 'r-access'] },
+        buAssignments: { '*': ['r-qc', 'r-access'] },
       },
       after: {
         email: 'budi@gmail.com',
         name: 'Budi S',
         status: 'active',
         assignments: { '*': ['r-qc'] },
+        buAssignments: {},
       },
     });
     await setUserStatus(env, { id: 'u-budi', status: 'inactive' }, admin);

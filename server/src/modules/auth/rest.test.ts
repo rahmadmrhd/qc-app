@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { app } from '@server/app';
 import { signSessionToken } from '@server/core/session';
-import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
-// `GET /api/v1/me` (id `auth.me`) menggantikan `/api/boot` dan `auth.me` lewat RPC.
+// `GET /api/v1/me` (id `auth.me`) menggantikan `/api/boot` dan `auth.me` lewat REST.
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -42,10 +42,63 @@ describe('GET /api/v1/me', () => {
           id: 'l-j',
           code: 'JKT',
           name: 'Jakarta',
-          permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+          permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
         },
       ],
     });
+  });
+
+  test('businessUnits: hanya BU berhak (termasuk nonaktif), terurut menurut kode, dengan izin per BU', async () => {
+    await seedBusinessUnit(env, { id: 'bu-z', code: 'ZZ', name: 'Zed' });
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa', status: 'inactive' });
+    await seedBusinessUnit(env, { id: 'bu-m', code: 'MM', name: 'Mid' });
+    await seedRole(env, { id: 'r-v', name: 'Lihat', permissions: { item: 'view' } });
+    await seedRole(env, { id: 'r-e', name: 'Ubah', permissions: { item: 'edit' } });
+    await seedUser(env, {
+      id: 'u2',
+      email: 'bu@gmail.com',
+      buAssignments: [
+        { buId: 'bu-z', roleIds: ['r-v'] },
+        { buId: 'bu-a', roleIds: ['r-e'] },
+      ],
+    });
+    const body = (await jsonOf(await rest.get('/me', { email: 'bu@gmail.com' }))) as {
+      businessUnits: unknown;
+      permissions: { item: string };
+    };
+    expect(body.businessUnits).toEqual([
+      {
+        id: 'bu-a',
+        code: 'AA',
+        name: 'Alfa',
+        status: 'inactive',
+        permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+      },
+      {
+        id: 'bu-z',
+        code: 'ZZ',
+        name: 'Zed',
+        status: 'active',
+        permissions: { item: 'view', serial: 'none', serialservice: 'none' },
+      },
+    ]);
+    expect(body.permissions.item).toBe('edit');
+  });
+
+  test('user tanpa penugasan BU mendapat businessUnits kosong; super admin semua BU manage', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa' });
+    const kosong = await jsonOf(await rest.get('/me', { email: 'budi@gmail.com' }));
+    expect(kosong.businessUnits).toEqual([]);
+    const admin = await jsonOf(await rest.get('/me'));
+    expect(admin.businessUnits).toEqual([
+      {
+        id: 'bu-a',
+        code: 'AA',
+        name: 'Alfa',
+        status: 'active',
+        permissions: { item: 'manage', serial: 'manage', serialservice: 'edit' },
+      },
+    ]);
   });
 
   test('super admin melihat semua lokasi aktif dengan manage', async () => {
@@ -59,6 +112,7 @@ describe('GET /api/v1/me', () => {
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
+      stickerstock: 'manage',
     });
   });
 

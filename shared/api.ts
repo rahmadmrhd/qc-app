@@ -1,4 +1,4 @@
-import type { RpcInput, RpcMethod, RpcOutput } from './rpc';
+import type { ApiId, ApiInput, ApiOutput } from './contract';
 
 // Tabel rute REST (`/api/v1`): SATU sumber untuk klien FE (`api()`), server (kernel REST), dan OpenAPI. Murni:
 // tanpa API runtime (`shared/` murni, tanpa `URL`/`URLSearchParams`/`fetch`/`atob`), jadi query
@@ -66,7 +66,7 @@ export interface ApiDownload {
 // (`MAX_IMAGE_BYTES`, `QR_LIMITS`).
 // `api.test.ts` memastikan angka-angka ini sama dengan konstanta sumbernya.
 
-export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
+export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'auth.me': { verb: 'GET', path: '/me' },
   'access.users.list': { verb: 'GET', path: '/users' },
   'access.users.save': {
@@ -94,6 +94,18 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
     create: { verb: 'POST', path: '/locations' },
   },
   'access.locations.setStatus': { verb: 'PATCH', path: '/locations/{id}', etag: 'updatedAt' },
+  'access.businessUnits.list': { verb: 'GET', path: '/business-units' },
+  'access.businessUnits.save': {
+    verb: 'PUT',
+    path: '/business-units/{id}',
+    create: { verb: 'POST', path: '/business-units' },
+  },
+  'access.businessUnits.setStatus': {
+    verb: 'PATCH',
+    path: '/business-units/{id}',
+    etag: 'updatedAt',
+  },
+  'businessUnits.options': { verb: 'GET', path: '/business-units/options' },
   'files.upload': {
     verb: 'POST',
     path: '/files',
@@ -115,6 +127,48 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
     binary: 'response',
     download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
   },
+  'stickerGuides.list': {
+    verb: 'GET',
+    path: '/sticker-guides',
+    query: {
+      search: 'string',
+      sort: 'string',
+      mine: 'boolean',
+      unused: 'boolean',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'stickerGuides.upload': {
+    verb: 'POST',
+    path: '/sticker-guides',
+    status: 201,
+    location: '/sticker-guides/{id}',
+    query: {
+      name: 'string',
+      mime: 'string',
+      thumbMime: 'string',
+      width: 'number',
+      height: 'number',
+    },
+    binary: 'multipart',
+    multipart: {
+      parts: ['image', 'thumbnail'],
+      // = MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 64 KB ruang batas bagian dan header multipart
+      maxBytes: 10_592_256,
+      tooLarge: 'Ukuran gambar maksimal 10 MB',
+    },
+  },
+  'stickerGuides.rename': { verb: 'PATCH', path: '/sticker-guides/{id}' },
+  'stickerGuides.remove': { verb: 'DELETE', path: '/sticker-guides/{id}' },
+  'stickerGuides.thumbnail': {
+    verb: 'GET',
+    path: '/sticker-guides/{id}/thumbnail',
+    etag: 'id',
+    binary: 'response',
+    download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
+  },
+  'stickerGuides.usages': { verb: 'GET', path: '/sticker-guides/{id}/usages' },
   'brands.list': { verb: 'GET', path: '/brands' },
   'brands.save': {
     verb: 'PUT',
@@ -122,6 +176,40 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
     create: { verb: 'POST', path: '/brands' },
   },
   'brands.setStatus': { verb: 'PATCH', path: '/brands/{id}', etag: 'updatedAt' },
+  'stickerSettings.get': { verb: 'GET', path: '/sticker-settings', etag: 'updatedAt' },
+  'stickerSettings.save': {
+    verb: 'PUT',
+    path: '/sticker-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'stickerTypes.list': { verb: 'GET', path: '/sticker-types' },
+  'stickerTypes.save': {
+    verb: 'PUT',
+    path: '/sticker-types/{id}',
+    create: { verb: 'POST', path: '/sticker-types' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'stickerTypes.setStatus': { verb: 'PATCH', path: '/sticker-types/{id}', etag: 'updatedAt' },
+  'stickers.list': { verb: 'GET', path: '/stickers' },
+  'stickers.save': {
+    verb: 'PUT',
+    path: '/stickers/{id}',
+    create: { verb: 'POST', path: '/stickers' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'stickers.setStatus': { verb: 'PATCH', path: '/stickers/{id}', etag: 'updatedAt' },
+  'stickerStock.list': { verb: 'GET', path: '/sticker-stock', query: { locationIds: 'list' } },
+  'stickerStock.record': { verb: 'POST', path: '/sticker-stock/entries', status: 201 },
+  'stickerStock.adjust': { verb: 'POST', path: '/sticker-stock/adjustments', status: 201 },
+  'stickerStock.opname': { verb: 'POST', path: '/sticker-stock/opname' },
+  'stickerStock.history': {
+    verb: 'GET',
+    path: '/sticker-stock/entries',
+    query: { locationIds: 'list', stickerId: 'string', cursor: 'string', limit: 'number' },
+  },
   'customers.list': { verb: 'GET', path: '/customers' },
   'customers.rename': { verb: 'PUT', path: '/customers/{id}' },
   'customers.setStatus': { verb: 'PATCH', path: '/customers/{id}', etag: 'updatedAt' },
@@ -153,7 +241,18 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
   'items.list': {
     verb: 'GET',
     path: '/items',
-    query: { cursor: 'string', limit: 'number', query: 'string', status: 'string' },
+    query: {
+      cursor: 'string',
+      limit: 'number',
+      query: 'string',
+      status: 'string',
+      instruction: 'string',
+      stickerId: 'string',
+      typeId: 'string',
+      stickerMode: 'string',
+      manualBook: 'string',
+      postel: 'string',
+    },
   },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },
   'items.save': {
@@ -166,6 +265,7 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
   'items.setStatus': { verb: 'PATCH', path: '/items/{id}', etag: 'updatedAt' },
   'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
+  'qrcodes.versions': { verb: 'GET', path: '/qrcodes/{id}/versions' },
   'qrcodes.save': {
     verb: 'PUT',
     path: '/qrcodes/{id}',
@@ -175,6 +275,11 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
   },
   'qrcodes.delete': { verb: 'DELETE', path: '/qrcodes/{id}' },
   'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults' },
+  'qrcodes.itemOptions': {
+    verb: 'GET',
+    path: '/qrcode-item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
   'qrcodes.savePreset': {
     verb: 'PUT',
     path: '/qrcode-presets/{id}',
@@ -182,6 +287,7 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
   },
+  'qrcodes.clonePreset': { verb: 'POST', path: '/qrcode-presets/{id}/clone', status: 201 },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
   'qrcodes.saveLogoLibrary': {
     verb: 'PUT',
@@ -208,11 +314,12 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
     status: 202,
     location: '/jobs/{jobId}',
     ifMatch: 'expectedUpdatedAt',
+    query: { reason: 'string' },
     binary: 'multipart',
     multipart: {
-      parts: ['pdf', 'png'],
-      // = QR_LIMITS.exportMaxBytes (8 MB) + 64 KB ruang batas bagian dan header multipart
-      maxBytes: 8_454_144,
+      parts: ['pdf', 'png', 'preview'],
+      // = QR_LIMITS.exportMaxBytes (8 MB) + QR_LIMITS.previewMaxBytes (512 KB) + 64 KB ruang batas bagian dan header
+      maxBytes: 8_978_432,
       tooLarge: 'Ukuran hasil ekspor maksimal 8 MB',
     },
   },
@@ -228,6 +335,119 @@ export const API_ROUTES: { [M in RpcMethod]: ApiRouteDef } = {
       cache: 'revalidate',
     },
   },
+  // `postels.itemOptions` didaftarkan SEBELUM rute `/postels/{id}` agar jalur statis tidak tertangkap parameter id.
+  'postels.itemOptions': {
+    verb: 'GET',
+    path: '/postels/item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number' },
+  },
+  'postels.list': { verb: 'GET', path: '/postels' },
+  // Serial Number: rute statis (`item-options`, `sticker-options`) didaftarkan SEBELUM `/serials/{id}` kelak.
+  'serials.itemOptions': {
+    verb: 'GET',
+    path: '/serials/item-options',
+    query: { query: 'string', cursor: 'string', limit: 'number', itemIds: 'list' },
+  },
+  'serials.stickerOptions': {
+    verb: 'GET',
+    path: '/serials/sticker-options',
+    query: { itemId: 'string', buId: 'string' },
+  },
+  'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
+  'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
+  'serials.list': {
+    verb: 'GET',
+    path: '/serials',
+    query: {
+      query: 'string',
+      serials: 'string',
+      buId: 'string',
+      itemId: 'string',
+      locationId: 'string',
+      status: 'string',
+      from: 'string',
+      to: 'string',
+      createdBy: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serials.get': { verb: 'GET', path: '/serials/{id}' },
+  'serials.update': {
+    verb: 'PUT',
+    path: '/serials/{id}',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'serials.updateBatch': { verb: 'POST', path: '/serials/batch-update', status: 200 },
+  'serials.act': {
+    verb: 'POST',
+    path: '/serials/{id}/act',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+    status: 200,
+  },
+  'postels.get': { verb: 'GET', path: '/postels/{id}', etag: 'updatedAt' },
+  'postels.save': {
+    verb: 'PUT',
+    path: '/postels/{id}',
+    create: { verb: 'POST', path: '/postels', status: 201 },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
+  'postelSettings.save': {
+    verb: 'PUT',
+    path: '/postel-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'postels.history': {
+    verb: 'GET',
+    path: '/postels/{id}/history',
+    query: { cursor: 'string', limit: 'number' },
+  },
+  'postelFiles.upload': {
+    verb: 'POST',
+    path: '/postel-files',
+    status: 201,
+    location: '/postel-files/{id}',
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 10_485_760, // = POSTEL_LIMITS.attachmentMaxBytes = MAX_IMAGE_BYTES
+      tooLarge: 'Ukuran lampiran maksimal 10 MB',
+    },
+  },
+  'postelFiles.get': {
+    verb: 'GET',
+    path: '/postel-files/{id}',
+    etag: 'id',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      echo: ['id'],
+      cache: 'immutable',
+    },
+  },
+  'notifications.list': {
+    verb: 'GET',
+    path: '/notifications',
+    query: { limit: 'number', before: 'string' },
+  },
+  // `read-all` (2 segmen) tidak bertabrakan dengan `/notifications/{id}/read` (3 segmen).
+  'notifications.markAllRead': { verb: 'POST', path: '/notifications/read-all' },
+  'notifications.markRead': { verb: 'POST', path: '/notifications/{id}/read' },
+  'push.config': { verb: 'GET', path: '/push/config' },
+  'push.subscribe': { verb: 'POST', path: '/push/subscriptions' },
+  'push.unsubscribe': { verb: 'POST', path: '/push/unsubscribe' },
+  'push.setPreference': { verb: 'PUT', path: '/push/preference' },
+  'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
+  'push.status': { verb: 'GET', path: '/push/status' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',
@@ -341,7 +561,7 @@ function queryText(kind: QueryKind, value: unknown): string {
  * Memecah input datar sebuah id menjadi bagian permintaan HTTP: parameter jalur, query, badan, dan `If-Match`.
  * Rute `save` memilih jalur `create` bila `input.id` tidak ada. Pada GET/DELETE semua field lewat query.
  */
-export function toRequestParts<M extends RpcMethod>(id: M, input: RpcInput<M>): RequestParts {
+export function toRequestParts<M extends ApiId>(id: M, input: ApiInput<M>): RequestParts {
   const def = API_ROUTES[id];
   const source = asRecord(input);
   const created = def.create !== undefined && !hasId(source);
@@ -430,80 +650,6 @@ export function parseQueryValue(field: string, kind: QueryKind, text: string): u
   return text;
 }
 
-/** Id rute sinkron QC Desktop (nama metode internal; tetap dipakai sebagai id handler dan operationId). */
-export type SyncRouteId =
-  | 'sync.ping'
-  | 'sync.brands.pull'
-  | 'sync.brands.push'
-  | 'sync.items.pull'
-  | 'sync.items.push'
-  | 'sync.file.get';
-
-/**
- * Rute REST QC Desktop (kontrak versi 2, `docs/api/desktop-sync.md`), relatif terhadap `/api/v1`. Otentikasi HANYA
- * `Authorization: Bearer <SYNC_API_TOKEN>` (bukan cookie sesi, tanpa CSRF); tidak ada `etag`/`ifMatch` (pull berbasis
- * `sinceRev`). `sync.file.get` = unduhan biner (byte mentah, ETag = id Drive; isi tak berubah untuk id yang sama).
- */
-export const SYNC_API_ROUTES: { [M in SyncRouteId]: ApiRouteDef } = {
-  'sync.ping': { verb: 'GET', path: '/sync/ping' },
-  'sync.brands.pull': {
-    verb: 'GET',
-    path: '/sync/brands',
-    // `include` dideklarasikan agar sampai ke validator, yang menolaknya (merk tidak punya field berat): sama dengan v1.
-    query: { sinceRev: 'number', limit: 'number', include: 'list' },
-  },
-  'sync.brands.push': { verb: 'POST', path: '/sync/brands/push' },
-  'sync.items.pull': {
-    verb: 'GET',
-    path: '/sync/items',
-    query: { sinceRev: 'number', limit: 'number', include: 'list' },
-  },
-  'sync.items.push': { verb: 'POST', path: '/sync/items/push' },
-  'sync.file.get': {
-    verb: 'GET',
-    path: '/sync/files/{id}',
-    etag: 'driveId',
-    binary: 'response',
-    download: { bytesField: 'bytes', mimeField: 'mime', cache: 'immutable' },
-  },
-};
-
-/** Bagian permintaan sinkron yang sudah diurai server (jalur, query, badan JSON). */
-export interface SyncRequestParts {
-  params: Record<string, string>;
-  query: Record<string, string>;
-  body: unknown;
-}
-
-/**
- * Merakit input handler sinkron dari bagian permintaan: pull = field query bertipe (query tak dikenal diabaikan),
- * push = badan JSON (hanya properti milik; nama prototipe dibuang), file.get = `{ driveId }` dari jalur, ping = null.
- * Galat parameter dilempar sebagai `ApiFieldIssue` (diubah kernel menjadi VALIDATION).
- */
-export function syncInputFromParts(id: SyncRouteId, parts: SyncRequestParts): unknown {
-  const def = SYNC_API_ROUTES[id];
-  if (id === 'sync.ping') return null;
-  if (id === 'sync.file.get') return { driveId: parts.params.id };
-  if (def.verb === 'GET') {
-    const input: AnyRecord = {};
-    for (const [field, kind] of Object.entries(def.query ?? {})) {
-      const text = parts.query[field];
-      if (text !== undefined) input[field] = parseQueryValue(field, kind, text);
-    }
-    return input;
-  }
-  const body = parts.body;
-  if (body === undefined || body === null) return null;
-  if (typeof body !== 'object' || Array.isArray(body)) {
-    throw { field: 'body', message: 'Badan harus berupa objek JSON' } satisfies ApiFieldIssue;
-  }
-  const input: AnyRecord = {};
-  for (const key of Object.keys(body)) {
-    if (!UNSAFE_BODY_KEYS.has(key)) input[key] = (body as AnyRecord)[key];
-  }
-  return input;
-}
-
 /** Nama properti badan JSON yang tidak pernah disalin ke input (lihat `fromRequestParts`). */
 const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -513,7 +659,7 @@ const UNSAFE_BODY_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor
  * dari header (nilai badan dengan nama sama dibuang). Galat parameter dilempar sebagai `ApiFieldIssue`.
  * Rute tanpa input (`null`) dikenali dari: GET tanpa parameter jalur dan tanpa query.
  */
-export function fromRequestParts<M extends RpcMethod>(id: M, parts: ParsedParts): unknown {
+export function fromRequestParts<M extends ApiId>(id: M, parts: ParsedParts): unknown {
   const def = API_ROUTES[id];
   const shape = routeShape(def, parts.created);
   const names = pathParamNames(shape.path);
@@ -587,7 +733,7 @@ export function fromRequestParts<M extends RpcMethod>(id: M, parts: ParsedParts)
 }
 
 /** Nilai ETag dari keluaran (`undefined` bila rute tidak berETag atau field kosong). */
-export function etagOf<M extends RpcMethod>(id: M, output: RpcOutput<M>): string | undefined {
+export function etagOf<M extends ApiId>(id: M, output: ApiOutput<M>): string | undefined {
   const field = API_ROUTES[id].etag;
   if (field === undefined || typeof output !== 'object' || output === null) return undefined;
   const value = (output as AnyRecord)[field];
@@ -671,12 +817,12 @@ export function filenameFromDisposition(header: string | null | undefined): stri
  * Keluaran sisi klien untuk rute `download`: byte dari badan respons, MIME dari Content-Type, nama berkas dari
  * Content-Disposition, field `echo` disalin dari input, dan field ETag (bila ada) dari header `ETag`.
  */
-export function downloadOutput<M extends RpcMethod>(
+export function downloadOutput<M extends ApiId>(
   id: M,
-  input: RpcInput<M>,
+  input: ApiInput<M>,
   headers: HeaderReader,
   bytes: Uint8Array,
-): RpcOutput<M> {
+): ApiOutput<M> {
   const def = API_ROUTES[id];
   const spec = def.download;
   if (spec === undefined) throw new Error(`Rute ${id} bukan unduhan`);
@@ -694,5 +840,5 @@ export function downloadOutput<M extends RpcMethod>(
     const raw = headers.get('etag');
     if (raw !== null) output[def.etag] = raw.replace(/^W\//, '').replace(/"/g, '');
   }
-  return output as RpcOutput<M>;
+  return output as ApiOutput<M>;
 }

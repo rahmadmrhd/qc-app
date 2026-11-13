@@ -33,6 +33,10 @@ describe('mergePermissions', () => {
       handover: 'edit',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     });
   });
 
@@ -55,6 +59,10 @@ describe('mergePermissions', () => {
       handover: 'none',
       qc: 'none',
       stock: 'view',
+      sticker: 'none',
+      stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     });
   });
 });
@@ -68,6 +76,10 @@ describe('fullPermissions', () => {
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
+      sticker: 'manage',
+      stickerstock: 'manage',
+      serial: 'manage',
+      serialservice: 'manage',
     });
   });
 });
@@ -110,6 +122,13 @@ describe('level per modul', () => {
     expect(levelHint('qc', 'edit')).toContain('progres');
     expect(levelHint('handover', 'manage')).toContain('membatalkan');
     expect(levelHint('item', 'manage')).toContain('customer');
+    // QR (tahap 4a): ekspor butuh Ubah; Kelola = hapus dan pengaturan default
+    expect(levelHint('qrcode', 'edit')).toContain('mengekspor');
+    expect(levelHint('qrcode', 'manage')).toContain('preset default');
+    expect(levelHint('qrcode', 'manage')).not.toContain('ekspor');
+    // riwayat versi hanya di halaman ubah (butuh Ubah): Lihat tidak menjanjikannya
+    expect(levelHint('qrcode', 'view')).not.toContain('riwayat');
+    expect(levelHint('qrcode', 'edit')).toContain('riwayat versi');
   });
 });
 
@@ -117,5 +136,35 @@ test('modul qrcode: level none/view/edit/manage dan petunjuk khusus', () => {
   expect(MODULES).toContain('qrcode');
   expect(MODULE_LEVELS.qrcode).toEqual(['none', 'view', 'edit', 'manage']);
   expect(MODULE_LABELS.qrcode).toBe('QR Code Label');
-  expect(levelHint('qrcode', 'manage')).toContain('ekspor');
+  expect(levelHint('qrcode', 'edit')).toContain('mengekspor');
+});
+
+test('modul sticker dan stickerstock: label, level, dan petunjuk', () => {
+  expect(MODULES).toContain('sticker');
+  expect(MODULES).toContain('stickerstock');
+  expect(MODULE_LABELS.sticker).toBe('Katalog Stiker');
+  expect(MODULE_LABELS.stickerstock).toBe('Stok Stiker');
+  expect(MODULE_LEVELS.sticker).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(MODULE_LEVELS.stickerstock).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(levelHint('sticker', 'view')).toBe('Melihat katalog jenis dan stiker.');
+  expect(levelHint('sticker', 'edit')).toBe(
+    'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
+  );
+  expect(levelHint('sticker', 'manage')).toBe(
+    'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
+  );
+  expect(levelHint('stickerstock', 'view')).toBe(
+    'Melihat stok dan riwayat stiker di lokasi penugasan.',
+  );
+  expect(levelHint('stickerstock', 'edit')).toBe('Melihat serta mencatat stok masuk dan keluar.');
+  expect(levelHint('stickerstock', 'manage')).toBe(
+    'Semua akses Ubah, ditambah koreksi dan stok opname.',
+  );
+});
+
+test('sanitizePermissions mempertahankan sticker dan stickerstock', () => {
+  expect(sanitizePermissions({ sticker: 'manage', stickerstock: 'edit' })).toEqual({
+    sticker: 'manage',
+    stickerstock: 'edit',
+  });
 });

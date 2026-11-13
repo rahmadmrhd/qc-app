@@ -1,0 +1,259 @@
+import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { DbError } from '@server/core/db';
+import { seedItem } from '@server-test/item-fixtures';
+import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
+import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import type { ItemStickerPhotoInput } from '@shared/contract';
+import {
+  hasInstructionsOf,
+  loadItemInstructions,
+  replaceItemInstructionStmts,
+} from './instruction-repo';
+import { buildInstructionViews } from './instruction-service';
+
+// Tabel dan repo instruksi stiker per item (3b-2, Task 2): ganti-semua, muat berurutan, kunci asing RESTRICT/CASCADE.
+
+setDefaultTimeout(90_000);
+
+let env: TestEnv;
+
+const THUMB = Uint8Array.from([1, 2, 3]);
+
+async function seedGuide(id: string): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO sticker_guide_images (id, name, thumb_mime, thumb, updated_at) VALUES (?, ?, 'image/webp', ?, '2026-11-10T00:00:00.000Z')",
+  )
+    .bind(id, id, THUMB)
+    .run();
+}
+
+async function save(itemId: string, photos: ItemStickerPhotoInput[]): Promise<void> {
+  await env.DB.batch(replaceItemInstructionStmts(env.DB, itemId, photos, false));
+}
+
+async function count(table: string): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{
+    n: number | string;
+  }>();
+  return Number(row?.n ?? 0);
+}
+
+const PHOTOS: [ItemStickerPhotoInput, ItemStickerPhotoInput, ItemStickerPhotoInput] = [
+  {
+    guideId: 'g2',
+    caption: 'Sisi depan',
+    buId: 'bu1',
+    marks: [
+      { x: 100, y: 200, target: { kind: 'sticker', stickerId: 's1' }, note: 'kiri atas' },
+      { x: 0, y: 1000, target: { kind: 'type', typeId: 't1' }, note: '' },
+      { x: 500, y: 500, target: { kind: 'sticker', stickerId: 's2' }, note: 'tengah' },
+    ],
+  },
+  { guideId: 'g1', caption: '', buId: null, marks: [] },
+  {
+    guideId: 'g3',
+    caption: 'Samping',
+    buId: null,
+    marks: [{ x: 1, y: 2, target: { kind: 'type', typeId: 't2' }, note: 'x' }],
+  },
+];
+
+beforeEach(async () => {
+  env = await createTestEnv();
+  for (const id of ['g1', 'g2', 'g3']) await seedGuide(id);
+});
+
+describe('instruksi stiker item: repo', () => {
+  test('fresh (item baru) melewati DELETE; bukan fresh memulai dengan DELETE (hindari kunci gap pada pembuatan serentak)', async () => {
+    const photos = [PHOTOS[0]];
+    const fresh = replaceItemInstructionStmts(env.DB, 'i-baru', photos, true);
+    const replace = replaceItemInstructionStmts(env.DB, 'i-lama', photos, false);
+    // fresh: INSERT foto + INSERT penanda; bukan fresh: DELETE + dua INSERT
+    expect(fresh).toHaveLength(2);
+    expect(replace).toHaveLength(3);
+    expect(replaceItemInstructionStmts(env.DB, 'i-baru', [], true)).toHaveLength(0);
+    expect(replaceItemInstructionStmts(env.DB, 'i-lama', [], false)).toHaveLength(1);
+    await env.DB.batch(fresh);
+    const loaded = await loadItemInstructions(env.DB, ['i-baru']);
+    expect(loaded.get('i-baru')).toEqual([{ ...PHOTOS[0], position: 0 }]);
+  });
+
+  test('simpan lalu muat mengembalikan foto dan penanda berurutan persis', async () => {
+    await save('i1', PHOTOS);
+    const loaded = await loadItemInstructions(env.DB, ['i1']);
+    expect(loaded.get('i1')).toEqual([
+      { ...PHOTOS[0], position: 0 },
+      { ...PHOTOS[1], position: 1 },
+      { ...PHOTOS[2], position: 2 },
+    ]);
+  });
+
+  test('muat banyak item sekaligus; item tanpa foto tidak ada di peta; daftar kosong = peta kosong', async () => {
+    await save('i1', [PHOTOS[0]]);
+    await save('i2', [PHOTOS[2]]);
+    const loaded = await loadItemInstructions(env.DB, ['i1', 'i2', 'i3']);
+    expect([...loaded.keys()].sort()).toEqual(['i1', 'i2']);
+    expect(loaded.get('i2')?.[0]?.marks).toEqual(PHOTOS[2]?.marks ?? []);
+    expect((await loadItemInstructions(env.DB, [])).size).toBe(0);
+  });
+
+  test('ganti-semua menghapus yang lama dan tidak menyentuh item lain', async () => {
+    await save('i1', PHOTOS);
+    await save('i2', [PHOTOS[2]]);
+    const replacement: [ItemStickerPhotoInput] = [
+      {
+        guideId: 'g3',
+        caption: 'Baru',
+        buId: 'bu2',
+        marks: [{ x: 7, y: 8, target: { kind: 'sticker', stickerId: 's9' }, note: '' }],
+      },
+    ];
+    await save('i1', replacement);
+    const loaded = await loadItemInstructions(env.DB, ['i1', 'i2']);
+    expect(loaded.get('i1')).toEqual([{ ...replacement[0], position: 0 }]);
+    expect(loaded.get('i2')?.length).toBe(1);
+    expect(await count('item_sticker_photos')).toBe(2);
+    expect(await count('item_sticker_marks')).toBe(2);
+    await save('i1', []);
+    expect((await loadItemInstructions(env.DB, ['i1'])).has('i1')).toBe(false);
+  });
+
+  test('menghapus gambar pustaka yang dipakai GAGAL oleh kunci asing (tidak senyap)', async () => {
+    await save('i1', PHOTOS);
+    const failure = await env.DB.prepare('DELETE FROM sticker_guide_images WHERE id = ?')
+      .bind('g1')
+      .run()
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(DbError);
+    expect((failure as DbError).errno).toBe(1451);
+    expect(await count('sticker_guide_images')).toBe(3);
+  });
+
+  test('foto ke gambar pustaka yang tidak ada ditolak kunci asing', async () => {
+    const failure = await save('i1', [
+      { guideId: 'hilang', caption: '', buId: null, marks: [] },
+    ]).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(DbError);
+    expect((failure as DbError).errno).toBe(1452);
+    expect(await count('item_sticker_photos')).toBe(0);
+  });
+
+  test('foto kembar dalam satu item ditolak kunci utama', async () => {
+    const failure = await save('i1', [
+      { guideId: 'g1', caption: '', buId: null, marks: [] },
+      { guideId: 'g1', caption: 'dua', buId: null, marks: [] },
+    ]).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(DbError);
+    expect((failure as DbError).kind).toBe('duplicate');
+    expect(await count('item_sticker_photos')).toBe(0);
+  });
+
+  test('menghapus foto item ikut menghapus penandanya (CASCADE)', async () => {
+    await save('i1', PHOTOS);
+    expect(await count('item_sticker_marks')).toBe(4);
+    await env.DB.prepare('DELETE FROM item_sticker_photos WHERE item_id = ? AND guide_id = ?')
+      .bind('i1', 'g2')
+      .run();
+    expect(await count('item_sticker_marks')).toBe(1);
+    expect(await count('item_sticker_photos')).toBe(2);
+  });
+
+  test('sasaran penanda tepat satu: kosong atau ganda ditolak oleh jaring pengaman basis data', async () => {
+    await save('i1', [{ guideId: 'g1', caption: '', buId: null, marks: [] }]);
+    for (const [stickerId, typeId] of [
+      ['', ''],
+      ['s1', 't1'],
+    ] as const) {
+      const failure = await env.DB.prepare(
+        "INSERT INTO item_sticker_marks (item_id, guide_id, `position`, x, y, sticker_id, type_id, note) VALUES ('i1', 'g1', 0, 1, 1, ?, ?, '')",
+      )
+        .bind(stickerId, typeId)
+        .run()
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(DbError);
+    }
+    expect(await count('item_sticker_marks')).toBe(0);
+  });
+
+  test('hasInstructionsOf benar hanya bila ada penanda (foto tanpa penanda = tidak ada)', async () => {
+    await save('i1', [PHOTOS[1]]);
+    await save('i2', [PHOTOS[2]]);
+    expect([...(await hasInstructionsOf(env.DB, ['i1', 'i2', 'i3']))]).toEqual(['i2']);
+    expect((await hasInstructionsOf(env.DB, [])).size).toBe(0);
+  });
+});
+
+describe('terjemahan penanda jenis Manual Book (aturan group, 4a)', () => {
+  const photoOf = (typeId: string) => [
+    {
+      guideId: 'g1',
+      caption: '',
+      buId: null,
+      position: 0,
+      marks: [{ x: 1, y: 2, target: { kind: 'type' as const, typeId }, note: '' }],
+    },
+  ];
+  const resolvedOf = async (itemId: string, typeId = 't-mb') => {
+    const [view] = await buildInstructionViews(env, itemId, ['bu-umum'], photoOf(typeId));
+    const mark = view?.marks[0];
+    return { ids: (mark?.resolved ?? []).map((r) => r.id), unresolved: mark?.unresolved };
+  };
+
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    // konfigurasi q1: v1 sudah digantikan (deprecated), v2 terbaru dan aktif
+    await seedSticker(env, { id: 'q1-v1', typeId: 't-mb', status: 'deprecated' });
+    await seedSticker(env, { id: 'q1-v2', typeId: 't-mb' });
+    await seedManualBookVersion(env, { stickerId: 'q1-v1', designId: 'q1', version: 1 });
+    await seedManualBookVersion(env, { stickerId: 'q1-v2', designId: 'q1', version: 2 });
+    // konfigurasi q2: versi terbaru dinonaktifkan manual (v1 tetap deprecated)
+    await seedSticker(env, { id: 'q2-v1', typeId: 't-mb', status: 'deprecated' });
+    await seedSticker(env, { id: 'q2-v2', typeId: 't-mb', status: 'inactive' });
+    await seedManualBookVersion(env, { stickerId: 'q2-v1', designId: 'q2', version: 1 });
+    await seedManualBookVersion(env, { stickerId: 'q2-v2', designId: 'q2', version: 2 });
+    // stiker jenis sistem yang tertaut BU tetapi bukan versi terbaru item mana pun: tak pernah ikut
+    await seedSticker(env, { id: 'stray', typeId: 't-mb', buIds: [] });
+  });
+
+  test('item dengan konfigurasi: resolved = stiker versi terbaru yang aktif (bukan versi lama deprecated)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Acme', model: 'A', manualBookDesignId: 'q1' });
+    expect(await resolvedOf('i1')).toEqual({ ids: ['q1-v2'], unresolved: false });
+  });
+
+  test('versi terbaru nonaktif: unresolved, tidak jatuh ke versi deprecated', async () => {
+    await seedItem(env, { id: 'i2', brand: 'Acme', model: 'B', manualBookDesignId: 'q2' });
+    expect(await resolvedOf('i2')).toEqual({ ids: [], unresolved: true });
+  });
+
+  test('item tanpa konfigurasi, atau konfigurasi tanpa stiker: unresolved', async () => {
+    await seedItem(env, { id: 'i3', brand: 'Acme', model: 'C' });
+    await seedItem(env, { id: 'i4', brand: 'Acme', model: 'D', manualBookDesignId: 'q-kosong' });
+    expect(await resolvedOf('i3')).toEqual({ ids: [], unresolved: true });
+    expect(await resolvedOf('i4')).toEqual({ ids: [], unresolved: true });
+  });
+
+  test('stiker deprecated tidak pernah muncul dan stiker lain di jenis itu tak ikut (stray)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Acme', model: 'A', manualBookDesignId: 'q1' });
+    const { ids } = await resolvedOf('i1');
+    expect(ids).not.toContain('q1-v1');
+    expect(ids).not.toContain('stray');
+    expect(ids).not.toContain('q2-v1');
+  });
+});

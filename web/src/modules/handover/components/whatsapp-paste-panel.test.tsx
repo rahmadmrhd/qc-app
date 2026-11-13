@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { WhatsappPastePanel } from './whatsapp-paste-panel';
@@ -32,16 +32,18 @@ const EX4 = [
 function setup(remaining = 30) {
   const onAdd = vi.fn();
   render(<WhatsappPastePanel remaining={remaining} onAdd={onAdd} />);
-  const split = async (text: string) => {
+  const paste = (text: string) =>
     fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
       target: { value: text },
     });
+  const split = async (text: string) => {
+    paste(text);
     await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
   };
-  return { onAdd, split };
+  return { onAdd, paste, split };
 }
 
-test('empat contoh pemilik terpecah 1, 2, 1, 3 task dengan usulan customer', async () => {
+test('empat contoh pemilik langsung ditambahkan 1, 2, 1, 3 task dengan usulan customer', async () => {
   const expected: Array<[string, number, string[]]> = [
     [EX1, 1, ['Orderan Online']],
     [EX2, 2, ['CV.Prisma', 'HND Gemilang']],
@@ -49,53 +51,51 @@ test('empat contoh pemilik terpecah 1, 2, 1, 3 task dengan usulan customer', asy
     [EX4, 3, ['Lintasmaya', 'Mitra Tower', 'CV. Tepian']],
   ];
   for (const [text, count, names] of expected) {
-    const { split } = setup();
+    const { onAdd, split } = setup();
     await split(text);
-    const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(count);
-    names.forEach((name, i) => {
-      expect(within(rows[i] as HTMLElement).getByLabelText(`Customer task ${i + 1}`)).toHaveValue(
-        name,
-      );
-    });
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    const added = onAdd.mock.calls[0]?.[0] as Array<{ customerName: string }>;
+    expect(added).toHaveLength(count);
+    expect(added.map((task) => task.customerName)).toEqual(names);
+    expect(screen.getByText(`${count} task ditambahkan ke batch.`)).toBeInTheDocument();
     document.body.innerHTML = '';
   }
 });
 
-test('usulan customer dapat diganti sebelum ditambahkan', async () => {
+test('Pecah menyerahkan customer usulan dan catatan checklist tanpa langkah tambahan', async () => {
   const { onAdd, split } = setup();
   await split(EX1);
-  const input = screen.getByLabelText('Customer task 1');
-  await userEvent.clear(input);
-  await userEvent.type(input, 'PT Pengganti');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (1)' }));
   expect(onAdd).toHaveBeenCalledWith([
-    { customerName: 'PT Pengganti', note: '- [ ] CRS310 = 1 unt\n- [ ] RB5009UG = 1 unt' },
+    { customerName: 'Orderan Online', note: '- [ ] CRS310 = 1 unt\n- [ ] RB5009UG = 1 unt' },
   ]);
+  expect(screen.queryByRole('button', { name: /Tambahkan ke batch/ })).not.toBeInTheDocument();
 });
 
-test('catatan hasil pecah dapat disunting sebelum ditambahkan', async () => {
-  const { onAdd, split } = setup();
+test('tempelan dikosongkan setelah ditambahkan', async () => {
+  const { split } = setup();
   await split(EX1);
-  const note = screen.getByLabelText('Catatan task 1');
-  await userEvent.clear(note);
-  await userEvent.type(note, 'diganti');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (1)' }));
-  expect(onAdd.mock.calls[0]?.[0][0]).toMatchObject({ note: 'diganti' });
+  expect(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' })).toHaveValue('');
 });
 
 test('tempelan kosong tidak menambah task', async () => {
   const { onAdd, split } = setup();
   await split('   ');
-  expect(screen.queryByRole('button', { name: /Tambahkan ke batch/ })).not.toBeInTheDocument();
   expect(screen.getByText('Tidak ada task yang dikenali dari tempelan.')).toBeInTheDocument();
   expect(onAdd).not.toHaveBeenCalled();
 });
 
-test('hasil melebihi sisa slot batch tidak dapat ditambahkan', async () => {
+test('hasil melebihi sisa slot batch tidak ditambahkan dan tempelan dipertahankan', async () => {
   const { onAdd, split } = setup(2);
   await split(EX4);
-  expect(screen.getByRole('button', { name: 'Tambahkan ke batch (3)' })).toBeDisabled();
-  expect(screen.getByText(/sisa slot batch: 2/)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent(/3 task, melebihi sisa slot batch: 2/);
   expect(onAdd).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' })).toHaveValue(EX4);
+});
+
+test('mengubah tempelan menghapus pesan status sebelumnya', async () => {
+  const { paste, split } = setup();
+  await split(EX1);
+  expect(screen.getByText('1 task ditambahkan ke batch.')).toBeInTheDocument();
+  paste('baru');
+  expect(screen.queryByText('1 task ditambahkan ke batch.')).not.toBeInTheDocument();
 });

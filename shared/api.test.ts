@@ -15,14 +15,16 @@ import {
   routeShape,
   toRequestParts,
 } from './api';
+import type { ApiId, ApiInput } from './contract';
 import { MAX_IMAGE_BYTES } from './files';
+import { POSTEL_LIMITS } from './postel';
 import { QR_LIMITS } from './qrcode';
-import type { RpcInput, RpcMethod } from './rpc';
+import { GUIDE_LIMITS } from './stickers';
 
-const IDS = Object.keys(API_ROUTES) as RpcMethod[];
+const IDS = Object.keys(API_ROUTES) as ApiId[];
 
-/** Contoh input tiap id; `Record<RpcMethod, …>` memaksa kelengkapan lewat kompilator. */
-const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
+/** Contoh input tiap id; `Record<ApiId, …>` memaksa kelengkapan lewat kompilator. */
+const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'auth.me': null,
   'access.users.list': null,
   'access.users.save': {
@@ -31,6 +33,7 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
     name: 'A',
     status: 'active',
     assignments: [],
+    buAssignments: [{ buId: 'b1', roleIds: ['r1'] }],
   },
   'access.users.setStatus': { id: 'u1', status: 'inactive' },
   'access.roles.list': null,
@@ -40,11 +43,75 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
   'access.locations.list': null,
   'access.locations.save': { id: 'l1', code: 'WH', name: 'Gudang' },
   'access.locations.setStatus': { id: 'l1', status: 'inactive' },
+  'access.businessUnits.list': null,
+  'access.businessUnits.save': { id: 'b1', code: 'UM', name: 'Umum' },
+  'access.businessUnits.setStatus': { id: 'b1', status: 'inactive' },
+  'businessUnits.options': null,
   'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
+  'stickerGuides.list': {
+    search: 'kar%_\\',
+    sort: 'nameAsc',
+    mine: true,
+    unused: false,
+    cursor: 'c1',
+    limit: 40,
+  },
+  'stickerGuides.upload': {
+    name: 'Foto Kardus',
+    mime: 'image/jpeg',
+    thumbMime: 'image/webp',
+    width: 800,
+    height: 600,
+    image: new Uint8Array([255, 216, 255]),
+    thumbnail: new Uint8Array([82, 73, 70, 70]),
+  },
+  'stickerGuides.rename': { id: 'g1', name: 'Kardus Baru' },
+  'stickerGuides.remove': { id: 'g1' },
+  'stickerGuides.thumbnail': { id: 'g1' },
+  'stickerGuides.usages': { id: 'g1' },
   'brands.list': null,
-  'brands.save': { id: 'b1', name: 'Sony' },
+  'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
+  'stickerSettings.get': null,
+  'stickerSettings.save': {
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
+    defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
+  },
+  'stickerTypes.list': null,
+  'stickerTypes.save': {
+    id: 'st1',
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    name: 'QC',
+    rule: 'bu',
+  },
+  'stickerTypes.setStatus': { id: 'st1', status: 'inactive' },
+  'stickers.list': null,
+  'stickers.save': {
+    id: 's1',
+    expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
+    typeId: 'st1',
+    name: 'QC',
+    alias: '',
+    fileId: null,
+    minQty: 0,
+    businessUnitIds: ['bu1'],
+  },
+  'stickers.setStatus': { id: 's1', status: 'inactive' },
+  'stickerStock.list': { locationIds: ['l1', 'l2'] },
+  'stickerStock.record': {
+    locationId: 'l1',
+    stickerId: 's1',
+    kind: 'in',
+    quantity: 5,
+    reason: '',
+  },
+  'stickerStock.adjust': { locationId: 'l1', stickerId: 's1', delta: -2, reason: 'rusak' },
+  'stickerStock.opname': {
+    rows: [{ stickerId: 's1', locationId: 'l1', expectedQty: 10, count: { rows: [], loose: 12 } }],
+  },
+  'stickerStock.history': { locationIds: ['l1'], stickerId: 's1', cursor: 'c', limit: 20 },
   'customers.list': null,
   'customers.rename': { id: 'c1', name: 'PT Maju' },
   'customers.setStatus': { id: 'c1', status: 'inactive' },
@@ -71,26 +138,42 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
     after: '',
     body: 'halo',
   },
-  'items.list': { cursor: 'c', limit: 10, query: 'sony', status: 'active' },
+  'items.list': {
+    cursor: 'c',
+    limit: 10,
+    query: 'sony',
+    status: 'active',
+    instruction: 'none',
+    stickerId: 's1',
+    typeId: 't1',
+    stickerMode: 'missing',
+    manualBook: 'has',
+    postel: 'missing',
+  },
   'items.get': { id: 'i1' },
   'items.save': {
     id: 'i1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    brand: 'Sony',
+    brandId: 'b1',
     model: 'X',
     isCountryLock: false,
     aliases: [],
-    stickers: [],
+    stickerPhotos: [],
     accessories: [],
     attachments: [],
     detail: '',
+    businessUnitIds: ['bu1'],
   },
   'items.setStatus': { id: 'i1', status: 'inactive' },
   'qrcodes.list': null,
   'qrcodes.get': { id: 'q1' },
+  'qrcodes.versions': { id: 'q1' },
   'qrcodes.save': {
     id: 'q1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    name: 'Nama',
+    presetId: 'p1',
+    itemIds: ['i1', 'i2'],
     title: 'T',
     linkSource: 'url',
     link: 'https://x.id',
@@ -102,6 +185,7 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
   },
   'qrcodes.delete': { id: 'q1' },
   'qrcodes.getDefaults': null,
+  'qrcodes.itemOptions': { query: 'a7', cursor: 'k', limit: 20 },
   'qrcodes.savePreset': {
     id: 'p1',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
@@ -112,7 +196,10 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
     layout: 'a' as never,
     style: {} as never,
     defaultLogoId: '',
+    buId: 'bu1',
+    namePlacement: 'title',
   },
+  'qrcodes.clonePreset': { id: 'p1', buId: 'bu2', name: 'Salinan' },
   'qrcodes.deletePreset': { id: 'p1' },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
@@ -129,8 +216,103 @@ const EXAMPLES: { [M in RpcMethod]: RpcInput<M> } = {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     pdf: new Uint8Array([37, 80, 68, 70]),
     png: new Uint8Array([137, 80, 78, 71]),
+    preview: new Uint8Array([137, 80, 78, 71]),
+    reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
+  'postels.list': null,
+  'postels.get': { id: 'p1' },
+  'postels.save': {
+    id: 'p1',
+    expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
+    note: 'Catatan',
+    itemIds: ['i1', 'i2'],
+    numbers: [
+      { id: 'n1', number: 'SN-001', expiresOn: '2027-03-01', link: 'https://x.id/1' },
+      { number: 'SN-002', expiresOn: '2027-09-01', link: '' },
+    ],
+    attachmentIds: [],
+  },
+  'postels.remove': { id: 'p1' },
+  'postelSettings.get': null,
+  'postelSettings.save': {
+    expectedUpdatedAt: '2026-11-11T00:00:00.000Z',
+    alert: {
+      enabled: true,
+      recipients: ['a@contoh.com'],
+      sendHour: 8,
+      thresholds: [90, 60, 30],
+      repeatEveryDays: 7,
+    },
+  },
+  'postels.history': { id: 'p1', cursor: 'c1', limit: 20 },
+  'postels.itemOptions': { query: 'm5', cursor: 'k', limit: 20 },
+  'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20, itemIds: ['i1', 'i2'] },
+  'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
+  'serials.locationOptions': null,
+  'serials.get': { id: 's1' },
+  'serials.update': {
+    id: 's1',
+    expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+    serial: 'SN-1',
+    itemId: 'i1',
+    testDate: '2026-11-12',
+    sample: false,
+    note: '',
+    locationId: 'l1',
+  },
+  'serials.updateBatch': {
+    rows: [{ id: 's1', expectedUpdatedAt: '2026-11-12T00:00:00.000Z', fields: { note: 'x' } }],
+  },
+  'serials.act': {
+    id: 's1',
+    expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+    action: 'recheck',
+    occurredOn: '2026-11-12',
+    message: 'ok',
+    locationId: 'l1',
+    stickers: [{ stickerId: 'st1', qty: 2 }],
+  },
+  'serials.list': {
+    query: '4C5E',
+    serials: 'A\nB',
+    buId: 'b1',
+    itemId: 'i1',
+    locationId: 'l1',
+    status: 'good',
+    from: '2026-11-01',
+    to: '2026-11-12',
+    createdBy: 'a@x.com',
+    cursor: 'c',
+    limit: 50,
+  },
+  'serials.saveBatch': {
+    rows: [
+      {
+        clientId: 'c0ffee00-1111-2222-3333-444455556666',
+        serial: 'SN-1',
+        itemId: 'i1',
+        buId: 'b1',
+        testDate: '2026-11-12',
+        locationId: 'l1',
+        sample: false,
+        note: '',
+        status: 'good',
+        stickers: [{ stickerId: 's1', qty: 1 }],
+      },
+    ],
+  },
+  'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
+  'postelFiles.get': { id: 'f1' },
+  'notifications.list': { limit: 30, before: '2026-11-12T00:00:00.000Z|n1' },
+  'notifications.markRead': { id: 'n1' },
+  'notifications.markAllRead': {},
+  'push.config': null,
+  'push.subscribe': { endpoint: 'https://push.example.test/abc', p256dh: 'BP', auth: 'au' },
+  'push.unsubscribe': { endpoint: 'https://push.example.test/abc' },
+  'push.setPreference': { enabled: false },
+  'push.reportPermission': { state: 'denied' },
+  'push.status': null,
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
 };
@@ -146,7 +328,7 @@ function issueOf(run: () => unknown): ApiFieldIssue {
   throw new Error('seharusnya melempar');
 }
 
-function roundTrip<M extends RpcMethod>(id: M, input: RpcInput<M>) {
+function roundTrip<M extends ApiId>(id: M, input: ApiInput<M>) {
   const parts = toRequestParts(id, input);
   const create = API_ROUTES[id].create;
   const created = create !== undefined && parts.verb === create.verb && parts.path === create.path;
@@ -163,7 +345,7 @@ function roundTrip<M extends RpcMethod>(id: M, input: RpcInput<M>) {
 }
 
 /** Parameter jalur dibaca dari jalur terisi menurut templat (kebalikan `fillPath`). */
-function pathParams(id: RpcMethod, filled: string, created: boolean) {
+function pathParams(id: ApiId, filled: string, created: boolean) {
   const shape = routeShape(API_ROUTES[id], created);
   const names = [...shape.path.matchAll(/\{(\w+)\}/g)].map((match) => match[1] as string);
   const pattern = new RegExp(`^${shape.path.replace(/\{\w+\}/g, '([^/]+)')}$`);
@@ -190,14 +372,16 @@ describe('tabel rute', () => {
   });
 
   test('rute PATCH (keluaran DTO ber-updatedAt) memberi ETag updatedAt', () => {
-    const patches = IDS.filter((id) => API_ROUTES[id].verb === 'PATCH');
+    // Pengecualian: ganti nama gambar pustaka (`StickerGuideDto` tanpa `updatedAt`, tanpa If-Match; spek 3b-1).
+    const withoutEtag: ReadonlySet<ApiId> = new Set<ApiId>(['stickerGuides.rename']);
+    const patches = IDS.filter((id) => API_ROUTES[id].verb === 'PATCH' && !withoutEtag.has(id));
     expect(patches.length).toBeGreaterThanOrEqual(5);
     for (const id of patches) expect(API_ROUTES[id].etag, id).toBe('updatedAt');
   });
 
-  test('semua id kontrak RPC punya entri tabel (dan sebaliknya)', () => {
+  test('semua id kontrak API punya entri tabel (dan sebaliknya)', () => {
     expect(IDS).toHaveLength(Object.keys(EXAMPLES).length);
-    expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as RpcMethod[]);
+    expect([...IDS].sort()).toEqual(Object.keys(EXAMPLES).sort() as ApiId[]);
   });
 
   test('rute biner punya bentuk rinci (rawBody/multipart/download) sesuai penandanya', () => {
@@ -228,14 +412,15 @@ describe('toRequestParts <-> fromRequestParts', () => {
 
   test('save tanpa id memakai jalur create (POST), dengan id memakai PUT dan If-Match', () => {
     const created = toRequestParts('items.save', {
-      brand: 'Sony',
+      brandId: 'b1',
       model: 'X',
       isCountryLock: false,
       aliases: [],
-      stickers: [],
+      stickerPhotos: [],
       accessories: [],
       attachments: [],
       detail: '',
+      businessUnitIds: ['bu1'],
     });
     expect(created).toMatchObject({ verb: 'POST', path: '/items', ifMatch: undefined });
     const updated = toRequestParts('items.save', EXAMPLES['items.save'] as never);
@@ -455,10 +640,11 @@ describe('rute biner', () => {
     });
   });
 
-  test('qrcodes.export: dua bagian multipart, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
+  test('qrcodes.export: tiga bagian multipart, reason di query, If-Match dari expectedUpdatedAt, tanpa badan JSON', () => {
     const parts = toRequestParts('qrcodes.export', EXAMPLES['qrcodes.export']);
     expect(parts.path).toBe('/qrcodes/q1/exports');
-    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png']);
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['pdf', 'png', 'preview']);
+    expect(parts.query).toEqual({ reason: 'Logo diganti' });
     expect(parts.ifMatch).toBe('2026-10-09T00:00:00.000Z');
     expect(parts.body).toBeUndefined();
   });
@@ -472,17 +658,57 @@ describe('rute biner', () => {
         id: 'q1',
         expectedUpdatedAt: 'x',
         pdf: new Uint8Array(),
+        reason: '',
       } as never),
     ).toThrow();
   });
 
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
+      POSTEL_LIMITS.attachmentMaxBytes,
+    );
+    expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['qrcodes.uploadPdf'].rawBody?.maxBytes).toBe(QR_LIMITS.documentMaxBytes);
     // multipart = batas total isi berkas + 64 KB ruang batas bagian dan header
     expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(
-      QR_LIMITS.exportMaxBytes + 64 * 1024,
+      QR_LIMITS.exportMaxBytes + QR_LIMITS.previewMaxBytes + 64 * 1024,
     );
+    expect(API_ROUTES['qrcodes.export'].multipart?.maxBytes).toBe(8_978_432);
+    // pustaka gambar: gambar penuh + thumbnail + 64 KB ruang batas bagian dan header
+    expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(
+      MAX_IMAGE_BYTES + GUIDE_LIMITS.thumbMaxBytes + 65_536,
+    );
+    expect(API_ROUTES['stickerGuides.upload'].multipart?.maxBytes).toBe(10_592_256);
+  });
+
+  test('stickerGuides.upload: bagian image dan thumbnail, metadata lewat query, tanpa badan JSON', () => {
+    const parts = toRequestParts('stickerGuides.upload', EXAMPLES['stickerGuides.upload']);
+    expect(parts).toMatchObject({
+      verb: 'POST',
+      path: '/sticker-guides',
+      query: {
+        name: 'Foto Kardus',
+        mime: 'image/jpeg',
+        thumbMime: 'image/webp',
+        width: '800',
+        height: '600',
+      },
+    });
+    expect(Object.keys(parts.multipart ?? {})).toEqual(['image', 'thumbnail']);
+    expect(parts.body).toBeUndefined();
+    expect(API_ROUTES['stickerGuides.upload'].status).toBe(201);
+    expect(API_ROUTES['stickerGuides.upload'].location).toBe('/sticker-guides/{id}');
+  });
+
+  test('stickerGuides.thumbnail: unduhan tak berubah (immutable) dengan echo id', () => {
+    expect(API_ROUTES['stickerGuides.thumbnail']).toMatchObject({
+      verb: 'GET',
+      path: '/sticker-guides/{id}/thumbnail',
+      etag: 'id',
+      binary: 'response',
+      download: { bytesField: 'bytes', mimeField: 'mime', echo: ['id'], cache: 'immutable' },
+    });
   });
 
   test('Content-Disposition: cadangan ASCII, filename* UTF-8, tanpa kutip/CRLF; terurai kembali', () => {

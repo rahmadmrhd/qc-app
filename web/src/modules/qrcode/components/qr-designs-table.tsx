@@ -1,4 +1,4 @@
-import type { QrDesignDto, QrFileKind } from '@shared/rpc';
+import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
+import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 
 export interface QrDesignsTableProps {
   designs: readonly QrDesignDto[];
@@ -21,6 +22,37 @@ export interface QrDesignsTableProps {
   onExport: (design: QrDesignDto) => void;
   onDownload: (design: QrDesignDto, kind: QrFileKind) => void;
   onDelete: (design: QrDesignDto) => void;
+}
+
+function ItemsCell({ design }: { design: QrDesignDto }) {
+  const total = design.items.length + design.hiddenItemCount;
+  if (total === 0) return <span className="text-sm text-muted-foreground">Belum ada item</span>;
+  const first = design.items[0];
+  return (
+    <div className="text-sm">
+      <div>{total} item</div>
+      {first ? (
+        <div className="text-xs text-muted-foreground">
+          {first.brand} {first.model}
+          {total > 1 ? ' …' : ''}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function VersionCell({ design }: { design: QrDesignDto }) {
+  if (design.stickerVersion === 0 || design.stickerStatus === '') {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-sm font-medium">v{design.stickerVersion}</span>
+      {design.stickerStatus === 'active' ? null : (
+        <Badge variant="outline">{STICKER_STATUS_LABEL[design.stickerStatus]}</Badge>
+      )}
+    </div>
+  );
 }
 
 function StatusCell({ design }: { design: QrDesignDto }) {
@@ -61,6 +93,8 @@ export function QrDesignsTable({
         <TableHeader>
           <TableRow>
             <TableHead>Title</TableHead>
+            <TableHead>Item</TableHead>
+            <TableHead>Versi stiker</TableHead>
             <TableHead>Link</TableHead>
             <TableHead>Diperbarui</TableHead>
             <TableHead>Status</TableHead>
@@ -83,6 +117,12 @@ export function QrDesignsTable({
                       {design.subtitle}
                     </div>
                   ) : null}
+                </TableCell>
+                <TableCell>
+                  <ItemsCell design={design} />
+                </TableCell>
+                <TableCell>
+                  <VersionCell design={design} />
                 </TableCell>
                 <TableCell className="max-w-[16rem] truncate text-sm" title={design.link}>
                   <a
@@ -127,17 +167,15 @@ export function QrDesignsTable({
                       </>
                     ) : null}
                     {canEdit ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          aria-label={`Ubah ${design.title}`}
-                          onClick={() => onEdit(design)}
-                        >
-                          Ubah
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        aria-label={`Ubah ${design.title}`}
+                        onClick={() => onEdit(design)}
+                      >
+                        Ubah
+                      </Button>
                     ) : null}
                     {canEdit ? (
                       <Button
@@ -155,17 +193,15 @@ export function QrDesignsTable({
                       </Button>
                     ) : null}
                     {canManage ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={busy}
-                          aria-label={`Hapus ${design.title}`}
-                          onClick={() => onDelete(design)}
-                        >
-                          Hapus
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={busy}
+                        aria-label={`Hapus ${design.title}`}
+                        onClick={() => onDelete(design)}
+                      >
+                        Hapus
+                      </Button>
                     ) : null}
                   </div>
                 </TableCell>

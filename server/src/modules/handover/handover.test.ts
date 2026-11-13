@@ -8,7 +8,7 @@ import { locateAnchor, noteToPlainText } from '@shared/handover-comments';
 import { derivedColumns, parseChecks, updateHandoverStmt } from './repo';
 import { fitAuditSnapshots, handoverSnapshot } from './service';
 
-// Banyak tes memanggil puluhan RPC berurutan/serentak ke MariaDB (lewat terowongan SSH saat dev).
+// Banyak tes memanggil puluhan permintaan berurutan/serentak ke MariaDB (lewat terowongan SSH saat dev).
 setDefaultTimeout(60_000);
 
 let env: TestEnv;
@@ -829,7 +829,7 @@ describe('komentar', () => {
     expect(after.version).toBe(before.version);
   });
 
-  /** Komentar awal langsung ke DB (satu INSERT banyak-baris): menghindari puluhan RPC berurutan lewat tunnel. */
+  /** Komentar awal langsung ke DB (satu INSERT banyak-baris): menghindari puluhan permintaan berurutan lewat tunnel. */
   const seededComments = (
     count: number,
     shape: { quote?: string; ctx?: string; body?: string } = {},
@@ -857,7 +857,7 @@ describe('komentar', () => {
       comments,
     );
 
-  test('komentar ke-51 ditolak dengan pesan batas (49 disemai, ke-50 lulus lewat RPC)', async () => {
+  test('komentar ke-51 ditolak dengan pesan batas (49 disemai, ke-50 lulus lewat REST)', async () => {
     await seedWithComments('- [ ] A = 1', seededComments(49));
     const fiftieth = await comment('', 'k');
     expect(fiftieth.ok).toBe(true);
@@ -889,7 +889,7 @@ ${'q'.repeat(480)}`,
       }
       count++;
     }
-    expect(count).toBeGreaterThan(0); // komentar yang masih muat tetap diterima lewat RPC
+    expect(count).toBeGreaterThan(0); // komentar yang masih muat tetap diterima lewat REST
     expect(count).toBeLessThan(10);
     expect(lastError.code).toBe('VALIDATION');
     expect(lastError.fields.body).toContain('40.000');

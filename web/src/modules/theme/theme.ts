@@ -12,12 +12,29 @@ export function resolveTheme(theme: Theme, prefersDark: boolean): ResolvedTheme 
   return theme;
 }
 
+/**
+ * Warna bilah sistem (`meta[name="theme-color"]`) per tema; setara `--background` di `styles.css`. Harus sama dengan
+ * konstanta di skrip anti-kedip `web/index.html` dan manifest (`app/pwa/pwa-config.ts`); dijaga tes.
+ */
+export const THEME_COLORS: Record<ResolvedTheme, string> = {
+  light: '#ffffff',
+  dark: '#0a0a0a',
+};
+
+/** Menyetel `content` semua meta `theme-color` (atribut `media` diabaikan: tema aktif, bukan preferensi OS). */
+export function applyThemeColor(resolved: ResolvedTheme, doc: Document = document): void {
+  for (const meta of doc.querySelectorAll('meta[name="theme-color"]')) {
+    meta.setAttribute('content', THEME_COLORS[resolved]);
+  }
+}
+
 export function applyTheme(
   resolved: ResolvedTheme,
   root: HTMLElement = document.documentElement,
 ): void {
   root.classList.toggle('dark', resolved === 'dark');
   root.style.colorScheme = resolved;
+  applyThemeColor(resolved, root.ownerDocument);
 }
 
 export function readStoredTheme(): Theme {

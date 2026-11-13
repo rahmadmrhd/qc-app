@@ -17,6 +17,13 @@ const base = {
   layout: DEFAULT_QR_LAYOUT,
   style: DEFAULT_QR_STYLE,
   overflow: false,
+  name: '',
+  namePlacement: '' as const,
+  presetId: '',
+  items: [],
+  hiddenItemCount: 0,
+  stickerVersion: 0,
+  stickerStatus: '' as const,
   exportStatus: 'none' as const,
   exportedAt: '',
   exportedBy: '',
@@ -98,4 +105,50 @@ test('saat mengekspor, dialog menyebut langkah yang sedang berjalan', async () =
   expect(await screen.findByRole('status')).toHaveTextContent(
     'Mengunggah PDF dan PNG ke Drive, lalu mencatat hasilnya…',
   );
+});
+
+const stale = {
+  ...base,
+  name: 'PBE M5-400',
+  stickerVersion: 1,
+  stickerStatus: 'active' as const,
+  exportStatus: 'stale' as const,
+  exportedAt: '2026-10-16T04:00:00.000Z',
+  exportedBy: 'm@x.com',
+};
+
+test('ekspor ulang dengan label berubah: akibat dijelaskan dan alasan wajib (tombol nonaktif tanpa alasan), dikirim ke onConfirm', async () => {
+  const onConfirm = vi.fn().mockResolvedValue(undefined);
+  render(<ExportDialog design={stale} open onOpenChange={vi.fn()} onConfirm={onConfirm} />);
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText(/stiker Manual Book baru \(v2\)/i)).toBeInTheDocument();
+  expect(within(dialog).getByText(/usang/i)).toBeInTheDocument();
+  const button = within(dialog).getByRole('button', { name: 'Timpa dan simpan' });
+  expect(button).toBeDisabled();
+  const reason = within(dialog).getByLabelText('Alasan perubahan label');
+  expect(reason).toHaveAttribute('maxlength', '500');
+  await userEvent.type(reason, '   ');
+  expect(button).toBeDisabled();
+  await userEvent.type(reason, 'Logo diganti');
+  expect(button).toBeEnabled();
+  await userEvent.click(button);
+  expect(onConfirm).toHaveBeenCalledWith(expect.any(Function), 'Logo diganti');
+});
+
+test('ekspor pertama dan ekspor ulang tanpa perubahan label tidak meminta alasan', () => {
+  const { unmount } = render(
+    <ExportDialog design={base} open onOpenChange={vi.fn()} onConfirm={vi.fn()} />,
+  );
+  expect(screen.queryByLabelText('Alasan perubahan label')).toBeNull();
+  unmount();
+  render(
+    <ExportDialog
+      design={{ ...stale, exportStatus: 'current' }}
+      open
+      onOpenChange={vi.fn()}
+      onConfirm={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText('Alasan perubahan label')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Timpa dan simpan' })).toBeEnabled();
 });

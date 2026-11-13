@@ -1,4 +1,4 @@
-import type { RoleDto } from '@shared/rpc';
+import type { RoleDto } from '@shared/contract';
 import { Button } from '@/components/ui/button';
 import {
   Table,

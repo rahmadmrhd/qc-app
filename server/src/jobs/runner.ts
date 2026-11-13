@@ -5,12 +5,23 @@ import { scheduleBackupJob } from '@server/modules/backup/service';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
-import { SYNC_LIMITS } from '@shared/sync';
+import { flushDueCheckSummaries } from '@server/modules/notification/flush';
+import { deliverPendingPushes } from '@server/modules/notification/push';
+import { purgeOldNotifications } from '@server/modules/notification/repo';
+import { setNotificationWakeHandler } from '@server/modules/notification/wake';
+import { checkPostelExpiryDigest } from '@server/modules/postel/digest';
+import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
 /** Selang polling runner (milidetik). */
 export const JOB_RUNNER_INTERVAL_MS = 2_000;
 /** Selang penjadwal pembersihan (satu jam). */
 export const SCHEDULER_INTERVAL_MS = 60 * 60 * 1000;
+/**
+ * Detak putaran latar notifikasi (10 detik): melepas ringkasan centang yang jendelanya habis dan menjadi jaring
+ * pengaman pengiriman push. Notifikasi baru dari penulisan tidak menunggu detak ini: jalur tulis membangunkan putaran
+ * segera setelah commit (`wakeNotifications`).
+ */
+export const NOTIFICATION_LOOP_INTERVAL_MS = 10_000;
 /** Jumlah id job yang dibaca per pemindaian. */
 const SCAN_LIMIT = 20;
 
@@ -101,13 +112,16 @@ export async function scheduleCleanupJob(env: Env): Promise<string | null> {
   return enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
 }
 
+/** Jendela terbesar baris `rate_limits` (detik): 10 menit, sama dengan lama blokir pembatas percobaan salah. */
+const RATE_LIMIT_MAX_WINDOW_SECONDS = 10 * 60;
+
 /**
- * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar, yaitu
- * lama blokir): baris sah paling lama hidup selama jendela itu, sisanya sampah yang tak pernah dibaca lagi.
+ * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar):
+ * baris sah paling lama hidup selama jendela itu, sisanya sampah yang tak pernah dibaca lagi.
  * Mengembalikan jumlah baris terhapus.
  */
 export async function purgeExpiredRateLimits(env: Env): Promise<number> {
-  const cutoff = nowOf(env) - SYNC_LIMITS.blockSeconds * 1000;
+  const cutoff = nowOf(env) - RATE_LIMIT_MAX_WINDOW_SECONDS * 1000;
   const result = await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
     .bind(cutoff)
     .run();
@@ -126,6 +140,9 @@ async function schedulerTick(env: Env): Promise<void> {
     purgeExpiredRateLimits,
     scheduleBackupJob,
     checkBackupAlerts,
+    checkLowStockDigest,
+    checkPostelExpiryDigest,
+    purgeOldNotifications,
   ]) {
     try {
       await step(env);
@@ -149,4 +166,79 @@ export function startScheduler(
     () => schedulerTick(env),
     options.intervalMs ?? SCHEDULER_INTERVAL_MS,
   );
+}
+
+/**
+ * Putaran latar notifikasi Serah Terima: melepas ringkasan centang yang jatuh tempo lalu mengirim push untuk
+ * notifikasi yang menunggu, tiap `intervalMs` (bawaan 10 dtk) DAN segera setelah penulisan notifikasi di-commit
+ * (`wakeNotifications`, `notification/wake.ts`: sinyal dari jalur tulis `handover/service.ts`; satu putaran pada satu waktu,
+ * sinyal berdekatan digabung, sinyal saat putaran berjalan = ulangi segera). Terpisah dari antrean job (satu job pada satu waktu), sehingga job panjang seperti cadangan tidak menunda
+ * pelepasan. Mengembalikan fungsi penghenti (lihat `startLoop`).
+ */
+export function startNotificationLoop(
+  env: Env,
+  options: { intervalMs?: number } = {},
+): () => Promise<void> {
+  const intervalMs = options.intervalMs ?? NOTIFICATION_LOOP_INTERVAL_MS;
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let running: Promise<void> | undefined;
+  let wakeScheduled = false;
+  let wokeWhileRunning = false;
+  const schedule = (delayMs: number) => {
+    if (stopped) return;
+    clearTimeout(timer);
+    timer = setTimeout(tick, delayMs);
+  };
+  const tick = () => {
+    wakeScheduled = false;
+    running = (async () => {
+      try {
+        await notificationTick(env);
+      } catch (error) {
+        console.error(`notifikasi: putaran gagal: ${String(error)}`);
+      }
+      running = undefined;
+      // Dibangunkan saat putaran berjalan: ulangi segera (notifikasi baru mungkin belum terbaca putaran ini).
+      const again = wokeWhileRunning;
+      wokeWhileRunning = false;
+      schedule(again ? 0 : intervalMs);
+    })();
+  };
+  // Satu putaran pada satu waktu (deliverPendingPushes tidak mengklaim baris, jadi tak boleh tumpang tindih):
+  // bangun-bangun selama putaran berjalan hanya menandai "ulangi", dan yang berdekatan digabung satu.
+  const wake = () => {
+    if (stopped) return;
+    if (running !== undefined) {
+      wokeWhileRunning = true;
+      return;
+    }
+    if (wakeScheduled) return;
+    wakeScheduled = true;
+    schedule(0);
+  };
+  const release = setNotificationWakeHandler(wake);
+  schedule(0);
+  return async (): Promise<void> => {
+    stopped = true;
+    release();
+    clearTimeout(timer);
+    await running;
+  };
+}
+
+/**
+ * Satu putaran notifikasi: pelepasan ringkasan centang DAN pengiriman push dijalankan keduanya; galat pada satu
+ * langkah tidak membatalkan yang lain (pola `schedulerTick`), galat pertama dilempar setelah semuanya dicoba.
+ */
+export async function notificationTick(env: Env): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of [flushDueCheckSummaries, deliverPendingPushes]) {
+    try {
+      await step(env);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
 }

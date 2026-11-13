@@ -1,51 +1,103 @@
 import { writeAudit } from '@server/core/audit';
 import { runCas } from '@server/core/cas';
-import type { ActorRef } from '@server/core/context';
 import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { nowIso } from '@server/core/env';
+import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
-import { findBrandByKey, listBrands } from '@server/modules/brand/repo';
-import { planBrandByName } from '@server/modules/brand/service';
+import { brandByIdStatement, brandsFromResult, listBrands } from '@server/modules/brand/repo';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
-import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
+import { postelSoonDays } from '@server/modules/postel/service';
+import {
+  hasInstructionsOf,
+  instructionFilterSql,
+  loadItemInstructions,
+  replaceItemInstructionStmts,
+  type StoredPhoto,
+} from '@server/modules/sticker/instruction-repo';
+import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
 import type {
+  BusinessUnitRefDto,
   GetItemInput,
   ItemAccessoryDto,
   ItemDto,
+  ItemManualBookDto,
   ItemPageDto,
+  ItemPostelDto,
   ItemStatus,
-  ItemStickerDto,
+  ItemStickerPhotoDto,
   ItemSummaryDto,
   ListItemsPageInput,
   SaveItemInput,
   SetItemStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
+import { hasLevel } from '@shared/permissions';
+import { wibDateIso } from '@shared/postel';
+import {
+  assertCanActOnItem,
+  assertItemVisible,
+  assertRequestedBusinessUnits,
+  visibleBuIds,
+} from './access';
 import type { ItemRecord } from './repo';
 import {
+  type BusinessUnitBrief,
   brandKeyGuardStmt,
+  businessUnitBriefsFromResult,
+  businessUnitBriefsStmt,
   findItem,
   findItemStmt,
   findItemWithBrand,
+  HAS_MANUAL_BOOK_SQL,
+  HAS_POSTEL_SQL,
   type ItemRow,
   insertItemStmts,
+  itemBusinessUnitIdsStmt,
+  itemBusinessUnitsOf,
+  itemIdsVisibleIn,
+  itemIdsWithPostel,
+  loadItemManualBooks,
+  loadItemPostels,
   parseStrings,
+  replaceItemBusinessUnitsStmts,
   toItem,
   updateItemStmts,
 } from './repo';
 import { ITEM_PAGE_DEFAULT_LIMIT } from './validate';
 
-/** Record item beserta nama merk (dari tabel merk) untuk DTO dan audit. */
-export type ItemView = ItemRecord & { brand: string };
+/** Record item beserta nama merk (dari tabel merk), semua BU-nya, dan instruksi stiker tersimpan untuk DTO dan audit. */
+export type ItemView = ItemRecord & {
+  brand: string;
+  businessUnits: BusinessUnitRefDto[];
+  instructions: StoredPhoto[];
+};
 
-function toItemSummaryDto(item: ItemView): ItemSummaryDto {
+/** Ada minimal satu penanda instruksi stiker (foto tanpa penanda tidak dihitung). */
+function hasMarks(instructions: readonly StoredPhoto[]): boolean {
+  return instructions.some((photo) => photo.marks.length > 0);
+}
+
+/**
+ * Keadaan Postel sebuah item pada respons: `has` (item ber-Postel; selalu dihitung, tanpa identitas catatan) dan `detail`
+ * (ringkasan catatan; hanya bagi pemegang `sticker: view`, selain itu `null`).
+ */
+export interface ItemPostelState {
+  has: boolean;
+  detail: ItemPostelDto | null;
+}
+
+function toItemSummaryDto(
+  item: ItemView,
+  manualBook: ItemManualBookDto | null,
+  hasPostel: boolean,
+): ItemSummaryDto {
   return {
     id: item.id,
-    externalId: item.externalId,
     brandId: item.brandId,
     brand: item.brand,
     model: item.model,
@@ -53,14 +105,25 @@ function toItemSummaryDto(item: ItemView): ItemSummaryDto {
     status: item.status,
     aliases: [...item.aliases],
     imageCount: item.attachments.length,
+    hasInstructions: hasMarks(item.instructions),
+    hasManualBook: manualBook !== null,
+    hasPostel,
+    businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
   };
 }
 
-export function toItemDto(item: ItemView): ItemDto {
+export function toItemDto(
+  item: ItemView,
+  stickerPhotos: ItemStickerPhotoDto[],
+  manualBook: ItemManualBookDto | null,
+  postel: ItemPostelState,
+): ItemDto {
   return {
-    ...toItemSummaryDto(item),
-    stickers: item.stickers.map((sticker) => ({ ...sticker })),
+    ...toItemSummaryDto(item, manualBook, postel.has),
+    manualBook: manualBook ? { ...manualBook } : null,
+    postel: postel.detail ? { ...postel.detail } : null,
+    stickerPhotos,
     accessories: item.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...item.attachments],
     detail: item.detail,
@@ -76,14 +139,13 @@ export function toItemDto(item: ItemView): ItemDto {
 export function itemSnapshot(item: ItemView, detailHash?: string): Record<string, unknown> {
   return {
     brand: item.brand,
+    businessUnits: item.businessUnits.map((bu) => bu.code).sort(),
     model: item.model,
     isCountryLock: item.isCountryLock,
     status: item.status,
     aliases: [...item.aliases],
-    stickers: item.stickers.map(
-      (sticker) =>
-        `${sticker.name}${sticker.note ? ` — ${sticker.note}` : ''}${sticker.fileId ? ' · bergambar' : ''}`,
-    ),
+    // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
+    stickerPhotos: `${item.instructions.length} foto, ${item.instructions.reduce((total, photo) => total + photo.marks.length, 0)} penanda`,
     accessories: item.accessories.map((accessory) => `${accessory.name} ×${accessory.qty}`),
     attachments: [...item.attachments],
     detailLength: item.detail.length,
@@ -106,12 +168,55 @@ async function brandNameOf(env: Env, brandId: string): Promise<string> {
 }
 
 async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
-  return { ...item, brand: await brandNameOf(env, item.brandId) };
+  const [brand, businessUnits, instructions] = await Promise.all([
+    brandNameOf(env, item.brandId),
+    itemBusinessUnitsOf(env.DB, [item.id]),
+    loadItemInstructions(env.DB, [item.id]),
+  ]);
+  return {
+    ...item,
+    brand,
+    businessUnits: businessUnits.get(item.id) ?? [],
+    instructions: instructions.get(item.id) ?? [],
+  };
+}
+
+/**
+ * Postel sebuah item untuk respons detail/simpan. `has` selalu dihitung; `detail` hanya bila `user` memegang
+ * `sticker: view` (izin global; Postel di luar jangkauan izin item/BU, jadi tak dibocorkan kepada pengguna item biasa).
+ */
+async function postelStateOf(
+  env: Env,
+  user: UserContext,
+  itemId: string,
+): Promise<ItemPostelState> {
+  const has = (await itemIdsWithPostel(env.DB, [itemId])).has(itemId);
+  if (!has || !hasLevel(user.permissions.sticker, 'view')) return { has, detail: null };
+  const soonDays = await postelSoonDays(env);
+  const detail =
+    (await loadItemPostels(env.DB, [itemId], { today: wibDateIso(nowOf(env)), soonDays })).get(
+      itemId,
+    ) ?? null;
+  return { has, detail };
+}
+
+/** Tampilan instruksi (`stickerPhotos`) sebuah item dari foto tersimpan, diterjemahkan menurut BU item. */
+async function instructionViewsOf(
+  env: Env,
+  itemId: string,
+  businessUnits: readonly BusinessUnitRefDto[],
+  instructions: readonly StoredPhoto[],
+): Promise<ItemStickerPhotoDto[]> {
+  return buildInstructionViews(
+    env,
+    itemId,
+    businessUnits.map((bu) => bu.id),
+    instructions,
+  );
 }
 
 interface ListRow {
   id: string;
-  external_id: string;
   brand_id: string;
   brand_name: string | null;
   model: string;
@@ -125,17 +230,35 @@ interface ListRow {
 
 /**
  * Daftar ringkas berkursor, urut menurut `key` (merk + tipe ternormalisasi; memakai indeks `items_key`).
- * TIDAK membaca/parsing kolom besar (detail, stiker, kelengkapan); jumlah gambar dihitung SQL. Hanya `aliases`
+ * TIDAK membaca/parsing kolom besar (detail, kelengkapan); jumlah gambar dihitung SQL. Hanya `aliases`
  * (kecil) di-parse untuk baris pada halaman ini.
+ *
+ * Hanya item yang beririsan dengan BU yang boleh dilihat `user` (filter di SQL, bukan di klien; pencarian ikut
+ * terfilter). Tanpa BU terlihat = halaman kosong tanpa kueri. BU tiap item pada halaman dimuat dengan SATU kueri.
  */
-export async function listItemPage(env: Env, input: ListItemsPageInput): Promise<ItemPageDto> {
+export async function listItemPage(
+  env: Env,
+  input: ListItemsPageInput,
+  user: UserContext,
+): Promise<ItemPageDto> {
   const limit = input.limit ?? ITEM_PAGE_DEFAULT_LIMIT;
-  const where: string[] = [];
-  const binds: unknown[] = [];
+  const visible = visibleBuIds(user);
+  if (visible.length === 0) return { items: [], nextCursor: null };
+  const where: string[] = [
+    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
+  ];
+  const binds: unknown[] = [...visible];
   if (input.status) {
     where.push('i.status = ?');
     binds.push(input.status);
   }
+  const instructionFilter = instructionFilterSql(input);
+  where.push(...instructionFilter.clauses);
+  binds.push(...instructionFilter.binds);
+  if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
+  if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
+  if (input.postel === 'has') where.push(HAS_POSTEL_SQL);
+  if (input.postel === 'missing') where.push(`NOT ${HAS_POSTEL_SQL}`);
   const query = normalizeKey(input.query ?? '');
   if (query !== '') {
     where.push('(LOCATE(?, i.`key`) > 0 OR LOCATE(?, i.alias_keys) > 0)');
@@ -145,7 +268,7 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
     where.push('i.`key` > ?');
     binds.push(input.cursor);
   }
-  const sql = `SELECT i.id, i.external_id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
+  const sql = `SELECT i.id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
     where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
   } ORDER BY i.\`key\` LIMIT ?`;
   const result = await env.DB.prepare(sql)
@@ -154,11 +277,17 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
   const rows = result.results;
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
+  const pageIds = page.map((row) => row.id.trim());
+  const [businessUnits, withInstructions, manualBooks, withPostel] = await Promise.all([
+    itemBusinessUnitsOf(env.DB, pageIds),
+    hasInstructionsOf(env.DB, pageIds),
+    loadItemManualBooks(env.DB, pageIds),
+    itemIdsWithPostel(env.DB, pageIds),
+  ]);
   return {
     items: page.map(
       (row): ItemSummaryDto => ({
         id: row.id.trim(),
-        externalId: row.external_id.trim(),
         brandId: row.brand_id.trim(),
         brand: row.brand_name ?? '',
         model: row.model.trim(),
@@ -166,6 +295,10 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
         status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
         aliases: parseStrings(row.aliases),
         imageCount: Number(row.image_count) || 0,
+        hasInstructions: withInstructions.has(row.id.trim()),
+        hasManualBook: manualBooks.has(row.id.trim()),
+        hasPostel: withPostel.has(row.id.trim()),
+        businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
       }),
     ),
@@ -173,10 +306,28 @@ export async function listItemPage(env: Env, input: ListItemsPageInput): Promise
   };
 }
 
-export async function getItemDto(env: Env, input: GetItemInput): Promise<ItemDto> {
+/**
+ * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
+ * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
+ */
+export async function getItemDto(
+  env: Env,
+  input: GetItemInput,
+  user: UserContext,
+): Promise<ItemDto> {
   const found = await findItem(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  return toItemDto(await viewOf(env, found));
+  const view = await viewOf(env, found);
+  assertItemVisible(
+    user,
+    view.businessUnits.map((bu) => bu.id),
+  );
+  return toItemDto(
+    view,
+    await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),
+    (await loadItemManualBooks(env.DB, [view.id])).get(view.id) ?? null,
+    await postelStateOf(env, user, view.id),
+  );
 }
 
 interface OwnerRow {
@@ -234,7 +385,6 @@ function nameOwnersFrom(result: { results: unknown[] } | undefined): NameOwners 
 
 /** Merk+tipe dan nama lain harus unik terhadap item lain (kunci ternormalisasi). */
 function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwners): void {
-  const label = (row: OwnerRow) => itemLabel({ brand: row.brand ?? '', model: row.model });
   if (owners.byItemKey.get(key)) {
     throw appError('CONFLICT', 'Merk dan tipe sudah dipakai item lain', {
       model: 'Merk dan tipe sudah dipakai item lain',
@@ -243,7 +393,7 @@ function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwne
   const holderRow = owners.byAliasKey.get(key);
   if (holderRow) {
     throw appError('CONFLICT', 'Merk dan tipe sama dengan nama lain item lain', {
-      model: `Sama dengan nama lain item ${label(holderRow)}`,
+      model: 'Merk dan tipe sama dengan nama lain item lain',
     });
   }
   for (const [index, aliasKey] of nameKeysOf(input, key).aliasKeys.entries()) {
@@ -255,39 +405,48 @@ function assertItemNamesFree(input: SaveItemInput, key: string, owners: NameOwne
     }
     const owner = owners.byItemKey.get(aliasKey) ?? owners.byAliasKey.get(aliasKey);
     if (owner) {
-      const message = `Nama lain "${alias}" sudah dipakai item ${label(owner)}`;
+      const message = `Nama lain "${alias}" sudah dipakai item lain`;
       throw appError('CONFLICT', message, { aliases: message });
     }
   }
 }
 
-/** Semua berkas yang dirujuk item: galeri, contoh stiker, dan gambar di dalam Markdown. */
+/** Semua berkas yang dirujuk item: galeri dan gambar di dalam Markdown. */
 function referencedFileIds(input: SaveItemInput): string[] {
   const ids: string[] = [...input.attachments];
-  for (const sticker of input.stickers) {
-    if (sticker.fileId !== null) ids.push(sticker.fileId);
-  }
   ids.push(...extractFileRefs(input.detail));
   return [...new Set(ids)];
 }
 
 /**
- * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, stiker, detail):
+ * Memeriksa rujukan berkas SEBELUM menulis dan melaporkannya di field yang sesuai (lampiran, detail):
  * tidak dikenal -> VALIDATION, sudah dipakai entitas lain -> CONFLICT. `planAttachFiles` tetap menjadi pagar.
+ *
+ * Tanpa oracle kepemilikan lintas BU (keputusan pemilik 2026-11-09): berkas yang terpasang pada item lain yang BU-nya
+ * tidak terlihat user, dan unggahan yang belum terpasang milik user lain, dijawab SAMA dengan berkas tak dikenal
+ * (VALIDATION, pesan identik). CONFLICT hanya untuk berkas pada item lain yang terlihat (atau logo QR).
  */
-function assertItemFilesUsable(
+async function assertItemFilesUsable(
+  env: Env,
+  actor: UserContext,
   input: SaveItemInput,
   ownerId: string,
   found: readonly FileRecord[],
-): FileRecord[] {
+): Promise<FileRecord[]> {
   const files = new Map(found.map((file) => [file.id, file]));
+  const foreignItemIds = found
+    .filter((file) => file.ownerType === 'item' && file.ownerId !== ownerId)
+    .map((file) => file.ownerId);
+  const visibleItems = await itemIdsVisibleIn(env.DB, foreignItemIds, visibleBuIds(actor));
   const problem = (fileId: string): 'unknown' | 'taken' | null => {
     const file = files.get(fileId);
     if (!file) return 'unknown';
-    if (file.ownerType !== '' && !(file.ownerType === 'item' && file.ownerId === ownerId)) {
-      return 'taken';
+    if (file.ownerType === '') return file.createdBy === actor.email ? null : 'unknown';
+    if (file.ownerType === 'item') {
+      if (file.ownerId === ownerId) return null;
+      return visibleItems.has(file.ownerId.trim()) ? 'taken' : 'unknown';
     }
-    return null;
+    return 'taken';
   };
   const fail = (kind: 'unknown' | 'taken', field: string, subject: string): never => {
     const message =
@@ -300,11 +459,6 @@ function assertItemFilesUsable(
     const kind = problem(fileId);
     if (kind) fail(kind, 'attachments', 'Ada gambar lampiran');
   }
-  input.stickers.forEach((sticker, index) => {
-    if (sticker.fileId === null) return;
-    const kind = problem(sticker.fileId);
-    if (kind) fail(kind, 'stickers', `Stiker ${index + 1}: gambar`);
-  });
   for (const fileId of extractFileRefs(input.detail)) {
     const kind = problem(fileId);
     if (kind) fail(kind, 'detail', 'Ada gambar di detail');
@@ -312,36 +466,22 @@ function assertItemFilesUsable(
   return [...found];
 }
 
-/** Field yang disinkronkan ke Desktop (FS7). Alias TIDAK termasuk: mengubahnya tidak menaikkan revisi. */
-export function itemSyncSignature(item: {
+/** Bidang item yang dibandingkan `itemContentEquals`. Alias TIDAK termasuk. */
+type ComparableItem = {
   brandId: string;
   model: string;
   isCountryLock: boolean;
   attachments: readonly string[];
   detail: string;
-  stickers: readonly ItemStickerDto[];
   accessories: readonly ItemAccessoryDto[];
   status: ItemStatus;
-}): string {
-  return JSON.stringify([
-    item.brandId,
-    item.model,
-    item.isCountryLock,
-    item.attachments,
-    item.detail,
-    item.stickers,
-    item.accessories,
-    item.status,
-  ]);
-}
-
-type SyncFields = Parameters<typeof itemSyncSignature>[0];
+};
 
 /**
- * Sama dengan `itemSyncSignature(a) === itemSyncSignature(b)` tanpa menyerialkan Markdown dan daftar ke JSON
- * (perbandingan string/larik langsung; detail bisa 20.000 karakter).
+ * Apakah isi dua item sama (merk, tipe, country lock, lampiran, detail, kelengkapan, status; alias tidak
+ * dihitung). Perbandingan string/larik langsung tanpa menyerialkan ke JSON (detail bisa 20.000 karakter).
  */
-export function itemSyncEquals(a: SyncFields, b: SyncFields): boolean {
+export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean {
   if (
     a.brandId !== b.brandId ||
     a.model !== b.model ||
@@ -349,18 +489,12 @@ export function itemSyncEquals(a: SyncFields, b: SyncFields): boolean {
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
-    a.stickers.length !== b.stickers.length ||
     a.accessories.length !== b.accessories.length
   ) {
     return false;
   }
   for (let i = 0; i < a.attachments.length; i++) {
     if (a.attachments[i] !== b.attachments[i]) return false;
-  }
-  for (let i = 0; i < a.stickers.length; i++) {
-    const x = a.stickers[i] as ItemStickerDto;
-    const y = b.stickers[i] as ItemStickerDto;
-    if (x.name !== y.name || x.note !== y.note || x.fileId !== y.fileId) return false;
   }
   for (let i = 0; i < a.accessories.length; i++) {
     const x = a.accessories[i] as ItemAccessoryDto;
@@ -370,22 +504,118 @@ export function itemSyncEquals(a: SyncFields, b: SyncFields): boolean {
   return true;
 }
 
+/** Placeholder `?` sebanyak `count` untuk klausa `IN (...)`. */
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => '?').join(', ');
+}
+
+/**
+ * Memeriksa rujukan instruksi stiker SEBELUM menulis (tahap 3b-2), dalam SATU `batch()` baca: gambar pustaka ada
+ * (dengan berkas aktif), stiker dan jenis ada, dan label BU foto ada di antara BU item. Sasaran penanda yang BARU
+ * (belum tersimpan pada penanda item ini) wajib aktif; yang sudah tersimpan boleh nonaktif (tetap utuh). Penanda ke
+ * stiker tertentu tidak disaring BU. Gagal = `VALIDATION` pada `stickerPhotos`, pesan menyebut nomor foto/penanda.
+ */
+export async function assertInstructionRefs(env: Env, input: SaveItemInput): Promise<void> {
+  const photos = input.stickerPhotos;
+  if (photos.length === 0) return;
+  const itemBus = new Set(input.businessUnitIds);
+  photos.forEach((photo, index) => {
+    if (photo.buId !== null && !itemBus.has(photo.buId)) {
+      const message = `Foto ${index + 1}: label BU harus salah satu BU item`;
+      throw appError('VALIDATION', message, { stickerPhotos: message });
+    }
+  });
+  const guideIds = photos.map((photo) => photo.guideId);
+  const stickerIds = new Set<string>();
+  const typeIds = new Set<string>();
+  for (const photo of photos) {
+    for (const mark of photo.marks) {
+      if (mark.target.kind === 'sticker') stickerIds.add(mark.target.stickerId);
+      else typeIds.add(mark.target.typeId);
+    }
+  }
+  const reads: DbStatement[] = [
+    env.DB.prepare(
+      `SELECT g.id FROM sticker_guide_images g JOIN files f ON f.id = g.id AND f.owner_type = 'stickerguide' AND f.status = 'active' WHERE g.id IN (${placeholders(guideIds.length)})`,
+    ).bind(...guideIds),
+  ];
+  const slots = { stickers: -1, types: -1, stored: -1 };
+  if (stickerIds.size > 0) {
+    slots.stickers = reads.length;
+    reads.push(
+      env.DB.prepare(
+        `SELECT s.id, s.status, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
+      ).bind(...stickerIds),
+    );
+  }
+  if (typeIds.size > 0) {
+    slots.types = reads.length;
+    reads.push(
+      env.DB.prepare(
+        `SELECT id, status FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+      ).bind(...typeIds),
+    );
+  }
+  if (input.id && (stickerIds.size > 0 || typeIds.size > 0)) {
+    slots.stored = reads.length;
+    reads.push(
+      env.DB.prepare('SELECT sticker_id, type_id FROM item_sticker_marks WHERE item_id = ?').bind(
+        input.id,
+      ),
+    );
+  }
+  const results = await env.DB.batch(reads);
+  const rowsOf = <T>(slot: number): T[] =>
+    slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
+  const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
+  const stickerRows = new Map(
+    rowsOf<{ id: string; status: string; system_kind: string }>(slots.stickers).map((row) => [
+      row.id,
+      row,
+    ]),
+  );
+  const typeStatus = new Map(
+    rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
+  );
+  const stored = rowsOf<{ sticker_id: string; type_id: string }>(slots.stored);
+  const storedStickers = new Set(stored.map((row) => row.sticker_id).filter((id) => id !== ''));
+  const storedTypes = new Set(stored.map((row) => row.type_id).filter((id) => id !== ''));
+  const fail = (message: string): never => {
+    throw appError('VALIDATION', message, { stickerPhotos: message });
+  };
+  photos.forEach((photo, photoIndex) => {
+    const photoLabel = `Foto ${photoIndex + 1}`;
+    if (!knownGuides.has(photo.guideId)) fail(`${photoLabel}: gambar tidak ditemukan`);
+    photo.marks.forEach((mark, markIndex) => {
+      const label = `${photoLabel}, penanda ${markIndex + 1}`;
+      if (mark.target.kind === 'sticker') {
+        const sticker = stickerRows.get(mark.target.stickerId);
+        if (sticker === undefined) fail(`${label}: stiker tidak ditemukan`);
+        // Stiker jenis sistem (Manual Book, Postel) dipilih lewat jenisnya, tak pernah sebagai sasaran langsung.
+        if ((sticker?.system_kind ?? '').trim() !== '') {
+          fail(`${label}: Stiker jenis sistem dipilih lewat jenisnya`);
+        }
+        if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+          fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
+        }
+      } else {
+        const status = typeStatus.get(mark.target.typeId);
+        if (status === undefined) fail(`${label}: jenis tidak ditemukan`);
+        if (status !== 'active' && !storedTypes.has(mark.target.typeId)) {
+          fail(`${label}: jenis dinonaktifkan; pilih jenis yang aktif`);
+        }
+      }
+    });
+  });
+}
+
 export interface WriteItemOptions {
+  /** Item yang diubah, bila pemanggil sudah memuatnya; selain itu dimuat dari `input.id` (NOT_FOUND bila tak ada). */
   existing?: ItemRecord | undefined;
   /** Hanya item baru: id yang sudah dipakai pemanggil. */
   id?: string | undefined;
-  actor: ActorRef;
-  /** Hanya sinkronisasi: id MySQL yang dipetakan ke item ini. */
-  externalId?: string | undefined;
-  /** Hanya sinkronisasi: status yang diminta (default: tetap; item baru aktif). */
-  status?: ItemStatus | undefined;
-  /**
-   * Merk bernama `input.brand` yang sudah diketahui pemanggil (`null` = pasti belum ada); `undefined` = dicari
-   * di sini (daftar cache dulu, bila tak ada langsung ke database sebelum membuat merk baru).
-   */
-  knownBrand?: BrandRecord | null | undefined;
-  /** Hasil baca yang sudah dimuat pemanggil dalam `batch()` bersama (menghemat round trip database). */
-  preloaded?: { owners: NameOwners; files: readonly FileRecord[] } | undefined;
+  /** Pelaku: dipakai audit dan aturan BU (hak per BU). */
+  actor: UserContext;
 }
 
 /**
@@ -399,9 +629,8 @@ export const ITEM_CONFLICTS = {
 };
 
 /**
- * `batchWrite` untuk penulisan item di dalam `runCas`: duplikat `brands_key` (dua penulis membuat merk bernama sama
- * serentak, mis. sesudah ganti nama merk) TIDAK dipetakan ke CONFLICT melainkan dilempar apa adanya agar `runCas`
- * memuat ulang: percobaan berikutnya menemukan merk yang dibuat penulis lain dan memakainya.
+ * `batchWrite` untuk penulisan item di dalam `runCas`: duplikat `brands_key` TIDAK dipetakan ke CONFLICT melainkan
+ * dilempar apa adanya agar `runCas` memuat ulang (sisa perilaku lama; merk tak lagi dibuat dari penyimpanan item).
  */
 export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise<DbResult[]> {
   try {
@@ -410,76 +639,177 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
     if (error instanceof DbError && error.kind === 'duplicate' && error.key === 'brands_key') {
       throw error;
     }
+    // Gambar pustaka yang dihapus tepat di antara pemeriksaan rujukan dan penulisan: kunci asing menolak foto yatim.
+    if (
+      error instanceof DbError &&
+      error.errno === ER_NO_REFERENCED_ROW &&
+      error.message.includes(GUIDE_FK_NAME)
+    ) {
+      const message = 'Gambar instruksi tidak ditemukan; muat ulang halaman lalu pilih gambar lagi';
+      throw appError('VALIDATION', message, { stickerPhotos: message });
+    }
     throw mapDuplicateError(error, ITEM_CONFLICTS);
   }
 }
 
+/** Galat MariaDB 1452: baris anak merujuk baris induk yang tidak ada (kunci asing). */
+const ER_NO_REFERENCED_ROW = 1452;
+/** Nama constraint FK foto instruksi -> pustaka gambar (migrasi 0007); FK lain tidak dilabeli salah. */
+const GUIDE_FK_NAME = 'item_sticker_photos_guide_fk';
+
 const STALE_MESSAGE = 'Item sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
+/** Hasil baca awal penulisan item (satu `batch()`): item, BU-nya, merk yang dipilih, semua BU, dan berkas. */
+interface WriteContext {
+  existing: ItemRecord | undefined;
+  /** Id BU item saat ini (`null` = item baru). */
+  currentBuIds: string[] | null;
+  brand: BrandRecord | undefined;
+  allBus: BusinessUnitBrief[];
+  files: FileRecord[];
+}
+
+async function loadWriteContext(
+  env: Env,
+  input: SaveItemInput,
+  provided: ItemRecord | undefined,
+): Promise<WriteContext> {
+  const lookupId = provided?.id ?? input.id;
+  const reads: DbStatement[] = [];
+  const slots = { item: -1, links: -1 };
+  if (lookupId && !provided) {
+    slots.item = reads.length;
+    reads.push(findItemStmt(env.DB, lookupId));
+  }
+  if (lookupId) {
+    slots.links = reads.length;
+    reads.push(itemBusinessUnitIdsStmt(env.DB, lookupId));
+  }
+  const brandSlot = reads.length;
+  reads.push(brandByIdStatement(env, input.brandId));
+  const busSlot = reads.length;
+  reads.push(businessUnitBriefsStmt(env.DB));
+  const filesSlot = reads.length;
+  reads.push(...activeFilesStatements(env, referencedFileIds(input)));
+  const results = await env.DB.batch(reads);
+  let existing = provided;
+  if (slots.item >= 0) {
+    const row = results[slots.item]?.results[0] as ItemRow | undefined;
+    existing = row ? toItem(row) : undefined;
+  }
+  const currentBuIds =
+    slots.links >= 0
+      ? ((results[slots.links]?.results ?? []) as Array<{ bu_id: string }>).map((row) =>
+          row.bu_id.trim(),
+        )
+      : null;
+  return {
+    existing,
+    currentBuIds: lookupId ? (currentBuIds ?? []) : null,
+    brand: brandsFromResult(results[brandSlot] ?? { results: [] })[0],
+    allBus: businessUnitBriefsFromResult(results[busSlot] ?? { results: [] }),
+    files: activeFilesFromResults(results.slice(filesSlot)),
+  };
+}
+
 /**
- * Merencanakan penulisan item (baru atau ubah): semua pemeriksaan (keunikan, rujukan berkas, merk
- * nonaktif) dijalankan di sini; hasilnya `statements` yang HARUS dijalankan dalam satu `batch()`
- * (CAS pada `updated_at`, merk baru, penautan berkas, naiknya `sync_rev`, UPDATE/INSERT, audit) sehingga
- * atomik. Dipakai form web (`saveItem`) dan sinkronisasi.
+ * Merencanakan penulisan item (baru atau ubah): semua pemeriksaan (hak BU, merk, keunikan, rujukan berkas) dijalankan
+ * di sini; hasilnya `statements` yang HARUS dijalankan dalam satu `batch()` (penjaga merk, penautan berkas,
+ * UPDATE/INSERT dengan CAS pada `updated_at`, himpunan BU, audit) sehingga atomik.
+ *
+ * Aturan BU (spek 5.3, keputusan 13): item baru hanya ke BU aktif yang boleh diubah user; item yang ada hanya dapat
+ * diubah user yang berhak `edit` pada SEMUA BU item itu (item di luar BU terlihat = NOT_FOUND); BU yang ditambah
+ * harus aktif dan berhak `edit`; BU lama boleh dilepas/dipertahankan.
  */
 export async function planItemWrite(
   env: Env,
   input: SaveItemInput,
   options: WriteItemOptions,
-): Promise<{ record: ItemRecord; brandName: string; statements: DbStatement[] }> {
-  const { existing, actor } = options;
-  const key = itemKey(input.brand, input.model);
-  // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
-  const brandKey = normalizeKey(input.brand);
-  const knownBrand =
-    options.knownBrand !== undefined
-      ? options.knownBrand
-      : ((await listBrands(env)).find((brand) => brand.key === brandKey) ??
-        (await findBrandByKey(env, brandKey)));
-  if (knownBrand && knownBrand.status === 'inactive' && existing?.brandId !== knownBrand.id) {
-    const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
-    throw appError('VALIDATION', message, { brand: message });
+): Promise<{
+  record: ItemRecord;
+  brandName: string;
+  businessUnits: BusinessUnitRefDto[];
+  statements: DbStatement[];
+}> {
+  const { actor } = options;
+  const context = await loadWriteContext(env, input, options.existing);
+  const { existing, currentBuIds } = context;
+  if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  if (existing) {
+    // NOT_FOUND bila tak beririsan BU terlihat, FORBIDDEN bila tak berhak ubah di SEMUA BU item.
+    assertItemVisible(actor, currentBuIds ?? []);
+    assertCanActOnItem(actor, currentBuIds ?? [], 'edit', 'Anda tidak berhak mengubah item ini');
+    if (input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw staleError(STALE_MESSAGE);
+    }
   }
+  assertRequestedBusinessUnits(
+    actor,
+    context.allBus,
+    existing ? (currentBuIds ?? []) : null,
+    input.businessUnitIds,
+  );
+  const { brand } = context;
+  if (!brand) {
+    throw appError('VALIDATION', 'Merk tidak ditemukan', { brandId: 'Merk tidak ditemukan' });
+  }
+  // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
+  if (brand.status === 'inactive' && existing?.brandId !== brand.id) {
+    const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
+    throw appError('VALIDATION', message, { brandId: message });
+  }
+  const key = itemKey(brand.name, input.model);
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
-  const preloaded = options.preloaded ?? (await loadWriteChecks(env, input, key, id, existing));
-  assertItemNamesFree(input, key, preloaded.owners);
+  const owners = await loadNameOwners(env, input, key, id, existing);
+  assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
-  const usableFiles = assertItemFilesUsable(input, id, preloaded.files);
-  const attach = await planAttachFiles(env, referencedFileIds(input), 'item', id, usableFiles);
-  // Merk baru dibuat langsung dari isian (tanpa form tambahan); setelah semua validasi lolos.
-  const resolved = await planBrandByName(env, input.brand, actor, knownBrand);
+  await assertInstructionRefs(env, input);
+  const usableFiles = await assertItemFilesUsable(env, actor, input, id, context.files);
+  const attach = await planAttachFiles(
+    env,
+    referencedFileIds(input),
+    'item',
+    id,
+    usableFiles,
+    actor.email,
+  );
   const now = nowIso(env);
-  const status = options.status ?? existing?.status ?? 'active';
+  const status = existing?.status ?? 'active';
   const fields = {
-    brandId: resolved.brand.id,
+    brandId: brand.id,
     model: input.model,
     key,
     isCountryLock: input.isCountryLock,
     aliases: [...input.aliases],
-    stickers: input.stickers.map((sticker) => ({ ...sticker })),
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],
     detail: input.detail,
     updatedAt: now,
     updatedBy: actor.email,
   };
-  const afterView = (record: ItemRecord): ItemView => ({ ...record, brand: resolved.brand.name });
-  // Merk yang sudah ada dijaga: ganti nama merk yang menyela membatalkan batch (I1); merk baru tak perlu.
-  const statements: DbStatement[] =
-    resolved.statements.length === 0
-      ? [brandKeyGuardStmt(env.DB, resolved.brand.id, brandKey)]
-      : [];
+  const knownBus = new Map(context.allBus.map((bu) => [bu.id, bu]));
+  const businessUnits: BusinessUnitRefDto[] = input.businessUnitIds
+    .map((buId) => knownBus.get(buId))
+    .filter((bu): bu is BusinessUnitBrief => bu !== undefined)
+    .map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  const afterInstructions: StoredPhoto[] = input.stickerPhotos.map((photo, position) => ({
+    ...photo,
+    position,
+  }));
+  const afterView = (record: ItemRecord): ItemView => ({
+    ...record,
+    brand: brand.name,
+    businessUnits,
+    instructions: afterInstructions,
+  });
+  // Penjaga merk (ganti nama merk yang menyela membatalkan batch, I1) selalu PERTAMA: merk selalu sudah ada.
+  const statements: DbStatement[] = [brandKeyGuardStmt(env.DB, brand.id, brand.key)];
 
   if (existing) {
-    const merged: ItemRecord = {
-      ...existing,
-      ...fields,
-      status,
-      externalId: options.externalId ?? existing.externalId,
-    };
-    const changed = !itemSyncEquals(existing, merged);
+    const merged: ItemRecord = { ...existing, ...fields, status };
     const onlyStatus =
-      existing.status !== status && itemSyncEquals({ ...existing, status }, merged);
+      existing.status !== status && itemContentEquals({ ...existing, status }, merged);
     const before = await viewOf(env, existing);
     // Hash Markdown O(panjang): dihitung sekali bila teksnya tidak berubah.
     const beforeSnapshot = itemSnapshot(before);
@@ -488,9 +818,12 @@ export async function planItemWrite(
       existing.detail === merged.detail ? (beforeSnapshot.detailHash as string) : undefined,
     );
     statements.push(
-      ...resolved.statements,
       ...attach,
-      ...updateItemStmts(env.DB, merged, changed, existing),
+      // Item yang ADA: DELETE selalu dijalankan (bukan fresh), agar penulis basi gagal oleh CAS `UPDATE items`
+      // (412) dan bukan oleh duplikat PK foto.
+      ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos, false),
+      ...updateItemStmts(env.DB, merged, existing),
+      ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, false),
     );
     statements.push(
       writeAudit(env.DB, {
@@ -506,18 +839,21 @@ export async function planItemWrite(
         after: afterSnapshot,
       }),
     );
-    return { record: merged, brandName: resolved.brand.name, statements };
+    return { record: merged, brandName: brand.name, businessUnits, statements };
   }
 
   const created: ItemRecord = {
     id,
-    externalId: options.externalId ?? '',
     status,
-    syncRev: 0,
     createdAt: now,
     ...fields,
   };
-  statements.push(...resolved.statements, ...attach, ...insertItemStmts(env.DB, created, true));
+  statements.push(
+    ...attach,
+    ...replaceItemInstructionStmts(env.DB, id, input.stickerPhotos, true),
+    ...insertItemStmts(env.DB, created),
+    ...replaceItemBusinessUnitsStmts(env.DB, id, input.businessUnitIds, true),
+  );
   statements.push(
     writeAudit(env.DB, {
       ts: now,
@@ -528,12 +864,12 @@ export async function planItemWrite(
       after: itemSnapshot(afterView(created)),
     }),
   );
-  return { record: created, brandName: resolved.brand.name, statements };
+  return { record: created, brandName: brand.name, businessUnits, statements };
 }
 
 /**
  * Item yang sudah ada tidak mengklaim kunci baru bila merk+tipe dan nama lainnya tidak berubah (kasus umum
- * penyimpanan dari Desktop: hanya detail/stiker/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
+ * penyimpanan: hanya detail/instruksi/status): keunikan nama tidak perlu dibaca ulang, dan PRIMARY KEY /
  * indeks unik tetap menjadi pagar bila ada rebutan.
  */
 function claimsNoNewNames(
@@ -546,32 +882,24 @@ function claimsNoNewNames(
   return existing.aliases.every((alias, index) => alias === input.aliases[index]);
 }
 
-/**
- * Pemeriksaan baca sebelum menulis (keunikan nama dan berkas) dalam SATU `batch()`; untuk penulis tanpa muatan
- * awal. Tanpa kunci baru dan tanpa rujukan berkas tidak ada round trip sama sekali.
- */
-async function loadWriteChecks(
+/** Pemilik nama (keunikan merk+tipe dan nama lain) dalam SATU kueri; tanpa kunci baru tidak ada round trip. */
+async function loadNameOwners(
   env: Env,
   input: SaveItemInput,
   key: string,
   selfId: string,
   existing?: ItemRecord,
-): Promise<{ owners: NameOwners; files: FileRecord[] }> {
-  const checkNames = !claimsNoNewNames(existing, input, key);
-  const statements = [
-    ...(checkNames ? [nameCheckStatement(env, input, key, selfId)] : []),
-    ...activeFilesStatements(env, referencedFileIds(input)),
-  ];
-  if (statements.length === 0) return { owners: NO_OWNERS, files: [] };
-  const results = await env.DB.batch(statements);
-  const offset = checkNames ? 1 : 0;
-  return {
-    owners: checkNames ? nameOwnersFrom(results[0]) : NO_OWNERS,
-    files: activeFilesFromResults(results.slice(offset)),
-  };
+): Promise<NameOwners> {
+  if (claimsNoNewNames(existing, input, key)) return NO_OWNERS;
+  const result = await nameCheckStatement(env, input, key, selfId).all();
+  return nameOwnersFrom(result);
 }
 
-export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef): Promise<ItemDto> {
+export async function saveItem(
+  env: Env,
+  input: SaveItemInput,
+  actor: UserContext,
+): Promise<ItemDto> {
   const id = input.id ?? crypto.randomUUID();
   // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: muat ulang semuanya dan ulangi.
   return runCas(() => saveItemOnce(env, input, actor, id), STALE_MESSAGE);
@@ -580,41 +908,30 @@ export async function saveItem(env: Env, input: SaveItemInput, actor: ActorRef):
 async function saveItemOnce(
   env: Env,
   input: SaveItemInput,
-  actor: ActorRef,
+  actor: UserContext,
   id: string,
 ): Promise<ItemDto> {
-  // Satu round trip baca: item yang diubah, keunikan nama, dan berkas yang dirujuk (urutan hasil di bawah).
-  const key = itemKey(input.brand, input.model);
-  const reads = [
-    ...(input.id ? [findItemStmt(env.DB, input.id)] : []),
-    nameCheckStatement(env, input, key, id),
-    ...activeFilesStatements(env, referencedFileIds(input)),
-  ];
-  const results = await env.DB.batch(reads);
-  const offset = input.id ? 1 : 0;
-  const row = input.id ? (results[0]?.results[0] as ItemRow | undefined) : undefined;
-  const existing = row ? toItem(row) : undefined;
-  if (input.id && !existing) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  if (existing && input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
-    throw staleError(STALE_MESSAGE);
-  }
-  const plan = await planItemWrite(env, input, {
-    existing,
-    id,
-    actor,
-    preloaded: {
-      owners: nameOwnersFrom(results[offset]),
-      files: activeFilesFromResults(results.slice(offset + 1)),
-    },
-  });
+  const plan = await planItemWrite(env, input, { id, actor });
   await batchItemWrite(env.DB, plan.statements);
-  return toItemDto({ ...plan.record, brand: plan.brandName });
+  // Hasil dibaca ulang SETELAH batch (bukan disalin dari input): yang dikembalikan adalah yang tersimpan.
+  const stored = (await loadItemInstructions(env.DB, [id])).get(id) ?? [];
+  return toItemDto(
+    {
+      ...plan.record,
+      brand: plan.brandName,
+      businessUnits: plan.businessUnits,
+      instructions: stored,
+    },
+    await instructionViewsOf(env, id, plan.businessUnits, stored),
+    (await loadItemManualBooks(env.DB, [id])).get(id) ?? null,
+    await postelStateOf(env, actor, id),
+  );
 }
 
 export async function setItemStatus(
   env: Env,
   input: SetItemStatusInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<ItemDto> {
   // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: baca ulang item dan ulangi.
   return runCas(() => setItemStatusOnce(env, input, actor), STALE_MESSAGE);
@@ -623,14 +940,23 @@ export async function setItemStatus(
 async function setItemStatusOnce(
   env: Env,
   input: SetItemStatusInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<ItemDto> {
   // Item dan merknya dibaca dalam SATU snapshot (JOIN); penjaga memeriksa kunci merk tersimpan itu (N1).
   const found = await findItemWithBrand(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const existing = found.item;
-  const before: ItemView = { ...existing, brand: found.brandName };
-  if (existing.status === input.status) return toItemDto(before);
+  const businessUnits = (await itemBusinessUnitsOf(env.DB, [existing.id])).get(existing.id) ?? [];
+  const itemBuIds = businessUnits.map((bu) => bu.id);
+  // NOT_FOUND bila tak beririsan BU terlihat; menonaktifkan item multi-BU butuh `manage` pada SEMUA BU item.
+  assertItemVisible(actor, itemBuIds);
+  assertCanActOnItem(actor, itemBuIds, 'manage', 'Anda tidak berhak mengubah status item ini');
+  const instructions = (await loadItemInstructions(env.DB, [existing.id])).get(existing.id) ?? [];
+  const before: ItemView = { ...existing, brand: found.brandName, businessUnits, instructions };
+  const views = await instructionViewsOf(env, existing.id, businessUnits, instructions);
+  const manualBook = (await loadItemManualBooks(env.DB, [existing.id])).get(existing.id) ?? null;
+  const postel = await postelStateOf(env, actor, existing.id);
+  if (existing.status === input.status) return toItemDto(before, views, manualBook, postel);
   const now = nowIso(env);
   const updated: ItemRecord = {
     ...existing,
@@ -642,17 +968,22 @@ async function setItemStatusOnce(
     env.DB,
     [
       brandKeyGuardStmt(env.DB, existing.brandId, found.brandKey),
-      ...updateItemStmts(env.DB, updated, true, existing),
+      ...updateItemStmts(env.DB, updated, existing),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,
         action: input.status === 'active' ? 'item.activate' : 'item.deactivate',
         target: itemLabel(before),
         before: itemSnapshot(before),
-        after: itemSnapshot({ ...updated, brand: before.brand }),
+        after: itemSnapshot({ ...updated, brand: before.brand, businessUnits, instructions }),
       }),
     ],
     ITEM_CONFLICTS,
   );
-  return toItemDto({ ...updated, brand: before.brand });
+  return toItemDto(
+    { ...updated, brand: before.brand, businessUnits, instructions },
+    views,
+    manualBook,
+    postel,
+  );
 }

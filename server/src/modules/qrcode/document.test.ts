@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, qrManualBookFields, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 const call = (email: string, method: string, payload: unknown) =>
-  qrRpc(env, email, method, payload);
+  qrCall(env, email, method, payload);
 const PDF1 = 'JVBERi0xLjQK';
 const PDF2 = 'JVBERi0xLjUK';
 const upload = (payload: Record<string, unknown>, email = 'qredit@gmail.com') =>
@@ -102,6 +102,7 @@ describe('unggah PDF sumber', () => {
     expect((await upload({ replaceDocumentId: 'tidak-ada' })).error.code).toBe('NOT_FOUND');
     const doc = await upload({});
     const body = {
+      ...(await qrManualBookFields(env)),
       title: 'T',
       linkSource: 'pdf',
       link: '',

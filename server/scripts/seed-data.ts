@@ -29,12 +29,23 @@ const HOUR = 60 * MIN;
 
 /** Tabel yang dikosongkan (anak lebih dulu) sebelum data contoh dimasukkan. Tidak menyentuh `settings`. */
 const RESET_TABLES = [
+  'item_sticker_marks',
+  'item_sticker_photos',
+  'sticker_guide_images',
+  'sticker_stock_entries',
+  'sticker_stock',
+  'sticker_business_units',
+  'stickers',
+  'sticker_types',
   'handover_comments',
   'handovers',
   'job_blobs',
   'item_alias_keys',
+  'item_business_units',
   'items',
+  'brand_default_business_units',
   'brands',
+  'business_units',
   'customers',
   'files',
   'audit_log',
@@ -42,14 +53,13 @@ const RESET_TABLES = [
   'roles',
   'locations',
   'counters',
-  'sync_state',
   'jobs',
   'rate_limits',
 ];
 
 /**
  * Pernyataan data contoh realistis untuk MariaDB DEV: pengguna admin (`email`) + peran + lokasi + merk + customer + item +
- * beberapa task serah terima (Baru, Dikerjakan, Selesai, Dibatalkan) dengan centang dan komentar. Mengosongkan
+ * dua BU contoh (item bertaut ke BU `UM`) + beberapa task serah terima (Baru, Dikerjakan, Selesai, Dibatalkan) dengan centang dan komentar. Mengosongkan
  * tabel data terlebih dulu sehingga aman dijalankan ulang. Kolom turunan handover dihitung oleh kode produksi.
  */
 export function buildSeedStatements(email: string, nowMs: number): SeedStatement[] {
@@ -70,6 +80,8 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         handover: 'manage',
         qc: 'edit',
         stock: 'view',
+        sticker: 'manage',
+        stickerstock: 'manage',
       },
     },
     {
@@ -97,7 +109,17 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     sql.push(insert('locations', { ...location, status: 'active', ...meta }));
   }
 
+  // Dua BU contoh; semua user contoh bertugas di "Semua BU" agar bisa mencoba fitur item.
+  const businessUnits = [
+    { id: 'bu-um', code: 'UM', name: 'Umum' },
+    { id: 'bu-ent', code: 'ENT', name: 'Enterprise' },
+  ];
+  for (const bu of businessUnits) {
+    sql.push(insert('business_units', { ...bu, status: 'active', ...meta }));
+  }
+
   const everywhere = (roleId: string) => JSON.stringify([{ locationId: null, roleIds: [roleId] }]);
+  const allBu = (roleId: string) => JSON.stringify([{ buId: null, roleIds: [roleId] }]);
   const users = [
     { id: 'user-admin', email, name: 'Admin Dev', role: 'role-admin' },
     { id: 'user-wh', email: 'wh@dev.test', name: 'Staf WH', role: 'role-wh' },
@@ -112,26 +134,24 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         status: 'active',
         role_ids: '',
         assignments: everywhere(user.role),
+        bu_assignments: allBu(user.role),
         ...meta,
       }),
     );
   }
 
   const brands = ['Ubiquiti', 'Mikrotik', 'TP-Link'];
-  brands.forEach((name, index) => {
+  for (const name of brands) {
     sql.push(
       insert('brands', {
         id: `brand-${normalizeKey(name).split(' ').join('-')}`,
-        external_id: '',
         name,
         key: normalizeKey(name),
         status: 'active',
-        sync_rev: index + 1,
         ...meta,
       }),
     );
-  });
-  sql.push(insert('sync_state', { resource: 'brands', seq: brands.length, updated_at: t0 }));
+  }
 
   const items: Array<{
     brand: string;
@@ -156,22 +176,23 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
     sql.push(
       insert('items', {
         id: `item-${index + 1}`,
-        external_id: '',
         brand_id: `brand-${normalizeKey(item.brand).split(' ').join('-')}`,
         model: item.model,
         key: itemKey(item.brand, item.model),
         is_country_lock: item.lock ? 'true' : 'false',
         aliases: JSON.stringify(aliases),
         alias_keys: aliasKeysOf(aliases),
-        stickers: JSON.stringify([{ name: 'Label SNI', note: 'Bagian belakang', fileId: null }]),
         accessories: JSON.stringify([{ name: 'Adaptor daya', qty: 1 }]),
         attachments: '[]',
         detail_md: `## ${item.brand} ${item.model}\n\nPerangkat contoh untuk pengembangan lokal.`,
         status: item.inactive ? 'inactive' : 'active',
-        sync_rev: index + 1,
         ...meta,
       }),
     );
+  });
+  // Semua item contoh milik BU `UM` (BU `ENT` sengaja kosong untuk menguji pembatasan per BU).
+  items.forEach((_item, index) => {
+    sql.push(insert('item_business_units', { item_id: `item-${index + 1}`, bu_id: 'bu-um' }));
   });
   items.forEach((item, index) => {
     for (const key of aliasKeyList(item.aliases ?? [])) {
@@ -184,7 +205,6 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
       'UPDATE brands SET item_count = (SELECT COUNT(*) FROM items WHERE items.brand_id = brands.id)',
     ),
   );
-  sql.push(insert('sync_state', { resource: 'items', seq: items.length, updated_at: t0 }));
 
   const customers = ['PT Maju Jaya', 'CV Abadi Sentosa', 'Toko Sinar Elektronik'];
   for (const [index, name] of customers.entries()) {
@@ -196,6 +216,178 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         status: 'active',
         ...meta,
       }),
+    );
+  }
+
+  // Katalog stiker contoh (tahap 3a): enam jenis, beberapa stiker bertaut BU, dan stok per lokasi dengan riwayat.
+  // Riwayat ditulis konsisten: qty_after = stok sesudah setiap catatan; stok sisa = jumlah baris stok.
+  const stickerTypes = [
+    { id: 'type-qc', name: 'QC', rule: 'bu' },
+    { id: 'type-segel', name: 'Segel', rule: 'bu' },
+    { id: 'type-country-lock', name: 'Country Lock', rule: 'none' },
+    { id: 'type-warning-frekuensi', name: 'Warning Frekuensi', rule: 'none' },
+    { id: 'type-warning-unifi', name: 'Warning Unifi', rule: 'none' },
+    { id: 'type-manual-book', name: 'Manual Book', rule: 'none' },
+  ];
+  for (const type of stickerTypes) {
+    sql.push(insert('sticker_types', { ...type, status: 'active', ...meta }));
+  }
+
+  const stickers: Array<{
+    id: string;
+    type: string;
+    name: string;
+    alias?: string;
+    minQty: number;
+    bus: string[];
+    inactive?: boolean;
+  }> = [
+    {
+      id: 'sticker-qc-hijau',
+      type: 'type-qc',
+      name: 'QC Spectrum/Teakwave',
+      alias: 'Stiker Hijau',
+      minQty: 100,
+      bus: ['bu-um', 'bu-ent'],
+    },
+    {
+      id: 'sticker-qc-putih',
+      type: 'type-qc',
+      name: 'QC Voltech',
+      alias: 'Stiker Putih',
+      minQty: 50,
+      bus: ['bu-ent'],
+    },
+    { id: 'sticker-segel-um', type: 'type-segel', name: 'Segel Umum', minQty: 200, bus: ['bu-um'] },
+    {
+      id: 'sticker-segel-ent',
+      type: 'type-segel',
+      name: 'Segel Enterprise',
+      minQty: 30,
+      bus: ['bu-ent'],
+    },
+    {
+      id: 'sticker-country-lock',
+      type: 'type-country-lock',
+      name: 'Country Lock',
+      minQty: 20,
+      bus: [],
+    },
+    {
+      id: 'sticker-warning-frekuensi',
+      type: 'type-warning-frekuensi',
+      name: 'Warning Frekuensi',
+      minQty: 0,
+      bus: [],
+    },
+    {
+      id: 'sticker-manual-book-lama',
+      type: 'type-manual-book',
+      name: 'Manual Book Lama',
+      minQty: 0,
+      bus: [],
+      inactive: true,
+    },
+  ];
+  for (const sticker of stickers) {
+    sql.push(
+      insert('stickers', {
+        id: sticker.id,
+        type_id: sticker.type,
+        name: sticker.name,
+        alias: sticker.alias ?? '',
+        file_id: '',
+        min_qty: sticker.minQty,
+        status: sticker.inactive ? 'inactive' : 'active',
+        ...meta,
+      }),
+    );
+    for (const bu of sticker.bus) {
+      sql.push(insert('sticker_business_units', { sticker_id: sticker.id, bu_id: bu }));
+    }
+  }
+
+  // Riwayat stok contoh: [stiker, lokasi, kind, delta, qty_after, count_json, alasan, hari yang lalu].
+  const stockHistory: Array<[string, string, string, number, number, string, string, number]> = [
+    [
+      'sticker-qc-hijau',
+      'loc-jkt',
+      'in',
+      50,
+      50,
+      '{"rows":[{"sheets":5,"perSheet":10}],"loose":0}',
+      '',
+      10,
+    ],
+    ['sticker-qc-hijau', 'loc-jkt', 'out', -25, 25, '', 'Dipakai batch Spectrum', 4],
+    ['sticker-qc-hijau', 'loc-bdg', 'in', 20, 20, '{"rows":[],"loose":20}', '', 9],
+    ['sticker-qc-hijau', 'loc-bdg', 'out', -5, 15, '', 'Dipakai batch Teakwave', 2],
+    [
+      'sticker-qc-putih',
+      'loc-jkt',
+      'in',
+      300,
+      300,
+      '{"rows":[{"sheets":10,"perSheet":30}],"loose":0}',
+      '',
+      8,
+    ],
+    [
+      'sticker-segel-um',
+      'loc-jkt',
+      'in',
+      500,
+      500,
+      '{"rows":[{"sheets":5,"perSheet":100}],"loose":0}',
+      '',
+      12,
+    ],
+    ['sticker-segel-um', 'loc-bdg', 'in', 200, 200, '{"rows":[],"loose":200}', '', 12],
+    [
+      'sticker-segel-ent',
+      'loc-jkt',
+      'opname',
+      40,
+      40,
+      '{"rows":[{"sheets":2,"perSheet":20}],"loose":0}',
+      'Stok opname awal',
+      6,
+    ],
+    ['sticker-country-lock', 'loc-jkt', 'in', 60, 60, '{"rows":[],"loose":60}', '', 7],
+    ['sticker-country-lock', 'loc-bdg', 'in', 10, 10, '{"rows":[],"loose":10}', '', 7],
+    ['sticker-country-lock', 'loc-bdg', 'adjust', -2, 8, '', 'Rusak saat pengecekan', 1],
+  ];
+  const stockTotals = new Map<string, number>();
+  for (const [
+    sticker,
+    location,
+    kind,
+    delta,
+    qtyAfter,
+    countJson,
+    reason,
+    daysAgo,
+  ] of stockHistory) {
+    const ts = iso(nowMs - daysAgo * 24 * HOUR);
+    sql.push(
+      insert('sticker_stock_entries', {
+        sticker_id: sticker,
+        location_id: location,
+        kind,
+        delta,
+        qty_after: qtyAfter,
+        count_json: countJson,
+        reason,
+        actor: 'qc@dev.test',
+        ts,
+      }),
+    );
+    stockTotals.set(`${sticker}|${location}`, qtyAfter);
+  }
+  for (const [key, qty] of stockTotals) {
+    const [sticker, location] = key.split('|') as [string, string];
+    sql.push(
+      insert('sticker_stock', { sticker_id: sticker, location_id: location, qty, updated_at: t0 }),
     );
   }
 

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { attachFiles } from '@server/modules/files/service';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { qrPdfDocumentId, qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { qrCall, qrManualBookFields, qrPdfDocumentId, seedQrEnv } from '@server-test/qrcode-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import { QR_FOLDER_SETTING } from './folders';
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 const call = (email: string, method: string, payload: unknown) =>
-  qrRpc(env, email, method, payload);
+  qrCall(env, email, method, payload);
 const PNG1 = {
   mime: 'image/png',
   bytes: bytesOfBase64('iVBORw0KGgoAAAANSUhEUg=='),
@@ -37,8 +38,15 @@ const PNG1 = {
 };
 const PDF = 'JVBERi0xLjQK';
 
+/** Nama dan item konfigurasi yang sudah ada, agar simpan-ubah tidak mengganti item. */
+const keepManualBook = (dto: { name: string; items: { id: string }[] }) => ({
+  name: dto.name,
+  itemIds: dto.items.map((item) => item.id),
+});
+
 async function input(extra: Record<string, unknown> = {}) {
   return {
+    ...(await qrManualBookFields(env)),
     title: 'Panduan',
     linkSource: 'pdf',
     link: '',
@@ -54,11 +62,12 @@ async function input(extra: Record<string, unknown> = {}) {
 async function save(payload: Record<string, unknown> = {}, email = 'qredit@gmail.com') {
   const body: Record<string, unknown> = { ...(await input()), ...payload };
   if (body.id) {
-    const current = await call('qrview@gmail.com', 'qrcodes.get', { id: body.id });
+    const current = await call('qredit@gmail.com', 'qrcodes.get', { id: body.id });
     if (current.ok) {
       // Mengubah wajib membawa versi yang dimuat; satu PDF hanya untuk satu konfigurasi.
       if (body.expectedUpdatedAt === undefined) body.expectedUpdatedAt = current.data.updatedAt;
       if (payload.documentId === undefined) body.documentId = current.data.documentId;
+      Object.assign(body, { ...keepManualBook(current.data), ...payload });
     }
   }
   return call(email, 'qrcodes.save', body);
@@ -166,6 +175,7 @@ describe('konfigurasi QR', () => {
     env.clock.advance(1000);
     const base = {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       expectedUpdatedAt: made.data.updatedAt,
@@ -257,6 +267,7 @@ describe('konfigurasi QR', () => {
     env.clock.advance(60_000);
     const { style: _omit, ...withoutStyle } = {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       expectedUpdatedAt: changed.data.updatedAt,
@@ -303,6 +314,7 @@ describe('konfigurasi QR', () => {
     const made = await save();
     const without = await call('qredit@gmail.com', 'qrcodes.save', {
       ...(await input()),
+      ...keepManualBook(made.data),
       id: made.data.id,
       documentId: made.data.documentId,
       title: 'Baru',
@@ -366,7 +378,8 @@ describe('link, logo, dan berkas', () => {
 
   test('logo: berkas tak dikenal ditolak; logo yang sama boleh dirujuk banyak konfigurasi', async () => {
     expect((await save({ logoFileId: 'tidak-ada' })).error.code).toBe('VALIDATION');
-    const up = await call('qredit@gmail.com', 'files.upload', PNG1);
+    // pengunggah = penyimpan pustaka (unggahan belum terpasang hanya dapat dipasang pengunggahnya)
+    const up = await call('qrmanage@gmail.com', 'files.upload', PNG1);
     expect(up.ok).toBe(true);
     const logo = up.data.id as string;
     expect((await save({ title: 'A', logoFileId: logo })).error.code).toBe('VALIDATION');
@@ -377,6 +390,38 @@ describe('link, logo, dan berkas', () => {
       .bind(logo)
       .first();
     expect(row).toEqual({ owner_type: 'qrlogo', owner_id: 'shared' });
+  });
+
+  test('jalur QR memasang berkas seperti jalur item: pending milik user lain dan berkas item dijawab VALIDATION identik dengan id tak dikenal', async () => {
+    const pendingOfEditor = await uploadAs('qredit@gmail.com');
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'item-1', brand: 'Sony', model: 'Rahasia-Tipe' });
+    const itemFile = await uploadAs('qrmanage@gmail.com');
+    await attachFiles(env, [itemFile], 'item', 'item-1');
+    const current = (await call('qrview@gmail.com', 'qrcodes.getDefaults', null)).data;
+    const library = (ids: string[]) =>
+      call('qrmanage@gmail.com', 'qrcodes.saveLogoLibrary', {
+        ...(current.logoUpdatedAt ? { expectedUpdatedAt: current.logoUpdatedAt } : {}),
+        logoFileIds: ids,
+      });
+    const unknown = await library(['tidak-ada-id']);
+    expect(unknown.error.code).toBe('VALIDATION');
+    for (const id of [pendingOfEditor, itemFile]) {
+      const out = await library([id]);
+      expect(out.error.code).toBe('VALIDATION');
+      expect(out.error.message).toBe(unknown.error.message);
+      expect(JSON.stringify(out.error).toLowerCase()).not.toContain('rahasia');
+      expect(JSON.stringify(out.error)).not.toContain(id);
+    }
+    // berkas tidak berubah pemilik
+    const rows = await env.DB.prepare('SELECT id, owner_type FROM files ORDER BY id').all<{
+      id: string;
+      owner_type: string;
+    }>();
+    expect(Object.fromEntries(rows.results.map((row) => [row.id, row.owner_type]))).toEqual({
+      [pendingOfEditor]: '',
+      [itemFile]: 'item',
+    });
   });
 
   async function addToLibrary(...ids: string[]) {
@@ -395,8 +440,8 @@ describe('link, logo, dan berkas', () => {
   };
 
   test('mengganti logo ke logo lain TERSIMPAN dan tercatat di audit', async () => {
-    const a = await uploadAs('qredit@gmail.com');
-    const b = await uploadAs('qredit@gmail.com');
+    const a = await uploadAs('qrmanage@gmail.com');
+    const b = await uploadAs('qrmanage@gmail.com');
     await addToLibrary(a, b);
     const made = await save({ logoFileId: a });
     env.clock.advance(60_000);
@@ -411,9 +456,12 @@ describe('link, logo, dan berkas', () => {
   });
 
   test('files.get untuk pengguna qrcode tanpa izin item: hanya logo (qrlogo) dan unggahannya sendiri yang belum terpasang', async () => {
-    const logo = await uploadAs('qredit@gmail.com');
+    const logo = await uploadAs('qrmanage@gmail.com');
     await addToLibrary(logo);
     const itemFile = await uploadAs('qredit@gmail.com');
+    // berkas item hanya terbaca bila item pemiliknya punya BU yang terlihat (noqr = item view, Semua BU)
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'item-1', brand: 'Sony', model: 'Satu' });
     await attachFiles(env, [itemFile], 'item', 'item-1');
     const mine = await uploadAs('qredit@gmail.com');
     expect((await call('qrview@gmail.com', 'files.get', { id: logo })).ok).toBe(true);
@@ -603,7 +651,7 @@ describe('pencabutan berbagi PDF sumber', () => {
     ).toBe(true);
   });
 
-  test('langkah pasca-simpan yang gagal (ubah nama berkas) tidak menggagalkan RPC setelah konfigurasi tersimpan', async () => {
+  test('langkah pasca-simpan yang gagal (ubah nama berkas) tidak menggagalkan permintaan setelah konfigurasi tersimpan', async () => {
     const doc = (await upload()).data.id;
     env.BRIDGE.renameFile = async () => {
       throw new Error('Drive sementara gagal');

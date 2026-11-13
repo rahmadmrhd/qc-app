@@ -1,4 +1,4 @@
-import type { HandoverOptionsDto, MeDto } from '@shared/rpc';
+import type { HandoverOptionsDto, MeDto } from '@shared/contract';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -15,13 +15,15 @@ const meMock = vi.hoisted(() => ({
       handover: 'none',
       qc: 'none',
       stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
     },
     locations: [
       {
         id: 'loc-a',
         code: 'A',
         name: 'Lokasi A',
-        permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+        permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
       },
     ],
   } as MeDto,
@@ -35,6 +37,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { toHandoverFormDefaults } from '../schemas';
 import { HandoverForm } from './handover-form';
 
@@ -45,6 +48,7 @@ const options: HandoverOptionsDto = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetUnsavedChangesForTests();
 });
 
 function renderForm(props: Partial<Parameters<typeof HandoverForm>[0]> = {}) {
@@ -77,6 +81,13 @@ test('form task tunggal tidak punya pemilihan item; mengirim {locationId, custom
     customerName: 'Perusahaan Baru',
     note: '- [ ] RB5009',
   });
+});
+
+test('mengetik di formulir mendaftarkan perubahan belum disimpan; formulir bersih tidak', async () => {
+  renderForm();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
+  expect(hasUnsavedChanges()).toBe(true);
 });
 
 test('customer boleh kosong, tetapi catatan kosong ditolak dengan pesan jelas', async () => {

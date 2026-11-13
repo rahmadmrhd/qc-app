@@ -1,5 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { getSession, PERSISTED_CACHE_KEY } from '@/modules/auth/session';
+import {
+  getSession,
+  LEGACY_PERSISTED_CACHE_KEYS,
+  PERSISTED_CACHE_KEY,
+} from '@/modules/auth/session';
 
 /** Umur maksimal cache tersimpan; lebih tua dari ini dibuang (data tetap dimuat ulang di latar belakang bila basi). */
 export const PERSIST_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -24,8 +28,11 @@ interface PersistedEntry {
   updatedAt: number;
 }
 
+/** Versi amplop; selaras dengan akhiran `PERSISTED_CACHE_KEY`. */
+const PERSIST_VERSION = 3;
+
 interface PersistedCache {
-  v: 1;
+  v: typeof PERSIST_VERSION;
   owner: string;
   savedAt: number;
   entries: PersistedEntry[];
@@ -38,12 +45,18 @@ function keyId(key: readonly unknown[]): string {
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
 /** `owner` = email pengguna yang sesinya sudah diverifikasi server (GET /api/v1/me); cache milik orang lain dibuang. */
 export function restoreQueryCache(queryClient: QueryClient, owner: string | null): number {
-  if (!owner) return 0;
   try {
+    // Cache bundel lama berbentuk data lama (mis. tanpa `businessUnits`/`businessUnitIds`): dibuang, tidak dipulihkan.
+    for (const key of LEGACY_PERSISTED_CACHE_KEYS) localStorage.removeItem(key);
+    if (!owner) return 0;
     const raw = localStorage.getItem(PERSISTED_CACHE_KEY);
     if (!raw) return 0;
     const saved = JSON.parse(raw) as PersistedCache;
-    if (saved.v !== 1 || saved.owner !== owner || Date.now() - saved.savedAt > PERSIST_MAX_AGE_MS) {
+    if (
+      saved.v !== PERSIST_VERSION ||
+      saved.owner !== owner ||
+      Date.now() - saved.savedAt > PERSIST_MAX_AGE_MS
+    ) {
       return 0;
     }
     let restored = 0;
@@ -73,7 +86,7 @@ export function savePersistedQueryCache(queryClient: QueryClient): void {
   try {
     if (entries.length === 0) return;
     const text = JSON.stringify({
-      v: 1,
+      v: PERSIST_VERSION,
       owner,
       savedAt: Date.now(),
       entries,

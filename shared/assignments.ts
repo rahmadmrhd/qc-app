@@ -1,13 +1,15 @@
+import type { BuAssignment, BuPermissionMap } from './business-units';
+import { BU_MODULES, globalBuLevel, resolveBuAccess } from './business-units';
 import type { Level, ModuleKey, PartialPermissionMap, PermissionMap } from './permissions';
 import { mergePermissions } from './permissions';
 
-/** Modul yang izinnya dihitung per lokasi. `access` dan `item` bersifat global (PRD FR-P7, FP2). */
-export const LOCATION_MODULES = ['handover', 'qc', 'stock'] as const;
+/** Modul yang izinnya dihitung per lokasi. `access` global; `item` dihitung per BU (`business-units.ts`). */
+export const LOCATION_MODULES = ['handover', 'qc', 'stock', 'stickerstock'] as const;
 export type LocatedModule = (typeof LOCATION_MODULES)[number];
 export type LocationPermissionMap = Record<LocatedModule, Level>;
 
-/** Modul global yang levelnya dihitung dari SEMUA penugasan berlaku, bukan hanya "Semua lokasi". */
-export const SHARED_MODULES = ['item', 'qrcode'] as const;
+/** Modul global yang levelnya dihitung dari SEMUA penugasan lokasi berlaku, bukan hanya "Semua lokasi". */
+export const SHARED_MODULES = ['qrcode', 'sticker'] as const;
 
 /** Kunci peta/snapshot untuk penugasan "Semua lokasi". */
 export const ALL_LOCATIONS_KEY = '*';
@@ -23,6 +25,8 @@ export interface ResolvedAccess {
   global: PermissionMap;
   /** Izin efektif per lokasi aktif; lokasi tanpa izin apa pun tidak dimasukkan. */
   byLocation: Record<string, LocationPermissionMap>;
+  /** Izin efektif per BU untuk modul ber-BU; BU tanpa izin apa pun tidak dimasukkan. */
+  byBu: Record<string, BuPermissionMap>;
 }
 
 export function assignmentKey(locationId: string | null): string {
@@ -34,7 +38,7 @@ export function isLocatedModule(module: ModuleKey): module is LocatedModule {
 }
 
 export function fullLocationPermissions(): LocationPermissionMap {
-  return { handover: 'manage', qc: 'manage', stock: 'manage' };
+  return { handover: 'manage', qc: 'manage', stock: 'manage', stickerstock: 'manage' };
 }
 
 function cleanAssignmentIds(value: unknown): string[] {
@@ -87,12 +91,18 @@ function rolePermissionSources(
  * Izin efektif seorang user: global dan per lokasi aktif.
  * - Per lokasi: gabungan "Semua lokasi" + penugasan lokasi itu (level tertinggi per modul).
  * - Global: hanya dari "Semua lokasi" (satu-satunya sumber `access`); kecuali `SHARED_MODULES`
- *   (`item`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif).
+ *   (`qrcode`, `sticker`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
+ *   hanya dari penugasan BU (level tertinggi di antara semuanya).
+ * - Per BU (`byBu`): gabungan "Semua BU" + penugasan BU itu untuk modul ber-BU.
  */
 export function resolveAccess(
   assignments: readonly Assignment[],
   rolePermissions: ReadonlyMap<string, PartialPermissionMap>,
   activeLocationIds: readonly string[],
+  bu: { assignments: readonly BuAssignment[]; allBuIds: readonly string[] } = {
+    assignments: [],
+    allBuIds: [],
+  },
 ): ResolvedAccess {
   const everywhere = assignments.find((entry) => entry.locationId === null);
   const globalSources = rolePermissionSources(everywhere?.roleIds ?? [], rolePermissions);
@@ -106,6 +116,9 @@ export function resolveAccess(
     applicable.flatMap((entry) => rolePermissionSources(entry.roleIds, rolePermissions)),
   );
   for (const module of SHARED_MODULES) global[module] = shared[module];
+  for (const module of BU_MODULES) {
+    global[module] = globalBuLevel(bu.assignments, rolePermissions, module);
+  }
 
   const byLocation: Record<string, LocationPermissionMap> = {};
   for (const locationId of activeLocationIds) {
@@ -118,5 +131,9 @@ export function resolveAccess(
     for (const module of LOCATION_MODULES) entry[module] = merged[module];
     if (LOCATION_MODULES.some((module) => entry[module] !== 'none')) byLocation[locationId] = entry;
   }
-  return { global, byLocation };
+  return {
+    global,
+    byLocation,
+    byBu: resolveBuAccess(bu.assignments, rolePermissions, bu.allBuIds),
+  };
 }

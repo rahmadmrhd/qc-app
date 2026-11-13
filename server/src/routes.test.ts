@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { RpcMethod } from '@shared/rpc';
+import type { ApiId } from '@shared/contract';
 import { app } from './app';
 import type { RouteTable } from './core/router';
 import { signSessionToken } from './core/session';
-import { ALL_RPC_METHODS, getRoutes } from './routes';
+import { ALL_API_IDS, getRoutes } from './routes';
 
 let env: TestEnv;
 
@@ -13,7 +13,7 @@ async function cookieFor(email: string) {
   return `qc_session=${await signSessionToken(env, email, env.clock.now())}`;
 }
 
-const rpcHeaders = (cookie?: string) => ({
+const apiHeaders = (cookie?: string) => ({
   'content-type': 'application/json',
   'x-requested-with': 'qc',
   ...(cookie ? { cookie } : {}),
@@ -36,19 +36,19 @@ beforeEach(async () => {
   });
 });
 
-describe('kontrak RPC', () => {
-  test('tipe: tabel rute mencakup setiap kunci RpcContract', () => {
+describe('kontrak API', () => {
+  test('tipe: tabel rute mencakup setiap kunci ApiContract', () => {
     // Kompilator menolak literal yang kekurangan kunci.
     // @ts-expect-error tabel parsial bukan RouteTable
     const parsial: RouteTable = {};
     expect(parsial).toBeDefined();
-    const dihitung: Record<RpcMethod, true> = ALL_RPC_METHODS;
+    const dihitung: Record<ApiId, true> = ALL_API_IDS;
     expect(Object.keys(dihitung).length).toBeGreaterThan(40);
   });
 
   test('getRoutes memuat tepat semua method kontrak, masing-masing punya validate dan handler', () => {
     const routes = getRoutes();
-    expect(Object.keys(routes).sort()).toEqual(Object.keys(ALL_RPC_METHODS).sort());
+    expect(Object.keys(routes).sort()).toEqual(Object.keys(ALL_API_IDS).sort());
     for (const route of Object.values(routes)) {
       expect(typeof route.validate).toBe('function');
       expect(typeof route.handler).toBe('function');
@@ -73,7 +73,7 @@ describe('auth.me (GET /api/v1/me)', () => {
           id: 'l-j',
           code: 'JKT',
           name: 'Jakarta',
-          permissions: { handover: 'manage', qc: 'none', stock: 'none' },
+          permissions: { handover: 'manage', qc: 'none', stock: 'none', stickerstock: 'none' },
         },
       ],
     });
@@ -90,6 +90,7 @@ describe('auth.me (GET /api/v1/me)', () => {
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
+      stickerstock: 'manage',
     });
   });
 
@@ -98,7 +99,7 @@ describe('auth.me (GET /api/v1/me)', () => {
       '/api/rpc',
       {
         method: 'POST',
-        headers: rpcHeaders(await cookieFor('budi@gmail.com')),
+        headers: apiHeaders(await cookieFor('budi@gmail.com')),
         body: JSON.stringify({ method: 'auth.me', payload: null }),
       },
       env,

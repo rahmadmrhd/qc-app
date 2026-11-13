@@ -1,7 +1,13 @@
-import type { AuthErrorCode } from '@shared/rpc';
+import type { AuthErrorCode } from '@shared/contract';
 
-/** Cache query tersimpan (lihat app/query-persist); dibuang saat keluar/sesi berakhir. */
-export const PERSISTED_CACHE_KEY = 'qc.cache.v1';
+/**
+ * Cache query tersimpan (lihat app/query-persist); dibuang saat keluar/sesi berakhir. Naikkan versi pada kunci DAN
+ * amplopnya setiap bentuk data yang disimpan berubah (mis. field baru pada `MeDto`/`BrandDto`), dan daftarkan kunci
+ * lama di `LEGACY_PERSISTED_CACHE_KEYS` agar ikut dibersihkan.
+ */
+export const PERSISTED_CACHE_KEY = 'qc.cache.v3';
+/** Kunci versi lama: tak pernah dibaca lagi, hanya dibuang (restore dan keluar). */
+export const LEGACY_PERSISTED_CACHE_KEYS: readonly string[] = ['qc.cache.v1', 'qc.cache.v2'];
 
 /** Awal alur login Google (ditangani server, rute `/auth/*`). */
 export const LOGIN_URL = '/auth/login';
@@ -53,4 +59,5 @@ export function markAuthenticated(email: string): void {
 export function clearSession(): void {
   state = { ...state, authenticated: false, email: null };
   safeRemove(PERSISTED_CACHE_KEY);
+  for (const key of LEGACY_PERSISTED_CACHE_KEYS) safeRemove(key);
 }

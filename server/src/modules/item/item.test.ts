@@ -4,12 +4,13 @@ import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
 import { listBrands } from '@server/modules/brand/repo';
 import { uploadFile } from '@server/modules/files/service';
+import { seedBusinessUnit } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
-import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { brandIdOf, DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import type { SaveItemInput } from '@shared/contract';
 import { hashText } from '@shared/items';
-import type { SaveItemInput } from '@shared/rpc';
 import { findItem } from './repo';
 import { getItemDto, listItemPage, planItemWrite, saveItem, setItemStatus } from './service';
 
@@ -19,11 +20,12 @@ let env: TestEnv;
 let admin: UserContext;
 
 const baseInput: SaveItemInput = {
-  brand: 'Ubiquiti',
+  brandId: brandIdOf('Ubiquiti'),
+  businessUnitIds: [DEFAULT_TEST_BU_ID],
   model: 'ES 24 250W',
   isCountryLock: false,
   aliases: [],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',
@@ -59,16 +61,18 @@ const auditActions = async () =>
 const itemCount = async () =>
   (await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first<{ n: number }>())?.n;
 
-const rev = async (id: string) =>
-  (
-    await env.DB.prepare('SELECT sync_rev FROM items WHERE id = ?')
-      .bind(id)
-      .first<{ sync_rev: number }>()
-  )?.sync_rev ?? -1;
+const linkCount = async () =>
+  Number(
+    (await env.DB.prepare('SELECT COUNT(*) AS n FROM item_business_units').first<{ n: number }>())
+      ?.n,
+  );
 
 beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
+  // BU bawaan fixture dibuat SEBELUM konteks admin dimuat (konteks super admin memuat BU yang ada saat itu).
+  await seedBusinessUnit(env, { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' });
+  await seedBrand(env, 'Ubiquiti');
   const ctx = await loadUserContext(env, 'admin@gmail.com');
   if (!ctx) throw new Error('admin hilang');
   admin = ctx;
@@ -83,10 +87,6 @@ describe('simpan', () => {
         ...baseInput,
         detail,
         aliases: ['ES24'],
-        stickers: [
-          { name: 'Label SNI', note: 'Belakang', fileId: null },
-          { name: 'Garansi', note: '', fileId: null },
-        ],
         accessories: [{ name: 'Kabel daya', qty: 2 }],
       },
       admin,
@@ -95,13 +95,15 @@ describe('simpan', () => {
       brand: 'Ubiquiti',
       model: 'ES 24 250W',
       status: 'active',
-      externalId: '',
       isCountryLock: false,
       imageCount: 0,
       updatedBy: 'admin@gmail.com',
       createdAt: '2026-10-09T00:00:00.000Z',
     });
     expect(saved.detail).toBe(detail);
+    expect(saved.businessUnits).toEqual([
+      { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' },
+    ]);
     const audit = await lastAudit();
     expect(audit).toMatchObject({
       action: 'item.create',
@@ -109,11 +111,12 @@ describe('simpan', () => {
       before: null,
       after: {
         brand: 'Ubiquiti',
+        businessUnits: ['DEF'],
         model: 'ES 24 250W',
         isCountryLock: false,
         status: 'active',
         aliases: ['ES24'],
-        stickers: ['Label SNI — Belakang', 'Garansi'],
+        stickerPhotos: '0 foto, 0 penanda',
         accessories: ['Kabel daya ×2'],
         attachments: [],
         detailLength: detail.length,
@@ -127,7 +130,7 @@ describe('simpan', () => {
     await saveItem(env, baseInput, admin);
     for (const variant of ['es-24 250w', 'ES_24  250W', '(ES) 24, 250W']) {
       const error = await captureAppErrorAsync(() =>
-        saveItem(env, { ...baseInput, brand: 'UBIQUITI', model: variant }, admin),
+        saveItem(env, { ...baseInput, model: variant }, admin),
       );
       expect(error).toMatchObject({
         code: 'CONFLICT',
@@ -160,7 +163,7 @@ describe('simpan', () => {
 
   test('nama lain: tidak boleh sama dengan merk+tipe sendiri, merk+tipe item lain, atau nama lain item lain', async () => {
     await saveItem(env, { ...baseInput, aliases: ['AirSwitch', 'Ubiquiti ES24'] }, admin);
-    const other = { ...baseInput, brand: 'Mikrotik', model: 'CRS' };
+    const other = { ...baseInput, brandId: await seedBrand(env, 'Mikrotik'), model: 'CRS' };
     expect(
       await captureAppErrorAsync(() =>
         saveItem(env, { ...other, aliases: ['mikrotik-crs'] }, admin),
@@ -175,7 +178,7 @@ describe('simpan', () => {
           saveItem(env, { ...other, aliases: ['ubiquiti es 24 250w'] }, admin),
         )
       ).fields?.aliases,
-    ).toContain('sudah dipakai item Ubiquiti ES 24 250W');
+    ).toBe('Nama lain "ubiquiti es 24 250w" sudah dipakai item lain');
     expect(
       (
         await captureAppErrorAsync(() =>
@@ -186,26 +189,27 @@ describe('simpan', () => {
     expect(
       (await captureAppErrorAsync(() => saveItem(env, { ...other, aliases: ['AIRSWITCH'] }, admin)))
         .fields?.aliases,
-    ).toContain('"AIRSWITCH" sudah dipakai item Ubiquiti ES 24 250W');
-    expect(
-      await captureAppErrorAsync(() =>
-        saveItem(env, { ...baseInput, brand: 'Ubiquiti', model: 'ES24' }, admin),
-      ),
-    ).toMatchObject({
+    ).toBe('Nama lain "AIRSWITCH" sudah dipakai item lain');
+    const holder = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, model: 'ES24' }, admin),
+    );
+    expect(holder).toMatchObject({
       code: 'CONFLICT',
-      fields: { model: 'Sama dengan nama lain item Ubiquiti ES 24 250W' },
+      message: 'Merk dan tipe sama dengan nama lain item lain',
+      fields: { model: 'Merk dan tipe sama dengan nama lain item lain' },
     });
+    // tidak membocorkan merk/tipe item pemegang (hanya ketikan user sendiri yang boleh muncul)
+    expect(JSON.stringify([holder.message, holder.fields])).not.toMatch(/ubiquiti|250w/i);
     expect(await itemCount()).toBe(1);
   });
 
-  test('gambar galeri, contoh stiker, dan Markdown ditautkan ke item dalam satu batch', async () => {
-    const [gallery, sticker, inText] = [await newFile(), await newFile(), await newFile()];
+  test('gambar galeri dan Markdown ditautkan ke item dalam satu batch', async () => {
+    const [gallery, inText] = [await newFile(), await newFile()];
     const saved = await saveItem(
       env,
       {
         ...baseInput,
         attachments: [gallery],
-        stickers: [{ name: 'Label', note: '', fileId: sticker }],
         detail: `Teks ![x](qcfile:${inText}) dan ![lagi](qcfile:${gallery})`,
       },
       admin,
@@ -217,26 +221,20 @@ describe('simpan', () => {
         owner_id: string;
       }>()
     ).results.map((f) => [f.id, f.owner_type, f.owner_id]);
-    expect(owned.sort()).toEqual(
-      [gallery, sticker, inText].map((id) => [id, 'item', saved.id]).sort(),
-    );
+    expect(owned.sort()).toEqual([gallery, inText].map((id) => [id, 'item', saved.id]).sort());
     expect(saved.imageCount).toBe(1);
   });
 
-  test('rujukan berkas yang gagal membatalkan seluruh simpan: tidak ada item, pemilik tak berubah, tak ada merk yatim', async () => {
+  test('rujukan berkas yang gagal membatalkan seluruh simpan: tidak ada item, pemilik tak berubah, tak ada baris BU yatim', async () => {
     const [free, taken] = [await newFile(), await newFile()];
-    await saveItem(
-      env,
-      { ...baseInput, brand: 'Lain', model: 'Item', attachments: [taken] },
-      admin,
-    );
+    await saveItem(env, { ...baseInput, model: 'Item', attachments: [taken] }, admin);
     const filesBefore = JSON.stringify(
       (await env.DB.prepare('SELECT * FROM files ORDER BY id').all()).results,
     );
     expect(
       (
         await captureAppErrorAsync(() =>
-          saveItem(env, { ...baseInput, brand: 'Baru', attachments: [free, 'hilang'] }, admin),
+          saveItem(env, { ...baseInput, model: 'Baru', attachments: [free, 'hilang'] }, admin),
         )
       ).code,
     ).toBe('VALIDATION');
@@ -255,7 +253,7 @@ describe('simpan', () => {
       JSON.stringify((await env.DB.prepare('SELECT * FROM files ORDER BY id').all()).results),
     ).toBe(filesBefore);
     expect(await itemCount()).toBe(1);
-    expect((await listBrands(env)).map((b) => b.name)).toEqual(['Lain']);
+    expect(await linkCount()).toBe(1);
   });
 
   test('rujukan berkas bermasalah dilaporkan di field yang sesuai', async () => {
@@ -267,10 +265,6 @@ describe('simpan', () => {
       code: 'VALIDATION',
       fields: { attachments: expect.stringContaining('tidak dikenal') },
     });
-    const stk = await captureAppErrorAsync(() =>
-      saveItem(env, { ...baseInput, stickers: [{ name: 'S', note: '', fileId: ghost }] }, admin),
-    );
-    expect(stk.fields?.stickers).toBe('Stiker 1: gambar tidak dikenal; unggah ulang');
     const det = await captureAppErrorAsync(() =>
       saveItem(env, { ...baseInput, detail: `![x](qcfile:${ghost})` }, admin),
     );
@@ -287,18 +281,14 @@ describe('simpan', () => {
     expect(await itemCount()).toBe(1);
   });
 
-  test('mengubah item mempertahankan id MySQL, revisi sinkron, dan waktu dibuat', async () => {
-    await seedItem(env, { id: 'i1', brand: 'Ubiquiti', model: 'ES 24 250W', syncRev: 7 });
-    await env.DB.prepare(
-      "UPDATE items SET external_id = '12', created_at = '2026-01-01T00:00:00.000Z'",
-    ).run();
+  test('mengubah item mempertahankan waktu dibuat', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Ubiquiti', model: 'ES 24 250W' });
+    await env.DB.prepare("UPDATE items SET created_at = '2026-01-01T00:00:00.000Z'").run();
     const saved = await saveItem(env, { ...baseInput, id: 'i1', isCountryLock: true }, admin);
     expect(saved).toMatchObject({
-      externalId: '12',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-10-09T00:00:00.000Z',
     });
-    expect(await rev('i1')).toBe(1);
   });
 
   test('mengubah item mencatat snapshot sebelum dan sesudah; id tak dikenal NOT_FOUND', async () => {
@@ -336,98 +326,63 @@ describe('simpan', () => {
     ).toBe('NOT_FOUND');
   });
 
-  test('merk baru dibuat langsung saat item disimpan; merk sama (kunci ternormalisasi) dipakai ulang', async () => {
-    const first = await saveItem(env, { ...baseInput, brand: 'Ubiquiti' }, admin);
-    expect((await listBrands(env)).map((b) => b.name)).toEqual(['Ubiquiti']);
-    expect(await auditActions()).toEqual(['brand.create', 'item.create']);
-    const second = await saveItem(env, { ...baseInput, brand: ' ubiquiti', model: 'AF' }, admin);
+  test('merk dipilih lewat brandId: nama dari tabel merk, tidak ada merk dibuat dari simpan item; brandId tak dikenal VALIDATION', async () => {
+    const first = await saveItem(env, baseInput, admin);
+    expect(first.brandId).toBe(brandIdOf('Ubiquiti'));
+    expect(first.brand).toBe('Ubiquiti');
+    expect(await auditActions()).toEqual(['item.create']);
     expect(await listBrands(env)).toHaveLength(1);
-    expect(second.brandId).toBe(first.brandId);
-    expect(second.brand).toBe('Ubiquiti');
+    const error = await captureAppErrorAsync(() =>
+      saveItem(env, { ...baseInput, brandId: 'tidak-ada', model: 'AF' }, admin),
+    );
+    expect(error).toMatchObject({
+      code: 'VALIDATION',
+      fields: { brandId: 'Merk tidak ditemukan' },
+    });
+    expect(await listBrands(env)).toHaveLength(1);
+    expect(await itemCount()).toBe(1);
   });
 
   test('merk nonaktif tidak bisa dipakai item baru, tetapi item lama merk itu tetap dapat disimpan', async () => {
-    await seedBrand(env, 'Lama', { status: 'inactive' });
+    const lama = await seedBrand(env, 'Lama', { status: 'inactive' });
     expect(
-      (await captureAppErrorAsync(() => saveItem(env, { ...baseInput, brand: 'lama' }, admin)))
+      (await captureAppErrorAsync(() => saveItem(env, { ...baseInput, brandId: lama }, admin)))
         .fields,
-    ).toEqual({ brand: 'Merk dinonaktifkan; aktifkan dulu di halaman Merk' });
+    ).toEqual({ brandId: 'Merk dinonaktifkan; aktifkan dulu di halaman Merk' });
     expect(await itemCount()).toBe(0);
     await seedItem(env, { id: 'i1', brand: 'Lama', model: 'X' });
     expect(
       (
         await saveItem(
           env,
-          { ...baseInput, id: 'i1', brand: 'Lama', model: 'X', isCountryLock: true },
+          { ...baseInput, id: 'i1', brandId: lama, model: 'X', isCountryLock: true },
           admin,
         )
       ).isCountryLock,
     ).toBe(true);
   });
 
-  test('galat validasi lain tidak meninggalkan merk yatim', async () => {
-    await saveItem(env, { ...baseInput, brand: 'A', model: 'B' }, admin);
-    const before = (await listBrands(env)).length;
+  test('galat validasi tidak meninggalkan apa pun: tanpa item, baris BU, atau audit tambahan', async () => {
+    await saveItem(env, { ...baseInput, model: 'B' }, admin);
+    const audits = (await auditActions()).length;
     expect(
       (
         await captureAppErrorAsync(() =>
-          saveItem(env, { ...baseInput, brand: 'Baru', model: 'x', attachments: ['hantu'] }, admin),
+          saveItem(env, { ...baseInput, model: 'x', attachments: ['hantu'] }, admin),
         )
       ).code,
     ).toBe('VALIDATION');
-    expect(await listBrands(env)).toHaveLength(before);
+    expect(await itemCount()).toBe(1);
+    expect(await linkCount()).toBe(1);
+    expect((await auditActions()).length).toBe(audits);
   });
 });
 
-describe('sync_rev', () => {
-  test('baru dan setiap perubahan field sinkron naik; ubah alias saja tidak (FS11)', async () => {
-    const created = await saveItem(env, { ...baseInput }, admin);
-    expect(await rev(created.id)).toBe(1);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'] }, admin);
-    expect(await rev(created.id)).toBe(1);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
-    expect(await rev(created.id)).toBe(2);
-    env.clock.advance(1000);
-    await saveItem(env, { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru' }, admin);
-    expect(await rev(created.id)).toBe(2);
-    env.clock.advance(1000);
-    await saveItem(
-      env,
-      { ...baseInput, id: created.id, aliases: ['ES24'], detail: 'baru', isCountryLock: true },
-      admin,
-    );
-    expect(await rev(created.id)).toBe(3);
-    env.clock.advance(1000);
-    await setItemStatus(env, { id: created.id, status: 'inactive' }, admin);
-    expect(await rev(created.id)).toBe(4);
-  });
-
-  test('kenaikan revisi dalam batch yang sama dengan simpan: gagal = revisi tidak naik', async () => {
-    const created = await saveItem(env, baseInput, admin);
-    env.clock.advance(1000);
-    await captureAppErrorAsync(() =>
-      saveItem(env, { ...baseInput, id: created.id, detail: 'x', attachments: ['hantu'] }, admin),
-    );
-    const state = await env.DB.prepare(
-      "SELECT seq FROM sync_state WHERE resource = 'items'",
-    ).first<{
-      seq: number;
-    }>();
-    expect(state?.seq).toBe(1);
-  });
-});
-
-describe('sync_rev dibaca dari hasil batch penulisan', () => {
-  test('INSERT dan UPDATE item menyertakan SELECT sync_rev (satu-satunya hasil berisi kolom sync_rev; penjaga merk mengembalikan guard_ok) sama dengan nilai tersimpan', async () => {
+describe('batch penulisan item', () => {
+  test('INSERT dan UPDATE pada merk yang sudah ada: pernyataan pertama adalah penjaga merk (I1), baris tersimpan', async () => {
     const plan = await planItemWrite(env, baseInput, { id: 'baru-1', actor: admin });
-    const created = await env.DB.batch(plan.statements);
-    const revRows = (batch: typeof created) =>
-      batch.filter((r) => r.results.some((row) => 'sync_rev' in (row as object)));
-    const written = revRows(created)[0]?.results[0] as { sync_rev: number };
-    expect(Number(written.sync_rev)).toBe(await rev('baru-1'));
-    expect(revRows(created)).toHaveLength(1);
+    await env.DB.batch(plan.statements);
+    expect(await itemCount()).toBe(1);
     env.clock.advance(1000);
     const existing = await findItem(env, 'baru-1');
     if (!existing) throw new Error('item hilang');
@@ -441,12 +396,9 @@ describe('sync_rev dibaca dari hasil batch penulisan', () => {
       },
     );
     const updated = await env.DB.batch(update.statements);
-    expect(revRows(updated)).toHaveLength(1);
     // merk sudah ada: pernyataan pertama batch adalah penjaga merk (I1)
     expect(updated[0]?.results[0]).toEqual({ guard_ok: 1 });
-    const after = revRows(updated)[0]?.results[0] as { sync_rev: number };
-    expect(Number(after.sync_rev)).toBe(2);
-    expect(await rev('baru-1')).toBe(2);
+    expect((await getItemDto(env, { id: 'baru-1' }, admin)).detail).toBe('berubah');
   });
 });
 
@@ -458,7 +410,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
       { ...baseInput, model: 'Emoji 😀', aliases: ['Mantap 😀', 'Nama 👍'], detail },
       admin,
     );
-    const got = await getItemDto(env, { id: saved.id });
+    const got = await getItemDto(env, { id: saved.id }, admin);
     expect(got.detail).toBe(detail);
     expect(got.model).toBe('Emoji 😀');
     expect(got.aliases).toEqual(['Mantap 😀', 'Nama 👍']);
@@ -476,7 +428,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
     ).results.map((r) => r.key);
     expect(keys).toEqual(['mantap', 'nama']);
     // pencarian lewat nama lain bernama emoji; menyimpan ulang tidak merusak
-    expect((await listItemPage(env, { query: 'mantap' })).items.map((i) => i.id)).toEqual([
+    expect((await listItemPage(env, { query: 'mantap' }, admin)).items.map((i) => i.id)).toEqual([
       saved.id,
     ]);
     env.clock.advance(1000);
@@ -485,7 +437,7 @@ describe('teks Unicode (emoji, 4 byte UTF-8)', () => {
       { ...baseInput, id: saved.id, model: 'Emoji 😀', aliases: ['Mantap 😀'], detail },
       admin,
     );
-    expect((await getItemDto(env, { id: saved.id })).detail).toBe(detail);
+    expect((await getItemDto(env, { id: saved.id }, admin)).detail).toBe(detail);
   });
 });
 
@@ -508,7 +460,7 @@ describe('konkurensi optimistis', () => {
     expect(stale.code).toBe('CONFLICT');
     expect(stale.message).toContain('diubah orang lain');
     expect(stale.stale).toBe(true);
-    expect((await getItemDto(env, { id: first.id })).detail).toBe('awal');
+    expect((await getItemDto(env, { id: first.id }, admin)).detail).toBe('awal');
     const ok = await saveItem(
       env,
       { ...baseInput, id: first.id, detail: 'cocok', expectedUpdatedAt: first.updatedAt },
@@ -521,7 +473,7 @@ describe('konkurensi optimistis', () => {
     ).toBe('tanpa');
   });
 
-  test('dua penyimpanan serentak dari versi yang sama: satu menang, satu CONFLICT, tanpa audit/revisi ganda', async () => {
+  test('dua penyimpanan serentak dari versi yang sama: satu menang, satu CONFLICT, tanpa audit ganda', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
     env.clock.advance(1000);
     const edit = (detail: string) =>
@@ -535,14 +487,14 @@ describe('konkurensi optimistis', () => {
     const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
     expect((rejected.reason as { code: string }).code).toBe('CONFLICT');
     expect((await auditActions()).filter((a) => a === 'item.update')).toHaveLength(1);
-    expect(await rev(first.id)).toBe(2);
+    // yang kalah dibatalkan utuh: isi tersimpan = milik pemenang
+    expect(['A', 'B']).toContain((await getItemDto(env, { id: first.id }, admin)).detail);
   });
 });
 
 describe('CAS digabung ke UPDATE (konkurensi)', () => {
-  test('ubah status dan simpan serentak dari versi yang sama: tak ada revisi ganda atau lompatan, yang kalah dibatalkan utuh', async () => {
+  test('ubah status dan simpan serentak dari versi yang sama: yang kalah dibatalkan utuh, tanpa audit ganda', async () => {
     const first = await saveItem(env, { ...baseInput, detail: 'awal' }, admin);
-    expect(await rev(first.id)).toBe(1);
     env.clock.advance(1000);
     const [saved, status] = await Promise.allSettled([
       saveItem(
@@ -562,19 +514,14 @@ describe('CAS digabung ke UPDATE (konkurensi)', () => {
     } else {
       expect(fulfilled).toBe(2);
     }
-    // Apa pun urutannya: revisi naik tepat satu per tulis yang berhasil (batch yang kalah dibatalkan utuh), tepat satu
-    // audit per tulis yang berhasil, penghitung sinkron ikut.
-    expect(await rev(first.id)).toBe(1 + fulfilled);
+    // Apa pun urutannya: tepat satu audit per tulis yang berhasil (batch yang kalah dibatalkan utuh), dan keadaan akhir
+    // = hasil tulis yang berhasil (simpan yang kalah tidak meninggalkan perubahan sebagian).
     expect(
       (await auditActions()).filter((a) => a.startsWith('item.') && a !== 'item.create'),
     ).toHaveLength(fulfilled);
-    expect(
-      (
-        await env.DB.prepare('SELECT seq FROM sync_state WHERE resource = ?')
-          .bind('items')
-          .first<{ seq: number }>()
-      )?.seq,
-    ).toBe(1 + fulfilled);
+    const final = await getItemDto(env, { id: first.id }, admin);
+    expect(final.status).toBe('inactive');
+    expect(final.detail).toBe(saved.status === 'fulfilled' ? 'baru' : 'awal');
   });
 
   test('item dengan nama lain: CAS basi membatalkan juga perubahan baris nama lain', async () => {
@@ -642,7 +589,6 @@ describe('status', () => {
 
 describe('daftar berkursor dan get', () => {
   test('urut menurut kunci merk+tipe, memuat nonaktif, tanpa detail Markdown', async () => {
-    await seedBrand(env, 'Ubiquiti');
     await seedItem(env, { id: 'i2', brand: 'Ubiquiti', model: 'B' });
     await env.DB.prepare(
       "UPDATE items SET detail_md = 'RAHASIA', attachments = '[\"f1\",\"f2\"]' WHERE id = 'i2'",
@@ -650,7 +596,7 @@ describe('daftar berkursor dan get', () => {
     await seedItem(env, { id: 'i1', brand: 'Mikrotik', model: 'Z', status: 'inactive' });
     await seedItem(env, { id: 'i3', brand: 'Ubiquiti', model: 'A' });
     await seedBrand(env, 'Mikrotik');
-    const page = await listItemPage(env, {});
+    const page = await listItemPage(env, {}, admin);
     expect(page.items.map((i) => `${i.brand} ${i.model}`)).toEqual([
       'Mikrotik Z',
       'Ubiquiti A',
@@ -675,12 +621,12 @@ describe('daftar berkursor dan get', () => {
         aliases: i === 7 ? ['Tujuh'] : [],
       });
     }
-    expect((await listItemPage(env, {})).items).toHaveLength(20);
+    expect((await listItemPage(env, {}, admin)).items).toHaveLength(20);
     const seen: string[] = [];
     let cursor: string | undefined;
     let pages = 0;
     do {
-      const page = await listItemPage(env, { limit: 20, ...(cursor ? { cursor } : {}) });
+      const page = await listItemPage(env, { limit: 20, ...(cursor ? { cursor } : {}) }, admin);
       seen.push(...page.items.map((i) => i.id));
       cursor = page.nextCursor ?? undefined;
       pages++;
@@ -688,11 +634,15 @@ describe('daftar berkursor dan get', () => {
     expect(pages).toBe(3);
     expect(new Set(seen).size).toBe(45);
     expect(seen[0]).toBe('i0');
-    const inactive = await listItemPage(env, { status: 'inactive', limit: 50 });
+    const inactive = await listItemPage(env, { status: 'inactive', limit: 50 }, admin);
     expect(inactive.items).toHaveLength(9);
-    expect((await listItemPage(env, { query: 'm12' })).items.map((i) => i.id)).toEqual(['i12']);
-    expect((await listItemPage(env, { query: 'tujuh' })).items.map((i) => i.id)).toEqual(['i7']);
-    expect((await listItemPage(env, { query: 'tidak ada' })).items).toHaveLength(0);
+    expect((await listItemPage(env, { query: 'm12' }, admin)).items.map((i) => i.id)).toEqual([
+      'i12',
+    ]);
+    expect((await listItemPage(env, { query: 'tujuh' }, admin)).items.map((i) => i.id)).toEqual([
+      'i7',
+    ]);
+    expect((await listItemPage(env, { query: 'tidak ada' }, admin)).items).toHaveLength(0);
   });
 
   test('daftar tidak menyentuh kolom JSON besar (stiker, kelengkapan, detail)', async () => {
@@ -700,11 +650,11 @@ describe('daftar berkursor dan get', () => {
     await env.DB.prepare(
       "UPDATE items SET stickers = '{rusak', accessories = '{rusak', detail_md = 'xxxxxxxxxx'",
     ).run();
-    const page = await listItemPage(env, {});
+    const page = await listItemPage(env, {}, admin);
     expect(page.items).toHaveLength(1);
     // lampiran rusak = 0 gambar, bukan galat
     await env.DB.prepare("UPDATE items SET attachments = '{rusak'").run();
-    expect((await listItemPage(env, {})).items[0]?.imageCount).toBe(0);
+    expect((await listItemPage(env, {}, admin)).items[0]?.imageCount).toBe(0);
   });
 
   test('getItemDto memuat detail lengkap; id tak dikenal NOT_FOUND', async () => {
@@ -712,13 +662,13 @@ describe('daftar berkursor dan get', () => {
     await env.DB.prepare(
       'UPDATE items SET detail_md = \'# isi\', accessories = \'[{"name":"x","qty":1}]\'',
     ).run();
-    expect(await getItemDto(env, { id: 'i1' })).toMatchObject({
+    expect(await getItemDto(env, { id: 'i1' }, admin)).toMatchObject({
       detail: '# isi',
       accessories: [{ name: 'x', qty: 1 }],
     });
-    expect((await captureAppErrorAsync(() => getItemDto(env, { id: 'tidak-ada' }))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await captureAppErrorAsync(() => getItemDto(env, { id: 'tidak-ada' }, admin))).code,
+    ).toBe('NOT_FOUND');
   });
 });
 
@@ -776,7 +726,8 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
   test('pindah merk memindahkan penghitung; status tidak mengubahnya', async () => {
     const saved = await saveItem(env, baseInput, admin);
     expect(await brandCount('Ubiquiti')).toBe(1);
-    await saveItem(env, { ...baseInput, id: saved.id, brand: 'Mikrotik' }, admin);
+    const mikrotik = await seedBrand(env, 'Mikrotik');
+    await saveItem(env, { ...baseInput, id: saved.id, brandId: mikrotik }, admin);
     expect(await brandCount('Ubiquiti')).toBe(0);
     expect(await brandCount('Mikrotik')).toBe(1);
     await setItemStatus(env, { id: saved.id, status: 'inactive' }, admin);
@@ -813,7 +764,7 @@ describe('indeks nama lain dan penghitung item per merk (migrasi 0009)', () => {
     });
     expect(racing.code).toBe('CONFLICT');
     expect(racing.fields?.aliases).toBeDefined();
-    expect((await getItemDto(env, { id: second.id })).aliases).toEqual([]);
+    expect((await getItemDto(env, { id: second.id }, admin)).aliases).toEqual([]);
   });
 
   test('nama lain sama dengan merk+tipe item lain tetap ditolak (kunci item vs nama lain)', async () => {

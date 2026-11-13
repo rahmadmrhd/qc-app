@@ -79,7 +79,6 @@ cd /root/apps/qc-app/staging
 umask 077
 # contoh: tulis nilai acak langsung ke berkas, tidak ke layar
 sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=$(openssl rand -hex 24)/" .env
-sed -i "s/^SYNC_API_TOKEN=.*/SYNC_API_TOKEN=$(openssl rand -hex 24)/" .env
 sed -i "s/^MARIADB_ROOT_PASSWORD=.*/MARIADB_ROOT_PASSWORD=$(openssl rand -hex 24)/" .env
 sed -i "s/^QC_DB_PASSWORD=.*/QC_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 chmod 600 .env
@@ -197,7 +196,7 @@ Prinsip: **ubah di sumber yang menyimpan nilai itu DULU, baru `.env`, lalu `dock
 - **Kata sandi root DB (`MARIADB_ROOT_PASSWORD`)**: `ALTER USER 'root'@'localhost' IDENTIFIED BY '<baru>';` (dan `'root'@'%'` bila ada) lebih dulu, baru ubah `.env`. Perubahan `.env` saja tidak mengubah root di volume yang sudah ada. `qc-app` tidak memakai root.
 - **Pengguna `qc_restore`** (`docs/setup-google.md` S8): kata sandinya tidak ada di `.env`; `ALTER USER 'qc_restore'@'%' IDENTIFIED BY '<baru>';` di database, lalu pakai nilai baru pada `RESTORE_DATABASE_URL` saat pemulihan. `QC_TEST_DB_PASSWORD` (pengguna tes) diperlakukan sama: database dulu, lalu `.env`.
 - **`SESSION_SECRET`**: cukup ubah di `.env` lalu `docker compose up -d`; EFEK: semua sesi login keluar (pengguna masuk ulang).
-- **`SYNC_API_TOKEN`**: ubah di `.env` lalu `docker compose up -d`; EFEK: klien QC Desktop memakai token lama ditolak (401) sampai token barunya dipasang di tiap klien. Atur waktunya.
+- **`SYNC_API_TOKEN`**: variabel dihapus (2026-11-08, modul sinkron QC Desktop dihapus). Baris itu di `.env` VPS boleh dibuang kapan saja; yang masih ada tidak berbahaya (diabaikan).
 - Setelah mengubah `.env` apa pun: `docker compose up -d` (bukan `restart`), lalu pastikan sehat (`docker inspect --format '{{.State.Health.Status}}' <QC_NAME>-app`).
 
 ## 13. Ringkasan pembatalan

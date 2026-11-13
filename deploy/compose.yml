@@ -75,7 +75,6 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET wajib diisi}
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:?OAUTH_CLIENT_ID wajib diisi}
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?OAUTH_CLIENT_SECRET wajib diisi}
-      SYNC_API_TOKEN: ${SYNC_API_TOKEN:?SYNC_API_TOKEN wajib diisi}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL wajib diisi}
       # Klien Google langsung (service account, T30a): kunci = BERKAS rahasia (volumes di bawah), bukan variabel.
       # Folder fungsi (item/QR/cadangan) opsional: kosong = dibuat di bawah folder induk dan dicatat di tabel settings.
@@ -100,6 +99,10 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       ALERT_TO: ${ALERT_TO:-}
+      # Web Push notifikasi Serah Terima: kunci VAPID (kosong/tak valid = push dinonaktifkan; lihat deploy/.env.example).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     volumes:
       - qc-backups:/var/backups/qc
       # Kunci service account: berkas rahasia di host (izin 600, disalin pemilik, tidak lewat GitHub), dipasang

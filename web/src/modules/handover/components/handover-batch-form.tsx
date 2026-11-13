@@ -1,7 +1,8 @@
+import type { HandoverOptionsDto } from '@shared/contract';
 import { HANDOVER_BATCH_MAX } from '@shared/handover';
-import type { HandoverOptionsDto } from '@shared/rpc';
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,7 @@ export function HandoverBatchForm({
   // Satu kartu kosong awal akan diganti oleh hasil tempel, jadi tidak memakai slot.
   const pristine = cards.length === 1 && cards[0]?.note === '' && cards[0].customerName === '';
   const remaining = HANDOVER_BATCH_MAX - (pristine ? 0 : cards.length);
+  useUnsavedChanges(!pristine);
 
   function patch(key: number, change: Partial<Card>) {
     setCards((current) =>
@@ -131,7 +133,7 @@ export function HandoverBatchForm({
       }}
     >
       <FormHeader
-        title="Tambah banyak task"
+        title="Tambah task"
         onCancel={onCancel}
         submitting={submitting}
         submitLabel={`Simpan semua (${cards.length})`}

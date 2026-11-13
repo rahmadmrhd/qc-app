@@ -1,8 +1,14 @@
-import type { RoleDto } from '@shared/rpc';
+import type { RoleDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import {
+  FormDialog,
+  FormDialogContent,
+  FormDialogHeader,
+  FormDialogTitle,
+} from '@/components/form-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -81,11 +87,14 @@ function RolesPage() {
         onEdit={(role) => setEditing(role)}
         onDelete={setDeleting}
       />
-      <Dialog open={editing !== null} onOpenChange={(open) => (open ? undefined : closeDialog())}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing === 'new' ? 'Tambah role' : 'Ubah role'}</DialogTitle>
-          </DialogHeader>
+      <FormDialog
+        open={editing !== null}
+        onOpenChange={(open) => (open ? undefined : closeDialog())}
+      >
+        <FormDialogContent>
+          <FormDialogHeader>
+            <FormDialogTitle>{editing === 'new' ? 'Tambah role' : 'Ubah role'}</FormDialogTitle>
+          </FormDialogHeader>
           {editing ? (
             <RoleForm
               key={editing === 'new' ? 'new' : editing.id}
@@ -95,8 +104,8 @@ function RolesPage() {
               onCancel={closeDialog}
             />
           ) : null}
-        </DialogContent>
-      </Dialog>
+        </FormDialogContent>
+      </FormDialog>
       <Dialog
         open={deleting !== null}
         onOpenChange={(open) => (open ? undefined : setDeleting(null))}

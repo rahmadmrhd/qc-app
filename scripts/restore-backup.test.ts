@@ -41,7 +41,6 @@ describe('RESTORE_DATABASE_URL (N1)', () => {
     SESSION_SECRET: 'rahasia-sesi-yang-cukup-panjang',
     OAUTH_CLIENT_ID: 'id',
     OAUTH_CLIENT_SECRET: 'rahasia',
-    SYNC_API_TOKEN: 'token-sinkron-rahasia',
     ADMIN_EMAIL: 'admin@example.com',
   };
 

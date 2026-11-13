@@ -2,7 +2,7 @@ import { writeAudit } from '@server/core/audit';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import type { LocationDto, SaveLocationInput, SetLocationStatusInput } from '@shared/rpc';
+import type { LocationDto, SaveLocationInput, SetLocationStatusInput } from '@shared/contract';
 import type { UserContext } from './context';
 import type { LocationRecord } from './repo';
 import { batchWrite, insertLocationStmt, loadAccessTables, updateLocationStmt } from './repo';

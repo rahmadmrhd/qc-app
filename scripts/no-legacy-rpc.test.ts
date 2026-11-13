@@ -27,6 +27,12 @@ const FORBIDDEN: Array<{ name: string; pattern: RegExp }> = [
   { name: 'handleRpc', pattern: /\bhandleRpc\b/ },
   { name: 'createRpc', pattern: /\bcreateRpc(Client)?\b/ },
   { name: '@/lib/rpc', pattern: /@\/lib\/rpc/ },
+  { name: '@shared/rpc', pattern: /@shared\/rpc(?![A-Za-z0-9_-])/ },
+  {
+    name: 'Rpc(Method|Input|Output|Contract)',
+    pattern: /(?<![A-Za-z0-9_])Rpc(Method|Input|Output|Contract)(?![A-Za-z0-9_])/,
+  },
+  { name: 'restRpc', pattern: /(?<![A-Za-z0-9_])restRpc(?![A-Za-z0-9_])/ },
   { name: 'rpc(', pattern: /(^|[^A-Za-z0-9_.])rpc\(/ },
   { name: 'RpcError', pattern: /\bRpcError\b/ },
 ];
@@ -65,8 +71,8 @@ test('direktori web/src/lib/rpc sudah dihapus', () => {
   expect(() => statSync(join(ROOT, 'web/src/lib/rpc'))).toThrow();
 });
 
-test('shared/rpc.ts tidak lagi memuat amplop RpcResult/RpcErrorBody (hanya ErrorCode dan DTO)', () => {
-  const text = readFileSync(join(ROOT, 'shared/rpc.ts'), 'utf8');
+test('shared/contract.ts tidak lagi memuat amplop RpcResult/RpcErrorBody (hanya ErrorCode dan DTO)', () => {
+  const text = readFileSync(join(ROOT, 'shared/contract.ts'), 'utf8');
   expect(text).not.toMatch(/\bRpcResult\b|\bRpcErrorBody\b/);
   expect(text).toContain('ERROR_CODES');
 });

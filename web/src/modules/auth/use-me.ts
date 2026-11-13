@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { meQueryOptions } from './queries';
 

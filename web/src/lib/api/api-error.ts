@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@shared/rpc';
+import type { ErrorCode } from '@shared/contract';
 
 /** Status HTTP bawaan per kode galat (dipakai bila galat dibuat tanpa respons HTTP, mis. transport lama). */
 const STATUS_BY_CODE: Record<ErrorCode, number> = {

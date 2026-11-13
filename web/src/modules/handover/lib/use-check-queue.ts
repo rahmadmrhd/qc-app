@@ -1,7 +1,8 @@
-import type { HandoverDto } from '@shared/rpc';
+import type { HandoverDto } from '@shared/contract';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { beginBusy } from '@/app/pwa/busy';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
@@ -20,6 +21,8 @@ interface TaskQueue {
   latest: HandoverDto | null;
   /** Ada permintaan yang gagal pada rentetan klik ini: muat ulang task saat antrean kosong. */
   failed: boolean;
+  /** Menandai "ada penulisan berjalan" selama antrean belum kosong (muat ulang otomatis PWA tidak boleh memotongnya). */
+  endBusy?: () => void;
 }
 
 export interface CheckTarget {
@@ -52,7 +55,7 @@ function cachedHandover(
 
 /**
  * Centang instan (update optimistis) dengan antrean serial per task:
- *  - klik langsung mengubah cache (hanya butir itu); tiap klik tetap satu RPC `handovers.setCheck`;
+ *  - klik langsung mengubah cache (hanya butir itu); tiap klik tetap satu permintaan `handovers.setCheck`;
  *  - permintaan task yang sama dikirim berurutan (satu terbang), task berbeda boleh paralel; teks butir yang
  *    dikirim diambil dari DTO terbaru di cache;
  *  - respons server menimpa cache HANYA setelah antrean task itu kosong (tanpa kedipan/rollback palsu);
@@ -81,6 +84,7 @@ export function useCheckQueue(by: string) {
         queues.current.set(task.id, queue);
       }
       const q = queue;
+      if (q.pending === 0) q.endBusy = beginBusy();
       q.pending++;
       setSavingFor(task.id, true);
       patchCaches(queryClient, task.id, (dto) =>
@@ -114,6 +118,7 @@ export function useCheckQueue(by: string) {
         } finally {
           q.pending--;
           if (q.pending === 0) {
+            q.endBusy?.();
             setSavingFor(task.id, false);
             if (q.failed) {
               void queryClient.invalidateQueries({ queryKey: handoverKeys.all });

@@ -1,14 +1,20 @@
 import { expect, test } from 'bun:test';
 import { bytesOfBase64 } from '@server-test/bytes';
-import { DEFAULT_QR_LAYOUT } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
 import {
+  validateClonePreset,
   validateExportQrDesign,
+  validateListQrItemOptions,
   validateQrFile,
   validateSaveQrDesign,
+  validateSaveQrPreset,
   validateUploadQrPdf,
 } from './validate';
 
 const url = {
+  name: 'Panduan',
+  presetId: '',
+  itemIds: ['i1'],
   title: 'Panduan',
   linkSource: 'url',
   link: 'https://contoh.com/a',
@@ -116,4 +122,111 @@ test('ekspor dan unduh: tanda PDF/PNG, batas gabungan 8 MB, jenis berkas', () =>
   ).toContain('8 MB');
   expect(validateQrFile({ id: 'q', kind: 'png' })).toEqual({ id: 'q', kind: 'png' });
   expect(fieldsOf(() => validateQrFile({ id: 'q', kind: 'zip' })).kind).toBeDefined();
+});
+
+const preset = {
+  name: 'Standar',
+  title: '',
+  subtitle: '',
+  footer: '',
+  layout: DEFAULT_QR_LAYOUT,
+  style: DEFAULT_QR_STYLE,
+  defaultLogoId: '',
+  buId: 'bu-a',
+  namePlacement: 'title',
+};
+
+test('preset: BU dan penempatan nama wajib; penempatan hanya title, subtitle, footer', () => {
+  expect(validateSaveQrPreset(preset)).toMatchObject({ buId: 'bu-a', namePlacement: 'title' });
+  for (const placement of ['title', 'subtitle', 'footer'] as const) {
+    expect(validateSaveQrPreset({ ...preset, namePlacement: placement }).namePlacement).toBe(
+      placement,
+    );
+  }
+  expect(
+    fieldsOf(() => validateSaveQrPreset({ ...preset, namePlacement: 'logo' })).namePlacement,
+  ).toBeDefined();
+  expect(
+    fieldsOf(() => validateSaveQrPreset({ ...preset, namePlacement: '' })).namePlacement,
+  ).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrPreset({ ...preset, buId: '' })).buId).toBeDefined();
+  const { buId: _buId, ...noBu } = preset;
+  expect(fieldsOf(() => validateSaveQrPreset(noBu)).buId).toBeDefined();
+});
+
+test('kloning preset: id, BU, dan nama wajib; nama maks. 60', () => {
+  expect(validateClonePreset({ id: 'p1', buId: 'bu-b', name: 'Salinan' })).toEqual({
+    id: 'p1',
+    buId: 'bu-b',
+    name: 'Salinan',
+  });
+  expect(
+    fieldsOf(() => validateClonePreset({ id: 'p1', buId: 'bu-b', name: ' ' })).name,
+  ).toBeDefined();
+  expect(fieldsOf(() => validateClonePreset({ id: 'p1', buId: '', name: 'S' })).buId).toBeDefined();
+  expect(
+    fieldsOf(() => validateClonePreset({ id: 'p1', buId: 'b', name: 'x'.repeat(61) })).name,
+  ).toBeDefined();
+});
+
+test('simpan: nama maks. 60, itemIds berupa daftar id unik maks. 100, presetId opsional', () => {
+  expect(validateSaveQrDesign({ ...url, itemIds: ['a', 'b', 'a'] }).itemIds).toEqual(['a', 'b']);
+  expect(validateSaveQrDesign({ ...url, itemIds: [] }).itemIds).toEqual([]);
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, name: 'x'.repeat(61) })).name).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, name: '😀' })).name).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: 'a' })).itemIds).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: [''] })).itemIds).toBeDefined();
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: [1] })).itemIds).toBeDefined();
+  const many = Array.from({ length: 101 }, (_, i) => `i${i}`);
+  expect(fieldsOf(() => validateSaveQrDesign({ ...url, itemIds: many })).itemIds).toContain('100');
+  const { itemIds: _omit, ...noItems } = url;
+  expect(fieldsOf(() => validateSaveQrDesign(noItems)).itemIds).toBeDefined();
+  expect(validateSaveQrDesign({ ...url, presetId: 'p1' }).presetId).toBe('p1');
+});
+
+test('opsi item: input boleh kosong; limit 1-50 bulat; kursor tak boleh kosong', () => {
+  expect(validateListQrItemOptions(null)).toEqual({});
+  expect(validateListQrItemOptions({ query: ' a7 ', limit: 5, cursor: 'k' })).toEqual({
+    query: 'a7',
+    limit: 5,
+    cursor: 'k',
+  });
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 0 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 51 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ limit: 1.5 })).limit).toBeDefined();
+  expect(fieldsOf(() => validateListQrItemOptions({ cursor: '' })).cursor).toBeDefined();
+});
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2]);
+const exportRaw = {
+  id: 'q1',
+  expectedUpdatedAt: '2026-11-10T00:00:00.000Z',
+  pdf: PDF_BYTES,
+  png: PNG_BYTES,
+};
+
+test('ekspor: preview opsional (kosong bila tak ada), harus PNG sah dan maks. 512 KB; reason maks. 500', () => {
+  expect(validateExportQrDesign(exportRaw)).toMatchObject({ reason: '' });
+  expect(validateExportQrDesign(exportRaw).preview).toHaveLength(0);
+  expect(
+    validateExportQrDesign({ ...exportRaw, preview: PNG_BYTES, reason: ' Logo ' }),
+  ).toMatchObject({
+    reason: 'Logo',
+  });
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: new Uint8Array([1, 2, 3]) }))
+      .preview,
+  ).toBeDefined();
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: 'x' })).preview,
+  ).toBeDefined();
+  const big = new Uint8Array(512 * 1024 + 1);
+  big.set(PNG_BYTES, 0);
+  expect(fieldsOf(() => validateExportQrDesign({ ...exportRaw, preview: big })).preview).toContain(
+    '512',
+  );
+  expect(
+    fieldsOf(() => validateExportQrDesign({ ...exportRaw, reason: 'x'.repeat(501) })).reason,
+  ).toBeDefined();
 });

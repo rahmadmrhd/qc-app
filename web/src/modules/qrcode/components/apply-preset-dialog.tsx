@@ -1,6 +1,6 @@
-import type { QrPresetDto } from '@shared/rpc';
+import type { QrPresetDto } from '@shared/contract';
 import { useState } from 'react';
-import { NativeSelect } from '@/components/native-select';
+import { LinkField } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+import { presetOptions } from '../lib/preset-options';
 import type { PresetApplyParts } from '../schemas';
 
 const PART_LABELS: ReadonlyArray<readonly [keyof PresetApplyParts, string]> = [
@@ -35,6 +35,7 @@ export function ApplyPresetDialog({
   onApply,
 }: ApplyPresetDialogProps) {
   const [presetId, setPresetId] = useState('');
+  const [presetTerm, setPresetTerm] = useState('');
   const [parts, setParts] = useState<PresetApplyParts>({
     title: true,
     subtitle: true,
@@ -53,21 +54,17 @@ export function ApplyPresetDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="qr-apply-preset">Konfigurasi default</Label>
-            <NativeSelect
-              id="qr-apply-preset"
-              value={presetId}
-              onChange={(event) => setPresetId(event.target.value)}
-            >
-              <option value="">Pilih konfigurasi default…</option>
-              {presets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
+          <LinkField
+            id="qr-apply-preset"
+            label="Konfigurasi default"
+            placeholder="Pilih konfigurasi default…"
+            value={presetId === '' ? null : presetId}
+            labelOf={(id) => presets.find((item) => item.id === id)?.name}
+            options={presetOptions(presets, presetTerm)}
+            onSearchChange={setPresetTerm}
+            searchDebounceMs={0}
+            onChange={(id) => setPresetId(id ?? '')}
+          />
           <fieldset className="space-y-1.5">
             <legend className="text-sm font-medium">Ikut disalin ulang</legend>
             {PART_LABELS.map(([key, label]) => (

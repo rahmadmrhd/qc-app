@@ -1,27 +1,87 @@
+import type {
+  BrandDto,
+  BusinessUnitDto,
+  BusinessUnitOptionDto,
+  SaveBusinessUnitInput,
+  StickerDto,
+  StickerTypeDto,
+} from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import type { BrandDto } from '@shared/rpc';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
+import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
+import {
+  BrandFormDialog,
+  type BrandSaveInput,
+  type BrandSaveResult,
+  brandSaveFailure,
+} from '@/modules/brand/components/brand-form-dialog';
 import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
-import { errorText } from '../lib/row-error';
+import {
+  StickerFormDialog,
+  type StickerSaveInput,
+  type StickerSaveResult,
+  stickerSaveFailure,
+} from '@/modules/sticker/components/sticker-form-dialog';
+import {
+  StickerTypeFormDialog,
+  type StickerTypeSaveInput,
+  type StickerTypeSaveResult,
+  stickerTypeSaveFailure,
+} from '@/modules/sticker/components/sticker-type-form-dialog';
+import { defaultBusinessUnitIds } from '../lib/default-business-units';
+import { errorText, errorTexts } from '../lib/row-error';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
 import { itemFormSchema } from '../schemas';
 import { AccessoryListField } from './accessory-list-field';
 import { ImageGalleryField } from './image-gallery-field';
-import { StickerListField } from './sticker-list-field';
+import { type GuideInfo, StickerInstructionsField } from './sticker-instructions-field';
 
 export interface ItemFormProps {
   /** Judul halaman, tampil di bar sticky bersama tombol aksi. */
   title: string;
-  /** Merk yang sudah ada, untuk saran saat mengetik; merk yang belum ada dibuat saat item disimpan. */
+  /** Merk yang sudah ada (pilihan field Merk). */
   brands?: readonly BrandDto[];
+  /** Semua BU (nama, kode, status) untuk label chip dan pilihan. */
+  businessUnits?: readonly BusinessUnitOptionDto[];
+  /** Id BU yang boleh diisi user (level `edit` ke atas); BU nonaktif tetap tidak ditawarkan. */
+  editableBusinessUnitIds?: readonly string[];
+  /**
+   * Membuat merk baru (nama + BU bawaan) dari dialog "Tambah merk"; hanya disediakan bila user boleh membuat merk.
+   * Melempar galat bila gagal (pesannya tampil di dialog).
+   */
+  onCreateBrand?: (input: BrandSaveInput) => Promise<BrandDto>;
+  /**
+   * Membuat BU baru dari dialog "Tambah BU" pada field BU; hanya disediakan bila user boleh mengelola BU
+   * (`access: manage`). BU baru langsung terpilih. Melempar galat bila gagal.
+   */
+  onCreateBusinessUnit?: (input: SaveBusinessUnitInput) => Promise<BusinessUnitDto>;
+  /** Tautan ke halaman lihat merk/BU (tab baru); tidak disediakan bila user tak berhak melihatnya, sehingga tombolnya hilang. */
+  openBrandHref?: (id: string) => string | null;
+  openBusinessUnitHref?: (id: string) => string | null;
+  /** Katalog stiker dan jenis (pilihan sasaran penanda instruksi stiker). */
+  stickers?: readonly StickerDto[];
+  stickerTypes?: readonly StickerTypeDto[];
+  /** Gambar pustaka yang dikenal untuk foto instruksi item yang diubah (nama dan dimensi). */
+  guides?: readonly GuideInfo[];
+  /** Item yang diubah (bukan sumber salin penanda bagi dirinya sendiri). */
+  itemId?: string;
+  /**
+   * Membuat stiker baru dari dialog "Tambah stiker" pada penanda; hanya disediakan bila user berhak (`sticker: edit`).
+   * Stiker baru langsung terpilih pada penanda itu. Melempar galat bila gagal (tampil di dialog).
+   */
+  onCreateSticker?: (input: StickerSaveInput) => Promise<StickerDto>;
+  /** Idem untuk jenis stiker baru. */
+  onCreateStickerType?: (input: StickerTypeSaveInput) => Promise<StickerTypeDto>;
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
@@ -30,40 +90,10 @@ export interface ItemFormProps {
   onCancel: () => void;
 }
 
-/** Petunjuk di bawah isian merk: dipakai ulang, dinonaktifkan, atau akan dibuat baru. */
-function BrandHint({
-  value,
-  brands,
-  initial,
-}: {
-  value: string;
-  brands: readonly BrandDto[];
-  /** Merk item saat form dibuka (edit): item lama boleh tetap bermerk nonaktif. */
-  initial: string;
-}) {
-  const key = normalizeKey(value);
-  if (key === '') return null;
-  const match = brands.find((brand) => normalizeKey(brand.name) === key);
-  if (!match) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Merk baru "{value.trim()}" akan dibuat saat item disimpan.
-      </p>
-    );
-  }
-  if (match.status === 'inactive' && normalizeKey(initial) !== key) {
-    return (
-      <p className="text-xs text-destructive">
-        Merk "{match.name}" dinonaktifkan; aktifkan dulu di halaman Merk.
-      </p>
-    );
-  }
-  if (match.name !== value.trim()) {
-    return (
-      <p className="text-xs text-muted-foreground">Memakai merk yang sudah ada: "{match.name}".</p>
-    );
-  }
-  return null;
+const BRAND_OPTION_LIMIT = 30;
+
+function buLabel(bu: BusinessUnitOptionDto): string {
+  return `${bu.name} (${bu.code})${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -80,6 +110,18 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 export function ItemForm({
   brands = [],
+  businessUnits = [],
+  editableBusinessUnitIds = [],
+  onCreateBrand,
+  onCreateBusinessUnit,
+  openBrandHref,
+  openBusinessUnitHref,
+  stickers = [],
+  stickerTypes = [],
+  guides,
+  itemId,
+  onCreateSticker,
+  onCreateStickerType,
   defaultValues,
   title,
   submitError,
@@ -102,201 +144,417 @@ export function ItemForm({
       await onSubmit(itemFormSchema.parse(value));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
+
+  // Merk yang baru dibuat lewat dialog langsung bisa dipilih, sebelum daftar merk dari server dimuat ulang.
+  const [createdBrands, setCreatedBrands] = useState<readonly BrandDto[]>([]);
+  const [brandDialogOpen, setBrandDialogOpen] = useState(false);
+  const [brandTerm, setBrandTerm] = useState('');
+  const allBrands = [...brands, ...createdBrands.filter((c) => !brands.some((b) => b.id === c.id))];
+  const brandById = (id: string) => allBrands.find((brand) => brand.id === id);
+  const brandLabel = (id: string) => {
+    const brand = brandById(id);
+    if (!brand) return undefined;
+    return brand.status === 'inactive' ? `${brand.name} — nonaktif` : brand.name;
+  };
+  const brandTermKey = normalizeKey(brandTerm);
+  const brandCandidates = allBrands.filter(
+    (brand) =>
+      (brand.status === 'active' || brand.id === defaultValues.brandId) &&
+      (brandTermKey === '' || normalizeKey(brand.name).includes(brandTermKey)),
+  );
+  const brandOptions: LinkOption[] = brandCandidates.slice(0, BRAND_OPTION_LIMIT).map((brand) => ({
+    id: brand.id,
+    label: brandLabel(brand.id) ?? brand.name,
+  }));
+
+  // BU yang baru dibuat lewat dialog langsung bisa dilabeli, sebelum daftar BU dari server dimuat ulang.
+  const [createdBus, setCreatedBus] = useState<readonly BusinessUnitOptionDto[]>([]);
+  const [buDialogOpen, setBuDialogOpen] = useState(false);
+  const buById = new Map(
+    [...businessUnits, ...createdBus.filter((c) => !businessUnits.some((b) => b.id === c.id))].map(
+      (bu) => [bu.id, bu],
+    ),
+  );
+  const editable = new Set(editableBusinessUnitIds);
+  const addableBus = businessUnits.filter((bu) => bu.status === 'active' && editable.has(bu.id));
+  const addableBuIds = addableBus.map((bu) => bu.id);
+  const [buTerm, setBuTerm] = useState('');
+  const buTermKey = normalizeKey(buTerm);
+  const buOptions: LinkOption[] = addableBus
+    .filter(
+      (bu) =>
+        buTermKey === '' ||
+        normalizeKey(bu.name).includes(buTermKey) ||
+        normalizeKey(bu.code).includes(buTermKey),
+    )
+    .map((bu) => ({ id: bu.id, label: buLabel(bu) }));
+  // Pengisian otomatis dari BU bawaan merk hanya selama BU belum dipilih/diubah manual; item yang sudah punya BU
+  // (mode ubah) dianggap sudah dipilih, jadi mengganti merk tidak menimpanya.
+  const buTouched = useRef(defaultValues.businessUnitIds.length > 0);
+
+  // Stiker/jenis yang baru dibuat lewat dialog langsung bisa dipilih, sebelum katalog dari server dimuat ulang.
+  const [createdStickers, setCreatedStickers] = useState<readonly StickerDto[]>([]);
+  const [createdTypes, setCreatedTypes] = useState<readonly StickerTypeDto[]>([]);
+  const [stickerDialogOpen, setStickerDialogOpen] = useState(false);
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  // Penanda yang meminta stiker/jenis baru: dipanggil dengan hasilnya agar langsung terpilih di penanda itu.
+  const stickerCreated = useRef<((sticker: StickerDto) => void) | null>(null);
+  const typeCreated = useRef<((type: StickerTypeDto) => void) | null>(null);
+  const allStickers = [
+    ...stickers,
+    ...createdStickers.filter((c) => !stickers.some((sticker) => sticker.id === c.id)),
+  ];
+  const allTypes = [
+    ...stickerTypes,
+    ...createdTypes.filter((c) => !stickerTypes.some((type) => type.id === c.id)),
+  ];
+
+  async function handleCreateSticker(input: StickerSaveInput): Promise<StickerSaveResult> {
+    if (!onCreateSticker) return 'Anda tidak berhak membuat stiker';
+    try {
+      const sticker = await onCreateSticker(input);
+      setCreatedStickers((previous) => [...previous, sticker]);
+      stickerCreated.current?.(sticker);
+      return null;
+    } catch (error) {
+      return stickerSaveFailure(error);
+    }
+  }
+
+  async function handleCreateStickerType(
+    input: StickerTypeSaveInput,
+  ): Promise<StickerTypeSaveResult> {
+    if (!onCreateStickerType) return 'Anda tidak berhak membuat jenis stiker';
+    try {
+      const type = await onCreateStickerType(input);
+      setCreatedTypes((previous) => [...previous, type]);
+      typeCreated.current?.(type);
+      return null;
+    } catch (error) {
+      return stickerTypeSaveFailure(error);
+    }
+  }
+
+  async function handleCreateBrand(input: BrandSaveInput): Promise<BrandSaveResult> {
+    if (!onCreateBrand) return 'Anda tidak berhak membuat merk';
+    try {
+      const brand = await onCreateBrand(input);
+      setCreatedBrands((previous) => [...previous, brand]);
+      selectBrand(brand.id, brand);
+      return null;
+    } catch (error) {
+      return brandSaveFailure(error);
+    }
+  }
+
+  function selectBrand(id: string | null, known?: BrandDto) {
+    form.setFieldValue('brandId', id ?? '');
+    clear('brandId');
+    if (id !== null && !buTouched.current) {
+      form.setFieldValue(
+        'businessUnitIds',
+        defaultBusinessUnitIds(known ?? brandById(id), addableBuIds),
+      );
+      clear('businessUnitIds');
+    }
+  }
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(isSubmitting) => (
-          <FormHeader
-            title={title}
-            onCancel={onCancel}
-            submitting={isSubmitting}
-            busyText="Menyimpan item…"
-          />
-        )}
-      </form.Subscribe>
-      <Section title="Informasi dasar">
-        <form.Field name="brand">
-          {(field) => (
-            <div className="space-y-1.5">
-              <Label htmlFor="item-brand">Merk</Label>
-              <Input
-                id="item-brand"
-                list="item-brand-options"
-                autoComplete="off"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  clear('brand');
-                }}
-              />
-              <datalist id="item-brand-options">
-                {brands
-                  .filter((brand) => brand.status === 'active')
-                  .map((brand) => (
-                    <option key={brand.id} value={brand.name} />
-                  ))}
-              </datalist>
-              <BrandHint value={field.state.value} brands={brands} initial={defaultValues.brand} />
-              <FieldError errors={[...field.state.meta.errors, serverError('brand')]} />
-            </div>
-          )}
-        </form.Field>
-        <form.Field name="model">
-          {(field) => (
-            <div className="space-y-1.5">
-              <Label htmlFor="item-model">Tipe</Label>
-              <Input
-                id="item-model"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  clear('model');
-                }}
-              />
-              <FieldError errors={[...field.state.meta.errors, serverError('model')]} />
-            </div>
-          )}
-        </form.Field>
-        <form.Field name="isCountryLock">
-          {(field) => (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="item-country-lock"
-                checked={field.state.value}
-                onCheckedChange={(next) => field.handleChange(next === true)}
-              />
-              <Label htmlFor="item-country-lock" className="font-normal">
-                Country lock (wajib)
-              </Label>
-            </div>
-          )}
-        </form.Field>
-        <form.Field name="aliasesText">
-          {(field) => (
-            <div className="space-y-1.5">
-              <Label htmlFor="item-aliases">Nama lain</Label>
-              <Textarea
-                id="item-aliases"
-                rows={3}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  clear('aliases');
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Satu per baris. Dipakai untuk pencarian dan saran saat mengetik tipe.
-              </p>
-              <FieldError errors={[...field.state.meta.errors, serverError('aliases')]} />
-            </div>
-          )}
-        </form.Field>
-      </Section>
-
-      <Section
-        title="Gambar lampiran"
-        hint="Maksimal 10 gambar; urutan pertama menjadi gambar utama."
+    <>
+      <form
+        noValidate
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
       >
-        <form.Field name="attachments">
-          {(field) => (
-            <div className="space-y-1.5">
-              <form.Subscribe
-                selector={(state) => `${state.values.brand} ${state.values.model}`.trim()}
-              >
-                {(itemLabel) => (
-                  <ImageGalleryField
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(isSubmitting) => (
+            <FormHeader
+              title={title}
+              onCancel={onCancel}
+              submitting={isSubmitting}
+              busyText="Menyimpan item…"
+            />
+          )}
+        </form.Subscribe>
+        <Section title="Informasi dasar">
+          <form.Field name="brandId">
+            {(field) => (
+              <LinkField
+                id="item-brand"
+                label="Merk"
+                placeholder="Pilih merk"
+                value={field.state.value === '' ? null : field.state.value}
+                labelOf={brandLabel}
+                options={brandOptions}
+                hasMore={brandCandidates.length > BRAND_OPTION_LIMIT}
+                onSearchChange={setBrandTerm}
+                searchDebounceMs={0}
+                onChange={(id) => {
+                  selectBrand(id);
+                  field.handleBlur();
+                }}
+                onCreate={onCreateBrand ? () => setBrandDialogOpen(true) : undefined}
+                openHref={openBrandHref}
+                error={errorText([...field.state.meta.errors, serverError('brandId')])}
+              />
+            )}
+          </form.Field>
+          <form.Field name="businessUnitIds">
+            {(field) => (
+              <div className="space-y-1.5">
+                <LinkMultiField
+                  id="item-business-units"
+                  label="BU"
+                  placeholder="Pilih BU"
+                  value={field.state.value}
+                  labelOf={(id) => {
+                    const bu = buById.get(id);
+                    return bu ? buLabel(bu) : id;
+                  }}
+                  options={buOptions}
+                  onSearchChange={setBuTerm}
+                  searchDebounceMs={0}
+                  onCreate={onCreateBusinessUnit ? () => setBuDialogOpen(true) : undefined}
+                  openHref={openBusinessUnitHref}
+                  onChange={(ids) => {
+                    buTouched.current = true;
+                    field.handleChange(ids);
+                    clear('businessUnitIds');
+                  }}
+                  error={errorText([...field.state.meta.errors, serverError('businessUnitIds')])}
+                />
+                {addableBus.length === 0 && field.state.value.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Belum ada BU yang dapat Anda isi; hubungi admin.
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="model">
+            {(field) => (
+              <div className="space-y-1.5">
+                <Label htmlFor="item-model">Tipe</Label>
+                <Input
+                  id="item-model"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                    clear('model');
+                  }}
+                />
+                <FieldError errors={[...field.state.meta.errors, serverError('model')]} />
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="isCountryLock">
+            {(field) => (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="item-country-lock"
+                  checked={field.state.value}
+                  onCheckedChange={(next) => field.handleChange(next === true)}
+                />
+                <Label htmlFor="item-country-lock" className="font-normal">
+                  Country lock (wajib)
+                </Label>
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="aliasesText">
+            {(field) => (
+              <div className="space-y-1.5">
+                <Label htmlFor="item-aliases">Nama lain</Label>
+                <Textarea
+                  id="item-aliases"
+                  rows={3}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    field.handleChange(event.target.value);
+                    clear('aliases');
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Satu per baris. Dipakai untuk pencarian dan saran saat mengetik tipe.
+                </p>
+                <FieldError errors={[...field.state.meta.errors, serverError('aliases')]} />
+              </div>
+            )}
+          </form.Field>
+        </Section>
+
+        <Section
+          title="Gambar lampiran"
+          hint="Maksimal 10 gambar; urutan pertama menjadi gambar utama."
+        >
+          <form.Field name="attachments">
+            {(field) => (
+              <div className="space-y-1.5">
+                <form.Subscribe
+                  selector={(state) =>
+                    `${brandById(state.values.brandId)?.name ?? ''} ${state.values.model}`.trim()
+                  }
+                >
+                  {(itemLabel) => (
+                    <ImageGalleryField
+                      value={field.state.value}
+                      itemLabel={itemLabel}
+                      onChange={(ids) => {
+                        field.handleChange(ids);
+                        clear('attachments');
+                      }}
+                    />
+                  )}
+                </form.Subscribe>
+                <FieldError errors={[...field.state.meta.errors, serverError('attachments')]} />
+              </div>
+            )}
+          </form.Field>
+        </Section>
+
+        <Section
+          title="Instruksi stiker"
+          hint="Foto dari pustaka gambar dengan penanda posisi stiker; QC memakainya sebagai acuan penempelan."
+        >
+          <form.Field name="stickerPhotos">
+            {(field) => (
+              <form.Subscribe selector={(state) => state.values.businessUnitIds}>
+                {(selectedBuIds) => (
+                  <StickerInstructionsField
                     value={field.state.value}
-                    itemLabel={itemLabel}
-                    onChange={(ids) => {
-                      field.handleChange(ids);
-                      clear('attachments');
+                    onChange={(photos) => {
+                      field.handleChange(photos);
+                      clear('stickerPhotos');
                     }}
+                    businessUnits={selectedBuIds.map((id) => {
+                      const bu = buById.get(id);
+                      return { id, label: bu ? buLabel(bu) : id };
+                    })}
+                    stickers={allStickers}
+                    types={allTypes}
+                    knownGuides={guides ?? []}
+                    currentItemId={itemId}
+                    errors={errorTexts([...field.state.meta.errors, serverError('stickerPhotos')])}
+                    {...(onCreateSticker
+                      ? {
+                          onCreateSticker: (created: (sticker: StickerDto) => void) => {
+                            stickerCreated.current = created;
+                            setStickerDialogOpen(true);
+                          },
+                        }
+                      : {})}
+                    {...(onCreateStickerType
+                      ? {
+                          onCreateType: (created: (type: StickerTypeDto) => void) => {
+                            typeCreated.current = created;
+                            setTypeDialogOpen(true);
+                          },
+                        }
+                      : {})}
                   />
                 )}
               </form.Subscribe>
-              <FieldError errors={[...field.state.meta.errors, serverError('attachments')]} />
-            </div>
-          )}
-        </form.Field>
-      </Section>
+            )}
+          </form.Field>
+        </Section>
 
-      <Section title="Stiker yang perlu ditempel" hint="QC memakai daftar ini sebagai acuan.">
-        <form.Field name="stickers">
-          {(field) => (
-            <div className="space-y-1.5">
-              <StickerListField
-                value={field.state.value}
-                error={errorText([...field.state.meta.errors, serverError('stickers')])}
-                onChange={(rows) => {
-                  field.handleChange(rows);
-                  clear('stickers');
-                }}
-              />
-              <FieldError stacked errors={[...field.state.meta.errors, serverError('stickers')]} />
-            </div>
-          )}
-        </form.Field>
-      </Section>
+        <Section title="Kelengkapan aksesoris" hint="Jumlah per unit.">
+          <form.Field name="accessories">
+            {(field) => (
+              <div className="space-y-1.5">
+                <AccessoryListField
+                  value={field.state.value}
+                  error={errorText([...field.state.meta.errors, serverError('accessories')])}
+                  onChange={(rows) => {
+                    field.handleChange(rows);
+                    clear('accessories');
+                  }}
+                />
+                <FieldError
+                  stacked
+                  errors={[...field.state.meta.errors, serverError('accessories')]}
+                />
+              </div>
+            )}
+          </form.Field>
+        </Section>
 
-      <Section title="Kelengkapan aksesoris" hint="Jumlah per unit.">
-        <form.Field name="accessories">
-          {(field) => (
-            <div className="space-y-1.5">
-              <AccessoryListField
-                value={field.state.value}
-                error={errorText([...field.state.meta.errors, serverError('accessories')])}
-                onChange={(rows) => {
-                  field.handleChange(rows);
-                  clear('accessories');
-                }}
-              />
-              <FieldError
-                stacked
-                errors={[...field.state.meta.errors, serverError('accessories')]}
-              />
-            </div>
-          )}
-        </form.Field>
-      </Section>
+        <Section title="Detail dan spesifikasi">
+          <form.Field name="detail">
+            {(field) => (
+              <div className="space-y-1.5">
+                <span id="item-detail-label" className="sr-only">
+                  Detail dan spesifikasi
+                </span>
+                <WysiwygEditor
+                  id="item-detail"
+                  labelledBy="item-detail-label"
+                  value={field.state.value}
+                  onChange={(text) => {
+                    field.handleChange(text);
+                    clear('detail');
+                  }}
+                />
+                <FieldError errors={[...field.state.meta.errors, serverError('detail')]} />
+              </div>
+            )}
+          </form.Field>
+        </Section>
 
-      <Section title="Detail dan spesifikasi">
-        <form.Field name="detail">
-          {(field) => (
-            <div className="space-y-1.5">
-              <span id="item-detail-label" className="sr-only">
-                Detail dan spesifikasi
-              </span>
-              <WysiwygEditor
-                id="item-detail"
-                labelledBy="item-detail-label"
-                value={field.state.value}
-                onChange={(text) => {
-                  field.handleChange(text);
-                  clear('detail');
-                }}
-              />
-              <FieldError errors={[...field.state.meta.errors, serverError('detail')]} />
-            </div>
-          )}
-        </form.Field>
-      </Section>
-
-      {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {submitError}
-        </p>
+        {submitError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {submitError}
+          </p>
+        ) : null}
+      </form>
+      {onCreateBusinessUnit ? (
+        <BusinessUnitFormDialog
+          open={buDialogOpen}
+          onOpenChange={setBuDialogOpen}
+          onSave={async (input) => {
+            const bu = await onCreateBusinessUnit(input);
+            setCreatedBus((previous) => [...previous, bu]);
+            buTouched.current = true;
+            const current = form.getFieldValue('businessUnitIds');
+            if (!current.includes(bu.id))
+              form.setFieldValue('businessUnitIds', [...current, bu.id]);
+            clear('businessUnitIds');
+            return bu;
+          }}
+        />
       ) : null}
-    </form>
+      {onCreateSticker ? (
+        <StickerFormDialog
+          open={stickerDialogOpen}
+          onOpenChange={setStickerDialogOpen}
+          types={allTypes}
+          businessUnits={businessUnits}
+          onSave={handleCreateSticker}
+        />
+      ) : null}
+      {onCreateStickerType ? (
+        <StickerTypeFormDialog
+          open={typeDialogOpen}
+          onOpenChange={setTypeDialogOpen}
+          onSave={handleCreateStickerType}
+        />
+      ) : null}
+      {onCreateBrand ? (
+        <BrandFormDialog
+          open={brandDialogOpen}
+          onOpenChange={setBrandDialogOpen}
+          businessUnits={businessUnits}
+          onSave={handleCreateBrand}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
+        />
+      ) : null}
+    </>
   );
 }

@@ -18,6 +18,7 @@ const roles = new Map<string, PartialPermissionMap>([
   ['qc', { qc: 'edit' }],
   ['catalog', { item: 'view' }],
   ['catalog-edit', { item: 'edit' }],
+  ['serial-edit', { serial: 'edit' }],
 ]);
 
 describe('sanitizeAssignments', () => {
@@ -60,7 +61,11 @@ describe('assignmentKey', () => {
 
 describe('resolveAccess', () => {
   test('tanpa penugasan: izin global kosong dan tidak ada lokasi', () => {
-    expect(resolveAccess([], roles, ['A'])).toEqual({ global: emptyPermissions(), byLocation: {} });
+    expect(resolveAccess([], roles, ['A'])).toEqual({
+      global: emptyPermissions(),
+      byLocation: {},
+      byBu: {},
+    });
   });
 
   test('Semua lokasi digabung dengan penugasan lokal, level tertinggi menang (FR-P6)', () => {
@@ -72,8 +77,18 @@ describe('resolveAccess', () => {
       roles,
       ['A', 'B'],
     );
-    expect(result.byLocation.A).toEqual({ handover: 'manage', qc: 'none', stock: 'view' });
-    expect(result.byLocation.B).toEqual({ handover: 'view', qc: 'none', stock: 'none' });
+    expect(result.byLocation.A).toEqual({
+      handover: 'manage',
+      qc: 'none',
+      stock: 'view',
+      stickerstock: 'none',
+    });
+    expect(result.byLocation.B).toEqual({
+      handover: 'view',
+      qc: 'none',
+      stock: 'none',
+      stickerstock: 'none',
+    });
     expect(result.global.handover).toBe('view');
   });
 
@@ -114,45 +129,151 @@ describe('resolveAccess', () => {
 
   test('beberapa role pada satu penugasan memberi level tertinggi per modul', () => {
     const result = resolveAccess([{ locationId: 'A', roleIds: ['view', 'qc'] }], roles, ['A']);
-    expect(result.byLocation.A).toEqual({ handover: 'view', qc: 'edit', stock: 'none' });
+    expect(result.byLocation.A).toEqual({
+      handover: 'view',
+      qc: 'edit',
+      stock: 'none',
+      stickerstock: 'none',
+    });
   });
 });
 
-describe('item sebagai modul global bersama (FP2)', () => {
-  test('level item = tertinggi dari semua penugasan, termasuk penugasan lokasi tertentu', () => {
+describe('sticker (global bersama) dan stickerstock (berlokasi)', () => {
+  const stickerRoles = new Map<string, PartialPermissionMap>([
+    ['sticker-view', { sticker: 'view', stickerstock: 'view' }],
+    ['sticker-manage', { sticker: 'manage', stickerstock: 'manage' }],
+  ]);
+
+  test('sticker global dari penugasan lokasi mana pun, stickerstock hanya di lokasinya', () => {
+    const result = resolveAccess([{ locationId: 'A', roleIds: ['sticker-manage'] }], stickerRoles, [
+      'A',
+      'B',
+    ]);
+    expect(result.global.sticker).toBe('manage');
+    expect(result.byLocation.A?.stickerstock).toBe('manage');
+    expect(result.byLocation.B).toBeUndefined();
+  });
+
+  test('penugasan Semua lokasi memberi stickerstock di setiap lokasi aktif', () => {
+    const result = resolveAccess(
+      [
+        { locationId: null, roleIds: ['sticker-view'] },
+        { locationId: 'B', roleIds: ['sticker-manage'] },
+      ],
+      stickerRoles,
+      ['A', 'B'],
+    );
+    expect(result.byLocation.A?.stickerstock).toBe('view');
+    expect(result.byLocation.B?.stickerstock).toBe('manage');
+    expect(result.global.sticker).toBe('manage');
+  });
+
+  test('sticker bersama bukan modul berlokasi; stickerstock berlokasi', () => {
+    expect(SHARED_MODULES as readonly string[]).toContain('sticker');
+    expect(isLocatedModule('sticker')).toBe(false);
+    expect(isLocatedModule('stickerstock')).toBe(true);
+  });
+});
+
+describe('item dihitung dari penugasan BU, bukan penugasan lokasi', () => {
+  const buContext = { assignments: [], allBuIds: [] };
+
+  test('role item hanya pada penugasan lokasi tidak memberi level item (perubahan disengaja)', () => {
     const result = resolveAccess(
       [
         { locationId: 'A', roleIds: ['catalog'] },
-        { locationId: 'B', roleIds: ['catalog-edit'] },
+        { locationId: null, roleIds: ['catalog-edit'] },
       ],
       roles,
-      ['A', 'B'],
+      ['A'],
+      buContext,
     );
+    expect(result.global.item).toBe('none');
+    expect(result.byBu).toEqual({});
+  });
+
+  test('level global item = tertinggi dari semua penugasan BU', () => {
+    const result = resolveAccess([], roles, ['A'], {
+      assignments: [
+        { buId: 'X', roleIds: ['catalog'] },
+        { buId: 'Y', roleIds: ['catalog-edit'] },
+      ],
+      allBuIds: ['X', 'Y'],
+    });
     expect(result.global.item).toBe('edit');
+    expect(result.byBu).toEqual({
+      X: { item: 'view', serial: 'none', serialservice: 'none' },
+      Y: { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
+  });
+
+  test('role serial: global.serial mengikuti penugasan BU (Semua BU maupun BU tertentu), bukan penugasan lokasi', () => {
+    const everywhere = resolveAccess([], roles, [], {
+      assignments: [{ buId: null, roleIds: ['serial-edit'] }],
+      allBuIds: ['X'],
+    });
+    expect(everywhere.global.serial).toBe('edit');
+    expect(everywhere.byBu).toEqual({ X: { item: 'none', serial: 'edit', serialservice: 'none' } });
+
+    const specific = resolveAccess([], roles, [], {
+      assignments: [{ buId: 'X', roleIds: ['serial-edit'] }],
+      allBuIds: ['X', 'Y'],
+    });
+    expect(specific.global.serial).toBe('edit');
+    expect(specific.byBu).toEqual({ X: { item: 'none', serial: 'edit', serialservice: 'none' } });
+
+    const onlyLocation = resolveAccess(
+      [{ locationId: null, roleIds: ['serial-edit'] }],
+      roles,
+      ['A'],
+      { assignments: [], allBuIds: ['X'] },
+    );
+    expect(onlyLocation.global.serial).toBe('none');
+    expect(onlyLocation.byBu).toEqual({});
+  });
+
+  test('role item pada penugasan BU: view', () => {
+    const result = resolveAccess([], roles, [], {
+      assignments: [{ buId: null, roleIds: ['catalog'] }],
+      allBuIds: ['X'],
+    });
+    expect(result.global.item).toBe('view');
+    expect(result.byBu).toEqual({ X: { item: 'view', serial: 'none', serialservice: 'none' } });
+  });
+
+  test('role access pada penugasan BU tidak memberi izin modul lain', () => {
+    const result = resolveAccess([], roles, ['A'], {
+      assignments: [{ buId: null, roleIds: ['access', 'manage'] }],
+      allBuIds: ['X'],
+    });
+    expect(result.global.access).toBe('none');
+    expect(result.global.handover).toBe('none');
     expect(result.byLocation).toEqual({});
   });
 
-  test('penugasan di lokasi nonaktif tidak menyumbang level item', () => {
-    const result = resolveAccess([{ locationId: 'MATI', roleIds: ['catalog-edit'] }], roles, ['A']);
-    expect(result.global.item).toBe('none');
-  });
-
-  test('role item pada Semua lokasi tetap berlaku', () => {
-    const result = resolveAccess([{ locationId: null, roleIds: ['catalog'] }], roles, []);
-    expect(result.global.item).toBe('view');
-  });
-
-  test('access tetap hanya dari Semua lokasi walau item dari semua penugasan', () => {
+  test('access tetap hanya dari Semua lokasi', () => {
     const result = resolveAccess(
       [
-        { locationId: 'A', roleIds: ['access', 'catalog'] },
+        { locationId: 'A', roleIds: ['access'] },
         { locationId: null, roleIds: ['view'] },
       ],
       roles,
       ['A'],
+      { assignments: [{ buId: 'X', roleIds: ['catalog'] }], allBuIds: ['X'] },
     );
     expect(result.global.access).toBe('none');
     expect(result.global.item).toBe('view');
+  });
+
+  test('tanpa argumen BU: tidak ada hak item dan byBu kosong', () => {
+    const result = resolveAccess([{ locationId: null, roleIds: ['catalog'] }], roles, []);
+    expect(result.global.item).toBe('none');
+    expect(result.byBu).toEqual({});
+  });
+
+  test('SHARED_MODULES tidak memuat item lagi, qrcode tetap', () => {
+    expect(SHARED_MODULES as readonly string[]).not.toContain('item');
+    expect(SHARED_MODULES as readonly string[]).toContain('qrcode');
   });
 });
 
@@ -170,6 +291,7 @@ describe('modul berlokasi', () => {
       handover: 'manage',
       qc: 'manage',
       stock: 'manage',
+      stickerstock: 'manage',
     });
   });
 });

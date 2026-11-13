@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { seedRole, seedUser } from '@server-test/access-fixtures';
-import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { brandIdOf, DEFAULT_TEST_BU_ID, seedBrand, seedItem } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
@@ -8,11 +8,12 @@ let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
 
 const baseInput = {
-  brand: 'Ubiquiti',
+  brandId: brandIdOf('Ubiquiti'),
+  businessUnitIds: [DEFAULT_TEST_BU_ID],
   model: 'ES 24 250W',
   isCountryLock: false,
   aliases: [] as string[],
-  stickers: [],
+  stickerPhotos: [],
   accessories: [],
   attachments: [],
   detail: '',
@@ -22,6 +23,8 @@ beforeEach(async () => {
   env = await createTestEnv();
   env.clock.set(Date.parse('2026-10-09T00:00:00.000Z'));
   rest = restClient(env);
+  await seedBusinessUnit(env, { id: DEFAULT_TEST_BU_ID, code: 'DEF', name: 'BU Bawaan Tes' });
+  await seedBrand(env, 'Ubiquiti');
   await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
   await seedRole(env, { id: 'r-edit', name: 'Ubah', permissions: { item: 'edit' } });
   await seedRole(env, { id: 'r-manage', name: 'Kelola', permissions: { item: 'manage' } });
@@ -31,7 +34,7 @@ beforeEach(async () => {
   await seedUser(env, { id: 'u-n', email: 'tanpa@gmail.com' });
 });
 
-describe('izin rute (terjemahan tes RPC lama)', () => {
+describe('izin rute (terjemahan tes lama)', () => {
   test('view membaca, edit menyimpan, hanya manage menonaktifkan; daftar tanpa detail', async () => {
     const saved = await rest.post('/items', { email: 'ubah@gmail.com', body: baseInput });
     expect(saved.status).toBe(201);
@@ -165,7 +168,6 @@ describe('ETag dan If-Match (updatedAt)', () => {
 describe('GET /items (kursor dan query)', () => {
   beforeEach(async () => {
     await seedBrand(env, 'Mikrotik');
-    await seedBrand(env, 'Ubiquiti');
     for (let n = 1; n <= 5; n++) {
       await seedItem(env, {
         id: `i${n}`,

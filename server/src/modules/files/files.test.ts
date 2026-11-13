@@ -6,10 +6,11 @@ import type { FileCache } from '@server/core/file-cache';
 import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
 import type { UserContext } from '@server/modules/access/context';
 import { loadUserContext } from '@server/modules/access/context';
-import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
-import { restRpc } from '@server-test/rest-rpc';
+import { seedBrand, seedItem } from '@server-test/item-fixtures';
+import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { MAX_IMAGE_BYTES, MAX_UNATTACHED_UPLOADS } from '@shared/files';
 import {
@@ -26,6 +27,19 @@ import {
 import { validateGetFile, validateUploadFile } from './validate';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUg==';
+
+/** Pembaca dengan izin item dan BU `bu-a`; berkas tanpa pemilik atau bukan milik item tak dibatasi BU. */
+const ALL_BU_VIEWER = {
+  email: 'admin@gmail.com',
+  itemBuIds: ['bu-a'],
+  canReadStickerFiles: true,
+} as const;
+/** Pembaca tanpa izin item global: hanya logo bersama dan unggahan miliknya. */
+const NO_ITEM = {
+  email: 'lain@gmail.com',
+  itemBuIds: null,
+  canReadStickerFiles: false,
+} as const;
 const JPEG = '/9j/4AAQSkZJRg==';
 
 let env: TestEnv;
@@ -243,7 +257,9 @@ describe('unggah', () => {
     ).first<{ value: string }>();
     expect(setting).toBeNull();
     // Dibaca dari folder .env yang sama (bukan dari tabel settings yang kosong).
-    expect((await readFile(configured, { id: saved.id })).bytes.length).toBeGreaterThan(0);
+    expect(
+      (await readFile(configured, { id: saved.id }, ALL_BU_VIEWER)).bytes.length,
+    ).toBeGreaterThan(0);
     // Folder .env tak terjangkau: galat jelas, TIDAK membuat folder pengganti.
     env.BRIDGE.state.folders.delete('IMAGESFOLDER001');
     const error = await captureAppErrorAsync(() => ensureDriveFolder(configured));
@@ -276,28 +292,30 @@ describe('unggah', () => {
 describe('baca', () => {
   test('readFile mengembalikan isi dari catatan database, id tak dikenal NOT_FOUND', async () => {
     const saved = await up();
-    expect(await readFile(env, { id: saved.id })).toEqual({
+    expect(await readFile(env, { id: saved.id }, ALL_BU_VIEWER)).toEqual({
       id: saved.id,
       mime: 'image/png',
       bytes: bytesOfBase64(PNG),
     });
-    expect((await captureAppErrorAsync(() => readFile(env, { id: 'tidak-ada' }))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: 'tidak-ada' }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
   });
 
   test('tidak pernah membaca Drive id yang tidak tercatat di tabel files', async () => {
     const folder = await ensureDriveFolder(env);
     const stray = await env.BRIDGE.createFile(folder, 'rahasia.png', 'image/png', PNG);
-    expect((await captureAppErrorAsync(() => readFile(env, { id: stray }))).code).toBe('NOT_FOUND');
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: stray }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
   });
 
   test('NOT_FOUND bila berkas Drive hilang atau dibuang', async () => {
     const saved = await up();
     env.BRIDGE.state.files.clear();
-    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
   });
 
   test('menolak berkas yang drive_id-nya bukan anak folder aplikasi', async () => {
@@ -309,18 +327,20 @@ describe('baca', () => {
     )
       .bind(foreign)
       .run();
-    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
-    expect((await captureAppErrorAsync(() => readFile(env, { id: 'f-luar' }))).code).toBe(
-      'NOT_FOUND',
+    expect((await readFile(env, { id: saved.id }, ALL_BU_VIEWER)).bytes).toEqual(
+      bytesOfBase64(PNG),
     );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: 'f-luar' }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
   });
 
   test('jembatan gagal saat baca: UNAVAILABLE, bukan NOT_FOUND', async () => {
     const saved = await up();
     env.BRIDGE.failNext('readFile', new Error('timeout'));
-    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }))).code).toBe(
-      'UNAVAILABLE',
-    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, ALL_BU_VIEWER))).code,
+    ).toBe('UNAVAILABLE');
   });
 
   test('pengguna tanpa izin item hanya membaca logo bersama dan unggahan miliknya', async () => {
@@ -329,13 +349,11 @@ describe('baca', () => {
     await env.DB.prepare("UPDATE files SET owner_type = 'qrlogo', owner_id = 'shared' WHERE id = ?")
       .bind(logo.id)
       .run();
-    expect(
-      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, 'lain@gmail.com'))).code,
-    ).toBe('NOT_FOUND');
-    expect((await readFile(env, { id: logo.id }, 'lain@gmail.com')).bytes).toEqual(
-      bytesOfBase64(PNG),
+    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }, NO_ITEM))).code).toBe(
+      'NOT_FOUND',
     );
-    expect((await readFile(env, { id: saved.id }, 'admin@gmail.com')).bytes).toEqual(
+    expect((await readFile(env, { id: logo.id }, NO_ITEM)).bytes).toEqual(bytesOfBase64(PNG));
+    expect((await readFile(env, { id: saved.id }, ALL_BU_VIEWER)).bytes).toEqual(
       bytesOfBase64(PNG),
     );
   });
@@ -344,12 +362,16 @@ describe('baca', () => {
     const cache = new MemoryFileCache();
     env.FILE_CACHE = cache;
     const saved = await up();
-    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
-    expect((await readFile(env, { id: saved.id })).bytes).toEqual(bytesOfBase64(PNG));
+    expect((await readFile(env, { id: saved.id }, ALL_BU_VIEWER)).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    expect((await readFile(env, { id: saved.id }, ALL_BU_VIEWER)).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
     expect(env.BRIDGE.calls.filter((c) => c.action === 'readFile')).toHaveLength(1);
-    expect(
-      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, 'lain@gmail.com'))).code,
-    ).toBe('NOT_FOUND');
+    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }, NO_ITEM))).code).toBe(
+      'NOT_FOUND',
+    );
     expect(env.BRIDGE.calls.filter((c) => c.action === 'readFile')).toHaveLength(1);
   });
 
@@ -357,7 +379,7 @@ describe('baca', () => {
     const cache = new MemoryFileCache();
     env.FILE_CACHE = cache;
     const saved = await up();
-    await readFile(env, { id: saved.id });
+    await readFile(env, { id: saved.id }, ALL_BU_VIEWER);
     const [driveId] = [...env.BRIDGE.state.files.keys()];
     expect(
       cache.store.has(
@@ -370,16 +392,16 @@ describe('baca', () => {
     await env.DB.prepare(
       "UPDATE settings SET value = 'folder-lain' WHERE `key` = 'DRIVE_FOLDER_ID'",
     ).run();
-    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
   });
 
   test('cache memori LRU: dibuang saat berkas dipurge dari Drive (dropCachedFile)', async () => {
     const cache = createMemoryFileCache(1_000_000);
     env.FILE_CACHE = cache;
     const saved = await up();
-    await readFile(env, { id: saved.id });
+    await readFile(env, { id: saved.id }, ALL_BU_VIEWER);
     expect(cache.size).toBeGreaterThan(0);
     await env.DB.batch(markFilesPendingDelete(env, [saved.id]));
     await purgePendingFiles(env);
@@ -389,9 +411,205 @@ describe('baca', () => {
   test('berkas pending_delete tidak terbaca', async () => {
     const saved = await up();
     await env.DB.batch(markFilesPendingDelete(env, [saved.id]));
-    expect((await captureAppErrorAsync(() => readFile(env, { id: saved.id }))).code).toBe(
-      'NOT_FOUND',
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: saved.id }, ALL_BU_VIEWER))).code,
+    ).toBe('NOT_FOUND');
+  });
+});
+
+describe('berkas gambar item menurut BU', () => {
+  let cache: MemoryFileCache;
+  let fileA: string;
+  let fileAB: string;
+  let fileLogo: string;
+
+  const own = (fileId: string, type: string, ownerId: string) =>
+    env.DB.prepare('UPDATE files SET owner_type = ?, owner_id = ? WHERE id = ?')
+      .bind(type, ownerId, fileId)
+      .run();
+  const driveReads = () => env.BRIDGE.calls.filter((c) => c.action === 'readFile').length;
+
+  beforeEach(async () => {
+    cache = new MemoryFileCache();
+    env.FILE_CACHE = cache;
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'A', name: 'BU A' });
+    await seedBusinessUnit(env, { id: 'bu-b', code: 'B', name: 'BU B' });
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'i-a', brand: 'Sony', model: 'Satu', businessUnitIds: ['bu-a'] });
+    await seedItem(env, {
+      id: 'i-ab',
+      brand: 'Sony',
+      model: 'Dua',
+      businessUnitIds: ['bu-a', 'bu-b'],
+    });
+    fileA = (await up()).id;
+    fileAB = (await up()).id;
+    fileLogo = (await up()).id;
+    await own(fileA, 'item', 'i-a');
+    await own(fileAB, 'item', 'i-ab');
+    await own(fileLogo, 'qrlogo', 'shared');
+  });
+
+  const viewer = (itemBuIds: readonly string[] | null) => ({
+    email: 'x@gmail.com',
+    itemBuIds,
+    canReadStickerFiles: itemBuIds !== null,
+  });
+
+  test('item BU A: user BU A membaca; user BU B = NOT_FOUND dengan pesan sama dengan berkas tak ada', async () => {
+    expect((await readFile(env, { id: fileA }, viewer(['bu-a']))).bytes).toEqual(
+      bytesOfBase64(PNG),
     );
+    const hidden = await captureAppErrorAsync(() => readFile(env, { id: fileA }, viewer(['bu-b'])));
+    const missing = await captureAppErrorAsync(() =>
+      readFile(env, { id: 'tidak-ada' }, viewer(['bu-b'])),
+    );
+    expect(hidden.code).toBe('NOT_FOUND');
+    expect(hidden.message).toBe(missing.message);
+  });
+
+  test('item A+B: terbaca oleh user yang melihat salah satu BU-nya, tidak oleh BU lain atau himpunan kosong', async () => {
+    expect((await readFile(env, { id: fileAB }, viewer(['bu-a']))).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    expect((await readFile(env, { id: fileAB }, viewer(['bu-b']))).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    for (const ids of [[], ['bu-lain']]) {
+      expect(
+        (await captureAppErrorAsync(() => readFile(env, { id: fileAB }, viewer(ids)))).code,
+      ).toBe('NOT_FOUND');
+    }
+  });
+
+  test('isi berkas tidak diambil dari cache maupun Drive bila BU tak cocok (diperiksa sebelum cache)', async () => {
+    await readFile(env, { id: fileA }, viewer(['bu-a']));
+    expect(driveReads()).toBe(1);
+    const getsBefore = cache.gets;
+    for (const ids of [['bu-b'], []]) {
+      await captureAppErrorAsync(() => readFile(env, { id: fileA }, viewer(ids)));
+    }
+    expect(cache.gets).toBe(getsBefore);
+    expect(driveReads()).toBe(1);
+  });
+
+  test('logo QR tetap terbaca tanpa izin item; unggahan sendiri yang belum terpasang tetap terbaca', async () => {
+    const pending = await up(upload(), admin);
+    expect((await readFile(env, { id: fileLogo }, viewer(null))).bytes).toEqual(bytesOfBase64(PNG));
+    expect(
+      (
+        await readFile(
+          env,
+          { id: pending.id },
+          { email: 'admin@gmail.com', itemBuIds: null, canReadStickerFiles: false },
+        )
+      ).bytes,
+    ).toEqual(bytesOfBase64(PNG));
+    // tanpa izin item: berkas item tetap tertutup, walau BU-nya "cocok" tidak relevan
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: fileA }, viewer(null)))).code,
+    ).toBe('NOT_FOUND');
+  });
+
+  test('unggahan yang belum terpasang hanya terbaca pengunggahnya, juga bagi pemegang item:view; cache tak disajikan ke user lain', async () => {
+    const pending = (await up(upload(), admin)).id;
+    const mine = { email: 'admin@gmail.com', itemBuIds: ['bu-a'], canReadStickerFiles: true };
+    expect((await readFile(env, { id: pending }, mine)).bytes).toEqual(bytesOfBase64(PNG));
+    expect(driveReads()).toBe(1);
+    const getsBefore = cache.gets;
+    const missing = await captureAppErrorAsync(() =>
+      readFile(env, { id: 'tidak-ada' }, viewer(['bu-a'])),
+    );
+    for (const ids of [['bu-a'], ['bu-a', 'bu-b'], [], null]) {
+      const other = await captureAppErrorAsync(() => readFile(env, { id: pending }, viewer(ids)));
+      expect(other.code).toBe('NOT_FOUND');
+      expect(other.message).toBe(missing.message);
+    }
+    // ditolak sebelum cache/Drive disentuh
+    expect(cache.gets).toBe(getsBefore);
+    expect(driveReads()).toBe(1);
+    // setelah terpasang pada item, user yang berhak BU membacanya seperti biasa
+    await own(pending, 'item', 'i-a');
+    expect((await readFile(env, { id: pending }, viewer(['bu-a']))).bytes).toEqual(
+      bytesOfBase64(PNG),
+    );
+    expect(
+      (await captureAppErrorAsync(() => readFile(env, { id: pending }, viewer(['bu-b'])))).code,
+    ).toBe('NOT_FOUND');
+  });
+
+  test('lewat REST: pending hanya terbaca pengunggahnya; user item:view lain NOT_FOUND', async () => {
+    await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
+    await seedUser(env, {
+      id: 'u-a',
+      email: 'a@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-view'] }],
+    });
+    const pending = (await up(upload(), admin)).id;
+    expect(await restCall(env, 'admin@gmail.com', 'files.get', { id: pending })).toMatchObject({
+      ok: true,
+    });
+    expect(await restCall(env, 'a@gmail.com', 'files.get', { id: pending })).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+  });
+
+  test('jenis pemilik lain (logo) tidak dibatasi BU untuk pemegang izin item, termasuk himpunan BU kosong', async () => {
+    expect((await readFile(env, { id: fileLogo }, viewer([]))).bytes).toEqual(bytesOfBase64(PNG));
+  });
+
+  test('lewat REST: user BU A membaca berkas item A; user BU B = NOT_FOUND; qrcode saja hanya logo', async () => {
+    await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
+    await seedRole(env, { id: 'r-qr', name: 'QR', permissions: { qrcode: 'view' } });
+    await seedUser(env, {
+      id: 'u-a',
+      email: 'a@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-view'] }],
+    });
+    await seedUser(env, {
+      id: 'u-b',
+      email: 'b@gmail.com',
+      buAssignments: [{ buId: 'bu-b', roleIds: ['r-view'] }],
+    });
+    await seedUser(env, { id: 'u-qr', email: 'qr@gmail.com', roleIds: ['r-qr'] });
+    await seedUser(env, { id: 'u-n', email: 'tanpa@gmail.com' });
+    const call = (id: string, email: string) => restCall(env, email, 'files.get', { id });
+    expect(await call(fileA, 'a@gmail.com')).toMatchObject({ ok: true });
+    expect(await call(fileA, 'b@gmail.com')).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(await call(fileAB, 'b@gmail.com')).toMatchObject({ ok: true });
+    expect(await call(fileLogo, 'qr@gmail.com')).toMatchObject({ ok: true });
+    expect(await call(fileA, 'qr@gmail.com')).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(await call(fileA, 'tanpa@gmail.com')).toMatchObject({
+      ok: false,
+      error: { code: 'FORBIDDEN' },
+    });
+    expect(await call(fileA, 'admin@gmail.com')).toMatchObject({ ok: true });
+  });
+
+  test('pencabutan BU berlaku seketika pada pembacaan berkas (konteks dimuat per permintaan)', async () => {
+    await seedRole(env, { id: 'r-view', name: 'Lihat', permissions: { item: 'view' } });
+    await seedUser(env, {
+      id: 'u-a',
+      email: 'a@gmail.com',
+      buAssignments: [{ buId: 'bu-a', roleIds: ['r-view'] }],
+    });
+    expect(await restCall(env, 'a@gmail.com', 'files.get', { id: fileA })).toMatchObject({
+      ok: true,
+    });
+    await env.DB.prepare(
+      'UPDATE users SET bu_assignments = \'[{"buId":"bu-b","roleIds":["r-view"]}]\' WHERE id = \'u-a\'',
+    ).run();
+    expect(await restCall(env, 'a@gmail.com', 'files.get', { id: fileA })).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
   });
 });
 
@@ -442,6 +660,24 @@ describe('attachFiles', () => {
     await attachFiles(env, [], 'item', 'item-1');
   });
 
+  test('berkas milik catatan Postel yang dikirim dari jalur lain = VALIDATION generik (bukan CONFLICT); jalur Postel lain tetap CONFLICT', async () => {
+    const a = await up();
+    await attachFiles(env, [a.id], 'postel', 'postel-1');
+    const unknown = await captureAppErrorAsync(() =>
+      attachFiles(env, ['hilang'], 'item', 'item-1'),
+    );
+    for (const owner of ['item', 'sticker', 'qrlogo', 'stickerguide'] as const) {
+      const error = await captureAppErrorAsync(() => attachFiles(env, [a.id], owner, 'x-1'));
+      expect(error.code).toBe('VALIDATION');
+      expect(error.message).toBe(unknown.message);
+    }
+    expect(
+      (await captureAppErrorAsync(() => attachFiles(env, [a.id], 'postel', 'postel-2'))).code,
+    ).toBe('CONFLICT');
+    await attachFiles(env, [a.id], 'postel', 'postel-1');
+    expect((await files())[0]?.owner_id).toBe('postel-1');
+  });
+
   test('atomik: batch yang gagal tidak mengubah pemilik berkas mana pun; ulang yang sah berhasil', async () => {
     const a = await up();
     const b = await up();
@@ -463,6 +699,22 @@ describe('attachFiles', () => {
     ]);
     await attachFiles(env, [a.id, b.id], 'item', 'item-1');
     expect((await files()).filter((f) => f.owner_id === 'item-1')).toHaveLength(2);
+  });
+
+  test('claimant: unggahan belum terpasang milik orang lain = VALIDATION seperti berkas tak dikenal; milik sendiri dipasang', async () => {
+    const mine = await up();
+    const unknown = await captureAppErrorAsync(() =>
+      planAttachFiles(env, ['hilang'], 'item', 'item-1', undefined, 'admin@gmail.com'),
+    );
+    const others = await captureAppErrorAsync(() =>
+      planAttachFiles(env, [mine.id], 'item', 'item-1', undefined, 'lain@gmail.com'),
+    );
+    expect(others.code).toBe('VALIDATION');
+    expect(others.message).toBe(unknown.message);
+    expect((await files())[0]?.owner_type).toBe('');
+    expect(
+      await planAttachFiles(env, [mine.id], 'item', 'item-1', undefined, 'admin@gmail.com'),
+    ).toHaveLength(1);
   });
 
   test('menerima id ganda; planAttachFiles menghasilkan pernyataan untuk batch pemanggil', async () => {
@@ -495,7 +747,7 @@ describe('penghapusan (pending_delete)', () => {
 
 describe('rute dan izin', () => {
   async function call(method: string, payload: unknown, email: string) {
-    return restRpc(env, email, method, payload);
+    return restCall(env, email, method, payload);
   }
 
   test('upload butuh item edit, baca butuh item view, dan lintas peran ditolak', async () => {
@@ -515,6 +767,17 @@ describe('rute dan izin', () => {
       ok: false,
       error: { code: 'FORBIDDEN' },
     });
+    // unggahan yang belum terpasang hanya terbaca pengunggahnya; setelah terpasang pada item, pemegang item:view membacanya
+    expect(await call('files.get', { id }, 'lihat@gmail.com')).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_FOUND' },
+    });
+    expect(await call('files.get', { id }, 'ubah@gmail.com')).toMatchObject({ ok: true });
+    await seedBrand(env, 'Sony');
+    await seedItem(env, { id: 'i-rute', brand: 'Sony', model: 'Rute' });
+    await env.DB.prepare("UPDATE files SET owner_type = 'item', owner_id = 'i-rute' WHERE id = ?")
+      .bind(id)
+      .run();
     expect(await call('files.get', { id }, 'lihat@gmail.com')).toMatchObject({
       ok: true,
       data: { mime: 'image/png', bytes: bytesOfBase64(PNG) },
@@ -525,7 +788,7 @@ describe('rute dan izin', () => {
     });
   });
 
-  test('galat jembatan tampil sebagai UNAVAILABLE (503) lewat RPC', async () => {
+  test('galat jembatan tampil sebagai UNAVAILABLE (503) lewat REST', async () => {
     await ensureDriveFolder(env);
     env.BRIDGE.failNext('createFile', new Error('x'));
     expect(await call('files.upload', upload(), 'admin@gmail.com')).toMatchObject({

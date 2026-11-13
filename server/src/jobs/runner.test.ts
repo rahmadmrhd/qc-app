@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { DbStatement } from '@server/core/db';
+import { putSetting } from '@server/core/settings';
 import { JOB_MAX_ATTEMPTS } from '@server/modules/jobs/consumer';
 import { findJob } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
-import { qrRpc, seedQrEnv } from '@server-test/qrcode-env';
+import { qrCall, seedQrEnv } from '@server-test/qrcode-env';
+import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   purgeExpiredRateLimits,
@@ -32,11 +34,10 @@ async function seedBrands(n: number) {
   const statements: DbStatement[] = [];
   for (let i = 0; i < n; i++) {
     statements.push(
-      env.DB.prepare('INSERT INTO brands (id, name, `key`, sync_rev) VALUES (?, ?, ?, ?)').bind(
+      env.DB.prepare('INSERT INTO brands (id, name, `key`) VALUES (?, ?, ?)').bind(
         `b${String(i).padStart(5, '0')}`,
         `Merk ${i}`,
         `merk ${i}`,
-        i,
       ),
     );
   }
@@ -175,8 +176,8 @@ describe('job gagal', () => {
     const failed = await findJob(env, id);
     expect(failed?.status).toBe('failed');
     expect(failed?.error).not.toBe('');
-    // dilihat lewat RPC jobs.get oleh pembuatnya
-    const dto = await qrRpc(env, 'qredit@gmail.com', 'jobs.get', { id });
+    // dilihat lewat `jobs.get` oleh pembuatnya
+    const dto = await qrCall(env, 'qredit@gmail.com', 'jobs.get', { id });
     expect(dto.data).toMatchObject({ id, status: 'failed' });
     expect(dto.data.error).toBe(failed?.error);
   });
@@ -187,7 +188,7 @@ describe('job gagal', () => {
     await env.DB.prepare("UPDATE jobs SET status = 'failed', error = 'Gagal tes' WHERE id = ?")
       .bind(first)
       .run();
-    const retry = await qrRpc(env, 'admin@gmail.com', 'exports.sheets', { tables: ['brands'] });
+    const retry = await qrCall(env, 'admin@gmail.com', 'exports.sheets', { tables: ['brands'] });
     expect(retry.ok).toBe(true);
     expect(retry.data.jobId).not.toBe(first);
     expect(await runPendingJobs(env)).toBe(1);
@@ -279,6 +280,44 @@ describe('penjadwal: cadangan harian (T30)', () => {
       await waitFor(async () => (await countJobs('db_backup')) === 1);
       await sleep(60);
       expect(await countJobs('db_backup')).toBe(1);
+    } finally {
+      await stop();
+    }
+  });
+});
+
+describe('penjadwal: ringkasan stok stiker menipis (4a)', () => {
+  test('detak penjadwal memanggil ringkasan harian: satu surel ke penerima Konfigurasi Stiker, tidak berulang pada hari yang sama', async () => {
+    const sent: string[] = [];
+    await putSetting(
+      env,
+      'STICKER_ALERT',
+      JSON.stringify({
+        enabled: true,
+        recipients: ['a@contoh.com'],
+        digestHour: 8,
+        intervalDays: 1,
+        updatedAt: 't',
+      }),
+    );
+    await seedStickerType(env, { id: 't1', name: 'QC' });
+    await seedSticker(env, { id: 's1', typeId: 't1', name: 'Stiker A', minQty: 10 });
+    env.clock.set(Date.parse('2026-11-10T02:00:00.000Z')); // 09:00 WIB
+    const stop = startScheduler(
+      {
+        ...env,
+        MAILER: {
+          async send(message) {
+            sent.push(message.subject);
+          },
+        },
+      },
+      { intervalMs: 10 },
+    );
+    try {
+      await waitFor(async () => sent.length === 1);
+      await sleep(80);
+      expect(sent).toEqual(['Stok stiker: 1 habis']);
     } finally {
       await stop();
     }

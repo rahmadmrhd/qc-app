@@ -1,9 +1,13 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { locationsQueryOptions, rolesQueryOptions } from '@/modules/access/queries';
+import {
+  businessUnitsQueryOptions,
+  locationsQueryOptions,
+  rolesQueryOptions,
+} from '@/modules/access/queries';
 import { can } from '@/modules/auth/permissions';
 import { brandsQueryOptions } from '@/modules/brand/queries';
 import { itemsInfiniteQueryOptions } from '@/modules/item/queries';
@@ -31,6 +35,7 @@ export function prefetchCommonQueries(queryClient: QueryClient, me: MeDto): void
   if (can(me, 'access', 'view')) {
     void queryClient.prefetchQuery(rolesQueryOptions());
     void queryClient.prefetchQuery(locationsQueryOptions());
+    void queryClient.prefetchQuery(businessUnitsQueryOptions());
   }
 }
 

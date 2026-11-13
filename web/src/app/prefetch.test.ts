@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { QueryClient } from '@tanstack/react-query';
 import { expect, test, vi } from 'vitest';
 import { prefetchCommonQueries } from './prefetch';
@@ -22,10 +22,10 @@ function keysFor(user: MeDto): string[] {
   );
 }
 
-test('hanya mem-prefetch daftar yang boleh dibaca pengguna (tanpa izin = tanpa RPC)', () => {
+test('hanya mem-prefetch daftar yang boleh dibaca pengguna (tanpa izin = tanpa permintaan)', () => {
   expect(keysFor(me({}))).toEqual([]);
   expect(keysFor(me({ item: 'view' })).sort()).toEqual(['brands', 'items'].sort());
   expect(keysFor(me({ qrcode: 'edit' }))).toEqual(['qrcodes', 'qrcodes']);
-  expect(keysFor(me({ access: 'manage' })).length).toBe(2);
-  expect(keysFor(me({ item: 'view', qrcode: 'view', access: 'view' })).length).toBe(6);
+  expect(keysFor(me({ access: 'manage' })).length).toBe(3);
+  expect(keysFor(me({ item: 'view', qrcode: 'view', access: 'view' })).length).toBe(7);
 });

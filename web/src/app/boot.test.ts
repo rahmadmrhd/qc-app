@@ -1,4 +1,4 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { loadMe, readAuthError, resolveInitialSession } from './boot';

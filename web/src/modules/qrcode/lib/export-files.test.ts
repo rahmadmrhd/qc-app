@@ -2,7 +2,7 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE } from '@shared/qrcode';
+import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
 import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -32,6 +32,9 @@ const PIXEL_PNG =
 type Call = [string, ...unknown[]];
 let calls: Call[];
 let bitmapBlobs: Blob[];
+/** Bila > 0, `toBlob` panggilan KEDUA dst. (gambar contoh; yang pertama = PNG label) menghasilkan blob sebesar ini. */
+let oversizeAfterFirst = 0;
+let blobCalls = 0;
 
 function fakeContext() {
   return new Proxy({} as Record<string, unknown>, {
@@ -50,13 +53,22 @@ function fakeContext() {
 beforeEach(() => {
   calls = [];
   bitmapBlobs = [];
+  oversizeAfterFirst = 0;
+  blobCalls = 0;
   const pixel = base64ToBytes(PIXEL_PNG);
   vi.stubGlobal('document', {
     createElement: () => ({
       width: 0,
       height: 0,
       getContext: () => fakeContext(),
-      toBlob: (done: (blob: Blob) => void) => done(new Blob([pixel], { type: 'image/png' })),
+      toBlob: (done: (blob: Blob) => void) => {
+        blobCalls += 1;
+        done(
+          oversizeAfterFirst > 0 && blobCalls > 1
+            ? new Blob([new Uint8Array(oversizeAfterFirst)], { type: 'image/png' })
+            : new Blob([pixel], { type: 'image/png' }),
+        );
+      },
     }),
   });
   vi.stubGlobal('createImageBitmap', async (blob: Blob) => {
@@ -93,6 +105,10 @@ test('tanpa logo: PDF 1 halaman dan PNG ber-pHYs; logo tidak didekode', async ()
   expect([...png.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   expect(Buffer.from(png).includes(Buffer.from('pHYs'))).toBe(true);
   expect(bitmapBlobs).toHaveLength(0);
+  // gambar contoh stiker: PNG sah dari kanvas yang sama, tanpa pHYs 600 dpi, di bawah batas server
+  expect([...out.preview.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  expect(out.preview.length).toBeGreaterThan(0);
+  expect(out.preview.length).toBeLessThanOrEqual(QR_LIMITS.previewMaxBytes);
 });
 
 test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disematkan ke PDF sebagai PNG', async () => {
@@ -105,4 +121,9 @@ test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disemat
   const doc = await PDFDocument.load(out.pdf);
   expect(doc.getPageCount()).toBe(1);
   expect(out.pdf.length).toBeGreaterThan(1000);
+});
+
+test('gambar contoh tetap melebihi batas server setelah sisi terkecil: galat jelas, bukan byte kebesaran', async () => {
+  oversizeAfterFirst = QR_LIMITS.previewMaxBytes + 1;
+  await expect(renderExportFiles(design, null)).rejects.toThrow(/gambar contoh/i);
 });

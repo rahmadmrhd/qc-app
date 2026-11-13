@@ -47,25 +47,25 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 41 | Di halaman Merk ganti nama merk yang dipakai beberapa item | Nama di daftar dan detail semua item berubah; ganti ke nama merk lain ditolak; `brand.update` di Log Audit | FI8 |
 | 42 | Nonaktifkan merk lalu buat item baru dengan merk itu | Ditolak: "aktifkan dulu di halaman Merk" | FI8 |
 | 43 | Isi `DRIVE_FOLDER_ID` dengan id folder yang tidak ada lalu jalankan `setup` | Laporan "Folder Drive TIDAK dapat diakses"; properti tidak berubah; tidak ada folder baru | FS13 |
-| 44 | Isi `SYNC_API_TOKEN` 40 karakter di `.env` server lalu mulai ulang server; `GET /sync/ping` dengan token itu; ulangi dengan token < 32 karakter di server uji | 200 untuk token 40 karakter; token server < 32 karakter atau kosong: semua permintaan 401; item/merk hasil impor membawa `rev` (kursor lama tetap valid) | FS2, FS11 |
-| 45 | `curl -H "Authorization: Bearer <token>" https://<host>/api/v1/sync/ping`; ulangi tanpa header dan dengan token salah | `{"apiVersion":2,...,"resources":["brands","items"]}`; tanpa header/token salah: 401 problem+json yang sama persis | FS1, FS2 |
-| 46 | Kirim 10 token salah berturut-turut dari satu IP, lalu satu dengan token benar dari IP itu dan dari IP lain | Semua 401 yang sama; setelah 10 kali, token benar dari IP itu pun ditolak ±10 menit (IP lain tetap bisa); setelah itu pulih | FS2 |
-| 47 | `GET /sync/items?include=detail,stickers,accessories` dari `sinceRev=0` sampai `hasMore: false` | Semua item tepat sekali; `images` berisi id Drive; `detail` memakai `drive:` | FS4 |
-| 48 | `POST /sync/items/push` item baru dengan gambar dari folder aplikasi dan Markdown `drive:` | `created`; item muncul di Data Item dengan gambar tampil; audit `sync:desktop` | FS5, FS8, FS10 |
-| 49 | Ulangi push yang sama; ubah detail di web lalu push dengan `baseRev` lama | `unchanged`; lalu `conflict` dengan `current`; Log Audit memuat `item.sync.conflict` | FS5, FS6 |
-| 50 | `GET /sync/files/{id}` untuk id di folder dan id di luar folder | Byte mentah dengan `Content-Type` dan `ETag`; 404 | FS9 |
-| 51 | Ganti nama merk di web lalu pull item | Semua item merk itu muncul lagi dengan nama baru | FS11 |
-| 52 | Dorong 50 item (dan 25 item ber-`detail`) dalam satu `POST /sync/items/push` di deployment; catat lama panggilan | Selesai dalam hitungan detik (target < 30 dtk) tanpa 413 (badan < 5 MB); hasil per item lengkap. Bila lambat, turunkan `SYNC_LIMITS.pushMax` | FS5 |
-| 53 | Login WH (`handover: edit`): Serah Terima → Tambah task; ketik customer baru, tempel di editor catatan dua baris `CRS310 = 1 unt` dan `RB5009UG = 1 unt` → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; catatan tampil sebagai dua butir checklist; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
+| 44 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 45 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 46 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 47 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 48 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 49 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 50 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 51 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 52 | ~~dihapus 2026-11-08~~ | Modul sinkron QC Desktop dihapus; baris dipertahankan agar nomor tidak bergeser | - |
+| 53 | Login WH (`handover: edit`): Serah Terima → Tambah task (langsung form bulk, satu kartu); ketik customer baru, tempel di editor catatan kartu dua baris `CRS310 = 1 unt` dan `RB5009UG = 1 unt` → Simpan | Nomor `ST-YYYYMMDD-001`, status Baru; catatan tampil sebagai dua butir checklist; Log Audit memuat `customer.create` lalu `handover.create` | FC2, FH2, FH3, FH4 |
 | 54 | Buat task tanpa mengisi customer (opsional), lalu task kedua di hari yang sama dengan ejaan customer berbeda ("pt. maju  jaya") | Task tanpa customer tersimpan (daftar menampilkan "—", detail "Tanpa customer"); task kedua memakai customer yang sama (ejaan resmi), nomor `-002`, tidak ada customer ganda | FC2, FH4 |
 | 55 | Ketik nama customer mirip ("Maju Jaya PT" atau typo) | Petunjuk "Mirip: …, pakai ini?" dapat diklik; tidak memblokir simpan | FC4 |
-| 56 | Buka form Tambah task sebagai WH | Hanya ada customer (opsional) dan editor catatan; tidak ada kolom item, tipe, atau qty, dan tidak ada tautan "Tambah item baru" | FH2 |
+| 56 | Buka form Tambah task sebagai WH | Langsung form bulk tanpa pengalih "Satu task"/"Banyak task": lokasi, panel Tempel dari WhatsApp, dan satu kartu berisi customer (opsional) dan editor catatan; tidak ada kolom item, tipe, atau qty, dan tidak ada tautan "Tambah item baru" | FH2 |
 | 57 | Login QC (`qc: edit`): buka task Baru; centang satu butir, lalu butir kedua; tekan Mark done | Status Baru → Dikerjakan → Selesai; nama dan waktu centang tampil; audit `handover.check` per butir dan `handover.done` | FQ1, FQ2, FQ4 |
 | 58 | Dua QC membuka task yang sama dan mencentang butir berbeda, lalu butir yang sama, hampir bersamaan | Tidak ada centang yang hilang; mencentang butir yang sama tidak saling membatalkan | FQ1 |
-| 59 | Buka task Dibatalkan sebagai QC lalu sebagai WH; buka task Selesai sebagai QC dan WH | Dibatalkan: QC tidak melihat Mark done, centang ditolak (RPC langsung → `CONFLICT`); "Buka kembali" hanya tampil untuk WH dengan `handover: manage`. Selesai: tidak ada Mark done dan tidak ada Buka kembali | FH7, FQ6 |
+| 59 | Buka task Dibatalkan sebagai QC lalu sebagai WH; buka task Selesai sebagai QC dan WH | Dibatalkan: QC tidak melihat Mark done, centang ditolak (API langsung → `CONFLICT`); "Buka kembali" hanya tampil untuk WH dengan `handover: manage`. Selesai: tidak ada Mark done dan tidak ada Buka kembali | FH7, FQ6 |
 | 60 | WH (`handover: edit`) mengubah teks butir yang sudah dicentang; lalu mencoba menghapus butir yang sudah dicentang | Teks diubah: centang butir itu kembali kosong dan tercatat di audit `handover.update`; penghapusan butir tercentang ditolak dengan pesan jelas | FH7 |
 | 61 | WH (`handover: manage`) batalkan task (konfirmasi); WH `edit` saja | Task Dibatalkan, baca saja, audit `handover.cancel`; WH `edit` tidak melihat tombol Batalkan | FH8 |
-| 62 | User dengan akses lokasi A saja: pilih lokasi lain / buka URL task lokasi B | Tidak ada data lokasi B; detail menampilkan "Task tidak ditemukan di lokasi aktif"; panggilan RPC ke lokasi B → `FORBIDDEN` | FH1, FH6 |
+| 62 | User dengan akses lokasi A saja: pilih lokasi lain / buka URL task lokasi B | Tidak ada data lokasi B; detail menampilkan "Task tidak ditemukan di lokasi aktif"; panggilan API ke lokasi B → `FORBIDDEN` | FH1, FH6 |
 | 63 | Pilih dua lokasi di header, lalu satu | Daftar menggabungkan task; kolom Lokasi tampil hanya saat lebih dari satu lokasi | FH6 |
 | 64 | Halaman Customer: ganti nama, nonaktifkan; buat task dengan customer nonaktif | Pesan "dinonaktifkan; aktifkan dulu di halaman Customer"; ganti nama ke nama customer lain ditolak | FC5 |
 | 65 | WH tanpa izin `item` membuka form task | Saran customer tetap muncul (rute serah terima) | FC3 |
@@ -115,8 +115,8 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 109 | Ubah "Jarak antarbagian" pada QR tanpa subtitle | Posisi QR tidak bergeser; hanya jarak title ↔ subtitle berubah | FQR41 |
 | 110 | Daftar QR tidak punya tombol Duplikat; pakai PDF yang sudah dipakai QR lain pada QR kedua | Tombol Duplikat tidak ada; PDF yang sudah dipakai QR lain ditolak; tidak ada info "dipakai N konfigurasi" | FQR42 |
 | 111 | Ubah QR yang sudah punya PDF: unggah ulang, lalu "Ganti dari Drive" | Tidak ada opsi "Pakai PDF baru"; keduanya mengganti isi dan URL tetap (dengan konfirmasi) | FQR43 |
-| 112 | Sebagai WH (`handover: edit`), di Buat task tempel satu tempelan WhatsApp "Orderan Online" berisi dua baris `= 1 unt` | Satu task dengan usulan customer "Orderan Online" dan dua butir checklist; awalan pesan WhatsApp dibuang bila ada | Desain 2026-10-23 §4.2, §9 (contoh 1) |
-| 113 | Pada jalur bulk, tempel empat contoh pemilik secara terpisah (satu per satu) | Hasil 1, 2, 1, dan 3 task; customer sesuai contoh; butir checklist dan paragraf catatan sesuai contoh; WH dapat mengoreksi sebelum simpan | Desain 2026-10-23 §4.3, §9 (contoh 1–4) |
+| 112 | Sebagai WH (`handover: edit`), di panel Tempel dari WhatsApp pada Tambah task, tempel satu tempelan "Orderan Online" berisi dua baris `= 1 unt` lalu Pecah | Langsung muncul satu kartu (tanpa pratinjau atau tombol "Tambahkan ke batch") dengan usulan customer "Orderan Online" dan catatan di editor (dua butir checklist, bukan teks `- [ ]` mentah); kotak tempelan kosong dan tampil "1 task ditambahkan ke batch."; awalan pesan WhatsApp dibuang bila ada | Desain 2026-10-23 §4.2, §9 (contoh 1) |
+| 113 | Pada jalur bulk, tempel empat contoh pemilik secara terpisah (satu per satu) | Hasil 1, 2, 1, dan 3 task; customer sesuai contoh; butir checklist dan paragraf catatan sesuai contoh; kartu langsung ditambahkan saat Pecah; WH dapat mengoreksi customer dan catatan di kartu sebelum Simpan semua | Desain 2026-10-23 §4.3, §9 (contoh 1–4) |
 | 114 | Pada batch, biarkan satu task tidak valid (mis. catatan > 5.000 karakter) lalu Simpan semua | Tidak ada task yang tersimpan; task bermasalah ditunjuk; draf seluruh task tetap utuh | Desain 2026-10-23 §4.3, §9 |
 | 115 | Di kartu, centang satu butir; tekan Mark done; lalu lihat kartu di kolom Selesai | Kartu pindah kolom tanpa muat ulang dan tanpa membuka detail; Mark done mencentang semua butir; kartu Selesai tidak menampilkan Mark done maupun Buka kembali | Desain 2026-10-23 §4.4, §4.6, §12.1 |
 | 116 | Sebagai QC, pilih teks catatan di desktop lalu di ponsel 375 px, tekan "Balas", kirim komentar | Tombol "Balas" muncul di dekat seleksi (tanpa klik kanan); komentar tampil dengan kutipan yang ditandai | Desain 2026-10-23 §4.5 |
@@ -143,3 +143,89 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 135 | Lihat kolom Selesai dan Dikerjakan di desktop dan ponsel, dalam tema terang dan gelap | Selesai hijau, Dikerjakan biru, Baru netral, Dibatalkan muted; label status terbaca | Desain 2026-10-23 §12.3 |
 | 136 | Siapkan task Dikerjakan dengan progres 2/3 dan 1/3, task Baru, Selesai, dan Dibatalkan; buka daftar desktop dan ponsel | Urutan: Baru, Dikerjakan (progres lebih sedikit selesai di atas), Selesai, Dibatalkan; di dalam status, terbaru di atas | Desain 2026-10-23 §12.4 |
 | 137 | Pilih teks pada catatan yang sudah memiliki komentar, dalam tema terang dan gelap | Kutipan disorot dengan latar semitransparan lembut; warna teks tidak berubah dan tetap terbaca | Desain 2026-10-23 §12.5 |
+| 138 | Login sebagai user BU A dan user BU B (masing-masing `item: view` di BU-nya), buka Data Item | Daftar, jumlah, dan pencarian hanya memuat item BU masing-masing; item BU lain tidak muncul | BU FB4 |
+| 139 | Sebagai user BU A, buka detail dan berkas gambar item BU B lewat URL atau panggilan API langsung (console frame) | `"code":"NOT_FOUND"` (bukan FORBIDDEN); tidak ada isi berkas | BU FB4 |
+| 140 | Buat item di BU A dan BU B; beri user `item: view` di B dan `item: edit` di A; login sebagai user itu | Item A+B terlihat; tombol Ubah dan Nonaktifkan tidak tampil; `items.save` langsung ditolak `FORBIDDEN` | BU FB5 |
+| 141 | Buat merk dengan BU bawaan BU A; di form item pilih merk itu tanpa memilih BU; lalu pilih merk tanpa BU bawaan | Field BU terisi BU A dan tetap bisa diubah; merk tanpa BU bawaan membuat field BU kosong | BU FB6 |
+| 142 | Nonaktifkan BU C yang masih dipakai item dan user (halaman Business Unit); lalu buat item baru | Peringatan menampilkan jumlah item dan user; penonaktifan tetap berhasil; BU C tidak bisa dipilih untuk item baru; item lama tetap terlihat user BU C | BU FB7 |
+| 143 | Login sebagai user lama yang belum punya penugasan BU (setelah rilis) | Daftar item kosong; detail item mana pun `NOT_FOUND`; setelah admin menugaskan BU di form user dan user memuat ulang, item BU itu muncul | BU FB2, FB4; keputusan 14 |
+| 144 | Di form item, ketik nama merk yang sudah ada dengan huruf berbeda; lalu ketik merk baru tanpa menekan dialog "tambah" | Merk yang ada dipilih, tidak ada merk ganda; merk baru hanya lahir lewat dialog "tambah merk" (audit `brand.create`); teks yang diketik saja tidak membuat merk | BU FI8 (spek 5.5) |
+| 145 | Sebagai user yang hanya berhak di BU A, buat item dengan merk+tipe yang sudah ada di BU B | Ditolak `CONFLICT` dengan pesan generik; pesan tidak menyebut BU B, merk, atau tipe item BU B | BU FB8 |
+| 146 | Admin membuka form user yang sudah terbuka sebelum rilis, lalu menyimpan tanpa memuat ulang | Ditolak 422 (`buAssignments` wajib); setelah memuat ulang dan menyimpan, berhasil | BU FB2; keputusan 15 |
+| 147 | Buat BU di `/access/business-units`, lalu coba menghapusnya | Tidak ada tombol hapus; BU baru dan perubahannya tercatat di Log Audit | BU FB1 |
+| 148 | Sebagai admin (`access: manage`), jalankan ekspor Sheets (`exports.sheets`) bila fitur dipakai | Memuat seluruh item tanpa filter BU (pengecualian yang disengaja, keputusan 16; fitur belum dipakai) | BU FB4 (pengecualian) |
+| 149 | Unggah gambar item lalu, sebagai user lain dengan `item: view`, buka UUID-nya sebelum item disimpan | `NOT_FOUND`; pengunggah tetap melihat pratinjaunya (keputusan 18) | BU FB4 |
+| 150 | Simpan item di BU A dengan id berkas milik item BU B | `VALIDATION` seperti berkas tidak dikenal, tanpa menyebut item lain (keputusan 17) | BU FB4 |
+| 151 | Buat Postel di `/postel/new` dengan dua item, satu nomor sertifikat (tanggal habis, tautan), catatan, lalu simpan | Postel tersimpan; nama turunan dari tipe kedua item (mis. "M5-200/400"); kedua item tertaut; stiker "Postel" muncul di katalog Stiker (jenis sistem Postel); nomor tampil Aktif | Spek 4b |
+| 152 | Pada Postel itu tambah nomor baru lalu simpan | Nomor baru Aktif; nomor sebelumnya berlabel "Lama" dan tetap tampil; hanya nomor Lama yang punya tombol hapus | Spek 4b |
+| 153 | Ubah tanggal habis sebuah nomor lalu simpan; buka Riwayat perubahan | Riwayat memuat entri dengan tanggal habis lama dan baru, pelaku, dan waktu; peringatan email nomor itu mulai lagi menurut ambang berikutnya | Spek 4b |
+| 154 | Buat Postel lain dan pilih item yang sudah milik Postel pertama | Ditolak dengan pesan item sudah milik catatan Postel lain (menyebut nomor Aktifnya); tidak ada yang tersimpan | Spek 4b |
+| 155 | Pada form Postel unggah lampiran PDF dan gambar, simpan, lalu unduh keduanya dari detail | Kedua lampiran tersimpan; unduhan bernama `lampiran-<id>.<ekstensi>` dengan isi yang sama; berkas bukan PDF/gambar dan berkas di atas 10 MB ditolak; lebih dari 10 lampiran ditolak | Spek 4b |
+| 156 | Di `/postel` pakai filter "Segera habis" dan "Kedaluwarsa" | Catatan terfilter menurut kondisi nomor Aktifnya; nomor Lama yang kedaluwarsa tidak membuat catatan berlabel Kedaluwarsa | Spek 4b |
+| 157 | Di Konfigurasi Stiker atur peringatan Postel (aktifkan, penerima, jam, ambang, pengulangan) lalu tunggu penjadwal (staging dengan SMTP diatur) | Email diterima berisi nama Postel, nomor, tanggal habis, sisa hari, dan tautan; tanpa nama atau jumlah item; tidak terkirim dua kali untuk nomor dan ambang yang sama | Spek 4b |
+| 158 | Di Stok Stiker tambah stok stiker "Postel" lalu lihat riwayat stok | Stok bertambah dan riwayat tercatat seperti stiker lain; menipis dihitung dari minimum stiker | Spek 4b |
+| 159 | Di item yang tertaut Postel, tambah instruksi penempelan dengan penanda ke jenis Postel | Tampilan baca item menampilkan stiker "Postel" pada penanda itu; item tanpa Postel menampilkan "belum ada stiker" | Spek 4b |
+| 160 | Di daftar item pakai label dan filter "Belum ada Postel" (sebagai pengguna dengan `sticker: view`; lalu sebagai pengguna yang hanya punya `item: view`) | Hanya item aktif tanpa catatan Postel yang tampil; item yang sudah ber-Postel tidak berlabel; kedua jenis pengguna sama-sama melihat label dan filter (seperti Manual Book); pada detail item pengguna tanpa `sticker: view` hanya melihat keterangan "Belum ada Postel" untuk item tanpa Postel, tanpa ringkasan catatan | Spek 4b §7 butir 5 (keputusan pemilik 2026-11-12) |
+| 161 | Di katalog nonaktifkan stiker "Postel" lalu aktifkan kembali; coba ubah namanya | Dapat dinonaktifkan dan diaktifkan kembali kapan saja; nama terkunci (ditolak), gambar dan minimum boleh diubah | Spek 4b |
+| 162 | Masuk sebagai pengguna dengan `sticker: view` saja lalu buka `/postel` dan detailnya | Daftar dan detail terbaca; tidak ada tombol Ubah, Tambah, atau Hapus; membuka `/postel/new` atau `/postel/<id>/edit` langsung ditolak (izin `sticker: edit` diperlukan) | Spek 4b |
+| 163 | Di `/postel` cari memakai nomor Lama sebuah catatan, lalu model item (tanpa merk) dan sebagian nomor Aktif | Catatan itu tampil pada tiap pencarian; pencarian tak peka huruf besar/kecil; nomor yang tidak ada di catatan mana pun menampilkan "Tidak ada Postel yang cocok." | Spek 4b |
+| 164 | Di `/sticker/settings` isi "Kirim setiap (hari)" pada ringkasan stok menipis dengan 3, simpan, lalu biarkan stok menipis dan tunggu tiga hari jam kirim | Ringkasan terkirim pada hari pertama, tidak terkirim hari ke-2 dan ke-3, terkirim lagi hari ke-4 selama masih ada stok menipis; nilai 0 atau 366 ditolak dengan pesan; nilai 1 = tiap hari seperti sebelumnya | Spek 4a keputusan 14 (pemilik 2026-11-12) |
+
+## Notifikasi Serah Terima (tahap 5)
+
+Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (matriks §3). Uji di staging dengan tiga akun: WH (`handover: edit` di lokasi JKT), QC (`qc: edit` di JKT), dan akun ketiga untuk pencabutan akses. Lonceng ada di header (ikon dengan jumlah belum dibaca). Pelaku tidak pernah menerima notifikasi atas aksinya sendiri.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| N1 | WH membuat task baru di JKT | QC menerima satu notifikasi "task baru" dengan cuplikan isi catatan (satu baris, tanpa penanda daftar); WH tidak menerima apa pun | §3 Task baru dibuat, §6 |
+| N2 | WH mengubah catatan task | QC menerima satu notifikasi "diubah" dengan cuplikan catatan yang baru; WH tidak menerima | §3 Task diubah, §6 |
+| N3 | QC mengubah catatan task | WH tidak menerima notifikasi "diubah" (sisi QC saja yang menerima) | §3 Task diubah |
+| N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
+| N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |
+| N6 | QC menekan Mark done pada task | WH menerima satu notifikasi "selesai"; QC tidak | §3 Task selesai |
+| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 5 menit | §3 Butir dicentang |
+| N8 | WH menulis komentar pada task | QC menerima notifikasi komentar; WH (penulis) tidak | §3 Komentar |
+| N9 | QC menulis komentar pada task | WH menerima notifikasi komentar; QC (penulis) tidak | §3 Komentar |
+| N10 | Akun yang punya `qc: edit` dan `handover: view` sekaligus di JKT; WH membuat task | Akun itu menerima TEPAT satu notifikasi | §3 aturan umum |
+| N11 | Kirim ulang centang dengan nilai yang sama (mis. panggilan API langsung) | Tidak ada kejadian baru; jumlah notifikasi tidak bertambah | §3 (keadaan benar-benar berubah) |
+| N12 | QC mencentang lima butir dalam sekitar dua menit pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 5 menit sejak centang pertama | §4.2 |
+| N13 | QC mencentang butir terakhir pada task | WH menerima satu notifikasi "selesai", tidak ada ringkasan centang tambahan untuk rangkaian itu | §4.2 |
+| N14 | Tandai satu notifikasi dibaca, lalu "tandai semua dibaca" | Penanda belum dibaca dan jumlah pada ikon lonceng hilang | §5.1 |
+| N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
+| N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
+| N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
+| N18a | **Belum teruji di perangkat nyata; butuh `VAPID_*` terisi di staging.** Android (Chrome, aplikasi terpasang): login pertama | Dialog "Aktifkan notifikasi?" tampil; klik Aktifkan memunculkan dialog izin peramban SEKALI; setelah Izinkan, notifikasi muncul saat WH membuat task di lokasi QC itu (aplikasi tertutup juga) | §5.2 |
+| N18b | Klik notifikasi push | Aplikasi terbuka/terfokus di task terkait dengan `?loc=` benar; tidak ada tab kosong | §5.2 |
+| N18c | Login pertama di aplikasi terpasang, jawab "Nanti" | Tidak ditanya lagi pada muat ulang; menu profil "Notifikasi push" menawarkan "Aktifkan di perangkat ini" | §5.2 |
+| N18d | Tolak izin peramban | Tidak ada permintaan ulang; banner pengingat dengan langkah sesuai platform tampil, tidak lagi dalam 7 hari setelah ditutup; Status Push admin menunjukkan "Izin ditolak"; lonceng tetap menerima semuanya | §5.2 |
+| N18e | Nyalakan kembali izin lewat pengaturan peramban/OS lalu fokuskan aplikasi | Banner hilang, perangkat tertaut otomatis, push diterima | §5.2 |
+| N18f | Matikan kotak "Terima notifikasi push" di menu profil, lalu picu notifikasi | Tidak ada push; lonceng tetap terisi; Status Push admin menunjukkan "Dimatikan pengguna"; menyalakan kembali memulihkan push | §5.2 |
+| N18g | Logout lalu picu notifikasi untuk akun itu | Perangkat tetap menerima push (keputusan pemilik 2026-11-12); login akun lain di perangkat yang sama = kedua akun menerima notifikasinya masing-masing | §5.2 |
+| N18h | iPhone/iPad (iOS 16.4+): buka di Safari biasa, lalu pasang ke layar utama dan login | Di Safari biasa pengaturan push menjelaskan harus dipasang dan tidak meminta izin; setelah dipasang alurnya sama seperti N18a | §5.2 |
+| N18i | Desktop Chrome dan Firefox (aplikasi terpasang dan tab biasa) | Tab biasa: izin hanya lewat menu profil; terpasang: dialog pra-izin; push diterima | §5.2 |
+| N18j | Buka `/access/push` sebagai admin (`access: view`) dan sebagai pengguna tanpa izin itu | Admin melihat tabel status (bermasalah dulu) tanpa pengenal perangkat; pengguna tanpa izin tidak melihat menunya dan tidak dapat membuka halamannya | §10 |
+
+## PWA Fase 1
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 165 | Pasang aplikasi di Android Chrome lewat menu "Pasang aplikasi" atau "Tambahkan ke layar utama" | Aplikasi terpasang dengan ikon QC; terbuka tanpa bilah alamat (mode mandiri) | PWA FR-P2, FR-P4, FR-P5 |
+| 166 | Pasang di iOS Safari lewat "Tambahkan ke Layar Utama", lalu buka dari ikon | Aplikasi mandiri membuka halaman aplikasi, bukan peramban; ikon 180×180 tampil; menu "Pasang aplikasi" menampilkan petunjuk singkat | PWA FR-P2, FR-P4, FR-P5 |
+| 167 | Pasang di desktop (Chrome atau Edge) lewat butir "Pasang aplikasi" di menu pengguna | Jendela aplikasi terbuka sendiri dengan ikon QC; tidak ada pop-up pemasangan yang mengganggu | PWA FR-P4, FR-P5 |
+| 168 | Buka aplikasi, tutup, lalu buka lagi (kunjungan kedua) | Cangkang tampil lebih cepat; berkas JS/CSS berhash yang tidak berubah tidak diunduh ulang (DevTools → Network) | PWA FR-P6 |
+| 169 | Buka rute langsung (mis. `/handover`) lalu refresh saat mode pesawat | Cangkang tampil dari cache; aplikasi menampilkan keadaan galat jaringan yang jelas, bukan halaman kosong | PWA FR-P7 |
+| 170 | Login Google penuh di mode terpasang (Android dan iOS) | Callback OAuth selesai; aplikasi kembali dalam keadaan sudah login | PWA FR-P8 |
+| 171 | Buka `/auth/callback?code=x&state=y` langsung di peramban | Dijawab server, bukan cangkang `index.html` | PWA FR-P8 |
+| 172 | Deploy versi baru ke staging saat tidak ada formulir terisi, lalu pindah halaman di aplikasi yang sudah terpasang | Setelah pindah halaman, versi baru dimuat sendiri tanpa spanduk | PWA FR-P11, FR-P12 |
+| 173 | Deploy versi baru saat ada formulir terisi tanpa disimpan (mis. draf task), lalu tunggu | Spanduk "Ada versi baru" muncul dan menyebut ada formulir belum tersimpan; halaman TIDAK dimuat ulang otomatis; isian tetap utuh; setelah "Muat ulang" ditekan, versi baru dimuat | PWA FR-P13, FR-P12 |
+| 174 | Ganti tema ke Gelap, lalu ke Terang, di dalam aplikasi | Warna bilah sistem (`theme-color`) di Android ikut berubah sesuai tema | PWA FR-P3 |
+| 175 | Keluar (logout) dari aplikasi terpasang, lalu periksa DevTools → Application → Storage dan Cache | Data perangkat dibersihkan (cache query tersimpan dan data pengguna tidak tersisa); login ulang berhasil | PWA FR-P14 |
+| 176 | Buka DevTools → Application → Manifest dan Service Workers | Manifest terbaca tanpa galat (nama, ikon, `theme_color`); service worker aktif; Console tanpa galat | PWA FR-P1, FR-P6 |
+| 177 | Saat spanduk tampil (formulir belum tersimpan), simpan atau kosongkan formulir | Spanduk hilang sendiri; versi baru dimuat otomatis pada pemicu berikutnya (pindah halaman atau tab kembali terlihat) | PWA FR-P12 |
+| 178 | Centang checklist tepat ketika versi baru sudah siap (centang sedang dikirim) | Centang tidak terputus dan tidak hilang; muat ulang otomatis ditunda sampai penulisan selesai | PWA FR-P12, FR-P13 |
+| 179 | Dengan tidak ada formulir terisi, pindah ke aplikasi lain lalu kembali ke tab aplikasi | Bila versi baru sudah siap, versi baru dimuat ulang otomatis | PWA FR-P12 |
+| 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
+| 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
+| 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |

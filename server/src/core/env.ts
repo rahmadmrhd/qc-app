@@ -1,4 +1,5 @@
 import type { Db } from '@server/core/db';
+import type { PushSender } from '@server/modules/notification/push';
 import type { BridgeClient } from './bridge-client';
 import type { FileCache } from './file-cache';
 import type { GoogleSettings } from './google/settings';
@@ -16,7 +17,6 @@ export interface Env extends GoogleSettings {
   SESSION_SECRET: string;
   OAUTH_CLIENT_ID: string;
   OAUTH_CLIENT_SECRET: string;
-  SYNC_API_TOKEN: string;
   /** Email super admin. */
   ADMIN_EMAIL: string;
   /**
@@ -37,6 +37,10 @@ export interface Env extends GoogleSettings {
   BACKUP_DUMP?: DumpRunner;
   /** Folder lokal (volume yang dapat ditulis) tempat dump disimpan sementara; 3 salinan terakhir dipertahankan. */
   BACKUP_LOCAL_DIR?: string;
+  /** Pengirim Web Push (kunci VAPID terkonfigurasi); kosong = push dinonaktifkan (notifikasi push ditandai `skipped`). */
+  PUSH?: PushSender;
+  /** Kunci publik VAPID (base64url) untuk klien; bersama `PUSH`. */
+  VAPID_PUBLIC_KEY?: string;
   /** Pengirim email peringatan (T32); kosong = SMTP/`ALERT_TO` belum dikonfigurasi, peringatan dilewati dan dicatat. */
   MAILER?: Mailer;
   /** Penerima peringatan (`ALERT_TO`). */

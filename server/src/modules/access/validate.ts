@@ -2,17 +2,21 @@ import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey } from '@shared/assignments';
-import type { PartialPermissionMap } from '@shared/permissions';
-import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
+import type { BuAssignment } from '@shared/business-units';
+import { ALL_BU_KEY } from '@shared/business-units';
 import type {
   DeleteRoleInput,
   ListAuditPageInput,
+  SaveBusinessUnitInput,
   SaveLocationInput,
   SaveRoleInput,
   SaveUserInput,
+  SetBusinessUnitStatusInput,
   SetLocationStatusInput,
   SetUserStatusInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import type { PartialPermissionMap } from '@shared/permissions';
+import { isLevel, isLevelAllowed, isModuleKey } from '@shared/permissions';
 
 const USER_STATUS_VALUES = ['active', 'inactive'] as const;
 
@@ -55,6 +59,45 @@ function readAssignmentList(value: unknown, reader: ObjectReader): Assignment[] 
   return result;
 }
 
+/** Penugasan BU: pola `readAssignmentList`; `buId` null = Semua BU, tiap entri minimal satu role, BU unik. */
+function readBuAssignmentList(value: unknown, reader: ObjectReader): BuAssignment[] {
+  if (!Array.isArray(value)) {
+    reader.fail('buAssignments', 'Harus berupa daftar penugasan BU');
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: BuAssignment[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      reader.fail('buAssignments', 'Penugasan BU tidak valid');
+      continue;
+    }
+    const { buId, roleIds } = item as { buId?: unknown; roleIds?: unknown };
+    if (buId !== null && (typeof buId !== 'string' || buId.trim() === '')) {
+      reader.fail('buAssignments', 'BU penugasan tidak valid');
+      continue;
+    }
+    if (!Array.isArray(roleIds) || !roleIds.every((id) => typeof id === 'string')) {
+      reader.fail('buAssignments', 'Role penugasan BU tidak valid');
+      continue;
+    }
+    const ids = (roleIds as string[]).map((id) => id.trim()).filter((id) => id !== '');
+    if (ids.length === 0) {
+      reader.fail('buAssignments', 'Penugasan BU harus punya minimal satu role');
+      continue;
+    }
+    const bu = buId === null ? null : (buId as string).trim();
+    const key = bu ?? ALL_BU_KEY;
+    if (seen.has(key)) {
+      reader.fail('buAssignments', 'Satu BU hanya boleh muncul sekali');
+      continue;
+    }
+    seen.add(key);
+    result.push({ buId: bu, roleIds: [...new Set(ids)] });
+  }
+  return result;
+}
+
 export function validateSaveUser(raw: unknown): SaveUserInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
@@ -62,8 +105,11 @@ export function validateSaveUser(raw: unknown): SaveUserInput {
   const name = reader.str('name', { required: true, max: 100 });
   const status = reader.oneOf('status', USER_STATUS_VALUES);
   const assignments = readAssignmentList(reader.raw('assignments'), reader);
+  const buAssignments = readBuAssignmentList(reader.raw('buAssignments'), reader);
   reader.done();
-  return id ? { id, email, name, status, assignments } : { email, name, status, assignments };
+  return id
+    ? { id, email, name, status, assignments, buAssignments }
+    : { email, name, status, assignments, buAssignments };
 }
 
 export function validateSetUserStatus(raw: unknown): SetUserStatusInput {
@@ -162,6 +208,28 @@ export function validateSaveLocation(raw: unknown): SaveLocationInput {
 }
 
 export function validateSetLocationStatus(raw: unknown): SetLocationStatusInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true });
+  const status = reader.oneOf('status', USER_STATUS_VALUES);
+  reader.done();
+  return { id, status };
+}
+
+/** Kode BU mengikuti aturan kode lokasi: huruf besar/angka/tanda hubung, maks. 10. */
+export function validateSaveBusinessUnit(raw: unknown): SaveBusinessUnitInput {
+  const reader = readObject(raw);
+  const id = reader.optionalId('id');
+  const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
+  const name = reader.str('name', { required: true, max: 100 });
+  // `toUpperCase()` dapat memanjangkan teks (mis. "ŉ" -> "ʼN"): panjang dan pola diperiksa SETELAH huruf besar.
+  if (code !== '' && (code.length > 10 || !LOCATION_CODE_PATTERN.test(code))) {
+    reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
+  }
+  reader.done();
+  return id ? { id, code, name } : { code, name };
+}
+
+export function validateSetBusinessUnitStatus(raw: unknown): SetBusinessUnitStatusInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true });
   const status = reader.oneOf('status', USER_STATUS_VALUES);

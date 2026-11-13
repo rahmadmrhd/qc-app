@@ -47,6 +47,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'updated_at',
     'updated_by',
     'assignments',
+    'bu_assignments',
   ]),
   spec('roles', [
     'id',
@@ -61,11 +62,9 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
   spec('audit_log', ['id', 'ts', 'actor', 'action', 'target', 'before', 'after'], 'id', 'integer'),
   spec('brands', [
     'id',
-    'external_id',
     'name',
     'key',
     'status',
-    'sync_rev',
     'created_at',
     'updated_at',
     'updated_by',
@@ -118,7 +117,6 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
   ]),
   spec('items', [
     'id',
-    'external_id',
     'brand_id',
     'model',
     'key',
@@ -129,14 +127,18 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'accessories',
     'attachments',
     'detail_md',
+    'manual_book_design_id',
+    'postel_id',
     'status',
-    'sync_rev',
     'created_at',
     'updated_at',
     'updated_by',
   ]),
   spec('qr_designs', [
     'id',
+    'name',
+    'name_placement',
+    'preset_id',
     'title',
     'link_source',
     'link',
@@ -182,6 +184,8 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
   ]),
   spec('qr_presets', [
     'id',
+    'bu_id',
+    'name_placement',
     'name',
     'title',
     'subtitle',
@@ -194,7 +198,6 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'updated_at',
     'updated_by',
   ]),
-  spec('sync_state', ['resource', 'seq', 'updated_at'], 'resource'),
 ];
 
 export function exportTableSpec(table: string): ExportTableSpec | undefined {

@@ -1,4 +1,15 @@
-export const MODULES = ['access', 'item', 'qrcode', 'handover', 'qc', 'stock'] as const;
+export const MODULES = [
+  'access',
+  'item',
+  'qrcode',
+  'handover',
+  'qc',
+  'stock',
+  'sticker',
+  'stickerstock',
+  'serial',
+  'serialservice',
+] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -8,6 +19,10 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   handover: 'Serah Terima QC–WH',
   qc: 'Pengerjaan QC',
   stock: 'Monitoring Stok',
+  sticker: 'Katalog Stiker',
+  stickerstock: 'Stok Stiker',
+  serial: 'Serial Number',
+  serialservice: 'Servis Serial Number',
 };
 
 export const LEVELS = ['none', 'view', 'edit', 'manage'] as const;
@@ -31,6 +46,10 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   handover: ['none', 'view', 'edit', 'manage'],
   qc: ['none', 'edit'],
   stock: ['none', 'view'],
+  sticker: ['none', 'view', 'edit', 'manage'],
+  stickerstock: ['none', 'view', 'edit', 'manage'],
+  serial: ['none', 'view', 'edit', 'manage'],
+  serialservice: ['none', 'view', 'edit'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -53,8 +72,9 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   },
   qrcode: {
     view: 'Melihat konfigurasi label QR dan mengunduh hasil ekspor.',
-    edit: 'Melihat serta membuat, mengubah, dan menduplikat konfigurasi label.',
-    manage: 'Semua akses Ubah, ditambah ekspor ke Drive dan menghapus konfigurasi.',
+    edit: 'Melihat serta membuat, mengubah, dan mengekspor konfigurasi label (Manual Book) ke Drive, termasuk melihat riwayat versi.',
+    manage:
+      'Semua akses Ubah, ditambah menghapus konfigurasi serta mengelola preset default per BU dan pustaka logo.',
   },
   handover: {
     view: 'Melihat task serah terima di lokasi penugasan.',
@@ -65,6 +85,26 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     edit: 'Melihat task di lokasi penugasan dan memperbarui progres pengerjaan (qty selesai, tandai selesai).',
   },
   stock: { view: 'Melihat monitoring stok yang belum QC.' },
+  sticker: {
+    view: 'Melihat katalog jenis dan stiker.',
+    edit: 'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
+    manage:
+      'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
+  },
+  stickerstock: {
+    view: 'Melihat stok dan riwayat stiker di lokasi penugasan.',
+    edit: 'Melihat serta mencatat stok masuk dan keluar.',
+    manage: 'Semua akses Ubah, ditambah koreksi dan stok opname.',
+  },
+  serial: {
+    view: 'Melihat serial number pada BU penugasan.',
+    edit: 'Melihat serta mencatat serial number dan mengubah datanya.',
+    manage: 'Semua akses Ubah, ditambah pengaturan serial number.',
+  },
+  serialservice: {
+    view: 'Melihat serial number dan riwayat servisnya pada BU penugasan.',
+    edit: 'Melihat serta menangani servis serial number.',
+  },
 };
 
 export function levelHint(module: ModuleKey, level: Level): string {

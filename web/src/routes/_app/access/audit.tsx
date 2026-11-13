@@ -1,10 +1,10 @@
-import type { AuditEntryDto } from '@shared/rpc';
+import type { AuditEntryDto } from '@shared/contract';
 import { keepPreviousData, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
-import { NativeSelect } from '@/components/native-select';
 import { PageLoading } from '@/components/page-loading';
+import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -64,7 +64,7 @@ function AuditPage() {
   });
   const entries = auditQuery.data?.pages.flatMap((page) => page.entries);
   const [selected, setSelected] = useState<AuditEntryDto | null>(null);
-  // Kata kunci dikirim ke server; tunda agar tidak memanggil RPC pada setiap ketukan.
+  // Kata kunci dikirim ke server; tunda agar tidak memanggil API pada setiap ketukan.
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) => {
     void navigate({
       search: (prev) => ({ ...prev, q: value || undefined }),
@@ -83,27 +83,23 @@ function AuditPage() {
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
-        <NativeSelect
-          aria-label="Filter aksi"
+        <Select
+          id="audit-filter-action"
+          label="Filter aksi"
+          hideLabel
           className="sm:w-56"
+          options={[
+            { value: '', label: 'Semua aksi' },
+            ...Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => ({ value, label })),
+          ]}
           value={search.action ?? ''}
-          onChange={(event) =>
+          onValueChange={(next) =>
             void navigate({
-              search: (prev) => ({
-                ...prev,
-                action: event.target.value || undefined,
-              }),
+              search: (prev) => ({ ...prev, action: next || undefined }),
               replace: true,
             })
           }
-        >
-          <option value="">Semua aksi</option>
-          {Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </NativeSelect>
+        />
       </div>
       {entries ? (
         <div

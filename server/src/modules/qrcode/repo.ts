@@ -1,7 +1,7 @@
 import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import type { QrLayout, QrLinkSource, QrStyle } from '@shared/qrcode';
+import type { QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from '@shared/qrcode';
 import { clampQrLayout, clampQrStyle } from '@shared/qrcode';
 
 /**
@@ -32,6 +32,10 @@ export interface QrPresetRecord {
   layout: QrLayout;
   style: QrStyle;
   defaultLogoId: string;
+  /** BU pemilik preset (satu per BU); `''` = preset lama tanpa BU. */
+  buId: string;
+  /** Bagian label yang menampung nama Manual Book (terkunci); `''` = tidak ada. */
+  namePlacement: QrNamePlacement | '';
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -58,6 +62,12 @@ export interface QrDesignRecord {
   exportedBy: string;
   exportPdfDriveId: string;
   exportPngDriveId: string;
+  /** Nama Manual Book (dihasilkan dari item, boleh diedit); `''` = konfigurasi lama tanpa nama. */
+  name: string;
+  /** Bagian label yang menampung nama (disalin dari preset saat dibuat); `''` = tidak ada. */
+  namePlacement: QrNamePlacement | '';
+  /** Preset asal (pembanding banner penyimpangan); `''` = tanpa preset. */
+  presetId: string;
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -104,6 +114,13 @@ function parseQrStyle(value: string): QrStyle {
   }
 }
 
+function parseNamePlacement(value: string): QrNamePlacement | '' {
+  const placement = value.trim();
+  return placement === 'title' || placement === 'subtitle' || placement === 'footer'
+    ? placement
+    : '';
+}
+
 function parseQrIdList(value: string): string[] {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -116,7 +133,7 @@ function parseQrIdList(value: string): string[] {
 }
 
 const DESIGN_COLUMNS =
-  'id, title, link_source, link, document_id, subtitle, footer, logo_file_id, layout, style, overflow, exported_hash, exported_at, exported_by, export_pdf_drive_id, export_png_drive_id, created_at, created_by, updated_at, updated_by';
+  'id, title, link_source, link, document_id, subtitle, footer, logo_file_id, layout, style, overflow, exported_hash, exported_at, exported_by, export_pdf_drive_id, export_png_drive_id, created_at, created_by, updated_at, updated_by, name, name_placement, preset_id';
 
 function toDesign(row: Row): QrDesignRecord {
   return {
@@ -136,6 +153,9 @@ function toDesign(row: Row): QrDesignRecord {
     exportedBy: text(row.exported_by),
     exportPdfDriveId: text(row.export_pdf_drive_id).trim(),
     exportPngDriveId: text(row.export_png_drive_id).trim(),
+    name: text(row.name),
+    namePlacement: parseNamePlacement(text(row.name_placement)),
+    presetId: text(row.preset_id).trim(),
     createdAt: text(row.created_at),
     createdBy: text(row.created_by),
     updatedAt: text(row.updated_at),
@@ -170,6 +190,9 @@ function designValues(design: QrDesignRecord): Array<string | number> {
     design.createdBy,
     design.updatedAt,
     design.updatedBy,
+    design.name,
+    design.namePlacement,
+    design.presetId,
   ];
 }
 
@@ -203,12 +226,94 @@ export function updateQrDesignStmt(
     .bind(...values, design.id, ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]));
 }
 
+const EXPORT_COLUMN_NAMES: ReadonlySet<string> = new Set([
+  'exported_hash',
+  'exported_at',
+  'exported_by',
+  'export_pdf_drive_id',
+  'export_png_drive_id',
+]);
+
+/**
+ * UPDATE isi konfigurasi TANPA kolom hasil ekspor (hash, waktu, pengekspor, id berkas Drive). Dipakai simpan biasa:
+ * komit ekspor menulis kolom itu TANPA menaikkan `updated_at`, sehingga CAS `updated_at` tetap lolos meski salinan
+ * konfigurasi yang dipegang penyimpan sudah basi; menulis ulang kolom itu dari salinan basi akan menimpa berkas
+ * ekspor yang baru di-commit. Penjaga `guardUpdatedAt` dan `guardChanged` seperti `updateQrDesignStmt`.
+ */
+export function updateQrDesignContentStmt(
+  db: Db,
+  design: QrDesignRecord,
+  guardUpdatedAt?: string,
+): DbStatement {
+  const values = designValues(design);
+  const pairs = DESIGN_COLUMNS.split(', ')
+    .map((name, index) => [name, values[index]] as const)
+    .filter(([name]) => name !== 'id' && !EXPORT_COLUMN_NAMES.has(name));
+  return db
+    .prepare(
+      `UPDATE qr_designs SET ${pairs.map(([name]) => `${name} = ?`).join(', ')} WHERE id = ?${
+        guardUpdatedAt === undefined ? '' : ' AND updated_at = ?'
+      }`,
+    )
+    .bind(
+      ...pairs.map(([, value]) => value as string | number),
+      design.id,
+      ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]),
+    );
+}
+
+/**
+ * UPDATE komit ekspor: HANYA kolom hasil ekspor (hash, waktu, pengekspor, id berkas Drive PDF/PNG), dengan CAS
+ * `updated_at`. Kolom lain (mis. `overflow` yang dilaporkan peramban tanpa menaikkan `updated_at`) tidak boleh
+ * ditimpa salinan yang dimuat job sebelumnya. Letakkan `guardChanged` langsung sesudahnya.
+ */
+export function updateQrDesignExportStmt(
+  db: Db,
+  id: string,
+  exported: Pick<
+    QrDesignRecord,
+    'exportedHash' | 'exportedAt' | 'exportedBy' | 'exportPdfDriveId' | 'exportPngDriveId'
+  >,
+  guardUpdatedAt: string,
+): DbStatement {
+  return db
+    .prepare(
+      'UPDATE qr_designs SET exported_hash = ?, exported_at = ?, exported_by = ?, export_pdf_drive_id = ?, export_png_drive_id = ? WHERE id = ? AND updated_at = ?',
+    )
+    .bind(
+      exported.exportedHash,
+      exported.exportedAt,
+      exported.exportedBy,
+      exported.exportPdfDriveId,
+      exported.exportPngDriveId,
+      id,
+      guardUpdatedAt,
+    );
+}
+
+/** Hanya menyetel flag `overflow` (laporan peramban); tanpa menyentuh kolom lain dan tanpa menaikkan `updated_at`. */
+export function setQrDesignOverflowStmt(db: Db, id: string, overflow: boolean): DbStatement {
+  return db
+    .prepare('UPDATE qr_designs SET overflow = ? WHERE id = ?')
+    .bind(overflow ? '1' : '', id);
+}
+
+/**
+ * Mengunci baris konfigurasi (`FOR UPDATE`) di AWAL batch yang bergantung pada keadaan versi Manual Book (hapus,
+ * simpan dengan kelonggaran). Komit ekspor memulai batch-nya dengan `UPDATE qr_designs` (kunci yang sama) tanpa
+ * menaikkan `updated_at`, jadi keduanya saling menunggu: pembacaan penjaga sesudah kunci ini melihat komit
+ * ekspor yang lebih dulu selesai, dan komit ekspor yang menyusul melihat baris sudah terhapus (basi).
+ */
+export function lockQrDesignRowStmt(db: Db, id: string): DbStatement {
+  return db.prepare('SELECT id FROM qr_designs WHERE id = ? FOR UPDATE').bind(id);
+}
+
 export function deleteQrDesignStmt(db: Db, id: string): DbStatement {
   return db.prepare('DELETE FROM qr_designs WHERE id = ?').bind(id);
 }
 
 const PRESET_COLUMNS =
-  'id, name, title, subtitle, footer, layout, style, default_logo_id, created_at, created_by, updated_at, updated_by';
+  'id, name, title, subtitle, footer, layout, style, default_logo_id, created_at, created_by, updated_at, updated_by, bu_id, name_placement';
 
 function toPreset(row: Row): QrPresetRecord {
   return {
@@ -220,6 +325,8 @@ function toPreset(row: Row): QrPresetRecord {
     layout: parseQrLayout(text(row.layout)),
     style: parseQrStyle(text(row.style)),
     defaultLogoId: text(row.default_logo_id).trim(),
+    buId: text(row.bu_id).trim(),
+    namePlacement: parseNamePlacement(text(row.name_placement)),
     createdAt: text(row.created_at),
     createdBy: text(row.created_by),
     updatedAt: text(row.updated_at),
@@ -246,6 +353,8 @@ function presetValues(preset: QrPresetRecord): Array<string | number> {
     preset.createdBy,
     preset.updatedAt,
     preset.updatedBy,
+    preset.buId,
+    preset.namePlacement,
   ];
 }
 

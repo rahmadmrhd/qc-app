@@ -1,8 +1,9 @@
 import type { QrLayout, QrStyle } from '@shared/qrcode';
-import { layoutLabel } from '@shared/qrcode';
+import { layoutLabel, QR_LIMITS } from '@shared/qrcode';
 import { loadLabelFonts, registerCanvasFonts } from './fonts';
 import { createCanvasMeasure } from './measure';
 import { setPngDpi } from './png-dpi';
+import { fitPreviewSize, PREVIEW_SIDES } from './preview-png';
 import { qrMatrix } from './qr-matrix';
 import { renderLabelCanvas } from './render-canvas';
 import { buildSheetPdf } from './render-pdf';
@@ -34,11 +35,35 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-/** Menghasilkan PDF lembar dan PNG label tunggal (byte mentah). Melempar bila isi melebihi kanvas 3 × 3 cm. */
+/**
+ * Gambar contoh stiker (PNG kecil dari kanvas label yang sama): sisi terpanjang <= 800 px dan <= `previewMaxBytes`;
+ * bila masih terlalu besar, diperkecil bertahap. Tanpa pHYs (bukan berkas cetak).
+ */
+async function renderPreview(source: HTMLCanvasElement): Promise<Uint8Array> {
+  for (const side of PREVIEW_SIDES) {
+    const size = fitPreviewSize(source.width, source.height, side);
+    let canvas = source;
+    if (size.width !== source.width || size.height !== source.height) {
+      canvas = document.createElement('canvas');
+      canvas.width = size.width;
+      canvas.height = size.height;
+      canvas.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
+    }
+    const bytes = new Uint8Array(await (await canvasToBlob(canvas)).arrayBuffer());
+    if (bytes.length <= QR_LIMITS.previewMaxBytes) return bytes;
+  }
+  // Server menolak gambar contoh yang kebesaran (422): lebih baik gagal jelas di sini daripada setelah mengunggah.
+  throw new Error('Gambar contoh stiker terlalu besar; sederhanakan isi label lalu coba lagi');
+}
+
+/**
+ * Menghasilkan PDF lembar, PNG label tunggal, dan gambar contoh stiker (byte mentah). Melempar bila isi melebihi
+ * kanvas 3 × 3 cm.
+ */
 export async function renderExportFiles(
   design: ExportDesign,
   logo: ExportLogo | null,
-): Promise<{ pdf: Uint8Array; png: Uint8Array }> {
+): Promise<{ pdf: Uint8Array; png: Uint8Array; preview: Uint8Array }> {
   const [fonts] = await Promise.all([loadLabelFonts(), registerCanvasFonts()]);
   const matrix = qrMatrix(design.link);
   // Logo di-decode lebih dulu: rasionya menentukan ukuran kotak logo pada tata letak.
@@ -76,5 +101,5 @@ export async function renderExportFiles(
     PNG_DPI,
   );
   const pdfBytes = await buildSheetPdf(layout, matrix, logoPng, fonts);
-  return { pdf: pdfBytes, png: pngBytes };
+  return { pdf: pdfBytes, png: pngBytes, preview: await renderPreview(pngCanvas) };
 }

@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest';
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
 import { createApiClient } from './client';
 
@@ -39,14 +40,15 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
   await api('items.save', {
     id: 'a/b',
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
-    brand: 'Sony',
+    brandId: 'b1',
     model: 'X',
     isCountryLock: false,
     aliases: [],
-    stickers: [],
+    stickerPhotos: [],
     accessories: [],
     attachments: [],
     detail: '',
+    businessUnitIds: ['bu1'],
   });
   const { url, init } = lastCall(fetchImpl);
   expect(url).toBe('/api/v1/items/a%2Fb');
@@ -57,19 +59,21 @@ test('PUT: id di jalur (di-encode), If-Match bertanda kutip, badan tanpa id dan 
     'If-Match': '"2026-10-09T00:00:00.000Z"',
   });
   const body = JSON.parse(String(init.body));
-  expect(body).toMatchObject({ brand: 'Sony', model: 'X' });
+  expect(body).toMatchObject({ brandId: 'b1', model: 'X' });
   expect(body).not.toHaveProperty('id');
   expect(body).not.toHaveProperty('expectedUpdatedAt');
 });
 
 test('POST create (tanpa id): jalur koleksi, tanpa If-Match', async () => {
   const { api, fetchImpl } = setup(() => respond({ id: 'b1' }, { status: 201 }));
-  await expect(api('brands.save', { name: 'Sony' })).resolves.toEqual({ id: 'b1' });
+  await expect(api('brands.save', { name: 'Sony', businessUnitIds: [] })).resolves.toEqual({
+    id: 'b1',
+  });
   const { url, init } = lastCall(fetchImpl);
   expect(url).toBe('/api/v1/brands');
   expect(init.method).toBe('POST');
   expect(init.headers).not.toHaveProperty('If-Match');
-  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony' });
+  expect(JSON.parse(String(init.body))).toEqual({ name: 'Sony', businessUnitIds: [] });
 });
 
 test('PATCH: status di badan, id di jalur', async () => {
@@ -108,7 +112,9 @@ const problem = (code: string, status: number, extra: object = {}) =>
 
 test('problem 409 menjadi ApiError code CONFLICT dengan requestId dan fields', async () => {
   const { api } = setup(() => problem('CONFLICT', 409, { fields: { name: 'Sudah dipakai' } }));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({
     code: 'CONFLICT',
@@ -121,10 +127,14 @@ test('problem 409 menjadi ApiError code CONFLICT dengan requestId dan fields', a
 
 test('problem 412 menjadi CONFLICT walau kodenya lain; status tetap 412', async () => {
   const { api } = setup(() => problem('VALIDATION', 412));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toMatchObject({ code: 'CONFLICT', status: 412 });
   const { api: plain } = setup(() => problem('CONFLICT', 412));
-  expect(await plain('brands.save', { name: 'X' }).catch((e: unknown) => e)).toMatchObject({
+  expect(
+    await plain('brands.save', { name: 'X', businessUnitIds: [] }).catch((e: unknown) => e),
+  ).toMatchObject({
     code: 'CONFLICT',
     status: 412,
   });
@@ -203,7 +213,9 @@ test('baseUrl ditambahkan di depan /api/v1', async () => {
 
 test('413 polos dari Bun.serve (bukan problem) menjadi VALIDATION "Badan permintaan terlalu besar"', async () => {
   const { api } = setup(() => respond('Payload Too Large', { status: 413 }, 'text/plain'));
-  const error = await api('brands.save', { name: 'X' }).catch((e: unknown) => e);
+  const error = await api('brands.save', { name: 'X', businessUnitIds: [] }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({
     code: 'VALIDATION',
@@ -289,30 +301,33 @@ test('qrcodes.uploadPdf: Content-Type application/pdf, nama dan replaceDocumentI
   expect(init.headers).toMatchObject({ 'Content-Type': 'application/pdf' });
 });
 
-test('qrcodes.export: multipart pdf+png tanpa Content-Type buatan sendiri, If-Match dari expectedUpdatedAt, 202 { jobId }', async () => {
+test('qrcodes.export: multipart pdf+png+preview dengan reason di query, tanpa Content-Type buatan sendiri, If-Match dari expectedUpdatedAt, 202 { jobId }', async () => {
   const { api, fetchImpl } = setup(() => respond({ jobId: 'j1' }, { status: 202 }));
   const out = await api('qrcodes.export', {
     id: 'q1',
     expectedUpdatedAt: '2026-10-16T00:00:00.000Z',
     pdf: new Uint8Array([1]),
     png: new Uint8Array([2, 3]),
+    preview: new Uint8Array([4, 5, 6]),
+    reason: 'Logo diganti',
   });
   expect(out).toEqual({ jobId: 'j1' });
   const { url, init } = lastCall(fetchImpl);
-  expect(url).toBe('/api/v1/qrcodes/q1/exports');
+  expect(url).toBe('/api/v1/qrcodes/q1/exports?reason=Logo+diganti');
   expect(init.headers).not.toHaveProperty('Content-Type');
   expect(init.headers).toMatchObject({ 'If-Match': '"2026-10-16T00:00:00.000Z"' });
   const form = init.body as FormData;
   expect(form).toBeInstanceOf(FormData);
   expect(await bytesOfBody(form.get('pdf') as Blob)).toEqual([1]);
   expect(await bytesOfBody(form.get('png') as Blob)).toEqual([2, 3]);
+  expect(await bytesOfBody(form.get('preview') as Blob)).toEqual([4, 5, 6]);
 });
 
 test('JSON (GET/tulis) memakai cache no-store; unduhan mengikuti kebijakan cache tabelnya (tanpa opsi)', async () => {
   const { api, fetchImpl } = setup(() => respond({ id: 'h1' }));
   await api('handovers.get', { id: 'h1', locationIds: ['l1'] });
   expect(lastCall(fetchImpl).init.cache).toBe('no-store');
-  await api('brands.save', { name: 'Sony' });
+  await api('brands.save', { name: 'Sony', businessUnitIds: [] });
   expect(lastCall(fetchImpl).init.cache).toBe('no-store');
   const download = setup(
     () => new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/png' } }),
@@ -361,4 +376,40 @@ test('unduhan gagal: badan problem+json dibaca sebagai teks (ApiError), bukan by
   const error = await api('files.get', { id: 'x' }).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(ApiError);
   expect(error).toMatchObject({ code: 'NOT_FOUND', message: 'Berkas tidak ditemukan' });
+});
+
+test('permintaan tulis menandai registri sibuk selama berjalan (termasuk saat gagal); GET tidak', async () => {
+  resetBusyForTests();
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { api } = setup(async () => {
+    await gate;
+    return respond({ id: 'b1' });
+  });
+  const pending = api('brands.save', { id: 'b1', name: 'X' } as never);
+  expect(isBusy()).toBe(true);
+  release();
+  await pending;
+  expect(isBusy()).toBe(false);
+
+  const failing = setup(() => respond({ code: 'VALIDATION', detail: 'x' }, { status: 400 }));
+  await expect(failing.api('brands.save', { id: 'b1', name: 'X' } as never)).rejects.toBeInstanceOf(
+    ApiError,
+  );
+  expect(isBusy()).toBe(false);
+
+  let releaseGet: () => void = () => undefined;
+  const getGate = new Promise<void>((resolve) => {
+    releaseGet = resolve;
+  });
+  const reading = setup(async () => {
+    await getGate;
+    return respond([]);
+  });
+  const read = reading.api('brands.list', null);
+  expect(isBusy()).toBe(false);
+  releaseGet();
+  await read;
 });

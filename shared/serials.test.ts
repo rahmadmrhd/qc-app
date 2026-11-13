@@ -1,0 +1,126 @@
+import { describe, expect, test } from 'bun:test';
+import {
+  isIsoDate,
+  listSerialsTooLong,
+  normalizeSerial,
+  SERIAL_LIMITS,
+  serialProblem,
+  splitSerialInput,
+} from './serials';
+
+describe('normalizeSerial', () => {
+  test('semua varian MAC menjadi satu bentuk', () => {
+    for (const raw of [
+      '  4c:5e:0c:1a:2b:3d ',
+      '4C-5E-0C-1A-2B-3D',
+      '4C5E.0C1A.2B3D',
+      '4c5e0c1a2b3d',
+    ]) {
+      expect(normalizeSerial(raw)).toBe('4C5E0C1A2B3D');
+    }
+  });
+
+  test('bukan MAC tidak diubah selain huruf besar', () => {
+    expect(normalizeSerial('sn-12345')).toBe('SN-12345');
+    expect(normalizeSerial('4C:5E-0C:1A:2B:3D')).toBe('4C:5E-0C:1A:2B:3D');
+    expect(normalizeSerial('0x4C5E0C1A2B3D')).toBe('0X4C5E0C1A2B3D');
+  });
+});
+
+describe('serialProblem', () => {
+  test('kosong, terlalu panjang, karakter kontrol, dan sah', () => {
+    expect(serialProblem('')).toBe('empty');
+    expect(serialProblem('A'.repeat(SERIAL_LIMITS.serialMax))).toBeNull();
+    expect(serialProblem('A'.repeat(SERIAL_LIMITS.serialMax + 1))).toBe('too_long');
+    expect(serialProblem('AB\u0000C')).toBe('control_chars');
+    expect(serialProblem('AB‮C')).toBe('control_chars');
+    expect(serialProblem('AB12')).toBeNull();
+  });
+});
+
+describe('splitSerialInput', () => {
+  test('memecah semua jenis baris, menormalisasi, membuang kosong dan menghitung duplikat', () => {
+    const result = splitSerialInput('a\r\nb\n\nA\rc\n');
+    expect(result.serials).toEqual(['A', 'B', 'C']);
+    expect(result.duplicates).toBe(1);
+    expect(result.rejected).toEqual([]);
+    expect(result.truncated).toBe(false);
+  });
+
+  test('baris bermasalah masuk rejected', () => {
+    const result = splitSerialInput('OK1\nAB\u0000C\n' + 'X'.repeat(65));
+    expect(result.serials).toEqual(['OK1']);
+    expect(result.rejected).toHaveLength(2);
+  });
+
+  test('dipotong pada batas', () => {
+    const text = Array.from({ length: 1001 }, (_, i) => `S${i}`).join('\n');
+    const result = splitSerialInput(text);
+    expect(result.serials).toHaveLength(1000);
+    expect(result.truncated).toBe(true);
+    expect(splitSerialInput('A\nB\nC', 2).serials).toEqual(['A', 'B']);
+    expect(splitSerialInput('A\nB', 2).truncated).toBe(false);
+  });
+
+  test('isi QR dengan dua baris menghasilkan dua serial', () => {
+    expect(splitSerialInput('4C:5E:0C:1A:2B:3D\n4C5E0C1A2B3E').serials).toEqual([
+      '4C5E0C1A2B3D',
+      '4C5E0C1A2B3E',
+    ]);
+  });
+});
+
+describe('isIsoDate', () => {
+  test('tanggal kalender sah saja', () => {
+    expect(isIsoDate('2026-11-12')).toBe(true);
+    expect(isIsoDate('2028-02-29')).toBe(true);
+    for (const bad of ['2026-13-01', '2026-02-30', '12-11-2026', '2026-1-1', '']) {
+      expect(isIsoDate(bad)).toBe(false);
+    }
+  });
+});
+
+describe('listSerialsTooLong', () => {
+  const MAX = SERIAL_LIMITS.listSerialsEncodedMax;
+
+  test('tepat di batas ter-encode lolos, satu lebih ditolak', () => {
+    expect(listSerialsTooLong('A'.repeat(MAX))).toBe(false);
+    expect(listSerialsTooLong('A'.repeat(MAX + 1))).toBe(true);
+  });
+
+  test('baris baru dihitung 3 karakter (%0A) dan CRLF/CR dinormalkan menjadi satu', () => {
+    // n x 'A' + 1 baris baru = n + 3 karakter ter-encode.
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\n`)).toBe(false);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 2)}\n`)).toBe(true);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\r\n`)).toBe(false);
+    expect(listSerialsTooLong(`${'A'.repeat(MAX - 3)}\r`)).toBe(false);
+  });
+
+  test("karakter ! ' ( ) ~ dihitung 3 karakter seperti URLSearchParams, bukan 1 seperti encodeURIComponent", () => {
+    for (const char of ['!', "'", '(', ')', '~']) {
+      const encodedThree = new URLSearchParams({ serials: char })
+        .toString()
+        .slice('serials='.length);
+      expect(encodedThree.length).toBe(3);
+      const fits = Math.floor(MAX / 3);
+      expect(listSerialsTooLong(char.repeat(fits))).toBe(false);
+      expect(listSerialsTooLong(char.repeat(fits + 1))).toBe(true);
+    }
+    // 50 x 64 '~': lolos bila dihitung 1 karakter, tetapi terkirim ~9,6 KB.
+    expect(listSerialsTooLong(Array.from({ length: 50 }, () => '~'.repeat(64)).join('\n'))).toBe(
+      true,
+    );
+  });
+
+  test('karakter non-ASCII membengkak sesuai percent-encode UTF-8', () => {
+    // 'é' = 2 byte = 6 karakter ter-encode.
+    expect(listSerialsTooLong('é'.repeat(Math.floor(MAX / 6)))).toBe(false);
+    expect(listSerialsTooLong('é'.repeat(Math.floor(MAX / 6) + 1))).toBe(true);
+  });
+
+  test('serial ASCII alfanumerik biasa (50 x 64) lolos', () => {
+    expect(listSerialsTooLong(Array.from({ length: 50 }, () => 'X'.repeat(64)).join('\n'))).toBe(
+      false,
+    );
+  });
+});

@@ -7,12 +7,13 @@ import {
   toRequestParts,
 } from '@shared/api';
 import {
+  type ApiId,
+  type ApiInput,
+  type ApiOutput,
   ERROR_CODES,
   type ErrorCode,
-  type RpcInput,
-  type RpcMethod,
-  type RpcOutput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { beginBusy } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
 
 /** Awalan jalur REST; jalur tabel (`/brands/{id}`) relatif terhadapnya. */
@@ -27,7 +28,7 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export type ApiCall = <M extends RpcMethod>(id: M, input: RpcInput<M>) => Promise<RpcOutput<M>>;
+export type ApiCall = <M extends ApiId>(id: M, input: ApiInput<M>) => Promise<ApiOutput<M>>;
 
 interface ProblemShape {
   code: ErrorCode;
@@ -116,13 +117,26 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
 
 /**
  * Klien REST bertipe berbasis tabel rute `shared/api.ts`: `api(id, input)` merakit verba, jalur, query, badan,
- * dan `If-Match` dari input datar (bentuk input/keluaran sama dengan RPC lama, jadi `queries.ts` hampir tak
+ * dan `If-Match` dari input datar (bentuk input/keluaran sama dengan kabel lama, jadi `queries.ts` hampir tak
  * berubah). Sesi lewat cookie (`credentials: same-origin`). Galat dipetakan ke `ApiError` dari `code` problem+json.
  */
 export function createApiClient(options: ApiClientOptions = {}): ApiCall {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
-  async function call<M extends RpcMethod>(id: M, input: RpcInput<M>): Promise<RpcOutput<M>> {
+  // Permintaan tulis menandai registri "sibuk" selama berjalan: muat ulang otomatis (PWA) tidak boleh memotongnya.
+  async function call<M extends ApiId>(id: M, input: ApiInput<M>): Promise<ApiOutput<M>> {
     const parts = toRequestParts(id, input);
+    const end = parts.verb === 'GET' ? undefined : beginBusy();
+    try {
+      return await perform(id, input, parts);
+    } finally {
+      end?.();
+    }
+  }
+  async function perform<M extends ApiId>(
+    id: M,
+    input: ApiInput<M>,
+    parts: RequestParts,
+  ): Promise<ApiOutput<M>> {
     const isDownload = API_ROUTES[id].download !== undefined;
     const doFetch = options.fetchImpl ?? fetch;
     let response: Response;
@@ -154,10 +168,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     }
     if (!response.ok) throw errorFromResponse(response.status, text);
     if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
-    if (text === '') return undefined as unknown as RpcOutput<M>;
+    if (text === '') return undefined as unknown as ApiOutput<M>;
     const data = parseJson(text);
     if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
-    return data as RpcOutput<M>;
+    return data as ApiOutput<M>;
   }
   return call;
 }

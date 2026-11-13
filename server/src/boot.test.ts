@@ -84,7 +84,6 @@ describe('createServer: runner dan penjadwal menunggu persiapan basis data', () 
     SESSION_SECRET: 'test-session-secret',
     OAUTH_CLIENT_ID: 'id',
     OAUTH_CLIENT_SECRET: 'rahasia',
-    SYNC_API_TOKEN: 'token-sinkron-uji-cukup-panjang',
     ADMIN_EMAIL: 'admin@example.com',
   };
 

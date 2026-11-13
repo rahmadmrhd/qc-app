@@ -1,5 +1,6 @@
-import type { HandoverOptionsDto } from '@shared/rpc';
-import { useForm } from '@tanstack/react-form';
+import type { HandoverOptionsDto } from '@shared/contract';
+import { useForm, useStore } from '@tanstack/react-form';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { Label } from '@/components/ui/label';
@@ -42,6 +43,7 @@ export function HandoverForm({
       await onSubmit(handoverFormSchema.parse(value));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   return (
     <form

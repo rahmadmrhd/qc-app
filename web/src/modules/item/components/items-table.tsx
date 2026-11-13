@@ -1,4 +1,4 @@
-import type { ItemSummaryDto } from '@shared/rpc';
+import type { ItemSummaryDto } from '@shared/contract';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,11 +9,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { NoManualBookNote } from './manual-book-note';
+import { NoPostelNote } from './no-postel-note';
+import { NoInstructionsNote } from './sticker-instructions-view';
 
 export interface ItemsTableProps {
   items: readonly ItemSummaryDto[];
-  canEdit: boolean;
-  canManage: boolean;
+  /** Per item: BU item menentukan hak (keputusan 13), jadi tak cukup satu tanda global. */
+  canEdit: (item: ItemSummaryDto) => boolean;
+  canManage: (item: ItemSummaryDto) => boolean;
   pendingStatusId: string | null;
   onOpen: (item: ItemSummaryDto) => void;
   onEdit: (item: ItemSummaryDto) => void;
@@ -36,6 +40,7 @@ export function ItemsTable({
           <TableRow>
             <TableHead>Merk</TableHead>
             <TableHead>Tipe</TableHead>
+            <TableHead>BU</TableHead>
             <TableHead>Lock</TableHead>
             <TableHead className="text-right">Gambar</TableHead>
             <TableHead>Status</TableHead>
@@ -45,7 +50,7 @@ export function ItemsTable({
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 Tidak ada item yang cocok.
               </TableCell>
             </TableRow>
@@ -57,12 +62,29 @@ export function ItemsTable({
                 <TableCell className="font-medium">{item.brand}</TableCell>
                 <TableCell>
                   <div>{item.model}</div>
+                  {item.hasInstructions ? null : <NoInstructionsNote className="block" />}
+                  {/* Hanya item aktif: item nonaktif tak lagi memerlukan label Manual Book. */}
+                  {item.status === 'active' && !item.hasManualBook ? (
+                    <NoManualBookNote className="block" />
+                  ) : null}
+                  {item.status === 'active' && !item.hasPostel ? (
+                    <NoPostelNote className="block" />
+                  ) : null}
                   {item.aliases.length > 0 ? (
                     <div className="text-xs text-muted-foreground">
                       <span className="sr-only">Nama lain: </span>
                       {item.aliases.join(', ')}
                     </div>
                   ) : null}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {item.businessUnits.map((bu) => (
+                      <Badge key={bu.id} variant="outline" title={bu.name}>
+                        {bu.code}
+                      </Badge>
+                    ))}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
@@ -82,7 +104,7 @@ export function ItemsTable({
                   >
                     Lihat
                   </Button>
-                  {canEdit ? (
+                  {canEdit(item) ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -92,7 +114,7 @@ export function ItemsTable({
                       Ubah
                     </Button>
                   ) : null}
-                  {canManage ? (
+                  {canManage(item) ? (
                     <Button
                       size="sm"
                       variant="ghost"

@@ -1,4 +1,4 @@
-import type { QrDesignDto, QrFileKind } from '@shared/rpc';
+import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -16,14 +16,15 @@ import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { fileQueryOptions } from '@/modules/files/queries';
 import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
-import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
+import { shouldRefreshAfterExportError } from '@/modules/qrcode/lib/export-error';
+import { prepareExportFiles } from '@/modules/qrcode/lib/prepare-export';
 import {
   qrDesignsQueryOptions,
+  refreshQrDesign,
   useDeleteQrDesign,
   useExportQrDesign,
 } from '@/modules/qrcode/queries';
@@ -56,22 +57,34 @@ function QrCodesPage() {
     void navigate({ to: '/qrcode', search: {}, replace: true });
   }, [exportId]);
 
-  async function confirmExport(design: QrDesignDto, report: (step: string) => void) {
-    if (design.logoFileId !== '') report('Memuat logo dari Drive…');
-    const logo =
-      design.logoFileId === ''
-        ? null
-        : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
-    report('Membuat PDF lembar 10 × 14 dan PNG label…');
-    const files = await renderExportFiles(design, logo);
+  async function confirmExport(
+    design: QrDesignDto,
+    report: (step: string) => void,
+    reason: string,
+  ) {
+    const files = await prepareExportFiles(queryClient, design, report);
     report('Mengirim PDF dan PNG ke server…');
-    await exportMutation.mutateAsync({
-      id: design.id,
-      expectedUpdatedAt: design.updatedAt,
-      pdf: files.pdf,
-      png: files.png,
-      onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
-    });
+    try {
+      await exportMutation.mutateAsync({
+        id: design.id,
+        expectedUpdatedAt: design.updatedAt,
+        pdf: files.pdf,
+        png: files.png,
+        // Gambar contoh stiker dikirim selalu (server mengabaikannya bila ekspor ini tidak melahirkan versi baru).
+        preview: files.preview,
+        reason,
+        onProgress: (job) => report(`Server memproses ekspor ke Drive (${job.progress}%)…`),
+      });
+    } catch (error) {
+      // DTO di dialog basi (versi usang, label berubah sehingga alasan kini wajib, atau job gagal di langkah komit
+      // karena konfigurasi diubah selama job): muat ulang agar dialog
+      // memakai data terbaru (kotak alasan muncul bila perlu), lalu teruskan galat ke dialog.
+      if (shouldRefreshAfterExportError(error)) {
+        const fresh = await refreshQrDesign(queryClient, design.id).catch(() => null);
+        if (fresh) setExporting(fresh);
+      }
+      throw error;
+    }
     toast.success('Hasil ekspor disimpan di Drive');
   }
 
@@ -122,7 +135,7 @@ function QrCodesPage() {
           design={exporting}
           open
           onOpenChange={(open) => (open ? undefined : setExporting(null))}
-          onConfirm={(report) => confirmExport(exporting, report)}
+          onConfirm={(report, reason) => confirmExport(exporting, report, reason)}
         />
       ) : null}
       <Dialog

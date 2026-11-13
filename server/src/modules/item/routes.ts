@@ -14,12 +14,12 @@ export function itemRoutes(): Pick<RouteTable, ItemMethod> {
     'items.list': {
       permission: { module: 'item', level: 'view' },
       validate: validateListItems,
-      handler: (input, ctx) => listItemPage(ctx.env, input),
+      handler: (input, ctx) => listItemPage(ctx.env, input, ctx.user),
     },
     'items.get': {
       permission: { module: 'item', level: 'view' },
       validate: validateGetItem,
-      handler: (input, ctx) => getItemDto(ctx.env, input),
+      handler: (input, ctx) => getItemDto(ctx.env, input, ctx.user),
     },
     'items.save': {
       permission: { module: 'item', level: 'edit' },

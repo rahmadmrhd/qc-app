@@ -1,5 +1,5 @@
+import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import type { HandoverDto } from '@shared/rpc';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,9 @@ import { describeError } from '@/lib/api/describe-error';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
+import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { readableLocationIds } from '../lib/readable-locations';
+import { scopedLocationIds } from '../lib/search';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
@@ -24,15 +26,18 @@ import { HandoverBoard } from './handover-board';
 export interface HandoverBoardPageProps {
   /** Filter daftar kartu ponsel (search param rute). */
   status: HandoverStatus | 'all';
+  /** Lokasi dari URL (notifikasi): papan memuat lokasi ini, bukan pilihan lokasi header. */
+  locationId?: string;
   onStatusChange: (status: HandoverStatus | 'all') => void;
   onOpen: (id: string) => void;
   onEdit: (id: string) => void;
   onCreate: () => void;
 }
 
-/** Halaman board: satu RPC berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
+/** Halaman board: satu permintaan berkursor `handovers.board` per kolom (4 paralel) untuk lokasi terpilih yang boleh dibaca. */
 export function HandoverBoardPage({
   status,
+  locationId,
   onStatusChange,
   onOpen,
   onEdit,
@@ -42,7 +47,7 @@ export function HandoverBoardPage({
   const queryClient = useQueryClient();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dibaca user (WH view ke atas atau QC edit); selebihnya tidak diminta.
-  const readable = readableLocationIds(me, selectedIds);
+  const readable = readableLocationIds(me, scopedLocationIds(locationId, selectedIds));
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
   const board = useHandoverBoard(readable);
   const setDone = useSetDone();
@@ -115,6 +120,7 @@ export function HandoverBoardPage({
         <h1 className="text-2xl font-semibold">Serah Terima</h1>
         {canCreate ? <Button onClick={onCreate}>Tambah task</Button> : null}
       </div>
+      <NoLocationNotice />
       {readable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Pilih lokasi di header yang Anda punya akses serah terima atau QC-nya.

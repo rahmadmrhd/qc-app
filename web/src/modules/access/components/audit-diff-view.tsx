@@ -1,7 +1,7 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
+import type { AuditSnapshot } from '@shared/contract';
 import { handoverCanonicalText } from '@shared/handover-text';
 import { LEVEL_LABELS, MODULE_LABELS } from '@shared/permissions';
-import type { AuditSnapshot } from '@shared/rpc';
 import type { LucideIcon } from 'lucide-react';
 import { Minus, Pencil, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ const FIELD_LABELS: Record<string, string> = {
   isCountryLock: 'Country lock',
   aliases: 'Nama lain',
   stickers: 'Stiker',
+  stickerPhotos: 'Instruksi stiker',
   accessories: 'Kelengkapan',
   attachments: 'Gambar lampiran',
   detailLength: 'Panjang detail (karakter)',

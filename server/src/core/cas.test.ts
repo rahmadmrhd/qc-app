@@ -16,7 +16,7 @@ test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = selu
   await env.DB.prepare("INSERT INTO items (id, `key`, updated_at) VALUES ('i1', 'k', 't1')").run();
   const edit = (expected: string, next: string, model: string) => [
     env.DB.prepare(
-      "INSERT INTO sync_state (resource, seq) VALUES ('x', 1) ON DUPLICATE KEY UPDATE seq = seq + 1",
+      "INSERT INTO counters (`key`, value) VALUES ('x', 1) ON DUPLICATE KEY UPDATE value = value + 1",
     ),
     env.DB.prepare(`UPDATE items SET model = ?, ${CAS_UPDATED_AT_SET} WHERE id = 'i1'`).bind(
       model,
@@ -31,7 +31,7 @@ test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = selu
       at: string;
     }>();
   expect(await row()).toEqual({ model: 'a', at: 't2' });
-  // penulis dengan updated_at lama: CONFLICT, dan pernyataan sebelum UPDATE (sync_state) ikut dibatalkan
+  // penulis dengan updated_at lama: CONFLICT, dan pernyataan sebelum UPDATE (counters) ikut dibatalkan
   const error = await captureAppErrorAsync(() =>
     batchGuarded(env.DB, edit('t1', 't3', 'b'), {}, 'basi'),
   );
@@ -39,10 +39,10 @@ test('CAS updated_at digabung ke UPDATE: cocok = batch jalan; tidak cocok = selu
   expect(await row()).toEqual({ model: 'a', at: 't2' });
   expect(
     (
-      await env.DB.prepare("SELECT seq FROM sync_state WHERE resource = 'x'").first<{
-        seq: number;
+      await env.DB.prepare("SELECT value FROM counters WHERE `key` = 'x'").first<{
+        value: number;
       }>()
-    )?.seq,
+    )?.value,
   ).toBe(1);
 });
 

@@ -1,20 +1,23 @@
 import { readObject } from '@server/core/validate';
-import { isPdfBytes, isPngBytes } from '@shared/files';
-import type { QrStyle } from '@shared/qrcode';
-import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 import type {
+  ClonePresetInput,
   CloneQrPdfInput,
   ExportQrDesignInput,
+  ListQrItemOptionsInput,
   QrDesignRefInput,
   QrFileInput,
   SaveQrDesignInput,
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
   UploadQrPdfInput,
-} from '@shared/rpc';
+} from '@shared/contract';
+import { isPdfBytes, isPngBytes } from '@shared/files';
+import type { QrStyle } from '@shared/qrcode';
+import { isHttpUrl, isQrLayout, isQrStyle, isRenderableLabelText, QR_LIMITS } from '@shared/qrcode';
 
 const QR_FILE_KINDS = ['pdf', 'png'] as const;
 const QR_LINK_SOURCES = ['url', 'pdf'] as const;
+const QR_NAME_PLACEMENTS = ['title', 'subtitle', 'footer'] as const;
 
 export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   const reader = readObject(raw);
@@ -22,11 +25,22 @@ export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   // Mengubah wajib membawa versi yang dimuat: tanpa itu, perubahan orang lain bisa tertimpa diam-diam.
   if (id && !expectedUpdatedAt) reader.fail('expectedUpdatedAt', 'Wajib diisi saat mengubah');
+  const name = reader.str('name', { max: QR_LIMITS.manualBookName });
+  const presetId = reader.str('presetId', { max: 100 });
+  const itemIdsRaw = reader.raw('itemIds');
+  if (
+    !Array.isArray(itemIdsRaw) ||
+    itemIdsRaw.length > QR_LIMITS.items ||
+    itemIdsRaw.some((value) => typeof value !== 'string' || value === '' || value.length > 100)
+  ) {
+    reader.fail('itemIds', `Pilih maksimal ${QR_LIMITS.items} item`);
+  }
   const title = reader.str('title', { required: true, max: QR_LIMITS.title });
   const linkSource = reader.oneOf('linkSource', QR_LINK_SOURCES);
   const subtitle = reader.str('subtitle', { max: QR_LIMITS.subtitle });
   const footer = reader.str('footer', { max: QR_LIMITS.footer });
   for (const [key, text] of [
+    ['name', name],
     ['title', title],
     ['subtitle', subtitle],
     ['footer', footer],
@@ -61,6 +75,9 @@ export function validateSaveQrDesign(raw: unknown): SaveQrDesignInput {
   }
   reader.done();
   const input: SaveQrDesignInput = {
+    name,
+    presetId,
+    itemIds: [...new Set(itemIdsRaw as string[])],
     title,
     linkSource,
     link,
@@ -107,10 +124,14 @@ export function validateSaveQrPreset(raw: unknown): SaveQrPresetInput {
   if (!isQrStyle(style))
     reader.fail('style', 'Gaya teks atau bingkai tidak valid atau di luar rentang');
   const defaultLogoId = reader.str('defaultLogoId', { max: 100 });
+  const buId = reader.str('buId', { required: true, max: 100 });
+  const namePlacement = reader.oneOf('namePlacement', QR_NAME_PLACEMENTS);
   reader.done();
   return {
     ...(id ? { id } : {}),
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    buId,
+    namePlacement,
     name,
     title,
     subtitle,
@@ -119,6 +140,15 @@ export function validateSaveQrPreset(raw: unknown): SaveQrPresetInput {
     style: style as QrStyle,
     defaultLogoId,
   };
+}
+
+export function validateClonePreset(raw: unknown): ClonePresetInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const buId = reader.str('buId', { required: true, max: 100 });
+  const name = reader.str('name', { required: true, max: QR_LIMITS.presetName });
+  reader.done();
+  return { id, buId, name };
 }
 
 export function validateSaveQrLogoLibrary(raw: unknown): SaveQrLogoLibraryInput {
@@ -178,6 +208,17 @@ export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
   const png = reader.raw('png');
   if (!(pdf instanceof Uint8Array) || !isPdfBytes(pdf)) reader.fail('pdf', 'PDF tidak valid');
   if (!(png instanceof Uint8Array) || !isPngBytes(png)) reader.fail('png', 'PNG tidak valid');
+  // Gambar contoh: bagian boleh tidak ada (kosong); bila ada harus PNG sah dan tidak melebihi batas.
+  const previewRaw = reader.raw('preview');
+  const preview = previewRaw === undefined || previewRaw === null ? new Uint8Array(0) : previewRaw;
+  if (!(preview instanceof Uint8Array)) {
+    reader.fail('preview', 'Gambar contoh tidak valid');
+  } else if (preview.length > 0 && !isPngBytes(preview)) {
+    reader.fail('preview', 'Gambar contoh harus PNG');
+  } else if (preview.length > QR_LIMITS.previewMaxBytes) {
+    reader.fail('preview', 'Ukuran gambar contoh maksimal 512 KB');
+  }
+  const reason = reader.str('reason', { max: QR_LIMITS.reason });
   if (
     pdf instanceof Uint8Array &&
     png instanceof Uint8Array &&
@@ -186,7 +227,43 @@ export function validateExportQrDesign(raw: unknown): ExportQrDesignInput {
     reader.fail('pdf', 'Ukuran hasil ekspor maksimal 8 MB');
   }
   reader.done();
-  return { id, expectedUpdatedAt, pdf: pdf as Uint8Array, png: png as Uint8Array };
+  return {
+    id,
+    expectedUpdatedAt,
+    pdf: pdf as Uint8Array,
+    png: png as Uint8Array,
+    preview: preview as Uint8Array,
+    reason,
+  };
+}
+
+const QR_ITEM_OPTIONS_MAX_LIMIT = 50;
+
+/** Opsi item untuk pemilih: input boleh kosong; `cursor` buram (kunci item terakhir). */
+export function validateListQrItemOptions(raw: unknown): ListQrItemOptionsInput {
+  const reader = readObject(raw ?? {});
+  const cursor = reader.raw('cursor');
+  if (cursor !== undefined && cursor !== null && (typeof cursor !== 'string' || cursor === '')) {
+    reader.fail('cursor', 'Kursor tidak valid');
+  }
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > QR_ITEM_OPTIONS_MAX_LIMIT)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${QR_ITEM_OPTIONS_MAX_LIMIT}`);
+  }
+  const query = reader.str('query', { max: 100 });
+  reader.done();
+  return {
+    ...(typeof limit === 'number' ? { limit } : {}),
+    ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(query !== '' ? { query } : {}),
+  };
 }
 
 export function validateQrFile(raw: unknown): QrFileInput {

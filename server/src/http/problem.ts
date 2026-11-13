@@ -1,5 +1,5 @@
 import { toErrorBody } from '@server/core/router';
-import type { ErrorCode } from '@shared/rpc';
+import type { ErrorCode } from '@shared/contract';
 
 // Galat REST berformat RFC 9457 (`application/problem+json`) dengan ekstensi `code`, `requestId`, `fields`.
 // `code` tetap kode galat kontrak (FE memutuskan dari `code`, bukan dari status): basi dengan `If-Match` = 412

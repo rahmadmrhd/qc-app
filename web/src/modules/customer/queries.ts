@@ -1,4 +1,4 @@
-import type { RenameCustomerInput, SetCustomerStatusInput } from '@shared/rpc';
+import type { RenameCustomerInput, SetCustomerStatusInput } from '@shared/contract';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';

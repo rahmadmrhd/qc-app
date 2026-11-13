@@ -1,24 +1,31 @@
+import type { BusinessUnitOptionDto, QrDocumentDto, QrPresetDto } from '@shared/contract';
+import { manualBookNameFromTypes } from '@shared/manual-book';
 import {
   parseDriveFileId,
   QR_FRAME_KEYS,
   QR_FRAME_RANGES,
   QR_LAYOUT_KEYS,
   QR_LAYOUT_RANGES,
+  QR_LIMITS,
+  qrContentHash,
+  qrPresetDeviations,
 } from '@shared/qrcode';
-import type { QrDocumentDto, QrPresetDto } from '@shared/rpc';
-import { useForm } from '@tanstack/react-form';
-import { useRef, useState } from 'react';
+import { useForm, useStore } from '@tanstack/react-form';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
-import { NativeSelect } from '@/components/native-select';
+import { LinkField } from '@/components/link-field';
+import { Select } from '@/components/select';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
 import { limitDocumentName } from '../lib/document-name';
+import { businessUnitOptions, presetOptions } from '../lib/preset-options';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
-import type { PresetApplyParts, QrFieldErrors, QrFormInput, QrFormOutput } from '../schemas';
+import type { PresetApplyParts, QrEditContext, QrFormInput, QrFormOutput } from '../schemas';
 import {
   frameRangeMessage,
   layoutRangeMessage,
@@ -28,11 +35,14 @@ import {
   toNewDesignFromPreset,
 } from '../schemas';
 import { ApplyPresetDialog } from './apply-preset-dialog';
+import { ExportChangeWarning } from './export-change-warning';
+import { ItemPicker, type PickedItem } from './item-picker';
 import { LabelPreview } from './label-preview';
 import type { LabelStatus } from './label-status-alerts';
 import { LabelStatusAlerts } from './label-status-alerts';
 import { LogoPicker } from './logo-picker';
 import { PdfSourceField } from './pdf-source-field';
+import { PresetDeviationBanner } from './preset-deviation-banner';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
 import { TextStyleToolbar } from './text-style-toolbar';
 
@@ -47,12 +57,21 @@ export interface QrDesignFormProps {
   /** Pustaka logo bersama yang dapat dipilih. */
   logoLibrary?: readonly string[];
   /**
-   * QR baru: konfigurasi default yang harus dipilih lebih dulu; isian lain baru tampil setelah memilih (daftar
-   * kosong = belum dapat membuat QR). Kosongkan (undefined) untuk ubah/duplikat/mode default.
+   * QR baru (alur Manual Book): semua konfigurasi default. Pengguna memilih item dulu; preset ditarik otomatis
+   * menurut BU item (satu BU = otomatis, lebih dari satu = pilih satu, tanpa preset BU = pilih mana saja atau tanpa
+   * preset); isian lain baru tampil setelah itu. Kosongkan (undefined) untuk ubah/mode default.
    */
   presets?: readonly QrPresetDto[];
+  /** Ubah: konteks konfigurasi yang diubah (item tergabung, penempatan nama, hash ekspor, mode lama). */
+  edit?: QrEditContext;
+  /** Tautan buka item pada pemilih item (`itemLinkAccess`). */
+  openItemHref?: (id: string) => string | null;
   /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
   updatePresets?: readonly QrPresetDto[];
+  /** Mode `defaults`: BU yang dapat dipilih sebagai pemilik preset. */
+  businessUnits?: readonly BusinessUnitOptionDto[];
+  /** Mode `defaults`: BU yang sudah punya preset lain (tampil nonaktif; satu preset per BU). */
+  takenBuIds?: ReadonlySet<string>;
   submitError?: string | null;
   fieldErrors?: Readonly<Record<string, string | undefined>>;
   onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
@@ -76,6 +95,23 @@ const TEXT_SIZE_KEY = {
 } as const;
 const TEXT_SIZE_KEYS: readonly string[] = Object.values(TEXT_SIZE_KEY);
 
+/** Pilihan "Tanpa preset" pada pemilih preset (bukan id preset). */
+const NO_PRESET = '__none__';
+
+/** Hash isi label dari nilai form (link efektif: URL, atau URL berbagi PDF sumber) untuk membandingkan dengan ekspor. */
+function labelHash(values: QrFormOutput, document: QrDocumentDto | null): string {
+  return qrContentHash({
+    linkSource: values.linkSource,
+    link: values.linkSource === 'url' ? values.link : (document?.link ?? ''),
+    title: values.title,
+    subtitle: values.subtitle,
+    footer: values.footer,
+    logoFileId: values.logoFileId,
+    layout: values.layout,
+    style: values.style,
+  });
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3 rounded-lg border p-4">
@@ -93,6 +129,10 @@ export function QrDesignForm({
   logoLibrary = [],
   presets,
   updatePresets,
+  edit,
+  openItemHref,
+  businessUnits = [],
+  takenBuIds,
   submitError,
   fieldErrors,
   onSubmit,
@@ -114,8 +154,42 @@ export function QrDesignForm({
   const exportAfterRef = useRef(false);
   const isDefaults = mode === 'defaults';
   const [applyOpen, setApplyOpen] = useState(false);
-  const [presetId, setPresetId] = useState('');
-  const ready = presets === undefined || presetId !== '';
+  const [chosenPreset, setChosenPreset] = useState('');
+  const [presetTerm, setPresetTerm] = useState('');
+  const [buTerm, setBuTerm] = useState('');
+  // Alur Manual Book (QR baru atau ubah): item, preset, dan nama. Mode `defaults` dan form polos tanpa keduanya.
+  const newFlow = !isDefaults && presets !== undefined;
+  const manualBookFlow = !isDefaults && (presets !== undefined || edit !== undefined);
+  const requireItems = newFlow || (edit !== undefined && !edit.legacy);
+  const [selected, setSelected] = useState<PickedItem[]>(() =>
+    (edit?.items ?? []).map((item) => ({ ...item, businessUnitIds: [] })),
+  );
+  const nameTouched = useRef(edit !== undefined);
+  const [pendingSave, setPendingSave] = useState<{
+    values: QrFormOutput;
+    options: QrSubmitOptions;
+  } | null>(null);
+
+  // Preset yang berlaku pada QR baru: satu BU item = otomatis; lebih dari satu = pilihan pengguna; tanpa preset BU
+  // itu = pilih mana saja atau tanpa preset (otomatis bila belum ada preset sama sekali).
+  const itemBuIds = new Set(selected.flatMap((item) => item.businessUnitIds));
+  const candidates = (presets ?? []).filter(
+    (preset) => preset.buId !== '' && itemBuIds.has(preset.buId),
+  );
+  let effectivePreset = '';
+  if (newFlow && selected.length > 0) {
+    if (candidates.length === 1) effectivePreset = (candidates[0] as QrPresetDto).id;
+    else if (candidates.length > 1) {
+      effectivePreset = candidates.some((preset) => preset.id === chosenPreset) ? chosenPreset : '';
+    } else if ((presets ?? []).length === 0) effectivePreset = NO_PRESET;
+    else if (
+      chosenPreset === NO_PRESET ||
+      (presets ?? []).some((preset) => preset.id === chosenPreset)
+    ) {
+      effectivePreset = chosenPreset;
+    }
+  }
+  const ready = !newFlow || effectivePreset !== '';
   const schema = (
     isDefaults ? qrPresetFormSchema : qrDesignFormSchema
   ) as typeof qrDesignFormSchema;
@@ -125,16 +199,35 @@ export function QrDesignForm({
     onSubmit: async ({ value }) => {
       const thenExport = exportAfterRef.current;
       exportAfterRef.current = false;
-      await onSubmit(schema.parse(value), {
-        overflow: statusRef.current?.overflow ?? false,
-        thenExport,
-      });
+      const values = schema.parse(value);
+      const options = { overflow: statusRef.current?.overflow ?? false, thenExport };
+      // Konfigurasi yang sudah pernah diekspor dan labelnya berubah: peringatan akibat dulu (spek butir 10).
+      if (edit?.exportedHash && labelHash(values, document) !== edit.exportedHash) {
+        setPendingSave({ values, options });
+        return;
+      }
+      await onSubmit(values, options);
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
-  function choosePreset(id: string) {
-    setPresetId(id);
-    const preset = presets?.find((item) => item.id === id);
+  const activePreset = presets?.find((preset) => preset.id === effectivePreset);
+  const lockedPart = newFlow ? (activePreset?.namePlacement ?? '') : (edit?.namePlacement ?? '');
+  const nameValue = useStore(form.store, (state) => state.values.name);
+
+  // Nama otomatis dari tipe item (QR baru) selama belum diedit pengguna.
+  const selectedModels = JSON.stringify(selected.map((item) => item.model));
+  useEffect(() => {
+    if (!newFlow || nameTouched.current) return;
+    const models = JSON.parse(selectedModels) as string[];
+    form.setFieldValue('name', manualBookNameFromTypes(models, QR_LIMITS.manualBookName));
+  }, [newFlow, selectedModels, form]);
+
+  // Isian dari preset yang berlaku (sekali per pergantian preset); "Tanpa preset" tidak mengubah isian.
+  useEffect(() => {
+    if (!newFlow) return;
+    form.setFieldValue('presetId', effectivePreset === NO_PRESET ? '' : effectivePreset);
+    const preset = presets?.find((item) => item.id === effectivePreset);
     if (!preset) return;
     const values = toNewDesignFromPreset(preset);
     form.setFieldValue('title', values.title);
@@ -143,6 +236,22 @@ export function QrDesignForm({
     form.setFieldValue('logoFileId', values.logoFileId);
     form.setFieldValue('layout', values.layout);
     form.setFieldValue('style', values.style);
+    if (preset.namePlacement !== '') {
+      form.setFieldValue(preset.namePlacement, form.state.values.name);
+    }
+  }, [newFlow, effectivePreset, presets, form]);
+
+  // Bagian label yang terkunci selalu sama dengan nama.
+  useEffect(() => {
+    if (lockedPart !== '') form.setFieldValue(lockedPart, nameValue);
+  }, [lockedPart, nameValue, form]);
+
+  function changeItems(next: PickedItem[]) {
+    setSelected(next);
+    form.setFieldValue(
+      'itemIds',
+      next.map((item) => item.id),
+    );
   }
 
   function applyPreset(preset: QrPresetDto, parts: PresetApplyParts) {
@@ -150,6 +259,8 @@ export function QrDesignForm({
     for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
       form.setFieldValue(key, patch[key] as never);
     }
+    // Bagian label yang terkunci ke nama tidak boleh tertimpa isi preset (efek penguncian tak berjalan ulang di sini).
+    if (lockedPart !== '') form.setFieldValue(lockedPart, form.state.values.name);
   }
 
   function applyDocument(next: QrDocumentDto) {
@@ -224,36 +335,95 @@ export function QrDesignForm({
         </div>
       </div>
       <div className="space-y-4">
-        {presets === undefined ? null : (
+        {manualBookFlow ? (
+          <Section title="Item Manual Book">
+            <form.Field
+              name="itemIds"
+              validators={{
+                // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 18): daftar terlihat boleh kosong.
+                onSubmit: ({ value }) =>
+                  requireItems && value.length === 0 && (edit?.hiddenItemCount ?? 0) === 0
+                    ? 'Pilih minimal satu item'
+                    : undefined,
+              }}
+            >
+              {(field) => (
+                <div className="space-y-1.5">
+                  <ItemPicker
+                    selected={selected}
+                    onChange={changeItems}
+                    ownedIds={new Set((edit?.items ?? []).map((item) => item.id))}
+                    openHref={openItemHref}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Item yang berbagi satu Manual Book. Item yang sudah tergabung ke Manual Book
+                    lain harus dikeluarkan dulu dari sana.
+                  </p>
+                  {edit && edit.hiddenItemCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {edit.hiddenItemCount} item lain tergabung di sini tetapi tidak terlihat oleh
+                      Anda; tetap terpasang.
+                    </p>
+                  ) : null}
+                  <FieldError errors={[...field.state.meta.errors, fieldErrors?.itemIds]} />
+                </div>
+              )}
+            </form.Field>
+          </Section>
+        ) : null}
+        {newFlow && selected.length > 0 ? (
           <Section title="Konfigurasi default">
-            {presets.length === 0 ? (
-              <p role="alert" className="text-sm text-muted-foreground">
-                Belum ada konfigurasi default. Pengelola perlu membuatnya di halaman Konfigurasi
-                default sebelum QR dapat dibuat.
+            {candidates.length === 1 ? (
+              <p className="text-sm">
+                Memakai konfigurasi default BU item:{' '}
+                <span className="font-medium">{(candidates[0] as QrPresetDto).name}</span>{' '}
+                (otomatis). Isian di bawah terisi darinya dan dapat diubah.
+              </p>
+            ) : (presets ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada konfigurasi default; QR dibuat dengan nilai bawaan aplikasi.
               </p>
             ) : (
               <div className="space-y-1.5">
-                <Label htmlFor="qr-preset">Pilih konfigurasi default</Label>
-                <NativeSelect
+                <LinkField
                   id="qr-preset"
-                  value={presetId}
-                  onChange={(event) => choosePreset(event.target.value)}
-                >
-                  <option value="">Pilih konfigurasi default…</option>
-                  {presets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  label="Pilih konfigurasi default"
+                  placeholder="Pilih konfigurasi default…"
+                  value={chosenPreset === '' ? null : chosenPreset}
+                  labelOf={(id) =>
+                    id === NO_PRESET
+                      ? 'Tanpa preset'
+                      : presets?.find((preset) => preset.id === id)?.name
+                  }
+                  options={[
+                    ...presetOptions(
+                      candidates.length > 1 ? candidates : (presets ?? []),
+                      presetTerm,
+                    ),
+                    ...(candidates.length > 1
+                      ? []
+                      : [
+                          {
+                            id: NO_PRESET,
+                            label: 'Tanpa preset',
+                            description: 'Nilai bawaan aplikasi',
+                          },
+                        ]),
+                  ]}
+                  onSearchChange={setPresetTerm}
+                  searchDebounceMs={0}
+                  onChange={(id) => setChosenPreset(id ?? '')}
+                />
                 <p className="text-xs text-muted-foreground">
-                  Isian di bawah langsung terisi dari konfigurasi ini dan dapat diubah. Memilih
-                  konfigurasi lain mengisi ulang semuanya.
+                  {candidates.length > 1
+                    ? 'Item berlainan BU: pilih satu konfigurasi default.'
+                    : 'BU item belum punya konfigurasi default: pilih salah satu atau tanpa preset.'}{' '}
+                  Isian di bawah terisi darinya dan dapat diubah.
                 </p>
               </div>
             )}
           </Section>
-        )}
+        ) : null}
         {ready && !isDefaults && updatePresets && updatePresets.length > 0 ? (
           <Section title="Konfigurasi default">
             <div className="flex flex-wrap items-center gap-3">
@@ -274,109 +444,41 @@ export function QrDesignForm({
         ) : null}
         {ready ? (
           <>
-            <Section title="Isi label">
-              {isDefaults ? (
-                <form.Field name="name">
+            {manualBookFlow ? (
+              <Section title="Nama Manual Book">
+                <form.Field
+                  name="name"
+                  validators={{
+                    onSubmit: ({ value }) =>
+                      requireItems && (value ?? '').trim() === ''
+                        ? 'Nama Manual Book wajib diisi'
+                        : undefined,
+                  }}
+                >
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="qr-name">Nama konfigurasi default</Label>
+                      <Label htmlFor="qr-manual-name">Nama Manual Book</Label>
                       <Input
-                        id="qr-name"
+                        id="qr-manual-name"
                         value={field.state.value}
+                        maxLength={QR_LIMITS.manualBookName}
                         onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
+                        onChange={(event) => {
+                          nameTouched.current = true;
+                          field.handleChange(event.target.value);
+                        }}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        {newFlow
+                          ? 'Dibuat dari tipe item dan boleh diedit. Menambah atau mengeluarkan item tidak mengubah nama yang sudah tersimpan.'
+                          : 'Menambah atau mengeluarkan item tidak mengubah nama.'}
+                      </p>
                       <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
                     </div>
                   )}
                 </form.Field>
-              ) : null}
-              {(['title', 'subtitle', 'footer'] as const).map((name) => (
-                <form.Field key={name} name={name}>
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`qr-${name}`}>
-                        {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
-                      </Label>
-                      <Input
-                        id={`qr-${name}`}
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
-                      <form.Subscribe
-                        selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}
-                      >
-                        {(size) => {
-                          const sizeKey = TEXT_SIZE_KEY[name];
-                          const part =
-                            name === 'title'
-                              ? 'Title'
-                              : name === 'subtitle'
-                                ? 'Subtitle'
-                                : 'Footer';
-                          const message = layoutRangeMessage(sizeKey, size);
-                          return (
-                            <div className="flex items-center gap-2">
-                              <Label
-                                htmlFor={`qr-size-${name}`}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {`Ukuran ${part} (pt)`}
-                              </Label>
-                              <Input
-                                id={`qr-size-${name}`}
-                                type="number"
-                                className="h-8 w-24"
-                                step={QR_LAYOUT_RANGES[sizeKey].step}
-                                min={QR_LAYOUT_RANGES[sizeKey].min}
-                                max={QR_LAYOUT_RANGES[sizeKey].max}
-                                aria-invalid={message ? true : undefined}
-                                value={Number.isNaN(size) ? '' : size}
-                                onChange={(event) =>
-                                  form.setFieldValue('layout', {
-                                    ...form.state.values.layout,
-                                    [sizeKey]:
-                                      event.target.value === ''
-                                        ? Number.NaN
-                                        : Number(event.target.value),
-                                  })
-                                }
-                              />
-                              {message ? (
-                                <span className="text-sm text-destructive">{message}</span>
-                              ) : null}
-                            </div>
-                          );
-                        }}
-                      </form.Subscribe>
-                      <form.Subscribe selector={(state) => state.values.style[name]}>
-                        {(textStyle) => (
-                          <TextStyleToolbar
-                            part={
-                              name === 'title'
-                                ? 'Title'
-                                : name === 'subtitle'
-                                  ? 'Subtitle'
-                                  : 'Footer'
-                            }
-                            value={textStyle}
-                            onChange={(next) =>
-                              form.setFieldValue('style', {
-                                ...form.state.values.style,
-                                [name]: next,
-                              })
-                            }
-                          />
-                        )}
-                      </form.Subscribe>
-                    </div>
-                  )}
-                </form.Field>
-              ))}
-            </Section>
-
+              </Section>
+            ) : null}
             {isDefaults ? null : (
               <Section title="Sumber link">
                 <form.Subscribe selector={(state) => state.values}>
@@ -453,6 +555,215 @@ export function QrDesignForm({
                 </form.Field>
               </Section>
             )}
+            {manualBookFlow ? (
+              <form.Subscribe selector={(state) => state.values}>
+                {(values) => {
+                  const preset = newFlow
+                    ? activePreset
+                    : (updatePresets ?? presets)?.find((item) => item.id === edit?.presetId);
+                  if (!preset) return null;
+                  return (
+                    <PresetDeviationBanner
+                      presetName={preset.name}
+                      deviations={qrPresetDeviations(
+                        {
+                          title: values.title,
+                          subtitle: values.subtitle,
+                          footer: values.footer,
+                          logoFileId: values.logoFileId,
+                          layout: values.layout,
+                          style: values.style,
+                        },
+                        {
+                          title: preset.title,
+                          subtitle: preset.subtitle,
+                          footer: preset.footer,
+                          defaultLogoId: preset.defaultLogoId,
+                          layout: preset.layout,
+                          style: preset.style,
+                          namePlacement: preset.namePlacement,
+                        },
+                      )}
+                    />
+                  );
+                }}
+              </form.Subscribe>
+            ) : null}
+            {isDefaults ? (
+              <Section title="Business Unit dan nama Manual Book">
+                <form.Field name="buId">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <LinkField
+                        id="qr-preset-bu"
+                        label="Business Unit"
+                        placeholder="Pilih Business Unit…"
+                        value={field.state.value === '' ? null : field.state.value}
+                        labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
+                        options={businessUnitOptions(businessUnits, buTerm, takenBuIds)}
+                        onSearchChange={setBuTerm}
+                        searchDebounceMs={0}
+                        onChange={(id) => field.handleChange(id ?? '')}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Satu BU hanya punya satu konfigurasi default; QR untuk item BU ini
+                        memakainya otomatis.
+                      </p>
+                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.buId]} />
+                    </div>
+                  )}
+                </form.Field>
+                <form.Field name="namePlacement">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Select
+                        id="qr-name-placement"
+                        label="Penempatan nama Manual Book"
+                        placeholder="Pilih bagian label…"
+                        options={[
+                          { value: 'title', label: 'Title' },
+                          { value: 'subtitle', label: 'Subtitle' },
+                          { value: 'footer', label: 'Footer' },
+                        ]}
+                        value={field.state.value}
+                        onValueChange={(next) =>
+                          field.handleChange(next as typeof field.state.value)
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Bagian ini diisi nama Manual Book pada QR yang dibuat dari konfigurasi ini
+                        dan terkunci; gaya teksnya tetap dapat diubah.
+                      </p>
+                      <FieldError
+                        errors={[...field.state.meta.errors, fieldErrors?.namePlacement]}
+                      />
+                    </div>
+                  )}
+                </form.Field>
+              </Section>
+            ) : null}
+            <Section title="Isi label">
+              {isDefaults ? (
+                <form.Field name="name">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="qr-name">Nama konfigurasi default</Label>
+                      <Input
+                        id="qr-name"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => field.handleChange(event.target.value)}
+                      />
+                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
+                    </div>
+                  )}
+                </form.Field>
+              ) : null}
+              {(['title', 'subtitle', 'footer'] as const).map((name) => (
+                <form.Field key={name} name={name}>
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`qr-${name}`}>
+                        {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
+                      </Label>
+                      <form.Subscribe selector={(state) => state.values.namePlacement}>
+                        {(placement) => {
+                          const locked = isDefaults ? placement === name : lockedPart === name;
+                          return (
+                            <>
+                              <Input
+                                id={`qr-${name}`}
+                                value={isDefaults && locked ? '' : field.state.value}
+                                placeholder={
+                                  isDefaults && locked ? 'Diisi nama Manual Book' : undefined
+                                }
+                                disabled={locked}
+                                onBlur={field.handleBlur}
+                                onChange={(event) => field.handleChange(event.target.value)}
+                              />
+                              {locked ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {isDefaults
+                                    ? 'Bagian ini diisi nama Manual Book saat QR dibuat.'
+                                    : 'Terkunci: bagian ini mengikuti Nama Manual Book (gayanya tetap dapat diubah).'}
+                                </p>
+                              ) : null}
+                            </>
+                          );
+                        }}
+                      </form.Subscribe>
+                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
+                      <form.Subscribe
+                        selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}
+                      >
+                        {(size) => {
+                          const sizeKey = TEXT_SIZE_KEY[name];
+                          const part =
+                            name === 'title'
+                              ? 'Title'
+                              : name === 'subtitle'
+                                ? 'Subtitle'
+                                : 'Footer';
+                          const message = layoutRangeMessage(sizeKey, size);
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Label
+                                htmlFor={`qr-size-${name}`}
+                                className="text-xs text-muted-foreground"
+                              >
+                                {`Ukuran ${part} (pt)`}
+                              </Label>
+                              <Input
+                                id={`qr-size-${name}`}
+                                type="number"
+                                className="h-8 w-24"
+                                step={QR_LAYOUT_RANGES[sizeKey].step}
+                                min={QR_LAYOUT_RANGES[sizeKey].min}
+                                max={QR_LAYOUT_RANGES[sizeKey].max}
+                                aria-invalid={message ? true : undefined}
+                                value={Number.isNaN(size) ? '' : size}
+                                onChange={(event) =>
+                                  form.setFieldValue('layout', {
+                                    ...form.state.values.layout,
+                                    [sizeKey]:
+                                      event.target.value === ''
+                                        ? Number.NaN
+                                        : Number(event.target.value),
+                                  })
+                                }
+                              />
+                              {message ? (
+                                <span className="text-sm text-destructive">{message}</span>
+                              ) : null}
+                            </div>
+                          );
+                        }}
+                      </form.Subscribe>
+                      <form.Subscribe selector={(state) => state.values.style[name]}>
+                        {(textStyle) => (
+                          <TextStyleToolbar
+                            part={
+                              name === 'title'
+                                ? 'Title'
+                                : name === 'subtitle'
+                                  ? 'Subtitle'
+                                  : 'Footer'
+                            }
+                            value={textStyle}
+                            onChange={(next) =>
+                              form.setFieldValue('style', {
+                                ...form.state.values.style,
+                                [name]: next,
+                              })
+                            }
+                          />
+                        )}
+                      </form.Subscribe>
+                    </div>
+                  )}
+                </form.Field>
+              ))}
+            </Section>
 
             <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'}>
               <form.Field name="logoFileId">
@@ -647,7 +958,11 @@ export function QrDesignForm({
           <form.Subscribe selector={(state) => state.values}>
             {(values) => (
               <PreviewPane
-                values={values}
+                values={
+                  isDefaults && values.namePlacement !== ''
+                    ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
+                    : values
+                }
                 document={document}
                 sheetOpen={sheetOpen}
                 onSheetOpenChange={setSheetOpen}
@@ -657,6 +972,16 @@ export function QrDesignForm({
           </form.Subscribe>
         </aside>
       ) : null}
+      <ExportChangeWarning
+        open={pendingSave !== null}
+        stickerVersion={edit?.stickerVersion ?? 0}
+        onCancel={() => setPendingSave(null)}
+        onConfirm={() => {
+          const pending = pendingSave;
+          setPendingSave(null);
+          if (pending) void onSubmit(pending.values, pending.options);
+        }}
+      />
     </form>
   );
 }

@@ -1,6 +1,18 @@
-import type { MeDto } from '@shared/rpc';
+import type { MeDto } from '@shared/contract';
 import { expect, test } from 'vitest';
-import { can, canAnywhere, canAt, locationsWith } from './permissions';
+import {
+  buIdsWithLevelFor,
+  buIdsWithLevelOf,
+  can,
+  canAnywhere,
+  canAt,
+  canCreateItem,
+  canEditItem,
+  canManageItem,
+  canUseSerialLocationOptions,
+  canWriteSerials,
+  locationsWith,
+} from './permissions';
 
 const me: MeDto = {
   email: 'a@gmail.com',
@@ -13,19 +25,24 @@ const me: MeDto = {
     handover: 'none',
     qc: 'none',
     stock: 'none',
+    sticker: 'none',
+    stickerstock: 'none',
+    serial: 'none',
+    serialservice: 'none',
   },
+  businessUnits: [],
   locations: [
     {
       id: 'l-a',
       code: 'A',
       name: 'A',
-      permissions: { handover: 'manage', qc: 'none', stock: 'view' },
+      permissions: { handover: 'manage', qc: 'none', stock: 'view', stickerstock: 'none' },
     },
     {
       id: 'l-b',
       code: 'B',
       name: 'B',
-      permissions: { handover: 'view', qc: 'none', stock: 'none' },
+      permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
     },
   ],
 };
@@ -59,4 +76,106 @@ test('canAnywhere: modul global memakai izin global, modul berlokasi memakai lok
   expect(canAnywhere(me, 'stock', 'view', ['l-b'])).toBe(false);
   expect(canAnywhere(me, 'qc', 'edit')).toBe(false);
   expect(canAnywhere(undefined, 'handover', 'view')).toBe(false);
+});
+
+function meWithBus(businessUnits: MeDto['businessUnits']): MeDto {
+  return { ...me, businessUnits };
+}
+
+function bu(
+  id: string,
+  level: 'none' | 'view' | 'edit' | 'manage',
+  status: 'active' | 'inactive' = 'active',
+) {
+  return {
+    id,
+    code: id.toUpperCase(),
+    name: id,
+    status,
+    permissions: { item: level, serial: 'none' as const, serialservice: 'none' as const },
+  };
+}
+
+const ref = (id: string) => ({ id, code: id.toUpperCase(), name: id });
+
+test('buIdsWithLevelFor: BU dengan level minimal yang diminta (termasuk BU nonaktif)', () => {
+  const user = meWithBus([
+    bu('a', 'manage'),
+    bu('b', 'edit'),
+    bu('c', 'view'),
+    bu('d', 'edit', 'inactive'),
+  ]);
+  expect(buIdsWithLevelFor(user, 'view')).toEqual(['a', 'b', 'c', 'd']);
+  expect(buIdsWithLevelFor(user, 'edit')).toEqual(['a', 'b', 'd']);
+  expect(buIdsWithLevelFor(user, 'manage')).toEqual(['a']);
+});
+
+test('canEditItem: edit pada SEMUA BU item; satu view saja menolak; item tanpa BU menolak', () => {
+  const user = meWithBus([bu('a', 'edit'), bu('b', 'view'), bu('c', 'manage')]);
+  expect(canEditItem(user, { businessUnits: [ref('a'), ref('c')] })).toBe(true);
+  expect(canEditItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+  expect(canEditItem(user, { businessUnits: [ref('zzz')] })).toBe(false);
+  expect(canEditItem(user, { businessUnits: [] })).toBe(false);
+  expect(canEditItem(undefined, { businessUnits: [ref('a')] })).toBe(false);
+});
+
+test('canManageItem: manage pada SEMUA BU item', () => {
+  const user = meWithBus([bu('a', 'manage'), bu('b', 'edit')]);
+  expect(canManageItem(user, { businessUnits: [ref('a')] })).toBe(true);
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+  expect(canManageItem(user, { businessUnits: [] })).toBe(false);
+});
+
+test('canCreateItem: butuh minimal satu BU AKTIF ber-edit', () => {
+  expect(canCreateItem(meWithBus([]))).toBe(false);
+  expect(canCreateItem(meWithBus([bu('a', 'view')]))).toBe(false);
+  expect(canCreateItem(meWithBus([bu('a', 'edit', 'inactive')]))).toBe(false);
+  expect(canCreateItem(meWithBus([bu('a', 'view'), bu('b', 'manage')]))).toBe(true);
+  expect(canCreateItem(null)).toBe(false);
+});
+
+test('helper BU tahan terhadap me hasil pemulihan cache lama tanpa businessUnits', () => {
+  const stale = { ...me } as unknown as MeDto;
+  (stale as { businessUnits?: unknown }).businessUnits = undefined;
+  expect(buIdsWithLevelFor(stale, 'view')).toEqual([]);
+  expect(canEditItem(stale, { businessUnits: [ref('a')] })).toBe(false);
+  expect(canManageItem(stale, { businessUnits: [ref('a')] })).toBe(false);
+  expect(canCreateItem(stale)).toBe(false);
+});
+
+function serialBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
+  return {
+    ...bu(id, 'none'),
+    permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+  };
+}
+
+test('buIdsWithLevelOf: per modul ber-BU, campuran level', () => {
+  const user = meWithBus([
+    serialBu('a', 'manage'),
+    serialBu('b', 'edit'),
+    serialBu('c', 'view'),
+    bu('d', 'manage'),
+  ]);
+  expect(buIdsWithLevelOf(user, 'serial', 'edit')).toEqual(['a', 'b']);
+  expect(buIdsWithLevelOf(user, 'serial', 'view')).toEqual(['a', 'b', 'c']);
+  expect(buIdsWithLevelOf(user, 'item', 'manage')).toEqual(['d']);
+  expect(buIdsWithLevelOf(user, 'serialservice', 'view')).toEqual([]);
+});
+
+test('canWriteSerials: butuh edit pada minimal satu BU', () => {
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
+  expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
+  expect(canWriteSerials(null)).toBe(false);
+});
+
+test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions)', () => {
+  const withSerial = (level: 'none' | 'view' | 'edit' | 'manage') =>
+    ({ ...me, permissions: { ...me.permissions, serial: level } }) as MeDto;
+  expect(canUseSerialLocationOptions(withSerial('view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withSerial('none'))).toBe(false);
+  expect(canUseSerialLocationOptions(withSerial('edit'))).toBe(true);
+  expect(canUseSerialLocationOptions(withSerial('manage'))).toBe(true);
+  expect(canUseSerialLocationOptions(null)).toBe(false);
 });

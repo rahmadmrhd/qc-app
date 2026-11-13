@@ -1,7 +1,7 @@
-import type { QrFileDto } from '@shared/rpc';
+import type { QrFileDto } from '@shared/contract';
 
 /** Memicu unduhan berkas dari byte mentah (Blob + tautan sementara). */
-export function saveFileDownload(file: QrFileDto): void {
+export function saveFileDownload(file: Pick<QrFileDto, 'bytes' | 'filename' | 'mime'>): void {
   const blob = new Blob([file.bytes as BlobPart], { type: file.mime });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

@@ -61,7 +61,7 @@ function textScore(queryTokens: readonly string[], text: string): number | null 
 }
 
 /**
- * Saran dari daftar yang sudah dimuat (tanpa RPC per ketikan). `texts` memberi semua teks yang dicari
+ * Saran dari daftar yang sudah dimuat (tanpa permintaan per ketikan). `texts` memberi semua teks yang dicari
  * per baris (mis. merk, tipe, nama lain); semuanya digabung sehingga "galaxy samsung" menemukan
  * merk "Samsung" + tipe "Galaxy S24". Ketikan kosong tidak menghasilkan saran.
  */

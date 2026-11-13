@@ -1,8 +1,14 @@
 import type { LocatedModule } from '@shared/assignments';
 import { isLocatedModule } from '@shared/assignments';
+import type { BuModule } from '@shared/business-units';
+import type {
+  BusinessUnitAccessDto,
+  BusinessUnitRefDto,
+  LocationAccessDto,
+  MeDto,
+} from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
-import type { LocationAccessDto, MeDto } from '@shared/rpc';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
 import { meQueryOptions } from './queries';
@@ -69,4 +75,75 @@ export async function requireAnyPermission(
   if (!alternatives.some((item) => canAnywhere(me, item.module, item.level))) {
     throw redirect({ to: '/forbidden' });
   }
+}
+
+/**
+ * `MeDto.businessUnits` bisa `undefined` pada `me` yang dipulihkan dari localStorage oleh `app/query-persist.ts`
+ * (bundel lama menyimpan bentuk lama) sebelum dimuat ulang: semua helper BU menganggapnya kosong.
+ */
+function itemBusinessUnits(me: MeDto | null | undefined): readonly BusinessUnitAccessDto[] {
+  return me?.businessUnits ?? [];
+}
+
+/** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul ber-BU `module`. */
+export function buIdsWithLevelOf(
+  me: MeDto | null | undefined,
+  module: BuModule,
+  level: Level,
+): string[] {
+  return itemBusinessUnits(me)
+    .filter((bu) => hasLevel(bu.permissions[module], level))
+    .map((bu) => bu.id);
+}
+
+/** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
+export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): string[] {
+  return buIdsWithLevelOf(me, 'item', level);
+}
+
+/**
+ * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` global). Pembaca tanpa izin itu memakai
+ * lokasi dari `me.locations` agar tidak memicu 403 (perilaku sementara menunggu keputusan pemilik soal filter pembaca).
+ */
+export function canUseSerialLocationOptions(me: MeDto | null | undefined): boolean {
+  return can(me, 'serial', 'edit');
+}
+
+/** Mencatat serial: level `edit` pada minimal satu BU. */
+export function canWriteSerials(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
+}
+
+function hasLevelOnAllBus(
+  me: MeDto | null | undefined,
+  item: { businessUnits?: readonly BusinessUnitRefDto[] },
+  level: Level,
+): boolean {
+  const attached = item.businessUnits ?? [];
+  if (attached.length === 0) return false;
+  const allowed = new Set(buIdsWithLevelFor(me, level));
+  return attached.every((bu) => allowed.has(bu.id));
+}
+
+/** Ubah item: `edit` pada SEMUA BU item (keputusan 13). Item tanpa BU tidak dapat diubah. */
+export function canEditItem(
+  me: MeDto | null | undefined,
+  item: { businessUnits?: readonly BusinessUnitRefDto[] },
+): boolean {
+  return hasLevelOnAllBus(me, item, 'edit');
+}
+
+/** Nonaktifkan/aktifkan item: `manage` pada SEMUA BU item. */
+export function canManageItem(
+  me: MeDto | null | undefined,
+  item: { businessUnits?: readonly BusinessUnitRefDto[] },
+): boolean {
+  return hasLevelOnAllBus(me, item, 'manage');
+}
+
+/** Buat item: ada minimal satu BU aktif ber-`edit`. */
+export function canCreateItem(me: MeDto | null | undefined): boolean {
+  return itemBusinessUnits(me).some(
+    (bu) => bu.status === 'active' && hasLevel(bu.permissions.item, 'edit'),
+  );
 }

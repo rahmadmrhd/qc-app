@@ -6,8 +6,10 @@ import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
-import { startJobRunner, startScheduler } from '@server/jobs/runner';
+import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { createWebPushSender } from '@server/modules/notification/web-push';
+import { backfillPostelStickers } from '@server/modules/postel/stickers';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -54,7 +56,6 @@ export function envFromConfig(config: Config, db: Db): Env {
     SESSION_SECRET: config.sessionSecret,
     OAUTH_CLIENT_ID: config.oauthClientId,
     OAUTH_CLIENT_SECRET: config.oauthClientSecret,
-    SYNC_API_TOKEN: config.syncApiToken,
     ADMIN_EMAIL: config.adminEmail,
     // Cadangan malam hanya di produksi dengan Google terkonfigurasi dan `BACKUP_ENABLED` tidak `false` (staging memakainya untuk mati; CLI pemulihan tak terpengaruh) (dev memakai basis data bersama di VPS dan tak
     // punya mariadb-dump); `parseDatabaseUrl` hanya dipakai bila dump dijalankan (URL sudah divalidasi `loadConfig`).
@@ -68,6 +69,9 @@ export function envFromConfig(config: Config, db: Db): Env {
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
     ALERT_TO: config.alertTo,
+    ...(config.vapid === null
+      ? {}
+      : { PUSH: createWebPushSender(config.vapid), VAPID_PUBLIC_KEY: config.vapid.publicKey }),
     QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),
@@ -85,10 +89,20 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   const env: Env = { ...envFromConfig(config, db), ...options.env };
   let stops: Array<() => Promise<void>> = [];
   const startBackground = () => {
-    if (options.background !== false) stops = [startJobRunner(env), startScheduler(env)];
+    if (options.background !== false)
+      stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
-    (result) => {
+    async (result) => {
+      // Hanya di jalur nyata (ada persiapan basis data): catatan Postel lama dibekali stiker per catatan. Galatnya
+      // dicatat tanpa menggagalkan start (pengisi idempoten, diulang pada start berikutnya).
+      if (options.prepare) {
+        try {
+          await backfillPostelStickers(env);
+        } catch (error) {
+          console.error('Pengisian stiker Postel gagal:', error);
+        }
+      }
       startBackground();
       return result;
     },

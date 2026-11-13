@@ -1,16 +1,26 @@
+import type { MeDto } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
-import type { MeDto } from '@shared/rpc';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  BellRing,
+  Boxes,
+  Building2,
   ClipboardList,
   Contact,
+  FileBadge,
   History,
   House,
+  Images,
+  ListChecks,
   MapPin,
   Package,
   QrCode,
+  ScanBarcode,
+  Settings2,
+  Shapes,
   ShieldCheck,
+  Sticker,
   Tags,
   Users,
 } from 'lucide-react';
@@ -51,12 +61,6 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: { module: 'item', level: 'view' },
       },
       {
-        label: 'QR Code',
-        to: '/qrcode',
-        icon: QrCode,
-        permission: { module: 'qrcode', level: 'view' },
-      },
-      {
         label: 'Merk',
         to: '/item/brands',
         icon: Tags,
@@ -71,6 +75,28 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Manual Book',
+    items: [
+      {
+        label: 'QR Code',
+        to: '/qrcode',
+        icon: QrCode,
+        permission: { module: 'qrcode', level: 'view' },
+      },
+    ],
+  },
+  {
+    label: 'Postel',
+    items: [
+      {
+        label: 'Daftar Postel',
+        to: '/postel',
+        icon: FileBadge,
+        permission: { module: 'sticker', level: 'view' },
+      },
+    ],
+  },
+  {
     label: 'Operasional',
     items: [
       {
@@ -81,6 +107,66 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'handover', level: 'view', scope: 'location' },
           { module: 'qc', level: 'edit', scope: 'location' },
         ],
+      },
+    ],
+  },
+  {
+    label: 'Serial Number',
+    items: [
+      {
+        label: 'Daftar Serial Number',
+        to: '/serial',
+        icon: ListChecks,
+        excludes: ['/serial/new'],
+        permission: [
+          { module: 'serial', level: 'view' },
+          { module: 'serialservice', level: 'view' },
+        ],
+      },
+      {
+        label: 'Catat Serial Number',
+        to: '/serial/new',
+        icon: ScanBarcode,
+        permission: { module: 'serial', level: 'edit' },
+      },
+    ],
+  },
+  {
+    label: 'Stiker',
+    items: [
+      {
+        label: 'Stiker',
+        to: '/sticker',
+        icon: Sticker,
+        excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
+        permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Jenis Stiker',
+        to: '/sticker/types',
+        icon: Shapes,
+        permission: { module: 'sticker', level: 'view' },
+      },
+      {
+        label: 'Stok Stiker',
+        to: '/sticker/stock',
+        icon: Boxes,
+        permission: { module: 'stickerstock', level: 'view', scope: 'location' },
+      },
+      {
+        label: 'Pustaka Gambar',
+        to: '/sticker/library',
+        icon: Images,
+        permission: [
+          { module: 'item', level: 'view' },
+          { module: 'sticker', level: 'view' },
+        ],
+      },
+      {
+        label: 'Konfigurasi Stiker',
+        to: '/sticker/settings',
+        icon: Settings2,
+        permission: { module: 'sticker', level: 'manage' },
       },
     ],
   },
@@ -106,9 +192,21 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: { module: 'access', level: 'view' },
       },
       {
+        label: 'Business Unit',
+        to: '/access/business-units',
+        icon: Building2,
+        permission: { module: 'access', level: 'view' },
+      },
+      {
         label: 'Log Audit',
         to: '/access/audit',
         icon: History,
+        permission: { module: 'access', level: 'view' },
+      },
+      {
+        label: 'Status Push',
+        to: '/access/push',
+        icon: BellRing,
         permission: { module: 'access', level: 'view' },
       },
     ],

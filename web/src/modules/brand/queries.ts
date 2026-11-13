@@ -1,4 +1,4 @@
-import type { SaveBrandInput, SetBrandStatusInput } from '@shared/rpc';
+import type { SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';
@@ -12,15 +12,22 @@ export function brandsQueryOptions() {
   });
 }
 
-/** Merk memengaruhi nama di daftar/detail item, jadi item ikut dimuat ulang (dan Log Audit). */
-function useBrandMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) {
+/**
+ * Merk dan Log Audit selalu dimuat ulang. Item ikut dimuat ulang HANYA bila mutasi mengubah merk yang sudah dipakai item
+ * (`affectsItems`: ganti nama/status), karena nama merk tampil di daftar/detail item. Membuat merk baru tidak menyentuh
+ * item mana pun; memuat ulang item saat itu akan me-remount form ubah item (`key={item.updatedAt}`) dan menghapus isian.
+ */
+function useBrandMutation<TInput, TOutput>(
+  mutationFn: (input: TInput) => Promise<TOutput>,
+  affectsItems: (input: TInput) => boolean,
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: async () => {
+    onSuccess: async (_data, input) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: brandKeys.all }),
-        queryClient.invalidateQueries({ queryKey: itemKeys.all }),
+        ...(affectsItems(input) ? [queryClient.invalidateQueries({ queryKey: itemKeys.all })] : []),
         queryClient.invalidateQueries({ queryKey: accessKeys.audit }),
       ]);
     },
@@ -28,6 +35,12 @@ function useBrandMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promis
 }
 
 export const useSaveBrand = () =>
-  useBrandMutation((input: SaveBrandInput) => api('brands.save', input));
+  useBrandMutation(
+    (input: SaveBrandInput) => api('brands.save', input),
+    (input) => input.id !== undefined,
+  );
 export const useSetBrandStatus = () =>
-  useBrandMutation((input: SetBrandStatusInput) => api('brands.setStatus', input));
+  useBrandMutation(
+    (input: SetBrandStatusInput) => api('brands.setStatus', input),
+    () => true,
+  );
