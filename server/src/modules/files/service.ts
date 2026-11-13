@@ -1,5 +1,6 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
+import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -274,11 +275,26 @@ export async function planAttachFiles(
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }
   }
-  return toClaim.map((file) =>
+  const claims = toClaim.map((file) =>
     env.DB.prepare(
       "UPDATE files SET owner_type = ?, owner_id = ? WHERE id = ? AND status = 'active' AND owner_type = ''",
     ).bind(ownerType, ownerId, file.id),
   );
+  // Gambar serial: dua aksi serentak oleh pengunggah yang sama tidak boleh memasang unggahan yang sama ke dua serial
+  // (BU berbeda). `UPDATE ... AND owner_type = ''` hanya membuat pemasang kedua tak mengubah baris; penjaga hitungan ini
+  // membatalkan seluruh batch bila ada berkas yang tidak berakhir milik serial ini (pola penjaga lampiran Postel).
+  if (ownerType === 'serial' && toClaim.length > 0) {
+    claims.push(
+      env.DB.prepare(
+        `SELECT CASE WHEN (SELECT COUNT(*) FROM files WHERE id IN (${toClaim
+          .map(() => '?')
+          .join(
+            ',',
+          )}) AND status = 'active' AND owner_type = 'serial' AND owner_id = ?) <> ? THEN ${CAS_FAIL_SQL} ELSE 0 END AS guard_ok`,
+      ).bind(...toClaim.map((file) => file.id), ownerId, toClaim.length),
+    );
+  }
+  return claims;
 }
 
 export async function attachFiles(

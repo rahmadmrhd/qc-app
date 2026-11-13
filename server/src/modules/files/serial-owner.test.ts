@@ -1,6 +1,7 @@
 // Berkas berpemilik `serial` (gambar pada pesan kejadian, 5b): terbaca hanya lewat BU serial, tak pernah lewat izin
 // item/sticker/qrcode, dan tak dapat dipasang ke pemilik lain.
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { isGuardFailure } from '@server/core/cas';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { jsonOf, restClient } from '@server-test/rest-client';
@@ -148,10 +149,26 @@ describe('unggah dan pemasangan', () => {
       undefined,
       SERIAL_USERS.writer,
     );
-    expect(statements).toHaveLength(1);
+    // UPDATE klaim + penjaga hitungan.
+    expect(statements).toHaveLength(2);
     const other = await captureAppErrorAsync(() =>
       planAttachFiles(env, [id], 'serial', 'sn-a', undefined, SERIAL_USERS.both),
     );
     expect(other.code).toBe('VALIDATION');
+  });
+
+  test('dua pemasangan serentak unggahan yang sama ke dua serial: tepat satu berhasil, yang lain gagal penjaga dan batch-nya batal', async () => {
+    const id = (await jsonOf(await upload(SERIAL_USERS.both))).id as string;
+    const planA = await planAttachFiles(env, [id], 'serial', 'sn-a', undefined, SERIAL_USERS.both);
+    const planB = await planAttachFiles(env, [id], 'serial', 'sn-b', undefined, SERIAL_USERS.both);
+    const results = await Promise.allSettled([env.DB.batch(planA), env.DB.batch(planB)]);
+    const failed = results.filter((result) => result.status === 'rejected');
+    expect(failed).toHaveLength(1);
+    expect(isGuardFailure((failed[0] as PromiseRejectedResult).reason)).toBe(true);
+    const row = await env.DB.prepare('SELECT owner_type, owner_id FROM files WHERE id = ?')
+      .bind(id)
+      .first<{ owner_type: string; owner_id: string }>();
+    expect(row?.owner_type).toBe('serial');
+    expect(row?.owner_id).toBe(results[0]?.status === 'fulfilled' ? 'sn-a' : 'sn-b');
   });
 });
