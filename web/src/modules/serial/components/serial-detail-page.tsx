@@ -120,7 +120,11 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
             <Badge variant={serial.status === 'good' ? 'secondary' : 'destructive'}>
               {STATUS_LABEL[serial.status]}
             </Badge>
-            <Badge variant="outline">{`${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}</Badge>
+            <Badge variant="outline">
+              {serial.custody === 'transit'
+                ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
+                : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
+            </Badge>
             {serial.openCase ? (
               <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
             ) : null}

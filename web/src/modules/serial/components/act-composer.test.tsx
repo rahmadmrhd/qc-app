@@ -106,8 +106,8 @@ const CASE = {
   outcome: null,
 } as const;
 
-function renderComposer(serial: SerialDto) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderComposer(serial: SerialDto, client?: QueryClient) {
+  client ??= new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <ActComposer serial={serial} />
@@ -366,4 +366,100 @@ test('versi usang (412) memuat ulang dan mempertahankan pesan', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue('halo');
+});
+
+test('versi usang (412) juga memuat ulang riwayat serial, bukan hanya kepala', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  renderComposer(SERIAL, client);
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.act'
+      ? Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }))
+      : Promise.resolve({ stickers: [], locations: [] }),
+  );
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
+  await screen.findByRole('alert');
+  const keys = invalidate.mock.calls.map((call) => (call[0] as { queryKey: unknown }).queryKey);
+  expect(keys).toContainEqual(['serial', 'one', 's1']);
+  expect(keys).toContainEqual(['serial', 'history', 's1']);
+});
+
+test('setelah sukses isian dikosongkan dan pilihan aksi kembali ke Catatan', async () => {
+  renderComposer(SERIAL);
+  await pickSelect(screen, 'Jenis update', 'Laporkan tidak lolos');
+  await userEvent.type(screen.getByLabelText('Kerusakan'), 'Port 3 mati');
+  await userEvent.type(
+    screen.getByRole('textbox', { name: 'Catatan (opsional)' }),
+    'foto menyusul',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Laporkan tidak lolos' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  // Kembali ke Catatan: tanpa kolom kerusakan, pesan kosong.
+  await waitFor(() => expect(screen.queryByLabelText('Kerusakan')).toBeNull());
+  expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue('');
+  await pickSelect(screen, 'Jenis update', 'Laporkan tidak lolos');
+  expect(screen.getByLabelText('Kerusakan')).toHaveValue('');
+});
+
+test('ganti aksi mengosongkan isian aksi sebelumnya (kerusakan, tujuan, pesan)', async () => {
+  renderComposer(SERIAL);
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'draf pesan');
+  await pickSelect(screen, 'Jenis update', 'Laporkan tidak lolos');
+  expect(screen.getByRole('textbox', { name: 'Catatan (opsional)' })).toHaveValue('');
+  await userEvent.type(screen.getByLabelText('Kerusakan'), 'Retak');
+  await pickSelect(screen, 'Jenis update', 'Kirim antar lokasi');
+  await pickLink(screen, 'Lokasi tujuan', 'Surabaya (SBY)');
+  await pickSelect(screen, 'Jenis update', 'Laporkan tidak lolos');
+  expect(screen.getByLabelText('Kerusakan')).toHaveValue('');
+  await pickSelect(screen, 'Jenis update', 'Kirim antar lokasi');
+  expect(screen.getByRole('button', { name: 'Kirim antar lokasi' })).toBeDisabled();
+});
+
+test('servis mengirim balik ke QC: pemilih tujuan memuat lokasi dan tujuan ikut ke payload', async () => {
+  me = meWith('none', 'edit');
+  renderComposer({
+    ...SERIAL,
+    status: 'service_repair',
+    custody: 'service',
+    openCaseId: 'c1',
+    openCase: CASE,
+  });
+  const names = await optionNames('Jenis update');
+  const label = names.find((name) => name.startsWith('Kirim')) ?? '';
+  expect(label).not.toBe('');
+  await pickSelect(screen, 'Jenis update', label);
+  await pickLink(screen, 'Lokasi tujuan', 'Surabaya (SBY)');
+  expect(calls('serials.locationOptions').length).toBeGreaterThan(0);
+  await userEvent.click(screen.getByRole('button', { name: label }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(calls('serials.act')[0]?.[1]).toMatchObject({ action: 'send', toLocationId: 'l2' });
+});
+
+test.each([
+  ['FORBIDDEN', 'Aksi ini bukan bagian tim Anda'],
+  ['CONFLICT', 'Keadaan Serial Number sudah berubah'],
+])('galat umum %s dari serials.act tampil sebagai pesan di komposer', async (code, text) => {
+  renderComposer(SERIAL);
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: unknown) =>
+    id === 'serials.act'
+      ? Promise.reject(new ApiError(code as never, text, '-'))
+      : original?.(id, input),
+  );
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(text);
+});
+
+test('rujukan gambar qcfile di pesan ikut ke payload serials.act (editor diganti kolom teks: tingkat payload)', async () => {
+  renderComposer(SERIAL);
+  await userEvent.click(screen.getByRole('textbox', { name: 'Catatan' }));
+  await userEvent.paste('Foto: ![kerusakan](qcfile:abc123) dan ![b](qcfile:def456)');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  const payload = calls('serials.act')[0]?.[1] as { message: string };
+  const message = payload.message;
+  expect(message).toContain('qcfile:abc123');
+  expect(message).toContain('qcfile:def456');
 });

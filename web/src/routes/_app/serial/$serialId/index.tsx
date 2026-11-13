@@ -17,5 +17,11 @@ export const Route = createFileRoute('/_app/serial/$serialId/')({
 function SerialDetailRoute() {
   const { serialId } = Route.useParams();
   const navigate = useNavigate();
-  return <SerialDetailPage serialId={serialId} onBack={() => void navigate({ to: '/serial' })} />;
+  return (
+    <SerialDetailPage
+      key={serialId}
+      serialId={serialId}
+      onBack={() => void navigate({ to: '/serial' })}
+    />
+  );
 }

@@ -231,3 +231,23 @@ test('impor .qcsn baris Tidak lolos mengisi kerusakan; draf lama tanpa status di
   expect(within(restored).getByText('Lolos')).toBeInTheDocument();
   expect(screen.queryByLabelText('Kerusakan OLD1')).toBeNull();
 });
+
+test('ubah massal kembali ke Lolos tidak mengirim damage lama', async () => {
+  renderPage();
+  await pickDefaults();
+  await paste('E1\nE2');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua baris' }));
+  await pickSelect(screen, 'Status (ubah massal)', 'Tidak lolos');
+  await userEvent.type(screen.getByLabelText('Kerusakan (ubah massal)'), 'Port mati');
+  await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 2 baris' }));
+  expect(screen.getByLabelText('Kerusakan E1')).toHaveValue('Port mati');
+  await pickSelect(screen, 'Status (ubah massal)', 'Lolos');
+  await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 2 baris' }));
+  expect(screen.queryByLabelText('Kerusakan E1')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await waitFor(() => expect(saveCalls).toHaveLength(1));
+  for (const saved of saveCalls[0] ?? []) {
+    expect(saved.status).toBe('good');
+    expect(saved).not.toHaveProperty('damage');
+  }
+});

@@ -51,8 +51,14 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
 
 const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'failed' })];
 
-function Harness({ onOpen = () => undefined }: { onOpen?: (id: string) => void }) {
-  const [search, setSearch] = useState<SerialSearch>(serialSearchSchema.parse({}));
+function Harness({
+  onOpen = () => undefined,
+  initial = {},
+}: {
+  onOpen?: (id: string) => void;
+  initial?: Record<string, unknown>;
+}) {
+  const [search, setSearch] = useState<SerialSearch>(serialSearchSchema.parse(initial));
   return (
     <SerialListPage
       search={search}
@@ -62,11 +68,11 @@ function Harness({ onOpen = () => undefined }: { onOpen?: (id: string) => void }
   );
 }
 
-function renderPage(onOpen?: (id: string) => void) {
+function renderPage(onOpen?: (id: string) => void, initial?: Record<string, unknown>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(onOpen ? { onOpen } : {})} />
+      <Harness {...(onOpen ? { onOpen } : {})} {...(initial ? { initial } : {})} />
     </QueryClientProvider>,
   );
 }
@@ -521,4 +527,12 @@ test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async ()
   await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
   await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
+});
+
+test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async () => {
+  renderPage(undefined, { bu: 'b-rahasia-123' });
+  await screen.findByText('ABC123');
+  expect(screen.queryByDisplayValue('b-rahasia-123')).toBeNull();
+  expect(screen.queryByText('b-rahasia-123')).toBeNull();
+  expect(screen.getByDisplayValue('BU tidak dikenal')).toBeInTheDocument();
 });

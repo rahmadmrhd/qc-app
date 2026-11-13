@@ -233,20 +233,33 @@ export function ActComposer({ serial }: ActComposerProps) {
     }
   }
 
+  /** Mengosongkan semua isian aksi; lokasi dan jumlah stiker kembali ke nilai serial saat ini. */
+  function resetFields() {
+    setMessage('');
+    setDamage(null);
+    setShipmentNote('');
+    setToLocation({ id: '', label: '' });
+    setResult('pass');
+    setLocation({ id: serial.locationId, label: serial.locationName });
+    setQty(qtyOf(serial));
+    setError(null);
+    setFieldErrors({});
+  }
+
   async function submit() {
     setError(null);
     setFieldErrors({});
     try {
       await act.mutateAsync(buildInput());
-      setMessage('');
-      setDamage(null);
-      setShipmentNote('');
-      setToLocation({ id: '', label: '' });
-      setResult('pass');
+      // Kembali ke Catatan (aksi netral); pilihan tidak melompat ke aksi lain setelah status berubah.
+      resetFields();
+      setSelected('note');
     } catch (caught) {
       if (isStaleSaveError(caught)) {
         setError(STALE_RELOAD_MESSAGE);
+        // Kepala DAN riwayat dimuat ulang: entri orang lain yang membuat versi usang harus terlihat.
         void queryClient.invalidateQueries({ queryKey: serialKeys.one(serial.id) });
+        void queryClient.invalidateQueries({ queryKey: serialKeys.history(serial.id) });
         return;
       }
       const visible: FieldKey[] = ['occurredOn', 'message'];
@@ -278,8 +291,7 @@ export function ActComposer({ serial }: ActComposerProps) {
           options={flowRows.map((entry) => ({ value: entry.action, label: flowRowLabel(entry) }))}
           onValueChange={(next) => {
             setSelected(next);
-            setError(null);
-            setFieldErrors({});
+            resetFields();
           }}
         />
         <div className="space-y-1.5">

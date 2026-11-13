@@ -849,3 +849,22 @@ test('dialog ubah data: lokasi dikunci dengan keterangan selama dalam pengiriman
   expect(within(open).getByRole('combobox', { name: 'Lokasi' })).toBeEnabled();
   expect(within(open).queryByText(/Lokasi tidak bisa diubah selama/)).toBeNull();
 });
+
+test('lencana posisi saat dalam pengiriman menyebut tujuan, bukan lokasi asal', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      status: 'at_service',
+      custody: 'transit',
+      locationName: 'Jakarta',
+      transitFromLocationName: 'Jakarta',
+      transitToLocationId: 'l2',
+      transitToLocationName: 'Surabaya',
+      transitOn: '2026-11-10',
+    },
+  };
+  renderPage();
+  expect(await screen.findByText('Dalam pengiriman · ke Surabaya')).toBeInTheDocument();
+  expect(screen.queryByText('Dalam pengiriman · Jakarta')).toBeNull();
+});

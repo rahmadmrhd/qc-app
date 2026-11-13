@@ -170,6 +170,9 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
           placeholder="Semua BU"
           localFilter
           value={search.bu ?? null}
+          labelOf={(id) =>
+            buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal'
+          }
           options={buOptions}
           onChange={(id) => onChange({ bu: id ?? undefined })}
         />
