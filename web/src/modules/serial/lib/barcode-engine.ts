@@ -5,6 +5,8 @@
  * malas dari `barcode-fallback.ts`. Semua pemrosesan di perangkat: tidak ada bingkai yang keluar dari peramban.
  */
 
+import type { LocatedCode } from './scan-region';
+
 /**
  * Format yang dibaca. Daftar ini TEBAKAN dari spek Serial Number §11 (label Serial/QCSN diperkirakan QR, Code 128,
  * Code 39, EAN-13, atau DataMatrix): belum dipastikan dengan label nyata. Ubah di satu tempat ini bila perlu.
@@ -18,6 +20,8 @@ export type ScanSource = ImageBitmapSource;
 
 export interface DetectedCode {
   rawValue: string;
+  /** Kotak pembatas pada sumber (ada pada pembaca bawaan maupun ponyfill). */
+  boundingBox?: { x: number; y: number; width: number; height: number };
 }
 
 /** Bentuk minimal konstruktor `BarcodeDetector` (bawaan peramban maupun ponyfill). */
@@ -35,6 +39,8 @@ export interface BarcodeEngine {
   readonly kind: 'native' | 'wasm';
   /** Isi mentah tiap kode yang terbaca pada sumber (kosong bila tak ada); duplikat dalam satu bingkai dibuang. */
   detect(source: ScanSource): Promise<string[]>;
+  /** Seperti `detect` tetapi membawa posisi tiap kode (urutan pembaca, tanpa penyaringan duplikat). */
+  detectCodes(source: ScanSource): Promise<LocatedCode[]>;
 }
 
 export interface EngineDeps {
@@ -65,6 +71,22 @@ function wrap(
     async detect(source) {
       const found = await detector.detect(source);
       return [...new Set(found.map((code) => code.rawValue).filter((value) => value !== ''))];
+    },
+    async detectCodes(source) {
+      const found = await detector.detect(source);
+      return found
+        .filter((code) => code.rawValue !== '')
+        .map((code) => ({
+          text: code.rawValue,
+          box: code.boundingBox
+            ? {
+                x: code.boundingBox.x,
+                y: code.boundingBox.y,
+                width: code.boundingBox.width,
+                height: code.boundingBox.height,
+              }
+            : null,
+        }));
     },
   };
 }

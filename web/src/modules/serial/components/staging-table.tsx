@@ -247,7 +247,7 @@ export function StagingTable({
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="relative overflow-x-auto rounded-md border">
       <table className="w-full text-left">
         <caption className="sr-only">Draft serial yang akan disimpan</caption>
         <thead className="border-b bg-muted/40 text-xs text-muted-foreground">

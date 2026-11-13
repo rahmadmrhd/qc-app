@@ -10,6 +10,7 @@ import {
 import { loadWasmBarcodeDetector } from '../lib/barcode-fallback';
 import { CAMERA_DUPLICATE_WINDOW_MS } from '../lib/camera-payload';
 import type { ScanFeedback } from '../lib/scan-feedback';
+import type { LocatedCode } from '../lib/scan-region';
 import { CAMERA_ERROR_TEXT } from '../lib/use-camera-scanner';
 import { CameraScanDialog } from './camera-scan-dialog';
 
@@ -46,8 +47,14 @@ const VIDEO_DEVICES = [
 
 /** Mesin palsu: `queue` diisi tes; tiap `detect` mengembalikan isi antrean saat itu. */
 function fakeEngine() {
-  const state = { current: [] as string[] };
-  const engine: BarcodeEngine = { kind: 'native', detect: vi.fn(async () => [...state.current]) };
+  const state = { current: [] as string[], located: null as LocatedCode[] | null };
+  const engine: BarcodeEngine = {
+    kind: 'native',
+    detect: vi.fn(async () => [...state.current]),
+    detectCodes: vi.fn(
+      async () => state.located ?? state.current.map((text) => ({ text, box: null })),
+    ),
+  };
   return { engine, state };
 }
 
@@ -123,9 +130,9 @@ test('mode berkelanjutan: payload banyak baris dipecah, bacaan sama dalam jendel
   await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
   expect(ctx.onScan).toHaveBeenCalledWith('AAA111\nBBB222');
   // Kamera tetap menyala dan terus membaca bingkai yang sama: tidak ada pengiriman ulang.
-  const calls = vi.mocked(ctx.engine.detect).mock.calls.length;
+  const calls = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
   await waitFor(() =>
-    expect(vi.mocked(ctx.engine.detect).mock.calls.length).toBeGreaterThan(calls + 1),
+    expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(calls + 1),
   );
   expect(ctx.onScan).toHaveBeenCalledTimes(1);
   expect(ctx.track.stop).not.toHaveBeenCalled();
@@ -133,9 +140,9 @@ test('mode berkelanjutan: payload banyak baris dipecah, bacaan sama dalam jendel
   // Hilang dari pandangan lebih lama dari jendela, lalu terlihat lagi: diteruskan lagi.
   ctx.state.current = [];
   ctx.advance(CAMERA_DUPLICATE_WINDOW_MS + 1);
-  const afterGap = vi.mocked(ctx.engine.detect).mock.calls.length;
+  const afterGap = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
   await waitFor(() =>
-    expect(vi.mocked(ctx.engine.detect).mock.calls.length).toBeGreaterThan(afterGap),
+    expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(afterGap),
   );
   ctx.state.current = ['AAA111'];
   await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(2));
@@ -541,4 +548,84 @@ test('senter: applyConstraints yang selesai setelah restart tidak mengubah tombo
     'aria-pressed',
     'false',
   );
+});
+
+function stubVideoGeometry(video: { w: number; h: number }, box: { w: number; h: number }) {
+  const define = (name: string, value: number) =>
+    Object.defineProperty(HTMLVideoElement.prototype, name, {
+      configurable: true,
+      get: () => value,
+    });
+  define('videoWidth', video.w);
+  define('videoHeight', video.h);
+  define('clientWidth', box.w);
+  define('clientHeight', box.h);
+  const drawImage = vi.fn();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    drawImage,
+  } as unknown as CanvasRenderingContext2D);
+  return drawImage;
+}
+
+afterEach(() => {
+  for (const key of ['videoWidth', 'videoHeight', 'clientWidth', 'clientHeight']) {
+    Reflect.deleteProperty(HTMLVideoElement.prototype, key);
+  }
+});
+
+test('viewport persegi 1:1 dengan bingkai area scan 80% x 50% di tengah dan petunjuk', async () => {
+  setup();
+  const viewport = screen.getByTestId('camera-viewport');
+  expect(viewport.className).toContain('aspect-square');
+  expect(viewport.className).toContain('55dvh');
+  expect(screen.getByLabelText('Pratinjau kamera').className).toContain('object-cover');
+  const frame = screen.getByTestId('scan-frame');
+  expect(frame).toHaveStyle({ width: '80%', height: '50%' });
+  expect(viewport.contains(frame)).toBe(true);
+  expect(screen.getByText('Arahkan kode ke dalam bingkai')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+});
+
+test('pembaca menerima potongan bingkai (kanvas), bukan seluruh video; kanvas dipakai ulang', async () => {
+  // Video landscape 1280x720 di kotak persegi 300x300: sisi kiri-kanan terpotong oleh `cover`.
+  const drawImage = stubVideoGeometry({ w: 1280, h: 720 }, { w: 300, h: 300 });
+  const ctx = setup();
+  await waitFor(() =>
+    expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(2),
+  );
+  const sources = vi.mocked(ctx.engine.detectCodes).mock.calls.map((call) => call[0]);
+  const video = screen.getByLabelText('Pratinjau kamera');
+  for (const source of sources) {
+    expect(source).toBeInstanceOf(HTMLCanvasElement);
+    expect(source).not.toBe(video);
+  }
+  expect(new Set(sources).size).toBe(1);
+  const [src, sx, sy, sw, sh, dx, dy, dw, dh] = drawImage.mock.calls[0] ?? [];
+  expect(src).toBe(video);
+  // Bingkai 240x150 di layar = 576x360 piksel video (skala 300/720), di tengah video.
+  expect(sw).toBeGreaterThanOrEqual(576);
+  expect(sw).toBeLessThanOrEqual(578);
+  expect(sh).toBeGreaterThanOrEqual(360);
+  expect(sh).toBeLessThanOrEqual(362);
+  expect(sx + sw / 2).toBeCloseTo(640, 0);
+  expect(sy + sh / 2).toBeCloseTo(360, 0);
+  expect([dx, dy, dw, dh]).toEqual([0, 0, sw, sh]);
+  expect((sources[0] as HTMLCanvasElement).width).toBe(sw);
+});
+
+test('dua kode dalam satu bingkai: hanya yang paling dekat pusat bingkai diteruskan', async () => {
+  stubVideoGeometry({ w: 720, h: 1280 }, { w: 300, h: 300 });
+  const ctx = setup();
+  // Potongan 576x360: pusat (288, 180).
+  ctx.state.located = [
+    { text: 'JAUH', box: { x: 0, y: 0, width: 60, height: 60 } },
+    { text: 'TENGAH', box: { x: 258, y: 150, width: 60, height: 60 } },
+  ];
+  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
+  expect(ctx.onScan).toHaveBeenCalledWith('TENGAH');
+  const calls = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
+  await waitFor(() =>
+    expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(calls + 1),
+  );
+  expect(ctx.onScan).toHaveBeenCalledTimes(1);
 });
