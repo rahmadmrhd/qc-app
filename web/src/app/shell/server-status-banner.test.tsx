@@ -24,7 +24,9 @@ test('tidak merender apa pun saat server normal', () => {
 });
 
 test('menampilkan teks persis dengan jam data terakhir (role=status), lalu hilang saat pulih', async () => {
-  const updatedAt = new Date(2026, 10, 13, 14, 5).getTime();
+  // Harus di MASA LALU: data dengan `updatedAt` di masa depan dianggap segar (umur negatif < staleTime) sehingga
+  // `fetchQuery` tidak refetch sama sekali (itulah penyebab tes gagal di CI UTC saat jam 14:05 lokal belum tiba).
+  const updatedAt = new Date(2026, 9, 1, 14, 5).getTime();
   client.setQueryData(['auth', 'me'], { email: 'a@x.com' }, { updatedAt });
   render(<ServerStatusBanner />);
   await act(async () => {
