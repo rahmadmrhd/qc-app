@@ -71,6 +71,37 @@ export const STICKER_SYSTEM_KINDS = ['', 'manual_book', 'postel'] as const;
 export type StickerSystemKind = (typeof STICKER_SYSTEM_KINDS)[number];
 
 /**
+ * Awalan nama stiker jenis sistem di katalog (keputusan pemilik 2026-11-12): agar stiker Manual Book dan Postel tak
+ * tertukar dengan stiker lain. Nama TERSIMPAN berawalan ini (bukan hanya tampilan), jadi muncul sama di katalog, stok,
+ * riwayat, instruksi item, dan email.
+ */
+export const SYSTEM_STICKER_PREFIX = {
+  manual_book: 'Manual Book - ',
+  postel: 'Postel - ',
+} as const;
+
+/** Nama stiker Manual Book `Manual Book - <nama konfigurasi> v<versi>`, dipotong ke `nameMax`. */
+export function manualBookStickerName(designName: string, version: number): string {
+  return `${SYSTEM_STICKER_PREFIX.manual_book}${designName} v${version}`.slice(
+    0,
+    STICKER_LIMITS.nameMax,
+  );
+}
+
+/**
+ * Nama stiker Postel `Postel - <nama Postel>` ditambah `suffix` (pembeda bila namanya bentrok dengan stiker Postel
+ * lain). Bagian nama dipotong lebih dulu agar `suffix` selalu utuh dan totalnya <= `nameMax`.
+ */
+export function postelStickerName(postelName: string, suffix = ''): string {
+  return (
+    `${SYSTEM_STICKER_PREFIX.postel}${postelName}`.slice(
+      0,
+      STICKER_LIMITS.nameMax - suffix.length,
+    ) + suffix
+  );
+}
+
+/**
  * Aturan penentuan stiker yang berlaku bagi sebuah item. `group` (tahap 4a) = menurut kelompok item, ditentukan per
  * jenis sistem (Manual Book, Postel); hanya jenis sistem yang memakainya; pengguna tidak membuatnya lewat form (lihat `USER_STICKER_RULES`).
  */

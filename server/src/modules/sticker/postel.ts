@@ -3,22 +3,15 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import {
-  insertStickerStmt,
-  insertStickerTypeStmt,
-  listStickerTypeRecords,
-  type StickerRecord,
-  type StickerTypeRecord,
-} from './repo';
+import { insertStickerTypeStmt, listStickerTypeRecords, type StickerTypeRecord } from './repo';
 
 /**
- * Jenis sistem dan stiker "Postel" (tahap 4b). Jenis `postel` (aturan `group`) dan SATU stiker bernama "Postel" dibuat
- * otomatis saat catatan Postel pertama disimpan; stiker itu berlaku bagi item yang tertaut ke catatan Postel
- * (`items.postel_id`), bukan menurut BU.
+ * Jenis sistem "Postel" (tahap 4b). Jenis `postel` (aturan `group`) dibuat otomatis saat catatan Postel pertama disimpan;
+ * stikernya lahir SATU PER CATATAN (`postels.sticker_id`, keputusan pemilik 2026-11-12; `postel/stickers.ts`) dan
+ * berlaku bagi item yang tertaut ke catatan itu, bukan menurut BU.
  */
 
 export const POSTEL_TYPE_NAME = 'Postel';
-export const POSTEL_STICKER_NAME = 'Postel';
 
 const RENAME_FIRST_MESSAGE =
   "Jenis stiker bernama 'Postel' sudah berisi stiker biasa; ganti namanya lebih dulu agar jenis sistem Postel dapat dibuat";
@@ -75,47 +68,4 @@ export async function ensurePostelType(env: Env, actor: ActorRef): Promise<Stick
   const created = await find();
   if (!created) throw appError('VALIDATION', RENAME_FIRST_MESSAGE);
   return created;
-}
-
-/**
- * Stiker Postel tunggal (idempoten): dibuat bila jenis Postel belum punya stiker, minimum awal = minimum bawaan jenis.
- * Penelan galat duplikat (`stickers_type_name_unique`) menjaga pemanggilan serentak tetap menghasilkan satu stiker.
- */
-export async function ensurePostelSticker(
-  env: Env,
-  actor: ActorRef,
-): Promise<{ typeId: string; stickerId: string }> {
-  const type = await ensurePostelType(env, actor);
-  const find = async (): Promise<string | undefined> => {
-    const row = await env.DB.prepare(
-      'SELECT id FROM stickers WHERE type_id = ? ORDER BY created_at, id LIMIT 1',
-    )
-      .bind(type.id)
-      .first<{ id: string }>();
-    return row?.id.trim();
-  };
-  const existing = await find();
-  if (existing) return { typeId: type.id, stickerId: existing };
-  const now = nowIso(env);
-  const sticker: StickerRecord = {
-    id: crypto.randomUUID(),
-    typeId: type.id,
-    name: POSTEL_STICKER_NAME,
-    alias: '',
-    fileId: '',
-    minQty: type.defaultMinQty,
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-    updatedBy: actor.email,
-  };
-  try {
-    await env.DB.batch([insertStickerStmt(env.DB, sticker)]);
-  } catch (error) {
-    // Pemanggil serentak lain yang menang membuat stikernya lebih dulu.
-    if (!(error instanceof DbError && error.kind === 'duplicate')) throw error;
-  }
-  const stickerId = await find();
-  if (!stickerId) throw appError('VALIDATION', 'Stiker Postel tidak dapat dibuat');
-  return { typeId: type.id, stickerId };
 }

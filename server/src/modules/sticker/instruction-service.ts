@@ -1,6 +1,6 @@
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
-import { itemIdsWithPostel, manualBookDesignIdsOf } from '@server/modules/item/repo';
+import { manualBookDesignIdsOf, postelStickerIdsOf } from '@server/modules/item/repo';
 import type {
   ItemStickerMarkView,
   ItemStickerPhotoDto,
@@ -72,8 +72,8 @@ function placeholders(count: number): string {
  *   status jenis tidak berpengaruh); `targetName` = nama jenis; tanpa kecocokan = `unresolved: true`. Aturan `group`
  *   menurut jenis sistemnya. Manual Book (tahap 4a): stiker versi TERBARU konfigurasi QR yang ditunjuk
  *   `items.manual_book_design_id` item ini, bila aktif; item tanpa konfigurasi, atau versi terbaru yang nonaktif,
- *   = `unresolved` (tidak jatuh ke versi `deprecated`). Postel (tahap 4b): stiker aktif jenis itu bila item tertaut ke
- *   catatan Postel yang ada, selain itu `unresolved`. Jenis `group` tanpa jenis sistem tak pernah cocok.
+ *   = `unresolved` (tidak jatuh ke versi `deprecated`). Postel (tahap 4b): stiker MILIK catatan Postel item ini (satu per
+ *   catatan, `postels.sticker_id`), bila aktif; item tanpa Postel = `unresolved`. Jenis `group` tanpa jenis sistem tak pernah cocok.
  * - `buCodes` = kode BU irisan BU stiker dan BU item (terurut kode); kosong bila tak beririsan.
  * Dihitung ulang tiap dibaca, jadi perubahan BU item atau katalog sesudah simpan langsung tercermin.
  */
@@ -156,7 +156,7 @@ export async function buildInstructionViews(
   const buCode = new Map(rowsOf<BuRow>(slots.bus).map((row) => [row.id, row.code]));
   const itemBus = new Set(itemBuIds);
   // Aturan `group` per jenis sistem (dua kueri kecil, hanya bila ada penanda jenis group yang bersangkutan):
-  // Manual Book = stiker versi terbaru konfigurasi item; Postel = stiker jenis itu bila item tertaut ke catatan yang ada.
+  // Manual Book = stiker versi terbaru konfigurasi item; Postel = stiker milik catatan Postel item (satu per catatan).
   const groupTypes = [...types.values()].filter((type) => type.rule.trim() === 'group');
   const groupStickerIdsOf = new Map<string, ReadonlySet<string>>();
   if (groupTypes.some((type) => type.system_kind.trim() === 'manual_book')) {
@@ -167,13 +167,10 @@ export async function buildInstructionViews(
     }
   }
   if (groupTypes.some((type) => type.system_kind.trim() === 'postel')) {
-    const linked = (await itemIdsWithPostel(env.DB, [itemId])).has(itemId);
+    const own = (await postelStickerIdsOf(env.DB, [itemId])).get(itemId);
     for (const type of groupTypes) {
       if (type.system_kind.trim() === 'postel') {
-        groupStickerIdsOf.set(
-          type.id,
-          linked ? new Set((stickersByType.get(type.id) ?? []).map((row) => row.id)) : new Set(),
-        );
+        groupStickerIdsOf.set(type.id, new Set(own === undefined ? [] : [own]));
       }
     }
   }

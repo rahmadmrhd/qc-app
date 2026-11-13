@@ -122,7 +122,12 @@ describe('0010_postel_kunci_asing', () => {
           .bind(id, postelId, id, id)
           .run();
       }
-      expect(await applyMigrations(db, all)).toEqual(['0010_postel_kunci_asing.sql']);
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0010_postel_kunci_asing.sql'),
+        ),
+      ).toEqual(['0010_postel_kunci_asing.sql']);
       const items = await db
         .prepare('SELECT id, postel_id FROM items ORDER BY id')
         .all<{ id: string; postel_id: string | null }>();
@@ -146,6 +151,68 @@ describe('0010_postel_kunci_asing', () => {
         .first<{ postel_id: string | null }>();
       expect(left?.postel_id).toBeNull();
       expect((await db.prepare('SELECT id FROM postel_numbers').all()).results).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  }, 120_000);
+});
+
+describe('0011_postel_stiker_per_catatan', () => {
+  const INSERT_STICKER =
+    "INSERT INTO stickers (id, type_id, name, created_at, updated_at, updated_by) VALUES (?, ?, ?, 't', 't', 's')";
+  const INSERT_TYPE =
+    "INSERT INTO sticker_types (id, name, rule, system_kind, created_at, updated_at, updated_by) VALUES (?, ?, 'group', ?, 't', 't', 's')";
+
+  test('stiker Manual Book yang ada diberi awalan (idempoten); kolom sticker_id NULL, unik, dan kunci asing RESTRICT', async () => {
+    const db = await freshDb();
+    try {
+      const all = await loadMigrations();
+      await applyMigrations(
+        db,
+        all.filter((m) => m.name < '0011'),
+      );
+      await db.prepare(INSERT_TYPE).bind('t-mb', 'Manual Book', 'manual_book').run();
+      await db.prepare(INSERT_TYPE).bind('t-pos', 'Postel', 'postel').run();
+      await db.prepare(INSERT_STICKER).bind('s-mb', 't-mb', 'PBE M5-400 v1').run();
+      await db.prepare(INSERT_STICKER).bind('s-pos', 't-pos', 'Postel').run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p1', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      expect(await applyMigrations(db, all)).toEqual(['0011_postel_stiker_per_catatan.sql']);
+      const names = await db
+        .prepare('SELECT id, name FROM stickers ORDER BY id')
+        .all<{ id: string; name: string }>();
+      expect(names.results).toEqual([
+        { id: 's-mb', name: 'Manual Book - PBE M5-400 v1' },
+        { id: 's-pos', name: 'Postel' },
+      ]);
+      const postel = await db
+        .prepare("SELECT sticker_id FROM postels WHERE id = 'p1'")
+        .first<{ sticker_id: string | null }>();
+      expect(postel?.sticker_id).toBeNull();
+      // kunci asing: stiker harus ada; satu stiker hanya milik satu catatan; stiker milik catatan tak dapat dihapus
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 'tidak-ada' WHERE id = 'p1'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p1'").run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p2', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p2'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await expect(
+        db.prepare("DELETE FROM stickers WHERE id = 's-pos'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      // menghapus catatan tidak menyentuh stikernya
+      await db.prepare("DELETE FROM postels WHERE id = 'p1'").run();
+      expect(
+        (await db.prepare("SELECT id FROM stickers WHERE id = 's-pos'").all()).results,
+      ).toHaveLength(1);
     } finally {
       await db.close();
     }
@@ -227,6 +294,7 @@ describe('skema baseline', () => {
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
       { name: '0010_postel_kunci_asing.sql' },
+      { name: '0011_postel_stiker_per_catatan.sql' },
     ]);
   });
 
@@ -313,6 +381,7 @@ describe('skema baseline', () => {
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
+        'postels.postels_sticker',
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',

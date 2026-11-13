@@ -445,7 +445,8 @@ describe('aturan group (Manual Book): tes kesepakatan items.get dan filter dafta
 });
 
 describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', () => {
-  const POSTEL_STICKERS = ['s-postel', 's-postel-x'];
+  // Stiker per catatan (keputusan pemilik 2026-11-12): item hanya memakai stiker MILIK catatan Postelnya.
+  const POSTEL_STICKERS = ['s-postel', 's-postel-b', 's-postel-x'];
   const setPostel = (model: string, postelId: string) =>
     env.DB.prepare('UPDATE items SET postel_id = ? WHERE id = ?')
       .bind(postelId, ids[model] as string)
@@ -458,26 +459,41 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
       rule: 'group',
       systemKind: 'postel',
     });
-    await seedSticker(env, { id: 's-postel', typeId: 't-postel', name: 'Postel' });
-    // stiker nonaktif pada jenis yang sama: tak pernah menjadi hasil terjemahan jenis
+    await seedSticker(env, { id: 's-postel', typeId: 't-postel', name: 'Postel - A' });
+    await seedSticker(env, { id: 's-postel-b', typeId: 't-postel', name: 'Postel - B' });
+    // stiker nonaktif milik catatan lain: tak pernah menjadi hasil terjemahan jenis
     await seedSticker(env, {
       id: 's-postel-x',
       typeId: 't-postel',
-      name: 'Postel Lama',
+      name: 'Postel - Lama',
       status: 'inactive',
     });
     await seedPostel(env, {
       id: 'pp-1',
+      stickerId: 's-postel',
       numbers: [{ number: 'PLG-77', expiresOn: '2027-01-01' }],
+    });
+    await seedPostel(env, {
+      id: 'pp-2',
+      stickerId: 's-postel-b',
+      numbers: [{ number: 'PLG-88', expiresOn: '2027-01-01' }],
+    });
+    await seedPostel(env, {
+      id: 'pp-3',
+      stickerId: 's-postel-x',
+      numbers: [{ number: 'PLG-99', expiresOn: '2027-01-01' }],
     });
     await createItem('P1', ['bu-a'], [typeMark('t-postel')]);
     await createItem('P2', ['bu-b'], [typeMark('t-postel'), typeMark('t-bu')]);
     await createItem('P3', ['bu-a'], [typeMark('t-postel')]);
     await createItem('P4', ['bu-a'], [typeMark('t-postel')]);
+    await createItem('P5', ['bu-a'], [typeMark('t-postel')]);
     await setPostel('P1', 'pp-1');
     // BU lain tetapi memakai catatan yang sama: aturan group tak memakai BU
     await setPostel('P2', 'pp-1');
-    // P3 tanpa catatan; P4 ditautkan ke catatan yang lalu dihapus (kunci asing melepasnya, bukan penunjuk yatim)
+    // P3 memakai catatan LAIN (stiker lain); P5 tanpa catatan; P4 ditautkan ke catatan yang lalu dihapus (kunci asing
+    // melepasnya, bukan penunjuk yatim)
+    await setPostel('P3', 'pp-2');
     await seedPostel(env, { id: 'ghost', numbers: [] });
     await setPostel('P4', 'ghost');
     await env.DB.prepare('DELETE FROM postels WHERE id = ?').bind('ghost').run();
@@ -489,23 +505,27 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     (await itemOf(ids[model] as string)).stickerPhotos[0]?.marks[0]?.resolved.map((r) => r.id) ??
     [];
 
-  test('hasil terjemahan: stiker Postel aktif bagi item tertaut; tanpa catatan, catatan dihapus, atau stiker nonaktif = belum ada', async () => {
+  test('hasil terjemahan: hanya stiker milik catatan item; tanpa catatan, catatan dihapus, atau stiker nonaktif = belum ada', async () => {
     expect(await resolvedOf('P1')).toEqual(['s-postel']);
     expect(await resolvedOf('P2')).toEqual(['s-postel']);
-    expect(await resolvedOf('P3')).toEqual([]);
+    // item catatan B tak pernah menampilkan stiker catatan A (dan sebaliknya)
+    expect(await resolvedOf('P3')).toEqual(['s-postel-b']);
     expect(await resolvedOf('P4')).toEqual([]);
-    const unresolved = (await itemOf(ids.P3 as string)).stickerPhotos[0]?.marks[0]?.unresolved;
+    expect(await resolvedOf('P5')).toEqual([]);
+    const unresolved = (await itemOf(ids.P5 as string)).stickerPhotos[0]?.marks[0]?.unresolved;
     expect(unresolved).toBe(true);
     expect(names(await list('?stickerId=s-postel'))).toEqual(set('P1', 'P2'));
+    expect(names(await list('?stickerId=s-postel-b'))).toEqual(set('P3'));
     expect(names(await list('?stickerId=s-postel&stickerMode=missing')).includes('P3')).toBe(true);
     expect(await list('?stickerId=s-postel-x')).toEqual([]);
     expect(names(await list('?typeId=t-postel&stickerMode=has'))).toEqual(
-      set('P1', 'P2', 'P3', 'P4'),
+      set('P1', 'P2', 'P3', 'P4', 'P5'),
     );
     // stiker Postel dinonaktifkan: tidak lagi terjemahan bagi siapa pun
     await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's-postel'").run();
     expect(await resolvedOf('P1')).toEqual([]);
     expect(await list('?stickerId=s-postel')).toEqual([]);
+    expect(await resolvedOf('P3')).toEqual(['s-postel-b']);
   });
 
   test('items.get (resolved) dan filter stickerId/typeId memberi jawaban sama untuk setiap item, pada semua keadaan stiker dan catatan', async () => {
@@ -538,7 +558,7 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     await check();
     await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's-postel'").run();
     await check();
-    // stiker Postel kedua aktif: kedua stiker aktif jenis itu menjadi hasil bagi item bercatatan
+    // stiker catatan 3 diaktifkan (tak ada item di catatan itu) dan s-postel kembali aktif
     await env.DB.prepare(
       "UPDATE stickers SET status = 'active' WHERE id IN ('s-postel', 's-postel-x')",
     ).run();
@@ -548,5 +568,6 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     // catatan terhapus (item terlepas lewat ON DELETE SET NULL): kedua sisi sepakat (tidak ada hasil)
     await check();
     expect(await resolvedOf('P1')).toEqual([]);
+    expect(await resolvedOf('P3')).toEqual(['s-postel-b']);
   }, 300_000);
 });
