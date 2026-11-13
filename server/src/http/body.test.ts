@@ -319,6 +319,8 @@ const WORST: Inputs = {
   'push.unsubscribe': { endpoint: text(2000) },
   'push.setPreference': { enabled: true },
   'push.reportPermission': { state: 'granted' },
+  'guides.mark': { id: text(100), version: 1 },
+  'guides.reset': { id: text(100) },
   'exports.sheets': { tables: longList(50, () => text(100)) },
 };
 

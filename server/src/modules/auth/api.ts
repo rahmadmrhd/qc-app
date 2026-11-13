@@ -59,6 +59,7 @@ export function authApiRoutes(): Pick<RouteTable, 'auth.me'> {
         permissions: ctx.user.permissions,
         locations: locationsOf(ctx.user, await listLocationBriefs(ctx.env)),
         businessUnits: businessUnitsOf(ctx.user, await listBusinessUnitBriefs(ctx.env)),
+        sharedAccount: ctx.user.sharedAccount,
       }),
     },
   };

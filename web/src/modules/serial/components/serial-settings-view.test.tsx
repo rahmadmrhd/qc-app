@@ -24,6 +24,7 @@ const meWith = (access: 'none' | 'view'): MeDto => ({
   name: 'A',
   isSuperAdmin: false,
   canManageSerialSettings: false,
+  sharedAccount: false,
   permissions: {
     access,
     item: 'none',

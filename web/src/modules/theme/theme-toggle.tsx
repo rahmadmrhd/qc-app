@@ -21,7 +21,7 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Ganti tema">
+        <Button variant="ghost" size="icon" aria-label="Ganti tema" data-tour="theme-toggle">
           <TriggerIcon />
         </Button>
       </DropdownMenuTrigger>

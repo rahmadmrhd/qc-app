@@ -20,6 +20,8 @@ export interface UserContext {
   locations: Record<string, LocationPermissionMap>;
   /** Izin efektif per BU untuk modul ber-BU (`BU_MODULES`); BU tanpa izin apa pun tidak ada. Super admin: semua BU `manage`. */
   businessUnits: Record<string, BuPermissionMap>;
+  /** Akun bersama (`users.shared_account`); super admin tanpa baris user = false. */
+  sharedAccount: boolean;
 }
 
 interface UserRow {
@@ -29,6 +31,8 @@ interface UserRow {
   role_ids: string;
   assignments: string;
   bu_assignments: string;
+  /** TINYINT(1) (angka 0/1; teks bila lewat kolom `UNION` generik). */
+  shared_account: number | string;
 }
 
 /**
@@ -36,7 +40,7 @@ interface UserRow {
  * (seluruhnya, bukan hanya yang aktif: daftar yang sama mengisi cache `access:locations`), `b` = id seluruh BU. Kolom
  * generik a..f agar `UNION ALL` sah; satu pernyataan, bukan empat.
  */
-const ACCESS_SQL = `SELECT 'u' AS k, id AS a, name AS b, status AS c, role_ids AS d, assignments AS e, bu_assignments AS f FROM users WHERE email = ? UNION ALL SELECT 'r', id, permissions, NULL, NULL, NULL, NULL FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL FROM business_units`;
+const ACCESS_SQL = `SELECT 'u' AS k, id AS a, name AS b, status AS c, role_ids AS d, assignments AS e, bu_assignments AS f, shared_account AS g FROM users WHERE email = ? UNION ALL SELECT 'r', id, permissions, NULL, NULL, NULL, NULL, NULL FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL, NULL FROM business_units`;
 
 interface AccessRow {
   k: 'u' | 'r' | 'l' | 'b';
@@ -46,6 +50,7 @@ interface AccessRow {
   d: string | null;
   e: string | null;
   f: string | null;
+  g: number | string | null;
 }
 
 function parseJson(text: string): unknown {
@@ -85,6 +90,7 @@ function userRowOf(row: AccessRow): UserRow {
     role_ids: row.d ?? '',
     assignments: row.e ?? '',
     bu_assignments: row.f ?? '',
+    shared_account: row.g ?? 0,
   };
 }
 
@@ -131,6 +137,7 @@ function buildUserContext(
       permissions: fullPermissions(),
       locations: byLocation,
       businessUnits: byBu,
+      sharedAccount: record !== null && Number(record.shared_account) === 1,
     };
   }
   if (record?.status.trim() !== 'active') return null;
@@ -149,6 +156,7 @@ function buildUserContext(
     permissions: access.global,
     locations: access.byLocation,
     businessUnits: access.byBu,
+    sharedAccount: Number(record.shared_account) === 1,
   };
 }
 
@@ -166,7 +174,7 @@ export async function loadUserContext(env: Env, rawEmail: string): Promise<UserC
 }
 
 /** Tabel bersama saja (tanpa baris user): bentuk `UNION` sama dengan `ACCESS_SQL` agar dipartisi oleh kode yang sama. */
-const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c, NULL AS d, NULL AS e, NULL AS f FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL FROM business_units`;
+const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c, NULL AS d, NULL AS e, NULL AS f, NULL AS g FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL, NULL FROM business_units`;
 
 /**
  * Konteks akses SEMUA user berstatus `active` dengan hanya dua kueri (user + tabel bersama), bukan satu kueri
@@ -176,7 +184,7 @@ const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c
 export async function loadActiveUserContexts(env: Env): Promise<UserContext[]> {
   const [users, shared] = await Promise.all([
     env.DB.prepare(
-      "SELECT id, email, name, status, role_ids, assignments, bu_assignments FROM users WHERE status = 'active'",
+      "SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account FROM users WHERE status = 'active'",
     ).all<UserRow & { email: string }>(),
     env.DB.prepare(SHARED_ACCESS_SQL).all<AccessRow>(),
   ]);

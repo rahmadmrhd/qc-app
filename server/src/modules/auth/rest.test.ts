@@ -48,6 +48,17 @@ describe('GET /api/v1/me', () => {
     });
   });
 
+  test('sharedAccount: true untuk akun bertanda bersama, false untuk akun lain dan super admin', async () => {
+    await seedUser(env, { id: 'u-sh', email: 'bersama@gmail.com', sharedAccount: true });
+    expect(await jsonOf(await rest.get('/me', { email: 'bersama@gmail.com' }))).toMatchObject({
+      sharedAccount: true,
+    });
+    expect(await jsonOf(await rest.get('/me', { email: 'budi@gmail.com' }))).toMatchObject({
+      sharedAccount: false,
+    });
+    expect(await jsonOf(await rest.get('/me'))).toMatchObject({ sharedAccount: false });
+  });
+
   test('businessUnits: hanya BU berhak (termasuk nonaktif), terurut menurut kode, dengan izin per BU', async () => {
     await seedBusinessUnit(env, { id: 'bu-z', code: 'ZZ', name: 'Zed' });
     await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa', status: 'inactive' });

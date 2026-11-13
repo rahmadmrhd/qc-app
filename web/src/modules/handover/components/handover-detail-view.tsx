@@ -121,7 +121,7 @@ export function HandoverDetailView({
         <Meta label="Progres" value={total > 0 ? `${checked}/${total}` : 'Tanpa checklist'} />
       </dl>
 
-      <section className="space-y-2 rounded-lg border p-4">
+      <section data-tour="handover-checklist" className="space-y-2 rounded-lg border p-4">
         <h2 className="text-base font-semibold">Catatan</h2>
         <NoteView
           note={handover.note}

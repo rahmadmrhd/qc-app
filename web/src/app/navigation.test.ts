@@ -19,6 +19,7 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     canManageSerialSettings: false,
     permissions: {
       access: 'none',
@@ -61,6 +62,7 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     canManageSerialSettings: false,
     permissions: {
       access: 'none',
@@ -151,6 +153,7 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
       email: 'a@gmail.com',
       name: 'A',
       isSuperAdmin: false,
+      sharedAccount: false,
       canManageSerialSettings: false,
       permissions: {
         access: 'none',
@@ -194,6 +197,7 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     canManageSerialSettings: false,
     permissions: {
       access: 'none',
@@ -378,6 +382,7 @@ function meWithSerial(
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
     canManageSerialSettings: false,
     permissions: {
       access: 'none',

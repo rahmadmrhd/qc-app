@@ -16,6 +16,7 @@ function user(businessUnits: Record<string, BuPermissionMap>, isSuperAdmin = fal
     permissions: emptyPermissions(),
     locations: {},
     businessUnits,
+    sharedAccount: false,
   };
 }
 
