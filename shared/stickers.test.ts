@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { FileOwnerType } from './files';
 import {
+  formatStockQty,
   GUIDE_LIMITS,
   GUIDE_SORTS,
   guideNameFromFile,
   INSTRUCTION_LIMITS,
   isLowStock,
+  isOutOfStock,
   type MatchSticker,
   manualBookStickerName,
   piecesOfCount,
@@ -17,6 +19,7 @@ import {
   STOCK_ENTRY_KINDS,
   type StickerStatus,
   stickersForType,
+  stockDigestSection,
   USER_STICKER_RULES,
 } from './stickers';
 
@@ -36,6 +39,14 @@ describe('stiker: hitungan stok', () => {
   });
 });
 
+describe('stiker: tampilan stok', () => {
+  test('stok negatif ditulis "Kurang N"', () => {
+    expect(formatStockQty(5)).toBe('5');
+    expect(formatStockQty(0)).toBe('0');
+    expect(formatStockQty(-2)).toBe('Kurang 2');
+  });
+});
+
 describe('stiker: stok menipis', () => {
   test('aktif, batas > 0, total <= batas → menipis', () => {
     expect(isLowStock({ status: 'active', minQty: 50, total: 50 })).toBe(true);
@@ -46,6 +57,11 @@ describe('stiker: stok menipis', () => {
     expect(isLowStock({ status: 'active', minQty: 50, total: 51 })).toBe(false);
     expect(isLowStock({ status: 'active', minQty: 0, total: 0 })).toBe(false);
     expect(isLowStock({ status: 'inactive', minQty: 50, total: 0 })).toBe(false);
+  });
+
+  test('total negatif tetap menipis bila stiker aktif dan batas > 0', () => {
+    expect(isLowStock({ status: 'active', minQty: 5, total: -3 })).toBe(true);
+    expect(isLowStock({ status: 'active', minQty: 0, total: -3 })).toBe(false);
   });
 
   test('stiker deprecated tidak pernah dihitung menipis', () => {
@@ -70,7 +86,7 @@ describe('stiker: konstanta', () => {
     expect([...USER_STICKER_RULES]).not.toContain('group');
     expect(STICKER_STATUSES).toEqual(['active', 'inactive', 'deprecated']);
     expect(STICKER_SYSTEM_KINDS).toEqual(['', 'manual_book', 'postel']);
-    expect(STOCK_ENTRY_KINDS).toEqual(['in', 'out', 'adjust', 'opname']);
+    expect(STOCK_ENTRY_KINDS).toEqual(['in', 'out', 'adjust', 'opname', 'serial']);
   });
 
   test("jenis pemilik berkas menerima 'sticker' dan 'stickerguide'", () => {
@@ -225,6 +241,33 @@ describe('stickersForType', () => {
     expect(
       ids(stickersForType({ id: 't1', rule: 'group' }, withDeprecated, [], new Set(['s7', 's1']))),
     ).toEqual(['s1']);
+  });
+});
+
+describe('stiker: habis dan bagian ringkasan harian', () => {
+  test('habis = aktif dan total <= 0, apa pun minimumnya (termasuk 0 dan negatif)', () => {
+    expect(isOutOfStock({ status: 'active', total: 0 })).toBe(true);
+    expect(isOutOfStock({ status: 'active', total: -3 })).toBe(true);
+    expect(isOutOfStock({ status: 'active', total: 1 })).toBe(false);
+    expect(isOutOfStock({ status: 'inactive', total: 0 })).toBe(false);
+    expect(isOutOfStock({ status: 'deprecated', total: -1 })).toBe(false);
+  });
+
+  test('bagian ringkasan: habis lebih dulu, menipis hanya yang belum habis, selain itu tidak masuk', () => {
+    const base = { status: 'active' as const };
+    expect(stockDigestSection({ ...base, minQty: 0, total: 0 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 10, total: 0 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 5, total: -3 })).toBe('out');
+    expect(stockDigestSection({ ...base, minQty: 10, total: 4 })).toBe('low');
+    expect(stockDigestSection({ ...base, minQty: 5, total: 5 })).toBe('low');
+    expect(stockDigestSection({ ...base, minQty: 0, total: 4 })).toBeNull();
+    expect(stockDigestSection({ ...base, minQty: 5, total: 6 })).toBeNull();
+    expect(stockDigestSection({ status: 'inactive', minQty: 5, total: 0 })).toBeNull();
+    expect(stockDigestSection({ status: 'deprecated', minQty: 5, total: 0 })).toBeNull();
+  });
+
+  test('isLowStock sendiri tidak berubah (halaman Stok): minimum 0 tetap tak menipis', () => {
+    expect(isLowStock({ status: 'active', minQty: 0, total: 0 })).toBe(false);
   });
 });
 

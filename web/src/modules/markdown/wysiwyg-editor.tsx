@@ -43,8 +43,11 @@ export interface WysiwygEditorProps {
   disabled?: boolean;
   /** Id elemen label dari form induk; bila ada dipakai sebagai nama field (menggantikan aria-label bawaan). */
   labelledBy?: string;
-  /** `item`: toolbar lengkap + gambar; `note`: tanpa gambar (catatan Serah Terima). */
-  mode?: 'item' | 'note';
+  /**
+   * `item`: toolbar lengkap + gambar; `note`: tanpa gambar, centang dikunci (catatan Serah Terima); `message`: tanpa
+   * gambar, centang dapat diubah (pesan kejadian Serial Number).
+   */
+  mode?: 'item' | 'note' | 'message';
   extraExtensions?: Extensions;
   onReady?: (editor: Editor) => void;
 }

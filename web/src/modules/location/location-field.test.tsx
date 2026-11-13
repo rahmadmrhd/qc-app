@@ -24,6 +24,8 @@ beforeEach(() => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [

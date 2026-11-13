@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { runBusy } from '@/app/pwa/busy';
 import { CSRF_HEADERS } from '@/lib/api/client';
+import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
 import { clearSession } from './session';
 
 /** Menghapus cookie sesi di server (gagal jaringan diabaikan: sesi lokal tetap dibuang). */
@@ -25,6 +26,8 @@ export function useLogout(): () => void {
     void runBusy(async () => {
       if (!import.meta.env.DEV) await postLogout();
       clearSession();
+      // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.
+      clearAllDrafts();
       queryClient.clear();
       await router.navigate({ to: '/login' });
     });

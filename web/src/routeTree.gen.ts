@@ -26,6 +26,8 @@ import { Route as AppPostelIndexRouteImport } from './routes/_app/postel/index'
 import { Route as AppPostelNewRouteImport } from './routes/_app/postel/new'
 import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
+import { Route as AppSerialIndexRouteImport } from './routes/_app/serial/index'
+import { Route as AppSerialNewRouteImport } from './routes/_app/serial/new'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
 import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
 import { Route as AppStickerSettingsRouteImport } from './routes/_app/sticker/settings'
@@ -44,6 +46,7 @@ import { Route as AppPostelPostelIdEditRouteImport } from './routes/_app/postel/
 import { Route as AppQrcodeDesignIdEditRouteImport } from './routes/_app/qrcode/$designId/edit'
 import { Route as AppQrcodeDefaultIndexRouteImport } from './routes/_app/qrcode/default/index'
 import { Route as AppQrcodeDefaultNewRouteImport } from './routes/_app/qrcode/default/new'
+import { Route as AppSerialSerialIdIndexRouteImport } from './routes/_app/serial/$serialId/index'
 import { Route as AppQrcodeDefaultPresetIdEditRouteImport } from './routes/_app/qrcode/default/$presetId/edit'
 
 const AppRoute = AppRouteImport.update({
@@ -128,6 +131,16 @@ const AppQrcodeIndexRoute = AppQrcodeIndexRouteImport.update({
 const AppQrcodeNewRoute = AppQrcodeNewRouteImport.update({
   id: '/qrcode/new',
   path: '/qrcode/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialIndexRoute = AppSerialIndexRouteImport.update({
+  id: '/serial/',
+  path: '/serial/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialNewRoute = AppSerialNewRouteImport.update({
+  id: '/serial/new',
+  path: '/serial/new',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStickerIndexRoute = AppStickerIndexRouteImport.update({
@@ -224,6 +237,11 @@ const AppQrcodeDefaultNewRoute = AppQrcodeDefaultNewRouteImport.update({
   path: '/qrcode/default/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSerialSerialIdIndexRoute = AppSerialSerialIdIndexRouteImport.update({
+  id: '/serial/$serialId/',
+  path: '/serial/$serialId/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppQrcodeDefaultPresetIdEditRoute =
   AppQrcodeDefaultPresetIdEditRouteImport.update({
     id: '/qrcode/default/$presetId/edit',
@@ -244,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/item/new': typeof AppItemNewRoute
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/serial/new': typeof AppSerialNewRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -252,6 +271,7 @@ export interface FileRoutesByFullPath {
   '/item/': typeof AppItemIndexRoute
   '/postel/': typeof AppPostelIndexRoute
   '/qrcode/': typeof AppQrcodeIndexRoute
+  '/serial/': typeof AppSerialIndexRoute
   '/sticker/': typeof AppStickerIndexRoute
   '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -266,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/item/brands/': typeof AppItemBrandsIndexRoute
   '/postel/$postelId/': typeof AppPostelPostelIdIndexRoute
   '/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
+  '/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
 export interface FileRoutesByTo {
@@ -281,6 +302,7 @@ export interface FileRoutesByTo {
   '/item/new': typeof AppItemNewRoute
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
+  '/serial/new': typeof AppSerialNewRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -289,6 +311,7 @@ export interface FileRoutesByTo {
   '/item': typeof AppItemIndexRoute
   '/postel': typeof AppPostelIndexRoute
   '/qrcode': typeof AppQrcodeIndexRoute
+  '/serial': typeof AppSerialIndexRoute
   '/sticker': typeof AppStickerIndexRoute
   '/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -303,6 +326,7 @@ export interface FileRoutesByTo {
   '/item/brands': typeof AppItemBrandsIndexRoute
   '/postel/$postelId': typeof AppPostelPostelIdIndexRoute
   '/qrcode/default': typeof AppQrcodeDefaultIndexRoute
+  '/serial/$serialId': typeof AppSerialSerialIdIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
 export interface FileRoutesById {
@@ -320,6 +344,7 @@ export interface FileRoutesById {
   '/_app/item/new': typeof AppItemNewRoute
   '/_app/postel/new': typeof AppPostelNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
+  '/_app/serial/new': typeof AppSerialNewRoute
   '/_app/sticker/library': typeof AppStickerLibraryRoute
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
@@ -328,6 +353,7 @@ export interface FileRoutesById {
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/postel/': typeof AppPostelIndexRoute
   '/_app/qrcode/': typeof AppQrcodeIndexRoute
+  '/_app/serial/': typeof AppSerialIndexRoute
   '/_app/sticker/': typeof AppStickerIndexRoute
   '/_app/access/business-units/$businessUnitId': typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -342,6 +368,7 @@ export interface FileRoutesById {
   '/_app/item/brands/': typeof AppItemBrandsIndexRoute
   '/_app/postel/$postelId/': typeof AppPostelPostelIdIndexRoute
   '/_app/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
+  '/_app/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
 export interface FileRouteTypes {
@@ -359,6 +386,7 @@ export interface FileRouteTypes {
     | '/item/new'
     | '/postel/new'
     | '/qrcode/new'
+    | '/serial/new'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -367,6 +395,7 @@ export interface FileRouteTypes {
     | '/item/'
     | '/postel/'
     | '/qrcode/'
+    | '/serial/'
     | '/sticker/'
     | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
@@ -381,6 +410,7 @@ export interface FileRouteTypes {
     | '/item/brands/'
     | '/postel/$postelId/'
     | '/qrcode/default/'
+    | '/serial/$serialId/'
     | '/qrcode/default/$presetId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -396,6 +426,7 @@ export interface FileRouteTypes {
     | '/item/new'
     | '/postel/new'
     | '/qrcode/new'
+    | '/serial/new'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -404,6 +435,7 @@ export interface FileRouteTypes {
     | '/item'
     | '/postel'
     | '/qrcode'
+    | '/serial'
     | '/sticker'
     | '/access/business-units/$businessUnitId'
     | '/handover/$handoverId/edit'
@@ -418,6 +450,7 @@ export interface FileRouteTypes {
     | '/item/brands'
     | '/postel/$postelId'
     | '/qrcode/default'
+    | '/serial/$serialId'
     | '/qrcode/default/$presetId/edit'
   id:
     | '__root__'
@@ -434,6 +467,7 @@ export interface FileRouteTypes {
     | '/_app/item/new'
     | '/_app/postel/new'
     | '/_app/qrcode/new'
+    | '/_app/serial/new'
     | '/_app/sticker/library'
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
@@ -442,6 +476,7 @@ export interface FileRouteTypes {
     | '/_app/item/'
     | '/_app/postel/'
     | '/_app/qrcode/'
+    | '/_app/serial/'
     | '/_app/sticker/'
     | '/_app/access/business-units/$businessUnitId'
     | '/_app/handover/$handoverId/edit'
@@ -456,6 +491,7 @@ export interface FileRouteTypes {
     | '/_app/item/brands/'
     | '/_app/postel/$postelId/'
     | '/_app/qrcode/default/'
+    | '/_app/serial/$serialId/'
     | '/_app/qrcode/default/$presetId/edit'
   fileRoutesById: FileRoutesById
 }
@@ -585,6 +621,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQrcodeNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/serial/': {
+      id: '/_app/serial/'
+      path: '/serial'
+      fullPath: '/serial/'
+      preLoaderRoute: typeof AppSerialIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/serial/new': {
+      id: '/_app/serial/new'
+      path: '/serial/new'
+      fullPath: '/serial/new'
+      preLoaderRoute: typeof AppSerialNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/sticker/': {
       id: '/_app/sticker/'
       path: '/sticker'
@@ -711,6 +761,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQrcodeDefaultNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/serial/$serialId/': {
+      id: '/_app/serial/$serialId/'
+      path: '/serial/$serialId'
+      fullPath: '/serial/$serialId/'
+      preLoaderRoute: typeof AppSerialSerialIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/qrcode/default/$presetId/edit': {
       id: '/_app/qrcode/default/$presetId/edit'
       path: '/qrcode/default/$presetId/edit'
@@ -733,6 +790,7 @@ interface AppRouteChildren {
   AppItemNewRoute: typeof AppItemNewRoute
   AppPostelNewRoute: typeof AppPostelNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
+  AppSerialNewRoute: typeof AppSerialNewRoute
   AppStickerLibraryRoute: typeof AppStickerLibraryRoute
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
@@ -741,6 +799,7 @@ interface AppRouteChildren {
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppPostelIndexRoute: typeof AppPostelIndexRoute
   AppQrcodeIndexRoute: typeof AppQrcodeIndexRoute
+  AppSerialIndexRoute: typeof AppSerialIndexRoute
   AppStickerIndexRoute: typeof AppStickerIndexRoute
   AppAccessBusinessUnitsBusinessUnitIdRoute: typeof AppAccessBusinessUnitsBusinessUnitIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
@@ -755,6 +814,7 @@ interface AppRouteChildren {
   AppItemBrandsIndexRoute: typeof AppItemBrandsIndexRoute
   AppPostelPostelIdIndexRoute: typeof AppPostelPostelIdIndexRoute
   AppQrcodeDefaultIndexRoute: typeof AppQrcodeDefaultIndexRoute
+  AppSerialSerialIdIndexRoute: typeof AppSerialSerialIdIndexRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
 }
 
@@ -770,6 +830,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppItemNewRoute: AppItemNewRoute,
   AppPostelNewRoute: AppPostelNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
+  AppSerialNewRoute: AppSerialNewRoute,
   AppStickerLibraryRoute: AppStickerLibraryRoute,
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,
@@ -778,6 +839,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppItemIndexRoute: AppItemIndexRoute,
   AppPostelIndexRoute: AppPostelIndexRoute,
   AppQrcodeIndexRoute: AppQrcodeIndexRoute,
+  AppSerialIndexRoute: AppSerialIndexRoute,
   AppStickerIndexRoute: AppStickerIndexRoute,
   AppAccessBusinessUnitsBusinessUnitIdRoute:
     AppAccessBusinessUnitsBusinessUnitIdRoute,
@@ -793,6 +855,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppItemBrandsIndexRoute: AppItemBrandsIndexRoute,
   AppPostelPostelIdIndexRoute: AppPostelPostelIdIndexRoute,
   AppQrcodeDefaultIndexRoute: AppQrcodeDefaultIndexRoute,
+  AppSerialSerialIdIndexRoute: AppSerialSerialIdIndexRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
 }
 

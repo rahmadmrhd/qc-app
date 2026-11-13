@@ -9,6 +9,7 @@ import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
 import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
+import { serialRoutes } from '@server/modules/serial/routes';
 import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
 
@@ -96,6 +97,15 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'postelSettings.get': true,
   'postelSettings.save': true,
   'postels.itemOptions': true,
+  'serials.itemOptions': true,
+  'serials.stickerOptions': true,
+  'serials.locationOptions': true,
+  'serials.saveBatch': true,
+  'serials.get': true,
+  'serials.list': true,
+  'serials.update': true,
+  'serials.updateBatch': true,
+  'serials.act': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'jobs.get': true,
@@ -117,6 +127,7 @@ function realRoutes(): RouteTable {
     ...handoverRoutes(),
     ...qrcodeRoutes(),
     ...postelRoutes(),
+    ...serialRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),
   };

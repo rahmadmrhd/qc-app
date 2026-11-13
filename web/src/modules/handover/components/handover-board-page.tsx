@@ -8,6 +8,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
+import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { readableLocationIds } from '../lib/readable-locations';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
@@ -115,6 +116,7 @@ export function HandoverBoardPage({
         <h1 className="text-2xl font-semibold">Serah Terima</h1>
         {canCreate ? <Button onClick={onCreate}>Tambah task</Button> : null}
       </div>
+      <NoLocationNotice />
       {readable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Pilih lokasi di header yang Anda punya akses serah terima atau QC-nya.

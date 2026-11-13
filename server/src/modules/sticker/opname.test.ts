@@ -342,7 +342,10 @@ describe('stok opname', () => {
       captureAppError(() =>
         validateOpname({ rows: [{ ...row('s', A, 0, { loose: 1 }), ...overrides }] }),
       );
-    expect(bad({ expectedQty: -1 }).fields).toHaveProperty('rows');
+    // negatif sah: stok boleh negatif akibat pemotongan Serial Number
+    expect(
+      validateOpname({ rows: [{ ...row('s', A, -1, { loose: 1 }) }] }).rows[0]?.expectedQty,
+    ).toBe(-1);
     expect(bad({ expectedQty: 1.5 }).fields).toHaveProperty('rows');
     expect(bad({ expectedQty: '3' }).fields).toHaveProperty('rows');
     expect(bad({ stickerId: '' }).fields).toHaveProperty('rows');

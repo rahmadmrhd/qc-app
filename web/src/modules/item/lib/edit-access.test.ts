@@ -17,6 +17,8 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     locations: [],
     businessUnits: Object.entries(levels).map(([id, level]) => ({
@@ -24,7 +26,7 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
       code: id.toUpperCase(),
       name: id,
       status: 'active' as const,
-      permissions: { item: level },
+      permissions: { item: level, serial: 'none', serialservice: 'none' },
     })),
   };
 }

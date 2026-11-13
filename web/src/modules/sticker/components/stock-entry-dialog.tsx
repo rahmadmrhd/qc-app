@@ -1,5 +1,5 @@
 import type { AdjustStockInput, RecordStockInput, StickerStockDto } from '@shared/contract';
-import { piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
+import { formatStockQty, piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
@@ -237,7 +237,7 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
           }}
         />
         {currentQty !== undefined ? (
-          <p className="text-xs text-muted-foreground">{`Stok saat ini: ${currentQty} butir`}</p>
+          <p className="text-xs text-muted-foreground">{`Stok saat ini: ${currentQty < 0 ? formatStockQty(currentQty) : `${currentQty} butir`}`}</p>
         ) : null}
         <FieldError message={errors.locationId} />
       </div>

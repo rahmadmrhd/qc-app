@@ -102,8 +102,20 @@ export function lockStickerRowStmt(db: Preparer, stickerId: string): DbStatement
 }
 
 /**
- * Penonaktifan otomatis (tahap 4a): stiker `deprecated` yang total stok SEMUA lokasi-nya mencapai 0 menjadi
- * `inactive`, di batch yang sama dengan penulisan stok (setelah semua pembaruan stok, sebelum pembacaan ulang
+ * Penjaga stiker TIDAK `inactive` (`CAS_FAIL_SQL` bila nonaktif; baris stiker yang tak ada = tanpa baris = lolos, dan
+ * ditangkap kunci asing penulisan stok). Dipakai setelah `lockStickerRowStmt` dalam batch yang sama.
+ */
+export function stickerNotInactiveGuardStmt(db: Preparer, stickerId: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN status <> 'inactive' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers WHERE id = ?`,
+    )
+    .bind(stickerId);
+}
+
+/**
+ * Penonaktifan otomatis (tahap 4a): stiker `deprecated` yang total stok SEMUA lokasi-nya mencapai 0 atau kurang (negatif
+ * akibat pemotongan Serial Number) menjadi `inactive`, di batch yang sama dengan penulisan stok (setelah semua pembaruan stok, sebelum pembacaan ulang
  * riwayat). Tidak berefek pada stiker yang bukan `deprecated` atau yang masih punya stok.
  */
 export function inactivateDeprecatedIfEmptyStmt(
@@ -114,7 +126,7 @@ export function inactivateDeprecatedIfEmptyStmt(
 ): DbStatement {
   return db
     .prepare(
-      "UPDATE stickers SET status = 'inactive', updated_at = ?, updated_by = ? WHERE id = ? AND status = 'deprecated' AND (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) = 0",
+      "UPDATE stickers SET status = 'inactive', updated_at = ?, updated_by = ? WHERE id = ? AND status = 'deprecated' AND (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) <= 0",
     )
     .bind(now, actor, stickerId, stickerId);
 }
@@ -162,6 +174,9 @@ export interface EntryInsert {
   reason: string;
   actor: string;
   ts: string;
+  /** Hanya untuk entri `serial`: serial dan kejadian yang memotong stok (kolom `serial_id`/`serial_event_id`). */
+  serialId?: string;
+  serialEventId?: string;
 }
 
 /**
@@ -171,7 +186,7 @@ export interface EntryInsert {
 export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
   return db
     .prepare(
-      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
+      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts, serial_id, serial_event_id) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
     )
     .bind(
       entry.stickerId,
@@ -182,9 +197,72 @@ export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
       entry.reason,
       entry.actor,
       entry.ts,
+      entry.serialId ?? '',
+      entry.serialEventId ?? '',
       entry.stickerId,
       entry.locationId,
     );
+}
+
+export interface SerialDeduction {
+  stickerId: string;
+  qty: number;
+}
+
+/**
+ * Pemotongan stok oleh pencatatan serial (spek Serial Number): urut `stickerId` (kunci baris stiker dahulu, lalu
+ * pembaruan stok; urutan tetap mencegah deadlock antar penulis serentak), TANPA penjaga kecukupan stok, jadi stok
+ * boleh menjadi negatif. Setiap pick menulis satu entri `serial` (`delta = -qty`). Stiker `deprecated` yang
+ * totalnya menjadi <= 0 menjadi `inactive`. Pernyataan dipasang ke batch pemanggil.
+ */
+export function serialDeductStmts(
+  db: Preparer,
+  args: {
+    serialId: string;
+    eventId: string;
+    locationId: string;
+    picks: readonly SerialDeduction[];
+    actor: string;
+    now: string;
+    /**
+     * Tolak (`CAS_FAIL_SQL`, seluruh batch batal) bila salah satu stiker berstatus `inactive`, diperiksa SETELAH kunci
+     * baris stiker (`FOR UPDATE`) sehingga penonaktifan serentak menunggu/terlihat. Dipakai kenaikan jumlah stiker
+     * pada cek ulang (keputusan pemilik 2026-11-13: stiker nonaktif tak dapat ditambah); stiker `deprecated` lolos.
+     */
+    rejectInactive?: boolean;
+  },
+): DbStatement[] {
+  const merged = new Map<string, number>();
+  for (const pick of args.picks) {
+    merged.set(pick.stickerId, (merged.get(pick.stickerId) ?? 0) + pick.qty);
+  }
+  const ordered = [...merged.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const statements: DbStatement[] = [];
+  for (const [stickerId] of ordered) statements.push(lockStickerRowStmt(db, stickerId));
+  if (args.rejectInactive) {
+    for (const [stickerId] of ordered) statements.push(stickerNotInactiveGuardStmt(db, stickerId));
+  }
+  for (const [stickerId, qty] of ordered) {
+    statements.push(
+      addStockStmt(db, stickerId, args.locationId, -qty, args.now),
+      insertEntryStmt(db, {
+        stickerId,
+        locationId: args.locationId,
+        kind: 'serial',
+        delta: -qty,
+        count: null,
+        reason: '',
+        actor: args.actor,
+        ts: args.now,
+        serialId: args.serialId,
+        serialEventId: args.eventId,
+      }),
+    );
+  }
+  for (const [stickerId] of ordered) {
+    statements.push(inactivateDeprecatedIfEmptyStmt(db, stickerId, args.now, args.actor));
+  }
+  return statements;
 }
 
 /** Baris riwayat yang baru ditulis di koneksi/transaksi ini (hasil terakhir batch). */

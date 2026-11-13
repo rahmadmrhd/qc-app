@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
 import { PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
 
@@ -28,6 +29,7 @@ beforeEach(() => {
   vi.stubGlobal('caches', cachesStub);
 });
 afterEach(() => {
+  resumeDraftWrites();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -81,4 +83,32 @@ test('M-f: POST /auth/logout dan pembersihan menandai registri sibuk sampai sele
   release();
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
   await waitFor(() => expect(isBusy()).toBe(false));
+});
+
+test('keluar membuang draf tabel sementara Serial Number semua pemilik', async () => {
+  localStorage.setItem('qc.serial.draft:a@x.com', '[]');
+  localStorage.setItem('qc.serial.draft:b@x.com', '[]');
+  localStorage.setItem('tema', 'gelap');
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(localStorage.getItem('qc.serial.draft:a@x.com')).toBeNull();
+  expect(localStorage.getItem('qc.serial.draft:b@x.com')).toBeNull();
+  expect(localStorage.getItem('tema')).toBe('gelap');
+});
+
+test('draf dibuang dan penulisan ditahan SEBELUM navigasi ke /login (halaman Catat yang dilepas tak menulis ulang)', async () => {
+  localStorage.setItem('qc.serial.draft:a@x.com', '[]');
+  let suspendedAtNavigate: boolean | null = null;
+  let draftAtNavigate: string | null = 'belum';
+  navigate.mockImplementationOnce(() => {
+    suspendedAtNavigate = draftWritesSuspended();
+    draftAtNavigate = localStorage.getItem('qc.serial.draft:a@x.com');
+    return Promise.resolve();
+  });
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  expect(suspendedAtNavigate).toBe(true);
+  expect(draftAtNavigate).toBeNull();
 });

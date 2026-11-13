@@ -306,3 +306,18 @@ test('judul kolom memakai total server; "Muat lebih banyak" memuat halaman berik
   });
   expect(within(column).queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
+
+test('akun tanpa penugasan lokasi melihat peringatan penugasan lokasi; yang punya lokasi tidak', async () => {
+  state.api.mockResolvedValue({ items: [], nextCursor: null, total: 0 });
+  state.me = { ...me({}), locations: [] };
+  state.selected = [];
+  renderPage();
+  expect(await screen.findByText(/belum ditugaskan ke lokasi mana pun/)).toBeInTheDocument();
+});
+
+test('akun dengan lokasi tidak melihat peringatan penugasan lokasi', async () => {
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  renderPage();
+  await screen.findByText('Serah Terima');
+  expect(screen.queryByText(/belum ditugaskan ke lokasi mana pun/)).toBeNull();
+});

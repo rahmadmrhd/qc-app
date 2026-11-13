@@ -1,5 +1,5 @@
 import type { OpnameInput, StickerStockDto } from '@shared/contract';
-import { piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
+import { formatStockQty, piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
@@ -160,7 +160,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
                       </Badge>
                     )}
                   </div>
-                  <span className="text-sm tabular-nums">{`Tercatat ${recorded}`}</span>
+                  <span className="text-sm tabular-nums">{`Tercatat ${formatStockQty(recorded)}`}</span>
                 </div>
                 {count ? (
                   <div className="space-y-2">
