@@ -96,6 +96,9 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(within(list).getByText('Dilaporkan rusak')).toBeInTheDocument();
   expect(within(list).getByText('Dinyatakan rusak')).toBeInTheDocument();
   expect(within(list).getByText('Status: Lolos → Dilaporkan')).toBeInTheDocument();
+  // Nomor LP mengisi rincian kejadian (data mentah tidak dikirim server): bukan "Laporan — dibuka".
+  expect(within(list).getByText('Laporan LP-20261113-001 dibuka')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
   // Urutan server (seq naik) dipakai apa adanya; tanpa badge Terbaru dan tanpa stempel "dicatat".
   const seqs = within(list)
     .getAllByRole('listitem')

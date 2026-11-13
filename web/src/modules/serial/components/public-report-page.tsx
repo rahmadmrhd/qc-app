@@ -31,7 +31,7 @@ function useNoReferrer(): void {
 }
 
 /** Kejadian publik dalam bentuk kartu linimasa biasa: tanpa `data` mentah dan tanpa stempel "dicatat". */
-function toTimelineEvent(event: SerialPublicEventDto): SerialEventDto {
+function toTimelineEvent(event: SerialPublicEventDto, caseNumber: string): SerialEventDto {
   return {
     id: `seq-${event.seq}`,
     caseId: null,
@@ -43,7 +43,8 @@ function toTimelineEvent(event: SerialPublicEventDto): SerialEventDto {
     actorTeam: event.actorTeam,
     message: event.message,
     changes: event.changes,
-    data: {},
+    // Semua kejadian publik berada dalam lingkup satu laporan: nomornya mengisi rincian "Laporan LP-... dibuka/ditutup".
+    data: { caseNumber },
   };
 }
 
@@ -169,7 +170,10 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
       </section>
       <section aria-label="Linimasa laporan" className="space-y-3">
         <h2 className="text-sm font-semibold">Linimasa laporan</h2>
-        <Timeline events={data.events.map(toTimelineEvent)} markdownComponents={components} />
+        <Timeline
+          events={data.events.map((event) => toTimelineEvent(event, data.number))}
+          markdownComponents={components}
+        />
       </section>
     </Shell>
   );
