@@ -1,6 +1,6 @@
 import type { HandoverStatus } from './handover';
 import { handoverUnescapeText } from './handover-text';
-import { stripControlChars } from './postel';
+import { stripControlChars } from './text';
 
 // Aturan murni notifikasi Serah Terima (spek 2026-11-12-notifikasi-serah-terima-design.md). Tanpa API runtime/DOM.
 

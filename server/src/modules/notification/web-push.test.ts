@@ -182,7 +182,7 @@ describe('createWebPushSender', () => {
         { endpoint: 'https://fcm.googleapis.com/x', ...r.sub },
         '{}',
       );
-      expect(result).toEqual({ ok: false, gone, error: `http ${status}` });
+      expect(result).toEqual({ ok: false, gone, error: `http ${status}`, prunable: true });
       expect(JSON.stringify(result)).not.toContain(keys.privateKey);
       expect(JSON.stringify(result)).not.toContain('badan-rahasia');
     }
@@ -196,7 +196,7 @@ describe('createWebPushSender', () => {
       { endpoint: 'https://fcm.googleapis.com/x', ...net.r.sub },
       '{}',
     );
-    expect(r1).toEqual({ ok: false, gone: false, error: 'jaringan' });
+    expect(r1).toEqual({ ok: false, gone: false, error: 'jaringan', prunable: false });
     const timeout = await setup(() => {
       throw Object.assign(new Error('t'), { name: 'TimeoutError' });
     });
@@ -204,7 +204,7 @@ describe('createWebPushSender', () => {
       { endpoint: 'https://fcm.googleapis.com/x', ...timeout.r.sub },
       '{}',
     );
-    expect(r2).toEqual({ ok: false, gone: false, error: 'timeout' });
+    expect(r2).toEqual({ ok: false, gone: false, error: 'timeout', prunable: false });
   });
 
   test('endpoint tersimpan yang tak lolos kebijakan (host di luar allowlist, IP, http) tidak pernah dihubungi', async () => {
@@ -220,7 +220,12 @@ describe('createWebPushSender', () => {
       'https://fcm.googleapis.com.evil.com/x',
     ]) {
       const result = await sender.send({ endpoint, ...r.sub }, '{}');
-      expect(result, endpoint).toEqual({ ok: false, gone: false, error: 'endpoint ditolak' });
+      expect(result, endpoint).toEqual({
+        ok: false,
+        gone: false,
+        error: 'endpoint ditolak',
+        prunable: true,
+      });
     }
     expect(calls).toBe(0);
   });
@@ -232,7 +237,7 @@ describe('createWebPushSender', () => {
     );
     const r = await receiver();
     const result = await sender.send({ endpoint: 'https://fcm.googleapis.com/x', ...r.sub }, '{}');
-    expect(result).toEqual({ ok: false, gone: false, error: 'internal' });
+    expect(result).toEqual({ ok: false, gone: false, error: 'internal', prunable: false });
     expect(JSON.stringify(result)).not.toContain('rahasia-rusak');
   });
 });

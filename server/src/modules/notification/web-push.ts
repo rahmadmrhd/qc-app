@@ -197,7 +197,7 @@ export function createWebPushSender(config: WebPushConfig, deps: WebPushDeps = {
       // Lapisan kedua (selain validasi saat berlangganan): baris tersimpan yang tak lagi lolos kebijakan endpoint
       // (mis. allowlist menyempit) tidak pernah dihubungi. Bukan `gone`: dipangkas lewat jalur kegagalan berturut-turut.
       if (pushEndpointError(sub.endpoint) !== null) {
-        return { ok: false, gone: false, error: 'endpoint ditolak' };
+        return { ok: false, gone: false, error: 'endpoint ditolak', prunable: true };
       }
       let request: { authorization: string; body: Uint8Array };
       try {
@@ -216,7 +216,7 @@ export function createWebPushSender(config: WebPushConfig, deps: WebPushDeps = {
         request = { authorization, body };
       } catch {
         // Kunci VAPID atau langganan rusak: teks generik (tanpa kunci atau isi galat).
-        return { ok: false, gone: false, error: 'internal' };
+        return { ok: false, gone: false, error: 'internal', prunable: false };
       }
       try {
         const response = await doFetch(sub.endpoint, {
@@ -241,6 +241,8 @@ export function createWebPushSender(config: WebPushConfig, deps: WebPushDeps = {
           ok: false,
           gone: response.status === 404 || response.status === 410,
           error: `http ${response.status}`,
+          // Jawaban layanan push sendiri: dapat dihitung menuju pemangkasan.
+          prunable: true,
         };
       } catch (error) {
         const name = error instanceof Error ? error.name : '';
@@ -248,6 +250,8 @@ export function createWebPushSender(config: WebPushConfig, deps: WebPushDeps = {
           ok: false,
           gone: false,
           error: name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'jaringan',
+          // Tak ada jawaban dari layanan push (egress kita atau layanannya mati): tidak boleh menghapus langganan.
+          prunable: false,
         };
       }
     },

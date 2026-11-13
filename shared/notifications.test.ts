@@ -212,6 +212,23 @@ describe('notificationPreviewText', () => {
     expect(notificationPreviewText(`x${lri}y${pdi}`)).toBe('x y');
   });
 
+  test('urutan: penanda daftar dibuang dari teks MENTAH dulu; teks harfiah yang di-escape tetap (kunci urutan)', () => {
+    // `\-` dan `1\.` di-escape penulis = teks harfiah, bukan butir daftar, jadi tidak boleh dibuang.
+    expect(notificationPreviewText('\\- item')).toBe('- item');
+    expect(notificationPreviewText('1\\. Langkah')).toBe('1. Langkah');
+    expect(notificationPreviewText('- \\[ \\] x')).toBe('[ ] x');
+    // Entitas yang menghasilkan tanda hubung juga bukan penanda daftar.
+    expect(notificationPreviewText('&#45; x')).toBe('- x');
+    // Dekode hanya sekali.
+    expect(notificationPreviewText('&amp;amp;')).toBe('&amp;');
+  });
+
+  test('pengatur arah teks (bidi) dan pemisah baris yang datang lewat entitas ikut dibuang', () => {
+    expect(notificationPreviewText('&#8238;abc')).toBe('abc');
+    expect(notificationPreviewText('a&#8232;b')).toBe('a b');
+    expect(notificationPreviewText('&#x2066;x&#x2069;')).toBe('x');
+  });
+
   test('entitas yang menghasilkan baris baru tidak merusak jaminan satu baris', () => {
     expect(notificationPreviewText('a&#10;b')).toBe('a b');
   });

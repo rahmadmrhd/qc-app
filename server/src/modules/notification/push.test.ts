@@ -139,8 +139,8 @@ describe('deliverPendingPushes', () => {
   test('langganan gone (410) dihapus; semua gagal -> failed dan fail_count naik', async () => {
     const gone = await subscribe(VIEWER, 'gone');
     const bad = await subscribe(VIEWER, 'bad');
-    push.setResult(gone, { ok: false, gone: true, error: 'http 410' });
-    push.setResult(bad, { ok: false, gone: false, error: 'http 500' });
+    push.setResult(gone, { ok: false, gone: true, error: 'http 410', prunable: true });
+    push.setResult(bad, { ok: false, gone: false, error: 'http 500', prunable: true });
     await insert(note());
     expect(await deliverPendingPushes(env)).toBe(0);
     expect(await states()).toEqual(['failed']);
@@ -152,7 +152,7 @@ describe('deliverPendingPushes', () => {
   describe('pemangkasan langganan gagal-terus (keputusan pemilik 2026-11-13)', () => {
     const OLD = new Date(NOW - PUSH_PRUNE_AFTER_MS - 60_000).toISOString();
     const RECENT = new Date(NOW - PUSH_PRUNE_AFTER_MS + 3_600_000).toISOString();
-    const FAIL = { ok: false, gone: false, error: 'http 500' } as const;
+    const FAIL = { ok: false, gone: false, error: 'http 500', prunable: true } as const;
     const names = async () => (await subRows(VIEWER)).map((s) => s.endpoint);
 
     test('fail_count mencapai ambang dan tak pernah sukses sejak dibuat > 7 hari -> dihapus', async () => {
@@ -185,7 +185,7 @@ describe('deliverPendingPushes', () => {
           failCount: PUSH_PRUNE_FAIL_COUNT + 3,
           createdAt: OLD,
         });
-        push.setResult(sub, { ok: false, gone: false, error });
+        push.setResult(sub, { ok: false, gone: false, error, prunable: false });
       }
       await insert(note());
       await deliverPendingPushes(env);
@@ -195,12 +195,46 @@ describe('deliverPendingPushes', () => {
       expect(rows.every((s) => s.fail_count === PUSH_PRUNE_FAIL_COUNT + 4)).toBe(true);
     });
 
+    test('yang menentukan adalah field prunable, bukan teks galat', async () => {
+      const keep = await subscribe(VIEWER, 'keep', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      const drop = await subscribe(VIEWER, 'drop', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      push.setResult(keep, { ok: false, gone: false, error: 'http 500', prunable: false });
+      push.setResult(drop, { ok: false, gone: false, error: 'teks apa saja', prunable: true });
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([keep]);
+    });
+
+    test('pengirim yang melempar atau menggantung (batas waktu) tidak memangkas', async () => {
+      const thrower = await subscribe(VIEWER, 'thrower', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      push.setResult(thrower, { ok: false, gone: false, error: 'x', prunable: true });
+      // Ganti pengirim dengan yang melempar: hasil dinormalkan menjadi galat sisi server (prunable false).
+      (env as { PUSH?: PushSender }).PUSH = {
+        send: async () => {
+          throw new Error('putus');
+        },
+      };
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([thrower]);
+      expect((await subRows(VIEWER))[0]?.fail_count).toBe(PUSH_PRUNE_FAIL_COUNT + 1);
+    });
+
     test('endpoint tersimpan yang ditolak kebijakan (allowlist menyempit) ikut dipangkas', async () => {
       const stale = await subscribe(VIEWER, 'stale', {
         failCount: PUSH_PRUNE_FAIL_COUNT,
         createdAt: OLD,
       });
-      push.setResult(stale, { ok: false, gone: false, error: 'endpoint ditolak' });
+      push.setResult(stale, { ok: false, gone: false, error: 'endpoint ditolak', prunable: true });
       await insert(note());
       await deliverPendingPushes(env);
       expect(await names()).toEqual([]);
@@ -252,7 +286,7 @@ describe('deliverPendingPushes', () => {
   test('minimal satu sukses -> sent walau langganan lain gagal', async () => {
     await subscribe(VIEWER, 'ok');
     const bad = await subscribe(VIEWER, 'bad');
-    push.setResult(bad, { ok: false, gone: false, error: 'timeout' });
+    push.setResult(bad, { ok: false, gone: false, error: 'timeout', prunable: false });
     await insert(note());
     expect(await deliverPendingPushes(env)).toBe(1);
     expect(await states()).toEqual(['sent']);
@@ -335,7 +369,7 @@ describe('deliverPendingPushes', () => {
   test('gone menghapus langganan semua pengguna yang berbagi endpoint', async () => {
     const shared = await subscribe(VIEWER, 'sama');
     await subscribe(QC, 'sama');
-    push.setResult(shared, { ok: false, gone: true, error: 'http 404' });
+    push.setResult(shared, { ok: false, gone: true, error: 'http 404', prunable: true });
     await insert(note());
     await deliverPendingPushes(env);
     expect(await subRows(VIEWER)).toEqual([]);

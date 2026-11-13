@@ -16,7 +16,15 @@ export interface PushSubscriptionInfo {
   auth: string;
 }
 
-export type PushSendResult = { ok: true } | { ok: false; gone: boolean; error: string };
+/**
+ * Hasil pengiriman. `prunable` (hanya pada kegagalan) = kegagalan ini berasal dari layanan push (respons HTTP non-2xx)
+ * atau dari endpoint tersimpan yang tak lagi lolos kebijakan (permanen), sehingga boleh dihitung menuju pemangkasan
+ * langganan. Galat sisi server (egress mati, kunci VAPID rusak, batas waktu, pengirim melempar) `prunable: false`:
+ * tetap menaikkan `fail_count` untuk status admin, tetapi tidak boleh menghapus langganan yang sehat.
+ */
+export type PushSendResult =
+  | { ok: true }
+  | { ok: false; gone: boolean; error: string; prunable: boolean };
 
 export interface PushSender {
   send(sub: PushSubscriptionInfo, payload: string): Promise<PushSendResult>;
@@ -35,16 +43,6 @@ export const PUSH_FAILING_THRESHOLD = 3;
  */
 export const PUSH_PRUNE_FAIL_COUNT = 10;
 export const PUSH_PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * Kegagalan yang boleh memicu pemangkasan: respons layanan push (`http NNN`) atau endpoint tersimpan yang tak lagi
- * lolos kebijakan (`endpoint ditolak`, permanen). Galat sisi server (`jaringan`, `timeout`, `waktu habis`, `internal`,
- * `galat pengirim`: egress mati, kunci VAPID rusak) tidak memicunya, agar gangguan di sisi kita tidak menghapus
- * langganan yang sehat.
- */
-function prunableFailure(error: string): boolean {
-  return error.startsWith('http ') || error === 'endpoint ditolak';
-}
 /** Banyak notifikasi yang diproses bersamaan dan banyak pengiriman `send` yang berjalan bersamaan (seluruh putaran). */
 const DELIVER_CONCURRENCY = 5;
 /** Batas waktu satu `send`; melewatinya = gagal (bukan `gone`: langganan tidak dihapus). */
@@ -72,13 +70,21 @@ async function sendWithTimeout(
 ): Promise<PushSendResult> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<PushSendResult>((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false, gone: false, error: 'waktu habis' }), timeoutMs);
+    timer = setTimeout(
+      () => resolve({ ok: false, gone: false, error: 'waktu habis', prunable: false }),
+      timeoutMs,
+    );
   });
   try {
     return await Promise.race([
-      push
-        .send(sub, payload)
-        .catch((): PushSendResult => ({ ok: false, gone: false, error: 'galat pengirim' })),
+      push.send(sub, payload).catch(
+        (): PushSendResult => ({
+          ok: false,
+          gone: false,
+          error: 'galat pengirim',
+          prunable: false,
+        }),
+      ),
       timeout,
     ]);
   } finally {
@@ -253,7 +259,7 @@ export async function deliverPendingPushes(
           .run();
         // Pangkas langganan yang sudah lama tidak pernah berhasil (bandingkan teks ISO: format sama dengan `nowIso`).
         // Hanya dinilai bila kegagalan INI berasal dari layanan push atau kebijakan endpoint, bukan dari sisi server.
-        if (prunableFailure(result.error)) {
+        if (result.prunable) {
           await env.DB.prepare(
             "DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ? AND fail_count >= ? AND (CASE WHEN last_ok_at <> '' THEN last_ok_at ELSE created_at END) < ?",
           )
