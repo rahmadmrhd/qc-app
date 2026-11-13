@@ -316,6 +316,7 @@ describe('skema baseline', () => {
       { name: '0014_push_notifikasi.sql' },
       { name: '0015_serial_cases.sql' },
       { name: '0016_panduan_interaktif.sql' },
+      { name: '0017_laporan_rusak.sql' },
     ]);
   });
 
@@ -470,6 +471,7 @@ describe('skema baseline', () => {
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
+        'serial_cases.serial_cases_bu_created',
         'serial_cases.serial_cases_bu_opened',
         'serial_cases.serial_cases_number',
         'serial_cases.serial_cases_serial',
