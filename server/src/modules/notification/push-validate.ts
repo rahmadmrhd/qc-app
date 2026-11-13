@@ -6,6 +6,7 @@ import type {
   PushSubscribeInput,
   PushUnsubscribeInput,
 } from '@shared/contract';
+import { pushEndpointError } from './push-endpoint';
 import { base64UrlDecode } from './web-push';
 
 /** Batas panjang masukan klien (endpoint berasal dari klien, jadi dibatasi dan divalidasi ketat). */
@@ -18,41 +19,9 @@ export const PUSH_LIMITS = {
 } as const;
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
-const LOCAL_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.localdomain', '.home.arpa'];
 
-/**
- * Endpoint langganan harus layanan push publik: `https:` tanpa userinfo, port bawaan (443), nama host (bukan
- * literal IP, bukan `localhost` atau nama lokal/internal, bukan satu label). Pengirim tidak mengikuti pengalihan
- * dan berbatas waktu. Pemeriksaan ini TIDAK menyelesaikan DNS: host publik yang diarahkan ke alamat privat
- * (DNS rebinding) tidak terdeteksi di sini; risikonya dibatasi karena hanya POST berisi muatan terenkripsi tanpa
- * membaca respons, dan hanya pengguna ber-sesi yang dapat mendaftarkan endpoint.
- * Mengembalikan pesan galat, atau null bila layak.
- */
-export function pushEndpointError(endpoint: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    return 'Endpoint bukan URL yang sah';
-  }
-  if (url.protocol !== 'https:') return 'Endpoint harus memakai https';
-  if (url.username !== '' || url.password !== '') return 'Endpoint tidak boleh memuat kredensial';
-  if (url.port !== '' && url.port !== '443') return 'Endpoint harus memakai port 443';
-  const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (host === '' || host.startsWith('[') || host.includes(':')) {
-    return 'Endpoint tidak boleh berupa alamat IP';
-  }
-  if (!host.includes('.')) return 'Endpoint harus berupa nama host publik';
-  const labels = host.split('.');
-  // Literal IPv4 (URL menormalkan bentuk heksa/oktal ke titik-angka) atau TLD numerik.
-  if (/^\d+$/.test(labels[labels.length - 1] as string)) {
-    return 'Endpoint tidak boleh berupa alamat IP';
-  }
-  if (host === 'localhost' || LOCAL_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
-    return 'Endpoint harus berupa nama host publik';
-  }
-  return null;
-}
+// Kebijakan endpoint (bentuk + allowlist host layanan push) ada di `push-endpoint.ts`; diekspor ulang agar impor lama tetap.
+export { pushEndpointError };
 
 function keyError(value: string, length: number, firstByte?: number): string | null {
   if (!BASE64URL.test(value)) return 'Harus base64url';

@@ -1,4 +1,5 @@
 import type { PushSender } from './push';
+import { pushEndpointError } from './push-endpoint';
 
 /**
  * Pengirim Web Push nyata (RFC 8030 pengiriman, RFC 8291 enkripsi `aes128gcm`, RFC 8292 VAPID) memakai WebCrypto
@@ -193,6 +194,11 @@ export function createWebPushSender(config: WebPushConfig, deps: WebPushDeps = {
   let keyPromise: Promise<CryptoKey> | undefined;
   return {
     async send(sub, payload) {
+      // Lapisan kedua (selain validasi saat berlangganan): baris tersimpan yang tak lagi lolos kebijakan endpoint
+      // (mis. allowlist menyempit) tidak pernah dihubungi. Bukan `gone`: dipangkas lewat jalur kegagalan berturut-turut.
+      if (pushEndpointError(sub.endpoint) !== null) {
+        return { ok: false, gone: false, error: 'endpoint ditolak' };
+      }
       let request: { authorization: string; body: Uint8Array };
       try {
         // Kunci diimpor dan ditunggu LANGSUNG (tanpa janji menggantung yang bisa menjadi unhandled rejection);

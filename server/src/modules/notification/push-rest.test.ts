@@ -101,17 +101,48 @@ describe('push.subscribe / unsubscribe', () => {
       'https://intranet/x',
       'https://host.internal/x',
       'https://svc.local/x',
-      'https://push.example.test:8443/x',
-      'https://user:pw@push.example.test/x',
-      'ftp://push.example.test/x',
+      'https://fcm.googleapis.com:8443/x',
+      'https://user:pw@fcm.googleapis.com/x',
+      'ftp://fcm.googleapis.com/x',
       'bukan-url',
-      `https://push.example.test/${'a'.repeat(PUSH_LIMITS.endpoint)}`,
+      `https://fcm.googleapis.com/${'a'.repeat(PUSH_LIMITS.endpoint)}`,
     ];
     for (const endpoint of bad) {
       const response = await subscribe(WH, endpoint);
       expect(response.status, endpoint).toBe(422);
     }
     expect(await subCount()).toBe(0);
+  });
+
+  test('allowlist host layanan push: host publik lain atau penyamaran nama ditolak (422), tanpa menyimpan', async () => {
+    const notAllowed = [
+      'https://push.example.test/x',
+      'https://evil.example.com/hook',
+      // Penyamaran: domain layanan hanya sebagai awalan/bagian tengah nama host milik pihak lain.
+      'https://fcm.googleapis.com.evil.com/x',
+      'https://evil.com/fcm.googleapis.com',
+      'https://evilfcm.googleapis.com/x',
+      'https://notify.windows.com.evil.test/x',
+      'https://xnotify.windows.com/x',
+      'https://pushxapple.com/x',
+      'https://mozilla.org/x',
+    ];
+    for (const endpoint of notAllowed) {
+      const response = await subscribe(WH, endpoint);
+      expect(response.status, endpoint).toBe(422);
+      expect(pushEndpointError(endpoint), endpoint).not.toBeNull();
+    }
+    expect(await subCount()).toBe(0);
+    expect(pushEndpointError('https://push.example.test/x')).toBe(
+      'Layanan push endpoint ini tidak didukung',
+    );
+  });
+
+  test('allowlist: huruf besar dan titik di ujung nama host tetap dikenali', () => {
+    expect(pushEndpointError('https://FCM.GoogleAPIs.com/x')).toBeNull();
+    expect(pushEndpointError('https://fcm.googleapis.com./x')).toBeNull();
+    expect(pushEndpointError('https://a.b.push.services.mozilla.com/x')).toBeNull();
+    expect(pushEndpointError('https://android.googleapis.com/gcm/send/x')).toBeNull();
   });
 
   test('kunci p256dh/auth tidak valid ditolak', async () => {
@@ -127,7 +158,7 @@ describe('push.subscribe / unsubscribe', () => {
       'https://updates.push.services.mozilla.com/wpush/v2/abc',
       'https://web.push.apple.com/abc',
       'https://wns2-par02p.notify.windows.com/w/?token=abc',
-      'https://push.example.test:443/x',
+      'https://fcm.googleapis.com:443/x',
     ]) {
       expect(pushEndpointError(endpoint), endpoint).toBeNull();
     }
@@ -136,13 +167,13 @@ describe('push.subscribe / unsubscribe', () => {
   test('batas langganan per pengguna: yang paling lama diganti', async () => {
     for (let i = 0; i < PUSH_LIMITS.perUser + 2; i++) {
       env.clock.advance(1000);
-      expect((await subscribe(WH, `https://push.example.test/ep${i}`)).status).toBe(200);
+      expect((await subscribe(WH, `https://fcm.googleapis.com/ep${i}`)).status).toBe(200);
     }
     expect(await subCount(WH)).toBe(PUSH_LIMITS.perUser);
     const oldest = await env.DB.prepare(
       'SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint_hash = ?',
     )
-      .bind(endpointHash('https://push.example.test/ep0'))
+      .bind(endpointHash('https://fcm.googleapis.com/ep0'))
       .first<{ n: number }>();
     expect(Number(oldest?.n)).toBe(0);
   });
@@ -150,11 +181,11 @@ describe('push.subscribe / unsubscribe', () => {
   test('batas langganan per pengguna tahan subscribe serentak (tak pernah melewati batas)', async () => {
     for (let i = 0; i < PUSH_LIMITS.perUser - 2; i++) {
       env.clock.advance(1000);
-      expect((await subscribe(WH, `https://push.example.test/awal${i}`)).status).toBe(200);
+      expect((await subscribe(WH, `https://fcm.googleapis.com/awal${i}`)).status).toBe(200);
     }
     // Sisa ruang 2; 8 permintaan serentak dengan endpoint berbeda.
     const responses = await Promise.all(
-      Array.from({ length: 8 }, (_, i) => subscribe(WH, `https://push.example.test/serentak${i}`)),
+      Array.from({ length: 8 }, (_, i) => subscribe(WH, `https://fcm.googleapis.com/serentak${i}`)),
     );
     for (const response of responses) expect(response.status).toBe(200);
     expect(await subCount(WH)).toBe(PUSH_LIMITS.perUser);
@@ -218,9 +249,9 @@ describe('push.status', () => {
       'INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at, fail_count, last_error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
       .bind(
-        endpointHash(`https://push.example.test/${name}`),
+        endpointHash(`https://fcm.googleapis.com/${name}`),
         recipient,
-        `https://push.example.test/${name}`,
+        `https://fcm.googleapis.com/${name}`,
         'RAHASIA-P256',
         'RAHASIA-AUTH',
         '',
@@ -257,7 +288,7 @@ describe('push.status', () => {
     for (const user of body) expect(Object.keys(user).sort()).toEqual(['email', 'name', 'state']);
     const text = JSON.stringify(body);
     expect(text).not.toContain('RAHASIA');
-    expect(text).not.toContain('push.example.test');
+    expect(text).not.toContain('fcm.googleapis.com');
     expect(text).not.toContain('http 500');
   });
 

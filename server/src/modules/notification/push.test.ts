@@ -3,7 +3,13 @@ import { notificationTick, startNotificationLoop } from '@server/jobs/runner';
 import { createFakePush, type FakePush } from '@server-test/fake-push';
 import { ENV, seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { deliverPendingPushes, PUSH_MAX_AGE_MS, type PushSender } from './push';
+import {
+  deliverPendingPushes,
+  PUSH_MAX_AGE_MS,
+  PUSH_PRUNE_AFTER_MS,
+  PUSH_PRUNE_FAIL_COUNT,
+  type PushSender,
+} from './push';
 import { endpointHash } from './push-service';
 import { insertNotificationStmts, type NewNotification } from './repo';
 
@@ -16,7 +22,7 @@ const realError = console.error;
 const VIEWER = 'viewer@gmail.com';
 const QC = 'qc@gmail.com';
 const NOW = Date.parse('2026-10-15T03:00:00.000Z');
-const EP = (name: string) => `https://push.example.test/${name}`;
+const EP = (name: string) => `https://fcm.googleapis.com/${name}`;
 
 beforeEach(async () => {
   push = createFakePush();
@@ -50,10 +56,14 @@ async function insert(...rows: NewNotification[]): Promise<void> {
   await env.DB.batch(insertNotificationStmts(env.DB, rows));
 }
 
-async function subscribe(recipient: string, name: string, extra: { failCount?: number } = {}) {
+async function subscribe(
+  recipient: string,
+  name: string,
+  extra: { failCount?: number; createdAt?: string; lastOkAt?: string } = {},
+) {
   const endpoint = EP(name);
   await env.DB.prepare(
-    'INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at, fail_count) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at, last_ok_at, fail_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   )
     .bind(
       endpointHash(endpoint),
@@ -61,7 +71,8 @@ async function subscribe(recipient: string, name: string, extra: { failCount?: n
       endpoint,
       `p-${name}`,
       `a-${name}`,
-      new Date(NOW).toISOString(),
+      extra.createdAt ?? new Date(NOW).toISOString(),
+      extra.lastOkAt ?? '',
       extra.failCount ?? 0,
     )
     .run();
@@ -136,6 +147,79 @@ describe('deliverPendingPushes', () => {
     const subs = await subRows(VIEWER);
     expect(subs.map((s) => s.endpoint)).toEqual([bad]);
     expect(subs[0]).toMatchObject({ fail_count: 1, last_error: 'http 500' });
+  });
+
+  describe('pemangkasan langganan gagal-terus (keputusan pemilik 2026-11-13)', () => {
+    const OLD = new Date(NOW - PUSH_PRUNE_AFTER_MS - 60_000).toISOString();
+    const RECENT = new Date(NOW - PUSH_PRUNE_AFTER_MS + 3_600_000).toISOString();
+    const FAIL = { ok: false, gone: false, error: 'http 500' } as const;
+    const names = async () => (await subRows(VIEWER)).map((s) => s.endpoint);
+
+    test('fail_count mencapai ambang dan tak pernah sukses sejak dibuat > 7 hari -> dihapus', async () => {
+      const dead = await subscribe(VIEWER, 'dead', {
+        failCount: PUSH_PRUNE_FAIL_COUNT - 1,
+        createdAt: OLD,
+      });
+      push.setResult(dead, FAIL);
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([]);
+      expect(await states()).toEqual(['failed']);
+    });
+
+    test('sukses terakhir (last_ok_at) > 7 hari lalu juga dipangkas walau dibuat jauh lebih lama', async () => {
+      const dead = await subscribe(VIEWER, 'dead', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        lastOkAt: OLD,
+      });
+      push.setResult(dead, FAIL);
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([]);
+    });
+
+    test('belum mencapai ambang kegagalan -> tetap, walau sudah lama', async () => {
+      const slow = await subscribe(VIEWER, 'slow', {
+        failCount: PUSH_PRUNE_FAIL_COUNT - 2,
+        createdAt: OLD,
+      });
+      push.setResult(slow, FAIL);
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([slow]);
+      expect((await subRows(VIEWER))[0]?.fail_count).toBe(PUSH_PRUNE_FAIL_COUNT - 1);
+    });
+
+    test('kegagalan banyak tetapi sukses terakhir masih dalam 7 hari (gangguan sesaat) -> tetap', async () => {
+      const flaky = await subscribe(VIEWER, 'flaky', {
+        failCount: PUSH_PRUNE_FAIL_COUNT + 5,
+        createdAt: OLD,
+        lastOkAt: RECENT,
+      });
+      push.setResult(flaky, FAIL);
+      await insert(note());
+      await deliverPendingPushes(env);
+      expect(await names()).toEqual([flaky]);
+    });
+
+    test('hanya baris penerima yang gagal yang dipangkas; langganan sehat dan milik pengguna lain tetap', async () => {
+      const dead = await subscribe(VIEWER, 'dead', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      const healthy = await subscribe(VIEWER, 'healthy', {
+        failCount: PUSH_PRUNE_FAIL_COUNT,
+        createdAt: OLD,
+      });
+      await subscribe(QC, 'dead', { failCount: PUSH_PRUNE_FAIL_COUNT, createdAt: OLD });
+      push.setResult(dead, FAIL);
+      await insert(note());
+      expect(await deliverPendingPushes(env)).toBe(1);
+      expect(await names()).toEqual([healthy]);
+      // Baris pengguna lain pada endpoint yang sama tak disentuh (tak ada notifikasinya di putaran ini).
+      expect((await subRows(QC)).map((s) => s.endpoint)).toEqual([dead]);
+    });
   });
 
   test('minimal satu sukses -> sent walau langganan lain gagal', async () => {

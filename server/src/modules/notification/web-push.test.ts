@@ -129,7 +129,7 @@ describe('createWebPushSender', () => {
 
   test('mengirim POST terenkripsi dengan header VAPID yang sah dan tanpa mengikuti pengalihan', async () => {
     const { keys, calls, sender, r } = await setup(() => new Response(null, { status: 201 }));
-    const endpoint = 'https://push.example.test/wpush/abc';
+    const endpoint = 'https://fcm.googleapis.com/wpush/abc';
     const result = await sender.send({ endpoint, ...r.sub }, '{"title":"halo"}');
     expect(result).toEqual({ ok: true });
     expect(calls).toHaveLength(1);
@@ -158,7 +158,7 @@ describe('createWebPushSender', () => {
       string,
       unknown
     >;
-    expect(claims.aud).toBe('https://push.example.test');
+    expect(claims.aud).toBe('https://fcm.googleapis.com');
     expect(claims.sub).toBe('mailto:ops@example.test');
     expect(claims.exp).toBe(Math.floor(Date.parse('2026-11-12T00:00:00.000Z') / 1000) + 12 * 3600);
     const valid = await crypto.subtle.verify(
@@ -178,7 +178,10 @@ describe('createWebPushSender', () => {
       [500, false],
     ] as const) {
       const { sender, r, keys } = await setup(() => new Response('badan-rahasia', { status }));
-      const result = await sender.send({ endpoint: 'https://push.example.test/x', ...r.sub }, '{}');
+      const result = await sender.send(
+        { endpoint: 'https://fcm.googleapis.com/x', ...r.sub },
+        '{}',
+      );
       expect(result).toEqual({ ok: false, gone, error: `http ${status}` });
       expect(JSON.stringify(result)).not.toContain(keys.privateKey);
       expect(JSON.stringify(result)).not.toContain('badan-rahasia');
@@ -190,7 +193,7 @@ describe('createWebPushSender', () => {
       throw new Error('ECONNREFUSED 10.0.0.1 dengan-kunci');
     });
     const r1 = await net.sender.send(
-      { endpoint: 'https://push.example.test/x', ...net.r.sub },
+      { endpoint: 'https://fcm.googleapis.com/x', ...net.r.sub },
       '{}',
     );
     expect(r1).toEqual({ ok: false, gone: false, error: 'jaringan' });
@@ -198,10 +201,28 @@ describe('createWebPushSender', () => {
       throw Object.assign(new Error('t'), { name: 'TimeoutError' });
     });
     const r2 = await timeout.sender.send(
-      { endpoint: 'https://push.example.test/x', ...timeout.r.sub },
+      { endpoint: 'https://fcm.googleapis.com/x', ...timeout.r.sub },
       '{}',
     );
     expect(r2).toEqual({ ok: false, gone: false, error: 'timeout' });
+  });
+
+  test('endpoint tersimpan yang tak lolos kebijakan (host di luar allowlist, IP, http) tidak pernah dihubungi', async () => {
+    let calls = 0;
+    const { sender, r } = await setup(() => {
+      calls++;
+      return new Response(null, { status: 201 });
+    });
+    for (const endpoint of [
+      'https://evil.example.com/x',
+      'https://169.254.169.254/latest/meta-data',
+      'http://fcm.googleapis.com/x',
+      'https://fcm.googleapis.com.evil.com/x',
+    ]) {
+      const result = await sender.send({ endpoint, ...r.sub }, '{}');
+      expect(result, endpoint).toEqual({ ok: false, gone: false, error: 'endpoint ditolak' });
+    }
+    expect(calls).toBe(0);
   });
 
   test('kunci VAPID rusak menghasilkan kegagalan generik, bukan lemparan', async () => {
@@ -210,7 +231,7 @@ describe('createWebPushSender', () => {
       { fetch: (async () => new Response(null, { status: 201 })) as unknown as typeof fetch },
     );
     const r = await receiver();
-    const result = await sender.send({ endpoint: 'https://push.example.test/x', ...r.sub }, '{}');
+    const result = await sender.send({ endpoint: 'https://fcm.googleapis.com/x', ...r.sub }, '{}');
     expect(result).toEqual({ ok: false, gone: false, error: 'internal' });
     expect(JSON.stringify(result)).not.toContain('rahasia-rusak');
   });

@@ -28,6 +28,13 @@ export const PUSH_MAX_AGE_MS = 10 * 60 * 1000;
 const DELIVER_BATCH = 200;
 /** Kegagalan berturut-turut pada SEMUA langganan pengguna sebelum status dinilai `failing`. */
 export const PUSH_FAILING_THRESHOLD = 3;
+/**
+ * Pemangkasan langganan gagal-terus (keputusan pemilik 2026-11-13): langganan dihapus bila `fail_count` mencapai
+ * `PUSH_PRUNE_FAIL_COUNT` DAN sukses terakhirnya (atau saat dibuat, bila belum pernah sukses) lebih tua dari
+ * `PUSH_PRUNE_AFTER_MS`. Syarat waktu mencegah gangguan sesaat layanan push menghapus langganan yang sehat.
+ */
+export const PUSH_PRUNE_FAIL_COUNT = 10;
+export const PUSH_PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 /** Banyak notifikasi yang diproses bersamaan dan banyak pengiriman `send` yang berjalan bersamaan (seluruh putaran). */
 const DELIVER_CONCURRENCY = 5;
 /** Batas waktu satu `send`; melewatinya = gagal (bukan `gone`: langganan tidak dihapus). */
@@ -232,6 +239,17 @@ export async function deliverPendingPushes(
           'UPDATE push_subscriptions SET fail_count = fail_count + 1, last_error_at = ?, last_error = ? WHERE endpoint_hash = ? AND recipient = ?',
         )
           .bind(stamp, result.error.slice(0, 100), sub.endpoint_hash, row.recipient)
+          .run();
+        // Pangkas langganan yang sudah lama tidak pernah berhasil (bandingkan teks ISO: format sama dengan `nowIso`).
+        await env.DB.prepare(
+          "DELETE FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ? AND fail_count >= ? AND (CASE WHEN last_ok_at <> '' THEN last_ok_at ELSE created_at END) < ?",
+        )
+          .bind(
+            sub.endpoint_hash,
+            row.recipient,
+            PUSH_PRUNE_FAIL_COUNT,
+            new Date(now - PUSH_PRUNE_AFTER_MS).toISOString(),
+          )
           .run();
       }
     }
