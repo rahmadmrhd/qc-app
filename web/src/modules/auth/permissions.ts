@@ -9,6 +9,7 @@ import type {
 } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
+import type { ActorModules } from '@shared/serial-flow';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
 import { meQueryOptions } from './queries';
@@ -102,11 +103,28 @@ export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): s
 }
 
 /**
- * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` global). Pembaca tanpa izin itu memakai
- * lokasi dari `me.locations` agar tidak memicu 403 (perilaku sementara menunggu keputusan pemilik soal filter pembaca).
+ * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` ATAU `serialservice: edit` global; servis
+ * perlu memilih lokasi tujuan saat kirim balik, keputusan pemilik 2026-11-13). Pembaca tanpa izin itu memakai lokasi
+ * dari `me.locations` agar tidak memicu 403.
  */
 export function canUseSerialLocationOptions(me: MeDto | null | undefined): boolean {
-  return can(me, 'serial', 'edit');
+  return can(me, 'serial', 'edit') || can(me, 'serialservice', 'edit');
+}
+
+/** Modul yang dipegang pengguna pada level `edit` di BU serial itu (masukan `availableActions`/`resolveAction`). */
+export function serialActorModules(me: MeDto | null | undefined, buId: string): ActorModules {
+  return {
+    serial: buIdsWithLevelOf(me, 'serial', 'edit').includes(buId),
+    serialservice: buIdsWithLevelOf(me, 'serialservice', 'edit').includes(buId),
+  };
+}
+
+/**
+ * Mengatur penerima surel Serial Number rusak: penanda dihitung SERVER (`auth.me`, aturan yang sama dengan penjaga
+ * `serialSettings.get|save`: super admin, atau `serial: manage` pada setiap BU).
+ */
+export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
+  return me?.canManageSerialSettings === true;
 }
 
 /** Mencatat serial: level `edit` pada minimal satu BU. */

@@ -29,6 +29,7 @@ import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
 import { Route as AppSerialIndexRouteImport } from './routes/_app/serial/index'
 import { Route as AppSerialNewRouteImport } from './routes/_app/serial/new'
+import { Route as AppSerialSettingsRouteImport } from './routes/_app/serial/settings'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
 import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
 import { Route as AppStickerSettingsRouteImport } from './routes/_app/sticker/settings'
@@ -147,6 +148,11 @@ const AppSerialIndexRoute = AppSerialIndexRouteImport.update({
 const AppSerialNewRoute = AppSerialNewRouteImport.update({
   id: '/serial/new',
   path: '/serial/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialSettingsRoute = AppSerialSettingsRouteImport.update({
+  id: '/serial/settings',
+  path: '/serial/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStickerIndexRoute = AppStickerIndexRouteImport.update({
@@ -270,6 +276,7 @@ export interface FileRoutesByFullPath {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -311,6 +318,7 @@ export interface FileRoutesByTo {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -354,6 +362,7 @@ export interface FileRoutesById {
   '/_app/postel/new': typeof AppPostelNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
   '/_app/serial/new': typeof AppSerialNewRoute
+  '/_app/serial/settings': typeof AppSerialSettingsRoute
   '/_app/sticker/library': typeof AppStickerLibraryRoute
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
@@ -397,6 +406,7 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -438,6 +448,7 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -480,6 +491,7 @@ export interface FileRouteTypes {
     | '/_app/postel/new'
     | '/_app/qrcode/new'
     | '/_app/serial/new'
+    | '/_app/serial/settings'
     | '/_app/sticker/library'
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
@@ -654,6 +666,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSerialNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/serial/settings': {
+      id: '/_app/serial/settings'
+      path: '/serial/settings'
+      fullPath: '/serial/settings'
+      preLoaderRoute: typeof AppSerialSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/sticker/': {
       id: '/_app/sticker/'
       path: '/sticker'
@@ -811,6 +830,7 @@ interface AppRouteChildren {
   AppPostelNewRoute: typeof AppPostelNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
   AppSerialNewRoute: typeof AppSerialNewRoute
+  AppSerialSettingsRoute: typeof AppSerialSettingsRoute
   AppStickerLibraryRoute: typeof AppStickerLibraryRoute
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
@@ -852,6 +872,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostelNewRoute: AppPostelNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
   AppSerialNewRoute: AppSerialNewRoute,
+  AppSerialSettingsRoute: AppSerialSettingsRoute,
   AppStickerLibraryRoute: AppStickerLibraryRoute,
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,

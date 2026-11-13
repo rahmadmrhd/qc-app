@@ -62,7 +62,7 @@ Aturan gelombang:
 ### Task 1: Migrasi 0015 (kolom akun bersama dan tabel progres)
 
 **Files:**
-- Create: `server/migrations/0015_panduan_interaktif.sql`
+- Create: `server/migrations/0016_panduan_interaktif.sql`
 - Modify: `server/src/core/migrate.test.ts` (daftar tabel ~baris 53; tambah dua tes skema)
 - Modify: `server/test-support/access-fixtures.ts` (`seedUser` menerima `sharedAccount?: boolean`)
 
@@ -72,7 +72,7 @@ Aturan gelombang:
 
 - [ ] **Step 1: Tulis tes skema yang gagal** di `migrate.test.ts`: `users.shared_account` bertipe `tinyint`, `is_nullable = 'NO'`, bawaan `0`; tabel `guide_progress` ada dengan kunci utama `(recipient, guide_id)`. Ikuti bentuk tes `users.bu_assignments` (~baris 350).
 - [ ] **Step 2: Jalankan** `bun run --cwd server test src/core/migrate.test.ts`. Harapan: dua tes baru GAGAL.
-- [ ] **Step 3: Tulis migrasi** `0015_panduan_interaktif.sql`: `ALTER TABLE users ADD COLUMN IF NOT EXISTS shared_account TINYINT(1) NOT NULL DEFAULT 0` dan `CREATE TABLE IF NOT EXISTS guide_progress` (komentar kepala: expand-only, idempoten, alasan tanpa kunci asing). Tambahkan `guide_progress` ke daftar tabel yang diperiksa tes (~baris 53) bila daftar itu menuntutnya.
+- [ ] **Step 3: Tulis migrasi** `0016_panduan_interaktif.sql`: `ALTER TABLE users ADD COLUMN IF NOT EXISTS shared_account TINYINT(1) NOT NULL DEFAULT 0` dan `CREATE TABLE IF NOT EXISTS guide_progress` (komentar kepala: expand-only, idempoten, alasan tanpa kunci asing). Tambahkan `guide_progress` ke daftar tabel yang diperiksa tes (~baris 53) bila daftar itu menuntutnya.
 - [ ] **Step 4: Perluas `seedUser`** agar menyertakan `shared_account` pada `INSERT` (bawaan 0).
 - [ ] **Step 5: Jalankan** tes yang sama; harapan LULUS. Lalu `bun run check`.
 - [ ] **Step 6: Commit** `feat(panduan): migrasi 0015 kolom akun bersama dan tabel progres panduan`.

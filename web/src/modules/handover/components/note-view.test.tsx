@@ -264,3 +264,17 @@ test('M-D: seleksi lintas butir tercentang tidak memuat teks "oleh … · waktu"
   await waitFor(() => expect(onComment).toHaveBeenCalled());
   expect(onComment.mock.calls[0]?.[0].quote).toBe('A = 1\nB = 2');
 });
+
+test('"Menunggu terkirim" hanya untuk indeks di pendingIndexes', () => {
+  setup({ pendingIndexes: new Set([1]) });
+  expect(screen.getAllByText('Menunggu terkirim')).toHaveLength(1);
+  const label = screen.getByRole('checkbox', { name: /B = 2/ }).closest('li');
+  expect(label?.textContent).toContain('Menunggu terkirim');
+  const first = screen.getByRole('checkbox', { name: /A = 1/ }).closest('li');
+  expect(first?.textContent).not.toContain('Menunggu terkirim');
+});
+
+test('tanpa pendingIndexes tidak ada penanda', () => {
+  setup();
+  expect(screen.queryByText('Menunggu terkirim')).not.toBeInTheDocument();
+});

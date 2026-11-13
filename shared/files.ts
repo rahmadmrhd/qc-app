@@ -17,7 +17,7 @@ export const MAX_UNATTACHED_UPLOADS = 50;
 export const FILE_SCHEME = 'qcfile:';
 
 /** Jenis entitas pemilik berkas. */
-export type FileOwnerType = 'item' | 'qrlogo' | 'sticker' | 'stickerguide' | 'postel';
+export type FileOwnerType = 'item' | 'qrlogo' | 'sticker' | 'stickerguide' | 'postel' | 'serial';
 
 /** Lampiran Postel (stiker 4b): gambar dan PDF. */
 export const POSTEL_FILE_MIME_TYPES = [

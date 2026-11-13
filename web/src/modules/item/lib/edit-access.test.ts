@@ -9,6 +9,7 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'edit',

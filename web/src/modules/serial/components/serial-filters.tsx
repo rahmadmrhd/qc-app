@@ -3,12 +3,15 @@ import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
-import { STATUS_OPTIONS } from '../lib/labels';
+import { buIdsWithLevelOf } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { CUSTODY_LABEL, STATUS_OPTIONS } from '../lib/labels';
 import {
   commitSearchLine,
   mergeScanned,
@@ -37,8 +40,25 @@ const normalizeSearchTextValue = (value: string) => normalizeSearchText(value).t
 
 const STATUS_FILTER_OPTIONS = [{ value: '', label: 'Semua status' }, ...STATUS_OPTIONS];
 
+const CUSTODY_FILTER_OPTIONS = [
+  { value: '', label: 'Semua posisi' },
+  ...(Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map((value) => ({
+    value,
+    label: CUSTODY_LABEL[value],
+  })),
+];
+
 /** Filter daftar serial: pencarian banyak serial (tempel atau pindai), item, lokasi, status, dan rentang tanggal uji. */
 export function SerialFilters({ search, onChange }: SerialFiltersProps) {
+  const me = useMe();
+  // BU yang boleh dibaca akun (serial atau serialservice, level view ke atas), disaring di klien.
+  const readableBuIds = new Set([
+    ...buIdsWithLevelOf(me, 'serial', 'view'),
+    ...buIdsWithLevelOf(me, 'serialservice', 'view'),
+  ]);
+  const buOptions: LinkOption[] = (me.businessUnits ?? [])
+    .filter((bu) => readableBuIds.has(bu.id))
+    .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
   const itemOptions: LinkOption[] = (data?.items ?? []).map((item) => ({
@@ -142,7 +162,20 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
               : 'Ketik, tempel, scan (Enter), atau pakai kamera.'}
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <LinkField
+          id="serial-filter-bu"
+          label="Filter BU"
+          hideLabel
+          placeholder="Semua BU"
+          localFilter
+          value={search.bu ?? null}
+          labelOf={(id) =>
+            buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal'
+          }
+          options={buOptions}
+          onChange={(id) => onChange({ bu: id ?? undefined })}
+        />
         <LinkField
           id="serial-filter-item"
           label="Filter item"
@@ -180,6 +213,16 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             onChange({ status: next === '' ? undefined : (next as SerialSearch['status']) })
           }
         />
+        <Select
+          id="serial-filter-custody"
+          label="Filter posisi"
+          hideLabel
+          options={CUSTODY_FILTER_OPTIONS}
+          value={search.custody ?? ''}
+          onValueChange={(next) =>
+            onChange({ custody: next === '' ? undefined : (next as SerialSearch['custody']) })
+          }
+        />
         <div className="space-y-1.5">
           <Label htmlFor="serial-filter-from" className="text-xs text-muted-foreground">
             Tanggal uji dari
@@ -201,6 +244,16 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             value={search.to ?? ''}
             onChange={(event) => onChange({ to: event.target.value || undefined })}
           />
+        </div>
+        <div className="flex items-end gap-2 pb-2">
+          <Checkbox
+            id="serial-filter-mine"
+            checked={search.mine === true}
+            onCheckedChange={(on) => onChange({ mine: on === true ? true : undefined })}
+          />
+          <Label htmlFor="serial-filter-mine" className="font-normal">
+            Dicatat oleh saya
+          </Label>
         </div>
       </div>
     </div>

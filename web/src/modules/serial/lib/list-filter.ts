@@ -2,6 +2,7 @@ import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  SERIAL_CUSTODIES,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
   serialProblem,
@@ -24,6 +25,12 @@ export const serialSearchSchema = z.object({
   /** Label item terpilih (agar tampil setelah muat ulang tanpa memuat opsi). */
   itemLabel: z.string().max(255).optional().catch(undefined),
   loc: z.string().max(100).optional().catch(undefined),
+  /** Business Unit. */
+  bu: z.string().max(100).optional().catch(undefined),
+  /** Posisi: di QC, dalam pengiriman, atau di servis. */
+  custody: z.enum(SERIAL_CUSTODIES).optional().catch(undefined),
+  /** Hanya yang dicatat oleh akun yang sedang masuk (`createdBy` = email akun). */
+  mine: z.literal(true).optional().catch(undefined),
   status: z.enum(SERIAL_STATUSES).optional().catch(undefined),
   from: isoDate,
   to: isoDate,
@@ -138,9 +145,10 @@ export function commitSearchLine(
 
 /**
  * Search params -> masukan `serials.list`. Satu serial dikirim sebagai awalan (`query`, juga cocok persis), dua atau
- * lebih sebagai daftar persis (`serials`); keduanya dalam bentuk ternormalisasi.
+ * lebih sebagai daftar persis (`serials`); keduanya dalam bentuk ternormalisasi. `userEmail` = akun yang masuk, dipakai
+ * untuk sakelar "Dicatat oleh saya" (tidak ada rute opsi pengguna bagi pembaca; default perancang OQ-16).
  */
-export function filterOfSearch(search: SerialSearch): SerialListFilter {
+export function filterOfSearch(search: SerialSearch, userEmail?: string): SerialListFilter {
   const lines = normalizeSearchText(search.sn ?? '')
     .text.split('\n')
     .filter((line) => line !== '');
@@ -149,6 +157,9 @@ export function filterOfSearch(search: SerialSearch): SerialListFilter {
     ...(lines.length > 1 ? { serials: lines.join('\n') } : {}),
     ...(search.item ? { itemId: search.item } : {}),
     ...(search.loc ? { locationId: search.loc } : {}),
+    ...(search.bu ? { buId: search.bu } : {}),
+    ...(search.custody ? { custody: search.custody } : {}),
+    ...(search.mine && userEmail ? { createdBy: userEmail } : {}),
     ...(search.status ? { status: search.status } : {}),
     ...(search.from ? { from: search.from } : {}),
     ...(search.to ? { to: search.to } : {}),

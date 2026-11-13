@@ -38,6 +38,7 @@ function me(): MeDto {
     name: 'U',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',

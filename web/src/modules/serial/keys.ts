@@ -6,6 +6,11 @@ export const serialKeys = {
   list: ['serial', 'list'] as const,
   page: (filter: Omit<SerialListInput, 'cursor'>) => ['serial', 'list', filter] as const,
   one: (id: string) => ['serial', 'one', id] as const,
+  /** Awalan semua halaman riwayat satu serial (satu per tab/filter). */
+  history: (id: string) => ['serial', 'history', id] as const,
+  historyPage: (id: string, group: string, caseId: string) =>
+    ['serial', 'history', id, group, caseId] as const,
+  settings: ['serial', 'settings'] as const,
   itemOptions: (query: string) => ['serial', 'itemOptions', query] as const,
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,

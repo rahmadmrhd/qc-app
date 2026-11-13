@@ -14,6 +14,7 @@ function me(overrides: Partial<MeDto> = {}): MeDto {
     permissions: {} as MeDto['permissions'],
     locations: [],
     businessUnits: [],
+    canManageSerialSettings: false,
     sharedAccount: false,
     ...overrides,
   };

@@ -13,6 +13,8 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: true,
   note: 'catatan',
+  status: 'good',
+  damage: '',
 };
 
 function rows(texts: string[], over: Partial<Defaults> = {}): StagingRow[] {
@@ -49,6 +51,7 @@ test('ekspor lalu impor mengembalikan baris yang sama (termasuk stiker bila suda
     locationId: 'l1',
     sample: true,
     note: 'catatan',
+    status: 'good',
     stickers: [{ stickerId: 's1', stickerLabel: 'Stiker', qty: 2 }],
   });
   expect(result.rows[1]?.stickers).toBeUndefined();
@@ -135,4 +138,21 @@ test('baris bermasalah yang bukan objek tidak memicu peringatan checksum palsu',
   expect(result.rows.map((row) => row.serial)).toEqual(['A1']);
   expect(result.problems).toHaveLength(1);
   expect(result.warning).toBeNull();
+});
+
+test('baris Tidak lolos: ekspor memuat kerusakan, impor mengembalikannya; tanpa kerusakan tidak diekspor', async () => {
+  const [row] = rows(['SN-9'], { status: 'failed', damage: '  Port 3 mati  ' });
+  const text = await exportQcsn(row ? [row] : [], APP, NOW);
+  const file = JSON.parse(text);
+  expect(file.rows[0]).toMatchObject({ status: 'failed', damage: 'Port 3 mati' });
+  const result = await importQcsn(text);
+  expect(result.fatal).toBeNull();
+  expect(result.rows[0]).toMatchObject({ status: 'failed', damage: 'Port 3 mati' });
+  // Baris Lolos tidak membawa kunci damage meski ada sisa teks di tabel.
+  const [good] = rows(['SN-8'], { status: 'good', damage: 'sisa' });
+  expect(JSON.parse(await exportQcsn(good ? [good] : [], APP, NOW)).rows[0]).not.toHaveProperty(
+    'damage',
+  );
+  const blank = rows(['SN-7'], { status: 'failed', damage: '' });
+  expect(exportableRows(blank)).toEqual([]);
 });

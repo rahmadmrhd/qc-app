@@ -20,6 +20,7 @@ beforeEach(() => {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {} as MeDto['permissions'],
     businessUnits: [],
     locations: [],

@@ -16,6 +16,7 @@ function me(locations: LocationAccessDto[]): MeDto {
     permissions: {} as MeDto['permissions'],
     locations,
     businessUnits: [],
+    canManageSerialSettings: false,
     sharedAccount: false,
   };
 }

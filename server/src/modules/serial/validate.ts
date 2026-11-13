@@ -1,11 +1,14 @@
+import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
 import { readObject } from '@server/core/validate';
 import type {
   GetSerialInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
+  SaveSerialSettingsInput,
   SerialActInput,
   SerialEditable,
+  SerialHistoryInput,
   SerialListInput,
   SerialRowInput,
   SerialStickerOptionsInput,
@@ -14,13 +17,18 @@ import type {
   UpdateSerialBatchRowInput,
   UpdateSerialInput,
 } from '@shared/contract';
-import { hasBidiControls, hasControlChars } from '@shared/postel';
+import { extractFileRefs } from '@shared/items';
+import { hasBidiControls, hasControlChars, isPostelRecipient } from '@shared/postel';
 import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  SERIAL_ACTIONS,
+  SERIAL_CUSTODIES,
   SERIAL_LIMITS,
   SERIAL_STATUSES,
+  type SerialAction,
+  type SerialCustody,
   type SerialStatus,
   serialProblem,
 } from '@shared/serials';
@@ -136,7 +144,24 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
   ) {
     return fail('Catatan tidak valid');
   }
-  if (source.status !== 'good') return fail('Status belum didukung');
+  if (source.status !== 'good' && source.status !== 'failed') return fail('Status tidak valid');
+  // `damage` wajib (satu baris, maks. 200) bila langsung dicatat tidak lolos; pada `good` diabaikan.
+  let damage = '';
+  if (source.status === 'failed') {
+    const text = typeof source.damage === 'string' ? source.damage.trim() : '';
+    if (text === '') return fail('Isi dulu kerusakannya');
+    if ([...text].length > SERIAL_LIMITS.damageMax || hasControlChars(text)) {
+      return fail('Kerusakan tidak valid (satu baris, maks. 200 karakter)');
+    }
+    damage = text;
+  }
+  if (
+    source.source !== undefined &&
+    source.source !== 'manual' &&
+    source.source !== 'countrylock'
+  ) {
+    return fail('Asal catatan tidak valid');
+  }
   // `stickers` tidak dikirim = semua stiker yang berlaku (diselesaikan service); `[]` = sengaja tanpa stiker.
   const stickersRaw = source.stickers === undefined ? [] : source.stickers;
   if (!Array.isArray(stickersRaw) || stickersRaw.length > SERIAL_PICKS_MAX) {
@@ -172,9 +197,43 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
       locationId: source.locationId,
       sample: source.sample,
       note,
-      status: 'good',
+      status: source.status,
+      ...(source.status === 'failed' ? { damage } : {}),
+      ...(source.source === undefined ? {} : { source: source.source }),
       ...(source.stickers === undefined ? {} : { stickers }),
     },
+  };
+}
+
+/** Riwayat per serial: `limit` 1-100 (bawaan 50); kursor = `seq` terakhir (bilangan bulat tak negatif). */
+export function validateSerialHistory(raw: unknown): SerialHistoryInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  const group = reader.str('group', { max: 16 });
+  if (group !== '' && group !== 'all' && group !== 'checks' && group !== 'changes') {
+    reader.fail('group', 'Kelompok tidak valid');
+  }
+  const caseId = reader.str('caseId', { max: 100 });
+  const cursor = reader.str('cursor', { max: 12 });
+  if (cursor !== '' && !/^\d{1,12}$/.test(cursor)) reader.fail('cursor', 'Kursor tidak valid');
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > SERIAL_LIMITS.historyMaxLimit)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${SERIAL_LIMITS.historyMaxLimit}`);
+  }
+  reader.done();
+  return {
+    id,
+    ...(group !== '' ? { group: group as SerialHistoryInput['group'] } : {}),
+    ...(caseId !== '' ? { caseId } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(typeof limit === 'number' ? { limit } : {}),
   };
 }
 
@@ -186,6 +245,7 @@ export function validateGetSerial(raw: unknown): GetSerialInput {
 }
 
 const LIST_STATUS: readonly string[] = SERIAL_STATUSES;
+const LIST_CUSTODY: readonly string[] = SERIAL_CUSTODIES;
 
 /** Daftar serial: semua filter opsional; `limit` 1-100; `serials` maks. `SERIAL_LIMITS.listSerialsMax` serial dan `listSerialsEncodedMax` karakter ter-encode (GET: URL harus muat). */
 export function validateSerialList(raw: unknown): SerialListInput {
@@ -197,6 +257,9 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const createdBy = reader.str('createdBy', { max: 255 });
   const status = reader.str('status', { max: 32 });
   if (status !== '' && !LIST_STATUS.includes(status)) reader.fail('status', 'Status tidak valid');
+  const custody = reader.str('custody', { max: 16 });
+  if (custody !== '' && !LIST_CUSTODY.includes(custody))
+    reader.fail('custody', 'Posisi tidak valid');
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
   const to = reader.str('to', { max: 10 });
@@ -237,6 +300,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(itemId !== '' ? { itemId } : {}),
     ...(locationId !== '' ? { locationId } : {}),
     ...(status !== '' ? { status: status as SerialStatus } : {}),
+    ...(custody !== '' ? { custody: custody as SerialCustody } : {}),
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),
@@ -335,14 +399,83 @@ export function validateUpdateSerialBatch(raw: unknown): UpdateSerialBatchInput 
   return { rows: rows as UpdateSerialBatchRowInput[] };
 }
 
-/** `POST /serials/{id}/act`: catatan atau cek ulang; kesalahan bentuk = `VALIDATION`. */
+/** Field tambahan yang boleh ada per aksi (selain id, expectedUpdatedAt, action, occurredOn, message). */
+const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
+  note: [],
+  attempt_repair: [],
+  receive: [],
+  declare_broken: [],
+  report_failure: ['damage'],
+  identify_damage: ['damage'],
+  service_diagnosis: ['damage'],
+  send: ['toLocationId', 'shipmentNote'],
+  recheck: ['result', 'damage', 'locationId', 'stickers'],
+  recheck_pass: ['locationId', 'stickers'],
+  recheck_fail: ['damage', 'locationId', 'stickers'],
+};
+const ACT_ALL_EXTRA_KEYS = [
+  'damage',
+  'toLocationId',
+  'shipmentNote',
+  'result',
+  'locationId',
+  'stickers',
+] as const;
+
+/**
+ * Teks satu baris tanpa karakter kontrol/pengatur arah (kerusakan, catatan pengiriman), dipangkas. Kosong dikembalikan
+ * kosong; `required` menandai field wajib dengan `requiredMessage`.
+ */
+function singleLine(
+  reader: ReturnType<typeof readObject>,
+  key: string,
+  max: number,
+  required: boolean,
+  requiredMessage: string,
+): string {
+  const raw = reader.raw(key);
+  if (raw === undefined || raw === null) {
+    if (required) reader.fail(key, requiredMessage);
+    return '';
+  }
+  if (typeof raw !== 'string') {
+    reader.fail(key, 'Harus berupa teks');
+    return '';
+  }
+  const text = raw.trim();
+  if (text === '') {
+    if (required) reader.fail(key, requiredMessage);
+    return '';
+  }
+  if ([...text].length > max) reader.fail(key, `Maksimal ${max} karakter`);
+  else if (hasControlChars(text))
+    reader.fail(key, 'Tulis dalam satu baris, tanpa karakter kontrol');
+  return text;
+}
+
+/**
+ * `POST /serials/{id}/act`: semua aksi §5.3. Bentuk salah, field wajib kosong, atau field yang tak berlaku untuk aksi itu
+ * (mis. `stickers` pada `send`) = `VALIDATION`. Aturan keadaan dan izin dinilai server sesudahnya (`CONFLICT`/`FORBIDDEN`).
+ */
 export function validateSerialAct(raw: unknown): SerialActInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });
   const expectedUpdatedAt = reader.str('expectedUpdatedAt', { required: true, max: 30 });
-  const action = reader.oneOf('action', ['note', 'recheck'] as const);
+  const action = reader.oneOf('action', SERIAL_ACTIONS);
   const occurredOn = reader.str('occurredOn', { required: true, max: 10 });
   if (occurredOn !== '' && !isIsoDate(occurredOn)) reader.fail('occurredOn', 'Tanggal tidak valid');
+  const source = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+  const allowed = ACT_EXTRA_KEYS[action];
+  for (const key of ACT_ALL_EXTRA_KEYS) {
+    const value = source[key];
+    if (value === undefined || value === null || allowed.includes(key)) continue;
+    reader.fail(
+      key,
+      key === 'stickers'
+        ? 'Stiker hanya untuk cek ulang'
+        : 'Field ini tidak berlaku untuk aksi ini',
+    );
+  }
   const messageRaw = reader.raw('message');
   let message = '';
   if (messageRaw !== undefined && messageRaw !== null) {
@@ -351,18 +484,56 @@ export function validateSerialAct(raw: unknown): SerialActInput {
       reader.fail('message', `Maksimal ${SERIAL_LIMITS.messageMax} karakter`);
     } else if (hasBidiControls(messageRaw)) {
       reader.fail('message', 'Catatan memuat karakter pengatur arah teks yang tidak diizinkan');
+    } else if (extractFileRefs(messageRaw).length > SERIAL_LIMITS.messageImagesMax) {
+      reader.fail('message', `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per pesan`);
     } else message = messageRaw;
   }
   if (action === 'note' && message.trim() === '') reader.fail('message', 'Catatan wajib diisi');
-  const locationId = reader.str('locationId', { max: 100 });
-  const stickersRaw = reader.raw('stickers');
-  const stickers: SerialStickerPick[] = [];
-  if (stickersRaw !== undefined && stickersRaw !== null) {
-    if (action === 'note') {
-      reader.fail('stickers', 'Stiker hanya untuk cek ulang');
-    } else if (!Array.isArray(stickersRaw) || stickersRaw.length > SERIAL_PICKS_MAX) {
+
+  const out: Record<string, unknown> = { id, expectedUpdatedAt, action, occurredOn, message };
+
+  if (action === 'recheck') {
+    const resultRaw = source.result;
+    if (resultRaw !== undefined && resultRaw !== null) {
+      if (resultRaw !== 'pass' && resultRaw !== 'fail') {
+        reader.fail('result', 'Hasil harus lolos atau tidak lolos');
+      } else out.result = resultRaw;
+    }
+  }
+  if (allowed.includes('damage')) {
+    // `recheck`: wajib hanya bila hasilnya tidak lolos (dan tak berlaku bila lolos); `recheck_fail`: opsional.
+    const failResult = action === 'recheck' && source.result === 'fail';
+    const required =
+      action === 'report_failure' ||
+      action === 'identify_damage' ||
+      action === 'service_diagnosis' ||
+      failResult;
+    const damage = singleLine(
+      reader,
+      'damage',
+      SERIAL_LIMITS.damageMax,
+      required,
+      'Isi dulu kerusakannya',
+    );
+    if (action === 'recheck' && !failResult && damage !== '') {
+      reader.fail('damage', 'Kerusakan hanya untuk hasil tidak lolos');
+    }
+    if (damage !== '') out.damage = damage;
+  }
+  if (action === 'send') {
+    out.toLocationId = reader.str('toLocationId', { required: true, max: 100 });
+    out.shipmentNote = singleLine(reader, 'shipmentNote', SERIAL_LIMITS.shipmentNoteMax, false, '');
+  }
+  if (allowed.includes('locationId')) {
+    const locationId = reader.str('locationId', { max: 100 });
+    if (locationId !== '') out.locationId = locationId;
+  }
+  const stickersRaw = source.stickers;
+  if (allowed.includes('stickers') && stickersRaw !== undefined && stickersRaw !== null) {
+    if (!Array.isArray(stickersRaw) || stickersRaw.length > SERIAL_PICKS_MAX) {
       reader.fail('stickers', 'Daftar stiker tidak valid');
     } else {
+      const stickers: SerialStickerPick[] = [];
       const seen = new Set<string>();
       for (const entry of stickersRaw) {
         const pick =
@@ -382,16 +553,51 @@ export function validateSerialAct(raw: unknown): SerialActInput {
         seen.add(pick.stickerId);
         stickers.push({ stickerId: pick.stickerId, qty });
       }
+      if (stickers.length > 0) out.stickers = stickers;
     }
   }
   reader.done();
-  return {
-    id,
-    expectedUpdatedAt,
-    action,
-    occurredOn,
-    message,
-    ...(locationId !== '' ? { locationId } : {}),
-    ...(stickers.length > 0 ? { stickers } : {}),
-  };
+  return out as unknown as SerialActInput;
+}
+
+/**
+ * Pengaturan surel Serial Number rusak: `expectedUpdatedAt` boleh kosong (penyimpanan pertama); penerima maks.
+ * `alertRecipientsMax`, tiap entri SATU alamat polos (`isPostelRecipient`, tanpa beda huruf besar/kecil), tanpa ganda.
+ */
+export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInput {
+  const reader = readObject(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
+  const value = reader.raw('alert');
+  const recipients: string[] = [];
+  let enabled = false;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    reader.fail('alert', 'Pengaturan peringatan harus berupa objek');
+  } else {
+    const source = value as Record<string, unknown>;
+    if (typeof source.enabled !== 'boolean')
+      reader.fail('enabled', 'Sakelar harus true atau false');
+    enabled = source.enabled === true;
+    if (!Array.isArray(source.recipients)) {
+      reader.fail('recipients', 'Penerima harus berupa daftar email');
+    } else if (source.recipients.length > SERIAL_LIMITS.alertRecipientsMax) {
+      reader.fail('recipients', `Maksimal ${SERIAL_LIMITS.alertRecipientsMax} penerima`);
+    } else {
+      const seen = new Set<string>();
+      for (const item of source.recipients) {
+        const email = typeof item === 'string' ? normalizeEmail(item) : '';
+        if (!isPostelRecipient(email)) {
+          reader.fail('recipients', 'Ada alamat email yang tidak valid');
+          break;
+        }
+        if (seen.has(email)) {
+          reader.fail('recipients', `Email ganda: ${email}`);
+          break;
+        }
+        seen.add(email);
+        recipients.push(email);
+      }
+    }
+  }
+  reader.done();
+  return { expectedUpdatedAt, alert: { enabled, recipients } };
 }

@@ -157,6 +157,81 @@ describe('serials.update', () => {
   });
 });
 
+describe('lokasi dikunci selama bukan di QC (keputusan pemilik 2026-11-13)', () => {
+  const seedAway = async (id: string, serial: string, custody: 'transit' | 'service') =>
+    seedSerial(env, {
+      id,
+      serial,
+      status: 'at_service',
+      custody,
+      openCase: { id: `c-${id}`, number: `LP-20261110-${id}` },
+      ...(custody === 'transit'
+        ? {
+            transitFromLocationId: 'loc-sby',
+            transitToLocationId: 'loc-jkt',
+            transitOn: '2026-11-10',
+          }
+        : {}),
+    });
+  const base = (serial: string) => ({ ...BASE, serial });
+
+  test('update tunggal: ubah lokasi saat transit atau service = VALIDATION pada locationId; lokasi sama dan field lain lolos; custody qc lolos', async () => {
+    await seedAway('t1', 'TR-1', 'transit');
+    await seedAway('s1x', 'SV-1', 'service');
+    for (const [id, serial] of [
+      ['t1', 'TR-1'],
+      ['s1x', 'SV-1'],
+    ] as const) {
+      const moved = await update(W, { ...base(serial), locationId: 'loc-jkt' }, id);
+      expect(moved.error?.code).toBe('VALIDATION');
+      expect(moved.error?.message).toBe(
+        'Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis',
+      );
+      expect(Object.keys(moved.error?.fields ?? {})).toContain('locationId');
+      const same = await update(
+        W,
+        { ...base(serial), locationId: 'loc-sby', note: 'tetap bisa' },
+        id,
+      );
+      expect(same.ok).toBe(true);
+      expect(same.data.locationId).toBe('loc-sby');
+      expect(same.data.note).toBe('tetap bisa');
+    }
+    const qc = await update(W, { locationId: 'loc-jkt' });
+    expect(qc.ok).toBe(true);
+    expect(qc.data.locationId).toBe('loc-jkt');
+  });
+
+  test('updateBatch: baris di transit/service yang mengubah lokasi = invalid dengan pesan, baris lain tetap diproses', async () => {
+    await seedAway('t1', 'TR-1', 'transit');
+    await seedSerial(env, { id: 'q1', serial: 'QC-1' });
+    const out = await call(W, 'serials.updateBatch', {
+      rows: [
+        {
+          id: 't1',
+          expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+          fields: { locationId: 'loc-jkt' },
+        },
+        {
+          id: 't1',
+          expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+          fields: { locationId: 'loc-sby', note: 'x' },
+        },
+        {
+          id: 'q1',
+          expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+          fields: { locationId: 'loc-jkt' },
+        },
+      ],
+    });
+    const results = (out.data as Json).results;
+    expect(results.map((r: Json) => r.result)).toEqual(['invalid', 'updated', 'updated']);
+    expect(results[0].message).toBe(
+      'Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis',
+    );
+  });
+});
+
 describe('serials.updateBatch', () => {
   test('parsial: satu stale, satu sah, satu duplikat, satu invalid; baris sah diproses', async () => {
     await seedSerial(env, { id: 'sn2', serial: 'SN-2' });

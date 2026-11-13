@@ -23,7 +23,8 @@ function toQcsnRow(row: StagingRow): QcsnRow {
     locationLabel: row.locationLabel,
     sample: row.sample,
     note: row.note,
-    status: 'good',
+    status: row.status,
+    ...(row.status === 'failed' ? { damage: row.damage.trim() } : {}),
     source: row.source,
     capturedAt: row.capturedAt,
     ...(row.stickers !== null

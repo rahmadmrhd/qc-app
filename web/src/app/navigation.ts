@@ -16,7 +16,7 @@ import {
   MapPin,
   Package,
   QrCode,
-  ScanBarcode,
+  Settings,
   Settings2,
   Shapes,
   ShieldCheck,
@@ -24,7 +24,7 @@ import {
   Tags,
   Users,
 } from 'lucide-react';
-import { canAnywhere } from '@/modules/auth/permissions';
+import { canAnywhere, canManageSerialSettings } from '@/modules/auth/permissions';
 
 export interface NavPermission {
   module: ModuleKey;
@@ -41,6 +41,8 @@ export interface NavItem {
   excludes?: LinkProps['to'][];
   /** Satu izin, atau **daftar** (salah satu cukup). */
   permission?: NavPermission | readonly NavPermission[];
+  /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
+  visible?: (me: MeDto) => boolean;
 }
 
 export interface NavGroup {
@@ -117,17 +119,18 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Daftar Serial Number',
         to: '/serial',
         icon: ListChecks,
-        excludes: ['/serial/new'],
+        excludes: ['/serial/settings'],
         permission: [
           { module: 'serial', level: 'view' },
           { module: 'serialservice', level: 'view' },
         ],
       },
       {
-        label: 'Catat Serial Number',
-        to: '/serial/new',
-        icon: ScanBarcode,
-        permission: { module: 'serial', level: 'edit' },
+        label: 'Pengaturan',
+        to: '/serial/settings',
+        icon: Settings,
+        permission: { module: 'serial', level: 'manage' },
+        visible: canManageSerialSettings,
       },
     ],
   },
@@ -231,6 +234,7 @@ export function visibleNavGroups(
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.visible && !item.visible(me)) return false;
         if (!item.permission) return true;
         const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
           ? item.permission

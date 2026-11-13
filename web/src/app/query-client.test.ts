@@ -1,6 +1,11 @@
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { handleGlobalError, shouldRetry } from './query-client';
+import {
+  handleGlobalError,
+  reportUnauthenticated,
+  setUnauthenticatedHandler,
+  shouldRetry,
+} from './query-client';
 
 test('hanya error INTERNAL yang di-retry, maksimal sekali', () => {
   expect(shouldRetry(0, new ApiError('INTERNAL', 'x', '-'))).toBe(true);
@@ -19,4 +24,12 @@ test('UNAUTHENTICATED memicu logout global, FORBIDDEN menampilkan notifikasi', (
   handleGlobalError(new Error('lain'), deps);
   expect(deps.onUnauthenticated).toHaveBeenCalledOnce();
   expect(deps.notify).toHaveBeenCalledOnce();
+});
+
+test('reportUnauthenticated memanggil penangan 401 yang terpasang', () => {
+  const handler = vi.fn();
+  setUnauthenticatedHandler(handler);
+  reportUnauthenticated();
+  expect(handler).toHaveBeenCalledOnce();
+  setUnauthenticatedHandler(() => undefined);
 });

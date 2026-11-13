@@ -3,7 +3,10 @@ import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  SERIAL_EVENT_TYPES,
+  SERIAL_HISTORY_GROUPS,
   SERIAL_LIMITS,
+  serialCaseNumber,
   serialProblem,
   splitSerialInput,
 } from './serials';
@@ -122,5 +125,34 @@ describe('listSerialsTooLong', () => {
     expect(listSerialsTooLong(Array.from({ length: 50 }, () => 'X'.repeat(64)).join('\n'))).toBe(
       false,
     );
+  });
+});
+
+describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
+  test('nomor kasus', () => {
+    expect(serialCaseNumber('20261120', 1)).toBe('LP-20261120-001');
+    expect(serialCaseNumber('20261120', 42)).toBe('LP-20261120-042');
+    expect(serialCaseNumber('20261120', 1000)).toBe('LP-20261120-1000');
+  });
+
+  test('kelompok jenis kejadian', () => {
+    expect([...SERIAL_HISTORY_GROUPS.checks]).toEqual([
+      'recorded',
+      'recheck',
+      'recheck_pass',
+      'recheck_fail',
+    ]);
+    expect([...SERIAL_HISTORY_GROUPS.changes]).toEqual(['data_changed']);
+    for (const type of [...SERIAL_HISTORY_GROUPS.checks, ...SERIAL_HISTORY_GROUPS.changes]) {
+      expect(SERIAL_EVENT_TYPES).toContain(type);
+    }
+  });
+
+  test('batas 5b', () => {
+    expect(SERIAL_LIMITS.damageMax).toBe(200);
+    expect(SERIAL_LIMITS.shipmentNoteMax).toBe(200);
+    expect(SERIAL_LIMITS.messageImagesMax).toBe(10);
+    expect(SERIAL_LIMITS.historyDefaultLimit).toBe(50);
+    expect(SERIAL_LIMITS.historyMaxLimit).toBe(100);
   });
 });

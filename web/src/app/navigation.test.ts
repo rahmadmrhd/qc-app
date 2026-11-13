@@ -20,6 +20,7 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'view',
@@ -62,6 +63,7 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -152,6 +154,7 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
       name: 'A',
       isSuperAdmin: false,
       sharedAccount: false,
+      canManageSerialSettings: false,
       permissions: {
         access: 'none',
         item: 'none',
@@ -195,6 +198,7 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -379,6 +383,7 @@ function meWithSerial(
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -405,22 +410,63 @@ test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
   expect(serialItems(meWithSerial('none'))).toBeUndefined();
   expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number']);
   expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number']);
-  expect(serialItems(meWithSerial('edit'))).toEqual([
-    'Daftar Serial Number',
-    'Catat Serial Number',
-  ]);
+  // Mencatat dimulai dari tombol Tambah di daftar: tanpa menu "Catat Serial Number" (keputusan pemilik 2026-11-13).
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial Number']);
 });
 
-test('Daftar Serial Number tidak ikut aktif di Catat Serial Number', () => {
+test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan detail', () => {
   const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  expect(items.some((entry) => entry.to === '/serial/new')).toBe(false);
   const list = items.find((entry) => entry.to === '/serial');
-  const record = items.find((entry) => entry.to === '/serial/new');
-  if (!list || !record) throw new Error('menu hilang');
+  if (!list) throw new Error('menu hilang');
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(list, at('/serial/new'))).toBe(false);
-  expect(isNavItemActive(record, at('/serial/new'))).toBe(true);
+  expect(isNavItemActive(list, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
+});
+
+function meManagingSerial(
+  levels: ('edit' | 'manage')[],
+  canManageSettings: boolean,
+  isSuperAdmin = false,
+): MeDto {
+  const base = meWithSerial('edit');
+  // Izin global = level tertinggi di antara BU (super admin: semua modul manage).
+  const global = isSuperAdmin || levels.includes('manage') ? 'manage' : 'edit';
+  return {
+    ...base,
+    isSuperAdmin,
+    // Penanda dihitung server (`auth.me`); di sini diset langsung sesuai skenario.
+    canManageSerialSettings: canManageSettings,
+    permissions: { ...base.permissions, serial: global },
+    businessUnits: levels.map((level, index) => ({
+      id: `b${index}`,
+      code: `B${index}`,
+      name: `BU ${index}`,
+      status: 'active' as const,
+      permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+    })),
+  };
+}
+
+test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSettings; tidak ikut aktif di Daftar', () => {
+  expect(serialItems(meManagingSerial(['edit'], false))).toEqual(['Daftar Serial Number']);
+  // Pengelola sebagian BU: server menghitung penanda false (penerima bersifat global), jadi menu tidak muncul.
+  expect(serialItems(meManagingSerial(['manage'], false))).toEqual(['Daftar Serial Number']);
+  expect(serialItems(meManagingSerial(['manage', 'edit'], false))).toEqual([
+    'Daftar Serial Number',
+  ]);
+  expect(serialItems(meManagingSerial(['manage', 'manage'], true))).toEqual([
+    'Daftar Serial Number',
+    'Pengaturan',
+  ]);
+  expect(serialItems(meManagingSerial(['edit'], true, true))).toContain('Pengaturan');
+  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  const list = items.find((entry) => entry.to === '/serial');
+  if (!list) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(list, at('/serial/settings'))).toBe(false);
 });
 
 test('grup Pengaturan Akses memuat Status Push (access view) dan hanya tampil bagi user ber-izin', () => {

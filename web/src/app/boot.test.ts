@@ -23,7 +23,7 @@ test('sesi sah dari boot; tanpa me, galat login ditampilkan', () => {
   });
 });
 
-test('loadMe memanggil auth.me lewat api() (GET /api/v1/me); 401, galat server, dan jaringan = belum login', async () => {
+test('loadMe memanggil auth.me lewat api() (GET /api/v1/me); 401 dan galat non-jaringan = belum login', async () => {
   const ok = vi.fn(async () => me);
   await expect(loadMe(ok as never)).resolves.toEqual(me);
   expect(ok).toHaveBeenCalledWith('auth.me', null);
@@ -32,9 +32,16 @@ test('loadMe memanggil auth.me lewat api() (GET /api/v1/me); 401, galat server, 
   });
   await expect(loadMe(unauthorized as never)).resolves.toBeNull();
   const broken = vi.fn(async () => {
-    throw new ApiError('INTERNAL', 'Tidak dapat menghubungi server.', '-');
+    throw new ApiError('INTERNAL', 'Terjadi kesalahan pada server', 'r2');
   });
   await expect(loadMe(broken as never)).resolves.toBeNull();
-  const offline = vi.fn(async () => Promise.reject(new TypeError('offline')));
-  await expect(loadMe(offline as never)).resolves.toBeNull();
+  const nonApi = vi.fn(async () => Promise.reject(new TypeError('offline')));
+  await expect(loadMe(nonApi as never)).resolves.toBeNull();
+});
+
+test('loadMe mengembalikan "unavailable" bila server tidak terjangkau (FR-P7), bukan null/halaman login', async () => {
+  const offline = vi.fn(async () => {
+    throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-');
+  });
+  await expect(loadMe(offline as never)).resolves.toBe('unavailable');
 });

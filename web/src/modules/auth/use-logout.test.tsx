@@ -7,8 +7,13 @@ const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import {
+  enqueueCheck,
+  outboxWritesSuspended,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/check-outbox';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
-import { PERSISTED_CACHE_KEY } from './session';
+import { clearSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
 
 let client: QueryClient;
@@ -30,6 +35,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   resumeDraftWrites();
+  resumeOutboxWrites();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -111,4 +117,77 @@ test('draf dibuang dan penulisan ditahan SEBELUM navigasi ke /login (halaman Cat
   await waitFor(() => expect(navigate).toHaveBeenCalled());
   expect(suspendedAtNavigate).toBe(true);
   expect(draftAtNavigate).toBeNull();
+});
+
+test('keluar membuang antrean centang semua pemilik, kunci lain tetap (FR-P14, FR-P19)', async () => {
+  localStorage.setItem('qc.outbox:a@x.com', '{}');
+  localStorage.setItem('qc.outbox:b@x.com', '{}');
+  localStorage.setItem('tema', 'gelap');
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
+  expect(localStorage.getItem('qc.outbox:b@x.com')).toBeNull();
+  expect(localStorage.getItem('tema')).toBe('gelap');
+});
+
+test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', () => {
+  localStorage.setItem('qc.outbox:a@x.com', '{}');
+  clearSession();
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBe('{}');
+});
+
+test('A1: keluar menahan penulisan antrean centang SEBELUM navigasi; penulisan setelahnya tak menghidupkan antrean lagi', async () => {
+  let suspendedAtNavigate: boolean | null = null;
+  navigate.mockImplementationOnce(() => {
+    suspendedAtNavigate = outboxWritesSuspended();
+    return Promise.resolve();
+  });
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  expect(suspendedAtNavigate).toBe(true);
+  // Permintaan centang yang terbang saat keluar lalu gagal UNAVAILABLE mencoba mengantre: ditolak.
+  expect(
+    enqueueCheck('a@x.com', {
+      taskId: 't',
+      locationId: 'l',
+      index: 0,
+      text: 'x',
+      checked: true,
+      at: Date.now(),
+    }),
+  ).toBe(false);
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
+});
+
+test('M6: penulisan antrean sudah ditahan SEBELUM POST /auth/logout selesai (klik gagal UNAVAILABLE saat POST menggantung tak menulis antrean)', async () => {
+  let release: () => void = () => undefined;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(new Response(null, { status: 204 }));
+        }),
+    ),
+  );
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(navigate).not.toHaveBeenCalled(); // POST masih menggantung
+  expect(outboxWritesSuspended()).toBe(true);
+  expect(
+    enqueueCheck('a@x.com', {
+      taskId: 't',
+      locationId: 'l',
+      index: 0,
+      text: 'x',
+      checked: true,
+      at: Date.now(),
+    }),
+  ).toBe(false);
+  expect(Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'))).toEqual([]);
+  release();
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
 });

@@ -1,6 +1,8 @@
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { Select } from '@/components/select';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +24,7 @@ import {
 } from '../lib/draft';
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
+import { RECORD_STATUS_OPTIONS } from '../lib/labels';
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
@@ -57,6 +60,11 @@ interface SaveSummary {
 export interface RecordPageProps {
   /** Dipanggil saat tabel sementara berubah antara kosong dan berisi (untuk konfirmasi keluar halaman). */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Dipanggil setelah Simpan bila SEMUA baris tersimpan (tanpa sisa error, duplikat, atau baris yang tak dikirim, dan
+   * draft kosong): pemanggil membawa pengguna kembali ke daftar. Bila ada yang gagal, halaman tetap terbuka.
+   */
+  onAllSaved?: (created: number) => void;
 }
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
@@ -106,11 +114,19 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 }
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
-export function RecordPage({ onDirtyChange }: RecordPageProps) {
+export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
   const saveBatch = useSaveSerialBatch();
   const ownerKey = me.email;
+  // Pengguna dapat meninggalkan halaman saat simpan berjalan: hasil simpan tidak boleh membajak navigasi.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
   const rowsRef = useRef(rows);
@@ -136,6 +152,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
+  const [status, setStatus] = useState<'good' | 'failed'>('good');
+  const [damage, setDamage] = useState('');
   // Pilihan stiker bawaan: `null` = belum diubah (semua yang berlaku tercentang, baris baru `stickers: null`).
   const [stickerChoice, setStickerChoice] = useState<Map<string, number> | null>(null);
   const applicable = useApplicableStickers(item.itemId, item.buId);
@@ -179,6 +197,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     locationLabel: location.label,
     sample,
     note: note.trim(),
+    status,
+    damage: status === 'failed' ? damage.trim() : '',
     // Bawaan tak diubah: `null` (diselesaikan saat simpan); diubah: salinan pilihan eksplisit (nama + jumlah).
     stickers:
       stickerChoice === null
@@ -265,6 +285,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         buLabel: result.item.buLabel,
         locationId: result.location.id,
         locationLabel: result.location.label,
+        status: result.status,
+        damage: result.damage,
         stickers: result.stickers,
       };
     });
@@ -360,18 +382,21 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         row.itemId === '' ||
         row.buId === '' ||
         row.locationId === '' ||
-        !isIsoDate(row.testDate),
+        !isIsoDate(row.testDate) ||
+        (row.status === 'failed' && row.damage.trim() === ''),
     );
     if (blocked.length > 0) {
       setNotice({
         tone: 'error',
-        text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
+        text: `${blocked.length} baris belum lengkap (item, lokasi, tanggal uji, atau kerusakan); lihat kolom Hasil.`,
       });
       return;
     }
     setSaving(true);
     setNotice(null);
     setSummary(null);
+    let allSaved = false;
+    let savedCount = 0;
     try {
       // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
       const sendIds = new Set(current.map((row) => row.clientId));
@@ -456,8 +481,26 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         }
       }
       setSummary(tally);
+      // Baris `created` (termasuk simpan ulang `clientId` yang sama) sudah keluar dari draft; semuanya sukses bila tak ada
+      // yang gagal, ganda, atau tak terkirim, dan tidak ada baris baru yang masuk selama menyimpan.
+      savedCount = tally.created;
+      allSaved =
+        tally.failed === 0 &&
+        tally.duplicate === 0 &&
+        tally.skipped === 0 &&
+        rowsRef.current.length === 0;
     } finally {
       setSaving(false);
+    }
+    if (!mountedRef.current) {
+      // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
+      saveDraft(ownerKey, rowsRef.current);
+      return;
+    }
+    if (allSaved && onAllSaved) {
+      clearDraft(ownerKey);
+      toast.success('Serial Number berhasil disimpan');
+      onAllSaved(savedCount);
     }
   }
 
@@ -501,6 +544,29 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
               onChange={(event) => setTestDate(event.target.value)}
             />
           </div>
+          <Select
+            id="default-status"
+            label="Status"
+            value={status}
+            options={RECORD_STATUS_OPTIONS}
+            onValueChange={(next) => setStatus(next === 'failed' ? 'failed' : 'good')}
+          />
+          {status === 'failed' ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="default-damage">Kerusakan</Label>
+              <Input
+                id="default-damage"
+                value={damage}
+                maxLength={SERIAL_LIMITS.damageMax}
+                placeholder="Misalnya: port 3 mati, LED tidak menyala"
+                aria-invalid={damage.trim() === '' ? true : undefined}
+                onChange={(event) => setDamage(event.target.value.replace(/[\r\n]+/g, ' '))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Tiap serial yang ditambahkan langsung dicatat Tidak lolos dan membuka kasus.
+              </p>
+            </div>
+          ) : null}
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="default-note">Catatan</Label>
             <Input

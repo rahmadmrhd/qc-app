@@ -32,6 +32,7 @@ beforeEach(() => {
     name: 'A',
     isSuperAdmin: false,
     sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',

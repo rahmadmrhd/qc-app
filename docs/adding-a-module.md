@@ -93,6 +93,12 @@ Yang harus dikerjakan modul sendiri:
 
 **Peringatan:** role yang sudah berisi izin modul itu, bila dipasang pada penugasan BU, langsung berlaku di BU-BU tersebut setelah modul masuk `BU_MODULES`. Tinjau role dan penugasan BU yang ada sebelum menambah modul.
 
+**Pelajaran dari Serial Number 5b (dua modul ber-BU untuk dua tim, alur berstatus):**
+- Bila izin bergantung pada keadaan data, simpan aturannya di SATU tabel murni di `shared/` (`serial-flow.ts`: aksi, status asal, posisi, modul pelaku, efek) dan biarkan server (`resolveAction`), web (`availableActions`), dan tes membacanya; jangan menyebar `if` izin di komponen atau handler. Rute memakai `anyOf` kasar (`serial` ATAU `serialservice`), penegakan per baris tabel ada di service.
+- Bedakan galat: keadaan yang tak cocok = `CONFLICT`, ada barisnya tetapi bukan milik modul pelaku = `FORBIDDEN`, data di luar hak baca = `NOT_FOUND`.
+- Pengaturan GLOBAL yang hidup di modul ber-BU (mis. penerima email `SERIAL_ALERT`) tidak boleh diubah pemegang `manage` satu BU saja: periksa `canActOnAllBus` atas SEMUA BU (atau super admin) dan cerminkan di web hanya sebagai penyembunyi tampilan (`canManageSerialSettings`); server tetap otoritatif.
+- Jenis berkas baru (pemilik `serial`) mengikuti BU entitasnya: periksa visibilitas SEBELUM cabang lain di `readFile`, dan tambahkan modul barunya ke `anyOf` rute `files.upload`/`files.get`.
+
 **Peringatan (5a):** modul ber-BU baru WAJIB masuk `BU_MODULES`. Loop override global di `resolveAccess` (`shared/assignments.ts`) menghitung `global[module]` dari `globalBuLevel` lewat `for (const module of BU_MODULES)`, jadi tidak ada daftar terpisah di `assignments.ts` yang perlu diubah.
 
 ## Sumber daya sinkron

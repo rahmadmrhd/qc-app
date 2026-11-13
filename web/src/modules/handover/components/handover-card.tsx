@@ -14,11 +14,14 @@ import { cn } from '@/lib/utils';
 import { handoverActions } from '../lib/actions';
 import { useNearViewport } from '../lib/near-viewport';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
+import { useOutboxOverlay } from '../lib/use-pending-checks';
 import { CancelDialog } from './cancel-dialog';
 import { NoteView } from './note-view';
 
 export interface HandoverCardProps {
   handover: HandoverDto;
+  /** Pemilik antrean centang di perangkat (email akun); kosong = tanpa penempelan centang tertunda. */
+  owner?: string;
   /** QC: `qc: edit` di lokasi task (centang dan Mark done). */
   canMarkDone: boolean;
   /** WH: `handover: edit` di lokasi task. */
@@ -68,7 +71,8 @@ function LazyNote({ handover, children }: { handover: HandoverDto; children: Rea
  * opsi Ubah (badan kartu tidak bisa diklik, agar tidak salah klik saat mencentang atau memilih teks).
  */
 export function HandoverCard({
-  handover,
+  handover: serverHandover,
+  owner = '',
   canMarkDone,
   canEdit,
   canCancel,
@@ -84,6 +88,8 @@ export function HandoverCard({
   onComment,
 }: HandoverCardProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Centang yang menunggu terkirim tetap tampak tercentang walau refetch tiba lebih dulu dari pengiriman.
+  const { dto: handover, pendingIndexes } = useOutboxOverlay(serverHandover, owner);
   const cancelled = handover.status === 'cancelled';
   const total = handover.checklist.length;
   const checked = handover.checklist.filter((item) => item.checked).length;
@@ -133,6 +139,7 @@ export function HandoverCard({
               canCheck={canMarkDone && !cancelled && !pending}
               canComment={!cancelled}
               compact
+              pendingIndexes={pendingIndexes}
               onCheck={onCheck}
               onComment={onComment}
             />
