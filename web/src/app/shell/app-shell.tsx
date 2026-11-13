@@ -5,6 +5,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { LocationPicker } from '@/modules/location/location-picker';
 import { NotificationBell } from '@/modules/notification/notification-bell';
+import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
@@ -27,6 +28,7 @@ export function AppShell() {
                 <UserMenu />
               </div>
             </header>
+            <PushOnboarding />
             <main className="flex-1 p-4 md:p-6">
               <Outlet />
             </main>

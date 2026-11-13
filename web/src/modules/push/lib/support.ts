@@ -17,6 +17,17 @@ export function devicePermission(win: Window = window): DevicePermission {
   return (win as Window & typeof globalThis).Notification.permission;
 }
 
+/** Langkah menyalakan kembali izin notifikasi yang sudah ditolak (peramban tidak mengizinkan meminta ulang). */
+export function reenableSteps(platform: PushPlatform): string {
+  if (platform === 'ios') {
+    return 'Buka Pengaturan di iPhone, pilih Notifikasi, pilih QC App, lalu nyalakan Izinkan Notifikasi.';
+  }
+  if (platform === 'android') {
+    return 'Tahan ikon aplikasi QC, pilih Info aplikasi, lalu Notifikasi, dan izinkan. Di peramban biasa, ketuk ikon gembok di bilah alamat lalu pilih Izin atau Notifikasi.';
+  }
+  return 'Klik ikon gembok di bilah alamat, pilih Pengaturan situs, ubah Notifikasi menjadi Izinkan, lalu muat ulang halaman.';
+}
+
 /** Platform untuk memilih langkah "nyalakan kembali notifikasi" yang tepat. */
 export function platformOf(
   nav: Pick<Navigator, 'userAgent' | 'platform' | 'maxTouchPoints'> = navigator,
