@@ -130,7 +130,7 @@ test('formulir tidak punya kontrol status atau kerusakan; baris yang disimpan ti
   }
 });
 
-test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos membuang baris itu saja', async () => {
+test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos tetap tampil sebagai baris bermasalah', async () => {
   const [row] = addSerials(
     [],
     'IMP1',
@@ -178,7 +178,8 @@ test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos membuang 
     ]),
   );
   renderPage();
-  expect(dataRows()).toHaveLength(1);
+  expect(dataRows()).toHaveLength(2);
   expect(screen.getByLabelText('Catatan OLD1')).toBeInTheDocument();
-  expect(screen.queryByLabelText('Catatan OLD2')).toBeNull();
+  expect(screen.getByLabelText('Catatan OLD2')).toBeInTheDocument();
+  expect(screen.getAllByText(/dicatat lewat Lapor Rusak/).length).toBeGreaterThan(0);
 });

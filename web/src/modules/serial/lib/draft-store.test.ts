@@ -1,6 +1,13 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { addSerials, type Defaults, type StagingRow } from './draft';
-import { clearAllDrafts, clearDraft, loadDraft, resumeDraftWrites, saveDraft } from './draft-store';
+import {
+  clearAllDrafts,
+  clearDraft,
+  loadDraft,
+  NOT_GOOD_MESSAGE,
+  resumeDraftWrites,
+  saveDraft,
+} from './draft-store';
 
 const defaults: Defaults = {
   itemId: 'i1',
@@ -125,19 +132,25 @@ test('setelah clearAllDrafts penulisan draf ditahan sampai resumeDraftWrites', (
   expect(loadDraft('a@x.com')).toEqual(data);
 });
 
-test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b Tidak lolos) dibuang', () => {
+test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b) menjadi baris bermasalah, tidak dibuang', () => {
   const [first, second] = rows(2) as [StagingRow, StagingRow];
+  const problem = (row: StagingRow): StagingRow => ({
+    ...row,
+    result: 'invalid',
+    message: NOT_GOOD_MESSAGE,
+  });
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
     JSON.stringify([first, { ...second, status: 'failed', damage: 'Port mati' }]),
   );
-  expect(loadDraft('a@x.com')).toEqual([first]);
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
     JSON.stringify([
       { ...first, status: 'good' },
-      { ...second, status: 'broken' },
+      { ...second, status: 'broken', result: 'duplicate', message: 'x' },
     ]),
   );
-  expect(loadDraft('a@x.com')).toEqual([first]);
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
+  expect(NOT_GOOD_MESSAGE).toContain('Lapor Rusak');
 });

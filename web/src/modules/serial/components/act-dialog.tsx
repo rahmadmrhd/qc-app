@@ -114,7 +114,7 @@ function defaultStage(status: SerialDto['status']): Stage {
   return 'diagnosis';
 }
 
-function descriptionOf(kind: ActKind, receivingAtQc: boolean): string {
+function descriptionOf(kind: ActKind, receivingAtQc: boolean, noOpenReport: boolean): string {
   switch (kind) {
     case 'report':
       return 'Buka laporan baru untuk Serial Number ini. Ceritakan masalahnya di catatan.';
@@ -127,7 +127,10 @@ function descriptionOf(kind: ActKind, receivingAtQc: boolean): string {
     case 'diagnosis':
       return 'Perbarui penanganan di servis. Unit yang belum ditandai diterima otomatis tercatat diterima.';
     case 'recheck':
-      return 'Cek ulang unit ini. Kalau lolos, laporan ditutup; kalau tidak, laporan tetap terbuka.';
+      // Serial Lolos tidak punya laporan terbuka: hasil gagal MEMBUKA laporan baru (tabel transisi baris recheck).
+      return noOpenReport
+        ? 'Cek ulang unit ini. Kalau tidak lolos, laporan baru dibuka.'
+        : 'Cek ulang unit ini. Kalau lolos, laporan ditutup; kalau tidak, laporan tetap terbuka.';
     default:
       return 'Tambahkan catatan ke riwayat Serial Number ini.';
   }
@@ -333,7 +336,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{TITLE[kind]}</DialogTitle>
-          <DialogDescription>{descriptionOf(kind, isReceiveAtQc)}</DialogDescription>
+          <DialogDescription>{descriptionOf(kind, isReceiveAtQc, hasRecheckRow)}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">

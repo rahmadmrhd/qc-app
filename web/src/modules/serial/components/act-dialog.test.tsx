@@ -421,6 +421,20 @@ test('Cek ulang tidak lolos pada Lolos: catatan wajib (membuka laporan)', async 
   expect(lastAct()).toMatchObject({ action: 'recheck', result: 'fail', message: 'Gagal lagi' });
 });
 
+test('Cek ulang: deskripsi serial Lolos = laporan baru dibuka; serial ber-laporan = ditutup atau tetap terbuka', () => {
+  const first = renderDialog(SERIAL, 'recheck');
+  expect(
+    screen.getByText('Cek ulang unit ini. Kalau tidak lolos, laporan baru dibuka.'),
+  ).toBeInTheDocument();
+  first.unmount();
+  renderDialog(REPORTED, 'recheck');
+  expect(
+    screen.getByText(
+      'Cek ulang unit ini. Kalau lolos, laporan ditutup; kalau tidak, laporan tetap terbuka.',
+    ),
+  ).toBeInTheDocument();
+});
+
 test('Cek ulang pada Dilaporkan: hasil memilih recheck_pass atau recheck_fail', async () => {
   const first = renderDialog(REPORTED, 'recheck');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
