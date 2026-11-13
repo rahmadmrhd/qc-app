@@ -10,7 +10,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { applySavedHandover, handoverKeys } from '../queries';
-import { findHandoverInBoards, patchHandoverInBoards } from './board-cache';
+import { findCachedHandover, patchHandoverInBoards } from './board-cache';
 import { enqueueCheck, hasEntriesForTask } from './check-outbox';
 import { applyOptimisticCheck } from './optimistic-check';
 import { beginSending } from './outbox-status';
@@ -55,15 +55,6 @@ function patchCaches(
   queryClient.setQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] }, (one) =>
     one ? patch(one) : one,
   );
-}
-
-function cachedHandover(
-  queryClient: ReturnType<typeof useQueryClient>,
-  id: string,
-): HandoverDto | undefined {
-  const onBoard = findHandoverInBoards(queryClient, id);
-  if (onBoard) return onBoard;
-  return queryClient.getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] })[0]?.[1];
 }
 
 /**
@@ -111,7 +102,7 @@ export function useCheckQueue(by: string) {
         try {
           // Teks dari DTO terbaru (catatan bisa berubah oleh respons/refetch sebelumnya).
           const text =
-            cachedHandover(queryClient, task.id)?.checklist.find(
+            findCachedHandover(queryClient, task.id)?.checklist.find(
               (entry) => entry.index === item.index,
             )?.text ?? item.text;
           const queueIt = () =>

@@ -66,6 +66,13 @@ export function findHandoverInBoards(
   return undefined;
 }
 
+/** Task `id` dari cache: papan lebih dulu, lalu cache detail (`['handovers', 'one', id]`). */
+export function findCachedHandover(queryClient: QueryClient, id: string): HandoverDto | undefined {
+  const onBoard = findHandoverInBoards(queryClient, id);
+  if (onBoard) return onBoard;
+  return queryClient.getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] })[0]?.[1];
+}
+
 /**
  * Memasang hasil server ke papan tanpa memuat ulang: task dibuang dari kolom lama (total berkurang), dipasang di
  * kolom statusnya (halaman pertama, urut papan; total bertambah), atau diganti di tempat bila kolomnya tidak
