@@ -25,6 +25,7 @@ import {
   devicePermission,
   type PushPlatform,
   platformOf,
+  pushAvailable,
   reenableSteps,
 } from '../lib/support';
 import { syncThisDevice } from '../lib/sync';
@@ -135,7 +136,7 @@ export function PushOnboarding() {
     };
   }, []);
 
-  const active = config?.enabled === true && permission !== 'unsupported';
+  const active = pushAvailable(config, permission);
   const userEnabled = config?.userEnabled === true;
 
   // Sinyal untuk komponen lain (lihat `useBlockingOnboardingActive`): dialog/banner benar-benar terbuka (state),
@@ -160,7 +161,9 @@ export function PushOnboarding() {
   // izin) dan tanpa `default`: tab peramban lain atau perangkat lain milik pengguna yang sama tidak boleh menimpa
   // satu nilai per pengguna di server (mis. `denied` dari ponsel tertimpa `default` dari tab desktop).
   useEffect(() => {
-    if (!active || permission === 'default' || !isStandalone(window)) return;
+    // `unsupported` sudah tersingkir oleh `active` (`pushAvailable`); diulang agar tipenya menyempit.
+    if (!active || permission === 'default' || permission === 'unsupported') return;
+    if (!isStandalone(window)) return;
     const marker = `${email}:${permission}`;
     if (reported.current === marker) return;
     reported.current = marker;

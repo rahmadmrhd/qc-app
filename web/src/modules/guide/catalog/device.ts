@@ -1,6 +1,7 @@
+import type { PushConfigDto } from '@shared/contract';
 import { getInstallState } from '@/app/pwa/install';
 import { getPushRegistration } from '@/modules/push/lib/subscribe';
-import { devicePermission } from '@/modules/push/lib/support';
+import { devicePermission, pushAvailable } from '@/modules/push/lib/support';
 import type { GuideEntry } from '../lib/types';
 
 /**
@@ -65,13 +66,35 @@ export async function readPushSubscribed(win: Window = window): Promise<boolean>
  *   (`PushOnboarding` berlangganan diam-diam bila izin sudah ada), supaya tidak menawarkan keliru.
  */
 export function deriveDeviceGuides(
-  options: { pushSubscribed?: boolean } = {},
+  options: { pushSubscribed?: boolean; pushConfig?: PushConfigInput } = {},
 ): Map<string, boolean> {
-  const installable = getInstallState() !== 'unavailable';
+  const relevant = deviceGuideRelevance({ pushConfig: options.pushConfig });
   const granted = devicePermission() === 'granted';
   const pushNeeded = !granted || options.pushSubscribed === false;
   return new Map([
-    [PERANGKAT_PWA.id, installable],
-    [PERANGKAT_PUSH.id, pushNeeded],
+    [PERANGKAT_PWA.id, relevant.get(PERANGKAT_PWA.id) === true],
+    [PERANGKAT_PUSH.id, relevant.get(PERANGKAT_PUSH.id) === true && pushNeeded],
+  ]);
+}
+
+type PushConfigInput = Pick<PushConfigDto, 'enabled' | 'userEnabled'>;
+
+/**
+ * Peta id panduan `diturunkan` -> relevan bagi perangkat ini (terlepas sudah beres atau belum). Satu-satunya
+ * sumber untuk kartu, banner, dan menu Panduan (M12, keputusan pemilik 2026-11-14): panduan yang tak relevan
+ * tidak ditawarkan dan tidak muncul di menu.
+ * - `perangkat-pwa`: perangkat dapat memasang aplikasi (`getInstallState` bukan `unavailable`).
+ * - `perangkat-push` (I3): push tersedia (`pushAvailable`: konfigurasi termuat dan `enabled`, peramban
+ *   mendukung) DAN pengguna tidak mematikannya (`userEnabled !== false`). Konfigurasi belum termuat = tak relevan.
+ */
+export function deviceGuideRelevance(
+  options: { pushConfig?: PushConfigInput } = {},
+): Map<string, boolean> {
+  const { pushConfig } = options;
+  const pushRelevant =
+    pushAvailable(pushConfig, devicePermission()) && pushConfig?.userEnabled !== false;
+  return new Map([
+    [PERANGKAT_PWA.id, getInstallState() !== 'unavailable'],
+    [PERANGKAT_PUSH.id, pushRelevant],
   ]);
 }

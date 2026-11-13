@@ -2,7 +2,7 @@ import type { MeDto } from '@shared/contract';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetInstallForTests, startInstallCapture } from '@/app/pwa/install';
 import { offeredGuides } from '../lib/offer';
-import { deriveDeviceGuides, readPushSubscribed } from './device';
+import { deriveDeviceGuides, deviceGuideRelevance, readPushSubscribed } from './device';
 import { GUIDE_CATALOG } from './index';
 import { DASAR_LAYOUT } from './layout';
 
@@ -75,30 +75,93 @@ describe('deriveDeviceGuides: perangkat-pwa', () => {
   });
 });
 
+const ON = { enabled: true, publicKey: 'K', userEnabled: true } as const;
+
 describe('deriveDeviceGuides: perangkat-push', () => {
   test('false saat izin granted dan langganan ada', () => {
     stubPush('granted');
-    expect(deriveDeviceGuides({ pushSubscribed: true }).get('perangkat-push')).toBe(false);
+    expect(deriveDeviceGuides({ pushSubscribed: true, pushConfig: ON }).get('perangkat-push')).toBe(
+      false,
+    );
   });
 
   test('true saat izin granted tetapi belum berlangganan', () => {
     stubPush('granted');
-    expect(deriveDeviceGuides({ pushSubscribed: false }).get('perangkat-push')).toBe(true);
+    expect(
+      deriveDeviceGuides({ pushSubscribed: false, pushConfig: ON }).get('perangkat-push'),
+    ).toBe(true);
   });
 
   test('langganan belum diketahui: granted dianggap beres (diam, bukan menawarkan keliru)', () => {
     stubPush('granted');
-    expect(deriveDeviceGuides().get('perangkat-push')).toBe(false);
+    expect(deriveDeviceGuides({ pushConfig: ON }).get('perangkat-push')).toBe(false);
   });
 
   test.each(['default', 'denied'] as const)('true saat izin %s', (permission) => {
     stubPush(permission);
-    expect(deriveDeviceGuides({ pushSubscribed: true }).get('perangkat-push')).toBe(true);
+    expect(deriveDeviceGuides({ pushSubscribed: true, pushConfig: ON }).get('perangkat-push')).toBe(
+      true,
+    );
   });
 
-  test('true saat peramban tidak mendukung push (izin bukan granted)', () => {
+  // I3 (keputusan pemilik 2026-11-14): hanya bila push benar-benar bisa dipakai di perangkat ini.
+  test('I3: peramban tidak mendukung push = tidak ditawarkan', () => {
     stubPush('absent');
-    expect(deriveDeviceGuides().get('perangkat-push')).toBe(true);
+    expect(deriveDeviceGuides({ pushConfig: ON }).get('perangkat-push')).toBe(false);
+  });
+
+  test('I3: konfigurasi belum termuat = tidak ditawarkan (aman)', () => {
+    stubPush('default');
+    expect(deriveDeviceGuides({}).get('perangkat-push')).toBe(false);
+  });
+
+  test('I3: server tanpa VAPID (enabled false) = tidak ditawarkan', () => {
+    stubPush('default');
+    expect(
+      deriveDeviceGuides({ pushConfig: { ...ON, enabled: false } }).get('perangkat-push'),
+    ).toBe(false);
+  });
+
+  test('I3: pengguna mematikan push (userEnabled false) = tidak ditawarkan', () => {
+    stubPush('default');
+    expect(
+      deriveDeviceGuides({ pushConfig: { ...ON, userEnabled: false } }).get('perangkat-push'),
+    ).toBe(false);
+  });
+});
+
+describe('deviceGuideRelevance (menu Panduan, M12)', () => {
+  test('push relevan bila tersedia (izin apa pun, termasuk granted dan sudah berlangganan)', () => {
+    stubPush('granted');
+    expect(deviceGuideRelevance({ pushConfig: ON }).get('perangkat-push')).toBe(true);
+  });
+
+  test('push tidak relevan: tak didukung, config belum termuat/mati, atau pengguna mematikan', () => {
+    stubPush('absent');
+    expect(deviceGuideRelevance({ pushConfig: ON }).get('perangkat-push')).toBe(false);
+    stubPush('default');
+    expect(deviceGuideRelevance({}).get('perangkat-push')).toBe(false);
+    expect(
+      deviceGuideRelevance({ pushConfig: { ...ON, enabled: false } }).get('perangkat-push'),
+    ).toBe(false);
+    expect(
+      deviceGuideRelevance({ pushConfig: { ...ON, userEnabled: false } }).get('perangkat-push'),
+    ).toBe(false);
+  });
+
+  test('PWA relevan hanya bila perangkat dapat memasang (sama dengan butir Pasang aplikasi)', () => {
+    expect(deviceGuideRelevance({}).get('perangkat-pwa')).toBe(false);
+    firePrompt();
+    expect(deviceGuideRelevance({}).get('perangkat-pwa')).toBe(true);
+    standalone = true;
+    expect(deviceGuideRelevance({}).get('perangkat-pwa')).toBe(false);
+  });
+
+  test('yang ditawarkan selalu bagian dari yang relevan', () => {
+    stubPush('default');
+    const relevant = deviceGuideRelevance({ pushConfig: { ...ON, userEnabled: false } });
+    const derived = deriveDeviceGuides({ pushConfig: { ...ON, userEnabled: false } });
+    for (const [id, offered] of derived) if (offered) expect(relevant.get(id)).toBe(true);
   });
 });
 

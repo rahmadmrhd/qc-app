@@ -11,6 +11,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { GUIDE_CATALOG } from '../catalog';
 import { eligibleGuides, type GuideOffer } from '../lib/offer';
+import { useDeviceGuides } from '../lib/use-device-guides';
 import { useGuideStore } from '../lib/use-guide-store';
 import { useTour } from './tour/tour-provider';
 
@@ -23,7 +24,13 @@ export function GuideMenuDialog({ onClose }: { onClose: () => void }) {
   const { selectedIds } = useActiveLocations();
   const { done, reset } = useGuideStore();
   const tour = useTour();
-  const guides = eligibleGuides({ me, catalog: GUIDE_CATALOG, activeLocationIds: selectedIds });
+  const { relevant } = useDeviceGuides();
+  const guides = eligibleGuides({
+    me,
+    catalog: GUIDE_CATALOG,
+    relevant,
+    activeLocationIds: selectedIds,
+  });
 
   const run = async (offer: GuideOffer, finished: boolean) => {
     if (finished) {

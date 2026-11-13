@@ -70,16 +70,20 @@ function dasarOf(baru: GuideEntry, catalog: readonly GuideEntry[]): GuideEntry[]
 /**
  * Semua panduan yang berhak bagi pengguna (untuk dialog Panduan di menu profil): tanpa memeriksa selesai/belum,
  * prasyarat `baru`, atau `derived`; hanya yang punya langkah berlaku (N >= 1). `tip` dan `sapaan` tidak ikut.
+ * Panduan `diturunkan` hanya yang relevan bagi perangkat ini (`relevant`, M12: `deviceGuideRelevance`); yang tak
+ * tercantum dianggap tidak relevan.
  */
 export function eligibleGuides(input: {
   me: MeDto;
   catalog: readonly GuideEntry[];
+  relevant: ReadonlyMap<string, boolean>;
   activeLocationIds?: readonly string[];
 }): GuideOffer[] {
-  const { me, catalog, activeLocationIds } = input;
+  const { me, catalog, relevant, activeLocationIds } = input;
   const result: GuideOffer[] = [];
   for (const entry of catalog) {
     if (entry.kind === 'tip' || entry.kind === 'sapaan') continue;
+    if (entry.status === 'diturunkan' && relevant.get(entry.id) !== true) continue;
     if (!hasAccess(me, entry.izin, activeLocationIds)) continue;
     const stepCount = stepsFor(entry, me, activeLocationIds).length;
     if (stepCount > 0) result.push({ entry, stepCount, updated: false });

@@ -17,6 +17,18 @@ export function devicePermission(win: Window = window): DevicePermission {
   return (win as Window & typeof globalThis).Notification.permission;
 }
 
+/**
+ * Push dapat dipakai di perangkat ini: konfigurasi server sudah termuat dan `enabled` (VAPID terisi) DAN peramban
+ * mendukungnya. Satu definisi untuk `PushOnboarding` (`active`) dan panduan perangkat (I3, keputusan pemilik
+ * 2026-11-14); konfigurasi yang belum termuat berarti tidak tersedia.
+ */
+export function pushAvailable(
+  config: { enabled: boolean } | undefined,
+  permission: DevicePermission,
+): boolean {
+  return config?.enabled === true && permission !== 'unsupported';
+}
+
 /** Langkah menyalakan kembali izin notifikasi yang sudah ditolak (peramban tidak mengizinkan meminta ulang). */
 export function reenableSteps(platform: PushPlatform): string {
   if (platform === 'ios') {
