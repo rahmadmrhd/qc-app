@@ -1,7 +1,13 @@
 import { Pause, Play } from 'lucide-react';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { DemoCue, DemoScene } from '../lib/demo-types';
+import { type DemoCue, type DemoScene, klipUrl } from '../lib/demo-types';
+
+/**
+ * Batas tunggu klip pada pemutar banyak adegan bila video tak pernah mengirim `ended` atau `error` (mis. hemat
+ * daya menahan pemutaran): adegan lanjut sendiri alih-alih menggantung. Klip sekitar 8 detik (spek 4.6).
+ */
+export const CLIP_BACKUP_MS = 15_000;
 
 /** Lama kartu langkah teks (klip yang belum ada/gagal dimuat) sebelum pemutar berganti adegan. */
 export const TEXT_SCENE_MS = 4000;
@@ -93,12 +99,17 @@ function ClipScene({
 }: {
   scene: Extract<DemoScene, { kind: 'klip' }>;
   paused: boolean;
+  /** Satu adegan saja: video berulang tanpa batas; selain itu klip menyerahkan giliran lewat `ended`/timer cadangan. */
   loop: boolean;
   onCaption: (text: string) => void;
   onEnded: () => void;
   onError: () => void;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const onEndedRef = useRef(onEnded);
+  const onErrorRef = useRef(onError);
+  onEndedRef.current = onEnded;
+  onErrorRef.current = onError;
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
@@ -106,13 +117,25 @@ function ClipScene({
       video.pause();
       return;
     }
-    // Pemutaran otomatis dapat ditolak peramban; klip tetap tampil dan keterangan dasar tetap terbaca.
-    video.play()?.catch(() => undefined);
+    // Pemutaran otomatis dapat ditolak peramban (hemat daya, kebijakan autoplay): klip tak akan pernah tampil,
+    // jadi adegannya jatuh ke kartu langkah teks. `AbortError` (play() disela pause()) bukan penolakan.
+    video.play()?.catch((error: unknown) => {
+      if ((error as { name?: string } | null)?.name === 'AbortError') return;
+      onErrorRef.current();
+    });
   }, [paused]);
+
+  // Cadangan bila `ended`/`error` tak pernah datang pada pemutar banyak adegan.
+  useEffect(() => {
+    if (paused || loop) return;
+    const timer = setTimeout(() => onEndedRef.current(), CLIP_BACKUP_MS);
+    return () => clearTimeout(timer);
+  }, [paused, loop]);
+
   return (
     <video
       ref={ref}
-      src={scene.berkas}
+      src={scene.berkas ? klipUrl(scene.berkas) : undefined}
       className="aspect-video w-full rounded-md bg-muted object-contain"
       muted
       loop={loop}

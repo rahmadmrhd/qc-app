@@ -2,7 +2,8 @@ import { GUIDE_VERSIONS } from '@shared/guides';
 import { Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { type DemoScene, getDemoScenes } from '../lib/demo-types';
+import type { DemoScene } from '../lib/demo-types';
+import { useDemoScenes } from '../lib/use-demo-scenes';
 import { useGuideStore } from '../lib/use-guide-store';
 import { DemoPlayer } from './demo-player';
 
@@ -20,7 +21,7 @@ function hasFinePointer(): boolean {
  * membuka dan keluar menutup; layar sentuh: ketuk. Ketuk atau Enter pada tooltip yang terbuka lewat hover/fokus
  * mengunci terbuka (tutup dengan Esc atau ketuk di luar). Titik penanda ada sampai tooltip pernah dibuka sekali;
  * pembukaan menulis penanda entri `tip` ke `GuideStore`, dan ikonnya tidak pernah hilang.
- * Adegan dari prop `scenes`, atau dari daftar yang didaftarkan lewat `registerDemoScenes(tipId, ...)`.
+ * Adegan dari prop `scenes`, atau dari registri (`registerDemoScenes`/`registerDemoLoader`; dimuat malas saat dibuka).
  */
 export function TipButton({
   tipId,
@@ -39,8 +40,10 @@ export function TipButton({
   const markWritten = useRef(false);
   const suppressFocusOpen = useRef(false);
 
-  const seen = done.has(tipId);
-  const resolved = scenes ?? getDemoScenes(tipId);
+  // Versi katalog: menaikkannya memunculkan titik lagi (aturan 4.2: versi tersimpan < versi katalog = baru).
+  const version = (GUIDE_VERSIONS as Record<string, number>)[tipId] ?? 1;
+  const seen = (done.get(tipId) ?? 0) >= version;
+  const resolved = useDemoScenes(tipId, { scenes, enabled: open });
 
   useEffect(() => () => clearTimeout(closeTimer.current), []);
 
@@ -49,9 +52,8 @@ export function TipButton({
   useEffect(() => {
     if (!open || !ready || seen || markWritten.current) return;
     markWritten.current = true;
-    const version = (GUIDE_VERSIONS as Record<string, number>)[tipId] ?? 1;
     mark(tipId, version).catch(() => undefined);
-  }, [open, ready, seen, mark, tipId]);
+  }, [open, ready, seen, mark, tipId, version]);
 
   function openWith(next: OpenSource) {
     clearTimeout(closeTimer.current);
@@ -141,7 +143,7 @@ export function TipButton({
         {resolved && resolved.length > 0 ? (
           <DemoPlayer scenes={resolved} />
         ) : (
-          <p className="text-muted-foreground">Demonya belum tersedia.</p>
+          <p className="text-muted-foreground">Demonya sedang disiapkan.</p>
         )}
       </PopoverContent>
     </Popover>

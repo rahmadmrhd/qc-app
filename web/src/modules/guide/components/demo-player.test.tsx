@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DemoScene } from '../lib/demo-types';
-import { DemoPlayer, TEXT_SCENE_MS } from './demo-player';
+import { CLIP_BACKUP_MS, DemoPlayer, TEXT_SCENE_MS } from './demo-player';
 
 const scenes: DemoScene[] = [
   { kind: 'kode', caption: 'Salin semua pesan', durationMs: 1000, render: () => <p>adegan-1</p> },
@@ -134,7 +134,7 @@ describe('fallback per adegan', () => {
 
   test('klip dengan galat muat menjadi langkah teks untuk adegan itu saja', () => {
     const scenesWithClip: DemoScene[] = [
-      { kind: 'klip', caption: 'Menu pasang', berkas: '/klip/x-1.webm' },
+      { kind: 'klip', caption: 'Menu pasang', berkas: 'x-1.webm' },
       { kind: 'kode', caption: 'Lalu begini', durationMs: 1000, render: () => <p>adegan-k</p> },
     ];
     const { container } = render(<DemoPlayer scenes={scenesWithClip} />);
@@ -169,7 +169,7 @@ describe('adegan klip', () => {
     {
       kind: 'klip',
       caption: 'Tekan lama satu pesan',
-      berkas: '/klip/tip-1.webm',
+      berkas: 'tip-1.webm',
       cues: [
         { at: 0, text: 'Tekan lama satu pesan' },
         { at: 3, text: 'Ketuk pesan lainnya' },
@@ -184,6 +184,7 @@ describe('adegan klip', () => {
     expect(video).toHaveAttribute('preload', 'none');
     expect(video.muted).toBe(true);
     expect(video.loop).toBe(true);
+    // `berkas` = nama polos; URL dibangun pemutar di bawah /klip/.
     expect(video).toHaveAttribute('src', '/klip/tip-1.webm');
     expect(screen.getByText('Tekan lama satu pesan')).toBeInTheDocument();
 
@@ -210,5 +211,53 @@ describe('adegan klip', () => {
     expect(video.loop).toBe(false);
     fireEvent.ended(video);
     expect(screen.getByText('adegan-1')).toBeInTheDocument();
+  });
+  test('timer cadangan: klip yang tak pernah mengirim ended/error tidak menggantung adegan', () => {
+    const mixed: DemoScene[] = [...klip, ...scenes.slice(0, 1)];
+    render(<DemoPlayer scenes={mixed} />);
+    act(() => vi.advanceTimersByTime(CLIP_BACKUP_MS - 1));
+    expect(screen.queryByText('adegan-1')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText('adegan-1')).toBeInTheDocument();
+  });
+
+  test('timer cadangan berhenti saat dijeda', () => {
+    const mixed: DemoScene[] = [...klip, ...scenes.slice(0, 1)];
+    render(<DemoPlayer scenes={mixed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Jeda' }));
+    act(() => vi.advanceTimersByTime(CLIP_BACKUP_MS * 2));
+    expect(screen.queryByText('adegan-1')).not.toBeInTheDocument();
+  });
+
+  test('klip satu adegan berulang tanpa timer cadangan', () => {
+    const { container } = render(<DemoPlayer scenes={klip} />);
+    act(() => vi.advanceTimersByTime(CLIP_BACKUP_MS * 2));
+    expect(container.querySelector('video')).not.toBeNull();
+  });
+
+  test('pemutaran otomatis ditolak: adegan jatuh ke kartu langkah teks lalu berganti', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() =>
+      Promise.reject(new DOMException('ditolak', 'NotAllowedError')),
+    );
+    const mixed: DemoScene[] = [...klip, ...scenes.slice(0, 1)];
+    const { container } = render(<DemoPlayer scenes={mixed} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector('video')).toBeNull();
+    expect(screen.getByText('Tekan lama satu pesan')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(TEXT_SCENE_MS));
+    expect(screen.getByText('adegan-1')).toBeInTheDocument();
+  });
+
+  test('AbortError (play disela pause) bukan penolakan', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() =>
+      Promise.reject(new DOMException('disela', 'AbortError')),
+    );
+    const { container } = render(<DemoPlayer scenes={klip} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector('video')).not.toBeNull();
   });
 });
