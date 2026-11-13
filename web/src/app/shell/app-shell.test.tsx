@@ -74,10 +74,11 @@ vi.mock('@/modules/guide/components/guide-greeting', () => ({
   GuideGreeting: stubs.make('greeting'),
 }));
 
-import { registerDemoScenes } from '@/modules/guide/lib/demo-types';
+import { registerDemoLoader } from '@/modules/guide/lib/demo-types';
 import { AppShell } from './app-shell';
 
-registerDemoScenes('tip-shell-uji', [
+// Dimuat malas (belum pernah dimuat saat tur dimulai), seperti demo Serah Terima yang sebenarnya.
+registerDemoLoader('tip-shell-uji', async () => [
   { kind: 'kode', caption: 'Keterangan demo cangkang', durationMs: 5000, render: () => <p>isi</p> },
 ]);
 
