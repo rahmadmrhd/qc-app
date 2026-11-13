@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { makeHandover } from '../components/test-handover';
 import { enqueueCheck, OUTBOX_MAX_AGE_MS, type OutboxEntry, readOutbox } from './check-outbox';
 import { type FlushDeps, flushOutbox } from './check-outbox-flush';
+import { isItemSending, resetSendingForTests } from './outbox-status';
 
 vi.mock('@/lib/api', () => ({ api: vi.fn() }));
 
@@ -35,7 +36,10 @@ function deps(over: Partial<FlushDeps> = {}): FlushDeps {
 const err = (code: ConstructorParameters<typeof ApiError>[0], message = 'x') =>
   new ApiError(code, message, '-');
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  resetSendingForTests();
+});
 
 test('mengirim berurutan sesuai antrean dan mengosongkannya', async () => {
   queue(0);
@@ -202,4 +206,52 @@ test('M3: onSent yang melempar tidak menghalangi penghapusan entri dan pengurasa
   expect(result.sent).toHaveLength(2);
   expect(result.stoppedBy).toBe('none');
   expect(readOutbox(OWNER)).toEqual([]);
+});
+
+test('butir ditandai mengirim selama send berjalan dan dibersihkan sesudah entri terhapus', async () => {
+  queue(0);
+  let finish: (dto: HandoverDto) => void = () => {};
+  const pending = new Promise<HandoverDto>((resolve) => {
+    finish = resolve;
+  });
+  const flushing = flushOutbox(deps({ send: () => pending }));
+  expect(isItemSending('t1', 0)).toBe(true);
+  finish(makeHandover({ id: 't1' }));
+  await flushing;
+  expect(isItemSending('t1', 0)).toBe(false);
+  expect(readOutbox(OWNER)).toEqual([]);
+});
+
+test('status dibersihkan pada penolakan, UNAVAILABLE, dan galat tak dikenal', async () => {
+  for (const failure of [err('CONFLICT'), err('UNAVAILABLE'), new Error('x')]) {
+    localStorage.clear();
+    queue(0);
+    let seenSending = false;
+    await flushOutbox(
+      deps({
+        send: async () => {
+          seenSending = isItemSending('t1', 0);
+          throw failure;
+        },
+      }),
+    );
+    expect(seenSending).toBe(true);
+    expect(isItemSending('t1', 0)).toBe(false);
+  }
+});
+
+test('pemilik berganti di tengah kirim tetap membersihkan status', async () => {
+  queue(0);
+  let active = true;
+  const result = await flushOutbox(
+    deps({
+      isOwnerActive: () => active,
+      send: async (entry) => {
+        active = false;
+        return makeHandover({ id: entry.taskId });
+      },
+    }),
+  );
+  expect(result.stoppedBy).toBe('owner-changed');
+  expect(isItemSending('t1', 0)).toBe(false);
 });

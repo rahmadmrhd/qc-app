@@ -13,6 +13,7 @@ import { applySavedHandover, handoverKeys } from '../queries';
 import { findHandoverInBoards, patchHandoverInBoards } from './board-cache';
 import { enqueueCheck, hasEntriesForTask } from './check-outbox';
 import { applyOptimisticCheck } from './optimistic-check';
+import { beginSending } from './outbox-status';
 
 interface TaskQueue {
   /** Rantai serial: satu permintaan terbang per task. */
@@ -133,24 +134,32 @@ export function useCheckQueue(by: string) {
             }
             throw new ApiError('INTERNAL', 'Centang tidak dapat disimpan di perangkat', '-');
           }
+          // Penanda "Mengirim…" hanya selama permintaan berjalan. `end()` di `finally` luar: pada jalur UNAVAILABLE
+          // entri sudah ditulis `queueIt()` (di `catch` dalam) SEBELUM penanda dibersihkan, jadi tampilan langsung
+          // berganti ke "Belum terkirim" tanpa kedipan.
+          const end = beginSending(task.id, item.index);
           try {
-            q.latest = await api('handovers.setCheck', {
-              id: task.id,
-              locationId: task.locationId,
-              index: item.index,
-              text,
-              checked,
-            });
-            // Server terbukti sehat: antrean lain (task berbeda) yang tertunda boleh dikuras (no-op bila kosong).
-            requestOutboxFlush();
-          } catch (error) {
-            // Server tidak terjangkau: simpan di perangkat dan pertahankan tampilan. Antrean penuh/penyimpanan
-            // diblokir = perilaku lama (balik + galat biasa).
-            if (error instanceof ApiError && error.code === 'UNAVAILABLE' && queueIt()) {
-              notifyQueued(true);
-              return;
+            try {
+              q.latest = await api('handovers.setCheck', {
+                id: task.id,
+                locationId: task.locationId,
+                index: item.index,
+                text,
+                checked,
+              });
+              // Server terbukti sehat: antrean lain (task berbeda) yang tertunda boleh dikuras (no-op bila kosong).
+              requestOutboxFlush();
+            } catch (error) {
+              // Server tidak terjangkau: simpan di perangkat dan pertahankan tampilan. Antrean penuh/penyimpanan
+              // diblokir = perilaku lama (balik + galat biasa).
+              if (error instanceof ApiError && error.code === 'UNAVAILABLE' && queueIt()) {
+                notifyQueued(true);
+                return;
+              }
+              throw error;
             }
-            throw error;
+          } finally {
+            end();
           }
         } catch (error) {
           q.failed = true;
