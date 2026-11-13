@@ -261,7 +261,32 @@ describe('eligibleGuides', () => {
       entry({ id: 'sapaan-awal', kind: 'sapaan', izin: undefined }),
       entry({ id: 'pwa', status: 'diturunkan', izin: undefined }),
     ];
-    expect(eligibleGuides({ me: viewer, catalog }).map((o) => o.entry.id)).toEqual(['a', 'pwa']);
+    const relevant = new Map([['pwa', true]]);
+    expect(eligibleGuides({ me: viewer, catalog, relevant }).map((o) => o.entry.id)).toEqual([
+      'a',
+      'pwa',
+    ]);
+  });
+
+  test('M12: panduan diturunkan yang tak relevan bagi perangkat (atau tak tercantum) disembunyikan', () => {
+    const catalog = [
+      entry({ id: 'a' }),
+      entry({ id: 'pwa', status: 'diturunkan', izin: undefined }),
+      entry({ id: 'push', status: 'diturunkan', izin: undefined }),
+    ];
+    const ids = (relevant: Map<string, boolean>) =>
+      eligibleGuides({ me: viewer, catalog, relevant }).map((o) => o.entry.id);
+    expect(ids(new Map([['pwa', false]]))).toEqual(['a']);
+    expect(
+      ids(
+        new Map([
+          ['pwa', false],
+          ['push', true],
+        ]),
+      ),
+    ).toEqual(['a', 'push']);
+    // relevan tak mengubah panduan disimpan.
+    expect(ids(new Map())).toEqual(['a']);
   });
 
   test('tanpa izin atau tanpa langkah yang berlaku: tidak ikut', () => {
@@ -269,7 +294,7 @@ describe('eligibleGuides', () => {
       entry({ id: 'x', izin: { module: 'access', level: 'manage' } }),
       entry({ id: 'y', steps: [step({ izin: { module: 'access', level: 'manage' } })] }),
     ];
-    expect(eligibleGuides({ me: viewer, catalog })).toEqual([]);
+    expect(eligibleGuides({ me: viewer, catalog, relevant: new Map() })).toEqual([]);
   });
 
   test('panduan baru ikut walau dasarnya belum selesai', () => {
@@ -277,16 +302,15 @@ describe('eligibleGuides', () => {
       entry({ id: 'dasar-x', covers: ['baru-x'] }),
       entry({ id: 'baru-x', kind: 'baru' }),
     ];
-    expect(eligibleGuides({ me: viewer, catalog }).map((o) => o.entry.id)).toEqual([
-      'dasar-x',
-      'baru-x',
-    ]);
+    expect(
+      eligibleGuides({ me: viewer, catalog, relevant: new Map() }).map((o) => o.entry.id),
+    ).toEqual(['dasar-x', 'baru-x']);
   });
 
   test('membawa stepCount per pengguna', () => {
     const catalog = [
       entry({ steps: [step(), step({ izin: { module: 'access', level: 'manage' } })] }),
     ];
-    expect(eligibleGuides({ me: viewer, catalog })[0]?.stepCount).toBe(1);
+    expect(eligibleGuides({ me: viewer, catalog, relevant: new Map() })[0]?.stepCount).toBe(1);
   });
 });

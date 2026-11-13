@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { devicePermission, platformOf, pushSupported } from './support';
+import { devicePermission, platformOf, pushAvailable, pushSupported } from './support';
 
 function win(parts: { sw?: boolean; push?: boolean; notification?: string | null }): Window {
   const w: Record<string, unknown> = { navigator: parts.sw === false ? {} : { serviceWorker: {} } };
@@ -21,6 +21,20 @@ describe('pushSupported / devicePermission', () => {
     expect(devicePermission(win({ notification: 'denied' }))).toBe('denied');
     expect(devicePermission(win({ notification: 'default' }))).toBe('default');
     expect(devicePermission(win({ sw: false }))).toBe('unsupported');
+  });
+});
+
+describe('pushAvailable', () => {
+  test('hanya bila konfigurasi termuat dan enabled, dan perangkat mendukung push', () => {
+    expect(pushAvailable({ enabled: true }, 'default')).toBe(true);
+    expect(pushAvailable({ enabled: true }, 'granted')).toBe(true);
+    expect(pushAvailable({ enabled: true }, 'denied')).toBe(true);
+  });
+
+  test('false bila konfigurasi belum termuat, dimatikan server, atau perangkat tak mendukung', () => {
+    expect(pushAvailable(undefined, 'default')).toBe(false);
+    expect(pushAvailable({ enabled: false }, 'default')).toBe(false);
+    expect(pushAvailable({ enabled: true }, 'unsupported')).toBe(false);
   });
 });
 

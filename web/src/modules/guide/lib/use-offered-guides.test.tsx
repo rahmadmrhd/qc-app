@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { GuideEntry } from './types';
 
@@ -7,8 +7,7 @@ const state = vi.hoisted(() => ({
   ready: true,
   done: new Map<string, number>(),
   catalog: [] as GuideEntry[],
-  derive: vi.fn(),
-  subscribed: Promise.resolve(true) as Promise<boolean>,
+  derived: new Map<string, boolean>(),
 }));
 vi.mock('@/modules/auth/use-me', () => ({
   useMe: () =>
@@ -25,18 +24,16 @@ vi.mock('@/modules/auth/use-me', () => ({
 vi.mock('@/modules/location/active-locations-context', () => ({
   useActiveLocations: () => ({ available: [], selectedIds: [], toggle: () => undefined }),
 }));
-vi.mock('@/app/pwa/install', () => ({ useInstall: () => ({ state: 'unavailable' }) }));
 vi.mock('./use-guide-store', () => ({
   useGuideStore: () => ({ ready: state.ready, done: state.done, mark: vi.fn(), reset: vi.fn() }),
+}));
+vi.mock('./use-device-guides', () => ({
+  useDeviceGuides: () => ({ derived: state.derived, relevant: new Map() }),
 }));
 vi.mock('../catalog', () => ({
   get GUIDE_CATALOG() {
     return state.catalog;
   },
-}));
-vi.mock('../catalog/device', () => ({
-  deriveDeviceGuides: (options: unknown) => state.derive(options),
-  readPushSubscribed: () => state.subscribed,
 }));
 
 import { useOfferedGuides } from './use-offered-guides';
@@ -57,15 +54,12 @@ beforeEach(() => {
   state.ready = true;
   state.done = new Map();
   state.catalog = [entry({})];
-  state.subscribed = Promise.resolve(true);
-  state.derive.mockReset();
-  state.derive.mockReturnValue(new Map());
+  state.derived = new Map();
 });
 
 describe('useOfferedGuides', () => {
-  test('ready dan belum selesai: panduan ditawarkan', async () => {
+  test('ready dan belum selesai: panduan ditawarkan', () => {
     const { result } = renderHook(() => useOfferedGuides());
-    await waitFor(() => expect(state.derive).toHaveBeenCalledWith({ pushSubscribed: true }));
     expect(result.current.ready).toBe(true);
     expect(result.current.offers.map((offer) => offer.entry.id)).toEqual(['dasar-layout']);
   });
@@ -85,23 +79,15 @@ describe('useOfferedGuides', () => {
 
   test('panduan diturunkan ditawarkan menurut derivasi perangkat', () => {
     state.catalog = [entry({ id: 'perangkat-pwa', status: 'diturunkan' })];
-    state.derive.mockReturnValue(new Map([['perangkat-pwa', true]]));
+    state.derived = new Map([['perangkat-pwa', true]]);
     const { result } = renderHook(() => useOfferedGuides());
     expect(result.current.offers.map((offer) => offer.entry.id)).toEqual(['perangkat-pwa']);
   });
 
-  test('langganan push: awalnya tak diketahui, lalu hasil bacaan async diteruskan', async () => {
-    state.subscribed = Promise.resolve(false);
-    renderHook(() => useOfferedGuides());
-    expect(state.derive).toHaveBeenCalledWith({ pushSubscribed: undefined });
-    await waitFor(() => expect(state.derive).toHaveBeenCalledWith({ pushSubscribed: false }));
-  });
-
-  test('gagal membaca langganan: tetap tak diketahui, tidak melempar', async () => {
-    state.subscribed = Promise.reject(new Error('sw'));
+  test('panduan diturunkan yang derivasinya false tidak ditawarkan', () => {
+    state.catalog = [entry({ id: 'perangkat-push', status: 'diturunkan' })];
+    state.derived = new Map([['perangkat-push', false]]);
     const { result } = renderHook(() => useOfferedGuides());
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(result.current.ready).toBe(true);
-    expect(state.derive).not.toHaveBeenCalledWith({ pushSubscribed: true });
+    expect(result.current.offers).toEqual([]);
   });
 });

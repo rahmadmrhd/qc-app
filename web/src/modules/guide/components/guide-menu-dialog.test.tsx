@@ -31,6 +31,10 @@ vi.mock('../lib/use-guide-store', () => ({
 vi.mock('./tour/tour-provider', () => ({
   useTour: () => ({ start: state.start, active: false }),
 }));
+const deviceState = vi.hoisted(() => ({ relevant: new Map<string, boolean>() }));
+vi.mock('../lib/use-device-guides', () => ({
+  useDeviceGuides: () => ({ derived: new Map(), relevant: deviceState.relevant }),
+}));
 const catalogState = vi.hoisted(() => ({ entries: [] as GuideEntry[] }));
 vi.mock('../catalog', () => ({
   get GUIDE_CATALOG() {
@@ -55,6 +59,7 @@ function entry(overrides: Partial<GuideEntry>): GuideEntry {
 beforeEach(() => {
   state.done = new Map();
   state.calls = [];
+  deviceState.relevant = new Map([['perangkat-pwa', true]]);
   state.start.mockReset().mockImplementation(() => state.calls.push('start'));
   state.reset.mockReset().mockImplementation(async () => {
     state.calls.push('reset');
@@ -86,6 +91,13 @@ describe('GuideMenuDialog', () => {
     expect(screen.getByText('Pasang aplikasi')).toBeInTheDocument();
     expect(screen.queryByText('Serah Terima')).toBeNull();
     expect(screen.queryByText('Tip')).toBeNull();
+  });
+
+  test('M12: panduan perangkat yang tak relevan bagi perangkat ini disembunyikan dari menu', () => {
+    deviceState.relevant = new Map([['perangkat-pwa', false]]);
+    render(<GuideMenuDialog onClose={() => undefined} />);
+    expect(screen.getByText('Mengenal tampilan')).toBeInTheDocument();
+    expect(screen.queryByText('Pasang aplikasi')).toBeNull();
   });
 
   test('panduan disimpan yang selesai: "Ulangi" memanggil reset lalu start', async () => {
