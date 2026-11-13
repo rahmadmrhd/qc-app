@@ -16,7 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMe } from '@/modules/auth/use-me';
-import { markAsked, markSynced } from '../lib/storage';
+import { markAsked, markSynced, wasSynced } from '../lib/storage';
 import { getPushRegistration } from '../lib/subscribe';
 import { type DevicePermission, devicePermission, platformOf, reenableSteps } from '../lib/support';
 import { syncThisDevice } from '../lib/sync';
@@ -90,7 +90,7 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
       if (result === 'default') result = await window.Notification.requestPermission();
       if (result === 'unsupported') throw new Error('push tidak didukung');
       setPermission(result);
-      reportPushPermission(result).catch(() => undefined);
+      if (result !== 'default') reportPushPermission(result).catch(() => undefined);
       if (result === 'granted') {
         if ((await syncThisDevice(current)) === 'unavailable') throw new Error('langganan gagal');
         markSynced(email);
@@ -104,11 +104,14 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
     onError: () => toast.error('Gagal mengaktifkan notifikasi push. Coba lagi nanti.'),
   });
 
+  // Tertaut = ada langganan peramban DAN sudah disinkronkan ke akun ini pada sesi ini; langganan milik akun lain di
+  // perangkat yang sama tidak cukup (akun ini belum tentu punya barisnya di server).
+  const linked = device.data === undefined ? undefined : device.data && wasSynced(email);
   const data = config.data;
   const kind =
     data === undefined
       ? undefined
-      : deviceKind({ config: data, permission, standalone, ios, linked: device.data });
+      : deviceKind({ config: data, permission, standalone, ios, linked: linked });
   const canActivate = kind === 'default' || kind === 'unlinked';
 
   return (

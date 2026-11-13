@@ -25,6 +25,7 @@ vi.mock('../lib/subscribe', () => ({
 }));
 
 import { toast } from 'sonner';
+import { markSynced } from '../lib/storage';
 import { deviceKind, PushSettingsDialog } from './push-settings-dialog';
 
 type Permission = 'default' | 'granted' | 'denied';
@@ -102,6 +103,7 @@ describe('PushSettingsDialog', () => {
   test('saklar mengikuti preferensi; mengubahnya memanggil push.setPreference', async () => {
     device({ permission: 'granted' });
     state.linked = true;
+    markSynced('a@qc.local');
     mount();
     const box = await screen.findByRole('checkbox', { name: 'Terima notifikasi push' });
     expect(box).toBeChecked();
@@ -144,6 +146,14 @@ describe('PushSettingsDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Aktifkan di perangkat ini' }));
     await waitFor(() => expect(state.sync).toHaveBeenCalledTimes(1));
     expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  test('langganan peramban ada tetapi akun ini belum disinkronkan: belum dianggap aktif', async () => {
+    device({ permission: 'granted' });
+    state.linked = true; // langganan milik akun lain di perangkat yang sama
+    mount();
+    expect(await screen.findByText(/belum tertaut/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aktifkan di perangkat ini' })).toBeInTheDocument();
   });
 
   test('gagal menautkan: toast galat, tidak melempar', async () => {

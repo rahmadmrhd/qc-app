@@ -77,11 +77,16 @@ export function PushOnboarding() {
   const [askOpen, setAskOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Naik tiap jendela fokus: memberi kesempatan mencoba lagi penautan yang gagal dalam sesi yang sama.
+  const [focusTick, setFocusTick] = useState(0);
   const reported = useRef<string | null>(null);
   const syncing = useRef(false);
 
   useEffect(() => {
-    const refresh = () => setPermission(devicePermission());
+    const refresh = () => {
+      setPermission(devicePermission());
+      setFocusTick((tick) => tick + 1);
+    };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
@@ -93,9 +98,11 @@ export function PushOnboarding() {
   const active = config?.enabled === true && permission !== 'unsupported';
   const userEnabled = config?.userEnabled === true;
 
-  // Laporkan izin peramban ke server sekali per nilai per sesi.
+  // Laporkan izin peramban ke server sekali per nilai per sesi. Hanya dari PWA terpasang (konteks yang memang diminta
+  // izin) dan tanpa `default`: tab peramban lain atau perangkat lain milik pengguna yang sama tidak boleh menimpa
+  // satu nilai per pengguna di server (mis. `denied` dari ponsel tertimpa `default` dari tab desktop).
   useEffect(() => {
-    if (!active) return;
+    if (!active || permission === 'default' || !isStandalone(window)) return;
     const marker = `${email}:${permission}`;
     if (reported.current === marker) return;
     reported.current = marker;
@@ -105,6 +112,7 @@ export function PushOnboarding() {
   }, [active, permission, email]);
 
   // Izin sudah ada: tautkan perangkat ke akun ini (idempoten), sekali per sesi tab.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `focusTick` sengaja hanya pemicu percobaan ulang
   useEffect(() => {
     if (!active || !config || permission !== 'granted' || !userEnabled) return;
     if (wasSynced(email) || syncing.current) return;
@@ -119,7 +127,7 @@ export function PushOnboarding() {
       .finally(() => {
         syncing.current = false;
       });
-  }, [active, config, permission, userEnabled, email]);
+  }, [active, config, permission, userEnabled, email, focusTick]);
 
   // Dialog pra-izin: hanya PWA terpasang, izin belum pernah ditentukan, dan belum pernah ditanya.
   useEffect(() => {

@@ -97,7 +97,10 @@ describe('dialog pra-izin', () => {
   test('bukan PWA terpasang: tak ada dialog dan izin tak diminta', async () => {
     const { requestPermission } = device({ permission: 'default', standalone: false });
     mount();
-    await waitFor(() => expect(reportCalls()).toHaveLength(1));
+    await waitFor(() => expect(state.api).toHaveBeenCalledWith('push.config', null));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Tab peramban biasa tidak melaporkan izin: tidak boleh menimpa nilai satu pengguna dari perangkat lain.
+    expect(reportCalls()).toHaveLength(0);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(requestPermission).not.toHaveBeenCalled();
     expect(screen.queryByTestId('push-denied-banner')).not.toBeInTheDocument();
@@ -109,6 +112,20 @@ describe('dialog pra-izin', () => {
     state.email = 'b@qc.local';
     mount();
     expect(await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' })).toBeInTheDocument();
+  });
+});
+
+describe('laporan izin ke server', () => {
+  test('izin default tidak dilaporkan; denied dari tab peramban biasa juga tidak (tak menimpa perangkat lain)', async () => {
+    device({ permission: 'default', standalone: true });
+    const first = mount();
+    await screen.findByRole('dialog', { name: 'Aktifkan notifikasi?' });
+    expect(reportCalls()).toHaveLength(0);
+    first.unmount();
+    device({ permission: 'denied', standalone: false });
+    mount();
+    expect(await screen.findByTestId('push-denied-banner')).toBeInTheDocument();
+    expect(reportCalls()).toHaveLength(0);
   });
 });
 
@@ -162,6 +179,20 @@ describe('izin sudah diberikan', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  test('gagal berlangganan lalu jendela fokus lagi: dicoba ulang dalam sesi yang sama', async () => {
+    device({ permission: 'granted', standalone: true });
+    state.sync.mockRejectedValueOnce(new Error('belum siap'));
+    mount();
+    await waitFor(() => expect(state.sync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(sessionStorage.getItem('qc.push.synced:a@qc.local')).toBeNull());
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(state.sync).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(sessionStorage.getItem('qc.push.synced:a@qc.local')).toBe('1'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(state.sync).toHaveBeenCalledTimes(2);
+  });
+
   test('gagal berlangganan: tidak ditandai tersinkron dan tidak melempar', async () => {
     device({ permission: 'granted', standalone: true });
     state.sync.mockRejectedValue(new Error('layanan push tak terjangkau'));
@@ -178,7 +209,7 @@ describe('push tidak tersedia atau dimatikan', () => {
       device({ permission, standalone: true });
       const view = mount();
       await waitFor(() => expect(state.api).toHaveBeenCalledWith('push.config', null));
-      await waitFor(() => expect(reportCalls().length).toBeGreaterThan(0));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(screen.queryByTestId('push-denied-banner')).not.toBeInTheDocument();
       expect(state.sync).not.toHaveBeenCalled();

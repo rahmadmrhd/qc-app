@@ -37,7 +37,9 @@
     try {
       const url = new URL(value, self.location.origin);
       if (url.origin !== self.location.origin) return '/';
-      return url.pathname + url.search + url.hash;
+      const path = url.pathname + url.search + url.hash;
+      // Segmen "." dan ".." (juga %2e) dapat menyisakan "//host" setelah normalisasi: tolak hasilnya juga.
+      return path.startsWith('//') ? '/' : path;
     } catch {
       return '/';
     }
