@@ -239,10 +239,23 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 183 | Matikan jaringan (mode pesawat), lalu buka aplikasi terpasang dari ikon | Layar "Tidak ada koneksi" dengan tombol "Coba lagi", bukan halaman login; setelah jaringan kembali, "Coba lagi" memuat aplikasi dalam keadaan login | PWA FR-P7, FR-P15 |
 | 184 | Saat sudah login dan beranda terbuka, matikan jaringan, lalu pindah ke halaman yang memuat data tersimpan (mis. Merk) | Spanduk "Server sedang tidak tersedia — menampilkan data terakhir (hh:mm)" tampil dengan jam data; halaman lain tanpa data tersimpan menampilkan galat biasa dengan "Coba lagi" | PWA FR-P16 |
 | 185 | Nyalakan jaringan lagi dan tunggu atau buka halaman lain | Spanduk hilang sendiri setelah permintaan berikutnya berhasil | PWA FR-P16 |
-| 186 | Buka detail task, matikan jaringan, lalu centang satu butir (dan klik butir yang sama lagi) | Centang tampak tersimpan dengan penanda "Menunggu terkirim"; satu toast info (tidak menumpuk); tidak ada toast galat | PWA FR-P17 |
+| 186 | Buka detail task, matikan jaringan, lalu centang satu butir (dan klik butir yang sama lagi) | Centang tampak tersimpan dengan penanda "Belum terkirim"; satu toast info (tidak menumpuk); tidak ada toast galat | PWA FR-P17 |
 | 187 | Nyalakan jaringan lagi (tanpa memuat ulang halaman) | Centang tertunda terkirim sendiri, penanda hilang; centang tampil dengan nama dan waktu dari server; riwayat audit mencatat satu centang per butir | PWA FR-P17 |
 | 188 | Centang saat offline, tutup aplikasi, buka lagi saat online | Centang tertunda terkirim saat aplikasi dibuka; tidak ada yang hilang atau terkirim ganda | PWA FR-P17 |
 | 189 | Centang saat offline, lalu minta orang lain menyelesaikan atau membatalkan task itu sebelum Anda online | Saat online muncul "N perubahan centang tidak dapat dikirim" beserta alasannya; entri dibuang dan tidak diulang | PWA FR-P18 |
 | 190 | Ubah jam perangkat maju lebih dari 24 jam setelah mengantre centang offline, lalu online | Entri dibuang dengan pemberitahuan kedaluwarsa; tidak terkirim | PWA FR-P19 |
 | 191 | Centang saat offline, lalu Keluar; login sebagai pengguna lain di perangkat yang sama dan online | Antrean pemilik pertama tidak pernah terkirim; DevTools → Application → Local Storage tidak menyisakan kunci `qc.outbox:*` | PWA FR-P14, FR-P19 |
 | 192 | Saat offline, coba aksi lain (buat task, simpan item, tambah komentar) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |
+
+## PWA Fase 3, Tahap A
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 193 | Saat offline, centang beberapa butir di dua task | Chip di header menampilkan "N belum terkirim"; butir yang diantrekan bertanda "Belum terkirim" | PWA FR-P20 |
+| 194 | Nyalakan jaringan lagi | Chip menjadi "Mengirim X dari N…" lalu hilang setelah semua terkirim; penanda butir hilang | PWA FR-P20 |
+| 195 | Online dengan jaringan lambat (throttling); centang satu butir | Penanda "Mengirim…" tampil lalu hilang saat server menjawab | PWA FR-P20 |
+| 196 | Dengan antrean tersisa, pilih Keluar | Dialog "Keluar sekarang?" menyebut jumlah; Batal tidak membuang apa pun; Tetap keluar membuang antrean | PWA FR-P20 |
+| 197 | Offline dengan antrean tersisa, tutup lalu buka aplikasi | Layar "Tidak ada koneksi" menyebut "N perubahan Anda aman di perangkat dan akan dikirim begitu koneksi kembali." | PWA FR-P20 |
+| 198 | Buka di ponsel sempit (375 px) saat ada antrean | Chip hanya ikon dan angka; header tidak meluap; ketuk chip membuka daftar singkat (jenis, nomor task atau "Task lain", jam) | PWA FR-P20 |
