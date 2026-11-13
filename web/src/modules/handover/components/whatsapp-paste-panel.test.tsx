@@ -1,13 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
-
-// Editor catatan (Tiptap) menarik modul unggah gambar; tidak dipakai di mode catatan.
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
-vi.mock('@/modules/files/queries', () => ({
-  useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
-}));
-
 import { WhatsappPastePanel } from './whatsapp-paste-panel';
 
 const EX1 = 'Orderan Online :\nCRS310 = 1 unt\nRB5009UG = 1 unt';
@@ -39,16 +32,18 @@ const EX4 = [
 function setup(remaining = 30) {
   const onAdd = vi.fn();
   render(<WhatsappPastePanel remaining={remaining} onAdd={onAdd} />);
-  const split = async (text: string) => {
+  const paste = (text: string) =>
     fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
       target: { value: text },
     });
+  const split = async (text: string) => {
+    paste(text);
     await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
   };
-  return { onAdd, split };
+  return { onAdd, paste, split };
 }
 
-test('empat contoh pemilik terpecah 1, 2, 1, 3 task dengan usulan customer', async () => {
+test('empat contoh pemilik langsung ditambahkan 1, 2, 1, 3 task dengan usulan customer', async () => {
   const expected: Array<[string, number, string[]]> = [
     [EX1, 1, ['Orderan Online']],
     [EX2, 2, ['CV.Prisma', 'HND Gemilang']],
@@ -56,64 +51,51 @@ test('empat contoh pemilik terpecah 1, 2, 1, 3 task dengan usulan customer', asy
     [EX4, 3, ['Lintasmaya', 'Mitra Tower', 'CV. Tepian']],
   ];
   for (const [text, count, names] of expected) {
-    const { split } = setup();
+    const { onAdd, split } = setup();
     await split(text);
-    // Butir checklist di editor juga `listitem`, jadi baris dihitung lewat field customer tiap task.
-    const customers = screen.getAllByLabelText(/^Customer task \d+$/);
-    expect(customers).toHaveLength(count);
-    names.forEach((name, i) => {
-      expect(customers[i]).toHaveValue(name);
-    });
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    const added = onAdd.mock.calls[0]?.[0] as Array<{ customerName: string }>;
+    expect(added).toHaveLength(count);
+    expect(added.map((task) => task.customerName)).toEqual(names);
+    expect(screen.getByText(`${count} task ditambahkan ke batch.`)).toBeInTheDocument();
     document.body.innerHTML = '';
   }
 });
 
-test('usulan customer dapat diganti sebelum ditambahkan', async () => {
+test('Pecah menyerahkan customer usulan dan catatan checklist tanpa langkah tambahan', async () => {
   const { onAdd, split } = setup();
   await split(EX1);
-  const input = screen.getByLabelText('Customer task 1');
-  await userEvent.clear(input);
-  await userEvent.type(input, 'PT Pengganti');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (1)' }));
   expect(onAdd).toHaveBeenCalledWith([
-    { customerName: 'PT Pengganti', note: '- [ ] CRS310 = 1 unt\n- [ ] RB5009UG = 1 unt' },
+    { customerName: 'Orderan Online', note: '- [ ] CRS310 = 1 unt\n- [ ] RB5009UG = 1 unt' },
   ]);
+  expect(screen.queryByRole('button', { name: /Tambahkan ke batch/ })).not.toBeInTheDocument();
 });
 
-test('catatan hasil pecah tampil di editor Tiptap, bukan textarea mentah', async () => {
+test('tempelan dikosongkan setelah ditambahkan', async () => {
   const { split } = setup();
   await split(EX1);
-  const note = await screen.findByRole('textbox', { name: 'Catatan task 1' });
-  expect(note).toHaveAttribute('contenteditable', 'true');
-  expect(note.tagName).not.toBe('TEXTAREA');
-  // Markdown `- [ ]` dirender sebagai checklist, bukan teks mentah.
-  await waitFor(() => expect(note).toHaveTextContent('CRS310 = 1 unt'));
-  expect(note).not.toHaveTextContent('- [ ]');
-});
-
-test('catatan hasil pecah dapat disunting di editor sebelum ditambahkan', async () => {
-  const { onAdd, split } = setup();
-  await split(EX1);
-  const note = await screen.findByRole('textbox', { name: 'Catatan task 1' });
-  await userEvent.type(note, ' diganti');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (1)' }));
-  const added = onAdd.mock.calls[0]?.[0][0];
-  expect(added.note).toContain('diganti');
-  expect(added.note).toContain('CRS310 = 1 unt');
+  expect(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' })).toHaveValue('');
 });
 
 test('tempelan kosong tidak menambah task', async () => {
   const { onAdd, split } = setup();
   await split('   ');
-  expect(screen.queryByRole('button', { name: /Tambahkan ke batch/ })).not.toBeInTheDocument();
   expect(screen.getByText('Tidak ada task yang dikenali dari tempelan.')).toBeInTheDocument();
   expect(onAdd).not.toHaveBeenCalled();
 });
 
-test('hasil melebihi sisa slot batch tidak dapat ditambahkan', async () => {
+test('hasil melebihi sisa slot batch tidak ditambahkan dan tempelan dipertahankan', async () => {
   const { onAdd, split } = setup(2);
   await split(EX4);
-  expect(screen.getByRole('button', { name: 'Tambahkan ke batch (3)' })).toBeDisabled();
-  expect(screen.getByText(/sisa slot batch: 2/)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent(/3 task, melebihi sisa slot batch: 2/);
   expect(onAdd).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' })).toHaveValue(EX4);
+});
+
+test('mengubah tempelan menghapus pesan status sebelumnya', async () => {
+  const { paste, split } = setup();
+  await split(EX1);
+  expect(screen.getByText('1 task ditambahkan ke batch.')).toBeInTheDocument();
+  paste('baru');
+  expect(screen.queryByText('1 task ditambahkan ke batch.')).not.toBeInTheDocument();
 });
