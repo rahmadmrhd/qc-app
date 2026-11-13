@@ -1,4 +1,5 @@
 import type { Env } from '@server/core/env';
+import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from './access-fixtures';
 import { seedBrand, seedItem } from './item-fixtures';
 import { seedGuideImage, seedSticker, seedStickerType } from './sticker-fixtures';
@@ -24,6 +25,9 @@ export const SERIAL_USERS = {
  * `s2` "Segel B" yang berlaku bagi `i-a1` dan `i-a2` (penanda instruksi).
  */
 export async function seedSerialWorld(env: Env): Promise<void> {
+  // Daftar pendengar bus event adalah keadaan modul bersama satu proses `bun test`; tes lain (mis. `core/events.test.ts`)
+  // mengosongkannya. Pendaftaran idempoten, jadi tes serial tidak bergantung pada urutan berkas dalam proses.
+  registerSerialStockListeners();
   await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
   await seedBusinessUnit(env, { id: 'bu-b', code: 'B' });
   await seedRole(env, { id: 'r-edit', name: 'Serial edit', permissions: { serial: 'edit' } });
