@@ -53,7 +53,10 @@ export interface MeDto {
   locations: LocationAccessDto[];
   /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
   businessUnits: BusinessUnitAccessDto[];
-  /** Akun bersama (dipakai beberapa orang): panduan interaktif tidak otomatis muncul. */
+  /**
+   * Akun bersama (dipakai beberapa orang): panduan interaktif tetap ditawarkan, tetapi penandanya disimpan per
+   * perangkat (bukan di server), jadi ditawarkan lagi di tiap perangkat.
+   */
   sharedAccount: boolean;
 }
 

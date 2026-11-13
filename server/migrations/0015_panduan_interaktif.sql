@@ -9,12 +9,13 @@
 -- VARCHAR(30) ISO UTC, tanpa kunci asing (pemilik progres dikunci email ternormalisasi, bukan `users.id`, seperti
 -- `notifications` di 0013; progres yatim tak berbahaya dan tak perlu dibersihkan).
 
--- Akun bersama (dipakai beberapa orang): tidak memakai panduan yang bergantung pada progres per orang.
+-- Akun bersama (dipakai beberapa orang): penanda panduannya disimpan per perangkat (bukan di `guide_progress`),
+-- jadi panduan ditawarkan lagi di tiap perangkat.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS shared_account TINYINT(1) NOT NULL DEFAULT 0;
 
 -- Satu baris per (pengguna, panduan): `recipient` = email ternormalisasi (`normalizeEmail`), `guide_id` = id panduan
--- (`GUIDE_IDS` di `shared/guides.ts`), `version` = versi panduan yang terakhir diselesaikan/dilewati, `updated_at` =
--- waktu ISO UTC penandaan.
+-- (`GUIDE_IDS` di `shared/guides.ts`), `version` = versi panduan yang terakhir diselesaikan, `updated_at` = waktu ISO UTC
+-- penandaan (tidak ada status "dilewati": menutup tur sebelum selesai tidak menulis penanda).
 CREATE TABLE IF NOT EXISTS guide_progress (
   recipient VARCHAR(255) NOT NULL,
   guide_id VARCHAR(100) NOT NULL,
