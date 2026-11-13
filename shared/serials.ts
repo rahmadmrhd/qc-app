@@ -2,9 +2,9 @@ import { hasControlChars } from './postel';
 
 export const SERIAL_STATUSES = [
   'good',
-  'failed',
-  'qc_repair',
+  'reported',
   'at_service',
+  'diagnosis',
   'service_repair',
   'recheck',
   'broken',
@@ -17,11 +17,11 @@ export type SerialCustody = (typeof SERIAL_CUSTODIES)[number];
 /** Label status/posisi untuk chip perubahan di riwayat (server) dan tampilan (web memakai teks yang sama). */
 export const SERIAL_STATUS_LABELS: Record<SerialStatus, string> = {
   good: 'Lolos',
-  failed: 'Tidak lolos',
-  qc_repair: 'Perbaikan QC',
+  reported: 'Dilaporkan',
   at_service: 'Di servis',
-  service_repair: 'Perbaikan servis',
-  recheck: 'Cek ulang',
+  diagnosis: 'Diagnosis',
+  service_repair: 'Sedang diperbaiki',
+  recheck: 'Menunggu cek ulang',
   broken: 'Rusak',
 };
 export const SERIAL_CUSTODY_LABELS: Record<SerialCustody, string> = {
@@ -64,10 +64,6 @@ export const SERIAL_LIMITS = {
    */
   listSerialsMax: 50,
   listSerialsEncodedMax: 4000,
-  /** Maks. kerusakan (satu baris) pada kasus tidak lolos (5b). */
-  damageMax: 200,
-  /** Maks. catatan pengiriman (satu baris, 5b). */
-  shipmentNoteMax: 200,
   /** Maks. gambar yang boleh disisipkan pada satu pesan kejadian (5b; default perancang OQ-11). */
   messageImagesMax: 10,
   /** Riwayat per serial (`serials.history`): bawaan dan maks. kejadian per halaman. */
@@ -75,6 +71,10 @@ export const SERIAL_LIMITS = {
   historyMaxLimit: 100,
   /** Maks. penerima surel "rusak" (satu daftar global). */
   alertRecipientsMax: 20,
+  /** Tautan bertanda tangan ke halaman publik laporan berlaku sampai tanggal laporan selesai + hari ini (laporan rusak). */
+  publicLinkDays: 30,
+  /** Maks. panjang ringkasan laporan (baris pertama catatan laporan) pada daftar Laporan. */
+  reportSummaryMax: 120,
 } as const;
 
 /** Aksi pada `serials.act` (spek §5.3). */
@@ -82,8 +82,6 @@ export const SERIAL_ACTIONS = [
   'note',
   'recheck',
   'report_failure',
-  'identify_damage',
-  'attempt_repair',
   'send',
   'receive',
   'service_diagnosis',
@@ -92,6 +90,31 @@ export const SERIAL_ACTIONS = [
   'recheck_fail',
 ] as const;
 export type SerialAction = (typeof SERIAL_ACTIONS)[number];
+
+/** Tahap pada aksi `service_diagnosis`: pilihan status dialog Diagnosis (Rusak memakai aksi `declare_broken`). */
+export const SERVICE_DIAGNOSIS_STAGES = ['diagnosis', 'repairing', 'done'] as const;
+export type ServiceDiagnosisStage = (typeof SERVICE_DIAGNOSIS_STAGES)[number];
+
+const WIB_OFFSET_MS = 7 * 3_600_000;
+
+/**
+ * Kedaluwarsa tautan bertanda tangan: akhir hari WIB (23:59:59.999, UTC+7) pada `closedOn` (`YYYY-MM-DD`, tanggal
+ * laporan selesai) + `SERIAL_LIMITS.publicLinkDays` hari, sebagai epoch milidetik. `NaN` bila `closedOn` bukan tanggal sah.
+ */
+export function reportLinkExpiresAt(closedOn: string): number {
+  if (!isIsoDate(closedOn)) return Number.NaN;
+  const [year, month, day] = closedOn.split('-').map(Number) as [number, number, number];
+  const endOfDayUtc = Date.UTC(
+    year,
+    month - 1,
+    day + SERIAL_LIMITS.publicLinkDays,
+    23,
+    59,
+    59,
+    999,
+  );
+  return endOfDayUtc - WIB_OFFSET_MS;
+}
 
 /** Tim pelaku kejadian (`actor_team`): QC atau tim servis. */
 export type SerialTeam = 'qc' | 'service';

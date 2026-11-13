@@ -3,9 +3,14 @@ import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  reportLinkExpiresAt,
+  SERIAL_ACTIONS,
   SERIAL_EVENT_TYPES,
   SERIAL_HISTORY_GROUPS,
   SERIAL_LIMITS,
+  SERIAL_STATUS_LABELS,
+  SERIAL_STATUSES,
+  SERVICE_DIAGNOSIS_STAGES,
   serialCaseNumber,
   serialProblem,
   splitSerialInput,
@@ -149,10 +154,48 @@ describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
   });
 
   test('batas 5b', () => {
-    expect(SERIAL_LIMITS.damageMax).toBe(200);
-    expect(SERIAL_LIMITS.shipmentNoteMax).toBe(200);
+    expect(SERIAL_LIMITS.publicLinkDays).toBe(30);
+    expect(SERIAL_LIMITS.reportSummaryMax).toBe(120);
     expect(SERIAL_LIMITS.messageImagesMax).toBe(10);
     expect(SERIAL_LIMITS.historyDefaultLimit).toBe(50);
     expect(SERIAL_LIMITS.historyMaxLimit).toBe(100);
+  });
+});
+
+describe('reportLinkExpiresAt (tautan laporan, H+30 akhir hari WIB)', () => {
+  test('akhir hari WIB tanggal selesai + 30 hari', () => {
+    expect(reportLinkExpiresAt('2026-11-14')).toBe(Date.UTC(2026, 11, 14, 16, 59, 59, 999));
+  });
+
+  test('melewati batas bulan dan tahun', () => {
+    expect(reportLinkExpiresAt('2026-12-15')).toBe(Date.UTC(2027, 0, 14, 16, 59, 59, 999));
+  });
+
+  test('bukan tanggal = NaN', () => {
+    expect(Number.isNaN(reportLinkExpiresAt('besok'))).toBe(true);
+  });
+});
+
+describe('status dan aksi alur laporan rusak', () => {
+  test('status baru dan labelnya', () => {
+    expect([...SERIAL_STATUSES]).toEqual([
+      'good',
+      'reported',
+      'at_service',
+      'diagnosis',
+      'service_repair',
+      'recheck',
+      'broken',
+    ]);
+    expect(SERIAL_STATUS_LABELS.reported).toBe('Dilaporkan');
+    expect(SERIAL_STATUS_LABELS.recheck).toBe('Menunggu cek ulang');
+  });
+
+  test('aksi lama tidak lagi ada, jenis kejadian lama tetap dikenali', () => {
+    expect(SERIAL_ACTIONS).not.toContain('identify_damage' as never);
+    expect(SERIAL_ACTIONS).not.toContain('attempt_repair' as never);
+    expect(SERIAL_EVENT_TYPES).toContain('identify_damage');
+    expect(SERIAL_EVENT_TYPES).toContain('attempt_repair');
+    expect([...SERVICE_DIAGNOSIS_STAGES]).toEqual(['diagnosis', 'repairing', 'done']);
   });
 });
