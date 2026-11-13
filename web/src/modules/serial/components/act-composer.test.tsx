@@ -403,11 +403,11 @@ test('setelah sukses isian dikosongkan dan pilihan aksi kembali ke Catatan', asy
   expect(screen.getByLabelText('Kerusakan')).toHaveValue('');
 });
 
-test('ganti aksi mengosongkan isian aksi sebelumnya (kerusakan, tujuan, pesan)', async () => {
+test('ganti aksi mengosongkan isian khusus aksi (kerusakan, tujuan) tetapi mempertahankan pesan', async () => {
   renderComposer(SERIAL);
   await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'draf pesan');
   await pickSelect(screen, 'Jenis update', 'Laporkan tidak lolos');
-  expect(screen.getByRole('textbox', { name: 'Catatan (opsional)' })).toHaveValue('');
+  expect(screen.getByRole('textbox', { name: 'Catatan (opsional)' })).toHaveValue('draf pesan');
   await userEvent.type(screen.getByLabelText('Kerusakan'), 'Retak');
   await pickSelect(screen, 'Jenis update', 'Kirim antar lokasi');
   await pickLink(screen, 'Lokasi tujuan', 'Surabaya (SBY)');
@@ -415,6 +415,7 @@ test('ganti aksi mengosongkan isian aksi sebelumnya (kerusakan, tujuan, pesan)',
   expect(screen.getByLabelText('Kerusakan')).toHaveValue('');
   await pickSelect(screen, 'Jenis update', 'Kirim antar lokasi');
   expect(screen.getByRole('button', { name: 'Kirim antar lokasi' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: 'Catatan (opsional)' })).toHaveValue('draf pesan');
 });
 
 test('servis mengirim balik ke QC: pemilih tujuan memuat lokasi dan tujuan ikut ke payload', async () => {

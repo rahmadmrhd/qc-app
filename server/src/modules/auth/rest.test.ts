@@ -125,6 +125,15 @@ describe('GET /api/v1/me', () => {
     expect(await flag('edit@gmail.com')).toBe(false);
     expect(await flag('budi@gmail.com')).toBe(false);
     expect(await flag()).toBe(true);
+    // Hanya BU AKTIF yang dihitung: bu-b nonaktif tak lagi menghalangi pengelola bu-a.
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    expect(await flag('sebagian@gmail.com')).toBe(true);
+    expect(await flag('campur@gmail.com')).toBe(true);
+    expect(await flag('edit@gmail.com')).toBe(false);
+    // Semua BU nonaktif: gagal tertutup (kecuali super admin).
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive'").run();
+    expect(await flag('semua@gmail.com')).toBe(false);
+    expect(await flag()).toBe(true);
   });
 
   test('user tanpa penugasan BU mendapat businessUnits kosong; super admin semua BU manage', async () => {

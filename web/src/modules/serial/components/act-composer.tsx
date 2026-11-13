@@ -233,9 +233,12 @@ export function ActComposer({ serial }: ActComposerProps) {
     }
   }
 
-  /** Mengosongkan semua isian aksi; lokasi dan jumlah stiker kembali ke nilai serial saat ini. */
-  function resetFields() {
-    setMessage('');
+  /**
+   * Mengosongkan isian khusus aksi; lokasi dan jumlah stiker kembali ke nilai serial saat ini. Pesan (dan gambar yang
+   * sudah diunggah) dikosongkan hanya setelah sukses (`withMessage`), bukan saat ganti aksi.
+   */
+  function resetFields(withMessage: boolean) {
+    if (withMessage) setMessage('');
     setDamage(null);
     setShipmentNote('');
     setToLocation({ id: '', label: '' });
@@ -252,7 +255,7 @@ export function ActComposer({ serial }: ActComposerProps) {
     try {
       await act.mutateAsync(buildInput());
       // Kembali ke Catatan (aksi netral); pilihan tidak melompat ke aksi lain setelah status berubah.
-      resetFields();
+      resetFields(true);
       setSelected('note');
     } catch (caught) {
       if (isStaleSaveError(caught)) {
@@ -291,7 +294,7 @@ export function ActComposer({ serial }: ActComposerProps) {
           options={flowRows.map((entry) => ({ value: entry.action, label: flowRowLabel(entry) }))}
           onValueChange={(next) => {
             setSelected(next);
-            resetFields();
+            resetFields(false);
           }}
         />
         <div className="space-y-1.5">

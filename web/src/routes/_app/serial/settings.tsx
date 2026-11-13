@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app/serial/settings')({
     // `me` lama dari localStorage (sebelum penanda ada) dimuat ulang dulu agar pengelola sah tidak salah ditolak.
     let me = await context.queryClient.ensureQueryData(meQueryOptions());
     if (me.canManageSerialSettings === undefined) {
-      me = await context.queryClient.fetchQuery(meQueryOptions());
+      me = await context.queryClient.fetchQuery({ ...meQueryOptions(), staleTime: 0 });
     }
     if (!canManageSerialSettings(me)) throw redirect({ to: '/forbidden' });
   },

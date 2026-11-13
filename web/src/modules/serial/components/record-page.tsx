@@ -119,6 +119,14 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
   const queryClient = useQueryClient();
   const saveBatch = useSaveSerialBatch();
   const ownerKey = me.email;
+  // Pengguna dapat meninggalkan halaman saat simpan berjalan: hasil simpan tidak boleh membajak navigasi.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
   const rowsRef = useRef(rows);
@@ -483,6 +491,11 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
         rowsRef.current.length === 0;
     } finally {
       setSaving(false);
+    }
+    if (!mountedRef.current) {
+      // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
+      saveDraft(ownerKey, rowsRef.current);
+      return;
     }
     if (allSaved && onAllSaved) {
       clearDraft(ownerKey);

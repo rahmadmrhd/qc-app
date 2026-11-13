@@ -249,6 +249,17 @@ describe('serialSettings', () => {
     expect((await call(MGR, 'serialSettings.get', null)).data.smtpConfigured).toBe(false);
   });
 
+  test('izin hanya menghitung BU AKTIF: BU nonaktif tak dikelola tidak menghalangi; semua nonaktif = ditolak', async () => {
+    // MGR_ONE hanya mengelola bu-a; bu-b aktif dan tak dikelola menghalangi.
+    expect((await call(MGR_ONE, 'serialSettings.get', null)).error?.code).toBe('FORBIDDEN');
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    expect((await call(MGR_ONE, 'serialSettings.get', null)).ok).toBe(true);
+    // Tanpa BU aktif sama sekali: gagal tertutup untuk pengelola biasa.
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive'").run();
+    expect((await call(MGR_ONE, 'serialSettings.get', null)).error?.code).toBe('FORBIDDEN');
+    expect((await call(MGR, 'serialSettings.get', null)).error?.code).toBe('FORBIDDEN');
+  });
+
   test('simpan pertama dan kedua: penerima dinormalkan, audit serial.settings, get menyajikan nilainya', async () => {
     const first = await call(MGR, 'serialSettings.save', {
       expectedUpdatedAt: '',

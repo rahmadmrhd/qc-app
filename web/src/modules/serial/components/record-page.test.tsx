@@ -9,6 +9,8 @@ import { exportQcsn } from '../lib/qcsn';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
+const toastSuccess = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -405,8 +407,9 @@ test('semua baris tersimpan: onAllSaved dipanggil dan draft localStorage kosong'
   await pickDefaults();
   await paste('A1\nA2');
   await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
-  await waitFor(() => expect(onAllSaved).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(onAllSaved).toHaveBeenCalledTimes(1), { timeout: 10_000 });
   expect(onAllSaved).toHaveBeenCalledWith(2);
+  expect(toastSuccess).toHaveBeenCalledWith('Serial Number berhasil disimpan');
   expect(screen.queryAllByRole('row')).toHaveLength(0);
   const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
   expect(draft === null || draft === '[]').toBe(true);
@@ -435,4 +438,30 @@ test('galat jaringan: tidak berpindah halaman', async () => {
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
   expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
   expect(onAllSaved).not.toHaveBeenCalled();
+});
+
+test('halaman ditinggalkan saat simpan berjalan: onAllSaved tidak dipanggil dan draf disinkronkan', async () => {
+  const onAllSaved = vi.fn();
+  const view = renderPage({ onAllSaved });
+  await pickDefaults();
+  await paste('A1');
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation(async (id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.saveBatch') await gate;
+    return original?.(id, input);
+  });
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Menyimpan/ })).toBeDisabled());
+  view.unmount();
+  release();
+  await waitFor(() => expect(saveCalls).toHaveLength(1), { timeout: 10_000 });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(onAllSaved).not.toHaveBeenCalled();
+  // Baris sudah tersimpan: draf tidak lagi memuatnya.
+  const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
+  expect(draft === null || draft === '[]').toBe(true);
 });

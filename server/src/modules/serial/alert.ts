@@ -66,7 +66,7 @@ export async function readSerialAlert(
 
 /**
  * Pengaturan penerima bersifat global dan memuat alamat email: hanya super admin atau pemegang `serial: manage` pada
- * SEMUA BU (penugasan "Semua BU", atau setara di setiap BU) yang boleh membaca atau mengubahnya (keputusan pemilik
+ * SEMUA BU AKTIF (penugasan "Semua BU", atau setara di setiap BU aktif) yang boleh membaca atau mengubahnya (keputusan pemilik
  * 2026-11-13). Selain itu `FORBIDDEN`.
  */
 export async function assertCanManageSerialSettings(env: Env, user: UserContext): Promise<void> {
@@ -78,7 +78,12 @@ export async function assertCanManageSerialSettings(env: Env, user: UserContext)
 /** Aturan tunggal izin pengaturan penerima: dipakai penjaga rute DAN `auth.me` (penanda menu di web). */
 export async function canManageSerialSettings(env: Env, user: UserContext): Promise<boolean> {
   if (user.isSuperAdmin) return true;
-  const rows = await env.DB.prepare('SELECT id FROM business_units').all<{ id: string }>();
+  // Jelas tidak berhak (tanpa `serial: manage` di BU mana pun): tidak perlu membaca daftar BU.
+  if (!Object.values(user.businessUnits).some((level) => level.serial === 'manage')) return false;
+  // Hanya BU AKTIF yang dihitung (keputusan pemilik 2026-11-13): BU nonaktif tidak dipakai dan tak boleh menghalangi.
+  const rows = await env.DB.prepare("SELECT id FROM business_units WHERE status = 'active'").all<{
+    id: string;
+  }>();
   const allBuIds = rows.results.map((row) => row.id.trim());
   return canActOnAllBus(user.businessUnits, 'serial', 'manage', allBuIds);
 }
