@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app/serial/new')({
 });
 
 const LEAVE_MESSAGE =
-  'Tabel sementara masih berisi serial yang belum disimpan. Draf tersimpan otomatis di perangkat ini; tetap keluar dari halaman?';
+  'Masih ada serial di draft yang belum disimpan. Draft tersimpan otomatis di perangkat ini. Tetap keluar dari halaman?';
 
 function NewSerialRoute() {
   const dirty = useRef(false);

@@ -118,7 +118,7 @@ async function pickDefaults() {
 }
 
 async function paste(text: string) {
-  await userEvent.click(screen.getByLabelText('Pindai atau tempel serial (satu per baris)'));
+  await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
   await userEvent.paste(text);
   if (!text.includes(NL)) await userEvent.keyboard('{Enter}');
 }
@@ -207,7 +207,7 @@ test('impor: galat jaringan saat verifikasi bukan "item tidak ditemukan" dan sti
   await waitFor(() => expect(serialValues()).toEqual(['NET1']));
   const tr = dataRows()[0] as HTMLElement;
   expect(within(tr).queryByText(/tidak ditemukan/)).toBeNull();
-  expect(within(tr).getByText(/belum dapat diverifikasi/)).toBeInTheDocument();
+  expect(within(tr).getByText(/belum bisa diverifikasi/)).toBeInTheDocument();
   expect(within(tr).getByText('Stiker A ×2')).toBeInTheDocument();
 });
 
@@ -331,7 +331,7 @@ test('daftar lokasi gagal dimuat saat impor: baris ditandai belum terverifikasi,
   await uploadRows(stagingRows(['LOC1']));
   await waitFor(() => expect(serialValues()).toEqual(['LOC1']));
   const tr = dataRows()[0] as HTMLElement;
-  expect(within(tr).getByText(/belum dapat diverifikasi/)).toBeInTheDocument();
+  expect(within(tr).getByText(/belum bisa diverifikasi/)).toBeInTheDocument();
   expect(within(tr).queryByText(/lokasi \(tidak ditemukan\)/)).toBeNull();
 });
 

@@ -47,7 +47,7 @@ const TONE_CLASS = {
 } as const;
 
 function stickerSummary(row: StagingRow): string {
-  if (row.stickers === null) return 'Semua yang berlaku';
+  if (row.stickers === null) return 'Semua stiker yang berlaku';
   if (row.stickers.length === 0) return 'Tanpa stiker';
   return row.stickers.map((sticker) => `${sticker.name} ×${sticker.qty}`).join(', ');
 }
@@ -249,7 +249,7 @@ export function StagingTable({
   return (
     <div className="overflow-x-auto rounded-md border">
       <table className="w-full text-left">
-        <caption className="sr-only">Tabel sementara serial yang akan disimpan</caption>
+        <caption className="sr-only">Draft serial yang akan disimpan</caption>
         <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
           <tr>
             <th scope="col" className="px-2 py-2">

@@ -236,9 +236,11 @@ test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) d
 
 test('cek ulang mengirim serials.act dengan expectedUpdatedAt dan menampilkan kartu baru', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  await screen.findByRole('region', { name: 'Update baru' });
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveAttribute('data-mode', 'message');
-  await pickSelect(screen, 'Aksi', 'Cek ulang');
+  expect(screen.getByLabelText('Tanggal')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Tanggal kejadian')).not.toBeInTheDocument();
+  await pickSelect(screen, 'Jenis update', 'Cek ulang');
   await pickLink(screen, 'Lokasi cek ulang', 'Surabaya (SBY)');
   const kurangi = await screen.findByRole('button', { name: 'Kurangi Stiker A' });
   // Jumlah sekarang 2: tidak dapat turun di bawah nilai itu.
@@ -272,7 +274,7 @@ test('cek ulang mengirim serials.act dengan expectedUpdatedAt dan menampilkan ka
 
 test('catatan wajib berisi; mengirim catatan mengosongkan kolom', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  await screen.findByRole('region', { name: 'Update baru' });
   const send = screen.getByRole('button', { name: 'Kirim catatan' });
   expect(send).toBeDisabled();
   await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Cek kabel');
@@ -287,13 +289,13 @@ test('pengguna serial: view tidak melihat composer maupun tombol ubah', async ()
   me = meWith('view');
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: 'Pembaruan baru' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Update baru' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).not.toBeInTheDocument();
 });
 
 test('versi usang (412) menampilkan pesan dan memuat ulang detail', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  await screen.findByRole('region', { name: 'Update baru' });
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
     id === 'serials.act'
@@ -304,7 +306,9 @@ test('versi usang (412) menampilkan pesan dan memuat ulang detail', async () => 
   const before = calls('serials.get').length;
   await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
-  expect(screen.getByRole('alert')).toHaveTextContent('lokasi dan jumlah stiker dikembalikan');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'lokasi dan jumlah stiker kembali ke data terbaru',
+  );
   await waitFor(() => expect(calls('serials.get').length).toBeGreaterThan(before));
   // Pesan pengguna tidak hilang.
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue('halo');
@@ -424,10 +428,12 @@ test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai;
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   await within(dialog).findByRole('status');
   // Catatan: pengguna dan orang lain sama-sama mengubah, nilainya berbeda: ditandai.
-  expect(within(dialog).getByText(/Diubah orang lain menjadi: catatan B/)).toBeInTheDocument();
+  expect(
+    within(dialog).getByText(/Orang lain sudah mengubahnya jadi: catatan B/),
+  ).toBeInTheDocument();
   // Tanggal uji belum disentuh pengguna: diganti nilai server tanpa tanda.
   expect(within(dialog).getByLabelText('Tanggal uji')).toHaveValue('2026-11-09');
-  expect(within(dialog).queryByText(/Diubah orang lain menjadi: 2026-11-09/)).toBeNull();
+  expect(within(dialog).queryByText(/Orang lain sudah mengubahnya jadi: 2026-11-09/)).toBeNull();
   // Serial hanya ditambah spasi (setelah normalisasi tak berubah): mengikuti server, tanpa tanda.
   expect(within(dialog).getByLabelText('Serial')).toHaveValue('ABC123');
   expect(within(dialog).getByLabelText('Catatan')).toHaveValue('catatan A');
@@ -461,24 +467,28 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
   });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
   await within(dialog).findByRole('status');
-  expect(within(dialog).getByText(/Diubah orang lain menjadi: Bandung/)).toBeInTheDocument();
-  expect(within(dialog).getByText(/Diubah orang lain menjadi: Lain BU/)).toBeInTheDocument();
+  expect(
+    within(dialog).getByText(/Orang lain sudah mengubahnya jadi: Bandung/),
+  ).toBeInTheDocument();
+  expect(
+    within(dialog).getByText(/Orang lain sudah mengubahnya jadi: Lain BU/),
+  ).toBeInTheDocument();
   // Sample: nilai server sama dengan nilai pengguna, jadi tak ada konflik.
-  expect(within(dialog).queryByText(/Diubah orang lain menjadi: Sample/)).toBeNull();
-  expect(within(dialog).queryByText(/Diubah orang lain menjadi: Bukan sample/)).toBeNull();
+  expect(within(dialog).queryByText(/Orang lain sudah mengubahnya jadi: Sample/)).toBeNull();
+  expect(within(dialog).queryByText(/Orang lain sudah mengubahnya jadi: Bukan sample/)).toBeNull();
   // Nilai pengguna dipertahankan sampai ia memutuskan.
   expect(within(dialog).getByRole('combobox', { name: 'Lokasi' })).toHaveValue('Surabaya (SBY)');
 });
 
-test('linimasa terpotong: catatan "hanya 500 kejadian terbaru" tampil; tidak tampil bila tidak terpotong', async () => {
+test('linimasa terpotong: catatan "hanya 500 entri terbaru" tampil; tidak tampil bila tidak terpotong', async () => {
   state = { ...state, eventsTruncated: true };
   const { unmount } = renderPage();
-  expect(await screen.findByRole('note')).toHaveTextContent('Hanya 500 kejadian terbaru');
+  expect(await screen.findByRole('note')).toHaveTextContent('Hanya 500 entri terbaru');
   unmount();
   state = { ...state, eventsTruncated: false };
   renderPage();
   await screen.findByRole('heading', { name: 'ABC123' });
-  expect(screen.queryByText(/Hanya 500 kejadian terbaru/)).toBeNull();
+  expect(screen.queryByText(/Hanya 500 entri terbaru/)).toBeNull();
 });
 
 test('cek ulang: penaik jumlah stiker nonaktif dimatikan dengan keterangan; deprecated tetap boleh', async () => {
@@ -493,10 +503,10 @@ test('cek ulang: penaik jumlah stiker nonaktif dimatikan dengan keterangan; depr
     },
   };
   renderPage();
-  await screen.findByRole('region', { name: 'Pembaruan baru' });
-  await pickSelect(screen, 'Aksi', 'Cek ulang');
+  await screen.findByRole('region', { name: 'Update baru' });
+  await pickSelect(screen, 'Jenis update', 'Cek ulang');
   expect(await screen.findByRole('button', { name: 'Tambah Stiker A' })).toBeDisabled();
-  expect(screen.getByText('Stiker nonaktif: jumlah tidak dapat ditambah')).toBeInTheDocument();
+  expect(screen.getByText('Stiker nonaktif: jumlah tidak bisa ditambah')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Tambah Stiker B' })).toBeEnabled();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
   expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('2');
@@ -504,13 +514,13 @@ test('cek ulang: penaik jumlah stiker nonaktif dimatikan dengan keterangan; depr
 
 test('galat server pada stickers dan message (karakter pengatur arah) tampil lewat jalur galat yang ada', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Pembaruan baru' });
+  await screen.findByRole('region', { name: 'Update baru' });
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
     id === 'serials.act'
       ? Promise.reject(
           new ApiError('VALIDATION', 'Data tidak valid', '-', {
-            stickers: 'Stiker nonaktif tidak dapat ditambah jumlahnya',
+            stickers: 'Jumlah stiker nonaktif tidak bisa ditambah',
             message: 'Pesan memuat karakter pengatur arah teks',
           }),
         )
@@ -519,7 +529,7 @@ test('galat server pada stickers dan message (karakter pengatur arah) tampil lew
   await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
   await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
   const alert = await screen.findByRole('alert');
-  expect(alert).toHaveTextContent('Stiker nonaktif tidak dapat ditambah jumlahnya');
+  expect(alert).toHaveTextContent('Jumlah stiker nonaktif tidak bisa ditambah');
   expect(alert).toHaveTextContent('Pesan memuat karakter pengatur arah teks');
 });
 

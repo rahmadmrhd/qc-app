@@ -24,6 +24,7 @@ import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draf
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
+import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
@@ -86,11 +87,11 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 } {
   const parts: string[] = [];
   if (report.added > 0) parts.push(`${report.added} serial ditambahkan`);
-  if (report.duplicates > 0) parts.push(`${report.duplicates} ganda dilewati`);
+  if (report.duplicates > 0) parts.push(`${report.duplicates} duplikat dilewati`);
   if (report.rejected.length > 0) {
     parts.push(`${report.rejected.length} ditolak (${report.rejected.slice(0, 3).join(', ')})`);
   }
-  if (report.truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris tabel tercapai`);
+  if (report.truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris draft tercapai`);
   // Tambahan sebagian (ada yang ditolak atau terpotong) tidak berbunyi nada sukses.
   const partial = report.rejected.length > 0 || report.truncated;
   const feedback: ScanFeedback = partial
@@ -121,6 +122,17 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
 
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
+  // Hanya satu lokasi yang dapat dipilih: jadi bawaan, sekali saja (pengguna yang mengosongkannya tak diisi lagi).
+  const { locations: pickableLocations } = useSerialLocations();
+  const defaultLocationDecided = useRef(false);
+  useEffect(() => {
+    if (defaultLocationDecided.current || pickableLocations.length === 0) return;
+    defaultLocationDecided.current = true;
+    const [only] = toLocationOptions(pickableLocations);
+    if (only && pickableLocations.length === 1) {
+      setLocation((current) => (current.id === '' ? { id: only.id, label: only.label } : current));
+    }
+  }, [pickableLocations]);
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
@@ -319,12 +331,12 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         );
       }
       if (verified.unresolved > 0) {
-        parts.push(`${verified.unresolved} baris perlu memilih ulang item, lokasi, atau stiker`);
+        parts.push(`${verified.unresolved} baris perlu dipilih ulang item, lokasi, atau stiker`);
       }
       if (verified.unverified > 0) {
-        parts.push(`${verified.unverified} baris belum dapat diverifikasi (jaringan atau server)`);
+        parts.push(`${verified.unverified} baris belum bisa diverifikasi (jaringan atau server)`);
       }
-      if (truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris tabel tercapai`);
+      if (truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris draft tercapai`);
       if (result.warning) parts.push(result.warning);
       const warn =
         result.problems.length > 0 ||
@@ -454,12 +466,12 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">Catat Serial</h1>
+      <h1 className="text-xl font-semibold">Catat Serial Number</h1>
 
-      <section aria-label="Bawaan rombongan" className="space-y-3 rounded-lg border p-4">
-        <h2 className="text-sm font-semibold">Bawaan rombongan</h2>
+      <section aria-label="Default" className="space-y-3 rounded-lg border p-4">
+        <h2 className="text-sm font-semibold">Default</h2>
         <p className="text-xs text-muted-foreground">
-          Berlaku untuk serial yang ditambahkan sesudahnya; baris yang sudah ada tidak berubah.
+          Dipakai untuk serial yang ditambahkan setelah ini; baris yang sudah ada tidak berubah.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ItemBuField
@@ -520,7 +532,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
 
       <SerialScanInput
         id="serial-scan"
-        label="Pindai atau tempel serial (satu per baris)"
+        label="Scan atau tempel serial (satu per baris)"
         onSubmit={addText}
         autoFocus
       />
@@ -538,8 +550,8 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
           role="alert"
           className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
         >
-          Draf tidak tersimpan otomatis (penyimpanan perangkat penuh atau diblokir). Simpan atau
-          ekspor berkas .qcsn agar hasil pindai tidak hilang.
+          Draft tidak tersimpan otomatis (penyimpanan perangkat penuh atau diblokir). Simpan atau
+          ekspor berkas .qcsn supaya hasil scan tidak hilang.
         </p>
       ) : null}
 
@@ -553,7 +565,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Tabel sementara ({rows.length} baris)</h2>
+        <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
         <ImportExportBar
           rows={rows}
           disabled={saving || importing}
@@ -575,7 +587,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
 
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Belum ada serial. Pindai, ketik lalu Enter, tempel, atau impor berkas .qcsn.
+          Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
         </p>
       ) : (
         <StagingTable
@@ -594,9 +606,9 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           Dibuat {summary.created}, duplikat {summary.duplicate}, gagal {summary.failed}.
           {summary.skipped > 0
-            ? ` ${summary.skipped} baris tidak dikirim karena item atau Business Unit-nya tidak lagi sah.`
+            ? ` ${summary.skipped} baris tidak dikirim: item atau Business Unit-nya sudah tidak berlaku.`
             : ''}
-          {rows.length > 0 ? ' Baris yang tersisa masih ada di tabel.' : ''}
+          {rows.length > 0 ? ' Baris yang tersisa masih ada di draft.' : ''}
         </p>
       ) : null}
 
@@ -632,7 +644,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
               setSummary(null);
             }}
           >
-            Kosongkan tabel
+            Kosongkan draft
           </Button>
         ) : null}
       </div>

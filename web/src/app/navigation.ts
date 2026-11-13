@@ -113,7 +113,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Serial Number',
     items: [
       {
-        label: 'Daftar Serial',
+        label: 'Daftar Serial Number',
         to: '/serial',
         icon: ListChecks,
         excludes: ['/serial/new'],
@@ -123,7 +123,7 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       {
-        label: 'Catat Serial',
+        label: 'Catat Serial Number',
         to: '/serial/new',
         icon: ScanBarcode,
         permission: { module: 'serial', level: 'edit' },

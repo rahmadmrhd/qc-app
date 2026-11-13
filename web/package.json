@@ -38,6 +38,7 @@
     "@tiptap/markdown": "3.31.4",
     "@tiptap/pm": "3.31.4",
     "@tiptap/react": "3.31.4",
+    "barcode-detector": "3.2.3",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.4.0",
@@ -55,7 +56,8 @@
     "uqr": "^0.1.3",
     "vite-plugin-pwa": "2.0.0",
     "workbox-window": "7.4.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "zxing-wasm": "3.1.6"
   },
   "devDependencies": {
     "@tanstack/router-plugin": "1.168.42",
