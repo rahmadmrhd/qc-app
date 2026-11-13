@@ -1,10 +1,17 @@
+import type { HandoverDto } from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { beginBusy } from '@/app/pwa/busy';
+import { reportUnauthenticated } from '@/app/query-client';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { getSession } from '@/modules/auth/session';
-import { purgeForeignOutboxes, readOutbox } from '@/modules/handover/lib/check-outbox';
+import { findHandoverInBoards } from '@/modules/handover/lib/board-cache';
+import {
+  purgeForeignOutboxes,
+  readOutbox,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/check-outbox';
 import {
   type FlushResult,
   flushOutbox,
@@ -15,11 +22,30 @@ import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
 export const OUTBOX_FLUSH_MIN_GAP_MS = 3_000;
 
+/** Kunci Web Locks: hanya satu tab per perangkat yang menguras antrean (tab lain melewati putarannya). */
+const FLUSH_LOCK = 'qc-outbox-flush';
+
 let requestFlush: (() => void) | null = null;
 
 /** Meminta pengurasan sekarang (mis. setelah klik diantrekan). No-op bila penyinkron belum dimulai. */
 export function requestOutboxFlush(): void {
   requestFlush?.();
+}
+
+function time(iso: string): number {
+  const value = Date.parse(iso);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+/** Ada salinan task di cache (papan atau detail) yang lebih baru daripada `saved`? Maka `saved` basi dan tak dipasang. */
+function cacheIsNewer(queryClient: QueryClient, saved: HandoverDto): boolean {
+  const copies = [
+    findHandoverInBoards(queryClient, saved.id),
+    ...queryClient
+      .getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', saved.id] })
+      .map(([, data]) => data),
+  ];
+  return copies.some((copy) => copy !== undefined && time(copy.updatedAt) > time(saved.updatedAt));
 }
 
 function announce(result: FlushResult): void {
@@ -34,8 +60,9 @@ function announce(result: FlushResult): void {
 
 /**
  * Penyinkron antrean centang di foreground (FR-P17-P19; tanpa Background Sync). Pemicu: awal aplikasi, `online`, tab
- * kembali terlihat, dan query yang berhasil dimuat dari server (bukan tulis manual ke cache). Dipasang hanya bila
- * sesi sah; mengembalikan fungsi berhenti.
+ * kembali terlihat atau fokus, serta query/mutasi yang berhasil di server (bukan tulis manual ke cache) dan
+ * `requestOutboxFlush`. Hanya bila antrean tidak kosong; pemicu sukses dibatasi 3 dtk. Dipasang hanya bila sesi sah;
+ * mengembalikan fungsi berhenti.
  */
 export function startOutboxSync(queryClient: QueryClient): () => void {
   const current = getSession().email;
@@ -43,6 +70,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   const owner: string = current;
   // Pemilik lain login di perangkat yang sama: antreannya tak pernah dikirim sebagai pemilik ini.
   purgeForeignOutboxes(owner);
+  // Sesi kerja baru: penulisan antrean (ditahan saat keluar) diizinkan lagi untuk pemilik yang sah ini.
+  resumeOutboxWrites();
 
   const isOwnerActive = () => {
     const session = getSession();
@@ -52,28 +81,54 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   let lastStart = Number.NEGATIVE_INFINITY;
   let stopped = false;
 
-  async function drain(): Promise<void> {
-    if (stopped || running || readOutbox(owner).length === 0) return;
-    running = true;
-    lastStart = Date.now();
+  // Hasil server dipasang per entri (sinkron, sebelum entri dihapus): tanpa kedipan dan tanpa celah bagi klik lain.
+  // Dilewati bila entri lain task itu masih menyusul (yang terakhir yang dipasang) atau cache sudah lebih baru.
+  const onSent = (saved: HandoverDto, entry: { id: string }) => {
+    if (readOutbox(owner).some((other) => other.taskId === saved.id && other.id !== entry.id))
+      return;
+    if (cacheIsNewer(queryClient, saved)) return;
+    applySavedHandover(queryClient, saved);
+  };
+
+  async function drainNow(): Promise<void> {
     // Muat ulang otomatis PWA tidak boleh memotong pengiriman yang sedang berjalan.
     const endBusy = beginBusy();
     try {
       const result = await flushOutbox({
-        owner: owner,
+        owner,
         now: () => Date.now(),
         send: sendOutboxEntry,
         isOwnerActive,
+        onSent,
       });
       if (!isOwnerActive()) return;
-      for (const saved of result.sent) applySavedHandover(queryClient, saved);
       if (result.sent.length > 0) markStale(queryClient, accessKeys.audit);
       if (result.rejected.length > 0) {
         void queryClient.invalidateQueries({ queryKey: handoverKeys.all });
       }
       announce(result);
+      // `api()` dipanggil di luar react-query, jadi penangan 401 global harus dipanggil sendiri (entri tetap).
+      if (result.stoppedBy === 'unauthenticated') reportUnauthenticated();
     } finally {
       endBusy();
+    }
+  }
+
+  async function drain(): Promise<void> {
+    if (stopped || running || readOutbox(owner).length === 0) return;
+    running = true;
+    lastStart = Date.now();
+    try {
+      const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+      if (locks) {
+        // Beberapa tab akun yang sama: hanya satu yang menguras; yang lain melewati putaran ini.
+        await locks.request(FLUSH_LOCK, { ifAvailable: true }, async (lock) => {
+          if (lock) await drainNow();
+        });
+      } else {
+        await drainNow();
+      }
+    } finally {
       running = false;
     }
   }
@@ -85,13 +140,22 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
     if (document.visibilityState === 'visible') trigger();
   };
   window.addEventListener('online', trigger);
+  window.addEventListener('focus', trigger);
   document.addEventListener('visibilitychange', onVisibility);
 
   // Hanya keberhasilan permintaan nyata: `setQueryData`/patch optimistis (`action.manual`) tidak dihitung.
-  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+  const onSuccess = () => {
     if (Date.now() - lastStart < OUTBOX_FLUSH_MIN_GAP_MS) return;
     trigger();
+  };
+  const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+    onSuccess();
+  });
+  // Sukses mutasi apa pun juga tanda server pulih.
+  const unsubscribeMutations = queryClient.getMutationCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success') return;
+    onSuccess();
   });
 
   requestFlush = trigger;
@@ -100,8 +164,10 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   return () => {
     stopped = true;
     window.removeEventListener('online', trigger);
+    window.removeEventListener('focus', trigger);
     document.removeEventListener('visibilitychange', onVisibility);
-    unsubscribe();
+    unsubscribeQueries();
+    unsubscribeMutations();
     if (requestFlush === trigger) requestFlush = null;
   };
 }

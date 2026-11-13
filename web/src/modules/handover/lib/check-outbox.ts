@@ -20,6 +20,8 @@ export interface OutboxEntry {
 export const OUTBOX_KEY_PREFIX = 'qc.outbox:';
 export const OUTBOX_MAX_ENTRIES = 200;
 export const OUTBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** Entri bertanggal lebih dari ini di masa depan (jam perangkat salah) dianggap kedaluwarsa agar tak menetap selamanya. */
+export const OUTBOX_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 const VERSION = 1;
 
@@ -99,8 +101,29 @@ export function outboxVersion(): number {
   return version;
 }
 
+/**
+ * Setelah keluar eksplisit, penulisan antrean ditahan sampai `resumeOutboxWrites`: permintaan centang yang masih terbang
+ * saat keluar bisa gagal `UNAVAILABLE` dan, tanpa ini, menulis antrean pemilik lama kembali (pola yang sama dengan draf
+ * Serial Number).
+ */
+let writesSuspended = false;
+
+export function suspendOutboxWrites(): void {
+  writesSuspended = true;
+}
+
+/** Sesi kerja baru (penyinkron dimulai untuk pemilik yang sah): penulisan diizinkan lagi. */
+export function resumeOutboxWrites(): void {
+  writesSuspended = false;
+}
+
+export function outboxWritesSuspended(): boolean {
+  return writesSuspended;
+}
+
 /** Menulis daftar (kosong = kunci dibuang). `false` bila penyimpanan penuh/diblokir. */
 function write(owner: string, entries: readonly OutboxEntry[]): boolean {
+  if (writesSuspended) return false;
   try {
     if (entries.length === 0) localStorage.removeItem(outboxKey(owner));
     else localStorage.setItem(outboxKey(owner), JSON.stringify({ v: VERSION, entries }));
@@ -115,6 +138,7 @@ function write(owner: string, entries: readonly OutboxEntry[]): boolean {
  * `false` bila antrean penuh (setelah penggabungan) atau penyimpanan gagal: pemanggil harus menampilkan galat biasa.
  */
 export function enqueueCheck(owner: string, entry: Omit<OutboxEntry, 'id'>): boolean {
+  if (writesSuspended) return false;
   const kept = readOutbox(owner).filter(
     (existing) => !(existing.taskId === entry.taskId && existing.index === entry.index),
   );
@@ -140,12 +164,17 @@ export function hasEntriesForTask(owner: string, taskId: string): boolean {
 /** Membuang entri yang lebih tua dari 24 jam dan mengembalikannya (untuk toast "kedaluwarsa"). */
 export function purgeExpired(owner: string, now: number): OutboxEntry[] {
   const current = readOutbox(owner);
-  const expired = current.filter((entry) => now - entry.at > OUTBOX_MAX_AGE_MS);
+  const isExpired = (entry: OutboxEntry) =>
+    now - entry.at > OUTBOX_MAX_AGE_MS || entry.at - now > OUTBOX_MAX_FUTURE_SKEW_MS;
+  const expired = current.filter(isExpired);
   if (expired.length === 0) return [];
-  write(
-    owner,
-    current.filter((entry) => now - entry.at <= OUTBOX_MAX_AGE_MS),
-  );
+  if (
+    !write(
+      owner,
+      current.filter((entry) => !isExpired(entry)),
+    )
+  )
+    return [];
   notify();
   return expired;
 }

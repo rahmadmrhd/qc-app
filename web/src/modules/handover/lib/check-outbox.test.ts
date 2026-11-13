@@ -6,14 +6,18 @@ import {
   hasEntriesForTask,
   OUTBOX_MAX_AGE_MS,
   OUTBOX_MAX_ENTRIES,
+  OUTBOX_MAX_FUTURE_SKEW_MS,
   outboxKey,
   outboxVersion,
+  outboxWritesSuspended,
   overlayPendingChecks,
   purgeExpired,
   purgeForeignOutboxes,
   readOutbox,
   removeEntries,
+  resumeOutboxWrites,
   subscribeOutbox,
+  suspendOutboxWrites,
 } from './check-outbox';
 
 const OWNER = 'a@x.com';
@@ -31,6 +35,7 @@ function entry(over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) {
 }
 
 beforeEach(() => localStorage.clear());
+afterEach(() => resumeOutboxWrites());
 afterEach(() => vi.restoreAllMocks());
 
 test('kunci per pemilik; enqueue lalu read mempertahankan urutan dan memberi id unik', () => {
@@ -185,4 +190,33 @@ test('overlayPendingChecks: teks cocok mencentang butir; teks beda atau task lai
   expect(out.checklist[0]).toMatchObject({ checked: true, by: 'qc@x' });
   expect(out.checklist[1]?.checked).toBe(false);
   expect(overlayPendingChecks(dto, [], 'qc@x', 'x')).toBe(dto);
+});
+
+test('purgeExpired: entri bertanggal di masa depan (> 5 menit) juga dianggap kedaluwarsa', () => {
+  const now = 5_000_000;
+  enqueueCheck(OWNER, entry({ index: 0, at: now + OUTBOX_MAX_FUTURE_SKEW_MS }));
+  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2', at: now + OUTBOX_MAX_FUTURE_SKEW_MS + 1 }));
+  const dropped = purgeExpired(OWNER, now);
+  expect(dropped.map((e) => e.index)).toEqual([1]);
+  expect(readOutbox(OWNER).map((e) => e.index)).toEqual([0]);
+});
+
+test('penulisan ditahan (setelah keluar): enqueue false, tak ada tulis apa pun; resume memulihkan', () => {
+  enqueueCheck(OWNER, entry({ index: 0 }));
+  const [lama] = readOutbox(OWNER);
+  suspendOutboxWrites();
+  expect(outboxWritesSuspended()).toBe(true);
+  expect(enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe(false);
+  removeEntries(OWNER, [lama?.id ?? '']);
+  expect(readOutbox(OWNER)).toEqual([lama]);
+  resumeOutboxWrites();
+  expect(outboxWritesSuspended()).toBe(false);
+  expect(enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe(true);
+});
+
+test('clearAllOutboxes tetap bisa membuang walau penulisan ditahan', () => {
+  enqueueCheck(OWNER, entry());
+  suspendOutboxWrites();
+  clearAllOutboxes();
+  expect(localStorage.getItem(outboxKey(OWNER))).toBeNull();
 });

@@ -19,7 +19,13 @@ import { ApiError } from '@/lib/api/api-error';
 import { makeHandover } from '../components/test-handover';
 import { handoverKeys } from '../queries';
 import { boardColumnData, findHandoverInBoards } from './board-cache';
-import { enqueueCheck, OUTBOX_MAX_ENTRIES, readOutbox } from './check-outbox';
+import {
+  enqueueCheck,
+  OUTBOX_MAX_ENTRIES,
+  readOutbox,
+  resumeOutboxWrites,
+  suspendOutboxWrites,
+} from './check-outbox';
 import { useCheckQueue } from './use-check-queue';
 
 const items = (n: number) =>
@@ -85,6 +91,7 @@ const flush = () =>
   });
 
 beforeEach(() => {
+  resumeOutboxWrites();
   localStorage.clear();
   resetBusyForTests();
   mocks.api.mockReset();
@@ -311,4 +318,40 @@ test('task masih punya entri antrean: klik baru masuk antrean, tidak dikirim lan
   expect(readOutbox('qc@x').map((entry) => entry.index)).toEqual([3, 0]);
   expect(mocks.requestFlush).toHaveBeenCalledTimes(1);
   expect(mocks.error).not.toHaveBeenCalled();
+});
+
+test('A1: klik yang gagal UNAVAILABLE setelah keluar tidak menulis antrean; butir dikembalikan dan galat biasa tampil', async () => {
+  const { hook, cached, ref } = setup();
+  suspendOutboxWrites();
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  const outboxKeys = Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'));
+  expect(outboxKeys).toEqual([]);
+  expect(cached().checklist[1]?.checked).toBe(false);
+  expect(mocks.error).toHaveBeenCalledTimes(1);
+  expect(mocks.info).not.toHaveBeenCalled();
+});
+
+test('A4: teks toast berbeda: koneksi hanya untuk jalur UNAVAILABLE, netral bila task sudah punya entri', async () => {
+  const first = setup();
+  mocks.api.mockRejectedValue(unavailable());
+  act(() => first.hook.result.current.toggle(first.ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(mocks.info.mock.calls[0]?.[0]).toMatch(/Tidak ada koneksi/);
+  expect(mocks.info.mock.calls[0]?.[1]).toEqual({ id: 'check-outbox-queued' });
+  mocks.info.mockReset();
+  act(() => first.hook.result.current.toggle(first.ref, { index: 2, text: 'B2 = 1' }, true));
+  await flush();
+  expect(mocks.info).toHaveBeenCalledTimes(1);
+  expect(mocks.info.mock.calls[0]?.[0]).toBe('Centang disimpan dan dikirim berurutan.');
+  expect(mocks.info.mock.calls[0]?.[1]).toEqual({ id: 'check-outbox-queued' });
+});
+
+test('A5: setCheck langsung berhasil meminta pengurasan antrean (no-op bila antrean kosong)', async () => {
+  const { hook, ref } = setup();
+  mocks.api.mockResolvedValue(serverAfter([1]));
+  act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
+  await flush();
+  expect(mocks.requestFlush).toHaveBeenCalledTimes(1);
 });

@@ -10,13 +10,22 @@ export interface FlushDeps {
   send: (entry: OutboxEntry) => Promise<HandoverDto>;
   /** `false` bila pemilik sudah keluar/berganti: pengurasan berhenti tanpa menyentuh antrean lagi. */
   isOwnerActive: () => boolean;
+  /**
+   * Dipanggil sinkron per entri yang berhasil, SEBELUM entri dihapus dari antrean: hasil server dipasang ke cache selagi
+   * overlay masih ada (tanpa kedipan) dan tanpa celah bagi klik lain untuk menyela.
+   */
+  onSent?: (saved: HandoverDto, entry: OutboxEntry) => void;
 }
 
 export interface FlushResult {
   sent: HandoverDto[];
   rejected: { entry: OutboxEntry; reason: string }[];
   expired: OutboxEntry[];
-  stoppedBy: 'none' | 'unavailable' | 'unauthenticated' | 'owner-changed';
+  /**
+   * `unavailable` = server tak terjangkau; `server-error` = galat server tak jelas (5xx/proksi/tak terduga). Keduanya
+   * menghentikan putaran dan mempertahankan entri.
+   */
+  stoppedBy: 'none' | 'unavailable' | 'server-error' | 'unauthenticated' | 'owner-changed';
 }
 
 /** Pengiriman bawaan: satu `handovers.setCheck` per entri. */
@@ -29,6 +38,14 @@ export function sendOutboxEntry(entry: OutboxEntry): Promise<HandoverDto> {
     checked: entry.checked,
   });
 }
+
+/** Hanya penolakan nyata dari server yang membuang entri (FR-P18); selain itu entri dipertahankan. */
+const REJECTION_CODES: ReadonlySet<string> = new Set([
+  'CONFLICT',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'VALIDATION',
+]);
 
 async function run(deps: FlushDeps): Promise<FlushResult> {
   const { owner } = deps;
@@ -51,12 +68,15 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
     tried.add(next.id);
     try {
       const saved = await deps.send(next);
-      // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
-      removeEntries(owner, [next.id]);
       if (!deps.isOwnerActive()) {
+        // Sudah terkirim: hapus agar tak terkirim dua kali, tapi jangan menyentuh cache pemilik yang sudah berganti.
+        removeEntries(owner, [next.id]);
         result.stoppedBy = 'owner-changed';
         break;
       }
+      deps.onSent?.(saved, next);
+      // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
+      removeEntries(owner, [next.id]);
       result.sent.push(saved);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'UNAVAILABLE') {
@@ -67,7 +87,12 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
         result.stoppedBy = 'unauthenticated';
         break;
       }
-      // Ditolak server (CONFLICT, FORBIDDEN, NOT_FOUND, dst.): dibuang dan tidak diulang (FR-P18).
+      if (!(error instanceof ApiError) || !REJECTION_CODES.has(error.code)) {
+        // INTERNAL (502/504 polos dari proksi, dst.) atau galat tak terduga: bukan penolakan; entri tetap.
+        result.stoppedBy = 'server-error';
+        break;
+      }
+      // Ditolak server (CONFLICT, FORBIDDEN, NOT_FOUND, VALIDATION): dibuang dan tidak diulang (FR-P18).
       if (!deps.isOwnerActive()) {
         result.stoppedBy = 'owner-changed';
         break;

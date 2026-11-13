@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { runBusy } from '@/app/pwa/busy';
 import { CSRF_HEADERS } from '@/lib/api/client';
-import { clearAllOutboxes } from '@/modules/handover/lib/check-outbox';
+import { clearAllOutboxes, suspendOutboxWrites } from '@/modules/handover/lib/check-outbox';
 import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
 import { clearSession } from './session';
 
@@ -25,6 +25,9 @@ export function useLogout(): () => void {
   return () => {
     // POST /auth/logout + pembersihan sesi lokal = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
     void runBusy(async () => {
+      // Tahan penulisan antrean centang dari awal: permintaan yang masih terbang lalu gagal UNAVAILABLE tak boleh
+      // menghidupkan antrean pemilik lama sesudah dibuang (dilanjutkan lagi oleh `startOutboxSync` sesi berikutnya).
+      suspendOutboxWrites();
       if (!import.meta.env.DEV) await postLogout();
       clearSession();
       // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.

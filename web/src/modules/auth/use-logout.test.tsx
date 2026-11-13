@@ -7,6 +7,11 @@ const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import {
+  enqueueCheck,
+  outboxWritesSuspended,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/check-outbox';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
 import { clearSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
@@ -30,6 +35,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   resumeDraftWrites();
+  resumeOutboxWrites();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -129,4 +135,28 @@ test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', () =
   localStorage.setItem('qc.outbox:a@x.com', '{}');
   clearSession();
   expect(localStorage.getItem('qc.outbox:a@x.com')).toBe('{}');
+});
+
+test('A1: keluar menahan penulisan antrean centang SEBELUM navigasi; penulisan setelahnya tak menghidupkan antrean lagi', async () => {
+  let suspendedAtNavigate: boolean | null = null;
+  navigate.mockImplementationOnce(() => {
+    suspendedAtNavigate = outboxWritesSuspended();
+    return Promise.resolve();
+  });
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  expect(suspendedAtNavigate).toBe(true);
+  // Permintaan centang yang terbang saat keluar lalu gagal UNAVAILABLE mencoba mengantre: ditolak.
+  expect(
+    enqueueCheck('a@x.com', {
+      taskId: 't',
+      locationId: 'l',
+      index: 0,
+      text: 'x',
+      checked: true,
+      at: Date.now(),
+    }),
+  ).toBe(false);
+  expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
 });

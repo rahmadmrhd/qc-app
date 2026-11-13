@@ -154,3 +154,39 @@ test('entri baru yang masuk saat mengirim ikut terkirim; pengganti saat terbang 
   expect(result.sent).toHaveLength(3);
   expect(readOutbox(OWNER)).toEqual([]);
 });
+
+test('INTERNAL (mis. 502 polos dari proksi) dan galat non-ApiError tidak membuang entri: berhenti dan dipertahankan', async () => {
+  queue(0);
+  queue(1);
+  const bad = vi.fn().mockRejectedValue(err('INTERNAL', 'Respons server tidak valid'));
+  const r1 = await flushOutbox(deps({ send: bad }));
+  expect(r1.stoppedBy).toBe('server-error');
+  expect(r1.rejected).toEqual([]);
+  expect(readOutbox(OWNER)).toHaveLength(2);
+  expect(bad).toHaveBeenCalledTimes(1);
+  const plain = vi.fn().mockRejectedValue(new Error('aneh'));
+  const r2 = await flushOutbox(deps({ send: plain }));
+  expect(r2.stoppedBy).toBe('server-error');
+  expect(r2.rejected).toEqual([]);
+  expect(readOutbox(OWNER)).toHaveLength(2);
+});
+
+test('VALIDATION ikut penolakan nyata: entri dibuang dengan alasan', async () => {
+  queue(0);
+  const send = vi.fn().mockRejectedValue(err('VALIDATION', 'Tidak valid'));
+  const result = await flushOutbox(deps({ send }));
+  expect(result.rejected).toHaveLength(1);
+  expect(readOutbox(OWNER)).toEqual([]);
+});
+
+test('onSent dipanggil per entri SEBELUM entri dihapus dari antrean', async () => {
+  queue(0);
+  const seen: number[] = [];
+  const onSent = vi.fn((_saved: HandoverDto, entry: OutboxEntry) => {
+    seen.push(readOutbox(OWNER).filter((e) => e.id === entry.id).length);
+  });
+  await flushOutbox(deps({ onSent }));
+  expect(onSent).toHaveBeenCalledTimes(1);
+  expect(seen).toEqual([1]);
+  expect(readOutbox(OWNER)).toEqual([]);
+});

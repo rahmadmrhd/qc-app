@@ -35,10 +35,13 @@ export interface CheckTarget {
 type Patch = (dto: HandoverDto) => HandoverDto;
 
 /** Toast info dengan id tetap: rentetan klik offline tidak menumpuk banyak toast. */
-function notifyQueued(): void {
-  toast.info('Tidak ada koneksi. Centang disimpan di perangkat dan dikirim saat tersambung.', {
-    id: 'check-outbox-queued',
-  });
+function notifyQueued(offline: boolean): void {
+  toast.info(
+    offline
+      ? 'Tidak ada koneksi. Centang disimpan di perangkat dan dikirim saat tersambung.'
+      : 'Centang disimpan dan dikirim berurutan.',
+    { id: 'check-outbox-queued' },
+  );
 }
 
 /** Mengubah task `id` di setiap papan dan cache detail, di tempat (urutan daftar tidak berubah). */
@@ -123,7 +126,7 @@ export function useCheckQueue(by: string) {
           // klik langsung, agar urutan per task terjaga.
           if (hasEntriesForTask(by, task.id)) {
             if (queueIt()) {
-              notifyQueued();
+              notifyQueued(false);
               requestOutboxFlush();
               return;
             }
@@ -137,11 +140,13 @@ export function useCheckQueue(by: string) {
               text,
               checked,
             });
+            // Server terbukti sehat: antrean lain (task berbeda) yang tertunda boleh dikuras (no-op bila kosong).
+            requestOutboxFlush();
           } catch (error) {
             // Server tidak terjangkau: simpan di perangkat dan pertahankan tampilan. Antrean penuh/penyimpanan
             // diblokir = perilaku lama (balik + galat biasa).
             if (error instanceof ApiError && error.code === 'UNAVAILABLE' && queueIt()) {
-              notifyQueued();
+              notifyQueued(true);
               return;
             }
             throw error;
