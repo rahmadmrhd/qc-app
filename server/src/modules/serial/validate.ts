@@ -5,6 +5,7 @@ import type {
   GetSerialInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
+  SaveSerialServiceSettingsInput,
   SaveSerialSettingsInput,
   SerialActInput,
   SerialEditable,
@@ -600,4 +601,37 @@ export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInpu
   }
   reader.done();
   return { expectedUpdatedAt, alert: { enabled, recipients } };
+}
+
+/** Maks. lokasi pada konfigurasi lokasi tim servis (jauh di atas jumlah lokasi nyata). */
+export const SERVICE_LOCATIONS_MAX = 500;
+
+/** Konfigurasi lokasi servis: `expectedUpdatedAt` boleh kosong (simpan pertama); id lokasi unik; kosong = semua lokasi aktif. */
+export function validateSaveSerialServiceSettings(raw: unknown): SaveSerialServiceSettingsInput {
+  const reader = readObject(raw);
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
+  const value = reader.raw('locationIds');
+  const locationIds: string[] = [];
+  if (!Array.isArray(value)) {
+    reader.fail('locationIds', 'Lokasi harus berupa daftar');
+  } else if (value.length > SERVICE_LOCATIONS_MAX) {
+    reader.fail('locationIds', `Maksimal ${SERVICE_LOCATIONS_MAX} lokasi`);
+  } else {
+    const seen = new Set<string>();
+    for (const entry of value) {
+      if (!isText(entry, 100)) {
+        reader.fail('locationIds', 'Ada lokasi yang tidak valid');
+        break;
+      }
+      const id = entry.trim();
+      if (seen.has(id)) {
+        reader.fail('locationIds', 'Ada lokasi yang ganda');
+        break;
+      }
+      seen.add(id);
+      locationIds.push(id);
+    }
+  }
+  reader.done();
+  return { expectedUpdatedAt, locationIds };
 }
