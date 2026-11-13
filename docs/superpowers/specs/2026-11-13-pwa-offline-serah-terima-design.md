@@ -1,6 +1,6 @@
 # PWA Fase 3: Serah Terima tetap bisa dipakai saat sinyal hilang
 
-Tanggal: 2026-11-13. Status: **menunggu persetujuan pemilik produk**. PRD induk: `docs/prd/2026-10-26-qc-pwa.md` (Fase 1 dan 2 sudah ter-merge: PR #57 dan #68).
+Tanggal: 2026-11-13. Status: **disetujui pemilik produk, 2026-11-13** (rencana implementasi dibuat per tahap; Tahap A diimplementasikan lebih dulu). PRD induk: `docs/prd/2026-10-26-qc-pwa.md` (Fase 1 dan 2 sudah ter-merge: PR #57 dan #68).
 
 ## 1. Maksud dan alasan
 
@@ -89,11 +89,11 @@ Sumber status `sending`: penguras antrean menandai entri sebelum permintaan dan 
 
 **Penghitung di header** (chip di samping lonceng, `role="status"`, hanya tampil bila ada entri):
 - `⏳ 3 belum terkirim` → `⟳ Mengirim 2 dari 3…` → hilang.
-- Menghitung seluruh jenis antrean. Mengetuknya membuka daftar singkat (popover): jenis, nomor/nama task, waktu.
+- Menghitung seluruh jenis antrean. Mengetuknya membuka daftar singkat (popover): jenis, nomor/nama task, waktu. Hitungan mengabaikan entri yang sudah lewat 24 jam (akan dibuang pengurasan berikutnya).
 
-**Peringatan saat keluar** (disetujui pemilik produk, 2026-11-13): keluar (logout) membuang seluruh antrean (FR-P14). Bila ada entri yang belum terkirim, dialog konfirmasi keluar menyebut jumlahnya ("N perubahan belum terkirim akan hilang") dengan tombol Batal dan Tetap keluar.
+**Peringatan saat keluar** (disetujui pemilik produk, 2026-11-13): keluar (logout) membuang seluruh antrean (FR-P14). Bila ada entri yang belum terkirim, dialog konfirmasi keluar menyebut jumlahnya ("N perubahan belum terkirim akan hilang") dengan tombol Batal dan Tetap keluar. Angkanya dibaca langsung dari antrean selama dialog terbuka (bukan potret saat dibuka); bila turun menjadi nol, teks dialog berubah menjadi "Semua perubahan sudah terkirim. Aman untuk keluar." Hitungan mengabaikan entri kedaluwarsa dan mencakup semua pemilik yang akan dibuang.
 
-**Layar "Tidak ada koneksi" saat boot** (keputusan saya): selain pesan Fase 2, menampilkan jumlah perubahan yang belum terkirim di perangkat ("N perubahan menunggu dikirim, terkirim otomatis begitu terhubung"). Hanya hitungan, tanpa isi dan tanpa memerlukan sesi.
+**Layar "Tidak ada koneksi" saat boot** (keputusan saya): selain pesan Fase 2, menampilkan jumlah perubahan yang belum terkirim dan belum kedaluwarsa di perangkat: "N perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim." Hanya hitungan (semua pemilik di perangkat), tanpa isi dan tanpa memerlukan sesi. Kalimat sengaja tidak menjanjikan pengiriman otomatis: entri kedaluwarsa (> 24 jam) atau milik akun lain akan dibuang, bukan dikirim.
 
 ## 6. Tahap B: baca offline
 

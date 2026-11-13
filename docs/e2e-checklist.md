@@ -257,5 +257,5 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 194 | Nyalakan jaringan lagi | Chip menjadi "Mengirim X dari N…" lalu hilang setelah semua terkirim; penanda butir hilang | PWA FR-P20 |
 | 195 | Online dengan jaringan lambat (throttling); centang satu butir | Penanda "Mengirim…" tampil lalu hilang saat server menjawab | PWA FR-P20 |
 | 196 | Dengan antrean tersisa, pilih Keluar | Dialog "Keluar sekarang?" menyebut jumlah; Batal tidak membuang apa pun; Tetap keluar membuang antrean | PWA FR-P20 |
-| 197 | Offline dengan antrean tersisa, tutup lalu buka aplikasi | Layar "Tidak ada koneksi" menyebut "N perubahan Anda aman di perangkat dan akan dikirim begitu koneksi kembali." | PWA FR-P20 |
+| 197 | Offline dengan antrean tersisa, tutup lalu buka aplikasi | Layar "Tidak ada koneksi" menyebut "N perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim."; entri yang sudah lewat 24 jam tidak dihitung | PWA FR-P20 |
 | 198 | Buka di ponsel sempit (375 px) saat ada antrean | Chip hanya ikon dan angka; header tidak meluap; ketuk chip membuka daftar singkat (jenis, nomor task atau "Task lain", jam) | PWA FR-P20 |
