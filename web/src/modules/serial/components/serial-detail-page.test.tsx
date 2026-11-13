@@ -789,3 +789,45 @@ test('lencana posisi saat dalam pengiriman menyebut tujuan, bukan lokasi asal', 
   expect(await screen.findByText('Dalam pengiriman · ke Surabaya')).toBeInTheDocument();
   expect(screen.queryByText('Dalam pengiriman · Jakarta')).toBeNull();
 });
+
+test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini diabaikan', async () => {
+  const withCase = {
+    ...SERIAL,
+    cases: [
+      {
+        id: 'c1',
+        number: 'LP-20261113-001',
+        openedOn: '2026-11-13',
+        closedOn: null,
+        outcome: null,
+      },
+    ],
+  } as SerialDto;
+  state = { ...state, serial: withCase };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <SerialDetailPage serialId="s1" onBack={() => undefined} caseId="c1" />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
+  );
+  expect(await screen.findByRole('tab', { name: /^LP-20261113-001/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  unmount();
+  apiMock.mockClear();
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <SerialDetailPage serialId="s1" onBack={() => undefined} caseId="tak-ada" />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole('tab', { name: /^Semua/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
