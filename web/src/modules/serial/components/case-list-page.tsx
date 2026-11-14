@@ -18,7 +18,7 @@ import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { type CaseSearch, caseFilterOfSearch, effectiveCaseStatus } from '../lib/case-filter';
-import { formatDay, STATUS_LABEL } from '../lib/labels';
+import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { serialCaseListQueryOptions } from '../queries';
 
 export interface CaseListPageProps {
@@ -37,6 +37,8 @@ const STATUS_OPTIONS = [
 function agoLabel(days: number): string {
   return days <= 0 ? 'Hari ini' : `${days} hari`;
 }
+
+const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
 
 /**
  * Daftar laporan rusak (bukan daftar serial): nomor LP, serial, item, BU, status, lama di status, pelapor, dan ringkasan.
@@ -115,7 +117,8 @@ export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPagePro
               <TableHead>Item</TableHead>
               <TableHead>BU</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Lama di status</TableHead>
+              <TableHead>Lokasi saat ini</TableHead>
+              <TableHead>Lama</TableHead>
               <TableHead>Pelapor</TableHead>
               <TableHead>Ringkasan</TableHead>
             </TableRow>
@@ -138,16 +141,33 @@ export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPagePro
                 <TableCell>{entry.itemLabel}</TableCell>
                 <TableCell>{entry.buCode}</TableCell>
                 <TableCell>
-                  <Badge variant={entry.status === 'good' ? 'secondary' : 'destructive'}>
-                    {STATUS_LABEL[entry.status]}
-                  </Badge>
-                  {entry.closedOn ? (
-                    <div className="text-xs text-muted-foreground">
-                      Selesai {formatDay(entry.closedOn)}
-                    </div>
-                  ) : null}
+                  {entry.closedOn && entry.outcome ? (
+                    <>
+                      <Badge variant={entry.outcome === 'good' ? 'secondary' : 'destructive'}>
+                        Hasil: {OUTCOME_LABEL[entry.outcome]}
+                      </Badge>
+                      <div className="text-xs text-muted-foreground">
+                        Selesai {formatDay(entry.closedOn)} · status sekarang{' '}
+                        {STATUS_LABEL[entry.status]}
+                      </div>
+                    </>
+                  ) : (
+                    <Badge variant={entry.status === 'good' ? 'secondary' : 'destructive'}>
+                      {STATUS_LABEL[entry.status]}
+                    </Badge>
+                  )}
                 </TableCell>
-                <TableCell>{agoLabel(entry.daysInStatus)}</TableCell>
+                <TableCell>
+                  {entry.locationName || '—'}
+                  <div className="text-xs text-muted-foreground">
+                    {CUSTODY_LABEL[entry.custody]}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {entry.closedOn
+                    ? `Selesai dalam ${agoLabel(entry.durationDays)}`
+                    : agoLabel(entry.daysInStatus)}
+                </TableCell>
                 <TableCell className="max-w-48 truncate" title={entry.reporter}>
                   {entry.reporter}
                 </TableCell>
@@ -158,13 +178,13 @@ export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPagePro
             ))}
             {list.isPending ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-sm text-muted-foreground">
                   Memuat…
                 </TableCell>
               </TableRow>
             ) : items.length === 0 && !list.isError ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-sm text-muted-foreground">
                   Belum ada laporan di sini. Kalau ada unit bermasalah, laporkan lewat menu Lapor
                   Rusak.
                 </TableCell>

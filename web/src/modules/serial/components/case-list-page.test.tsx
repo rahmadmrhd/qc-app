@@ -29,6 +29,8 @@ const row = (over: Partial<SerialCaseRowDto>): SerialCaseRowDto => ({
   closedOn: null,
   outcome: null,
   daysInStatus: 3,
+  locationName: 'Gudang A',
+  durationDays: 3,
   reporter: 'budi@x.com',
   summary: 'Port 3 mati',
   ...over,
@@ -143,6 +145,8 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
   expect(within(first).getByText('BU1')).toBeInTheDocument();
   expect(within(first).getByText('Dilaporkan')).toBeInTheDocument();
   expect(within(first).getByText('3 hari')).toBeInTheDocument();
+  expect(within(first).getByText('Gudang A')).toBeInTheDocument();
+  expect(within(first).getByText('Di QC')).toBeInTheDocument();
   expect(within(first).getByText('budi@x.com')).toBeInTheDocument();
   expect(within(first).getByText('Port 3 mati')).toBeInTheDocument();
   const second = rows[2] as HTMLElement;
@@ -155,12 +159,40 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
     'Item',
     'BU',
     'Status',
-    'Lama di status',
+    'Lokasi saat ini',
+    'Lama',
     'Pelapor',
     'Ringkasan',
   ]) {
     expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
   }
+});
+
+test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan lama pengerjaan', async () => {
+  apiMock.mockImplementation((id: string) =>
+    id === 'serialCases.list'
+      ? Promise.resolve({
+          items: [
+            row({
+              id: 'c9',
+              number: 'LP-20261101-009',
+              closedOn: '2026-11-05',
+              outcome: 'broken',
+              status: 'broken',
+              durationDays: 4,
+              locationName: 'Gudang B',
+            }),
+          ],
+          nextCursor: null,
+        })
+      : Promise.reject(new Error(`api tak dikenal: ${id}`)),
+  );
+  renderPage();
+  const line = (await screen.findByText('LP-20261101-009')).closest('tr') as HTMLElement;
+  expect(within(line).getByText('Hasil: Rusak')).toBeInTheDocument();
+  expect(within(line).getByText(/Selesai .* status sekarang Rusak/)).toBeInTheDocument();
+  expect(within(line).getByText('Selesai dalam 4 hari')).toBeInTheDocument();
+  expect(within(line).getByText('Gudang B')).toBeInTheDocument();
 });
 
 test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async () => {

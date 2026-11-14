@@ -100,6 +100,18 @@ describe('serialCases.list', () => {
     expect(out.data.nextCursor).toBeNull();
   });
 
+  test('lokasi saat ini dan lama laporan (aktif sampai hari ini, tertutup sampai tanggal tutup)', async () => {
+    await seedCase('c1', 3);
+    await seedCase('c2', 2, { closed: true });
+    const items = (await list(SERIAL_USERS.viewer, { status: undefined })).data.items;
+    const byId = Object.fromEntries(items.map((i: Json) => [i.id, i]));
+    expect(typeof byId.c1.locationName).toBe('string');
+    expect(byId.c1.locationName).not.toBe('');
+    // aktif: 3 Nov -> 14 Nov (hari ini) = 11; tertutup: 2 Nov -> 9 Nov = 7
+    expect(byId.c1.durationDays).toBe(11);
+    expect(byId.c2.durationDays).toBe(7);
+  });
+
   test('hari di status dihitung dari kejadian perubahan status terakhir', async () => {
     await seedCase('c1', 1);
     // 14 Nov (WIB) - 10 Nov (kejadian report_failure) = 4 hari

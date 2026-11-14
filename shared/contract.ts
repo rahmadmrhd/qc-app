@@ -1665,6 +1665,10 @@ export interface SerialCaseRowDto {
   outcome: 'good' | 'broken' | null;
   /** Hari kalender (WIB) sejak status serial terakhir berubah. */
   daysInStatus: number;
+  /** Nama lokasi serial sekarang (kosong bila tidak dikenal). */
+  locationName: string;
+  /** Hari kalender (WIB) dari laporan dibuka sampai ditutup (atau sampai hari ini bila masih aktif). */
+  durationDays: number;
   /** Email pelapor (`created_by`). */
   reporter: string;
   /** Baris pertama catatan laporan sebagai teks polos, maks. `SERIAL_LIMITS.reportSummaryMax` karakter. */

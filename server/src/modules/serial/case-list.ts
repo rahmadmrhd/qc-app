@@ -40,6 +40,7 @@ interface CaseListRow {
   model: string | null;
   status_changed_on: string | null;
   report_message: string | null;
+  location_name: string | null;
 }
 
 const STATUS_SET: readonly string[] = SERIAL_STATUSES;
@@ -85,7 +86,7 @@ export async function listSerialCases(
     }
   }
   const rows = await env.DB.prepare(
-    `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message FROM serial_cases c JOIN serials s ON s.id = c.serial_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY c.created_at DESC, c.number DESC LIMIT ?`,
+    `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message, l.name AS location_name FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY c.created_at DESC, c.number DESC LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<CaseListRow>();
@@ -112,6 +113,9 @@ export async function listSerialCases(
       closedOn: row.closed_on.trim() === '' ? null : row.closed_on,
       outcome: outcome === 'good' || outcome === 'broken' ? outcome : null,
       daysInStatus: daysBetween(since, today) ?? 0,
+      locationName: row.location_name ?? '',
+      durationDays:
+        daysBetween(row.opened_on, row.closed_on.trim() === '' ? today : row.closed_on) ?? 0,
       reporter: row.created_by,
       summary: caseSummary(row.report_message ?? ''),
     };
