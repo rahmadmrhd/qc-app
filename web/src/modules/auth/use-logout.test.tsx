@@ -22,7 +22,7 @@ import {
 } from '@/modules/handover/lib/outbox-status';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
 import { resetOutboxEnv } from '@/test/outbox-env';
-import { clearSession, PERSISTED_CACHE_KEY } from './session';
+import { ANONYMOUS_SESSION, clearSession, initSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
 
 // Pembungkus tipis atas modul nyata agar penghapusan toko perangkat dapat dibuat gagal.
@@ -274,4 +274,24 @@ test('pembersihan toko perangkat yang menggantung: keluar tetap selesai dalam ba
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }), { timeout: 5000 });
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   await waitFor(() => expect(isBusy()).toBe(false));
+});
+
+test('keluar menyiarkan logout pemilik ke tab lain SESUDAH penulisan antrean ditahan', async () => {
+  initSession({ ...ANONYMOUS_SESSION, authenticated: true, email: 'a@x.com' });
+  const other = new BroadcastChannel('qc-session');
+  const received: unknown[] = [];
+  let suspendedWhenReceived: boolean | null = null;
+  other.onmessage = (event) => {
+    suspendedWhenReceived = outboxWritesSuspended();
+    received.push(event.data);
+  };
+  try {
+    const { result } = renderHook(() => useLogout(), { wrapper });
+    act(() => result.current());
+    await waitFor(() => expect(received).toContainEqual({ type: 'logout', owner: 'a@x.com' }));
+    expect(suspendedWhenReceived).toBe(true);
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  } finally {
+    other.close();
+  }
 });

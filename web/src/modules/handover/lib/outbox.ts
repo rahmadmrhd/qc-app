@@ -567,6 +567,17 @@ export async function clearAllOutboxesWithin(
   broadcastChanged();
 }
 
+/**
+ * Tab lain keluar (siaran `qc-session`): salinan memori tab ini dikosongkan tanpa menyentuh toko (tab yang keluar yang
+ * membersihkannya). `epoch` naik sehingga penulisan/baca yang masih terbang tak menghidupkan salinan lagi.
+ */
+export function discardOutboxCopy(): void {
+  epoch += 1;
+  if (copy.size === 0) return;
+  setCopy(new Map());
+  notify();
+}
+
 export function resetOutboxForTests(): void {
   copy = new Map();
   mutations = 0;

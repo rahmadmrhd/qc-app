@@ -14,6 +14,7 @@ import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
 import { startServerStatus } from '@/app/server-status';
+import { handleRemoteLogout, startSessionListener } from '@/app/session-broadcast';
 import { OfflineScreen } from '@/app/shell/offline-screen';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
@@ -69,11 +70,20 @@ async function start() {
     await Promise.all([restoreBoardCache(queryClient, me.email), hydrateOutbox()]);
   }
   startQueryPersistence(queryClient);
-  startBoardPersistence(queryClient);
+  const boardPersistence = startBoardPersistence(queryClient);
   // Spanduk "data terakhir" saat server tidak tersedia (FR-P16).
   startServerStatus(queryClient);
   // Antrean centang di perangkat dikirim ulang di foreground saat server pulih (FR-P17); hanya untuk sesi sah.
-  if (me) startOutboxSync(queryClient);
+  if (me) {
+    startOutboxSync(queryClient);
+    // Tab lain akun ini keluar: berhenti menulis antrean dan papan ke perangkat (sesi tab ini mati lewat jalur 401).
+    startSessionListener((owner) =>
+      handleRemoteLogout(owner, {
+        currentOwner: me.email,
+        stopBoardPersistence: () => boardPersistence.stop(),
+      }),
+    );
+  }
 
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {
