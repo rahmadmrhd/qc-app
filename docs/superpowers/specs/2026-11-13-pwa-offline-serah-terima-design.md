@@ -98,12 +98,13 @@ Sumber status `sending`: penguras antrean menandai entri sebelum permintaan dan 
 ## 6. Tahap B: baca offline
 
 **Penyimpanan.** IndexedDB, basis data `qc-device`, versi 1, tanpa dependensi (IndexedDB mentah dengan pembungkus kecil sendiri). Toko:
-- `columns`: kunci `owner|lokasi-terurut|status` → `{ savedAt, data }` (data query infinite kolom itu, dipotong maks. 50 task: `BOARD_MAX_LIMIT`).
+- `columns`: kunci `owner|lokasi-terurut|status` → `{ savedAt, data }` (data query infinite kolom itu, dipotong maks. 50 task: `BOARD_MAX_LIMIT`). Maks. 40 kolom terbaru (`BOARD_STORE_LIMITS.columns`).
 - `tasks`: kunci `owner|id` → `{ savedAt, locationIds, dto }` (hasil `handovers.get`, memuat komentar), maks. 100 task terbaru.
 
 **Aturan.**
 - Hanya data milik `owner` (email pemilik sesi yang sah). Pemilik berbeda saat boot: semua dibuang.
-- **Tanpa kedaluwarsa waktu** (keputusan pemilik 2026-11-13): data dihapus hanya saat keluar eksplisit atau saat pemilik berbeda login. Konsekuensi: data bisa sangat lama, jadi setiap tampilan dari penyimpanan selalu berlabel "data terakhir hh:mm" (waktu simpan) dan diganti hasil server begitu server terjangkau. Jumlah tetap dibatasi (maks. 50 task per kolom, 100 detail task).
+- **Tanpa kedaluwarsa waktu** (keputusan pemilik 2026-11-13): data dihapus hanya saat keluar eksplisit atau saat pemilik berbeda login. Konsekuensi: data bisa sangat lama, jadi tampilan dari penyimpanan diberi label "data terakhir hh:mm" (waktu simpan) lewat spanduk Fase 2 saat server gagal dihubungi; selama muat ulang normal sesudah boot tidak ada label (§9 butir e), dan data diganti hasil server begitu server terjangkau. Jumlah tetap dibatasi (maks. 50 task per kolom, 40 kolom, 100 detail task; pemotongan hanya pada halaman utuh, lihat §9).
+- Setiap rekaman membawa `v` (`BOARD_STORE_VERSION`) dan `owner`; rekaman dengan `v` lain dibuang saat pemulihan (§9 butir b).
 - Dibuang seluruhnya saat keluar eksplisit (`useLogout`, bersama `clearAllOutboxes`). Sesi kedaluwarsa (401) tidak membuangnya (konsisten dengan antrean Fase 2).
 - Tidak menyimpan: Log Audit, customer, item, merk, daftar user, berkas.
 
@@ -214,6 +215,17 @@ Keputusan pemilik produk atas pertanyaan terbuka (2026-11-13):
 - **O4. Penyimpanan papan:** tetap di IndexedDB, tanpa kedaluwarsa waktu, dihapus hanya saat logout (§6). Saya menunjukkan bahwa tanpa mode luring manfaatnya terbatas pada tampil instan dan sesi yang sudah terverifikasi; pemilik memilih tetap menyimpannya.
 
 Yang masih menunggu: persetujuan dokumen ini secara keseluruhan.
+
+Keputusan saya untuk Tahap B (2026-11-14; mohon dikoreksi; **menunggu pengesahan pemilik produk**):
+- (a) Kolom dibatasi 40 rekaman terbaru (`BOARD_STORE_LIMITS.columns`): pilihan lokasi yang berganti bisa melahirkan kombinasi kunci tanpa batas. Ukuran terburuk tidak dibatasi byte (40 kolom x 50 task, DTO membawa komentar); praktisnya jauh lebih kecil karena task berulang antar kolom. Bila kuota penyimpanan terlampaui, penulisan gagal diam-diam sampai keluar.
+- (b) Rekaman membawa `v` (`BOARD_STORE_VERSION`) dan `owner`; rekaman usang dibuang agar bentuk DTO yang berubah antar rilis tidak merusak tampilan. Pembuangan rekaman pemilik lain tetap dijalankan walau pemulihan melewati batas 1,5 dtk, dan data pulihan divalidasi bentuknya sebelum dipasang; rekaman rusak dibuang.
+- (c) Pemotongan kolom hanya pada halaman utuh (`board-snapshot.ts`), sehingga `nextCursor` tetap sah; akibatnya sebuah kolom yang tersimpan bisa memuat kurang dari 50 task.
+- (d) Hanya sukses query non-`manual` yang ditulis. Hasil mutasi yang dipasang manual baru tersimpan pada muat ulang berikutnya; tidak berdampak karena data pulihan selalu dimuat ulang saat basi.
+- (e) Label "data terakhir hh:mm" tampil lewat spanduk Fase 2 saat server gagal dihubungi. Selama muat ulang normal sesudah boot tidak ada label. Tafsiran "selalu berlabel" di §6 dikoreksi ke tafsiran ini.
+- (f) Detail task dibuka dari data papan bila belum pernah dibuka (`findBoardSeed`, Task 5), dan hanya bila lokasi task itu termasuk lokasi yang boleh dibaca pengguna di rute itu. Jawaban server `NOT_FOUND`/`FORBIDDEN` selalu otoritatif; data seed tidak ditampilkan menggantikannya. Pesan untuk `FORBIDDEN` ditampilkan sama seperti `NOT_FOUND`, "Task tidak ditemukan di lokasi aktif.", karena `handovers.get` hanya memberi `FORBIDDEN` untuk pemeriksaan lokasi dan pesan itu tidak mengungkap keberadaan task. Penolakan server bersifat latch: sesudah `NOT_FOUND`/`FORBIDDEN`, galat `UNAVAILABLE` berikutnya pada query yang sama tidak boleh memunculkan lagi data seed atau data lama yang tadi ditolak. `refetchOnMount: 'always'` menambah satu permintaan setiap detail dibuka (detail yang baru dimuat kurang dari 60 dtk tetap dimuat ulang).
+- (g) Flush pada `pagehide` bersifat usaha terbaik, karena penulisan IndexedDB bersifat asinkron. Pembersihan toko saat keluar dibatasi waktu 1,5 dtk sehingga Keluar tidak pernah menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan itu dilepas setelah 1,5 dtk sehingga isi toko TIDAK terhapus saat itu; rekaman tersebut baru dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil, dan tidak pernah dipulihkan bagi pemilik lain (pemilik diperiksa saat pemulihan).
+- (h) Label "data terakhir" dapat terlalu baru bagi sebagian isi kolom pulihan setelah "muat lagi" berhasil, karena semantik TanStack: `dataUpdatedAt` hanya satu per query. Diterima.
+- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C.
 
 ## 10. Dampak ke dokumen lain (dikerjakan saat tiap tahap)
 

@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { restoreBoardCache, startBoardPersistence } from '@/app/board-persist';
 import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
 import { startOutboxSync } from '@/app/outbox-sync';
 import { startInstallCapture } from '@/app/pwa/install';
@@ -60,8 +61,11 @@ async function start() {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
     restoreQueryCache(queryClient, me.email);
     queryClient.setQueryData(meQueryKey, me);
+    // Papan dan detail task Serah Terima dari IndexedDB (Fase 3 Tahap B), dibatasi 1,5 dtk; tanpa data = boot normal.
+    await restoreBoardCache(queryClient, me.email);
   }
   startQueryPersistence(queryClient);
+  startBoardPersistence(queryClient);
   // Spanduk "data terakhir" saat server tidak tersedia (FR-P16).
   startServerStatus(queryClient);
   // Antrean centang di perangkat dikirim ulang di foreground saat server pulih (FR-P17); hanya untuk sesi sah.

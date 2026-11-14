@@ -136,3 +136,26 @@ test('formatClock memakai jam:menit dua digit dengan titik dua', () => {
   expect(formatClock(new Date(2026, 10, 13, 7, 5).getTime())).toBe('07:05');
   expect(formatClock(new Date(2026, 10, 13, 23, 59).getTime())).toBe('23:59');
 });
+
+test('query kolom papan berdata lalu gagal UNAVAILABLE: menyala dengan dataUpdatedAt-nya', async () => {
+  const key = ['handovers', 'board', ['l1'], 'new'];
+  client.setQueryData(key, { pages: [], pageParams: [] }, { updatedAt: 2_000 });
+  await failFetch(key);
+  expect(getServerStatus().unavailableSince).toBe(2_000);
+  await okFetch(key, { pages: [], pageParams: [] });
+  expect(getServerStatus().unavailableSince).toBeNull();
+});
+
+test('query detail task berdata lalu gagal UNAVAILABLE: menyala', async () => {
+  const key = ['handovers', 'one', 'h1', ['l1']];
+  client.setQueryData(key, { id: 'h1' }, { updatedAt: 3_000 });
+  await failFetch(key);
+  expect(getServerStatus().unavailableSince).toBe(3_000);
+});
+
+test('kunci handovers non-papan non-whitelist tetap diabaikan', async () => {
+  const key = ['handovers', 'options', ['l1']];
+  client.setQueryData(key, [], { updatedAt: 4_000 });
+  await failFetch(key);
+  expect(getServerStatus().unavailableSince).toBeNull();
+});

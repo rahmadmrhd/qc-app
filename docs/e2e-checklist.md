@@ -291,3 +291,19 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 196 | Dengan antrean tersisa, pilih Keluar | Dialog "Keluar sekarang?" menyebut jumlah; Batal tidak membuang apa pun; Tetap keluar membuang antrean; angka di dialog mengikuti antrean selagi dialog terbuka, dan bila semua sudah terkirim teksnya menjadi "Semua perubahan sudah terkirim. Aman untuk keluar." | PWA FR-P20 |
 | 197 | Offline dengan antrean tersisa, tutup lalu buka aplikasi | Layar "Tidak ada koneksi" menyebut "N perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim."; entri yang sudah lewat 24 jam tidak dihitung | PWA FR-P20 |
 | 198 | Buka di ponsel sempit (375 px) saat ada antrean | Chip hanya ikon dan angka; header tidak meluap; ketuk chip membuka daftar singkat (jenis, nomor task atau "Task lain", jam) | PWA FR-P20 |
+
+## PWA Fase 3, Tahap B
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 199 | Buka papan saat online, lalu matikan jaringan dan buka papan lagi | Spanduk "data terakhir hh:mm" tampil; papan tetap terbaca; "muat lagi" pada kolom yang dipotong tetap bekerja saat online | PWA FR-P21 |
+| 200 | Saat offline, buka kartu yang belum pernah dibuka pada sesi ini | Detail terbuka dari data papan | PWA FR-P21 |
+| 201 | Tutup aplikasi, lalu buka lagi dengan jaringan hidup | Papan tampil instan dari data tersimpan, lalu diganti data server | PWA FR-P21 |
+| 202 | Boot dingin tanpa sinyal (aplikasi ditutup sebelumnya, jaringan mati) | Tetap layar "Tidak ada koneksi"; papan tersimpan tidak ditampilkan | PWA FR-P21 |
+| 203 | Ganti akun Google di perangkat yang sama | Data papan akun lama tidak terlihat | PWA FR-P21 |
+| 204 | Keluar, lalu buka DevTools → Application → IndexedDB `qc-device` | Basis data kosong (tanpa rekaman) | PWA FR-P21 |
+| 205 | Sesi kedaluwarsa (401), lalu login ulang pemilik yang sama | Papan lama masih tersedia sebagai data awal sebelum data server datang | PWA FR-P21 |
+| 206 | Buka detail task dari lokasi A, ganti lokasi aktif ke B, lalu buka tautan detail task milik lokasi A | Tampil "Task tidak ditemukan di lokasi aktif."; data task tidak tampil. Skenario ini berlaku daring; saat luring dan task tidak ada di data papan, tampil "Gagal memuat task" (bukan data lain) | PWA FR-P21 |
+| 207 | Pada peramban yang IndexedDB-nya macet atau diblokir (mis. mode privat tertentu), tekan Keluar | Aplikasi keluar ke halaman login dalam beberapa detik; tidak menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan dilepas setelah 1,5 dtk: isi toko tidak terhapus saat itu, dan tidak ada data pengguna lama yang tampil bagi pengguna berikutnya (rekaman dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil) | PWA FR-P21 |
