@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMe } from '@/modules/auth/use-me';
 import { findCachedHandover } from '@/modules/handover/lib/board-cache';
-import type { OutboxEntry } from '@/modules/handover/lib/check-outbox';
+import type { OutboxEntry } from '@/modules/handover/lib/outbox';
 import { useOutboxSummary } from '@/modules/handover/lib/use-outbox-summary';
 import { formatClock } from '../server-status';
 
@@ -14,6 +14,8 @@ function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
   return (
     <ul className="max-h-64 space-y-2 overflow-y-auto">
       {entries.map((entry) => {
+        // Komentar dan task baru dirender di Task 9 (`describeEntry`); sampai itu hanya centang yang ada.
+        if (entry.kind !== 'check') return null;
         const number = findCachedHandover(queryClient, entry.taskId)?.number ?? 'Task lain';
         return (
           <li key={entry.id} className="text-xs">

@@ -6,7 +6,7 @@ import {
   outboxVersion,
   readOutbox,
   subscribeOutbox,
-} from './check-outbox';
+} from './outbox';
 import { isItemSending, sendingVersion, subscribeSending } from './outbox-status';
 
 const NONE: readonly OutboxEntry[] = [];
@@ -22,13 +22,15 @@ export function useOutboxSummary(owner: string): {
 } {
   const queueVersion = useSyncExternalStore(subscribeOutbox, outboxVersion, outboxVersion);
   const sendVersion = useSyncExternalStore(subscribeSending, sendingVersion, sendingVersion);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: versi memicu pembacaan ulang antrean (localStorage) dan penanda kirim
+  // biome-ignore lint/correctness/useExhaustiveDependencies: versi memicu pembacaan ulang antrean (salinan memori) dan penanda kirim
   return useMemo(() => {
     const now = Date.now();
     const read =
       owner === '' ? NONE : readOutbox(owner).filter((entry) => !isExpiredEntry(entry, now));
     const entries = read.length === 0 ? NONE : read;
-    const sending = entries.filter((entry) => isItemSending(entry.taskId, entry.index)).length;
+    const sending = entries.filter(
+      (entry) => entry.kind === 'check' && isItemSending(entry.taskId, entry.index),
+    ).length;
     return { entries, sending };
   }, [owner, queueVersion, sendVersion]);
 }

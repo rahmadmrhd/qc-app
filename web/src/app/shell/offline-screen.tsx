@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { countAllOutboxEntries } from '@/modules/handover/lib/check-outbox';
+import { countAllOutboxEntries } from '@/modules/handover/lib/outbox';
 
 /** Layar boot saat server tidak terjangkau (FR-P7): tanpa router/query client, hanya tombol coba lagi. */
 export function OfflineScreen({ onRetry }: { onRetry: () => void }) {

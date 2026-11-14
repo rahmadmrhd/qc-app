@@ -2,26 +2,32 @@ import type { HandoverDto } from '@shared/contract';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { type OutboxEntry, purgeExpired, readOutbox, removeEntries } from './check-outbox';
+import {
+  type CheckEntry,
+  type OutboxEntry,
+  purgeExpired,
+  readOutbox,
+  removeOutboxEntries,
+} from './outbox';
 import { beginSending } from './outbox-status';
 
 export interface FlushDeps {
   owner: string;
   now: () => number;
-  send: (entry: OutboxEntry) => Promise<HandoverDto>;
+  send: (entry: CheckEntry) => Promise<HandoverDto>;
   /** `false` bila pemilik sudah keluar/berganti: pengurasan berhenti tanpa menyentuh antrean lagi. */
   isOwnerActive: () => boolean;
   /**
    * Dipanggil sinkron per entri yang berhasil, SEBELUM entri dihapus dari antrean: hasil server dipasang ke cache selagi
    * overlay masih ada (tanpa kedipan) dan tanpa celah bagi klik lain untuk menyela.
    */
-  onSent?: (saved: HandoverDto, entry: OutboxEntry) => void;
+  onSent?: (saved: HandoverDto, entry: CheckEntry) => void;
 }
 
 export interface FlushResult {
   sent: HandoverDto[];
-  rejected: { entry: OutboxEntry; reason: string }[];
-  expired: OutboxEntry[];
+  rejected: { entry: CheckEntry; reason: string }[];
+  expired: CheckEntry[];
   /**
    * `unavailable` = server tak terjangkau; `server-error` = galat server tak jelas (5xx/proksi/tak terduga). Keduanya
    * menghentikan putaran dan mempertahankan entri.
@@ -37,7 +43,7 @@ export const OUTBOX_SEND_TIMEOUT_MS = 30_000;
  * `UNAVAILABLE`, jadi entri tetap dan pengurasan berhenti. (`AbortController` + `setTimeout`, bukan
  * `AbortSignal.timeout`, agar tersedia di mana-mana dan dapat diuji dengan timer palsu.)
  */
-export function sendOutboxEntry(entry: OutboxEntry): Promise<HandoverDto> {
+export function sendOutboxEntry(entry: CheckEntry): Promise<HandoverDto> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OUTBOX_SEND_TIMEOUT_MS);
   return api(
@@ -53,6 +59,8 @@ export function sendOutboxEntry(entry: OutboxEntry): Promise<HandoverDto> {
   ).finally(() => clearTimeout(timer));
 }
 
+const isCheck = (entry: OutboxEntry): entry is CheckEntry => entry.kind === 'check';
+
 /** Hanya penolakan nyata dari server yang membuang entri (FR-P18); selain itu entri dipertahankan. */
 const REJECTION_CODES: ReadonlySet<string> = new Set([
   'CONFLICT',
@@ -66,7 +74,7 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
   const result: FlushResult = {
     sent: [],
     rejected: [],
-    expired: purgeExpired(owner, deps.now()),
+    expired: (await purgeExpired(owner, deps.now())).filter(isCheck),
     stoppedBy: 'none',
   };
   // Entri yang sudah dicoba pada putaran ini (mencegah mengulang entri yang sama tanpa henti).
@@ -77,7 +85,9 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
       break;
     }
     // Antrean dibaca ulang tiap iterasi: entri yang masuk saat mengirim ikut terkirim, yang digantikan tidak dua kali.
-    const next = readOutbox(owner).find((entry) => !tried.has(entry.id));
+    const next = readOutbox(owner).find(
+      (entry): entry is CheckEntry => isCheck(entry) && !tried.has(entry.id),
+    );
     if (!next) break;
     tried.add(next.id);
     // Ditandai "mengirim" sampai SESUDAH entri dihapus (semua jalur), supaya penanda tak berkedip ke "Belum terkirim".
@@ -87,7 +97,7 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
         const saved = await deps.send(next);
         if (!deps.isOwnerActive()) {
           // Sudah terkirim: hapus agar tak terkirim dua kali, tapi jangan menyentuh cache pemilik yang sudah berganti.
-          removeEntries(owner, [next.id]);
+          await removeOutboxEntries(owner, [next.id]);
           result.stoppedBy = 'owner-changed';
           break;
         }
@@ -99,7 +109,7 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
           console.error('Gagal memasang hasil antrean centang ke cache', error);
         }
         // Hapus per `id`: entri pengganti yang lebih baru untuk task+indeks sama tetap ada.
-        removeEntries(owner, [next.id]);
+        await removeOutboxEntries(owner, [next.id]);
         result.sent.push(saved);
       } catch (error) {
         if (error instanceof ApiError && error.code === 'UNAVAILABLE') {
@@ -120,7 +130,7 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
           result.stoppedBy = 'owner-changed';
           break;
         }
-        removeEntries(owner, [next.id]);
+        await removeOutboxEntries(owner, [next.id]);
         result.rejected.push({ entry: next, reason: describeError(error) });
       }
     } finally {

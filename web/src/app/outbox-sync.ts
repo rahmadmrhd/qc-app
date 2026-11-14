@@ -8,15 +8,15 @@ import { accessKeys } from '@/modules/access/queries';
 import { getSession } from '@/modules/auth/session';
 import { findHandoverInBoards } from '@/modules/handover/lib/board-cache';
 import {
-  purgeForeignOutboxes,
-  readOutbox,
-  resumeOutboxWrites,
-} from '@/modules/handover/lib/check-outbox';
-import {
   type FlushResult,
   flushOutbox,
   sendOutboxEntry,
 } from '@/modules/handover/lib/check-outbox-flush';
+import {
+  purgeForeignOutboxes,
+  readOutbox,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/outbox';
 import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
@@ -69,7 +69,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   if (!current) return () => undefined;
   const owner: string = current;
   // Pemilik lain login di perangkat yang sama: antreannya tak pernah dikirim sebagai pemilik ini.
-  purgeForeignOutboxes(owner);
+  // Pembersihan toko berjalan di latar (fungsi ini sinkron); bagian memorinya langsung.
+  void purgeForeignOutboxes(owner);
   // Sesi kerja baru: penulisan antrean (ditahan saat keluar) diizinkan lagi untuk pemilik yang sah ini.
   resumeOutboxWrites();
 

@@ -1,12 +1,7 @@
 import type { HandoverDto } from '@shared/contract';
 import { useMemo, useSyncExternalStore } from 'react';
-import {
-  isExpiredEntry,
-  outboxVersion,
-  overlayPendingChecks,
-  readOutbox,
-  subscribeOutbox,
-} from './check-outbox';
+import { overlayPendingChecks } from './check-outbox';
+import { isExpiredEntry, outboxVersion, readOutbox, subscribeOutbox } from './outbox';
 import {
   type ItemSendState,
   isItemSending,
@@ -36,15 +31,19 @@ export function useOutboxOverlay(
       owner === ''
         ? []
         : readOutbox(owner).filter(
-            (entry) => entry.taskId === dto.id && !isExpiredEntry(entry, now),
+            (entry) =>
+              entry.kind === 'check' && entry.taskId === dto.id && !isExpiredEntry(entry, now),
           );
     const itemStates = new Map<number, ItemSendState>();
     for (const entry of entries) {
+      if (entry.kind !== 'check') continue;
       if (dto.checklist.some((item) => item.index === entry.index && item.text === entry.text)) {
         itemStates.set(entry.index, 'waiting');
       }
     }
-    const queuedIndexes = new Set(entries.map((entry) => entry.index));
+    const queuedIndexes = new Set(
+      entries.flatMap((entry) => (entry.kind === 'check' ? [entry.index] : [])),
+    );
     for (const item of dto.checklist) {
       if (!isItemSending(dto.id, item.index)) continue;
       // Indeks yang punya entri antrean: hanya bila entri itu memang untuk butir ini (teks cocok); selain itu yang

@@ -16,16 +16,19 @@ vi.mock('@/app/outbox-sync', () => ({ requestOutboxFlush: () => mocks.requestFlu
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { ApiError } from '@/lib/api/api-error';
+import { readOutboxRecords } from '@/lib/device-db';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
 import { handoverKeys } from '../queries';
 import { boardColumnData, findHandoverInBoards } from './board-cache';
+import { enqueueCheck } from './check-outbox';
 import {
-  enqueueCheck,
-  OUTBOX_MAX_ENTRIES,
+  type CheckEntry,
+  OUTBOX_MAX_CHECKS,
   readOutbox,
   resumeOutboxWrites,
   suspendOutboxWrites,
-} from './check-outbox';
+} from './outbox';
 import { isItemSending, resetSendingForTests } from './outbox-status';
 import { useCheckQueue } from './use-check-queue';
 
@@ -86,14 +89,19 @@ function manualCall() {
   return calls;
 }
 
+/** Antrean centang milik pengguna uji (hanya jenis centang). */
+const queuedChecks = () =>
+  readOutbox('qc@x').filter((entry): entry is CheckEntry => entry.kind === 'check');
+
+// IndexedDB palsu menyelesaikan operasi lewat beberapa tik: beri jeda lebih dari satu tik.
 const flush = () =>
   act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
 beforeEach(() => {
+  resetOutboxEnv();
   resumeOutboxWrites();
-  localStorage.clear();
   resetBusyForTests();
   resetSendingForTests();
   mocks.api.mockReset();
@@ -240,7 +248,7 @@ test('UNAVAILABLE: centang diantrekan di perangkat, tampilan dipertahankan, tanp
   mocks.api.mockRejectedValue(unavailable());
   act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
   await flush();
-  const queued = readOutbox('qc@x');
+  const queued = queuedChecks();
   expect(queued).toHaveLength(1);
   expect(queued[0]).toMatchObject({
     taskId: 't1',
@@ -259,8 +267,8 @@ test('UNAVAILABLE: centang diantrekan di perangkat, tampilan dipertahankan, tanp
 test('penyimpanan antrean penuh: butir dikembalikan dan galat biasa tampil', async () => {
   const { client, hook, cached, ref } = setup();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  for (let i = 0; i < OUTBOX_MAX_ENTRIES; i++) {
-    enqueueCheck('qc@x', {
+  for (let i = 0; i < OUTBOX_MAX_CHECKS; i++) {
+    await enqueueCheck('qc@x', {
       taskId: `lain${i}`,
       locationId: 'loc-a',
       index: 0,
@@ -274,7 +282,7 @@ test('penyimpanan antrean penuh: butir dikembalikan dan galat biasa tampil', asy
   await flush();
   expect(cached().checklist[1]?.checked).toBe(false);
   expect(mocks.error).toHaveBeenCalledTimes(1);
-  expect(readOutbox('qc@x')).toHaveLength(OUTBOX_MAX_ENTRIES);
+  expect(queuedChecks()).toHaveLength(OUTBOX_MAX_CHECKS);
   expect(invalidate).toHaveBeenCalledWith({ queryKey: handoverKeys.all });
 });
 
@@ -283,7 +291,7 @@ test('galat selain UNAVAILABLE (CONFLICT) tidak diantrekan: perilaku lama', asyn
   mocks.api.mockRejectedValue(new ApiError('CONFLICT', 'Catatan berubah', '-'));
   act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
   await flush();
-  expect(readOutbox('qc@x')).toEqual([]);
+  expect(queuedChecks()).toEqual([]);
   expect(cached().checklist[1]?.checked).toBe(false);
   expect(mocks.error).toHaveBeenCalledTimes(1);
   expect(mocks.info).not.toHaveBeenCalled();
@@ -297,7 +305,7 @@ test('butir yang sama diklik dua kali saat offline: satu entri bernilai terakhir
     hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, false);
   });
   await flush();
-  const queued = readOutbox('qc@x');
+  const queued = queuedChecks();
   expect(queued).toHaveLength(1);
   expect(queued[0]?.checked).toBe(false);
   // Klik kedua melihat entri antrean milik task ini dan langsung masuk antrean (tanpa permintaan kedua).
@@ -306,7 +314,7 @@ test('butir yang sama diklik dua kali saat offline: satu entri bernilai terakhir
 
 test('task masih punya entri antrean: klik baru masuk antrean, tidak dikirim langsung, lalu meminta pengurasan', async () => {
   const { hook, ref } = setup();
-  enqueueCheck('qc@x', {
+  await enqueueCheck('qc@x', {
     taskId: 't1',
     locationId: 'loc-a',
     index: 3,
@@ -317,7 +325,7 @@ test('task masih punya entri antrean: klik baru masuk antrean, tidak dikirim lan
   act(() => hook.result.current.toggle(ref, { index: 0, text: 'B0 = 1' }, true));
   await flush();
   expect(mocks.api).not.toHaveBeenCalled();
-  expect(readOutbox('qc@x').map((entry) => entry.index)).toEqual([3, 0]);
+  expect(queuedChecks().map((entry) => entry.index)).toEqual([3, 0]);
   expect(mocks.requestFlush).toHaveBeenCalledTimes(1);
   expect(mocks.error).not.toHaveBeenCalled();
 });
@@ -328,8 +336,8 @@ test('A1: klik yang gagal UNAVAILABLE setelah keluar tidak menulis antrean; buti
   mocks.api.mockRejectedValue(unavailable());
   act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
   await flush();
-  const outboxKeys = Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'));
-  expect(outboxKeys).toEqual([]);
+  expect(queuedChecks()).toEqual([]);
+  expect(await readOutboxRecords()).toEqual([]);
   expect(cached().checklist[1]?.checked).toBe(false);
   expect(mocks.error).toHaveBeenCalledTimes(1);
   expect(mocks.info).not.toHaveBeenCalled();
@@ -352,7 +360,7 @@ test('A4: teks toast berbeda: koneksi hanya untuk jalur UNAVAILABLE, netral bila
 
 test('M4: jalur "task masih punya entri antrean" memakai teks koneksi bila navigator.onLine false', async () => {
   const { hook, ref } = setup();
-  enqueueCheck('qc@x', {
+  await enqueueCheck('qc@x', {
     taskId: 't1',
     locationId: 'loc-a',
     index: 3,
@@ -396,7 +404,7 @@ test('UNAVAILABLE: butir masuk antrean dan tidak lagi mengirim', async () => {
   mocks.api.mockRejectedValue(unavailable());
   act(() => hook.result.current.toggle(ref, { index: 1, text: 'B1 = 1' }, true));
   await flush();
-  expect(readOutbox('qc@x')).toHaveLength(1);
+  expect(queuedChecks()).toHaveLength(1);
   expect(isItemSending('t1', 1)).toBe(false);
 });
 
@@ -425,7 +433,7 @@ test('dua klik beruntun pada butir yang sama: tetap mengirim sampai keduanya sel
 
 test('klik langsung ditolak CONFLICT atau FORBIDDEN: status bersih dan butir dikembalikan', async () => {
   for (const code of ['CONFLICT', 'FORBIDDEN'] as const) {
-    localStorage.clear();
+    resetOutboxEnv();
     resetSendingForTests();
     const { hook, cached, ref } = setup();
     mocks.api.mockRejectedValue(new ApiError(code, 'Ditolak', '-'));
@@ -433,7 +441,7 @@ test('klik langsung ditolak CONFLICT atau FORBIDDEN: status bersih dan butir dik
     await flush();
     expect(isItemSending('t1', 1)).toBe(false);
     expect(cached().checklist[1]?.checked).toBe(false);
-    expect(readOutbox('qc@x')).toEqual([]);
+    expect(queuedChecks()).toEqual([]);
     hook.unmount();
   }
 });

@@ -2,9 +2,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { OfflineScreen } from './offline-screen';
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => resetOutboxEnv());
 
 const queue = (index: number) =>
   enqueueCheck('rina@qc.local', {
@@ -16,14 +17,14 @@ const queue = (index: number) =>
     at: Date.now(),
   });
 
-test('tanpa antrean: tidak ada teks perubahan menunggu', () => {
+test('tanpa antrean: tidak ada teks perubahan menunggu', async () => {
   render(<OfflineScreen onRetry={vi.fn()} />);
   expect(screen.queryByText(/perubahan menunggu dikirim/)).not.toBeInTheDocument();
 });
 
-test('dengan dua entri: menampilkan jumlah perubahan yang menunggu dikirim', () => {
-  queue(0);
-  queue(1);
+test('dengan dua entri: menampilkan jumlah perubahan yang menunggu dikirim', async () => {
+  await queue(0);
+  await queue(1);
   render(<OfflineScreen onRetry={vi.fn()} />);
   expect(
     screen.getByText(
@@ -32,8 +33,8 @@ test('dengan dua entri: menampilkan jumlah perubahan yang menunggu dikirim', () 
   ).toBeInTheDocument();
 });
 
-test('entri lebih dari 24 jam tidak dihitung', () => {
-  enqueueCheck('rina@qc.local', {
+test('entri lebih dari 24 jam tidak dihitung', async () => {
+  await enqueueCheck('rina@qc.local', {
     taskId: 'h1',
     locationId: 'loc-a',
     index: 0,

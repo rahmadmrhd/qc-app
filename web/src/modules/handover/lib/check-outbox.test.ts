@@ -1,27 +1,10 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
-import {
-  clearAllOutboxes,
-  countAllOutboxEntries,
-  enqueueCheck,
-  hasEntriesForTask,
-  isExpiredEntry,
-  OUTBOX_MAX_AGE_MS,
-  OUTBOX_MAX_ENTRIES,
-  OUTBOX_MAX_FUTURE_SKEW_MS,
-  outboxKey,
-  outboxVersion,
-  outboxWritesSuspended,
-  overlayPendingChecks,
-  purgeExpired,
-  purgeForeignOutboxes,
-  readOutbox,
-  removeEntries,
-  resumeOutboxWrites,
-  subscribeOutbox,
-  suspendOutboxWrites,
-} from './check-outbox';
+import { enqueueCheck, hasEntriesForTask, overlayPendingChecks } from './check-outbox';
+import { enqueueOutbox, readOutbox } from './outbox';
 
+// Fasad centang di atas antrean umum; inti antrean (batas, hidrasi, migrasi, siaran) diuji di `outbox.test.ts`.
 const OWNER = 'a@x.com';
 
 function entry(over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) {
@@ -36,235 +19,66 @@ function entry(over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) {
   };
 }
 
-beforeEach(() => localStorage.clear());
-afterEach(() => resumeOutboxWrites());
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => resetOutboxEnv());
 
-test('kunci per pemilik; enqueue lalu read mempertahankan urutan dan memberi id unik', () => {
-  expect(outboxKey(OWNER)).toBe('qc.outbox:a@x.com');
-  expect(enqueueCheck(OWNER, entry({ index: 0 }))).toBe(true);
-  expect(enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe(true);
-  const list = readOutbox(OWNER);
-  expect(list.map((e) => e.index)).toEqual([0, 1]);
-  expect(new Set(list.map((e) => e.id)).size).toBe(2);
-  expect(list[0]).toMatchObject({
-    taskId: 't1',
-    locationId: 'loc-a',
-    text: 'A = 1',
-    checked: true,
-  });
+test('enqueueCheck menandai jenis centang dan mengembalikan hasil penulisan', async () => {
+  expect(await enqueueCheck(OWNER, entry({ index: 0 }))).toBe('ok');
+  expect(await enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe('ok');
+  expect(readOutbox(OWNER).map((e) => e.kind)).toEqual(['check', 'check']);
 });
 
-test('gabung per task+indeks: nilai terakhir menang dan pindah ke akhir', () => {
-  enqueueCheck(OWNER, entry({ index: 0, checked: true }));
-  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }));
-  enqueueCheck(OWNER, entry({ index: 0, checked: false, at: 2_000 }));
+test('gabung per task+indeks: nilai terakhir menang dan pindah ke akhir', async () => {
+  await enqueueCheck(OWNER, entry({ index: 0, checked: true }));
+  await enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }));
+  await enqueueCheck(OWNER, entry({ index: 0, checked: false, at: 2_000 }));
   const list = readOutbox(OWNER);
-  expect(list.map((e) => [e.index, e.checked])).toEqual([
+  expect(list.map((e) => (e.kind === 'check' ? [e.index, e.checked] : null))).toEqual([
     [1, true],
     [0, false],
   ]);
 });
 
-test('batas 200 entri: indeks baru ke-201 ditolak, mengganti slot yang ada tetap boleh', () => {
-  for (let i = 0; i < OUTBOX_MAX_ENTRIES; i++) {
-    expect(enqueueCheck(OWNER, entry({ taskId: `t${i}` }))).toBe(true);
-  }
-  expect(enqueueCheck(OWNER, entry({ taskId: 'baru' }))).toBe(false);
-  expect(readOutbox(OWNER)).toHaveLength(OUTBOX_MAX_ENTRIES);
-  expect(enqueueCheck(OWNER, entry({ taskId: 't5', checked: false }))).toBe(true);
-  expect(readOutbox(OWNER)).toHaveLength(OUTBOX_MAX_ENTRIES);
-});
-
-test('penyimpanan diblokir atau penuh: enqueue mengembalikan false', () => {
-  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-    throw new DOMException('quota', 'QuotaExceededError');
-  });
-  expect(enqueueCheck(OWNER, entry())).toBe(false);
-});
-
-test('JSON rusak atau bentuk salah menjadi kosong; entri bentuk salah dibuang', () => {
-  localStorage.setItem(outboxKey(OWNER), '{rusak');
-  expect(readOutbox(OWNER)).toEqual([]);
-  localStorage.setItem(outboxKey(OWNER), JSON.stringify({ v: 2, entries: [] }));
-  expect(readOutbox(OWNER)).toEqual([]);
-  const good = {
-    id: 'e1',
-    taskId: 't',
-    locationId: 'l',
-    index: 0,
-    text: 'x',
-    checked: true,
-    at: 1,
-  };
-  localStorage.setItem(
-    outboxKey(OWNER),
-    JSON.stringify({ v: 1, entries: [good, { ...good, id: 5 }, { ...good, index: 1.5 }, null] }),
-  );
-  expect(readOutbox(OWNER)).toEqual([good]);
-});
-
-test('removeEntries per id: entri pengganti untuk task+indeks yang sama tidak ikut terhapus', () => {
-  enqueueCheck(OWNER, entry({ checked: true }));
-  const [lama] = readOutbox(OWNER);
-  enqueueCheck(OWNER, entry({ checked: false, at: 2_000 }));
-  const [baru] = readOutbox(OWNER);
-  expect(baru?.id).not.toBe(lama?.id);
-  removeEntries(OWNER, [lama?.id ?? '']);
-  expect(readOutbox(OWNER)).toEqual([baru]);
-  removeEntries(OWNER, [baru?.id ?? '']);
-  expect(readOutbox(OWNER)).toEqual([]);
-  expect(localStorage.getItem(outboxKey(OWNER))).toBeNull();
-});
-
-test('hasEntriesForTask', () => {
-  enqueueCheck(OWNER, entry({ taskId: 't1' }));
+test('hasEntriesForTask: semua jenis entri, per pemilik', async () => {
+  await enqueueCheck(OWNER, entry({ taskId: 't1' }));
   expect(hasEntriesForTask(OWNER, 't1')).toBe(true);
   expect(hasEntriesForTask(OWNER, 't2')).toBe(false);
   expect(hasEntriesForTask('b@x.com', 't1')).toBe(false);
+  await enqueueOutbox(OWNER, {
+    kind: 'comment',
+    clientId: '11111111-1111-4111-8111-111111111111',
+    taskId: 't2',
+    locationId: 'loc-a',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'halo',
+    at: 1_000,
+  });
+  expect(hasEntriesForTask(OWNER, 't2')).toBe(true);
 });
 
-test('purgeExpired: tepat 24 jam tetap, lewat 1 ms dibuang dan dikembalikan', () => {
-  enqueueCheck(OWNER, entry({ index: 0, at: 1_000 }));
-  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2', at: 1_001 }));
-  expect(purgeExpired(OWNER, 1_000 + OUTBOX_MAX_AGE_MS)).toEqual([]);
-  expect(readOutbox(OWNER)).toHaveLength(2);
-  const dropped = purgeExpired(OWNER, 1_000 + OUTBOX_MAX_AGE_MS + 1);
-  expect(dropped.map((e) => e.index)).toEqual([0]);
-  expect(readOutbox(OWNER).map((e) => e.index)).toEqual([1]);
-});
-
-test('clearAllOutboxes hanya menyentuh kunci antrean; purgeForeignOutboxes menyisakan milik pemilik', () => {
-  enqueueCheck('a@x.com', entry());
-  enqueueCheck('b@x.com', entry());
-  localStorage.setItem('qc.cache.v3', 'tetap');
-  purgeForeignOutboxes('a@x.com');
-  expect(readOutbox('a@x.com')).toHaveLength(1);
-  expect(readOutbox('b@x.com')).toEqual([]);
-  enqueueCheck('b@x.com', entry());
-  clearAllOutboxes();
-  expect(readOutbox('a@x.com')).toEqual([]);
-  expect(readOutbox('b@x.com')).toEqual([]);
-  expect(localStorage.getItem('qc.cache.v3')).toBe('tetap');
-});
-
-test('subscribeOutbox terpicu oleh perubahan; versi naik; berhenti setelah unsubscribe', () => {
-  const listener = vi.fn();
-  const off = subscribeOutbox(listener);
-  const v0 = outboxVersion();
-  enqueueCheck(OWNER, entry());
-  expect(listener).toHaveBeenCalledTimes(1);
-  expect(outboxVersion()).toBeGreaterThan(v0);
-  const [e] = readOutbox(OWNER);
-  removeEntries(OWNER, [e?.id ?? '']);
-  expect(listener).toHaveBeenCalledTimes(2);
-  off();
-  enqueueCheck(OWNER, entry());
-  expect(listener).toHaveBeenCalledTimes(2);
-});
-
-test('subscribeOutbox juga terpicu oleh peristiwa storage dari tab lain', () => {
-  const listener = vi.fn();
-  const off = subscribeOutbox(listener);
-  window.dispatchEvent(new StorageEvent('storage', { key: outboxKey(OWNER) }));
-  expect(listener).toHaveBeenCalledTimes(1);
-  window.dispatchEvent(new StorageEvent('storage', { key: 'qc.cache.v3' }));
-  expect(listener).toHaveBeenCalledTimes(1);
-  off();
-});
-
-test('overlayPendingChecks: teks cocok mencentang butir; teks beda atau task lain diabaikan', () => {
+test('overlayPendingChecks: teks cocok mencentang butir; teks beda, task lain, atau jenis lain diabaikan', () => {
   const dto = makeHandover({ id: 'h1' });
+  const base = { kind: 'check' as const, locationId: 'loc-a', checked: true, at: 1 };
   const entries = [
-    { id: '1', taskId: 'h1', locationId: 'loc-a', index: 0, text: 'A = 1', checked: true, at: 1 },
+    { ...base, id: '1', taskId: 'h1', index: 0, text: 'A = 1' },
+    { ...base, id: '2', taskId: 'h1', index: 1, text: 'sudah berubah' },
+    { ...base, id: '3', taskId: 'lain', index: 1, text: 'B = 2' },
     {
-      id: '2',
+      kind: 'comment' as const,
+      id: '4',
+      clientId: 'c',
       taskId: 'h1',
       locationId: 'loc-a',
-      index: 1,
-      text: 'sudah berubah',
-      checked: true,
+      quote: '',
+      before: '',
+      after: '',
+      body: 'x',
       at: 1,
     },
-    { id: '3', taskId: 'lain', locationId: 'loc-a', index: 1, text: 'B = 2', checked: true, at: 1 },
   ];
   const out = overlayPendingChecks(dto, entries, 'qc@x', '2026-11-13T00:00:00.000Z');
   expect(out.checklist[0]).toMatchObject({ checked: true, by: 'qc@x' });
   expect(out.checklist[1]?.checked).toBe(false);
   expect(overlayPendingChecks(dto, [], 'qc@x', 'x')).toBe(dto);
-});
-
-test('purgeExpired: entri bertanggal di masa depan (> 5 menit) juga dianggap kedaluwarsa', () => {
-  const now = 5_000_000;
-  enqueueCheck(OWNER, entry({ index: 0, at: now + OUTBOX_MAX_FUTURE_SKEW_MS }));
-  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2', at: now + OUTBOX_MAX_FUTURE_SKEW_MS + 1 }));
-  const dropped = purgeExpired(OWNER, now);
-  expect(dropped.map((e) => e.index)).toEqual([1]);
-  expect(readOutbox(OWNER).map((e) => e.index)).toEqual([0]);
-});
-
-test('penulisan ditahan (setelah keluar): enqueue false, tak ada tulis apa pun; resume memulihkan', () => {
-  enqueueCheck(OWNER, entry({ index: 0 }));
-  const [lama] = readOutbox(OWNER);
-  suspendOutboxWrites();
-  expect(outboxWritesSuspended()).toBe(true);
-  expect(enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe(false);
-  removeEntries(OWNER, [lama?.id ?? '']);
-  expect(readOutbox(OWNER)).toEqual([lama]);
-  resumeOutboxWrites();
-  expect(outboxWritesSuspended()).toBe(false);
-  expect(enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2' }))).toBe(true);
-});
-
-test('clearAllOutboxes tetap bisa membuang walau penulisan ditahan', () => {
-  enqueueCheck(OWNER, entry());
-  suspendOutboxWrites();
-  clearAllOutboxes();
-  expect(localStorage.getItem(outboxKey(OWNER))).toBeNull();
-});
-
-const fresh = (over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) =>
-  entry({ at: Date.now(), ...over });
-
-test('countAllOutboxEntries menjumlah entri semua pemilik', () => {
-  enqueueCheck(OWNER, fresh({ index: 0 }));
-  enqueueCheck(OWNER, fresh({ index: 1, text: 'B = 2' }));
-  enqueueCheck('b@x.com', fresh({ index: 0 }));
-  expect(countAllOutboxEntries()).toBe(3);
-});
-
-test('countAllOutboxEntries mengabaikan entri tak valid dan amplop rusak', () => {
-  enqueueCheck(OWNER, fresh());
-  const valid = { ...fresh({ index: 4 }), id: 'ok' };
-  localStorage.setItem(
-    outboxKey('b@x.com'),
-    JSON.stringify({ v: 1, entries: [{ id: 'x' }, valid, 'bukan-entri'] }),
-  );
-  localStorage.setItem(outboxKey('c@x.com'), '{rusak');
-  localStorage.setItem(outboxKey('d@x.com'), JSON.stringify({ v: 99, entries: [valid] }));
-  localStorage.setItem('kunci-lain', JSON.stringify({ v: 1, entries: [valid] }));
-  expect(countAllOutboxEntries()).toBe(2);
-});
-
-test('countAllOutboxEntries nol tanpa kunci apa pun', () => {
-  expect(countAllOutboxEntries()).toBe(0);
-});
-
-test('countAllOutboxEntries mengabaikan entri lebih dari 24 jam dan bertanggal jauh di masa depan', () => {
-  const now = Date.now();
-  enqueueCheck(OWNER, fresh({ index: 0 }));
-  enqueueCheck(OWNER, entry({ index: 1, text: 'B = 2', at: now - OUTBOX_MAX_AGE_MS - 60_000 }));
-  enqueueCheck(
-    'b@x.com',
-    entry({ index: 2, text: 'C = 3', at: now + OUTBOX_MAX_FUTURE_SKEW_MS + 60_000 }),
-  );
-  expect(countAllOutboxEntries()).toBe(1);
-});
-
-test('isExpiredEntry: tepat 24 jam tidak, lewat 1 ms ya; masa depan > 5 menit ya', () => {
-  const e = { ...entry({ at: 1_000 }), id: 'x' };
-  expect(isExpiredEntry(e, 1_000 + OUTBOX_MAX_AGE_MS)).toBe(false);
-  expect(isExpiredEntry(e, 1_000 + OUTBOX_MAX_AGE_MS + 1)).toBe(true);
-  expect(isExpiredEntry(e, 1_000 - OUTBOX_MAX_FUTURE_SKEW_MS)).toBe(false);
-  expect(isExpiredEntry(e, 1_000 - OUTBOX_MAX_FUTURE_SKEW_MS - 1)).toBe(true);
 });

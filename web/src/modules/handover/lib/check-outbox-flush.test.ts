@@ -1,9 +1,12 @@
 import type { HandoverDto } from '@shared/contract';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { readOutboxRecords } from '@/lib/device-db';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
-import { enqueueCheck, OUTBOX_MAX_AGE_MS, type OutboxEntry, readOutbox } from './check-outbox';
+import { enqueueCheck } from './check-outbox';
 import { type FlushDeps, flushOutbox } from './check-outbox-flush';
+import { type CheckEntry, clearAllOutboxesWithin, OUTBOX_MAX_AGE_MS, readOutbox } from './outbox';
 import { isItemSending, resetSendingForTests } from './outbox-status';
 
 vi.mock('@/lib/api', () => ({ api: vi.fn() }));
@@ -12,7 +15,7 @@ const OWNER = 'a@x.com';
 const NOW = 1_000_000_000;
 
 function queue(index: number, over: Partial<Parameters<typeof enqueueCheck>[1]> = {}) {
-  enqueueCheck(OWNER, {
+  return enqueueCheck(OWNER, {
     taskId: 't1',
     locationId: 'loc-a',
     index,
@@ -27,7 +30,7 @@ function deps(over: Partial<FlushDeps> = {}): FlushDeps {
   return {
     owner: OWNER,
     now: () => NOW,
-    send: vi.fn(async (entry: OutboxEntry) => makeHandover({ id: entry.taskId })),
+    send: vi.fn(async (entry: CheckEntry) => makeHandover({ id: entry.taskId })),
     isOwnerActive: () => true,
     ...over,
   };
@@ -37,14 +40,14 @@ const err = (code: ConstructorParameters<typeof ApiError>[0], message = 'x') =>
   new ApiError(code, message, '-');
 
 beforeEach(() => {
-  localStorage.clear();
+  resetOutboxEnv();
   resetSendingForTests();
 });
 
 test('mengirim berurutan sesuai antrean dan mengosongkannya', async () => {
-  queue(0);
-  queue(1);
-  queue(2);
+  await queue(0);
+  await queue(1);
+  await queue(2);
   const order: number[] = [];
   const result = await flushOutbox(
     deps({
@@ -61,9 +64,9 @@ test('mengirim berurutan sesuai antrean dan mengosongkannya', async () => {
 });
 
 test('UNAVAILABLE menghentikan pengurasan dan menyisakan entri', async () => {
-  queue(0);
-  queue(1);
-  queue(2);
+  await queue(0);
+  await queue(1);
+  await queue(2);
   const send = vi
     .fn()
     .mockResolvedValueOnce(makeHandover())
@@ -71,14 +74,14 @@ test('UNAVAILABLE menghentikan pengurasan dan menyisakan entri', async () => {
   const result = await flushOutbox(deps({ send }));
   expect(result.stoppedBy).toBe('unavailable');
   expect(result.sent).toHaveLength(1);
-  expect(readOutbox(OWNER).map((e) => e.index)).toEqual([1, 2]);
+  expect(readOutbox(OWNER).map((e) => (e.kind === 'check' ? e.index : -1))).toEqual([1, 2]);
   expect(send).toHaveBeenCalledTimes(2);
 });
 
 test('CONFLICT/FORBIDDEN/NOT_FOUND ditolak: entri dibuang dengan alasan dan lanjut', async () => {
-  queue(0);
-  queue(1);
-  queue(2);
+  await queue(0);
+  await queue(1);
+  await queue(2);
   const send = vi
     .fn()
     .mockRejectedValueOnce(err('CONFLICT', 'Task sudah selesai'))
@@ -94,8 +97,8 @@ test('CONFLICT/FORBIDDEN/NOT_FOUND ditolak: entri dibuang dengan alasan dan lanj
 });
 
 test('UNAUTHENTICATED menghentikan pengurasan; entri tetap', async () => {
-  queue(0);
-  queue(1);
+  await queue(0);
+  await queue(1);
   const send = vi.fn().mockRejectedValue(err('UNAUTHENTICATED'));
   const result = await flushOutbox(deps({ send }));
   expect(result.stoppedBy).toBe('unauthenticated');
@@ -104,9 +107,9 @@ test('UNAUTHENTICATED menghentikan pengurasan; entri tetap', async () => {
 });
 
 test('entri kedaluwarsa dibuang tanpa dikirim', async () => {
-  queue(0, { at: NOW - OUTBOX_MAX_AGE_MS - 1 });
-  queue(1);
-  const send = vi.fn(async (entry: OutboxEntry) => makeHandover({ id: entry.taskId }));
+  await queue(0, { at: NOW - OUTBOX_MAX_AGE_MS - 1 });
+  await queue(1);
+  const send = vi.fn(async (entry: CheckEntry) => makeHandover({ id: entry.taskId }));
   const result = await flushOutbox(deps({ send }));
   expect(result.expired.map((e) => e.index)).toEqual([0]);
   expect(send).toHaveBeenCalledTimes(1);
@@ -114,12 +117,12 @@ test('entri kedaluwarsa dibuang tanpa dikirim', async () => {
 });
 
 test('pemilik tak aktif di tengah: berhenti dan antrean pemilik tidak ditulis ulang', async () => {
-  queue(0);
-  queue(1);
+  await queue(0);
+  await queue(1);
   let active = true;
-  const send = vi.fn(async (entry: OutboxEntry) => {
+  const send = vi.fn(async (entry: CheckEntry) => {
     active = false;
-    localStorage.clear(); // keluar: antrean dibuang selagi permintaan terbang
+    await clearAllOutboxesWithin(); // keluar: antrean dibuang selagi permintaan terbang
     return makeHandover({ id: entry.taskId });
   });
   const result = await flushOutbox(deps({ send, isOwnerActive: () => active }));
@@ -127,13 +130,13 @@ test('pemilik tak aktif di tengah: berhenti dan antrean pemilik tidak ditulis ul
   expect(result.sent).toEqual([]);
   expect(send).toHaveBeenCalledTimes(1);
   expect(readOutbox(OWNER)).toEqual([]);
-  expect(localStorage.length).toBe(0);
+  expect(await readOutboxRecords()).toEqual([]);
 });
 
 test('dua panggilan bersamaan: send sekali per entri (single-flight)', async () => {
-  queue(0);
-  queue(1);
-  const send = vi.fn(async (entry: OutboxEntry) => makeHandover({ id: entry.taskId }));
+  await queue(0);
+  await queue(1);
+  const send = vi.fn(async (entry: CheckEntry) => makeHandover({ id: entry.taskId }));
   const d = deps({ send });
   const [a, b] = await Promise.all([flushOutbox(d), flushOutbox(d)]);
   expect(a).toBe(b);
@@ -141,15 +144,15 @@ test('dua panggilan bersamaan: send sekali per entri (single-flight)', async () 
 });
 
 test('entri baru yang masuk saat mengirim ikut terkirim; pengganti saat terbang tidak terhapus oleh yang lama', async () => {
-  queue(0, { checked: true });
+  await queue(0, { checked: true });
   const sentChecked: boolean[] = [];
   let first = true;
-  const send = vi.fn(async (entry: OutboxEntry): Promise<HandoverDto> => {
+  const send = vi.fn(async (entry: CheckEntry): Promise<HandoverDto> => {
     sentChecked.push(entry.checked);
     if (first) {
       first = false;
-      queue(0, { checked: false }); // klik pengganti saat entri pertama terbang
-      queue(5);
+      await queue(0, { checked: false }); // klik pengganti saat entri pertama terbang
+      await queue(5);
     }
     return makeHandover({ id: entry.taskId });
   });
@@ -160,8 +163,8 @@ test('entri baru yang masuk saat mengirim ikut terkirim; pengganti saat terbang 
 });
 
 test('INTERNAL (mis. 502 polos dari proksi) dan galat non-ApiError tidak membuang entri: berhenti dan dipertahankan', async () => {
-  queue(0);
-  queue(1);
+  await queue(0);
+  await queue(1);
   const bad = vi.fn().mockRejectedValue(err('INTERNAL', 'Respons server tidak valid'));
   const r1 = await flushOutbox(deps({ send: bad }));
   expect(r1.stoppedBy).toBe('server-error');
@@ -176,7 +179,7 @@ test('INTERNAL (mis. 502 polos dari proksi) dan galat non-ApiError tidak membuan
 });
 
 test('VALIDATION ikut penolakan nyata: entri dibuang dengan alasan', async () => {
-  queue(0);
+  await queue(0);
   const send = vi.fn().mockRejectedValue(err('VALIDATION', 'Tidak valid'));
   const result = await flushOutbox(deps({ send }));
   expect(result.rejected).toHaveLength(1);
@@ -184,9 +187,9 @@ test('VALIDATION ikut penolakan nyata: entri dibuang dengan alasan', async () =>
 });
 
 test('onSent dipanggil per entri SEBELUM entri dihapus dari antrean', async () => {
-  queue(0);
+  await queue(0);
   const seen: number[] = [];
-  const onSent = vi.fn((_saved: HandoverDto, entry: OutboxEntry) => {
+  const onSent = vi.fn((_saved: HandoverDto, entry: CheckEntry) => {
     seen.push(readOutbox(OWNER).filter((e) => e.id === entry.id).length);
   });
   await flushOutbox(deps({ onSent }));
@@ -196,8 +199,8 @@ test('onSent dipanggil per entri SEBELUM entri dihapus dari antrean', async () =
 });
 
 test('M3: onSent yang melempar tidak menghalangi penghapusan entri dan pengurasan lanjut', async () => {
-  queue(0);
-  queue(1);
+  await queue(0);
+  await queue(1);
   const onSent = vi.fn(() => {
     throw new Error('gagal memasang cache');
   });
@@ -209,13 +212,13 @@ test('M3: onSent yang melempar tidak menghalangi penghapusan entri dan pengurasa
 });
 
 test('butir ditandai mengirim selama send berjalan dan dibersihkan sesudah entri terhapus', async () => {
-  queue(0);
+  await queue(0);
   let finish: (dto: HandoverDto) => void = () => {};
   const pending = new Promise<HandoverDto>((resolve) => {
     finish = resolve;
   });
   const flushing = flushOutbox(deps({ send: () => pending }));
-  expect(isItemSending('t1', 0)).toBe(true);
+  await vi.waitFor(() => expect(isItemSending('t1', 0)).toBe(true));
   finish(makeHandover({ id: 't1' }));
   await flushing;
   expect(isItemSending('t1', 0)).toBe(false);
@@ -224,8 +227,8 @@ test('butir ditandai mengirim selama send berjalan dan dibersihkan sesudah entri
 
 test('status dibersihkan pada penolakan, UNAVAILABLE, dan galat tak dikenal', async () => {
   for (const failure of [err('CONFLICT'), err('UNAVAILABLE'), new Error('x')]) {
-    localStorage.clear();
-    queue(0);
+    resetOutboxEnv();
+    await queue(0);
     let seenSending = false;
     await flushOutbox(
       deps({
@@ -241,7 +244,7 @@ test('status dibersihkan pada penolakan, UNAVAILABLE, dan galat tak dikenal', as
 });
 
 test('pemilik berganti di tengah kirim tetap membersihkan status', async () => {
-  queue(0);
+  await queue(0);
   let active = true;
   const result = await flushOutbox(
     deps({
@@ -261,8 +264,8 @@ test('status dibersihkan pada UNAUTHENTICATED dan INTERNAL', async () => {
     [err('UNAUTHENTICATED'), 'unauthenticated'],
     [err('INTERNAL'), 'server-error'],
   ] as const) {
-    localStorage.clear();
-    queue(0);
+    resetOutboxEnv();
+    await queue(0);
     let seenSending = false;
     const result = await flushOutbox(
       deps({

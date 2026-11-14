@@ -11,6 +11,7 @@ import { makeHandover } from '@/modules/handover/components/test-handover';
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
 import { beginSending, resetSendingForTests } from '@/modules/handover/lib/outbox-status';
 import { handoverKeys } from '@/modules/handover/queries';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { OutboxChip } from './outbox-chip';
 
 const OWNER = 'rina@qc.local';
@@ -35,42 +36,42 @@ function renderChip() {
 }
 
 beforeEach(() => {
-  localStorage.clear();
+  resetOutboxEnv();
   resetSendingForTests();
 });
 
-test('tidak tampil tanpa entri', () => {
+test('tidak tampil tanpa entri', async () => {
   renderChip();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
-test('dua entri: teks "2 belum terkirim" dalam elemen role=status', () => {
-  queue(0);
-  queue(1);
+test('dua entri: teks "2 belum terkirim" dalam elemen role=status', async () => {
+  await queue(0);
+  await queue(1);
   renderChip();
   expect(screen.getByRole('status').textContent).toContain('2 belum terkirim');
 });
 
-test('satu dari dua sedang dikirim: "Mengirim 1 dari 2…"', () => {
-  queue(0);
-  queue(1);
+test('satu dari dua sedang dikirim: "Mengirim 1 dari 2…"', async () => {
+  await queue(0);
+  await queue(1);
   beginSending('h1', 1);
   renderChip();
   expect(screen.getByRole('status').textContent).toContain('Mengirim 1 dari 2…');
 });
 
-test('berubah mengikuti antrean tanpa muat ulang', () => {
+test('berubah mengikuti antrean tanpa muat ulang', async () => {
   renderChip();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
-  act(() => {
-    queue(0);
+  await act(async () => {
+    await queue(0);
   });
   expect(screen.getByRole('status').textContent).toContain('1 belum terkirim');
 });
 
 test('membuka popover menampilkan nomor task dari cache', async () => {
-  queue(0);
+  await queue(0);
   const { client } = renderChip();
   client.setQueryData(
     handoverKeys.one('h1', ['loc-a']),
@@ -83,15 +84,15 @@ test('membuka popover menampilkan nomor task dari cache', async () => {
 });
 
 test('entri untuk task yang tidak ada di cache memakai "Task lain" tanpa galat', async () => {
-  queue(0, 'tidak-ada');
+  await queue(0, 'tidak-ada');
   renderChip();
   await userEvent.click(screen.getByRole('button', { name: '1 belum terkirim' }));
   expect(await screen.findByText(/Task lain/)).toBeInTheDocument();
 });
 
-test('label aksesibel lengkap walau teks panjang disembunyikan di layar sempit', () => {
-  queue(0);
-  queue(1);
+test('label aksesibel lengkap walau teks panjang disembunyikan di layar sempit', async () => {
+  await queue(0);
+  await queue(1);
   renderChip();
   const button = screen.getByRole('button', { name: '2 belum terkirim' });
   expect(button).toHaveAttribute('aria-label', '2 belum terkirim');

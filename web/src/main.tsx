@@ -17,6 +17,7 @@ import { startServerStatus } from '@/app/server-status';
 import { OfflineScreen } from '@/app/shell/offline-screen';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
+import { hydrateOutbox } from '@/modules/handover/lib/outbox';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
@@ -46,6 +47,8 @@ async function start() {
   // Server tidak terjangkau saat boot: layar "Tidak ada koneksi" saja (tanpa router/query client). Service worker
   // tetap didaftarkan agar cangkang aplikasi dan pembaruan versi jalan; sesi tidak disentuh (FR-P7).
   if (me === 'unavailable') {
+    // Hitungan antrean di layar ini dibaca dari salinan memori: muat dulu (dibatasi 1,5 dtk; gagal = hitungan 0).
+    await hydrateOutbox();
     createRoot(root).render(
       <StrictMode>
         <ThemeProvider>
@@ -61,8 +64,9 @@ async function start() {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
     restoreQueryCache(queryClient, me.email);
     queryClient.setQueryData(meQueryKey, me);
-    // Papan dan detail task Serah Terima dari IndexedDB (Fase 3 Tahap B), dibatasi 1,5 dtk; tanpa data = boot normal.
-    await restoreBoardCache(queryClient, me.email);
+    // Papan dan detail task Serah Terima dari IndexedDB (Fase 3 Tahap B) dan antrean tulis offline (Tahap C), masing-masing
+    // dibatasi 1,5 dtk dan dimuat bersamaan (batas waktunya tidak berurutan); tanpa data = boot normal.
+    await Promise.all([restoreBoardCache(queryClient, me.email), hydrateOutbox()]);
   }
   startQueryPersistence(queryClient);
   startBoardPersistence(queryClient);
