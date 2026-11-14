@@ -187,6 +187,16 @@ let copy = new Map<string, OutboxEntry[]>();
 let mutations = 0;
 /** Naik tiap pembersihan total: hasil penulisan/baca yang selesai SESUDAH keluar tak boleh menghidupkan salinan lagi. */
 let epoch = 0;
+/**
+ * Salinan memori sudah pernah selaras dengan toko pada sesi ini (hidrasi boot atau penyegaran yang berhasil). Selama
+ * `false`, salinan kosong/sedikit tak bisa dipercaya sebagai "tak ada antrean" (hidrasi gagal atau lewat batas waktu).
+ */
+let storeSynced = false;
+
+/** Sudah pernah selaras dengan toko? (lihat `storeSynced`). */
+export function outboxSynced(): boolean {
+  return storeSynced;
+}
 
 function sortByTime(entries: OutboxEntry[]): OutboxEntry[] {
   return entries
@@ -267,7 +277,12 @@ let activeOwner: string | null = null;
  * dimulai sebelum penghapusan itu selesai (hasil bacanya mungkin masih basi).
  */
 const tombstones = new Map<string, { settledAt: number | null }>();
-/** Nomor urut penyegaran dimulai; `activeRefreshes` = yang belum selesai. */
+/**
+ * Nomor urut penyegaran dimulai; `activeRefreshes` = yang belum selesai. Batas yang diketahui: bila baca IndexedDB
+ * menggantung selamanya, penyegaran itu tak pernah keluar dari `activeRefreshes` dan tombstone yang selesai sesudahnya
+ * tak tersapu. Diterima: dampaknya hanya sedikit memori (id unik; tak ada entri sah yang tertahan) dan IndexedDB macet
+ * sudah menjadi gejala yang jauh lebih besar; tombstone hilang bersama muat ulang halaman.
+ */
 let refreshSeq = 0;
 const activeRefreshes = new Set<number>();
 
@@ -279,15 +294,24 @@ function sweepTombstones(): void {
   }
 }
 
+const KNOWN_KINDS: readonly string[] = ['check', 'comment', 'create'];
+
 /**
- * Nasib rekaman toko: `ok` dipakai; `newer` = ditulis rilis/tab lebih baru (versi > yang dikenal): diabaikan dan
- * dibiarkan; `broken` = versi lama/tak dikenal atau bentuk entri rusak.
+ * Nasib rekaman toko: `ok` dipakai; `newer` = kemungkinan ditulis rilis/tab lebih baru (versi > yang dikenal, atau
+ * versi sama dengan `kind` yang belum dikenal bundel ini): diabaikan dan DIBIARKAN; `broken` = jelas rusak (bukan objek,
+ * `v` tak valid atau lebih lama, atau jenis dikenal tetapi field wajibnya hilang): dibuang.
+ * Aturan ke depan: jenis entri baru boleh ditambah tanpa menaikkan `RECORD_VERSION` (tab berbundel lama tak akan
+ * menghapusnya), tetapi mengubah bentuk jenis yang sudah ada WAJIB menaikkan versi.
  */
 function classifyRecord(record: DeviceRecord): 'ok' | 'newer' | 'broken' {
   if (typeof record.v !== 'number' || !Number.isInteger(record.v)) return 'broken';
   if (record.v > RECORD_VERSION) return 'newer';
   if (record.v < RECORD_VERSION) return 'broken';
-  return isOutboxEntry(entryOf(record)) && typeof record.owner === 'string' ? 'ok' : 'broken';
+  const entry = entryOf(record);
+  if (typeof entry !== 'object' || entry === null) return 'broken';
+  const kind = (entry as { kind?: unknown }).kind;
+  if (typeof kind === 'string' && !KNOWN_KINDS.includes(kind)) return 'newer';
+  return isOutboxEntry(entry) && typeof record.owner === 'string' ? 'ok' : 'broken';
 }
 
 /**
@@ -357,6 +381,7 @@ async function refreshFromStore(owner?: string): Promise<OutboxEntry[] | null> {
     if (broken.length > 0) void deleteOutboxRecords(broken);
   }
   const next = copyFromRecords(records);
+  storeSynced = true;
   if (!sameContent(copy, next)) {
     setCopy(next);
     notify();
@@ -485,6 +510,7 @@ async function runHydration(budgetMs: number): Promise<void> {
   const work = (async () => {
     const [records, moved] = await Promise.all([readOutboxRecords(), migrateLegacy()]);
     if (timedOut) return;
+    if (records !== null) storeSynced = true;
     const merged = new Map(copyFromRecords(records ?? []));
     for (const { owner, entry } of moved) {
       const list = merged.get(owner) ?? [];
@@ -641,6 +667,7 @@ export async function clearAllOutboxesWithin(
 ): Promise<void> {
   epoch += 1;
   activeOwner = null;
+  storeSynced = false;
   const hadEntries = copy.size > 0;
   setCopy(new Map());
   if (hadEntries) notify();
@@ -668,6 +695,7 @@ export async function clearAllOutboxesWithin(
  */
 export function discardOutboxCopy(): void {
   epoch += 1;
+  storeSynced = false;
   if (copy.size === 0) return;
   setCopy(new Map());
   notify();
@@ -680,6 +708,7 @@ export function resetOutboxForTests(): void {
   version = 0;
   writesSuspended = false;
   hydration = null;
+  storeSynced = false;
   activeOwner = null;
   tombstones.clear();
   activeRefreshes.clear();

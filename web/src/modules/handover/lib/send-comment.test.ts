@@ -4,7 +4,13 @@ import { ApiError } from '@/lib/api/api-error';
 import { readOutboxRecords } from '@/lib/device-db';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
-import { enqueueOutbox, readOutbox, resetOutboxForTests } from './outbox';
+import {
+  enqueueOutbox,
+  hydrateOutbox,
+  outboxSynced,
+  readOutbox,
+  resetOutboxForTests,
+} from './outbox';
 import { sendComment } from './send-comment';
 
 const OWNER = 'qc@x.id';
@@ -48,7 +54,7 @@ test('UNAVAILABLE mengantre dengan clientId yang SAMA dengan percobaan pertama (
     throw err('UNAVAILABLE');
   });
   const result = await sendComment(input, { send, newId: () => CLIENT, now: () => 1_234 });
-  expect(result).toEqual({ queued: true });
+  expect(result).toEqual({ queued: true, reason: 'offline' });
   const [entry] = readOutbox(OWNER);
   expect(entry).toMatchObject({
     kind: 'comment',
@@ -130,7 +136,7 @@ test('A1: task yang masih punya entri antre: komentar baru ikut DIANTREKAN (tida
   const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
   const requestFlush = vi.fn();
   const result = await sendComment(input, { send, newId: () => CLIENT, requestFlush });
-  expect(result).toEqual({ queued: true });
+  expect(result).toEqual({ queued: true, reason: 'ordered' });
   expect(send).not.toHaveBeenCalled();
   const entries = readOutbox(OWNER);
   expect(entries.map((e) => e.kind)).toEqual(['comment', 'comment']);
@@ -150,7 +156,7 @@ test('A1: entri centang antre pada task yang sama juga menahan komentar online',
   });
   const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
   const result = await sendComment(input, { send, requestFlush: vi.fn() });
-  expect(result).toEqual({ queued: true });
+  expect(result).toMatchObject({ queued: true });
   expect(send).not.toHaveBeenCalled();
 });
 
@@ -170,7 +176,7 @@ test('A1: salinan memori kosong (hidrasi gagal) tetapi toko berisi: disegarkan d
   expect(readOutbox(OWNER)).toEqual([]);
   const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
   const result = await sendComment(input, { send, newId: () => CLIENT, requestFlush: vi.fn() });
-  expect(result).toEqual({ queued: true });
+  expect(result).toMatchObject({ queued: true });
   expect(send).not.toHaveBeenCalled();
   expect(readOutbox(OWNER)).toHaveLength(2);
 });
@@ -191,4 +197,40 @@ test('A1: antrean task itu penuh (komentar baru ikut antre tetapi ditolak): dile
   const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
   await expect(sendComment(input, { send, requestFlush: vi.fn() })).rejects.toThrow(/penuh/);
   expect(send).not.toHaveBeenCalled();
+});
+
+test('A1: hidrasi gagal lalu entri task LAIN sudah di memori, toko memuat entri task ini: tetap diantrekan (salinan tak kosong tak dipercaya)', async () => {
+  // Entri task ini hanya ada di toko (ditulis tab lain/sesi sebelumnya); hidrasi boot tidak pernah selaras.
+  await enqueueOutbox(OWNER, queuedComment('t1'));
+  resetOutboxForTests();
+  expect(outboxSynced()).toBe(false);
+  // Pengguna sempat mengantre entri task lain: salinan memori tidak kosong tetapi belum selaras dengan toko.
+  await enqueueOutbox(OWNER, queuedComment('t9'));
+  expect(readOutbox(OWNER).map((e) => 'taskId' in e && e.taskId)).toEqual(['t9']);
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const result = await sendComment(input, { send, newId: () => CLIENT, requestFlush: vi.fn() });
+  expect(result).toEqual({ queued: true, reason: 'ordered' });
+  expect(send).not.toHaveBeenCalled();
+  expect(outboxSynced()).toBe(true);
+});
+
+test('A1: setelah selaras dengan toko (kasus normal) komentar online TIDAK membaca toko lagi', async () => {
+  await hydrateOutbox();
+  expect(outboxSynced()).toBe(true);
+  const refresh = vi.fn(async () => null);
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const result = await sendComment(input, { send, refresh, requestFlush: vi.fn() });
+  expect(result.queued).toBe(false);
+  expect(refresh).not.toHaveBeenCalled();
+});
+
+test('A1: penyegaran yang gagal membaca (null) tidak menandai selaras', async () => {
+  const refresh = vi.fn(async () => null);
+  await sendComment(input, {
+    send: vi.fn(async (_body: AddCommentInput) => makeHandover()),
+    refresh,
+    requestFlush: vi.fn(),
+  });
+  expect(refresh).toHaveBeenCalledOnce();
+  expect(outboxSynced()).toBe(false);
 });

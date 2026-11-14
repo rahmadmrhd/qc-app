@@ -512,8 +512,10 @@ test('A5: rekaman milik pemilik dengan versi LEBIH BARU diabaikan tetapi TIDAK d
 test('A5: versi tak dikenal/lama atau bentuk rusak milik pemilik dibuang dari toko saat disegarkan; milik pemilik lain dibiarkan', async () => {
   await seedRaw(OWNER, 'lama', { v: 0, entry: { ...check({ at: 5 }), id: 'lama' } });
   await seedRaw(OWNER, 'tanpa-v', { entry: { ...check({ at: 5 }), id: 'tanpa-v' } });
-  await seedRaw(OWNER, 'rusak', { v: 1, entry: { id: 'rusak', kind: 'aneh' } });
-  await seedRaw('lain@x.com', 'rusak-lain', { v: 1, entry: { id: 'rusak-lain', kind: 'aneh' } });
+  await seedRaw(OWNER, 'rusak', { v: 1, entry: { id: 'rusak', kind: 'check' } }); // jenis dikenal, field wajib hilang
+  await seedRaw(OWNER, 'bukan-objek', { v: 1, entry: 'teks' });
+  await seedRaw(OWNER, 'v-aneh', { v: 'satu', entry: { ...check({ at: 5 }), id: 'v-aneh' } });
+  await seedRaw('lain@x.com', 'rusak-lain', { v: 1, entry: { id: 'rusak-lain', kind: 'check' } });
   await seed(OWNER, { ...check({ at: 6 }), id: 'ok' });
   const rows = await refreshOutboxFromStore(OWNER);
   expect(rows?.map((e) => e.id)).toEqual(['ok']);
@@ -590,4 +592,37 @@ test('B2: sebelum pembersihan toko pemilik lain selesai, penyegaran tak memasang
   delGate.open();
   await purging;
   expect(await storeKeys()).toEqual([`${OWNER}|milik`]);
+});
+
+test('A5/Minor-4: v sama tetapi jenis (kind) belum dikenal = diabaikan TANPA dihapus (rilis lebih baru)', async () => {
+  await seedRaw(OWNER, 'jenis-baru', {
+    v: 1,
+    entry: { id: 'jenis-baru', kind: 'pindah-lokasi', at: 1 },
+  });
+  await seed(OWNER, { ...check({ at: 6 }), id: 'ok' });
+  const rows = await refreshOutboxFromStore(OWNER);
+  expect(rows?.map((e) => e.id)).toEqual(['ok']);
+  expect(await storeKeys()).toEqual([`${OWNER}|jenis-baru`, `${OWNER}|ok`]);
+});
+
+test('A4: tombstone dilepas setelah penghapusan sukses: rekaman berkunci sama yang muncul kemudian terlihat lagi', async () => {
+  const entry = { ...comment({ at: Date.now() }), id: 'sekali' };
+  await enqueueOutbox(OWNER, entry);
+  expect(await removeOutboxEntries(OWNER, ['sekali'])).toBe(true);
+  expect(readOutbox(OWNER)).toEqual([]);
+  // Tak ada penyegaran berjalan: tanda sudah disapu, rekaman berkunci sama dari tab lain tidak tersaring selamanya.
+  await seed(OWNER, entry as OutboxEntry);
+  await refreshOutboxFromStore(OWNER);
+  expect(readOutbox(OWNER).map((e) => e.id)).toEqual(['sekali']);
+});
+
+test('A4: penghapusan toko gagal (false): tombstone tetap dilepas dan entri boleh kembali pada penyegaran berikutnya', async () => {
+  const entry = { ...comment({ at: Date.now() }), id: 'gagal-hapus' };
+  await enqueueOutbox(OWNER, entry);
+  vi.mocked(deviceDb.deleteOutboxRecords).mockImplementationOnce(async () => false);
+  expect(await removeOutboxEntries(OWNER, ['gagal-hapus'])).toBe(false);
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(await storeKeys()).toEqual([`${OWNER}|gagal-hapus`]);
+  await refreshOutboxFromStore(OWNER);
+  expect(readOutbox(OWNER).map((e) => e.id)).toEqual(['gagal-hapus']);
 });

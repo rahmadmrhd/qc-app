@@ -9,11 +9,18 @@ import {
   newClientId,
   OUTBOX_IO_BUDGET_MS,
   type OutboxEntry,
-  readOutbox,
+  outboxSynced,
   refreshOutboxFromStore,
 } from './outbox';
 
 export type SendCommentInput = Omit<AddCommentInput, 'clientId'> & { owner: string };
+
+/** Hasil kirim. `reason` hanya bila `queued`: `offline` = server tak terjangkau; `ordered` = mengikuti entri antre task itu. */
+export interface SendCommentResult {
+  queued: boolean;
+  dto?: HandoverDto;
+  reason?: 'offline' | 'ordered';
+}
 
 export interface SendCommentDeps {
   /** Kirim online (di aplikasi: mutasi `useAddComment`, yang juga memasang hasil ke cache). */
@@ -39,16 +46,18 @@ async function refreshWithinBudget(owner: string): Promise<OutboxEntry[] | null>
 }
 
 /**
- * Task ini masih punya entri antre (komentar/centang)? Salinan memori yang kosong bisa berarti hidrasi gagal atau
- * terlambat, bukan antrean kosong: segarkan dari toko dulu. Toko tak terbaca (`null`) = tidak diketahui; komentar
- * tetap dicoba online (idempoten lewat `clientId`), bukan ditahan tanpa dasar.
+ * Task ini masih punya entri antre (komentar/centang)? Salinan memori yang belum pernah selaras dengan toko (hidrasi
+ * boot gagal atau lewat batas waktu) tak bisa dipercaya, kosong maupun tidak: segarkan dari toko dulu (satu baca, batas
+ * 1,5 dtk). Setelah selaras (kasus normal) cukup salinan memori yang dijaga siaran `changed`; celah sempit tersisa bila
+ * tab lain baru menulis entri task ini dan siarannya belum diproses (penguras membaca toko tiap iterasi dan memulihkan
+ * urutannya). Toko tak terbaca (`null`) = tidak diketahui; komentar tetap dicoba online (idempoten lewat `clientId`).
  */
 async function taskHasQueuedEntries(
   owner: string,
   taskId: string,
   refresh: (owner: string) => Promise<OutboxEntry[] | null>,
 ): Promise<boolean> {
-  if (readOutbox(owner).length === 0) {
+  if (!outboxSynced()) {
     const fresh = await refresh(owner);
     if (fresh === null) return false;
     return fresh.some((entry) => 'taskId' in entry && entry.taskId === taskId);
@@ -66,10 +75,10 @@ async function taskHasQueuedEntries(
 export async function sendComment(
   input: SendCommentInput,
   deps: SendCommentDeps,
-): Promise<{ queued: boolean; dto?: HandoverDto }> {
+): Promise<SendCommentResult> {
   const { owner, ...fields } = input;
   const clientId = (deps.newId ?? newClientId)();
-  const queueIt = async (): Promise<{ queued: boolean; dto?: HandoverDto }> => {
+  const queueIt = async (reason: 'offline' | 'ordered'): Promise<SendCommentResult> => {
     const result = await (deps.enqueue ?? enqueueOutbox)(owner, {
       kind: 'comment',
       clientId,
@@ -81,7 +90,7 @@ export async function sendComment(
       body: fields.body,
       at: (deps.now ?? Date.now)(),
     });
-    if (result === 'ok') return { queued: true };
+    if (result === 'ok') return { queued: true, reason };
     throw new ApiError(
       'INTERNAL',
       result === 'full'
@@ -92,7 +101,7 @@ export async function sendComment(
   };
   // Urutan per task: task yang masih punya entri antre tidak boleh didahului kiriman langsung (seperti centang).
   if (await taskHasQueuedEntries(owner, fields.id, deps.refresh ?? refreshWithinBudget)) {
-    const queued = await queueIt();
+    const queued = await queueIt('ordered');
     (deps.requestFlush ?? requestOutboxFlush)();
     return queued;
   }
@@ -101,7 +110,7 @@ export async function sendComment(
     return { queued: false, dto };
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== 'UNAVAILABLE') throw error;
-    return queueIt();
+    return queueIt('offline');
   }
 }
 
@@ -112,9 +121,12 @@ export function useSendComment(owner: string) {
   return async (input: Omit<SendCommentInput, 'owner'>): Promise<void> => {
     const result = await sendComment({ ...input, owner }, { send });
     if (result.queued) {
-      toast.info('Komentar disimpan di perangkat dan dikirim saat tersambung.', {
-        id: 'comment-outbox-queued',
-      });
+      toast.info(
+        result.reason === 'ordered'
+          ? 'Komentar masuk antrean dan dikirim berurutan setelah perubahan sebelumnya.'
+          : 'Komentar disimpan di perangkat dan dikirim saat tersambung.',
+        { id: 'comment-outbox-queued' },
+      );
     }
   };
 }
