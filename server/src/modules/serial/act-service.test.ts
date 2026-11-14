@@ -204,22 +204,55 @@ describe('diagnosis (baris 4-6)', () => {
     expect(result.data.transitToLocationId).toBe('loc-off');
   });
 
-  test('stage done tanpa lokasi QC asal tercatat: lokasi saat dicatat bila aktif, selain itu lokasi unit sekarang', async () => {
+  test('stage done tanpa lokasi QC asal tercatat (data lama): tujuan = lokasi unit sekarang', async () => {
     await seedAt('service_repair', 'service', {
       openCase: { ...CASE, originLocationId: '' },
       recordedLocationId: 'loc-sby',
     });
-    const first = await act('service_diagnosis', { stage: 'done' });
-    expect(first.data.transitToLocationId).toBe('loc-sby');
-    await env.DB.prepare('DELETE FROM serial_events').run();
-    await env.DB.prepare('DELETE FROM serial_cases').run();
-    await env.DB.prepare('DELETE FROM serials').run();
-    await seedAt('service_repair', 'service', {
-      openCase: { ...CASE, originLocationId: '' },
-      recordedLocationId: 'loc-off',
+    const result = await act('service_diagnosis', { stage: 'done' });
+    expect(result.data.transitToLocationId).toBe('loc-jkt');
+  });
+
+  test('laporan baru menyimpan lokasi unit saat dilaporkan sebagai lokasi QC asal', async () => {
+    await seedSerial(env, {
+      id: 'sn1',
+      serial: 'AB12',
+      status: 'good',
+      custody: 'qc',
+      locationId: 'loc-sby',
     });
-    const second = await act('service_diagnosis', { stage: 'done' });
-    expect(second.data.transitToLocationId).toBe('loc-jkt');
+    const reported = await act(
+      'report_failure',
+      { message: 'Rusak' },
+      { email: SERIAL_USERS.hybrid },
+    );
+    expect(reported.ok).toBe(true);
+    const row = await env.DB.prepare(
+      'SELECT origin_location_id FROM serial_cases WHERE serial_id = ?',
+    )
+      .bind('sn1')
+      .first<{ origin_location_id: string }>();
+    expect(row?.origin_location_id).toBe('loc-sby');
+  });
+
+  test('cek ulang dari transit ke lokasi QC asal nonaktif ditolak: terima dulu di lokasi aktif', async () => {
+    await seedAt('recheck', 'transit', {
+      openCase: { ...CASE, originLocationId: 'loc-off' },
+      locationId: 'loc-jkt',
+      transitFromLocationId: 'loc-jkt',
+      transitToLocationId: 'loc-off',
+      transitOn: '2026-11-10',
+    });
+    const result = await act('recheck_pass', {}, { email: SERIAL_USERS.hybrid });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('VALIDATION');
+    expect(JSON.stringify(result.error)).toContain('Terima dulu unitnya di lokasi aktif');
+    const row = await env.DB.prepare(
+      'SELECT status, custody, location_id FROM serials WHERE id = ?',
+    )
+      .bind('sn1')
+      .first<{ status: string; custody: string; location_id: string }>();
+    expect(row).toMatchObject({ status: 'recheck', custody: 'transit', location_id: 'loc-jkt' });
   });
 
   test('diagnosis langsung dari custody transit: dua kejadian (receive otomatis lalu service_diagnosis) dalam satu batch', async () => {

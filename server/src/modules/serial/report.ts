@@ -144,6 +144,7 @@ export async function reportNewSerial(
         serialId,
         buId: input.buId,
         openedOn: input.occurredOn,
+        originLocationId: input.locationId,
         now,
         actorEmail: user.email,
       }),

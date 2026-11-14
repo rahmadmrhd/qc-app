@@ -61,14 +61,26 @@ export interface NewCase {
   openedOn: string;
   now: string;
   actorEmail: string;
+  /** Lokasi unit saat dilaporkan; dipakai sebagai lokasi QC asal sampai Kirim ke servis memperbaruinya. */
+  originLocationId?: string;
 }
 
 export function insertCaseStmt(db: Preparer, c: NewCase): DbStatement {
   return db
     .prepare(
-      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, origin_location_id, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .bind(c.id, c.number, c.serialId, c.buId, c.openedOn, c.now, c.actorEmail, c.now);
+    .bind(
+      c.id,
+      c.number,
+      c.serialId,
+      c.buId,
+      c.openedOn,
+      c.originLocationId ?? '',
+      c.now,
+      c.actorEmail,
+      c.now,
+    );
 }
 
 /**

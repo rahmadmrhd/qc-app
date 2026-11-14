@@ -275,6 +275,7 @@ async function applyAct(
         serialId,
         buId,
         openedOn: input.occurredOn,
+        originLocationId: currentLocationId,
         now,
         actorEmail: user.email,
       }),
@@ -294,6 +295,10 @@ async function applyAct(
     const receiveRow = SERIAL_FLOW.find((entry) => entry.action === 'receive' && entry.leg === leg);
     midCustody = receiveRow && receiveRow.toCustody !== 'same' ? receiveRow.toCustody : custody;
     const targetId = row.transit_to_location_id.trim();
+    // Unit tidak boleh mendarat otomatis di lokasi nonaktif (Terima biasa juga menolaknya; keputusan pemilik 2026-11-14).
+    if (targetId !== '' && (await activeLocationName(env.DB, targetId)) === null) {
+      throw validationError('action', 'Terima dulu unitnya di lokasi aktif');
+    }
     const targetName = row.transit_to_name ?? currentLocationName;
     const changes: SerialChangeDto[] = [
       {
@@ -369,16 +374,9 @@ async function applyAct(
       const found = await loadOpenCase();
       main.data = { caseNumber: found.number, stage: input.stage };
       if (input.stage === 'done') {
-        // Kembali ke QC: tujuan = lokasi QC asal laporan; kosong (data lama tanpa kejadian kirim) = lokasi saat
-        // dicatat bila aktif, selain itu lokasi unit sekarang.
-        let destinationId = found.origin_location_id.trim();
-        if (destinationId === '') {
-          const recorded = row.recorded_location_id.trim();
-          destinationId =
-            recorded !== '' && (await activeLocationName(env.DB, recorded)) !== null
-              ? recorded
-              : currentLocationId;
-        }
+        // Kembali ke QC: tujuan = lokasi QC asal laporan (diisi saat dilaporkan dan diperbarui saat Kirim ke servis);
+        // kosong (data lama) = lokasi unit sekarang.
+        const destinationId = found.origin_location_id.trim() || currentLocationId;
         const destinationName = (await locationNameOf(env.DB, destinationId)) ?? '';
         set.transit_from_location_id = currentLocationId;
         set.transit_to_location_id = destinationId;
