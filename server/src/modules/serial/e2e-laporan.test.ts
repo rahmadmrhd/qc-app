@@ -437,6 +437,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     const body = JSON.parse(raw) as Json;
     expect(Object.keys(body).sort()).toEqual(
       [
+        'caseId',
         'closedOn',
         'events',
         'expiresOn',
