@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { collectNoteText, rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
 import type { ItemSendState } from '../lib/outbox-status';
+import type { PendingComment } from '../lib/use-pending-checks';
 import { CommentComposer } from './comment-composer';
 
 export interface NoteViewProps {
@@ -24,6 +25,8 @@ export interface NoteViewProps {
   compact?: boolean;
   /** Status kirim per indeks butir: `waiting` = di antrean perangkat, `sending` = permintaan sedang berjalan. */
   itemStates?: ReadonlyMap<number, ItemSendState>;
+  /** Komentar yang masih di antrean perangkat; tampil di AKHIR daftar komentar dengan label status. */
+  pendingComments?: readonly PendingComment[];
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -43,6 +46,8 @@ interface Pending extends Anchor {
   top: number;
   left: number;
 }
+
+const NO_PENDING_COMMENTS: readonly PendingComment[] = [];
 
 const TOP_LEVEL_ITEM = /^- \[[ xX]\]/;
 
@@ -109,6 +114,7 @@ export function NoteView({
   canComment,
   compact = false,
   itemStates,
+  pendingComments = NO_PENDING_COMMENTS,
   onCheck,
   onComment,
 }: NoteViewProps) {
@@ -299,7 +305,7 @@ export function NoteView({
           }}
         />
       ) : null}
-      {comments.length > 0 ? (
+      {comments.length > 0 || pendingComments.length > 0 ? (
         <ul aria-label="Komentar" className={cn('space-y-2', compact && 'space-y-1.5')}>
           {comments.map((comment) => (
             <li
@@ -324,6 +330,46 @@ export function NoteView({
                 {comment.stale ? (
                   <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-medium">usang</span>
                 ) : null}
+              </p>
+            </li>
+          ))}
+          {pendingComments.map((comment) => (
+            <li
+              key={comment.id}
+              data-pending-comment=""
+              className={cn(
+                'rounded-md border border-dashed text-sm',
+                compact ? 'p-2 text-xs' : 'p-3',
+              )}
+            >
+              {comment.quote !== '' ? (
+                <blockquote
+                  className={cn(
+                    'border-l-2 pl-3 text-muted-foreground',
+                    compact && 'line-clamp-2 break-words',
+                  )}
+                >
+                  {comment.quote}
+                </blockquote>
+              ) : null}
+              <p className={cn('whitespace-pre-wrap break-words', comment.quote !== '' && 'mt-1')}>
+                {comment.body}
+              </p>
+              <p className="mt-1 text-xs italic text-muted-foreground">
+                {comment.status === 'sending' ? (
+                  <>
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="mr-1 inline size-3 animate-spin align-[-2px]"
+                    />
+                    Mengirim…
+                  </>
+                ) : (
+                  <>
+                    <Clock aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" />
+                    Belum terkirim
+                  </>
+                )}
               </p>
             </li>
           ))}

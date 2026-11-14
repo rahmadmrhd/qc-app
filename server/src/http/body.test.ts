@@ -172,6 +172,7 @@ const WORST: Inputs = {
     tasks: longList(HANDOVER_LIMITS.batch, () => ({
       customerName: text(HANDOVER_LIMITS.customerName),
       note: text(HANDOVER_LIMITS.note),
+      clientId: UUID,
     })),
   },
   'handovers.cancel': { id: UUID, locationId: UUID },
@@ -185,6 +186,7 @@ const WORST: Inputs = {
     before: text(HANDOVER_LIMITS.comment),
     after: text(HANDOVER_LIMITS.comment),
     body: text(HANDOVER_LIMITS.comment),
+    clientId: UUID,
   },
   'qrcodes.save': {
     id: UUID,

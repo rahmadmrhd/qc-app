@@ -17,7 +17,7 @@ import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideMenuDialog } from '@/modules/guide/components/guide-menu-dialog';
 import { useTourMenu } from '@/modules/guide/lib/tour-menu';
-import { countAllOutboxEntries } from '@/modules/handover/lib/check-outbox';
+import { countAllOutboxEntries } from '@/modules/handover/lib/outbox';
 import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
 
 export function UserMenu() {

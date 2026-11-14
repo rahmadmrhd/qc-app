@@ -14,9 +14,11 @@ import { queryClient, setUnauthenticatedHandler } from '@/app/query-client';
 import { restoreQueryCache, startQueryPersistence } from '@/app/query-persist';
 import { createAppRouter } from '@/app/router';
 import { startServerStatus } from '@/app/server-status';
+import { handleRemoteLogout, startSessionListener } from '@/app/session-broadcast';
 import { OfflineScreen } from '@/app/shell/offline-screen';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
+import { hydrateOutbox } from '@/modules/handover/lib/outbox';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
 import './styles.css';
 
@@ -46,6 +48,8 @@ async function start() {
   // Server tidak terjangkau saat boot: layar "Tidak ada koneksi" saja (tanpa router/query client). Service worker
   // tetap didaftarkan agar cangkang aplikasi dan pembaruan versi jalan; sesi tidak disentuh (FR-P7).
   if (me === 'unavailable') {
+    // Hitungan antrean di layar ini dibaca dari salinan memori: muat dulu (dibatasi 1,5 dtk; gagal = hitungan 0).
+    await hydrateOutbox();
     createRoot(root).render(
       <StrictMode>
         <ThemeProvider>
@@ -61,15 +65,25 @@ async function start() {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
     restoreQueryCache(queryClient, me.email);
     queryClient.setQueryData(meQueryKey, me);
-    // Papan dan detail task Serah Terima dari IndexedDB (Fase 3 Tahap B), dibatasi 1,5 dtk; tanpa data = boot normal.
-    await restoreBoardCache(queryClient, me.email);
+    // Papan dan detail task Serah Terima dari IndexedDB (Fase 3 Tahap B) dan antrean tulis offline (Tahap C), masing-masing
+    // dibatasi 1,5 dtk dan dimuat bersamaan (batas waktunya tidak berurutan); tanpa data = boot normal.
+    await Promise.all([restoreBoardCache(queryClient, me.email), hydrateOutbox()]);
   }
   startQueryPersistence(queryClient);
-  startBoardPersistence(queryClient);
+  const boardPersistence = startBoardPersistence(queryClient);
   // Spanduk "data terakhir" saat server tidak tersedia (FR-P16).
   startServerStatus(queryClient);
   // Antrean centang di perangkat dikirim ulang di foreground saat server pulih (FR-P17); hanya untuk sesi sah.
-  if (me) startOutboxSync(queryClient);
+  if (me) {
+    startOutboxSync(queryClient);
+    // Tab lain akun ini keluar: berhenti menulis antrean dan papan ke perangkat (sesi tab ini mati lewat jalur 401).
+    startSessionListener((owner) =>
+      handleRemoteLogout(owner, {
+        currentOwner: me.email,
+        stopBoardPersistence: () => boardPersistence.stop(),
+      }),
+    );
+  }
 
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {

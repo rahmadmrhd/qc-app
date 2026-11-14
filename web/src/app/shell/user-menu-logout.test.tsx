@@ -15,7 +15,9 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
   PushSettingsDialog: () => null,
 }));
 
-import { enqueueCheck, readOutbox, removeEntries } from '@/modules/handover/lib/check-outbox';
+import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
+import { readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { UserMenu } from './user-menu';
 
 const queue = (owner: string, index: number) =>
@@ -35,7 +37,7 @@ async function clickKeluar() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.clear();
+  resetOutboxEnv();
 });
 
 test('tanpa entri: klik Keluar langsung memanggil logout tanpa dialog', async () => {
@@ -46,7 +48,7 @@ test('tanpa entri: klik Keluar langsung memanggil logout tanpa dialog', async ()
 });
 
 test('dengan entri: klik Keluar menampilkan dialog dan belum memanggil logout', async () => {
-  queue('rina@qc.local', 0);
+  await queue('rina@qc.local', 0);
   render(<UserMenu />);
   await clickKeluar();
   expect(await screen.findByText('Keluar sekarang?')).toBeInTheDocument();
@@ -55,8 +57,8 @@ test('dengan entri: klik Keluar menampilkan dialog dan belum memanggil logout', 
 });
 
 test('Batal menutup dialog, logout tidak dipanggil, antrean utuh', async () => {
-  queue('rina@qc.local', 0);
-  queue('rina@qc.local', 1);
+  await queue('rina@qc.local', 0);
+  await queue('rina@qc.local', 1);
   const before = readOutbox('rina@qc.local');
   render(<UserMenu />);
   await clickKeluar();
@@ -67,7 +69,7 @@ test('Batal menutup dialog, logout tidak dipanggil, antrean utuh', async () => {
 });
 
 test('Tetap keluar memanggil logout satu kali', async () => {
-  queue('rina@qc.local', 0);
+  await queue('rina@qc.local', 0);
   render(<UserMenu />);
   await clickKeluar();
   await userEvent.click(await screen.findByRole('button', { name: 'Tetap keluar' }));
@@ -76,25 +78,25 @@ test('Tetap keluar memanggil logout satu kali', async () => {
 });
 
 test('entri milik pemilik lain ikut terhitung', async () => {
-  queue('rina@qc.local', 0);
-  queue('lain@qc.local', 0);
-  queue('lain@qc.local', 1);
+  await queue('rina@qc.local', 0);
+  await queue('lain@qc.local', 0);
+  await queue('lain@qc.local', 1);
   render(<UserMenu />);
   await clickKeluar();
   expect(await screen.findByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
 });
 
 test('antrean dikosongkan saat dialog terbuka: teks berubah menjadi aman untuk keluar', async () => {
-  queue('rina@qc.local', 0);
+  await queue('rina@qc.local', 0);
   render(<UserMenu />);
   await clickKeluar();
   expect(await screen.findByText(/1 perubahan belum terkirim/)).toBeInTheDocument();
-  act(() =>
-    removeEntries(
+  await act(async () => {
+    await removeOutboxEntries(
       'rina@qc.local',
       readOutbox('rina@qc.local').map((e) => e.id),
-    ),
-  );
+    );
+  });
   expect(
     await screen.findByText('Semua perubahan sudah terkirim. Aman untuk keluar.'),
   ).toBeInTheDocument();
@@ -102,12 +104,12 @@ test('antrean dikosongkan saat dialog terbuka: teks berubah menjadi aman untuk k
 });
 
 test('entri baru saat dialog terbuka: angka naik', async () => {
-  queue('rina@qc.local', 0);
+  await queue('rina@qc.local', 0);
   render(<UserMenu />);
   await clickKeluar();
   expect(await screen.findByText(/1 perubahan belum terkirim/)).toBeInTheDocument();
-  act(() => {
-    queue('rina@qc.local', 1);
+  await act(async () => {
+    await queue('rina@qc.local', 1);
   });
   expect(await screen.findByText(/2 perubahan belum terkirim/)).toBeInTheDocument();
 });

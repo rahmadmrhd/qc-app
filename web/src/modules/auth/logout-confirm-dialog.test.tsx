@@ -1,7 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { enqueueCheck, readOutbox, removeEntries } from '@/modules/handover/lib/check-outbox';
+import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
+import { enqueueOutbox, readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { LogoutConfirmDialog } from './logout-confirm-dialog';
 
 const queue = (index: number) =>
@@ -14,35 +16,35 @@ const queue = (index: number) =>
     at: Date.now(),
   });
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => resetOutboxEnv());
 
-function setup(count = 3) {
-  for (let i = 0; i < count; i++) queue(i);
+async function setup(count = 3) {
+  for (let i = 0; i < count; i++) await queue(i);
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
   render(<LogoutConfirmDialog onConfirm={onConfirm} onCancel={onCancel} />);
   return { onConfirm, onCancel };
 }
 
-test('menampilkan judul dan jumlah perubahan belum terkirim', () => {
-  setup(3);
+test('menampilkan judul dan jumlah perubahan belum terkirim', async () => {
+  await setup(3);
   expect(screen.getByText('Keluar sekarang?')).toBeInTheDocument();
   expect(screen.getByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
 });
 
-test('angka hidup: naik saat entri baru, dan menjadi pesan aman saat antrean kosong', () => {
-  setup(2);
+test('angka hidup: naik saat entri baru, dan menjadi pesan aman saat antrean kosong', async () => {
+  await setup(2);
   expect(screen.getByText(/2 perubahan belum terkirim/)).toBeInTheDocument();
-  act(() => {
-    queue(5);
+  await act(async () => {
+    await queue(5);
   });
   expect(screen.getByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
-  act(() =>
-    removeEntries(
+  await act(async () => {
+    await removeOutboxEntries(
       'a@x.com',
       readOutbox('a@x.com').map((e) => e.id),
-    ),
-  );
+    );
+  });
   expect(
     screen.getByText('Semua perubahan sudah terkirim. Aman untuk keluar.'),
   ).toBeInTheDocument();
@@ -51,22 +53,45 @@ test('angka hidup: naik saat entri baru, dan menjadi pesan aman saat antrean kos
 });
 
 test('Batal memanggil onCancel, bukan onConfirm', async () => {
-  const { onConfirm, onCancel } = setup();
+  const { onConfirm, onCancel } = await setup();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(onConfirm).not.toHaveBeenCalled();
 });
 
 test('Tetap keluar memanggil onConfirm tepat sekali dan bukan onCancel', async () => {
-  const { onConfirm, onCancel } = setup();
+  const { onConfirm, onCancel } = await setup();
   await userEvent.click(screen.getByRole('button', { name: 'Tetap keluar' }));
   expect(onConfirm).toHaveBeenCalledTimes(1);
   expect(onCancel).not.toHaveBeenCalled();
 });
 
 test('Esc menutup sebagai batal', async () => {
-  const { onConfirm, onCancel } = setup();
+  const { onConfirm, onCancel } = await setup();
   await userEvent.keyboard('{Escape}');
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test('hitungan mencakup komentar dan task baru serta semua pemilik', async () => {
+  await queue(0);
+  await enqueueOutbox('a@x.com', {
+    kind: 'comment',
+    clientId: '11111111-1111-4111-8111-111111111111',
+    taskId: 'h1',
+    locationId: 'loc-a',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'halo',
+    at: Date.now(),
+  });
+  await enqueueOutbox('lain@x.com', {
+    kind: 'create',
+    locationId: 'loc-a',
+    tasks: [{ clientId: '22222222-2222-4222-8222-222222222222', customerName: 'PT A', note: 'x' }],
+    at: Date.now(),
+  });
+  render(<LogoutConfirmDialog onConfirm={vi.fn()} onCancel={vi.fn()} />);
+  expect(screen.getByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
 });

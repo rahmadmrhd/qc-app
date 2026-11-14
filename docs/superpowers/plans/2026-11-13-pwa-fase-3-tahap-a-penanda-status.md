@@ -1,5 +1,7 @@
 # PWA Fase 3, Tahap A: Penanda Status dan Penghitung Implementation Plan
 
+> **Catatan (2026-11-14, Fase 3 Tahap C):** antrean `localStorage` `qc.outbox:<email>` dan berkas `check-outbox-flush.ts` sudah diganti toko IndexedDB `outbox` dan `outbox-flush.ts` (lihat `docs/superpowers/plans/2026-11-14-pwa-fase-3-tahap-c-antrean-komentar-task.md`). Rujukan nama di bawah menggambarkan keadaan saat rencana ini ditulis.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Pengguna selalu tahu mana centang yang "Belum terkirim", mana yang "Mengirim…", berapa totalnya (chip di header), dan diperingatkan sebelum keluar bila masih ada yang belum terkirim.

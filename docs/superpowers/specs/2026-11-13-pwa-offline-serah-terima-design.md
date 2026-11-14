@@ -120,7 +120,7 @@ Sumber status `sending`: penguras antrean menandai entri sebelum permintaan dan 
 
 ### 7.1 Server (perubahan kontrak kecil, expand-only)
 
-Migrasi `0015_client_id_serah_terima.sql` (idempoten, `IF NOT EXISTS`):
+Migrasi `0018_client_id_serah_terima.sql` (idempoten, `IF NOT EXISTS`; nomor 0015 yang semula tertulis sudah dipakai `0015_serial_cases.sql`, lihat §9 Tahap C R1):
 - `handovers.client_id VARCHAR(100) NULL` + `UNIQUE KEY handovers_client_id`.
 - `handover_comments.client_id VARCHAR(100) NULL` + `UNIQUE KEY handover_comments_client_id`.
 - Nullable agar baris lama dan image lama tetap valid (rollback aman). NULL berganda diizinkan indeks unik.
@@ -135,35 +135,38 @@ Semantik idempoten:
 - `clientId` sudah ada **dan** milik pelaku yang sama pada lokasi/task yang sama: tidak menulis apa pun (tanpa audit dan tanpa notifikasi kedua), mengembalikan DTO yang ada seperti respons asli.
 - `clientId` ada tetapi milik pelaku/task/lokasi lain: `CONFLICT` berpesan generik.
 - `saveBatch` atomik: bila sebagian `clientId` sudah ada, harus semuanya ada (atomisitas menjaminnya); campuran = `CONFLICT`.
-- Dua permintaan serentak dengan `clientId` sama: penulis kedua gagal di indeks unik (`handovers_client_id` / `handover_comments_client_id`). Modul handover tidak memakai `mapDuplicateError`: `createTasks` hanya mengulang lewat `runCas` untuk `RETRYABLE_UNIQUE_KEYS` (`core/cas.ts`) dan `addComment` tidak memakai `runCas`. Jadi jalur baru dibuat di kedua fungsi: tangkap `DbError` `duplicate` pada dua indeks itu, baca ulang barisnya, periksa kepemilikan, kembalikan DTO. Tes konkurensi memakai `Promise.all` atas permintaan nyata.
-- **Urutan pemeriksaan** (keputusan saya): autentikasi dan izin lokasi (kernel REST) → pencarian `clientId` → validasi bisnis (task dibatalkan, batas komentar, customer, kutipan) → tulis. Pencarian sebelum validasi bisnis agar kiriman ulang atas data yang sudah tersimpan tidak ditolak dan dibuang dengan toast (mis. task dibatalkan sesudah komentar tersimpan); sesudah izin lokasi agar DTO tak sampai ke pelaku yang sudah kehilangan akses.
+- Dua permintaan serentak dengan `clientId` sama: penulis kedua gagal di indeks unik (`handovers_client_id` / `handover_comments_client_id`). Modul handover tidak memakai `mapDuplicateError`: `createTasks` hanya mengulang lewat `runCas` untuk `RETRYABLE_UNIQUE_KEYS` (`core/cas.ts`) dan `addComment` tidak memakai `runCas`. Jadi jalur baru dibuat di kedua fungsi: tangkap `DbError` `duplicate` pada dua indeks itu, baca ulang barisnya, periksa kepemilikan, kembalikan DTO. Tes konkurensi memakai `Promise.all` atas permintaan nyata. Implementasi (2026-11-14): `addComment` menangkap `DbError` `duplicate` apa pun dan galat penjaga batas, lalu mencari ulang `clientId`; DTO hanya dikembalikan bila barisnya milik pelaku itu, selain itu galat asli dilempar ulang.
+- **Urutan pemeriksaan** (keputusan saya): autentikasi dan izin lokasi (kernel REST) → pencarian `clientId` → validasi bisnis (task dibatalkan, batas komentar, customer, kutipan) → tulis. Pencarian sebelum validasi bisnis agar kiriman ulang atas data yang sudah tersimpan tidak ditolak dan dibuang dengan toast (mis. task dibatalkan sesudah komentar tersimpan); sesudah izin lokasi agar DTO tak sampai ke pelaku yang sudah kehilangan akses. Pada `saveBatch` pencarian dilakukan dua kali: sebelum validasi customer (agar kiriman ulang tidak ditolak karena customer kini nonaktif) dan di dalam percobaan `runCas` sebelum `reserveNumbers` (balapan dua permintaan). Lihat §9 Tahap C.
 - Rollback image sebelum rilis ini mengabaikan `clientId` (risiko duplikat kembali; dicatat di `docs/ci-cd.md`).
 
 ### 7.2 Antrean di perangkat
 
-IndexedDB `qc-device`, toko `outbox`, kunci `owner|id`. Tiga jenis entri:
+IndexedDB `qc-device` versi 2, toko `outbox`, kunci `owner|id` (modul `outbox.ts`; penulisan per entri, tidak pernah menulis ulang daftar dari salinan memori). Tiga jenis entri:
 - `check`: `{ id, taskId, locationId, index, text, checked, at }`, sama dengan `OutboxEntry` Fase 2; seluruh aturan Fase 2 tetap (maks. 200 entri, kedaluwarsa 24 jam, gabung per task+indeks, penghapusan per `id`, penulisan ditahan saat keluar). Dipindah dari `localStorage` `qc.outbox:<email>` oleh migrasi sekali jalan saat boot: baca kunci lama, tulis ke IndexedDB, baru hapus kunci lama (bila penulisan gagal kunci lama dipertahankan dan dipakai lagi pada boot berikutnya).
-- `comment`: `{ id, clientId, taskId, locationId, quote, before, after, body, at, state }`.
-- `create`: `{ id, locationId, tasks: [{ clientId, customerName, note }], at, state }` (satu entri = satu permintaan `saveBatch`, maks. 30 task, `HANDOVER_BATCH_MAX`; `clientId` dibuat saat entri ditulis dan **tidak berubah** pada kirim ulang).
+- `comment`: `{ id, clientId, taskId, locationId, quote, before, after, body, at }`. Kolom `state` ditunda ke Tahap D (§9 Tahap C, R4).
+- `create`: `{ id, locationId, tasks: [{ clientId, customerName, note }], at }` (satu entri = satu permintaan `saveBatch`, maks. 30 task, `HANDOVER_BATCH_MAX`; tanpa `state`, lihat R4). `clientId` dibuat **sebelum percobaan kirim online pertama** (R2) dan **tidak berubah** pada kirim ulang maupun saat diantrekan.
 
 Aturan:
 - Entri ditulis ke IndexedDB dan **dikonfirmasi tertulis** SEBELUM layar menampilkan "Belum terkirim". Bila penulisan gagal (kuota/penyimpanan diblokir), pengguna melihat galat biasa dan isi tidak dibuang dari formulir.
 - Hanya `UNAVAILABLE` saat pengiriman pertama yang mengantre. Galat lain (validasi, izin) ditampilkan seperti sekarang, tanpa antre.
 - Tampilan membaca **salinan dalam memori** yang dimuat dari IndexedDB sebelum router dibuat dan diperbarui lewat `BroadcastChannel` `qc-outbox` (dari tab lain dan dari service worker); `useOutboxOverlay` tetap sinkron.
+- Keluar di satu tab disiarkan ke tab lain milik akun yang sama lewat `BroadcastChannel` `qc-session`: tab penerima berhenti menulis antrean dan papan, lalu (sejak 2026-11-14, A3, §9 Tahap C) memuat ulang sekali saat kembali fokus atau terlihat bila sesinya sah. Tab pengirim tidak memuat ulang.
 - Maks. 50 entri untuk komentar dan task baru (centang tetap 200, hitungan terpisah). Semua jenis entri kedaluwarsa 24 jam (FR-P19) dan dibuang dengan pemberitahuan (§7.4).
 - Urutan: entri per task dikirim berurutan menurut `at`; antar task bebas, satu permintaan pada satu waktu. Memakai kunci `qc-outbox-flush` yang sama dengan penguras centang (satu penguras, dua sumber).
 - Pengurasan: klasifikasi galat sama dengan centang (§Fase 2): `UNAVAILABLE`/`INTERNAL`/non-ApiError menahan dan menghentikan putaran; `UNAUTHENTICATED` melaporkan dan menahan; kode penolakan (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`) membuang entri dan mengumumkannya lewat toast beserta alasannya (§7.4). Pemicu, pembatas 3 detik, batas 30 detik per kiriman, dan pemblokiran saat keluar sama dengan Fase 2.
 
+- Komentar, task baru, dan query opsi formulir memakai `networkMode: 'always'` (lihat §9 Tahap C, penyesuaian implementasi), agar kiriman yang bisa diantrekan gagal `UNAVAILABLE` seketika.
+
 ### 7.3 Tampilan
 
 - **Komentar tertunda:** muncul di akhir daftar komentar task dengan label "Belum terkirim" / "Mengirim…". Komposer langsung dikosongkan setelah entri tertulis (bukan menunggu server).
-- **Task baru tertunda:** kartu sementara di kolom Baru, bernomor "—" (nomor `ST-…` dibuat server), berlabel status, **tidak dapat dibuka** sampai terkirim (tidak punya id server). Setelah terkirim kartu digantikan hasil server tanpa kedipan ganda (dedup lewat `clientId`).
+- **Task baru tertunda:** kartu sementara di kolom Baru, bernomor "—" (nomor `ST-…` dibuat server), berlabel status, **tidak dapat dibuka** sampai terkirim (tidak punya id server). Setelah terkirim, kartu sementara diganti hasil server saat entrinya dihapus dari antrean. `HandoverDto` tidak memuat `clientId` (R3), sehingga tidak ada dedup di sisi tampilan: bila refetch tiba sebelum kirim ulang, kartu sementara dan kartu server dapat tampil ganda sebentar (diterima, §9 Tahap C).
 - Formulir task baru offline: sekarang `routes/_app/handover/new.tsx` tidak merender formulir sama sekali bila `handovers.options` gagal (hanya teks "Gagal memuat daftar customer"). Diubah: bila galatnya `UNAVAILABLE`, formulir tetap tampil dengan `options` kosong (saran customer tidak tersedia karena daftar customer tidak disimpan; nama diketik bebas, customer dibuat server saat terkirim, FC2). Galat lain tetap seperti sekarang.
 - Pilihan lokasi memakai `me.locations` (sudah di whitelist).
 
 ### 7.4 Penolakan server
 
-Komentar atau task baru yang ditolak server (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`), atau yang kedaluwarsa 24 jam, **dibuang dengan toast**, sama seperti centang (keputusan pemilik 2026-11-13), dengan alasan dari server ("Task sudah dibatalkan", "Lokasi tidak dapat diakses", dst.). Karena isinya ketikan pengguna, toast memuat tombol **"Salin teks"** dan bertahan sampai ditutup (keputusan saya, agar isi tidak hilang diam-diam). Tidak ada "Coba lagi": penolakan tidak berubah dengan mengirim ulang. Penanda `rejected` hanya jembatan sementara dari service worker ke halaman (§7b).
+Komentar atau task baru yang ditolak server (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`), atau yang kedaluwarsa 24 jam, **dibuang dengan toast**, sama seperti centang (keputusan pemilik 2026-11-13), dengan alasan dari server ("Task sudah dibatalkan", "Lokasi tidak dapat diakses", dst.). Karena isinya ketikan pengguna, toast memuat tombol **"Salin teks"** dan bertahan sampai ditutup (keputusan saya, agar isi tidak hilang diam-diam). Sejak 2026-11-14 (A2, §9 Tahap C) teks yang disalin untuk task baru memuat nama customer: per task `Customer: <nama>`, baris kosong, lalu catatan; nama kosong berarti hanya catatan; antar task dipisah baris kosong. Komentar tidak berubah. Tidak ada "Coba lagi": penolakan tidak berubah dengan mengirim ulang. Penanda `rejected` hanya jembatan sementara dari service worker ke halaman (§7b).
 
 ## 7b. Tahap D: Background Sync (Chrome/Edge)
 
@@ -225,7 +228,35 @@ Keputusan saya untuk Tahap B (2026-11-14; mohon dikoreksi; **menunggu pengesahan
 - (f) Detail task dibuka dari data papan bila belum pernah dibuka (`findBoardSeed`, Task 5), dan hanya bila lokasi task itu termasuk lokasi yang boleh dibaca pengguna di rute itu. Jawaban server `NOT_FOUND`/`FORBIDDEN` selalu otoritatif; data seed tidak ditampilkan menggantikannya. Pesan untuk `FORBIDDEN` ditampilkan sama seperti `NOT_FOUND`, "Task tidak ditemukan di lokasi aktif.", karena `handovers.get` hanya memberi `FORBIDDEN` untuk pemeriksaan lokasi dan pesan itu tidak mengungkap keberadaan task. Penolakan server bersifat latch: sesudah `NOT_FOUND`/`FORBIDDEN`, galat `UNAVAILABLE` berikutnya pada query yang sama tidak boleh memunculkan lagi data seed atau data lama yang tadi ditolak. `refetchOnMount: 'always'` menambah satu permintaan setiap detail dibuka (detail yang baru dimuat kurang dari 60 dtk tetap dimuat ulang).
 - (g) Flush pada `pagehide` bersifat usaha terbaik, karena penulisan IndexedDB bersifat asinkron. Pembersihan toko saat keluar dibatasi waktu 1,5 dtk sehingga Keluar tidak pernah menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan itu dilepas setelah 1,5 dtk sehingga isi toko TIDAK terhapus saat itu; rekaman tersebut baru dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil, dan tidak pernah dipulihkan bagi pemilik lain (pemilik diperiksa saat pemulihan).
 - (h) Label "data terakhir" dapat terlalu baru bagi sebagian isi kolom pulihan setelah "muat lagi" berhasil, karena semantik TanStack: `dataUpdatedAt` hanya satu per query. Diterima.
-- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C.
+- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C (ditutup 2026-11-14, lihat §9 Tahap C). Tab penerima siaran keluar yang tertahan kini dimuat ulang sekali saat sesi sah kembali (A3, 2026-11-14), sehingga tidak lagi tertahan selamanya.
+
+### Keputusan Tahap C (2026-11-14)
+
+Disetujui pemilik produk pada 2026-11-14 ("Ya, eksekusi"). Butir yang berbeda dari atau melengkapi spek di atas sudah diubah di §7.1-§7.3 dan §9 ini:
+- **R1. Nomor migrasi 0018, bukan 0015.** Alasan: `0015_serial_cases.sql` dan `0016_panduan_interaktif.sql` sudah ada, dan `0017_laporan_rusak.sql` (PR Serial laporan rusak) masuk ke `dev` lebih dulu (2026-11-14). Diubah: §7.1 (nama berkas migrasi).
+- **R2. `clientId` dibuat sebelum percobaan kirim online pertama.** Alasan: pada timeout klien, kiriman yang sudah tersimpan di server dipetakan `UNAVAILABLE`; membuat `clientId` saat entri ditulis akan menggandakan data. Diubah: §7.2 (`clientId` dibuat sebelum kirim pertama, tidak berubah saat antre maupun kirim ulang).
+- **R3. `HandoverDto` tanpa `clientId`.** Risiko yang diterima: bila refetch tiba sebelum kirim ulang, kartu sementara dan kartu server tampil ganda sebentar sampai entri dihapus. Diubah: §7.3 (dedup lewat `clientId` di tampilan dihapus dari spek). Pemilik menerima risiko ini.
+- **R4. Kolom `state` (penanda `rejected`) ditunda ke Tahap D.** Alasan: penanda itu hanya jembatan service worker dan ditambahkan bersama penulisnya di Tahap D. Diubah: §7.2 (bentuk entri tanpa `state`). Pertanyaan tentang bentuk entri ditutup untuk Tahap C; §7b tidak berubah.
+- **R5. Urutan pencarian `clientId` di server.** Sesudah izin lokasi dan sebelum validasi bisnis; untuk task baru dilakukan juga di dalam percobaan `runCas` sebelum `reserveNumbers` dan sebelum validasi customer (§7.1). Tidak mengubah prinsip §7.1.
+- **R6. Entri centang yang digabung dilakukan sebagai baca-hapus-tulis dalam satu transaksi IndexedDB.** Tidak ada penulisan ulang daftar pemilik dari salinan memori (menutup Review Focus 2 Tahap C). Tidak mengubah aturan gabung §7.2.
+
+Keputusan tambahan (usulan dari review putaran perbaikan 3; disetujui pemilik produk 2026-11-14):
+- **A2. Salin teks task baru memuat nama customer.** Teks per task: `Customer: <nama>`, baris kosong, lalu catatan; nama kosong berarti hanya catatan; antar task dipisah baris kosong. Alasan: batch sampai 30 task tidak dapat dipetakan ke customer-nya bila hanya catatan yang disalin. Diubah: §7.4 (format salin teks task baru). Komentar tidak berubah.
+- **A3. Tab tertahan setelah siaran keluar dimuat ulang sekali saat sesi sah kembali.** Tab penerima siaran keluar tetap tertahan. Saat tab kembali fokus atau terlihat, bila `auth.me` menyatakan sesi sah (akun apa pun), tab memuat ulang SEKALI. Tidak ada panggilan jaringan saat tab tersembunyi. Sesi tidak sah atau server tidak terjangkau = tetap tertahan, dicoba lagi pada fokus berikutnya. Tab pengirim siaran tidak memuat ulang. Masukan formulir yang belum disimpan di tab itu hilang; entri antrean tetap aman di IndexedDB. Bila sesi milik akun berbeda, boot berjalan sebagai login biasa dan antrean akun lama dibuang (`purgeForeignOutboxes`). Alasan: tanpa ini tab tertahan tidak pernah pulih dan fitur offline di tab itu mati diam-diam. Diubah: §7.2 (perilaku siaran keluar) dan batasan tab penerima pada §9 Tahap B butir (i), yang kini ditutup untuk sesi yang sah kembali.
+
+Penyesuaian implementasi di luar rencana, disahkan pemilik produk pada 2026-11-15 (dicatat agar reviewer di kemudian hari tahu ini disengaja dan tidak menemukannya lagi sebagai temuan):
+- **P1. `networkMode: 'always'`** pada mutasi komentar dan task baru serta query opsi formulir. Alasan: tanpa ini react-query menahan mutasi selagi peramban luring, sehingga galat `UNAVAILABLE` tidak pernah tiba dan kiriman tidak pernah masuk antrean (§7.2).
+- **P2. Pesan siaran `sending-done`** menghapus penanda "Mengirim..." di tab lain saat kirim selesai, tanpa menunggu masa berlaku 45 dtk. Alasan: penanda yang basi menyesatkan pengguna tab lain.
+- **P3. Rekaman antrean membawa `seq`** sebagai pemecah urutan bila `at` kembar. Alasan: dua entri pada milidetik yang sama tidak boleh berurutan acak.
+- **P4. `hasEntriesForTask` menghitung semua jenis entri**, sehingga centang pada task yang masih punya komentar antre ikut diantrekan. Alasan: tanpa ini centang dapat terkirim mendahului komentar yang dibuat lebih dulu dan urutan di server terbalik.
+- **P5. Penguras mengambil ulang isi toko saat start** bila salinan memori kosong (hidrasi gagal atau terlambat). Alasan: salinan kosong tidak boleh dibaca sebagai antrean kosong (`null` ≠ kosong).
+
+Risiko yang tersisa:
+- A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman. Ini konsekuensi langsung dari muat ulang yang disetujui pemilik produk (2026-11-14).
+- A3 memetakan galat server selain `UNAVAILABLE` ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya (aman, tidak memuat ulang). Dicatat untuk diketahui; belum dikonfirmasi pemilik secara eksplisit.
+- Keluar membersihkan antrean dan papan secara paralel dengan satu anggaran 1,5 dtk (diperbaiki pada putaran perbaikan 1; sebelumnya dua anggaran berurutan).
+
+Belum diuji di perangkat nyata (lihat `docs/e2e-checklist.md` #208-#224).
 
 ## 10. Dampak ke dokumen lain (dikerjakan saat tiap tahap)
 

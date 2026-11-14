@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMe } from '@/modules/auth/use-me';
 import { findCachedHandover } from '@/modules/handover/lib/board-cache';
-import type { OutboxEntry } from '@/modules/handover/lib/check-outbox';
+import type { OutboxEntry } from '@/modules/handover/lib/outbox';
+import { describeEntry } from '@/modules/handover/lib/outbox-labels';
 import { useOutboxSummary } from '@/modules/handover/lib/use-outbox-summary';
 import { formatClock } from '../server-status';
 
@@ -14,13 +15,19 @@ function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
   return (
     <ul className="max-h-64 space-y-2 overflow-y-auto">
       {entries.map((entry) => {
-        const number = findCachedHandover(queryClient, entry.taskId)?.number ?? 'Task lain';
+        const { kind, target } = describeEntry(entry);
+        // Task baru belum bernomor; centang dan komentar menyebut nomor task dari cache (atau "Task lain").
+        const number =
+          'taskId' in entry
+            ? (findCachedHandover(queryClient, entry.taskId)?.number ?? 'Task lain')
+            : null;
         return (
           <li key={entry.id} className="text-xs">
             <div className="text-muted-foreground">
-              Centang · {number} · {formatClock(entry.at)}
+              {kind}
+              {number ? ` · ${number}` : ''} · {formatClock(entry.at)}
             </div>
-            <div className="line-clamp-1">{entry.text}</div>
+            <div className="line-clamp-1">{target}</div>
           </li>
         );
       })}
@@ -29,7 +36,7 @@ function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
 }
 
 /**
- * Chip di header: jumlah perubahan (centang) yang belum terkirim ke server, dengan daftar singkat saat diklik. Tak
+ * Chip di header: jumlah perubahan (centang, komentar, task baru) yang belum terkirim ke server, dengan daftar singkat saat diklik. Tak
  * tampil bila antrean kosong. Di layar sempit hanya ikon + angka; label lengkap tetap ada untuk pembaca layar.
  */
 export function OutboxChip() {

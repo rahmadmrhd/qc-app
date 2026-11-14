@@ -1,9 +1,13 @@
-// Pembungkus IndexedDB mentah untuk data perangkat (papan dan detail task Serah Terima, Fase 3 Tahap B).
-// Basis data `qc-device` versi 1; toko `columns` dan `tasks` berkunci `key`, berindeks `savedAt`.
+// Pembungkus IndexedDB mentah untuk data perangkat (papan dan detail task Serah Terima, Fase 3 Tahap B;
+// antrean tulis offline, Tahap C).
+// Basis data `qc-device` versi 2; toko `columns`, `tasks`, dan `outbox` berkunci `key`, berindeks `savedAt`
+// (v1 hanya punya dua toko pertama; upgrade ke v2 menambah `outbox` tanpa menyentuh yang lama).
 // Tak satu pun fungsi di sini menolak (reject): tanpa IndexedDB, galat buka, terblokir, atau transaksi
 // gagal selalu berujung `[]`/`false`/diam, supaya aplikasi tetap boot normal tanpa data pulihan.
+// Toko `outbox` memakai fungsi tersendiri (kunci `owner|id`, tanpa pemangkasan `savedAt`): antrean tidak
+// boleh dipangkas diam-diam, dan tiap penulisan menyentuh SATU rekaman (bukan seluruh daftar pemilik).
 
-export type DeviceStoreName = 'columns' | 'tasks';
+export type DeviceStoreName = 'columns' | 'tasks' | 'outbox';
 
 export interface DeviceRecord {
   key: string;
@@ -14,8 +18,9 @@ export interface DeviceRecord {
 }
 
 const DB_NAME = 'qc-device';
-const DB_VERSION = 1;
-const STORES: DeviceStoreName[] = ['columns', 'tasks'];
+const DB_VERSION = 2;
+const STORES: DeviceStoreName[] = ['columns', 'tasks', 'outbox'];
+const BOARD_STORES: DeviceStoreName[] = ['columns', 'tasks'];
 
 /** Batas menunggu `indexedDB.open`; lewat dari ini koneksi dianggap tidak ada (hasil terlambat ditutup). */
 export const OPEN_TIMEOUT_MS = 3000;
@@ -164,18 +169,144 @@ export async function deleteRecords(store: DeviceStoreName, keys: string[]): Pro
   });
 }
 
-export async function clearDeviceDb(): Promise<void> {
+async function clearStores(stores: DeviceStoreName[]): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await new Promise<void>((resolve) => {
     try {
-      const tx = db.transaction(STORES, 'readwrite');
+      const tx = db.transaction(stores, 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
       tx.onabort = () => resolve();
-      for (const name of STORES) tx.objectStore(name).clear();
+      for (const name of stores) tx.objectStore(name).clear();
     } catch {
       resolve();
+    }
+  });
+}
+
+/** Mengosongkan hanya toko papan (`columns`, `tasks`); antrean `outbox` tak tersentuh. */
+export function clearBoardStores(): Promise<void> {
+  return clearStores(BOARD_STORES);
+}
+
+/** Mengosongkan ketiga toko (keluar eksplisit). */
+export function clearAllDeviceStores(): Promise<void> {
+  return clearStores(STORES);
+}
+
+/**
+ * Semua rekaman antrean. `null` = tidak diketahui (tanpa IndexedDB, galat, atau transaksi gagal); `[]` = benar-benar
+ * kosong. Pemanggil tak boleh menganggap `null` sebagai kosong yang sah (mis. untuk menghapus apa pun di toko).
+ */
+export async function readOutboxRecords(): Promise<DeviceRecord[] | null> {
+  const db = await getDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const request = db.transaction('outbox', 'readonly').objectStore('outbox').getAll();
+      request.onsuccess = () => resolve(request.result as DeviceRecord[]);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export interface OutboxPutRule {
+  /** Rekaman milik owner yang sama yang digantikan rekaman baru (dihapus dalam transaksi yang sama). */
+  replaceIf?: (existing: DeviceRecord) => boolean;
+  /** Batas jumlah rekaman owner yang memenuhi `count` (sesudah penggantian); `>= max` = batal dan `'full'`. */
+  cap?: { count: (existing: DeviceRecord) => boolean; max: number };
+}
+
+/**
+ * Menulis SATU rekaman antrean dalam satu transaksi readwrite: memindai rekaman `owner|*`, menghapus yang
+ * `replaceIf`, menghitung sisa yang memenuhi `cap.count` (rekaman berkunci sama yang akan ditimpa tak dihitung);
+ * bila sisa `>= cap.max` transaksi dibatalkan (`'full'`, tak ada yang tertulis). `guard` dipanggil sinkron tepat
+ * sebelum transaksi dibuka; `false` = `'failed'` tanpa menulis.
+ */
+export async function putOutboxRecord(
+  owner: string,
+  record: DeviceRecord,
+  rule: OutboxPutRule,
+  guard: () => boolean,
+): Promise<'ok' | 'full' | 'failed'> {
+  const db = await getDb();
+  if (!db) return 'failed';
+  if (!guard()) return 'failed';
+  return new Promise((resolve) => {
+    let full = false;
+    try {
+      const tx = db.transaction('outbox', 'readwrite');
+      const os = tx.objectStore('outbox');
+      tx.oncomplete = () => resolve('ok');
+      tx.onerror = () => resolve(full ? 'full' : 'failed');
+      tx.onabort = () => resolve(full ? 'full' : 'failed');
+      const scan = os.getAll(IDBKeyRange.bound(`${owner}|`, `${owner}|￿`));
+      scan.onsuccess = () => {
+        let remaining = 0;
+        const doomed: string[] = [];
+        for (const existing of scan.result as DeviceRecord[]) {
+          // Rentang awalan `owner|` juga memuat kunci pemilik lain yang namanya berawalan `owner|`: hanya milik `owner`.
+          if (existing.owner !== owner) continue;
+          if (rule.replaceIf?.(existing)) {
+            doomed.push(existing.key);
+          } else if (existing.key !== record.key && rule.cap?.count(existing)) {
+            remaining += 1;
+          }
+        }
+        if (rule.cap && remaining >= rule.cap.max) {
+          full = true;
+          tx.abort();
+          return;
+        }
+        for (const key of doomed) os.delete(key);
+        os.put(record);
+      };
+    } catch {
+      resolve(full ? 'full' : 'failed');
+    }
+  });
+}
+
+export async function deleteOutboxRecords(keys: readonly string[]): Promise<boolean> {
+  if (keys.length === 0) return true;
+  const db = await getDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction('outbox', 'readwrite');
+      const os = tx.objectStore('outbox');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+      for (const key of keys) os.delete(key);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/** Membuang antrean semua pemilik selain `owner` (sisa akun lain di perangkat yang sama). */
+export async function deleteOutboxExceptOwner(owner: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction('outbox', 'readwrite');
+      const os = tx.objectStore('outbox');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+      const all = os.getAll();
+      all.onsuccess = () => {
+        for (const existing of all.result as DeviceRecord[]) {
+          if (existing.owner !== owner) os.delete(existing.key);
+        }
+      };
+    } catch {
+      resolve(false);
     }
   });
 }

@@ -6,7 +6,9 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueCheck } from '../lib/check-outbox';
+import { enqueueOutbox } from '../lib/outbox';
 import { HandoverDetailView } from './handover-detail-view';
 import { makeHandover } from './test-handover';
 
@@ -129,9 +131,9 @@ test('komentar tampil dengan kutipan, isi, dan label usang', () => {
   expect(screen.getByText('usang')).toBeInTheDocument();
 });
 
-test('antrean centang di perangkat: butir tampil tercentang dengan penanda walau DTO belum memuatnya', () => {
-  localStorage.clear();
-  enqueueCheck('qc@x', {
+test('antrean centang di perangkat: butir tampil tercentang dengan penanda walau DTO belum memuatnya', async () => {
+  resetOutboxEnv();
+  await enqueueCheck('qc@x', {
     taskId: 'h1',
     locationId: 'loc-a',
     index: 1,
@@ -143,5 +145,24 @@ test('antrean centang di perangkat: butir tampil tercentang dengan penanda walau
   expect(screen.getByRole('checkbox', { name: /B = 2/ })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: /A = 1/ })).not.toBeChecked();
   expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
-  localStorage.clear();
+  resetOutboxEnv();
+});
+
+test('komentar di antrean perangkat tampil di detail dengan label "Belum terkirim"', async () => {
+  resetOutboxEnv();
+  await enqueueOutbox('qc@x', {
+    kind: 'comment',
+    clientId: '11111111-1111-4111-8111-111111111111',
+    taskId: 'h1',
+    locationId: 'loc-a',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'komentar offline',
+    at: Date.now(),
+  });
+  setup({ owner: 'qc@x' });
+  expect(screen.getByText('komentar offline')).toBeInTheDocument();
+  expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
+  resetOutboxEnv();
 });

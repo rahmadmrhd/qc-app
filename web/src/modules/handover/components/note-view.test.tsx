@@ -287,3 +287,41 @@ test('tanpa itemStates tidak ada penanda', () => {
   expect(screen.queryByText('Belum terkirim')).not.toBeInTheDocument();
   expect(screen.queryByText('Mengirim…')).not.toBeInTheDocument();
 });
+
+test('komentar tertunda tampil di AKHIR daftar dengan label status; tanpa komentar server tetap tampil', () => {
+  const server: HandoverCommentDto = {
+    id: 'c1',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'komentar server',
+    author: 'wh@x.id',
+    at: '2026-10-15T03:00:00.000Z',
+    stale: false,
+  };
+  setup({
+    comments: [server],
+    pendingComments: [
+      { id: 'p1', body: 'masih antre', quote: 'A = 1', at: 1, status: 'waiting' },
+      { id: 'p2', body: 'sedang kirim', quote: '', at: 2, status: 'sending' },
+    ],
+  });
+  const list = screen.getByRole('list', { name: 'Komentar' });
+  const items = within(list).getAllByRole('listitem');
+  expect(items.map((li) => li.textContent)).toEqual([
+    expect.stringContaining('komentar server'),
+    expect.stringContaining('masih antre'),
+    expect.stringContaining('sedang kirim'),
+  ]);
+  expect(within(items[1] as HTMLElement).getByText('Belum terkirim')).toBeInTheDocument();
+  expect(within(items[2] as HTMLElement).getByText('Mengirim…')).toBeInTheDocument();
+  expect(within(items[0] as HTMLElement).queryByText('Belum terkirim')).not.toBeInTheDocument();
+});
+
+test('hanya komentar tertunda (tanpa komentar server): daftar tetap tampil', () => {
+  setup({
+    pendingComments: [{ id: 'p1', body: 'antre saja', quote: '', at: 1, status: 'waiting' }],
+  });
+  expect(screen.getByRole('list', { name: 'Komentar' })).toBeInTheDocument();
+  expect(screen.getByText('antre saja')).toBeInTheDocument();
+});

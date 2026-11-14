@@ -317,6 +317,7 @@ describe('skema baseline', () => {
       { name: '0015_serial_cases.sql' },
       { name: '0016_panduan_interaktif.sql' },
       { name: '0017_laporan_rusak.sql' },
+      { name: '0018_client_id_serah_terima.sql' },
     ]);
   });
 
@@ -441,9 +442,11 @@ describe('skema baseline', () => {
         'customers.customers_key',
         'files.files_owner',
         'files.files_pending_delete',
+        'handover_comments.handover_comments_client_id',
         'handover_comments.handover_comments_handover',
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
+        'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number',
         'item_business_units.item_business_units_bu',

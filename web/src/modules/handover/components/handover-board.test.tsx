@@ -148,3 +148,50 @@ test('filter ponsel dikendalikan dari luar (bertahan lewat props)', () => {
   expect(screen.getByRole('button', { name: 'Selesai' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getAllByRole('article')).toHaveLength(1);
 });
+
+const pending = [
+  { key: 'e1:a', customerName: 'PT Offline', note: 'catatan', status: 'waiting' as const },
+];
+
+function PendingBoard({ handovers = tasks }: { handovers?: typeof tasks }) {
+  const [filter, setFilter] = useState<HandoverStatus | 'all'>('all');
+  return (
+    <HandoverBoard
+      handovers={handovers}
+      filter={filter}
+      onFilterChange={setFilter}
+      bindings={bindings}
+      pendingCreates={pending}
+    />
+  );
+}
+
+test('kanban: kartu sementara task baru tampil di kolom Baru saja', () => {
+  mockMedia(true);
+  render(<PendingBoard />);
+  const baru = screen.getByRole('region', { name: 'Kolom Baru' });
+  expect(within(baru).getByText('PT Offline')).toBeInTheDocument();
+  expect(within(baru).getByText('—')).toBeInTheDocument();
+  for (const name of ['Dikerjakan', 'Selesai', 'Dibatalkan']) {
+    const column = screen.getByRole('region', { name: `Kolom ${name}` });
+    expect(within(column).queryByText('PT Offline')).not.toBeInTheDocument();
+  }
+});
+
+test('kanban: kolom Baru kosong tidak menampilkan "Tidak ada task" bila ada kartu sementara', () => {
+  mockMedia(true);
+  render(<PendingBoard handovers={[]} />);
+  const baru = screen.getByRole('region', { name: 'Kolom Baru' });
+  expect(within(baru).getByText('PT Offline')).toBeInTheDocument();
+  expect(within(baru).queryByText('Tidak ada task.')).not.toBeInTheDocument();
+});
+
+test('ponsel: kartu sementara tampil pada filter Semua dan Baru, tidak pada filter lain', async () => {
+  mockMedia(false);
+  render(<PendingBoard />);
+  expect(screen.getByText('PT Offline')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Baru' }));
+  expect(screen.getByText('PT Offline')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+  expect(screen.queryByText('PT Offline')).not.toBeInTheDocument();
+});

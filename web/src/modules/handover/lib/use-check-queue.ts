@@ -105,19 +105,19 @@ export function useCheckQueue(by: string) {
             findCachedHandover(queryClient, task.id)?.checklist.find(
               (entry) => entry.index === item.index,
             )?.text ?? item.text;
-          const queueIt = () =>
-            enqueueCheck(by, {
+          const queueIt = async (): Promise<boolean> =>
+            (await enqueueCheck(by, {
               taskId: task.id,
               locationId: task.locationId,
               index: item.index,
               text,
               checked,
               at: Date.now(),
-            });
+            })) === 'ok';
           // Diperiksa SAAT kirim (bukan saat klik): task yang masih punya entri antrean tidak boleh didahului
           // klik langsung, agar urutan per task terjaga.
           if (hasEntriesForTask(by, task.id)) {
-            if (queueIt()) {
+            if (await queueIt()) {
               // Antre karena task masih punya entri: teks koneksi hanya bila peramban memang offline.
               notifyQueued(typeof navigator !== 'undefined' && navigator.onLine === false);
               requestOutboxFlush();
@@ -143,7 +143,7 @@ export function useCheckQueue(by: string) {
             } catch (error) {
               // Server tidak terjangkau: simpan di perangkat dan pertahankan tampilan. Antrean penuh/penyimpanan
               // diblokir = perilaku lama (balik + galat biasa).
-              if (error instanceof ApiError && error.code === 'UNAVAILABLE' && queueIt()) {
+              if (error instanceof ApiError && error.code === 'UNAVAILABLE' && (await queueIt())) {
                 notifyQueued(true);
                 return;
               }

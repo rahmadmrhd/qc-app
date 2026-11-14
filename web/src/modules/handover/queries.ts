@@ -117,6 +117,9 @@ export function handoverOptionsQueryOptions(locationIds: readonly string[]) {
     queryKey: handoverKeys.options(locationIds),
     queryFn: () => api('handovers.options', { locationIds: [...locationIds] }),
     enabled: locationIds.length > 0,
+    // Tanpa ini, peramban yang melapor offline menahan query selamanya (formulir task baru macet di skeleton): biarkan
+    // gagal cepat `UNAVAILABLE` agar formulir tetap tampil (task baru dapat diantrekan offline).
+    networkMode: 'always',
   });
 }
 
@@ -135,10 +138,12 @@ export function applySavedHandover(queryClient: QueryClient, saved: HandoverDto)
  */
 function useHandoverMutation<TInput, TOutput extends HandoverDto | HandoverDto[]>(
   mutationFn: (input: TInput) => Promise<TOutput>,
+  options: { networkMode?: 'always' } = {},
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
+    ...options,
     onSuccess: (result) => {
       for (const saved of Array.isArray(result) ? result : [result]) {
         applySavedHandover(queryClient, saved);
@@ -151,7 +156,11 @@ function useHandoverMutation<TInput, TOutput extends HandoverDto | HandoverDto[]
 export const useSaveHandover = () =>
   useHandoverMutation((input: SaveHandoverInput) => api('handovers.save', input));
 export const useSaveHandoverBatch = () =>
-  useHandoverMutation((input: SaveHandoverBatchInput) => api('handovers.saveBatch', input));
+  // `networkMode: 'always'` (juga komentar di bawah): kiriman yang bisa diantrekan offline harus gagal `UNAVAILABLE` seketika,
+  // bukan ditahan react-query selagi peramban melapor offline (promise tak pernah selesai, formulir macet).
+  useHandoverMutation((input: SaveHandoverBatchInput) => api('handovers.saveBatch', input), {
+    networkMode: 'always',
+  });
 export const useCancelHandover = () =>
   useHandoverMutation((input: HandoverRefInput) => api('handovers.cancel', input));
 export const useReopenHandover = () =>
@@ -161,4 +170,6 @@ export const useSetCheck = () =>
 export const useSetDone = () =>
   useHandoverMutation((input: SetDoneInput) => api('handovers.setDone', input));
 export const useAddComment = () =>
-  useHandoverMutation((input: AddCommentInput) => api('handovers.comment', input));
+  useHandoverMutation((input: AddCommentInput) => api('handovers.comment', input), {
+    networkMode: 'always',
+  });

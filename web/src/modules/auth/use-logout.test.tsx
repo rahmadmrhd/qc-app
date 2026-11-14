@@ -9,24 +9,30 @@ vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }));
 
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import * as deviceDb from '@/lib/device-db';
+import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
 import {
-  enqueueCheck,
   outboxWritesSuspended,
+  readOutbox,
   resumeOutboxWrites,
-} from '@/modules/handover/lib/check-outbox';
+} from '@/modules/handover/lib/outbox';
 import {
   beginSending,
   isItemSending,
   resetSendingForTests,
 } from '@/modules/handover/lib/outbox-status';
 import { draftWritesSuspended, resumeDraftWrites } from '@/modules/serial/lib/draft-store';
-import { clearSession, PERSISTED_CACHE_KEY } from './session';
+import { resetOutboxEnv } from '@/test/outbox-env';
+import { ANONYMOUS_SESSION, clearSession, initSession, PERSISTED_CACHE_KEY } from './session';
 import { postLogout, useLogout } from './use-logout';
 
 // Pembungkus tipis atas modul nyata agar penghapusan toko perangkat dapat dibuat gagal.
 vi.mock('@/lib/device-db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/device-db')>();
-  return { ...actual, clearDeviceDb: vi.fn(actual.clearDeviceDb) };
+  return {
+    ...actual,
+    clearBoardStores: vi.fn(actual.clearBoardStores),
+    clearAllDeviceStores: vi.fn(actual.clearAllDeviceStores),
+  };
 });
 
 let client: QueryClient;
@@ -40,7 +46,7 @@ beforeEach(() => {
   resetSendingForTests();
   resetBusyForTests();
   vi.clearAllMocks();
-  localStorage.clear();
+  resetOutboxEnv();
   client = new QueryClient();
   // Build produksi (bukan DEV) memanggil POST /auth/logout; jaringan gagal.
   vi.stubEnv('DEV', false);
@@ -135,13 +141,27 @@ test('draf dibuang dan penulisan ditahan SEBELUM navigasi ke /login (halaman Cat
   expect(draftAtNavigate).toBeNull();
 });
 
-test('keluar membuang antrean centang semua pemilik, kunci lain tetap (FR-P14, FR-P19)', async () => {
+const checkEntry = {
+  taskId: 't',
+  locationId: 'l',
+  index: 0,
+  text: 'x',
+  checked: true,
+  at: Date.now(),
+};
+
+test('keluar membuang antrean semua pemilik (toko IndexedDB dan kunci lama), kunci lain tetap (FR-P14, FR-P19)', async () => {
+  await enqueueCheck('a@x.com', checkEntry);
+  await enqueueCheck('b@x.com', checkEntry);
   localStorage.setItem('qc.outbox:a@x.com', '{}');
   localStorage.setItem('qc.outbox:b@x.com', '{}');
   localStorage.setItem('tema', 'gelap');
   const { result } = renderHook(() => useLogout(), { wrapper });
   act(() => result.current());
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  expect(readOutbox('a@x.com')).toEqual([]);
+  expect(readOutbox('b@x.com')).toEqual([]);
+  expect(await deviceDb.readOutboxRecords()).toEqual([]);
   expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
   expect(localStorage.getItem('qc.outbox:b@x.com')).toBeNull();
   expect(localStorage.getItem('tema')).toBe('gelap');
@@ -161,10 +181,13 @@ test('keluar membersihkan penanda "mengirim" walau permintaan masih terbang', as
   next();
 });
 
-test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', () => {
+test('sesi kedaluwarsa (clearSession saja) TIDAK membuang antrean centang', async () => {
+  await enqueueCheck('a@x.com', checkEntry);
   localStorage.setItem('qc.outbox:a@x.com', '{}');
   clearSession();
   expect(localStorage.getItem('qc.outbox:a@x.com')).toBe('{}');
+  expect(readOutbox('a@x.com')).toHaveLength(1);
+  expect(await deviceDb.readOutboxRecords()).toHaveLength(1);
 });
 
 test('A1: keluar menahan penulisan antrean centang SEBELUM navigasi; penulisan setelahnya tak menghidupkan antrean lagi', async () => {
@@ -178,17 +201,9 @@ test('A1: keluar menahan penulisan antrean centang SEBELUM navigasi; penulisan s
   await waitFor(() => expect(navigate).toHaveBeenCalled());
   expect(suspendedAtNavigate).toBe(true);
   // Permintaan centang yang terbang saat keluar lalu gagal UNAVAILABLE mencoba mengantre: ditolak.
-  expect(
-    enqueueCheck('a@x.com', {
-      taskId: 't',
-      locationId: 'l',
-      index: 0,
-      text: 'x',
-      checked: true,
-      at: Date.now(),
-    }),
-  ).toBe(false);
-  expect(localStorage.getItem('qc.outbox:a@x.com')).toBeNull();
+  expect(await enqueueCheck('a@x.com', checkEntry)).toBe('failed');
+  expect(readOutbox('a@x.com')).toEqual([]);
+  expect(await deviceDb.readOutboxRecords()).toEqual([]);
 });
 
 test('M6: penulisan antrean sudah ditahan SEBELUM POST /auth/logout selesai (klik gagal UNAVAILABLE saat POST menggantung tak menulis antrean)', async () => {
@@ -207,17 +222,8 @@ test('M6: penulisan antrean sudah ditahan SEBELUM POST /auth/logout selesai (kli
   for (let i = 0; i < 5; i++) await Promise.resolve();
   expect(navigate).not.toHaveBeenCalled(); // POST masih menggantung
   expect(outboxWritesSuspended()).toBe(true);
-  expect(
-    enqueueCheck('a@x.com', {
-      taskId: 't',
-      locationId: 'l',
-      index: 0,
-      text: 'x',
-      checked: true,
-      at: Date.now(),
-    }),
-  ).toBe(false);
-  expect(Object.keys(localStorage).filter((key) => key.startsWith('qc.outbox:'))).toEqual([]);
+  expect(await enqueueCheck('a@x.com', checkEntry)).toBe('failed');
+  expect(await deviceDb.readOutboxRecords()).toEqual([]);
   release();
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
 });
@@ -253,7 +259,7 @@ test('keluar mengosongkan papan dan detail task di IndexedDB sebelum navigasi ke
 });
 
 test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan sesi dan navigasi', async () => {
-  vi.mocked(deviceDb.clearDeviceDb).mockRejectedValueOnce(new Error('idb gagal'));
+  vi.mocked(deviceDb.clearBoardStores).mockRejectedValueOnce(new Error('idb gagal'));
   const { result } = renderHook(() => useLogout(), { wrapper });
   act(() => result.current());
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
@@ -262,7 +268,7 @@ test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan 
 });
 
 test('pembersihan toko perangkat yang menggantung: keluar tetap selesai dalam batas waktu (sesi, cache, navigasi)', async () => {
-  vi.mocked(deviceDb.clearDeviceDb).mockImplementationOnce(
+  vi.mocked(deviceDb.clearBoardStores).mockImplementationOnce(
     () => new Promise<void>(() => undefined),
   );
   client.setQueryData(['items'], [{ id: 'i1' }]);
@@ -272,4 +278,44 @@ test('pembersihan toko perangkat yang menggantung: keluar tetap selesai dalam ba
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }), { timeout: 5000 });
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   await waitFor(() => expect(isBusy()).toBe(false));
+});
+
+test('keluar menyiarkan logout pemilik ke tab lain SESUDAH penulisan antrean ditahan', async () => {
+  initSession({ ...ANONYMOUS_SESSION, authenticated: true, email: 'a@x.com' });
+  const other = new BroadcastChannel('qc-session');
+  const received: unknown[] = [];
+  let suspendedWhenReceived: boolean | null = null;
+  other.onmessage = (event) => {
+    suspendedWhenReceived = outboxWritesSuspended();
+    received.push(event.data);
+  };
+  try {
+    const { result } = renderHook(() => useLogout(), { wrapper });
+    act(() => result.current());
+    await waitFor(() => expect(received).toContainEqual({ type: 'logout', owner: 'a@x.com' }));
+    expect(suspendedWhenReceived).toBe(true);
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
+  } finally {
+    other.close();
+  }
+});
+
+test('pembersihan antrean dan papan berjalan PARALEL: papan dibersihkan selagi pembersihan antrean masih menggantung', async () => {
+  let releaseOutbox: () => void = () => undefined;
+  let releaseBoard: () => void = () => undefined;
+  vi.mocked(deviceDb.clearAllDeviceStores).mockImplementationOnce(
+    () => new Promise<void>((resolve) => (releaseOutbox = resolve)),
+  );
+  vi.mocked(deviceDb.clearBoardStores).mockImplementationOnce(
+    () => new Promise<void>((resolve) => (releaseBoard = resolve)),
+  );
+  const { result } = renderHook(() => useLogout(), { wrapper });
+  act(() => result.current());
+  // Berurutan: papan baru dimulai setelah anggaran 1,5 dtk pembersihan antrean habis (lebih lama dari waktu tunggu ini).
+  await waitFor(() => expect(deviceDb.clearAllDeviceStores).toHaveBeenCalled(), { timeout: 800 });
+  await waitFor(() => expect(deviceDb.clearBoardStores).toHaveBeenCalled(), { timeout: 800 });
+  expect(navigate).not.toHaveBeenCalled();
+  releaseOutbox();
+  releaseBoard();
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
 });

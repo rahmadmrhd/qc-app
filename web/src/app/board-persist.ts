@@ -2,7 +2,7 @@ import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  clearDeviceDb,
+  clearBoardStores,
   type DeviceRecord,
   deleteRecords,
   readAllRecords,
@@ -272,12 +272,21 @@ export function startBoardPersistence(queryClient: QueryClient): {
   };
 }
 
+/**
+ * Tab lain keluar (siaran `qc-session`): tulis yang berjalan atau tertunda dibatalkan tanpa menyentuh toko (generation
+ * naik); pemanggil juga menghentikan penyimpan lewat `stop()`.
+ */
+export function discardBoardWrites(): void {
+  generation += 1;
+  pending.clear();
+}
+
 /** Keluar eksplisit: tulis yang berjalan atau tertunda dibatalkan (generation naik), lalu toko dikosongkan. */
 export async function clearBoardStore(): Promise<void> {
   generation += 1;
   pending.clear();
   try {
-    await clearDeviceDb();
+    await clearBoardStores();
   } catch {
     // Tidak pernah menolak: keluar tak boleh terhambat.
   }
