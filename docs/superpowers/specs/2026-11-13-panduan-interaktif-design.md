@@ -363,6 +363,12 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     pengguna baru di papan kosong tak pernah belajar soal checklist, komentar, dan centang, dan nomor "Langkah x dari
     N" melompat. Diubah: 4.5 (kalimat "langkah dilewati atau jatuh ke penjelasan teks" dipertegas); jumlah langkah
     panduan Serah Terima menjadi 3 (WH lihat), 4 (QC), 6 (WH tulis), 7 (keduanya).
+  - **I. Versi panduan `dasar-layout` dan `handover-dasar` tetap 1 (2026-11-14, keputusan pemilik produk).**
+    Putaran butir F-H menambah langkah (layout 5 → 10, Serah Terima +1) tanpa menaikkan `GUIDE_VERSIONS`, sehingga
+    pengguna yang sudah menyelesaikan kedua panduan itu tidak ditawari ulang ("Diperbarui"). Pemilik produk
+    menyetujui itu sebagai disengaja: perluasan ini dianggap melengkapi, bukan perombakan alur, dan pengguna yang
+    sudah paham tidak perlu diganggu (checklist rilis, tabel "Alur berubah"/"Fitur ditambah": panduan `baru` bila
+    perlu, bukan naik versi). Pengguna baru dan yang belum menyelesaikan tetap mendapat versi terbaru. Bukan temuan.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
