@@ -263,7 +263,14 @@ beforeEach(() => {
   });
 });
 
-test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) dengan chip perubahan', async () => {
+/** Buka semua kartu riwayat yang dilipat (hanya kartu terbaru yang terbuka sejak awal). */
+async function expandAll() {
+  for (const button of screen.queryAllByRole('button', { name: /^Buka riwayat/ })) {
+    await userEvent.click(button);
+  }
+}
+
+test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka dengan chip perubahan', async () => {
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
   expect(screen.getByText('Cisco C9200')).toBeInTheDocument();
@@ -279,7 +286,8 @@ test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) d
     { name: '' },
   );
   const top = cards.filter((card) => card.hasAttribute('data-seq'));
-  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['3', '2', '1']);
+  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
+  await expandAll();
   expect(screen.getByText('Lokasi: Surabaya → Jakarta')).toBeInTheDocument();
   expect(screen.getByText(/Stiker ditempel dan stok dipotong: Stiker A ×2/)).toBeInTheDocument();
   expect(screen.getByText('dicek')).toBeInTheDocument();
@@ -515,9 +523,9 @@ test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor d
       .getAllByRole('listitem')
       .map((li) => li.getAttribute('data-seq'))
       .filter(Boolean);
-  expect(seqs()).toEqual(['3', '2']);
+  expect(seqs()).toEqual(['2', '3']);
   await userEvent.click(screen.getByRole('button', { name: 'Muat yang lebih lama' }));
-  await waitFor(() => expect(seqs()).toEqual(['3', '2', '1']));
+  await waitFor(() => expect(seqs()).toEqual(['1', '2', '3']));
   expect(calls('serials.history')[1]?.[1]).toMatchObject({ id: 's1', cursor: '2' });
   expect(screen.queryByRole('button', { name: 'Muat yang lebih lama' })).toBeNull();
 });
@@ -612,6 +620,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
   };
   renderPage();
   const list = await screen.findByRole('list', { name: 'Linimasa' });
+  await expandAll();
   expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
   expect(within(list).getByText('Diterima di servis')).toBeInTheDocument();
   expect(within(list).getByText('Dikirim ke servis')).toBeInTheDocument();

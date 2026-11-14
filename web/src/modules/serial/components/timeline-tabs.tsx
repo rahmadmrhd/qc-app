@@ -74,7 +74,6 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
           </p>
         ) : (
           <>
-            <Timeline events={events} markLatest={tab === 'all'} />
             {history.hasNextPage ? (
               <Button
                 type="button"
@@ -89,6 +88,7 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
                 )}
               </Button>
             ) : null}
+            <Timeline events={events} markLatest={tab === 'all'} />
           </>
         )}
       </TabsContent>

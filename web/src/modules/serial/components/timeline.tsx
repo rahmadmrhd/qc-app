@@ -1,6 +1,10 @@
 import type { SerialEventDto } from '@shared/contract';
+import { markdownToPlain } from '@shared/markdown-plain';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import {
   EVENT_LABEL,
@@ -111,15 +115,31 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
+/** Baris pertama berisi dari catatan, teks polos, untuk pratinjau kartu yang dilipat. */
+function previewOf(message: string): string {
+  const { text: plain } = markdownToPlain(message);
+  return (
+    plain
+      .split('\n')
+      .find((line) => line.trim() !== '')
+      ?.trim() ?? ''
+  );
+}
+
 function EventCard({
   event,
   latest,
+  showLatestBadge,
   markdownComponents,
 }: {
   event: SerialEventDto;
   latest: boolean;
+  showLatestBadge: boolean;
   markdownComponents: Components | undefined;
 }) {
+  // Hanya riwayat terbaru yang terbuka; yang lama dilipat (header + pratinjau) dan dibuka dengan satu klik.
+  const [open, setOpen] = useState(latest);
+  const preview = open ? '' : previewOf(event.message);
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -132,7 +152,7 @@ function EventCard({
             {location ? (
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
-            {latest ? (
+            {showLatestBadge ? (
               <Badge variant="secondary" className="ml-2 align-middle">
                 Terbaru
               </Badge>
@@ -143,28 +163,45 @@ function EventCard({
             <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
-          {event.createdAt !== '' ? (
-            <p className="text-xs text-muted-foreground">dicatat {formatStamp(event.createdAt)}</p>
-          ) : null}
+        <div className="flex items-start gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-expanded={open}
+            aria-label={`${open ? 'Lipat' : 'Buka'} riwayat ${eventTitle(event)}`}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+          </Button>
+          <div className="text-right">
+            <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
+            {event.createdAt !== '' ? (
+              <p className="text-xs text-muted-foreground">
+                dicatat {formatStamp(event.createdAt)}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
-      {details.length > 0 ? (
+      {!open && preview !== '' ? (
+        <p className="mt-2 truncate text-sm text-muted-foreground">{preview}</p>
+      ) : null}
+      {open && details.length > 0 ? (
         <ul aria-label="Rincian" className="mt-3 space-y-0.5 text-sm">
           {details.map((detail) => (
             <li key={detail}>{detail}</li>
           ))}
         </ul>
       ) : null}
-      {event.message.trim() !== '' ? (
+      {open && event.message.trim() !== '' ? (
         <MarkdownView
           source={event.message}
           className="mt-3 text-sm"
           {...(markdownComponents ? { components: markdownComponents } : {})}
         />
       ) : null}
-      {event.changes.length > 0 ? (
+      {open && event.changes.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
@@ -175,7 +212,7 @@ function EventCard({
           ))}
         </ul>
       ) : null}
-      {stickers.length > 0 ? (
+      {open && stickers.length > 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
           Stiker ditempel dan stok dipotong: {stickers.join(', ')}
         </p>
@@ -185,8 +222,9 @@ function EventCard({
 }
 
 /**
- * Daftar kartu riwayat serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya. `markLatest`
- * memberi badge "Terbaru" pada entri paling atas (seq tertinggi); dipakai tab Semua.
+ * Daftar kartu riwayat serial: URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik, apa pun
+ * urutan masukannya. Hanya kartu terbaru (seq tertinggi, paling bawah) yang terbuka; kartu lama dilipat. `markLatest`
+ * memberi badge "Terbaru" pada entri terbaru; dipakai tab Semua.
  */
 export function Timeline({
   events,
@@ -201,13 +239,16 @@ export function Timeline({
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const newest = ordered.length - 1;
   return (
     <ol aria-label="Linimasa" className="space-y-3">
-      {events.map((event, index) => (
+      {ordered.map((event, index) => (
         <EventCard
           key={event.id}
           event={event}
-          latest={markLatest && index === 0}
+          latest={index === newest}
+          showLatestBadge={markLatest && index === newest}
           markdownComponents={markdownComponents}
         />
       ))}

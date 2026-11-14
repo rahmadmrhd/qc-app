@@ -82,6 +82,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Buka semua kartu riwayat yang dilipat (hanya kartu terbaru yang terbuka sejak awal). */
+async function expandAll() {
+  for (const button of screen.queryAllByRole('button', { name: /^Buka riwayat/ })) {
+    await userEvent.click(button);
+  }
+}
+
 test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa tombol aksi', async () => {
   renderPage();
   expect(await screen.findByRole('heading', { name: 'LP-20261113-001' })).toBeInTheDocument();
@@ -93,13 +100,16 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(within(unit).getByText('BU1 · Satu')).toBeInTheDocument();
   expect(within(unit).getByText('Surabaya')).toBeInTheDocument();
   const list = screen.getByRole('list', { name: 'Linimasa' });
+  // Hanya kartu terbaru (seq 9) yang terbuka sejak awal; kartu lama dilipat.
+  expect(within(list).queryByText('Status: Lolos → Dilaporkan')).toBeNull();
+  await expandAll();
   expect(within(list).getByText('Dilaporkan rusak')).toBeInTheDocument();
   expect(within(list).getByText('Dinyatakan rusak')).toBeInTheDocument();
   expect(within(list).getByText('Status: Lolos → Dilaporkan')).toBeInTheDocument();
   // Nomor LP mengisi rincian kejadian (data mentah tidak dikirim server): bukan "Laporan — dibuka".
   expect(within(list).getByText('Laporan LP-20261113-001 dibuka')).toBeInTheDocument();
   expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
-  // Urutan server (seq naik) dipakai apa adanya; tanpa badge Terbaru dan tanpa stempel "dicatat".
+  // Lama di atas (seq naik); tanpa badge Terbaru dan tanpa stempel "dicatat".
   const seqs = within(list)
     .getAllByRole('listitem')
     .map((li) => li.getAttribute('data-seq'))
@@ -107,8 +117,10 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(seqs).toEqual(['5', '9']);
   expect(screen.queryByText('Terbaru')).toBeNull();
   expect(screen.queryByText(/dicatat/)).toBeNull();
-  // Hanya baca: tidak ada tombol aksi, field, atau tautan "Lapor".
-  expect(screen.queryByRole('button')).toBeNull();
+  // Hanya baca: tidak ada tombol aksi (hanya pelipat riwayat), field, atau tautan "Lapor".
+  for (const button of screen.queryAllByRole('button')) {
+    expect(button).toHaveAccessibleName(/riwayat/);
+  }
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(apiMock).not.toHaveBeenCalled();
 });
@@ -126,6 +138,7 @@ test('memuat lewat fetch biasa ke rute publik: tanpa cache dan tanpa Referer', a
 test('gambar pesan memakai URL rute berkas bertoken, bukan klien berizin', async () => {
   const { container } = renderPage();
   await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await expandAll();
   const image = container.querySelector('img') as HTMLImageElement;
   expect(image.getAttribute('src')).toBe(
     `/api/public/serial-reports/${TOKEN}/files/abc12345-1111-4222-8333-444455556666`,
