@@ -251,10 +251,10 @@ Penyesuaian implementasi yang belum disahkan pemilik produk (dicatat agar tidak 
 - `hasEntriesForTask` menghitung semua jenis entri, sehingga centang pada task yang masih punya komentar antre ikut diantrekan agar urutan tidak terbalik.
 - Penguras mengambil ulang isi toko saat start bila salinan memori kosong (hidrasi gagal atau terlambat).
 
-Risiko yang tersisa (diterima pemilik produk):
-- Keluar kini menunggu dua anggaran pembersihan 1,5 dtk berurutan (sekitar 3 dtk bila IndexedDB macet).
-- A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman.
-- A3 memetakan galat server selain `UNAVAILABLE` ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya (aman, tidak memuat ulang).
+Risiko yang tersisa:
+- A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman. Ini konsekuensi langsung dari muat ulang yang disetujui pemilik produk (2026-11-14).
+- A3 memetakan galat server selain `UNAVAILABLE` ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya (aman, tidak memuat ulang). Dicatat untuk diketahui; belum dikonfirmasi pemilik secara eksplisit.
+- Keluar membersihkan antrean dan papan secara paralel dengan satu anggaran 1,5 dtk (diperbaiki pada putaran perbaikan 1; sebelumnya dua anggaran berurutan).
 
 Belum diuji di perangkat nyata (lihat `docs/e2e-checklist.md` #208-#224).
 
