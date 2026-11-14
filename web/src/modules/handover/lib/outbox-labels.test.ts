@@ -51,8 +51,34 @@ test('describeEntry: jenis dan isi singkat per jenis', () => {
   expect(describeEntry(create(['', '  ']))).toEqual({ kind: 'Task baru', target: '2 task' });
 });
 
-test('copyableText: isi komentar, catatan task baru dipisah baris kosong, centang tidak ada', () => {
+test('copyableText: komentar apa adanya; task baru memuat nama customer lalu catatan, antar task baris kosong; centang tidak ada', () => {
   expect(copyableText(comment)).toBe('tolong dicek');
-  expect(copyableText(create(['PT A', 'PT B']))).toBe('catatan 0\n\ncatatan 1');
+  expect(copyableText(create(['PT A', 'PT B']))).toBe(
+    'Customer: PT A\n\ncatatan 0\n\nCustomer: PT B\n\ncatatan 1',
+  );
   expect(copyableText(check)).toBeNull();
+});
+
+test('copyableText task baru: nama customer kosong/spasi saja = hanya catatan (campuran dengan yang bernama)', () => {
+  expect(copyableText(create(['', '  ']))).toBe('catatan 0\n\ncatatan 1');
+  expect(copyableText(create(['PT A', '']))).toBe('Customer: PT A\n\ncatatan 0\n\ncatatan 1');
+});
+
+test('copyableText task baru: karakter khusus pada nama dan catatan tidak diubah', () => {
+  const entry: OutboxEntry = {
+    kind: 'create',
+    id: 'c',
+    locationId: 'l',
+    tasks: [
+      {
+        clientId: 'id0',
+        customerName: 'PT "Maju" & <Jaya> 100% Ünïcode 😀',
+        note: '*tebal* `kode` <b>x</b>\nbaris 2',
+      },
+    ],
+    at: 1,
+  };
+  expect(copyableText(entry)).toBe(
+    'Customer: PT "Maju" & <Jaya> 100% Ünïcode 😀\n\n*tebal* `kode` <b>x</b>\nbaris 2',
+  );
 });

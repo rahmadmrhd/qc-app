@@ -549,7 +549,7 @@ describe('toast penolakan komentar dan task baru (Tahap C)', () => {
     expect(writeText).toHaveBeenCalledWith('isi komentar penting');
   });
 
-  test('task baru kedaluwarsa: toast bertahan dan "Salin teks" menyalin catatan tiap task dipisah baris kosong', async () => {
+  test('task baru kedaluwarsa: toast bertahan dan "Salin teks" menyalin nama customer dan catatan tiap task', async () => {
     await enqueueOutbox(OWNER, {
       kind: 'create',
       locationId: 'loc-a',
@@ -573,7 +573,9 @@ describe('toast penolakan komentar dan task baru (Tahap C)', () => {
     const options = optionsFor('Task baru kedaluwarsa');
     expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
     options?.action?.onClick();
-    expect(writeText).toHaveBeenCalledWith('catatan A\n\ncatatan B');
+    expect(writeText).toHaveBeenCalledWith(
+      'Customer: PT A\n\ncatatan A\n\nCustomer: PT B\n\ncatatan B',
+    );
   });
 
   test('gagal menyalin tidak melempar', async () => {
