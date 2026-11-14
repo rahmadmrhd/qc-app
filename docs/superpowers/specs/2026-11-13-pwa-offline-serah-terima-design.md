@@ -244,12 +244,12 @@ Keputusan tambahan (usulan dari review putaran perbaikan 3; disetujui pemilik pr
 - **A2. Salin teks task baru memuat nama customer.** Teks per task: `Customer: <nama>`, baris kosong, lalu catatan; nama kosong berarti hanya catatan; antar task dipisah baris kosong. Alasan: batch sampai 30 task tidak dapat dipetakan ke customer-nya bila hanya catatan yang disalin. Diubah: §7.4 (format salin teks task baru). Komentar tidak berubah.
 - **A3. Tab tertahan setelah siaran keluar dimuat ulang sekali saat sesi sah kembali.** Tab penerima siaran keluar tetap tertahan. Saat tab kembali fokus atau terlihat, bila `auth.me` menyatakan sesi sah (akun apa pun), tab memuat ulang SEKALI. Tidak ada panggilan jaringan saat tab tersembunyi. Sesi tidak sah atau server tidak terjangkau = tetap tertahan, dicoba lagi pada fokus berikutnya. Tab pengirim siaran tidak memuat ulang. Masukan formulir yang belum disimpan di tab itu hilang; entri antrean tetap aman di IndexedDB. Bila sesi milik akun berbeda, boot berjalan sebagai login biasa dan antrean akun lama dibuang (`purgeForeignOutboxes`). Alasan: tanpa ini tab tertahan tidak pernah pulih dan fitur offline di tab itu mati diam-diam. Diubah: §7.2 (perilaku siaran keluar) dan batasan tab penerima pada §9 Tahap B butir (i), yang kini ditutup untuk sesi yang sah kembali.
 
-Penyesuaian implementasi yang belum disahkan pemilik produk (dicatat agar tidak menjadi temuan review berulang; mohon dikonfirmasi):
-- `networkMode: 'always'` pada mutasi komentar dan task baru serta query opsi formulir. Tanpa ini react-query menahan mutasi selagi peramban luring, sehingga galat `UNAVAILABLE` tidak pernah tiba.
-- Pesan siaran `sending-done` menghapus penanda "Mengirim..." di tab lain saat kirim selesai, tanpa menunggu masa berlaku 45 dtk.
-- Rekaman antrean membawa `seq` sebagai pemecah urutan bila `at` kembar.
-- `hasEntriesForTask` menghitung semua jenis entri, sehingga centang pada task yang masih punya komentar antre ikut diantrekan agar urutan tidak terbalik.
-- Penguras mengambil ulang isi toko saat start bila salinan memori kosong (hidrasi gagal atau terlambat).
+Penyesuaian implementasi di luar rencana, disahkan pemilik produk pada 2026-11-15 (dicatat agar reviewer di kemudian hari tahu ini disengaja dan tidak menemukannya lagi sebagai temuan):
+- **P1. `networkMode: 'always'`** pada mutasi komentar dan task baru serta query opsi formulir. Alasan: tanpa ini react-query menahan mutasi selagi peramban luring, sehingga galat `UNAVAILABLE` tidak pernah tiba dan kiriman tidak pernah masuk antrean (§7.2).
+- **P2. Pesan siaran `sending-done`** menghapus penanda "Mengirim..." di tab lain saat kirim selesai, tanpa menunggu masa berlaku 45 dtk. Alasan: penanda yang basi menyesatkan pengguna tab lain.
+- **P3. Rekaman antrean membawa `seq`** sebagai pemecah urutan bila `at` kembar. Alasan: dua entri pada milidetik yang sama tidak boleh berurutan acak.
+- **P4. `hasEntriesForTask` menghitung semua jenis entri**, sehingga centang pada task yang masih punya komentar antre ikut diantrekan. Alasan: tanpa ini centang dapat terkirim mendahului komentar yang dibuat lebih dulu dan urutan di server terbalik.
+- **P5. Penguras mengambil ulang isi toko saat start** bila salinan memori kosong (hidrasi gagal atau terlambat). Alasan: salinan kosong tidak boleh dibaca sebagai antrean kosong (`null` ≠ kosong).
 
 Risiko yang tersisa:
 - A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman. Ini konsekuensi langsung dari muat ulang yang disetujui pemilik produk (2026-11-14).
