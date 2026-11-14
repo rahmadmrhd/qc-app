@@ -120,7 +120,7 @@ Sumber status `sending`: penguras antrean menandai entri sebelum permintaan dan 
 
 ### 7.1 Server (perubahan kontrak kecil, expand-only)
 
-Migrasi `0017_client_id_serah_terima.sql` (idempoten, `IF NOT EXISTS`; nomor 0015 yang semula tertulis sudah dipakai `0015_serial_cases.sql`, lihat §9 Tahap C R1):
+Migrasi `0018_client_id_serah_terima.sql` (idempoten, `IF NOT EXISTS`; nomor 0015 yang semula tertulis sudah dipakai `0015_serial_cases.sql`, lihat §9 Tahap C R1):
 - `handovers.client_id VARCHAR(100) NULL` + `UNIQUE KEY handovers_client_id`.
 - `handover_comments.client_id VARCHAR(100) NULL` + `UNIQUE KEY handover_comments_client_id`.
 - Nullable agar baris lama dan image lama tetap valid (rollback aman). NULL berganda diizinkan indeks unik.
@@ -232,7 +232,7 @@ Keputusan saya untuk Tahap B (2026-11-14; mohon dikoreksi; **menunggu pengesahan
 ### Keputusan Tahap C (2026-11-14)
 
 Disetujui pemilik produk pada 2026-11-14 ("Ya, eksekusi"). Butir yang berbeda dari atau melengkapi spek di atas sudah diubah di §7.1-§7.3 dan §9 ini:
-- **R1. Nomor migrasi 0017, bukan 0015.** Alasan: `0015_serial_cases.sql` dan `0016_panduan_interaktif.sql` sudah ada. Diubah: §7.1 (nama berkas migrasi).
+- **R1. Nomor migrasi 0018, bukan 0015.** Alasan: `0015_serial_cases.sql` dan `0016_panduan_interaktif.sql` sudah ada, dan `0017_laporan_rusak.sql` (PR Serial laporan rusak) masuk ke `dev` lebih dulu (2026-11-14). Diubah: §7.1 (nama berkas migrasi).
 - **R2. `clientId` dibuat sebelum percobaan kirim online pertama.** Alasan: pada timeout klien, kiriman yang sudah tersimpan di server dipetakan `UNAVAILABLE`; membuat `clientId` saat entri ditulis akan menggandakan data. Diubah: §7.2 (`clientId` dibuat sebelum kirim pertama, tidak berubah saat antre maupun kirim ulang).
 - **R3. `HandoverDto` tanpa `clientId`.** Risiko yang diterima: bila refetch tiba sebelum kirim ulang, kartu sementara dan kartu server tampil ganda sebentar sampai entri dihapus. Diubah: §7.3 (dedup lewat `clientId` di tampilan dihapus dari spek). Pemilik menerima risiko ini.
 - **R4. Kolom `state` (penanda `rejected`) ditunda ke Tahap D.** Alasan: penanda itu hanya jembatan service worker dan ditambahkan bersama penulisnya di Tahap D. Diubah: §7.2 (bentuk entri tanpa `state`). Pertanyaan tentang bentuk entri ditutup untuk Tahap C; §7b tidak berubah.

@@ -1,6 +1,13 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { addSerials, type Defaults, type StagingRow } from './draft';
-import { clearAllDrafts, clearDraft, loadDraft, resumeDraftWrites, saveDraft } from './draft-store';
+import {
+  clearAllDrafts,
+  clearDraft,
+  loadDraft,
+  NOT_GOOD_MESSAGE,
+  resumeDraftWrites,
+  saveDraft,
+} from './draft-store';
 
 const defaults: Defaults = {
   itemId: 'i1',
@@ -12,8 +19,6 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: false,
   note: '',
-  status: 'good',
-  damage: '',
 };
 
 function rows(count: number): StagingRow[] {
@@ -127,26 +132,25 @@ test('setelah clearAllDrafts penulisan draf ditahan sampai resumeDraftWrites', (
   expect(loadDraft('a@x.com')).toEqual(data);
 });
 
-test('draf lama tanpa status/kerusakan dipulihkan sebagai Lolos; baris Tidak lolos dipulihkan utuh', () => {
+test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b) menjadi baris bermasalah, tidak dibuang', () => {
   const [first, second] = rows(2) as [StagingRow, StagingRow];
-  const { status: _s, damage: _d, ...legacy } = first;
+  const problem = (row: StagingRow): StagingRow => ({
+    ...row,
+    result: 'invalid',
+    message: NOT_GOOD_MESSAGE,
+  });
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
-    JSON.stringify([legacy, { ...second, status: 'failed', damage: 'Port mati' }]),
+    JSON.stringify([first, { ...second, status: 'failed', damage: 'Port mati' }]),
   );
-  const loaded = loadDraft('a@x.com');
-  expect(loaded[0]).toMatchObject({ status: 'good', damage: '' });
-  expect(loaded[1]).toMatchObject({ status: 'failed', damage: 'Port mati' });
-});
-
-test('status tak dikenal atau kerusakan bukan teks membuang baris itu', () => {
-  const [first, second] = rows(2) as [StagingRow, StagingRow];
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
   localStorage.setItem(
     'qc.serial.draft:a@x.com',
     JSON.stringify([
-      { ...first, status: 'broken' },
-      { ...second, damage: 5 },
+      { ...first, status: 'good' },
+      { ...second, status: 'broken', result: 'duplicate', message: 'x' },
     ]),
   );
-  expect(loadDraft('a@x.com')).toEqual([]);
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
+  expect(NOT_GOOD_MESSAGE).toContain('Lapor Rusak');
 });

@@ -11,6 +11,8 @@ import { jsonOf, restClient } from '@server-test/rest-client';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SETTING_SERIAL_ALERT } from './alert';
+import { serialAlertJobStmt, serialBrokenMail } from './alert-job';
+import { verifyReportToken } from './public-link';
 
 setDefaultTimeout(60_000);
 
@@ -81,8 +83,8 @@ async function enableAlert(recipients = ['a@contoh.com', 'b@contoh.com']): Promi
   expect(out.ok).toBe(true);
 }
 
-const CASE = { id: 'case-1', number: 'LP-20261110-001', damage: 'Layar retak' };
-const seedBroken = (damage = CASE.damage) =>
+const CASE = { id: 'case-1', number: 'LP-20261110-001', openedOn: '2026-11-10' };
+const seedBroken = () =>
   seedSerial(env, {
     id: 'sn1',
     serial: 'AB12',
@@ -90,7 +92,7 @@ const seedBroken = (damage = CASE.damage) =>
     itemId: 'i-a1',
     status: 'service_repair',
     custody: 'service',
-    openCase: { ...CASE, damage },
+    openCase: { ...CASE, createdBy: 'pelapor@gmail.com' },
   });
 const declareBroken = (over: { at?: string; message?: string } = {}) =>
   call(SVC, 'serials.act', {
@@ -98,7 +100,7 @@ const declareBroken = (over: { at?: string; message?: string } = {}) =>
     expectedUpdatedAt: over.at ?? AT,
     action: 'declare_broken',
     occurredOn: TODAY,
-    message: over.message ?? '',
+    message: over.message ?? 'Mati total',
   });
 const alertJobs = () =>
   env.DB.prepare(
@@ -124,49 +126,140 @@ describe('declare_broken dan antrean job', () => {
     expect(input).toEqual({ serialId: 'sn1', caseId: 'case-1', eventId: event?.id });
   });
 
-  test('menjalankan job mengirim SATU surel dengan subjek dan badan persis, tanpa pesan, pelaku, atau stok', async () => {
+  test('menjalankan job mengirim SATU surel: subjek memuat tipe item, badan memuat catatan penuh dan nama pelaku, tanpa surel pelaku atau stok', async () => {
     await enableAlert();
+    await env.DB.prepare("UPDATE users SET name = 'Budi Servis' WHERE email = ?").bind(SVC).run();
     await seedBroken();
-    const out = await declareBroken({ message: 'Rahasia-pesan-kejadian' });
+    const out = await declareBroken({ message: 'Layar **pecah** total\nPort mati' });
     expect(out.ok).toBe(true);
     expect(sent).toHaveLength(0); // dikirim runner, bukan saat permintaan pengguna
     expect(await runPendingJobs(env)).toBe(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toEqual(['a@contoh.com', 'b@contoh.com']);
-    expect(sent[0]?.subject).toBe('Serial Number rusak: AB12 (A)');
-    const event = await env.DB.prepare(
-      "SELECT occurred_on FROM serial_events WHERE serial_id = 'sn1' AND type = 'declare_broken'",
-    ).first<{ occurred_on: string }>();
-    expect(sent[0]?.text).toBe(
+    expect(sent[0]?.subject).toBe('Serial Number rusak: AB12 (Alfa, A)');
+    const text = sent[0]?.text ?? '';
+    const token = /Buka: https:\/\/qc\.test\/laporan\/(\S+)\n/.exec(text)?.[1] ?? '';
+    expect(text).toBe(
       [
         'Ada Serial Number yang dinyatakan rusak.',
         '',
         'Serial Number: AB12',
-        'BU: A (A)',
         'Item: Merk Alfa',
-        'Kerusakan: Layar retak',
-        'Nomor kasus: LP-20261110-001',
-        `Tanggal: ${event?.occurred_on}`,
+        'BU: A (A)',
+        'Nomor LP: LP-20261110-001',
+        'Lokasi unit: Surabaya',
+        'Dilaporkan: 2026-11-10',
+        'Dinyatakan rusak: 2026-11-12',
+        'Oleh: Budi Servis',
         '',
-        'Buka: https://qc.test/serial/sn1',
+        'Catatan:',
+        'Layar pecah total',
+        'Port mati',
+        '',
+        `Buka: https://qc.test/laporan/${token}`,
+        'Tautan berlaku sampai 2026-12-12.',
         '',
       ].join('\n'),
     );
-    expect(sent[0]?.text).not.toContain('Rahasia-pesan-kejadian');
-    expect(sent[0]?.text).not.toContain(SVC);
-    expect(sent[0]?.text.toLowerCase()).not.toContain('stok');
+    expect(await verifyReportToken(env.SESSION_SECRET, token, env.clock.now())).toEqual({
+      caseId: 'case-1',
+    });
+    expect(text).not.toContain(SVC);
+    expect(text).not.toContain('pelapor@gmail.com');
+    expect(text).not.toContain('**');
+    expect(text.toLowerCase()).not.toContain('stok');
     expect((await alertJobs()).results[0]).toMatchObject({ status: 'done', result: 'sent' });
   });
 
-  test('karakter kontrol pada damage dibersihkan: tak ada baris baru yang menyisipkan header', async () => {
+  test('catatan bergambar: gambar dijelaskan jumlahnya; catatan kosong ditulis "-"', async () => {
     await enableAlert();
-    await seedBroken('Layar\nBcc: x@y.co‮pecah');
-    await declareBroken();
+    await seedBroken();
+    await env.DB.prepare(
+      "INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES ('e-fix', 'sn1', 'case-1', 9, 'declare_broken', ?, ?, 'x', 'Budi', 'service', ?, '[]', '{}')",
+    )
+      .bind(TODAY, AT, 'Retak ![foto](qcfile:abc) dan ![foto2](qcfile:def)')
+      .run();
+    await env.DB.prepare(
+      "UPDATE serial_cases SET closed_on = ?, outcome = 'broken' WHERE id = 'case-1'",
+    )
+      .bind(TODAY)
+      .run();
+    await env.DB.batch([
+      serialAlertJobStmt(env, { serialId: 'sn1', caseId: 'case-1', eventId: 'e-fix' }),
+    ]);
     await runPendingJobs(env);
     expect(sent).toHaveLength(1);
-    expect(sent[0]?.text).toContain('Kerusakan: Layar Bcc: x@y.co pecah');
-    expect(sent[0]?.text).not.toContain('‮');
-    expect(sent[0]?.text.split('\n').some((line) => line.startsWith('Bcc:'))).toBe(false);
+    expect(sent[0]?.text).toContain('Retak dan');
+    expect(sent[0]?.text).toContain('(2 gambar, lihat di tautan)');
+    expect(sent[0]?.text).not.toContain('qcfile');
+  });
+
+  test('tautan hanya bila APP_ORIGIN dan rahasia sesi tersedia; surel tetap terkirim tanpa tautan', async () => {
+    await enableAlert();
+    await seedBroken();
+    await declareBroken({ message: 'Mati total' });
+    delete env.APP_ORIGIN;
+    await runPendingJobs(env);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).not.toContain('Buka:');
+    expect(sent[0]?.text).not.toContain('/laporan/');
+    expect(sent[0]?.text).toContain('Mati total');
+
+    await freshEnv();
+    await enableAlert();
+    await seedBroken();
+    await declareBroken({ message: 'Mati total' });
+    env.SESSION_SECRET = '';
+    await runPendingJobs(env);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).not.toContain('Buka:');
+  });
+
+  test('serialBrokenMail: nama pelaku berupa alamat surel diganti bagian lokal; nama kosong menjadi Admin', () => {
+    const base = {
+      serial: 'AB12',
+      buCode: 'A',
+      buName: 'A',
+      itemLabel: 'Merk Alfa',
+      itemModel: 'Alfa',
+      caseNumber: 'LP-1',
+      locationName: 'Surabaya',
+      reportedOn: '2026-11-10',
+      brokenOn: '2026-11-12',
+      note: 'Mati',
+      link: '',
+      linkExpiresOn: '',
+    };
+    const byEmail = serialBrokenMail({ ...base, actorName: 'super.admin@gmail.com' });
+    expect(byEmail.text).toContain('Oleh: super.admin\n');
+    expect(byEmail.text).not.toContain('@');
+    expect(serialBrokenMail({ ...base, actorName: '' }).text).toContain('Oleh: Admin\n');
+  });
+
+  test('serialBrokenMail: karakter kontrol dan pengatur arah dibersihkan; subjek satu baris; catatan per baris', () => {
+    const mail = serialBrokenMail({
+      serial: 'AB\nBcc: x@y.co',
+      buCode: 'A\r\nX',
+      buName: 'Alfa',
+      itemLabel: 'Merk\u0000Alfa',
+      itemModel: 'Alfa\nBcc: z@y.co',
+      caseNumber: 'LP-1',
+      locationName: 'Sby‮',
+      reportedOn: '2026-11-10',
+      brokenOn: '2026-11-12',
+      actorName: 'Bud\ni',
+      note: 'Layar\nBcc: x@y.co‮pecah',
+      link: '',
+      linkExpiresOn: '',
+    });
+    expect(mail.subject).not.toMatch(/[\r\n]/);
+    expect(mail.subject).toBe('Serial Number rusak: AB Bcc: x@y.co (Alfa Bcc: z@y.co, A X)');
+    expect(mail.text).not.toContain('‮');
+    expect(mail.text).not.toContain('\u0000');
+    expect(mail.text).toContain('Oleh: Bud i');
+    // catatan multibaris tetap per baris, tetapi isinya sudah bersih
+    expect(mail.text).toContain('Catatan:\nLayar\nBcc: x@y.co pecah\n');
+    expect(mail.text).not.toContain('Buka:');
   });
 
   test('pengaturan nonaktif, tanpa penerima, atau tanpa SMTP: job selesai skipped tanpa kirim', async () => {

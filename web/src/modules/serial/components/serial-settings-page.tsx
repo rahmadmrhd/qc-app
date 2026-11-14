@@ -18,13 +18,15 @@ export interface SerialSettingsPageProps {
   users: readonly UserDto[] | null;
   /** Mengembalikan pesan galat (tampil di halaman ini) atau `null` bila berhasil. */
   onSave: (input: SaveSerialSettingsInput) => Promise<string | null>;
+  /** Bagian pengaturan lain yang tampil di bawah email (mis. lokasi tim servis). */
+  children?: React.ReactNode;
 }
 
 function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
   return `${user.name} (${user.email})`;
 }
 
-interface BodyProps extends SerialSettingsPageProps {
+interface BodyProps extends Omit<SerialSettingsPageProps, 'children'> {
   /** Pesan galat simpan; disimpan di luar `Body` agar tetap tampil saat isian dimuat ulang (versi usang). */
   serverError: string | null;
   onServerError: (message: string | null) => void;
@@ -112,9 +114,10 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
     >
       <h2 className="text-base font-semibold">Email Serial Number rusak</h2>
       <p className="text-sm text-muted-foreground">
-        Saat tim servis menyatakan sebuah Serial Number rusak, email ringkasan dikirim ke penerima
-        di bawah. Isinya hanya Serial Number, BU, item, kerusakan, nomor kasus, tanggal, dan tautan.
-        Daftar ini berlaku untuk semua BU.
+        Saat tim servis menyatakan sebuah Serial Number rusak, email dikirim ke penerima di bawah.
+        Isinya Serial Number, item, BU, nomor laporan, lokasi, tanggal, catatan lengkap dari update
+        Rusak, dan tautan baca-saja ke laporan (berlaku 30 hari setelah laporan selesai). Daftar ini
+        berlaku untuk semua BU.
       </p>
       {settings.smtpConfigured ? null : (
         <p
@@ -198,7 +201,7 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
  * Pengaturan email Serial Number rusak: saklar dan penerima (daftar global, hanya pengelola Serial Number di semua BU).
  * `key` = versi tersimpan: setelah simpan (atau muat ulang karena versi usang) isian mulai dari data server terbaru.
  */
-export function SerialSettingsPage(props: SerialSettingsPageProps) {
+export function SerialSettingsPage({ children, ...props }: SerialSettingsPageProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   return (
     <div className="max-w-3xl space-y-4">
@@ -209,6 +212,7 @@ export function SerialSettingsPage(props: SerialSettingsPageProps) {
         serverError={serverError}
         onServerError={setServerError}
       />
+      {children}
     </div>
   );
 }

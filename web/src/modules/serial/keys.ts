@@ -1,4 +1,4 @@
-import type { SerialListInput } from '@shared/contract';
+import type { SerialCaseListInput, SerialListInput } from '@shared/contract';
 
 export const serialKeys = {
   all: ['serial'] as const,
@@ -11,6 +11,12 @@ export const serialKeys = {
   historyPage: (id: string, group: string, caseId: string) =>
     ['serial', 'history', id, group, caseId] as const,
   settings: ['serial', 'settings'] as const,
+  serviceSettings: ['serial', 'serviceSettings'] as const,
+  serviceLocations: ['serial', 'serviceLocations'] as const,
+  lookup: (serial: string) => ['serial', 'lookup', serial] as const,
+  /** Awalan semua daftar laporan (satu per kombinasi filter). */
+  cases: ['serial', 'cases'] as const,
+  casePage: (filter: Omit<SerialCaseListInput, 'cursor'>) => ['serial', 'cases', filter] as const,
   itemOptions: (query: string) => ['serial', 'itemOptions', query] as const,
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,

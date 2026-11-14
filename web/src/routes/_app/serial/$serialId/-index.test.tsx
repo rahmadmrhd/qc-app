@@ -9,6 +9,7 @@ vi.mock('@tanstack/react-router', async () => ({
   createFileRoute: () => (options: { component: () => unknown }) => ({
     options,
     useParams: () => ({ serialId: state.serialId }),
+    useSearch: () => ({}),
   }),
   useNavigate: () => vi.fn(),
   getRouteApi: () => ({ useParams: () => ({ serialId: state.serialId }) }),

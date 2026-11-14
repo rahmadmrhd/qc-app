@@ -103,12 +103,11 @@ export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): s
 }
 
 /**
- * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` ATAU `serialservice: edit` global; servis
- * perlu memilih lokasi tujuan saat kirim balik, keputusan pemilik 2026-11-13). Pembaca tanpa izin itu memakai lokasi
- * dari `me.locations` agar tidak memicu 403.
+ * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` global; laporan rusak 2026-11-14 §3 butir h:
+ * tim servis tidak lagi memilih lokasi). Pembaca tanpa izin itu memakai lokasi dari `me.locations` agar tidak memicu 403.
  */
 export function canUseSerialLocationOptions(me: MeDto | null | undefined): boolean {
-  return can(me, 'serial', 'edit') || can(me, 'serialservice', 'edit');
+  return can(me, 'serial', 'edit');
 }
 
 /** Modul yang dipegang pengguna pada level `edit` di BU serial itu (masukan `availableActions`/`resolveAction`). */

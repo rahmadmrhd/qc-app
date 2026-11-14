@@ -164,8 +164,18 @@ export interface SeedSerial {
   updatedAt?: string;
   clientId?: string;
   stickers?: { stickerId: string; qty: number }[];
-  /** Kasus terbuka (status tidak lolos dan seterusnya): disisipkan ke `serial_cases` dan `open_case_id` serial. */
-  openCase?: { id: string; number: string; damage?: string; openedOn?: string };
+  /**
+   * Laporan terbuka (status Dilaporkan dan seterusnya): disisipkan ke `serial_cases` dan `open_case_id` serial.
+   * `originLocationId` = lokasi QC asal (diisi saat kirim ke servis); `createdBy`/`createdAt` = pelapor dan waktu laporan.
+   */
+  openCase?: {
+    id: string;
+    number: string;
+    openedOn?: string;
+    originLocationId?: string;
+    createdBy?: string;
+    createdAt?: string;
+  };
   transitFromLocationId?: string;
   transitToLocationId?: string;
   transitOn?: string;
@@ -199,7 +209,7 @@ export async function seedSerial(env: Env, serial: SeedSerial): Promise<void> {
     .run();
   if (serial.openCase) {
     await env.DB.prepare(
-      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, damage, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, origin_location_id, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
       .bind(
         serial.openCase.id,
@@ -207,10 +217,10 @@ export async function seedSerial(env: Env, serial: SeedSerial): Promise<void> {
         serial.id,
         serial.buId ?? 'bu-a',
         serial.openCase.openedOn ?? '2026-11-12',
-        serial.openCase.damage ?? 'Layar retak',
-        createdAt,
-        'seed@gmail.com',
-        createdAt,
+        serial.openCase.originLocationId ?? '',
+        serial.openCase.createdAt ?? createdAt,
+        serial.openCase.createdBy ?? 'seed@gmail.com',
+        serial.openCase.createdAt ?? createdAt,
       )
       .run();
     await env.DB.prepare('UPDATE serials SET open_case_id = ? WHERE id = ?')

@@ -10,7 +10,7 @@ import {
   loadCases,
   reserveCaseNumber,
   runWithCaseNumber,
-  updateCaseDamageStmt,
+  setCaseOriginStmt,
 } from './case-repo';
 import { insertEventStmt, insertNextEventStmt } from './repo';
 
@@ -43,7 +43,6 @@ async function openCase(serialId: string, caseId: string, e: Env = env): Promise
           serialId,
           buId: 'bu-a',
           openedOn: '2026-11-20',
-          damage: 'Layar retak',
           now: NOW,
           actorEmail: 'a@x.com',
         }),
@@ -79,7 +78,6 @@ describe('nomor LP', () => {
         serialId: 'sn1',
         buId: 'bu-a',
         openedOn: '2026-11-20',
-        damage: '',
         now: NOW,
         actorEmail: 'a@x.com',
       }),
@@ -89,7 +87,6 @@ describe('nomor LP', () => {
         serialId: 'sn1',
         buId: 'bu-a',
         openedOn: '2026-11-21',
-        damage: '',
         now: NOW,
         actorEmail: 'a@x.com',
       }),
@@ -109,7 +106,6 @@ describe('nomor LP', () => {
         serialId: 'sn2',
         buId: 'bu-a',
         openedOn: '2026-11-20',
-        damage: '',
         now: NOW,
         actorEmail: 'a@x.com',
       }),
@@ -205,7 +201,7 @@ describe('pernyataan kasus', () => {
     expect(row).toMatchObject({ closed_on: '2026-11-21', outcome: 'good' });
   });
 
-  test('updateCaseDamageStmt mengubah kerusakan; loadCases terbaru dulu', async () => {
+  test('setCaseOriginStmt mengisi lokasi QC asal; loadCases terbaru dulu', async () => {
     await openCase('sn1', 'c1');
     env.clock.set(Date.parse('2026-11-21T00:00:00.000Z'));
     await env.DB.batch([
@@ -215,16 +211,15 @@ describe('pernyataan kasus', () => {
         serialId: 'sn1',
         buId: 'bu-a',
         openedOn: '2026-11-21',
-        damage: 'Baru',
         now: '2026-11-21T03:00:00.000Z',
         actorEmail: 'a@x.com',
       }),
-      updateCaseDamageStmt(env.DB, 'c1', 'Layar pecah', NOW),
+      setCaseOriginStmt(env.DB, 'c1', 'loc-sby', NOW),
     ]);
     const cases = await loadCases(env.DB, 'sn1');
-    expect(cases.map((c) => [c.id, c.damage])).toEqual([
-      ['c2', 'Baru'],
-      ['c1', 'Layar pecah'],
+    expect(cases.map((c) => [c.id, c.origin_location_id])).toEqual([
+      ['c2', ''],
+      ['c1', 'loc-sby'],
     ]);
   });
 });

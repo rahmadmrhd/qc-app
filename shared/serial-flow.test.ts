@@ -5,6 +5,7 @@ import {
   type FlowRow,
   resolveAction,
   SERIAL_FLOW,
+  SERVICE_STATUSES,
   sendLegOf,
 } from './serial-flow';
 import {
@@ -14,6 +15,7 @@ import {
   type SerialAction,
   type SerialCustody,
   type SerialStatus,
+  type ServiceDiagnosisStage,
 } from './serials';
 
 const QC: ActorModules = { serial: true, serialservice: false };
@@ -25,6 +27,7 @@ interface Positive {
   n: number;
   action: SerialAction;
   result?: 'pass' | 'fail';
+  stage?: ServiceDiagnosisStage;
   status: SerialStatus;
   custody: SerialCustody;
   actor: ActorModules;
@@ -43,70 +46,25 @@ const POSITIVES: Positive[] = [
     status: 'good',
     custody: 'qc',
     actor: QC,
-    toStatus: 'failed',
+    toStatus: 'reported',
     toCustody: 'qc',
     caseEffect: 'open',
     team: 'qc',
   },
   {
     n: 2,
-    action: 'identify_damage',
-    status: 'failed',
+    action: 'send',
+    status: 'reported',
     custody: 'qc',
     actor: QC,
-    toStatus: 'same',
-    toCustody: 'same',
-    caseEffect: 'update_damage',
+    toStatus: 'at_service',
+    toCustody: 'transit',
+    caseEffect: null,
     team: 'qc',
-  },
-  {
-    n: 2,
-    action: 'identify_damage',
-    status: 'qc_repair',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'same',
-    toCustody: 'same',
-    caseEffect: 'update_damage',
-    team: 'qc',
+    leg: 'to_service',
   },
   {
     n: 3,
-    action: 'attempt_repair',
-    status: 'failed',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'qc_repair',
-    toCustody: 'qc',
-    caseEffect: null,
-    team: 'qc',
-  },
-  {
-    n: 4,
-    action: 'send',
-    status: 'failed',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'at_service',
-    toCustody: 'transit',
-    caseEffect: null,
-    team: 'qc',
-    leg: 'to_service',
-  },
-  {
-    n: 4,
-    action: 'send',
-    status: 'qc_repair',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'at_service',
-    toCustody: 'transit',
-    caseEffect: null,
-    team: 'qc',
-    leg: 'to_service',
-  },
-  {
-    n: 5,
     action: 'receive',
     status: 'at_service',
     custody: 'transit',
@@ -118,41 +76,45 @@ const POSITIVES: Positive[] = [
     leg: 'at_service',
   },
   {
-    n: 6,
+    n: 4,
     action: 'service_diagnosis',
+    stage: 'diagnosis',
     status: 'at_service',
+    custody: 'transit',
+    actor: SERVICE,
+    toStatus: 'diagnosis',
+    toCustody: 'service',
+    caseEffect: null,
+    team: 'service',
+  },
+  {
+    n: 4,
+    action: 'service_diagnosis',
+    stage: 'diagnosis',
+    status: 'service_repair',
+    custody: 'service',
+    actor: SERVICE,
+    toStatus: 'diagnosis',
+    toCustody: 'service',
+    caseEffect: null,
+    team: 'service',
+  },
+  {
+    n: 5,
+    action: 'service_diagnosis',
+    stage: 'repairing',
+    status: 'diagnosis',
     custody: 'service',
     actor: SERVICE,
     toStatus: 'service_repair',
     toCustody: 'service',
-    caseEffect: 'update_damage',
+    caseEffect: null,
     team: 'service',
   },
   {
-    n: 7,
-    action: 'declare_broken',
-    status: 'at_service',
-    custody: 'service',
-    actor: SERVICE,
-    toStatus: 'broken',
-    toCustody: 'same',
-    caseEffect: 'close_broken',
-    team: 'service',
-  },
-  {
-    n: 7,
-    action: 'declare_broken',
-    status: 'service_repair',
-    custody: 'service',
-    actor: SERVICE,
-    toStatus: 'broken',
-    toCustody: 'same',
-    caseEffect: 'close_broken',
-    team: 'service',
-  },
-  {
-    n: 8,
-    action: 'send',
+    n: 6,
+    action: 'service_diagnosis',
+    stage: 'done',
     status: 'service_repair',
     custody: 'service',
     actor: SERVICE,
@@ -160,10 +122,43 @@ const POSITIVES: Positive[] = [
     toCustody: 'transit',
     caseEffect: null,
     team: 'service',
-    leg: 'to_qc',
   },
   {
-    n: 9,
+    n: 6,
+    action: 'service_diagnosis',
+    stage: 'done',
+    status: 'at_service',
+    custody: 'transit',
+    actor: SERVICE,
+    toStatus: 'recheck',
+    toCustody: 'transit',
+    caseEffect: null,
+    team: 'service',
+  },
+  {
+    n: 7,
+    action: 'declare_broken',
+    status: 'diagnosis',
+    custody: 'service',
+    actor: SERVICE,
+    toStatus: 'broken',
+    toCustody: 'service',
+    caseEffect: 'close_broken',
+    team: 'service',
+  },
+  {
+    n: 7,
+    action: 'declare_broken',
+    status: 'at_service',
+    custody: 'transit',
+    actor: SERVICE,
+    toStatus: 'broken',
+    toCustody: 'service',
+    caseEffect: 'close_broken',
+    team: 'service',
+  },
+  {
+    n: 8,
     action: 'receive',
     status: 'recheck',
     custody: 'transit',
@@ -175,10 +170,21 @@ const POSITIVES: Positive[] = [
     leg: 'at_qc',
   },
   {
-    n: 10,
+    n: 9,
+    action: 'recheck_pass',
+    status: 'reported',
+    custody: 'qc',
+    actor: QC,
+    toStatus: 'good',
+    toCustody: 'qc',
+    caseEffect: 'close_good',
+    team: 'qc',
+  },
+  {
+    n: 9,
     action: 'recheck_pass',
     status: 'recheck',
-    custody: 'qc',
+    custody: 'transit',
     actor: QC,
     toStatus: 'good',
     toCustody: 'qc',
@@ -187,28 +193,28 @@ const POSITIVES: Positive[] = [
   },
   {
     n: 10,
-    action: 'recheck_pass',
-    status: 'qc_repair',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'good',
-    toCustody: 'qc',
-    caseEffect: 'close_good',
-    team: 'qc',
-  },
-  {
-    n: 11,
     action: 'recheck_fail',
-    status: 'recheck',
+    status: 'reported',
     custody: 'qc',
     actor: QC,
-    toStatus: 'failed',
+    toStatus: 'reported',
     toCustody: 'qc',
     caseEffect: null,
     team: 'qc',
   },
   {
-    n: 12,
+    n: 10,
+    action: 'recheck_fail',
+    status: 'recheck',
+    custody: 'qc',
+    actor: QC,
+    toStatus: 'reported',
+    toCustody: 'qc',
+    caseEffect: null,
+    team: 'qc',
+  },
+  {
+    n: 11,
     action: 'recheck',
     result: 'pass',
     status: 'good',
@@ -220,43 +226,19 @@ const POSITIVES: Positive[] = [
     team: 'qc',
   },
   {
-    n: 13,
+    n: 12,
     action: 'recheck',
     result: 'fail',
     status: 'good',
     custody: 'qc',
     actor: QC,
-    toStatus: 'failed',
+    toStatus: 'reported',
     toCustody: 'qc',
     caseEffect: 'open',
     team: 'qc',
   },
   {
-    n: 14,
-    action: 'send',
-    status: 'good',
-    custody: 'qc',
-    actor: QC,
-    toStatus: 'good',
-    toCustody: 'transit',
-    caseEffect: null,
-    team: 'qc',
-    leg: 'between',
-  },
-  {
-    n: 15,
-    action: 'receive',
-    status: 'good',
-    custody: 'transit',
-    actor: QC,
-    toStatus: 'good',
-    toCustody: 'qc',
-    caseEffect: null,
-    team: 'qc',
-    leg: 'between',
-  },
-  {
-    n: 16,
+    n: 13,
     action: 'note',
     status: 'good',
     custody: 'qc',
@@ -267,7 +249,7 @@ const POSITIVES: Positive[] = [
     team: 'qc',
   },
   {
-    n: 16,
+    n: 13,
     action: 'note',
     status: 'broken',
     custody: 'service',
@@ -278,7 +260,7 @@ const POSITIVES: Positive[] = [
     team: 'qc',
   },
   {
-    n: 17,
+    n: 14,
     action: 'note',
     status: 'at_service',
     custody: 'transit',
@@ -289,9 +271,9 @@ const POSITIVES: Positive[] = [
     team: 'service',
   },
   {
-    n: 17,
+    n: 14,
     action: 'note',
-    status: 'service_repair',
+    status: 'diagnosis',
     custody: 'service',
     actor: SERVICE,
     toStatus: 'same',
@@ -302,17 +284,19 @@ const POSITIVES: Positive[] = [
 ];
 
 describe('SERIAL_FLOW', () => {
-  test('tepat 17 baris', () => {
-    expect(SERIAL_FLOW).toHaveLength(17);
+  test('tepat 14 baris', () => {
+    expect(SERIAL_FLOW).toHaveLength(14);
   });
 
-  test('setiap baris tabel punya kasus positif yang menghasilkan baris itu', () => {
+  test('semua baris punya jalur dari status asal: setiap baris punya kasus positif yang menghasilkannya', () => {
+    const covered = new Set<number>();
     for (const p of POSITIVES) {
       const resolved = resolveAction(
         p.action,
         { status: p.status, custody: p.custody },
         p.actor,
         p.result,
+        p.stage,
       );
       if (!('row' in resolved)) throw new Error(`baris ${p.n} ditolak: ${resolved.error}`);
       const { row } = resolved;
@@ -322,49 +306,61 @@ describe('SERIAL_FLOW', () => {
       expect(row.team).toBe(p.team);
       expect(row.leg).toBe(p.leg);
       expect(SERIAL_FLOW.indexOf(row) + 1).toBe(p.n);
+      covered.add(p.n);
     }
+    expect([...covered].sort((a, b) => a - b)).toEqual(SERIAL_FLOW.map((_, i) => i + 1));
   });
 
   test('bidang wajib dan stiker sesuai tabel', () => {
     const requiredOf = (index: number) => SERIAL_FLOW[index - 1]?.required;
-    expect(requiredOf(1)).toEqual(['damage']);
-    expect(requiredOf(2)).toEqual(['damage']);
-    expect(requiredOf(4)).toEqual(['toLocationId']);
-    expect(requiredOf(8)).toEqual(['toLocationId']);
-    expect(requiredOf(13)).toEqual(['damage']);
-    expect(requiredOf(14)).toEqual(['toLocationId']);
-    expect(requiredOf(16)).toEqual(['message']);
-    expect(requiredOf(17)).toEqual(['message']);
-    expect(requiredOf(10)).toEqual([]);
+    expect(requiredOf(1)).toEqual(['message']);
+    expect(requiredOf(2)).toEqual([]);
+    expect(requiredOf(7)).toEqual(['message']);
+    expect(requiredOf(10)).toEqual(['message']);
+    expect(requiredOf(12)).toEqual(['message']);
+    expect(requiredOf(13)).toEqual(['message']);
+    expect(requiredOf(14)).toEqual(['message']);
+    expect(requiredOf(9)).toEqual([]);
     const withStickers = SERIAL_FLOW.map((row, i) => (row.allowStickers ? i + 1 : 0)).filter(
       Boolean,
     );
-    expect(withStickers).toEqual([10, 11, 12, 13]);
+    expect(withStickers).toEqual([9, 10, 11, 12]);
+  });
+
+  test('SERVICE_STATUSES memuat diagnosis', () => {
+    expect(SERVICE_STATUSES).toEqual(['at_service', 'diagnosis', 'service_repair']);
   });
 });
 
 describe('resolveAction: keadaan di luar tabel = state', () => {
-  // Daftar tulisan tangan, bebas dari tabel yang diuji.
+  // Daftar tulisan tangan, bebas dari tabel yang diuji. Format: aksi|hasil|status|custody (tahap tak diuji di sini).
+  const SERVICE_STATE = [
+    ['at_service', 'transit'],
+    ['at_service', 'service'],
+    ['diagnosis', 'transit'],
+    ['diagnosis', 'service'],
+    ['service_repair', 'transit'],
+    ['service_repair', 'service'],
+  ] as const;
   const VALID = new Set<string>([
     'report_failure|-|good|qc',
-    'identify_damage|-|failed|qc',
-    'identify_damage|-|qc_repair|qc',
-    'attempt_repair|-|failed|qc',
-    'send|-|failed|qc',
-    'send|-|qc_repair|qc',
-    'send|-|service_repair|service',
-    'send|-|good|qc',
+    'send|-|reported|qc',
     'receive|-|at_service|transit',
     'receive|-|recheck|transit',
-    'receive|-|good|transit',
-    'service_diagnosis|-|at_service|service',
-    'declare_broken|-|at_service|service',
-    'declare_broken|-|service_repair|service',
+    'recheck_pass|-|reported|qc',
+    'recheck_pass|-|reported|transit',
     'recheck_pass|-|recheck|qc',
-    'recheck_pass|-|qc_repair|qc',
+    'recheck_pass|-|recheck|transit',
+    'recheck_fail|-|reported|qc',
+    'recheck_fail|-|reported|transit',
     'recheck_fail|-|recheck|qc',
+    'recheck_fail|-|recheck|transit',
     'recheck|pass|good|qc',
     'recheck|fail|good|qc',
+    ...SERVICE_STATE.flatMap(([status, custody]) => [
+      `service_diagnosis|-|${status}|${custody}`,
+      `declare_broken|-|${status}|${custody}`,
+    ]),
     ...SERIAL_STATUSES.flatMap((status) =>
       SERIAL_CUSTODIES.map((custody) => `note|-|${status}|${custody}`),
     ),
@@ -390,6 +386,20 @@ describe('resolveAction: keadaan di luar tabel = state', () => {
     expect(checked).toBe((SERIAL_ACTIONS.length + 1) * 7 * 3);
   });
 
+  test('tahap diagnosis menentukan baris; tanpa tahap = baris pertama', () => {
+    const state = { status: 'at_service', custody: 'service' } as const;
+    for (const [stage, toStatus] of [
+      ['diagnosis', 'diagnosis'],
+      ['repairing', 'service_repair'],
+      ['done', 'recheck'],
+    ] as const) {
+      const resolved = resolveAction('service_diagnosis', state, SERVICE, undefined, stage);
+      expect('row' in resolved && resolved.row.toStatus).toBe(toStatus);
+    }
+    const none = resolveAction('service_diagnosis', state, SERVICE);
+    expect('row' in none && none.row.stage).toBe('diagnosis');
+  });
+
   test('recheck tanpa result = pass', () => {
     const resolved = resolveAction('recheck', { status: 'good', custody: 'qc' }, QC);
     expect('row' in resolved && resolved.row.result).toBe('pass');
@@ -404,10 +414,17 @@ describe('resolveAction: keadaan di luar tabel = state', () => {
       }
     }
   });
+
+  test('sendLegOf menurut status', () => {
+    expect(sendLegOf('send', 'reported')).toBe('to_service');
+    expect(sendLegOf('receive', 'at_service')).toBe('at_service');
+    expect(sendLegOf('receive', 'recheck')).toBe('at_qc');
+    expect(sendLegOf('send', 'good')).toBeNull();
+  });
 });
 
 describe('resolveAction: izin', () => {
-  test('serial-saja pada baris servis (5, 6, 7, 8) = permission', () => {
+  test('serial-saja pada baris servis = permission', () => {
     expect(resolveAction('receive', { status: 'at_service', custody: 'transit' }, QC)).toEqual({
       error: 'permission',
     });
@@ -417,24 +434,23 @@ describe('resolveAction: izin', () => {
     expect(
       resolveAction('declare_broken', { status: 'service_repair', custody: 'service' }, QC),
     ).toEqual({ error: 'permission' });
-    expect(resolveAction('send', { status: 'service_repair', custody: 'service' }, QC)).toEqual({
-      error: 'permission',
-    });
   });
 
-  test('serialservice-saja pada baris QC (1, 2, 3, 4, 9-15) = permission', () => {
+  test('QC tidak melihat aksi servis (FORBIDDEN di server)', () => {
+    expect(
+      availableActions({ status: 'at_service', custody: 'transit' }, QC).map((row) => row.action),
+    ).toEqual(['note']);
+  });
+
+  test('serialservice-saja pada baris QC = permission', () => {
     const cases: [SerialAction, SerialStatus, SerialCustody, ('pass' | 'fail')?][] = [
       ['report_failure', 'good', 'qc'],
-      ['identify_damage', 'failed', 'qc'],
-      ['attempt_repair', 'failed', 'qc'],
-      ['send', 'failed', 'qc'],
+      ['send', 'reported', 'qc'],
       ['receive', 'recheck', 'transit'],
       ['recheck_pass', 'recheck', 'qc'],
-      ['recheck_fail', 'recheck', 'qc'],
+      ['recheck_fail', 'reported', 'qc'],
       ['recheck', 'good', 'qc', 'pass'],
       ['recheck', 'good', 'qc', 'fail'],
-      ['send', 'good', 'qc'],
-      ['receive', 'good', 'transit'],
     ];
     for (const [action, status, custody, result] of cases) {
       expect(resolveAction(action, { status, custody }, SERVICE, result)).toEqual({
@@ -443,8 +459,8 @@ describe('resolveAction: izin', () => {
     }
   });
 
-  test('serialservice note pada good/failed/recheck/broken = permission', () => {
-    for (const status of ['good', 'failed', 'recheck', 'broken'] as const) {
+  test('serialservice note pada good/reported/recheck/broken = permission', () => {
+    for (const status of ['good', 'reported', 'recheck', 'broken'] as const) {
       expect(resolveAction('note', { status, custody: 'qc' }, SERVICE)).toEqual({
         error: 'permission',
       });
@@ -464,8 +480,8 @@ describe('resolveAction: izin', () => {
     const at = resolveAction('note', { status: 'at_service', custody: 'service' }, BOTH);
     expect('row' in at && at.row.team).toBe('service');
     expect('row' in at && at.row.module).toBe('serialservice');
-    const failed = resolveAction('note', { status: 'failed', custody: 'qc' }, BOTH);
-    expect('row' in failed && failed.row.team).toBe('qc');
+    const reported = resolveAction('note', { status: 'reported', custody: 'qc' }, BOTH);
+    expect('row' in reported && reported.row.team).toBe('qc');
     const repair = resolveAction('note', { status: 'service_repair', custody: 'service' }, QC);
     expect('row' in repair && repair.row.team).toBe('qc');
   });
@@ -477,6 +493,7 @@ describe('resolveAction: izin', () => {
         { status: p.status, custody: p.custody },
         BOTH,
         p.result,
+        p.stage,
       );
       expect('row' in resolved).toBe(true);
     }
@@ -486,29 +503,43 @@ describe('resolveAction: izin', () => {
 describe('availableActions', () => {
   const names = (rows: FlowRow[]) => rows.map((row) => row.action);
 
-  test('good/qc untuk serial-saja', () => {
+  test('good/qc untuk serial-saja: Lapor rusak, Cek ulang, Catatan', () => {
     expect(names(availableActions({ status: 'good', custody: 'qc' }, QC))).toEqual([
       'note',
       'recheck',
       'report_failure',
-      'send',
     ]);
   });
 
-  test('servis hanya melihat note pada at_service/service_repair', () => {
+  test('reported: kirim ke servis, cek ulang lolos/gagal, catatan', () => {
+    expect(names(availableActions({ status: 'reported', custody: 'qc' }, QC))).toEqual([
+      'note',
+      'send',
+      'recheck_pass',
+      'recheck_fail',
+    ]);
+  });
+
+  test('servis: di servis (transit) = terima, diagnosis, rusak, catatan', () => {
     expect(names(availableActions({ status: 'good', custody: 'qc' }, SERVICE))).toEqual([]);
     expect(names(availableActions({ status: 'at_service', custody: 'transit' }, SERVICE))).toEqual([
       'note',
       'receive',
-    ]);
-    expect(names(availableActions({ status: 'at_service', custody: 'service' }, SERVICE))).toEqual([
-      'note',
       'service_diagnosis',
       'declare_broken',
     ]);
     expect(
       names(availableActions({ status: 'service_repair', custody: 'service' }, SERVICE)),
-    ).toEqual(['note', 'send', 'declare_broken']);
+    ).toEqual(['note', 'service_diagnosis', 'declare_broken']);
+  });
+
+  test('recheck/transit di QC: terima atau cek ulang langsung', () => {
+    expect(names(availableActions({ status: 'recheck', custody: 'transit' }, QC))).toEqual([
+      'note',
+      'receive',
+      'recheck_pass',
+      'recheck_fail',
+    ]);
   });
 
   test('broken hanya note; tanpa duplikat aksi', () => {
@@ -521,18 +552,5 @@ describe('availableActions', () => {
         expect(new Set(list).size).toBe(list.length);
       }
     }
-  });
-});
-
-describe('sendLegOf', () => {
-  test('menurunkan jenis dari status', () => {
-    expect(sendLegOf('send', 'failed')).toBe('to_service');
-    expect(sendLegOf('send', 'qc_repair')).toBe('to_service');
-    expect(sendLegOf('send', 'service_repair')).toBe('to_qc');
-    expect(sendLegOf('send', 'good')).toBe('between');
-    expect(sendLegOf('send', 'broken')).toBeNull();
-    expect(sendLegOf('receive', 'at_service')).toBe('at_service');
-    expect(sendLegOf('receive', 'recheck')).toBe('at_qc');
-    expect(sendLegOf('receive', 'good')).toBe('between');
   });
 });

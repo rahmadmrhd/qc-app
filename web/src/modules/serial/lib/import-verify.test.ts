@@ -27,8 +27,6 @@ function rowsFor(items: { id: string; label?: string }[]): StagingRow[] {
           locationLabel: 'Jakarta',
           sample: false,
           note: '',
-          status: 'good',
-          damage: '',
         },
         () => `row-${String(++n).padStart(8, '0')}`,
         () => '2026-11-12T10:00:00.000Z',

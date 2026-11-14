@@ -39,7 +39,7 @@ async function seedHistory(): Promise<void> {
   await seedSerial(env, {
     id: 'sn1',
     serial: 'AB12',
-    status: 'failed',
+    status: 'reported',
     openCase: { id: 'c1', number: 'LP-20261110-001' },
   });
   await addEvents('sn1', [
@@ -102,7 +102,7 @@ describe('serials.history', () => {
     await seedSerial(env, {
       id: 'sn2',
       serial: 'ZZ99',
-      status: 'failed',
+      status: 'reported',
       openCase: { id: 'c2', number: 'LP-20261110-002' },
     });
     const own = await call(W, 'serials.history', { id: 'sn1', caseId: 'c1' });
@@ -165,10 +165,10 @@ describe('serials.get: kasus dan posisi', () => {
       transitFromLocationId: 'loc-sby',
       transitToLocationId: 'loc-jkt',
       transitOn: '2026-11-10',
-      openCase: { id: 'c-new', number: 'LP-20261110-002', damage: 'Port mati' },
+      openCase: { id: 'c-new', number: 'LP-20261110-002' },
     });
     await env.DB.prepare(
-      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, damage, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP-20261001-001', 'sn1', 'bu-a', '2026-10-01', '2026-10-03', 'Lama', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
+      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP-20261001-001', 'sn1', 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
     ).run();
     await addEvents('sn1', [[2, 'report_failure', 'c-new']]);
     const out = await call(W, 'serials.get', { id: 'sn1' });
@@ -184,7 +184,6 @@ describe('serials.get: kasus dan posisi', () => {
     });
     expect(out.data.serial.openCase).toMatchObject({
       id: 'c-new',
-      damage: 'Port mati',
       closedOn: null,
       outcome: null,
     });

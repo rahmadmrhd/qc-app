@@ -6,7 +6,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BulkPatch } from '../lib/draft';
-import { RECORD_STATUS_OPTIONS } from '../lib/labels';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 import { SerialLocationField } from './serial-location-field';
 
@@ -16,8 +15,6 @@ export interface BulkEditBarProps {
   onRemove: () => void;
   onClearSelection: () => void;
 }
-
-const STATUS_BULK_OPTIONS = [{ value: '', label: 'Tidak diubah' }, ...RECORD_STATUS_OPTIONS];
 
 const SAMPLE_OPTIONS = [
   { value: '', label: 'Tidak diubah' },
@@ -33,15 +30,9 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
   const [sample, setSample] = useState('');
   const [note, setNote] = useState('');
   const [clearNote, setClearNote] = useState(false);
-  const [status, setStatus] = useState('');
-  const [damage, setDamage] = useState('');
 
   const itemIncomplete = item.itemId !== '' && item.buId === '';
-  // Menjadikan baris Tidak lolos wajib disertai kerusakan (tiap baris membuka kasus).
-  const damageMissing = status === 'failed' && damage.trim() === '';
   const dirty =
-    status !== '' ||
-    damage.trim() !== '' ||
     item.itemId !== '' ||
     testDate !== '' ||
     location.id !== '' ||
@@ -63,8 +54,6 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
       patch.locationLabel = location.label;
     }
     if (sample !== '') patch.sample = sample === 'yes';
-    if (status !== '') patch.status = status === 'failed' ? 'failed' : 'good';
-    if (damage.trim() !== '') patch.damage = damage.trim();
     if (clearNote) patch.note = '';
     else if (note.trim() !== '') patch.note = note.trim();
     onApply(patch);
@@ -74,8 +63,6 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
     setSample('');
     setNote('');
     setClearNote(false);
-    setStatus('');
-    setDamage('');
   }
 
   return (
@@ -121,24 +108,6 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
           options={SAMPLE_OPTIONS}
           onValueChange={setSample}
         />
-        <Select
-          id="bulk-status"
-          label="Status (ubah massal)"
-          value={status}
-          options={STATUS_BULK_OPTIONS}
-          onValueChange={setStatus}
-        />
-        <div className="space-y-1.5">
-          <Label htmlFor="bulk-damage">Kerusakan (ubah massal)</Label>
-          <Input
-            id="bulk-damage"
-            value={damage}
-            maxLength={SERIAL_LIMITS.damageMax}
-            placeholder="Kosong = tidak diubah"
-            aria-invalid={damageMissing ? true : undefined}
-            onChange={(event) => setDamage(event.target.value.replace(/[\r\n]+/g, ' '))}
-          />
-        </div>
         <div className="space-y-1.5">
           <Label htmlFor="bulk-note">Catatan (ubah massal)</Label>
           <Input
@@ -161,19 +130,11 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
           </div>
         </div>
       </div>
-      <Button
-        type="button"
-        size="sm"
-        disabled={!dirty || itemIncomplete || damageMissing}
-        onClick={apply}
-      >
+      <Button type="button" size="sm" disabled={!dirty || itemIncomplete} onClick={apply}>
         Terapkan ke {count} baris
       </Button>
       {itemIncomplete ? (
         <p className="text-xs text-destructive">Pilih Business Unit untuk item ini.</p>
-      ) : null}
-      {damageMissing ? (
-        <p className="text-xs text-destructive">Isi kerusakan untuk status Tidak lolos.</p>
       ) : null}
     </section>
   );

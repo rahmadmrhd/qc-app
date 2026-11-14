@@ -40,6 +40,15 @@ test('denylist tetap menolak rute server saat ada query string', () => {
   }
 });
 
+test('/laporan/<token> bertitik adalah rute klien: server dan service worker sepakat (cangkang SPA)', () => {
+  for (const route of ['/laporan/v1.c1.1799999999.sig_abc-123', '/laporan/v1.a.b.c?x=1']) {
+    expect(denied(route), route).toBe(false);
+  }
+  for (const route of ['/laporanx/a.b', '/foo/bar.png', '/assets/x.js']) {
+    expect(denied(route), route).toBe(true);
+  }
+});
+
 test('titik di dalam query (mis. q=a/b.c) bukan berkas: rute klien tetap dijawab cangkang', () => {
   for (const route of ['/handover?q=a/b.c', '/item?search=x/y.z']) {
     expect(denied(route), route).toBe(false);

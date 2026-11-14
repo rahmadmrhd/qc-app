@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-13-pwa-offline-serah-terima-design.md` (§5 bagian `sending`, §7, §8, §9 butir (i)). PRD: `docs/prd/2026-10-26-qc-pwa.md`. Tahap A (PR #70) dan B (PR #73) sudah ada di `dev`.
 
+> **Catatan 2026-11-14 (setelah merge `dev`):** nomor akhir migrasi menjadi **0018** (`0018_client_id_serah_terima.sql`), karena `0017_laporan_rusak.sql` (PR Serial laporan rusak) masuk ke `dev` lebih dulu. Sebutan "0017" di bawah ini adalah nomor rencana semula.
+
 ## Global Constraints
 
 - Teks UI bahasa Indonesia santai (bukan baku kaku); "Serah Terima" ditulis lengkap pada judul.
@@ -46,7 +48,7 @@ Kegagalan yang paling mungkin menggigit dan tidak dijamin ditangkap tes tiap tug
 ### Task 1: Server: migrasi 0017, kontrak, komentar idempoten
 
 **Files:**
-- Create: `server/migrations/0017_client_id_serah_terima.sql`
+- Create: `server/migrations/0018_client_id_serah_terima.sql`
 - Modify: `shared/contract.ts` (`AddCommentInput.clientId?`, `SaveHandoverBatchInput.tasks[].clientId?`), `shared/handover.ts` (pola dan `isHandoverClientId`), `server/src/modules/handover/{validate,service,repo}.ts`, `server/src/core/cas.ts` (`RETRYABLE_UNIQUE_KEYS`)
 - Test: `server/src/modules/handover/comment-idempotent.test.ts` (baru), `server/src/modules/handover/rest.test.ts`
 
