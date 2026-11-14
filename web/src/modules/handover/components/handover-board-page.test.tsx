@@ -17,8 +17,10 @@ vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => state.api(...args) })
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
+import { ApiError } from '@/lib/api/api-error';
+import { resetOutboxEnv } from '@/test/outbox-env';
 import { HandoverBoardPage } from './handover-board-page';
 import { makeHandover } from './test-handover';
 
@@ -79,6 +81,7 @@ function pageOf(tasks: HandoverDto[], input: BoardInput) {
 }
 
 beforeEach(() => {
+  resetOutboxEnv();
   state.api.mockReset();
   state.selected = ['loc-a'];
   state.me = me({ handover: 'manage', qc: 'edit' });
@@ -248,6 +251,10 @@ test('komentar dikirim dari kartu tanpa membuka detail (komentar umum)', async (
       before: '',
       after: '',
       body: 'Halo',
+      // Kunci idempoten dibuat sebelum percobaan kirim pertama (antrean offline memakainya ulang).
+      clientId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      ),
     }),
   );
   expect(handlers.onOpen).not.toHaveBeenCalled();
@@ -381,4 +388,22 @@ test('akun dengan lokasi tidak melihat peringatan penugasan lokasi', async () =>
   renderPage();
   await screen.findByText('Serah Terima');
   expect(screen.queryByText(/belum ditugaskan ke lokasi mana pun/)).toBeNull();
+});
+
+test('komentar saat server tidak terjangkau: diantrekan, komposer tertutup, tampil "Belum terkirim" di kartu', async () => {
+  const task = makeHandover({ id: '1', number: 'ST-1' });
+  state.api.mockImplementation(async (method: string, input: BoardInput) => {
+    if (method === 'handovers.board') return pageOf([task], input);
+    throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-');
+  });
+  renderPage();
+  await screen.findByText('ST-1');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah komentar' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Halo offline');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
+  expect(await screen.findByText('Belum terkirim')).toBeInTheDocument();
+  expect(screen.getByText('Halo offline')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'Komentar' })).not.toBeInTheDocument();
+  const comments = state.api.mock.calls.filter((call) => call[0] === 'handovers.comment');
+  expect(comments).toHaveLength(1);
 });

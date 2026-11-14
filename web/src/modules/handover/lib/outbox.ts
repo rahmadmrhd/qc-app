@@ -96,6 +96,30 @@ function newId(): string {
   return `o${Date.now().toString(36)}-${idCounter}`;
 }
 
+/**
+ * Kunci idempoten untuk komentar dan task baru: UUID v4 huruf kecil 36 karakter (validasi server `isHandoverClientId`).
+ * `randomUUID` bila ada (konteks aman), selain itu dari `getRandomValues`/`Math.random`.
+ */
+export function newClientId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID().toLowerCase();
+    }
+  } catch {
+    // Konteks tak aman: pakai cadangan.
+  }
+  const bytes = new Uint8Array(16);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
 const isString = (value: unknown): value is string => typeof value === 'string';
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);

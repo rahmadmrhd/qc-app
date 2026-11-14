@@ -4,12 +4,23 @@ import { overlayPendingChecks } from './check-outbox';
 import { isExpiredEntry, outboxVersion, readOutbox, subscribeOutbox } from './outbox';
 import {
   type ItemSendState,
+  isEntrySending,
   isItemSending,
   sendingVersion,
   subscribeSending,
 } from './outbox-status';
 
 const NONE: ReadonlyMap<number, ItemSendState> = new Map();
+const NO_COMMENTS: readonly PendingComment[] = [];
+
+/** Komentar yang belum terkirim (antrean perangkat) untuk satu task, untuk ditampilkan di akhir daftar komentar. */
+export interface PendingComment {
+  id: string;
+  body: string;
+  quote: string;
+  at: number;
+  status: 'waiting' | 'sending';
+}
 
 /**
  * Menempelkan centang yang masih menunggu terkirim (antrean di perangkat) ke DTO untuk tampilan, lalu memberi status per
@@ -20,20 +31,38 @@ const NONE: ReadonlyMap<number, ItemSendState> = new Map();
 export function useOutboxOverlay(
   dto: HandoverDto,
   owner: string,
-): { dto: HandoverDto; itemStates: ReadonlyMap<number, ItemSendState> } {
+): {
+  dto: HandoverDto;
+  itemStates: ReadonlyMap<number, ItemSendState>;
+  pendingComments: readonly PendingComment[];
+} {
   const queueVersion = useSyncExternalStore(subscribeOutbox, outboxVersion, outboxVersion);
   const sendVersion = useSyncExternalStore(subscribeSending, sendingVersion, sendingVersion);
   // biome-ignore lint/correctness/useExhaustiveDependencies: versi memicu pembacaan ulang antrean (localStorage) dan penanda kirim
   return useMemo(() => {
     // Entri kedaluwarsa tak akan dikirim (dibuang pengurasan berikutnya): jangan ditempel atau ditandai.
     const now = Date.now();
-    const entries =
+    const live =
       owner === ''
         ? []
         : readOutbox(owner).filter(
-            (entry) =>
-              entry.kind === 'check' && entry.taskId === dto.id && !isExpiredEntry(entry, now),
+            (entry) => 'taskId' in entry && entry.taskId === dto.id && !isExpiredEntry(entry, now),
           );
+    const entries = live.filter((entry) => entry.kind === 'check');
+    const pendingComments: PendingComment[] = live.flatMap((entry) =>
+      entry.kind === 'comment'
+        ? [
+            {
+              id: entry.id,
+              body: entry.body,
+              quote: entry.quote,
+              at: entry.at,
+              status: isEntrySending(entry.id) ? ('sending' as const) : ('waiting' as const),
+            },
+          ]
+        : [],
+    );
+    const comments = pendingComments.length === 0 ? NO_COMMENTS : pendingComments;
     const itemStates = new Map<number, ItemSendState>();
     for (const entry of entries) {
       if (entry.kind !== 'check') continue;
@@ -55,7 +84,9 @@ export function useOutboxOverlay(
       entries.length === 0
         ? dto
         : overlayPendingChecks(dto, entries, owner, new Date().toISOString());
-    if (itemStates.size === 0) return { dto: overlaid, itemStates: NONE };
-    return { dto: overlaid, itemStates };
+    if (itemStates.size === 0) {
+      return { dto: overlaid, itemStates: NONE, pendingComments: comments };
+    }
+    return { dto: overlaid, itemStates, pendingComments: comments };
   }, [dto, owner, queueVersion, sendVersion]);
 }

@@ -16,11 +16,11 @@ import {
   searchFromStatus,
   statusFromSearch,
 } from '@/modules/handover/lib/search';
+import { useSendComment } from '@/modules/handover/lib/send-comment';
 import { useCheckQueue } from '@/modules/handover/lib/use-check-queue';
 import {
   handoverKeys,
   handoverQueryOptions,
-  useAddComment,
   useCancelHandover,
   useReopenHandover,
   useSetDone,
@@ -57,7 +57,7 @@ function HandoverDetailPage() {
   );
   const query = useQuery(handoverQueryOptions(handoverId, readable, seed));
   const setDone = useSetDone();
-  const addComment = useAddComment();
+  const sendComment = useSendComment(me.email);
   const checks = useCheckQueue(me.email);
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
@@ -138,7 +138,7 @@ function HandoverDetailPage() {
       }
       onCheck={(item, checked) => checks.toggle(ref, item, checked)}
       onComment={async (input) => {
-        await addComment.mutateAsync({ ...ref, ...input });
+        await sendComment({ ...ref, ...input });
       }}
     />
   );

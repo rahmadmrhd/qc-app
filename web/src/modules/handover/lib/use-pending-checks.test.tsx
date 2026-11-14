@@ -3,8 +3,8 @@ import { beforeEach, expect, test } from 'vitest';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
 import { enqueueCheck } from './check-outbox';
-import { readOutbox, removeOutboxEntries } from './outbox';
-import { beginSending, resetSendingForTests } from './outbox-status';
+import { enqueueOutbox, readOutbox, removeOutboxEntries } from './outbox';
+import { beginSending, beginSendingEntry, resetSendingForTests } from './outbox-status';
 import { useOutboxOverlay } from './use-pending-checks';
 
 const OWNER = 'a@x.com';
@@ -132,4 +132,51 @@ test('entri kedaluwarsa (> 24 jam) tidak menempel dan tidak menandai butir; entr
   expect(result.current.dto.checklist[0]?.checked).toBe(false);
   expect(result.current.dto.checklist[1]?.checked).toBe(true);
   expect([...result.current.itemStates]).toEqual([[1, 'waiting']]);
+});
+
+const commentEntry = (over: Record<string, unknown> = {}) => ({
+  kind: 'comment' as const,
+  clientId: '11111111-1111-4111-8111-111111111111',
+  taskId: 'h1',
+  locationId: 'loc-a',
+  quote: 'A = 1',
+  before: '',
+  after: '',
+  body: 'tolong dicek',
+  at: Date.now(),
+  ...over,
+});
+
+test('komentar tertunda untuk task ini: tampil waiting, sending saat dikirim, hilang setelah entri dihapus', async () => {
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  expect(result.current.pendingComments).toEqual([]);
+  await act(async () => {
+    await enqueueOutbox(OWNER, commentEntry());
+  });
+  const [pending] = result.current.pendingComments;
+  expect(pending).toMatchObject({ body: 'tolong dicek', quote: 'A = 1', status: 'waiting' });
+  // Komentar tidak mengubah centang atau status butir.
+  expect(result.current.dto).toBe(dto);
+  expect(result.current.itemStates.size).toBe(0);
+  let end: () => void = () => {};
+  act(() => {
+    end = beginSendingEntry(pending?.id ?? '');
+  });
+  expect(result.current.pendingComments[0]?.status).toBe('sending');
+  act(() => end());
+  expect(result.current.pendingComments[0]?.status).toBe('waiting');
+  await act(async () => {
+    await removeOutboxEntries(OWNER, [pending?.id ?? '']);
+  });
+  expect(result.current.pendingComments).toEqual([]);
+});
+
+test('komentar task lain, milik pemilik lain, atau kedaluwarsa tidak ikut tampil', async () => {
+  await enqueueOutbox(OWNER, commentEntry({ taskId: 'lain' }));
+  await enqueueOutbox('b@x.com', commentEntry());
+  await enqueueOutbox(OWNER, commentEntry({ at: Date.now() - 25 * 3600_000 }));
+  const dto = makeHandover();
+  const { result } = renderHook(() => useOutboxOverlay(dto, OWNER));
+  expect(result.current.pendingComments).toEqual([]);
 });

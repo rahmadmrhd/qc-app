@@ -11,11 +11,11 @@ import { useActiveLocations } from '@/modules/location/active-locations-context'
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { readableLocationIds } from '../lib/readable-locations';
 import { scopedLocationIds } from '../lib/search';
+import { useSendComment } from '../lib/send-comment';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
   handoverKeys,
-  useAddComment,
   useCancelHandover,
   useHandoverBoard,
   useReopenHandover,
@@ -53,7 +53,7 @@ export function HandoverBoardPage({
   const setDone = useSetDone();
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
-  const addComment = useAddComment();
+  const sendComment = useSendComment(me.email);
   const { isPending, track } = usePendingIds();
   // Centang instan + antrean serial per task; aksi lain menunggu antrean centang task itu kosong.
   const checks = useCheckQueue(me.email);
@@ -108,7 +108,7 @@ export function HandoverBoardPage({
         ),
       // Galat komentar ditampilkan oleh composer (draf dipertahankan), jadi dilempar kembali.
       onComment: async (input: { quote: string; before: string; after: string; body: string }) => {
-        await track(handover.id, () => addComment.mutateAsync({ ...ref, ...input }));
+        await track(handover.id, () => sendComment({ ...ref, ...input }));
       },
     };
   };
