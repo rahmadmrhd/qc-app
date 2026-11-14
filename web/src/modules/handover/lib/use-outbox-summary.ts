@@ -7,7 +7,7 @@ import {
   readOutbox,
   subscribeOutbox,
 } from './outbox';
-import { isItemSending, sendingVersion, subscribeSending } from './outbox-status';
+import { isEntrySending, isItemSending, sendingVersion, subscribeSending } from './outbox-status';
 
 const NONE: readonly OutboxEntry[] = [];
 
@@ -28,8 +28,9 @@ export function useOutboxSummary(owner: string): {
     const read =
       owner === '' ? NONE : readOutbox(owner).filter((entry) => !isExpiredEntry(entry, now));
     const entries = read.length === 0 ? NONE : read;
-    const sending = entries.filter(
-      (entry) => entry.kind === 'check' && isItemSending(entry.taskId, entry.index),
+    // Centang: per butir (tab ini); komentar dan task baru: per entri (termasuk yang dikirim tab lain lewat siaran).
+    const sending = entries.filter((entry) =>
+      entry.kind === 'check' ? isItemSending(entry.taskId, entry.index) : isEntrySending(entry.id),
     ).length;
     return { entries, sending };
   }, [owner, queueVersion, sendVersion]);

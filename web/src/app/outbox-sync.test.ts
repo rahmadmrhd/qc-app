@@ -1,5 +1,5 @@
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import * as deviceDb from '@/lib/device-db';
 import { readOutboxRecords } from '@/lib/device-db';
@@ -516,4 +516,80 @@ test('komentar yang ditolak atau kedaluwarsa dilaporkan (bukan sebagai centang);
   expect(messages.some((m) => m.includes('Komentar') && m.includes('kedaluwarsa'))).toBe(true);
   expect(messages.some((m) => m.includes('centang'))).toBe(false);
   expect(readOutbox(OWNER)).toEqual([]);
+});
+
+describe('toast penolakan komentar dan task baru (Tahap C)', () => {
+  const writeText = vi.fn();
+  beforeEach(() => {
+    writeText.mockReset();
+    writeText.mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  });
+
+  type ToastOptions = {
+    duration?: number;
+    action?: { label: string; onClick: () => void };
+  };
+  const optionsFor = (needle: string): ToastOptions | undefined =>
+    mocks.error.mock.calls.find((call) => String(call[0]).includes(needle))?.[1];
+
+  test('komentar ditolak: toast bertahan (duration Infinity) dan "Salin teks" menyalin isi komentar', async () => {
+    mocks.api.mockRejectedValue(new ApiError('CONFLICT', 'Task sudah dibatalkan', '-'));
+    await enqueueOutbox(OWNER, { ...commentEntry(), body: 'isi komentar penting' });
+    stop = startOutboxSync(client);
+    await settle();
+    const options = optionsFor('Komentar tidak dapat dikirim');
+    expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
+    expect(options?.action?.label).toBe('Salin teks');
+    options?.action?.onClick();
+    expect(writeText).toHaveBeenCalledWith('isi komentar penting');
+  });
+
+  test('task baru kedaluwarsa: toast bertahan dan "Salin teks" menyalin catatan tiap task dipisah baris kosong', async () => {
+    await enqueueOutbox(OWNER, {
+      kind: 'create',
+      locationId: 'loc-a',
+      tasks: [
+        {
+          clientId: '22222222-2222-4222-8222-222222222222',
+          customerName: 'PT A',
+          note: 'catatan A',
+        },
+        {
+          clientId: '33333333-3333-4333-8333-333333333333',
+          customerName: 'PT B',
+          note: 'catatan B',
+        },
+      ],
+      at: Date.now() - OUTBOX_MAX_AGE_MS - 1,
+    });
+    stop = startOutboxSync(client);
+    await settle();
+    expect(mocks.api).not.toHaveBeenCalled();
+    const options = optionsFor('Task baru kedaluwarsa');
+    expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
+    options?.action?.onClick();
+    expect(writeText).toHaveBeenCalledWith('catatan A\n\ncatatan B');
+  });
+
+  test('gagal menyalin tidak melempar', async () => {
+    writeText.mockRejectedValue(new Error('ditolak peramban'));
+    mocks.api.mockRejectedValue(new ApiError('VALIDATION', 'Tidak valid', '-'));
+    await enqueueOutbox(OWNER, commentEntry());
+    stop = startOutboxSync(client);
+    await settle();
+    const options = optionsFor('Komentar tidak dapat dikirim');
+    expect(() => options?.action?.onClick()).not.toThrow();
+    await settle();
+  });
+
+  test('toast centang tidak berubah: tanpa duration Infinity dan tanpa tombol salin', async () => {
+    mocks.api.mockRejectedValue(new ApiError('CONFLICT', 'Task sudah selesai', '-'));
+    await queue(0);
+    stop = startOutboxSync(client);
+    await settle();
+    const call = mocks.error.mock.calls.find((c) => String(c[0]).includes('centang'));
+    expect(call?.[0]).toBe('1 perubahan centang tidak dapat dikirim: Task sudah selesai');
+    expect(call?.[1]).toBeUndefined();
+  });
 });

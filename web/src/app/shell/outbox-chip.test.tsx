@@ -9,7 +9,12 @@ vi.mock('@/modules/auth/use-me', () => ({
 
 import { makeHandover } from '@/modules/handover/components/test-handover';
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
-import { beginSending, resetSendingForTests } from '@/modules/handover/lib/outbox-status';
+import { enqueueOutbox, readOutbox } from '@/modules/handover/lib/outbox';
+import {
+  beginSending,
+  beginSendingEntry,
+  resetSendingForTests,
+} from '@/modules/handover/lib/outbox-status';
 import { handoverKeys } from '@/modules/handover/queries';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { OutboxChip } from './outbox-chip';
@@ -100,4 +105,52 @@ test('label aksesibel lengkap walau teks panjang disembunyikan di layar sempit',
     span.className.includes('hidden sm:inline'),
   );
   expect(long?.textContent).toBe('2 belum terkirim');
+});
+
+const commentIn = (over: Record<string, unknown> = {}) => ({
+  kind: 'comment' as const,
+  clientId: '11111111-1111-4111-8111-111111111111',
+  taskId: 'h1',
+  locationId: 'loc-a',
+  quote: '',
+  before: '',
+  after: '',
+  body: 'tolong dicek ulang',
+  at: Date.now(),
+  ...over,
+});
+const createIn = () => ({
+  kind: 'create' as const,
+  locationId: 'loc-a',
+  tasks: [{ clientId: '22222222-2222-4222-8222-222222222222', customerName: 'PT Maju', note: 'x' }],
+  at: Date.now(),
+});
+
+test('hitungan mencakup centang, komentar, dan task baru; popover mencantumkan jenisnya', async () => {
+  await queue(0);
+  await enqueueOutbox(OWNER, commentIn());
+  await enqueueOutbox(OWNER, createIn());
+  const { client } = renderChip();
+  client.setQueryData(
+    handoverKeys.one('h1', ['loc-a']),
+    makeHandover({ id: 'h1', number: 'ST-20261113-001' }),
+  );
+  expect(screen.getByRole('status').textContent).toContain('3 belum terkirim');
+  await userEvent.click(screen.getByRole('button', { name: '3 belum terkirim' }));
+  expect(await screen.findByText(/^Centang · ST-20261113-001/)).toBeInTheDocument();
+  expect(screen.getByText(/^Komentar · ST-20261113-001/)).toBeInTheDocument();
+  expect(screen.getByText('tolong dicek ulang')).toBeInTheDocument();
+  // Task baru belum bernomor: jenis + waktu saja, nama customer di baris isi.
+  const created = screen.getByText(/^Task baru ·/);
+  expect(created.textContent).not.toMatch(/ST-|Task lain/);
+  expect(screen.getByText('PT Maju')).toBeInTheDocument();
+});
+
+test('komentar yang sedang dikirim dihitung sebagai mengirim', async () => {
+  await enqueueOutbox(OWNER, commentIn());
+  await enqueueOutbox(OWNER, createIn());
+  const entries = readOutbox(OWNER);
+  beginSendingEntry(entries.find((e) => e.kind === 'comment')?.id ?? '');
+  renderChip();
+  expect(screen.getByRole('status').textContent).toContain('Mengirim 1 dari 2…');
 });

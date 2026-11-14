@@ -20,6 +20,7 @@ import {
   flushOutbox,
   sendOutboxEntry,
 } from '@/modules/handover/lib/outbox-flush';
+import { copyableText, describeEntry } from '@/modules/handover/lib/outbox-labels';
 import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
@@ -51,6 +52,27 @@ function cacheIsNewer(queryClient: QueryClient, saved: HandoverDto): boolean {
   return copies.some((copy) => copy !== undefined && time(copy.updatedAt) > time(saved.updatedAt));
 }
 
+/** Menyalin teks entri yang ditolak/kedaluwarsa; kegagalan papan klip tak pernah melempar. */
+function copyText(text: string): void {
+  try {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    if (!clipboard) {
+      toast.error('Peramban ini tidak mengizinkan menyalin teks.');
+      return;
+    }
+    void clipboard.writeText(text).then(
+      () => toast.success('Teks disalin'),
+      () => toast.error('Teks tidak bisa disalin.'),
+    );
+  } catch {
+    // Dibiarkan: menyalin hanya kemudahan.
+  }
+}
+
+/**
+ * Toast penolakan/kedaluwarsa: centang digabung seperti sebelumnya; komentar dan task baru satu toast per entri yang
+ * BERTAHAN sampai ditutup (isinya mungkin satu-satunya salinan) dengan tombol "Salin teks".
+ */
 function announce(result: FlushResult): void {
   const rejectedChecks = result.rejected.filter((item) => item.entry.kind === 'check');
   if (rejectedChecks.length > 0) {
@@ -61,19 +83,23 @@ function announce(result: FlushResult): void {
   if (expiredChecks.length > 0) {
     toast.error(`${expiredChecks.length} perubahan centang kedaluwarsa dan dibuang`);
   }
-  // Komentar dan task baru yang ditolak atau kedaluwarsa: toast beralasan dengan "Salin teks" menyusul di Task 9.
+  const persistent = (message: string, entry: OutboxEntry) => {
+    const text = copyableText(entry);
+    toast.error(message, {
+      duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
+      ...(text === null ? {} : { action: { label: 'Salin teks', onClick: () => copyText(text) } }),
+    });
+  };
   for (const item of result.rejected) {
     if (item.entry.kind === 'check') continue;
-    toast.error(`${entryNoun(item.entry)} tidak dapat dikirim: ${item.reason}`);
+    persistent(`${describeEntry(item.entry).kind} tidak dapat dikirim: ${item.reason}`, item.entry);
   }
   for (const entry of result.expired) {
     if (entry.kind === 'check') continue;
-    toast.error(`${entryNoun(entry)} kedaluwarsa dan dibuang`);
+    persistent(`${describeEntry(entry).kind} kedaluwarsa dan dibuang`, entry);
   }
 }
-
-const entryNoun = (entry: OutboxEntry): string =>
-  entry.kind === 'comment' ? 'Komentar' : entry.kind === 'create' ? 'Task baru' : 'Perubahan';
 
 /**
  * Penyinkron antrean centang di foreground (FR-P17-P19; tanpa Background Sync). Pemicu: awal aplikasi, `online`, tab

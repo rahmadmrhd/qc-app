@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
-import { readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
+import { enqueueOutbox, readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { LogoutConfirmDialog } from './logout-confirm-dialog';
 
@@ -71,4 +71,27 @@ test('Esc menutup sebagai batal', async () => {
   await userEvent.keyboard('{Escape}');
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test('hitungan mencakup komentar dan task baru serta semua pemilik', async () => {
+  await queue(0);
+  await enqueueOutbox('a@x.com', {
+    kind: 'comment',
+    clientId: '11111111-1111-4111-8111-111111111111',
+    taskId: 'h1',
+    locationId: 'loc-a',
+    quote: '',
+    before: '',
+    after: '',
+    body: 'halo',
+    at: Date.now(),
+  });
+  await enqueueOutbox('lain@x.com', {
+    kind: 'create',
+    locationId: 'loc-a',
+    tasks: [{ clientId: '22222222-2222-4222-8222-222222222222', customerName: 'PT A', note: 'x' }],
+    at: Date.now(),
+  });
+  render(<LogoutConfirmDialog onConfirm={vi.fn()} onCancel={vi.fn()} />);
+  expect(screen.getByText(/3 perubahan belum terkirim/)).toBeInTheDocument();
 });
