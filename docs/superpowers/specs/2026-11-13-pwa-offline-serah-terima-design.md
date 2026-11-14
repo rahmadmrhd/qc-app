@@ -253,7 +253,7 @@ Penyesuaian implementasi di luar rencana, disahkan pemilik produk pada 2026-11-1
 
 Risiko yang tersisa:
 - A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman. Ini konsekuensi langsung dari muat ulang yang disetujui pemilik produk (2026-11-14).
-- A3 memetakan galat server selain `UNAVAILABLE` ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya (aman, tidak memuat ulang). Dicatat untuk diketahui; belum dikonfirmasi pemilik secara eksplisit.
+- A3 memetakan galat server selain `UNAVAILABLE` (mis. 5xx dari server atau proksi, respons tak terurai) ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya, tidak memuat ulang. Keputusan pemilik produk 2026-11-15: dibiarkan demikian (aman; memuat ulang saat server bermasalah berisiko membuang isian formulir pada saat yang buruk). Konsekuensi yang diterima: pemulihan fitur offline di tab itu tertunda sampai server sehat dan tab difokuskan lagi.
 - Keluar membersihkan antrean dan papan secara paralel dengan satu anggaran 1,5 dtk (diperbaiki pada putaran perbaikan 1; sebelumnya dua anggaran berurutan).
 
 Belum diuji di perangkat nyata (lihat `docs/e2e-checklist.md` #208-#224).
