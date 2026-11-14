@@ -4,7 +4,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { readOutboxRecords } from '@/lib/device-db';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { makeHandover } from '../components/test-handover';
-import { enqueueOutbox, readOutbox } from './outbox';
+import { enqueueOutbox, readOutbox, resetOutboxForTests } from './outbox';
 import { sendComment } from './send-comment';
 
 const OWNER = 'qc@x.id';
@@ -111,4 +111,84 @@ test('clientId dibuat otomatis berbentuk UUID huruf kecil bila tidak disuntik', 
   expect(send.mock.calls[0]?.[0].clientId).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   );
+});
+
+const queuedComment = (taskId: string, clientId = '22222222-2222-4222-8222-222222222222') => ({
+  kind: 'comment' as const,
+  clientId,
+  taskId,
+  locationId: 'loc-a',
+  quote: '',
+  before: '',
+  after: '',
+  body: 'lebih dulu',
+  at: Date.now() - 1_000,
+});
+
+test('A1: task yang masih punya entri antre: komentar baru ikut DIANTREKAN (tidak mendahului), penguras dipicu', async () => {
+  await enqueueOutbox(OWNER, queuedComment('t1'));
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const requestFlush = vi.fn();
+  const result = await sendComment(input, { send, newId: () => CLIENT, requestFlush });
+  expect(result).toEqual({ queued: true });
+  expect(send).not.toHaveBeenCalled();
+  const entries = readOutbox(OWNER);
+  expect(entries.map((e) => e.kind)).toEqual(['comment', 'comment']);
+  expect(entries[1]).toMatchObject({ clientId: CLIENT, taskId: 't1', body: 'halo' });
+  expect(requestFlush).toHaveBeenCalledOnce();
+});
+
+test('A1: entri centang antre pada task yang sama juga menahan komentar online', async () => {
+  await enqueueOutbox(OWNER, {
+    kind: 'check',
+    taskId: 't1',
+    locationId: 'loc-a',
+    index: 0,
+    text: 'a',
+    checked: true,
+    at: Date.now() - 1_000,
+  });
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const result = await sendComment(input, { send, requestFlush: vi.fn() });
+  expect(result).toEqual({ queued: true });
+  expect(send).not.toHaveBeenCalled();
+});
+
+test('A1: antrean hanya milik task LAIN: komentar langsung dikirim online', async () => {
+  await enqueueOutbox(OWNER, queuedComment('t2'));
+  const dto = makeHandover({ id: 't1' });
+  const send = vi.fn(async (_body: AddCommentInput) => dto);
+  const result = await sendComment(input, { send, requestFlush: vi.fn() });
+  expect(result).toEqual({ queued: false, dto });
+  expect(send).toHaveBeenCalledOnce();
+  expect(readOutbox(OWNER)).toHaveLength(1);
+});
+
+test('A1: salinan memori kosong (hidrasi gagal) tetapi toko berisi: disegarkan dari toko lalu diantrekan', async () => {
+  await enqueueOutbox(OWNER, queuedComment('t1'));
+  resetOutboxForTests();
+  expect(readOutbox(OWNER)).toEqual([]);
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const result = await sendComment(input, { send, newId: () => CLIENT, requestFlush: vi.fn() });
+  expect(result).toEqual({ queued: true });
+  expect(send).not.toHaveBeenCalled();
+  expect(readOutbox(OWNER)).toHaveLength(2);
+});
+
+test('A1: toko tak terbaca (null) tidak menahan komentar: tetap dicoba online', async () => {
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  const result = await sendComment(input, {
+    send,
+    refresh: async () => null,
+    requestFlush: vi.fn(),
+  });
+  expect(result.queued).toBe(false);
+  expect(send).toHaveBeenCalledOnce();
+});
+
+test('A1: antrean task itu penuh (komentar baru ikut antre tetapi ditolak): dilempar, isi tak dibuang', async () => {
+  for (let i = 0; i < 50; i++) await enqueueOutbox(OWNER, queuedComment('t1', CLIENT));
+  const send = vi.fn(async (_body: AddCommentInput) => makeHandover());
+  await expect(sendComment(input, { send, requestFlush: vi.fn() })).rejects.toThrow(/penuh/);
+  expect(send).not.toHaveBeenCalled();
 });

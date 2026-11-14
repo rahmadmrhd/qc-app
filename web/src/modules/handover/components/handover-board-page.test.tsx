@@ -403,8 +403,11 @@ test('komentar saat server tidak terjangkau: diantrekan, komposer tertutup, tamp
   await userEvent.type(screen.getByRole('textbox', { name: 'Komentar' }), 'Halo offline');
   await userEvent.click(screen.getByRole('button', { name: 'Kirim' }));
   expect(await screen.findByText('Belum terkirim')).toBeInTheDocument();
+  // Komposer menutup sesudah pengiriman selesai (entri antre tampil lebih dulu): tunggu, lalu hanya satu salinan teks.
+  await waitFor(() =>
+    expect(screen.queryByRole('textbox', { name: 'Komentar' })).not.toBeInTheDocument(),
+  );
   expect(screen.getByText('Halo offline')).toBeInTheDocument();
-  expect(screen.queryByRole('textbox', { name: 'Komentar' })).not.toBeInTheDocument();
   const comments = state.api.mock.calls.filter((call) => call[0] === 'handovers.comment');
   expect(comments).toHaveLength(1);
 });

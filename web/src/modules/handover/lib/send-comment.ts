@@ -1,8 +1,17 @@
 import type { AddCommentInput, HandoverDto } from '@shared/contract';
 import { toast } from 'sonner';
+import { requestOutboxFlush } from '@/app/outbox-sync';
 import { ApiError } from '@/lib/api/api-error';
 import { useAddComment } from '../queries';
-import { enqueueOutbox, newClientId } from './outbox';
+import { hasEntriesForTask } from './check-outbox';
+import {
+  enqueueOutbox,
+  newClientId,
+  OUTBOX_IO_BUDGET_MS,
+  type OutboxEntry,
+  readOutbox,
+  refreshOutboxFromStore,
+} from './outbox';
 
 export type SendCommentInput = Omit<AddCommentInput, 'clientId'> & { owner: string };
 
@@ -12,13 +21,47 @@ export interface SendCommentDeps {
   enqueue?: typeof enqueueOutbox;
   newId?: () => string;
   now?: () => number;
+  /** Segarkan antrean pemilik dari toko (`null` = tidak diketahui). Bawaan: `refreshOutboxFromStore` dengan batas waktu. */
+  refresh?: (owner: string) => Promise<OutboxEntry[] | null>;
+  requestFlush?: () => void;
+}
+
+async function refreshWithinBudget(owner: string): Promise<OutboxEntry[] | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), OUTBOX_IO_BUDGET_MS);
+  });
+  try {
+    return await Promise.race([refreshOutboxFromStore(owner), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Task ini masih punya entri antre (komentar/centang)? Salinan memori yang kosong bisa berarti hidrasi gagal atau
+ * terlambat, bukan antrean kosong: segarkan dari toko dulu. Toko tak terbaca (`null`) = tidak diketahui; komentar
+ * tetap dicoba online (idempoten lewat `clientId`), bukan ditahan tanpa dasar.
+ */
+async function taskHasQueuedEntries(
+  owner: string,
+  taskId: string,
+  refresh: (owner: string) => Promise<OutboxEntry[] | null>,
+): Promise<boolean> {
+  if (readOutbox(owner).length === 0) {
+    const fresh = await refresh(owner);
+    if (fresh === null) return false;
+    return fresh.some((entry) => 'taskId' in entry && entry.taskId === taskId);
+  }
+  return hasEntriesForTask(owner, taskId);
 }
 
 /**
  * Mengirim komentar. `clientId` (kunci idempoten) dibuat SEKALI sebelum percobaan pertama dan dipakai ulang bila
  * entri diantrekan: kiriman pertama yang sudah tersimpan di server tetapi putus di jalan (dipetakan `UNAVAILABLE`)
  * tak menggandakan komentar saat dikirim ulang. Hanya `UNAVAILABLE` yang mengantre; galat lain dilempar apa adanya.
- * Antrean penuh/penulisan gagal melempar galat biasa supaya isi tidak dibuang dari komposer.
+ * Antrean penuh/penulisan gagal melempar galat biasa supaya isi tidak dibuang dari komposer. Task yang masih punya entri
+ * antre (komentar atau centang) menerima komentar baru LANGSUNG ke antrean, supaya urutan di server terjaga.
  */
 export async function sendComment(
   input: SendCommentInput,
@@ -26,11 +69,7 @@ export async function sendComment(
 ): Promise<{ queued: boolean; dto?: HandoverDto }> {
   const { owner, ...fields } = input;
   const clientId = (deps.newId ?? newClientId)();
-  try {
-    const dto = await deps.send({ ...fields, clientId });
-    return { queued: false, dto };
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.code !== 'UNAVAILABLE') throw error;
+  const queueIt = async (): Promise<{ queued: boolean; dto?: HandoverDto }> => {
     const result = await (deps.enqueue ?? enqueueOutbox)(owner, {
       kind: 'comment',
       clientId,
@@ -50,6 +89,19 @@ export async function sendComment(
         : 'Komentar belum bisa disimpan di perangkat.',
       '-',
     );
+  };
+  // Urutan per task: task yang masih punya entri antre tidak boleh didahului kiriman langsung (seperti centang).
+  if (await taskHasQueuedEntries(owner, fields.id, deps.refresh ?? refreshWithinBudget)) {
+    const queued = await queueIt();
+    (deps.requestFlush ?? requestOutboxFlush)();
+    return queued;
+  }
+  try {
+    const dto = await deps.send({ ...fields, clientId });
+    return { queued: false, dto };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.code !== 'UNAVAILABLE') throw error;
+    return queueIt();
   }
 }
 

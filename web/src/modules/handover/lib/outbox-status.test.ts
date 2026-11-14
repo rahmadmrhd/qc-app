@@ -173,8 +173,9 @@ test('timer kedaluwarsa memberi tahu pelanggan agar tampilan memuat ulang', asyn
     other.postMessage({ type: 'sending', ids: ['e9'], until: Date.now() + 400 });
     await vi.waitFor(() => expect(isEntrySending('e9')).toBe(true));
     listener.mockClear();
-    await vi.waitFor(() => expect(isEntrySending('e9')).toBe(false), { timeout: 2_000 });
-    expect(listener).toHaveBeenCalled();
+    // `isEntrySending` berubah menurut jam sebelum timer menyiarkan: tunggu pemberitahuannya, bukan perubahan jam.
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled(), { timeout: 2_000 });
+    expect(isEntrySending('e9')).toBe(false);
   } finally {
     other.close();
   }
