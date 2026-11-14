@@ -172,6 +172,7 @@ const WORST: Inputs = {
     tasks: longList(HANDOVER_LIMITS.batch, () => ({
       customerName: text(HANDOVER_LIMITS.customerName),
       note: text(HANDOVER_LIMITS.note),
+      clientId: UUID,
     })),
   },
   'handovers.cancel': { id: UUID, locationId: UUID },
