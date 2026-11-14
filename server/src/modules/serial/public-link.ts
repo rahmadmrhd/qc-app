@@ -5,6 +5,8 @@
  * token tidak dapat dipakai (atau dipalsukan) sebagai sesi. Semua kegagalan verifikasi menghasilkan `null` tanpa
  * membedakan sebab.
  */
+import { decodeBytes, encodeBytes } from '../../core/base64url';
+
 const KEY_LABEL = 'qc:serial-report-link:v1';
 const VERSION = 'v1';
 const TOKEN_MAX_LENGTH = 300;
@@ -13,24 +15,6 @@ const EXP_PATTERN = /^\d{1,12}$/;
 const SIG_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const encoder = new TextEncoder();
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-}
-
-function fromBase64Url(text: string): Uint8Array | null {
-  try {
-    const padded = text.replaceAll('-', '+').replaceAll('_', '/');
-    const binary = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-    return bytes;
-  } catch {
-    return null;
-  }
-}
 
 async function hmacKey(
   raw: ArrayBuffer | Uint8Array,
@@ -55,7 +39,7 @@ export async function signReportToken(
   const payload = `${VERSION}.${caseId}.${expSeconds}`;
   const key = await derivedKey(secret, 'sign');
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(payload)));
-  return `${payload}.${toBase64Url(sig)}`;
+  return `${payload}.${encodeBytes(new Uint8Array(sig))}`;
 }
 
 /** `{ caseId }` bila token sah dan belum kedaluwarsa pada `nowMs`; selain itu `null`. */
@@ -72,7 +56,7 @@ export async function verifyReportToken(
   if (!CASE_ID_PATTERN.test(caseId) || !EXP_PATTERN.test(exp) || !SIG_PATTERN.test(sig)) {
     return null;
   }
-  const sigBytes = fromBase64Url(sig);
+  const sigBytes = decodeBytes(sig);
   if (!sigBytes) return null;
   const key = await derivedKey(secret, 'verify');
   // `crypto.subtle.verify` membandingkan tanda tangan dalam waktu tetap.
