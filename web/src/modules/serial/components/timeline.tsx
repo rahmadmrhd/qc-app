@@ -220,10 +220,10 @@ function GroupToggle({
 }
 
 /**
- * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Dua
- * kelompok yang dilipat bersama (keputusan pemilik 2026-11-15, menggantikan lipatan per kartu): "Tampilkan riwayat
- * sebelumnya" (semua riwayat lama, tertutup) dan "Riwayat saat ini" (riwayat terbaru, terbuka). Kartu di dalam
- * kelompok selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (tab Semua). `loadOlder`
+ * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Riwayat
+ * lama dilipat bersama (keputusan pemilik 2026-11-15, menggantikan lipatan per kartu): "Tampilkan riwayat sebelumnya"
+ * (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru, selalu tampil dan tidak
+ * dapat dilipat). Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (tab Semua). `loadOlder`
  * (mis. tombol "Muat yang lebih lama") tampil di dalam kelompok riwayat sebelumnya, di atas kartu tertua.
  */
 export function Timeline({
@@ -239,7 +239,6 @@ export function Timeline({
   loadOlder?: ReactNode;
 }) {
   const [previousOpen, setPreviousOpen] = useState(false);
-  const [currentOpen, setCurrentOpen] = useState(true);
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
@@ -271,12 +270,10 @@ export function Timeline({
           ) : null}
         </>
       ) : null}
-      <GroupToggle
-        label="Riwayat saat ini"
-        open={currentOpen}
-        onToggle={() => setCurrentOpen((value) => !value)}
-      />
-      {currentOpen ? card(current, markLatest) : null}
+      <li className="list-none">
+        <h3 className="px-2 py-1.5 text-sm font-medium text-muted-foreground">Riwayat saat ini</h3>
+      </li>
+      {card(current, markLatest)}
     </ol>
   );
 }

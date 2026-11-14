@@ -27,14 +27,11 @@ const seqsShown = () =>
     .map((li) => li.getAttribute('data-seq'))
     .filter(Boolean);
 
-test('semua riwayat lama dilipat jadi satu kelompok; riwayat saat ini terbuka', () => {
+test('semua riwayat lama dilipat jadi satu kelompok; riwayat saat ini selalu tampil', () => {
   render(<Timeline events={[event(3), event(1), event(2)]} />);
   const previous = screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' });
   expect(previous).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByRole('button', { name: 'Riwayat saat ini' })).toHaveAttribute(
-    'aria-expanded',
-    'true',
-  );
+  expect(screen.getByRole('heading', { name: 'Riwayat saat ini' })).toBeInTheDocument();
   // Hanya riwayat terbaru yang tampil; isi riwayat lama tidak ada di halaman.
   expect(seqsShown()).toEqual(['3']);
   expect(screen.getByText('Catatan nomor 3')).toBeInTheDocument();
@@ -51,20 +48,19 @@ test('membuka kelompok sebelumnya menampilkan semua riwayat lama lengkap, urut l
   expect(screen.getByText('Catatan nomor 2')).toBeInTheDocument();
   const hide = screen.getByRole('button', { name: 'Sembunyikan riwayat sebelumnya' });
   expect(hide).toHaveAttribute('aria-expanded', 'true');
-  // Tidak ada tombol lipat per kartu: hanya dua pelipat kelompok.
-  expect(screen.getAllByRole('button')).toHaveLength(2);
+  // Tidak ada tombol lipat per kartu maupun untuk riwayat saat ini: hanya satu pelipat (riwayat sebelumnya).
+  expect(screen.getAllByRole('button')).toHaveLength(1);
   await userEvent.click(hide);
   expect(seqsShown()).toEqual(['3']);
 });
 
-test('riwayat saat ini juga dapat dilipat', async () => {
+test('riwayat saat ini tidak dapat dilipat: judulnya bukan tombol dan kartunya tetap tampil', async () => {
   render(<Timeline events={[event(1), event(2)]} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Riwayat saat ini' }));
-  expect(seqsShown()).toEqual([]);
-  expect(screen.getByRole('button', { name: 'Riwayat saat ini' })).toHaveAttribute(
-    'aria-expanded',
-    'false',
-  );
+  expect(screen.queryByRole('button', { name: 'Riwayat saat ini' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Sembunyikan riwayat sebelumnya' }));
+  expect(screen.getByRole('heading', { name: 'Riwayat saat ini' })).toBeInTheDocument();
+  expect(seqsShown()).toEqual(['2']);
 });
 
 test('satu riwayat saja: tanpa pelipat riwayat sebelumnya', () => {
