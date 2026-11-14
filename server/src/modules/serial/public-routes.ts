@@ -164,6 +164,7 @@ publicSerialApp.get('/serial-reports/:token', async (c) => {
         found.bu_id.trim(),
       ),
       serialId: found.serial_id.trim(),
+      caseId: found.id.trim(),
       unit: {
         serial: unit.serial,
         itemLabel: unit.itemLabel,

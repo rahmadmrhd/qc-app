@@ -20,6 +20,7 @@ const REPORT: SerialPublicReportDto = {
   expiresOn: '2026-12-14',
   viewerCanOpen: false,
   serialId: 's1',
+  caseId: 'c1',
   unit: {
     serial: 'ABC123',
     itemLabel: 'Cisco C9200',
@@ -162,7 +163,7 @@ test('tautan luar di catatan memakai noreferrer; meta referrer no-referrer dipas
 test('pemegang tautan berizin (viewerCanOpen) dialihkan ke halaman biasa tanpa menampilkan isi', async () => {
   fetchMock.mockResolvedValue(jsonResponse({ ...REPORT, viewerCanOpen: true }));
   renderPage();
-  await waitFor(() => expect(onOpenSerial).toHaveBeenCalledWith('s1'));
+  await waitFor(() => expect(onOpenSerial).toHaveBeenCalledWith('s1', 'c1'));
   expect(screen.queryByRole('heading', { name: 'LP-20261113-001' })).toBeNull();
 });
 

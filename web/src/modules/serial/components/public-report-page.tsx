@@ -13,7 +13,7 @@ import { Timeline } from './timeline';
 export interface PublicReportPageProps {
   token: string;
   /** Pemegang tautan yang login dan berizin: pindah ke halaman biasa (semua izinnya berlaku). */
-  onOpenSerial: (serialId: string) => void;
+  onOpenSerial: (serialId: string, caseId: string) => void;
 }
 
 /**
@@ -81,9 +81,10 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
   });
   const viewerCanOpen = report.data?.viewerCanOpen === true;
   const serialId = report.data?.serialId;
+  const caseId = report.data?.caseId;
   useEffect(() => {
-    if (viewerCanOpen && serialId) onOpenSerial(serialId);
-  }, [viewerCanOpen, serialId, onOpenSerial]);
+    if (viewerCanOpen && serialId && caseId) onOpenSerial(serialId, caseId);
+  }, [viewerCanOpen, serialId, caseId, onOpenSerial]);
 
   if (report.isPending || viewerCanOpen) {
     return (

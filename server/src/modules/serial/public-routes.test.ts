@@ -156,6 +156,7 @@ describe('GET /api/public/serial-reports/:token', () => {
       expiresOn: '2026-12-12',
       viewerCanOpen: false,
       serialId,
+      caseId,
       unit: {
         serial: 'PUB-1',
         itemLabel: 'Merk Alfa',
@@ -191,6 +192,7 @@ describe('GET /api/public/serial-reports/:token', () => {
     const body = (await (await report(await tokenFor(caseId))).json()) as Json;
     expect(Object.keys(body).sort()).toEqual(
       [
+        'caseId',
         'closedOn',
         'events',
         'expiresOn',
