@@ -281,7 +281,7 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 189 | Centang saat offline, lalu minta orang lain menyelesaikan atau membatalkan task itu sebelum Anda online | Saat online muncul "N perubahan centang tidak dapat dikirim" beserta alasannya; entri dibuang dan tidak diulang | PWA FR-P18 |
 | 190 | Ubah jam perangkat maju lebih dari 24 jam setelah mengantre centang offline, lalu online | Entri dibuang dengan pemberitahuan kedaluwarsa; tidak terkirim | PWA FR-P19 |
 | 191 | Centang saat offline, lalu Keluar; login sebagai pengguna lain di perangkat yang sama dan online | Antrean pemilik pertama tidak pernah terkirim; DevTools → Application → Local Storage tidak menyisakan kunci `qc.outbox:*` | PWA FR-P14, FR-P19 |
-| 192 | Saat offline, coba aksi lain (buat task, simpan item, tambah komentar) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |
+| 192 | Saat offline, coba aksi lain (simpan item, ganti nama merk; komentar dan task baru kini diantrekan, lihat #208) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |
 
 ## PWA Fase 3, Tahap A
 
@@ -311,3 +311,22 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 205 | Sesi kedaluwarsa (401), lalu login ulang pemilik yang sama | Papan lama masih tersedia sebagai data awal sebelum data server datang | PWA FR-P21 |
 | 206 | Buka detail task dari lokasi A, ganti lokasi aktif ke B, lalu buka tautan detail task milik lokasi A | Tampil "Task tidak ditemukan di lokasi aktif."; data task tidak tampil. Skenario ini berlaku daring; saat luring dan task tidak ada di data papan, tampil "Gagal memuat task" (bukan data lain) | PWA FR-P21 |
 | 207 | Pada peramban yang IndexedDB-nya macet atau diblokir (mis. mode privat tertentu), tekan Keluar | Aplikasi keluar ke halaman login dalam beberapa detik; tidak menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan dilepas setelah 1,5 dtk: isi toko tidak terhapus saat itu, dan tidak ada data pengguna lama yang tampil bagi pengguna berikutnya (rekaman dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil) | PWA FR-P21 |
+
+## PWA Fase 3, Tahap C
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 208 | Saat online, buka task, matikan jaringan, tulis komentar, lalu tekan kirim | Komposer langsung kosong; komentar tampil di akhir daftar dengan "Belum terkirim" | PWA FR-P22 |
+| 209 | Dengan jaringan mati, buat task baru (batch dua baris) lalu simpan | Kartu sementara di kolom Baru dengan nomor "—" dan "Belum terkirim"; kartu tidak dapat dibuka | PWA FR-P22 |
+| 210 | Nyalakan jaringan | Penanda hilang; komentar dan task tampil sebagai data server; tidak ada duplikat | PWA FR-P22 |
+| 211 | Kiriman pertama sampai di server, tetapi respons terputus (mis. jaringan putus tepat setelah kirim, lalu pulih) | Entri tetap "Belum terkirim" lalu terkirim ulang tanpa komentar atau task ganda (periksa daftar komentar dan nomor ST) | PWA FR-P22; Review Focus 1 |
+| 212 | Dengan komentar masih antre, tutup aplikasi lalu buka lagi saat online | Komentar tetap antre dan terkirim setelah boot; tidak hilang | PWA FR-P22 |
+| 213 | Offline dengan komentar dan task baru antre, pilih Keluar | Dialog "Keluar sekarang?" menghitung komentar dan task baru; Batal tidak membuang apa pun; Tetap keluar membuang seluruh antrean | PWA FR-P20, FR-P22 |
+| 214 | Dua tab akun sama, offline; di tab A tulis komentar, lalu nyalakan jaringan | Penanda dan hitungan sama di kedua tab; komentar terkirim sekali, bukan dua | PWA FR-P22 |
+| 215 | Dua tab; di tab A pilih Keluar saat ada antrean | Tab B ikut keluar (siaran `qc-session`): salinan antrean dibuang dan tab B tidak menulis ulang setelahnya | PWA FR-P14, FR-P22 |
+| 216 | Ganti akun Google di perangkat yang sama saat antrean komentar akun pertama masih ada | Antrean akun pertama tidak terlihat dan tidak terkirim dengan akun kedua | PWA FR-P19, FR-P22 |
+| 217 | Kirim komentar offline ke task yang sementara dibatalkan pelaku lain, lalu online | Entri dibuang dengan toast yang bertahan (alasan dari server, mis. "Task sudah dibatalkan"); tombol "Salin teks" menyalin isi komentar; toast tidak hilang sendiri | PWA FR-P18, FR-P22 |
+| 218 | Offline, buka formulir task baru saat daftar customer belum pernah dimuat | Formulir tetap tampil dengan customer diketik bebas; galat "Gagal memuat daftar customer" hanya tampil bila bukan `UNAVAILABLE` | PWA FR-P22 |
+| 219 | Buka komentar dan task baru tertunda di ponsel sempit (375 px) | Tidak ada gulir horizontal; kartu dan toast terbaca; tombol "Salin teks" dapat ditekan | PWA FR-P22, NFR-P5 |
