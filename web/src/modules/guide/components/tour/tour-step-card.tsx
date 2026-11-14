@@ -34,7 +34,7 @@ export function TourStepCard({
       ref={cardRef}
       tabIndex={-1}
       style={style}
-      className="pointer-events-auto fixed flex max-h-[70dvh] w-[min(21rem,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-hidden"
+      className="pointer-events-auto fixed flex max-h-[calc(100dvh-1.5rem)] w-[min(21rem,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-hidden"
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground">

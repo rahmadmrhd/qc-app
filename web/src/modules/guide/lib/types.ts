@@ -1,4 +1,5 @@
 import type { Level, ModuleKey } from '@shared/permissions';
+import type { TourMenuId } from './tour-menu';
 
 /** Satu syarat izin; bentuknya sama dengan `NavPermission` (`app/navigation.ts`). */
 export interface GuidePermission {
@@ -27,6 +28,20 @@ export interface GuideStep {
    * sidebar ponsel tidak pernah dibuka, mis. untuk target yang memang tak ada (papan kosong, satu lokasi).
    */
   inSidebar?: boolean;
+  /**
+   * Menu (id = `data-tour` pemicunya) yang dibuka mesin tur SENDIRI selama langkah ini aktif, supaya `target` di
+   * dalam menu dapat disorot. Murni UI: tak mengklik apa pun, tak mengubah data; menu ditutup saat langkah
+   * berganti, tur berakhir, atau tur dibatalkan (kecuali yang memang sudah dibuka pengguna). Pemicu yang tak ada
+   * di layar (mis. pemilih lokasi untuk satu lokasi) = langkah dilewati.
+   */
+  buka?: TourMenuId;
+  /**
+   * Langkah yang targetnya bergantung data (mis. kartu task di papan): bila `target` tak muncul dalam batas
+   * waktu, langkah TIDAK dilewati melainkan tampil sebagai kartu di tengah layar tanpa sorotan, dengan teks ini
+   * (menjelaskan keadaannya) dan demo `tip` bila ada. Tetap terhitung pada "Langkah x dari N". Langkah yang
+   * `izin`-nya gugur tetap dibuang di awal.
+   */
+  teksJikaKosong?: string;
 }
 
 export interface GuideEntry {

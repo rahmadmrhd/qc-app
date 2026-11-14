@@ -33,6 +33,11 @@ export interface HandoverCardProps {
   /** Ada centang task INI yang sedang disimpan ke server (tampilan sudah berubah; penanda halus). */
   saving?: boolean;
   locationName?: string;
+  /**
+   * Memasang `data-tour="handover-checklist"` (bawaan true). Kartu contoh di demo tooltip (`guide/`) mematikannya
+   * agar tur tak pernah menyorot kartu contoh sebagai ganti kartu sungguhan.
+   */
+  tourTarget?: boolean;
   onOpen: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onMarkDone: () => void;
@@ -79,6 +84,7 @@ export function HandoverCard({
   pending,
   saving = false,
   locationName,
+  tourTarget = true,
   onOpen,
   onCheck,
   onMarkDone,
@@ -130,7 +136,7 @@ export function HandoverCard({
           </Badge>
         </div>
 
-        <div data-tour="handover-checklist">
+        <div data-tour={tourTarget ? 'handover-checklist' : undefined}>
           <LazyNote handover={handover}>
             <NoteView
               note={handover.note}

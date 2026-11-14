@@ -81,12 +81,39 @@ describe('panduan Serah Terima', () => {
     expect(qc).toBeDefined();
     expect(editor).toBeDefined();
     expect(all).toBeDefined();
-    // view saja: hanya langkah umum (papan + checklist).
-    expect(viewer?.stepCount).toBe(2);
+    // view saja: hanya langkah umum (papan, checklist, komentar).
+    expect(viewer?.stepCount).toBe(3);
     expect(viewer?.stepCount).toBeLessThan(qc?.stepCount ?? 0);
-    expect(qc?.stepCount).toBe(3);
-    expect(editor?.stepCount).toBe(5);
+    expect(qc?.stepCount).toBe(4);
+    expect(editor?.stepCount).toBe(6);
     expect(all?.stepCount).toBe(HANDOVER_DASAR.steps.length);
+  });
+
+  test('langkah checklist dan komentar: demo kartu contoh + teks pengganti saat papan kosong', () => {
+    const onChecklist = HANDOVER_DASAR.steps.filter((step) => step.target === 'handover-checklist');
+    // Umum, komentar, dan sisi QC (centang): ketiganya bergantung data kartu task di papan.
+    expect(onChecklist).toHaveLength(3);
+    for (const step of onChecklist) {
+      expect(step.teksJikaKosong, step.text).toMatch(/Papan masih kosong/);
+      expect(step.tip).toBeDefined();
+    }
+    const tips = onChecklist.map((step) => step.tip);
+    expect(tips.filter((tip) => tip === 'tip-handover-checklist')).toHaveLength(2);
+    expect(tips.filter((tip) => tip === 'tip-handover-komentar')).toHaveLength(1);
+  });
+
+  test('langkah komentar tanpa izin tambahan (komentar terbuka bagi pembaca WH maupun QC)', () => {
+    const comment = HANDOVER_DASAR.steps.find((step) => step.tip === 'tip-handover-komentar');
+    expect(comment).toBeDefined();
+    expect(comment?.izin).toBeUndefined();
+    expect(comment?.text).toMatch(/komentar/i);
+  });
+
+  test('langkah yang bukan bergantung data tidak punya teks pengganti (dilewati bila hilang)', () => {
+    for (const target of ['handover-new', 'handover-batch-form', 'handover-paste-panel']) {
+      const step = HANDOVER_DASAR.steps.find((candidate) => candidate.target === target);
+      expect(step?.teksJikaKosong, target).toBeUndefined();
+    }
   });
 
   test('pengguna tanpa izin Serah Terima/QC tidak ditawari', () => {

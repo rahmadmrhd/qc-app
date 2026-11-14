@@ -1,8 +1,8 @@
 # Panduan interaktif (tur, tooltip demo, kartu panduan) — desain
 
 Tanggal: 2026-11-13. Status: diimplementasikan (2026-11-14); disetujui pemilik produk 2026-11-13, dengan keputusan
-tambahan pemilik produk 2026-11-14 (bagian 6) yang sudah masuk kode dan tes. Klip rekaman (PWA, push, tempel dari
-WhatsApp) menunggu rekaman pemilik; panduan tetap berjalan tanpa klip lewat fallback teks per adegan.
+tambahan pemilik produk 2026-11-14 (bagian 6) yang sudah masuk kode dan tes. Klip rekaman (PWA, push) menunggu
+rekaman pemilik; panduan tetap berjalan tanpa klip lewat fallback teks per adegan.
 Konteks: aplikasi QC (web React + TanStack, server Bun + Hono + MariaDB). Dokumen ini merancang fitur; implementasinya
 ada di `web/src/modules/guide/`, `server/src/modules/guide/`, dan `shared/guides.ts`.
 Status panduan disimpan dengan dua cara menurut jenis akun (individu atau bersama), sehingga fitur ini menyentuh
@@ -187,7 +187,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Langkah yang menunggu klik pengguna lanjut otomatis begitu elemen diklik. Tur berhenti SEBELUM tombol simpan/kirim
   mana pun dan tidak pernah memanggil rute tulis.
 - Tur HANYA menyorot dan menjelaskan: tidak mengisi atau mengubah isi field mana pun (tidak ada isi contoh yang
-  dimasukkan ke editor, jadi tidak menyentuh draf atau `useUnsavedChanges`).
+  dimasukkan ke editor, jadi tidak menyentuh draf atau `useUnsavedChanges`). Satu-satunya hal yang boleh ia lakukan
+  sendiri adalah MEMBUKA menu (keputusan 2026-11-14, butir G): langkah dapat meminta sebuah menu terbuka
+  (`langkah.buka: 'location-picker' | 'notification-bell' | 'theme-toggle' | 'user-menu'`) supaya isinya bisa
+  disorot. Pembukaan murni UI (membuka dan menutup menu; tanpa klik sintetis, tanpa mengubah data, tanpa rute tulis),
+  menu menutup saat langkah berganti, tur selesai, atau tur dibatalkan (Esc/Tutup), dan menu yang sudah dibuka
+  pengguna sendiri tidak ditutup paksa.
 - Peragaan hasil (mis. tempel banyak pesan menjadi banyak kartu) tetap lewat demo tooltip (4.6), dan demo itu MASUK
   ke alur tur (keputusan pemilik 2026-11-13): sebuah langkah dapat menyematkan adegan demo milik sebuah entri `tip`
   (`langkah.tip: '<id tip>'`) di dalam gelembung langkahnya, lengkap dengan keterangan per adegan. Pengguna menontonnya
@@ -196,8 +201,24 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Langkah yang `izin`-nya tidak terpenuhi pengguna (mis. langkah sisi QC bagi akun yang hanya `handover: view`)
   dilewati seluruhnya, bukan ditampilkan sebagai teks. Dengan `izin` per langkah, satu panduan Serah Terima melayani
   sisi WH dan sisi QC tanpa dipecah, dan jumlah langkah pada kartu dihitung per pengguna.
-- Target tidak ada (izin lebih rendah, daftar kosong, sidebar tertutup di ponsel): langkah dilewati atau jatuh ke
-  penjelasan teks; tur tidak macet. Di ponsel, langkah yang menyorot menu membuka sidebar lebih dulu.
+- Target tidak ada (sidebar tertutup di ponsel, butir menu bersyarat, pemicu menu yang tak dirender): langkah
+  dilewati; tur tidak macet. Pengecualian: langkah yang targetnya bergantung data (kartu task di papan; ditandai
+  `langkah.teksJikaKosong`) TIDAK dilewati melainkan tampil sebagai kartu di tengah layar tanpa sorotan, dengan teks
+  pengganti yang menjelaskan keadaannya dan demo `tip` langsung terputar (keputusan 2026-11-14, butir H); langkah itu
+  tetap terhitung pada "Langkah x dari N". Kartu contoh bersifat sementara: targetnya terus diamati dan, bila muncul
+  belakangan (jaringan lambat), kartu beralih ke sorotan asli; target yang sudah terbukti kosong tak ditunggu lagi
+  oleh langkah berikutnya yang bertarget sama. Langkah yang menu pemicunya tak dirender saat tur dimulai (mis.
+  pemilih lokasi untuk satu lokasi) dibuang di awal bersama langkah yang menyorot pemicu itu, agar "Langkah x dari N"
+  tak melompat. Demo kartu contoh sepenuhnya tak dapat dioperasikan (tak membuka komposer asli, tak memasang status
+  "belum disimpan"). Langkah yang `izin`-nya gugur tetap dibuang di awal. Di ponsel, langkah
+  yang menyorot menu membuka sidebar lebih dulu.
+- Penempatan kartu langkah (desktop; ponsel selalu menempel di dasar layar): dihitung dari ukuran kartu yang
+  SEBENARNYA (diukur ulang saat isinya tumbuh, mis. demo `tip` selesai dimuat malas), memilih di antara posisi di
+  bawah, atas, kiri, dan kanan sorotan yang paling sedikit menutupi sorotan dan, pada langkah `buka`, seluruh menu
+  yang terbuka, selalu dijepit di dalam layar; tinggi kartu dibatasi tinggi layar dan isinya menggulir. Popover ikon
+  info (4.6) membatasi tingginya pada ruang yang tersedia (`--radix-popover-content-available-height`) dan
+  menggulir di dalamnya. Pemeriksaan "pengguna meninggalkan tur" hanya membandingkan saat `pathname` benar-benar
+  berubah (efek yang dijalankan ulang oleh StrictMode tidak boleh menutup tur yang baru berpindah rute).
 - Dimuat malas (potongan JS terpisah). Mesin: pustaka kecil atau tulis sendiri; diputuskan di rencana implementasi
   (lihat bagian 8).
 - Hormati `prefers-reduced-motion` dan dapat dioperasikan dengan keyboard.
@@ -217,10 +238,13 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   - **`kode`**: adegan HTML/CSS yang dimainkan langsung untuk apa yang terjadi DI DALAM aplikasi. Hasil yang
     ditampilkan dihitung fungsi asli bila ada (mis. adegan "Pecah" memakai `splitWhatsappBatch` di
     `shared/handover-paste.ts` pada teks contoh), sehingga tidak basi bila aturan berubah. Mengikuti tema
-    terang/gelap otomatis. Gelembung chat dalam adegan adalah ilustrasi generik, bukan tiruan aplikasi WhatsApp.
+    terang/gelap otomatis. Aplikasi lain yang sering dibutuhkan peragaannya, terutama chat WhatsApp, juga adegan `kode`
+    yang meniru tata letaknya (bilah atas, latar chat, bubble masuk/keluar, bilah pilihan; keputusan pemilik
+    2026-11-14, bagian 6 butir E): hanya tiruan tampilan dengan skema warna sendiri yang tetap terbaca di terang dan
+    gelap, tanpa logo, gambar, atau aset resmi.
   - **`klip`**: video pendek berulang (WebM/MP4, tanpa suara, sekitar 8 detik) untuk yang terjadi DI LUAR aplikasi
-    (memilih/menyalin banyak pesan di WhatsApp yang caranya berbeda di HP dan WA Web, menu pasang PWA di peramban, dialog
-    izin notifikasi). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
+    dan tak dapat ditiru layout-nya dengan wajar (menu pasang PWA di peramban, dialog izin notifikasi). Demo
+    "Tempel dari WhatsApp" TIDAK lagi memakai klip: memilih lalu menyalin pesan ditiru sebagai adegan `kode` (butir E). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
     hanya saat tooltip dibuka (`preload="none"`), disajikan sebagai berkas statis, tidak dipra-cache. Letak:
     `web/public/klip/<id-panduan>-<n>.webm` (ikut ke `server/dist` dan image Docker seperti berkas statis lain).
     Konvensi `berkas` (klarifikasi 2026-11-14, butir D.i): nama polos tanpa path (mis. `tip-a-1.webm`); URL dibangun
@@ -229,6 +253,12 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   - Klip belum tersedia saat rilis TIDAK menghalangi rilis: adegan `klip` yang `berkas`-nya belum diisi memakai
     fallback daftar langkah bernomor. Tes katalog hanya memeriksa bahwa berkas yang DIDEKLARASIKAN ada; adegan
     tanpa `berkas` lolos. Jadi panduan PWA/push dan Serah Terima dapat rilis lebih dulu, klipnya menyusul.
+  - **Kartu contoh untuk langkah tanpa data** (keputusan pemilik 2026-11-14, bagian 6 butir F): langkah yang menyorot
+    isi papan (checklist, status, komentar pada task) tidak bergantung pada ada-tidaknya task sungguhan. Penjelasannya
+    adalah demo `kode` milik entri `tip` (`tip-handover-checklist`, `tip-handover-komentar`) yang merender komponen
+    asli (`HandoverCard`/`NoteView`) dengan data contoh yang dibuat di sisi klien, diberi lencana "Contoh". Demo tidak
+    menyentuh data, halaman, kueri, atau penyimpanan apa pun selain titik penanda `tip`, dan kartu contoh bukan target
+    `data-tour` (tur tak pernah menyorotnya).
   - Satu tooltip dapat memakai keduanya berurutan.
 
 ### 4.7 Perawatan (agar panduan tidak basi)
@@ -257,7 +287,8 @@ dirujuk ada berkasnya.
    tiap fitur baru menambah pekerjaan besar. Ditolak.
 
 Untuk demo tooltip: rekaman semua (sederhana, tetapi klip bisa basi tanpa terdeteksi tes) vs demo dari kode semua
-(tidak bisa meniru WhatsApp, menu peramban, dan dialog izin sistem) vs **gabungan, dipilih per langkah
+(awalnya dinilai tak bisa meniru WhatsApp, menu peramban, dan dialog izin sistem; tiruan WhatsApp akhirnya dibuat
+sebagai kode, lihat bagian 6 butir E) vs **gabungan, dipilih per langkah
 (dipilih pemilik 2026-11-13)**.
 
 Untuk status: database per akun saja (pada akun bersama, orang kedua tidak akan pernah melihat panduan) vs
@@ -300,6 +331,44 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   - **D. Klarifikasi (bukan perubahan perilaku):** (i) `berkas` klip = nama polos, URL `klipUrl()` = `/klip/<berkas>`
     (4.6); (ii) pindah halaman di luar langkah tur membatalkan tur tanpa penanda (4.3); (iii) panduan `baru` menyebut
     `dasar` induknya di katalog, field `dasar` (4.1).
+  - **E. Demo WhatsApp sebagai adegan `kode` yang meniru WhatsApp (2026-11-14, diminta pemilik produk setelah
+    mencoba tur langsung).** Urutan demo dikoreksi menjadi: pilih pesan di WhatsApp, salin, tempel di kotak, tekan
+    Pecah, lalu hasil kartu task (sebelumnya langkah memilih pesan muncul terakhir). Langkah di WhatsApp kini empat
+    bingkai `kode` yang meniru tampilan WhatsApp (chat biasa; tekan lama satu bubble dengan bilah pilihan "1"; ketuk
+    pesan lain; ketuk ikon salin dengan toast "Disalin"), bukan adegan `klip` tanpa berkas. Alasan: urutan terbalik
+    membingungkan, dan teks langkah tanpa gambar kurang membantu. Diubah: 4.6 (jenis adegan) dan kalimat status di
+    kepala dokumen. Infrastruktur klip (`klipUrl`, pemutar, tes konvensi) tetap untuk kasus lain.
+  - **F. Kartu contoh sebagai demo `kode`, bukan data palsu di halaman (2026-11-14, usul pemilik produk).** Untuk
+    pengguna yang papannya kosong (tak ada kartu untuk disorot) dan untuk langkah memilih teks lalu memberi komentar
+    yang belum dijelaskan, penjelasannya diwujudkan sebagai demo `kode` (entri `tip`) yang merender kartu task contoh
+    dari komponen asli dengan data contoh, bukan dengan menaruh data palsu di papan atau halaman. Alasan: tidak
+    mencemari data atau kueri, tampilan selalu sama dengan aplikasi, dan memakai sistem demo yang sudah ada. Id
+    penanda baru `tip-handover-checklist` dan `tip-handover-komentar` (versi 1) masuk `shared/guides.ts`. Diubah: 4.6
+    (bullet kartu contoh).
+  - **G. Tur membuka menu sendiri dan menjelaskan isinya (2026-11-14, masukan pemilik produk setelah mencoba tur
+    langsung: panduan lokasi, notifikasi, tema, info pengguna, pasang aplikasi, dan push "tidak detail").** Langkah
+    tidak lagi berhenti pada tombol pemicu: mesin tur membuka sendiri popover/dropdown-nya (`langkah.buka`, 4.5) lalu
+    menyorot dan menjelaskan isinya (daftar lokasi yang bisa dicentang, daftar kabar, pilihan tema, nama + email akun
+    dan butir menu profil, butir "Pasang aplikasi" dengan bedanya Android/iOS, butir "Notifikasi push" dengan alur
+    izin dan saklarnya). Menu dibuka lewat state kecil yang di-OR-kan ke `open` komponen menu (bukan klik sintetis) dan
+    dibuat non-modal selama dipaksa tur, supaya kartu tur tetap dapat diklik dan menu tak menutup sendiri. Alasan:
+    tombol saja tidak mengajarkan isi menu. Diubah: 4.5 (kalimat "tidak mengubah apa pun" dilonggarkan hanya untuk
+    membuka menu).
+  - **H. Langkah bergantung data jatuh ke kartu contoh; ditambah langkah komentar (2026-11-14, jawaban pemilik
+    produk atas pertanyaan "bagaimana jika tak ada datanya").** Langkah checklist Serah Terima (umum dan sisi QC)
+    yang targetnya (kartu task) tak ada di papan kosong tidak lagi dilewati diam-diam: tampil sebagai kartu tur di
+    tengah layar tanpa sorotan, dengan teks "Papan masih kosong, ..." dan demo kartu contoh (butir F) langsung terputar
+    (`langkah.teksJikaKosong`). Ditambah satu langkah baru memilih sepotong teks lalu memberi komentar
+    (`tip-handover-komentar`, tanpa `izin` tambahan karena komentar terbuka bagi pembaca WH maupun QC). Alasan:
+    pengguna baru di papan kosong tak pernah belajar soal checklist, komentar, dan centang, dan nomor "Langkah x dari
+    N" melompat. Diubah: 4.5 (kalimat "langkah dilewati atau jatuh ke penjelasan teks" dipertegas); jumlah langkah
+    panduan Serah Terima menjadi 3 (WH lihat), 4 (QC), 6 (WH tulis), 7 (keduanya).
+  - **I. Versi panduan `dasar-layout` dan `handover-dasar` tetap 1 (2026-11-14, keputusan pemilik produk).**
+    Putaran butir F-H menambah langkah (layout 5 → 10, Serah Terima +1) tanpa menaikkan `GUIDE_VERSIONS`, sehingga
+    pengguna yang sudah menyelesaikan kedua panduan itu tidak ditawari ulang ("Diperbarui"). Pemilik produk
+    menyetujui itu sebagai disengaja: perluasan ini dianggap melengkapi, bukan perombakan alur, dan pengguna yang
+    sudah paham tidak perlu diganggu (checklist rilis, tabel "Alur berubah"/"Fitur ditambah": panduan `baru` bila
+    perlu, bukan naik versi). Pengguna baru dan yang belum menyelesaikan tetap mendapat versi terbaru. Bukan temuan.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.

@@ -122,7 +122,10 @@ export function TipButton({
       <PopoverContent
         ref={contentRef}
         align="start"
-        className="w-80 max-w-[calc(100vw-2rem)]"
+        collisionPadding={12}
+        // Tinggi dibatasi ruang yang tersedia di sisi terpilih (variabel Radix): demo tinggi seperti mock WhatsApp
+        // menggulir di dalam popover, bukan melewati dasar layar.
+        className="max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
         onOpenAutoFocus={(event) => {
           // Dibuka lewat hover/fokus: fokus tetap di ikon, bukan dicuri ke isi tooltip.
           if (source.current !== 'click') event.preventDefault();
