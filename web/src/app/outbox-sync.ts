@@ -6,17 +6,20 @@ import { reportUnauthenticated } from '@/app/query-client';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { getSession } from '@/modules/auth/session';
+import { customerKeys } from '@/modules/customer/queries';
 import { findHandoverInBoards } from '@/modules/handover/lib/board-cache';
+import {
+  type OutboxEntry,
+  purgeForeignOutboxes,
+  readOutbox,
+  refreshOutboxFromStore,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/outbox';
 import {
   type FlushResult,
   flushOutbox,
   sendOutboxEntry,
-} from '@/modules/handover/lib/check-outbox-flush';
-import {
-  purgeForeignOutboxes,
-  readOutbox,
-  resumeOutboxWrites,
-} from '@/modules/handover/lib/outbox';
+} from '@/modules/handover/lib/outbox-flush';
 import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
@@ -49,14 +52,28 @@ function cacheIsNewer(queryClient: QueryClient, saved: HandoverDto): boolean {
 }
 
 function announce(result: FlushResult): void {
-  if (result.rejected.length > 0) {
-    const reasons = [...new Set(result.rejected.map((item) => item.reason))].join('; ');
-    toast.error(`${result.rejected.length} perubahan centang tidak dapat dikirim: ${reasons}`);
+  const rejectedChecks = result.rejected.filter((item) => item.entry.kind === 'check');
+  if (rejectedChecks.length > 0) {
+    const reasons = [...new Set(rejectedChecks.map((item) => item.reason))].join('; ');
+    toast.error(`${rejectedChecks.length} perubahan centang tidak dapat dikirim: ${reasons}`);
   }
-  if (result.expired.length > 0) {
-    toast.error(`${result.expired.length} perubahan centang kedaluwarsa dan dibuang`);
+  const expiredChecks = result.expired.filter((entry) => entry.kind === 'check');
+  if (expiredChecks.length > 0) {
+    toast.error(`${expiredChecks.length} perubahan centang kedaluwarsa dan dibuang`);
+  }
+  // Komentar dan task baru yang ditolak atau kedaluwarsa: toast beralasan dengan "Salin teks" menyusul di Task 9.
+  for (const item of result.rejected) {
+    if (item.entry.kind === 'check') continue;
+    toast.error(`${entryNoun(item.entry)} tidak dapat dikirim: ${item.reason}`);
+  }
+  for (const entry of result.expired) {
+    if (entry.kind === 'check') continue;
+    toast.error(`${entryNoun(entry)} kedaluwarsa dan dibuang`);
   }
 }
+
+const entryNoun = (entry: OutboxEntry): string =>
+  entry.kind === 'comment' ? 'Komentar' : entry.kind === 'create' ? 'Task baru' : 'Perubahan';
 
 /**
  * Penyinkron antrean centang di foreground (FR-P17-P19; tanpa Background Sync). Pemicu: awal aplikasi, `online`, tab
@@ -85,9 +102,16 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   // Hasil server SELALU dipasang per entri (sinkron, sebelum entri dihapus): tanpa kedipan dan tanpa celah bagi klik
   // lain; bila pengurasan berhenti di tengah task, butir yang sudah terkirim tetap tercentang di cache, dan entri yang
   // tersisa ditempel overlay (`useOutboxOverlay`). Dilewati hanya bila cache sudah lebih baru.
-  const onSent = (saved: HandoverDto) => {
-    if (cacheIsNewer(queryClient, saved)) return;
-    applySavedHandover(queryClient, saved);
+  const onSent = (saved: HandoverDto[], entry: OutboxEntry) => {
+    for (const dto of saved) {
+      // Task baru belum ada di cache mana pun (tak ada salinan yang lebih baru); centang dan komentar dijaga `cacheIsNewer`.
+      if (entry.kind !== 'create' && cacheIsNewer(queryClient, dto)) continue;
+      applySavedHandover(queryClient, dto);
+    }
+    // Task baru bisa membuat customer baru dan mengubah opsi (nomor, saran): ditandai basi seperti mutasi online.
+    if (entry.kind === 'create') {
+      markStale(queryClient, accessKeys.audit, customerKeys.all, ['handovers', 'options']);
+    }
   };
 
   async function drainNow(): Promise<void> {
@@ -122,11 +146,12 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
       const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
       if (locks) {
         // Beberapa tab akun yang sama: satu menguras, yang lain MENUNGGU kuncinya (tanpa `ifAvailable`, jadi tak ada
-        // putaran yang hilang) lalu membaca ulang antrean: sudah dikuras tab lain = tak ada yang dikirim. Pemegang kunci
+        // putaran yang hilang) lalu membaca ulang antrean dari IndexedDB: sudah dikuras tab lain = tak ada yang dikirim. Pemegang kunci
         // dibatasi waktu kirim (30 dtk), jadi tak ada deadlock; tab tersembunyi yang timernya ditahan peramban dapat
         // menunda pelepasan kunci lebih lama, dan itu diterima.
         await locks.request(FLUSH_LOCK, async () => {
-          if (!stopped && readOutbox(owner).length > 0) await drainNow();
+          // Isi antrean dibaca penguras dari IndexedDB di bawah kunci ini (salinan memori hanya pintu masuk murah).
+          if (!stopped) await drainNow();
         });
       } else {
         await drainNow();
@@ -163,6 +188,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
 
   requestFlush = trigger;
   trigger();
+  // Salinan memori bisa kosong padahal toko berisi (hidrasi boot gagal atau lewat batas waktu): segarkan dari toko, lalu coba lagi.
+  if (readOutbox(owner).length === 0) void refreshOutboxFromStore(owner).then(() => trigger());
 
   return () => {
     stopped = true;

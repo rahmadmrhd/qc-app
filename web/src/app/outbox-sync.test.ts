@@ -1,16 +1,20 @@
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import * as deviceDb from '@/lib/device-db';
 import { readOutboxRecords } from '@/lib/device-db';
 import { ANONYMOUS_SESSION, initSession } from '@/modules/auth/session';
 import { makeHandover } from '@/modules/handover/components/test-handover';
+import { boardColumnData, findHandoverInBoards } from '@/modules/handover/lib/board-cache';
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
 import {
+  enqueueOutbox,
   OUTBOX_MAX_AGE_MS,
   type OutboxEntry,
   readOutbox,
   removeOutboxEntries,
 } from '@/modules/handover/lib/outbox';
+import { resetFlushForTests } from '@/modules/handover/lib/outbox-flush';
 import { handoverKeys } from '@/modules/handover/queries';
 import { resetOutboxEnv } from '@/test/outbox-env';
 
@@ -55,6 +59,7 @@ const fetchOk = (key: string) =>
   client.fetchQuery({ queryKey: ['uji', key], queryFn: async () => 1 });
 
 beforeEach(() => {
+  resetFlushForTests();
   resetOutboxEnv();
   resetBusyForTests();
   mocks.api.mockReset();
@@ -419,4 +424,96 @@ test('M2: pengiriman yang menggantung dibatalkan setelah 30 dtk: entri tetap, ru
   await tick();
   expect(mocks.api).toHaveBeenCalledTimes(2);
   vi.useRealTimers();
+});
+
+const commentEntry = () => ({
+  kind: 'comment' as const,
+  clientId: '11111111-1111-4111-8111-111111111111',
+  taskId: 't1',
+  locationId: 'loc-a',
+  quote: '',
+  before: '',
+  after: '',
+  body: 'halo',
+  at: Date.now(),
+});
+
+test('toko berisi tetapi salinan memori kosong (hidrasi boot gagal): start menyegarkan dari toko lalu menguras', async () => {
+  // Entri hanya ada di toko IndexedDB (ditulis tab/sesi sebelumnya); salinan memori tab ini kosong.
+  await deviceDb.putOutboxRecord(
+    OWNER,
+    {
+      key: `${OWNER}|dari-toko`,
+      owner: OWNER,
+      v: 1,
+      savedAt: Date.now(),
+      entry: { ...commentEntry(), id: 'dari-toko' },
+    },
+    {},
+    () => true,
+  );
+  expect(readOutbox(OWNER)).toEqual([]);
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  expect(mocks.api.mock.calls[0]?.[0]).toBe('handovers.comment');
+  expect(await readOutboxRecords()).toEqual([]);
+});
+
+test('task baru terkirim: tiap hasil dipasang ke papan kolom Baru dan opsi/customer/audit ditandai basi', async () => {
+  const board = handoverKeys.column(['loc-a'], 'new');
+  client.setQueryData(board, boardColumnData([]));
+  await enqueueOutbox(OWNER, {
+    kind: 'create',
+    locationId: 'loc-a',
+    tasks: [
+      { clientId: '22222222-2222-4222-8222-222222222222', customerName: 'PT A', note: 'x' },
+      { clientId: '33333333-3333-4333-8333-333333333333', customerName: 'PT B', note: 'y' },
+    ],
+    at: Date.now(),
+  });
+  mocks.api.mockResolvedValue([
+    makeHandover({ id: 'n1', number: 'ST-1', locationId: 'loc-a' }),
+    makeHandover({ id: 'n2', number: 'ST-2', locationId: 'loc-a' }),
+  ]);
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.api).toHaveBeenCalledWith(
+    'handovers.saveBatch',
+    {
+      locationId: 'loc-a',
+      tasks: [
+        { customerName: 'PT A', note: 'x', clientId: '22222222-2222-4222-8222-222222222222' },
+        { customerName: 'PT B', note: 'y', clientId: '33333333-3333-4333-8333-333333333333' },
+      ],
+    },
+    { signal: expect.any(AbortSignal) },
+  );
+  expect(findHandoverInBoards(client, 'n1')?.number).toBe('ST-1');
+  expect(findHandoverInBoards(client, 'n2')?.number).toBe('ST-2');
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['handovers', 'options'],
+    refetchType: 'none',
+  });
+  expect(readOutbox(OWNER)).toEqual([]);
+});
+
+test('komentar yang ditolak atau kedaluwarsa dilaporkan (bukan sebagai centang); entri dibuang', async () => {
+  mocks.api.mockRejectedValue(new ApiError('CONFLICT', 'Task sudah dibatalkan', '-'));
+  await enqueueOutbox(OWNER, commentEntry());
+  await enqueueOutbox(OWNER, {
+    ...commentEntry(),
+    clientId: '44444444-4444-4444-8444-444444444444',
+    at: Date.now() - OUTBOX_MAX_AGE_MS - 1,
+  });
+  stop = startOutboxSync(client);
+  await settle();
+  const messages = mocks.error.mock.calls.map((call) => String(call[0]));
+  expect(messages.some((m) => m.includes('Komentar') && m.includes('Task sudah dibatalkan'))).toBe(
+    true,
+  );
+  expect(messages.some((m) => m.includes('Komentar') && m.includes('kedaluwarsa'))).toBe(true);
+  expect(messages.some((m) => m.includes('centang'))).toBe(false);
+  expect(readOutbox(OWNER)).toEqual([]);
 });

@@ -139,8 +139,19 @@ export function isOutboxEntry(value: unknown): value is OutboxEntry {
 
 const recordKey = (owner: string, id: string): string => `${owner}|${id}`;
 
-function toRecord(owner: string, entry: OutboxEntry): DeviceRecord {
-  return { key: recordKey(owner, entry.id), owner, v: RECORD_VERSION, savedAt: entry.at, entry };
+/** Urutan masuk (pemecah seri bila dua entri `at` sama): naik per penulisan di tab ini; bukan kunci keamanan. */
+let seqCounter = 0;
+const nextSeq = (): number => Date.now() * 1000 + (seqCounter++ % 1000);
+
+function toRecord(owner: string, entry: OutboxEntry, seq: number = nextSeq()): DeviceRecord {
+  return {
+    key: recordKey(owner, entry.id),
+    owner,
+    v: RECORD_VERSION,
+    savedAt: entry.at,
+    seq,
+    entry,
+  };
 }
 
 const entryOf = (record: DeviceRecord): unknown => record.entry;
@@ -221,15 +232,21 @@ function setCopy(next: Map<string, OutboxEntry[]>): void {
 
 /** Salinan dari daftar rekaman toko (entri tak valid dibuang dari tampilan; tak pernah menghapusnya dari toko). */
 function copyFromRecords(records: readonly DeviceRecord[]): Map<string, OutboxEntry[]> {
+  // Urut `at`, lalu urutan masuk (`seq`), lalu kunci: deterministik walau `at` kembar (getAll mengurut menurut kunci acak).
+  const ordered = [...records].sort(
+    (a, b) =>
+      (a.savedAt as number) - (b.savedAt as number) ||
+      ((a.seq as number | undefined) ?? 0) - ((b.seq as number | undefined) ?? 0) ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
   const grouped = new Map<string, OutboxEntry[]>();
-  for (const record of records) {
+  for (const record of ordered) {
     const entry = entryOf(record);
     if (!isOutboxEntry(entry) || typeof record.owner !== 'string') continue;
     const list = grouped.get(record.owner);
     if (list) list.push(entry);
     else grouped.set(record.owner, [entry]);
   }
-  for (const [owner, list] of grouped) grouped.set(owner, sortByTime(list));
   return grouped;
 }
 

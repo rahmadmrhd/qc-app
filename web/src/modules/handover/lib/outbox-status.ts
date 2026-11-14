@@ -1,12 +1,24 @@
+import { onOutboxMessage, postOutboxMessage } from './outbox-channel';
+
 /**
- * Butir checklist (task + indeks) yang permintaan `handovers.setCheck`-nya sedang berjalan di tab ini. Hanya dalam
- * memori (tidak disimpan): dipakai untuk penanda "Mengirim…" dan chip penghitung. Diisi oleh penguras antrean DAN
- * centang langsung di `useCheckQueue`; dua permintaan bertumpuk pada butir yang sama dihitung, jadi butir tetap
- * "mengirim" sampai keduanya selesai.
+ * Penanda "Mengirim…" (hanya memori, tidak disimpan):
+ *  - per butir centang (task + indeks): diisi penguras antrean DAN centang langsung di `useCheckQueue`, hanya di tab ini;
+ *    dua permintaan bertumpuk pada butir yang sama dihitung, jadi butir tetap "mengirim" sampai keduanya selesai.
+ *  - per entri antrean (`id`; komentar dan task baru): diisi penguras dan DISIARKAN ke tab lain lewat
+ *    `BroadcastChannel('qc-outbox')` dengan masa berlaku `SENDING_TTL_MS`; tab penerima menyimpan `until` dan
+ *    kedaluwarsa sendiri, sehingga pengirim yang mati tidak membuat penanda macet.
  */
 export type ItemSendState = 'waiting' | 'sending';
 
 const counts = new Map<string, number>();
+/** Entri antrean yang dikirim tab ini (hitungan per id). */
+const entryCounts = new Map<string, number>();
+/** Entri yang dikirim tab lain: id → waktu kedaluwarsa (ms epoch). */
+const remoteUntil = new Map<string, number>();
+const remoteTimers = new Set<ReturnType<typeof setTimeout>>();
+
+/** Masa berlaku penanda siaran; pengirim yang mati tak membuat penanda macet lebih lama dari ini. */
+export const SENDING_TTL_MS = 45_000;
 const listeners = new Set<() => void>();
 let version = 0;
 /** Naik tiap `clearSending`: penutup `beginSending` dari generasi lama menjadi no-op. */
@@ -42,7 +54,69 @@ export function beginSending(taskId: string, index: number): () => void {
 export function clearSending(): void {
   generation += 1;
   counts.clear();
+  entryCounts.clear();
+  remoteUntil.clear();
+  for (const timer of remoteTimers) clearTimeout(timer);
+  remoteTimers.clear();
   notify();
+}
+
+let stopListening: (() => void) | null = null;
+/** Pendengar siaran dipasang malas (dan dipasang ulang sesudah `resetOutboxChannelForTests`). */
+function ensureListening(): void {
+  if (stopListening) return;
+  stopListening = onOutboxMessage((message) => {
+    if (message.type === 'sending') {
+      for (const id of message.ids) remoteUntil.set(id, message.until);
+      notify();
+      // Kedaluwarsa sendiri: tanpa pesan lanjutan penanda hilang saat `until` lewat.
+      const timer = setTimeout(
+        () => {
+          remoteTimers.delete(timer);
+          notify();
+        },
+        Math.max(0, message.until - Date.now()) + 1,
+      );
+      remoteTimers.add(timer);
+    } else if (message.type === 'sending-done') {
+      let changed = false;
+      for (const id of message.ids) changed = remoteUntil.delete(id) || changed;
+      if (changed) notify();
+    }
+  });
+}
+
+/**
+ * Menandai entri antrean (komentar/task baru) sedang dikirim di tab ini dan menyiarkannya ke tab lain. Fungsi yang
+ * dikembalikan idempoten.
+ */
+export function beginSendingEntry(id: string): () => void {
+  ensureListening();
+  const born = generation;
+  entryCounts.set(id, (entryCounts.get(id) ?? 0) + 1);
+  notify();
+  postOutboxMessage({ type: 'sending', ids: [id], until: Date.now() + SENDING_TTL_MS });
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    if (born !== generation) return;
+    const left = (entryCounts.get(id) ?? 0) - 1;
+    if (left > 0) entryCounts.set(id, left);
+    else {
+      entryCounts.delete(id);
+      postOutboxMessage({ type: 'sending-done', ids: [id] });
+    }
+    notify();
+  };
+}
+
+/** Entri sedang dikirim, oleh tab ini atau (dalam masa berlaku siaran) tab lain. */
+export function isEntrySending(id: string): boolean {
+  ensureListening();
+  if ((entryCounts.get(id) ?? 0) > 0) return true;
+  const until = remoteUntil.get(id);
+  return until !== undefined && until > Date.now();
 }
 
 export function isItemSending(taskId: string, index: number): boolean {
@@ -50,6 +124,7 @@ export function isItemSending(taskId: string, index: number): boolean {
 }
 
 export function subscribeSending(listener: () => void): () => void {
+  ensureListening();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -63,4 +138,6 @@ export function sendingVersion(): number {
 
 export function resetSendingForTests(): void {
   clearSending();
+  stopListening?.();
+  stopListening = null;
 }
