@@ -167,7 +167,7 @@ ln -s /etc/nginx/sites-available/qc-dev.rhd.my.id /etc/nginx/sites-enabled/qc-de
 nginx -t && nginx -s reload     # reload HANYA bila nginx -t lulus
 ```
 
-Bila `nginx -t` gagal: `rm /etc/nginx/sites-enabled/qc-dev.rhd.my.id` dan JANGAN reload. Blok production (`qc.rhd.my.id`) ditulis tetapi TIDAK diaktifkan sebelum cutover. Perbarui daftar `set_real_ip_from` dari https://www.cloudflare.com/ips-v4 dan `/ips-v6`. Pembatalan: hapus symlink, `nginx -t && nginx -s reload`, hapus berkas di `sites-available`.
+Bila `nginx -t` gagal: `rm /etc/nginx/sites-enabled/qc-dev.rhd.my.id` dan JANGAN reload. Blok production (`qc.rhd.my.id`) ditulis tetapi TIDAK diaktifkan sebelum cutover. Perbarui daftar `set_real_ip_from` dari https://www.cloudflare.com/ips-v4 dan `/ips-v6`. **Log akses tanpa token tautan laporan** (keputusan pemilik 2026-11-14): `map $request_uri`, `map $http_referer`, dan `log_format qc_masked` di bagian atas `qc.conf.example` berada di konteks `http` dan dipasang SEKALI (nama ganda membuat `nginx -t` gagal; boleh dipindah ke `/etc/nginx/conf.d/qc-log.conf`); blok TLS memakai `access_log /var/log/nginx/qc-access.log qc_masked;`. `error_log` nginx dapat memuat baris permintaan pada galat upstream dan tidak dapat disamarkan: batasi akses berkas log (root saja). Log Cloudflare di luar kendali server. Pembatalan: hapus symlink, `nginx -t && nginx -s reload`, hapus berkas di `sites-available`.
 
 ## 11. DNS Cloudflare dan OAuth (tindakan PEMILIK)
 
