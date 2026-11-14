@@ -769,7 +769,12 @@ export interface SaveHandoverInput {
 
 export interface SaveHandoverBatchInput {
   locationId: string;
-  tasks: Array<{ customerName: string; note: string }>;
+  /**
+   * `clientId` (UUID huruf kecil) opsional = kunci idempoten per task: kirim ulang yang sama (antrean offline)
+   * mengembalikan task yang sudah ada tanpa membuat duplikat. Bila ada pada sebagian task, dan sebagian sudah
+   * tersimpan, permintaan ditolak `CONFLICT`.
+   */
+  tasks: Array<{ customerName: string; note: string; clientId?: string }>;
 }
 
 export interface HandoverRefInput {
@@ -792,6 +797,8 @@ export interface AddCommentInput extends HandoverRefInput {
   before: string;
   after: string;
   body: string;
+  /** Kunci idempoten (UUID huruf kecil): kirim ulang yang sama mengembalikan task apa adanya tanpa komentar ganda. */
+  clientId?: string;
 }
 
 // --- QR Code Label ---

@@ -18,6 +18,13 @@ export const HANDOVER_LIMITS = {
  */
 export const HANDOVER_BATCH_MAX = HANDOVER_LIMITS.batch;
 
+const HANDOVER_CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** `clientId` komentar/task baru: UUID huruf kecil 36 karakter (`crypto.randomUUID()`). */
+export function isHandoverClientId(value: string): boolean {
+  return HANDOVER_CLIENT_ID.test(value);
+}
+
 export type HandoverStoredStatus = 'open' | 'cancelled';
 export type HandoverStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
 

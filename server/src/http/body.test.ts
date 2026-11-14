@@ -185,6 +185,7 @@ const WORST: Inputs = {
     before: text(HANDOVER_LIMITS.comment),
     after: text(HANDOVER_LIMITS.comment),
     body: text(HANDOVER_LIMITS.comment),
+    clientId: UUID,
   },
   'qrcodes.save': {
     id: UUID,
