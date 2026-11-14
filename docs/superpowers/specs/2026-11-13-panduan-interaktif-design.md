@@ -240,8 +240,8 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
     `shared/handover-paste.ts` pada teks contoh), sehingga tidak basi bila aturan berubah. Mengikuti tema
     terang/gelap otomatis. Aplikasi lain yang sering dibutuhkan peragaannya, terutama chat WhatsApp, juga adegan `kode`
     yang meniru tata letaknya (bilah atas, latar chat, bubble masuk/keluar, bilah pilihan; keputusan pemilik
-    2026-11-14, bagian 6 butir E): hanya tiruan tampilan dengan skema warna sendiri yang tetap terbaca di terang dan
-    gelap, tanpa logo, gambar, atau aset resmi.
+    2026-11-14, bagian 6 butir E): hanya tiruan tampilan yang meniru warna khasnya (hijau gelap/teal, bubble hijau muda
+    dan putih; butir J) dan tetap terbaca di terang dan gelap, tanpa logo, gambar, atau aset resmi.
   - **`klip`**: video pendek berulang (WebM/MP4, tanpa suara, sekitar 8 detik) untuk yang terjadi DI LUAR aplikasi
     dan tak dapat ditiru layout-nya dengan wajar (menu pasang PWA di peramban, dialog izin notifikasi). Demo
     "Tempel dari WhatsApp" TIDAK lagi memakai klip: memilih lalu menyalin pesan ditiru sebagai adegan `kode` (butir E). Klip direkam pemilik produk. Keterangan disinkronkan lewat daftar waktu di katalog. Klip diunduh
@@ -369,6 +369,11 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     menyetujui itu sebagai disengaja: perluasan ini dianggap melengkapi, bukan perombakan alur, dan pengguna yang
     sudah paham tidak perlu diganggu (checklist rilis, tabel "Alur berubah"/"Fitur ditambah": panduan `baru` bila
     perlu, bukan naik versi). Pengguna baru dan yang belum menyelesaikan tetap mendapat versi terbaru. Bukan temuan.
+  - **J. Tiruan WhatsApp boleh memakai warna khas WhatsApp (2026-11-14, keputusan pemilik produk atas temuan review
+    A7).** Butir E semula menyebut "skema warna sendiri", tetapi `whatsapp-mock.tsx` memakai palet yang meniru
+    WhatsApp. Pemilik produk menyetujui palet itu dipertahankan: tujuan demo adalah peragaan yang langsung dikenali
+    pengguna, jadi warna yang mirip memang dikehendaki. Batas tetap: tanpa logo, gambar, atau aset resmi, dan tetap
+    terbaca di tema terang dan gelap. Diubah: bagian 4 (kalimat adegan `kode` tiruan aplikasi lain). Bukan temuan.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
