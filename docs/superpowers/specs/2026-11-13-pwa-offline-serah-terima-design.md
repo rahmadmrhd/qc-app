@@ -150,6 +150,7 @@ Aturan:
 - Entri ditulis ke IndexedDB dan **dikonfirmasi tertulis** SEBELUM layar menampilkan "Belum terkirim". Bila penulisan gagal (kuota/penyimpanan diblokir), pengguna melihat galat biasa dan isi tidak dibuang dari formulir.
 - Hanya `UNAVAILABLE` saat pengiriman pertama yang mengantre. Galat lain (validasi, izin) ditampilkan seperti sekarang, tanpa antre.
 - Tampilan membaca **salinan dalam memori** yang dimuat dari IndexedDB sebelum router dibuat dan diperbarui lewat `BroadcastChannel` `qc-outbox` (dari tab lain dan dari service worker); `useOutboxOverlay` tetap sinkron.
+- Keluar di satu tab disiarkan ke tab lain milik akun yang sama lewat `BroadcastChannel` `qc-session`: tab penerima berhenti menulis antrean dan papan, lalu (sejak 2026-11-14, A3, §9 Tahap C) memuat ulang sekali saat kembali fokus atau terlihat bila sesinya sah. Tab pengirim tidak memuat ulang.
 - Maks. 50 entri untuk komentar dan task baru (centang tetap 200, hitungan terpisah). Semua jenis entri kedaluwarsa 24 jam (FR-P19) dan dibuang dengan pemberitahuan (§7.4).
 - Urutan: entri per task dikirim berurutan menurut `at`; antar task bebas, satu permintaan pada satu waktu. Memakai kunci `qc-outbox-flush` yang sama dengan penguras centang (satu penguras, dua sumber).
 - Pengurasan: klasifikasi galat sama dengan centang (§Fase 2): `UNAVAILABLE`/`INTERNAL`/non-ApiError menahan dan menghentikan putaran; `UNAUTHENTICATED` melaporkan dan menahan; kode penolakan (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`) membuang entri dan mengumumkannya lewat toast beserta alasannya (§7.4). Pemicu, pembatas 3 detik, batas 30 detik per kiriman, dan pemblokiran saat keluar sama dengan Fase 2.
@@ -165,7 +166,7 @@ Aturan:
 
 ### 7.4 Penolakan server
 
-Komentar atau task baru yang ditolak server (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`), atau yang kedaluwarsa 24 jam, **dibuang dengan toast**, sama seperti centang (keputusan pemilik 2026-11-13), dengan alasan dari server ("Task sudah dibatalkan", "Lokasi tidak dapat diakses", dst.). Karena isinya ketikan pengguna, toast memuat tombol **"Salin teks"** dan bertahan sampai ditutup (keputusan saya, agar isi tidak hilang diam-diam). Tidak ada "Coba lagi": penolakan tidak berubah dengan mengirim ulang. Penanda `rejected` hanya jembatan sementara dari service worker ke halaman (§7b).
+Komentar atau task baru yang ditolak server (`CONFLICT`/`FORBIDDEN`/`NOT_FOUND`/`VALIDATION`), atau yang kedaluwarsa 24 jam, **dibuang dengan toast**, sama seperti centang (keputusan pemilik 2026-11-13), dengan alasan dari server ("Task sudah dibatalkan", "Lokasi tidak dapat diakses", dst.). Karena isinya ketikan pengguna, toast memuat tombol **"Salin teks"** dan bertahan sampai ditutup (keputusan saya, agar isi tidak hilang diam-diam). Sejak 2026-11-14 (A2, §9 Tahap C) teks yang disalin untuk task baru memuat nama customer: per task `Customer: <nama>`, baris kosong, lalu catatan; nama kosong berarti hanya catatan; antar task dipisah baris kosong. Komentar tidak berubah. Tidak ada "Coba lagi": penolakan tidak berubah dengan mengirim ulang. Penanda `rejected` hanya jembatan sementara dari service worker ke halaman (§7b).
 
 ## 7b. Tahap D: Background Sync (Chrome/Edge)
 
@@ -227,7 +228,7 @@ Keputusan saya untuk Tahap B (2026-11-14; mohon dikoreksi; **menunggu pengesahan
 - (f) Detail task dibuka dari data papan bila belum pernah dibuka (`findBoardSeed`, Task 5), dan hanya bila lokasi task itu termasuk lokasi yang boleh dibaca pengguna di rute itu. Jawaban server `NOT_FOUND`/`FORBIDDEN` selalu otoritatif; data seed tidak ditampilkan menggantikannya. Pesan untuk `FORBIDDEN` ditampilkan sama seperti `NOT_FOUND`, "Task tidak ditemukan di lokasi aktif.", karena `handovers.get` hanya memberi `FORBIDDEN` untuk pemeriksaan lokasi dan pesan itu tidak mengungkap keberadaan task. Penolakan server bersifat latch: sesudah `NOT_FOUND`/`FORBIDDEN`, galat `UNAVAILABLE` berikutnya pada query yang sama tidak boleh memunculkan lagi data seed atau data lama yang tadi ditolak. `refetchOnMount: 'always'` menambah satu permintaan setiap detail dibuka (detail yang baru dimuat kurang dari 60 dtk tetap dimuat ulang).
 - (g) Flush pada `pagehide` bersifat usaha terbaik, karena penulisan IndexedDB bersifat asinkron. Pembersihan toko saat keluar dibatasi waktu 1,5 dtk sehingga Keluar tidak pernah menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan itu dilepas setelah 1,5 dtk sehingga isi toko TIDAK terhapus saat itu; rekaman tersebut baru dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil, dan tidak pernah dipulihkan bagi pemilik lain (pemilik diperiksa saat pemulihan).
 - (h) Label "data terakhir" dapat terlalu baru bagi sebagian isi kolom pulihan setelah "muat lagi" berhasil, karena semantik TanStack: `dataUpdatedAt` hanya satu per query. Diterima.
-- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C (ditutup 2026-11-14, lihat §9 Tahap C).
+- (i) Batasan banyak tab yang sama seperti antrean (PRD §11 2026-11-13 butir 9): keluar tidak disiarkan antar tab, sehingga tab lain pemilik yang sama dapat menulis ulang papan pemilik lama sebelum dibuang oleh boot pemilik lain atau keluar berikutnya, dan tab dengan sesi lama di memori dapat menyimpan data di bawah `owner` lama bila akun berganti di tab lain. Diterima untuk Tahap B; siaran keluar direncanakan di Tahap C (ditutup 2026-11-14, lihat §9 Tahap C). Tab penerima siaran keluar yang tertahan kini dimuat ulang sekali saat sesi sah kembali (A3, 2026-11-14), sehingga tidak lagi tertahan selamanya.
 
 ### Keputusan Tahap C (2026-11-14)
 
@@ -239,6 +240,10 @@ Disetujui pemilik produk pada 2026-11-14 ("Ya, eksekusi"). Butir yang berbeda da
 - **R5. Urutan pencarian `clientId` di server.** Sesudah izin lokasi dan sebelum validasi bisnis; untuk task baru dilakukan juga di dalam percobaan `runCas` sebelum `reserveNumbers` dan sebelum validasi customer (§7.1). Tidak mengubah prinsip §7.1.
 - **R6. Entri centang yang digabung dilakukan sebagai baca-hapus-tulis dalam satu transaksi IndexedDB.** Tidak ada penulisan ulang daftar pemilik dari salinan memori (menutup Review Focus 2 Tahap C). Tidak mengubah aturan gabung §7.2.
 
+Keputusan tambahan (usulan dari review putaran perbaikan 3; disetujui pemilik produk 2026-11-14):
+- **A2. Salin teks task baru memuat nama customer.** Teks per task: `Customer: <nama>`, baris kosong, lalu catatan; nama kosong berarti hanya catatan; antar task dipisah baris kosong. Alasan: batch sampai 30 task tidak dapat dipetakan ke customer-nya bila hanya catatan yang disalin. Diubah: §7.4 (format salin teks task baru). Komentar tidak berubah.
+- **A3. Tab tertahan setelah siaran keluar dimuat ulang sekali saat sesi sah kembali.** Tab penerima siaran keluar tetap tertahan. Saat tab kembali fokus atau terlihat, bila `auth.me` menyatakan sesi sah (akun apa pun), tab memuat ulang SEKALI. Tidak ada panggilan jaringan saat tab tersembunyi. Sesi tidak sah atau server tidak terjangkau = tetap tertahan, dicoba lagi pada fokus berikutnya. Tab pengirim siaran tidak memuat ulang. Masukan formulir yang belum disimpan di tab itu hilang; entri antrean tetap aman di IndexedDB. Bila sesi milik akun berbeda, boot berjalan sebagai login biasa dan antrean akun lama dibuang (`purgeForeignOutboxes`). Alasan: tanpa ini tab tertahan tidak pernah pulih dan fitur offline di tab itu mati diam-diam. Diubah: §7.2 (perilaku siaran keluar) dan batasan tab penerima pada §9 Tahap B butir (i), yang kini ditutup untuk sesi yang sah kembali.
+
 Penyesuaian implementasi yang belum disahkan pemilik produk (dicatat agar tidak menjadi temuan review berulang; mohon dikonfirmasi):
 - `networkMode: 'always'` pada mutasi komentar dan task baru serta query opsi formulir. Tanpa ini react-query menahan mutasi selagi peramban luring, sehingga galat `UNAVAILABLE` tidak pernah tiba.
 - Pesan siaran `sending-done` menghapus penanda "Mengirim..." di tab lain saat kirim selesai, tanpa menunggu masa berlaku 45 dtk.
@@ -246,7 +251,12 @@ Penyesuaian implementasi yang belum disahkan pemilik produk (dicatat agar tidak 
 - `hasEntriesForTask` menghitung semua jenis entri, sehingga centang pada task yang masih punya komentar antre ikut diantrekan agar urutan tidak terbalik.
 - Penguras mengambil ulang isi toko saat start bila salinan memori kosong (hidrasi gagal atau terlambat).
 
-Risiko yang tersisa: keluar kini menunggu dua anggaran pembersihan 1,5 dtk berurutan (sekitar 3 dtk bila IndexedDB macet). Belum diuji di perangkat nyata (lihat `docs/e2e-checklist.md` #208-#219).
+Risiko yang tersisa (diterima pemilik produk):
+- Keluar kini menunggu dua anggaran pembersihan 1,5 dtk berurutan (sekitar 3 dtk bila IndexedDB macet).
+- A3 membuang masukan formulir yang belum disimpan di tab yang dimuat ulang; antrean tetap aman.
+- A3 memetakan galat server selain `UNAVAILABLE` ke "tidak sah": tab tetap tertahan dan dicoba lagi pada fokus berikutnya (aman, tidak memuat ulang).
+
+Belum diuji di perangkat nyata (lihat `docs/e2e-checklist.md` #208-#224).
 
 ## 10. Dampak ke dokumen lain (dikerjakan saat tiap tahap)
 
