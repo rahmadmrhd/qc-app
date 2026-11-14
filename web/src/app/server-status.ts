@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 import { ApiError } from '@/lib/api/api-error';
+import { isBoardQueryKey } from '@/modules/handover/lib/board-snapshot';
 import { isPersistedQueryKey } from './query-persist';
 
 export interface ServerStatus {
@@ -30,13 +31,13 @@ export function formatClock(ms: number): string {
   return `${hour}:${minute}`;
 }
 
-/** Query whitelist yang punya data tetapi refetch terakhirnya gagal UNAVAILABLE; waktunya = dataUpdatedAt terbaru. */
+/** Query whitelist (atau papan/detail task Serah Terima, yang disimpan di IndexedDB) yang punya data tetapi refetch terakhirnya gagal UNAVAILABLE; waktunya = dataUpdatedAt terbaru. */
 function scan(queryClient: QueryClient): number | null {
   let since: number | null = null;
   for (const query of queryClient.getQueryCache().findAll()) {
     const { error, data, dataUpdatedAt } = query.state;
     if (
-      isPersistedQueryKey(query.queryKey) &&
+      (isPersistedQueryKey(query.queryKey) || isBoardQueryKey(query.queryKey)) &&
       data !== undefined &&
       error instanceof ApiError &&
       error.code === 'UNAVAILABLE'

@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
+import { clearBoardStoreWithin } from '@/app/board-persist';
 import { runBusy } from '@/app/pwa/busy';
 import { CSRF_HEADERS } from '@/lib/api/client';
 import { clearAllOutboxes, suspendOutboxWrites } from '@/modules/handover/lib/check-outbox';
@@ -37,6 +38,13 @@ export function useLogout(): () => void {
       clearAllOutboxes();
       // Penanda "mengirim" (memori) ikut dibuang: permintaan lama yang masih terbang tak boleh menempel ke sesi berikutnya.
       clearSending();
+      // Papan dan detail task di IndexedDB (Fase 3 Tahap B) dibuang saat keluar eksplisit; sesi kedaluwarsa tidak membuangnya.
+      // Tulis yang sedang berjalan atau tertunda dibatalkan di dalamnya; kegagalan pembersihan tak menghalangi keluar.
+      try {
+        await clearBoardStoreWithin();
+      } catch {
+        // Dibiarkan: sesi lokal tetap dibuang.
+      }
       queryClient.clear();
       await router.navigate({ to: '/login' });
     });
