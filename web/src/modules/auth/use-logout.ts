@@ -38,18 +38,18 @@ export function useLogout(): () => void {
       clearSession();
       // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.
       clearAllDrafts();
-      // Antrean tulis di perangkat (IndexedDB + kunci lama) dibuang saat keluar eksplisit, dalam batas waktu; sesi
-      // kedaluwarsa tidak membuangnya. Kegagalan pembersihan tak menghalangi keluar.
-      await clearAllOutboxesWithin();
+      // Antrean tulis di perangkat (IndexedDB + kunci lama) dan papan/detail task (Fase 3 Tahap B) dibuang saat keluar
+      // eksplisit; sesi kedaluwarsa tidak membuangnya. Keduanya berjalan PARALEL, masing-masing dibatasi waktunya
+      // (IndexedDB macet = maksimal satu anggaran 1,5 dtk, bukan dua berurutan). Penulisan antrean sudah ditahan di
+      // atas dan tulis papan tertunda dibatalkan di dalam `clearBoardStoreWithin`. Kegagalan tak menghalangi keluar.
+      await Promise.all([
+        clearAllOutboxesWithin(),
+        clearBoardStoreWithin().catch(() => {
+          // Dibiarkan: sesi lokal tetap dibuang.
+        }),
+      ]);
       // Penanda "mengirim" (memori) ikut dibuang: permintaan lama yang masih terbang tak boleh menempel ke sesi berikutnya.
       clearSending();
-      // Papan dan detail task di IndexedDB (Fase 3 Tahap B) dibuang saat keluar eksplisit; sesi kedaluwarsa tidak membuangnya.
-      // Tulis yang sedang berjalan atau tertunda dibatalkan di dalamnya; kegagalan pembersihan tak menghalangi keluar.
-      try {
-        await clearBoardStoreWithin();
-      } catch {
-        // Dibiarkan: sesi lokal tetap dibuang.
-      }
       queryClient.clear();
       await router.navigate({ to: '/login' });
     });
