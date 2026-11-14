@@ -300,14 +300,22 @@ test('keluar menyiarkan logout pemilik ke tab lain SESUDAH penulisan antrean dit
   }
 });
 
-test('pembersihan antrean dan papan berjalan PARALEL: keduanya menggantung = satu anggaran waktu, bukan dua berurutan', async () => {
-  const hang = () => new Promise<void>(() => undefined);
-  vi.mocked(deviceDb.clearAllDeviceStores).mockImplementationOnce(hang);
-  vi.mocked(deviceDb.clearBoardStores).mockImplementationOnce(hang);
+test('pembersihan antrean dan papan berjalan PARALEL: papan dibersihkan selagi pembersihan antrean masih menggantung', async () => {
+  let releaseOutbox: () => void = () => undefined;
+  let releaseBoard: () => void = () => undefined;
+  vi.mocked(deviceDb.clearAllDeviceStores).mockImplementationOnce(
+    () => new Promise<void>((resolve) => (releaseOutbox = resolve)),
+  );
+  vi.mocked(deviceDb.clearBoardStores).mockImplementationOnce(
+    () => new Promise<void>((resolve) => (releaseBoard = resolve)),
+  );
   const { result } = renderHook(() => useLogout(), { wrapper });
-  const started = Date.now();
   act(() => result.current());
-  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }), { timeout: 5000 });
-  // Berurutan akan ~3000 ms (2 x 1500); paralel ~1500 ms.
-  expect(Date.now() - started).toBeLessThan(2500);
+  // Berurutan: papan baru dimulai setelah anggaran 1,5 dtk pembersihan antrean habis (lebih lama dari waktu tunggu ini).
+  await waitFor(() => expect(deviceDb.clearAllDeviceStores).toHaveBeenCalled(), { timeout: 800 });
+  await waitFor(() => expect(deviceDb.clearBoardStores).toHaveBeenCalled(), { timeout: 800 });
+  expect(navigate).not.toHaveBeenCalled();
+  releaseOutbox();
+  releaseBoard();
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
 });
