@@ -1,10 +1,15 @@
 import { QueryClient } from '@tanstack/react-query';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as deviceDb from '@/lib/device-db';
 import { ANONYMOUS_SESSION, initSession } from '@/modules/auth/session';
 import { makeHandover } from '@/modules/handover/components/test-handover';
 import { boardColumnData } from '@/modules/handover/lib/board-cache';
-import { enqueueOutbox, readOutbox, resumeOutboxWrites } from '@/modules/handover/lib/outbox';
+import {
+  enqueueOutbox,
+  outboxWritesSuspended,
+  readOutbox,
+  resumeOutboxWrites,
+} from '@/modules/handover/lib/outbox';
 import { handoverKeys } from '@/modules/handover/queries';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { resetBoardPersistForTests, startBoardPersistence } from './board-persist';
@@ -134,4 +139,152 @@ test('pesan logout pemilik lain diabaikan', async () => {
   expect(stopBoard).not.toHaveBeenCalled();
   expect(readOutbox(OWNER)).toHaveLength(1);
   expect(await enqueueOutbox(OWNER, { ...check, index: 1, text: 'B = 2' })).toBe('ok');
+});
+
+describe('pemulihan tab tertahan (A3): kembali fokus + sesi sah = muat ulang sekali', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const makeResume = (me: () => Promise<unknown>, busy = false) => ({
+    loadMe: vi.fn(me),
+    reload: vi.fn(),
+    isBusy: () => busy,
+  });
+  const receive = (resume: ReturnType<typeof makeResume>) =>
+    handleRemoteLogout(OWNER, {
+      currentOwner: OWNER,
+      stopBoardPersistence: () => undefined,
+      resume,
+    });
+  const refocus = () => window.dispatchEvent(new Event('focus'));
+  const show = () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  test('sesi sah (akun apa pun): reload SEKALI, fokus berikutnya tidak memuat ulang atau mengecek lagi', async () => {
+    const resume = makeResume(async () => ({ email: 'baru@x.com' }));
+    receive(resume);
+    refocus();
+    await tick();
+    expect(resume.loadMe).toHaveBeenCalledTimes(1);
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+    refocus();
+    show();
+    await tick();
+    expect(resume.loadMe).toHaveBeenCalledTimes(1);
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test('visibilitychange menjadi terlihat juga memicu cek; fokus dan visibilitas bersamaan hanya satu cek', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    receive(resume);
+    show();
+    refocus();
+    await tick();
+    expect(resume.loadMe).toHaveBeenCalledTimes(1);
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test('sesi tidak sah (null) atau server tak terjangkau: tidak reload, tetap tertahan, dicoba lagi pada fokus berikutnya', async () => {
+    let answer: unknown = null;
+    const resume = makeResume(async () => answer);
+    receive(resume);
+    refocus();
+    await tick();
+    answer = 'unavailable';
+    refocus();
+    await tick();
+    expect(resume.loadMe).toHaveBeenCalledTimes(2);
+    expect(resume.reload).not.toHaveBeenCalled();
+    expect(outboxWritesSuspended()).toBe(true);
+    // Sesi pulih kemudian: fokus berikutnya memuat ulang sekali.
+    answer = { email: OWNER };
+    refocus();
+    await tick();
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test('galat tak terduga saat cek tidak menolak dan tidak memuat ulang', async () => {
+    const resume = makeResume(async () => {
+      throw new Error('aneh');
+    });
+    receive(resume);
+    refocus();
+    await tick();
+    expect(resume.reload).not.toHaveBeenCalled();
+  });
+
+  test('tab tersembunyi: tidak ada pemanggilan jaringan', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    receive(resume);
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    refocus();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+    expect(resume.reload).not.toHaveBeenCalled();
+  });
+
+  test('tanpa siaran keluar: fokus tak pernah mengecek sesi', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    refocus();
+    show();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+    // Siaran pemilik lain juga tidak mengaktifkan pemulihan.
+    handleRemoteLogout('lain@x.com', {
+      currentOwner: OWNER,
+      stopBoardPersistence: () => undefined,
+      resume,
+    });
+    refocus();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+  });
+
+  test('tab pengirim siaran (yang sendiri keluar) tidak pernah memuat ulang', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    announceLogout(OWNER);
+    receive(resume);
+    refocus();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+    expect(resume.reload).not.toHaveBeenCalled();
+  });
+
+  test('siaran datang lalu tab sendiri mulai keluar: pemulihan dibatalkan', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    receive(resume);
+    announceLogout(OWNER);
+    refocus();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+    expect(resume.reload).not.toHaveBeenCalled();
+  });
+
+  test('tab sedang sibuk menulis/keluar: tidak mengecek dan tidak memuat ulang; setelah bebas dicek pada fokus berikutnya', async () => {
+    let busy = true;
+    const resume = {
+      loadMe: vi.fn(async () => ({ email: OWNER })),
+      reload: vi.fn(),
+      isBusy: () => busy,
+    };
+    receive(resume);
+    refocus();
+    await tick();
+    expect(resume.loadMe).not.toHaveBeenCalled();
+    busy = false;
+    refocus();
+    await tick();
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test('siaran ganda diterima: tetap satu pendengar dan satu reload', async () => {
+    const resume = makeResume(async () => ({ email: OWNER }));
+    receive(resume);
+    receive(resume);
+    refocus();
+    await tick();
+    expect(resume.loadMe).toHaveBeenCalledTimes(1);
+    expect(resume.reload).toHaveBeenCalledTimes(1);
+  });
 });
