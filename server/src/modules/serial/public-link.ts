@@ -57,7 +57,9 @@ export async function verifyReportToken(
     return null;
   }
   const sigBytes = decodeBytes(sig);
-  if (!sigBytes) return null;
+  // Hanya bentuk kanonis: karakter terakhir base64url membawa bit sisa (padding) yang diabaikan decoder, jadi tanpa
+  // pemeriksaan ini beberapa tanda tangan berbeda terbaca sebagai byte yang sama (token "cacat" tetap sah).
+  if (!sigBytes || encodeBytes(sigBytes) !== sig) return null;
   const key = await derivedKey(secret, 'verify');
   // `crypto.subtle.verify` membandingkan tanda tangan dalam waktu tetap.
   const valid = await crypto.subtle.verify(

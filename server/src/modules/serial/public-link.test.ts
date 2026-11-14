@@ -119,4 +119,17 @@ describe('signReportToken / verifyReportToken', () => {
       ]);
     }
   });
+  test('tanda tangan non-kanonis (hanya bit sisa karakter terakhir diubah) ditolak, bukan dibaca sebagai byte yang sama', async () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    for (let index = 0; index < 20; index++) {
+      const caseId = crypto.randomUUID();
+      const token = await signReportToken(SECRET, caseId, EXP);
+      // Karakter terakhir base64url 43 karakter membawa 4 bit berguna + 2 bit sisa: membalik bit terendah hanya
+      // mengubah bit sisa, sehingga decoder yang longgar menghasilkan byte yang sama persis.
+      const variant = `${token.slice(0, -1)}${alphabet[alphabet.indexOf(token.slice(-1)) ^ 1]}`;
+      expect(variant).not.toBe(token);
+      expect(await verifyReportToken(SECRET, variant, EXP - 1000)).toBeNull();
+      expect(await verifyReportToken(SECRET, token, EXP - 1000)).toEqual({ caseId });
+    }
+  });
 });
