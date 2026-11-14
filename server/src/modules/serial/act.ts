@@ -424,6 +424,10 @@ async function applyAct(
         fromLocationName: currentLocationName,
         toLocationId: target.id,
         toLocationName: target.name,
+        // Catatan pengiriman opsional (ekspedisi, resi, pengantar); kosong tidak disimpan.
+        ...(input.action === 'send' && input.shipmentNote
+          ? { shipmentNote: input.shipmentNote }
+          : {}),
       };
       break;
     }

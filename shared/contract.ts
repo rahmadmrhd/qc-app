@@ -1562,6 +1562,11 @@ export type SerialActInput =
        * kosong atau sama dengan satu-satunya lokasi). `receive` (QC): lokasi hanya bila lokasi QC asal sudah nonaktif.
        */
       toLocationId?: string;
+      /**
+       * Hanya `send`, opsional: ekspedisi, nomor resi, atau nama pengantar (satu baris, maks. `shipmentNoteMax`).
+       * Disimpan di riwayat kirim; tidak pernah tampil di halaman publik.
+       */
+      shipmentNote?: string;
     })
   | (SerialActBase & { action: 'service_diagnosis'; stage: ServiceDiagnosisStage })
   | (SerialActBase & {

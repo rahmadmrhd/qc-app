@@ -235,6 +235,42 @@ describe('send: Kirim ke servis (baris 2)', () => {
     });
   });
 
+  test('catatan pengiriman opsional (ekspedisi, resi, pengantar): dipangkas dan tersimpan di data kejadian', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    const out = await act('send', { shipmentNote: '  JNE resi 123456, diantar Budi  ' });
+    expect(out.ok).toBe(true);
+    const sent = (await eventsOf()).at(-1);
+    expect(JSON.parse(sent?.data_json ?? '{}')).toMatchObject({
+      leg: 'to_service',
+      shipmentNote: 'JNE resi 123456, diantar Budi',
+    });
+  });
+
+  test('catatan pengiriman kosong atau spasi saja tidak disimpan', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    const out = await act('send', { shipmentNote: '   ' });
+    expect(out.ok).toBe(true);
+    expect(JSON.parse((await eventsOf()).at(-1)?.data_json ?? '{}')).not.toHaveProperty(
+      'shipmentNote',
+    );
+  });
+
+  test('catatan pengiriman tidak sah (lewat batas, baris baru, pengatur arah) atau pada aksi selain kirim = VALIDATION', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    for (const shipmentNote of ['x'.repeat(201), 'resi\n123', 'resi‮123']) {
+      const bad = await act('send', { shipmentNote });
+      expect(bad.error?.code).toBe('VALIDATION');
+      expect(Object.keys(bad.error?.fields ?? {})).toContain('shipmentNote');
+    }
+    const onNote = await act('note', { message: 'catatan', shipmentNote: 'resi 1' });
+    expect(onNote.error?.code).toBe('VALIDATION');
+    expect(Object.keys(onNote.error?.fields ?? {})).toContain('shipmentNote');
+    expect(await serialRow()).toMatchObject({ status: 'reported', custody: 'qc' });
+  });
+
   test('kirim dari QC Surabaya ke servis Surabaya sah (lokasi sama)', async () => {
     await setServiceLocations(['loc-sby']);
     await seedReported();

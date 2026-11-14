@@ -400,19 +400,26 @@ const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
   note: [],
   report_failure: [],
   declare_broken: [],
-  send: ['toLocationId'],
+  send: ['toLocationId', 'shipmentNote'],
   receive: ['toLocationId'],
   service_diagnosis: ['stage'],
   recheck: ['result', 'stickerIds'],
   recheck_pass: ['stickerIds'],
   recheck_fail: ['stickerIds'],
 };
-const ACT_ALL_EXTRA_KEYS = ['toLocationId', 'stage', 'result', 'stickerIds'] as const;
+const ACT_ALL_EXTRA_KEYS = [
+  'toLocationId',
+  'shipmentNote',
+  'stage',
+  'result',
+  'stickerIds',
+] as const;
 
 const ACT_EXTRA_MESSAGES: Record<string, string> = {
   stickerIds: 'Stiker hanya untuk cek ulang',
   stage: 'Tahap hanya untuk diagnosis',
   toLocationId: 'Lokasi hanya untuk kirim atau terima',
+  shipmentNote: 'Catatan pengiriman hanya untuk kirim',
   result: 'Hasil hanya untuk cek ulang',
 };
 
@@ -423,6 +430,26 @@ const MESSAGE_REQUIRED_TEXT: Partial<Record<SerialAction, string>> = {
   declare_broken: 'Isi dulu catatan untuk menyatakan Rusak',
   recheck_fail: 'Isi dulu catatan hasil gagalnya',
 };
+
+/**
+ * Catatan pengiriman: teks satu baris tanpa karakter kontrol/pengatur arah, dipangkas; kosong dikembalikan kosong
+ * (opsional).
+ */
+function readShipmentNote(reader: ReturnType<typeof readObject>): string {
+  const raw = reader.raw('shipmentNote');
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw !== 'string') {
+    reader.fail('shipmentNote', 'Harus berupa teks');
+    return '';
+  }
+  const text = raw.trim();
+  if (text === '') return '';
+  const max = SERIAL_LIMITS.shipmentNoteMax;
+  if ([...text].length > max) reader.fail('shipmentNote', `Maksimal ${max} karakter`);
+  else if (hasControlChars(text) || hasBidiControls(text))
+    reader.fail('shipmentNote', 'Tulis dalam satu baris, tanpa karakter kontrol');
+  return text;
+}
 
 /** Pesan kejadian (Markdown): panjang, pengatur arah teks, dan jumlah gambar dibatasi; kosong dikembalikan kosong. */
 function readMessage(reader: ReturnType<typeof readObject>): string {
@@ -490,6 +517,10 @@ export function validateSerialAct(raw: unknown): SerialActInput {
   if (allowed.includes('toLocationId')) {
     const toLocationId = reader.str('toLocationId', { max: 100 });
     if (toLocationId !== '') out.toLocationId = toLocationId;
+  }
+  if (allowed.includes('shipmentNote')) {
+    const shipmentNote = readShipmentNote(reader);
+    if (shipmentNote !== '') out.shipmentNote = shipmentNote;
   }
   const stickerIdsRaw = source.stickerIds;
   if (allowed.includes('stickerIds') && stickerIdsRaw !== undefined && stickerIdsRaw !== null) {
