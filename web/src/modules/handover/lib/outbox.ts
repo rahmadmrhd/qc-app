@@ -254,7 +254,46 @@ function setCopy(next: Map<string, OutboxEntry[]>): void {
   mutations += 1;
 }
 
-/** Salinan dari daftar rekaman toko (entri tak valid dibuang dari tampilan; tak pernah menghapusnya dari toko). */
+/**
+ * Pemilik sesi yang sah di tab ini (diisi `purgeForeignOutboxes` saat penyinkron dimulai). Sesudahnya salinan memori
+ * hanya memuat antrean pemilik ini: entri pemilik lain yang belum selesai dibersihkan dari toko tak hidup lagi di
+ * memori (dan tak terhitung di peringatan keluar). `null` = belum ditentukan (boot, sebelum penyinkron berjalan).
+ */
+let activeOwner: string | null = null;
+
+/**
+ * Entri yang sedang/baru saja dihapus (kunci rekaman). Penyegaran yang membaca toko sebelum penghapusan commit tak
+ * boleh memasangnya kembali ke salinan memori. Tersisa sampai penghapusan selesai DAN tak ada lagi penyegaran yang
+ * dimulai sebelum penghapusan itu selesai (hasil bacanya mungkin masih basi).
+ */
+const tombstones = new Map<string, { settledAt: number | null }>();
+/** Nomor urut penyegaran dimulai; `activeRefreshes` = yang belum selesai. */
+let refreshSeq = 0;
+const activeRefreshes = new Set<number>();
+
+function sweepTombstones(): void {
+  for (const [key, mark] of tombstones) {
+    if (mark.settledAt === null) continue;
+    const settledAt = mark.settledAt;
+    if (![...activeRefreshes].some((seq) => seq <= settledAt)) tombstones.delete(key);
+  }
+}
+
+/**
+ * Nasib rekaman toko: `ok` dipakai; `newer` = ditulis rilis/tab lebih baru (versi > yang dikenal): diabaikan dan
+ * dibiarkan; `broken` = versi lama/tak dikenal atau bentuk entri rusak.
+ */
+function classifyRecord(record: DeviceRecord): 'ok' | 'newer' | 'broken' {
+  if (typeof record.v !== 'number' || !Number.isInteger(record.v)) return 'broken';
+  if (record.v > RECORD_VERSION) return 'newer';
+  if (record.v < RECORD_VERSION) return 'broken';
+  return isOutboxEntry(entryOf(record)) && typeof record.owner === 'string' ? 'ok' : 'broken';
+}
+
+/**
+ * Salinan dari daftar rekaman toko (rekaman tak dikenal, rusak, atau milik pemilik lain/yang sedang dihapus dibuang dari
+ * tampilan; fungsi ini tak pernah menghapus apa pun dari toko).
+ */
 function copyFromRecords(records: readonly DeviceRecord[]): Map<string, OutboxEntry[]> {
   // Urut `at`, lalu urutan masuk (`seq`), lalu kunci: deterministik walau `at` kembar (getAll mengurut menurut kunci acak).
   const ordered = [...records].sort(
@@ -265,8 +304,10 @@ function copyFromRecords(records: readonly DeviceRecord[]): Map<string, OutboxEn
   );
   const grouped = new Map<string, OutboxEntry[]>();
   for (const record of ordered) {
-    const entry = entryOf(record);
-    if (!isOutboxEntry(entry) || typeof record.owner !== 'string') continue;
+    if (classifyRecord(record) !== 'ok') continue;
+    if (tombstones.has(record.key)) continue;
+    if (activeOwner !== null && record.owner !== activeOwner) continue;
+    const entry = entryOf(record) as OutboxEntry;
     const list = grouped.get(record.owner);
     if (list) list.push(entry);
     else grouped.set(record.owner, [entry]);
@@ -286,6 +327,17 @@ const sameContent = (a: Map<string, OutboxEntry[]>, b: Map<string, OutboxEntry[]
  */
 export async function refreshOutboxFromStore(owner?: string): Promise<OutboxEntry[] | null> {
   if (writesSuspended) return null;
+  const seq = ++refreshSeq;
+  activeRefreshes.add(seq);
+  try {
+    return await refreshFromStore(owner);
+  } finally {
+    activeRefreshes.delete(seq);
+    sweepTombstones();
+  }
+}
+
+async function refreshFromStore(owner?: string): Promise<OutboxEntry[] | null> {
   const born = epoch;
   let records: DeviceRecord[] | null = null;
   let seen = -1;
@@ -296,6 +348,14 @@ export async function refreshOutboxFromStore(owner?: string): Promise<OutboxEntr
     if (records === null) return null;
   }
   if (records === null || born !== epoch || writesSuspended) return null;
+  // Rekaman milik pemilik yang sedang membaca dengan versi lama/tak dikenal atau bentuk rusak tak akan pernah terkirim
+  // maupun terlihat: dibuang dari toko. Versi LEBIH BARU (milik rilis/tab lain) dan milik pemilik lain tak disentuh.
+  if (owner !== undefined) {
+    const broken = records
+      .filter((record) => record.owner === owner && classifyRecord(record) === 'broken')
+      .map((record) => record.key);
+    if (broken.length > 0) void deleteOutboxRecords(broken);
+  }
   const next = copyFromRecords(records);
   if (!sameContent(copy, next)) {
     setCopy(next);
@@ -515,6 +575,8 @@ export async function enqueueOutbox(
 export async function removeOutboxEntries(owner: string, ids: readonly string[]): Promise<boolean> {
   if (ids.length === 0) return true;
   const drop = new Set(ids);
+  const keys = ids.map((id) => recordKey(owner, id));
+  for (const key of keys) tombstones.set(key, { settledAt: null });
   const current = copy.get(owner) ?? [];
   const kept = current.filter((entry) => !drop.has(entry.id));
   if (kept.length !== current.length) {
@@ -524,7 +586,14 @@ export async function removeOutboxEntries(owner: string, ids: readonly string[])
     setCopy(next);
     notify();
   }
-  const ok = await deleteOutboxRecords(ids.map((id) => recordKey(owner, id)));
+  let ok = false;
+  try {
+    ok = await deleteOutboxRecords(keys);
+  } finally {
+    // Selesai (berhasil atau tidak): tanda dilepas begitu tak ada penyegaran lama yang masih berjalan.
+    for (const key of keys) tombstones.set(key, { settledAt: refreshSeq });
+    sweepTombstones();
+  }
   broadcastChanged();
   return ok;
 }
@@ -545,6 +614,7 @@ export async function purgeExpired(owner: string, now: number): Promise<OutboxEn
  * berjalan sinkron (pemanggil sinkron seperti `startOutboxSync` tidak menunggu); pembersihan toko menyusul.
  */
 export async function purgeForeignOutboxes(owner: string): Promise<void> {
+  activeOwner = owner;
   const foreign = [...copy.keys()].filter((key) => key !== owner);
   if (foreign.length > 0) {
     const next = new Map(copy);
@@ -570,6 +640,7 @@ export async function clearAllOutboxesWithin(
   budgetMs: number = OUTBOX_IO_BUDGET_MS,
 ): Promise<void> {
   epoch += 1;
+  activeOwner = null;
   const hadEntries = copy.size > 0;
   setCopy(new Map());
   if (hadEntries) notify();
@@ -609,6 +680,10 @@ export function resetOutboxForTests(): void {
   version = 0;
   writesSuspended = false;
   hydration = null;
+  activeOwner = null;
+  tombstones.clear();
+  activeRefreshes.clear();
+  refreshSeq = 0;
   refreshRunning = false;
   refreshAgain = false;
   stopChannelListener?.();

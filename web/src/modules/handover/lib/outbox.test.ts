@@ -34,6 +34,8 @@ vi.mock('@/lib/device-db', async (importOriginal) => {
   return {
     ...actual,
     readOutboxRecords: vi.fn(actual.readOutboxRecords),
+    deleteOutboxRecords: vi.fn(actual.deleteOutboxRecords),
+    deleteOutboxExceptOwner: vi.fn(actual.deleteOutboxExceptOwner),
     clearAllDeviceStores: vi.fn(actual.clearAllDeviceStores),
   };
 });
@@ -479,4 +481,113 @@ test('siaran: enqueue memberi tahu tab lain; pesan changed dari tab lain memuat 
   } finally {
     other.close();
   }
+});
+
+/** Menulis rekaman mentah ke toko dengan versi/bentuk bebas (seperti tab lain atau rilis lain). */
+async function seedRaw(owner: string, id: string, extra: Record<string, unknown>): Promise<void> {
+  await deviceDb.putOutboxRecord(
+    owner,
+    { key: `${owner}|${id}`, owner, savedAt: 1, ...extra } as deviceDb.DeviceRecord,
+    {},
+    () => true,
+  );
+}
+
+const gate = () => {
+  let open: () => void = () => undefined;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+};
+
+test('A5: rekaman milik pemilik dengan versi LEBIH BARU diabaikan tetapi TIDAK dihapus dari toko', async () => {
+  await seedRaw(OWNER, 'baru', { v: 2, entry: { ...check({ at: 5 }), id: 'baru' } });
+  await seed(OWNER, { ...check({ at: 6 }), id: 'ok' });
+  const rows = await refreshOutboxFromStore(OWNER);
+  expect(rows?.map((e) => e.id)).toEqual(['ok']);
+  expect(await storeKeys()).toEqual([`${OWNER}|baru`, `${OWNER}|ok`]);
+});
+
+test('A5: versi tak dikenal/lama atau bentuk rusak milik pemilik dibuang dari toko saat disegarkan; milik pemilik lain dibiarkan', async () => {
+  await seedRaw(OWNER, 'lama', { v: 0, entry: { ...check({ at: 5 }), id: 'lama' } });
+  await seedRaw(OWNER, 'tanpa-v', { entry: { ...check({ at: 5 }), id: 'tanpa-v' } });
+  await seedRaw(OWNER, 'rusak', { v: 1, entry: { id: 'rusak', kind: 'aneh' } });
+  await seedRaw('lain@x.com', 'rusak-lain', { v: 1, entry: { id: 'rusak-lain', kind: 'aneh' } });
+  await seed(OWNER, { ...check({ at: 6 }), id: 'ok' });
+  const rows = await refreshOutboxFromStore(OWNER);
+  expect(rows?.map((e) => e.id)).toEqual(['ok']);
+  expect(await storeKeys()).toEqual([`${OWNER}|ok`, 'lain@x.com|rusak-lain']);
+});
+
+test('A5: hydrate (tanpa pemilik) tidak menghapus rekaman tak dikenal', async () => {
+  await seedRaw(OWNER, 'lama', { v: 0, entry: { ...check({ at: 5 }), id: 'lama' } });
+  await hydrateOutbox();
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(await storeKeys()).toEqual([`${OWNER}|lama`]);
+});
+
+test('A4: penyegaran yang membaca toko SEBELUM penghapusan commit tak menghidupkan entri yang baru dikirim', async () => {
+  const entryId = 'terkirim';
+  await enqueueOutbox(OWNER, { ...comment({ at: Date.now() }), id: entryId });
+  const delGate = gate();
+  vi.mocked(deviceDb.deleteOutboxRecords).mockImplementationOnce(async (keys) => {
+    await delGate.promise;
+    return (
+      await vi.importActual<typeof import('@/lib/device-db')>('@/lib/device-db')
+    ).deleteOutboxRecords(keys);
+  });
+  const removal = removeOutboxEntries(OWNER, [entryId]);
+  // Memori sudah bersih; toko belum: baca sekarang masih melihat entri itu.
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(await storeKeys()).toEqual([`${OWNER}|${entryId}`]);
+  await refreshOutboxFromStore(OWNER);
+  expect(readOutbox(OWNER)).toEqual([]);
+  delGate.open();
+  await removal;
+  expect(await storeKeys()).toEqual([]);
+});
+
+test('A4: baca yang sudah terlanjur memegang hasil basi dan selesai SESUDAH penghapusan commit juga tak menghidupkannya', async () => {
+  const entryId = 'terkirim';
+  await enqueueOutbox(OWNER, { ...comment({ at: Date.now() }), id: entryId });
+  const actual = await vi.importActual<typeof import('@/lib/device-db')>('@/lib/device-db');
+  const delGate = gate();
+  const readGate = gate();
+  vi.mocked(deviceDb.deleteOutboxRecords).mockImplementationOnce(async (keys) => {
+    await delGate.promise;
+    return actual.deleteOutboxRecords(keys);
+  });
+  const removal = removeOutboxEntries(OWNER, [entryId]);
+  vi.mocked(deviceDb.readOutboxRecords).mockImplementationOnce(async () => {
+    const stale = await actual.readOutboxRecords();
+    await readGate.promise;
+    return stale;
+  });
+  const refreshing = refreshOutboxFromStore(OWNER);
+  await vi.waitFor(() => expect(vi.mocked(deviceDb.readOutboxRecords)).toHaveBeenCalled());
+  delGate.open();
+  await removal;
+  expect(await storeKeys()).toEqual([]);
+  readGate.open();
+  await refreshing;
+  expect(readOutbox(OWNER)).toEqual([]);
+});
+
+test('B2: sebelum pembersihan toko pemilik lain selesai, penyegaran tak memasang entri pemilik lain ke salinan memori', async () => {
+  await seed('lama@x.com', { ...check({ at: Date.now() }), id: 'lama' });
+  await seed(OWNER, { ...check({ at: Date.now() }), id: 'milik' });
+  const actual = await vi.importActual<typeof import('@/lib/device-db')>('@/lib/device-db');
+  const delGate = gate();
+  vi.mocked(deviceDb.deleteOutboxExceptOwner).mockImplementationOnce(async (owner) => {
+    await delGate.promise;
+    return actual.deleteOutboxExceptOwner(owner);
+  });
+  const purging = purgeForeignOutboxes(OWNER);
+  await refreshOutboxFromStore();
+  expect(readOutbox('lama@x.com')).toEqual([]);
+  expect(countAllOutboxEntries()).toBe(1);
+  delGate.open();
+  await purging;
+  expect(await storeKeys()).toEqual([`${OWNER}|milik`]);
 });
