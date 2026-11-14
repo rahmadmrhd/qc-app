@@ -220,6 +220,29 @@ describe('device-db: toko outbox (v2)', () => {
     ]);
   });
 
+  it('B1: pemindaian per pemilik tidak menyentuh pemilik lain yang namanya berawalan `owner|` (replaceIf dan cap)', async () => {
+    const foreign = `${OWNER}|z`;
+    await putOutboxRecord(foreign, orec(foreign, 'f1', { slot: 's1', kind: 'check' }), {}, always);
+    await putOutboxRecord(OWNER, orec(OWNER, 'a1', { slot: 's1', kind: 'check' }), {}, always);
+    // replaceIf yang cocok dengan rekaman asing tidak boleh menghapusnya.
+    const replaced = await putOutboxRecord(
+      OWNER,
+      orec(OWNER, 'a2', { slot: 's1', kind: 'check' }),
+      { replaceIf: slotIs('s1') },
+      always,
+    );
+    expect(replaced).toBe('ok');
+    expect(keysOf(await readOutboxRecords())).toEqual([`${OWNER}|a2`, `${foreign}|f1`]);
+    // cap hanya menghitung rekaman milik owner: 1 milik OWNER (a2) + 1 asing; max 2 tidak penuh bila asing dihitung benar.
+    const capped = await putOutboxRecord(
+      OWNER,
+      orec(OWNER, 'a3', { kind: 'check' }),
+      { cap: { count: isCheck, max: 2 } },
+      always,
+    );
+    expect(capped).toBe('ok');
+  });
+
   it('cap penuh: batal tanpa menulis apa pun (penggantian pun ikut batal)', async () => {
     await putOutboxRecord(OWNER, orec(OWNER, 'c1', { kind: 'check' }), {}, always);
     await putOutboxRecord(OWNER, orec(OWNER, 'c2', { kind: 'check' }), {}, always);

@@ -248,6 +248,8 @@ export async function putOutboxRecord(
         let remaining = 0;
         const doomed: string[] = [];
         for (const existing of scan.result as DeviceRecord[]) {
+          // Rentang awalan `owner|` juga memuat kunci pemilik lain yang namanya berawalan `owner|`: hanya milik `owner`.
+          if (existing.owner !== owner) continue;
           if (rule.replaceIf?.(existing)) {
             doomed.push(existing.key);
           } else if (existing.key !== record.key && rule.cap?.count(existing)) {
