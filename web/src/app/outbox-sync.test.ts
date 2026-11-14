@@ -418,11 +418,15 @@ test('M2: pengiriman yang menggantung dibatalkan setelah 30 dtk: entri tetap, ru
   await tick(1_000);
   expect(mocks.api).toHaveBeenCalledTimes(1);
   await tick(30_000);
-  expect(isBusy()).toBe(false);
   expect(readOutbox(OWNER)).toHaveLength(1);
+  // Pemicu `online` yang tertahan selama putaran macet diulang SEKALI begitu putaran dilepas (entri tetap ada).
+  expect(mocks.api).toHaveBeenCalledTimes(2);
+  await tick(30_000);
+  expect(isBusy()).toBe(false);
+  expect(mocks.api).toHaveBeenCalledTimes(2);
   window.dispatchEvent(new Event('online'));
   await tick();
-  expect(mocks.api).toHaveBeenCalledTimes(2);
+  expect(mocks.api).toHaveBeenCalledTimes(3);
   vi.useRealTimers();
 });
 
@@ -592,4 +596,32 @@ describe('toast penolakan komentar dan task baru (Tahap C)', () => {
     expect(call?.[0]).toBe('1 perubahan centang tidak dapat dikirim: Task sudah selesai');
     expect(call?.[1]).toBeUndefined();
   });
+});
+
+test('pemicu yang datang saat putaran masih berjalan diulang SEKALI setelah selesai (entri baru tak menunggu pemicu lain)', async () => {
+  // Putaran "berjalan" sampai `after` dilepas, SESUDAH penguras selesai membaca toko untuk terakhir kali.
+  let releaseAfter: () => void = () => undefined;
+  const after = new Promise<void>((resolve) => (releaseAfter = resolve));
+  const request = vi.fn(async (_name: string, cb: (lock: unknown) => Promise<void>) => {
+    await cb({ name: 'qc-outbox-flush' });
+    await after;
+  });
+  vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+  await queue(0);
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  // Komentar baru diantrekan dan penguras diminta, tetapi putaran pertama masih memegang `running`.
+  await enqueueOutbox(OWNER, commentEntry());
+  requestOutboxFlush();
+  await settle();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  releaseAfter();
+  await settle();
+  expect(mocks.api).toHaveBeenCalledTimes(2);
+  expect(mocks.api.mock.calls[1]?.[0]).toBe('handovers.comment');
+  expect(readOutbox(OWNER)).toEqual([]);
+  // Tanpa pemicu lain tak ada putaran ketiga.
+  await settle();
+  expect(request).toHaveBeenCalledTimes(2);
 });

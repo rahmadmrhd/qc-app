@@ -122,6 +122,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
     return session.authenticated && session.email === owner;
   };
   let running = false;
+  /** Pemicu datang saat putaran berjalan (mungkin sesudah baca toko terakhir): ulangi SEKALI setelah selesai. */
+  let again = false;
   let lastStart = Number.NEGATIVE_INFINITY;
   let stopped = false;
 
@@ -165,7 +167,12 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   }
 
   async function drain(): Promise<void> {
-    if (stopped || running || readOutbox(owner).length === 0) return;
+    if (stopped) return;
+    if (running) {
+      again = true;
+      return;
+    }
+    if (readOutbox(owner).length === 0) return;
     running = true;
     lastStart = Date.now();
     try {
@@ -184,6 +191,11 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
       }
     } finally {
       running = false;
+    }
+    // Pemicu yang tertahan selama putaran tadi (mis. komentar diantrekan sesudah penguras membaca toko): satu putaran lagi.
+    if (again && !stopped) {
+      again = false;
+      void drain();
     }
   }
 
