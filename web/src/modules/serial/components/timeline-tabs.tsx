@@ -27,7 +27,7 @@ export interface TimelineTabsProps {
 
 /**
  * Linimasa bertab: Semua, satu tab per laporan (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
- * berkursor (terbaru di atas) dengan tombol "Muat yang lebih lama"; jumlah di tab dari `counts` server.
+ * berkursor (server mengirim terbaru dulu) dengan tombol "Muat yang lebih lama" di dalam kelompok riwayat sebelumnya; jumlah di tab dari `counts` server.
  */
 export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
   const [tab, setTab] = useState<string>(() =>
@@ -73,23 +73,27 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
             {describeError(history.error)}
           </p>
         ) : (
-          <>
-            {history.hasNextPage ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={history.isFetchingNextPage}
-                onClick={() => void history.fetchNextPage()}
-              >
-                {history.isFetchingNextPage ? (
-                  <BusyLabel>Memuat…</BusyLabel>
-                ) : (
-                  'Muat yang lebih lama'
-                )}
-              </Button>
-            ) : null}
-            <Timeline events={events} markLatest={tab === 'all'} />
-          </>
+          <Timeline
+            key={tab}
+            events={events}
+            markLatest={tab === 'all'}
+            loadOlder={
+              history.hasNextPage ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={history.isFetchingNextPage}
+                  onClick={() => void history.fetchNextPage()}
+                >
+                  {history.isFetchingNextPage ? (
+                    <BusyLabel>Memuat…</BusyLabel>
+                  ) : (
+                    'Muat yang lebih lama'
+                  )}
+                </Button>
+              ) : undefined
+            }
+          />
         )}
       </TabsContent>
     </Tabs>
