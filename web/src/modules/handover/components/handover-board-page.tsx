@@ -13,6 +13,7 @@ import { readableLocationIds } from '../lib/readable-locations';
 import { scopedLocationIds } from '../lib/search';
 import { useSendComment } from '../lib/send-comment';
 import { useCheckQueue } from '../lib/use-check-queue';
+import { usePendingCreates } from '../lib/use-pending-creates';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
   handoverKeys,
@@ -55,6 +56,15 @@ export function HandoverBoardPage({
   const reopen = useReopenHandover();
   const sendComment = useSendComment(me.email);
   const { isPending, track } = usePendingIds();
+  // Task baru yang masih di antrean perangkat (hanya lokasi terpilih): kartu sementara di kolom Baru.
+  const pendingCreates = usePendingCreates(me.email, readable).flatMap((entry) =>
+    entry.tasks.map((task) => ({
+      key: `${entry.id}:${task.clientId}`,
+      customerName: task.customerName,
+      note: task.note,
+      status: entry.status,
+    })),
+  );
   // Centang instan + antrean serial per task; aksi lain menunggu antrean centang task itu kosong.
   const checks = useCheckQueue(me.email);
   const locationNames = new Map(me.locations.map((location) => [location.id, location.name]));
@@ -139,7 +149,7 @@ export function HandoverBoardPage({
         <p role="alert" className="text-sm text-destructive">
           Gagal memuat task. Coba muat ulang.
         </p>
-      ) : board.total === 0 ? (
+      ) : board.total === 0 && pendingCreates.length === 0 ? (
         <p className="text-sm text-muted-foreground">Belum ada task serah terima di lokasi ini.</p>
       ) : (
         <HandoverBoard
@@ -148,6 +158,7 @@ export function HandoverBoardPage({
           filter={status}
           onFilterChange={onStatusChange}
           bindings={bindings}
+          pendingCreates={pendingCreates}
         />
       )}
     </div>

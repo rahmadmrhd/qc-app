@@ -21,6 +21,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 
 import { ApiError } from '@/lib/api/api-error';
 import { resetOutboxEnv } from '@/test/outbox-env';
+import { enqueueOutbox } from '../lib/outbox';
 import { HandoverBoardPage } from './handover-board-page';
 import { makeHandover } from './test-handover';
 
@@ -406,4 +407,28 @@ test('komentar saat server tidak terjangkau: diantrekan, komposer tertutup, tamp
   expect(screen.queryByRole('textbox', { name: 'Komentar' })).not.toBeInTheDocument();
   const comments = state.api.mock.calls.filter((call) => call[0] === 'handovers.comment');
   expect(comments).toHaveLength(1);
+});
+
+test('task baru di antrean perangkat: kartu sementara hanya untuk lokasi terpilih; papan kosong tetap tampil', async () => {
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const base = {
+    kind: 'create' as const,
+    tasks: [
+      { clientId: '11111111-1111-4111-8111-111111111111', customerName: 'PT Antre', note: 'x' },
+    ],
+    at: Date.now(),
+  };
+  await enqueueOutbox('u@qc.local', { ...base, locationId: 'loc-a' });
+  await enqueueOutbox('u@qc.local', {
+    ...base,
+    tasks: [
+      { clientId: '22222222-2222-4222-8222-222222222222', customerName: 'PT Lain', note: 'x' },
+    ],
+    locationId: 'loc-b',
+  });
+  renderPage();
+  expect(await screen.findByText('PT Antre')).toBeInTheDocument();
+  expect(screen.queryByText('PT Lain')).not.toBeInTheDocument();
+  expect(screen.queryByText('Belum ada task serah terima di lokasi ini.')).not.toBeInTheDocument();
+  expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
 });
