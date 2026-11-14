@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
+import { linkOptionNames, pickLink } from '@/test/link-field';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -263,7 +263,14 @@ beforeEach(() => {
   });
 });
 
-test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) dengan chip perubahan', async () => {
+/** Buka semua kartu riwayat yang dilipat (hanya kartu terbaru yang terbuka sejak awal). */
+async function expandAll() {
+  for (const button of screen.queryAllByRole('button', { name: /^Buka riwayat/ })) {
+    await userEvent.click(button);
+  }
+}
+
+test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka dengan chip perubahan', async () => {
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
   expect(screen.getByText('Cisco C9200')).toBeInTheDocument();
@@ -279,41 +286,38 @@ test('merender kepala, ringkasan, dan linimasa terbaru di atas (urutan server) d
     { name: '' },
   );
   const top = cards.filter((card) => card.hasAttribute('data-seq'));
-  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['3', '2', '1']);
+  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
+  await expandAll();
   expect(screen.getByText('Lokasi: Surabaya → Jakarta')).toBeInTheDocument();
   expect(screen.getByText(/Stiker ditempel dan stok dipotong: Stiker A ×2/)).toBeInTheDocument();
   expect(screen.getByText('dicek')).toBeInTheDocument();
 });
 
-test('cek ulang mengirim serials.act dengan expectedUpdatedAt dan menampilkan kartu baru', async () => {
+test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan mengirim serials.act', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Update baru' });
-  expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveAttribute('data-mode', 'message');
-  expect(screen.getByLabelText('Tanggal')).toBeInTheDocument();
-  expect(screen.queryByLabelText('Tanggal kejadian')).not.toBeInTheDocument();
-  await pickSelect(screen, 'Jenis update', 'Cek ulang');
-  await pickLink(screen, 'Lokasi cek ulang', 'Surabaya (SBY)');
-  const kurangi = await screen.findByRole('button', { name: 'Kurangi Stiker A' });
-  // Jumlah sekarang 2: tidak dapat turun di bawah nilai itu.
-  expect(kurangi).toBeDisabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
-  expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('3');
-  expect(screen.getByRole('button', { name: 'Kurangi Stiker A' })).toBeEnabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker B' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
-
+  const group = await screen.findByRole('group', { name: 'Update baru' });
+  expect(
+    within(group)
+      .getAllByRole('button')
+      .map((button) => button.textContent),
+  ).toEqual(['Lapor rusak', 'Cek ulang', 'Catatan']);
+  // Tombol berada di baris yang sama dengan judul Riwayat.
+  const section = screen.getByRole('region', { name: 'Riwayat' });
+  expect(within(section).getByRole('heading', { name: 'Riwayat' })).toBeInTheDocument();
+  expect(section).toContainElement(group);
+  await userEvent.click(within(group).getByRole('button', { name: 'Catatan' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tambah catatan' });
+  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Catatan' }), 'Cek kabel');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim catatan' }));
   await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
   expect(calls('serials.act')[0]?.[1]).toMatchObject({
     id: 's1',
     expectedUpdatedAt: '2026-11-11T03:00:00.000Z',
-    action: 'recheck',
-    locationId: 'l2',
-    stickers: [
-      { stickerId: 'st1', qty: 3 },
-      { stickerId: 'st2', qty: 1 },
-    ],
+    action: 'note',
+    message: 'Cek kabel',
   });
-  // Detail dimuat ulang: kartu kejadian baru muncul.
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Tambah catatan' })).toBeNull());
+  // Detail dimuat ulang: kartu kejadian baru muncul dan hanya ia yang berlabel Terbaru.
   await waitFor(() => {
     const seqs = screen
       .getAllByRole('listitem')
@@ -321,48 +325,25 @@ test('cek ulang mengirim serials.act dengan expectedUpdatedAt dan menampilkan ka
       .filter(Boolean);
     expect(seqs).toContain('4');
   });
+  await waitFor(() => expect(screen.getAllByText('Terbaru')).toHaveLength(1));
+  const newest = document.querySelector('[data-seq="4"]') as HTMLElement;
+  expect(within(newest).getByText('Terbaru')).toBeInTheDocument();
 });
 
-test('catatan wajib berisi; mengirim catatan mengosongkan kolom', async () => {
-  renderPage();
-  await screen.findByRole('region', { name: 'Update baru' });
-  const send = screen.getByRole('button', { name: 'Kirim catatan' });
-  expect(send).toBeDisabled();
-  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Cek kabel');
-  expect(send).toBeEnabled();
-  await userEvent.click(send);
-  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
-  expect(calls('serials.act')[0]?.[1]).toMatchObject({ action: 'note', message: 'Cek kabel' });
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue(''));
-});
-
-test('pengguna serial: view tidak melihat composer maupun tombol ubah', async () => {
+test('pengguna serial: view tidak melihat tombol update maupun tombol ubah', async () => {
   me = meWith('view');
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: 'Update baru' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Update baru' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).not.toBeInTheDocument();
 });
 
-test('versi usang (412) menampilkan pesan dan memuat ulang detail', async () => {
+test('lencana Terbaru hanya di tab Semua dan tepat satu', async () => {
   renderPage();
-  await screen.findByRole('region', { name: 'Update baru' });
-  const original = apiMock.getMockImplementation();
-  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
-    id === 'serials.act'
-      ? Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }))
-      : original?.(id, input),
-  );
-  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
-  const before = calls('serials.get').length;
-  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'lokasi dan jumlah stiker kembali ke data terbaru',
-  );
-  await waitFor(() => expect(calls('serials.get').length).toBeGreaterThan(before));
-  // Pesan pengguna tidak hilang.
-  expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveValue('halo');
+  await screen.findByRole('list', { name: 'Linimasa' });
+  expect(screen.getAllByText('Terbaru')).toHaveLength(1);
+  const top = document.querySelector('[data-seq="3"]') as HTMLElement;
+  expect(within(top).getByText('Terbaru')).toBeInTheDocument();
 });
 
 test('dialog ubah data mengirim data lengkap dan menampilkan "Serial sudah terdaftar" pada duplikat', async () => {
@@ -542,9 +523,9 @@ test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor d
       .getAllByRole('listitem')
       .map((li) => li.getAttribute('data-seq'))
       .filter(Boolean);
-  expect(seqs()).toEqual(['3', '2']);
+  expect(seqs()).toEqual(['2', '3']);
   await userEvent.click(screen.getByRole('button', { name: 'Muat yang lebih lama' }));
-  await waitFor(() => expect(seqs()).toEqual(['3', '2', '1']));
+  await waitFor(() => expect(seqs()).toEqual(['1', '2', '3']));
   expect(calls('serials.history')[1]?.[1]).toMatchObject({ id: 's1', cursor: '2' });
   expect(screen.queryByRole('button', { name: 'Muat yang lebih lama' })).toBeNull();
 });
@@ -560,7 +541,6 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
           number: 'LP-20261113-001',
           openedOn: '2026-11-13',
           closedOn: null,
-          damage: 'Port mati',
           outcome: null,
         },
       ],
@@ -596,7 +576,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
       .getAllByRole('listitem')
       .filter((li) => li.hasAttribute('data-seq')),
   ).toHaveLength(1);
-  expect(within(list).getByText('Kasus LP-20261113-001 dibuka: Port mati')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP-20261113-001 dibuka: Port mati')).toBeInTheDocument();
   // Jumlah tab tetap terlihat setelah berpindah tab.
   expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
 });
@@ -640,7 +620,8 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
   };
   renderPage();
   const list = await screen.findByRole('list', { name: 'Linimasa' });
-  expect(within(list).getByText('Kasus LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
+  await expandAll();
+  expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
   expect(within(list).getByText('Diterima di servis')).toBeInTheDocument();
   expect(within(list).getByText('Dikirim ke servis')).toBeInTheDocument();
   expect(within(list).getByText('Lama di perjalanan: 3 hari')).toBeInTheDocument();
@@ -652,17 +633,16 @@ const CASE_DTO = {
   number: 'LP-20261113-001',
   openedOn: '2026-11-13',
   closedOn: null,
-  damage: 'x',
   outcome: null,
 } as const;
 
 const STEP_CASES: [SerialDto['status'], string, boolean][] = [
   ['good', 'Lolos', false],
-  ['failed', 'Tidak lolos', true],
-  ['qc_repair', 'Perbaikan QC', true],
+  ['reported', 'Dilaporkan', true],
   ['at_service', 'Di servis', true],
-  ['service_repair', 'Perbaikan servis', true],
-  ['recheck', 'Cek ulang', true],
+  ['diagnosis', 'Diagnosis', true],
+  ['service_repair', 'Sedang diperbaiki', true],
+  ['recheck', 'Menunggu cek ulang', true],
   ['broken', 'Rusak', true],
   ['good', 'Lolos', true],
 ];
@@ -676,7 +656,10 @@ test.each(STEP_CASES)(
         ...SERIAL,
         status,
         custody:
-          status === 'at_service' || status === 'service_repair' || status === 'broken'
+          status === 'at_service' ||
+          status === 'diagnosis' ||
+          status === 'service_repair' ||
+          status === 'broken'
             ? 'service'
             : 'qc',
         cases: hasCase ? [CASE_DTO] : [],
@@ -693,7 +676,7 @@ test.each(STEP_CASES)(
   },
 );
 
-test('panel pengiriman: dari ke, catatan, dan "3 hari belum diterima" (tanggal dipatok)', async () => {
+test('panel pengiriman: dari ke dan "3 hari belum diterima" (tanggal dipatok)', async () => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-13T03:00:00.000Z') });
   try {
     state = {
@@ -708,88 +691,33 @@ test('panel pengiriman: dari ke, catatan, dan "3 hari belum diterima" (tanggal d
         transitToLocationName: 'Surabaya',
         transitOn: '2026-11-10',
       },
-      events: [
-        event({
-          id: 'e5',
-          seq: 5,
-          type: 'send',
-          data: { leg: 'to_service', shipmentNote: 'JNE resi 123' },
-        }),
-        ...state.events,
-      ],
     };
     renderPage();
     const panel = await screen.findByRole('region', { name: 'Pengiriman' });
     expect(within(panel).getByText('Jakarta')).toBeInTheDocument();
     expect(within(panel).getByText('Surabaya')).toBeInTheDocument();
-    expect(within(panel).getByText('JNE resi 123')).toBeInTheDocument();
     expect(within(panel).getByText('3 hari belum diterima')).toBeInTheDocument();
   } finally {
     vi.useRealTimers();
   }
 });
 
-test('kepala menampilkan posisi dengan lokasi dan lencana kasus terbuka; panel pengiriman tidak muncul di QC', async () => {
+test('kepala menampilkan posisi dengan lokasi dan lencana laporan terbuka; panel pengiriman tidak muncul di QC', async () => {
   state = {
     ...state,
     serial: {
       ...SERIAL,
-      status: 'failed',
+      status: 'reported',
       openCaseId: 'c1',
       openCaseNumber: 'LP-20261113-001',
-      openCase: { ...CASE_DTO, damage: 'Port mati' },
+      openCase: CASE_DTO,
     },
   };
   renderPage();
   expect(await screen.findByText('LP-20261113-001 (terbuka)')).toBeInTheDocument();
   expect(screen.getByText('Di QC · Jakarta')).toBeInTheDocument();
-  expect(screen.getByText('Kerusakan: Port mati')).toBeInTheDocument();
+  expect(screen.queryByText(/^Kerusakan:/)).toBeNull();
   expect(screen.queryByRole('region', { name: 'Pengiriman' })).toBeNull();
-});
-
-test('cek ulang: penaik jumlah stiker nonaktif dimatikan dengan keterangan; deprecated tetap boleh', async () => {
-  state = {
-    ...state,
-    serial: {
-      ...SERIAL,
-      stickers: [
-        { stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'inactive' },
-        { stickerId: 'st2', name: 'Stiker B', alias: '', qty: 1, stickerStatus: 'deprecated' },
-      ],
-    },
-  };
-  renderPage();
-  await screen.findByRole('region', { name: 'Update baru' });
-  await pickSelect(screen, 'Jenis update', 'Cek ulang');
-  expect(await screen.findByRole('button', { name: 'Tambah Stiker A' })).toBeDisabled();
-  expect(screen.getByText('Stiker nonaktif: jumlah tidak bisa ditambah')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Tambah Stiker B' })).toBeEnabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
-  expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('2');
-});
-
-test('galat server pada stickers dan message (karakter pengatur arah) tampil lewat jalur galat yang ada', async () => {
-  renderPage();
-  await screen.findByRole('region', { name: 'Update baru' });
-  const original = apiMock.getMockImplementation();
-  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
-    id === 'serials.act'
-      ? Promise.reject(
-          new ApiError('VALIDATION', 'Data tidak valid', '-', {
-            stickers: 'Jumlah stiker nonaktif tidak bisa ditambah',
-            message: 'Pesan memuat karakter pengatur arah teks',
-          }),
-        )
-      : original?.(id, input),
-  );
-  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'halo');
-  await userEvent.click(screen.getByRole('button', { name: 'Kirim catatan' }));
-  // Kolom stiker tidak tampil pada Catatan: galatnya jatuh ke pesan umum (jalur galat yang ada); `message` tampil
-  // di bawah editor pesan.
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Jumlah stiker nonaktif tidak bisa ditambah',
-  );
-  expect(screen.getByText('Pesan memuat karakter pengatur arah teks')).toBeInTheDocument();
 });
 
 test('linimasa terpotong tanpa kejadian recorded: "Lokasi awal" tetap tampil dari recordedLocationId (editor: serials.locationOptions)', async () => {
@@ -869,4 +797,46 @@ test('lencana posisi saat dalam pengiriman menyebut tujuan, bukan lokasi asal', 
   renderPage();
   expect(await screen.findByText('Dalam pengiriman · ke Surabaya')).toBeInTheDocument();
   expect(screen.queryByText('Dalam pengiriman · Jakarta')).toBeNull();
+});
+
+test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini diabaikan', async () => {
+  const withCase = {
+    ...SERIAL,
+    cases: [
+      {
+        id: 'c1',
+        number: 'LP-20261113-001',
+        openedOn: '2026-11-13',
+        closedOn: null,
+        outcome: null,
+      },
+    ],
+  } as SerialDto;
+  state = { ...state, serial: withCase };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <SerialDetailPage serialId="s1" onBack={() => undefined} caseId="c1" />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
+  );
+  expect(await screen.findByRole('tab', { name: /^LP-20261113-001/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  unmount();
+  apiMock.mockClear();
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <SerialDetailPage serialId="s1" onBack={() => undefined} caseId="tak-ada" />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole('tab', { name: /^Semua/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });

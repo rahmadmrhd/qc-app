@@ -1,15 +1,13 @@
 import type { FlowRow, SendLeg } from '@shared/serial-flow';
-import type { SerialAction, SerialCustody, SerialEventType, SerialStatus } from '@shared/serials';
+import {
+  SERIAL_STATUS_LABELS,
+  type SerialAction,
+  type SerialCustody,
+  type SerialEventType,
+  type SerialStatus,
+} from '@shared/serials';
 
-export const STATUS_LABEL: Record<SerialStatus, string> = {
-  good: 'Lolos',
-  failed: 'Tidak lolos',
-  qc_repair: 'Perbaikan QC',
-  at_service: 'Di servis',
-  service_repair: 'Perbaikan servis',
-  recheck: 'Cek ulang',
-  broken: 'Rusak',
-};
+export const STATUS_LABEL: Record<SerialStatus, string> = SERIAL_STATUS_LABELS;
 
 /** Posisi fisik serial: di tangan QC, dalam pengiriman, atau di servis. */
 export const CUSTODY_LABEL: Record<SerialCustody, string> = {
@@ -23,12 +21,13 @@ export const EVENT_LABEL: Record<SerialEventType, string> = {
   data_changed: 'Data diubah',
   recheck: 'Cek ulang',
   note: 'Catatan',
-  report_failure: 'Dilaporkan tidak lolos',
+  report_failure: 'Dilaporkan rusak',
+  // Dua jenis berikut tidak punya penulis lagi; tetap dirender untuk riwayat lama.
   identify_damage: 'Kerusakan diidentifikasi',
   attempt_repair: 'Perbaikan dicoba',
   send: 'Dikirim',
   receive: 'Diterima',
-  service_diagnosis: 'Diagnosis servis',
+  service_diagnosis: 'Diagnosis',
   declare_broken: 'Dinyatakan rusak',
   recheck_pass: 'Cek ulang lolos',
   recheck_fail: 'Cek ulang tidak lolos',
@@ -48,27 +47,28 @@ export const FIELD_LABEL: Record<string, string> = {
   stickers: 'Stiker',
 };
 
-/** Pilihan aksi di kotak "Update baru" (`SerialAction`); kirim/terima memakai `flowRowLabel` (menurut leg). */
+/** Label tombol aksi di baris Riwayat (`SerialAction`); kirim/terima memakai `flowRowLabel` (menurut leg). */
 export const ACTION_LABEL: Record<SerialAction, string> = {
   note: 'Catatan',
   recheck: 'Cek ulang',
-  report_failure: 'Laporkan tidak lolos',
-  identify_damage: 'Perbarui kerusakan',
-  attempt_repair: 'Mulai perbaikan QC',
+  report_failure: 'Lapor rusak',
   send: 'Kirim',
   receive: 'Terima',
-  service_diagnosis: 'Diagnosis servis',
+  service_diagnosis: 'Diagnosis',
   declare_broken: 'Nyatakan rusak',
   recheck_pass: 'Cek ulang: lolos',
   recheck_fail: 'Cek ulang: tidak lolos',
 };
 
-/** Frasa tujuan tiap leg pengiriman: "Kirim ke servis", "Terima di QC", "Dikirim antar lokasi", dst. */
-export const LEG_LABEL: Record<SendLeg, string> = {
+/**
+ * Frasa tujuan tiap leg pengiriman: "Kirim ke servis", "Terima di QC", dst. `to_qc`/`between` tidak punya penulis
+ * lagi, tetapi kejadian lama dengan leg itu tetap dirender (rancangan laporan rusak §4.9).
+ */
+export const LEG_LABEL: Record<SendLeg | 'to_qc' | 'between', string> = {
   to_service: 'ke servis',
   at_service: 'di servis',
-  to_qc: 'balik ke QC',
   at_qc: 'di QC',
+  to_qc: 'balik ke QC',
   between: 'antar lokasi',
 };
 
@@ -82,7 +82,7 @@ export function flowRowLabel(row: Pick<FlowRow, 'action' | 'leg'>): string {
 
 /** Judul kartu riwayat untuk kejadian kirim/terima (menurut `data.leg`). */
 export function legEventLabel(type: 'send' | 'receive', leg: unknown): string {
-  const phrase = typeof leg === 'string' ? LEG_LABEL[leg as SendLeg] : undefined;
+  const phrase = typeof leg === 'string' ? (LEG_LABEL as Record<string, string>)[leg] : undefined;
   const base = type === 'send' ? 'Dikirim' : 'Diterima';
   return phrase ? `${base} ${phrase}` : base;
 }
@@ -97,21 +97,15 @@ export const HISTORY_GROUP_LABEL = {
 /** Tahap pada baris tahap di kepala detail; tahap terakhir (Lolos/Rusak) memakai label menurut status. */
 export const STEP_ORDER = [
   { key: 'good', label: STATUS_LABEL.good },
-  { key: 'failed', label: STATUS_LABEL.failed },
-  { key: 'qc_repair', label: STATUS_LABEL.qc_repair },
+  { key: 'reported', label: STATUS_LABEL.reported },
   { key: 'at_service', label: STATUS_LABEL.at_service },
+  { key: 'diagnosis', label: STATUS_LABEL.diagnosis },
   { key: 'service_repair', label: STATUS_LABEL.service_repair },
   { key: 'recheck', label: STATUS_LABEL.recheck },
   { key: 'final', label: 'Lolos / Rusak' },
 ] as const;
 
 export const TEAM_LABEL = { qc: 'QC', service: 'Servis', system: 'Sistem' } as const;
-
-/** Status saat mencatat: hanya Lolos atau Tidak lolos (yang lain lahir dari aksi pada detail). */
-export const RECORD_STATUS_OPTIONS = [
-  { value: 'good', label: STATUS_LABEL.good },
-  { value: 'failed', label: STATUS_LABEL.failed },
-];
 
 export const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as SerialStatus[]).map((value) => ({
   value,

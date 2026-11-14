@@ -6,7 +6,12 @@ import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
-import type { SerialCustody, SerialEventType, SerialStatus } from './serials';
+import type {
+  SerialCustody,
+  SerialEventType,
+  SerialStatus,
+  ServiceDiagnosisStage,
+} from './serials';
 import type {
   GuideSort,
   StickerMarkTarget,
@@ -1218,6 +1223,9 @@ export interface ApiContract {
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
   'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
+  'serials.serviceLocations': { input: null; output: SerialLocationOptionsDto };
+  'serials.lookup': { input: SerialLookupInput; output: SerialLookupOutput };
+  'serials.reportNew': { input: SerialReportNewInput; output: SerialDto };
   'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
   'serials.get': { input: GetSerialInput; output: GetSerialOutput };
   'serials.list': { input: SerialListInput; output: SerialListOutput };
@@ -1227,6 +1235,12 @@ export interface ApiContract {
   'serials.history': { input: SerialHistoryInput; output: SerialHistoryOutput };
   'serialSettings.get': { input: null; output: SerialSettingsDto };
   'serialSettings.save': { input: SaveSerialSettingsInput; output: SerialSettingsDto };
+  'serialServiceSettings.get': { input: null; output: SerialServiceSettingsDto };
+  'serialServiceSettings.save': {
+    input: SaveSerialServiceSettingsInput;
+    output: SerialServiceSettingsDto;
+  };
+  'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
@@ -1402,14 +1416,13 @@ export interface SerialSummaryDto {
   openCaseNumber: string | null;
   createdAt: string;
 }
-/** Kasus tidak lolos (`serial_cases`): satu episode kegagalan. */
+/** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
   id: string;
   /** `LP-YYYYMMDD-NNN`. */
   number: string;
   openedOn: string;
   closedOn: string | null;
-  damage: string;
   outcome: 'good' | 'broken' | null;
 }
 export interface SerialDto extends SerialSummaryDto {
@@ -1437,10 +1450,6 @@ export interface SerialRowInput {
   locationId: string;
   sample: boolean;
   note: string;
-  /** `failed` membuka kasus langsung (wajib `damage`). */
-  status: 'good' | 'failed';
-  /** Kerusakan (satu baris, maks. 200); wajib bila `status` = `failed`, diabaikan bila `good`. */
-  damage?: string;
   /** Asal catatan; disimpan di `data` kejadian `recorded`. Bawaan `manual`. */
   source?: 'manual' | 'countrylock';
   /**
@@ -1533,38 +1542,31 @@ interface SerialActBase {
   message: string;
 }
 /**
- * Aksi pada serial (spek §5.3). `serialservice` hanya menindak serial berstatus `at_service`/`service_repair`; jenis
- * pengiriman (`send`/`receive`) diturunkan server dari status, tidak dikirim klien.
+ * Aksi pada serial (rancangan laporan rusak 2026-11-14 §4.1). `serialservice` hanya menindak serial berstatus
+ * `at_service`/`diagnosis`/`service_repair`; jenis pengiriman/penerimaan diturunkan server dari status. `message` wajib pada
+ * `note`, `report_failure`, `declare_broken`, `recheck_fail`, dan `recheck` hasil gagal; pada aksi lain opsional.
  */
 export type SerialActInput =
-  | (SerialActBase & { action: 'note' | 'attempt_repair' | 'receive' | 'declare_broken' })
+  | (SerialActBase & { action: 'note' | 'declare_broken' | 'report_failure' })
   | (SerialActBase & {
-      action: 'report_failure' | 'identify_damage' | 'service_diagnosis';
-      /** Kerusakan (satu baris, maks. 200). */
-      damage: string;
+      action: 'send' | 'receive';
+      /**
+       * `send`: lokasi tujuan servis (wajib bila konfigurasi servis punya lebih dari satu lokasi aktif, selain itu
+       * kosong atau sama dengan satu-satunya lokasi). `receive` (QC): lokasi hanya bila lokasi QC asal sudah nonaktif.
+       */
+      toLocationId?: string;
     })
-  | (SerialActBase & {
-      action: 'send';
-      toLocationId: string;
-      /** Catatan pengiriman (satu baris, maks. 200). */
-      shipmentNote: string;
-    })
+  | (SerialActBase & { action: 'service_diagnosis'; stage: ServiceDiagnosisStage })
   | (SerialActBase & {
       action: 'recheck';
-      /** Bawaan `pass`. `fail` membuka kasus (wajib `damage`). */
+      /** Bawaan `pass`. `fail` membuka laporan (catatan wajib). */
       result?: 'pass' | 'fail';
-      damage?: string;
-      /** Lokasi cek ulang (bawaan lokasi serial sekarang). */
-      locationId?: string;
-      /** Jumlah BARU per stiker pada cek ulang (tidak boleh turun). */
-      stickers?: SerialStickerPick[];
+      /** Stiker yang DICENTANG: tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di lokasi cek ulang. */
+      stickerIds?: string[];
     })
   | (SerialActBase & {
       action: 'recheck_pass' | 'recheck_fail';
-      /** Hanya `recheck_fail`: memperbarui kerusakan kasus. */
-      damage?: string;
-      locationId?: string;
-      stickers?: SerialStickerPick[];
+      stickerIds?: string[];
     });
 export type SerialActAction = SerialActInput['action'];
 /** Riwayat per serial (tab linimasa): kursor = `seq` terakhir. */
@@ -1594,6 +1596,87 @@ export interface SerialSettingsDto {
 export interface SaveSerialSettingsInput {
   expectedUpdatedAt: string;
   alert: SerialAlertSettings;
+}
+/** Pengaturan lokasi tim servis (global, ETag `updatedAt` sendiri). Kosong = semua lokasi aktif. */
+export interface SerialServiceSettingsDto {
+  locationIds: string[];
+  /** Kosong sebelum pernah disimpan. */
+  updatedAt: string;
+}
+export interface SaveSerialServiceSettingsInput {
+  expectedUpdatedAt: string;
+  locationIds: string[];
+}
+/** Pencarian Serial Number untuk Lapor Rusak (BU yang boleh ditulis pengguna). */
+export interface SerialLookupInput {
+  serial: string;
+}
+export interface SerialLookupMatchDto {
+  id: string;
+  buId: string;
+  buCode: string;
+  itemLabel: string;
+  serial: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  locationName: string;
+  /** Laporan aktif serial ini, bila ada (Lapor rusak ditolak; UI menautkan ke laporan itu). */
+  openCaseId: string | null;
+  openCaseNumber: string | null;
+  updatedAt: string;
+}
+export interface SerialLookupOutput {
+  matches: SerialLookupMatchDto[];
+}
+/** Lapor Rusak untuk Serial Number yang belum tercatat: serial dibuat langsung berstatus Dilaporkan. */
+export interface SerialReportNewInput {
+  serial: string;
+  itemId: string;
+  buId: string;
+  locationId: string;
+  /** Markdown, wajib. */
+  message: string;
+  /** Tanggal laporan `YYYY-MM-DD` (bukan di masa depan); jadi tanggal uji. */
+  occurredOn: string;
+}
+export interface SerialCaseListInput {
+  /** `active` = laporan terbuka, `closed` = sudah selesai. */
+  status?: 'active' | 'closed';
+  buId?: string;
+  /** Awalan nomor LP atau serial. */
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialCaseRowDto {
+  id: string;
+  /** `LP-YYYYMMDD-NNN`. */
+  number: string;
+  serialId: string;
+  serial: string;
+  buId: string;
+  buCode: string;
+  itemLabel: string;
+  /** Status serial sekarang. */
+  status: SerialStatus;
+  custody: SerialCustody;
+  openedOn: string;
+  closedOn: string | null;
+  outcome: 'good' | 'broken' | null;
+  /** Hari kalender (WIB) sejak status serial terakhir berubah. */
+  daysInStatus: number;
+  /** Nama lokasi serial sekarang (kosong bila tidak dikenal). */
+  locationName: string;
+  /** Hari kalender (WIB) dari laporan dibuka sampai ditutup (atau sampai hari ini bila masih aktif). */
+  durationDays: number;
+  /** Email pelapor (`created_by`). */
+  reporter: string;
+  /** Baris pertama catatan laporan sebagai teks polos, maks. `SERIAL_LIMITS.reportSummaryMax` karakter. */
+  summary: string;
+}
+export interface SerialCaseListOutput {
+  items: SerialCaseRowDto[];
+  nextCursor: string | null;
 }
 /** Item yang dapat dipilih pencatat serial (hanya bidang yang dibutuhkan), dengan BU yang boleh ia tulis. */
 export interface SerialItemOptionDto {

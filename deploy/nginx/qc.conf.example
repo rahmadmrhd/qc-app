@@ -19,6 +19,29 @@
 #   hanya dari peer di TRUSTED_PROXY (gateway bridge compose + loopback).
 
 # ---------------------------------------------------------------------------------------------------------------
+# LOG AKSES TANPA TOKEN TAUTAN LAPORAN (keputusan pemilik 2026-11-14, spek Serial Number butir 52 (b)): token tautan
+# publik laporan rusak ada di jalur URL (`/laporan/<token>` dan `/api/public/serial-reports/<token>`), jadi log akses
+# bawaan nginx menyimpannya. Dua `map` dan satu `log_format` di bawah berlaku di konteks `http` (berkas situs di
+# sites-enabled otomatis di dalamnya): pasang SEKALI (jangan diulang bila blok server disalin ke berkas terpisah;
+# nama ganda membuat `nginx -t` gagal; boleh dipindah ke /etc/nginx/conf.d/qc-log.conf). Lalu tiap blok `server` TLS
+# memakai `access_log ... qc_masked`. `error_log` nginx tetap dapat memuat baris permintaan pada galat upstream dan
+# tidak dapat disamarkan: batasi akses berkas log (root saja). Log Cloudflare di luar kendali server ini.
+# ---------------------------------------------------------------------------------------------------------------
+map $request_uri $qc_log_uri {
+    ~^/laporan/                     "/laporan/[token-disamarkan]";
+    ~^/api/public/serial-reports/   "/api/public/serial-reports/[token-disamarkan]";
+    default                         $request_uri;
+}
+
+map $http_referer $qc_log_referer {
+    ~/laporan/                      "[disamarkan]";
+    default                         $http_referer;
+}
+
+log_format qc_masked '$remote_addr - $remote_user [$time_local] "$request_method $qc_log_uri $server_protocol" '
+                     '$status $body_bytes_sent "$qc_log_referer" "$http_user_agent"';
+
+# ---------------------------------------------------------------------------------------------------------------
 # STAGING: qc-dev.rhd.my.id  (Universal SSL Cloudflare hanya mencakup satu tingkat di bawah rhd.my.id, jadi bukan
 # qc.dev.rhd.my.id)
 # ---------------------------------------------------------------------------------------------------------------
@@ -38,6 +61,7 @@ server {
     ssl_certificate_key ISI_JALUR_KUNCI_PRIVAT_DI_SINI.key;
 
     server_tokens off;
+    access_log /var/log/nginx/qc-access.log qc_masked;
     client_max_body_size 11m;
     client_body_timeout 60s;
 
@@ -102,6 +126,7 @@ server {
     ssl_certificate_key ISI_JALUR_KUNCI_PRIVAT_DI_SINI.key;
 
     server_tokens off;
+    access_log /var/log/nginx/qc-access.log qc_masked;
     client_max_body_size 11m;
     client_body_timeout 60s;
 

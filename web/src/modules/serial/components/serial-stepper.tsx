@@ -4,20 +4,20 @@ import { STEP_ORDER } from '../lib/labels';
 
 export interface SerialStepperProps {
   status: SerialStatus;
-  /** Serial pernah punya kasus tidak lolos (menandai tahap akhir "Lolos" setelah kasus ditutup). */
+  /** Serial pernah punya laporan rusak (menandai tahap akhir "Lolos" setelah laporan ditutup). */
   hasCases: boolean;
 }
 
-/** Indeks tahap pada `STEP_ORDER` untuk status itu. Lolos tanpa kasus = tahap awal; lolos setelah kasus = tahap akhir. */
+/** Indeks tahap pada `STEP_ORDER` untuk status itu. Lolos tanpa laporan = tahap awal; lolos setelah laporan = tahap akhir. */
 export function stepIndexOf(status: SerialStatus, hasCases: boolean): number {
   switch (status) {
     case 'good':
       return hasCases ? 6 : 0;
-    case 'failed':
+    case 'reported':
       return 1;
-    case 'qc_repair':
-      return 2;
     case 'at_service':
+      return 2;
+    case 'diagnosis':
       return 3;
     case 'service_repair':
       return 4;
@@ -28,7 +28,7 @@ export function stepIndexOf(status: SerialStatus, hasCases: boolean): number {
   }
 }
 
-/** Baris tahap: Lolos → Tidak lolos → Perbaikan QC → Di servis → Perbaikan servis → Cek ulang → Lolos / Rusak. */
+/** Baris tahap: Lolos → Dilaporkan → Di servis → Diagnosis → Sedang diperbaiki → Menunggu cek ulang → Lolos / Rusak. */
 export function SerialStepper({ status, hasCases }: SerialStepperProps) {
   const current = stepIndexOf(status, hasCases);
   const finalLabel = status === 'broken' ? 'Rusak' : hasCases && status === 'good' ? 'Lolos' : null;

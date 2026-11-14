@@ -11,9 +11,9 @@ export interface NewSerial {
   sample: boolean;
   note: string;
   locationId: string;
-  /** Status awal: `good`, atau `failed` bila langsung dicatat tidak lolos (5b). */
-  status: 'good' | 'failed';
-  /** Kasus terbuka bila `failed`; `''` bila tidak ada. */
+  /** Status awal: `good`, atau `reported` bila langsung dilaporkan rusak (Lapor Rusak serial baru). */
+  status: 'good' | 'reported';
+  /** Laporan terbuka bila `reported`; `''` bila tidak ada. */
   openCaseId: string;
   now: string;
   actorEmail: string;
@@ -46,6 +46,15 @@ export async function findSerialByClientId(
     .bind(clientId)
     .first<{ id: string; bu_id: string; serial: string }>();
   return row ? { id: row.id.trim(), buId: row.bu_id.trim(), serial: row.serial } : null;
+}
+
+/** Nama lokasi dengan status apa pun (nonaktif tetap dikenali di riwayat), atau `null` bila tidak ada. */
+export async function locationNameOf(db: Preparer, locationId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT name FROM locations WHERE id = ?')
+    .bind(locationId)
+    .first<{ name: string }>();
+  return row ? row.name : null;
 }
 
 /** Item aktif yang tergabung pada BU itu (nama item tidak dibaca: pesan galat generik). */

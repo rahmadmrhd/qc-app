@@ -8,6 +8,7 @@ import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stal
 import { serialKeys } from '../keys';
 import { serialSettingsQueryOptions, useSaveSerialSettings } from '../queries';
 import { SerialSettingsPage } from './serial-settings-page';
+import { ServiceLocationsSettings } from './service-locations-settings';
 
 /**
  * Memuat pengaturan (hanya pengelola di semua BU; server menolak yang lain, pesannya tampil apa adanya) dan menyimpan.
@@ -47,6 +48,8 @@ export function SerialSettingsView() {
           return describeError(error);
         }
       }}
-    />
+    >
+      <ServiceLocationsSettings />
+    </SerialSettingsPage>
   );
 }

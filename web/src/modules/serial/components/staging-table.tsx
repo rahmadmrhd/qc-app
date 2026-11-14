@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
-import { STATUS_LABEL } from '../lib/labels';
 
 export interface StagingTableProps {
   rows: readonly StagingRow[];
@@ -38,9 +37,6 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
   if (row.buId === '') return { tone: 'warn', text: 'Business Unit belum dipilih' };
   if (row.locationId === '') return { tone: 'warn', text: 'Lokasi belum dipilih' };
   if (!isIsoDate(row.testDate)) return { tone: 'warn', text: 'Tanggal uji belum diisi' };
-  if (row.status === 'failed' && row.damage.trim() === '') {
-    return { tone: 'warn', text: 'Kerusakan belum diisi' };
-  }
   return { tone: 'ok', text: '' };
 }
 
@@ -206,27 +202,6 @@ const RowView = memo(function RowView({
           onChange={(event) => onEdit(row.clientId, { note: event.target.value })}
         />
       </td>
-      <td className="px-2 py-1">
-        {row.status === 'failed' ? (
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-destructive">{STATUS_LABEL.failed}</span>
-            <Input
-              aria-label={`Kerusakan ${row.serial}`}
-              aria-invalid={row.damage.trim() === '' ? true : undefined}
-              className="h-8 w-44"
-              value={row.damage}
-              disabled={disabled}
-              maxLength={SERIAL_LIMITS.damageMax}
-              placeholder="Kerusakan"
-              onChange={(event) =>
-                onEdit(row.clientId, { damage: event.target.value.replace(/[\r\n]+/g, ' ') })
-              }
-            />
-          </div>
-        ) : (
-          <span className="text-sm">{STATUS_LABEL.good}</span>
-        )}
-      </td>
       <td className="max-w-48 px-2 py-1.5 text-xs text-muted-foreground">
         <span className="block truncate" title={stickerSummary(row)}>
           {stickerSummary(row)}
@@ -307,9 +282,6 @@ export function StagingTable({
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Catatan
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Status
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Stiker

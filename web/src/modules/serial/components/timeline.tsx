@@ -1,5 +1,10 @@
 import type { SerialEventDto } from '@shared/contract';
+import { markdownToPlain } from '@shared/markdown-plain';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import type { Components } from 'react-markdown';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import {
   EVENT_LABEL,
@@ -7,7 +12,6 @@ import {
   formatDay,
   formatStamp,
   legEventLabel,
-  STATUS_LABEL,
   TEAM_LABEL,
 } from '../lib/labels';
 
@@ -31,6 +35,13 @@ function recordedLocation(event: SerialEventDto): string {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
+/** Tahap diagnosis (`data.stage`); kejadian lama tanpa `stage` tidak menampilkan baris tahap. */
+const DIAGNOSIS_STAGE_LABEL: Record<string, string> = {
+  diagnosis: 'Diagnosis',
+  repairing: 'Sedang diperbaiki',
+  done: 'Selesai, kembali ke QC untuk cek ulang',
+};
+
 /** Judul kartu: kirim/terima menurut leg, selain itu label jenis riwayat. */
 function eventTitle(event: SerialEventDto): string {
   if (event.type === 'send' || event.type === 'receive') {
@@ -39,7 +50,10 @@ function eventTitle(event: SerialEventDto): string {
   return EVENT_LABEL[event.type];
 }
 
-/** Rincian per jenis riwayat dari `data` (kasus, kerusakan, kirim/terima, hasil cek ulang). */
+/**
+ * Rincian per jenis riwayat dari `data` (laporan, kirim/terima, hasil cek ulang). Bagian `damage`, `shipmentNote`, dan
+ * status Tidak lolos hanya ada pada kejadian lama (sebelum alur laporan rusak dipangkas) dan tetap dirender apa adanya.
+ */
 function eventDetails(event: SerialEventDto): string[] {
   const { data } = event;
   const caseNumber = text(data.caseNumber);
@@ -48,32 +62,33 @@ function eventDetails(event: SerialEventDto): string[] {
   switch (event.type) {
     case 'recorded':
       if (data.status === 'failed') {
-        details.push(
-          `Dicatat langsung sebagai ${STATUS_LABEL.failed}${damage ? `: ${damage}` : ''}`,
-        );
+        details.push(`Dicatat langsung sebagai Tidak lolos${damage ? `: ${damage}` : ''}`);
       }
       break;
     case 'report_failure':
-      details.push(`Kasus ${caseNumber || '—'} dibuka${damage ? `: ${damage}` : ''}`);
+      details.push(`Laporan ${caseNumber || '—'} dibuka${damage ? `: ${damage}` : ''}`);
       break;
     case 'identify_damage':
-    case 'service_diagnosis':
+    case 'service_diagnosis': {
+      const stage = DIAGNOSIS_STAGE_LABEL[text(data.stage)];
+      if (stage) details.push(`Tahap: ${stage}`);
       if (damage) details.push(`Kerusakan: ${damage}`);
-      if (caseNumber) details.push(`Kasus ${caseNumber}`);
+      if (caseNumber) details.push(`Laporan ${caseNumber}`);
       break;
+    }
     case 'declare_broken':
-      details.push(`Kasus ${caseNumber || '—'} ditutup: rusak`);
+      details.push(`Laporan ${caseNumber || '—'} ditutup: rusak`);
       break;
     case 'recheck_pass':
-      if (caseNumber) details.push(`Kasus ${caseNumber} ditutup: lolos`);
+      if (caseNumber) details.push(`Laporan ${caseNumber} ditutup: lolos`);
       break;
     case 'recheck_fail':
-      if (caseNumber) details.push(`Kasus ${caseNumber} masih terbuka`);
+      if (caseNumber) details.push(`Laporan ${caseNumber} masih terbuka`);
       if (damage) details.push(`Kerusakan: ${damage}`);
       break;
     case 'recheck':
       if (data.result === 'pass' || data.result === 'fail') {
-        details.push(`Hasil: ${data.result === 'pass' ? STATUS_LABEL.good : STATUS_LABEL.failed}`);
+        details.push(`Hasil: ${data.result === 'pass' ? 'Lolos' : 'Tidak lolos'}`);
       }
       break;
     case 'send':
@@ -100,7 +115,31 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
-function EventCard({ event }: { event: SerialEventDto }) {
+/** Baris pertama berisi dari catatan, teks polos, untuk pratinjau kartu yang dilipat. */
+function previewOf(message: string): string {
+  const { text: plain } = markdownToPlain(message);
+  return (
+    plain
+      .split('\n')
+      .find((line) => line.trim() !== '')
+      ?.trim() ?? ''
+  );
+}
+
+function EventCard({
+  event,
+  latest,
+  showLatestBadge,
+  markdownComponents,
+}: {
+  event: SerialEventDto;
+  latest: boolean;
+  showLatestBadge: boolean;
+  markdownComponents: Components | undefined;
+}) {
+  // Hanya riwayat terbaru yang terbuka; yang lama dilipat (header + pratinjau) dan dibuka dengan satu klik.
+  const [open, setOpen] = useState(latest);
+  const preview = open ? '' : previewOf(event.message);
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -113,28 +152,56 @@ function EventCard({ event }: { event: SerialEventDto }) {
             {location ? (
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
+            {showLatestBadge ? (
+              <Badge variant="secondary" className="ml-2 align-middle">
+                Terbaru
+              </Badge>
+            ) : null}
           </p>
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{event.actorName}</span>
             <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
-          <p className="text-xs text-muted-foreground">dicatat {formatStamp(event.createdAt)}</p>
+        <div className="flex items-start gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-expanded={open}
+            aria-label={`${open ? 'Lipat' : 'Buka'} riwayat ${eventTitle(event)}`}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+          </Button>
+          <div className="text-right">
+            <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
+            {event.createdAt !== '' ? (
+              <p className="text-xs text-muted-foreground">
+                dicatat {formatStamp(event.createdAt)}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
-      {details.length > 0 ? (
+      {!open && preview !== '' ? (
+        <p className="mt-2 truncate text-sm text-muted-foreground">{preview}</p>
+      ) : null}
+      {open && details.length > 0 ? (
         <ul aria-label="Rincian" className="mt-3 space-y-0.5 text-sm">
           {details.map((detail) => (
             <li key={detail}>{detail}</li>
           ))}
         </ul>
       ) : null}
-      {event.message.trim() !== '' ? (
-        <MarkdownView source={event.message} className="mt-3 text-sm" />
+      {open && event.message.trim() !== '' ? (
+        <MarkdownView
+          source={event.message}
+          className="mt-3 text-sm"
+          {...(markdownComponents ? { components: markdownComponents } : {})}
+        />
       ) : null}
-      {event.changes.length > 0 ? (
+      {open && event.changes.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
@@ -145,7 +212,7 @@ function EventCard({ event }: { event: SerialEventDto }) {
           ))}
         </ul>
       ) : null}
-      {stickers.length > 0 ? (
+      {open && stickers.length > 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
           Stiker ditempel dan stok dipotong: {stickers.join(', ')}
         </p>
@@ -154,15 +221,36 @@ function EventCard({ event }: { event: SerialEventDto }) {
   );
 }
 
-/** Daftar kartu riwayat serial: urutan dari server (TERBARU DI ATAS, seq menurun) dipakai apa adanya. */
-export function Timeline({ events }: { events: readonly SerialEventDto[] }) {
+/**
+ * Daftar kartu riwayat serial: URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik, apa pun
+ * urutan masukannya. Hanya kartu terbaru (seq tertinggi, paling bawah) yang terbuka; kartu lama dilipat. `markLatest`
+ * memberi badge "Terbaru" pada entri terbaru; dipakai tab Semua.
+ */
+export function Timeline({
+  events,
+  markLatest = false,
+  markdownComponents,
+}: {
+  events: readonly SerialEventDto[];
+  markLatest?: boolean;
+  /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
+  markdownComponents?: Components;
+}) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const newest = ordered.length - 1;
   return (
     <ol aria-label="Linimasa" className="space-y-3">
-      {events.map((event) => (
-        <EventCard key={event.id} event={event} />
+      {ordered.map((event, index) => (
+        <EventCard
+          key={event.id}
+          event={event}
+          latest={index === newest}
+          showLatestBadge={markLatest && index === newest}
+          markdownComponents={markdownComponents}
+        />
       ))}
     </ol>
   );

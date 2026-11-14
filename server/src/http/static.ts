@@ -3,6 +3,8 @@ import { resolve, sep } from 'node:path';
 
 /** Aset berhash (Vite menaruhnya di `/assets/`): isi tak berubah untuk nama yang sama. */
 const IMMUTABLE_PREFIX = '/assets/';
+/** Rute klien yang segmen terakhirnya boleh memuat titik (token tautan laporan rusak). */
+const CLIENT_TOKEN_PREFIX = '/laporan/';
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 /** Berkas lain (terutama `index.html`) selalu divalidasi ulang agar rilis baru langsung terlihat. */
 const REVALIDATE_CACHE = 'no-cache';
@@ -56,7 +58,12 @@ export function serveStatic(staticDir: string, method: string, pathname: string)
     );
   }
   const last = decoded.split('/').pop() ?? '';
-  if (last.includes('.') && decoded !== '/') return new Response('Not Found', { status: 404 });
+  // `/laporan/<token>` (tautan surel laporan rusak) memuat titik di tokennya (`v1.<id>.<exp>.<sig>`): itu rute klien,
+  // bukan berkas, jadi tetap dijawab cangkang SPA.
+  const clientRoute = decoded.startsWith(CLIENT_TOKEN_PREFIX);
+  if (last.includes('.') && decoded !== '/' && !clientRoute) {
+    return new Response('Not Found', { status: 404 });
+  }
   const index = fileIn(root, '/index.html');
   if (index === null) {
     return new Response('Aplikasi web belum dibangun: jalankan `bun run build`.', { status: 404 });

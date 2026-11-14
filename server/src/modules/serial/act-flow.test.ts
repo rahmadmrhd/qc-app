@@ -1,4 +1,5 @@
-// `serials.act` 5b: aksi tidak lolos, kasus, pengiriman, dan cek ulang oleh tim QC (baris 1-4, 9-16 tabel transisi).
+// `serials.act` alur laporan rusak (2026-11-14): Lapor rusak, Kirim ke servis, Terima (QC), cek ulang dengan stiker
+// tercentang, catatan, dan keadaan akhir oleh tim QC (baris 1, 2, 8-14 tabel transisi).
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { onEvent, resetEventListenersForTest } from '@server/core/events';
 import { registerSerialStockListeners } from '@server/modules/sticker/serial-listener';
@@ -6,6 +7,7 @@ import { seedLocation } from '@server-test/access-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
+import { seedSticker } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 
 setDefaultTimeout(60_000);
@@ -36,13 +38,13 @@ beforeEach(async () => {
 const act = (
   action: string,
   extra: Record<string, unknown> = {},
-  options: { email?: string; id?: string; at?: string } = {},
+  options: { email?: string; id?: string; at?: string; occurredOn?: string } = {},
 ) =>
   call(options.email ?? W, 'serials.act', {
     id: options.id ?? 'sn1',
     expectedUpdatedAt: options.at ?? AT,
     action,
-    occurredOn: TODAY,
+    occurredOn: options.occurredOn ?? TODAY,
     message: '',
     ...extra,
   });
@@ -57,10 +59,26 @@ const seedOne = (over: Record<string, unknown> = {}) =>
     ],
     ...over,
   });
-const seedFailed = (over: Record<string, unknown> = {}) =>
+/** Serial Dilaporkan (laporan terbuka) di QC Surabaya. */
+const seedReported = (over: Record<string, unknown> = {}) =>
   seedOne({
-    status: 'failed',
-    openCase: { id: 'case-1', number: 'LP-20261110-001', damage: 'Layar retak' },
+    status: 'reported',
+    openCase: { id: 'case-1', number: 'LP-20261110-001' },
+    ...over,
+  });
+/** Serial Menunggu cek ulang yang sedang dikirim balik dari servis ke QC (asal Surabaya). */
+const seedRecheckTransit = (over: Record<string, unknown> = {}) =>
+  seedSerial(env, {
+    id: 'sn1',
+    serial: 'AB12',
+    status: 'recheck',
+    custody: 'transit',
+    locationId: 'loc-jkt',
+    stickers: [{ stickerId: 's1', qty: 1 }],
+    transitFromLocationId: 'loc-jkt',
+    transitToLocationId: 'loc-sby',
+    transitOn: '2026-11-10',
+    openCase: { id: 'case-1', number: 'LP-20261110-001', originLocationId: 'loc-sby' },
     ...over,
   });
 
@@ -94,7 +112,7 @@ const eventsOf = async (serialId = 'sn1') =>
 const casesOf = async (serialId = 'sn1') =>
   (
     await env.DB.prepare(
-      'SELECT id, number, opened_on, closed_on, damage, outcome FROM serial_cases WHERE serial_id = ? ORDER BY number',
+      'SELECT id, number, opened_on, closed_on, outcome, origin_location_id FROM serial_cases WHERE serial_id = ? ORDER BY number',
     )
       .bind(serialId)
       .all<{
@@ -102,8 +120,8 @@ const casesOf = async (serialId = 'sn1') =>
         number: string;
         opened_on: string;
         closed_on: string;
-        damage: string;
         outcome: string;
+        origin_location_id: string;
       }>()
   ).results;
 
@@ -122,417 +140,480 @@ const serialRow = async (serialId = 'sn1') =>
       transit_on: string;
     }>();
 
+const stickerQty = async (stickerId: string, serialId = 'sn1') =>
+  Number(
+    (
+      await env.DB.prepare('SELECT qty FROM serial_stickers WHERE serial_id = ? AND sticker_id = ?')
+        .bind(serialId, stickerId)
+        .first<{ qty: number | string }>()
+    )?.qty ?? 0,
+  );
+
+/** Menyetel konfigurasi lokasi servis langsung (kunci `SERIAL_SERVICE_LOCATIONS`). */
+async function setServiceLocations(locationIds: string[]): Promise<void> {
+  await env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)')
+    .bind('SERIAL_SERVICE_LOCATIONS', JSON.stringify({ locationIds, updatedAt: AT }))
+    .run();
+}
+
 describe('report_failure (baris 1)', () => {
-  test('membuka kasus LP-<hari ini>-001, status failed, kejadian ber-caseId, openCase terisi', async () => {
+  test('membuka laporan LP-<hari ini>-001, status reported, kejadian ber-caseId membawa catatan', async () => {
     await seedOne();
-    const result = await act('report_failure', {
-      damage: 'Layar retak',
-      message: 'Jatuh saat uji',
-    });
+    const result = await act('report_failure', { message: 'Layar mati saat uji' });
     expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({ status: 'failed', custody: 'qc', openCaseNumber: CASE_1 });
+    expect(result.data).toMatchObject({
+      status: 'reported',
+      custody: 'qc',
+      openCaseNumber: CASE_1,
+    });
     expect(result.data.openCase).toMatchObject({
       number: CASE_1,
       openedOn: TODAY,
       closedOn: null,
-      damage: 'Layar retak',
       outcome: null,
     });
-    expect(result.data.cases).toHaveLength(1);
+    expect(result.data.openCase.damage).toBeUndefined();
     const events = await eventsOf();
+    expect(events).toHaveLength(2);
     const last = events[1];
     expect(last).toMatchObject({
-      seq: 2,
       type: 'report_failure',
+      message: 'Layar mati saat uji',
       actor_team: 'qc',
-      message: 'Jatuh saat uji',
     });
     expect(last?.case_id).toBe(result.data.openCaseId);
     expect(JSON.parse(last?.changes_json ?? '[]')).toEqual([
-      { field: 'status', from: 'Lolos', to: 'Tidak lolos' },
-      { field: 'damage', from: null, to: 'Layar retak' },
+      { field: 'status', from: 'Lolos', to: 'Dilaporkan' },
     ]);
-    expect((await serialRow())?.open_case_id).toBe(result.data.openCaseId);
-    expect(await stock('s1', 'loc-sby')).toBe(10);
+    expect(JSON.parse(last?.data_json ?? '{}')).toEqual({ caseNumber: CASE_1 });
+    expect((await casesOf())[0]).toMatchObject({ number: CASE_1, closed_on: '', outcome: '' });
   });
 
-  test('tanpa damage: VALIDATION; damage banyak baris atau lebih dari 200: VALIDATION', async () => {
+  test('tanpa catatan atau hanya spasi: VALIDATION pada message, tanpa efek', async () => {
     await seedOne();
-    expect((await act('report_failure', {})).error?.code).toBe('VALIDATION');
-    expect((await act('report_failure', { damage: '  ' })).error?.code).toBe('VALIDATION');
-    expect((await act('report_failure', { damage: 'a\nb' })).error?.code).toBe('VALIDATION');
-    expect((await act('report_failure', { damage: 'x'.repeat(201) })).error?.code).toBe(
-      'VALIDATION',
-    );
-    expect((await casesOf()).length).toBe(0);
+    for (const message of ['', '   \n ']) {
+      const out = await act('report_failure', { message });
+      expect(out.error?.code).toBe('VALIDATION');
+      expect(Object.keys(out.error?.fields ?? {})).toContain('message');
+    }
+    expect(await casesOf()).toHaveLength(0);
+    expect(await eventsOf()).toHaveLength(1);
   });
 
-  test('pada serial yang sudah tidak lolos: CONFLICT', async () => {
-    await seedFailed();
-    expect((await act('report_failure', { damage: 'x' })).error?.code).toBe('CONFLICT');
+  test('pada serial yang sudah dilaporkan atau rusak: CONFLICT', async () => {
+    await seedReported();
+    expect((await act('report_failure', { message: 'lagi' })).error?.code).toBe('CONFLICT');
+    await env.DB.prepare("UPDATE serials SET status = 'broken', open_case_id = ''").run();
+    expect((await act('report_failure', { message: 'lagi' })).error?.code).toBe('CONFLICT');
   });
 });
 
-describe('identify_damage dan attempt_repair (baris 2, 3)', () => {
-  test('identify_damage mengubah damage kasus dengan chip dari-ke, status tetap', async () => {
-    await seedFailed();
-    const result = await act('identify_damage', { damage: 'Baterai kembung' });
-    expect(result.ok).toBe(true);
-    expect(result.data.status).toBe('failed');
-    expect(result.data.openCase.damage).toBe('Baterai kembung');
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'identify_damage', case_id: 'case-1' });
-    expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
-      { field: 'damage', from: 'Layar retak', to: 'Baterai kembung' },
-    ]);
-  });
-
-  test('attempt_repair: failed menjadi qc_repair; identify_damage masih boleh dari qc_repair', async () => {
-    await seedFailed();
-    const repair = await act('attempt_repair');
-    expect(repair.data.status).toBe('qc_repair');
-    const again = await act(
-      'identify_damage',
-      { damage: 'Konektor longgar' },
-      { at: repair.data.updatedAt },
-    );
-    expect(again.ok).toBe(true);
-    expect(again.data.status).toBe('qc_repair');
-  });
-
-  test('attempt_repair dari good: CONFLICT', async () => {
-    await seedOne();
-    expect((await act('attempt_repair')).error?.code).toBe('CONFLICT');
-  });
-});
-
-describe('send dan receive (baris 4, 9, 14, 15)', () => {
-  test('send ke servis dari failed: custody transit, tujuan tercatat, lokasi tetap, data pengiriman', async () => {
-    await seedFailed();
-    const result = await act('send', { toLocationId: 'loc-jkt', shipmentNote: 'JNE resi 123' });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
+describe('send: Kirim ke servis (baris 2)', () => {
+  test('satu lokasi servis dikonfigurasi: dipakai otomatis; lokasi QC asal tersimpan di laporan', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    const out = await act('send', { message: 'Bawa ke Jakarta' });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({
       status: 'at_service',
       custody: 'transit',
       locationId: 'loc-sby',
-      transitFromLocationId: 'loc-sby',
       transitToLocationId: 'loc-jkt',
-      transitToLocationName: 'Jakarta',
       transitOn: TODAY,
     });
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'send', case_id: 'case-1', actor_team: 'qc' });
-    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+    expect(await serialRow()).toMatchObject({
+      transit_from_location_id: 'loc-sby',
+      transit_to_location_id: 'loc-jkt',
+    });
+    expect((await casesOf())[0]?.origin_location_id).toBe('loc-sby');
+    const sent = (await eventsOf()).at(-1);
+    expect(sent).toMatchObject({ type: 'send', message: 'Bawa ke Jakarta', case_id: 'case-1' });
+    expect(JSON.parse(sent?.data_json ?? '{}')).toMatchObject({
       leg: 'to_service',
       fromLocationName: 'Surabaya',
       toLocationName: 'Jakarta',
-      shipmentNote: 'JNE resi 123',
     });
   });
 
-  test('lokasi tujuan sama dengan lokasi sekarang atau nonaktif atau tak ada: VALIDATION; stiker pada send: VALIDATION', async () => {
-    await seedFailed();
-    const same = await act('send', { toLocationId: 'loc-sby' });
-    expect(same.error?.code).toBe('VALIDATION');
-    expect(same.error?.fields?.toLocationId).toBe(
-      'Lokasi tujuan harus beda dengan lokasi sekarang',
-    );
+  test('kirim dari QC Surabaya ke servis Surabaya sah (lokasi sama)', async () => {
+    await setServiceLocations(['loc-sby']);
+    await seedReported();
+    const out = await act('send');
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ transitToLocationId: 'loc-sby', locationId: 'loc-sby' });
+  });
+
+  test('banyak lokasi servis: tanpa pilihan ditolak; di luar daftar atau nonaktif ditolak; pilihan sah diterima', async () => {
+    await setServiceLocations(['loc-sby', 'loc-jkt']);
+    await seedReported();
+    const none = await act('send');
+    expect(none.error?.code).toBe('VALIDATION');
+    expect(Object.keys(none.error?.fields ?? {})).toContain('toLocationId');
+    const outside = await act('send', { toLocationId: 'loc-off' });
+    expect(outside.error?.code).toBe('VALIDATION');
+    const unknown = await act('send', { toLocationId: 'tidak-ada' });
+    expect(unknown.error?.code).toBe('VALIDATION');
+    expect(await serialRow()).toMatchObject({ status: 'reported', custody: 'qc' });
+    const ok = await act('send', { toLocationId: 'loc-jkt' });
+    expect(ok.ok).toBe(true);
+    expect(ok.data.transitToLocationId).toBe('loc-jkt');
+  });
+
+  test('tanpa konfigurasi (kosong) = semua lokasi aktif: pilihan wajib; satu lokasi dikirim sama atau kosong', async () => {
+    await seedReported();
+    expect((await act('send')).error?.code).toBe('VALIDATION');
     expect((await act('send', { toLocationId: 'loc-off' })).error?.code).toBe('VALIDATION');
-    expect((await act('send', { toLocationId: 'tidak-ada' })).error?.code).toBe('VALIDATION');
-    expect((await act('send', {})).error?.code).toBe('VALIDATION');
-    const stickers = await act('send', {
-      toLocationId: 'loc-jkt',
-      stickers: [{ stickerId: 's1', qty: 2 }],
-    });
-    expect(stickers.error?.code).toBe('VALIDATION');
-    expect((await serialRow())?.custody).toBe('qc');
+    expect((await act('send', { toLocationId: 'loc-jkt' })).ok).toBe(true);
   });
 
-  test('catatan pengiriman lebih dari 200 atau banyak baris: VALIDATION', async () => {
-    await seedFailed();
-    const long = await act('send', { toLocationId: 'loc-jkt', shipmentNote: 'x'.repeat(201) });
-    expect(long.error?.code).toBe('VALIDATION');
-    const lines = await act('send', { toLocationId: 'loc-jkt', shipmentNote: 'a\nb' });
-    expect(lines.error?.code).toBe('VALIDATION');
+  test('satu lokasi servis: toLocationId lain ditolak', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    expect((await act('send', { toLocationId: 'loc-sby' })).error?.code).toBe('VALIDATION');
+    expect((await act('send', { toLocationId: 'loc-jkt' })).ok).toBe(true);
   });
 
-  test('receive QC dari recheck/transit: custody qc, lokasi = tujuan, transit dikosongkan, hari di jalan', async () => {
-    await seedOne({
-      status: 'recheck',
-      custody: 'transit',
-      transitFromLocationId: 'loc-jkt',
-      transitToLocationId: 'loc-sby',
-      transitOn: '2026-11-09',
-      locationId: 'loc-jkt',
-      openCase: { id: 'case-1', number: 'LP-20261108-001' },
-    });
-    const result = await act('receive');
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
+  test('stiker, hasil, atau tahap pada send: VALIDATION; send dari good atau dua kali: CONFLICT', async () => {
+    await setServiceLocations(['loc-jkt']);
+    await seedReported();
+    expect((await act('send', { stickerIds: ['s1'] })).error?.code).toBe('VALIDATION');
+    expect((await act('send', { stage: 'done' })).error?.code).toBe('VALIDATION');
+    const first = await act('send');
+    expect(first.ok).toBe(true);
+    const again = await act('send', {}, { at: first.data.updatedAt });
+    expect(again.error?.code).toBe('CONFLICT');
+  });
+
+  test('send dari serial Lolos: CONFLICT (kirim antar lokasi dihapus)', async () => {
+    await seedOne();
+    expect((await act('send', { toLocationId: 'loc-jkt' })).error?.code).toBe('CONFLICT');
+  });
+});
+
+describe('receive di QC (baris 8)', () => {
+  test('recheck/transit: custody qc, lokasi = lokasi QC asal, transit dikosongkan, hari di jalan', async () => {
+    await seedRecheckTransit();
+    const out = await act('receive', {}, { occurredOn: '2026-11-12' });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({
       status: 'recheck',
       custody: 'qc',
       locationId: 'loc-sby',
       transitToLocationId: null,
-      transitOn: null,
     });
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'receive', case_id: 'case-1', actor_team: 'qc' });
-    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({ leg: 'at_qc', daysInTransit: 3 });
-    const changes = JSON.parse(event?.changes_json ?? '[]');
-    expect(changes).toEqual([
-      { field: 'custody', from: 'Dalam pengiriman', to: 'Di QC' },
-      { field: 'location', from: 'Jakarta', to: 'Surabaya' },
-    ]);
+    expect(await serialRow()).toMatchObject({
+      transit_from_location_id: '',
+      transit_to_location_id: '',
+      transit_on: '',
+    });
+    const event = (await eventsOf()).at(-1);
+    expect(event).toMatchObject({ type: 'receive', actor_team: 'qc' });
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+      leg: 'at_qc',
+      daysInTransit: 2,
+    });
+    expect(JSON.parse(event?.changes_json ?? '[]')).toContainEqual({
+      field: 'location',
+      from: 'Jakarta',
+      to: 'Surabaya',
+    });
   });
 
-  test('receive: tanggal terima sebelum tanggal kirim = VALIDATION pada occurredOn, tanpa efek; tanggal sama atau lebih akhir lolos', async () => {
-    await seedOne({
-      status: 'recheck',
-      custody: 'transit',
-      transitFromLocationId: 'loc-jkt',
-      transitToLocationId: 'loc-sby',
-      transitOn: '2026-11-09',
-      locationId: 'loc-jkt',
-      openCase: { id: 'case-1', number: 'LP-20261108-001' },
-    });
-    const early = await act('receive', { occurredOn: '2026-11-08' });
+  test('tanggal terima sebelum tanggal kirim: VALIDATION pada occurredOn, tanpa efek; tanggal sama lolos', async () => {
+    await seedRecheckTransit();
+    const early = await act('receive', {}, { occurredOn: '2026-11-09' });
     expect(early.error?.code).toBe('VALIDATION');
-    expect(early.error?.message).toBe('Tanggal terima tidak boleh sebelum tanggal kirim');
     expect(Object.keys(early.error?.fields ?? {})).toContain('occurredOn');
-    expect(await serialRow()).toMatchObject({ custody: 'transit', location_id: 'loc-jkt' });
-    expect((await eventsOf()).length).toBe(1);
-    const same = await act('receive', { occurredOn: '2026-11-09' });
-    expect(same.ok).toBe(true);
-    expect(JSON.parse((await eventsOf())[1]?.data_json ?? '{}')).toMatchObject({
-      daysInTransit: 0,
-    });
+    expect((await serialRow())?.custody).toBe('transit');
+    expect((await act('receive', {}, { occurredOn: '2026-11-10' })).ok).toBe(true);
   });
 
-  test('send dan receive antar lokasi pada good', async () => {
-    await seedOne();
-    const sent = await act('send', { toLocationId: 'loc-jkt' });
-    expect(sent.data).toMatchObject({ status: 'good', custody: 'transit', locationId: 'loc-sby' });
-    expect(JSON.parse((await eventsOf())[1]?.data_json ?? '{}').leg).toBe('between');
-    const received = await act('receive', {}, { at: sent.data.updatedAt });
-    expect(received.data).toMatchObject({ status: 'good', custody: 'qc', locationId: 'loc-jkt' });
-    expect(received.data.transitToLocationId).toBeNull();
-    expect(JSON.parse((await eventsOf())[2]?.data_json ?? '{}').leg).toBe('between');
+  test('lokasi QC asal nonaktif: toLocationId wajib (lokasi aktif lain); nonaktif atau tak ada ditolak', async () => {
+    await seedRecheckTransit({ transitToLocationId: 'loc-off' });
+    const missing = await act('receive');
+    expect(missing.error?.code).toBe('VALIDATION');
+    expect(Object.keys(missing.error?.fields ?? {})).toContain('toLocationId');
+    expect((await act('receive', { toLocationId: 'loc-off' })).error?.code).toBe('VALIDATION');
+    expect((await act('receive', { toLocationId: 'tidak-ada' })).error?.code).toBe('VALIDATION');
+    const ok = await act('receive', { toLocationId: 'loc-sby' });
+    expect(ok.ok).toBe(true);
+    expect(ok.data).toMatchObject({ custody: 'qc', locationId: 'loc-sby' });
   });
 
-  test('receive tanpa pengiriman berjalan (custody qc): CONFLICT; send dua kali: CONFLICT', async () => {
-    await seedOne();
+  test('lokasi QC asal masih aktif: toLocationId yang berbeda ditolak, yang sama diterima', async () => {
+    await seedRecheckTransit();
+    expect((await act('receive', { toLocationId: 'loc-jkt' })).error?.code).toBe('VALIDATION');
+    expect((await act('receive', { toLocationId: 'loc-sby' })).ok).toBe(true);
+  });
+
+  test('receive tanpa pengiriman berjalan atau pada reported: CONFLICT', async () => {
+    await seedReported();
     expect((await act('receive')).error?.code).toBe('CONFLICT');
-    const sent = await act('send', { toLocationId: 'loc-jkt' });
-    expect(
-      (await act('send', { toLocationId: 'loc-sby' }, { at: sent.data.updatedAt })).error?.code,
-    ).toBe('CONFLICT');
   });
 });
 
-describe('cek ulang (baris 10-13)', () => {
-  test('recheck_pass dari qc_repair menutup kasus good, closed_on = occurredOn, open_case_id kosong', async () => {
-    await seedFailed({ status: 'qc_repair' });
-    const result = await act('recheck_pass', {
-      occurredOn: '2026-11-11',
-      message: 'Sudah diperbaiki',
-    });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
-      status: 'good',
-      custody: 'qc',
-      openCaseId: null,
-      openCase: null,
-    });
-    expect(await casesOf()).toEqual([
-      expect.objectContaining({ id: 'case-1', closed_on: '2026-11-11', outcome: 'good' }),
-    ]);
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'recheck_pass', case_id: 'case-1' });
+describe('cek ulang dengan stiker tercentang (baris 9-12)', () => {
+  test('recheck lolos: tiap centang menambah satu dan memotong satu stok di lokasi unit', async () => {
+    await seedOne();
+    const out = await act('recheck', { result: 'pass', stickerIds: ['s1'] });
+    expect(out.ok).toBe(true);
+    expect(await stickerQty('s1')).toBe(2);
+    expect(await stickerQty('s2')).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    expect(await stock('s2', 'loc-sby')).toBe(10);
+    expect(await stock('s1', 'loc-jkt')).toBe(10);
+    const event = (await eventsOf()).at(-1);
+    expect(event?.type).toBe('recheck');
     expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
-      { field: 'status', from: 'Perbaikan QC', to: 'Lolos' },
+      { field: 'stickers', from: 'Segel A ×1', to: 'Segel A ×2' },
     ]);
-    expect((await serialRow())?.open_case_id).toBe('');
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+      result: 'pass',
+      stickers: [{ stickerId: 's1', qtyFrom: 1, qtyTo: 2 }],
+    });
+    const entry = await env.DB.prepare(
+      "SELECT serial_event_id FROM sticker_stock_entries WHERE serial_id = 'sn1'",
+    ).first<{ serial_event_id: string }>();
+    expect(entry?.serial_event_id).toBe(event?.id);
   });
 
-  test('recheck_pass memotong stok di lokasi cek ulang sebesar selisih stiker', async () => {
-    await seedFailed({ status: 'recheck' });
-    const result = await act('recheck_pass', {
-      locationId: 'loc-jkt',
-      stickers: [
-        { stickerId: 's1', qty: 3 },
-        { stickerId: 's2', qty: 1 },
-      ],
-    });
-    expect(result.ok).toBe(true);
-    expect(result.data.locationId).toBe('loc-jkt');
-    expect(await stock('s1', 'loc-jkt')).toBe(8);
-    expect(await stock('s2', 'loc-jkt')).toBe(10);
+  test('tanpa centang: tidak ada perubahan stiker dan stok', async () => {
+    await seedOne();
+    expect((await act('recheck', { result: 'pass' })).ok).toBe(true);
+    expect(await stickerQty('s1')).toBe(1);
     expect(await stock('s1', 'loc-sby')).toBe(10);
   });
 
-  test('recheck_fail dari recheck: failed, kasus tetap terbuka; damage opsional memperbarui kasus', async () => {
-    await seedFailed({ status: 'recheck' });
-    const result = await act('recheck_fail', { damage: 'Masih mati total' });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({ status: 'failed', openCaseId: 'case-1' });
-    expect(result.data.openCase).toMatchObject({ damage: 'Masih mati total', closedOn: null });
-    const event = (await eventsOf())[1];
-    expect(event).toMatchObject({ type: 'recheck_fail', case_id: 'case-1' });
-    expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
-      { field: 'status', from: 'Cek ulang', to: 'Tidak lolos' },
-      { field: 'damage', from: 'Layar retak', to: 'Masih mati total' },
-    ]);
-    expect((await casesOf())[0]?.closed_on).toBe('');
+  test('stiker yang belum pernah ditempel tetapi berlaku bisa dicentang: qty awal 1', async () => {
+    await seedOne({ stickers: [{ stickerId: 's1', qty: 1 }] });
+    expect((await act('recheck', { stickerIds: ['s2'] })).ok).toBe(true);
+    expect(await stickerQty('s2')).toBe(1);
+    expect(await stock('s2', 'loc-sby')).toBe(9);
   });
 
-  test('recheck_fail dari qc_repair: CONFLICT (hanya dari recheck)', async () => {
-    await seedFailed({ status: 'qc_repair' });
-    expect((await act('recheck_fail')).error?.code).toBe('CONFLICT');
-  });
-
-  test('recheck hasil lolos pada good (5a): tanpa kasus, hasil pass', async () => {
+  test('stiker yang tidak berlaku bagi item ditolak (VALIDATION stickerIds), tanpa efek', async () => {
+    await seedSticker(env, { id: 's9', typeId: 't1', name: 'Segel Z' });
     await seedOne();
-    const result = await act('recheck', { result: 'pass', message: 'ok' });
-    expect(result.ok).toBe(true);
-    expect(result.data.status).toBe('good');
-    expect(await casesOf()).toEqual([]);
-    expect(JSON.parse((await eventsOf())[1]?.data_json ?? '{}').result).toBe('pass');
+    const out = await act('recheck', { stickerIds: ['s1', 's9'] });
+    expect(out.error?.code).toBe('VALIDATION');
+    expect(Object.keys(out.error?.fields ?? {})).toContain('stickerIds');
+    expect(await stickerQty('s1')).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(10);
   });
 
-  test('recheck hasil tidak lolos pada good: dua kejadian, kasus baru, status failed', async () => {
+  test('stiker nonaktif ditolak, deprecated boleh', async () => {
     await seedOne();
-    const result = await act('recheck', {
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's1'").run();
+    const rejected = await act('recheck', { stickerIds: ['s1'] });
+    expect(rejected.error?.code).toBe('VALIDATION');
+    expect(Object.keys(rejected.error?.fields ?? {})).toContain('stickerIds');
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = 's1'").run();
+    expect((await act('recheck', { stickerIds: ['s1'] })).ok).toBe(true);
+    expect(await stickerQty('s1')).toBe(2);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+  });
+
+  test('daftar kembar, lebih dari 20, atau bukan teks: VALIDATION; stiker pada aksi non-cek-ulang: VALIDATION', async () => {
+    await seedOne();
+    expect((await act('recheck', { stickerIds: ['s1', 's1'] })).error?.code).toBe('VALIDATION');
+    const many = Array.from({ length: 21 }, (_, i) => `x${i}`);
+    expect((await act('recheck', { stickerIds: many })).error?.code).toBe('VALIDATION');
+    expect((await act('recheck', { stickerIds: [1] })).error?.code).toBe('VALIDATION');
+    expect((await act('note', { message: 'x', stickerIds: ['s1'] })).error?.code).toBe(
+      'VALIDATION',
+    );
+    expect((await act('recheck', { stickers: [{ stickerId: 's1', qty: 3 }] })).ok).toBe(true);
+    expect(await stickerQty('s1')).toBe(1);
+  });
+
+  test('recheck lolos dari reported menutup laporan good: closed_on = occurredOn, open_case_id kosong', async () => {
+    await seedReported();
+    const out = await act('recheck_pass', { message: 'Sudah normal', stickerIds: ['s2'] });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'good', custody: 'qc', openCaseId: null });
+    expect((await casesOf())[0]).toMatchObject({ closed_on: TODAY, outcome: 'good' });
+    const event = (await eventsOf()).at(-1);
+    expect(event).toMatchObject({ type: 'recheck_pass', case_id: 'case-1' });
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+      caseNumber: 'LP-20261110-001',
+      outcome: 'good',
+    });
+    expect(await stock('s2', 'loc-sby')).toBe(9);
+  });
+
+  test('recheck_fail dari reported atau recheck: status reported, laporan tetap terbuka; catatan wajib', async () => {
+    await seedReported();
+    const noNote = await act('recheck_fail', {});
+    expect(noNote.error?.code).toBe('VALIDATION');
+    expect(Object.keys(noNote.error?.fields ?? {})).toContain('message');
+    const out = await act('recheck_fail', { message: 'Masih mati', stickerIds: ['s1'] });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'reported', openCaseId: 'case-1' });
+    expect((await casesOf())[0]).toMatchObject({ closed_on: '', outcome: '' });
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    // Dari recheck (custody qc) juga boleh.
+    await env.DB.prepare("UPDATE serials SET status = 'recheck'").run();
+    const row = await env.DB.prepare('SELECT updated_at FROM serials WHERE id = ?')
+      .bind('sn1')
+      .first<{ updated_at: string }>();
+    const again = await act(
+      'recheck_fail',
+      { message: 'Masih mati lagi' },
+      { at: row?.updated_at },
+    );
+    expect(again.ok).toBe(true);
+    expect(again.data.status).toBe('reported');
+  });
+
+  test('recheck gagal pada serial Lolos: dua kejadian (recheck lalu report_failure), laporan baru, catatan di report_failure', async () => {
+    await seedOne();
+    const out = await act('recheck', {
       result: 'fail',
-      damage: 'Port mati',
-      locationId: 'loc-jkt',
-      message: 'Dicek di Jakarta',
+      message: 'Port 2 mati',
+      stickerIds: ['s1'],
     });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
-      status: 'failed',
-      locationId: 'loc-jkt',
-      openCaseNumber: CASE_1,
-    });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'reported', custody: 'qc', openCaseNumber: CASE_1 });
     const events = await eventsOf();
-    expect(events.map((e) => [e.seq, e.type, e.case_id === '' ? 'tanpa-kasus' : 'kasus'])).toEqual([
-      [1, 'recorded', 'tanpa-kasus'],
-      [2, 'recheck', 'tanpa-kasus'],
-      [3, 'report_failure', 'kasus'],
+    expect(events.map((event) => event.type)).toEqual(['recorded', 'recheck', 'report_failure']);
+    const [, recheck, report] = events;
+    expect(recheck?.case_id).toBe(out.data.openCaseId);
+    expect(report?.case_id).toBe(out.data.openCaseId);
+    expect(recheck?.message).toBe('');
+    expect(report?.message).toBe('Port 2 mati');
+    expect(JSON.parse(recheck?.data_json ?? '{}')).toMatchObject({ result: 'fail' });
+    expect(JSON.parse(report?.changes_json ?? '[]')).toEqual([
+      { field: 'status', from: 'Lolos', to: 'Dilaporkan' },
     ]);
-    expect(JSON.parse(events[1]?.data_json ?? '{}')).toMatchObject({
-      result: 'fail',
-      locationName: 'Jakarta',
-    });
-    expect(events[1]?.message).toBe('Dicek di Jakarta');
-    expect(events[2]?.case_id).toBe(result.data.openCaseId);
-    expect(JSON.parse(events[2]?.changes_json ?? '[]')).toEqual([
-      { field: 'status', from: 'Lolos', to: 'Tidak lolos' },
-      { field: 'damage', from: null, to: 'Port mati' },
-    ]);
-    expect((await casesOf()).map((c) => [c.number, c.damage])).toEqual([[CASE_1, 'Port mati']]);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    const entry = await env.DB.prepare(
+      "SELECT serial_event_id FROM sticker_stock_entries WHERE serial_id = 'sn1'",
+    ).first<{ serial_event_id: string }>();
+    expect(entry?.serial_event_id).toBe(recheck?.id);
   });
 
-  test('recheck tidak lolos tanpa damage: VALIDATION; damage pada hasil lolos: VALIDATION', async () => {
+  test('recheck gagal tanpa catatan: VALIDATION; catatan pada hasil lolos opsional', async () => {
     await seedOne();
-    expect((await act('recheck', { result: 'fail' })).error?.code).toBe('VALIDATION');
-    expect((await act('recheck', { result: 'pass', damage: 'x' })).error?.code).toBe('VALIDATION');
-    expect((await act('recheck_pass', { damage: 'x' })).error?.code).toBe('VALIDATION');
-    expect((await casesOf()).length).toBe(0);
+    const out = await act('recheck', { result: 'fail' });
+    expect(out.error?.code).toBe('VALIDATION');
+    expect(Object.keys(out.error?.fields ?? {})).toContain('message');
+    expect((await act('recheck', { result: 'pass' })).ok).toBe(true);
+  });
+
+  test('cek ulang langsung dari recheck/transit: Terima otomatis dulu, stok dipotong di lokasi tujuan', async () => {
+    await seedRecheckTransit();
+    const out = await act('recheck_pass', { stickerIds: ['s1'] }, { occurredOn: '2026-11-12' });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'good', custody: 'qc', locationId: 'loc-sby' });
+    const events = await eventsOf();
+    expect(events.map((event) => event.type)).toEqual(['recorded', 'receive', 'recheck_pass']);
+    expect(JSON.parse(events[1]?.data_json ?? '{}')).toMatchObject({ leg: 'at_qc', auto: true });
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    expect(await stock('s1', 'loc-jkt')).toBe(10);
+    expect(await serialRow()).toMatchObject({ transit_to_location_id: '', custody: 'qc' });
+  });
+
+  test('cek ulang dari transit dengan tanggal sebelum tanggal kirim: VALIDATION occurredOn, tanpa efek', async () => {
+    await seedRecheckTransit();
+    const out = await act('recheck_pass', { stickerIds: ['s1'] }, { occurredOn: '2026-11-09' });
+    expect(out.error?.code).toBe('VALIDATION');
+    expect(Object.keys(out.error?.fields ?? {})).toContain('occurredOn');
+    expect(await eventsOf()).toHaveLength(1);
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+  });
+
+  test('cek ulang tidak lagi menerima locationId atau jumlah stiker lama', async () => {
+    await seedOne();
+    const out = await act('recheck', { locationId: 'loc-jkt' });
+    expect(out.ok).toBe(true);
+    expect((await serialRow())?.location_id).toBe('loc-sby');
   });
 });
 
 describe('note dan keadaan akhir', () => {
-  test('note pada broken boleh; aksi lain pada broken CONFLICT', async () => {
+  test('note pada broken boleh dan tidak membawa caseId; aksi lain pada broken CONFLICT', async () => {
     await seedOne({ status: 'broken', custody: 'service' });
-    const note = await act('note', { message: 'Arsip' });
+    const note = await act('note', { message: 'Klaim vendor diajukan' });
     expect(note.ok).toBe(true);
-    expect((await eventsOf())[1]).toMatchObject({ type: 'note', case_id: '' });
+    const last = (await eventsOf()).at(-1);
+    expect(last).toMatchObject({ type: 'note', case_id: '' });
     for (const [action, extra] of [
+      ['report_failure', { message: 'x' }],
       ['recheck', {}],
-      ['report_failure', { damage: 'x' }],
-      ['attempt_repair', {}],
+      ['recheck_pass', {}],
       ['send', { toLocationId: 'loc-jkt' }],
     ] as const) {
-      const out = await act(action, extra, { at: note.data.updatedAt });
-      expect(out.error?.code).toBe('CONFLICT');
+      expect((await act(action, extra, { at: note.data.updatedAt })).error?.code, action).toBe(
+        'CONFLICT',
+      );
     }
   });
 
-  test('note pada failed membawa case_id kasus terbuka', async () => {
-    await seedFailed();
-    await act('note', { message: 'Menunggu suku cadang' });
-    expect((await eventsOf())[1]?.case_id).toBe('case-1');
+  test('note pada reported membawa case_id laporan terbuka', async () => {
+    await seedReported();
+    expect((await act('note', { message: 'Menunggu suku cadang' })).ok).toBe(true);
+    expect((await eventsOf()).at(-1)?.case_id).toBe('case-1');
   });
 
-  test('aksi tak sah menurut status: CONFLICT; tanggal masa depan: VALIDATION', async () => {
+  test('note tanpa isi: VALIDATION; tanggal masa depan: VALIDATION; aksi tak sah menurut status: CONFLICT', async () => {
     await seedOne();
-    expect((await act('service_diagnosis', { damage: 'x' })).error?.code).toBe('CONFLICT');
-    expect((await act('declare_broken')).error?.code).toBe('CONFLICT');
-    expect((await act('note', { message: 'a', occurredOn: '2099-01-01' })).error?.code).toBe(
+    expect((await act('note', { message: '  ' })).error?.code).toBe('VALIDATION');
+    expect((await act('note', { message: 'x' }, { occurredOn: '2026-11-13' })).error?.code).toBe(
       'VALIDATION',
     );
+    expect((await act('recheck_pass')).error?.code).toBe('CONFLICT');
   });
 
   test('expectedUpdatedAt usang: CONFLICT (stale) tanpa efek', async () => {
     await seedOne();
-    const out = await act('report_failure', { damage: 'x' }, { at: '2026-01-01T00:00:00.000Z' });
+    const out = await act('note', { message: 'x' }, { at: '2026-01-01T00:00:00.000Z' });
     expect(out.error?.code).toBe('CONFLICT');
-    expect((await casesOf()).length).toBe(0);
-    expect((await serialRow())?.status).toBe('good');
+    expect(out.error?.message).toContain('Serial Number sudah diubah orang lain');
+    expect(await eventsOf()).toHaveLength(1);
   });
 });
 
 describe('izin per baris', () => {
   test('serial: edit tidak menjalankan aksi servis: FORBIDDEN', async () => {
-    await seedOne({
+    await seedSerial(env, {
+      id: 'sn1',
+      serial: 'AB12',
       status: 'at_service',
       custody: 'service',
       openCase: { id: 'case-1', number: 'LP-20261110-001' },
     });
     for (const [action, extra] of [
-      ['service_diagnosis', { damage: 'x' }],
-      ['declare_broken', {}],
+      ['service_diagnosis', { stage: 'done' }],
+      ['declare_broken', { message: 'rusak' }],
     ] as const) {
-      expect((await act(action, extra)).error?.code).toBe('FORBIDDEN');
+      expect((await act(action, extra)).error?.code, action).toBe('FORBIDDEN');
     }
     expect((await serialRow())?.status).toBe('at_service');
   });
 
-  test('serial: edit tidak mengirim balik ke QC dari service_repair: FORBIDDEN', async () => {
-    await seedOne({
-      status: 'service_repair',
-      custody: 'service',
-      openCase: { id: 'case-1', number: 'LP-20261110-001' },
-    });
-    expect((await act('send', { toLocationId: 'loc-jkt' })).error?.code).toBe('FORBIDDEN');
-  });
-
-  test('serialservice: edit tidak menjalankan aksi QC maupun note pada good/failed: FORBIDDEN', async () => {
-    await seedFailed();
-    for (const [action, extra] of [
-      ['identify_damage', { damage: 'x' }],
-      ['attempt_repair', {}],
-      ['note', { message: 'x' }],
-    ] as const) {
-      expect((await act(action, extra, { email: SERIAL_USERS.svcEdit })).error?.code).toBe(
-        'FORBIDDEN',
-      );
-    }
+  test('serialservice: edit tidak menjalankan aksi QC maupun note pada good/reported: FORBIDDEN', async () => {
+    await seedReported();
+    const svc = SERIAL_USERS.svcEdit;
+    expect((await act('recheck_pass', {}, { email: svc })).error?.code).toBe('FORBIDDEN');
+    expect((await act('send', { toLocationId: 'loc-jkt' }, { email: svc })).error?.code).toBe(
+      'FORBIDDEN',
+    );
+    expect((await act('note', { message: 'x' }, { email: svc })).error?.code).toBe('FORBIDDEN');
   });
 
   test('serial: edit di BU A + serial: view di BU B pada serial BU B: FORBIDDEN; tanpa baca BU B: NOT_FOUND', async () => {
-    await seedSerial(env, { id: 'sn-b', serial: 'BB1', buId: 'bu-b', itemId: 'i-b' });
-    expect(
-      (await act('note', { message: 'x' }, { id: 'sn-b', email: SERIAL_USERS.mixed })).error?.code,
-    ).toBe('FORBIDDEN');
-    expect((await act('note', { message: 'x' }, { id: 'sn-b' })).error?.code).toBe('NOT_FOUND');
+    await seedOne({ buId: 'bu-b', itemId: 'i-b' });
+    expect((await act('note', { message: 'x' }, { email: SERIAL_USERS.mixed })).error?.code).toBe(
+      'FORBIDDEN',
+    );
+    expect((await act('note', { message: 'x' })).error?.code).toBe('NOT_FOUND');
   });
 
   test('pemegang kedua modul memenuhi baris QC', async () => {
-    await seedFailed();
-    const out = await act('attempt_repair', {}, { email: SERIAL_USERS.hybrid });
+    await seedOne();
+    const out = await act('report_failure', { message: 'x' }, { email: SERIAL_USERS.hybrid });
     expect(out.ok).toBe(true);
-    expect((await eventsOf())[1]?.actor_team).toBe('qc');
+    expect((await eventsOf()).at(-1)?.actor_team).toBe('qc');
   });
 });
 
@@ -586,13 +667,13 @@ describe('gambar pada pesan', () => {
   });
 });
 
-describe('konkurensi nomor kasus (Promise.all)', () => {
+describe('konkurensi laporan (Promise.all)', () => {
   test('report_failure pada dua serial BERBEDA di hari yang sama: keduanya sukses, nomor berbeda', async () => {
     await seedSerial(env, { id: 'sn1', serial: 'AB12' });
     await seedSerial(env, { id: 'sn2', serial: 'AB13' });
     const [a, b] = await Promise.all([
-      act('report_failure', { damage: 'A' }, { id: 'sn1' }),
-      act('report_failure', { damage: 'B' }, { id: 'sn2' }),
+      act('report_failure', { message: 'A' }, { id: 'sn1' }),
+      act('report_failure', { message: 'B' }, { id: 'sn2' }),
     ]);
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
@@ -606,28 +687,39 @@ describe('konkurensi nomor kasus (Promise.all)', () => {
     const ids = ['sn1', 'sn2', 'sn3', 'sn4'];
     for (const id of ids) await seedSerial(env, { id, serial: `X-${id}` });
     const results = await Promise.all(
-      ids.map((id) => act('report_failure', { damage: id }, { id })),
+      ids.map((id) => act('report_failure', { message: id }, { id })),
     );
     expect(results.every((r) => r.ok)).toBe(true);
     expect(new Set(results.map((r) => r.data.openCaseNumber)).size).toBe(4);
   });
 
-  test('serial SAMA dua kali: satu sukses, satu stale, hanya satu kasus', async () => {
+  test('Lapor rusak dua kali serentak pada serial SAMA: tepat satu laporan aktif, yang kalah CONFLICT', async () => {
     await seedOne();
     const [a, b] = await Promise.all([
-      act('report_failure', { damage: 'A' }),
-      act('report_failure', { damage: 'B' }),
+      act('report_failure', { message: 'A' }),
+      act('report_failure', { message: 'B' }),
     ]);
     expect([a.ok, b.ok].filter(Boolean).length).toBe(1);
     const failed = a.ok ? b : a;
     expect(failed.error?.code).toBe('CONFLICT');
     expect((await casesOf()).length).toBe(1);
+    expect((await serialRow())?.status).toBe('reported');
+  });
+
+  test('Lapor rusak serentak dari dua pengguna dengan versi yang sama: satu laporan', async () => {
+    await seedOne();
+    const [a, b] = await Promise.all([
+      act('report_failure', { message: 'A' }, { email: W }),
+      act('report_failure', { message: 'B' }, { email: SERIAL_USERS.hybrid }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean).length).toBe(1);
+    expect((await casesOf()).length).toBe(1);
   });
 });
 
 describe('atomisitas', () => {
-  test('galat pada pernyataan TERAKHIR batch membatalkan semuanya (status, kasus, kejadian, stok, berkas)', async () => {
-    await seedFailed({ status: 'recheck' });
+  test('galat pada pernyataan TERAKHIR batch membatalkan semuanya (status, laporan, kejadian, stok, berkas)', async () => {
+    await seedReported();
     resetEventListenersForTest();
     registerSerialStockListeners();
     // Pernyataan terakhir batch gagal (tabel tak ada): seluruh transaksi harus dibatalkan.
@@ -637,28 +729,22 @@ describe('atomisitas', () => {
     const realError = console.error;
     console.error = () => undefined;
     try {
-      const out = await act('recheck_pass', {
-        message: 'Lolos',
-        stickers: [{ stickerId: 's1', qty: 4 }],
-      });
+      const out = await act('recheck_pass', { message: 'Lolos', stickerIds: ['s1'] });
       expect(out.ok).toBe(false);
     } finally {
       console.error = realError;
       resetEventListenersForTest();
       registerSerialStockListeners();
     }
-    expect(await serialRow()).toMatchObject({ status: 'recheck', open_case_id: 'case-1' });
+    expect(await serialRow()).toMatchObject({ status: 'reported', open_case_id: 'case-1' });
     expect((await casesOf())[0]).toMatchObject({ closed_on: '', outcome: '' });
     expect((await eventsOf()).length).toBe(1);
     expect(await stock('s1', 'loc-sby')).toBe(10);
-    const qty = await env.DB.prepare(
-      "SELECT qty FROM serial_stickers WHERE serial_id = 'sn1' AND sticker_id = 's1'",
-    ).first<{ qty: number }>();
-    expect(Number(qty?.qty)).toBe(1);
+    expect(await stickerQty('s1')).toBe(1);
   });
 
   test('recheck_fail: stiker dinonaktifkan serentak (setelah dibaca, sebelum batch) = CONFLICT usang, tanpa efek; sudah nonaktif sebelumnya = VALIDATION', async () => {
-    await seedFailed({ status: 'recheck' });
+    await seedReported();
     resetEventListenersForTest();
     registerSerialStockListeners();
     // Meniru penyunting lain: stiker dinonaktifkan tepat setelah pemeriksaan di sisi aplikasi (sekali saja).
@@ -674,10 +760,7 @@ describe('atomisitas', () => {
     registerSerialStockListeners();
     let out: CallOut;
     try {
-      out = await act('recheck_fail', {
-        damage: 'Masih mati',
-        stickers: [{ stickerId: 's1', qty: 4 }],
-      });
+      out = await act('recheck_fail', { message: 'Masih mati', stickerIds: ['s1'] });
     } finally {
       resetEventListenersForTest();
       registerSerialStockListeners();
@@ -685,16 +768,13 @@ describe('atomisitas', () => {
     expect(out.ok).toBe(false);
     expect(out.error?.code).toBe('CONFLICT');
     expect(out.error?.message).toContain('Serial Number sudah diubah orang lain');
-    expect(await serialRow()).toMatchObject({ status: 'recheck', open_case_id: 'case-1' });
+    expect(await serialRow()).toMatchObject({ status: 'reported', open_case_id: 'case-1' });
     expect((await eventsOf()).length).toBe(1);
     expect(await stock('s1', 'loc-sby')).toBe(10);
 
-    // Sekarang s1 SUDAH nonaktif sebelum permintaan: VALIDATION pada field `stickers`.
-    const again = await act('recheck_fail', {
-      damage: 'Masih mati',
-      stickers: [{ stickerId: 's1', qty: 4 }],
-    });
+    // Sekarang s1 SUDAH nonaktif sebelum permintaan: VALIDATION pada field `stickerIds`.
+    const again = await act('recheck_fail', { message: 'Masih mati', stickerIds: ['s1'] });
     expect(again.error?.code).toBe('VALIDATION');
-    expect(Object.keys(again.error?.fields ?? {})).toContain('stickers');
+    expect(Object.keys(again.error?.fields ?? {})).toContain('stickerIds');
   });
 });

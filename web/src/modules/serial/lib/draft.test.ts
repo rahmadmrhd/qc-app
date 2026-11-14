@@ -22,8 +22,6 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: false,
   note: '',
-  status: 'good',
-  damage: '',
 };
 
 function counter() {
@@ -144,7 +142,6 @@ test('toRowInput: stiker null melempar; selain itu bentuk kiriman server', () =>
     locationId: 'l1',
     sample: false,
     note: '',
-    status: 'good',
     stickers: [{ stickerId: 's1', qty: 2 }],
   });
 });
@@ -211,38 +208,14 @@ test('addSerials: bawaan stickers disalin per baris (bukan referensi bersama); t
   expect(plain.rows[0]?.stickers).toBeNull();
 });
 
-test('baris Tidak lolos: bawaan status/kerusakan disalin; toRowInput mengirim damage hanya untuk failed', () => {
-  const failed = addSerials(
-    [],
-    'A1\nB2',
-    { ...defaults, status: 'failed', damage: 'LED mati' },
-    counter(),
-    now,
-  ).rows.map((row) => ({ ...row, stickers: [] }));
-  expect(failed.map((row) => [row.status, row.damage])).toEqual([
-    ['failed', 'LED mati'],
-    ['failed', 'LED mati'],
-  ]);
-  expect(toRowInput({ ...(failed[0] as StagingRow), damage: '  LED mati  ' })).toMatchObject({
-    status: 'failed',
-    damage: 'LED mati',
-  });
-  const good = toRowInput({ ...(failed[0] as StagingRow), status: 'good' });
-  expect(good.status).toBe('good');
-  expect(good).not.toHaveProperty('damage');
-  expect(good).not.toHaveProperty('source');
-  expect(toRowInput({ ...(failed[0] as StagingRow), source: 'countrylock' }).source).toBe(
-    'countrylock',
-  );
-});
-
-test('applyBulk mengubah status dan kerusakan baris terpilih saja', () => {
-  const rows = addSerials([], 'A1\nB2\nC3', defaults, counter(), now).rows;
-  const ids = new Set(rows.slice(0, 2).map((row) => row.clientId));
-  const next = applyBulk(rows, ids, { status: 'failed', damage: 'Kipas rusak' });
-  expect(next.map((row) => [row.status, row.damage])).toEqual([
-    ['failed', 'Kipas rusak'],
-    ['failed', 'Kipas rusak'],
-    ['good', ''],
-  ]);
+test('toRowInput tidak mengirim status atau damage; source hanya untuk countrylock', () => {
+  const [row] = addSerials([], 'A1', defaults, counter(), now).rows.map((entry) => ({
+    ...entry,
+    stickers: [],
+  }));
+  const input = toRowInput(row as StagingRow);
+  expect(input).not.toHaveProperty('status');
+  expect(input).not.toHaveProperty('damage');
+  expect(input).not.toHaveProperty('source');
+  expect(toRowInput({ ...(row as StagingRow), source: 'countrylock' }).source).toBe('countrylock');
 });

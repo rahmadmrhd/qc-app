@@ -13,5 +13,6 @@ export const SERVER_PATH_DENYLIST: RegExp[] = [
   /^\/auth(?:[/?]|$)/,
   /^\/sync(?:[/?]|$)/,
   // Hanya pada PATH (sebelum `?`): titik di dalam query, mis. `/handover?q=a/b.c`, bukan berkas.
-  /^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/,
+  // Kecuali `/laporan/<token>`: token tautan laporan rusak memuat titik tetapi itu rute klien (cangkang SPA).
+  /^(?!\/laporan\/)[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/,
 ];

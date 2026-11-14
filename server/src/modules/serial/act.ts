@@ -10,7 +10,7 @@ import { planAttachFiles } from '@server/modules/files/service';
 import type { SerialActInput, SerialChangeDto, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
-import { type FlowRow, resolveAction } from '@shared/serial-flow';
+import { type FlowRow, resolveAction, SERIAL_FLOW, sendLegOf } from '@shared/serial-flow';
 import {
   SERIAL_CUSTODIES,
   SERIAL_CUSTODY_LABELS,
@@ -29,13 +29,15 @@ import {
   loadCase,
   reserveCaseNumber,
   runWithCaseNumber,
-  updateCaseDamageStmt,
+  setCaseOriginStmt,
 } from './case-repo';
+import { daysBetween } from './dates';
 import {
   activeLocationName,
   insertNextEventStmt,
   loadSerialRow,
   loadSerialStickers,
+  locationNameOf,
   type SerialColumn,
   type SerialRow,
   updateSerialStmt,
@@ -50,6 +52,7 @@ import {
   toStickerStatus,
   validationError,
 } from './service';
+import { effectiveServiceLocations } from './service-locations';
 
 const stickerChip = (name: string, qty: number | null): string | null =>
   qty === null ? null : `${name} ×${qty}`;
@@ -70,23 +73,8 @@ interface EventDraft {
   message: string;
   changes: SerialChangeDto[];
   data: Record<string, unknown>;
+  team?: 'qc' | 'service';
 }
-
-/** Selisih hari kalender `from` -> `to` (`YYYY-MM-DD`), tak pernah negatif; `null` bila `from` tak berbentuk tanggal. */
-function daysBetween(from: string, to: string): number | null {
-  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
-  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(to);
-  if (!a || !b) return null;
-  const start = Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
-  const end = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3]));
-  return Math.max(0, Math.round((end - start) / 86_400_000));
-}
-
-const damageChip = (from: string | null, to: string): SerialChangeDto => ({
-  field: 'damage',
-  from: from === null || from === '' ? null : from,
-  to,
-});
 
 interface StickerRaise {
   /** `serial_stickers` upsert dan pendengar stok (`serial.stickers_added`), dipasang ke batch aksi. */
@@ -96,16 +84,17 @@ interface StickerRaise {
 }
 
 /**
- * Kenaikan jumlah stiker pada cek ulang (baris 10-13, spek §5.2): jumlah tidak boleh turun, stiker `inactive` tak boleh
- * naik, stiker baru harus berlaku bagi item pada BU serial; selisih positif memotong stok di `locationId` lewat pendengar
- * `serial.stickers_added` dalam batch yang sama.
+ * Stiker yang DICENTANG pada cek ulang (rancangan §4.2): tiap id menambah 1 pada jumlah tempel serial itu (termasuk stiker
+ * yang belum pernah ditempel) dan memotong stok 1 di `locationId` lewat pendengar `serial.stickers_added` dalam batch yang
+ * sama. Stiker `inactive` tidak dapat dicentang (`deprecated` boleh, spek §3 butir 24); stiker baru harus berlaku bagi item
+ * pada BU serial.
  */
 async function stickerRaise(
   env: Env,
   row: SerialRow,
   eventId: string,
   locationId: string,
-  requested: readonly { stickerId: string; qty: number }[],
+  stickerIds: readonly string[],
   user: UserContext,
   now: string,
   retried: boolean,
@@ -121,7 +110,7 @@ async function stickerRaise(
       },
     ]),
   );
-  const unknown = requested.filter((pick) => !current.has(pick.stickerId));
+  const unknown = stickerIds.filter((stickerId) => !current.has(stickerId));
   const applicable =
     unknown.length > 0
       ? new Map(
@@ -135,32 +124,29 @@ async function stickerRaise(
   const changes: SerialChangeDto[] = [];
   const picks: { stickerId: string; qty: number }[] = [];
   const raised: StickerRaise['raised'] = [];
-  for (const pick of requested) {
-    const existing = current.get(pick.stickerId);
-    if (existing && pick.qty < existing.qty) {
-      throw validationError('stickers', 'Jumlah stiker tidak boleh dikurangi');
-    }
-    if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
+  for (const stickerId of stickerIds) {
+    const existing = current.get(stickerId);
+    if (existing && existing.status === 'inactive') {
       // Percobaan ke-2 dan seterusnya hanya terjadi setelah batch dibatalkan penjaga; stiker yang baru terlihat nonaktif
       // berarti dinonaktifkan serentak (spek §3 butir 24): jawab usang (CONFLICT/412), bukan VALIDATION. Stiker yang
-      // SUDAH nonaktif sebelum permintaan tetap VALIDATION pada field `stickers` (percobaan pertama).
+      // SUDAH nonaktif sebelum permintaan tetap VALIDATION pada field `stickerIds` (percobaan pertama).
       if (retried) throw staleError(STALE_MESSAGE);
-      throw validationError('stickers', 'Jumlah stiker nonaktif tidak bisa ditambah');
+      throw validationError('stickerIds', 'Stiker nonaktif tidak bisa ditempel');
     }
-    if (!existing && !applicable.has(pick.stickerId)) {
-      throw validationError('stickers', 'Stiker tidak berlaku bagi item ini');
+    if (!existing && !applicable.has(stickerId)) {
+      throw validationError('stickerIds', 'Stiker tidak berlaku bagi item ini');
     }
     const from = existing?.qty ?? 0;
-    if (pick.qty === from) continue;
-    const name = existing?.name ?? applicable.get(pick.stickerId)?.name ?? '';
-    picks.push({ stickerId: pick.stickerId, qty: pick.qty - from });
-    raised.push({ stickerId: pick.stickerId, name, qtyFrom: from, qtyTo: pick.qty });
+    const to = from + 1;
+    const name = existing?.name ?? applicable.get(stickerId)?.name ?? '';
+    picks.push({ stickerId, qty: 1 });
+    raised.push({ stickerId, name, qtyFrom: from, qtyTo: to });
     changes.push({
       field: 'stickers',
       from: stickerChip(name, existing ? from : null),
-      to: stickerChip(name, pick.qty),
+      to: stickerChip(name, to),
     });
-    statements.push(upsertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty));
+    statements.push(upsertSerialStickerStmt(env.DB, serialId, stickerId, to));
   }
   if (raised.length > 0) {
     statements.push(
@@ -177,20 +163,28 @@ async function stickerRaise(
   return { statements, changes, raised };
 }
 
-/** Aksi yang membuka kasus baru (membutuhkan nomor LP dari penghitung CAS). */
+/** Aksi yang membuka laporan baru (membutuhkan nomor LP dari penghitung CAS). */
 function opensCase(input: SerialActInput): boolean {
   return (
     input.action === 'report_failure' || (input.action === 'recheck' && input.result === 'fail')
   );
 }
 
+/** Aksi yang, dari kustodi `transit`, didahului Terima otomatis (diagnosis/Rusak oleh servis, cek ulang oleh QC). */
+const AUTO_RECEIVE_ACTIONS: readonly string[] = [
+  'service_diagnosis',
+  'declare_broken',
+  'recheck_pass',
+  'recheck_fail',
+];
+
 /**
- * `serials.act` (spek §5.3, tabel di `shared/serial-flow.ts`). Urutan galat: (1) bentuk, termasuk tanggal masa depan;
+ * `serials.act` (tabel di `shared/serial-flow.ts`). Urutan galat: (1) bentuk, termasuk tanggal masa depan;
  * (2) serial tak ada atau BU di luar hak baca = `NOT_FOUND`; (3) `updated_at` usang = stale; (4) aksi tak ada untuk
  * keadaan serial = `CONFLICT`; (5) ada tetapi modul pelaku tak cukup = `FORBIDDEN`; (6) rujukan tak sah = `VALIDATION`.
- * Semua efek (serial, kasus, kejadian, stok, klaim berkas, job surel) ditulis dalam SATU `batch()`. Seluruh muat
- * keadaan -> susun -> tulis diulang bila penghitung nomor LP diperebutkan (`runWithCaseNumber`), jadi semua kondisi
- * dihitung ulang pada tiap percobaan.
+ * Semua efek (serial, laporan, kejadian termasuk Terima otomatis, stok, klaim berkas, job surel) ditulis dalam SATU
+ * `batch()`. Seluruh muat keadaan -> susun -> tulis diulang bila penghitung nomor LP diperebutkan (`runWithCaseNumber`),
+ * jadi semua kondisi dihitung ulang pada tiap percobaan.
  */
 export async function actOnSerial(
   env: Env,
@@ -238,6 +232,7 @@ async function applyAct(
     { status, custody },
     modulesOn(user, buId),
     input.action === 'recheck' ? (input.result ?? 'pass') : undefined,
+    input.action === 'service_diagnosis' ? input.stage : undefined,
   );
   if ('error' in resolved) {
     throw resolved.error === 'state'
@@ -245,27 +240,32 @@ async function applyAct(
       : appError('FORBIDDEN', 'Aksi ini bukan bagian tim kamu');
   }
   const flow: FlowRow = resolved.row;
+  const toLocationInput =
+    (input.action === 'send' || input.action === 'receive') && input.toLocationId !== undefined
+      ? input.toLocationId
+      : undefined;
 
   const now = nextStamp(nowIso(env), row.updated_at);
   const set: Partial<Record<SerialColumn, string | number>> = {};
   const counterStatements: DbStatement[] = [];
   const caseStatements: DbStatement[] = [];
   const tail: DbStatement[] = [];
+  const preEvents: EventDraft[] = [];
   const extraEvents: EventDraft[] = [];
 
   const openCaseId = row.open_case_id.trim();
-  const currentLocationId = row.location_id.trim();
-  const currentLocationName = row.location_name ?? '';
   const eventId = crypto.randomUUID();
   const newCaseId = crypto.randomUUID();
+  let currentLocationId = row.location_id.trim();
+  let currentLocationName = row.location_name ?? '';
 
   const loadOpenCase = async () => {
     const found = openCaseId === '' ? null : await loadCase(env.DB, openCaseId);
-    if (!found) throw appError('CONFLICT', 'Kasus untuk Serial Number ini tidak ditemukan');
+    if (!found) throw appError('CONFLICT', 'Laporan untuk Serial Number ini tidak ditemukan');
     return found;
   };
-  /** Membuka kasus baru: nomor LP dipesan dan penjaganya ikut batch (selalu paling depan). */
-  const openNewCase = async (damageText: string): Promise<string> => {
+  /** Membuka laporan baru: nomor LP dipesan dan penjaganya ikut batch (selalu paling depan). */
+  const openNewCase = async (): Promise<string> => {
     const reservation = await reserveCaseNumber(env, today.replaceAll('-', ''));
     counterStatements.push(...reservation.statements);
     caseStatements.push(
@@ -275,7 +275,7 @@ async function applyAct(
         serialId,
         buId,
         openedOn: input.occurredOn,
-        damage: damageText,
+        originLocationId: currentLocationId,
         now,
         actorEmail: user.email,
       }),
@@ -284,10 +284,59 @@ async function applyAct(
     return reservation.number;
   };
 
-  // Perubahan status/posisi, dipasang pada kejadian utama aksi.
+  // Terima otomatis: diagnosis/Rusak dari kustodi `transit` (atau cek ulang dari `transit`) menulis kejadian `receive`
+  // lebih dulu (aturan Terima biasa: tanggal tidak sebelum tanggal kirim), lalu kejadian aksinya, dalam batch yang sama.
+  let midCustody: SerialCustody = custody;
+  if (custody === 'transit' && AUTO_RECEIVE_ACTIONS.includes(input.action)) {
+    if (row.transit_on !== '' && input.occurredOn < row.transit_on) {
+      throw validationError('occurredOn', 'Tanggal terima tidak boleh sebelum tanggal kirim');
+    }
+    const leg = sendLegOf('receive', status);
+    const receiveRow = SERIAL_FLOW.find((entry) => entry.action === 'receive' && entry.leg === leg);
+    midCustody = receiveRow && receiveRow.toCustody !== 'same' ? receiveRow.toCustody : custody;
+    const targetId = row.transit_to_location_id.trim();
+    // Unit tidak boleh mendarat otomatis di lokasi nonaktif (Terima biasa juga menolaknya; keputusan pemilik 2026-11-14).
+    if (targetId !== '' && (await activeLocationName(env.DB, targetId)) === null) {
+      throw validationError('action', 'Terima dulu unitnya di lokasi aktif');
+    }
+    const targetName = row.transit_to_name ?? currentLocationName;
+    const changes: SerialChangeDto[] = [
+      {
+        field: 'custody',
+        from: SERIAL_CUSTODY_LABELS[custody],
+        to: SERIAL_CUSTODY_LABELS[midCustody],
+      },
+    ];
+    if (targetId !== '' && targetId !== currentLocationId) {
+      set.location_id = targetId;
+      changes.push({ field: 'location', from: currentLocationName, to: targetName });
+      currentLocationId = targetId;
+      currentLocationName = targetName;
+    }
+    set.transit_from_location_id = '';
+    set.transit_to_location_id = '';
+    set.transit_on = '';
+    preEvents.push({
+      id: crypto.randomUUID(),
+      caseId: openCaseId,
+      type: 'receive',
+      message: '',
+      changes,
+      data: {
+        leg,
+        auto: true,
+        fromLocationName: row.transit_from_name ?? '',
+        toLocationName: targetName,
+        daysInTransit: daysBetween(row.transit_on, input.occurredOn),
+      },
+      team: flow.team,
+    });
+  }
+
+  // Perubahan status/posisi, dipasang pada kejadian utama aksi (dihitung dari keadaan sesudah Terima otomatis).
   const stateChanges: SerialChangeDto[] = [];
   const newStatus = flow.toStatus === 'same' ? status : flow.toStatus;
-  const newCustody = flow.toCustody === 'same' ? custody : flow.toCustody;
+  const newCustody = flow.toCustody === 'same' ? midCustody : flow.toCustody;
   if (newStatus !== status) {
     set.status = newStatus;
     stateChanges.push({
@@ -296,11 +345,11 @@ async function applyAct(
       to: SERIAL_STATUS_LABELS[newStatus],
     });
   }
-  if (newCustody !== custody) {
-    set.custody = newCustody;
+  if (newCustody !== custody) set.custody = newCustody;
+  if (newCustody !== midCustody) {
     stateChanges.push({
       field: 'custody',
-      from: SERIAL_CUSTODY_LABELS[custody],
+      from: SERIAL_CUSTODY_LABELS[midCustody],
       to: SERIAL_CUSTODY_LABELS[newCustody],
     });
   }
@@ -313,47 +362,68 @@ async function applyAct(
     changes: [...stateChanges],
     data: {},
   };
-  const damage = 'damage' in input && typeof input.damage === 'string' ? input.damage : undefined;
 
   switch (input.action) {
     case 'report_failure': {
-      const number = await openNewCase(input.damage);
+      const number = await openNewCase();
       main.caseId = newCaseId;
-      main.changes.push(damageChip(null, input.damage));
-      main.data = { caseNumber: number, damage: input.damage };
+      main.data = { caseNumber: number };
       break;
     }
-    case 'identify_damage':
     case 'service_diagnosis': {
       const found = await loadOpenCase();
-      caseStatements.push(updateCaseDamageStmt(env.DB, found.id.trim(), input.damage, now));
-      main.changes.push(damageChip(found.damage, input.damage));
-      main.data = { caseNumber: found.number, damage: input.damage };
+      main.data = { caseNumber: found.number, stage: input.stage };
+      if (input.stage === 'done') {
+        // Kembali ke QC: tujuan = lokasi QC asal laporan (diisi saat dilaporkan dan diperbarui saat Kirim ke servis);
+        // kosong (data lama) = lokasi unit sekarang.
+        const destinationId = found.origin_location_id.trim() || currentLocationId;
+        const destinationName = (await locationNameOf(env.DB, destinationId)) ?? '';
+        set.transit_from_location_id = currentLocationId;
+        set.transit_to_location_id = destinationId;
+        set.transit_on = input.occurredOn;
+        main.data = {
+          ...main.data,
+          leg: 'to_qc',
+          fromLocationId: currentLocationId,
+          fromLocationName: currentLocationName,
+          toLocationId: destinationId,
+          toLocationName: destinationName,
+        };
+      }
       break;
     }
     case 'declare_broken': {
       const found = await loadOpenCase();
       caseStatements.push(closeCaseStmt(env.DB, found.id.trim(), 'broken', input.occurredOn, now));
       set.open_case_id = '';
-      main.data = { caseNumber: found.number, damage: found.damage, outcome: 'broken' };
+      main.data = { caseNumber: found.number, outcome: 'broken' };
       break;
     }
     case 'send': {
-      if (input.toLocationId === currentLocationId) {
-        throw validationError('toLocationId', 'Lokasi tujuan harus beda dengan lokasi sekarang');
+      // Daftar tujuan = lokasi servis efektif (konfigurasi). Satu lokasi: dipakai otomatis; banyak: wajib dipilih dan
+      // harus termasuk daftar. Kirim dari lokasi yang sama dengan tujuan sah (QC dan servis boleh sama lokasi).
+      const options = await effectiveServiceLocations(env);
+      if (options.length === 0) {
+        throw validationError('toLocationId', 'Belum ada lokasi servis yang aktif');
       }
-      const toName = await activeLocationName(env.DB, input.toLocationId);
-      if (toName === null) throw validationError('toLocationId', LOCATION_MESSAGE);
+      let target = options.length === 1 ? options[0] : undefined;
+      if (toLocationInput !== undefined) {
+        target = options.find((option) => option.id === toLocationInput);
+        if (!target) throw validationError('toLocationId', 'Lokasi tujuan bukan lokasi servis');
+      }
+      if (!target) throw validationError('toLocationId', 'Pilih dulu lokasi servis tujuannya');
+      const found = await loadOpenCase();
+      caseStatements.push(setCaseOriginStmt(env.DB, found.id.trim(), currentLocationId, now));
       set.transit_from_location_id = currentLocationId;
-      set.transit_to_location_id = input.toLocationId;
+      set.transit_to_location_id = target.id;
       set.transit_on = input.occurredOn;
       main.data = {
         leg: flow.leg,
+        caseNumber: found.number,
         fromLocationId: currentLocationId,
         fromLocationName: currentLocationName,
-        toLocationId: input.toLocationId,
-        toLocationName: toName,
-        shipmentNote: input.shipmentNote,
+        toLocationId: target.id,
+        toLocationName: target.name,
       };
       break;
     }
@@ -362,8 +432,31 @@ async function applyAct(
       if (row.transit_on !== '' && input.occurredOn < row.transit_on) {
         throw validationError('occurredOn', 'Tanggal terima tidak boleh sebelum tanggal kirim');
       }
-      const targetId = row.transit_to_location_id.trim();
-      const targetName = row.transit_to_name ?? currentLocationName;
+      let targetId = row.transit_to_location_id.trim();
+      let targetName = row.transit_to_name ?? currentLocationName;
+      if (flow.leg === 'at_qc') {
+        // Terima di QC memulihkan lokasi QC asal; hanya bila lokasi itu sudah nonaktif, pengguna memilih lokasi aktif lain.
+        const originActive =
+          targetId !== '' && (await activeLocationName(env.DB, targetId)) !== null;
+        if (originActive) {
+          if (toLocationInput !== undefined && toLocationInput !== targetId) {
+            throw validationError('toLocationId', 'Lokasi sudah ditentukan dari lokasi QC asal');
+          }
+        } else {
+          if (toLocationInput === undefined) {
+            throw validationError(
+              'toLocationId',
+              'Lokasi QC asal sudah tidak aktif, pilih lokasi penerimaan',
+            );
+          }
+          const chosen = await activeLocationName(env.DB, toLocationInput);
+          if (chosen === null) throw validationError('toLocationId', LOCATION_MESSAGE);
+          targetId = toLocationInput;
+          targetName = chosen;
+        }
+      } else if (toLocationInput !== undefined) {
+        throw validationError('toLocationId', 'Lokasi tidak bisa dipilih saat menerima di servis');
+      }
       if (targetId !== '' && targetId !== currentLocationId) {
         set.location_id = targetId;
         main.changes.push({ field: 'location', from: currentLocationName, to: targetName });
@@ -382,76 +475,65 @@ async function applyAct(
     case 'recheck':
     case 'recheck_pass':
     case 'recheck_fail': {
-      const locationId = input.locationId ?? currentLocationId;
-      const locationChanges: SerialChangeDto[] = [];
-      let locationName = currentLocationName;
-      if (locationId !== currentLocationId) {
-        const name = await activeLocationName(env.DB, locationId);
-        if (name === null) throw validationError('locationId', LOCATION_MESSAGE);
-        set.location_id = locationId;
-        locationChanges.push({ field: 'location', from: currentLocationName, to: name });
-        locationName = name;
-      }
-      // Lokasi yang tidak diganti boleh sudah nonaktif: hanya lokasi BARU yang wajib aktif (diperiksa di atas).
+      // Lokasi cek ulang = lokasi unit (sesudah Terima otomatis bila `transit`).
       const raise = await stickerRaise(
         env,
         row,
         eventId,
-        locationId,
-        input.stickers ?? [],
+        currentLocationId,
+        input.stickerIds ?? [],
         user,
         now,
         retried,
       );
       tail.push(...raise.statements);
-      const checkData: Record<string, unknown> = { locationId, locationName };
+      const checkData: Record<string, unknown> = {
+        locationId: currentLocationId,
+        locationName: currentLocationName,
+      };
       if (raise.raised.length > 0) checkData.stickers = raise.raised;
 
       if (input.action === 'recheck') {
         const result = input.result ?? 'pass';
         checkData.result = result;
         if (result === 'pass') {
-          main.changes.push(...locationChanges, ...raise.changes);
+          main.changes.push(...raise.changes);
+          main.data = checkData;
         } else {
-          // Baris 13: kejadian `recheck` (hasil tidak lolos) lalu `report_failure` yang membawa kasus baru.
-          const failDamage = damage ?? '';
-          const number = await openNewCase(failDamage);
-          main.caseId = '';
-          main.changes = [...locationChanges, ...raise.changes];
+          // Serial Lolos yang cek ulangnya gagal: kejadian `recheck` (membawa stiker) lalu `report_failure` yang
+          // membawa catatan laporan; keduanya masuk lingkup laporan baru.
+          const number = await openNewCase();
+          main.caseId = newCaseId;
+          main.message = '';
+          main.changes = [...raise.changes];
+          main.data = { ...checkData, caseNumber: number };
           extraEvents.push({
             id: crypto.randomUUID(),
             caseId: newCaseId,
             type: 'report_failure',
-            message: '',
-            changes: [...stateChanges, damageChip(null, failDamage)],
-            data: { caseNumber: number, damage: failDamage },
+            message: input.message,
+            changes: [...stateChanges],
+            data: { caseNumber: number },
           });
         }
-        main.data = checkData;
       } else {
-        main.changes.push(...locationChanges, ...raise.changes);
-        main.data = checkData;
+        main.changes.push(...raise.changes);
+        const found = await loadOpenCase();
         if (input.action === 'recheck_pass') {
-          const found = await loadOpenCase();
           caseStatements.push(
             closeCaseStmt(env.DB, found.id.trim(), 'good', input.occurredOn, now),
           );
           set.open_case_id = '';
           main.data = { ...checkData, caseNumber: found.number, outcome: 'good' };
-        } else if (damage !== undefined) {
-          // Kasus tetap terbuka; kerusakan opsional diperbarui.
-          const found = await loadOpenCase();
-          if (found.damage !== damage) {
-            caseStatements.push(updateCaseDamageStmt(env.DB, found.id.trim(), damage, now));
-            main.changes.push(damageChip(found.damage, damage));
-          }
-          main.data = { ...checkData, caseNumber: found.number, damage };
+        } else {
+          // Laporan tetap terbuka.
+          main.data = { ...checkData, caseNumber: found.number, result: 'fail' };
         }
       }
       break;
     }
     default:
-      // `note` dan `attempt_repair`: hanya kejadian (dan perubahan status untuk perbaikan).
+      // `note`: hanya kejadian.
       break;
   }
 
@@ -487,7 +569,7 @@ async function applyAct(
       set,
     }),
     ...caseStatements,
-    ...[main, ...extraEvents].map((event) =>
+    ...[...preEvents, main, ...extraEvents].map((event) =>
       insertNextEventStmt(env.DB, {
         id: event.id,
         serialId,
@@ -497,7 +579,7 @@ async function applyAct(
         now,
         actorId: user.userId ?? '',
         actorName: user.name,
-        actorTeam: flow.team,
+        actorTeam: event.team ?? flow.team,
         message: event.message,
         changes: event.changes,
         data: event.data,

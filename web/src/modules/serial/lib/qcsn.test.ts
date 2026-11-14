@@ -13,8 +13,6 @@ const defaults: Defaults = {
   locationLabel: 'Jakarta',
   sample: true,
   note: 'catatan',
-  status: 'good',
-  damage: '',
 };
 
 function rows(texts: string[], over: Partial<Defaults> = {}): StagingRow[] {
@@ -140,19 +138,13 @@ test('baris bermasalah yang bukan objek tidak memicu peringatan checksum palsu',
   expect(result.warning).toBeNull();
 });
 
-test('baris Tidak lolos: ekspor memuat kerusakan, impor mengembalikannya; tanpa kerusakan tidak diekspor', async () => {
-  const [row] = rows(['SN-9'], { status: 'failed', damage: '  Port 3 mati  ' });
-  const text = await exportQcsn(row ? [row] : [], APP, NOW);
+test('ekspor selalu menulis status good tanpa damage; baris failed di berkas ditolak sebagai bermasalah', async () => {
+  const text = await exportQcsn(rows(['SN-9']), APP, NOW);
   const file = JSON.parse(text);
-  expect(file.rows[0]).toMatchObject({ status: 'failed', damage: 'Port 3 mati' });
-  const result = await importQcsn(text);
-  expect(result.fatal).toBeNull();
-  expect(result.rows[0]).toMatchObject({ status: 'failed', damage: 'Port 3 mati' });
-  // Baris Lolos tidak membawa kunci damage meski ada sisa teks di tabel.
-  const [good] = rows(['SN-8'], { status: 'good', damage: 'sisa' });
-  expect(JSON.parse(await exportQcsn(good ? [good] : [], APP, NOW)).rows[0]).not.toHaveProperty(
-    'damage',
-  );
-  const blank = rows(['SN-7'], { status: 'failed', damage: '' });
-  expect(exportableRows(blank)).toEqual([]);
+  expect(file.rows[0]).toMatchObject({ status: 'good' });
+  expect(file.rows[0]).not.toHaveProperty('damage');
+  file.rows[0] = { ...file.rows[0], status: 'failed', damage: 'Port 3 mati' };
+  const result = await importQcsn(JSON.stringify(file));
+  expect(result.rows).toEqual([]);
+  expect(result.fatal ?? result.problems[0]?.message).toMatch(/good|bermasalah|status/i);
 });

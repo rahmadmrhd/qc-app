@@ -3,6 +3,10 @@ import type { StagingRow, StagingSticker } from './draft';
 
 const PREFIX = 'qc.serial.draft:';
 
+/** Pesan baris draf 5b yang berstatus selain Lolos (pengguna diarahkan ke Lapor Rusak). */
+export const NOT_GOOD_MESSAGE =
+  'Draf lama berstatus bukan Lolos: Serial Number bermasalah dicatat lewat Lapor Rusak. Hapus baris ini lalu laporkan di sana.';
+
 const key = (ownerKey: string) => `${PREFIX}${ownerKey}`;
 
 /**
@@ -86,24 +90,24 @@ function readRow(raw: unknown): StagingRow | null {
   if (typeof sample !== 'boolean') return null;
   const source = text(raw, 'source');
   if (source !== 'manual' && source !== 'countrylock') return null;
-  // Draf lama (sebelum 5b) tanpa status/kerusakan dipulihkan sebagai Lolos; nilai yang ada tapi tak dikenal membuang baris.
-  const statusRaw = Object.hasOwn(raw, 'status') ? raw.status : 'good';
-  if (statusRaw !== 'good' && statusRaw !== 'failed') return null;
-  const damage = Object.hasOwn(raw, 'damage') ? raw.damage : '';
-  if (typeof damage !== 'string') return null;
+  // Draf 5b yang masih memuat baris berstatus selain Lolos: JANGAN dibuang diam-diam, pulihkan sebagai baris bermasalah
+  // (sejalan dengan `.qcsn`/`saveBatch`: Serial Number bermasalah kini dicatat lewat Lapor Rusak). Draf lama tanpa
+  // kunci `status` tetap dipulihkan sebagai Lolos.
+  const notGood = Object.hasOwn(raw, 'status') && raw.status !== 'good';
   const stickers = readStickers(Object.hasOwn(raw, 'stickers') ? raw.stickers : null);
   if (stickers === undefined) return null;
   const row: StagingRow = {
     ...values,
     sample,
-    status: statusRaw,
-    damage,
     source,
     stickers,
     selected: false,
   };
   const result = text(raw, 'result');
-  if (result === 'duplicate' || result === 'invalid' || result === 'error') {
+  if (notGood) {
+    row.result = 'invalid';
+    row.message = NOT_GOOD_MESSAGE;
+  } else if (result === 'duplicate' || result === 'invalid' || result === 'error') {
     row.result = result;
     const message = text(raw, 'message');
     if (message !== null) row.message = message;

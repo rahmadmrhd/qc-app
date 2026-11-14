@@ -127,3 +127,9 @@ test('GuideBanner dipasang di atas area utama', () => {
   const main = screen.getAllByRole('main').at(-1) as HTMLElement;
   expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+
+test('area utama boleh menyusut (min-w-0): tabel lebar menggulir di wadahnya, bukan melebarkan halaman', () => {
+  render(<AppShell />);
+  const inset = document.querySelector('[data-slot="sidebar-inset"]');
+  expect(inset?.classList.contains('min-w-0')).toBe(true);
+});

@@ -2,13 +2,17 @@ import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
+  SaveSerialServiceSettingsInput,
   SaveSerialSettingsInput,
   SerialActInput,
+  SerialCaseListInput,
+  SerialCaseListOutput,
   SerialDto,
   SerialHistoryInput,
   SerialHistoryOutput,
   SerialListInput,
   SerialListOutput,
+  SerialReportNewInput,
   SerialSummaryDto,
   UpdateSerialBatchInput,
   UpdateSerialInput,
@@ -60,6 +64,51 @@ export function serialSettingsQueryOptions() {
     queryKey: serialKeys.settings,
     queryFn: () => api('serialSettings.get', null),
     retry: false,
+  });
+}
+
+/** Pengaturan lokasi tim servis (global; hanya pengelola). */
+export function serialServiceSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.serviceSettings,
+    queryFn: () => api('serialServiceSettings.get', null),
+    retry: false,
+  });
+}
+
+/** Lokasi servis efektif (kosong di pengaturan = semua lokasi aktif); hanya bagi `serial: edit`. */
+export function serialServiceLocationsQueryOptions(enabled = true) {
+  return queryOptions({
+    queryKey: serialKeys.serviceLocations,
+    queryFn: () => api('serials.serviceLocations', null),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** Pencarian Serial Number untuk Lapor Rusak (BU yang boleh ditulis); selalu segar (status serial berubah-ubah). */
+export function serialLookupQueryOptions(serial: string) {
+  return queryOptions({
+    queryKey: serialKeys.lookup(serial),
+    queryFn: () => api('serials.lookup', { serial }),
+    enabled: serial.trim() !== '',
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+/** Daftar laporan berkursor; filter dikerjakan server. TIDAK masuk whitelist `query-persist`. */
+export type SerialCaseFilter = Omit<SerialCaseListInput, 'cursor'>;
+
+export function serialCaseListQueryOptions(filter: SerialCaseFilter = {}) {
+  return infiniteQueryOptions({
+    queryKey: serialKeys.casePage(filter),
+    queryFn: ({ pageParam }) =>
+      api('serialCases.list', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: SerialCaseListOutput) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -197,7 +246,22 @@ export function useActSerial() {
     mutationFn: (input: SerialActInput) => api('serials.act', input),
     onSuccess: (saved) => {
       applySaved(queryClient, saved);
-      markStale(queryClient, stickerKeys.all, accessKeys.audit);
+      // Laporan berubah status/penutupannya: daftar Laporan ditandai basi.
+      markStale(queryClient, stickerKeys.all, accessKeys.audit, serialKeys.cases);
+    },
+  });
+}
+
+/** Lapor Rusak untuk Serial Number yang belum tercatat: serial baru berstatus Dilaporkan + laporan terbuka. */
+export function useReportNewSerial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SerialReportNewInput) => api('serials.reportNew', input),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<GetSerialOutput>(serialKeys.one(saved.id), (current) =>
+        current ? { ...current, serial: saved } : current,
+      );
+      markStale(queryClient, serialKeys.list, serialKeys.cases, accessKeys.audit);
     },
   });
 }
@@ -210,6 +274,17 @@ export function useSaveSerialSettings() {
       markStale(queryClient, accessKeys.audit);
       // Sesudah markStale: pengaturan yang baru disimpan tetap segar (versi baru = isian mulai dari data terbaru).
       queryClient.setQueryData(serialKeys.settings, saved);
+    },
+  });
+}
+
+export function useSaveSerialServiceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SaveSerialServiceSettingsInput) => api('serialServiceSettings.save', input),
+    onSuccess: (saved) => {
+      markStale(queryClient, accessKeys.audit, serialKeys.serviceLocations);
+      queryClient.setQueryData(serialKeys.serviceSettings, saved);
     },
   });
 }

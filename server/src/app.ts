@@ -12,6 +12,7 @@ import {
 } from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
+import { publicSerialApp } from '@server/modules/serial/public-routes';
 import { getRoutes } from '@server/routes';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -33,6 +34,9 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   registerRest(rest, routes);
   app.route('/api/v1', rest);
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
+  // Halaman publik laporan rusak (tautan bertanda tangan, tanpa sesi): di luar `API_ROUTES` dan OpenAPI; dipasang SEBELUM
+  // catch-all statis di bawah.
+  app.route('/api/public', publicSerialApp);
   // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
   // Kabel lama (`POST /sync`, amplop {v,method,token,payload}) dihapus (keputusan pemilik 2026-11-06); modul sinkron
