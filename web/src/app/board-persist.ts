@@ -2,7 +2,7 @@ import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  clearDeviceDb,
+  clearBoardStores,
   type DeviceRecord,
   deleteRecords,
   readAllRecords,
@@ -277,7 +277,7 @@ export async function clearBoardStore(): Promise<void> {
   generation += 1;
   pending.clear();
   try {
-    await clearDeviceDb();
+    await clearBoardStores();
   } catch {
     // Tidak pernah menolak: keluar tak boleh terhambat.
   }

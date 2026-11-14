@@ -26,7 +26,7 @@ import { postLogout, useLogout } from './use-logout';
 // Pembungkus tipis atas modul nyata agar penghapusan toko perangkat dapat dibuat gagal.
 vi.mock('@/lib/device-db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/device-db')>();
-  return { ...actual, clearDeviceDb: vi.fn(actual.clearDeviceDb) };
+  return { ...actual, clearBoardStores: vi.fn(actual.clearBoardStores) };
 });
 
 let client: QueryClient;
@@ -253,7 +253,7 @@ test('keluar mengosongkan papan dan detail task di IndexedDB sebelum navigasi ke
 });
 
 test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan sesi dan navigasi', async () => {
-  vi.mocked(deviceDb.clearDeviceDb).mockRejectedValueOnce(new Error('idb gagal'));
+  vi.mocked(deviceDb.clearBoardStores).mockRejectedValueOnce(new Error('idb gagal'));
   const { result } = renderHook(() => useLogout(), { wrapper });
   act(() => result.current());
   await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login' }));
@@ -262,7 +262,7 @@ test('pembersihan toko perangkat yang gagal tidak mencegah keluar menyelesaikan 
 });
 
 test('pembersihan toko perangkat yang menggantung: keluar tetap selesai dalam batas waktu (sesi, cache, navigasi)', async () => {
-  vi.mocked(deviceDb.clearDeviceDb).mockImplementationOnce(
+  vi.mocked(deviceDb.clearBoardStores).mockImplementationOnce(
     () => new Promise<void>(() => undefined),
   );
   client.setQueryData(['items'], [{ id: 'i1' }]);
