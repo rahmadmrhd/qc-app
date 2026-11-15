@@ -5,7 +5,7 @@ import type { SerialHistoryInput, SerialHistoryOutput } from '@shared/contract';
 import { SERIAL_HISTORY_GROUPS, SERIAL_LIMITS } from '@shared/serials';
 import { assertSerialVisible } from './access';
 import { loadSerialRow, type SerialEventRow } from './repo';
-import { toEvent } from './service';
+import { toEventsWithProofs } from './service';
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(', ');
 
@@ -72,7 +72,7 @@ export async function serialHistory(
     if (caseId !== '') counts.byCase[caseId] = total;
   }
   return {
-    events: page.map(toEvent),
+    events: await toEventsWithProofs(env, page),
     nextCursor: rows.results.length > limit && last ? String(Number(last.seq)) : null,
     counts,
   };

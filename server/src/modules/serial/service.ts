@@ -1,4 +1,4 @@
-import { batchGuarded } from '@server/core/cas';
+import { batchGuarded, isGuardFailure } from '@server/core/cas';
 import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
@@ -25,6 +25,7 @@ import type {
   SerialListInput,
   SerialListOutput,
   SerialLocationOptionsDto,
+  SerialProofPhotoDto,
   SerialRowInput,
   SerialRowResult,
   SerialStickerOptionsDto,
@@ -53,6 +54,8 @@ import {
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
 import { loadCases, type SerialCaseRow } from './case-repo';
+import { loadStampItemInfo, planProofAttach } from './proof/attach';
+import { listProofsByEvents } from './proof/repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -306,6 +309,31 @@ export async function createSerialOnce(
   const eventId = crypto.randomUUID();
   const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
+  // Foto bukti QC (opsional): divalidasi SEBELUM menulis apa pun; foto bermasalah = baris `invalid` tanpa entri tersimpan.
+  // Klaim dan job cap ikut batch yang sama dengan kejadian, jadi tak ada celah komit tanpa job.
+  const planProofs = async (): Promise<DbStatement[]> =>
+    planProofAttach(env, row.proofPhotoIds, {
+      user,
+      serialId,
+      eventId,
+      snapshot: {
+        serial: row.serial,
+        ...(await loadStampItemInfo(env.DB, row.itemId, row.buId)),
+        locationName,
+        actorName: user.name,
+        actorTeam: 'qc',
+      },
+      now,
+    });
+  let proofStatements: DbStatement[];
+  try {
+    proofStatements = await planProofs();
+  } catch (error) {
+    if (isAppError(error) && error.code === 'VALIDATION') {
+      return { clientId: row.clientId, result: 'invalid', message: error.message };
+    }
+    throw error;
+  }
   // Menyusun SELURUH batch satu baris (baris `saveBatch` selalu `good`; yang bermasalah lewat Lapor Rusak).
   const buildStatements = async (): Promise<DbStatement[]> => {
     const actor = {
@@ -362,6 +390,7 @@ export async function createSerialOnce(
         actor: actorEmail,
         now,
       })),
+      ...proofStatements,
     ];
   };
   try {
@@ -374,6 +403,23 @@ export async function createSerialOnce(
       serial: row.serial,
     };
   } catch (error) {
+    if (isGuardFailure(error) && proofStatements.length > 0) {
+      // Penjaga klaim foto gagal: foto diambil Simpan lain (serentak) atau disapu di sela validasi dan komit. Seluruh batch
+      // batal (tak ada entri tersimpan); validasi ulang menghasilkan pesan yang tepat.
+      try {
+        await planProofs();
+      } catch (recheck) {
+        if (isAppError(recheck) && recheck.code === 'VALIDATION') {
+          return { clientId: row.clientId, result: 'invalid', message: recheck.message };
+        }
+      }
+      return {
+        clientId: row.clientId,
+        result: 'error',
+        message: 'Serial Number gagal disimpan. Coba lagi',
+        serial: row.serial,
+      };
+    }
     if (error instanceof DbError && error.kind === 'duplicate') {
       // Balapan retry: InnoDB dapat melaporkan indeks `serials_bu_serial` (bukan `serials_client_id`) untuk baris
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
@@ -459,8 +505,7 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     transitToLocationName: orNull(row.transit_to_name ?? ''),
     transitOn: orNull(row.transit_on),
     openCaseNumber: orNull(row.open_case_number ?? ''),
-    // Diisi dari penanda bukti foto pada Task A5 (kolom/gabungan belum ada di `SerialRow`).
-    hasProofPhotos: false,
+    hasProofPhotos: Number(row.has_proof) === 1,
     createdAt: row.created_at,
   };
 }
@@ -504,7 +549,10 @@ function parseJson<T>(text: string, fallback: T): T {
   }
 }
 
-export function toEvent(row: SerialEventRow): SerialEventDto {
+export function toEvent(
+  row: SerialEventRow,
+  proofPhotos: SerialProofPhotoDto[] = [],
+): SerialEventDto {
   const type = row.type.trim();
   const team = row.actor_team.trim();
   const changes = parseJson<SerialChangeDto[]>(row.changes_json, []);
@@ -521,9 +569,28 @@ export function toEvent(row: SerialEventRow): SerialEventDto {
     message: row.message,
     changes: Array.isArray(changes) ? changes : [],
     data: typeof data === 'object' && data !== null && !Array.isArray(data) ? data : {},
-    // Diisi dari `listProofsByEvents` pada Task A5.
-    proofPhotos: [],
+    proofPhotos,
   };
+}
+
+/** Jenis kejadian yang boleh membawa foto bukti (Tambah dan Cek ulang). */
+const PROOF_EVENT_TYPES: readonly string[] = [
+  'recorded',
+  'recheck',
+  'recheck_pass',
+  'recheck_fail',
+];
+
+/** `toEvent` untuk banyak baris dengan foto bukti kejadian (SATU kueri bagi seluruh halaman). */
+export async function toEventsWithProofs(
+  env: Env,
+  rows: readonly SerialEventRow[],
+): Promise<SerialEventDto[]> {
+  const ids = rows
+    .filter((row) => PROOF_EVENT_TYPES.includes(row.type.trim()))
+    .map((row) => row.id.trim());
+  const photos = await listProofsByEvents(env.DB, ids);
+  return rows.map((row) => toEvent(row, photos.get(row.id.trim()) ?? []));
 }
 
 /** Serial lengkap dengan stiker (nama) untuk DTO; BU di luar hak baca = `NOT_FOUND`. */
@@ -546,7 +613,7 @@ export async function getSerial(
 ): Promise<GetSerialOutput> {
   const serial = await loadSerialDto(env, user, input.id);
   const { events, truncated } = await loadSerialEvents(env.DB, serial.id);
-  return { serial, events: events.map(toEvent), eventsTruncated: truncated };
+  return { serial, events: await toEventsWithProofs(env, events), eventsTruncated: truncated };
 }
 
 function encodeSerialCursor(row: { created_at: string; id: string }): string {

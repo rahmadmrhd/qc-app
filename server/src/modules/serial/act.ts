@@ -21,6 +21,7 @@ import {
   type SerialStatus,
 } from '@shared/serials';
 import { assertSerialVisible, modulesOn } from './access';
+import { planProofAttach } from './proof/attach';
 import './alert-listener';
 import { applicableStickersOf } from './applicable';
 import {
@@ -551,6 +552,28 @@ async function applyAct(
     user.email,
   );
 
+  // Foto bukti QC cek ulang: klaim ber-CAS + job cap di batch yang sama dengan kejadian utama. Lokasi cap = lokasi serial
+  // SESUDAH kejadian (cek ulang dari `transit` memakai lokasi tujuan lewat Terima otomatis di atas).
+  const proofStatements = await planProofAttach(
+    env,
+    'proofPhotoIds' in input ? input.proofPhotoIds : undefined,
+    {
+      user,
+      serialId,
+      eventId,
+      snapshot: {
+        serial: row.serial,
+        brand: row.brand_name ?? '',
+        model: (row.model ?? '').trim(),
+        buCode: row.bu_code.trim(),
+        locationName: currentLocationName,
+        actorName: user.name,
+        actorTeam: flow.team === 'service' ? 'service' : 'qc',
+      },
+      now,
+    },
+  );
+
   // Pendengar antrean (surel rusak) dipasang ke batch yang sama: aksi yang batal tak meninggalkan job.
   const listeners: DbStatement[] =
     input.action === 'declare_broken'
@@ -592,6 +615,7 @@ async function applyAct(
     ...tail,
     ...attach,
     ...listeners,
+    ...proofStatements,
   ];
   if (withCase) {
     // Galat mentah (penjaga/duplikat nomor) dinilai `runWithCaseNumber`, bukan dipetakan menjadi CONFLICT di sini.

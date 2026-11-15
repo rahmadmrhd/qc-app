@@ -26,5 +26,6 @@ CREATE TABLE IF NOT EXISTS serial_proof_photos (
   KEY serial_proof_photos_state (state, updated_at),
   KEY serial_proof_photos_event (event_id),
   KEY serial_proof_photos_owner (created_by, state),
+  KEY serial_proof_photos_serial (serial_id),
   CONSTRAINT serial_proof_photos_state_check CHECK (state IN ('draft', 'queued', 'processing', 'done', 'failed'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;

@@ -152,6 +152,17 @@ export async function countDraftsOf(db: Preparer, email: string): Promise<number
   return Number(row?.n ?? 0);
 }
 
+/** Foto menurut daftar id (id yang tak ada tidak muncul di hasil). */
+export async function findProofsByIds(db: Preparer, ids: readonly string[]): Promise<ProofRow[]> {
+  if (ids.length === 0) return [];
+  const marks = ids.map(() => '?').join(', ');
+  const rows = await db
+    .prepare(`SELECT ${COLUMNS} FROM serial_proof_photos WHERE id IN (${marks})`)
+    .bind(...ids)
+    .all<ProofDbRow>();
+  return rows.results.map(toRow);
+}
+
 export interface ClaimDraftArgs {
   ids: readonly string[];
   /** Pengunggah; foto milik orang lain tidak dapat diklaim. */

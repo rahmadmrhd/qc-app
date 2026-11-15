@@ -6,7 +6,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import { SERIAL_LIMITS } from '@shared/serials';
+import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
@@ -220,6 +220,8 @@ const WORST: Inputs = {
       // Terburuk: catatan maksimum (4-byte) dan `source`.
       source: 'countrylock' as const,
       stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+      // Foto bukti QC: lima id per baris (`SERIAL_PROOF_LIMITS.perEntryMax`).
+      proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
     })),
   },
   'serials.update': {
@@ -254,6 +256,7 @@ const WORST: Inputs = {
     occurredOn: '2026-11-12',
     message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
     stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
+    proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
   },
   'serials.reportNew': {
     serial: 'S'.repeat(SERIAL_LIMITS.serialMax),

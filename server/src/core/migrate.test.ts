@@ -484,6 +484,7 @@ describe('skema baseline', () => {
         'serial_events.serial_events_seq',
         'serial_proof_photos.serial_proof_photos_event',
         'serial_proof_photos.serial_proof_photos_owner',
+        'serial_proof_photos.serial_proof_photos_serial',
         'serial_proof_photos.serial_proof_photos_state',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
