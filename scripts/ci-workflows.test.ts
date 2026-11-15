@@ -418,11 +418,16 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
   const imageSteps = image.steps ?? [];
   const prepare = imageSteps.find((step) => step.id === 'ui-key');
 
-  test('hanya job image yang memegang environment ui-signing dan membaca UI_SIGNING_KEY; job lain tidak', () => {
-    expect(image.environment).toBe('ui-signing');
+  test('job image memakai environment target deploy (staging/production, tempat secret dan Variable pemilik) dan hanya ia yang membaca UI_SIGNING_KEY', () => {
+    // Keputusan penempatan pemilik 2026-11-16: kunci ada di environment yang sama dengan target deploy, bukan
+    // environment terpisah `ui-signing`; yang membatasi akses adalah aturan branch environment itu.
+    expect(image.environment).toBe('${{ needs.meta.outputs.target }}');
+    expect(deployText).not.toMatch(/environment:\s*ui-signing/);
     for (const [name, job] of Object.entries(deploy.jobs)) {
       if (name === 'image') continue;
-      expect(JSON.stringify(job), name).not.toMatch(/UI_SIGNING_KEY|ui_signing_key|ui-signing/);
+      expect(JSON.stringify(job), name).not.toMatch(
+        /UI_SIGNING_KEY|ui_signing_key|UI_PUBLIC_KEY_PEM/,
+      );
     }
     // Satu-satunya pembaca secret: env langkah persiapan (nilai tak pernah di `run` atau input aksi).
     expect(codeOf(deployText).match(/secrets\.UI_SIGNING_KEY/g)).toHaveLength(1);
@@ -440,9 +445,11 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
     const build = imageSteps.find((step) => step.uses?.startsWith('docker/build-push-action'));
     expect(build?.with?.['secret-files']).toBe('${{ steps.ui-key.outputs.secret_files }}');
     expect(build?.with).not.toHaveProperty('secrets');
+    // Kunci publik masuk build-args lewat output langkah persiapan (sudah dinormalkan satu baris), bukan `vars.` mentah.
     expect(String(build?.with?.['build-args'])).toContain(
-      'UI_PUBLIC_KEY_PEM=${{ vars.UI_PUBLIC_KEY_PEM }}',
+      'UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}',
     );
+    expect(prepare?.env?.UI_PUBLIC_KEY_PEM).toBe('${{ vars.UI_PUBLIC_KEY_PEM }}');
     expect(imageSteps.indexOf(prepare as Step)).toBeLessThan(imageSteps.indexOf(build as Step));
     const cleanup = imageSteps.at(-1);
     expect(cleanup?.if).toBe('always()');
@@ -485,7 +492,7 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
       const result = await run('', '');
       expect(result.code).toBe(0);
       expect(result.stdout).toContain('::warning::');
-      expect(result.output).toBe('secret_files=\n');
+      expect(result.output).toBe('secret_files=\npublic_key=\n');
     });
 
     test('hanya salah satu terisi: GAGAL (konfigurasi setengah jadi)', async () => {
@@ -500,18 +507,44 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
       }
     });
 
-    test('kunci publik berbaris banyak (build-args tak mendukungnya) GAGAL dan tidak menulis berkas kunci', async () => {
-      const result = await run('rahasia', `${ONE_LINE}\n${ONE_LINE}`);
-      expect(result.code).toBe(1);
-      expect(result.stdout).toContain('SATU baris');
-      expect(existsSync(join(dir, 'ui_signing_key.pem'))).toBe(false);
+    test('kunci publik dinormalkan jadi satu baris: PEM berbaris banyak (LF dan CRLF), PEM satu baris, `\\n` harfiah, dan base64 polos', async () => {
+      const body = `${ONE_LINE.slice(0, 30)}\n${ONE_LINE.slice(30)}`;
+      const header = '-----BEGIN PUBLIC KEY-----';
+      const footer = '-----END PUBLIC KEY-----';
+      const variants = [
+        `${header}\n${body}\n${footer}`,
+        `${header}\r\n${body.replace('\n', '\r\n')}\r\n${footer}\r\n`,
+        `${header} ${ONE_LINE} ${footer}`,
+        `${header}\\n${ONE_LINE}\\n${footer}`,
+        ONE_LINE,
+        `  ${ONE_LINE}\n`,
+      ];
+      for (const variant of variants) {
+        const result = await run('rahasia', variant);
+        expect(result.code, JSON.stringify(variant)).toBe(0);
+        expect(result.output, JSON.stringify(variant)).toContain(`public_key=${ONE_LINE}\n`);
+        rmSync(join(dir, 'ui_signing_key.pem'), { force: true });
+      }
+    });
+
+    test('kunci publik yang bukan isi base64 GAGAL, tidak mencetak isinya, dan tidak menulis berkas kunci', async () => {
+      for (const bad of ['bukan kunci!', '<script>alert(1)</script>', '$(id)', 'abc;def']) {
+        const result = await run('rahasia', bad);
+        expect(result.code, bad).toBe(1);
+        expect(result.stdout, bad).toContain('::error::');
+        expect(result.stdout, bad).not.toContain(bad);
+        expect(result.output, bad).toBe('');
+        expect(existsSync(join(dir, 'ui_signing_key.pem')), bad).toBe(false);
+      }
     });
 
     test('keduanya terisi: berkas kunci ditulis utuh (berbaris banyak) dan jalurnya diteruskan lewat output', async () => {
       const secret = '-----BEGIN PRIVATE KEY-----\nAAAA\nBBBB\n-----END PRIVATE KEY-----';
       const result = await run(secret, ONE_LINE);
       expect(result.code).toBe(0);
-      expect(result.output).toBe(`secret_files=ui_signing_key=${unix(dir)}/ui_signing_key.pem\n`);
+      expect(result.output).toBe(
+        `secret_files=ui_signing_key=${unix(dir)}/ui_signing_key.pem\npublic_key=${ONE_LINE}\n`,
+      );
       expect(readFileSync(join(dir, 'ui_signing_key.pem'), 'utf8')).toBe(`${secret}\n`);
       // isi kunci tak pernah dicetak ke log
       expect(result.stdout).not.toContain('AAAA');
