@@ -302,7 +302,9 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   ): Promise<void> {
     const segments = entry.path.split('/');
     const dest = destinationOf(root, entry.path);
-    const url = `${base}/${segments.map(encodeURIComponent).join('/')}`;
+    // Rute khusus (bukan jalur statis): Cloudflare menyisipkan skrip ke respons HTML (`index.html`) sehingga ukuran
+    // dan sha256-nya menyimpang dari manifest; rute ini menyajikan semua berkas sebagai `octet-stream`.
+    const url = `${base}/api/desktop/ui-file/${segments.map(encodeURIComponent).join('/')}`;
     const response = await doFetch(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(FILE_TIMEOUT_MS),

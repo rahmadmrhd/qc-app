@@ -204,3 +204,81 @@ describe('GET /api/desktop/ui-manifest', () => {
     expect(rest.status).toBe(401);
   });
 });
+
+describe('GET /api/desktop/ui-file/*', () => {
+  const urlFile = (relative: string) => `https://qc.test/api/desktop/ui-file/${relative}`;
+  const HTML = '<html><body>halaman</body></html>';
+
+  function publishWithFiles(): void {
+    publish();
+    writeFileSync(path.join(dist, 'index.html'), HTML);
+    mkdirSync(path.join(dist, 'assets'), { recursive: true });
+    writeFileSync(path.join(dist, 'assets', 'app.js'), 'console.log(1)');
+    writeFileSync(path.join(dist, 'rahasia.txt'), 'bukan bagian manifest');
+  }
+
+  test('berkas di manifest disajikan sebagai octet-stream tanpa transformasi (index.html tetap utuh)', async () => {
+    publishWithFiles();
+    const response = await app.request(urlFile('index.html'), {}, withDist(dist));
+    expect(response.status).toBe(200);
+    // bukan text/html: Cloudflare hanya menyisipkan skrip ke respons HTML
+    expect(response.headers.get('content-type')).toBe('application/octet-stream');
+    expect(response.headers.get('cache-control')).toBe('no-cache, no-transform');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await response.text()).toBe(HTML);
+  });
+
+  test('jalur bersegmen (assets/app.js) yang tercantum di manifest ikut disajikan', async () => {
+    const manifest = {
+      ...MANIFEST,
+      files: [...MANIFEST.files, { path: 'assets/app.js', sha256: 'd'.repeat(64), size: 14 }],
+    };
+    publishWithFiles();
+    writeFileSync(path.join(dist, 'ui-manifest.json'), JSON.stringify(manifest));
+    const response = await app.request(urlFile('assets/app.js'), {}, withDist(dist));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('console.log(1)');
+  });
+
+  test('berkas yang ada di folder tetapi TIDAK tercantum di manifest = 404', async () => {
+    publishWithFiles();
+    const response = await app.request(urlFile('rahasia.txt'), {}, withDist(dist));
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('bukan bagian manifest');
+  });
+
+  test('jalur keluar folder (..), backslash, NUL, dan encoding rusak ditolak 404', async () => {
+    publishWithFiles();
+    for (const relative of [
+      '..%2Fui-manifest.json',
+      '%2e%2e/ui-manifest.json',
+      'assets%2F..%2F..%2Fx',
+      'index.html%00.png',
+      '..%5Cindex.html',
+      '%E0%A4%A',
+      '',
+    ]) {
+      const response = await app.request(urlFile(relative), {}, withDist(dist));
+      expect(response.status, relative).toBe(404);
+    }
+  });
+
+  test('404 tanpa manifest bertanda tangan, tanpa staticDir, atau berkas terdaftar yang hilang', async () => {
+    writeFileSync(path.join(dist, 'index.html'), HTML);
+    expect((await app.request(urlFile('index.html'), {}, withDist(dist))).status).toBe(404);
+    publish();
+    expect((await app.request(urlFile('index.html'), {}, withDist(undefined))).status).toBe(404);
+    rmSync(path.join(dist, 'index.html'));
+    expect((await app.request(urlFile('index.html'), {}, withDist(dist))).status).toBe(404);
+  });
+
+  test('metode tulis tidak dikenal (404/403), bukan menyajikan berkas', async () => {
+    publishWithFiles();
+    const response = await app.request(
+      urlFile('index.html'),
+      { method: 'POST', headers: { 'X-Requested-With': 'qc' } },
+      withDist(dist),
+    );
+    expect(response.status).toBe(404);
+  });
+});
