@@ -459,6 +459,8 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     transitToLocationName: orNull(row.transit_to_name ?? ''),
     transitOn: orNull(row.transit_on),
     openCaseNumber: orNull(row.open_case_number ?? ''),
+    // Diisi dari penanda bukti foto pada Task A5 (kolom/gabungan belum ada di `SerialRow`).
+    hasProofPhotos: false,
     createdAt: row.created_at,
   };
 }
@@ -519,6 +521,8 @@ export function toEvent(row: SerialEventRow): SerialEventDto {
     message: row.message,
     changes: Array.isArray(changes) ? changes : [],
     data: typeof data === 'object' && data !== null && !Array.isArray(data) ? data : {},
+    // Diisi dari `listProofsByEvents` pada Task A5.
+    proofPhotos: [],
   };
 }
 

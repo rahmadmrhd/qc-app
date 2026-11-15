@@ -9,6 +9,7 @@ import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle }
 import type {
   SerialCustody,
   SerialEventType,
+  SerialProofState,
   SerialStatus,
   ServiceDiagnosisStage,
 } from './serials';
@@ -1400,6 +1401,43 @@ export interface SerialEventDto {
   message: string;
   changes: SerialChangeDto[];
   data: Record<string, unknown>;
+  /** Bukti foto QC kejadian ini (hanya `recorded`/`recheck*`; kosong pada jenis lain). */
+  proofPhotos: SerialProofPhotoDto[];
+}
+/** Satu foto bukti QC (tanpa nama berkas sementara dan data cap). */
+export interface SerialProofPhotoDto {
+  id: string;
+  state: SerialProofState;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+  /** Nama unduhan yang disarankan. */
+  filename: string;
+  /** Alasan singkat bila `failed`; selain itu `null`. */
+  error: string | null;
+}
+/** Unggah foto bukti (multipart; gambar sudah dikecilkan di browser). */
+export interface UploadSerialProofInput {
+  mime: string;
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+}
+export interface GetSerialProofInput {
+  id: string;
+}
+export interface SerialProofContentDto {
+  id: string;
+  mime: string;
+  bytes: Uint8Array;
+  filename: string;
+}
+export interface RemoveSerialProofInput {
+  id: string;
+}
+export interface RetrySerialProofInput {
+  id: string;
 }
 export interface SerialSummaryDto {
   id: string;
@@ -1421,6 +1459,8 @@ export interface SerialSummaryDto {
   transitOn: string | null;
   /** Nomor kasus yang sedang terbuka (`LP-…`), bila ada. */
   openCaseNumber: string | null;
+  /** Entri serial ini (Tambah/Cek ulang) punya bukti foto QC. */
+  hasProofPhotos: boolean;
   createdAt: string;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
@@ -1464,6 +1504,8 @@ export interface SerialRowInput {
    * (sama dengan bawaan web dan `.qcsn`); `[]` eksplisit = tanpa stiker. Maks. 20 pilihan eksplisit.
    */
   stickers?: SerialStickerPick[];
+  /** Id foto bukti `draft` milik pengunggah (maks. `SERIAL_PROOF_LIMITS.perEntryMax`). */
+  proofPhotoIds?: string[];
 }
 export type SerialRowResult = {
   clientId: string;
@@ -1575,10 +1617,13 @@ export type SerialActInput =
       result?: 'pass' | 'fail';
       /** Stiker yang DICENTANG: tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di lokasi cek ulang. */
       stickerIds?: string[];
+      /** Id foto bukti `draft` milik pengunggah (maks. `SERIAL_PROOF_LIMITS.perEntryMax`). */
+      proofPhotoIds?: string[];
     })
   | (SerialActBase & {
       action: 'recheck_pass' | 'recheck_fail';
       stickerIds?: string[];
+      proofPhotoIds?: string[];
     });
 export type SerialActAction = SerialActInput['action'];
 /** Riwayat per serial (tab linimasa): kursor = `seq` terakhir. */
@@ -1740,7 +1785,13 @@ export interface ApplicableStickerDto {
   defaultQty: number;
 }
 
-export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup' | 'serial_alert';
+export type JobKind =
+  | 'qr_export'
+  | 'sheets_export'
+  | 'cleanup_qr'
+  | 'db_backup'
+  | 'serial_alert'
+  | 'serial_proof';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export interface GetJobInput {

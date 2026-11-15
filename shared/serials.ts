@@ -79,6 +79,20 @@ export const SERIAL_LIMITS = {
   reportSummaryMax: 120,
 } as const;
 
+/**
+ * Bukti foto QC (bagian 2; rancangan 2026-11-16): maks. foto per entri (Tambah baris / Cek ulang), maks. foto `draft`
+ * (belum disimpan) per pengguna, dan umur foto `draft` sebelum disapu penjadwal.
+ */
+export const SERIAL_PROOF_LIMITS = {
+  perEntryMax: 5,
+  draftPerUserMax: 150,
+  draftSweepDays: 7,
+} as const;
+
+/** Status foto bukti: `draft` (diunggah, belum disimpan) -> `queued` -> `processing` -> `done` | `failed`. */
+export const SERIAL_PROOF_STATES = ['draft', 'queued', 'processing', 'done', 'failed'] as const;
+export type SerialProofState = (typeof SERIAL_PROOF_STATES)[number];
+
 /** Aksi pada `serials.act` (spek §5.3). */
 export const SERIAL_ACTIONS = [
   'note',
