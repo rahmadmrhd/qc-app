@@ -79,24 +79,34 @@ test('klik gambar membuka tampilan besar dengan tombol unduh bernama bukti-<8 id
   expect(download).toHaveAttribute('download', 'bukti-aaaaaaaa.webp');
 });
 
-test('foto gagal: Coba lagi dan Buang hanya bila server menyatakan canManage', () => {
+test('foto gagal: tombol mengikuti canRetry (Coba lagi) dan canManage (Buang) dari server', () => {
   const failed = photo('dddddddd-4', { state: 'failed', error: 'Drive tidak terjangkau' });
-  const first = renderGallery([{ ...failed, canManage: false }]);
+  const none = renderGallery([{ ...failed, canManage: false, canRetry: false }]);
   expect(screen.getByText('Drive tidak terjangkau')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Buang' })).not.toBeInTheDocument();
-  first.unmount();
-  renderGallery([{ ...failed, canManage: true }]);
+  none.unmount();
+  // Gagal karena ukuran: tidak dapat dicoba lagi, hanya Buang; alasan server tetap tampil.
+  const sizeFail = renderGallery([
+    { ...failed, error: 'Ukuran gambar terlalu besar', canManage: true, canRetry: false },
+  ]);
+  expect(screen.getByText('Ukuran gambar terlalu besar')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Buang' })).toBeInTheDocument();
+  sizeFail.unmount();
+  renderGallery([{ ...failed, canManage: true, canRetry: true }]);
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Buang' })).toBeInTheDocument();
 });
 
-test('canManage dinilai per foto', () => {
+test('canRetry dan canManage dinilai per foto', () => {
   renderGallery([
-    photo('aaaaaaaa-1', { state: 'failed', error: 'a', canManage: true }),
-    photo('bbbbbbbb-2', { state: 'failed', error: 'b', canManage: false }),
+    photo('aaaaaaaa-1', { state: 'failed', error: 'a', canManage: true, canRetry: true }),
+    photo('bbbbbbbb-2', { state: 'failed', error: 'b', canManage: true, canRetry: false }),
+    photo('cccccccc-3', { state: 'failed', error: 'c', canManage: false, canRetry: false }),
   ]);
   expect(screen.getAllByRole('button', { name: 'Coba lagi' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Buang' })).toHaveLength(2);
 });
 
 test('foto yang bukan gagal tidak punya tombol Coba lagi atau Buang walau canManage', () => {

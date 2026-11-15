@@ -160,14 +160,24 @@ test('Coba lagi pada kartu hanya mengikuti canManage tiap foto dari server', () 
   const failed = proof('p9', { state: 'failed', error: 'rusak' });
   const first = renderWithClient(
     <Timeline
-      events={[event(1, { type: 'recorded', proofPhotos: [{ ...failed, canManage: false }] })]}
+      events={[
+        event(1, {
+          type: 'recorded',
+          proofPhotos: [{ ...failed, canManage: false, canRetry: false }],
+        }),
+      ]}
     />,
   );
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   first.unmount();
   renderWithClient(
     <Timeline
-      events={[event(1, { type: 'recorded', proofPhotos: [{ ...failed, canManage: true }] })]}
+      events={[
+        event(1, {
+          type: 'recorded',
+          proofPhotos: [{ ...failed, canManage: true, canRetry: true }],
+        }),
+      ]}
     />,
   );
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();

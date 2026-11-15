@@ -895,7 +895,7 @@ test('Coba lagi pada foto gagal mengikuti canManage dari server, bukan kecocokan
     events: state.events.map((entry) =>
       // actorName = nama pengguna uji (me.name = 'A') pada kedua kasus.
       entry.seq === 3
-        ? { ...entry, actorName: 'A', proofPhotos: [{ ...failed, canManage }] }
+        ? { ...entry, actorName: 'A', proofPhotos: [{ ...failed, canManage, canRetry: canManage }] }
         : entry,
     ),
     eventsTruncated: false,

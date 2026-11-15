@@ -91,30 +91,34 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
                   {photo.error ? (
                     <p className="text-xs text-muted-foreground">{photo.error}</p>
                   ) : null}
-                  {photo.canManage ? (
+                  {photo.canRetry || photo.canManage ? (
                     <div className="flex flex-wrap gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => void runRetry(photo)}
-                      >
-                        {retry.isPending && retry.variables === photo.id ? (
-                          <BusyLabel>Mencoba…</BusyLabel>
-                        ) : (
-                          'Coba lagi'
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => setDiscarding(photo)}
-                      >
-                        Buang
-                      </Button>
+                      {photo.canRetry ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => void runRetry(photo)}
+                        >
+                          {retry.isPending && retry.variables === photo.id ? (
+                            <BusyLabel>Mencoba…</BusyLabel>
+                          ) : (
+                            'Coba lagi'
+                          )}
+                        </Button>
+                      ) : null}
+                      {photo.canManage ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => setDiscarding(photo)}
+                        >
+                          Buang
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
