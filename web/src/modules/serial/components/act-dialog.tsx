@@ -1,7 +1,12 @@
 import type { SerialActInput, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { availableActions, resolveAction } from '@shared/serial-flow';
-import { SERIAL_LIMITS, type SerialAction, type ServiceDiagnosisStage } from '@shared/serials';
+import {
+  SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
+  type SerialAction,
+  type ServiceDiagnosisStage,
+} from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -35,15 +40,19 @@ import { serialActorModules } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { serialKeys } from '../keys';
+import { isProofRejection } from '../lib/draft';
 import { todayWib } from '../lib/locations';
+import type { ProofPhotoRef } from '../lib/proof-source';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
+  discardProofPhotos,
   serialServiceLocationsQueryOptions,
   serialStickerOptionsQueryOptions,
   useActSerial,
 } from '../queries';
 import type { ActKind } from './act-buttons';
 import { MessageField, RecheckStickerList, type RecheckStickerRow } from './act-fields';
+import { ProofPhotoField } from './proof-photo-field';
 import { SerialLocationField } from './serial-location-field';
 
 export interface ActDialogProps {
@@ -55,7 +64,13 @@ export interface ActDialogProps {
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Catatan Anda tetap ada; cek lagi lalu kirim ulang.`;
 
 /** Field yang galat servernya tampil di bawah field-nya sendiri. */
-type FieldKey = 'occurredOn' | 'message' | 'toLocationId' | 'stickerIds' | 'shipmentNote';
+type FieldKey =
+  | 'occurredOn'
+  | 'message'
+  | 'toLocationId'
+  | 'stickerIds'
+  | 'shipmentNote'
+  | 'proofPhotoIds';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 type Stage = ServiceDiagnosisStage | 'broken';
@@ -150,6 +165,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [result, setResult] = useState<'pass' | 'fail'>('pass');
   const [toLocation, setToLocation] = useState({ id: '', label: '' });
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  // Foto bukti QC (hanya Cek ulang): `draft` di server sampai Simpan menautkannya ke entri.
+  const [proofPhotos, setProofPhotos] = useState<ProofPhotoRef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -266,6 +283,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       .map((row) => row.stickerId)
       .filter((stickerId) => checked.has(stickerId));
     const stickerPart = stickerIds.length > 0 ? { stickerIds } : {};
+    const proofPart =
+      proofPhotos.length > 0 ? { proofPhotoIds: proofPhotos.map((photo) => photo.id) } : {};
     const shipmentPart = shipmentNote.trim() !== '' ? { shipmentNote: shipmentNote.trim() } : {};
     const locationPart =
       toLocation.id !== '' && showLocationField ? { toLocationId: toLocation.id } : {};
@@ -282,10 +301,10 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           stage: stage === '' || stage === 'broken' ? 'diagnosis' : stage,
         };
       case 'recheck':
-        return { ...common, action, result, ...stickerPart };
+        return { ...common, action, result, ...stickerPart, ...proofPart };
       case 'recheck_pass':
       case 'recheck_fail':
-        return { ...common, action, ...stickerPart };
+        return { ...common, action, ...stickerPart, ...proofPart };
       case 'declare_broken':
       case 'report_failure':
         return { ...common, action };
@@ -300,6 +319,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     try {
       await act.mutateAsync(buildInput());
       toast.success('Update disimpan');
+      // Foto sudah tertaut ke entri: tidak dibuang.
       onClose();
     } catch (caught) {
       if (isStaleSaveError(caught)) {
@@ -312,11 +332,20 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       const visible: FieldKey[] = ['occurredOn', 'message'];
       if (kind === 'send' || kind === 'receive') visible.push('toLocationId');
       if (kind === 'send') visible.push('shipmentNote');
-      if (kind === 'recheck') visible.push('stickerIds');
+      if (kind === 'recheck') visible.push('stickerIds', 'proofPhotoIds');
       const split = splitError(caught, visible);
       setFieldErrors(split.fields);
       setError(split.general);
+      // Foto yang ditolak server (kedaluwarsa, milik orang lain, atau sudah dipakai) tak berguna lagi: unggah ulang.
+      if (isProofRejection(split.fields.proofPhotoIds ?? '')) setProofPhotos([]);
     }
+  }
+
+  // Menutup tanpa menyimpan: foto draft yang sudah diunggah dibuang (upaya terbaik; sisanya disapu penjadwal).
+  function cancel() {
+    if (act.isPending) return;
+    void discardProofPhotos(proofPhotos.map((photo) => photo.id));
+    onClose();
   }
 
   const declaring = action === 'declare_broken';
@@ -337,7 +366,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const receiveTarget = serial.transitToLocationName ?? serial.locationName;
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !act.isPending && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && cancel()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{TITLE[kind]}</DialogTitle>
@@ -458,6 +487,22 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               />
             </>
           ) : null}
+          {kind === 'recheck' ? (
+            <div className="space-y-1.5">
+              <Label id="act-proof-label">Bukti foto (opsional)</Label>
+              <ProofPhotoField
+                value={proofPhotos}
+                max={SERIAL_PROOF_LIMITS.perEntryMax}
+                disabled={act.isPending}
+                onChange={setProofPhotos}
+              />
+              <p className="text-xs text-muted-foreground">
+                Foto otomatis diberi cap (serial, tipe, lokasi, waktu simpan) dan tidak bisa diubah
+                atau dihapus setelah disimpan.
+              </p>
+              <FieldError errors={[errorOf('proofPhotoIds')]} />
+            </div>
+          ) : null}
           <MessageField
             id="act-message"
             required={messageRequired}
@@ -473,7 +518,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={act.isPending} onClick={onClose}>
+          <Button type="button" variant="outline" disabled={act.isPending} onClick={cancel}>
             Batal
           </Button>
           <Button
