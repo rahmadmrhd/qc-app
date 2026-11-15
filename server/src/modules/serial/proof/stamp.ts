@@ -115,6 +115,12 @@ export function proofSizeError(width: number, height: number): string | null {
   return null;
 }
 
+/** Melempar `VALIDATION` bila ukuran melebihi batas (header sebelum dekode, dan hasil dekode sebelum alokasi kanvas). */
+export function assertProofSize(width: number, height: number): void {
+  const message = proofSizeError(width, height);
+  if (message !== null) throw appError('VALIDATION', message);
+}
+
 /** Memotong baris agar muat `maxChars` karakter; yang terpotong diakhiri elipsis. */
 export function fitStampLine(line: string, maxChars: number): string {
   if (maxChars <= 0) return '';
@@ -205,8 +211,7 @@ export async function stampPhoto(input: {
   if (meta.format !== 'jpeg' && meta.format !== 'png' && meta.format !== 'webp')
     return unreadable();
   if (meta.width < 1 || meta.height < 1) return unreadable();
-  const sizeError = proofSizeError(meta.width, meta.height);
-  if (sizeError !== null) throw appError('VALIDATION', sizeError);
+  assertProofSize(meta.width, meta.height);
   let png: Uint8Array;
   try {
     png = await new Bun.Image(input.bytes, { maxPixels: PROOF_MAX_PIXELS }).png().bytes();
@@ -214,6 +219,8 @@ export async function stampPhoto(input: {
     return unreadable();
   }
   const source = await decodePngRgba(png, PROOF_MAX_PIXELS);
+  // Dimensi hasil dekode dapat berbeda dari header (mis. orientasi EXIF menukar lebar/tinggi): periksa ulang sebelum kanvas.
+  assertProofSize(source.width, source.height);
   flattenOnWhite(source.rgba);
   const footer = stampFooterHeight(source.width);
   const height = source.height + footer;

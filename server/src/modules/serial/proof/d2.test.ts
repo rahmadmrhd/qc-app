@@ -12,6 +12,7 @@ import { serialProofJobStmt } from './job';
 import { encodePngRgba } from './png';
 import { claimDraftStmts, findProof, insertDraftStmt, setProofState, toProofDto } from './repo';
 import {
+  assertProofSize,
   PROOF_MAX_CANVAS_PIXELS,
   PROOF_MAX_SIDE,
   proofSizeError,
@@ -154,6 +155,21 @@ describe('batas sisi dan luas kanvas', () => {
     expect(proof?.lastError).toContain('terlalu besar');
     expect(proof?.attempts).toBe(0);
     expect(readNames).not.toContain(stagedName);
+  });
+});
+
+describe('pemeriksaan ukuran hasil dekode', () => {
+  test('assertProofSize: dimensi hasil dekode (mis. orientasi EXIF menukar sisi) melebihi kanvas = VALIDATION', () => {
+    // 1000 x 4000 lolos sisi/luas (4 juta) dan kanvas portret; versi tertukar 4000 x 1000 melampaui kanvas (footer menurut lebar).
+    expect(proofSizeError(1000, 4000)).toBeNull();
+    expect(proofSizeError(4000, 1000)).not.toBeNull();
+    expect(() => assertProofSize(1000, 4000)).not.toThrow();
+    expect(() => assertProofSize(4000, 1000)).toThrow('Dimensi gambar terlalu besar');
+    try {
+      assertProofSize(4000, 1000);
+    } catch (error) {
+      expect((error as { code?: string }).code).toBe('VALIDATION');
+    }
   });
 });
 

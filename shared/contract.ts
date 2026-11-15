@@ -1420,10 +1420,13 @@ export interface SerialProofPhotoDto {
   filename: string;
   /** Alasan singkat bila `failed`; selain itu `null`. */
   error: string | null;
-  /** Pemanggil boleh Coba lagi/Buang foto ini (pelaku yang menyimpannya, atau `serial: manage` pada BU serialnya). */
+  /**
+   * Pemanggil boleh Coba lagi/Buang foto ini: memegang `serial: edit` SAAT INI (izin rute) DAN (pelaku yang menyimpannya,
+   * atau `serial: manage` pada BU serialnya).
+   */
   canManage: boolean;
   /**
-   * Boleh Coba lagi: `canManage` DAN `failed` DAN bukan gagal karena ukuran gambar (kegagalan ukuran deterministik:
+   * Boleh Coba lagi: `canManage` (termasuk `serial: edit` saat ini) DAN `failed` DAN bukan gagal karena ukuran gambar (kegagalan ukuran deterministik:
    * hanya Buang). Rute `serialProofs.retry` menolak (`CONFLICT`) bila `false`.
    */
   canRetry: boolean;
