@@ -144,7 +144,33 @@ function targetProblems(catalog: readonly GuideEntry[], targets: ReadonlySet<str
       if (!targets.has(step.target)) {
         problems.push(`${entry.id}: data-tour="${step.target}" tidak ada di web/src`);
       }
+      if (step.waitFor !== undefined && !targets.has(step.waitFor)) {
+        problems.push(`${entry.id}: waitFor data-tour="${step.waitFor}" tidak ada di web/src`);
+      }
     }
+  }
+  return problems;
+}
+
+/**
+ * Langkah `wait` wajib punya `waitFor` dan tidak boleh menjadi langkah terakhir (tombol Lanjut yang terkunci tak
+ * punya jalan keluar selain menutup tur); `waitFor` hanya bermakna pada langkah `wait`.
+ */
+function waitProblems(catalog: readonly GuideEntry[]): string[] {
+  const problems: string[] = [];
+  for (const entry of catalog) {
+    entry.steps.forEach((step, index) => {
+      if (step.advance === 'wait') {
+        if (step.waitFor === undefined || step.waitFor === '') {
+          problems.push(`${entry.id}: langkah ${index + 1} wait tanpa waitFor`);
+        }
+        if (index === entry.steps.length - 1) {
+          problems.push(`${entry.id}: langkah wait tidak boleh menjadi langkah terakhir`);
+        }
+      } else if (step.waitFor !== undefined) {
+        problems.push(`${entry.id}: langkah ${index + 1} memakai waitFor tanpa advance wait`);
+      }
+    });
   }
   return problems;
 }
@@ -211,6 +237,10 @@ describe('katalog nyata', () => {
     expect(targetProblems(GUIDE_CATALOG, dataTourTargets())).toEqual([]);
   });
 
+  test('langkah wait punya waitFor dan bukan langkah terakhir', () => {
+    expect(waitProblems(GUIDE_CATALOG)).toEqual([]);
+  });
+
   test('setiap klip yang dideklarasikan ada berkasnya di web/public/klip', () => {
     expect(klipProblems(GUIDE_CATALOG, PUBLIC_ROOT)).toEqual([]);
   });
@@ -268,6 +298,25 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     const catalog = [entry({ steps: [{ target: 'ada', text: 't', advance: 'next' }] })];
     expect(targetProblems(catalog, new Set(['ada']))).toEqual([]);
     expect(targetProblems(catalog, new Set())).toHaveLength(1);
+  });
+
+  test('waitFor: wajib ada di sumber dan hanya untuk langkah wait', () => {
+    const wait = (overrides: Partial<GuideEntry['steps'][number]> = {}) =>
+      entry({
+        steps: [
+          { target: 'a', text: 't', advance: 'wait', waitFor: 'b', ...overrides },
+          { target: 'b', text: 't', advance: 'next' },
+        ],
+      });
+    expect(targetProblems([wait()], new Set(['a', 'b']))).toEqual([]);
+    expect(targetProblems([wait()], new Set(['a']))).toHaveLength(2);
+    expect(waitProblems([wait()])).toEqual([]);
+    expect(waitProblems([wait({ waitFor: undefined })])).toHaveLength(1);
+    expect(waitProblems([wait({ advance: 'next' })])).toHaveLength(1);
+    const last = entry({
+      steps: [{ target: 'a', text: 't', advance: 'wait', waitFor: 'b' }],
+    });
+    expect(waitProblems([last])).toHaveLength(1);
   });
 
   test('pemindai data-tour membaca bentuk string dan ekspresi literal', () => {

@@ -1,7 +1,7 @@
 import type { MeDto } from '@shared/contract';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { type ReactNode, StrictMode } from 'react';
+import { type ReactNode, StrictMode, useState } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -727,5 +727,105 @@ describe('langkah yang bergantung data jatuh ke kartu contoh (keputusan pemilik 
     expect(await screen.findByText('Berikutnya')).toBeInTheDocument();
     expect(screen.getByText('Langkah 1 dari 1')).toBeInTheDocument();
     expect(screen.queryByText('Papan masih kosong, ini contoh kartunya:')).toBeNull();
+  });
+});
+
+/** Penyedia "pekerjaan pengguna": tombol yang memunculkan/menyembunyikan elemen `gate` (seperti bagian form yang muncul setelah item dipilih). */
+function GateToggle({ initial = false }: { initial?: boolean }) {
+  const [open, setOpen] = useState(initial);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen((value) => !value)}>
+        Kerjakan
+      </button>
+      {open ? <div data-tour="gate">Bagian baru</div> : null}
+    </>
+  );
+}
+
+describe('langkah wait: pengguna mengerjakan sendiri, Lanjut aktif setelah waitFor muncul', () => {
+  const waiting = (overrides: Partial<GuideStep> = {}) =>
+    step({ text: 'Kerjakan dulu', advance: 'wait', waitFor: 'gate', ...overrides });
+
+  test('Lanjut nonaktif sampai elemen waitFor muncul, lalu aktif dan maju', async () => {
+    render(
+      <Page
+        entry={entryOf([waiting(), step({ target: 'b', text: 'Sesudahnya' })])}
+        extra={<GateToggle />}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    const next = screen.getByRole('button', { name: 'Lanjut' });
+    expect(next).toBeDisabled();
+    expect(screen.getByText(/Kerjakan dulu bagian yang disorot/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Kerjakan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lanjut' })).toBeEnabled());
+    expect(screen.getByText('Sudah beres, tekan Lanjut.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
+    expect(await screen.findByText('Sesudahnya')).toBeInTheDocument();
+  });
+
+  test('target tidak ditutup penahan dan halaman tidak digelapkan (pengguna bekerja di dalamnya)', async () => {
+    render(<Page entry={entryOf([waiting(), step({ target: 'b' })])} extra={<GateToggle />} />);
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    expect(screen.queryByTestId('tour-blocker')).toBeNull();
+    expect(screen.getByTestId('tour-highlight').style.boxShadow).toBe('');
+    // Target dapat diklik pengguna (tanpa penahan di atasnya).
+    await userEvent.click(screen.getByRole('button', { name: 'Target A' }));
+    expect(screen.getByText('Kerjakan dulu')).toBeInTheDocument();
+  });
+
+  test('elemen waitFor sudah ada saat langkah mulai: Lanjut langsung aktif', async () => {
+    render(
+      <Page entry={entryOf([waiting(), step({ target: 'b' })])} extra={<GateToggle initial />} />,
+    );
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    expect(screen.getByRole('button', { name: 'Lanjut' })).toBeEnabled();
+  });
+
+  test('elemen waitFor hilang lagi (pekerjaan dibatalkan): Lanjut nonaktif lagi', async () => {
+    render(
+      <Page entry={entryOf([waiting(), step({ target: 'b' })])} extra={<GateToggle initial />} />,
+    );
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    expect(screen.getByRole('button', { name: 'Lanjut' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Kerjakan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lanjut' })).toBeDisabled());
+  });
+
+  test('ArrowRight hanya memajukan setelah waitFor muncul', async () => {
+    render(
+      <Page
+        entry={entryOf([waiting(), step({ target: 'b', text: 'Sesudahnya' })])}
+        extra={<GateToggle />}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    await userEvent.keyboard('{ArrowRight}');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText('Sesudahnya')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Kerjakan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lanjut' })).toBeEnabled());
+    // Fokus ada di tombol "Kerjakan" (bukan kolom teks): panah kanan memajukan langkah.
+    await userEvent.keyboard('{ArrowRight}');
+    expect(await screen.findByText('Sesudahnya')).toBeInTheDocument();
+  });
+
+  test('tur tidak mengisi apa pun dan tidak memanggil api pada langkah wait', async () => {
+    render(
+      <Page
+        entry={entryOf([waiting({ target: 'field' }), step({ target: 'b' })])}
+        extra={<GateToggle />}
+      />,
+    );
+    await startTour();
+    await screen.findByText('Kerjakan dulu');
+    expect(screen.getByLabelText('Isian')).toHaveValue('');
+    expect(state.api).not.toHaveBeenCalled();
   });
 });

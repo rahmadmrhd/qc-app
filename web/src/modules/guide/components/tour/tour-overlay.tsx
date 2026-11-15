@@ -149,6 +149,23 @@ function openMenuRect(target: Element | null, step: GuideStep | undefined): DOMR
   return menu ? menu.getBoundingClientRect() : null;
 }
 
+/** Ruang di bawah target langkah `wait` yang dipakai daftar saran saat dibuka pengguna (kartu menghindarinya). */
+const WAIT_LIST_ROOM = 320;
+
+/**
+ * Langkah `wait`: pengguna membuka daftar saran di bawah target, jadi kartu menghindari target beserta ruang daftar
+ * itu (kartu pindah ke atas/samping). `null` untuk langkah lain.
+ */
+function waitListRect(rect: DOMRect, step: GuideStep | undefined) {
+  if (step?.advance !== 'wait') return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height + WAIT_LIST_ROOM,
+  };
+}
+
 interface CardSize {
   width: number;
   height: number;
@@ -169,7 +186,12 @@ function overlapArea(
  * dijepit ke dalam layar; yang paling sedikit menutupi sorotan menang (kandidat lebih awal bila seri). Kartu yang
  * tumbuh setelah demo termuat tak lagi keluar layar, dan isi menu terbuka tak tertutup bila ada ruang di sisinya.
  */
-function cardStyle(rect: DOMRect, size: CardSize, avoid: DOMRect | null = null): CSSProperties {
+function cardStyle(
+  rect: DOMRect,
+  size: CardSize,
+  avoid: { left: number; top: number; width: number; height: number } | null = null,
+  dock = false,
+): CSSProperties {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   if (vw < 640) return { left: EDGE, right: EDGE, bottom: EDGE };
@@ -178,18 +200,22 @@ function cardStyle(rect: DOMRect, size: CardSize, avoid: DOMRect | null = null):
   const clampX = (x: number) => Math.min(Math.max(x, EDGE), maxLeft);
   const clampY = (y: number) => Math.min(Math.max(y, EDGE), maxTop);
   const below = { left: clampX(rect.left), top: clampY(rect.bottom + EDGE) };
-  const candidates = [
-    below,
-    { left: clampX(rect.left), top: clampY(rect.top - size.height - EDGE) },
-    { left: clampX(rect.left - HIGHLIGHT_PADDING - EDGE - size.width), top: clampY(rect.top) },
-    { left: clampX(rect.right + HIGHLIGHT_PADDING + EDGE), top: clampY(rect.top) },
-  ];
   const lit = {
     left: rect.left - HIGHLIGHT_PADDING,
     top: rect.top - HIGHLIGHT_PADDING,
     width: rect.width + HIGHLIGHT_PADDING * 2,
     height: rect.height + HIGHLIGHT_PADDING * 2,
   };
+  // Langkah `wait`: pengguna bekerja di dalam target, jadi kartu parkir di pojok kanan bawah layar (jauh dari
+  // kolom ketik dan awal daftar saran) selama tak menimpa target; bila menimpa, jatuh ke penempatan biasa.
+  const corner = { left: maxLeft, top: maxTop };
+  if (dock && overlapArea({ ...corner, ...size }, lit) === 0) return corner;
+  const candidates = [
+    below,
+    { left: clampX(rect.left), top: clampY(rect.top - size.height - EDGE) },
+    { left: clampX(rect.left - HIGHLIGHT_PADDING - EDGE - size.width), top: clampY(rect.top) },
+    { left: clampX(rect.right + HIGHLIGHT_PADDING + EDGE), top: clampY(rect.top) },
+  ];
   let best = below;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
@@ -448,6 +474,25 @@ export default function TourOverlay({
   // berganti) ditunggu muncul lagi sampai `targetWaitMs`: ketemu = sorotan pindah ke elemen baru, tidak ketemu =
   // dilewati. Bila penyebabnya pengguna pindah halaman, efek pembatalan di atas menutup tur lebih dulu.
   const step = steps[index];
+
+  // Langkah `wait`: tombol Lanjut aktif selama elemen `waitFor` ada (muncul begitu pengguna selesai mengerjakan
+  // targetnya); hilang lagi (mis. item dibatalkan) = nonaktif lagi.
+  const gateTarget = step?.advance === 'wait' ? step.waitFor : undefined;
+  const [gateOpen, setGateOpen] = useState(false);
+  useEffect(() => {
+    if (gateTarget === undefined) return;
+    const check = () => document.querySelector(selectorOf(gateTarget)) !== null;
+    setGateOpen(check());
+    const observer = new MutationObserver(() => setGateOpen(check()));
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-tour'],
+    });
+    return () => observer.disconnect();
+  }, [gateTarget]);
+
   useEffect(() => {
     if (!target || !step) return;
     let stale = false;
@@ -548,7 +593,7 @@ export default function TourOverlay({
       } else if (
         event.key === 'ArrowRight' &&
         (target || inFallback) &&
-        (step?.advance === 'next' || inFallback) &&
+        (step?.advance === 'next' || (step?.advance === 'wait' && gateOpen) || inFallback) &&
         !isEditable(event.target)
       ) {
         advance(index);
@@ -556,7 +601,7 @@ export default function TourOverlay({
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [target, inFallback, step?.advance, index, advance]);
+  }, [target, inFallback, step?.advance, gateOpen, index, advance]);
 
   // Mengukur kartu (dan mengukur ulang saat isinya tumbuh). Tanpa ResizeObserver/tata letak (jsdom) ukuran tebakan dipakai.
   useEffect(() => {
@@ -606,7 +651,13 @@ export default function TourOverlay({
           <div
             data-testid="tour-highlight"
             aria-hidden="true"
-            style={{ ...box, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.55)' }}
+            // Langkah `wait`: pengguna bekerja di dalam target (daftar saran terbuka di portal), jadi halaman tak
+            // digelapkan; hanya bingkai penyorot.
+            style={
+              step.advance === 'wait'
+                ? box
+                : { ...box, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.55)' }
+            }
             className={`pointer-events-none fixed rounded-lg ring-2 ring-primary ${reduced ? '' : 'transition-all duration-200'} motion-reduce:transition-none`}
           />
           {step.advance === 'next' ? (
@@ -623,8 +674,14 @@ export default function TourOverlay({
             total={steps.length}
             isLast={index === steps.length - 1}
             tip={step.tip ? renderTip?.(step.tip) : undefined}
-            style={cardStyle(rect as DOMRect, cardSize, openMenuRect(target, step))}
+            style={cardStyle(
+              rect as DOMRect,
+              cardSize,
+              openMenuRect(target, step) ?? waitListRect(rect as DOMRect, step),
+              step.advance === 'wait',
+            )}
             cardRef={cardRef}
+            gateOpen={gateOpen}
             onNext={() => advance(index)}
             onClose={() => latest.current.onExit()}
           />
