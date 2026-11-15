@@ -26,8 +26,12 @@ import { applySavedHandover, handoverKeys } from '@/modules/handover/queries';
 /** Jeda minimal antar pengurasan yang dipicu keberhasilan query (pemicu lain tidak dibatasi; single-flight tetap berlaku). */
 export const OUTBOX_FLUSH_MIN_GAP_MS = 3_000;
 
-/** Kunci Web Locks: satu tab per perangkat menguras antrean (tab lain menunggu giliran lalu membaca ulang antrean). */
-const FLUSH_LOCK = 'qc-outbox-flush';
+/**
+ * Kunci Web Locks: satu tab per perangkat menguras antrean (tab lain menunggu giliran lalu membaca ulang antrean).
+ * `sync-sw.js` memakai kunci yang sama (dijaga `outbox-parity.test.ts`).
+ */
+export const OUTBOX_FLUSH_LOCK = 'qc-outbox-flush';
+const FLUSH_LOCK = OUTBOX_FLUSH_LOCK;
 
 let requestFlush: (() => void) | null = null;
 

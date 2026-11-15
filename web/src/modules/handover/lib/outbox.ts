@@ -31,6 +31,9 @@ export interface CheckEntry {
   text: string;
   checked: boolean;
   at: number;
+  /** Ditandai service worker (Tahap D) saat server menolak/entri kedaluwarsa; diumumkan lalu dibuang penguras halaman. */
+  state?: 'rejected';
+  reason?: string;
 }
 
 /** Komentar task: `handovers.comment`; `clientId` dibuat SEBELUM percobaan kirim pertama dan dipakai ulang. */
@@ -45,6 +48,8 @@ export interface CommentEntry {
   after: string;
   body: string;
   at: number;
+  state?: 'rejected';
+  reason?: string;
 }
 
 /** Task baru (satu permintaan `handovers.saveBatch`, maks. 30 task); `clientId` per task. */
@@ -54,6 +59,8 @@ export interface CreateEntry {
   locationId: string;
   tasks: Array<{ clientId: string; customerName: string; note: string }>;
   at: number;
+  state?: 'rejected';
+  reason?: string;
 }
 
 export type OutboxEntry = CheckEntry | CommentEntry | CreateEntry;
@@ -76,7 +83,11 @@ export const OUTBOX_IO_BUDGET_MS = 1500;
 /** Kunci `localStorage` antrean centang Fase 2 (dimigrasi ke toko IndexedDB). */
 export const LEGACY_OUTBOX_KEY_PREFIX = 'qc.outbox:';
 const LEGACY_VERSION = 1;
-const RECORD_VERSION = 1;
+/** Versi bentuk rekaman toko `outbox`; `sync-sw.js` menyalin nilai ini (dijaga `outbox-parity.test.ts`). */
+export const OUTBOX_RECORD_VERSION = 1;
+const RECORD_VERSION = OUTBOX_RECORD_VERSION;
+/** Jenis entri yang dikenal; `sync-sw.js` menyalin daftar ini (dijaga `outbox-parity.test.ts`). */
+export const OUTBOX_ENTRY_KINDS = ['check', 'comment', 'create'] as const;
 
 /** Entri kedaluwarsa (24 jam, atau terlalu jauh di masa depan): tak akan dikirim. Berlaku untuk semua jenis. */
 export function isExpiredEntry(entry: OutboxEntry, now: number): boolean {
@@ -128,6 +139,8 @@ export function isOutboxEntry(value: unknown): value is OutboxEntry {
   if (typeof value !== 'object' || value === null) return false;
   const e = value as Record<string, unknown>;
   if (!isString(e.id) || !isFiniteNumber(e.at) || !isString(e.locationId)) return false;
+  // `state` hanya boleh `'rejected'` dan wajib disertai `reason` teks; selain itu entri dianggap rusak.
+  if (e.state !== undefined && (e.state !== 'rejected' || !isString(e.reason))) return false;
   switch (e.kind) {
     case 'check':
       return (
@@ -213,16 +226,24 @@ function notify(): void {
   for (const listener of [...listeners]) listener();
 }
 
+const isRejected = (entry: OutboxEntry): boolean => entry.state === 'rejected';
+
+/** Entri yang masih akan dikirim (tanpa yang sudah ditolak server): untuk tampilan dan overlay. */
 export function readOutbox(owner: string): OutboxEntry[] {
+  return (copy.get(owner) ?? []).filter((entry) => !isRejected(entry));
+}
+
+/** Semua entri `owner` termasuk yang `rejected` (menunggu diumumkan): pemicu penguras memakai ini. */
+export function readOutboxAll(owner: string): OutboxEntry[] {
   return copy.get(owner) ?? [];
 }
 
-/** Jumlah entri VALID dan belum kedaluwarsa dari SEMUA pemilik di salinan memori: yang akan terbuang bila keluar. */
+/** Jumlah entri VALID, belum kedaluwarsa, dan belum ditolak dari SEMUA pemilik di salinan memori: yang akan terbuang bila keluar. */
 export function countAllOutboxEntries(): number {
   const now = Date.now();
   let total = 0;
   for (const entries of copy.values()) {
-    total += entries.filter((entry) => !isExpiredEntry(entry, now)).length;
+    total += entries.filter((entry) => !isRejected(entry) && !isExpiredEntry(entry, now)).length;
   }
   return total;
 }
@@ -294,7 +315,7 @@ function sweepTombstones(): void {
   }
 }
 
-const KNOWN_KINDS: readonly string[] = ['check', 'comment', 'create'];
+const KNOWN_KINDS: readonly string[] = OUTBOX_ENTRY_KINDS;
 
 /**
  * Nasib rekaman toko: `ok` dipakai; `newer` = kemungkinan ditulis rilis/tab lebih baru (versi > yang dikenal, atau
@@ -548,6 +569,13 @@ const isWriteRecord = (record: DeviceRecord): boolean => {
   return kind === 'comment' || kind === 'create';
 };
 
+let enqueuedHandler: (() => void) | null = null;
+
+/** Dipanggil sesudah `enqueueOutbox` mengembalikan `'ok'` (mis. mendaftarkan Background Sync); galatnya ditelan. */
+export function setOutboxEnqueuedHandler(handler: (() => void) | null): void {
+  enqueuedHandler = handler;
+}
+
 /**
  * Mengantrekan satu entri (satu transaksi IndexedDB, satu rekaman). Centang dengan task+indeks sama menggantikan yang
  * lama (nilai terakhir menang). `'full'` = batas jenis tercapai (centang 200; komentar + task baru 50), `'failed'` =
@@ -590,6 +618,11 @@ export async function enqueueOutbox(
   setCopy(next);
   notify();
   broadcastChanged();
+  try {
+    enqueuedHandler?.();
+  } catch {
+    // Pendaftaran sync hanya membantu; tak boleh menggagalkan antrean.
+  }
   return 'ok';
 }
 
@@ -715,6 +748,7 @@ export function resetOutboxForTests(): void {
   refreshSeq = 0;
   refreshRunning = false;
   refreshAgain = false;
+  enqueuedHandler = null;
   stopChannelListener?.();
   stopChannelListener = null;
   listeners.clear();

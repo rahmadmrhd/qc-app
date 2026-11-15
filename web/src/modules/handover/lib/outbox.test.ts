@@ -11,6 +11,7 @@ import {
   enqueueOutbox,
   hydrateOutbox,
   isExpiredEntry,
+  isOutboxEntry,
   OUTBOX_MAX_AGE_MS,
   OUTBOX_MAX_CHECKS,
   OUTBOX_MAX_FUTURE_SKEW_MS,
@@ -21,9 +22,11 @@ import {
   purgeExpired,
   purgeForeignOutboxes,
   readOutbox,
+  readOutboxAll,
   refreshOutboxFromStore,
   removeOutboxEntries,
   resumeOutboxWrites,
+  setOutboxEnqueuedHandler,
   subscribeOutbox,
   suspendOutboxWrites,
 } from './outbox';
@@ -625,4 +628,106 @@ test('A4: penghapusan toko gagal (false): tombstone tetap dilepas dan entri bole
   expect(await storeKeys()).toEqual([`${OWNER}|gagal-hapus`]);
   await refreshOutboxFromStore(OWNER);
   expect(readOutbox(OWNER).map((e) => e.id)).toEqual(['gagal-hapus']);
+});
+
+// --- Tahap D: state 'rejected' ---------------------------------------------------------------------------------
+test('D: isOutboxEntry menerima state rejected + reason string dan menolak state lain atau tanpa reason', () => {
+  const base = { ...check({ at: 5 }), id: 'x' };
+  expect(isOutboxEntry({ ...base, state: 'rejected', reason: 'x' })).toBe(true);
+  expect(isOutboxEntry({ ...base, state: 'lain', reason: 'x' })).toBe(false);
+  expect(isOutboxEntry({ ...base, state: 'rejected' })).toBe(false);
+  expect(isOutboxEntry({ ...base, state: 'rejected', reason: 5 })).toBe(false);
+  expect(isOutboxEntry(base)).toBe(true);
+});
+
+test('D: entri rejected di toko: disembunyikan dari readOutbox dan countAll, terlihat di readOutboxAll dan hasil refresh', async () => {
+  const rejected = {
+    ...comment({ at: Date.now() }),
+    id: 'ditolak',
+    state: 'rejected' as const,
+    reason: 'Ditolak server',
+  };
+  await seed(OWNER, rejected as OutboxEntry);
+  await seed(OWNER, { ...check({ at: Date.now() + 1 }), id: 'normal' });
+  const rows = await refreshOutboxFromStore(OWNER);
+  expect(rows?.map((e) => e.id)).toEqual(['ditolak', 'normal']);
+  expect(readOutbox(OWNER).map((e) => e.id)).toEqual(['normal']);
+  expect(readOutboxAll(OWNER).map((e) => e.id)).toEqual(['ditolak', 'normal']);
+  expect(countAllOutboxEntries()).toBe(1);
+});
+
+test('D: hanya entri rejected: countAll 0 tetapi readOutboxAll memuatnya', async () => {
+  await seed(OWNER, {
+    ...comment({ at: Date.now() }),
+    id: 'ditolak',
+    state: 'rejected',
+    reason: 'alasan',
+  } as OutboxEntry);
+  await refreshOutboxFromStore(OWNER);
+  expect(countAllOutboxEntries()).toBe(0);
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(readOutboxAll(OWNER)).toHaveLength(1);
+});
+
+test('D: rekaman dengan state rejected tanpa reason dianggap rusak dan dibuang dari toko', async () => {
+  await seedRaw(OWNER, 'rusak', {
+    v: 1,
+    entry: { ...check({ at: 5 }), id: 'rusak', state: 'rejected' },
+  });
+  const rows = await refreshOutboxFromStore(OWNER);
+  expect(rows).toEqual([]);
+  await vi.waitFor(async () => expect(await storeKeys()).toEqual([]));
+});
+
+test('D: centang task+indeks sama menggantikan centang rejected; komentar rejected tidak tertimpa komentar baru', async () => {
+  await seed(OWNER, {
+    ...check({ at: Date.now() - 10 }),
+    id: 'c-lama',
+    state: 'rejected',
+    reason: 'x',
+  } as OutboxEntry);
+  await seed(OWNER, {
+    ...comment({ at: Date.now() - 10 }),
+    id: 'k-lama',
+    state: 'rejected',
+    reason: 'y',
+  } as OutboxEntry);
+  await refreshOutboxFromStore(OWNER);
+  expect(await enqueueOutbox(OWNER, fresh(check()))).toBe('ok');
+  expect(
+    await enqueueOutbox(
+      OWNER,
+      fresh(comment({ clientId: '33333333-3333-4333-8333-333333333333' })),
+    ),
+  ).toBe('ok');
+  const ids = readOutboxAll(OWNER).map((e) => e.id);
+  expect(ids).not.toContain('c-lama');
+  expect(ids).toContain('k-lama');
+  expect(readOutboxAll(OWNER)).toHaveLength(3);
+  expect(await storeKeys()).toHaveLength(3);
+});
+
+test('D: setOutboxEnqueuedHandler dipanggil tepat sekali setelah ok; tidak pada full/failed; handler yang melempar ditelan', async () => {
+  const handler = vi.fn();
+  setOutboxEnqueuedHandler(handler);
+  expect(await enqueueOutbox(OWNER, fresh(check()))).toBe('ok');
+  expect(handler).toHaveBeenCalledTimes(1);
+
+  suspendOutboxWrites();
+  expect(await enqueueOutbox(OWNER, fresh(check({ index: 1 })))).toBe('failed');
+  expect(handler).toHaveBeenCalledTimes(1);
+  resumeOutboxWrites();
+
+  for (let i = 0; i < OUTBOX_MAX_WRITES; i++) {
+    await enqueueOutbox(OWNER, fresh(comment({ clientId: `c${i}` })));
+  }
+  handler.mockClear();
+  expect(await enqueueOutbox(OWNER, fresh(comment({ clientId: 'lebih' })))).toBe('full');
+  expect(handler).not.toHaveBeenCalled();
+
+  setOutboxEnqueuedHandler(() => {
+    throw new Error('boom');
+  });
+  expect(await enqueueOutbox(OWNER, fresh(check({ index: 2 })))).toBe('ok');
+  setOutboxEnqueuedHandler(null);
 });
