@@ -324,6 +324,7 @@ const WORST: Inputs = {
     logoFileIds: longList(QR_LIMITS.logoLibrary, () => UUID),
   },
   'qrcodes.cloneFromDrive': { source: text(2000), replaceDocumentId: UUID },
+  'serialProofs.retry': { id: UUID },
   'notifications.markRead': { id: UUID },
   'notifications.markAllRead': {},
   'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },

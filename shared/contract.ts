@@ -1249,6 +1249,10 @@ export interface ApiContract {
     output: SerialServiceSettingsDto;
   };
   'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
+  'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
+  'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
+  'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };
+  'serialProofs.retry': { input: RetrySerialProofInput; output: SerialProofPhotoDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };

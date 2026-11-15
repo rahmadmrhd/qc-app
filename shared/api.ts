@@ -428,6 +428,36 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serial-cases',
     query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
   },
+  // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan `revalidate`: isi pada id yang sama berubah dari foto
+  // asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable` akan menyajikan foto basi.
+  'serialProofs.upload': {
+    verb: 'POST',
+    path: '/serial-proofs',
+    status: 201,
+    location: '/serial-proofs/{id}',
+    query: { width: 'number', height: 'number' },
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 10_485_760, // = MAX_IMAGE_BYTES (shared/files.ts)
+      tooLarge: 'Ukuran foto maksimal 10 MB',
+    },
+  },
+  'serialProofs.get': {
+    verb: 'GET',
+    path: '/serial-proofs/{id}',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      echo: ['id'],
+      cache: 'revalidate',
+    },
+  },
+  'serialProofs.remove': { verb: 'DELETE', path: '/serial-proofs/{id}' },
+  'serialProofs.retry': { verb: 'POST', path: '/serial-proofs/{id}/retry', status: 200 },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {
     verb: 'PUT',
