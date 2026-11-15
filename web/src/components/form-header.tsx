@@ -19,6 +19,8 @@ export interface FormHeaderProps {
   extra?: ReactNode;
   /** Kelas tambahan untuk elemen bar (mis. `lg:col-span-2` bila form berupa grid). */
   className?: string;
+  /** Penanda panduan interaktif (`data-tour`); dipasang pada pembungkus tombol aksi, bukan pada seluruh bar. */
+  'data-tour'?: string;
 }
 
 /**
@@ -36,6 +38,7 @@ export function FormHeader({
   onSubmitClick,
   extra,
   className,
+  'data-tour': dataTour,
 }: FormHeaderProps) {
   return (
     <div
@@ -43,7 +46,7 @@ export function FormHeader({
       className={`sticky top-14 z-20 -mt-2 flex flex-wrap items-center justify-between gap-2 border-b bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80${className ? ` ${className}` : ''}`}
     >
       <h1 className="text-2xl font-semibold">{title}</h1>
-      <div className="flex flex-wrap items-center gap-2">
+      <div data-tour={dataTour} className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Batal
         </Button>

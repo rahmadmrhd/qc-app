@@ -101,7 +101,7 @@ function QrCodesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div data-tour="qr-header" className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">QR Code Label</h1>
         <div className="flex flex-wrap gap-2">
           {can(me, 'qrcode', 'manage') ? (
@@ -110,7 +110,9 @@ function QrCodesPage() {
             </Button>
           ) : null}
           {can(me, 'qrcode', 'edit') ? (
-            <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
+            <Button data-tour="qr-new" onClick={() => void navigate({ to: '/qrcode/new' })}>
+              Buat konfigurasi
+            </Button>
           ) : null}
         </div>
       </div>
@@ -118,18 +120,20 @@ function QrCodesPage() {
         Label 3 × 3 cm dari sebuah link. Ekspor menghasilkan PDF lembar 10 × 14 (300 × 420 mm) dan
         PNG, disimpan ke Drive setelah Anda konfirmasi.
       </p>
-      <QrDesignsTable
-        designs={designs}
-        canEdit={can(me, 'qrcode', 'edit')}
-        canManage={can(me, 'qrcode', 'manage')}
-        busyId={busyId}
-        onEdit={(design) =>
-          void navigate({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
-        }
-        onExport={setExporting}
-        onDownload={(design, kind) => void download(design, kind)}
-        onDelete={setDeleting}
-      />
+      <div data-tour="qr-table">
+        <QrDesignsTable
+          designs={designs}
+          canEdit={can(me, 'qrcode', 'edit')}
+          canManage={can(me, 'qrcode', 'manage')}
+          busyId={busyId}
+          onEdit={(design) =>
+            void navigate({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
+          }
+          onExport={setExporting}
+          onDownload={(design, kind) => void download(design, kind)}
+          onDelete={setDeleting}
+        />
+      </div>
       {exporting ? (
         <ExportDialog
           design={exporting}

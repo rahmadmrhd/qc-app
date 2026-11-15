@@ -12,7 +12,6 @@ const MODULES_WITHOUT_GUIDE_YET: readonly string[] = [
   // Tahap berikutnya (spek 7 butir 4).
   'access',
   'item',
-  'qrcode',
   'sticker',
   'stickerstock',
   'serial',

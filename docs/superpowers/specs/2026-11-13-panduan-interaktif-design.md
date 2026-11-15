@@ -186,6 +186,14 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Menyorot elemen lewat `data-tour`, bukan kelas CSS. Langkah berikut dapat berpindah rute lalu menunggu target muncul.
 - Langkah yang menunggu klik pengguna lanjut otomatis begitu elemen diklik. Tur berhenti SEBELUM tombol simpan/kirim
   mana pun dan tidak pernah memanggil rute tulis.
+- Langkah `wait` (keputusan 2026-11-15, butir K): untuk halaman yang baru menampilkan bagiannya setelah pengguna
+  mengerjakan sesuatu (mis. form QR baru memunculkan nama, sumber link, dan seterusnya hanya setelah item dipilih).
+  Targetnya tidak ditutup penahan dan halaman tidak digelapkan (hanya bingkai penyorot) supaya pengguna dapat
+  bekerja di dalamnya, termasuk membuka daftar saran; kartu parkir di pojok kanan bawah layar (ponsel: di dasar)
+  selama tak menimpa target. Tombol Lanjut nonaktif dengan petunjuk sampai elemen `data-tour` yang disebut
+  `waitFor` muncul, nonaktif lagi bila elemen itu hilang, dan ArrowRight ikut mengikuti. Tur tetap tidak mengisi
+  apa pun. Langkah `wait` wajib ber-`waitFor` yang ada di sumber dan tidak boleh menjadi langkah terakhir (dijaga
+  tes katalog); jalan keluar pengguna yang tak mau mengerjakan adalah tombol Tutup.
 - Tur HANYA menyorot dan menjelaskan: tidak mengisi atau mengubah isi field mana pun (tidak ada isi contoh yang
   dimasukkan ke editor, jadi tidak menyentuh draf atau `useUnsavedChanges`). Satu-satunya hal yang boleh ia lakukan
   sendiri adalah MEMBUKA menu (keputusan 2026-11-14, butir G): langkah dapat meminta sebuah menu terbuka
@@ -374,6 +382,19 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     WhatsApp. Pemilik produk menyetujui palet itu dipertahankan: tujuan demo adalah peragaan yang langsung dikenali
     pengguna, jadi warna yang mirip memang dikehendaki. Batas tetap: tanpa logo, gambar, atau aset resmi, dan tetap
     terbaca di tema terang dan gelap. Diubah: bagian 4 (kalimat adegan `kode` tiruan aplikasi lain). Bukan temuan.
+  - **K. Panduan QR Code Manual Book dan langkah `wait` (2026-11-15, keputusan pemilik produk).** Pemilik
+    meminta panduan membuat konfigurasi QR Manual Book dan, atas pertanyaan "bagaimana menjelaskan bagian form yang
+    baru muncul setelah item dipilih", memilih agar tur MENUNGGU pengguna memilih item sendiri lalu menyorot form
+    nyata (bukan kartu contoh pasif, bukan dua panduan). Cakupan yang disetujui: daftar QR, tombol Buat konfigurasi,
+    pilih item, konfigurasi default otomatis menurut BU, nama, sumber link PDF, isi label, logo, bingkai, ukuran,
+    pratinjau, dan penjelasan Simpan dan ekspor (tur berhenti SEBELUM tombol simpan); halaman Konfigurasi default per
+    BU (izin kelola) tidak dibahas. Akibat pada spek: 4.5 mendapat jenis langkah `wait` (di atas) sehingga kalimat
+    "langkah yang menunggu klik pengguna" tidak lagi satu-satunya bentuk menunggu; spek 7 butir 4 kini mencakup QR
+    Code (`qrcode-dasar`, 13 langkah, izin `qrcode: view`, langkah pembuatan `qrcode: edit`). Pilihan perancang
+    yang kemudian disetujui pemilik produk (2026-11-15): satu panduan `dasar` per modul memakai id `<modul>-dasar`;
+    teks langkah memakai gaya santai ("kamu") seperti panduan lain; halaman Konfigurasi default per BU tidak
+    dibahas; Item/Stiker/Postel/Serial Number/Pengaturan Akses tetap menyusul. Jalur "diminta memilih konfigurasi
+    default" (item yang BU-nya belum punya default) sudah diuji di peramban: Lanjut terkunci sampai default dipilih.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
@@ -389,7 +410,9 @@ Semuanya 2026-11-13, disetujui pemilik produk:
 3. **Serah Terima** (`dasar`, izin `handover`): papan/kartu, buat task (formulir batch), tempel dari WhatsApp
    (tooltip demo: contoh pertama), checklist dan centang, komentar, pengerjaan QC. Daftar langkah rinci ditentukan
    di rencana implementasi bersama pemilik produk.
-4. Modul lain (Item, QR Code, Stiker, Postel, Serial Number, Pengaturan Akses) menyusul di tahap berikutnya.
+4. **QR Code Manual Book** (`dasar`, izin `qrcode: view`; dikerjakan 2026-11-15, bagian 6 butir K): membuat konfigurasi
+   dari daftar sampai tepat sebelum tombol simpan, memakai langkah `wait` (4.5).
+5. Modul lain (Item, Stiker, Postel, Serial Number, Pengaturan Akses) menyusul di tahap berikutnya.
 
 ## 8. Pilihan perancang (bukan persetujuan pemilik; dapat dikoreksi)
 

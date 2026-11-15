@@ -18,8 +18,17 @@ export interface GuideStep {
   text: string;
   /** Rute tujuan; kosong = tetap di halaman sekarang. */
   route?: string;
-  /** `next` = tombol Lanjut; `click` = menunggu pengguna mengklik sendiri targetnya. */
-  advance: 'next' | 'click';
+  /**
+   * `next` = tombol Lanjut; `click` = menunggu pengguna mengklik sendiri targetnya; `wait` = pengguna mengerjakan
+   * sesuatu sendiri di target (mis. memilih item) dan tombol Lanjut baru aktif setelah elemen `waitFor` muncul
+   * (target tidak ditutup penahan dan tidak digelapkan, supaya dapat dioperasikan). Tur tetap tidak mengisi apa pun.
+   */
+  advance: 'next' | 'click' | 'wait';
+  /**
+   * Hanya untuk `advance: 'wait'`: nilai `data-tour` elemen yang MUNCUL begitu pengguna selesai mengerjakan target
+   * (mis. bagian form yang baru ditampilkan setelah item dipilih). Wajib ada di sumber (dijaga tes katalog).
+   */
+  waitFor?: string;
   /** Langkah hanya muncul bagi yang berhak (dihitung per pengguna). */
   izin?: GuideAccess;
   tip?: string;

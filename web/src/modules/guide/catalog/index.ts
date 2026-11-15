@@ -3,6 +3,7 @@ import { DEVICE_GUIDES } from './device';
 import { HANDOVER_GUIDES } from './handover';
 import { HANDOVER_TIPS } from './handover-tips';
 import { DASAR_LAYOUT } from './layout';
+import { QRCODE_GUIDES } from './qrcode';
 import { SAPAAN_AWAL } from './sapaan';
 
 /**
@@ -16,4 +17,5 @@ export const GUIDE_CATALOG: readonly GuideEntry[] = [
   ...DEVICE_GUIDES,
   ...HANDOVER_GUIDES,
   ...HANDOVER_TIPS,
+  ...QRCODE_GUIDES,
 ];

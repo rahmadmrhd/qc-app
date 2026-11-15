@@ -15,6 +15,8 @@ interface TourStepCardProps {
   cardRef: Ref<HTMLDivElement>;
   onNext: () => void;
   onClose: () => void;
+  /** Langkah `wait`: `true` setelah elemen `waitFor` muncul (tombol Lanjut aktif); selainnya tombol nonaktif. */
+  gateOpen?: boolean;
 }
 
 /** Kartu penjelasan satu langkah. Berposisi tetap (dihitung mesin tur) dan dapat dioperasikan dengan keyboard. */
@@ -28,7 +30,9 @@ export function TourStepCard({
   cardRef,
   onNext,
   onClose,
+  gateOpen = true,
 }: TourStepCardProps) {
+  const waiting = step.advance === 'wait';
   return (
     <div
       ref={cardRef}
@@ -54,6 +58,12 @@ export function TourStepCard({
       <div className="flex items-center justify-between gap-2">
         {step.advance === 'click' ? (
           <p className="text-xs text-muted-foreground">Klik bagian yang disorot untuk lanjut.</p>
+        ) : waiting ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {gateOpen
+              ? 'Sudah beres, tekan Lanjut.'
+              : 'Kerjakan dulu bagian yang disorot, nanti tombol Lanjut aktif.'}
+          </p>
         ) : (
           <span />
         )}
@@ -63,8 +73,8 @@ export function TourStepCard({
               Lewati
             </Button>
           ) : null}
-          {step.advance === 'next' || isLast ? (
-            <Button type="button" size="sm" onClick={onNext}>
+          {step.advance === 'next' || waiting || isLast ? (
+            <Button type="button" size="sm" disabled={waiting && !gateOpen} onClick={onNext}>
               {isLast ? 'Selesai' : 'Lanjut'}
             </Button>
           ) : null}
