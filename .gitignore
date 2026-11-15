@@ -26,3 +26,12 @@ coverage/
 
 # cache generator TanStack Router
 web/.tanstack/
+
+# build QC Desktop
+desktop/dist/
+desktop/dist-app/
+desktop/spike-report-*.json
+
+# kunci penandatangan manifest UI desktop (rahasia; jangan dikomit)
+*.ui-signing-key.pem
+ui-signing-key.pem

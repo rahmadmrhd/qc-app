@@ -1,0 +1,376 @@
+// Entri proses utama QC App Desktop.
+//   --smoke     : laporan runtime (Node, ssh2, node:sqlite) tanpa jendela (dipakai verify-pack).
+//   --smoke-ui  : memuat app://qc/country-lock di jendela tersembunyi, mencetak
+//                 {"bridgeVersion":N} dari window.qcBridge, lalu keluar. Memakai userData sementara
+//                 agar tidak menyentuh data/instans pengguna.
+//   (biasa)     : instans tunggal; qc://country-lock mengarahkan jendela yang sudah ada.
+
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  AUTH_CHANGE_EVENT,
+  BRIDGE_VERSION,
+  INJECT_PROGRESS_EVENT,
+  UI_UPDATE_READY_EVENT,
+} from '@countrylock/bridge-channels';
+import {
+  app,
+  type BrowserWindow,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  safeStorage,
+  shell,
+} from 'electron';
+import { createApiProxy } from './api-proxy';
+import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
+import { createLoginFlow, type LoginFlow } from './auth/login-flow';
+import { createTokenStore } from './auth/token-store';
+import { readDeviceInfo, readRouterInfo } from './device/info';
+import { pingOnce } from './device/ping';
+import { registerIpc } from './ipc';
+import { loadLocalPackage } from './package/local-folder';
+import { parseQcUrl } from './qc-url';
+import { createSettingsStore } from './settings';
+import { collectSmokeReport } from './smoke';
+import { fetchHostKey } from './ssh/host-key';
+import { runInjectDetailed } from './ssh/inject-session';
+import { openPendingStore } from './store/pending-store';
+import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
+import { createReloadGate, type ReloadGate } from './ui/reload-gate';
+import { createRenderProbe, RENDER_PROBE_TIMEOUT_MS } from './ui/render-probe';
+import { createUiBundleManager } from './ui/ui-bundle';
+import { createMainWindow, lockDownSession } from './window';
+
+const smoke = process.argv.includes('--smoke');
+const smokeUi = process.argv.includes('--smoke-ui');
+const PRELOAD_PATH = fileURLToPath(new URL('../preload/index.cjs', import.meta.url));
+const SMOKE_UI_TIMEOUT_MS = 45_000;
+
+// Harus dipanggil sebelum `app` ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+
+function uiRoot(): string {
+  // Terkemas: UI dasar di samping asar. Pengembangan: hasil `bun run build:web`.
+  return app.isPackaged
+    ? join(process.resourcesPath, 'ui-baseline')
+    : resolve(app.getAppPath(), '..', 'server', 'dist');
+}
+
+function routeFromArgv(argv: readonly string[]): string | null {
+  for (const arg of argv) {
+    const parsed = arg.startsWith('qc://') ? parseQcUrl(arg) : null;
+    if (parsed?.route) return parsed.route;
+  }
+  return null;
+}
+
+if (smoke) {
+  collectSmokeReport()
+    .then((report) => {
+      process.stdout.write(`${JSON.stringify(report)}\n`, () => app.exit(0));
+    })
+    .catch((error: unknown) => {
+      process.stderr.write(`smoke gagal: ${String(error)}\n`, () => app.exit(1));
+    });
+} else if (smokeUi) {
+  void runSmokeUi();
+} else {
+  runApp();
+}
+
+async function runSmokeUi(): Promise<void> {
+  const dataDir = mkdtempSync(join(tmpdir(), 'qc-smoke-ui-'));
+  app.setPath('userData', dataDir);
+  const finish = (code: number): void => {
+    try {
+      rmSync(dataDir, { recursive: true, force: true });
+    } catch {
+      // Pembersihan best-effort.
+    }
+    app.exit(code);
+  };
+  const timer = setTimeout(() => {
+    process.stderr.write('smoke-ui gagal: waktu habis\n', () => finish(1));
+  }, SMOKE_UI_TIMEOUT_MS);
+  try {
+    await app.whenReady();
+    protocol.handle(APP_SCHEME, createAppHandler(uiRoot()));
+    lockDownSession();
+    const win = createMainWindow({
+      preloadPath: PRELOAD_PATH,
+      route: '/country-lock',
+      show: false,
+    });
+    await new Promise<void>((resolveLoad, rejectLoad) => {
+      win.webContents.once('did-finish-load', () => resolveLoad());
+      win.webContents.once('did-fail-load', (_e, _code, description) =>
+        rejectLoad(new Error(`gagal memuat UI: ${description}`)),
+      );
+    });
+    const version = (await win.webContents.executeJavaScript(
+      'window.qcBridge?.version',
+    )) as unknown;
+    clearTimeout(timer);
+    process.stdout.write(`${JSON.stringify({ bridgeVersion: version ?? null })}\n`, () =>
+      finish(typeof version === 'number' ? 0 : 1),
+    );
+  } catch (error) {
+    clearTimeout(timer);
+    process.stderr.write(`smoke-ui gagal: ${String(error)}\n`, () => finish(1));
+  }
+}
+
+/** URL `qc://auth?...` pada argumen proses (cold start atau second-instance). */
+function authUrlsFromArgv(argv: readonly string[]): string[] {
+  return argv.filter((arg) => arg.startsWith('qc://') && parseQcUrl(arg)?.auth !== undefined);
+}
+
+/** Peramban sistem hanya dibuka untuk https atau http localhost/127.0.0.1 (pengembangan). */
+function isOpenableLoginUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:') return true;
+    return (
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Masa tenang setelah inject berakhir sebelum halaman tertunda dimuat (pending.add renderer). */
+const RELOAD_SETTLE_MS = 1500;
+const RENDER_PROBE_INTERVAL_MS = 500;
+/** Akar web (`<div id="app">` di web/index.html) berisi anak = React sudah mount. */
+const ROOT_FILLED_SCRIPT = "(document.getElementById('app')?.childElementCount ?? 0) > 0";
+
+function runApp(): void {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+
+  let mainWindow: BrowserWindow | null = null;
+  let loginFlow: LoginFlow | null = null;
+  let reloadGate: ReloadGate | null = null;
+  const initialRoute = routeFromArgv(process.argv) ?? '/country-lock';
+  // Callback yang tiba sebelum aplikasi siap ditahan; alur login hanya menerima yang cocok dengan
+  // login yang sedang berjalan, jadi URL asing/ulang diabaikan olehnya.
+  const earlyAuthUrls: string[] = authUrlsFromArgv(process.argv);
+  const dispatchAuthUrl = (url: string): void => {
+    if (loginFlow) void loginFlow.handleCallback(url);
+    else earlyAuthUrls.push(url);
+  };
+  const focusWindow = (): void => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  };
+
+  app.on('second-instance', (_event, argv) => {
+    const route = routeFromArgv(argv);
+    for (const url of authUrlsFromArgv(argv)) dispatchAuthUrl(url);
+    focusWindow();
+    if (route && mainWindow && !mainWindow.isDestroyed()) {
+      // Ditunda bila inject berjalan: memuat halaman baru membuang hasil inject dari renderer.
+      const url = `app://qc${route}`;
+      if (reloadGate) reloadGate.load(url);
+      else void mainWindow.loadURL(url);
+    }
+  });
+
+  // macOS mengirim tautan protokol lewat open-url (di Windows lewat argumen proses).
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    if (parseQcUrl(url)?.auth) dispatchAuthUrl(url);
+    focusWindow();
+  });
+
+  app.whenReady().then(() => {
+    lockDownSession();
+    // `qc://` didaftarkan hanya pada aplikasi terkemas (tanpa menulis registri saat pengembangan).
+    if (app.isPackaged) app.setAsDefaultProtocolClient('qc');
+
+    const userData = app.getPath('userData');
+    const settings = createSettingsStore(join(userData, 'settings.json'));
+    // Token Bearer: terenkripsi safeStorage bila tersedia; bila tidak, hanya di memori.
+    const tokens = createTokenStore(
+      join(userData, 'auth.json'),
+      safeStorage.isEncryptionAvailable()
+        ? {
+            encrypt: (plain) => safeStorage.encryptString(plain),
+            decrypt: (data) => safeStorage.decryptString(data),
+          }
+        : null,
+    );
+    const emitAuth = (status: unknown): void => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(AUTH_CHANGE_EVENT, status);
+      }
+    };
+    // Login lewat peramban sistem (PKCE); hanya satu login berjalan.
+    const flow = createLoginFlow({
+      settings: () => settings.get(),
+      tokens,
+      openExternal: async (url) => {
+        if (!isOpenableLoginUrl(url)) throw new Error('Alamat login tidak diizinkan');
+        await shell.openExternal(url);
+      },
+      fetchImpl: net.fetch as typeof fetch,
+      onChange: emitAuth,
+    });
+    loginFlow = flow;
+    // /api dan /auth diteruskan proses utama ke server (net.fetch); token tak pernah ke renderer.
+    const proxy = createApiProxy({
+      settings: () => settings.get(),
+      tokens,
+      fetchImpl: net.fetch as typeof fetch,
+      onUnauthenticated: () => emitAuth(flow.status()),
+    });
+    // UI: bundel terunduh yang aktif bila ada, selain itu UI dasar terkemas. Bundel baru baru
+    // diterapkan pada peluncuran berikutnya atau `ui.reload()`, tidak pernah di tengah inject.
+    let ipcHandle: { isInjecting(): boolean } | null = null;
+    const bundles = createUiBundleManager({
+      dir: join(userData, 'ui'),
+      baselineDir: uiRoot(),
+      serverUrl: () => settings.get().serverUrl,
+      publicKeyPem: UI_PUBLIC_KEY_PEM,
+      bridgeVersion: BRIDGE_VERSION,
+      isBusy: () => ipcHandle?.isInjecting() ?? false,
+      fetchImpl: net.fetch as typeof fetch,
+    });
+    protocol.handle(
+      APP_SCHEME,
+      createAppHandler(() => bundles.activeRoot(), proxy),
+    );
+    let pending: ReturnType<typeof openPendingStore>;
+    try {
+      pending = openPendingStore(join(userData, 'pending.db'));
+    } catch (error) {
+      // Berkas pending rusak: beri tahu pengguna, jangan hapus berkasnya.
+      dialog.showErrorBox('QC App', error instanceof Error ? error.message : String(error));
+      app.exit(1);
+      return;
+    }
+
+    reloadGate = createReloadGate({
+      isInjecting: () => ipcHandle?.isInjecting() ?? false,
+      load: (url) => {
+        if (mainWindow && !mainWindow.isDestroyed()) void mainWindow.loadURL(url);
+      },
+      settleMs: RELOAD_SETTLE_MS,
+    });
+    const gate = reloadGate;
+
+    ipcHandle = registerIpc({
+      ipcMain,
+      settings,
+      loadPackage: loadLocalPackage,
+      chooseDirectory: async () => {
+        const options = { properties: ['openDirectory' as const] };
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options);
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
+      ping: pingOnce,
+      readDeviceInfo,
+      readRouterInfo,
+      fetchHostKey,
+      runInject: runInjectDetailed,
+      pending,
+      auth: { status: () => flow.status(), start: () => flow.start(), logout: () => flow.logout() },
+      emitProgress: (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(INJECT_PROGRESS_EVENT, event);
+        }
+      },
+      ui: {
+        reload: async () => {
+          // Tidak berbuat apa-apa saat inject berjalan: memuat ulang akan memutus tampilan sesi.
+          if (ipcHandle?.isInjecting()) return;
+          bundles.applyReady();
+          mainWindow?.webContents.reloadIgnoringCache();
+        },
+      },
+      onInjectIdle: () => gate.notifyIdle(),
+      isTrustedSender: (event) => isAppUrl(event.senderFrame?.url ?? ''),
+    });
+
+    mainWindow = createMainWindow({
+      preloadPath: PRELOAD_PATH,
+      route: initialRoute,
+      blockReload: () => gate.isReloadBlocked(),
+    });
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
+    app.on('will-quit', () => pending.close());
+
+    // Pemulihan UI: muat berhasil mereset hitungan; dua kegagalan berturut-turut kembali ke bundel
+    // sebelumnya lalu ke UI dasar (dan memuat ulang).
+    const contents = mainWindow.webContents;
+    const announceReady = (): void => {
+      const uiVersion = bundles.readyVersion();
+      if (uiVersion && !contents.isDestroyed()) {
+        contents.send(UI_UPDATE_READY_EVENT, { uiVersion });
+      }
+    };
+    // `did-finish-load` hanya berarti index.html terkirim. UI dianggap sehat bila akar web (#app)
+    // terisi dalam batas waktu; bundel yang rusak secara logika (layar kosong) tak pernah mengisinya,
+    // lalu `markLoadFailed()` menjalankan rantai pemulihan (dua kali gagal -> previous -> dasar).
+    const recover = (): void => {
+      if (bundles.markLoadFailed() !== 'none') gate.load(`${APP_ORIGIN}${initialRoute}`);
+    };
+    const probe = createRenderProbe({
+      check: async () =>
+        !contents.isDestroyed() && (await contents.executeJavaScript(ROOT_FILLED_SCRIPT)) === true,
+      onOk: () => {
+        bundles.markLoadOk();
+        announceReady();
+      },
+      onFailed: () => {
+        if (!contents.isDestroyed()) recover();
+      },
+      intervalMs: RENDER_PROBE_INTERVAL_MS,
+      timeoutMs: RENDER_PROBE_TIMEOUT_MS,
+    });
+    contents.on('did-start-loading', () => probe.cancel());
+    contents.on('did-finish-load', () => {
+      if (isAppUrl(contents.getURL())) probe.start();
+    });
+    mainWindow.on('closed', () => probe.cancel());
+    contents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+      // -3 = navigasi dibatalkan (bukan kegagalan muat).
+      if (!isMainFrame || errorCode === -3) return;
+      recover();
+    });
+
+    // Pemeriksaan pembaruan UI: saat dibuka, saat jendela fokus (jarak >= 10 menit), dan tiap jam.
+    let lastCheck = 0;
+    const runCheck = async (minGapMs: number): Promise<void> => {
+      if (Date.now() - lastCheck < minGapMs) return;
+      lastCheck = Date.now();
+      try {
+        const result = await bundles.checkForUpdate();
+        if (result.status === 'ready') announceReady();
+      } catch {
+        // Pemeriksaan tak boleh menjatuhkan aplikasi.
+      }
+    };
+    void runCheck(0);
+    mainWindow.on('focus', () => void runCheck(10 * 60 * 1000));
+    setInterval(() => void runCheck(0), 60 * 60 * 1000).unref();
+    for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
+  });
+
+  app.on('window-all-closed', () => app.quit());
+}

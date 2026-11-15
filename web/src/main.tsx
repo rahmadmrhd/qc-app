@@ -4,7 +4,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { restoreBoardCache, startBoardPersistence } from '@/app/board-persist';
-import { loadMe, readAuthError, resolveInitialSession } from '@/app/boot';
+import { loadMeForBoot, readAuthError, resolveInitialSession } from '@/app/boot';
 import { startOutboxSync } from '@/app/outbox-sync';
 import { startInstallCapture } from '@/app/pwa/install';
 import { setMutationSource } from '@/app/pwa/safe-reload';
@@ -16,6 +16,8 @@ import { createAppRouter } from '@/app/router';
 import { startServerStatus } from '@/app/server-status';
 import { handleRemoteLogout, startSessionListener } from '@/app/session-broadcast';
 import { OfflineScreen } from '@/app/shell/offline-screen';
+import { startUiUpdateWatch } from '@/app/ui-update-store';
+import { isDesktop, shouldRegisterServiceWorker } from '@/lib/platform';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
 import { hydrateOutbox } from '@/modules/handover/lib/outbox';
@@ -28,12 +30,16 @@ import './styles.css';
  * `router` kosong pada jalur boot offline (tanpa router, tanpa pemicu navigasi).
  */
 function startServiceWorker(router?: Parameters<typeof attachNavigationTrigger>[0]) {
-  if (!import.meta.env.PROD) return;
+  // Desktop memuat UI dari app://qc (bundel terkemas atau unduhan bertanda tangan); service worker tidak dipakai
+  // di sana (pembaruan UI lewat pengelola bundel desktop).
+  if (!import.meta.env.PROD || !shouldRegisterServiceWorker()) return;
   startPwaUpdates({ register: registerSW });
   if (router) attachNavigationTrigger(router);
 }
 
 async function start() {
+  // Desktop: tampung pengumuman "UI baru siap" sejak awal (tak berbuat apa pun di peramban).
+  startUiUpdateWatch();
   // beforeinstallprompt dapat tiba sebelum React dirender; tangkap sejak awal (FR-P5).
   startInstallCapture();
 
@@ -42,12 +48,15 @@ async function start() {
   if (authError) window.history.replaceState(null, '', window.location.pathname);
 
   // Sesi cookie diverifikasi server (GET /api/v1/me) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
-  const me = await loadMe();
+  // Di desktop proses utama menambahkan Bearer lewat app://qc/api, dan boot punya batas waktu (`loadMeForBoot`).
+  const { me, unreachable } = await loadMeForBoot();
   const root = document.getElementById('app');
   if (!root) throw new Error('Elemen #app tidak ditemukan');
-  // Server tidak terjangkau saat boot: layar "Tidak ada koneksi" saja (tanpa router/query client). Service worker
-  // tetap didaftarkan agar cangkang aplikasi dan pembaruan versi jalan; sesi tidak disentuh (FR-P7).
-  if (me === 'unavailable') {
+  // Server tidak terjangkau saat boot (peramban): layar "Tidak ada koneksi" saja (tanpa router/query client). Service
+  // worker tetap didaftarkan agar cangkang aplikasi dan pembaruan versi jalan; sesi tidak disentuh (FR-P7).
+  // Desktop sengaja TIDAK memakai layar ini: halaman login memuat pengaturan alamat server, satu-satunya jalan keluar
+  // bila alamat server salah atau server mati (layar offline hanya punya "Coba lagi").
+  if (unreachable && !isDesktop()) {
     // Hitungan antrean di layar ini dibaca dari salinan memori: muat dulu (dibatasi 1,5 dtk; gagal = hitungan 0).
     await hydrateOutbox();
     createRoot(root).render(
@@ -60,7 +69,7 @@ async function start() {
     startServiceWorker();
     return;
   }
-  initSession(resolveInitialSession(me, authError));
+  initSession(resolveInitialSession(me, authError, unreachable));
   if (me) {
     // Cache tersimpan dipasang hanya untuk pemilik yang sesinya sudah terbukti sah (stale-while-revalidate).
     restoreQueryCache(queryClient, me.email);

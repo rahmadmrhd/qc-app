@@ -15,6 +15,7 @@ import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
 import { OutboxChip } from './outbox-chip';
 import { ServerStatusBanner } from './server-status-banner';
+import { UiUpdateBanner } from './ui-update-banner';
 import { UserMenu } from './user-menu';
 
 export function AppShell() {
@@ -27,6 +28,7 @@ export function AppShell() {
           <TourProvider renderTip={renderTourTip}>
             <AppSidebar />
             <SidebarInset className="min-w-0">
+              <UiUpdateBanner />
               <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                 <SidebarTrigger data-tour="sidebar-trigger" />
                 <div className="ml-auto flex items-center gap-1">

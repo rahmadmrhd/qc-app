@@ -19,6 +19,8 @@ export interface SessionState {
   loginUrl: string;
   authError: AuthErrorCode | null;
   authErrorEmail: string | null;
+  /** Boot gagal karena server tak terjangkau (jaringan/503), bukan karena belum login. */
+  serverUnreachable: boolean;
 }
 
 export const ANONYMOUS_SESSION: SessionState = {
@@ -27,6 +29,7 @@ export const ANONYMOUS_SESSION: SessionState = {
   loginUrl: LOGIN_URL,
   authError: null,
   authErrorEmail: null,
+  serverUnreachable: false,
 };
 
 let state: SessionState = ANONYMOUS_SESSION;
@@ -52,7 +55,14 @@ export function initSession(next: SessionState): void {
 }
 
 export function markAuthenticated(email: string): void {
-  state = { ...state, authenticated: true, email, authError: null, authErrorEmail: null };
+  state = {
+    ...state,
+    authenticated: true,
+    email,
+    authError: null,
+    authErrorEmail: null,
+    serverUnreachable: false,
+  };
 }
 
 /** Sesi berakhir/keluar: buang status, token dev, dan cache tersimpan. */

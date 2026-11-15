@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { hasPendingGuide } from '@/modules/guide/lib/guide-for-route';
 import { useOfferedGuides } from '@/modules/guide/lib/use-offered-guides';
@@ -31,7 +32,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent data-tour="sidebar-menu">
-        {visibleNavGroups(NAV_GROUPS, me, selectedIds).map((group) => (
+        {visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

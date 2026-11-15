@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CountryLockRouteImport } from './routes/country-lock'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppCustomerRouteImport } from './routes/_app/customer'
@@ -56,6 +57,11 @@ import { Route as AppQrcodeDefaultPresetIdEditRouteImport } from './routes/_app/
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CountryLockRoute = CountryLockRouteImport.update({
+  id: '/country-lock',
+  path: '/country-lock',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -281,6 +287,7 @@ const AppQrcodeDefaultPresetIdEditRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
@@ -325,6 +332,7 @@ export interface FileRoutesByFullPath {
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
 export interface FileRoutesByTo {
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
@@ -372,6 +380,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/_app/customer': typeof AppCustomerRoute
   '/_app/forbidden': typeof AppForbiddenRoute
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/country-lock'
     | '/login'
     | '/customer'
     | '/forbidden'
@@ -464,6 +474,7 @@ export interface FileRouteTypes {
     | '/qrcode/default/$presetId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/country-lock'
     | '/login'
     | '/customer'
     | '/forbidden'
@@ -510,6 +521,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/country-lock'
     | '/login'
     | '/_app/customer'
     | '/_app/forbidden'
@@ -557,6 +569,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CountryLockRoute: typeof CountryLockRoute
   LoginRoute: typeof LoginRoute
   LaporanTokenRoute: typeof LaporanTokenRoute
 }
@@ -568,6 +581,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/country-lock': {
+      id: '/country-lock'
+      path: '/country-lock'
+      fullPath: '/country-lock'
+      preLoaderRoute: typeof CountryLockRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -967,6 +987,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CountryLockRoute: CountryLockRoute,
   LoginRoute: LoginRoute,
   LaporanTokenRoute: LaporanTokenRoute,
 }

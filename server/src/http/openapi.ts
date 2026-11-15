@@ -2,8 +2,13 @@ import { loadRequestCtx } from '@server/core/context';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
-import { type RoutePermissionSpec, type RouteTable, readCookie } from '@server/core/router';
-import { SESSION_COOKIE, verifySessionToken } from '@server/core/session';
+import {
+  credentialOf,
+  type RoutePermissionSpec,
+  type RouteTable,
+  sessionOfCredential,
+} from '@server/core/router';
+import { SESSION_COOKIE } from '@server/core/session';
 import { toProblem, problemResponse as toProblemResponse } from '@server/http/problem';
 import { newRequestId } from '@server/http/security';
 import {
@@ -196,7 +201,7 @@ export async function openApiResponse(
   routes: RouteTable,
 ): Promise<Response> {
   const requestId = newRequestId();
-  const session = await verifySessionToken(env, readCookie(request, SESSION_COOKIE), nowOf(env));
+  const session = await sessionOfCredential(env, credentialOf(request, SESSION_COOKIE), nowOf(env));
   const context = session ? await loadRequestCtx(env, session.email, requestId) : null;
   if (!context) {
     return toProblemResponse(

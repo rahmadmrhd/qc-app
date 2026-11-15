@@ -1,9 +1,11 @@
+import type { QcBridge } from '@countrylock/bridge-contract';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { clearBoardStoreWithin } from '@/app/board-persist';
 import { runBusy } from '@/app/pwa/busy';
 import { announceLogout } from '@/app/session-broadcast';
 import { CSRF_HEADERS } from '@/lib/api/client';
+import { getBridge } from '@/lib/platform';
 import { clearAllOutboxesWithin, suspendOutboxWrites } from '@/modules/handover/lib/outbox';
 import { clearSending } from '@/modules/handover/lib/outbox-status';
 import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
@@ -22,6 +24,15 @@ export async function postLogout(fetchImpl: typeof fetch = fetch): Promise<void>
   }
 }
 
+/** Desktop: proses utama membuang token Bearer; galat IPC diabaikan (sesi lokal tetap dibuang). */
+export async function logoutDesktop(bridge: QcBridge): Promise<void> {
+  try {
+    await bridge.auth.logout();
+  } catch {
+    // Dibiarkan.
+  }
+}
+
 export function useLogout(): () => void {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -34,7 +45,10 @@ export function useLogout(): () => void {
       // Tab lain akun yang sama berhenti menulis data perangkat (antrean, papan) sebelum toko dibersihkan di bawah.
       const owner = getSession().email;
       if (owner) announceLogout(owner);
-      if (!import.meta.env.DEV) await postLogout();
+      // Desktop: proses utama membuang token Bearer; peramban: POST /auth/logout (cookie).
+      const bridge = getBridge();
+      if (bridge) await logoutDesktop(bridge);
+      else if (!import.meta.env.DEV) await postLogout();
       clearSession();
       // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.
       clearAllDrafts();

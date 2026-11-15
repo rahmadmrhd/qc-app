@@ -14,6 +14,7 @@ import {
   House,
   Images,
   ListChecks,
+  Lock,
   MapPin,
   Package,
   QrCode,
@@ -44,6 +45,8 @@ export interface NavItem {
   alsoActiveOn?: LinkProps['to'][];
   /** Satu izin, atau **daftar** (salah satu cukup). */
   permission?: NavPermission | readonly NavPermission[];
+  /** Hanya tampil di aplikasi desktop (jembatan `window.qcBridge` ada). */
+  desktopOnly?: boolean;
   /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
   visible?: (me: MeDto) => boolean;
 }
@@ -54,7 +57,13 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { label: 'Umum', items: [{ label: 'Beranda', to: '/', icon: House }] },
+  {
+    label: 'Umum',
+    items: [
+      { label: 'Beranda', to: '/', icon: House },
+      { label: 'Country Lock', to: '/country-lock', icon: Lock, desktopOnly: true },
+    ],
+  },
   {
     label: 'Data',
     items: [
@@ -244,11 +253,13 @@ export function visibleNavGroups(
   groups: readonly NavGroup[],
   me: MeDto,
   activeLocationIds?: readonly string[],
+  desktop = false,
 ): NavGroup[] {
   return groups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.desktopOnly && !desktop) return false;
         if (item.visible && !item.visible(me)) return false;
         if (!item.permission) return true;
         const alternatives: readonly NavPermission[] = Array.isArray(item.permission)

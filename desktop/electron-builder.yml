@@ -1,0 +1,26 @@
+# Pengemasan QC App (Windows x64, NSIS per pengguna tanpa hak admin). Hasil: desktop/dist-app/.
+appId: id.my.rhd.qc-app
+productName: QC App
+directories:
+  output: dist-app
+files:
+  - dist/**
+  - '!dist/spike/**'
+  - package.json
+asar: true
+# Tanpa modul native yang perlu dikompilasi ulang; node:sqlite dan ssh2 (JS murni) cukup.
+npmRebuild: false
+# UI dasar: build web (bun run build:web) dibawa apa adanya di samping asar.
+extraResources:
+  - from: ../server/dist
+    to: ui-baseline
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

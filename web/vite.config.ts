@@ -20,6 +20,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': fromHere('../shared'),
+      '@countrylock': fromHere('../countrylock/src'),
       '@': fromHere('./src'),
     },
   },

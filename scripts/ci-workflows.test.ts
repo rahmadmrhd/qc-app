@@ -3,7 +3,7 @@
 // bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, production hanya dari main, tanpa injeksi
 // ekspresi di skrip, izin minimal). TIDAK menjalankan workflow: hasil nyata baru diketahui di GitHub (docs/ci-cd.md).
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ROOT_DIR } from './paths';
@@ -243,6 +243,8 @@ describe('deploy-server.yml: keamanan', () => {
       'DEPLOY_PORT',
       'DEPLOY_SSH_KEY',
       'DEPLOY_USER',
+      'UI_PUBLIC_KEY_PEM',
+      'UI_SIGNING_KEY',
     ]);
     for (const name of used) expect(doc, name).toContain(name);
   });
@@ -408,6 +410,117 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
 
   test('bersihkan', () => {
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
+  const image = deploy.jobs.image as Job;
+  const imageSteps = image.steps ?? [];
+  const prepare = imageSteps.find((step) => step.id === 'ui-key');
+
+  test('hanya job image yang memegang environment ui-signing dan membaca UI_SIGNING_KEY; job lain tidak', () => {
+    expect(image.environment).toBe('ui-signing');
+    for (const [name, job] of Object.entries(deploy.jobs)) {
+      if (name === 'image') continue;
+      expect(JSON.stringify(job), name).not.toMatch(/UI_SIGNING_KEY|ui_signing_key|ui-signing/);
+    }
+    // Satu-satunya pembaca secret: env langkah persiapan (nilai tak pernah di `run` atau input aksi).
+    expect(codeOf(deployText).match(/secrets\.UI_SIGNING_KEY/g)).toHaveLength(1);
+    expect(prepare?.env?.UI_SIGNING_KEY).toBe('${{ secrets.UI_SIGNING_KEY }}');
+  });
+
+  test('LARANGAN: workflow lain (test.yml dan seterusnya, yang berjalan pada pull_request) tak menyebut kunci tanda tangan', () => {
+    for (const name of workflowFiles) {
+      if (name === 'deploy-server.yml') continue;
+      expect(rawOf(name), name).not.toMatch(/UI_SIGNING_KEY|ui_signing_key|ui-signing/i);
+    }
+  });
+
+  test('kunci privat ke build lewat secret-files dari langkah persiapan (bukan `secrets:`), kunci publik lewat build-args, berkas dihapus di akhir', () => {
+    const build = imageSteps.find((step) => step.uses?.startsWith('docker/build-push-action'));
+    expect(build?.with?.['secret-files']).toBe('${{ steps.ui-key.outputs.secret_files }}');
+    expect(build?.with).not.toHaveProperty('secrets');
+    expect(String(build?.with?.['build-args'])).toContain(
+      'UI_PUBLIC_KEY_PEM=${{ vars.UI_PUBLIC_KEY_PEM }}',
+    );
+    expect(imageSteps.indexOf(prepare as Step)).toBeLessThan(imageSteps.indexOf(build as Step));
+    const cleanup = imageSteps.at(-1);
+    expect(cleanup?.if).toBe('always()');
+    expect(cleanup?.run).toContain('ui_signing_key.pem');
+  });
+
+  describe('skrip langkah "Siapkan kunci tanda tangan UI"', () => {
+    const script = prepare?.run ?? '';
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ci-uikey-'));
+    const unix = (path: string) => path.replaceAll('\\', '/');
+    const ONE_LINE = 'MCowBQYDK2VwAyEAabcdefghijklmnopqrstuvwxyz0123456789ABCDEFG=';
+
+    async function run(signingKey: string, publicKey: string) {
+      const out = join(dir, `${crypto.randomUUID()}.out`);
+      writeFileSync(out, '');
+      const proc = Bun.spawn(['bash', '-c', script], {
+        env: {
+          ...process.env,
+          UI_SIGNING_KEY: signingKey,
+          UI_PUBLIC_KEY_PEM: publicKey,
+          KEY_DIR: unix(dir),
+          GITHUB_OUTPUT: unix(out),
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const code = await proc.exited;
+      return {
+        code,
+        stdout: await new Response(proc.stdout).text(),
+        output: readFileSync(out, 'utf8'),
+      };
+    }
+
+    test('skrip ditemukan', () => {
+      expect(script).toContain('GITHUB_OUTPUT');
+    });
+
+    test('keduanya kosong: lolos dengan peringatan dan tanpa secret-files (rollout aman, perilaku lama)', async () => {
+      const result = await run('', '');
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('::warning::');
+      expect(result.output).toBe('secret_files=\n');
+    });
+
+    test('hanya salah satu terisi: GAGAL (konfigurasi setengah jadi)', async () => {
+      for (const [signingKey, publicKey] of [
+        ['rahasia', ''],
+        ['', ONE_LINE],
+      ] as const) {
+        const result = await run(signingKey, publicKey);
+        expect(result.code).toBe(1);
+        expect(result.stdout).toContain('::error::');
+        expect(result.output).toBe('');
+      }
+    });
+
+    test('kunci publik berbaris banyak (build-args tak mendukungnya) GAGAL dan tidak menulis berkas kunci', async () => {
+      const result = await run('rahasia', `${ONE_LINE}\n${ONE_LINE}`);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toContain('SATU baris');
+      expect(existsSync(join(dir, 'ui_signing_key.pem'))).toBe(false);
+    });
+
+    test('keduanya terisi: berkas kunci ditulis utuh (berbaris banyak) dan jalurnya diteruskan lewat output', async () => {
+      const secret = '-----BEGIN PRIVATE KEY-----\nAAAA\nBBBB\n-----END PRIVATE KEY-----';
+      const result = await run(secret, ONE_LINE);
+      expect(result.code).toBe(0);
+      expect(result.output).toBe(`secret_files=ui_signing_key=${unix(dir)}/ui_signing_key.pem\n`);
+      expect(readFileSync(join(dir, 'ui_signing_key.pem'), 'utf8')).toBe(`${secret}\n`);
+      // isi kunci tak pernah dicetak ke log
+      expect(result.stdout).not.toContain('AAAA');
+      rmSync(join(dir, 'ui_signing_key.pem'));
+    });
+
+    test('bersihkan', () => {
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 });
 

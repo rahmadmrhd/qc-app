@@ -137,6 +137,10 @@ jobs:
     needs: [meta, check]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Secret `UI_SIGNING_KEY` (kunci privat tanda tangan manifest UI desktop) ada di secret environment `ui-signing`,
+    # yang aturan branch-nya dibatasi pemilik (docs/desktop-ui-signing.md). HANYA job ini yang boleh membacanya, dan
+    # TIDAK BOLEH ada di test.yml atau workflow lain yang berjalan pada `pull_request` (kode PR yang belum ditinjau).
+    environment: ui-signing
     permissions:
       contents: read
       packages: write
@@ -161,15 +165,59 @@ jobs:
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app" >> "$GITHUB_OUTPUT"
 
+      # Tanda tangan manifest UI desktop (docs/desktop-ui-signing.md). Kunci privat sampai ke build sebagai BERKAS
+      # (`secret-files`, bukan `secrets:` karena nilainya berbaris banyak) dan dihapus di langkah terakhir job.
+      # Rollout aman: secret dan variabel sama-sama kosong = tanpa tanda tangan (peringatan, perilaku lama); hanya salah
+      # satu terisi = GAGAL, karena konfigurasi setengah jadi membuat semua desktop menolak setiap pembaruan UI.
+      # `UI_PUBLIC_KEY_PEM` (kunci publik desktop, bukan rahasia) harus SATU baris: `build-args` berformat satu entri
+      # per baris. Dockerfile lalu memeriksa kunci privat berpasangan dengannya sebelum menulis tanda tangan.
+      - name: Siapkan kunci tanda tangan UI
+        id: ui-key
+        env:
+          UI_SIGNING_KEY: ${{ secrets.UI_SIGNING_KEY }}
+          UI_PUBLIC_KEY_PEM: ${{ vars.UI_PUBLIC_KEY_PEM }}
+          KEY_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          if [ -z "$UI_SIGNING_KEY" ] && [ -z "$UI_PUBLIC_KEY_PEM" ]; then
+            echo "::warning::Kunci tanda tangan UI belum dikonfigurasi (secret UI_SIGNING_KEY dan variabel UI_PUBLIC_KEY_PEM kosong): manifest UI tidak ditandatangani, pembaruan UI desktop nonaktif."
+            echo "secret_files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$UI_SIGNING_KEY" ] || [ -z "$UI_PUBLIC_KEY_PEM" ]; then
+            echo "::error::Konfigurasi tanda tangan UI setengah jadi: secret UI_SIGNING_KEY dan variabel UI_PUBLIC_KEY_PEM harus diisi KEDUANYA (atau keduanya kosong)."
+            exit 1
+          fi
+          case $UI_PUBLIC_KEY_PEM in
+            *$'\n'*)
+              echo "::error::Variabel UI_PUBLIC_KEY_PEM harus SATU baris (isi base64 kunci publik; lihat docs/desktop-ui-signing.md)."
+              exit 1
+              ;;
+          esac
+          umask 077
+          key_file="$KEY_DIR/ui_signing_key.pem"
+          printf '%s\n' "$UI_SIGNING_KEY" > "$key_file"
+          echo "secret_files=ui_signing_key=$key_file" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           push: true
           provenance: false
           tags: ${{ steps.name.outputs.image }}:${{ needs.meta.outputs.sha }}
+          secret-files: ${{ steps.ui-key.outputs.secret_files }}
+          build-args: |
+            UI_PUBLIC_KEY_PEM=${{ vars.UI_PUBLIC_KEY_PEM }}
           cache-from: type=gha,scope=qc-app
           # Token `pull_request_target` tak boleh menulis cache GHA ("cache write denied"), jadi hanya dispatch yang menulis; semua event membaca.
           cache-to: ${{ github.event_name == 'workflow_dispatch' && 'type=gha,scope=qc-app,mode=max' || '' }}
+
+      # Jangan tinggalkan kunci di runner.
+      - name: Hapus kunci tanda tangan UI
+        if: always()
+        env:
+          KEY_DIR: ${{ runner.temp }}
+        run: rm -f "$KEY_DIR/ui_signing_key.pem"
 
   deploy:
     needs: [meta, image]

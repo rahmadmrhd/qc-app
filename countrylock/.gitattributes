@@ -1,0 +1,2 @@
+# Fixture dipertahankan byte demi byte (skrip nyata berakhiran baris CRLF).
+fixtures/** -text
