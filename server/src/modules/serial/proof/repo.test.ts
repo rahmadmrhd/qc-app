@@ -223,7 +223,11 @@ describe('listProofsByEvents', () => {
       now: NOW,
       lastError: 'Berkas rusak',
     }).run();
-    const map = await listProofsByEvents(env.DB, ['ev1', 'ev2', 'ev3']);
+    const map = await listProofsByEvents(
+      env.DB,
+      ['ev1', 'ev2', 'ev3'],
+      (row) => row.id === 'aaaaaaaa-1',
+    );
     expect([...map.keys()].sort()).toEqual(['ev1', 'ev2']);
     expect(map.get('ev1')).toEqual([
       {
@@ -235,6 +239,7 @@ describe('listProofsByEvents', () => {
         height: 480,
         filename: 'bukti-aaaaaaaa.jpg',
         error: null,
+        canManage: true,
       },
       {
         id: 'bbbbbbbb-2',
@@ -245,11 +250,12 @@ describe('listProofsByEvents', () => {
         height: 480,
         filename: 'bukti-bbbbbbbb.jpg',
         error: 'Berkas rusak',
+        canManage: false,
       },
     ]);
     const serialized = JSON.stringify([...map.values()]);
     expect(serialized).not.toContain('staged');
     expect(serialized).not.toContain('snapshot');
-    expect((await listProofsByEvents(env.DB, [])).size).toBe(0);
+    expect((await listProofsByEvents(env.DB, [], () => true)).size).toBe(0);
   });
 });

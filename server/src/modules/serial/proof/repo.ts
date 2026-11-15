@@ -89,8 +89,8 @@ export function proofFilename(id: string, mime: string): string {
   return `bukti-${id.trim().slice(0, 8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
 }
 
-/** Baris -> DTO (tanpa `staged_name` dan `snapshot_json`). */
-export function toProofDto(row: ProofRow): SerialProofPhotoDto {
+/** Baris -> DTO (tanpa `staged_name` dan `snapshot_json`); `canManage` = pemanggil boleh Coba lagi/Buang foto ini. */
+export function toProofDto(row: ProofRow, canManage: boolean): SerialProofPhotoDto {
   return {
     id: row.id,
     state: row.state,
@@ -100,6 +100,7 @@ export function toProofDto(row: ProofRow): SerialProofPhotoDto {
     height: row.height,
     filename: proofFilename(row.id, row.mime),
     error: row.lastError === '' ? null : row.lastError,
+    canManage,
   };
 }
 
@@ -247,6 +248,7 @@ export function setProofState(db: Preparer, id: string, patch: ProofStatePatch):
 export async function listProofsByEvents(
   db: Preparer,
   eventIds: readonly string[],
+  canManage: (row: ProofRow) => boolean,
 ): Promise<Map<string, SerialProofPhotoDto[]>> {
   const byEvent = new Map<string, SerialProofPhotoDto[]>();
   if (eventIds.length === 0) return byEvent;
@@ -260,8 +262,9 @@ export async function listProofsByEvents(
   for (const raw of rows.results) {
     const row = toRow(raw);
     const list = byEvent.get(row.eventId);
-    if (list) list.push(toProofDto(row));
-    else byEvent.set(row.eventId, [toProofDto(row)]);
+    const dto = toProofDto(row, canManage(row));
+    if (list) list.push(dto);
+    else byEvent.set(row.eventId, [dto]);
   }
   return byEvent;
 }
@@ -284,4 +287,21 @@ export async function listStaleDrafts(
 /** Menghapus baris foto (draft yang disapu/dibuang, atau foto `failed` yang dibuang pelaku). */
 export function deleteProofStmt(db: Preparer, id: string): DbStatement {
   return db.prepare('DELETE FROM serial_proof_photos WHERE id = ?').bind(id);
+}
+
+/** Menghapus draft milik `email` (bersyarat: foto yang sudah diklaim Simpan atau milik orang lain tak terhapus). */
+export function deleteDraftStmt(db: Preparer, id: string, email: string): DbStatement {
+  return db
+    .prepare("DELETE FROM serial_proof_photos WHERE id = ? AND state = 'draft' AND created_by = ?")
+    .bind(id, email);
+}
+
+/** Menghapus foto `failed` (bersyarat: foto yang keburu dicoba ulang/`queued` tak terhapus). */
+export function deleteFailedStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare("DELETE FROM serial_proof_photos WHERE id = ? AND state = 'failed'").bind(id);
+}
+
+/** Penjaga: pernyataan SEBELUMNYA tak mengubah baris -> seluruh `batch()` dibatalkan (`CAS_FAIL_SQL`). */
+export function previousChangedRowGuard(db: Preparer): DbStatement {
+  return db.prepare(`SELECT CASE WHEN ROW_COUNT() = 0 THEN ${CAS_FAIL_SQL} ELSE 1 END AS guard_ok`);
 }

@@ -72,7 +72,7 @@ export async function serialHistory(
     if (caseId !== '') counts.byCase[caseId] = total;
   }
   return {
-    events: await toEventsWithProofs(env, page),
+    events: await toEventsWithProofs(env, page, { user, buId: row.bu_id.trim() }),
     nextCursor: rows.results.length > limit && last ? String(Number(last.seq)) : null,
     counts,
   };

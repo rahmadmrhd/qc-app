@@ -400,6 +400,7 @@ describe('DTO foto bukti', () => {
           height: 480,
           filename: 'bukti-p1.jpg',
           error: 'Berkas rusak',
+          canManage: email === W,
         },
         {
           id: 'p2',
@@ -410,6 +411,7 @@ describe('DTO foto bukti', () => {
           height: 560,
           filename: 'bukti-p2.webp',
           error: null,
+          canManage: email === W,
         },
       ]);
       const noPhoto = await call(email, 'serials.get', { id: 'sn-no' });

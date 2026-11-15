@@ -186,6 +186,7 @@ describe('serialProofs.upload', () => {
   test('DTO tidak membocorkan nama berkas sementara atau snapshot', async () => {
     const dto = await upload();
     expect(Object.keys(dto).sort()).toEqual([
+      'canManage',
       'error',
       'filename',
       'height',

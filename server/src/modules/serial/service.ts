@@ -54,6 +54,7 @@ import {
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
 import { loadCases, type SerialCaseRow } from './case-repo';
+import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listProofsByEvents } from './proof/repo';
 import {
@@ -585,11 +586,14 @@ const PROOF_EVENT_TYPES: readonly string[] = [
 export async function toEventsWithProofs(
   env: Env,
   rows: readonly SerialEventRow[],
+  viewer: { user: UserContext; buId: string },
 ): Promise<SerialEventDto[]> {
   const ids = rows
     .filter((row) => PROOF_EVENT_TYPES.includes(row.type.trim()))
     .map((row) => row.id.trim());
-  const photos = await listProofsByEvents(env.DB, ids);
+  const photos = await listProofsByEvents(env.DB, ids, (proof) =>
+    canManageProof(viewer.user, proof.createdBy, viewer.buId),
+  );
   return rows.map((row) => toEvent(row, photos.get(row.id.trim()) ?? []));
 }
 
@@ -613,7 +617,11 @@ export async function getSerial(
 ): Promise<GetSerialOutput> {
   const serial = await loadSerialDto(env, user, input.id);
   const { events, truncated } = await loadSerialEvents(env.DB, serial.id);
-  return { serial, events: await toEventsWithProofs(env, events), eventsTruncated: truncated };
+  return {
+    serial,
+    events: await toEventsWithProofs(env, events, { user, buId: serial.buId }),
+    eventsTruncated: truncated,
+  };
 }
 
 function encodeSerialCursor(row: { created_at: string; id: string }): string {

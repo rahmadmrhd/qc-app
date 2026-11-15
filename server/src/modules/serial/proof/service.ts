@@ -1,12 +1,12 @@
 import { DEFAULT_PROOF_STAGING_MAX_BYTES } from '@server/config';
 import { writeAudit } from '@server/core/audit';
+import { isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import { findActiveFile } from '@server/modules/files/repo';
 import { readFile } from '@server/modules/files/service';
-import { canActOnAllBus } from '@shared/business-units';
 import type {
   GetSerialProofInput,
   RemoveSerialProofInput,
@@ -18,13 +18,17 @@ import type {
 import { type ImageMime, readImageDimensions } from '@shared/files';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { readableBuIds } from '../access';
+import { canManageProof } from './access';
 import { serialProofJobStmt } from './job';
 import {
   countDraftsOf,
+  deleteDraftStmt,
+  deleteFailedStmt,
   deleteProofStmt,
   findProof,
   insertDraftStmt,
   type ProofRow,
+  previousChangedRowGuard,
   proofFilename,
   setProofState,
   toProofDto,
@@ -129,7 +133,7 @@ export async function uploadProof(
   }
   const row = await findProof(env.DB, id);
   if (!row) throw appError('INTERNAL', 'Foto gagal disimpan. Coba unggah lagi.');
-  return toProofDto(row);
+  return toProofDto(row, true);
 }
 
 /** Isi foto: berkas sementara bila belum `done`, berkas Drive (lewat `readFile`, aturan BU serial) bila `done`. */
@@ -167,14 +171,16 @@ export async function getProof(
 
 /** Pelaku foto (yang menyimpannya) atau pemegang `serial: manage` pada BU serialnya. */
 async function canManageFailed(env: Env, proof: ProofRow, user: UserContext): Promise<boolean> {
-  if (proof.createdBy === user.email) return true;
-  const buId = await serialBuOf(env, proof.serialId);
-  return buId !== '' && canActOnAllBus(user.businessUnits, 'serial', 'manage', [buId]);
+  return canManageProof(user, proof.createdBy, await serialBuOf(env, proof.serialId));
 }
+
+const REMOVE_CONFLICT_MESSAGE = 'Foto yang sudah disimpan tidak dapat dibuang';
 
 /**
  * Membuang foto: hanya `draft` milik sendiri, atau `failed` oleh pelaku/`serial: manage` (satu-satunya penghapusan
- * sesudah Simpan; dicatat di audit). Status lain ditolak.
+ * sesudah Simpan; dicatat di audit). Penghapusan BERSYARAT status pada SQL (bukan hanya pada baris yang dibaca lebih
+ * dulu): foto yang di sela itu diklaim Simpan atau dicoba ulang tidak terhapus (`CONFLICT`), dan berkas sementara
+ * dibuang hanya bila barisnya benar-benar terhapus.
  */
 export async function removeProof(
   env: Env,
@@ -183,32 +189,43 @@ export async function removeProof(
 ): Promise<{ id: string }> {
   const proof = await visibleProof(env, input.id, user);
   if (proof.state === 'draft') {
-    await deleteProofStmt(env.DB, proof.id).run();
+    const result = await deleteDraftStmt(env.DB, proof.id, user.email).run();
+    if ((result.meta?.changes ?? 0) === 0) throw appError('CONFLICT', REMOVE_CONFLICT_MESSAGE);
   } else if (proof.state === 'failed') {
     if (!(await canManageFailed(env, proof, user))) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
-    await env.DB.batch([
-      deleteProofStmt(env.DB, proof.id),
-      writeAudit(env.DB, {
-        ts: nowIso(env),
-        actor: user.email,
-        action: 'serial.proof_remove',
-        target: `serial:${proof.serialId}`,
-        before: {
-          id: proof.id,
-          eventId: proof.eventId,
-          state: proof.state,
-          error: proof.lastError,
-        },
-      }),
-    ]);
+    try {
+      await env.DB.batch([
+        deleteFailedStmt(env.DB, proof.id),
+        previousChangedRowGuard(env.DB),
+        writeAudit(env.DB, {
+          ts: nowIso(env),
+          actor: user.email,
+          action: 'serial.proof_remove',
+          target: `serial:${proof.serialId}`,
+          before: {
+            id: proof.id,
+            eventId: proof.eventId,
+            state: proof.state,
+            error: proof.lastError,
+          },
+        }),
+      ]);
+    } catch (error) {
+      if (isGuardFailure(error)) throw appError('CONFLICT', REMOVE_CONFLICT_MESSAGE);
+      throw error;
+    }
   } else {
-    throw appError('CONFLICT', 'Foto yang sudah disimpan tidak dapat dibuang');
+    throw appError('CONFLICT', REMOVE_CONFLICT_MESSAGE);
   }
   if (proof.stagedName !== '') await storeOf(env).remove(proof.stagedName);
   return { id: proof.id };
 }
 
-/** Coba lagi: hanya `failed` yang berkas sementaranya masih ada; kembali `queued` bersama job baru dalam satu batch. */
+/**
+ * Coba lagi: hanya `failed` yang berkas sementaranya masih ada (diperiksa dengan `stat`, tanpa membaca isi); kembali
+ * `queued` bersama job baru dalam satu batch yang dijaga (`ROW_COUNT`): dua "Coba lagi" serentak hanya memasang SATU
+ * job, yang kalah dijawab `CONFLICT`.
+ */
 export async function retryProof(
   env: Env,
   input: RetrySerialProofInput,
@@ -219,24 +236,32 @@ export async function retryProof(
     throw appError('CONFLICT', 'Hanya foto yang gagal diproses yang dapat dicoba lagi');
   }
   if (!(await canManageFailed(env, proof, user))) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
-  const staged = proof.stagedName === '' ? null : await storeOf(env).read(proof.stagedName);
+  const staged = proof.stagedName === '' ? null : await storeOf(env).stat(proof.stagedName);
   if (!staged) {
     throw appError(
       'CONFLICT',
       'Berkas sementara foto sudah tidak ada, jadi tidak bisa diproses ulang. Buang foto ini.',
     );
   }
-  await env.DB.batch([
-    setProofState(env.DB, proof.id, {
-      state: 'queued',
-      expectState: 'failed',
-      now: nowIso(env),
-      attempts: 0,
-      lastError: '',
-    }),
-    serialProofJobStmt(env, proof.id),
-  ]);
+  try {
+    await env.DB.batch([
+      setProofState(env.DB, proof.id, {
+        state: 'queued',
+        expectState: 'failed',
+        now: nowIso(env),
+        attempts: 0,
+        lastError: '',
+      }),
+      previousChangedRowGuard(env.DB),
+      serialProofJobStmt(env, proof.id),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) {
+      throw appError('CONFLICT', 'Foto ini sudah dicoba lagi atau berubah status. Muat ulang.');
+    }
+    throw error;
+  }
   const row = await findProof(env.DB, proof.id);
   if (!row) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
-  return toProofDto(row);
+  return toProofDto(row, true);
 }

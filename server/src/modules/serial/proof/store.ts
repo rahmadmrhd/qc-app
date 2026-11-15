@@ -13,8 +13,17 @@ export interface ProofStore {
   write(name: string, bytes: Uint8Array): Promise<void>;
   /** Isi berkas, atau `null` bila tidak ada. */
   read(name: string): Promise<Uint8Array | null>;
+  /** Ukuran berkas (byte) tanpa membacanya; `null` bila tidak ada. */
+  stat(name: string): Promise<{ size: number } | null>;
   /** Menghapus berkas; tidak melempar bila sudah tidak ada. */
   remove(name: string): Promise<void>;
+  /**
+   * Semua berkas di folder (nama apa adanya, termasuk sisa `.partial`) beserta waktu ubah. Hanya untuk penyapu berkas
+   * yatim; nama dari sini TIDAK boleh diteruskan ke `read`/`write` kecuali berpola UUID (`removeOrphan` menerimanya).
+   */
+  list(): Promise<{ name: string; mtimeMs: number; size: number }[]>;
+  /** Menghapus berkas hasil `list()` (nama UUID atau sisa `.partial` berpola buatan server); nama lain ditolak. */
+  removeOrphan(name: string): Promise<void>;
   /** Total ukuran seluruh berkas di folder (byte), termasuk sisa `.partial`; folder belum ada = 0. */
   totalBytes(): Promise<number>;
 }
@@ -29,6 +38,13 @@ export function newStagedName(): string {
 /** True bila `name` berpola nama buatan server (UUID huruf kecil). */
 export function isStagedName(name: string): boolean {
   return NAME_PATTERN.test(name);
+}
+
+const PARTIAL_PATTERN = /^[0-9a-f-]{36}\.[0-9a-f-]{36}\.partial$/;
+
+/** Sisa penulisan atomik yang terputus: `<uuid>.<uuid>.partial`. */
+export function isPartialName(name: string): boolean {
+  return PARTIAL_PATTERN.test(name);
 }
 
 function assertName(name: string): void {
@@ -63,8 +79,43 @@ export function createProofStore(dir: string): ProofStore {
         throw error;
       }
     },
+    async stat(name) {
+      assertName(name);
+      try {
+        const info = await stat(join(dir, name));
+        return info.isFile() ? { size: info.size } : null;
+      } catch (error) {
+        if (isMissing(error)) return null;
+        throw error;
+      }
+    },
     async remove(name) {
       assertName(name);
+      await rm(join(dir, name), { force: true });
+    },
+    async list() {
+      let names: string[];
+      try {
+        names = await readdir(dir);
+      } catch (error) {
+        if (isMissing(error)) return [];
+        throw error;
+      }
+      const out: { name: string; mtimeMs: number; size: number }[] = [];
+      for (const name of names) {
+        try {
+          const info = await stat(join(dir, name));
+          if (info.isFile()) out.push({ name, mtimeMs: info.mtimeMs, size: info.size });
+        } catch (error) {
+          if (!isMissing(error)) throw error;
+        }
+      }
+      return out;
+    },
+    async removeOrphan(name) {
+      if (!isStagedName(name) && !isPartialName(name)) {
+        throw new Error('Nama berkas sementara tidak valid');
+      }
       await rm(join(dir, name), { force: true });
     },
     async totalBytes() {

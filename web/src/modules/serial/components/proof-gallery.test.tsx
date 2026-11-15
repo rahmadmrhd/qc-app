@@ -21,6 +21,7 @@ const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
   height: 10,
   filename: `bukti-${id.slice(0, 8)}.webp`,
   error: null,
+  canManage: true,
   ...over,
 });
 

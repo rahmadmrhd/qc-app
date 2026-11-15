@@ -1420,6 +1420,8 @@ export interface SerialProofPhotoDto {
   filename: string;
   /** Alasan singkat bila `failed`; selain itu `null`. */
   error: string | null;
+  /** Pemanggil boleh Coba lagi/Buang foto ini (pelaku yang menyimpannya, atau `serial: manage` pada BU serialnya). */
+  canManage: boolean;
 }
 /** Unggah foto bukti (multipart; gambar sudah dikecilkan di browser). */
 export interface UploadSerialProofInput {
