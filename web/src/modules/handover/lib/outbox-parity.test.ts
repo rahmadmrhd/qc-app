@@ -529,6 +529,57 @@ describe('skenario respons: keadaan akhir sama', () => {
   }
 });
 
+describe('entri tanpa task tujuan', () => {
+  test.each(['check', 'comment'] as const)(
+    '%s dengan taskId kosong: alasan identik, keadaan akhir sesuai peran, entri di belakangnya tetap terkirim',
+    async (kind) => {
+      const bad = { ...entries[kind](), id: 'kosong', taskId: '', at: Date.now() } as OutboxEntry;
+      const good = { ...entries.check(), id: 'baik', taskId: 'tbaik', at: Date.now() + 1 };
+      const respond = responderFor(jsonBody(200, {}));
+
+      // Halaman: dibuang dan diumumkan lewat `result.rejected`.
+      resetOutboxEnv();
+      resetFlushForTests();
+      await enqueueOutbox(OWNER, bad);
+      await enqueueOutbox(OWNER, good);
+      const pageFetch = vi.fn(async (url: string, init: RequestInit) => respond(url, init));
+      vi.stubGlobal('fetch', pageFetch);
+      const result = await flushOutbox({
+        owner: OWNER,
+        now: () => Date.now(),
+        send: sendOutboxEntry,
+        isOwnerActive: () => true,
+      });
+      vi.unstubAllGlobals();
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0]?.entry.id).toBe('kosong');
+      expect(await readOutboxRecords()).toEqual([]);
+      const pageUrls = pageFetch.mock.calls.map(([url]) => url);
+
+      // Service worker: ditandai rejected dengan alasan yang sama; yang baik terkirim.
+      resetOutboxEnv();
+      resetFlushForTests();
+      await enqueueOutbox(OWNER, bad);
+      await enqueueOutbox(OWNER, good);
+      const sandbox = load(respond);
+      expect(await swThrew(sandbox)).toBe(false);
+      const left = (await readOutboxRecords()) ?? [];
+      expect(left).toHaveLength(1);
+      expect(left[0]?.entry).toMatchObject({
+        id: 'kosong',
+        state: 'rejected',
+        reason: result.rejected[0]?.reason,
+      });
+      expect(result.rejected[0]?.reason).toBe('Entri tidak memiliki task tujuan');
+      const swUrls = (sandbox.fetch.mock.calls as Array<[string, RequestInit]>)
+        .map(([url]) => url)
+        .filter((url) => !url.endsWith('/api/v1/me'));
+      expect(swUrls).toEqual(pageUrls);
+      expect(swUrls).toEqual(['/api/v1/handovers/tbaik/checks']);
+    },
+  );
+});
+
 describe('siklus penuh', () => {
   test('rekaman ditandai SW lolos isOutboxEntry dan diumumkan halaman', async () => {
     await seed('comment');

@@ -106,6 +106,12 @@ const REJECTION_CODES: ReadonlySet<string> = new Set([
   'VALIDATION',
 ]);
 
+/**
+ * Alasan penolakan entri `check`/`comment` tanpa `taskId` (keputusan pemilik 2026-11-15). Teks yang sama dipakai
+ * `sync-sw.js` (dijaga `outbox-parity.test.ts`).
+ */
+const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';
+
 /** Penanda "mengirim": centang per butir (per tab), komentar dan task baru per entri (disiarkan ke tab lain). */
 function markSending(entry: OutboxEntry): () => void {
   return entry.kind === 'check'
@@ -160,6 +166,14 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
     );
     if (!next) break;
     tried.add(next.id);
+    // Tanpa task tujuan (`taskId` kosong) permintaan tak dapat dibentuk: ditolak (bukan menahan antrean), tanpa `send`.
+    // Diumumkan hanya bila penghapusan dari toko terkonfirmasi (sama dengan entri `rejected` dari service worker).
+    if (next.kind !== 'create' && next.taskId === '') {
+      if (await removeOutboxEntries(owner, [next.id])) {
+        result.rejected.push({ entry: next, reason: NO_TASK_REASON });
+      }
+      continue;
+    }
     // Ditandai "mengirim" sampai SESUDAH entri dihapus (semua jalur), supaya penanda tak berkedip ke "Belum terkirim".
     const end = markSending(next);
     try {

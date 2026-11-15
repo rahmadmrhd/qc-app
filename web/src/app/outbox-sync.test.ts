@@ -756,3 +756,26 @@ describe('Background Sync (Tahap D)', () => {
     expect(mocks.bridgeStop).toHaveBeenCalledTimes(1);
   });
 });
+
+test('entri tanpa task tujuan: toast centang digabung, komentar bertahan dengan "Salin teks"', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  await queue(0, { taskId: '' });
+  await enqueueOutbox(OWNER, { ...commentEntry(), taskId: '', body: 'isi tanpa tujuan' });
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.api).not.toHaveBeenCalled();
+  const check = mocks.error.mock.calls.find((c) => String(c[0]).includes('centang'));
+  expect(check?.[0]).toBe(
+    '1 perubahan centang tidak dapat dikirim: Entri tidak memiliki task tujuan',
+  );
+  const comment = mocks.error.mock.calls.find((c) => String(c[0]).includes('Komentar'));
+  expect(String(comment?.[0])).toContain('Entri tidak memiliki task tujuan');
+  expect(comment?.[1]).toMatchObject({
+    duration: Number.POSITIVE_INFINITY,
+    action: { label: 'Salin teks' },
+  });
+  comment?.[1].action.onClick();
+  expect(writeText).toHaveBeenCalledWith('isi tanpa tujuan');
+  expect(await readOutboxRecords()).toEqual([]);
+});

@@ -309,6 +309,27 @@ describe('pemilik sesi', () => {
     expect(await stored()).toEqual(before);
   });
 
+  test.each([
+    ['badan bukan JSON', () => new Response('<html>portal</html>', { status: 200 })],
+    ['badan kosong', () => new Response('', { status: 200 })],
+    [
+      'badan gagal dibaca',
+      () =>
+        ({
+          ok: true,
+          status: 200,
+          text: () => Promise.reject(new TypeError('terputus')),
+        }) as unknown as Response,
+    ],
+  ])('/me 2xx berbadan tak terbaca melempar dan entri tetap (%s)', async (_name, meResponse) => {
+    await seed(checkEntry('c1'));
+    const before = await stored();
+    const sandbox = load({ respond: (url) => (url.endsWith('/me') ? meResponse() : ok()) });
+    await expect(fire(sandbox)).rejects.toThrow();
+    expect(sends(sandbox)).toEqual([]);
+    expect(await stored()).toEqual(before);
+  });
+
   test('toko dikosongkan (keluar) lalu sync: tidak ada fetch sama sekali, termasuk /me', async () => {
     await seed(checkEntry('c1'));
     await seed(commentEntry('ko'));
@@ -466,6 +487,37 @@ describe('pengiriman', () => {
     // Penolakan tidak menghentikan putaran: kedua entri dicoba.
     expect(sends(sandbox)).toHaveLength(2);
     expect(sandbox.posted.filter((m) => m.type === 'changed')).toHaveLength(2);
+  });
+
+  test('check dan comment tanpa taskId ditandai rejected tanpa dikirim; antrean di belakangnya tetap terkirim', async () => {
+    await seed(checkEntry('c-kosong', { taskId: '', at: NOW + 1 }));
+    await seed(commentEntry('k-kosong', { taskId: '', at: NOW + 2 }));
+    await seed(checkEntry('c-baik', { taskId: 'tbaik', at: NOW + 3 }));
+    await seed(createEntry('cr', { at: NOW + 4 }));
+    const sandbox = load();
+    await fire(sandbox);
+    expect(sends(sandbox).map(([url]) => url)).toEqual([
+      '/api/v1/handovers/tbaik/checks',
+      '/api/v1/handovers/batch',
+    ]);
+    const left = await stored();
+    expect(left.map((r) => (r.entry as { id: string }).id).sort()).toEqual([
+      'c-kosong',
+      'k-kosong',
+    ]);
+    for (const record of left) {
+      expect(record.entry).toMatchObject({
+        state: 'rejected',
+        reason: 'Entri tidak memiliki task tujuan',
+      });
+      expect(isOutboxEntry(record.entry)).toBe(true);
+    }
+    expect(sandbox.windows[0]?.postMessage).toHaveBeenCalledWith({
+      type: 'qc-outbox-synced',
+      taskIds: ['tbaik'],
+      created: true,
+      rejected: 2,
+    });
   });
 
   test('kedaluwarsa menandai rejected', async () => {

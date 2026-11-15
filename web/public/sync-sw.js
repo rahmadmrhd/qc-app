@@ -43,6 +43,8 @@
   /** Hanya penolakan nyata dari server yang menandai entri (sama dengan `REJECTION_CODES` di `outbox-flush.ts`). */
   const REJECTION_CODES = ['CONFLICT', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION'];
   const EXPIRED_REASON = 'Kedaluwarsa: lebih dari 24 jam sejak dibuat';
+  /** Sama dengan `NO_TASK_REASON` di `outbox-flush.ts` (dijaga `outbox-parity.test.ts`). */
+  const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';
   const OPEN_TIMEOUT_MS = 10000;
 
   // --- Bentuk entri (padanan `isOutboxEntry` di `outbox.ts`) ---------------------------------------------------
@@ -290,11 +292,10 @@
     return details.length > 0 ? `${error.message}: ${details.join(', ')}` : error.message;
   }
 
-  /** Permintaan menurut jenis entri (padanan `sendOutboxEntry`); `null` = entri tak bisa dirakit (id kosong). */
+  /** Permintaan menurut jenis entri (padanan `sendOutboxEntry`); entri `check`/`comment` tanpa `taskId` ditolak lebih dulu. */
   function requestFor(entry) {
     switch (entry.kind) {
       case 'check':
-        if (entry.taskId === '') return null;
         return {
           method: 'PUT',
           path: `/handovers/${encodeURIComponent(entry.taskId)}/checks`,
@@ -306,7 +307,6 @@
           },
         };
       case 'comment':
-        if (entry.taskId === '') return null;
         return {
           method: 'POST',
           path: `/handovers/${encodeURIComponent(entry.taskId)}/comments`,
@@ -341,7 +341,6 @@
    */
   async function sendEntry(entry) {
     const request = requestFor(entry);
-    if (request === null) return { kind: 'hold' };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
     let response;
@@ -405,6 +404,8 @@
     }
     if (!response.ok) return null;
     const body = parseJson(text);
+    // 2xx tetapi badan bukan JSON (halaman pemeliharaan/proksi): bukan bukti sesi tak sah; coba lagi nanti.
+    if (body === undefined) throw new Error('qc-outbox: /me berbadan tak terbaca');
     return body && typeof body === 'object' && isString(body.email) ? body.email : null;
   }
 
@@ -481,6 +482,14 @@
         const entry = record.entry;
         if (isExpired(entry, Date.now())) {
           if (await markRejected(db, record.key, EXPIRED_REASON)) {
+            summary.rejected += 1;
+            post({ type: 'changed' });
+          }
+          continue;
+        }
+        // Tanpa task tujuan: ditolak (bukan menahan antrean), sama dengan penguras halaman.
+        if (entry.kind !== 'create' && entry.taskId === '') {
+          if (await markRejected(db, record.key, NO_TASK_REASON)) {
             summary.rejected += 1;
             post({ type: 'changed' });
           }

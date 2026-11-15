@@ -576,3 +576,32 @@ test('D: penghapusan toko gagal untuk entri rejected: tak diumumkan (menunggu pu
   expect(second.rejected.map((r) => r.entry.id)).toEqual(['k-gagal']);
   expect(send).not.toHaveBeenCalled();
 });
+
+// --- Keputusan pemilik: entri tanpa task tujuan = penolakan ----------------------------------------------------
+test('check dan comment tanpa taskId ditolak tanpa send dan dibuang; antrean di belakangnya tetap terkirim', async () => {
+  await queue(0, { taskId: '' });
+  await enqueueOutbox(OWNER, commentInput({ taskId: '', at: NOW + 1 }));
+  await queue(1, { taskId: 'tbaik', at: NOW + 2 });
+  await enqueueOutbox(OWNER, createInput({ at: NOW + 3 }));
+  const send = vi.fn(async (entry: OutboxEntry) =>
+    entry.kind === 'create' ? [makeHandover({ id: 'n1' })] : makeHandover({ id: taskOf(entry) }),
+  );
+  const result = await flushOutbox(deps({ send }));
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send.mock.calls.map(([entry]) => entry.kind)).toEqual(['check', 'create']);
+  expect(result.stoppedBy).toBe('none');
+  expect(result.rejected.map((r) => [r.entry.kind, r.reason])).toEqual([
+    ['check', 'Entri tidak memiliki task tujuan'],
+    ['comment', 'Entri tidak memiliki task tujuan'],
+  ]);
+  expect(await readOutboxRecords()).toEqual([]);
+});
+
+test('entri tanpa taskId: penghapusan toko gagal = tidak diumumkan dan tidak dikirim', async () => {
+  await enqueueOutbox(OWNER, commentInput({ taskId: '' }));
+  vi.spyOn(deviceDb, 'deleteOutboxRecords').mockResolvedValueOnce(false);
+  const send = vi.fn();
+  const result = await flushOutbox(deps({ send }));
+  expect(send).not.toHaveBeenCalled();
+  expect(result.rejected).toEqual([]);
+});
