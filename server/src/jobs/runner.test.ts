@@ -317,7 +317,7 @@ describe('penjadwal: ringkasan stok stiker menipis (4a)', () => {
     try {
       await waitFor(async () => sent.length === 1);
       await sleep(80);
-      expect(sent).toEqual(['Stok stiker menipis (1)']);
+      expect(sent).toEqual(['Stok stiker: 1 habis']);
     } finally {
       await stop();
     }

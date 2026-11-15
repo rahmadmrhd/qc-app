@@ -3,18 +3,22 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  BellRing,
   Boxes,
   Building2,
   ClipboardList,
   Contact,
   FileBadge,
+  FileText,
   History,
   House,
   Images,
+  ListChecks,
   Lock,
   MapPin,
   Package,
   QrCode,
+  Settings,
   Settings2,
   Shapes,
   ShieldCheck,
@@ -22,7 +26,7 @@ import {
   Tags,
   Users,
 } from 'lucide-react';
-import { canAnywhere } from '@/modules/auth/permissions';
+import { canAnywhere, canManageSerialSettings } from '@/modules/auth/permissions';
 
 export interface NavPermission {
   module: ModuleKey;
@@ -37,10 +41,14 @@ export interface NavItem {
   icon: LucideIcon;
   /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
   excludes?: LinkProps['to'][];
+  /** Rute lain yang membuat item ini aktif (halaman yang dibuka dari item ini tetapi bukan di bawah `to`). */
+  alsoActiveOn?: LinkProps['to'][];
   /** Satu izin, atau **daftar** (salah satu cukup). */
   permission?: NavPermission | readonly NavPermission[];
   /** Hanya tampil di aplikasi desktop (jembatan `window.qcBridge` ada). */
   desktopOnly?: boolean;
+  /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
+  visible?: (me: MeDto) => boolean;
 }
 
 export interface NavGroup {
@@ -117,6 +125,39 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Serial Number',
+    items: [
+      {
+        label: 'Daftar Serial Number',
+        to: '/serial',
+        icon: ListChecks,
+        excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
+        permission: [
+          { module: 'serial', level: 'view' },
+          { module: 'serialservice', level: 'view' },
+        ],
+      },
+      {
+        label: 'Laporan',
+        to: '/serial/reports',
+        icon: FileText,
+        // Halaman Lapor Rusak dibuka dari tombol di daftar Laporan (bukan menu sendiri), jadi menu ini yang menyala.
+        alsoActiveOn: ['/serial/report'],
+        permission: [
+          { module: 'serial', level: 'view' },
+          { module: 'serialservice', level: 'view' },
+        ],
+      },
+      {
+        label: 'Pengaturan',
+        to: '/serial/settings',
+        icon: Settings,
+        permission: { module: 'serial', level: 'manage' },
+        visible: canManageSerialSettings,
+      },
+    ],
+  },
+  {
     label: 'Stiker',
     items: [
       {
@@ -188,6 +229,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: History,
         permission: { module: 'access', level: 'view' },
       },
+      {
+        label: 'Status Push',
+        to: '/access/push',
+        icon: BellRing,
+        permission: { module: 'access', level: 'view' },
+      },
     ],
   },
 ];
@@ -197,6 +244,7 @@ export function isNavItemActive(
   item: NavItem,
   matches: (to: string, fuzzy: boolean) => boolean,
 ): boolean {
+  if ((item.alsoActiveOn ?? []).some((to) => matches(to as string, true))) return true;
   if (!matches(item.to as string, item.to !== '/')) return false;
   return !(item.excludes ?? []).some((to) => matches(to as string, true));
 }
@@ -212,6 +260,7 @@ export function visibleNavGroups(
       ...group,
       items: group.items.filter((item) => {
         if (item.desktopOnly && !desktop) return false;
+        if (item.visible && !item.visible(me)) return false;
         if (!item.permission) return true;
         const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
           ? item.permission

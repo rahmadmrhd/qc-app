@@ -15,6 +15,8 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -24,6 +26,8 @@ beforeEach(() => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [

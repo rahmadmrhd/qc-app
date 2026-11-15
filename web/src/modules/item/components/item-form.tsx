@@ -7,9 +7,10 @@ import type {
   StickerTypeDto,
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
@@ -143,6 +144,7 @@ export function ItemForm({
       await onSubmit(itemFormSchema.parse(value));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   // Merk yang baru dibuat lewat dialog langsung bisa dipilih, sebelum daftar merk dari server dimuat ulang.
   const [createdBrands, setCreatedBrands] = useState<readonly BrandDto[]>([]);

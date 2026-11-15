@@ -1,7 +1,8 @@
 import type { PostelSettingsDto, UserDto } from '@shared/contract';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { pickLink } from '@/test/link-field';
 import { PostelAlertSettings, type PostelAlertSettingsProps } from './postel-alert-settings';
 
@@ -25,6 +26,7 @@ function user(email: string, name: string, status: UserDto['status'] = 'active')
     status,
     assignments: [],
     buAssignments: [],
+    sharedAccount: false,
     createdAt: '',
     updatedAt: '',
     updatedBy: '',
@@ -41,6 +43,22 @@ function renderSettings(props: Partial<PostelAlertSettingsProps> = {}) {
 
 const save = () =>
   userEvent.click(screen.getByRole('button', { name: 'Simpan peringatan Postel' }));
+
+beforeEach(() => {
+  resetUnsavedChangesForTests();
+});
+
+test('mengubah isian mendaftarkan perubahan belum disimpan; mengembalikannya ke nilai awal melepas', async () => {
+  renderSettings();
+  expect(hasUnsavedChanges()).toBe(false);
+  const repeat = screen.getByLabelText('Ulangi setiap (hari)');
+  await userEvent.clear(repeat);
+  await userEvent.type(repeat, '14');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(repeat);
+  await userEvent.type(repeat, '7');
+  expect(hasUnsavedChanges()).toBe(false);
+});
 
 test('menampilkan nilai awal dari settings', () => {
   renderSettings();
@@ -216,4 +234,13 @@ test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async 
   await save();
   const message = await screen.findByText('Pengingat tidak boleh kembar');
   expect(third.getAttribute('aria-describedby')).toContain(message.id);
+});
+
+test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
+  renderSettings();
+  expect(hasUnsavedChanges()).toBe(false);
+  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
+  expect(hasUnsavedChanges()).toBe(true);
+  await userEvent.clear(screen.getByLabelText('Email lain'));
+  expect(hasUnsavedChanges()).toBe(false);
 });

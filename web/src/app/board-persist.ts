@@ -1,0 +1,314 @@
+import type { HandoverDto } from '@shared/contract';
+import type { HandoverStatus } from '@shared/handover';
+import type { QueryClient } from '@tanstack/react-query';
+import {
+  clearBoardStores,
+  type DeviceRecord,
+  deleteRecords,
+  readAllRecords,
+  writeRecords,
+} from '@/lib/device-db';
+import { getSession } from '@/modules/auth/session';
+import type { BoardColumnData } from '@/modules/handover/lib/board-cache';
+import {
+  BOARD_STORE_LIMITS,
+  isBoardQueryKey,
+  limitColumnData,
+  parseBoardQueryKey,
+} from '@/modules/handover/lib/board-snapshot';
+import { handoverKeys } from '@/modules/handover/queries';
+
+/** Versi bentuk rekaman; rekaman berversi lain dibuang saat pemulihan. */
+export const BOARD_STORE_VERSION = 1;
+/** Batas baca IndexedDB sebelum router dibuat; hasil yang terlambat tidak diterapkan. */
+export const BOARD_RESTORE_TIMEOUT_MS = 1500;
+/** Batas menunggu pembersihan toko saat keluar; lewat dari ini keluar tetap dilanjutkan (tanpa galat). */
+export const BOARD_CLEAR_TIMEOUT_MS = 1500;
+/** Penundaan penggabungan tulis setelah sukses query. */
+export const BOARD_SAVE_DELAY_MS = 1500;
+
+interface ColumnRecord extends DeviceRecord {
+  data: BoardColumnData;
+}
+interface TaskRecord extends DeviceRecord {
+  locationIds: string[];
+  dto: HandoverDto;
+}
+
+interface Pending {
+  queryKey: readonly unknown[];
+  data: unknown;
+  savedAt: number;
+}
+
+// Keadaan modul: `generation` naik tiap `clearBoardStore` (keluar eksplisit) sehingga tulis yang sedang berjalan
+// atau terjadwal milik sesi lama tidak pernah menulis sesudahnya. `pending` dibagi semua instance.
+let generation = 0;
+const pending = new Map<string, Pending>();
+
+const columnKey = (owner: string, locationIds: readonly string[], status: string) =>
+  `${owner}|${[...locationIds].sort().join(',')}|${status}`;
+const taskKey = (owner: string, id: string) => `${owner}|${id}`;
+
+/** Sisa kunci rekaman setelah awalan `owner|` (pemilik dibandingkan lewat kolom `owner`, bukan awalan saja). */
+function keyRest(record: DeviceRecord): string | null {
+  const prefix = `${record.owner}|`;
+  return record.key.startsWith(prefix) ? record.key.slice(prefix.length) : null;
+}
+
+function isOwnedAndCurrent(record: DeviceRecord, owner: string): boolean {
+  return record.owner === owner && record.v === BOARD_STORE_VERSION;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Pemeriksaan bentuk ringan data kolom tersimpan; rekaman rusak dibuang, bukan dipasang (UI bisa melempar). */
+function isColumnData(data: unknown): data is BoardColumnData {
+  if (!isObject(data) || !Array.isArray(data.pages) || !Array.isArray(data.pageParams))
+    return false;
+  if (data.pages.length !== data.pageParams.length) return false;
+  return data.pages.every(
+    (page) =>
+      isObject(page) &&
+      Array.isArray(page.items) &&
+      page.items.every(isHandoverShape) &&
+      typeof page.total === 'number' &&
+      (page.nextCursor === null || typeof page.nextCursor === 'string'),
+  );
+}
+
+/** Bentuk minimum task yang dibaca UI (kartu papan dan detail); dipakai bersama oleh kolom dan detail. */
+function isHandoverShape(value: unknown): value is HandoverDto {
+  return (
+    isObject(value) &&
+    typeof value.id === 'string' &&
+    typeof value.locationId === 'string' &&
+    Array.isArray(value.checklist) &&
+    Array.isArray(value.comments)
+  );
+}
+
+function isTaskDto(dto: unknown, id: string): dto is HandoverDto {
+  return isHandoverShape(dto) && dto.id === id;
+}
+
+interface RestorePlan {
+  columns: { ref: { locationIds: string[]; status: HandoverStatus }; record: ColumnRecord }[];
+  tasks: { id: string; record: TaskRecord }[];
+}
+
+/** Memilah rekaman: yang sah dipasang, sisanya (pemilik lain, versi lain, bentuk rusak) dibuang dari toko. */
+function planRestore(owner: string, columns: DeviceRecord[], tasks: DeviceRecord[]): RestorePlan {
+  const plan: RestorePlan = { columns: [], tasks: [] };
+  const junkColumns: string[] = [];
+  const junkTasks: string[] = [];
+  for (const record of columns as ColumnRecord[]) {
+    const rest = isOwnedAndCurrent(record, owner) ? keyRest(record) : null;
+    const cut = rest?.lastIndexOf('|') ?? -1;
+    const ref =
+      rest !== null && cut >= 0
+        ? parseBoardQueryKey([
+            ...handoverKeys.boards,
+            rest.slice(0, cut) === '' ? [] : rest.slice(0, cut).split(','),
+            rest.slice(cut + 1),
+          ])
+        : null;
+    if (ref?.kind === 'column' && isColumnData(record.data)) {
+      plan.columns.push({ ref: { locationIds: ref.locationIds, status: ref.status }, record });
+    } else {
+      junkColumns.push(record.key);
+    }
+  }
+  for (const record of tasks as TaskRecord[]) {
+    const id = isOwnedAndCurrent(record, owner) ? keyRest(record) : null;
+    if (
+      id &&
+      Array.isArray(record.locationIds) &&
+      record.locationIds.every((l) => typeof l === 'string') &&
+      isTaskDto(record.dto, id)
+    ) {
+      plan.tasks.push({ id, record });
+    } else {
+      junkTasks.push(record.key);
+    }
+  }
+  void deleteRecords('columns', junkColumns);
+  void deleteRecords('tasks', junkTasks);
+  return plan;
+}
+
+/**
+ * Memasang papan dan detail task tersimpan ke cache SEBELUM router dibuat (hanya untuk sesi yang sah; `owner` =
+ * email hasil GET /api/v1/me). Rekaman milik pemilik lain, berversi lain, atau berbentuk rusak dibuang. Dipasang manual
+ * dengan `updatedAt` = `savedAt` asli, jadi label "data terakhir" jujur dan penyimpan tidak menulis ulang dengan waktu
+ * baru. Dibalap dengan batas waktu: bila terlambat, data TIDAK dipasang tetapi pembacaan selesai di latar dan
+ * pembuangan rekaman yang tak sah tetap berjalan. Tidak pernah menolak.
+ */
+export async function restoreBoardCache(
+  queryClient: QueryClient,
+  owner: string,
+  options: { timeoutMs?: number } = {},
+): Promise<number> {
+  try {
+    const startedAt = generation;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), options.timeoutMs ?? BOARD_RESTORE_TIMEOUT_MS);
+    });
+    const read = Promise.all([readAllRecords('columns'), readAllRecords('tasks')]).then(
+      ([columns, tasks]) => planRestore(owner, columns, tasks),
+    );
+    const plan = await Promise.race([read, timeout]);
+    clearTimeout(timer);
+    if (!plan || startedAt !== generation) return 0;
+
+    let restored = 0;
+    for (const { ref, record } of plan.columns) {
+      const key = handoverKeys.column(ref.locationIds, ref.status);
+      if (queryClient.getQueryData(key) !== undefined) continue;
+      queryClient.setQueryData(key, record.data, { updatedAt: record.savedAt });
+      restored++;
+    }
+    for (const { id, record } of plan.tasks) {
+      const key = handoverKeys.one(id, record.locationIds);
+      if (queryClient.getQueryData(key) !== undefined) continue;
+      queryClient.setQueryData(key, record.dto, { updatedAt: record.savedAt });
+      restored++;
+    }
+    return restored;
+  } catch {
+    return 0;
+  }
+}
+
+async function flushPending(): Promise<void> {
+  const batch = [...pending.values()];
+  pending.clear();
+  const owner = getSession().email;
+  if (!owner || batch.length === 0) return;
+  const mine = generation;
+  const guard = () => generation === mine && getSession().email === owner;
+
+  const columns: ColumnRecord[] = [];
+  const tasks: TaskRecord[] = [];
+  for (const entry of batch) {
+    const ref = parseBoardQueryKey(entry.queryKey);
+    if (!ref || entry.data === undefined) continue;
+    if (ref.kind === 'column') {
+      columns.push({
+        key: columnKey(owner, ref.locationIds, ref.status),
+        owner,
+        v: BOARD_STORE_VERSION,
+        savedAt: entry.savedAt,
+        data: limitColumnData(entry.data as BoardColumnData, BOARD_STORE_LIMITS.tasksPerColumn),
+      });
+    } else {
+      tasks.push({
+        key: taskKey(owner, ref.id),
+        owner,
+        v: BOARD_STORE_VERSION,
+        savedAt: entry.savedAt,
+        locationIds: ref.locationIds,
+        dto: entry.data as HandoverDto,
+      });
+    }
+  }
+  try {
+    if (columns.length > 0) {
+      await writeRecords('columns', columns, BOARD_STORE_LIMITS.columns, guard);
+    }
+    if (tasks.length > 0) {
+      await writeRecords('tasks', tasks, BOARD_STORE_LIMITS.detailTasks, guard);
+    }
+  } catch {
+    // writeRecords tidak pernah menolak; jaga-jaga agar penyimpan tak pernah melempar.
+  }
+}
+
+/**
+ * Menyimpan papan dan detail task ke IndexedDB dari sukses query non-`manual` (ditunda dan digabung; juga saat tab
+ * disembunyikan/ditutup). Penulisan pemulihan dan patch optimistis bersifat manual, jadi tidak pernah ditulis ulang.
+ */
+export function startBoardPersistence(queryClient: QueryClient): {
+  flush(): Promise<void>;
+  stop(): void;
+} {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const clearTimer = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
+  const flush = () => {
+    clearTimer();
+    return flushPending();
+  };
+  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated') return;
+    const { action, query } = event;
+    if (action.type !== 'success' || action.manual) return;
+    if (!isBoardQueryKey(query.queryKey)) return;
+    pending.set(JSON.stringify(query.queryKey), {
+      queryKey: query.queryKey,
+      data: query.state.data,
+      savedAt: query.state.dataUpdatedAt,
+    });
+    if (timer === null) timer = setTimeout(() => void flush(), BOARD_SAVE_DELAY_MS);
+  });
+  const onHide = () => {
+    if (document.visibilityState === 'hidden') void flush();
+  };
+  const onPageHide = () => void flush();
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onPageHide);
+  return {
+    flush,
+    stop() {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
+      clearTimer();
+    },
+  };
+}
+
+/**
+ * Tab lain keluar (siaran `qc-session`): tulis yang berjalan atau tertunda dibatalkan tanpa menyentuh toko (generation
+ * naik); pemanggil juga menghentikan penyimpan lewat `stop()`.
+ */
+export function discardBoardWrites(): void {
+  generation += 1;
+  pending.clear();
+}
+
+/** Keluar eksplisit: tulis yang berjalan atau tertunda dibatalkan (generation naik), lalu toko dikosongkan. */
+export async function clearBoardStore(): Promise<void> {
+  generation += 1;
+  pending.clear();
+  try {
+    await clearBoardStores();
+  } catch {
+    // Tidak pernah menolak: keluar tak boleh terhambat.
+  }
+}
+
+/**
+ * `clearBoardStore` dengan batas waktu: IndexedDB yang macet tak boleh menggantung keluar (layar pengguna lama tetap
+ * tampil). Timeout bukan galat; tulis lama tetap tertahan oleh `generation` yang sudah naik.
+ */
+export async function clearBoardStoreWithin(timeoutMs = BOARD_CLEAR_TIMEOUT_MS): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([clearBoardStore(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function resetBoardPersistForTests(): void {
+  generation = 0;
+  pending.clear();
+}

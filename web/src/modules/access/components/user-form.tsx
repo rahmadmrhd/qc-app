@@ -2,12 +2,14 @@ import { ALL_LOCATIONS_KEY } from '@shared/assignments';
 import { ALL_BU_KEY } from '@shared/business-units';
 import type { BusinessUnitOptionDto, LocationDto, RoleDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { LinkField, LinkMultiField } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { UserFormInput, UserFormOutput } from '../schemas';
@@ -133,6 +135,7 @@ export function UserForm({
       await onSubmit(userFormSchema.parse(value));
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   return (
     <form
@@ -185,6 +188,26 @@ export function UserForm({
             value={field.state.value}
             onValueChange={(next) => field.handleChange(next as UserFormInput['status'])}
           />
+        )}
+      </form.Field>
+      <form.Field name="sharedAccount">
+        {(field) => (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="user-shared-account"
+                checked={field.state.value}
+                aria-describedby="user-shared-account-hint"
+                onCheckedChange={(next) => field.handleChange(next === true)}
+              />
+              <Label htmlFor="user-shared-account" className="font-normal">
+                Akun bersama
+              </Label>
+            </div>
+            <p id="user-shared-account-hint" className="text-xs text-muted-foreground">
+              Dipakai beberapa orang. Panduan ditampilkan ulang di tiap perangkat.
+            </p>
+          </div>
         )}
       </form.Field>
       <form.Field name="assignments">

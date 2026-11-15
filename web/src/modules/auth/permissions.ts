@@ -1,5 +1,6 @@
 import type { LocatedModule } from '@shared/assignments';
 import { isLocatedModule } from '@shared/assignments';
+import type { BuModule } from '@shared/business-units';
 import type {
   BusinessUnitAccessDto,
   BusinessUnitRefDto,
@@ -8,6 +9,7 @@ import type {
 } from '@shared/contract';
 import type { Level, ModuleKey } from '@shared/permissions';
 import { hasLevel } from '@shared/permissions';
+import type { ActorModules } from '@shared/serial-flow';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
 import { meQueryOptions } from './queries';
@@ -84,11 +86,49 @@ function itemBusinessUnits(me: MeDto | null | undefined): readonly BusinessUnitA
   return me?.businessUnits ?? [];
 }
 
+/** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul ber-BU `module`. */
+export function buIdsWithLevelOf(
+  me: MeDto | null | undefined,
+  module: BuModule,
+  level: Level,
+): string[] {
+  return itemBusinessUnits(me)
+    .filter((bu) => hasLevel(bu.permissions[module], level))
+    .map((bu) => bu.id);
+}
+
 /** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
 export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): string[] {
-  return itemBusinessUnits(me)
-    .filter((bu) => hasLevel(bu.permissions.item, level))
-    .map((bu) => bu.id);
+  return buIdsWithLevelOf(me, 'item', level);
+}
+
+/**
+ * Boleh memanggil `serials.locationOptions` (gerbang server: `serial: edit` global; laporan rusak 2026-11-14 §3 butir h:
+ * tim servis tidak lagi memilih lokasi). Pembaca tanpa izin itu memakai lokasi dari `me.locations` agar tidak memicu 403.
+ */
+export function canUseSerialLocationOptions(me: MeDto | null | undefined): boolean {
+  return can(me, 'serial', 'edit');
+}
+
+/** Modul yang dipegang pengguna pada level `edit` di BU serial itu (masukan `availableActions`/`resolveAction`). */
+export function serialActorModules(me: MeDto | null | undefined, buId: string): ActorModules {
+  return {
+    serial: buIdsWithLevelOf(me, 'serial', 'edit').includes(buId),
+    serialservice: buIdsWithLevelOf(me, 'serialservice', 'edit').includes(buId),
+  };
+}
+
+/**
+ * Mengatur penerima surel Serial Number rusak: penanda dihitung SERVER (`auth.me`, aturan yang sama dengan penjaga
+ * `serialSettings.get|save`: super admin, atau `serial: manage` pada setiap BU).
+ */
+export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
+  return me?.canManageSerialSettings === true;
+}
+
+/** Mencatat serial: level `edit` pada minimal satu BU. */
+export function canWriteSerials(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
 }
 
 function hasLevelOnAllBus(

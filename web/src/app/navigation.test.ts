@@ -19,6 +19,8 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'view',
@@ -28,6 +30,8 @@ test('item tanpa izin disembunyikan dan grup kosong dibuang', () => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [],
@@ -58,6 +62,8 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -67,6 +73,8 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [
@@ -145,6 +153,8 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
       email: 'a@gmail.com',
       name: 'A',
       isSuperAdmin: false,
+      sharedAccount: false,
+      canManageSerialSettings: false,
       permissions: {
         access: 'none',
         item: 'none',
@@ -154,6 +164,8 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
         stock: 'none',
         sticker: 'none',
         stickerstock: 'none',
+        serial: 'none',
+        serialservice: 'none',
       },
       businessUnits: [],
       locations: [location(perms)],
@@ -185,6 +197,8 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -194,6 +208,8 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
       ...permissions,
     },
     businessUnits: [],
@@ -356,4 +372,123 @@ test('Daftar Postel aktif di semua rute di bawah /postel', () => {
     fuzzy ? path.startsWith(to) : path === to;
   for (const path of ['/postel', '/postel/new', '/postel/p1', '/postel/p1/edit'])
     expect(isNavItemActive(item, at(path))).toBe(true);
+});
+
+function meWithSerial(
+  serial: 'none' | 'view' | 'edit',
+  serialservice: 'none' | 'view' = 'none',
+): MeDto {
+  return {
+    email: 'a@gmail.com',
+    name: 'A',
+    isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
+    permissions: {
+      access: 'none',
+      item: 'none',
+      qrcode: 'none',
+      handover: 'none',
+      qc: 'none',
+      stock: 'none',
+      sticker: 'none',
+      stickerstock: 'none',
+      serial,
+      serialservice,
+    },
+    businessUnits: [],
+    locations: [],
+  };
+}
+
+const serialItems = (me: MeDto) =>
+  visibleNavGroups(NAV_GROUPS, me)
+    .find((group) => group.label === 'Serial Number')
+    ?.items.map((entry) => entry.label);
+
+test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
+  expect(serialItems(meWithSerial('none'))).toBeUndefined();
+  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number', 'Laporan']);
+  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number', 'Laporan']);
+  // Mencatat dimulai dari tombol Tambah di daftar: tanpa menu "Catat Serial Number" (keputusan pemilik 2026-11-13).
+  // Lapor Rusak bukan menu sidebar (keputusan pemilik 2026-11-15): tombolnya ada di halaman Laporan, bagi penulis.
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial Number', 'Laporan']);
+});
+
+test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan detail', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  expect(items.some((entry) => entry.to === '/serial/new')).toBe(false);
+  const list = items.find((entry) => entry.to === '/serial');
+  if (!list) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(list, at('/serial/new'))).toBe(true);
+  expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
+  // Laporan punya menu sendiri: Daftar tidak ikut aktif di sana, juga di halaman Lapor Rusak.
+  expect(isNavItemActive(list, at('/serial/report'))).toBe(false);
+  expect(isNavItemActive(list, at('/serial/reports'))).toBe(false);
+  // Tanpa menu "Lapor Rusak": halamannya dibuka dari tombol di Laporan, jadi menu Laporan yang menyala.
+  expect(items.some((entry) => entry.to === '/serial/report')).toBe(false);
+  expect(items.some((entry) => entry.label === 'Lapor Rusak')).toBe(false);
+  const reports = items.find((entry) => entry.to === '/serial/reports');
+  if (!reports) throw new Error('menu hilang');
+  expect(isNavItemActive(reports, at('/serial/reports'))).toBe(true);
+  expect(isNavItemActive(reports, at('/serial/report'))).toBe(true);
+});
+
+function meManagingSerial(
+  levels: ('edit' | 'manage')[],
+  canManageSettings: boolean,
+  isSuperAdmin = false,
+): MeDto {
+  const base = meWithSerial('edit');
+  // Izin global = level tertinggi di antara BU (super admin: semua modul manage).
+  const global = isSuperAdmin || levels.includes('manage') ? 'manage' : 'edit';
+  return {
+    ...base,
+    isSuperAdmin,
+    // Penanda dihitung server (`auth.me`); di sini diset langsung sesuai skenario.
+    canManageSerialSettings: canManageSettings,
+    permissions: { ...base.permissions, serial: global },
+    businessUnits: levels.map((level, index) => ({
+      id: `b${index}`,
+      code: `B${index}`,
+      name: `BU ${index}`,
+      status: 'active' as const,
+      permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+    })),
+  };
+}
+
+test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSettings; tidak ikut aktif di Daftar', () => {
+  const basic = ['Daftar Serial Number', 'Laporan'];
+  expect(serialItems(meManagingSerial(['edit'], false))).toEqual(basic);
+  // Pengelola sebagian BU: server menghitung penanda false (penerima bersifat global), jadi menu tidak muncul.
+  expect(serialItems(meManagingSerial(['manage'], false))).toEqual(basic);
+  expect(serialItems(meManagingSerial(['manage', 'edit'], false))).toEqual(basic);
+  expect(serialItems(meManagingSerial(['manage', 'manage'], true))).toEqual([
+    ...basic,
+    'Pengaturan',
+  ]);
+  expect(serialItems(meManagingSerial(['edit'], true, true))).toContain('Pengaturan');
+  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
+  const list = items.find((entry) => entry.to === '/serial');
+  if (!list) throw new Error('menu hilang');
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path.startsWith(to) : path === to;
+  expect(isNavItemActive(list, at('/serial/settings'))).toBe(false);
+});
+
+test('grup Pengaturan Akses memuat Status Push (access view) dan hanya tampil bagi user ber-izin', () => {
+  const grup = NAV_GROUPS.find((group) => group.label === 'Pengaturan Akses');
+  expect(grup?.items.find((entry) => entry.to === '/access/push')).toMatchObject({
+    label: 'Status Push',
+    permission: { module: 'access', level: 'view' },
+  });
+  const labels = (access: 'none' | 'view') =>
+    visibleNavGroups(NAV_GROUPS, stickerMe({ access }))
+      .flatMap((group) => group.items)
+      .map((entry) => entry.label);
+  expect(labels('view')).toContain('Status Push');
+  expect(labels('none')).not.toContain('Status Push');
 });

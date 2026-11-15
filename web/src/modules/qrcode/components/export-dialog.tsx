@@ -1,6 +1,7 @@
 import type { QrDesignDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +34,8 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
   const [error, setError] = useState<string | null>(null);
   const again = design.exportedAt !== '';
   const [reason, setReason] = useState('');
+  // Hanya alasan yang sedang diketik pada dialog yang terbuka yang dianggap belum disimpan.
+  useUnsavedChanges(open && reason.trim() !== '');
   // Ekspor ulang dengan label berubah melahirkan versi Manual Book baru: alasan wajib (spek 4a butir 10).
   const newVersion = design.exportStatus === 'stale' && design.stickerVersion > 0;
   const reasonOk = !newVersion || reason.trim() !== '';

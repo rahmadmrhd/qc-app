@@ -2,6 +2,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useUrlSyncedText } from './use-url-synced-text';
 
+const trimEnd = (value: string) => value.trimEnd();
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -55,4 +57,21 @@ test('nilai awal berasal dari URL tanpa mengirim apa pun', () => {
   expect(result.current[0]).toBe('awal');
   act(() => vi.advanceTimersByTime(1000));
   expect(commit).not.toHaveBeenCalled();
+});
+
+test('normalize: baris baru di ujung tidak dihapus oleh gema URL yang dipangkas', () => {
+  const commit = vi.fn();
+  const { result, rerender } = renderHook(
+    ({ url }) => useUrlSyncedText(url, commit, 300, { normalize: trimEnd }),
+    { initialProps: { url: '' } },
+  );
+  act(() => result.current[1]('AAA\n'));
+  act(() => vi.advanceTimersByTime(300));
+  expect(commit).toHaveBeenCalledWith('AAA\n');
+  rerender({ url: 'AAA' });
+  expect(result.current[0]).toBe('AAA\n');
+  // Perubahan di ujung saja tidak memicu pengiriman baru.
+  act(() => result.current[1]('AAA\n\n'));
+  act(() => vi.advanceTimersByTime(300));
+  expect(commit).toHaveBeenCalledTimes(1);
 });

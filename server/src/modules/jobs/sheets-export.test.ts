@@ -133,11 +133,13 @@ describe('exportTableChunks', () => {
     expect(sheets.every((name) => /^export_[a-z0-9_]+$/.test(name))).toBe(true);
     expect(new Set(sheets).size).toBe(sheets.length);
     // Kolom teknis MariaDB yang sengaja tidak diekspor: kolom turunan name_key (indeks UNIK ekspresi) dan
-    // handover_comments.seq (pengganti rowid untuk urutan/kursor), dan qr_presets.bu_key (kolom virtual untuk indeks unik).
+    // handover_comments.seq (pengganti rowid untuk urutan/kursor), qr_presets.bu_key (kolom virtual untuk indeks unik),
+    // dan handovers.client_id / handover_comments.client_id (kunci idempotensi antrean offline, Tahap C; tak bernilai ekspor).
     const technical: Record<string, string[]> = {
       roles: ['name_key'],
       locations: ['name_key'],
-      handover_comments: ['seq'],
+      handovers: ['client_id'],
+      handover_comments: ['seq', 'client_id'],
       qr_presets: ['bu_key'],
     };
     for (const spec of EXPORT_TABLES) {

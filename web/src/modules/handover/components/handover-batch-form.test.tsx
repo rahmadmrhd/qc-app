@@ -6,6 +6,16 @@ import { ApiError } from '@/lib/api/api-error';
 import { pickLink } from '@/test/link-field';
 import type { HandoverBatchFormOutput } from '../schemas';
 
+// Ikon info di panel tempel membaca penanda panduan; di sini penanda tidak relevan.
+vi.mock('@/modules/guide/lib/use-guide-store', () => ({
+  useGuideStore: () => ({
+    ready: true,
+    done: new Map<string, number>(),
+    mark: vi.fn(async () => undefined),
+    reset: vi.fn(async () => undefined),
+  }),
+}));
+
 const meMock = vi.hoisted(() => ({
   me: {
     email: 'wh@qc.local',
@@ -160,13 +170,12 @@ test('batch di atas 30 task menonaktifkan tambah', { timeout: 60_000 }, async ()
   ).toBeDisabled();
 });
 
-test('hasil pecah tempelan WhatsApp ditambahkan sebagai kartu', async () => {
+test('Pecah langsung menambahkan hasilnya sebagai kartu', async () => {
   renderForm();
   fireEvent.change(screen.getByRole('textbox', { name: 'Tempelan WhatsApp' }), {
     target: { value: 'Lintasmaya :\nAF 5XHD = 16 unt\n\nMitra Tower :\nRD-5G34 = 8 unt' },
   });
   await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (2)' }));
   // kartu kosong awal diganti oleh hasil pecah
   expect(cards()).toHaveLength(2);
   expect(within(cards()[0] as HTMLElement).getByLabelText('Customer')).toHaveValue('Lintasmaya');
@@ -210,7 +219,6 @@ test('tempelan 30 task muat walau ada satu kartu kosong awal (slot dihitung bena
   });
   await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
   expect(screen.queryByText(/melebihi sisa slot/)).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Tambahkan ke batch (30)' }));
   expect(cards()).toHaveLength(30);
 }, 40_000);
 
@@ -237,7 +245,6 @@ async function pasteTasks(
     target: { value: text },
   });
   await userEvent.click(screen.getByRole('button', { name: 'Pecah' }));
-  await userEvent.click(screen.getByRole('button', { name: `Tambahkan ke batch (${n})` }));
   return { onSaved };
 }
 

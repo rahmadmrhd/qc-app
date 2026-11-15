@@ -1,9 +1,17 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
+import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
+import type {
+  SerialCustody,
+  SerialEventType,
+  SerialStatus,
+  ServiceDiagnosisStage,
+} from './serials';
 import type {
   GuideSort,
   StickerMarkTarget,
@@ -44,12 +52,22 @@ export interface MeDto {
   email: string;
   name: string;
   isSuperAdmin: boolean;
+  /**
+   * Boleh membaca/mengubah penerima surel "Serial Number rusak" (`serialSettings.get|save`): dihitung server dengan
+   * aturan penjaga rute itu (super admin, atau `serial: manage` pada SETIAP BU). Hanya untuk menampilkan menu.
+   */
+  canManageSerialSettings: boolean;
   /** Izin GLOBAL: hanya dari penugasan "Semua lokasi" (satu-satunya sumber modul `access`). */
   permissions: PermissionMap;
   /** Lokasi aktif yang boleh diakses, terurut menurut kode. */
   locations: LocationAccessDto[];
   /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
   businessUnits: BusinessUnitAccessDto[];
+  /**
+   * Akun bersama (dipakai beberapa orang): panduan interaktif tetap ditawarkan, tetapi penandanya disimpan per
+   * perangkat (bukan di server), jadi ditawarkan lagi di tiap perangkat.
+   */
+  sharedAccount: boolean;
 }
 
 export interface UserDto {
@@ -60,6 +78,8 @@ export interface UserDto {
   assignments: Assignment[];
   /** Penugasan BU (`buId: null` = Semua BU); berlaku sama di semua lokasi. */
   buAssignments: BuAssignment[];
+  /** Akun bersama (dipakai beberapa orang); lihat `MeDto.sharedAccount`. */
+  sharedAccount: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -83,6 +103,17 @@ export interface SaveUserInput {
   status: UserStatus;
   assignments: Assignment[];
   buAssignments: BuAssignment[];
+  /** Tidak dikirim = tidak berubah (user baru: false). */
+  sharedAccount?: boolean;
+}
+
+export interface MarkGuideInput {
+  id: string;
+  version: number;
+}
+
+export interface ResetGuideInput {
+  id: string;
 }
 
 export interface SetUserStatusInput {
@@ -743,7 +774,12 @@ export interface SaveHandoverInput {
 
 export interface SaveHandoverBatchInput {
   locationId: string;
-  tasks: Array<{ customerName: string; note: string }>;
+  /**
+   * `clientId` (UUID huruf kecil) opsional = kunci idempoten per task: kirim ulang yang sama (antrean offline)
+   * mengembalikan task yang sudah ada tanpa membuat duplikat. Bila ada pada sebagian task, dan sebagian sudah
+   * tersimpan, permintaan ditolak `CONFLICT`.
+   */
+  tasks: Array<{ customerName: string; note: string; clientId?: string }>;
 }
 
 export interface HandoverRefInput {
@@ -766,6 +802,8 @@ export interface AddCommentInput extends HandoverRefInput {
   before: string;
   after: string;
   body: string;
+  /** Kunci idempoten (UUID huruf kecil): kirim ulang yang sama mengembalikan task apa adanya tanpa komentar ganda. */
+  clientId?: string;
 }
 
 // --- QR Code Label ---
@@ -1189,8 +1227,41 @@ export interface ApiContract {
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
+  'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
+  'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
+  'serials.serviceLocations': { input: null; output: SerialLocationOptionsDto };
+  'serials.lookup': { input: SerialLookupInput; output: SerialLookupOutput };
+  'serials.reportNew': { input: SerialReportNewInput; output: SerialDto };
+  'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
+  'serials.get': { input: GetSerialInput; output: GetSerialOutput };
+  'serials.list': { input: SerialListInput; output: SerialListOutput };
+  'serials.update': { input: UpdateSerialInput; output: SerialDto };
+  'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
+  'serials.act': { input: SerialActInput; output: SerialDto };
+  'serials.history': { input: SerialHistoryInput; output: SerialHistoryOutput };
+  'serialSettings.get': { input: null; output: SerialSettingsDto };
+  'serialSettings.save': { input: SaveSerialSettingsInput; output: SerialSettingsDto };
+  'serialServiceSettings.get': { input: null; output: SerialServiceSettingsDto };
+  'serialServiceSettings.save': {
+    input: SaveSerialServiceSettingsInput;
+    output: SerialServiceSettingsDto;
+  };
+  'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
+  'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
+  'notifications.markRead': { input: MarkNotificationReadInput; output: { ok: true } };
+  'notifications.markAllRead': { input: Record<string, never>; output: { count: number } };
+  'push.config': { input: null; output: PushConfigDto };
+  'push.subscribe': { input: PushSubscribeInput; output: { ok: true } };
+  'push.unsubscribe': { input: PushUnsubscribeInput; output: { ok: true } };
+  'push.setPreference': { input: PushPreferenceInput; output: { enabled: boolean } };
+  'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
+  'push.status': { input: null; output: PushUserStatusDto[] };
+  'guides.list': { input: null; output: GuideProgressDto[] };
+  'guides.mark': { input: MarkGuideInput; output: GuideProgressDto[] };
+  'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
 }
@@ -1293,7 +1364,383 @@ export interface AuditCursorPageDto {
   nextCursor: string | null;
 }
 
-export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup';
+// --- Serial Number (tahap 5a) ---
+
+/** Pilihan stiker pada satu serial: jumlah per stiker (1..`SERIAL_LIMITS.stickerQtyMax`). */
+export interface SerialStickerPick {
+  stickerId: string;
+  qty: number;
+}
+export type SerialStickerStatus = 'active' | 'inactive' | 'deprecated';
+export interface SerialStickerDto {
+  stickerId: string;
+  name: string;
+  alias: string;
+  qty: number;
+  /** Status stiker saat ini; jumlah stiker `inactive` tidak dapat dinaikkan pada cek ulang (`deprecated` boleh). */
+  stickerStatus: SerialStickerStatus;
+}
+/** Satu perubahan field pada kejadian `data_changed`; `null` = kosong. */
+export interface SerialChangeDto {
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+export interface SerialEventDto {
+  id: string;
+  /** Kasus tidak lolos yang dimiliki kejadian ini; `null` = di luar kasus. */
+  caseId: string | null;
+  seq: number;
+  type: SerialEventType;
+  occurredOn: string;
+  createdAt: string;
+  actorName: string;
+  actorTeam: 'qc' | 'service' | 'system';
+  /** Markdown, boleh kosong. */
+  message: string;
+  changes: SerialChangeDto[];
+  data: Record<string, unknown>;
+}
+export interface SerialSummaryDto {
+  id: string;
+  buId: string;
+  buCode: string;
+  serial: string;
+  itemId: string;
+  itemLabel: string;
+  testDate: string;
+  sample: boolean;
+  locationId: string;
+  locationName: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  /** Tujuan pengiriman yang sedang berjalan (custody `transit`), selain itu `null`. */
+  transitToLocationId: string | null;
+  transitToLocationName: string | null;
+  /** Tanggal kirim (`YYYY-MM-DD`) pengiriman yang berjalan. */
+  transitOn: string | null;
+  /** Nomor kasus yang sedang terbuka (`LP-…`), bila ada. */
+  openCaseNumber: string | null;
+  createdAt: string;
+}
+/** Laporan rusak (`serial_cases`): satu episode kegagalan. */
+export interface SerialCaseDto {
+  id: string;
+  /** `LP-YYYYMMDD-NNN`. */
+  number: string;
+  openedOn: string;
+  closedOn: string | null;
+  outcome: 'good' | 'broken' | null;
+}
+export interface SerialDto extends SerialSummaryDto {
+  note: string;
+  recordedLocationId: string;
+  stickers: SerialStickerDto[];
+  openCaseId: string | null;
+  /** Asal pengiriman yang sedang berjalan. */
+  transitFromLocationId: string | null;
+  transitFromLocationName: string | null;
+  openCase: SerialCaseDto | null;
+  /** Semua kasus serial ini, terbaru dulu. */
+  cases: SerialCaseDto[];
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+/** Satu baris pada `serials.saveBatch`; `clientId` = kunci idempoten per baris. */
+export interface SerialRowInput {
+  clientId: string;
+  serial: string;
+  itemId: string;
+  buId: string;
+  testDate: string;
+  locationId: string;
+  sample: boolean;
+  note: string;
+  /** Asal catatan; disimpan di `data` kejadian `recorded`. Bawaan `manual`. */
+  source?: 'manual' | 'countrylock';
+  /**
+   * Stiker yang ditempel. TIDAK dikirim (undefined) = SEMUA stiker yang berlaku bagi (item, BU) dengan `defaultQty`
+   * (sama dengan bawaan web dan `.qcsn`); `[]` eksplisit = tanpa stiker. Maks. 20 pilihan eksplisit.
+   */
+  stickers?: SerialStickerPick[];
+}
+export type SerialRowResult = {
+  clientId: string;
+  result: 'created' | 'duplicate' | 'invalid' | 'error';
+  message: string;
+  id?: string;
+  serial?: string;
+};
+export interface SaveSerialBatchInput {
+  rows: SerialRowInput[];
+}
+export interface SaveSerialBatchOutput {
+  results: SerialRowResult[];
+}
+export interface GetSerialInput {
+  id: string;
+}
+export interface GetSerialOutput {
+  serial: SerialDto;
+  /** Maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun). */
+  events: SerialEventDto[];
+  /** Ada kejadian lebih lama yang tidak dimuat (hanya 500 terbaru yang dikembalikan). */
+  eventsTruncated: boolean;
+}
+export interface SerialListInput {
+  /** Awalan serial (dinormalisasi). */
+  query?: string;
+  /** Teks tempelan, satu serial per baris (maks. 200 baris sebelum normalisasi): hanya yang persis cocok. */
+  serials?: string;
+  buId?: string;
+  itemId?: string;
+  locationId?: string;
+  status?: SerialStatus;
+  /** Posisi (custody): `qc`, `transit`, atau `service`. */
+  custody?: SerialCustody;
+  /** Rentang `test_date` inklusif (`YYYY-MM-DD`). */
+  from?: string;
+  to?: string;
+  createdBy?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialListOutput {
+  items: SerialSummaryDto[];
+  nextCursor: string | null;
+}
+/** Bidang catatan serial yang boleh diubah (BU, status, dan stiker tidak). */
+export interface SerialEditable {
+  serial: string;
+  itemId: string;
+  testDate: string;
+  sample: boolean;
+  note: string;
+  locationId: string;
+}
+export interface UpdateSerialInput extends SerialEditable {
+  id: string;
+  expectedUpdatedAt: string;
+}
+export interface UpdateSerialBatchRowInput {
+  id: string;
+  expectedUpdatedAt: string;
+  fields: Partial<SerialEditable>;
+}
+export interface UpdateSerialBatchInput {
+  rows: UpdateSerialBatchRowInput[];
+}
+export interface UpdateSerialBatchRowResult {
+  id: string;
+  result: 'updated' | 'duplicate' | 'stale' | 'invalid' | 'error';
+  message: string;
+  updatedAt?: string;
+}
+export interface UpdateSerialBatchOutput {
+  results: UpdateSerialBatchRowResult[];
+}
+interface SerialActBase {
+  id: string;
+  expectedUpdatedAt: string;
+  /** Tanggal kejadian `YYYY-MM-DD`, tidak di masa depan. */
+  occurredOn: string;
+  /** Markdown, maks. `SERIAL_LIMITS.messageMax`. */
+  message: string;
+}
+/**
+ * Aksi pada serial (rancangan laporan rusak 2026-11-14 §4.1). `serialservice` hanya menindak serial berstatus
+ * `at_service`/`diagnosis`/`service_repair`; jenis pengiriman/penerimaan diturunkan server dari status. `message` wajib pada
+ * `note`, `report_failure`, `declare_broken`, `recheck_fail`, dan `recheck` hasil gagal; pada aksi lain opsional.
+ */
+export type SerialActInput =
+  | (SerialActBase & { action: 'note' | 'declare_broken' | 'report_failure' })
+  | (SerialActBase & {
+      action: 'send' | 'receive';
+      /**
+       * `send`: lokasi tujuan servis (wajib bila konfigurasi servis punya lebih dari satu lokasi aktif, selain itu
+       * kosong atau sama dengan satu-satunya lokasi). `receive` (QC): lokasi hanya bila lokasi QC asal sudah nonaktif.
+       */
+      toLocationId?: string;
+      /**
+       * Hanya `send`, opsional: ekspedisi, nomor resi, atau nama pengantar (satu baris, maks. `shipmentNoteMax`).
+       * Disimpan di riwayat kirim; tidak pernah tampil di halaman publik.
+       */
+      shipmentNote?: string;
+    })
+  | (SerialActBase & { action: 'service_diagnosis'; stage: ServiceDiagnosisStage })
+  | (SerialActBase & {
+      action: 'recheck';
+      /** Bawaan `pass`. `fail` membuka laporan (catatan wajib). */
+      result?: 'pass' | 'fail';
+      /** Stiker yang DICENTANG: tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di lokasi cek ulang. */
+      stickerIds?: string[];
+    })
+  | (SerialActBase & {
+      action: 'recheck_pass' | 'recheck_fail';
+      stickerIds?: string[];
+    });
+export type SerialActAction = SerialActInput['action'];
+/** Riwayat per serial (tab linimasa): kursor = `seq` terakhir. */
+export interface SerialHistoryInput {
+  id: string;
+  group?: 'all' | 'checks' | 'changes';
+  /** Hanya kejadian kasus ini (kasus milik serial lain = hasil kosong). */
+  caseId?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialHistoryOutput {
+  events: SerialEventDto[];
+  nextCursor: string | null;
+  counts: { all: number; checks: number; changes: number; byCase: Record<string, number> };
+}
+export interface SerialAlertSettings {
+  enabled: boolean;
+  recipients: string[];
+}
+export interface SerialSettingsDto {
+  alert: SerialAlertSettings;
+  updatedAt: string;
+  /** SMTP sudah diatur di server. */
+  smtpConfigured: boolean;
+}
+export interface SaveSerialSettingsInput {
+  expectedUpdatedAt: string;
+  alert: SerialAlertSettings;
+}
+/** Pengaturan lokasi tim servis (global, ETag `updatedAt` sendiri). Kosong = semua lokasi aktif. */
+export interface SerialServiceSettingsDto {
+  locationIds: string[];
+  /** Kosong sebelum pernah disimpan. */
+  updatedAt: string;
+}
+export interface SaveSerialServiceSettingsInput {
+  expectedUpdatedAt: string;
+  locationIds: string[];
+}
+/** Pencarian Serial Number untuk Lapor Rusak (BU yang boleh ditulis pengguna). */
+export interface SerialLookupInput {
+  serial: string;
+}
+export interface SerialLookupMatchDto {
+  id: string;
+  buId: string;
+  buCode: string;
+  itemLabel: string;
+  serial: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  locationName: string;
+  /** Laporan aktif serial ini, bila ada (Lapor rusak ditolak; UI menautkan ke laporan itu). */
+  openCaseId: string | null;
+  openCaseNumber: string | null;
+  updatedAt: string;
+}
+export interface SerialLookupOutput {
+  matches: SerialLookupMatchDto[];
+}
+/** Lapor Rusak untuk Serial Number yang belum tercatat: serial dibuat langsung berstatus Dilaporkan. */
+export interface SerialReportNewInput {
+  serial: string;
+  itemId: string;
+  buId: string;
+  locationId: string;
+  /** Markdown, wajib. */
+  message: string;
+  /** Tanggal laporan `YYYY-MM-DD` (bukan di masa depan); jadi tanggal uji. */
+  occurredOn: string;
+}
+export interface SerialCaseListInput {
+  /** `active` = laporan terbuka, `closed` = sudah selesai. */
+  status?: 'active' | 'closed';
+  buId?: string;
+  /** Awalan nomor LP atau serial. */
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface SerialCaseRowDto {
+  id: string;
+  /** `LP-YYYYMMDD-NNN`. */
+  number: string;
+  serialId: string;
+  serial: string;
+  buId: string;
+  buCode: string;
+  itemLabel: string;
+  /** Status serial sekarang. */
+  status: SerialStatus;
+  custody: SerialCustody;
+  openedOn: string;
+  closedOn: string | null;
+  outcome: 'good' | 'broken' | null;
+  /** Hari kalender (WIB) sejak status serial terakhir berubah. */
+  daysInStatus: number;
+  /** Nama lokasi serial sekarang (kosong bila tidak dikenal). */
+  locationName: string;
+  /** Hari kalender (WIB) dari laporan dibuka sampai ditutup (atau sampai hari ini bila masih aktif). */
+  durationDays: number;
+  /** Email pelapor (`created_by`). */
+  reporter: string;
+  /** Baris pertama catatan laporan sebagai teks polos, maks. `SERIAL_LIMITS.reportSummaryMax` karakter. */
+  summary: string;
+}
+export interface SerialCaseListOutput {
+  items: SerialCaseRowDto[];
+  nextCursor: string | null;
+}
+/** Item yang dapat dipilih pencatat serial (hanya bidang yang dibutuhkan), dengan BU yang boleh ia tulis. */
+export interface SerialItemOptionDto {
+  id: string;
+  /** "Merk Model". */
+  label: string;
+  buIds: string[];
+  buOptions: { id: string; code: string }[];
+}
+export interface ListSerialItemOptionsInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  /**
+   * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU dalam
+   * cakupan pengguna: pencatat = BU ber-level `serial: edit`; pembaca saja = BU ber-level view atau lebih pada
+   * `serial`/`serialservice` (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
+   */
+  itemIds?: string[];
+}
+export interface SerialItemOptionsPageDto {
+  items: SerialItemOptionDto[];
+  nextCursor: string | null;
+}
+/** Lokasi aktif yang boleh dipilih saat mencatat serial (tanpa penugasan lokasi: spek §3 butir 3, §11 butir 8). */
+export interface SerialLocationOptionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface SerialLocationOptionsDto {
+  /** Semua lokasi AKTIF, urut kode. */
+  locations: SerialLocationOptionDto[];
+}
+export interface SerialStickerOptionsInput {
+  itemId: string;
+  buId: string;
+}
+export interface SerialStickerOptionsDto {
+  stickers: ApplicableStickerDto[];
+}
+/** Stiker yang berlaku bagi item pada sebuah BU (bahan daftar centang). */
+export interface ApplicableStickerDto {
+  id: string;
+  name: string;
+  alias: string;
+  typeName: string;
+  /** Jumlah awal saat tercentang; selalu 1. */
+  defaultQty: number;
+}
+
+export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup' | 'serial_alert';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export interface GetJobInput {
@@ -1316,6 +1763,54 @@ export interface ExportQrJobDto {
 }
 
 /** Ekspor tabel database ke Spreadsheet (job latar); `tables` kosong/tidak ada = semua tabel yang diizinkan. */
+/** Lonceng notifikasi Serah Terima (spek 2026-11-12). `limit` bawaan 30, dibatasi maksimum 100. */
+export interface ListNotificationsInput {
+  limit?: number;
+  /** Kursor `createdAt|id` dari `nextCursor` halaman sebelumnya. */
+  before?: string;
+}
+export interface NotificationListDto {
+  items: NotificationDto[];
+  /** Jumlah belum dibaca di lokasi yang masih berhak dibaca pemanggil. */
+  unread: number;
+  nextCursor: string | null;
+}
+export interface MarkNotificationReadInput {
+  id: string;
+}
+
+/** Push notifikasi (spek 2026-11-12 §5.2). */
+export interface PushConfigDto {
+  /** Push tersedia (kunci VAPID terkonfigurasi di server). */
+  enabled: boolean;
+  /** Kunci publik VAPID (teks URL-safe) untuk `pushManager.subscribe`; kosong bila tidak tersedia. */
+  publicKey: string;
+  /** Preferensi push pemanggil (bawaan aktif); lonceng tidak terpengaruh. */
+  userEnabled: boolean;
+}
+export interface PushSubscribeInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+export interface PushUnsubscribeInput {
+  endpoint: string;
+}
+export interface PushPreferenceInput {
+  enabled: boolean;
+}
+export type PushPermissionState = 'granted' | 'denied' | 'default';
+export interface PushPermissionInput {
+  state: PushPermissionState;
+}
+/** Status push per pengguna: dihitung dari hasil pengiriman nyata; tanpa pengenal perangkat atau rincian galat. */
+export type PushUserState = 'active' | 'none' | 'failing' | 'disabled' | 'denied';
+export interface PushUserStatusDto {
+  email: string;
+  name: string;
+  state: PushUserState;
+}
+
 export interface ExportSheetsInput {
   tables?: string[];
 }

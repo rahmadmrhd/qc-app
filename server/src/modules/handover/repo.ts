@@ -29,6 +29,8 @@ export interface HandoverRecord {
   updatedBy: string;
   /** Penghitung versi untuk CAS; naik pada setiap perubahan isi/centang/status (bukan komentar). */
   version: number;
+  /** Kunci idempoten klien (task baru dari antrean offline); hanya diisi saat disisipkan, tak dibaca balik. */
+  clientId?: string;
 }
 
 export interface HandoverRow {
@@ -235,6 +237,41 @@ export async function findHandoverWithComments(
   };
 }
 
+/** Komentar menurut kunci idempoten klien (satu per `clientId`, indeks unik). Null bila belum ada. */
+export async function findCommentByClientId(
+  db: Db,
+  clientId: string,
+): Promise<{ id: string; handoverId: string; author: string } | null> {
+  const row = await db
+    .prepare('SELECT id, handover_id, author FROM handover_comments WHERE client_id = ?')
+    .bind(clientId)
+    .first<{ id: string; handover_id: string; author: string }>();
+  return row ? { id: row.id, handoverId: row.handover_id, author: row.author } : null;
+}
+
+/** Task menurut kunci idempoten klien: `clientId` -> pemilik dan lokasinya (hanya yang sudah ada). */
+export async function findHandoversByClientIds(
+  db: Db,
+  clientIds: readonly string[],
+): Promise<Map<string, { id: string; locationId: string; createdBy: string }>> {
+  const out = new Map<string, { id: string; locationId: string; createdBy: string }>();
+  if (clientIds.length === 0) return out;
+  const rows = await db
+    .prepare(
+      `SELECT client_id, id, location_id, created_by FROM handovers WHERE client_id IN (${clientIds.map(() => '?').join(',')})`,
+    )
+    .bind(...clientIds)
+    .all<{ client_id: string; id: string; location_id: string; created_by: string }>();
+  for (const row of rows.results) {
+    out.set(row.client_id, {
+      id: row.id.trim(),
+      locationId: row.location_id.trim(),
+      createdBy: row.created_by,
+    });
+  }
+  return out;
+}
+
 /** Pernyataan komentar untuk sekumpulan task (dipecah <= 90 parameter per kueri; urut waktu lalu `seq`). */
 export function commentStatements(env: Env, handoverIds: readonly string[]): DbStatement[] {
   const statements: DbStatement[] = [];
@@ -277,7 +314,7 @@ export function insertHandoverStmt(db: Db, handover: HandoverRecord): DbStatemen
   const d = derivedColumns(handover);
   return db
     .prepare(
-      'INSERT INTO handovers (id, number, location_id, customer_id, customer_name, note, status, checks, completed_at, completed_by, created_at, created_by, updated_at, updated_by, version, checked_count, total_count, board_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO handovers (id, number, location_id, customer_id, customer_name, note, status, checks, completed_at, completed_by, created_at, created_by, updated_at, updated_by, version, checked_count, total_count, board_status, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       handover.id,
@@ -298,10 +335,11 @@ export function insertHandoverStmt(db: Db, handover: HandoverRecord): DbStatemen
       d.checkedCount,
       d.totalCount,
       d.boardStatus,
+      handover.clientId ?? null,
     );
 }
 
-/** Beberapa task baru dalam `INSERT` banyak-baris (18 parameter per baris, maks. 5 baris per pernyataan). */
+/** Beberapa task baru dalam `INSERT` banyak-baris (19 parameter per baris, maks. 5 baris per pernyataan). */
 export function insertHandoverStmts(db: Db, handovers: readonly HandoverRecord[]): DbStatement[] {
   const perStatement = 5;
   const statements: DbStatement[] = [];
@@ -329,13 +367,14 @@ export function insertHandoverStmts(db: Db, handovers: readonly HandoverRecord[]
         d.checkedCount,
         d.totalCount,
         d.boardStatus,
+        handover.clientId ?? null,
       );
     }
-    const row = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    const row = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
     statements.push(
       db
         .prepare(
-          `INSERT INTO handovers (id, number, location_id, customer_id, customer_name, note, status, checks, completed_at, completed_by, created_at, created_by, updated_at, updated_by, version, checked_count, total_count, board_status) VALUES ${chunk.map(() => row).join(', ')}`,
+          `INSERT INTO handovers (id, number, location_id, customer_id, customer_name, note, status, checks, completed_at, completed_by, created_at, created_by, updated_at, updated_by, version, checked_count, total_count, board_status, client_id) VALUES ${chunk.map(() => row).join(', ')}`,
         )
         .bind(...binds),
     );

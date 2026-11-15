@@ -12,6 +12,7 @@ import {
 } from '@shared/qrcode';
 import { useForm, useStore } from '@tanstack/react-form';
 import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField } from '@/components/link-field';
@@ -111,9 +112,18 @@ function labelHash(values: QrFormOutput, document: QrDocumentDto | null): string
   });
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  'data-tour': dataTour,
+}: {
+  title: string;
+  children: React.ReactNode;
+  /** Penanda panduan interaktif; ditulis literal di pemanggil agar terbaca tes katalog. */
+  'data-tour'?: string;
+}) {
   return (
-    <section className="space-y-3 rounded-lg border p-4">
+    <section data-tour={dataTour} className="space-y-3 rounded-lg border p-4">
       <h2 className="text-base font-semibold">{title}</h2>
       {children}
     </section>
@@ -208,6 +218,7 @@ export function QrDesignForm({
       await onSubmit(values, options);
     },
   });
+  useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
   const activePreset = presets?.find((preset) => preset.id === effectivePreset);
   const lockedPart = newFlow ? (activePreset?.namePlacement ?? '') : (edit?.namePlacement ?? '');
@@ -294,6 +305,7 @@ export function QrDesignForm({
           {(submitting) => (
             <FormHeader
               className="lg:col-span-2"
+              data-tour="qr-save"
               title={title}
               onCancel={onCancel}
               submitting={submitting}
@@ -334,7 +346,7 @@ export function QrDesignForm({
       </div>
       <div className="space-y-4">
         {manualBookFlow ? (
-          <Section title="Item Manual Book">
+          <Section title="Item Manual Book" data-tour="qr-items">
             <form.Field
               name="itemIds"
               validators={{
@@ -370,7 +382,7 @@ export function QrDesignForm({
           </Section>
         ) : null}
         {newFlow && selected.length > 0 ? (
-          <Section title="Konfigurasi default">
+          <Section title="Konfigurasi default" data-tour="qr-preset">
             {candidates.length === 1 ? (
               <p className="text-sm">
                 Memakai konfigurasi default BU item:{' '}
@@ -443,7 +455,7 @@ export function QrDesignForm({
         {ready ? (
           <>
             {manualBookFlow ? (
-              <Section title="Nama Manual Book">
+              <Section title="Nama Manual Book" data-tour="qr-name">
                 <form.Field
                   name="name"
                   validators={{
@@ -478,7 +490,7 @@ export function QrDesignForm({
               </Section>
             ) : null}
             {isDefaults ? null : (
-              <Section title="Sumber link">
+              <Section title="Sumber link" data-tour="qr-source">
                 <form.Subscribe selector={(state) => state.values}>
                   {(values) => {
                     if (values.linkSource !== 'url') return null;
@@ -640,7 +652,7 @@ export function QrDesignForm({
                 </form.Field>
               </Section>
             ) : null}
-            <Section title="Isi label">
+            <Section title="Isi label" data-tour="qr-label">
               {isDefaults ? (
                 <form.Field name="name">
                   {(field) => (
@@ -763,7 +775,7 @@ export function QrDesignForm({
               ))}
             </Section>
 
-            <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'}>
+            <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'} data-tour="qr-logo">
               <form.Field name="logoFileId">
                 {(field) => (
                   <div className="space-y-1.5">
@@ -784,7 +796,7 @@ export function QrDesignForm({
               </form.Field>
             </Section>
 
-            <Section title="Bingkai QR">
+            <Section title="Bingkai QR" data-tour="qr-frame">
               <form.Subscribe selector={(state) => state.values.style.frame}>
                 {(frame) => (
                   <div className="space-y-3">
@@ -891,7 +903,7 @@ export function QrDesignForm({
               </form.Subscribe>
             </Section>
 
-            <Section title="Ukuran">
+            <Section title="Ukuran" data-tour="qr-size">
               <form.Field name="layout">
                 {(field) => (
                   <div className="space-y-2">
@@ -952,7 +964,7 @@ export function QrDesignForm({
       </div>
 
       {ready ? (
-        <aside className="space-y-3 lg:sticky lg:top-36 lg:self-start">
+        <aside data-tour="qr-preview" className="space-y-3 lg:sticky lg:top-36 lg:self-start">
           <form.Subscribe selector={(state) => state.values}>
             {(values) => (
               <PreviewPane

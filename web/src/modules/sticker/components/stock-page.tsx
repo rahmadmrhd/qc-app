@@ -1,4 +1,5 @@
 import type { OpnameInput, StickerStockDto } from '@shared/contract';
+import { formatStockQty } from '@shared/stickers';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -113,13 +114,17 @@ export function StockPage({
                   </div>
                 </TableCell>
                 <TableCell>{row.typeName}</TableCell>
-                <TableCell className="text-right tabular-nums">{row.total}</TableCell>
+                <TableCell
+                  className={`text-right tabular-nums${row.total < 0 ? ' text-destructive' : ''}`}
+                >
+                  {formatStockQty(row.total)}
+                </TableCell>
                 {showBreakdown ? (
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {row.byLocation.map((item) => (
                         <Badge key={item.locationId} variant="outline">
-                          {`${codeById.get(item.locationId) ?? item.locationId} ${item.qty}`}
+                          {`${codeById.get(item.locationId) ?? item.locationId} ${formatStockQty(item.qty)}`}
                         </Badge>
                       ))}
                     </div>

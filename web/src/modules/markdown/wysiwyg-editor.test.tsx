@@ -142,6 +142,50 @@ test('mode note tidak menampilkan tombol gambar; mode item menampilkannya', () =
   expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
 });
 
+test('mode message menampilkan tombol gambar; tempel gambar memicu unggah dan menyisipkan rujukan', async () => {
+  uploadMock.mockResolvedValue('f9');
+  render(<Harness mode="message" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Pilih gambar')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Checklist' })).toBeInTheDocument();
+  // Toolbar mode message tetap ringkas: tanpa Tautan (khusus item).
+  expect(screen.queryByRole('button', { name: 'Tautan' })).not.toBeInTheDocument();
+  const file = png('tempel.png');
+  const paste = new Event('paste', { cancelable: true });
+  Object.assign(paste, { clipboardData: { files: [file], types: ['Files'] } });
+  const handled = editor.options.editorProps.handlePaste?.(
+    editor.view,
+    paste as ClipboardEvent,
+    null as never,
+  );
+  expect(handled).toBe(true);
+  await waitFor(() => expect(lastValue).toContain('![tempel](qcfile:f9)'));
+  expect(uploadMock).toHaveBeenCalledWith(file);
+});
+
+test('maxImages: gambar melebihi batas tidak diunggah dan menampilkan pesan', async () => {
+  render(<Harness mode="message" maxImages={1} initial="![a](qcfile:f1)" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  await userEvent.upload(screen.getByLabelText('Pilih gambar'), png('kedua.png'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Maksimal 1 gambar');
+  expect(uploadMock).not.toHaveBeenCalled();
+});
+
+test('centang task list dapat diubah pada mode message, terkunci pada mode note', async () => {
+  const { unmount } = render(<Harness mode="message" initial="- [ ] satu" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  const box = (await screen.findByRole('checkbox')) as HTMLInputElement;
+  await userEvent.click(box);
+  await waitFor(() => expect(lastValue).toContain('- [x] satu'));
+  unmount();
+  lastValue = '';
+  render(<Harness mode="note" initial="- [ ] satu" />);
+  const locked = (await screen.findByRole('checkbox')) as HTMLInputElement;
+  await userEvent.click(locked);
+  expect(lastValue).toBe('');
+});
+
 test('tidak ada HTML mentah di keluaran', async () => {
   const { container } = render(
     <Harness

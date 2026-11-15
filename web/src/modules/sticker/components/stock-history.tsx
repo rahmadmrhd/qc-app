@@ -1,5 +1,6 @@
 import type { StickerStockDto, StockEntryDto } from '@shared/contract';
 import type { StockCount, StockEntryKind } from '@shared/stickers';
+import { formatStockQty } from '@shared/stickers';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,6 +27,7 @@ const KIND_LABEL: Record<StockEntryKind, string> = {
   out: 'Keluar',
   adjust: 'Koreksi',
   opname: 'Opname',
+  serial: 'Dipotong Serial Number',
 };
 
 /** "10 × 12 + 3 × 10 + 5 lepas"; kosong bila entri tidak memakai hitungan lembar. */
@@ -93,7 +95,11 @@ export function StockHistory({
                     <TableCell>{locationNames.get(entry.locationId) ?? entry.locationId}</TableCell>
                   ) : null}
                   <TableCell className="text-right tabular-nums">{signed(entry.delta)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{entry.qtyAfter}</TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive' : ''}`}
+                  >
+                    {formatStockQty(entry.qtyAfter)}
+                  </TableCell>
                   <TableCell>
                     {entry.reason !== '' ? <div>{entry.reason}</div> : null}
                     {counted !== '' ? (

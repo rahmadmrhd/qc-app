@@ -66,6 +66,51 @@ export function findHandoverInBoards(
   return undefined;
 }
 
+export interface BoardSeed {
+  dto: HandoverDto;
+  /** Waktu data kolom papan yang memuat task (bukan waktu sekarang), supaya label "data terakhir" jujur. */
+  updatedAt: number;
+}
+
+/**
+ * Task `id` dari kolom papan yang berdata beserta waktu data kolomnya (yang terbaru bila ada di beberapa kolom).
+ * Dipakai sebagai data awal detail task yang belum pernah dibuka, supaya tetap terbuka saat server tidak terjangkau.
+ * Hanya dari kolom yang kunci lokasinya SELURUHNYA ada di `readable` dan hanya bila lokasi task ada di `readable`
+ * (cache papan bisa memuat lokasi lain atau lokasi yang aksesnya sudah dicabut); `readable` kosong = tanpa seed.
+ */
+export function findBoardSeed(
+  queryClient: QueryClient,
+  id: string,
+  readable: readonly string[],
+): BoardSeed | undefined {
+  if (readable.length === 0) return undefined;
+  let best: BoardSeed | undefined;
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: BOARD_KEY })) {
+    const data = query.state.data as BoardColumnData | undefined;
+    const columnIds = query.queryKey[2];
+    if (!data || !Array.isArray(columnIds) || !columnIds.every((l) => readable.includes(l)))
+      continue;
+    for (const page of data.pages) {
+      const found = page.items.find((item) => item.id === id);
+      if (
+        found &&
+        readable.includes(found.locationId) &&
+        (!best || query.state.dataUpdatedAt > best.updatedAt)
+      ) {
+        best = { dto: found, updatedAt: query.state.dataUpdatedAt };
+      }
+    }
+  }
+  return best;
+}
+
+/** Task `id` dari cache: papan lebih dulu, lalu cache detail (`['handovers', 'one', id]`). */
+export function findCachedHandover(queryClient: QueryClient, id: string): HandoverDto | undefined {
+  const onBoard = findHandoverInBoards(queryClient, id);
+  if (onBoard) return onBoard;
+  return queryClient.getQueriesData<HandoverDto>({ queryKey: ['handovers', 'one', id] })[0]?.[1];
+}
+
 /**
  * Memasang hasil server ke papan tanpa memuat ulang: task dibuang dari kolom lama (total berkurang), dipasang di
  * kolom statusnya (halaman pertama, urut papan; total bertambah), atau diganti di tempat bila kolomnya tidak

@@ -24,6 +24,14 @@ export function setUnauthenticatedHandler(handler: () => void): void {
   unauthenticatedHandler = handler;
 }
 
+/**
+ * Melaporkan 401 dari panggilan `api()` di luar react-query (mis. pengurasan antrean centang) agar penangan global
+ * (bersihkan sesi + ke /login) tetap berjalan.
+ */
+export function reportUnauthenticated(): void {
+  unauthenticatedHandler();
+}
+
 const globalDeps: GlobalErrorDeps = {
   onUnauthenticated: () => unauthenticatedHandler(),
   notify: (message) => toast.error(message),

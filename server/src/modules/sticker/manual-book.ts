@@ -7,7 +7,7 @@ import { insertFileStmt } from '@server/modules/files/repo';
 import type { QrDesignRecord } from '@server/modules/qrcode/repo';
 import type { QrVersionDto } from '@shared/contract';
 import type { QrContent } from '@shared/qrcode';
-import { STICKER_LIMITS } from '@shared/stickers';
+import { manualBookStickerName } from '@shared/stickers';
 import {
   insertManualBookVersionStmt,
   insertStickerStmt,
@@ -134,7 +134,7 @@ export async function manualBookCommitStatements(
   const sticker: StickerRecord = {
     id: stickerId,
     typeId: type.id,
-    name: `${design.name} v${version}`.slice(0, STICKER_LIMITS.nameMax),
+    name: manualBookStickerName(design.name, version),
     alias: '',
     fileId: input.preview.fileId,
     minQty,
@@ -194,7 +194,7 @@ export async function manualBookCommitStatements(
         'SELECT 1 AS locked FROM sticker_stock WHERE sticker_id = ? LOCK IN SHARE MODE',
       ).bind(latest.stickerId),
       env.DB.prepare(
-        "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) = 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
+        "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) <= 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
       ).bind(latest.stickerId, input.now, input.actor, latest.stickerId),
     );
   }

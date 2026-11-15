@@ -1,6 +1,7 @@
 import type { OpnameInput, StickerStockDto } from '@shared/contract';
-import { piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
+import { formatStockQty, piecesOfCount, STICKER_LIMITS, type StockCount } from '@shared/stickers';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
   FormDialog,
   FormDialogContent,
@@ -61,6 +62,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(Object.keys(counts).length > 0);
 
   const counted = snapshot.filter((row) => counts[row.stickerId] !== undefined);
   const tooMany = counted.length > STICKER_LIMITS.opnameRows;
@@ -158,7 +160,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
                       </Badge>
                     )}
                   </div>
-                  <span className="text-sm tabular-nums">{`Tercatat ${recorded}`}</span>
+                  <span className="text-sm tabular-nums">{`Tercatat ${formatStockQty(recorded)}`}</span>
                 </div>
                 {count ? (
                   <div className="space-y-2">

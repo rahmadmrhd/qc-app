@@ -2,19 +2,26 @@ import type { MeDto } from '@shared/contract';
 import { expect, test } from 'vitest';
 import {
   buIdsWithLevelFor,
+  buIdsWithLevelOf,
   can,
   canAnywhere,
   canAt,
   canCreateItem,
   canEditItem,
   canManageItem,
+  canManageSerialSettings,
+  canUseSerialLocationOptions,
+  canWriteSerials,
   locationsWith,
+  serialActorModules,
 } from './permissions';
 
 const me: MeDto = {
   email: 'a@gmail.com',
   name: 'A',
   isSuperAdmin: false,
+  sharedAccount: false,
+  canManageSerialSettings: false,
   permissions: {
     access: 'view',
     item: 'view',
@@ -24,6 +31,8 @@ const me: MeDto = {
     stock: 'none',
     sticker: 'none',
     stickerstock: 'none',
+    serial: 'none',
+    serialservice: 'none',
   },
   businessUnits: [],
   locations: [
@@ -82,7 +91,13 @@ function bu(
   level: 'none' | 'view' | 'edit' | 'manage',
   status: 'active' | 'inactive' = 'active',
 ) {
-  return { id, code: id.toUpperCase(), name: id, status, permissions: { item: level } };
+  return {
+    id,
+    code: id.toUpperCase(),
+    name: id,
+    status,
+    permissions: { item: level, serial: 'none' as const, serialservice: 'none' as const },
+  };
 }
 
 const ref = (id: string) => ({ id, code: id.toUpperCase(), name: id });
@@ -130,4 +145,79 @@ test('helper BU tahan terhadap me hasil pemulihan cache lama tanpa businessUnits
   expect(canEditItem(stale, { businessUnits: [ref('a')] })).toBe(false);
   expect(canManageItem(stale, { businessUnits: [ref('a')] })).toBe(false);
   expect(canCreateItem(stale)).toBe(false);
+});
+
+function serialBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
+  return {
+    ...bu(id, 'none'),
+    permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+  };
+}
+
+test('buIdsWithLevelOf: per modul ber-BU, campuran level', () => {
+  const user = meWithBus([
+    serialBu('a', 'manage'),
+    serialBu('b', 'edit'),
+    serialBu('c', 'view'),
+    bu('d', 'manage'),
+  ]);
+  expect(buIdsWithLevelOf(user, 'serial', 'edit')).toEqual(['a', 'b']);
+  expect(buIdsWithLevelOf(user, 'serial', 'view')).toEqual(['a', 'b', 'c']);
+  expect(buIdsWithLevelOf(user, 'item', 'manage')).toEqual(['d']);
+  expect(buIdsWithLevelOf(user, 'serialservice', 'view')).toEqual([]);
+});
+
+test('canWriteSerials: butuh edit pada minimal satu BU', () => {
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
+  expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
+  expect(canWriteSerials(null)).toBe(false);
+});
+
+test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions; tim servis tidak memilih lokasi lagi)', () => {
+  const withLevels = (
+    serial: 'none' | 'view' | 'edit' | 'manage',
+    serialservice: 'none' | 'view' | 'edit' | 'manage' = 'none',
+  ) => ({ ...me, permissions: { ...me.permissions, serial, serialservice } }) as MeDto;
+  expect(canUseSerialLocationOptions(withLevels('view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('none'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('edit'))).toBe(true);
+  expect(canUseSerialLocationOptions(withLevels('manage'))).toBe(true);
+  expect(canUseSerialLocationOptions(withLevels('none', 'view'))).toBe(false);
+  expect(canUseSerialLocationOptions(withLevels('none', 'edit'))).toBe(false);
+  expect(canUseSerialLocationOptions(null)).toBe(false);
+});
+
+function serviceBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
+  return {
+    ...bu(id, 'none'),
+    permissions: { item: 'none' as const, serial: 'none' as const, serialservice: level },
+  };
+}
+
+test('serialActorModules: modul yang dipegang pada level edit di BU itu (campuran BU)', () => {
+  const user = meWithBus([
+    {
+      ...serialBu('a', 'edit'),
+      permissions: { item: 'none', serial: 'edit', serialservice: 'view' },
+    },
+    serviceBu('b', 'edit'),
+    serialBu('c', 'view'),
+  ]);
+  expect(serialActorModules(user, 'a')).toEqual({ serial: true, serialservice: false });
+  expect(serialActorModules(user, 'b')).toEqual({ serial: false, serialservice: true });
+  expect(serialActorModules(user, 'c')).toEqual({ serial: false, serialservice: false });
+  expect(serialActorModules(user, 'zzz')).toEqual({ serial: false, serialservice: false });
+  expect(serialActorModules(null, 'a')).toEqual({ serial: false, serialservice: false });
+});
+
+test('canManageSerialSettings membaca penanda dari server (auth.me), bukan menghitung dari BU', () => {
+  const base = meWithBus([serialBu('a', 'manage')]);
+  expect(canManageSerialSettings({ ...base, canManageSerialSettings: true })).toBe(true);
+  // Pengelola sebagian BU: penanda server false walau level manage ada di BU yang terlihat.
+  expect(canManageSerialSettings({ ...base, canManageSerialSettings: false })).toBe(false);
+  // `me` lama dari localStorage tanpa penanda dianggap tidak berhak sampai dimuat ulang.
+  const { canManageSerialSettings: _omit, ...legacy } = base;
+  expect(canManageSerialSettings(legacy as typeof base)).toBe(false);
+  expect(canManageSerialSettings(null)).toBe(false);
 });

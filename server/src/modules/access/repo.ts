@@ -28,6 +28,8 @@ export interface UserRecord {
   assignments: Assignment[];
   /** Penugasan BU (`buId: null` = Semua BU); kosong/rusak dibaca `[]` (tanpa penugasan BU). */
   buAssignments: BuAssignment[];
+  /** Akun bersama (`users.shared_account`): dipakai beberapa orang. */
+  sharedAccount: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -71,6 +73,8 @@ interface UserRow {
   role_ids: string;
   assignments: string;
   bu_assignments: string;
+  /** TINYINT(1): mysql2 mengembalikan angka; dibandingkan lewat `Number`. */
+  shared_account: number | string;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -143,6 +147,7 @@ function toUser(row: UserRow): UserRecord {
     status: row.status.trim() === 'active' ? 'active' : 'inactive',
     assignments: readAssignments(row),
     buAssignments: readBuAssignments(row),
+    sharedAccount: Number(row.shared_account) === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -202,7 +207,7 @@ export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
 export async function loadAccessTables(env: Env): Promise<AccessTables> {
   const [users, roles, locations, businessUnits] = await env.DB.batch([
     env.DB.prepare(
-      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, created_at, updated_at, updated_by FROM users',
+      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by FROM users',
     ),
     env.DB.prepare(
       'SELECT id, name, description, permissions, created_at, updated_at, updated_by FROM roles',
@@ -257,7 +262,7 @@ export async function countItemsByBu(env: Env): Promise<Map<string, number>> {
 export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
-      "INSERT INTO users (id, email, name, status, role_ids, assignments, bu_assignments, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)",
+      "INSERT INTO users (id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       user.id,
@@ -266,6 +271,7 @@ export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
       user.status,
       JSON.stringify(user.assignments),
       JSON.stringify(user.buAssignments),
+      user.sharedAccount ? 1 : 0,
       user.createdAt,
       user.updatedAt,
       user.updatedBy,
@@ -275,13 +281,14 @@ export function insertUserStmt(db: Db, user: UserRecord): DbStatement {
 export function updateUserStmt(db: Db, user: UserRecord): DbStatement {
   return db
     .prepare(
-      "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, bu_assignments = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+      "UPDATE users SET name = ?, status = ?, role_ids = '', assignments = ?, bu_assignments = ?, shared_account = ?, updated_at = ?, updated_by = ? WHERE id = ?",
     )
     .bind(
       user.name,
       user.status,
       JSON.stringify(user.assignments),
       JSON.stringify(user.buAssignments),
+      user.sharedAccount ? 1 : 0,
       user.updatedAt,
       user.updatedBy,
       user.id,

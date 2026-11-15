@@ -17,6 +17,7 @@ import {
   HANDOVER_BATCH_MAX,
   HANDOVER_LIMITS,
   hasHandoverControlChars,
+  isHandoverClientId,
 } from '@shared/handover';
 import { checklistOf } from './checklist';
 
@@ -114,10 +115,22 @@ export function validateSaveHandover(raw: unknown): SaveHandoverInput {
     : input;
 }
 
+const CLIENT_ID_MESSAGE = 'clientId tidak valid';
+
+/**
+ * `clientId` opsional: tidak ada/null/'' = undefined (perilaku lama); ada tetapi bukan UUID huruf kecil 36 karakter =
+ * 'invalid' (tidak dipangkas atau dinormalkan, agar kunci idempoten tidak ambigu).
+ */
+function readClientId(value: unknown): string | undefined | 'invalid' {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !isHandoverClientId(value)) return 'invalid';
+  return value;
+}
+
 /** Satu task batch: mengembalikan nilai bersih atau pesan galat pertama. */
 function readBatchTask(
   entry: unknown,
-): { customerName: string; note: string; error: null } | { error: string } {
+): { customerName: string; note: string; clientId?: string; error: null } | { error: string } {
   const source =
     typeof entry === 'object' && entry !== null && !Array.isArray(entry)
       ? (entry as Record<string, unknown>)
@@ -138,7 +151,9 @@ function readBatchTask(
   if (hasHandoverControlChars(customerName)) return { error: HANDOVER_CONTROL_CHARS_MESSAGE };
   const noteError = handoverNoteError(note);
   if (noteError !== null) return { error: noteError };
-  return { customerName, note, error: null };
+  const clientId = readClientId(source.clientId);
+  if (clientId === 'invalid') return { error: CLIENT_ID_MESSAGE };
+  return { customerName, note, ...(clientId ? { clientId } : {}), error: null };
 }
 
 export function validateSaveHandoverBatch(raw: unknown): SaveHandoverBatchInput {
@@ -153,13 +168,26 @@ export function validateSaveHandoverBatch(raw: unknown): SaveHandoverBatchInput 
   } else if (value.length > HANDOVER_BATCH_MAX) {
     reader.fail('tasks', `Maksimal ${HANDOVER_BATCH_MAX} task per permintaan`);
   } else {
+    const seenClientIds = new Set<string>();
     for (let i = 0; i < value.length; i++) {
       const task = readBatchTask(value[i]);
       if (task.error !== null && task.error !== undefined) {
         reader.fail('tasks', `Task ${i + 1}: ${task.error}`);
         break;
       }
-      if ('customerName' in task) tasks.push({ customerName: task.customerName, note: task.note });
+      if (!('customerName' in task)) continue;
+      if (task.clientId !== undefined) {
+        if (seenClientIds.has(task.clientId)) {
+          reader.fail('tasks', `Task ${i + 1}: clientId ganda dalam satu permintaan`);
+          break;
+        }
+        seenClientIds.add(task.clientId);
+      }
+      tasks.push({
+        customerName: task.customerName,
+        note: task.note,
+        ...(task.clientId ? { clientId: task.clientId } : {}),
+      });
     }
   }
   reader.done();
@@ -233,8 +261,18 @@ export function validateAddComment(raw: unknown): AddCommentInput {
   const after = readContext(reader, 'after');
   const body = reader.str('body', { required: true, max: HANDOVER_LIMITS.comment });
   if (hasHandoverControlChars(body)) reader.fail('body', HANDOVER_CONTROL_CHARS_MESSAGE);
+  const clientId = readClientId(reader.raw('clientId'));
+  if (clientId === 'invalid') reader.fail('clientId', CLIENT_ID_MESSAGE);
   reader.done();
-  return { id, locationId, quote, before, after, body };
+  return {
+    id,
+    locationId,
+    quote,
+    before,
+    after,
+    body,
+    ...(clientId && clientId !== 'invalid' ? { clientId } : {}),
+  };
 }
 
 /**

@@ -1,4 +1,5 @@
 import { fileRef, MARKDOWN_MAX_LENGTH } from '@shared/files';
+import { extractFileRefs } from '@shared/items';
 import type { Editor, Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { Blockquote } from '@tiptap/extension-blockquote';
@@ -43,8 +44,13 @@ export interface WysiwygEditorProps {
   disabled?: boolean;
   /** Id elemen label dari form induk; bila ada dipakai sebagai nama field (menggantikan aria-label bawaan). */
   labelledBy?: string;
-  /** `item`: toolbar lengkap + gambar; `note`: tanpa gambar (catatan Serah Terima). */
-  mode?: 'item' | 'note';
+  /**
+   * `item`: toolbar lengkap + gambar; `note`: tanpa gambar, centang dikunci (catatan Serah Terima); `message`: toolbar
+   * ringkas + gambar, centang dapat diubah (pesan kejadian Serial Number; gambar memakai pemilik berkas `serial`).
+   */
+  mode?: 'item' | 'note' | 'message';
+  /** Maks. gambar pada isi (mis. pesan Serial Number); sisipan melebihi batas ditolak dengan pesan. Bawaan: tanpa batas. */
+  maxImages?: number;
   extraExtensions?: Extensions;
   onReady?: (editor: Editor) => void;
 }
@@ -87,9 +93,11 @@ export function WysiwygEditor({
   disabled = false,
   labelledBy,
   mode = 'item',
+  maxImages,
   extraExtensions,
   onReady,
 }: WysiwygEditorProps) {
+  const imagesEnabled = mode === 'item' || mode === 'message';
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   // Transaksi ditolak karena melewati batas: beri tahu pengguna (bukan menolak diam-diam).
@@ -150,7 +158,7 @@ export function WysiwygEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       TableKit.configure({ table: { resizable: false } }),
-      ...(mode === 'item' ? [FileImageExtension] : []),
+      ...(imagesEnabled ? [FileImageExtension] : []),
       Markdown,
       lengthLimitExtension(
         () => maxRef.current,
@@ -218,7 +226,7 @@ export function WysiwygEditor({
         return false;
       },
       handlePaste: (_view, event) => {
-        if (mode !== 'item') return false;
+        if (!imagesEnabled) return false;
         const files = [...(event.clipboardData?.files ?? [])];
         if (files.length === 0) return false;
         // Menyalin sel Excel/Word menaruh gambar sekaligus teks biasa: biarkan teks menempel normal.
@@ -228,7 +236,7 @@ export function WysiwygEditor({
         return true;
       },
       handleDrop: (_view, event) => {
-        if (mode !== 'item') return false;
+        if (!imagesEnabled) return false;
         const files = [...((event as DragEvent).dataTransfer?.files ?? [])];
         if (files.length === 0) return false;
         event.preventDefault();
@@ -292,6 +300,16 @@ export function WysiwygEditor({
     }
     setUploadError(null);
     for (const file of images) {
+      const current = editorRef.current;
+      if (
+        maxImages !== undefined &&
+        current &&
+        !current.isDestroyed &&
+        extractFileRefs(current.getMarkdown()).length >= maxImages
+      ) {
+        setUploadError(`Maksimal ${maxImages} gambar`);
+        return;
+      }
       setUploading((count) => count + 1);
       try {
         const fileId = await uploadImage(file);
@@ -322,7 +340,7 @@ export function WysiwygEditor({
         disabled={disabled}
         onPickImage={() => fileInputRef.current?.click()}
       />
-      {mode === 'item' ? (
+      {imagesEnabled ? (
         <input
           ref={fileInputRef}
           type="file"

@@ -76,6 +76,76 @@ describe('users', () => {
     expect(await jsonOf(off)).toMatchObject({ status: 'inactive' });
   });
 
+  test('sharedAccount: bawaan false, tersimpan, dipertahankan bila tak dikirim, tercatat di audit', async () => {
+    const body = {
+      email: 'bersama@gmail.com',
+      name: 'Bersama',
+      status: 'active',
+      assignments: [],
+      buAssignments: [],
+    };
+    const created = await jsonOf(await rest.post('/users', { body }));
+    expect(created.sharedAccount).toBe(false);
+    const id = created.id as string;
+    const on = await jsonOf(
+      await rest.put(`/users/${id}`, { body: { ...body, sharedAccount: true } }),
+    );
+    expect(on.sharedAccount).toBe(true);
+    const listed = (await jsonOf(await rest.get('/users'))) as unknown as {
+      id: string;
+      sharedAccount: boolean;
+    }[];
+    expect(listed.find((u) => u.id === id)?.sharedAccount).toBe(true);
+    // Tak dikirim saat update = nilai lama dipertahankan.
+    const kept = await jsonOf(
+      await rest.put(`/users/${id}`, { body: { ...body, name: 'Bersama 2' } }),
+    );
+    expect(kept.sharedAccount).toBe(true);
+    // PATCH status juga tidak menyentuhnya.
+    await rest.patch(`/users/${id}`, { body: { status: 'inactive' } });
+    const row = await env.DB.prepare('SELECT shared_account AS s FROM users WHERE id = ?')
+      .bind(id)
+      .first<{ s: number }>();
+    expect(Number(row?.s)).toBe(1);
+    const off = await jsonOf(
+      await rest.put(`/users/${id}`, { body: { ...body, status: 'active', sharedAccount: false } }),
+    );
+    expect(off.sharedAccount).toBe(false);
+    const audit = await env.DB.prepare(
+      "SELECT `before`, `after` FROM audit_log WHERE action = 'user.update' AND target = 'bersama@gmail.com' ORDER BY id",
+    ).all<{ before: string; after: string }>();
+    const pairs = audit.results.map((r) => [
+      (JSON.parse(r.before) as { sharedAccount: boolean }).sharedAccount,
+      (JSON.parse(r.after) as { sharedAccount: boolean }).sharedAccount,
+    ]);
+    expect(pairs).toContainEqual([false, true]);
+    expect(pairs).toContainEqual([true, false]);
+    const bad = await rest.put(`/users/${id}`, { body: { ...body, sharedAccount: 'ya' } });
+    expect(bad.status).toBe(422);
+    expect(await jsonOf(bad)).toMatchObject({ fields: { sharedAccount: expect.any(String) } });
+  });
+
+  test('sharedAccount: tanpa access manage ditolak 403', async () => {
+    const response = await rest.put('/users/u-plain', {
+      email: 'viewer@gmail.com',
+      body: {
+        email: 'plain@gmail.com',
+        name: 'Plain',
+        status: 'active',
+        assignments: [],
+        buAssignments: [],
+        sharedAccount: true,
+      },
+    });
+    expect(response.status).toBe(403);
+    const row = await env.DB.prepare(
+      "SELECT shared_account AS s FROM users WHERE id = 'u-plain'",
+    ).first<{
+      s: number;
+    }>();
+    expect(Number(row?.s)).toBe(0);
+  });
+
   test('buAssignments: wajib ada (422), round-trip lewat REST, BU tak dikenal 422', async () => {
     await seedBusinessUnit(env, { id: 'bu-x', code: 'XX', name: 'X' });
     await seedRole(env, { id: 'r-bu', name: 'Item BU', permissions: { item: 'view' } });

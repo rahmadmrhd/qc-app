@@ -372,7 +372,9 @@ describe('penugasan BU user', () => {
     await saveUser(env, { ...base, buAssignments: [{ buId: 'bu-um', roleIds: ['r-qc'] }] }, admin);
     const ctx = await contextOf('ani@gmail.com');
     expect(ctx.permissions.item).toBe('edit');
-    expect(ctx.businessUnits).toEqual({ 'bu-um': { item: 'edit' } });
+    expect(ctx.businessUnits).toEqual({
+      'bu-um': { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
   });
 
   test('BU tidak dikenal atau nonaktif baru ditolak; BU nonaktif yang sudah ditugaskan boleh dipertahankan', async () => {
@@ -572,6 +574,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc'] },
         buAssignments: {},
+        sharedAccount: false,
       },
     });
   });
@@ -597,6 +600,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc', 'r-access'] },
         buAssignments: { '*': ['r-qc', 'r-access'] },
+        sharedAccount: false,
       },
       after: {
         email: 'budi@gmail.com',
@@ -604,6 +608,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc'] },
         buAssignments: {},
+        sharedAccount: false,
       },
     });
     await setUserStatus(env, { id: 'u-budi', status: 'inactive' }, admin);

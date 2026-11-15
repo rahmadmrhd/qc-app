@@ -4,11 +4,15 @@ import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { filesRoutes } from '@server/modules/files/routes';
+import { guideRoutes } from '@server/modules/guide/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
+import { pushRoutes } from '@server/modules/notification/push-routes';
+import { notificationRoutes } from '@server/modules/notification/routes';
 import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
+import { serialRoutes } from '@server/modules/serial/routes';
 import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
 
@@ -96,8 +100,38 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'postelSettings.get': true,
   'postelSettings.save': true,
   'postels.itemOptions': true,
+  'serials.itemOptions': true,
+  'serials.stickerOptions': true,
+  'serials.locationOptions': true,
+  'serials.serviceLocations': true,
+  'serials.lookup': true,
+  'serials.reportNew': true,
+  'serials.saveBatch': true,
+  'serials.get': true,
+  'serials.list': true,
+  'serials.update': true,
+  'serials.updateBatch': true,
+  'serials.act': true,
+  'serials.history': true,
+  'serialSettings.get': true,
+  'serialSettings.save': true,
+  'serialServiceSettings.get': true,
+  'serialServiceSettings.save': true,
+  'serialCases.list': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
+  'notifications.list': true,
+  'notifications.markRead': true,
+  'notifications.markAllRead': true,
+  'push.config': true,
+  'push.subscribe': true,
+  'push.unsubscribe': true,
+  'push.setPreference': true,
+  'push.reportPermission': true,
+  'push.status': true,
+  'guides.list': true,
+  'guides.mark': true,
+  'guides.reset': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -117,6 +151,10 @@ function realRoutes(): RouteTable {
     ...handoverRoutes(),
     ...qrcodeRoutes(),
     ...postelRoutes(),
+    ...notificationRoutes(),
+    ...guideRoutes(),
+    ...pushRoutes(),
+    ...serialRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),
   };

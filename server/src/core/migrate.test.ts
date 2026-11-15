@@ -15,6 +15,7 @@ const EXPECTED_TABLES = [
   'counters',
   'customers',
   'files',
+  'guide_progress',
   'handover_comments',
   'handovers',
   'item_alias_keys',
@@ -26,8 +27,13 @@ const EXPECTED_TABLES = [
   'jobs',
   'locations',
   'manual_book_versions',
+  'notification_pending',
+  'notification_pending_items',
+  'notification_prefs',
+  'notifications',
   'postel_numbers',
   'postels',
+  'push_subscriptions',
   'qr_defaults',
   'qr_designs',
   'qr_documents',
@@ -35,6 +41,10 @@ const EXPECTED_TABLES = [
   'rate_limits',
   'roles',
   'schema_migrations',
+  'serial_cases',
+  'serial_events',
+  'serial_stickers',
+  'serials',
   'settings',
   'sticker_business_units',
   'sticker_guide_images',
@@ -122,7 +132,12 @@ describe('0010_postel_kunci_asing', () => {
           .bind(id, postelId, id, id)
           .run();
       }
-      expect(await applyMigrations(db, all)).toEqual(['0010_postel_kunci_asing.sql']);
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0010_postel_kunci_asing.sql'),
+        ),
+      ).toEqual(['0010_postel_kunci_asing.sql']);
       const items = await db
         .prepare('SELECT id, postel_id FROM items ORDER BY id')
         .all<{ id: string; postel_id: string | null }>();
@@ -146,6 +161,74 @@ describe('0010_postel_kunci_asing', () => {
         .first<{ postel_id: string | null }>();
       expect(left?.postel_id).toBeNull();
       expect((await db.prepare('SELECT id FROM postel_numbers').all()).results).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  }, 120_000);
+});
+
+describe('0011_postel_stiker_per_catatan', () => {
+  const INSERT_STICKER =
+    "INSERT INTO stickers (id, type_id, name, created_at, updated_at, updated_by) VALUES (?, ?, ?, 't', 't', 's')";
+  const INSERT_TYPE =
+    "INSERT INTO sticker_types (id, name, rule, system_kind, created_at, updated_at, updated_by) VALUES (?, ?, 'group', ?, 't', 't', 's')";
+
+  test('stiker Manual Book yang ada diberi awalan (idempoten); kolom sticker_id NULL, unik, dan kunci asing RESTRICT', async () => {
+    const db = await freshDb();
+    try {
+      const all = await loadMigrations();
+      await applyMigrations(
+        db,
+        all.filter((m) => m.name < '0011'),
+      );
+      await db.prepare(INSERT_TYPE).bind('t-mb', 'Manual Book', 'manual_book').run();
+      await db.prepare(INSERT_TYPE).bind('t-pos', 'Postel', 'postel').run();
+      await db.prepare(INSERT_STICKER).bind('s-mb', 't-mb', 'PBE M5-400 v1').run();
+      await db.prepare(INSERT_STICKER).bind('s-pos', 't-pos', 'Postel').run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p1', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      // Hanya sampai 0011: migrasi sesudahnya (mis. 0012 serial) punya tesnya sendiri dan tak boleh ikut di sini.
+      expect(
+        await applyMigrations(
+          db,
+          all.filter((m) => m.name <= '0011_postel_stiker_per_catatan.sql'),
+        ),
+      ).toEqual(['0011_postel_stiker_per_catatan.sql']);
+      const names = await db
+        .prepare('SELECT id, name FROM stickers ORDER BY id')
+        .all<{ id: string; name: string }>();
+      expect(names.results).toEqual([
+        { id: 's-mb', name: 'Manual Book - PBE M5-400 v1' },
+        { id: 's-pos', name: 'Postel' },
+      ]);
+      const postel = await db
+        .prepare("SELECT sticker_id FROM postels WHERE id = 'p1'")
+        .first<{ sticker_id: string | null }>();
+      expect(postel?.sticker_id).toBeNull();
+      // kunci asing: stiker harus ada; satu stiker hanya milik satu catatan; stiker milik catatan tak dapat dihapus
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 'tidak-ada' WHERE id = 'p1'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p1'").run();
+      await db
+        .prepare(
+          "INSERT INTO postels (id, note, attachments, created_at, updated_at, updated_by) VALUES ('p2', '', '[]', 't', 't', 's')",
+        )
+        .run();
+      await expect(
+        db.prepare("UPDATE postels SET sticker_id = 's-pos' WHERE id = 'p2'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      await expect(
+        db.prepare("DELETE FROM stickers WHERE id = 's-pos'").run(),
+      ).rejects.toBeInstanceOf(DbError);
+      // menghapus catatan tidak menyentuh stikernya
+      await db.prepare("DELETE FROM postels WHERE id = 'p1'").run();
+      expect(
+        (await db.prepare("SELECT id FROM stickers WHERE id = 's-pos'").all()).results,
+      ).toHaveLength(1);
     } finally {
       await db.close();
     }
@@ -205,7 +288,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('34 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('43 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -227,7 +310,47 @@ describe('skema baseline', () => {
       { name: '0008_manual_book_4a.sql' },
       { name: '0009_postel_4b.sql' },
       { name: '0010_postel_kunci_asing.sql' },
+      { name: '0011_postel_stiker_per_catatan.sql' },
+      { name: '0012_serial_number.sql' },
+      { name: '0013_notifikasi.sql' },
+      { name: '0014_push_notifikasi.sql' },
+      { name: '0015_serial_cases.sql' },
+      { name: '0016_panduan_interaktif.sql' },
+      { name: '0017_laporan_rusak.sql' },
+      { name: '0018_client_id_serah_terima.sql' },
     ]);
+  });
+
+  test('stok stiker boleh negatif (CHECK dicabut) dan entri stok punya kolom serial', async () => {
+    await db
+      .prepare(
+        "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('s-neg', 'l-neg', -3, '')",
+      )
+      .run();
+    const row = await db
+      .prepare("SELECT qty FROM sticker_stock WHERE sticker_id = 's-neg' AND location_id = 'l-neg'")
+      .first<{ qty: number | string }>();
+    expect(Number(row?.qty)).toBe(-3);
+    const columns = await db
+      .prepare(
+        "SELECT column_name AS c FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sticker_stock_entries' AND column_name IN ('serial_id', 'serial_event_id') ORDER BY column_name",
+      )
+      .all<{ c: string }>();
+    expect(columns.results.map((r) => r.c)).toEqual(['serial_event_id', 'serial_id']);
+  });
+
+  test('serials: serial unik per (BU, serial) dan client_id unik', async () => {
+    const insert = (id: string, clientId: string, bu: string, serial: string) =>
+      db
+        .prepare(
+          'INSERT INTO serials (id, client_id, bu_id, serial, item_id) VALUES (?, ?, ?, ?, ?)',
+        )
+        .bind(id, clientId, bu, serial, 'item-1')
+        .run();
+    await insert('a', 'ca', 'bu1', 'SN1');
+    await insert('b', 'cb', 'bu2', 'SN1');
+    await expect(insert('c', 'cc', 'bu1', 'SN1')).rejects.toBeInstanceOf(DbError);
+    await expect(insert('d', 'ca', 'bu3', 'SN9')).rejects.toBeInstanceOf(DbError);
   });
 
   test('users.bu_assignments ada, bertipe teks panjang, bawaan kosong', async () => {
@@ -239,6 +362,33 @@ describe('skema baseline', () => {
     expect(column?.t).toBe('longtext');
     expect(column?.n).toBe('NO');
     expect(column?.d).toBe("''");
+  });
+
+  test('users.shared_account ada, bertipe tinyint, tidak null, bawaan 0', async () => {
+    const column = await db
+      .prepare(
+        "SELECT data_type AS t, is_nullable AS n, column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'shared_account'",
+      )
+      .first<{ t: string; n: string; d: string | null }>();
+    expect(column?.t).toBe('tinyint');
+    expect(column?.n).toBe('NO');
+    expect(column?.d).toBe('0');
+  });
+
+  test('guide_progress: kunci utama (recipient, guide_id), tanpa kunci asing', async () => {
+    expect(await tableNames(db)).toContain('guide_progress');
+    const pk = await db
+      .prepare(
+        "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND index_name = 'PRIMARY'",
+      )
+      .first<{ c: string }>();
+    expect(pk?.c).toBe('recipient,guide_id');
+    const fks = await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND constraint_type = 'FOREIGN KEY'",
+      )
+      .first<{ n: number }>();
+    expect(Number(fks?.n)).toBe(0);
   });
 
   test('id MySQL dihapus: tanpa kolom external_id di brands/items', async () => {
@@ -292,9 +442,11 @@ describe('skema baseline', () => {
         'customers.customers_key',
         'files.files_owner',
         'files.files_pending_delete',
+        'handover_comments.handover_comments_client_id',
         'handover_comments.handover_comments_handover',
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
+        'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number',
         'item_business_units.item_business_units_bu',
@@ -310,12 +462,32 @@ describe('skema baseline', () => {
         'locations.locations_code_unique',
         'locations.locations_name_unique',
         'manual_book_versions.manual_book_versions_design_version',
+        'notification_pending.notification_pending_release',
+        'notifications.notifications_created',
+        'notifications.notifications_push',
+        'notifications.notifications_recipient',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
+        'postels.postels_sticker',
+        'push_subscriptions.push_subscriptions_recipient',
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
+        'serial_cases.serial_cases_bu_created',
+        'serial_cases.serial_cases_bu_opened',
+        'serial_cases.serial_cases_number',
+        'serial_cases.serial_cases_serial',
+        'serial_events.serial_events_case',
+        'serial_events.serial_events_seq',
+        'serial_stickers.serial_stickers_sticker',
+        'serials.serials_bu_created',
+        'serials.serials_bu_serial',
+        'serials.serials_client_id',
+        'serials.serials_custody',
+        'serials.serials_item',
+        'serials.serials_location',
+        'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
         'sticker_stock_entries.sticker_stock_entries_location_ts',
@@ -346,6 +518,12 @@ describe('skema baseline', () => {
     expect(pks.sticker_stock).toBe('sticker_id,location_id');
     expect(pks.sticker_stock_entries).toBe('id');
     expect(pks.settings).toBe('key');
+    expect(pks.notifications).toBe('id');
+    expect(pks.notification_pending).toBe('handover_id,actor_email');
+    expect(pks.notification_pending_items).toBe('handover_id,actor_email,item_key');
+    expect(pks.push_subscriptions).toBe('endpoint_hash,recipient');
+    expect(pks.notification_prefs).toBe('recipient');
+    expect(pks.guide_progress).toBe('recipient,guide_id');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [

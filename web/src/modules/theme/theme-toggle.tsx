@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTourMenu } from '@/modules/guide/lib/tour-menu';
 import type { Theme } from './theme';
 import { useTheme } from './theme-provider';
 
@@ -18,14 +19,15 @@ const OPTIONS: ReadonlyArray<{ value: Theme; label: string; icon: typeof Sun }> 
 export function ThemeToggle() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const TriggerIcon = resolvedTheme === 'dark' ? Moon : Sun;
+  const tourMenu = useTourMenu('theme-toggle');
   return (
-    <DropdownMenu>
+    <DropdownMenu {...tourMenu.rootProps}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Ganti tema">
+        <Button variant="ghost" size="icon" aria-label="Ganti tema" data-tour="theme-toggle">
           <TriggerIcon />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" data-tour="theme-menu" {...tourMenu.contentProps}>
         {OPTIONS.map(({ value, label, icon: Icon }) => (
           <DropdownMenuItem key={value} onSelect={() => setTheme(value)}>
             <Icon />

@@ -35,6 +35,8 @@ describe('mergePermissions', () => {
       stock: 'none',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     });
   });
 
@@ -59,6 +61,8 @@ describe('mergePermissions', () => {
       stock: 'view',
       sticker: 'none',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     });
   });
 });
@@ -74,6 +78,8 @@ describe('fullPermissions', () => {
       stock: 'manage',
       sticker: 'manage',
       stickerstock: 'manage',
+      serial: 'manage',
+      serialservice: 'manage',
     });
   });
 });

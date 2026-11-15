@@ -1,6 +1,5 @@
 import type { AuthErrorCode, MeDto } from '@shared/contract';
-import { type ApiCall, api } from '@/lib/api';
-import { ApiError } from '@/lib/api/api-error';
+import { type ApiCall, ApiError, api } from '@/lib/api';
 import { isDesktop } from '@/lib/platform';
 import { ANONYMOUS_SESSION, type SessionState } from '@/modules/auth/session';
 
@@ -21,7 +20,8 @@ export function resolveInitialSession(
 
 /**
  * Server tak terjangkau (bukan sekadar belum login)? Galat jaringan klien (INTERNAL tanpa requestId server dan
- * dengan penyebab), 503 `UNAVAILABLE` (proksi desktop saat server mati), atau galat non-ApiError.
+ * dengan penyebab), 503 `UNAVAILABLE` (proksi desktop saat server mati; di peramban fetch yang gagal juga menjadi
+ * `UNAVAILABLE`), atau galat non-ApiError.
  */
 function isServerUnreachable(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
@@ -75,7 +75,16 @@ export function loadMeForBoot(call: ApiCall = api): Promise<MeState> {
   return loadMeState(call, isDesktop() ? { timeoutMs: DESKTOP_BOOT_ME_TIMEOUT_MS } : {});
 }
 
-/** Seperti `loadMeState` tetapi hanya mengembalikan `me` (kosong = belum login atau galat). */
-export async function loadMe(call: ApiCall = api): Promise<MeDto | null> {
-  return (await loadMeState(call)).me;
+/**
+ * Data awal klien: `GET /api/v1/me` (id `auth.me`, sesi dari cookie). 401 = belum login. Server tidak terjangkau
+ * (`UNAVAILABLE`) dikembalikan sebagai `'unavailable'` agar boot menampilkan layar "Tidak ada koneksi", BUKAN halaman
+ * login yang menyesatkan (FR-P7). Galat lain (5xx dan sebagainya) tetap diperlakukan sebagai belum login.
+ */
+export async function loadMe(call: ApiCall = api): Promise<MeDto | null | 'unavailable'> {
+  try {
+    return (await call('auth.me', null)) ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'UNAVAILABLE') return 'unavailable';
+    return null;
+  }
 }

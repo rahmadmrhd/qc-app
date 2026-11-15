@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest';
+import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { ApiError } from '@/lib/api/api-error';
 import { postelFileMime, postelUploadError, uploadPostelFile } from './upload';
 
@@ -63,4 +64,23 @@ test('postelFileMime: memakai file.type; bila kosong turun ke ekstensi; selain i
   expect(postelFileMime(file('x.constructor', ''))).toBe('');
   expect(postelFileMime(file('x.toString', ''))).toBe('');
   expect(postelFileMime(file('arsip.tar.pdf', ''))).toBe('application/pdf');
+});
+
+test('I2: unggah lampiran Postel menandai registri sibuk selama berjalan dan melepasnya setelah selesai atau gagal', async () => {
+  resetBusyForTests();
+  let release: (value: unknown) => void = () => undefined;
+  apiMock.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+  const pending = uploadPostelFile(new File([new Uint8Array(4)], 'a.png', { type: 'image/png' }));
+  expect(isBusy()).toBe(true);
+  // A5: tetap sibuk selama permintaan menggantung (setelah microtask berjalan).
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  expect(isBusy()).toBe(true);
+  release({ id: 'f1' });
+  await pending;
+  expect(isBusy()).toBe(false);
+  apiMock.mockRejectedValueOnce(new Error('gagal'));
+  await expect(
+    uploadPostelFile(new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })),
+  ).rejects.toThrow('gagal');
+  expect(isBusy()).toBe(false);
 });

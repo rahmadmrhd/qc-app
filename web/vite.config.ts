@@ -2,14 +2,21 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
+import { pwaOptions } from './src/app/pwa/pwa-config.ts';
 
 const fromHere = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
 
 const SERVER_DEV_URL = process.env.SERVER_DEV_URL ?? 'http://localhost:8788';
 
 export default defineConfig({
-  plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()],
+  plugins: [
+    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+    react(),
+    tailwindcss(),
+    VitePWA(pwaOptions),
+  ],
   resolve: {
     alias: {
       '@shared': fromHere('../shared'),

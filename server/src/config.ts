@@ -4,6 +4,7 @@ import { isValidEmail } from '@server/core/email';
 import { isDriveId } from '@server/core/google/settings';
 import type { SmtpSettings } from '@server/core/mail';
 import { DEFAULT_TRUSTED_PROXY, parseTrustedProxy, type TrustedProxy } from '@server/http/proxy';
+import { isValidVapidKeys } from '@server/modules/notification/web-push';
 
 /** Konfigurasi proses server, dibaca dari variabel lingkungan (Bun memuat `server/.env` saat dijalankan dari `server/`). */
 export interface Config {
@@ -35,6 +36,8 @@ export interface Config {
   smtp: SmtpSettings | null;
   /** Penerima peringatan (`ALERT_TO`, dipisah koma; entri yang bukan alamat email dibuang). */
   alertTo: string[];
+  /** Kunci VAPID Web Push; `null` = tidak diisi/tidak valid (push dinonaktifkan, aplikasi tetap berjalan). */
+  vapid: VapidSettings | null;
   /** Ambang peringatan pemakaian kuota Drive, persen (`QUOTA_ALERT_PERCENT`, bawaan 80). */
   quotaAlertPercent: number;
   adminEmail: string;
@@ -59,6 +62,13 @@ export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_DB_POOL_SIZE = 8;
 export const DEFAULT_SMTP_PORT = 587;
+
+/** Kunci VAPID (RFC 8292) untuk Web Push: publik 65 byte dan privat 32 byte (base64url), `subject` = `mailto:` atau URL https. */
+export interface VapidSettings {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+}
 export const DEFAULT_QUOTA_ALERT_PERCENT = 80;
 export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
 const SESSION_SECRET_MIN_LENGTH = 16;
@@ -219,6 +229,19 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         }
       : null;
 
+  // VAPID (push) TIDAK pernah menggagalkan start (seperti SMTP): kosong, penanda ISI_OLEH_PEMILIK, atau kunci tak valid =
+  // push dinonaktifkan. Rahasia hanya dibaca dari env, tak pernah dicatat. `subject` bawaan = APP_ORIGIN bila https.
+  const vapidSubject = get('VAPID_SUBJECT') || (appOrigin.startsWith('https://') ? appOrigin : '');
+  const vapid: VapidSettings | null =
+    isValidVapidKeys(get('VAPID_PUBLIC_KEY'), get('VAPID_PRIVATE_KEY')) &&
+    /^(mailto:[^\s]+|https:\/\/[^\s]+)$/.test(vapidSubject)
+      ? {
+          publicKey: get('VAPID_PUBLIC_KEY'),
+          privateKey: get('VAPID_PRIVATE_KEY'),
+          subject: vapidSubject,
+        }
+      : null;
+
   const trustedProxyText = get('TRUSTED_PROXY') || DEFAULT_TRUSTED_PROXY;
   const trustedProxy = parseTrustedProxy(trustedProxyText);
   if (trustedProxy === null) {
@@ -257,6 +280,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     backupEnabled: backupEnabledRaw !== 'false',
     smtp,
     alertTo,
+    vapid,
     quotaAlertPercent,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,

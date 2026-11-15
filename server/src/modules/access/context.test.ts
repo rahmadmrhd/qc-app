@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Db, DbStatement } from '@server/core/db';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { loadUserContext } from './context';
+import { loadActiveUserContexts, loadUserContext } from './context';
 
 let env: TestEnv;
 
@@ -26,6 +26,21 @@ describe('loadUserContext', () => {
     expect(await loadUserContext(env, 'nobody@gmail.com')).toBeNull();
     expect(await loadUserContext(env, '  ')).toBeNull();
     expect(await loadUserContext(env, 'mati@gmail.com')).toBeNull();
+  });
+
+  test('sharedAccount dibaca dari kolom users.shared_account (bawaan false)', async () => {
+    await seedUser(env, { id: 'u1', email: 'a@gmail.com', roleIds: ['r-view'] });
+    await seedUser(env, {
+      id: 'u2',
+      email: 'b@gmail.com',
+      roleIds: ['r-view'],
+      sharedAccount: true,
+    });
+    expect((await loadUserContext(env, 'a@gmail.com'))?.sharedAccount).toBe(false);
+    expect((await loadUserContext(env, 'b@gmail.com'))?.sharedAccount).toBe(true);
+    const all = await loadActiveUserContexts(env);
+    expect(all.find((ctx) => ctx.email === 'b@gmail.com')?.sharedAccount).toBe(true);
+    expect(all.find((ctx) => ctx.email === 'a@gmail.com')?.sharedAccount).toBe(false);
   });
 
   test('izin global dari penugasan Semua lokasi; email dinormalkan', async () => {
@@ -127,7 +142,10 @@ describe('penugasan BU', () => {
       buAssignments: [{ buId: null, roleIds: ['r-item-edit'] }],
     });
     const ctx = await loadUserContext(env, 'semua@gmail.com');
-    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'edit' }, 'bu-b': { item: 'edit' } });
+    expect(ctx?.businessUnits).toEqual({
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-b': { item: 'edit', serial: 'none', serialservice: 'none' },
+    });
     expect(ctx?.permissions.item).toBe('edit');
   });
 
@@ -138,7 +156,7 @@ describe('penugasan BU', () => {
       buAssignments: [{ buId: 'bu-a', roleIds: ['r-item-edit'] }],
     });
     expect((await loadUserContext(env, 'a@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
     });
     await seedUser(env, {
       id: 'u2',
@@ -149,8 +167,8 @@ describe('penugasan BU', () => {
       ],
     });
     expect((await loadUserContext(env, 'gabung@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit' },
-      'bu-b': { item: 'view' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-b': { item: 'view', serial: 'none', serialservice: 'none' },
     });
   });
 
@@ -200,7 +218,10 @@ describe('penugasan BU', () => {
 
   test('super admin: semua BU manage; tanpa BU sama sekali = {} dan item manage', async () => {
     const ctx = await loadUserContext(env, 'admin@gmail.com');
-    expect(ctx?.businessUnits).toEqual({ 'bu-a': { item: 'manage' }, 'bu-b': { item: 'manage' } });
+    expect(ctx?.businessUnits).toEqual({
+      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit' },
+      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit' },
+    });
     await env.DB.prepare('DELETE FROM business_units').run();
     const empty = await loadUserContext(env, 'admin@gmail.com');
     expect(empty?.businessUnits).toEqual({});

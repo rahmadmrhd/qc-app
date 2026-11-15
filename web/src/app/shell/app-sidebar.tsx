@@ -14,12 +14,15 @@ import {
 } from '@/components/ui/sidebar';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
+import { hasPendingGuide } from '@/modules/guide/lib/guide-for-route';
+import { useOfferedGuides } from '@/modules/guide/lib/use-offered-guides';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export function AppSidebar() {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const matchRoute = useMatchRoute();
+  const { offers } = useOfferedGuides();
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
@@ -28,7 +31,7 @@ export function AppSidebar() {
           <span className="hidden group-data-[collapsible=icon]:inline">QC</span>
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent data-tour="sidebar-menu">
         {visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()).map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
@@ -46,6 +49,13 @@ export function AppSidebar() {
                       <Link to={item.to}>
                         <item.icon />
                         <span>{item.label}</span>
+                        {hasPendingGuide(offers, item.to as string) && (
+                          <span
+                            role="img"
+                            aria-label="Ada panduan"
+                            className="ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden"
+                          />
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

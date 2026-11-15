@@ -15,8 +15,12 @@ const me: MeDto = {
     stock: 'manage',
     sticker: 'manage',
     stickerstock: 'manage',
+    serial: 'manage',
+    serialservice: 'manage',
   },
   businessUnits: [],
+  canManageSerialSettings: true,
+  sharedAccount: false,
   locations: [],
 };
 

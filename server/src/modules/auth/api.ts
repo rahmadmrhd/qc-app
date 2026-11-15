@@ -3,6 +3,7 @@ import { expectNull } from '@server/core/validate';
 import type { UserContext } from '@server/modules/access/context';
 import type { LocationBrief } from '@server/modules/access/location-brief';
 import { listBusinessUnitBriefs, listLocationBriefs } from '@server/modules/access/repo';
+import { canManageSerialSettings } from '@server/modules/serial/alert';
 import type { LocationPermissionMap } from '@shared/assignments';
 import type { BuPermissionMap } from '@shared/business-units';
 import type { BusinessUnitOptionDto, MeDto } from '@shared/contract';
@@ -54,9 +55,11 @@ export function authApiRoutes(): Pick<RouteTable, 'auth.me'> {
         email: ctx.user.email,
         name: ctx.user.name,
         isSuperAdmin: ctx.user.isSuperAdmin,
+        canManageSerialSettings: await canManageSerialSettings(ctx.env, ctx.user),
         permissions: ctx.user.permissions,
         locations: locationsOf(ctx.user, await listLocationBriefs(ctx.env)),
         businessUnits: businessUnitsOf(ctx.user, await listBusinessUnitBriefs(ctx.env)),
+        sharedAccount: ctx.user.sharedAccount,
       }),
     },
   };

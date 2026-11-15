@@ -7,6 +7,8 @@ export const MODULES = [
   'stock',
   'sticker',
   'stickerstock',
+  'serial',
+  'serialservice',
 ] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
@@ -19,6 +21,8 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   stock: 'Monitoring Stok',
   sticker: 'Katalog Stiker',
   stickerstock: 'Stok Stiker',
+  serial: 'Serial Number',
+  serialservice: 'Servis Serial Number',
 };
 
 export const LEVELS = ['none', 'view', 'edit', 'manage'] as const;
@@ -44,6 +48,8 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   stock: ['none', 'view'],
   sticker: ['none', 'view', 'edit', 'manage'],
   stickerstock: ['none', 'view', 'edit', 'manage'],
+  serial: ['none', 'view', 'edit', 'manage'],
+  serialservice: ['none', 'view', 'edit'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -89,6 +95,15 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     view: 'Melihat stok dan riwayat stiker di lokasi penugasan.',
     edit: 'Melihat serta mencatat stok masuk dan keluar.',
     manage: 'Semua akses Ubah, ditambah koreksi dan stok opname.',
+  },
+  serial: {
+    view: 'Melihat serial number pada BU penugasan.',
+    edit: 'Melihat serta mencatat serial number dan mengubah datanya.',
+    manage: 'Semua akses Ubah, ditambah pengaturan serial number.',
+  },
+  serialservice: {
+    view: 'Melihat serial number dan riwayat servisnya pada BU penugasan.',
+    edit: 'Melihat serta menangani servis serial number.',
   },
 };
 

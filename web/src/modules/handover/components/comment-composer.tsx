@@ -1,5 +1,6 @@
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { useId, useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -14,6 +15,7 @@ export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerPr
   const fieldId = useId();
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(body.trim() !== '');
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {

@@ -21,6 +21,8 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -30,6 +32,8 @@ beforeEach(() => {
       stock: 'none',
       sticker: 'view',
       stickerstock: 'none',
+      serial: 'none',
+      serialservice: 'none',
     },
     businessUnits: [],
     locations: [
@@ -331,6 +335,28 @@ test('koreksi tanpa perubahan atau tanpa alasan tidak dikirim', async () => {
   expect(within(dialog).getByText('Alasan wajib diisi')).toBeInTheDocument();
 });
 
+test('stok negatif tampil "Kurang N" di dialog stok keluar dan opname', async () => {
+  const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
+  renderPage({
+    rows: [{ ...first, total: -2, byLocation: [{ locationId: 'l-a', qty: -2 }] }, ...rest],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar Hijau-B' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
+  expect(within(dialog).getByText('Stok saat ini: Kurang 2')).toBeInTheDocument();
+});
+
+test('opname menampilkan stok tercatat negatif sebagai "Kurang N"', async () => {
+  const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
+  renderPage({
+    rows: [{ ...first, total: -2, byLocation: [{ locationId: 'l-a', qty: -2 }] }, ...rest],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
+  expect(within(dialog).getByText('Tercatat Kurang 2')).toBeInTheDocument();
+});
+
 test('opname mengirim expectedQty yang dilihat halaman dan hanya baris yang dihitung', async () => {
   const { onOpname } = renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
@@ -392,4 +418,23 @@ test('stiker Usang tampil dengan badge dan tanpa tombol Masuk; Keluar dan Koreks
   expect(screen.queryByRole('button', { name: 'Catat masuk Hijau-B' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Catat keluar Hijau-B' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Koreksi Hijau-B' })).toBeInTheDocument();
+});
+
+test('stok negatif (pemotongan Serial Number) tampil "Kurang N" dengan warna peringatan', () => {
+  const [first] = rows as [StickerStockDto];
+  renderPage({
+    rows: [
+      {
+        ...first,
+        total: -2,
+        byLocation: [
+          { locationId: 'l-a', qty: -2 },
+          { locationId: 'l-b', qty: 0 },
+        ],
+      },
+    ],
+  });
+  const total = screen.getAllByText('Kurang 2')[0];
+  expect(total).toBeInTheDocument();
+  expect(total?.className).toContain('text-destructive');
 });

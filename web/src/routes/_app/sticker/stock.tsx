@@ -9,6 +9,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
+import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import {
   OPNAME_STALE_MESSAGE,
   type OpnameSaveResult,
@@ -80,6 +81,7 @@ function StickerStockRoute() {
     return (
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Stok Stiker</h1>
+        <NoLocationNotice />
         <p className="text-sm text-muted-foreground">
           Tidak ada lokasi aktif yang dapat Anda lihat stoknya. Pilih lokasi lain di header.
         </p>

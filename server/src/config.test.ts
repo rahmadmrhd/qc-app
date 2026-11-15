@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { ConfigError, DEFAULT_DB_POOL_SIZE, DEFAULT_PORT, loadConfig } from './config';
 import { DEFAULT_TRUSTED_PROXY, isTrustedPeer, parseTrustedProxy } from './http/proxy';
+import { base64UrlEncode } from './modules/notification/web-push';
 
 const VALID: Record<string, string> = {
   DATABASE_URL: 'mysql://qc_dev:rahasia-db@127.0.0.1:33063/qc_dev',
@@ -364,5 +365,53 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
   test('SMTP_PASS tidak pernah muncul di pesan galat konfigurasi', () => {
     const error = errorOf({ ...VALID, ...SMTP, SESSION_SECRET: '' });
     expect(error.message).not.toContain('sandi-aplikasi-rahasia');
+  });
+});
+
+describe('loadConfig: VAPID (push)', () => {
+  async function vapidPair() {
+    const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair;
+    const publicKey = base64UrlEncode(
+      new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
+    );
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
+    return { VAPID_PUBLIC_KEY: publicKey, VAPID_PRIVATE_KEY: jwk.d as string };
+  }
+
+  test('bawaan: vapid null; start tidak gagal', () => {
+    expect(loadConfig(VALID).vapid).toBeNull();
+  });
+
+  test('kunci sah + subject eksplisit atau APP_ORIGIN https dirakit', async () => {
+    const pair = await vapidPair();
+    const explicit = loadConfig({ ...VALID, ...pair, VAPID_SUBJECT: 'mailto:ops@example.test' });
+    expect(explicit.vapid).toEqual({
+      publicKey: pair.VAPID_PUBLIC_KEY,
+      privateKey: pair.VAPID_PRIVATE_KEY,
+      subject: 'mailto:ops@example.test',
+    });
+    const fromOrigin = loadConfig({ ...VALID, ...pair, APP_ORIGIN: 'https://qc.example.com' });
+    expect(fromOrigin.vapid?.subject).toBe('https://qc.example.com');
+  });
+
+  test('kosong, penanda, kunci rusak, atau tanpa subject = push dinonaktifkan, bukan galat', async () => {
+    const pair = await vapidPair();
+    expect(
+      loadConfig({
+        ...VALID,
+        VAPID_PUBLIC_KEY: 'ISI_OLEH_PEMILIK',
+        VAPID_PRIVATE_KEY: 'ISI_OLEH_PEMILIK',
+      }).vapid,
+    ).toBeNull();
+    expect(
+      loadConfig({ ...VALID, ...pair, VAPID_PRIVATE_KEY: 'pendek', VAPID_SUBJECT: 'mailto:a@b.co' })
+        .vapid,
+    ).toBeNull();
+    // Tanpa VAPID_SUBJECT dan APP_ORIGIN bukan https = tak ada subject sah.
+    expect(loadConfig({ ...VALID, ...pair }).vapid).toBeNull();
+    expect(loadConfig({ ...VALID, ...pair, VAPID_SUBJECT: 'bukan-subject' }).vapid).toBeNull();
   });
 });

@@ -317,6 +317,19 @@ describe('deploy: nginx/qc.conf.example', () => {
     expect(code).not.toMatch(/set_real_ip_from (0\.0\.0\.0\/0|::\/0)/);
   });
 
+  test('log akses menyamarkan token tautan laporan (jalur dan Referer) di kedua blok TLS (S3)', () => {
+    expect(code).toMatch(/map \$request_uri \$qc_log_uri \{/);
+    expect(code).toContain('~^/laporan/');
+    expect(code).toContain('~^/api/public/serial-reports/');
+    expect(code).toContain('map $http_referer $qc_log_referer {');
+    expect(code).toMatch(/log_format qc_masked [^;]*\$qc_log_uri[^;]*\$qc_log_referer/s);
+    expect(code).not.toMatch(/log_format qc_masked [^;]*\$request_uri/s);
+    expect(code).not.toMatch(/log_format qc_masked [^;]*\$request[ "]/s);
+    for (const block of servers443) {
+      expect(block).toContain('access_log /var/log/nginx/qc-access.log qc_masked;');
+    }
+  });
+
   test('sertifikat berupa placeholder yang membuat nginx -t gagal bila belum diganti; tanpa jalur nyata', () => {
     expect(code.match(/ssl_certificate\s+ISI_JALUR_SERTIFIKAT_ORIGIN_DI_SINI\.pem;/g)).toHaveLength(
       2,

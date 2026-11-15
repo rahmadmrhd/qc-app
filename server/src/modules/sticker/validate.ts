@@ -311,8 +311,8 @@ export function validateOpname(raw: unknown): OpnameInput {
         reader.fail('rows', `${label}: stiker dan lokasi wajib diisi`);
         break;
       }
-      if (typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0) {
-        reader.fail('rows', `${label}: stok yang dihitung harus bilangan bulat tidak negatif`);
+      if (typeof expected !== 'number' || !Number.isSafeInteger(expected)) {
+        reader.fail('rows', `${label}: stok yang dihitung harus bilangan bulat`);
         break;
       }
       const count = parseCount(source.count, 0);

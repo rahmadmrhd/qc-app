@@ -18,6 +18,7 @@ const user: UserDto = {
     { buId: 'bu-a', roleIds: ['r2'] },
     { buId: 'bu-x', roleIds: ['r1'] },
   ],
+  sharedAccount: false,
   createdAt: '',
   updatedAt: '',
   updatedBy: '',
@@ -65,4 +66,26 @@ test('user tanpa penugasan menampilkan tanda strip', () => {
     />,
   );
   expect(screen.getAllByText('—')).toHaveLength(2);
+});
+
+test('akun bersama diberi lencana; akun individu tidak', () => {
+  render(
+    <UsersTable
+      users={[
+        { ...user, id: '1', email: 'individu@gmail.com' },
+        { ...user, id: '2', email: 'bersama@gmail.com', sharedAccount: true },
+      ]}
+      roleNames={new Map()}
+      locationNames={new Map()}
+      businessUnitNames={new Map()}
+      canManage={false}
+      currentEmail="x@gmail.com"
+      pendingStatusId={null}
+      onEdit={() => undefined}
+      onToggleStatus={() => undefined}
+    />,
+  );
+  expect(screen.getAllByText('Akun bersama')).toHaveLength(1);
+  const row = screen.getByText('bersama@gmail.com').closest('tr');
+  expect(row).toHaveTextContent('Akun bersama');
 });

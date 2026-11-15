@@ -1,5 +1,6 @@
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
+import { runBusy } from '@/app/pwa/busy';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,9 +35,12 @@ export function LogoLibraryField({
     onBusyChange?.(true);
     setPhase('resize');
     try {
-      const prepared = await prepareImage(file, LOGO_MAX_SIDE);
-      setPhase('upload');
-      const saved = await upload.mutateAsync(prepared);
+      // Pengecilan + unggah = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
+      const saved = await runBusy(async () => {
+        const prepared = await prepareImage(file, LOGO_MAX_SIDE);
+        setPhase('upload');
+        return upload.mutateAsync(prepared);
+      });
       onLibraryChange([...library, saved.id]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah logo');

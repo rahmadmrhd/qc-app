@@ -16,13 +16,12 @@ import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { fileQueryOptions } from '@/modules/files/queries';
 import { ExportDialog } from '@/modules/qrcode/components/export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
 import { designLabel } from '@/modules/qrcode/lib/design-label';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { shouldRefreshAfterExportError } from '@/modules/qrcode/lib/export-error';
-import { renderExportFiles } from '@/modules/qrcode/lib/export-files';
+import { prepareExportFiles } from '@/modules/qrcode/lib/prepare-export';
 import {
   qrDesignsQueryOptions,
   refreshQrDesign,
@@ -63,13 +62,7 @@ function QrCodesPage() {
     report: (step: string) => void,
     reason: string,
   ) {
-    if (design.logoFileId !== '') report('Memuat logo dari Drive…');
-    const logo =
-      design.logoFileId === ''
-        ? null
-        : await queryClient.fetchQuery(fileQueryOptions(design.logoFileId));
-    report('Membuat PDF lembar 10 × 14 dan PNG label…');
-    const files = await renderExportFiles(design, logo);
+    const files = await prepareExportFiles(queryClient, design, report);
     report('Mengirim PDF dan PNG ke server…');
     try {
       await exportMutation.mutateAsync({
@@ -108,7 +101,7 @@ function QrCodesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div data-tour="qr-header" className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">QR Code Label</h1>
         <div className="flex flex-wrap gap-2">
           {can(me, 'qrcode', 'manage') ? (
@@ -117,7 +110,9 @@ function QrCodesPage() {
             </Button>
           ) : null}
           {can(me, 'qrcode', 'edit') ? (
-            <Button onClick={() => void navigate({ to: '/qrcode/new' })}>Buat konfigurasi</Button>
+            <Button data-tour="qr-new" onClick={() => void navigate({ to: '/qrcode/new' })}>
+              Buat konfigurasi
+            </Button>
           ) : null}
         </div>
       </div>
@@ -125,18 +120,20 @@ function QrCodesPage() {
         Label 3 × 3 cm dari sebuah link. Ekspor menghasilkan PDF lembar 10 × 14 (300 × 420 mm) dan
         PNG, disimpan ke Drive setelah Anda konfirmasi.
       </p>
-      <QrDesignsTable
-        designs={designs}
-        canEdit={can(me, 'qrcode', 'edit')}
-        canManage={can(me, 'qrcode', 'manage')}
-        busyId={busyId}
-        onEdit={(design) =>
-          void navigate({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
-        }
-        onExport={setExporting}
-        onDownload={(design, kind) => void download(design, kind)}
-        onDelete={setDeleting}
-      />
+      <div data-tour="qr-table">
+        <QrDesignsTable
+          designs={designs}
+          canEdit={can(me, 'qrcode', 'edit')}
+          canManage={can(me, 'qrcode', 'manage')}
+          busyId={busyId}
+          onEdit={(design) =>
+            void navigate({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
+          }
+          onExport={setExporting}
+          onDownload={(design, kind) => void download(design, kind)}
+          onDelete={setDeleting}
+        />
+      </div>
       {exporting ? (
         <ExportDialog
           design={exporting}

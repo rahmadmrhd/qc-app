@@ -1,6 +1,7 @@
 import type { StickerTypeDto } from '@shared/contract';
 import { STICKER_LIMITS, type StickerRule, USER_STICKER_RULES } from '@shared/stickers';
 import { useState } from 'react';
+import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import {
   FormDialog,
   FormDialogContent,
@@ -64,6 +65,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
   const [nameError, setNameError] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(name !== (type?.name ?? '') || rule !== (type?.rule ?? 'bu'));
   // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
   const [expectedUpdatedAt] = useState(type?.updatedAt);
   /** Aturan terkunci sesudah jenis dipakai stiker (server menolak perubahannya). */
