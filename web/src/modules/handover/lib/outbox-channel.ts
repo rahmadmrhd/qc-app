@@ -9,7 +9,9 @@ export type OutboxMessage =
   | { type: 'sending'; ids: string[]; until: number }
   | { type: 'sending-done'; ids: string[] };
 
-const CHANNEL_NAME = 'qc-outbox';
+/** Nama saluran; `sync-sw.js` menyalinnya (dijaga `outbox-parity.test.ts`). */
+export const OUTBOX_CHANNEL_NAME = 'qc-outbox';
+const CHANNEL_NAME = OUTBOX_CHANNEL_NAME;
 
 let channel: BroadcastChannel | null = null;
 const handlers = new Set<(message: OutboxMessage) => void>();

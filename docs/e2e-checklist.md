@@ -338,3 +338,18 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 222 | Tab tertahan (siaran keluar dari tab lain), server dimatikan, lalu fokuskan tab | Tab tetap tertahan dan tidak memuat ulang; saat server menyala lagi, fokus berikutnya memuat ulang sekali | PWA FR-P14 |
 | 223 | Tab tertahan di latar belakang (tersembunyi) selama beberapa menit; pantau DevTools → Network | Tidak ada permintaan ke `/api/v1/me` selama tab tersembunyi | PWA FR-P14 |
 | 224 | Tab tertahan; di tab lain keluar lalu login dengan akun LAIN; fokuskan tab tertahan | Tab memuat ulang sekali sebagai login biasa; antrean akun lama tidak terlihat dan dibuang | PWA FR-P14, FR-P19 |
+
+## PWA Fase 3, Tahap D
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.** Skenario Background Sync (#225-#230, #232) dijalankan di Chrome/Edge Android dan desktop. Pengiriman dari latar belakang dapat ditunda peramban; penundaan beberapa menit bukan galat, cukup dicatat waktunya.
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 225 | Online, buka Serah Terima, matikan sinyal; centang, tulis komentar, dan buat task baru; tutup aplikasi sepenuhnya; nyalakan sinyal dan jangan membuka aplikasi | Entri terkirim dari latar belakang; saat aplikasi dibuka, data server tampil tanpa "Belum terkirim" dan tanpa duplikat | PWA FR-P23 |
+| 226 | Seperti #225, tetapi kunci layar ponsel setelah entri antre, nyalakan sinyal, lalu tunggu beberapa menit tanpa membuka aplikasi | Entri terkirim saat ponsel terkunci (atau tertunda peramban, tercatat); tidak ada duplikat setelah aplikasi dibuka | PWA FR-P23 |
+| 227 | Saat sinyal ada dan antrean berisi banyak entri, buka aplikasi lalu tutup atau putus jaringan di tengah pengiriman; buka lagi dengan sinyal | Sisa entri terkirim; tidak ada entri yang hilang atau terkirim dua kali (periksa daftar komentar dan nomor ST) | PWA FR-P23, FR-P17 |
+| 228 | Akun A antre (offline), tutup aplikasi, login akun B di perangkat yang sama, lalu nyalakan sinyal | Entri akun A tidak terkirim atas nama akun B (periksa server: tak ada centang, komentar, atau task baru dari entri itu); antrean akun A dibuang | PWA FR-P23, FR-P19 |
+| 229 | Offline dengan antrean, pilih Keluar lalu Tetap keluar; nyalakan sinyal dan tunggu | Tidak ada entri yang terkirim setelah keluar (periksa server) | PWA FR-P23, FR-P14 |
+| 230 | Antre komentar dan centang pada task yang nanti dibatalkan pelaku lain; tutup aplikasi; nyalakan sinyal; tunggu; buka aplikasi | Toast beralasan muncul tepat sekali (muat ulang dua kali tidak mengulang toast); komentar memakai toast bertahan dengan "Salin teks"; centang memakai toast "N perubahan centang tidak dapat dikirim: <alasan>" | PWA FR-P23, FR-P18, FR-P22 |
+| 231 | Firefox (desktop) atau Safari (iOS), tanpa `SyncManager`: offline, antre, tutup aplikasi, nyalakan sinyal, lalu buka aplikasi | Entri terkirim saat aplikasi dibuka; tidak ada galat terkait sync di konsol | PWA FR-P23, FR-P17 |
+| 232 | Dua tab akun sama terbuka, antrean berisi komentar dan task baru, nyalakan sinyal, dan biarkan Background Sync dan penguras halaman berjalan bersamaan | Setiap entri terkirim sekali; tidak ada komentar atau task ganda; kedua tab menampilkan data yang sama tanpa penanda tertinggal | PWA FR-P23, FR-P22 |

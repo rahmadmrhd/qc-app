@@ -106,6 +106,12 @@ const REJECTION_CODES: ReadonlySet<string> = new Set([
   'VALIDATION',
 ]);
 
+/**
+ * Alasan penolakan entri `check`/`comment` tanpa `taskId` (keputusan pemilik 2026-11-15). Teks yang sama dipakai
+ * `sync-sw.js` (dijaga `outbox-parity.test.ts`).
+ */
+const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';
+
 /** Penanda "mengirim": centang per butir (per tab), komentar dan task baru per entri (disiarkan ke tab lain). */
 function markSending(entry: OutboxEntry): () => void {
   return entry.kind === 'check'
@@ -132,15 +138,47 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
       result.stoppedBy = deps.isOwnerActive() ? 'unavailable' : 'owner-changed';
       break;
     }
+    // Entri yang ditandai `rejected` (oleh service worker, Tahap D) tak pernah dikirim: diumumkan SEKALI sebagai
+    // penolakan lalu dibuang. Diumumkan hanya bila penghapusan dari toko terkonfirmasi, supaya tak diumumkan dua kali
+    // bila entri kembali; yang gagal dihapus diumumkan pada putaran berikutnya.
+    const announced = entries.filter((entry) => entry.state === 'rejected' && !tried.has(entry.id));
+    if (announced.length > 0) {
+      for (const entry of announced) tried.add(entry.id);
+      const removed = await removeOutboxEntries(
+        owner,
+        announced.map((entry) => entry.id),
+      );
+      if (removed) {
+        for (const entry of announced) {
+          result.rejected.push({ entry, reason: entry.reason ?? 'Ditolak server' });
+        }
+      }
+      continue;
+    }
     if (!purged) {
       purged = true;
       result.expired = await purgeExpired(owner, deps.now());
     }
     // Kedaluwarsa tak pernah dikirim (juga bila penghapusannya dari toko gagal dan entri masih terbaca).
     const now = deps.now();
-    const next = entries.find((entry) => !tried.has(entry.id) && !isExpiredEntry(entry, now));
+    const next = entries.find(
+      (entry) => entry.state !== 'rejected' && !tried.has(entry.id) && !isExpiredEntry(entry, now),
+    );
     if (!next) break;
     tried.add(next.id);
+    // Tanpa task tujuan (`taskId` kosong) permintaan tak dapat dibentuk: ditolak (bukan menahan antrean), tanpa `send`.
+    // Diumumkan hanya bila penghapusan dari toko terkonfirmasi (sama dengan entri `rejected` dari service worker).
+    if (next.kind !== 'create' && next.taskId === '') {
+      // Seperti penolakan server: pemilik yang sudah berganti/keluar tak boleh disentuh antreannya.
+      if (!deps.isOwnerActive()) {
+        result.stoppedBy = 'owner-changed';
+        break;
+      }
+      if (await removeOutboxEntries(owner, [next.id])) {
+        result.rejected.push({ entry: next, reason: NO_TASK_REASON });
+      }
+      continue;
+    }
     // Ditandai "mengirim" sampai SESUDAH entri dihapus (semua jalur), supaya penanda tak berkedip ke "Belum terkirim".
     const end = markSending(next);
     try {

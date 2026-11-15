@@ -17,8 +17,11 @@ export interface DeviceRecord {
   [field: string]: unknown;
 }
 
-const DB_NAME = 'qc-device';
-const DB_VERSION = 2;
+/** Nama dan versi basis data; `sync-sw.js` menyalin namanya dan membuka TANPA nomor versi (dijaga `outbox-parity.test.ts`). */
+export const DEVICE_DB_NAME = 'qc-device';
+export const DEVICE_DB_VERSION = 2;
+const DB_NAME = DEVICE_DB_NAME;
+const DB_VERSION = DEVICE_DB_VERSION;
 const STORES: DeviceStoreName[] = ['columns', 'tasks', 'outbox'];
 const BOARD_STORES: DeviceStoreName[] = ['columns', 'tasks'];
 
