@@ -13,14 +13,19 @@ export interface ProofPhotoFieldProps {
   /** Maksimum foto per entri. */
   max: number;
   disabled?: boolean;
+  /** Konteks untuk pembaca layar bila banyak field serupa di satu halaman (mis. serial barisnya). */
+  label?: string;
 }
 
 /**
  * Field foto bukti QC: tombol "Foto (n)" membuka file dialog (tab Unggah + Kamera, tanpa Pustaka), lalu kisi kecil foto
  * yang sudah diunggah (masih `draft`: boleh dibuang). Foto baru terkirim ke server saat dialog dikonfirmasi.
  */
-export function ProofPhotoField({ value, onChange, max, disabled }: ProofPhotoFieldProps) {
+export function ProofPhotoField({ value, onChange, max, disabled, label }: ProofPhotoFieldProps) {
   const [open, setOpen] = useState(false);
+  // Dialog (antrean unggah dan kamera) baru dipasang saat pertama dibuka: tabel 200 baris tak membawa 200 dialog.
+  const [mounted, setMounted] = useState(false);
+  const suffix = label ? `, ${label}` : '';
   const room = Math.max(0, max - value.length);
 
   function remove(photo: ProofPhotoRef) {
@@ -37,7 +42,11 @@ export function ProofPhotoField({ value, onChange, max, disabled }: ProofPhotoFi
           variant="outline"
           size="sm"
           disabled={disabled || room === 0}
-          onClick={() => setOpen(true)}
+          aria-label={`Foto (${value.length})${suffix}`}
+          onClick={() => {
+            setMounted(true);
+            setOpen(true);
+          }}
         >
           <Camera aria-hidden />
           Foto ({value.length})
@@ -52,7 +61,7 @@ export function ProofPhotoField({ value, onChange, max, disabled }: ProofPhotoFi
             <li key={photo.id} className="relative">
               <img
                 src={photo.thumbUrl}
-                alt={`Foto bukti ${index + 1}`}
+                alt={`Foto bukti ${index + 1}${suffix}`}
                 className="size-14 rounded-md border object-cover"
                 loading="lazy"
               />
@@ -60,7 +69,7 @@ export function ProofPhotoField({ value, onChange, max, disabled }: ProofPhotoFi
                 type="button"
                 variant="secondary"
                 size="icon-xs"
-                aria-label={`Buang foto ${index + 1}`}
+                aria-label={`Buang foto ${index + 1}${suffix}`}
                 disabled={disabled}
                 className="absolute -top-1.5 -right-1.5 rounded-full"
                 onClick={() => remove(photo)}
@@ -71,20 +80,22 @@ export function ProofPhotoField({ value, onChange, max, disabled }: ProofPhotoFi
           ))}
         </ul>
       ) : null}
-      <FileDialog
-        open={open}
-        onOpenChange={setOpen}
-        source={proofSource}
-        mode="multiple"
-        accept={['image']}
-        maxBytes={MAX_IMAGE_BYTES}
-        maxFiles={Math.max(1, room)}
-        showLibrary={false}
-        title="Foto bukti QC"
-        confirmLabel="Tambahkan"
-        cameraTab={(api) => <ProofCameraTab {...api} />}
-        onSelect={(items) => onChange([...value, ...items.map(toProofRef)].slice(0, max))}
-      />
+      {mounted ? (
+        <FileDialog
+          open={open}
+          onOpenChange={setOpen}
+          source={proofSource}
+          mode="multiple"
+          accept={['image']}
+          maxBytes={MAX_IMAGE_BYTES}
+          maxFiles={Math.max(1, room)}
+          showLibrary={false}
+          title="Foto bukti QC"
+          confirmLabel="Tambahkan"
+          cameraTab={(api) => <ProofCameraTab {...api} />}
+          onSelect={(items) => onChange([...value, ...items.map(toProofRef)].slice(0, max))}
+        />
+      ) : null}
     </div>
   );
 }

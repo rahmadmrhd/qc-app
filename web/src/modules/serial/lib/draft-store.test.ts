@@ -154,3 +154,44 @@ test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b) 
   expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
   expect(NOT_GOOD_MESSAGE).toContain('Lapor Rusak');
 });
+
+test('foto bukti: bolak-balik simpan-muat, draf lama tanpa field = tanpa foto, entri rusak dibuang', () => {
+  const [row] = rows(1);
+  if (!row) throw new Error('seed');
+  const photo = { id: 'p1', mime: 'image/webp', size: 100, thumbUrl: '/api/v1/serial-proofs/p1' };
+  saveDraft('a@x.com', [{ ...row, proofPhotos: [photo] }]);
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([photo]);
+
+  // Draf lama (sebelum fitur ini): kunci proofPhotos tidak ada.
+  const { proofPhotos: _drop, ...legacy } = row;
+  localStorage.setItem('qc.serial.draft:a@x.com', JSON.stringify([legacy]));
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([]);
+
+  // Entri rusak dibuang satu per satu; maksimal 5 foto yang dipulihkan.
+  const many = Array.from({ length: 8 }, (_, index) => ({ ...photo, id: `p${index}` }));
+  localStorage.setItem(
+    'qc.serial.draft:a@x.com',
+    JSON.stringify([
+      {
+        ...row,
+        proofPhotos: [
+          { id: 5 },
+          null,
+          'x',
+          { ...photo, size: 'besar' },
+          { ...photo, thumbUrl: 7 },
+          ...many,
+        ],
+      },
+    ]),
+  );
+  expect(loadDraft('a@x.com')[0]?.proofPhotos.map((entry) => entry.id)).toEqual([
+    'p0',
+    'p1',
+    'p2',
+    'p3',
+    'p4',
+  ]);
+  localStorage.setItem('qc.serial.draft:a@x.com', JSON.stringify([{ ...row, proofPhotos: 'x' }]));
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([]);
+});

@@ -16,6 +16,7 @@ import {
   type BulkPatch,
   type Defaults,
   fromQcsnRows,
+  proofIdsOf,
   removeRows,
   type StagingRow,
   toBatches,
@@ -27,6 +28,7 @@ import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
+  discardProofPhotos,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
@@ -248,10 +250,16 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
     },
     [edit],
   );
-  const removeOne = useCallback(
-    (clientId: string) => setAllRows(removeRows(rowsRef.current, new Set([clientId]))),
+  // Membuang baris = foto draft barisnya ikut dibuang di server (upaya terbaik; sisanya disapu penjadwal).
+  const dropRows = useCallback(
+    (ids: ReadonlySet<string>) => {
+      const dropped = rowsRef.current.filter((row) => ids.has(row.clientId));
+      void discardProofPhotos(proofIdsOf(dropped));
+      setAllRows(removeRows(rowsRef.current, ids));
+    },
     [setAllRows],
   );
+  const removeOne = useCallback((clientId: string) => dropRows(new Set([clientId])), [dropRows]);
   const openDetail = useCallback((clientId: string) => setDetailId(clientId), []);
 
   function selectedIds(): Set<string> {
@@ -593,7 +601,7 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
         <BulkEditBar
           count={selectedCount}
           onApply={applyBulkEdit}
-          onRemove={() => setAllRows(removeRows(rowsRef.current, selectedIds()))}
+          onRemove={() => dropRows(selectedIds())}
           onClearSelection={() => selectAll(false)}
         />
       ) : null}
@@ -672,6 +680,7 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
             size="sm"
             disabled={saving}
             onClick={() => {
+              void discardProofPhotos(proofIdsOf(rowsRef.current));
               setAllRows([]);
               clearDraft(ownerKey);
               setNotice(null);
