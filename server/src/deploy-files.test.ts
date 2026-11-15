@@ -234,7 +234,12 @@ describe('deploy: Dockerfile dan .dockerignore', () => {
   });
 
   test('tanpa rahasia di image: tidak ada ENV/ARG/COPY rahasia atau berkas .env', () => {
-    expect(dockerfile).not.toMatch(/^(ENV|ARG)\s+\w*(SECRET|PASSWORD|TOKEN|KEY)\w*/im);
+    // Satu-satunya pengecualian: `ARG UI_PUBLIC_KEY_PEM` = kunci PUBLIK tanda tangan UI desktop (bukan rahasia; kunci
+    // privat hanya lewat secret BuildKit, dijaga `scripts/ui-manifest.test.ts` dan `scripts/ci-workflows.test.ts`).
+    expect(dockerfile).not.toMatch(
+      /^(ENV|ARG)\s+(?!UI_PUBLIC_KEY_PEM=)\w*(SECRET|PASSWORD|TOKEN|KEY)\w*/im,
+    );
+    expect(dockerfile).not.toMatch(/^ENV\s+UI_PUBLIC_KEY_PEM/im);
     expect(dockerfile).not.toMatch(/COPY[^\n]*\.env/);
     expect(dockerfile).not.toMatch(/google-sa/);
   });
