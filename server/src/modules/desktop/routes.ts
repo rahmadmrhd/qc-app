@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { appError } from '@server/core/errors';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { type AppBindings, newRequestId } from '@server/http/security';
@@ -46,10 +46,62 @@ desktopApp.get('/ui-manifest', async (c) => {
   return c.json({ manifest: served.manifest, signature: served.signature }, 200, headers);
 });
 
+/** Awalan rute berkas bundel UI; sisa jalur = jalur berkas di manifest (tiap segmen di-encode). */
+const FILE_PREFIX = '/api/desktop/ui-file/';
+
+/**
+ * Berkas bundel UI untuk desktop. Kenapa bukan jalur statis biasa: Cloudflare menyisipkan skrip deteksi bot ke
+ * setiap respons `text/html` di tepi, sehingga `index.html` yang diunduh tak lagi cocok dengan ukuran/sha256 di
+ * manifest bertanda tangan dan seluruh pembaruan ditolak. Di sini SEMUA berkas disajikan `application/octet-stream`
+ * (bukan HTML, jadi tak disentuh) dengan `no-transform`; desktop memverifikasi isinya terhadap manifest.
+ * Hanya jalur yang tercantum di manifest bertanda tangan yang dilayani (bukan sembarang berkas di `STATIC_DIR`);
+ * selain itu 404 generik. Isinya publik (sama dengan yang disajikan jalur statis).
+ */
+desktopApp.get('/ui-file/*', async (c) => {
+  const notFound = () =>
+    problemResponse(toProblem(appError('NOT_FOUND', 'Berkas UI tidak tersedia'), newRequestId()));
+  const staticDir = c.env.staticDir;
+  const rawPath = new URL(c.req.url).pathname;
+  if (staticDir === undefined || !rawPath.startsWith(FILE_PREFIX)) return notFound();
+
+  let relative: string;
+  try {
+    relative = decodeURIComponent(rawPath.slice(FILE_PREFIX.length));
+  } catch {
+    return notFound();
+  }
+  let served: Served | null;
+  try {
+    served = await loadManifest(staticDir);
+  } catch {
+    return notFound();
+  }
+  // Daftar putih = jalur di manifest (tanpa `..`, `\`, atau NUL karena dibuat `build-ui-manifest.ts`); pemeriksaan
+  // ulang di bawah menjaga bila manifest dari sumber lain.
+  if (!served?.paths.has(relative)) return notFound();
+  const root = resolve(staticDir);
+  const full = resolve(root, relative);
+  if (full === root || !full.startsWith(`${root}${sep}`)) return notFound();
+  try {
+    if (!(await stat(full)).isFile()) return notFound();
+  } catch {
+    return notFound();
+  }
+  return new Response(Bun.file(full), {
+    headers: {
+      'content-type': 'application/octet-stream',
+      'cache-control': 'no-cache, no-transform',
+      'x-content-type-options': 'nosniff',
+    },
+  });
+});
+
 interface Served {
   manifest: object;
   signature: string;
   etag: string;
+  /** Jalur berkas yang tercantum di manifest (daftar putih rute `ui-file`). */
+  paths: Set<string>;
 }
 
 /**
@@ -102,7 +154,15 @@ async function loadManifest(staticDir: string): Promise<Served | null> {
     .update(`${json}
 ${signature}`)
     .digest('hex');
-  const served: Served = { manifest, signature, etag };
+  const files = (manifest as { files?: unknown }).files;
+  const paths = new Set<string>();
+  if (Array.isArray(files)) {
+    for (const entry of files) {
+      const entryPath = (entry as { path?: unknown } | null)?.path;
+      if (typeof entryPath === 'string') paths.add(entryPath);
+    }
+  }
+  const served: Served = { manifest, signature, etag, paths };
   if (!memo.has(staticDir) && memo.size >= MEMO_MAX_DIRS) memo.clear();
   memo.set(staticDir, { key, served });
   return served;

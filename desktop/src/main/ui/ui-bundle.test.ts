@@ -90,7 +90,10 @@ beforeAll(async () => {
       res.end(JSON.stringify({ manifest: current.manifest, signature: current.signature }));
       return;
     }
-    const path = decodeURIComponent(url).replace(/^\//, '');
+    const prefix = '/api/desktop/ui-file/';
+    const path = url.startsWith(prefix)
+      ? decodeURIComponent(url.slice(prefix.length))
+      : '\0tak-ada';
     const body = tamper.get(path) ?? current?.files.get(path);
     if (!body) {
       res.writeHead(404);
