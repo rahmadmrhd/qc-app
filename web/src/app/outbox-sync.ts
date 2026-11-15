@@ -11,7 +11,7 @@ import { findHandoverInBoards } from '@/modules/handover/lib/board-cache';
 import {
   type OutboxEntry,
   purgeForeignOutboxes,
-  readOutbox,
+  readOutboxAll,
   refreshOutboxFromStore,
   resumeOutboxWrites,
 } from '@/modules/handover/lib/outbox';
@@ -176,7 +176,7 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
       again = true;
       return;
     }
-    if (readOutbox(owner).length === 0) return;
+    if (readOutboxAll(owner).length === 0) return;
     running = true;
     lastStart = Date.now();
     try {
@@ -231,7 +231,7 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
   requestFlush = trigger;
   trigger();
   // Salinan memori bisa kosong padahal toko berisi (hidrasi boot gagal atau lewat batas waktu): segarkan dari toko, lalu coba lagi.
-  if (readOutbox(owner).length === 0) void refreshOutboxFromStore(owner).then(() => trigger());
+  if (readOutboxAll(owner).length === 0) void refreshOutboxFromStore(owner).then(() => trigger());
 
   return () => {
     stopped = true;

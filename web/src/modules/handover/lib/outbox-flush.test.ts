@@ -511,3 +511,68 @@ test('urutan menurut at: entri lebih lama dikirim lebih dulu lintas jenis', asyn
   );
   expect(order).toEqual(['create', 'check', 'comment']);
 });
+
+// --- Tahap D: entri 'rejected' ditandai service worker ---------------------------------------------------------
+/** Menulis langsung ke toko seperti service worker (tanpa lewat salinan memori tab ini). */
+async function seedRejected(id: string, entry: { at: number }, reason: string) {
+  const full = { ...entry, id, state: 'rejected', reason };
+  await deviceDb.putOutboxRecord(
+    OWNER,
+    {
+      key: `${OWNER}|${id}`,
+      owner: OWNER,
+      v: 1,
+      savedAt: full.at,
+      seq: 1,
+      entry: full,
+    },
+    {},
+    () => true,
+  );
+}
+
+test('D: entri rejected tidak dikirim, diumumkan dengan reason dari entri, dibuang dari toko, dan tak diumumkan dua kali', async () => {
+  await seedRejected('k-ditolak', commentInput(), 'Task sudah dibatalkan');
+  await queue(0);
+  const send = vi.fn(async (entry: OutboxEntry) => makeHandover({ id: taskOf(entry) }));
+  const result = await flushOutbox(deps({ send }));
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0]?.[0]).toMatchObject({ kind: 'check' });
+  expect(result.rejected).toHaveLength(1);
+  expect(result.rejected[0]).toMatchObject({
+    entry: { kind: 'comment', id: 'k-ditolak' },
+    reason: 'Task sudah dibatalkan',
+  });
+  expect(result.sent).toHaveLength(1);
+  expect(await readOutboxRecords()).toEqual([]);
+  const again = await flushOutbox(deps({ send }));
+  expect(again.rejected).toEqual([]);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+test('D: entri rejected yang juga kedaluwarsa muncul di rejected saja, tidak di expired', async () => {
+  const old = NOW - OUTBOX_MAX_AGE_MS - 1;
+  await seedRejected(
+    'k-lama',
+    commentInput({ at: old }),
+    'Kedaluwarsa: lebih dari 24 jam sejak dibuat',
+  );
+  const send = vi.fn();
+  const result = await flushOutbox(deps({ send }));
+  expect(send).not.toHaveBeenCalled();
+  expect(result.rejected.map((r) => r.entry.id)).toEqual(['k-lama']);
+  expect(result.expired).toEqual([]);
+  expect(await readOutboxRecords()).toEqual([]);
+});
+
+test('D: penghapusan toko gagal untuk entri rejected: tak diumumkan (menunggu putaran berikutnya) dan tak dikirim', async () => {
+  await seedRejected('k-gagal', commentInput(), 'ditolak');
+  vi.spyOn(deviceDb, 'deleteOutboxRecords').mockResolvedValueOnce(false);
+  const send = vi.fn();
+  const first = await flushOutbox(deps({ send }));
+  expect(first.rejected).toEqual([]);
+  expect(send).not.toHaveBeenCalled();
+  const second = await flushOutbox(deps({ send }));
+  expect(second.rejected.map((r) => r.entry.id)).toEqual(['k-gagal']);
+  expect(send).not.toHaveBeenCalled();
+});

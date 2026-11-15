@@ -132,13 +132,32 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
       result.stoppedBy = deps.isOwnerActive() ? 'unavailable' : 'owner-changed';
       break;
     }
+    // Entri yang ditandai `rejected` (oleh service worker, Tahap D) tak pernah dikirim: diumumkan SEKALI sebagai
+    // penolakan lalu dibuang. Diumumkan hanya bila penghapusan dari toko terkonfirmasi, supaya tak diumumkan dua kali
+    // bila entri kembali; yang gagal dihapus diumumkan pada putaran berikutnya.
+    const announced = entries.filter((entry) => entry.state === 'rejected' && !tried.has(entry.id));
+    if (announced.length > 0) {
+      for (const entry of announced) tried.add(entry.id);
+      const removed = await removeOutboxEntries(
+        owner,
+        announced.map((entry) => entry.id),
+      );
+      if (removed) {
+        for (const entry of announced) {
+          result.rejected.push({ entry, reason: entry.reason ?? 'Ditolak server' });
+        }
+      }
+      continue;
+    }
     if (!purged) {
       purged = true;
       result.expired = await purgeExpired(owner, deps.now());
     }
     // Kedaluwarsa tak pernah dikirim (juga bila penghapusannya dari toko gagal dan entri masih terbaca).
     const now = deps.now();
-    const next = entries.find((entry) => !tried.has(entry.id) && !isExpiredEntry(entry, now));
+    const next = entries.find(
+      (entry) => entry.state !== 'rejected' && !tried.has(entry.id) && !isExpiredEntry(entry, now),
+    );
     if (!next) break;
     tried.add(next.id);
     // Ditandai "mengirim" sampai SESUDAH entri dihapus (semua jalur), supaya penanda tak berkedip ke "Belum terkirim".

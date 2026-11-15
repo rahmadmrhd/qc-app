@@ -627,3 +627,47 @@ test('pemicu yang datang saat putaran masih berjalan diulang SEKALI setelah sele
   await settle();
   expect(request).toHaveBeenCalledTimes(2);
 });
+
+test('D: hanya entri rejected di toko: start tetap memicu penguras, toast beralasan bertahan dengan "Salin teks"', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  const entry = {
+    ...commentEntry(),
+    id: 'ditolak-sw',
+    body: 'isi dari SW',
+    state: 'rejected',
+    reason: 'Task sudah dibatalkan',
+  };
+  // Ditulis service worker langsung ke toko: salinan memori tab ini kosong.
+  await deviceDb.putOutboxRecord(
+    OWNER,
+    { key: `${OWNER}|ditolak-sw`, owner: OWNER, v: 1, savedAt: entry.at, seq: 1, entry },
+    {},
+    () => true,
+  );
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.api).not.toHaveBeenCalled();
+  const call = mocks.error.mock.calls.find((c) => String(c[0]).includes('Komentar'));
+  expect(String(call?.[0])).toContain('Task sudah dibatalkan');
+  expect(call?.[1]).toMatchObject({
+    duration: Number.POSITIVE_INFINITY,
+    action: { label: 'Salin teks' },
+  });
+  call?.[1].action.onClick();
+  expect(writeText).toHaveBeenCalledWith('isi dari SW');
+  expect(await readOutboxRecords()).toEqual([]);
+});
+
+test('D: entri rejected di salinan memori (tanpa yang lain) tetap memicu penguras pada drain', async () => {
+  await enqueueOutbox(OWNER, {
+    ...commentEntry(),
+    state: 'rejected',
+    reason: 'Ditolak server',
+  });
+  stop = startOutboxSync(client);
+  await settle();
+  expect(mocks.error.mock.calls.some((c) => String(c[0]).includes('Ditolak server'))).toBe(true);
+  expect(mocks.api).not.toHaveBeenCalled();
+  expect(await readOutboxRecords()).toEqual([]);
+});
