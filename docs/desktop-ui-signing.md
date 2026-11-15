@@ -8,10 +8,10 @@ Kunci publik yang disuntikkan ikut masuk ke paket aplikasi yang ditandatangani i
 
 | Nama | Isi | Jenis di GitHub | Dipakai oleh |
 |---|---|---|---|
-| `UI_SIGNING_KEY` | Kunci **privat** (PEM PKCS8, berbaris banyak) | **Secret** pada environment `ui-signing` | Job `image` di `deploy-server.yml` (menandatangani manifest) |
-| `UI_PUBLIC_KEY_PEM` | Kunci **publik**, bentuk **satu baris** (isi base64) | **Variable** (repositori atau environment `ui-signing`) | Build image server (`build-args`, pemeriksaan pasangan) dan build desktop (disuntikkan ke aplikasi) |
+| `UI_SIGNING_KEY` | Kunci **privat** (PEM PKCS8, berbaris banyak) | **Secret** pada environment `staging` dan `production` | Job `image` di `deploy-server.yml` (menandatangani manifest) |
+| `UI_PUBLIC_KEY_PEM` | Kunci **publik**, bentuk **satu baris** (isi base64) | **Variable** (repositori, atau environment `staging` dan `production`) | Build image server (`build-args`, pemeriksaan pasangan) dan build desktop (disuntikkan ke aplikasi) |
 
-`UI_PUBLIC_KEY_PEM` harus satu baris karena `build-args` berformat satu entri per baris. Bentuk lain (PEM berbaris banyak, PEM dengan `\n` harfiah) diterima oleh skrip lokal, tetapi Variable untuk CI harus satu baris; `gen-ui-signing-key` mencetak bentuk itu.
+`UI_PUBLIC_KEY_PEM` boleh berbentuk PEM berbaris banyak (akhir baris Unix atau Windows), PEM satu baris, PEM dengan `\n` harfiah, atau isi base64 saja; skrip lokal dan langkah CI menormalkannya. Langkah CI mengubahnya menjadi satu baris karena `build-args` berformat satu entri per baris (yang tidak terbaca sebagai kunci publik menggagalkan build tanpa mencetak isinya); `gen-ui-signing-key` mencetak bentuk satu baris yang ringkas.
 
 ## Tanpa kunci: apa yang terjadi
 
@@ -31,19 +31,19 @@ bun run scripts/gen-ui-signing-key.ts C:\jalur\pribadi\qc.ui-signing-key.pem
 
 ## 2. Simpan kunci privat sebagai secret GitHub (environment terbatas)
 
-1. Settings > Environments > **New environment**, nama **`ui-signing`**. Batasi *Deployment branches* ke `main` (tambahkan `dev` hanya bila dispatch staging dari `dev` perlu menandatangani). Catatan: `pull_request_target` selalu berjalan dari `main`, apa pun branch tujuan PR.
-2. Di environment itu, tambahkan **secret** `UI_SIGNING_KEY` berisi ISI berkas `.ui-signing-key.pem`.
+1. Job `image` memakai environment yang SAMA dengan target deploy (`staging` untuk merge ke `dev`, `production` untuk merge ke `main`; penempatan pemilik 2026-11-16, menggantikan rancangan awal berupa environment terpisah `ui-signing`). Pastikan aturan *Deployment branches* kedua environment itu tetap terbatas (`staging` ke `dev`, `production` ke `main`). Catatan: `pull_request_target` selalu berjalan dari `main`, apa pun branch tujuan PR.
+2. Di **kedua** environment itu, tambahkan **secret** `UI_SIGNING_KEY` berisi ISI berkas `.ui-signing-key.pem` (kunci yang sama boleh dipakai di keduanya).
 3. Jangan memakai secret repositori biasa: ia terbaca oleh workflow mana pun di repositori, termasuk yang diubah di branch PR. Jangan menempelkan kunci ke issue, PR, log, atau obrolan.
 
 ## 3. Simpan kunci publik sebagai Variable GitHub
 
-Tambahkan **Variable** (bukan secret) `UI_PUBLIC_KEY_PEM` dengan nilai satu baris dari langkah 1. Variable di repositori atau di environment `ui-signing` sama-sama terbaca job `image`.
+Tambahkan **Variable** (bukan secret) `UI_PUBLIC_KEY_PEM` dengan kunci publik dari langkah 1. Variable di repositori maupun di environment `staging`/`production` sama-sama terbaca job `image`; bila ada di keduanya, nilai environment yang dipakai. Bentuk satu baris, PEM berbaris banyak, atau base64 polos semuanya diterima.
 
 ## 4. Workflow dan build image (sudah terpasang)
 
-Job `image` pada `.github/workflows/deploy-server.yml` memakai environment `ui-signing`. Langkah "Siapkan kunci tanda tangan UI" menulis secret ke berkas sementara (izin 0600) dan meneruskannya ke BuildKit lewat `secret-files`; `UI_PUBLIC_KEY_PEM` lewat `build-args`; berkas dihapus di langkah terakhir. Di `Dockerfile`, `scripts/sign-ui-manifest.ts --require-public-key` memeriksa pasangan kunci SEBELUM menulis `ui-manifest.sig`; tidak berpasangan = build gagal dengan pesan jelas, dan sidik kunci publik dicetak di log. Aturan rolloutnya ada di bagian "Tanpa kunci" di atas. Rinci di `docs/ci-cd.md`.
+Job `image` pada `.github/workflows/deploy-server.yml` memakai environment target deploy (`${{ needs.meta.outputs.target }}`). Langkah "Siapkan kunci tanda tangan UI" menulis secret ke berkas sementara (izin 0600) dan meneruskannya ke BuildKit lewat `secret-files`; kunci publik dinormalkan menjadi satu baris dan diteruskan lewat `build-args`; berkas dihapus di langkah terakhir. Di `Dockerfile`, `scripts/sign-ui-manifest.ts --require-public-key` memeriksa pasangan kunci SEBELUM menulis `ui-manifest.sig`; tidak berpasangan = build gagal dengan pesan jelas, dan sidik kunci publik dicetak di log. Aturan rolloutnya ada di bagian "Tanpa kunci" di atas. Rinci di `docs/ci-cd.md`.
 
-**LARANGAN: jangan menambahkan `UI_SIGNING_KEY` atau environment `ui-signing` ke `test.yml` atau workflow lain yang berjalan pada `pull_request`.** Job itu menjalankan kode PR yang belum ditinjau (Dockerfile dan `scripts/` dari HEAD PR); kunci yang tersedia di sana dapat dibocorkan atau dipakai menandatangani bundel UI pilihan penyerang, dan itu meruntuhkan seluruh tujuan tanda tangan (spek §3.4). `scripts/ci-workflows.test.ts` menegakkannya. Image dari `test.yml` memang tidak ditandatangani.
+**LARANGAN: jangan menambahkan `UI_SIGNING_KEY` ke `test.yml` atau workflow lain yang berjalan pada `pull_request`.** Job itu menjalankan kode PR yang belum ditinjau (Dockerfile dan `scripts/` dari HEAD PR); kunci yang tersedia di sana dapat dibocorkan atau dipakai menandatangani bundel UI pilihan penyerang, dan itu meruntuhkan seluruh tujuan tanda tangan (spek §3.4). `scripts/ci-workflows.test.ts` menegakkannya. Image dari `test.yml` memang tidak ditandatangani.
 
 Uji lokal tanpa CI: `docker build --secret id=ui_signing_key,src=C:\jalur\pribadi\qc.ui-signing-key.pem --build-arg UI_PUBLIC_KEY_PEM=<satu baris> -t qc-app .` lalu pastikan `GET /api/desktop/ui-manifest` pada kontainer menjawab 200 dengan `{ manifest, signature }`. Karena nilai `ARG` ikut kunci cache BuildKit, memasang atau memutar kunci otomatis membangun ulang langkah tanda tangan (tidak ada `.sig` lama yang terbawa dari cache).
 
