@@ -428,8 +428,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serial-cases',
     query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
   },
-  // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan `revalidate`: isi pada id yang sama berubah dari foto
-  // asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable` akan menyajikan foto basi.
+  // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
+  // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
+  // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.
   'serialProofs.upload': {
     verb: 'POST',
     path: '/serial-proofs',

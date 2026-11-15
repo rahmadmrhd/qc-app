@@ -583,6 +583,26 @@ describe('metode tambahan untuk cadangan', () => {
     expect((await failure(rig.client.listFolder(OUTSIDE_ID))).code).toBe('UNAVAILABLE');
   });
 
+  test('listFolder dengan name: hanya berkas bernama persis itu; tanda kutip dan garis miring di-escape', async () => {
+    rig = await createGoogleRig();
+    rig.fake.addFile('NAMEFILE0000001A', {
+      name: 'proof-a.webp',
+      parents: [BACKUP_ID],
+      bytes: BYTES,
+    });
+    rig.fake.addFile('NAMEFILE0000002B', {
+      name: 'proof-b.webp',
+      parents: [BACKUP_ID],
+      bytes: BYTES,
+    });
+    rig.fake.addFile('NAMEFILE0000003C', { name: "o'neil\\x", parents: [BACKUP_ID], bytes: BYTES });
+    const one = await rig.client.listFolder(BACKUP_ID, { name: 'proof-b.webp' });
+    expect(one.files.map((file) => file.name)).toEqual(['proof-b.webp']);
+    expect((await rig.client.listFolder(BACKUP_ID, { name: 'proof-zzz.webp' })).files).toEqual([]);
+    const odd = await rig.client.listFolder(BACKUP_ID, { name: "o'neil\\x" });
+    expect(odd.files.map((file) => file.name)).toEqual(["o'neil\\x"]);
+  });
+
   test('downloadFile mengalirkan isi (alt=media) dengan pemeriksaan induk; null bila tak ada', async () => {
     rig = await createGoogleRig();
     const bytes = patternBytes(300_000);

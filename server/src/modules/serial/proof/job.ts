@@ -5,7 +5,6 @@ import { nowIso } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
-import { listAllEntries } from '@server/modules/backup/upload';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { ensureDriveFolder } from '@server/modules/files/service';
 import { insertJobStmt } from '@server/modules/jobs/repo';
@@ -47,6 +46,12 @@ export function serialProofJobStmt(env: Env, photoId: string): DbStatement {
 const DRIVE_MIME = 'image/webp';
 const GENERIC_ERROR = 'Foto gagal diproses. Coba lagi nanti.';
 const MAX_ERROR_LENGTH = 300;
+/**
+ * Batas percobaan MEMUAT gambar untuk cap, dihitung permanen di `serial_proof_photos.attempts` (naik saat langkah 0
+ * mulai memuat gambar). Hitungan di memori runner hilang bila proses mati (mis. OOM), sehingga tanpa ini foto yang
+ * membunuh proses akan diulang tanpa batas; di sini percobaan ke-4 langsung `failed` tanpa memuat gambar.
+ */
+export const PROOF_MAX_STAMP_ATTEMPTS = 3;
 
 interface ProofJobState extends Record<string, unknown> {
   /** Nama berkas sementara hasil bercap (belum di Drive). */
@@ -128,6 +133,17 @@ async function stampStep(ctx: StepContext): Promise<{ progress: number }> {
       now: nowIso(env),
     }),
   ]);
+  // Hitung percobaan SEBELUM memuat apa pun (permanen di basis data: bertahan walau proses mati di tengah cap).
+  await env.DB.prepare('UPDATE serial_proof_photos SET attempts = attempts + 1 WHERE id = ?')
+    .bind(proof.id)
+    .run();
+  const attempted = await findProof(env.DB, proof.id);
+  if ((attempted?.attempts ?? 0) > PROOF_MAX_STAMP_ATTEMPTS) {
+    throw appError(
+      'VALIDATION',
+      'Foto gagal diproses berulang kali (kemungkinan terlalu besar). Buang lalu unggah ulang dengan ukuran lebih kecil.',
+    );
+  }
   const original = proof.stagedName === '' ? null : await store.read(proof.stagedName);
   if (!original) throw appError('VALIDATION', 'Berkas sementara foto sudah tidak ada');
   const snapshot = parseSnapshot(proof.snapshotJson);
@@ -163,7 +179,8 @@ async function uploadStep(ctx: StepContext): Promise<{ progress: number }> {
   const bridge = getBridge(env);
   if (state.uploading) {
     // Pengulangan sesudah unggah yang mungkin sudah sampai ke Drive: pakai berkas bernama sama, jangan ganda.
-    const existing = (await listAllEntries(env, folderId)).find((entry) => entry.name === name);
+    const page = await viaBridge(() => bridge.listFolder(folderId, { name, pageSize: 10 }));
+    const existing = page.files.find((entry) => entry.name === name);
     if (existing) {
       state.driveId = existing.id;
       await ctx.save();

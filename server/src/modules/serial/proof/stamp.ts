@@ -21,8 +21,13 @@ export interface ProofSnapshot {
   savedAt: string;
 }
 
-/** Batas piksel gambar yang diproses (40 juta); lebih dari ini ditolak SEBELUM menginflate/mengalokasikan. */
-export const PROOF_MAX_PIXELS = 40_000_000;
+/**
+ * Batas piksel gambar yang diproses (4,2 juta, setara 2048 x 2048; browser selalu mengirim sisi <= 1600); lebih dari ini
+ * ditolak SEBELUM menginflate/mengalokasikan, di unggahan DAN di `stampPhoto`. Menggambar cap memegang beberapa salinan
+ * RGBA penuh sekaligus (+~110 MB pada 4,2 MP; terukur +595 MB pada 36 MP), jadi batas ini yang menjaga puncak memori di
+ * bawah `mem_limit` `qc-app` (256 MB).
+ */
+export const PROOF_MAX_PIXELS = 4_200_000;
 /** Kualitas WebP tetap. */
 export const PROOF_WEBP_QUALITY = 85;
 

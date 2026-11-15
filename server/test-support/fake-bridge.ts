@@ -198,7 +198,12 @@ export function createFakeBridge(): FakeBridge {
     async listFolder(folderId, options) {
       enter('listFolder', [folderId, options]);
       const all = [...state.files.entries()]
-        .filter(([, file]) => file.folderId === folderId && !file.trashed)
+        .filter(
+          ([, file]) =>
+            file.folderId === folderId &&
+            !file.trashed &&
+            (options?.name === undefined || file.name === options.name),
+        )
         .map(([id, file]): DriveFolderEntry => {
           const bytes = base64ToBytes(file.base64);
           return {

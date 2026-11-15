@@ -201,6 +201,11 @@ describe('langkah unggah diulang', () => {
     expect(await runPendingJobs(env)).toBe(1);
     expect((await findJob(env, jobId))?.status).toBe('done');
     expect(calls).toBe(1); // pengulangan memeriksa Drive, tidak mengunggah lagi
+    // pemeriksaan Drive memakai filter nama (bukan mendaftar seluruh folder)
+    const listing = env.BRIDGE.calls.filter((entry) => entry.action === 'listFolder');
+    expect(listing).toHaveLength(1);
+    const listOptions = listing[0]?.args[1] as { name?: string } | undefined;
+    expect(listOptions?.name).toBe(`proof-${id}.webp`);
     expect(driveProofFiles()).toHaveLength(1);
     const proof = await findProof(env.DB, id);
     expect(proof?.state).toBe('done');
