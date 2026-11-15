@@ -10,6 +10,7 @@ import { startJobRunner, startNotificationLoop, startScheduler } from '@server/j
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
+import { createProofStore } from '@server/modules/serial/proof/store';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -65,6 +66,8 @@ export function envFromConfig(config: Config, db: Db): Env {
       config.googleSaKeyFile !== '' &&
       config.googleRootFolderId !== '',
     BACKUP_LOCAL_DIR: config.backupLocalDir,
+    PROOF_STORE: createProofStore(config.proofStagingDir),
+    PROOF_STAGING_MAX_BYTES: config.proofStagingMaxBytes,
     BACKUP_DUMP: (outputPath) =>
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),

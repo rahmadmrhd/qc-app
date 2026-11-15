@@ -61,6 +61,10 @@ RUN find shared server/src -name '*.test.ts' -delete
 # mewarisi kepemilikannya (tanpa ini volume dimiliki root dan cadangan tak dapat menulis).
 RUN apk add --no-cache mariadb-client     && mkdir -p /var/backups/qc     && chown bun:bun /var/backups/qc
 
+# Folder berkas sementara foto bukti QC Serial Number (volume `qc-proofs` dipasang di sini): dibuat dan dimiliki `bun`
+# SEBELUM USER dengan alasan yang sama seperti folder dump di atas.
+RUN mkdir -p /var/lib/qc/proofs && chown bun:bun /var/lib/qc/proofs
+
 # Pengguna non-root bawaan image oven/bun (uid 1000).
 USER bun
 WORKDIR /app/server
