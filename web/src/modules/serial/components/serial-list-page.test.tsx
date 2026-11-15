@@ -561,3 +561,25 @@ test('tombol "Tambah Serial Number" hanya tampil bila ada jalan masuk mencatat, 
   await userEvent.click(await screen.findByRole('button', { name: 'Tambah Serial Number' }));
   expect(onNew).toHaveBeenCalledTimes(1);
 });
+
+test('badge Bukti foto QC tampil hanya pada baris yang punya foto', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'ADA1', hasProofPhotos: true }),
+          row({ id: 's2', serial: 'TANPA2' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const withPhoto = (await screen.findByRole('button', { name: 'ADA1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const without = screen.getByRole('button', { name: 'TANPA2' }).closest('tr') as HTMLElement;
+  expect(within(withPhoto).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(without).queryByText('Bukti foto QC')).not.toBeInTheDocument();
+});

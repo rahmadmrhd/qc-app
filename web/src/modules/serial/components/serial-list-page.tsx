@@ -19,6 +19,7 @@ import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
 import { todayWib } from '../lib/locations';
 import { daysBetweenDates } from '../lib/transit';
 import { serialListQueryOptions } from '../queries';
+import { ProofBadge } from './proof-badge';
 import { SerialFilters } from './serial-filters';
 
 export interface SerialListPageProps {
@@ -95,6 +96,11 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
                   >
                     {serial.serial}
                   </Button>
+                  {serial.hasProofPhotos ? (
+                    <div className="mt-1">
+                      <ProofBadge />
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell>{serial.itemLabel}</TableCell>
                 <TableCell>{serial.buCode}</TableCell>

@@ -297,3 +297,28 @@ export function useSaveSerialServiceSettings() {
 export async function discardProofPhotos(ids: readonly string[]): Promise<void> {
   await Promise.allSettled(ids.map((id) => api('serialProofs.remove', { id })));
 }
+
+/** Foto bukti berubah (coba lagi, dibuang): riwayat, daftar (badge), dan detail serial dimuat ulang. */
+function refreshProofViews(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'history'] });
+  void queryClient.invalidateQueries({ queryKey: serialKeys.list });
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'one'] });
+}
+
+/** "Coba lagi" untuk foto bukti yang gagal diproses (pelaku atau `serial: manage`). */
+export function useRetryProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.retry', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+/** Membuang foto bukti yang gagal (satu-satunya penghapusan sesudah Simpan; dicatat di audit server). */
+export function useRemoveProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.remove', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}

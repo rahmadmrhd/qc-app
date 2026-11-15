@@ -851,3 +851,57 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
     'true',
   );
 });
+
+const PHOTO = {
+  id: 'aaaaaaaa-1',
+  state: 'done' as const,
+  mime: 'image/webp',
+  size: 1,
+  width: 1,
+  height: 1,
+  filename: 'bukti-aaaaaaaa.webp',
+  error: null,
+};
+
+test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial punya foto', async () => {
+  const first = renderPage();
+  expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+  expect(screen.queryByText('Bukti foto QC')).not.toBeInTheDocument();
+  first.unmount();
+
+  state = {
+    serial: { ...SERIAL, hasProofPhotos: true },
+    events: state.events.map((entry) =>
+      entry.seq === 3 ? { ...entry, proofPhotos: [PHOTO] } : entry,
+    ),
+    eventsTruncated: false,
+  };
+  renderPage();
+  expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+  // Satu di kepala, satu di kartu riwayat saat ini (seq 3) yang berfoto.
+  await waitFor(() => expect(screen.getAllByText('Bukti foto QC')).toHaveLength(2));
+  expect(screen.getByRole('img', { name: 'Foto bukti 1' })).toHaveAttribute(
+    'src',
+    '/api/v1/serial-proofs/aaaaaaaa-1',
+  );
+});
+
+test('Coba lagi pada foto gagal: pelaku (nama sama) boleh, pembaca lain tidak', async () => {
+  const failed = { ...PHOTO, state: 'failed' as const, error: 'rusak' };
+  const withFailed = (actorName: string) => ({
+    serial: { ...SERIAL, hasProofPhotos: true },
+    events: state.events.map((entry) =>
+      entry.seq === 3 ? { ...entry, actorName, proofPhotos: [failed] } : entry,
+    ),
+    eventsTruncated: false,
+  });
+  state = withFailed('Orang Lain');
+  const first = renderPage();
+  await screen.findByText('rusak');
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  first.unmount();
+
+  state = withFailed('A'); // nama pengguna uji (me.name)
+  renderPage();
+  expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+});

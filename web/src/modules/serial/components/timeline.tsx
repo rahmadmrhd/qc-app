@@ -13,6 +13,8 @@ import {
   legEventLabel,
   TEAM_LABEL,
 } from '../lib/labels';
+import { ProofBadge } from './proof-badge';
+import { ProofGallery } from './proof-gallery';
 
 /** Ringkasan stiker pada kejadian `recorded`: nama dan jumlah dari `data.stickers` (tanpa angka stok). */
 function recordedStickers(event: SerialEventDto): string[] {
@@ -119,11 +121,14 @@ function EventCard({
   event,
   showLatestBadge,
   markdownComponents,
+  canRetryProof,
 }: {
   event: SerialEventDto;
   showLatestBadge: boolean;
   markdownComponents: Components | undefined;
+  canRetryProof: boolean;
 }) {
+  const hasProof = event.proofPhotos.length > 0;
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -145,6 +150,7 @@ function EventCard({
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{event.actorName}</span>
             <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
+            {hasProof ? <ProofBadge /> : null}
           </p>
         </div>
         <div className="flex items-start gap-2">
@@ -188,6 +194,7 @@ function EventCard({
           Stiker ditempel dan stok dipotong: {stickers.join(', ')}
         </p>
       ) : null}
+      {hasProof ? <ProofGallery photos={event.proofPhotos} canRetry={canRetryProof} /> : null}
     </li>
   );
 }
@@ -231,9 +238,12 @@ export function Timeline({
   markLatest = false,
   markdownComponents,
   loadOlder,
+  proofCanRetry,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
+  /** Boleh "Coba lagi"/"Buang" pada foto bukti gagal kejadian ini (pelaku atau `serial: manage`); bawaan tidak. */
+  proofCanRetry?: (event: SerialEventDto) => boolean;
   /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
   markdownComponents?: Components;
   loadOlder?: ReactNode;
@@ -251,6 +261,7 @@ export function Timeline({
       event={event}
       showLatestBadge={badge}
       markdownComponents={markdownComponents}
+      canRetryProof={proofCanRetry?.(event) ?? false}
     />
   );
   return (

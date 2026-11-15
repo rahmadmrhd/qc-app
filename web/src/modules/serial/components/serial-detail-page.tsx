@@ -14,6 +14,7 @@ import { ActButtons, type ActKind } from './act-buttons';
 import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
+import { ProofBadge } from './proof-badge';
 import { SerialStepper } from './serial-stepper';
 import { TimelineTabs } from './timeline-tabs';
 
@@ -131,6 +132,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
             {serial.openCase ? (
               <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
             ) : null}
+            {serial.hasProofPhotos ? <ProofBadge /> : null}
           </div>
         </div>
         {canWrite ? (

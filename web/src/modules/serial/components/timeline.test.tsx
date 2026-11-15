@@ -1,4 +1,5 @@
-import type { SerialEventDto } from '@shared/contract';
+import type { SerialEventDto, SerialProofPhotoDto } from '@shared/contract';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test } from 'vitest';
@@ -17,6 +18,7 @@ function event(seq: number, over: Partial<SerialEventDto> = {}): SerialEventDto 
     message: `Catatan nomor ${seq}`,
     changes: [],
     data: {},
+    proofPhotos: [],
     ...over,
   } as SerialEventDto;
 }
@@ -110,4 +112,54 @@ test('catatan pengiriman tampil di rincian kartu kirim', () => {
     />,
   );
   expect(screen.getByText('Catatan pengiriman: JNE resi 123456')).toBeInTheDocument();
+});
+
+const proof = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProofPhotoDto => ({
+  id,
+  state: 'done',
+  mime: 'image/webp',
+  size: 1,
+  width: 1,
+  height: 1,
+  filename: `bukti-${id}.webp`,
+  error: null,
+  ...over,
+});
+
+function renderWithClient(ui: React.ReactNode) {
+  return render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
+}
+
+test('kartu dengan foto bukti menampilkan badge dan kisi; kartu tanpa foto tidak', () => {
+  renderWithClient(
+    <Timeline
+      events={[
+        event(1, { type: 'note' }),
+        event(2, {
+          type: 'recheck',
+          data: { result: 'pass' },
+          proofPhotos: [proof('p1'), proof('p2')],
+        }),
+      ]}
+    />,
+  );
+  // Riwayat saat ini = seq 2 (berfoto).
+  expect(screen.getAllByText('Bukti foto QC')).toHaveLength(1);
+  expect(screen.getAllByRole('img')).toHaveLength(2);
+});
+
+test('kartu lama tanpa foto: tidak ada badge maupun kisi', () => {
+  renderWithClient(<Timeline events={[event(1, { type: 'recorded' })]} />);
+  expect(screen.queryByText('Bukti foto QC')).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();
+});
+
+test('Coba lagi hanya muncul pada foto gagal bila proofCanRetry mengizinkan kejadiannya', () => {
+  const failed = proof('p9', { state: 'failed', error: 'rusak' });
+  const events = [event(1, { type: 'recorded', proofPhotos: [failed] })];
+  const first = renderWithClient(<Timeline events={events} proofCanRetry={() => false} />);
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  first.unmount();
+  renderWithClient(<Timeline events={events} proofCanRetry={(entry) => entry.seq === 1} />);
+  expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
 });
