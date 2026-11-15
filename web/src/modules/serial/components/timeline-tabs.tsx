@@ -1,12 +1,10 @@
-import type { SerialDto, SerialEventDto } from '@shared/contract';
+import type { SerialDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { describeError } from '@/lib/api/describe-error';
-import { buIdsWithLevelOf } from '@/modules/auth/permissions';
-import { useMe } from '@/modules/auth/use-me';
 import { HISTORY_GROUP_LABEL } from '../lib/labels';
 import { PROOF_POLL_MS, pagesHavePendingProof } from '../lib/proof-state';
 import { serialHistoryInfiniteQueryOptions } from '../queries';
@@ -40,19 +38,12 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
   );
   const caseId = tab.startsWith(CASE_PREFIX) ? tab.slice(CASE_PREFIX.length) : undefined;
   const group = caseId ? 'all' : (tab as 'all' | 'checks' | 'changes');
-  const me = useMe();
   const history = useInfiniteQuery({
     ...serialHistoryInfiniteQueryOptions({ id: serial.id, group, ...(caseId ? { caseId } : {}) }),
     // Selama ada foto bukti yang menunggu cap, riwayat disegarkan berkala agar statusnya (selesai/gagal) terlihat.
     refetchInterval: (query) =>
       pagesHavePendingProof(query.state.data?.pages ?? []) ? PROOF_POLL_MS : false,
   });
-  // "Coba lagi"/"Buang" foto gagal: pelaku yang menyimpan (server mencocokkan akunnya; di sini dicocokkan lewat nama
-  // pelaku pada kartu) atau pemegang `serial: manage` pada BU serial ini. Server tetap yang memutuskan.
-  const canManage = buIdsWithLevelOf(me, 'serial', 'manage').includes(serial.buId);
-  const canEdit = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
-  const proofCanRetry = (event: SerialEventDto) =>
-    canManage || (canEdit && event.actorName === me.name);
   // Jumlah tab tetap terlihat saat berpindah tab (halaman pertama tab baru belum tiba).
   const counts = useRef<Counts | null>(null);
   const latest = history.data?.pages[0]?.counts;
@@ -90,7 +81,6 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
             key={tab}
             events={events}
             markLatest={tab === 'all'}
-            proofCanRetry={proofCanRetry}
             loadOlder={
               history.hasNextPage ? (
                 <Button

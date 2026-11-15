@@ -28,8 +28,6 @@ import { useRemoveProof, useRetryProof } from '../queries';
 
 export interface ProofGalleryProps {
   photos: readonly SerialProofPhotoDto[];
-  /** Pelaku yang menyimpan atau pemegang `serial: manage`: boleh "Coba lagi" dan "Buang" pada foto gagal. */
-  canRetry: boolean;
 }
 
 /**
@@ -37,7 +35,7 @@ export interface ProofGalleryProps {
  * klik membuka tampilan besar dengan tombol unduh. Foto `failed` menampilkan alasan; foto yang sudah tersimpan tidak
  * dapat dibuang kecuali yang gagal.
  */
-export function ProofGallery({ photos, canRetry }: ProofGalleryProps) {
+export function ProofGallery({ photos }: ProofGalleryProps) {
   const [open, setOpen] = useState<{ photo: SerialProofPhotoDto; index: number } | null>(null);
   const [discarding, setDiscarding] = useState<SerialProofPhotoDto | null>(null);
   const retry = useRetryProof();
@@ -93,7 +91,7 @@ export function ProofGallery({ photos, canRetry }: ProofGalleryProps) {
                   {photo.error ? (
                     <p className="text-xs text-muted-foreground">{photo.error}</p>
                   ) : null}
-                  {canRetry ? (
+                  {photo.canManage ? (
                     <div className="flex flex-wrap gap-1">
                       <Button
                         type="button"

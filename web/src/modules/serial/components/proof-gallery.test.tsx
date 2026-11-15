@@ -27,11 +27,11 @@ const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
 
 let client: QueryClient;
 
-function renderGallery(photos: SerialProofPhotoDto[], canRetry = false) {
+function renderGallery(photos: SerialProofPhotoDto[]) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ProofGallery photos={photos} canRetry={canRetry} />
+      <ProofGallery photos={photos} />
     </QueryClientProvider>,
   );
 }
@@ -78,25 +78,34 @@ test('klik gambar membuka tampilan besar dengan tombol unduh bernama bukti-<8 id
   expect(download).toHaveAttribute('download', 'bukti-aaaaaaaa.webp');
 });
 
-test('foto gagal: Coba lagi dan Buang hanya bagi yang berhak', () => {
+test('foto gagal: Coba lagi dan Buang hanya bila server menyatakan canManage', () => {
   const failed = photo('dddddddd-4', { state: 'failed', error: 'Drive tidak terjangkau' });
-  const first = renderGallery([failed], false);
+  const first = renderGallery([{ ...failed, canManage: false }]);
+  expect(screen.getByText('Drive tidak terjangkau')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Buang' })).not.toBeInTheDocument();
   first.unmount();
-  renderGallery([failed], true);
+  renderGallery([{ ...failed, canManage: true }]);
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Buang' })).toBeInTheDocument();
 });
 
-test('foto yang bukan gagal tidak punya tombol Coba lagi atau Buang walau berhak', () => {
-  renderGallery([photo('aaaaaaaa-1'), photo('bbbbbbbb-2', { state: 'queued' })], true);
+test('canManage dinilai per foto', () => {
+  renderGallery([
+    photo('aaaaaaaa-1', { state: 'failed', error: 'a', canManage: true }),
+    photo('bbbbbbbb-2', { state: 'failed', error: 'b', canManage: false }),
+  ]);
+  expect(screen.getAllByRole('button', { name: 'Coba lagi' })).toHaveLength(1);
+});
+
+test('foto yang bukan gagal tidak punya tombol Coba lagi atau Buang walau canManage', () => {
+  renderGallery([photo('aaaaaaaa-1'), photo('bbbbbbbb-2', { state: 'queued' })]);
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Buang' })).not.toBeInTheDocument();
 });
 
 test('Coba lagi memanggil serialProofs.retry lalu memuat ulang riwayat, daftar, dan detail', async () => {
-  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })], true);
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
   await waitFor(() =>
@@ -110,7 +119,7 @@ test('Coba lagi memanggil serialProofs.retry lalu memuat ulang riwayat, daftar, 
 });
 
 test('Buang meminta konfirmasi, lalu memanggil serialProofs.remove dan memuat ulang', async () => {
-  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })], true);
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   await userEvent.click(screen.getByRole('button', { name: 'Buang' }));
   expect(apiMock).not.toHaveBeenCalled();
@@ -124,7 +133,7 @@ test('Buang meminta konfirmasi, lalu memanggil serialProofs.remove dan memuat ul
 
 test('galat Coba lagi tampil sebagai toast dengan pesan server', async () => {
   apiMock.mockRejectedValue(new ApiError('CONFLICT', 'Berkas sementara foto sudah tidak ada', '-'));
-  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })], true);
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
   await waitFor(() => expect(toastError).toHaveBeenCalled());
   expect(String(toastError.mock.calls[0]?.[0])).toContain('Berkas sementara foto sudah tidak ada');

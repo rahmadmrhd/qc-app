@@ -887,22 +887,25 @@ test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial
   );
 });
 
-test('Coba lagi pada foto gagal: pelaku (nama sama) boleh, pembaca lain tidak', async () => {
+test('Coba lagi pada foto gagal mengikuti canManage dari server, bukan kecocokan nama pelaku', async () => {
   const failed = { ...PHOTO, state: 'failed' as const, error: 'rusak' };
-  const withFailed = (actorName: string) => ({
+  const withFailed = (canManage: boolean) => ({
     serial: { ...SERIAL, hasProofPhotos: true },
     events: state.events.map((entry) =>
-      entry.seq === 3 ? { ...entry, actorName, proofPhotos: [failed] } : entry,
+      // actorName = nama pengguna uji (me.name = 'A') pada kedua kasus.
+      entry.seq === 3
+        ? { ...entry, actorName: 'A', proofPhotos: [{ ...failed, canManage }] }
+        : entry,
     ),
     eventsTruncated: false,
   });
-  state = withFailed('Orang Lain');
+  state = withFailed(false);
   const first = renderPage();
   await screen.findByText('rusak');
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   first.unmount();
 
-  state = withFailed('A'); // nama pengguna uji (me.name)
+  state = withFailed(true);
   renderPage();
   expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
 });

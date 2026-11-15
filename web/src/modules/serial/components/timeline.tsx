@@ -121,12 +121,10 @@ function EventCard({
   event,
   showLatestBadge,
   markdownComponents,
-  canRetryProof,
 }: {
   event: SerialEventDto;
   showLatestBadge: boolean;
   markdownComponents: Components | undefined;
-  canRetryProof: boolean;
 }) {
   const hasProof = event.proofPhotos.length > 0;
   const stickers = recordedStickers(event);
@@ -194,7 +192,7 @@ function EventCard({
           Stiker ditempel dan stok dipotong: {stickers.join(', ')}
         </p>
       ) : null}
-      {hasProof ? <ProofGallery photos={event.proofPhotos} canRetry={canRetryProof} /> : null}
+      {hasProof ? <ProofGallery photos={event.proofPhotos} /> : null}
     </li>
   );
 }
@@ -238,12 +236,9 @@ export function Timeline({
   markLatest = false,
   markdownComponents,
   loadOlder,
-  proofCanRetry,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
-  /** Boleh "Coba lagi"/"Buang" pada foto bukti gagal kejadian ini (pelaku atau `serial: manage`); bawaan tidak. */
-  proofCanRetry?: (event: SerialEventDto) => boolean;
   /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
   markdownComponents?: Components;
   loadOlder?: ReactNode;
@@ -261,7 +256,6 @@ export function Timeline({
       event={event}
       showLatestBadge={badge}
       markdownComponents={markdownComponents}
-      canRetryProof={proofCanRetry?.(event) ?? false}
     />
   );
   return (

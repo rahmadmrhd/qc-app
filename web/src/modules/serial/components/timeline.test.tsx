@@ -155,12 +155,19 @@ test('kartu lama tanpa foto: tidak ada badge maupun kisi', () => {
   expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();
 });
 
-test('Coba lagi hanya muncul pada foto gagal bila proofCanRetry mengizinkan kejadiannya', () => {
+test('Coba lagi pada kartu hanya mengikuti canManage tiap foto dari server', () => {
   const failed = proof('p9', { state: 'failed', error: 'rusak' });
-  const events = [event(1, { type: 'recorded', proofPhotos: [failed] })];
-  const first = renderWithClient(<Timeline events={events} proofCanRetry={() => false} />);
+  const first = renderWithClient(
+    <Timeline
+      events={[event(1, { type: 'recorded', proofPhotos: [{ ...failed, canManage: false }] })]}
+    />,
+  );
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
   first.unmount();
-  renderWithClient(<Timeline events={events} proofCanRetry={(entry) => entry.seq === 1} />);
+  renderWithClient(
+    <Timeline
+      events={[event(1, { type: 'recorded', proofPhotos: [{ ...failed, canManage: true }] })]}
+    />,
+  );
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
 });
