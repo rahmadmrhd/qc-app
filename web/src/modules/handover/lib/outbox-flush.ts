@@ -169,6 +169,11 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
     // Tanpa task tujuan (`taskId` kosong) permintaan tak dapat dibentuk: ditolak (bukan menahan antrean), tanpa `send`.
     // Diumumkan hanya bila penghapusan dari toko terkonfirmasi (sama dengan entri `rejected` dari service worker).
     if (next.kind !== 'create' && next.taskId === '') {
+      // Seperti penolakan server: pemilik yang sudah berganti/keluar tak boleh disentuh antreannya.
+      if (!deps.isOwnerActive()) {
+        result.stoppedBy = 'owner-changed';
+        break;
+      }
       if (await removeOutboxEntries(owner, [next.id])) {
         result.rejected.push({ entry: next, reason: NO_TASK_REASON });
       }

@@ -605,3 +605,15 @@ test('entri tanpa taskId: penghapusan toko gagal = tidak diumumkan dan tidak dik
   expect(send).not.toHaveBeenCalled();
   expect(result.rejected).toEqual([]);
 });
+
+test('entri tanpa taskId: pemilik tak aktif saat penolakan = berhenti owner-changed tanpa menyentuh antrean', async () => {
+  await enqueueOutbox(OWNER, commentInput({ taskId: '' }));
+  const send = vi.fn();
+  // Aktif di awal iterasi, lalu tidak aktif tepat sebelum entri dibuang.
+  const isOwnerActive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+  const result = await flushOutbox(deps({ send, isOwnerActive }));
+  expect(result.stoppedBy).toBe('owner-changed');
+  expect(result.rejected).toEqual([]);
+  expect(send).not.toHaveBeenCalled();
+  expect((await readOutboxRecords())?.length).toBe(1);
+});

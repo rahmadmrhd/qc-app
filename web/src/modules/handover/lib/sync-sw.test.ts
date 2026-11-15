@@ -292,6 +292,9 @@ describe('pemilik sesi', () => {
       respond: (url) => (url.endsWith('/me') ? meResponse.clone() : ok()),
     });
     await expect(fire(sandbox)).resolves.toBeUndefined();
+    // `/me` memang dipanggil (tepat sekali) dan tidak ada permintaan lain.
+    expect(sandbox.fetch).toHaveBeenCalledTimes(1);
+    expect(sandbox.fetch.mock.calls[0]?.[0]).toBe('/api/v1/me');
     expect(sends(sandbox)).toEqual([]);
     expect(await stored()).toEqual(before);
   });
@@ -305,6 +308,9 @@ describe('pemilik sesi', () => {
     const before = await stored();
     const sandbox = load({ respond: (url) => (url.endsWith('/me') ? ok(body) : ok()) });
     await expect(fire(sandbox)).resolves.toBeUndefined();
+    // `/me` memang dipanggil (tepat sekali) dan tidak ada permintaan lain.
+    expect(sandbox.fetch).toHaveBeenCalledTimes(1);
+    expect(sandbox.fetch.mock.calls[0]?.[0]).toBe('/api/v1/me');
     expect(sends(sandbox)).toEqual([]);
     expect(await stored()).toEqual(before);
   });
