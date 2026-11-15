@@ -4,12 +4,14 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  clearAllDeviceStores,
   type DeviceRecord,
   deleteOutboxRecords,
   putOutboxRecord,
   readOutboxRecords,
 } from '@/lib/device-db';
 import { resetOutboxEnv } from '@/test/outbox-env';
+import { isOutboxEntry } from './outbox';
 
 const SOURCE = readFileSync(resolve(process.cwd(), 'public', 'sync-sw.js'), 'utf8');
 const OWNER = 'a@x.com';
@@ -278,6 +280,43 @@ describe('pemilik sesi', () => {
     expect(init.credentials).toBe('same-origin');
     expect((init.headers as Record<string, string>).Accept).toBe('application/json');
     expect(init.method ?? 'GET').toBe('GET');
+  });
+
+  test.each([
+    [403, new Response('', { status: 403 })],
+    [404, problem(404, { code: 'NOT_FOUND' })],
+  ])('/me %s: selesai tanpa mengirim dan tanpa melempar', async (_status, meResponse) => {
+    await seed(checkEntry('c1'));
+    const before = await stored();
+    const sandbox = load({
+      respond: (url) => (url.endsWith('/me') ? meResponse.clone() : ok()),
+    });
+    await expect(fire(sandbox)).resolves.toBeUndefined();
+    expect(sends(sandbox)).toEqual([]);
+    expect(await stored()).toEqual(before);
+  });
+
+  test.each([
+    ['JSON tanpa email', {}],
+    ['email bukan string', { email: 42 }],
+    ['JSON bukan objek', ['a@x.com']],
+  ])('/me 2xx %s: selesai tanpa mengirim dan tanpa melempar', async (_name, body) => {
+    await seed(checkEntry('c1'));
+    const before = await stored();
+    const sandbox = load({ respond: (url) => (url.endsWith('/me') ? ok(body) : ok()) });
+    await expect(fire(sandbox)).resolves.toBeUndefined();
+    expect(sends(sandbox)).toEqual([]);
+    expect(await stored()).toEqual(before);
+  });
+
+  test('toko dikosongkan (keluar) lalu sync: tidak ada fetch sama sekali, termasuk /me', async () => {
+    await seed(checkEntry('c1'));
+    await seed(commentEntry('ko'));
+    await clearAllDeviceStores();
+    const sandbox = load();
+    await expect(fire(sandbox)).resolves.toBeUndefined();
+    expect(sandbox.fetch).not.toHaveBeenCalled();
+    expect(await stored()).toEqual([]);
   });
 
   test('/me gagal jaringan atau 503: melempar agar dijadwalkan ulang', async () => {
@@ -568,6 +607,57 @@ describe('pemberitahuan dan kejar-kejaran', () => {
     await fire(sandbox);
     expect(sends(sandbox).map(([url]) => url)).toEqual(['/api/v1/handovers/pertama/comments']);
     expect(await storedIds()).toEqual([]);
+  });
+
+  test('reason non-string dari server tetap menghasilkan rekaman yang lolos isOutboxEntry', async () => {
+    for (const body of [
+      { code: 'CONFLICT', detail: 123 },
+      { code: 'CONFLICT', detail: { a: 1 } },
+      { code: 'CONFLICT', detail: null, title: 9 },
+      { code: 'VALIDATION', detail: 'Tak valid', fields: { a: 5, b: null } },
+    ]) {
+      resetOutboxEnv();
+      await seed(commentEntry('ko'));
+      const sandbox = load({
+        respond: (url) => (url.endsWith('/me') ? ok({ email: OWNER }) : problem(409, body)),
+      });
+      await fire(sandbox);
+      const [record] = await stored();
+      expect(record?.entry).toMatchObject({ state: 'rejected' });
+      expect(typeof (record?.entry as { reason: unknown } | undefined)?.reason).toBe('string');
+      expect(isOutboxEntry(record?.entry)).toBe(true);
+    }
+  });
+
+  test('halaman membuang rekaman antara kirim dan penandaan: markRejected tidak menghidupkannya', async () => {
+    await seed(checkEntry('lama'));
+    const sandbox = load({
+      respond: async (url) => {
+        if (url.endsWith('/me')) return ok({ email: OWNER });
+        await deleteOutboxRecords([`${OWNER}|lama`]);
+        return problem(409, { code: 'CONFLICT', detail: 'Ditolak' });
+      },
+    });
+    await fire(sandbox);
+    expect(await stored()).toEqual([]);
+  });
+
+  test('halaman mengganti centang antara kirim dan penandaan: pengganti tidak ditimpa dan tidak ditandai', async () => {
+    await seed(checkEntry('lama', { text: 'lama' }));
+    const sandbox = load({
+      respond: async (url) => {
+        if (url.endsWith('/me')) return ok({ email: OWNER });
+        // Seperti `enqueueOutbox`: rekaman lama diganti rekaman baru berkunci lain.
+        await deleteOutboxRecords([`${OWNER}|lama`]);
+        await seed(checkEntry('baru', { text: 'baru', at: NOW + 10 }));
+        return problem(409, { code: 'CONFLICT', detail: 'Ditolak' });
+      },
+    });
+    await fire(sandbox);
+    const left = await stored();
+    expect(left.map((r) => r.key)).toEqual([`${OWNER}|baru`]);
+    expect(left[0]?.entry).toMatchObject({ id: 'baru', text: 'baru' });
+    expect(left[0]?.entry).not.toHaveProperty('state');
   });
 
   test('pengait uji menerima konstanta bersama', () => {

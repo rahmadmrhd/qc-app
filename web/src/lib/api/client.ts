@@ -70,7 +70,12 @@ function errorFromResponse(status: number, text: string): ApiError {
     const code: ErrorCode = status === 412 ? 'CONFLICT' : body.code;
     return new ApiError(
       code,
-      body.detail ?? body.title ?? 'Terjadi kesalahan pada server',
+      // Hanya teks yang dipakai: `detail`/`title` non-string (proksi atau galat salah bentuk) jatuh ke berikutnya.
+      typeof body.detail === 'string'
+        ? body.detail
+        : typeof body.title === 'string'
+          ? body.title
+          : 'Terjadi kesalahan pada server',
       typeof body.requestId === 'string' ? body.requestId : '-',
       body.fields,
       { status },

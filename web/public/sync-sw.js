@@ -252,7 +252,13 @@
       return {
         // 412 (If-Match basi) tetap `CONFLICT`.
         code: status === 412 ? 'CONFLICT' : body.code,
-        message: body.detail ?? body.title ?? 'Terjadi kesalahan pada server',
+        // Hanya teks yang dipakai (sama dengan klien halaman): `detail`/`title` non-string jatuh ke berikutnya.
+        message:
+          typeof body.detail === 'string'
+            ? body.detail
+            : typeof body.title === 'string'
+              ? body.title
+              : 'Terjadi kesalahan pada server',
         fields: body.fields,
       };
     }
@@ -272,9 +278,13 @@
    * nilai unik `fields` yang berbeda dari pesan. Hanya dipakai untuk kode penolakan (`REJECTION_CODES`).
    */
   function describe(error) {
+    const fieldValues =
+      typeof error.fields === 'object' && error.fields !== null ? Object.values(error.fields) : [];
     const details = [
       ...new Set(
-        Object.values(error.fields ?? {}).filter((text) => text && text !== error.message),
+        fieldValues.filter(
+          (text) => typeof text === 'string' && text !== '' && text !== error.message,
+        ),
       ),
     ];
     return details.length > 0 ? `${error.message}: ${details.join(', ')}` : error.message;
