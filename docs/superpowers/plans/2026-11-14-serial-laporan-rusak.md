@@ -22,7 +22,7 @@
 
 ## Keputusan rencana (pilihan perancang, di luar yang tertulis di rancangan)
 - Kontrak tetap dua aksi (`service_diagnosis` ber-`stage` dan `declare_broken`) agar jenis kejadian dan job surel tetap terpisah; dialog Diagnosis menyatukannya (rancangan §4.4).
-- Field `shipmentNote` (catatan pengiriman) dihapus: catatan dialog (`message`) menggantikannya.
+- Field `shipmentNote` (catatan pengiriman) dihapus: catatan dialog (`message`) menggantikannya. **Dibatalkan 2026-11-15 (keputusan pemilik produk)**: field dipulihkan (opsional, satu baris, maks. 200, hanya `send`); lihat rancangan bagian 1 §2 butir 11c dan spek induk butir 58.
 - Rute publik di sub-aplikasi Hono sendiri (`/api/public`), bukan `API_ROUTES`, karena kernel REST mewajibkan sesi sebelum membaca apa pun (rancangan §8 menyerahkan ini kepada pembangun).
 - Event bertipe lama (`identify_damage`, `attempt_repair`, `send` leg `between`) tetap dirender dari data lama; tidak ada penulisnya lagi.
 

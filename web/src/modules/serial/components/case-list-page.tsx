@@ -26,6 +26,8 @@ export interface CaseListPageProps {
   onSearchChange: (patch: Partial<CaseSearch>) => void;
   /** Buka detail serial pada tab laporan itu. */
   onOpen: (serialId: string, caseId: string) => void;
+  /** Buka halaman Lapor Rusak; tidak diberikan bagi pengguna tanpa hak menulis serial (tombol tidak tampil). */
+  onReport?: (() => void) | undefined;
 }
 
 const STATUS_OPTIONS = [
@@ -45,7 +47,7 @@ const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
  * Filter status (bawaan aktif) dan BU serta pencarian awalan nomor LP atau serial berada di URL; baris menuju detail
  * serial pada tab laporan itu. Tim servis (hanya `serialservice`) melihat semua laporan di BU-nya.
  */
-export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPageProps) {
+export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseListPageProps) {
   const me = useMe();
   const list = useInfiniteQuery(serialCaseListQueryOptions(caseFilterOfSearch(search)));
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
@@ -62,7 +64,10 @@ export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPagePro
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Laporan</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Laporan</h1>
+        {onReport ? <Button onClick={onReport}>Lapor Rusak</Button> : null}
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label htmlFor="case-search" className="text-xs text-muted-foreground">
@@ -185,8 +190,8 @@ export function CaseListPage({ search, onSearchChange, onOpen }: CaseListPagePro
             ) : items.length === 0 && !list.isError ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center text-sm text-muted-foreground">
-                  Belum ada laporan di sini. Kalau ada unit bermasalah, laporkan lewat menu Lapor
-                  Rusak.
+                  Belum ada laporan di sini.
+                  {onReport ? ' Kalau ada unit bermasalah, laporkan lewat tombol Lapor Rusak.' : ''}
                 </TableCell>
               </TableRow>
             ) : null}

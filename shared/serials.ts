@@ -51,6 +51,8 @@ export const SERIAL_LIMITS = {
   serialMax: 64,
   noteMax: 1000,
   messageMax: 5000,
+  /** Catatan pengiriman (ekspedisi, nomor resi, atau nama pengantar) pada aksi `send`: satu baris, opsional. */
+  shipmentNoteMax: 200,
   inputLines: 1000,
   tableRows: 1000,
   batchRows: 200,

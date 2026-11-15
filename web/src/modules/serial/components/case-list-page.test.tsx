@@ -52,9 +52,11 @@ const PAGE_1 = [
 function Harness({
   onOpen = () => undefined,
   initial = {},
+  onReport,
 }: {
   onOpen?: (serialId: string, caseId: string) => void;
   initial?: Record<string, unknown>;
+  onReport?: () => void;
 }) {
   const [search, setSearch] = useState<CaseSearch>(caseSearchSchema.parse(initial));
   return (
@@ -62,6 +64,7 @@ function Harness({
       search={search}
       onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
       onOpen={onOpen}
+      onReport={onReport}
     />
   );
 }
@@ -69,11 +72,16 @@ function Harness({
 function renderPage(
   onOpen?: (serialId: string, caseId: string) => void,
   initial?: Record<string, unknown>,
+  onReport?: () => void,
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(onOpen ? { onOpen } : {})} {...(initial ? { initial } : {})} />
+      <Harness
+        {...(onOpen ? { onOpen } : {})}
+        {...(initial ? { initial } : {})}
+        {...(onReport ? { onReport } : {})}
+      />
     </QueryClientProvider>,
   );
 }
@@ -231,6 +239,18 @@ test('klik nomor LP membuka detail serial pada tab laporan itu', async () => {
   renderPage(onOpen);
   await userEvent.click(await screen.findByRole('button', { name: 'LP-20261112-004' }));
   expect(onOpen).toHaveBeenCalledWith('s2', 'c2');
+});
+
+test('tombol Lapor Rusak ada di halaman Laporan bagi yang berhak menulis, dan menuju halaman lapor', async () => {
+  const onReport = vi.fn();
+  const { unmount } = renderPage(undefined, undefined, onReport);
+  await userEvent.click(await screen.findByRole('button', { name: 'Lapor Rusak' }));
+  expect(onReport).toHaveBeenCalledTimes(1);
+  unmount();
+  // Tanpa hak menulis (hanya baca atau tim servis): tombol tidak tampil.
+  renderPage();
+  await screen.findByRole('button', { name: 'LP-20261112-004' });
+  expect(screen.queryByRole('button', { name: 'Lapor Rusak' })).toBeNull();
 });
 
 test('daftar kosong menampilkan teks santai; galat memuat tampil sebagai pesan', async () => {

@@ -268,6 +268,50 @@ test('Kirim ke servis: satu lokasi servis = tanpa field dan tanpa toLocationId; 
   await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
   expect(lastAct()).toMatchObject({ action: 'send', message: '' });
   expect(lastAct()).not.toHaveProperty('toLocationId');
+  // Catatan pengiriman kosong tidak dikirim.
+  expect(lastAct()).not.toHaveProperty('shipmentNote');
+});
+
+test('Kirim ke servis: ada field Catatan pengiriman (opsional) untuk kurir, resi, atau karyawan; dikirim dipangkas', async () => {
+  renderDialog(REPORTED, 'send');
+  await screen.findByText('Servis Pusat');
+  const field = screen.getByLabelText('Catatan pengiriman (opsional)');
+  expect(field).toHaveAttribute('placeholder', 'Kurir, nomor resi, atau nama karyawan pengantar');
+  expect(field).toHaveAttribute('maxlength', '200');
+  // Opsional: tombol kirim tetap aktif tanpa mengisinya.
+  expect(screen.getByRole('button', { name: 'Kirim ke servis' })).toBeEnabled();
+  await userEvent.type(field, '  JNE resi 123456, diantar Budi ');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ke servis' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(lastAct()).toMatchObject({
+    action: 'send',
+    shipmentNote: 'JNE resi 123456, diantar Budi',
+  });
+});
+
+test('Kirim ke servis: galat server pada shipmentNote tampil di bawah field-nya', async () => {
+  const base = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input?: unknown) =>
+    id === 'serials.act'
+      ? Promise.reject(
+          new ApiError('VALIDATION', 'Data tidak valid', '-', {
+            shipmentNote: 'Tulis dalam satu baris, tanpa karakter kontrol',
+          }),
+        )
+      : base?.(id, input),
+  );
+  renderDialog(REPORTED, 'send');
+  await screen.findByText('Servis Pusat');
+  await userEvent.type(screen.getByLabelText('Catatan pengiriman (opsional)'), 'resi 1');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ke servis' }));
+  expect(
+    await screen.findByText('Tulis dalam satu baris, tanpa karakter kontrol'),
+  ).toBeInTheDocument();
+});
+
+test('field Catatan pengiriman hanya ada pada Kirim ke servis', () => {
+  renderDialog(AT_SERVICE_TRANSIT, 'receive');
+  expect(screen.queryByLabelText('Catatan pengiriman (opsional)')).toBeNull();
 });
 
 test('Kirim ke servis: tombol kirim nonaktif selama daftar lokasi servis belum dimuat', async () => {
@@ -349,17 +393,34 @@ test('Terima (QC): tanpa field lokasi bila lokasi asal aktif; meminta lokasi bil
 test('Diagnosis: tahap Selesai mengirim service_diagnosis dengan stage done', async () => {
   me = meWith('none', 'edit');
   renderDialog({ ...AT_SERVICE_TRANSIT, custody: 'service' }, 'diagnosis');
-  await pickSelect(screen, 'Pilihan status', 'Selesai, kembalikan ke QC');
+  await pickSelect(screen, 'Status', 'Selesai, kembalikan ke QC');
   expect(screen.getByText(/dikirim kembali ke lokasi QC asal/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan diagnosis' }));
   await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
   expect(lastAct()).toMatchObject({ action: 'service_diagnosis', stage: 'done', message: '' });
 });
 
-test('Diagnosis dari transit: tahap bawaan diagnosis, min tanggal = tanggal kirim', async () => {
+test('Diagnosis: field berlabel Status dan kosong sejak awal; simpan baru aktif setelah memilih', async () => {
+  me = meWith('none', 'edit');
+  renderDialog(AT_SERVICE_TRANSIT, 'diagnosis');
+  // Label "Status" (bukan "Pilihan status"); tanpa nilai bawaan agar tim servis memilih dengan sadar.
+  expect(screen.queryByText('Pilihan status')).toBeNull();
+  const field = screen.getByRole('combobox', { name: 'Status' });
+  expect(field).toHaveValue('');
+  expect(field).toHaveAttribute('placeholder', 'Pilih status…');
+  const save = screen.getByRole('button', { name: 'Simpan diagnosis' });
+  expect(save).toBeDisabled();
+  await userEvent.click(save);
+  expect(calls('serials.act')).toHaveLength(0);
+  await pickSelect(screen, 'Status', 'Diagnosis');
+  expect(save).toBeEnabled();
+});
+
+test('Diagnosis dari transit: min tanggal = tanggal kirim; status yang dipilih dikirim', async () => {
   me = meWith('none', 'edit');
   renderDialog(AT_SERVICE_TRANSIT, 'diagnosis');
   expect(screen.getByLabelText('Tanggal')).toHaveAttribute('min', '2026-11-10');
+  await pickSelect(screen, 'Status', 'Diagnosis');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan diagnosis' }));
   await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
   expect(lastAct()).toMatchObject({ action: 'service_diagnosis', stage: 'diagnosis' });
@@ -371,8 +432,8 @@ test('Diagnosis: Rusak menuntut catatan, memperingatkan surel, dan meminta konfi
     { ...AT_SERVICE_TRANSIT, status: 'service_repair', custody: 'service' },
     'diagnosis',
   );
-  // Dari Sedang diperbaiki, tahap bawaan = Selesai.
-  await pickSelect(screen, 'Pilihan status', 'Rusak');
+  // Tidak ada tahap bawaan (juga dari Sedang diperbaiki): Rusak dipilih sendiri.
+  await pickSelect(screen, 'Status', 'Rusak');
   expect(screen.getByText(/Email dikirim ke penerima/)).toBeInTheDocument();
   const send = screen.getByRole('button', { name: 'Nyatakan rusak' });
   expect(send).toBeDisabled();

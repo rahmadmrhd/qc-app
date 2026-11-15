@@ -1,7 +1,6 @@
 import type { SerialEventDto } from '@shared/contract';
-import { markdownToPlain } from '@shared/markdown-plain';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,8 +50,9 @@ function eventTitle(event: SerialEventDto): string {
 }
 
 /**
- * Rincian per jenis riwayat dari `data` (laporan, kirim/terima, hasil cek ulang). Bagian `damage`, `shipmentNote`, dan
- * status Tidak lolos hanya ada pada kejadian lama (sebelum alur laporan rusak dipangkas) dan tetap dirender apa adanya.
+ * Rincian per jenis riwayat dari `data` (laporan, kirim/terima, hasil cek ulang). Bagian `damage` dan status Tidak lolos
+ * hanya ada pada kejadian lama (sebelum alur laporan rusak dipangkas) dan tetap dirender apa adanya; `shipmentNote`
+ * (catatan pengiriman) diisi pada kejadian kirim.
  */
 function eventDetails(event: SerialEventDto): string[] {
   const { data } = event;
@@ -115,31 +115,15 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
-/** Baris pertama berisi dari catatan, teks polos, untuk pratinjau kartu yang dilipat. */
-function previewOf(message: string): string {
-  const { text: plain } = markdownToPlain(message);
-  return (
-    plain
-      .split('\n')
-      .find((line) => line.trim() !== '')
-      ?.trim() ?? ''
-  );
-}
-
 function EventCard({
   event,
-  latest,
   showLatestBadge,
   markdownComponents,
 }: {
   event: SerialEventDto;
-  latest: boolean;
   showLatestBadge: boolean;
   markdownComponents: Components | undefined;
 }) {
-  // Hanya riwayat terbaru yang terbuka; yang lama dilipat (header + pratinjau) dan dibuka dengan satu klik.
-  const [open, setOpen] = useState(latest);
-  const preview = open ? '' : previewOf(event.message);
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -164,16 +148,6 @@ function EventCard({
           </p>
         </div>
         <div className="flex items-start gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-expanded={open}
-            aria-label={`${open ? 'Lipat' : 'Buka'} riwayat ${eventTitle(event)}`}
-            onClick={() => setOpen((value) => !value)}
-          >
-            {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
-          </Button>
           <div className="text-right">
             <p className="text-base font-semibold tabular-nums">{formatDay(event.occurredOn)}</p>
             {event.createdAt !== '' ? (
@@ -184,24 +158,21 @@ function EventCard({
           </div>
         </div>
       </div>
-      {!open && preview !== '' ? (
-        <p className="mt-2 truncate text-sm text-muted-foreground">{preview}</p>
-      ) : null}
-      {open && details.length > 0 ? (
+      {details.length > 0 ? (
         <ul aria-label="Rincian" className="mt-3 space-y-0.5 text-sm">
           {details.map((detail) => (
             <li key={detail}>{detail}</li>
           ))}
         </ul>
       ) : null}
-      {open && event.message.trim() !== '' ? (
+      {event.message.trim() !== '' ? (
         <MarkdownView
           source={event.message}
           className="mt-3 text-sm"
           {...(markdownComponents ? { components: markdownComponents } : {})}
         />
       ) : null}
-      {open && event.changes.length > 0 ? (
+      {event.changes.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
@@ -212,7 +183,7 @@ function EventCard({
           ))}
         </ul>
       ) : null}
-      {open && stickers.length > 0 ? (
+      {stickers.length > 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
           Stiker ditempel dan stok dipotong: {stickers.join(', ')}
         </p>
@@ -221,37 +192,88 @@ function EventCard({
   );
 }
 
+/** Baris pelipat satu kelompok riwayat: panah + label, `aria-expanded` mengikuti keadaan. */
+function GroupToggle({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li className="list-none">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start gap-1.5 text-muted-foreground"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+        {label}
+      </Button>
+    </li>
+  );
+}
+
 /**
- * Daftar kartu riwayat serial: URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik, apa pun
- * urutan masukannya. Hanya kartu terbaru (seq tertinggi, paling bawah) yang terbuka; kartu lama dilipat. `markLatest`
- * memberi badge "Terbaru" pada entri terbaru; dipakai tab Semua.
+ * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Riwayat
+ * lama dilipat bersama (keputusan pemilik 2026-11-15, menggantikan lipatan per kartu): "Tampilkan riwayat sebelumnya"
+ * (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru, selalu tampil dan tidak
+ * dapat dilipat). Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (tab Semua). `loadOlder`
+ * (mis. tombol "Muat yang lebih lama") tampil di dalam kelompok riwayat sebelumnya, di atas kartu tertua.
  */
 export function Timeline({
   events,
   markLatest = false,
   markdownComponents,
+  loadOlder,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
   /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
   markdownComponents?: Components;
+  loadOlder?: ReactNode;
 }) {
+  const [previousOpen, setPreviousOpen] = useState(false);
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
   const ordered = [...events].sort((a, b) => a.seq - b.seq);
-  const newest = ordered.length - 1;
+  const current = ordered[ordered.length - 1] as SerialEventDto;
+  const previous = ordered.slice(0, -1);
+  const card = (event: SerialEventDto, badge: boolean) => (
+    <EventCard
+      key={event.id}
+      event={event}
+      showLatestBadge={badge}
+      markdownComponents={markdownComponents}
+    />
+  );
   return (
     <ol aria-label="Linimasa" className="space-y-3">
-      {ordered.map((event, index) => (
-        <EventCard
-          key={event.id}
-          event={event}
-          latest={index === newest}
-          showLatestBadge={markLatest && index === newest}
-          markdownComponents={markdownComponents}
-        />
-      ))}
+      {previous.length > 0 || loadOlder ? (
+        <>
+          <GroupToggle
+            label={previousOpen ? 'Sembunyikan riwayat sebelumnya' : 'Tampilkan riwayat sebelumnya'}
+            open={previousOpen}
+            onToggle={() => setPreviousOpen((value) => !value)}
+          />
+          {previousOpen ? (
+            <>
+              {loadOlder ? <li className="list-none">{loadOlder}</li> : null}
+              {previous.map((event) => card(event, false))}
+            </>
+          ) : null}
+        </>
+      ) : null}
+      <li className="list-none">
+        <h3 className="px-2 py-1.5 text-sm font-medium text-muted-foreground">Riwayat saat ini</h3>
+      </li>
+      {card(current, markLatest)}
     </ol>
   );
 }

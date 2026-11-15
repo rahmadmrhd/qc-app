@@ -55,7 +55,7 @@ export interface ActDialogProps {
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Catatan Anda tetap ada; cek lagi lalu kirim ulang.`;
 
 /** Field yang galat servernya tampil di bawah field-nya sendiri. */
-type FieldKey = 'occurredOn' | 'message' | 'toLocationId' | 'stickerIds';
+type FieldKey = 'occurredOn' | 'message' | 'toLocationId' | 'stickerIds' | 'shipmentNote';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 type Stage = ServiceDiagnosisStage | 'broken';
@@ -107,13 +107,6 @@ function splitError(
   return { fields: {}, general: describeError(caught) };
 }
 
-/** Tahap awal yang paling masuk akal menurut status serial di servis. */
-function defaultStage(status: SerialDto['status']): Stage {
-  if (status === 'diagnosis') return 'repairing';
-  if (status === 'service_repair') return 'done';
-  return 'diagnosis';
-}
-
 function descriptionOf(kind: ActKind, receivingAtQc: boolean, noOpenReport: boolean): string {
   switch (kind) {
     case 'report':
@@ -151,7 +144,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   const [message, setMessage] = useState('');
   const [occurredOn, setOccurredOn] = useState(today);
-  const [stage, setStage] = useState<Stage>(() => defaultStage(serial.status));
+  // Status diagnosis sengaja dikosongkan: tim servis harus memilihnya dengan sadar (keputusan pemilik 2026-11-15).
+  const [stage, setStage] = useState<Stage | ''>('');
+  const [shipmentNote, setShipmentNote] = useState('');
   const [result, setResult] = useState<'pass' | 'fail'>('pass');
   const [toLocation, setToLocation] = useState({ id: '', label: '' });
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
@@ -191,7 +186,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     state,
     actor,
     kind === 'recheck' ? result : undefined,
-    action === 'service_diagnosis' && stage !== 'broken' ? stage : undefined,
+    action === 'service_diagnosis' && stage !== '' && stage !== 'broken' ? stage : undefined,
   );
   const messageRequired = 'row' in resolved && resolved.row.required.includes('message');
 
@@ -234,6 +229,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
     (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
+    // Diagnosis: status wajib dipilih (tidak ada nilai bawaan).
+    (kind === 'diagnosis' && stage === '') ||
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||
     Object.keys(clientErrors).length > 0;
@@ -269,14 +266,21 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       .map((row) => row.stickerId)
       .filter((stickerId) => checked.has(stickerId));
     const stickerPart = stickerIds.length > 0 ? { stickerIds } : {};
+    const shipmentPart = shipmentNote.trim() !== '' ? { shipmentNote: shipmentNote.trim() } : {};
     const locationPart =
       toLocation.id !== '' && showLocationField ? { toLocationId: toLocation.id } : {};
     switch (action) {
       case 'send':
+        return { ...common, action, ...locationPart, ...shipmentPart };
       case 'receive':
         return { ...common, action, ...locationPart };
       case 'service_diagnosis':
-        return { ...common, action, stage: stage === 'broken' ? 'diagnosis' : stage };
+        // `broken` memakai aksi `declare_broken` dan kosong tak dapat dikirim (tombol nonaktif); cadangan demi tipe.
+        return {
+          ...common,
+          action,
+          stage: stage === '' || stage === 'broken' ? 'diagnosis' : stage,
+        };
       case 'recheck':
         return { ...common, action, result, ...stickerPart };
       case 'recheck_pass':
@@ -307,6 +311,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       }
       const visible: FieldKey[] = ['occurredOn', 'message'];
       if (kind === 'send' || kind === 'receive') visible.push('toLocationId');
+      if (kind === 'send') visible.push('shipmentNote');
       if (kind === 'recheck') visible.push('stickerIds');
       const split = splitError(caught, visible);
       setFieldErrors(split.fields);
@@ -385,11 +390,27 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               ) : null}
             </div>
           ) : null}
+          {kind === 'send' ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="act-shipment-note">Catatan pengiriman (opsional)</Label>
+              <Input
+                id="act-shipment-note"
+                value={shipmentNote}
+                maxLength={SERIAL_LIMITS.shipmentNoteMax}
+                placeholder="Kurir, nomor resi, atau nama karyawan pengantar"
+                aria-invalid={errorOf('shipmentNote') ? true : undefined}
+                disabled={act.isPending}
+                onChange={(event) => setShipmentNote(event.target.value.replace(/[\r\n]+/g, ' '))}
+              />
+              <FieldError errors={[errorOf('shipmentNote')]} />
+            </div>
+          ) : null}
           {kind === 'diagnosis' ? (
             <div className="space-y-1.5">
               <Select
                 id="act-stage"
-                label="Pilihan status"
+                label="Status"
+                placeholder="Pilih status…"
                 value={stage}
                 options={(canDeclareBroken
                   ? (['diagnosis', 'repairing', 'done', 'broken'] as const)

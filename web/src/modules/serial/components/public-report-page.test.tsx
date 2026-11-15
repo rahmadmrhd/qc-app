@@ -83,9 +83,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Buka semua kartu riwayat yang dilipat (hanya kartu terbaru yang terbuka sejak awal). */
+/** Buka kelompok "riwayat sebelumnya" (tertutup sejak awal; hanya riwayat saat ini yang terbuka). */
 async function expandAll() {
-  for (const button of screen.queryAllByRole('button', { name: /^Buka riwayat/ })) {
+  for (const button of screen.queryAllByRole('button', { name: /^Tampilkan riwayat sebelumnya/ })) {
     await userEvent.click(button);
   }
 }
@@ -101,7 +101,7 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(within(unit).getByText('BU1 · Satu')).toBeInTheDocument();
   expect(within(unit).getByText('Surabaya')).toBeInTheDocument();
   const list = screen.getByRole('list', { name: 'Linimasa' });
-  // Hanya kartu terbaru (seq 9) yang terbuka sejak awal; kartu lama dilipat.
+  // Hanya riwayat saat ini (seq 9) yang tampil sejak awal; riwayat sebelumnya dilipat jadi satu kelompok.
   expect(within(list).queryByText('Status: Lolos → Dilaporkan')).toBeNull();
   await expandAll();
   expect(within(list).getByText('Dilaporkan rusak')).toBeInTheDocument();
@@ -120,7 +120,7 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(screen.queryByText(/dicatat/)).toBeNull();
   // Hanya baca: tidak ada tombol aksi (hanya pelipat riwayat), field, atau tautan "Lapor".
   for (const button of screen.queryAllByRole('button')) {
-    expect(button).toHaveAccessibleName(/riwayat/);
+    expect(button).toHaveAccessibleName(/riwayat/i);
   }
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(apiMock).not.toHaveBeenCalled();

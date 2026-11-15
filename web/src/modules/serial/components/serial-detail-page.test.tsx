@@ -263,9 +263,9 @@ beforeEach(() => {
   });
 });
 
-/** Buka semua kartu riwayat yang dilipat (hanya kartu terbaru yang terbuka sejak awal). */
+/** Buka kelompok "riwayat sebelumnya" (tertutup sejak awal; hanya riwayat saat ini yang terbuka). */
 async function expandAll() {
-  for (const button of screen.queryAllByRole('button', { name: /^Buka riwayat/ })) {
+  for (const button of screen.queryAllByRole('button', { name: /^Tampilkan riwayat sebelumnya/ })) {
     await userEvent.click(button);
   }
 }
@@ -286,8 +286,13 @@ test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka den
     { name: '' },
   );
   const top = cards.filter((card) => card.hasAttribute('data-seq'));
-  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
+  // Sejak awal hanya riwayat saat ini (seq 3); riwayat sebelumnya (1, 2) dilipat jadi satu kelompok.
+  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['3']);
   await expandAll();
+  const opened = within(screen.getByRole('list', { name: 'Linimasa' }))
+    .getAllByRole('listitem')
+    .filter((card) => card.hasAttribute('data-seq'));
+  expect(opened.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
   expect(screen.getByText('Lokasi: Surabaya → Jakarta')).toBeInTheDocument();
   expect(screen.getByText(/Stiker ditempel dan stok dipotong: Stiker A ×2/)).toBeInTheDocument();
   expect(screen.getByText('dicek')).toBeInTheDocument();
@@ -523,6 +528,10 @@ test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor d
       .getAllByRole('listitem')
       .map((li) => li.getAttribute('data-seq'))
       .filter(Boolean);
+  // Tombol muat berada di dalam kelompok riwayat sebelumnya: baru terlihat setelah kelompok itu dibuka.
+  expect(seqs()).toEqual(['3']);
+  expect(screen.queryByRole('button', { name: 'Muat yang lebih lama' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' }));
   expect(seqs()).toEqual(['2', '3']);
   await userEvent.click(screen.getByRole('button', { name: 'Muat yang lebih lama' }));
   await waitFor(() => expect(seqs()).toEqual(['1', '2', '3']));

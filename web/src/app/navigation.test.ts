@@ -411,12 +411,8 @@ test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
   expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number', 'Laporan']);
   expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number', 'Laporan']);
   // Mencatat dimulai dari tombol Tambah di daftar: tanpa menu "Catat Serial Number" (keputusan pemilik 2026-11-13).
-  // Lapor Rusak hanya bagi penulis (`serial: edit`); Laporan bagi pembaca serial atau serialservice.
-  expect(serialItems(meWithSerial('edit'))).toEqual([
-    'Daftar Serial Number',
-    'Lapor Rusak',
-    'Laporan',
-  ]);
+  // Lapor Rusak bukan menu sidebar (keputusan pemilik 2026-11-15): tombolnya ada di halaman Laporan, bagi penulis.
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial Number', 'Laporan']);
 });
 
 test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan detail', () => {
@@ -428,15 +424,16 @@ test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan de
     fuzzy ? path.startsWith(to) : path === to;
   expect(isNavItemActive(list, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
-  // Lapor Rusak dan Laporan punya menu sendiri: Daftar tidak ikut aktif di sana.
+  // Laporan punya menu sendiri: Daftar tidak ikut aktif di sana, juga di halaman Lapor Rusak.
   expect(isNavItemActive(list, at('/serial/report'))).toBe(false);
   expect(isNavItemActive(list, at('/serial/reports'))).toBe(false);
-  const report = items.find((entry) => entry.to === '/serial/report');
+  // Tanpa menu "Lapor Rusak": halamannya dibuka dari tombol di Laporan, jadi menu Laporan yang menyala.
+  expect(items.some((entry) => entry.to === '/serial/report')).toBe(false);
+  expect(items.some((entry) => entry.label === 'Lapor Rusak')).toBe(false);
   const reports = items.find((entry) => entry.to === '/serial/reports');
-  if (!report || !reports) throw new Error('menu hilang');
-  expect(isNavItemActive(report, at('/serial/report'))).toBe(true);
-  expect(isNavItemActive(report, at('/serial/reports'))).toBe(false);
+  if (!reports) throw new Error('menu hilang');
   expect(isNavItemActive(reports, at('/serial/reports'))).toBe(true);
+  expect(isNavItemActive(reports, at('/serial/report'))).toBe(true);
 });
 
 function meManagingSerial(
@@ -464,7 +461,7 @@ function meManagingSerial(
 }
 
 test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSettings; tidak ikut aktif di Daftar', () => {
-  const basic = ['Daftar Serial Number', 'Lapor Rusak', 'Laporan'];
+  const basic = ['Daftar Serial Number', 'Laporan'];
   expect(serialItems(meManagingSerial(['edit'], false))).toEqual(basic);
   // Pengelola sebagian BU: server menghitung penanda false (penerima bersifat global), jadi menu tidak muncul.
   expect(serialItems(meManagingSerial(['manage'], false))).toEqual(basic);

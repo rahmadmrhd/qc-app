@@ -7,7 +7,6 @@ import {
   Boxes,
   Building2,
   ClipboardList,
-  ClipboardX,
   Contact,
   FileBadge,
   FileText,
@@ -41,6 +40,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
   excludes?: LinkProps['to'][];
+  /** Rute lain yang membuat item ini aktif (halaman yang dibuka dari item ini tetapi bukan di bawah `to`). */
+  alsoActiveOn?: LinkProps['to'][];
   /** Satu izin, atau **daftar** (salah satu cukup). */
   permission?: NavPermission | readonly NavPermission[];
   /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
@@ -128,16 +129,11 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       {
-        label: 'Lapor Rusak',
-        to: '/serial/report',
-        icon: ClipboardX,
-        excludes: ['/serial/reports'],
-        permission: { module: 'serial', level: 'edit' },
-      },
-      {
         label: 'Laporan',
         to: '/serial/reports',
         icon: FileText,
+        // Halaman Lapor Rusak dibuka dari tombol di daftar Laporan (bukan menu sendiri), jadi menu ini yang menyala.
+        alsoActiveOn: ['/serial/report'],
         permission: [
           { module: 'serial', level: 'view' },
           { module: 'serialservice', level: 'view' },
@@ -239,6 +235,7 @@ export function isNavItemActive(
   item: NavItem,
   matches: (to: string, fuzzy: boolean) => boolean,
 ): boolean {
+  if ((item.alsoActiveOn ?? []).some((to) => matches(to as string, true))) return true;
   if (!matches(item.to as string, item.to !== '/')) return false;
   return !(item.excludes ?? []).some((to) => matches(to as string, true));
 }
