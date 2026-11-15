@@ -277,3 +277,46 @@ test('pilihan pustaka dibekukan selama mengunggah', async () => {
   await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
   expect(idsOf(onSelect)).toEqual(['lib1', 'up-a']);
 });
+
+test('cameraTab: tab Kamera muncul, foto yang diambil masuk antrean tanpa pindah tab, batas maxFiles dilaporkan', async () => {
+  const user = userEvent.setup();
+  const source = makeSource();
+  const cameraTab = vi.fn(
+    ({
+      active,
+      queued,
+      max,
+      addFile,
+    }: Parameters<NonNullable<FileDialogProps['cameraTab']>>[0]) => (
+      <div>
+        <p>
+          kamera {active ? 'aktif' : 'mati'} {queued}/{max}
+        </p>
+        <button type="button" onClick={() => addFile(png('jepret.png'))}>
+          jepret
+        </button>
+      </div>
+    ),
+  );
+  const { onSelect } = setup(source, { showLibrary: false, maxFiles: 2, cameraTab });
+  expect(screen.queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  const cameraTrigger = screen.getByRole('tab', { name: 'Kamera' });
+  // Tab Kamera tidak dipasang selama tab Unggah aktif (kamera tidak boleh menyala di belakang layar).
+  expect(screen.queryByText(/kamera aktif/)).not.toBeInTheDocument();
+  await user.click(cameraTrigger);
+  expect(await screen.findByText('kamera aktif 0/2')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'jepret' }));
+  await user.click(screen.getByRole('button', { name: 'jepret' }));
+  expect(screen.getByText('kamera aktif 2/2')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Kamera' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: /Unggah \(2\)/ })).toBeInTheDocument();
+  expect(attachButton()).toHaveTextContent('Lampirkan (2)');
+  await user.click(attachButton());
+  await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+  expect(idsOf(onSelect)).toEqual(['up-jepret', 'up-jepret']);
+});
+
+test('tanpa cameraTab perilaku lama tidak berubah: tidak ada tab Kamera', () => {
+  setup(makeSource(), { showLibrary: false });
+  expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+});

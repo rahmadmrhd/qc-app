@@ -53,6 +53,7 @@ const SERIAL: SerialDto = {
   note: 'catatan awal',
   recordedLocationId: 'l2',
   stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
+  hasProofPhotos: false,
   openCaseId: null,
   transitFromLocationId: null,
   transitFromLocationName: null,
@@ -74,6 +75,7 @@ const event = (
   message: '',
   changes: [],
   data: {},
+  proofPhotos: [],
   ...over,
 });
 

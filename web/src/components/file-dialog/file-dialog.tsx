@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,19 @@ import { type RejectedFile, useUploadQueue } from './use-upload-queue';
 
 const DEFAULT_MAX_FILES = 20;
 
+/** Yang diterima isi tab Kamera (slot `cameraTab`). */
+export interface FileDialogCameraApi {
+  /** Tab Kamera sedang tampil: kamera hanya boleh menyala selama `true`. */
+  active: boolean;
+  /** Dialog sedang mengunggah: pengambilan baru ditahan. */
+  disabled: boolean;
+  /** Jumlah berkas di antrean unggah dan batas maksimumnya (`maxFiles`): isi tab menonaktifkan pengambilan bila penuh. */
+  queued: number;
+  max: number;
+  /** Menambah berkas hasil jepretan ke antrean unggah TANPA pindah tab (boleh berturut-turut). */
+  addFile(file: File): void;
+}
+
 export interface FileDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -41,6 +54,11 @@ export interface FileDialogProps {
   confirmLabel?: string;
   /** Bawaan 'Pilih gambar'. */
   title?: string;
+  /**
+   * Opsional: menambah tab "Kamera" yang isinya digambar pemakai (mis. pratinjau langsung + tombol ambil foto). Tanpa
+   * prop ini dialog persis seperti semula. Isi tab hanya dipasang selama tab itu aktif.
+   */
+  cameraTab?: (api: FileDialogCameraApi) => ReactNode;
   onSelect(items: LibraryItem[]): void;
 }
 
@@ -48,7 +66,7 @@ function sameFiles(a: File[], b: File[]): boolean {
   return a.length === b.length && a.every((file, index) => file === b[index]);
 }
 
-type TabValue = 'upload' | 'library';
+type TabValue = 'upload' | 'library' | 'camera';
 
 /** Dialog pilih berkas: tab Unggah (antrean) dan tab Pustaka (kisi), satu himpunan pilihan untuk keduanya. */
 export function FileDialog({
@@ -64,6 +82,7 @@ export function FileDialog({
   showLibrary = true,
   confirmLabel = 'Lampirkan',
   title = 'Pilih gambar',
+  cameraTab,
   onSelect,
 }: FileDialogProps) {
   const mimes = resolveAccept(accept, source.mimeTypes);
@@ -120,6 +139,15 @@ export function FileDialog({
     add(files);
     addRejected(rejected);
     if (files.length > 0 || rejected.length > 0) setTab('upload');
+  }
+
+  function addCaptured(file: File) {
+    if (busyRef.current) return;
+    if (mode === 'single') {
+      setSelection(new Map());
+      reset();
+    }
+    add([file]);
   }
 
   function toggle(item: LibraryItem) {
@@ -203,6 +231,17 @@ export function FileDialog({
     />
   );
 
+  const effectiveMax = mode === 'single' ? 1 : maxFiles;
+  const cameraContent = cameraTab
+    ? cameraTab({
+        active: tab === 'camera',
+        disabled: busy,
+        queued: queue.entries.length,
+        max: effectiveMax,
+        addFile: addCaptured,
+      })
+    : null;
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -218,7 +257,7 @@ export function FileDialog({
               Unggah berkas baru atau pilih dari pustaka.
             </DialogDescription>
           </DialogHeader>
-          {showLibrary ? (
+          {showLibrary || cameraTab ? (
             <Tabs
               value={tab}
               onValueChange={(value) => setTab(value as TabValue)}
@@ -228,16 +267,26 @@ export function FileDialog({
                 <TabsTrigger value="upload">
                   Unggah{queue.entries.length > 0 ? ` (${queue.entries.length})` : ''}
                 </TabsTrigger>
-                <TabsTrigger value="library">
-                  Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
-                </TabsTrigger>
+                {showLibrary ? (
+                  <TabsTrigger value="library">
+                    Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
+                  </TabsTrigger>
+                ) : null}
+                {cameraTab ? <TabsTrigger value="camera">Kamera</TabsTrigger> : null}
               </TabsList>
               <TabsContent value="upload" className="min-h-0 flex-1 overflow-y-auto">
                 {uploadTab}
               </TabsContent>
-              <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
-                {libraryTab}
-              </TabsContent>
+              {showLibrary ? (
+                <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
+                  {libraryTab}
+                </TabsContent>
+              ) : null}
+              {cameraTab ? (
+                <TabsContent value="camera" className="min-h-0 flex-1 overflow-y-auto">
+                  {cameraContent}
+                </TabsContent>
+              ) : null}
             </Tabs>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{uploadTab}</div>

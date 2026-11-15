@@ -90,6 +90,7 @@ const SERIAL: SerialDto = {
   note: '',
   recordedLocationId: 'l1',
   stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
+  hasProofPhotos: false,
   openCaseId: null,
   transitFromLocationId: null,
   transitFromLocationName: null,

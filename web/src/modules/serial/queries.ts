@@ -172,6 +172,7 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     transitToLocationName: serial.transitToLocationName,
     transitOn: serial.transitOn,
     openCaseNumber: serial.openCaseNumber,
+    hasProofPhotos: serial.hasProofPhotos,
     createdAt: serial.createdAt,
   };
 }
@@ -287,4 +288,12 @@ export function useSaveSerialServiceSettings() {
       queryClient.setQueryData(serialKeys.serviceSettings, saved);
     },
   });
+}
+
+/**
+ * Membuang foto bukti `draft` di server (upaya terbaik: yang gagal dibiarkan, penjadwal menyapu draft > 7 hari).
+ * Tidak pernah melempar.
+ */
+export async function discardProofPhotos(ids: readonly string[]): Promise<void> {
+  await Promise.allSettled(ids.map((id) => api('serialProofs.remove', { id })));
 }

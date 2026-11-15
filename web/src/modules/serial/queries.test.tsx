@@ -36,6 +36,7 @@ const dto = (over: Partial<SerialDto> = {}): SerialDto => ({
   transitToLocationName: null,
   transitOn: null,
   openCaseNumber: null,
+  hasProofPhotos: false,
   createdAt: '2026-11-10T03:00:00.000Z',
   note: '',
   recordedLocationId: 'l1',
