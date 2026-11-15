@@ -102,7 +102,13 @@ const DENYLIST = String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[
 
 /** Bentuk `sw.js` hasil `generateSW` (diperkecil) dengan daftar pra-cache dan denylist yang dapat diganti. */
 function swOf(
-  options: { urls?: string[]; denylist?: string; extra?: string; handler?: boolean } = {},
+  options: {
+    urls?: string[];
+    denylist?: string;
+    extra?: string;
+    handler?: boolean;
+    imports?: string[];
+  } = {},
 ): string {
   const urls = options.urls ?? [
     'index.html',
@@ -119,7 +125,11 @@ function swOf(
       ? ''
       : 'self.addEventListener("message",s=>{s.data&&"SKIP_WAITING"===s.data.type&&self.skipWaiting()}),';
   const denylist = options.denylist ?? DENYLIST;
-  return `define(["./workbox-1"],function(s){"use strict";${handler}s.clientsClaim(),s.precacheAndRoute([${entries}],{}),s.registerRoute(new s.NavigationRoute(s.createHandlerBoundToURL("/index.html"),{denylist:${denylist}}))${options.extra ?? ''}});`;
+  // Skrip impor Workbox (`workbox.importScripts`) muncul sebagai pemanggilan `importScripts("...")` di awal sw.js.
+  const imports = options.imports ?? ['push-sw.js', 'sync-sw.js'];
+  const importCall =
+    imports.length > 0 ? `importScripts(${imports.map((name) => `"${name}"`).join(',')});` : '';
+  return `${importCall}define(["./workbox-1"],function(s){"use strict";${handler}s.clientsClaim(),s.precacheAndRoute([${entries}],{}),s.registerRoute(new s.NavigationRoute(s.createHandlerBoundToURL("/index.html"),{denylist:${denylist}}))${options.extra ?? ''}});`;
 }
 
 function healthyDist(
@@ -130,6 +140,8 @@ function healthyDist(
     textFile('assets/index-abc.js', 'export {}'),
     textFile('sw.js', overrides.sw ?? swOf()),
     textFile('manifest.webmanifest', JSON.stringify(overrides.manifest ?? MANIFEST)),
+    textFile('push-sw.js', '(() => {})();'),
+    textFile('sync-sw.js', '(() => {})();'),
     binary('icons/icon-192.png', pngOf(192, 192)),
     binary('icons/icon-512.png', pngOf(512, 512)),
     binary('icons/icon-maskable-512.png', pngOf(512, 512)),
@@ -302,5 +314,28 @@ describe('checkPwa', () => {
     expect(checkPwa(healthyDist({ sw: twice })).join()).toContain('skipWaiting');
     const noHandler = swOf({ handler: false });
     expect(checkPwa(healthyDist({ sw: noHandler })).join()).toContain('SKIP_WAITING');
+  });
+  test('skrip impor (push-sw.js, sync-sw.js): berkas hilang, tak diimpor, atau ikut pra-cache ditolak', () => {
+    expect(checkPwa(without(healthyDist(), 'sync-sw.js')).join()).toContain('sync-sw.js');
+    expect(checkPwa(without(healthyDist(), 'push-sw.js')).join()).toContain('push-sw.js');
+    const notImported = swOf({ imports: ['push-sw.js'] });
+    expect(checkPwa(healthyDist({ sw: notImported })).join()).toContain(
+      'sw.js: sync-sw.js tidak diimpor',
+    );
+    const inPrecache = swOf({
+      urls: [
+        'index.html',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/icon-maskable-512.png',
+        'icons/apple-touch-icon-180.png',
+        'assets/index-abc.js',
+        'manifest.webmanifest',
+        'sync-sw.js',
+      ],
+    });
+    expect(checkPwa(healthyDist({ sw: inPrecache })).join()).toContain(
+      'sw.js: pra-cache memuat sync-sw.js',
+    );
   });
 });

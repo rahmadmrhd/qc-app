@@ -240,6 +240,9 @@ function checkIndexHtml(files: DistFile[], problems: string[]): void {
   }
 }
 
+/** Skrip klasik yang diimpor sw.js lewat `workbox.importScripts` (sama dengan `pwa-config.ts`). */
+const IMPORTED_SCRIPTS = ['push-sw.js', 'sync-sw.js'];
+
 function checkServiceWorker(files: DistFile[], problems: string[]): void {
   const sw = files.find((file) => file.file === 'sw.js');
   if (!sw) {
@@ -251,6 +254,21 @@ function checkServiceWorker(files: DistFile[], problems: string[]): void {
   const normalized = urls.map(distPath);
   if (!normalized.includes('index.html')) {
     problems.push('sw.js: daftar pra-cache tidak memuat index.html');
+  }
+  // Skrip impor (`workbox.importScripts`, pwa-config.ts): ada di dist, diimpor sw.js, dan tak ikut pra-cache.
+  const imported = [...sw.text.matchAll(/importScripts\(([^)]*)\)/g)].flatMap((call) =>
+    [...(call[1] ?? '').matchAll(/["']([^"']+)["']/g)].map((arg) => arg[1] as string),
+  );
+  for (const script of IMPORTED_SCRIPTS) {
+    if (!files.some((file) => file.file === script)) {
+      problems.push(`${script} tidak ada di dist (diimpor service worker)`);
+    }
+    if (!imported.includes(script)) {
+      problems.push(`sw.js: ${script} tidak diimpor (importScripts)`);
+    }
+    if (normalized.includes(script)) {
+      problems.push(`sw.js: pra-cache memuat ${script} (skrip impor tidak boleh dipra-cache)`);
+    }
   }
   let total = 0;
   for (const url of urls) {
